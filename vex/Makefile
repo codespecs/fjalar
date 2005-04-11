@@ -92,7 +92,6 @@ libvex.a: $(LIB_OBJS)
 
 clean:
 	rm -f $(LIB_OBJS) libvex.a vex test_main.o \
-		priv/main/vex_svnversion.h \
 		pub/libvex_guest_offsets.h
 
 version:
