@@ -1,0 +1,2 @@
+prog: insn_cmov
+prereq: ../../../tests/cputest x86-cmov

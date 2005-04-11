@@ -1,0 +1,2 @@
+prog: as_mmap
+stderr_filter: filter_as_mmap

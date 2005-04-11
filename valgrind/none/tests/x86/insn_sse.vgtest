@@ -1,0 +1,2 @@
+prog: insn_sse
+prereq: ../../../tests/cputest x86-sse

@@ -1,0 +1,25 @@
+include $(top_srcdir)/Makefile.tool.am
+
+# include memcheck/ for mac_shared.h
+AM_CPPFLAGS += -I$(top_srcdir)/memcheck
+
+val_PROGRAMS = vgtool_addrcheck.so vgpreload_addrcheck.so
+
+vgtool_addrcheck_so_SOURCES = ac_main.c
+vgtool_addrcheck_so_LDFLAGS = -shared
+vgtool_addrcheck_so_LDADD = \
+	../memcheck/mac_leakcheck.o \
+	../memcheck/mac_malloc_wrappers.o \
+	../memcheck/mac_needs.o
+
+vgpreload_addrcheck_so_SOURCES = 
+vgpreload_addrcheck_so_LDADD = \
+	../memcheck/mac_replace_strmem.o
+vgpreload_addrcheck_so_DEPENDENCIES = \
+	$(top_builddir)/coregrind/lib_replace_malloc.a \
+	../memcheck/mac_replace_strmem.o
+vgpreload_addrcheck_so_LDFLAGS = -shared -Wl,-z,interpose,-z,initfirst \
+	-Wl,--whole-archive \
+	$(top_builddir)/coregrind/lib_replace_malloc.a \
+	-Wl,--no-whole-archive
+

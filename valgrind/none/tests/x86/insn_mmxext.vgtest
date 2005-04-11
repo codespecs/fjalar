@@ -1,0 +1,2 @@
+prog: insn_mmxext
+prereq: ../../../tests/cputest x86-mmxext

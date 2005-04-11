@@ -1,0 +1,376 @@
+
+##----------------------------------------------------------------------##
+
+# Errors to suppress by default with glibc 2.3.x
+
+# Format of this file is:
+# {
+#     name_of_suppression
+#     tool_name:supp_kind
+#     (optional extra info for some suppression types)
+#     caller0 name, or /name/of/so/file.so
+#     caller1 name, or ditto
+#     (optionally: caller2 name)
+#     (optionally: caller3 name)
+#  }
+#
+# For Memcheck, the supp_kinds are:
+#
+#     Param Value1 Value2 Value4 Value8 Value16
+#     Free Addr1 Addr2 Addr4 Addr8 Addr16
+#     Cond (previously known as Value0)
+#
+# and the optional extra info is:
+#     if Param: name of system call param
+#     if Free: name of free-ing fn)
+
+{
+   __GI___stpcpy/*
+   Memcheck:Cond
+   fun:__GI___stpcpy
+   fun:*
+}
+{
+   strlen/__GI__dl_open/dlopen_doit
+   Memcheck:Cond
+   fun:strlen
+   fun:__GI__dl_open
+   fun:dlopen_doit
+}
+{
+   strlen/_dl_signal_cerror/_dl_lookup_symbol_internal/do_dlsym
+   Memcheck:Cond
+   fun:_dl_signal_cerror
+   fun:_dl_lookup_symbol_internal
+   fun:do_dlsym
+}
+{
+   strlen/*dl_map_object*(Cond)
+   Memcheck:Cond
+   fun:strlen
+   fun:*dl_map_object*
+}
+
+{
+   strlen/*dl_open_worker*(Cond)
+   Memcheck:Cond
+   fun:strlen
+   fun:*dl_open_worker*
+}
+{
+   strlen/_dl_sym/dlsym_doit
+   Memcheck:Cond
+   fun:strlen
+   fun:_dl_sym
+   fun:dlsym_doit
+}
+{
+   realpath is inefficiently coded
+   Addrcheck,Memcheck:Overlap
+   fun:memcpy
+   fun:realpath*
+}
+
+{
+   realpath stupidity part II
+   Addrcheck,Memcheck:Overlap
+   fun:strcpy
+   fun:realpath*
+}
+{
+   strlen/decompose_rpath/_dl_map_object
+   Memcheck:Cond
+   fun:strlen
+   fun:decompose_rpath
+   fun:*dl_map_object*
+}
+{
+   stpcpy/_dl_sym*
+   Memcheck:Cond
+   fun:__stpcpy
+   fun:_dl_*
+}
+
+#-------- For R H 8.0
+{
+   elf_dynamic_do_rel.7/_dl_relocate_object_internal/dl_open_worker(Cond)
+   Memcheck:Cond
+   fun:elf_dynamic_do_rel.7
+   fun:_dl_relocate_object_internal
+   fun:dl_open_worker
+}
+{
+   dl_relocate/dl_open_worker
+   Memcheck:Cond
+   fun:_dl_relocate_object_internal
+   fun:dl_open_worker
+}
+
+#-------- glibc 2.3.2/ Fedora Core 1
+{
+   dl_relocate/dl_main
+   Memcheck:Cond
+   fun:_dl_relocate_object_internal
+   fun:dl_main
+}
+
+#-------- glibc 2.3.3/ Fedora Core 2
+{
+   dl_relocate_object/dl_main
+   Memcheck:Cond
+   fun:_dl_relocate_object
+   fun:dl_main
+}
+{
+   _dl_relocate_object/dl_open_worker
+   Memcheck:Cond
+   fun:_dl_relocate_object
+   fun:dl_open_worker
+}
+
+#-------- glibc 2.3.4/ Fedora Core 3
+{
+   dl_relocate_object
+   Memcheck:Cond
+   fun:_dl_relocate_object
+}
+
+#-------- Data races
+{
+   _dl_lookup_symbol_internal/fixup/_dl_runtime_resolve
+   Helgrind:Eraser
+   fun:_dl_lookup_symbol_internal
+   fun:fixup
+   fun:_dl_runtime_resolve
+}
+{
+   _dl_lookup_symbol_x/fixup/_dl_runtime_resolve
+   Helgrind:Eraser
+   fun:_dl_lookup_symbol_x
+   fun:fixup
+   fun:_dl_runtime_resolve
+}
+{
+   _dl_lookup_versioned_symbol_internal/fixup/_dl_runtime_resolve
+   Helgrind:Eraser
+   fun:_dl_lookup_versioned_symbol_internal
+   fun:fixup
+   fun:_dl_runtime_resolve
+}
+{
+   _dl_lookup_versioned_symbol/ld-2.3.2.so/ld-2.3.2.so
+   Helgrind:Eraser
+   fun:_dl_lookup_versioned_symbol
+   obj:/lib/ld-2.3.2.so
+   obj:/lib/ld-2.3.2.so
+}
+{
+   _dl_lookup_symbol/ld-2.3.2.so/ld-2.3.2.so
+   Helgrind:Eraser
+   fun:_dl_lookup_symbol
+   obj:/lib/ld-2.3.2.so
+   obj:/lib/ld-2.3.2.so
+}
+{
+   _dl_fini
+   Helgrind:Eraser
+   fun:_dl_fini
+}
+{
+   ld-2.3.2.so/exit/__libc_start_main
+   Helgrind:Eraser
+   obj:/lib/ld-2.3.2.so
+   fun:exit
+   fun:__libc_start_main
+}
+
+#-------- Threading bugs?
+# glibc 'knows' that destroying a locked mutex will unlock it
+{
+   pthread_error/pthread_mutex_destroy/__closedir
+   core:PThread
+   fun:pthread_error
+   fun:pthread_mutex_destroy
+   fun:__closedir
+}
+
+{
+   pthread_error/pthread_mutex_destroy/_IO_default_finish
+   core:PThread
+   fun:pthread_error
+   fun:pthread_mutex_destroy
+   fun:_IO_default_finish*
+}
+
+{
+   pthread_mutex_unlock/_IO_funlockfile
+   core:PThread
+   fun:pthread_mutex_unlock
+   fun:_IO_funlockfile
+}
+
+##----------------------------------------------------------------------##
+## Bugs in helper library supplied with Intel Icc 7.0 (65)
+## in /opt/intel/compiler70/ia32/lib/libcxa.so.3
+{
+   Intel compiler70/ia32/lib/libcxa.so.3 below-esp accesses
+   Addrcheck,Memcheck:Addr4
+   obj:/opt/intel/compiler70/ia32/lib/libcxa.so.3
+}
+
+##----------------------------------------------------------------------##
+## SuSE 9 after FV changes (post 2.1.0)
+
+{
+   strlen/_dl_init_paths/dl_main/_dl_sysdep_start(Cond)
+   Memcheck:Cond
+   fun:strlen
+   fun:_dl_init_paths
+   fun:dl_main
+   fun:_dl_sysdep_start
+}
+
+{
+   Ugly strchr error in /lib/ld-2.3.2.so
+   Memcheck:Cond
+   obj:/lib/ld-2.3.2.so
+}
+
+##----------------------------------------------------------------------##
+## SuSE 9.1 with post 2.1.2
+{
+   Ugly strchr error in /lib/ld-2.3.3.so
+   Memcheck:Cond
+   obj:/lib/ld-2.3.3.so
+}
+
+##----------------------------------------------------------------------##
+## SuSE 9.1 with 3.0 branch (x86)
+{
+   Strstr dubiousness in pthread_initialize
+   Memcheck:Cond
+   fun:strstr
+   fun:pthread_initialize
+   obj:/lib/libpthread.so.0
+   obj:/lib/libpthread.so.0
+}
+
+##----------------------------------------------------------------------##
+## glibc-2.3.3 on FC2
+## Assumes that sysctl returns \0-terminated strings in is_smp_system
+{
+   Unterminated strstr string in is_smp_system() (NPTL)
+   Memcheck:Cond
+   fun:strstr
+   fun:__pthread_initialize_minimal
+   obj:/lib/tls/libpthread*.so*
+   obj:/lib/tls/libpthread*.so*
+}
+{
+   Unterminated strstr string in is_smp_system() (LinuxThreads)
+   Memcheck:Cond
+   fun:strstr
+   fun:pthread_initialize
+   obj:/lib/i686/libpthread*.so*
+   obj:/lib/i686/libpthread*.so*
+}
+{
+   Unterminated strstr string in is_smp_system() (LinuxThreads)
+   Memcheck:Cond
+   fun:strstr
+   fun:pthread_initialize
+   obj:/lib/libpthread-0.10.so
+   obj:/lib/libpthread-0.10.so
+}
+
+## Bug in PRE(sys_clone), really.  Some args are not used.
+{
+   LinuxThread clone use (parent_tidptr)
+   Memcheck:Param
+   clone(parent_tidptr)
+   fun:clone
+   fun:pthread_create
+}
+{
+   LinuxThread clone use (child_tidptr)
+   Memcheck:Param
+   clone(child_tidptr)
+   fun:clone
+   fun:pthread_create
+}
+{
+   LinuxThread clone use (tlsinfo)
+   Memcheck:Param
+   clone(tlsinfo)
+   fun:clone
+   fun:pthread_create
+}
+{
+   LinuxThread clone use (parent_tidptr)
+   Memcheck:Param
+   clone(parent_tidptr)
+   fun:clone
+   fun:pthread_create@@GLIBC_2.1
+}
+{
+   LinuxThread clone use (child_tidptr)
+   Memcheck:Param
+   clone(child_tidptr)
+   fun:clone
+   fun:pthread_create@@GLIBC_2.1
+}
+{
+   LinuxThread clone use (tlsinfo)
+   Memcheck:Param
+   clone(tlsinfo)
+   fun:clone
+   fun:pthread_create@@GLIBC_2.1
+}
+
+## LinuxThreads manager writes messages containing undefined bytes
+{
+   LinuxThreads: write/pthread_onexit_process
+   Memcheck:Param
+   write(buf)
+   fun:pthread_onexit_process
+   fun:exit
+}
+{
+   LinuxThreads: write/pthread_join
+   Memcheck:Param
+   write(buf)
+   fun:pthread_join
+}
+{
+   LinuxThreads: write/pthread_create
+   Memcheck:Param
+   write(buf)
+   fun:pthread_create@@GLIBC_2.1
+}
+{
+   LinuxThreads: write/__pthread_initialize_manager/pthread_create
+   Memcheck:Param
+   write(buf)
+   fun:__pthread_initialize_manager
+   fun:pthread_create@@GLIBC_2.1
+}
+
+{
+   LinuxThreads: write/pthread_create
+   Memcheck:Param
+   write(buf)
+   fun:write
+   fun:pthread_create
+}
+
+##----------------------------------------------------------------------##
+## glibc-2.3.4 on FC3
+## Assumes that sysctl returns \0-terminated strings in is_smp_system
+{
+   Unterminated strstr string in is_smp_system() (NPTL)
+   Memcheck:Cond
+   fun:strstr
+   fun:__pthread_initialize_minimal
+   obj:/lib/tls/libpthread-2.3.4.so
+   obj:/lib/tls/libpthread-2.3.4.so
+}
