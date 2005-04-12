@@ -11,6 +11,7 @@ TOOLS =		memcheck \
 		corecheck \
 		massif \
 		lackey \
+		dyncomp \
 		none
 
 # Temporary: we want to compile Helgrind, but not regtest it.
