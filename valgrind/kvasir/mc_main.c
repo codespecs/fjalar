@@ -9,8 +9,13 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
+
+      Modified by Philip Guo (pgbovine@mit.edu) to serve as the
+      DynComp Dynamic Comparability Analysis tool.
+
+   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -79,7 +84,7 @@
    where
 
     f( XXXX XXXX XXXX XXXX ____ ____ ____ __YZ )
-        = ____ ____ ____ __YZ XXXX XXXX XXXX XXXX  or 
+        = ____ ____ ____ __YZ XXXX XXXX XXXX XXXX  or
         = ____ ____ ____ __ZY XXXX XXXX XXXX XXXX
 
    ie the lowest two bits are placed above the 16 high address bits.
@@ -89,7 +94,7 @@
    (bogus) address check failure will result.  The failure handling
    code can then figure out whether this is a genuine addr check
    failure or whether it is a possibly-legitimate access at a
-   misaligned address.  
+   misaligned address.
 */
 
 /*------------------------------------------------------------*/
@@ -110,7 +115,7 @@ static void mc_wr_V1_SLOWLY ( Addr a, UInt vbytes );
 /*--- Data defns.                                          ---*/
 /*------------------------------------------------------------*/
 
-typedef 
+typedef
    struct {
       UChar abits[SECONDARY_SIZE/8];
       UChar vbyte[SECONDARY_SIZE];
@@ -163,7 +168,7 @@ static void init_shadow_memory ( void )
 	 tl_assert(DSM(a,v)->vbyte[0] == BIT_EXPAND(v|a));
       }
    }
- 
+
    /* These entries gradually get overwritten as the used address
       space expands. */
    for (i = 0; i < PRIMARY_SIZE; i++)
@@ -180,7 +185,7 @@ static void init_shadow_memory ( void )
 
 /* Allocate and initialise a secondary map. */
 
-static SecMap* alloc_secondary_map ( __attribute__ ((unused)) 
+static SecMap* alloc_secondary_map ( __attribute__ ((unused))
                                      Char* caller,
   				     const SecMap *prototype)
 {
@@ -205,10 +210,10 @@ static __inline__ UChar get_abit ( Addr a )
    PROF_EVENT(20);
 #  if 0
       if (IS_DISTINGUISHED_SM(sm))
-         VG_(message)(Vg_DebugMsg, 
+         VG_(message)(Vg_DebugMsg,
                       "accessed distinguished 2ndary (A)map! 0x%x\n", a);
 #  endif
-   return BITARR_TEST(sm->abits, sm_off) 
+   return BITARR_TEST(sm->abits, sm_off)
              ? VGM_BIT_INVALID : VGM_BIT_VALID;
 }
 
@@ -219,7 +224,7 @@ static __inline__ UChar get_vbyte ( Addr a )
    PROF_EVENT(21);
 #  if 0
       if (IS_DISTINGUISHED_SM(sm))
-         VG_(message)(Vg_DebugMsg, 
+         VG_(message)(Vg_DebugMsg,
                       "accessed distinguished 2ndary (V)map! 0x%x\n", a);
 #  endif
    return sm->vbyte[sm_off];
@@ -233,7 +238,7 @@ static /* __inline__ */ void set_abit ( Addr a, UChar abit )
    ENSURE_MAPPABLE(a, "set_abit");
    sm     = primary_map[PM_IDX(a)];
    sm_off = SM_OFF(a);
-   if (abit) 
+   if (abit)
       BITARR_SET(sm->abits, sm_off);
    else
       BITARR_CLEAR(sm->abits, sm_off);
@@ -301,7 +306,7 @@ static void __inline__ set_vbytes4_ALIGNED ( Addr a, UInt vbytes )
 /*--- Setting permissions over address ranges.             ---*/
 /*------------------------------------------------------------*/
 
-static void set_address_range_perms ( Addr a, SizeT len, 
+static void set_address_range_perms ( Addr a, SizeT len,
                                       UInt example_a_bit,
                                       UInt example_v_bit )
 {
@@ -316,7 +321,7 @@ static void set_address_range_perms ( Addr a, SizeT len,
 
    if (VG_(clo_verbosity) > 0) {
       if (len > 100 * 1000 * 1000) {
-         VG_(message)(Vg_UserMsg, 
+         VG_(message)(Vg_UserMsg,
                       "Warning: set address range perms: "
                       "large range %u, a %d, v %d",
                       len, example_a_bit, example_v_bit );
@@ -332,15 +337,15 @@ static void set_address_range_perms ( Addr a, SizeT len,
    /* tl_assert(len < 30000000); */
 
    /* Check the permissions make sense. */
-   tl_assert(example_a_bit == VGM_BIT_VALID 
+   tl_assert(example_a_bit == VGM_BIT_VALID
              || example_a_bit == VGM_BIT_INVALID);
-   tl_assert(example_v_bit == VGM_BIT_VALID 
+   tl_assert(example_v_bit == VGM_BIT_VALID
              || example_v_bit == VGM_BIT_INVALID);
    if (example_a_bit == VGM_BIT_INVALID)
       tl_assert(example_v_bit == VGM_BIT_INVALID);
 
    /* The validity bits to write. */
-   vbyte = example_v_bit==VGM_BIT_VALID 
+   vbyte = example_v_bit==VGM_BIT_VALID
               ? VGM_BYTE_VALID : VGM_BYTE_INVALID;
 
    /* In order that we can charge through the address space at 8
@@ -369,7 +374,7 @@ static void set_address_range_perms ( Addr a, SizeT len,
       set_vbyte ( a, vbyte );
       a++;
       len--;
-   }   
+   }
 
    if (len == 0) {
       VGP_POPCC(VgpSetMem);
@@ -438,7 +443,7 @@ static void set_address_range_perms ( Addr a, SizeT len,
       set_vbyte ( a, vbyte );
       a++;
       len--;
-   }   
+   }
 #  endif
 
    /* Check that zero page and highest page have not been written to
@@ -548,7 +553,7 @@ ESP_UPDATE_HANDLERS ( make_aligned_word_writable,
                       make_aligned_doubleword_writable,
                       make_aligned_doubleword_noaccess,
                       mc_make_writable,
-                      mc_make_noaccess 
+                      mc_make_noaccess
                     );
 
 /* Block-copy permissions (needed for implementing realloc()). */
@@ -715,29 +720,29 @@ void mc_check_is_writable ( CorePart part, ThreadId tid, Char* s,
 static
 void mc_check_is_readable ( CorePart part, ThreadId tid, Char* s,
                             Addr base, SizeT size )
-{     
+{
    Addr bad_addr;
    MC_ReadResult res;
 
    VGP_PUSHCC(VgpCheckMem);
-   
+
    /* VG_(message)(Vg_DebugMsg,"check is readable: %x .. %x",
                                base,base+size-1); */
    res = mc_check_readable ( base, size, &bad_addr );
    if (MC_Ok != res) {
       Bool isUnaddr = ( MC_AddrErr == res ? True : False );
-      
+
       switch (part) {
       case Vg_CoreSysCall:
          MAC_(record_param_error) ( tid, bad_addr, /*isReg*/False,
                                     isUnaddr, s );
          break;
-      
+
       case Vg_CorePThread:
          MAC_(record_core_mem_error)( tid, isUnaddr, s );
          break;
 
-      /* If we're being asked to jump to a silly address, record an error 
+      /* If we're being asked to jump to a silly address, record an error
          message before potentially crashing the entire system. */
       case Vg_CoreTranslate:
          MAC_(record_jump_error)( tid, bad_addr );
@@ -826,10 +831,10 @@ static void mc_pre_reg_read(CorePart part, ThreadId tid, Char* s, OffT offset,
 {
    UWord mask;
    UWord sh_reg_contents;
-   
+
    // XXX: the only one at the moment
    tl_assert(Vg_CoreSysCall == part);
-   
+
    switch (size) {
    case 4:  mask = 0xffffffff; break;
    case 2:  mask = 0xffff;     break;
@@ -1007,8 +1012,8 @@ UInt MC_(helperc_LOADV2) ( Addr a )
    if (sm->abits[a_off] == VGM_BYTE_VALID) {
       /* Handle common case quickly. */
       UInt v_off = SM_OFF(a);
-      return 0xFFFF0000 
-             |  
+      return 0xFFFF0000
+             |
              (UInt)( ((UShort*)(sm->vbyte))[ v_off >> 1 ] );
    } else {
       /* Slow but general case. */
@@ -1139,28 +1144,28 @@ static ULong mc_rd_V8_SLOWLY ( Addr a )
       return vw;
    }
 
-   /* Case 2: the address is completely invalid.  
+   /* Case 2: the address is completely invalid.
       - emit addressing error
-      - return V word indicating validity.  
-      This sounds strange, but if we make loads from invalid addresses 
+      - return V word indicating validity.
+      This sounds strange, but if we make loads from invalid addresses
       give invalid data, we also risk producing a number of confusing
       undefined-value errors later, which confuses the fact that the
-      error arose in the first place from an invalid address. 
+      error arose in the first place from an invalid address.
    */
    /* VG_(printf)("%p (%d %d %d %d)\n", a, a0ok, a1ok, a2ok, a3ok); */
-   if (!MAC_(clo_partial_loads_ok) 
+   if (!MAC_(clo_partial_loads_ok)
        || ((a & 7) != 0)
        || (!a0ok && !a1ok && !a2ok && !a3ok && !a4ok && !a5ok && !a6ok && !a7ok)) {
       MAC_(record_address_error)( VG_(get_running_tid)(), a, 8, False );
       return VGM_WORD64_VALID;
    }
 
-   /* Case 3: the address is partially valid.  
+   /* Case 3: the address is partially valid.
       - no addressing error
-      - returned V word is invalid where the address is invalid, 
-        and contains V bytes from memory otherwise. 
+      - returned V word is invalid where the address is invalid,
+        and contains V bytes from memory otherwise.
       Case 3 is only allowed if MC_(clo_partial_loads_ok) is True
-      (which is the default), and the address is 4-aligned.  
+      (which is the default), and the address is 4-aligned.
       If not, Case 2 will have applied.
    */
    tl_assert(MAC_(clo_partial_loads_ok));
@@ -1245,29 +1250,29 @@ static UInt mc_rd_V4_SLOWLY ( Addr a )
       return vw;
    }
 
-   /* Case 2: the address is completely invalid.  
+   /* Case 2: the address is completely invalid.
       - emit addressing error
-      - return V word indicating validity.  
-      This sounds strange, but if we make loads from invalid addresses 
+      - return V word indicating validity.
+      This sounds strange, but if we make loads from invalid addresses
       give invalid data, we also risk producing a number of confusing
       undefined-value errors later, which confuses the fact that the
-      error arose in the first place from an invalid address. 
+      error arose in the first place from an invalid address.
    */
    /* VG_(printf)("%p (%d %d %d %d)\n", a, a0ok, a1ok, a2ok, a3ok); */
-   if (!MAC_(clo_partial_loads_ok) 
+   if (!MAC_(clo_partial_loads_ok)
        || ((a & 3) != 0)
        || (!a0ok && !a1ok && !a2ok && !a3ok)) {
       MAC_(record_address_error)( VG_(get_running_tid)(), a, 4, False );
-      return (VGM_BYTE_VALID << 24) | (VGM_BYTE_VALID << 16) 
+      return (VGM_BYTE_VALID << 24) | (VGM_BYTE_VALID << 16)
              | (VGM_BYTE_VALID << 8) | VGM_BYTE_VALID;
    }
 
-   /* Case 3: the address is partially valid.  
+   /* Case 3: the address is partially valid.
       - no addressing error
-      - returned V word is invalid where the address is invalid, 
-        and contains V bytes from memory otherwise. 
+      - returned V word is invalid where the address is invalid,
+        and contains V bytes from memory otherwise.
       Case 3 is only allowed if MC_(clo_partial_loads_ok) is True
-      (which is the default), and the address is 4-aligned.  
+      (which is the default), and the address is 4-aligned.
       If not, Case 2 will have applied.
    */
    tl_assert(MAC_(clo_partial_loads_ok));
@@ -1322,10 +1327,10 @@ static UInt mc_rd_V2_SLOWLY ( Addr a )
    /* If an address error has happened, report it. */
    if (aerr) {
       MAC_(record_address_error)( VG_(get_running_tid)(), a, 2, False );
-      vw = (VGM_BYTE_INVALID << 24) | (VGM_BYTE_INVALID << 16) 
+      vw = (VGM_BYTE_INVALID << 24) | (VGM_BYTE_INVALID << 16)
            | (VGM_BYTE_VALID << 8) | (VGM_BYTE_VALID);
    }
-   return vw;   
+   return vw;
 }
 
 static void mc_wr_V2_SLOWLY ( Addr a, UInt vbytes )
@@ -1363,10 +1368,10 @@ static UInt mc_rd_V1_SLOWLY ( Addr a )
    /* If an address error has happened, report it. */
    if (aerr) {
       MAC_(record_address_error)( VG_(get_running_tid)(), a, 1, False );
-      vw = (VGM_BYTE_INVALID << 24) | (VGM_BYTE_INVALID << 16) 
+      vw = (VGM_BYTE_INVALID << 24) | (VGM_BYTE_INVALID << 16)
            | (VGM_BYTE_INVALID << 8) | (VGM_BYTE_VALID);
    }
-   return vw;   
+   return vw;
 }
 
 static void mc_wr_V1_SLOWLY ( Addr a, UInt vbytes )
@@ -1422,12 +1427,12 @@ VGA_REGPARM(1) void MC_(helperc_complain_undef) ( HWord sz )
 
 /* Copy Vbits for src into vbits. Returns: 1 == OK, 2 == alignment
    error, 3 == addressing error. */
-static Int mc_get_or_set_vbits_for_client ( 
+static Int mc_get_or_set_vbits_for_client (
    ThreadId tid,
-   Addr dataV, 
-   Addr vbitsV, 
-   SizeT size, 
-   Bool setting /* True <=> set vbits,  False <=> get vbits */ 
+   Addr dataV,
+   Addr vbitsV,
+   SizeT size,
+   Bool setting /* True <=> set vbits,  False <=> get vbits */
 )
 {
    Bool addressibleD = True;
@@ -1444,7 +1449,7 @@ static Int mc_get_or_set_vbits_for_client (
       return 2;
    if ((size & 3) != 0)
       return 2;
-  
+
    /* Check that arrays are addressible. */
    for (i = 0; i < szW; i++) {
       dataP  = &data[i];
@@ -1459,16 +1464,16 @@ static Int mc_get_or_set_vbits_for_client (
       }
    }
    if (!addressibleD) {
-      MAC_(record_address_error)( tid, (Addr)dataP, 4, 
+      MAC_(record_address_error)( tid, (Addr)dataP, 4,
                                   setting ? True : False );
       return 3;
    }
    if (!addressibleV) {
-      MAC_(record_address_error)( tid, (Addr)vbitsP, 4, 
+      MAC_(record_address_error)( tid, (Addr)vbitsP, 4,
                                   setting ? False : True );
       return 3;
    }
- 
+
    /* Do the copy */
    if (setting) {
       /* setting */
@@ -1533,7 +1538,7 @@ Bool mc_is_valid_address ( Addr a )
    tool. */
 static void mc_detect_memory_leaks ( ThreadId tid, LeakCheckMode mode )
 {
-   MAC_(do_detect_memory_leaks) ( 
+   MAC_(do_detect_memory_leaks) (
       tid, mode, mc_is_valid_64k_chunk, mc_is_valid_address );
 }
 
@@ -1573,7 +1578,7 @@ Bool TL_(expensive_sanity_check) ( void )
 
    return True;
 }
-      
+
 /*------------------------------------------------------------*/
 /*--- Command line args                                    ---*/
 /*------------------------------------------------------------*/
@@ -1590,7 +1595,7 @@ Bool TL_(process_cmd_line_option)(Char* arg)
 }
 
 void TL_(print_usage)(void)
-{  
+{
    MAC_(print_common_usage)();
    VG_(printf)(
 "    --avoid-strlen-errors=no|yes  suppress errs from inlined strlen [yes]\n"
@@ -1598,7 +1603,7 @@ void TL_(print_usage)(void)
 }
 
 void TL_(print_debug_usage)(void)
-{  
+{
    MAC_(print_common_debug_usage)();
    VG_(printf)(
 "    --cleanup=no|yes          improve after instrumentation? [yes]\n"
@@ -1610,13 +1615,13 @@ void TL_(print_debug_usage)(void)
 /*------------------------------------------------------------*/
 
 /* Client block management:
-  
+
    This is managed as an expanding array of client block descriptors.
    Indices of live descriptors are issued to the client, so it can ask
    to free them later.  Therefore we cannot slide live entries down
    over dead ones.  Instead we must use free/inuse flags and scan for
    an empty slot at allocation time.  This in turn means allocation is
-   relatively expensive, so we hope this does not happen too often. 
+   relatively expensive, so we hope this does not happen too often.
 
    An unused block has start == size == 0
 */
@@ -1627,7 +1632,7 @@ typedef
       SizeT         size;
       ExeContext*   where;
       Char*	    desc;
-   } 
+   }
    CGenBlock;
 
 /* This subsystem is self-initialising. */
@@ -1667,7 +1672,7 @@ Int alloc_client_block ( void )
    sz_new = (cgbs == NULL) ? 10 : (2 * cgb_size);
 
    cgbs_new = VG_(malloc)( sz_new * sizeof(CGenBlock) );
-   for (i = 0; i < cgb_used; i++) 
+   for (i = 0; i < cgb_used; i++)
       cgbs_new[i] = cgbs[i];
 
    if (cgbs != NULL)
@@ -1684,9 +1689,9 @@ Int alloc_client_block ( void )
 
 static void show_client_block_stats ( void )
 {
-   VG_(message)(Vg_DebugMsg, 
+   VG_(message)(Vg_DebugMsg,
       "general CBs: %d allocs, %d discards, %d maxinuse, %d search",
-      cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search 
+      cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search
    );
 }
 
@@ -1705,7 +1710,7 @@ static Bool client_perm_maybe_describe( Addr a, AddrInfo* ai )
 
    /* Perhaps it's a general block ? */
    for (i = 0; i < cgb_used; i++) {
-      if (cgbs[i].start == 0 && cgbs[i].size == 0) 
+      if (cgbs[i].start == 0 && cgbs[i].size == 0)
          continue;
       if (VG_(addr_is_in_block)(a, cgbs[i].start, cgbs[i].size)) {
          MAC_Mempool **d, *mp;
@@ -1816,7 +1821,7 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 	 break;
 
       case VG_USERREQ__DISCARD: /* discard */
-         if (cgbs == NULL 
+         if (cgbs == NULL
              || arg[2] >= cgb_used ||
 	     (cgbs[arg[2]].start == 0 && cgbs[arg[2]].size == 0)) {
             *ret = 1;
@@ -1849,7 +1854,7 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
          if (MAC_(handle_common_client_requests)(tid, arg, ret )) {
             return True;
          } else {
-            VG_(message)(Vg_UserMsg, 
+            VG_(message)(Vg_UserMsg,
                          "Warning: unknown memcheck client request code %llx",
                          (ULong)arg[0]);
             return False;
@@ -1865,12 +1870,12 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 
 void TL_(pre_clo_init)(void)
 {
-   VG_(details_name)            ("Memcheck");
-   VG_(details_version)         (NULL);
-   VG_(details_description)     ("a memory error detector");
+   VG_(details_name)            ("DynComp");
+   VG_(details_version)         ("4.1.0");
+   VG_(details_description)     ("A dynamic comparability analysis tool based on Memcheck");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2005, and GNU GPL'd, by Julian Seward et al.");
-   VG_(details_bug_reports_to)  (VG_BUGS_TO);
+      "Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group");
+   VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
    VG_(details_avg_translation_sizeB) ( 370 );
 
    VG_(basic_tool_funcs)          (TL_(post_clo_init),
@@ -1916,12 +1921,12 @@ void TL_(pre_clo_init)(void)
    VG_(init_new_mem_stack_signal) ( & mc_make_writable );
    VG_(init_new_mem_brk)          ( & mc_make_writable );
    VG_(init_new_mem_mmap)         ( & mc_new_mem_mmap );
-   
+
    VG_(init_copy_mem_remap)       ( & mc_copy_address_range_state );
-      
-   VG_(init_die_mem_stack_signal) ( & mc_make_noaccess ); 
+
+   VG_(init_die_mem_stack_signal) ( & mc_make_noaccess );
    VG_(init_die_mem_brk)          ( & mc_make_noaccess );
-   VG_(init_die_mem_munmap)       ( & mc_make_noaccess ); 
+   VG_(init_die_mem_munmap)       ( & mc_make_noaccess );
 
    VG_(init_new_mem_stack_4)      ( & MAC_(new_mem_stack_4)  );
    VG_(init_new_mem_stack_8)      ( & MAC_(new_mem_stack_8)  );
@@ -1936,7 +1941,7 @@ void TL_(pre_clo_init)(void)
    VG_(init_die_mem_stack_16)     ( & MAC_(die_mem_stack_16) );
    VG_(init_die_mem_stack_32)     ( & MAC_(die_mem_stack_32) );
    VG_(init_die_mem_stack)        ( & MAC_(die_mem_stack)    );
-   
+
    VG_(init_ban_mem_stack)        ( & mc_make_noaccess );
 
    VG_(init_pre_mem_read)         ( & mc_check_is_readable );
@@ -1967,9 +1972,9 @@ void TL_(post_clo_init) ( void )
 void TL_(fini) ( Int exitcode )
 {
    MAC_(common_fini)( mc_detect_memory_leaks );
-   
+
    if (0) {
-      VG_(message)(Vg_DebugMsg, 
+      VG_(message)(Vg_DebugMsg,
         "------ Valgrind's client block stats follow ---------------" );
       show_client_block_stats();
    }

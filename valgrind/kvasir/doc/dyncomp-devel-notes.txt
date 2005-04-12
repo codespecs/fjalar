@@ -1,0 +1,82 @@
+DynComp Dynamic Comparability Analysis development notes
+by Philip Guo
+
+2005-04-12
+
+When I run dyncomp on 'date' and Memcheck on 'date', dyncomp gives a
+lot more uninitialized value warnings.  Memcheck seems to generate
+these similar warnings but suppresses them.
+
+dyncomp:
+...
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED585: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E6098: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+==24247==
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED3DA: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E60DF: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+==24247==
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED3E8: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E60DF: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+==24247==
+==24247== Conditional jump or move depends on uninitialised value(s)
+==24247==    at 0x1B8ED585: _dl_relocate_object (in /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E60DF: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8F30FC: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4F3A: (within /lib/ld-2.3.2.so)
+==24247==    by 0x1B8E4C26: (within /lib/ld-2.3.2.so)
+Tue Apr 12 16:25:24 EDT 2005
+==24247==
+==24247== ERROR SUMMARY: 20 errors from 8 contexts (suppressed: 0 from 0)
+==24247== malloc/free: in use at exit: 6186 bytes in 42 blocks.
+==24247== malloc/free: 47 allocs, 5 frees, 8051 bytes allocated.
+==24247== For counts of detected errors, rerun with: -v
+==24247== searching for pointers to 42 not-freed blocks.
+==24247== checked 415748 bytes.
+==24247==
+==24247== LEAK SUMMARY:
+==24247==    definitely lost: 0 bytes in 0 blocks.
+==24247==      possibly lost: 0 bytes in 0 blocks.
+==24247==    still reachable: 6186 bytes in 42 blocks.
+==24247==         suppressed: 0 bytes in 0 blocks.
+==24247== Reachable blocks (those to which a pointer was found) are not shown.
+==24247== To see them, rerun with: --show-reachable=yes
+
+
+Memcheck:
+
+Tue Apr 12 16:25:51 EDT 2005
+==24386==
+==24386== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 20 from 1)
+==24386== malloc/free: in use at exit: 6186 bytes in 42 blocks.
+==24386== malloc/free: 47 allocs, 5 frees, 8051 bytes allocated.
+==24386== For counts of detected errors, rerun with: -v
+==24386== searching for pointers to 42 not-freed blocks.
+==24386== checked 415748 bytes.
+==24386==
+==24386== LEAK SUMMARY:
+==24386==    definitely lost: 0 bytes in 0 blocks.
+==24386==      possibly lost: 0 bytes in 0 blocks.
+==24386==    still reachable: 6186 bytes in 42 blocks.
+==24386==         suppressed: 0 bytes in 0 blocks.
+==24386== Reachable blocks (those to which a pointer was found) are not shown.
+==24386== To see them, rerun with: --show-reachable=yes
+
+
+Notice that Memcheck suppressed 20 warnings but dyncomp didn't.  This
+is weird because I've copied dyncomp over from Memcheck and only
+changed its name.  Oh well ... maybe the Memcheck developers
+suppressed certain errors which only match up with something that's
+dependent on the Memcheck name.  This is probably not a big deal since
+we don't care about leak checking anyways.
