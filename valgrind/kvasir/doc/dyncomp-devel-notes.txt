@@ -1,7 +1,9 @@
 DynComp Dynamic Comparability Analysis development notes
 by Philip Guo
 
+----------
 2005-04-12
+----------
 
 When I run dyncomp on 'date' and Memcheck on 'date', dyncomp gives a
 lot more uninitialized value warnings.  Memcheck seems to generate
@@ -80,3 +82,64 @@ changed its name.  Oh well ... maybe the Memcheck developers
 suppressed certain errors which only match up with something that's
 dependent on the Memcheck name.  This is probably not a big deal since
 we don't care about leak checking anyways.
+
+
+----------
+2005-04-13
+----------
+
+/* Allocate a new shadow for the given original tmp.  This means any
+   previous shadow is abandoned.  This is needed because it is
+   necessary to give a new value to a shadow once it has been tested
+   for undefinedness, but unfortunately IR's SSA property disallows
+   this.  Instead we must abandon the old shadow, allocate a new one
+   and use that instead. */
+static void newShadowTmp ( MCEnv* mce, IRTemp orig )
+
+In (mc_translate.c):
+Check this out.  One of the first problems I need to solve is how
+Memcheck automatically sets a byte to defined after it has been tested
+for undefinedness in order to avoid propagating errors.  We need to
+disable this functionality.
+
+
+/* Check the supplied **original** atom for undefinedness, and emit a
+   complaint if so.  Once that happens, mark it as defined.  This is
+   possible because the atom is either a tmp or literal.  If it's a
+   tmp, it will be shadowed by a tmp, and so we can set the shadow to
+   be defined.  In fact as mentioned above, we will have to allocate a
+   new tmp to carry the new 'defined' shadow value, and update the
+   original->tmp mapping accordingly; we cannot simply assign a new
+   value to an existing shadow tmp as this breaks SSAness -- resulting
+   in the post-instrumentation sanity checker spluttering in disapproval.
+*/
+static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
+
+From the Memcheck user's manual (mc_main.html):
+If a check should detect undefinedness, an error message is
+issued. The resulting value is subsequently regarded as
+well-defined. To do otherwise would give long chains of error
+messages. In effect, we say that undefined values are non-infectious.
+
+
+I think that commenting out all the complainIfUndefined() calls in
+mc_translate.c should do the trick.
+
+
+
+/*------------------------------------------------------------*/
+/*--- Generate shadow values from all kinds of IRExprs.    ---*/
+/*------------------------------------------------------------*/
+
+static
+IRAtom* expr2vbits_Binop ( MCEnv* mce,
+                           IROp op,
+                           IRAtom* atom1, IRAtom* atom2 )
+
+This huge function seems to generate the shadow values for all sorts
+of expressions.  Perhaps this is what I should hack on.
+
+The ENSURE_MAPPABLE(addr,caller) macro in mac_shared.h seems to be the
+only thing that calls alloc_secondary_map() to allocate a new
+secondary map if the current one for the address addr is distinguished
+(uninitialized and/or unallocated).

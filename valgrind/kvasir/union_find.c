@@ -11,17 +11,24 @@
 
 // The reference count saturates at USHRT_MAX and does not
 // decrement if it ever reaches that high:
-static inline void inc_ref_count(uf_object *obj) {
-  if (obj->ref_count < USHRT_MAX) {
-    (obj->ref_count)++;
-  }
-}
+#define INC_REF_COUNT(obj) \
+  if (obj->ref_count < USHRT_MAX) (obj->ref_count)++;
 
-static inline void dec_ref_count(uf_object *obj) {
-  if (obj->ref_count < USHRT_MAX) {
-    (obj->ref_count)--;
-  }
-}
+#define DEC_REF_COUNT(obj) \
+  if (obj->ref_count < USHRT_MAX) (obj->ref_count)--;
+
+// Macro-ize this for speed:
+/* static inline void inc_ref_count(uf_object *obj) { */
+/*   if (obj->ref_count < USHRT_MAX) { */
+/*     (obj->ref_count)++; */
+/*   } */
+/* } */
+
+/* static inline void dec_ref_count(uf_object *obj) { */
+/*   if (obj->ref_count < USHRT_MAX) { */
+/*     (obj->ref_count)--; */
+/*   } */
+/* } */
 
 uf_name uf_find(uf_object *object) {
   uf_object *root, *next;
@@ -32,8 +39,8 @@ uf_name uf_find(uf_object *object) {
   // Path-compression:
   for(next=object->parent; next!=root; object=next, next=object->parent) {
     object->parent=root;
-    inc_ref_count(root);
-    dec_ref_count(next);
+    INC_REF_COUNT(root);
+    DEC_REF_COUNT(next);
   }
 
   return root;
@@ -53,12 +60,12 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   // Union-by-rank:
   if(class1->rank < class2->rank) {
     class1->parent = class2;
-    inc_ref_count(class2);
+    INC_REF_COUNT(class2);
     return class2;
   }
   else {
     class2->parent = class1;
-    inc_ref_count(class1);
+    INC_REF_COUNT(class1);
     if(class1->rank == class2->rank) {
       (class1->rank)++;
     }

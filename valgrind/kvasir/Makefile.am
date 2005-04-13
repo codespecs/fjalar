@@ -31,7 +31,9 @@ vgtool_dyncomp_so_SOURCES = \
 	mac_needs.c \
 	mc_errcontext.c \
 	mc_main.c \
-	mc_translate.c
+	mc_translate.c \
+	union_find.c
+
 vgtool_dyncomp_so_LDFLAGS = -shared
 
 mcincludedir = $(includedir)/valgrind

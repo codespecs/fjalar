@@ -38,6 +38,8 @@
 #include "mc_include.h"
 #include "memcheck.h"   /* for client requests */
 //#include "vg_profile.c"
+#include <limits.h>
+#include "union_find.h"
 
 /* Define to debug the mem audit system. */
 /* #define VG_DEBUG_MEMORY */
@@ -56,9 +58,13 @@
    map table, containing 65536 entries.  Each entry is a pointer to a
    second-level map, which records the accesibililty and validity
    permissions for the 65536 bytes indexed by the lower 16 bits of the
-   address.  Each byte is represented by nine bits, one indicating
-   accessibility, the other eight validity.  So each second-level map
-   contains 73728 bytes.  This two-level arrangement conveniently
+   address.
+
+   Each byte is represented by 41 bits, 1 indicating accessibility, 8
+   indicating validity, and 32 indicating its tag.  So each
+   second-level map contains 335872 bytes. (PG)
+
+   This two-level arrangement conveniently
    divides the 4G address space into 64k lumps, each size 64k bytes.
 
    All entries in the primary (top-level) map must point to a valid
@@ -119,9 +125,10 @@ typedef
    struct {
       UChar abits[SECONDARY_SIZE/8];
       UChar vbyte[SECONDARY_SIZE];
+      // PG - Store a 32-bit tag for each byte of memory
+      UInt  tag[SECONDARY_SIZE];
    }
    SecMap;
-
 
 static SecMap* primary_map[ /*PRIMARY_SIZE*/ PRIMARY_SIZE*4 ];
 
@@ -129,10 +136,15 @@ static SecMap* primary_map[ /*PRIMARY_SIZE*/ PRIMARY_SIZE*4 ];
 
 /* 4 secondary maps, but one is redundant (because the !addressable &&
    valid state is meaningless) */
+// PG - we need to make sure that tag defaults 0 for these secondary maps.
+// Because these are globals, the compiler should set them to 0, but
+// it doesn't hurt to be paranoid.
 static const SecMap  distinguished_secondary_maps[4] = {
 #define INIT(a, v)							\
    [ DSM_IDX(a, v) ] = { { [0 ... (SECONDARY_SIZE/8)-1] = BIT_EXPAND(a) }, \
-			 { [0 ... SECONDARY_SIZE-1]     = BIT_EXPAND(a|v) } }
+			 { [0 ... SECONDARY_SIZE-1]     = BIT_EXPAND(a|v) }, \
+                         { [0 ... SECONDARY_SIZE-1]     = 0 } }
+   // The line right above this one was added to explicitly set the tags to 0 (PG)
    INIT(VGM_BIT_VALID,   VGM_BIT_VALID),
    INIT(VGM_BIT_VALID,   VGM_BIT_INVALID),
    INIT(VGM_BIT_INVALID, VGM_BIT_VALID),
@@ -177,6 +189,93 @@ static void init_shadow_memory ( void )
    /* These ones should never change; it's a bug in Valgrind if they do. */
    for (i = PRIMARY_SIZE; i < PRIMARY_SIZE*4; i++)
       primary_map[i] = DSM_NOTADDR;
+}
+
+/*------------------------------------------------------------*/
+/*--- Tags and the union-find data structure (PG)          ---*/
+/*------------------------------------------------------------*/
+
+// This is a serial number which increases every time a new tag
+// is assigned in order to ensure that all tags are unique.
+// (More sophisticated machinery is needed later when we add
+//  garbage collection of tags.)
+// The tag of 0 for a byte of memory means NO tag associated
+// with it.  That's why nextTag starts at 1 and NOT 0.
+UInt nextTag = 1;
+
+/* The two-level tag map works almost like the memory map.
+   Its purpose is to implement a sparse array which can hold
+   up to 2^32 uf_object entries.  The primary map holds 2^16
+   references to secondary maps.  Each secondary map holds 2^16
+   uf_object entries, each of which is 8 bytes total.  Thus,
+   each secondary map takes up 524,288 bytes.
+   The main difference between this sparse array structure and
+   the memory map is that this one fills up sequentially from
+   lower indices to higher indices because tags are assigned
+   (more or less) sequentially using nextTag.
+*/
+
+// Each entry either points to NULL or to a dynamically-allocated
+// array (of size SECONDARY_SIZE) of uf_object objects
+static uf_object* primary_tag_map[PRIMARY_SIZE];
+
+#define IS_PRIMARY_NULL(tag) (primary_tag_map[PM_IDX(tag)] == NULL)
+
+// Make sure to check that !IS_PRIMARY_NULL(tag) before
+// calling this macro or else you may segfault
+#define GET_UF_OBJECT_PTR(tag) (&(primary_tag_map[PM_IDX(tag)][SM_OFF(tag)]))
+
+#define ASSIGN_NEW_TAG(addr)                                      \
+   do {                                                           \
+      set_tag(addr, nextTag);                                     \
+      tag_make_set(nextTag);                                      \
+         if (nextTag == UINT_MAX)                                 \
+            VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n"); \
+         else nextTag++;                                          \
+   } while(0)
+
+// This should actually require NO work except when primary_tag_map
+// does not have a chunk allocated for the tag.
+static void tag_make_set(UInt tag) {
+    if (IS_PRIMARY_NULL(tag)) {
+    uf_object* new_obj_ptr =
+      (uf_object*)VG_(shadow_alloc)(SECONDARY_SIZE * sizeof(*new_obj_ptr));
+    int i;
+    // Each new uf_object should be initialized using uf_make_set()
+    for (i = 0; i < SECONDARY_SIZE; i++) {
+      uf_make_set(new_obj_ptr + i);
+    }
+    primary_tag_map[PM_IDX(tag)] = new_obj_ptr;
+  }
+}
+
+static void tag_union(UInt tag1, UInt tag2) {
+  if (!IS_PRIMARY_NULL(tag1) && !IS_PRIMARY_NULL(tag2)) {
+        uf_union(GET_UF_OBJECT_PTR(tag1),
+                 GET_UF_OBJECT_PTR(tag2));
+  }
+}
+
+static uf_name tag_find(UInt tag) {
+   if (IS_PRIMARY_NULL(tag)) {
+     return 0;
+   }
+   else {
+     return uf_find(GET_UF_OBJECT_PTR(tag));
+   }
+}
+
+// Be careful not to bust a false positive by naively
+// comparing tag_find(tag1) and tag_find(tag2)
+// because you could be comparing 0 == 0 if both satisfy
+// IS_PRIMARY_NULL
+static UChar tags_in_same_set(UInt tag1, UInt tag2) {
+  if (!IS_PRIMARY_NULL(tag1) && !IS_PRIMARY_NULL(tag2)) {
+    return (tag_find(tag1) == tag_find(tag2));
+  }
+  else {
+    return 0;
+  }
 }
 
 /*------------------------------------------------------------*/
@@ -230,6 +329,18 @@ static __inline__ UChar get_vbyte ( Addr a )
    return sm->vbyte[sm_off];
 }
 
+static __inline__ UInt get_tag ( Addr a ) // PG
+{
+   SecMap* sm     = primary_map[PM_IDX(a)];
+   UInt    sm_off = SM_OFF(a);
+#  if 0
+      if (IS_DISTINGUISHED_SM(sm))
+         VG_(message)(Vg_DebugMsg,
+                      "accessed distinguished 2ndary (A)map! 0x%x\n", a);
+#  endif
+   return sm->tag[sm_off];
+}
+
 static /* __inline__ */ void set_abit ( Addr a, UChar abit )
 {
    SecMap* sm;
@@ -253,6 +364,17 @@ static __inline__ void set_vbyte ( Addr a, UChar vbyte )
    sm     = primary_map[PM_IDX(a)];
    sm_off = SM_OFF(a);
    sm->vbyte[sm_off] = vbyte;
+}
+
+static __inline__ void set_tag ( Addr a, UInt tag ) // PG
+{
+   SecMap* sm;
+   UInt    sm_off;
+
+   ENSURE_MAPPABLE(a, "set_tag");
+   sm     = primary_map[PM_IDX(a)];
+   sm_off = SM_OFF(a);
+   sm->tag[sm_off] = tag;
 }
 
 
@@ -1971,13 +2093,13 @@ void TL_(post_clo_init) ( void )
 
 void TL_(fini) ( Int exitcode )
 {
-   MAC_(common_fini)( mc_detect_memory_leaks );
+      //   MAC_(common_fini)( mc_detect_memory_leaks );
 
-   if (0) {
-      VG_(message)(Vg_DebugMsg,
-        "------ Valgrind's client block stats follow ---------------" );
-      show_client_block_stats();
-   }
+      //   if (0) {
+      //      VG_(message)(Vg_DebugMsg,
+      //        "------ Valgrind's client block stats follow ---------------" );
+      //      show_client_block_stats();
+      //   }
 }
 
 VG_DETERMINE_INTERFACE_VERSION(TL_(pre_clo_init), 9./8)
