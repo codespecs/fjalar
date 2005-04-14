@@ -185,6 +185,9 @@ static void init_shadow_memory ( void )
 /*--- Tags and the union-find data structure (PG)          ---*/
 /*------------------------------------------------------------*/
 
+// Prototypes:
+static void tag_make_set(UInt tag);
+
 // This is a serial number which increases every time a new tag
 // is assigned in order to ensure that all tags are unique.
 // (More sophisticated machinery is needed later when we add
@@ -205,6 +208,15 @@ static UInt* primary_tag_map[PRIMARY_SIZE];
 
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
 
+#define ASSIGN_NEW_TAG(addr)                                      \
+   do {                                                           \
+      set_tag(addr, nextTag);                                     \
+      tag_make_set(nextTag);                                      \
+         if (nextTag == UINT_MAX)                                 \
+            VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n"); \
+         else nextTag++;                                          \
+   } while(0)
+
 static __inline__ UInt get_tag ( Addr a )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a))
@@ -224,6 +236,45 @@ static __inline__ void set_tag ( Addr a, UInt tag )
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
+// Allocate a new unique tag for all bytes in range [a, a + len)
+static __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
+  SizeT i;
+  for (i = 0; i < len; i++) {
+    Addr cur = a + (Addr)i;
+    ASSIGN_NEW_TAG(cur);
+  }
+  VG_(printf)("After allocate_new_unique_tags(a=0x%x, len=%d): nextTag=%u\n",
+              a, len, nextTag);
+}
+
+// Clear all tags for all bytes in range [a, a + len)
+// TODO: We need to do something with their corresponding
+// uf_objects in order to prepare them for garbage collection
+// (when it's implemented)
+static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+  SizeT i;
+  for (i = 0; i < len; i++) {
+    Addr cur = a + (Addr)i;
+    set_tag(cur, 0);
+    // TODO: Do something with uf_objects (maybe put them on a to-be-freed
+    // list) to prepare them for garbage collection
+  }
+  VG_(printf)("After clear_all_tags_in_range(a=0x%x, len=%d): nextTag=%u\n",
+              a, len, nextTag);
+}
+
+// Copies tags of len bytes from src to dst
+static __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
+   SizeT i;
+
+   for (i = 0; i < len; i++) {
+      UInt tag  = get_tag ( src+i );
+      set_tag ( dst+i, tag );
+   }
+
+  VG_(printf)("After copy_tags(src=0x%x, dst=0x%x, len=%d): nextTag=%u\n",
+              src, dst, len, nextTag);
+}
 
 /* The two-level uf_object map works almost like the memory map.
    Its purpose is to implement a sparse array which can hold
@@ -247,15 +298,6 @@ static uf_object* primary_uf_object_map[PRIMARY_SIZE];
 // Make sure to check that !IS_SECONDARY_UF_NULL(tag) before
 // calling this macro or else you may segfault
 #define GET_UF_OBJECT_PTR(tag) (&(primary_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
-
-#define ASSIGN_NEW_TAG(addr)                                      \
-   do {                                                           \
-      set_tag(addr, nextTag);                                     \
-      tag_make_set(nextTag);                                      \
-         if (nextTag == UINT_MAX)                                 \
-            VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n"); \
-         else nextTag++;                                          \
-   } while(0)
 
 static void tag_make_set(UInt tag) {
   if (IS_SECONDARY_UF_NULL(tag)) {
@@ -583,6 +625,9 @@ static void mc_make_noaccess ( Addr a, SizeT len )
    PROF_EVENT(35);
    DEBUG("mc_make_noaccess(%p, %llu)\n", a, (ULong)len);
    set_address_range_perms ( a, len, VGM_BIT_INVALID, VGM_BIT_INVALID );
+   // PG - Anytime you make a whole range of addresses invalid,
+   // clear all tags associated with those addresses
+   clear_all_tags_in_range(a, len);
 }
 
 static void mc_make_writable ( Addr a, SizeT len )
@@ -597,6 +642,12 @@ static void mc_make_readable ( Addr a, SizeT len )
    PROF_EVENT(37);
    DEBUG("mc_make_readable(%p, %llu)\n", a, (ULong)len);
    set_address_range_perms ( a, len, VGM_BIT_VALID, VGM_BIT_VALID );
+   // PG - Anytime you make a chunk of memory readable (set both A and
+   // V bits), we need to allocate new unique tags to each byte
+   // within the chunk (Without language-level information about which
+   // bytes correspond to which variables, we have no choice but to
+   // give each byte a unique tag)
+   allocate_new_unique_tags(a, len);
 }
 
 static __inline__
@@ -635,6 +686,9 @@ void make_aligned_word_noaccess(Addr a)
    /* mask now contains 1s where we wish to make address bits invalid (1s). */
    sm->abits[sm_off >> 3] |= mask;
    VGP_POPCC(VgpESPAdj);
+
+   // PG - When you make stuff noaccess, destroy those tags
+   clear_all_tags_in_range(a, 4);
 }
 
 /* Nb: by "aligned" here we mean 8-byte aligned */
@@ -668,6 +722,9 @@ void make_aligned_doubleword_noaccess(Addr a)
    ((UInt*)(sm->vbyte))[(sm_off >> 2) + 0] = VGM_WORD_INVALID;
    ((UInt*)(sm->vbyte))[(sm_off >> 2) + 1] = VGM_WORD_INVALID;
    VGP_POPCC(VgpESPAdj);
+
+   // PG - When you make stuff noaccess, destroy those tags
+   clear_all_tags_in_range(a, 8);
 }
 
 /* The %esp update handling functions */
@@ -694,6 +751,10 @@ static void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
       set_abit ( dst+i, abit );
       set_vbyte ( dst+i, vbyte );
    }
+
+   // PG - If you're copying over V-bits, you might as well copy
+   // over the tags of the relevant bytes
+   copy_tags(src, dst, len);
 }
 
 /*------------------------------------------------------------*/
@@ -1809,14 +1870,14 @@ Int alloc_client_block ( void )
    return cgb_used-1;
 }
 
-
-static void show_client_block_stats ( void )
-{
-   VG_(message)(Vg_DebugMsg,
-      "general CBs: %d allocs, %d discards, %d maxinuse, %d search",
-      cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search
-   );
-}
+// PG - deprecated
+/* static void show_client_block_stats ( void ) */
+/* { */
+/*    VG_(message)(Vg_DebugMsg, */
+/*       "general CBs: %d allocs, %d discards, %d maxinuse, %d search", */
+/*       cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search */
+/*    ); */
+/* } */
 
 static Bool find_addr(VgHashNode* sh_ch, void* ap)
 {

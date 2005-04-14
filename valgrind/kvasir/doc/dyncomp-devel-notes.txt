@@ -263,3 +263,18 @@ void mc_new_mem_mmap ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
 
 We may be able to mc_new_mem_heap to create tags and stuff
 and zero stuff out when stack pointer moves
+
+
+We have two problems to solve:
+
+The easy one: Statically-initialized things - we can simply plug stuff
+into mc_main.c.
+
+The hard one: Dynamic events - we need to actually instrument the IR
+and do funky stuff.
+
+
+Do we need any special handling of malloc() and friends?
+
+
+What do we do with init_new_mem_stack, init_die_mem_stack and friends?
