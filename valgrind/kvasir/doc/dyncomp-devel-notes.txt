@@ -143,3 +143,123 @@ The ENSURE_MAPPABLE(addr,caller) macro in mac_shared.h seems to be the
 only thing that calls alloc_secondary_map() to allocate a new
 secondary map if the current one for the address addr is distinguished
 (uninitialized and/or unallocated).
+
+
+----------
+2005-04-14
+----------
+
+The best way is to eliminate the tags from the memcheck structures
+and just have our own (because their optimization messes us up)
+
+When do we have instructions which create a new value in memory?
+
+Tags are associated with valid V-bits - tags are needed for a byte
+when at least 1 V-bit in your byte is valid.  V-bits get set when you
+overwrite stuff.  We want to destroy old tag and move a new one in
+when none of the original data can be recovered
+
+Globals:
+Every byte needs a new unique tag upon program instantiation
+There is probably some special case for this
+
+set_address_range_perms is probably what sets all the global area to A
+and V; need to do similar things with tags
+
+Stack:
+Local variables - upon function entrance, moves ESP down a whole chunk
+at a time
+
+int x = 10;
+x = 6;
+int y = 15;
+
+In x86, you can either have '10' write to a register then write the
+register into memory, or have an instruction that directly writes '10'
+into memory.  But the important thing to note is that the creation of
+the literal '10' is what creates the tag and moves it into either
+register or memory.  We need tags associated with registers as well as
+memory.
+
+IR is maybe some kind of expression tree which implicitly assigns
+names to stuff -
+
+(Maybe) Memcheck must somehow make a new parallel expression tree for
+A/V-bits
+
+mc_translate.c
+
+temps
+newShadowTmp()?
+
+shadowing - given the tree for the actual expressions, give me the
+corresponding one for the V-bits (A-bits don't have to do with
+operations, only on memory allocation)
+
+PUT/GET :: STORE/LOAD
+
+
+expr2vbits_Binop() - the tree-walk which builds up the parallel trees
+
+We start with x86 -> IR tree and then walk it to build up a v-bit tree
+
+Input tree is probably fairly linear but we want a tree representation
+
+IR has two levels - statements and atoms (expressions)
+
+         case Ist_Tmp:
+            assign( bb, findShadowTmp(&mce, st->Ist.Tmp.tmp),
+                        expr2vbits( &mce, st->Ist.Tmp.data) );
+            break;
+
+This seems to be the meaty call
+
+We need some instructions to write to tags just like how they write
+instructions to write A and V bits
+
+
+/* Generate a shadow store.  addr is always the original address atom.
+   You can pass in either originals or V-bits for the data atom, but
+   obviously not both.  */
+
+static
+void do_shadow_STle ( MCEnv* mce,
+                      IRAtom* addr, UInt bias,
+                      IRAtom* data, IRAtom* vdata )
+
+We need tags to keep track of tags - we need store and load tag
+operations in mc_translate.c
+
+We need helpers for store tag, load tag, and merge-two-tags
+
+When we do 32-bit operations, we should just unify them into one tag
+
+STORE is an expression whereas STORE is a statement
+
+STORE has to be a statement because it has side effects (you can swap
+a LOAD/STORE or two STOREs)
+
+Input from the user is conceptually a place where you get new data
+
+If you do ESP + 1, you need to get a new tag because of &-operators
+
+We seem to need a parallel tmpMap
+
+We need to create parallel helper functions to deal with tags:
+VGA_REGPARM(1)
+UInt MC_(helperc_LOADV1) ( Addr a )
+
+
+
+static
+void mc_new_mem_startup( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
+
+static
+void mc_new_mem_heap ( Addr a, SizeT len, Bool is_inited )
+
+static
+void mc_new_mem_mmap ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
+
+
+We may be able to mc_new_mem_heap to create tags and stuff
+and zero stuff out when stack pointer moves
