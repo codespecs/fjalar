@@ -44,6 +44,8 @@
 /* Define to debug the mem audit system. */
 /* #define VG_DEBUG_MEMORY */
 
+//#define DYNCOMP_DEBUG
+
 #define DEBUG(fmt, args...) //VG_(printf)(fmt, ## args)
 
 /*------------------------------------------------------------*/
@@ -243,8 +245,11 @@ static __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
     Addr cur = a + (Addr)i;
     ASSIGN_NEW_TAG(cur);
   }
+
+#ifdef DYNCOMP_DEBUG
   VG_(printf)("After allocate_new_unique_tags(a=0x%x, len=%d): nextTag=%u\n",
               a, len, nextTag);
+#endif
 }
 
 // Clear all tags for all bytes in range [a, a + len)
@@ -259,8 +264,11 @@ static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
     // TODO: Do something with uf_objects (maybe put them on a to-be-freed
     // list) to prepare them for garbage collection
   }
+
+#ifdef DYNCOMP_DEBUG
   VG_(printf)("After clear_all_tags_in_range(a=0x%x, len=%d): nextTag=%u\n",
               a, len, nextTag);
+#endif
 }
 
 // Copies tags of len bytes from src to dst
@@ -272,8 +280,10 @@ static __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
       set_tag ( dst+i, tag );
    }
 
+#ifdef DYNCOMP_DEBUG
   VG_(printf)("After copy_tags(src=0x%x, dst=0x%x, len=%d): nextTag=%u\n",
               src, dst, len, nextTag);
+#endif
 }
 
 /* The two-level uf_object map works almost like the memory map.
@@ -293,6 +303,9 @@ static __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
 // array (of size SECONDARY_SIZE) of uf_object objects
 static uf_object* primary_uf_object_map[PRIMARY_SIZE];
 
+// Don't do anything with tags equal to 0 because they are invalid
+#define IS_ZERO_TAG(tag) (0 == tag)
+
 #define IS_SECONDARY_UF_NULL(tag) (primary_uf_object_map[PM_IDX(tag)] == NULL)
 
 // Make sure to check that !IS_SECONDARY_UF_NULL(tag) before
@@ -300,6 +313,9 @@ static uf_object* primary_uf_object_map[PRIMARY_SIZE];
 #define GET_UF_OBJECT_PTR(tag) (&(primary_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
 
 static void tag_make_set(UInt tag) {
+  if (IS_ZERO_TAG(tag))
+    return;
+
   if (IS_SECONDARY_UF_NULL(tag)) {
     uf_object* new_uf_obj_array =
       (uf_object*)VG_(shadow_alloc)(SECONDARY_SIZE * sizeof(*new_uf_obj_array));
@@ -316,19 +332,20 @@ static void tag_make_set(UInt tag) {
 }
 
 static __inline__ void tag_union(UInt tag1, UInt tag2) {
-  if (!IS_SECONDARY_UF_NULL(tag1) && !IS_SECONDARY_UF_NULL(tag2)) {
+  if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
+      !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
         uf_union(GET_UF_OBJECT_PTR(tag1),
                  GET_UF_OBJECT_PTR(tag2));
   }
 }
 
 static  __inline__ uf_name tag_find(UInt tag) {
-   if (IS_SECONDARY_UF_NULL(tag)) {
-     return NULL;
-   }
-   else {
-     return uf_find(GET_UF_OBJECT_PTR(tag));
-   }
+  if (IS_ZERO_TAG(tag) || IS_SECONDARY_UF_NULL(tag)) {
+    return NULL;
+  }
+  else {
+    return uf_find(GET_UF_OBJECT_PTR(tag));
+  }
 }
 
 // Be careful not to bust a false positive by naively
@@ -336,12 +353,90 @@ static  __inline__ uf_name tag_find(UInt tag) {
 // because you could be comparing 0 == 0 if both satisfy
 // IS_SECONDARY_UF_NULL
 static UChar tags_in_same_set(UInt tag1, UInt tag2) {
-  if (!IS_SECONDARY_UF_NULL(tag1) && !IS_SECONDARY_UF_NULL(tag2)) {
+  if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
+      !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     return (tag_find(tag1) == tag_find(tag2));
   }
   else {
     return 0;
   }
+}
+
+// Helper functions called from mc_translate.c:
+
+// Write tag into all addresses in the range [addr, addr+max)
+#define SET_TAG_FOR_RANGE(addr, max, tag)                         \
+  do {                                                            \
+    int i;                                                        \
+    for (i = 0; i < max; i++) {                                   \
+      set_tag(addr+i, tag);                                       \
+    }                                                             \
+  } while(0)
+
+
+// When we're requesting to store tags for X bytes,
+// we will write the tag into all X bytes.
+// We don't do a tag_make_set for the tag we have just
+// written because we assume that it has been initialized
+// somewhere else (is that a safe assumption???)
+
+// For some reason, 64-bit stuff needs REGPARM(1)
+// (Look in mc_translate.c)
+VGA_REGPARM(1)
+void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
+  SET_TAG_FOR_RANGE(a, 8, tag);
+}
+
+VGA_REGPARM(2)
+void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
+  SET_TAG_FOR_RANGE(a, 4, tag);
+}
+
+VGA_REGPARM(2)
+void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
+  SET_TAG_FOR_RANGE(a, 2, tag);
+}
+
+VGA_REGPARM(2)
+void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
+  SET_TAG_FOR_RANGE(a, 1, tag);
+}
+
+
+// Union the tags of all addresses in the range [addr, addr+max)
+#define UNION_TAGS_IN_RANGE(addr, max)                            \
+  do {                                                            \
+    int i;                                                        \
+    for (i = 1; i < max; i++) {                                   \
+      tag_union(get_tag(addr), get_tag(addr+i));                  \
+    }                                                             \
+  } while(0)
+
+// Whenever we're requesting to load tags for X bytes,
+// we merge the tags for those X bytes and return the tag
+// of the first byte.  This may potentially lose details
+// but is much easier to implement.
+VGA_REGPARM(1)
+UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
+  UNION_TAGS_IN_RANGE(a, 8);
+  return get_tag(a);
+}
+
+VGA_REGPARM(1)
+UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
+  UNION_TAGS_IN_RANGE(a, 4);
+  return get_tag(a);
+}
+
+VGA_REGPARM(1)
+UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
+  UNION_TAGS_IN_RANGE(a, 2);
+  return get_tag(a);
+}
+
+VGA_REGPARM(1)
+UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
+  return get_tag(a);
 }
 
 /*------------------------------------------------------------*/

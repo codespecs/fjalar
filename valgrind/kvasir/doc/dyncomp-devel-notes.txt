@@ -227,14 +227,14 @@ void do_shadow_STle ( MCEnv* mce,
                       IRAtom* addr, UInt bias,
                       IRAtom* data, IRAtom* vdata )
 
-We need tags to keep track of tags - we need store and load tag
+We need vars to keep track of tags - we need store and load tag
 operations in mc_translate.c
 
 We need helpers for store tag, load tag, and merge-two-tags
 
 When we do 32-bit operations, we should just unify them into one tag
 
-STORE is an expression whereas STORE is a statement
+LOAD is an expression whereas STORE is a statement
 
 STORE has to be a statement because it has side effects (you can swap
 a LOAD/STORE or two STOREs)
@@ -278,3 +278,111 @@ Do we need any special handling of malloc() and friends?
 
 
 What do we do with init_new_mem_stack, init_die_mem_stack and friends?
+
+
+----------
+2005-04-17
+----------
+
+I turned on 'verboze' in mc_translate.c:TL_(instrument) and diff'ed
+two versions of SuperSimpleTest, one with an extra 'int z = x + y;'
+statement and here was the main difference:
+
+------ IMark(0x8048375, 3) ------
+
+
+PUT(56) = 0x8048375:I32
+
+
+t33 = Add32(t23,0xFFFFFFFC:I32)
+
+   t75 = Or32(t45,0x0:I32)
+   t76 = Sub32(0x0:I32,t75)
+   t77 = Or32(t75,t76)
+   t78 = t77
+
+t15 = LDle:I32(t33)
+
+   t79 = DIRTY 1:I1 RdFX-gst(16,4) RdFX-gst(56,4) ::: MC_(helperc_LOADV4)[rp=1]{0xB125FDF7}(t33)
+   t80 = t79
+
+t14 = Add32(t32,t15)
+
+   t81 = Or32(t74,t80)
+   t82 = Sub32(0x0:I32,t81)
+   t83 = Or32(t81,t82)
+   t84 = t83
+
+PUT(32) = 0x3:I32
+
+
+PUT(36) = t32
+
+   PUT(348) = t74
+
+PUT(40) = t15
+
+   PUT(352) = t80
+
+PUT(44) = 0x0:I32
+
+
+------ IMark(0x8048378, 3) ------
+
+
+PUT(56) = 0x8048378:I32
+
+
+t35 = Add32(t23,0xFFFFFFF4:I32)
+
+   t85 = Or32(t45,0x0:I32)
+   t86 = Sub32(0x0:I32,t85)
+   t87 = Or32(t85,t86)
+   t88 = t87
+
+STle(t35) = t14
+
+   DIRTY 1:I1 RdFX-gst(16,4) RdFX-gst(56,4) ::: MC_(helperc_STOREV4)[rp=2]{0xB125FE46}(t35,t84)
+
+
+
+Look in do_shadow_STle:
+
+See the 'void* helper' local variable?  We need to somehow hijack this
+one so that we can call our own nifty helper functions at certain
+instructions.  From my observation, what Memcheck does is create new
+IR trees which contain primitive operations (i.e. AND, OR) on the
+V-bits, but there are no primitive operations for "merge tags"
+et. al. so that we need to simply suck it up and call our own helper
+functions. (Check out setHelperAnns(), unsafeIRDirty_0_N(),
+unsafeIRDirty_1_N())
+
+/vex/pub/libvex_ir.h contains some useful IR definitions
+
+IRCallee seems to describe a helper function to call
+mkIRCallee(), dopyIRCallee(), etc...
+
+IRExpr_CCall is for pure (no side effects) helper functions whereas
+IRStmt_Dirty is for non-pure ones
+
+If you make a dirty call, you must specify EXACTLY which memory areas
+you are going to affect, etc...
+
+We definitely need to use tmps to make copies of tags as they flow
+from place-to-place.  Otherwise, when there is an operation which
+involves two registers (i.e. ADD R1 R2), we have no clue about the
+tags of R1 and R2
+
+
+Super ghetto solution - make a copy of all of the Memcheck
+instrumentation code and DUPLICATE it for tags.  Then modify
+TL_(instrument) to create BOTH tag and A/V-bit-manipulation
+instructions for all inputted instructions
+
+
+***
+What do we do when we read multiple bytes from memory?  Do we merge
+the tags associated with all of these bytes and just return one tag?
+That seems like it may lose some precision but it's just much easier
+to implement (at least for now).
+***

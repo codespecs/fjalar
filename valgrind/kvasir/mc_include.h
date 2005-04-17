@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -70,6 +70,17 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOADV2)  ( Addr );
 extern VGA_REGPARM(1) UInt MC_(helperc_LOADV4)  ( Addr );
 extern VGA_REGPARM(1) ULong MC_(helperc_LOADV8)  ( Addr );
 
+// PG
+extern VGA_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
+
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
+
 /* Functions defined in mc_errcontext.c */
 extern void MC_(record_value_error)  ( ThreadId tid, Int size );
 extern void MC_(record_user_error)   ( ThreadId tid, Addr a, Bool isWrite,
@@ -81,4 +92,3 @@ extern void MC_(record_user_error)   ( ThreadId tid, Addr a, Bool isWrite,
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/
-
