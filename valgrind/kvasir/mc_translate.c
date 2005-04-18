@@ -2242,12 +2242,13 @@ IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
    IRAtom* vatom1 = expr2vbits_DC( dce, atom1 );
    IRAtom* vatom2 = expr2vbits_DC( dce, atom2 );
 
-   tl_assert(isOriginalAtom(dce,atom1));
-   tl_assert(isOriginalAtom(dce,atom2));
-   tl_assert(isShadowAtom(dce,vatom1));
-   tl_assert(isShadowAtom(dce,vatom2));
+   tl_assert(isOriginalAtom_DC(dce,atom1));
+   tl_assert(isOriginalAtom_DC(dce,atom2));
+   tl_assert(isShadowAtom_DC(dce,vatom1));
+   tl_assert(isShadowAtom_DC(dce,vatom2));
    tl_assert(sameKindedAtoms(atom1,vatom1));
    tl_assert(sameKindedAtoms(atom2,vatom2));
+
    switch (op) {
 
       /* 64-bit SIMD */
@@ -3033,8 +3034,12 @@ IRExpr* zwidenToHostWord_DC ( DCEnv* dce, IRAtom* vatom )
    if (tyH == Ity_I32) {
       switch (ty) {
          case Ity_I32: return vatom;
-         case Ity_I16: return assignNew_DC(dce, tyH, unop(Iop_16Uto32, vatom));
-         case Ity_I8:  return assignNew_DC(dce, tyH, unop(Iop_8Uto32, vatom));
+         // Changed from Iop16Uto32
+         // (but doesn't seem to help in eliminating garbage values)
+         case Ity_I16: return assignNew_DC(dce, tyH, unop(Iop_16Sto32, vatom));
+         // Changed from Iop8Uto32
+         // (but doesn't seem to help in eliminating garbage values)
+         case Ity_I8:  return assignNew_DC(dce, tyH, unop(Iop_8Sto32, vatom));
          default:      goto unhandled;
       }
    } else {
@@ -3083,12 +3088,12 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
    ty = typeOfIRExpr(dce->bb->tyenv, vdata);
 
-   /* Now decide which helper function to call to write the data tags
+   /* Now decide which helper function to call to write the data tag
       into shadow memory. */
    switch (ty) {
       case Ity_V128: /* we'll use the helper twice */
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
-                    hname = "MC_(helperc_STOREV_TAG_8)";
+                    hname = "MC_(helperc_STORE_TAG_8)";
                     break;
       case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
                     hname = "MC_(helperc_STORE_TAG_4)";
@@ -3520,7 +3525,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
          case Ist_Tmp:
             assign( bb, findShadowTmp(&mce, st->Ist.Tmp.tmp),
-                        expr2vbits( &mce, st->Ist.Tmp.data) );
+                    expr2vbits( &mce, st->Ist.Tmp.data) );
             break;
 
          case Ist_Put:
@@ -3570,7 +3575,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
          case Ist_Tmp:
             assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
-                        expr2vbits_DC( &dce, st->Ist.Tmp.data) );
+                    expr2vbits_DC( &dce, st->Ist.Tmp.data) );
             break;
 
          case Ist_Put:
@@ -3603,6 +3608,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Dirty:
+            // PG - I may get in trouble later for commenting this out:
             //            do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
             break;
 

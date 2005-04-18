@@ -385,21 +385,29 @@ static UChar tags_in_same_set(UInt tag1, UInt tag2) {
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 8, tag);
+  VG_(printf)("helperc_STORE_TAG_8(0x%x, %u) [nextTag=%u]\n",
+              a, tag, nextTag);
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 4, tag);
+  VG_(printf)("helperc_STORE_TAG_4(0x%x, %u) [nextTag=%u]\n",
+              a, tag, nextTag);
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 2, tag);
+  VG_(printf)("helperc_STORE_TAG_2(0x%x, %u) [nextTag=%u]\n",
+              a, tag, nextTag);
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 1, tag);
+  VG_(printf)("helperc_STORE_TAG_1(0x%x, %u) [nextTag=%u]\n",
+              a, tag, nextTag);
 }
 
 
@@ -419,23 +427,31 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   UNION_TAGS_IN_RANGE(a, 8);
+  VG_(printf)("helperc_LOAD_TAG_8(0x%x) = %u [nextTag=%u]\n",
+              a, get_tag(a), nextTag);
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UNION_TAGS_IN_RANGE(a, 4);
+  VG_(printf)("helperc_LOAD_TAG_4(0x%x) = %u [nextTag=%u]\n",
+              a, get_tag(a), nextTag);
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   UNION_TAGS_IN_RANGE(a, 2);
+  VG_(printf)("helperc_LOAD_TAG_2(0x%x) = %u  [nextTag=%u]\n",
+              a, get_tag(a), nextTag);
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
+  VG_(printf)("helperc_LOAD_TAG_1(0x%x) = %u [nextTag=%u]\n",
+              a, get_tag(a), nextTag);
   return get_tag(a);
 }
 

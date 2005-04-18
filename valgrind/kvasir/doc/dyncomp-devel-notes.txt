@@ -386,3 +386,36 @@ the tags associated with all of these bytes and just return one tag?
 That seems like it may lose some precision but it's just much easier
 to implement (at least for now).
 ***
+
+helperc_STORE_TAG_4(0x52BFE3BC, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3B8, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3B4, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3B0, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE3AC, 0) [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE35C, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x52BFE35C) = 0 [nextTag=110593]
+helperc_LOAD_TAG_4(0x52BFE35C) = 0 [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE388, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x1B8FAC00) = 101377 [nextTag=110593]
+helperc_STORE_TAG_4(0x1B8FA66C, 4294967295) [nextTag=110593]   <---- PROBLEM!!!
+helperc_STORE_TAG_4(0x1B8FA674, 4294967295) [nextTag=110593]   <---- PROBLEM!!!
+helperc_STORE_TAG_4(0x52BFE380, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x52BFE380) = 0 [nextTag=110593]
+helperc_STORE_TAG_4(0x52BFE384, 0) [nextTag=110593]
+helperc_LOAD_TAG_4(0x1B8FA674) = 4294967295 [nextTag=110593]   <---- PROBLEM!!!
+
+Look at big-output.pid2528 to see the results of the loads and store
+helper function calls: Ummm, there is this mystery garbage value
+(4294967295, which is 0xffffffff) likely caused by a bogus store ...
+which means that we are storing garbage, which ain't good.
+
+Also other weird garbage values: 4294967280 (0xfffffff0)
+
+I'm trying to get rid of these!!! (Really bad hack - check store
+tag values to make sure that they are below 'nextTag', but this is a
+bad way to patch up the problem.)
+
+I probably need to clean up the rest of the DynComp code before going
+back to this.  Perhaps the rest of the incompatibilities are causing
+these bogus values to be stored.  It's still too early to get to the
+bottom of this problem.
