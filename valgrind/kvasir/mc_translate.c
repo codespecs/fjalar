@@ -2923,9 +2923,11 @@ IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
                               e->Iex.CCall.cee );
 
       case Iex_Mux0X:
-         // PG - I may get in trouble for commenting this out
          //         return expr2vbits_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
          //                                     e->Iex.Mux0X.exprX);
+         // PG - Just ignore this crap altogether and generate some fake 0 tag:
+         return definedOfType_DC(shadowType_DC(typeOfIRExpr(dce->bb->tyenv, e)));
+
 
       default:
          VG_(printf)("\n");
