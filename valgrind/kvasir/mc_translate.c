@@ -45,6 +45,7 @@ struct _MCEnv;
 struct _DCEnv;
 
 static IRType  shadowType ( IRType ty );
+static IRType  shadowType_DC ( IRType ty );
 static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
 static IRExpr* expr2vbits_DC ( struct _DCEnv* dce, IRExpr* e ); // PG
 
@@ -205,7 +206,8 @@ static IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
    if (dce->tmpMap[orig] == IRTemp_INVALID) {
       dce->tmpMap[orig]
          = newIRTemp(dce->bb->tyenv,
-                     shadowType(dce->bb->tyenv->types[orig]));
+                     //shadowType_DC(dce->bb->tyenv->types[orig]));
+                     Ity_I32); // PG - tags are always 32 bits
    }
    return dce->tmpMap[orig];
 }
@@ -221,7 +223,8 @@ static void newShadowTmp_DC ( DCEnv* dce, IRTemp orig )
    tl_assert(orig < dce->n_originalTmps);
    dce->tmpMap[orig]
       = newIRTemp(dce->bb->tyenv,
-                  shadowType(dce->bb->tyenv->types[orig]));
+                  //shadowType_DC(dce->bb->tyenv->types[orig]));
+                  Ity_I32); // PG - tags are always 32 bits
 }
 
 /*------------------------------------------------------------*/
@@ -331,6 +334,37 @@ static IRExpr* definedOfType ( IRType ty ) {
       case Ity_V128: return IRExpr_Const(IRConst_V128(0x0000));
       default:      VG_(tool_panic)("memcheck:definedOfType");
    }
+}
+
+// PG - This function seems okay because it returns the integer type
+//      with the matching size as the input type 'ty'
+//      It seems safe to use this return value for size calculations
+//      and comparisons, but not to create new tags.
+//      The thing is that all tags are 32-bit integers whereas shadow
+//      memory chunks were as big as the original chunks which they
+//      shadow
+static IRType shadowType_DC ( IRType ty )
+{
+   switch (ty) {
+      case Ity_I1:
+      case Ity_I8:
+      case Ity_I16:
+      case Ity_I32:
+      case Ity_I64:  return ty;
+      case Ity_F32:  return Ity_I32;
+      case Ity_F64:  return Ity_I64;
+      case Ity_V128: return Ity_V128;
+      default: ppIRType(ty);
+               VG_(tool_panic)("dyncomp:shadowType_DC");
+   }
+}
+
+// PG - We need to change the semantics of this - I guess right now
+// 0 means 'no tag', which I suppose is okay, but we may really
+// want to create a new tag for every constant literal
+// Let's always create a 32-bit '0' tag here because all tags are 32 bits
+static IRExpr* definedOfType_DC ( IRType ty ) {
+   return IRExpr_Const(IRConst_U32(0));
 }
 
 
@@ -989,7 +1023,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
    vatom = expr2vbits_DC( dce, atom );
    tl_assert(sameKindedAtoms(atom, vatom));
    ty   = descr->elemTy;
-   tyS  = shadowType(ty);
+   tyS  = shadowType_DC(ty);
    arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
@@ -1002,8 +1036,11 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
       /* Do a cloned version of the Put that refers to the shadow
          area. */
       IRArray* new_descr
+        //         = mkIRArray( descr->base + dce->layout->total_sizeB,
+        //                      tyS, descr->nElems);
          = mkIRArray( descr->base + dce->layout->total_sizeB,
-                      tyS, descr->nElems);
+                      Ity_I32, descr->nElems); // PG - Tags are always 32 bits
+
       stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
       //   }
 }
@@ -1029,15 +1066,16 @@ IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
 static
 IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
 {
-   IRType tyS = shadowType(ty);
+   IRType tyS = shadowType_DC(ty);
    tl_assert(ty != Ity_I1);
    //   if (isAlwaysDefd(dce, offset, sizeofIRType(ty))) {
    //      /* Always defined, return all zeroes of the relevant type */
-   //      return definedOfType(tyS);
+   //      return definedOfType_DC(tyS);
    //   } else {
       /* return a cloned version of the Get that refers to the shadow
          area. */
-      return IRExpr_Get( offset + dce->layout->total_sizeB, tyS );
+   //      return IRExpr_Get( offset + dce->layout->total_sizeB, tyS );
+   return IRExpr_Get( offset + dce->layout->total_sizeB, Ity_I32 ); // PG - tags are 32 bits
       //   }
 }
 
@@ -1070,20 +1108,23 @@ static
 IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
-   IRType tyS  = shadowType(ty);
+   IRType tyS  = shadowType_DC(ty);
    Int arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
    //   complainIfUndefined(dce,ix); // PG
    //   if (isAlwaysDefd(dce, descr->base, arrSize)) {
    //      /* Always defined, return all zeroes of the relevant type */
-   //      return definedOfType(tyS);
+   //      return definedOfType_DC(tyS);
    //   } else {
       /* return a cloned version of the Get that refers to the shadow
          area. */
       IRArray* new_descr
+         //         = mkIRArray( descr->base + dce->layout->total_sizeB,
+         //                      tyS, descr->nElems);
          = mkIRArray( descr->base + dce->layout->total_sizeB,
-                      tyS, descr->nElems);
+                      Ity_I32, descr->nElems); // PG - tags are always 32 bits
+
       return IRExpr_GetI( new_descr, ix, bias );
       //   }
 }
@@ -1497,8 +1538,8 @@ IRAtom* vectorNarrow64_DC ( DCEnv* dce, IROp narrow_op,
       case Iop_QNarrow16Ux4: pcast = mkPCast16x4; break;
       default: VG_(tool_panic)("vectorNarrow64_DC");
    }
-   tl_assert(isShadowAtom(dce,vatom1));
-   tl_assert(isShadowAtom(dce,vatom2));
+   tl_assert(isShadowAtom_DC(dce,vatom1));
+   tl_assert(isShadowAtom_DC(dce,vatom2));
    at1 = assignNew(dce, Ity_I64, pcast(dce, vatom1));
    at2 = assignNew(dce, Ity_I64, pcast(dce, vatom2));
    at3 = assignNew(dce, Ity_I64, binop(narrow_op, at1, at2));
@@ -2229,6 +2270,12 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
 /*--- Duplicated version for DynComp               (PG)    ---*/
 /*------------------------------------------------------------*/
 
+// This is where we need to add calls to helper functions to
+// merge tags because here is where the 'interactions' take place
+
+// Make fake binary ops of:
+// return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
+// as a stand-in for the real ones (this seems harmless enough)
 static
 IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
                               IROp op,
@@ -2248,6 +2295,9 @@ IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
    tl_assert(isShadowAtom_DC(dce,vatom2));
    tl_assert(sameKindedAtoms(atom1,vatom1));
    tl_assert(sameKindedAtoms(atom2,vatom2));
+
+   // PG - Insert fake return value:
+   return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
 
    switch (op) {
 
@@ -2621,14 +2671,23 @@ IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
          ppIROp(op);
          VG_(tool_panic)("dyncomp:expr2vbits_Binop_DC");
    }
+
+   return 0;
 }
 
 
+// Make fake unary ops of:
+// return assignNew_DC(dce, Ity_I32, unop(Iop_Not32, vatom));
+// as a stand-in for the real ones (this seems harmless enough)
 static
 IRExpr* expr2vbits_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 {
    IRAtom* vatom = expr2vbits_DC( dce, atom );
    tl_assert(isOriginalAtom(dce,atom));
+
+   // PG - Insert fake return value here
+   return assignNew_DC(dce, Ity_I32, unop(Iop_Not32, vatom));
+
    switch (op) {
 
       case Iop_Sqrt64Fx2:
@@ -2727,7 +2786,7 @@ IRAtom* expr2vbits_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias 
 
    /* Now cook up a call to the relevant helper function, to read the
       tag for the given address. */
-   ty = shadowType(ty);
+   ty = shadowType_DC(ty);
    switch (ty) {
       case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
                     hname = "MC_(helperc_LOAD_TAG_8)";
@@ -2760,7 +2819,8 @@ IRAtom* expr2vbits_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias 
 
    /* We need to have a place to park the tag we're just about to
       read. */
-   datatag = newIRTemp(dce->bb->tyenv, ty);
+   //   datatag = newIRTemp(dce->bb->tyenv, tyS);
+   datatag = newIRTemp(dce->bb->tyenv, Ity_I32); // PG - tags are always 32 bits
    di = unsafeIRDirty_1_N( datatag,
                            1/*regparms*/, hname, helper,
                            mkIRExprVec_1( addrAct ));
@@ -2775,7 +2835,7 @@ static
 IRAtom* expr2vbits_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    IRAtom *v64hi, *v64lo;
-   switch (shadowType(ty)) {
+   switch (shadowType_DC(ty)) {
       case Ity_I8:
       case Ity_I16:
       case Ity_I32:
@@ -2792,6 +2852,9 @@ IRAtom* expr2vbits_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 }
 
+// Make fake binary ops of:
+// return assignNew_DC(dce, Ity_I32, binop(Iop_Or32, vbits0, vbitsX));
+// as a stand-in for the real ones (this seems harmless enough)
 static
 IRAtom* expr2vbits_Mux0X_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* expr0, IRAtom* exprX )
@@ -2811,6 +2874,9 @@ IRAtom* expr2vbits_Mux0X_DC ( DCEnv* dce,
    vbits0 = expr2vbits_DC(dce, expr0);
    vbitsX = expr2vbits_DC(dce, exprX);
    ty = typeOfIRExpr(dce->bb->tyenv, vbits0);
+
+   // PG - Insert fake return value here
+   return assignNew_DC(dce, Ity_I32, binop(Iop_Or32, vbits0, vbitsX));
 
    return
       mkUifU(dce, ty, assignNew_DC(dce, ty, IRExpr_Mux0X(cond, vbits0, vbitsX)),
@@ -2835,7 +2901,7 @@ IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
          return IRExpr_Tmp( findShadowTmp_DC(dce, e->Iex.Tmp.tmp) );
 
       case Iex_Const:
-         return definedOfType(shadowType(typeOfIRExpr(dce->bb->tyenv, e)));
+         return definedOfType_DC(shadowType_DC(typeOfIRExpr(dce->bb->tyenv, e)));
 
       case Iex_Binop:
          return expr2vbits_Binop_DC(
@@ -2857,8 +2923,9 @@ IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
                               e->Iex.CCall.cee );
 
       case Iex_Mux0X:
-         return expr2vbits_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-                                     e->Iex.Mux0X.exprX);
+         // PG - I may get in trouble for commenting this out
+         //         return expr2vbits_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+         //                                     e->Iex.Mux0X.exprX);
 
       default:
          VG_(printf)("\n");
@@ -3034,12 +3101,12 @@ IRExpr* zwidenToHostWord_DC ( DCEnv* dce, IRAtom* vatom )
    if (tyH == Ity_I32) {
       switch (ty) {
          case Ity_I32: return vatom;
-         // Changed from Iop16Uto32
+         // Changed to Iop16Sto32 but changed back
          // (but doesn't seem to help in eliminating garbage values)
-         case Ity_I16: return assignNew_DC(dce, tyH, unop(Iop_16Sto32, vatom));
-         // Changed from Iop8Uto32
+         case Ity_I16: return assignNew_DC(dce, tyH, unop(Iop_16Uto32, vatom));
+         // Changed to Iop8Sto32 but changed back
          // (but doesn't seem to help in eliminating garbage values)
-         case Ity_I8:  return assignNew_DC(dce, tyH, unop(Iop_8Sto32, vatom));
+         case Ity_I8:  return assignNew_DC(dce, tyH, unop(Iop_8Uto32, vatom));
          default:      goto unhandled;
       }
    } else {
