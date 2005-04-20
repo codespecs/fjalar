@@ -1017,14 +1017,14 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
 {
    IRAtom* vatom;
    IRType  ty, tyS;
-   Int     arrSize;;
+   //   Int     arrSize;;
 
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
    tl_assert(sameKindedAtoms(atom, vatom));
    ty   = descr->elemTy;
    tyS  = shadowType_DC(ty);
-   arrSize = descr->nElems * sizeofIRType(ty);
+   //   arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
    //   complainIfUndefined(dce,ix); // PG
@@ -1109,7 +1109,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
    //   IRType tyS  = shadowType_DC(ty);
-   Int arrSize = descr->nElems * sizeofIRType(ty);
+   //   Int arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
    //   complainIfUndefined(dce,ix); // PG
@@ -1181,6 +1181,31 @@ IRAtom* mkLazyN ( MCEnv* mce,
       }
    }
    return mkPCastTo(mce, finalVtype, curr );
+}
+
+IRAtom* mkLazyN_DC ( DCEnv* dce,
+                  IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
+{
+   Int i;
+   IRAtom* here;
+   IRAtom* curr = definedOfType(Ity_I32);
+   for (i = 0; exprvec[i]; i++) {
+      tl_assert(i < 32);
+      tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
+      /* Only take notice of this arg if the callee's mc-exclusion
+         mask does not say it is to be excluded. */
+      if (cee->mcx_mask & (1<<i)) {
+         /* the arg is to be excluded from definedness checking.  Do
+            nothing. */
+         if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
+      } else {
+         /* calculate the arg's definedness, and pessimistically merge
+            it in. */
+         here = mkPCastTo( dce, Ity_I32, expr2tags_DC(dce, exprvec[i]) );
+         curr = mkUifU32(dce, here, curr);
+      }
+   }
+   return mkPCastTo(dce, finalVtype, curr );
 }
 
 
@@ -1505,46 +1530,46 @@ IRAtom* vectorNarrow64 ( MCEnv* mce, IROp narrow_op,
 }
 
 // PG
-static
-IRAtom* vectorNarrowV128_DC ( DCEnv* dce, IROp narrow_op,
-                              IRAtom* vatom1, IRAtom* vatom2)
-{
-   IRAtom *at1, *at2, *at3;
-   IRAtom* (*pcast)( DCEnv*, IRAtom* );
-   switch (narrow_op) {
-      case Iop_QNarrow32Sx4: pcast = mkPCast32x4; break;
-      case Iop_QNarrow16Sx8: pcast = mkPCast16x8; break;
-      case Iop_QNarrow16Ux8: pcast = mkPCast16x8; break;
-      default: VG_(tool_panic)("vectorNarrowV128_DC");
-   }
-   tl_assert(isShadowAtom(dce,vatom1));
-   tl_assert(isShadowAtom(dce,vatom2));
-   at1 = assignNew(dce, Ity_V128, pcast(dce, vatom1));
-   at2 = assignNew(dce, Ity_V128, pcast(dce, vatom2));
-   at3 = assignNew(dce, Ity_V128, binop(narrow_op, at1, at2));
-   return at3;
-}
+/* static */
+/* IRAtom* vectorNarrowV128_DC ( DCEnv* dce, IROp narrow_op, */
+/*                               IRAtom* vatom1, IRAtom* vatom2) */
+/* { */
+/*    IRAtom *at1, *at2, *at3; */
+/*    IRAtom* (*pcast)( DCEnv*, IRAtom* ); */
+/*    switch (narrow_op) { */
+/*       case Iop_QNarrow32Sx4: pcast = mkPCast32x4; break; */
+/*       case Iop_QNarrow16Sx8: pcast = mkPCast16x8; break; */
+/*       case Iop_QNarrow16Ux8: pcast = mkPCast16x8; break; */
+/*       default: VG_(tool_panic)("vectorNarrowV128_DC"); */
+/*    } */
+/*    tl_assert(isShadowAtom(dce,vatom1)); */
+/*    tl_assert(isShadowAtom(dce,vatom2)); */
+/*    at1 = assignNew(dce, Ity_V128, pcast(dce, vatom1)); */
+/*    at2 = assignNew(dce, Ity_V128, pcast(dce, vatom2)); */
+/*    at3 = assignNew(dce, Ity_V128, binop(narrow_op, at1, at2)); */
+/*    return at3; */
+/* } */
 
 // PG
-static
-IRAtom* vectorNarrow64_DC ( DCEnv* dce, IROp narrow_op,
-                            IRAtom* vatom1, IRAtom* vatom2)
-{
-   IRAtom *at1, *at2, *at3;
-   IRAtom* (*pcast)( DCEnv*, IRAtom* );
-   switch (narrow_op) {
-      case Iop_QNarrow32Sx2: pcast = mkPCast32x2; break;
-      case Iop_QNarrow16Sx4: pcast = mkPCast16x4; break;
-      case Iop_QNarrow16Ux4: pcast = mkPCast16x4; break;
-      default: VG_(tool_panic)("vectorNarrow64_DC");
-   }
-   tl_assert(isShadowAtom_DC(dce,vatom1));
-   tl_assert(isShadowAtom_DC(dce,vatom2));
-   at1 = assignNew(dce, Ity_I64, pcast(dce, vatom1));
-   at2 = assignNew(dce, Ity_I64, pcast(dce, vatom2));
-   at3 = assignNew(dce, Ity_I64, binop(narrow_op, at1, at2));
-   return at3;
-}
+/* static */
+/* IRAtom* vectorNarrow64_DC ( DCEnv* dce, IROp narrow_op, */
+/*                             IRAtom* vatom1, IRAtom* vatom2) */
+/* { */
+/*    IRAtom *at1, *at2, *at3; */
+/*    IRAtom* (*pcast)( DCEnv*, IRAtom* ); */
+/*    switch (narrow_op) { */
+/*       case Iop_QNarrow32Sx2: pcast = mkPCast32x2; break; */
+/*       case Iop_QNarrow16Sx4: pcast = mkPCast16x4; break; */
+/*       case Iop_QNarrow16Ux4: pcast = mkPCast16x4; break; */
+/*       default: VG_(tool_panic)("vectorNarrow64_DC"); */
+/*    } */
+/*    tl_assert(isShadowAtom_DC(dce,vatom1)); */
+/*    tl_assert(isShadowAtom_DC(dce,vatom2)); */
+/*    at1 = assignNew(dce, Ity_I64, pcast(dce, vatom1)); */
+/*    at2 = assignNew(dce, Ity_I64, pcast(dce, vatom2)); */
+/*    at3 = assignNew(dce, Ity_I64, binop(narrow_op, at1, at2)); */
+/*    return at3; */
+/* } */
 
 /* --- --- Vector integer arithmetic --- --- */
 
@@ -2273,18 +2298,15 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
 // This is where we need to add calls to helper functions to
 // merge tags because here is where the 'interactions' take place
 
-// Make fake binary ops of:
-// return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
-// as a stand-in for the real ones (this seems harmless enough)
 static
 IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
                               IRAtom* atom1, IRAtom* atom2 )
 {
    IRType  and_or_ty;
-   IRAtom* (*uifu)    (DCEnv*, IRAtom*, IRAtom*);
-   IRAtom* (*difd)    (DCEnv*, IRAtom*, IRAtom*);
-   IRAtom* (*improve) (DCEnv*, IRAtom*, IRAtom*);
+   //   IRAtom* (*uifu)    (DCEnv*, IRAtom*, IRAtom*);
+   //   IRAtom* (*difd)    (DCEnv*, IRAtom*, IRAtom*);
+   //   IRAtom* (*improve) (DCEnv*, IRAtom*, IRAtom*);
 
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
@@ -2297,7 +2319,12 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    tl_assert(sameKindedAtoms(atom2,vatom2));
 
    // PG - Insert fake return value:
+   // Using this one gives you much less STORE 0's
    return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
+
+   // Using this one gives you many more STORE 0's (almost all STOREs are 0's,
+   // with a few exceptions)
+   //   return definedOfType_DC();
 
    switch (op) {
 
@@ -2576,23 +2603,23 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_Add8:
          return mkLeft8(dce, mkUifU8(dce, vatom1,vatom2));
 
-      case Iop_CmpEQ32:
-         if (dce->bogusLiterals)
-            return expensiveCmpEQorNE(dce,Ity_I32, vatom1,vatom2, atom1,atom2 );
-         else
-            goto cheap_cmp32;
+/*       case Iop_CmpEQ32: */
+/*          if (dce->bogusLiterals) */
+/*             return expensiveCmpEQorNE(dce,Ity_I32, vatom1,vatom2, atom1,atom2 ); */
+/*          else */
+/*             goto cheap_cmp32; */
 
-      cheap_cmp32:
-      case Iop_CmpLE32S: case Iop_CmpLE32U:
-      case Iop_CmpLT32U: case Iop_CmpLT32S:
-      case Iop_CmpNE32:
-         return mkPCastTo(dce, Ity_I1, mkUifU32(dce, vatom1,vatom2));
+/*       cheap_cmp32: */
+/*       case Iop_CmpLE32S: case Iop_CmpLE32U: */
+/*       case Iop_CmpLT32U: case Iop_CmpLT32S: */
+/*       case Iop_CmpNE32: */
+/*          return mkPCastTo(dce, Ity_I1, mkUifU32(dce, vatom1,vatom2)); */
 
-      case Iop_CmpEQ16: case Iop_CmpNE16:
-         return mkPCastTo(dce, Ity_I1, mkUifU16(dce, vatom1,vatom2));
+/*       case Iop_CmpEQ16: case Iop_CmpNE16: */
+/*          return mkPCastTo(dce, Ity_I1, mkUifU16(dce, vatom1,vatom2)); */
 
-      case Iop_CmpEQ8: case Iop_CmpNE8:
-         return mkPCastTo(dce, Ity_I1, mkUifU8(dce, vatom1,vatom2));
+/*       case Iop_CmpEQ8: case Iop_CmpNE8: */
+/*          return mkPCastTo(dce, Ity_I1, mkUifU8(dce, vatom1,vatom2)); */
 
       case Iop_Shl32: case Iop_Shr32: case Iop_Sar32:
          /* Complain if the shift amount is undefined.  Then simply
@@ -2615,57 +2642,57 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
             // complainIfUndefined(dce, atom2); // PG
          return assignNew_DC(dce, Ity_I64, binop(op, vatom1, atom2));
 
-      case Iop_AndV128:
-         uifu = mkUifUV128; difd = mkDifDV128;
-         and_or_ty = Ity_V128; improve = mkImproveANDV128; goto do_And_Or;
-      case Iop_And64:
-         uifu = mkUifU64; difd = mkDifD64;
-         and_or_ty = Ity_I64; improve = mkImproveAND64; goto do_And_Or;
-      case Iop_And32:
-         uifu = mkUifU32; difd = mkDifD32;
-         and_or_ty = Ity_I32; improve = mkImproveAND32; goto do_And_Or;
-      case Iop_And16:
-         uifu = mkUifU16; difd = mkDifD16;
-         and_or_ty = Ity_I16; improve = mkImproveAND16; goto do_And_Or;
-      case Iop_And8:
-         uifu = mkUifU8; difd = mkDifD8;
-         and_or_ty = Ity_I8; improve = mkImproveAND8; goto do_And_Or;
+/*       case Iop_AndV128: */
+/*          uifu = mkUifUV128; difd = mkDifDV128; */
+/*          and_or_ty = Ity_V128; improve = mkImproveANDV128; goto do_And_Or; */
+/*       case Iop_And64: */
+/*          uifu = mkUifU64; difd = mkDifD64; */
+/*          and_or_ty = Ity_I64; improve = mkImproveAND64; goto do_And_Or; */
+/*       case Iop_And32: */
+/*          uifu = mkUifU32; difd = mkDifD32; */
+/*          and_or_ty = Ity_I32; improve = mkImproveAND32; goto do_And_Or; */
+/*       case Iop_And16: */
+/*          uifu = mkUifU16; difd = mkDifD16; */
+/*          and_or_ty = Ity_I16; improve = mkImproveAND16; goto do_And_Or; */
+/*       case Iop_And8: */
+/*          uifu = mkUifU8; difd = mkDifD8; */
+/*          and_or_ty = Ity_I8; improve = mkImproveAND8; goto do_And_Or; */
 
-      case Iop_OrV128:
-         uifu = mkUifUV128; difd = mkDifDV128;
-         and_or_ty = Ity_V128; improve = mkImproveORV128; goto do_And_Or;
-      case Iop_Or64:
-         uifu = mkUifU64; difd = mkDifD64;
-         and_or_ty = Ity_I64; improve = mkImproveOR64; goto do_And_Or;
-      case Iop_Or32:
-         uifu = mkUifU32; difd = mkDifD32;
-         and_or_ty = Ity_I32; improve = mkImproveOR32; goto do_And_Or;
-      case Iop_Or16:
-         uifu = mkUifU16; difd = mkDifD16;
-         and_or_ty = Ity_I16; improve = mkImproveOR16; goto do_And_Or;
-      case Iop_Or8:
-         uifu = mkUifU8; difd = mkDifD8;
-         and_or_ty = Ity_I8; improve = mkImproveOR8; goto do_And_Or;
+/*       case Iop_OrV128: */
+/*          uifu = mkUifUV128; difd = mkDifDV128; */
+/*          and_or_ty = Ity_V128; improve = mkImproveORV128; goto do_And_Or; */
+/*       case Iop_Or64: */
+/*          uifu = mkUifU64; difd = mkDifD64; */
+/*          and_or_ty = Ity_I64; improve = mkImproveOR64; goto do_And_Or; */
+/*       case Iop_Or32: */
+/*          uifu = mkUifU32; difd = mkDifD32; */
+/*          and_or_ty = Ity_I32; improve = mkImproveOR32; goto do_And_Or; */
+/*       case Iop_Or16: */
+/*          uifu = mkUifU16; difd = mkDifD16; */
+/*          and_or_ty = Ity_I16; improve = mkImproveOR16; goto do_And_Or; */
+/*       case Iop_Or8: */
+/*          uifu = mkUifU8; difd = mkDifD8; */
+/*          and_or_ty = Ity_I8; improve = mkImproveOR8; goto do_And_Or; */
 
-      do_And_Or:
-         return
-         assignNew_DC(
-            dce,
-            and_or_ty,
-            difd(dce, uifu(dce, vatom1, vatom2),
-                      difd(dce, improve(dce, atom1, vatom1),
-                                improve(dce, atom2, vatom2) ) ) );
+/*       do_And_Or: */
+/*          return */
+/*          assignNew_DC( */
+/*             dce, */
+/*             and_or_ty, */
+/*             difd(dce, uifu(dce, vatom1, vatom2), */
+/*                       difd(dce, improve(dce, atom1, vatom1), */
+/*                                 improve(dce, atom2, vatom2) ) ) ); */
 
-      case Iop_Xor8:
-         return mkUifU8(dce, vatom1, vatom2);
-      case Iop_Xor16:
-         return mkUifU16(dce, vatom1, vatom2);
-      case Iop_Xor32:
-         return mkUifU32(dce, vatom1, vatom2);
-      case Iop_Xor64:
-         return mkUifU64(dce, vatom1, vatom2);
-      case Iop_XorV128:
-         return mkUifUV128(dce, vatom1, vatom2);
+/*       case Iop_Xor8: */
+/*          return mkUifU8(dce, vatom1, vatom2); */
+/*       case Iop_Xor16: */
+/*          return mkUifU16(dce, vatom1, vatom2); */
+/*       case Iop_Xor32: */
+/*          return mkUifU32(dce, vatom1, vatom2); */
+/*       case Iop_Xor64: */
+/*          return mkUifU64(dce, vatom1, vatom2); */
+/*       case Iop_XorV128: */
+/*          return mkUifUV128(dce, vatom1, vatom2); */
 
       default:
          ppIROp(op);
@@ -2676,99 +2703,98 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 }
 
 
-// Make fake unary ops of:
-// return assignNew_DC(dce, Ity_I32, unop(Iop_Not32, vatom));
-// as a stand-in for the real ones (this seems harmless enough)
 static
 IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 {
    IRAtom* vatom = expr2tags_DC( dce, atom );
-   tl_assert(isOriginalAtom(dce,atom));
+   tl_assert(isOriginalAtom_DC(dce,atom));
 
    // PG - Insert fake return value here
-   return assignNew_DC(dce, Ity_I32, unop(Iop_Not32, vatom));
+   //      (This seems to eliminate the bogus STORE/LOAD tag values
+   //       (i.e., 0xfffffffc))
+   return definedOfType_DC();
 
-   switch (op) {
+/*    switch (op) { */
 
-      case Iop_Sqrt64Fx2:
-         return unary64Fx2(dce, vatom);
+/*       case Iop_Sqrt64Fx2: */
+/*          return unary64Fx2(dce, vatom); */
 
-      case Iop_Sqrt64F0x2:
-         return unary64F0x2(dce, vatom);
+/*       case Iop_Sqrt64F0x2: */
+/*          return unary64F0x2(dce, vatom); */
 
-      case Iop_Sqrt32Fx4:
-      case Iop_RSqrt32Fx4:
-      case Iop_Recip32Fx4:
-         return unary32Fx4(dce, vatom);
+/*       case Iop_Sqrt32Fx4: */
+/*       case Iop_RSqrt32Fx4: */
+/*       case Iop_Recip32Fx4: */
+/*          return unary32Fx4(dce, vatom); */
 
-      case Iop_Sqrt32F0x4:
-      case Iop_RSqrt32F0x4:
-      case Iop_Recip32F0x4:
-         return unary32F0x4(dce, vatom);
+/*       case Iop_Sqrt32F0x4: */
+/*       case Iop_RSqrt32F0x4: */
+/*       case Iop_Recip32F0x4: */
+/*          return unary32F0x4(dce, vatom); */
 
-      case Iop_32UtoV128:
-      case Iop_64UtoV128:
-         return assignNew_DC(dce, Ity_V128, unop(op, vatom));
+/*       case Iop_32UtoV128: */
+/*       case Iop_64UtoV128: */
+/*          return assignNew_DC(dce, Ity_V128, unop(op, vatom)); */
 
-      case Iop_F32toF64:
-      case Iop_I32toF64:
-      case Iop_NegF64:
-      case Iop_SinF64:
-      case Iop_CosF64:
-      case Iop_TanF64:
-      case Iop_SqrtF64:
-      case Iop_AbsF64:
-      case Iop_2xm1F64:
-         return mkPCastTo(dce, Ity_I64, vatom);
+/*       case Iop_F32toF64: */
+/*       case Iop_I32toF64: */
+/*       case Iop_NegF64: */
+/*       case Iop_SinF64: */
+/*       case Iop_CosF64: */
+/*       case Iop_TanF64: */
+/*       case Iop_SqrtF64: */
+/*       case Iop_AbsF64: */
+/*       case Iop_2xm1F64: */
+/*          return mkPCastTo(dce, Ity_I64, vatom); */
 
-      case Iop_Clz32:
-      case Iop_Ctz32:
-         return mkPCastTo(dce, Ity_I32, vatom);
+/*       case Iop_Clz32: */
+/*       case Iop_Ctz32: */
+/*          return mkPCastTo(dce, Ity_I32, vatom); */
 
-      case Iop_32Sto64:
-      case Iop_32Uto64:
-      case Iop_V128to64:
-      case Iop_V128HIto64:
-         return assignNew_DC(dce, Ity_I64, unop(op, vatom));
+/*       case Iop_32Sto64: */
+/*       case Iop_32Uto64: */
+/*       case Iop_V128to64: */
+/*       case Iop_V128HIto64: */
+/*          return assignNew_DC(dce, Ity_I64, unop(op, vatom)); */
 
-      case Iop_64to32:
-      case Iop_64HIto32:
-      case Iop_1Uto32:
-      case Iop_8Uto32:
-      case Iop_16Uto32:
-      case Iop_16Sto32:
-      case Iop_8Sto32:
-         return assignNew_DC(dce, Ity_I32, unop(op, vatom));
+/*       case Iop_64to32: */
+/*       case Iop_64HIto32: */
+/*       case Iop_1Uto32: */
+/*       case Iop_8Uto32: */
+/*       case Iop_16Uto32: */
+/*       case Iop_16Sto32: */
+/*       case Iop_8Sto32: */
+/*          return assignNew_DC(dce, Ity_I32, unop(op, vatom)); */
 
-      case Iop_8Sto16:
-      case Iop_8Uto16:
-      case Iop_32to16:
-      case Iop_32HIto16:
-         return assignNew_DC(dce, Ity_I16, unop(op, vatom));
+/*       case Iop_8Sto16: */
+/*       case Iop_8Uto16: */
+/*       case Iop_32to16: */
+/*       case Iop_32HIto16: */
+/*          return assignNew_DC(dce, Ity_I16, unop(op, vatom)); */
 
-      case Iop_1Uto8:
-      case Iop_16to8:
-      case Iop_32to8:
-         return assignNew_DC(dce, Ity_I8, unop(op, vatom));
+/*       case Iop_1Uto8: */
+/*       case Iop_16to8: */
+/*       case Iop_32to8: */
+/*          return assignNew_DC(dce, Ity_I8, unop(op, vatom)); */
 
-      case Iop_32to1:
-         return assignNew_DC(dce, Ity_I1, unop(Iop_32to1, vatom));
+/*       case Iop_32to1: */
+/*          return assignNew_DC(dce, Ity_I1, unop(Iop_32to1, vatom)); */
 
-      case Iop_ReinterpF64asI64:
-      case Iop_ReinterpI64asF64:
-      case Iop_ReinterpI32asF32:
-      case Iop_NotV128:
-      case Iop_Not64:
-      case Iop_Not32:
-      case Iop_Not16:
-      case Iop_Not8:
-      case Iop_Not1:
-         return vatom;
+/*       case Iop_ReinterpF64asI64: */
+/*       case Iop_ReinterpI64asF64: */
+/*       case Iop_ReinterpI32asF32: */
+/*       case Iop_NotV128: */
+/*       case Iop_Not64: */
+/*       case Iop_Not32: */
+/*       case Iop_Not16: */
+/*       case Iop_Not8: */
+/*       case Iop_Not1: */
+/*          return vatom; */
 
-      default:
-         ppIROp(op);
-         VG_(tool_panic)("dyncomp:expr2tags_Unop_DC");
-   }
+/*       default: */
+/*          ppIROp(op); */
+/*          VG_(tool_panic)("dyncomp:expr2tags_Unop_DC"); */
+/*    } */
 }
 
 
@@ -2911,20 +2937,16 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                 );
 
       case Iex_Unop:
-         //         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
-         // INTERESTING - removing the handling of unary operations
-         //               gets rid of those pesky invalid HUGE-looking tags (i.e. 0xfffffffc)
-         // PG - Just ignore this crap altogether and generate some fake 0 tag:
-         return definedOfType_DC();
+         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
       case Iex_LDle:
          return expr2tags_LDle_DC( dce, e->Iex.LDle.ty,
                                       e->Iex.LDle.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
-         return mkLazyN( dce, e->Iex.CCall.args,
-                              e->Iex.CCall.retty,
-                              e->Iex.CCall.cee );
+         return mkLazyN_DC( dce, e->Iex.CCall.args,
+                            e->Iex.CCall.retty,
+                            e->Iex.CCall.cee );
 
       case Iex_Mux0X:
          //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
