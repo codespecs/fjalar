@@ -363,7 +363,7 @@ static IRType shadowType_DC ( IRType ty )
 // 0 means 'no tag', which I suppose is okay, but we may really
 // want to create a new tag for every constant literal
 // Let's always create a 32-bit '0' tag here because all tags are 32 bits
-static IRExpr* definedOfType_DC ( IRType ty ) {
+static IRExpr* definedOfType_DC () {
    return IRExpr_Const(IRConst_U32(0));
 }
 
@@ -1066,7 +1066,7 @@ IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
 static
 IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
 {
-   IRType tyS = shadowType_DC(ty);
+   //   IRType tyS = shadowType_DC(ty);
    tl_assert(ty != Ity_I1);
    //   if (isAlwaysDefd(dce, offset, sizeofIRType(ty))) {
    //      /* Always defined, return all zeroes of the relevant type */
@@ -1108,7 +1108,7 @@ static
 IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
-   IRType tyS  = shadowType_DC(ty);
+   //   IRType tyS  = shadowType_DC(ty);
    Int arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
@@ -2901,7 +2901,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          return IRExpr_Tmp( findShadowTmp_DC(dce, e->Iex.Tmp.tmp) );
 
       case Iex_Const:
-         return definedOfType_DC(shadowType_DC(typeOfIRExpr(dce->bb->tyenv, e)));
+         return definedOfType_DC();
 
       case Iex_Binop:
          return expr2tags_Binop_DC(
@@ -2911,7 +2911,11 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                 );
 
       case Iex_Unop:
-         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
+         //         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
+         // INTERESTING - removing the handling of unary operations
+         //               gets rid of those pesky invalid HUGE-looking tags (i.e. 0xfffffffc)
+         // PG - Just ignore this crap altogether and generate some fake 0 tag:
+         return definedOfType_DC();
 
       case Iex_LDle:
          return expr2tags_LDle_DC( dce, e->Iex.LDle.ty,
@@ -2926,7 +2930,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
          //                                     e->Iex.Mux0X.exprX);
          // PG - Just ignore this crap altogether and generate some fake 0 tag:
-         return definedOfType_DC(shadowType_DC(typeOfIRExpr(dce->bb->tyenv, e)));
+         return definedOfType_DC();
 
 
       default:
@@ -3546,6 +3550,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       mce.tmpMap[i] = IRTemp_INVALID;
 
    // PG
+   // Is this aliasing of 'bb' going to be a problem?
    dce.bb             = bb;
    dce.layout         = layout;
    dce.n_originalTmps = bb->tyenv->types_used;
@@ -3639,7 +3644,17 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
       } /* switch (st->tag) */
 
+
       // PG - duplicated version for DynComp
+      if (!dce.bogusLiterals) {
+         dce.bogusLiterals = checkForBogusLiterals(st);
+         if (0&& dce.bogusLiterals) {
+            VG_(printf)("bogus: ");
+            ppIRStmt(st);
+            VG_(printf)("\n");
+         }
+      }
+
       switch (st->tag) {
 
          case Ist_Tmp:
