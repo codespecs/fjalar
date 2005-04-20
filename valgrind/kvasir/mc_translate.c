@@ -47,7 +47,7 @@ struct _DCEnv;
 static IRType  shadowType ( IRType ty );
 static IRType  shadowType_DC ( IRType ty );
 static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
-static IRExpr* expr2vbits_DC ( struct _DCEnv* dce, IRExpr* e ); // PG
+static IRExpr* expr2tags_DC ( struct _DCEnv* dce, IRExpr* e ); // PG
 
 
 /*------------------------------------------------------------*/
@@ -956,7 +956,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    if (atom) {
       tl_assert(!vatom);
       tl_assert(isOriginalAtom_DC(dce, atom));
-      vatom = expr2vbits_DC( dce, atom );
+      vatom = expr2tags_DC( dce, atom );
    } else {
       tl_assert(vatom);
       tl_assert(isShadowAtom_DC(dce, vatom));
@@ -1020,7 +1020,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
    Int     arrSize;;
 
    tl_assert(isOriginalAtom_DC(dce,atom));
-   vatom = expr2vbits_DC( dce, atom );
+   vatom = expr2tags_DC( dce, atom );
    tl_assert(sameKindedAtoms(atom, vatom));
    ty   = descr->elemTy;
    tyS  = shadowType_DC(ty);
@@ -2277,7 +2277,7 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
 // return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
 // as a stand-in for the real ones (this seems harmless enough)
 static
-IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
+IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
                               IRAtom* atom1, IRAtom* atom2 )
 {
@@ -2286,8 +2286,8 @@ IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
    IRAtom* (*difd)    (DCEnv*, IRAtom*, IRAtom*);
    IRAtom* (*improve) (DCEnv*, IRAtom*, IRAtom*);
 
-   IRAtom* vatom1 = expr2vbits_DC( dce, atom1 );
-   IRAtom* vatom2 = expr2vbits_DC( dce, atom2 );
+   IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
+   IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
 
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
@@ -2669,7 +2669,7 @@ IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
 
       default:
          ppIROp(op);
-         VG_(tool_panic)("dyncomp:expr2vbits_Binop_DC");
+         VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
    }
 
    return 0;
@@ -2680,9 +2680,9 @@ IRAtom* expr2vbits_Binop_DC ( DCEnv* dce,
 // return assignNew_DC(dce, Ity_I32, unop(Iop_Not32, vatom));
 // as a stand-in for the real ones (this seems harmless enough)
 static
-IRExpr* expr2vbits_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
+IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 {
-   IRAtom* vatom = expr2vbits_DC( dce, atom );
+   IRAtom* vatom = expr2tags_DC( dce, atom );
    tl_assert(isOriginalAtom(dce,atom));
 
    // PG - Insert fake return value here
@@ -2767,14 +2767,14 @@ IRExpr* expr2vbits_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 
       default:
          ppIROp(op);
-         VG_(tool_panic)("dyncomp:expr2vbits_Unop_DC");
+         VG_(tool_panic)("dyncomp:expr2tags_Unop_DC");
    }
 }
 
 
 /* Worker function; do not call directly. */
 static
-IRAtom* expr2vbits_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
+IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    void*    helper;
    Char*    hname;
@@ -2832,7 +2832,7 @@ IRAtom* expr2vbits_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias 
 
 
 static
-IRAtom* expr2vbits_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
+IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    IRAtom *v64hi, *v64lo;
    switch (shadowType_DC(ty)) {
@@ -2840,15 +2840,15 @@ IRAtom* expr2vbits_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
       case Ity_I16:
       case Ity_I32:
       case Ity_I64:
-         return expr2vbits_LDle_WRK_DC(dce, ty, addr, bias);
+         return expr2tags_LDle_WRK_DC(dce, ty, addr, bias);
       case Ity_V128:
-         v64lo = expr2vbits_LDle_WRK_DC(dce, Ity_I64, addr, bias);
-         v64hi = expr2vbits_LDle_WRK_DC(dce, Ity_I64, addr, bias+8);
+         v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias);
+         v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8);
          return assignNew_DC( dce,
                            Ity_V128,
                            binop(Iop_64HLtoV128, v64hi, v64lo));
       default:
-         VG_(tool_panic)("expr2vbits_LDle_DC");
+         VG_(tool_panic)("expr2tags_LDle_DC");
    }
 }
 
@@ -2856,7 +2856,7 @@ IRAtom* expr2vbits_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 // return assignNew_DC(dce, Ity_I32, binop(Iop_Or32, vbits0, vbitsX));
 // as a stand-in for the real ones (this seems harmless enough)
 static
-IRAtom* expr2vbits_Mux0X_DC ( DCEnv* dce,
+IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* expr0, IRAtom* exprX )
 {
    IRAtom *vbitsC, *vbits0, *vbitsX;
@@ -2870,9 +2870,9 @@ IRAtom* expr2vbits_Mux0X_DC ( DCEnv* dce,
    tl_assert(isOriginalAtom_DC(dce, expr0));
    tl_assert(isOriginalAtom_DC(dce, exprX));
 
-   vbitsC = expr2vbits_DC(dce, cond);
-   vbits0 = expr2vbits_DC(dce, expr0);
-   vbitsX = expr2vbits_DC(dce, exprX);
+   vbitsC = expr2tags_DC(dce, cond);
+   vbits0 = expr2tags_DC(dce, expr0);
+   vbitsX = expr2tags_DC(dce, exprX);
    ty = typeOfIRExpr(dce->bb->tyenv, vbits0);
 
    // PG - Insert fake return value here
@@ -2886,7 +2886,7 @@ IRAtom* expr2vbits_Mux0X_DC ( DCEnv* dce,
 /* --------- This is the main expression-handling function. --------- */
 
 static
-IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
+IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 {
    switch (e->tag) {
 
@@ -2904,17 +2904,17 @@ IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
          return definedOfType_DC(shadowType_DC(typeOfIRExpr(dce->bb->tyenv, e)));
 
       case Iex_Binop:
-         return expr2vbits_Binop_DC(
+         return expr2tags_Binop_DC(
                    dce,
                    e->Iex.Binop.op,
                    e->Iex.Binop.arg1, e->Iex.Binop.arg2
                 );
 
       case Iex_Unop:
-         return expr2vbits_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
+         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
       case Iex_LDle:
-         return expr2vbits_LDle_DC( dce, e->Iex.LDle.ty,
+         return expr2tags_LDle_DC( dce, e->Iex.LDle.ty,
                                       e->Iex.LDle.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
@@ -2923,7 +2923,7 @@ IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
                               e->Iex.CCall.cee );
 
       case Iex_Mux0X:
-         //         return expr2vbits_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+         //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
          //                                     e->Iex.Mux0X.exprX);
          // PG - Just ignore this crap altogether and generate some fake 0 tag:
          return definedOfType_DC(shadowType_DC(typeOfIRExpr(dce->bb->tyenv, e)));
@@ -2933,7 +2933,7 @@ IRExpr* expr2vbits_DC ( DCEnv* dce, IRExpr* e )
          VG_(printf)("\n");
          ppIRExpr(e);
          VG_(printf)("\n");
-         VG_(tool_panic)("dyncomp: expr2vbits_DC");
+         VG_(tool_panic)("dyncomp: expr2tags_DC");
    }
 }
 
@@ -3147,7 +3147,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
       tl_assert(!vdata);
       tl_assert(isOriginalAtom_DC(dce, data));
       tl_assert(bias == 0);
-      vdata = expr2vbits_DC( dce, data );
+      vdata = expr2tags_DC( dce, data );
    } else {
       tl_assert(vdata);
    }
@@ -3644,7 +3644,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
          case Ist_Tmp:
             assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
-                    expr2vbits_DC( &dce, st->Ist.Tmp.data) );
+                    expr2tags_DC( &dce, st->Ist.Tmp.data) );
             break;
 
          case Ist_Put:
