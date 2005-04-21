@@ -293,8 +293,8 @@ static __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
    Its purpose is to implement a sparse array which can hold
    up to 2^32 uf_object entries.  The primary map holds 2^16
    references to secondary maps.  Each secondary map holds 2^16
-   uf_object entries, each of which is 8 bytes total.  Thus,
-   each secondary map takes up 524,288 bytes.
+   uf_object entries, each of which is 12 bytes total.  Thus,
+   each secondary map takes up 786,432 bytes.
    The main difference between this sparse array structure and
    the tag map is that this one fills up sequentially from
    lower indices to higher indices because tags are assigned
@@ -302,6 +302,7 @@ static __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
    numbers are used as indices into the uf_object map
 */
 
+// uf_object_map: A map from tag (32-bit int) to uf_objects
 // Each entry either points to NULL or to a dynamically-allocated
 // array (of size SECONDARY_SIZE) of uf_object objects
 static uf_object* primary_uf_object_map[PRIMARY_SIZE];
@@ -316,21 +317,28 @@ static uf_object* primary_uf_object_map[PRIMARY_SIZE];
 #define GET_UF_OBJECT_PTR(tag) (&(primary_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
 
 static void tag_make_set(UInt tag) {
+  //  VG_(printf)("tag_make_set(%u);\n", tag);
+
   if (IS_ZERO_TAG(tag))
     return;
 
   if (IS_SECONDARY_UF_NULL(tag)) {
     uf_object* new_uf_obj_array =
       (uf_object*)VG_(shadow_alloc)(SECONDARY_SIZE * sizeof(*new_uf_obj_array));
-    int i;
+    UInt i;
+    UInt curTag; // Set to upper 16-bits of the tag
     // Each new uf_object should be initialized using uf_make_set()
-    for (i = 0; i < SECONDARY_SIZE; i++) {
-      uf_make_set(new_uf_obj_array + i);
+    for (i = 0, curTag = ((PM_IDX(tag)) << SECONDARY_SHIFT);
+         i < SECONDARY_SIZE;
+         i++, curTag++) {
+      uf_make_set(new_uf_obj_array + i, curTag);
+      //      VG_(printf)("      uf_make_set(%u, %u);\n",
+      //                  new_uf_obj_array + i, curTag);
     }
     primary_uf_object_map[PM_IDX(tag)] = new_uf_obj_array;
   }
   else {
-    uf_make_set(GET_UF_OBJECT_PTR(tag));
+    uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
   }
 }
 
@@ -371,8 +379,8 @@ static UChar tags_in_same_set(UInt tag1, UInt tag2) {
 #define SET_TAG_FOR_RANGE(addr, max, tag)                         \
   do {                                                            \
     int i;                                                        \
-    for (i = 0; i < max; i++) {                                   \
-      set_tag(addr+i, tag);                                       \
+    for (i = 0; i < (max); i++) {                                 \
+       set_tag((addr)+i, (tag));                                  \
     }                                                             \
   } while(0)
 
@@ -421,14 +429,29 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 #endif
 }
 
-// Union the tags of all addresses in the range [addr, addr+max)
-#define UNION_TAGS_IN_RANGE(addr, max)                            \
-  do {                                                            \
-    int i;                                                        \
-    for (i = 1; i < max; i++) {                                   \
-      tag_union(get_tag(addr), get_tag(addr+i));                  \
-    }                                                             \
-  } while(0)
+// Union the tags of all addresses in the range [a, a+max)
+// and sets them all equal to the canonical tag of the merged set
+static void union_tags_in_range(Addr a, Addr max) {
+  Addr curAddr;
+  UInt aTag = get_tag(a);
+  uf_name canonical;
+  UInt canonicalTag;
+
+  for (curAddr = (a + 1); curAddr < (a + max); curAddr++) {
+    tag_union(aTag, get_tag(curAddr));
+  }
+
+  // Find out the canonical tag
+  canonical = tag_find(aTag);
+  if (canonical) {
+    canonicalTag = canonical->tag;
+    // Set all the tags in this range to the canonical tag
+    // (as inferred from a reverse map lookup)
+    for (curAddr = a; curAddr < (a + max); curAddr++) {
+      set_tag(curAddr, canonicalTag);
+    }
+  }
+}
 
 // Whenever we're requesting to load tags for X bytes,
 // we merge the tags for those X bytes and return the tag
@@ -436,7 +459,7 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 // but is much easier to implement.
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
-  UNION_TAGS_IN_RANGE(a, 8);
+  union_tags_in_range(a, 8);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_8(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -446,7 +469,7 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
-  UNION_TAGS_IN_RANGE(a, 4);
+  union_tags_in_range(a, 4);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_4(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -456,7 +479,7 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
-  UNION_TAGS_IN_RANGE(a, 2);
+  union_tags_in_range(a, 2);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_2(0x%x) = %u  [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -475,41 +498,45 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 
 
 // Merge tags during any binary operation which
-// qualifies as an interaction.
+// qualifies as an interaction and returns the first tag
 VGA_REGPARM(2)
-void MC_(helperc_MERGE_TAGS_8) ( UInt tag1, UInt tag2 ) {
+UInt MC_(helperc_MERGE_TAGS_8) ( UInt tag1, UInt tag2 ) {
   tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
   VG_(printf)("helperc_MERGE_TAGS_8(%u, %u) [nextTag=%u]\n",
               tag1, tag2, nextTag);
 #endif
+  return tag1;
 }
 
 VGA_REGPARM(2)
-void MC_(helperc_MERGE_TAGS_4) ( UInt tag1, UInt tag2 ) {
+UInt MC_(helperc_MERGE_TAGS_4) ( UInt tag1, UInt tag2 ) {
   tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
   VG_(printf)("helperc_MERGE_TAGS_4(%u, %u) [nextTag=%u]\n",
               tag1, tag2, nextTag);
 #endif
+  return tag1;
 }
 
 VGA_REGPARM(2)
-void MC_(helperc_MERGE_TAGS_2) ( UInt tag1, UInt tag2 ) {
+UInt MC_(helperc_MERGE_TAGS_2) ( UInt tag1, UInt tag2 ) {
   tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
   VG_(printf)("helperc_MERGE_TAGS_2(%u, %u) [nextTag=%u]\n",
               tag1, tag2, nextTag);
 #endif
+  return tag1;
 }
 
 VGA_REGPARM(2)
-void MC_(helperc_MERGE_TAGS_1) ( UInt tag1, UInt tag2 ) {
+UInt MC_(helperc_MERGE_TAGS_1) ( UInt tag1, UInt tag2 ) {
   tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
   VG_(printf)("helperc_MERGE_TAGS_1(%u, %u) [nextTag=%u]\n",
               tag1, tag2, nextTag);
 #endif
+  return tag1;
 }
 
 /*------------------------------------------------------------*/

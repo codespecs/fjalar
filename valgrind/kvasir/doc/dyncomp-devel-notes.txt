@@ -436,3 +436,136 @@ helperc_MERGE_TAGS_4(101913, 0) [nextTag=1466035]
 helperc_STORE_TAG_4(0x52BFE350, 110758) [nextTag=1466035]
 helperc_MERGE_TAGS_4(101913, 0) [nextTag=1466035]
 helperc_STORE_TAG_4(0x52BFE34C, 0) [nextTag=1466035]
+
+
+!!! Ok, I may have some insight into the problem ... we are using
+definedOfType_DC() as a cop-out to create a 0-valued tag, which seems
+to clobber the hell out of a lot of valid tag values.  What I really
+want is something like a no-op. !!!
+
+
+----------
+2005-04-21
+----------
+
+Difference between Put and STle?
+
+      Ist_NoOp,   /* no-op (usually resulting from IR optimisation) */
+      Ist_Put,    /* write guest state, fixed offset */
+      Ist_PutI,   /* write guest state, run-time offset */
+      Ist_Tmp,    /* assign value to temporary */
+      Ist_STle,   /* little-endian write to memory */
+
+Look at Ist_NoOp!
+extern IRStmt* IRStmt_NoOp
+
+/* Convenience function for constructing clean helper calls. */
+IRExpr* mkIRExprCCall
+
+Stephen's suggestions from our meeting today:
+
+Ideally, we want to somehow replicate the tree structure of the
+original IR except for the fact that our binary operations are merges.
+Our merge operations should return the canonical tag of the merged
+sets in the temporary so that it can be used further up the chain.
+mkIRExprCCall can be our savior by providing a way to make a 'clean' C
+function call as an IRExpr, which can fit in our parallel IR
+expression tree.  E.g.
+
+    (sub)
+    /  \
+   /    \
+ (add)  C
+  / \
+ /   \
+ A   B
+
+becomes ...
+
+   (merge)
+    /  \
+   /    \
+(merge) Ctag
+  / \
+ /   \
+Atag Btag
+
+Each (merge) merges the sets of the tags and returns the canonical tag
+of the set so that it can be used in further merges.  This is very
+important!
+
+We need to try to use clean calls since they can fit in our expression
+tree (hopefully) and not dirty calls because they are statements
+(maybe?).
+
+
+
+Ok, onto another issue ... optimization of tag mergings.  When we
+union uf_objects pointed-to by tags, what we really want is to return
+the tag of the canonical uf_object (the root of the tree) so that it
+can be stored away.  This will help in garbage collection because it
+ensures that we will have the smallest possible set of distinct tags
+floating around at any one time.  Conceptually, we have two maps
+(implemented as two-level sparse arrays):
+
+tag_map: Addr --> tag
+uf_object_map: tag --> uf_object
+
+Whenever we perform a union of uf_objects in uf_object_map, we want to
+also return the tag of the canonical (root) uf_object in the set.
+
+Here is an example:
+
+tag_map
+-------
+Addr:   1   2   3   4   5
+tag:    10  20  30  40  50
+
+uf_object_map
+-------------
+tag:        1 ... 10 ... 20 ... 30 ... 40 ... 50
+uf_object:        A      B      C      D      E
+
+Let's say you merge A, B, C, D, and E.  What we really want is to
+return 10 (the tag of A) as the result of this merge.  That way, if we
+assign the results of the merge into any new variable, it will show up
+as 10.  So if we clobber addresses 2, 3, 4, and 5 with the results of
+the merge, all of them will end up being 10 and we can garbage collect
+tags 20, 30, 40, and 50.
+
+To implement this with the two-level uf_object_map, we need to somehow
+provide an efficient reverse mapping of uf_object --> tag.  My
+suggestion is to keep a backpointer to the space in
+primary_uf_object_map when you malloc each 2^16 secondary array of
+uf_objects so that you can do a two-level pointer offset arithmetic to
+get the tag, when given an uf_object*.
+
+However, I want to defer the implementation of this optimization
+because I don't see right off the bat how it will help us out too
+much.  I want to have some more time to think about it first.
+
+... ok, I thought about it.  It would be really helpful in the
+helperc_LOAD_TAG... series of functions, where we are loading the tags
+for several bytes (2, 4, or 8) and doing a union because we figure
+heuristically that if you are reading 4 (or whatever) bytes from
+memory, you really mean for those 4 bytes to have the SAME tag.  Right
+now, we simply union the tags, but as a side effect, we should really
+set the tags for all those relevant bytes to the CANONICAL (root)
+tag.  In the above example, let's say that we were reading Addr 1, 2,
+3, 4 as one block.  If 10 were the canonical tag for the union of A,
+B, C, D, then we want to set the tags as follows:
+
+tag_map
+-------
+Addr:   1   2   3   4   5
+tag:    10  10  10  10  50
+
+... which would allow tags 20, 30, and 40 to be garbage collected.
+
+Ok, I'm now convinced that I should go thru with this optimization.
+
+
+In order to simplify the implementation, I will just keep the 4-byte
+tag along with each uf_object structure.  This wastes a bit of space,
+bloating it from 8 to 12 bytes each, but it eliminates lots of
+implementation complexities.

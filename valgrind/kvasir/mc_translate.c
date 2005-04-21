@@ -2324,30 +2324,35 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    tl_assert(sameKindedAtoms(atom2,vatom2));
 
    switch (op) {
-      case Iop_Add32:
-      case Iop_Sub32:
+      //      case Iop_Add32:
+      //      case Iop_Sub32:
+      default:
          helper = &MC_(helperc_MERGE_TAGS_4);
          hname = "MC_(helperc_MERGE_TAGS_4)";
 
-         di = unsafeIRDirty_0_N(
+         // PG - tags are always 32 bits
+         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+
+         di = unsafeIRDirty_1_N( datatag,
                  2/*regparms*/, hname, helper,
-                 mkIRExprVec_2( vatom1, vatom2));
+                 mkIRExprVec_2( vatom1, vatom2 ));
 
          setHelperAnns_DC( dce, di );
          stmt( dce->bb, IRStmt_Dirty(di) );
-         break;
-      default:
-         break;
-   }
 
+         return mkexpr(datatag);
+         break;
+         //      default:
+         //         break;
+   }
 
    // PG - Insert fake return value:
    // Using this one gives you much less STORE 0's
-   return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
+   //   return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
 
    // Using this one gives you many more STORE 0's (almost all STOREs are 0's,
    // with a few exceptions)
-   //   return definedOfType_DC();
+   return definedOfType_DC();
 
    switch (op) {
 

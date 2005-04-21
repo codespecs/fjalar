@@ -46,10 +46,11 @@ uf_name uf_find(uf_object *object) {
   return root;
 }
 
-void uf_make_set(uf_object *new_object) {
+void uf_make_set(uf_object *new_object, unsigned int t) {
   new_object->parent = new_object;
   new_object->rank = 0;
   new_object->ref_count = 0;
+  new_object->tag = t;
 }
 
 // Returns the new leader (uf_name)
