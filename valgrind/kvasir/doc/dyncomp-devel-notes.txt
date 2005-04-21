@@ -419,3 +419,20 @@ I probably need to clean up the rest of the DynComp code before going
 back to this.  Perhaps the rest of the incompatibilities are causing
 these bogus values to be stored.  It's still too early to get to the
 bottom of this problem.
+
+
+----------
+2005-04-20
+----------
+
+Ok, got rid of the garbage values (by disabling handling of unary ops)
+and started getting something to work with MERGE_TAGS, except that the
+second tag parameter is ALWAYS 0.  That's no good :(
+
+e.g.
+
+helperc_STORE_TAG_4(0x52BFE354, 101913) [nextTag=1466035]
+helperc_MERGE_TAGS_4(101913, 0) [nextTag=1466035]
+helperc_STORE_TAG_4(0x52BFE350, 110758) [nextTag=1466035]
+helperc_MERGE_TAGS_4(101913, 0) [nextTag=1466035]
+helperc_STORE_TAG_4(0x52BFE34C, 0) [nextTag=1466035]

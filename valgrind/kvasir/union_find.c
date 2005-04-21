@@ -53,11 +53,23 @@ void uf_make_set(uf_object *new_object) {
 }
 
 // Returns the new leader (uf_name)
+// Stupid question: Is there any problems that arise
+// when uf_union is called multiple times on the same objects?
+// I don't think so, right?
 uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   uf_name class1 = uf_find(obj1);
   uf_name class2 = uf_find(obj2);
 
   // Union-by-rank:
+
+  // PG - optimization (and also ensures correctness by
+  //                    not calling INC_REF_COUNT extraneously):
+  // If class1 == class2, then obj1 and obj2 are already
+  // in the same set so don't do anything! (Is this correct?)
+  if (class1 == class2) {
+    return class1;
+  }
+
   if(class1->rank < class2->rank) {
     class1->parent = class2;
     INC_REF_COUNT(class2);

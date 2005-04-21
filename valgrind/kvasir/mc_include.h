@@ -81,6 +81,11 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
+extern VGA_REGPARM(2) void MC_(helperc_MERGE_TAGS_8) ( UInt, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_MERGE_TAGS_4) ( UInt, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_MERGE_TAGS_2) ( UInt, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_MERGE_TAGS_1) ( UInt, UInt );
+
 /* Functions defined in mc_errcontext.c */
 extern void MC_(record_value_error)  ( ThreadId tid, Int size );
 extern void MC_(record_user_error)   ( ThreadId tid, Addr a, Bool isWrite,

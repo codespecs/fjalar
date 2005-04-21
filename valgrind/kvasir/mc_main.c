@@ -45,6 +45,9 @@
 /* #define VG_DEBUG_MEMORY */
 
 //#define DYNCOMP_DEBUG
+#define STORE_TAG_VERBOSE
+#define LOAD_TAG_VERBOSE
+#define MERGE_TAGS_VERBOSE
 
 #define DEBUG(fmt, args...) //VG_(printf)(fmt, ## args)
 
@@ -385,31 +388,38 @@ static UChar tags_in_same_set(UInt tag1, UInt tag2) {
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 8, tag);
+#ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_8(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
+#endif
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 4, tag);
+#ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_4(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
+#endif
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 2, tag);
+#ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_2(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
+#endif
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   SET_TAG_FOR_RANGE(a, 1, tag);
+#ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_1(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
+#endif
 }
-
 
 // Union the tags of all addresses in the range [addr, addr+max)
 #define UNION_TAGS_IN_RANGE(addr, max)                            \
@@ -427,32 +437,79 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   UNION_TAGS_IN_RANGE(a, 8);
+#ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_8(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
+#endif
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UNION_TAGS_IN_RANGE(a, 4);
+#ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_4(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
+#endif
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   UNION_TAGS_IN_RANGE(a, 2);
+#ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_2(0x%x) = %u  [nextTag=%u]\n",
               a, get_tag(a), nextTag);
+#endif
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
+#ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_1(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
+#endif
   return get_tag(a);
+}
+
+
+// Merge tags during any binary operation which
+// qualifies as an interaction.
+VGA_REGPARM(2)
+void MC_(helperc_MERGE_TAGS_8) ( UInt tag1, UInt tag2 ) {
+  tag_union(tag1, tag2);
+#ifdef MERGE_TAGS_VERBOSE
+  VG_(printf)("helperc_MERGE_TAGS_8(%u, %u) [nextTag=%u]\n",
+              tag1, tag2, nextTag);
+#endif
+}
+
+VGA_REGPARM(2)
+void MC_(helperc_MERGE_TAGS_4) ( UInt tag1, UInt tag2 ) {
+  tag_union(tag1, tag2);
+#ifdef MERGE_TAGS_VERBOSE
+  VG_(printf)("helperc_MERGE_TAGS_4(%u, %u) [nextTag=%u]\n",
+              tag1, tag2, nextTag);
+#endif
+}
+
+VGA_REGPARM(2)
+void MC_(helperc_MERGE_TAGS_2) ( UInt tag1, UInt tag2 ) {
+  tag_union(tag1, tag2);
+#ifdef MERGE_TAGS_VERBOSE
+  VG_(printf)("helperc_MERGE_TAGS_2(%u, %u) [nextTag=%u]\n",
+              tag1, tag2, nextTag);
+#endif
+}
+
+VGA_REGPARM(2)
+void MC_(helperc_MERGE_TAGS_1) ( UInt tag1, UInt tag2 ) {
+  tag_union(tag1, tag2);
+#ifdef MERGE_TAGS_VERBOSE
+  VG_(printf)("helperc_MERGE_TAGS_1(%u, %u) [nextTag=%u]\n",
+              tag1, tag2, nextTag);
+#endif
 }
 
 /*------------------------------------------------------------*/

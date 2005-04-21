@@ -2303,7 +2303,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
                               IRAtom* atom1, IRAtom* atom2 )
 {
-   IRType  and_or_ty;
+   //   IRType  and_or_ty;
    //   IRAtom* (*uifu)    (DCEnv*, IRAtom*, IRAtom*);
    //   IRAtom* (*difd)    (DCEnv*, IRAtom*, IRAtom*);
    //   IRAtom* (*improve) (DCEnv*, IRAtom*, IRAtom*);
@@ -2311,12 +2311,35 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
 
+   void*    helper;
+   Char*    hname;
+   IRDirty* di;
+   IRTemp   datatag;
+
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
    tl_assert(isShadowAtom_DC(dce,vatom1));
    tl_assert(isShadowAtom_DC(dce,vatom2));
    tl_assert(sameKindedAtoms(atom1,vatom1));
    tl_assert(sameKindedAtoms(atom2,vatom2));
+
+   switch (op) {
+      case Iop_Add32:
+      case Iop_Sub32:
+         helper = &MC_(helperc_MERGE_TAGS_4);
+         hname = "MC_(helperc_MERGE_TAGS_4)";
+
+         di = unsafeIRDirty_0_N(
+                 2/*regparms*/, hname, helper,
+                 mkIRExprVec_2( vatom1, vatom2));
+
+         setHelperAnns_DC( dce, di );
+         stmt( dce->bb, IRStmt_Dirty(di) );
+         break;
+      default:
+         break;
+   }
+
 
    // PG - Insert fake return value:
    // Using this one gives you much less STORE 0's
@@ -3593,15 +3616,6 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       if (!mce.bogusLiterals) {
          mce.bogusLiterals = checkForBogusLiterals(st);
          if (0&& mce.bogusLiterals) {
-            VG_(printf)("bogus: ");
-            ppIRStmt(st);
-            VG_(printf)("\n");
-         }
-      }
-
-      if (!dce.bogusLiterals) {
-         dce.bogusLiterals = checkForBogusLiterals(st);
-         if (0&& dce.bogusLiterals) {
             VG_(printf)("bogus: ");
             ppIRStmt(st);
             VG_(printf)("\n");
