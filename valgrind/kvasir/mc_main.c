@@ -213,15 +213,6 @@ static UInt* primary_tag_map[PRIMARY_SIZE];
 
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
 
-#define ASSIGN_NEW_TAG(addr)                                      \
-   do {                                                           \
-      set_tag(addr, nextTag);                                     \
-      tag_make_set(nextTag);                                      \
-         if (nextTag == UINT_MAX)                                 \
-            VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n"); \
-         else nextTag++;                                          \
-   } while(0)
-
 static __inline__ UInt get_tag ( Addr a )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a))
@@ -241,12 +232,22 @@ static __inline__ void set_tag ( Addr a, UInt tag )
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
+static __inline__ void assign_new_tag(Addr a) {
+  set_tag(a, nextTag);
+  tag_make_set(nextTag);
+  if (nextTag == UINT_MAX) {
+    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
+  }
+  else {
+    nextTag++;
+  }
+}
+
 // Allocate a new unique tag for all bytes in range [a, a + len)
 static __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
-  SizeT i;
-  for (i = 0; i < len; i++) {
-    Addr cur = a + (Addr)i;
-    ASSIGN_NEW_TAG(cur);
+  Addr curAddr;
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    assign_new_tag(curAddr);
   }
 
 #ifdef DYNCOMP_DEBUG
@@ -260,10 +261,9 @@ static __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
 // uf_objects in order to prepare them for garbage collection
 // (when it's implemented)
 static __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
-  SizeT i;
-  for (i = 0; i < len; i++) {
-    Addr cur = a + (Addr)i;
-    set_tag(cur, 0);
+  Addr curAddr;
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    set_tag(curAddr, 0);
     // TODO: Do something with uf_objects (maybe put them on a to-be-freed
     // list) to prepare them for garbage collection
   }
@@ -325,21 +325,29 @@ static void tag_make_set(UInt tag) {
   if (IS_SECONDARY_UF_NULL(tag)) {
     uf_object* new_uf_obj_array =
       (uf_object*)VG_(shadow_alloc)(SECONDARY_SIZE * sizeof(*new_uf_obj_array));
-    UInt i;
-    UInt curTag; // Set to upper 16-bits of the tag
+
+    // PG - We can skip this step and leave them uninitialized
+    //      until somebody explicitly calls tag_make_set() on
+    //      that particular tag
+
     // Each new uf_object should be initialized using uf_make_set()
-    for (i = 0, curTag = ((PM_IDX(tag)) << SECONDARY_SHIFT);
-         i < SECONDARY_SIZE;
-         i++, curTag++) {
-      uf_make_set(new_uf_obj_array + i, curTag);
-      //      VG_(printf)("      uf_make_set(%u, %u);\n",
-      //                  new_uf_obj_array + i, curTag);
-    }
+    //    UInt i;
+    //    UInt curTag; // Set to upper 16-bits of the tag
+    //    for (i = 0, curTag = ((PM_IDX(tag)) << SECONDARY_SHIFT);
+    //         i < SECONDARY_SIZE;
+    //         i++, curTag++) {
+    //      uf_make_set(new_uf_obj_array + i, curTag);
+    //      //      VG_(printf)("      uf_make_set(%u, %u);\n",
+    //      //                  new_uf_obj_array + i, curTag);
+    //    }
     primary_uf_object_map[PM_IDX(tag)] = new_uf_obj_array;
   }
-  else {
-    uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
-  }
+  //  else {
+  //    uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
+  //  }
+
+  // Do this unconditionally now:
+  uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
 static __inline__ void tag_union(UInt tag1, UInt tag2) {
@@ -375,14 +383,13 @@ static UChar tags_in_same_set(UInt tag1, UInt tag2) {
 
 // Helper functions called from mc_translate.c:
 
-// Write tag into all addresses in the range [addr, addr+max)
-#define SET_TAG_FOR_RANGE(addr, max, tag)                         \
-  do {                                                            \
-    int i;                                                        \
-    for (i = 0; i < (max); i++) {                                 \
-       set_tag((addr)+i, (tag));                                  \
-    }                                                             \
-  } while(0)
+// Write tag into all addresses in the range [a, a+len)
+static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
+  Addr curAddr;
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    set_tag(curAddr, tag);
+  }
+}
 
 
 // When we're requesting to store tags for X bytes,
@@ -395,7 +402,7 @@ static UChar tags_in_same_set(UInt tag1, UInt tag2) {
 // (Look in mc_translate.c)
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
-  SET_TAG_FOR_RANGE(a, 8, tag);
+  set_tag_for_range(a, 8, tag);
 #ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_8(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
@@ -404,7 +411,7 @@ void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
-  SET_TAG_FOR_RANGE(a, 4, tag);
+  set_tag_for_range(a, 4, tag);
 #ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_4(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
@@ -413,7 +420,7 @@ void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
-  SET_TAG_FOR_RANGE(a, 2, tag);
+  set_tag_for_range(a, 2, tag);
 #ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_2(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
@@ -422,19 +429,32 @@ void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
-  SET_TAG_FOR_RANGE(a, 1, tag);
+  set_tag_for_range(a, 1, tag);
 #ifdef STORE_TAG_VERBOSE
   VG_(printf)("helperc_STORE_TAG_1(0x%x, %u) [nextTag=%u]\n",
               a, tag, nextTag);
 #endif
 }
 
+// Return the canonical tag for 'tag'
+static __inline__ UInt find_canonical_tag(UInt tag) {
+  uf_name canonical = tag_find(tag);
+  if (canonical) {
+    return canonical->tag;
+  }
+  else {
+    return 0;
+  }
+}
+
 // Union the tags of all addresses in the range [a, a+max)
 // and sets them all equal to the canonical tag of the merged set
+// (An optimization which could help out with garbage collection
+//  because we want to have as few tags 'in play' at one time
+//  as possible)
 static void union_tags_in_range(Addr a, Addr max) {
   Addr curAddr;
   UInt aTag = get_tag(a);
-  uf_name canonical;
   UInt canonicalTag;
 
   for (curAddr = (a + 1); curAddr < (a + max); curAddr++) {
@@ -442,9 +462,8 @@ static void union_tags_in_range(Addr a, Addr max) {
   }
 
   // Find out the canonical tag
-  canonical = tag_find(aTag);
-  if (canonical) {
-    canonicalTag = canonical->tag;
+  canonicalTag = find_canonical_tag(aTag);
+  if (canonicalTag > 0) {
     // Set all the tags in this range to the canonical tag
     // (as inferred from a reverse map lookup)
     for (curAddr = a; curAddr < (a + max); curAddr++) {
