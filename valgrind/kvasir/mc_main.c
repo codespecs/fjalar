@@ -232,6 +232,8 @@ static __inline__ void set_tag ( Addr a, UInt tag )
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
+// Sets tag of address 'a' to a fresh tag and initialize a new uf_object
+// (This will have to be modified when we implement garbage collection)
 static __inline__ void assign_new_tag(Addr a) {
   set_tag(a, nextTag);
   tag_make_set(nextTag);
@@ -242,6 +244,21 @@ static __inline__ void assign_new_tag(Addr a) {
     nextTag++;
   }
 }
+
+// Doesn't do set_tag(); instead, return the new tag
+static __inline__ UInt assign_new_tag_no_addr() {
+  UInt newTag = nextTag;
+  tag_make_set(newTag);
+  if (nextTag == UINT_MAX) {
+    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
+  }
+  else {
+    nextTag++;
+  }
+
+  return newTag;
+}
+
 
 // Allocate a new unique tag for all bytes in range [a, a + len)
 static __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
@@ -470,6 +487,17 @@ static void union_tags_in_range(Addr a, Addr max) {
       set_tag(curAddr, canonicalTag);
     }
   }
+}
+
+// Create a new tag but don't put it anywhere
+VGA_REGPARM(0)
+UInt MC_(helperc_CREATE_TAG) () {
+  UInt newTag = assign_new_tag_no_addr();
+
+  VG_(printf)("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
+              newTag, nextTag);
+
+  return newTag;
 }
 
 // Whenever we're requesting to load tags for X bytes,

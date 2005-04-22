@@ -569,3 +569,15 @@ In order to simplify the implementation, I will just keep the 4-byte
 tag along with each uf_object structure.  This wastes a bit of space,
 bloating it from 8 to 12 bytes each, but it eliminates lots of
 implementation complexities.
+
+
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+Garbage collection idea!!!
+
+When you're doing the mark-sweep garbage collection, clobber every
+single tag with the canonical tag found using find_canonical_tag().
+If we are pretty sure that there are relatively few distinct sets
+(lots of merging occurs), then replacing each tag in shadow memory
+(tag_map) with its canonical tag will better enable us to recycle
+tags.
+^^^^^^^^^^^^^^^^^^^^^^^^^^

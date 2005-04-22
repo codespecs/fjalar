@@ -363,6 +363,7 @@ static IRType shadowType_DC ( IRType ty )
 // 0 means 'no tag', which I suppose is okay, but we may really
 // want to create a new tag for every constant literal
 // Let's always create a 32-bit '0' tag here because all tags are 32 bits
+// This is really incorrect, so avoid it if possible!
 static IRExpr* definedOfType_DC () {
    return IRExpr_Const(IRConst_U32(0));
 }
@@ -2323,36 +2324,58 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    tl_assert(sameKindedAtoms(atom1,vatom1));
    tl_assert(sameKindedAtoms(atom2,vatom2));
 
-   switch (op) {
-      //      case Iop_Add32:
-      //      case Iop_Sub32:
-      default:
-         helper = &MC_(helperc_MERGE_TAGS_4);
-         hname = "MC_(helperc_MERGE_TAGS_4)";
+/*    switch (op) { */
+/*       //      case Iop_Add32: */
+/*       //      case Iop_Sub32: */
+/*       default: */
+/*          helper = &MC_(helperc_MERGE_TAGS_4); */
+/*          hname = "MC_(helperc_MERGE_TAGS_4)"; */
 
-         // PG - tags are always 32 bits
-         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+/*          // PG - tags are always 32 bits */
+/*          //         datatag = newIRTemp(dce->bb->tyenv, Ity_I32); */
 
-         di = unsafeIRDirty_1_N( datatag,
-                 2/*regparms*/, hname, helper,
-                 mkIRExprVec_2( vatom1, vatom2 ));
+/*          //         di = unsafeIRDirty_1_N( datatag, */
+/*          //                 2, hname, helper, */
+/*          //                 mkIRExprVec_2( vatom1, vatom2 )); */
 
-         setHelperAnns_DC( dce, di );
-         stmt( dce->bb, IRStmt_Dirty(di) );
+/*          return mkIRExprCCall (Ity_I32, */
+/*                                2, hname, helper, */
+/*                                mkIRExprVec_2( vatom1, vatom2 )); */
 
-         return mkexpr(datatag);
-         break;
-         //      default:
-         //         break;
-   }
+/*          //         setHelperAnns_DC( dce, di ); */
+/*          //         stmt( dce->bb, IRStmt_Dirty(di) ); */
+
+/*          //         return mkexpr(datatag); */
+/*          break; */
+/*          //      default: */
+/*          //         break; */
+/*    } */
+
+   // PG - tags are always 32 bits
+   datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   di = unsafeIRDirty_1_N(datatag,
+                          2,
+                          "MC_(helperc_MERGE_TAGS_4)",
+                          &MC_(helperc_MERGE_TAGS_4),
+                          mkIRExprVec_2( vatom1, vatom2 ));
+
+   setHelperAnns_DC( dce, di );
+   stmt( dce->bb, IRStmt_Dirty(di) );
+   return mkexpr(datatag);
+
+    //   return mkIRExprCCall (Ity_I32,
+    //                         2 /*Int regparms*/,
+    //                         "MC_(helperc_MERGE_TAGS_4)",
+    //                         &MC_(helperc_MERGE_TAGS_4),
+    //                         mkIRExprVec_2( vatom1, vatom2 ));
 
    // PG - Insert fake return value:
-   // Using this one gives you much less STORE 0's
+   // Using this one gives you much less STORE 0's, but it may be incorrect
    //   return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
 
    // Using this one gives you many more STORE 0's (almost all STOREs are 0's,
-   // with a few exceptions)
-   return definedOfType_DC();
+   // with a few exceptions) - ummm, but this is also incorrect
+   //   return definedOfType_DC();
 
    switch (op) {
 
@@ -2738,9 +2761,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    tl_assert(isOriginalAtom_DC(dce,atom));
 
    // PG - Insert fake return value here
-   //      (This seems to eliminate the bogus STORE/LOAD tag values
-   //       (i.e., 0xfffffffc))
-   return definedOfType_DC();
+   // Right now, do nothing with unary ops
+   return vatom;
 
 /*    switch (op) { */
 
@@ -2906,9 +2928,6 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    }
 }
 
-// Make fake binary ops of:
-// return assignNew_DC(dce, Ity_I32, binop(Iop_Or32, vbits0, vbitsX));
-// as a stand-in for the real ones (this seems harmless enough)
 static
 IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* expr0, IRAtom* exprX )
@@ -2930,11 +2949,16 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
    ty = typeOfIRExpr(dce->bb->tyenv, vbits0);
 
    // PG - Insert fake return value here
-   return assignNew_DC(dce, Ity_I32, binop(Iop_Or32, vbits0, vbitsX));
+   // This is gonna be wrong, but oh well
+   return vbitsC;
+   //   return definedOfType_DC();
 
-   return
-      mkUifU(dce, ty, assignNew_DC(dce, ty, IRExpr_Mux0X(cond, vbits0, vbitsX)),
-                      mkPCastTo(dce, ty, vbitsC) );
+   //   return vbitsC;
+
+   // The real return value:
+   //   return
+   //      mkUifU(dce, ty, assignNew_DC(dce, ty, IRExpr_Mux0X(cond, vbits0, vbitsX)),
+   //                      mkPCastTo(dce, ty, vbitsC) );
 }
 
 /* --------- This is the main expression-handling function. --------- */
@@ -2942,6 +2966,9 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
 static
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 {
+   IRDirty* di;
+   IRTemp   datatag;
+
    switch (e->tag) {
 
       case Iex_Get:
@@ -2955,7 +2982,26 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          return IRExpr_Tmp( findShadowTmp_DC(dce, e->Iex.Tmp.tmp) );
 
       case Iex_Const:
-         return definedOfType_DC();
+         // When you create a constant, assign it a new tag
+
+         // Try it with a dirty call:
+         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+         di = unsafeIRDirty_1_N( datatag,
+                                 0/*regparms*/,
+                                 "MC_(helperc_CREATE_TAG)",
+                                 &MC_(helperc_CREATE_TAG),
+                                 mkIRExprVec_0());
+         setHelperAnns_DC( dce, di );
+         stmt( dce->bb, IRStmt_Dirty(di) );
+
+         return mkexpr(datatag);
+
+         // Or try it with a clean call:
+   //         return mkIRExprCCall(Ity_I32,
+   //                              0,
+   //                              "MC_(helperc_CREATE_TAG)",
+   //                              &MC_(helperc_CREATE_TAG),
+   //                              mkIRExprVec_0());
 
       case Iex_Binop:
          return expr2tags_Binop_DC(
@@ -2977,11 +3023,10 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                             e->Iex.CCall.cee );
 
       case Iex_Mux0X:
+         // PG - Uhhh, does this work?
+         return e;
          //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-         //                                     e->Iex.Mux0X.exprX);
-         // PG - Just ignore this crap altogether and generate some fake 0 tag:
-         return definedOfType_DC();
-
+         //                                    e->Iex.Mux0X.exprX);
 
       default:
          VG_(printf)("\n");
