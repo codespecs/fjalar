@@ -2873,13 +2873,14 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
 
    // PG - Insert fake return value here
    // This is gonna be wrong, but oh well
-   // return vbitsC;
-   return definedOfType_DC();
+   //   return vbits0;
+   //   return definedOfType_DC();
+   return IRExpr_Mux0X(cond, vbits0, vbitsX);
 
    // The real return value:
    //   return
    //      mkUifU(dce, ty, assignNew_DC(dce, ty, IRExpr_Mux0X(cond, vbits0, vbitsX)),
-   //                      mkPCastTo(dce, ty, vbitsC) );
+   //             mkPCastTo(dce, ty, vbitsC) );
 }
 
 /* --------- This is the main expression-handling function. --------- */
@@ -2947,10 +2948,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
             //                            e->Iex.CCall.cee );
 
       case Iex_Mux0X:
-         // PG - Uhhh, does this work?
-         return e;
-         // return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-         //                           e->Iex.Mux0X.exprX);
+         // PG - I have no clue what this is right now
+         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+                                    e->Iex.Mux0X.exprX);
 
       default:
          VG_(printf)("\n");
@@ -3532,6 +3532,72 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
    }
 }
 
+static Bool checkForBogusLiterals_DC ( /*FLAT*/ IRStmt* st )
+{
+   Int      i;
+   IRExpr*  e;
+   IRDirty* d;
+   switch (st->tag) {
+      case Ist_Tmp:
+         e = st->Ist.Tmp.data;
+         switch (e->tag) {
+            case Iex_Get:
+            case Iex_Tmp:
+               return False;
+            case Iex_Const:
+               return isBogusAtom(e);
+            case Iex_Unop:
+               return isBogusAtom(e->Iex.Unop.arg);
+            case Iex_GetI:
+               return isBogusAtom(e->Iex.GetI.ix);
+            case Iex_Binop:
+               return isBogusAtom(e->Iex.Binop.arg1)
+                      || isBogusAtom(e->Iex.Binop.arg2);
+            case Iex_Mux0X:
+               return isBogusAtom(e->Iex.Mux0X.cond)
+                      || isBogusAtom(e->Iex.Mux0X.expr0)
+                      || isBogusAtom(e->Iex.Mux0X.exprX);
+            case Iex_LDle:
+               return isBogusAtom(e->Iex.LDle.addr);
+            case Iex_CCall:
+               for (i = 0; e->Iex.CCall.args[i]; i++)
+                  if (isBogusAtom(e->Iex.CCall.args[i]))
+                     return True;
+               return False;
+            default:
+               goto unhandled;
+         }
+      case Ist_Dirty:
+         d = st->Ist.Dirty.details;
+         for (i = 0; d->args[i]; i++)
+            if (isBogusAtom(d->args[i]))
+               return True;
+         if (d->guard && isBogusAtom(d->guard))
+            return True;
+         if (d->mAddr && isBogusAtom(d->mAddr))
+            return True;
+         return False;
+      case Ist_Put:
+         return isBogusAtom(st->Ist.Put.data);
+      case Ist_PutI:
+         return isBogusAtom(st->Ist.PutI.ix)
+                || isBogusAtom(st->Ist.PutI.data);
+      case Ist_STle:
+         return isBogusAtom(st->Ist.STle.addr)
+                || isBogusAtom(st->Ist.STle.data);
+      case Ist_Exit:
+         return isBogusAtom(st->Ist.Exit.guard);
+      case Ist_NoOp:
+      case Ist_IMark:
+      case Ist_MFence:
+         return False;
+      default:
+      unhandled:
+         ppIRStmt(st);
+         VG_(tool_panic)("hasBogusLiterals (DC)");
+   }
+}
+
 
 // Modified by PG - duplicated all instrumentation calls
 //                  to also call DynComp versions (suffixed by _DC)
@@ -3657,7 +3723,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
       // PG - duplicated version for DynComp
       if (!dce.bogusLiterals) {
-         dce.bogusLiterals = checkForBogusLiterals(st);
+         dce.bogusLiterals = checkForBogusLiterals_DC(st);
          if (0&& dce.bogusLiterals) {
             VG_(printf)("bogus: ");
             ppIRStmt(st);

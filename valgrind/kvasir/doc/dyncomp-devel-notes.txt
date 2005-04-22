@@ -655,3 +655,98 @@ merge with the tag of y.
 
 Some things shouldn't count as interactions at all (i.e. z = x || y)
 so just pass along a 0 tag.
+
+
+Ummm, now it barfs on ArrayTest with this error:
+
+==5448==  Address 0x1BB3A000 is not stack'd, malloc'd or (recently) free'd
+buffer population[999]: 134516768
+buffer multiDimensional[4][5][12]: 0x804a720
+
+vex: the `impossible' happened:
+   genGuestArrayOffset(x86 host)
+vex storage:  P 436,  T total 64171040 (1905138),  T curr 53956 (1654)
+
+valgrind: the `impossible' happened:
+   LibVEX called failure_exit().
+==5448==    at 0xB0022A71: ???
+==5448==    by 0xB0022A70: ???
+==5448==    by 0xB0022A99: ???
+==5448==    by 0xB0049C29: ???
+==5448==    by 0xB0061561: ???
+==5448==    by 0xB006ED5C: ???
+==5448==    by 0xB0075A28: ???
+==5448==    by 0xB0076114: ???
+==5448==    by 0xB0060FE0: ???
+==5448==    by 0xB004A1BA: ???
+==5448==    by 0xB00136D7: ???
+==5448==    by 0xB0013B17: ???
+
+Basic block ctr is approximately 32990
+
+sched status:
+  running_tid=1
+
+Thread 1: status = VgTs_Runnable
+==5448==    at 0x80484CE: main (ArrayTest.c:96)
+
+
+Ok, I'm trying to run dyncomp on the programs in the Kvasir test
+suite.  This is all done with the CVS check-in at:
+Fri Apr 22 16:03:55 EDT 2005
+
+Success:
+
+bc
+BinaryTreeTest
+DisambigTest
+Dstr
+function-pointer
+GlobalTest
+inline-func
+ManualDisambigExample
+md5
+MultiDimArrayTest
+MultipleStructsTest
+NestedStructTest
+partial-init
+pointer-levels
+PointerTest
+rijndael
+shared-lib
+SimpleDisambigStructTest
+small-test
+StackArrayCppTest
+StackCppTest
+StaticArraysTest
+static-struct
+string-arrays
+StructPtrTest
+tcas
+two-statics
+virtual-method
+
+Failure (all with the genGuestArrayOffset(x86 host) problem):
+
+ArrayTest
+ArrayTest-cpp
+ArraysInStructTest
+crazy-test-1
+TrivialTest
+TypedefTest
+TypesTest
+
+Special failures:
+
+IntTest
+
+IN STATEMENT:
+
+t325 = x86g_check_fldcw{0xB00838CA}(t73):I64
+
+ERROR = IRStmt.Put.Tmp: tmp and expr do not match
+
+
+vex: the `impossible' happened:
+   sanityCheckFail: exiting due to bad IR
+vex storage:  P 436,  T total 55547180 (1646556),  T curr 137076 (4325)
