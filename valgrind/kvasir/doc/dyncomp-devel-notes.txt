@@ -639,3 +639,19 @@ helperc_STORE_TAG_4(0x52BFE34C, 1768777) [nextTag=1768786]   <-- Assign 'x + y' 
 Uhhh, we still have lots of extraneous CREATE_TAG() calls without
 being assigned to variables in memory, but the garbage collector
 should take care of that.
+
+
+----------
+2005-04-22
+----------
+
+Stephen suggested that we count all binary ops as interactions
+(because they all consist of data flow) unless otherwise noted
+(e.g. shift operators, or operator, etc...).
+
+z = x << y implies that z and x are comparable to one another, but not
+to y.  That means that we simply copy the tag over from x to z and not
+merge with the tag of y.
+
+Some things shouldn't count as interactions at all (i.e. z = x || y)
+so just pass along a 0 tag.

@@ -81,10 +81,7 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_8) ( UInt, UInt );
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_4) ( UInt, UInt );
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_2) ( UInt, UInt );
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_1) ( UInt, UInt );
+extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 
 extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ();
 

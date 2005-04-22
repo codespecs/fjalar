@@ -547,40 +547,10 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 // Merge tags during any binary operation which
 // qualifies as an interaction and returns the first tag
 VGA_REGPARM(2)
-UInt MC_(helperc_MERGE_TAGS_8) ( UInt tag1, UInt tag2 ) {
+UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
-  VG_(printf)("helperc_MERGE_TAGS_8(%u, %u) [nextTag=%u]\n",
-              tag1, tag2, nextTag);
-#endif
-  return tag1;
-}
-
-VGA_REGPARM(2)
-UInt MC_(helperc_MERGE_TAGS_4) ( UInt tag1, UInt tag2 ) {
-  tag_union(tag1, tag2);
-#ifdef MERGE_TAGS_VERBOSE
-  VG_(printf)("helperc_MERGE_TAGS_4(%u, %u) [nextTag=%u]\n",
-              tag1, tag2, nextTag);
-#endif
-  return tag1;
-}
-
-VGA_REGPARM(2)
-UInt MC_(helperc_MERGE_TAGS_2) ( UInt tag1, UInt tag2 ) {
-  tag_union(tag1, tag2);
-#ifdef MERGE_TAGS_VERBOSE
-  VG_(printf)("helperc_MERGE_TAGS_2(%u, %u) [nextTag=%u]\n",
-              tag1, tag2, nextTag);
-#endif
-  return tag1;
-}
-
-VGA_REGPARM(2)
-UInt MC_(helperc_MERGE_TAGS_1) ( UInt tag1, UInt tag2 ) {
-  tag_union(tag1, tag2);
-#ifdef MERGE_TAGS_VERBOSE
-  VG_(printf)("helperc_MERGE_TAGS_1(%u, %u) [nextTag=%u]\n",
+  VG_(printf)("helperc_MERGE_TAGS(%u, %u) [nextTag=%u]\n",
               tag1, tag2, nextTag);
 #endif
   return tag1;

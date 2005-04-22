@@ -2273,6 +2273,9 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
 // This is where we need to add calls to helper functions to
 // merge tags because here is where the 'interactions' take place
 
+// Yes, this code can be cleaned up A LOT, but I'll leave it
+// as one big switch statement for now in order to provide
+// flexibility for future edits
 static
 IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
@@ -2297,295 +2300,336 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    // operations which are deemed as 'interactions'
    // (The conditions within this switch will have
    //  to be heavily refined as this tool matures)
+
+   // Ok, so this was ripped from the switch statement in
+   // expr2vbits_Binop (with a few copy-and-paste parts from
+   // libvex_ir.h) but for a complete list of binary (as well as
+   // unary) operations, look in vex/pub/libvex_ir.h in the enum
+   // definition for IROp
    switch (op) {
+      // Standard-faire arithmetic operations
+      // which definitely qualify as interactions
+   case Iop_Add64:
+   case Iop_Sub64:
+
+   case Iop_MullS32: case Iop_MullU32:
+   case Iop_Mul32:
+   case Iop_Add32:
+   case Iop_Sub32:
+
+   case Iop_MullS16: case Iop_MullU16:
+   case Iop_Mul16:
+   case Iop_Add16:
+   case Iop_Sub16:
+
+   case Iop_MullS8: case Iop_MullU8:
+   case Iop_Sub8:
+   case Iop_Add8:
+
+   case Iop_DivU32:   // :: I32,I32 -> I32 (simple div, no mod)
+   case Iop_DivS32:   // ditto, signed
+
+   case Iop_DivModU128to64: // :: V128,I64 -> V128
+      // of which lo half is div and hi half is mod
+   case Iop_DivModS128to64: // ditto, signed
+
+      // Only these two division ones are in Memcheck
+      // (the other ones I had to lift from libvex_ir.h):
+   case Iop_DivModU64to32: // :: I64,I32 -> I64
+      // of which lo half is div and hi half is mod
+   case Iop_DivModS64to32: // ditto, signed
+
+      helper = &MC_(helperc_MERGE_TAGS);
+      hname = "MC_(helperc_MERGE_TAGS)";
+      break;
+
+      // I don't think comparisons qualify as interactions
+   case Iop_CmpEQ32:
+   case Iop_CmpLE32S:
+   case Iop_CmpLE32U:
+   case Iop_CmpLT32U:
+   case Iop_CmpLT32S:
+   case Iop_CmpNE32:
+   case Iop_CmpEQ16: case Iop_CmpNE16:
+   case Iop_CmpEQ8: case Iop_CmpNE8:
+      break;
+
+      // Shifts are special.  In z = x << y,
+      // we want the comparability sets to be (x, z) (y)
+      // because z is formed from x, but the shift amount
+      // y is really a different abstract type than x and z.
+      // Thus, I think the correct behavior is to simply
+      // return vatom1 (which is the tag of x, in this case)
+      // without merging the tags of vatom1 and vatom2
+   case Iop_Shl32: case Iop_Shr32: case Iop_Sar32:
+   case Iop_Shl16: case Iop_Shr16: case Iop_Sar16:
+   case Iop_Shl8: case Iop_Shr8:
+   case Iop_Shl64: case Iop_Shr64:
+      return vatom1;
+      break;
+
+      // TODO: Are these bit-wise (interactions)
+      //       or logical (not interactions)?
+   case Iop_AndV128:
+   case Iop_And64:
+   case Iop_And32:
+   case Iop_And16:
+   case Iop_And8:
+
+   case Iop_OrV128:
+   case Iop_Or64:
+   case Iop_Or32:
+   case Iop_Or16:
+   case Iop_Or8:
+
+   case Iop_Xor8:
+   case Iop_Xor16:
+   case Iop_Xor32:
+   case Iop_Xor64:
+   case Iop_XorV128:
+      break;
+
+      /* ------ Floating point.  We try and be IEEE754 compliant. ------ */
+
+      // These all look like interactions:
+
+      /* Binary operations mandated by IEEE754. */
+   case Iop_AddF64:
+   case Iop_DivF64:
+   case Iop_SubF64:
+   case Iop_MulF64:
+      /* Binary ops supported by IA32 but not mandated by 754. */
+   case Iop_AtanF64:       /* FPATAN,  arctan(arg1/arg2)       */
+   case Iop_Yl2xF64:       /* FYL2X,   arg1 * log2(arg2)       */
+   case Iop_Yl2xp1F64:     /* FYL2XP1, arg1 * log2(arg2+1.0)   */
+   case Iop_PRemF64:       /* FPREM,   non-IEEE remainder(arg1/arg2)    */
+   case Iop_PRem1F64:      /* FPREM1,  IEEE remainder(arg1/arg2)    */
+   case Iop_ScaleF64:      /* FSCALE,  arg1 * (2^RoundTowardsZero(arg2)) */
+      /* Note that on x86 guest, PRem1{C3210} has the same behaviour
+         as the IEEE mandated RemF64, except it is limited in the
+         range of its operand.  Hence the partialness. */
+
+      helper = &MC_(helperc_MERGE_TAGS);
+      hname = "MC_(helperc_MERGE_TAGS)";
+      break;
+
+      // These don't feel like interactions from the descriptions
+      // of the arguments as type 'rounding mode' and 'data',
+      // respectively.
+   case Iop_RoundF64:
+   case Iop_F64toI64:
+   case Iop_I64toF64:
+      /* Takes two F64 args. */
+   case Iop_F64toI32:
+   case Iop_F64toF32:
+      /* First arg is I32 (rounding mode), second is F64 (data). */
+   case Iop_F64toI16:
+      /* First arg is I32 (rounding mode), second is F64 (data). */
+   case Iop_CmpF64:
+
+      // These two are just bogus
+   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
+   case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
+      break;
+
+      // I guess these qualify as interactions
+      // because we are concatenating two smaller things
+      // together into one larger one, but this is shady
+   case Iop_16HLto32:   // :: (I16,I16) -> I32
+   case Iop_32HLto64:   // :: (I32,I32) -> I64
+
       /* 64-bit SIMD */
 
-      case Iop_ShrN16x4:
-      case Iop_ShrN32x2:
-      case Iop_SarN16x4:
-      case Iop_SarN32x2:
-      case Iop_ShlN16x4:
-      case Iop_ShlN32x2:
-         break;
+      // See the special treatment of shifts above
+   case Iop_ShrN16x4:
+   case Iop_ShrN32x2:
+   case Iop_SarN16x4:
+   case Iop_SarN32x2:
+   case Iop_ShlN16x4:
+   case Iop_ShlN32x2:
+      return vatom1;
+      break;
 
-      case Iop_QNarrow32Sx2:
-      case Iop_QNarrow16Sx4:
-      case Iop_QNarrow16Ux4:
-         break;
+   case Iop_QNarrow32Sx2:
+   case Iop_QNarrow16Sx4:
+   case Iop_QNarrow16Ux4:
+      break;
 
-      case Iop_Min8Ux8:
-      case Iop_Max8Ux8:
-      case Iop_Avg8Ux8:
-      case Iop_QSub8Sx8:
-      case Iop_QSub8Ux8:
-      case Iop_Sub8x8:
-      case Iop_CmpGT8Sx8:
-      case Iop_CmpEQ8x8:
-      case Iop_QAdd8Sx8:
-      case Iop_QAdd8Ux8:
-      case Iop_Add8x8:
-         break;
+      // Arithmetic implies interaction:
+   case Iop_Min8Ux8:
+   case Iop_Max8Ux8:
+   case Iop_Avg8Ux8:
+   case Iop_QSub8Sx8:
+   case Iop_QSub8Ux8:
+   case Iop_Sub8x8:
+   case Iop_QAdd8Sx8:
+   case Iop_QAdd8Ux8:
+   case Iop_Add8x8:
 
-      case Iop_Min16Sx4:
-      case Iop_Max16Sx4:
-      case Iop_Avg16Ux4:
-      case Iop_QSub16Ux4:
-      case Iop_QSub16Sx4:
-      case Iop_Sub16x4:
-      case Iop_Mul16x4:
-      case Iop_MulHi16Sx4:
-      case Iop_MulHi16Ux4:
-      case Iop_CmpGT16Sx4:
-      case Iop_CmpEQ16x4:
-      case Iop_QAdd16Sx4:
-      case Iop_QAdd16Ux4:
-      case Iop_Add16x4:
-         break;
+   case Iop_Min16Sx4:
+   case Iop_Max16Sx4:
+   case Iop_Avg16Ux4:
+   case Iop_QSub16Ux4:
+   case Iop_QSub16Sx4:
+   case Iop_Sub16x4:
+   case Iop_Mul16x4:
+   case Iop_MulHi16Sx4:
+   case Iop_MulHi16Ux4:
+   case Iop_QAdd16Sx4:
+   case Iop_QAdd16Ux4:
+   case Iop_Add16x4:
 
-      case Iop_Sub32x2:
-      case Iop_CmpGT32Sx2:
-      case Iop_CmpEQ32x2:
-      case Iop_Add32x2:
-         break;
+   case Iop_Sub32x2:
+   case Iop_Add32x2:
+
+      helper = &MC_(helperc_MERGE_TAGS);
+      hname = "MC_(helperc_MERGE_TAGS)";
+      break;
+
+      // Comparisons don't seem to be interactions
+   case Iop_CmpGT8Sx8:
+   case Iop_CmpEQ8x8:
+   case Iop_CmpGT16Sx4:
+   case Iop_CmpEQ16x4:
+   case Iop_CmpGT32Sx2:
+   case Iop_CmpEQ32x2:
+      break;
 
       /* 64-bit data-steering */
-      case Iop_InterleaveLO32x2:
-      case Iop_InterleaveLO16x4:
-      case Iop_InterleaveLO8x8:
-      case Iop_InterleaveHI32x2:
-      case Iop_InterleaveHI16x4:
-      case Iop_InterleaveHI8x8:
-         break;
+   case Iop_InterleaveLO32x2:
+   case Iop_InterleaveLO16x4:
+   case Iop_InterleaveLO8x8:
+   case Iop_InterleaveHI32x2:
+   case Iop_InterleaveHI16x4:
+   case Iop_InterleaveHI8x8:
+      break;
 
       /* V128-bit SIMD */
 
-      case Iop_ShrN16x8:
-      case Iop_ShrN32x4:
-      case Iop_ShrN64x2:
-      case Iop_SarN16x8:
-      case Iop_SarN32x4:
-      case Iop_ShlN16x8:
-      case Iop_ShlN32x4:
-      case Iop_ShlN64x2:
-         break;
+      // Shifts:
+   case Iop_ShrN16x8:
+   case Iop_ShrN32x4:
+   case Iop_ShrN64x2:
+   case Iop_SarN16x8:
+   case Iop_SarN32x4:
+   case Iop_ShlN16x8:
+   case Iop_ShlN32x4:
+   case Iop_ShlN64x2:
+      return vatom1;
+      break;
 
-      case Iop_QSub8Ux16:
-      case Iop_QSub8Sx16:
-      case Iop_Sub8x16:
-      case Iop_Min8Ux16:
-      case Iop_Max8Ux16:
-      case Iop_CmpGT8Sx16:
-      case Iop_CmpEQ8x16:
-      case Iop_Avg8Ux16:
-      case Iop_QAdd8Ux16:
-      case Iop_QAdd8Sx16:
-      case Iop_Add8x16:
-         break;
+      // Arithmetic
+   case Iop_QSub8Ux16:
+   case Iop_QSub8Sx16:
+   case Iop_Sub8x16:
+   case Iop_Min8Ux16:
+   case Iop_Max8Ux16:
+   case Iop_Avg8Ux16:
+   case Iop_QAdd8Ux16:
+   case Iop_QAdd8Sx16:
+   case Iop_Add8x16:
 
-      case Iop_QSub16Ux8:
-      case Iop_QSub16Sx8:
-      case Iop_Sub16x8:
-      case Iop_Mul16x8:
-      case Iop_MulHi16Sx8:
-      case Iop_MulHi16Ux8:
-      case Iop_Min16Sx8:
-      case Iop_Max16Sx8:
-      case Iop_CmpGT16Sx8:
-      case Iop_CmpEQ16x8:
-      case Iop_Avg16Ux8:
-      case Iop_QAdd16Ux8:
-      case Iop_QAdd16Sx8:
-      case Iop_Add16x8:
-         break;
+   case Iop_QSub16Ux8:
+   case Iop_QSub16Sx8:
+   case Iop_Sub16x8:
+   case Iop_Mul16x8:
+   case Iop_MulHi16Sx8:
+   case Iop_MulHi16Ux8:
+   case Iop_Min16Sx8:
+   case Iop_Max16Sx8:
+   case Iop_Avg16Ux8:
+   case Iop_QAdd16Ux8:
+   case Iop_QAdd16Sx8:
+   case Iop_Add16x8:
 
-      case Iop_Sub32x4:
-      case Iop_CmpGT32Sx4:
-      case Iop_CmpEQ32x4:
-      case Iop_Add32x4:
-         break;
+   case Iop_Sub32x4:
+   case Iop_Add32x4:
 
-      case Iop_Sub64x2:
-      case Iop_Add64x2:
-         break;
+   case Iop_Sub64x2:
+   case Iop_Add64x2:
 
-      case Iop_QNarrow32Sx4:
-      case Iop_QNarrow16Sx8:
-      case Iop_QNarrow16Ux8:
-         break;
+   case Iop_Sub64Fx2:
+   case Iop_Mul64Fx2:
+   case Iop_Min64Fx2:
+   case Iop_Max64Fx2:
+   case Iop_Div64Fx2:
+   case Iop_Add64Fx2:
 
-      case Iop_Sub64Fx2:
-      case Iop_Mul64Fx2:
-      case Iop_Min64Fx2:
-      case Iop_Max64Fx2:
-      case Iop_Div64Fx2:
-      case Iop_CmpLT64Fx2:
-      case Iop_CmpLE64Fx2:
-      case Iop_CmpEQ64Fx2:
-      case Iop_Add64Fx2:
-         break;
+   case Iop_Sub64F0x2:
+   case Iop_Mul64F0x2:
+   case Iop_Min64F0x2:
+   case Iop_Max64F0x2:
+   case Iop_Div64F0x2:
+   case Iop_Add64F0x2:
 
-      case Iop_Sub64F0x2:
-      case Iop_Mul64F0x2:
-      case Iop_Min64F0x2:
-      case Iop_Max64F0x2:
-      case Iop_Div64F0x2:
-      case Iop_CmpLT64F0x2:
-      case Iop_CmpLE64F0x2:
-      case Iop_CmpEQ64F0x2:
-      case Iop_Add64F0x2:
-         break;
+   case Iop_Sub32Fx4:
+   case Iop_Mul32Fx4:
+   case Iop_Min32Fx4:
+   case Iop_Max32Fx4:
+   case Iop_Div32Fx4:
+   case Iop_Add32Fx4:
 
-      case Iop_Sub32Fx4:
-      case Iop_Mul32Fx4:
-      case Iop_Min32Fx4:
-      case Iop_Max32Fx4:
-      case Iop_Div32Fx4:
-      case Iop_CmpLT32Fx4:
-      case Iop_CmpLE32Fx4:
-      case Iop_CmpEQ32Fx4:
-      case Iop_Add32Fx4:
-         break;
+   case Iop_Sub32F0x4:
+   case Iop_Mul32F0x4:
+   case Iop_Min32F0x4:
+   case Iop_Max32F0x4:
+   case Iop_Div32F0x4:
+   case Iop_Add32F0x4:
 
-      case Iop_Sub32F0x4:
-      case Iop_Mul32F0x4:
-      case Iop_Min32F0x4:
-      case Iop_Max32F0x4:
-      case Iop_Div32F0x4:
-      case Iop_CmpLT32F0x4:
-      case Iop_CmpLE32F0x4:
-      case Iop_CmpEQ32F0x4:
-      case Iop_Add32F0x4:
-         break;
+      helper = &MC_(helperc_MERGE_TAGS);
+      hname = "MC_(helperc_MERGE_TAGS)";
+      break;
+
+      // Comparisons:
+   case Iop_CmpGT8Sx16:
+   case Iop_CmpEQ8x16:
+   case Iop_CmpGT16Sx8:
+   case Iop_CmpEQ16x8:
+   case Iop_CmpGT32Sx4:
+   case Iop_CmpEQ32x4:
+   case Iop_CmpLT64Fx2:
+   case Iop_CmpLE64Fx2:
+   case Iop_CmpEQ64Fx2:
+   case Iop_CmpLT64F0x2:
+   case Iop_CmpLE64F0x2:
+   case Iop_CmpEQ64F0x2:
+   case Iop_CmpLT32F0x4:
+   case Iop_CmpLE32F0x4:
+   case Iop_CmpEQ32F0x4:
+   case Iop_CmpLT32Fx4:
+   case Iop_CmpLE32Fx4:
+   case Iop_CmpEQ32Fx4:
+      break;
+
+   case Iop_QNarrow32Sx4:
+   case Iop_QNarrow16Sx8:
+   case Iop_QNarrow16Ux8:
+      break;
 
       /* V128-bit data-steering */
-      case Iop_SetV128lo32:
-      case Iop_SetV128lo64:
-      case Iop_64HLtoV128:
-      case Iop_InterleaveLO64x2:
-      case Iop_InterleaveLO32x4:
-      case Iop_InterleaveLO16x8:
-      case Iop_InterleaveLO8x16:
-      case Iop_InterleaveHI64x2:
-      case Iop_InterleaveHI32x4:
-      case Iop_InterleaveHI16x8:
-      case Iop_InterleaveHI8x16:
-         break;
+   case Iop_SetV128lo32:
+   case Iop_SetV128lo64:
+   case Iop_64HLtoV128:
+   case Iop_InterleaveLO64x2:
+   case Iop_InterleaveLO32x4:
+   case Iop_InterleaveLO16x8:
+   case Iop_InterleaveLO8x16:
+   case Iop_InterleaveHI64x2:
+   case Iop_InterleaveHI32x4:
+   case Iop_InterleaveHI16x8:
+   case Iop_InterleaveHI8x16:
+      break;
 
-      /* Scalar floating point */
-
-      case Iop_RoundF64:
-      case Iop_F64toI64:
-      case Iop_I64toF64:
-         break;
-
-      case Iop_PRemC3210F64: case Iop_PRem1C3210F64:
-         /* Takes two F64 args. */
-      case Iop_F64toI32:
-      case Iop_F64toF32:
-         /* First arg is I32 (rounding mode), second is F64 (data). */
-         break;
-
-      case Iop_F64toI16:
-         /* First arg is I32 (rounding mode), second is F64 (data). */
-         break;
-
-      case Iop_ScaleF64:
-      case Iop_Yl2xF64:
-      case Iop_Yl2xp1F64:
-      case Iop_PRemF64:
-      case Iop_PRem1F64:
-      case Iop_AtanF64:
-      case Iop_AddF64:
-      case Iop_DivF64:
-      case Iop_SubF64:
-      case Iop_MulF64:
-         helper = &MC_(helperc_MERGE_TAGS_8);
-         hname = "MC_(helperc_MERGE_TAGS_8)";
-         break;
-
-      case Iop_CmpF64:
-         break;
-
-      /* non-FP after here */
-
-      case Iop_DivModU64to32:
-      case Iop_DivModS64to32:
-         break;
-
-      case Iop_16HLto32:
-      case Iop_32HLto64:
-         break;
-
-      case Iop_Add64:
-      case Iop_Sub64:
-         helper = &MC_(helperc_MERGE_TAGS_8);
-         hname = "MC_(helperc_MERGE_TAGS_8)";
-         break;
-
-      case Iop_MullS32:
-      case Iop_MullU32:
-      case Iop_Mul32:
-      case Iop_Add32:
-      case Iop_Sub32:
-         helper = &MC_(helperc_MERGE_TAGS_4);
-         hname = "MC_(helperc_MERGE_TAGS_4)";
-         break;
-
-      case Iop_MullS16:
-      case Iop_MullU16:
-      case Iop_Mul16:
-      case Iop_Add16:
-      case Iop_Sub16:
-         helper = &MC_(helperc_MERGE_TAGS_2);
-         hname = "MC_(helperc_MERGE_TAGS_2)";
-         break;
-
-      case Iop_MullS8:
-      case Iop_MullU8:
-      case Iop_Sub8:
-      case Iop_Add8:
-         helper = &MC_(helperc_MERGE_TAGS_1);
-         hname = "MC_(helperc_MERGE_TAGS_1)";
-         break;
-
-      case Iop_CmpEQ32:
-      case Iop_CmpLE32S:
-      case Iop_CmpLE32U:
-      case Iop_CmpLT32U:
-      case Iop_CmpLT32S:
-      case Iop_CmpNE32:
-         break;
-
-      case Iop_CmpEQ16: case Iop_CmpNE16:
-      case Iop_CmpEQ8: case Iop_CmpNE8:
-      case Iop_Shl32: case Iop_Shr32: case Iop_Sar32:
-      case Iop_Shl16: case Iop_Shr16: case Iop_Sar16:
-      case Iop_Shl8: case Iop_Shr8:
-      case Iop_Shl64: case Iop_Shr64:
-      case Iop_AndV128:
-      case Iop_And64:
-      case Iop_And32:
-      case Iop_And16:
-      case Iop_And8:
-      case Iop_OrV128:
-      case Iop_Or64:
-      case Iop_Or32:
-      case Iop_Or16:
-      case Iop_Or8:
-      case Iop_Xor8:
-      case Iop_Xor16:
-      case Iop_Xor32:
-      case Iop_Xor64:
-      case Iop_XorV128:
-         break;
-
-      default:
-         ppIROp(op);
-         VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
+      // Hopefully we will never get here if we've had had cases which
+      // handle every possible IR binary op. type (right?)
+   default:
+      ppIROp(op);
+      VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
    }
 
    if (helper) {
-      // PG - tags are always 32 bits
+      // The standard way to make a dirty helper call (I think):
+      // Tags are always 32 bits
       datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
       di = unsafeIRDirty_1_N(datatag,
                              2,
