@@ -45,6 +45,7 @@
 /* #define VG_DEBUG_MEMORY */
 
 //#define DYNCOMP_DEBUG
+#define CREATE_TAG_VERBOSE
 #define STORE_TAG_VERBOSE
 #define LOAD_TAG_VERBOSE
 #define MERGE_TAGS_VERBOSE
@@ -493,10 +494,10 @@ static void union_tags_in_range(Addr a, Addr max) {
 VGA_REGPARM(0)
 UInt MC_(helperc_CREATE_TAG) () {
   UInt newTag = assign_new_tag_no_addr();
-
+#ifdef CREATE_TAG_VERBOSE
   VG_(printf)("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
               newTag, nextTag);
-
+#endif
   return newTag;
 }
 

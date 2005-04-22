@@ -128,13 +128,13 @@ static IRTemp findShadowTmp ( MCEnv* mce, IRTemp orig )
    for undefinedness, but unfortunately IR's SSA property disallows
    this.  Instead we must abandon the old shadow, allocate a new one
    and use that instead. */
-static void newShadowTmp ( MCEnv* mce, IRTemp orig )
-{
-   tl_assert(orig < mce->n_originalTmps);
-   mce->tmpMap[orig]
-      = newIRTemp(mce->bb->tyenv,
-                  shadowType(mce->bb->tyenv->types[orig]));
-}
+/* static void newShadowTmp ( MCEnv* mce, IRTemp orig ) */
+/* { */
+/*    tl_assert(orig < mce->n_originalTmps); */
+/*    mce->tmpMap[orig] */
+/*       = newIRTemp(mce->bb->tyenv, */
+/*                   shadowType(mce->bb->tyenv->types[orig])); */
+/* } */
 
 
 /*------------------------------------------------------------*/
@@ -218,14 +218,14 @@ static IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
    for undefinedness, but unfortunately IR's SSA property disallows
    this.  Instead we must abandon the old shadow, allocate a new one
    and use that instead. */
-static void newShadowTmp_DC ( DCEnv* dce, IRTemp orig )
-{
-   tl_assert(orig < dce->n_originalTmps);
-   dce->tmpMap[orig]
-      = newIRTemp(dce->bb->tyenv,
-                  //shadowType_DC(dce->bb->tyenv->types[orig]));
-                  Ity_I32); // PG - tags are always 32 bits
-}
+/* static void newShadowTmp_DC ( DCEnv* dce, IRTemp orig ) */
+/* { */
+/*    tl_assert(orig < dce->n_originalTmps); */
+/*    dce->tmpMap[orig] */
+/*       = newIRTemp(dce->bb->tyenv, */
+/*                   //shadowType_DC(dce->bb->tyenv->types[orig])); */
+/*                   Ity_I32); // PG - tags are always 32 bits */
+/* } */
 
 /*------------------------------------------------------------*/
 /*--- IRAtoms -- a subset of IRExprs                       ---*/
@@ -2628,18 +2628,37 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    }
 
    if (helper) {
-      // The standard way to make a dirty helper call (I think):
-      // Tags are always 32 bits
-      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-      di = unsafeIRDirty_1_N(datatag,
-                             2,
-                             hname,
-                             helper,
-                             mkIRExprVec_2( vatom1, vatom2 ));
+      // Heuristic:
 
-      setHelperAnns_DC( dce, di );
-      stmt( dce->bb, IRStmt_Dirty(di) );
-      return mkexpr(datatag);
+      // At least as observed in one trial, the dirty call
+      // version had MANY more calls of MC_(helperc_MERGE_TAGS)
+      // than the clean version, many of which were nonsensical
+      // merges of tag 0 with a valid tag but nonetheless with
+      // some valid merges as well.
+      // However, in 'z = x + y' of SuperSimpleTest,
+      // that interaction was correctly captured by the clean call.
+
+      //      // The standard way to make a dirty helper call (I think):
+      //      // Tags are always 32 bits
+      //      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+      //      di = unsafeIRDirty_1_N(datatag,
+      //                             2,
+      //                             hname,
+      //                             helper,
+      //                             mkIRExprVec_2( vatom1, vatom2 ));
+
+      //      setHelperAnns_DC( dce, di );
+      //      stmt( dce->bb, IRStmt_Dirty(di) );
+      //      return mkexpr(datatag);
+
+      // Alternative: Let's try a clean call?
+      // The dirty call seems to work just fine, though.
+      return mkIRExprCCall (Ity_I32,
+                            2 /*Int regparms*/,
+                            hname,
+                            helper,
+                            mkIRExprVec_2( vatom1, vatom2 ));
+
    }
    // Hmmm, is this the desired behavior for a non-interaction?
    // I think so ...
@@ -2655,14 +2674,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    else {
       return IRExpr_Const(IRConst_U32(0));
    }
-
-   // Alternative: Let's try a clean call???
-   // The dirty call seems to work just fine, though.
-   //   return mkIRExprCCall (Ity_I32,
-   //                         2 /*Int regparms*/,
-   //                         "MC_(helperc_MERGE_TAGS_4)",
-   //                         &MC_(helperc_MERGE_TAGS_4),
-   //                         mkIRExprVec_2( vatom1, vatom2 ));
 }
 
 
@@ -2672,8 +2683,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    IRAtom* vatom = expr2tags_DC( dce, atom );
    tl_assert(isOriginalAtom_DC(dce,atom));
 
-   // PG - Insert fake return value here
-   // Right now, do nothing with unary ops
+   // Do nothing with unary ops.  Just evaluate the
+   // sub-expression and return it:
    return vatom;
 
 /*    switch (op) { */
@@ -2907,11 +2918,12 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          return mkexpr(datatag);
 
          // Or try it with a clean call:
-   //         return mkIRExprCCall(Ity_I32,
-   //                              0,
-   //                              "MC_(helperc_CREATE_TAG)",
-   //                              &MC_(helperc_CREATE_TAG),
-   //                              mkIRExprVec_0());
+         // Hmmmm ... clean call doesn't seem to work here
+         //         return mkIRExprCCall(Ity_I32,
+         //                              0,
+         //                              "MC_(helperc_CREATE_TAG)",
+         //                              &MC_(helperc_CREATE_TAG),
+         //                              mkIRExprVec_0());
 
       case Iex_Binop:
          return expr2tags_Binop_DC(
