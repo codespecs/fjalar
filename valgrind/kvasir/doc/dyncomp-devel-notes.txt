@@ -581,3 +581,61 @@ If we are pretty sure that there are relatively few distinct sets
 (tag_map) with its canonical tag will better enable us to recycle
 tags.
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+Dude, something looks good:
+
+SuperSimpleTest.c:
+
+int main() {
+  int x = 5;
+  int y = 10;
+  int z = x + y;
+  printf("&x=%p, &y=%p, &z=%p\n", &x, &y, &z);
+  return 0;
+}
+
+
+Program output:
+&x=0x52bfe354, &y=0x52bfe350, &z=0x52bfe34c
+
+Possibly an interesting part:
+
+helperc_STORE_TAG_4(0x52BFE358, 0) [nextTag=1768769]
+helperc_CREATE_TAG() = 1768769 [nextTag=1768770]
+helperc_MERGE_TAGS_4(0, 1768769) [nextTag=1768770]
+helperc_CREATE_TAG() = 1768770 [nextTag=1768771]
+helperc_MERGE_TAGS_4(0, 1768770) [nextTag=1768771]
+helperc_CREATE_TAG() = 1768771 [nextTag=1768772]
+helperc_MERGE_TAGS_4(0, 1768771) [nextTag=1768772]
+helperc_CREATE_TAG() = 1768772 [nextTag=1768773]
+helperc_CREATE_TAG() = 1768773 [nextTag=1768774]
+helperc_MERGE_TAGS_4(0, 1768773) [nextTag=1768774]
+helperc_CREATE_TAG() = 1768774 [nextTag=1768775]             <-- create tag for '5'
+helperc_STORE_TAG_4(0x52BFE354, 1768774) [nextTag=1768775]   <-- Assign '5' to x; tag(x) = 1768774
+helperc_CREATE_TAG() = 1768775 [nextTag=1768776]
+helperc_CREATE_TAG() = 1768776 [nextTag=1768777]
+helperc_MERGE_TAGS_4(0, 1768776) [nextTag=1768777]
+helperc_CREATE_TAG() = 1768777 [nextTag=1768778]             <-- create tag for '10'
+helperc_STORE_TAG_4(0x52BFE350, 1768777) [nextTag=1768778]   <-- Assign '10' to y; tag(y) = 1768777
+helperc_CREATE_TAG() = 1768778 [nextTag=1768779]
+helperc_CREATE_TAG() = 1768779 [nextTag=1768780]
+helperc_MERGE_TAGS_4(0, 1768779) [nextTag=1768780]
+helperc_LOAD_TAG_4(0x52BFE350) = 1768777 [nextTag=1768780]   <-- Load y into register; tag(y) = 1768777
+helperc_CREATE_TAG() = 1768780 [nextTag=1768781]
+helperc_CREATE_TAG() = 1768781 [nextTag=1768782]
+helperc_MERGE_TAGS_4(0, 1768781) [nextTag=1768782]
+helperc_LOAD_TAG_4(0x52BFE354) = 1768774 [nextTag=1768782]   <-- Load x into register; tag(x)= 1768774
+helperc_MERGE_TAGS_4(1768777, 1768774) [nextTag=1768782]     <-- Do 'x + y'; Merge tag(x) & tag(y)
+helperc_CREATE_TAG() = 1768782 [nextTag=1768783]
+helperc_CREATE_TAG() = 1768783 [nextTag=1768784]
+helperc_CREATE_TAG() = 1768784 [nextTag=1768785]
+helperc_CREATE_TAG() = 1768785 [nextTag=1768786]
+helperc_MERGE_TAGS_4(0, 1768785) [nextTag=1768786]
+helperc_STORE_TAG_4(0x52BFE34C, 1768777) [nextTag=1768786]   <-- Assign 'x + y' to z; tag(z) = tag(x) = 1768777
+
+
+
+Uhhh, we still have lots of extraneous CREATE_TAG() calls without
+being assigned to variables in memory, but the garbage collector
+should take care of that.

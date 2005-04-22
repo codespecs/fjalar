@@ -368,7 +368,6 @@ static IRExpr* definedOfType_DC () {
    return IRExpr_Const(IRConst_U32(0));
 }
 
-
 /*------------------------------------------------------------*/
 /*--- Constructing IR fragments                            ---*/
 /*------------------------------------------------------------*/
@@ -1182,31 +1181,6 @@ IRAtom* mkLazyN ( MCEnv* mce,
       }
    }
    return mkPCastTo(mce, finalVtype, curr );
-}
-
-IRAtom* mkLazyN_DC ( DCEnv* dce,
-                  IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
-{
-   Int i;
-   IRAtom* here;
-   IRAtom* curr = definedOfType(Ity_I32);
-   for (i = 0; exprvec[i]; i++) {
-      tl_assert(i < 32);
-      tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
-      /* Only take notice of this arg if the callee's mc-exclusion
-         mask does not say it is to be excluded. */
-      if (cee->mcx_mask & (1<<i)) {
-         /* the arg is to be excluded from definedness checking.  Do
-            nothing. */
-         if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
-      } else {
-         /* calculate the arg's definedness, and pessimistically merge
-            it in. */
-         here = mkPCastTo( dce, Ity_I32, expr2tags_DC(dce, exprvec[i]) );
-         curr = mkUifU32(dce, here, curr);
-      }
-   }
-   return mkPCastTo(dce, finalVtype, curr );
 }
 
 
@@ -2304,16 +2278,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
                               IRAtom* atom1, IRAtom* atom2 )
 {
-   //   IRType  and_or_ty;
-   //   IRAtom* (*uifu)    (DCEnv*, IRAtom*, IRAtom*);
-   //   IRAtom* (*difd)    (DCEnv*, IRAtom*, IRAtom*);
-   //   IRAtom* (*improve) (DCEnv*, IRAtom*, IRAtom*);
-
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
 
-   void*    helper;
-   Char*    hname;
+   void*    helper = 0;
+   Char*    hname = 0;
    IRDirty* di;
    IRTemp   datatag;
 
@@ -2324,61 +2293,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    tl_assert(sameKindedAtoms(atom1,vatom1));
    tl_assert(sameKindedAtoms(atom2,vatom2));
 
-/*    switch (op) { */
-/*       //      case Iop_Add32: */
-/*       //      case Iop_Sub32: */
-/*       default: */
-/*          helper = &MC_(helperc_MERGE_TAGS_4); */
-/*          hname = "MC_(helperc_MERGE_TAGS_4)"; */
-
-/*          // PG - tags are always 32 bits */
-/*          //         datatag = newIRTemp(dce->bb->tyenv, Ity_I32); */
-
-/*          //         di = unsafeIRDirty_1_N( datatag, */
-/*          //                 2, hname, helper, */
-/*          //                 mkIRExprVec_2( vatom1, vatom2 )); */
-
-/*          return mkIRExprCCall (Ity_I32, */
-/*                                2, hname, helper, */
-/*                                mkIRExprVec_2( vatom1, vatom2 )); */
-
-/*          //         setHelperAnns_DC( dce, di ); */
-/*          //         stmt( dce->bb, IRStmt_Dirty(di) ); */
-
-/*          //         return mkexpr(datatag); */
-/*          break; */
-/*          //      default: */
-/*          //         break; */
-/*    } */
-
-   // PG - tags are always 32 bits
-   datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-   di = unsafeIRDirty_1_N(datatag,
-                          2,
-                          "MC_(helperc_MERGE_TAGS_4)",
-                          &MC_(helperc_MERGE_TAGS_4),
-                          mkIRExprVec_2( vatom1, vatom2 ));
-
-   setHelperAnns_DC( dce, di );
-   stmt( dce->bb, IRStmt_Dirty(di) );
-   return mkexpr(datatag);
-
-    //   return mkIRExprCCall (Ity_I32,
-    //                         2 /*Int regparms*/,
-    //                         "MC_(helperc_MERGE_TAGS_4)",
-    //                         &MC_(helperc_MERGE_TAGS_4),
-    //                         mkIRExprVec_2( vatom1, vatom2 ));
-
-   // PG - Insert fake return value:
-   // Using this one gives you much less STORE 0's, but it may be incorrect
-   //   return assignNew_DC(dce, Ity_I32, binop(Iop_Add32, vatom1, vatom2));
-
-   // Using this one gives you many more STORE 0's (almost all STOREs are 0's,
-   // with a few exceptions) - ummm, but this is also incorrect
-   //   return definedOfType_DC();
-
+   // Set the appropriate helper functions for binary
+   // operations which are deemed as 'interactions'
+   // (The conditions within this switch will have
+   //  to be heavily refined as this tool matures)
    switch (op) {
-
       /* 64-bit SIMD */
 
       case Iop_ShrN16x4:
@@ -2387,14 +2306,12 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_SarN32x2:
       case Iop_ShlN16x4:
       case Iop_ShlN32x2:
-         /* Same scheme as with all other shifts. */
-            //            complainIfUndefined(dce, atom2); // PG
-         return assignNew_DC(dce, Ity_I64, binop(op, vatom1, atom2));
+         break;
 
       case Iop_QNarrow32Sx2:
       case Iop_QNarrow16Sx4:
       case Iop_QNarrow16Ux4:
-         return vectorNarrow64(dce, op, vatom1, vatom2);
+         break;
 
       case Iop_Min8Ux8:
       case Iop_Max8Ux8:
@@ -2407,7 +2324,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_QAdd8Sx8:
       case Iop_QAdd8Ux8:
       case Iop_Add8x8:
-         return binary8Ix8(dce, vatom1, vatom2);
+         break;
 
       case Iop_Min16Sx4:
       case Iop_Max16Sx4:
@@ -2423,13 +2340,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_QAdd16Sx4:
       case Iop_QAdd16Ux4:
       case Iop_Add16x4:
-         return binary16Ix4(dce, vatom1, vatom2);
+         break;
 
       case Iop_Sub32x2:
       case Iop_CmpGT32Sx2:
       case Iop_CmpEQ32x2:
       case Iop_Add32x2:
-         return binary32Ix2(dce, vatom1, vatom2);
+         break;
 
       /* 64-bit data-steering */
       case Iop_InterleaveLO32x2:
@@ -2438,7 +2355,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_InterleaveHI32x2:
       case Iop_InterleaveHI16x4:
       case Iop_InterleaveHI8x8:
-         return assignNew_DC(dce, Ity_I64, binop(op, vatom1, vatom2));
+         break;
 
       /* V128-bit SIMD */
 
@@ -2450,9 +2367,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_ShlN16x8:
       case Iop_ShlN32x4:
       case Iop_ShlN64x2:
-         /* Same scheme as with all other shifts. */
-            //            complainIfUndefined(dce, atom2); // PG
-         return assignNew_DC(dce, Ity_V128, binop(op, vatom1, atom2));
+         break;
 
       case Iop_QSub8Ux16:
       case Iop_QSub8Sx16:
@@ -2465,7 +2380,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_QAdd8Ux16:
       case Iop_QAdd8Sx16:
       case Iop_Add8x16:
-         return binary8Ix16(dce, vatom1, vatom2);
+         break;
 
       case Iop_QSub16Ux8:
       case Iop_QSub16Sx8:
@@ -2481,22 +2396,22 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_QAdd16Ux8:
       case Iop_QAdd16Sx8:
       case Iop_Add16x8:
-         return binary16Ix8(dce, vatom1, vatom2);
+         break;
 
       case Iop_Sub32x4:
       case Iop_CmpGT32Sx4:
       case Iop_CmpEQ32x4:
       case Iop_Add32x4:
-         return binary32Ix4(dce, vatom1, vatom2);
+         break;
 
       case Iop_Sub64x2:
       case Iop_Add64x2:
-         return binary64Ix2(dce, vatom1, vatom2);
+         break;
 
       case Iop_QNarrow32Sx4:
       case Iop_QNarrow16Sx8:
       case Iop_QNarrow16Ux8:
-         return vectorNarrowV128(dce, op, vatom1, vatom2);
+         break;
 
       case Iop_Sub64Fx2:
       case Iop_Mul64Fx2:
@@ -2507,7 +2422,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_CmpLE64Fx2:
       case Iop_CmpEQ64Fx2:
       case Iop_Add64Fx2:
-         return binary64Fx2(dce, vatom1, vatom2);
+         break;
 
       case Iop_Sub64F0x2:
       case Iop_Mul64F0x2:
@@ -2518,7 +2433,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_CmpLE64F0x2:
       case Iop_CmpEQ64F0x2:
       case Iop_Add64F0x2:
-         return binary64F0x2(dce, vatom1, vatom2);
+         break;
 
       case Iop_Sub32Fx4:
       case Iop_Mul32Fx4:
@@ -2529,7 +2444,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_CmpLE32Fx4:
       case Iop_CmpEQ32Fx4:
       case Iop_Add32Fx4:
-         return binary32Fx4(dce, vatom1, vatom2);
+         break;
 
       case Iop_Sub32F0x4:
       case Iop_Mul32F0x4:
@@ -2540,7 +2455,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_CmpLE32F0x4:
       case Iop_CmpEQ32F0x4:
       case Iop_Add32F0x4:
-         return binary32F0x4(dce, vatom1, vatom2);
+         break;
 
       /* V128-bit data-steering */
       case Iop_SetV128lo32:
@@ -2554,27 +2469,25 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_InterleaveHI32x4:
       case Iop_InterleaveHI16x8:
       case Iop_InterleaveHI8x16:
-         return assignNew_DC(dce, Ity_V128, binop(op, vatom1, vatom2));
+         break;
 
       /* Scalar floating point */
 
       case Iop_RoundF64:
       case Iop_F64toI64:
       case Iop_I64toF64:
-         /* First arg is I32 (rounding mode), second is F64 or I64
-            (data). */
-         return mkLazy2(dce, Ity_I64, vatom1, vatom2);
+         break;
 
       case Iop_PRemC3210F64: case Iop_PRem1C3210F64:
          /* Takes two F64 args. */
       case Iop_F64toI32:
       case Iop_F64toF32:
          /* First arg is I32 (rounding mode), second is F64 (data). */
-         return mkLazy2(dce, Ity_I32, vatom1, vatom2);
+         break;
 
       case Iop_F64toI16:
          /* First arg is I32 (rounding mode), second is F64 (data). */
-         return mkLazy2(dce, Ity_I16, vatom1, vatom2);
+         break;
 
       case Iop_ScaleF64:
       case Iop_Yl2xF64:
@@ -2586,171 +2499,126 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       case Iop_DivF64:
       case Iop_SubF64:
       case Iop_MulF64:
-         return mkLazy2(dce, Ity_I64, vatom1, vatom2);
+         helper = &MC_(helperc_MERGE_TAGS_8);
+         hname = "MC_(helperc_MERGE_TAGS_8)";
+         break;
 
       case Iop_CmpF64:
-         return mkLazy2(dce, Ity_I32, vatom1, vatom2);
+         break;
 
       /* non-FP after here */
 
       case Iop_DivModU64to32:
       case Iop_DivModS64to32:
-         return mkLazy2(dce, Ity_I64, vatom1, vatom2);
+         break;
 
       case Iop_16HLto32:
-         return assignNew_DC(dce, Ity_I32, binop(op, vatom1, vatom2));
       case Iop_32HLto64:
-         return assignNew_DC(dce, Ity_I64, binop(op, vatom1, vatom2));
+         break;
 
-      case Iop_MullS32:
-      case Iop_MullU32: {
-         IRAtom* vLo32 = mkLeft32(dce, mkUifU32(dce, vatom1,vatom2));
-         IRAtom* vHi32 = mkPCastTo(dce, Ity_I32, vLo32);
-         return assignNew_DC(dce, Ity_I64, binop(Iop_32HLto64, vHi32, vLo32));
-      }
-
-      case Iop_MullS16:
-      case Iop_MullU16: {
-         IRAtom* vLo16 = mkLeft16(dce, mkUifU16(dce, vatom1,vatom2));
-         IRAtom* vHi16 = mkPCastTo(dce, Ity_I16, vLo16);
-         return assignNew_DC(dce, Ity_I32, binop(Iop_16HLto32, vHi16, vLo16));
-      }
-
-      case Iop_MullS8:
-      case Iop_MullU8: {
-         IRAtom* vLo8 = mkLeft8(dce, mkUifU8(dce, vatom1,vatom2));
-         IRAtom* vHi8 = mkPCastTo(dce, Ity_I8, vLo8);
-         return assignNew_DC(dce, Ity_I16, binop(Iop_8HLto16, vHi8, vLo8));
-      }
-
-      case Iop_Add32:
-         if (dce->bogusLiterals)
-            return expensiveAddSub(dce,True,Ity_I32,
-                                   vatom1,vatom2, atom1,atom2);
-         else
-            goto cheap_AddSub32;
-      case Iop_Sub32:
-         if (dce->bogusLiterals)
-            return expensiveAddSub(dce,False,Ity_I32,
-                                   vatom1,vatom2, atom1,atom2);
-         else
-            goto cheap_AddSub32;
-
-      cheap_AddSub32:
-      case Iop_Mul32:
-         return mkLeft32(dce, mkUifU32(dce, vatom1,vatom2));
-
-      /* could do better: Add64, Sub64 */
       case Iop_Add64:
       case Iop_Sub64:
-         return mkLeft64(dce, mkUifU64(dce, vatom1,vatom2));
+         helper = &MC_(helperc_MERGE_TAGS_8);
+         hname = "MC_(helperc_MERGE_TAGS_8)";
+         break;
 
+      case Iop_MullS32:
+      case Iop_MullU32:
+      case Iop_Mul32:
+      case Iop_Add32:
+      case Iop_Sub32:
+         helper = &MC_(helperc_MERGE_TAGS_4);
+         hname = "MC_(helperc_MERGE_TAGS_4)";
+         break;
+
+      case Iop_MullS16:
+      case Iop_MullU16:
       case Iop_Mul16:
       case Iop_Add16:
       case Iop_Sub16:
-         return mkLeft16(dce, mkUifU16(dce, vatom1,vatom2));
+         helper = &MC_(helperc_MERGE_TAGS_2);
+         hname = "MC_(helperc_MERGE_TAGS_2)";
+         break;
 
+      case Iop_MullS8:
+      case Iop_MullU8:
       case Iop_Sub8:
       case Iop_Add8:
-         return mkLeft8(dce, mkUifU8(dce, vatom1,vatom2));
+         helper = &MC_(helperc_MERGE_TAGS_1);
+         hname = "MC_(helperc_MERGE_TAGS_1)";
+         break;
 
-/*       case Iop_CmpEQ32: */
-/*          if (dce->bogusLiterals) */
-/*             return expensiveCmpEQorNE(dce,Ity_I32, vatom1,vatom2, atom1,atom2 ); */
-/*          else */
-/*             goto cheap_cmp32; */
+      case Iop_CmpEQ32:
+      case Iop_CmpLE32S:
+      case Iop_CmpLE32U:
+      case Iop_CmpLT32U:
+      case Iop_CmpLT32S:
+      case Iop_CmpNE32:
+         break;
 
-/*       cheap_cmp32: */
-/*       case Iop_CmpLE32S: case Iop_CmpLE32U: */
-/*       case Iop_CmpLT32U: case Iop_CmpLT32S: */
-/*       case Iop_CmpNE32: */
-/*          return mkPCastTo(dce, Ity_I1, mkUifU32(dce, vatom1,vatom2)); */
-
-/*       case Iop_CmpEQ16: case Iop_CmpNE16: */
-/*          return mkPCastTo(dce, Ity_I1, mkUifU16(dce, vatom1,vatom2)); */
-
-/*       case Iop_CmpEQ8: case Iop_CmpNE8: */
-/*          return mkPCastTo(dce, Ity_I1, mkUifU8(dce, vatom1,vatom2)); */
-
+      case Iop_CmpEQ16: case Iop_CmpNE16:
+      case Iop_CmpEQ8: case Iop_CmpNE8:
       case Iop_Shl32: case Iop_Shr32: case Iop_Sar32:
-         /* Complain if the shift amount is undefined.  Then simply
-            shift the first arg's V bits by the real shift amount. */
-            // complainIfUndefined(dce, atom2); // PG
-         return assignNew_DC(dce, Ity_I32, binop(op, vatom1, atom2));
-
       case Iop_Shl16: case Iop_Shr16: case Iop_Sar16:
-         /* Same scheme as with 32-bit shifts. */
-            // complainIfUndefined(dce, atom2); // PG
-         return assignNew_DC(dce, Ity_I16, binop(op, vatom1, atom2));
-
       case Iop_Shl8: case Iop_Shr8:
-         /* Same scheme as with 32-bit shifts. */
-            // complainIfUndefined(dce, atom2); // PG
-         return assignNew_DC(dce, Ity_I8, binop(op, vatom1, atom2));
-
       case Iop_Shl64: case Iop_Shr64:
-         /* Same scheme as with 32-bit shifts. */
-            // complainIfUndefined(dce, atom2); // PG
-         return assignNew_DC(dce, Ity_I64, binop(op, vatom1, atom2));
-
-/*       case Iop_AndV128: */
-/*          uifu = mkUifUV128; difd = mkDifDV128; */
-/*          and_or_ty = Ity_V128; improve = mkImproveANDV128; goto do_And_Or; */
-/*       case Iop_And64: */
-/*          uifu = mkUifU64; difd = mkDifD64; */
-/*          and_or_ty = Ity_I64; improve = mkImproveAND64; goto do_And_Or; */
-/*       case Iop_And32: */
-/*          uifu = mkUifU32; difd = mkDifD32; */
-/*          and_or_ty = Ity_I32; improve = mkImproveAND32; goto do_And_Or; */
-/*       case Iop_And16: */
-/*          uifu = mkUifU16; difd = mkDifD16; */
-/*          and_or_ty = Ity_I16; improve = mkImproveAND16; goto do_And_Or; */
-/*       case Iop_And8: */
-/*          uifu = mkUifU8; difd = mkDifD8; */
-/*          and_or_ty = Ity_I8; improve = mkImproveAND8; goto do_And_Or; */
-
-/*       case Iop_OrV128: */
-/*          uifu = mkUifUV128; difd = mkDifDV128; */
-/*          and_or_ty = Ity_V128; improve = mkImproveORV128; goto do_And_Or; */
-/*       case Iop_Or64: */
-/*          uifu = mkUifU64; difd = mkDifD64; */
-/*          and_or_ty = Ity_I64; improve = mkImproveOR64; goto do_And_Or; */
-/*       case Iop_Or32: */
-/*          uifu = mkUifU32; difd = mkDifD32; */
-/*          and_or_ty = Ity_I32; improve = mkImproveOR32; goto do_And_Or; */
-/*       case Iop_Or16: */
-/*          uifu = mkUifU16; difd = mkDifD16; */
-/*          and_or_ty = Ity_I16; improve = mkImproveOR16; goto do_And_Or; */
-/*       case Iop_Or8: */
-/*          uifu = mkUifU8; difd = mkDifD8; */
-/*          and_or_ty = Ity_I8; improve = mkImproveOR8; goto do_And_Or; */
-
-/*       do_And_Or: */
-/*          return */
-/*          assignNew_DC( */
-/*             dce, */
-/*             and_or_ty, */
-/*             difd(dce, uifu(dce, vatom1, vatom2), */
-/*                       difd(dce, improve(dce, atom1, vatom1), */
-/*                                 improve(dce, atom2, vatom2) ) ) ); */
-
-/*       case Iop_Xor8: */
-/*          return mkUifU8(dce, vatom1, vatom2); */
-/*       case Iop_Xor16: */
-/*          return mkUifU16(dce, vatom1, vatom2); */
-/*       case Iop_Xor32: */
-/*          return mkUifU32(dce, vatom1, vatom2); */
-/*       case Iop_Xor64: */
-/*          return mkUifU64(dce, vatom1, vatom2); */
-/*       case Iop_XorV128: */
-/*          return mkUifUV128(dce, vatom1, vatom2); */
+      case Iop_AndV128:
+      case Iop_And64:
+      case Iop_And32:
+      case Iop_And16:
+      case Iop_And8:
+      case Iop_OrV128:
+      case Iop_Or64:
+      case Iop_Or32:
+      case Iop_Or16:
+      case Iop_Or8:
+      case Iop_Xor8:
+      case Iop_Xor16:
+      case Iop_Xor32:
+      case Iop_Xor64:
+      case Iop_XorV128:
+         break;
 
       default:
          ppIROp(op);
          VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
    }
 
-   return 0;
+   if (helper) {
+      // PG - tags are always 32 bits
+      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+      di = unsafeIRDirty_1_N(datatag,
+                             2,
+                             hname,
+                             helper,
+                             mkIRExprVec_2( vatom1, vatom2 ));
+
+      setHelperAnns_DC( dce, di );
+      stmt( dce->bb, IRStmt_Dirty(di) );
+      return mkexpr(datatag);
+   }
+   // Hmmm, is this the desired behavior for a non-interaction?
+   // I think so ...
+   // vatom1 and vatom2 contain the tags for the two operands.
+   // If they don't really interact, we want to return simply 0
+   // (no tag) so that when this gets propagated up the chain,
+   // it doesn't try to merge either operand tag with anything else.
+   //
+   // e.g. Assume @ is a binary operator which is NOT interaction:
+   //     (a @ b) + c
+   // 'c' didn't really interact with either 'a' or 'b'.
+   // Is this correct?
+   else {
+      return IRExpr_Const(IRConst_U32(0));
+   }
+
+   // Alternative: Let's try a clean call???
+   // The dirty call seems to work just fine, though.
+   //   return mkIRExprCCall (Ity_I32,
+   //                         2 /*Int regparms*/,
+   //                         "MC_(helperc_MERGE_TAGS_4)",
+   //                         &MC_(helperc_MERGE_TAGS_4),
+   //                         mkIRExprVec_2( vatom1, vatom2 ));
 }
 
 
@@ -2950,10 +2818,8 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
 
    // PG - Insert fake return value here
    // This is gonna be wrong, but oh well
-   return vbitsC;
-   //   return definedOfType_DC();
-
-   //   return vbitsC;
+   // return vbitsC;
+   return definedOfType_DC();
 
    // The real return value:
    //   return
@@ -3018,15 +2884,17 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                                       e->Iex.LDle.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
-         return mkLazyN_DC( dce, e->Iex.CCall.args,
-                            e->Iex.CCall.retty,
-                            e->Iex.CCall.cee );
+         // PG - Uhhh, does this work?
+         return e;
+            //         return mkLazyN_DC( dce, e->Iex.CCall.args,
+            //                            e->Iex.CCall.retty,
+            //                            e->Iex.CCall.cee );
 
       case Iex_Mux0X:
          // PG - Uhhh, does this work?
          return e;
-         //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-         //                                    e->Iex.Mux0X.exprX);
+         // return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+         //                           e->Iex.Mux0X.exprX);
 
       default:
          VG_(printf)("\n");
