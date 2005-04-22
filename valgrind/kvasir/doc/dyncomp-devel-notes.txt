@@ -695,6 +695,8 @@ Ok, I'm trying to run dyncomp on the programs in the Kvasir test
 suite.  This is all done with the CVS check-in at:
 Fri Apr 22 16:03:55 EDT 2005
 
+Or, in CVS time: 2005-04-22 20:04:56 +0000
+
 Success:
 
 bc
@@ -750,3 +752,38 @@ ERROR = IRStmt.Put.Tmp: tmp and expr do not match
 vex: the `impossible' happened:
    sanityCheckFail: exiting due to bad IR
 vex storage:  P 436,  T total 55547180 (1646556),  T curr 137076 (4325)
+
+
+
+Now I need to figure out what exactly makes these programs fail and
+generate the smallest possible example which reproduces this bug.
+
+In TypesTest, if you remove the stuff which deals with doubles and
+floats, it seems like you're fine:
+
+    printf("returnDoubleSum(%f, %f) = %f\n",
+	   (float)((a+b)/7),
+	   (double)((2/b)*a),
+	   returnDoubleSum((float)((a+b)/7), (double)((2/b)*a)));
+    printf("returnFloatProduct(%f, %f) = %f\n",
+	   (float)((b/9)+a*3.14159),
+	   (float)(b*a+6/7*3),
+	   returnFloatProduct((float)((b/9)+a*3.14159), (float)(b*a+6/7*3)));
+
+
+I extracted this out into FloatTest under dyncomp-tests, which is a
+tiny program that reproduces the genGuestArrayOffset() bug.
+
+It seems like any conversion to a float triggers this error.
+
+
+(On another note, all the Memcheck warnings we're getting with the
+dyncomp-instrumented code - interestingly, only system calls - are
+pesky.  Maybe something to do with helper functions, perhaps the dirty
+ones messing up v-bits)
+
+
+V-bits overriding problem:
+The main problem here (we think) is that the shadow guest state is a
+fixed size (the same size as the original guest state), which works
+well for Memcheck, but not for us.  We need more space!!!
