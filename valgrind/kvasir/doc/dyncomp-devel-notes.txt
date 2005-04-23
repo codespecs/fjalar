@@ -787,3 +787,160 @@ V-bits overriding problem:
 The main problem here (we think) is that the shadow guest state is a
 fixed size (the same size as the original guest state), which works
 well for Memcheck, but not for us.  We need more space!!!
+
+
+----------
+2005-04-23
+----------
+
+Yeah, there is only one shadow guest state for Memcheck (too bad it's
+hardcoded into Vex) and BOTH dyncomp AND Memcheck are sharing it,
+which means that we are clobbering V-bit information in the guest
+state (registers and stuff).  That's probably why we are getting so
+many bogus Memcheck errors.  To solve this, we need to somehow
+allocate more guest state.
+
+
+Floating point crash:
+
+int main() {
+  unsigned int a = 10;
+  float c = (float)a;
+  return 0;
+}
+
+vex: the `impossible' happened:
+   genGuestArrayOffset(x86 host)
+vex storage:  P 436,  T total 58577752 (1707030),  T curr 107796 (3293)
+
+
+But this works:
+
+int main() {
+  float c = 5;
+  return 0;
+}
+
+Actually, this may be related to the floating-point crash because
+getGuestArrayOffset() depends on the guest floating point array and if
+the sizes are bogus, then we're screwed.
+
+The problem is eliminated when you get rid of the handlers for Ist_PutI:
+
+case Ist_PutI:
+//            do_shadow_PUTI_DC( &dce,
+//                               st->Ist.PutI.descr,
+//                               st->Ist.PutI.ix,
+//                               st->Ist.PutI.bias,
+//                               st->Ist.PutI.data );
+break;
+
+It's got something to do with the indexing done in do_shadow_PUTI_DC.
+
+From Iex_GetI ...
+From Ist_PutI ...
+From Ist_PutI ...
+
+vex: the `impossible' happened:
+   genGuestArrayOffset(x86 host)
+vex storage:  P 436,  T total 58577752 (1707030),  T curr 107796 (3293)
+
+
+Yep, the debug. output confirms something fishy in PUTI_DC.
+
+Backtrace:
+
+Breakpoint 2, genGuestArrayOffset (env=0xb0275a64, descr=0xb0269b3c, off=0x4,
+    bias=-1) at priv/host-x86/isel.c:586
+(gdb) bt
+#0  genGuestArrayOffset (env=0xb0275a64, descr=0xb0269b3c, off=0x4, bias=-1)
+    at priv/host-x86/isel.c:586
+#1  0xb0075a59 in iselStmt (env=0xb0275a64, stmt=0xb0274c00)
+    at priv/host-x86/isel.c:3295
+#2  0xb0076145 in iselBB_X86 (bb=0xb026da38, subarch_host=123)
+    at priv/host-x86/isel.c:3519
+#3  0xb0060fe1 in LibVEX_Translate (arch_guest=VexArchX86,
+    subarch_guest=VexSubArchX86_sse2, arch_host=2955336248,
+    subarch_host=VexSubArchX86_sse2,
+    guest_bytes=0x8048354 "U\211е\203м\b\203дрё", guest_bytes_addr=134513492,
+    chase_into_ok=0x4, guest_extents=0xb0862ef4,
+    host_bytes=0xb0259aa0 "\213\235L\001", host_bytes_size=20000,
+    host_bytes_used=0x4, instrument1=0xb0046f44 <vgToolInternal_instrument>,
+    instrument2=0xb004958e <vg_SP_update_pass>,
+    cleanup_after_instrumentation=1 '\001', byte_accessible=0x4, traceflags=4)
+    at priv/main/vex_main.c:492
+#4  0xb004a1bb in vgPlain_translate (tid=1, orig_addr=134513492,
+    debugging_translation=0 '\0', debugging_verbosity=0)
+    at libvex_basictypes.h:151
+#5  0xb00136d8 in handle_tt_miss (tid=1) at vg_scheduler.c:653
+#6  0xb0013b18 in vgPlain_scheduler (tid=1) at vg_scheduler.c:768
+#7  0xb005835d in vgArch_thread_wrapper (tidW=1) at core_os.c:41
+#8  0x00000000 in ?? ()
+
+
+This is the statement that it supposedly comes from:
+
+(gdb) p *stmt
+$7 = {tag = Ist_PutI, Ist = {NoOp = {<No data fields>}, IMark = {
+      addr = 12692904998714383164, len = -1}, Put = {offset = -1339647172,
+      data = 0xb02641d8}, PutI = {descr = 0xb0269b3c, ix = 0xb02641d8,
+      bias = -1, data = 0xb0269ad8}, Tmp = {tmp = 2955320124,
+      data = 0xb02641d8}, STle = {addr = 0xb0269b3c, data = 0xb02641d8},
+    Dirty = {details = 0xb0269b3c}, MFence = {<No data fields>}, Exit = {
+      guard = 0xb0269b3c, jk = 2955297240, dst = 0xffffffff}}}
+
+pgbovine@parsnip:~/research/invariants/valgrind-3/vex$ grep -r x86guest_layout *
+...
+priv/guest-x86/gdefs.h:VexGuestLayout x86guest_layout;
+priv/guest-x86/ghelpers.c:   x86guest_layout
+priv/main/vex_main.c:         guest_layout     = &x86guest_layout;
+...
+
+
+pub/libvex_guest_x86.h:   VexGuestX86State;
+
+pub/libvex.h: Check this out - it hardcodes the 2X size:
+/* A note about guest state layout.
+
+   LibVEX defines the layout for the guest state, in the file
+   pub/libvex_guest_<arch>.h.  The struct will have an 8-aligned size.
+   Each translated bb is assumed to be entered with a specified
+   register pointing at such a struct.  Beyond that is a shadow
+   state area with the same size as the struct.  Beyond that is
+   a spill area that LibVEX may spill into.  It must have size
+   LibVEX_N_SPILL_BYTES, and this must be a 16-aligned number.
+
+   On entry, the baseblock pointer register must be 8-aligned.
+*/
+
+coregrind/x86/core_arch.h:      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+
+Here is where the shadow is FIXED!!!
+
+typedef
+   struct {
+      /* --- BEGIN vex-mandated guest state --- */
+
+      /* Saved machine context. */
+      VexGuestX86State vex;
+
+      /* Saved shadow context. */
+      VexGuestX86State vex_shadow;
+
+      /* Spill area. */
+      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+
+      /* --- END vex-mandated guest state --- */
+   }
+   ThreadArchState;
+
+Look at where the 2 is hardcoded! YUCK!
+
+valgrind: vg_scheduler.c:484 (run_thread_for_a_while): Assertion `a_vex + 2 * sz_vex == a_spill' failed.
+
+
+I'm changing it to add a vex_shadow_2 field to ThreadArchState.  Note
+that this blows because I'll need to change it for EVERY architecture,
+but that's ok since we're only doing x86 for now.
+
+but now it segfaults :( bah
