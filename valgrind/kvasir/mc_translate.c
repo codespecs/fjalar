@@ -948,6 +948,7 @@ void do_shadow_PUT ( MCEnv* mce,  Int offset,
    }
 }
 
+// A PUT stores a value into the guest state
 static
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -1011,6 +1012,7 @@ void do_shadow_PUTI ( MCEnv* mce,
    }
 }
 
+// A PUTI stores a value (dynamically indexed) into the guest state
 static
 void do_shadow_PUTI_DC ( DCEnv* dce,
                       IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
@@ -2638,26 +2640,27 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // However, in 'z = x + y' of SuperSimpleTest,
       // that interaction was correctly captured by the clean call.
 
-      //      // The standard way to make a dirty helper call (I think):
-      //      // Tags are always 32 bits
-      //      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-      //      di = unsafeIRDirty_1_N(datatag,
-      //                             2,
-      //                             hname,
-      //                             helper,
-      //                             mkIRExprVec_2( vatom1, vatom2 ));
+      // The standard way to make a dirty helper call (I think):
+      // Tags are always 32 bits
+      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+      di = unsafeIRDirty_1_N(datatag,
+                             2,
+                             hname,
+                             helper,
+                             mkIRExprVec_2( vatom1, vatom2 ));
 
-      //      setHelperAnns_DC( dce, di );
-      //      stmt( dce->bb, IRStmt_Dirty(di) );
-      //      return mkexpr(datatag);
+      setHelperAnns_DC( dce, di );
+      stmt( dce->bb, IRStmt_Dirty(di) );
+      return mkexpr(datatag);
 
       // Alternative: Let's try a clean call?
-      // The dirty call seems to work just fine, though.
-      return mkIRExprCCall (Ity_I32,
-                            2 /*Int regparms*/,
-                            hname,
-                            helper,
-                            mkIRExprVec_2( vatom1, vatom2 ));
+      // DO NOT use clean call unless it has NO side effects and
+      // is purely functional like an IRExpr
+      //      return mkIRExprCCall (Ity_I32,
+      //                            2 /*Int regparms*/,
+      //                            hname,
+      //                            helper,
+      //                            mkIRExprVec_2( vatom1, vatom2 ));
 
    }
    // Hmmm, is this the desired behavior for a non-interaction?
@@ -2898,7 +2901,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_GetI:
          return shadow_GETI_DC( dce, e->Iex.GetI.descr,
-                                  e->Iex.GetI.ix, e->Iex.GetI.bias );
+                                e->Iex.GetI.ix, e->Iex.GetI.bias );
 
       case Iex_Tmp:
          return IRExpr_Tmp( findShadowTmp_DC(dce, e->Iex.Tmp.tmp) );
@@ -2918,14 +2921,6 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
          return mkexpr(datatag);
 
-         // Or try it with a clean call:
-         // Hmmmm ... clean call doesn't seem to work here
-         //         return mkIRExprCCall(Ity_I32,
-         //                              0,
-         //                              "MC_(helperc_CREATE_TAG)",
-         //                              &MC_(helperc_CREATE_TAG),
-         //                              mkIRExprVec_0());
-
       case Iex_Binop:
          return expr2tags_Binop_DC(
                    dce,
@@ -2942,15 +2937,18 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_CCall:
          // PG - Uhhh, does this work?
+         //      We will need to think about handling this more carefully later
          return e;
             //         return mkLazyN_DC( dce, e->Iex.CCall.args,
             //                            e->Iex.CCall.retty,
             //                            e->Iex.CCall.cee );
 
       case Iex_Mux0X:
-         // PG - I have no clue what this is right now
-         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-                                    e->Iex.Mux0X.exprX);
+         // PG - This is like a ternary operator, so we don't want to
+         //      deal with it at all
+         return definedOfType_DC();
+         //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+         //                                    e->Iex.Mux0X.exprX);
 
       default:
          VG_(printf)("\n");
