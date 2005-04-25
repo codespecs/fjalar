@@ -7,11 +7,13 @@ config.h*
 stamp-h*
 valgrind
 valgrind.spec
+cachegrind
 vg_annotate
 vg_cachegen
 default.supp
 bin
 lib
+include
 share
 cachegrind.out.*
 autom4te.cache

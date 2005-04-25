@@ -31,6 +31,8 @@
 
 
 #include "core.h"
+#include "pub_core_aspacemgr.h"
+
 //zz#include "memcheck/memcheck.h"
 
 //#define DEBUG_MALLOC      // turn on heavyweight debugging machinery
@@ -388,14 +390,16 @@ void VG_(set_client_malloc_redzone_szB)(SizeT rz_szB)
    if (init_done) {
       VG_(printf)(
          "\nTool error:\n"
-         "  __FUNCTION__ cannot be called after the first allocation.\n");
+         "%s cannot be called after the first allocation.\n",
+         __PRETTY_FUNCTION__);
       VG_(exit)(1);
    }
    // This limit is no special figure, just something not too big
    if (rz_szB > 128) {
       VG_(printf)(
          "\nTool error:\n"
-         "  __FUNCTION__ passed a too-big value (%llu)", (ULong)rz_szB);
+         "  %s passed a too-big value (%llu)", 
+         __PRETTY_FUNCTION__, (ULong)rz_szB);
       VG_(exit)(1);
    }
    client_malloc_redzone_szB = rz_szB;

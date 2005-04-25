@@ -44,9 +44,11 @@
 #include "host-generic/h_generic_simd64.h"
 #include "host-x86/hdefs.h"
 
-/* TODO 4 Feb 2005:
+/* TODO 21 Apr 2005:
 
-   -- Fill in load-case in iselIntExpr_RMI
+   -- (Really an assembler issue) don't emit CMov32 as a cmov
+      insn, since that's expensive on P4 and conditional branch
+      is cheaper if (as we expect) the condition is highly predictable
 
    -- preserve xmm registers across function calls (by declaring them
       as trashed by call insns)
@@ -582,6 +584,7 @@ X86AMode* genGuestArrayOffset ( ISelEnv* env, IRArray* descr,
       theory there might be a day where we need to handle them -- if
       we ever run non-x86-guest on x86 host. */
 
+   // PG - Added support for 4-byte writes of DynComp tags
    if (nElems != 8 || (elemSz != 1 && elemSz != 4 && elemSz != 8))
       vpanic("genGuestArrayOffset(x86 host)");
 
@@ -601,7 +604,9 @@ X86AMode* genGuestArrayOffset ( ISelEnv* env, IRArray* descr,
    }
    addInstr(env,
             X86Instr_Alu32R(Xalu_AND, X86RMI_Imm(7), tmp));
+   // PG - Added support for 4-byte writes of DynComp tags
    vassert(elemSz == 1 || elemSz == 4 || elemSz == 8);
+   // PG - Added support for 4-byte writes of DynComp tags
    return
       X86AMode_IRRS( descr->base, hregX86_EBP(), tmp,
                      elemSz==8 ? 3 :
@@ -3306,9 +3311,6 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
       }
       // PG - Add handling for 4-byte PUTI's for tags
       if (ty == Ity_I32) {
-         //         HReg r = iselIntExpr_R(env, stmt->Ist.PutI.data);
-         //         addInstr(env, X86Instr_Store( 4, r, am ));
-         //         return;
          X86RI* ri = iselIntExpr_RI(env, stmt->Ist.PutI.data);
          addInstr(env, X86Instr_Alu32M(Xalu_MOV,ri,am));
          return;

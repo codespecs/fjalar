@@ -76,10 +76,6 @@
    asm("movl %%ebp, %0" : "=r" (ebp));       \
 } while (0)
 
-// On X86, any access below %esp is illegal.
-// The signal handler needs to know this.
-#define VGA_STACK_REDZONE_SIZE 0
-
 //extern const Char VG_(helper_wrapper_before)[];	/* in dispatch.S */
 //extern const Char VG_(helper_wrapper_return)[];	/* in dispatch.S */
 
@@ -127,11 +123,6 @@ typedef VexGuestX86State VexGuestArchState;
 // Base address of client address space.
 #define VGA_CLIENT_BASE       0x0ul
 
-/* ---------------------------------------------------------------------
-   Signal stuff (should be plat)
-   ------------------------------------------------------------------ */
-
-void VGA_(signal_return)(ThreadId tid, Bool isRT);
 
 #endif   // __X86_CORE_ARCH_H
 

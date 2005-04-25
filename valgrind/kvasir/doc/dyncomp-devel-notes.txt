@@ -961,3 +961,128 @@ vex/priv/host-generic/reg_alloc2.c:684
       vreg_lrs[j].spill_offset = toShort(guest_sizeB * 2 + k * 8);
 
 ThreadArchState is within ThreadState (defined in coregrind/core.h)
+
+./priv/host-generic/reg_alloc2.c:      // PG - modified offset from 2 to 6 (look in core_arch.h)
+./priv/host-x86/isel.c:      // PG - Add handling for 4-byte PUTI's for tags
+
+
+
+Ok, we fixed three problems today:
+1.) Floating point stack problem (as evident in FloatTest)
+
+The problem was that PUTI (Indexed PUT) is only used to write to the
+floating-point stack, but Vex currently only allows 8-byte and 1-byte
+writes for PUTI, 8-byte for doubles and 1-byte for the floating-point
+'tags' (not the same as our tags).  We need to make an indexed 4-byte
+write, so we simply relaxed a few assertions an added a case in the
+x86->IR translator to handle 4-byte PUTI's.
+
+Changes:
+
+./priv/host-x86/isel.c:
+
+Line 588:
+   // PG - Added support for 4-byte writes of DynComp tags
+   if (nElems != 8 || (elemSz != 1 && elemSz != 4 && elemSz != 8))
+      vpanic("genGuestArrayOffset(x86 host)");
+
+Line 608:
+   // PG - Added support for 4-byte writes of DynComp tags
+   vassert(elemSz == 1 || elemSz == 4 || elemSz == 8);
+   // PG - Added support for 4-byte writes of DynComp tags
+   return
+      X86AMode_IRRS( descr->base, hregX86_EBP(), tmp,
+                     elemSz==8 ? 3 :
+                                 elemSz==4 ? 2 : 0);
+}
+
+Line 3313:
+      // PG - Add handling for 4-byte PUTI's for tags
+      if (ty == Ity_I32) {
+         X86RI* ri = iselIntExpr_RI(env, stmt->Ist.PutI.data);
+         addInstr(env, X86Instr_Alu32M(Xalu_MOV,ri,am));
+         return;
+      }
+
+
+2.) Tags and V-bits clobbering each other because they both refer to
+the same place in the shadow guest state
+
+This change was a bit more involved.  The fundamental problem is that
+Vex and Valgrind assume that tools will only need one fixed-sized
+shadow guest state (for holding metadata about register,
+floating-point stack, etc...).  We believe that this design decision
+was made in order to make Memcheck work because Memcheck requires only
+one shadow guest state for the V-bits.  However, we want to maintain
+our own shadow guest state, which requires 4 bytes for EVERY field
+of VexGuestX86State (we're just focusing on x86 for now).
+
+The reason why we were getting all of those weird Memcheck errors when
+running with DynComp was because both Memcheck and DynComp were
+sharing the SAME shadow guest state (vex_shadow field in
+ThreadArchState) and thus DynComp tags were being mis-interpreted as
+V-bits.
+
+Here is the hack that we used to resolve this problem:
+
+In valgrind/coregrind/x86/core_arch.h, it's hard-coded into
+ThreadArchState that there is one vex_shadow, so we just created an
+extra shadow (called vex_extra_shadow) which is 4 times as big as the
+original one.
+
+valgrind/coregrind/x86/core_arch.h:
+
+typedef
+   struct {
+      /* --- BEGIN vex-mandated guest state --- */
+
+      /* Saved machine context. */
+      VexGuestX86State vex;
+
+      /* Saved shadow context. */
+      VexGuestX86State vex_shadow;
+
+      /* PG - Extra shadow guest state for DynComp */
+      VexGuestX86State vex_extra_shadow[4];
+
+      /* Spill area. */
+      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+
+      /* --- END vex-mandated guest state --- */
+   }
+   ThreadArchState;
+
+
+We need it to be 4X larger because we need a 4-byte tag for EVERY
+field of VexGuestX86State, and the smallest entry is a 1-byte Char.
+Now we need to multiply all offsets into vex_extra_shadow by 4 and all
+should be well.  To properly handle GET, GETI, PUT, and PUTI calls for
+DynComp, we must use the base value of TWICE total_sizeB (size of
+VexGuestX86State) in order to get to the beginning of vex_extra_shadow
+and then multiply all offsets by 4 because vex_extra_shadow is 4X the
+size of a VexGuestX86State structure.
+
+Modified functions in mc_translate.c:
+do_shadow_PUT_DC, do_shadow_PUTI_DC, do_shadow_GET_DC, do_shadow_GETI_DC
+
+e.g.
+   stmt( dce->bb, IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
+
+Now we also need to relax an assertion in ...
+
+valgrind/coregrind/vg_scheduler.c:485
+   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+   vg_assert(a_vex + 6 * sz_vex == a_spill);
+
+and finally modify the offset of the spill area in Vex:
+
+vex/priv/host-generic/reg_alloc2.c:685
+
+   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 6 + k * 8);
+
+
+3.) Multiplexor problem in IntTest This was dumb.  I need to simply
+multiplex the values of the V-bits and pass them along within
+expr2tags_Mux0X_DC.  I didn't do anything to handle this case before
+so the IR was invalid.

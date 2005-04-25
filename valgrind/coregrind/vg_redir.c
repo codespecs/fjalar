@@ -32,6 +32,8 @@
 #include "core.h"
 #include "vg_symtab2.h"
 
+#include "pub_core_aspacemgr.h"
+
 /*------------------------------------------------------------*/
 /*--- General purpose redirection.                         ---*/
 /*------------------------------------------------------------*/
@@ -426,6 +428,8 @@ void VG_(setup_code_redirect_table) ( void )
    add_redirect_sym_to_sym("soname:libc.so.6", "stpcpy",
                            "*vgpreload_memcheck.so*", "stpcpy");
 
+   add_redirect_sym_to_sym("soname:ld-linux.so.2", "strlen",
+                           "*vgpreload_memcheck.so*", "strlen");
    add_redirect_sym_to_sym("soname:libc.so.6", "strlen",
                            "*vgpreload_memcheck.so*", "strlen");
 
@@ -447,6 +451,19 @@ void VG_(setup_code_redirect_table) ( void )
 
    add_redirect_sym_to_sym("soname:libc.so.6", "rawmemchr",
                            "*vgpreload_memcheck.so*", "glibc232_rawmemchr");
+
+   /* amd64-linux (glibc 2.3.3, SuSE 9.2) */
+   /* apparently index is the same thing as strchr */
+   add_redirect_sym_to_sym("soname:libc.so.6", "index",
+                           "*vgpreload_memcheck.so*", "strchr");
+
+   add_redirect_sym_to_sym("soname:ld-linux-x86-64.so.2", "strcmp",
+                           "*vgpreload_memcheck.so*", "strcmp");
+   add_redirect_sym_to_sym("soname:libc.so.6", "strcmp",
+                           "*vgpreload_memcheck.so*", "strcmp");
+
+   add_redirect_sym_to_sym("soname:ld-linux-x86-64.so.2", "strlen",
+                           "*vgpreload_memcheck.so*", "strlen");
 }
 
 

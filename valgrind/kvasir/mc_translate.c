@@ -972,6 +972,8 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    //   } else {
 
       /* Do a plain shadow Put. */
+         // PG - Remember the new layout in ThreadArchState
+         //      which requires (4 * offset) + (2 * base size)
    stmt( dce->bb, IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
 
       //   }
@@ -1042,6 +1044,8 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
       IRArray* new_descr
         //         = mkIRArray( descr->base + dce->layout->total_sizeB,
         //                      tyS, descr->nElems);
+         // PG - Remember the new layout in ThreadArchState
+         //      which requires (4 * offset) + (2 * base size)
          = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                       Ity_I32, descr->nElems); // PG - Tags are always 32 bits
 
@@ -1079,6 +1083,8 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
       /* return a cloned version of the Get that refers to the shadow
          area. */
    //      return IRExpr_Get( offset + dce->layout->total_sizeB, tyS );
+         // PG - Remember the new layout in ThreadArchState
+         //      which requires (4 * offset) + (2 * base size)
    return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB), Ity_I32 ); // PG - tags are 32 bits
       //   }
 }
@@ -1126,6 +1132,8 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
       IRArray* new_descr
          //         = mkIRArray( descr->base + dce->layout->total_sizeB,
          //                      tyS, descr->nElems);
+         // PG - Remember the new layout in ThreadArchState
+         //      which requires (4 * offset) + (2 * base size)
          = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                       Ity_I32, descr->nElems); // PG - tags are always 32 bits
 
@@ -1185,6 +1193,37 @@ IRAtom* mkLazyN ( MCEnv* mce,
       }
    }
    return mkPCastTo(mce, finalVtype, curr );
+}
+
+/* Do the lazy propagation game from a null-terminated vector of
+   atoms.  This is presumably the arguments to a helper call, so the
+   IRCallee info is also supplied in order that we can know which
+   arguments should be ignored (via the .mcx_mask field).
+*/
+static
+IRAtom* mkLazyN_DC ( DCEnv* dce,
+                  IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
+{
+   Int i;
+   IRAtom* here;
+   IRAtom* curr = definedOfType(Ity_I32);
+   for (i = 0; exprvec[i]; i++) {
+      tl_assert(i < 32);
+      tl_assert(isOriginalAtom(dce, exprvec[i]));
+      /* Only take notice of this arg if the callee's mc-exclusion
+         mask does not say it is to be excluded. */
+      if (cee->mcx_mask & (1<<i)) {
+         /* the arg is to be excluded from definedness checking.  Do
+            nothing. */
+         if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
+      } else {
+         /* calculate the arg's definedness, and pessimistically merge
+            it in. */
+         here = mkPCastTo( dce, Ity_I32, expr2vbits(dce, exprvec[i]) );
+         curr = mkUifU32(dce, here, curr);
+      }
+   }
+   return mkPCastTo(dce, finalVtype, curr );
 }
 
 
@@ -2690,6 +2729,11 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 
    // Do nothing with unary ops.  Just evaluate the
    // sub-expression and return it:
+   // TODO: Actually, when you widen stuff, don't you want to
+   //       create new tags for the new bytes and merge them?
+   //       ... I guess we don't care since during binary ops.,
+   //       we only consider the tag of the first bytes of each
+   //       operand anyways.
    return vatom;
 
 /*    switch (op) { */
@@ -2876,16 +2920,7 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
    vbitsX = expr2tags_DC(dce, exprX);
    ty = typeOfIRExpr(dce->bb->tyenv, vbits0);
 
-   // PG - Insert fake return value here
-   // This is gonna be wrong, but oh well
-   //   return vbits0;
-   //   return definedOfType_DC();
    return IRExpr_Mux0X(cond, vbits0, vbitsX);
-
-   // The real return value:
-   //   return
-   //      mkUifU(dce, ty, assignNew_DC(dce, ty, IRExpr_Mux0X(cond, vbits0, vbitsX)),
-   //             mkPCastTo(dce, ty, vbitsC) );
 }
 
 /* --------- This is the main expression-handling function. --------- */

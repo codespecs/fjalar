@@ -681,7 +681,7 @@ HInstrArray* doRegisterAllocation (
       /* This reflects LibVEX's hard-wired knowledge of the baseBlock
          layout: the guest state, then an equal sized area following
          it for shadow state, and then the spill area. */
-      // PG - modified offset from 2 to 6 (look in core_arch.h)
+   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
       vreg_lrs[j].spill_offset = toShort(guest_sizeB * 6 + k * 8);
 
       /* if (j > max_ss_no) */

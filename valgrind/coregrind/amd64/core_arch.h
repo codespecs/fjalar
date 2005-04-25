@@ -76,9 +76,6 @@
    asm("movq %%rbp, %0" : "=r" (lval));      \
 } while (0)
 
-// On AMD64, it's ok to access up to 128 bytes below %rsp.
-// The signal handler needs to know this.
-#define VGA_STACK_REDZONE_SIZE 128
 
 /* ---------------------------------------------------------------------
    Architecture-specific part of a ThreadState
@@ -130,11 +127,6 @@ struct _ThreadArchAux {
 // Base address of client address space.
 #define VGA_CLIENT_BASE       0x0ul
 
-/* ---------------------------------------------------------------------
-   Signal stuff (should be plat)
-   ------------------------------------------------------------------ */
-
-void VGA_(signal_return)(ThreadId tid, Bool isRT);
 
 #endif   // __AMD64_CORE_ARCH_H
 

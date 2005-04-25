@@ -4,12 +4,17 @@ include $(top_srcdir)/Makefile.core-AM_CPPFLAGS.am
 ## When building, we are only interested in the current arch/OS/platform.
 ## But when doing 'make dist', we are interested in every arch/OS/platform.
 ## That's what DIST_SUBDIRS specifies.
-SUBDIRS      = $(VG_ARCH)     $(VG_OS)     $(VG_PLATFORM)     demangle .
-DIST_SUBDIRS = $(VG_ARCH_ALL) $(VG_OS_ALL) $(VG_PLATFORM_ALL) demangle .
+SUBDIRS = \
+	$(VG_ARCH)     $(VG_OS)     $(VG_PLATFORM)     \
+	m_sigframe m_aspacemgr demangle .
+
+DIST_SUBDIRS = \
+	$(VG_ARCH_ALL) $(VG_OS_ALL) $(VG_PLATFORM_ALL) \
+	m_sigframe m_aspacemgr demangle .
 
 AM_CPPFLAGS += -DVG_LIBDIR="\"$(valdir)"\" -I$(srcdir)/demangle \
 		-DKICKSTART_BASE=@KICKSTART_BASE@ \
-		-DVG_PLATFORM="\"$(VG_PLATFORM)"\"
+		-DVG_PLATFORM="$(VG_PLATFORM)"
 AM_CFLAGS = $(WERROR) -Wmissing-prototypes -Winline -Wall -Wshadow -O -g @ARCH_CORE_AM_CFLAGS@
 AM_CFLAGS += -fno-omit-frame-pointer
 
@@ -27,8 +32,12 @@ noinst_LIBRARIES = lib_replace_malloc.a
 noinst_HEADERS = \
 	core.h			\
 	core_asm.h		\
+	pub_core_errormgr.h	\
 	pub_core_execontext.h	\
 	pub_core_stacktrace.h	\
+	pub_core_sigframe.h	\
+	pub_core_debuglog.h	\
+	pub_core_aspacemgr.h	\
 	ume.h			\
 	vg_symtab2.h		\
 	vg_symtypes.h		\
@@ -36,7 +45,7 @@ noinst_HEADERS = \
 
 EXTRA_DIST = \
 	valgrind.vs \
-	gen_toolint.pl toolfuncs.def
+	gen_toolint.pl toolfuncs.def README_MODULES.txt
 
 BUILT_SOURCES = vg_toolint.c vg_toolint.h
 CLEANFILES = vg_toolint.c vg_toolint.h
@@ -45,29 +54,29 @@ valgrind_SOURCES = \
 	ume.c \
 	\
 	stage1.c \
+	m_debuglog.c \
 	${VG_ARCH}/jmp_with_stack.c 
 valgrind_DEPENDENCIES =
 valgrind_LDFLAGS=-static -g
 valgrind_LDADD=
 
 stage2_SOURCES = \
-	execontext.c \
-	stacktrace.c \
+	m_errormgr.c \
+	m_execontext.c \
+	m_stacktrace.c \
+	m_debuglog.c \
 	ume.c \
 	\
 	vg_scheduler.c \
 	vg_default.c \
 	vg_demangle.c \
-	vg_errcontext.c \
 	vg_hashtable.c \
 	vg_replace_malloc.c \
 	vg_main.c \
 	vg_malloc2.c \
-	vg_memory.c \
 	vg_messages.c \
 	vg_mylibc.c \
 	vg_needs.c \
-	vg_procselfmaps.c \
 	vg_dummy_profile.c \
 	vg_signals.c \
 	vg_symtab2.c \
@@ -86,6 +95,8 @@ stage2_SOURCES = \
 ## libplatform.a must be before libarch.a and libos.a, it seems.
 stage2_extra= \
 	demangle/libdemangle.a \
+	m_sigframe/libsigframe.a \
+	m_aspacemgr/libaspacemgr.a \
 	${VG_PLATFORM}/libplatform.a \
 	${VG_ARCH}/libarch.a \
 	${VG_OS}/libos.a \
@@ -125,6 +136,7 @@ vg_toolint.h:  $(srcdir)/gen_toolint.pl $(srcdir)/toolfuncs.def ./Makefile
 	rm -f $@
 	$(PERL) $(srcdir)/gen_toolint.pl proto  < $(srcdir)/toolfuncs.def >  $@ || rm -f $@
 	$(PERL) $(srcdir)/gen_toolint.pl struct < $(srcdir)/toolfuncs.def >> $@ || rm -f $@
+
 
 vg_inject_so_SOURCES = vg_intercept.c
 vg_inject_so_CFLAGS = $(AM_CFLAGS) -fpic

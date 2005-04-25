@@ -45,10 +45,10 @@
 /* #define VG_DEBUG_MEMORY */
 
 //#define DYNCOMP_DEBUG
-//#define CREATE_TAG_VERBOSE
-//#define STORE_TAG_VERBOSE
-//#define LOAD_TAG_VERBOSE
-//#define MERGE_TAGS_VERBOSE
+#define CREATE_TAG_VERBOSE
+#define STORE_TAG_VERBOSE
+#define LOAD_TAG_VERBOSE
+#define MERGE_TAGS_VERBOSE
 
 #define DEBUG(fmt, args...) //VG_(printf)(fmt, ## args)
 

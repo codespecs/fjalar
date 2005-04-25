@@ -192,7 +192,8 @@ static IRType shadowType ( IRType ty )
       case Ity_I8:
       case Ity_I16:
       case Ity_I32: 
-      case Ity_I64:  return ty;
+      case Ity_I64: 
+      case Ity_I128: return ty;
       case Ity_F32:  return Ity_I32;
       case Ity_F64:  return Ity_I64;
       case Ity_V128: return Ity_V128;
@@ -506,7 +507,18 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
       case Ity_I64: 
          tmp1 = assignNew(mce, Ity_I1, binop(Iop_CmpNE64, vbits, mkU64(0)));
          break;
+      case Ity_I128: {
+         /* Gah.  Chop it in half, OR the halves together, and compare
+            that with zero. */
+         IRAtom* tmp2 = assignNew(mce, Ity_I64, unop(Iop_128HIto64, vbits));
+         IRAtom* tmp3 = assignNew(mce, Ity_I64, unop(Iop_128to64, vbits));
+         IRAtom* tmp4 = assignNew(mce, Ity_I64, binop(Iop_Or64, tmp2, tmp3));
+         tmp1         = assignNew(mce, Ity_I1, 
+                                       binop(Iop_CmpNE64, tmp4, mkU64(0)));
+         break;
+      }
       default:
+         ppIRType(ty);
          VG_(tool_panic)("mkPCastTo(1)");
    }
    tl_assert(tmp1);
@@ -525,6 +537,10 @@ static IRAtom* mkPCastTo( MCEnv* mce, IRType dst_ty, IRAtom* vbits )
       case Ity_V128:
          tmp1 = assignNew(mce, Ity_I64,  unop(Iop_1Sto64, tmp1));
          tmp1 = assignNew(mce, Ity_V128, binop(Iop_64HLtoV128, tmp1, tmp1));
+         return tmp1;
+      case Ity_I128:
+         tmp1 = assignNew(mce, Ity_I64,  unop(Iop_1Sto64, tmp1));
+         tmp1 = assignNew(mce, Ity_I128, binop(Iop_64HLto128, tmp1, tmp1));
          return tmp1;
       default: 
          ppIRType(dst_ty);
@@ -683,6 +699,13 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
          di = unsafeIRDirty_0_N( 0/*regparms*/, 
                                  "MC_(helperc_value_check4_fail)",
                                  &MC_(helperc_value_check4_fail),
+                                 mkIRExprVec_0() 
+                               );
+         break;
+      case 8:
+         di = unsafeIRDirty_0_N( 0/*regparms*/, 
+                                 "MC_(helperc_value_check8_fail)",
+                                 &MC_(helperc_value_check8_fail),
                                  mkIRExprVec_0() 
                                );
          break;
@@ -1508,6 +1531,10 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_InterleaveHI8x16:
          return assignNew(mce, Ity_V128, binop(op, vatom1, vatom2));
 
+      /* I128-bit data-steering */
+      case Iop_64HLto128:
+         return assignNew(mce, Ity_I128, binop(op, vatom1, vatom2));
+
       /* Scalar floating point */
 
       case Iop_RoundF64:
@@ -1549,10 +1576,21 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_DivModS64to32:
          return mkLazy2(mce, Ity_I64, vatom1, vatom2);
 
+      case Iop_DivModU128to64:
+      case Iop_DivModS128to64:
+         return mkLazy2(mce, Ity_I128, vatom1, vatom2);
+
       case Iop_16HLto32:
          return assignNew(mce, Ity_I32, binop(op, vatom1, vatom2));
       case Iop_32HLto64:
          return assignNew(mce, Ity_I64, binop(op, vatom1, vatom2));
+
+      case Iop_MullS64:
+      case Iop_MullU64: {
+         IRAtom* vLo64 = mkLeft64(mce, mkUifU64(mce, vatom1,vatom2));
+         IRAtom* vHi64 = mkPCastTo(mce, Ity_I64, vLo64);
+         return assignNew(mce, Ity_I128, binop(Iop_64HLto128, vHi64, vLo64));
+      }
 
       case Iop_MullS32:
       case Iop_MullU32: {
@@ -1593,6 +1631,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          return mkLeft32(mce, mkUifU32(mce, vatom1,vatom2));
 
       /* could do better: Add64, Sub64 */
+      case Iop_Mul64:
       case Iop_Add64:
       case Iop_Sub64:
          return mkLeft64(mce, mkUifU64(mce, vatom1,vatom2));
@@ -1606,12 +1645,22 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_Add8:
          return mkLeft8(mce, mkUifU8(mce, vatom1,vatom2));
 
+      case Iop_CmpEQ64: 
+         if (mce->bogusLiterals)
+            return expensiveCmpEQorNE(mce,Ity_I64, vatom1,vatom2, atom1,atom2 );
+         else
+            goto cheap_cmp64;
+      cheap_cmp64:
+	 //      case Iop_CmpLE64S: case Iop_CmpLE64U: 
+	 //      case Iop_CmpLT64U: case Iop_CmpLT64S:
+	 //      case Iop_CmpNE64:
+         return mkPCastTo(mce, Ity_I1, mkUifU64(mce, vatom1,vatom2));
+
       case Iop_CmpEQ32: 
          if (mce->bogusLiterals)
             return expensiveCmpEQorNE(mce,Ity_I32, vatom1,vatom2, atom1,atom2 );
          else
             goto cheap_cmp32;
-
       cheap_cmp32:
       case Iop_CmpLE32S: case Iop_CmpLE32U: 
       case Iop_CmpLT32U: case Iop_CmpLT32S:
@@ -1640,7 +1689,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          complainIfUndefined(mce, atom2);
          return assignNew(mce, Ity_I8, binop(op, vatom1, atom2));
 
-      case Iop_Shl64: case Iop_Shr64: 
+      case Iop_Shl64: case Iop_Shr64: case Iop_Sar64:
          /* Same scheme as with 32-bit shifts. */
          complainIfUndefined(mce, atom2);
          return assignNew(mce, Ity_I64, binop(op, vatom1, atom2));
@@ -1750,6 +1799,8 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_32Uto64:
       case Iop_V128to64:
       case Iop_V128HIto64:
+      case Iop_128HIto64:
+      case Iop_128to64:
          return assignNew(mce, Ity_I64, unop(op, vatom));
 
       case Iop_64to32:
@@ -1975,6 +2026,16 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
          case Ity_I32: return vatom;
          case Ity_I16: return assignNew(mce, tyH, unop(Iop_16Uto32, vatom));
          case Ity_I8:  return assignNew(mce, tyH, unop(Iop_8Uto32, vatom));
+         default:      goto unhandled;
+      }
+   } else
+   if (tyH == Ity_I64) {
+      switch (ty) {
+         case Ity_I32: return assignNew(mce, tyH, unop(Iop_32Uto64, vatom));
+         case Ity_I16: return assignNew(mce, tyH, unop(Iop_32Uto64, 
+                              assignNew(mce, Ity_I32, unop(Iop_16Uto32, vatom))));
+         case Ity_I8:  return assignNew(mce, tyH, unop(Iop_32Uto64, 
+                              assignNew(mce, Ity_I32, unop(Iop_8Uto32, vatom))));
          default:      goto unhandled;
       }
    } else {
@@ -2311,10 +2372,12 @@ static Bool isBogusAtom ( IRAtom* at )
       default: ppIRExpr(at); tl_assert(0);
    }
    /* VG_(printf)("%llx\n", n); */
-   return (n == 0xFEFEFEFF
-           || n == 0x80808080 /*
-           || n == 0x01010101
-           || n == 0x01010100*/);
+   return (/*32*/    n == 0xFEFEFEFFULL
+           /*32*/ || n == 0x80808080ULL
+           /*64*/ || n == 0xFEFEFEFEFEFEFEFFULL
+           /*64*/ || n == 0x8080808080808080ULL
+	   /*64*/ || n == 0x0101010101010101ULL
+          );
 }
 
 static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
@@ -2398,6 +2461,14 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       /* We don't currently support this case. */
       VG_(tool_panic)("host/guest word size mismatch");
    }
+
+   /* Check we're not completely nuts */
+   tl_assert(sizeof(UWord) == sizeof(void*));
+   tl_assert(sizeof(Word)  == sizeof(void*));
+   tl_assert(sizeof(ULong) == 8);
+   tl_assert(sizeof(Long)  == 8);
+   tl_assert(sizeof(UInt)  == 4);
+   tl_assert(sizeof(Int)   == 4);
 
    /* Set up BB */
    bb           = emptyIRBB();

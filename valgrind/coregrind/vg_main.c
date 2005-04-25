@@ -33,6 +33,9 @@
 #include "core.h"
 #include "ume.h"
 #include "pub_core_execontext.h"
+#include "pub_core_errormgr.h"
+#include "pub_core_debuglog.h"
+#include "pub_core_aspacemgr.h"
 
 #include <dirent.h>
 #include <dlfcn.h>
@@ -1578,6 +1581,15 @@ static void pre_process_cmd_line_options
 
    LibVEX_default_VexControl(& VG_(clo_vex_control));
 
+   /* For the time being, disable chasing across basic block
+      boundaries.  This fools the redirector to the extent that that
+      strlen et al do not get reliably intercepted, and hence makes
+      memcheck report some false errors.  Fixing the redirector
+      properly really entails getting rid of the circularity between
+      the two memory allocators, but that is more than I have time to
+      sort out right now. */
+   VG_(clo_vex_control).guest_chase_thresh = 0;
+
    /* parse the options we have (only the options we care about now) */
    for (i = 1; i < vg_argc; i++) {
 
@@ -1670,6 +1682,10 @@ static void process_cmd_line_options( UInt* client_auxv, const char* toolname )
       else if (VG_CLO_STREQ(arg, "-q") ||
                VG_CLO_STREQ(arg, "--quiet"))
          VG_(clo_verbosity)--;
+
+      else if (VG_CLO_STREQ(arg, "-d")) {
+         /* do nothing */
+      }
 
       else VG_BOOL_CLO(arg, "--branchpred",       VG_(clo_branchpred))
       else VG_BOOL_CLO(arg, "--db-attach",        VG_(clo_db_attach))
@@ -2163,9 +2179,9 @@ static void build_valgrind_map_callback ( Addr start, SizeT size, UInt prot,
       start allocating more memory (note: heap is OK, it's just mmap
       which is the problem here). */
    if (start >= VG_(client_end) && start < VG_(valgrind_last)) {
-      if (0)
-	 VG_(printf)("init1: %p-%p prot %s\n",
-		     start, start+size, VG_(prot_str)(prot));
+      VG_(debugLog)(2, "main",
+                    "valgrind-seg: %p-%p prot 0x%x file=%s\n",
+                    start, start+size, prot, filename);
       VG_(map_file_segment)(start, size, prot,
 			    SF_MMAP|SF_NOSYMS|SF_VALGRIND,
 			    dev, ino, foffset, filename);
@@ -2199,9 +2215,9 @@ static void build_segment_map_callback ( Addr start, SizeT size, UInt prot,
    is_stack_segment 
       = (start == VG_(clstk_base) && (start+size) == VG_(clstk_end));
 
-   if (0)
-      VG_(printf)("init2: %p-%p prot %s stack=%d\n",
-		  start, start+size, VG_(prot_str)(prot), is_stack_segment);
+   VG_(debugLog)(2, "main",
+                 "any-seg: %p-%p prot 0x%x stack=%d file=%s\n",
+                 start, start+size, prot, is_stack_segment, filename);
 
    if (is_stack_segment)
       flags = SF_STACK | SF_GROWDOWN;
@@ -2398,12 +2414,22 @@ void VG_(sanity_check_general) ( Bool force_expensive )
   build the segment skip-list.
 */
 
-static int prmap(char *start, char *end, const char *perm, off_t off, 
-                 int maj, int min, int ino, void* dummy) {
-   printf("mapping %10p-%10p %s %02x:%02x %d\n",
-          start, end, perm, maj, min, ino);
-   return True;
+
+/* This may be needed before m_mylibc is OK to run. */
+static Int local_strcmp ( const HChar* s1, const HChar* s2 )
+{
+   while (True) {
+      if (*s1 == 0 && *s2 == 0) return 0;
+      if (*s1 == 0) return -1;
+      if (*s2 == 0) return 1;
+
+      if (*(UChar*)s1 < *(UChar*)s2) return -1;
+      if (*(UChar*)s1 > *(UChar*)s2) return 1;
+
+      s1++; s2++;
+   }
 }
+
 
 int main(int argc, char **argv, char **envp)
 {
@@ -2419,13 +2445,33 @@ int main(int argc, char **argv, char **envp)
    Addr sp_at_startup;     /* client's SP at the point we gained control. */
    UInt * client_auxv;
    struct vki_rlimit zero = { 0, 0 };
-   Int padfile;
+   Int padfile, loglevel, i;
 
    //============================================================
    // Nb: startup is complex.  Prerequisites are shown at every step.
    //
    // *** Be very careful when messing with the order ***
    //============================================================
+
+   //--------------------------------------------------------------
+   // Start up the logging mechanism
+   //   p: none
+   //--------------------------------------------------------------
+   /* Start the debugging-log system ASAP.  First find out how many 
+      "-d"s were specified.  This is a pre-scan of the command line. */
+   loglevel = 0;
+   for (i = 1; i < argc; i++) {
+     if (argv[i][0] != '-')
+        break;
+     if (0 == local_strcmp(argv[i], "--")) 
+        break;
+     if (0 == local_strcmp(argv[i], "-d")) 
+        loglevel++;
+   }
+
+   /* ... and start the debug logger.  Now we can safely emit logging
+      messages all through startup. */
+   VG_(debugLog_startup)(loglevel, "Stage 2");
 
    //============================================================
    // Command line argument handling order:
@@ -2451,13 +2497,10 @@ int main(int argc, char **argv, char **envp)
    // Check we were launched by stage1
    //   p: none
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Doing scan_auxv()\n");
    {
       void* init_sp = argv - 1;
       padfile = scan_auxv(init_sp);
-   }
-   if (0) {
-      printf("========== main() ==========\n");
-      foreach_map(prmap, /*dummy*/NULL);
    }
 
    //--------------------------------------------------------------
@@ -2474,6 +2517,7 @@ int main(int argc, char **argv, char **envp)
    // Pre-process the command line.
    //   p: none
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Preprocess command line opts\n");
    get_command_line(argc, argv, &vg_argc, &vg_argv, &cl_argv);
    pre_process_cmd_line_options(&need_help, &tool, &exec);
 
@@ -2487,6 +2531,7 @@ int main(int argc, char **argv, char **envp)
    //   p: set-libdir                     [for VG_(libdir)]
    //   p: pre_process_cmd_line_options() [for 'tool']
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Loading tool\n");
    load_tool(tool, &toolinfo, &preload);
 
    //==============================================================
@@ -2498,6 +2543,7 @@ int main(int argc, char **argv, char **envp)
    // Finalise address space layout
    //   p: load_tool()  [for 'toolinfo']
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Laying out remaining space\n");
    layout_remaining_space( (Addr) & argc, toolinfo->shadow_ratio );
 
    //--------------------------------------------------------------
@@ -2505,6 +2551,7 @@ int main(int argc, char **argv, char **envp)
    //   p: pre_process_cmd_line_options()  [for 'exec', 'need_help']
    //   p: layout_remaining_space          [so there's space]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Loading client\n");
    load_client(cl_argv, exec, need_help, &info, &client_eip);
 
    //--------------------------------------------------------------
@@ -2520,6 +2567,7 @@ int main(int argc, char **argv, char **envp)
    //   p: set-libdir  [for VG_(libdir)]
    //   p: load_tool() [for 'preload']
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Setup client env\n");
    env = fix_environment(envp, preload);
 
    //--------------------------------------------------------------
@@ -2527,6 +2575,7 @@ int main(int argc, char **argv, char **envp)
    //   p: load_client()     [for 'info']
    //   p: fix_environment() [for 'env']
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Setup client stack\n");
    { 
       void* init_sp = argv - 1;
 
@@ -2535,10 +2584,11 @@ int main(int argc, char **argv, char **envp)
       free(env);
    }
 
-   if (0)
-      printf("entry=%p client esp=%p vg_argc=%d brkbase=%p\n",
+   VG_(debugLog)(2, "main",
+                    "Client info: "
+                    "entry=%p client esp=%p vg_argc=%d brkbase=%p\n",
 	     (void*)client_eip, (void*)sp_at_startup, vg_argc, 
-             (void*)VG_(brk_base));
+                    (void*)VG_(brk_base) );
 
    //==============================================================
    // Finished setting up operating environment.  Now initialise
@@ -2549,12 +2599,14 @@ int main(int argc, char **argv, char **envp)
    // setup file descriptors
    //   p: n/a
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Setup file descriptors\n");
    setup_file_descriptors();
 
    //--------------------------------------------------------------
    // Build segment map (Valgrind segments only)
    //   p: tl_pre_clo_init()  [to setup new_mem_startup tracker]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Parse /proc/self/maps (round 1)\n");
    VG_(parse_procselfmaps) ( build_valgrind_map_callback );
 
    //==============================================================
@@ -2569,6 +2621,7 @@ int main(int argc, char **argv, char **envp)
    //   p: parse_procselfmaps        [so VG segments are setup so tool can
    //                                 call VG_(malloc)]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Initialise the tool\n");
    (*toolinfo->tl_pre_clo_init)();
    VG_(sanity_check_needs)();
 
@@ -2585,6 +2638,7 @@ int main(int argc, char **argv, char **envp)
    // Determine CPU architecture and subarchitecture
    //   p: none
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Check CPU arch/subarch\n");
    {  Bool ok = VGA_(getArchAndSubArch)(
                    & VG_(vex_arch), & VG_(vex_subarch) );
       if (!ok) {
@@ -2610,6 +2664,7 @@ int main(int argc, char **argv, char **envp)
    //   p: setup_client_stack()  [for 'sp_at_startup']
    //   p: init tool             [for 'new_mem_startup']
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Parse /proc/self/maps (round 2)\n");
    sp_at_startup___global_arg = sp_at_startup;
    VG_(parse_procselfmaps) ( build_segment_map_callback );  /* everything */
    sp_at_startup___global_arg = 0;
@@ -2641,6 +2696,7 @@ int main(int argc, char **argv, char **envp)
    /* Hook to delay things long enough so we can get the pid and
       attach GDB in another shell. */
    if (VG_(clo_wait_for_gdb)) {
+      VG_(debugLog)(1, "main", "Wait for GDB\n");
       VG_(printf)("pid=%d, entering delay loop\n", VG_(getpid)());
       /* jrs 20050206: I don't understand why this works on x86.  On
          amd64 the obvious analogues (jump *$rip or jump *$rcx) don't
@@ -2654,13 +2710,16 @@ int main(int argc, char **argv, char **envp)
    // Search for file descriptors that are inherited from our parent
    //   p: process_cmd_line_options  [for VG_(clo_track_fds)]
    //--------------------------------------------------------------
-   if (VG_(clo_track_fds))
+   if (VG_(clo_track_fds)) {
+      VG_(debugLog)(1, "main", "Init preopened fds\n");
       VG_(init_preopened_fds)();
+   }
 
    //--------------------------------------------------------------
    // Initialise the scheduler
    //   p: setup_file_descriptors() [else VG_(safe_fd)() breaks]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Initialise scheduler\n");
    VG_(scheduler_init)();
 
    //--------------------------------------------------------------
@@ -2670,6 +2729,7 @@ int main(int argc, char **argv, char **envp)
    //      setup_client_stack()   [for 'sp_at_startup']
    //      setup_scheduler()      [for the rest of state 1 stuff]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Initialise thread 1's state\n");
    VGA_(init_thread1state)(client_eip, sp_at_startup, &VG_(threads)[1].arch );
 
    // Tell the tool that we just wrote to the registers.
@@ -2688,6 +2748,7 @@ int main(int argc, char **argv, char **envp)
    //   p: n/a
    //--------------------------------------------------------------
    // Nb: temporarily parks the saved blocking-mask in saved_sigmask.
+   VG_(debugLog)(1, "main", "Initialise signal management\n");
    VG_(sigstartup_actions)();
 
    //--------------------------------------------------------------
@@ -2711,8 +2772,10 @@ int main(int argc, char **argv, char **envp)
    // Read suppression file
    //   p: process_cmd_line_options()  [for VG_(clo_suppressions)]
    //--------------------------------------------------------------
-   if (VG_(needs).core_errors || VG_(needs).tool_errors)
+   if (VG_(needs).core_errors || VG_(needs).tool_errors) {
+      VG_(debugLog)(1, "main", "Load suppressions\n");
       VG_(load_suppressions)();
+   }
 
    //--------------------------------------------------------------
    // Initialise translation table and translation cache
@@ -2720,6 +2783,7 @@ int main(int argc, char **argv, char **envp)
    //         aren't identified as part of the client, which would waste
    //         > 20M of virtual address space.]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Initialise TT/TC\n");
    VG_(init_tt_tc)();
 
    //--------------------------------------------------------------
@@ -2727,6 +2791,7 @@ int main(int argc, char **argv, char **envp)
    //   p: parse_procselfmaps? [XXX for debug info?]
    //   p: init_tt_tc [so it can call VG_(search_transtab) safely]
    //--------------------------------------------------------------
+   VG_(debugLog)(1, "main", "Initialise redirects\n");
    VG_(setup_code_redirect_table)();
    VGP_(setup_redirects)();
 
@@ -2753,6 +2818,7 @@ int main(int argc, char **argv, char **envp)
 
    vg_assert(VG_(master_tid) == 1);
 
+   VG_(debugLog)(1, "main", "Running thread 1\n");
    VGA_(main_thread_wrapper)(1);
 
    abort();
