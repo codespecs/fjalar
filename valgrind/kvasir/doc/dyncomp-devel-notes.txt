@@ -944,3 +944,20 @@ that this blows because I'll need to change it for EVERY architecture,
 but that's ok since we're only doing x86 for now.
 
 but now it segfaults :( bah
+
+
+----------
+2005-04-25
+----------
+
+We want to use 8-byte stores into guest state ONLY for PUTI (using the
+IR conversion functions).
+
+vex/priv/host-generic/reg_alloc2.c:684
+
+      /* This reflects LibVEX's hard-wired knowledge of the baseBlock
+         layout: the guest state, then an equal sized area following
+         it for shadow state, and then the spill area. */
+      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 2 + k * 8);
+
+ThreadArchState is within ThreadState (defined in coregrind/core.h)

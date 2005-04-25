@@ -7,7 +7,7 @@
    This file is part of Valgrind, an extensible x86 protected-mode
    emulator for monitoring program execution on x86-Unixes.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/* 
+/*
    Overview
 
    Valgrind tries to emulate the kernel's threading as closely as
@@ -96,7 +96,7 @@ static UInt n_scheduling_events_MAJOR = 0;
 void VG_(print_scheduler_stats)(void)
 {
    VG_(message)(Vg_DebugMsg,
-      "           %d/%d major/minor sched events.", 
+      "           %d/%d major/minor sched events.",
       n_scheduling_events_MAJOR, n_scheduling_events_MINOR);
 }
 
@@ -149,7 +149,7 @@ ThreadId VG_(first_matching_thread_stack)
    }
    return VG_INVALID_THREADID;
 }
- 
+
 void VG_(mark_from_registers)(void (*mark_addr)(Addr))
 {
    ThreadId tid;
@@ -164,8 +164,8 @@ void VG_(mark_from_registers)(void (*mark_addr)(Addr))
 /* Print the scheduler status. */
 void VG_(pp_sched_status) ( void )
 {
-   Int i; 
-   VG_(printf)("\nsched status:\n"); 
+   Int i;
+   VG_(printf)("\nsched status:\n");
    VG_(printf)("  running_tid=%d\n", running_tid);
    for (i = 1; i < VG_N_THREADS; i++) {
       if (VG_(threads)[i].status == VgTs_Empty) continue;
@@ -238,7 +238,7 @@ ThreadState *VG_(get_ThreadState)(ThreadId tid)
 ThreadId VG_(get_lwp_tid)(Int lwp)
 {
    ThreadId tid;
-   
+
    for(tid = 1; tid <= VG_N_THREADS; tid++)
       if (VG_(threads)[tid].status != VgTs_Empty && VG_(threads)[tid].os_state.lwpid == lwp)
 	 return tid;
@@ -246,7 +246,7 @@ ThreadId VG_(get_lwp_tid)(Int lwp)
    return VG_INVALID_THREADID;
 }
 
-/* 
+/*
    Mark a thread as Runnable.  This will block until the run_sema is
    available, so that we get exclusive access to all the shared
    structures and the CPU.  Up until we get the sema, we must not
@@ -259,9 +259,9 @@ void VG_(set_running)(ThreadId tid)
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
    vg_assert(tst->status != VgTs_Runnable);
-   
+
    tst->status = VgTs_Runnable;
-   
+
    VGO_(sema_down)(&run_sema);
    if (running_tid != VG_INVALID_THREADID)
       VG_(printf)("tid %d found %d running\n", tid, running_tid);
@@ -281,7 +281,7 @@ Bool VG_(is_running_thread)(ThreadId tid)
 {
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
-   return 
+   return
 //      tst->os_state.lwpid == VG_(gettid)() &&	/* check we're this tid */
       running_tid == tid	           &&	/* and that we've got the lock */
       tst->status == VgTs_Runnable;		/* and we're runnable */
@@ -301,7 +301,7 @@ Int VG_(count_living_threads)(void)
    return count;
 }
 
-/* 
+/*
    Set a thread into a sleeping state, and give up exclusive access to
    the CPU.  On return, the thread must be prepared to block until it
    is ready to run again (generally this means blocking in a syscall,
@@ -378,7 +378,7 @@ void VG_(kill_thread)(ThreadId tid)
    }
 }
 
-/* 
+/*
    Yield the CPU for a short time to let some other thread run.
  */
 void VG_(vg_yield)(void)
@@ -393,7 +393,7 @@ void VG_(vg_yield)(void)
 
    //VG_(printf)("tid %d yielding EIP=%p\n", tid, VG_(threads)[tid].arch.m_eip);
 
-   /* 
+   /*
       Tell the kernel we're yielding.
     */
    if (1)
@@ -416,7 +416,7 @@ void VG_(resume_scheduler)(ThreadId tid)
    if (tst->sched_jmpbuf_valid) {
       /* Can't continue; must longjmp back to the scheduler and thus
          enter the sighandler immediately. */
-   
+
       VGP_LONGJMP(tst->sched_jmpbuf, True);
    }
 }
@@ -481,7 +481,7 @@ UInt run_thread_for_a_while ( ThreadId tid )
    vg_assert(a_vex + sz_vex == a_vexsh);
 
    vg_assert(sz_spill == LibVEX_N_SPILL_BYTES);
-   vg_assert(a_vex + 2 * sz_vex == a_spill);
+   vg_assert(a_vex + 6 * sz_vex == a_spill); // PG - changed from 2 to 6
 
    VGP_PUSHCC(VgpRun);
 
@@ -493,14 +493,14 @@ UInt run_thread_for_a_while ( ThreadId tid )
    vg_assert(VG_(my_fault));
    VG_(my_fault) = False;
 
-   SCHEDSETJMP(tid, jumped, 
+   SCHEDSETJMP(tid, jumped,
                     trc = (UInt)VG_(run_innerloop)( (void*)&tst->arch.vex ));
 
    //nextEIP = tst->arch.m_eip;
    //if (nextEIP >= VG_(client_end))
    //   VG_(printf)("trc=%d jump to %p from %p\n",
    //		  trc, nextEIP, EIP);
-   
+
    VG_(my_fault) = True;
 
    if (jumped) {
@@ -509,7 +509,7 @@ UInt run_thread_for_a_while ( ThreadId tid )
       vg_assert(trc == 0);
       trc = VG_TRC_FAULT_SIGNAL;
       VG_(block_signals)(tid);
-   } 
+   }
 
    done_this_time = (Int)dispatch_ctr_SAVED - (Int)VG_(dispatch_ctr) - 0;
 
@@ -521,7 +521,7 @@ UInt run_thread_for_a_while ( ThreadId tid )
 }
 
 
-static 
+static
 void mostly_clear_thread_record ( ThreadId tid )
 {
    vki_sigset_t savedmask;
@@ -557,23 +557,23 @@ void mostly_clear_thread_record ( ThreadId tid )
    VG_(threads)[tid].sched_jmpbuf_valid = False;
 }
 
-/*                                                                             
-   Called in the child after fork.  If the parent has multiple                 
-   threads, then we've inhereted a VG_(threads) array describing them,         
-   but only the thread which called fork() is actually alive in the            
-   child.  This functions needs to clean up all those other thread             
-   structures.                                                                 
-                                                                               
-   Whichever tid in the parent which called fork() becomes the                 
-   master_tid in the child.  That's because the only living slot in            
-   VG_(threads) in the child after fork is VG_(threads)[tid], and it           
-   would be too hard to try to re-number the thread and relocate the           
-   thread state down to VG_(threads)[1].                                       
-                                                                               
-   This function also needs to reinitialize the run_sema, since                
-   otherwise we may end up sharing its state with the parent, which            
-   would be deeply confusing.                                                  
-*/                                          
+/*
+   Called in the child after fork.  If the parent has multiple
+   threads, then we've inhereted a VG_(threads) array describing them,
+   but only the thread which called fork() is actually alive in the
+   child.  This functions needs to clean up all those other thread
+   structures.
+
+   Whichever tid in the parent which called fork() becomes the
+   master_tid in the child.  That's because the only living slot in
+   VG_(threads) in the child after fork is VG_(threads)[tid], and it
+   would be too hard to try to re-number the thread and relocate the
+   thread state down to VG_(threads)[1].
+
+   This function also needs to reinitialize the run_sema, since
+   otherwise we may end up sharing its state with the parent, which
+   would be deeply confusing.
+*/
 static void sched_fork_cleanup(ThreadId me)
 {
    ThreadId tid;
@@ -602,7 +602,7 @@ static void sched_fork_cleanup(ThreadId me)
 /* Initialise the scheduler.  Create a single "main" thread ready to
    run, with special ThreadId of one.  This is called at startup.  The
    caller subsequently initialises the guest state components of this
-   main thread, thread 1.  
+   main thread, thread 1.
 */
 void VG_(scheduler_init) ( void )
 {
@@ -627,7 +627,7 @@ void VG_(scheduler_init) ( void )
    VG_(master_tid) = tid_main;
 
    /* Initial thread's stack is the original process stack */
-   VG_(threads)[tid_main].client_stack_highest_word 
+   VG_(threads)[tid_main].client_stack_highest_word
                                             = VG_(clstk_end) - sizeof(UWord);
    VG_(threads)[tid_main].client_stack_szB  = VG_(client_rlimit_stack).rlim_cur;
 
@@ -651,9 +651,9 @@ static void handle_tt_miss ( ThreadId tid )
    if (!found) {
       /* Not found; we need to request a translation. */
       if (VG_(translate)( tid, ip, /*debug*/False, 0/*not verbose*/ )) {
-	 found = VG_(search_transtab)( NULL, ip, True ); 
+	 found = VG_(search_transtab)( NULL, ip, True );
          vg_assert2(found, "VG_TRC_INNER_FASTMISS: missing tt_fast entry");
-      
+
       } else {
 	 // If VG_(translate)() fails, it's because it had to throw a
 	 // signal because the client jumped to a bad address.  That
@@ -667,7 +667,7 @@ static void handle_tt_miss ( ThreadId tid )
 static void handle_syscall(ThreadId tid)
 {
    ThreadState *tst = VG_(get_ThreadState)(tid);
-   Bool jumped; 
+   Bool jumped;
 
    /* Syscall may or may not block; either way, it will be
       complete by the time this call returns, and we'll be
@@ -679,16 +679,16 @@ static void handle_syscall(ThreadId tid)
       VG_(printf)("tid %d not running; running_tid=%d, tid %d status %d\n",
 		  tid, running_tid, tid, tst->status);
    vg_assert(VG_(is_running_thread)(tid));
-   
+
    if (jumped) {
       VG_(block_signals)(tid);
       VG_(poll_signals)(tid);
    }
 }
 
-/* 
+/*
    Run a thread until it wants to exit.
-   
+
    We assume that the caller has already called VG_(set_running) for
    us, so we own the VCPU.  Also, all signals are blocked.
  */
@@ -698,13 +698,13 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
    if (VG_(clo_trace_sched))
-      print_sched_event(tid, "entering VG_(scheduler)");      
+      print_sched_event(tid, "entering VG_(scheduler)");
 
    VGP_PUSHCC(VgpSched);
 
    /* set the proper running signal mask */
    VG_(block_signals)(tid);
-   
+
    vg_assert(VG_(is_running_thread)(tid));
 
    VG_(dispatch_ctr) = SCHEDULING_QUANTUM + 1;
@@ -751,7 +751,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       n_scheduling_events_MINOR++;
 
       if (0)
-	 VG_(message)(Vg_DebugMsg, "thread %d: running for %d bbs", 
+	 VG_(message)(Vg_DebugMsg, "thread %d: running for %d bbs",
 		      tid, VG_(dispatch_ctr) - 1 );
 
       trc = run_thread_for_a_while ( tid );
@@ -767,11 +767,11 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 vg_assert(VG_(dispatch_ctr) > 1);
 	 handle_tt_miss(tid);
 	 break;
-	    
+
       case VEX_TRC_JMP_CLIENTREQ:
 	 do_client_request(tid);
 	 break;
-	    
+
       case VEX_TRC_JMP_SYSCALL:
 	 handle_syscall(tid);
 	 if (VG_(clo_sanity_level) > 2)
@@ -786,7 +786,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             before swapping to another.  That means that short term
             spins waiting for hardware to poke memory won't cause a
             thread swap. */
-	 if (VG_(dispatch_ctr) > 100) 
+	 if (VG_(dispatch_ctr) > 100)
             VG_(dispatch_ctr) = 100;
 	 break;
 
@@ -839,7 +839,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          VG_(synth_sigill)(tid, INSTR_PTR(VG_(threads)[tid].arch));
          break;
 
-      default: 
+      default:
 	 vg_assert2(0, "VG_(scheduler), phase 3: "
                        "unexpected thread return code (%u)", trc);
 	 /* NOTREACHED */
@@ -857,12 +857,12 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 
    //if (VG_(clo_model_pthreads))
    //   VG_(tm_thread_exit)(tid);
-   
+
    return tst->exitreason;
 }
 
 
-/* 
+/*
    This causes all threads to forceably exit.  They aren't actually
    dead by the time this returns; you need to call
    VGA_(reap_threads)() to wait for them.
@@ -943,7 +943,7 @@ UInt VG_(get_exit_status_shadow) ( ThreadId tid )
 
 /* Do a client request for the thread tid.  After the request, tid may
    or may not still be runnable; if not, the scheduler will have to
-   choose a new thread to run.  
+   choose a new thread to run.
 */
 static
 void do_client_request ( ThreadId tid )
@@ -993,13 +993,13 @@ void do_client_request ( ThreadId tid )
          break;
 
       case VG_USERREQ__PRINTF: {
-         int count = 
+         int count =
             VG_(vmessage)( Vg_ClientMsg, (char *)arg[1], (void*)arg[2] );
             SET_CLREQ_RETVAL( tid, count );
          break; }
 
       case VG_USERREQ__INTERNAL_PRINTF: {
-         int count = 
+         int count =
             VG_(vmessage)( Vg_DebugMsg, (char *)arg[1], (void*)arg[2] );
             SET_CLREQ_RETVAL( tid, count );
          break; }
@@ -1045,7 +1045,7 @@ void do_client_request ( ThreadId tid )
          SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
 	 break;
 
-      case VG_USERREQ__COUNT_ERRORS:  
+      case VG_USERREQ__COUNT_ERRORS:
          SET_CLREQ_RETVAL( tid, VG_(get_n_errs_found)() );
          break;
 
@@ -1122,7 +1122,7 @@ void do_client_request ( ThreadId tid )
                if (c1 == 0) c1 = '_';
                if (c2 == 0) c2 = '_';
 	       VG_(message)(Vg_UserMsg, "Warning:\n"
-                   "  unhandled client request: 0x%x (%c%c+0x%x).  Perhaps\n" 
+                   "  unhandled client request: 0x%x (%c%c+0x%x).  Perhaps\n"
 		   "  VG_(needs).client_requests should be set?\n",
 			    arg[0], c1, c2, arg[0] & 0xffff);
 	       whined = True;
@@ -1145,7 +1145,7 @@ void scheduler_sanity ( ThreadId tid )
 
    if (!VG_(is_running_thread)(tid)) {
       VG_(message)(Vg_DebugMsg,
-		   "Thread %d is supposed to be running, but doesn't own run_sema (owned by %d)\n", 
+		   "Thread %d is supposed to be running, but doesn't own run_sema (owned by %d)\n",
 		   tid, running_tid);
       bad = True;
    }

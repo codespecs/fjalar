@@ -972,7 +972,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    //   } else {
 
       /* Do a plain shadow Put. */
-      stmt( dce->bb, IRStmt_Put( offset + dce->layout->total_sizeB, vatom ) );
+   stmt( dce->bb, IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
 
       //   }
 }
@@ -1013,6 +1013,8 @@ void do_shadow_PUTI ( MCEnv* mce,
 }
 
 // A PUTI stores a value (dynamically indexed) into the guest state
+// (This seems to be causing guest array offset problems when dealing
+//  with floating-point values)
 static
 void do_shadow_PUTI_DC ( DCEnv* dce,
                       IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
@@ -1040,7 +1042,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
       IRArray* new_descr
         //         = mkIRArray( descr->base + dce->layout->total_sizeB,
         //                      tyS, descr->nElems);
-         = mkIRArray( descr->base + dce->layout->total_sizeB,
+         = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                       Ity_I32, descr->nElems); // PG - Tags are always 32 bits
 
       stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
@@ -1077,7 +1079,7 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
       /* return a cloned version of the Get that refers to the shadow
          area. */
    //      return IRExpr_Get( offset + dce->layout->total_sizeB, tyS );
-   return IRExpr_Get( offset + dce->layout->total_sizeB, Ity_I32 ); // PG - tags are 32 bits
+   return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB), Ity_I32 ); // PG - tags are 32 bits
       //   }
 }
 
@@ -1124,7 +1126,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
       IRArray* new_descr
          //         = mkIRArray( descr->base + dce->layout->total_sizeB,
          //                      tyS, descr->nElems);
-         = mkIRArray( descr->base + dce->layout->total_sizeB,
+         = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                       Ity_I32, descr->nElems); // PG - tags are always 32 bits
 
       return IRExpr_GetI( new_descr, ix, bias );

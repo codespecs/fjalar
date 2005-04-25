@@ -92,7 +92,7 @@
    Architecture-specific part of a ThreadState
    ------------------------------------------------------------------ */
 
-typedef 
+typedef
    struct {
       /* --- BEGIN vex-mandated guest state --- */
 
@@ -102,11 +102,14 @@ typedef
       /* Saved shadow context. */
       VexGuestX86State vex_shadow;
 
+      /* PG - Extra shadow guest state for DynComp */
+      VexGuestX86State vex_extra_shadow[4];
+
       /* Spill area. */
       UChar vex_spill[LibVEX_N_SPILL_BYTES];
 
       /* --- END vex-mandated guest state --- */
-   } 
+   }
    ThreadArchState;
 
 typedef VexGuestX86State VexGuestArchState;

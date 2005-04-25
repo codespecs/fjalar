@@ -121,10 +121,10 @@ typedef
 
 
 /* Does this instruction mention a particular reg? */
-static Bool instrMentionsReg ( 
+static Bool instrMentionsReg (
    void (*getRegUsage) (HRegUsage*, HInstr*),
-   HInstr* instr, 
-   HReg r 
+   HInstr* instr,
+   HReg r
 )
 {
    Int       i;
@@ -150,7 +150,7 @@ static Bool instrMentionsReg (
    Returns an index into the state array indicating the (v,r) pair to
    spill, or -1 if none was found.  */
 static
-Int findMostDistantlyMentionedVReg ( 
+Int findMostDistantlyMentionedVReg (
    void (*getRegUsage) (HRegUsage*, HInstr*),
    HInstrArray* instrs_in,
    Int          search_from_instr,
@@ -167,7 +167,7 @@ Int findMostDistantlyMentionedVReg (
          continue;
       vassert(state[k].disp == Bound);
       for (m = search_from_instr; m < instrs_in->arr_used; m++) {
-         if (instrMentionsReg(getRegUsage, 
+         if (instrMentionsReg(getRegUsage,
                               instrs_in->arr[m], state[k].vreg))
             break;
       }
@@ -215,7 +215,7 @@ static void ensureRRLRspace ( RRegLR** info, Int* size, Int used )
 */
 HInstrArray* doRegisterAllocation (
 
-   /* Incoming virtual-registerised code. */ 
+   /* Incoming virtual-registerised code. */
    HInstrArray* instrs_in,
 
    /* An array listing all the real registers the allocator may use,
@@ -377,7 +377,7 @@ HInstrArray* doRegisterAllocation (
    rreg_dead_before = LibVEX_Alloc(n_available_real_regs * sizeof(Int));
 
    for (j = 0; j < n_available_real_regs; j++) {
-      rreg_live_after[j] = 
+      rreg_live_after[j] =
       rreg_dead_before[j] = INVALID_INSTRNO;
    }
 
@@ -426,7 +426,7 @@ HInstrArray* doRegisterAllocation (
 
          /* Now consider live ranges. */
          switch (reg_usage.mode[j]) {
-            case HRmRead: 
+            case HRmRead:
                if (vreg_lrs[k].live_after == INVALID_INSTRNO) {
                   vex_printf("\n\nOFFENDING VREG = %d\n", k);
                   vpanic("doRegisterAllocation: "
@@ -478,14 +478,14 @@ HInstrArray* doRegisterAllocation (
          for (k = 0; k < n_available_real_regs; k++)
             if (available_real_regs[k] == rreg)
                break;
-         if (k == n_available_real_regs) 
+         if (k == n_available_real_regs)
             continue; /* not found -- ignore. */
          flush = False;
          switch (reg_usage.mode[j]) {
             case HRmWrite:
                flush_la = rreg_live_after[k];
                flush_db = rreg_dead_before[k];
-               if (flush_la != INVALID_INSTRNO 
+               if (flush_la != INVALID_INSTRNO
                    && flush_db != INVALID_INSTRNO)
                   flush = True;
                rreg_live_after[k]  = ii;
@@ -525,7 +525,7 @@ HInstrArray* doRegisterAllocation (
             vassert(flush_la != INVALID_INSTRNO);
             vassert(flush_db != INVALID_INSTRNO);
             ensureRRLRspace(&rreg_lrs, &rreg_lrs_size, rreg_lrs_used);
-            if (0) 
+            if (0)
                vex_printf("FLUSH 1 (%d,%d)\n", flush_la, flush_db);
             rreg_lrs[rreg_lrs_used].rreg        = rreg;
             rreg_lrs[rreg_lrs_used].live_after  = toShort(flush_la);
@@ -549,11 +549,11 @@ HInstrArray* doRegisterAllocation (
 #     if 0
       vex_printf("residual %d:  %d %d\n", j, rreg_live_after[j],
                                              rreg_dead_before[j]);
-#     endif 
-      vassert( (rreg_live_after[j] == INVALID_INSTRNO 
+#     endif
+      vassert( (rreg_live_after[j] == INVALID_INSTRNO
                && rreg_dead_before[j] == INVALID_INSTRNO)
               ||
-              (rreg_live_after[j] != INVALID_INSTRNO 
+              (rreg_live_after[j] != INVALID_INSTRNO
                && rreg_dead_before[j] != INVALID_INSTRNO)
             );
 
@@ -562,7 +562,7 @@ HInstrArray* doRegisterAllocation (
 
       ensureRRLRspace(&rreg_lrs, &rreg_lrs_size, rreg_lrs_used);
       if (0)
-         vex_printf("FLUSH 2 (%d,%d)\n", 
+         vex_printf("FLUSH 2 (%d,%d)\n",
                     rreg_live_after[j], rreg_dead_before[j]);
       rreg_lrs[rreg_lrs_used].rreg        = available_real_regs[j];
       rreg_lrs[rreg_lrs_used].live_after  = toShort(rreg_live_after[j]);
@@ -602,7 +602,7 @@ HInstrArray* doRegisterAllocation (
 
 #  if DEBUG_REGALLOC
    for (j = 0; j < n_vreg_lrs; j++) {
-      vex_printf("vreg %d:  la = %d,  db = %d\n", 
+      vex_printf("vreg %d:  la = %d,  db = %d\n",
                  j, vreg_lrs[j].live_after, vreg_lrs[j].dead_before );
    }
 #  endif
@@ -655,7 +655,7 @@ HInstrArray* doRegisterAllocation (
             if (ss_busy_until_before[k] <= vreg_lrs[j].live_after)
                break;
          if (k == N_SPILL64S) {
-            vpanic("LibVEX_N_SPILL_BYTES is too low.  " 
+            vpanic("LibVEX_N_SPILL_BYTES is too low.  "
                    "Increase and recompile.");
          }
          ss_busy_until_before[k] = vreg_lrs[j].dead_before;
@@ -670,7 +670,7 @@ HInstrArray* doRegisterAllocation (
                 && ss_busy_until_before[k+1] <= vreg_lrs[j].live_after)
                break;
          if (k == N_SPILL64S-1) {
-            vpanic("LibVEX_N_SPILL_BYTES is too low.  " 
+            vpanic("LibVEX_N_SPILL_BYTES is too low.  "
                    "Increase and recompile.");
          }
          ss_busy_until_before[k+0] = vreg_lrs[j].dead_before;
@@ -681,7 +681,8 @@ HInstrArray* doRegisterAllocation (
       /* This reflects LibVEX's hard-wired knowledge of the baseBlock
          layout: the guest state, then an equal sized area following
          it for shadow state, and then the spill area. */
-      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 2 + k * 8);
+      // PG - modified offset from 2 to 6 (look in core_arch.h)
+      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 6 + k * 8);
 
       /* if (j > max_ss_no) */
       /*    max_ss_no = j; */
@@ -700,7 +701,7 @@ HInstrArray* doRegisterAllocation (
       rregs, as a way of avoiding reg-reg moves later.  Here we
       establish which, if any, rreg each vreg would prefer to be in.
       Note that this constrains the allocator -- ideally we end up
-      with as few as possible vregs expressing a preference.  
+      with as few as possible vregs expressing a preference.
 
       This is an optimisation: if the .preferred_rreg field is never
       set to anything different from INVALID_HREG, the allocator still
@@ -734,14 +735,14 @@ HInstrArray* doRegisterAllocation (
          this insn must be marked as unavailable in the running
          state. */
       for (j = 0; j < rreg_lrs_used; j++) {
-         if (rreg_lrs[j].live_after < ii 
+         if (rreg_lrs[j].live_after < ii
              && ii < rreg_lrs[j].dead_before) {
             /* ii is the middle of a hard live range for some real reg.
                Check it's marked as such in the running state. */
 
 #           if 0
-            vex_printf("considering la %d .. db %d   reg = ", 
-                       rreg_lrs[j].live_after, 
+            vex_printf("considering la %d .. db %d   reg = ",
+                       rreg_lrs[j].live_after,
                        rreg_lrs[j].dead_before);
             (*ppReg)(rreg_lrs[j].rreg);
             vex_printf("\n");
@@ -766,10 +767,10 @@ HInstrArray* doRegisterAllocation (
                  || state[j].disp == Unavail);
          if (state[j].disp != Unavail)
             continue;
-         for (k = 0; k < rreg_lrs_used; k++) 
+         for (k = 0; k < rreg_lrs_used; k++)
             if (rreg_lrs[k].rreg == state[j].rreg
-                && rreg_lrs[k].live_after < ii 
-                && ii < rreg_lrs[k].dead_before) 
+                && rreg_lrs[k].live_after < ii
+                && ii < rreg_lrs[k].dead_before)
                break;
          /* If this vassertion fails, we couldn't find a corresponding
             HLR. */
@@ -846,7 +847,7 @@ HInstrArray* doRegisterAllocation (
 
       /* ------ Free up rregs bound to dead vregs ------ */
 
-      /* Look for vregs whose live range has just ended, and 
+      /* Look for vregs whose live range has just ended, and
 	 mark the associated rreg as free. */
 
       for (j = 0; j < n_state; j++) {
@@ -857,8 +858,8 @@ HInstrArray* doRegisterAllocation (
          if (vreg_lrs[vreg].dead_before <= ii) {
             state[j].disp = Free;
             if (DEBUG_REGALLOC) {
-               vex_printf("free up "); 
-               (*ppReg)(state[j].rreg); 
+               vex_printf("free up ");
+               (*ppReg)(state[j].rreg);
                vex_printf("\n");
             }
          }
@@ -873,14 +874,14 @@ HInstrArray* doRegisterAllocation (
          is correct is to spill the rreg.
 
          Note we could do better:
-         * Could move it into some other free rreg, if one is available 
+         * Could move it into some other free rreg, if one is available
 
          Simplest way to do this is to iterate over the collection
          of rreg live ranges.
       */
       for (j = 0; j < rreg_lrs_used; j++) {
          if (rreg_lrs[j].live_after == ii) {
-            /* rreg_lrs[j].rreg needs to be freed up.  Find 
+            /* rreg_lrs[j].rreg needs to be freed up.  Find
                the associated state entry. */
             /* Note, re rreg_lrs[j].live_after == ii.  Real register
                live ranges are guaranteed to be well-formed in that
@@ -931,7 +932,7 @@ HInstrArray* doRegisterAllocation (
          some vregs currently in rregs.  Also generates spill loads.
          We also build up the final vreg->rreg mapping to be applied
          to the insn. */
-      
+
       (*getRegUsage)( &reg_usage, instrs_in->arr[ii] );
 
       initHRegRemap(&remap);
@@ -942,7 +943,7 @@ HInstrArray* doRegisterAllocation (
          vreg = reg_usage.hreg[j];
 
          /* only interested in virtual registers right now. */
-         if (!hregIsVirtual(vreg)) 
+         if (!hregIsVirtual(vreg))
             continue;
 
 #        if 0
@@ -1027,7 +1028,7 @@ HInstrArray* doRegisterAllocation (
             possible, in the hope that this will minimise the number
             of consequent reloads required. */
          spillee
-            = findMostDistantlyMentionedVReg ( 
+            = findMostDistantlyMentionedVReg (
                  getRegUsage, instrs_in, ii+1, state, n_state );
 
          if (spillee == -1) {
@@ -1081,11 +1082,11 @@ HInstrArray* doRegisterAllocation (
       /* We've finished clowning around with registers in this instruction.
          Three results:
          - the running state[] has been updated
-         - a suitable vreg->rreg mapping for this instruction has been 
+         - a suitable vreg->rreg mapping for this instruction has been
            constructed
          - spill and reload instructions may have been emitted.
 
-        The final step is to apply the mapping to the instruction, 
+        The final step is to apply the mapping to the instruction,
         and emit that.
       */
 
