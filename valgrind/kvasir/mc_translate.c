@@ -2938,19 +2938,15 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                                       e->Iex.LDle.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
-         // PG - Uhhh, does this work?
-         //      We will need to think about handling this more carefully later
-         return e;
+         // PG - what do we do about clean helpers?
+         return IRExpr_Const(IRConst_U32(0));
             //         return mkLazyN_DC( dce, e->Iex.CCall.args,
             //                            e->Iex.CCall.retty,
             //                            e->Iex.CCall.cee );
 
       case Iex_Mux0X:
-         // PG - This is like a ternary operator, so we don't want to
-         //      deal with it at all
-         return definedOfType_DC();
-         //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-         //                                    e->Iex.Mux0X.exprX);
+         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+                                    e->Iex.Mux0X.exprX);
 
       default:
          VG_(printf)("\n");
