@@ -1195,38 +1195,6 @@ IRAtom* mkLazyN ( MCEnv* mce,
    return mkPCastTo(mce, finalVtype, curr );
 }
 
-/* Do the lazy propagation game from a null-terminated vector of
-   atoms.  This is presumably the arguments to a helper call, so the
-   IRCallee info is also supplied in order that we can know which
-   arguments should be ignored (via the .mcx_mask field).
-*/
-static
-IRAtom* mkLazyN_DC ( DCEnv* dce,
-                  IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
-{
-   Int i;
-   IRAtom* here;
-   IRAtom* curr = definedOfType(Ity_I32);
-   for (i = 0; exprvec[i]; i++) {
-      tl_assert(i < 32);
-      tl_assert(isOriginalAtom(dce, exprvec[i]));
-      /* Only take notice of this arg if the callee's mc-exclusion
-         mask does not say it is to be excluded. */
-      if (cee->mcx_mask & (1<<i)) {
-         /* the arg is to be excluded from definedness checking.  Do
-            nothing. */
-         if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
-      } else {
-         /* calculate the arg's definedness, and pessimistically merge
-            it in. */
-         here = mkPCastTo( dce, Ity_I32, expr2vbits(dce, exprvec[i]) );
-         curr = mkUifU32(dce, here, curr);
-      }
-   }
-   return mkPCastTo(dce, finalVtype, curr );
-}
-
-
 /*------------------------------------------------------------*/
 /*--- Generating expensive sequences for exact carry-chain ---*/
 /*--- propagation in add/sub and related operations.       ---*/
@@ -2974,6 +2942,17 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_CCall:
          // PG - what do we do about clean helpers?
+
+         // TODO: Ok, right now, we just create a value of 0, but what
+         // we probably really want to do is to treat all arguments
+         // (e->Iex.CCall.args) to helpers as 'interacting' with one
+         // another and merge all their sets and return the value of
+         // one of the tags as the result of the helper call.  This is
+         // because helpers probably implement weird x86 instructions
+         // which are too difficult to handle purely in IR so these
+         // n-ary operations are probably interactions.  E.g. if the
+         // args are (a, b, c, d, e), then you should merge tag(a)
+         // with tag(b), tag(c) ... and return tag(a)
          return IRExpr_Const(IRConst_U32(0));
             //         return mkLazyN_DC( dce, e->Iex.CCall.args,
             //                            e->Iex.CCall.retty,

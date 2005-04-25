@@ -1086,3 +1086,12 @@ vex/priv/host-generic/reg_alloc2.c:685
 multiplex the values of the V-bits and pass them along within
 expr2tags_Mux0X_DC.  I didn't do anything to handle this case before
 so the IR was invalid.
+
+At Mon Apr 25 18:51:25 EDT 2005 ...
+
+Uhh, problem!  I just checked in all the new Valgrind stuff from the
+most recent versions in SVN into our own CVS repository.  I checked
+out SuperSimpleTest and it now produces MUCH less output (about half
+as much) but the output looks incorrect.  I can no longer see the
+obvious 'z = x + y' interaction anymore :( I gotta investigate that
+now ...
