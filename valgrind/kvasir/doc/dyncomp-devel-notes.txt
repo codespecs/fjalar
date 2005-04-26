@@ -1195,16 +1195,20 @@ of the expressions:
 
 Mux0X(exprC, tag(expr0), tag(exprX))
 
-However, what if exprC is a complicated expression with lots of
-interesting interactions?  We could just translate it into tags and do
-tag(exprC), except that we DO NOT use the results of this anywhere.
-Thus, the IR optimizer might kill that whole tag(exprC) branch.  Thus,
-we need to anchor it by adding a temporary t such that:
+Although exprC is an IRAtom (temp or constant), a super-complicated
+expression might have resulted in that temp.  What if exprC is TEMP
+which is the result of evaluating a complicated expression with lots
+of interesting interactions?  The IR optimizer might blow away the
+tree branch containing all of the interesting tag merges if the
+resulting temp is not used anywhere (since all the tag merges are
+clean calls).  Thus, we need to anchor it by adding a temporary t with
+a dirty call (which cannot be optimized away) such that:
 
 t = dirty_NOP(tag(exprC))
 
 We don't really use t for anything, but we need it as an ANCHOR to
-prevent the optimizer from blowing it away.
+prevent the optimizer from blowing away tag merge interactions arising
+from exprC.
 
 Conditional exits: 'if (expr1) goto literal-value'
 

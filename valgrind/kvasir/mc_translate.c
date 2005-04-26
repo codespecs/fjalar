@@ -1168,7 +1168,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       Int i;
       IRAtom* cur;
       IRDirty* di;
-      //      IRTemp   datatag;
+      IRTemp   datatag;
 
       for (i = 1; exprvec[i]; i++) {
          tl_assert(i < 32);
@@ -1183,9 +1183,9 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
 
-            // We don't care about the return value
-            //            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-            di = unsafeIRDirty_0_N(2,
+            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+            di = unsafeIRDirty_1_N(datatag,
+                                   2,
                                    "MC_(helperc_MERGE_TAGS)",
                                    &MC_(helperc_MERGE_TAGS),
                                    mkIRExprVec_2( first, cur ));
@@ -2262,8 +2262,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
    void*    helper = 0;
    Char*    hname = 0;
-   IRDirty* di;
-   IRTemp   datatag;
+   //   IRDirty* di;
+   //   IRTemp   datatag;
 
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
@@ -2616,25 +2616,27 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       // The standard way to make a dirty helper call (I think):
       // Tags are always 32 bits
-      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-      di = unsafeIRDirty_1_N(datatag,
-                             2,
-                             hname,
-                             helper,
-                             mkIRExprVec_2( vatom1, vatom2 ));
+      //      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+      //      di = unsafeIRDirty_1_N(datatag,
+      //                             2,
+      //                             hname,
+      //                             helper,
+      //                             mkIRExprVec_2( vatom1, vatom2 ));
 
-      setHelperAnns_DC( dce, di );
-      stmt( dce->bb, IRStmt_Dirty(di) );
-      return mkexpr(datatag);
+      //      setHelperAnns_DC( dce, di );
+      //      stmt( dce->bb, IRStmt_Dirty(di) );
+      //      return mkexpr(datatag);
 
-      // Alternative: Let's try a clean call?
+      // Let's try a clean call.  It seems to be correct
+      // because of the fact that merging the same 2 things more than
+      // once (in close proximity) doesn't hurt
       // DO NOT use clean call unless it has NO side effects and
       // is purely functional like an IRExpr
-      //      return mkIRExprCCall (Ity_I32,
-      //                            2 /*Int regparms*/,
-      //                            hname,
-      //                            helper,
-      //                            mkIRExprVec_2( vatom1, vatom2 ));
+      return mkIRExprCCall (Ity_I32,
+                            2 /*Int regparms*/,
+                            hname,
+                            helper,
+                            mkIRExprVec_2( vatom1, vatom2 ));
 
    }
    // Hmmm, is this the desired behavior for a non-interaction?
@@ -2816,8 +2818,8 @@ static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    IRAtom *v64hi, *v64lo;
-   IRDirty* di;
-   IRTemp   datatag;
+   //   IRDirty* di;
+   //   IRTemp   datatag;
 
    switch (shadowType_DC(ty)) {
       case Ity_I8:
@@ -2831,16 +2833,25 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 
          // Merge the tags of the results of the
          // lower and upper 64-bit loads:
-         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-         di = unsafeIRDirty_1_N(datatag,
-                                2,
-                                "MC_(helperc_MERGE_TAGS)",
-                                &MC_(helperc_MERGE_TAGS),
-                                mkIRExprVec_2( v64lo, v64hi ));
 
-         setHelperAnns_DC( dce, di );
-         stmt( dce->bb, IRStmt_Dirty(di) );
-         return mkexpr(datatag);
+         // Dirty call version:
+         //         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+         //         di = unsafeIRDirty_1_N(datatag,
+         //                                2,
+         //                                "MC_(helperc_MERGE_TAGS)",
+         //                                &MC_(helperc_MERGE_TAGS),
+         //                                mkIRExprVec_2( v64lo, v64hi ));
+
+         //         setHelperAnns_DC( dce, di );
+         ///         stmt( dce->bb, IRStmt_Dirty(di) );
+            //         return mkexpr(datatag);
+
+         // Clean call version:
+         return mkIRExprCCall (Ity_I32,
+                               2 /*Int regparms*/,
+                               "MC_(helperc_MERGE_TAGS)",
+                               &MC_(helperc_MERGE_TAGS),
+                               mkIRExprVec_2( v64lo, v64hi ));
       default:
          VG_(tool_panic)("expr2tags_LDle_DC");
    }
@@ -2851,21 +2862,67 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* expr0, IRAtom* exprX )
 {
    IRAtom *vbitsC, *vbits0, *vbitsX;
+   IRDirty* di;
+   IRTemp   datatag;
 
    tl_assert(isOriginalAtom_DC(dce, cond));
    tl_assert(isOriginalAtom_DC(dce, expr0));
    tl_assert(isOriginalAtom_DC(dce, exprX));
 
-   //
-   expr2tags_DC(dce, cond);
+   // Generate a temp. 'datatag', which is the result of a NOP dirty
+   // call on vbitsC, in order to 'anchor' any possible tag merge
+   // clean helper calls in the expression which produced 'cond'.
+   // This prevents the IR optimizer from deleting all of these
+   // interactions from the parallel tag IR tree (or so we hope)
+   vbitsC = expr2tags_DC(dce, cond);
+   datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   di = unsafeIRDirty_1_N(datatag,
+                          1,
+                          "MC_(helperc_TAG_NOP)",
+                          &MC_(helperc_TAG_NOP),
+                          mkIRExprVec_1( vbitsC ));
 
+   setHelperAnns_DC( dce, di );
+   stmt( dce->bb, IRStmt_Dirty(di) );
+
+   // Do the real work of generating tag IR trees for expr0 and exprX
+   // and then making a parallel Mux which contains these two trees
+   // with the ORIGINAL condition 'cond'
    vbits0 = expr2tags_DC(dce, expr0);
    vbitsX = expr2tags_DC(dce, exprX);
-
    tl_assert(sameKindedAtoms(vbits0, vbitsX)); // Both should be 32-bit tags
 
    return assignNew_DC(dce, Ity_I32, IRExpr_Mux0X(cond, vbits0, vbitsX));
 }
+
+
+// (Very similar to expr2tags_Mux0X_DC)
+// Generate and return temp 'datatag', which is the result of a NOP
+// dirty call on the tag of 'guard', in order to 'anchor' any possible
+// tag merge clean helper calls in the expression which produced
+// 'guard'.  This prevents the IR optimizer from deleting all of these
+// interactions from the parallel tag IR tree (or so we hope)
+static
+IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
+{
+   IRAtom *guardtag;
+   IRDirty* di;
+   IRTemp   datatag;
+
+   guardtag = expr2tags_DC(dce, guard);
+   datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   di = unsafeIRDirty_1_N(datatag,
+                          1,
+                          "MC_(helperc_TAG_NOP)",
+                          &MC_(helperc_TAG_NOP),
+                          mkIRExprVec_1( guardtag ));
+
+   setHelperAnns_DC( dce, di );
+   stmt( dce->bb, IRStmt_Dirty(di) );
+
+   return mkexpr(datatag);
+}
+
 
 /* --------- This is the main expression-handling function. --------- */
 
@@ -3610,6 +3667,8 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
    // PG
    // Is this aliasing of 'bb' going to be a problem?
+   // Not if we allocate enough space for the shadow tag guest state
+   // and adjust the offsets appropriately
    dce.bb             = bb;
    dce.layout         = layout;
    dce.n_originalTmps = bb->tyenv->types_used;
@@ -3734,6 +3793,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Exit:
+            do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
             break;
 
          case Ist_NoOp:

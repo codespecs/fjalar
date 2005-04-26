@@ -71,6 +71,8 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOADV4)  ( Addr );
 extern VGA_REGPARM(1) ULong MC_(helperc_LOADV8)  ( Addr );
 
 // PG
+extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
+
 extern VGA_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
 extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
 extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
