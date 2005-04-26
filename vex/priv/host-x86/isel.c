@@ -1182,6 +1182,14 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
          addInstr(env, X86Instr_LoadEX( 1, False, am, dst ));
          return dst;
       }
+      // PG - Add support for 32-bit GETI's for DynComp tags
+      if (ty == Ity_I32) {
+         addInstr(env, X86Instr_Alu32R(
+                          Xalu_MOV,
+                          X86RMI_Mem(am),
+                          dst));
+         return dst;
+      }
       break;
    }
 
