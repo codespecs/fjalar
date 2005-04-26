@@ -1168,7 +1168,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       Int i;
       IRAtom* cur;
       IRDirty* di;
-      IRTemp   datatag;
+      //      IRTemp   datatag;
 
       for (i = 1; exprvec[i]; i++) {
          tl_assert(i < 32);
@@ -1183,9 +1183,9 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
 
-            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-            di = unsafeIRDirty_1_N(datatag,
-                                   2,
+            // We don't care about the return value
+            //            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+            di = unsafeIRDirty_0_N(2,
                                    "MC_(helperc_MERGE_TAGS)",
                                    &MC_(helperc_MERGE_TAGS),
                                    mkIRExprVec_2( first, cur ));
@@ -1198,7 +1198,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       return first;
    }
    else {
-   return IRExpr_Const(IRConst_U32(0));
+      return IRExpr_Const(IRConst_U32(0));
    }
 }
 
@@ -2856,7 +2856,9 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
    tl_assert(isOriginalAtom_DC(dce, expr0));
    tl_assert(isOriginalAtom_DC(dce, exprX));
 
-   //   vbitsC = expr2tags_DC(dce, cond);
+   //
+   expr2tags_DC(dce, cond);
+
    vbits0 = expr2tags_DC(dce, expr0);
    vbitsX = expr2tags_DC(dce, exprX);
 
@@ -2915,7 +2917,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                                       e->Iex.LDle.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
-         return handleCCall_DC( dce, e->Iex.CCall.args,
+         return handleCCall_DC( dce,
+                                e->Iex.CCall.args,
                                 e->Iex.CCall.retty,
                                 e->Iex.CCall.cee );
 

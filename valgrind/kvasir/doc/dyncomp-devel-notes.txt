@@ -1148,3 +1148,64 @@ For CCalls:
          for args, and 32 bits for return type. */
       if (e->Iex.CCall.retty != Ity_I32)
          goto irreducible;
+
+but the problem may not be in CCall at all.  If nothing matches in the
+switch statement, this line still executes:
+
+   /* We get here if no pattern matched. */
+  irreducible:
+   ppIRExpr(e);
+   vpanic("iselIntExpr_R: cannot reduce tree");
+
+
+GETI is most likely the culprit!
+GETI(880:8xI32)[t7,0]
+
+It's just another instance of the 'not-supporting 4-byte get/put' for
+x87 floating-point stack in isel.c:
+
+      // PG - Add support for 32-bit GETI's for DynComp tags
+      if (ty == Ity_I32) {
+         addInstr(env, X86Instr_Alu32R(
+                          Xalu_MOV,
+                          X86RMI_Mem(am),
+                          dst));
+         return dst;
+      }
+
+
+Clean calls are intuitively the correct thing for tag MERGES (and
+they're faster), although they may be optimized away in some special
+cases.
+
+Do a clean call for most merges and do a few dirty calls to 'anchor'
+the computation so that the optimizer doesn't optimize stuff away.
+
+For the MUX and conditional exit (i.e., if (expr1) goto
+literal-value), add a no-op dirty call which takes 1 tag in and does
+nothing so that the optimizer doesn't destroy it.
+
+e.g.
+
+Mux: 'Mux0X(exprC, expr0, exprX)'
+
+Conceptually, the return value of processing the tags for this
+expression is just a parallel Mux with the SAME condition but the tags
+of the expressions:
+
+Mux0X(exprC, tag(expr0), tag(exprX))
+
+However, what if exprC is a complicated expression with lots of
+interesting interactions?  We could just translate it into tags and do
+tag(exprC), except that we DO NOT use the results of this anywhere.
+Thus, the IR optimizer might kill that whole tag(exprC) branch.  Thus,
+we need to anchor it by adding a temporary t such that:
+
+t = dirty_NOP(tag(exprC))
+
+We don't really use t for anything, but we need it as an ANCHOR to
+prevent the optimizer from blowing it away.
+
+Conditional exits: 'if (expr1) goto literal-value'
+
+Ditto for expr1 here.
