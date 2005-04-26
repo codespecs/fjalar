@@ -359,15 +359,6 @@ static IRType shadowType_DC ( IRType ty )
    }
 }
 
-// PG - We need to change the semantics of this - I guess right now
-// 0 means 'no tag', which I suppose is okay, but we may really
-// want to create a new tag for every constant literal
-// Let's always create a 32-bit '0' tag here because all tags are 32 bits
-// This is really incorrect, so avoid it if possible!
-static IRExpr* definedOfType_DC () {
-   return IRExpr_Const(IRConst_U32(0));
-}
-
 /*------------------------------------------------------------*/
 /*--- Constructing IR fragments                            ---*/
 /*------------------------------------------------------------*/
@@ -786,7 +777,6 @@ static void setHelperAnns ( MCEnv* mce, IRDirty* di ) {
    di->fxState[1].size   = mce->layout->sizeof_IP;
 }
 
-// PG
 static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->nFxState = 2;
    di->fxState[0].fx     = Ifx_Read;
@@ -965,18 +955,12 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
 
    ty = typeOfIRExpr(dce->bb->tyenv, vatom);
    tl_assert(ty != Ity_I1);
-   //   if (isAlwaysDefd(dce, offset, sizeofIRType(ty))) {
-   //      /* later: no ... */
-   //      /* emit code to emit a complaint if any of the vbits are 1. */
-   //      /* complainIfUndefined(dce, atom); */
-   //   } else {
 
-      /* Do a plain shadow Put. */
-         // PG - Remember the new layout in ThreadArchState
-         //      which requires (4 * offset) + (2 * base size)
-   stmt( dce->bb, IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
-
-      //   }
+   /* Do a plain shadow Put. */
+   // PG - Remember the new layout in ThreadArchState
+   //      which requires (4 * offset) + (2 * base size)
+   stmt( dce->bb,
+         IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
 }
 
 
@@ -1015,42 +999,29 @@ void do_shadow_PUTI ( MCEnv* mce,
 }
 
 // A PUTI stores a value (dynamically indexed) into the guest state
-// (This seems to be causing guest array offset problems when dealing
-//  with floating-point values)
+// (for x86, this seems to be only used for floating point values)
 static
 void do_shadow_PUTI_DC ( DCEnv* dce,
                       IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
 {
    IRAtom* vatom;
-   IRType  ty, tyS;
-   //   Int     arrSize;;
+   IRType  ty;
 
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
    tl_assert(sameKindedAtoms(atom, vatom));
    ty   = descr->elemTy;
-   tyS  = shadowType_DC(ty);
-   //   arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
-   //   complainIfUndefined(dce,ix); // PG
-   //   if (isAlwaysDefd(dce, descr->base, arrSize)) {
-   //      /* later: no ... */
-   //      /* emit code to emit a complaint if any of the vbits are 1. */
-   //      /* complainIfUndefined(dce, atom); */
-   //   } else {
-      /* Do a cloned version of the Put that refers to the shadow
-         area. */
-      IRArray* new_descr
-        //         = mkIRArray( descr->base + dce->layout->total_sizeB,
-        //                      tyS, descr->nElems);
-         // PG - Remember the new layout in ThreadArchState
-         //      which requires (4 * offset) + (2 * base size)
-         = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
-                      Ity_I32, descr->nElems); // PG - Tags are always 32 bits
+   /* Do a cloned version of the Put that refers to the tag shadow
+      area. */
+   // PG - Remember the new layout in ThreadArchState
+   //      which requires (4 * offset) + (2 * base size)
+   IRArray* new_descr
+      = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
+                   Ity_I32, descr->nElems); // Tags are 32 bits
 
-      stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
-      //   }
+   stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
 }
 
 /* Return an expression which contains the V bits corresponding to the
@@ -1074,19 +1045,13 @@ IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
 static
 IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
 {
-   //   IRType tyS = shadowType_DC(ty);
    tl_assert(ty != Ity_I1);
-   //   if (isAlwaysDefd(dce, offset, sizeofIRType(ty))) {
-   //      /* Always defined, return all zeroes of the relevant type */
-   //      return definedOfType_DC(tyS);
-   //   } else {
-      /* return a cloned version of the Get that refers to the shadow
-         area. */
-   //      return IRExpr_Get( offset + dce->layout->total_sizeB, tyS );
-         // PG - Remember the new layout in ThreadArchState
-         //      which requires (4 * offset) + (2 * base size)
-   return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB), Ity_I32 ); // PG - tags are 32 bits
-      //   }
+   /* return a cloned version of the Get that refers to the tag
+      shadow area. */
+   // PG - Remember the new layout in ThreadArchState
+   //      which requires (4 * offset) + (2 * base size)
+   return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB),
+                      Ity_I32 ); // Tags are 32 bits
 }
 
 /* Return an expression which contains the V bits corresponding to the
@@ -1118,27 +1083,17 @@ static
 IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
-   //   IRType tyS  = shadowType_DC(ty);
-   //   Int arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
-   //   complainIfUndefined(dce,ix); // PG
-   //   if (isAlwaysDefd(dce, descr->base, arrSize)) {
-   //      /* Always defined, return all zeroes of the relevant type */
-   //      return definedOfType_DC(tyS);
-   //   } else {
-      /* return a cloned version of the Get that refers to the shadow
-         area. */
-      IRArray* new_descr
-         //         = mkIRArray( descr->base + dce->layout->total_sizeB,
-         //                      tyS, descr->nElems);
-         // PG - Remember the new layout in ThreadArchState
-         //      which requires (4 * offset) + (2 * base size)
-         = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
-                      Ity_I32, descr->nElems); // PG - tags are always 32 bits
+   /* return a cloned version of the Get that refers to the
+      tag shadow area. */
+   // PG - Remember the new layout in ThreadArchState
+   //      which requires (4 * offset) + (2 * base size)
+   IRArray* new_descr
+      = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
+                   Ity_I32, descr->nElems); // Tags are 32 bits
 
-      return IRExpr_GetI( new_descr, ix, bias );
-      //   }
+   return IRExpr_GetI( new_descr, ix, bias );
 }
 
 
@@ -1193,6 +1148,58 @@ IRAtom* mkLazyN ( MCEnv* mce,
       }
    }
    return mkPCastTo(mce, finalVtype, curr );
+}
+
+// Handling of clean helper function calls in the target program's
+// translated IR: Treat all arguments (exprvec) as 'interacting' with
+// one another and merge all of their respective tags and return the
+// value of one of the tags as the result of the helper call.  This is
+// because helpers probably implement weird x86 instructions which are
+// too difficult to handle purely in IR so these n-ary operations are
+// probably interactions.  E.g. if the args are (a, b, c, d, e), then
+// you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
+// then return tag(a)
+static
+IRAtom* handleCCall_DC ( DCEnv* dce,
+                         IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
+{
+   if (exprvec && exprvec[0]) {
+      IRAtom* first = expr2tags_DC(dce, exprvec[0]);
+      Int i;
+      IRAtom* cur;
+      IRDirty* di;
+      IRTemp   datatag;
+
+      for (i = 1; exprvec[i]; i++) {
+         tl_assert(i < 32);
+         tl_assert(isOriginalAtom_DC(dce, exprvec[i]));
+         /* Only take notice of this arg if the callee's mc-exclusion
+            mask does not say it is to be excluded. */
+         if (cee->mcx_mask & (1<<i)) {
+            /* the arg is to be excluded from definedness checking.  Do
+               nothing. (I guess we do nothing also just like mkLazyN) */
+            if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
+         } else {
+            /* merge the tags of first and current arguments */
+            cur = expr2tags_DC(dce, exprvec[i]);
+
+            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+            di = unsafeIRDirty_1_N(datatag,
+                                   2,
+                                   "MC_(helperc_MERGE_TAGS)",
+                                   &MC_(helperc_MERGE_TAGS),
+                                   mkIRExprVec_2( first, cur ));
+
+            setHelperAnns_DC( dce, di );
+            stmt(dce->bb, IRStmt_Dirty(di));
+         }
+      }
+      // Return the tag of the first argument, if there is one
+      return first;
+   }
+   else {
+   return IRExpr_Const(IRConst_U32(0));
+   }
 }
 
 /*------------------------------------------------------------*/
@@ -1514,48 +1521,6 @@ IRAtom* vectorNarrow64 ( MCEnv* mce, IROp narrow_op,
    at3 = assignNew(mce, Ity_I64, binop(narrow_op, at1, at2));
    return at3;
 }
-
-// PG
-/* static */
-/* IRAtom* vectorNarrowV128_DC ( DCEnv* dce, IROp narrow_op, */
-/*                               IRAtom* vatom1, IRAtom* vatom2) */
-/* { */
-/*    IRAtom *at1, *at2, *at3; */
-/*    IRAtom* (*pcast)( DCEnv*, IRAtom* ); */
-/*    switch (narrow_op) { */
-/*       case Iop_QNarrow32Sx4: pcast = mkPCast32x4; break; */
-/*       case Iop_QNarrow16Sx8: pcast = mkPCast16x8; break; */
-/*       case Iop_QNarrow16Ux8: pcast = mkPCast16x8; break; */
-/*       default: VG_(tool_panic)("vectorNarrowV128_DC"); */
-/*    } */
-/*    tl_assert(isShadowAtom(dce,vatom1)); */
-/*    tl_assert(isShadowAtom(dce,vatom2)); */
-/*    at1 = assignNew(dce, Ity_V128, pcast(dce, vatom1)); */
-/*    at2 = assignNew(dce, Ity_V128, pcast(dce, vatom2)); */
-/*    at3 = assignNew(dce, Ity_V128, binop(narrow_op, at1, at2)); */
-/*    return at3; */
-/* } */
-
-// PG
-/* static */
-/* IRAtom* vectorNarrow64_DC ( DCEnv* dce, IROp narrow_op, */
-/*                             IRAtom* vatom1, IRAtom* vatom2) */
-/* { */
-/*    IRAtom *at1, *at2, *at3; */
-/*    IRAtom* (*pcast)( DCEnv*, IRAtom* ); */
-/*    switch (narrow_op) { */
-/*       case Iop_QNarrow32Sx2: pcast = mkPCast32x2; break; */
-/*       case Iop_QNarrow16Sx4: pcast = mkPCast16x4; break; */
-/*       case Iop_QNarrow16Ux4: pcast = mkPCast16x4; break; */
-/*       default: VG_(tool_panic)("vectorNarrow64_DC"); */
-/*    } */
-/*    tl_assert(isShadowAtom_DC(dce,vatom1)); */
-/*    tl_assert(isShadowAtom_DC(dce,vatom2)); */
-/*    at1 = assignNew(dce, Ity_I64, pcast(dce, vatom1)); */
-/*    at2 = assignNew(dce, Ity_I64, pcast(dce, vatom2)); */
-/*    at3 = assignNew(dce, Ity_I64, binop(narrow_op, at1, at2)); */
-/*    return at3; */
-/* } */
 
 /* --- --- Vector integer arithmetic --- --- */
 
@@ -2284,7 +2249,7 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
 // This is where we need to add calls to helper functions to
 // merge tags because here is where the 'interactions' take place
 
-// Yes, this code can be cleaned up A LOT, but I'll leave it
+// Yes, this code can be cleaned up a bit, but I'll leave it
 // as one big switch statement for now in order to provide
 // flexibility for future edits
 static
@@ -2851,6 +2816,9 @@ static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    IRAtom *v64hi, *v64lo;
+   IRDirty* di;
+   IRTemp   datatag;
+
    switch (shadowType_DC(ty)) {
       case Ity_I8:
       case Ity_I16:
@@ -2860,9 +2828,19 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
       case Ity_V128:
          v64lo = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias);
          v64hi = expr2tags_LDle_WRK_DC(dce, Ity_I64, addr, bias+8);
-         return assignNew_DC( dce,
-                           Ity_V128,
-                           binop(Iop_64HLtoV128, v64hi, v64lo));
+
+         // Merge the tags of the results of the
+         // lower and upper 64-bit loads:
+         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+         di = unsafeIRDirty_1_N(datatag,
+                                2,
+                                "MC_(helperc_MERGE_TAGS)",
+                                &MC_(helperc_MERGE_TAGS),
+                                mkIRExprVec_2( v64lo, v64hi ));
+
+         setHelperAnns_DC( dce, di );
+         stmt( dce->bb, IRStmt_Dirty(di) );
+         return mkexpr(datatag);
       default:
          VG_(tool_panic)("expr2tags_LDle_DC");
    }
@@ -2873,22 +2851,18 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
                            IRAtom* cond, IRAtom* expr0, IRAtom* exprX )
 {
    IRAtom *vbitsC, *vbits0, *vbitsX;
-   IRType ty;
-   /* Given Mux0X(cond,expr0,exprX), generate
-         Mux0X(cond,expr0#,exprX#) `UifU` PCast(cond#)
-      That is, steer the V bits like the originals, but trash the
-      result if the steering value is undefined.  This gives
-      lazy propagation. */
+
    tl_assert(isOriginalAtom_DC(dce, cond));
    tl_assert(isOriginalAtom_DC(dce, expr0));
    tl_assert(isOriginalAtom_DC(dce, exprX));
 
-   vbitsC = expr2tags_DC(dce, cond);
+   //   vbitsC = expr2tags_DC(dce, cond);
    vbits0 = expr2tags_DC(dce, expr0);
    vbitsX = expr2tags_DC(dce, exprX);
-   ty = typeOfIRExpr(dce->bb->tyenv, vbits0);
 
-   return IRExpr_Mux0X(cond, vbits0, vbitsX);
+   tl_assert(sameKindedAtoms(vbits0, vbitsX)); // Both should be 32-bit tags
+
+   return assignNew_DC(dce, Ity_I32, IRExpr_Mux0X(cond, vbits0, vbitsX));
 }
 
 /* --------- This is the main expression-handling function. --------- */
@@ -2941,22 +2915,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                                       e->Iex.LDle.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
-         // PG - what do we do about clean helpers?
-
-         // TODO: Ok, right now, we just create a value of 0, but what
-         // we probably really want to do is to treat all arguments
-         // (e->Iex.CCall.args) to helpers as 'interacting' with one
-         // another and merge all their sets and return the value of
-         // one of the tags as the result of the helper call.  This is
-         // because helpers probably implement weird x86 instructions
-         // which are too difficult to handle purely in IR so these
-         // n-ary operations are probably interactions.  E.g. if the
-         // args are (a, b, c, d, e), then you should merge tag(a)
-         // with tag(b), tag(c) ... and return tag(a)
-         return IRExpr_Const(IRConst_U32(0));
-            //         return mkLazyN_DC( dce, e->Iex.CCall.args,
-            //                            e->Iex.CCall.retty,
-            //                            e->Iex.CCall.cee );
+         return handleCCall_DC( dce, e->Iex.CCall.args,
+                                e->Iex.CCall.retty,
+                                e->Iex.CCall.cee );
 
       case Iex_Mux0X:
          return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,

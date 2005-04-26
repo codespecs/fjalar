@@ -1086,3 +1086,65 @@ vex/priv/host-generic/reg_alloc2.c:685
 multiplex the values of the V-bits and pass them along within
 expr2tags_Mux0X_DC.  I didn't do anything to handle this case before
 so the IR was invalid.
+
+
+TypesTest still fails!!! ARGGGGGG.
+
+returnULongProduct(10000000, 0) = 1187331820519724672
+GETI(880:8xI32)[t65,0]
+vex: the `impossible' happened:
+   iselIntExpr_R: cannot reduce tree
+vex storage:  P 436,  T total 66334080 (1949455),  T curr 183020 (5359)
+
+Look into this sometime.  It has to do with some double floating point
+thing, since if we comment this out, it works:
+
+/*     printf("returnDoubleSum(%f, %f) = %f\n", */
+/* 	   (float)((a+b)/7), */
+/* 	   (double)((2/b)*a), */
+/* 	   returnDoubleSum((float)((a+b)/7), (double)((2/b)*a))); */
+
+
+----------
+2005-04-26
+----------
+
+This tiny program replicates the problem above.
+
+double returnDoubleSum(double a, double b)
+{
+  return 0;
+}
+
+int main() {
+  returnDoubleSum(1, 2);
+  return 0;
+}
+
+
+
+GETI(880:8xI32)[t7,0]
+vex: the `impossible' happened:
+   iselIntExpr_R: cannot reduce tree
+
+parsnip:/scratch/pgbovine-do-not-delete-me/xtide/bin/xtide
+shares the SAME failure
+
+
+Hmm, if I comment-out handling for:
+
+      case Iex_Mux0X:
+         return IRExpr_Const(IRConst_U32(0));
+         //         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
+         //                                    e->Iex.Mux0X.exprX);
+
+... everything seems to work properly
+
+But it may have something to do with CCall.  Look in isel.c for
+'irreducible':
+
+For CCalls:
+      /* be very restrictive for now.  Only 32/64-bit ints allowed
+         for args, and 32 bits for return type. */
+      if (e->Iex.CCall.retty != Ity_I32)
+         goto irreducible;
