@@ -2548,8 +2548,11 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Dirty:
-            // PG - I may get in trouble later for commenting this out:
-            //            do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
+               // PG - TODO: In the future, we probably want to handle
+               // dirty helper calls just like how we handle clean
+               // helper calls.  Assume that all relevant
+               // (non-masked?) operands interact.
+               // do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
             break;
 
          default:

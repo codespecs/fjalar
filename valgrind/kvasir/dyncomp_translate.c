@@ -28,34 +28,6 @@
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
 
-/*------------------------------------------------------------*/
-/*--- DynComp running state, and tmp management. (PG)      ---*/
-/*------------------------------------------------------------*/
-
-/* SHADOW TMP MANAGEMENT.  Shadow tmps are allocated lazily (on
-   demand), as they are encountered.  This is for two reasons.
-
-   (1) (less important reason): Many original tmps are unused due to
-   initial IR optimisation, and we do not want to spaces in tables
-   tracking them.
-
-   Shadow IRTemps are therefore allocated on demand.  mce.tmpMap is a
-   table indexed [0 .. n_types-1], which gives the current shadow for
-   each original tmp, or INVALID_IRTEMP if none is so far assigned.
-   It is necessary to support making multiple assignments to a shadow
-   -- specifically, after testing a shadow for definedness, it needs
-   to be made defined.  But IR's SSA property disallows this.
-
-   (2) (more important reason): Therefore, when a shadow needs to get
-   a new value, a new temporary is created, the value is assigned to
-   that, and the tmpMap is updated to reflect the new binding.
-
-   A corollary is that if the tmpMap maps a given tmp to
-   INVALID_IRTEMP and we are hoping to read that shadow tmp, it means
-   there's a read-before-write error in the original tmps.  The IR
-   sanity checker should catch all such anomalies, however.
-*/
-
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
@@ -70,8 +42,6 @@ IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
    return dce->tmpMap[orig];
 }
 
-
-// PG
 /* (used for sanity checks only): is this an atom which looks
    like it's from original code? */
 static Bool isOriginalAtom_DC ( DCEnv* dce, IRAtom* a1 )
@@ -83,7 +53,6 @@ static Bool isOriginalAtom_DC ( DCEnv* dce, IRAtom* a1 )
    return False;
 }
 
-// PG
 /* (used for sanity checks only): is this an atom which looks
    like it's from shadow code? */
 static Bool isShadowAtom_DC ( DCEnv* dce, IRAtom* a1 )
@@ -95,14 +64,13 @@ static Bool isShadowAtom_DC ( DCEnv* dce, IRAtom* a1 )
    return False;
 }
 
-// PG
 static IRAtom* assignNew_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
    IRTemp t = newIRTemp(dce->bb->tyenv, ty);
    assign(dce->bb, t, e);
    return mkexpr(t);
 }
 
-// TODO: Is this the correct behavior?
+// TODO: Is this the correct behavior for our purposes?
 /* Set the annotations on a dirty helper to indicate that the stack
    pointer and instruction pointers might be read.  This is the
    behaviour of all 'emit-a-complaint' style functions we might
@@ -251,7 +219,6 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
 
 /*------------------------------------------------------------*/
 /*--- Generate shadow values from all kinds of IRExprs.    ---*/
-/*--- Duplicated version for DynComp               (PG)    ---*/
 /*------------------------------------------------------------*/
 
 // This is where we need to add calls to helper functions to
@@ -674,6 +641,8 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    // sub-expression and return it:
    // TODO: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
+   //       But you can't do that because you only have the 32-bit
+   //       tag and NOT the memory locations it came from
    //       ... I guess we don't care since during binary ops.,
    //       we only consider the tag of the first bytes of each
    //       operand anyways.
@@ -851,8 +820,8 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          //                                mkIRExprVec_2( v64lo, v64hi ));
 
          //         setHelperAnns_DC( dce, di );
-         ///         stmt( dce->bb, IRStmt_Dirty(di) );
-            //         return mkexpr(datatag);
+         //         stmt( dce->bb, IRStmt_Dirty(di) );
+         //         return mkexpr(datatag);
 
          // Clean call version:
          return mkIRExprCCall (Ity_I32,
@@ -997,41 +966,6 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
    }
 }
 
-
-// TODO: This doesn't really seem to do anything for tags since unary
-// operation on tags are meaningless, so we may be able to cut this
-// out entirely in the future
-static
-IRExpr* zwidenToHostWord_DC ( DCEnv* dce, IRAtom* vatom )
-{
-   IRType ty, tyH;
-
-   /* vatom is vbits-value and as such can only have a shadow type. */
-   tl_assert(isShadowAtom_DC(dce,vatom));
-
-   ty  = typeOfIRExpr(dce->bb->tyenv, vatom);
-   tyH = dce->hWordTy;
-
-   if (tyH == Ity_I32) {
-      switch (ty) {
-         case Ity_I32: return vatom;
-         // Changed to Iop16Sto32 but changed back
-         // (but doesn't seem to help in eliminating garbage values)
-         case Ity_I16: return assignNew_DC(dce, tyH, unop(Iop_16Uto32, vatom));
-         // Changed to Iop8Sto32 but changed back
-         // (but doesn't seem to help in eliminating garbage values)
-         case Ity_I8:  return assignNew_DC(dce, tyH, unop(Iop_8Uto32, vatom));
-         default:      goto unhandled;
-      }
-   } else {
-      goto unhandled;
-   }
-  unhandled:
-   VG_(printf)("\nty = "); ppIRType(ty); VG_(printf)("\n");
-   VG_(tool_panic)("zwidenToHostWord_DC");
-}
-
-// PG
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr, UInt bias,
                       IRAtom* data, IRAtom* vdata )
@@ -1121,19 +1055,24 @@ void do_shadow_STle_DC ( DCEnv* dce,
          addrAct = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
       }
 
-      if (ty == Ity_I64) {
-         /* We can't do this with regparm 2 on 32-bit platforms, since
-            the back ends aren't clever enough to handle 64-bit
-            regparm args.  Therefore be different. */
-         di = unsafeIRDirty_0_N(
-                 1/*regparms*/, hname, helper,
-                 mkIRExprVec_2( addrAct, vdata ));
-      } else {
-         di = unsafeIRDirty_0_N(
-                 2/*regparms*/, hname, helper,
-                 mkIRExprVec_2( addrAct,
-                                zwidenToHostWord_DC( dce, vdata )));
-      }
+      // All of this zwidenToHostWord_DC stuff doesn't matter for tags
+      // since all tags are 32-bits
+      di = unsafeIRDirty_0_N(2/*regparms*/, hname, helper,
+                             mkIRExprVec_2( addrAct, vdata ));
+
+      //      if (ty == Ity_I64) {
+      //         /* We can't do this with regparm 2 on 32-bit platforms, since
+      //            the back ends aren't clever enough to handle 64-bit
+      //            regparm args.  Therefore be different. */
+      //         di = unsafeIRDirty_0_N(
+      //                 1/*regparms*/, hname, helper,
+      //                 mkIRExprVec_2( addrAct, vdata ));
+      //      } else {
+      //         di = unsafeIRDirty_0_N(
+      //                 2/*regparms*/, hname, helper,
+      //                 mkIRExprVec_2( addrAct,
+      //                                zwidenToHostWord_DC( dce, vdata )));
+      //      }
       setHelperAnns_DC( dce, di );
       stmt( dce->bb, IRStmt_Dirty(di) );
    }

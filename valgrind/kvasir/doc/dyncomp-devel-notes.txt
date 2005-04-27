@@ -1219,3 +1219,22 @@ Ditto for expr1 here.
 ----------
 2005-04-27
 ----------
+
+Questions for Stephen during our weekly meeting (Look at TODO's):
+
+1. Do we have the annotations for the dirty helpers correct for MERGE_TAG
+and CREATE_TAG (as stated in setHelperAnns_DC()).  I guess we don't
+explicitly access guest state in either of these.
+
+2. Are the AND, OR, etc... binary ops. bitwise by default?  If so, we
+should count them as interactions?  But what about logical AND/OR?  We
+don't want to count (apples || oranges) as interactions, but if it
+gets translated into the same IR instructions as (apples | oranges),
+then we can't tell the difference, right?  We need to err one way or
+another, and I think that logical AND/OR in C are more common than
+bitwise ones.
+
+3. Make sure my handling of unary ops (no handling at all) is correct.
+
+4. How do pointer values get created using &-operator?  I guess I'll
+experiment and find out.
