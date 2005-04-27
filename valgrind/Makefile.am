@@ -10,6 +10,7 @@ TOOLS =		memcheck \
 		corecheck \
 		massif \
 		lackey \
+		dyncomp \
 		none
 
 ##		addrcheck \

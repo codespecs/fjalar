@@ -1164,6 +1164,8 @@ GETI(880:8xI32)[t7,0]
 It's just another instance of the 'not-supporting 4-byte get/put' for
 x87 floating-point stack in isel.c:
 
+Add this line to isel.c and all should be well :)
+
       // PG - Add support for 32-bit GETI's for DynComp tags
       if (ty == Ity_I32) {
          addInstr(env, X86Instr_Alu32R(
@@ -1213,3 +1215,7 @@ from exprC.
 Conditional exits: 'if (expr1) goto literal-value'
 
 Ditto for expr1 here.
+
+----------
+2005-04-27
+----------

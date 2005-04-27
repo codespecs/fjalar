@@ -32,7 +32,9 @@ vgtool_dyncomp_so_SOURCES = \
 	mc_errcontext.c \
 	mc_main.c \
 	mc_translate.c \
-	union_find.c
+	union_find.c \
+	dyncomp_main.c \
+	dyncomp_translate.c
 
 vgtool_dyncomp_so_LDFLAGS = -shared
 
@@ -44,6 +46,9 @@ mcinclude_HEADERS = \
 noinst_HEADERS =	\
 	mac_shared.h	\
 	mc_asm.h	\
-	mc_include.h
+	mc_include.h	\
+	mc_translate.h	\
+	dyncomp_main.h 	\
+	dyncomp_translate.h
 
 mac_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
