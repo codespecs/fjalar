@@ -2482,8 +2482,8 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
                // complainIfUndefined( &mce, st->Ist.Exit.guard ); // PG
             break;
 
-         case Ist_NoOp:
          case Ist_IMark:
+         case Ist_NoOp:
          case Ist_MFence:
             break;
 
@@ -2539,11 +2539,15 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Exit:
+            handle_possible_exit_DC( &dce, st->Ist.Exit.jk );
             do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
             break;
 
-         case Ist_NoOp:
          case Ist_IMark:
+            handle_possible_entry_DC( &dce, st->Ist.IMark.addr ); // PG
+            break;
+
+         case Ist_NoOp:
          case Ist_MFence:
             break;
 
@@ -2596,6 +2600,12 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       }
       VG_(printf)("\n");
    }
+
+   // PG - The IRBB itself may contain a Ret (return) as its
+   // end-of-block jump.  If so, then this is possibly a cue for a
+   // function exit.  This is very important for detecting function
+   // exits!
+   handle_possible_exit_DC( &dce, bb->jumpkind );
 
    return bb;
 }

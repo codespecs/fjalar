@@ -1238,3 +1238,32 @@ bitwise ones.
 
 4. How do pointer values get created using &-operator?  I guess I'll
 experiment and find out.
+
+5. Optimization - how do we avoid all of these CREATE_TAGS when most
+of them are useless?
+
+6. Perhaps most important.  Ok, I got how to do function entrances,
+but how do I do function exits without the address available in the
+Ist_Exit statement?  Maybe I need to cue off of the PREVIOUS IMark
+statement, which seems like a pain.
+
+Check out libvex_ir.h:
+
+Look at the Ret jump kind for function exits?
+
+typedef
+   enum {
+      Ijk_Boring=0x14000, /* not interesting; just goto next */
+      Ijk_Call,           /* guest is doing a call */
+      Ijk_Ret,            /* guest is doing a return */
+      Ijk_ClientReq,      /* do guest client req before continuing */
+      Ijk_Syscall,        /* do guest syscall before continuing */
+      Ijk_Yield,          /* client is yielding to thread scheduler */
+      Ijk_EmWarn,         /* report emulation warning before continuing */
+      Ijk_NoDecode,       /* next instruction cannot be decoded */
+      Ijk_MapFail,        /* Vex-provided address translation failed */
+      Ijk_TInval          /* Invalidate translations before continuing. */
+   }
+   IRJumpKind;
+
+Also look into Ist_IMark for markers for function entrance/exit!

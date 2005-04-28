@@ -87,6 +87,10 @@ extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 
 extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ();
 
+extern VGA_REGPARM(2) void MC_(helperc_enter_function)(Char* fnname, Addr StartPC);
+extern VGA_REGPARM(1) void MC_(helperc_exit_function)(Char* fnname);
+
+
 /* Functions defined in mc_errcontext.c */
 extern void MC_(record_value_error)  ( ThreadId tid, Int size );
 extern void MC_(record_user_error)   ( ThreadId tid, Addr a, Bool isWrite,

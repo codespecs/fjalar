@@ -70,5 +70,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
                          IRAtom* addr, UInt bias,
                          IRAtom* data, IRAtom* vdata );
 IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
+void handle_possible_entry_DC(DCEnv* dce, Addr64 addr);
+void handle_possible_exit_DC(DCEnv* dce, IRJumpKind jk);
 
 #endif

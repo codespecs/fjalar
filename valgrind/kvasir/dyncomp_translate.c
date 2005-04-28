@@ -28,6 +28,11 @@
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
 
+// This gets updated whenever we encounter a Ist_IMark instruction.
+// It is required to track function exits because the address does not
+// come with the Ist_Exit IR instruction:
+Addr currentAddr = 0;
+
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
@@ -1077,4 +1082,62 @@ void do_shadow_STle_DC ( DCEnv* dce,
       stmt( dce->bb, IRStmt_Dirty(di) );
    }
 
+}
+
+
+// This is called whenever we encounter an IMark statement.  From the
+// IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
+//
+// IMark(literal guest address, length)
+//
+// Semantically a no-op.  However, indicates that the IR statements
+// which follow it originally came from a guest instruction of the
+// stated length at the stated guest address.  This information is
+// needed by some kinds of profiling tools.
+
+// We will utilize this information to pause the target program at
+// function entrances
+void handle_possible_entry_DC(DCEnv* dce, Addr64 addr) {
+   Char fnname[500];
+   Char *str;
+   IRDirty  *di;
+
+   // Right now, for x86, we only care about 32-bit instructions
+   currentAddr = (Addr)(addr);
+
+   if (VG_(get_fnname_if_entry(currentAddr, fnname, 500))) {
+      //      VG_(printf)("%s entry (Addr: 0x%u)\n", fnname, addr32);
+      str = VG_(strdup)(fnname); // Be wary of memory leaks!
+      di = unsafeIRDirty_0_N(2/*regparms*/,
+                             "MC_(helperc_enter_function)",
+                             &MC_(helperc_enter_function),
+                             mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)str)),
+                                           IRExpr_Const(IRConst_U32(currentAddr))));
+
+      setHelperAnns_DC( dce, di );
+      stmt( dce->bb, IRStmt_Dirty(di) );
+   }
+}
+
+// Handle a function exit statement, which contains a jump kind of
+// 'Ret'.  Cue off of currentAddr, which is taken from the most recent
+// Ist_IMark IR instruction.
+void handle_possible_exit_DC(DCEnv* dce, IRJumpKind jk) {
+   if (Ijk_Ret == jk) {
+      Char fnname[500];
+      Char *str;
+      IRDirty  *di;
+
+      if (VG_(get_fnname)(currentAddr, fnname, 500)) {
+         //         VG_(printf)("%s exit\n", fnname);
+         str = VG_(strdup)(fnname); // Be wary of memory leaks!
+         di = unsafeIRDirty_0_N(1/*regparms*/,
+                                "MC_(helperc_exit_function)",
+                                &MC_(helperc_exit_function),
+                                mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)str))));
+
+         setHelperAnns_DC( dce, di );
+         stmt( dce->bb, IRStmt_Dirty(di) );
+      }
+   }
 }
