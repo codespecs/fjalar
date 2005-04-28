@@ -95,7 +95,7 @@ typedef struct _ToolInfo {
    /* Initialise tool.   Must do the following:
       - initialise the `details' struct, via the VG_(details_*)() functions
       - register any helpers called by generated code
-      
+
       May do the following:
       - initialise the `needs' struct to indicate certain requirements, via
       the VG_(needs_*)() functions
@@ -292,6 +292,9 @@ extern ThreadId VG_(first_matching_thread_stack)
 extern Addr VG_(get_SP) ( ThreadId tid );
 extern Addr VG_(get_IP) ( ThreadId tid );
 
+// PG - Hacked for Kvasir (we really need a more elegant solution)
+extern UInt VG_(get_EAX) ( ThreadId tid );
+extern UInt VG_(get_EDX) ( ThreadId tid );
 
 /*====================================================================*/
 /*=== Valgrind's version of libc                                   ===*/
@@ -467,8 +470,8 @@ extern Bool VG_(getcwd_alloc) ( Char** cwd );
                               0)))
 
 __attribute__ ((__noreturn__))
-extern void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file, 
-                               Int line, const Char* fn, 
+extern void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
+                               Int line, const Char* fn,
                                const Char* format, ... );
 
 /* ------------------------------------------------------------------ */
@@ -491,7 +494,7 @@ extern void VG_(set_fault_catcher)(void (*catcher)(Int sig, Addr addr));
 
 /* initialize shadow pages in the range [p, p+sz) This calls
    init_shadow_page for each one.  It should be a lot more efficient
-   for bulk-initializing shadow pages than faulting on each one. 
+   for bulk-initializing shadow pages than faulting on each one.
 */
 extern void VG_(init_shadow_range)(Addr p, UInt sz, Bool call_init);
 
@@ -535,7 +538,7 @@ extern Int VG_(sigaction)   ( Int signum,
                               const struct vki_sigaction* act,
                               struct vki_sigaction* oldact );
 
-extern Int VG_(sigtimedwait)( const vki_sigset_t *, vki_siginfo_t *, 
+extern Int VG_(sigtimedwait)( const vki_sigset_t *, vki_siginfo_t *,
 			      const struct vki_timespec * );
 
 extern Int VG_(signal)      ( Int signum, void (*sighandler)(Int) );
@@ -699,7 +702,7 @@ extern void VG_(HT_destruct) ( VgHashTable t );
 /*=== A generic skiplist                                           ===*/
 /*====================================================================*/
 
-/* 
+/*
    The idea here is that the skiplist puts its per-element data at the
    end of the structure.  When you initialize the skiplist, you tell
    it what structure your list elements are going to be.  Then you
@@ -766,7 +769,7 @@ extern Int  VG_(cmp_string)(const void *a, const void *b);
       memory.
    SkipNode_Free: free memory allocated above
    SkipNode_First: return the first element on the list
-   SkipNode_Next: return the next element after "data" on the list - 
+   SkipNode_Next: return the next element after "data" on the list -
       NULL for none
 
    You can iterate through a SkipList like this:
@@ -844,7 +847,7 @@ extern void VG_(replacement_malloc_print_debug_usage)       ( void );
 
 extern void VG_(basic_tool_funcs)(
    void(*post_clo_init)(void),
-   IRBB*(*instrument)(IRBB* bb_in, VexGuestLayout* layout, 
+   IRBB*(*instrument)(IRBB* bb_in, VexGuestLayout* layout,
                       IRType gWordTy, IRType hWordTy ),
    void(*fini)(Int)
 );
@@ -1006,7 +1009,7 @@ extern void VG_(needs_sanity_checks) (
 /* Do we need to see data symbols? */
 extern void VG_(needs_data_syms) ( void );
 
-/* Does the tool need shadow memory allocated (if you set this, you must also statically initialize 
+/* Does the tool need shadow memory allocated (if you set this, you must also statically initialize
    float TL_(shadow_ratio) = n./m;
    to define how many shadow bits you need per client address space bit.
 */
