@@ -6,11 +6,20 @@
 
 /*
    This file is part of MemCheck, a heavyweight Valgrind tool for
-   detecting memory errors, and AddrCheck, a lightweight Valgrind tool 
+   detecting memory errors, and AddrCheck, a lightweight Valgrind tool
    for detecting memory errors.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
+
+      Modified by Philip Guo to track ESP as new areas of the stack
+      are allocated.  TODO: In the future, hopefully we can find a
+      faster and more elegant solution because these calls possibly
+      incur a severe performance hit.
+
+      Added several CHECK_ESP() calls and extern var. declarations.
+
+   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -45,12 +54,12 @@
 /*------------------------------------------------------------*/
 
 /* The classification of a faulting address. */
-typedef 
-   enum { 
+typedef
+   enum {
       Undescribed,   // as-yet unclassified
-      Stack, 
+      Stack,
       Unknown,       // classification yielded nothing useful
-      Freed, Mallocd, 
+      Freed, Mallocd,
       UserG,         // in a user-defined block
       Mempool,       // in a mempool
       Register,      // in a register;  for Param errors only
@@ -70,8 +79,8 @@ typedef
    }
    AddrInfo;
 
-typedef 
-   enum { 
+typedef
+   enum {
       ParamSupp,     // Bad syscall params
       CoreMemSupp,   // Memory errors in core (pthread ops, signal handling)
 
@@ -85,14 +94,14 @@ typedef
       OverlapSupp,   // Overlapping blocks in memcpy(), strcpy(), etc
       LeakSupp,      // Something to be suppressed in a leak check.
       MempoolSupp,   // Memory pool suppression.
-   } 
+   }
    MAC_SuppKind;
 
 /* What kind of error it is. */
-typedef 
+typedef
    enum { ValueErr,     /* Memcheck only */
           CoreMemErr,
-          AddrErr, 
+          AddrErr,
           ParamErr, UserErr,  /* behaves like an anonymous ParamErr */
           FreeErr, FreeMismatchErr,
           OverlapErr,
@@ -134,7 +143,7 @@ typedef
       MAC_AllocCustom = 3
    }
    MAC_AllocKind;
-   
+
 /* Nb: first two fields must match core's VgHashNode. */
 typedef
    struct _MAC_Chunk {
@@ -162,12 +171,12 @@ typedef
 /*--- Profiling of tools and memory events                 ---*/
 /*------------------------------------------------------------*/
 
-typedef 
-   enum { 
+typedef
+   enum {
       VgpCheckMem = VgpFini+1,
       VgpSetMem,
       VgpESPAdj
-   } 
+   }
    VgpToolCC;
 
 /* Define to collect detailed performance info. */
@@ -344,7 +353,7 @@ extern void MAC_(create_mempool)(Addr pool, UInt rzB, Bool is_zeroed);
 
 extern void MAC_(destroy_mempool)(Addr pool);
 
-extern void MAC_(mempool_alloc)(ThreadId tid, 
+extern void MAC_(mempool_alloc)(ThreadId tid,
                                 Addr pool, Addr addr, SizeT size);
 
 extern void MAC_(mempool_free)(Addr pool, Addr addr);
@@ -358,7 +367,7 @@ extern void MAC_(record_param_error)       ( ThreadId tid, Addr a, Bool isReg,
 extern void MAC_(record_jump_error)        ( ThreadId tid, Addr a );
 extern void MAC_(record_free_error)        ( ThreadId tid, Addr a );
 extern void MAC_(record_freemismatch_error)( ThreadId tid, Addr a );
-extern void MAC_(record_overlap_error)     ( ThreadId tid, 
+extern void MAC_(record_overlap_error)     ( ThreadId tid,
                                              Char* function, OverlapExtra* oe );
 extern void MAC_(record_illegal_mempool_error) ( ThreadId tid, Addr pool );
 
@@ -370,13 +379,13 @@ extern void MAC_(common_pre_clo_init) ( void );
 extern void MAC_(common_fini)         ( void (*leak_check)(ThreadId tid,
                                                            LeakCheckMode mode) );
 
-extern Bool MAC_(handle_common_client_requests) ( ThreadId tid, 
+extern Bool MAC_(handle_common_client_requests) ( ThreadId tid,
                                                   UWord* arg_block, UWord* ret );
 
 /* For leak checking */
-extern void MAC_(pp_LeakError)(void* vl, UInt n_this_record, 
-                                         UInt n_total_records); 
-                           
+extern void MAC_(pp_LeakError)(void* vl, UInt n_this_record,
+                                         UInt n_total_records);
+
 extern void MAC_(print_malloc_stats) ( void );
 
 extern void MAC_(do_detect_memory_leaks) (
@@ -415,8 +424,12 @@ extern                void MAC_(new_mem_stack) ( Addr a, SizeT len);
                             ALIGNED8_NEW,  ALIGNED8_DIE,                      \
                             UNALIGNED_NEW, UNALIGNED_DIE)                     \
                                                                               \
+extern FunctionEntry fn_stack[];                                              \
+extern Int   fn_stack_top;                                                    \
+                                                                              \
 void VGA_REGPARM(1) MAC_(new_mem_stack_4)(Addr new_ESP)                       \
 {                                                                             \
+   CHECK_ESP(new_ESP) /* //PG */                                              \
    PROF_EVENT(110);                                                           \
    if (VG_IS_4_ALIGNED(new_ESP)) {                                            \
       ALIGNED4_NEW  ( new_ESP );                                              \
@@ -437,6 +450,7 @@ void VGA_REGPARM(1) MAC_(die_mem_stack_4)(Addr new_ESP)                       \
                                                                               \
 void VGA_REGPARM(1) MAC_(new_mem_stack_8)(Addr new_ESP)                       \
 {                                                                             \
+   CHECK_ESP(new_ESP) /* //PG */                                              \
    PROF_EVENT(111);                                                           \
    if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
       ALIGNED8_NEW  ( new_ESP );                                              \
@@ -463,6 +477,7 @@ void VGA_REGPARM(1) MAC_(die_mem_stack_8)(Addr new_ESP)                       \
                                                                               \
 void VGA_REGPARM(1) MAC_(new_mem_stack_12)(Addr new_ESP)                      \
 {                                                                             \
+   CHECK_ESP(new_ESP) /* //PG */                                              \
    PROF_EVENT(112);                                                           \
    if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
       ALIGNED8_NEW  ( new_ESP   );                                            \
@@ -492,6 +507,7 @@ void VGA_REGPARM(1) MAC_(die_mem_stack_12)(Addr new_ESP)                      \
                                                                               \
 void VGA_REGPARM(1) MAC_(new_mem_stack_16)(Addr new_ESP)                      \
 {                                                                             \
+   CHECK_ESP(new_ESP) /* //PG */                                              \
    PROF_EVENT(113);                                                           \
    if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
       ALIGNED8_NEW  ( new_ESP   );                                            \
@@ -522,6 +538,7 @@ void VGA_REGPARM(1) MAC_(die_mem_stack_16)(Addr new_ESP)                      \
                                                                               \
 void VGA_REGPARM(1) MAC_(new_mem_stack_32)(Addr new_ESP)                      \
 {                                                                             \
+   CHECK_ESP(new_ESP) /* //PG */                                              \
    PROF_EVENT(114);                                                           \
    if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
       ALIGNED8_NEW  ( new_ESP    );                                           \
@@ -560,6 +577,7 @@ void VGA_REGPARM(1) MAC_(die_mem_stack_32)(Addr new_ESP)                      \
                                                                               \
 void MAC_(new_mem_stack) ( Addr a, SizeT len )                                \
 {                                                                             \
+   CHECK_ESP_SLOW() /* //PG */                                                \
    PROF_EVENT(115);                                                           \
    UNALIGNED_NEW ( a, len );                                                  \
 }                                                                             \

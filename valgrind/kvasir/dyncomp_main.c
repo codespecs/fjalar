@@ -413,15 +413,16 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
 
 
 // Rudimentary function entrance/exit tracking
-VGA_REGPARM(2)
-void MC_(helperc_enter_function)(Char* fnname, Addr StartPC)
-{
-  VG_(printf)("Enter function: %s, StartPC: %p\n",
-              fnname, (void*)StartPC);
-}
+// DEPRECATED
+/* VGA_REGPARM(2) */
+/* void MC_(helperc_enter_function)(Char* fnname, Addr StartPC) */
+/* { */
+/*   VG_(printf)("Enter function: %s, StartPC: %p\n", */
+/*               fnname, (void*)StartPC); */
+/* } */
 
-VGA_REGPARM(1)
-void MC_(helperc_exit_function)(Char* fnname)
-{
-  VG_(printf)("Exit function: %s\n", fnname);
-}
+/* VGA_REGPARM(1) */
+/* void MC_(helperc_exit_function)(Char* fnname) */
+/* { */
+/*   VG_(printf)("Exit function: %s\n", fnname); */
+/* } */

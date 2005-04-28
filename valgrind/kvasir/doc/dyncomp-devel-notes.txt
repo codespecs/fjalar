@@ -1216,6 +1216,7 @@ Conditional exits: 'if (expr1) goto literal-value'
 
 Ditto for expr1 here.
 
+
 ----------
 2005-04-27
 ----------
@@ -1226,6 +1227,9 @@ Questions for Stephen during our weekly meeting (Look at TODO's):
 and CREATE_TAG (as stated in setHelperAnns_DC()).  I guess we don't
 explicitly access guest state in either of these.
 
+They can probably go away because SP and IP are only accessed during
+error reporting (backtraces)
+
 2. Are the AND, OR, etc... binary ops. bitwise by default?  If so, we
 should count them as interactions?  But what about logical AND/OR?  We
 don't want to count (apples || oranges) as interactions, but if it
@@ -1234,10 +1238,18 @@ then we can't tell the difference, right?  We need to err one way or
 another, and I think that logical AND/OR in C are more common than
 bitwise ones.
 
+BITWISE! - Logical AND's and OR's are compiled as branches.
+
 3. Make sure my handling of unary ops (no handling at all) is correct.
 
-4. How do pointer values get created using &-operator?  I guess I'll
-experiment and find out.
+Good.
+
+4. How do pointer values get created using &-operator and malloc?  I
+guess I'll experiment and find out.
+
+It will either look like a literal or arithmetic on ESP/EBP.  Right
+now we don't create new tags on malloc and friends.  It's not clear
+that tags for pointers are that important.
 
 5. Optimization - how do we avoid all of these CREATE_TAGS when most
 of them are useless?
@@ -1245,7 +1257,8 @@ of them are useless?
 6. Perhaps most important.  Ok, I got how to do function entrances,
 but how do I do function exits without the address available in the
 Ist_Exit statement?  Maybe I need to cue off of the PREVIOUS IMark
-statement, which seems like a pain.
+statement, which seems like a pain.  Yeah, this seems to work, but is
+there an easier way?
 
 Check out libvex_ir.h:
 
@@ -1267,3 +1280,61 @@ typedef
    IRJumpKind;
 
 Also look into Ist_IMark for markers for function entrance/exit!
+
+
+----------
+2005-04-28
+----------
+
+In tool.h, it looks like you can register Valgrind tools to pick up on
+specific events, such as ESP changing.  Perhaps this is more elegant
+than hacking mac_shared.h directly to put in our own check_ESP(), but
+maybe it would be slower.
+
+Perhaps think about making a Fjalar 1.0 which abstracts out the common
+parts of Kvasir and DynComp.  During our crazy variable traversal,
+take a function pointer parameter so that we can polymorphically do
+dtrace or DynComp output.  Create nice abstractions.
+
+How do we get R_ESP???  In CHECK_ESP(), you can get it from the
+argument.  But how do you get it into the argument?  We need some IR
+statement which grabs the guest state's ESP wheneve it's executed.
+
+When you annotate a dirty helper to say that it uses the ESP, then it
+ensures that ESP is written to the guest state.
+
+Ha! In tool.h:
+
+/* Get the TID of the thread which currently has the CPU. */
+extern ThreadId VG_(get_running_tid) ( void );
+
+/* Searches through all thread's stacks to see if any match.  Returns
+   VG_INVALID_THREADID if none match. */
+extern ThreadId VG_(first_matching_thread_stack)
+                        ( Bool (*p) ( Addr stack_min, Addr stack_max, void* d ),
+                          void* d );
+
+/* Get parts of the client's state. */
+extern Addr VG_(get_SP) ( ThreadId tid );
+extern Addr VG_(get_IP) ( ThreadId tid );
+
+
+
+Hmmm, check out this thing about shadow memory from tool.h:
+
+/* Does the tool need shadow memory allocated (if you set this, you must also statically initialize
+   float TL_(shadow_ratio) = n./m;
+   to define how many shadow bits you need per client address space bit.
+*/
+extern void VG_(needs_shadow_memory)( void );
+extern float TL_(shadow_ratio);
+
+
+Hmmm, wait I don't think we need to hack around using the actual x86
+floating-point stack anymore.  We actually have a shadow
+floating-point stack now :)
+
+Hmmm, the problem now seems to be that I can't properly get
+floating-point return values off of the top of the guest_FPREG.
+Perhaps my dirty helper annotations in handle_possible_exit_DC()
+aren't correct or something, but it ain't working.

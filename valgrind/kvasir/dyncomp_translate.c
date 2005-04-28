@@ -27,6 +27,7 @@
 #include "mc_include.h"
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
+#include "kvasir_main.h"
 
 // This gets updated whenever we encounter a Ist_IMark instruction.
 // It is required to track function exits because the address does not
@@ -1106,16 +1107,27 @@ void handle_possible_entry_DC(DCEnv* dce, Addr64 addr) {
    currentAddr = (Addr)(addr);
 
    if (VG_(get_fnname_if_entry(currentAddr, fnname, 500))) {
-      //      VG_(printf)("%s entry (Addr: 0x%u)\n", fnname, addr32);
-      str = VG_(strdup)(fnname); // Be wary of memory leaks!
-      di = unsafeIRDirty_0_N(2/*regparms*/,
-                             "MC_(helperc_enter_function)",
-                             &MC_(helperc_enter_function),
-                             mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)str)),
-                                           IRExpr_Const(IRConst_U32(currentAddr))));
+      // If we are interested in tracking this particular function ...
+      // This ensures that we only track functions which we have in
+      // DaikonFunctionInfoTable!!!
+      if (findFunctionInfoByAddr(currentAddr)) {
+         //      VG_(printf)("%s entry (Addr: 0x%u)\n", fnname, addr32);
+         str = VG_(strdup)(fnname); // TODO: Be wary of memory leaks!
+         di = unsafeIRDirty_0_N(2/*regparms*/,
+                                "enter_function",
+                                &enter_function,
+                                mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)str)),
+                                              IRExpr_Const(IRConst_U32(currentAddr))));
 
-      setHelperAnns_DC( dce, di );
-      stmt( dce->bb, IRStmt_Dirty(di) );
+         // For function entry, we are interested in observing the ESP so make
+         // sure that it's updated by setting the proper annotations:
+         di->nFxState = 1;
+         di->fxState[0].fx     = Ifx_Read;
+         di->fxState[0].offset = dce->layout->offset_SP;
+         di->fxState[0].size   = dce->layout->sizeof_SP;
+
+         stmt( dce->bb, IRStmt_Dirty(di) );
+      }
    }
 }
 
@@ -1129,15 +1141,42 @@ void handle_possible_exit_DC(DCEnv* dce, IRJumpKind jk) {
       IRDirty  *di;
 
       if (VG_(get_fnname)(currentAddr, fnname, 500)) {
-         //         VG_(printf)("%s exit\n", fnname);
-         str = VG_(strdup)(fnname); // Be wary of memory leaks!
-         di = unsafeIRDirty_0_N(1/*regparms*/,
-                                "MC_(helperc_exit_function)",
-                                &MC_(helperc_exit_function),
-                                mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)str))));
+         // We need to attempt to find the entry by NAME since our
+         // address a is NOT the starting address which is stored in
+         // DaikonFunctionInfoTable
+	 if (findFunctionInfoByNameSlow(fnname, 0)) {
+            //         VG_(printf)("%s exit\n", fnname);
+            str = VG_(strdup)(fnname); // Be wary of memory leaks!
+            di = unsafeIRDirty_0_N(1/*regparms*/,
+                                   "exit_function",
+                                   &exit_function,
+                                   mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)str))));
 
-         setHelperAnns_DC( dce, di );
-         stmt( dce->bb, IRStmt_Dirty(di) );
+            // For function exit, we are interested in observing the
+            // ESP, EAX, EDX, and FPREG[0], so make sure that they are
+            // updated by setting the proper annotations:
+            di->nFxState = 4;
+            di->fxState[0].fx     = Ifx_Read;
+            di->fxState[0].offset = dce->layout->offset_SP;
+            di->fxState[0].size   = dce->layout->sizeof_SP;
+
+            // Now I'm totally hacking based upon the definition of
+            // VexGuestX86State in vex/pub/libvex_guest_x86.h:
+            // (This is TOTALLY x86 dependent right now, but oh well)
+            di->fxState[1].fx     = Ifx_Read;
+            di->fxState[1].offset = 0; // offset of EAX
+            di->fxState[1].size   = sizeof(UInt); // 4 bytes
+
+            di->fxState[2].fx     = Ifx_Read;
+            di->fxState[2].offset = 8; // offset of EDX
+            di->fxState[2].size   = sizeof(UInt); // 4 bytes
+
+            di->fxState[3].fx     = Ifx_Read;
+            di->fxState[3].offset = 64; // offset of FPREG[0]
+            di->fxState[3].size   = 64; // Just to be paranoid, size of all 8 elements of FPREG
+
+            stmt( dce->bb, IRStmt_Dirty(di) );
+         }
       }
    }
 }

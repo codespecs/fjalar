@@ -70,7 +70,7 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOADV2)  ( Addr );
 extern VGA_REGPARM(1) UInt MC_(helperc_LOADV4)  ( Addr );
 extern VGA_REGPARM(1) ULong MC_(helperc_LOADV8)  ( Addr );
 
-// PG
+// PG - begin
 extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
 
 extern VGA_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
@@ -87,9 +87,17 @@ extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 
 extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ();
 
-extern VGA_REGPARM(2) void MC_(helperc_enter_function)(Char* fnname, Addr StartPC);
-extern VGA_REGPARM(1) void MC_(helperc_exit_function)(Char* fnname);
+extern void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
+extern char MC_(are_some_bytes_initialized) (Addr a, SizeT len, char* bitMask);
 
+typedef enum {
+   MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
+} MC_ReadResult;
+
+Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );
+MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr );
+
+// PG - end
 
 /* Functions defined in mc_errcontext.c */
 extern void MC_(record_value_error)  ( ThreadId tid, Int size );

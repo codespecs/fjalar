@@ -1,0 +1,1984 @@
+/*
+   This file is part of Kvasir, a Valgrind skin that implements the
+   C language front-end for the Daikon Invariant Detection System
+
+   Copyright (C) 2004 Philip Guo, MIT CSAIL Program Analysis Group
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+*/
+
+/* decls-output.c:
+   Functions for creating .decls and .dtrace files and outputting
+   name and type information into a Daikon-compatible .decls file
+*/
+
+#include "mc_include.h"
+#include "decls-output.h"
+#include "dtrace-output.h"
+#include "kvasir_main.h"
+#include "kvasir_runtime.h"
+#include "generate_daikon_data.h"
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/errno.h>
+#include <assert.h>
+#include <search.h>
+
+FILE* decls_fp = 0; // File pointer for .decls file (this will point
+                    // to the same thing as dtrace_fp by default since
+                    // both .decls and .dtrace are outputted to .dtrace
+                    // unless otherwise noted by the user)
+
+// Only true if we are doing dtrace append and (!actually_output_separate_decls_dtrace)
+char do_not_print_out_decls = 0;
+
+FILE* dtrace_fp = 0; // File pointer for dtrace file (from dtrace-output.c)
+static char *dtrace_filename; /* File name to open dtrace_fp on */
+
+FILE* prog_pt_dump_fp = 0; // File pointer for dumping program points
+FILE* var_dump_fp = 0; // File pointer for dumping variable names
+
+FILE* trace_prog_pts_input_fp = 0; // File pointer for list of program points to trace
+FILE* trace_vars_input_fp = 0; // File pointer for list of variables to trace
+
+char* decls_folder = "daikon-output/";
+static char* decls_ext = ".decls";
+static char* dtrace_ext = ".dtrace";
+static char* dereference = "[]";
+static char* dot = ".";
+static char* arrow = "->";
+static char* star = "*";
+
+const char* ENTRY_DELIMETER = "--------ENTRY--------";
+const char* GLOBAL_STRING = "globals";
+const char* ENTER_PPT = ":::ENTER";
+const char* EXIT_PPT = ":::EXIT0";
+
+extern char* kvasir_trace_prog_pts_filename;
+extern char* kvasir_trace_vars_filename;
+
+// GNU binary tree (built into search.h) (access using tsearch and tfind)
+// which holds the names of the program points which we are
+// interested in tracing
+char* prog_pts_tree = NULL;
+
+// GNU binary tree which holds names of functions and trees of variables
+// to trace within those functions (packed into a FunctionTree struct)
+FunctionTree* vars_tree = NULL;
+
+// Special entry for global variables
+FunctionTree* globalFunctionTree = 0;
+
+// TODO: Warning! We never free the memory used by prog_pts_tree and vars_tree
+// but don't worry about it for now
+
+// denotes the maximum number of structs (any kind of struct) to expand
+// when dereferencing a Daikon variable (as opposed to MAX_STRUCT_INSTANCES,
+// which limits the number of the SAME TYPE of struct - a la linked lists -
+// to dereference in one Daikon variable)
+int MAX_NUM_STRUCTS_TO_DEREFERENCE = 2;
+
+// This array can be indexed using the DaikonDeclaredType enum
+const char* DaikonDeclaredTypeString[] = {
+  "no_declared_type", // Create padding
+  "unsigned char", //D_UNSIGNED_CHAR,
+  "char", //D_CHAR,
+  "unsigned short", //D_UNSIGNED_SHORT,
+  "short", //D_SHORT,
+  "unsigned int", //D_UNSIGNED_INT,
+  "int", //D_INT,
+  "unsigned long long int", //D_UNSIGNED_LONG_LONG_INT,
+  "long long int", //D_LONG_LONG_INT,
+  "unsigned float", //D_UNSIGNED_FLOAT, // currently unused
+  "float", //D_FLOAT,
+  "unsigned double", //D_UNSIGNED_DOUBLE, // currently unused
+  "double", //D_DOUBLE,
+  "unsigned long double", //D_UNSIGNED_LONG_DOUBLE, // currently unused
+  "long double", //D_LONG_DOUBLE,
+  // This should NOT be used unless you created an unnamed struct/union!
+  // Use DaikonVariable::collectionName instead
+  "enumeration", //D_ENUMERATION
+  "struct", //D_STRUCT
+  "union", //D_UNION
+  "function", //D_FUNCTION
+  "void", //D_VOID
+  "char", //D_CHAR_AS_STRING
+  "bool", //D_BOOL
+};
+
+// This array can be indexed using the DaikonRepType enum
+const char* DaikonRepTypeString[] = {
+  "no_rep_type", //R_NO_TYPE, // Create padding
+  "int", //R_INT,
+  "double", //R_DOUBLE,
+  "hashcode", //R_HASHCODE,
+  "java.lang.String" //R_STRING
+};
+
+// Useful stack of strings for printing out names
+// Only puts REFERENCES to strings, does not do any allocating
+
+// The stack which represents the full name of the variable
+// that we currently want to print out
+char* fullNameStack[MAX_STRING_STACK_SIZE];
+int fullNameStackSize = 0;
+
+static int createFIFO(const char *filename);
+
+void stringStackPush(char** stringStack, int* stringStackSizePtr, char* str)
+{
+  if (!str) {
+    VG_(printf)( "Null string passed to push!\n");
+    /* abort(); */
+    str = "<null>";
+  }
+  if (*stringStackSizePtr < MAX_STRING_STACK_SIZE)
+    {
+      stringStack[*stringStackSizePtr] = str;
+      (*stringStackSizePtr)++;
+    }
+  // Don't push on stack overflow
+}
+
+char* stringStackPop(char** stringStack, int* stringStackSizePtr)
+{
+  if (*stringStackSizePtr > 0)
+    {
+      char* temp = stringStack[*stringStackSizePtr - 1];
+      (*stringStackSizePtr)--;
+      return temp;
+    }
+  else
+    {
+      return 0;
+    }
+}
+
+char* stringStackTop(char** stringStack, int stringStackSize)
+{
+  return stringStack[stringStackSize - 1];
+}
+
+void stringStackClear(int* stringStackSizePtr)
+{
+  (*stringStackSizePtr) = 0;
+}
+
+// Returns: Total length of all strings on stringStack
+int stringStackStrLen(char** stringStack, int stringStackSize)
+{
+  int i;
+  int total = 0;
+  for (i = stringStackSize - 1; i >=0; i--)
+    {
+      total+=VG_(strlen)(stringStack[i]);
+    }
+  return total;
+}
+
+void stringStackPrint(char** stringStack, int stringStackSize)
+{
+  int i;
+  for (i = stringStackSize - 1; i >= 0; i--)
+    {
+      printf("stringStack[%d] = %s\n", i, stringStack[i]);
+    }
+}
+
+// Takes all of the strings on stringStack, copies them into a newly
+// calloc'ed string (in proper order), and returns a pointer to that
+char* strdupFullNameString(char** stringStack, int stringStackSize)
+{
+  int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1; // 1 for trailing '\0'
+  char* fullName = VG_(calloc)(totalStrLen, sizeof(char));
+  int i;
+
+  // REMEMBER TO GO BACKWARDS!!!
+  for (i = stringStackSize - 1; i >=0; i--)
+    {
+      fullName = VG_(strcat)(fullName, stringStack[i]);
+    }
+  return fullName;
+}
+
+// Takes all of the strings on stringStack, copies them into a newly
+// calloc'ed string (in proper order), and returns a pointer to that
+// THIS GOES IN REVERSE ORDER so it actually acts like a queue
+char* strdupFullNameStringReverse(char** stringStack, int stringStackSize)
+{
+  int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1; // 1 for trailing '\0'
+  char* fullName = VG_(calloc)(totalStrLen, sizeof(char));
+  int i;
+
+  for (i = 0; i < stringStackSize; i++)
+    {
+      fullName = VG_(strcat)(fullName, stringStack[i]);
+    }
+  return fullName;
+}
+
+// if (actually_output_separate_decls_dtrace):
+//   Create a decls file with the name "daikon-output/x.decls"
+//   where x is the application name (by default)
+//   and initializes the file pointer decls_fp.
+//   Also creates a corresponding .dtrace file, but doesn't open it yet.
+// else: --- (DEFAULT)
+//   Create a dtrace file and initialize both decls_fp and dtrace_fp
+//   to point to it
+char createDeclsAndDtraceFiles(char* appname)
+{
+  char* dirname = 0;
+  char* filename = 0;
+  char* newpath_decls;
+  char* newpath_dtrace;
+  int success = 0;
+  int ret;
+
+  // Free VisitedStructsTable if it has been allocated
+  if (VisitedStructsTable)
+    {
+      genfreehashtable(VisitedStructsTable);
+    }
+  VisitedStructsTable = 0;
+
+  // Handle command-line options:
+  if (kvasir_dump_prog_pt_names_filename)
+    {
+      prog_pt_dump_fp = fopen(kvasir_dump_prog_pt_names_filename, "w");
+      // TODO: Hack! Generate no output when we dump program point or
+      //       variable names - this is probably not as efficient as it
+      //       could be since it still runs through all of the code
+      //       but outputs to "/dev/null" instead of skipping the code altogether
+      kvasir_decls_filename = "/dev/null";
+      kvasir_dtrace_filename = "/dev/null";
+    }
+  else
+    {
+      prog_pt_dump_fp = 0;
+    }
+
+  if (kvasir_dump_var_names_filename)
+    {
+      var_dump_fp = fopen(kvasir_dump_var_names_filename, "w");
+      // TODO: Hack! Generate no output when we dump variable names -
+      //       this is probably not as efficient as it could be since
+      //       it still runs through all of the code but outputs to
+      //       "/dev/null" instead of skipping the code altogether
+      kvasir_decls_filename = "/dev/null";
+      kvasir_dtrace_filename = "/dev/null";
+    }
+  else
+    {
+      var_dump_fp = 0;
+    }
+
+  if (kvasir_trace_prog_pts_filename)
+    {
+      if ((trace_prog_pts_input_fp = fopen(kvasir_trace_prog_pts_filename, "r")))
+	{
+	  initializeProgramPointsTree();
+	}
+      else
+	{
+	  VG_(printf)( "Invalid trace program points filename: %s\n",
+		  kvasir_trace_prog_pts_filename);
+	}
+    }
+
+  if (kvasir_trace_vars_filename)
+    {
+      if ((trace_vars_input_fp = fopen(kvasir_trace_vars_filename, "r")))
+	{
+	  initializeVarsTree();
+	}
+      else
+	{
+	  VG_(printf)( "Invalid trace variables filename: %s\n",
+		  kvasir_trace_vars_filename);
+	}
+    }
+
+  if (kvasir_disambig_filename)
+    {
+      // Try to open it for reading, but if it doesn't exist,
+      // create a new file by writing to it
+      if ((disambig_fp = fopen(kvasir_disambig_filename, "r")))
+	{
+	  DPRINTF("\n\nREADING %s\n", kvasir_disambig_filename);
+	  disambig_writing = False;
+	}
+      else if ((disambig_fp = fopen(kvasir_disambig_filename, "wx")))
+	{
+	  DPRINTF("\n\nWRITING %s\n", kvasir_disambig_filename);
+	  disambig_writing = True;
+	}
+    }
+
+  // Step 1: Make a path to .decls and .dtrace files
+  //         relative to daikon-output/ folder
+
+  if (!splitDirectoryAndFilename(appname, &dirname, &filename))
+    {
+      VG_(printf)( "Failed to parse path: %s\n", appname);
+      return 0;
+    }
+
+  DPRINTF("**************\ndirname=%s, filename=%s\n***********\n",
+	  dirname, filename);
+
+  if (actually_output_separate_decls_dtrace) {
+    if (kvasir_decls_filename) {
+      newpath_decls = VG_(strdup)(kvasir_decls_filename);
+    }
+    else {
+      newpath_decls = (char*)VG_(malloc)((VG_(strlen)(decls_folder) +
+					  VG_(strlen)(filename) +
+					  VG_(strlen)(decls_ext) + 1) *
+					 sizeof(char));
+
+      VG_(strcpy)(newpath_decls, decls_folder);
+      VG_(strcat)(newpath_decls, filename);
+      VG_(strcat)(newpath_decls, decls_ext);
+    }
+
+    if (kvasir_dtrace_filename) {
+      newpath_dtrace = VG_(strdup)(kvasir_dtrace_filename);
+    }
+    else {
+      newpath_dtrace = (char*)VG_(malloc)((VG_(strlen)(decls_folder) +
+					   VG_(strlen)(filename) +
+					   VG_(strlen)(dtrace_ext) + 1) *
+					  sizeof(char));
+
+      VG_(strcpy)(newpath_dtrace, decls_folder);
+      VG_(strcat)(newpath_dtrace, filename);
+      VG_(strcat)(newpath_dtrace, dtrace_ext);
+    }
+  }
+  else { // DEFAULT - just .dtrace
+    if (kvasir_dtrace_filename) {
+      newpath_dtrace = VG_(strdup)(kvasir_dtrace_filename);
+    }
+    else {
+      newpath_dtrace = (char*)VG_(malloc)((VG_(strlen)(decls_folder) +
+					   VG_(strlen)(filename) +
+					   VG_(strlen)(dtrace_ext) + 1) *
+					  sizeof(char));
+
+      VG_(strcpy)(newpath_dtrace, decls_folder);
+      VG_(strcat)(newpath_dtrace, filename);
+      VG_(strcat)(newpath_dtrace, dtrace_ext);
+    }
+  }
+
+  DPRINTF("decls=%s, dtrace=%s\n", newpath_decls, newpath_dtrace);
+  DPRINTF("Command-line options: decls_filename=%s "
+	  "dtrace_filename=%s "
+	  "print_debug_info=%d "
+	  "no_globals=%d "
+	  "limit_static_vars=%d "
+	  "dtrace_append=%d "
+	  "dtrace_gzip=%d "
+	  "dump_prog_pt_names_filename=%s "
+	  "dump_var_names_filename=%s "
+	  "trace_prog_pts_filename=%s "
+	  "trace_vars_filename=%s\n",
+
+	  kvasir_decls_filename,
+	  kvasir_dtrace_filename,
+	  kvasir_print_debug_info,
+	  kvasir_ignore_globals,
+	  kvasir_limit_static_vars,
+	  kvasir_dtrace_append,
+	  kvasir_dtrace_gzip,
+	  kvasir_dump_prog_pt_names_filename,
+	  kvasir_dump_var_names_filename,
+	  kvasir_trace_prog_pts_filename,
+	  kvasir_trace_vars_filename);
+
+  // Step 2: Make the daikon-output/ directory
+  ret = mkdir(decls_folder, 0777); // more abbreviated UNIX form
+  if (ret == -1 && errno != EEXIST)
+    VG_(printf)( "Couldn't create %s: %s\n", decls_folder, strerror(errno));
+
+  // ASSUME mkdir succeeded! (or that the directory already exists)
+
+  // Step 3: Make the .decls and .dtrace FIFOs, if requested
+  if (kvasir_output_fifo) {
+    if (actually_output_separate_decls_dtrace) {
+      if (!createFIFO(newpath_decls))
+	VG_(printf)( "Trying as a regular file instead.\n");
+      if (!createFIFO(newpath_dtrace))
+	VG_(printf)( "Trying as a regular file instead.\n");
+    }
+    else {
+      if (!createFIFO(newpath_dtrace))
+	VG_(printf)( "Trying as a regular file instead.\n");
+    }
+  }
+
+  dtrace_filename = VG_(strdup)(newpath_dtrace); /* But don't open it til later */
+
+  // Step 4: Open the .decls file for writing
+  if (actually_output_separate_decls_dtrace) {
+    success = (decls_fp = fopen(newpath_decls, "w")) != 0;
+
+    if (!success)
+      VG_(printf)( "Failed to open %s for declarations: %s\n",
+		   newpath_decls, strerror(errno));
+  }
+  else { // Default
+    openTheDtraceFile();
+
+    // decls_fp and dtrace_fp both point to the .dtrace file
+    if (do_not_print_out_decls) {
+      decls_fp = 0;
+    }
+    else {
+      decls_fp = dtrace_fp;
+    }
+  }
+
+  VG_(free)(filename);
+  VG_(free)(dirname);
+
+  if (actually_output_separate_decls_dtrace) {
+    if (!kvasir_decls_filename) {
+      VG_(free)(newpath_decls);
+    }
+    if (!kvasir_dtrace_filename) {
+      VG_(free)(newpath_dtrace);
+    }
+  }
+  else {
+    if (!kvasir_dtrace_filename) {
+      VG_(free)(newpath_dtrace);
+    }
+  }
+
+  return success;
+}
+
+void openTheDtraceFile(void) {
+  openDtraceFile(dtrace_filename);
+  VG_(free)(dtrace_filename);
+  dtrace_filename = 0;
+}
+
+// Splits up the input string (passed as char* input)
+// into two strings (dirname and filename) that are separated
+// by the first '/' that is recognized parsing from right
+// to left - this breaks up a full path into a filename
+// and a directory:
+// Before: input = "../tests/IntTest/IntTest"
+// After:  *dirnamePtr = "../tests/IntTest/" *filenamePtr = "IntTest"
+// Postcondition - *dirname and *filename are malloc'ed - must be FREE'd!!!
+// Return 1 on success, 0 on failure
+char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char** filenamePtr)
+{
+  int len = VG_(strlen)(input);
+  int i, j;
+
+  // We need this to be static or else dirname and filename
+  // will dereference to junk
+  static char* filename = 0;
+  static char* dirname = 0;
+
+  if (len <= 0)
+    return 0;
+
+  for (i = len - 1; i >= 0; i--)
+    {
+      if ((input[i] == '/') && ((i + 1) < len))
+        {
+          //          printf("i=%d, len=%d\n", i, len);
+          filename = VG_(malloc)((len - i) * sizeof(char));
+          dirname = VG_(malloc)((i + 2) * sizeof(char));
+
+          // I didn't get the regular strncpy to work properly ...
+          //          strncpy(dirname, input, i + 1);
+          //          strncpy(filename, input + i + 1, len - i - 1);
+
+          // Make my own strncpy:
+          for (j = 0; j <= i; j++)
+            {
+              dirname[j] = input[j];
+              //              printf("dirname[%d]=%c\n", j, dirname[j]);
+            }
+          dirname[i + 1] = '\0';
+          //          printf("dirname[%d]=%c\n", i + 1, dirname[i + 1]);
+          for (j = i + 1; j < len; j++)
+            {
+              filename[j - i - 1] = input[j];
+              //              printf("filename[%d]=%c\n", j - i - 1, filename[j - i - 1]);
+            }
+          filename[len - i - 1] = '\0';
+          //          printf("filename[%d]=%c\n", len - i - 1, filename[len - i - 1]);
+
+
+          *filenamePtr = filename;
+          *dirnamePtr = dirname;
+
+          return 1;
+        }
+    }
+  // If we don't find a '/' anywhere, just set filename to equal input
+  filename = VG_(strdup)(input);
+  *filenamePtr = filename;
+  return 1;
+}
+
+static int createFIFO(const char *filename) {
+  int ret;
+  ret = remove(filename);
+  if (ret == -1 && errno != ENOENT) {
+    VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
+	    strerror(errno));
+    return 0;
+  }
+  ret = mkfifo(filename, 0666);
+  if (ret == -1) {
+    VG_(printf)( "Couldn't make %s as a FIFO: %s\n", filename,
+	    strerror(errno));
+    return 0;
+  }
+  return 1;
+}
+
+int compareStrings(const void *a, const void *b)
+{
+  return VG_(strcmp)((char*)a, (char*)b);
+}
+
+// Iterate through each line of the file trace_prog_pts_input_fp
+// and VG_(strdup) each string into a new entry of prog_pts_tree
+// (Every line in trace_prog_ps_input_fp must be a valid program point name -
+//  a list of program point names can be generated by running Kvasir
+//  with the --dump-ppt-file=<string> command-line option)
+// Close the file when you're done with it
+void initializeProgramPointsTree()
+{
+  // TODO: This is crude and unsafe but works for now
+  char line[200];
+
+  while (fgets(line, 200, trace_prog_pts_input_fp))
+    {
+      char *newString;
+      // Strip '\n' off the end of the line
+      line[VG_(strlen)(line) - 1] = '\0';
+
+      // Insert a VG_(strdup)'ed copy of the line into the binary tree
+      newString = VG_(strdup)(line);
+      tsearch((void*)newString, (void**)&prog_pts_tree, compareStrings);
+    }
+
+  fclose(trace_prog_pts_input_fp);
+  trace_prog_pts_input_fp = 0;
+}
+
+int compareFunctionTrees(const void *a, const void *b)
+{
+  return VG_(strcmp)(((FunctionTree*) a)->function_daikon_name,
+		     ((FunctionTree*) b)->function_daikon_name);
+}
+
+// Iterate through each line of the file trace_vars_input_fp
+// and insert the line below ENTRY_DELIMETER into vars_tree as
+// a new FunctionTree.  Then iterate through all variables within that function
+// and add them to a tree of strings in FunctionTree.variable_tree
+// Close the file when you're done
+/* This is an example of a variables output format:
+--------ENTRY--------
+globals
+StaticArraysTest_c/staticStrings
+StaticArraysTest_c/staticStrings[]
+StaticArraysTest_c/staticShorts
+StaticArraysTest_c/staticShorts[]
+
+
+--------ENTRY--------
+..f()
+arg
+strings
+strings[]
+return
+
+
+--------ENTRY--------
+..b()
+oneShort
+manyShorts
+manyShorts[]
+return
+
+
+--------ENTRY--------
+..main()
+return
+*/
+void initializeVarsTree()
+{
+  // TODO: This is crude and unsafe but works for now
+  char line[200];
+  char nextLineIsFunction = 0;
+  int lineLen = 0;
+  FunctionTree* currentFunctionTree = 0;
+  while (fgets(line, 200, trace_vars_input_fp))
+    {
+      lineLen = VG_(strlen)(line);
+
+      // Blank lines only have a "\n" so skip them
+      if (lineLen <= 1)
+	continue;
+
+      // Strip '\n' off the end of the line
+      line[lineLen - 1] = '\0';
+
+      if VG_STREQ(line, ENTRY_DELIMETER)
+	{
+	  nextLineIsFunction = 1;
+	}
+      else
+	{
+	  // Create a new FunctionTree and insert it into vars_tree
+	  if (nextLineIsFunction)
+	    {
+	      currentFunctionTree = VG_(malloc)(sizeof(*currentFunctionTree));
+	      currentFunctionTree->function_daikon_name = VG_(strdup)(line);
+	      currentFunctionTree->function_variables_tree = NULL; // Remember to initialize to null!
+
+	      tsearch((void*)currentFunctionTree, (void**)&vars_tree, compareFunctionTrees);
+
+	      // Keep a special pointer for global variables to trace
+	      if VG_STREQ(line, GLOBAL_STRING)
+		{
+		  globalFunctionTree = currentFunctionTree;
+		}
+	    }
+	  // Otherwise, create a new variable and stuff it into
+	  // the function_variables_tree of the current function_tree
+	  else
+	    {
+	      char* newString = VG_(strdup)(line);
+	      tsearch((void*)newString, (void**)&(currentFunctionTree->function_variables_tree), compareStrings);
+	    }
+
+	  nextLineIsFunction = 0;
+	}
+    }
+
+  fclose(trace_vars_input_fp);
+  trace_vars_input_fp = 0;
+}
+
+void outputDeclsAndCloseFile()
+{
+  // We need to update all DaikonFunctionInfo entries so that
+  // they have the proper demangled names as obtained from Valgrind.
+  // We must run this first before anything else happens or else
+  // variable names will not be printed out correctly.
+  updateAllDaikonFunctionInfoEntries();
+
+  // Process .disambig at this time AFTER
+  // updateAllDaikonFunctionInfoEntries() has been run
+  if (disambig_fp && !disambig_writing) {
+    processDisambigFile();
+  }
+
+
+  if (!do_not_print_out_decls) {
+
+    if (var_dump_fp)
+      {
+	fputs(ENTRY_DELIMETER, var_dump_fp);
+	fputs("\n", var_dump_fp);
+	fputs(GLOBAL_STRING, var_dump_fp);
+	fputs("\n", var_dump_fp);
+	printVariablesInVarList(0, GLOBAL_VAR, 0, DECLS_FILE, 1,
+				(globalFunctionTree ?
+				 globalFunctionTree->function_variables_tree : 0), 0, 0);
+	fputs("\n", var_dump_fp);
+      }
+
+    printDeclsHeader();
+    printAllFunctionDecls();
+
+    printAllObjectAndClassDecls();
+
+    // Clean-up:
+    // Only close decls_fp if we are generating it separate of .dtrace
+    if (actually_output_separate_decls_dtrace) {
+      fclose(decls_fp);
+      decls_fp = 0;
+    }
+
+    if (prog_pt_dump_fp)
+      {
+	fclose(prog_pt_dump_fp);
+	prog_pt_dump_fp = 0;
+      }
+
+    if (var_dump_fp)
+      {
+	fclose(var_dump_fp);
+	var_dump_fp = 0;
+      }
+
+    // Punt everything if you're dumping program point or variable names
+    // or if we only wanted the .decls file
+    if (kvasir_dump_prog_pt_names_filename ||
+	kvasir_dump_var_names_filename || kvasir_decls_only)
+      {
+	if (!actually_output_separate_decls_dtrace) {
+	  finishDtraceFile();
+	}
+	VG_(exit)(0);
+      }
+  }
+}
+
+// Print out the standard Daikon .decls header
+void printDeclsHeader()
+{
+  fputs("VarComparability\nnone\n\n", decls_fp);
+}
+
+// Print out one individual function declaration
+// Example:
+/*
+DECLARE
+printHelloWorld():::ENTER
+routebaga
+double # isParam=true
+double
+1
+turnip
+char # isParam=true
+int
+2
+*/
+// char isEnter = 1 for function ENTER, 0 for EXIT
+void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
+{
+  // Only dump the name once during function exit
+  // because we want to get return values
+  if (prog_pt_dump_fp && !isEnter)
+    {
+      fputs(funcPtr->daikon_name, prog_pt_dump_fp);
+      fputs("\n", prog_pt_dump_fp);
+    }
+
+  if (var_dump_fp && !isEnter)
+    {
+      fputs(ENTRY_DELIMETER, var_dump_fp);
+      fputs("\n", var_dump_fp);
+      fputs(funcPtr->daikon_name, var_dump_fp);
+      fputs("\n", var_dump_fp);
+    }
+
+  fputs("DECLARE\n", decls_fp);
+  fputs(funcPtr->daikon_name, decls_fp);
+
+  if (isEnter)
+    {
+      fputs(ENTER_PPT, decls_fp);
+      fputs("\n", decls_fp);
+    }
+  else
+    {
+      fputs(EXIT_PPT, decls_fp);
+      fputs("\n", decls_fp);
+    }
+
+  // Print out globals
+  if (!kvasir_ignore_globals)
+    {
+      printVariablesInVarList(funcPtr, GLOBAL_VAR, 0, DECLS_FILE, 0,
+			      (globalFunctionTree ?
+			       globalFunctionTree->function_variables_tree : 0), 0, 0);
+    }
+
+  // Now print out one entry for every formal parameter (actual and derived)
+  printVariablesInVarList(funcPtr,
+			  (isEnter ?
+			   FUNCTION_ENTER_FORMAL_PARAM :
+			   FUNCTION_EXIT_FORMAL_PARAM),
+			  0, DECLS_FILE, !isEnter,
+			  funcPtr->trace_vars_tree, 0, 0);
+
+  // If EXIT, print out return value
+  if (!isEnter)
+    {
+      printVariablesInVarList(funcPtr, FUNCTION_RETURN_VAR, 0, DECLS_FILE, !isEnter,
+			      funcPtr->trace_vars_tree, 0 ,0);
+    }
+
+  if (var_dump_fp)
+    {
+      fputs("\n", var_dump_fp);
+    }
+
+  fputs("\n", decls_fp);
+}
+
+// Print out all function declarations in Daikon .decls format
+void printAllFunctionDecls()
+{
+  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
+
+  while(!it->finished) {
+    DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*)
+         gengettable(DaikonFunctionInfoTable, gennext(it));
+
+    if (!cur_entry)
+         continue;
+
+    printOneFunctionDecl(cur_entry, 1);
+    printOneFunctionDecl(cur_entry, 0);
+  }
+
+  genfreeiterator(it);
+}
+
+
+// For C++ only: Print out an :::OBJECT program point.
+// The object program point should consist of class_name:::OBJECT
+// and all information from 'this'
+
+// For C++ only: Print out a :::CLASS program point.
+// The class program point should consist of class_name:::CLASS
+// and all information about only STATIC variables belonging to this class
+void printAllObjectAndClassDecls() {
+
+  struct geniterator* it = gengetiterator(DaikonTypesTable);
+
+  // Hashtable which contains the names of classes which have already printed
+  // OBJECT and CLASS program points.  This is so that we can allow duplicate
+  // entries in DaikonTypesTable but only print out ONE OBJECT/CLASS .decls program
+  // point for each entry with a particular name
+  // Key: Class name, Value: Doesn't matter - we only check if the table
+  // "contains the entry"
+  struct genhashtable* ClassNamesAlreadyPrinted =
+    genallocatehashtable((unsigned int (*)(void *)) & hashString,
+                         (int (*)(void *,void *)) &equivalentStrings);
+
+  while(!it->finished) {
+    DaikonType* cur_type = (DaikonType*)
+         gengettable(DaikonTypesTable, gennext(it));
+
+    if (!cur_type)
+         continue;
+
+    // Only print out .decls for :::OBJECT and :::CLASS program points
+    // if num_member_funcs > 0 - otherwise we have no member functions
+    // so these program points will never be reached :)
+    // Also, only print them out if their name is NOT contained in
+    // ClassNamesAlreadyPrinted - otherwise there is a duplicate so don't
+    // print it out!
+    if ((cur_type->num_member_funcs > 0) &&
+        (cur_type->collectionName) && // Do NOT try to print out unnamed anonymous classes
+                                      // because we will have a naming ambiguity
+        !gencontains(ClassNamesAlreadyPrinted, cur_type->collectionName)) {
+         // Make up a fake DaikonFunctionInfo entry and populate the parentClass field
+         DaikonFunctionInfo fakeFuncInfo;
+
+         // Make up a fake DaikonVariable named 'this' and set its type to cur_type
+         DaikonVariable fakeThisVar;
+
+         memset(&fakeFuncInfo, 0, sizeof(fakeFuncInfo));
+         fakeFuncInfo.parentClass = cur_type;
+
+         memset(&fakeThisVar, 0, sizeof(fakeThisVar));
+         fakeThisVar.name = "this";
+         fakeThisVar.varType = cur_type;
+         fakeThisVar.repPtrLevels = 1;
+         fakeThisVar.declaredPtrLevels = 1;
+         // Remember the .disambig for "this" so that it prints
+         // out as ONE element and not an array
+         fakeThisVar.ppt_enter_disambig = 'P';
+         fakeThisVar.ppt_exit_disambig = 'P';
+
+         fputs("DECLARE\n", decls_fp);
+         fputs(cur_type->collectionName, decls_fp);
+         fputs(":::OBJECT\n", decls_fp);
+
+         stringStackPush(fullNameStack, &fullNameStackSize, "this");
+
+         outputDaikonVar(&fakeThisVar,
+                         FUNCTION_ENTER_FORMAL_PARAM,
+                         0,0,0,0,0,0,
+                         DECLS_FILE,
+                         0,0,0,0,0,0,0,0);
+
+         stringStackPop(fullNameStack, &fullNameStackSize);
+
+         fputs("\n", decls_fp);
+
+         fputs("DECLARE\n", decls_fp);
+         fputs(cur_type->collectionName, decls_fp);
+         fputs(":::CLASS\n", decls_fp);
+
+         printVariablesInVarList(&fakeFuncInfo,
+                                 GLOBAL_VAR,
+                                 0,
+                                 DECLS_FILE,
+                                 0,
+                                 0,
+                                 1,
+                                 0);
+
+         fputs("\n", decls_fp);
+
+         genputtable(ClassNamesAlreadyPrinted, cur_type->collectionName, 0);
+    }
+  }
+
+  genfreeiterator(it);
+  genfreehashtable(ClassNamesAlreadyPrinted);
+}
+
+
+
+
+// Print all variables contained in varListPtr
+void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified function,
+			     // which means --limit-static-vars has no effect
+			     // and varOrigin must = GLOBAL_VAR
+			     VariableOrigin varOrigin,
+			     char* stackBaseAddr,
+			     OutputFileType outputType,
+			     char allowVarDumpToFile,
+			     char* trace_vars_tree,
+
+                             // 1 if we want to print out all static variables
+                             // (in globalVars) corresponding to the class which
+                             // funcPtr belongs to (This is for the C++ :::CLASS invariants)
+                             // Must be called with varOrigin == GLOBAL_VAR and
+                             // funcPtr->parentClass non-null
+                             char printClassProgramPoint,
+                             // 1 if we want to stop printing after the first
+                             // variable in the list - MUST BE USED WITH
+                             // varOrigin == {FUNCTION_ (ENTER or EXIT)_FORMAL_PARAM
+                             // to print out ONLY the contents of the first
+                             // param "this"
+                             char stopAfterFirstVar)
+{
+  VarNode* i = 0;
+
+  VarList* varListPtr = 0;
+  int numIters = 0;
+
+  if (!funcPtr && (varOrigin != GLOBAL_VAR)) {
+    VG_(printf)( "Error with null funcPtr and (varOrigin != GLOBAL_VAR in printVariablesInVarList()\n");
+    abort();
+  }
+
+  switch (varOrigin) {
+  case GLOBAL_VAR:
+    varListPtr = &globalVars;
+    break;
+  case FUNCTION_ENTER_FORMAL_PARAM:
+  case FUNCTION_EXIT_FORMAL_PARAM:
+    varListPtr = &(funcPtr->formalParameters);
+    break;
+  case FUNCTION_RETURN_VAR:
+    varListPtr = &(funcPtr->returnValue);
+    break;
+  }
+
+  stringStackClear(&fullNameStackSize);
+
+  if(!varListPtr)
+    {
+      VG_(printf)( "Error with varListPtr in printVariablesInVarList()\n");
+      abort();
+    }
+
+  for (i = varListPtr->first; i != 0; i = i->next)
+    {
+      DaikonVariable* var;
+      void* basePtrValue = 0;
+
+      var = &(i->var);
+
+      numIters++;
+
+      if (stopAfterFirstVar && (numIters > 1)) {
+           break;
+      }
+
+      if (!var->name) {
+	VG_(printf)( "Weird null variable name!\n");
+	continue;
+      }
+
+      if ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
+	  (varOrigin == FUNCTION_EXIT_FORMAL_PARAM))
+	{
+	  basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
+	}
+      else if (varOrigin == GLOBAL_VAR)
+	{
+	  basePtrValue = (void*)(var->globalLocation);
+
+          // If "--limit-static-vars" option was selected, then:
+          // * Only print file-static variables at program points
+          //   in the file in which the variables were declared
+          // * Only print static variables declared within functions
+          //   at program points of that particular function
+	  if (!var->isExternal && kvasir_limit_static_vars && funcPtr) {
+            // Declared within a function
+            if (var->functionStartPC) {
+              if (funcPtr->startPC != var->functionStartPC) {
+                continue;
+              }
+            }
+            // Declared globally
+            else if (!VG_STREQ(funcPtr->filename, var->fileName)) {
+              continue;
+            }
+          }
+
+          if (printClassProgramPoint) {
+               // With printClassProgramPoint on, THE ONLY VARIABLES YOU SHOULD PRINT
+               // OUT ARE C++ static member variables
+               // with the same class as the function we are printing
+               if (funcPtr &&
+                   (var->structParentType != funcPtr->parentClass)) {
+                    continue;
+               }
+          }
+          else {
+               // Under normal circumstances, DON'T PRINT OUT C++ static member variables
+               // UNLESS it belongs to the SAME CLASS as the function we are printing
+               // Print out all regular globals normally (hence the check for
+               // var->structParentType)
+               if (var->structParentType && funcPtr &&
+                   (var->structParentType != funcPtr->parentClass)){
+                    continue;
+               }
+          }
+	}
+
+      // For .disambig, we only want to output selected
+      // types of variables.  If the variable does not
+      // meet the requirements, we will skip it
+      if ((DISAMBIG_FILE == outputType) &&
+	  !shouldOutputVarToDisambig(var)) {
+	continue;
+      }
+
+      stringStackPush(fullNameStack, &fullNameStackSize, var->name);
+
+      outputDaikonVar(var,
+		      varOrigin,
+		      0,
+		      0,
+		      0,
+		      0,
+		      allowVarDumpToFile,
+		      trace_vars_tree,
+		      outputType,
+		      0,
+		      basePtrValue,
+		      //overrideIsInitialized if global var
+		      (varOrigin == GLOBAL_VAR),
+		      0,
+		      0,
+		      0,
+		      0,
+                      0);
+
+      stringStackPop(fullNameStack, &fullNameStackSize);
+    }
+}
+
+// THIS IS THE MAIN DECLS AND DTRACE OUTPUT FUNCTION!!!
+// Prints one DaikonVariable variable and all of its derived
+// variables to decls_fp if outputType == DECLS_FILE,
+// prints the runtime value of one DaikonVariable variable and all of
+// its derived variables to dtrace_fp if outputType == DTRACE_FILE,
+// prints the multiplicity (pointer/array) of one DaikonVariable
+// variable if outputType == DISAMBIG_FILE.
+// Precondition: The full variable name that you want to print out
+//               is located in fullNameStack
+// MUST BE PRECEDED BY A stringStackPush() call and
+// SUCCEEDED BY A stringStackPop() call because it expects names
+// to be on the string stack
+void outputDaikonVar(DaikonVariable* var,
+		     VariableOrigin varOrigin,
+		     int numDereferences,
+                     // True if either this has been dereferenced
+                     // before or its struct parent was an array
+		     char isArray,
+		     char stopExpandingArrays,
+		     char stopDerivingMemberVars,
+		     char allowVarDumpToFile,
+		     char* trace_vars_tree, // Binary tree within FunctionTree struct
+		     OutputFileType outputType,
+		     DisambigOverride disambigOverride, // Only relevant for .disambig
+		     // The variables below are only valid if outputType == DTRACE_FILE:
+		     void* basePtrValue, // the pointer to the first element to print to .dtrace
+		     char overrideIsInitialized, // don't check init. bit - assume it's initialized
+		     // We only use overrideIsInitialized when we pass in things (e.g. return values)
+		     // that cannot be checked by the Memcheck A and V bits
+		     // Never have overrideIsInitialized when you derive variables (make recursive calls)
+		     // because their addresses are different from the original's
+		     char isDummy, // don't actually print any values because the address is NONSENSICAL
+		     unsigned long upperBound, // upper bound of the array to print
+		     unsigned long bytesBetweenElts, // number of bytes between each element of array
+		     char structParentAlreadySetArrayInfo,
+                     // The number of structs we have dereferenced for this particular Daikon variable;
+                     // Starts at 0 and increments every time we hit a variable which is a base struct type
+                     // Range: [0, MAX_NUM_STRUCTS_TO_DEREFERENCE)
+                     int numStructsDereferenced)
+{
+  DaikonDeclaredType dType = var->varType->declaredType;
+  DaikonRepType rType = var->varType->repType;
+
+  int layersBeforeBase = (var->repPtrLevels - numDereferences);
+  char isBaseArrayVar = (isArray && (var->repPtrLevels == 0));
+
+  char printAsArray = 0;
+
+  char disambigOverrideArrayAsPointer = 0;
+
+  FILE* out_file = 0;
+
+  switch (outputType) {
+  case DECLS_FILE: out_file = decls_fp; break;
+  case DTRACE_FILE: out_file = dtrace_fp; break;
+  case DISAMBIG_FILE: out_file = disambig_fp; break;
+  }
+
+  if (!var)
+    {
+      VG_(printf)( "Error! var is null in outputDaikonVar\n");
+      abort();
+    }
+
+  // If it is an original variable (and not a Daikon-derived one),
+  // then initialize a new VisitedStructsTable
+  if ((varOrigin != DERIVED_VAR) &&
+      (varOrigin != DERIVED_FLATTENED_ARRAY_VAR))
+    {
+      // Free VisitedStructsTable if necessary
+      if (VisitedStructsTable)
+	{
+	  genfreehashtable(VisitedStructsTable);
+	  VisitedStructsTable = 0;
+	}
+      VisitedStructsTable = genallocatehashtable((unsigned int (*)(void *)) & hashID,
+						 (int (*)(void *,void *)) &equivalentIDs);
+    }
+
+  // Special handling for overriding in the presence of .disambig:
+  // Only check this for non-derived (numDereferences == 0) variables
+  // to ensure that it's only checked once per variable
+  if ((0 == numDereferences) &&
+      ((kvasir_disambig_filename && !disambig_writing) ||
+       VG_STREQ("this", var->name))) { // either using .disambig or special C++ 'this'
+    char disambig_letter = 0;
+
+    char found = 1;
+
+    switch (varOrigin) {
+    case FUNCTION_ENTER_FORMAL_PARAM:
+    case GLOBAL_VAR: // It doesn't matter (both should be identical)
+    case DERIVED_VAR:
+    case DERIVED_FLATTENED_ARRAY_VAR:
+      disambig_letter = var->ppt_enter_disambig;
+      break;
+    case FUNCTION_EXIT_FORMAL_PARAM:
+    case FUNCTION_RETURN_VAR:
+      disambig_letter = var->ppt_exit_disambig;
+      break;
+    default:
+      found = 0;
+      break;
+    }
+
+    if (found) {
+      if (var->repPtrLevels == 0) {
+	// 'C' denotes to print out as a one-character string
+	if (var->isString) { // pointer to "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("String C - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
+	  }
+	  else if ('A' == disambig_letter) {
+	    DPRINTF("String A - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_INT_ARRAY;
+	  }
+	  else if ('P' == disambig_letter) {
+	    DPRINTF("String P - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_ONE_INT;
+	  }
+	}
+	else if ((D_CHAR == var->varType->declaredType) ||  // "char" or "unsigned char" (or string of chars)
+		 (D_UNSIGNED_CHAR == var->varType->declaredType)) { // "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("Char C - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_CHAR_AS_STRING;
+	  }
+	}
+      }
+      // Ordinary pointer
+      else if ('P' == disambig_letter) {
+	disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
+      }
+    }
+  }
+
+  // Only do this for the first derference because a 'P' means that
+  // the derived Daikon variable after 1 dereference should NOT be an array
+  disambigOverrideArrayAsPointer =
+    ((numDereferences > 0) && (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
+
+  // .decls, .dtrace, and .disambig files -
+  //  Line 1: Print out name
+  if (fullNameStackSize > 0)
+    {
+      // We are really popping stuff off of the stack in reverse and
+      // treating it like a queue :)
+      char* nameWithoutDereferences = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
+      char* fullDaikonName = 0;
+
+      if (numDereferences < 0) {
+	numDereferences = 0; // Prevent negatives in calloc of nameForComparison
+      }
+
+      // For .disambig:
+      // Attach a "*" prefix onto the name to denote dereferencing
+      // and use one fewer level of "[]"
+      if (disambigOverrideArrayAsPointer) {
+	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
+				       ((numDereferences - 1) * VG_(strlen)(dereference)) + 2,
+					sizeof(*fullDaikonName));
+
+	VG_(strcpy)(fullDaikonName, star);
+	VG_(strcat)(fullDaikonName, nameWithoutDereferences);
+      }
+      else {
+	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
+				       (numDereferences * VG_(strlen)(dereference)) + 1,
+				       sizeof(*fullDaikonName));
+
+	VG_(strcpy)(fullDaikonName, nameWithoutDereferences);
+      }
+
+      // Append "[]" onto the end of names if necessary
+      // TODO: This rule (with the first if clause commented-out)  seems to work well
+      // to print out what we want for now, but  investigate it if it becomes a problem later
+      //  if (isArray && (var->repPtrLevels == 0))
+      //    {
+      //      fputs(dereference, out_file);
+      //    }
+      //  else
+      if (numDereferences > 0) {
+	int i = 0;
+
+	// One less set of "[]" if disambigOverrideArrayAsPointer
+	int levels = (disambigOverrideArrayAsPointer ?
+		      numDereferences - 1 :
+		      numDereferences);
+
+	for (i = 0; i < levels; i++) {
+	  VG_(strcat)(fullDaikonName, dereference);
+	}
+      }
+
+      // Now we must check whether we are interested in printing out
+      // this variable - if we are not, then punt everything!
+      if (kvasir_trace_vars_filename)
+	{
+	  if (trace_vars_tree)
+	    {
+	      if (!tfind((void*)fullDaikonName, (void**)&trace_vars_tree, compareStrings))
+		{
+		  DPRINTF("%s NOT FOUND!!!\n", fullDaikonName);
+		  // PUNT EVERYTHING!!!
+		  VG_(free)(nameWithoutDereferences);
+		  VG_(free)(fullDaikonName);
+
+		  return;
+		}
+	    }
+	  // If trace_vars_tree is kept at 0 on purpose
+	  // but kvasir_trace_vars_filename is valid, then still punt
+	  // because we are only supposed to print out variables listed
+	  // in kvasir_trace_vars_filename and obviously there aren't
+	  // any relevant variables to print
+	  else
+	    {
+	      VG_(free)(nameWithoutDereferences);
+	      VG_(free)(fullDaikonName);
+
+	      return;
+	    }
+	}
+
+      if (var_dump_fp && allowVarDumpToFile)
+	{
+	  fputs(fullDaikonName, var_dump_fp);
+	}
+
+      fputs(fullDaikonName, out_file);
+
+      // Push an extra set of "[]" onboard so that Daikon doesn't choke
+      // because it needs this to be a sequence
+      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+	fputs(dereference, out_file);
+      }
+
+      //      printf("%s - isBaseArrayVar: %d, numDereferences: %d, layersBeforeBase: %d\n",
+      //	     fullDaikonName, isBaseArrayVar, numDereferences, layersBeforeBase);
+
+      VG_(free)(nameWithoutDereferences);
+      VG_(free)(fullDaikonName);
+    }
+  else
+    {
+      VG_(printf)( "Error! fullNameStack is empty in outputDaikonVar() - no name to print\n");
+      abort();
+    }
+
+  // We print a variable as an array if it's either a true array variable or it's been
+  // dereferenced at least once, which means that it came from a pointer so that we don't
+  // know its exact size and thus have to assume that the pointer points to an array
+  printAsArray = (isBaseArrayVar || (numDereferences > 0));
+
+  if (var_dump_fp && allowVarDumpToFile)
+    {
+      fputs("\n", var_dump_fp);
+    }
+
+  fputs("\n", out_file);
+
+  // .dtrace
+  if (DTRACE_FILE == outputType)
+    {
+      char variableHasBeenObserved = 0;
+      DPRINTF("printOneDaikonVar: %s %d %d %d %d %d %d %p %d %d %u %u\n",
+	      var->name,
+	      varOrigin,
+	      numDereferences,
+	      isArray,
+	      stopExpandingArrays,
+	      stopDerivingMemberVars,
+	      (int)outputType,
+	      basePtrValue,
+	      overrideIsInitialized,
+	      isDummy,
+	      upperBound,
+	      bytesBetweenElts);
+
+      variableHasBeenObserved =
+	outputDtraceValue(var,
+			  basePtrValue,
+			  varOrigin,
+			  (layersBeforeBase > 0), // isHashcode
+			  overrideIsInitialized,
+			  isDummy,
+			  printAsArray,
+			  upperBound,
+			  bytesBetweenElts,
+			  // override float as double when printing
+			  // out function return variables because
+			  // return variables stored in %EAX are always doubles
+			  (varOrigin == FUNCTION_RETURN_VAR),
+			  disambigOverride);
+
+      // While observing the runtime values,
+      // set var->disambigMultipleElts and
+      // var->pointerHasEverBeenObserved depending on whether
+      // upperBound == 0 (1 element) or not and whether
+      // variableHasBeenObserved:
+      // We do this only when numDereferences == 1 because
+      // we want to see if the target of a particular pointer
+      // has been observed and whether it refers to 1 or multiple elements
+      if ((1 == numDereferences) && variableHasBeenObserved) {
+	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
+	  var->disambigMultipleElts = 1;
+	}
+
+	// If pointerHasEverBeenObserved is not set, then set it
+	if (!var->pointerHasEverBeenObserved) {
+	  var->pointerHasEverBeenObserved = 1;
+	}
+      }
+    }
+  // .decls
+  else if (DECLS_FILE == outputType)
+    {
+      char alreadyPutDerefOnLine3;
+      // .decls Line 2: Print out declared type
+
+      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+	fputs(DaikonRepTypeString[R_INT], out_file);
+	fputs(dereference, out_file);
+      }
+      else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+	fputs(DaikonRepTypeString[R_INT], out_file);
+      }
+      // named struct/union or enumeration
+      else if (((dType == D_ENUMERATION) || (dType == D_STRUCT) || (dType == D_UNION)) &&
+	       var->varType->collectionName)
+	{
+	  fputs(var->varType->collectionName, out_file);
+	}
+      else
+	{
+	  // Normal type (or unnamed struct/union)
+	  fputs(DaikonDeclaredTypeString[dType], out_file);
+	  // If we have a string, print it as char*
+	  // because the dType of string is "char"
+	  // so we need to append a "*" to it
+	  if (var->isString)
+	    {
+	      fputs(star, out_file);
+	    }
+	}
+
+      // Append a set of "[]" to the declared type if appropriate
+      // if it's either a true array or it's a pointer
+      if (!disambigOverrideArrayAsPointer &&
+	  (isBaseArrayVar || (var->repPtrLevels > 0)))
+	{
+	  fputs(dereference, out_file);
+	}
+
+      // Original variables in function parameter lists
+      // have "# isParam = true"
+      if ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
+	  (varOrigin == FUNCTION_EXIT_FORMAL_PARAM))
+	{
+	  fputs(" # isParam=true", out_file);
+	}
+      fputs("\n", out_file);
+
+      // .decls Line 3: Print out rep. type
+      alreadyPutDerefOnLine3 = 0;
+
+      // Print out rep. type as hashcode when you are not done dereferencing
+      // pointer layers:
+      if (layersBeforeBase > 0)
+	{
+	  fputs(DaikonRepTypeString[R_HASHCODE], out_file);
+	}
+      else
+	{
+	  // Special handling for strings and 'C' chars in .disambig
+	  if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+	      fputs(DaikonRepTypeString[R_INT], out_file);
+	      fputs(dereference, out_file);
+	      alreadyPutDerefOnLine3 = 1;
+	  }
+	  else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+	      fputs(DaikonRepTypeString[R_INT], out_file);
+	  }
+	  else if ((var->isString) ||
+		   (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
+	    fputs(DaikonRepTypeString[R_STRING], out_file);
+	  }
+	  else {
+            tl_assert(rType != 0);
+	    fputs(DaikonRepTypeString[rType], out_file);
+	  }
+	}
+
+      // Append "[]" onto the end of the rep. type if necessary
+      if (!alreadyPutDerefOnLine3 &&
+	  (!disambigOverrideArrayAsPointer &&
+	   (isBaseArrayVar || (numDereferences > 0))))
+	{
+	  fputs(dereference, out_file);
+	}
+
+      fputs("\n", out_file);
+
+      // .decls Line 4: Print out unknown comparability type "22"
+      fputs("22", out_file);
+      fputs("\n", out_file);
+    }
+  // .disambig
+  else if (DISAMBIG_FILE == outputType)
+    {
+      // Line 2: Print out .disambig code for each type
+      // as specified in the "Daikon User Manual" and
+      // also decisions made by the Kvasir developers
+
+      /* Default values:
+	 Base type "char" and "unsigned char": 'I' for integer
+	 Pointer to "char": 'S' for string
+	 Pointer to all other types:
+	   - 'A' for array if var->disambigMultipleElts,
+	                      which means that we've observed array
+			      behavior during program's execution
+			or if !var->pointerHasEverBeenObserved,
+			      which means that the pointer has never
+			      been observed so a conservative guess
+			      of 'A' should be the default
+			or if var->isStructUnionMember - don't try
+			      to be smart about member variables
+			      within structs/unions - just default to "A"
+	   - 'P' for pointer if (var->pointerHasEverBeenObserved &&
+	                         !var->disambigMultipleElts)
+      */
+
+      if (0 == var->declaredPtrLevels) {
+	if ((D_CHAR == var->varType->declaredType) ||
+	    (D_UNSIGNED_CHAR == var->varType->declaredType)) {
+	  fputs("I", out_file);
+	}
+      }
+      // Normal string, not pointer to string
+      else if (var->isString && (0 == var->repPtrLevels)) {
+	fputs("S", out_file);
+      }
+      else if (var->repPtrLevels > 0) {
+	if (var->isStructUnionMember) {
+	  fputs("A", out_file);
+	}
+	else {
+	  if (var->pointerHasEverBeenObserved) {
+	    if (var->disambigMultipleElts) {
+	      fputs("A", out_file);
+	    }
+	    else {
+	      fputs("P", out_file);
+	    }
+	  }
+	  // default behavior for variable that was
+	  // never observed during the execution
+	  else {
+	    fputs("A", out_file);
+	  }
+	}
+      }
+
+      fputs("\n", out_file);
+      // DO NOT DERIVE VARIABLES for .disambig
+      // We are only interested in printing out
+      // the variables which are immediately
+      // visible to the user
+      return;
+    }
+  else
+    {
+      VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
+      abort();
+    }
+
+  // Dereference and keep on printing out derived variables until we hit the base type:
+  if (layersBeforeBase > 0)
+    {
+      void* ptrParam = 0;
+
+      DPRINTF("layersBeforeBase is %d\n", layersBeforeBase);
+
+      DPRINTF("isDummy=%d\n", isDummy);
+
+      // If we are printing .dtrace, set ptrParam, upperBound, and bytesBetweenElts
+      // for the derived variable that we want to print out:
+      if ((DTRACE_FILE == outputType) && !isDummy)
+	{
+	  // Set isDummy appropriately depending on whether the derived variable
+	  // is allocated and initialized:
+	  char derivedIsAllocated = 0;
+	  char derivedIsInitialized = 0;
+
+	  DPRINTF("In array bounding branch\n");
+
+	  // Recursively dereference this variable to print out another one,
+	  // which should either be another pointer or a final
+	  // struct/union/base/enumeration type -
+	  // Pass the DEREFERENCED pointer value as the basePtrValue argument
+	  // unless it's a statically-declared array, in which case, simply pass
+	  // the value of the pointer as the argument:
+	  if (var->isStaticArray)
+	    {
+	      ptrParam = basePtrValue;
+	      // TODO: Investigate this more carefully, but it seems to work for now:
+	      derivedIsAllocated = 1;
+	      derivedIsInitialized = 1;
+	    }
+	  else
+	    {
+	      derivedIsAllocated = (overrideIsInitialized ? 1 :
+				    addressIsAllocated((Addr)basePtrValue, sizeof(void*)));
+	      if (derivedIsAllocated)
+		{
+		  derivedIsInitialized = (overrideIsInitialized ? 1 :
+					  addressIsInitialized((Addr)basePtrValue, sizeof(void*)));
+		  ptrParam = *((void **)basePtrValue);
+		}
+	    }
+
+	  // If the derived variable is either unallocated or uninitialized,
+	  // then it should print out as NONSENSICAL so isDummy should be "true"
+	  isDummy |= !derivedIsAllocated;
+	  isDummy |= !derivedIsInitialized;
+
+	  // Special case for multi-dimensional arrays (numDereferences >= 1):
+	  // Just print out the first dimension.  You would rather maintain
+	  // the integrity and lose info about the rest of the dimensions than
+	  // print out random garbage values like we previously did
+	  if (((numDereferences >= 1) || // multi-dimensional arrays - always recalculate bounds
+	       (!structParentAlreadySetArrayInfo)) &&
+	      // If at ANY time, this next condition holds, we don't
+	      // want to trigger structParentAlreadySetArrayInfo
+	      (disambigOverride != OVERRIDE_ARRAY_AS_POINTER))
+	    {
+	      if (!var->isStaticArray && ptrParam)
+		{
+		  DPRINTF("In dynamic array bounding branch\n");
+
+		  upperBound = returnArrayUpperBoundFromPtr(var, (Addr)ptrParam);
+
+		  DPRINTF("upperBound for %s(%p) = %u\n",
+			  var->name, ptrParam, upperBound);
+		}
+	      else if VAR_IS_STATIC_ARRAY(var)
+		{
+		  // TODO: Add multi-dimensional array support -
+		  // Right now we only look at the first dimension
+		  upperBound = var->upperBounds[0];
+
+		  DPRINTF("upperBound for %s = %u\n",
+			  var->name, upperBound);
+		}
+
+	      bytesBetweenElts = getBytesBetweenElts(var);
+	      structParentAlreadySetArrayInfo = 1;
+	    }
+	}
+
+      outputDaikonVar(var,
+		      ((varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ?
+		       DERIVED_FLATTENED_ARRAY_VAR :
+		       DERIVED_VAR),
+		      numDereferences + 1,
+		      1,
+		      stopExpandingArrays,
+		      stopDerivingMemberVars,
+		      allowVarDumpToFile,
+		      trace_vars_tree,
+		      outputType,
+		      disambigOverride,
+		      (isDummy ? 0 : ptrParam),
+		      0,
+		      isDummy,
+		      (isDummy ? 0 : upperBound),
+		      (isDummy ? 0 : bytesBetweenElts),
+		      structParentAlreadySetArrayInfo,
+                      numStructsDereferenced);
+    }
+  // If this is the base type of a struct/union variable, then print out all
+  // derived member variables:
+  else if ((!stopDerivingMemberVars) &&
+	   (var->varType->isStructUnionType))
+    {
+      VarList* memberVars;
+      VarNode* i;
+      DaikonVariable* curVar;
+      // Check to see if the VisitedStructsTable contains
+      // more than MAX_STRUCT_INSTANCES of the current struct type -
+      // (later we will bail out if it contains more than this amount in order
+      //  to prevent infinite loops for recursively-defined structs)
+      if (gencontains(VisitedStructsTable, (void*)(var->varType)))
+	{
+	  int count = (int)(gengettable(VisitedStructsTable, (void*)(var->varType)));
+	  if (count <= MAX_STRUCT_INSTANCES)
+	    {
+	      count++;
+	      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
+	    }
+	}
+      // If not found in the table, initialize this entry with 1
+      else
+	{
+	  genputtable(VisitedStructsTable, (void*)(var->varType), (void*)1);
+	}
+
+      // Walk down the member variables list and
+      // print each one out with the current struct variable
+      // name as the prefix:
+      memberVars = var->varType->memberListPtr;
+      i = 0;
+      curVar = 0;
+
+      if(!memberVars || !(memberVars->first))
+	return;
+
+      for (i = memberVars->first; i != 0; i = i->next)
+	{
+	  int tempStopDerivingMemberVars = 0;
+	  void* curVarBasePtr;
+	  curVar = &(i->var);
+
+	  assert(curVar);
+
+	  // The starting address for the member variable is the struct's
+	  // starting address plus the location of the variable within the struct
+	  // TODO: Are we sure that arithmetic on void* basePtrValue
+	  // adds by 1?  Otherwise, we'd have mis-alignment issues.
+	  // (I tried it in gdb and it seems to work, though.)
+	  curVarBasePtr = basePtrValue + curVar->data_member_location;
+
+	  // Override for D_DOUBLE types: For some reason, the DWARF2 info.
+	  // botches the locations of double variables within structs, setting
+	  // their data_member_location fields to give them only 4 bytes of
+	  // padding instead of 8 against the next member variable.
+	  // If curVar is a double and there exists a next member variable
+	  // such that the difference in data_member_location of this double
+	  // and the next member variable is exactly 4, then decrement the
+	  // double's location by 4 in order to give it a padding of 8:
+	  if ((D_DOUBLE == curVar->varType->declaredType) &&
+	      (i->next) &&
+	      ((i->next->var.data_member_location -
+		curVar->data_member_location) == 4)) {
+	    curVarBasePtr -= 4;
+	  }
+
+	  // If a struct type has appeared more than MAX_STRUCT_INSTANCES
+	  // times or if (numStructsDereferenced >= MAX_NUM_STRUCTS_TO_DEREFERENCE),
+          // then stop deriving variables from it:
+	  if ((numStructsDereferenced >= MAX_NUM_STRUCTS_TO_DEREFERENCE) ||
+              (gencontains(VisitedStructsTable, (void*)(curVar->varType)) &&
+	      ((int)(gengettable(VisitedStructsTable, (void*)(curVar->varType))) >
+	       MAX_STRUCT_INSTANCES)))
+	    {
+	      tempStopDerivingMemberVars = 1;
+	    }
+
+	  // If a member variable is a statically-sized array
+	  // and the current variable is already an array,
+	  // then we must expand the member array and print it
+	  // out in its flattened form with one set of derived
+	  // variable for every element in the array:
+	  if ((isArray && !disambigOverrideArrayAsPointer) &&
+	      VAR_IS_STATIC_ARRAY(curVar) &&
+	      !stopExpandingArrays &&
+	      (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
+	      // Ignore arrays of characters (strings) inside of the struct:
+	      !(curVar->isString && (curVar->declaredPtrLevels == 1)))
+	    {
+	      // Only look at the first dimension:
+	      int arrayIndex = 0;
+	      for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++)
+		{
+		  char indexStr[5];
+		  sprintf(indexStr, "%d", arrayIndex);
+
+		  // TODO: Subtract and add is a HACK!
+		  // Subtract one from the type of curVar just because
+		  // we are looping through and expanding the array
+		  if (gencontains(VisitedStructsTable, (void*)(var->varType)))
+		    {
+		      int count = (int)(gengettable(VisitedStructsTable, (void*)(var->varType)));
+		      count--;
+		      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
+		    }
+
+		  // Append "[]" onto the end of names if necessary
+		  // PUSH
+		  if (isBaseArrayVar)
+		    {
+		      stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+		    }
+		  else if (numDereferences > 0)
+		    {
+		      int ind;
+		      for (ind = 0; ind < numDereferences; ind++)
+			{
+			  stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+			}
+		    }
+
+		  // Push the member variable name in order from left to right:
+		  // (The stack is acting more like a FIFO queue)
+
+		  if (disambigOverrideArrayAsPointer) {
+		    stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+		  }
+		  else {
+		    stringStackPush(fullNameStack, &fullNameStackSize, dot);
+		  }
+		  stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+		  stringStackPush(fullNameStack, &fullNameStackSize, "[");
+		  stringStackPush(fullNameStack, &fullNameStackSize, indexStr);
+		  stringStackPush(fullNameStack, &fullNameStackSize, "]");
+
+		  // Set bytesBetweenElts to the size of the largest enclosing struct
+		  // that is also an array
+		  // e.g. struct A takes up 100 bytes and contains an array of 3 struct B's, each
+		  // of which take up 10 bytes.  Each B contains a struct C, which takes up 8 bytes.
+		  // Each C contains a 4-byte int x, which we want to print out.  Here is the layout:
+		  /*
+
+		  [              A               ][              A               ][               A              ]
+
+
+		  [ {   B   }{   B   }{   B   }  ][ {   B   }{   B   }{   B   }  ][ {   B   }{   B   }{   B   }  ]
+
+
+		  [ { (  C )}{ (  C )}{ (  C )}  ][ { (  C )}{ (  C )}{ (  C )}  ][ { (  C )}{ (  C )}{ (  C )}  ]
+
+
+		  [ { (  x )}{ (  x )}{ (  x )}  ][ { (  x )}{ (  x )}{ (  x )}  ][ { (  x )}{ (  x )}{ (  x )}  ]
+
+
+		  In order to properly print out x, we need a spacing in between x's that is equal
+		  to the size of struct B, NOT struct C, since B itself is an array but C isn't an array.
+
+		  Also, the upperBound should be set to the upper bound of that struct array as well.
+		  */
+
+		  outputDaikonVar(curVar,
+				  DERIVED_FLATTENED_ARRAY_VAR,
+				  0,
+				  (isArray && !disambigOverrideArrayAsPointer),
+				  (disambigOverrideArrayAsPointer ? 0 : 1),
+				  tempStopDerivingMemberVars,
+				  allowVarDumpToFile,
+				  trace_vars_tree,
+				  outputType,
+				  0,
+				  (isDummy ? 0 :
+				   // Need to add an additional offset:
+				   curVarBasePtr + (arrayIndex *
+						    getBytesBetweenElts(curVar))), //curVar->varType->byteSize)),
+				  0,
+				  isDummy,
+				  (isDummy ? 0 :
+				   upperBound),
+				  // Use var's byteSize, not curVar's byte size
+				  // in order to determine the number of bytes
+				  // between each element of curVar:
+				  (isDummy ? 0 :
+				   getBytesBetweenElts(var)), // var->varType->byteSize),
+				  structParentAlreadySetArrayInfo,
+                                  (numStructsDereferenced + 1));
+
+		  // POP all the stuff we pushed on there before
+		  stringStackPop(fullNameStack, &fullNameStackSize);
+		  stringStackPop(fullNameStack, &fullNameStackSize);
+		  stringStackPop(fullNameStack, &fullNameStackSize);
+		  stringStackPop(fullNameStack, &fullNameStackSize);
+		  stringStackPop(fullNameStack, &fullNameStackSize);
+
+		  if (isBaseArrayVar)
+		    {
+		      stringStackPop(fullNameStack, &fullNameStackSize);
+		    }
+		  else if (numDereferences > 0)
+		    {
+		      int ind;
+		      for (ind = 0; ind < numDereferences; ind++)
+			{
+			  stringStackPop(fullNameStack, &fullNameStackSize);
+			}
+		    }
+
+		  // HACK: Add the count back on at the end
+		  if (gencontains(VisitedStructsTable, (void*)(var->varType)))
+		    {
+		      int count = (int)(gengettable(VisitedStructsTable, (void*)(var->varType)));
+		      count++;
+		      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
+		    }
+		}
+	    }
+	  // Print out a regular member variable without array flattening
+	  else
+	    {
+	      // Append "[]" onto the end of names if necessary
+	      // PUSH
+	      if (isBaseArrayVar)
+		{
+		  stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+		}
+	      else if (numDereferences > 0)
+		{
+		  int ind;
+
+		  // One less set of "[]" if disambigOverrideArrayAsPointer
+		  int levels = (disambigOverrideArrayAsPointer ?
+				numDereferences - 1 :
+				numDereferences);
+
+		  for (ind = 0; ind < levels; ind++)
+		    {
+		      stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+		    }
+		}
+
+	      if (disambigOverrideArrayAsPointer) {
+		stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+	      }
+	      else {
+		stringStackPush(fullNameStack, &fullNameStackSize, dot);
+	      }
+	      stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+
+	      DPRINTF("-- %s -- override %d repPtrLevels %d isString %d... %c %c\n",
+		      curVar->name, disambigOverride, curVar->repPtrLevels, curVar->isString,
+		      curVar->ppt_enter_disambig, curVar->ppt_exit_disambig);
+
+	      outputDaikonVar(curVar,
+			      DERIVED_VAR,
+			      0,
+			      (isArray && !disambigOverrideArrayAsPointer),
+			      (disambigOverrideArrayAsPointer ? 0 : stopExpandingArrays),
+			      // Complex conditional:
+			      // Do not derive any more member variables
+			      // once we have said to stop expanding arrays
+			      ((!curVar->isStaticArray ||
+				(!stopExpandingArrays && curVar->isStaticArray)) ?
+			       tempStopDerivingMemberVars : 1),
+			      allowVarDumpToFile,
+			      trace_vars_tree,
+			      outputType,
+			      0,
+			      (isDummy ? 0 :
+			       curVarBasePtr),
+			      0,
+			      isDummy,
+			      (isDummy ? 0 :
+			       upperBound),
+			      (isDummy ? 0 :
+			       bytesBetweenElts),
+			      structParentAlreadySetArrayInfo,
+                              (numStructsDereferenced + 1));
+
+	      // POP everything we've just pushed on
+	      stringStackPop(fullNameStack, &fullNameStackSize);
+	      stringStackPop(fullNameStack, &fullNameStackSize);
+
+	      if (isBaseArrayVar)
+		{
+		  stringStackPop(fullNameStack, &fullNameStackSize);
+		}
+	      else if (numDereferences > 0)
+		{
+		  int ind;
+
+		  // One less set of "[]" if disambigOverrideArrayAsPointer
+		  int levels = (disambigOverrideArrayAsPointer ?
+				numDereferences - 1 :
+				numDereferences);
+
+		  for (ind = 0; ind < levels; ind++)
+		    {
+		      stringStackPop(fullNameStack, &fullNameStackSize);
+		    }
+		}
+	    }
+	}
+    }
+}

@@ -12,8 +12,9 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
-      Modified by Philip Guo (pgbovine@mit.edu) to serve as the
-      DynComp Dynamic Comparability Analysis tool.
+      Modified by Philip Guo (pgbovine@mit.edu) to serve as the Kvasir
+      C/C++ Front-End for Daikon with the DynComp Dynamic
+      Comparability Analysis tool.
 
    Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
@@ -39,6 +40,7 @@
 #include "memcheck.h"   /* for client requests */
 //#include "vg_profile.c"
 #include "dyncomp_main.h"
+#include "kvasir_main.h"
 
 /* Define to debug the mem audit system. */
 /* #define VG_DEBUG_MEMORY */
@@ -576,7 +578,9 @@ ESP_UPDATE_HANDLERS ( make_aligned_word_writable,
                     );
 
 /* Block-copy permissions (needed for implementing realloc()). */
-static void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
+// PG - We need to use this for copying A & V bits to virtualStack
+//      so make it non-static
+void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
 {
    SizeT i;
 
@@ -625,7 +629,8 @@ static Bool mc_check_noaccess ( Addr a, SizeT len, Addr* bad_addr )
    return True;
 }
 
-static Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr )
+// PG - made it non-static for Kvasir
+Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr )
 {
    SizeT i;
    UChar abit;
@@ -642,11 +647,12 @@ static Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr )
    return True;
 }
 
-typedef enum {
-   MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
-} MC_ReadResult;
+//typedef enum {
+//   MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
+//} MC_ReadResult;
 
-static MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr )
+// PG - made it non-static for Kvasir (notice that the return type has changed too)
+MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr )
 {
    SizeT i;
    UChar abit;
@@ -671,6 +677,45 @@ static MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr )
       a++;
    }
    return MC_Ok;
+}
+
+// PG - Returns true if ANY of the v-bits are set for the bytes in question.
+// (Less stringent than MC_(check_readable))
+// returns a BIT-MASK of size 'len' bytes in 'bitMask' which
+// tells which bits have their v-bits set.  Assumes that 'len' bytes have been
+// allocated for bitMask and INITIALIZED to all 0's.
+// If you pass in 0 for bitMask, then bitMask will be ignored entirely
+char MC_(are_some_bytes_initialized) (Addr a, SizeT len, char* bitMask) {
+      UInt i;
+      UChar abit;
+      UChar vbyte;
+      char someBitsValid = 0;
+
+      PROF_EVENT(44);
+      DEBUG("MC_(are_some_bytes_initialized)\n");
+      for (i = 0; i < len; i++) {
+            abit  = get_abit(a);
+            vbyte = get_vbyte(a);
+            PROF_EVENT(45);
+            if (abit != VGM_BIT_VALID) {
+                  bitMask[i] = 0;
+            }
+            else {
+                  if (bitMask) {
+                        // Invert all bits in vbyte because
+                        // Memcheck V-bit valid is represented
+                        // by a 0 and invalid by a 1
+                        bitMask[i] = vbyte ^ 0xFF;
+                  }
+
+                  if (!someBitsValid && (vbyte != VGM_BYTE_INVALID)) {
+                        someBitsValid = 1;
+                  }
+            }
+            a++;
+      }
+
+      return someBitsValid;
 }
 
 
@@ -1612,13 +1657,18 @@ Bool TL_(process_cmd_line_option)(Char* arg)
 {
         VG_BOOL_CLO(arg, "--avoid-strlen-errors", MC_(clo_avoid_strlen_errors))
    else
-      return MAC_(process_common_cmd_line_option)(arg);
+      return kvasir_process_cmd_line_option(arg); // PG
 
    return True;
 }
 
 void TL_(print_usage)(void)
 {
+   // PG
+   kvasir_print_usage();
+
+   VG_(printf)("\n  user options for MemCheck portion of Kvasir:\n");
+
    MAC_(print_common_usage)();
    VG_(printf)(
 "    --avoid-strlen-errors=no|yes  suppress errs from inlined strlen [yes]\n"
@@ -1893,9 +1943,11 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 
 void TL_(pre_clo_init)(void)
 {
-   VG_(details_name)            ("DynComp");
+   VG_(details_name)            ("kvasir-dtrace");
+   /* This next line is automatically updated by the toplevel Daikon
+      distribution Makefile; be careful with its formatting -SMcC */
    VG_(details_version)         ("4.1.0");
-   VG_(details_description)     ("A dynamic comparability analysis tool based on Memcheck");
+   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool");
    VG_(details_copyright_author)(
       "Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group");
    VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
@@ -1986,16 +2038,22 @@ void TL_(pre_clo_init)(void)
 
    init_shadow_memory();
    MAC_(common_pre_clo_init)();
+
+   kvasir_pre_clo_init();
 }
 
 void TL_(post_clo_init) ( void )
 {
+   kvasir_post_clo_init();
 }
 
 void TL_(fini) ( Int exitcode )
 {
    VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
 
+   kvasir_finish();
+
+   // PG - Disable MemCheck memory leak detection to speed up Kvasir
       //   MAC_(common_fini)( mc_detect_memory_leaks );
 
       //   if (0) {

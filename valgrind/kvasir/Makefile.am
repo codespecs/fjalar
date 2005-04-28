@@ -11,7 +11,7 @@ include $(top_srcdir)/Makefile.tool-inplace.am
 
 ## Build Memcheck at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
-AM_CFLAGS += -g -fno-omit-frame-pointer
+AM_CFLAGS += -g -fno-omit-frame-pointer -Iinclude
 #AM_CFLAGS += -O2
 
 # PG - Change the name of the shared library
@@ -34,7 +34,16 @@ vgtool_dyncomp_so_SOURCES = \
 	mc_translate.c \
 	union_find.c \
 	dyncomp_main.c \
-	dyncomp_translate.c
+	dyncomp_translate.c \
+	kvasir_main.c \
+	generate_daikon_data.c \
+	kvasir_runtime.c \
+	decls-output.c \
+	dtrace-output.c \
+	GenericHashtable.c \
+	disambig.c \
+	readelf.c \
+	typedata.c
 
 vgtool_dyncomp_so_LDFLAGS = -shared
 
