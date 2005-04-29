@@ -1379,3 +1379,6 @@ Kvasir's own C code?  Or does it only do tracking on client code?
 Like what if I pass pointers to local variables (in Kvasir functions)
 around?  Do these get associated A and V-bits?  I'm starting to doubt
 it :(
+
+Ok, it seems like the EAX/EDX shadow bits are working great, but the
+FPU shadow bits are way the hell off.  I've gotta investigate that.

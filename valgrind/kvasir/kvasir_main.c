@@ -272,8 +272,10 @@ void exit_function(Char* fnname)
    UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
    ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
-   VG_(printf)("Exit function: %s - EAX: 0x%x, 0x%x, 0x%x\n",
-               fnname, EAX, EAXshadow, EDXshadow);
+   VG_(printf)("Exit function: %s - EAX: 0x%x, EAXshadow: 0x%x, EDXshadow: 0x%x FPUshadow: 0x%x %x\n",
+               fnname, EAX,
+               EAXshadow, EDXshadow,
+               (UInt)(FPUshadow & 0xffffffff), (UInt)(FPUshadow >> 32));
 
    pop_fn(fnname, EAX, EDX, fpuReturnVal, EAXshadow, EDXshadow, FPUshadow);
 }
