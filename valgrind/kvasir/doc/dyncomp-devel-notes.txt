@@ -1353,3 +1353,8 @@ Also, it doesn't properly handle command-line options :(
 While we're busy porting/refactoring, get rid of Demsky's
 GenericHashtable and use Valgrind's own hash table.  Also, try to
 abstract out Fjalar stuff using function pointers/stuff?
+
+
+----------
+2005-04-29
+----------

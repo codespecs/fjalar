@@ -63,9 +63,6 @@ char *kvasir_program_stderr_filename = 0;
 
 Bool actually_output_separate_decls_dtrace = 0;
 
-// Stores the floating-point return value:
-// NOTE: Make this initialize to NaN in the future!
-double fpuReturnValue = 0;
 
 // DON'T USE THIS FOR NOW!!!
 /*------------------------------------------------------------*/
@@ -165,23 +162,25 @@ void ignoreESPChangesStackPush(char i)
 /*--- Function stack ops                                   ---*/
 /*------------------------------------------------------------*/
 
+// Deprecated in favor of push_fn() and pop_fn()
+
 /*
 Requires: stackEntry is allocated to hold one FunctionEntry
 Modifies: *stackEntry
 Returns: success
 Effects: *stackEntry initiated with contents on the top of fn_stack
 */
-static Bool top(FunctionEntry *stackEntry)
-{
-  if (fn_stack_top < 1) return False;
+/* static Bool top(FunctionEntry *stackEntry) */
+/* { */
+/*   if (fn_stack_top < 1) return False; */
 
-  if (stackEntry)
-    *stackEntry = fn_stack[ fn_stack_top - 1 ];
+/*   if (stackEntry) */
+/*     *stackEntry = fn_stack[ fn_stack_top - 1 ]; */
 
-  DPRINTF("TOP %s, fn_stack_top: %d\n", stackEntry->name, fn_stack_top);
+/*   DPRINTF("TOP %s, fn_stack_top: %d\n", stackEntry->name, fn_stack_top); */
 
-  return True;
-}
+/*   return True; */
+/* } */
 
 /*
 Requires:
@@ -190,29 +189,30 @@ Returns:
 Effects: top of fn_stack initialized with parameters - called on function entrance
 since EAX, EDX, and FPU are not known until function exit time
 */
-static void push(Char* f, Addr EBP, Addr startPC,
-                 char* virtualStack, int virtualStackByteSize,
-                 VarList* localArrayVariablesPtr)
-{
-   if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack");
+/* static void push(Char* f, Addr EBP, Addr startPC, */
+/*                  char* virtualStack, int virtualStackByteSize, */
+/*                  VarList* localArrayVariablesPtr) */
+/* { */
+/*    if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack"); */
 
-   fn_stack[ fn_stack_top ].name = f;
-   fn_stack[ fn_stack_top ].EBP = EBP;
-   fn_stack[ fn_stack_top ].startPC = startPC;
-   fn_stack[ fn_stack_top ].lowestESP = EBP + 4;
-   fn_stack[ fn_stack_top ].EAX = 0;
-   fn_stack[ fn_stack_top ].EDX = 0;
-   fn_stack[ fn_stack_top ].FPU = 0;
-   fn_stack[ fn_stack_top ].EAXvalid = 0;
-   fn_stack[ fn_stack_top ].EDXvalid = 0;
-   fn_stack[ fn_stack_top ].virtualStack = virtualStack;
-   fn_stack[ fn_stack_top ].virtualStackByteSize = virtualStackByteSize;
-   fn_stack[ fn_stack_top ].localArrayVariablesPtr = localArrayVariablesPtr;
+/*    fn_stack[ fn_stack_top ].name = f; */
+/*    fn_stack[ fn_stack_top ].EBP = EBP; */
+/*    fn_stack[ fn_stack_top ].startPC = startPC; */
+/*    fn_stack[ fn_stack_top ].lowestESP = EBP + 4; */
+/*    fn_stack[ fn_stack_top ].EAX = 0; */
+/*    fn_stack[ fn_stack_top ].EDX = 0; */
+/*    fn_stack[ fn_stack_top ].FPU = 0; */
+/*    fn_stack[ fn_stack_top ].EAXvalid = 0; */
+/*    fn_stack[ fn_stack_top ].EDXvalid = 0; */
+/*    fn_stack[ fn_stack_top ].FPUvalid = 0; */
+/*    fn_stack[ fn_stack_top ].virtualStack = virtualStack; */
+/*    fn_stack[ fn_stack_top ].virtualStackByteSize = virtualStackByteSize; */
+/*    fn_stack[ fn_stack_top ].localArrayVariablesPtr = localArrayVariablesPtr; */
 
-   fn_stack_top++;
+/*    fn_stack_top++; */
 
-   DPRINTF("PUSH %s, fn_stack_top: %d\n", f, fn_stack_top);
-}
+/*    DPRINTF("PUSH %s, fn_stack_top: %d\n", f, fn_stack_top); */
+/* } */
 
 /*
 Requires: stackEntry is allocated to hold one FunctionEntry
@@ -221,19 +221,19 @@ Returns:
 Effects: *stackEntry initiated with contents on the top of fn_stack,
          top entry of fn_stack "popped" by decrementing fn_stack_top
 */
-static void pop(FunctionEntry *stackEntry)
-{
-  if (fn_stack_top < 1) {
-    VG_(tool_panic)("underflowed fn_stack");
-  }
+/* static void pop(FunctionEntry *stackEntry) */
+/* { */
+/*   if (fn_stack_top < 1) { */
+/*     VG_(tool_panic)("underflowed fn_stack"); */
+/*   } */
 
-   fn_stack_top--;
+/*    fn_stack_top--; */
 
-   if (stackEntry)
-     *stackEntry = fn_stack[ fn_stack_top ];
+/*    if (stackEntry) */
+/*      *stackEntry = fn_stack[ fn_stack_top ]; */
 
-   DPRINTF("POP %s, fn_stack_top: %d\n", stackEntry->name, fn_stack_top);
-}
+/*    DPRINTF("POP %s, fn_stack_top: %d\n", stackEntry->name, fn_stack_top); */
+/* } */
 
 /*------------------------------------------------------------*/
 /*--- Function entry/exit                                  ---*/
@@ -246,13 +246,12 @@ Returns:
 Effects: pops a FunctionEntry off of the top of fn_stack and initializes
          it with EAX, EDX, and FPU values. Then calls handleFunctionExit()
          to generate .dtrace file output at function exit time
-// %EAX -> EAX
-// %EDX -> EDX
-// %ST(0) -> FPU
 */
-void pop_fn(Char* s, int EAX, int EDX, double FPU_top, char EAXvalid, char EDXvalid)
+static void pop_fn(Char* s,
+                   int EAX, int EDX, double FPU_top,
+                   char EAXvalid, char EDXvalid, char fpuReturnValValid)
 {
-   FunctionEntry tempEntry;
+   FunctionEntry* top;
 
    // s is null if an "unwind" is popped off the stack
    // Only do something if this function name matches what's on the top of the stack
@@ -260,24 +259,26 @@ void pop_fn(Char* s, int EAX, int EDX, double FPU_top, char EAXvalid, char EDXva
       return;
    }
 
-   top(&tempEntry); // Don't pop it yet because we want to keep fn_stack_top
-                   // unchanged during handleFunctionExit
+  if (fn_stack_top < 1) VG_(tool_panic)("underflowed fn_stack");
 
-   tempEntry.EAX = EAX;
-   tempEntry.EDX = EDX;
-   tempEntry.FPU = FPU_top;
-   tempEntry.EAXvalid = EAXvalid;
-   tempEntry.EDXvalid = EDXvalid;
+  top =  &fn_stack[ fn_stack_top - 1 ];
 
-   DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
+  top->EAX = EAX;
+  top->EDX = EDX;
+  top->FPU = FPU_top;
+  top->EAXvalid = EAXvalid;
+  top->EDXvalid = EDXvalid;
+  top->FPUvalid = fpuReturnValValid;
 
-   handleFunctionExit(&tempEntry);
+  DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
+
+  handleFunctionExit(top);
 
    // Destroy the memory allocated by virtualStack
-   if (tempEntry.virtualStack) {
+   if (top->virtualStack) {
       // Let's just use normal calloc here because otherwise it crashes for some reason
       // so we have to use normal free
-      free(tempEntry.virtualStack);
+      free(top->virtualStack);
    }
 
    fn_stack_top--; // Now pop it off by decrementing fn_stack_top
@@ -298,59 +299,55 @@ void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
   DaikonFunctionInfo* daikonFuncPtr =
     findFunctionInfoByAddr(startPC);
 
-  int formalParamStackByteSize = 0;
+  int formalParamStackByteSize =
+     determineFormalParametersStackByteSize(daikonFuncPtr);
 
-  FunctionEntry tempEntry;
-
-  tempEntry.name = f;
-  tempEntry.EBP = EBP;
-  tempEntry.lowestESP = EBP + 4;
-  tempEntry.startPC = startPC;
-
-  formalParamStackByteSize = determineFormalParametersStackByteSize(daikonFuncPtr);
+  FunctionEntry* top;
 
   DPRINTF("formalParamStackByteSize is %d\n", formalParamStackByteSize);
 
-  // Initialize virtual stack and copy parts of the Valgrind
-  // stack into that virtual stack
+  if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack");
 
-  // Let's just use normal calloc here because otherwise it crashes for some reason
-  tempEntry.virtualStack = calloc(formalParamStackByteSize, sizeof(char));
-  tempEntry.virtualStackByteSize = formalParamStackByteSize;
+  top = &fn_stack[ fn_stack_top ];
 
-  VG_(memcpy)(tempEntry.virtualStack, (void*)(tempEntry.EBP), formalParamStackByteSize);
+  top->name = f;
+  top->EBP = EBP;
+  top->startPC = startPC;
+  top->lowestESP = EBP + 4;
+  top->EAX = 0;
+  top->EDX = 0;
+  top->FPU = 0;
+  top->EAXvalid = 0;
+  top->EDXvalid = 0;
+  top->FPUvalid = 0;
+
+  // Initialize virtual stack and copy parts of the Valgrind stack
+  // into that virtual stack
+
+  // Let's just use normal calloc here because otherwise it crashes
+  // for some reason
+  top->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
+  top->virtualStackByteSize = formalParamStackByteSize;
+
+  VG_(memcpy)(top->virtualStack, (void*)EBP, formalParamStackByteSize);
   // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
-  mc_copy_address_range_state(tempEntry.EBP, (Addr)tempEntry.virtualStack, formalParamStackByteSize);
+  mc_copy_address_range_state(EBP, (Addr)(top->virtualStack), formalParamStackByteSize);
 
   // Initialize the FunctionEntry.localArrayVariablesPtr field:
-  tempEntry.localArrayVariablesPtr = &(daikonFuncPtr->localArrayVariables);
-  //  VG_(printf)("tempEntry.localArrayVariablesPtr = %p\n", tempEntry.localArrayVariablesPtr);
+  top->localArrayVariablesPtr = &(daikonFuncPtr->localArrayVariables);
 
-  push(f, EBP, startPC, tempEntry.virtualStack,
-       tempEntry.virtualStackByteSize, tempEntry.localArrayVariablesPtr);
+  fn_stack_top++;
 
   // We used to do this BEFORE the push - does it make a difference???
-
   DPRINTF("-- PUSH_FN: fn_stack_top: %d, f: %s\n", fn_stack_top, f);
 
   // Do this AFTER initializing virtual stack and lowestESP
-  handleFunctionEntrance(&tempEntry);
+  handleFunctionEntrance(top);
 }
 
 /*
 Requires:
-Modifies:
-Returns: The Valgrind virtual ESP
-Effects:
-*/
-/* unsigned int get_ESP() */
-/* { */
-/*    return VG_(get_archreg)(R_ESP); */
-/* } */
-
-/*
-Requires:
-Modifies: fn_stack, fn_stack_top, tempEntry, ignoreESPChangesStack
+Modifies: fn_stack, fn_stack_top, tempEntry
 Returns:
 Effects: This is the hook into Valgrind that is called whenever the target
          program enters a function.  Calls push_fn() if all goes well.
@@ -367,13 +364,6 @@ void enter_function(Char* fnname, Addr StartPC)
    VG_(printf)("Enter function: %s - StartPC: %p\n",
 	   fnname, (void*)StartPC);
 
-   // Check for longjmps (if the ESP is less than the that of the call on
-   // the top of the stack)
-   //   while ( top(&topEntry) && (ESP > (topEntry.EBP + 4)) ) { // ESP = EBP + 4
-   //      unwinds++;
-   //      pop_fn("unwc", 0, 0, 0, 0, 0);
-   //   }
-
    DPRINTF("Calling push_fn for %s\n", fnname);
 
    push_fn("call", fnname, EBP, StartPC);
@@ -381,7 +371,7 @@ void enter_function(Char* fnname, Addr StartPC)
 
 /*
 Requires:
-Modifies: fn_stack, fn_stack_top, topEntry, ignoreESPChangesStack
+Modifies: fn_stack, fn_stack_top, topEntry
 Returns:
 Effects: This is the hook into Valgrind that is called whenever the target
          program exits a function.  Initializes topEntry of fn_stack with
@@ -392,59 +382,34 @@ void exit_function(Char* fnname)
 {
    ThreadId currentTID = VG_(get_running_tid)();
 
-   ULong* FpuStackTop;
-   double localFpuReturnVal = 0;
-   //   Addr  ESP = VG_(get_archreg)(R_ESP)-4;
-
    // Get the value at the simulated %EAX (integer and pointer return
    // values are stored here upon function exit)
-   //   Addr EAX = VG_(get_archreg)(R_EAX);
    Addr EAX = VG_(get_EAX)(currentTID);
 
    // Get the value of the simulated %EDX (the high 32-bits of the
    // long long int return value is stored here upon function exit)
-   //   Addr EDX = VG_(get_archreg)(R_EDX);
    Addr EDX = VG_(get_EDX)(currentTID);
 
-   //   int i;
-   //   int *intPtr;
-   //   float *floatPtr;
-
    // Use SHADOW values of Valgrind simulated registers to get V-bits
-   int EAXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EAX)(currentTID)) ? 1 : 0;
-   int EDXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EDX)(currentTID)) ? 1 : 0;
+   char EAXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EAX)(currentTID)) ? 1 : 0;
+   char EDXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EDX)(currentTID)) ? 1 : 0;
 
    // Ok, in Valgrind 2.X, we needed to directly code some assembly to grab
    // the top of the floating-point stack, but Valgrind 3.0 provides a virtual
-   // FPU stack, so we can just hopefully grab that.
+   // FPU stack, so we can just grab that.  Plus, we now have shadow V-bits
+   // for the FPU stack.
+   double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
 
-   //   // Grab the floating point return value from the top of the floating point stack
-   //   asm ("fstl fpuReturnValue");
-   //   localFpuReturnVal = fpuReturnValue;
+   // 64 bits
+   char fpuReturnValValid =
+      (VGM_WORD64_VALID == VG_(get_shadow_FPU_stack_top)(currentTID)) ? 1 : 0;
 
-   // TODO: Ummm ... this still doesn't work :(
-   FpuStackTop = VG_(get_FPU_stack_top)(currentTID);
-   //   localFpuReturnVal = (double)VG_(get_FPU_stack_top)(currentTID);
+   VG_(printf)("Exit function: %s - EAX: 0x%x\n",
+               fnname, EAX);
 
-   VG_(printf)("Exit function: %s - EAX: 0x%x FpuStackTop: %llu %llu %llu %llu %llu %llu %llu %llu %f\n",
-               fnname, EAX,
-               FpuStackTop[0], FpuStackTop[1],
-               FpuStackTop[2], FpuStackTop[3],
-               FpuStackTop[4], FpuStackTop[5],
-               FpuStackTop[6], FpuStackTop[7]);
-
-   // Check for longjmps (if the exit doesn't match the call on the top of
-   // the stack, and the ESP doesn't look right -- need both, because
-   // sometimes the names don't match (eg. __foo vs. foo) and sometimes the
-   // ESPs don't match, I don't know why).
-   //   while ( top(&topEntry) &&
-   //	   !VG_STREQ(f, topEntry.name) &&
-   //	   (ESP > (topEntry.EBP + 4)) ) { // ESP = EBP + 4
-   //      unwinds++;
-   //      pop_fn(0, 0, 0, 0, 0, 0);
-   //   }
-
-   pop_fn(fnname, EAX, EDX, localFpuReturnVal, EAXvalid, EDXvalid);
+   pop_fn(fnname,
+          EAX, EDX, fpuReturnVal,
+          EAXvalid, EDXvalid, fpuReturnValValid);
 }
 
 /*------------------------------------------------------------*/

@@ -303,12 +303,12 @@ void handleFunctionExit(FunctionEntry* e)
       return;
     }
 
-  DPRINTF("***EXIT %s - EBP=%d, lowestESP=%d, EAXvalid=%d, EDXvalid=%d\n",
+  DPRINTF("***EXIT %s - EBP=%d, lowestESP=%d, EAXvalid=%u, EDXvalid=%u\n",
               e->name,
               e->EBP,
               e->lowestESP,
-              e->EAXvalid,
-              e->EDXvalid);
+          (UInt)e->EAXvalid,
+          (UInt)e->EDXvalid);
 
   if (daikonFuncPtr->parentClass) {
     DPRINTF("   --- member function - parent is %s\n",
@@ -706,10 +706,9 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 	   (cur_node->var.varType->repType == R_DOUBLE))
     {
       // SPECIAL CASE: The value in FPU must be interpreted as a double
-      // even if its true type may be a float (notice the last parameter is 1
+      // even if its true type may be a float
 
       // Need an additional indirection level
-      // FPU is counted as ALWAYS valid since we don't have FPU V-bits
       outputDaikonVar(&(cur_node->var),
 		      FUNCTION_RETURN_VAR,
 		      0,
@@ -721,7 +720,7 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      DTRACE_FILE,
 		      0,
 		      &(e->FPU),
-		      1,
+		      e->FPUvalid,
 		      0,
 		      0,
 		      0,
@@ -781,8 +780,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
   else
     {
       // Need an additional indirection level
-      DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p, EAXvalid=%d\n",
-	      cur_node, &(e->EAX), e->EAXvalid);
+      DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p, EAXvalid=%u\n",
+	      cur_node, &(e->EAX), (UInt)e->EAXvalid);
 
       outputDaikonVar(&(cur_node->var),
 		      FUNCTION_RETURN_VAR,

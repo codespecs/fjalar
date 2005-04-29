@@ -55,4 +55,43 @@
 Bool sameKindedAtoms ( /*IRAtom*/ IRExpr* a1, /*IRAtom*/ IRExpr* a2 );
 IRType  shadowType ( IRType ty );
 
+// PG - lifted from mc_translate.c:
+
+struct _MCEnv;
+
+/*------------------------------------------------------------*/
+/*--- Memcheck running state, and tmp management.          ---*/
+/*------------------------------------------------------------*/
+
+/* Carries around state during memcheck instrumentation. */
+typedef
+   struct _MCEnv {
+      /* MODIFIED: the bb being constructed.  IRStmts are added. */
+      IRBB* bb;
+
+      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
+         original temps to their current their current shadow temp.
+         Initially all entries are IRTemp_INVALID.  Entries are added
+         lazily since many original temps are not used due to
+         optimisation prior to instrumentation.  Note that floating
+         point original tmps are shadowed by integer tmps of the same
+         size, and Bit-typed original tmps are shadowed by the type
+         Ity_I8.  See comment below. */
+      IRTemp* tmpMap;
+      Int     n_originalTmps; /* for range checking */
+
+      /* MODIFIED: indicates whether "bogus" literals have so far been
+         found.  Starts off False, and may change to True. */
+      Bool    bogusLiterals;
+
+      /* READONLY: the guest layout.  This indicates which parts of
+         the guest state should be regarded as 'always defined'. */
+      VexGuestLayout* layout;
+      /* READONLY: the host word type.  Needed for constructing
+         arguments of type 'HWord' to be passed to helper functions.
+         Ity_I32 or Ity_I64 only. */
+      IRType hWordTy;
+   }
+   MCEnv;
+
 #endif

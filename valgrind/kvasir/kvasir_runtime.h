@@ -44,10 +44,10 @@ typedef struct _Entry {
      int EDX; // %EDX
      double FPU; // FPU %st(0)
 
-     // The SHADOW values of the respective Valgrind simulated registers
-     // Denotes if the values in EAX or EDX are initialized, respectively
-     int EAXvalid;
-     int EDXvalid;
+     // Denotes if the values in EAX, EDX, and FPU are initialized, respectively
+     char EAXvalid;
+     char EDXvalid;
+     char FPUvalid;
 
      // This is a copy of the portion of the Valgrind stack
      // that is above EBP - it holds function formal parameter

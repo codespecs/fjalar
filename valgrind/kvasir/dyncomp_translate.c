@@ -1098,7 +1098,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
 // We will utilize this information to pause the target program at
 // function entrances
-void handle_possible_entry_DC(DCEnv* dce, Addr64 addr) {
+void handle_possible_entry(MCEnv* mce, Addr64 addr) {
    Char fnname[500];
    Char *str;
    IRDirty  *di;
@@ -1123,10 +1123,10 @@ void handle_possible_entry_DC(DCEnv* dce, Addr64 addr) {
          // sure that it's updated by setting the proper annotations:
          di->nFxState = 1;
          di->fxState[0].fx     = Ifx_Read;
-         di->fxState[0].offset = dce->layout->offset_SP;
-         di->fxState[0].size   = dce->layout->sizeof_SP;
+         di->fxState[0].offset = mce->layout->offset_SP;
+         di->fxState[0].size   = mce->layout->sizeof_SP;
 
-         stmt( dce->bb, IRStmt_Dirty(di) );
+         stmt( mce->bb, IRStmt_Dirty(di) );
       }
    }
 }
@@ -1134,7 +1134,7 @@ void handle_possible_entry_DC(DCEnv* dce, Addr64 addr) {
 // Handle a function exit statement, which contains a jump kind of
 // 'Ret'.  Cue off of currentAddr, which is taken from the most recent
 // Ist_IMark IR instruction.
-void handle_possible_exit_DC(DCEnv* dce, IRJumpKind jk) {
+void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
    if (Ijk_Ret == jk) {
       Char fnname[500];
       Char *str;
@@ -1153,12 +1153,12 @@ void handle_possible_exit_DC(DCEnv* dce, IRJumpKind jk) {
                                    mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)str))));
 
             // For function exit, we are interested in observing the
-            // ESP, EAX, EDX, and FPREG[0], so make sure that they are
-            // updated by setting the proper annotations:
+            // ESP, EAX, EDX, FPTOP, and FPREG[], so make sure that
+            // they are updated by setting the proper annotations:
             di->nFxState = 4;
             di->fxState[0].fx     = Ifx_Read;
-            di->fxState[0].offset = dce->layout->offset_SP;
-            di->fxState[0].size   = dce->layout->sizeof_SP;
+            di->fxState[0].offset = mce->layout->offset_SP;
+            di->fxState[0].size   = mce->layout->sizeof_SP;
 
             // Now I'm totally hacking based upon the definition of
             // VexGuestX86State in vex/pub/libvex_guest_x86.h:
@@ -1172,10 +1172,11 @@ void handle_possible_exit_DC(DCEnv* dce, IRJumpKind jk) {
             di->fxState[2].size   = sizeof(UInt); // 4 bytes
 
             di->fxState[3].fx     = Ifx_Read;
-            di->fxState[3].offset = 64; // offset of FPREG[0]
-            di->fxState[3].size   = 64; // Just to be paranoid, size of all 8 elements of FPREG
+            di->fxState[3].offset = 60; // offset of FPTOP
+            // Size of FPTOP + all 8 elements of FPREG
+            di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
 
-            stmt( dce->bb, IRStmt_Dirty(di) );
+            stmt( mce->bb, IRStmt_Dirty(di) );
          }
       }
    }

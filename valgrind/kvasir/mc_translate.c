@@ -38,12 +38,13 @@
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
 
+// PG - All of this has been moved into mc_translate.h
 
 /*------------------------------------------------------------*/
 /*--- Forward decls                                        ---*/
 /*------------------------------------------------------------*/
 
-struct _MCEnv;
+//struct _MCEnv;
 
 static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
 
@@ -52,10 +53,10 @@ static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
 /*------------------------------------------------------------*/
 
 /* Carries around state during memcheck instrumentation. */
-typedef
-   struct _MCEnv {
-      /* MODIFIED: the bb being constructed.  IRStmts are added. */
-      IRBB* bb;
+//typedef
+//   struct _MCEnv {
+//      /* MODIFIED: the bb being constructed.  IRStmts are added. */
+//      IRBB* bb;
 
       /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
          original temps to their current their current shadow temp.
@@ -65,22 +66,22 @@ typedef
          point original tmps are shadowed by integer tmps of the same
          size, and Bit-typed original tmps are shadowed by the type
          Ity_I8.  See comment below. */
-      IRTemp* tmpMap;
-      Int     n_originalTmps; /* for range checking */
+//      IRTemp* tmpMap;
+//      Int     n_originalTmps; /* for range checking */
 
       /* MODIFIED: indicates whether "bogus" literals have so far been
          found.  Starts off False, and may change to True. */
-      Bool    bogusLiterals;
+//      Bool    bogusLiterals;
 
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
-      VexGuestLayout* layout;
+//      VexGuestLayout* layout;
       /* READONLY: the host word type.  Needed for constructing
          arguments of type 'HWord' to be passed to helper functions.
          Ity_I32 or Ity_I64 only. */
-      IRType hWordTy;
-   }
-   MCEnv;
+//      IRType hWordTy;
+//   }
+//   MCEnv;
 
 /* SHADOW TMP MANAGEMENT.  Shadow tmps are allocated lazily (on
    demand), as they are encountered.  This is for two reasons.
@@ -2479,10 +2480,14 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Exit:
-               // complainIfUndefined( &mce, st->Ist.Exit.guard ); // PG
+            handle_possible_exit( &mce, st->Ist.Exit.jk ); // PG
+            // complainIfUndefined( &mce, st->Ist.Exit.guard ); // PG
             break;
 
          case Ist_IMark:
+            handle_possible_entry( &mce, st->Ist.IMark.addr ); // PG
+            break;
+
          case Ist_NoOp:
          case Ist_MFence:
             break;
@@ -2498,7 +2503,6 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             VG_(tool_panic)("memcheck: unhandled IRStmt");
 
       } /* switch (st->tag) */
-
 
       // PG - duplicated version for DynComp
       if (!dce.bogusLiterals) {
@@ -2539,14 +2543,10 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Exit:
-            handle_possible_exit_DC( &dce, st->Ist.Exit.jk );
             do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
             break;
 
          case Ist_IMark:
-            handle_possible_entry_DC( &dce, st->Ist.IMark.addr ); // PG
-            break;
-
          case Ist_NoOp:
          case Ist_MFence:
             break;
@@ -2605,7 +2605,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    // end-of-block jump.  If so, then this is possibly a cue for a
    // function exit.  This is very important for detecting function
    // exits!
-   handle_possible_exit_DC( &dce, bb->jumpkind );
+   handle_possible_exit( &mce, bb->jumpkind );
 
    return bb;
 }
