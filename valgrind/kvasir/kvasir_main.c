@@ -37,6 +37,7 @@
 // Global variables that are set by command-line options
 char* kvasir_decls_filename = 0;
 char* kvasir_dtrace_filename = 0;
+Bool kvasir_with_dyncomp = False;
 Bool kvasir_print_debug_info = False;
 Bool kvasir_ignore_globals = False;
 Bool kvasir_ignore_static_vars = False;
@@ -63,30 +64,6 @@ char *kvasir_program_stderr_filename = 0;
 
 Bool actually_output_separate_decls_dtrace = 0;
 
-
-// DON'T USE THIS FOR NOW!!!
-/*------------------------------------------------------------*/
-/*--- ignoreESPChangesStack                                ---*/
-/*------------------------------------------------------------*/
-// Stack of booleans for ignoring ESP changes depending on which
-// function we are in - set MAX_IGNORE_STACK_SIZE to a reasonable
-// number that represents how big our function stack is expected
-// to grow
-/*
-#define MAX_IGNORE_STACK_SIZE 500
-
-int ignoreESPChangesStackSize = 0;
-char ignoreESPChangesStack[MAX_IGNORE_STACK_SIZE];
-*/
-
-/*------------------------------------------------------------*/
-/*--- Command line stuff                                   ---*/
-/*------------------------------------------------------------*/
-
-// Show all functions?  Default: NO
-Bool sp_clo_show_all_funcs = False;
-
-
 /*------------------------------------------------------------*/
 /*--- Function stack                                       ---*/
 /*------------------------------------------------------------*/
@@ -94,11 +71,7 @@ Bool sp_clo_show_all_funcs = False;
 #define FN_STACK_SIZE 10000
 
 FunctionEntry fn_stack[FN_STACK_SIZE];
-Int   fn_stack_top;       // actually just above top -- next free slot
-
-/*------------------------------------------------------------*/
-/*--- Printing                                             ---*/
-/*------------------------------------------------------------*/
+Int fn_stack_top;       // actually just above top -- next free slot
 
 void printFunctionEntryStack()
 {
@@ -116,185 +89,20 @@ void printFunctionEntryStack()
 }
 
 /*------------------------------------------------------------*/
-/*--- ignoreESPChangesStack ops                            ---*/
-/*------------------------------------------------------------*/
-
-// Standard lazy fixed-sized stack implementation
-/*
-char ignoreESPChangesStackTop()
-{
-   if (ignoreESPChangesStackSize > 0)
-      {
-         return ignoreESPChangesStack[ignoreESPChangesStackSize - 1];
-      }
-   else
-      return 0;
-}
-
-char ignoreESPChangesStackPop()
-{
-   if (ignoreESPChangesStackSize > 0)
-      {
-         ignoreESPChangesStackSize--;
-         return ignoreESPChangesStack[ignoreESPChangesStackSize];
-      }
-   else
-      return 0;
-}
-
-void ignoreESPChangesStackClear()
-{
-   memset(ignoreESPChangesStack, 0, sizeof(ignoreESPChangesStack));
-   ignoreESPChangesStackSize = 0;
-}
-
-void ignoreESPChangesStackPush(char i)
-{
-   if (ignoreESPChangesStackSize < MAX_IGNORE_STACK_SIZE)
-      {
-         ignoreESPChangesStack[ignoreESPChangesStackSize] = i;
-         ignoreESPChangesStackSize++;
-      }
-}
-*/
-
-/*------------------------------------------------------------*/
-/*--- Function stack ops                                   ---*/
-/*------------------------------------------------------------*/
-
-// Deprecated in favor of push_fn() and pop_fn()
-
-/*
-Requires: stackEntry is allocated to hold one FunctionEntry
-Modifies: *stackEntry
-Returns: success
-Effects: *stackEntry initiated with contents on the top of fn_stack
-*/
-/* static Bool top(FunctionEntry *stackEntry) */
-/* { */
-/*   if (fn_stack_top < 1) return False; */
-
-/*   if (stackEntry) */
-/*     *stackEntry = fn_stack[ fn_stack_top - 1 ]; */
-
-/*   DPRINTF("TOP %s, fn_stack_top: %d\n", stackEntry->name, fn_stack_top); */
-
-/*   return True; */
-/* } */
-
-/*
-Requires:
-Modifies: fn_stack[ fn_stack_top ], fn_stack_top
-Returns:
-Effects: top of fn_stack initialized with parameters - called on function entrance
-since EAX, EDX, and FPU are not known until function exit time
-*/
-/* static void push(Char* f, Addr EBP, Addr startPC, */
-/*                  char* virtualStack, int virtualStackByteSize, */
-/*                  VarList* localArrayVariablesPtr) */
-/* { */
-/*    if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack"); */
-
-/*    fn_stack[ fn_stack_top ].name = f; */
-/*    fn_stack[ fn_stack_top ].EBP = EBP; */
-/*    fn_stack[ fn_stack_top ].startPC = startPC; */
-/*    fn_stack[ fn_stack_top ].lowestESP = EBP + 4; */
-/*    fn_stack[ fn_stack_top ].EAX = 0; */
-/*    fn_stack[ fn_stack_top ].EDX = 0; */
-/*    fn_stack[ fn_stack_top ].FPU = 0; */
-/*    fn_stack[ fn_stack_top ].EAXvalid = 0; */
-/*    fn_stack[ fn_stack_top ].EDXvalid = 0; */
-/*    fn_stack[ fn_stack_top ].FPUvalid = 0; */
-/*    fn_stack[ fn_stack_top ].virtualStack = virtualStack; */
-/*    fn_stack[ fn_stack_top ].virtualStackByteSize = virtualStackByteSize; */
-/*    fn_stack[ fn_stack_top ].localArrayVariablesPtr = localArrayVariablesPtr; */
-
-/*    fn_stack_top++; */
-
-/*    DPRINTF("PUSH %s, fn_stack_top: %d\n", f, fn_stack_top); */
-/* } */
-
-/*
-Requires: stackEntry is allocated to hold one FunctionEntry
-Modifies: fn_stack_top, *stackEntry
-Returns:
-Effects: *stackEntry initiated with contents on the top of fn_stack,
-         top entry of fn_stack "popped" by decrementing fn_stack_top
-*/
-/* static void pop(FunctionEntry *stackEntry) */
-/* { */
-/*   if (fn_stack_top < 1) { */
-/*     VG_(tool_panic)("underflowed fn_stack"); */
-/*   } */
-
-/*    fn_stack_top--; */
-
-/*    if (stackEntry) */
-/*      *stackEntry = fn_stack[ fn_stack_top ]; */
-
-/*    DPRINTF("POP %s, fn_stack_top: %d\n", stackEntry->name, fn_stack_top); */
-/* } */
-
-/*------------------------------------------------------------*/
 /*--- Function entry/exit                                  ---*/
 /*------------------------------------------------------------*/
 
 /*
 Requires:
-Modifies: fn_stack, fn_stack_top, tempEntry
-Returns:
-Effects: pops a FunctionEntry off of the top of fn_stack and initializes
-         it with EAX, EDX, and FPU values. Then calls handleFunctionExit()
-         to generate .dtrace file output at function exit time
-*/
-static void pop_fn(Char* s,
-                   int EAX, int EDX, double FPU_top,
-                   char EAXvalid, char EDXvalid, char fpuReturnValValid)
-{
-   FunctionEntry* top;
-
-   // s is null if an "unwind" is popped off the stack
-   // Only do something if this function name matches what's on the top of the stack
-   if (!s || (!VG_STREQ(fn_stack[fn_stack_top - 1].name, s))) {
-      return;
-   }
-
-  if (fn_stack_top < 1) VG_(tool_panic)("underflowed fn_stack");
-
-  top =  &fn_stack[ fn_stack_top - 1 ];
-
-  top->EAX = EAX;
-  top->EDX = EDX;
-  top->FPU = FPU_top;
-  top->EAXvalid = EAXvalid;
-  top->EDXvalid = EDXvalid;
-  top->FPUvalid = fpuReturnValValid;
-
-  DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
-
-  handleFunctionExit(top);
-
-   // Destroy the memory allocated by virtualStack
-   if (top->virtualStack) {
-      // Let's just use normal calloc here because otherwise it crashes for some reason
-      // so we have to use normal free
-      free(top->virtualStack);
-   }
-
-   fn_stack_top--; // Now pop it off by decrementing fn_stack_top
-}
-
-/*
-Requires:
-Modifies: fn_stack, fn_stack_top, tempEntry
+Modifies: fn_stack, fn_stack_top
 Returns:
 Effects: pushes a FunctionEntry onto the top of fn_stack and initializes
          it with function name (f), and EBP values.
-         This is called during function entrance.  Initializes "virtual
-         stack" in tempEntry and then calls handleFunctionEntrance()
-         to generate .dtrace file output at function entrance time
+         This is called during function entrance.  Initializes
+         "virtual stack" and then calls handleFunctionEntrance() to
+         generate .dtrace file output at function entrance time
 */
-void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
+static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
 {
   DaikonFunctionInfo* daikonFuncPtr =
     findFunctionInfoByAddr(startPC);
@@ -347,7 +155,53 @@ void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
 
 /*
 Requires:
-Modifies: fn_stack, fn_stack_top, tempEntry
+Modifies: fn_stack, fn_stack_top
+Returns:
+Effects: pops a FunctionEntry off of the top of fn_stack and initializes
+         it with EAX, EDX, and FPU values. Then calls handleFunctionExit()
+         to generate .dtrace file output at function exit time
+*/
+static void pop_fn(Char* s,
+                   int EAX, int EDX, double FPU_top,
+                   char EAXvalid, char EDXvalid, char fpuReturnValValid)
+{
+   FunctionEntry* top;
+
+   // s is null if an "unwind" is popped off the stack
+   // Only do something if this function name matches what's on the top of the stack
+   if (!s || (!VG_STREQ(fn_stack[fn_stack_top - 1].name, s))) {
+      return;
+   }
+
+  if (fn_stack_top < 1) VG_(tool_panic)("underflowed fn_stack");
+
+  top =  &fn_stack[ fn_stack_top - 1 ];
+
+  top->EAX = EAX;
+  top->EDX = EDX;
+  top->FPU = FPU_top;
+  top->EAXvalid = EAXvalid;
+  top->EDXvalid = EDXvalid;
+  top->FPUvalid = fpuReturnValValid;
+
+  DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
+
+  handleFunctionExit(top);
+
+   // Destroy the memory allocated by virtualStack
+   if (top->virtualStack) {
+      // Let's just use normal calloc here because otherwise it crashes for some reason
+      // so we have to use normal free
+      free(top->virtualStack);
+   }
+
+   fn_stack_top--; // Now pop it off by decrementing fn_stack_top
+}
+
+
+/*
+Requires:
+Modifies: fn_stack, fn_stack_top
 Returns:
 Effects: This is the hook into Valgrind that is called whenever the target
          program enters a function.  Calls push_fn() if all goes well.
@@ -412,79 +266,6 @@ void exit_function(Char* fnname)
           EAXvalid, EDXvalid, fpuReturnValValid);
 }
 
-/*------------------------------------------------------------*/
-/*--- Instrumentation                                      ---*/
-/*------------------------------------------------------------*/
-
-// DEPRECATED - We now only show functions which show up in DaikonFunctionInfoTable
-/*
-Requires:
-Modifies:
-Returns: whether the program should display a particular function (fn)
-         with a particular filename (filename)
-Effects:
-*/
-/* Bool want_to_show(Char* fn, Char* filename) */
-/* { */
-/*    UInt  i, j; */
-/*    Char* dl_fns[] = { //"_dl_debug_initialize", */
-/*                       //"_dl_runtime_resolve", */
-/*                       "__i686.get_pc_thunk.bx", */
-/*                       "__i686.get_pc_thunk.cx", */
-/*                       //"_dl_lookup_versioned_symbol", */
-/*                       //"do_lookup_versioned", */
-/*                       //"do_lookup", */
-
-/* 		      // from dl-runtime.c: */
-/* 		      "fixup", */
-/*                       NULL */
-/*                     }; */
-
-/*    // These were found empirically by observation of test runs: */
-/*    Char* dl_files[] = { */
-/*      // You need to manually pick out functions within dl-runtime.c: */
-/*                         //"dl-runtime.c", */
-/* 			"dl-minimal.c", */
-/* 			"dl-version.c", */
-/* 			"dl-deps.c", */
-/* 			"dl-load.c", */
-/* 			"dl-lookup.c", */
-/* 			"vg_intercept.c", */
-/* 			"rtld.c", */
-/*                         "mac_replace_strmem.c", */
-/*                         "vg_replace_malloc.c", */
-/*                         "memcheck/mac_replace_strmem.c", */
-/* 			NULL */
-/*    }; */
-
-/*    // If --show-all-funcs=yes, then always show */
-/*    if (sp_clo_show_all_funcs) */
-/*       return True; */
-
-/*    // if starts with "_dl_", it is a dynamic linker function */
-/*    if ( 0 == VG_(strncmp)(fn, "_dl_", 4) || */
-/*         0 == VG_(strncmp)(fn, "__GI__dl_", 9)) */
-/*       return False; */
-
-/*    // If the filename starts with ../sysdeps, IGNORE IT */
-/*    // This may be system dependent, so I dunno??!!?? */
-/*    if ( 0 == VG_(strncmp)(filename, "../sysdeps", 10) ) */
-/*      return False; */
-
-/*    // If it's in dl_fns[], don't show */
-/*    for (i = 0; NULL != dl_fns[i]; i++) { */
-/*       if VG_STREQ(dl_fns[i], fn) */
-/*          return False; */
-/*    } */
-
-/*    // If it's in dl_files[], don't show */
-/*    for (j = 0; NULL != dl_files[j]; j++) { */
-/*       if VG_STREQ(dl_files[j], filename) */
-/*          return False; */
-/*    } */
-
-/*    return True; */
-/* } */
 
 /*
 Requires:
@@ -598,6 +379,7 @@ void kvasir_post_clo_init()
 void kvasir_print_usage()
 {
    VG_(printf)(
+"    --with-dyncomp      enables DynComp comparability analysis [--no-dyncomp]\n"
 "    --debug             print Kvasir-internal debug messages [--no-debug]\n"
 #ifdef KVASIR_DEVEL_BUILD
 "    --asserts-aborts    turn on safety asserts and aborts (ON BY DEFAULT)\n"
@@ -648,27 +430,27 @@ void kvasir_print_usage()
    if (VG_CLO_STREQ(arg, "--"qq_option)) { (qq_var) = True; } \
    else if (VG_CLO_STREQ(arg, "--no-"qq_option))  { (qq_var) = False; }
 
-
 // Processes command-line options
 Bool kvasir_process_cmd_line_option(Char* arg)
 {
    VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename)
    else VG_STR_CLO(arg, "--dtrace-file",    kvasir_dtrace_filename)
-   else VG_BOOL_CLO(arg, "debug",          kvasir_print_debug_info)
-   else VG_BOOL_CLO(arg, "ignore-globals", kvasir_ignore_globals)
-   else VG_BOOL_CLO(arg, "ignore-static-vars", kvasir_ignore_static_vars)
-   else VG_BOOL_CLO(arg, "dtrace-append",  kvasir_dtrace_append)
-   else VG_BOOL_CLO(arg, "dtrace-gzip",    kvasir_dtrace_gzip)
-   else VG_BOOL_CLO(arg, "output-fifo",    kvasir_output_fifo)
-   else VG_BOOL_CLO(arg, "asserts-aborts", kvasir_asserts_aborts_on)
-   else VG_BOOL_CLO(arg, "decls-only",     kvasir_decls_only)
-   else VG_BOOL_CLO(arg, "limit-static-vars", kvasir_limit_static_vars)
-   else VG_BOOL_CLO(arg, "bit-level-precision", kvasir_use_bit_level_precision)
+   else VG_YESNO_CLO("with-dyncomp",   kvasir_with_dyncomp)
+   else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
+   else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
+   else VG_YESNO_CLO("ignore-static-vars", kvasir_ignore_static_vars)
+   else VG_YESNO_CLO("dtrace-append",  kvasir_dtrace_append)
+   else VG_YESNO_CLO("dtrace-gzip",    kvasir_dtrace_gzip)
+   else VG_YESNO_CLO("output-fifo",    kvasir_output_fifo)
+   else VG_YESNO_CLO("asserts-aborts", kvasir_asserts_aborts_on)
+   else VG_YESNO_CLO("decls-only",     kvasir_decls_only)
+   else VG_YESNO_CLO("limit-static-vars", kvasir_limit_static_vars)
+   else VG_YESNO_CLO("bit-level-precision", kvasir_use_bit_level_precision)
    else VG_BNUM_CLO(arg, "--struct-depth",  MAX_STRUCT_INSTANCES, 0, 100) // [0 to 100]
    else VG_BNUM_CLO(arg, "--nesting-depth", MAX_NUM_STRUCTS_TO_DEREFERENCE, 0, 100) // [0 to 100]
    else VG_BNUM_CLO(arg, "--array-length-limit", kvasir_array_length_limit,
                     -1, 0x7fffffff)
-   else VG_BOOL_CLO(arg, "disambig", kvasir_default_disambig)
+   else VG_YESNO_CLO("disambig", kvasir_default_disambig)
    else VG_STR_CLO(arg, "--dump-ppt-file",  kvasir_dump_prog_pt_names_filename)
    else VG_STR_CLO(arg, "--dump-var-file",  kvasir_dump_var_names_filename)
    else VG_STR_CLO(arg, "--ppt-list-file",  kvasir_trace_prog_pts_filename)
@@ -682,9 +464,6 @@ Bool kvasir_process_cmd_line_option(Char* arg)
   return True;
 }
 
-/*------------------------------------------------------------*/
-/*--- Init/fini                                            ---*/
-/*------------------------------------------------------------*/
 
 // This runs after Kvasir finishes
 void kvasir_finish() {
@@ -695,7 +474,3 @@ void kvasir_finish() {
 
   finishDtraceFile();
 }
-
-/*--------------------------------------------------------------------*/
-/*--- end                                            kvasir_main.c ---*/
-/*--------------------------------------------------------------------*/

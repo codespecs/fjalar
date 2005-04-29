@@ -37,6 +37,7 @@
 #include "mc_include.h"
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
+#include "kvasir_main.h"
 
 // PG - All of this has been moved into mc_translate.h
 
@@ -2416,14 +2417,16 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    // Is this aliasing of 'bb' going to be a problem?
    // Not if we allocate enough space for the shadow tag guest state
    // and adjust the offsets appropriately
-   dce.bb             = bb;
-   dce.layout         = layout;
-   dce.n_originalTmps = bb->tyenv->types_used;
-   dce.hWordTy        = hWordTy;
-   dce.bogusLiterals  = False;
-   dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
-   for (i = 0; i < dce.n_originalTmps; i++)
-      dce.tmpMap[i] = IRTemp_INVALID;
+   if (kvasir_with_dyncomp) {
+      dce.bb             = bb;
+      dce.layout         = layout;
+      dce.n_originalTmps = bb->tyenv->types_used;
+      dce.hWordTy        = hWordTy;
+      dce.bogusLiterals  = False;
+      dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
+      for (i = 0; i < dce.n_originalTmps; i++)
+         dce.tmpMap[i] = IRTemp_INVALID;
+   }
 
    /* Iterate over the stmts. */
 
@@ -2505,16 +2508,17 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       } /* switch (st->tag) */
 
       // PG - duplicated version for DynComp
-      if (!dce.bogusLiterals) {
-         dce.bogusLiterals = checkForBogusLiterals(st);
-         if (0&& dce.bogusLiterals) {
-            VG_(printf)("bogus: ");
-            ppIRStmt(st);
-            VG_(printf)("\n");
+      if (kvasir_with_dyncomp) {
+         if (!dce.bogusLiterals) {
+            dce.bogusLiterals = checkForBogusLiterals(st);
+            if (0&& dce.bogusLiterals) {
+               VG_(printf)("bogus: ");
+               ppIRStmt(st);
+               VG_(printf)("\n");
+            }
          }
-      }
 
-      switch (st->tag) {
+         switch (st->tag) {
 
          case Ist_Tmp:
             assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
@@ -2565,15 +2569,16 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             VG_(printf)("\n");
             VG_(tool_panic)("dyncomp: unhandled IRStmt");
 
-      } /* switch (st->tag) */
+         } /* switch (st->tag) */
 
-      if (verboze) {
-         for (j = first_stmt; j < bb->stmts_used; j++) {
-            VG_(printf)("   ");
-            ppIRStmt(bb->stmts[j]);
+         if (verboze) {
+            for (j = first_stmt; j < bb->stmts_used; j++) {
+               VG_(printf)("   ");
+               ppIRStmt(bb->stmts[j]);
+               VG_(printf)("\n");
+            }
             VG_(printf)("\n");
          }
-         VG_(printf)("\n");
       }
 
       /* ... and finally copy the stmt itself to the output. */

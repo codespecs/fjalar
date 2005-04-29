@@ -468,7 +468,9 @@ static void mc_make_noaccess ( Addr a, SizeT len )
    set_address_range_perms ( a, len, VGM_BIT_INVALID, VGM_BIT_INVALID );
    // PG - Anytime you make a whole range of addresses invalid,
    // clear all tags associated with those addresses
-   clear_all_tags_in_range(a, len);
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, len);
+   }
 }
 
 static void mc_make_writable ( Addr a, SizeT len )
@@ -488,7 +490,9 @@ static void mc_make_readable ( Addr a, SizeT len )
    // within the chunk (Without language-level information about which
    // bytes correspond to which variables, we have no choice but to
    // give each byte a unique tag)
-   allocate_new_unique_tags(a, len);
+   if (kvasir_with_dyncomp) {
+      allocate_new_unique_tags(a, len);
+   }
 }
 
 static __inline__
@@ -529,7 +533,9 @@ void make_aligned_word_noaccess(Addr a)
    VGP_POPCC(VgpESPAdj);
 
    // PG - When you make stuff noaccess, destroy those tags
-   clear_all_tags_in_range(a, 4);
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, 4);
+   }
 }
 
 /* Nb: by "aligned" here we mean 8-byte aligned */
@@ -565,7 +571,9 @@ void make_aligned_doubleword_noaccess(Addr a)
    VGP_POPCC(VgpESPAdj);
 
    // PG - When you make stuff noaccess, destroy those tags
-   clear_all_tags_in_range(a, 8);
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, 8);
+   }
 }
 
 /* The %esp update handling functions */
@@ -597,7 +605,9 @@ void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
 
    // PG - If you're copying over V-bits, you might as well copy
    // over the tags of the relevant bytes
-   copy_tags(src, dst, len);
+   if (kvasir_with_dyncomp) {
+      copy_tags(src, dst, len);
+   }
 }
 
 /*------------------------------------------------------------*/

@@ -28,6 +28,7 @@
 // Global variables that are set by command-line options
 char* kvasir_decls_filename;
 char* kvasir_dtrace_filename;
+Bool kvasir_with_dyncomp;
 Bool kvasir_print_debug_info;
 Bool kvasir_ignore_globals;
 Bool kvasir_ignore_static_vars;
