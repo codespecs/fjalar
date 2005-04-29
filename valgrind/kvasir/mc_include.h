@@ -94,6 +94,9 @@ typedef enum {
    MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
 } MC_ReadResult;
 
+/* __inline__ */ void set_abit ( Addr a, UChar abit );
+__inline__ void set_vbyte ( Addr a, UChar vbyte );
+
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );
 MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr );
 

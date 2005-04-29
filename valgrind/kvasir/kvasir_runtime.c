@@ -303,12 +303,10 @@ void handleFunctionExit(FunctionEntry* e)
       return;
     }
 
-  DPRINTF("***EXIT %s - EBP=%d, lowestESP=%d, EAXvalid=%u, EDXvalid=%u\n",
+  DPRINTF("***EXIT %s - EBP=%d, lowestESP=%d\n",
               e->name,
               e->EBP,
-              e->lowestESP,
-          (UInt)e->EAXvalid,
-          (UInt)e->EDXvalid);
+              e->lowestESP);
 
   if (daikonFuncPtr->parentClass) {
     DPRINTF("   --- member function - parent is %s\n",
@@ -694,7 +692,10 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      DTRACE_FILE,
 		      0,
 		      (void*)e->EAX,
-		      e->EAXvalid,
+                      // No longer need to overrideIsInitialized
+                      // because we now keep shadow V-bits for e->EAX
+                      // and friends
+		      0, // e->EAXvalid,
 		      0,
 		      0,
 		      0,
@@ -720,7 +721,10 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      DTRACE_FILE,
 		      0,
 		      &(e->FPU),
-		      e->FPUvalid,
+                      // No longer need to overrideIsInitialized
+                      // because we now keep shadow V-bits for e->EAX
+                      // and friends
+                      0, // e->FPUvalid,
 		      0,
 		      0,
 		      0,
@@ -734,6 +738,14 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
            (cur_node->var.varType->declaredType == D_UNSIGNED_LONG_LONG_INT))
     {
       unsigned long long int uLong = (e->EAX) | (((unsigned long long int)(e->EDX)) << 32);
+      // Remember to copy A and V-bits over:
+      mc_copy_address_range_state((Addr)(&(e->EAX)),
+                                  (Addr)(&uLong),
+                                  sizeof(e->EAX));
+
+      mc_copy_address_range_state((Addr)(&(e->EDX)),
+                                  (Addr)(&uLong) + (Addr)sizeof(e->EAX),
+                                  sizeof(e->EDX));
 
       outputDaikonVar(&(cur_node->var),
 		      FUNCTION_RETURN_VAR,
@@ -746,7 +758,10 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      DTRACE_FILE,
 		      0,
 		      &uLong,
-		      e->EAXvalid,
+                      // No longer need to overrideIsInitialized
+                      // because we now keep shadow V-bits for e->EAX
+                      // and friends
+		      0, // e->EAXvalid,
 		      0,
 		      0,
 		      0,
@@ -757,6 +772,14 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
            (cur_node->var.varType->declaredType == D_LONG_LONG_INT))
     {
       long long int signedLong = (e->EAX) | (((long long int)(e->EDX)) << 32);
+      // Remember to copy A and V-bits over:
+      mc_copy_address_range_state((Addr)(&(e->EAX)),
+                                  (Addr)(&signedLong),
+                                  sizeof(e->EAX));
+
+      mc_copy_address_range_state((Addr)(&(e->EDX)),
+                                  (Addr)(&signedLong) + (Addr)sizeof(e->EAX),
+                                  sizeof(e->EDX));
 
       outputDaikonVar(&(cur_node->var),
 		      FUNCTION_RETURN_VAR,
@@ -769,7 +792,10 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      DTRACE_FILE,
 		      0,
 		      &signedLong,
-		      e->EAXvalid,
+                      // No longer need to overrideIsInitialized
+                      // because we now keep shadow V-bits for e->EAX
+                      // and friends
+		      0, // e->EAXvalid,
 		      0,
 		      0,
 		      0,
@@ -780,8 +806,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
   else
     {
       // Need an additional indirection level
-      DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p, EAXvalid=%u\n",
-	      cur_node, &(e->EAX), (UInt)e->EAXvalid);
+      DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p\n",
+	      cur_node, &(e->EAX));
 
       outputDaikonVar(&(cur_node->var),
 		      FUNCTION_RETURN_VAR,
@@ -794,7 +820,10 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      DTRACE_FILE,
 		      0,
 		      &(e->EAX),
-		      e->EAXvalid,
+                      // No longer need to overrideIsInitialized
+                      // because we now keep shadow V-bits for e->EAX
+                      // and friends
+		      0, // e->EAXvalid,
 		      0,
 		      0,
 		      0,

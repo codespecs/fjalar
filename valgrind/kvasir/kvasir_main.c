@@ -125,21 +125,22 @@ static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
   top->EAX = 0;
   top->EDX = 0;
   top->FPU = 0;
-  top->EAXvalid = 0;
-  top->EDXvalid = 0;
-  top->FPUvalid = 0;
 
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
+  if (formalParamStackByteSize > 0) {
+     top->virtualStack = VG_(calloc)(formalParamStackByteSize, sizeof(char));
+     top->virtualStackByteSize = formalParamStackByteSize;
 
-  // Let's just use normal calloc here because otherwise it crashes
-  // for some reason
-  top->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
-  top->virtualStackByteSize = formalParamStackByteSize;
-
-  VG_(memcpy)(top->virtualStack, (void*)EBP, formalParamStackByteSize);
-  // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
-  mc_copy_address_range_state(EBP, (Addr)(top->virtualStack), formalParamStackByteSize);
+     VG_(memcpy)(top->virtualStack, (void*)EBP, formalParamStackByteSize);
+     // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
+     mc_copy_address_range_state(EBP, (Addr)(top->virtualStack), formalParamStackByteSize);
+  }
+  else {
+     // Watch out for null pointer segfaults here:
+     top->virtualStack = 0;
+     top->virtualStackByteSize = 0;
+  }
 
   // Initialize the FunctionEntry.localArrayVariablesPtr field:
   top->localArrayVariablesPtr = &(daikonFuncPtr->localArrayVariables);
@@ -163,9 +164,10 @@ Effects: pops a FunctionEntry off of the top of fn_stack and initializes
 */
 static void pop_fn(Char* s,
                    int EAX, int EDX, double FPU_top,
-                   char EAXvalid, char EDXvalid, char fpuReturnValValid)
+                   UInt EAXshadow, UInt EDXshadow, ULong FPUshadow)
 {
    FunctionEntry* top;
+   int i;
 
    // s is null if an "unwind" is popped off the stack
    // Only do something if this function name matches what's on the top of the stack
@@ -180,9 +182,25 @@ static void pop_fn(Char* s,
   top->EAX = EAX;
   top->EDX = EDX;
   top->FPU = FPU_top;
-  top->EAXvalid = EAXvalid;
-  top->EDXvalid = EDXvalid;
-  top->FPUvalid = fpuReturnValValid;
+
+  // Very important!  Set the A and V bits of the appropriate
+  // FunctionEntry object:
+
+  for (i = 0; i < 4; i++) {
+     set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID);
+     set_abit((Addr)(&(top->EDX)) + (Addr)i, VGM_BIT_VALID);
+     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
+
+     set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8)));
+     set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8)));
+     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+  }
+
+  for (i = 4; i < 8; i++) {
+     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
+
+     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+  }
 
   DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
 
@@ -190,9 +208,7 @@ static void pop_fn(Char* s,
 
    // Destroy the memory allocated by virtualStack
    if (top->virtualStack) {
-      // Let's just use normal calloc here because otherwise it crashes for some reason
-      // so we have to use normal free
-      free(top->virtualStack);
+      VG_(free)(top->virtualStack);
    }
 
    fn_stack_top--; // Now pop it off by decrementing fn_stack_top
@@ -244,10 +260,6 @@ void exit_function(Char* fnname)
    // long long int return value is stored here upon function exit)
    Addr EDX = VG_(get_EDX)(currentTID);
 
-   // Use SHADOW values of Valgrind simulated registers to get V-bits
-   char EAXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EAX)(currentTID)) ? 1 : 0;
-   char EDXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EDX)(currentTID)) ? 1 : 0;
-
    // Ok, in Valgrind 2.X, we needed to directly code some assembly to grab
    // the top of the floating-point stack, but Valgrind 3.0 provides a virtual
    // FPU stack, so we can just grab that.  Plus, we now have shadow V-bits
@@ -255,15 +267,15 @@ void exit_function(Char* fnname)
    double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
 
    // 64 bits
-   char fpuReturnValValid =
-      (VGM_WORD64_VALID == VG_(get_shadow_FPU_stack_top)(currentTID)) ? 1 : 0;
+   // Use SHADOW values of Valgrind simulated registers to get V-bits
+   UInt EAXshadow = VG_(get_shadow_EAX)(currentTID);
+   UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
+   ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
-   VG_(printf)("Exit function: %s - EAX: 0x%x\n",
-               fnname, EAX);
+   VG_(printf)("Exit function: %s - EAX: 0x%x, 0x%x, 0x%x\n",
+               fnname, EAX, EAXshadow, EDXshadow);
 
-   pop_fn(fnname,
-          EAX, EDX, fpuReturnVal,
-          EAXvalid, EDXvalid, fpuReturnValValid);
+   pop_fn(fnname, EAX, EDX, fpuReturnVal, EAXshadow, EDXshadow, FPUshadow);
 }
 
 

@@ -236,7 +236,8 @@ static __inline__ UChar get_vbyte ( Addr a )
    return sm->vbyte[sm_off];
 }
 
-static /* __inline__ */ void set_abit ( Addr a, UChar abit )
+// PG - made it non-static for Kvasir
+/* __inline__ */ void set_abit ( Addr a, UChar abit )
 {
    SecMap* sm;
    UInt    sm_off;
@@ -250,7 +251,8 @@ static /* __inline__ */ void set_abit ( Addr a, UChar abit )
       BITARR_CLEAR(sm->abits, sm_off);
 }
 
-static __inline__ void set_vbyte ( Addr a, UChar vbyte )
+// PG - made it non-static for Kvasir
+__inline__ void set_vbyte ( Addr a, UChar vbyte )
 {
    SecMap* sm;
    UInt    sm_off;

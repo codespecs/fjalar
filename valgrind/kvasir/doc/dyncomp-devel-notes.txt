@@ -1358,3 +1358,24 @@ abstract out Fjalar stuff using function pointers/stuff?
 ----------
 2005-04-29
 ----------
+
+Ok, command-line options and floating-point have been fixed quite
+easily by fixing my stupid typos.  Now the V-bits on the
+floating-point stack still don't seem to be working correctly.  I will
+investigate right now.
+
+extern void *VG_(shadow_alloc)(UInt size); <--- Hmmm, should I use
+this to allocate all of my junk?
+
+
+Ok, my problem now is to try to get A and V bits working for EAX, EDX,
+and FPU because I don't want to have special 'overrideIsInitialized'
+handling for them 'cause that's lame.  Copying A/V-bits over to
+virtualStack seems to work, but not for registers in the guest state.
+Gotta investigate further ...
+
+The question now becomes ... does Memcheck do A/V-bit tracking on
+Kvasir's own C code?  Or does it only do tracking on client code?
+Like what if I pass pointers to local variables (in Kvasir functions)
+around?  Do these get associated A and V-bits?  I'm starting to doubt
+it :(

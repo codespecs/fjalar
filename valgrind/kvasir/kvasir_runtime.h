@@ -39,15 +39,13 @@ typedef struct _Entry {
      // These should NOT be valid on the stack, they should
      // only be valid right after popping an entry off the
      // stack upon function exit:
+     // (TODO: What does this mean?  Is this still valid?)
 
+     // As of Valgrind 3.0, we now keep V-bits for all of these
+     // in the shadow memory:
      int EAX; // %EAX
      int EDX; // %EDX
      double FPU; // FPU %st(0)
-
-     // Denotes if the values in EAX, EDX, and FPU are initialized, respectively
-     char EAXvalid;
-     char EDXvalid;
-     char FPUvalid;
 
      // This is a copy of the portion of the Valgrind stack
      // that is above EBP - it holds function formal parameter
