@@ -335,7 +335,8 @@ Addr VG_(get_IP) ( ThreadId tid )
    return INSTR_PTR( VG_(threads)[tid].arch );
 }
 
-// PG begin - Hacked for Kvasir (we really need a more elegant solution)
+// PG begin - Hacked to provide useful return value information for
+// Kvasir (we really need a more elegant solution)
 UInt VG_(get_EAX) ( ThreadId tid )
 {
    return VG_(threads)[tid].arch.vex.guest_EAX;
@@ -346,9 +347,11 @@ UInt VG_(get_EDX) ( ThreadId tid )
    return VG_(threads)[tid].arch.vex.guest_EDX;
 }
 
-ULong* VG_(get_FPU_stack_top) ( ThreadId tid )
+double VG_(get_FPU_stack_top) ( ThreadId tid ) // 64-bit read
 {
-   return (VG_(threads)[tid].arch.vex_shadow.guest_FPREG); // 64-bit read
+   // Remember to re-interpret cast this as a double instead of a ULong
+   return *((double*)(&(VG_(threads)[tid].arch.vex.guest_FPREG
+                        [VG_(threads)[tid].arch.vex.guest_FTOP & 7])));
 }
 
 UInt VG_(get_shadow_EAX) ( ThreadId tid )
@@ -359,6 +362,12 @@ UInt VG_(get_shadow_EAX) ( ThreadId tid )
 UInt VG_(get_shadow_EDX) ( ThreadId tid )
 {
    return VG_(threads)[tid].arch.vex_shadow.guest_EDX;
+}
+
+ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
+{
+   return (&(VG_(threads)[tid].arch.vex_shadow.guest_FPREG
+             [VG_(threads)[tid].arch.vex.guest_FTOP & 7]));
 }
 // PG end
 
