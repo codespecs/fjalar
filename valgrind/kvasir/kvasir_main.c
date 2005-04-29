@@ -392,7 +392,8 @@ void exit_function(Char* fnname)
 {
    ThreadId currentTID = VG_(get_running_tid)();
 
-   double localFpuReturnVal;
+   ULong* FpuStackTop;
+   double localFpuReturnVal = 0;
    //   Addr  ESP = VG_(get_archreg)(R_ESP)-4;
 
    // Get the value at the simulated %EAX (integer and pointer return
@@ -410,30 +411,8 @@ void exit_function(Char* fnname)
    //   float *floatPtr;
 
    // Use SHADOW values of Valgrind simulated registers to get V-bits
-   // The core returns the results in a BASS-ACKWARDS format:
-   // ZERO for valid and NON-ZERO for invalid so FLIP IT!!!
-   int EAXvalid;
-   int EDXvalid;
-
-   //   if (VG_(get_shadow_archreg)(R_EAX))
-   if (VG_(get_shadow_EAX)(currentTID))
-      {
-         EAXvalid = 0;
-      }
-   else
-      {
-         EAXvalid = 1;
-      }
-
-   //   if (VG_(get_shadow_archreg)(R_EDX))
-   if (VG_(get_shadow_EDX)(currentTID))
-      {
-         EDXvalid = 0;
-      }
-   else
-      {
-         EDXvalid = 1;
-      }
+   int EAXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EAX)(currentTID)) ? 1 : 0;
+   int EDXvalid = (VGM_BYTE_VALID == VG_(get_shadow_EDX)(currentTID)) ? 1 : 0;
 
    // Ok, in Valgrind 2.X, we needed to directly code some assembly to grab
    // the top of the floating-point stack, but Valgrind 3.0 provides a virtual
@@ -441,12 +420,18 @@ void exit_function(Char* fnname)
 
    //   // Grab the floating point return value from the top of the floating point stack
    //   asm ("fstl fpuReturnValue");
-
    //   localFpuReturnVal = fpuReturnValue;
 
-   localFpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
+   // TODO: Ummm ... this still doesn't work :(
+   FpuStackTop = VG_(get_FPU_stack_top)(currentTID);
+   //   localFpuReturnVal = (double)VG_(get_FPU_stack_top)(currentTID);
 
-   VG_(printf)("Exit function: %s - EAX: 0x%x fpuReturnValue: %x\n", fnname, EAX, localFpuReturnVal);
+   VG_(printf)("Exit function: %s - EAX: 0x%x FpuStackTop: %llu %llu %llu %llu %llu %llu %llu %llu %f\n",
+               fnname, EAX,
+               FpuStackTop[0], FpuStackTop[1],
+               FpuStackTop[2], FpuStackTop[3],
+               FpuStackTop[4], FpuStackTop[5],
+               FpuStackTop[6], FpuStackTop[7]);
 
    // Check for longjmps (if the exit doesn't match the call on the top of
    // the stack, and the ESP doesn't look right -- need both, because

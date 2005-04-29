@@ -20,6 +20,9 @@
 #include "tool_asm.h" //#include "vg_constants_skin.h"
 //#include "dmalloc.h"
 
+extern void  VG_(free)           ( void* p );
+extern void* VG_(calloc)         ( unsigned int n, unsigned int bytes_per_elem );
+
 int genputtable(struct genhashtable *ht, void * key, void * object) {
   unsigned int bin=genhashfunction(ht,key);
   struct genpointerlist * newptrlist=(struct genpointerlist *) VG_(calloc)(1,sizeof(struct genpointerlist));

@@ -11,7 +11,8 @@ include $(top_srcdir)/Makefile.tool-inplace.am
 
 ## Build Memcheck at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
-AM_CFLAGS += -g -fno-omit-frame-pointer -Iinclude
+# Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
+AM_CFLAGS += -g -fno-omit-frame-pointer -Iinclude -Wno-missing-prototypes
 #AM_CFLAGS += -O2
 
 # PG - Change the name of the shared library
@@ -56,8 +57,6 @@ noinst_HEADERS =	\
 	mac_shared.h	\
 	mc_asm.h	\
 	mc_include.h	\
-	mc_translate.h	\
-	dyncomp_main.h 	\
-	dyncomp_translate.h
+	mc_translate.h
 
 mac_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer

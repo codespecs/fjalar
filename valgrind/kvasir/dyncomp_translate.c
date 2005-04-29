@@ -27,6 +27,7 @@
 #include "mc_include.h"
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
+#include "kvasir_runtime.h"
 #include "kvasir_main.h"
 
 // This gets updated whenever we encounter a Ist_IMark instruction.
@@ -1084,7 +1085,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
    }
 
 }
-
 
 // This is called whenever we encounter an IMark statement.  From the
 // IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):

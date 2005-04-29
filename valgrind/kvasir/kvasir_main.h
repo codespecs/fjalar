@@ -74,10 +74,9 @@ Bool actually_output_separate_decls_dtrace;
 #define DASSERT(target) do { if (kvasir_asserts_aborts_on) \
       tl_assert(target); } while (0)
 
-unsigned int get_ESP();
-
 extern VGA_REGPARM(2) void enter_function(Char* fnname, Addr StartPC);
 extern VGA_REGPARM(1) void exit_function(Char* fnname);
+
 void check_ESP();
 
 void kvasir_pre_clo_init();

@@ -1338,3 +1338,18 @@ Hmmm, the problem now seems to be that I can't properly get
 floating-point return values off of the top of the guest_FPREG.
 Perhaps my dirty helper annotations in handle_possible_exit_DC()
 aren't correct or something, but it ain't working.
+
+An alternative is that we could add an explicit GETI as an IR
+instruction (created in handle_possible_exit_DC()) to get the value of
+the FPU stack top during execution instead of grabbing it ourselves.
+
+
+Ok, the biggest problem right now is that floating point stuff doesn't
+work correctly :(
+
+
+Also, it doesn't properly handle command-line options :(
+
+While we're busy porting/refactoring, get rid of Demsky's
+GenericHashtable and use Valgrind's own hash table.  Also, try to
+abstract out Fjalar stuff using function pointers/stuff?

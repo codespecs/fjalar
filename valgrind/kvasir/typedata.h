@@ -303,12 +303,9 @@ char harvest_function_accessibility(dwarf_entry* e, char a);
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
 
-void link_entries_to_type_entries();
 void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_to_end);
-void initialize_function_filenames();
-void link_array_entries_to_members();
 void determineTypedefNameForEntry(char** entry_name, dwarf_entry* e);
 void print_dwarf_entry(dwarf_entry* e, char simplified);
 

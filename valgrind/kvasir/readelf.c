@@ -63,6 +63,8 @@ extern void* VG_(memcpy)         ( void *d, const void *s, int sz );
 extern void* VG_(memset)         ( void *s, int c, int sz );
 extern char* VG_(strdup)         ( const char* s);
 
+extern void VG_(exit)( int status );
+
 #if __GNUC__ >= 2
 /* Define BFD64 here, even if our default architecture is 32 bit ELF
    as this will allow us to read in and parse 64bit and 32bit ELF files.
@@ -238,14 +240,14 @@ static const char *get_ia64_section_type_name
   PARAMS ((unsigned int));
 static const char *get_section_type_name
   PARAMS ((unsigned int));
-static const char *get_symbol_binding
-  PARAMS ((unsigned int));
+//static const char *get_symbol_binding
+//  PARAMS ((unsigned int));
 static const char *get_symbol_type
   PARAMS ((unsigned int));
-static const char *get_symbol_visibility
-  PARAMS ((unsigned int));
-static const char *get_symbol_index_type
-  PARAMS ((unsigned int));
+//static const char *get_symbol_visibility
+//  PARAMS ((unsigned int));
+//static const char *get_symbol_index_type
+//  PARAMS ((unsigned int));
 static const char *get_dynamic_flags
   PARAMS ((bfd_vma));
 static void usage
@@ -4800,27 +4802,28 @@ process_version_sections (file)
   return 1;
 }
 
-static const char *
-get_symbol_binding (binding)
-     unsigned int binding;
-{
-  static char buff[32];
+// PG - commented-out for lack of use
+/* static const char * */
+/* get_symbol_binding (binding) */
+/*      unsigned int binding; */
+/* { */
+/*   static char buff[32]; */
 
-  switch (binding)
-    {
-    case STB_LOCAL:	return "LOCAL";
-    case STB_GLOBAL:	return "GLOBAL";
-    case STB_WEAK:	return "WEAK";
-    default:
-      if (binding >= STB_LOPROC && binding <= STB_HIPROC)
-	sprintf (buff, _("<processor specific>: %d"), binding);
-      else if (binding >= STB_LOOS && binding <= STB_HIOS)
-	sprintf (buff, _("<OS specific>: %d"), binding);
-      else
-	sprintf (buff, _("<unknown>: %d"), binding);
-      return buff;
-    }
-}
+/*   switch (binding) */
+/*     { */
+/*     case STB_LOCAL:	return "LOCAL"; */
+/*     case STB_GLOBAL:	return "GLOBAL"; */
+/*     case STB_WEAK:	return "WEAK"; */
+/*     default: */
+/*       if (binding >= STB_LOPROC && binding <= STB_HIPROC) */
+/* 	sprintf (buff, _("<processor specific>: %d"), binding); */
+/*       else if (binding >= STB_LOOS && binding <= STB_HIOS) */
+/* 	sprintf (buff, _("<OS specific>: %d"), binding); */
+/*       else */
+/* 	sprintf (buff, _("<unknown>: %d"), binding); */
+/*       return buff; */
+/*     } */
+/* } */
 
 static const char *
 get_symbol_type (type)
@@ -4852,45 +4855,46 @@ get_symbol_type (type)
     }
 }
 
-static const char *
-get_symbol_visibility (visibility)
-     unsigned int visibility;
-{
-  switch (visibility)
-    {
-    case STV_DEFAULT:	return "DEFAULT";
-    case STV_INTERNAL:	return "INTERNAL";
-    case STV_HIDDEN:	return "HIDDEN";
-    case STV_PROTECTED: return "PROTECTED";
-    default: abort ();
-    }
-}
+// PG - commented out due to lack of use
+/* static const char * */
+/* get_symbol_visibility (visibility) */
+/*      unsigned int visibility; */
+/* { */
+/*   switch (visibility) */
+/*     { */
+/*     case STV_DEFAULT:	return "DEFAULT"; */
+/*     case STV_INTERNAL:	return "INTERNAL"; */
+/*     case STV_HIDDEN:	return "HIDDEN"; */
+/*     case STV_PROTECTED: return "PROTECTED"; */
+/*     default: abort (); */
+/*     } */
+/* } */
 
-static const char *
-get_symbol_index_type (type)
-     unsigned int type;
-{
-  static char buff[32];
+/* static const char * */
+/* get_symbol_index_type (type) */
+/*      unsigned int type; */
+/* { */
+/*   static char buff[32]; */
 
-  switch (type)
-    {
-    case SHN_UNDEF:	return "UND";
-    case SHN_ABS:	return "ABS";
-    case SHN_COMMON:	return "COM";
-    default:
-      if (type >= SHN_LOPROC && type <= SHN_HIPROC)
-	sprintf (buff, "PRC[0x%04x]", type);
-      else if (type >= SHN_LOOS && type <= SHN_HIOS)
-	sprintf (buff, "OS [0x%04x]", type);
-      else if (type >= SHN_LORESERVE && type <= SHN_HIRESERVE)
-	sprintf (buff, "RSV[0x%04x]", type);
-      else
-	sprintf (buff, "%3d", type);
-      break;
-    }
+/*   switch (type) */
+/*     { */
+/*     case SHN_UNDEF:	return "UND"; */
+/*     case SHN_ABS:	return "ABS"; */
+/*     case SHN_COMMON:	return "COM"; */
+/*     default: */
+/*       if (type >= SHN_LOPROC && type <= SHN_HIPROC) */
+/* 	sprintf (buff, "PRC[0x%04x]", type); */
+/*       else if (type >= SHN_LOOS && type <= SHN_HIOS) */
+/* 	sprintf (buff, "OS [0x%04x]", type); */
+/*       else if (type >= SHN_LORESERVE && type <= SHN_HIRESERVE) */
+/* 	sprintf (buff, "RSV[0x%04x]", type); */
+/*       else */
+/* 	sprintf (buff, "%3d", type); */
+/*       break; */
+/*     } */
 
-  return buff;
-}
+/*   return buff; */
+/* } */
 
 static int *
 get_dynamic_data (file, number)
