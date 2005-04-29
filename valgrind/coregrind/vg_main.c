@@ -335,7 +335,7 @@ Addr VG_(get_IP) ( ThreadId tid )
    return INSTR_PTR( VG_(threads)[tid].arch );
 }
 
-// PG - Hacked for Kvasir (we really need a more elegant solution)
+// PG begin - Hacked for Kvasir (we really need a more elegant solution)
 UInt VG_(get_EAX) ( ThreadId tid )
 {
    return VG_(threads)[tid].arch.vex.guest_EAX;
@@ -346,6 +346,21 @@ UInt VG_(get_EDX) ( ThreadId tid )
    return VG_(threads)[tid].arch.vex.guest_EDX;
 }
 
+ULong* VG_(get_FPU_stack_top) ( ThreadId tid )
+{
+   return (VG_(threads)[tid].arch.vex_shadow.guest_FPREG); // 64-bit read
+}
+
+UInt VG_(get_shadow_EAX) ( ThreadId tid )
+{
+   return VG_(threads)[tid].arch.vex_shadow.guest_EAX;
+}
+
+UInt VG_(get_shadow_EDX) ( ThreadId tid )
+{
+   return VG_(threads)[tid].arch.vex_shadow.guest_EDX;
+}
+// PG end
 
 /*====================================================================*/
 /*=== Check we were launched by stage 1                            ===*/
