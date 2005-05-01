@@ -366,8 +366,8 @@ UInt VG_(get_shadow_EDX) ( ThreadId tid )
 
 ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
 {
-   return (&(VG_(threads)[tid].arch.vex_shadow.guest_FPREG
-             [VG_(threads)[tid].arch.vex.guest_FTOP & 7]));
+   return VG_(threads)[tid].arch.
+      vex_shadow.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
 }
 // PG end
 
