@@ -1085,8 +1085,7 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
 		      outputType,
 		      0,
 		      basePtrValue,
-		      //overrideIsInitialized if global var
-		      (varOrigin == GLOBAL_VAR),
+		      0, //(varOrigin == GLOBAL_VAR), //overrideIsInitialized if global var // No, scratch that!
 		      0,
 		      0,
 		      0,
