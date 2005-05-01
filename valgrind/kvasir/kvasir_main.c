@@ -129,10 +129,11 @@ static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
   if (formalParamStackByteSize > 0) {
-     top->virtualStack = VG_(calloc)(formalParamStackByteSize, sizeof(char));
+     // For some reason, VG_(calloc) doesn't work here:
+     top->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
      top->virtualStackByteSize = formalParamStackByteSize;
 
-     VG_(memcpy)(top->virtualStack, (void*)EBP, formalParamStackByteSize);
+     VG_(memcpy)(top->virtualStack, (void*)EBP, (formalParamStackByteSize * sizeof(char)));
      // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
      mc_copy_address_range_state(EBP, (Addr)(top->virtualStack), formalParamStackByteSize);
   }
@@ -208,7 +209,8 @@ static void pop_fn(Char* s,
 
    // Destroy the memory allocated by virtualStack
    if (top->virtualStack) {
-      VG_(free)(top->virtualStack);
+      // For some reason, VG_(calloc) still doesn't work!!!
+      free(top->virtualStack);
    }
 
    fn_stack_top--; // Now pop it off by decrementing fn_stack_top
@@ -231,7 +233,7 @@ void enter_function(Char* fnname, Addr StartPC)
    // correct for calling conventions
    Addr  EBP = ESP - 4;
 
-   VG_(printf)("Enter function: %s - StartPC: %p\n",
+   DPRINTF("Enter function: %s - StartPC: %p\n",
 	   fnname, (void*)StartPC);
 
    DPRINTF("Calling push_fn for %s\n", fnname);
@@ -272,7 +274,7 @@ void exit_function(Char* fnname)
    UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
    ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
-   VG_(printf)("Exit function: %s - EAX: 0x%x, EAXshadow: 0x%x, EDXshadow: 0x%x FPUshadow: 0x%x %x\n",
+   DPRINTF("Exit function: %s - EAX: 0x%x, EAXshadow: 0x%x, EDXshadow: 0x%x FPUshadow: 0x%x %x\n",
                fnname, EAX,
                EAXshadow, EDXshadow,
                (UInt)(FPUshadow & 0xffffffff), (UInt)(FPUshadow >> 32));

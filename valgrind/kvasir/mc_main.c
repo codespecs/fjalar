@@ -1955,7 +1955,7 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 
 void TL_(pre_clo_init)(void)
 {
-   VG_(details_name)            ("kvasir-dtrace");
+   VG_(details_name)            ("kvasir_DC");
    /* This next line is automatically updated by the toplevel Daikon
       distribution Makefile; be careful with its formatting -SMcC */
    VG_(details_version)         ("4.1.0");
@@ -2061,7 +2061,9 @@ void TL_(post_clo_init) ( void )
 
 void TL_(fini) ( Int exitcode )
 {
-   VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
+   if (kvasir_with_dyncomp) {
+      VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
+   }
 
    kvasir_finish();
 
@@ -2075,7 +2077,28 @@ void TL_(fini) ( Int exitcode )
       //   }
 }
 
+// PG - We want to keep much more shadow space than Memcheck does.
+
+// Memcheck uses 9./8 because there are 8 V-bits and 1 A-bit for every
+// 8 bits of client memory, but we want 8 V-bits + 1 A-bit + 32 tag
+// bits + 96 for uf_objects = 137 bits for every 8 bits of client
+// memory
+
+// Uhhh ... but it blows up when running Kvasir (without DynComp) if
+// we make this number too big
+
+
+// TODO: We may want to switch this back to 9./8 when we're not running
+// with DynComp and only do 137./8 when we're using DynComp for fear
+// of running out of memory.
+
+
+//VG_DETERMINE_INTERFACE_VERSION(TL_(pre_clo_init), 137./8)
+
+//float TL_(shadow_ratio) = 137./8;
+
 VG_DETERMINE_INTERFACE_VERSION(TL_(pre_clo_init), 9./8)
+
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                mc_main.c ---*/

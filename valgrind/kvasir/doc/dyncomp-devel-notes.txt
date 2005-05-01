@@ -1382,3 +1382,13 @@ it :(
 
 Ok, it seems like the EAX/EDX shadow bits are working great, but the
 FPU shadow bits are way the hell off.  I've gotta investigate that.
+* Ok, done.  It was a stupid '&' typo in coregrind/vg_main.c
+
+----------
+2005-05-01
+----------
+
+Wow, really good news!  It seems that when I run the Kvasir tests with
+Kvasir_DC (Kvasir + DynComp), I get a lot better results for
+floating-point values.  Whereas before, some of them would print out
+as 'uninit', now they print out as their real values!
