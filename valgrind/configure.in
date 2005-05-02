@@ -12,7 +12,7 @@ AM_MAINTAINER_MODE
 #
 #    AS_HELP_STRING([--with-vex], [Vex directory (must be specified!)]),
 #
-AC_ARG_WITH(vex, 
+AC_ARG_WITH(vex,
     [  --with-vex=/path/to/vex/dir    Vex directory (must be specified!)],
 [
     AC_CHECK_FILE($withval/pub/libvex.h,
@@ -92,7 +92,7 @@ AC_SUBST(ARCH_TOOL_AM_CFLAGS)
 AC_SUBST(ARCH_CORE_AM_CCASFLAGS)
 
 case "${host_cpu}" in
-     i?86) 
+     i?86)
 	AC_MSG_RESULT([ok (${host_cpu})])
         VG_ARCH="x86"
         KICKSTART_BASE="0xb0000000"
@@ -101,14 +101,14 @@ case "${host_cpu}" in
         ARCH_CORE_AM_CCASFLAGS=""
         ;;
 
-     x86_64) 
+     x86_64)
         AC_MSG_RESULT([ok (${host_cpu})])
         VG_ARCH="amd64"
         # XXX: relocations under amd64's "small model" are 32-bit signed
         # quantities; therefore going above 0x7fffffff doesn't work... this is
         # a problem.
         KICKSTART_BASE="0x70000000"
-        ARCH_CORE_AM_CFLAGS="-fomit-frame-pointer @PREFERRED_STACK_BOUNDARY@ -DELFSZ=64" 
+        ARCH_CORE_AM_CFLAGS="-fomit-frame-pointer @PREFERRED_STACK_BOUNDARY@ -DELFSZ=64"
         # XXX: need to use -fpic, otherwise when linking tools I get this error
         # message:
         #   relocation R_X86_64_32 can not be used when making a shared object;
@@ -119,7 +119,7 @@ case "${host_cpu}" in
         ARCH_CORE_AM_CCASFLAGS=""
         ;;
 
-     arm*) 
+     arm*)
 	AC_MSG_RESULT([ok (${host_cpu})])
         VG_ARCH="arm"
         KICKSTART_BASE="0xb0000000"
@@ -138,7 +138,7 @@ case "${host_cpu}" in
         AC_MSG_ERROR([PowerPC not supported. Sorry])
         ;;
 
-     *) 
+     *)
 	AC_MSG_RESULT([no (${host_cpu})])
 	AC_MSG_ERROR([Unsupported host architecture. Sorry])
 	;;
@@ -160,17 +160,17 @@ case "${host_os}" in
         kernel=`uname -r`
 
         case "${kernel}" in
-             2.6.*) 
+             2.6.*)
         	    AC_MSG_RESULT([2.6 family (${kernel})])
         	    AC_DEFINE([KERNEL_2_6], 1, [Define to 1 if you're using Linux 2.6.x])
         	    ;;
 
-             2.4.*) 
+             2.4.*)
         	    AC_MSG_RESULT([2.4 family (${kernel})])
         	    AC_DEFINE([KERNEL_2_4], 1, [Define to 1 if you're using Linux 2.4.x])
         	    ;;
 
-             *) 
+             *)
         	    AC_MSG_RESULT([unsupported (${kernel})])
         	    AC_MSG_ERROR([Valgrind works on kernels 2.4, 2.6])
         	    ;;
@@ -183,7 +183,7 @@ case "${host_os}" in
         VG_OS="freebsd"
         ;;
 
-     *) 
+     *)
 	AC_MSG_RESULT([no (${host_os})])
 	AC_MSG_ERROR([Valgrind is operating system specific. Sorry. Please consider doing a port.])
 	;;
@@ -372,30 +372,30 @@ AC_TYPE_SIGNAL
 AC_CHECK_FUNCS([floor memchr memset mkdir strchr strdup strpbrk strrchr strstr semtimedop])
 
 AC_OUTPUT(
-   Makefile 
+   Makefile
    valgrind.spec
    valgrind.pc
-   docs/Makefile 
+   docs/Makefile
    docs/lib/Makefile
    docs/images/Makefile
    docs/xml/Makefile
-   tests/Makefile 
-   tests/vg_regtest 
-   tests/unused/Makefile 
-   include/valgrind.h 
-   include/Makefile 
-   include/amd64/Makefile 
-   include/arm/Makefile 
-   include/x86/Makefile 
-   include/linux/Makefile 
-   include/amd64-linux/Makefile 
-   include/arm-linux/Makefile 
-   include/x86-linux/Makefile 
+   tests/Makefile
+   tests/vg_regtest
+   tests/unused/Makefile
+   include/valgrind.h
+   include/Makefile
+   include/amd64/Makefile
+   include/arm/Makefile
+   include/x86/Makefile
+   include/linux/Makefile
+   include/amd64-linux/Makefile
+   include/arm-linux/Makefile
+   include/x86-linux/Makefile
    auxprogs/Makefile
-   coregrind/Makefile 
-   coregrind/demangle/Makefile 
-   coregrind/m_sigframe/Makefile 
-   coregrind/m_aspacemgr/Makefile 
+   coregrind/Makefile
+   coregrind/demangle/Makefile
+   coregrind/m_sigframe/Makefile
+   coregrind/m_aspacemgr/Makefile
    coregrind/amd64/Makefile
    coregrind/arm/Makefile
    coregrind/x86/Makefile
@@ -403,50 +403,27 @@ AC_OUTPUT(
    coregrind/amd64-linux/Makefile
    coregrind/arm-linux/Makefile
    coregrind/x86-linux/Makefile
-   addrcheck/Makefile
-   addrcheck/tests/Makefile
-   addrcheck/docs/Makefile
    memcheck/Makefile
    memcheck/tests/Makefile
    memcheck/tests/amd64/Makefile
    memcheck/tests/arm/Makefile
    memcheck/tests/x86/Makefile
    memcheck/docs/Makefile
-   cachegrind/Makefile
-   cachegrind/amd64/Makefile
-   cachegrind/arm/Makefile
-   cachegrind/x86/Makefile
-   cachegrind/tests/Makefile
-   cachegrind/tests/amd64/Makefile
-   cachegrind/tests/arm/Makefile
-   cachegrind/tests/x86/Makefile
-   cachegrind/docs/Makefile
-   cachegrind/cg_annotate
-   helgrind/Makefile
-   helgrind/tests/Makefile
-   helgrind/docs/Makefile
-   massif/Makefile
-   massif/hp2ps/Makefile
-   massif/tests/Makefile
-   massif/docs/Makefile
    corecheck/Makefile
    corecheck/tests/Makefile
    corecheck/docs/Makefile
-   lackey/Makefile
-   lackey/tests/Makefile
-   lackey/docs/Makefile
    none/Makefile
    none/tests/Makefile
    none/tests/amd64/Makefile
    none/tests/arm/Makefile
    none/tests/x86/Makefile
    none/docs/Makefile
-   dyncomp/Makefile
-) 
+   kvasir/Makefile
+)
 
 cat<<EOF
 
-Using the following suppressions by default: 
+Using the following suppressions by default:
 
       ${DEFAULT_SUPP}
 EOF

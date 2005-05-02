@@ -1,22 +1,22 @@
 
 AUTOMAKE_OPTIONS = foreign 1.6 dist-bzip2
 
-include $(top_srcdir)/Makefile.all.am 
+include $(top_srcdir)/Makefile.all.am
 
 ## include must be first for tool.h
 ## addrcheck must come after memcheck, for mac_*.o
 TOOLS =		memcheck \
-		cachegrind \
 		corecheck \
-		massif \
-		lackey \
-		dyncomp \
+		kvasir \
 		none
 
+##		massif \
+##		lackey \
+##		cachegrind \
 ##		addrcheck \
 
 # Temporary: we want to compile Helgrind, but not regtest it.
-SUBDIRS = 	include coregrind . docs tests auxprogs $(TOOLS) helgrind
+SUBDIRS = 	include coregrind . docs tests auxprogs $(TOOLS) # helgrind
 ##DIST_SUBDIRS =	$(SUBDIRS) helgrind
 
 SUPP_FILES = \

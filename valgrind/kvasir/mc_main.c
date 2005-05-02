@@ -1955,7 +1955,7 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 
 void TL_(pre_clo_init)(void)
 {
-   VG_(details_name)            ("kvasir_DC");
+   VG_(details_name)            ("kvasir");
    /* This next line is automatically updated by the toplevel Daikon
       distribution Makefile; be careful with its formatting -SMcC */
    VG_(details_version)         ("4.1.0");

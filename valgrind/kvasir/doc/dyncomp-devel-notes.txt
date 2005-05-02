@@ -1392,3 +1392,7 @@ Wow, really good news!  It seems that when I run the Kvasir tests with
 Kvasir_DC (Kvasir + DynComp), I get a lot better results for
 floating-point values.  Whereas before, some of them would print out
 as 'uninit', now they print out as their real values!
+
+Hmmm ... we still don't seem to be getting the validity of array
+contents correctly for stuff in the bc regression test, but I'll
+ignore that for now.

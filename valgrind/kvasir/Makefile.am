@@ -16,17 +16,17 @@ AM_CFLAGS += -g -fno-omit-frame-pointer -Iinclude -Wno-missing-prototypes
 #AM_CFLAGS += -O2
 
 # PG - Change the name of the shared library
-val_PROGRAMS = vgtool_kvasir_DC.so vgpreload_kvasir_DC.so
+val_PROGRAMS = vgtool_kvasir.so vgpreload_kvasir.so
 
-vgpreload_kvasir_DC_so_SOURCES = \
+vgpreload_kvasir_so_SOURCES = \
 	mac_replace_strmem.c
-vgpreload_kvasir_DC_so_DEPENDENCIES = $(top_builddir)/coregrind/lib_replace_malloc.a
-vgpreload_kvasir_DC_so_LDFLAGS = -shared -Wl,-z,interpose,-z,initfirst \
+vgpreload_kvasir_so_DEPENDENCIES = $(top_builddir)/coregrind/lib_replace_malloc.a
+vgpreload_kvasir_so_LDFLAGS = -shared -Wl,-z,interpose,-z,initfirst \
 	-Wl,--whole-archive \
 	$(top_builddir)/coregrind/lib_replace_malloc.a \
 	-Wl,--no-whole-archive
 
-vgtool_kvasir_DC_so_SOURCES = \
+vgtool_kvasir_so_SOURCES = \
 	mac_leakcheck.c \
 	mac_malloc_wrappers.c \
 	mac_needs.c \
@@ -46,7 +46,7 @@ vgtool_kvasir_DC_so_SOURCES = \
 	readelf.c \
 	typedata.c
 
-vgtool_kvasir_DC_so_LDFLAGS = -shared
+vgtool_kvasir_so_LDFLAGS = -shared
 
 mcincludedir = $(includedir)/valgrind
 
