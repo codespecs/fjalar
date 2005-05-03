@@ -224,6 +224,7 @@ void updateAllGlobalVariableNames()
 
 // The main file calls this whenever it enters a function
 // DO NOT MODIFY e - its value will NOT be placed in the stack - see push_fn()
+// TODO: --- ummm, is this still true now?  I dunno.
 void handleFunctionEntrance(FunctionEntry* e)
 {
   DaikonFunctionInfo* daikonFuncPtr;
@@ -585,7 +586,7 @@ void outputFormalParamsAndGlobals(FunctionEntry* e, DaikonFunctionInfo* daikonFu
     {
       extern FunctionTree* globalFunctionTree;
 
-      printVariablesInVarList(daikonFuncPtr, GLOBAL_VAR, 0, DTRACE_FILE, 0,
+      printVariablesInVarList(daikonFuncPtr, isEnter, GLOBAL_VAR, 0, DTRACE_FILE, 0,
 			      (globalFunctionTree ?
 			       globalFunctionTree->function_variables_tree : 0), 0, 0);
     }
@@ -593,7 +594,7 @@ void outputFormalParamsAndGlobals(FunctionEntry* e, DaikonFunctionInfo* daikonFu
   DPRINTF("Now printing parameters\n");
 
   // Print out formal params
-  printVariablesInVarList(daikonFuncPtr,
+  printVariablesInVarList(daikonFuncPtr, isEnter,
 			  (isEnter ?
 			   FUNCTION_ENTER_FORMAL_PARAM :
 			   FUNCTION_EXIT_FORMAL_PARAM),
@@ -622,7 +623,7 @@ void outputObjectAndClassPPTs(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPt
         fputs(daikonFuncPtr->parentClass->collectionName, dtrace_fp);
         fputs(":::OBJECT\n", dtrace_fp);
 
-        printVariablesInVarList(daikonFuncPtr,
+        printVariablesInVarList(daikonFuncPtr, isEnter, // TODO: Hmmm, this may be a problem because in decls-output.c:printAllObjectAndClassDecls(), I always set 'isEnter' to 1
                                 (isEnter ?
                                  FUNCTION_ENTER_FORMAL_PARAM :
                                  FUNCTION_EXIT_FORMAL_PARAM),
@@ -637,7 +638,8 @@ void outputObjectAndClassPPTs(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPt
     fputs(daikonFuncPtr->parentClass->collectionName, dtrace_fp);
     fputs(":::CLASS\n", dtrace_fp);
 
-      printVariablesInVarList(daikonFuncPtr, GLOBAL_VAR, 0, DTRACE_FILE, 0,
+    printVariablesInVarList(daikonFuncPtr, isEnter, // TODO: Hmmm, this may be a problem because in decls-output.c:printAllObjectAndClassDecls(), I always set 'isEnter' to 1
+                            GLOBAL_VAR, 0, DTRACE_FILE, 0,
 			      (globalFunctionTree ?
 			       globalFunctionTree->function_variables_tree : 0), 1, 0);
   }
@@ -700,7 +702,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      0,
 		      0,
 		      0,
-                      0);
+                      0,
+                      daikonFuncPtr, 0);
     }
   // Double type - use FPU
   else if ((cur_node->var.declaredPtrLevels == 0) &&
@@ -729,7 +732,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      0,
 		      0,
 		      0,
-                      0);
+                      0,
+                      daikonFuncPtr, 0);
     }
   // Remember that long long int types use EAX as the low 4 bytes
   // and EDX as the high 4 bytes
@@ -766,7 +770,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      0,
 		      0,
 		      0,
-                      0);
+                      0,
+                      daikonFuncPtr, 0);
     }
   else if ((cur_node->var.declaredPtrLevels == 0) &&
            (cur_node->var.varType->declaredType == D_LONG_LONG_INT))
@@ -800,7 +805,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      0,
 		      0,
 		      0,
-                      0);
+                      0,
+                      daikonFuncPtr, 0);
     }
   // All other types (integer and pointer) - use EAX
   else
@@ -828,7 +834,8 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 		      0,
 		      0,
 		      0,
-                      0);
+                      0,
+                      daikonFuncPtr, 0);
     }
 
   stringStackPop(fullNameStack, &fullNameStackSize);

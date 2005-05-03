@@ -20,6 +20,8 @@
 
 #include "typedata.h"
 #include "GenericHashtable.h"
+#include "dyncomp_main.h"
+#include "union_find.h"
 
 //#define SHOW_DEBUG
 
@@ -219,7 +221,6 @@ struct _VarList {
 void insertNewNode(VarList* varListPtr);
 void deleteTailNode(VarList* varListPtr);
 
-
 // Contains a block of information about a particular function
 typedef struct _DaikonFunctionInfo {
   char* name;           // The standard C name for a function - i.e. "sum"
@@ -263,6 +264,41 @@ typedef struct _DaikonFunctionInfo {
                       // 1 (DW_ACCESS_public) if public,
                       // 2 (DW_ACCESS_protected) if protected,
                       // 3 (DW_ACCESS_private) if private
+
+  // For DynComp - union-find data structures for all relevant variables
+  //               at the entry and exit program points of this function
+
+  // Important! Make sure to only initialize these only ONCE (when you
+  // are outputting .decls) or else you'll get nasty duplicate
+  // variable names and sets!!!
+
+  // TODO: WARNING!  This hashtable-within-hashtable structure may
+  // blow up in my face and cause a huge memory overload!!!  Remember
+  // that each hashtable is initialized to a constant number!  I'll
+  // try to keep them fairly small by calling
+  // genallocateSMALLhashtable, but they still take up room
+  // nonetheless.
+
+  // KEY: Daikon-derived variable *string* (note that all variable
+  // strings at a program point are UNIQUE so there are no collisions)
+  // VALUE: is a uf_object corresponding to that variable string
+  // (SMcC calls these var_uf)
+  struct genhashtable* ppt_entry_var_uf;
+  struct genhashtable* ppt_exit_var_uf;
+
+  // (SMcC calls these the augmented version of var_uf for mapping the
+  //  leader of val_uf to entries in var_uf)
+  struct genhashtable* ppt_entry_leader_map;
+  struct genhashtable* ppt_exit_leader_map;
+
+  // (SMcC calls these var_tags)
+  struct genhashtable* ppt_entry_var_tags;
+  struct genhashtable* ppt_exit_var_tags;
+
+  // (SMcC calls these new_tags)
+  struct genhashtable* ppt_entry_new_tags;
+  struct genhashtable* ppt_exit_new_tags;
+
 } DaikonFunctionInfo;
 
 // Hashtable that holds information about all functions

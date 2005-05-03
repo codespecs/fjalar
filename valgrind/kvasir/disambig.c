@@ -71,7 +71,7 @@ void generateDisambigFile() {
 
   fputs(GLOBAL_STRING, disambig_fp);
   fputs("\n", disambig_fp);
-  printVariablesInVarList(0, GLOBAL_VAR, 0,
+  printVariablesInVarList(0, 0, GLOBAL_VAR, 0,
 			  DISAMBIG_FILE, 0, 0, 0, 0);
 
   // Print out a .disambig section for each
@@ -138,7 +138,8 @@ void generateDisambigFile() {
 
 	 outputDaikonVar(var,
 			 DERIVED_VAR, 0, 0, 0, 0, 0, 0,
-			 DISAMBIG_FILE, 0, 0, 0, 0, 0, 0, 0, 0);
+			 DISAMBIG_FILE, 0, 0, 0, 0, 0, 0, 0,0,
+                         0, 0);
 
 	 stringStackPop(fullNameStack, &fullNameStackSize);
        }
@@ -171,7 +172,7 @@ void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr, char isEnter) {
     }
 
   // Now print out one entry for every formal parameter (actual and derived)
-  printVariablesInVarList(funcPtr,
+  printVariablesInVarList(funcPtr, isEnter,
 			  (isEnter ?
 			   FUNCTION_ENTER_FORMAL_PARAM :
 			   FUNCTION_EXIT_FORMAL_PARAM),
@@ -180,7 +181,7 @@ void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr, char isEnter) {
   // If EXIT, print out return value
   if (!isEnter)
     {
-      printVariablesInVarList(funcPtr, FUNCTION_RETURN_VAR, 0,
+      printVariablesInVarList(funcPtr, isEnter, FUNCTION_RETURN_VAR, 0,
 			      DISAMBIG_FILE, !isEnter, 0, 0, 0);
     }
 

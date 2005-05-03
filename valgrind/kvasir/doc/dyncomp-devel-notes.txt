@@ -1396,3 +1396,18 @@ as 'uninit', now they print out as their real values!
 Hmmm ... we still don't seem to be getting the validity of array
 contents correctly for stuff in the bc regression test, but I'll
 ignore that for now.
+
+
+----------
+2005-05-03
+----------
+
+Ok, it's time to start implementing the variable comparability stuff.
+
+For the purposes of comparability, we need to keep 'variables' for all
+the Daikon-derived crap, but we don't have DaikonVariable entries for
+all of them.  This means that as we traverse through stuff during the
+.decls run, we need to build up a mapping of variables (referenced
+purely by *strings* since DaikonVariable entries are not unique up to
+pointer dereference levels) to uf_objects.  Let's use a tree map
+because strings are pretty easily sorted by natural ordering.

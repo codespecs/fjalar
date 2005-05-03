@@ -87,6 +87,7 @@ void outputDeclsAndCloseFile();
 void openTheDtraceFile(void);
 
 void printVariablesInVarList(DaikonFunctionInfo* funcPtr,
+                             char isEnter,
 			     VariableOrigin varOrigin,
 			     char* stackBaseAddr,
 			     OutputFileType outputType,
@@ -112,6 +113,7 @@ void outputDaikonVar(DaikonVariable* var,
 		     unsigned long upperBound,
 		     unsigned long bytesBetweenElts,
 		     char structParentAlreadySetArrayInfo,
-                     int numStructsDereferenced);
+                     int numStructsDereferenced,
+                     DaikonFunctionInfo* varFuncInfo, char isEnter);
 
 #endif

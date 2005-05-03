@@ -24,6 +24,7 @@
 #include <assert.h>
 #include "tool.h"
 #include "kvasir_runtime.h"
+#include "mc_translate.h"
 
 // Global variables that are set by command-line options
 char* kvasir_decls_filename;
@@ -74,6 +75,9 @@ Bool actually_output_separate_decls_dtrace;
 
 #define DASSERT(target) do { if (kvasir_asserts_aborts_on) \
       tl_assert(target); } while (0)
+
+void handle_possible_entry(MCEnv* mce, Addr64 addr);
+void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
 extern VGA_REGPARM(2) void enter_function(Char* fnname, Addr StartPC);
 extern VGA_REGPARM(1) void exit_function(Char* fnname);

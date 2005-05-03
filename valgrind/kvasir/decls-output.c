@@ -698,7 +698,7 @@ void outputDeclsAndCloseFile()
 	fputs("\n", var_dump_fp);
 	fputs(GLOBAL_STRING, var_dump_fp);
 	fputs("\n", var_dump_fp);
-	printVariablesInVarList(0, GLOBAL_VAR, 0, DECLS_FILE, 1,
+	printVariablesInVarList(0, 0, GLOBAL_VAR, 0, DECLS_FILE, 1,
 				(globalFunctionTree ?
 				 globalFunctionTree->function_variables_tree : 0), 0, 0);
 	fputs("\n", var_dump_fp);
@@ -794,16 +794,32 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
       fputs("\n", decls_fp);
     }
 
+  // Initialize hash tables for DynComp
+  // TODO: WARNING!  This hashtable-within-hashtable structure may
+  // blow up in my face and cause a huge memory overload!!!
+  if (kvasir_with_dyncomp) {
+    if (isEnter) {
+      funcPtr->ppt_entry_var_uf =
+        genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
+                                  (int (*)(void *,void *)) &equivalentStrings);
+    }
+    else {
+      funcPtr->ppt_exit_var_uf =
+        genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
+                                  (int (*)(void *,void *)) &equivalentStrings);
+    }
+  }
+
   // Print out globals
   if (!kvasir_ignore_globals)
     {
-      printVariablesInVarList(funcPtr, GLOBAL_VAR, 0, DECLS_FILE, 0,
+      printVariablesInVarList(funcPtr, isEnter, GLOBAL_VAR, 0, DECLS_FILE, 0,
 			      (globalFunctionTree ?
 			       globalFunctionTree->function_variables_tree : 0), 0, 0);
     }
 
   // Now print out one entry for every formal parameter (actual and derived)
-  printVariablesInVarList(funcPtr,
+  printVariablesInVarList(funcPtr, isEnter,
 			  (isEnter ?
 			   FUNCTION_ENTER_FORMAL_PARAM :
 			   FUNCTION_EXIT_FORMAL_PARAM),
@@ -813,7 +829,7 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
   // If EXIT, print out return value
   if (!isEnter)
     {
-      printVariablesInVarList(funcPtr, FUNCTION_RETURN_VAR, 0, DECLS_FILE, !isEnter,
+      printVariablesInVarList(funcPtr, isEnter, FUNCTION_RETURN_VAR, 0, DECLS_FILE, !isEnter,
 			      funcPtr->trace_vars_tree, 0 ,0);
     }
 
@@ -912,7 +928,7 @@ void printAllObjectAndClassDecls() {
                          FUNCTION_ENTER_FORMAL_PARAM,
                          0,0,0,0,0,0,
                          DECLS_FILE,
-                         0,0,0,0,0,0,0,0);
+                         0,0,0,0,0,0,0,0,0,0);
 
          stringStackPop(fullNameStack, &fullNameStackSize);
 
@@ -922,7 +938,7 @@ void printAllObjectAndClassDecls() {
          fputs(cur_type->collectionName, decls_fp);
          fputs(":::CLASS\n", decls_fp);
 
-         printVariablesInVarList(&fakeFuncInfo,
+         printVariablesInVarList(&fakeFuncInfo, 1, // set 'isEnter' to 1 here (arbitrary choice)
                                  GLOBAL_VAR,
                                  0,
                                  DECLS_FILE,
@@ -946,6 +962,7 @@ void printAllObjectAndClassDecls() {
 
 // Print all variables contained in varListPtr
 void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified function,
+                             char isEnter,
 			     // which means --limit-static-vars has no effect
 			     // and varOrigin must = GLOBAL_VAR
 			     VariableOrigin varOrigin,
@@ -1090,7 +1107,8 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
 		      0,
 		      0,
 		      0,
-                      0);
+                      0,
+                      funcPtr, isEnter);
 
       stringStackPop(fullNameStack, &fullNameStackSize);
     }
@@ -1108,6 +1126,9 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
 // MUST BE PRECEDED BY A stringStackPush() call and
 // SUCCEEDED BY A stringStackPop() call because it expects names
 // to be on the string stack
+// TODO: We REALLY NEED to clean up this function and make it smaller.
+// Perhaps take in function pointer parameters and delegate to separate
+// handler functions for .decls, .dtrace, .disambig, and DynComp
 void outputDaikonVar(DaikonVariable* var,
 		     VariableOrigin varOrigin,
 		     int numDereferences,
@@ -1134,7 +1155,8 @@ void outputDaikonVar(DaikonVariable* var,
                      // The number of structs we have dereferenced for this particular Daikon variable;
                      // Starts at 0 and increments every time we hit a variable which is a base struct type
                      // Range: [0, MAX_NUM_STRUCTS_TO_DEREFERENCE)
-                     int numStructsDereferenced)
+                     int numStructsDereferenced,
+                     DaikonFunctionInfo* varFuncInfo, char isEnter) // These uniquely identify which program point we are printing (only relevant for DynComp purposes)
 {
   DaikonDeclaredType dType = var->varType->declaredType;
   DaikonRepType rType = var->varType->repType;
@@ -1262,6 +1284,17 @@ void outputDaikonVar(DaikonVariable* var,
 	VG_(strcpy)(fullDaikonName, star);
 	VG_(strcat)(fullDaikonName, nameWithoutDereferences);
       }
+      // Push an extra set of "[]" onboard so that Daikon doesn't choke
+      // because it needs this to be a sequence
+      else if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
+                                            ((numDereferences + 1) * VG_(strlen)(dereference))
+                                            + 1,
+                                            sizeof(*fullDaikonName));
+
+	VG_(strcpy)(fullDaikonName, nameWithoutDereferences);
+	VG_(strcat)(fullDaikonName, dereference);
+      }
       else {
 	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
 				       (numDereferences * VG_(strlen)(dereference)) + 1,
@@ -1328,11 +1361,48 @@ void outputDaikonVar(DaikonVariable* var,
 
       fputs(fullDaikonName, out_file);
 
+
+      // Only for DynComp. This should be initialized exactly once for
+      // every program point which the execution reaches (when
+      // printing out .decls; outputType == DECLS_FILE).
+      if (kvasir_with_dyncomp && varFuncInfo) {
+        struct genhashtable* ppt_var_uf =
+          (isEnter ?
+           varFuncInfo->ppt_entry_var_uf :
+           varFuncInfo->ppt_exit_var_uf);
+
+        if (DECLS_FILE == outputType) {
+          // Add a new entry with a copy of fullDaikonName and a
+          // freshly-initialized uf_object
+          char* fullNameCopy = VG_(strdup)(fullDaikonName);
+          uf_object* newObj = VG_(calloc)(1, sizeof(*newObj));
+          uf_make_set(newObj, 0);
+
+          // Insert it into the hash table (it should not already exist if all
+          // goes well)
+          genputtable(ppt_var_uf, (void*)(fullNameCopy), (void*)(newObj));
+          VG_(printf)("%s (%d)\n", fullNameCopy, isEnter);
+        }
+        // It should be only SEARCHED (using tfind) and NOT modified
+        // (using tsearch) when outputType == DTRACE_FILE
+        else if (DTRACE_FILE == outputType) {
+          uf_object* tmp;
+          // Create a dummy pair with only the key initialized
+          // so that we can use it to perform a search
+          if ((tmp = gengettable(ppt_var_uf, (void*)(fullDaikonName)))) {
+            VG_(printf)("FOUND! %s (%d)\n", fullDaikonName, isEnter);
+          }
+        }
+      }
+
+
+      // This has been moved earlier so that it gets integrated directly into
+      // fullDaikonName:
       // Push an extra set of "[]" onboard so that Daikon doesn't choke
       // because it needs this to be a sequence
-      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-	fputs(dereference, out_file);
-      }
+      //      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+      //	fputs(dereference, out_file);
+      //      }
 
       //      printf("%s - isBaseArrayVar: %d, numDereferences: %d, layersBeforeBase: %d\n",
       //	     fullDaikonName, isBaseArrayVar, numDereferences, layersBeforeBase);
@@ -1675,7 +1745,8 @@ void outputDaikonVar(DaikonVariable* var,
 		      (isDummy ? 0 : upperBound),
 		      (isDummy ? 0 : bytesBetweenElts),
 		      structParentAlreadySetArrayInfo,
-                      numStructsDereferenced);
+                      numStructsDereferenced,
+                      varFuncInfo, isEnter);
     }
   // If this is the base type of a struct/union variable, then print out all
   // derived member variables:
@@ -1862,7 +1933,8 @@ void outputDaikonVar(DaikonVariable* var,
 				  (isDummy ? 0 :
 				   getBytesBetweenElts(var)), // var->varType->byteSize),
 				  structParentAlreadySetArrayInfo,
-                                  (numStructsDereferenced + 1));
+                                  (numStructsDereferenced + 1),
+                                  varFuncInfo, isEnter);
 
 		  // POP all the stuff we pushed on there before
 		  stringStackPop(fullNameStack, &fullNameStackSize);
@@ -1953,7 +2025,8 @@ void outputDaikonVar(DaikonVariable* var,
 			      (isDummy ? 0 :
 			       bytesBetweenElts),
 			      structParentAlreadySetArrayInfo,
-                              (numStructsDereferenced + 1));
+                              (numStructsDereferenced + 1),
+                              varFuncInfo, isEnter);
 
 	      // POP everything we've just pushed on
 	      stringStackPop(fullNameStack, &fullNameStackSize);

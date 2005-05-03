@@ -15,6 +15,7 @@
 #ifndef GENHASHTABLE
 #define GENHASHTABLE
 #define geninitialnumbins 4999
+#define genSMALLinitialnumbins 199 // PG
 #define bool int
 
 struct genhashtable {
@@ -44,6 +45,7 @@ struct geniterator {
 };
 
 struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *,void *));
+struct genhashtable * genallocateSMALLhashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *,void *));
 void genfreehashtable(struct genhashtable * ht);
 
 void * getnext(struct genhashtable *,void *);

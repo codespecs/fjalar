@@ -175,6 +175,23 @@ struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *)
   return ght;
 }
 
+// PG - Copy-and-paste to create smaller hash tables to not waste as much space.
+struct genhashtable * genallocateSMALLhashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *, void *)) {
+  struct genhashtable *ght=(struct genhashtable *) VG_(calloc)(1,sizeof(struct genhashtable));
+  struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)(1,sizeof(struct genpointerlist *)*genSMALLinitialnumbins);
+  int i;
+  for(i=0;i<genSMALLinitialnumbins;i++)
+    gpl[i]=NULL;
+  ght->hash_function=hash_function;
+  ght->comp_function=comp_function;
+  ght->currentsize=genSMALLinitialnumbins;
+  ght->bins=gpl;
+  ght->counter=0;
+  ght->list=NULL;
+  ght->last=NULL;
+  return ght;
+}
+
 void genfreehashtable(struct genhashtable * ht) {
   int i;
   for (i=0;i<ht->currentsize;i++) {
