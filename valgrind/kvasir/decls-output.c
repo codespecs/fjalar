@@ -1460,7 +1460,8 @@ void outputDaikonVar(DaikonVariable* var,
 			  // out function return variables because
 			  // return variables stored in %EAX are always doubles
 			  (varOrigin == FUNCTION_RETURN_VAR),
-			  disambigOverride);
+			  disambigOverride,
+                          varFuncInfo, isEnter);
 
       // While observing the runtime values,
       // set var->disambigMultipleElts and

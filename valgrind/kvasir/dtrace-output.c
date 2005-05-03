@@ -302,7 +302,8 @@ char outputDtraceValue(DaikonVariable* var,
 		       unsigned long upperBound,
 		       unsigned long bytesBetweenElts,
 		       char overrideFloatAsDouble,
-		       DisambigOverride disambigOverride)
+		       DisambigOverride disambigOverride,
+                       DaikonFunctionInfo* varFuncInfo, char isEnter)
 {
   void* ptrValue = basePtrValue;
 

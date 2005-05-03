@@ -1409,5 +1409,9 @@ the Daikon-derived crap, but we don't have DaikonVariable entries for
 all of them.  This means that as we traverse through stuff during the
 .decls run, we need to build up a mapping of variables (referenced
 purely by *strings* since DaikonVariable entries are not unique up to
-pointer dereference levels) to uf_objects.  Let's use a tree map
-because strings are pretty easily sorted by natural ordering.
+pointer dereference levels) to uf_objects.
+
+
+Ok, I am still struggling to understand Stephen's algorithm.  I know
+that outputDtraceValue() needs to be augmented to take in some more
+stuff, but I'll think more about it tomorrow.

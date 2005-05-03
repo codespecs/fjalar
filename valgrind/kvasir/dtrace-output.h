@@ -38,7 +38,8 @@ char outputDtraceValue(DaikonVariable* var,
 		       unsigned long upperBound,
 		       unsigned long bytesBetweenElts,
 		       char overrideFloatAsDouble,
-		       DisambigOverride disambigOverride);
+		       DisambigOverride disambigOverride,
+                       DaikonFunctionInfo* varFuncInfo, char isEnter);
 
 void printOneDtraceString(char* str);
 void printOneCharAsDtraceString(char c);
@@ -46,7 +47,7 @@ void printOneDtraceStringAsIntArray(char* str);
 
 void printDtraceHashcode(DaikonVariable* var,
 			 Addr ptrValue,
-			 char isArray, 
+			 char isArray,
 			 unsigned long upperBound,
 			 unsigned long bytesBetweenElts);
 
@@ -54,7 +55,7 @@ char printDtraceString(DaikonVariable* var,
 		       void* ptrValue,
 		       char overrideIsInitialized,
 		       DisambigOverride disambigOverride,
-		       char isArray, 
+		       char isArray,
 		       unsigned long upperBound,
 		       unsigned long bytesBetweenElts);
 

@@ -281,20 +281,28 @@ typedef struct _DaikonFunctionInfo {
 
   // KEY: Daikon-derived variable *string* (note that all variable
   // strings at a program point are UNIQUE so there are no collisions)
-  // VALUE: is a uf_object corresponding to that variable string
+  // VALUE: uf_object corresponding to that variable string
   // (SMcC calls these var_uf)
   struct genhashtable* ppt_entry_var_uf;
   struct genhashtable* ppt_exit_var_uf;
 
+  // TODO: I'm confused about this one!!!
+  // KEY: tag which is the leader of entries from val_uf
+  // VALUE: uf_object entry in var_uf
   // (SMcC calls these the augmented version of var_uf for mapping the
   //  leader of val_uf to entries in var_uf)
   struct genhashtable* ppt_entry_leader_map;
   struct genhashtable* ppt_exit_leader_map;
 
+  // KEY: Daikon variable string
+  // VALUE: tag which is the leader of the comparability set of the
+  // corresponding Daikon variable's value's tags
   // (SMcC calls these var_tags)
   struct genhashtable* ppt_entry_var_tags;
   struct genhashtable* ppt_exit_var_tags;
 
+  // KEY: Daikon variable string
+  // VALUE: tag of the Daikon variable's value at this program point
   // (SMcC calls these new_tags)
   struct genhashtable* ppt_entry_new_tags;
   struct genhashtable* ppt_exit_new_tags;
