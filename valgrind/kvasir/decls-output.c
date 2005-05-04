@@ -1431,8 +1431,15 @@ void outputDaikonVar(DaikonVariable* var,
 			  // out function return variables because
 			  // return variables stored in %EAX are always doubles
 			  (varOrigin == FUNCTION_RETURN_VAR),
-			  disambigOverride,
-                          varFuncInfo, isEnter, fullDaikonName);
+			  disambigOverride);
+
+      // DynComp post-rocessing:
+      if (kvasir_with_dyncomp && variableHasBeenObserved) {
+        DC_post_process_for_variable(varFuncInfo,
+                                     isEnter,
+                                     fullDaikonName,
+                                     (Addr)basePtrValue);
+      }
 
       // While observing the runtime values,
       // set var->disambigMultipleElts and

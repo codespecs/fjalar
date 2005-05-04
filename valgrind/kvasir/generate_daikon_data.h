@@ -279,9 +279,9 @@ typedef struct _DaikonFunctionInfo {
   // genallocateSMALLhashtable, but they still take up room
   // nonetheless.
 
-  // KEY: Daikon-derived variable *string* (note that all variable
-  // strings at a program point are UNIQUE so there are no collisions)
-  // VALUE: uf_object corresponding to that variable string
+  // Variable comparability sets for this particular program point
+  // KEY: A 32-bit tag
+  // VALUE: uf_object corresponding to that tag
   // (SMcC calls these var_uf)
   struct genhashtable* ppt_entry_var_uf;
   struct genhashtable* ppt_exit_var_uf;

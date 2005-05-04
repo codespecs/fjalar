@@ -1432,4 +1432,11 @@ ints, those tags should already be merged when reading them out of
 registers and into memory, right?
 
 Hmmm, the return values have a tag of 0, which is strange.  Ahhh,
-perhaps they are not shadows properly with tags.
+perhaps they are not shadows properly with tags - ok, fixed now!
+
+
+Ok, question about hashing.  Does it matter what number we mod ('%')
+the size by?  I mean, the size of the hash table does change, right?
+So which number is good for the hash function?  Or does it not matter
+because GenericHashtable will mod it for us?  Oh, haha, it does mod it
+for us :) So don't worry about modding ourselves!

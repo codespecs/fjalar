@@ -254,11 +254,15 @@ void handleFunctionEntrance(FunctionEntry* e)
       return;
     }
 
+  if (kvasir_with_dyncomp) {
+
   VG_(printf)("***ENTER %s at EBP=%d, lowestESP=%d, startPC=%p\n",
 	  e->name,
 	  e->EBP,
 	  e->lowestESP,
 	  (void*)e->startPC);
+
+  }
 
   if (daikonFuncPtr->parentClass) {
     DPRINTF("   --- member function - parent is %s\n",
@@ -304,10 +308,14 @@ void handleFunctionExit(FunctionEntry* e)
       return;
     }
 
+  if (kvasir_with_dyncomp) {
+
   VG_(printf)("***EXIT %s - EBP=%d, lowestESP=%d\n",
               e->name,
               e->EBP,
               e->lowestESP);
+
+  }
 
   if (daikonFuncPtr->parentClass) {
     DPRINTF("   --- member function - parent is %s\n",

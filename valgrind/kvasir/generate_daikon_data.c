@@ -1540,10 +1540,10 @@ void initializeAllClassMemberFunctions() {
 
 // DaikonTypesTable - hash table containing DaikonType entries
 // DaikonFunctionInfoTable - hash table containing DaikonFunctionInfo entries
-// Super-trivial division hashing method -
+// Super-trivial division hashing method - do nothing, hehe, ummm, we could
 // improve upon this to increase efficiency, but I don't care right now
 unsigned int hashID(int ID) {
-  return ID % geninitialnumbins;
+  return ID;
 }
 
 // Super-trivial key comparison method -
@@ -1585,7 +1585,8 @@ inline DaikonFunctionInfo* findFunctionInfoByAddr(unsigned int addr) {
   return (DaikonFunctionInfo*)gengettable(DaikonFunctionInfoTable, (void*)addr);
 }
 
-// Iterate thru all chars, sum up each (ASCII value * (index + 1)), and % by geninitialnumbins
+// Iterate thru all chars, sum up each (ASCII value * (index + 1))
+// Don't worry about modding because GenericHashtable.c will do it for us :)
 unsigned int hashString(char* str) {
   int i;
   int hashcode;
@@ -1595,10 +1596,7 @@ unsigned int hashString(char* str) {
     sum += ((int)(str[i]) * (i + i));
   }
 
-  hashcode = sum % geninitialnumbins;
-  //  VG_(printf)("String: %s - Hashcode: %u\n", str, hashcode);
-
-  return hashcode;
+  return sum;
 }
 
 int equivalentStrings(char* str1, char* str2) {

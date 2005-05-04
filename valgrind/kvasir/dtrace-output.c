@@ -314,11 +314,7 @@ char outputDtraceValue(DaikonVariable* var,
 		       unsigned long upperBound,
 		       unsigned long bytesBetweenElts,
 		       char overrideFloatAsDouble,
-		       DisambigOverride disambigOverride,
-                       // For DynComp:
-                       DaikonFunctionInfo* varFuncInfo,
-                       char isEnter,
-                       char* fullDaikonName)
+		       DisambigOverride disambigOverride)
 {
   void* ptrValue = basePtrValue;
 
@@ -551,11 +547,6 @@ char outputDtraceValue(DaikonVariable* var,
 			       disambigOverride);
       }
     }
-
-  // TODO: I'm still uncertain on what to do about static arrays
-  if (kvasir_with_dyncomp && variableHasBeenObserved) {
-    harvest_new_tag_value(varFuncInfo, isEnter, fullDaikonName, (Addr)ptrValue);
-  }
 
   return variableHasBeenObserved;
 }
