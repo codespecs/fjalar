@@ -147,6 +147,7 @@ vgtool_kvasir_so_SOURCES = \
 	mc_translate.c \
 	union_find.c \
 	dyncomp_main.c \
+	dyncomp_runtime.c \
 	dyncomp_translate.c \
 	kvasir_main.c \
 	generate_daikon_data.c \
@@ -187,11 +188,12 @@ am_vgtool_kvasir_so_OBJECTS = mac_leakcheck.$(OBJEXT) \
 	mac_malloc_wrappers.$(OBJEXT) mac_needs.$(OBJEXT) \
 	mc_errcontext.$(OBJEXT) mc_main.$(OBJEXT) \
 	mc_translate.$(OBJEXT) union_find.$(OBJEXT) \
-	dyncomp_main.$(OBJEXT) dyncomp_translate.$(OBJEXT) \
-	kvasir_main.$(OBJEXT) generate_daikon_data.$(OBJEXT) \
-	kvasir_runtime.$(OBJEXT) decls-output.$(OBJEXT) \
-	dtrace-output.$(OBJEXT) GenericHashtable.$(OBJEXT) \
-	disambig.$(OBJEXT) readelf.$(OBJEXT) typedata.$(OBJEXT)
+	dyncomp_main.$(OBJEXT) dyncomp_runtime.$(OBJEXT) \
+	dyncomp_translate.$(OBJEXT) kvasir_main.$(OBJEXT) \
+	generate_daikon_data.$(OBJEXT) kvasir_runtime.$(OBJEXT) \
+	decls-output.$(OBJEXT) dtrace-output.$(OBJEXT) \
+	GenericHashtable.$(OBJEXT) disambig.$(OBJEXT) readelf.$(OBJEXT) \
+	typedata.$(OBJEXT)
 vgtool_kvasir_so_OBJECTS = $(am_vgtool_kvasir_so_OBJECTS)
 vgtool_kvasir_so_LDADD = $(LDADD)
 vgtool_kvasir_so_DEPENDENCIES =
@@ -207,6 +209,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/decls-output.Po ./$(DEPDIR)/disambig.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dtrace-output.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dyncomp_main.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/dyncomp_runtime.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dyncomp_translate.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/generate_daikon_data.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/kvasir_main.Po \
@@ -288,6 +291,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/disambig.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dtrace-output.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dyncomp_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dyncomp_runtime.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dyncomp_translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/generate_daikon_data.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kvasir_main.Po@am__quote@

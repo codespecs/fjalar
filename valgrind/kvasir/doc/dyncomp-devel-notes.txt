@@ -1415,3 +1415,13 @@ pointer dereference levels) to uf_objects.
 Ok, I am still struggling to understand Stephen's algorithm.  I know
 that outputDtraceValue() needs to be augmented to take in some more
 stuff, but I'll think more about it tomorrow.
+
+
+----------
+2005-05-04
+----------
+
+Umm, when we observe variable values in dtrace-output.c, what if the
+variable in unallocated or uninitialized?  I assume that we just skip
+it and leave its tag as 0 for this particular instance of the program
+point.

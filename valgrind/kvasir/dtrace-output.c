@@ -20,6 +20,8 @@
 #include "dtrace-output.h"
 #include "decls-output.h"
 #include "kvasir_main.h"
+#include "dyncomp_main.h"
+#include "dyncomp_runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -150,12 +152,17 @@ char mapInitToModbit(char init)
 void printOneDtraceString(char* str)
 {
   char readable;
+  Addr strHead = (Addr)str;
   // Print leading and trailing quotes to "QUOTE" the string
   fprintf(dtrace_fp,"\"");
   readable = addressIsInitialized((Addr)str, sizeof(char));
   tl_assert(readable);
   while (*str != '\0')
     {
+      if (kvasir_with_dyncomp) {
+        union_tags_at_addr(strHead, (Addr)str);
+      }
+
       switch (*str) {
       case '\n':
         fprintf(dtrace_fp, "\\n");
@@ -214,11 +221,16 @@ void printOneCharAsDtraceString(char c)
 
 void printOneDtraceStringAsIntArray(char* str) {
   char readable;
+  Addr strHead = (Addr)str;
   fprintf(dtrace_fp,"[ ");
   readable = addressIsInitialized((Addr)str, sizeof(char));
   tl_assert(readable);
   while (*str != '\0')
     {
+      if (kvasir_with_dyncomp) {
+        union_tags_at_addr(strHead, (Addr)str);
+      }
+
       fprintf(dtrace_fp, "%d ", *str);
 
       str++;
@@ -303,7 +315,10 @@ char outputDtraceValue(DaikonVariable* var,
 		       unsigned long bytesBetweenElts,
 		       char overrideFloatAsDouble,
 		       DisambigOverride disambigOverride,
-                       DaikonFunctionInfo* varFuncInfo, char isEnter)
+                       // For DynComp:
+                       DaikonFunctionInfo* varFuncInfo,
+                       char isEnter,
+                       char* fullDaikonName)
 {
   void* ptrValue = basePtrValue;
 
@@ -386,7 +401,7 @@ char outputDtraceValue(DaikonVariable* var,
 	  // (this is for the modbit)
 	  // (Don't we not support initialization bits right now?  Our modbit
 	  //  simply indicates whether it's been allocated or not, right?)
-	  printDtraceHashcode(var, (Addr)ptrValue, isArray, upperBound, bytesBetweenElts);
+          printDtraceHashcode(var, (Addr)ptrValue, isArray, upperBound, bytesBetweenElts);
 	}
       else if (var->isString)
 	{
@@ -536,6 +551,11 @@ char outputDtraceValue(DaikonVariable* var,
 			       disambigOverride);
       }
     }
+
+  // TODO: I'm still uncertain on what to do about static arrays
+  if (kvasir_with_dyncomp && variableHasBeenObserved) {
+    harvest_new_tag_value(varFuncInfo, isEnter, fullDaikonName, (Addr)ptrValue);
+  }
 
   return variableHasBeenObserved;
 }
@@ -715,9 +735,18 @@ void printDtraceHashcode(DaikonVariable* var,
       fprintf(dtrace_fp, "[ ");
       for (i = 0; i <= limit; i++)
 	{
+          Addr curAddr = (ptrValue + (i*bytesBetweenElts));
 	  fprintf(dtrace_fp, "%u ", var->isStaticArray ?
-		  (Addr)(ptrValue + (i*bytesBetweenElts)) :
-		  *((Addr*)(ptrValue + (i*bytesBetweenElts))));
+		  curAddr :
+		  *((Addr*)(curAddr)));
+
+          // Merge the tags of the 4-bytes of the observed pointer as
+          // well as the tags of the base address and the current
+          // address because we are observing everything as a sequence
+          if (kvasir_with_dyncomp) {
+            union_tags_in_range(curAddr, sizeof(void*));
+            union_tags_at_addr(ptrValue, curAddr);
+          }
 	}
       fprintf(dtrace_fp, "]\n%d\n",
 	      mapInitToModbit(1));
@@ -728,6 +757,12 @@ void printDtraceHashcode(DaikonVariable* var,
 	      ptrValue :
 	      *((Addr*)ptrValue),
 	      mapInitToModbit(1));
+
+      // Since we observed all of these bytes as one value,
+      // we will merge all of their tags in memory
+      if (kvasir_with_dyncomp) {
+        union_tags_in_range(ptrValue, sizeof(void*));
+      }
     }
 }
 
@@ -757,6 +792,10 @@ char printDtraceString(DaikonVariable* var,
       for (i = 0; i <= upperBound; i++)
 	{
 	  currentPtr = (char*)ptrValue + (i * bytesBetweenElts);
+
+          if (kvasir_with_dyncomp) {
+            union_tags_at_addr((Addr)ptrValue, (Addr)currentPtr);
+          }
 
 	  // Check if the whole string is legit
 	  ptrReadable = addressIsInitialized((Addr)currentPtr, sizeof(char*));
@@ -1019,6 +1058,10 @@ char printDtraceBaseValue(DaikonVariable* var,
 	    else {TYPES_SWITCH(PRINT_STATIC_ARRAY)}
 	      fprintf(dtrace_fp, "\n%d\n",
 		      mapInitToModbit(1));
+
+              if (kvasir_with_dyncomp) {
+                union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
+              }
 	  }
 	  else {
             int limit = var->upperBounds[0];
@@ -1027,12 +1070,19 @@ char printDtraceBaseValue(DaikonVariable* var,
 	    fprintf(dtrace_fp, "[ ");
 	    for (i = 0; i <= limit; i++)
 	      {
+                Addr curAddr = (Addr)(ptrValue + (i*TYPE_BYTE_SIZES[decType]));
                 if (kvasir_use_bit_level_precision) {
                   CLEAR_GLOBAL_MASK_STUFF();
-                  are_some_bytes_init((Addr)(ptrValue + (i*TYPE_BYTE_SIZES[decType])),
+                  are_some_bytes_init(curAddr,
                                       TYPE_BYTE_SIZES[decType]);
                   TYPES_SWITCH(BIT_LEVEL_PRINT_STATIC_ARRAY)}
                 else {TYPES_SWITCH(PRINT_STATIC_ARRAY)}
+
+                if (kvasir_with_dyncomp) {
+                  union_tags_in_range(curAddr, TYPE_BYTE_SIZES[decType]);
+                  union_tags_at_addr((Addr)ptrValue, curAddr);
+                }
+
                 fprintf(dtrace_fp, " ");
 	      }
 	    fprintf(dtrace_fp, "]\n%d\n",
@@ -1100,12 +1150,23 @@ char printDtraceBaseValue(DaikonVariable* var,
 	      else if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
 		printOneCharAsDtraceString(*((char*)(loc)));
 		fprintf(dtrace_fp, " ");
+
+                if (kvasir_with_dyncomp) {
+                  union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
+                  union_tags_at_addr((Addr)ptrValue, loc);
+                }
 	      }
 	      else
 		{
                   if (kvasir_use_bit_level_precision) {
                     TYPES_SWITCH(BIT_LEVEL_PRINT_ARRAY_VAR)}
                   else {TYPES_SWITCH(PRINT_ARRAY_VAR)}
+
+                  if (kvasir_with_dyncomp) {
+                    union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
+                    union_tags_at_addr((Addr)ptrValue, loc);
+                  }
+
                   fprintf(dtrace_fp, " ");
 		}
 	    }
@@ -1123,6 +1184,11 @@ char printDtraceBaseValue(DaikonVariable* var,
 	  if (kvasir_use_bit_level_precision) {
             TYPES_SWITCH(BIT_LEVEL_PRINT_ONE_VAR)}
           else {TYPES_SWITCH(PRINT_ONE_VAR)}
+
+          if (kvasir_with_dyncomp) {
+            union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
+          }
+
 	  fprintf(dtrace_fp, "\n%d\n", mapInitToModbit(1));
 	}
 

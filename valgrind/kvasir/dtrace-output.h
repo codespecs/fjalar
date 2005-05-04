@@ -39,7 +39,10 @@ char outputDtraceValue(DaikonVariable* var,
 		       unsigned long bytesBetweenElts,
 		       char overrideFloatAsDouble,
 		       DisambigOverride disambigOverride,
-                       DaikonFunctionInfo* varFuncInfo, char isEnter);
+                       // For DynComp:
+                       DaikonFunctionInfo* varFuncInfo,
+                       char isEnter,
+                       char* fullDaikonName);
 
 void printOneDtraceString(char* str);
 void printOneCharAsDtraceString(char c);

@@ -21,6 +21,7 @@
 #include "kvasir_main.h"
 #include "kvasir_runtime.h"
 #include "generate_daikon_data.h"
+#include "dyncomp_runtime.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -794,20 +795,10 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
       fputs("\n", decls_fp);
     }
 
-  // Initialize hash tables for DynComp
-  // TODO: WARNING!  This hashtable-within-hashtable structure may
-  // blow up in my face and cause a huge memory overload!!!
+  // Allocate program point data structures if we are using DynComp:
+  // (This should only be run once for every ppt)
   if (kvasir_with_dyncomp) {
-    if (isEnter) {
-      funcPtr->ppt_entry_var_uf =
-        genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
-                                  (int (*)(void *,void *)) &equivalentStrings);
-    }
-    else {
-      funcPtr->ppt_exit_var_uf =
-        genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
-                                  (int (*)(void *,void *)) &equivalentStrings);
-    }
+    allocate_ppt_structures(funcPtr, isEnter);
   }
 
   // Print out globals
@@ -1161,6 +1152,8 @@ void outputDaikonVar(DaikonVariable* var,
   DaikonDeclaredType dType = var->varType->declaredType;
   DaikonRepType rType = var->varType->repType;
 
+  char* fullDaikonName = 0;
+
   int layersBeforeBase = (var->repPtrLevels - numDereferences);
   char isBaseArrayVar = (isArray && (var->repPtrLevels == 0));
 
@@ -1267,7 +1260,6 @@ void outputDaikonVar(DaikonVariable* var,
       // We are really popping stuff off of the stack in reverse and
       // treating it like a queue :)
       char* nameWithoutDereferences = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
-      char* fullDaikonName = 0;
 
       if (numDereferences < 0) {
 	numDereferences = 0; // Prevent negatives in calloc of nameForComparison
@@ -1365,36 +1357,11 @@ void outputDaikonVar(DaikonVariable* var,
       // Only for DynComp. This should be initialized exactly once for
       // every program point which the execution reaches (when
       // printing out .decls; outputType == DECLS_FILE).
-      if (kvasir_with_dyncomp && varFuncInfo) {
-        struct genhashtable* ppt_var_uf =
-          (isEnter ?
-           varFuncInfo->ppt_entry_var_uf :
-           varFuncInfo->ppt_exit_var_uf);
-
-        if (DECLS_FILE == outputType) {
-          // Add a new entry with a copy of fullDaikonName and a
-          // freshly-initialized uf_object
-          char* fullNameCopy = VG_(strdup)(fullDaikonName);
-          uf_object* newObj = VG_(calloc)(1, sizeof(*newObj));
-          uf_make_set(newObj, 0);
-
-          // Insert it into the hash table (it should not already exist if all
-          // goes well)
-          genputtable(ppt_var_uf, (void*)(fullNameCopy), (void*)(newObj));
-          VG_(printf)("%s (%d)\n", fullNameCopy, isEnter);
-        }
-        // It should be only SEARCHED (using tfind) and NOT modified
-        // (using tsearch) when outputType == DTRACE_FILE
-        else if (DTRACE_FILE == outputType) {
-          uf_object* tmp;
-          // Create a dummy pair with only the key initialized
-          // so that we can use it to perform a search
-          if ((tmp = gengettable(ppt_var_uf, (void*)(fullDaikonName)))) {
-            VG_(printf)("FOUND! %s (%d)\n", fullDaikonName, isEnter);
-          }
-        }
+      if (kvasir_with_dyncomp &&
+          varFuncInfo &&
+          (DECLS_FILE == outputType)) {
+        initialize_ppt_structures(varFuncInfo, isEnter, fullDaikonName);
       }
-
 
       // This has been moved earlier so that it gets integrated directly into
       // fullDaikonName:
@@ -1408,7 +1375,11 @@ void outputDaikonVar(DaikonVariable* var,
       //	     fullDaikonName, isBaseArrayVar, numDereferences, layersBeforeBase);
 
       VG_(free)(nameWithoutDereferences);
-      VG_(free)(fullDaikonName);
+
+      // .dtrace will need this for keeping track of run-time info:
+      if (DTRACE_FILE != outputType) {
+        VG_(free)(fullDaikonName);
+      }
     }
   else
     {
@@ -1461,7 +1432,7 @@ void outputDaikonVar(DaikonVariable* var,
 			  // return variables stored in %EAX are always doubles
 			  (varOrigin == FUNCTION_RETURN_VAR),
 			  disambigOverride,
-                          varFuncInfo, isEnter);
+                          varFuncInfo, isEnter, fullDaikonName);
 
       // While observing the runtime values,
       // set var->disambigMultipleElts and
@@ -1481,6 +1452,8 @@ void outputDaikonVar(DaikonVariable* var,
 	  var->pointerHasEverBeenObserved = 1;
 	}
       }
+
+      VG_(free)(fullDaikonName);
     }
   // .decls
   else if (DECLS_FILE == outputType)

@@ -15,7 +15,7 @@
 #ifndef GENHASHTABLE
 #define GENHASHTABLE
 #define geninitialnumbins 4999
-#define genSMALLinitialnumbins 199 // PG
+#define genSMALLinitialnumbins 97 // PG
 #define bool int
 
 struct genhashtable {

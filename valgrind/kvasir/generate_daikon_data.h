@@ -295,14 +295,16 @@ typedef struct _DaikonFunctionInfo {
   struct genhashtable* ppt_exit_leader_map;
 
   // KEY: Daikon variable string
-  // VALUE: tag which is the leader of the comparability set of the
-  // corresponding Daikon variable's value's tags
+  // VALUE: (Pointer to a calloc'ed) 32-bit tag which is the leader of
+  // the comparability set of the corresponding Daikon variable's
+  // value's tags
   // (SMcC calls these var_tags)
   struct genhashtable* ppt_entry_var_tags;
   struct genhashtable* ppt_exit_var_tags;
 
   // KEY: Daikon variable string
-  // VALUE: tag of the Daikon variable's value at this program point
+  // VALUE: (Pointer to a calloc'ed) 32-bit tag of the Daikon
+  // variable's value at this program point
   // (SMcC calls these new_tags)
   struct genhashtable* ppt_entry_new_tags;
   struct genhashtable* ppt_exit_new_tags;
@@ -316,9 +318,6 @@ struct genhashtable* DaikonFunctionInfoTable;
 
 DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName);
 inline DaikonFunctionInfo* findFunctionInfoByAddr(unsigned int addr);
-
-unsigned int hashString(char* str);
-int equivalentStrings(char* str1, char* str2);
 
 // List of all global variables
 // (including C++ static member variables - these have structParentType initialized

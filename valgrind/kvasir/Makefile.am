@@ -35,6 +35,7 @@ vgtool_kvasir_so_SOURCES = \
 	mc_translate.c \
 	union_find.c \
 	dyncomp_main.c \
+	dyncomp_runtime.c \
 	dyncomp_translate.c \
 	kvasir_main.c \
 	generate_daikon_data.c \

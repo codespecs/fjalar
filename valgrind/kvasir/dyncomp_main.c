@@ -61,7 +61,7 @@ static UInt* primary_tag_map[PRIMARY_SIZE];
 
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
 
-static __inline__ UInt get_tag ( Addr a )
+__inline__ UInt get_tag ( Addr a )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a))
     return 0; // 0 means NO tag for that byte
@@ -319,17 +319,30 @@ static __inline__ UInt find_canonical_tag(UInt tag) {
   }
 }
 
+// Unions the tags belonging to these addresses and set
+// the tags of both to the canonical tag (for efficiency)
+__inline__ void union_tags_at_addr(Addr a1, Addr a2) {
+  UInt canonicalTag;
+  UInt tag1 = get_tag(a1);
+
+  tag_union(tag1, get_tag(a2));
+
+  canonicalTag = find_canonical_tag(tag1);
+  set_tag(a1, canonicalTag);
+  set_tag(a2, canonicalTag);
+}
+
 // Union the tags of all addresses in the range [a, a+max)
 // and sets them all equal to the canonical tag of the merged set
 // (An optimization which could help out with garbage collection
 //  because we want to have as few tags 'in play' at one time
 //  as possible)
-static void union_tags_in_range(Addr a, Addr max) {
+void union_tags_in_range(Addr a, SizeT len) {
   Addr curAddr;
   UInt aTag = get_tag(a);
   UInt canonicalTag;
 
-  for (curAddr = (a + 1); curAddr < (a + max); curAddr++) {
+  for (curAddr = (a + 1); curAddr < (a + len); curAddr++) {
     tag_union(aTag, get_tag(curAddr));
   }
 
@@ -338,7 +351,7 @@ static void union_tags_in_range(Addr a, Addr max) {
   if (canonicalTag > 0) {
     // Set all the tags in this range to the canonical tag
     // (as inferred from a reverse map lookup)
-    for (curAddr = a; curAddr < (a + max); curAddr++) {
+    for (curAddr = a; curAddr < (a + len); curAddr++) {
       set_tag(curAddr, canonicalTag);
     }
   }

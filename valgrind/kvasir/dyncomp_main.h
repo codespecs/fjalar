@@ -26,4 +26,8 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len );
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len );
 __inline__ void copy_tags(  Addr src, Addr dst, SizeT len );
 
+__inline__ UInt get_tag ( Addr a );
+void union_tags_in_range(Addr a, SizeT len);
+__inline__ void union_tags_at_addr(Addr a1, Addr a2);
+
 #endif
