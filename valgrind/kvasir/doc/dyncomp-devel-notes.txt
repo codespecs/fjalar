@@ -1425,3 +1425,11 @@ Umm, when we observe variable values in dtrace-output.c, what if the
 variable in unallocated or uninitialized?  I assume that we just skip
 it and leave its tag as 0 for this particular instance of the program
 point.
+
+Look into doing less merges in dtrace-output.c because we shouldn't
+merge when we don't need to.  For the example of outputting 4-byte
+ints, those tags should already be merged when reading them out of
+registers and into memory, right?
+
+Hmmm, the return values have a tag of 0, which is strange.  Ahhh,
+perhaps they are not shadows properly with tags.

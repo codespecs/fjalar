@@ -33,6 +33,7 @@
 #include "dtrace-output.h"
 #include "mc_include.h"
 #include "disambig.h"
+#include "dyncomp_main.h"
 
 // Global variables that are set by command-line options
 char* kvasir_decls_filename = 0;
@@ -135,6 +136,7 @@ static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
 
      VG_(memcpy)(top->virtualStack, (void*)EBP, (formalParamStackByteSize * sizeof(char)));
      // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
+     // (As a consequence, this copies over the tags as well - look in mc_main.c)
      mc_copy_address_range_state(EBP, (Addr)(top->virtualStack), formalParamStackByteSize);
   }
   else {
@@ -165,7 +167,8 @@ Effects: pops a FunctionEntry off of the top of fn_stack and initializes
 */
 static void pop_fn(Char* s,
                    int EAX, int EDX, double FPU_top,
-                   UInt EAXshadow, UInt EDXshadow, ULong FPUshadow)
+                   UInt EAXshadow, UInt EDXshadow, ULong FPUshadow,
+                   UInt EAXtag, UInt EDXtag, UInt FPUtag)
 {
    FunctionEntry* top;
    int i;
@@ -185,7 +188,8 @@ static void pop_fn(Char* s,
   top->FPU = FPU_top;
 
   // Very important!  Set the A and V bits of the appropriate
-  // FunctionEntry object:
+  // FunctionEntry object and the tags from the (x86) guest state
+  // as well:
 
   for (i = 0; i < 4; i++) {
      set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID);
@@ -195,12 +199,22 @@ static void pop_fn(Char* s,
      set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8)));
      set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8)));
      set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+
+     if (kvasir_with_dyncomp) {
+        set_tag((Addr)(&(top->EAX)) + (Addr)i, EAXtag);
+        set_tag((Addr)(&(top->EDX)) + (Addr)i, EDXtag);
+        set_tag((Addr)(&(top->FPU)) + (Addr)i, FPUtag);
+     }
   }
 
   for (i = 4; i < 8; i++) {
      set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
 
      set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+
+     if (kvasir_with_dyncomp) {
+        set_tag((Addr)(&(top->FPU)) + (Addr)i, FPUtag);
+     }
   }
 
   DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
@@ -376,12 +390,25 @@ void exit_function(Char* fnname)
    UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
    ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
+   UInt EAXtag = 0;
+   UInt EDXtag = 0;
+   UInt FPUtag = 0;
+
+   if (kvasir_with_dyncomp) {
+      EAXtag = VG_(get_EAX_tag)(currentTID);
+      EDXtag = VG_(get_EDX_tag)(currentTID);
+      FPUtag = VG_(get_FPU_stack_top_tag)(currentTID);
+   }
+
    DPRINTF("Exit function: %s - EAX: 0x%x, EAXshadow: 0x%x, EDXshadow: 0x%x FPUshadow: 0x%x %x\n",
                fnname, EAX,
                EAXshadow, EDXshadow,
                (UInt)(FPUshadow & 0xffffffff), (UInt)(FPUshadow >> 32));
 
-   pop_fn(fnname, EAX, EDX, fpuReturnVal, EAXshadow, EDXshadow, FPUshadow);
+   pop_fn(fnname,
+          EAX, EDX, fpuReturnVal,
+          EAXshadow, EDXshadow, FPUshadow,
+          EAXtag, EDXtag, FPUtag);
 }
 
 

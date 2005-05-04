@@ -69,7 +69,7 @@ __inline__ UInt get_tag ( Addr a )
     return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
 }
 
-static __inline__ void set_tag ( Addr a, UInt tag )
+__inline__ void set_tag ( Addr a, UInt tag )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     UInt* new_tag_array =

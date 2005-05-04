@@ -254,7 +254,7 @@ void handleFunctionEntrance(FunctionEntry* e)
       return;
     }
 
-  DPRINTF("***ENTER %s at EBP=%d, lowestESP=%d, startPC=%p\n",
+  VG_(printf)("***ENTER %s at EBP=%d, lowestESP=%d, startPC=%p\n",
 	  e->name,
 	  e->EBP,
 	  e->lowestESP,
@@ -304,7 +304,7 @@ void handleFunctionExit(FunctionEntry* e)
       return;
     }
 
-  DPRINTF("***EXIT %s - EBP=%d, lowestESP=%d\n",
+  VG_(printf)("***EXIT %s - EBP=%d, lowestESP=%d\n",
               e->name,
               e->EBP,
               e->lowestESP);
