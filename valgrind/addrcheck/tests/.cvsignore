@@ -1,4 +1,3 @@
-Makefile.in
 Makefile
 *.stdout.diff*
 *.stderr.diff*
