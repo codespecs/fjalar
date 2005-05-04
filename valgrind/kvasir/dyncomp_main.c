@@ -309,7 +309,7 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 }
 
 // Return the canonical tag for 'tag'
-static __inline__ UInt find_canonical_tag(UInt tag) {
+__inline__ UInt find_canonical_tag(UInt tag) {
   uf_name canonical = tag_find(tag);
   if (canonical) {
     return canonical->tag;

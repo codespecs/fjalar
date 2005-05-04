@@ -33,7 +33,7 @@ void initialize_ppt_structures(DaikonFunctionInfo* funcPtr,
                                char isEnter,
                                char* fullDaikonName);
 
-void harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
+UInt harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
                            char isEnter,
                            char* fullDaikonName,
                            Addr a);

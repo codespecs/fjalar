@@ -93,7 +93,7 @@ void initialize_ppt_structures(DaikonFunctionInfo* funcPtr,
 
 // Harvests the tag at location 'a' into the appropriate ppt-specific
 // structures for the variable denoted by fullDaikonName
-void harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
+UInt harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
                            char isEnter,
                            char* fullDaikonName,
                            Addr a) {
@@ -111,6 +111,7 @@ void harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
 
   VG_(printf)("harvest tag %u into %s (%d)\n",
               tag, fullDaikonName, isEnter);
+  return tag;
 }
 
 // Performs post-processing after observing a variable's value when
@@ -125,16 +126,38 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
                                   char* fullDaikonName,
                                   Addr a) {
   UInt leader, new_leader, var_tags_v, new_tags_v;
+  struct genhashtable* ppt_var_tags;
+
+  if (isEnter) {
+    ppt_var_tags = funcPtr->ppt_entry_var_tags;
+  }
+  else {
+    ppt_var_tags = funcPtr->ppt_exit_var_tags;
+  }
 
   // A really important first step is to initialize new_tags[v] by
   // harvesting the tag and assigning it to this variable v:
-  harvest_new_tag_value(funcPtr, isEnter, fullDaikonName, a);
+  new_tags_v = harvest_new_tag_value(funcPtr, isEnter, fullDaikonName, a);
+
 
   // SMcC:  // Update from any val_uf merges that have occurred
   // SMcC:   tag leader = val_uf.find(var_tags[v]);
+  var_tags_v = *((UInt*)(gengettable(ppt_var_tags,
+                                     (void*)fullDaikonName)));
+
+  leader = find_canonical_tag(var_tags_v);
+
   // SMcC:   if (leader != var_tags[v]) {
   // SMcC:     var_tags[v] = var_uf.union(leader, var_tags[v]);
   // SMcC:   }
+  if (leader != var_tags_v) {
+    // TODO: Ok, be careful here because it's a var_uf tag union, NOT
+    // a val_uf tag union!  We need to create the proper functions for
+    // var_uf operations.  var_uf is going to be implemented as a hash
+    // table of tags to uf_objects (in contrast, val_uf is a 2-level
+    // complete 32-bit memory map, but we don't need that much size
+    // for var_uf)
+  }
 
   // SMcC:   // Make sure there's an entry for the new value
   // SMcC:   tag new_leader = val_uf.find(new_tags[v]);

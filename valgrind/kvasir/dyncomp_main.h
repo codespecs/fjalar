@@ -30,5 +30,6 @@ __inline__ UInt get_tag ( Addr a );
 __inline__ void set_tag ( Addr a, UInt tag );
 void union_tags_in_range(Addr a, SizeT len);
 __inline__ void union_tags_at_addr(Addr a1, Addr a2);
+__inline__ UInt find_canonical_tag(UInt tag);
 
 #endif
