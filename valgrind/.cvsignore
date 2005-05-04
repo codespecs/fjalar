@@ -20,3 +20,4 @@ autom4te.cache
 autom4te-*.cache
 valgrind.pc
 .in_place
+config.status config.log
