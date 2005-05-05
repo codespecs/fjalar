@@ -369,6 +369,37 @@ ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
    return VG_(threads)[tid].arch.
       vex_shadow.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
 }
+
+// Ok, if the stuff before were hacks, then these are SUPER HACKS
+// because it relies on our ad-hoc (4 * offset) reference into
+// VexGuestX86State vex_extra_shadow[4] within TheadArchState:
+UInt VG_(get_EAX_tag) ( ThreadId tid )
+{
+   // EAX is assumed to be the first element of the VexGuestX86State,
+   // so its offset is 0 and is thus unaffected by the (4 * offset)
+   // deal:
+   return VG_(threads)[tid].arch.vex_extra_shadow[0].guest_EAX;
+}
+
+UInt VG_(get_EDX_tag) ( ThreadId tid )
+{
+   // EDX is assumed to be the third element of the VexGuestX86State,
+   // so its offset is 8.  (4 * 8) = 32.
+   return *((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) + 32));
+}
+
+UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
+{
+   int FPUoffset = VG_(threads)[tid].arch.vex.guest_FTOP & 7;
+
+   // The start of the FPU stack is at offset 64 so an added offset
+   // from that tells us where the top of the FPU stack is
+   int offset = FPUoffset + 64;
+
+   return *((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
+                    (4 * offset)));
+}
+
 // PG end
 
 /*====================================================================*/

@@ -1440,3 +1440,119 @@ the size by?  I mean, the size of the hash table does change, right?
 So which number is good for the hash function?  Or does it not matter
 because GenericHashtable will mod it for us?  Oh, haha, it does mod it
 for us :) So don't worry about modding ourselves!
+
+
+----------
+2005-05-05
+----------
+
+Notes from meeting with Stephen:
+
+
+Using tags as Daikon comparability numbers
+------------------------------------------
+
+Can use use the tags as Daikon comparability numbers in the .dtrace
+file?  I guess so.  If we're afraid of the tags being too big, just
+subtract everything by the smallest tag ever observed :)  Yes, but BE
+CAREFUL about large numbers.  The tags are UInts but Daikon represents
+comparability numbers as signed ints (Stephen thinks so).
+
+If we're afraid that there are too many tags in existence, we could
+really just subtract all tags at EACH program point by the smallest
+one AT THAT program point.  This will mean that there are
+comparability number duplications across program points, but Daikon
+doesn't really care at all.
+
+
+Future research question
+------------------------
+
+Once we get a good working prototype and are able to evaluate its
+results, consider refining the algorithm to provide more precise
+information.  Currently, we are restricted by the fact that the
+variable comparability sets are always supersets of the value
+comparability sets.  This makes the implementation much easier and
+cleaner, but may result in coarser-grained info. (which may or may not
+be a bad thing in practice).  However, assuming that we don't make the
+assumption that var. sets and supersets of value sets, then how could
+we implement this efficiently without keeping around too much info. and
+doing post-processing (which is unreasonable).  We need an on-the-fly
+algorithm to create finer partitions.  However, it doesn't matter for
+now because we just want a prototype which works.
+
+
+The current algorithm explained
+-------------------------------
+
+SMcC's current algorithm for propagating value comparability to
+variable comparability sets at each program point (annotated by
+pgbovine)
+
+Each program point has its own copy of the following data structures:
+
+var_uf_map:
+Key: tag which is a leader of some entry in val_uf
+Value: uf_object
+
+Define a function (implemented as a non-null hashtable get)
+var_uf_map.exists(val_uf leader entry) returns true if entry from
+val_uf exists in var_uf_map.
+
+var_uf_map is the variable analogue to val_uf, which is the union-find
+for all values ever created in a program.
+
+var_tags: A fixed-sized array (indexed by the serial # of Daikon
+variables at that program point) which contains tags which are the
+leaders of the comparability sets of their value's tags at that
+program point.
+
+new_tags: A fixed-sized array (also indexed by # of Daikon variables)
+of the tags extracted by a certain Daikon variable's value at this
+program point.  This structure is updated EVERY TIME the program
+executes a program point by querying val_uf with the address of the
+variable's value being observed and getting back the tag.
+
+The size of var_tags and new_tags can be initialized during the .decls
+run because we can count up how many Daikon variables exist at that
+program point.  The number of Daikon variables as well as their order
+is maintained during all program point executions in the .dtrace run
+because the same traversal function is executing for both .decls and
+.dtrace (and more importantly, because Daikon expects the front-end
+output to maintain these variables in the same order).
+
+
+Pseudo-code of the conversion from value to variable comparability
+which occurs at every program point:
+
+for each variable indexed by v {
+  // Update from any val_uf merges that have occurred for variables on
+  // previous executions of this program point.
+
+  // Make sure that the degenerate behavior of this line is that it
+  // returns 0 so we don't do anything when there's no previous info.
+  // to update
+  tag leader = val_uf.find(var_tags[v]);
+  if (leader != var_tags[v]) {
+    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
+  }
+
+
+  // Make sure that an entry is created in var_uf_map for the tag
+  // associated with the new value that we observe from the
+  // memory-level layer
+  tag new_leader = val_uf.find(new_tags[v]);
+  if (!var_uf_map.exists(new_leader)) {
+    var_uf_map.insert(new_leader, make_set(new uf_object));
+  }
+
+  // Merge the sets of all values that were observed before for this
+  // variable at this program point with the new value that we just
+  // observed
+  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
+}
+
+Notice that val_uf is NEVER modified, only observed.  This is crucial
+in keeping the separation in layers between the variable (language)
+and value (memory) levels.  The concept is that tags may be merged at
+the variable level without being merged at the value level.

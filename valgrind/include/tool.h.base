@@ -301,6 +301,11 @@ extern UInt VG_(get_shadow_EAX) ( ThreadId tid );
 extern UInt VG_(get_shadow_EDX) ( ThreadId tid );
 extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
+// SUPER HACK!  Watch out now.
+extern UInt VG_(get_EAX_tag) ( ThreadId tid );
+extern UInt VG_(get_EDX_tag) ( ThreadId tid );
+extern UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid );
+
 /*====================================================================*/
 /*=== Valgrind's version of libc                                   ===*/
 /*====================================================================*/
