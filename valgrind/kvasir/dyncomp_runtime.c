@@ -22,149 +22,206 @@
 */
 
 #include "dyncomp_runtime.h"
+#include "union_find.h"
 #include "GenericHashtable.h"
 
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
 // TODO: WARNING!  This hashtable-within-hashtable structure may
 // blow up in my face and cause a huge memory overload!!!
-void allocate_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
+// The use of calloc ensures that all tags within var_tags & new_tags are 0
+void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
+                             char isEnter,
+                             int numDaikonVars) {
   if (isEnter) {
-    funcPtr->ppt_entry_var_tags =
-      genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
-                                (int (*)(void *,void *)) &equivalentStrings);
+    // no hash function needed because GenericHashtable.h simply mods
+    // it by the current size of the table
+    funcPtr->ppt_entry_var_uf_map =
+      genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                                (int (*)(void *,void *)) &equivalentTags);
 
-    funcPtr->ppt_entry_new_tags =
-      genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
-                                (int (*)(void *,void *)) &equivalentStrings);
+    if (numDaikonVars > 0) {
+      funcPtr->ppt_entry_var_tags =
+        VG_(calloc)(numDaikonVars,
+                    sizeof(*(funcPtr->ppt_entry_var_tags)));
+
+      funcPtr->ppt_entry_new_tags =
+        VG_(calloc)(numDaikonVars,
+                    sizeof(*(funcPtr->ppt_entry_new_tags)));
+    }
   }
   else {
-    funcPtr->ppt_exit_var_tags =
-      genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
-                                (int (*)(void *,void *)) &equivalentStrings);
+    funcPtr->ppt_exit_var_uf_map =
+      genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                                (int (*)(void *,void *)) &equivalentTags);
 
-    funcPtr->ppt_exit_new_tags =
-      genallocateSMALLhashtable((unsigned int (*)(void *)) &hashString,
-                                (int (*)(void *,void *)) &equivalentStrings);
+    if (numDaikonVars > 0) {
+      funcPtr->ppt_exit_var_tags =
+        VG_(calloc)(numDaikonVars,
+                    sizeof(*(funcPtr->ppt_exit_var_tags)));
+
+      funcPtr->ppt_exit_new_tags =
+        VG_(calloc)(numDaikonVars,
+                    sizeof(*(funcPtr->ppt_exit_new_tags)));
+    }
   }
 }
 
 void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
   if (isEnter) {
-    genfreehashtable(funcPtr->ppt_entry_var_tags);
-    genfreehashtable(funcPtr->ppt_entry_new_tags);
+    genfreehashtable(funcPtr->ppt_entry_var_uf_map);
+    VG_(free)(funcPtr->ppt_entry_var_tags);
+    VG_(free)(funcPtr->ppt_entry_new_tags);
   }
   else {
-    genfreehashtable(funcPtr->ppt_exit_var_tags);
-    genfreehashtable(funcPtr->ppt_exit_new_tags);
+    genfreehashtable(funcPtr->ppt_exit_var_uf_map);
+    VG_(free)(funcPtr->ppt_exit_var_tags);
+    VG_(free)(funcPtr->ppt_exit_new_tags);
   }
 }
 
-// Initialize keys of various program point data structures as strings
-// which represent the full Daikon name of the variable and the values
-// as malloc'ed 32-bit tags filled with 0 (invalid tag).
-// This function will make a copy of the strings.
-void initialize_ppt_structures(DaikonFunctionInfo* funcPtr,
-                               char isEnter,
-                               char* fullDaikonName) {
-  struct genhashtable* ppt_var_tags =
-    (isEnter ?
-     funcPtr->ppt_entry_var_tags :
-     funcPtr->ppt_exit_var_tags);
 
-  struct genhashtable* ppt_new_tags =
-    (isEnter ?
-     funcPtr->ppt_entry_new_tags :
-     funcPtr->ppt_exit_new_tags);
+// Variable comparability set map (var_uf_map) operations:
 
-  // Add a new entry with a copy of fullDaikonName and a
-  // calloc'ed null tag of 0
-  char* fullNameCopy = VG_(strdup)(fullDaikonName);
+// Unions the uf_objects corresponding to tags tag1 and tag2 in
+// var_uf_map and returns the leader:
+static UInt var_uf_map_union(struct genhashtable* var_uf_map,
+                             UInt tag1,
+                             UInt tag2) {
+  uf_object* uf_obj1 = 0;
+  uf_object* uf_obj2 = 0;
+  uf_object* leader_obj = 0;
 
-  // Insert it into the hash tables (it should not already exist if all
-  // goes well)
-  genputtable(ppt_var_tags, (void*)(fullNameCopy),
-              (void*)(VG_(calloc)(1, sizeof(UInt))));
-
-  genputtable(ppt_new_tags, (void*)(fullNameCopy),
-              (void*)(VG_(calloc)(1, sizeof(UInt))));
-  //  VG_(printf)("%s (%d)\n", fullNameCopy, isEnter);
+  if (IS_ZERO_TAG(tag1) && IS_ZERO_TAG(tag2)) {
+    return 0;
+  }
+  else if (IS_ZERO_TAG(tag2)) { // Only tag 1
+    return tag1;
+  }
+  else if (IS_ZERO_TAG(tag1)) { // Only tag 2
+    return tag2;
+  }
+  else { // Good.  Both are valid.
+    uf_obj1 = (uf_object*)gengettable(var_uf_map, (void*)tag1);
+    uf_obj2 = (uf_object*)gengettable(var_uf_map, (void*)tag2);
+    if (uf_obj1 && uf_obj2) {
+      leader_obj = uf_union(uf_obj1, uf_obj2);
+      return leader_obj->tag;
+    }
+    else {
+      return 0;
+    }
+  }
 }
 
-// Harvests the tag at location 'a' into the appropriate ppt-specific
-// structures for the variable denoted by fullDaikonName
-UInt harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
-                           char isEnter,
-                           char* fullDaikonName,
-                           Addr a) {
-  UInt tag = get_tag (a);
-  UInt* valuePtr = 0;
-  if (isEnter) {
-    valuePtr = (UInt*)(gengettable(funcPtr->ppt_entry_new_tags,
-                                   (void*)fullDaikonName));
-  }
-  else {
-    valuePtr = (UInt*)(gengettable(funcPtr->ppt_exit_new_tags,
-                                   (void*)fullDaikonName));
-  }
-  *valuePtr = tag;
-
-  VG_(printf)("harvest tag %u into %s (%d)\n",
-              tag, fullDaikonName, isEnter);
-  return tag;
+// Pre: tag is not a KEY in var_uf_map, tag is not zero
+// Inserts a new entry in var_uf_map with tag as the KEY and a
+// freshly-allocated uf_object in a singleton set (instantiated using
+// uf_make_set) as the VALUE
+static void var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
+                                           UInt tag) {
+  uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
+  uf_make_set(new_obj, tag);
+  genputtable(var_uf_map, (void*)tag, (void*)new_obj);
 }
 
+
+// Pre: The variable indexed by daikonVarIndex located at address 'a'
+//      has been observed and the proper tags have been merged in memory
+//      (handled in dtrace-output.c)
 // Performs post-processing after observing a variable's value when
 // printing out .dtrace information.  This roughly follows the
 // algorithm created by SMcC in the comparability design document.
-// (SMcC's pseudo-code is enclosed in SMcC comments)
-// Pre: The variable named 'fullDaikonName' located at address 'a'
-//      has been observed and the proper tags have been merged in memory
-//      (handled in dtrace-output.c)
+// Shown in comments are SMcC's current algorithm for propagating
+// value comparability to variable comparability sets at each program
+// point (annotated by pgbovine).
+/*
+for each variable indexed by v {
+  // Update from any val_uf merges that have occurred for variables on
+  // previous executions of this program point.
+
+  // Make sure that the degenerate behavior of this line is that it
+  // returns 0 so we don't do anything when there's no previous info.
+  // to update
+  tag leader = val_uf.find(var_tags[v]);
+  if (leader != var_tags[v]) {
+    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
+  }
+
+
+  // Make sure that an entry is created in var_uf_map for the tag
+  // associated with the new value that we observe from the
+  // memory-level layer
+  tag new_leader = val_uf.find(new_tags[v]);
+  if (!var_uf_map.exists(new_leader)) {
+    var_uf_map.insert(new_leader, make_set(new uf_object));
+  }
+
+  // Merge the sets of all values that were observed before for this
+  // variable at this program point with the new value that we just
+  // observed
+  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
+}
+*/
 void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
                                   char isEnter,
-                                  char* fullDaikonName,
+                                  int daikonVarIndex,
                                   Addr a) {
   UInt leader, new_leader, var_tags_v, new_tags_v;
-  struct genhashtable* ppt_var_tags;
+  struct genhashtable* var_uf_map;
+  UInt *var_tags, *new_tags;
 
   if (isEnter) {
-    ppt_var_tags = funcPtr->ppt_entry_var_tags;
+    var_uf_map = funcPtr->ppt_entry_var_uf_map;
+    var_tags = funcPtr->ppt_entry_var_tags;
+    new_tags = funcPtr->ppt_entry_new_tags;
   }
   else {
-    ppt_var_tags = funcPtr->ppt_exit_var_tags;
+    var_uf_map = funcPtr->ppt_exit_var_uf_map;
+    var_tags = funcPtr->ppt_exit_var_tags;
+    new_tags = funcPtr->ppt_exit_new_tags;
   }
+  // Update from any val_uf merges that have occurred for variables on
+  // previous executions of this program point.
 
-  // A really important first step is to initialize new_tags[v] by
-  // harvesting the tag and assigning it to this variable v:
-  new_tags_v = harvest_new_tag_value(funcPtr, isEnter, fullDaikonName, a);
-
-
-  // SMcC:  // Update from any val_uf merges that have occurred
-  // SMcC:   tag leader = val_uf.find(var_tags[v]);
-  var_tags_v = *((UInt*)(gengettable(ppt_var_tags,
-                                     (void*)fullDaikonName)));
-
-  leader = find_canonical_tag(var_tags_v);
-
-  // SMcC:   if (leader != var_tags[v]) {
-  // SMcC:     var_tags[v] = var_uf.union(leader, var_tags[v]);
-  // SMcC:   }
+  // Make sure that the degenerate behavior of this line is that it
+  // returns 0 so we don't do anything when there's no previous info.
+  // to update
+  //  tag leader = val_uf.find(var_tags[v]);
+  //  tag leader = val_uf.find(var_tags[v]);
+  //  if (leader != var_tags[v]) {
+  //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
+  //  }
+  var_tags_v = var_tags[daikonVarIndex];
+  leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
-    // TODO: Ok, be careful here because it's a var_uf tag union, NOT
-    // a val_uf tag union!  We need to create the proper functions for
-    // var_uf operations.  var_uf is going to be implemented as a hash
-    // table of tags to uf_objects (in contrast, val_uf is a 2-level
-    // complete 32-bit memory map, but we don't need that much size
-    // for var_uf)
+    var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
+                                                leader, var_tags_v);
   }
 
-  // SMcC:   // Make sure there's an entry for the new value
-  // SMcC:   tag new_leader = val_uf.find(new_tags[v]);
-  // SMcC:   if (!var_uf.exists(new_leader)) {
-  // SMcC:     var_uf.make_singleton(new_leader);
-  // SMcC:   }
+  // Make sure that an entry is created in var_uf_map for the tag
+  // associated with the new value that we observe from the
+  // memory-level layer
+  //  tag new_leader = val_uf.find(new_tags[v]);
+  //  if (!var_uf_map.exists(new_leader)) {
+  //    var_uf_map.insert(new_leader, make_set(new uf_object));
+  //  }
+  new_tags_v = get_tag(a);
+  new_leader = val_uf_find_leader(new_tags_v);
+  if (new_leader && // Add a constraint that leader has to be non-zero
+      !gengettable(var_uf_map, (void*)new_leader)) {
+    var_uf_map_insert_and_make_set(var_uf_map, new_leader);
+  }
 
-  // SMcC:   // Merge old and new values
-  // SMcC:   var_tags[v] = var_uf.union(var_tags[v], new_leader);
+  // Merge the sets of all values that were observed before for this
+  // variable at this program point with the new value that we just
+  // observed
+  //  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
+  var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
+                                              var_tags_v, new_leader);
+}
+
+// Super-trivial key comparison method -
+int equivalentTags(UInt t1, UInt t2) {
+  return (t1 == t2);
 }

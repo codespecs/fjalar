@@ -22,14 +22,18 @@
 
 #include "tool.h"
 
+// Don't do anything with tags equal to 0 because they are invalid
+#define IS_ZERO_TAG(tag) (0 == tag)
+
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len );
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len );
 __inline__ void copy_tags(  Addr src, Addr dst, SizeT len );
 
 __inline__ UInt get_tag ( Addr a );
 __inline__ void set_tag ( Addr a, UInt tag );
-void union_tags_in_range(Addr a, SizeT len);
-__inline__ void union_tags_at_addr(Addr a1, Addr a2);
-__inline__ UInt find_canonical_tag(UInt tag);
+
+void val_uf_union_tags_in_range(Addr a, SizeT len);
+__inline__ void val_uf_union_tags_at_addr(Addr a1, Addr a2);
+__inline__ UInt val_uf_find_leader(UInt tag);
 
 #endif

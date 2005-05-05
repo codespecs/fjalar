@@ -28,6 +28,8 @@
 // that we currently want to print out
 #define MAX_STRING_STACK_SIZE 100
 
+int g_daikonVarIndex;
+
 char* fullNameStack[MAX_STRING_STACK_SIZE];
 int fullNameStackSize;
 

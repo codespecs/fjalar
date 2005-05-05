@@ -160,7 +160,7 @@ void printOneDtraceString(char* str)
   while (*str != '\0')
     {
       if (kvasir_with_dyncomp) {
-        union_tags_at_addr(strHead, (Addr)str);
+        val_uf_union_tags_at_addr(strHead, (Addr)str);
       }
 
       switch (*str) {
@@ -228,7 +228,7 @@ void printOneDtraceStringAsIntArray(char* str) {
   while (*str != '\0')
     {
       if (kvasir_with_dyncomp) {
-        union_tags_at_addr(strHead, (Addr)str);
+        val_uf_union_tags_at_addr(strHead, (Addr)str);
       }
 
       fprintf(dtrace_fp, "%d ", *str);
@@ -735,8 +735,8 @@ void printDtraceHashcode(DaikonVariable* var,
           // well as the tags of the base address and the current
           // address because we are observing everything as a sequence
           if (kvasir_with_dyncomp) {
-            union_tags_in_range(curAddr, sizeof(void*));
-            union_tags_at_addr(ptrValue, curAddr);
+            val_uf_union_tags_in_range(curAddr, sizeof(void*));
+            val_uf_union_tags_at_addr(ptrValue, curAddr);
           }
 	}
       fprintf(dtrace_fp, "]\n%d\n",
@@ -752,7 +752,7 @@ void printDtraceHashcode(DaikonVariable* var,
       // Since we observed all of these bytes as one value,
       // we will merge all of their tags in memory
       if (kvasir_with_dyncomp) {
-        union_tags_in_range(ptrValue, sizeof(void*));
+        val_uf_union_tags_in_range(ptrValue, sizeof(void*));
       }
     }
 }
@@ -785,7 +785,7 @@ char printDtraceString(DaikonVariable* var,
 	  currentPtr = (char*)ptrValue + (i * bytesBetweenElts);
 
           if (kvasir_with_dyncomp) {
-            union_tags_at_addr((Addr)ptrValue, (Addr)currentPtr);
+            val_uf_union_tags_at_addr((Addr)ptrValue, (Addr)currentPtr);
           }
 
 	  // Check if the whole string is legit
@@ -1051,7 +1051,7 @@ char printDtraceBaseValue(DaikonVariable* var,
 		      mapInitToModbit(1));
 
               if (kvasir_with_dyncomp) {
-                union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
+                val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
               }
 	  }
 	  else {
@@ -1070,8 +1070,8 @@ char printDtraceBaseValue(DaikonVariable* var,
                 else {TYPES_SWITCH(PRINT_STATIC_ARRAY)}
 
                 if (kvasir_with_dyncomp) {
-                  union_tags_in_range(curAddr, TYPE_BYTE_SIZES[decType]);
-                  union_tags_at_addr((Addr)ptrValue, curAddr);
+                  val_uf_union_tags_in_range(curAddr, TYPE_BYTE_SIZES[decType]);
+                  val_uf_union_tags_at_addr((Addr)ptrValue, curAddr);
                 }
 
                 fprintf(dtrace_fp, " ");
@@ -1143,8 +1143,8 @@ char printDtraceBaseValue(DaikonVariable* var,
 		fprintf(dtrace_fp, " ");
 
                 if (kvasir_with_dyncomp) {
-                  union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
-                  union_tags_at_addr((Addr)ptrValue, loc);
+                  val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
+                  val_uf_union_tags_at_addr((Addr)ptrValue, loc);
                 }
 	      }
 	      else
@@ -1154,8 +1154,8 @@ char printDtraceBaseValue(DaikonVariable* var,
                   else {TYPES_SWITCH(PRINT_ARRAY_VAR)}
 
                   if (kvasir_with_dyncomp) {
-                    union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
-                    union_tags_at_addr((Addr)ptrValue, loc);
+                    val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
+                    val_uf_union_tags_at_addr((Addr)ptrValue, loc);
                   }
 
                   fprintf(dtrace_fp, " ");
@@ -1177,7 +1177,7 @@ char printDtraceBaseValue(DaikonVariable* var,
           else {TYPES_SWITCH(PRINT_ONE_VAR)}
 
           if (kvasir_with_dyncomp) {
-            union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
+            val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
           }
 
 	  fprintf(dtrace_fp, "\n%d\n", mapInitToModbit(1));

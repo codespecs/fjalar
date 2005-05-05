@@ -279,35 +279,41 @@ typedef struct _DaikonFunctionInfo {
   // genallocateSMALLhashtable, but they still take up room
   // nonetheless.
 
-  // Variable comparability sets for this particular program point
-  // KEY: A 32-bit tag
-  // VALUE: uf_object corresponding to that tag
-  // (SMcC calls these var_uf)
-  struct genhashtable* ppt_entry_var_uf;
-  struct genhashtable* ppt_exit_var_uf;
+  // var_uf_map:
+  // Key: tag which is the leader of some entry in val_uf
+  // Value: uf_object
 
-  // TODO: I'm confused about this one!!!
-  // KEY: tag which is the leader of entries from val_uf
-  // VALUE: uf_object entry in var_uf
-  // (SMcC calls these the augmented version of var_uf for mapping the
-  //  leader of val_uf to entries in var_uf)
-  struct genhashtable* ppt_entry_leader_map;
-  struct genhashtable* ppt_exit_leader_map;
+  // Define a function (implemented as a non-null hashtable get)
+  // var_uf_map.exists(val_uf leader entry) returns true if entry from
+  // val_uf exists in var_uf_map.
 
-  // KEY: Daikon variable string
-  // VALUE: (Pointer to a calloc'ed) 32-bit tag which is the leader of
-  // the comparability set of the corresponding Daikon variable's
-  // value's tags
-  // (SMcC calls these var_tags)
-  struct genhashtable* ppt_entry_var_tags;
-  struct genhashtable* ppt_exit_var_tags;
+  // var_uf_map is the variable analogue to val_uf, which is the union-find
+  // for all values ever created in a program.
+  struct genhashtable* ppt_entry_var_uf_map;
+  struct genhashtable* ppt_exit_var_uf_map;
 
-  // KEY: Daikon variable string
-  // VALUE: (Pointer to a calloc'ed) 32-bit tag of the Daikon
-  // variable's value at this program point
-  // (SMcC calls these new_tags)
-  struct genhashtable* ppt_entry_new_tags;
-  struct genhashtable* ppt_exit_new_tags;
+  // var_tags: A fixed-sized array (indexed by the serial # of Daikon
+  // variables at that program point) which contains tags which are the
+  // leaders of the comparability sets of their value's tags at that
+  // program point.
+  UInt* ppt_entry_var_tags;
+  UInt* ppt_exit_var_tags;
+
+  // new_tags: A fixed-sized array (also indexed by # of Daikon variables)
+  // of the tags extracted by a certain Daikon variable's value at this
+  // program point.  This structure is updated EVERY TIME the program
+  // executes a program point by querying val_uf with the address of the
+  // variable's value being observed and getting back the tag.
+  UInt* ppt_entry_new_tags;
+  UInt* ppt_exit_new_tags;
+
+  // The size of var_tags and new_tags can be initialized during the .decls
+  // run because we can count up how many Daikon variables exist at that
+  // program point.  The number of Daikon variables as well as their order
+  // is maintained during all program point executions in the .dtrace run
+  // because the same traversal function is executing for both .decls and
+  // .dtrace (and more importantly, because Daikon expects the front-end
+  // output to maintain these variables in the same order).
 
 } DaikonFunctionInfo;
 

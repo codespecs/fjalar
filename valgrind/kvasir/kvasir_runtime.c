@@ -277,6 +277,9 @@ void handleFunctionEntrance(FunctionEntry* e)
       return;
     }
 
+  // Reset this properly!
+  g_daikonVarIndex = 0;
+
   currentFunctionEntryPtr = e;
 
   DPRINTF("About to outputFormalParamsAndGlobals for %s\n", e->name);
@@ -329,6 +332,9 @@ void handleFunctionExit(FunctionEntry* e)
     {
       return;
     }
+
+  // Reset this properly!
+  g_daikonVarIndex = 0;
 
   currentFunctionEntryPtr = e;
 

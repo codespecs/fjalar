@@ -29,6 +29,11 @@
 #include <assert.h>
 #include <search.h>
 
+// This increments every time outputDaikonVar is called and a full
+// Daikon name is successfully generated.  It is used to index into
+// the var_tags and new_tags arrays
+int g_daikonVarIndex = 0;
+
 FILE* decls_fp = 0; // File pointer for .decls file (this will point
                     // to the same thing as dtrace_fp by default since
                     // both .decls and .dtrace are outputted to .dtrace
@@ -765,6 +770,10 @@ int
 // char isEnter = 1 for function ENTER, 0 for EXIT
 void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
 {
+  // This is a GLOBAL so be careful :)
+  // Reset it before doing any traversals with outputDaikonVar
+  g_daikonVarIndex = 0;
+
   // Only dump the name once during function exit
   // because we want to get return values
   if (prog_pt_dump_fp && !isEnter)
@@ -795,12 +804,6 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
       fputs("\n", decls_fp);
     }
 
-  // Allocate program point data structures if we are using DynComp:
-  // (This should only be run once for every ppt)
-  if (kvasir_with_dyncomp) {
-    allocate_ppt_structures(funcPtr, isEnter);
-  }
-
   // Print out globals
   if (!kvasir_ignore_globals)
     {
@@ -830,6 +833,12 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
     }
 
   fputs("\n", decls_fp);
+
+  // Allocate program point data structures if we are using DynComp:
+  // (This should only be run once for every ppt)
+  if (kvasir_with_dyncomp) {
+    allocate_ppt_structures(funcPtr, isEnter, g_daikonVarIndex);
+  }
 }
 
 // Print out all function declarations in Daikon .decls format
@@ -1353,16 +1362,6 @@ void outputDaikonVar(DaikonVariable* var,
 
       fputs(fullDaikonName, out_file);
 
-
-      // Only for DynComp. This should be initialized exactly once for
-      // every program point which the execution reaches (when
-      // printing out .decls; outputType == DECLS_FILE).
-      if (kvasir_with_dyncomp &&
-          varFuncInfo &&
-          (DECLS_FILE == outputType)) {
-        initialize_ppt_structures(varFuncInfo, isEnter, fullDaikonName);
-      }
-
       // This has been moved earlier so that it gets integrated directly into
       // fullDaikonName:
       // Push an extra set of "[]" onboard so that Daikon doesn't choke
@@ -1433,11 +1432,11 @@ void outputDaikonVar(DaikonVariable* var,
 			  (varOrigin == FUNCTION_RETURN_VAR),
 			  disambigOverride);
 
-      // DynComp post-rocessing:
+      // DynComp post-processing:
       if (kvasir_with_dyncomp && variableHasBeenObserved) {
         DC_post_process_for_variable(varFuncInfo,
                                      isEnter,
-                                     fullDaikonName,
+                                     g_daikonVarIndex,
                                      (Addr)basePtrValue);
       }
 
@@ -1623,6 +1622,9 @@ void outputDaikonVar(DaikonVariable* var,
       VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
       abort();
     }
+
+  // Be very careful about where you increment this!
+  g_daikonVarIndex++;
 
   // Dereference and keep on printing out derived variables until we hit the base type:
   if (layersBeforeBase > 0)

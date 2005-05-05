@@ -1492,7 +1492,7 @@ pgbovine)
 Each program point has its own copy of the following data structures:
 
 var_uf_map:
-Key: tag which is a leader of some entry in val_uf
+Key: tag which is the leader of some entry in val_uf
 Value: uf_object
 
 Define a function (implemented as a non-null hashtable get)
@@ -1556,3 +1556,10 @@ Notice that val_uf is NEVER modified, only observed.  This is crucial
 in keeping the separation in layers between the variable (language)
 and value (memory) levels.  The concept is that tags may be merged at
 the variable level without being merged at the value level.
+
+
+Ok, remember to change this to something useful if we want Daikon to
+use comparability information:
+
+  fputs("VarComparability\nnone\n\n", decls_fp);
+

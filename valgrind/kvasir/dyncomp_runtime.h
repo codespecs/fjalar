@@ -26,21 +26,18 @@
 
 #include "generate_daikon_data.h"
 
-void allocate_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter);
+void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
+                             char isEnter,
+                             int numDaikonVars);
+
 void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter);
 
-void initialize_ppt_structures(DaikonFunctionInfo* funcPtr,
-                               char isEnter,
-                               char* fullDaikonName);
-
-UInt harvest_new_tag_value(DaikonFunctionInfo* funcPtr,
-                           char isEnter,
-                           char* fullDaikonName,
-                           Addr a);
 
 void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
                                   char isEnter,
-                                  char* fullDaikonName,
+                                  int daikonVarIndex,
                                   Addr a);
+
+int equivalentTags(UInt t1, UInt t2);
 
 #endif
