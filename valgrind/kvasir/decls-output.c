@@ -1176,6 +1176,7 @@ void outputDaikonVar(DaikonVariable* var,
   case DECLS_FILE: out_file = decls_fp; break;
   case DTRACE_FILE: out_file = dtrace_fp; break;
   case DISAMBIG_FILE: out_file = disambig_fp; break;
+  case DYNCOMP_EXTRA_PROP: out_file = 0; break;
   }
 
   if (!var)
@@ -1360,7 +1361,9 @@ void outputDaikonVar(DaikonVariable* var,
 	  fputs(fullDaikonName, var_dump_fp);
 	}
 
-      fputs(fullDaikonName, out_file);
+      if (out_file) {
+        fputs(fullDaikonName, out_file);
+      }
 
       // This has been moved earlier so that it gets integrated directly into
       // fullDaikonName:
@@ -1375,8 +1378,9 @@ void outputDaikonVar(DaikonVariable* var,
 
       VG_(free)(nameWithoutDereferences);
 
-      // .dtrace will need this for keeping track of run-time info:
-      if (DTRACE_FILE != outputType) {
+      // .dtrace and DynComp will need this for keeping track of run-time info:
+      if ((DTRACE_FILE != outputType) &&
+          (DYNCOMP_EXTRA_PROP != outputType)) {
         VG_(free)(fullDaikonName);
       }
     }
@@ -1396,7 +1400,9 @@ void outputDaikonVar(DaikonVariable* var,
       fputs("\n", var_dump_fp);
     }
 
-  fputs("\n", out_file);
+  if (out_file) {
+    fputs("\n", out_file);
+  }
 
   // .dtrace
   if (DTRACE_FILE == outputType)
@@ -1434,6 +1440,7 @@ void outputDaikonVar(DaikonVariable* var,
 
       // DynComp post-processing:
       if (kvasir_with_dyncomp && variableHasBeenObserved) {
+        VG_(printf)("%s (%d) ", fullDaikonName, g_daikonVarIndex);
         DC_post_process_for_variable(varFuncInfo,
                                      isEnter,
                                      g_daikonVarIndex,
@@ -1554,6 +1561,18 @@ void outputDaikonVar(DaikonVariable* var,
       fputs("22", out_file);
       fputs("\n", out_file);
     }
+  // DynComp - extra propagation at the end of the program's execution
+  else if (DYNCOMP_EXTRA_PROP == outputType) {
+
+    if (kvasir_with_dyncomp) {
+      VG_(printf)("%s (%d) ", fullDaikonName, g_daikonVarIndex);
+      DC_extra_propagation_post_process(varFuncInfo,
+                                        isEnter,
+                                        g_daikonVarIndex);
+    }
+
+    VG_(free)(fullDaikonName);
+  }
   // .disambig
   else if (DISAMBIG_FILE == outputType)
     {

@@ -47,7 +47,8 @@ typedef enum VariableOrigin {
 typedef enum OutputFileType {
   DECLS_FILE,
   DTRACE_FILE,
-  DISAMBIG_FILE
+  DISAMBIG_FILE,
+  DYNCOMP_EXTRA_PROP // only for DynComp
 } OutputFileType;
 
 // For use by vars_tree:

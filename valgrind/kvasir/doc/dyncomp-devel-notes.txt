@@ -1563,3 +1563,40 @@ use comparability information:
 
   fputs("VarComparability\nnone\n\n", decls_fp);
 
+
+
+Remember that we have to make one more pass at the VERY END of
+execution to account for actual argument interactions which occur
+AFTER all instances of the point have finished executing.  At the
+sweep in the end, we really don't have a valid address to use for any
+variables so we are not producing any new tags in the variable
+comparability sets.  We are merely reading the updated information
+from val_uf and, I guess, executing only the first part of our
+per-program-point-instance algorithm.
+
+
+
+In FloatTest.c:
+
+***EXIT returnIntSum - EBP=1388307368, lowestESP=1388307368
+a (0)  new_tags[0]: 1409, new_leader: 1409, var_tags[0]: 1409
+b (1)  new_tags[1]: 1409, new_leader: 1409, var_tags[1]: 1409
+return (2)  new_tags[2]: 0, new_leader: 0, var_tags[2]: 0
+
+Why does the return have a new_tags[2] of 0???  Look into the tags for
+the return values.
+
+I've isolated the problem in IntFromFloatTest.c.  It seems that there
+is a problem because when you're casting from double to int, it
+doesn't propagate the tags correctly.  This is likely to be a problem
+with the memory-level tracking.
+
+The offending function:
+
+int returnIntSum(double a, double b)
+{
+  return a + b;
+}
+
+What IR instruction (or series of IR instructions) performs the
+casting?

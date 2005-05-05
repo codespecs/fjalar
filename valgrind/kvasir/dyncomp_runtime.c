@@ -21,6 +21,9 @@
   General Public License for more details.
 */
 
+#include "generate_daikon_data.h"
+#include "decls-output.h"
+#include "kvasir_main.h"
 #include "dyncomp_runtime.h"
 #include "union_find.h"
 #include "GenericHashtable.h"
@@ -188,7 +191,6 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   // returns 0 so we don't do anything when there's no previous info.
   // to update
   //  tag leader = val_uf.find(var_tags[v]);
-  //  tag leader = val_uf.find(var_tags[v]);
   //  if (leader != var_tags[v]) {
   //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
   //  }
@@ -219,9 +221,123 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   //  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
+
+  VG_(printf)(" new_tags[%d]: %u, new_leader: %u, var_tags[%d]: %u\n",
+              daikonVarIndex,
+              new_tags_v,
+              new_leader,
+              daikonVarIndex,
+              var_tags[daikonVarIndex]);
 }
 
 // Super-trivial key comparison method -
 int equivalentTags(UInt t1, UInt t2) {
   return (t1 == t2);
+}
+
+
+// This runs once for every Daikon variable at the END of the target
+// program's execution
+
+// This is a simplified version of the algorithm in
+// DC_post_process_for_variable()
+void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
+                                       char isEnter,
+                                       int daikonVarIndex) {
+  UInt leader, var_tags_v;
+  struct genhashtable* var_uf_map;
+  UInt *var_tags;
+
+  if (isEnter) {
+    var_uf_map = funcPtr->ppt_entry_var_uf_map;
+    var_tags = funcPtr->ppt_entry_var_tags;
+  }
+  else {
+    var_uf_map = funcPtr->ppt_exit_var_uf_map;
+    var_tags = funcPtr->ppt_exit_var_tags;
+  }
+  // Update from any val_uf merges that have occurred for variables on
+  // previous executions of this program point.
+
+  // Make sure that the degenerate behavior of this line is that it
+  // returns 0 so we don't do anything when there's no previous info.
+  // to update
+  //  tag leader = val_uf.find(var_tags[v]);
+  //  if (leader != var_tags[v]) {
+  //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
+  //  }
+  var_tags_v = var_tags[daikonVarIndex];
+  leader = val_uf_find_leader(var_tags_v);
+  if (leader != var_tags_v) {
+    var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
+                                                leader, var_tags_v);
+  }
+
+  VG_(printf)(" var_tags[%d]: %u (final)\n",
+              daikonVarIndex,
+              var_tags[daikonVarIndex]);
+}
+
+// char isEnter = 1 for function ENTER, 0 for EXIT
+static void DC_extra_propagate_one_function(DaikonFunctionInfo* funcPtr,
+                                            char isEnter)
+{
+  extern FunctionTree* globalFunctionTree;
+
+  // This is a GLOBAL so be careful :)
+  // Reset it before doing any traversals with outputDaikonVar
+  g_daikonVarIndex = 0;
+
+  VG_(printf)("Extra propagation: %s():::", funcPtr->name);
+  if (isEnter) {
+    VG_(printf)("ENTER\n");
+  }
+  else {
+    VG_(printf)("EXIT\n");
+  }
+
+  // Propagate through globals
+  if (!kvasir_ignore_globals) {
+    printVariablesInVarList(funcPtr, isEnter, GLOBAL_VAR, 0,
+                            DYNCOMP_EXTRA_PROP, 0,
+                            (globalFunctionTree ?
+                             globalFunctionTree->function_variables_tree : 0),
+                            0, 0);
+  }
+
+  // Propagate through formal params.
+  printVariablesInVarList(funcPtr, isEnter,
+  			  (isEnter ?
+  			   FUNCTION_ENTER_FORMAL_PARAM :
+  			   FUNCTION_EXIT_FORMAL_PARAM),
+  			  0, DYNCOMP_EXTRA_PROP, !isEnter,
+  			  funcPtr->trace_vars_tree, 0, 0);
+
+  // If EXIT, propagate through return value
+  if (!isEnter) {
+    printVariablesInVarList(funcPtr, isEnter, FUNCTION_RETURN_VAR, 0,
+                            DYNCOMP_EXTRA_PROP, !isEnter,
+                            funcPtr->trace_vars_tree, 0 ,0);
+  }
+}
+
+
+// Do one extra round of value-to-variable tag comparability set
+// propagations at the end of program execution
+void DC_extra_propagate_val_to_var_sets() {
+  VG_(printf)("DC_extra_propagate_val_to_var_sets()\n");
+  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
+
+  while(!it->finished) {
+    DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*)
+         gengettable(DaikonFunctionInfoTable, gennext(it));
+
+    if (!cur_entry)
+         continue;
+
+    DC_extra_propagate_one_function(cur_entry, 1);
+    DC_extra_propagate_one_function(cur_entry, 0);
+  }
+
+  genfreeiterator(it);
 }

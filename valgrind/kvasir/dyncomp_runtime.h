@@ -38,6 +38,12 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
                                   int daikonVarIndex,
                                   Addr a);
 
+void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
+                                       char isEnter,
+                                       int daikonVarIndex);
+
 int equivalentTags(UInt t1, UInt t2);
+
+void DC_extra_propagate_val_to_var_sets();
 
 #endif

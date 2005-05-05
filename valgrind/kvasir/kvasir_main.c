@@ -617,5 +617,14 @@ void kvasir_finish() {
     generateDisambigFile();
   }
 
+  if (kvasir_with_dyncomp) {
+    DC_extra_propagate_val_to_var_sets();
+  }
+
+  if (kvasir_with_dyncomp) {
+     extern UInt nextTag;
+     VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
+  }
+
   finishDtraceFile();
 }

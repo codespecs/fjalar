@@ -45,8 +45,6 @@
 /* Define to debug the mem audit system. */
 /* #define VG_DEBUG_MEMORY */
 
-extern UInt nextTag;
-
 #define DEBUG(fmt, args...) //VG_(printf)(fmt, ## args)
 
 /*------------------------------------------------------------*/
@@ -2061,10 +2059,6 @@ void TL_(post_clo_init) ( void )
 
 void TL_(fini) ( Int exitcode )
 {
-   if (kvasir_with_dyncomp) {
-      VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
-   }
-
    kvasir_finish();
 
    // PG - Disable MemCheck memory leak detection to speed up Kvasir
