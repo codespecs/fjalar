@@ -366,9 +366,16 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       hname = "MC_(helperc_MERGE_TAGS)";
       break;
 
-      // These don't feel like interactions from the descriptions
-      // of the arguments as type 'rounding mode' and 'data',
-      // respectively.
+      // Deprecated comment:
+      // (These don't feel like interactions from the descriptions
+      //  of the arguments as type 'rounding mode' and 'data',
+      //  respectively.)
+      // Revised comment:
+      //   Ok, for these, we need to pass along the tag of the data
+      //   argument and ignore the tag of the rounding mode argument.
+      //   This doesn't qualify as an interaction, but we need to still
+      //   pass along some tag or else we will just end up with a 0 tag,
+      //   which is bad.
    case Iop_RoundF64:
    case Iop_F64toI64:
    case Iop_I64toF64:
@@ -379,6 +386,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_F64toI16:
       /* First arg is I32 (rounding mode), second is F64 (data). */
    case Iop_CmpF64:
+      // Remember to pass along the tag of the SECOND argument:
+      return vatom2;
+      break;
 
       // These two are just bogus
    case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */

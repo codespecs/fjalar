@@ -1600,3 +1600,39 @@ int returnIntSum(double a, double b)
 
 What IR instruction (or series of IR instructions) performs the
 casting?
+
+
+----------
+2005-05-08
+----------
+
+SMcC's nifty trick to get inline C and assembly listings:
+
+For every .c file:
+Make .o file with gcc -c and debugging and -Wa,-aldhs
+Pipe it to a file
+
+e.g.
+gcc -c -g IntFromFloatTest.c -Wa,-aldhs > IntFromFloatTest.S
+
+It looks like it's doing some crazy-ass thing to convert double into
+int, so maybe one of these steps isn't triggering an 'interaction':
+
+   3:IntFromFloatTest.c ****   return a + b;
+  26              		.loc 1 3 0
+  27 0012 DD45F8   		fldl	-8(%ebp)
+  28 0015 DC45F0   		faddl	-16(%ebp)
+  29 0018 D97DEE   		fnstcw	-18(%ebp)
+  30 001b 0FB745EE 		movzwl	-18(%ebp), %eax
+  31 001f 660D000C 		orw	$3072, %ax
+  32 0023 668945EC 		movw	%ax, -20(%ebp)
+  33 0027 D96DEC   		fldcw	-20(%ebp)
+  34 002a DB5DE8   		fistpl	-24(%ebp)
+  35 002d D96DEE   		fldcw	-18(%ebp)
+  36 0030 8B45E8   		movl	-24(%ebp), %eax
+
+
+Ok, I see what the problem is (I think).  In
+dyncomp_translate.c:expr2tags_Binop_DC(), we don't properly handle
+floating-point to integer conversions (i.e. Iop_F64toI32) so we need
+to add that handling right now.
