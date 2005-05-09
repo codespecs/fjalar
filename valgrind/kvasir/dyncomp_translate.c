@@ -254,103 +254,45 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    // (The conditions within this switch will have
    //  to be heavily refined as this tool matures)
 
-   // Ok, so this was ripped from the switch statement in
-   // expr2vbits_Binop (with a few copy-and-paste parts from
-   // libvex_ir.h) but for a complete list of binary (as well as
-   // unary) operations, look in vex/pub/libvex_ir.h in the enum
-   // definition for IROp
+   // These opcodes come from the definition of IROp in libvex_ir.h:
    switch (op) {
-      // Standard-faire arithmetic operations
-      // which definitely qualify as interactions
-   case Iop_Add64:
-   case Iop_Sub64:
 
-   case Iop_MullS32: case Iop_MullU32:
-   case Iop_Mul32:
-   case Iop_Add32:
-   case Iop_Sub32:
+      // ---------------------------------
+      // Merge the tags of both arguments:
+      // ---------------------------------
 
-   case Iop_MullS16: case Iop_MullU16:
-   case Iop_Mul16:
-   case Iop_Add16:
-   case Iop_Sub16:
+      // Arithmetic operations and bitwise AND/OR/XOR's
+      // definitely qualify as interactions:
 
-   case Iop_MullS8: case Iop_MullU8:
-   case Iop_Sub8:
-   case Iop_Add8:
-
+      // Integers:
+   case Iop_Add8:  case Iop_Add16:  case Iop_Add32:  case Iop_Add64:
+   case Iop_Sub8:  case Iop_Sub16:  case Iop_Sub32:  case Iop_Sub64:
+      /* Signless mul.  MullS/MullU is elsewhere. */
+   case Iop_Mul8:  case Iop_Mul16:  case Iop_Mul32:  case Iop_Mul64:
+   case Iop_Or8:   case Iop_Or16:   case Iop_Or32:   case Iop_Or64:
+   case Iop_And8:  case Iop_And16:  case Iop_And32:  case Iop_And64:
+   case Iop_Xor8:  case Iop_Xor16:  case Iop_Xor32:  case Iop_Xor64:
+      /* Widening multiplies */
+   case Iop_MullS8: case Iop_MullS16: case Iop_MullS32: case Iop_MullS64:
+   case Iop_MullU8: case Iop_MullU16: case Iop_MullU32: case Iop_MullU64:
+      /* Division */
+      /* TODO: clarify semantics wrt rounding, negative values, whatever */
    case Iop_DivU32:   // :: I32,I32 -> I32 (simple div, no mod)
    case Iop_DivS32:   // ditto, signed
+
+   case Iop_DivModU64to32: // :: I64,I32 -> I64
+      // of which lo half is div and hi half is mod
+   case Iop_DivModS64to32: // ditto, signed
 
    case Iop_DivModU128to64: // :: V128,I64 -> V128
       // of which lo half is div and hi half is mod
    case Iop_DivModS128to64: // ditto, signed
 
-      // Only these two division ones are in Memcheck
-      // (the other ones I had to lift from libvex_ir.h):
-   case Iop_DivModU64to32: // :: I64,I32 -> I64
-      // of which lo half is div and hi half is mod
-   case Iop_DivModS64to32: // ditto, signed
-
-      helper = &MC_(helperc_MERGE_TAGS);
-      hname = "MC_(helperc_MERGE_TAGS)";
-      break;
-
-      // I don't think comparisons qualify as interactions
-   case Iop_CmpEQ32:
-   case Iop_CmpLE32S:
-   case Iop_CmpLE32U:
-   case Iop_CmpLT32U:
-   case Iop_CmpLT32S:
-   case Iop_CmpNE32:
-   case Iop_CmpEQ16: case Iop_CmpNE16:
-   case Iop_CmpEQ8: case Iop_CmpNE8:
-      break;
-
-      // Shifts are special.  In z = x << y,
-      // we want the comparability sets to be (x, z) (y)
-      // because z is formed from x, but the shift amount
-      // y is really a different abstract type than x and z.
-      // Thus, I think the correct behavior is to simply
-      // return vatom1 (which is the tag of x, in this case)
-      // without merging the tags of vatom1 and vatom2
-   case Iop_Shl32: case Iop_Shr32: case Iop_Sar32:
-   case Iop_Shl16: case Iop_Shr16: case Iop_Sar16:
-   case Iop_Shl8: case Iop_Shr8:
-   case Iop_Shl64: case Iop_Shr64:
-      return vatom1;
-      break;
-
-      // TODO: Are these bit-wise (interactions)
-      //       or logical (not interactions)?
-   case Iop_AndV128:
-   case Iop_And64:
-   case Iop_And32:
-   case Iop_And16:
-   case Iop_And8:
-
-   case Iop_OrV128:
-   case Iop_Or64:
-   case Iop_Or32:
-   case Iop_Or16:
-   case Iop_Or8:
-
-   case Iop_Xor8:
-   case Iop_Xor16:
-   case Iop_Xor32:
-   case Iop_Xor64:
-   case Iop_XorV128:
-      break;
-
       /* ------ Floating point.  We try and be IEEE754 compliant. ------ */
 
-      // These all look like interactions:
-
       /* Binary operations mandated by IEEE754. */
-   case Iop_AddF64:
-   case Iop_DivF64:
-   case Iop_SubF64:
-   case Iop_MulF64:
+   case Iop_AddF64: case Iop_SubF64: case Iop_MulF64: case Iop_DivF64: /* Iop_RemF64, */
+
       /* Binary ops supported by IA32 but not mandated by 754. */
    case Iop_AtanF64:       /* FPATAN,  arctan(arg1/arg2)       */
    case Iop_Yl2xF64:       /* FYL2X,   arg1 * log2(arg2)       */
@@ -362,225 +304,269 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          as the IEEE mandated RemF64, except it is limited in the
          range of its operand.  Hence the partialness. */
 
+      /* ------------------ 64-bit SIMD Integer. ------------------ */
+
+      /* ADDITION (normal / unsigned sat / signed sat) */
+   case Iop_Add8x8:   case Iop_Add16x4:   case Iop_Add32x2:
+   case Iop_QAdd8Ux8: case Iop_QAdd16Ux4:
+   case Iop_QAdd8Sx8: case Iop_QAdd16Sx4:
+
+      /* SUBTRACTION (normal / unsigned sat / signed sat) */
+   case Iop_Sub8x8:   case Iop_Sub16x4:   case Iop_Sub32x2:
+   case Iop_QSub8Ux8: case Iop_QSub16Ux4:
+   case Iop_QSub8Sx8: case Iop_QSub16Sx4:
+
+      /* MULTIPLICATION (normal / high half of signed/unsigned) */
+   case Iop_Mul16x4:
+   case Iop_MulHi16Ux4:
+   case Iop_MulHi16Sx4:
+
+      /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
+   case Iop_Avg8Ux8:
+   case Iop_Avg16Ux4:
+
+      /* MIN/MAX */
+   case Iop_Max16Sx4:
+   case Iop_Max8Ux8:
+   case Iop_Min16Sx4:
+   case Iop_Min8Ux8:
+
+      /* ------------------ 128-bit SIMD FP. ------------------ */
+
+      /* --- 32x4 vector FP --- */
+
+   case Iop_Add32Fx4: case Iop_Sub32Fx4: case Iop_Mul32Fx4: case Iop_Div32Fx4:
+   case Iop_Max32Fx4: case Iop_Min32Fx4:
+
+      /* --- 32x4 lowest-lane-only scalar FP --- */
+
+   case Iop_Add32F0x4: case Iop_Sub32F0x4: case Iop_Mul32F0x4: case Iop_Div32F0x4:
+   case Iop_Max32F0x4: case Iop_Min32F0x4:
+
+      /* --- 64x2 vector FP --- */
+
+   case Iop_Add64Fx2: case Iop_Sub64Fx2: case Iop_Mul64Fx2: case Iop_Div64Fx2:
+   case Iop_Max64Fx2: case Iop_Min64Fx2:
+
+      /* --- 64x2 lowest-lane-only scalar FP --- */
+
+   case Iop_Add64F0x2: case Iop_Sub64F0x2: case Iop_Mul64F0x2: case Iop_Div64F0x2:
+   case Iop_Max64F0x2: case Iop_Min64F0x2:
+
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
+
+      /* BITWISE OPS */
+   case Iop_AndV128: case Iop_OrV128: case Iop_XorV128:
+
+      /* ADDITION (normal / unsigned sat / signed sat) */
+   case Iop_Add8x16:   case Iop_Add16x8:   case Iop_Add32x4:  case Iop_Add64x2:
+   case Iop_QAdd8Ux16: case Iop_QAdd16Ux8:
+   case Iop_QAdd8Sx16: case Iop_QAdd16Sx8:
+
+      /* SUBTRACTION (normal / unsigned sat / signed sat) */
+   case Iop_Sub8x16:   case Iop_Sub16x8:   case Iop_Sub32x4:  case Iop_Sub64x2:
+   case Iop_QSub8Ux16: case Iop_QSub16Ux8:
+   case Iop_QSub8Sx16: case Iop_QSub16Sx8:
+
+      /* MULTIPLICATION (normal / high half of signed/unsigned) */
+   case Iop_Mul16x8:
+   case Iop_MulHi16Ux8:
+   case Iop_MulHi16Sx8:
+
+      /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
+   case Iop_Avg8Ux16:
+   case Iop_Avg16Ux8:
+
+      /* MIN/MAX */
+   case Iop_Max16Sx8:
+   case Iop_Max8Ux16:
+   case Iop_Min16Sx8:
+   case Iop_Min8Ux16:
+
+
+      // Conversions where we concatenate two arguments together to form a
+      // larger one seem to qualify as interactions:
+
+      /* 8 <-> 16 bit conversions */
+   case Iop_8HLto16:    // :: (I8,I8) -> I16
+      /* 16 <-> 32 bit conversions */
+   case Iop_16HLto32:   // :: (I16,I16) -> I32
+      /* 32 <-> 64 bit conversions */
+   case Iop_32HLto64:   // :: (I32,I32) -> I64
+      /* 64 <-> 128 bit conversions */
+   case Iop_64HLto128:  // :: (I64,I64) -> I128
+
+      // 128-bit SIMD FP
+   case Iop_64HLtoV128:   // :: (I64,I64) -> V128
+
+
+      // Weird 64-bit SIMD narrowing and interleave seem like interactions,
+      // although this is a bit shadiy
+      /* NARROWING -- narrow 2xI64 into 1xI64, hi half from left arg */
+   case Iop_QNarrow16Ux4:
+   case Iop_QNarrow16Sx4:
+   case Iop_QNarrow32Sx2:
+
+      /* INTERLEAVING -- interleave lanes from low or high halves of
+         operands.  Most-significant result lane is from the left
+         arg. */
+   case Iop_InterleaveHI8x8: case Iop_InterleaveHI16x4: case Iop_InterleaveHI32x2:
+   case Iop_InterleaveLO8x8: case Iop_InterleaveLO16x4: case Iop_InterleaveLO32x2:
+
+      // Ditto for 128-bit SIMD integer narrowing and interleaving
+
+      /* NARROWING -- narrow 2xV128 into 1xV128, hi half from left arg */
+   case Iop_QNarrow16Ux8:
+   case Iop_QNarrow16Sx8:
+   case Iop_QNarrow32Sx4:
+
+      /* INTERLEAVING -- interleave lanes from low or high halves of
+         operands.  Most-significant result lane is from the left
+         arg. */
+   case Iop_InterleaveHI8x16: case Iop_InterleaveHI16x8:
+   case Iop_InterleaveHI32x4: case Iop_InterleaveHI64x2:
+   case Iop_InterleaveLO8x16: case Iop_InterleaveLO16x8:
+   case Iop_InterleaveLO32x4: case Iop_InterleaveLO64x2:
+
       helper = &MC_(helperc_MERGE_TAGS);
       hname = "MC_(helperc_MERGE_TAGS)";
       break;
 
-      // Deprecated comment:
-      // (These don't feel like interactions from the descriptions
-      //  of the arguments as type 'rounding mode' and 'data',
-      //  respectively.)
-      // Revised comment:
-      //   Ok, for these, we need to pass along the tag of the data
-      //   argument and ignore the tag of the rounding mode argument.
-      //   This doesn't qualify as an interaction, but we need to still
-      //   pass along some tag or else we will just end up with a 0 tag,
-      //   which is bad.
+
+      // -----------------------------------
+      // Return the tag of the 1st argument:
+      // -----------------------------------
+
+      // Shifts are special.  In z = x << y,
+      // we want the comparability sets to be {x, z} {y}
+      // because z is formed from x, but the shift amount
+      // y is really a different abstract type than x and z.
+      // Thus, I think the correct behavior is to simply
+      // return vatom1 (which is the tag of x, in this case)
+      // without merging the tags of vatom1 and vatom2
+
+      // Integer shifts:
+   case Iop_Shl8:  case Iop_Shl16:  case Iop_Shl32:  case Iop_Shl64:
+   case Iop_Shr8:  case Iop_Shr16:  case Iop_Shr32:  case Iop_Shr64:
+   case Iop_Sar8:  case Iop_Sar16:  case Iop_Sar32:  case Iop_Sar64:
+
+      // 64-bit SIMD integer shifts:
+
+      /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
+   case Iop_ShlN16x4: case Iop_ShlN32x2:
+   case Iop_ShrN16x4: case Iop_ShrN32x2:
+   case Iop_SarN16x4: case Iop_SarN32x2:
+
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
+
+      /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
+   case Iop_ShlN16x8: case Iop_ShlN32x4: case Iop_ShlN64x2:
+   case Iop_ShrN16x8: case Iop_ShrN32x4: case Iop_ShrN64x2:
+   case Iop_SarN16x8: case Iop_SarN32x4:
+
+      // From the looks of the spec., we want to return the tag
+      // of the first argument
+   case Iop_SetV128lo32:  // :: (V128,I32) -> V128
+
+      return vatom1;
+      break;
+
+
+      // -----------------------------------
+      // Return the tag of the 2nd argument:
+      // -----------------------------------
+
+      // Floating-point to integer conversions are special.  For
+      // these, we need to pass along the tag of the data argument
+      // (the second one) and ignore the tag of the rounding mode
+      // argument (the first one).  This doesn't qualify as an
+      // interaction, but we need to still pass along some tag or else
+      // we will just end up with a 0 tag, which is bad.
+
+      /* --- Int to/from FP conversions. --- */
+      /* For the most part, these take a first argument :: Ity_I32
+         (as IRRoundingMode) which is an indication of the rounding
+         mode to use, as per the following encoding:
+            00b  to nearest (the default)
+            01b  to -infinity
+            10b  to +infinity
+            11b  to zero
+         This just happens to be the Intel encoding.  For reference only,
+         the PPC encoding is:
+            00b  to nearest (the default)
+            01b  to zero
+            10b  to +infinity
+            11b  to -infinity
+         Any PPC -> IR front end will have to translate these PPC
+         encodings to the standard encodings.
+
+         If one of these conversions gets an out-of-range condition,
+         or a NaN, as an argument, the result is host-defined.  On x86
+         the "integer indefinite" value 0x80..00 is produced.
+         On PPC it is either 0x80..00 or 0x7F..FF depending on the sign
+         of the argument.
+
+         Rounding is required whenever the destination type cannot
+         represent exactly all values of the source type.
+      */
+   case Iop_F64toI16:  /* IRRoundingMode(I32) x F64 -> I16 */
+   case Iop_F64toI32:  /* IRRoundingMode(I32) x F64 -> I32 */
+   case Iop_F64toI64:  /* IRRoundingMode(I32) x F64 -> I64 */
+   case Iop_I64toF64:  /* IRRoundingMode(I32) x I64 -> F64 */
+   case Iop_F64toF32:  /* IRRoundingMode(I32) x F64 -> F32 */
+      /* F64 -> F64, also takes an I32 first argument encoding the
+         rounding mode. */
    case Iop_RoundF64:
-   case Iop_F64toI64:
-   case Iop_I64toF64:
-      /* Takes two F64 args. */
-   case Iop_F64toI32:
-   case Iop_F64toF32:
-      /* First arg is I32 (rounding mode), second is F64 (data). */
-   case Iop_F64toI16:
-      /* First arg is I32 (rounding mode), second is F64 (data). */
-   case Iop_CmpF64:
-      // Remember to pass along the tag of the SECOND argument:
+
       return vatom2;
       break;
 
-      // These two are just bogus
-   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
+
+      // ------------------------
+      // Return a fresh tag of 0:
+      // ------------------------
+
+      // Comparisons do not qualify as interactions
+
+      /* Integer comparisons. */
+   case Iop_CmpEQ8:  case Iop_CmpEQ16:  case Iop_CmpEQ32:  case Iop_CmpEQ64:
+   case Iop_CmpNE8:  case Iop_CmpNE16:  case Iop_CmpNE32:  case Iop_CmpNE64:
+   case Iop_CmpLT32S:
+   case Iop_CmpLE32S:
+   case Iop_CmpLT32U:
+   case Iop_CmpLE32U:
+
+      // Floating-point comparison
+   case Iop_CmpF64:
+
+      // 64-bit SIMD integer comparisons
+      /* MISC (vector integer cmp != 0) */
+   case Iop_CmpNEZ8x8: case Iop_CmpNEZ16x4: case Iop_CmpNEZ32x2:
+
+      /* COMPARISON */
+   case Iop_CmpEQ8x8:  case Iop_CmpEQ16x4:  case Iop_CmpEQ32x2:
+   case Iop_CmpGT8Sx8: case Iop_CmpGT16Sx4: case Iop_CmpGT32Sx2:
+
+      // 128-bit SIMD FP
+   case Iop_CmpEQ32Fx4: case Iop_CmpLT32Fx4: case Iop_CmpLE32Fx4: case Iop_CmpUN32Fx4:
+   case Iop_CmpEQ32F0x4: case Iop_CmpLT32F0x4: case Iop_CmpLE32F0x4: case Iop_CmpUN32F0x4:
+   case Iop_CmpEQ64Fx2: case Iop_CmpLT64Fx2: case Iop_CmpLE64Fx2: case Iop_CmpUN64Fx2:
+   case Iop_CmpEQ64F0x2: case Iop_CmpLT64F0x2: case Iop_CmpLE64F0x2: case Iop_CmpUN64F0x2:
+
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
+
+      /* MISC (vector integer cmp != 0) */
+   case Iop_CmpNEZ8x16: case Iop_CmpNEZ16x8: case Iop_CmpNEZ32x4: case Iop_CmpNEZ64x2:
+
+      /* COMPARISON */
+   case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
+   case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
+
+      // Random bogus stuff do not qualify as interactions
+
    case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
-      break;
+   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
 
-      // I guess these qualify as interactions
-      // because we are concatenating two smaller things
-      // together into one larger one, but this is shady
-   case Iop_16HLto32:   // :: (I16,I16) -> I32
-   case Iop_32HLto64:   // :: (I32,I32) -> I64
-
-      /* 64-bit SIMD */
-
-      // See the special treatment of shifts above
-   case Iop_ShrN16x4:
-   case Iop_ShrN32x2:
-   case Iop_SarN16x4:
-   case Iop_SarN32x2:
-   case Iop_ShlN16x4:
-   case Iop_ShlN32x2:
-      return vatom1;
-      break;
-
-   case Iop_QNarrow32Sx2:
-   case Iop_QNarrow16Sx4:
-   case Iop_QNarrow16Ux4:
-      break;
-
-      // Arithmetic implies interaction:
-   case Iop_Min8Ux8:
-   case Iop_Max8Ux8:
-   case Iop_Avg8Ux8:
-   case Iop_QSub8Sx8:
-   case Iop_QSub8Ux8:
-   case Iop_Sub8x8:
-   case Iop_QAdd8Sx8:
-   case Iop_QAdd8Ux8:
-   case Iop_Add8x8:
-
-   case Iop_Min16Sx4:
-   case Iop_Max16Sx4:
-   case Iop_Avg16Ux4:
-   case Iop_QSub16Ux4:
-   case Iop_QSub16Sx4:
-   case Iop_Sub16x4:
-   case Iop_Mul16x4:
-   case Iop_MulHi16Sx4:
-   case Iop_MulHi16Ux4:
-   case Iop_QAdd16Sx4:
-   case Iop_QAdd16Ux4:
-   case Iop_Add16x4:
-
-   case Iop_Sub32x2:
-   case Iop_Add32x2:
-
-      helper = &MC_(helperc_MERGE_TAGS);
-      hname = "MC_(helperc_MERGE_TAGS)";
-      break;
-
-      // Comparisons don't seem to be interactions
-   case Iop_CmpGT8Sx8:
-   case Iop_CmpEQ8x8:
-   case Iop_CmpGT16Sx4:
-   case Iop_CmpEQ16x4:
-   case Iop_CmpGT32Sx2:
-   case Iop_CmpEQ32x2:
-      break;
-
-      /* 64-bit data-steering */
-   case Iop_InterleaveLO32x2:
-   case Iop_InterleaveLO16x4:
-   case Iop_InterleaveLO8x8:
-   case Iop_InterleaveHI32x2:
-   case Iop_InterleaveHI16x4:
-   case Iop_InterleaveHI8x8:
-      break;
-
-      /* V128-bit SIMD */
-
-      // Shifts:
-   case Iop_ShrN16x8:
-   case Iop_ShrN32x4:
-   case Iop_ShrN64x2:
-   case Iop_SarN16x8:
-   case Iop_SarN32x4:
-   case Iop_ShlN16x8:
-   case Iop_ShlN32x4:
-   case Iop_ShlN64x2:
-      return vatom1;
-      break;
-
-      // Arithmetic
-   case Iop_QSub8Ux16:
-   case Iop_QSub8Sx16:
-   case Iop_Sub8x16:
-   case Iop_Min8Ux16:
-   case Iop_Max8Ux16:
-   case Iop_Avg8Ux16:
-   case Iop_QAdd8Ux16:
-   case Iop_QAdd8Sx16:
-   case Iop_Add8x16:
-
-   case Iop_QSub16Ux8:
-   case Iop_QSub16Sx8:
-   case Iop_Sub16x8:
-   case Iop_Mul16x8:
-   case Iop_MulHi16Sx8:
-   case Iop_MulHi16Ux8:
-   case Iop_Min16Sx8:
-   case Iop_Max16Sx8:
-   case Iop_Avg16Ux8:
-   case Iop_QAdd16Ux8:
-   case Iop_QAdd16Sx8:
-   case Iop_Add16x8:
-
-   case Iop_Sub32x4:
-   case Iop_Add32x4:
-
-   case Iop_Sub64x2:
-   case Iop_Add64x2:
-
-   case Iop_Sub64Fx2:
-   case Iop_Mul64Fx2:
-   case Iop_Min64Fx2:
-   case Iop_Max64Fx2:
-   case Iop_Div64Fx2:
-   case Iop_Add64Fx2:
-
-   case Iop_Sub64F0x2:
-   case Iop_Mul64F0x2:
-   case Iop_Min64F0x2:
-   case Iop_Max64F0x2:
-   case Iop_Div64F0x2:
-   case Iop_Add64F0x2:
-
-   case Iop_Sub32Fx4:
-   case Iop_Mul32Fx4:
-   case Iop_Min32Fx4:
-   case Iop_Max32Fx4:
-   case Iop_Div32Fx4:
-   case Iop_Add32Fx4:
-
-   case Iop_Sub32F0x4:
-   case Iop_Mul32F0x4:
-   case Iop_Min32F0x4:
-   case Iop_Max32F0x4:
-   case Iop_Div32F0x4:
-   case Iop_Add32F0x4:
-
-      helper = &MC_(helperc_MERGE_TAGS);
-      hname = "MC_(helperc_MERGE_TAGS)";
-      break;
-
-      // Comparisons:
-   case Iop_CmpGT8Sx16:
-   case Iop_CmpEQ8x16:
-   case Iop_CmpGT16Sx8:
-   case Iop_CmpEQ16x8:
-   case Iop_CmpGT32Sx4:
-   case Iop_CmpEQ32x4:
-   case Iop_CmpLT64Fx2:
-   case Iop_CmpLE64Fx2:
-   case Iop_CmpEQ64Fx2:
-   case Iop_CmpLT64F0x2:
-   case Iop_CmpLE64F0x2:
-   case Iop_CmpEQ64F0x2:
-   case Iop_CmpLT32F0x4:
-   case Iop_CmpLE32F0x4:
-   case Iop_CmpEQ32F0x4:
-   case Iop_CmpLT32Fx4:
-   case Iop_CmpLE32Fx4:
-   case Iop_CmpEQ32Fx4:
-      break;
-
-   case Iop_QNarrow32Sx4:
-   case Iop_QNarrow16Sx8:
-   case Iop_QNarrow16Ux8:
-      break;
-
-      /* V128-bit data-steering */
-   case Iop_SetV128lo32:
-   case Iop_SetV128lo64:
-   case Iop_64HLtoV128:
-   case Iop_InterleaveLO64x2:
-   case Iop_InterleaveLO32x4:
-   case Iop_InterleaveLO16x8:
-   case Iop_InterleaveLO8x16:
-   case Iop_InterleaveHI64x2:
-   case Iop_InterleaveHI32x4:
-   case Iop_InterleaveHI16x8:
-   case Iop_InterleaveHI8x16:
       break;
 
       // Hopefully we will never get here if we've had had cases which
@@ -659,88 +645,6 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
    //       we only consider the tag of the first bytes of each
    //       operand anyways.
    return vatom;
-
-/*    switch (op) { */
-
-/*       case Iop_Sqrt64Fx2: */
-/*          return unary64Fx2(dce, vatom); */
-
-/*       case Iop_Sqrt64F0x2: */
-/*          return unary64F0x2(dce, vatom); */
-
-/*       case Iop_Sqrt32Fx4: */
-/*       case Iop_RSqrt32Fx4: */
-/*       case Iop_Recip32Fx4: */
-/*          return unary32Fx4(dce, vatom); */
-
-/*       case Iop_Sqrt32F0x4: */
-/*       case Iop_RSqrt32F0x4: */
-/*       case Iop_Recip32F0x4: */
-/*          return unary32F0x4(dce, vatom); */
-
-/*       case Iop_32UtoV128: */
-/*       case Iop_64UtoV128: */
-/*          return assignNew_DC(dce, Ity_V128, unop(op, vatom)); */
-
-/*       case Iop_F32toF64: */
-/*       case Iop_I32toF64: */
-/*       case Iop_NegF64: */
-/*       case Iop_SinF64: */
-/*       case Iop_CosF64: */
-/*       case Iop_TanF64: */
-/*       case Iop_SqrtF64: */
-/*       case Iop_AbsF64: */
-/*       case Iop_2xm1F64: */
-/*          return mkPCastTo(dce, Ity_I64, vatom); */
-
-/*       case Iop_Clz32: */
-/*       case Iop_Ctz32: */
-/*          return mkPCastTo(dce, Ity_I32, vatom); */
-
-/*       case Iop_32Sto64: */
-/*       case Iop_32Uto64: */
-/*       case Iop_V128to64: */
-/*       case Iop_V128HIto64: */
-/*          return assignNew_DC(dce, Ity_I64, unop(op, vatom)); */
-
-/*       case Iop_64to32: */
-/*       case Iop_64HIto32: */
-/*       case Iop_1Uto32: */
-/*       case Iop_8Uto32: */
-/*       case Iop_16Uto32: */
-/*       case Iop_16Sto32: */
-/*       case Iop_8Sto32: */
-/*          return assignNew_DC(dce, Ity_I32, unop(op, vatom)); */
-
-/*       case Iop_8Sto16: */
-/*       case Iop_8Uto16: */
-/*       case Iop_32to16: */
-/*       case Iop_32HIto16: */
-/*          return assignNew_DC(dce, Ity_I16, unop(op, vatom)); */
-
-/*       case Iop_1Uto8: */
-/*       case Iop_16to8: */
-/*       case Iop_32to8: */
-/*          return assignNew_DC(dce, Ity_I8, unop(op, vatom)); */
-
-/*       case Iop_32to1: */
-/*          return assignNew_DC(dce, Ity_I1, unop(Iop_32to1, vatom)); */
-
-/*       case Iop_ReinterpF64asI64: */
-/*       case Iop_ReinterpI64asF64: */
-/*       case Iop_ReinterpI32asF32: */
-/*       case Iop_NotV128: */
-/*       case Iop_Not64: */
-/*       case Iop_Not32: */
-/*       case Iop_Not16: */
-/*       case Iop_Not8: */
-/*       case Iop_Not1: */
-/*          return vatom; */
-
-/*       default: */
-/*          ppIROp(op); */
-/*          VG_(tool_panic)("dyncomp:expr2tags_Unop_DC"); */
-/*    } */
 }
 
 
