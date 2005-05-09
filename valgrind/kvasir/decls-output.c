@@ -777,7 +777,9 @@ void DC_outputDeclsAtEnd() {
 void printDeclsHeader()
 {
   if (kvasir_with_dyncomp) {
-    fputs("VarComparability\nexplicit\n\n", decls_fp);
+    // VarComparability implicit is the DEFAULT so we don't need to
+    // write anything here:
+    //    fputs("VarComparability\nimplicit\n\n", decls_fp);
   }
   else {
     fputs("VarComparability\nnone\n\n", decls_fp);

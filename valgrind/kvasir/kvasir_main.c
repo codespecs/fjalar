@@ -34,6 +34,7 @@
 #include "mc_include.h"
 #include "disambig.h"
 #include "dyncomp_main.h"
+#include "dyncomp_runtime.h"
 
 // Global variables that are set by command-line options
 char* kvasir_decls_filename = 0;

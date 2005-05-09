@@ -315,8 +315,20 @@ typedef struct _DaikonFunctionInfo {
   // .dtrace (and more importantly, because Daikon expects the front-end
   // output to maintain these variables in the same order).
 
-  // The smallest observed tag for this function:
-  UInt smallest_tag_for_func;
+  // The smallest observed tag for each program point in this function:
+  // (This must be initialized to UINT_MAX and get progressively smaller)
+  // This is updated every time we initialize a new variable tag.  It is
+  // useful because we want to use tags as Daikon comparability numbers
+  // but most tags are huge so we want to subtract all tags from
+  // (smallest_tag - 1) in order to get reasonable values.  Thus, the
+  // true smallest tag will map to a comparability number of 1.
+
+  // (MDE says that comparability numbers have program point scope so
+  // that they only have meaning per program point.  This means that
+  // variables can share the same comparability number even though
+  // they have different tags)
+  UInt ppt_entry_smallest_tag;
+  UInt ppt_exit_smallest_tag;
 
 } DaikonFunctionInfo;
 

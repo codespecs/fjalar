@@ -26,8 +26,6 @@
 
 #include "generate_daikon_data.h"
 
-UInt g_smallest_tag;
-
 void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
                              char isEnter,
                              int numDaikonVars);

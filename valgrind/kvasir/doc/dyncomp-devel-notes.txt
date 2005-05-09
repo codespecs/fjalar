@@ -1654,3 +1654,24 @@ succeed exactly if either integer is negative or if both integers are
 the same. ... If no information is supplied (i.e., this line is
 blank), then the variable is compared to all other variables of the
 same type."
+
+
+----------
+2005-05-09
+----------
+
+From SMcC's email:
+
+"Also, I'm still a bit worried about the danger of having the wrong
+behavior if any code tries to access one of the floating-point
+registers with a plain GET or PUT. How hard would it be to put an
+assertion in do_shadow_{GET,PUT}_DC() that would check the offset and
+tell us if this is happening?"
+
+I'll look into this later.
+
+
+Hmmm ... this is unrelated, but it seems like I am merging stuff a bit
+too aggressively now (by refactoring the code in dyncomp_translate.c).
+In FloatTest, some things shouldn't have different tags but do
+nonetheless.
