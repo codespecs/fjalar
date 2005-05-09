@@ -33,7 +33,7 @@ __inline__ UInt get_tag ( Addr a );
 __inline__ void set_tag ( Addr a, UInt tag );
 
 void val_uf_union_tags_in_range(Addr a, SizeT len);
-__inline__ void val_uf_union_tags_at_addr(Addr a1, Addr a2);
+void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
 
 #endif

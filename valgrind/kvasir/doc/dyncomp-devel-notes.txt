@@ -1672,6 +1672,56 @@ I'll look into this later.
 
 
 Hmmm ... this is unrelated, but it seems like I am merging stuff a bit
-too aggressively now (by refactoring the code in dyncomp_translate.c).
-In FloatTest, some things shouldn't have different tags but do
-nonetheless.
+too aggressively.  In FloatTest, some things shouldn't have different
+tags but do nonetheless.
+
+It seems like the problems all come during the extra round of
+propagations at the end, or with the fact that I'm not doing anything
+for .dtrace values that were not observed, or the fact that we are
+using integer literals (which have really tiny tags in the thousands)?
+
+FloatTest.c:
+
+  returnDoubleSum(1.2345, 4.321);
+  returnInvalidInt(1.111, 2.222);
+
+It seems that when the tags are merged for returnDoubleSum, the tags
+for 'returnInvalidInt' are "infected" with the result from
+returnDoubleSum.  Perhaps it has something to do with the virtualStack?
+
+Make sure to clear tags as stack pointer moves up (done)
+
+Ok, things seem to get better when I comment out all references to
+val_uf_union_tags_in_range and val_uf_union_tags_at_addr.  What does
+this mean?
+
+Perhaps there are unnecessary merges (and transformations of tags into
+canonical tags) when massive amounts of data are copied in a big chunk
+over to different areas of memory.
+
+Ok, what seems to solve the problem is to comment-out the
+canonical-tag copying optimization in val_uf_union_tags_in_range,
+which I probably did incorrectly.
+
+Also, what solves the problem is cutting out all calls to
+val_uf_union_tags_in_range only from dyncomp_main.c
+
+
+Now I'm trying to update clear_all_tags_in_range() to actually destroy
+the uf_objects associated with tags when the tags are killed.
+
+
+Ahhh, ok, I may see what the problem is now.  After function entrance,
+the tags are all merged and crap in the REAL stack, but we want to
+observe crap on the VIRTUAL stack, where they aren't merged???  Hmmm?
+
+Wait, but we ARE using the virtual stack.
+
+-------------------------------------------------------------------
+Ok, it seems like parallel mergings are happening under our nose in
+the REAL stack due to the val_uf_union_tags_in_range calls in
+dyncomp_main.c.  We should only do the mergings at the language-level
+in dtrace-output.c when we observe values, not at the memory-level
+in dyncomp_main.c.  That was a premature optimization so we should
+just delete it.
+-------------------------------------------------------------------

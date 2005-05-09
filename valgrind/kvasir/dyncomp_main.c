@@ -121,23 +121,11 @@ __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
 #endif
 }
 
-// Clear all tags for all bytes in range [a, a + len)
-// TODO: We need to do something with their corresponding
-// uf_objects in order to prepare them for garbage collection
-// (when it's implemented)
-__inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
-  Addr curAddr;
-  for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, 0);
-    // TODO: Do something with uf_objects (maybe put them on a to-be-freed
-    // list) to prepare them for garbage collection
-  }
-
 #ifdef DYNCOMP_DEBUG
   VG_(printf)("After clear_all_tags_in_range(a=0x%x, len=%d): nextTag=%u\n",
               a, len, nextTag);
 #endif
-}
+
 
 // Copies tags of len bytes from src to dst
 __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
@@ -318,9 +306,14 @@ __inline__ UInt val_uf_find_leader(UInt tag) {
 
 // Unions the tags belonging to these addresses and set
 // the tags of both to the canonical tag (for efficiency)
-__inline__ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
+void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   UInt canonicalTag;
   UInt tag1 = get_tag(a1);
+  UInt tag2 = get_tag(a2);
+  if ((0 == tag1) ||
+      (tag1 == tag2)) {
+    return;
+  }
 
   val_uf_tag_union(tag1, get_tag(a2));
 
@@ -339,18 +332,24 @@ void val_uf_union_tags_in_range(Addr a, SizeT len) {
   UInt aTag = get_tag(a);
   UInt canonicalTag;
 
+  if (0 == aTag) {
+    return;
+  }
+
   for (curAddr = (a + 1); curAddr < (a + len); curAddr++) {
-    val_uf_tag_union(aTag, get_tag(curAddr));
+    UInt curTag = get_tag(curAddr);
+    if (aTag != curTag) {
+      val_uf_tag_union(aTag, curTag);
+    }
   }
 
   // Find out the canonical tag
   canonicalTag = val_uf_find_leader(aTag);
-  if (canonicalTag > 0) {
-    // Set all the tags in this range to the canonical tag
-    // (as inferred from a reverse map lookup)
-    for (curAddr = a; curAddr < (a + len); curAddr++) {
-      set_tag(curAddr, canonicalTag);
-    }
+
+  // Set all the tags in this range to the canonical tag
+  // (as inferred from a reverse map lookup)
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    set_tag(curAddr, canonicalTag);
   }
 }
 
@@ -365,13 +364,8 @@ UInt MC_(helperc_CREATE_TAG) () {
   return newTag;
 }
 
-// Whenever we're requesting to load tags for X bytes,
-// we merge the tags for those X bytes and return the tag
-// of the first byte.  This may potentially lose details
-// but is much easier to implement.
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
-  val_uf_union_tags_in_range(a, 8);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_8(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -381,7 +375,6 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
-  val_uf_union_tags_in_range(a, 4);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_4(0x%x) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -391,7 +384,6 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
-  val_uf_union_tags_in_range(a, 2);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_2(0x%x) = %u  [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -419,4 +411,20 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
               tag1, tag2, nextTag);
 #endif
   return tag1;
+}
+
+
+// Clear all tags for all bytes in range [a, a + len)
+// TODO: We need to do something with their corresponding
+// uf_objects in order to prepare them for garbage collection
+// (when it's implemented)
+__inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
+  Addr curAddr;
+  for (curAddr = a; curAddr < (a+len); curAddr++) {
+    // TODO: Do something else with uf_objects (maybe put them on a to-be-freed
+    // list) to prepare them for garbage collection
+
+    // Set the tag to 0
+    set_tag(curAddr, 0);
+  }
 }

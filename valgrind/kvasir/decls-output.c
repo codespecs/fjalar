@@ -242,7 +242,7 @@ char createDeclsAndDtraceFiles(char* appname)
 {
   char* dirname = 0;
   char* filename = 0;
-  char* newpath_decls;
+  char* newpath_decls = 0;
   char* newpath_dtrace;
   int success = 0;
   int ret;

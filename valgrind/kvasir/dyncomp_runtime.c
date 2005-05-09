@@ -241,7 +241,7 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   if ((var_tags[daikonVarIndex] > 0) &&
       (var_tags[daikonVarIndex] < (*ppt_smallest_tag_ptr))) {
     *ppt_smallest_tag_ptr = var_tags[daikonVarIndex];
-    VG_(printf)("updated smallest_tag: %d\n", (*ppt_smallest_tag_ptr));
+    //    VG_(printf)("updated smallest_tag: %d\n", (*ppt_smallest_tag_ptr));
   }
 }
 
@@ -293,7 +293,7 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   if ((var_tags[daikonVarIndex] > 0) &&
       (var_tags[daikonVarIndex] < (*ppt_smallest_tag_ptr))) {
     *ppt_smallest_tag_ptr = var_tags[daikonVarIndex];
-    VG_(printf)("updated smallest_tag: %d\n", (*ppt_smallest_tag_ptr));
+    //    VG_(printf)("updated smallest_tag: %d\n", (*ppt_smallest_tag_ptr));
   }
 }
 
