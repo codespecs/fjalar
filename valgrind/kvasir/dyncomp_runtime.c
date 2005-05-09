@@ -324,17 +324,16 @@ int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
     smallest_tag = funcPtr->ppt_exit_smallest_tag;
   }
 
-/*   if (UINT_MAX == smallest_tag) { */
-/*     comp_number = (int)(var_tags[daikonVarIndex]); */
-/*   } */
-/*   else { */
-/*     comp_number = (int)(var_tags[daikonVarIndex] - (smallest_tag - 1)); */
-/*   } */
+  if (UINT_MAX == smallest_tag) {
+    comp_number = (int)(var_tags[daikonVarIndex]);
+  }
+  else {
+    comp_number = (int)(var_tags[daikonVarIndex] - (smallest_tag - 1));
+  }
 
-  // Punt for now and just use the tag:
-  comp_number = (int)(var_tags[daikonVarIndex]);
-
+  // Set all negative comparability numbers to -1 for aesthetic purposes
   if (comp_number < 0) {
+    comp_number = -1;
     VG_(printf)("Warning! Comparability number is negative.\n");
   }
 
