@@ -27,6 +27,15 @@
 #include "dyncomp_runtime.h"
 #include "union_find.h"
 #include "GenericHashtable.h"
+#include <limits.h>
+
+// This is updated every time we initialize a new variable tag.  It is
+// useful because we want to use tags as Daikon comparability numbers
+// but most tags are huge so we want to subtract all tags from
+// (smallest_tag - 1) in order to get reasonable values.  Thus, the
+// true smallest tag will map to a comparability number of 1.
+
+UInt g_smallest_tag = UINT_MAX;
 
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
@@ -228,6 +237,11 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
               new_leader,
               daikonVarIndex,
               var_tags[daikonVarIndex]);
+
+  if (var_tags[daikonVarIndex] < g_smallest_tag) {
+    g_smallest_tag = var_tags[daikonVarIndex];
+    VG_(printf)("updated g_smallest_tag: %d\n", g_smallest_tag);
+  }
 }
 
 // Super-trivial key comparison method -
@@ -235,6 +249,37 @@ int equivalentTags(UInt t1, UInt t2) {
   return (t1 == t2);
 }
 
+// Return the comparability number for the variable as a SIGNED
+// INTEGER (because Daikon expects a signed integer).
+// Unless smallest tag for this program point is still equal to
+// UINT_MAX, subtract all tags from (smallest tag - 1) in order to
+// make them look reasonable.
+int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
+                               char isEnter,
+                               int daikonVarIndex) {
+  int comp_number = -1;
+  UInt *var_tags;
+
+  if (isEnter) {
+    var_tags = funcPtr->ppt_entry_var_tags;
+  }
+  else {
+    var_tags = funcPtr->ppt_exit_var_tags;
+  }
+
+  if (UINT_MAX == g_smallest_tag) {
+    comp_number = (int)(var_tags[daikonVarIndex]);
+  }
+  else {
+    comp_number = (int)(var_tags[daikonVarIndex] - (g_smallest_tag - 1));
+  }
+
+  if (comp_number < 0) {
+    VG_(printf)("Warning! Comparability number is negative due to signed integer overflow.\n");
+  }
+
+  return comp_number;
+}
 
 // This runs once for every Daikon variable at the END of the target
 // program's execution

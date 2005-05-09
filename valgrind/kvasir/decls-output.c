@@ -28,6 +28,7 @@
 #include <sys/errno.h>
 #include <assert.h>
 #include <search.h>
+#include <limits.h>
 
 // This increments every time outputDaikonVar is called and a full
 // Daikon name is successfully generated.  It is used to index into
@@ -38,6 +39,8 @@ FILE* decls_fp = 0; // File pointer for .decls file (this will point
                     // to the same thing as dtrace_fp by default since
                     // both .decls and .dtrace are outputted to .dtrace
                     // unless otherwise noted by the user)
+
+static FILE* dev_null_fp; // initialized to "/dev/null"
 
 // Only true if we are doing dtrace append and (!actually_output_separate_decls_dtrace)
 char do_not_print_out_decls = 0;
@@ -243,6 +246,9 @@ char createDeclsAndDtraceFiles(char* appname)
   char* newpath_dtrace;
   int success = 0;
   int ret;
+
+  // TODO: This is opened but never closed ... does that even matter?
+  dev_null_fp = fopen("/dev/null", "w");
 
   // Free VisitedStructsTable if it has been allocated
   if (VisitedStructsTable)
@@ -681,7 +687,10 @@ void initializeVarsTree()
   trace_vars_input_fp = 0;
 }
 
-void outputDeclsAndCloseFile()
+// This has different behavior depending on if faux_decls is on.  If
+// faux_decls is on, then we do all the processing but don't actually
+// output anything to the .decls file.
+void outputDeclsFile(char faux_decls)
 {
   // We need to update all DaikonFunctionInfo entries so that
   // they have the proper demangled names as obtained from Valgrind.
@@ -710,47 +719,69 @@ void outputDeclsAndCloseFile()
 	fputs("\n", var_dump_fp);
       }
 
-    printDeclsHeader();
-    printAllFunctionDecls();
+    if (!faux_decls) {
+      printDeclsHeader();
+    }
 
-    printAllObjectAndClassDecls();
+    printAllFunctionDecls(faux_decls);
+
+    printAllObjectAndClassDecls(faux_decls);
 
     // Clean-up:
     // Only close decls_fp if we are generating it separate of .dtrace
-    if (actually_output_separate_decls_dtrace) {
-      fclose(decls_fp);
-      decls_fp = 0;
-    }
-
     if (prog_pt_dump_fp)
       {
-	fclose(prog_pt_dump_fp);
-	prog_pt_dump_fp = 0;
+        fclose(prog_pt_dump_fp);
+        prog_pt_dump_fp = 0;
       }
 
     if (var_dump_fp)
       {
-	fclose(var_dump_fp);
-	var_dump_fp = 0;
+        fclose(var_dump_fp);
+        var_dump_fp = 0;
       }
 
     // Punt everything if you're dumping program point or variable names
     // or if we only wanted the .decls file
     if (kvasir_dump_prog_pt_names_filename ||
-	kvasir_dump_var_names_filename || kvasir_decls_only)
+        kvasir_dump_var_names_filename || kvasir_decls_only)
       {
-	if (!actually_output_separate_decls_dtrace) {
-	  finishDtraceFile();
-	}
-	VG_(exit)(0);
+        if (!actually_output_separate_decls_dtrace) {
+          finishDtraceFile();
+        }
+        VG_(exit)(0);
       }
+
+    if (!faux_decls) {
+
+      if (actually_output_separate_decls_dtrace) {
+        fclose(decls_fp);
+        decls_fp = 0;
+      }
+    }
   }
 }
 
-// Print out the standard Daikon .decls header
+// Print .decls at the end of program execution and then close it
+// (Only used when DynComp is on)
+void DC_outputDeclsAtEnd() {
+  printAllFunctionDecls(0);
+  printAllObjectAndClassDecls(0);
+
+  fclose(decls_fp);
+  decls_fp = 0;
+}
+
+// Print out the Daikon .decls header depending on whether DynComp is
+// activated or not
 void printDeclsHeader()
 {
-  fputs("VarComparability\nnone\n\n", decls_fp);
+  if (kvasir_with_dyncomp) {
+    fputs("VarComparability\nexplicit\n\n", decls_fp);
+  }
+  else {
+    fputs("VarComparability\nnone\n\n", decls_fp);
+  }
 }
 
 // Print out one individual function declaration
@@ -768,7 +799,7 @@ int
 2
 */
 // char isEnter = 1 for function ENTER, 0 for EXIT
-void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
+void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_decls)
 {
   // This is a GLOBAL so be careful :)
   // Reset it before doing any traversals with outputDaikonVar
@@ -790,24 +821,27 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
       fputs("\n", var_dump_fp);
     }
 
-  fputs("DECLARE\n", decls_fp);
-  fputs(funcPtr->daikon_name, decls_fp);
+  if (!faux_decls) {
+    fputs("DECLARE\n", decls_fp);
+    fputs(funcPtr->daikon_name, decls_fp);
 
-  if (isEnter)
-    {
-      fputs(ENTER_PPT, decls_fp);
-      fputs("\n", decls_fp);
-    }
-  else
-    {
-      fputs(EXIT_PPT, decls_fp);
-      fputs("\n", decls_fp);
-    }
+    if (isEnter)
+      {
+        fputs(ENTER_PPT, decls_fp);
+        fputs("\n", decls_fp);
+      }
+    else
+      {
+        fputs(EXIT_PPT, decls_fp);
+        fputs("\n", decls_fp);
+      }
+  }
 
   // Print out globals
   if (!kvasir_ignore_globals)
     {
-      printVariablesInVarList(funcPtr, isEnter, GLOBAL_VAR, 0, DECLS_FILE, 0,
+      printVariablesInVarList(funcPtr, isEnter, GLOBAL_VAR, 0,
+                              (faux_decls ? FAUX_DECLS_FILE : DECLS_FILE), 0,
 			      (globalFunctionTree ?
 			       globalFunctionTree->function_variables_tree : 0), 0, 0);
     }
@@ -817,13 +851,14 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
 			  (isEnter ?
 			   FUNCTION_ENTER_FORMAL_PARAM :
 			   FUNCTION_EXIT_FORMAL_PARAM),
-			  0, DECLS_FILE, !isEnter,
+			  0, (faux_decls ? FAUX_DECLS_FILE : DECLS_FILE), !isEnter,
 			  funcPtr->trace_vars_tree, 0, 0);
 
   // If EXIT, print out return value
   if (!isEnter)
     {
-      printVariablesInVarList(funcPtr, isEnter, FUNCTION_RETURN_VAR, 0, DECLS_FILE, !isEnter,
+      printVariablesInVarList(funcPtr, isEnter, FUNCTION_RETURN_VAR, 0,
+                              (faux_decls ? FAUX_DECLS_FILE : DECLS_FILE), !isEnter,
 			      funcPtr->trace_vars_tree, 0 ,0);
     }
 
@@ -832,17 +867,21 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter)
       fputs("\n", var_dump_fp);
     }
 
-  fputs("\n", decls_fp);
+  if (!faux_decls) {
+    fputs("\n", decls_fp);
+  }
 
   // Allocate program point data structures if we are using DynComp:
   // (This should only be run once for every ppt)
+  // This must be run at the end because its results depend on
+  // g_daikonVarIndex being properly incremented
   if (kvasir_with_dyncomp) {
     allocate_ppt_structures(funcPtr, isEnter, g_daikonVarIndex);
   }
 }
 
 // Print out all function declarations in Daikon .decls format
-void printAllFunctionDecls()
+void printAllFunctionDecls(char faux_decls)
 {
   struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
 
@@ -853,8 +892,8 @@ void printAllFunctionDecls()
     if (!cur_entry)
          continue;
 
-    printOneFunctionDecl(cur_entry, 1);
-    printOneFunctionDecl(cur_entry, 0);
+    printOneFunctionDecl(cur_entry, 1, faux_decls);
+    printOneFunctionDecl(cur_entry, 0, faux_decls);
   }
 
   genfreeiterator(it);
@@ -868,7 +907,7 @@ void printAllFunctionDecls()
 // For C++ only: Print out a :::CLASS program point.
 // The class program point should consist of class_name:::CLASS
 // and all information about only STATIC variables belonging to this class
-void printAllObjectAndClassDecls() {
+void printAllObjectAndClassDecls(char faux_decls) {
 
   struct geniterator* it = gengetiterator(DaikonTypesTable);
 
@@ -918,9 +957,11 @@ void printAllObjectAndClassDecls() {
          fakeThisVar.ppt_enter_disambig = 'P';
          fakeThisVar.ppt_exit_disambig = 'P';
 
-         fputs("DECLARE\n", decls_fp);
-         fputs(cur_type->collectionName, decls_fp);
-         fputs(":::OBJECT\n", decls_fp);
+         if (!faux_decls) {
+           fputs("DECLARE\n", decls_fp);
+           fputs(cur_type->collectionName, decls_fp);
+           fputs(":::OBJECT\n", decls_fp);
+         }
 
          stringStackPush(fullNameStack, &fullNameStackSize, "this");
 
@@ -932,22 +973,26 @@ void printAllObjectAndClassDecls() {
 
          stringStackPop(fullNameStack, &fullNameStackSize);
 
-         fputs("\n", decls_fp);
+         if (!faux_decls) {
+           fputs("\n", decls_fp);
 
-         fputs("DECLARE\n", decls_fp);
-         fputs(cur_type->collectionName, decls_fp);
-         fputs(":::CLASS\n", decls_fp);
+           fputs("DECLARE\n", decls_fp);
+           fputs(cur_type->collectionName, decls_fp);
+           fputs(":::CLASS\n", decls_fp);
+         }
 
          printVariablesInVarList(&fakeFuncInfo, 1, // set 'isEnter' to 1 here (arbitrary choice)
                                  GLOBAL_VAR,
                                  0,
-                                 DECLS_FILE,
+                                 (faux_decls ? FAUX_DECLS_FILE : DECLS_FILE),
                                  0,
                                  0,
                                  1,
                                  0);
 
-         fputs("\n", decls_fp);
+         if (!faux_decls) {
+           fputs("\n", decls_fp);
+         }
 
          genputtable(ClassNamesAlreadyPrinted, cur_type->collectionName, 0);
     }
@@ -1177,6 +1222,7 @@ void outputDaikonVar(DaikonVariable* var,
   case DTRACE_FILE: out_file = dtrace_fp; break;
   case DISAMBIG_FILE: out_file = disambig_fp; break;
   case DYNCOMP_EXTRA_PROP: out_file = 0; break;
+  case FAUX_DECLS_FILE: out_file = dev_null_fp; break;
   }
 
   if (!var)
@@ -1469,7 +1515,7 @@ void outputDaikonVar(DaikonVariable* var,
       VG_(free)(fullDaikonName);
     }
   // .decls
-  else if (DECLS_FILE == outputType)
+  else if ((DECLS_FILE == outputType) || (FAUX_DECLS_FILE == outputType))
     {
       char alreadyPutDerefOnLine3;
       // .decls Line 2: Print out declared type
@@ -1557,9 +1603,28 @@ void outputDaikonVar(DaikonVariable* var,
 
       fputs("\n", out_file);
 
-      // .decls Line 4: Print out unknown comparability type "22"
-      fputs("22", out_file);
-      fputs("\n", out_file);
+      // .decls Line 4: Comparability number
+
+      // If we are outputting a REAL .decls with DynComp, that means
+      // that the program has already finished execution so that all
+      // of the comparability information would be already updated:
+      if (kvasir_with_dyncomp &&
+          (DECLS_FILE == outputType)) {
+        // Remember that comp_number is a SIGNED INTEGER but the
+        // tags are UNSIGNED INTEGERS so be careful of overflows
+        // which result in negative numbers, which are useless
+        // since Daikon ignores them.
+        int comp_number = DC_get_comp_number_for_var(varFuncInfo,
+                                                     isEnter,
+                                                     g_daikonVarIndex);
+        fprintf(out_file, "%d", comp_number);
+        fputs("\n", out_file);
+      }
+      else {
+        // Print out unknown comparability type "22"
+        fputs("22", out_file);
+        fputs("\n", out_file);
+      }
     }
   // DynComp - extra propagation at the end of the program's execution
   else if (DYNCOMP_EXTRA_PROP == outputType) {

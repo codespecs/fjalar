@@ -26,6 +26,8 @@
 
 #include "generate_daikon_data.h"
 
+UInt g_smallest_tag;
+
 void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
                              char isEnter,
                              int numDaikonVars);
@@ -41,6 +43,10 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
 void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
                                        char isEnter,
                                        int daikonVarIndex);
+
+int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
+                               char isEnter,
+                               int daikonVarIndex);
 
 int equivalentTags(UInt t1, UInt t2);
 

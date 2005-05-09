@@ -511,7 +511,10 @@ void kvasir_post_clo_init()
 
   // Output separate .decls and .dtrace files if:
   // --decls-only is on OR --decls-file=<filename> is on
-  if (kvasir_decls_only || kvasir_decls_filename) {
+  // OR kvasir_with_dyncomp is ON (since DynComp needs to create .decls
+  // at the END of the target program's execution so that it can include
+  // the comparability info)
+  if (kvasir_decls_only || kvasir_decls_filename || kvasir_with_dyncomp) {
     DPRINTF("\nSeparate .decls\n\n");
     actually_output_separate_decls_dtrace = True;
   }
@@ -618,7 +621,13 @@ void kvasir_finish() {
   }
 
   if (kvasir_with_dyncomp) {
-    DC_extra_propagate_val_to_var_sets();
+     // Do one extra propagation of variable comparability at the end
+     // of execution once all of the value comparability sets have
+     // been properly updated:
+     DC_extra_propagate_val_to_var_sets();
+
+     // Now print out the .decls file at the very end of execution:
+     DC_outputDeclsAtEnd();
   }
 
   if (kvasir_with_dyncomp) {

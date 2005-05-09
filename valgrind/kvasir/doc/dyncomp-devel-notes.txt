@@ -1636,3 +1636,21 @@ Ok, I see what the problem is (I think).  In
 dyncomp_translate.c:expr2tags_Binop_DC(), we don't properly handle
 floating-point to integer conversions (i.e. Iop_F64toI32) so we need
 to add that handling right now.
+
+Ok, I'm gonna try to make the .decls output with comparability.  This
+will require us to output .decls at the END of execution:
+
+We need to change this line from this:
+  fputs("VarComparability\nnone\n\n", decls_fp);
+
+to this:
+  fputs("VarComparability\nexplicit\n\n", decls_fp);
+
+or maybe just delete it altogether?
+
+Daikon user manual:
+"A comparability for a non-compound type is an integer. Comparisons
+succeed exactly if either integer is negative or if both integers are
+the same. ... If no information is supplied (i.e., this line is
+blank), then the variable is compared to all other variables of the
+same type."

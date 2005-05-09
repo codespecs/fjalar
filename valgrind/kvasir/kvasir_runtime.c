@@ -19,9 +19,11 @@
 #include <string.h>
 #include <ctype.h>
 #include <search.h>
+#include <limits.h>
 
 #include "kvasir_runtime.h"
 #include "generate_daikon_data.h"
+#include "dyncomp_runtime.h"
 #include "dtrace-output.h"
 #include "decls-output.h"
 #include "elf/dwarf2.h"
@@ -228,6 +230,7 @@ void updateAllGlobalVariableNames()
 void handleFunctionEntrance(FunctionEntry* e)
 {
   DaikonFunctionInfo* daikonFuncPtr;
+
   // If it's the first time you've ever handled a function entrance,
   // then you better run outputDeclsAndCloseFile so that Kvasir
   // can take advantage of all of Valgrind's name demangling functionality
@@ -235,7 +238,11 @@ void handleFunctionEntrance(FunctionEntry* e)
   // in order to allow streaming feeds into Daikon:
   if (!atLeastOneFunctionHandled)
     {
-      outputDeclsAndCloseFile();
+      // Remember to not actually output the .decls right now when
+      // we're running DynComp.  We need to wait until the end to
+      // actually output .decls, but we need to make a fake run in
+      // order to set up the proper data structures
+      outputDeclsFile(kvasir_with_dyncomp);
 
       if (actually_output_separate_decls_dtrace) {
 	openTheDtraceFile();

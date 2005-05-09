@@ -48,7 +48,8 @@ typedef enum OutputFileType {
   DECLS_FILE,
   DTRACE_FILE,
   DISAMBIG_FILE,
-  DYNCOMP_EXTRA_PROP // only for DynComp
+  DYNCOMP_EXTRA_PROP, // only for DynComp
+  FAUX_DECLS_FILE     // only for DynComp - temporarily redirect decls_fp to '/dev/null'
 } OutputFileType;
 
 // For use by vars_tree:
@@ -76,9 +77,10 @@ char createDeclsAndDtraceFiles(char* appname);
 char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char** filenamePtr);
 
 void printDeclsHeader();
-void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter);
-void printAllFunctionDecls();
-void printAllObjectAndClassDecls();
+void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_decls);
+
+void printAllFunctionDecls(char faux_decls);
+void printAllObjectAndClassDecls(char faux_decls);
 
 int compareStrings(const void *a, const void *b);
 void initializeProgramPointsTree();
@@ -86,7 +88,8 @@ void initializeProgramPointsTree();
 int compareFunctionTrees(const void *a, const void *b);
 void initializeVarsTree();
 
-void outputDeclsAndCloseFile();
+void outputDeclsFile(char faux_decls);
+void DC_outputDeclsAtEnd();
 void openTheDtraceFile(void);
 
 void printVariablesInVarList(DaikonFunctionInfo* funcPtr,

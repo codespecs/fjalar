@@ -315,6 +315,9 @@ typedef struct _DaikonFunctionInfo {
   // .dtrace (and more importantly, because Daikon expects the front-end
   // output to maintain these variables in the same order).
 
+  // The smallest observed tag for this function:
+  UInt smallest_tag_for_func;
+
 } DaikonFunctionInfo;
 
 // Hashtable that holds information about all functions
