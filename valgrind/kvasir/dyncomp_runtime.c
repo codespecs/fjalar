@@ -116,6 +116,14 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
       leader_obj = uf_union(uf_obj1, uf_obj2);
       return leader_obj->tag;
     }
+    // Ummm ... if one of the tags is NOT in var_uf_map, then
+    // just return the other one and don't union anything
+    else if (uf_obj1) {
+      return tag1;
+    }
+    else if (uf_obj2) {
+      return tag2;
+    }
     else {
       return 0;
     }
@@ -230,10 +238,11 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
 
-  VG_(printf)(" new_tags[%d]: %u, new_leader: %u, var_tags[%d]: %u\n",
+  VG_(printf)(" new_tags[%d]: %u, new_leader: %u, var_tags_v (old): %u, var_tags[%d]: %u\n",
               daikonVarIndex,
               new_tags_v,
               new_leader,
+              var_tags_v,
               daikonVarIndex,
               var_tags[daikonVarIndex]);
 
@@ -285,7 +294,9 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
                                                 leader, var_tags_v);
   }
 
-  VG_(printf)(" var_tags[%d]: %u (final)\n",
+  VG_(printf)(" var_tags_v: %u, leader: %u, var_tags[%d]: %u (final)\n",
+              var_tags_v,
+              leader,
               daikonVarIndex,
               var_tags[daikonVarIndex]);
 

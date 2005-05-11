@@ -1725,3 +1725,128 @@ in dtrace-output.c when we observe values, not at the memory-level
 in dyncomp_main.c.  That was a premature optimization so we should
 just delete it.
 -------------------------------------------------------------------
+
+
+----------
+2005-05-10
+----------
+
+Right now, DynComp can say that variables of different declared types
+are comparable, but that's ok, right?  Because Daikon won't attempt to
+compare variables of different types even though they have the same
+comparability number.
+
+It seems like the program-point-level granularity may be our downfall
+because even if ONE instance of that program point was called with
+comparable values, then we must report that the params are comparable.
+
+Should we abandon the idea of the virtual stack altogether?
+
+Ok, the only issue with abandoning virtual stack is that you sometimes
+get inconsistencies since formal parameters are sometimes moved around
+outside of their bounded area on the stack frame when calculations are
+performed on them and stuff.  The reason why we used the virtualStack
+idea was to ensure consistency.  All top-level parameters would be
+taken from the state of the stack upon function ENTRY.
+
+How important is this invariant to maintain?
+
+(At least on small tests, it seems that the ints are well-behaved but
+the doubles aren't.  The ints seem to maintain their spot on the
+stack pretty well while the doubles don't.)
+
+/********************************************************************
+The fundamental problem here is that the compiler is free to
+manipulate stuff around the stack as it sees fit after the function
+begins executing.  I want some way of pinning down the parameters and
+ensuring that they are ALWAYS located where the debugging info. says
+that they are located on the stack relative to EBP.
+********************************************************************/
+
+Ok, so if we keep the virtualStack thing, then our results may look
+weird but still consistent since we are always observing the pre-state
+of the top-level Daikon variables.  The comparability sets for the
+enter and exit will be identical for the entrance/exit because the
+top-level VALUES are identical for both entrance/exit.
+
+
+Hmmm, look at these interesting gcc 3.4.3 command-line option.  Maybe
+this will help us eliminate duplication problems, especially for C++:
+
+-feliminate-dwarf2-dups
+    Compress DWARF2 debugging information by eliminating duplicated
+information about each symbol. This option only makes sense when
+generating DWARF2 debugging information with -gdwarf-2.
+
+-feliminate-unused-debug-types
+    Normally, when producing DWARF2 output, GCC will emit debugging
+information for all types declared in a compilation unit, regardless
+of whether or not they are actually used in that compilation
+unit. Sometimes this is useful, such as if, in the debugger, you want
+to cast a value to a type that is not actually used in your program
+(but is declared). More often, however, this results in a significant
+amount of wasted space. With this option, GCC will avoid producing
+debug symbol output for types that are nowhere used in the source file
+being compiled.
+
+
+----------
+2005-05-11
+----------
+
+There is currently no tag created for the '&' address-of operator, but
+that may be okay because we really don't care about comparability for
+pointers, only for the contents of pointers.
+
+
+   9:PointerComp.c ****   inc(&x, yPtr);
+  56              		.loc 1 9 0
+  57 0043 8B45F8   		movl	-8(%ebp), %eax
+  58 0046 89442404 		movl	%eax, 4(%esp)
+  59 004a 8D45FC   		leal	-4(%ebp), %eax
+  60 004d 890424   		movl	%eax, (%esp)
+  61 0050 E8FCFFFF 		call	inc
+
+
+Check out the LEA instruction which pushes &x onto the stack.  What
+does this correspond to in IR?
+
+However, malloc() seems to create a new tag.
+
+
+Ok, we don't really compare hashcode values anyways, right?  So we
+don't care?
+
+Ok, a more serious problem.  We don't seem to be picking up relational
+comparisons (<, >, =, <=, >=) as interactions :( Let's take a look at
+the assembly sometime.
+
+Haha, whoops, there are tons of comparison operations in IR! hehe
+
+Ok, now all comparisons go thru as interactions :)
+
+But ... logical AND, OR, and TERNARY should not qualify as
+interactions because they can be thought of more as control flow:
+
+  int c1 = 0, c2 = 1;
+
+  if (c1 || c2) {
+    logicalOr(c1, c2);
+  }
+
+
+This seems fine because c1 and c2 are ints.  But as soon as I change
+them to chars, it looks like they have interacted.  Is this because
+logicalOr() expects two ints and expands them to chars, somehow
+mangling up their comparability sets?
+
+Do more testing with different integral sizes!
+
+
+Questions to ask Stephen for tomorrow's meeting:
+
+1.) Setting up an end-to-end test framework for comparability numbers
+
+2.) Should we still use the virtual stack or not?  I say yes.
+
+3.) Address Stephen's email about assertions for the GET's

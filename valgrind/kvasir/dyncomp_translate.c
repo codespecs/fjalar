@@ -428,6 +428,48 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_InterleaveLO8x16: case Iop_InterleaveLO16x8:
    case Iop_InterleaveLO32x4: case Iop_InterleaveLO64x2:
 
+
+      // Comparisons ALSO qualify as interactions
+
+      /* Integer comparisons. */
+   case Iop_CmpEQ8:  case Iop_CmpEQ16:  case Iop_CmpEQ32:  case Iop_CmpEQ64:
+   case Iop_CmpNE8:  case Iop_CmpNE16:  case Iop_CmpNE32:  case Iop_CmpNE64:
+   case Iop_CmpLT32S:
+   case Iop_CmpLE32S:
+   case Iop_CmpLT32U:
+   case Iop_CmpLE32U:
+
+      // Floating-point comparison
+   case Iop_CmpF64:
+
+      // 64-bit SIMD integer comparisons
+      /* MISC (vector integer cmp != 0) */
+   case Iop_CmpNEZ8x8: case Iop_CmpNEZ16x4: case Iop_CmpNEZ32x2:
+
+      /* COMPARISON */
+   case Iop_CmpEQ8x8:  case Iop_CmpEQ16x4:  case Iop_CmpEQ32x2:
+   case Iop_CmpGT8Sx8: case Iop_CmpGT16Sx4: case Iop_CmpGT32Sx2:
+
+      // 128-bit SIMD FP
+   case Iop_CmpEQ32Fx4: case Iop_CmpLT32Fx4: case Iop_CmpLE32Fx4: case Iop_CmpUN32Fx4:
+   case Iop_CmpEQ32F0x4: case Iop_CmpLT32F0x4: case Iop_CmpLE32F0x4: case Iop_CmpUN32F0x4:
+   case Iop_CmpEQ64Fx2: case Iop_CmpLT64Fx2: case Iop_CmpLE64Fx2: case Iop_CmpUN64Fx2:
+   case Iop_CmpEQ64F0x2: case Iop_CmpLT64F0x2: case Iop_CmpLE64F0x2: case Iop_CmpUN64F0x2:
+
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
+
+      /* MISC (vector integer cmp != 0) */
+   case Iop_CmpNEZ8x16: case Iop_CmpNEZ16x8: case Iop_CmpNEZ32x4: case Iop_CmpNEZ64x2:
+
+      /* COMPARISON */
+   case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
+   case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
+
+      // Random bogus stuff do not qualify as interactions
+
+   case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
+   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
+
       helper = &MC_(helperc_MERGE_TAGS);
       hname = "MC_(helperc_MERGE_TAGS)";
       break;
@@ -519,54 +561,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_RoundF64:
 
       return vatom2;
-      break;
-
-
-      // ------------------------
-      // Return a fresh tag of 0:
-      // ------------------------
-
-      // Comparisons do not qualify as interactions
-
-      /* Integer comparisons. */
-   case Iop_CmpEQ8:  case Iop_CmpEQ16:  case Iop_CmpEQ32:  case Iop_CmpEQ64:
-   case Iop_CmpNE8:  case Iop_CmpNE16:  case Iop_CmpNE32:  case Iop_CmpNE64:
-   case Iop_CmpLT32S:
-   case Iop_CmpLE32S:
-   case Iop_CmpLT32U:
-   case Iop_CmpLE32U:
-
-      // Floating-point comparison
-   case Iop_CmpF64:
-
-      // 64-bit SIMD integer comparisons
-      /* MISC (vector integer cmp != 0) */
-   case Iop_CmpNEZ8x8: case Iop_CmpNEZ16x4: case Iop_CmpNEZ32x2:
-
-      /* COMPARISON */
-   case Iop_CmpEQ8x8:  case Iop_CmpEQ16x4:  case Iop_CmpEQ32x2:
-   case Iop_CmpGT8Sx8: case Iop_CmpGT16Sx4: case Iop_CmpGT32Sx2:
-
-      // 128-bit SIMD FP
-   case Iop_CmpEQ32Fx4: case Iop_CmpLT32Fx4: case Iop_CmpLE32Fx4: case Iop_CmpUN32Fx4:
-   case Iop_CmpEQ32F0x4: case Iop_CmpLT32F0x4: case Iop_CmpLE32F0x4: case Iop_CmpUN32F0x4:
-   case Iop_CmpEQ64Fx2: case Iop_CmpLT64Fx2: case Iop_CmpLE64Fx2: case Iop_CmpUN64Fx2:
-   case Iop_CmpEQ64F0x2: case Iop_CmpLT64F0x2: case Iop_CmpLE64F0x2: case Iop_CmpUN64F0x2:
-
-      /* ------------------ 128-bit SIMD Integer. ------------------ */
-
-      /* MISC (vector integer cmp != 0) */
-   case Iop_CmpNEZ8x16: case Iop_CmpNEZ16x8: case Iop_CmpNEZ32x4: case Iop_CmpNEZ64x2:
-
-      /* COMPARISON */
-   case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
-   case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
-
-      // Random bogus stuff do not qualify as interactions
-
-   case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
-   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
-
       break;
 
       // Hopefully we will never get here if we've had had cases which
