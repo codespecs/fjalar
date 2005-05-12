@@ -68,7 +68,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
                          IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom );
 void do_shadow_STle_DC ( DCEnv* dce,
                          IRAtom* addr, UInt bias,
-                         IRAtom* data, IRAtom* vdata );
+                         IRAtom* data );
 IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
 
 #endif

@@ -144,6 +144,14 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
       shadow area. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
+
+   // The floating-point stack on the x86 is located between offsets
+   // 64 and 128 so we don't want somebody requesting a GET into this
+   // region since our (4 * offset) trick won't work properly here.
+   // This should (hopefully) never happen since floating-point
+   // accesses are always done using GETI's.
+   tl_assert(!((offset >= 64) && (offset < 128)));
+
    return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB),
                       Ity_I32 ); // Tags are 32 bits
 }
@@ -465,11 +473,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
    case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
 
-      // Random bogus stuff do not qualify as interactions
-
-   case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
-   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
-
       helper = &MC_(helperc_MERGE_TAGS);
       hname = "MC_(helperc_MERGE_TAGS)";
       break;
@@ -562,6 +565,19 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       return vatom2;
       break;
+
+
+      // ------------------------
+      // Return a fresh tag of 0:
+      // ------------------------
+
+      // Random bogus stuff do not qualify as interactions
+
+   case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
+   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
+
+      break;
+
 
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
@@ -733,12 +749,23 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          //         stmt( dce->bb, IRStmt_Dirty(di) );
          //         return mkexpr(datatag);
 
+         // TODO: Is this merge tags really necessary or too
+         // premature?  We should aim to do all of the merging on the
+         // language level if somebody really reads this as a 128-bit
+         // value instead of forcing all of these bytes to be merged
+         // on the memory level
+
          // Clean call version:
-         return mkIRExprCCall (Ity_I32,
-                               2 /*Int regparms*/,
-                               "MC_(helperc_MERGE_TAGS)",
-                               &MC_(helperc_MERGE_TAGS),
-                               mkIRExprVec_2( v64lo, v64hi ));
+         //         return mkIRExprCCall (Ity_I32,
+         //                               2 /*Int regparms*/,
+         //                               "MC_(helperc_MERGE_TAGS)",
+         //                               &MC_(helperc_MERGE_TAGS),
+         //                               mkIRExprVec_2( v64lo, v64hi ));
+
+         // Right now, just return the tag of the lower 4 bytes and
+         // don't stuff too early:
+         return v64lo;
+
       default:
          VG_(tool_panic)("expr2tags_LDle_DC");
    }
@@ -878,12 +905,13 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr, UInt bias,
-                      IRAtom* data, IRAtom* vdata )
+                      IRAtom* data )
 {
    IROp     mkAdd;
    IRType   ty, tyAddr;
    IRDirty  *di, *diLo64, *diHi64;
    IRAtom   *addrAct, *addrLo64, *addrHi64;
+   IRAtom   *vdata;
    IRAtom   *vdataLo64, *vdataHi64;
    IRAtom   *eBias, *eBias0, *eBias8;
    void*    helper = NULL;
@@ -898,19 +926,20 @@ void do_shadow_STle_DC ( DCEnv* dce,
    addrAct = addrLo64 = addrHi64 = NULL;
    vdataLo64 = vdataHi64 = NULL;
 
-   if (data) {
-      tl_assert(!vdata);
-      tl_assert(isOriginalAtom_DC(dce, data));
-      tl_assert(bias == 0);
-      vdata = expr2tags_DC( dce, data );
-   } else {
-      tl_assert(vdata);
-   }
+   tl_assert(data);
+   tl_assert(isOriginalAtom_DC(dce, data));
+   tl_assert(bias == 0);
+   vdata = expr2tags_DC( dce, data );
 
    tl_assert(isOriginalAtom_DC(dce,addr));
    tl_assert(isShadowAtom_DC(dce,vdata));
 
-   ty = typeOfIRExpr(dce->bb->tyenv, vdata);
+   // Get the byte size of the REAL data (and not our tag vdata, which
+   // is ALWAYS 32-bits).  This is very different from Memcheck's
+   // V-bits, which is always guaranteed to be the same byte size as 'data'
+   // Also, we must use shadowType to translate all type sizes
+   // to integral sizes
+   ty = shadowType(typeOfIRExpr(dce->bb->tyenv, data));
 
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */

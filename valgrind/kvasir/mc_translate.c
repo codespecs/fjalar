@@ -2542,8 +2542,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
          case Ist_STle:
             do_shadow_STle_DC( &dce, st->Ist.STle.addr, 0/* addr bias */,
-                               st->Ist.STle.data,
-                               NULL /* shadow data */ );
+                               st->Ist.STle.data);
             break;
 
          case Ist_Exit:
@@ -2611,6 +2610,12 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    // function exit.  This is very important for detecting function
    // exits!
    handle_possible_exit( &mce, bb->jumpkind );
+
+
+   // PG - Uncomment to pretty-print the basic block
+   //      (This is great for debugging when you can compare IR
+   //       to gcc-generated assembly)
+   //   ppIRBB(bb);
 
    return bb;
 }

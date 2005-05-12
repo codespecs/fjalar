@@ -261,7 +261,7 @@ VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 8, tag);
 #ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_8(0x%x, %u) [nextTag=%u]\n",
+  VG_(printf)("helperc_STORE_TAG_8(%u, %u) [nextTag=%u]\n",
               a, tag, nextTag);
 #endif
 }
@@ -270,7 +270,7 @@ VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 4, tag);
 #ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_4(0x%x, %u) [nextTag=%u]\n",
+  VG_(printf)("helperc_STORE_TAG_4(%u, %u) [nextTag=%u]\n",
               a, tag, nextTag);
 #endif
 }
@@ -279,7 +279,7 @@ VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 2, tag);
 #ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_2(0x%x, %u) [nextTag=%u]\n",
+  VG_(printf)("helperc_STORE_TAG_2(%u, %u) [nextTag=%u]\n",
               a, tag, nextTag);
 #endif
 }
@@ -288,7 +288,7 @@ VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 1, tag);
 #ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_1(0x%x, %u) [nextTag=%u]\n",
+  VG_(printf)("helperc_STORE_TAG_1(%u, %u) [nextTag=%u]\n",
               a, tag, nextTag);
 #endif
 }
@@ -367,7 +367,7 @@ UInt MC_(helperc_CREATE_TAG) () {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 #ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_8(0x%x) = %u [nextTag=%u]\n",
+  VG_(printf)("helperc_LOAD_TAG_8(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
 #endif
   return get_tag(a);
@@ -376,7 +376,7 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
 #ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_4(0x%x) = %u [nextTag=%u]\n",
+  VG_(printf)("helperc_LOAD_TAG_4(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
 #endif
   return get_tag(a);
@@ -385,7 +385,7 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
 #ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_2(0x%x) = %u  [nextTag=%u]\n",
+  VG_(printf)("helperc_LOAD_TAG_2(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
 #endif
   return get_tag(a);
@@ -394,7 +394,7 @@ UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 #ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_1(0x%x) = %u [nextTag=%u]\n",
+  VG_(printf)("helperc_LOAD_TAG_1(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
 #endif
   return get_tag(a);

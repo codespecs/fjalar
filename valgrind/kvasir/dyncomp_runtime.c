@@ -238,13 +238,14 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
 
-  VG_(printf)(" new_tags[%d]: %u, new_leader: %u, var_tags_v (old): %u, var_tags[%d]: %u\n",
+  VG_(printf)(" new_tags[%d]: %u, new_leader: %u, var_tags_v (old): %u, var_tags[%d]: %u (a: %u)\n",
               daikonVarIndex,
               new_tags_v,
               new_leader,
               var_tags_v,
               daikonVarIndex,
-              var_tags[daikonVarIndex]);
+              var_tags[daikonVarIndex],
+              a);
 
   // Ignore tags of zero because they are meaningless
   if ((var_tags[daikonVarIndex] > 0) &&
