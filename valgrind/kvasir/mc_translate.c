@@ -2615,7 +2615,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    // PG - Uncomment to pretty-print the basic block
    //      (This is great for debugging when you can compare IR
    //       to gcc-generated assembly)
-   //   ppIRBB(bb);
+   //ppIRBB(bb);
 
    return bb;
 }

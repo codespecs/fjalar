@@ -755,16 +755,15 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // value instead of forcing all of these bytes to be merged
          // on the memory level
 
-         // Clean call version:
-         //         return mkIRExprCCall (Ity_I32,
-         //                               2 /*Int regparms*/,
-         //                               "MC_(helperc_MERGE_TAGS)",
-         //                               &MC_(helperc_MERGE_TAGS),
-         //                               mkIRExprVec_2( v64lo, v64hi ));
+         // On second thought, let's just go ahead and do it for now:
 
-         // Right now, just return the tag of the lower 4 bytes and
-         // don't stuff too early:
-         return v64lo;
+         // Clean call version:
+         return mkIRExprCCall (Ity_I32,
+                               2 /*Int regparms*/,
+                               "MC_(helperc_MERGE_TAGS)",
+                               &MC_(helperc_MERGE_TAGS),
+                               mkIRExprVec_2( v64lo, v64hi ));
+
 
       default:
          VG_(tool_panic)("expr2tags_LDle_DC");
@@ -994,24 +993,21 @@ void do_shadow_STle_DC ( DCEnv* dce,
          addrAct = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
       }
 
-      // All of this zwidenToHostWord_DC stuff doesn't matter for tags
-      // since all tags are 32-bits
-      di = unsafeIRDirty_0_N(2/*regparms*/, hname, helper,
-                             mkIRExprVec_2( addrAct, vdata ));
+      // For some reason, we still need to make a special case for
+      // 64-bit things ... I dunno why, though ???
+      if (ty == Ity_I64) {
+         /* We can't do this with regparm 2 on 32-bit platforms, since
+            the back ends aren't clever enough to handle 64-bit
+            regparm args.  Therefore be different. */
+         di = unsafeIRDirty_0_N(
+                                1/*regparms*/, hname, helper,
+                                mkIRExprVec_2( addrAct, vdata ));
+      } else {
+         di = unsafeIRDirty_0_N(
+                                2/*regparms*/, hname, helper,
+                                mkIRExprVec_2( addrAct, vdata ));
+      }
 
-      //      if (ty == Ity_I64) {
-      //         /* We can't do this with regparm 2 on 32-bit platforms, since
-      //            the back ends aren't clever enough to handle 64-bit
-      //            regparm args.  Therefore be different. */
-      //         di = unsafeIRDirty_0_N(
-      //                 1/*regparms*/, hname, helper,
-      //                 mkIRExprVec_2( addrAct, vdata ));
-      //      } else {
-      //         di = unsafeIRDirty_0_N(
-      //                 2/*regparms*/, hname, helper,
-      //                 mkIRExprVec_2( addrAct,
-      //                                zwidenToHostWord_DC( dce, vdata )));
-      //      }
       setHelperAnns_DC( dce, di );
       stmt( dce->bb, IRStmt_Dirty(di) );
    }

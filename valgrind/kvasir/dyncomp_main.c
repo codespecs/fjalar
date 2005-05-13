@@ -121,12 +121,6 @@ __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
 #endif
 }
 
-#ifdef DYNCOMP_DEBUG
-  VG_(printf)("After clear_all_tags_in_range(a=0x%x, len=%d): nextTag=%u\n",
-              a, len, nextTag);
-#endif
-
-
 // Copies tags of len bytes from src to dst
 __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
    SizeT i;
@@ -255,8 +249,8 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 // written because we assume that it has been initialized
 // somewhere else (is that a safe assumption???)
 
-// For some reason, 64-bit stuff needs REGPARM(1)
-// (Look in mc_translate.c)
+// For some reason, 64-bit stuff needs REGPARM(1) (Look in
+// mc_translate.c) - this is very important for some reason
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 8, tag);
@@ -366,6 +360,7 @@ UInt MC_(helperc_CREATE_TAG) () {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
+  val_uf_union_tags_in_range(a, 8);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_8(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -375,6 +370,7 @@ UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
+  val_uf_union_tags_in_range(a, 4);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_4(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
@@ -384,6 +380,7 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
+  val_uf_union_tags_in_range(a, 2);
 #ifdef LOAD_TAG_VERBOSE
   VG_(printf)("helperc_LOAD_TAG_2(%u) = %u [nextTag=%u]\n",
               a, get_tag(a), nextTag);
