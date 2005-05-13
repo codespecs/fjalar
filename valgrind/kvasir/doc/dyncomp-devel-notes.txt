@@ -2104,4 +2104,14 @@ Uhhhh ... for some strange reason, we need:
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
 
-REGPARM(1) on the STORE_TAG_8, and that seems to fix it.  Weird.
+REGPARM(1) on the STORE_TAG_8, and that seems to fix it.  Super weird.
+
+
+
+It seems like < and <= are regular comparisons but for some reason, >
+and >= are handled by clean helper calls, thus leading in an asymmetry
+of tag handling for comparisons.
+
+Solution: In handleCCall_DC(), always return a tag of 0.  It seems
+like the only call to this is for '<' and '<=' so far.  Revise this
+later if necessary.

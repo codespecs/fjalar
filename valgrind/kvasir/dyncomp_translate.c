@@ -183,6 +183,13 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 // probably interactions.  E.g. if the args are (a, b, c, d, e), then
 // you should merge tag(a) with tag(b), tag(c), tag(d), and tag(e)
 // then return tag(a)
+
+// By some informal observation, it seems like '>' and '>='
+// comparisons are translated into clean C calls.  The correct
+// behavior is to merge the tags of all arguments but return a new tag
+// of 0 so that the tags do not propagate to the results.  Without
+// further testing on what other opeations are translated into IR as
+// clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
@@ -210,8 +217,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
             di = unsafeIRDirty_1_N(datatag,
                                    2,
-                                   "MC_(helperc_MERGE_TAGS)",
-                                   &MC_(helperc_MERGE_TAGS),
+                                   "MC_(helperc_MERGE_TAGS_RETURN_0)",
+                                   &MC_(helperc_MERGE_TAGS_RETURN_0),
                                    mkIRExprVec_2( first, cur ));
 
             setHelperAnns_DC( dce, di );
@@ -219,7 +226,10 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
          }
       }
       // Return the tag of the first argument, if there is one
-      return first;
+      //      return first;
+
+      // Or, always return 0
+      return IRExpr_Const(IRConst_U32(0));
    }
    else {
       return IRExpr_Const(IRConst_U32(0));
@@ -436,8 +446,29 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_InterleaveLO8x16: case Iop_InterleaveLO16x8:
    case Iop_InterleaveLO32x4: case Iop_InterleaveLO64x2:
 
+      helper = &MC_(helperc_MERGE_TAGS);
+      hname = "MC_(helperc_MERGE_TAGS)";
+      break;
 
-      // Comparisons ALSO qualify as interactions
+      // Comparisons qualify as interactions:, but they are special
+      // because we do not want to pass along the tag to the result.
+
+      //    e.g. x = (a < b)
+
+      // We merge the tags of 'a' and 'b' but don't pass the tag of either one
+      // to 'x'.  Instead, 'x' gets a tag of 0.  After all, 'x' is really just a
+      // boolean '0' or '1' without any interesting semantic meaning.  Thus, if
+      // we have (a < b) || (c < d), then we have {a, b} {c, d} like we want,
+      // without any possibilities of {a, b, c, d} clumping.  Of course, the
+      // logical AND/OR should not merge tags, but I found that with
+      // 'char'-sized things, they do for some reason.
+
+      // The only reason why you would want to pass along the tag to the result
+      // is so that you can have correct behavior on nested expressions like
+      // (a + ((b - c) * d)), but you never really nest comparisons, right?
+
+      // You don't do ((a < b) > c) or anything like that since the result of a
+      // comparison is a 0 or 1 which really can't be compared with other stuff.
 
       /* Integer comparisons. */
    case Iop_CmpEQ8:  case Iop_CmpEQ16:  case Iop_CmpEQ32:  case Iop_CmpEQ64:
@@ -473,10 +504,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
    case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
 
-      helper = &MC_(helperc_MERGE_TAGS);
-      hname = "MC_(helperc_MERGE_TAGS)";
+      helper = &MC_(helperc_MERGE_TAGS_RETURN_0);
+      hname = "MC_(helperc_MERGE_TAGS_RETURN_0)";
       break;
-
 
       // -----------------------------------
       // Return the tag of the 1st argument:

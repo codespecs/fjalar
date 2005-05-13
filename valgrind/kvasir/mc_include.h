@@ -71,21 +71,6 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOADV4)  ( Addr );
 extern VGA_REGPARM(1) ULong MC_(helperc_LOADV8)  ( Addr );
 
 // PG - begin
-extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
-
-extern VGA_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
-
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
-
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
-
-extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ();
 
 extern void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
 extern char MC_(are_some_bytes_initialized) (Addr a, SizeT len, char* bitMask);

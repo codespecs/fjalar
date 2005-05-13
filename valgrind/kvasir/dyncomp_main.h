@@ -21,6 +21,8 @@
 #define DYNCOMP_MAIN_H
 
 #include "tool.h"
+#include "mac_shared.h"
+#include "mc_asm.h"
 
 // Don't do anything with tags equal to 0 because they are invalid
 #define IS_ZERO_TAG(tag) (0 == tag)
@@ -35,5 +37,26 @@ __inline__ void set_tag ( Addr a, UInt tag );
 void val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
+
+
+extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
+
+// Remember the special REGPARM(1) for the 64-bit case
+// (still dunno why I need it, but it's necessary)
+extern VGA_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
+extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
+
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
+extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
+
+extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
+extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
+
+extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ();
+
 
 #endif

@@ -411,6 +411,20 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
 }
 
 
+// Merge tags but return a value of 0.  This simulate interaction of
+// the two parameters but not passing along the tag to the result (the
+// intended behavior for comparisons, for example).
+VGA_REGPARM(2)
+UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
+  val_uf_tag_union(tag1, tag2);
+#ifdef MERGE_TAGS_VERBOSE
+  VG_(printf)("helperc_MERGE_TAGS_RETURN_0(%u, %u) [nextTag=%u]\n",
+              tag1, tag2, nextTag);
+#endif
+  return 0;
+}
+
+
 // Clear all tags for all bytes in range [a, a + len)
 // TODO: We need to do something with their corresponding
 // uf_objects in order to prepare them for garbage collection
