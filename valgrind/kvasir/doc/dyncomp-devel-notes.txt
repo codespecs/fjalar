@@ -2115,3 +2115,25 @@ of tag handling for comparisons.
 Solution: In handleCCall_DC(), always return a tag of 0.  It seems
 like the only call to this is for '<' and '<=' so far.  Revise this
 later if necessary.
+
+
+----------
+2005-05-16
+----------
+
+Ok, one problem I see is that structs have the same comparability sets
+as their first members.  This is caused by the fact that the struct
+itself is located at the same location as the first member.  However,
+our convention is to print out the struct name like a hashcode, so it
+is BAD if we compare hashcode values with the first member.  However,
+this may not be a big deal since Daikon doesn't compare two variables
+with different Daikon types (i.e. hashcode and int) anyways, right?
+
+Our current .comp format doesn't show which variables are comparable
+to one another in the degenerate case when their comparability numbers
+are -1.  Perhaps we should create a special set for that so that it's
+more evident to the observer.  A variable has a comparability number
+of -1 either when it has never been observed or it has always been
+'uninit' when observed.  Thus, it is comparable to all other variables
+at that program point, but that doesn't matter since it never had a
+valid value for Daikon to infer invariants over anyways.

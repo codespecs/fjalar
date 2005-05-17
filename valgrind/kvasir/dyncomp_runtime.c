@@ -238,14 +238,14 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
 
-  VG_(printf)(" new_tags[%d]: %u, new_leader: %u, var_tags_v (old): %u, var_tags[%d]: %u (a: %u)\n",
-              daikonVarIndex,
-              new_tags_v,
-              new_leader,
-              var_tags_v,
-              daikonVarIndex,
-              var_tags[daikonVarIndex],
-              a);
+  DYNCOMP_DPRINTF(" new_tags[%d]: %u, new_leader: %u, var_tags_v (old): %u, var_tags[%d]: %u (a: %u)\n",
+                  daikonVarIndex,
+                  new_tags_v,
+                  new_leader,
+                  var_tags_v,
+                  daikonVarIndex,
+                  var_tags[daikonVarIndex],
+                  a);
 
   // Ignore tags of zero because they are meaningless
   if ((var_tags[daikonVarIndex] > 0) &&
@@ -295,11 +295,11 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
                                                 leader, var_tags_v);
   }
 
-  VG_(printf)(" var_tags_v: %u, leader: %u, var_tags[%d]: %u (final)\n",
-              var_tags_v,
-              leader,
-              daikonVarIndex,
-              var_tags[daikonVarIndex]);
+  DYNCOMP_DPRINTF(" var_tags_v: %u, leader: %u, var_tags[%d]: %u (final)\n",
+                  var_tags_v,
+                  leader,
+                  daikonVarIndex,
+                  var_tags[daikonVarIndex]);
 
   // Ignore tags of zero because they are meaningless
   if ((var_tags[daikonVarIndex] > 0) &&
@@ -346,7 +346,7 @@ int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
   // Set all negative comparability numbers to -1 for aesthetic purposes
   if (comp_number < 0) {
     comp_number = -1;
-    VG_(printf)("Warning! Comparability number is negative.\n");
+    DYNCOMP_DPRINTF("Warning! Comparability number is negative.\n");
   }
 
   return comp_number;
@@ -362,12 +362,12 @@ static void DC_extra_propagate_one_function(DaikonFunctionInfo* funcPtr,
   // Reset it before doing any traversals with outputDaikonVar
   g_daikonVarIndex = 0;
 
-  VG_(printf)("Extra propagation: %s():::", funcPtr->name);
+  DYNCOMP_DPRINTF("Extra propagation: %s():::", funcPtr->name);
   if (isEnter) {
-    VG_(printf)("ENTER\n");
+    DYNCOMP_DPRINTF("ENTER\n");
   }
   else {
-    VG_(printf)("EXIT\n");
+    DYNCOMP_DPRINTF("EXIT\n");
   }
 
   // Propagate through globals
@@ -399,7 +399,7 @@ static void DC_extra_propagate_one_function(DaikonFunctionInfo* funcPtr,
 // Do one extra round of value-to-variable tag comparability set
 // propagations at the end of program execution
 void DC_extra_propagate_val_to_var_sets() {
-  VG_(printf)("DC_extra_propagate_val_to_var_sets()\n");
+  DYNCOMP_DPRINTF("DC_extra_propagate_val_to_var_sets()\n");
   struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
 
   while(!it->finished) {

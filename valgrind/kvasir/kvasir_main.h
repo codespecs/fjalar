@@ -41,6 +41,7 @@ Bool kvasir_decls_only;
 Bool kvasir_limit_static_vars;
 Bool kvasir_default_disambig;
 Bool kvasir_use_bit_level_precision;
+Bool dyncomp_print_debug_info;
 int kvasir_array_length_limit;
 // These are used as both strings and boolean flags -
 // They are initialized to 0 upon initiation so if they are
@@ -64,10 +65,15 @@ Bool actually_output_separate_decls_dtrace;
 #ifdef USE_DPRINTFS
 #define DPRINTF(...) do { if (kvasir_print_debug_info) \
       VG_(printf)(__VA_ARGS__); } while (0)
+
+#define DYNCOMP_DPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_debug_info) \
+      VG_(printf)(__VA_ARGS__); } while (0)
 #endif
 
+// Define these to expand to nothing if USE_DPRINTFS is off
 #ifndef USE_DPRINTFS
 #define DPRINTF(...)
+#define DYNCOMP_DPRINTF(...)
 #endif
 
 #define DABORT(...) do { if (kvasir_asserts_aborts_on) { \

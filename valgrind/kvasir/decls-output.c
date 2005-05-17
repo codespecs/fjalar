@@ -1488,7 +1488,7 @@ void outputDaikonVar(DaikonVariable* var,
 
       // DynComp post-processing:
       if (kvasir_with_dyncomp && variableHasBeenObserved) {
-        VG_(printf)("%s (%d) ", fullDaikonName, g_daikonVarIndex);
+        DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
         DC_post_process_for_variable(varFuncInfo,
                                      isEnter,
                                      g_daikonVarIndex,

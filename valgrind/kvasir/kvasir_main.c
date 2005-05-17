@@ -55,6 +55,7 @@ Bool kvasir_decls_only = False;
 Bool kvasir_limit_static_vars = False;
 Bool kvasir_default_disambig = False;
 Bool kvasir_use_bit_level_precision = False;
+Bool dyncomp_print_debug_info = False;
 int kvasir_array_length_limit = -1;
 char* kvasir_dump_prog_pt_names_filename = 0;
 char* kvasir_dump_var_names_filename = 0;
@@ -530,6 +531,8 @@ void kvasir_print_usage()
    VG_(printf)(
 "    --with-dyncomp      enables DynComp comparability analysis [--no-dyncomp]\n"
 "    --debug             print Kvasir-internal debug messages [--no-debug]\n"
+"    --dyncomp-debug     print DynComp debug messages (--with-dyncomp must also be on)\n"
+"                        [--no-dyncomp-debug]\n"
 #ifdef KVASIR_DEVEL_BUILD
 "    --asserts-aborts    turn on safety asserts and aborts (ON BY DEFAULT)\n"
 "                        [--asserts-aborts]\n"
@@ -586,6 +589,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_STR_CLO(arg, "--dtrace-file",    kvasir_dtrace_filename)
    else VG_YESNO_CLO("with-dyncomp",   kvasir_with_dyncomp)
    else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
+   else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
    else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
    else VG_YESNO_CLO("ignore-static-vars", kvasir_ignore_static_vars)
    else VG_YESNO_CLO("dtrace-append",  kvasir_dtrace_append)
@@ -616,6 +620,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
 
 // This runs after Kvasir finishes
 void kvasir_finish() {
+  extern UInt nextTag;
 
   if (disambig_writing) {
     generateDisambigFile();
@@ -631,10 +636,7 @@ void kvasir_finish() {
      DC_outputDeclsAtEnd();
   }
 
-  if (kvasir_with_dyncomp) {
-     extern UInt nextTag;
-     VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
-  }
+  DYNCOMP_DPRINTF("\n*** nextTag: %u ***\n\n", nextTag);
 
   finishDtraceFile();
 }
