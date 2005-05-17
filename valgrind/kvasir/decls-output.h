@@ -80,7 +80,7 @@ void printDeclsHeader();
 void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_decls);
 
 void printAllFunctionDecls(char faux_decls);
-void printAllObjectAndClassDecls(char faux_decls);
+void printAllObjectAndClassDecls();
 
 int compareStrings(const void *a, const void *b);
 void initializeProgramPointsTree();

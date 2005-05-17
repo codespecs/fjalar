@@ -725,7 +725,7 @@ void outputDeclsFile(char faux_decls)
 
     printAllFunctionDecls(faux_decls);
 
-    printAllObjectAndClassDecls(faux_decls);
+    printAllObjectAndClassDecls();
 
     // Clean-up:
     // Only close decls_fp if we are generating it separate of .dtrace
@@ -766,7 +766,6 @@ void outputDeclsFile(char faux_decls)
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
   printAllFunctionDecls(0);
-  printAllObjectAndClassDecls(0);
 
   fclose(decls_fp);
   decls_fp = 0;
@@ -909,7 +908,11 @@ void printAllFunctionDecls(char faux_decls)
 // For C++ only: Print out a :::CLASS program point.
 // The class program point should consist of class_name:::CLASS
 // and all information about only STATIC variables belonging to this class
-void printAllObjectAndClassDecls(char faux_decls) {
+
+// DynComp: Right now, do NOT try to print out comparability
+// information for OBJECT and CLASS program points.  We may support
+// this in the future if necessary.
+void printAllObjectAndClassDecls() {
 
   struct geniterator* it = gengetiterator(DaikonTypesTable);
 
@@ -922,6 +925,17 @@ void printAllObjectAndClassDecls(char faux_decls) {
   struct genhashtable* ClassNamesAlreadyPrinted =
     genallocatehashtable((unsigned int (*)(void *)) & hashString,
                          (int (*)(void *,void *)) &equivalentStrings);
+
+  Bool hacked_dyncomp_switch = False;
+
+  // HACK ALERT: We need to temporarily pretend that we are not using
+  // kvasir_with_dyncomp in order to print out the OBJECT and CLASS
+  // program points normally.  We need to set this back at the end of
+  // the function:
+  if (kvasir_with_dyncomp) {
+    kvasir_with_dyncomp = False;
+    hacked_dyncomp_switch = True;
+  }
 
   while(!it->finished) {
     DaikonType* cur_type = (DaikonType*)
@@ -959,11 +973,9 @@ void printAllObjectAndClassDecls(char faux_decls) {
          fakeThisVar.ppt_enter_disambig = 'P';
          fakeThisVar.ppt_exit_disambig = 'P';
 
-         if (!faux_decls) {
-           fputs("DECLARE\n", decls_fp);
-           fputs(cur_type->collectionName, decls_fp);
-           fputs(":::OBJECT\n", decls_fp);
-         }
+         fputs("DECLARE\n", decls_fp);
+         fputs(cur_type->collectionName, decls_fp);
+         fputs(":::OBJECT\n", decls_fp);
 
          stringStackPush(fullNameStack, &fullNameStackSize, "this");
 
@@ -975,26 +987,22 @@ void printAllObjectAndClassDecls(char faux_decls) {
 
          stringStackPop(fullNameStack, &fullNameStackSize);
 
-         if (!faux_decls) {
-           fputs("\n", decls_fp);
+         fputs("\n", decls_fp);
 
-           fputs("DECLARE\n", decls_fp);
-           fputs(cur_type->collectionName, decls_fp);
-           fputs(":::CLASS\n", decls_fp);
-         }
+         fputs("DECLARE\n", decls_fp);
+         fputs(cur_type->collectionName, decls_fp);
+         fputs(":::CLASS\n", decls_fp);
 
          printVariablesInVarList(&fakeFuncInfo, 1, // set 'isEnter' to 1 here (arbitrary choice)
                                  GLOBAL_VAR,
                                  0,
-                                 (faux_decls ? FAUX_DECLS_FILE : DECLS_FILE),
+                                 DECLS_FILE,
                                  0,
                                  0,
                                  1,
                                  0);
 
-         if (!faux_decls) {
-           fputs("\n", decls_fp);
-         }
+         fputs("\n", decls_fp);
 
          genputtable(ClassNamesAlreadyPrinted, cur_type->collectionName, 0);
     }
@@ -1002,6 +1010,11 @@ void printAllObjectAndClassDecls(char faux_decls) {
 
   genfreeiterator(it);
   genfreehashtable(ClassNamesAlreadyPrinted);
+
+  // HACK ALERT! Remember to restore original state
+  if (hacked_dyncomp_switch) {
+    kvasir_with_dyncomp = True;
+  }
 }
 
 

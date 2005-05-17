@@ -2161,3 +2161,62 @@ Uhh, crap, all the tags seem to be '0' in ArrayTestCpp whereas the
 tags are definitely non-zero in the C-equivalent, ArrayTest.  It seems
 that we cannot accurately detect function entrances/exits and no
 run-time tracking is happening.  Weird.
+
+It's crashing in DC_get_comp_number_for_var()
+
+Ok, C++ support is still fuzzy :(, so think about how to handle this.
+Right now I just don't handle it, but in the future, we need dedicated
+data structures to handle variable comparability sets for stuff.
+
+In printAllObjectAndClassDecls(), we are now creating 'fake'
+DaikonFunctionInfo entries but we really want to create real ones
+which can maintain their state across different calls.
+
+
+We must handle this at both the .decls and .dtrace printing times
+
+
+
+From Mike's email: Ok, apparently we don't need to worry about
+printing out OBJECT and CLASS ppt stuff in the .dtrace.  Another thing
+we should investigate is if we named our variables according to
+Daikon's (Java-centric) conventions so that it can infer OBJECT and
+CLASS invariants by observing .dtrace output from normal ppts.
+
+------------------
+
+Philip-
+
+Kvasir outputs OBJECT program points to the dtrace output.  Daikon
+currently ignores all OBJECT program points:  instead, it computes
+information at real (method exit) program points, and then combines those
+formulas (using logic, not dynamic analysis) to determine what the
+properties must have been at the OBJECT points.
+
+If you've chosen your program point names in accordance with Daikon's
+(Java-centric) conventions, you can completely eliminate the OBJECT and
+CLASS program points from your dtrace output.  The Daikon implementation
+still requires those program points to be in the decls output.
+
+                    -Mike
+
+------------------
+
+
+What about the comparability of global variables?  We keep separate
+comparability sets at each program point, and global variables are
+replicated in all of those sets.  Hmmm ... perhaps this extra
+bookkeeping may give us more accurate information since global
+variables can take on different VALUES throughout the execution of a
+program so that globalFoo and globalBar can be comparable during one
+program point but NOT comparable during another one.
+
+
+Hmmm ... right now let's not consider comparability for CLASS and
+OBJECT program points because we don't have any explicit .dtrace
+handling for it and .dtrace handling is required if we want to
+determine variable comparability.  Actually ... we DO have .dtrace
+handling for 'this' and other variables during NORMAL member function
+program points, so perhaps Daikon can smartly use these comparability
+numbers to infer OBJECT and CLASS invariants only over comparable
+MEMBER variables.
