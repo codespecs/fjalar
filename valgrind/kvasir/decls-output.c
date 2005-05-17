@@ -725,7 +725,10 @@ void outputDeclsFile(char faux_decls)
 
     printAllFunctionDecls(faux_decls);
 
-    printAllObjectAndClassDecls();
+    // For DynComp, print this out at the end of execution
+    if (!kvasir_with_dyncomp) {
+      printAllObjectAndClassDecls();
+    }
 
     // Clean-up:
     // Only close decls_fp if we are generating it separate of .dtrace
@@ -766,6 +769,8 @@ void outputDeclsFile(char faux_decls)
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
   printAllFunctionDecls(0);
+
+  printAllObjectAndClassDecls();
 
   fclose(decls_fp);
   decls_fp = 0;
