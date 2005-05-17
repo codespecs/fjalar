@@ -1632,7 +1632,7 @@ void outputDaikonVar(DaikonVariable* var,
   else if (DYNCOMP_EXTRA_PROP == outputType) {
 
     if (kvasir_with_dyncomp) {
-      VG_(printf)("%s (%d) ", fullDaikonName, g_daikonVarIndex);
+      DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
       DC_extra_propagation_post_process(varFuncInfo,
                                         isEnter,
                                         g_daikonVarIndex);

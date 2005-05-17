@@ -133,6 +133,9 @@ static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
   // into that virtual stack
   if (formalParamStackByteSize > 0) {
      // For some reason, VG_(calloc) doesn't work here:
+      // This is the error msg. that it gives:
+      //   kvasir: the `impossible' happened:
+      //   add_MAC_Chunk: shadow area is accessible
      top->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
      top->virtualStackByteSize = formalParamStackByteSize;
 
@@ -226,6 +229,9 @@ static void pop_fn(Char* s,
    // Destroy the memory allocated by virtualStack
    if (top->virtualStack) {
       // For some reason, VG_(calloc) still doesn't work!!!
+      // This is the error msg. that it gives:
+      //   kvasir: the `impossible' happened:
+      //   add_MAC_Chunk: shadow area is accessible
       free(top->virtualStack);
    }
 

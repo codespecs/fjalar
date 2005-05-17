@@ -2137,3 +2137,27 @@ of -1 either when it has never been observed or it has always been
 'uninit' when observed.  Thus, it is comparable to all other variables
 at that program point, but that doesn't matter since it never had a
 valid value for Daikon to infer invariants over anyways.
+
+
+Ok, kvasir tests it now breaks on:
+(only the C++ tests)
+
+StackArrayCppTest
+ArrayTestCpp
+Dstr
+StackCppTest
+virtual-method
+
+MultiDimArrayTest - doesn't crash but gives an invalid write error
+
+Not tested yet due to complex inputs required:
+bc
+wordplay
+md5
+tcas
+
+
+Uhh, crap, all the tags seem to be '0' in ArrayTestCpp whereas the
+tags are definitely non-zero in the C-equivalent, ArrayTest.  It seems
+that we cannot accurately detect function entrances/exits and no
+run-time tracking is happening.  Weird.
