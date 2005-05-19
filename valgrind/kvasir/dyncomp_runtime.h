@@ -44,7 +44,8 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
 
 int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
                                char isEnter,
-                               int daikonVarIndex);
+                               int daikonVarIndex,
+                               char isHashcode);
 
 int equivalentTags(UInt t1, UInt t2);
 

@@ -457,11 +457,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       // We merge the tags of 'a' and 'b' but don't pass the tag of either one
       // to 'x'.  Instead, 'x' gets a tag of 0.  After all, 'x' is really just a
-      // boolean '0' or '1' without any interesting semantic meaning.  Thus, if
-      // we have (a < b) || (c < d), then we have {a, b} {c, d} like we want,
-      // without any possibilities of {a, b, c, d} clumping.  Of course, the
-      // logical AND/OR should not merge tags, but I found that with
-      // 'char'-sized things, they do for some reason.
+      // boolean '0' or '1' without any interesting semantic meaning.
 
       // The only reason why you would want to pass along the tag to the result
       // is so that you can have correct behavior on nested expressions like

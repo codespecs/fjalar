@@ -1636,7 +1636,13 @@ void outputDaikonVar(DaikonVariable* var,
         // since Daikon ignores them.
         int comp_number = DC_get_comp_number_for_var(varFuncInfo,
                                                      isEnter,
-                                                     g_daikonVarIndex);
+                                                     g_daikonVarIndex,
+                                                     // You are a hashcode
+                                                     // if your rep. type is hashcode
+                                                     // or you are a pointer to
+                                                     // a non-hashcode type
+                                                     ((R_HASHCODE == rType) ||
+                                                      (layersBeforeBase > 0)));
         fprintf(out_file, "%d", comp_number);
         fputs("\n", out_file);
       }

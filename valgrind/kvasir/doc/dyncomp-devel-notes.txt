@@ -2176,6 +2176,9 @@ which can maintain their state across different calls.
 We must handle this at both the .decls and .dtrace printing times
 
 
+----------
+2005-05-17
+----------
 
 From Mike's email: Ok, apparently we don't need to worry about
 printing out OBJECT and CLASS ppt stuff in the .dtrace.  Another thing
@@ -2220,3 +2223,139 @@ handling for 'this' and other variables during NORMAL member function
 program points, so perhaps Daikon can smartly use these comparability
 numbers to infer OBJECT and CLASS invariants only over comparable
 MEMBER variables.
+
+
+This is a bit weird.  With comparability info on StackCppTest, we
+generate MUCH more invariants than without it.
+
+Ok, it seems that if we eliminate "VarComparability None" from the
+normal .decls file (without comparability) numbers, we get a helluva a
+lot of more invariants too.  So what is the significance of
+"VarComparability None"?
+
+Ok, the good thing is that with DynComp, we generate less lines of
+invariants (839 lines) than with no DynComp (and no VarComparability
+none) (1157 lines)
+
+So how can we get the 'filtering benefits' of "VarComparability None"
+AND get DynComp info at the same time?
+
+
+
+Ok, time to re-run all of the tests in the Kvasir test suite again:
+Great!  All tests now pass!
+
+
+----------
+2005-05-18
+----------
+
+What about pointer arithmetic?  How is that reflected in interactions?
+
+Have a mode where you run DynComp and NOT produce .dtrace output (it
+breaks incremental invariant detection because we print .decls at the
+end anyways) - Use the --decls-only option with it to not produce
+.dtrace TODO: Right now, --decls-only skips .dtrace traversals
+altogether and is NOT what we want at all when you have
+--with-dyncomp.  We should eventually fix this, but I don't feel like
+it right now.
+
+
+----------
+2005-05-19
+----------
+
+Approach 1:  Remember all tag tuples
+
+Remember every tuple of tags that were observed at a program point.  At the
+end of execution, determine for each pair of tags whether they interacted;
+if they did, say that the corresponding variables interacted.  This
+perfectly computes the desired goal.
+
+Possible optimization:  store not full tag tuples, but tuples for each pair
+of variables.  (This is similar to the way that samples were stored in
+Daikon version 2.)  These sets could be pruned when value tags merge.
+Perhaps this opeimization would make this approach feasible.
+
+Problem:  Storage for the tag tuples is prohibitive.  This scheme may also
+prevent garbage-collection of tags, unless we add more algorithmic
+cleverness.
+
+
+Tuple is homogeneous list with ordering
+
+Keep all information (all sets of new_tags) until the end
+
+There will be one collection of tags for each Daikon variable at each
+execution of a program point
+
+Once you get to the end, you pick the leaders again (re-canonicalize)
+for everything, and to see whether two variables at a ppt are
+comparable, go across the first row with all pairs of variables, but
+on all subsequent rows, you only have to do it on the members.  Once
+we see that two variables are merged, we don't have to worry about
+comparing within the sets.
+
+
+All of these tags should be leaders (in val_uf) at the end:
+
+X 5 X X 5 X X X
+X 6 X X 6 X X X
+X 5 X X 6 X X X
+
+
+Optimization - we have (n C 2) pairs of variables initially - for each
+pair of variables, we have a two-element tuple
+so:
+
+First time:
+(a, b) --> (5, 6)
+(a, c) --> (5, 7)
+(a, d) --> (5, 8)
+
+Second time:
+(a, b) --> (5, 6) (10, 11)
+(a, c) --> (5, 7) (12, 13)
+(a, d) --> (5, 8) (14, 15)  - Remove duplicates from this
+
+We have a hope that there are A LOT of duplicates so the chains are
+short - the columns (across different executions) can be thought of as
+sets because their ordering doesn't matter
+
+As soon as we see that a pair of variables is comparable, we can take
+it out and record elsewhere (in a variable comparability union-find)
+that they are comparable.  When we see that two variable sets merge,
+we can stop keeping track of those pairs of variables - we do this
+incrementally at every execution of a program point
+
+
+
+
+There is only one 'abstract type' of pointers so comparability over
+them shouldn't matter
+
+That looks bad for a struct and its first element to have the same
+comparability set
+
+Solution for now: Have a reserved number for pointer types that's
+unique from integer types - reserve '1' for hashcodes
+
+
+
+The problem with the inconsistencies in output between having
+"VarComparability none" and not having it seems to come from
+Daikon-derived variables, so it's not as bad as we thought.
+
+
+
+> Try to find a test program (perhaps port one over from a Java test) on which
+> Daikon finds useless invariants due to a lack of comparability information.
+> Try to run DynComp on it and hopefully see an improvement.
+
+Flex is an excellent example.  It produces many, many irrelevant
+invariants, and Jeff is very interested to see how much better the output
+gets (and how much faster Daikon runs) with comparability information.
+
+                    -Mike
+
+
