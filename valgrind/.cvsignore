@@ -11,7 +11,6 @@ vg_cachegen
 default.supp
 bin
 lib
-include
 share
 cachegrind.out.*
 autom4te.cache
