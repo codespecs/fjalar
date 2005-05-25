@@ -20,8 +20,6 @@ errs1
 execve
 execve2
 exitprog
-filter_leak_check_size
-filter_stderr
 fprw
 fwrite
 hello
