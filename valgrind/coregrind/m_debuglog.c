@@ -55,19 +55,25 @@
 
 /* ----- x86-linux specifics ----- */
 
-/* Arse!  Really I want to test VG_PLATFORM, but this does not
-   seem to be possible. */
 #if defined(__i386__) && defined(__linux__)
 
 static UInt local_sys_write_stderr ( HChar* buf, Int n )
 {
    UInt __res;
-   __asm__ volatile ("int $0x80"
-                     : "=a" (__res)
-                     : "0" (4), /* __NR_write */
-                       "b" (2), /* stderr */
-                       "c" (buf),
-                       "d" (n) );
+   __asm__ volatile (
+      "movl  $4, %%eax\n"    /* %eax = __NR_write */
+      "movl  $2, %%edi\n"    /* %edi = stderr */
+      "movl  %1, %%ecx\n"    /* %ecx = buf */
+      "movl  %2, %%edx\n"    /* %edx = n */
+      "pushl %%ebx\n"
+      "movl  %%edi, %%ebx\n"
+      "int   $0x80\n"        /* write(stderr, buf, n) */
+      "popl  %%ebx\n"
+      "movl  %%eax, %0\n"    /* __res = eax */
+      : "=mr" (__res)
+      : "g" (buf), "g" (n)
+      : "eax", "edi", "ecx", "edx"
+   );
    if (__res < 0) 
       __res = -1;
    return __res;
@@ -76,9 +82,13 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
 static UInt local_sys_getpid ( void )
 {
    UInt __res;
-   __asm__ volatile ("int $0x80"
-                     : "=a" (__res)
-                     : "0" (20) /* __NR_getpid */);
+   __asm__ volatile (
+      "movl $20, %%eax\n"  /* set %eax = __NR_getpid */
+      "int  $0x80\n"       /* getpid() */
+      "movl %%eax, %0\n"   /* set __res = eax */
+      : "=mr" (__res)
+      :
+      : "eax" );
    return __res;
 }
 
@@ -86,16 +96,37 @@ static UInt local_sys_getpid ( void )
 
 static UInt local_sys_write_stderr ( HChar* buf, Int n )
 {
-  return 0;
+   UInt __res;
+   __asm__ volatile (
+      "movq $1, %%rax\n"   /* set %rax = __NR_write */
+      "movq $2, %%rdi\n"   /* set %rdi = stderr */
+      "movq %1, %%rsi\n"   /* set %rsi = buf */
+      "movl %2, %%edx\n"   /* set %edx = n */
+      "syscall\n"          /* write(stderr, buf, n) */
+      "movl %%eax, %0\n"   /* set __res = %eax */
+      : "=mr" (__res)
+      : "g" (buf), "g" (n)
+      : "rax", "rdi", "rsi", "rdx" );
+   if (__res < 0) 
+      __res = -1;
+   return __res;
 }
 
 static UInt local_sys_getpid ( void )
 {
-  return 0;
+   UInt __res;
+   __asm__ volatile (
+      "movq $39, %%rax\n"  /* set %rax = __NR_getpid */
+      "syscall\n"          /* getpid() */
+      "movl %%eax, %0\n"   /* set __res = %eax */
+      : "=mr" (__res)
+      :
+      : "rax" );
+   return __res;
 }
 
 #else
-#error Unknown VG_PLATFORM
+# error Unknown platform
 #endif
 
 
@@ -303,7 +334,7 @@ VG_(debugLog_vprintf) (
       if (format[i] == 0)
          break;
       if (format[i] == '%') {
-         /* `%%' is replaced by `%'. */
+         /* '%%' is replaced by '%'. */
          send('%', send_arg2);
          ret++;
          continue;
