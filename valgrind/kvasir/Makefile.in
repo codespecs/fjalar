@@ -123,7 +123,9 @@ AM_CPPFLAGS = $(add_includes)
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
 AM_CFLAGS = $(WERROR) -Wmissing-prototypes -Winline -Wall -Wshadow -O -g @ARCH_TOOL_AM_CFLAGS@ -g -fno-omit-frame-pointer -Iinclude -Wno-missing-prototypes
 AM_CCASFLAGS = $(add_includes)
-#AM_CFLAGS += -O2
+
+# Use this for speed boost
+#AM_CFLAGS += -O3 -fomit-frame-pointer -Iinclude -Wno-missing-prototypes
 
 # PG - Change the name of the shared library
 val_PROGRAMS = vgtool_kvasir.so vgpreload_kvasir.so

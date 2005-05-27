@@ -31,7 +31,7 @@ uf_name uf_find(uf_object *object);
 // given a pointer to an object not held in the ADT,
 // adds the new object to the data structure as a single-element equivalence class;
 // Also sets new_object->tag to t
-void uf_make_set(uf_object *new_object, unsigned int t);
+void uf_make_set(uf_object *new_object, unsigned int t, char saturate);
 
 // given names of two elements, merges the sets of the two elements into one
 // and returns the new leader (uf_name)

@@ -38,6 +38,7 @@ void val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
 
+UInt create_new_tag_for_literal();
 
 extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
 
@@ -55,8 +56,6 @@ extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
 extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
-
-extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ();
 
 
 #endif

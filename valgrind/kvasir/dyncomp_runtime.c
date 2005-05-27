@@ -137,7 +137,7 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
 static void var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
                                            UInt tag) {
   uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
-  uf_make_set(new_obj, tag);
+  uf_make_set(new_obj, tag, 0);
   genputtable(var_uf_map, (void*)tag, (void*)new_obj);
 }
 

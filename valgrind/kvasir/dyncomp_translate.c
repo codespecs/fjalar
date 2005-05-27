@@ -27,6 +27,7 @@
 #include "mc_include.h"
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
+#include "dyncomp_main.h"
 #include "kvasir_runtime.h"
 #include "kvasir_main.h"
 
@@ -866,8 +867,8 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 {
-   IRDirty* di;
-   IRTemp   datatag;
+   //   IRDirty* di;
+   //   IRTemp   datatag;
 
    switch (e->tag) {
 
@@ -883,18 +884,17 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_Const:
          // When you create a constant, assign it a new tag
+         // Important optimization: We should only create a new tag
+         // at translation time, NOT at run-time.  Thus, every single
+         // static instance of a literal in some place in the code
+         // should always have the same tag associated with it, not
+         // a unique tag for every time that line is executed.
 
-         // Try it with a dirty call:
-         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-         di = unsafeIRDirty_1_N( datatag,
-                                 0/*regparms*/,
-                                 "MC_(helperc_CREATE_TAG)",
-                                 &MC_(helperc_CREATE_TAG),
-                                 mkIRExprVec_0());
-         setHelperAnns_DC( dce, di );
-         stmt( dce->bb, IRStmt_Dirty(di) );
-
-         return mkexpr(datatag);
+         // TODO: Remember to do something special to the uf_objects
+         // corresponding to these tags so that they never get garbage
+         // collected (or else we may get incorrect results) -
+         // Right now we saturate the ref_count field
+         return IRExpr_Const(IRConst_U32(create_new_tag_for_literal()));
 
       case Iex_Binop:
          return expr2tags_Binop_DC(

@@ -47,7 +47,7 @@
 UInt nextTag = 1;
 
 // Prototypes:
-static void val_uf_make_set_for_tag(UInt tag);
+static void val_uf_make_set_for_tag(UInt tag, char saturate);
 
 /* The two-level tag map works almost like the memory map.  Its
    purpose is to implement a sparse array which can hold up to 2^32
@@ -84,7 +84,8 @@ __inline__ void set_tag ( Addr a, UInt tag )
 // (This will have to be modified when we implement garbage collection)
 static __inline__ void assign_new_tag(Addr a) {
   set_tag(a, nextTag);
-  val_uf_make_set_for_tag(nextTag);
+  val_uf_make_set_for_tag(nextTag, 0);
+
   if (nextTag == UINT_MAX) {
     VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
   }
@@ -92,21 +93,6 @@ static __inline__ void assign_new_tag(Addr a) {
     nextTag++;
   }
 }
-
-// Doesn't do set_tag(); instead, return the new tag
-static __inline__ UInt assign_new_tag_no_addr() {
-  UInt newTag = nextTag;
-  val_uf_make_set_for_tag(newTag);
-  if (nextTag == UINT_MAX) {
-    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
-  }
-  else {
-    nextTag++;
-  }
-
-  return newTag;
-}
-
 
 // Allocate a new unique tag for all bytes in range [a, a + len)
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
@@ -160,7 +146,7 @@ static uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
 // calling this macro or else you may segfault
 #define GET_UF_OBJECT_PTR(tag) (&(primary_val_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
 
-static void val_uf_make_set_for_tag(UInt tag) {
+static void val_uf_make_set_for_tag(UInt tag, char saturate) {
   //  VG_(printf)("val_uf_make_set_for_tag(%u);\n", tag);
 
   if (IS_ZERO_TAG(tag))
@@ -191,7 +177,7 @@ static void val_uf_make_set_for_tag(UInt tag) {
   //  }
 
   // Do this unconditionally now:
-  uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
+  uf_make_set(GET_UF_OBJECT_PTR(tag), tag, saturate);
 }
 
 static __inline__ void val_uf_tag_union(UInt tag1, UInt tag2) {
@@ -347,14 +333,24 @@ void val_uf_union_tags_in_range(Addr a, SizeT len) {
   }
 }
 
-// Create a new tag but don't put it anywhere
-VGA_REGPARM(0)
-UInt MC_(helperc_CREATE_TAG) () {
-  UInt newTag = assign_new_tag_no_addr();
-#ifdef CREATE_TAG_VERBOSE
-  VG_(printf)("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
-              newTag, nextTag);
-#endif
+// Create a new tag for a literal but don't put it anywhere in memory
+// Remember to saturate the ref_count field of the respective uf_object
+// to prevent it from being garbage collected because it's not stored
+// anywhere in the tag map
+UInt create_new_tag_for_literal() {
+  UInt newTag = nextTag;
+
+  // Saturate the ref_count field of the uf_object for this tag
+  // so that it does not get garbage collected
+  val_uf_make_set_for_tag(newTag, 1);
+
+  if (nextTag == UINT_MAX) {
+    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
+  }
+  else {
+    nextTag++;
+  }
+
   return newTag;
 }
 

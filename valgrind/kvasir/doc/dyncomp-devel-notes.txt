@@ -2568,3 +2568,19 @@ invariants, and Jeff is very interested to see how much better the output
 gets (and how much faster Daikon runs) with comparability information.
 
                     -Mike
+
+
+----------
+2005-05-27
+----------
+
+Nasty performance slowdown alert!!!
+
+It seems like we are creating way too many tags for literals.  Perhaps
+we could create tags for literals at translation time and save them
+instead of inserting in CREATE_TAG helper calls at every step?
+
+Remember to be careful about these tags when performing garbage
+collection because they may not exist anywhere in memory.  Perhaps
+saturate their uf_object reference count to the maximum so that they
+never get garbage collected.
