@@ -35,6 +35,11 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) < (b) ? (a) : (b))
 
+
+#define DTRACE_PRINTF(...) do { if (!dyncomp_without_dtrace) \
+      fprintf(dtrace_fp, __VA_ARGS__); } while (0)
+
+
 char* UNINIT = "uninit";
 char* NONSENSICAL = "nonsensical";
 
@@ -154,7 +159,7 @@ void printOneDtraceString(char* str)
   char readable;
   Addr strHead = (Addr)str;
   // Print leading and trailing quotes to "QUOTE" the string
-  fprintf(dtrace_fp,"\"");
+  DTRACE_PRINTF("\"");
   readable = addressIsInitialized((Addr)str, sizeof(char));
   tl_assert(readable);
   while (*str != '\0')
@@ -165,19 +170,19 @@ void printOneDtraceString(char* str)
 
       switch (*str) {
       case '\n':
-        fprintf(dtrace_fp, "\\n");
+        DTRACE_PRINTF( "\\n");
         break;
       case '\r':
-        fprintf(dtrace_fp, "\\r");
+        DTRACE_PRINTF( "\\r");
         break;
       case '\"':
-        fprintf(dtrace_fp, "\\\"");
+        DTRACE_PRINTF( "\\\"");
         break;
       case '\\':
-        fprintf(dtrace_fp, "\\\\");
+        DTRACE_PRINTF( "\\\\");
         break;
       default:
-        fprintf(dtrace_fp, "%c", *str);
+        DTRACE_PRINTF( "%c", *str);
       }
       str++;
 
@@ -189,7 +194,7 @@ void printOneDtraceString(char* str)
         break;
       }
     }
-  fprintf(dtrace_fp,"\"");
+  DTRACE_PRINTF("\"");
 }
 
 // Prints one character as though it were a string to .dtrace,
@@ -197,32 +202,32 @@ void printOneDtraceString(char* str)
 void printOneCharAsDtraceString(char c)
 {
   // Print leading and trailing quotes to "QUOTE" the string
-  fprintf(dtrace_fp, "\"");
+  DTRACE_PRINTF( "\"");
 
   switch (c) {
   case '\n':
-    fprintf(dtrace_fp, "\\n");
+    DTRACE_PRINTF( "\\n");
     break;
   case '\r':
-    fprintf(dtrace_fp, "\\r");
+    DTRACE_PRINTF( "\\r");
     break;
   case '\"':
-    fprintf(dtrace_fp, "\\\"");
+    DTRACE_PRINTF( "\\\"");
     break;
   case '\\':
-    fprintf(dtrace_fp, "\\\\");
+    DTRACE_PRINTF( "\\\\");
     break;
   default:
-    fprintf(dtrace_fp, "%c", c);
+    DTRACE_PRINTF( "%c", c);
   }
 
-  fprintf(dtrace_fp, "\"");
+  DTRACE_PRINTF( "\"");
 }
 
 void printOneDtraceStringAsIntArray(char* str) {
   char readable;
   Addr strHead = (Addr)str;
-  fprintf(dtrace_fp,"[ ");
+  DTRACE_PRINTF("[ ");
   readable = addressIsInitialized((Addr)str, sizeof(char));
   tl_assert(readable);
   while (*str != '\0')
@@ -231,7 +236,7 @@ void printOneDtraceStringAsIntArray(char* str) {
         val_uf_union_tags_at_addr(strHead, (Addr)str);
       }
 
-      fprintf(dtrace_fp, "%d ", *str);
+      DTRACE_PRINTF( "%d ", *str);
 
       str++;
 
@@ -242,7 +247,7 @@ void printOneDtraceStringAsIntArray(char* str) {
         break;
       }
     }
-  fprintf(dtrace_fp,"]");
+  DTRACE_PRINTF("]");
 }
 
 /* Returns true if str points to a null-terminated string, every byte of
@@ -346,7 +351,7 @@ char outputDtraceValue(DaikonVariable* var,
 
   if (isDummy)
     {
-      fprintf(dtrace_fp, "%s\n%d\n",
+      DTRACE_PRINTF( "%s\n%d\n",
 	      NONSENSICAL,
 	      mapInitToModbit(0));
 
@@ -369,7 +374,7 @@ char outputDtraceValue(DaikonVariable* var,
 
       if (!allocated)
 	{
-	  fprintf(dtrace_fp, "%s\n%d\n",
+	  DTRACE_PRINTF( "%s\n%d\n",
 		  NONSENSICAL,
 		  mapInitToModbit(0));
 
@@ -381,7 +386,7 @@ char outputDtraceValue(DaikonVariable* var,
 
       if (!initialized)
 	{
-	  fprintf(dtrace_fp, "%s\n%d\n",
+	  DTRACE_PRINTF( "%s\n%d\n",
 		  UNINIT,
 		  mapInitToModbit(0));
 
@@ -413,7 +418,7 @@ char outputDtraceValue(DaikonVariable* var,
 
 	  if (!allocatedAndReadable)
 	    {
-              fprintf(dtrace_fp, "%s\n%d\n",
+              DTRACE_PRINTF( "%s\n%d\n",
                       UNINIT,
                       mapInitToModbit(0));
 
@@ -449,7 +454,7 @@ char outputDtraceValue(DaikonVariable* var,
 
       if (!allocated)
 	{
-	  fprintf(dtrace_fp, "%s\n%d\n",
+	  DTRACE_PRINTF( "%s\n%d\n",
 		  NONSENSICAL,
 		  mapInitToModbit(0));
 
@@ -470,25 +475,25 @@ char outputDtraceValue(DaikonVariable* var,
               int limit = upperBound;
               if (kvasir_array_length_limit != -1)
                 limit = min(limit, kvasir_array_length_limit);
-	      fprintf(dtrace_fp, "[ ");
+	      DTRACE_PRINTF( "[ ");
 	      for (i = 0; i <= limit; i++)
 		{
-		  fprintf(dtrace_fp, "%u ",
+		  DTRACE_PRINTF( "%u ",
 			  ((unsigned int)(ptrValue + (i*bytesBetweenElts))));
 		}
-	      fprintf(dtrace_fp, "]\n%d\n",
+	      DTRACE_PRINTF( "]\n%d\n",
 		      mapInitToModbit(1));
 	    }
 	  else
 	    {
-	      fprintf(dtrace_fp, "%u\n%d\n",
+	      DTRACE_PRINTF( "%u\n%d\n",
 		      ((unsigned int)(ptrValue)),
 		      mapInitToModbit(1));
 	    }
 	}
       else
 	{
-	  fprintf(dtrace_fp, "%s\n%d\n",
+	  DTRACE_PRINTF( "%s\n%d\n",
 		  UNINIT,
 		  mapInitToModbit(0));
 
@@ -723,11 +728,11 @@ void printDtraceHashcode(DaikonVariable* var,
       DPRINTF("Printing elements 0..%u starting at %p"
               " with spacing %u\n", upperBound, ptrValue,
               bytesBetweenElts);
-      fprintf(dtrace_fp, "[ ");
+      DTRACE_PRINTF( "[ ");
       for (i = 0; i <= limit; i++)
 	{
           Addr curAddr = (ptrValue + (i*bytesBetweenElts));
-	  fprintf(dtrace_fp, "%u ", var->isStaticArray ?
+	  DTRACE_PRINTF( "%u ", var->isStaticArray ?
 		  curAddr :
 		  *((Addr*)(curAddr)));
 
@@ -739,12 +744,12 @@ void printDtraceHashcode(DaikonVariable* var,
             val_uf_union_tags_at_addr(ptrValue, curAddr);
           }
 	}
-      fprintf(dtrace_fp, "]\n%d\n",
+      DTRACE_PRINTF( "]\n%d\n",
 	      mapInitToModbit(1));
     }
   else
     {
-      fprintf(dtrace_fp, "%u\n%d\n", var->isStaticArray ?
+      DTRACE_PRINTF( "%u\n%d\n", var->isStaticArray ?
 	      ptrValue :
 	      *((Addr*)ptrValue),
 	      mapInitToModbit(1));
@@ -778,7 +783,7 @@ char printDtraceString(DaikonVariable* var,
       int i = 0;
 
       DPRINTF("More precisely, a string array\n");
-      fprintf(dtrace_fp, "[ ");
+      DTRACE_PRINTF( "[ ");
 
       for (i = 0; i <= upperBound; i++)
 	{
@@ -808,7 +813,7 @@ char printDtraceString(DaikonVariable* var,
 		  else if ((OVERRIDE_STRING_AS_ONE_INT == disambigOverride) ||
 			   (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride)) {
 		    char intToPrint = (*currentPtr);
-		    fprintf(dtrace_fp, "%d", intToPrint);
+		    DTRACE_PRINTF( "%d", intToPrint);
 		  }
 		  else {
 		    printOneDtraceString(currentPtr);
@@ -816,17 +821,17 @@ char printDtraceString(DaikonVariable* var,
 		}
 	      else
 		{
-		  fprintf(dtrace_fp, "null");
+		  DTRACE_PRINTF( "null");
 		}
 	    }
 	  else
 	    {
-	      fprintf(dtrace_fp, "null");
+	      DTRACE_PRINTF( "null");
 	    }
-	  fprintf(dtrace_fp, " ");
+	  DTRACE_PRINTF( " ");
 	}
 
-      fprintf(dtrace_fp, "]\n%d\n", mapInitToModbit(1));
+      DTRACE_PRINTF( "]\n%d\n", mapInitToModbit(1));
     }
 
   // String is not part of an array
@@ -864,7 +869,7 @@ char printDtraceString(DaikonVariable* var,
 				*((char*)ptrValue) :
 				*(*((char**)(ptrValue)))));
 
-	    fprintf(dtrace_fp, "%d", intToPrint);
+	    DTRACE_PRINTF( "%d", intToPrint);
 	  }
 	  else if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
 	    printOneDtraceStringAsIntArray(((var->isStaticArray) ?
@@ -876,12 +881,12 @@ char printDtraceString(DaikonVariable* var,
 				  (char*)ptrValue :
 				  *((char**)(ptrValue))));
 	  }
-	  fprintf(dtrace_fp, "\n%d\n",
+	  DTRACE_PRINTF( "\n%d\n",
 		  mapInitToModbit(1));
 	}
       else
 	{
-	  fprintf(dtrace_fp, "%s\n%d\n",
+	  DTRACE_PRINTF( "%s\n%d\n",
 		  UNINIT,
 		  mapInitToModbit(0));
 
@@ -893,14 +898,14 @@ char printDtraceString(DaikonVariable* var,
 }
 
 #define PRINT_STATIC_ARRAY(TYPE) \
-  fprintf(dtrace_fp, TYPE_FORMAT_STRINGS[decType], ((TYPE*)(ptrValue))[i]);
+  DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], ((TYPE*)(ptrValue))[i]);
 #define PRINT_ARRAY_VAR(TYPE) \
-  fprintf(dtrace_fp, TYPE_FORMAT_STRINGS[decType], *((TYPE*)(loc)));
+  DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(loc)));
 #define PRINT_ONE_VAR(TYPE) \
-  fprintf(dtrace_fp, TYPE_FORMAT_STRINGS[decType], *((TYPE*)(ptrValue)));
+  DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(ptrValue)));
 
 #define PRINT_GLOBAL_TEMP_VAR(TYPE) \
-  fprintf(dtrace_fp, TYPE_FORMAT_STRINGS[decType], *((TYPE*)GLOBAL_TEMP_VAR))
+  DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)GLOBAL_TEMP_VAR))
 
 
 #define BIT_LEVEL_PRINT_STATIC_ARRAY(TYPE) \
@@ -973,7 +978,7 @@ switch (decType) \
    OPERATION(double) \
    break; \
  default: \
-   fprintf(dtrace_fp, "TYPES_SWITCH()\n - unknown type"); \
+   DTRACE_PRINTF( "TYPES_SWITCH()\n - unknown type"); \
    DABORT("TYPES_SWITCH()\n - unknown type"); \
    break; \
 }
@@ -1005,7 +1010,7 @@ char printDtraceBaseValue(DaikonVariable* var,
       // If we want to mask the bugs, just print out NONSENSICAL and continue onwards
       if (!kvasir_asserts_aborts_on)
 	{
-	  fprintf(dtrace_fp, "%s\n%d\n",
+	  DTRACE_PRINTF( "%s\n%d\n",
 		  NONSENSICAL,
 		  mapInitToModbit(init));
 	  return 0;
@@ -1047,7 +1052,7 @@ char printDtraceBaseValue(DaikonVariable* var,
               are_some_bytes_init((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
               TYPES_SWITCH(BIT_LEVEL_PRINT_STATIC_ARRAY)}
 	    else {TYPES_SWITCH(PRINT_STATIC_ARRAY)}
-	      fprintf(dtrace_fp, "\n%d\n",
+	      DTRACE_PRINTF( "\n%d\n",
 		      mapInitToModbit(1));
 
               if (kvasir_with_dyncomp) {
@@ -1058,7 +1063,7 @@ char printDtraceBaseValue(DaikonVariable* var,
             int limit = var->upperBounds[0];
             if (kvasir_array_length_limit != -1)
               limit = min(limit, kvasir_array_length_limit);
-	    fprintf(dtrace_fp, "[ ");
+	    DTRACE_PRINTF( "[ ");
 	    for (i = 0; i <= limit; i++)
 	      {
                 Addr curAddr = (Addr)(ptrValue + (i*TYPE_BYTE_SIZES[decType]));
@@ -1074,9 +1079,9 @@ char printDtraceBaseValue(DaikonVariable* var,
                   val_uf_union_tags_at_addr((Addr)ptrValue, curAddr);
                 }
 
-                fprintf(dtrace_fp, " ");
+                DTRACE_PRINTF( " ");
 	      }
-	    fprintf(dtrace_fp, "]\n%d\n",
+	    DTRACE_PRINTF( "]\n%d\n",
 		    mapInitToModbit(1));
 	  }
 	}
@@ -1088,7 +1093,7 @@ char printDtraceBaseValue(DaikonVariable* var,
 	  DPRINTF("Printing elements 0..%u starting at %p"
 		  " with spacing %u\n", upperBound, ptrValue,
 		  bytesBetweenElts);
-	  fprintf(dtrace_fp, "[ ");
+	  DTRACE_PRINTF( "[ ");
 	  for (i = 0; i <= limit; i++)
 	    {
 	      Addr loc = (Addr)(ptrValue + (i * bytesBetweenElts));
@@ -1136,11 +1141,11 @@ char printDtraceBaseValue(DaikonVariable* var,
 	      // values but the array indices of initialized values are preserved
 	      if (!eltInitialized)
 		{
-		  fprintf(dtrace_fp, "0 ");
+		  DTRACE_PRINTF( "0 ");
 		}
 	      else if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
 		printOneCharAsDtraceString(*((char*)(loc)));
-		fprintf(dtrace_fp, " ");
+		DTRACE_PRINTF( " ");
 
                 if (kvasir_with_dyncomp) {
                   val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
@@ -1158,16 +1163,16 @@ char printDtraceBaseValue(DaikonVariable* var,
                     val_uf_union_tags_at_addr((Addr)ptrValue, loc);
                   }
 
-                  fprintf(dtrace_fp, " ");
+                  DTRACE_PRINTF( " ");
 		}
 	    }
-	  fprintf(dtrace_fp, "]\n%d\n",
+	  DTRACE_PRINTF( "]\n%d\n",
 		  mapInitToModbit(1));
 	}
       // Special case for .disambig:
       else if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
 	printOneCharAsDtraceString(*((char*)ptrValue));
-      	fprintf(dtrace_fp, "\n%d\n", mapInitToModbit(1));
+      	DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
       }
       else
 	{
@@ -1180,7 +1185,7 @@ char printDtraceBaseValue(DaikonVariable* var,
             val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
           }
 
-	  fprintf(dtrace_fp, "\n%d\n", mapInitToModbit(1));
+	  DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
 	}
 
       return 1;
@@ -1188,7 +1193,7 @@ char printDtraceBaseValue(DaikonVariable* var,
   // Print out "uninit" and modbit=2 for uninitialized values
   else
     {
-      fprintf(dtrace_fp, "%s\n%d\n",
+      DTRACE_PRINTF( "%s\n%d\n",
 	      UNINIT,
 	      mapInitToModbit(init));
 

@@ -244,7 +244,7 @@ void handleFunctionEntrance(FunctionEntry* e)
       // order to set up the proper data structures
       outputDeclsFile(kvasir_with_dyncomp);
 
-      if (actually_output_separate_decls_dtrace) {
+      if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
 	openTheDtraceFile();
       }
 
@@ -590,7 +590,10 @@ void outputFormalParamsAndGlobals(FunctionEntry* e, DaikonFunctionInfo* daikonFu
     return;
 
   // Print out function header
-  printDtraceFunctionHeader(daikonFuncPtr, isEnter);
+
+  if (!dyncomp_without_dtrace) {
+    printDtraceFunctionHeader(daikonFuncPtr, isEnter);
+  }
 
   DPRINTF("About to print globals\n");
 
@@ -632,9 +635,12 @@ void outputObjectAndClassPPTs(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPt
       DaikonVariable* var = &(first->var);
 
       if (var && VG_STREQ(var->name, "this")) {
-        fputs("\n", dtrace_fp);
-        fputs(daikonFuncPtr->parentClass->collectionName, dtrace_fp);
-        fputs(":::OBJECT\n", dtrace_fp);
+
+        if (!dyncomp_without_dtrace) {
+          fputs("\n", dtrace_fp);
+          fputs(daikonFuncPtr->parentClass->collectionName, dtrace_fp);
+          fputs(":::OBJECT\n", dtrace_fp);
+        }
 
         printVariablesInVarList(daikonFuncPtr, isEnter, // TODO: Hmmm, this may be a problem because in decls-output.c:printAllObjectAndClassDecls(), I always set 'isEnter' to 1
                                 (isEnter ?
@@ -647,9 +653,11 @@ void outputObjectAndClassPPTs(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPt
 
     // Print a :::CLASS program point iff it is a PUBLIC
     // member function
-    fputs("\n", dtrace_fp);
-    fputs(daikonFuncPtr->parentClass->collectionName, dtrace_fp);
-    fputs(":::CLASS\n", dtrace_fp);
+    if (!dyncomp_without_dtrace) {
+      fputs("\n", dtrace_fp);
+      fputs(daikonFuncPtr->parentClass->collectionName, dtrace_fp);
+      fputs(":::CLASS\n", dtrace_fp);
+    }
 
     printVariablesInVarList(daikonFuncPtr, isEnter, // TODO: Hmmm, this may be a problem because in decls-output.c:printAllObjectAndClassDecls(), I always set 'isEnter' to 1
                             GLOBAL_VAR, 0, DTRACE_FILE, 0,

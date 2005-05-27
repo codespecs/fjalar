@@ -57,6 +57,8 @@ char *kvasir_program_stderr_filename;
 
 Bool actually_output_separate_decls_dtrace;
 
+Bool dyncomp_without_dtrace;
+
 // Turn this off to not have DPRINTFs expand to anything, just in
 // case you want to optimize for performance,
 // but leave it on if you want the --debug command-line option to work

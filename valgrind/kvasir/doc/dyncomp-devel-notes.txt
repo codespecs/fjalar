@@ -2351,7 +2351,25 @@ matrix and use the 'mirror image' slots to hold extra data.  e.g.:
 (a,b) will hold the tuples for (a,b) but (b,a) will hold something
 else about (a,b).  Each entry in this 2-D array will be a linked list
 of pairs of ints with no duplicates (insertion should check for
-duplicates)
+duplicates).
+
+OHHHH, perhaps the mirror locations could hold the variable
+comparability set uf_objects ... but wait, we only need a variable
+comparability set uf_object for each variable, NOT for each pair of
+variables, so that might be a bit tricky
+
+Requirements:
+
+We need to create a new augmented union-find data structure for
+holding variable comparability at each ppt which can efficiently find
+all elements in the same set as the given element so that we can
+propagate the DON'T TOUCH ME's.  Perhaps keep a parallel set
+structure. (Circularly-linked lists)
+
+
+Maybe don't try to use the lower half of the triangle and use some
+other data structures just to reduce the confusion.  Don't worry about
+wasting space and stuff.
 
 
 At the beginning of execution:
@@ -2370,7 +2388,7 @@ For each variable indexed by v:
        as a temporary storage area for new tags retrieved at every
        program point execution
 
-For each pair of variables indexed by i and j where i != j:
+For each pair of variables indexed by i and j where i < j:
     1. tag_i = tag_tuples[i][i], tag_j = tag_tuples[j][j]
     2. If tag_i == tag_j:
 
@@ -2380,13 +2398,15 @@ For each pair of variables indexed by i and j where i != j:
 	  considered again.  Merge the comparability sets of variables
 	  i and j in a local variable comparability union-find.
 
-	  Also, mark all pairs x, y in the same set as i, j as DON'T
-	  TOUCH ME.  For all i, j, if i, j are in the same variable
-	  union-find set, then their entry tag_tuples[i][j] == DON'T
-	  TOUCH ME.  We only need to look for pairs where one is from
-	  the set of i and the other is from the set of j because
-	  by structural induction, all pairs in the same set of i (and
-	  j) have already been marked as DON'T TOUCH ME
+	  Also, mark the entries of all variable pairs x, y in the
+	  same sets as i, j as DON'T TOUCH ME.  For all x, y, if x and
+	  y are in the same variable union-find set, then their entry
+	  tag_tuples[x][y] == DON'T TOUCH ME.  We only need to look
+	  for pairs where one is from the set of i and the other is
+	  from the set of j (across set boundaries) because by
+	  structural induction, all pairs in the same variable set of
+	  i (and j) have already been marked as DON'T TOUCH ME by the
+	  previous mergings
 
        Else:
 
@@ -2395,8 +2415,8 @@ For each pair of variables indexed by i and j where i != j:
 
 	  If it's DON'T TOUCH ME:
 
-	     Then don't do anything because variables i and j have already been
-	     merged in some set before.
+	     Then don't do anything because variables i and j have
+	     already been merged in some set before.
 
 	  Else:
 
@@ -2407,14 +2427,19 @@ For each pair of variables indexed by i and j where i != j:
 	     val_uf (just in case they have been updated), and if the
 	     two tags of some pair in the list are identical, then
 	     merge the variable comparability sets and destroy that
-	     whole list.  If a duplicate entry is found, then DON'T
-	     insert the new entry in.
+	     whole list.  Transitively mark all variables which cut
+	     across the sets of the recently-merged things as DON'T
+	     TOUCH ME (goto step 2).  If a duplicate entry is found,
+	     then DON'T insert the new entry in.  Are there more
+	     benefits to continuing the traversal down the linked list
+	     and possibly performing more mergings earlier ... or to
+	     just exit the traversal and do all mergings at the end.
 
 
 At the end of execution:
 
 For each program point:
-    For each pair of variables indexed by i and j where i != j:
+    For each pair of variables indexed by i and j where i < j:
 
 	(We need to somehow update the variable comparability sets,
 	 taking into account the fact that value interactions might have
@@ -2423,7 +2448,8 @@ For each program point:
 	Walk down the linked list in tag_tuples[i][j] and find the new
 	leaders for every tuple pair in the list.  If both elements of
 	the pair have the same leader, then merge their variable
-	comparability sets and destroy that entire linked list
+	comparability sets (and all sets of variables comparable to
+	those) and destroy that entire linked list
 
 
     Query the variable comparability sets of each program point to get

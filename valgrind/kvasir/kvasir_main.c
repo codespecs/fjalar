@@ -67,6 +67,8 @@ char *kvasir_program_stderr_filename = 0;
 
 Bool actually_output_separate_decls_dtrace = 0;
 
+Bool dyncomp_without_dtrace = False;
+
 /*------------------------------------------------------------*/
 /*--- Function stack                                       ---*/
 /*------------------------------------------------------------*/
@@ -527,6 +529,14 @@ void kvasir_post_clo_init()
     actually_output_separate_decls_dtrace = True;
   }
 
+  // Special handling for BOTH kvasir_with_dyncomp and kvasir_decls_only
+  // We need to actually do a full .dtrace run but just not output anything
+  // to the .dtrace file
+  if (kvasir_decls_only && kvasir_with_dyncomp) {
+     kvasir_decls_only = False;
+     dyncomp_without_dtrace = True;
+  }
+
   process_elf_binary_data(filename);
   daikon_preprocess_entry_array();
   createDeclsAndDtraceFiles(filename);
@@ -644,5 +654,7 @@ void kvasir_finish() {
 
   DYNCOMP_DPRINTF("\n*** nextTag: %u ***\n\n", nextTag);
 
-  finishDtraceFile();
+  if (!dyncomp_without_dtrace) {
+     finishDtraceFile();
+  }
 }

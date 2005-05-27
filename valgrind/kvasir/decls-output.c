@@ -1424,7 +1424,7 @@ void outputDaikonVar(DaikonVariable* var,
 
       if (var_dump_fp && allowVarDumpToFile)
 	{
-	  fputs(fullDaikonName, var_dump_fp);
+          fputs(fullDaikonName, var_dump_fp);
 	}
 
       if (out_file) {
