@@ -2671,7 +2671,7 @@ the subtraction thing, I will make one pass at the end of execution
 and allocate sequential comparability numbers (1, 2, 3, 4, etc...),
 giving two variables the same number iff they have the same tag
 ... except for a tag of 0, which ALWAYS causes the allocation of a new
-number.
+number. - OK, NOW THIS IS IMPLEMENTED
 
 
 Ok, if we do that, we have the problem that struct variables and their
@@ -2680,3 +2680,4 @@ same tags.  This looks a bit funny and disconcerting.  We probably
 need some special code to disambiguate this. (The 'having one abstract
 type (and hence one reserved tag of '1') of pointers' thing was an
 attempt to solve this problem, but Mike doesn't like it.
+- NOT YET IMPLEMENTED
