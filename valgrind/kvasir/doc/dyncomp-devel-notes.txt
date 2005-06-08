@@ -2662,3 +2662,21 @@ just an artifact of Lackwit's shortcomings.  If you think about it,
 when you take an address using the & operator, that address really
 isn't conceptually comparable to anything else, so it should be given
 a unique comparability number just like uninitialized variables.
+
+In terms of implementation, uninitialized variables have tags of 0,
+but when you subtract the smallest tag observed at a program point
+from all variables, they end up with negative numbers.  Now, I
+normalize all negative numbers to -1.  I think that instead of doing
+the subtraction thing, I will make one pass at the end of execution
+and allocate sequential comparability numbers (1, 2, 3, 4, etc...),
+giving two variables the same number iff they have the same tag
+... except for a tag of 0, which ALWAYS causes the allocation of a new
+number.
+
+
+Ok, if we do that, we have the problem that struct variables and their
+first elements really share the SAME address, so they will have the
+same tags.  This looks a bit funny and disconcerting.  We probably
+need some special code to disambiguate this. (The 'having one abstract
+type (and hence one reserved tag of '1') of pointers' thing was an
+attempt to solve this problem, but Mike doesn't like it.

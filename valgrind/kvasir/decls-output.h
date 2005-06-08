@@ -33,6 +33,9 @@ int g_daikonVarIndex;
 char* fullNameStack[MAX_STRING_STACK_SIZE];
 int fullNameStackSize;
 
+struct genhashtable* g_compNumberMap;
+int g_curCompNumber;
+
 // For use by printOneDaikonVariableAndDerivatives
 typedef enum VariableOrigin {
   DERIVED_VAR, // Always switches to this after one recursive call
