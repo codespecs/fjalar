@@ -44,8 +44,6 @@ void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
       genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
                                 (int (*)(void *,void *)) &equivalentTags);
 
-    funcPtr->ppt_entry_smallest_tag = UINT_MAX;
-
     if (numDaikonVars > 0) {
       funcPtr->ppt_entry_var_tags =
         VG_(calloc)(numDaikonVars,
@@ -60,8 +58,6 @@ void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
     funcPtr->ppt_exit_var_uf_map =
       genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
                                 (int (*)(void *,void *)) &equivalentTags);
-
-    funcPtr->ppt_exit_smallest_tag = UINT_MAX;
 
     if (numDaikonVars > 0) {
       funcPtr->ppt_exit_var_tags =
@@ -186,19 +182,16 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   UInt leader, new_leader, var_tags_v, new_tags_v;
   struct genhashtable* var_uf_map;
   UInt *var_tags, *new_tags;
-  UInt *ppt_smallest_tag_ptr;
 
   if (isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
     new_tags = funcPtr->ppt_entry_new_tags;
-    ppt_smallest_tag_ptr = &(funcPtr->ppt_entry_smallest_tag);
   }
   else {
     var_uf_map = funcPtr->ppt_exit_var_uf_map;
     var_tags = funcPtr->ppt_exit_var_tags;
     new_tags = funcPtr->ppt_exit_new_tags;
-    ppt_smallest_tag_ptr = &(funcPtr->ppt_exit_smallest_tag);
   }
   // Update from any val_uf merges that have occurred for variables on
   // previous executions of this program point.
@@ -247,12 +240,6 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
                   var_tags[daikonVarIndex],
                   a);
 
-  // Ignore tags of zero because they are meaningless
-  if ((var_tags[daikonVarIndex] > 0) &&
-      (var_tags[daikonVarIndex] < (*ppt_smallest_tag_ptr))) {
-    *ppt_smallest_tag_ptr = var_tags[daikonVarIndex];
-    //    VG_(printf)("updated smallest_tag: %d\n", (*ppt_smallest_tag_ptr));
-  }
 }
 
 // This runs once for every Daikon variable at the END of the target
@@ -266,17 +253,14 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   UInt leader, var_tags_v;
   struct genhashtable* var_uf_map;
   UInt *var_tags;
-  UInt *ppt_smallest_tag_ptr;
 
   if (isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
-    ppt_smallest_tag_ptr = &(funcPtr->ppt_entry_smallest_tag);
   }
   else {
     var_uf_map = funcPtr->ppt_exit_var_uf_map;
     var_tags = funcPtr->ppt_exit_var_tags;
-    ppt_smallest_tag_ptr = &(funcPtr->ppt_exit_smallest_tag);
   }
   // Update from any val_uf merges that have occurred for variables on
   // previous executions of this program point.
@@ -301,12 +285,6 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
                   daikonVarIndex,
                   var_tags[daikonVarIndex]);
 
-  // Ignore tags of zero because they are meaningless
-  if ((var_tags[daikonVarIndex] > 0) &&
-      (var_tags[daikonVarIndex] < (*ppt_smallest_tag_ptr))) {
-    *ppt_smallest_tag_ptr = var_tags[daikonVarIndex];
-    //    VG_(printf)("updated smallest_tag: %d\n", (*ppt_smallest_tag_ptr));
-  }
 }
 
 
@@ -318,40 +296,37 @@ int equivalentTags(UInt t1, UInt t2) {
 
 // Return the comparability number for the variable as a SIGNED
 // INTEGER (because Daikon expects a signed integer).
-// Unless smallest tag for this program point is still equal to
-// UINT_MAX, subtract all tags from (smallest tag - 1) in order to
-// make them look reasonable.  This ensures that the smallest observed
-// tag at this program point will have a comparability number of 1
+// Here is how we translate from tags to comparability numbers:
+// * If the tag is 0, then that means that the variable has never
+//   been observed so we want to assign it a new unique number
+//   to denote that it is not comparable to anything else
+//   (assign it g_curCompNumber and then increment g_curCompNumber)
+// * If the tag is non-zero, look up in g_compNumberMap to see
+//   if a comp. number already exists for that tag.  If it does
+//   exist, re-use that number.  If not, then assign g_curCompNumber
+//   to it, add that entry to g_compNumberMap, and
+//   increment g_curCompNumber
 int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
                                char isEnter,
-                               int daikonVarIndex,
-                               char isHashcode) {
-  int comp_number = -1;
-  UInt *var_tags;
-  UInt smallest_tag;
+                               int daikonVarIndex) {
+  int comp_number;
+  UInt tag = isEnter ?
+    funcPtr->ppt_entry_var_tags[daikonVarIndex] :
+    funcPtr->ppt_exit_var_tags[daikonVarIndex];
 
-
-  if (isEnter) {
-    var_tags = funcPtr->ppt_entry_var_tags;
-    smallest_tag = funcPtr->ppt_entry_smallest_tag;
+  if (0 == tag) {
+    comp_number = g_curCompNumber;
+    g_curCompNumber++;
   }
   else {
-    var_tags = funcPtr->ppt_exit_var_tags;
-    smallest_tag = funcPtr->ppt_exit_smallest_tag;
-  }
-
-  if (UINT_MAX == smallest_tag) {
-    comp_number = (int)(var_tags[daikonVarIndex]);
-  }
-  else {
-    // Remember to subtract (smallest_tag - 1) from the tag
-    comp_number = (int)(var_tags[daikonVarIndex] - (smallest_tag - 1));
-  }
-
-  // Set all negative comparability numbers to -1 for aesthetic purposes
-  if (comp_number < 0) {
-    comp_number = -1;
-    DYNCOMP_DPRINTF("Warning! Comparability number is negative.\n");
+    if (gencontains(g_compNumberMap, (void*)tag)) {
+      comp_number = (int)gengettable(g_compNumberMap, (void*)tag);
+    }
+    else {
+      comp_number = g_curCompNumber;
+      g_curCompNumber++;
+      genputtable(g_compNumberMap, (void*)tag, (void*)comp_number);
+    }
   }
 
   return comp_number;

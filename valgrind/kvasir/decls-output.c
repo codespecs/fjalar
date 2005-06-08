@@ -91,6 +91,19 @@ FunctionTree* globalFunctionTree = 0;
 // to dereference in one Daikon variable)
 int MAX_NUM_STRUCTS_TO_DEREFERENCE = 2;
 
+// Maps tags to comparability numbers, which are assigned sequentially
+// for every program point.  This is only used for DynComp.
+// Key: tag (unsigned int)
+// Value: comparability number (int) - notice that this is SIGNED because that
+//                                     is what Daikon requires
+struct genhashtable* g_compNumberMap = 0;
+
+// This is the current sequential comparability number (only for
+// DynComp).  It increments after it has been assigned as a value in
+// g_compNumberMap, and it is reset back to 1 during every program
+// point.
+int g_curCompNumber = 1;
+
 // This array can be indexed using the DaikonDeclaredType enum
 const char* DaikonDeclaredTypeString[] = {
   "no_declared_type", // Create padding
@@ -841,6 +854,17 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_d
         fputs(EXIT_PPT, decls_fp);
         fputs("\n", decls_fp);
       }
+
+    // For outputting real .decls when running with DynComp,
+    // initialize a global hashtable which associates tags with
+    // sequentially-assigned comparability numbers
+    if (kvasir_with_dyncomp) {
+      // This is a GLOBAL so be careful :)
+      g_compNumberMap = genallocatehashtable(NULL, // no hash function needed for u_int keys
+                                             (int (*)(void *,void *)) &equivalentIDs);
+
+      g_curCompNumber = 1;
+    }
   }
 
   // Print out globals
@@ -877,12 +901,18 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_d
     fputs("\n", decls_fp);
   }
 
-  // Allocate program point data structures if we are using DynComp:
-  // (This should only be run once for every ppt)
-  // This must be run at the end because its results depend on
-  // g_daikonVarIndex being properly incremented
+
   if (kvasir_with_dyncomp) {
-    allocate_ppt_structures(funcPtr, isEnter, g_daikonVarIndex);
+    if (faux_decls) {
+      // Allocate program point data structures if we are using DynComp:
+      // (This should only be run once for every ppt)
+      // This must be run at the end because its results depend on
+      // g_daikonVarIndex being properly incremented
+      allocate_ppt_structures(funcPtr, isEnter, g_daikonVarIndex);
+    }
+    else {
+      genfreehashtable(g_compNumberMap);
+    }
   }
 }
 
@@ -1636,13 +1666,7 @@ void outputDaikonVar(DaikonVariable* var,
         // since Daikon ignores them.
         int comp_number = DC_get_comp_number_for_var(varFuncInfo,
                                                      isEnter,
-                                                     g_daikonVarIndex,
-                                                     // You are a hashcode
-                                                     // if your rep. type is hashcode
-                                                     // or you are a pointer to
-                                                     // a non-hashcode type
-                                                     ((R_HASHCODE == rType) ||
-                                                      (layersBeforeBase > 0)));
+                                                     g_daikonVarIndex);
         fprintf(out_file, "%d", comp_number);
         fputs("\n", out_file);
       }
