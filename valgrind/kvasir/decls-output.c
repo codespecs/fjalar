@@ -1505,12 +1505,7 @@ void outputDaikonVar(DaikonVariable* var,
 			  disambigOverride);
 
       // DynComp post-processing:
-      // (Don't post-process hashcode variables because their comparability
-      //  tags don't matter - we wil print out a reserved tag of '1' for
-      //  all hashcode values)
-      if (kvasir_with_dyncomp && variableHasBeenObserved &&
-          (! (((R_HASHCODE == rType) ||
-               (layersBeforeBase > 0))) )) {
+      if (kvasir_with_dyncomp && variableHasBeenObserved) {
         DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
         DC_post_process_for_variable(varFuncInfo,
                                      isEnter,
