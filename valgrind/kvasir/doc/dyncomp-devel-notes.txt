@@ -2584,3 +2584,81 @@ Remember to be careful about these tags when performing garbage
 collection because they may not exist anywhere in memory.  Perhaps
 saturate their uf_object reference count to the maximum so that they
 never get garbage collected.
+
+
+
+Why do we get so many 0's in the .decls? Does it have something to do
+with the fact that we are now subtracting from the smallest tag - 2
+instead of smallest tag - 1?
+
+
+Perhaps as an optimization, we could move the check of whether two
+tags are IDENTICAL before merging them INTO THE IR instead of keeping
+it as a helper.  This may provide a performance boost because of the
+fact that a lot of the time, we are merging identical tags so we
+really do nothing.  We are saving the price of a call (which is
+potentially expensive due to saving and restoring of state)
+
+During interactions, we want to generate IR to check whether both tags
+are equal, and ONLY if they aren't, then call MERGE_TAGS
+
+We may want something like this with MuxOX or something:
+(x == y) ? x : cleancall of MERGE_TAGS(x, y)
+
+
+Justification of why MERGE_TAGS can be a clean call:
+
+NOT because MERGE_TAGS is anywhere close to being purely functional
+
+Clean calls can be optimized to be executed either 0 times or more
+than 1.  Idempotent is important for clean calls.  Also, the optimizer
+only nullifies the call (call 0 times) when nobody uses the results of
+the call, but if nobody is using the results of the merge, then we
+don't need to perform it in the first place.
+
+
+----------
+2005-06-02
+----------
+
+Ideas for future work
+
+* Some sort of visualization of how tags merge together throughout
+execution.  e.g. print out variable tags for each execution of a
+program point to see how the tags evolve throughout the execution
+* Visualization would be good for a figure in the paper - use dot
+(directed) and neato (undirected) - sets with neato
+* Make sure that the tool works on the larger examples and generates
+sensible output
+* Perhaps do some profiling with a Valgrind profiling infrastructure
+before optimizations
+* Perhaps do a comparison with Lackwit in terms of the comparability
+sets that it generates
+
+
+----------
+2005-06-06
+----------
+
+We need to change it so that variables which were never observed don't
+have '-1' tags but rather unique tags which specify that they are
+comparable to NOTHING else.
+
+
+----------
+2005-06-08
+----------
+
+Hmmm, the & (address-of) operator does not create a new tag, but
+malloc does.  This now leads to pointer variables getting a
+comparability number of '-1', which implies that they are
+uninitialized, when in fact, they are initialized.
+
+Proposed solution: Screw the '-1' thing.  Mike wants to give
+uninitialized values unique tags to semantically specify that they are
+comparable to NOTHING else, not the same '-1' tag which specifies that
+they are comparable to EVERYTHING else.  According to him, '-1' was
+just an artifact of Lackwit's shortcomings.  If you think about it,
+when you take an address using the & operator, that address really
+isn't conceptually comparable to anything else, so it should be given
+a unique comparability number just like uninitialized variables.

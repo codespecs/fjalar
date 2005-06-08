@@ -319,15 +319,9 @@ int equivalentTags(UInt t1, UInt t2) {
 // Return the comparability number for the variable as a SIGNED
 // INTEGER (because Daikon expects a signed integer).
 // Unless smallest tag for this program point is still equal to
-// UINT_MAX, subtract all tags from (smallest tag - 2) in order to
+// UINT_MAX, subtract all tags from (smallest tag - 1) in order to
 // make them look reasonable.  This ensures that the smallest observed
-// tag at this program point will have a comparability number of 2,
-// which is DIFFERENT from '1', a reserved tag for hashcodes.
-
-// Reserve the special tag '1' for all hashcode values since
-// conceptually, there is only one 'abstract type' of hashcodes
-// so all hashcodes should be comparable to one another but not
-// to any other Daikon variables.
+// tag at this program point will have a comparability number of 1
 int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
                                char isEnter,
                                int daikonVarIndex,
@@ -337,38 +331,30 @@ int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
   UInt smallest_tag;
 
 
-  if (isHashcode) {
-    return 1;
+  if (isEnter) {
+    var_tags = funcPtr->ppt_entry_var_tags;
+    smallest_tag = funcPtr->ppt_entry_smallest_tag;
   }
-
   else {
-    if (isEnter) {
-      var_tags = funcPtr->ppt_entry_var_tags;
-      smallest_tag = funcPtr->ppt_entry_smallest_tag;
-    }
-    else {
-      var_tags = funcPtr->ppt_exit_var_tags;
-      smallest_tag = funcPtr->ppt_exit_smallest_tag;
-    }
-
-    if (UINT_MAX == smallest_tag) {
-      comp_number = (int)(var_tags[daikonVarIndex]);
-    }
-    else {
-      // Remember to subtract (smallest_tag - 2) from the tag
-      // so that no tag could possibly be the reserved value of '1'
-      comp_number = (int)(var_tags[daikonVarIndex] - (smallest_tag - 2));
-    }
-
-    // Set all negative comparability numbers to -1 for aesthetic purposes
-    if (comp_number < 0) {
-      comp_number = -1;
-      DYNCOMP_DPRINTF("Warning! Comparability number is negative.\n");
-    }
-
-    return comp_number;
+    var_tags = funcPtr->ppt_exit_var_tags;
+    smallest_tag = funcPtr->ppt_exit_smallest_tag;
   }
 
+  if (UINT_MAX == smallest_tag) {
+    comp_number = (int)(var_tags[daikonVarIndex]);
+  }
+  else {
+    // Remember to subtract (smallest_tag - 1) from the tag
+    comp_number = (int)(var_tags[daikonVarIndex] - (smallest_tag - 1));
+  }
+
+  // Set all negative comparability numbers to -1 for aesthetic purposes
+  if (comp_number < 0) {
+    comp_number = -1;
+    DYNCOMP_DPRINTF("Warning! Comparability number is negative.\n");
+  }
+
+  return comp_number;
 }
 
 // char isEnter = 1 for function ENTER, 0 for EXIT

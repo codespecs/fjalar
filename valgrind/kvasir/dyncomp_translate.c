@@ -641,7 +641,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // because of the fact that merging the same 2 things more than
       // once (in close proximity) doesn't hurt
       // DO NOT use clean call unless it has NO side effects and
-      // is purely functional like an IRExpr
+      // is (nearly) purely functional like an IRExpr
+      // (from the point-of-view of IR, at least)
       return mkIRExprCCall (Ity_I32,
                             2 /*Int regparms*/,
                             hname,
