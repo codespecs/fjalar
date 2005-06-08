@@ -818,6 +818,11 @@ int
 2
 */
 // char isEnter = 1 for function ENTER, 0 for EXIT
+// faux_decls = True if we are making the FIRST pass with DynComp to count up
+// how many Daikon variables exist at a program point so that we can initialize
+// the proper data structures (no .decls output is made during this dry run)
+// and faux_decls = False if we are really outputting .decls, which is in the
+// beginning of execution without DynComp and at the END of execution with DynComp
 void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_decls)
 {
   // This is a GLOBAL so be careful :)
