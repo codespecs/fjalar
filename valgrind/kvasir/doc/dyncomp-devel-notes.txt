@@ -2681,3 +2681,221 @@ need some special code to disambiguate this. (The 'having one abstract
 type (and hence one reserved tag of '1') of pointers' thing was an
 attempt to solve this problem, but Mike doesn't like it.
 - NOT YET IMPLEMENTED
+
+
+pgbovine@radish:/scratch/pgbovine/flex-kvasir$ /usr/bin/time kvasir-dtrace --with-dyncomp --decls-only ./flex flex.err 5000_words_in
+==15068== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==15068== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==15068== Using LibVEX rev 1139, a library for dynamic binary translation.
+==15068== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==15068== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==15068== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==15068== For more details, rerun with: -v
+==15068== 
+==15068== 
+==15068== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+22233.98user 52.82system 6:14:47elapsed 99%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1553major+19234minor)pagefaults 0swaps
+
+Check this out.  I ran DynComp on flex on radish (with everything turned on), and it took 22233.98 user seconds to produce a 3.3 MB .decls file
+
+----------
+2005-06-09
+----------
+
+Ok, I'm gonna attempt to run Flex thru Daikon with DynComp
+comparability info.  For some reason, the LARGEFILE thing doesn't work
+and I can't produce .dtrace files over 2GB.  Thus, I will try to pipe
+it into Daikon directly and bypass file creation.
+
+Here is how you do it with a smaller example:
+
+kvasir-dtrace --decls-file=/dev/null --dtrace-file=- ./TypesTest | java -Xmx1768m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true daikon-output/TypesTest.dyncomp.decls -
+
+
+Let's try this (we've already created a .decls from an earlier run):
+
+pgbovine@radish:/scratch/pgbovine/flex-kvasir$ kvasir-dtrace --ignore-static-vars --decls-file=/dev/null --dtrace-file=- ./flex flex.err 5000_words_in | java -Xmx1768m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true flex-ignore-static-vars.decls - > flex-ignore-static-vars-daikon.invs
+
+
+Proposed solution for the "struct hashcode has the same comparability
+number as its first element" problem - add in some offset for hashcode
+types which boosts them above the highest-observed comparability
+number at a program point.  This is much better than simply declaring
+that all hashcodes have a comp. number of '1' because it still
+differentiates between different abstract types of hashcodes.  Notice
+that the highest comparability number at each program point will never
+exceed the number of Daikon variables at that ppt.  The # of vars at a
+ppt can be determined during the first dry .decls pass (with
+faux_decls = True) and saved.  Then we can simply add that number as
+an offset to the comparability number of every 'hashcode' variable so
+that they don't collide with non-hashcode variables.  This still isn't
+a perfect fix, though, because if the first element of a struct is a
+pointer, then both variables are hashcodes and thus will still have
+the same comparability number.  Again, we must evaluate how important
+this (mostly cosmetic) fix is before implementing it.
+
+
+Ok, I am going through the files in the Kvasir test suite and manually
+checking their comparability numbers for correctness.  
+
+ArraysInStructTest:
+-------------------
+
+Nothing weird-looking, just the usual "struct hashcode has the same
+comparability number as its first element" problem
+
+
+ArrayTest:
+----------
+
+It seems that it is clumping too many variables together and making
+them comparable simply because they appear together as arguments to a
+printf() function call.  This is incorrect since printing stuff
+doesn't constitute an interaction between variables.  What does printf
+translate to in IR???
+
+How about strcpy???  Whenever two strings are passed to strcpy, even
+though they are copying completely different things, DynComp still
+says that they are comparable.
+
+Related ... malloc, strdup (which probably uses malloc)
+
+Hmmm, it seems like that that the malloc implementation perhaps
+buffers stuff so it assigns the SAME tag to a chunk of memory which it
+mallocs (but that doesn't make sense, because we assign a unique tag
+for every byte of the allocated memory, right?)
+
+The only time when this really matters is when the pointers are
+actually char*, which is represented in Daikon as java.lang.String, so
+comparability info. for these variables is actually important.
+
+Ok, let me think a bit more about this.  Where do we get these tags
+from?  For these variables, aren't they the tags of memory locations
+on the virtual stack?  Hmmm ...
+
+
+IntTest:
+--------
+
+Again, certain pointer variables seem comparable even though they
+really should not be ... where are we really getting these tags from?
+
+e.g.
+/whatsUp dummy[][] str
+
+
+GlobalTest:
+-----------
+
+It looks all good.  Nothing is comparable, which is the correct answer
+
+
+PointerTest:
+------------
+
+The printf problem again.  It falsely thinks that two things
+interacted simply because they were arguments to the same printf
+function call.
+
+These lines seem to make a difference (when all other printf lines are
+NOT commented-out):
+
+printf("(%i,%i)\n", temp.x, temp.y);
+
+printf("(%i,%i)\n", origin.x, origin.y);
+
+
+small-test:
+-----------
+
+seems okay
+
+
+string-arrays:
+--------------
+
+seems okay
+
+
+StructPtrTest:
+--------------
+
+seems okay
+
+
+TrivialTest:
+------------
+
+The 'ole printf problem again
+
+
+I think even independent of the printf problem, we have a problem
+where these struct fields seem to all clump up together into one big
+comparable mass.  This may be semi-excusable, since all of this has
+undergone major levels of indirection (2 or 3 ptr. levels) ...
+
+e.g.
+
+bp[][] bp[][].char_val bp[][].short_val bp[][].uchar_val cp[][].basic1 cp[][].basic1[].char_val cp[][].basic1[].short_val cp[][].basic1[].uchar_val cp[][].basic2[] return[][][].basic1 return[][][].basic1[].char_val return[][][].basic1[].short_val return[][][].basic1[].uchar_val return[][][].basic2[]
+
+
+TypedefTest:
+------------
+
+seems okay
+
+
+TypesTest:
+----------
+
+Here is perhaps a more challenging problem:
+
+In this function, the comparability sets should be {a}, {b return},
+but DynComp returns {a}, {b}, {return}
+
+UInt returnUIntProduct(Char a, Short b)
+{
+  Char count;
+  UInt total = 0;
+  for (count = 0; count < a; count++)
+    total = returnIntSum(total, b);
+  return total;
+}
+
+
+The reason why b and return are comparable is because they interact in
+returnIntSum.  However, the value of b that is sent to returnIntSum is
+from somewhere on the REAL stack, but the tag of b we read is from the
+virtualStack.  Thus, DynComp still doesn't think that b and return are
+comparable, even though they should be.
+
+This wouldn't be a problem if we conceptually decouple out the formal
+parameter b from the local variable 'b' which is set to equal b at
+function entrance.  For example, here we do stuff with the local
+variable b, but the formal parameter b which Kvasir observes is the
+original unmodified value:
+
+
+UInt returnUIntProduct(Char a, Short b)
+{
+  Char count;
+  UInt total = 0;
+
+  b += 10;
+
+  for (count = 0; count < a; count++)
+    total = returnIntSum(total, b);
+  return total;
+}
+
+
+Yeah, this is a more challenging technical problem to overcome
+
+
+StaticArraysTest:
+-----------------
+
+seems okay
+
+
