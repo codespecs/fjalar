@@ -2854,7 +2854,7 @@ Here is perhaps a more challenging problem:
 In this function, the comparability sets should be {a}, {b return},
 but DynComp returns {a}, {b}, {return}
 
-UInt returnUIntProduct(Char a, Short b)
+UInt returnUIntProduct(Char* a, Short b)
 {
   Char count;
   UInt total = 0;
@@ -2863,6 +2863,7 @@ UInt returnUIntProduct(Char a, Short b)
   return total;
 }
 
+Try total += b
 
 The reason why b and return are comparable is because they interact in
 returnIntSum.  However, the value of b that is sent to returnIntSum is
@@ -2920,3 +2921,87 @@ falsely clumps more variables together into the same set, which means
 that we will never miss potentially important invariants.  Erring on
 the other side (saying that two variables were not comparable when in
 fact they were) is more dangerous in terms of affecting correctness.
+
+
+What about the bitwise OR's in merging tags?  I dunno.  Maybe printf
+does something funky with them.
+
+It may not be the printf itself ... it may be the moving of variables
+during the prologue of the printf call that's causing some unnecessary
+merging ...
+
+
+   7:PrintfTest.c  ****   printf("a=%d, b=%d\n", a, b);
+  29              		.loc 1 7 0
+  30 000d 8B450C   		movl	12(%ebp), %eax
+  31 0010 89442408 		movl	%eax, 8(%esp)
+  32 0014 8B4508   		movl	8(%ebp), %eax
+  33 0017 89442404 		movl	%eax, 4(%esp)
+  34 001b C7042400 		movl	$.LC0, (%esp)
+  34      000000
+  35 0022 E8FCFFFF 		call	printf
+
+
+This is definitely a possibility since the memory locations for 'a'
+and 'b' are moved right near one another, so a bug in DynComp may
+cause their value sets to be falsely merged
+
+
+Hmmmm ... maybe I'm off the hook.  I created an empty function bar()
+which took in the same arguments as my particular invocation of printf.  It generated the same assembly prologue code prior to the function call:
+
+
+  10:PrintfTest.c  ****   bar("a=%d, b=%d\n", a, b);
+  43                            .loc 1 10 0
+  44 0012 8B450C                movl    12(%ebp), %eax
+  45 0015 89442408              movl    %eax, 8(%esp)
+  46 0019 8B4508                movl    8(%ebp), %eax
+  47 001c 89442404              movl    %eax, 4(%esp)
+  48 0020 C7042400              movl    $.LC0, (%esp)
+  48      000000
+  49 0027 E8FCFFFF              call    bar
+
+
+... but resulted in no false mergings.  So something INSIDE of printf
+must be the culprit.
+
+
+And in reality, how often do production (non-debug build) programs
+printf stuff?
+
+
+----------
+2005-06-10
+----------
+
+Mike's suggestions from today's meeting:
+
+Perhaps use objdump (what arguments?) to list out the binary locations
+of functions (post-linking) and look at the IMark address values,
+which may point to instruction locations in the binary to help map
+between x86 assembly and IR:
+
+e.g.
+   ------ IMark(0x1B8F5E20, 1) ------
+
+
+For the structs thing, simply eliminate the struct variables from the
+.dtrace altogether because in C, structs have no real semantic
+meaning - only pointers to structs have meaning
+
+
+For the virtual stack thing, keeping the virtual stack is okay since
+nobody outside of the function can really observe the post-state of
+formal parameters passed by value anyways
+
+
+For the printf thing, look in glibc code to see if there is anything
+with varargs processing that may be at fault
+
+
+For the "can't run stuff on Flex thing", look into "man longjobs" or
+"man longsession" to see how to prevent stuff from blowing up because
+my AFS tokens expire!!!
+
+
+Also, try to lift someone's monitor
