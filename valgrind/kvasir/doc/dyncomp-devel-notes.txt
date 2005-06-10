@@ -2899,3 +2899,24 @@ StaticArraysTest:
 seems okay
 
 
+
+About the printf problem: Could it just be that the implementation of
+printf has its arguments interact in some way, so if that is compiled
+into IR, then it's really hard to make a special case for it and
+ignore those instructions.  But why would a call to printf cause its
+arguments to interact???  That doesn't really make sense.
+
+Check out $INV/tests/dyncomp-tests/PrintfTest
+
+Hmmm, super weird ... if you comment-out functionality for only
+MC_(helperc_MERGE_TAGS_RETURN_0), you get that the two variables are not
+comparable during entrance but ARE comparable during exit, and if you
+also comment out MC_(helperc_MERGE_TAGS_RETURN_0), then they are not
+comparable, but that's because nothing now merges.
+
+
+Well the printf problem may not be too disastrous because it only
+falsely clumps more variables together into the same set, which means
+that we will never miss potentially important invariants.  Erring on
+the other side (saying that two variables were not comparable when in
+fact they were) is more dangerous in terms of affecting correctness.
