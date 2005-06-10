@@ -1364,6 +1364,15 @@ void outputDaikonVar(DaikonVariable* var,
   disambigOverrideArrayAsPointer =
     ((numDereferences > 0) && (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
 
+
+  // Don't print out an entry for base (non-pointer) struct/union
+  // variables since they have no substantive meaning for C programs.
+  // They are merely represented as hashcode values, and that's kind
+  // of deceiving because they aren't really pointer variables either.
+  if (!((layersBeforeBase == 0) &&
+        (var->varType->isStructUnionType))) {
+
+
   // .decls, .dtrace, and .disambig files -
   //  Line 1: Print out name
   if (fullNameStackSize > 0)
@@ -1765,6 +1774,11 @@ void outputDaikonVar(DaikonVariable* var,
       VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
       abort();
     }
+
+
+  } // end if (!((layersBeforeBase == 0) && (var->varType->isStructUnionType)))
+
+
 
   // Be very careful about where you increment this!
   g_daikonVarIndex++;
