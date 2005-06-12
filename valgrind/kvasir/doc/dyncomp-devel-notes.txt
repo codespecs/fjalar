@@ -2691,8 +2691,8 @@ pgbovine@radish:/scratch/pgbovine/flex-kvasir$ /usr/bin/time kvasir-dtrace --wit
 ==15068== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
 ==15068== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
 ==15068== For more details, rerun with: -v
-==15068== 
-==15068== 
+==15068==
+==15068==
 ==15068== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
 22233.98user 52.82system 6:14:47elapsed 99%CPU (0avgtext+0avgdata 0maxresident)k
 0inputs+0outputs (1553major+19234minor)pagefaults 0swaps
@@ -2737,7 +2737,7 @@ this (mostly cosmetic) fix is before implementing it.
 
 
 Ok, I am going through the files in the Kvasir test suite and manually
-checking their comparability numbers for correctness.  
+checking their comparability numbers for correctness.
 
 ArraysInStructTest:
 -------------------
@@ -2987,7 +2987,7 @@ e.g.
 
 For the structs thing, simply eliminate the struct variables from the
 .dtrace altogether because in C, structs have no real semantic
-meaning - only pointers to structs have meaning
+meaning - only pointers to structs have meaning - DONE
 
 
 For the virtual stack thing, keeping the virtual stack is okay since
@@ -3005,3 +3005,69 @@ my AFS tokens expire!!!
 
 
 Also, try to lift someone's monitor
+
+
+
+Ok, we have the printf problem and the propagating comparabilities
+problem, which I used to think was a virtual stack problem, but now
+may end up not being one
+
+
+The printf problem - it seems that DynComp only thinks that two
+variables are falsely comparable when the format string denotes that
+they are of the SAME TYPE, regardless of the TRUE types of the
+variables (since the varargs mechanism in printf has no clue what the
+types of its variable # of arguments are)
+
+Hmmm, look at PrintfTest with --dyncomp-debug on - it seems that the
+problem is a bit deeper than I originally thought - the tags are
+changing sometime between the ENTRY and EXIT ppts of the function,
+apparently caused by the presence of the printf
+
+
+From a varargs help website:
+( http://www.eskimo.com/~scs/cclass/int/sx11c.html )
+
+---------------------------------------------------------------------
+When a function with a variable-length argument list is called, the
+variable arguments are passed using C's old ``default argument
+promotions.'' These say that types char and short int are
+automatically promoted to int, and type float is automatically
+promoted to double. Therefore, varargs functions will never receive
+arguments of type char, short int, or float. Furthermore, it's an
+error to ``pass'' the type names char, short int, or float as the
+second argument to the va_arg() macro. Finally, for vaguely related
+reasons, the last fixed argument (the one whose name is passed as the
+second argument to the va_start() macro) should not be of type char,
+short int, or float, either.
+---------------------------------------------------------------------
+
+Perhaps the automatic promotions are screwing us up?  I dunno, though,
+since we should really be reading off of the virtual stack and not the
+real stack.
+
+
+----------
+2005-06-10
+----------
+
+Ok, after struggling with the printf problem for a while, I still
+think that there's something funny going on inside of printf itself
+which makes its varargs which are of the same type seem to interact.
+If that's the case, as I suspect that it is, then there is nothing we
+can do about it.  That's simply the behavior of printf.
+
+Well, from doing print statements whenever MC_(helperc_MERGE_TAGS)
+gets executed, it's apparent that the presence of the printf()
+function call causes a helluva a lot of mergings to happen
+
+
+If you REALLY want to look at the printf code, it's in here:
+pgbovine@parsnip:/scratch/pgbovine/glibc-2.3.5/stdio-common
+
+Upon a cursory glance, one thing's for certain ... it's damn
+complicated
+
+
+Let's just give up on it for now and move onto our other problem
+... not propagating comparability in nested function calls
