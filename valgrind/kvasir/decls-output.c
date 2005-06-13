@@ -1550,11 +1550,34 @@ void outputDaikonVar(DaikonVariable* var,
 
       // DynComp post-processing:
       if (kvasir_with_dyncomp && variableHasBeenObserved) {
+        Addr a;
+
+        // Special handling for strings.  We are not interested in the
+        // comparability of the 'char*' pointer variable, but rather
+        // we are interested in the comparability of the CONTENTS of
+        // the string.  (Be careful about statically-declared strings,
+        // in which case the address of the first element is the address
+        // of the pointer variable)
+        // TODO: What do we do in the presence of .disambig info when
+        //       we actually want to print the string as another type
+        //       of data?  We need to handle this sometime with a more
+        //       complex conditional
+        if (var->isString &&
+            (0 == layersBeforeBase)) {
+	  // Depends on whether the variable is a static array or not:
+	  a = var->isStaticArray ?
+            (Addr)basePtrValue :
+            *((Addr*)(basePtrValue));
+        }
+        else {
+          a = (Addr)basePtrValue;
+        }
+
         DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
         DC_post_process_for_variable(varFuncInfo,
                                      isEnter,
                                      g_daikonVarIndex,
-                                     (Addr)basePtrValue);
+                                     a);
       }
 
       // While observing the runtime values,
@@ -1692,17 +1715,10 @@ void outputDaikonVar(DaikonVariable* var,
     }
   // DynComp - extra propagation at the end of the program's execution
   else if (DYNCOMP_EXTRA_PROP == outputType) {
-
-    // Don't bother doing extra propagation on hashcode variables because
-    // we don't want to print them out anyways :)
-    if (kvasir_with_dyncomp &&
-        (! (((R_HASHCODE == rType) ||
-             (layersBeforeBase > 0))) )) {
-      DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
-      DC_extra_propagation_post_process(varFuncInfo,
-                                        isEnter,
-                                        g_daikonVarIndex);
-    }
+    DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
+    DC_extra_propagation_post_process(varFuncInfo,
+                                      isEnter,
+                                      g_daikonVarIndex);
 
     VG_(free)(fullDaikonName);
   }
