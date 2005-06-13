@@ -3071,3 +3071,31 @@ complicated
 
 Let's just give up on it for now and move onto our other problem
 ... not propagating comparability in nested function calls
+
+
+Although I still find it a bit disconcerting that printf's can cause
+this stuff to happen:
+
+..printfIntInt():::ENTER
+a
+b
+
+..printfIntInt():::EXIT0
+a b
+
+
+I suspect that the comparability stuff is thrown off since printf
+probably uses some global character buffer which it copies values (and
+hence tags) in and out of
+
+
+----------
+2005-06-13
+----------
+
+Mike wants to re-open the printf() problem for investigation.  Perhaps
+I can write a stub varargs function which doesn't do anything and see
+what happens?
+
+Look at crazy-test-1.comp --- there is possibly some freaky stuff
+going on
