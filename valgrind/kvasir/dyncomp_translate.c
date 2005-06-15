@@ -30,6 +30,7 @@
 #include "dyncomp_main.h"
 #include "kvasir_runtime.h"
 #include "kvasir_main.h"
+#include "libvex_guest_offsets.h"
 
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
@@ -105,6 +106,22 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    ty = typeOfIRExpr(dce->bb->tyenv, vatom);
    tl_assert(ty != Ity_I1);
 
+   // Don't do a PUT of tags into certain areas of the guest state,
+   // such as ESP and EBP, in order to avoid tons of false mergings
+   // of relative address literals derived from arithmetic with these
+   // registers
+
+   //   if (offset == OFFSET_x86_ESP) {
+      //      return;
+      //   }
+
+   //   if (!((offset == OFFSET_x86_EAX) ||
+   //         (offset == OFFSET_x86_EBX) ||
+   //         (offset == OFFSET_x86_ECX) ||
+   //         (offset == OFFSET_x86_EDX))) {
+   //      return;
+   //   }
+
    /* Do a plain shadow Put. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
@@ -145,6 +162,22 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
       shadow area. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
+
+   // Return a 0 tag for a GET call into certain areas of the guest state,
+   // such as ESP and EBP, in order to avoid tons of false mergings
+   // of relative address literals derived from arithmetic with these
+   // registers
+
+   //   if (offset == OFFSET_x86_ESP) {
+      //      return IRExpr_Const(IRConst_U32(0xfffffff));
+      //   }
+
+//   if (!((offset == OFFSET_x86_EAX) ||
+//        (offset == OFFSET_x86_EBX) ||
+//         (offset == OFFSET_x86_ECX) ||
+//         (offset == OFFSET_x86_EDX))) {
+//      return IRExpr_Const(IRConst_U32(0xffffff));
+//   }
 
    // The floating-point stack on the x86 is located between offsets
    // 64 and 128 so we don't want somebody requesting a GET into this

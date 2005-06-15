@@ -2976,7 +2976,7 @@ printf stuff?
 
 Mike's suggestions from today's meeting:
 
-Perhaps use objdump (what arguments?) to list out the binary locations
+Perhaps use objdump -d to list out the binary locations
 of functions (post-linking) and look at the IMark address values,
 which may point to instruction locations in the binary to help map
 between x86 assembly and IR:
@@ -3384,3 +3384,29 @@ INTERACTED during the same call to strcpy().  The comparability
 'leaked through' across different calls to strcpy.  Ack, that is
 bad!!!  This is one of the reasons why we say that this algorithm is
 over-conservative.
+
+
+
+Now that I've reverted everything back to creating a new tag for every
+dynamic instance of a literal (and not static), I seem to get a lot
+more clumping of pointer variables which came from the stack.  I
+suspect that now we face a problem where DynComp thinks that lots of
+stuff on the stack are comparable when they probably shouldn't be
+... just because ESP has moved around and 'touched' them ... hmmm
+
+
+ ..main():::ENTER
+-argc
+-argv
++argc argv
+ argv[]
+
+
+One disturbing thing is that argc and argv are now clumped together
+... hmmm ... perhaps because they are both neighbors on the stack???
+Could be possible ...
+
+
+----------
+2005-06-15
+----------

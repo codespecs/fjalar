@@ -50,4 +50,6 @@ int equivalentTags(UInt t1, UInt t2);
 
 void DC_extra_propagate_val_to_var_sets();
 
+void debugPrintTagsInRange(Addr low, Addr high);
+
 #endif
