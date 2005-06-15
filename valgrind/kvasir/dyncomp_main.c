@@ -23,6 +23,7 @@
   General Public License for more details.
 */
 
+#include "kvasir_main.h"
 #include "mc_include.h"
 #include "dyncomp_main.h"
 #include <limits.h>
@@ -33,6 +34,9 @@
 //#define STORE_TAG_VERBOSE
 //#define LOAD_TAG_VERBOSE
 //#define MERGE_TAGS_VERBOSE
+
+// For debug printouts
+extern char within_main_program;
 
 /*------------------------------------------------------------------*/
 /*--- Tags and the value comparability union-find data structure ---*/
@@ -291,15 +295,19 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   UInt tag1 = get_tag(a1);
   UInt tag2 = get_tag(a2);
   if ((0 == tag1) ||
+      (0 == tag2) ||
       (tag1 == tag2)) {
     return;
   }
 
-  val_uf_tag_union(tag1, get_tag(a2));
+  val_uf_tag_union(tag1, tag2);
 
   canonicalTag = val_uf_find_leader(tag1);
   set_tag(a1, canonicalTag);
   set_tag(a2, canonicalTag);
+
+  DYNCOMP_DPRINTF("val_uf_union_tags_at_addr(0x%x, 0x%x) canonicalTag=%u\n",
+                  a1, a2, canonicalTag);
 }
 
 // Union the tags of all addresses in the range [a, a+max)
@@ -354,6 +362,33 @@ UInt create_new_tag_for_literal() {
   return newTag;
 }
 
+// Create a new tag but don't put it anywhere in memory ... just return it
+// This is to handle literals in the code.  If somebody actually wants
+// to use this literal, then it will get assigned somewhere ... otherwise
+// there is no record of it anywhere in memory so that it can get
+// garbage-collected.
+VGA_REGPARM(0)
+UInt MC_(helperc_CREATE_TAG) () {
+  UInt newTag = nextTag;
+
+  val_uf_make_set_for_tag(newTag, 0);
+
+  if (nextTag == UINT_MAX) {
+    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
+  }
+  else {
+    nextTag++;
+  }
+
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
+                    newTag, nextTag);
+  }
+
+  return newTag;
+}
+
+
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   val_uf_union_tags_in_range(a, 8);
@@ -396,14 +431,26 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 
 // Merge tags during any binary operation which
 // qualifies as an interaction and returns the first tag
+// Important special case - if one of the tags is 0, then
+// simply return the OTHER tag and don't do any merging
 VGA_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  val_uf_tag_union(tag1, tag2);
-#ifdef MERGE_TAGS_VERBOSE
-  VG_(printf)("helperc_MERGE_TAGS(%u, %u) [nextTag=%u]\n",
-              tag1, tag2, nextTag);
-#endif
-  return tag1;
+
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n",
+                    tag1, tag2);
+  }
+
+  if IS_ZERO_TAG(tag1) {
+    return tag2;
+  }
+  else if IS_ZERO_TAG(tag2) {
+    return tag1;
+  }
+  else {
+    val_uf_tag_union(tag1, tag2);
+    return tag1;
+  }
 }
 
 

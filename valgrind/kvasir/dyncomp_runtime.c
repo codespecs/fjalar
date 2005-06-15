@@ -231,7 +231,7 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
 
-  DYNCOMP_DPRINTF(" new_tags[%d]: %u, new_leader: %u, var_tags_v (old): %u, var_tags[%d]: %u (a: %u)\n",
+  DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
                   new_tags_v,
                   new_leader,
@@ -279,9 +279,9 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
                                                 leader, var_tags_v);
   }
 
-  DYNCOMP_DPRINTF(" var_tags_v: %u, leader: %u, var_tags[%d]: %u (final)\n",
-                  var_tags_v,
+  DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
                   leader,
+                  var_tags_v,
                   daikonVarIndex,
                   var_tags[daikonVarIndex]);
 
