@@ -268,11 +268,13 @@ void handleFunctionEntrance(FunctionEntry* e)
       return;
     }
 
-  DYNCOMP_DPRINTF("***ENTER %s at EBP=%d, lowestESP=%d, startPC=%p\n",
+  DYNCOMP_DPRINTF("***ENTER %s at EBP=0x%x, lowestESP=0x%x, startPC=%p\n",
                   e->name,
                   e->EBP,
                   e->lowestESP,
                   (void*)e->startPC);
+
+  debugPrintTagsInRange(e->EBP - 50, e->EBP + 50);
 
   if (daikonFuncPtr->parentClass) {
     DPRINTF("   --- member function - parent is %s\n",
@@ -321,10 +323,12 @@ void handleFunctionExit(FunctionEntry* e)
       return;
     }
 
-  DYNCOMP_DPRINTF("***EXIT %s - EBP=%d, lowestESP=%d\n",
+  DYNCOMP_DPRINTF("***EXIT %s - EBP=0x%x, lowestESP=0x%x\n",
                   e->name,
                   e->EBP,
                   e->lowestESP);
+
+  debugPrintTagsInRange(e->EBP - 50, e->EBP + 50);
 
   if (daikonFuncPtr->parentClass) {
     DPRINTF("   --- member function - parent is %s\n",

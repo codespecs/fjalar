@@ -101,6 +101,11 @@ static __inline__ void assign_new_tag(Addr a) {
 // Allocate a new unique tag for all bytes in range [a, a + len)
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
   Addr curAddr;
+
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("allocate_new_unique_tags (a=0x%x, len=%d)\n",
+                    a, len);
+  }
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     assign_new_tag(curAddr);
   }
@@ -244,37 +249,45 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 8, tag);
-#ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_8(%u, %u) [nextTag=%u]\n",
-              a, tag, nextTag);
-#endif
+  //#ifdef STORE_TAG_VERBOSE
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("helperc_STORE_TAG_8(a=0x%x, tag=%u)\n",
+                    a, tag);
+  }
+  //#endif
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 4, tag);
-#ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_4(%u, %u) [nextTag=%u]\n",
-              a, tag, nextTag);
-#endif
+  //#ifdef STORE_TAG_VERBOSE
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("helperc_STORE_TAG_4(a=0x%x, tag=%u)\n",
+                    a, tag);
+  }
+  //#endif
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 2, tag);
-#ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_2(%u, %u) [nextTag=%u]\n",
-              a, tag, nextTag);
-#endif
+  //#ifdef STORE_TAG_VERBOSE
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("helperc_STORE_TAG_2(a=0x%x, tag=%u)\n",
+                    a, tag);
+  }
+  //#endif
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
   set_tag_for_range(a, 1, tag);
-#ifdef STORE_TAG_VERBOSE
-  VG_(printf)("helperc_STORE_TAG_1(%u, %u) [nextTag=%u]\n",
-              a, tag, nextTag);
-#endif
+  //#ifdef STORE_TAG_VERBOSE
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("helperc_STORE_TAG_1(a=0x%x, tag=%u)\n",
+                    a, tag);
+  }
+  //#endif
 }
 
 // Return the leader (canonical tag) of the set which 'tag' belongs to
@@ -371,6 +384,13 @@ VGA_REGPARM(0)
 UInt MC_(helperc_CREATE_TAG) () {
   UInt newTag = nextTag;
 
+  //  if (newTag == 1786352) {
+  //    DYNCOMP_DPRINTF("FAKE helperc_CREATE_TAG() = %u [nextTag=%u]\n",
+  //                    newTag, nextTag);
+  //    nextTag++;
+  //    return 0;
+  //  }
+
   val_uf_make_set_for_tag(newTag, 0);
 
   if (nextTag == UINT_MAX) {
@@ -428,7 +448,6 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   return get_tag(a);
 }
 
-
 // Merge tags during any binary operation which
 // qualifies as an interaction and returns the first tag
 // Important special case - if one of the tags is 0, then
@@ -474,6 +493,10 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 // (when it's implemented)
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
   Addr curAddr;
+  if (within_main_program) {
+    DYNCOMP_DPRINTF("clear_all_tags_in_range(a=0x%x, len=%d)\n",
+                    a, len);
+  }
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     // TODO: Do something else with uf_objects (maybe put them on a to-be-freed
     // list) to prepare them for garbage collection

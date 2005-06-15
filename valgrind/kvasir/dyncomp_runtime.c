@@ -395,3 +395,21 @@ void DC_extra_propagate_val_to_var_sets() {
 
   genfreeiterator(it);
 }
+
+void debugPrintTagsInRange(Addr low, Addr high) {
+  Addr a;
+  UInt tag;
+  char already_print_ellipses = 0;
+  for (a = high; a >= low; a--) {
+    tag = get_tag(a);
+    if (tag) {
+      DYNCOMP_DPRINTF("  0x%x: %u\n", a, tag);
+      already_print_ellipses = 0;
+    }
+
+    else if (!already_print_ellipses) {
+      DYNCOMP_DPRINTF("  ...\n");
+      already_print_ellipses = 1;
+    }
+  }
+}
