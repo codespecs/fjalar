@@ -868,8 +868,8 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 {
-   //   IRDirty* di;
-   //   IRTemp   datatag;
+   IRDirty* di;
+   IRTemp   datatag;
 
    switch (e->tag) {
 
@@ -884,6 +884,32 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          return IRExpr_Tmp( findShadowTmp_DC(dce, e->Iex.Tmp.tmp) );
 
       case Iex_Const:
+
+         // Create one new tag for each dynamic instance of a program
+         // literal - this provides perfect context sensitivity, but
+         // at the expense of memory and time overheads:
+
+         // Try it with a dirty call:
+         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+         di = unsafeIRDirty_1_N( datatag,
+                                 0/*regparms*/,
+                                 "MC_(helperc_CREATE_TAG)",
+                                 &MC_(helperc_CREATE_TAG),
+                                 mkIRExprVec_0());
+         setHelperAnns_DC( dce, di );
+         stmt( dce->bb, IRStmt_Dirty(di) );
+
+         return mkexpr(datatag);
+
+
+         // Alternative implementation - create one tag for each
+         // static instance of a program literal:
+
+         // (WARNING!!!  This loses perfect context sensitivity.  It
+         // trades reduced precision for less memory usage and greater
+         // speed, but we think that garbage collection can save us
+         // memory as well, without sacrificing precision.)
+
          // When you create a constant, assign it a new tag
          // Important optimization: We should only create a new tag
          // at translation time, NOT at run-time.  Thus, every single
@@ -895,7 +921,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          // corresponding to these tags so that they never get garbage
          // collected (or else we may get incorrect results) -
          // Right now we saturate the ref_count field
-         return IRExpr_Const(IRConst_U32(create_new_tag_for_literal()));
+
+         // return IRExpr_Const(IRConst_U32(create_new_tag_for_literal()));
+
 
       case Iex_Binop:
          return expr2tags_Binop_DC(

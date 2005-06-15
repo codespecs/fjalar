@@ -3095,7 +3095,292 @@ hence tags) in and out of
 
 Mike wants to re-open the printf() problem for investigation.  Perhaps
 I can write a stub varargs function which doesn't do anything and see
-what happens?
+what happens?  Yes, I did that, and the stuff doesn't interact simply
+because of the presence of varargs.
+
 
 Look at crazy-test-1.comp --- there is possibly some freaky stuff
 going on
+
+
+Ok, here is how you can step inside of printf() with gdb within XEmacs:
+
+Run the following commands in gdb running inside of XEmacs:
+
+  (link against debug library)
+set solib-absolute-prefix /dev/null/
+set solib-search-path /usr/lib/debug/
+
+  (view the source)
+dir /scratch/pgbovine/glibc-2.3.5/stdio-common/
+
+
+
+Hmmm, does it matter if glibc is compiled optimized?  I guess we're
+not reporting anything about stuff in glibc in our output, but might
+not optimization throw off our comparability results and/or make
+strange things happen?
+
+
+I have a hunch that within printf(), there is one common buffer which
+is being read and outputted to stdout, and all the arguments are being
+copied into that buffer so when the entire buffer is read as a string
+or something, DynComp merges the tags of all of its constituent parts.
+
+Check out the 'workend', 'work_buffer', or 'string' variables in vfprintf.c
+
+
+----------
+2005-06-14
+----------
+
+Hmmm, have I considered merging the comparability sets from exit
+program points back to entrance program points, at least for top-level
+function parameters (#isParam = true)?  Because we are using a virtual
+stack, what we observe are the prestate values of these parameters.
+So perhaps we should really be merging from the entrance to the exit?
+
+
+Possible optimization - a string is a contiguous block of bytes, so
+use a val_uf_union_tags_in_range with the string length instead of
+individual val_uf_union_tags_at_addr for greater efficiency
+
+
+
+
+Mike explains Approach 2 from
+$INV/papers/compare/values-to-variables.txt:
+
+To recap:
+
+Approach 2:  Remember sets of tags (maintain sets of tags at each ppt)
+
+For each variable, remember the set of all tags that were ever observed for
+its values.  At the end of execution, report two variables as comparable if
+their tag sets overlap (taking into account any additional tag merging that
+has occurred since the last execution of the program point).
+
+This may still be expensive, but it is much cheaper than remembering all
+tuples.  For example, instead of remembering 9 tag tuples
+  { <1,4>, <1,5>, <1,6>, <2,4>, <2,5>, <2,6>, <3,4>, <3,5>, <3,6> }
+this approach remembers 2 tag sets < { 1,2,3 }, { 4,5,6 } >.
+
+Optimization:  remember this as a union-find data structure, where the
+elements are tags, and each variable points at one of the sets.
+This is exactly the same data structure that is already used for value
+tags.  Furthermore, similar garbage-collection strategies might help hold
+down the size of the sets.
+
+Problem:  In
+  foo(x,y)
+  foo(y,z)
+the two parameters of foo are reported as comparable.
+This is over-conservative:  it reports variables as comparable that should
+not be.
+
+
+The algorithm which SMcC suggests (and is currently implemented) is
+Approach 2 with the union-find and incremental optimizations.
+
+The simple explanation:
+We have a mapping from variables to the leaders of the tags of their
+values at every program point.  During every execution of a program
+point, iterate through each relevant Daikon variable for that ppt and
+record the leader of the tag of its current value in a list.  Then at
+the very end of execution, for every program point, two variables are
+comparable iff they have ever contained values with tags which are
+comparable in the global value union-find data structure.
+
+e.g. consider the following program with the empty function 'void
+foo(int x, int y)' and arrays containing the following TAGS (not
+values):
+
+int a[] = {0, 1, 2}
+int b[] = {10, 11, 12}
+
+for (i = 0 to 2) {
+  foo(a[i], b[i]);
+}
+
+Three calls are made (with the following tags):
+
+foo(0, 10);
+foo(1, 11);
+foo(2, 12);
+
+This is what is kept with each variable for foo() ENTER and EXIT:
+
+foo(0, 10);
+x 0
+y 10
+
+foo(1, 11);
+x 0  1
+y 10 11
+
+foo(2, 12);
+x 0  1  2
+y 10 11 12
+
+At the end of execution, we see that 'x' and 'y' never contained tags
+that were comparable, so we don't say that these variables are
+comparable.
+
+On the other hand, let's consider the same program ,now run on arrays
+with the following TAGS:
+
+int a[] = {0, 1, 2}
+int b[] = {2, 3, 4}
+
+foo(0, 2);
+x 0
+y 2
+
+foo(1, 3);
+x 0 1
+y 2 3
+
+foo(2, 4);
+x 0 1 2
+y 2 3 4
+
+Ok, now we've got something.  Both 'x' and 'y' held tag 2 during some
+call, and without further information, this algorithm must conclude
+that 'x' and 'y' are comparable.  This is why we say that this
+algorithm is over-conservative.
+
+
+This would make a good example of the limitations of this approach for
+inclusion into an upcoming paper:
+
+Similar problems shows up in strcpy() (and in related glibc functions,
+we suspect) which causes parameters ACROSS different calls of strcpy()
+to appear like they are comparable when in fact they should not be
+comparable.
+
+Here is a small example to demonstrate this problem:
+
+void foo(char* x, char* y) {}
+
+char* my_strcpy (char *dst, const char *src) {
+  char *ret = dst;
+  while ((*dst++ = *src++) != '\0');
+  return ret;
+}
+
+char g_x[] = "AAAA";
+char g_y[] = "BBB";
+
+int main() {
+  my_strcpy(g_x, "CC");
+  my_strcpy(g_y, "D");
+
+  foo(g_x, g_y);
+
+  return 0;
+}
+
+For now, assume that char* variables actually refer to the CONTENTS of
+the strings, not the pointers to the strings.
+
+Here are the values and tags of the bytes in memory corresponding to
+the global data structures:
+
+Global:
+      value  tag
+g_x:  'A'    1
+      'A'    1
+      'A'    1
+      'A'    1
+      '\0'   1
+g_y:  'B'    2
+      'B'    2
+      'B'    2
+      '\0'   2
+
+Literals:
+      "CC"   3
+      "D"    4
+
+
+  my_strcpy(g_x, "CC")
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1
+g_y  2
+dst  1
+src  3
+                        return
+
+Within the body of my_strcpy, first ret = dst, so ret points to the
+same global location where g_x points to.  Now each relevant byte of
+dst gets its value copied in from the corresponding byte in src, so
+the tags get copied as well.  No merging occurs, but here is what
+memory looks like after this call:
+
+      value  tag
+g_x:  'C'    3
+      'C'    3
+      '\0'   3
+      'A'    1
+      '\0'   1
+g_y:  'B'    2
+      'B'    2
+      'B'    2
+      '\0'   2
+
+The return value has a tag of 3, just like g_x now
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1			g_x	3
+g_y  2			g_y	2
+dst  1			dst	3
+src  3			src	3
+                        return	3
+
+
+Now time for the second call:
+
+  my_strcpy(g_y, "D");
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1 3		g_x	3
+g_y  2 2		g_y	2
+dst  1 2		dst	3
+src  3 4		src	3
+                        return	3
+
+Now the body executes and modifies memory:
+
+      value  tag
+g_x:  'C'    3
+      'C'    3
+      '\0'   3
+      'A'    1
+      '\0'   1
+g_y:  'D'    4
+      '\0'   4
+      'B'    2
+      '\0'   2
+
+
+my_strcpy:::ENTER		my_strcpy:::EXIT
+
+g_x  1 3		g_x	3 3
+g_y  2 2		g_y	2 4
+dst  1 2		dst	3 4
+src  3 4		src	3 4
+                        return	3 4
+
+Check out the fact that all the variables are now clumped together.
+Oh no :(
+
+Ok, now when we call foo(), we observe that g_x, g_y, as well as its
+params x and y are ALL comparable, even though g_x and g_y NEVER
+INTERACTED during the same call to strcpy().  The comparability
+'leaked through' across different calls to strcpy.  Ack, that is
+bad!!!  This is one of the reasons why we say that this algorithm is
+over-conservative.

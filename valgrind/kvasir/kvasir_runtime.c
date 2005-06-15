@@ -37,6 +37,9 @@ static char atLeastOneFunctionHandled = 0;
 
 FunctionEntry* currentFunctionEntryPtr = 0;
 
+// For debug printouts
+char within_main_program = 0;
+
 // Updates the full daikon_name for all functions in DaikonFunctionInfoTable
 // by using the Valgrind VG_(get_fnname) function
 // and also updates the trace_vars_tree
@@ -251,6 +254,10 @@ void handleFunctionEntrance(FunctionEntry* e)
       atLeastOneFunctionHandled = 1;
     }
 
+  if (VG_(strcmp)(e->name, "main") == 0) {
+    within_main_program = 1;
+  }
+
   // Don't forget to initialize the function's full Daikon filename here :)
   // The full name is not initialized until runtime!!!
   daikonFuncPtr = findFunctionInfoByAddr(e->startPC);
@@ -351,6 +358,10 @@ void handleFunctionExit(FunctionEntry* e)
   //  printf("Function exit: %s\n\n", e->name);
   //  printFunctionEntryStack();
   //  printf("\n");
+
+  if (VG_(strcmp)(e->name, "main") == 0) {
+    within_main_program = 0;
+  }
 }
 
 

@@ -740,6 +740,8 @@ void printDtraceHashcode(DaikonVariable* var,
           // well as the tags of the base address and the current
           // address because we are observing everything as a sequence
           if (kvasir_with_dyncomp) {
+                DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                            curAddr, sizeof(void*));
             val_uf_union_tags_in_range(curAddr, sizeof(void*));
             val_uf_union_tags_at_addr(ptrValue, curAddr);
           }
@@ -757,6 +759,8 @@ void printDtraceHashcode(DaikonVariable* var,
       // Since we observed all of these bytes as one value,
       // we will merge all of their tags in memory
       if (kvasir_with_dyncomp) {
+            DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                        ptrValue, sizeof(void*));
         val_uf_union_tags_in_range(ptrValue, sizeof(void*));
       }
     }
@@ -1056,6 +1060,8 @@ char printDtraceBaseValue(DaikonVariable* var,
 		      mapInitToModbit(1));
 
               if (kvasir_with_dyncomp) {
+                    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                                (Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
                 val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
               }
 	  }
@@ -1075,6 +1081,8 @@ char printDtraceBaseValue(DaikonVariable* var,
                 else {TYPES_SWITCH(PRINT_STATIC_ARRAY)}
 
                 if (kvasir_with_dyncomp) {
+                      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                                  curAddr, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_in_range(curAddr, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_at_addr((Addr)ptrValue, curAddr);
                 }
@@ -1148,6 +1156,8 @@ char printDtraceBaseValue(DaikonVariable* var,
 		DTRACE_PRINTF( " ");
 
                 if (kvasir_with_dyncomp) {
+                      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                                  loc, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_at_addr((Addr)ptrValue, loc);
                 }
@@ -1159,6 +1169,8 @@ char printDtraceBaseValue(DaikonVariable* var,
                   else {TYPES_SWITCH(PRINT_ARRAY_VAR)}
 
                   if (kvasir_with_dyncomp) {
+                        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                                    loc, TYPE_BYTE_SIZES[decType]);
                     val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
                     val_uf_union_tags_at_addr((Addr)ptrValue, loc);
                   }
@@ -1182,6 +1194,8 @@ char printDtraceBaseValue(DaikonVariable* var,
           else {TYPES_SWITCH(PRINT_ONE_VAR)}
 
           if (kvasir_with_dyncomp) {
+                DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                            (Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
             val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
           }
 
