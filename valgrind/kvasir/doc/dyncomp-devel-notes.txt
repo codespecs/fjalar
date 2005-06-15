@@ -3410,3 +3410,24 @@ Could be possible ...
 ----------
 2005-06-15
 ----------
+
+Ok, implemented two horrendous hacks to try to get more accurate
+comparability info., at least on our smaller examples:
+
+1.) Reserved a special UINT_MAX tag for tags read from ESP.  In
+MERGE_TAGS, we detect when one tag is UINT_MAX and mark the other one
+as 'dirty' then return the other one.  If the program later tries to
+merge the 'dirty' tag, then the merge does not occur and we return the
+OTHER tag.  This is purely due to observations I made in
+dyncomp-tests/LocalVarsTest and is probably very flaky and unsound.
+
+2.) Don't perform CREATE_TAG, MERGE_TAGS, or MERGE_TAGS_RETURN_0
+unless you are executing the main program (denoted by the global
+'within_main_program' flag).  This probably loses some accuracy here
+and there but helps to reduce the number of crappy mergins and stuff
+that occur BEFORE the program begins and AFTER the program terminates
+... such as in weird glibc initialization/teardown code.
+
+
+The results look alright now, but by no means spectacular.  I really
+need to re-think what I've done and implement something more sound.

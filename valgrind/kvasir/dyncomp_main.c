@@ -225,6 +225,7 @@ static UChar val_uf_tags_in_same_set(UInt tag1, UInt tag2) {
 // Write tag into all addresses in the range [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
   Addr curAddr;
+
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     set_tag(curAddr, tag);
   }
@@ -248,6 +249,7 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 // mc_translate.c) - this is very important for some reason
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
+
   set_tag_for_range(a, 8, tag);
   //#ifdef STORE_TAG_VERBOSE
   if (within_main_program) {
@@ -259,6 +261,7 @@ void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
+
   set_tag_for_range(a, 4, tag);
   //#ifdef STORE_TAG_VERBOSE
   if (within_main_program) {
@@ -270,6 +273,7 @@ void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
+
   set_tag_for_range(a, 2, tag);
   //#ifdef STORE_TAG_VERBOSE
   if (within_main_program) {
@@ -281,6 +285,7 @@ void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
+
   set_tag_for_range(a, 1, tag);
   //#ifdef STORE_TAG_VERBOSE
   if (within_main_program) {
@@ -384,6 +389,9 @@ VGA_REGPARM(0)
 UInt MC_(helperc_CREATE_TAG) () {
   UInt newTag = nextTag;
 
+  if (!within_main_program)
+    return 0;
+
   //  if (newTag == 1786352) {
   //    DYNCOMP_DPRINTF("FAKE helperc_CREATE_TAG() = %u [nextTag=%u]\n",
   //                    newTag, nextTag);
@@ -448,12 +456,20 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   return get_tag(a);
 }
 
+// This is a hack which seems to sort of work to
+// lessen the amount of merging caused by ESP
+// touching everything in its path and wreaking havoc
+UInt dirtyTag = 0;
+
 // Merge tags during any binary operation which
 // qualifies as an interaction and returns the first tag
 // Important special case - if one of the tags is 0, then
 // simply return the OTHER tag and don't do any merging
 VGA_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
+
+  if (!within_main_program)
+    return;
 
   if (within_main_program) {
     DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n",
@@ -466,6 +482,28 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   else if IS_ZERO_TAG(tag2) {
     return tag1;
   }
+
+  // If this tag was retrieved from ESP,
+  // then the tag that it tries to merge with
+  // is 'dirty' so mark it ... this is PURELY
+  // a hack based upon ONE SMALL EXAMPLE ...
+  // We really need a better way
+  else if (tag1 == UINT_MAX) {
+    dirtyTag = tag2;
+    return tag2;
+  }
+  else if (tag2 == UINT_MAX) {
+    dirtyTag = tag1;
+    return tag1;
+  }
+  // Don't process dirty tags
+  else if (tag1 == dirtyTag) {
+    return tag2;
+  }
+  else if (tag2 == dirtyTag) {
+    return tag1;
+  }
+
   else {
     val_uf_tag_union(tag1, tag2);
     return tag1;
@@ -478,6 +516,10 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
 // intended behavior for comparisons, for example).
 VGA_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
+
+  if (!within_main_program)
+    return;
+
   val_uf_tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
   VG_(printf)("helperc_MERGE_TAGS_RETURN_0(%u, %u) [nextTag=%u]\n",
@@ -493,6 +535,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 // (when it's implemented)
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
   Addr curAddr;
+
   if (within_main_program) {
     DYNCOMP_DPRINTF("clear_all_tags_in_range(a=0x%x, len=%d)\n",
                     a, len);

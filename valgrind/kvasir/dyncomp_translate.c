@@ -31,6 +31,7 @@
 #include "kvasir_runtime.h"
 #include "kvasir_main.h"
 #include "libvex_guest_offsets.h"
+#include <limits.h>
 
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
@@ -107,13 +108,12 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    tl_assert(ty != Ity_I1);
 
    // Don't do a PUT of tags into certain areas of the guest state,
-   // such as ESP and EBP, in order to avoid tons of false mergings
+   // such as ESP, in order to avoid tons of false mergings
    // of relative address literals derived from arithmetic with these
    // registers
-
-   //   if (offset == OFFSET_x86_ESP) {
-      //      return;
-      //   }
+   if (offset == OFFSET_x86_ESP) {
+      return;
+   }
 
    //   if (!((offset == OFFSET_x86_EAX) ||
    //         (offset == OFFSET_x86_EBX) ||
@@ -163,14 +163,14 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
 
-   // Return a 0 tag for a GET call into certain areas of the guest state,
-   // such as ESP and EBP, in order to avoid tons of false mergings
+   // Return a special tag for a GET call into certain areas of the guest state,
+   // such as ESP, in order to avoid tons of false mergings
    // of relative address literals derived from arithmetic with these
    // registers
-
-   //   if (offset == OFFSET_x86_ESP) {
-      //      return IRExpr_Const(IRConst_U32(0xfffffff));
-      //   }
+   if (offset == OFFSET_x86_ESP) {
+      // Return a special tag of UINT_MAX for a tag retrieved from ESP
+      return IRExpr_Const(IRConst_U32(UINT_MAX));
+   }
 
 //   if (!((offset == OFFSET_x86_EAX) ||
 //        (offset == OFFSET_x86_EBX) ||
