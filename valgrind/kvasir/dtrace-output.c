@@ -158,16 +158,13 @@ void printOneDtraceString(char* str)
 {
   char readable;
   Addr strHead = (Addr)str;
+  int len = 0;
   // Print leading and trailing quotes to "QUOTE" the string
   DTRACE_PRINTF("\"");
   readable = addressIsInitialized((Addr)str, sizeof(char));
   tl_assert(readable);
   while (*str != '\0')
     {
-      if (kvasir_with_dyncomp) {
-        val_uf_union_tags_at_addr(strHead, (Addr)str);
-      }
-
       switch (*str) {
       case '\n':
         DTRACE_PRINTF( "\\n");
@@ -184,7 +181,9 @@ void printOneDtraceString(char* str)
       default:
         DTRACE_PRINTF( "%c", *str);
       }
+
       str++;
+      len++;
 
       readable = addressIsInitialized((Addr)str, sizeof(char));
 
@@ -195,6 +194,14 @@ void printOneDtraceString(char* str)
       }
     }
   DTRACE_PRINTF("\"");
+
+  // We know the length of the string so merge the tags
+  // for that many contiguous bytes in memory
+  if (kvasir_with_dyncomp) {
+    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                    (Addr)strHead, len);
+    val_uf_union_tags_in_range(strHead, len);
+  }
 }
 
 // Prints one character as though it were a string to .dtrace,
@@ -227,27 +234,35 @@ void printOneCharAsDtraceString(char c)
 void printOneDtraceStringAsIntArray(char* str) {
   char readable;
   Addr strHead = (Addr)str;
+  int len = 0;
+
   DTRACE_PRINTF("[ ");
   readable = addressIsInitialized((Addr)str, sizeof(char));
   tl_assert(readable);
   while (*str != '\0')
     {
-      if (kvasir_with_dyncomp) {
-        val_uf_union_tags_at_addr(strHead, (Addr)str);
-      }
-
       DTRACE_PRINTF( "%d ", *str);
 
       str++;
+      len++;
 
       readable = addressIsInitialized((Addr)str, sizeof(char));
       if (!readable) {
         DPRINTF("  whoa, ran into unreadable character\n");
-	DABORT("unreadable character in printOneDtraceString");
+	DABORT("unreadable character in printOneDtraceStringAsIntArray");
         break;
       }
     }
   DTRACE_PRINTF("]");
+
+
+  // We know the length of the string so merge the tags
+  // for that many contiguous bytes in memory
+  if (kvasir_with_dyncomp) {
+    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                    (Addr)strHead, len);
+    val_uf_union_tags_in_range(strHead, len);
+  }
 }
 
 /* Returns true if str points to a null-terminated string, every byte of
@@ -740,7 +755,7 @@ void printDtraceHashcode(DaikonVariable* var,
           // well as the tags of the base address and the current
           // address because we are observing everything as a sequence
           if (kvasir_with_dyncomp) {
-                DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+            DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                             curAddr, sizeof(void*));
             val_uf_union_tags_in_range(curAddr, sizeof(void*));
             val_uf_union_tags_at_addr(ptrValue, curAddr);
@@ -759,7 +774,7 @@ void printDtraceHashcode(DaikonVariable* var,
       // Since we observed all of these bytes as one value,
       // we will merge all of their tags in memory
       if (kvasir_with_dyncomp) {
-            DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                         ptrValue, sizeof(void*));
         val_uf_union_tags_in_range(ptrValue, sizeof(void*));
       }
@@ -1060,7 +1075,7 @@ char printDtraceBaseValue(DaikonVariable* var,
 		      mapInitToModbit(1));
 
               if (kvasir_with_dyncomp) {
-                    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                                 (Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
                 val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
               }
@@ -1081,7 +1096,7 @@ char printDtraceBaseValue(DaikonVariable* var,
                 else {TYPES_SWITCH(PRINT_STATIC_ARRAY)}
 
                 if (kvasir_with_dyncomp) {
-                      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                  DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                                   curAddr, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_in_range(curAddr, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_at_addr((Addr)ptrValue, curAddr);
@@ -1156,7 +1171,7 @@ char printDtraceBaseValue(DaikonVariable* var,
 		DTRACE_PRINTF( " ");
 
                 if (kvasir_with_dyncomp) {
-                      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                  DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                                   loc, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
                   val_uf_union_tags_at_addr((Addr)ptrValue, loc);
@@ -1169,7 +1184,7 @@ char printDtraceBaseValue(DaikonVariable* var,
                   else {TYPES_SWITCH(PRINT_ARRAY_VAR)}
 
                   if (kvasir_with_dyncomp) {
-                        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                                     loc, TYPE_BYTE_SIZES[decType]);
                     val_uf_union_tags_in_range(loc, TYPE_BYTE_SIZES[decType]);
                     val_uf_union_tags_at_addr((Addr)ptrValue, loc);
@@ -1194,7 +1209,7 @@ char printDtraceBaseValue(DaikonVariable* var,
           else {TYPES_SWITCH(PRINT_ONE_VAR)}
 
           if (kvasir_with_dyncomp) {
-                DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+            DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
                             (Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
             val_uf_union_tags_in_range((Addr)ptrValue, TYPE_BYTE_SIZES[decType]);
           }
