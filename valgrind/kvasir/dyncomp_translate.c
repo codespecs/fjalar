@@ -107,20 +107,12 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    ty = typeOfIRExpr(dce->bb->tyenv, vatom);
    tl_assert(ty != Ity_I1);
 
-   // Don't do a PUT of tags into certain areas of the guest state,
-   // such as ESP, in order to avoid tons of false mergings
-   // of relative address literals derived from arithmetic with these
-   // registers
+   // Don't do a PUT of tags into ESP in order to avoid tons of false
+   // mergings of relative address literals derived from arithmetic
+   // with ESP
    if (offset == OFFSET_x86_ESP) {
       return;
    }
-
-   //   if (!((offset == OFFSET_x86_EAX) ||
-   //         (offset == OFFSET_x86_EBX) ||
-   //         (offset == OFFSET_x86_ECX) ||
-   //         (offset == OFFSET_x86_EDX))) {
-   //      return;
-   //   }
 
    /* Do a plain shadow Put. */
    // PG - Remember the new layout in ThreadArchState
@@ -163,21 +155,13 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
 
-   // Return a special tag for a GET call into certain areas of the guest state,
-   // such as ESP, in order to avoid tons of false mergings
-   // of relative address literals derived from arithmetic with these
-   // registers
+   // Return a special tag of UINT_MAX for a GET call into ESP, in
+   // order to avoid tons of false mergings of relative address
+   // literals derived from arithmetic with ESP
    if (offset == OFFSET_x86_ESP) {
       // Return a special tag of UINT_MAX for a tag retrieved from ESP
       return IRExpr_Const(IRConst_U32(UINT_MAX));
    }
-
-//   if (!((offset == OFFSET_x86_EAX) ||
-//        (offset == OFFSET_x86_EBX) ||
-//         (offset == OFFSET_x86_ECX) ||
-//         (offset == OFFSET_x86_EDX))) {
-//      return IRExpr_Const(IRConst_U32(0xffffff));
-//   }
 
    // The floating-point stack on the x86 is located between offsets
    // 64 and 128 so we don't want somebody requesting a GET into this
