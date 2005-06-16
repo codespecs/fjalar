@@ -2893,6 +2893,8 @@ UInt returnUIntProduct(Char a, Short b)
 
 Yeah, this is a more challenging technical problem to overcome
 
+FIXED - the other stuff I changed seemed to magically fix it
+(2005-06-16)
 
 StaticArraysTest:
 -----------------
@@ -3226,7 +3228,7 @@ At the end of execution, we see that 'x' and 'y' never contained tags
 that were comparable, so we don't say that these variables are
 comparable.
 
-On the other hand, let's consider the same program ,now run on arrays
+On the other hand, let's consider the same program, now run on arrays
 with the following TAGS:
 
 int a[] = {0, 1, 2}
@@ -3431,3 +3433,37 @@ that occur BEFORE the program begins and AFTER the program terminates
 
 The results look alright now, but by no means spectacular.  I really
 need to re-think what I've done and implement something more sound.
+
+
+----------
+2005-06-16
+----------
+
+Ok, I un-did the hacks I made yesterday and made a less-atrocious ESP
+hack, which seems to work much better:
+
+I created a special case where there is always a special tag of
+UINT_MAX given to any tag retrieved from ESP in the guest state.
+There is also a special case in helperc_MERGE_TAGS which notices if
+either of its arguments is UINT_MAX and simply returns 0 if that is
+the case.  This solves the problem because 0 tags are treated
+specially as well.  If either argument to a merge is a 0, then the
+other argument is returned.
+
+By manually inspecting the IR, it seems that the use of the &-operator
+on a LOCAL (stack) VARIABLE translates into a constant literal being
+created and then some arithmetic is done with ESP in order to get an
+address.  The problem we have before is that the SAME ESP is used to
+do arithmetic on different constants so all local addresses within one
+stack frame which are obtained with the &-operator seem to appear
+comparable since they shared that interaction with ESP.  Returning
+that 0 effectively nullifies interactions with ESP.
+
+Currently, the behavior is that each address generated with the
+&-operator gets its own unique tag (NOT a 0 tag) because it was
+created with some constant offset from ESP, so that tag can be passed
+around and these variables can actually merge and be comparable with
+other variables later :)
+
+(&-operator on a global is simply a constant literal so we have no
+problems here)

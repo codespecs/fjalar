@@ -1552,32 +1552,54 @@ void outputDaikonVar(DaikonVariable* var,
       if (kvasir_with_dyncomp && variableHasBeenObserved) {
         Addr a;
 
-        // Special handling for strings.  We are not interested in the
-        // comparability of the 'char*' pointer variable, but rather
-        // we are interested in the comparability of the CONTENTS of
-        // the string.  (Be careful about statically-declared strings,
-        // in which case the address of the first element is the address
-        // of the pointer variable)
-        // TODO: What do we do in the presence of .disambig info when
-        //       we actually want to print the string as another type
-        //       of data?  We need to handle this sometime with a more
-        //       complex conditional
-        if (var->isString &&
-            (0 == layersBeforeBase)) {
-	  // Depends on whether the variable is a static array or not:
-	  a = var->isStaticArray ?
-            (Addr)basePtrValue :
-            *((Addr*)(basePtrValue));
-        }
-        else {
-          a = (Addr)basePtrValue;
-        }
+        // Special handling for static arrays: Currently, in the
+        // .dtrace, for a static arrays 'int foo[]', we print out
+        // 'foo' as the address of foo and 'foo[]' as the contents of
+        // 'foo'.  However, for comparability, there is no place in
+        // memory where the address of 'foo' is maintained; thus,
+        // there is no tag for it anywhere, so we must not
+        // post-process it and simply allow it to keep a tag of 0.
+        // This implies that all static array hashcode values are
+        // unique and not comparable to one another, which is the
+        // intended behavior.  (Notice that if one wants to assign a
+        // pointer to 'foo', then the address of 'foo' resides
+        // somewhere in memory - where that pointer is located - and
+        // thus gets a fresh tag.  One can then have that pointer
+        // interact with other pointers and have THEM be comparable,
+        // but 'foo' itself still has no tag and is not comparable to
+        // anything else.)
 
-        DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
-        DC_post_process_for_variable(varFuncInfo,
-                                     isEnter,
-                                     g_daikonVarIndex,
-                                     a);
+        // Don't do anything if this condition holds:
+        // (layersBeforeBase > 0) is okay since var->isStaticArray implies
+        // that there is only one level of pointer indirection, and for a
+        // static string (static array of 'char'), layersBeforeBase == 0
+        // right away so we still process it
+        if (!(var->isStaticArray &&
+              (layersBeforeBase > 0))) {
+
+          // Special handling for strings.  We are not interested in the
+          // comparability of the 'char*' pointer variable, but rather
+          // we are interested in the comparability of the CONTENTS of
+          // the string.  (Be careful about statically-declared strings,
+          // in which case the address of the first element is the address
+          // of the pointer variable)
+          if (var->isString &&
+              (0 == layersBeforeBase)) {
+            // Depends on whether the variable is a static array or not:
+            a = var->isStaticArray ?
+              (Addr)basePtrValue :
+              *((Addr*)(basePtrValue));
+          }
+          else {
+            a = (Addr)basePtrValue;
+          }
+
+          DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
+          DC_post_process_for_variable(varFuncInfo,
+                                       isEnter,
+                                       g_daikonVarIndex,
+                                       a);
+        }
       }
 
       // While observing the runtime values,
@@ -1715,11 +1737,36 @@ void outputDaikonVar(DaikonVariable* var,
     }
   // DynComp - extra propagation at the end of the program's execution
   else if (DYNCOMP_EXTRA_PROP == outputType) {
-    DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
-    DC_extra_propagation_post_process(varFuncInfo,
-                                      isEnter,
-                                      g_daikonVarIndex);
+    // Special handling for static arrays: Currently, in the
+    // .dtrace, for a static arrays 'int foo[]', we print out
+    // 'foo' as the address of foo and 'foo[]' as the contents of
+    // 'foo'.  However, for comparability, there is no place in
+    // memory where the address of 'foo' is maintained; thus,
+    // there is no tag for it anywhere, so we must not
+    // post-process it and simply allow it to keep a tag of 0.
+    // This implies that all static array hashcode values are
+    // unique and not comparable to one another, which is the
+    // intended behavior.  (Notice that if one wants to assign a
+    // pointer to 'foo', then the address of 'foo' resides
+    // somewhere in memory - where that pointer is located - and
+    // thus gets a fresh tag.  One can then have that pointer
+    // interact with other pointers and have THEM be comparable,
+    // but 'foo' itself still has no tag and is not comparable to
+    // anything else.)
 
+    // Don't do anything if this condition holds:
+    // (layersBeforeBase > 0) is okay since var->isStaticArray implies
+    // that there is only one level of pointer indirection, and for a
+    // static string (static array of 'char'), layersBeforeBase == 0
+    // right away so we still process it
+    if (!(var->isStaticArray &&
+          (layersBeforeBase > 0))) {
+      DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
+
+      DC_extra_propagation_post_process(varFuncInfo,
+                                        isEnter,
+                                        g_daikonVarIndex);
+    }
     VG_(free)(fullDaikonName);
   }
   // .disambig
