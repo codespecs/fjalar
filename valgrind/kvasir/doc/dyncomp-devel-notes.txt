@@ -3467,3 +3467,234 @@ other variables later :)
 
 (&-operator on a global is simply a constant literal so we have no
 problems here)
+
+
+
+Mike suggests to try to assign tags of 0 for all literals and see what
+happens.  Perhaps this could eliminate the need for garbage
+collection?  If we are interested in literals having tags for the
+purposes of the &-operator, perhaps we could make a special case for
+stuff calculated from ESP.  Again, this is just speculation ... let's
+try it out and see what happens.
+
+- tried it out ... this is bad because, as I suspected, pointer values
+don't get tags so comparability doesn't propagate properly
+
+----------
+2005-06-17
+----------
+
+Notes from meeting with Mike on 2005-06-17
+------------------------------------------
+
+On a high level, we've concluded that there are three ways which tags
+can be created.  The challenge is to balance when to use each of the
+three mechanisms for creating tags.
+
+1.) Create tags dynamically during run-time
+Advantage: Perfect context-sensitivity
+Disadvantage: Extremely inefficient, especially in the presence of
+literals
+
+Right now, tags for literals are created dynamically, which means that
+every time the same literal '4' is encountered during an execution, a
+new tag is created.  This provides perfect context-sensitivity because
+it doesn't merge together variables from different executions which
+interact with that same '4', but it is extremely inefficient because
+so many tags are created.
+
+(In fact, right now, ALL new tags are created dynamically)
+
+2.) Create tags statically during translation-time
+
+Advantage: Much more efficient than dynamic tag creation
+Disadvantage: Loses perfect context-sensitivity
+
+3.) Create a tag of 0
+
+Advantage: Most efficient
+Disadvantage: Potentially loses lots of information
+
+Right now, we never explicitly create a tag of 0 for anything, but we
+flirted with the idea of creating 0 tags for all literals, which could
+drastically improve efficiency.  However, we determined that the loss
+in precision is probably not worth it.
+
+
+Possible optimizations (not yet implemented because each one has its
+own flaws):
+
+1.) Peephole optimization for avoiding creating tags for constants
+
+In the expression 'x + 5', the IR looks like (assuming x is loaded
+into EAX):
+
+    +
+   / \
+ EAX  5
+
+We currently generate this parallel IR tree for the tags
+
+     MERGE_TAGS()
+      /     \
+tag(EAX)   CREATE_TAG()
+
+Mike suggests to prune off the CREATE_TAG() call and simply return the
+tag of EAX because the literal '5' really isn't used again.  Thus, the
+pruned version of the tree looks like so:
+
+      tag(EAX)
+
+Remember that literals are leaves in the IR expression tree because
+they are not operators and thus cannot take any operands.  This could
+eliminate the creation of a lot of useless tags which would later have
+to be garbage collected, which is costly.
+
+However, one objection is ... how does this scheme handle the creation
+of unique literals for calculating offsets from ESP when the
+&-operator is used?  Just because the '5' is a leaf doesn't mean that
+it will never be used, even indirectly.  Thus, this optimization may
+lose information, most notably when the &-operator is involved.
+
+
+2.) Adopt different special treatment for 0 tags, and assign all
+literals 0 tags.
+
+Currently, the treatment for 0 tags is that when a 0 appears as an
+operand to a MERGE operation, simply return the other tag as the
+result and don't do any merging.  How about we change special
+treatment for 0 tags so that when a 0 tag is an argument to a MERGE
+operation, change that 0 tag to the OTHER tag argument and then return
+the other argument.
+
+We need to combine this change with a corresponding change to create 0
+tags for all literals.  In fact, the reason why we want this special
+treatment for 0 tags is so that we can create 0 tags for literals,
+which is MUCH more efficient than creating new tags dynamically for
+literals.
+
+The intuition behind this change is that when literals appear by
+themselves, no new tag is created for them, but when they interact
+with other values with tags, then they adopt those tags and magically
+appear to obtain tags.  For example,
+
+a = 5;   // '5' has 0 tag, that's copied into 'a' so 'a' has 0 tag
+a + c;   // Assume that 'c' magically has a tag.  Now 'a' adopts the
+         // tag of 'c' and we return the tag of 'c'
+
+Problem: How does 'c' magically get a non-zero tag?  If we assume that
+'c' was initialized with a literal sometime earlier, then it too will
+have a 0 tag.  This is a big problem.
+
+Another problem:
+
+a = 5;   // a: 0
+b = a;   // a: 0, b: 0
+b + c;   // a: 0, b: 1, c: 1 (assume 'c' has a tag of 1)
+b + z;   // a: 0, b: 1, c: 1, d: 1
+
+This is incorrect because 'a' should be comparable to 'b', 'c', and
+'d' but this optimization will lose this information.
+
+
+3.) Statically allocate tags for address literals which point to the
+global data region of memory.
+
+Currently, for a global static array 'int x[]', we do not give a tag
+to 'x' (the hashcode denoting the location of the beginning of the
+array in the global data region), so all global static arrays are not
+comparable to anything else.  Mike suggests an alternative where we
+assign tags for each global data region location we encounter
+statically at translation-time.  For example,
+
+int x[10] = {blah}   Address: 10000000
+int y[20] = {bleh}   Address: 10000040
+int z[5]  = {bloop}  Address: 10000120
+
+We could give each variable a tag which is the same as its address,
+since global static addresses are fixed and known at compile-time.
+The down-side to this plan is that we need to reserve a large block
+(the size of the global region) of tags which cannot be allocated
+dynamically since there is a chance of contention with these
+statically-allocated tags.
+
+A smarter implementation is to create a map from global addresses to
+tags.  In this example, we would have something like
+
+Address      tag
+10000000     1
+10000040     2
+10000120     3
+
+Now there is no need to block off a large chunk of memory.  If we do
+this all statically at translation time, all of these addresses will
+receive the lowest tags of 1, 2, 3, 4, 5, etc..., and nextTag will
+increment to the first unused tag when it is ready for dynamic
+allocation of tags.
+
+Notice that these tags can never be garbage collected because global
+variables have program-wide scope, and these tags are always being
+used.  However, that's fine because the garbage collector can sweep
+through the values within this map as part of its 'roots' (along with
+the shadow memory and guest state) to see which tags are being used.
+
+Now, at translation-time, whenever we encounter a literal that is
+within range of the global region (between the address of the lowest
+and highest global variable), look it up in the map and statically
+assign it the tag associated with that address.  This makes sense
+because when somebody references a global array by name within a
+function (i.e., 'x' for 'int x[]'), that simply compiles into a large
+integer literal.  Thus, different references to 'x' throughout a
+program will all have the SAME tag instead of unique tags, which is
+both more precise and more efficient.  This suffers the same problem
+as a conservative garbage collector ... there is no way to tell
+whether a large integer literal is actually an address in the global
+data region or simply just a large integer.  However, in practice,
+being a bit conservative isn't that much of a problem.
+
+Potential problem (this is similar to the ESP contamination problem):
+
+struct x{int a; int b;};
+
+x arr[5];
+
+Let's try to observe these values:
+arr[3].a
+arr[4].b
+
+In the original scheme, these two variables will have unique tags
+because all of the literals are dynamically-generated and unique.
+That's the correct behavior.
+
+However, in the proposed scheme, 'arr' will return the same tag for
+both arr[3].a and arr[3].b, and the '3' is simply an offset of
+(3*sizeof(x)) from 'arr' (and the 'b' field is an additional offset of
+sizeof(a) from the start of arr[4]).  Thus, DynComp would say that
+arr[3].a and arr[4].b ARE comparable, which is incorrect, because of
+the fact that the offsets from 'arr' all got merged with the common
+tag from 'arr'.  This is exactly the same thing as the ESP
+'contamination' problem where the invocation of the &-operator on
+local variables is compiled into ESP plus a constant offset.  Perhaps
+we need special treatment for these static array tags to prevent them
+from 'contaminating' other tags to prevent false mergings?  Is the
+solution to the ESP problem generalizable, or do we have to resort to
+even more special cases?
+
+
+4.) Ignore everything that happens before the entrance of main() and
+after the exit of main() (by using the within_main_function boolean).
+I think that I experimented with not doing CREATE_TAG or MERGE_TAGS,
+but with no real difference in results, at least on small test
+programs.  The justification behind this is that we really don't care
+about what happens before the main program starts and after it
+finishes ... it's probably mostly glibc crap.  But like Mike says,
+when the program being run is large, then this probably won't buy us
+much, and it may even lose some precision, so I dunno if this is
+really worthwhile.
+
+
+5.) Move more code, such as the comparison to see if one tag is 0
+during MERGE_TAGS (which probably happens quite frequently), into IR
+instead of having to call out to a helper function, since helper
+function calls are expensive because Valgrind must save and restore
+state.  This was SMcC's suggestion.
