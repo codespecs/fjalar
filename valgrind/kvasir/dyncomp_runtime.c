@@ -413,3 +413,151 @@ void debugPrintTagsInRange(Addr low, Addr high) {
     }
   }
 }
+
+
+// Tag garbage collector:
+
+// Runs the tag garbage collector
+void garbage_collect_tags() {
+  UInt primaryIndex, secondaryIndex;
+  UInt curTag = 0;
+  UInt numTagsInUse = 0;
+  UInt numTagsFreed = 0;
+  UInt t, i;
+
+  // Allocate a vector of size nextTag + 1, where each element is 0
+  // if that tag is not being used and non-zero if it is being used.
+
+  // We use calloc so we assume that no tags are initially being used:
+  UChar* tagsInUse = VG_(calloc)(nextTag + 1, sizeof(UChar));
+
+  // Possible optimization: Save 8x space by allocating a bit-vector
+  // where each bit holds whether one tag has been used.
+  // This is not implemented for now because for some reason, Valgrind
+  // crashes with it ... do it later if space becomes a premium:
+
+  //  UChar* tagsInUse = VG_(calloc)(((nextTag / 8) + 1), sizeof(UChar));
+
+  // Allocate a bit-vector of size ((nextTag / 8) + 1) bytes to denote
+  // which tags are currently being used.  We know that nextTag is an
+  // upper-bound on the number of tags currently in use; all tags must
+  // be in the range of [1, nextTag).
+
+  // To find out if tag x in being used, we need to query the x-th bit
+  // in the vector, which entails looking up tagsInUse[x / 8], then
+  // right-shifting it by (x % 8) and masking off all but the LSB.  If
+  // it is a 1, then the tag is being used; otherwise, it is not being
+  // used:
+  //#define TAG_IS_IN_USE(x) ((tagsInUse[(x) / 8] >> ((x) % 8)) & 0x1)
+
+  // To set the 'in-use' bit for a tag x, we do something similar:
+  //#define SET_TAG_IN_USE(x) tagsInUse[(x) / 8] |= (0x1 << ((x) % 8))
+
+  VG_(printf)("Start garbage collecting tags (nextTag = %u) ...\n", nextTag);
+
+  // Clear to_be_freed_list
+  clear_list(&to_be_freed_list);
+
+  // Scan through all of the tag shadow memory and see which tags are
+  // being used - these cannot be garbage collected
+
+  for (primaryIndex = 0; primaryIndex < PRIMARY_SIZE; primaryIndex++) {
+    if (primary_tag_map[primaryIndex]) {
+      for (secondaryIndex = 0; secondaryIndex < SECONDARY_SIZE; secondaryIndex++) {
+        // Remember to ignore 0 tags:
+        curTag = primary_tag_map[primaryIndex][secondaryIndex];
+        if (curTag > 0) {
+          tagsInUse[curTag] = 1;
+        }
+      }
+    }
+  }
+
+  // Scan through all of the guest state and see which tags are being
+  // used - these cannot be garbage collected
+
+  // Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
+  // dyncomp_translate.c) - eek!
+
+  // TODO: This is not yet implemented because it involves more ugly
+  // hacking of the core ... but I do realize its importance in
+  // ensuring correctness ... I will get around to this, I promise
+
+  VG_(printf)("Iterating through tags in tagsInUse\n");
+
+  // Iterate through all tags in tagsInUse and find which ones are NOT
+  // in use (remember to skip the 0 tag):
+  for (t = 1; t < nextTag; t++) {
+    if (!tagsInUse[t]) {
+      // If the tag is not already in free_list, then
+      // put it in to_be_freed_list
+      // TODO: Do I even need this check here???  I don't think so
+      if (!is_tag_in_list(&free_list, t)) {
+        enqueue_tag(&to_be_freed_list, t);
+      }
+    }
+    else {
+      // Count how many tags are being used
+      numTagsInUse++;
+    }
+  }
+
+  // Iterate through to_be_freed_list and check whether each tag can
+  // truly be freed (refCount == 0) SMcC's suggestion: Do this TWICE
+  // as a heuristic in order to try to get us closer to fixed-point.
+  // This is because if you go through it in a particular order, you
+  // may reach a parent before you reach a leaf.  You cannot free the
+  // parent, but you can free the leaf.  Then the next time you go
+  // through it, you can free the parent.  However, this sort of thing
+  // probably doesn't happen too frequently because if the union-find
+  // is working properly, you'll have one root and most entries will
+  // be leaves.  Perhaps TWO passes is optimal.
+  for (i = 0; i < 2; i++) {
+    TagNode* tagNode;
+
+    if (i == 0) {
+      VG_(printf)("First pass through to_be_freed_list to free stuff\n");
+    }
+    else {
+      VG_(printf)("Second pass through to_be_freed_list to free stuff\n");
+    }
+
+    // For every tag in to_be_freed_list, look up the reference count
+    // of the corresponding uf_object entry in the val_uf_object map.
+    // If it is 0, then destroy that entry (by clobbering it with
+    // zeroes and decreasing the ref_count of its parent!!!) and
+    // adding that tag to free_list.  Otherwise, do nothing.
+    for (tagNode = to_be_freed_list.first;
+         tagNode != NULL;
+         tagNode = tagNode->next) {
+      UInt tag = tagNode->tag;
+      uf_object* obj;
+      if (!IS_SECONDARY_UF_NULL(tag)) {
+        obj = GET_UF_OBJECT_PTR(tag);
+        if (obj->ref_count == 0) {
+          uf_destroy_object(obj);
+
+          // Optimization: The first pass ensures uniqueness,
+          //               but not the second pass
+          if (i == 0) {
+            enqueue_tag(&free_list, tag);
+            VG_(printf)("Freed tag: %u\n", tag);
+            numTagsFreed++;
+          }
+          else {
+            if (enqueue_unique_tag(&free_list, tag)) {
+              VG_(printf)("Freed tag: %u\n", tag);
+              numTagsFreed++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Clean-up
+  VG_(free)(tagsInUse);
+
+  VG_(printf)("Done garbage collecting tags (nextTag = %u) # tags in use: %u / # tags freed: %u\n",
+              nextTag, numTagsInUse, numTagsFreed);
+}

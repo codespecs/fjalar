@@ -3698,3 +3698,102 @@ during MERGE_TAGS (which probably happens quite frequently), into IR
 instead of having to call out to a helper function, since helper
 function calls are expensive because Valgrind must save and restore
 state.  This was SMcC's suggestion.
+
+
+----------
+2005-06-18
+----------
+
+Garbage collection!!!
+
+rijndael in parsnip:/scratch/pgbovine-do-not-delete-me/rijndael/kvasir-version
+is a great example of a program that currently runs out of memory due to the
+excessive amounts of tags that it allocates.  Check it out:
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/rijndael/kvasir-version$ kvasir-dtrace --with-dyncomp ./rijndael
+==18519== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==18519== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==18519== Using LibVEX rev 1139, a library for dynamic binary translation.
+==18519== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==18519== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==18519== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==18519== For more details, rerun with: -v
+==18519==
+Start garbage collecting tags (nextTag = 1000000) ...
+Done garbage collecting tags (nextTag = 1000000) # tags in use: 920791
+Executing Tables KAT (key 128): Start garbage collecting tags (nextTag = 2000000) ...
+Done garbage collecting tags (nextTag = 2000000) # tags in use: 1422201
+Start garbage collecting tags (nextTag = 3000000) ...
+Done garbage collecting tags (nextTag = 3000000) # tags in use: 1422197
+Start garbage collecting tags (nextTag = 4000000) ...
+Done garbage collecting tags (nextTag = 4000000) # tags in use: 1422198
+Start garbage collecting tags (nextTag = 5000000) ...
+Done garbage collecting tags (nextTag = 5000000) # tags in use: 1422166
+Start garbage collecting tags (nextTag = 6000000) ...
+Done garbage collecting tags (nextTag = 6000000) # tags in use: 1422193
+Start garbage collecting tags (nextTag = 7000000) ...
+Done garbage collecting tags (nextTag = 7000000) # tags in use: 1422186
+Start garbage collecting tags (nextTag = 8000000) ...
+Done garbage collecting tags (nextTag = 8000000) # tags in use: 1422192
+Start garbage collecting tags (nextTag = 9000000) ...
+Done garbage collecting tags (nextTag = 9000000) # tags in use: 1422166
+Start garbage collecting tags (nextTag = 10000000) ...
+Done garbage collecting tags (nextTag = 10000000) # tags in use: 1422170
+Start garbage collecting tags (nextTag = 11000000) ...
+Done garbage collecting tags (nextTag = 11000000) # tags in use: 1422171
+Start garbage collecting tags (nextTag = 12000000) ...
+Done garbage collecting tags (nextTag = 12000000) # tags in use: 1422171
+Start garbage collecting tags (nextTag = 13000000) ...
+Done garbage collecting tags (nextTag = 13000000) # tags in use: 1422166
+Start garbage collecting tags (nextTag = 14000000) ...
+Done garbage collecting tags (nextTag = 14000000) # tags in use: 1422191
+Start garbage collecting tags (nextTag = 15000000) ...
+Done garbage collecting tags (nextTag = 15000000) # tags in use: 1422193
+Start garbage collecting tags (nextTag = 16000000) ...
+Done garbage collecting tags (nextTag = 16000000) # tags in use: 1422165
+Start garbage collecting tags (nextTag = 17000000) ...
+Done garbage collecting tags (nextTag = 17000000) # tags in use: 1422165
+Start garbage collecting tags (nextTag = 18000000) ...
+Done garbage collecting tags (nextTag = 18000000) # tags in use: 1422165
+Start garbage collecting tags (nextTag = 19000000) ...
+Done garbage collecting tags (nextTag = 19000000) # tags in use: 1422190
+Start garbage collecting tags (nextTag = 20000000) ...
+Done garbage collecting tags (nextTag = 20000000) # tags in use: 1422170
+Start garbage collecting tags (nextTag = 21000000) ...
+Done garbage collecting tags (nextTag = 21000000) # tags in use: 1422192
+
+VG_(get_memory_from_mmap): newSuperblock's request for 22003712 bytes failed.
+VG_(get_memory_from_mmap): 245753720 bytes already allocated.
+
+Sorry.  You could try using a tool that uses less memory;
+eg. addrcheck instead of memcheck.
+
+
+When 21,000,000 tags are allocated, only 1,422,192 of them are in use.
+Notice that the number of tags in use fluctuates around 1.4 million,
+but without garbage collection, nextTag keeps on incrementing and
+eating up more memory as more tags are created.
+
+
+This is a classic example of when garbage collection would really help
+us out.
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ kvasir-dtrace --with-dyncomp ./md5 10MB_file
+
+md5 fails in just about the same way, after about 21,000,000 tags have
+been allocated.
+
+Also, I have not implemented the bit-vector optimization for keeping
+track of which tags are in use (each byte can keep track of 8 tags
+since each tag only needs 1 bit) because for some reason Valgrind
+crashes.  In the spirit of not prematurely optimizing, I've simply
+decided to waste a constant 8x space and just allocate a regular UChar
+buffer to keep track of which tags are in use.
+
+Also, I have not implemented the checks to see which tags are
+currently being used in the guest state, just because I want to make
+more progress on the rest of the GC implementation.
+
+On a kind-of unrelated note, for some strange reason, now Flex crashes
+:( This ain't good, because Flex was our poster child in the
+Lackwit/DynComp battle.

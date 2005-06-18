@@ -37,4 +37,8 @@ void uf_make_set(uf_object *new_object, unsigned int t, char saturate);
 // and returns the new leader (uf_name)
 uf_name uf_union(uf_object *obj1, uf_object *obj2);
 
+// Decrements the reference count of the parent and sets the fields of
+// obj to zero to 'destroy it' (does NOT de-allocate it)
+void uf_destroy_object(uf_object *obj);
+
 #endif //UNION_FIND_H

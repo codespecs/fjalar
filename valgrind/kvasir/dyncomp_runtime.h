@@ -52,4 +52,7 @@ void DC_extra_propagate_val_to_var_sets();
 
 void debugPrintTagsInRange(Addr low, Addr high);
 
+// Tag garbage collector
+void garbage_collect_tags();
+
 #endif
