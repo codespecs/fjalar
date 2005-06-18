@@ -7,6 +7,7 @@
 // which denotes how many other uf_objects point to it
 
 #include "union_find.h"
+#include "tool.h"
 #include <limits.h>
 
 // The reference count saturates at USHRT_MAX and does not
@@ -90,4 +91,15 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
     }
     return class1;
   }
+}
+
+// Decrements the reference count of the parent and sets the fields of
+// obj to zero to 'destroy it' (does NOT de-allocate it)
+void uf_destroy_object(uf_object *obj) {
+  if (obj->parent &&
+      (obj->parent != obj)) {
+    DEC_REF_COUNT(obj->parent);
+  }
+
+  VG_(memset)(obj, 0, sizeof(*obj));
 }

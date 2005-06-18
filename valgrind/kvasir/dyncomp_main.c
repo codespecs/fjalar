@@ -27,7 +27,6 @@
 #include "mc_include.h"
 #include "dyncomp_main.h"
 #include <limits.h>
-#include "union_find.h"
 
 //#define DYNCOMP_DEBUG
 //#define CREATE_TAG_VERBOSE
@@ -37,6 +36,114 @@
 
 // For debug printouts
 extern char within_main_program;
+
+/*------------------------------------------------------------------*/
+/*--- Linked-lists of tags for garbage collection                ---*/
+/*------------------------------------------------------------------*/
+
+// List of tags which have been freed by the garbage collector and are
+// available to use when allocating new tags:
+TagList free_list = {0, 0, 0}; // Initialize to empty
+
+// List of tags to be freed by the garbage collector
+TagList to_be_freed_list = {0, 0, 0}; // Initialize to empty
+
+// Adds a new tag to the tail of the list
+// Pre: (tag != 0)
+void enqueue_tag(TagList* listPtr, UInt tag) {
+  TagNode* i;
+  tl_assert(tag);
+
+  // Special case for no elements
+  if (listPtr->numElts == 0) {
+    listPtr->first = listPtr->last =
+      (TagNode*)VG_(calloc)(1, sizeof(TagNode));
+  }
+  else {
+    listPtr->last->next = (TagNode*)VG_(calloc)(1, sizeof(TagNode));
+    listPtr->last = listPtr->last->next;
+  }
+
+  listPtr->last->tag = tag;
+  listPtr->numElts++;
+}
+
+// Adds a new tag to the tail of the list only if
+// it's not already in the list
+// Pre: An element for tag is not already in *listPtr
+//      (This maintains the set property)
+//      and (tag != 0)
+// Returns 1 if tag was not in the list (and was successfully inserted)
+// and 0 if tag was ALREADY in the list
+char enqueue_unique_tag(TagList* listPtr, UInt tag) {
+  TagNode* i;
+  tl_assert(tag);
+
+  if (!is_tag_in_list(listPtr, tag)) {
+    enqueue_tag(listPtr, tag);
+    return 1;
+  }
+  else {
+    return 0;
+  }
+}
+
+// Removes and returns tag from head of the list
+// Pre: listPtr->numElts > 0
+UInt dequeue_tag(TagList* listPtr) {
+  UInt retTag = 0;
+  TagNode* nodeToKill;
+
+  tl_assert(listPtr->numElts > 0);
+
+  nodeToKill = listPtr->first;
+
+  retTag = listPtr->first->tag;
+
+  listPtr->first = listPtr->first->next;
+  VG_(free)(nodeToKill);
+  listPtr->numElts--;
+
+  // Special case for no elements
+  if (listPtr->numElts == 0) {
+    listPtr->last = listPtr->first = NULL;
+  }
+
+  return retTag;
+}
+
+// Returns 1 if the tag is found in the list, 0 otherwise
+// Pre: (tag != 0)
+char is_tag_in_list(TagList* listPtr, UInt tag) {
+  tl_assert(tag);
+
+  if (listPtr->numElts == 0) {
+    return 0;
+  }
+  else {
+    TagNode* i;
+    for (i = listPtr->first; i != NULL; i = i->next) {
+      if (i->tag == tag) {
+        return 1;
+      }
+    }
+
+    return 0;
+  }
+}
+
+void clear_list(TagList* listPtr) {
+  if (listPtr->numElts > 0) {
+    VarNode *i, *next;
+    for (i = listPtr->first; i != NULL; i = next) {
+      next = i->next;
+      VG_(free)(i);
+      listPtr->numElts--;
+    }
+  }
+
+  tl_assert(listPtr->numElts == 0);
+}
 
 /*------------------------------------------------------------------*/
 /*--- Tags and the value comparability union-find data structure ---*/
@@ -61,7 +168,7 @@ static void val_uf_make_set_for_tag(UInt tag, char saturate);
    Each byte of memory should be shadowed with a corresponding tag.  A
    tag value of 0 means that there is NO tag associated with the byte.
 */
-static UInt* primary_tag_map[PRIMARY_SIZE];
+UInt* primary_tag_map[PRIMARY_SIZE];
 
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
 
@@ -87,6 +194,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
 // Sets tag of address 'a' to a fresh tag and initialize a new uf_object
 // (This will have to be modified when we implement garbage collection)
 static __inline__ void assign_new_tag(Addr a) {
+
   set_tag(a, nextTag);
   val_uf_make_set_for_tag(nextTag, 0);
 
@@ -97,6 +205,13 @@ static __inline__ void assign_new_tag(Addr a) {
   }
   else {
     nextTag++;
+  }
+
+  // Ummm ... let's try garbage collecting here for the heck of it:
+  // (be very careful about where you put it so that you can ensure
+  //  that a legal tag is being returned)
+  if ((nextTag % 1000000) == 0) {
+    garbage_collect_tags();
   }
 }
 
@@ -149,13 +264,7 @@ __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
 // val_uf_object_map: A map from tag (32-bit int) to uf_objects
 // Each entry either points to NULL or to a dynamically-allocated
 // array (of size SECONDARY_SIZE) of uf_object objects
-static uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
-
-#define IS_SECONDARY_UF_NULL(tag) (primary_val_uf_object_map[PM_IDX(tag)] == NULL)
-
-// Make sure to check that !IS_SECONDARY_UF_NULL(tag) before
-// calling this macro or else you may segfault
-#define GET_UF_OBJECT_PTR(tag) (&(primary_val_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
+uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
 
 static void val_uf_make_set_for_tag(UInt tag, char saturate) {
   //  VG_(printf)("val_uf_make_set_for_tag(%u);\n", tag);
@@ -357,28 +466,28 @@ void val_uf_union_tags_in_range(Addr a, SizeT len) {
   }
 }
 
-// Create a new tag for a literal but don't put it anywhere in memory
-// Remember to saturate the ref_count field of the respective uf_object
-// to prevent it from being garbage collected because it's not stored
-// anywhere in the tag map
-UInt create_new_tag_for_literal() {
-  UInt newTag = nextTag;
+/* // Create a new tag for a literal but don't put it anywhere in memory */
+/* // Remember to saturate the ref_count field of the respective uf_object */
+/* // to prevent it from being garbage collected because it's not stored */
+/* // anywhere in the tag map */
+/* UInt create_new_tag_for_literal() { */
+/*   UInt newTag = nextTag; */
 
-  // Saturate the ref_count field of the uf_object for this tag
-  // so that it does not get garbage collected
-  val_uf_make_set_for_tag(newTag, 1);
+/*   // Saturate the ref_count field of the uf_object for this tag */
+/*   // so that it does not get garbage collected */
+/*   val_uf_make_set_for_tag(newTag, 1); */
 
-  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
-  // is a special reserved value for tags retrieved from ESP
-  if (nextTag == (UINT_MAX - 1)) {
-    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
-  }
-  else {
-    nextTag++;
-  }
+/*   // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX */
+/*   // is a special reserved value for tags retrieved from ESP */
+/*   if (nextTag == (UINT_MAX - 1)) { */
+/*     VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n"); */
+/*   } */
+/*   else { */
+/*     nextTag++; */
+/*   } */
 
-  return newTag;
-}
+/*   return newTag; */
+/* } */
 
 // Create a new tag but don't put it anywhere in memory ... just return it
 // This is to handle literals in the code.  If somebody actually wants
@@ -403,6 +512,13 @@ UInt MC_(helperc_CREATE_TAG) () {
   if (within_main_program) {
     DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
                     newTag, nextTag);
+  }
+
+  // Ummm ... let's try garbage collecting here for the heck of it:
+  // (be very careful about where you put it so that you can ensure
+  //  that a legal tag is being returned)
+  if ((nextTag % 1000000) == 0) {
+    garbage_collect_tags();
   }
 
   return newTag;

@@ -23,6 +23,47 @@
 #include "tool.h"
 #include "mac_shared.h"
 #include "mc_asm.h"
+#include "union_find.h"
+
+UInt nextTag;
+
+UInt* primary_tag_map[PRIMARY_SIZE];
+
+uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
+
+#define IS_SECONDARY_UF_NULL(tag) (primary_val_uf_object_map[PM_IDX(tag)] == NULL)
+
+// Make sure to check that !IS_SECONDARY_UF_NULL(tag) before
+// calling this macro or else you may segfault
+#define GET_UF_OBJECT_PTR(tag) (&(primary_val_uf_object_map[PM_IDX(tag)][SM_OFF(tag)]))
+
+
+// Defines a singly-linked list of 32-bit UInt tags
+typedef struct _TagNode TagNode;
+
+struct _TagNode {
+  UInt tag;
+  TagNode* next;
+};
+
+typedef struct {
+  TagNode* first;
+  TagNode* last;
+  UInt numElts;
+} TagList;
+
+// List of tags which have been freed by the garbage collector and are
+// available to use when allocating new tags:
+TagList free_list;
+
+// List of tags to be freed by the garbage collector
+TagList to_be_freed_list;
+
+void enqueue_tag(TagList* listPtr, UInt tag);
+char enqueue_unique_tag(TagList* listPtr, UInt tag);
+UInt dequeue_tag(TagList* listPtr);
+char is_tag_in_list(TagList* listPtr, UInt tag);
+void clear_list(TagList* listPtr);
 
 // Don't do anything with tags equal to 0 because they are invalid
 #define IS_ZERO_TAG(tag) (0 == tag)
