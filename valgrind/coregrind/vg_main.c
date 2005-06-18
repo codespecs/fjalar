@@ -400,6 +400,16 @@ UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
                     (4 * offset)));
 }
 
+// This is a generalization of all the other tag getter functions,
+// which takes in an offset from the guest state (as denoted by
+// the member variable locations in vex/pub/libvex_guest_x86.h)
+// and performs the (4 * offset) hack and returns the associated tag
+UInt VG_(get_tag_for_x86_guest_offset) ( ThreadId tid, UInt offset )
+{
+   return *((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
+                    (4 * offset)));
+}
+
 // PG end
 
 /*====================================================================*/
