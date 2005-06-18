@@ -425,6 +425,9 @@ void garbage_collect_tags() {
   UInt numTagsFreed = 0;
   UInt t, i;
 
+  ThreadId currentTID = VG_(get_running_tid)();
+
+
   // Allocate a vector of size nextTag + 1, where each element is 0
   // if that tag is not being used and non-zero if it is being used.
 
@@ -479,9 +482,98 @@ void garbage_collect_tags() {
   // Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
   // dyncomp_translate.c) - eek!
 
-  // TODO: This is not yet implemented because it involves more ugly
-  // hacking of the core ... but I do realize its importance in
-  // ensuring correctness ... I will get around to this, I promise
+  // Just go through all of the registers in the x86 guest state
+  // as depicted in vex/pub/libvex_guest_x86.h
+
+  // These are the offsets that we are interested in:
+#define NUM_TOTAL_X86_OFFSETS 49
+
+static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
+    0,  //      UInt  guest_EAX;         /* 0 */
+    4,  //      UInt  guest_ECX;
+    8,  //      UInt  guest_EDX;
+    12, //      UInt  guest_EBX;
+    16, //      UInt  guest_ESP;
+    20, //      UInt  guest_EBP;
+    24, //      UInt  guest_ESI;
+    28, //      UInt  guest_EDI;         /* 28 */
+      /* 4-word thunk used to calculate O S Z A C P flags. */
+    32, //      UInt  guest_CC_OP;       /* 32 */
+    36, //      UInt  guest_CC_DEP1;
+    40, //      UInt  guest_CC_DEP2;
+    44, //      UInt  guest_CC_NDEP;     /* 44 */
+      /* The D flag is stored here, encoded as either -1 or +1 */
+    48, //      UInt  guest_DFLAG;       /* 48 */
+      /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
+    52, //      UInt  guest_IDFLAG;      /* 52 */
+      /* EIP */
+    56, //      UInt  guest_EIP;         /* 56 */
+      /* FPU */
+    60, //      UInt  guest_FTOP;        /* 60 */
+    64, //      ULong guest_FPREG[8];    /* 64 */
+    72,
+    80,
+    88,
+    96,
+    104,
+    112,
+    120,
+    128,  //      UChar guest_FPTAG[8];   /* 128 */
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136, //      UInt  guest_FPROUND;    /* 136 */
+    140, //      UInt  guest_FC3210;     /* 140 */
+      /* SSE */
+    144, //      UInt  guest_SSEROUND;   /* 144 */
+    148, //      U128  guest_XMM0;       /* 148 */
+    164, //      U128  guest_XMM1;
+    180, //      U128  guest_XMM2;
+    196, //      U128  guest_XMM3;
+    212, //      U128  guest_XMM4;
+    228, //      U128  guest_XMM5;
+    244, //      U128  guest_XMM6;
+    260, //      U128  guest_XMM7;
+      /* Segment registers. */
+    276, //      UShort guest_CS;
+    278, //      UShort guest_DS;
+    280, //      UShort guest_ES;
+    282, //      UShort guest_FS;
+    284, //      UShort guest_GS;
+    286  //      UShort guest_SS;
+      /* LDT/GDT stuff. */
+      //      HWord  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
+      //      HWord  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
+
+      /* Emulation warnings */
+      //      UInt   guest_EMWARN;
+
+      /* Translation-invalidation area description.  Not used on x86
+         (there is no invalidate-icache insn), but needed so as to
+         allow users of the library to uniformly assume that the guest
+         state contains these two fields -- otherwise there is
+         compilation breakage.  On x86, these two fields are set to
+         zero by LibVEX_GuestX86_initialise and then should be ignored
+         forever thereafter. */
+      //      UInt guest_TISTART;
+      //      UInt guest_TILEN;
+
+      /* Padding to make it have an 8-aligned size */
+      //      UInt   padding;
+};
+
+  for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
+    curTag = VG_(get_tag_for_x86_guest_offset)(currentTID,
+                                               x86_guest_state_offsets[i]);
+    if (curTag > 0) {
+      tagsInUse[curTag] = 1;
+    }
+  }
+
 
   VG_(printf)("Iterating through tags in tagsInUse\n");
 
@@ -515,12 +607,7 @@ void garbage_collect_tags() {
   for (i = 0; i < 2; i++) {
     TagNode* tagNode;
 
-    if (i == 0) {
-      VG_(printf)("First pass through to_be_freed_list to free stuff\n");
-    }
-    else {
-      VG_(printf)("Second pass through to_be_freed_list to free stuff\n");
-    }
+    VG_(printf)("Begin pass # %u through to_be_freed_list to free stuff\n", i);
 
     // For every tag in to_be_freed_list, look up the reference count
     // of the corresponding uf_object entry in the val_uf_object map.
@@ -541,23 +628,25 @@ void garbage_collect_tags() {
           //               but not the second pass
           if (i == 0) {
             enqueue_tag(&free_list, tag);
-            VG_(printf)("Freed tag: %u\n", tag);
+            //            VG_(printf)("Freed tag: %u\n", tag);
             numTagsFreed++;
           }
           else {
             if (enqueue_unique_tag(&free_list, tag)) {
-              VG_(printf)("Freed tag: %u\n", tag);
+              //              VG_(printf)("Freed tag: %u\n", tag);
               numTagsFreed++;
             }
           }
         }
       }
     }
+
+    VG_(printf)("End pass # %u through to_be_freed_list to free stuff - # tags freed so far: %u\n", i, numTagsFreed);
   }
 
   // Clean-up
   VG_(free)(tagsInUse);
 
-  VG_(printf)("Done garbage collecting tags (nextTag = %u) # tags in use: %u / # tags freed: %u\n",
+  VG_(printf)("Done garbage collecting tags (nextTag = %u) # tags in use: %u, # tags freed: %u\n",
               nextTag, numTagsInUse, numTagsFreed);
 }

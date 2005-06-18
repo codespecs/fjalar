@@ -3790,9 +3790,6 @@ crashes.  In the spirit of not prematurely optimizing, I've simply
 decided to waste a constant 8x space and just allocate a regular UChar
 buffer to keep track of which tags are in use.
 
-Also, I have not implemented the checks to see which tags are
-currently being used in the guest state, just because I want to make
-more progress on the rest of the GC implementation.
 
 On a kind-of unrelated note, for some strange reason, now Flex crashes
 :( This ain't good, because Flex was our poster child in the
