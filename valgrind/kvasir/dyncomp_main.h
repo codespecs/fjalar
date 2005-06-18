@@ -27,6 +27,10 @@
 
 UInt nextTag;
 
+// The total number of tags that have ever been assigned throughout the
+// duration of the program
+UInt totalNumTagsAssigned;
+
 UInt* primary_tag_map[PRIMARY_SIZE];
 
 uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
@@ -78,8 +82,6 @@ __inline__ void set_tag ( Addr a, UInt tag );
 void val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
-
-UInt create_new_tag_for_literal();
 
 extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
 

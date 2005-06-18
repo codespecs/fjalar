@@ -456,7 +456,7 @@ void garbage_collect_tags() {
   // To set the 'in-use' bit for a tag x, we do something similar:
   //#define SET_TAG_IN_USE(x) tagsInUse[(x) / 8] |= (0x1 << ((x) % 8))
 
-  VG_(printf)("Start garbage collecting tags (nextTag = %u) ...\n", nextTag);
+  VG_(printf)("Start garbage collecting tags (next tag = %u, total assigned = %u) ...\n", nextTag, totalNumTagsAssigned);
 
   // Clear to_be_freed_list
   clear_list(&to_be_freed_list);
@@ -604,7 +604,9 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   // probably doesn't happen too frequently because if the union-find
   // is working properly, you'll have one root and most entries will
   // be leaves.  Perhaps TWO passes is optimal.
-  for (i = 0; i < 2; i++) {
+
+  // Let's do it just once for now for speed ...
+  for (i = 0; i < 1; i++) {
     TagNode* tagNode;
 
     VG_(printf)("Begin pass # %u through to_be_freed_list to free stuff\n", i);
@@ -647,6 +649,6 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   // Clean-up
   VG_(free)(tagsInUse);
 
-  VG_(printf)("Done garbage collecting tags (nextTag = %u) # tags in use: %u, # tags freed: %u\n",
-              nextTag, numTagsInUse, numTagsFreed);
+  VG_(printf)("Done garbage collecting tags: # tags in use: %u, # tags freed: %u\n",
+              numTagsInUse, numTagsFreed);
 }

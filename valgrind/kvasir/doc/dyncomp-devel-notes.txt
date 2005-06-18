@@ -3794,3 +3794,15 @@ buffer to keep track of which tags are in use.
 On a kind-of unrelated note, for some strange reason, now Flex crashes
 :( This ain't good, because Flex was our poster child in the
 Lackwit/DynComp battle.
+
+
+Ok, the multiple passes through to-be-freed list is way slow because
+it has to check for duplicates before entering in free-list
+... perhaps if we re-implement it as a hashtable of tags to tags (tags
+as both keys and value), that would be much more efficient???  It
+would be like a constant-time lookup.
+
+
+Ok, so on rijndael, the garbage-collector still fails because we are
+probablyf reeing tags which are still being used ... hmmm ... look
+into this more by using GDB

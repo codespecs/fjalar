@@ -40,6 +40,7 @@
 char* kvasir_decls_filename = 0;
 char* kvasir_dtrace_filename = 0;
 Bool kvasir_with_dyncomp = False;
+Bool kvasir_dyncomp_with_gc = False;
 Bool kvasir_print_debug_info = False;
 Bool kvasir_ignore_globals = False;
 Bool kvasir_ignore_static_vars = False;
@@ -549,6 +550,8 @@ void kvasir_print_usage()
 "    --debug             print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug     print DynComp debug messages (--with-dyncomp must also be on)\n"
 "                        [--no-dyncomp-debug]\n"
+"    --dyncomp-gc        use the tag garbage collector for DynComp.  (Slower\n"
+"                        but saves memory for long-running programs) [--no-dyncomp-gc]\n"
 #ifdef KVASIR_DEVEL_BUILD
 "    --asserts-aborts    turn on safety asserts and aborts (ON BY DEFAULT)\n"
 "                        [--asserts-aborts]\n"
@@ -604,6 +607,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename)
    else VG_STR_CLO(arg, "--dtrace-file",    kvasir_dtrace_filename)
    else VG_YESNO_CLO("with-dyncomp",   kvasir_with_dyncomp)
+   else VG_YESNO_CLO("dyncomp-gc",     kvasir_dyncomp_with_gc)
    else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
    else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
    else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)

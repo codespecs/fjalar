@@ -51,7 +51,6 @@ TagList to_be_freed_list = {0, 0, 0}; // Initialize to empty
 // Adds a new tag to the tail of the list
 // Pre: (tag != 0)
 void enqueue_tag(TagList* listPtr, UInt tag) {
-  TagNode* i;
   tl_assert(tag);
 
   // Special case for no elements
@@ -76,7 +75,6 @@ void enqueue_tag(TagList* listPtr, UInt tag) {
 // Returns 1 if tag was not in the list (and was successfully inserted)
 // and 0 if tag was ALREADY in the list
 char enqueue_unique_tag(TagList* listPtr, UInt tag) {
-  TagNode* i;
   tl_assert(tag);
 
   if (!is_tag_in_list(listPtr, tag)) {
@@ -134,7 +132,7 @@ char is_tag_in_list(TagList* listPtr, UInt tag) {
 
 void clear_list(TagList* listPtr) {
   if (listPtr->numElts > 0) {
-    VarNode *i, *next;
+    TagNode *i, *next;
     for (i = listPtr->first; i != NULL; i = next) {
       next = i->next;
       VG_(free)(i);
@@ -156,6 +154,10 @@ void clear_list(TagList* listPtr) {
 // The tag of 0 for a byte of memory means NO tag associated
 // with it.  That's why nextTag starts at 1 and NOT 0.
 UInt nextTag = 1;
+
+// The total number of tags that have ever been assigned throughout the
+// duration of the program
+UInt totalNumTagsAssigned = 0;
 
 // Prototypes:
 static void val_uf_make_set_for_tag(UInt tag, char saturate);
@@ -191,28 +193,42 @@ __inline__ void set_tag ( Addr a, UInt tag )
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
+// Return a fresh tag, either from free_list or from nextTag
+static UInt grab_fresh_tag() {
+  UInt tag;
+  if (free_list.numElts > 0) {
+    tag = dequeue_tag(&free_list);
+  }
+  else {
+    tag = nextTag;
+    // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
+    // is a special reserved value for tags retrieved from ESP
+    if (nextTag == (UINT_MAX - 1)) {
+      VG_(printf)("Error! Maximum tag has been used.");
+    }
+    else {
+      nextTag++;
+    }
+  }
+
+  // Let's try garbage collecting here
+  if (kvasir_dyncomp_with_gc &&
+      (totalNumTagsAssigned % 1000000 == 0)) {
+    garbage_collect_tags();
+  }
+
+  totalNumTagsAssigned++;
+
+  return tag;
+}
+
 // Sets tag of address 'a' to a fresh tag and initialize a new uf_object
 // (This will have to be modified when we implement garbage collection)
 static __inline__ void assign_new_tag(Addr a) {
+  UInt newTag = grab_fresh_tag();
 
-  set_tag(a, nextTag);
-  val_uf_make_set_for_tag(nextTag, 0);
-
-  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
-  // is a special reserved value for tags retrieved from ESP
-  if (nextTag == (UINT_MAX - 1)) {
-    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
-  }
-  else {
-    nextTag++;
-  }
-
-  // Ummm ... let's try garbage collecting here for the heck of it:
-  // (be very careful about where you put it so that you can ensure
-  //  that a legal tag is being returned)
-  if ((nextTag % 1000000) == 0) {
-    garbage_collect_tags();
-  }
+  set_tag(a, newTag);
+  val_uf_make_set_for_tag(newTag, 0);
 }
 
 // Allocate a new unique tag for all bytes in range [a, a + len)
@@ -466,29 +482,6 @@ void val_uf_union_tags_in_range(Addr a, SizeT len) {
   }
 }
 
-/* // Create a new tag for a literal but don't put it anywhere in memory */
-/* // Remember to saturate the ref_count field of the respective uf_object */
-/* // to prevent it from being garbage collected because it's not stored */
-/* // anywhere in the tag map */
-/* UInt create_new_tag_for_literal() { */
-/*   UInt newTag = nextTag; */
-
-/*   // Saturate the ref_count field of the uf_object for this tag */
-/*   // so that it does not get garbage collected */
-/*   val_uf_make_set_for_tag(newTag, 1); */
-
-/*   // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX */
-/*   // is a special reserved value for tags retrieved from ESP */
-/*   if (nextTag == (UINT_MAX - 1)) { */
-/*     VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n"); */
-/*   } */
-/*   else { */
-/*     nextTag++; */
-/*   } */
-
-/*   return newTag; */
-/* } */
-
 // Create a new tag but don't put it anywhere in memory ... just return it
 // This is to handle literals in the code.  If somebody actually wants
 // to use this literal, then it will get assigned somewhere ... otherwise
@@ -496,29 +489,13 @@ void val_uf_union_tags_in_range(Addr a, SizeT len) {
 // garbage-collected.
 VGA_REGPARM(0)
 UInt MC_(helperc_CREATE_TAG) () {
-  UInt newTag = nextTag;
+  UInt newTag = grab_fresh_tag();
 
   val_uf_make_set_for_tag(newTag, 0);
-
-  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
-  // is a special reserved value for tags retrieved from ESP
-  if (nextTag == (UINT_MAX - 1)) {
-    VG_(printf)("Error! Maximum tag has been used. We need garbage collection of tags!\n");
-  }
-  else {
-    nextTag++;
-  }
 
   if (within_main_program) {
     DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
                     newTag, nextTag);
-  }
-
-  // Ummm ... let's try garbage collecting here for the heck of it:
-  // (be very careful about where you put it so that you can ensure
-  //  that a legal tag is being returned)
-  if ((nextTag % 1000000) == 0) {
-    garbage_collect_tags();
   }
 
   return newTag;
