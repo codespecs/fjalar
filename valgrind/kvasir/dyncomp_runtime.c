@@ -69,6 +69,8 @@ void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
                     sizeof(*(funcPtr->ppt_exit_new_tags)));
     }
   }
+
+  funcPtr->num_daikon_vars = numDaikonVars;
 }
 
 void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
@@ -427,6 +429,7 @@ void garbage_collect_tags() {
 
   ThreadId currentTID = VG_(get_running_tid)();
 
+  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
 
   // Allocate a vector of size nextTag + 1, where each element is 0
   // if that tag is not being used and non-zero if it is being used.
@@ -475,6 +478,35 @@ void garbage_collect_tags() {
       }
     }
   }
+
+  // Scan through all of the ppt_entry_var_tags and ppt_exit_var_tags
+  // of all program points to see which tags are being held there -
+  // these cannot be garbage collected
+
+  while(!it->finished) {
+    UInt ind;
+    DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*)
+      gengettable(DaikonFunctionInfoTable, gennext(it));
+
+    if (!cur_entry)
+      continue;
+
+    for (ind = 0; ind < cur_entry->num_daikon_vars; ind++) {
+      UInt entry_tag = cur_entry->ppt_entry_var_tags[ind];
+      UInt exit_tag = cur_entry->ppt_exit_var_tags[ind];
+
+      if (entry_tag > 0) {
+        tagsInUse[entry_tag] = 1;
+      }
+
+      if (exit_tag > 0) {
+        tagsInUse[exit_tag] = 1;
+      }
+    }
+  }
+
+  genfreeiterator(it);
+
 
   // Scan through all of the guest state and see which tags are being
   // used - these cannot be garbage collected
@@ -609,7 +641,7 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   for (i = 0; i < 1; i++) {
     TagNode* tagNode;
 
-    VG_(printf)("Begin pass # %u through to_be_freed_list to free stuff\n", i);
+    VG_(printf)("Begin pass # %u thru to_be_freed_list to free stuff\n", i);
 
     // For every tag in to_be_freed_list, look up the reference count
     // of the corresponding uf_object entry in the val_uf_object map.
@@ -643,7 +675,7 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
       }
     }
 
-    VG_(printf)("End pass # %u through to_be_freed_list to free stuff - # tags freed so far: %u\n", i, numTagsFreed);
+    VG_(printf)("End pass # %u thru to_be_freed_list to free stuff - # tags freed so far: %u\n", i, numTagsFreed);
   }
 
   // Clean-up

@@ -213,6 +213,7 @@ static UInt grab_fresh_tag() {
 
   // Let's try garbage collecting here
   if (kvasir_dyncomp_with_gc &&
+      totalNumTagsAssigned && // Don't garbage collect when it's zero
       (totalNumTagsAssigned % 1000000 == 0)) {
     garbage_collect_tags();
   }
