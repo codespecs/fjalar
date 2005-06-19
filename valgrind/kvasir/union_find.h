@@ -15,6 +15,11 @@ typedef struct _uf_object uf_object;
 struct _uf_object {
   uf_object* parent;         // 4 bytes
   unsigned short rank;       // 2 bytes
+  // The number of pointers referring to this object
+  // (ref_count is 1 if this object is a singleton set because then
+  // its own parent pointer points back to itself, but it is 0 if this
+  // object is a leaf which points to some parent but has no children
+  // pointing to it)
   unsigned short ref_count;  // 2 bytes
   // The tag which corresponds to this uf_object
   // (0 means invalid tag)

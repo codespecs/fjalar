@@ -63,10 +63,12 @@ TagList free_list;
 // List of tags to be freed by the garbage collector
 TagList to_be_freed_list;
 
+void initialize_gc_tag_lists();
+
 void enqueue_tag(TagList* listPtr, UInt tag);
 char enqueue_unique_tag(TagList* listPtr, UInt tag);
 UInt dequeue_tag(TagList* listPtr);
-char is_tag_in_list(TagList* listPtr, UInt tag);
+char is_tag_in_list(TagList* listPtr, UInt tag, UInt n);
 void clear_list(TagList* listPtr);
 
 // Don't do anything with tags equal to 0 because they are invalid

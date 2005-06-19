@@ -43,15 +43,22 @@ extern char within_main_program;
 
 // List of tags which have been freed by the garbage collector and are
 // available to use when allocating new tags:
-TagList free_list = {0, 0, 0}; // Initialize to empty
+TagList free_list;
 
 // List of tags to be freed by the garbage collector
-TagList to_be_freed_list = {0, 0, 0}; // Initialize to empty
+TagList to_be_freed_list;
+
+void initialize_gc_tag_lists() {
+  VG_(memset)(&free_list, 0, sizeof(TagList));
+  VG_(memset)(&to_be_freed_list, 0, sizeof(TagList));
+}
 
 // Adds a new tag to the tail of the list
 // Pre: (tag != 0)
 void enqueue_tag(TagList* listPtr, UInt tag) {
   tl_assert(tag);
+
+  //  VG_(printf)("enqueue_tag ... numElts = %u\n", listPtr->numElts);
 
   // Special case for no elements
   if (listPtr->numElts == 0) {
@@ -74,17 +81,17 @@ void enqueue_tag(TagList* listPtr, UInt tag) {
 //      and (tag != 0)
 // Returns 1 if tag was not in the list (and was successfully inserted)
 // and 0 if tag was ALREADY in the list
-char enqueue_unique_tag(TagList* listPtr, UInt tag) {
-  tl_assert(tag);
+/* char enqueue_unique_tag(TagList* listPtr, UInt tag) { */
+/*   tl_assert(tag); */
 
-  if (!is_tag_in_list(listPtr, tag)) {
-    enqueue_tag(listPtr, tag);
-    return 1;
-  }
-  else {
-    return 0;
-  }
-}
+/*   if (!is_tag_in_list(listPtr, tag)) { */
+/*     enqueue_tag(listPtr, tag); */
+/*     return 1; */
+/*   } */
+/*   else { */
+/*     return 0; */
+/*   } */
+/* } */
 
 // Removes and returns tag from head of the list
 // Pre: listPtr->numElts > 0
@@ -111,16 +118,23 @@ UInt dequeue_tag(TagList* listPtr) {
 }
 
 // Returns 1 if the tag is found in the list, 0 otherwise
+// Only searches through the first n elts in *listPtr
 // Pre: (tag != 0)
-char is_tag_in_list(TagList* listPtr, UInt tag) {
+char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
+  UInt count = 0;
+
   tl_assert(tag);
+
+  //  VG_(printf)("is_tag_in_list ... numElts = %u\n", listPtr->numElts);
 
   if (listPtr->numElts == 0) {
     return 0;
   }
   else {
     TagNode* i;
-    for (i = listPtr->first; i != NULL; i = i->next) {
+    for (i = listPtr->first;
+         (i != NULL) && (count < n);
+         i = i->next, count++) {
       if (i->tag == tag) {
         return 1;
       }
@@ -132,7 +146,8 @@ char is_tag_in_list(TagList* listPtr, UInt tag) {
 
 void clear_list(TagList* listPtr) {
   if (listPtr->numElts > 0) {
-    TagNode *i, *next;
+    TagNode* i = listPtr->first;
+    TagNode* next = i->next;
     for (i = listPtr->first; i != NULL; i = next) {
       next = i->next;
       VG_(free)(i);
@@ -198,6 +213,7 @@ static UInt grab_fresh_tag() {
   UInt tag;
   if (free_list.numElts > 0) {
     tag = dequeue_tag(&free_list);
+    //    VG_(printf)("Grabbed tag %u from free_list\n", tag);
   }
   else {
     tag = nextTag;
@@ -582,13 +598,20 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
 // intended behavior for comparisons, for example).
 VGA_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
-
-  val_uf_tag_union(tag1, tag2);
+  if (IS_ZERO_TAG(tag1) ||
+      IS_ZERO_TAG(tag2) ||
+      (tag1 == UINT_MAX) ||
+      (tag2 == UINT_MAX)) {
+    return 0;
+  }
+  else {
+    val_uf_tag_union(tag1, tag2);
 #ifdef MERGE_TAGS_VERBOSE
-  VG_(printf)("helperc_MERGE_TAGS_RETURN_0(%u, %u) [nextTag=%u]\n",
-              tag1, tag2, nextTag);
+    VG_(printf)("helperc_MERGE_TAGS_RETURN_0(%u, %u) [nextTag=%u]\n",
+                tag1, tag2, nextTag);
 #endif
-  return 0;
+    return 0;
+  }
 }
 
 
