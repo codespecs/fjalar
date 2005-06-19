@@ -315,6 +315,9 @@ typedef struct _DaikonFunctionInfo {
   // .dtrace (and more importantly, because Daikon expects the front-end
   // output to maintain these variables in the same order).
 
+  // This tells the sizes of ppt_[entry|exit]_[var|new]_tags
+  UInt num_daikon_vars;
+
 } DaikonFunctionInfo;
 
 // Hashtable that holds information about all functions

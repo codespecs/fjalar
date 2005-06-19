@@ -3803,6 +3803,6 @@ as both keys and value), that would be much more efficient???  It
 would be like a constant-time lookup.
 
 
-Ok, so on rijndael, the garbage-collector still fails because we are
-probablyf reeing tags which are still being used ... hmmm ... look
-into this more by using GDB
+Ok, so on rijndael and md5, the garbage-collector still fails because
+we are probablyf reeing tags which are still being used ... hmmm
+... look into this more by using GDB
