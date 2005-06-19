@@ -427,7 +427,6 @@ void garbage_collect_tags() {
   UInt numTagsFreed = 0;
   UInt t, i;
 
-  UInt free_list_iteration_count = 0;
   char free_list_num_elts_before_gc = 0;
 
   ThreadId currentTID = VG_(get_running_tid)();
@@ -633,7 +632,7 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
           uf_object* obj = GET_UF_OBJECT_PTR(t);
           // Don't destroy objects that have already been destroyed ...
           if ((obj->parent) &&
-              ((obj->ref_count == 1) ||
+              (/*(obj->ref_count == 1) ||*/ // This seems to cause tags to be freed which shouldn't be ... but why???
                (obj->ref_count == 0))) {
             uf_destroy_object(obj);
 
