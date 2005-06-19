@@ -3806,3 +3806,58 @@ would be like a constant-time lookup.
 Ok, so on rijndael and md5, the garbage-collector still fails because
 we are probablyf reeing tags which are still being used ... hmmm
 ... look into this more by using GDB
+
+
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ kvasir-dtrace --with-dyncomp --dyncomp-gc ./md5 10MB_file
+==28223== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==28223== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==28223== Using LibVEX rev 1139, a library for dynamic binary translation.
+==28223== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==28223== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==28223== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==28223== For more details, rerun with: -v
+==28223==
+Start garbage collecting tags (next tag = 1000002, total assigned = 1000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 1000002, total assigned = 1000000) # tags in use: 920827, # tags freed: 0
+Start garbage collecting tags (next tag = 2000002, total assigned = 2000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 2000002, total assigned = 2000000) # tags in use: 1400205, # tags freed: 0
+Start garbage collecting tags (next tag = 3000002, total assigned = 3000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 3000002, total assigned = 3000000) # tags in use: 1400207, # tags freed: 0
+Start garbage collecting tags (next tag = 4000002, total assigned = 4000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 4000002, total assigned = 4000000) # tags in use: 1400210, # tags freed: 0
+Start garbage collecting tags (next tag = 5000002, total assigned = 5000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 5000002, total assigned = 5000000) # tags in use: 1400207, # tags freed: 0
+Start garbage collecting tags (next tag = 6000002, total assigned = 6000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 6000002, total assigned = 6000000) # tags in use: 1414358, # tags freed: 0
+Start garbage collecting tags (next tag = 7000002, total assigned = 7000000) ...
+Iterating through tags in tagsInUse
+Begin pass # 0 thru to_be_freed_list to free stuff
+End pass # 0 thru to_be_freed_list to free stuff - # tags freed so far: 0
+Done garbage collecting tags (next tag = 7000002, total assigned = 7000000) # tags in use: 1400207, # tags freed: 0
+Start garbage collecting tags (next tag = 8000002, total assigned = 8000000) ...
+Iterating through tags in tagsInUse
+
+VG_(get_memory_from_mmap): newSuperblock's request for 1048576 bytes failed.
+VG_(get_memory_from_mmap): 256251768 bytes already allocated.
+
+Sorry.  You could try using a tool that uses less memory;
+eg. addrcheck instead of memcheck.

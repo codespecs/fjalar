@@ -13,10 +13,10 @@
 // The reference count saturates at USHRT_MAX and does not
 // decrement if it ever reaches that high:
 #define INC_REF_COUNT(obj) \
-  if (obj->ref_count < USHRT_MAX) (obj->ref_count)++;
+  if ((obj)->ref_count < USHRT_MAX) ((obj)->ref_count)++;
 
 #define DEC_REF_COUNT(obj) \
-  if (obj->ref_count < USHRT_MAX) (obj->ref_count)--;
+  if ((obj)->ref_count < USHRT_MAX) ((obj)->ref_count)--;
 
 // Macro-ize this for speed:
 /* static inline void inc_ref_count(uf_object *obj) { */
@@ -56,7 +56,7 @@ void uf_make_set(uf_object *new_object, unsigned int t, char saturate) {
     new_object->ref_count = USHRT_MAX;
   }
   else {
-    new_object->ref_count = 0;
+    new_object->ref_count = 1; // You are your own parent!
   }
 }
 
@@ -79,11 +79,13 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   }
 
   if(class1->rank < class2->rank) {
+    DEC_REF_COUNT(class1->parent);
     class1->parent = class2;
     INC_REF_COUNT(class2);
     return class2;
   }
   else {
+    DEC_REF_COUNT(class2->parent);
     class2->parent = class1;
     INC_REF_COUNT(class1);
     if(class1->rank == class2->rank) {
@@ -96,10 +98,8 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
 // Decrements the reference count of the parent and sets the fields of
 // obj to zero to 'destroy it' (does NOT de-allocate it)
 void uf_destroy_object(uf_object *obj) {
-  if (obj->parent &&
-      (obj->parent != obj)) {
+  if (obj->parent) {
     DEC_REF_COUNT(obj->parent);
   }
-
   VG_(memset)(obj, 0, sizeof(*obj));
 }

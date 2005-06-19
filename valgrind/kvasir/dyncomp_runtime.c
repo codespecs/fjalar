@@ -427,6 +427,9 @@ void garbage_collect_tags() {
   UInt numTagsFreed = 0;
   UInt t, i;
 
+  UInt free_list_iteration_count = 0;
+  char free_list_num_elts_before_gc = 0;
+
   ThreadId currentTID = VG_(get_running_tid)();
 
   struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
@@ -459,7 +462,7 @@ void garbage_collect_tags() {
   // To set the 'in-use' bit for a tag x, we do something similar:
   //#define SET_TAG_IN_USE(x) tagsInUse[(x) / 8] |= (0x1 << ((x) % 8))
 
-  VG_(printf)("Start garbage collecting tags (next tag = %u, total assigned = %u) ...\n", nextTag, totalNumTagsAssigned);
+  VG_(printf)("Start garbage collecting tags (next tag = %u, total assigned = %u) size of free_list = %u ...\n", nextTag, totalNumTagsAssigned, free_list.numElts);
 
   // Clear to_be_freed_list
   clear_list(&to_be_freed_list);
@@ -609,6 +612,8 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 
   VG_(printf)("Iterating through tags in tagsInUse\n");
 
+  free_list_num_elts_before_gc = free_list.numElts;
+
   // Iterate through all tags in tagsInUse and find which ones are NOT
   // in use (remember to skip the 0 tag):
   for (t = 1; t < nextTag; t++) {
@@ -616,8 +621,26 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
       // If the tag is not already in free_list, then
       // put it in to_be_freed_list
       // TODO: Do I even need this check here???  I don't think so
-      if (!is_tag_in_list(&free_list, t)) {
-        enqueue_tag(&to_be_freed_list, t);
+      if (!is_tag_in_list(&free_list, t,
+                          // Add 1 just to be safe from off-by-1 errors ...
+                          // The concept is that we only care about duplicates
+                          // from what is already in free_list, not the new
+                          // stuff we will put into the tail of it
+                          (free_list_num_elts_before_gc + 1))) {
+        //        enqueue_tag(&to_be_freed_list, t);
+
+        if (!IS_SECONDARY_UF_NULL(t)) {
+          uf_object* obj = GET_UF_OBJECT_PTR(t);
+          // Don't destroy objects that have already been destroyed ...
+          if ((obj->parent) &&
+              ((obj->ref_count == 1) ||
+               (obj->ref_count == 0))) {
+            uf_destroy_object(obj);
+
+            enqueue_tag(&free_list, t);
+            numTagsFreed++;
+          }
+        }
       }
     }
     else {
@@ -626,8 +649,9 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
     }
   }
 
+
   // Iterate through to_be_freed_list and check whether each tag can
-  // truly be freed (refCount == 0) SMcC's suggestion: Do this TWICE
+  // truly be freed (refCount == 0 or 1) SMcC's suggestion: Do this TWICE
   // as a heuristic in order to try to get us closer to fixed-point.
   // This is because if you go through it in a particular order, you
   // may reach a parent before you reach a leaf.  You cannot free the
@@ -637,50 +661,55 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   // is working properly, you'll have one root and most entries will
   // be leaves.  Perhaps TWO passes is optimal.
 
-  // Let's do it just once for now for speed ...
-  for (i = 0; i < 1; i++) {
-    TagNode* tagNode;
+/*   // Let's do it just once for now for speed ... */
+/*   for (i = 0; i < 1; i++) { */
+/*     TagNode* tagNode; */
 
-    VG_(printf)("Begin pass # %u thru to_be_freed_list to free stuff\n", i);
+/*     VG_(printf)("Begin pass # %u thru to_be_freed_list to free stuff\n", i); */
 
-    // For every tag in to_be_freed_list, look up the reference count
-    // of the corresponding uf_object entry in the val_uf_object map.
-    // If it is 0, then destroy that entry (by clobbering it with
-    // zeroes and decreasing the ref_count of its parent!!!) and
-    // adding that tag to free_list.  Otherwise, do nothing.
-    for (tagNode = to_be_freed_list.first;
-         tagNode != NULL;
-         tagNode = tagNode->next) {
-      UInt tag = tagNode->tag;
-      uf_object* obj;
-      if (!IS_SECONDARY_UF_NULL(tag)) {
-        obj = GET_UF_OBJECT_PTR(tag);
-        if (obj->ref_count == 0) {
-          uf_destroy_object(obj);
+/*     // For every tag in to_be_freed_list, look up the reference count */
+/*     // of the corresponding uf_object entry in the val_uf_object map. */
+/*     // If it is 0 or 1, then destroy that entry (by clobbering it with */
+/*     // zeroes and decreasing the ref_count of its parent!!!) and */
+/*     // adding that tag to free_list.  Otherwise, do nothing. */
+/*     for (tagNode = to_be_freed_list.first; */
+/*          tagNode != NULL; */
+/*          tagNode = tagNode->next) { */
+/*       UInt tag = tagNode->tag; */
+/*       uf_object* obj; */
+/*       if (!IS_SECONDARY_UF_NULL(tag)) { */
+/*         obj = GET_UF_OBJECT_PTR(tag); */
+/*         // Don't destroy objects that have already been destroyed ... */
+/*         if ((obj->parent) && */
+/*             (obj->tag == tag) && */
+/*             ((obj->ref_count == 1) || */
+/*              (obj->ref_count == 0))) { */
+/*           uf_destroy_object(obj); */
 
-          // Optimization: The first pass ensures uniqueness,
-          //               but not the second pass
-          if (i == 0) {
-            enqueue_tag(&free_list, tag);
-            //            VG_(printf)("Freed tag: %u\n", tag);
-            numTagsFreed++;
-          }
-          else {
-            if (enqueue_unique_tag(&free_list, tag)) {
-              //              VG_(printf)("Freed tag: %u\n", tag);
-              numTagsFreed++;
-            }
-          }
-        }
-      }
-    }
+/*           // Optimization: The first pass ensures uniqueness, */
+/*           //               but not the second pass */
+/*           if (i == 0) { */
+/*             if (enqueue_unique_tag(&free_list, tag)) { */
+/*               //            VG_(printf)("Freed tag: %u\n", tag); */
+/*               numTagsFreed++; */
+/*             } */
+/*           } */
+/*           else { */
+/*             if (enqueue_unique_tag(&free_list, tag)) { */
+/*               //              VG_(printf)("Freed tag: %u\n", tag); */
+/*               numTagsFreed++; */
+/*             } */
+/*           } */
+/*         } */
+/*       } */
+/*     } */
 
-    VG_(printf)("End pass # %u thru to_be_freed_list to free stuff - # tags freed so far: %u\n", i, numTagsFreed);
-  }
+/*     VG_(printf)("End pass # %u thru to_be_freed_list to free stuff - # tags freed so far: %u\n", i, numTagsFreed); */
+/*   } */
 
   // Clean-up
   VG_(free)(tagsInUse);
 
-  VG_(printf)("Done garbage collecting tags: # tags in use: %u, # tags freed: %u\n",
-              numTagsInUse, numTagsFreed);
+  VG_(printf)("Done garbage collecting tags (next tag = %u, total assigned = %u) # tags in use: %u, # tags freed: %u - free_list.numElts = %u\n", nextTag, totalNumTagsAssigned, numTagsInUse, numTagsFreed, free_list.numElts);
+
 }
