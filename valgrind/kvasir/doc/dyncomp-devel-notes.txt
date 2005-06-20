@@ -3861,3 +3861,216 @@ VG_(get_memory_from_mmap): 256251768 bytes already allocated.
 
 Sorry.  You could try using a tool that uses less memory;
 eg. addrcheck instead of memcheck.
+
+
+Ok, with md5, we seem to be able to last much longer with the GC
+(around 20 to 30 million instead of 8 million), but still we can't
+keep a good steady-state yet
+
+
+----------
+2005-06-20
+----------
+
+Hmmm, perhaps on the sweep through tag shadow memory, we do a
+find_leader and set all tags to their leaders?  That may reduce the
+number of tags in play by a bit.
+
+
+Notes from meeting on garbage collection with Mike (2005-06-20):
+----------------------------------------------------------------
+
+Background information:
+
+There is a global two-level tag map (2^16 pointers to 2^16 uf_object
+entries in each slot)
+Key: tag
+Value: uf_object
+
+This tag map gets filled monotonically from the bottom-up, from
+lower-numbered tags to higher-numbered tags.  However, with merges and
+such, lots of tags will probably never be in use so it is safe to
+re-allocate them.  We want to keep the tag map as small as possible
+because that's probably what drives us out of memory.
+
+
+Where are tags kept?
+
+1.) Shadow memory - for each byte of memory in the address space,
+there is a corresponding 32-bit tag (0 for no tag assigned to that
+byte of memory)
+
+2.) Guest state - There is a tag associated with each register (i.e.,
+EAX, EBX, floating-point stack)
+
+3.) Per program point - Because we are doing the value-to-variable
+comparability calculations incrementally, during every execution of a
+program point, we keep the leaders of the tags of each Daikon
+variable's value at that program point.
+
+During every garbage collection step, we must sweep through all areas
+where tags are kept to see which tags are currently in use.  Of the
+ones that are not in use, we must then consult the corresponding
+uf_object entries to see if they are safe to garbage collect (when
+there are no other uf_object entries pointing to that one).  Tags that
+are garbage collected are placed in a free_list.
+
+When DynComp requests a new tag, we first check to see if free_list
+has entries in it, and if so, pop an entry off of free_list and return
+it.  If it's empty, then we return nextTag and increment it.  The hope
+is that with garbage collection, nextTag will remain at a reasonable
+number, and we can keep on popping stuff off of free_list.
+
+
+Reference counting versus garbage collection:
+
+Reference counting involves keeping a reference count field in each
+uf_object entry and adding it to the free_list as soon as its
+reference count drops down to 0.  It has the advantage of never
+requiring an explicit garbage collection call, but the disadvantage of
+incurring an extra small cost during every program operation that
+creates or copies a tag (as well as implementation complexities of
+properly keeping track of tag copies and updating the reference fields
+accordingly)
+
+Garbage collection involves no small overhead during each program
+operation, but does involve discrete calls that have a potentially
+large overhead.
+
+One question is ... when do we perform garbage collection?  A first
+pass is to do it after every x tags which are assigned (both from
+free_list and nextTag).  A more sophisticated requirement is to do it
+heuristically when 'there is not much memory left' ...
+
+One possible heuristic is to notice that the shadow memory for tags
+incurs an additional 4x memory overhead (4-byte tag for every byte of
+memory), and that the worst case occurs when there is 1 unique tag
+allocated for each byte of memory.  Periodically, we could do a sweep
+of the top-level (2^16 pointers) of the shadow memory map to see how
+many of these 2^16 pointers are actually allocated (with 2^16 4-byte
+tags).  That number times 2^16 is an upper-bound on the amount of
+memory used by the program, and hence an upper-bound on the number of
+tags in use.  Now do a similar thing for the top level of the tag map
+(2^16 pointers) and do a garbage collection run when that number
+matches the number of top-level shadow memory map pointers allocated
+(or some constant factor thereof).  This ensures that we don't do
+garbage collection too early when the tag map isn't the primary memory
+hog in the execution ... again, all of this is very vague, but it can
+be refined later.
+
+
+
+uf_object:
+----------
+uf_object* parent
+int ref_count
+int tag
+
+free_list implementation - We should 'thread' the free_list linked
+list through the uf_object entries in the tag map since each entry
+already has a parent pointer.  This will avoid the need to allocate
+additional memory for free_list and to keep track of which entries are
+on free_list.  The head of free_list should point to a uf_object
+entry.  The 'parent' field of that entry should point to the next
+entry in free_list, and so forth, until the last entry should have a
+NULL 'parent' field.  The ref_count field of all entries in free_list
+should be set to -1 (or some other sentinel value) to denote that they
+are in free_list and should not be treated like normal uf_object
+entries.  When a new entry is added to free_list, add it to the head
+of the list by changing the head of free_list to point to the new
+entry and the 'parent' field of the new entry to point to the previous
+head of the list.  When an entry is popped off of free_list, pop it
+off the front by setting the head of free_list to the next ('parent')
+entry and initializing the popped-entry to a valid uf_object with a
+non-sentinel reference count.  (Notice that by keeping the tag along
+with each uf_object entry, free_list is not only a linked list of
+uf_object entries but also a linked list of tags.)
+
+
+
+Proposed garbage collection algorithm:
+--------------------------------------
+
+This algorithm goes through all places where tags are kept, finds the
+leader for each one, and 'compresses' the set of tags in use by
+re-numbering all leaders to the smallest possible numbers.  It has the
+advantage of not requiring the use of a free list at all, but the
+disadvantage of causing tag numbers to change, thus maybe making
+debugging a bit more difficult (but shouldn't really, since the tag
+numbers that change aren't the ones being used or observed anyways).
+
+
+1.) Initialize a newTagNumber variable to 1, and oldToNewMap hash table,
+which maps old tags to new tags (this is what translates old tags to
+new ones during the 'compression' step)
+
+2.) Sweep through shadow memory, guest state, and leader tags held for
+program points:
+
+  * Find the leader of the tag encountered at each location
+
+  * Try to find that leader's entry in oldToNewMap
+
+    * If it does not exist, then add a new entry to oldToNewMap with
+      the key as that tag and the value as newTagNumber.  Then
+      increment newTagNumber.  The idea here is that we want to do a
+      mapping from tags which can be any number from 1 to nextTag to
+      new numbers that are as small as possible.
+
+    * Otherwise, if it exists, return the new tag associated with that
+      tag and overwrite it in that location, thus effectively
+      re-assigning the tag held in that location to a newer, smaller tag.
+
+3.) At the end of all of this action, newTagNumber should be one
+larger than all tags that are now in use.  Thus, the range of tags has
+compressed from [1, nextTag) to [1, newTagNumber), with newTagNumber
+<= nextTag.  Because all of the tags are leaders, we have effectively
+'pruned off' all leaves of the union-find sets since none of the
+leaves are in use.  Thus, we can initialize all uf_object entries in
+the tag map of tags from 1 to (newTagNumber - 1) to singleton sets
+(since they are all leaders without leaves), and we don't even need to
+bother blanking out all tags starting from newTagNumber to nextTag
+because those are not being used anymore.
+
+4.) As the final step, set nextTag = newTagNumber, which substitutes
+for placing stuff on free_list.  Instead of having nextTag not grow
+higher without bound by assigning tags from free_list when new tags
+are requested, now we actually DECREASE nextTag during each garbage
+collection step.
+
+
+
+Another optimization ... using the address of each uf_object as its
+rank.  Because the uf_objects reside statically in the global tag map
+structure, we can use their addresses as the rank.  During a union,
+the leader with the lower rank points to the one with the higher
+rank.  The idea here is that we want to always have the smaller tree
+point to the larger tree.
+
+However, we could simply use the addresses as the rank and never
+really update ranks.  We need to make sure that they are CONSISTENT so
+that we don't have any contention.  Because all uf_object entries in
+the tag map start out as singleton sets, any ordering we explicitly
+impose is going to encourage certain uf_objects in some areas to have
+more children.  We want to make the uf_objects located at smaller
+addresses have more children because we allocate tags and thus
+singleton sets sequentially at higher and higher addresses (more or
+less), so during union (merges), we want to have the entries for those
+new tags at higher addresses point to the entries at lower addresses.
+Thus, the hope is that the large trees will be rooted at lower address
+uf_object entries.
+
+The way to do this is to use addresses as the rank and always make the
+uf_object entry with the LARGER ADDRESS point to the one with the
+SMALLER ADDRESS, which is the opposite of how union find works right
+now, but can easily be implemented.  Remember that consistency is the
+most important part!!!
+
+With the proposed garbage collection algorithm and this rank
+optimization, each uf_object entry will only be 4-bytes because it
+will simply consist of a pointer to its parent ... great!
+
+
+uf_object:
+----------
+uf_object* parent
