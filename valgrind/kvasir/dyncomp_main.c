@@ -82,7 +82,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
     primary_tag_map[PM_IDX(a)] = new_tag_array;
     n_primary_tag_map_init_entries++;
 
-    //    if (kvasir_dyncomp_with_gc) {
+    //    if (!kvasir_dyncomp_no_gc) {
     //      check_whether_to_garbage_collect();
     //    }
   }
@@ -102,9 +102,9 @@ static __inline__ UInt grab_fresh_tag() {
   }
 
   // Let's try garbage collecting here
-  if (kvasir_dyncomp_with_gc &&
+  if ((!kvasir_dyncomp_no_gc) &&
       totalNumTagsAssigned && // Don't garbage collect when it's zero
-      (totalNumTagsAssigned % 5000000 == 0)) {
+      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
     garbage_collect_tags();
   }
 
@@ -130,6 +130,9 @@ __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
 }
 
 // Copies tags of len bytes from src to dst
+// Possible (but not-yet-implemented) optimization:
+// Set both the tags of 'src' and 'dst' to their
+// respective leaders for every byte
 __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
    SizeT i;
 
@@ -188,7 +191,7 @@ void val_uf_make_set_for_tag(UInt tag) {
     primary_val_uf_object_map[PM_IDX(tag)] = new_uf_obj_array;
     n_primary_val_uf_object_map_init_entries++;
 
-    //    if (kvasir_dyncomp_with_gc) {
+    //    if (!kvasir_dyncomp_no_gc) {
       //      check_whether_to_garbage_collect();
       //    }
   }
@@ -263,10 +266,10 @@ void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
 
   set_tag_for_range(a, 8, tag);
 
-  if (within_main_program) {
-    DYNCOMP_DPRINTF("helperc_STORE_TAG_8(a=0x%x, tag=%u)\n",
-                    a, tag);
-  }
+  //  if (within_main_program) {
+  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_8(a=0x%x, tag=%u)\n",
+  //                    a, tag);
+  //  }
 }
 
 VGA_REGPARM(2)
@@ -274,10 +277,10 @@ void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
 
   set_tag_for_range(a, 4, tag);
 
-  if (within_main_program) {
-    DYNCOMP_DPRINTF("helperc_STORE_TAG_4(a=0x%x, tag=%u)\n",
-                    a, tag);
-  }
+  //  if (within_main_program) {
+  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_4(a=0x%x, tag=%u)\n",
+  //                    a, tag);
+  //  }
 }
 
 VGA_REGPARM(2)
@@ -285,10 +288,10 @@ void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
 
   set_tag_for_range(a, 2, tag);
 
-  if (within_main_program) {
-    DYNCOMP_DPRINTF("helperc_STORE_TAG_2(a=0x%x, tag=%u)\n",
-                    a, tag);
-  }
+  //  if (within_main_program) {
+  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_2(a=0x%x, tag=%u)\n",
+  //                    a, tag);
+  //  }
 }
 
 VGA_REGPARM(2)
@@ -296,10 +299,10 @@ void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
 
   set_tag_for_range(a, 1, tag);
 
-  if (within_main_program) {
-    DYNCOMP_DPRINTF("helperc_STORE_TAG_1(a=0x%x, tag=%u)\n",
-                    a, tag);
-  }
+  //  if (within_main_program) {
+  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_1(a=0x%x, tag=%u)\n",
+  //                    a, tag);
+  //  }
 }
 
 // Return the leader (canonical tag) of the set which 'tag' belongs to
@@ -345,6 +348,8 @@ void val_uf_union_tags_in_range(Addr a, SizeT len) {
   UInt aTag = get_tag(a);
   UInt canonicalTag;
 
+  // Why do we do this?  What if 'a' has a tag of 0
+  // but the neighbors of 'a' do not?
   if (0 == aTag) {
     return;
   }

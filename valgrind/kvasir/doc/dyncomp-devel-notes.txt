@@ -4236,3 +4236,7 @@ First version (dyncomp_runtime.c: CVS revision 1.26):
 pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dtrace --with-dyncomp --dyncomp-gc ./md5 10MB_file
 459.71user 2.77system 8:13.95elapsed 93%CPU (0avgtext+0avgdata 0maxresident)k
 0inputs+0outputs (1264major+46486minor)pagefaults 0swaps
+
+Second version (dyncomp_runtime.c: CVS revision 1.27) - slight improvements:
+446.65user 2.44system 7:38.61elapsed 97%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1264major+46487minor)pagefaults 0swaps
