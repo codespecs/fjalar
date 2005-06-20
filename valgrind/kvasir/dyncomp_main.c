@@ -174,8 +174,6 @@ UInt nextTag = 1;
 // duration of the program
 UInt totalNumTagsAssigned = 0;
 
-// Prototypes:
-static void val_uf_make_set_for_tag(UInt tag, char saturate);
 
 /* The two-level tag map works almost like the memory map.  Its
    purpose is to implement a sparse array which can hold up to 2^32
@@ -304,7 +302,7 @@ __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
 // array (of size SECONDARY_SIZE) of uf_object objects
 uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
 
-static void val_uf_make_set_for_tag(UInt tag, char saturate) {
+void val_uf_make_set_for_tag(UInt tag, char saturate) {
   //  VG_(printf)("val_uf_make_set_for_tag(%u);\n", tag);
 
   if (IS_ZERO_TAG(tag))

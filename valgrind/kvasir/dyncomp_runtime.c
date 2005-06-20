@@ -419,71 +419,198 @@ void debugPrintTagsInRange(Addr low, Addr high) {
 
 // Tag garbage collector:
 
+
+// Offsets for all of the registers in the x86 guest state
+// as depicted in vex/pub/libvex_guest_x86.h:
+
+#define NUM_TOTAL_X86_OFFSETS 55
+
+int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
+  0,  //      UInt  guest_EAX;         /* 0 */
+  4,  //      UInt  guest_ECX;
+  8,  //      UInt  guest_EDX;
+  12, //      UInt  guest_EBX;
+  16, //      UInt  guest_ESP;
+  20, //      UInt  guest_EBP;
+  24, //      UInt  guest_ESI;
+  28, //      UInt  guest_EDI;         /* 28 */
+      /* 4-word thunk used to calculate O S Z A C P flags. */
+  32, //      UInt  guest_CC_OP;       /* 32 */
+  36, //      UInt  guest_CC_DEP1;
+  40, //      UInt  guest_CC_DEP2;
+  44, //      UInt  guest_CC_NDEP;     /* 44 */
+      /* The D flag is stored here, encoded as either -1 or +1 */
+  48, //      UInt  guest_DFLAG;       /* 48 */
+      /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
+  52, //      UInt  guest_IDFLAG;      /* 52 */
+      /* EIP */
+  56, //      UInt  guest_EIP;         /* 56 */
+      /* FPU */
+  60, //      UInt  guest_FTOP;        /* 60 */
+  64, //      ULong guest_FPREG[8];    /* 64 */
+  72,
+  80,
+  88,
+  96,
+  104,
+  112,
+  120,
+  128,  //      UChar guest_FPTAG[8];   /* 128 */
+  129,
+  130,
+  131,
+  132,
+  133,
+  134,
+  135,
+  136, //      UInt  guest_FPROUND;    /* 136 */
+  140, //      UInt  guest_FC3210;     /* 140 */
+  /* SSE */
+  144, //      UInt  guest_SSEROUND;   /* 144 */
+  148, //      U128  guest_XMM0;       /* 148 */
+  164, //      U128  guest_XMM1;
+  180, //      U128  guest_XMM2;
+  196, //      U128  guest_XMM3;
+  212, //      U128  guest_XMM4;
+  228, //      U128  guest_XMM5;
+  244, //      U128  guest_XMM6;
+  260, //      U128  guest_XMM7;
+  /* Segment registers. */
+  276, //      UShort guest_CS;
+  278, //      UShort guest_DS;
+  280, //      UShort guest_ES;
+  282, //      UShort guest_FS;
+  284, //      UShort guest_GS;
+  286, //      UShort guest_SS;
+  /* LDT/GDT stuff. */
+  288, //      HWord  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
+  292, //      HWord  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
+
+  /* Emulation warnings */
+  296, //      UInt   guest_EMWARN;
+
+  /* Translation-invalidation area description.  Not used on x86
+     (there is no invalidate-icache insn), but needed so as to
+     allow users of the library to uniformly assume that the guest
+     state contains these two fields -- otherwise there is
+     compilation breakage.  On x86, these two fields are set to
+     zero by LibVEX_GuestX86_initialise and then should be ignored
+     forever thereafter. */
+  300, //      UInt guest_TISTART;
+  304, //      UInt guest_TILEN;
+
+  /* Padding to make it have an 8-aligned size */
+  308  //      UInt   padding;
+};
+
+// Try to find leaderTag's entry in oldToNewMap (map from old tags to
+// new tags).  If it does not exist, then write leaderTag in the
+// contents of the address addr and add a new entry to oldToNewMap
+// with the key as leaderTag and the value as *p_newTagNumber.  Then
+// increment *p_newTagNumber.  (The idea here is that we want to do a
+// mapping from tags which can be any number from 1 to nextTag to new
+// numbers that are as small as possible.)  Otherwise, if it exists,
+// overwrite the contents of the address addr the new tag associated
+// with leaderTag, thus effectively re-assigning the tag held at that
+// address to a newer, smaller tag.
+
+// Pre: leaderTag != 0
+static void reassign_tag(UInt* addr,
+                         UInt leaderTag,
+                         UInt* p_newTagNumber,
+                         struct genhashtable* oldToNewMap) {
+
+  if (gencontains(oldToNewMap, (void*)leaderTag)) {
+    *addr = (int)gengettable(oldToNewMap, (void*)leaderTag);
+  }
+  else {
+    *addr = leaderTag;
+    genputtable(oldToNewMap,
+                (void*)leaderTag, (void*)(*p_newTagNumber));
+
+    (*p_newTagNumber)++;
+  }
+}
+
 // Runs the tag garbage collector
 void garbage_collect_tags() {
   UInt primaryIndex, secondaryIndex;
-  UInt curTag = 0;
-  UInt numTagsInUse = 0;
-  UInt numTagsFreed = 0;
-  UInt t, i;
+  struct geniterator* it;
+  ThreadId currentTID;
+  UInt curTag, i;
 
-  char free_list_num_elts_before_gc = 0;
+  UInt* addr;
 
-  ThreadId currentTID = VG_(get_running_tid)();
+  // Monotonically increases from 1 to whatever is necessary to map
+  // old tags to new tags that are as small as possible (held as
+  // values in oldToNewMap)
+  UInt newTagNumber = 1;
 
-  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
+  // Key: leader of tag which is in use during this step
+  //      of garbage collection
+  // Value: new tag that is as small as possible (start at 1 and
+  //        increments as newTagNumber)
+  struct genhashtable* oldToNewMap =
+    genallocatehashtable(NULL, // no hash function needed for u_int keys
+                         (int (*)(void *,void *)) &equivalentIDs);
 
-  // Allocate a vector of size nextTag + 1, where each element is 0
-  // if that tag is not being used and non-zero if it is being used.
 
-  // We use calloc so we assume that no tags are initially being used:
-  UChar* tagsInUse = VG_(calloc)(nextTag + 1, sizeof(UChar));
+  VG_(printf)("Start tag GC (next tag = %u, total assigned = %u)\n",
+              nextTag, totalNumTagsAssigned);
 
-  // Possible optimization: Save 8x space by allocating a bit-vector
-  // where each bit holds whether one tag has been used.
-  // This is not implemented for now because for some reason, Valgrind
-  // crashes with it ... do it later if space becomes a premium:
+  // This algorithm goes through all places where tags are kept, finds
+  // the leader for each one, and 'compresses' the set of tags in use
+  // by re-numbering all leaders to the smallest possible numbers.  It
+  // has the advantage of not requiring the use of a free list at all,
+  // but the disadvantage of causing tag numbers to change, thus maybe
+  // making debugging a bit more difficult (but shouldn't really,
+  // since the tag numbers that change aren't the ones being used or
+  // observed anyways).
 
-  //  UChar* tagsInUse = VG_(calloc)(((nextTag / 8) + 1), sizeof(UChar));
 
-  // Allocate a bit-vector of size ((nextTag / 8) + 1) bytes to denote
-  // which tags are currently being used.  We know that nextTag is an
-  // upper-bound on the number of tags currently in use; all tags must
-  // be in the range of [1, nextTag).
+  // There are 3 places where tags can be kept ... we need to scan
+  // through all of these places looking for tags that are in use and
+  // run reassign_tag() on every non-zero tag encountered in order to
+  // canonicalize every tag to its leader and, more importantly, to
+  // 'compress' the range of leader tags to a range from [1, nextTag)
+  // to a smaller range of [1, newTagNumber).
+  //
+  // 1.) Shadow memory - for each byte of memory in the address space,
+  // there is a corresponding 32-bit tag (0 for no tag assigned to
+  // that byte of memory)
+  //
+  // 2.) Per program point - Because we are doing the
+  // value-to-variable comparability calculations incrementally,
+  // during every execution of a program point, we keep the leaders of
+  // the tags of each Daikon variable's value at that program point.
+  //
+  // 3.) Guest state - There is a tag associated with each register
+  // (i.e., EAX, EBX, floating-point stack)
 
-  // To find out if tag x in being used, we need to query the x-th bit
-  // in the vector, which entails looking up tagsInUse[x / 8], then
-  // right-shifting it by (x % 8) and masking off all but the LSB.  If
-  // it is a 1, then the tag is being used; otherwise, it is not being
-  // used:
-  //#define TAG_IS_IN_USE(x) ((tagsInUse[(x) / 8] >> ((x) % 8)) & 0x1)
 
-  // To set the 'in-use' bit for a tag x, we do something similar:
-  //#define SET_TAG_IN_USE(x) tagsInUse[(x) / 8] |= (0x1 << ((x) % 8))
-
-  VG_(printf)("Start garbage collecting tags (next tag = %u, total assigned = %u) size of free_list = %u ...\n", nextTag, totalNumTagsAssigned, free_list.numElts);
-
-  // Clear to_be_freed_list
-  clear_list(&to_be_freed_list);
-
-  // Scan through all of the tag shadow memory and see which tags are
-  // being used - these cannot be garbage collected
-
+  // 1.) Shadow memory:
   for (primaryIndex = 0; primaryIndex < PRIMARY_SIZE; primaryIndex++) {
     if (primary_tag_map[primaryIndex]) {
       for (secondaryIndex = 0; secondaryIndex < SECONDARY_SIZE; secondaryIndex++) {
-        // Remember to ignore 0 tags:
-        curTag = primary_tag_map[primaryIndex][secondaryIndex];
-        if (curTag > 0) {
-          tagsInUse[curTag] = 1;
+        addr = &primary_tag_map[primaryIndex][secondaryIndex];
+
+        if (*addr) { // Remember to ignore 0 tags
+          reassign_tag(addr,
+                       val_uf_find_leader(*addr),
+                       &newTagNumber,
+                       oldToNewMap);
         }
       }
     }
   }
 
+
+  // 2.) Per program point:
+
   // Scan through all of the ppt_entry_var_tags and ppt_exit_var_tags
   // of all program points to see which tags are being held there -
   // these cannot be garbage collected
+  it = gengetiterator(DaikonFunctionInfoTable);
 
   while(!it->finished) {
     UInt ind;
@@ -494,15 +621,21 @@ void garbage_collect_tags() {
       continue;
 
     for (ind = 0; ind < cur_entry->num_daikon_vars; ind++) {
-      UInt entry_tag = cur_entry->ppt_entry_var_tags[ind];
-      UInt exit_tag = cur_entry->ppt_exit_var_tags[ind];
+      UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind];
+      UInt* p_exit_tag = &cur_entry->ppt_exit_var_tags[ind];
 
-      if (entry_tag > 0) {
-        tagsInUse[entry_tag] = 1;
+      if (*p_entry_tag) { // Remember to ignore 0 tags
+        reassign_tag(p_entry_tag,
+                     val_uf_find_leader(*p_entry_tag),
+                     &newTagNumber,
+                     oldToNewMap);
       }
 
-      if (exit_tag > 0) {
-        tagsInUse[exit_tag] = 1;
+      if (*p_exit_tag) {  // Remember to ignore 0 tags
+        reassign_tag(p_exit_tag,
+                     val_uf_find_leader(*p_exit_tag),
+                     &newTagNumber,
+                     oldToNewMap);
       }
     }
   }
@@ -510,205 +643,52 @@ void garbage_collect_tags() {
   genfreeiterator(it);
 
 
+  // 3.) Guest state:
+
   // Scan through all of the guest state and see which tags are being
   // used - these cannot be garbage collected
 
-  // Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
-  // dyncomp_translate.c) - eek!
+  // (Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
+  // dyncomp_translate.c) - eek!)
 
   // Just go through all of the registers in the x86 guest state
   // as depicted in vex/pub/libvex_guest_x86.h
-
-  // These are the offsets that we are interested in:
-#define NUM_TOTAL_X86_OFFSETS 55
-
-static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
-    0,  //      UInt  guest_EAX;         /* 0 */
-    4,  //      UInt  guest_ECX;
-    8,  //      UInt  guest_EDX;
-    12, //      UInt  guest_EBX;
-    16, //      UInt  guest_ESP;
-    20, //      UInt  guest_EBP;
-    24, //      UInt  guest_ESI;
-    28, //      UInt  guest_EDI;         /* 28 */
-      /* 4-word thunk used to calculate O S Z A C P flags. */
-    32, //      UInt  guest_CC_OP;       /* 32 */
-    36, //      UInt  guest_CC_DEP1;
-    40, //      UInt  guest_CC_DEP2;
-    44, //      UInt  guest_CC_NDEP;     /* 44 */
-      /* The D flag is stored here, encoded as either -1 or +1 */
-    48, //      UInt  guest_DFLAG;       /* 48 */
-      /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
-    52, //      UInt  guest_IDFLAG;      /* 52 */
-      /* EIP */
-    56, //      UInt  guest_EIP;         /* 56 */
-      /* FPU */
-    60, //      UInt  guest_FTOP;        /* 60 */
-    64, //      ULong guest_FPREG[8];    /* 64 */
-    72,
-    80,
-    88,
-    96,
-    104,
-    112,
-    120,
-    128,  //      UChar guest_FPTAG[8];   /* 128 */
-    129,
-    130,
-    131,
-    132,
-    133,
-    134,
-    135,
-    136, //      UInt  guest_FPROUND;    /* 136 */
-    140, //      UInt  guest_FC3210;     /* 140 */
-      /* SSE */
-    144, //      UInt  guest_SSEROUND;   /* 144 */
-    148, //      U128  guest_XMM0;       /* 148 */
-    164, //      U128  guest_XMM1;
-    180, //      U128  guest_XMM2;
-    196, //      U128  guest_XMM3;
-    212, //      U128  guest_XMM4;
-    228, //      U128  guest_XMM5;
-    244, //      U128  guest_XMM6;
-    260, //      U128  guest_XMM7;
-      /* Segment registers. */
-    276, //      UShort guest_CS;
-    278, //      UShort guest_DS;
-    280, //      UShort guest_ES;
-    282, //      UShort guest_FS;
-    284, //      UShort guest_GS;
-    286, //      UShort guest_SS;
-      /* LDT/GDT stuff. */
-    288, //      HWord  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
-    292, //      HWord  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
-
-      /* Emulation warnings */
-    296, //      UInt   guest_EMWARN;
-
-      /* Translation-invalidation area description.  Not used on x86
-         (there is no invalidate-icache insn), but needed so as to
-         allow users of the library to uniformly assume that the guest
-         state contains these two fields -- otherwise there is
-         compilation breakage.  On x86, these two fields are set to
-         zero by LibVEX_GuestX86_initialise and then should be ignored
-         forever thereafter. */
-    300, //      UInt guest_TISTART;
-    304, //      UInt guest_TILEN;
-
-      /* Padding to make it have an 8-aligned size */
-    308  //      UInt   padding;
-};
+  currentTID = VG_(get_running_tid)();
 
   for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
-    curTag = VG_(get_tag_for_x86_guest_offset)(currentTID,
-                                               x86_guest_state_offsets[i]);
-    if (curTag > 0) {
-      tagsInUse[curTag] = 1;
+    addr =
+      VG_(get_tag_ptr_for_x86_guest_offset)(currentTID,
+                                            x86_guest_state_offsets[i]);
+    if ((*addr) > 0) {
+      reassign_tag(addr,
+                   val_uf_find_leader(*addr),
+                   &newTagNumber,
+                   oldToNewMap);
     }
   }
 
 
-  VG_(printf)("Iterating through tags in tagsInUse\n");
-
-  free_list_num_elts_before_gc = free_list.numElts;
-
-  // Iterate through all tags in tagsInUse and find which ones are NOT
-  // in use (remember to skip the 0 tag):
-  for (t = 1; t < nextTag; t++) {
-    if (!tagsInUse[t]) {
-      // If the tag is not already in free_list, then
-      // put it in to_be_freed_list
-      // TODO: Do I even need this check here???  I don't think so
-      if (!is_tag_in_list(&free_list, t,
-                          // Add 1 just to be safe from off-by-1 errors ...
-                          // The concept is that we only care about duplicates
-                          // from what is already in free_list, not the new
-                          // stuff we will put into the tail of it
-                          (free_list_num_elts_before_gc + 1))) {
-        //        enqueue_tag(&to_be_freed_list, t);
-
-        if (!IS_SECONDARY_UF_NULL(t)) {
-          uf_object* obj = GET_UF_OBJECT_PTR(t);
-          // Don't destroy objects that have already been destroyed ...
-          if ((obj->parent) &&
-              ((obj->ref_count == 1) || // This seems to cause tags to be freed which shouldn't be ... but why???
-               (obj->ref_count == 0))) {
-            uf_destroy_object(obj);
-
-            enqueue_tag(&free_list, t);
-            numTagsFreed++;
-          }
-        }
-      }
-    }
-    else {
-      // Count how many tags are being used
-      numTagsInUse++;
-    }
+  // Now that all tags in use have been re-assigned to newer
+  // (hopefully smaller) values as denoted by the running counter
+  // newTagNumber, we need to initialize all uf_object entries in the
+  // val_uf_object_map from tag 1 until tag (newTagNumber - 1) to
+  // singleton sets.  This is because the only tags in use now are in
+  // the range of [1, newTagNumber) due to the 'compression' induced
+  // by the tag re-assignment.
+  for (curTag = 1; curTag < newTagNumber; curTag++) {
+    val_uf_make_set_for_tag(curTag, 0);
   }
 
 
-  // Iterate through to_be_freed_list and check whether each tag can
-  // truly be freed (refCount == 0 or 1) SMcC's suggestion: Do this TWICE
-  // as a heuristic in order to try to get us closer to fixed-point.
-  // This is because if you go through it in a particular order, you
-  // may reach a parent before you reach a leaf.  You cannot free the
-  // parent, but you can free the leaf.  Then the next time you go
-  // through it, you can free the parent.  However, this sort of thing
-  // probably doesn't happen too frequently because if the union-find
-  // is working properly, you'll have one root and most entries will
-  // be leaves.  Perhaps TWO passes is optimal.
+  // For the grand finale, set nextTag = newTagNumber, thus completing
+  // the garbage collection.
+  nextTag = newTagNumber;
 
-/*   // Let's do it just once for now for speed ... */
-/*   for (i = 0; i < 1; i++) { */
-/*     TagNode* tagNode; */
 
-/*     VG_(printf)("Begin pass # %u thru to_be_freed_list to free stuff\n", i); */
+  // Clean-up:
+  genfreehashtable(oldToNewMap);
 
-/*     // For every tag in to_be_freed_list, look up the reference count */
-/*     // of the corresponding uf_object entry in the val_uf_object map. */
-/*     // If it is 0 or 1, then destroy that entry (by clobbering it with */
-/*     // zeroes and decreasing the ref_count of its parent!!!) and */
-/*     // adding that tag to free_list.  Otherwise, do nothing. */
-/*     for (tagNode = to_be_freed_list.first; */
-/*          tagNode != NULL; */
-/*          tagNode = tagNode->next) { */
-/*       UInt tag = tagNode->tag; */
-/*       uf_object* obj; */
-/*       if (!IS_SECONDARY_UF_NULL(tag)) { */
-/*         obj = GET_UF_OBJECT_PTR(tag); */
-/*         // Don't destroy objects that have already been destroyed ... */
-/*         if ((obj->parent) && */
-/*             (obj->tag == tag) && */
-/*             ((obj->ref_count == 1) || */
-/*              (obj->ref_count == 0))) { */
-/*           uf_destroy_object(obj); */
 
-/*           // Optimization: The first pass ensures uniqueness, */
-/*           //               but not the second pass */
-/*           if (i == 0) { */
-/*             if (enqueue_unique_tag(&free_list, tag)) { */
-/*               //            VG_(printf)("Freed tag: %u\n", tag); */
-/*               numTagsFreed++; */
-/*             } */
-/*           } */
-/*           else { */
-/*             if (enqueue_unique_tag(&free_list, tag)) { */
-/*               //              VG_(printf)("Freed tag: %u\n", tag); */
-/*               numTagsFreed++; */
-/*             } */
-/*           } */
-/*         } */
-/*       } */
-/*     } */
-
-/*     VG_(printf)("End pass # %u thru to_be_freed_list to free stuff - # tags freed so far: %u\n", i, numTagsFreed); */
-/*   } */
-
-  // Clean-up
-  VG_(free)(tagsInUse);
-
-  VG_(printf)("Done garbage collecting tags (next tag = %u, total assigned = %u) # tags in use: %u, # tags freed: %u - free_list.numElts = %u\n", nextTag, totalNumTagsAssigned, numTagsInUse, numTagsFreed, free_list.numElts);
+  VG_(printf)("Done tag GC  (next tag = %u, total assigned = %u)", nextTag, totalNumTagsAssigned);
 
 }
