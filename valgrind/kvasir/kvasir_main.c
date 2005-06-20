@@ -538,10 +538,6 @@ void kvasir_post_clo_init()
      dyncomp_without_dtrace = True;
   }
 
-  if (kvasir_with_dyncomp && kvasir_dyncomp_with_gc) {
-     initialize_gc_tag_lists();
-  }
-
   process_elf_binary_data(filename);
   daikon_preprocess_entry_array();
   createDeclsAndDtraceFiles(filename);

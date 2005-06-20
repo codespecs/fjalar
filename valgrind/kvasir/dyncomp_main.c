@@ -28,135 +28,9 @@
 #include "dyncomp_main.h"
 #include <limits.h>
 
-//#define DYNCOMP_DEBUG
-//#define CREATE_TAG_VERBOSE
-//#define STORE_TAG_VERBOSE
-//#define LOAD_TAG_VERBOSE
-//#define MERGE_TAGS_VERBOSE
 
 // For debug printouts
 extern char within_main_program;
-
-/*------------------------------------------------------------------*/
-/*--- Linked-lists of tags for garbage collection                ---*/
-/*------------------------------------------------------------------*/
-
-// List of tags which have been freed by the garbage collector and are
-// available to use when allocating new tags:
-TagList free_list;
-
-// List of tags to be freed by the garbage collector
-TagList to_be_freed_list;
-
-void initialize_gc_tag_lists() {
-  VG_(memset)(&free_list, 0, sizeof(TagList));
-  VG_(memset)(&to_be_freed_list, 0, sizeof(TagList));
-}
-
-// Adds a new tag to the tail of the list
-// Pre: (tag != 0)
-void enqueue_tag(TagList* listPtr, UInt tag) {
-  tl_assert(tag);
-
-  //  VG_(printf)("enqueue_tag ... numElts = %u\n", listPtr->numElts);
-
-  // Special case for no elements
-  if (listPtr->numElts == 0) {
-    listPtr->first = listPtr->last =
-      (TagNode*)VG_(calloc)(1, sizeof(TagNode));
-  }
-  else {
-    listPtr->last->next = (TagNode*)VG_(calloc)(1, sizeof(TagNode));
-    listPtr->last = listPtr->last->next;
-  }
-
-  listPtr->last->tag = tag;
-  listPtr->numElts++;
-}
-
-// Adds a new tag to the tail of the list only if
-// it's not already in the list
-// Pre: An element for tag is not already in *listPtr
-//      (This maintains the set property)
-//      and (tag != 0)
-// Returns 1 if tag was not in the list (and was successfully inserted)
-// and 0 if tag was ALREADY in the list
-/* char enqueue_unique_tag(TagList* listPtr, UInt tag) { */
-/*   tl_assert(tag); */
-
-/*   if (!is_tag_in_list(listPtr, tag)) { */
-/*     enqueue_tag(listPtr, tag); */
-/*     return 1; */
-/*   } */
-/*   else { */
-/*     return 0; */
-/*   } */
-/* } */
-
-// Removes and returns tag from head of the list
-// Pre: listPtr->numElts > 0
-UInt dequeue_tag(TagList* listPtr) {
-  UInt retTag = 0;
-  TagNode* nodeToKill;
-
-  tl_assert(listPtr->numElts > 0);
-
-  nodeToKill = listPtr->first;
-
-  retTag = listPtr->first->tag;
-
-  listPtr->first = listPtr->first->next;
-  VG_(free)(nodeToKill);
-  listPtr->numElts--;
-
-  // Special case for no elements
-  if (listPtr->numElts == 0) {
-    listPtr->last = listPtr->first = NULL;
-  }
-
-  return retTag;
-}
-
-// Returns 1 if the tag is found in the list, 0 otherwise
-// Only searches through the first n elts in *listPtr
-// Pre: (tag != 0)
-char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
-  UInt count = 0;
-
-  tl_assert(tag);
-
-  //  VG_(printf)("is_tag_in_list ... numElts = %u\n", listPtr->numElts);
-
-  if (listPtr->numElts == 0) {
-    return 0;
-  }
-  else {
-    TagNode* i;
-    for (i = listPtr->first;
-         (i != NULL) && (count < n);
-         i = i->next, count++) {
-      if (i->tag == tag) {
-        return 1;
-      }
-    }
-
-    return 0;
-  }
-}
-
-void clear_list(TagList* listPtr) {
-  if (listPtr->numElts > 0) {
-    TagNode* i = listPtr->first;
-    TagNode* next = i->next;
-    for (i = listPtr->first; i != NULL; i = next) {
-      next = i->next;
-      VG_(free)(i);
-      listPtr->numElts--;
-    }
-  }
-
-  tl_assert(listPtr->numElts == 0);
-}
 
 /*------------------------------------------------------------------*/
 /*--- Tags and the value comparability union-find data structure ---*/
@@ -185,6 +59,10 @@ UInt totalNumTagsAssigned = 0;
 */
 UInt* primary_tag_map[PRIMARY_SIZE];
 
+// The number of entries in primary_tag_map that are initialized
+// Range is [0, PRIMARY_SIZE]
+UInt n_primary_tag_map_init_entries = 0;
+
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
 
 __inline__ UInt get_tag ( Addr a )
@@ -202,39 +80,32 @@ __inline__ void set_tag ( Addr a, UInt tag )
       (UInt*)VG_(shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
     VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
     primary_tag_map[PM_IDX(a)] = new_tag_array;
+    n_primary_tag_map_init_entries++;
+
+    //    if (kvasir_dyncomp_with_gc) {
+    //      check_whether_to_garbage_collect();
+    //    }
   }
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
-// Return a fresh tag, either from free_list or from nextTag
-static UInt grab_fresh_tag() {
-  UInt tag;
-  if (free_list.numElts > 0) {
-    tag = dequeue_tag(&free_list);
-    //    VG_(printf)("Grabbed tag %u from free_list\n", tag);
+// Return a fresh tag
+static __inline__ UInt grab_fresh_tag() {
+  UInt tag = nextTag;
+  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
+  // is a special reserved value for tags retrieved from ESP
+  if (nextTag == (UINT_MAX - 1)) {
+    VG_(printf)("Error! Maximum tag has been used.");
   }
   else {
-    tag = nextTag;
-    // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
-    // is a special reserved value for tags retrieved from ESP
-    if (nextTag == (UINT_MAX - 1)) {
-      VG_(printf)("Error! Maximum tag has been used.");
-    }
-    else {
-      nextTag++;
-    }
+    nextTag++;
   }
 
   // Let's try garbage collecting here
-  if (totalNumTagsAssigned && // Don't garbage collect when it's zero
+  if (kvasir_dyncomp_with_gc &&
+      totalNumTagsAssigned && // Don't garbage collect when it's zero
       (totalNumTagsAssigned % 5000000 == 0)) {
-
-    VG_(printf)("next tag = %u, total assigned = %u\n",
-                nextTag, totalNumTagsAssigned);
-
-    if (kvasir_dyncomp_with_gc) {
-      garbage_collect_tags();
-    }
+    garbage_collect_tags();
   }
 
   totalNumTagsAssigned++;
@@ -242,31 +113,20 @@ static UInt grab_fresh_tag() {
   return tag;
 }
 
-// Sets tag of address 'a' to a fresh tag and initialize a new uf_object
-// (This will have to be modified when we implement garbage collection)
-static __inline__ void assign_new_tag(Addr a) {
-  UInt newTag = grab_fresh_tag();
-
-  set_tag(a, newTag);
-  val_uf_make_set_for_tag(newTag, 0);
-}
-
 // Allocate a new unique tag for all bytes in range [a, a + len)
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
   Addr curAddr;
+  UInt newTag;
 
   if (within_main_program) {
     DYNCOMP_DPRINTF("allocate_new_unique_tags (a=0x%x, len=%d)\n",
                     a, len);
   }
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    assign_new_tag(curAddr);
+    newTag = grab_fresh_tag();
+    set_tag(curAddr, newTag);
+    val_uf_make_set_for_tag(newTag);
   }
-
-#ifdef DYNCOMP_DEBUG
-  VG_(printf)("After allocate_new_unique_tags(a=0x%x, len=%d): nextTag=%u\n",
-              a, len, nextTag);
-#endif
 }
 
 // Copies tags of len bytes from src to dst
@@ -277,11 +137,6 @@ __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
       UInt tag  = get_tag ( src+i );
       set_tag ( dst+i, tag );
    }
-
-#ifdef DYNCOMP_DEBUG
-  VG_(printf)("After copy_tags(src=0x%x, dst=0x%x, len=%d): nextTag=%u\n",
-              src, dst, len, nextTag);
-#endif
 }
 
 /* The two-level value uf_object map works almost like the memory map.
@@ -302,7 +157,11 @@ __inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
 // array (of size SECONDARY_SIZE) of uf_object objects
 uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
 
-void val_uf_make_set_for_tag(UInt tag, char saturate) {
+// The number of entries that are initialized in primary_val_uf_object_map
+// Range is [0, PRIMARY_SIZE]
+UInt n_primary_val_uf_object_map_init_entries = 0;
+
+void val_uf_make_set_for_tag(UInt tag) {
   //  VG_(printf)("val_uf_make_set_for_tag(%u);\n", tag);
 
   if (IS_ZERO_TAG(tag))
@@ -327,13 +186,18 @@ void val_uf_make_set_for_tag(UInt tag, char saturate) {
     //      //                  new_uf_obj_array + i, curTag);
     //    }
     primary_val_uf_object_map[PM_IDX(tag)] = new_uf_obj_array;
+    n_primary_val_uf_object_map_init_entries++;
+
+    //    if (kvasir_dyncomp_with_gc) {
+      //      check_whether_to_garbage_collect();
+      //    }
   }
   //  else {
   //    uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
   //  }
 
   // Do this unconditionally now:
-  uf_make_set(GET_UF_OBJECT_PTR(tag), tag, saturate);
+  uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
 static __inline__ void val_uf_tag_union(UInt tag1, UInt tag2) {
@@ -357,15 +221,15 @@ static  __inline__ uf_name val_uf_tag_find(UInt tag) {
 // comparing val_uf_tag_find(tag1) and val_uf_tag_find(tag2)
 // because you could be comparing 0 == 0 if both satisfy
 // IS_SECONDARY_UF_NULL
-static UChar val_uf_tags_in_same_set(UInt tag1, UInt tag2) {
-  if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
-      !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    return (val_uf_tag_find(tag1) == val_uf_tag_find(tag2));
-  }
-  else {
-    return 0;
-  }
-}
+/* static UChar val_uf_tags_in_same_set(UInt tag1, UInt tag2) { */
+/*   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) && */
+/*       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) { */
+/*     return (val_uf_tag_find(tag1) == val_uf_tag_find(tag2)); */
+/*   } */
+/*   else { */
+/*     return 0; */
+/*   } */
+/* } */
 
 // Helper functions called from mc_translate.c:
 
@@ -511,7 +375,7 @@ VGA_REGPARM(0)
 UInt MC_(helperc_CREATE_TAG) () {
   UInt newTag = grab_fresh_tag();
 
-  val_uf_make_set_for_tag(newTag, 0);
+  val_uf_make_set_for_tag(newTag);
 
   if (within_main_program) {
     DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
@@ -525,39 +389,23 @@ UInt MC_(helperc_CREATE_TAG) () {
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
   val_uf_union_tags_in_range(a, 8);
-#ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_8(%u) = %u [nextTag=%u]\n",
-              a, get_tag(a), nextTag);
-#endif
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   val_uf_union_tags_in_range(a, 4);
-#ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_4(%u) = %u [nextTag=%u]\n",
-              a, get_tag(a), nextTag);
-#endif
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
   val_uf_union_tags_in_range(a, 2);
-#ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_2(%u) = %u [nextTag=%u]\n",
-              a, get_tag(a), nextTag);
-#endif
   return get_tag(a);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
-#ifdef LOAD_TAG_VERBOSE
-  VG_(printf)("helperc_LOAD_TAG_1(%u) = %u [nextTag=%u]\n",
-              a, get_tag(a), nextTag);
-#endif
   return get_tag(a);
 }
 
@@ -609,10 +457,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   }
   else {
     val_uf_tag_union(tag1, tag2);
-#ifdef MERGE_TAGS_VERBOSE
-    VG_(printf)("helperc_MERGE_TAGS_RETURN_0(%u, %u) [nextTag=%u]\n",
-                tag1, tag2, nextTag);
-#endif
     return 0;
   }
 }
@@ -636,4 +480,95 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
     // Set the tag to 0
     set_tag(curAddr, 0);
   }
+}
+
+
+/*------------------------------------------------------------------*/
+/*--- Linked-lists of tags for garbage collection                ---*/
+/*------------------------------------------------------------------*/
+
+// Adds a new tag to the tail of the list
+// Pre: (tag != 0)
+void enqueue_tag(TagList* listPtr, UInt tag) {
+  tl_assert(tag);
+
+  //  VG_(printf)("enqueue_tag ... numElts = %u\n", listPtr->numElts);
+
+  // Special case for no elements
+  if (listPtr->numElts == 0) {
+    listPtr->first = listPtr->last =
+      (TagNode*)VG_(calloc)(1, sizeof(TagNode));
+  }
+  else {
+    listPtr->last->next = (TagNode*)VG_(calloc)(1, sizeof(TagNode));
+    listPtr->last = listPtr->last->next;
+  }
+
+  listPtr->last->tag = tag;
+  listPtr->numElts++;
+}
+
+// Removes and returns tag from head of the list
+// Pre: listPtr->numElts > 0
+UInt dequeue_tag(TagList* listPtr) {
+  UInt retTag = 0;
+  TagNode* nodeToKill;
+
+  tl_assert(listPtr->numElts > 0);
+
+  nodeToKill = listPtr->first;
+
+  retTag = listPtr->first->tag;
+
+  listPtr->first = listPtr->first->next;
+  VG_(free)(nodeToKill);
+  listPtr->numElts--;
+
+  // Special case for no elements
+  if (listPtr->numElts == 0) {
+    listPtr->last = listPtr->first = NULL;
+  }
+
+  return retTag;
+}
+
+// Returns 1 if the tag is found in the list, 0 otherwise
+// Only searches through the first n elts in *listPtr
+// Pre: (tag != 0)
+char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
+  UInt count = 0;
+
+  tl_assert(tag);
+
+  //  VG_(printf)("is_tag_in_list ... numElts = %u\n", listPtr->numElts);
+
+  if (listPtr->numElts == 0) {
+    return 0;
+  }
+  else {
+    TagNode* i;
+    for (i = listPtr->first;
+         (i != NULL) && (count < n);
+         i = i->next, count++) {
+      if (i->tag == tag) {
+        return 1;
+      }
+    }
+
+    return 0;
+  }
+}
+
+void clear_list(TagList* listPtr) {
+  if (listPtr->numElts > 0) {
+    TagNode* i = listPtr->first;
+    TagNode* next = i->next;
+    for (i = listPtr->first; i != NULL; i = next) {
+      next = i->next;
+      VG_(free)(i);
+      listPtr->numElts--;
+    }
+  }
+
+  tl_assert(listPtr->numElts == 0);
 }
