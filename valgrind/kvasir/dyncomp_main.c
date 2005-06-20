@@ -229,8 +229,8 @@ static UInt grab_fresh_tag() {
   if (totalNumTagsAssigned && // Don't garbage collect when it's zero
       (totalNumTagsAssigned % 5000000 == 0)) {
 
-    VG_(printf)("next tag = %u, total assigned = %u, size of free_list = %u\n",
-                nextTag, totalNumTagsAssigned, free_list.numElts);
+    VG_(printf)("next tag = %u, total assigned = %u\n",
+                nextTag, totalNumTagsAssigned);
 
     if (kvasir_dyncomp_with_gc) {
       garbage_collect_tags();

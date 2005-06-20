@@ -27,6 +27,7 @@
 #include "dyncomp_runtime.h"
 #include "union_find.h"
 #include "GenericHashtable.h"
+#include "dyncomp_main.h"
 #include <limits.h>
 
 // Initialize hash tables for DynComp
@@ -555,7 +556,7 @@ void garbage_collect_tags() {
                          (int (*)(void *,void *)) &equivalentIDs);
 
 
-  VG_(printf)("Start tag GC (next tag = %u, total assigned = %u)\n",
+  VG_(printf)("  Start tag GC (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
 
   // This algorithm goes through all places where tags are kept, finds
@@ -689,6 +690,6 @@ void garbage_collect_tags() {
   genfreehashtable(oldToNewMap);
 
 
-  VG_(printf)("Done tag GC  (next tag = %u, total assigned = %u)", nextTag, totalNumTagsAssigned);
+  VG_(printf)("   Done tag GC (next tag = %u, total assigned = %u)\n", nextTag, totalNumTagsAssigned);
 
 }
