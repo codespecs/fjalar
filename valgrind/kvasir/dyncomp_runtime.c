@@ -520,7 +520,7 @@ void garbage_collect_tags() {
   // as depicted in vex/pub/libvex_guest_x86.h
 
   // These are the offsets that we are interested in:
-#define NUM_TOTAL_X86_OFFSETS 49
+#define NUM_TOTAL_X86_OFFSETS 55
 
 static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
     0,  //      UInt  guest_EAX;         /* 0 */
@@ -578,13 +578,13 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
     280, //      UShort guest_ES;
     282, //      UShort guest_FS;
     284, //      UShort guest_GS;
-    286  //      UShort guest_SS;
+    286, //      UShort guest_SS;
       /* LDT/GDT stuff. */
-      //      HWord  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
-      //      HWord  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
+    288, //      HWord  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
+    292, //      HWord  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
 
       /* Emulation warnings */
-      //      UInt   guest_EMWARN;
+    296, //      UInt   guest_EMWARN;
 
       /* Translation-invalidation area description.  Not used on x86
          (there is no invalidate-icache insn), but needed so as to
@@ -593,11 +593,11 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
          compilation breakage.  On x86, these two fields are set to
          zero by LibVEX_GuestX86_initialise and then should be ignored
          forever thereafter. */
-      //      UInt guest_TISTART;
-      //      UInt guest_TILEN;
+    300, //      UInt guest_TISTART;
+    304, //      UInt guest_TILEN;
 
       /* Padding to make it have an 8-aligned size */
-      //      UInt   padding;
+    308  //      UInt   padding;
 };
 
   for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
@@ -632,7 +632,7 @@ static int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
           uf_object* obj = GET_UF_OBJECT_PTR(t);
           // Don't destroy objects that have already been destroyed ...
           if ((obj->parent) &&
-              (/*(obj->ref_count == 1) ||*/ // This seems to cause tags to be freed which shouldn't be ... but why???
+              ((obj->ref_count == 1) || // This seems to cause tags to be freed which shouldn't be ... but why???
                (obj->ref_count == 0))) {
             uf_destroy_object(obj);
 
