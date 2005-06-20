@@ -85,7 +85,7 @@ void val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
 
-static void val_uf_make_set_for_tag(UInt tag, char saturate);
+void val_uf_make_set_for_tag(UInt tag, char saturate);
 
 
 extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );

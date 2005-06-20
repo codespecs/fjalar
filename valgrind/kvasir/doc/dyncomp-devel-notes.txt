@@ -4074,3 +4074,168 @@ will simply consist of a pointer to its parent ... great!
 uf_object:
 ----------
 uf_object* parent
+
+
+
+-----------------
+Alright first successful run on md5!!!
+
+
+==21631== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==21631== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==21631== Using LibVEX rev 1139, a library for dynamic binary translation.
+==21631== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==21631== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==21631== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==21631== For more details, rerun with: -v
+==21631==
+next tag = 5000002, total assigned = 5000000
+  Start tag GC (next tag = 5000002, total assigned = 5000000)
+   Done tag GC (next tag = 1393915, total assigned = 5000000)
+next tag = 6393915, total assigned = 10000000
+  Start tag GC (next tag = 6393915, total assigned = 10000000)
+   Done tag GC (next tag = 1375748, total assigned = 10000000)
+next tag = 6375748, total assigned = 15000000
+  Start tag GC (next tag = 6375748, total assigned = 15000000)
+   Done tag GC (next tag = 1352053, total assigned = 15000000)
+next tag = 6352053, total assigned = 20000000
+  Start tag GC (next tag = 6352053, total assigned = 20000000)
+   Done tag GC (next tag = 1326124, total assigned = 20000000)
+next tag = 6326124, total assigned = 25000000
+  Start tag GC (next tag = 6326124, total assigned = 25000000)
+   Done tag GC (next tag = 1306368, total assigned = 25000000)
+next tag = 6306368, total assigned = 30000000
+  Start tag GC (next tag = 6306368, total assigned = 30000000)
+   Done tag GC (next tag = 1292788, total assigned = 30000000)
+next tag = 6292788, total assigned = 35000000
+  Start tag GC (next tag = 6292788, total assigned = 35000000)
+   Done tag GC (next tag = 1266958, total assigned = 35000000)
+next tag = 6266958, total assigned = 40000000
+  Start tag GC (next tag = 6266958, total assigned = 40000000)
+   Done tag GC (next tag = 1242677, total assigned = 40000000)
+next tag = 6242677, total assigned = 45000000
+  Start tag GC (next tag = 6242677, total assigned = 45000000)
+   Done tag GC (next tag = 1233776, total assigned = 45000000)
+next tag = 6233776, total assigned = 50000000
+  Start tag GC (next tag = 6233776, total assigned = 50000000)
+   Done tag GC (next tag = 1203200, total assigned = 50000000)
+next tag = 6203200, total assigned = 55000000
+  Start tag GC (next tag = 6203200, total assigned = 55000000)
+   Done tag GC (next tag = 1180689, total assigned = 55000000)
+next tag = 6180689, total assigned = 60000000
+  Start tag GC (next tag = 6180689, total assigned = 60000000)
+   Done tag GC (next tag = 1157861, total assigned = 60000000)
+next tag = 6157861, total assigned = 65000000
+  Start tag GC (next tag = 6157861, total assigned = 65000000)
+   Done tag GC (next tag = 1137827, total assigned = 65000000)
+next tag = 6137827, total assigned = 70000000
+  Start tag GC (next tag = 6137827, total assigned = 70000000)
+   Done tag GC (next tag = 1117299, total assigned = 70000000)
+next tag = 6117299, total assigned = 75000000
+  Start tag GC (next tag = 6117299, total assigned = 75000000)
+   Done tag GC (next tag = 1089441, total assigned = 75000000)
+next tag = 6089441, total assigned = 80000000
+  Start tag GC (next tag = 6089441, total assigned = 80000000)
+   Done tag GC (next tag = 1071462, total assigned = 80000000)
+next tag = 6071462, total assigned = 85000000
+  Start tag GC (next tag = 6071462, total assigned = 85000000)
+   Done tag GC (next tag = 1051561, total assigned = 85000000)
+next tag = 6051561, total assigned = 90000000
+  Start tag GC (next tag = 6051561, total assigned = 90000000)
+   Done tag GC (next tag = 1024769, total assigned = 90000000)
+next tag = 6024769, total assigned = 95000000
+  Start tag GC (next tag = 6024769, total assigned = 95000000)
+   Done tag GC (next tag = 1003495, total assigned = 95000000)
+next tag = 6003495, total assigned = 100000000
+  Start tag GC (next tag = 6003495, total assigned = 100000000)
+   Done tag GC (next tag = 980108, total assigned = 100000000)
+next tag = 5980108, total assigned = 105000000
+  Start tag GC (next tag = 5980108, total assigned = 105000000)
+   Done tag GC (next tag = 946788, total assigned = 105000000)
+next tag = 5946788, total assigned = 110000000
+  Start tag GC (next tag = 5946788, total assigned = 110000000)
+   Done tag GC (next tag = 928643, total assigned = 110000000)
+next tag = 5928643, total assigned = 115000000
+  Start tag GC (next tag = 5928643, total assigned = 115000000)
+   Done tag GC (next tag = 907356, total assigned = 115000000)
+next tag = 5907356, total assigned = 120000000
+  Start tag GC (next tag = 5907356, total assigned = 120000000)
+   Done tag GC (next tag = 892205, total assigned = 120000000)
+next tag = 5892205, total assigned = 125000000
+  Start tag GC (next tag = 5892205, total assigned = 125000000)
+   Done tag GC (next tag = 872713, total assigned = 125000000)
+next tag = 5872713, total assigned = 130000000
+  Start tag GC (next tag = 5872713, total assigned = 130000000)
+   Done tag GC (next tag = 845468, total assigned = 130000000)
+next tag = 5845468, total assigned = 135000000
+  Start tag GC (next tag = 5845468, total assigned = 135000000)
+   Done tag GC (next tag = 824512, total assigned = 135000000)
+next tag = 5824512, total assigned = 140000000
+  Start tag GC (next tag = 5824512, total assigned = 140000000)
+   Done tag GC (next tag = 806359, total assigned = 140000000)
+next tag = 5806359, total assigned = 145000000
+  Start tag GC (next tag = 5806359, total assigned = 145000000)
+   Done tag GC (next tag = 777539, total assigned = 145000000)
+next tag = 5777539, total assigned = 150000000
+  Start tag GC (next tag = 5777539, total assigned = 150000000)
+   Done tag GC (next tag = 761174, total assigned = 150000000)
+next tag = 5761174, total assigned = 155000000
+  Start tag GC (next tag = 5761174, total assigned = 155000000)
+   Done tag GC (next tag = 740648, total assigned = 155000000)
+next tag = 5740648, total assigned = 160000000
+  Start tag GC (next tag = 5740648, total assigned = 160000000)
+   Done tag GC (next tag = 708466, total assigned = 160000000)
+next tag = 5708466, total assigned = 165000000
+  Start tag GC (next tag = 5708466, total assigned = 165000000)
+   Done tag GC (next tag = 688593, total assigned = 165000000)
+next tag = 5688593, total assigned = 170000000
+  Start tag GC (next tag = 5688593, total assigned = 170000000)
+   Done tag GC (next tag = 677722, total assigned = 170000000)
+next tag = 5677722, total assigned = 175000000
+  Start tag GC (next tag = 5677722, total assigned = 175000000)
+   Done tag GC (next tag = 644627, total assigned = 175000000)
+next tag = 5644627, total assigned = 180000000
+  Start tag GC (next tag = 5644627, total assigned = 180000000)
+   Done tag GC (next tag = 625466, total assigned = 180000000)
+next tag = 5625466, total assigned = 185000000
+  Start tag GC (next tag = 5625466, total assigned = 185000000)
+   Done tag GC (next tag = 602802, total assigned = 185000000)
+next tag = 5602802, total assigned = 190000000
+  Start tag GC (next tag = 5602802, total assigned = 190000000)
+   Done tag GC (next tag = 584807, total assigned = 190000000)
+next tag = 5584807, total assigned = 195000000
+  Start tag GC (next tag = 5584807, total assigned = 195000000)
+   Done tag GC (next tag = 565460, total assigned = 195000000)
+next tag = 5565460, total assigned = 200000000
+  Start tag GC (next tag = 5565460, total assigned = 200000000)
+   Done tag GC (next tag = 536818, total assigned = 200000000)
+next tag = 5536818, total assigned = 205000000
+  Start tag GC (next tag = 5536818, total assigned = 205000000)
+   Done tag GC (next tag = 516903, total assigned = 205000000)
+next tag = 5516903, total assigned = 210000000
+  Start tag GC (next tag = 5516903, total assigned = 210000000)
+   Done tag GC (next tag = 500838, total assigned = 210000000)
+next tag = 5500838, total assigned = 215000000
+  Start tag GC (next tag = 5500838, total assigned = 215000000)
+   Done tag GC (next tag = 474591, total assigned = 215000000)
+596C35B949BAF46B721744A13F76A258
+==21631==
+==21631== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+
+
+Without garbage collection, it only got to 125000000 total tags
+assigned before it barfed!
+
+
+
+
+Ok, let's do some performance benchmarks using /usr/bin/time:
+
+Kvasir without DynComp:
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dtrace ./md5 10MB_file
+38.40user 0.85system 0:42.39elapsed 92%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1263major+1741minor)pagefaults 0swaps
+
+
+First version (dyncomp_runtime.c: CVS revision 1.25):
