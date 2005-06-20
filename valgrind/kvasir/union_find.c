@@ -3,33 +3,9 @@
 // Based on http://www.cs.rutgers.edu/~chvatal/notes/uf.html
 // Philip Guo
 
-// Augmented with a reference count for every uf_object
-// which denotes how many other uf_objects point to it
-
 #include "union_find.h"
 #include "tool.h"
 #include <limits.h>
-
-// The reference count saturates at USHRT_MAX and does not
-// decrement if it ever reaches that high:
-#define INC_REF_COUNT(obj) \
-  if ((obj)->ref_count < USHRT_MAX) ((obj)->ref_count)++;
-
-#define DEC_REF_COUNT(obj) \
-  if ((obj)->ref_count < USHRT_MAX) ((obj)->ref_count)--;
-
-// Macro-ize this for speed:
-/* static inline void inc_ref_count(uf_object *obj) { */
-/*   if (obj->ref_count < USHRT_MAX) { */
-/*     (obj->ref_count)++; */
-/*   } */
-/* } */
-
-/* static inline void dec_ref_count(uf_object *obj) { */
-/*   if (obj->ref_count < USHRT_MAX) { */
-/*     (obj->ref_count)--; */
-/*   } */
-/* } */
 
 uf_name uf_find(uf_object *object) {
   uf_object *root, *next;
@@ -40,24 +16,15 @@ uf_name uf_find(uf_object *object) {
   // Path-compression:
   for(next=object->parent; next!=root; object=next, next=object->parent) {
     object->parent=root;
-    INC_REF_COUNT(root);
-    DEC_REF_COUNT(next);
   }
 
   return root;
 }
 
-void uf_make_set(uf_object *new_object, unsigned int t, char saturate) {
+void uf_make_set(uf_object *new_object, unsigned int t) {
   new_object->parent = new_object;
   new_object->rank = 0;
   new_object->tag = t;
-
-  if (saturate) {
-    new_object->ref_count = USHRT_MAX;
-  }
-  else {
-    new_object->ref_count = 1; // You are your own parent!
-  }
 }
 
 // Returns the new leader (uf_name)
@@ -70,8 +37,6 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
 
   // Union-by-rank:
 
-  // PG - optimization (and also ensures correctness by
-  //                    not calling INC_REF_COUNT extraneously):
   // If class1 == class2, then obj1 and obj2 are already
   // in the same set so don't do anything! (Is this correct?)
   if (class1 == class2) {
@@ -79,27 +44,14 @@ uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   }
 
   if(class1->rank < class2->rank) {
-    DEC_REF_COUNT(class1->parent);
     class1->parent = class2;
-    INC_REF_COUNT(class2);
     return class2;
   }
   else {
-    DEC_REF_COUNT(class2->parent);
     class2->parent = class1;
-    INC_REF_COUNT(class1);
     if(class1->rank == class2->rank) {
       (class1->rank)++;
     }
     return class1;
   }
-}
-
-// Decrements the reference count of the parent and sets the fields of
-// obj to zero to 'destroy it' (does NOT de-allocate it)
-void uf_destroy_object(uf_object *obj) {
-  if (obj->parent) {
-    DEC_REF_COUNT(obj->parent);
-  }
-  VG_(memset)(obj, 0, sizeof(*obj));
 }

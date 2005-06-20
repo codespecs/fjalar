@@ -33,7 +33,17 @@ UInt totalNumTagsAssigned;
 
 UInt* primary_tag_map[PRIMARY_SIZE];
 
+// The number of entries in primary_tag_map that are initialized
+// Range is [0, PRIMARY_SIZE]
+UInt n_primary_tag_map_init_entries;
+
 uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
+
+// The number of entries that are initialized in
+// primary_val_uf_object_map
+// Range is [0, PRIMARY_SIZE]
+UInt n_primary_val_uf_object_map_init_entries;
+
 
 #define IS_SECONDARY_UF_NULL(tag) (primary_val_uf_object_map[PM_IDX(tag)] == NULL)
 
@@ -56,15 +66,6 @@ typedef struct {
   UInt numElts;
 } TagList;
 
-// List of tags which have been freed by the garbage collector and are
-// available to use when allocating new tags:
-TagList free_list;
-
-// List of tags to be freed by the garbage collector
-TagList to_be_freed_list;
-
-void initialize_gc_tag_lists();
-
 void enqueue_tag(TagList* listPtr, UInt tag);
 char enqueue_unique_tag(TagList* listPtr, UInt tag);
 UInt dequeue_tag(TagList* listPtr);
@@ -85,7 +86,7 @@ void val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
 
-void val_uf_make_set_for_tag(UInt tag, char saturate);
+void val_uf_make_set_for_tag(UInt tag);
 
 
 extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );

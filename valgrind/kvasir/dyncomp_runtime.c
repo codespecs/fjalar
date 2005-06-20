@@ -28,6 +28,7 @@
 #include "union_find.h"
 #include "GenericHashtable.h"
 #include "dyncomp_main.h"
+#include "dyncomp_runtime.h"
 #include <limits.h>
 
 // Initialize hash tables for DynComp
@@ -136,7 +137,7 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
 static void var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
                                            UInt tag) {
   uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
-  uf_make_set(new_obj, tag, 0);
+  uf_make_set(new_obj, tag);
   genputtable(var_uf_map, (void*)tag, (void*)new_obj);
 }
 
@@ -677,7 +678,7 @@ void garbage_collect_tags() {
   // the range of [1, newTagNumber) due to the 'compression' induced
   // by the tag re-assignment.
   for (curTag = 1; curTag < newTagNumber; curTag++) {
-    val_uf_make_set_for_tag(curTag, 0);
+    val_uf_make_set_for_tag(curTag);
   }
 
 
@@ -691,5 +692,35 @@ void garbage_collect_tags() {
 
 
   VG_(printf)("   Done tag GC (next tag = %u, total assigned = %u)\n", nextTag, totalNumTagsAssigned);
+
+}
+
+
+// This is called whenever a new 2^16 chunk is allocated (either for
+// holding tags of uf_object entries).  Query the relationship between
+// n_primary_tag_map_init_entries and
+// n_primary_val_uf_object_map_init_entries to determine whether to
+// call the garbage collector
+void check_whether_to_garbage_collect() {
+  const int k = 2;
+
+  // As a heuristic, garbage-collect when
+  // (n_primary_val_uf_object_map_init_entries >
+  // (k * n_primary_tag_map_init_entries)) because the maximum amount of
+  // tags in use is (2^16 * n_primary_tag_map_init_entries) and the
+  // number of allocated tags is at most (2^16 *
+  // n_primary_val_uf_object_map_init_entries)
+  // - where k is some constant factor
+  VG_(printf)("Tag map init entries: %u, uf_object map init entries: %u\n",
+              n_primary_tag_map_init_entries,
+              n_primary_val_uf_object_map_init_entries);
+
+  if (n_primary_val_uf_object_map_init_entries >
+      (k * n_primary_tag_map_init_entries)) {
+    garbage_collect_tags();
+  }
+
+  // As another heuristic, do it every x number of total tag
+  // assignments:
 
 }
