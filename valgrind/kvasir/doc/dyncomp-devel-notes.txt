@@ -4066,15 +4066,8 @@ SMALLER ADDRESS, which is the opposite of how union find works right
 now, but can easily be implemented.  Remember that consistency is the
 most important part!!!
 
-With the proposed garbage collection algorithm and this rank
-optimization, each uf_object entry will only be 4-bytes because it
-will simply consist of a pointer to its parent ... great!
-
-
-uf_object:
-----------
-uf_object* parent
-
+--- Uhhhh ... don't do this optimization ... I just tried it and the
+comparability numbers looked incorrect ... DOH!!!
 
 
 -----------------
@@ -4238,4 +4231,8 @@ pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dt
 0inputs+0outputs (1263major+1741minor)pagefaults 0swaps
 
 
-First version (dyncomp_runtime.c: CVS revision 1.25):
+First version (dyncomp_runtime.c: CVS revision 1.26):
+
+pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dtrace --with-dyncomp --dyncomp-gc ./md5 10MB_file
+459.71user 2.77system 8:13.95elapsed 93%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1264major+46486minor)pagefaults 0swaps
