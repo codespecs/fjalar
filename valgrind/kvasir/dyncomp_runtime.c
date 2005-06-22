@@ -506,7 +506,7 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 };
 
 // Try to find leaderTag's entry in oldToNewMap (map from old tags to
-// new tags).  If it does not exist, then write leaderTag in the
+// new tags).  If it does not exist, then write *p_newTagNumber in the
 // contents of the address addr and add a new entry to oldToNewMap
 // with the key as leaderTag and the value as *p_newTagNumber.  Then
 // increment *p_newTagNumber.  (The idea here is that we want to do a
@@ -526,7 +526,7 @@ static void reassign_tag(UInt* addr,
     *addr = (int)gengettable(oldToNewMap, (void*)leaderTag);
   }
   else {
-    *addr = leaderTag;
+    *addr = *p_newTagNumber;
     genputtable(oldToNewMap,
                 (void*)leaderTag, (void*)(*p_newTagNumber));
 

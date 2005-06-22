@@ -4012,10 +4012,12 @@ program points:
   * Try to find that leader's entry in oldToNewMap
 
     * If it does not exist, then add a new entry to oldToNewMap with
-      the key as that tag and the value as newTagNumber.  Then
-      increment newTagNumber.  The idea here is that we want to do a
-      mapping from tags which can be any number from 1 to nextTag to
-      new numbers that are as small as possible.
+    the key as that tag and the value as newTagNumber.  Then
+    increment newTagNumber.  The idea here is that we want to do a
+    mapping from tags which can be any number from 1 to nextTag to
+    new numbers that are as small as possible.  Overwrite that
+    location with the new tag number (which is newTagNumber before
+    it was incremented).
 
     * Otherwise, if it exists, return the new tag associated with that
       tag and overwrite it in that location, thus effectively
@@ -4240,3 +4242,160 @@ pgbovine@parsnip:/scratch/pgbovine-do-not-delete-me/md5$ /usr/bin/time kvasir-dt
 Second version (dyncomp_runtime.c: CVS revision 1.27) - slight improvements:
 446.65user 2.44system 7:38.61elapsed 97%CPU (0avgtext+0avgdata 0maxresident)k
 0inputs+0outputs (1264major+46487minor)pagefaults 0swaps
+
+
+GC every 10,000,000 tags instead of the default 5,000,000 ... faster:
+
+kvasir-dtrace --with-dyncomp --gc-num-tags=10000000 ./md5 10MB_file
+380.22user 4.04system 6:51.80elapsed 93%CPU (0avgtext+0avgdata 0maxresident)k
+0inputs+0outputs (1264major+61271minor)pagefaults 0swaps
+
+
+Hmmmm, still runs out of memory on Flex if you set --gc-num-tags too large:
+
+==30281== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==30281== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==30281== Using LibVEX rev 1139, a library for dynamic binary translation.
+==30281== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==30281== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==30281== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==30281== For more details, rerun with: -v
+==30281==
+  Start tag GC (next tag = 100000002, total assigned = 100000000)
+
+  VG_(get_memory_from_mmap): newSuperblock's request for 1048576 bytes failed.
+  VG_(get_memory_from_mmap): 256481144 bytes already allocated.
+
+  Sorry.  You could try using a tool that uses less memory;
+  eg. addrcheck instead of memcheck.
+
+  Command exited with non-zero status 1
+  16370.28user 41.84system 9:12:13elapsed 49%CPU (0avgtext+0avgdata 0maxresident)k
+  0inputs+0outputs (1540major+360308minor)pagefaults 0swaps
+  pgbovine@radish:/scratch/pgbovine/flex-kvasir$ /usr/bin/time kvasir-dtrace --decls-only --decls-file=100000000-num-vars-dyncomp.decls --with-dyncomp --gc-num-tags=100000000 ./flex flex.err 5000_words_in
+
+
+
+Arrggg ... even with a smaller number, Flex runs out of memory (after
+running for a really long time)
+
+pgbovine@radish:/scratch/pgbovine/flex-kvasir$ kvasir-dtrace --decls-only --with-dyncomp --dyncomp-gc ./flex --ignore-static-vars flex flex.err 5000_words_in
+==29284== kvasir-4.1.2, C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.
+==29284== Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group
+==29284== Using LibVEX rev 1139, a library for dynamic binary translation.
+==29284== Copyright (C) 2004, and GNU GPL'd, by OpenWorks LLP.
+==29284== Using valgrind-3.0.0.SVN, a dynamic binary instrumentation framework.
+==29284== Copyright (C) 2000-2005, and GNU GPL'd, by Julian Seward et al.
+==29284== For more details, rerun with: -v
+==29284==
+  Start tag GC (next tag = 10000002, total assigned = 10000000)
+   Done tag GC (next tag = 2317489, total assigned = 10000000)
+  Start tag GC (next tag = 12317489, total assigned = 20000000)
+   Done tag GC (next tag = 2247171, total assigned = 20000000)
+  Start tag GC (next tag = 12247171, total assigned = 30000000)
+   Done tag GC (next tag = 2174375, total assigned = 30000000)
+  Start tag GC (next tag = 12174375, total assigned = 40000000)
+   Done tag GC (next tag = 2103436, total assigned = 40000000)
+  Start tag GC (next tag = 12103436, total assigned = 50000000)
+   Done tag GC (next tag = 2036108, total assigned = 50000000)
+  Start tag GC (next tag = 12036108, total assigned = 60000000)
+   Done tag GC (next tag = 1977043, total assigned = 60000000)
+  Start tag GC (next tag = 11977043, total assigned = 70000000)
+   Done tag GC (next tag = 1956109, total assigned = 70000000)
+  Start tag GC (next tag = 11956109, total assigned = 80000000)
+   Done tag GC (next tag = 1894265, total assigned = 80000000)
+  Start tag GC (next tag = 11894265, total assigned = 90000000)
+   Done tag GC (next tag = 1832462, total assigned = 90000000)
+  Start tag GC (next tag = 11832462, total assigned = 100000000)
+   Done tag GC (next tag = 1773341, total assigned = 100000000)
+  Start tag GC (next tag = 11773341, total assigned = 110000000)
+   Done tag GC (next tag = 1724502, total assigned = 110000000)
+  Start tag GC (next tag = 11724502, total assigned = 120000000)
+   Done tag GC (next tag = 1667594, total assigned = 120000000)
+  Start tag GC (next tag = 11667594, total assigned = 130000000)
+   Done tag GC (next tag = 1614820, total assigned = 130000000)
+  Start tag GC (next tag = 11614820, total assigned = 140000000)
+   Done tag GC (next tag = 1603469, total assigned = 140000000)
+  Start tag GC (next tag = 11603469, total assigned = 150000000)
+   Done tag GC (next tag = 1551502, total assigned = 150000000)
+  Start tag GC (next tag = 11551502, total assigned = 160000000)
+   Done tag GC (next tag = 1508874, total assigned = 160000000)
+  Start tag GC (next tag = 11508874, total assigned = 170000000)
+   Done tag GC (next tag = 1461855, total assigned = 170000000)
+  Start tag GC (next tag = 11461855, total assigned = 180000000)
+   Done tag GC (next tag = 1413555, total assigned = 180000000)
+  Start tag GC (next tag = 11413555, total assigned = 190000000)
+   Done tag GC (next tag = 1368459, total assigned = 190000000)
+  Start tag GC (next tag = 11368459, total assigned = 200000000)
+   Done tag GC (next tag = 1327489, total assigned = 200000000)
+  Start tag GC (next tag = 11327489, total assigned = 210000000)
+   Done tag GC (next tag = 1294043, total assigned = 210000000)
+  Start tag GC (next tag = 11294043, total assigned = 220000000)
+   Done tag GC (next tag = 1255029, total assigned = 220000000)
+  Start tag GC (next tag = 11255029, total assigned = 230000000)
+   Done tag GC (next tag = 1218966, total assigned = 230000000)
+  Start tag GC (next tag = 11218966, total assigned = 240000000)
+   Done tag GC (next tag = 1185620, total assigned = 240000000)
+  Start tag GC (next tag = 11185620, total assigned = 250000000)
+   Done tag GC (next tag = 1161261, total assigned = 250000000)
+  Start tag GC (next tag = 11161261, total assigned = 260000000)
+   Done tag GC (next tag = 1129947, total assigned = 260000000)
+  Start tag GC (next tag = 11129947, total assigned = 270000000)
+   Done tag GC (next tag = 1099656, total assigned = 270000000)
+  Start tag GC (next tag = 11099656, total assigned = 280000000)
+   Done tag GC (next tag = 1073354, total assigned = 280000000)
+  Start tag GC (next tag = 11073354, total assigned = 290000000)
+   Done tag GC (next tag = 1049838, total assigned = 290000000)
+  Start tag GC (next tag = 11049838, total assigned = 300000000)
+   Done tag GC (next tag = 1036845, total assigned = 300000000)
+  Start tag GC (next tag = 11036845, total assigned = 310000000)
+   Done tag GC (next tag = 1016481, total assigned = 310000000)
+  Start tag GC (next tag = 11016481, total assigned = 320000000)
+   Done tag GC (next tag = 997452, total assigned = 320000000)
+  Start tag GC (next tag = 10997452, total assigned = 330000000)
+   Done tag GC (next tag = 979627, total assigned = 330000000)
+  Start tag GC (next tag = 10979627, total assigned = 340000000)
+   Done tag GC (next tag = 961818, total assigned = 340000000)
+  Start tag GC (next tag = 10961818, total assigned = 350000000)
+   Done tag GC (next tag = 952459, total assigned = 350000000)
+  Start tag GC (next tag = 10952459, total assigned = 360000000)
+   Done tag GC (next tag = 935123, total assigned = 360000000)
+  Start tag GC (next tag = 10935123, total assigned = 370000000)
+   Done tag GC (next tag = 918327, total assigned = 370000000)
+  Start tag GC (next tag = 10918327, total assigned = 380000000)
+   Done tag GC (next tag = 910234, total assigned = 380000000)
+  Start tag GC (next tag = 10910234, total assigned = 390000000)
+   Done tag GC (next tag = 894724, total assigned = 390000000)
+  Start tag GC (next tag = 10894724, total assigned = 400000000)
+   Done tag GC (next tag = 886193, total assigned = 400000000)
+  Start tag GC (next tag = 10886193, total assigned = 410000000)
+   Done tag GC (next tag = 871070, total assigned = 410000000)
+  Start tag GC (next tag = 10871070, total assigned = 420000000)
+   Done tag GC (next tag = 863566, total assigned = 420000000)
+  Start tag GC (next tag = 10863566, total assigned = 430000000)
+   Done tag GC (next tag = 849443, total assigned = 430000000)
+  Start tag GC (next tag = 10849443, total assigned = 440000000)
+   Done tag GC (next tag = 842112, total assigned = 440000000)
+  Start tag GC (next tag = 10842112, total assigned = 450000000)
+   Done tag GC (next tag = 828777, total assigned = 450000000)
+  Start tag GC (next tag = 10828777, total assigned = 460000000)
+   Done tag GC (next tag = 822319, total assigned = 460000000)
+  Start tag GC (next tag = 10822319, total assigned = 470000000)
+   Done tag GC (next tag = 809721, total assigned = 470000000)
+  Start tag GC (next tag = 10809721, total assigned = 480000000)
+   Done tag GC (next tag = 804677, total assigned = 480000000)
+  Start tag GC (next tag = 10804677, total assigned = 490000000)
+
+VG_(get_memory_from_mmap): newSuperblock's request for 1048576 bytes failed.
+VG_(get_memory_from_mmap): 256857976 bytes already allocated.
+
+Sorry.  You could try using a tool that uses less memory;
+eg. addrcheck instead of memcheck.
+
+
+
+Perhaps create a command-line option to only create tags for STATIC
+instances of literals, which loses precision but gives us much better
+performance on these huge programs --- but if you do the static thing,
+you must add those tags to some list of stuff to NEVER be garbage
+collected!
