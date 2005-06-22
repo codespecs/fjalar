@@ -37,15 +37,14 @@ extern char within_main_program;
 /*------------------------------------------------------------------*/
 
 // This is a serial number which increases every time a new tag
-// is assigned in order to ensure that all tags are unique.
-// (More sophisticated machinery is needed later when we add
-//  garbage collection of tags.)
 // The tag of 0 for a byte of memory means NO tag associated
 // with it.  That's why nextTag starts at 1 and NOT 0.
+// After garbage collection, this will hopefully decrease.
 UInt nextTag = 1;
 
 // The total number of tags that have ever been assigned throughout the
-// duration of the program
+// duration of the program.  This is non-decreasing throughout the
+// execution of the program
 UInt totalNumTagsAssigned = 0;
 
 
@@ -89,26 +88,36 @@ __inline__ void set_tag ( Addr a, UInt tag )
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
-// Return a fresh tag
+// Return a fresh tag and create a singleton set
+// for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag() {
-  UInt tag = nextTag;
-  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
-  // is a special reserved value for tags retrieved from ESP
-  if (nextTag == (UINT_MAX - 1)) {
-    VG_(printf)("Error! Maximum tag has been used.");
-  }
-  else {
-    nextTag++;
-  }
+  UInt tag;
 
-  // Let's try garbage collecting here
+  // Let's try garbage collecting here.  Remember to assign
+  // tag = nextTag AFTER garbage collection (if it occurs) because
+  // nextTag may decrease due to the garbage collection step
   if ((!kvasir_dyncomp_no_gc) &&
       totalNumTagsAssigned && // Don't garbage collect when it's zero
       (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
     garbage_collect_tags();
   }
 
+  tag = nextTag;
+
+  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
+  // is a special reserved value for tags retrieved from ESP
+  if (nextTag == (UINT_MAX - 1)) {
+    VG_(printf)("Error! Maximum tag has been used.\n");
+  }
+  else {
+    nextTag++;
+  }
+
   totalNumTagsAssigned++;
+
+  // Remember to make a new singleton set for the
+  // uf_object associated with that tag
+  val_uf_make_set_for_tag(tag);
 
   return tag;
 }
@@ -125,22 +134,22 @@ __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     newTag = grab_fresh_tag();
     set_tag(curAddr, newTag);
-    val_uf_make_set_for_tag(newTag);
   }
 }
 
 // Copies tags of len bytes from src to dst
-// Possible (but not-yet-implemented) optimization:
 // Set both the tags of 'src' and 'dst' to their
 // respective leaders for every byte
-__inline__ void copy_tags(  Addr src, Addr dst, SizeT len ) {
-   SizeT i;
+void copy_tags(  Addr src, Addr dst, SizeT len ) {
+  SizeT i;
 
-   for (i = 0; i < len; i++) {
-      UInt tag  = get_tag ( src+i );
-      set_tag ( dst+i, tag );
-   }
+  for (i = 0; i < len; i++) {
+    UInt leader = val_uf_find_leader(get_tag(src + i));
+    set_tag (src + i, leader);
+    set_tag (dst + i, leader);
+  }
 }
+
 
 /* The two-level value uf_object map works almost like the memory map.
    Its purpose is to implement a sparse array which can hold
@@ -203,11 +212,16 @@ void val_uf_make_set_for_tag(UInt tag) {
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
 }
 
-static __inline__ void val_uf_tag_union(UInt tag1, UInt tag2) {
+// Merge the sets of tag1 and tag2 and return the leader
+static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-        uf_union(GET_UF_OBJECT_PTR(tag1),
-                 GET_UF_OBJECT_PTR(tag2));
+    uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
+                                 GET_UF_OBJECT_PTR(tag2));
+    return leader->tag;
+  }
+  else {
+    return 0;
   }
 }
 
@@ -239,9 +253,10 @@ static  __inline__ uf_name val_uf_tag_find(UInt tag) {
 // Write tag into all addresses in the range [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
   Addr curAddr;
+  UInt leader = val_uf_find_leader(tag);
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, tag);
+    set_tag(curAddr, leader);
   }
 }
 
@@ -322,15 +337,15 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   UInt canonicalTag;
   UInt tag1 = get_tag(a1);
   UInt tag2 = get_tag(a2);
+
   if ((0 == tag1) ||
       (0 == tag2) ||
       (tag1 == tag2)) {
     return;
   }
 
-  val_uf_tag_union(tag1, tag2);
+  canonicalTag = val_uf_tag_union(tag1, tag2);
 
-  canonicalTag = val_uf_find_leader(tag1);
   set_tag(a1, canonicalTag);
   set_tag(a2, canonicalTag);
 
@@ -343,31 +358,48 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
 // (An optimization which could help out with garbage collection
 //  because we want to have as few tags 'in play' at one time
 //  as possible)
-void val_uf_union_tags_in_range(Addr a, SizeT len) {
+// Returns the canonical tag of the merged set as the result
+UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   Addr curAddr;
-  UInt aTag = get_tag(a);
   UInt canonicalTag;
+  UInt tagToMerge = 0;
+  UInt curTag;
 
-  // Why do we do this?  What if 'a' has a tag of 0
-  // but the neighbors of 'a' do not?
-  if (0 == aTag) {
-    return;
-  }
-
-  for (curAddr = (a + 1); curAddr < (a + len); curAddr++) {
-    UInt curTag = get_tag(curAddr);
-    if (aTag != curTag) {
-      val_uf_tag_union(aTag, curTag);
+  // Scan the range for the first non-zero tag and use
+  // that as the basis for all the mergings:
+  // (Hopefully this should only take one iteration
+  //  because the tag of address 'a' should be non-zero)
+  for (curAddr = a; curAddr < (a + len); curAddr++) {
+    curTag = get_tag(curAddr);
+    if (curTag) {
+      tagToMerge = curTag;
+      break;
     }
   }
 
-  // Find out the canonical tag
-  canonicalTag = val_uf_find_leader(aTag);
+  // If they are all zeroes, then we're done;
+  // Don't merge anything
+  if (0 == tagToMerge) {
+    return 0;
+  }
+  // Otherwise, merge all the stuff and set them to canonical:
+  else {
+    for (curAddr = a; curAddr < (a + len); curAddr++) {
+      curTag = get_tag(curAddr);
+      if (tagToMerge != curTag) {
+        val_uf_tag_union(tagToMerge, curTag);
+      }
+    }
 
-  // Set all the tags in this range to the canonical tag
-  // (as inferred from a reverse map lookup)
-  for (curAddr = a; curAddr < (a + len); curAddr++) {
-    set_tag(curAddr, canonicalTag);
+    // Find out the canonical tag
+    canonicalTag = val_uf_find_leader(tagToMerge);
+
+    // Set all the tags in this range to the canonical tag
+    for (curAddr = a; curAddr < (a + len); curAddr++) {
+      set_tag(curAddr, canonicalTag);
+    }
+
+    return canonicalTag;
   }
 }
 
@@ -380,8 +412,6 @@ VGA_REGPARM(0)
 UInt MC_(helperc_CREATE_TAG) () {
   UInt newTag = grab_fresh_tag();
 
-  val_uf_make_set_for_tag(newTag);
-
   if (within_main_program) {
     DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n",
                     newTag, nextTag);
@@ -393,20 +423,17 @@ UInt MC_(helperc_CREATE_TAG) () {
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
-  val_uf_union_tags_in_range(a, 8);
-  return get_tag(a);
+  return val_uf_union_tags_in_range(a, 8);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
-  val_uf_union_tags_in_range(a, 4);
-  return get_tag(a);
+  return val_uf_union_tags_in_range(a, 4);
 }
 
 VGA_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
-  val_uf_union_tags_in_range(a, 2);
-  return get_tag(a);
+  return val_uf_union_tags_in_range(a, 2);
 }
 
 VGA_REGPARM(1)
@@ -415,7 +442,8 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
 }
 
 // Merge tags during any binary operation which
-// qualifies as an interaction and returns the first tag
+// qualifies as an interaction and returns the leader
+// of the merged set
 VGA_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
 
@@ -443,8 +471,7 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
     return 0;
   }
   else {
-    val_uf_tag_union(tag1, tag2);
-    return tag1;
+    return val_uf_tag_union(tag1, tag2);
   }
 }
 
@@ -491,6 +518,8 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 /*------------------------------------------------------------------*/
 /*--- Linked-lists of tags for garbage collection                ---*/
 /*------------------------------------------------------------------*/
+
+// (This is currently not used right now)
 
 // Adds a new tag to the tail of the list
 // Pre: (tag != 0)

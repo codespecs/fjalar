@@ -77,12 +77,12 @@ void clear_list(TagList* listPtr);
 
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len );
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len );
-__inline__ void copy_tags(  Addr src, Addr dst, SizeT len );
+void copy_tags(  Addr src, Addr dst, SizeT len );
 
 __inline__ UInt get_tag ( Addr a );
 __inline__ void set_tag ( Addr a, UInt tag );
 
-void val_uf_union_tags_in_range(Addr a, SizeT len);
+UInt val_uf_union_tags_in_range(Addr a, SizeT len);
 void val_uf_union_tags_at_addr(Addr a1, Addr a2);
 __inline__ UInt val_uf_find_leader(UInt tag);
 
