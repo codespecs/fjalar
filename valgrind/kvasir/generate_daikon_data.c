@@ -256,7 +256,7 @@ int equivalentGlobalVarAddrs(unsigned long ID1, unsigned long ID2) {
 // locations for removing duplicates.
 void initializeGlobalVarsList()
 {
-  int i;
+  UInt i;
   dwarf_entry* cur_entry = 0;
   VarNode* node = 0;
   DaikonVariable* maxGlobalVar = 0;
@@ -667,7 +667,7 @@ void extractVoidType(DaikonType* t)
 void extractStructUnionType(DaikonType* t, dwarf_entry* e)
 {
   collection_type* collectionPtr = 0;
-  int i = 0;
+  UInt i = 0;
   VarNode* memberNodePtr = 0;
 
   if (!(e->tag_name == DW_TAG_structure_type) &&
@@ -769,7 +769,7 @@ void extractStructUnionType(DaikonType* t, dwarf_entry* e)
 void extractFormalParameterVars(DaikonFunctionInfo* daikonEntry,
                                 function* dwarfFunctionEntry)
 {
-  int i;
+  UInt i;
 
   DPRINTF("extractFormalParameterVars - %s (#: %u)\n",
 	 dwarfFunctionEntry->name, dwarfFunctionEntry->num_formal_params);
@@ -793,7 +793,7 @@ void extractFormalParameterVars(DaikonFunctionInfo* daikonEntry,
 void extractLocalArrayAndStructVariables(DaikonFunctionInfo* daikonEntry,
                                          function* dwarfFunctionEntry)
 {
-  int i;
+  UInt i;
 
   DPRINTF("extractLocalArrayAndStructVariables - %s (#: %u)\n",
 	 dwarfFunctionEntry->name, dwarfFunctionEntry->num_local_vars);
@@ -1509,7 +1509,7 @@ void printOneDaikonVariable(DaikonVariable* var, char doNotRecurse, char firstTi
 // in there, and set each one's parentClass field to this struct
 void initializeAllClassMemberFunctions() {
   struct geniterator* it = gengetiterator(DaikonTypesTable);
-  int i;
+  UInt i;
   // Iterate through member_funcs and set the classParent
   // field of each member function entry in DaikonFunctionInfoTable
   // to point to this struct t
@@ -1589,7 +1589,6 @@ inline DaikonFunctionInfo* findFunctionInfoByAddr(unsigned int addr) {
 // Don't worry about modding because GenericHashtable.c will do it for us :)
 unsigned int hashString(char* str) {
   int i;
-  int hashcode;
   int sum = 0;
   int len = VG_(strlen)(str);
   for (i = 0; i < len; i++) {
