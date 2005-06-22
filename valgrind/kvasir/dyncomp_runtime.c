@@ -848,9 +848,37 @@ void inc_ref_count_for_tag(UInt tag) {
 //      which means (!IS_SECONDARY_UF_NULL(tag))
 void dec_ref_count_for_tag(UInt tag) {
   if (tag) { // Punt if it's a zero tag
+
     uf_object* obj = GET_UF_OBJECT_PTR(tag);
     DEC_REF_COUNT(obj);
-    CHECK_REF_COUNT_NULL(obj);
+
+    // This tag may be eligible to be added onto free_list:
+    if (0 == obj->ref_count) {
+      ThreadId currentTID;
+      UInt i;
+
+      UInt* addr;
+
+      // Check if the tag appears anywhere in the guest state,
+      // and if it does, we cannot add it to free_list
+
+      // Just go through all of the registers in the x86 guest state
+      // as depicted in vex/pub/libvex_guest_x86.h
+      currentTID = VG_(get_running_tid)();
+
+      for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
+        addr =
+          VG_(get_tag_ptr_for_x86_guest_offset)(currentTID,
+                                                x86_guest_state_offsets[i]);
+
+        if ((*addr) == tag) {
+          return; // Punt
+        }
+      }
+
+      // If we didn't punt, then add it to free_list:
+      free_list_push(obj);
+    }
   }
 }
 
