@@ -8,7 +8,7 @@
 
 typedef struct _uf_object uf_object;
 
-// 12 bytes total
+// 10 bytes total
 struct _uf_object {
   uf_object* parent;         // 4 bytes
   // The tag which corresponds to this uf_object
