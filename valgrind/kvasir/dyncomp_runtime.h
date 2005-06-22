@@ -57,4 +57,28 @@ void check_whether_to_garbage_collect();
 
 void garbage_collect_tags();
 
-#endif
+
+#ifdef USE_REF_COUNT
+
+uf_object* free_list;
+
+void free_list_push(uf_object* obj);
+UInt free_list_pop();
+
+void inc_ref_count_for_tag(UInt tag);
+void dec_ref_count_for_tag(UInt tag);
+
+// Check if the ref_count for this uf_object is NULL,
+// and if so, insert it into free_list
+#define CHECK_REF_COUNT_NULL(obj)               \
+  if (0 == obj->ref_count)                      \
+    free_list_push(obj)
+
+#else
+
+#define CHECK_REF_COUNT_NULL(obj)
+
+#endif // USE_REF_COUNT
+
+
+#endif // DYNCOMP_RUNTIME_H

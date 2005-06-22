@@ -26,6 +26,7 @@
 #include "kvasir_main.h"
 #include "mc_include.h"
 #include "dyncomp_main.h"
+#include "dyncomp_runtime.h"
 #include <limits.h>
 
 
@@ -74,6 +75,8 @@ __inline__ UInt get_tag ( Addr a )
 
 __inline__ void set_tag ( Addr a, UInt tag )
 {
+  UInt* p_tagInMap;
+
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     UInt* new_tag_array =
       (UInt*)VG_(shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
@@ -85,13 +88,54 @@ __inline__ void set_tag ( Addr a, UInt tag )
     //      check_whether_to_garbage_collect();
     //    }
   }
+
+#ifdef USE_REF_COUNT
+  // Avoid decrementing, freeing, and incrementing ref_count for the
+  // SAME tag because that might lead to some subtle bugs:
+  p_tagInMap = &primary_tag_map[PM_IDX(a)][SM_OFF(a)];
+  if (*p_tagInMap != tag) {
+    dec_ref_count_for_tag(*p_tagInMap);
+    inc_ref_count_for_tag(tag);
+  }
+  *p_tagInMap = tag;
+#else
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
+#endif
 }
 
 // Return a fresh tag and create a singleton set
 // for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag() {
   UInt tag;
+
+  // Reference counting implementation:
+#ifdef USE_REF_COUNT
+  if (free_list) {
+    // This already makes the appropriate singleton set
+    tag = free_list_pop();
+  }
+  else {
+    tag = nextTag;
+
+    // Remember to make a new singleton set for the
+    // uf_object associated with that tag
+    val_uf_make_set_for_tag(tag);
+
+    // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
+    // is a special reserved value for tags retrieved from ESP
+    if (nextTag == (UINT_MAX - 1)) {
+      VG_(printf)("Error! Maximum tag has been used.\n");
+    }
+    else {
+      nextTag++;
+    }
+  }
+
+  totalNumTagsAssigned++;
+  return tag;
+
+  // Garbage collection implementation
+#else
 
   // Let's try garbage collecting here.  Remember to assign
   // tag = nextTag AFTER garbage collection (if it occurs) because
@@ -104,6 +148,10 @@ static __inline__ UInt grab_fresh_tag() {
 
   tag = nextTag;
 
+  // Remember to make a new singleton set for the
+  // uf_object associated with that tag
+  val_uf_make_set_for_tag(tag);
+
   // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
   // is a special reserved value for tags retrieved from ESP
   if (nextTag == (UINT_MAX - 1)) {
@@ -115,11 +163,8 @@ static __inline__ UInt grab_fresh_tag() {
 
   totalNumTagsAssigned++;
 
-  // Remember to make a new singleton set for the
-  // uf_object associated with that tag
-  val_uf_make_set_for_tag(tag);
-
   return tag;
+#endif
 }
 
 // Allocate a new unique tag for all bytes in range [a, a + len)

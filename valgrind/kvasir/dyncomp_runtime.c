@@ -187,6 +187,8 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags, *new_tags;
 
+  UInt tagBeforeOp;
+
   if (isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
@@ -210,8 +212,23 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   var_tags_v = var_tags[daikonVarIndex];
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
+
+#ifdef USE_REF_COUNT
+    tagBeforeOp = var_tags[daikonVarIndex];
+#endif
+
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
+
+#ifdef USE_REF_COUNT
+    // Avoid decrementing, freeing, and incrementing ref_count for the
+    // SAME tag because that might lead to some subtle bugs:
+    if (tagBeforeOp != var_tags[daikonVarIndex]) {
+      dec_ref_count_for_tag(tagBeforeOp);
+      inc_ref_count_for_tag(var_tags[daikonVarIndex]);
+    }
+#endif
+
   }
 
   // Make sure that an entry is created in var_uf_map for the tag
@@ -232,8 +249,24 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   // variable at this program point with the new value that we just
   // observed
   //  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
+
+
+#ifdef USE_REF_COUNT
+    tagBeforeOp = var_tags[daikonVarIndex];
+#endif
+
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
+
+#ifdef USE_REF_COUNT
+    // Avoid decrementing, freeing, and incrementing ref_count for the
+    // SAME tag because that might lead to some subtle bugs:
+    if (tagBeforeOp != var_tags[daikonVarIndex]) {
+      dec_ref_count_for_tag(tagBeforeOp);
+      inc_ref_count_for_tag(var_tags[daikonVarIndex]);
+    }
+#endif
+
 
   DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
@@ -258,6 +291,8 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
+  UInt tagBeforeOp;
+
   if (isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
@@ -279,8 +314,23 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   var_tags_v = var_tags[daikonVarIndex];
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
+
+#ifdef USE_REF_COUNT
+    tagBeforeOp = var_tags[daikonVarIndex];
+#endif
+
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
+
+#ifdef USE_REF_COUNT
+    // Avoid decrementing, freeing, and incrementing ref_count for the
+    // SAME tag because that might lead to some subtle bugs:
+    if (tagBeforeOp != var_tags[daikonVarIndex]) {
+      dec_ref_count_for_tag(tagBeforeOp);
+      inc_ref_count_for_tag(var_tags[daikonVarIndex]);
+    }
+#endif
+
   }
 
   DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
@@ -774,6 +824,34 @@ UInt free_list_pop() {
   free_list = popped_uf_obj->parent;
   uf_make_set(popped_uf_obj, popped_uf_obj->tag);
   return popped_uf_obj->tag;
+}
+
+// Increments the ref_count field of the uf_object entry corresponding
+// to this tag.  This should be called whenever an operation causes a
+// tag to be stored in one extra location.
+
+// Pre: A uf_object for this tag has been allocated somewhere,
+//      which means (!IS_SECONDARY_UF_NULL(tag))
+void inc_ref_count_for_tag(UInt tag) {
+  if (tag) { // Punt if it's a zero tag
+    uf_object* obj = GET_UF_OBJECT_PTR(tag);
+    INC_REF_COUNT(obj);
+  }
+}
+
+// Decrements the ref_count field of the uf_object entry corresponding
+// to this tag, and if it becomes 0, add it to free_list.  This should
+// be called whenever an operation causes a tag to be removed from
+// some location.
+
+// Pre: A uf_object for this tag has been allocated somewhere,
+//      which means (!IS_SECONDARY_UF_NULL(tag))
+void dec_ref_count_for_tag(UInt tag) {
+  if (tag) { // Punt if it's a zero tag
+    uf_object* obj = GET_UF_OBJECT_PTR(tag);
+    DEC_REF_COUNT(obj);
+    CHECK_REF_COUNT_NULL(obj);
+  }
 }
 
 #endif
