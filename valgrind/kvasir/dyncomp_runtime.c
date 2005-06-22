@@ -724,3 +724,56 @@ void check_whether_to_garbage_collect() {
   // assignments:
 
 }
+
+
+// Implementation of reference counting:
+// (alternative to garbage collection)
+
+#ifdef USE_REF_COUNT
+
+// free_list is actually a uf_object* pointer that points to some
+// element in val_uf (implemented as a two-level uf_object map) that
+// has been freed. All uf_object elements that have been freed must
+// have some special sentinel ref_count value - let's say USHRT_MAX
+// (0xFFFF) - to denote that they have been freed and are in
+// free_list.  All ub_object entries in free_list have their parent
+// fields point to the NEXT freed entry in free_list. The last entry
+// in free_list has a NULL parent field. Notice that we are
+// overloading the parent field to mean different things when an entry
+// is on the free list (linked list link) and not on the free list
+// (union-find set link).
+uf_object* free_list = NULL;
+
+// During run-time, whenever the ref_count of a uf_object drops to 0
+// (from a non-zero number), then add it to the head of
+// free_list. This involves setting ref_count to USHRT_MAX,
+// decrementing the ref_count field of its parent, setting its parent
+// field to point to whatever free_list points to (the old head of the
+// list), and changing free_list to point to this entry.
+
+// Pre: obj->ref_count just dropped to 0 from a non-zero number
+void free_list_push(uf_object* obj) {
+  DEC_REF_COUNT(obj->parent);
+  obj->ref_count = USHRT_MAX; // Special sentinel value
+  obj->parent = free_list;
+  free_list = obj;
+}
+
+
+// Whenever a new tag is assigned, first check to see if free_list is
+// non-NULL. If so, then there are freed tags waiting to be
+// re-assigned so pop the first element off of free_list (by crawling
+// one element down the list), initialize that popped element to a
+// singleton set, and return the tag associated with that element.
+
+// Pre: free_list is non-NULL
+// Returns the tag of the head element of free_list, pops that element
+// off of free_list, and initializes that element to a singleton set
+UInt free_list_pop() {
+  uf_object* popped_uf_obj = free_list;
+  free_list = popped_uf_obj->parent;
+  uf_make_set(popped_uf_obj, popped_uf_obj->tag);
+  return popped_uf_obj->tag;
+}
+
+#endif
