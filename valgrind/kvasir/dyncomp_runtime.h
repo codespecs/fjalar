@@ -57,18 +57,4 @@ void check_whether_to_garbage_collect();
 
 void garbage_collect_tags();
 
-
-#ifdef USE_REF_COUNT
-
-uf_object* free_list;
-
-void free_list_push(uf_object* obj);
-UInt free_list_pop();
-
-void inc_ref_count_for_tag(UInt tag);
-void dec_ref_count_for_tag(UInt tag);
-
-#endif // USE_REF_COUNT
-
-
-#endif // DYNCOMP_RUNTIME_H
+#endif
