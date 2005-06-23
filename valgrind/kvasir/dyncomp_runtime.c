@@ -187,8 +187,6 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags, *new_tags;
 
-  UInt tagBeforeOp;
-
   if (isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
@@ -212,23 +210,8 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   var_tags_v = var_tags[daikonVarIndex];
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
-
-#ifdef USE_REF_COUNT
-    tagBeforeOp = var_tags[daikonVarIndex];
-#endif
-
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
-
-#ifdef USE_REF_COUNT
-    // Avoid decrementing, freeing, and incrementing ref_count for the
-    // SAME tag because that might lead to some subtle bugs:
-    if (tagBeforeOp != var_tags[daikonVarIndex]) {
-      dec_ref_count_for_tag(tagBeforeOp);
-      inc_ref_count_for_tag(var_tags[daikonVarIndex]);
-    }
-#endif
-
   }
 
   // Make sure that an entry is created in var_uf_map for the tag
@@ -249,24 +232,8 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   // variable at this program point with the new value that we just
   // observed
   //  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
-
-
-#ifdef USE_REF_COUNT
-    tagBeforeOp = var_tags[daikonVarIndex];
-#endif
-
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
-
-#ifdef USE_REF_COUNT
-    // Avoid decrementing, freeing, and incrementing ref_count for the
-    // SAME tag because that might lead to some subtle bugs:
-    if (tagBeforeOp != var_tags[daikonVarIndex]) {
-      dec_ref_count_for_tag(tagBeforeOp);
-      inc_ref_count_for_tag(var_tags[daikonVarIndex]);
-    }
-#endif
-
 
   DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
@@ -291,8 +258,6 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
-  UInt tagBeforeOp;
-
   if (isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
@@ -314,23 +279,8 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   var_tags_v = var_tags[daikonVarIndex];
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
-
-#ifdef USE_REF_COUNT
-    tagBeforeOp = var_tags[daikonVarIndex];
-#endif
-
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
-
-#ifdef USE_REF_COUNT
-    // Avoid decrementing, freeing, and incrementing ref_count for the
-    // SAME tag because that might lead to some subtle bugs:
-    if (tagBeforeOp != var_tags[daikonVarIndex]) {
-      dec_ref_count_for_tag(tagBeforeOp);
-      inc_ref_count_for_tag(var_tags[daikonVarIndex]);
-    }
-#endif
-
   }
 
   DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
@@ -471,6 +421,7 @@ void debugPrintTagsInRange(Addr low, Addr high) {
 
 // Tag garbage collector:
 
+
 // Offsets for all of the registers in the x86 guest state
 // as depicted in vex/pub/libvex_guest_x86.h:
 
@@ -553,7 +504,6 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   /* Padding to make it have an 8-aligned size */
   308  //      UInt   padding;
 };
-
 
 // Try to find leaderTag's entry in oldToNewMap (map from old tags to
 // new tags).  If it does not exist, then write *p_newTagNumber in the
@@ -779,95 +729,95 @@ void check_whether_to_garbage_collect() {
 // Implementation of reference counting:
 // (alternative to garbage collection)
 
-#ifdef USE_REF_COUNT
+// Note: The framework is laid down, but the complete system
+//       has not yet been implemented due to some difficulties
+//       in dealing with the Valgrind IR
 
-// free_list is actually a uf_object* pointer that points to some
-// element in val_uf (implemented as a two-level uf_object map) that
-// has been freed. All uf_object elements that have been freed must
-// have some special sentinel ref_count value - let's say USHRT_MAX
-// (0xFFFF) - to denote that they have been freed and are in
-// free_list.  All ub_object entries in free_list have their parent
-// fields point to the NEXT freed entry in free_list. The last entry
-// in free_list has a NULL parent field. Notice that we are
-// overloading the parent field to mean different things when an entry
-// is on the free list (linked list link) and not on the free list
-// (union-find set link).
-uf_object* free_list = NULL;
+/* // free_list is actually a uf_object* pointer that points to some */
+/* // element in val_uf (implemented as a two-level uf_object map) that */
+/* // has been freed. All uf_object elements that have been freed must */
+/* // have some special sentinel ref_count value - let's say USHRT_MAX */
+/* // (0xFFFF) - to denote that they have been freed and are in */
+/* // free_list.  All ub_object entries in free_list have their parent */
+/* // fields point to the NEXT freed entry in free_list. The last entry */
+/* // in free_list has a NULL parent field. Notice that we are */
+/* // overloading the parent field to mean different things when an entry */
+/* // is on the free list (linked list link) and not on the free list */
+/* // (union-find set link). */
+/* uf_object* free_list = NULL; */
 
-// During run-time, whenever the ref_count of a uf_object drops to 0
-// (from a non-zero number), then add it to the head of
-// free_list. This involves setting ref_count to USHRT_MAX,
-// decrementing the ref_count field of its parent, setting its parent
-// field to point to whatever free_list points to (the old head of the
-// list), and changing free_list to point to this entry.
+/* // During run-time, whenever the ref_count of a uf_object drops to 0 */
+/* // (from a non-zero number), then add it to the head of */
+/* // free_list. This involves setting ref_count to USHRT_MAX, */
+/* // decrementing the ref_count field of its parent, setting its parent */
+/* // field to point to whatever free_list points to (the old head of the */
+/* // list), and changing free_list to point to this entry. */
 
-// Pre: obj->ref_count just dropped to 0 from a non-zero number
-void free_list_push(uf_object* obj) {
+/* // Pre: obj->ref_count just dropped to 0 from a non-zero number */
+/* void free_list_push(uf_object* obj) { */
 
-  if (obj->tag == 1706695) {
-    VG_(printf)("free_list_push(): obj->tag=%u\n", obj->tag);
-  }
+/*   if (obj->tag == 1706695) { */
+/*     VG_(printf)("free_list_push(): obj->tag=%u\n", obj->tag); */
+/*   } */
 
-  DEC_REF_COUNT(obj->parent);
-  obj->ref_count = USHRT_MAX; // Special sentinel value
-  obj->parent = free_list;
-  free_list = obj;
-}
+/*   DEC_REF_COUNT(obj->parent); */
+/*   obj->ref_count = USHRT_MAX; // Special sentinel value */
+/*   obj->parent = free_list; */
+/*   free_list = obj; */
+/* } */
 
 
-// Whenever a new tag is assigned, first check to see if free_list is
-// non-NULL. If so, then there are freed tags waiting to be
-// re-assigned so pop the first element off of free_list (by crawling
-// one element down the list), initialize that popped element to a
-// singleton set, and return the tag associated with that element.
+/* // Whenever a new tag is assigned, first check to see if free_list is */
+/* // non-NULL. If so, then there are freed tags waiting to be */
+/* // re-assigned so pop the first element off of free_list (by crawling */
+/* // one element down the list), initialize that popped element to a */
+/* // singleton set, and return the tag associated with that element. */
 
-// Pre: free_list is non-NULL
-// Returns the tag of the head element of free_list, pops that element
-// off of free_list, and initializes that element to a singleton set
-UInt free_list_pop() {
-  uf_object* popped_uf_obj = free_list;
-  free_list = popped_uf_obj->parent;
-  uf_make_set(popped_uf_obj, popped_uf_obj->tag);
+/* // Pre: free_list is non-NULL */
+/* // Returns the tag of the head element of free_list, pops that element */
+/* // off of free_list, and initializes that element to a singleton set */
+/* UInt free_list_pop() { */
+/*   uf_object* popped_uf_obj = free_list; */
+/*   free_list = popped_uf_obj->parent; */
+/*   uf_make_set(popped_uf_obj, popped_uf_obj->tag); */
 
-  //  VG_(printf)("free_list_pop(): tag=%u, free_list=%p\n",
-  //              popped_uf_obj->tag, free_list);
+/*   //  VG_(printf)("free_list_pop(): tag=%u, free_list=%p\n", */
+/*   //              popped_uf_obj->tag, free_list); */
 
-  return popped_uf_obj->tag;
-}
+/*   return popped_uf_obj->tag; */
+/* } */
 
-// Increments the ref_count field of the uf_object entry corresponding
-// to this tag.  This should be called whenever an operation causes a
-// tag to be stored in one extra location.
+/* // Increments the ref_count field of the uf_object entry corresponding */
+/* // to this tag.  This should be called whenever an operation causes a */
+/* // tag to be stored in one extra location. */
 
-// Pre: A uf_object for this tag has been allocated somewhere,
-//      which means (!IS_SECONDARY_UF_NULL(tag))
-void inc_ref_count_for_tag(UInt tag) {
-  // Punt if it's a zero tag or UINT_MAX (special for ESP)
-  if (tag && (tag != UINT_MAX)) {
-    uf_object* obj = GET_UF_OBJECT_PTR(tag);
-    INC_REF_COUNT(obj);
-  }
-}
+/* // Pre: A uf_object for this tag has been allocated somewhere, */
+/* //      which means (!IS_SECONDARY_UF_NULL(tag)) */
+/* void inc_ref_count_for_tag(UInt tag) { */
+/*   // Punt if it's a zero tag or UINT_MAX (special for ESP) */
+/*   if (tag && (tag != UINT_MAX)) { */
+/*     uf_object* obj = GET_UF_OBJECT_PTR(tag); */
+/*     INC_REF_COUNT(obj); */
+/*   } */
+/* } */
 
-// Decrements the ref_count field of the uf_object entry corresponding
-// to this tag, and if it becomes 0, add it to free_list.  This should
-// be called whenever an operation causes a tag to be removed from
-// some location.
+/* // Decrements the ref_count field of the uf_object entry corresponding */
+/* // to this tag, and if it becomes 0, add it to free_list.  This should */
+/* // be called whenever an operation causes a tag to be removed from */
+/* // some location. */
 
-// Pre: A uf_object for this tag has been allocated somewhere,
-//      which means (!IS_SECONDARY_UF_NULL(tag))
-void dec_ref_count_for_tag(UInt tag) {
-  // Punt if it's a zero tag or UINT_MAX (special for ESP)
-  if (tag && (tag != UINT_MAX)) {
+/* // Pre: A uf_object for this tag has been allocated somewhere, */
+/* //      which means (!IS_SECONDARY_UF_NULL(tag)) */
+/* void dec_ref_count_for_tag(UInt tag) { */
+/*   // Punt if it's a zero tag or UINT_MAX (special for ESP) */
+/*   if (tag && (tag != UINT_MAX)) { */
 
-    uf_object* obj = GET_UF_OBJECT_PTR(tag);
-    DEC_REF_COUNT(obj);
+/*     uf_object* obj = GET_UF_OBJECT_PTR(tag); */
+/*     DEC_REF_COUNT(obj); */
 
-    // This tag may be eligible to be added onto free_list:
-    if (0 == obj->ref_count) {
-      free_list_push(obj);
-    }
-  }
-}
-
-#endif
+/*     // This tag may be eligible to be added onto free_list: */
+/*     if (0 == obj->ref_count) { */
+/*       free_list_push(obj); */
+/*     } */
+/*   } */
+/* } */
