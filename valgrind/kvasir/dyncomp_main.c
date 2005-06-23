@@ -560,6 +560,73 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 }
 
 
+// For reference counting:
+
+VGA_REGPARM(2)
+void helper_PUT_WITH_REF_COUNT(UInt offset, UInt newTag) {
+  ThreadId currentTID;
+  UInt* p_oldTag;
+
+  currentTID = VG_(get_running_tid)();
+
+  p_oldTag = VG_(get_tag_ptr_for_x86_guest_offset)(currentTID, offset);
+
+  //  VG_(printf)("offset=%u, oldTag=%u, newTag=%u\n",
+  //              offset, *p_oldTag, newTag);
+  if (*p_oldTag != newTag) {
+    dec_ref_count_for_tag(*p_oldTag);
+    inc_ref_count_for_tag(newTag);
+  }
+}
+
+VGA_REGPARM(3)
+void helper_PUTI_WITH_REF_COUNT(UInt baseBiasLovechild, Int ix, UInt newTag) {
+  UShort base;
+  Short bias;
+
+  ThreadId currentTID;
+  UInt* p_oldTag;
+
+  Int modResult;
+
+  UInt offset;
+
+  base = (baseBiasLovechild & 0xFFFF);
+  bias = (baseBiasLovechild >> 16);
+
+  currentTID = VG_(get_running_tid)();
+
+  // Ok, the offset to look into is the following:
+  // base + ((ix + bias) % 8)
+
+  modResult = ((ix + bias) % 8);
+
+  if (modResult < 0) {
+    modResult *= -1;
+  }
+
+  if (base == 64) {
+    offset = base + (4 * modResult);
+  }
+
+  if (base == 128) {
+    offset = base + modResult;
+  }
+
+
+  p_oldTag = VG_(get_tag_ptr_for_x86_guest_offset)(currentTID, offset);
+
+  //  VG_(printf)("offset=%u, oldTag=%u, newTag=%u\n",
+  //              offset, *p_oldTag, newTag);
+  if (*p_oldTag != newTag) {
+    dec_ref_count_for_tag(*p_oldTag);
+    inc_ref_count_for_tag(newTag);
+  }
+
+  //  VG_(printf)("PUTI: base=%u, ix=%d, bias=%d, offset=%u, newTag=%u\n",
+  //              base, ix, bias, offset, newTag);
+}
+
 /*------------------------------------------------------------------*/
 /*--- Linked-lists of tags for garbage collection                ---*/
 /*------------------------------------------------------------------*/

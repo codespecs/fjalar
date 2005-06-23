@@ -471,7 +471,6 @@ void debugPrintTagsInRange(Addr low, Addr high) {
 
 // Tag garbage collector:
 
-
 // Offsets for all of the registers in the x86 guest state
 // as depicted in vex/pub/libvex_guest_x86.h:
 
@@ -554,6 +553,7 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   /* Padding to make it have an 8-aligned size */
   308  //      UInt   padding;
 };
+
 
 // Try to find leaderTag's entry in oldToNewMap (map from old tags to
 // new tags).  If it does not exist, then write *p_newTagNumber in the
@@ -803,6 +803,11 @@ uf_object* free_list = NULL;
 
 // Pre: obj->ref_count just dropped to 0 from a non-zero number
 void free_list_push(uf_object* obj) {
+
+  if (obj->tag == 1706695) {
+    VG_(printf)("free_list_push(): obj->tag=%u\n", obj->tag);
+  }
+
   DEC_REF_COUNT(obj->parent);
   obj->ref_count = USHRT_MAX; // Special sentinel value
   obj->parent = free_list;
@@ -823,6 +828,10 @@ UInt free_list_pop() {
   uf_object* popped_uf_obj = free_list;
   free_list = popped_uf_obj->parent;
   uf_make_set(popped_uf_obj, popped_uf_obj->tag);
+
+  //  VG_(printf)("free_list_pop(): tag=%u, free_list=%p\n",
+  //              popped_uf_obj->tag, free_list);
+
   return popped_uf_obj->tag;
 }
 
@@ -833,7 +842,8 @@ UInt free_list_pop() {
 // Pre: A uf_object for this tag has been allocated somewhere,
 //      which means (!IS_SECONDARY_UF_NULL(tag))
 void inc_ref_count_for_tag(UInt tag) {
-  if (tag) { // Punt if it's a zero tag
+  // Punt if it's a zero tag or UINT_MAX (special for ESP)
+  if (tag && (tag != UINT_MAX)) {
     uf_object* obj = GET_UF_OBJECT_PTR(tag);
     INC_REF_COUNT(obj);
   }
@@ -847,36 +857,14 @@ void inc_ref_count_for_tag(UInt tag) {
 // Pre: A uf_object for this tag has been allocated somewhere,
 //      which means (!IS_SECONDARY_UF_NULL(tag))
 void dec_ref_count_for_tag(UInt tag) {
-  if (tag) { // Punt if it's a zero tag
+  // Punt if it's a zero tag or UINT_MAX (special for ESP)
+  if (tag && (tag != UINT_MAX)) {
 
     uf_object* obj = GET_UF_OBJECT_PTR(tag);
     DEC_REF_COUNT(obj);
 
     // This tag may be eligible to be added onto free_list:
     if (0 == obj->ref_count) {
-      ThreadId currentTID;
-      UInt i;
-
-      UInt* addr;
-
-      // Check if the tag appears anywhere in the guest state,
-      // and if it does, we cannot add it to free_list
-
-      // Just go through all of the registers in the x86 guest state
-      // as depicted in vex/pub/libvex_guest_x86.h
-      currentTID = VG_(get_running_tid)();
-
-      for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
-        addr =
-          VG_(get_tag_ptr_for_x86_guest_offset)(currentTID,
-                                                x86_guest_state_offsets[i]);
-
-        if ((*addr) == tag) {
-          return; // Punt
-        }
-      }
-
-      // If we didn't punt, then add it to free_list:
       free_list_push(obj);
     }
   }

@@ -109,4 +109,9 @@ extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
 
 
+extern VGA_REGPARM(2) void helper_PUT_WITH_REF_COUNT( UInt, UInt );
+
+extern VGA_REGPARM(3) void helper_PUTI_WITH_REF_COUNT( UInt, Int, UInt );
+
+
 #endif

@@ -94,6 +94,8 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
 {
+   IRDirty* di;
+
    IRType ty;
    if (atom) {
       tl_assert(!vatom);
@@ -114,6 +116,27 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
       return;
    }
 
+#ifdef USE_REF_COUNT
+
+   di = unsafeIRDirty_0_N(2,
+                          "helper_PUT_WITH_REF_COUNT()",
+                          &helper_PUT_WITH_REF_COUNT,
+                          mkIRExprVec_2(
+   // Do a get of the old tag currently in that region of the guest state
+                                        //   IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB),
+                                        //               Ity_I32 ), // Tags are 32 bits
+                                        IRExpr_Const(IRConst_U32(offset)),
+   //   IRExpr_Const(IRConst_U32(0))
+   vatom // This is the new tag value to be placed into the guest state
+   ));
+
+   // TODO: Hmmm ... this will need to read the ENTIRE guest state!!!
+   // We need better annotations
+   setHelperAnns_DC( dce, di );
+   stmt( dce->bb, IRStmt_Dirty(di) );
+
+#endif
+
    /* Do a plain shadow Put. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
@@ -129,6 +152,13 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
    IRAtom* vatom;
    IRType  ty;
 
+   IRDirty* di;
+
+   UShort smallBase;
+   Short smallBias;
+
+   UInt baseBiasLovechild;
+
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
    tl_assert(sameKindedAtoms(atom, vatom));
@@ -142,6 +172,44 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
    IRArray* new_descr
       = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                    Ity_I32, descr->nElems); // Tags are 32 bits
+
+#ifdef USE_REF_COUNT
+
+   smallBase = (UShort)(descr->base);
+   smallBias = (Short)(bias);
+
+   baseBiasLovechild = (UInt)(smallBase & 0xFFFF);
+   baseBiasLovechild |= (((Int)smallBias) << 16);
+
+   //   VG_(printf)("descr->base: %d, bias: %d, smallBase: %d, smallBias: %d\n",
+   //               descr->base, bias,
+   //               smallBase, smallBias);
+
+
+   //   IRTemp* newTemp = newIRTemp(dce->bb->tyenv, Ity_I32);
+   //   assign( dce->bb, newTemp,
+   //           IRExpr_GetI( new_descr, ix, bias ));
+
+   //   di = unsafeIRDirty_0_N(2,
+   //                          "helper_PUT_WITH_REF_COUNT()",
+   //                          &helper_PUT_WITH_REF_COUNT,
+   //                          mkIRExprVec_2(newTemp, vatom));
+
+   di = unsafeIRDirty_0_N(3,
+                          "helper_PUTI_WITH_REF_COUNT()",
+                          &helper_PUTI_WITH_REF_COUNT,
+                          mkIRExprVec_3(
+                                        IRExpr_Const(IRConst_U32(baseBiasLovechild)),
+                                        ix,
+                                        vatom));
+
+
+   // TODO: Hmmm ... this will need to read the ENTIRE guest state!!!
+   // We need better annotations
+   setHelperAnns_DC( dce, di );
+   stmt( dce->bb, IRStmt_Dirty(di) );
+
+#endif
 
    stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
 }
