@@ -25,6 +25,12 @@
 #include "mc_asm.h"
 #include "union_find.h"
 
+
+// Special reserved tags
+const UInt ESP_TAG;
+const UInt LITERAL_TAG;
+const UInt LARGEST_REAL_TAG;
+
 UInt nextTag;
 
 // The total number of tags that have ever been assigned throughout the

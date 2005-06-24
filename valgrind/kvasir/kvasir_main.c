@@ -41,6 +41,7 @@ char* kvasir_decls_filename = 0;
 char* kvasir_dtrace_filename = 0;
 Bool kvasir_with_dyncomp = False;
 Bool kvasir_dyncomp_no_gc = False;
+Bool kvasir_dyncomp_fast_mode = False;
 Bool kvasir_print_debug_info = False;
 Bool kvasir_ignore_globals = False;
 Bool kvasir_ignore_static_vars = False;
@@ -554,8 +555,11 @@ void kvasir_print_usage()
 "                        [--no-dyncomp-debug]\n"
 "    --gc-num-tags       The number of tags that get assigned between successive runs\n"
 "                        of the garbage collector (between 1 and INT_MAX)\n"
+"                        (The default is to garbage collect every 5,000,000 tags created)\n"
 "    --no-dyncomp-gc     Do NOT use the tag garbage collector for DynComp.  (Faster\n"
 "                        but may run out of memory for long-running programs)\n"
+"    --dyncomp-fast-mode Approximates the handling of literals for comparability.\n"
+"                        (Loses some precision but faster and takes less memory)\n"
 #ifdef KVASIR_DEVEL_BUILD
 "    --asserts-aborts    turn on safety asserts and aborts (ON BY DEFAULT)\n"
 "                        [--asserts-aborts]\n"
@@ -614,6 +618,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_BNUM_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
                     1, 0x7fffffff)
    else VG_YESNO_CLO("no-dyncomp-gc",     kvasir_dyncomp_no_gc)
+   else VG_YESNO_CLO("dyncomp-fast-mode", kvasir_dyncomp_fast_mode)
    else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
    else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
    else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
@@ -663,6 +668,8 @@ void kvasir_finish() {
   }
 
   DYNCOMP_DPRINTF("\n*** nextTag: %u ***\n\n", nextTag);
+
+  //  VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
 
   if (!dyncomp_without_dtrace) {
      finishDtraceFile();
