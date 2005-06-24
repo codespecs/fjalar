@@ -155,12 +155,12 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
 
-   // Return a special tag of UINT_MAX for a GET call into ESP, in
+   // Return a special tag of ESP_TAG for a GET call into ESP, in
    // order to avoid tons of false mergings of relative address
    // literals derived from arithmetic with ESP
    if (offset == OFFSET_x86_ESP) {
-      // Return a special tag of UINT_MAX for a tag retrieved from ESP
-      return IRExpr_Const(IRConst_U32(UINT_MAX));
+      // Return a special tag of ESP_TAG for a tag retrieved from ESP
+      return IRExpr_Const(IRConst_U32(ESP_TAG));
    }
 
    // The floating-point stack on the x86 is located between offsets
@@ -902,45 +902,30 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
       case Iex_Const:
 
-         // Create one new tag for each dynamic instance of a program
-         // literal - this provides perfect context sensitivity, but
-         // at the expense of memory and time overheads:
+         // Fast mode implementation - create a special reserved
+         // LITERAL_TAG tag one tag for each static instance of a
+         // program literal:
+         if (kvasir_dyncomp_fast_mode) {
+            return IRExpr_Const(IRConst_U32(LITERAL_TAG));
+         }
+         else {
 
-         // Try it with a dirty call:
-         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
-         di = unsafeIRDirty_1_N( datatag,
-                                 0/*regparms*/,
-                                 "MC_(helperc_CREATE_TAG)",
-                                 &MC_(helperc_CREATE_TAG),
-                                 mkIRExprVec_0());
-         setHelperAnns_DC( dce, di );
-         stmt( dce->bb, IRStmt_Dirty(di) );
+            // Create one new tag for each dynamic instance of a program
+            // literal - this provides perfect context sensitivity, but
+            // at the expense of memory and time overheads:
 
-         return mkexpr(datatag);
+            // Try it with a dirty call:
+            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+            di = unsafeIRDirty_1_N( datatag,
+                                    0/*regparms*/,
+                                    "MC_(helperc_CREATE_TAG)",
+                                    &MC_(helperc_CREATE_TAG),
+                                    mkIRExprVec_0());
+            setHelperAnns_DC( dce, di );
+            stmt( dce->bb, IRStmt_Dirty(di) );
 
-
-         // Alternative implementation - create one tag for each
-         // static instance of a program literal:
-
-         // (WARNING!!!  This loses perfect context sensitivity.  It
-         // trades reduced precision for less memory usage and greater
-         // speed, but we think that garbage collection can save us
-         // memory as well, without sacrificing precision.)
-
-         // When you create a constant, assign it a new tag
-         // Important optimization: We should only create a new tag
-         // at translation time, NOT at run-time.  Thus, every single
-         // static instance of a literal in some place in the code
-         // should always have the same tag associated with it, not
-         // a unique tag for every time that line is executed.
-
-         // TODO: Remember to do something special to the uf_objects
-         // corresponding to these tags so that they never get garbage
-         // collected (or else we may get incorrect results) -
-         // Right now we saturate the ref_count field
-
-         // return IRExpr_Const(IRConst_U32(create_new_tag_for_literal()));
-
+            return mkexpr(datatag);
+         }
 
       case Iex_Binop:
          return expr2tags_Binop_DC(

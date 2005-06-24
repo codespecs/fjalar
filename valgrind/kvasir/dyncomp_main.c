@@ -28,6 +28,11 @@
 #include "dyncomp_main.h"
 #include <limits.h>
 
+// Special reserved tags
+const UInt ESP_TAG          =  UINT_MAX;
+const UInt LITERAL_TAG      = (UINT_MAX - 1);
+const UInt LARGEST_REAL_TAG = (UINT_MAX - 2);
+
 
 // For debug printouts
 extern char within_main_program;
@@ -102,15 +107,19 @@ static __inline__ UInt grab_fresh_tag() {
     garbage_collect_tags();
   }
 
+  // For debug:
+  //  if ((nextTag % 100000) == 0) {
+  //    VG_(printf)("nextTag: %u\n", nextTag);
+  //  }
+
+
   tag = nextTag;
 
   // Remember to make a new singleton set for the
   // uf_object associated with that tag
   val_uf_make_set_for_tag(tag);
 
-  // Remember that the maximum tag is (UINT_MAX - 1) since UINT_MAX
-  // is a special reserved value for tags retrieved from ESP
-  if (nextTag == (UINT_MAX - 1)) {
+  if (nextTag == LARGEST_REAL_TAG) {
     VG_(printf)("Error! Maximum tag has been used.\n");
   }
   else {
@@ -253,10 +262,12 @@ static  __inline__ uf_name val_uf_tag_find(UInt tag) {
 // Write tag into all addresses in the range [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
   Addr curAddr;
-  UInt leader = val_uf_find_leader(tag);
+
+  // Don't be as aggressive on the leader optimization for now:
+  //  UInt leader = val_uf_find_leader(tag);
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, leader);
+    set_tag(curAddr, tag);
   }
 }
 
@@ -270,54 +281,71 @@ UInt MC_(helperc_TAG_NOP) ( UInt tag ) {
 
 // When we're requesting to store tags for X bytes,
 // we will write the tag into all X bytes.
-// We don't do a val_uf_make_set_for_tag for the tag we have just
-// written because we assume that it has been initialized
-// somewhere else (is that a safe assumption???)
+
+// When kvasir_dyncomp_fast_mode is on, check whether
+// the tag to be stored is LITERAL_TAG.  If it is, create
+// a new tag and store that in memory instead of LITERAL_TAG.
+// (We don't need to do a check for kvasir_dyncomp_fast_mode
+//  because LITERAL_TAG should never be used for regular real tags
+//  regardless of whether kvasir_dyncomp_fast_mode is on or not.
+//  Real tags are in the range of [1, LARGEST_REAL_TAG])
 
 // For some reason, 64-bit stuff needs REGPARM(1) (Look in
 // mc_translate.c) - this is very important for some reason
 VGA_REGPARM(1)
 void MC_(helperc_STORE_TAG_8) ( Addr a, UInt tag ) {
+  UInt tagToWrite;
 
-  set_tag_for_range(a, 8, tag);
+  if (LITERAL_TAG == tag) {
+    tagToWrite = grab_fresh_tag();
+  }
+  else {
+    tagToWrite = tag;
+  }
 
-  //  if (within_main_program) {
-  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_8(a=0x%x, tag=%u)\n",
-  //                    a, tag);
-  //  }
+  set_tag_for_range(a, 8, tagToWrite);
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
+  UInt tagToWrite;
 
-  set_tag_for_range(a, 4, tag);
+  if (LITERAL_TAG == tag) {
+    tagToWrite = grab_fresh_tag();
+  }
+  else {
+    tagToWrite = tag;
+  }
 
-  //  if (within_main_program) {
-  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_4(a=0x%x, tag=%u)\n",
-  //                    a, tag);
-  //  }
+  set_tag_for_range(a, 4, tagToWrite);
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_2) ( Addr a, UInt tag ) {
+  UInt tagToWrite;
 
-  set_tag_for_range(a, 2, tag);
+  if (LITERAL_TAG == tag) {
+    tagToWrite = grab_fresh_tag();
+  }
+  else {
+    tagToWrite = tag;
+  }
 
-  //  if (within_main_program) {
-  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_2(a=0x%x, tag=%u)\n",
-  //                    a, tag);
-  //  }
+  set_tag_for_range(a, 2, tagToWrite);
 }
 
 VGA_REGPARM(2)
 void MC_(helperc_STORE_TAG_1) ( Addr a, UInt tag ) {
+  UInt tagToWrite;
 
-  set_tag_for_range(a, 1, tag);
+  if (LITERAL_TAG == tag) {
+    tagToWrite = grab_fresh_tag();
+  }
+  else {
+    tagToWrite = tag;
+  }
 
-  //  if (within_main_program) {
-  //    DYNCOMP_DPRINTF("helperc_STORE_TAG_1(a=0x%x, tag=%u)\n",
-  //                    a, tag);
-  //  }
+  set_tag(a, tagToWrite);
 }
 
 // Return the leader (canonical tag) of the set which 'tag' belongs to
@@ -364,6 +392,28 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   UInt canonicalTag;
   UInt tagToMerge = 0;
   UInt curTag;
+
+  // If kvasir_dyncomp_fast_mode is on, then if all of the tags
+  // in range are LITERAL_TAG, then create a new tag and copy
+  // it into all of those locations
+  // (This is currently turned off because it loses too much precision)
+/*   if (kvasir_dyncomp_fast_mode) { */
+/*     char allLiteralTags = 1; */
+/*     for (curAddr = a; curAddr < (a + len); curAddr++) { */
+/*       if (get_tag(curAddr) != LITERAL_TAG) { */
+/*         allLiteralTags = 0; */
+/*         break; */
+/*       } */
+/*     } */
+
+/*     if (allLiteralTags) { */
+/*       UInt freshTag = grab_fresh_tag(); */
+/*       //      VG_(printf)("val_uf_union_tags_in_range(%u, %u) saw LITERAL_TAG & created tag %u\n", */
+/*       //                  a, len, freshTag); */
+/*       set_tag_for_range(a, len, freshTag); */
+/*       return freshTag; // Ok, we're done now */
+/*     } */
+/*   } */
 
   // Scan the range for the first non-zero tag and use
   // that as the basis for all the mergings:
@@ -453,7 +503,7 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   }
 
   // Important special case - if one of the tags is 0, then
-  // simply return the OTHER tag and don't do any merging
+  // simply return the OTHER tag and don't do any merging.
   if IS_ZERO_TAG(tag1) {
     return tag2;
   }
@@ -461,14 +511,23 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
     return tag1;
   }
   // If either tag was retrieved from ESP,
-  // (it has the special reserved value of UINT_MAX)
+  // (it has the special reserved value of ESP_TAG)
   // then do not perform a merge and simply return a 0 tag.
   // This will mean that local stack addresses created by
   // the &-operator will each have unique tags because they
   // assemble into code which take a constant offset from ESP.
-  else if ((tag1 == UINT_MAX) ||
-           (tag2 == UINT_MAX)) {
+  else if ((tag1 == ESP_TAG) ||
+           (tag2 == ESP_TAG)) {
     return 0;
+  }
+  // If either tag is LITERAL_TAG, return the other one.
+  // (If both are LITERAL_TAG's, then return LITERAL_TAG,
+  //  but that's correctly handled)
+  else if (LITERAL_TAG == tag1) {
+    return tag2;
+  }
+  else if (LITERAL_TAG == tag2) {
+    return tag1;
   }
   else {
     return val_uf_tag_union(tag1, tag2);
@@ -483,8 +542,8 @@ VGA_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
   if (IS_ZERO_TAG(tag1) ||
       IS_ZERO_TAG(tag2) ||
-      (tag1 == UINT_MAX) ||
-      (tag2 == UINT_MAX)) {
+      (tag1 == ESP_TAG) ||
+      (tag2 == ESP_TAG)) {
     return 0;
   }
   else {
