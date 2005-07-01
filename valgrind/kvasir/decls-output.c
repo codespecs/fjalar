@@ -63,7 +63,9 @@ static char* arrow = "->";
 static char* star = "*";
 
 const char* ENTRY_DELIMETER = "--------ENTRY--------";
+#define ENTRY_DELIMETER_LEN 21
 const char* GLOBAL_STRING = "globals";
+#define GLOBAL_STRING_LEN 7
 const char* ENTER_PPT = ":::ENTER";
 const char* EXIT_PPT = ":::EXIT0";
 
@@ -663,7 +665,8 @@ void initializeVarsTree()
       // Strip '\n' off the end of the line
       line[lineLen - 1] = '\0';
 
-      if VG_STREQ(line, ENTRY_DELIMETER)
+      // For some weird reason, it crashes when you don't use strncmp
+      if (VG_(strncmp)(line, ENTRY_DELIMETER, ENTRY_DELIMETER_LEN) == 0)
 	{
 	  nextLineIsFunction = 1;
 	}
@@ -679,9 +682,12 @@ void initializeVarsTree()
 	      tsearch((void*)currentFunctionTree, (void**)&vars_tree, compareFunctionTrees);
 
 	      // Keep a special pointer for global variables to trace
-	      if VG_STREQ(line, GLOBAL_STRING)
+
+              // For some weird reason, it crashes when you don't use strncmp
+              if (VG_(strncmp)(line, GLOBAL_STRING, GLOBAL_STRING_LEN) == 0)
 		{
 		  globalFunctionTree = currentFunctionTree;
+                  //                  VG_(printf)("globalFunctionTree: %p\n", globalFunctionTree);
 		}
 	    }
 	  // Otherwise, create a new variable and stuff it into
