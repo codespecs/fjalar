@@ -594,6 +594,18 @@ static int openRedirectFile(const char *fname) {
   return new_fd;
 }
 
+/* Set the buffer for a file handle to a VG_(malloc)ed block, rather than
+ * a glibc-malloced one as it would otherwise be. On some systems (e.g.,
+ * Red Hat 9 ones) this seems to work around a bug where the two mallocs
+ * both think they own an area of memory. It would be better if we could
+ * fix the underlying bug, though. */
+static void fixBuffering(FILE *fp) {
+  char *buffer = VG_(malloc)(8192);
+  if (setvbuf(fp, buffer, _IOFBF, 8192)) {
+     VG_(printf)("setvbuf failed\n");
+  }
+}
+
 static int gzip_pid = 0;
 
 int openDtraceFile(const char *fname) {
@@ -641,6 +653,7 @@ int openDtraceFile(const char *fname) {
       close(fds[1]);
       return 0;
     }
+    fixBuffering(dtrace_fp);
 
     if (!pid) {
       /* In child */
@@ -678,11 +691,13 @@ int openDtraceFile(const char *fname) {
     if (!dtrace_fp) {
       return 0;
     }
+    fixBuffering(dtrace_fp);
   } else {
     dtrace_fp = fopen(fname, mode_str);
     if (!dtrace_fp) {
       return 0;
     }
+    fixBuffering(dtrace_fp);
   }
 
   if (stdout_redir) {
