@@ -255,12 +255,6 @@ typedef struct _DaikonFunctionInfo {
   char* trace_vars_tree;
   char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
 
-  // Is it okay to print this function (only relevant when Kvasir is run
-  // with the --trace-prog-pts-in-file command-line option)
-  // DEPRECATED!
-  //  char okayToPrint;
-  //  char okayToPrintAlreadyInitialized; // Has okayToPrint been initialized?
-
   char accessibility; // 0 if none - ASSUMED TO BE PUBLIC!!!
                       // 1 (DW_ACCESS_public) if public,
                       // 2 (DW_ACCESS_protected) if protected,
