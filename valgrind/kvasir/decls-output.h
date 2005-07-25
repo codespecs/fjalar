@@ -86,6 +86,7 @@ void printAllFunctionDecls(char faux_decls);
 void printAllObjectAndClassDecls();
 
 int compareStrings(const void *a, const void *b);
+int compareUInts(const void *a, const void *b);
 void initializeProgramPointsTree();
 
 int compareFunctionTrees(const void *a, const void *b);

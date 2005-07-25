@@ -65,7 +65,7 @@ typedef struct _Entry {
 void handleFunctionEntrance(FunctionEntry* e);
 void handleFunctionExit(FunctionEntry* e);
 
-char okayToPrintThisProgramPoint(DaikonFunctionInfo* daikonFuncPtr);
+//char okayToPrintThisProgramPoint(DaikonFunctionInfo* daikonFuncPtr);
 void updateAllDaikonFunctionInfoEntries();
 void updateAllGlobalVariableNames();
 

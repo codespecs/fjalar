@@ -257,8 +257,9 @@ typedef struct _DaikonFunctionInfo {
 
   // Is it okay to print this function (only relevant when Kvasir is run
   // with the --trace-prog-pts-in-file command-line option)
-  char okayToPrint;
-  char okayToPrintAlreadyInitialized; // Has okayToPrint been initialized?
+  // DEPRECATED!
+  //  char okayToPrint;
+  //  char okayToPrintAlreadyInitialized; // Has okayToPrint been initialized?
 
   char accessibility; // 0 if none - ASSUMED TO BE PUBLIC!!!
                       // 1 (DW_ACCESS_public) if public,
