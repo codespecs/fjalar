@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <search.h>
 
 #include "tool.h"
 #include "generate_daikon_data.h"
@@ -260,6 +261,8 @@ static void pop_fn(Char* s,
 // come with the Ist_Exit IR instruction:
 static Addr currentAddr = 0;
 
+extern UInt* prog_pts_tree; // from decls-output.c
+
 // We will utilize this information to pause the target program at
 // function entrances
 void handle_possible_entry(MCEnv* mce, Addr64 addr) {
@@ -274,8 +277,18 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
       // If we are interested in tracking this particular function ...
       // This ensures that we only track functions which we have in
       // DaikonFunctionInfoTable!!!
-      if (findFunctionInfoByAddr(currentAddr)) {
-         //      VG_(printf)("%s entry (Addr: 0x%u)\n", fnname, addr32);
+      if (findFunctionInfoByAddr(currentAddr) &&
+          // Also, if kvasir_trace_prog_pts_filename is on (we are
+          // reading in a ppt list file), then DO NOT generate IR code
+          // to call helper functions for functions whose start PC
+          // (currentAddr) are NOT located in prog_pts_tree.  This
+          // will greatly speed up processing because these functions
+          // are filtered out at translation-time, not at run-time
+          (!kvasir_trace_prog_pts_filename ||
+           (tfind((void*)(&currentAddr),
+                  (void**)&prog_pts_tree,
+                  compareUInts)))) {
+         //         VG_(printf)("%s entry (Addr: 0x%u)\n", fnname, currentAddr);
          str = VG_(strdup)(fnname); // TODO: Be wary of memory leaks!
          di = unsafeIRDirty_0_N(2/*regparms*/,
                                 "enter_function",
@@ -308,8 +321,20 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
          // We need to attempt to find the entry by NAME since our
          // address a is NOT the starting address which is stored in
          // DaikonFunctionInfoTable
-	 if (findFunctionInfoByNameSlow(fnname, 0)) {
-            //         VG_(printf)("%s exit\n", fnname);
+         DaikonFunctionInfo* funcInfo = findFunctionInfoByNameSlow(fnname, 0);
+
+	 if (funcInfo &&
+          // Also, if kvasir_trace_prog_pts_filename is on (we are
+          // reading in a ppt list file), then DO NOT generate IR code
+          // to call helper functions for functions whose start PC
+          // (funcInfo->startPC) are NOT located in prog_pts_tree.  This
+          // will greatly speed up processing because these functions
+          // are filtered out at translation-time, not at run-time
+             (!kvasir_trace_prog_pts_filename ||
+              (tfind((void*)(&(funcInfo->startPC)),
+                     (void**)&prog_pts_tree,
+                     compareUInts)))) {
+            //            VG_(printf)("%s exit\n", fnname);
             str = VG_(strdup)(fnname); // Be wary of memory leaks!
             di = unsafeIRDirty_0_N(1/*regparms*/,
                                    "exit_function",

@@ -281,13 +281,16 @@ void handleFunctionEntrance(FunctionEntry* e)
                 daikonFuncPtr->parentClass->collectionName);
   }
 
+  // This is now deprecated because the choice of whether to print
+  // out a program point is made at translation-time, not run-time:
+
   // Avoid running okayToPrintThisProgramPoint if you can
-  if((daikonFuncPtr->okayToPrintAlreadyInitialized &&
-      !daikonFuncPtr->okayToPrint) ||
-     !okayToPrintThisProgramPoint(daikonFuncPtr))
-    {
-      return;
-    }
+/*   if((daikonFuncPtr->okayToPrintAlreadyInitialized && */
+/*       !daikonFuncPtr->okayToPrint) || */
+/*      !okayToPrintThisProgramPoint(daikonFuncPtr)) */
+/*     { */
+/*       return; */
+/*     } */
 
   // Reset this properly!
   g_daikonVarIndex = 0;
@@ -335,13 +338,16 @@ void handleFunctionExit(FunctionEntry* e)
                 daikonFuncPtr->parentClass->collectionName);
   }
 
+  // This is now deprecated because the choice of whether to print
+  // out a program point is made at translation-time, not run-time:
+
   // Avoid running okayToPrintThisProgramPoint if you can
-  if((daikonFuncPtr->okayToPrintAlreadyInitialized &&
-      !daikonFuncPtr->okayToPrint) ||
-     !okayToPrintThisProgramPoint(daikonFuncPtr))
-    {
-      return;
-    }
+/*   if((daikonFuncPtr->okayToPrintAlreadyInitialized && */
+/*       !daikonFuncPtr->okayToPrint) || */
+/*      !okayToPrintThisProgramPoint(daikonFuncPtr)) */
+/*     { */
+/*       return; */
+/*     } */
 
   // Reset this properly!
   g_daikonVarIndex = 0;
@@ -369,37 +375,47 @@ void handleFunctionExit(FunctionEntry* e)
 }
 
 
+// NOTE: This function is now deprecated because the choice of whether
+// to print a particular program point is made at translation-time
+// (within handle_possible_entry() and handle_possible_exit() in
+//  kvasir_main.c) for reasons of efficiency.
+
 // This is the part where we decide whether to even print out the
 // entries for this program point based on comparisons with strings
 // in prog_pts_tree and whether kvasir_trace_prog_pts_filename is valid:
-char okayToPrintThisProgramPoint(DaikonFunctionInfo* daikonFuncPtr)
-{
-  extern char* prog_pts_tree;
+/* char okayToPrintThisProgramPoint(DaikonFunctionInfo* daikonFuncPtr) */
+/* { */
+/*   extern char* prog_pts_tree; */
 
-  if (kvasir_trace_prog_pts_filename)
-    {
-      // It's only okay if the function's full daikon name is found in prog_pts_tree
-      if (tfind((void*)daikonFuncPtr->daikon_name, (void**)&prog_pts_tree, compareStrings))
-	{
-	  daikonFuncPtr->okayToPrint = 1;
-	  daikonFuncPtr->okayToPrintAlreadyInitialized = 1;
-	  return 1;
-	}
-      else
-	{
-	  daikonFuncPtr->okayToPrint = 0;
-	  daikonFuncPtr->okayToPrintAlreadyInitialized = 1;
-	  return 0;
-	}
-    }
-  // It's always okay to print program point if kvasir_trace_prog_pts_filename is not valid
-  else
-    {
-      daikonFuncPtr->okayToPrint = 1;
-      daikonFuncPtr->okayToPrintAlreadyInitialized = 1;
-      return 1;
-    }
-}
+/*   if (kvasir_trace_prog_pts_filename) */
+/*     { */
+/*       // It's only okay if the function's start PC is found in prog_pts_tree */
+/*       if (tfind((void*)(&(daikonFuncPtr->startPC)), */
+/*                 (void**)&prog_pts_tree, */
+/*                 compareUInts)) */
+/* 	{ */
+/*           VG_(printf)("YES! %s\n", daikonFuncPtr->daikon_name); */
+/* 	  daikonFuncPtr->okayToPrint = 1; */
+/* 	  daikonFuncPtr->okayToPrintAlreadyInitialized = 1; */
+/* 	  return 1; */
+/* 	} */
+/*       else */
+/* 	{ */
+/*           VG_(printf)("NO!  %s\n", daikonFuncPtr->daikon_name); */
+/* 	  daikonFuncPtr->okayToPrint = 0; */
+/* 	  daikonFuncPtr->okayToPrintAlreadyInitialized = 1; */
+/* 	  return 0; */
+/* 	} */
+/*     } */
+/*   // It's always okay to print program point if kvasir_trace_prog_pts_filename is not valid */
+/*   else */
+/*     { */
+/*       daikonFuncPtr->okayToPrint = 1; */
+/*       daikonFuncPtr->okayToPrintAlreadyInitialized = 1; */
+/*       return 1; */
+/*     } */
+/* } */
+
 
 // Return a pointer to a FunctionEntry which contains the address
 // specified by "a" in its stack frame
