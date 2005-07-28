@@ -2,7 +2,7 @@ Notes from meeting with Brian Demsky on 2005-07-26 regarding his
 experiences with Kvasir on Freeciv and CTAS
 
 Created: 2005-07-26 by Philip J. Guo
-Last Modified: 2005-07-26
+Last Modified: 2005-07-28
 
 
 Upshot:
@@ -99,7 +99,7 @@ the following commands (not the stuff preceded by '#'):
 
 set aifill=7		# Set the number of players
 set timeout=-1		# Don't wait to start
-set seed=532532		 
+set seed=532532
 set randseed=3525
 set endyear=-2500	# The more negative, the shorter the game
 create player1
@@ -144,6 +144,65 @@ we are stopping, it seems like there is real content there.  The first
 80 elements of the 'terrain' field should be T_ARCTIC because that
 represents the top-most layer of the map.
 
+Here is how you build maptest:
+
+gcc -I. -I../common -I../ai -I../intl -g -Wall  -o maptest maptest.c ../common/libcivcommon.a ../ai/libcivai.a ./libcivserver.a  ../common/libcivcommon.a ../ai/libcivai.a ./libcivserver.a -lreadline   -lm -lstdc++ -lz
+
+
+Ok, when I ran Kvasir on the tiny test program maptest.c that I wrote,
+it did the correct thing and read the correct size of map.tiles[].  I
+used calloc there instead of fc_malloc.  Ok, now I'm gonna use
+fc_malloc to mimic what Freeciv actually does.
+
+Hmmm, perhaps the use of fc_malloc to do the dynamic memory allocation
+within map_allocate() in map.c screws us up because it does something
+funky and interferes with normal Memcheck behavior.
+
+This may be the culprit because when I used fc_malloc with maptest.c,
+Kvasir was NOT able to properly find the size of the map.tiles[]
+array.
+
+Perhaps because fc_malloc is a wrapper for normal malloc, somehow
+Valgrind doesn't hook onto it properly and do the redzones?  However,
+that shouldn't really be the case because fc_malloc does call regular
+ole' malloc.
+
+Yeah, I think the fc_malloc thing may be a red herring since there is
+the same bug with regular malloc() (but calloc() works fine).  Kvasir
+is probably simply getting the array sizes confused.
+
+Ok, here is what works and doesn't:
+
+fc_malloc and repeated tile_init() calls - NO (this is what Freeciv
+does)
+malloc and repeated tile_init() calls - NO (this is what Freeciv does)
+calloc and repeated tile_init() calls - YES
+malloc and memset to 0 - YES
+fc_malloc and memset to 0 - YES
+
+
+Ok, I think I may see the problem.  When you memset() to zero
+EVERYTHING out, EVERYTHING in the contiguous block is considered as
+initialized (V-bits set), and Memcheck prods V-bits as well as A-bits
+in order to read only initialized members of arrays.  When you simply
+use tile_init() to initialize just the tiles, not all fields in every
+tile is initialized (tile.continent and tile.movecost[] are NOT
+initialized), thereby creating 'holes' of non-set V-bits in the shadow
+memory.  When Memcheck probes the V-bits, it will only find that ONE
+element is valid - the first one - even though ALL elements are
+allocated.
+
+Possible solutions:
+
+1.) Super easy way - say that a struct is initialized if at least one
+byte within it is initialized
+
+2.) Slightly more detailed way - iterate through all members of a
+struct and say that a struct is initialized if at least one MEMBER
+within it is initialized (would this be recursive for structs within
+structs?  This sounds like more trouble than it's worth).
+
+I opt for 1.) for now since it's just easier to implement.
 
 
 CTAS:
