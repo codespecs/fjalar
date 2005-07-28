@@ -845,10 +845,14 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
 // arrays since the stack and global space contain lots of squished-together
 // contiguous variables
 //
-// Now we do a two-pass approach which first goes FORWARD until it hits a byte
-// whose A-bit is unset and then BACKWARDS until it hits the first bytes whose
-// V-bit is SET.  This avoids printing out large chunks of garbage values when
-// most of an array is uninitialized.
+// Now we do a two-pass approach which first goes FORWARD until it
+// hits a set of bytes of size typeSize whose A-bits are all unset and
+// then BACKWARDS until it hits the first set of bytes of size
+// typeSize with at least ONE byte whose V-bit is SET.  This avoids
+// printing out large chunks of garbage values when most elements of
+// an array are uninitialized.  For example, this function will return
+// 10 for an int array allocated to hold 1000 elements but only with
+// the first 10 elements initialized.
 int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
 {
   int arraySize = 0;
@@ -875,11 +879,27 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
 
   startAddr -= typeSize;
   // Now do a SECOND pass and probe BACKWARDS until we reach the
-  // first byte whose V-bit is SET
+  // first set of bytes with at least one byte whose V-bit is SET
   while ((arraySize > 0) &&
-         (kvasir_use_bit_level_precision ?
-          (!MC_(are_some_bytes_initialized)(startAddr, typeSize, 0)) :
-          (MC_Ok != mc_check_readable(startAddr, typeSize, 0)))) {
+         // If at least ONE byte within the element (struct or
+         // primitive) of size typeSize is initialized, then consider
+         // the entire element to be initialized.  This is done
+         // because sometimes only certain members of a struct are
+         // initialized, and if we perform the more stringent check
+         // for whether ALL members are initialized, then we will
+         // falsely mark partially-initialized structs as
+         // uninitialized and lose information.  For instance,
+         // consider struct point{int x; int y;} - Let's say you had
+         // struct point foo[10] and initialized only the 'x' member
+         // var. in every element of foo (foo[0].x, foo[1].x, etc...)
+         // but left the 'y' member var uninitialized.  Every element
+         // of foo has typeSize = 2 * sizeof(int) = 8, but only the
+         // first 4 bytes are initialized ('x') while the last 4 are
+         // uninitialized ('y').  This function should return 10 for
+         // the size of foo, so it must mark each element as
+         // initialized when at least ONE byte is initialized (in this
+         // case, a byte within 'x').
+         !MC_(are_some_bytes_initialized)(startAddr, typeSize, 0)) {
     arraySize--;
     startAddr-=typeSize;
   }
