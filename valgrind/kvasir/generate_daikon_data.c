@@ -444,7 +444,7 @@ void initializeDaikonFunctionInfoTable()
 
           cur_daikon_entry = VG_(calloc)(1, sizeof(*cur_daikon_entry));
 
-          VG_(printf)("Adding function %s\n", dwarfFunctionPtr->name);
+          //          VG_(printf)("Adding function %s\n", dwarfFunctionPtr->name);
 
           cur_daikon_entry->name = dwarfFunctionPtr->name;
           cur_daikon_entry->mangled_name = dwarfFunctionPtr->mangled_name;
@@ -493,7 +493,7 @@ void initializeDaikonFunctionInfoTable()
             cur_daikon_entry->daikon_name = buf;
         }
 
-          VG_(printf)("****** Name: %s | Mangled name: %s | Daikon name: %s | Address: 0x%x\n",
+          DPRINTF("****** Name: %s | Mangled name: %s | Daikon name: %s | Address: 0x%x\n",
                       cur_daikon_entry->name,
                       (dwarfFunctionPtr->mangled_name ?
                        dwarfFunctionPtr->mangled_name :
