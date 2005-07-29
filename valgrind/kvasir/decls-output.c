@@ -640,7 +640,7 @@ void initializeProgramPointsTree()
 
       // Skip blank lines (those consisting of solely the newline character)
       if('\n' == line[0]) {
-        VG_(printf)("skipping blank line ...\n");
+        //        VG_(printf)("skipping blank line ...\n");
         continue;
       }
 
@@ -656,12 +656,12 @@ void initializeProgramPointsTree()
       // C++ name so we just grab it as the second token
       if (0 == VG_(strcmp)(firstToken, MANGLED_TOKEN)) {
         char* secondToken = strtok(NULL, " ");
-        VG_(printf)("mangled: %s\n", secondToken);
+        //        VG_(printf)("mangled: %s\n", secondToken);
         tsearch((void*)VG_(strdup)(secondToken), (void**)&prog_pts_tree, compareStrings);
       }
       // Otherwise, that is the Daikon name of the function so grab it
       else {
-        VG_(printf)("regular: %s\n", firstToken);
+        //        VG_(printf)("regular: %s\n", firstToken);
         tsearch((void*)VG_(strdup)(firstToken), (void**)&prog_pts_tree, compareStrings);
       }
 
@@ -1011,9 +1011,9 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_d
 // that is what we look for; otherwise, we look for
 // cur_entry->daikon_name.
 char prog_pts_tree_entry_found(DaikonFunctionInfo* cur_entry) {
-  VG_(printf)("prog_pts_tree_entry_found() - mangled: %s | daikon: %s ",
-              cur_entry->mangled_name,
-              cur_entry->daikon_name);
+  //  VG_(printf)("prog_pts_tree_entry_found() - mangled: %s | daikon: %s ",
+  //              cur_entry->mangled_name,
+  //              cur_entry->daikon_name);
 
   char* nameToFind = (cur_entry->mangled_name ?
                       cur_entry->mangled_name : cur_entry->daikon_name);
@@ -1021,11 +1021,9 @@ char prog_pts_tree_entry_found(DaikonFunctionInfo* cur_entry) {
   if (tfind((void*)nameToFind,
             (void**)&prog_pts_tree,
             compareStrings)) {
-    VG_(printf)(" YES\n");
     return 1;
   }
   else {
-    VG_(printf)(" NO\n");
     return 0;
   }
 }

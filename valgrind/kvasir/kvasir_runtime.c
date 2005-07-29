@@ -106,8 +106,8 @@ void updateAllDaikonFunctionInfoEntries()
       // Important step!  Set the daikon name to buf
       cur_entry->daikon_name = buf;
 
-      VG_(printf)("Original name: %s | Valgrind's name: %s | Daikon name: %s\n",
-                  cur_entry->name, full_fnname, cur_entry->daikon_name);
+      //      VG_(printf)("Original name: %s | Valgrind's name: %s | Daikon name: %s\n",
+      //                  cur_entry->name, full_fnname, cur_entry->daikon_name);
 
       VG_(free)(full_fnname);
 

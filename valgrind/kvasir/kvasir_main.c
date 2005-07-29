@@ -124,7 +124,7 @@ static void push_fn(Char* daikon_name, Addr EBP, Addr startPC)
 
   DPRINTF("formalParamStackByteSize is %d\n", formalParamStackByteSize);
 
-  VG_(printf)(" @@@ push_fn: %s\n", daikon_name);
+  //  VG_(printf)(" @@@ push_fn: %s\n", daikon_name);
 
   if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack");
 
@@ -187,7 +187,7 @@ static void pop_fn(Char* daikon_name,
    FunctionEntry* top;
    int i;
 
-   VG_(printf)(" *** pop_fn: %s\n", daikon_name);
+   //   VG_(printf)(" *** pop_fn: %s\n", daikon_name);
 
    // s is null if an "unwind" is popped off the stack
    // Only do something if this function name matches what's on the top of the stack
@@ -271,58 +271,48 @@ extern char* prog_pts_tree; // from decls-output.c
 // We will utilize this information to pause the target program at
 // function entrances
 
-// handle_possible_entry is easier and more efficient than
-// handle_possible_exit because the current address is the function's
-// start PC address so that it doesn't have to worry about comparing
-// function names.
 void handle_possible_entry(MCEnv* mce, Addr64 addr) {
-   Char fnname[500];
    IRDirty  *di;
+   DaikonFunctionInfo* curFuncPtr = 0;
 
    // Right now, for x86, we only care about 32-bit instructions
+
+   // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
+   // truly a function entry:
    currentAddr = (Addr)(addr);
 
-   // This returns either a Valgrind DEMANGLED name for C++ names or
-   // just a regular unqualified name for C names into fnname.  For
-   // example, a mangled C++ name will return as 'foo()' but a
-   // non-mangled C-style name will return as 'foo'.
-   if (VG_(get_fnname_if_entry)(currentAddr, fnname, 500)) {
-      // If we are interested in tracking this particular function ...
-      // This ensures that we only track functions which we have in
-      // DaikonFunctionInfoTable!!!
-      DaikonFunctionInfo* curFuncPtr = findFunctionInfoByStartAddr(currentAddr);
+   // If this is truly a function entry and we are interested in
+   // tracking this particular function ...  This ensures that we only
+   // track functions which we have in DaikonFunctionInfoTable!!!
+   curFuncPtr = findFunctionInfoByStartAddr(currentAddr);
 
-      if (curFuncPtr &&
-          // Also, if kvasir_trace_prog_pts_filename is on (we are
-          // reading in a ppt list file), then DO NOT generate IR code
-          // to call helper functions for functions whose name is
-          // NOT located in prog_pts_tree.  This
-          // will greatly speed up processing because these functions
-          // are filtered out at translation-time, not at run-time
-          (!kvasir_trace_prog_pts_filename ||
-           prog_pts_tree_entry_found(curFuncPtr))) {
+   if (curFuncPtr &&
+       // Also, if kvasir_trace_prog_pts_filename is on (we are
+       // reading in a ppt list file), then DO NOT generate IR code
+       // to call helper functions for functions whose name is
+       // NOT located in prog_pts_tree.  This
+       // will greatly speed up processing because these functions
+       // are filtered out at translation-time, not at run-time
+       (!kvasir_trace_prog_pts_filename ||
+        prog_pts_tree_entry_found(curFuncPtr))) {
 
-         VG_(printf)("%s entry (Addr: 0x%u) | Daikon name: %s\n",
-                     fnname, currentAddr, curFuncPtr->daikon_name);
+      //         VG_(printf)("entry (Addr: 0x%u) | Daikon name: %s\n",
+      //                      currentAddr, curFuncPtr->daikon_name);
 
-         // Try storing the daikon_name as the parameter because
-         // it's a more reliable indicator than the 'fnname'
-         // returned from Valgrind:
-         di = unsafeIRDirty_0_N(2/*regparms*/,
-                                "enter_function",
-                                &enter_function,
-                                mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name)),
-                                              IRExpr_Const(IRConst_U32(currentAddr))));
+      di = unsafeIRDirty_0_N(2/*regparms*/,
+                             "enter_function",
+                             &enter_function,
+                             mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name)),
+                                           IRExpr_Const(IRConst_U32(currentAddr))));
 
-         // For function entry, we are interested in observing the ESP so make
-         // sure that it's updated by setting the proper annotations:
-         di->nFxState = 1;
-         di->fxState[0].fx     = Ifx_Read;
-         di->fxState[0].offset = mce->layout->offset_SP;
-         di->fxState[0].size   = mce->layout->sizeof_SP;
+      // For function entry, we are interested in observing the ESP so make
+      // sure that it's updated by setting the proper annotations:
+      di->nFxState = 1;
+      di->fxState[0].fx     = Ifx_Read;
+      di->fxState[0].offset = mce->layout->offset_SP;
+      di->fxState[0].size   = mce->layout->sizeof_SP;
 
-         stmt( mce->bb, IRStmt_Dirty(di) );
-      }
+      stmt( mce->bb, IRStmt_Dirty(di) );
    }
 }
 
@@ -332,67 +322,53 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
 // is quite often
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
    if (Ijk_Ret == jk) {
-      Char fnname[500];
       IRDirty  *di;
 
-      // This returns either a Valgrind DEMANGLED name for C++ names
-      // or just a regular unqualified name for C names into fnname.
-      // For example, a demangled C++ name will return as 'foo()' but
-      // a regular C-style name will return as 'foo'.  How do you tell
-      // whether it's a demangled name or not?  We use a simple
-      // heuristic to check whether the last character is a ')'.  If
-      // it is, then it's a demangled name.
-      if (VG_(get_fnname)(currentAddr, fnname, 500) && fnname) {
+      DaikonFunctionInfo* curFuncPtr = findFunctionInfoByAddrSlow(currentAddr);
 
-         DaikonFunctionInfo* curFuncPtr = findFunctionInfoByAddrSlow(currentAddr);
+      if (curFuncPtr &&
+          // Also, if kvasir_trace_prog_pts_filename is on (we are
+          // reading in a ppt list file), then DO NOT generate IR
+          // code to call helper functions for functions whose
+          // names are NOT located in prog_pts_tree.  This will
+          // greatly speed up processing because these functions
+          // are filtered out at translation-time, not at run-time
+          (!kvasir_trace_prog_pts_filename ||
+           prog_pts_tree_entry_found(curFuncPtr))) {
 
-	 if (curFuncPtr &&
-             // Also, if kvasir_trace_prog_pts_filename is on (we are
-             // reading in a ppt list file), then DO NOT generate IR
-             // code to call helper functions for functions whose
-             // names are NOT located in prog_pts_tree.  This will
-             // greatly speed up processing because these functions
-             // are filtered out at translation-time, not at run-time
-             (!kvasir_trace_prog_pts_filename ||
-              prog_pts_tree_entry_found(curFuncPtr))) {
+         //            VG_(printf)("exit Daikon name: %s\n",
+         //                        curFuncPtr->daikon_name);
 
-            VG_(printf)("%s exit | Daikon name: %s\n",
-                        fnname, curFuncPtr->daikon_name);
+         di = unsafeIRDirty_0_N(1/*regparms*/,
+                                "exit_function",
+                                &exit_function,
+                                mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name))));
 
-            // Try storing the daikon_name as the parameter because
-            // it's a more reliable indicator than the 'fnname'
-            // returned from Valgrind:
-            di = unsafeIRDirty_0_N(1/*regparms*/,
-                                   "exit_function",
-                                   &exit_function,
-                                   mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name))));
+         // For function exit, we are interested in observing the
+         // ESP, EAX, EDX, FPTOP, and FPREG[], so make sure that
+         // they are updated by setting the proper annotations:
+         di->nFxState = 4;
+         di->fxState[0].fx     = Ifx_Read;
+         di->fxState[0].offset = mce->layout->offset_SP;
+         di->fxState[0].size   = mce->layout->sizeof_SP;
 
-            // For function exit, we are interested in observing the
-            // ESP, EAX, EDX, FPTOP, and FPREG[], so make sure that
-            // they are updated by setting the proper annotations:
-            di->nFxState = 4;
-            di->fxState[0].fx     = Ifx_Read;
-            di->fxState[0].offset = mce->layout->offset_SP;
-            di->fxState[0].size   = mce->layout->sizeof_SP;
+         // Now I'm totally hacking based upon the definition of
+         // VexGuestX86State in vex/pub/libvex_guest_x86.h:
+         // (This is TOTALLY x86 dependent right now, but oh well)
+         di->fxState[1].fx     = Ifx_Read;
+         di->fxState[1].offset = 0; // offset of EAX
+         di->fxState[1].size   = sizeof(UInt); // 4 bytes
 
-            // Now I'm totally hacking based upon the definition of
-            // VexGuestX86State in vex/pub/libvex_guest_x86.h:
-            // (This is TOTALLY x86 dependent right now, but oh well)
-            di->fxState[1].fx     = Ifx_Read;
-            di->fxState[1].offset = 0; // offset of EAX
-            di->fxState[1].size   = sizeof(UInt); // 4 bytes
+         di->fxState[2].fx     = Ifx_Read;
+         di->fxState[2].offset = 8; // offset of EDX
+         di->fxState[2].size   = sizeof(UInt); // 4 bytes
 
-            di->fxState[2].fx     = Ifx_Read;
-            di->fxState[2].offset = 8; // offset of EDX
-            di->fxState[2].size   = sizeof(UInt); // 4 bytes
+         di->fxState[3].fx     = Ifx_Read;
+         di->fxState[3].offset = 60; // offset of FPTOP
+         // Size of FPTOP + all 8 elements of FPREG
+         di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
 
-            di->fxState[3].fx     = Ifx_Read;
-            di->fxState[3].offset = 60; // offset of FPTOP
-            // Size of FPTOP + all 8 elements of FPREG
-            di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
-
-            stmt( mce->bb, IRStmt_Dirty(di) );
-         }
+         stmt( mce->bb, IRStmt_Dirty(di) );
       }
    }
 }

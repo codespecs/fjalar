@@ -5,6 +5,43 @@ Created: 2005-07-26 by Philip J. Guo
 Last Modified: 2005-07-28
 
 
+
+
+
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+
+
+IMMEDIATE TO-DO's:
+
+* Inform Brian about not using optimization for Freeciv (-O2 in
+  configure script) and email him about general updates thus far
+
+* Write up an entry in the Daikon user manual about
+  the ppt list format and how to best use it
+
+* Add FunctionNamesTest (is that the right name?) to the Kvasir test
+  suite as a C++ test because it exercises interesting qualities of
+  function names such as file-static functions and C++ mangled names
+
+* Turn optimizations on Freeciv back on for now and test to make sure
+  that the ppt list file still works
+
+* Write progress report
+
+
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+
+
 Upshot:
 -------
 
