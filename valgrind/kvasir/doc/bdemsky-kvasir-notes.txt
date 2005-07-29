@@ -33,6 +33,16 @@ IMMEDIATE TO-DO's:
 
 * Write progress report
 
+* Remember to get stuff done for August 1st Daikon release
+
+* Investigate what happens (and report in Daikon manual) when you use --dump-var-file with --ppt-list-file --- it should only dump vars for those ppts
+
+* Investigate what happens (and report in Daikon manual) when you
+  prune off the parent of a variable entry - does it still try to
+  observe it and report the children?  Or does pruning off a parent
+  imply that the child is pruned too (more efficient) since no
+  traversal occurs?  It's a matter of whether we are preventing
+  traversal or merely output.
 
 @*($&*()@#$&*()@#$&*(@#$
 @*($&*()@#$&*()@#$&*(@#$
@@ -339,9 +349,9 @@ Appendix:
 Use the following files for Freeciv
 (omit "--- [BEGIN|END] FILE ---" lines):
 
-Use the following ppt list file (the number may vary):
+Use the following ppt list file:
 --- BEGIN FILE ---
-134536944 srv_main.c.begin_turn()
+srv_main.c.begin_turn()
 --- END FILE ---
 
 
