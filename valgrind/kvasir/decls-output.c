@@ -62,7 +62,7 @@ static char* dot = ".";
 static char* arrow = "->";
 static char* star = "*";
 
-const char* ENTRY_DELIMETER = "--------ENTRY--------";
+const char* ENTRY_DELIMETER = "----SECTION----";
 #define ENTRY_DELIMETER_LEN 21
 const char* GLOBAL_STRING = "globals";
 #define GLOBAL_STRING_LEN 7
@@ -684,15 +684,15 @@ int compareFunctionTrees(const void *a, const void *b)
 // and add them to a tree of strings in FunctionTree.variable_tree
 // Close the file when you're done
 /* This is an example of a variables output format:
---------ENTRY--------
+
+----SECTION----
 globals
 StaticArraysTest_c/staticStrings
 StaticArraysTest_c/staticStrings[]
 StaticArraysTest_c/staticShorts
 StaticArraysTest_c/staticShorts[]
 
-
---------ENTRY--------
+----SECTION----
 ..f()
 arg
 strings
@@ -700,15 +700,14 @@ strings[]
 return
 
 
---------ENTRY--------
+----SECTION----
 ..b()
 oneShort
 manyShorts
 manyShorts[]
 return
 
-
---------ENTRY--------
+----SECTION----
 ..main()
 return
 */
