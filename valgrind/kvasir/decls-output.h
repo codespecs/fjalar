@@ -86,8 +86,10 @@ void printAllFunctionDecls(char faux_decls);
 void printAllObjectAndClassDecls();
 
 int compareStrings(const void *a, const void *b);
-int compareUInts(const void *a, const void *b);
+//int compareUInts(const void *a, const void *b);
 void initializeProgramPointsTree();
+
+char prog_pts_tree_entry_found(DaikonFunctionInfo* cur_entry);
 
 int compareFunctionTrees(const void *a, const void *b);
 void initializeVarsTree();

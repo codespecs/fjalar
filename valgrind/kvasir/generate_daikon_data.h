@@ -230,6 +230,13 @@ typedef struct _DaikonFunctionInfo {
                         // after running updateAllDaikonFunctionInfoEntries()
                         // i.e. "sum(int*, int)"
 
+  // Using VG_(get_fnname) and VG_(get_fnname_if_entry), Valgrind
+  // returns function names that are either regular ole' names which
+  // match 'name' or demangled C++ names which match 'demangled_name'.
+  // We are using a very simple heuristic to tell which one has been
+  // returned.  If the last character is a ')', then it's a demangled
+  // C++ name; otherwise, it's a regular C name.
+
   char* filename;
   /* daikon_name is like name, but made unique by prepending a munged copy
      of filename */
@@ -238,7 +245,12 @@ typedef struct _DaikonFunctionInfo {
                      // but it is deleted and re-initialized to a full function
                      // name with parameters and de-munging (for C++) in
                      // updateAllDaikonFunctionInfoEntries()
+
+  // All instructions within the function are between
+  // startPC and endPC, inclusive I believe)
   unsigned long startPC;
+  unsigned long endPC;
+
   char isExternal; // 1 if it's globally visible, 0 if it's file static
   VarList formalParameters; // Daikon variables for formal parameters
   VarList localArrayVariables;   // keep only locally-declared STATIC ARRAYS
@@ -320,8 +332,9 @@ typedef struct _DaikonFunctionInfo {
 // Value: (DaikonFunctionInfo*) pointer to DaikonFunctionInfo entry
 struct genhashtable* DaikonFunctionInfoTable;
 
-DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName);
-inline DaikonFunctionInfo* findFunctionInfoByAddr(unsigned int addr);
+DaikonFunctionInfo* findFunctionInfoByDaikonNameSlow(char* daikon_name);
+inline DaikonFunctionInfo* findFunctionInfoByStartAddr(unsigned int startPC);
+DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr);
 
 // List of all global variables
 // (including C++ static member variables - these have structParentType initialized

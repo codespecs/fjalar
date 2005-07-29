@@ -273,7 +273,7 @@ void processDisambigFile() {
 	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
 
 	  // Find the appropriate function by name:
-          cur_entry = findFunctionInfoByNameSlow(entryName, 1);
+          cur_entry = findFunctionInfoByDaikonNameSlow(entryName);
           if (cur_entry) {
             VarListArray[0] = &(cur_entry->formalParameters);
           }
@@ -291,7 +291,7 @@ void processDisambigFile() {
 	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
 
 	  // Find the appropriate function by name:
-          cur_entry = findFunctionInfoByNameSlow(entryName, 1);
+          cur_entry = findFunctionInfoByDaikonNameSlow(entryName);
           VarListArray[0] = &(cur_entry->formalParameters);
           // Remember to initialize this:
           VarListArray[1] = &(cur_entry->returnValue);
