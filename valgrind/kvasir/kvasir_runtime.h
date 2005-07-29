@@ -27,9 +27,13 @@
 // Runtime entries for function entrances and exits
 // used mainly by fn_stack in kvasir_main.c
 typedef struct _Entry {
-     Char* name; // Function name
+     Char* daikon_name; // Function Daikon name
      Addr  EBP; // %ebp as calculated from %esp at function entrance time
      Addr startPC; // the starting PC address of the function
+     Addr endPC;   // the ending PC address of the function (all
+                   // instructions within the function are between
+                   // startPC and endPC, inclusive I believe)
+
      Addr  lowestESP; // The LOWEST value of %ESP that is encountered
                       // while we are in this function -
                       // We need this to see how deep a function penetrates

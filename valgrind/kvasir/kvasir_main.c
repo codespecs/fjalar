@@ -91,7 +91,7 @@ void printFunctionEntryStack()
          FunctionEntry* cur_fn = &fn_stack[i];
          VG_(printf)("fn_stack[%d] %s - EBP: 0x%x, lowestESP: 0x%x, localArrayVarPtr: %p\n",
                 i,
-                cur_fn->name,
+                cur_fn->daikon_name,
                 cur_fn->EBP,
                 cur_fn->lowestESP,
                 cur_fn->localArrayVariablesPtr);
@@ -112,10 +112,10 @@ Effects: pushes a FunctionEntry onto the top of fn_stack and initializes
          "virtual stack" and then calls handleFunctionEntrance() to
          generate .dtrace file output at function entrance time
 */
-static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
+static void push_fn(Char* daikon_name, Addr EBP, Addr startPC)
 {
   DaikonFunctionInfo* daikonFuncPtr =
-    findFunctionInfoByAddr(startPC);
+    findFunctionInfoByStartAddr(startPC);
 
   int formalParamStackByteSize =
      determineFormalParametersStackByteSize(daikonFuncPtr);
@@ -124,11 +124,13 @@ static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
 
   DPRINTF("formalParamStackByteSize is %d\n", formalParamStackByteSize);
 
+  VG_(printf)(" @@@ push_fn: %s\n", daikon_name);
+
   if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack");
 
   top = &fn_stack[ fn_stack_top ];
 
-  top->name = f;
+  top->daikon_name = daikon_name;
   top->EBP = EBP;
   top->startPC = startPC;
   top->lowestESP = EBP + 4;
@@ -163,7 +165,7 @@ static void push_fn(Char* s, Char* f, Addr EBP, Addr startPC)
   fn_stack_top++;
 
   // We used to do this BEFORE the push - does it make a difference???
-  DPRINTF("-- PUSH_FN: fn_stack_top: %d, f: %s\n", fn_stack_top, f);
+  DPRINTF("-- PUSH_FN: fn_stack_top: %d, f: %s\n", fn_stack_top, daikon_name);
 
   // Do this AFTER initializing virtual stack and lowestESP
   handleFunctionEntrance(top);
@@ -177,7 +179,7 @@ Effects: pops a FunctionEntry off of the top of fn_stack and initializes
          it with EAX, EDX, and FPU values. Then calls handleFunctionExit()
          to generate .dtrace file output at function exit time
 */
-static void pop_fn(Char* s,
+static void pop_fn(Char* daikon_name,
                    int EAX, int EDX, double FPU_top,
                    UInt EAXshadow, UInt EDXshadow, ULong FPUshadow,
                    UInt EAXtag, UInt EDXtag, UInt FPUtag)
@@ -185,9 +187,12 @@ static void pop_fn(Char* s,
    FunctionEntry* top;
    int i;
 
+   VG_(printf)(" *** pop_fn: %s\n", daikon_name);
+
    // s is null if an "unwind" is popped off the stack
    // Only do something if this function name matches what's on the top of the stack
-   if (!s || (!VG_STREQ(fn_stack[fn_stack_top - 1].name, s))) {
+   if (!daikon_name || (!VG_STREQ(fn_stack[fn_stack_top - 1].daikon_name, daikon_name))) {
+      VG_(printf)("MISMATCHED on pop_fn! daikon_name: %s\n", daikon_name);
       return;
    }
 
@@ -229,7 +234,7 @@ static void pop_fn(Char* s,
      }
   }
 
-  DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, s);
+  DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, daikon_name);
 
   handleFunctionExit(top);
 
@@ -261,39 +266,52 @@ static void pop_fn(Char* s,
 // come with the Ist_Exit IR instruction:
 static Addr currentAddr = 0;
 
-extern UInt* prog_pts_tree; // from decls-output.c
+extern char* prog_pts_tree; // from decls-output.c
 
 // We will utilize this information to pause the target program at
 // function entrances
+
+// handle_possible_entry is easier and more efficient than
+// handle_possible_exit because the current address is the function's
+// start PC address so that it doesn't have to worry about comparing
+// function names.
 void handle_possible_entry(MCEnv* mce, Addr64 addr) {
    Char fnname[500];
-   Char *str;
    IRDirty  *di;
 
    // Right now, for x86, we only care about 32-bit instructions
    currentAddr = (Addr)(addr);
 
-   if (VG_(get_fnname_if_entry(currentAddr, fnname, 500))) {
+   // This returns either a Valgrind DEMANGLED name for C++ names or
+   // just a regular unqualified name for C names into fnname.  For
+   // example, a mangled C++ name will return as 'foo()' but a
+   // non-mangled C-style name will return as 'foo'.
+   if (VG_(get_fnname_if_entry)(currentAddr, fnname, 500)) {
       // If we are interested in tracking this particular function ...
       // This ensures that we only track functions which we have in
       // DaikonFunctionInfoTable!!!
-      if (findFunctionInfoByAddr(currentAddr) &&
+      DaikonFunctionInfo* curFuncPtr = findFunctionInfoByStartAddr(currentAddr);
+
+      if (curFuncPtr &&
           // Also, if kvasir_trace_prog_pts_filename is on (we are
           // reading in a ppt list file), then DO NOT generate IR code
-          // to call helper functions for functions whose start PC
-          // (currentAddr) are NOT located in prog_pts_tree.  This
+          // to call helper functions for functions whose name is
+          // NOT located in prog_pts_tree.  This
           // will greatly speed up processing because these functions
           // are filtered out at translation-time, not at run-time
           (!kvasir_trace_prog_pts_filename ||
-           (tfind((void*)(&currentAddr),
-                  (void**)&prog_pts_tree,
-                  compareUInts)))) {
-         //         VG_(printf)("%s entry (Addr: 0x%u)\n", fnname, currentAddr);
-         str = VG_(strdup)(fnname); // TODO: Be wary of memory leaks!
+           prog_pts_tree_entry_found(curFuncPtr))) {
+
+         VG_(printf)("%s entry (Addr: 0x%u) | Daikon name: %s\n",
+                     fnname, currentAddr, curFuncPtr->daikon_name);
+
+         // Try storing the daikon_name as the parameter because
+         // it's a more reliable indicator than the 'fnname'
+         // returned from Valgrind:
          di = unsafeIRDirty_0_N(2/*regparms*/,
                                 "enter_function",
                                 &enter_function,
-                                mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)str)),
+                                mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name)),
                                               IRExpr_Const(IRConst_U32(currentAddr))));
 
          // For function entry, we are interested in observing the ESP so make
@@ -309,37 +327,45 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
 }
 
 // Handle a function exit statement, which contains a jump kind of
-// 'Ret'.  Cue off of currentAddr, which is taken from the most recent
-// Ist_IMark IR instruction.
+// 'Ret'.  It seems pretty accurate to cue off of currentAddr, which
+// is updated every time an Ist_IMark statement is translated, which
+// is quite often
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
    if (Ijk_Ret == jk) {
       Char fnname[500];
-      Char *str;
       IRDirty  *di;
 
-      if (VG_(get_fnname)(currentAddr, fnname, 500)) {
-         // We need to attempt to find the entry by NAME since our
-         // address a is NOT the starting address which is stored in
-         // DaikonFunctionInfoTable
-         DaikonFunctionInfo* funcInfo = findFunctionInfoByNameSlow(fnname, 0);
+      // This returns either a Valgrind DEMANGLED name for C++ names
+      // or just a regular unqualified name for C names into fnname.
+      // For example, a demangled C++ name will return as 'foo()' but
+      // a regular C-style name will return as 'foo'.  How do you tell
+      // whether it's a demangled name or not?  We use a simple
+      // heuristic to check whether the last character is a ')'.  If
+      // it is, then it's a demangled name.
+      if (VG_(get_fnname)(currentAddr, fnname, 500) && fnname) {
 
-	 if (funcInfo &&
-          // Also, if kvasir_trace_prog_pts_filename is on (we are
-          // reading in a ppt list file), then DO NOT generate IR code
-          // to call helper functions for functions whose start PC
-          // (funcInfo->startPC) are NOT located in prog_pts_tree.  This
-          // will greatly speed up processing because these functions
-          // are filtered out at translation-time, not at run-time
+         DaikonFunctionInfo* curFuncPtr = findFunctionInfoByAddrSlow(currentAddr);
+
+	 if (curFuncPtr &&
+             // Also, if kvasir_trace_prog_pts_filename is on (we are
+             // reading in a ppt list file), then DO NOT generate IR
+             // code to call helper functions for functions whose
+             // names are NOT located in prog_pts_tree.  This will
+             // greatly speed up processing because these functions
+             // are filtered out at translation-time, not at run-time
              (!kvasir_trace_prog_pts_filename ||
-              (tfind((void*)(&(funcInfo->startPC)),
-                     (void**)&prog_pts_tree,
-                     compareUInts)))) {
-            //            VG_(printf)("%s exit\n", fnname);
-            str = VG_(strdup)(fnname); // Be wary of memory leaks!
+              prog_pts_tree_entry_found(curFuncPtr))) {
+
+            VG_(printf)("%s exit | Daikon name: %s\n",
+                        fnname, curFuncPtr->daikon_name);
+
+            // Try storing the daikon_name as the parameter because
+            // it's a more reliable indicator than the 'fnname'
+            // returned from Valgrind:
             di = unsafeIRDirty_0_N(1/*regparms*/,
                                    "exit_function",
                                    &exit_function,
-                                   mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)str))));
+                                   mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name))));
 
             // For function exit, we are interested in observing the
             // ESP, EAX, EDX, FPTOP, and FPREG[], so make sure that
@@ -381,7 +407,7 @@ Effects: This is the hook into Valgrind that is called whenever the target
 */
 // Rudimentary function entrance/exit tracking
 VGA_REGPARM(2)
-void enter_function(Char* fnname, Addr StartPC)
+void enter_function(Char* daikon_name, Addr StartPC)
 {
    Addr  ESP = VG_(get_SP)(VG_(get_running_tid)());
    // Assign %esp - 4 to %ebp - empirically tested to be
@@ -389,11 +415,11 @@ void enter_function(Char* fnname, Addr StartPC)
    Addr  EBP = ESP - 4;
 
    DPRINTF("Enter function: %s - StartPC: %p\n",
-	   fnname, (void*)StartPC);
+	   daikon_name, (void*)StartPC);
 
-   DPRINTF("Calling push_fn for %s\n", fnname);
+   DPRINTF("Calling push_fn for %s\n", daikon_name);
 
-   push_fn("call", fnname, EBP, StartPC);
+   push_fn(daikon_name, EBP, StartPC);
 }
 
 /*
@@ -404,8 +430,9 @@ Effects: This is the hook into Valgrind that is called whenever the target
          program exits a function.  Initializes topEntry of fn_stack with
          return values from EAX, EDX, and FPU.  Calls pop_fn() if all goes well.
 */
+//
 VGA_REGPARM(1)
-void exit_function(Char* fnname)
+void exit_function(Char* daikon_name)
 {
    ThreadId currentTID = VG_(get_running_tid)();
 
@@ -440,11 +467,11 @@ void exit_function(Char* fnname)
    }
 
    DPRINTF("Exit function: %s - EAX: 0x%x, EAXshadow: 0x%x, EDXshadow: 0x%x FPUshadow: 0x%x %x\n",
-               fnname, EAX,
+               daikon_name, EAX,
                EAXshadow, EDXshadow,
                (UInt)(FPUshadow & 0xffffffff), (UInt)(FPUshadow >> 32));
 
-   pop_fn(fnname,
+   pop_fn(daikon_name,
           EAX, EDX, fpuReturnVal,
           EAXshadow, EDXshadow, FPUshadow,
           EAXtag, EDXtag, FPUtag);

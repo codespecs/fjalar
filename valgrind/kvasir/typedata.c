@@ -217,6 +217,7 @@ char tag_is_variable(unsigned long tag) {
 // DW_AT_comp_dir: compile_unit
 // DW_AT_external: function, variable
 // DW_AT_low_pc: function
+// DW_AT_high_pc: function
 // DW_AT_upper_bound: subrange_type
 // DW_AT_sibling: collection_type, array_type, function_type, function, enumerator
 // DW_AT_MIPS_linkage_name: function, variable
@@ -286,6 +287,7 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return (tag_is_function(tag) ||
 	      tag_is_variable(tag));
     case DW_AT_low_pc:
+    case DW_AT_high_pc:
       return tag_is_function(tag);
     case DW_AT_upper_bound:
       return tag_is_array_subrange_type(tag);
@@ -798,6 +800,11 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
   if (tag_is_function(tag) && attr == DW_AT_low_pc)
     {
       ((function*)e->entry_ptr)->start_pc = value;
+      return 1;
+    }
+  else if (tag_is_function(tag) && attr == DW_AT_high_pc)
+    {
+      ((function*)e->entry_ptr)->end_pc = value;
       return 1;
     }
   else
@@ -1337,7 +1344,7 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
         // However, aliased_func_ptr will still have is_declaration == 1
         // so it will NOT be added to DaikonFunctionInfoTable - instead,
         // function_ptr will be added so that when we do a lookup for
-        // findFunctionInfoByAddr(aliased_func_ptr->start_pc),
+        // findFunctionInfoByStartAddr(aliased_func_ptr->start_pc),
         // we will get the function_ptr entry.
         // This is CRUCIAL because the function_ptr entry has the REAL names and offsets
         // of the parameters whereas the aliased_func_ptr is only an empty shell
@@ -1921,7 +1928,7 @@ void finish_dwarf_entry_array_init(void)
 // and grab its filename:
 char* findFilenameForEntry(dwarf_entry* e)
 {
-  unsigned long idx;
+  int idx;
   dwarf_entry* cur_entry = 0;
   unsigned long entry_index;
 
@@ -1946,7 +1953,7 @@ char* findFilenameForEntry(dwarf_entry* e)
 // with a level lower than e's level and grabs its startPC
 unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
 {
-  unsigned long idx;
+  int idx;
   dwarf_entry* cur_entry = 0;
   unsigned long entry_index;
 

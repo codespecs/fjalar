@@ -41,7 +41,7 @@ FunctionEntry* currentFunctionEntryPtr = 0;
 char within_main_program = 0;
 
 // Updates the full daikon_name for all functions in DaikonFunctionInfoTable
-// by using the Valgrind VG_(get_fnname) function
+// which have C++ mangled names by using the Valgrind VG_(get_fnname) function
 // and also updates the trace_vars_tree
 void updateAllDaikonFunctionInfoEntries()
 {
@@ -53,7 +53,13 @@ void updateAllDaikonFunctionInfoEntries()
       DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*)
         gengettable(DaikonFunctionInfoTable, gennext(it));
 
-      if (!cur_entry)
+      // Skip to the next entry if this entry is null for some reason,
+      // or (more likely) this entry doesn't have a C++ mangled name
+      // so that it doesn't need to be demangled at all.  Note that if
+      // cur_entry->mangled_name does NOT exist, then
+      // cur_entry->daikon_name has already been initialized much
+      // earlier in initializeDaikonFunctionInfoTable()
+      if (!cur_entry || !cur_entry->mangled_name)
         continue;
 
       // Let's initialize the full Daikon function name right now:
@@ -77,9 +83,6 @@ void updateAllDaikonFunctionInfoEntries()
 	the_class = cur_entry->filename;
       }
 
-//      VG_(printf)("Original name: %s | Valgrind's name: %s\n",
-//                  cur_entry->name, full_fnname);
-
       /* We want to print static_fn in subdir/filename.c
 	 as "subdir/filename.c.static_fn() */
       full_fnname_len = VG_(strlen)(full_fnname);
@@ -102,6 +105,9 @@ void updateAllDaikonFunctionInfoEntries()
 
       // Important step!  Set the daikon name to buf
       cur_entry->daikon_name = buf;
+
+      VG_(printf)("Original name: %s | Valgrind's name: %s | Daikon name: %s\n",
+                  cur_entry->name, full_fnname, cur_entry->daikon_name);
 
       VG_(free)(full_fnname);
 
@@ -254,22 +260,22 @@ void handleFunctionEntrance(FunctionEntry* e)
       atLeastOneFunctionHandled = 1;
     }
 
-  if (VG_(strcmp)(e->name, "main") == 0) {
+  if (VG_(strncmp)(e->daikon_name, "..main(", 7) == 0) {
     within_main_program = 1;
   }
 
   // Don't forget to initialize the function's full Daikon filename here :)
   // The full name is not initialized until runtime!!!
-  daikonFuncPtr = findFunctionInfoByAddr(e->startPC);
+  daikonFuncPtr = findFunctionInfoByStartAddr(e->startPC);
 
   if (!daikonFuncPtr)
     {
-      VG_(printf)("Couldn't find function %s\n", e->name);
+      VG_(printf)("Couldn't find function %s\n", e->daikon_name);
       return;
     }
 
   DYNCOMP_DPRINTF("***ENTER %s at EBP=0x%x, lowestESP=0x%x, startPC=%p\n",
-                  e->name,
+                  e->daikon_name,
                   e->EBP,
                   e->lowestESP,
                   (void*)e->startPC);
@@ -286,7 +292,7 @@ void handleFunctionEntrance(FunctionEntry* e)
 
   currentFunctionEntryPtr = e;
 
-  DPRINTF("About to outputFormalParamsAndGlobals for %s\n", e->name);
+  DPRINTF("About to outputFormalParamsAndGlobals for %s\n", e->daikon_name);
 
   outputFormalParamsAndGlobals(e, daikonFuncPtr, 1);
 
@@ -307,16 +313,16 @@ void handleFunctionExit(FunctionEntry* e)
 {
   DaikonFunctionInfo* daikonFuncPtr;
 
-  daikonFuncPtr = findFunctionInfoByAddr(e->startPC);
+  daikonFuncPtr = findFunctionInfoByStartAddr(e->startPC);
 
   if (!daikonFuncPtr)
     {
-      VG_(printf)("Couldn't find function %s\n", e->name);
+      VG_(printf)("Couldn't find function %s\n", e->daikon_name);
       return;
     }
 
   DYNCOMP_DPRINTF("***EXIT %s - EBP=0x%x, lowestESP=0x%x\n",
-                  e->name,
+                  e->daikon_name,
                   e->EBP,
                   e->lowestESP);
 
@@ -347,7 +353,7 @@ void handleFunctionExit(FunctionEntry* e)
   //  printFunctionEntryStack();
   //  printf("\n");
 
-  if (VG_(strcmp)(e->name, "main") == 0) {
+  if (VG_(strncmp)(e->daikon_name, "..main(", 7) == 0) {
     within_main_program = 0;
   }
 }
@@ -385,7 +391,7 @@ FunctionEntry* returnFunctionEntryWithAddress(Addr a)
 	}
 
       DPRINTF("fn_stack[%d] - %s - EBP: %p\n",
-	      i, cur_fn->name, (void*)cur_fn->EBP);
+	      i, cur_fn->daikon_name, (void*)cur_fn->EBP);
 
       // If it is not the most recent function pushed on the stack,
       // then the stack frame of this function lies in between
@@ -393,7 +399,7 @@ FunctionEntry* returnFunctionEntryWithAddress(Addr a)
       // following it on the stack
       if ((cur_fn->EBP >= a) && (next_fn->EBP <= a)) {
 	DPRINTF("  EXIT SUCCESS "
-		"returnFunctionEntryWithAddress - %s\n", cur_fn->name);
+		"returnFunctionEntryWithAddress - %s\n", cur_fn->daikon_name);
 
 	return cur_fn;
       }
@@ -410,7 +416,7 @@ FunctionEntry* returnFunctionEntryWithAddress(Addr a)
 
   if ((cur_fn->EBP >= a) && (cur_fn->lowestESP <= a)) {
     DPRINTF("  EXIT SUCCESS "
-	    "returnFunctionEntryWithAddress - %s\n", cur_fn->name);
+	    "returnFunctionEntryWithAddress - %s\n", cur_fn->daikon_name);
 
     return cur_fn;
   }
@@ -988,7 +994,7 @@ int returnArrayUpperBoundFromPtr(DaikonVariable* var, Addr varLocation)
           // hopefully ensures that it's not totally bogus
           ((unsigned int)localArrayAndStructVars > 0x100) &&
           (localArrayAndStructVars->numVars > 0)) {
-        DPRINTF(" zeta - %s - %p - %d\n", e->name,
+        DPRINTF(" zeta - %s - %p - %d\n", e->daikon_name,
                 localArrayAndStructVars, localArrayAndStructVars->numVars);
 
         targetVar = returnArrayVariableWithAddr(localArrayAndStructVars,
@@ -1109,7 +1115,7 @@ char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numByt
       DPRINTF(" Address 0x%x is OFF THE HOOK for allocated in %s "
 	      "(EBP: 0x%x, lowestESP: 0x%x)\n",
 	      addressInQuestion,
-	      currentFunctionEntryPtr->name,
+	      currentFunctionEntryPtr->daikon_name,
 	      currentFunctionEntryPtr->EBP,
 	      currentFunctionEntryPtr->lowestESP);
       DASSERT(addressInQuestion != 0xffffffff);

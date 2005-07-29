@@ -152,6 +152,8 @@ typedef struct
   // the actual data for the entry with ID equal to specification_ID
 
   unsigned long start_pc; /* Location of the function in memory */
+  unsigned long end_pc;   /* Location of the highest address of an
+                             instruction in the function */
 
 } function;
 

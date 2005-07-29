@@ -90,8 +90,8 @@ Bool dyncomp_without_dtrace;
 void handle_possible_entry(MCEnv* mce, Addr64 addr);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
-extern VGA_REGPARM(2) void enter_function(Char* fnname, Addr StartPC);
-extern VGA_REGPARM(1) void exit_function(Char* fnname);
+extern VGA_REGPARM(2) void enter_function(Char* daikon_name, Addr StartPC);
+extern VGA_REGPARM(1) void exit_function(Char* daikon_name);
 
 void check_ESP();
 

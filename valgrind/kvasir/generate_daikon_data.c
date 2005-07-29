@@ -414,6 +414,10 @@ void initializeGlobalVarsList()
 // TODO: This will leak memory if called more than once per program execution
 //       since the entries in DaikonFunctionInfoTable are not being properly
 //       freed.  However, during normal execution, this should only be called once
+ // After this function is called, the 'daikon_name' field of all functions
+ // within DaikonFunctionInfoTable should be initialized to what is printed
+ // in the .decls/.dtrace EXCEPT for C++ function names which require demangling.
+ // Demangling occurs in updateAllDaikonFunctionInfoEntries() in kvasir_runtime.c
 void initializeDaikonFunctionInfoTable()
 {
   unsigned long i;
@@ -437,14 +441,10 @@ void initializeDaikonFunctionInfoTable()
                         (void*)(((function*)cur_entry->entry_ptr)->start_pc)))
         {
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
-          char *the_class; /* What Daikon will think of as the
-                              "class" part of the PPT name */
-          char *buf, *p;
-	  char* full_fnname = VG_(calloc)(500, sizeof(*full_fnname));
 
           cur_daikon_entry = VG_(calloc)(1, sizeof(*cur_daikon_entry));
 
-          DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
+          VG_(printf)("Adding function %s\n", dwarfFunctionPtr->name);
 
           cur_daikon_entry->name = dwarfFunctionPtr->name;
           cur_daikon_entry->mangled_name = dwarfFunctionPtr->mangled_name;
@@ -452,36 +452,54 @@ void initializeDaikonFunctionInfoTable()
           cur_daikon_entry->accessibility = dwarfFunctionPtr->accessibility;
 
           cur_daikon_entry->startPC = dwarfFunctionPtr->start_pc;
+          cur_daikon_entry->endPC = dwarfFunctionPtr->end_pc;
 
-          DPRINTF("****** Function: %s | Mangled name: %s | Address: 0x%x\n",
+          cur_daikon_entry->isExternal = dwarfFunctionPtr->is_external;
+
+          // Ok, here's the deal.  If cur_daikon_entry->mangled_name
+          // exists, then we know that it's a C++ mangled function
+          // name that requires demangling later at run-time in
+          // updateAllDaikonFunctionInfoEntries() (Valgrind's
+          // demangler doesn't work at this point for some reason -
+          // maybe it's too 'early' in the execution).  That function
+          // will demangle mangled_name and turn it into a Daikon
+          // name, so we don't have to initialize daikon_name right
+          // now.  So only generate daikon_name right now if there is
+          // no mangled name.
+          if (!cur_daikon_entry->mangled_name) {
+            char *the_class; /* What Daikon will think of as the
+                                "class" part of the PPT name */
+            char *buf, *p;
+
+            if (dwarfFunctionPtr->is_external) {
+              /* Globals print as "..main()", etc. */
+              the_class = ".";
+            } else {
+              the_class = cur_daikon_entry->filename;
+            }
+            /* We want to print static_fn in subdir/filename.c
+               as "subdir/filename.c.static_fn() */
+            buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
+                              VG_(strlen)(cur_daikon_entry->name) + 3);
+            VG_(strcpy)(buf, the_class);
+            for (p = buf; *p; p++) {
+              if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
+                  && *p != '_')
+                *p = '_';
+            }
+            VG_(strcat)(buf, ".");
+            VG_(strcat)(buf, cur_daikon_entry->name);
+            VG_(strcat)(buf, "()");
+            cur_daikon_entry->daikon_name = buf;
+        }
+
+          VG_(printf)("****** Name: %s | Mangled name: %s | Daikon name: %s | Address: 0x%x\n",
                       cur_daikon_entry->name,
                       (dwarfFunctionPtr->mangled_name ?
                        dwarfFunctionPtr->mangled_name :
                        "NO MANGLED NAME"),
+                      cur_daikon_entry->daikon_name,
                       cur_daikon_entry->startPC);
-
-	  cur_daikon_entry->isExternal = dwarfFunctionPtr->is_external;
-
-          if (dwarfFunctionPtr->is_external) {
-	    /* Globals print as "..main()", etc. */
-            the_class = ".";
-          } else {
-            the_class = cur_daikon_entry->filename;
-          }
-          /* We want to print static_fn in subdir/filename.c
-             as "subdir/filename.c.static_fn() */
-          buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
-			    VG_(strlen)(cur_daikon_entry->name) + 3);
-          VG_(strcpy)(buf, the_class);
-          for (p = buf; *p; p++) {
-            if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
-		&& *p != '_')
-              *p = '_';
-          }
-          VG_(strcat)(buf, ".");
-          VG_(strcat)(buf, cur_daikon_entry->name);
-          VG_(strcat)(buf, "()");
-          cur_daikon_entry->daikon_name = buf;
 
           // This was formerly in extractTypeDataFromFunctionInfoArray():
 
@@ -1527,7 +1545,7 @@ void initializeAllClassMemberFunctions() {
     for (i = 0; i < t->num_member_funcs; i++) {
       function* funcPtr = (function*)((t->member_funcs[i])->entry_ptr);
 
-      DaikonFunctionInfo* entry = findFunctionInfoByAddr(funcPtr->start_pc);
+      DaikonFunctionInfo* entry = findFunctionInfoByStartAddr(funcPtr->start_pc);
       if (entry) {
         //        VG_(printf)("   member function: %s (%s)\n",
         //                    entry->name, entry->mangled_name);
@@ -1554,14 +1572,13 @@ int equivalentIDs(int ID1, int ID2) {
 
 // DaikonFunctionInfoTable
 
-// This is SLOW because we must traverse all values
-// isDaikonName: 1 to try to match Daikon name (what is printed out in .dtrace)
-//               0 to try to match the demangled name (demangled)
-DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
+// This is SLOW because we must traverse all values,
+// looking for the Daikon name
+DaikonFunctionInfo* findFunctionInfoByDaikonNameSlow(char* daikon_name) {
   struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
   DaikonFunctionInfo* entry = 0;
+
   while (!it->finished) {
-    char* nameToLookFor = 0;
 
     entry = (DaikonFunctionInfo*)
       gengettable(DaikonFunctionInfoTable, gennext(it));
@@ -1569,9 +1586,33 @@ DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
     if (!entry)
       continue;
 
-    nameToLookFor = (isDaikonName ? entry->daikon_name : entry->demangled_name);
+    if (VG_STREQ(entry->daikon_name, daikon_name)) {
+      genfreeiterator(it);
+      return entry;
+    }
+  }
+  genfreeiterator(it);
+  return 0;
+}
 
-    if (VG_STREQ(nameToLookFor, name)) {
+// This is SLOW because we must traverse all values
+// looking for an entry whose startPC and endPC encompass the
+// desired address addr, inclusive.  Thus addr is in the range of
+// [startPC, endPC]
+DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr) {
+  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
+  DaikonFunctionInfo* entry = 0;
+
+  while (!it->finished) {
+
+    entry = (DaikonFunctionInfo*)
+      gengettable(DaikonFunctionInfoTable, gennext(it));
+
+    if (!entry)
+      continue;
+
+    if ((entry->startPC <= addr) &&
+        (addr <= entry->endPC)) {
       genfreeiterator(it);
       return entry;
     }
@@ -1581,8 +1622,8 @@ DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
 }
 
 // This is FAST because the keys of the hash table are addresses
-inline DaikonFunctionInfo* findFunctionInfoByAddr(unsigned int addr) {
-  return (DaikonFunctionInfo*)gengettable(DaikonFunctionInfoTable, (void*)addr);
+inline DaikonFunctionInfo* findFunctionInfoByStartAddr(unsigned int startPC) {
+  return (DaikonFunctionInfo*)gengettable(DaikonFunctionInfoTable, (void*)startPC);
 }
 
 // Iterate thru all chars, sum up each (ASCII value * (index + 1))
