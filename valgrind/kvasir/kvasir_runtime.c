@@ -53,67 +53,75 @@ void updateAllDaikonFunctionInfoEntries()
       DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*)
         gengettable(DaikonFunctionInfoTable, gennext(it));
 
-      // Skip to the next entry if this entry is null for some reason,
-      // or (more likely) this entry doesn't have a C++ mangled name
-      // so that it doesn't need to be demangled at all.  Note that if
-      // cur_entry->mangled_name does NOT exist, then
-      // cur_entry->daikon_name has already been initialized much
-      // earlier in initializeDaikonFunctionInfoTable()
-      if (!cur_entry || !cur_entry->mangled_name)
+      // Skip to the next entry if this entry is null for some reason
+
+      if (!cur_entry)
         continue;
 
-      // Let's initialize the full Daikon function name right now:
-      char* full_fnname = VG_(calloc)(500, sizeof(*full_fnname));
+      // OPTIMIZATION:
+      // Don't demangle the name if this entry doesn't have a C++
+      // mangled name.  Note that if cur_entry->mangled_name does NOT
+      // exist, then cur_entry->daikon_name has already been
+      // initialized much earlier in
+      // initializeDaikonFunctionInfoTable()
+      if (cur_entry->mangled_name) {
+        // Let's initialize the full Daikon function name right now:
+        char* full_fnname = VG_(calloc)(500, sizeof(*full_fnname));
 
-      char *the_class; /* What Daikon will think of as the
-			  "class" part of the PPT name */
-      char *buf, *p;
+        char *the_class; /* What Daikon will think of as the
+                            "class" part of the PPT name */
+        char *buf, *p;
 
-      int full_fnname_len = 0;
-      int add_parens;
+        int full_fnname_len = 0;
+        int add_parens;
 
-      VG_(get_fnname)(cur_entry->startPC, full_fnname, 500);
+        VG_(get_fnname)(cur_entry->startPC, full_fnname, 500);
 
-      // Set the demangled_name to the demangled version:
-      cur_entry->demangled_name = VG_(strdup)(full_fnname);
+        // Set the demangled_name to the demangled version:
+        cur_entry->demangled_name = VG_(strdup)(full_fnname);
 
-      if (cur_entry->isExternal) {
-	the_class = ".";
-      } else {
-	the_class = cur_entry->filename;
+        if (cur_entry->isExternal) {
+          the_class = ".";
+        } else {
+          the_class = cur_entry->filename;
+        }
+
+        /* We want to print static_fn in subdir/filename.c
+           as "subdir/filename.c.static_fn() */
+        full_fnname_len = VG_(strlen)(full_fnname);
+        // If it's a C function name that does NOT end in ')',
+        // then we need to append a "()" onto the end of it
+        add_parens = (full_fnname[full_fnname_len - 1] != ')');
+        buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
+                          full_fnname_len + (add_parens ? 2 : 0) + 1);
+        VG_(strcpy)(buf, the_class);
+        for (p = buf; *p; p++) {
+          if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
+              && *p != '_')
+            *p = '_';
+        }
+        VG_(strcat)(buf, ".");
+        VG_(strcat)(buf, full_fnname);
+
+        if (add_parens)
+          VG_(strcat)(buf, "()");
+
+        // Important step!  Set the daikon name to buf
+        cur_entry->daikon_name = buf;
+
+        //      VG_(printf)("Original name: %s | Valgrind's name: %s | Daikon name: %s\n",
+        //                  cur_entry->name, full_fnname, cur_entry->daikon_name);
+
+        VG_(free)(full_fnname);
       }
 
-      /* We want to print static_fn in subdir/filename.c
-	 as "subdir/filename.c.static_fn() */
-      full_fnname_len = VG_(strlen)(full_fnname);
-      // If it's a C function name that does NOT end in ')',
-      // then we need to append a "()" onto the end of it
-      add_parens = (full_fnname[full_fnname_len - 1] != ')');
-      buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
-			full_fnname_len + (add_parens ? 2 : 0) + 1);
-      VG_(strcpy)(buf, the_class);
-      for (p = buf; *p; p++) {
-	if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
-	    && *p != '_')
-	  *p = '_';
-      }
-      VG_(strcat)(buf, ".");
-      VG_(strcat)(buf, full_fnname);
-
-      if (add_parens)
-	VG_(strcat)(buf, "()");
-
-      // Important step!  Set the daikon name to buf
-      cur_entry->daikon_name = buf;
-
-      //      VG_(printf)("Original name: %s | Valgrind's name: %s | Daikon name: %s\n",
-      //                  cur_entry->name, full_fnname, cur_entry->daikon_name);
-
-      VG_(free)(full_fnname);
 
       // See if we are interested in tracing variables for this file,
       // and if so, we must initialize cur_entry->trace_vars_tree
-      // appropriately
+      // appropriately.  We cannot initialize it any earlier because
+      // we need to use the Daikon name of the function to identify
+      // its entry in vars_tree, and this is the earliest point where
+      // the Daikon name is guaranteed to be initialized.
       if (kvasir_trace_vars_filename &&
 	  (!cur_entry->trace_vars_tree_already_initialized))
 	{
