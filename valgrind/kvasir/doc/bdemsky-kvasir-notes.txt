@@ -18,31 +18,21 @@ Last Modified: 2005-07-28
 
 IMMEDIATE TO-DO's:
 
-* Inform Brian about not using optimization for Freeciv (-O2 in
-  configure script) and email him about general updates thus far
-
-* Write up an entry in the Daikon user manual about
-  the ppt list format and how to best use it
-
 * Add FunctionNamesTest (is that the right name?) to the Kvasir test
   suite as a C++ test because it exercises interesting qualities of
   function names such as file-static functions and C++ mangled names
 
-* Turn optimizations on Freeciv back on for now and test to make sure
-  that the ppt list file still works
-
 * Write progress report
 
-* Remember to get stuff done for August 1st Daikon release
+* Remember to get stuff done for August 1st Daikon release -
+  checked-in by Sunday night
 
-* Investigate what happens (and report in Daikon manual) when you use --dump-var-file with --ppt-list-file --- it should only dump vars for those ppts
+* Check-in Daikon manual changes --- diff them first for safety!
 
-* Investigate what happens (and report in Daikon manual) when you
-  prune off the parent of a variable entry - does it still try to
-  observe it and report the children?  Or does pruning off a parent
-  imply that the child is pruned too (more efficient) since no
-  traversal occurs?  It's a matter of whether we are preventing
-  traversal or merely output.
+* Perhaps add some regression tests with var and ppt list files???
+  Start with FunctionNamesTest???
+
+* Acknowledge that this hasn't been well-tested with C++ classes yet
 
 @*($&*()@#$&*()@#$&*(@#$
 @*($&*()@#$&*()@#$&*(@#$

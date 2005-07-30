@@ -262,7 +262,7 @@ typedef struct _DaikonFunctionInfo {
   // To support command-line options
 
   // GNU Binary tree of variables to trace within this function - only valid when
-  // Kvasir is run with the --trace-vars-in-file command-line option:
+  // Kvasir is run with the --var-list-file command-line option:
   // This is initialized in updateAllDaikonFunctionInfoEntries()
   char* trace_vars_tree;
   char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
