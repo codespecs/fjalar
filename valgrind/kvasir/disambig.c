@@ -46,6 +46,8 @@ void generateDisambigFile() {
     genallocatehashtable((unsigned int (*)(void *)) & hashString,
                          (int (*)(void *,void *)) &equivalentStrings);
 
+  VG_(printf)("\nBegin generating disambiguation file: \"%s\" ...\n",
+              kvasir_disambig_filename);
 
   if (!disambig_writing || !disambig_fp) {
     VG_(printf)( "Error. There is no .disambig file to write in generateDisambigFile()");
@@ -177,7 +179,8 @@ void generateDisambigFile() {
   genfreeiterator(DaikonFunctionInfoIt);
   genfreehashtable(UsertypeNamesAlreadyPrinted);
 
-  printf("\nDone generating .disambig file\n\n");
+  VG_(printf)("Done generating disambiguation file: \"%s\"\n\n",
+              kvasir_disambig_filename);
 
   if (disambig_fp) {
     fclose(disambig_fp);

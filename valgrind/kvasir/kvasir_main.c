@@ -193,7 +193,9 @@ static void pop_fn(Char* daikon_name,
    // s is null if an "unwind" is popped off the stack
    // Only do something if this function name matches what's on the top of the stack
    if (!daikon_name || (!VG_STREQ(fn_stack[fn_stack_top - 1].daikon_name, daikon_name))) {
-      VG_(printf)("MISMATCHED on pop_fn! daikon_name: %s\n", daikon_name);
+      VG_(printf)("MISMATCHED on pop_fn! top name: %s, daikon_name: %s\n",
+                  fn_stack[fn_stack_top - 1].daikon_name,
+                  daikon_name);
       return;
    }
 

@@ -385,7 +385,7 @@ srv_main.c.begin_turn()
 
 Use the following var list file:
 --- BEGIN FILE ---
---------ENTRY--------
+----SECTION----
 globals
 /map
 /map.xsize
