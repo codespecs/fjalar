@@ -1572,38 +1572,15 @@ int equivalentIDs(int ID1, int ID2) {
 
 // DaikonFunctionInfoTable
 
-// This is SLOW because we must traverse all values,
-// looking for the Daikon name
-DaikonFunctionInfo* findFunctionInfoByDaikonNameSlow(char* daikon_name) {
-  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
-  DaikonFunctionInfo* entry = 0;
-
-  while (!it->finished) {
-
-    entry = (DaikonFunctionInfo*)
-      gengettable(DaikonFunctionInfoTable, gennext(it));
-
-    if (!entry)
-      continue;
-
-    if (VG_STREQ(entry->daikon_name, daikon_name)) {
-      genfreeiterator(it);
-      return entry;
-    }
-  }
-  genfreeiterator(it);
-  return 0;
-}
-
 // This is SLOW because we must traverse all values
-// looking for an entry whose startPC and endPC encompass the
-// desired address addr, inclusive.  Thus addr is in the range of
-// [startPC, endPC]
-DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr) {
+// isDaikonName: 1 to try to match Daikon name (what is printed out in .dtrace)
+//               0 to try to match either the demangled name or the regular plain
+//                 'ole name, depending on what 'name' looks like
+DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
   struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
   DaikonFunctionInfo* entry = 0;
-
   while (!it->finished) {
+    char* nameToLookFor = 0;
 
     entry = (DaikonFunctionInfo*)
       gengettable(DaikonFunctionInfoTable, gennext(it));
@@ -1611,8 +1588,22 @@ DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr) {
     if (!entry)
       continue;
 
-    if ((entry->startPC <= addr) &&
-        (addr <= entry->endPC)) {
+    if (isDaikonName) {
+      nameToLookFor = entry->daikon_name;
+    }
+    // Should we use the demangled name or the plain ole' name?
+    // If 'name' ends in a ')', then chances are that it's a C++ demangled name
+    // because demangled names come with parens.  However, if 'name' doesn't
+    // end in a ')', then we should look for it using the plain ole' name field
+    // of 'entry' and not the demangled_name field.
+    else if (')' == name[VG_(strlen)(name) - 1]) {
+      nameToLookFor = entry->demangled_name;
+    }
+    else {
+      nameToLookFor = entry->name;
+    }
+
+    if (VG_STREQ(nameToLookFor, name)) {
       genfreeiterator(it);
       return entry;
     }
@@ -1620,6 +1611,7 @@ DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr) {
   genfreeiterator(it);
   return 0;
 }
+
 
 // This is FAST because the keys of the hash table are addresses
 inline DaikonFunctionInfo* findFunctionInfoByStartAddr(unsigned int startPC) {

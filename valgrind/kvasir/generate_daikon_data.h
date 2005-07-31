@@ -332,7 +332,7 @@ typedef struct _DaikonFunctionInfo {
 // Value: (DaikonFunctionInfo*) pointer to DaikonFunctionInfo entry
 struct genhashtable* DaikonFunctionInfoTable;
 
-DaikonFunctionInfo* findFunctionInfoByDaikonNameSlow(char* daikon_name);
+DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName);
 inline DaikonFunctionInfo* findFunctionInfoByStartAddr(unsigned int startPC);
 DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr);
 
