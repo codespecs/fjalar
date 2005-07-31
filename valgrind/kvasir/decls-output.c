@@ -317,12 +317,18 @@ char createDeclsAndDtraceFiles(char* appname)
     {
       if ((trace_prog_pts_input_fp = fopen(kvasir_trace_prog_pts_filename, "r")))
 	{
+	  VG_(printf)( "\nBegin processing program point list file \"%s\" ...\n",
+		  kvasir_trace_prog_pts_filename);
 	  initializeProgramPointsTree();
+	  VG_(printf)( "Done processing program point list file \"%s\"\n",
+		  kvasir_trace_prog_pts_filename);
 	}
       else
 	{
-	  VG_(printf)( "Invalid trace program points filename: %s\n",
+	  VG_(printf)( "\nError: \"%s\" is an invalid filename for the program point list file specified by the --ppt-list-file option.\n\nExiting.\n\n",
 		  kvasir_trace_prog_pts_filename);
+
+          VG_(exit)(1);
 	}
     }
 
@@ -330,12 +336,18 @@ char createDeclsAndDtraceFiles(char* appname)
     {
       if ((trace_vars_input_fp = fopen(kvasir_trace_vars_filename, "r")))
 	{
+	  VG_(printf)( "\nBegin processing variable list file \"%s\" ...\n",
+		  kvasir_trace_vars_filename);
 	  initializeVarsTree();
+	  VG_(printf)( "Done processing variable list file \"%s\"\n",
+		  kvasir_trace_vars_filename);
 	}
       else
 	{
-	  VG_(printf)( "Invalid trace variables filename: %s\n",
+	  VG_(printf)( "\nError: \"%s\" is an invalid filename for the variable list file specified by the --var-list-file option.\n\nExiting.\n\n",
 		  kvasir_trace_vars_filename);
+
+          VG_(exit)(1);
 	}
     }
 
@@ -823,7 +835,13 @@ void outputDeclsFile(char faux_decls)
   // Process .disambig at this time AFTER
   // updateAllDaikonFunctionInfoEntries() has been run
   if (disambig_fp && !disambig_writing) {
+    VG_(printf)( "\nBegin processing disambiguation file \"%s\" ...\n",
+		  kvasir_disambig_filename);
+
     processDisambigFile();
+
+    VG_(printf)( "Done processing disambiguation file \"%s\"\n",
+		  kvasir_disambig_filename);
   }
 
   if (!do_not_print_out_decls) {
