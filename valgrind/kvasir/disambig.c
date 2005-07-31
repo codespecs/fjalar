@@ -30,15 +30,22 @@ Bool disambig_writing = False; // True for writing to .disambig, False for readi
 // For struct/union types:
 const char* USERTYPE_PREFIX = "usertype.";
 
-// We must create the .disambig file at the very end after
-// Kvasir has run though the entire program so that it can
-// determine whether each pointer variable has only referenced
-// one element or multiple elements throughout this particular execution
 // Pre: disambig_fp has been initialized and disambig_writing is True
 void generateDisambigFile() {
   struct geniterator* it = 0;
   struct geniterator* DaikonFunctionInfoIt = 0;
   DaikonFunctionInfo* cur_func_info_entry = 0;
+
+  // Hashtable which contains the names of structs already printed in
+  // the .disambig file.  This is so that we can allow duplicate entries
+  // in DaikonTypesTable but only print out ONE "usertype" section for each
+  // entry with a particular name.
+  // Key: Class name, Value: Doesn't matter - we only check if the table
+  // "contains the entry"
+  struct genhashtable* UsertypeNamesAlreadyPrinted =
+    genallocatehashtable((unsigned int (*)(void *)) & hashString,
+                         (int (*)(void *,void *)) &equivalentStrings);
+
 
   if (!disambig_writing || !disambig_fp) {
     VG_(printf)( "Error. There is no .disambig file to write in generateDisambigFile()");
@@ -56,13 +63,21 @@ void generateDisambigFile() {
       if (!cur_func_info_entry)
         continue;
 
-      fputs(ENTRY_DELIMETER, disambig_fp);
-      fputs("\n", disambig_fp);
-      printOneFunctionDisambig(cur_func_info_entry, 1);
+      if (!kvasir_trace_prog_pts_filename ||
+          // If kvasir_trace_prog_pts_filename is on (we are reading in
+          // a ppt list file), then DO NOT OUTPUT .disambig entries for
+          // program points that we are not interested in tracing.  This
+          // decreases the clutter of the .decls file and speeds up
+          // processing time
+          prog_pts_tree_entry_found(cur_func_info_entry)) {
+        fputs(ENTRY_DELIMETER, disambig_fp);
+        fputs("\n", disambig_fp);
+        printOneFunctionDisambig(cur_func_info_entry, 1);
 
-      fputs(ENTRY_DELIMETER, disambig_fp);
-      fputs("\n", disambig_fp);
-      printOneFunctionDisambig(cur_func_info_entry, 0);
+        fputs(ENTRY_DELIMETER, disambig_fp);
+        fputs("\n", disambig_fp);
+        printOneFunctionDisambig(cur_func_info_entry, 0);
+      }
     }
 
   // Print out a .disambig section for globals
@@ -104,14 +119,24 @@ void generateDisambigFile() {
      // In the future, we may want to have a serial
      // naming system for unnamed structs/unions so that
      // we can uniquely identify unnamed ones:
+     //
+     // Remember to NOT PRINT OUT DUPLICATE ENTRIES, those with the
+     // same name in DaikonTypesTable!  An irritating thing about the
+     // DWARF2 debugging information is that it can contain multiple
+     // entries for the SAME struct type.  When we read in the
+     // .disambig file in processDisambigFile(), we assign the
+     // disambiguation properties to ALL the entries in
+     // DaikonTypesTable with the matching name.  Here, we do the
+     // complementary thing and
      if (((cur_type->declaredType == D_STRUCT) ||
 	  (cur_type->declaredType == D_UNION))
-	 && cur_type->collectionName) {
+	 && cur_type->collectionName &&
+         !gencontains(UsertypeNamesAlreadyPrinted, cur_type->collectionName)) {
 
        char* typeName = cur_type->collectionName;
        VarNode* cur_node = 0;
 
-       //       printf("TYPE NAME: %s\n", cur_type->collectionName);
+       //       VG_(printf)("TYPE NAME: %s\n", cur_type->collectionName);
 
        fputs("\n", disambig_fp);
 
@@ -143,11 +168,14 @@ void generateDisambigFile() {
 
 	 stringStackPop(fullNameStack, &fullNameStackSize);
        }
+
+       genputtable(UsertypeNamesAlreadyPrinted, cur_type->collectionName, 0);
      }
   }
 
   genfreeiterator(it);
   genfreeiterator(DaikonFunctionInfoIt);
+  genfreehashtable(UsertypeNamesAlreadyPrinted);
 
   printf("\nDone generating .disambig file\n\n");
 
@@ -237,7 +265,13 @@ void processDisambigFile() {
       continue;
 
     // Strip '\n' off the end of the line
-    line[lineLen - 1] = '\0';
+    // NOTE: Only do this if the end of the line is a newline character.
+    // If the very last line of a file is not followed by a newline character,
+    // then blindly stripping off the last character will truncate the actual
+    // string, which is undesirable.
+    if (line[lineLen - 1] == '\n') {
+      line[lineLen - 1] = '\0';
+    }
 
     if VG_STREQ(line, ENTRY_DELIMETER) {
       if (entryName) {
