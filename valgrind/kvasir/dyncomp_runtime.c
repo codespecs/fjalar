@@ -393,8 +393,18 @@ void DC_extra_propagate_val_to_var_sets() {
     if (!cur_entry)
          continue;
 
-    DC_extra_propagate_one_function(cur_entry, 1);
-    DC_extra_propagate_one_function(cur_entry, 0);
+    // Remember to only propagate through the functions to be traced
+    // if kvasir_trace_prog_pts_filename is on:
+    if (!kvasir_trace_prog_pts_filename ||
+        // If kvasir_trace_prog_pts_filename is on (we are reading in
+        // a ppt list file), then DO NOT OUTPUT .decls entries for
+        // program points that we are not interested in tracing.  This
+        // decreases the clutter of the .decls file and speeds up
+        // processing time
+        prog_pts_tree_entry_found(cur_entry)) {
+      DC_extra_propagate_one_function(cur_entry, 1);
+      DC_extra_propagate_one_function(cur_entry, 0);
+    }
   }
 
   genfreeiterator(it);
