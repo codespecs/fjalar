@@ -18,21 +18,32 @@ Last Modified: 2005-07-28
 
 IMMEDIATE TO-DO's:
 
+
 * Add FunctionNamesTest (is that the right name?) to the Kvasir test
   suite as a C++ test because it exercises interesting qualities of
   function names such as file-static functions and C++ mangled names
 
-* Write progress report
+* Write progress report:
+
+Accomplishments - added section to Daikon manual on selective tracing
+Fixed bugs and got ppt-list-file and var-list-file to play well together
+Optimized ppt-list-file program point pruning to be done at translation-time and not run-time
+Fixed Brian's map.tiles bug where it wasn't properly finding array sizes for arrays of partially-init structs
 
 * Remember to get stuff done for August 1st Daikon release -
-  checked-in by Sunday night
-
-* Check-in Daikon manual changes --- diff them first for safety!
+  checked-in by Sunday night - update the CHANGES file
 
 * Perhaps add some regression tests with var and ppt list files???
   Start with FunctionNamesTest???
 
 * Acknowledge that this hasn't been well-tested with C++ classes yet
+
+* Remember that DisambigTest hasn't been checked into CVS because
+  dtrace-diff.pl has that one-line fix which I haven't checked-in yet
+  checked-it in!
+
+* Ummmm, .disambig files are generating duplicates now for structs
+  such as usertype.TestBuffer, in C++ programs ... arg!
 
 @*($&*()@#$&*()@#$&*(@#$
 @*($&*()@#$&*()@#$&*(@#$
@@ -63,7 +74,9 @@ together.  What should the variables be named in the var list file?
 e.g., foo[] vs. *foo?  From my recollection (need to verify, though),
 the *foo naming scheme is never used in the disambig files.  It is
 only used in the .decls/.dtrace for more aesthetically-pleasing output
-to Daikon.
+to Daikon.  Well, the reason why *foo isn't in the disambig file is
+because it's not a POINTER variable.  Only pointer variables appear in
+the .disambig.
 
 We need to develop reasonable semantics for working with .disambig and
 var/ppt list files, get it implemented, tested, and DOCUMENTED, and
@@ -72,7 +85,8 @@ hopefully get something working on Freeciv and CTAS.
 One example semantics:
 - when you use --disambig AND --dump-var-file, the var file generated
 should match .disambig names, and when you use --var-list-file again,
-you should use the SAME disambig file
+you should use the SAME disambig file --- yes, this seems to work fine
+- I need to document it now
 
 It may take quite a while to create .disambig files when we are
 currently creating them at the END of program execution and trying to

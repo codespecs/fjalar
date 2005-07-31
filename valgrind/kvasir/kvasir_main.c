@@ -57,6 +57,7 @@ Bool kvasir_asserts_aborts_on = False;
 Bool kvasir_decls_only = False;
 Bool kvasir_limit_static_vars = False;
 Bool kvasir_default_disambig = False;
+Bool kvasir_smart_disambig = False;
 Bool kvasir_use_bit_level_precision = False;
 Bool dyncomp_print_debug_info = False;
 int kvasir_array_length_limit = -1;
@@ -526,16 +527,6 @@ void kvasir_post_clo_init()
     VG_(strcat)(disambig_filename, DISAMBIG);
     kvasir_disambig_filename = disambig_filename;
   }
-  // --disambig-file=F results in the disambig filename being ${F}.disambig
-  else if (kvasir_disambig_filename) {
-    char* disambig_filename =
-      VG_(calloc)(VG_(strlen)(kvasir_disambig_filename) + DISAMBIG_LEN + 1,
-	     sizeof(*disambig_filename));
-
-    VG_(strcpy)(disambig_filename, kvasir_disambig_filename);
-    VG_(strcat)(disambig_filename, DISAMBIG);
-    kvasir_disambig_filename = disambig_filename;
-  }
 
   DPRINTF("\n%s\n\n", kvasir_disambig_filename);
 
@@ -623,6 +614,8 @@ void kvasir_print_usage()
 "    --var-list-file=<string> trace only the variables listed in this file\n"
 "    --disambig-file=<string> Reads in disambig file if exists; otherwise creates one\n"
 "    --disambig               Uses <program name>.disambig as the disambig file\n"
+"    --smart-disambig         Infers sensible values for each entry in .disambig file\n"
+"                             generated using the --disambig or --disambig-file options\n"
 "    --program-stdout=<file>  redirect instrumented program stdout to file\n"
 "                             [Kvasir's stdout, or /dev/tty if --dtrace-file=-]\n"
 "    --program-stderr=<file>  redirect instrumented program stderr to file\n"
@@ -658,6 +651,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("decls-only",     kvasir_decls_only)
    else VG_YESNO_CLO("limit-static-vars", kvasir_limit_static_vars)
    else VG_YESNO_CLO("bit-level-precision", kvasir_use_bit_level_precision)
+   else VG_YESNO_CLO("smart-disambig", kvasir_smart_disambig)
    else VG_BNUM_CLO(arg, "--struct-depth",  MAX_STRUCT_INSTANCES, 0, 100) // [0 to 100]
    else VG_BNUM_CLO(arg, "--nesting-depth", MAX_NUM_STRUCTS_TO_DEREFERENCE, 0, 100) // [0 to 100]
    else VG_BNUM_CLO(arg, "--array-length-limit", kvasir_array_length_limit,
@@ -681,7 +675,12 @@ Bool kvasir_process_cmd_line_option(Char* arg)
 void kvasir_finish() {
   extern UInt nextTag;
 
-  if (disambig_writing) {
+  // If kvasir_smart_disambig is on, then
+  // we must create the .disambig file at the very end after
+  // Kvasir has run though the entire program so that it can
+  // determine whether each pointer variable has only referenced
+  // one element or multiple elements throughout this particular execution
+  if (disambig_writing && kvasir_smart_disambig) {
     generateDisambigFile();
   }
 

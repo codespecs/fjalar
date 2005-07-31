@@ -826,7 +826,6 @@ void outputDeclsFile(char faux_decls)
     processDisambigFile();
   }
 
-
   if (!do_not_print_out_decls) {
 
     if (var_dump_fp)
@@ -869,8 +868,16 @@ void outputDeclsFile(char faux_decls)
     // Punt everything if you're dumping program point or variable names
     // or if we only wanted the .decls file
     if (kvasir_dump_prog_pt_names_filename ||
-        kvasir_dump_var_names_filename || kvasir_decls_only)
+        kvasir_dump_var_names_filename || kvasir_decls_only ||
+        (disambig_writing && !kvasir_smart_disambig))
       {
+
+        // If kvasir_smart_disambig is off, then write the .disambig now
+        // and then punt so that we don't have to run the entire program
+        if (disambig_writing && !kvasir_smart_disambig) {
+          generateDisambigFile();
+        }
+
         if (!actually_output_separate_decls_dtrace) {
           finishDtraceFile();
         }
