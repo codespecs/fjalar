@@ -324,13 +324,10 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
 // is updated every time an Ist_IMark statement is translated, which
 // is quite often
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
-   Char fnname[500];
-
-   if ((Ijk_Ret == jk) &&
-       VG_(get_fnname)(currentAddr, fnname, 500)) {
+   if (Ijk_Ret == jk) {
       IRDirty  *di;
 
-      DaikonFunctionInfo* curFuncPtr = findFunctionInfoByNameSlow(fnname, 0);
+      DaikonFunctionInfo* curFuncPtr = findFunctionInfoByAddrSlow(currentAddr);
 
       if (curFuncPtr &&
           // Also, if kvasir_trace_prog_pts_filename is on (we are
