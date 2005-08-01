@@ -6,6 +6,8 @@ Last Modified: 2005-07-28
 
 
 
+I noticed that findFunctionInfoByNameSlow() really causes a helluva a lot of slowdown at translation-time.  I guess this is like O(n^2) or something like that since the names are not the keys.  Perhaps we'll suck it up and add another hashtable where the names are keys.  I noticed that when I used findFunctionInfoByAddrSlow (which didn't end up working in all cases, unfortunately), it was a bit faster ... perhaps this is a point where we can optimize, but is it worth the trouble?
+
 
 
 *(#$&()*@#$&*(@#$@&#&$*(

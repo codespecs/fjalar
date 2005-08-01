@@ -1592,15 +1592,16 @@ DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
       nameToLookFor = entry->daikon_name;
     }
     // Should we use the demangled name or the plain ole' name?
-    // If 'name' ends in a ')', then chances are that it's a C++ demangled name
-    // because demangled names come with parens.  However, if 'name' doesn't
-    // end in a ')', then we should look for it using the plain ole' name field
-    // of 'entry' and not the demangled_name field.
-    else if (')' == name[VG_(strlen)(name) - 1]) {
-      nameToLookFor = entry->demangled_name;
+    // Ok, this is just from experience, but it seems like main()
+    // is the only function which resists demangling, so
+    // if it's 'main', then use entry->name:
+    // (This is a quick hack, so look more into this later if
+    //  certain program points are not being traced correctly)
+    else if (VG_STREQ("main", name)) {
+      nameToLookFor = entry->name;
     }
     else {
-      nameToLookFor = entry->name;
+      nameToLookFor = entry->demangled_name;
     }
 
     if (VG_STREQ(nameToLookFor, name)) {
