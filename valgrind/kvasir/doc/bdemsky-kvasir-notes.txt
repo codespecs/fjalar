@@ -21,6 +21,11 @@ I noticed that findFunctionInfoByNameSlow() really causes a helluva a lot of slo
 IMMEDIATE TO-DO's:
 
 
+VERY VERY VERY IMPORTANT!!!
+
+Now it croaks on Freeciv when run WITHOUT any command-line options --- mismatched push/pop
+on function stack
+
 * Add FunctionNamesTest (is that the right name?) to the Kvasir test
   suite as a C++ test because it exercises interesting qualities of
   function names such as file-static functions and C++ mangled names

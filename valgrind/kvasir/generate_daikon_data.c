@@ -1572,15 +1572,13 @@ int equivalentIDs(int ID1, int ID2) {
 
 // DaikonFunctionInfoTable
 
-// This is SLOW because we must traverse all values
-// isDaikonName: 1 to try to match Daikon name (what is printed out in .dtrace)
-//               0 to try to match either the demangled name or the regular plain
-//                 'ole name, depending on what 'name' looks like
-DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
+// This is SLOW because we must traverse all values,
+// looking for the Daikon name
+DaikonFunctionInfo* findFunctionInfoByDaikonNameSlow(char* daikon_name) {
   struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
   DaikonFunctionInfo* entry = 0;
+
   while (!it->finished) {
-    char* nameToLookFor = 0;
 
     entry = (DaikonFunctionInfo*)
       gengettable(DaikonFunctionInfoTable, gennext(it));
@@ -1588,23 +1586,7 @@ DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
     if (!entry)
       continue;
 
-    if (isDaikonName) {
-      nameToLookFor = entry->daikon_name;
-    }
-    // Should we use the demangled name or the plain ole' name?
-    // Ok, this is just from experience, but it seems like main()
-    // is the only function which resists demangling, so
-    // if it's 'main', then use entry->name:
-    // (This is a quick hack, so look more into this later if
-    //  certain program points are not being traced correctly)
-    else if (VG_STREQ("main", name)) {
-      nameToLookFor = entry->name;
-    }
-    else {
-      nameToLookFor = entry->demangled_name;
-    }
-
-    if (VG_STREQ(nameToLookFor, name)) {
+    if (VG_STREQ(entry->daikon_name, daikon_name)) {
       genfreeiterator(it);
       return entry;
     }
@@ -1613,6 +1595,31 @@ DaikonFunctionInfo* findFunctionInfoByNameSlow(char* name, char isDaikonName) {
   return 0;
 }
 
+// This is SLOW because we must traverse all values
+// looking for an entry whose startPC and endPC encompass the
+// desired address addr, inclusive.  Thus addr is in the range of
+// [startPC, endPC]
+DaikonFunctionInfo* findFunctionInfoByAddrSlow(unsigned int addr) {
+  struct geniterator* it = gengetiterator(DaikonFunctionInfoTable);
+  DaikonFunctionInfo* entry = 0;
+
+  while (!it->finished) {
+
+    entry = (DaikonFunctionInfo*)
+      gengettable(DaikonFunctionInfoTable, gennext(it));
+
+    if (!entry)
+      continue;
+
+    if ((entry->startPC <= addr) &&
+        (addr <= entry->endPC)) {
+      genfreeiterator(it);
+      return entry;
+    }
+  }
+  genfreeiterator(it);
+  return 0;
+}
 
 // This is FAST because the keys of the hash table are addresses
 inline DaikonFunctionInfo* findFunctionInfoByStartAddr(unsigned int startPC) {
