@@ -166,7 +166,7 @@ static void push_fn(Char* daikon_name, Addr EBP, Addr startPC)
   fn_stack_top++;
 
   // We used to do this BEFORE the push - does it make a difference???
-  DPRINTF("-- PUSH_FN: fn_stack_top: %d, f: %s\n", fn_stack_top, daikon_name);
+  //  VG_(printf)("-- PUSH_FN: fn_stack_top: %d, f: %s\n", fn_stack_top, daikon_name);
 
   // Do this AFTER initializing virtual stack and lowestESP
   handleFunctionEntrance(top);
@@ -237,7 +237,7 @@ static void pop_fn(Char* daikon_name,
      }
   }
 
-  DPRINTF("------ POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, daikon_name);
+  //  VG_(printf)("-- POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, daikon_name);
 
   handleFunctionExit(top);
 

@@ -21,10 +21,11 @@ I noticed that findFunctionInfoByNameSlow() really causes a helluva a lot of slo
 IMMEDIATE TO-DO's:
 
 
-VERY VERY VERY IMPORTANT!!!
+VERY IMPORTANT - DON'T USE FREAKING OPTIMIZATIONS! IT SCREWS UP FUNCTION ENTRANCE/EXIT TRACKING
 
-Now it croaks on Freeciv when run WITHOUT any command-line options --- mismatched push/pop
-on function stack
+See everything worked just fine before ... was it my decision to only throw Daikon names into the fn_entry structs instead of whatever name Valgrind fed to me?  Maybe???
+This crap worked just fine on the Kvasir tests in the old days when we did name matching without the special case for "main" or ')', so look closer into what we changed.
+
 
 * Add FunctionNamesTest (is that the right name?) to the Kvasir test
   suite as a C++ test because it exercises interesting qualities of
