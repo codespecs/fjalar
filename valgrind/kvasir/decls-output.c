@@ -988,6 +988,14 @@ void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_d
     }
   }
 
+  // Optimization: If we are only dumping program point names
+  // and NOT variable names, then we can simply quit at this point
+  // because we are done (we don't need to print out anything
+  // about the function's formal parameters)
+  if (prog_pt_dump_fp && !var_dump_fp) {
+    return;
+  }
+
   if (!faux_decls) {
     fputs("DECLARE\n", decls_fp);
     fputs(funcPtr->daikon_name, decls_fp);

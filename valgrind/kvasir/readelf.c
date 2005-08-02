@@ -8282,7 +8282,7 @@ display_debug_info (section, start, file)
 	  abbrev_entry *entry;
 	  abbrev_attr *attr;
           char is_relevant_entry; //PG
-          dwarf_entry my_dwarf_entry = {0, 0, 0};
+          dwarf_entry my_dwarf_entry = {0, 0, 0, NULL};
 
 	  abbrev_number = read_leb128 (tags, & bytes_read, 0);
 	  tags += bytes_read;
