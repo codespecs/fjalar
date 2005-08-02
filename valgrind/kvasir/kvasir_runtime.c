@@ -33,8 +33,6 @@
 extern FunctionEntry fn_stack[];
 extern Int fn_stack_top;
 
-static char atLeastOneFunctionHandled = 0;
-
 FunctionEntry* currentFunctionEntryPtr = 0;
 
 // For debug printouts
@@ -247,26 +245,6 @@ void updateAllGlobalVariableNames()
 void handleFunctionEntrance(FunctionEntry* e)
 {
   DaikonFunctionInfo* daikonFuncPtr;
-
-  // If it's the first time you've ever handled a function entrance,
-  // then you better run outputDeclsAndCloseFile so that Kvasir
-  // can take advantage of all of Valgrind's name demangling functionality
-  // while still producing a complete .decls file before the .dtrace file
-  // in order to allow streaming feeds into Daikon:
-  if (!atLeastOneFunctionHandled)
-    {
-      // Remember to not actually output the .decls right now when
-      // we're running DynComp.  We need to wait until the end to
-      // actually output .decls, but we need to make a fake run in
-      // order to set up the proper data structures
-      outputDeclsFile(kvasir_with_dyncomp);
-
-      if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
-	openTheDtraceFile();
-      }
-
-      atLeastOneFunctionHandled = 1;
-    }
 
   if (VG_(strncmp)(e->daikon_name, "..main(", 7) == 0) {
     within_main_program = 1;
