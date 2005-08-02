@@ -359,15 +359,8 @@ export CLASSPATH=$CLASSPATH:/root/research/invariants/java/
 make
 
 4. Run daikon
-java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option
-daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.
-unary.scalar.OneOfScalar.size=9  --config_option
-daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option
-daikon.inv.
-ternary.threeScalar.FunctionBinary.enabled=false  --config_option
-daikon.PptSplitter.split_bi_implications=true --config_option daikon.Pr
-intInvariants.repair_debug=true --format=repair cm.dtrace
-../splitnothing.spinfo
+java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.unary.scalar.OneOfScalar.size=9  --config_option daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option daikon.inv.ternary.threeScalar.FunctionBinary.enabled=false  --config_option daikon.PptSplitter.split_bi_implications=true --config_option daikon.PrintInvariants.repair_debug=true --format=repair cm.dtrace ../splitnothing.spinfo
+
 --------------------------------------------
 
 
@@ -698,7 +691,7 @@ Ok, report to Brian about progress - 2005-08-01
 
 Hi Brian,
 
-I've dedicated the past week to fixing up Kvasir so that it works better on large target programs, focusing on your requests regarding Freeciv and CTAS.  Here is what I have accomplished:
+I've dedicated the past week to fixing up Kvasir so that it now works significantly better on large target programs, focusing on your requests regarding Freeciv and CTAS.  Here is what I have accomplished:
 
 1.) Fixed the map.tiles[] array size bug in Freeciv.
 
@@ -732,13 +725,17 @@ all variables reachable from:
 
 Here is what I did to get CTAS to run with these guidelines (it actually ran in a reasonable amount of time, so I was excited!):
 
+All files I reference are located here:
+http://people.csail.mit.edu/pgbovine/bdemsky/
+
+
 1. Login to repair as pgbovine and cd to /a/pgbovine/ctas/ctas/realtime_procs/comm_mgr (You placed a copy here for me because I don't have write permissions for your original copy)
 
 2.) Run CTAS to first create a program point list (ppt-list) file of all program points so that I can edit it to only include the 3 desired ones.
 
 kvasir-dtrace --dump-ppt-file=cm.ppts ./cm -data ZFW_DFW
 
-This took 12 seconds and produced cm.ppts.  I edited cm.ppts (see attached) to only include these three program points:
+This took 12 seconds and produced cm.ppts.  I edited cm.ppts to only include these three program points:
 
 update_aircraft.c.initialize_new_aircraft()
 update_aircraft.c.initialize_old_aircraft()
@@ -753,17 +750,36 @@ Remember that --disambig first tries to READ IN a file named cm.disambig, but if
 Begin generating disambiguation file: "./cm.disambig" ...
 Done generating disambiguation file: "./cm.disambig"
 
-Now you have a nice .disambig file to edit.  I'm going to edit it to say that the 'ac' and 'fp' parameters are pointers to one element and not arrays, which is what you originally wanted.  I deleted all other entries besides the ones for those parameters because they are not relevant.  I have attached the file as cm.disambig.
+Now you have a nice .disambig file to edit.  I'm going to edit it to say that the 'ac' and 'fp' parameters are pointers to one element and not arrays, which is what you originally wanted.  I deleted all other entries besides the ones for those parameters because they are not relevant.  I have linked to the file as cm.disambig.
 
-5.) Now we are going to generate the variable list file using the .disambig file that we have just generated as a guide.  This ensures that the variable list file will have the correct variable names according to disambiguation.  Run:
+5.) Now we are going to generate the variable list file using the .disambig file that we have just generated as a guide.  This ensures that the variable list file will have the correct variable names according to disambiguation so that it can properly work together with the .disambig file.  Run:
 
 kvasir-dtrace --ppt-list-file=cm.ppts --disambig --dump-var-file=cm.vars ./cm -data ZFW_DFW
 
-Remember that because cm.disambig already exists, --disambig will attempt to now read it in and use it.
+Remember that because cm.disambig already exists, --disambig will attempt to now read it in and use it.  After the program exits, cm.vars is the variable list file with the proper names for use with the .disambig file.
+
+Since you said that you were only interested in all variables reachable from (fp) or ac->flight_plan, I edited cm.vars (and linked to it) to only include those entries.
+
+6.) Now for the real action!  We are going to combine everything we have just created to perform the selective tracing of CTAS!
+
+kvasir-dtrace --ignore-globals --disambig --ppt-list-file=cm.ppts --var-list-file=cm.vars ./cm -data ZFW_DFW
+
+
+I have included --ignore-globals to speed things up even more since we don't care about globals at all anyways.  Notice how we are using cm.ppts, cm.vars, and cm.disambig together.  Let the program run and the GUI should start within a few minutes.
+
+Click the partially-hidden button to start the simulation, set the Time rate higher (I used 12.000X), and you should see the .dtrace file start to fill up.
+
+When the program terminates, you should see the results that you want (hopefully).  I have linked to my example trace file as cm.dtrace.
+
+
+7.) I successfully managed to run Daikon on cm.dtrace using a subset of your options:
+
+java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.unary.scalar.OneOfScalar.size=9  --config_option daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option daikon.inv.ternary.threeScalar.FunctionBinary.enabled=false cm.dtrace
 
 
 
 From now on, I will have to devote the majority of my time to the comparability experiments and paper that Mike wants me to do, but if you have questions about what I have just mentioned, please feel free to ask.
+
 
 Philip
 
