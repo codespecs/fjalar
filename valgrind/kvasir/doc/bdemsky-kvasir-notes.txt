@@ -5,6 +5,15 @@ Created: 2005-07-26 by Philip J. Guo
 Last Modified: 2005-07-28
 
 
+Perhaps it will help to only compile part of the program with debug. info.???
+
+crap readelf for CTAS is 221 MB, that's freaking humoungous!!!  I think it's taking an ass-long time processing DWARF info.
+
+It seems to be our fault:
+  link_array_entries_to_members() is a real time-hog
+
+especially:
+  determineTypedefNameForEntry()
 
 I noticed that findFunctionInfoByNameSlow() really causes a helluva a lot of slowdown at translation-time.  I guess this is like O(n^2) or something like that since the names are not the keys.  Perhaps we'll suck it up and add another hashtable where the names are keys.  I noticed that when I used findFunctionInfoByAddrSlow (which didn't end up working in all cases, unfortunately), it was a bit faster ... perhaps this is a point where we can optimize, but is it worth the trouble?
 
@@ -678,3 +687,4 @@ globals
 /map.start_positions[].x
 /map.start_positions[].y
 --- END FILE ---
+

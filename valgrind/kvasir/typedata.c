@@ -21,6 +21,8 @@
 #include <string.h>
 
 #include "typedata.h"
+#include "generate_daikon_data.h"
+
 #include "elf/dwarf2.h"
 
 //#include "tool_asm.h" //#include "vg_constants_skin.h"
@@ -50,6 +52,17 @@ dwarf_entry* dwarf_entry_array = 0;
 // The size of this array
 unsigned long dwarf_entry_array_size = 0;
 
+
+// typedef names optimization:
+// This was implemented as an optimization to speed up
+// determineTypedefNameForEntry(), which has been determined to be a
+// major performance bottleneck:
+
+// Key: (unsigned int) target_type_ID (the dwarf_entry ID that a typedef
+// entry points to)
+// Value: char* containing the NAME of the typedef entry with the
+// specified target_type_ID
+struct genhashtable* typedef_names_map = 0;
 
 /*----------------------------------------
 Extracting type information from DWARF tag
@@ -1446,30 +1459,6 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
 }
 
 /*
-Requires: e non-null
-Modifies: name
-Returns: none
-Effects: *name will contain the name of the FIRST typedef_type entry
-         in dwarf_entry_array whose target_type_ID matches e->ID.
-         If none found, name is unmodified
-*/
-void determineTypedefNameForEntry(char** name, dwarf_entry* e)
-{
-  int i;
-  dwarf_entry* cur_entry = 0;
-  for (i = 0; i < dwarf_entry_array_size; i++) {
-    cur_entry = &dwarf_entry_array[i];
-    if (tag_is_typedef(cur_entry->tag_name)) {
-      typedef_type* cur_typedef = (typedef_type*)(cur_entry->entry_ptr);
-      if ((cur_typedef->target_type_ID == e->ID) &&
-          cur_typedef->name) {
-        *name = cur_typedef->name;
-      }
-    }
-  }
-}
-
-/*
 Requires: dwarf_entry_array is initialized
 Modifies: ((function*)cur_entry->entry_ptr)->filename for function entries
 Returns:
@@ -1526,7 +1515,13 @@ static void link_array_entries_to_members()
 
 	if (!collectionPtr->name)
 	  {
-	    determineTypedefNameForEntry(&(collectionPtr->name), cur_entry);
+            // Now we can reap the benefits of the typedef names
+            // optimization by simply doing a hashtable look-up to
+            // find out the name of the typedef entry whose
+            // target_type_ID field matches the ID of cur_entry:
+            collectionPtr->name = (char*)
+              gengettable(typedef_names_map,
+                          (void*)cur_entry->ID);
 	  }
         link_collection_to_members(cur_entry, dwarf_entry_array_size - idx - 1);
       }
@@ -1564,6 +1559,31 @@ static void link_array_entries_to_members()
         }
       }
     }
+}
+
+// Fills up typedef_names_map with key/value pairs by picking off
+// the appropriate typedef_type entries in dwarf_entry_array.
+// (This only has to happen once.)
+void initialize_typedef_names_map() {
+  unsigned long idx;
+  unsigned int totalNumTypedefs = 0;
+  dwarf_entry* cur_entry = 0;
+
+  // Linearly traverse the array and pick off typedef entries
+  // to throw into typedef_names_map
+  for (idx = 0; idx < dwarf_entry_array_size; idx++) {
+      cur_entry = &dwarf_entry_array[idx];
+
+      if (tag_is_typedef(cur_entry->tag_name)) {
+        typedef_type* typedef_ptr = (typedef_type*)(cur_entry->entry_ptr);
+
+        genputtable(typedef_names_map,
+                    // Key: target_type_ID
+                    (void*)typedef_ptr->target_type_ID,
+                    // Value: name
+                    typedef_ptr->name);
+      }
+  }
 }
 
 // Prints the contents of the entry depending on its type
@@ -1784,6 +1804,10 @@ void initialize_dwarf_entry_array(unsigned long num_entries)
 {
   // use calloc to blank everything upon initialization
   dwarf_entry_array = VG_(calloc)(num_entries, sizeof *dwarf_entry_array);
+
+  // Also initialize typedef_names_map at this time
+  typedef_names_map = genallocatehashtable((unsigned int (*)(void *)) & hashID,
+                                           (int (*)(void *,void *)) &equivalentIDs);
 }
 
 /*
@@ -1918,6 +1942,9 @@ Effects: Links all of the entries within dwarf_entry_array
 void finish_dwarf_entry_array_init(void)
 {
   // These must be done in this order or else things will go screwy!!!
+
+  // typedef names optimization:
+  initialize_typedef_names_map();
 
   link_array_entries_to_members();
   initialize_function_filenames();

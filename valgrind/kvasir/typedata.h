@@ -308,7 +308,6 @@ char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* ind
 void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end);
 void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_to_end);
-void determineTypedefNameForEntry(char** entry_name, dwarf_entry* e);
 void print_dwarf_entry(dwarf_entry* e, char simplified);
 
 void initialize_dwarf_entry_array(unsigned long num_entries);
