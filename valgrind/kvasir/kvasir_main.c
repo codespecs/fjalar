@@ -271,9 +271,10 @@ static Addr currentAddr = 0;
 
 extern char* prog_pts_tree; // from decls-output.c
 
+static char atLeastOneFunctionHandled = 0;
+
 // We will utilize this information to pause the target program at
 // function entrances
-
 void handle_possible_entry(MCEnv* mce, Addr64 addr) {
    IRDirty  *di;
    DaikonFunctionInfo* curFuncPtr = 0;
@@ -288,6 +289,27 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
    // tracking this particular function ...  This ensures that we only
    // track functions which we have in DaikonFunctionInfoTable!!!
    curFuncPtr = findFunctionInfoByStartAddr(currentAddr);
+
+
+  // If it's the first time you've ever handled a possible function entrance,
+  // then you better run outputDeclsAndCloseFile so that Kvasir
+  // can take advantage of all of Valgrind's name demangling functionality
+  // while still producing a complete .decls file before the .dtrace file
+  // in order to allow streaming feeds into Daikon:
+  if (curFuncPtr && !atLeastOneFunctionHandled)
+    {
+      // Remember to not actually output the .decls right now when
+      // we're running DynComp.  We need to wait until the end to
+      // actually output .decls, but we need to make a fake run in
+      // order to set up the proper data structures
+      outputDeclsFile(kvasir_with_dyncomp);
+
+      if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
+	openTheDtraceFile();
+      }
+
+      atLeastOneFunctionHandled = 1;
+    }
 
    if (curFuncPtr &&
        // Also, if kvasir_trace_prog_pts_filename is on (we are

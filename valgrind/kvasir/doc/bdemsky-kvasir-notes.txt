@@ -688,3 +688,86 @@ globals
 /map.start_positions[].y
 --- END FILE ---
 
+
+
+
+
+-----------------------------------------------
+Ok, report to Brian about progress - 2005-08-01
+-----------------------------------------------
+
+Hi Brian,
+
+I've dedicated the past week to fixing up Kvasir so that it works better on large target programs, focusing on your requests regarding Freeciv and CTAS.  Here is what I have accomplished:
+
+1.) Fixed the map.tiles[] array size bug in Freeciv.
+
+2.) Made an optimization to greatly speed-up the initialization time of Kvasir.  Now it starts up in a reasonable amount of time (several seconds) even on CTAS whereas it used to take FOREVER (I definitely shared your frustration when trying to run CTAS and having to wait a long time, so I decided to hunt down and fix the problem).
+
+3.) Refined the semantics for having selective program point tracking, variable tracking, and pointer type disambiguation work together.  I have documented the behavior in detail in the following sections of the Daikon User Manual under the Kvasir section:
+
+* Tracing only part of a program
+* Using pointer type disambiguation with partial program tracing
+
+To get the latest version of the Daikon User Manual, go to the
+research/invariants/doc directory and run 'make'.  The manual is daikon.html.  Please read these sections very carefully, as they describe how to properly utilize the --ppt-list-file, --var-list-file, and --disambig command-line options together.
+
+4.) Successfully ran CTAS with the instructions you provided to track only selected program points and variables:
+
+----------------------------
+instrumentation points:
+
+check_entry_to_landed_zone
+all variables reachable from:
+ac->flight_plan
+
+initialize_new_aircraft
+all variables reachable from:
+(fp)
+
+initialize_old_aircraft
+all variables reachable from:
+(fp)
+-----------------------------
+
+Here is what I did to get CTAS to run with these guidelines (it actually ran in a reasonable amount of time, so I was excited!):
+
+1. Login to repair as pgbovine and cd to /a/pgbovine/ctas/ctas/realtime_procs/comm_mgr (You placed a copy here for me because I don't have write permissions for your original copy)
+
+2.) Run CTAS to first create a program point list (ppt-list) file of all program points so that I can edit it to only include the 3 desired ones.
+
+kvasir-dtrace --dump-ppt-file=cm.ppts ./cm -data ZFW_DFW
+
+This took 12 seconds and produced cm.ppts.  I edited cm.ppts (see attached) to only include these three program points:
+
+update_aircraft.c.initialize_new_aircraft()
+update_aircraft.c.initialize_old_aircraft()
+update_aircraft.c.check_entry_to_landed_zone()
+
+3.) Run CTAS again with cm.ppts and --disambig to generate the disambiguation file (this is fast because entries are only generated for globals and those 3 program points as opposed to all program points):
+
+kvasir-dtrace --ppt-list-file=cm.ppts --disambig ./cm -data ZFW_DFW
+
+Remember that --disambig first tries to READ IN a file named cm.disambig, but if one doesn't exist, tries to CREATE one.  So make sure cm.disambig doesn't exist, or if you want, use the --disambig-file option.
+
+Kvasir has a quirky behavior where it generates the .disambig file at the first time that a traced program point is hit (not at the beginning of the program).  Because we are only tracing those 3 program points, which are only hit AFTER the GUI pops up and you click on the 'start' button, you will have to wait for a minute or two for the GUI to pop up.  Then click that partially-hidden 'start' button and set the Time rate to 12.000.  After waiting for a while, one of those 3 program points should be hit and the .disambig file will be generated; then the program will exit.  (Yes, this behavior is a bit quirky, but it shouldn't be too annoying)
+
+Right before the program exits, it should say:
+
+Begin generating disambiguation file: "./cm.disambig" ...
+Done generating disambiguation file: "./cm.disambig"
+
+Now you have a nice .disambig file to edit.  I'm going to edit it to say that the 'ac' and 'fp' parameters are pointers to one element and not arrays, which is what you originally wanted.  I deleted all other entries besides the ones for those parameters because they are not relevant.  I have attached the file as cm.disambig.
+
+5.) Now we are going to generate the variable list file using the .disambig file that we have just generated as a guide.  This ensures that the variable list file will have the correct variable names according to disambiguation.  Run:
+
+kvasir-dtrace --ppt-list-file=cm.ppts --disambig --dump-var-file=cm.vars ./cm -data ZFW_DFW
+
+
+
+From now on, I will have to devote the majority of my time to the comparability experiments and paper that Mike wants me to do, but if you have questions about what I have just mentioned, please feel free to ask.
+
+Philip
+
+
+P.S. Remember that Kvasir doesn't play well with optimizations (especially when tracking function entries and exits), so try to turn them off if possible.
