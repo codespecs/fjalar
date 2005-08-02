@@ -748,11 +748,7 @@ update_aircraft.c.check_entry_to_landed_zone()
 
 kvasir-dtrace --ppt-list-file=cm.ppts --disambig ./cm -data ZFW_DFW
 
-Remember that --disambig first tries to READ IN a file named cm.disambig, but if one doesn't exist, tries to CREATE one.  So make sure cm.disambig doesn't exist, or if you want, use the --disambig-file option.
-
-Kvasir has a quirky behavior where it generates the .disambig file at the first time that a traced program point is hit (not at the beginning of the program).  Because we are only tracing those 3 program points, which are only hit AFTER the GUI pops up and you click on the 'start' button, you will have to wait for a minute or two for the GUI to pop up.  Then click that partially-hidden 'start' button and set the Time rate to 12.000.  After waiting for a while, one of those 3 program points should be hit and the .disambig file will be generated; then the program will exit.  (Yes, this behavior is a bit quirky, but it shouldn't be too annoying)
-
-Right before the program exits, it should say:
+Remember that --disambig first tries to READ IN a file named cm.disambig, but if one doesn't exist, tries to CREATE one.  So make sure cm.disambig doesn't exist, or if you want, use the --disambig-file option.  Right before the program exits, it should say:
 
 Begin generating disambiguation file: "./cm.disambig" ...
 Done generating disambiguation file: "./cm.disambig"
@@ -762,6 +758,8 @@ Now you have a nice .disambig file to edit.  I'm going to edit it to say that th
 5.) Now we are going to generate the variable list file using the .disambig file that we have just generated as a guide.  This ensures that the variable list file will have the correct variable names according to disambiguation.  Run:
 
 kvasir-dtrace --ppt-list-file=cm.ppts --disambig --dump-var-file=cm.vars ./cm -data ZFW_DFW
+
+Remember that because cm.disambig already exists, --disambig will attempt to now read it in and use it.
 
 
 

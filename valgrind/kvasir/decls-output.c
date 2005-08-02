@@ -873,12 +873,16 @@ void outputDeclsFile(char faux_decls)
     // Only close decls_fp if we are generating it separate of .dtrace
     if (prog_pt_dump_fp)
       {
+        VG_(printf)("Done generating program point list (ppt-list) file %s\n",
+                    kvasir_dump_prog_pt_names_filename);
         fclose(prog_pt_dump_fp);
         prog_pt_dump_fp = 0;
       }
 
     if (var_dump_fp)
       {
+        VG_(printf)("Done generating variable list (var-list) file %s\n",
+                    kvasir_dump_var_names_filename);
         fclose(var_dump_fp);
         var_dump_fp = 0;
       }
