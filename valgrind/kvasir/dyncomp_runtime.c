@@ -55,6 +55,8 @@ void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
         VG_(calloc)(numDaikonVars,
                     sizeof(*(funcPtr->ppt_entry_new_tags)));
     }
+
+    funcPtr->num_entry_daikon_vars = numDaikonVars;
   }
   else {
     funcPtr->ppt_exit_var_uf_map =
@@ -70,9 +72,9 @@ void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
         VG_(calloc)(numDaikonVars,
                     sizeof(*(funcPtr->ppt_exit_new_tags)));
     }
-  }
 
-  funcPtr->num_daikon_vars = numDaikonVars;
+    funcPtr->num_exit_daikon_vars = numDaikonVars;
+  }
 }
 
 void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
@@ -544,166 +546,172 @@ static void reassign_tag(UInt* addr,
   }
 }
 
+// TODO: For some reason, the garbage collector is currently
+//       broken and affects correctness :(
+//       I think it may have to do with the var_uf_maps kept
+//       along with each DaikonFunctionInfo entry.  We are
+//       definitely not handling those correctly, but I can't
+//       seem to fix it at this time.
 // Runs the tag garbage collector
-void garbage_collect_tags() {
-  UInt primaryIndex, secondaryIndex;
-  struct geniterator* it;
-  ThreadId currentTID;
-  UInt curTag, i;
+/* void garbage_collect_tags() { */
+/*   UInt primaryIndex, secondaryIndex; */
+/*   struct geniterator* it; */
+/*   ThreadId currentTID; */
+/*   UInt curTag, i; */
 
-  UInt* addr;
+/*   UInt* addr; */
 
-  // Monotonically increases from 1 to whatever is necessary to map
-  // old tags to new tags that are as small as possible (held as
-  // values in oldToNewMap)
-  UInt newTagNumber = 1;
+/*   // Monotonically increases from 1 to whatever is necessary to map */
+/*   // old tags to new tags that are as small as possible (held as */
+/*   // values in oldToNewMap) */
+/*   UInt newTagNumber = 1; */
 
-  // Key: leader of tag which is in use during this step
-  //      of garbage collection
-  // Value: new tag that is as small as possible (start at 1 and
-  //        increments as newTagNumber)
-  struct genhashtable* oldToNewMap =
-    genallocatehashtable(NULL, // no hash function needed for u_int keys
-                         (int (*)(void *,void *)) &equivalentIDs);
-
-
-  VG_(printf)("  Start tag GC (next tag = %u, total assigned = %u)\n",
-              nextTag, totalNumTagsAssigned);
-
-  // This algorithm goes through all places where tags are kept, finds
-  // the leader for each one, and 'compresses' the set of tags in use
-  // by re-numbering all leaders to the smallest possible numbers.  It
-  // has the advantage of not requiring the use of a free list at all,
-  // but the disadvantage of causing tag numbers to change, thus maybe
-  // making debugging a bit more difficult (but shouldn't really,
-  // since the tag numbers that change aren't the ones being used or
-  // observed anyways).
+/*   // Key: leader of tag which is in use during this step */
+/*   //      of garbage collection */
+/*   // Value: new tag that is as small as possible (start at 1 and */
+/*   //        increments as newTagNumber) */
+/*   struct genhashtable* oldToNewMap = */
+/*     genallocatehashtable(NULL, // no hash function needed for u_int keys */
+/*                          (int (*)(void *,void *)) &equivalentIDs); */
 
 
-  // There are 3 places where tags can be kept ... we need to scan
-  // through all of these places looking for tags that are in use and
-  // run reassign_tag() on every non-zero tag encountered in order to
-  // canonicalize every tag to its leader and, more importantly, to
-  // 'compress' the range of leader tags to a range from [1, nextTag)
-  // to a smaller range of [1, newTagNumber).
-  //
-  // 1.) Shadow memory - for each byte of memory in the address space,
-  // there is a corresponding 32-bit tag (0 for no tag assigned to
-  // that byte of memory)
-  //
-  // 2.) Per program point - Because we are doing the
-  // value-to-variable comparability calculations incrementally,
-  // during every execution of a program point, we keep the leaders of
-  // the tags of each Daikon variable's value at that program point.
-  //
-  // 3.) Guest state - There is a tag associated with each register
-  // (i.e., EAX, EBX, floating-point stack)
+/*   VG_(printf)("  Start tag GC (next tag = %u, total assigned = %u)\n", */
+/*               nextTag, totalNumTagsAssigned); */
+
+/*   // This algorithm goes through all places where tags are kept, finds */
+/*   // the leader for each one, and 'compresses' the set of tags in use */
+/*   // by re-numbering all leaders to the smallest possible numbers.  It */
+/*   // has the advantage of not requiring the use of a free list at all, */
+/*   // but the disadvantage of causing tag numbers to change, thus maybe */
+/*   // making debugging a bit more difficult (but shouldn't really, */
+/*   // since the tag numbers that change aren't the ones being used or */
+/*   // observed anyways). */
 
 
-  // 1.) Shadow memory:
-  for (primaryIndex = 0; primaryIndex < PRIMARY_SIZE; primaryIndex++) {
-    if (primary_tag_map[primaryIndex]) {
-      for (secondaryIndex = 0; secondaryIndex < SECONDARY_SIZE; secondaryIndex++) {
-        addr = &primary_tag_map[primaryIndex][secondaryIndex];
-
-        if (*addr) { // Remember to ignore 0 tags
-          reassign_tag(addr,
-                       val_uf_find_leader(*addr),
-                       &newTagNumber,
-                       oldToNewMap);
-        }
-      }
-    }
-  }
-
-
-  // 2.) Per program point:
-
-  // Scan through all of the ppt_entry_var_tags and ppt_exit_var_tags
-  // of all program points to see which tags are being held there -
-  // these cannot be garbage collected
-  it = gengetiterator(DaikonFunctionInfoTable);
-
-  while(!it->finished) {
-    UInt ind;
-    DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*)
-      gengettable(DaikonFunctionInfoTable, gennext(it));
-
-    if (!cur_entry)
-      continue;
-
-    for (ind = 0; ind < cur_entry->num_daikon_vars; ind++) {
-      UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind];
-      UInt* p_exit_tag = &cur_entry->ppt_exit_var_tags[ind];
-
-      if (*p_entry_tag) { // Remember to ignore 0 tags
-        reassign_tag(p_entry_tag,
-                     val_uf_find_leader(*p_entry_tag),
-                     &newTagNumber,
-                     oldToNewMap);
-      }
-
-      if (*p_exit_tag) {  // Remember to ignore 0 tags
-        reassign_tag(p_exit_tag,
-                     val_uf_find_leader(*p_exit_tag),
-                     &newTagNumber,
-                     oldToNewMap);
-      }
-    }
-  }
-
-  genfreeiterator(it);
+/*   // There are 3 places where tags can be kept ... we need to scan */
+/*   // through all of these places looking for tags that are in use and */
+/*   // run reassign_tag() on every non-zero tag encountered in order to */
+/*   // canonicalize every tag to its leader and, more importantly, to */
+/*   // 'compress' the range of leader tags to a range from [1, nextTag) */
+/*   // to a smaller range of [1, newTagNumber). */
+/*   // */
+/*   // 1.) Shadow memory - for each byte of memory in the address space, */
+/*   // there is a corresponding 32-bit tag (0 for no tag assigned to */
+/*   // that byte of memory) */
+/*   // */
+/*   // 2.) Per program point - Because we are doing the */
+/*   // value-to-variable comparability calculations incrementally, */
+/*   // during every execution of a program point, we keep the leaders of */
+/*   // the tags of each Daikon variable's value at that program point. */
+/*   // */
+/*   // 3.) Guest state - There is a tag associated with each register */
+/*   // (i.e., EAX, EBX, floating-point stack) */
 
 
-  // 3.) Guest state:
+/*   // 1.) Shadow memory: */
+/*   for (primaryIndex = 0; primaryIndex < PRIMARY_SIZE; primaryIndex++) { */
+/*     if (primary_tag_map[primaryIndex]) { */
+/*       for (secondaryIndex = 0; secondaryIndex < SECONDARY_SIZE; secondaryIndex++) { */
+/*         addr = &primary_tag_map[primaryIndex][secondaryIndex]; */
 
-  // Scan through all of the guest state and see which tags are being
-  // used - these cannot be garbage collected
-
-  // (Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in
-  // dyncomp_translate.c) - eek!)
-
-  // Just go through all of the registers in the x86 guest state
-  // as depicted in vex/pub/libvex_guest_x86.h
-  currentTID = VG_(get_running_tid)();
-
-  for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
-    addr =
-      VG_(get_tag_ptr_for_x86_guest_offset)(currentTID,
-                                            x86_guest_state_offsets[i]);
-    if ((*addr) > 0) {
-      reassign_tag(addr,
-                   val_uf_find_leader(*addr),
-                   &newTagNumber,
-                   oldToNewMap);
-    }
-  }
+/*         if (*addr) { // Remember to ignore 0 tags */
+/*           reassign_tag(addr, */
+/*                        val_uf_find_leader(*addr), */
+/*                        &newTagNumber, */
+/*                        oldToNewMap); */
+/*         } */
+/*       } */
+/*     } */
+/*   } */
 
 
-  // Now that all tags in use have been re-assigned to newer
-  // (hopefully smaller) values as denoted by the running counter
-  // newTagNumber, we need to initialize all uf_object entries in the
-  // val_uf_object_map from tag 1 until tag (newTagNumber - 1) to
-  // singleton sets.  This is because the only tags in use now are in
-  // the range of [1, newTagNumber) due to the 'compression' induced
-  // by the tag re-assignment.
-  for (curTag = 1; curTag < newTagNumber; curTag++) {
-    val_uf_make_set_for_tag(curTag);
-  }
+/*   // 2.) Per program point: */
+
+/*   // Scan through all of the ppt_entry_var_tags and ppt_exit_var_tags */
+/*   // of all program points to see which tags are being held there - */
+/*   // these cannot be garbage collected */
+/*   it = gengetiterator(DaikonFunctionInfoTable); */
+
+/*   while(!it->finished) { */
+/*     UInt ind; */
+/*     DaikonFunctionInfo* cur_entry = (DaikonFunctionInfo*) */
+/*       gengettable(DaikonFunctionInfoTable, gennext(it)); */
+
+/*     if (!cur_entry) */
+/*       continue; */
+
+/*     for (ind = 0; ind < cur_entry->num_daikon_vars; ind++) { */
+/*       UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind]; */
+/*       UInt* p_exit_tag = &cur_entry->ppt_exit_var_tags[ind]; */
+
+/*       if (*p_entry_tag) { // Remember to ignore 0 tags */
+/*         reassign_tag(p_entry_tag, */
+/*                      val_uf_find_leader(*p_entry_tag), */
+/*                      &newTagNumber, */
+/*                      oldToNewMap); */
+/*       } */
+
+/*       if (*p_exit_tag) {  // Remember to ignore 0 tags */
+/*         reassign_tag(p_exit_tag, */
+/*                      val_uf_find_leader(*p_exit_tag), */
+/*                      &newTagNumber, */
+/*                      oldToNewMap); */
+/*       } */
+/*     } */
+/*   } */
+
+/*   genfreeiterator(it); */
 
 
-  // For the grand finale, set nextTag = newTagNumber, thus completing
-  // the garbage collection.
-  nextTag = newTagNumber;
+/*   // 3.) Guest state: */
+
+/*   // Scan through all of the guest state and see which tags are being */
+/*   // used - these cannot be garbage collected */
+
+/*   // (Remember the offset * 4 hack thing (see do_shadow_PUT_DC() in */
+/*   // dyncomp_translate.c) - eek!) */
+
+/*   // Just go through all of the registers in the x86 guest state */
+/*   // as depicted in vex/pub/libvex_guest_x86.h */
+/*   currentTID = VG_(get_running_tid)(); */
+
+/*   for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) { */
+/*     addr = */
+/*       VG_(get_tag_ptr_for_x86_guest_offset)(currentTID, */
+/*                                             x86_guest_state_offsets[i]); */
+/*     if ((*addr) > 0) { */
+/*       reassign_tag(addr, */
+/*                    val_uf_find_leader(*addr), */
+/*                    &newTagNumber, */
+/*                    oldToNewMap); */
+/*     } */
+/*   } */
 
 
-  // Clean-up:
-  genfreehashtable(oldToNewMap);
+/*   // Now that all tags in use have been re-assigned to newer */
+/*   // (hopefully smaller) values as denoted by the running counter */
+/*   // newTagNumber, we need to initialize all uf_object entries in the */
+/*   // val_uf_object_map from tag 1 until tag (newTagNumber - 1) to */
+/*   // singleton sets.  This is because the only tags in use now are in */
+/*   // the range of [1, newTagNumber) due to the 'compression' induced */
+/*   // by the tag re-assignment. */
+/*   for (curTag = 1; curTag < newTagNumber; curTag++) { */
+/*     val_uf_make_set_for_tag(curTag); */
+/*   } */
 
 
-  VG_(printf)("   Done tag GC (next tag = %u, total assigned = %u)\n", nextTag, totalNumTagsAssigned);
+/*   // For the grand finale, set nextTag = newTagNumber, thus completing */
+/*   // the garbage collection. */
+/*   nextTag = newTagNumber; */
 
-}
+
+/*   // Clean-up: */
+/*   genfreehashtable(oldToNewMap); */
+
+
+/*   VG_(printf)("   Done tag GC (next tag = %u, total assigned = %u)\n", nextTag, totalNumTagsAssigned); */
+
+/* } */
 
 
 // This is called whenever a new 2^16 chunk is allocated (either for
@@ -711,29 +719,29 @@ void garbage_collect_tags() {
 // n_primary_tag_map_init_entries and
 // n_primary_val_uf_object_map_init_entries to determine whether to
 // call the garbage collector
-void check_whether_to_garbage_collect() {
-  const int k = 2;
+/* void check_whether_to_garbage_collect() { */
+/*   const int k = 2; */
 
-  // As a heuristic, garbage-collect when
-  // (n_primary_val_uf_object_map_init_entries >
-  // (k * n_primary_tag_map_init_entries)) because the maximum amount of
-  // tags in use is (2^16 * n_primary_tag_map_init_entries) and the
-  // number of allocated tags is at most (2^16 *
-  // n_primary_val_uf_object_map_init_entries)
-  // - where k is some constant factor
-  VG_(printf)("Tag map init entries: %u, uf_object map init entries: %u\n",
-              n_primary_tag_map_init_entries,
-              n_primary_val_uf_object_map_init_entries);
+/*   // As a heuristic, garbage-collect when */
+/*   // (n_primary_val_uf_object_map_init_entries > */
+/*   // (k * n_primary_tag_map_init_entries)) because the maximum amount of */
+/*   // tags in use is (2^16 * n_primary_tag_map_init_entries) and the */
+/*   // number of allocated tags is at most (2^16 * */
+/*   // n_primary_val_uf_object_map_init_entries) */
+/*   // - where k is some constant factor */
+/*   VG_(printf)("Tag map init entries: %u, uf_object map init entries: %u\n", */
+/*               n_primary_tag_map_init_entries, */
+/*               n_primary_val_uf_object_map_init_entries); */
 
-  if (n_primary_val_uf_object_map_init_entries >
-      (k * n_primary_tag_map_init_entries)) {
-    garbage_collect_tags();
-  }
+/*   if (n_primary_val_uf_object_map_init_entries > */
+/*       (k * n_primary_tag_map_init_entries)) { */
+/*         garbage_collect_tags(); */
+/*   } */
 
-  // As another heuristic, do it every x number of total tag
-  // assignments:
+/*   // As another heuristic, do it every x number of total tag */
+/*   // assignments: */
 
-}
+/* } */
 
 
 // Implementation of reference counting:
