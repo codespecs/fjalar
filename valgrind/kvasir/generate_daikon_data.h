@@ -323,7 +323,8 @@ typedef struct _DaikonFunctionInfo {
   // output to maintain these variables in the same order).
 
   // This tells the sizes of ppt_[entry|exit]_[var|new]_tags
-  UInt num_daikon_vars;
+  UInt num_entry_daikon_vars;
+  UInt num_exit_daikon_vars;
 
 } DaikonFunctionInfo;
 
