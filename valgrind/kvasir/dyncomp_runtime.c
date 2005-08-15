@@ -329,6 +329,10 @@ int equivalentTags(UInt t1, UInt t2) {
 
 // Return the comparability number for the variable as a SIGNED
 // INTEGER (because Daikon expects a signed integer).
+//
+// First of all, update the tag with its LEADER in the appropriate var_uf_map,
+// because the leaders represent the disjoint sets, not the tags themselves.
+//
 // Here is how we translate from tags to comparability numbers:
 // * If the tag is 0, then that means that the variable has never
 //   been observed so we want to assign it a new unique number
@@ -343,22 +347,44 @@ int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
                                char isEnter,
                                int daikonVarIndex) {
   int comp_number;
-  UInt tag = isEnter ?
-    funcPtr->ppt_entry_var_tags[daikonVarIndex] :
-    funcPtr->ppt_exit_var_tags[daikonVarIndex];
+  UInt tag;
+
+  struct genhashtable* var_uf_map;
+  UInt *var_tags;
+
+  if (isEnter) {
+    var_uf_map = funcPtr->ppt_entry_var_uf_map;
+    var_tags = funcPtr->ppt_entry_var_tags;
+  }
+  else {
+    var_uf_map = funcPtr->ppt_exit_var_uf_map;
+    var_tags = funcPtr->ppt_exit_var_tags;
+  }
+
+  tag = var_tags[daikonVarIndex];
 
   if (0 == tag) {
     comp_number = g_curCompNumber;
     g_curCompNumber++;
   }
   else {
-    if (gencontains(g_compNumberMap, (void*)tag)) {
-      comp_number = (int)gengettable(g_compNumberMap, (void*)tag);
+    // First, convert the tag to its leader.  This is very
+    // important, because if we don't do this, we are going to
+    // get smaller comparability sets, which is inaccurate.
+    // We should map the LEADERS (not individual tags) to
+    // comparability numbers because the leaders represent
+    // the distinctive sets.
+    UInt leader = var_uf_map_find_leader(var_uf_map, tag);
+
+    var_tags[daikonVarIndex] = leader;
+
+    if (gencontains(g_compNumberMap, (void*)leader)) {
+      comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
     }
     else {
       comp_number = g_curCompNumber;
       g_curCompNumber++;
-      genputtable(g_compNumberMap, (void*)tag, (void*)comp_number);
+      genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
     }
   }
 
