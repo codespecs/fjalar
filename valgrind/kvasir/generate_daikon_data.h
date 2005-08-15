@@ -279,6 +279,17 @@ typedef struct _DaikonFunctionInfo {
   // are outputting .decls) or else you'll get nasty duplicate
   // variable names and sets!!!
 
+  // ALSO VERY IMPORTANT:  We have two separate sets of data structures,
+  // one for function entry and the other for exit.  However, the default
+  // behavior should be to only initialize the EXIT set of structures
+  // and just use those because Daikon expects variables to belong to
+  // the same comparability sets at the entry and exit program points.
+  // We will only use the ENTRY structures when the
+  // --separate-entry-exit-comp option is invoked.
+  // (We choose to use the EXIT structures by default because
+  //  it contains all of the variables present at ENTRY plus the
+  //  return value derived variables)
+
   // TODO: WARNING!  This hashtable-within-hashtable structure may
   // blow up in my face and cause a huge memory overload!!!  Remember
   // that each hashtable is initialized to a constant number!  I'll
@@ -296,14 +307,14 @@ typedef struct _DaikonFunctionInfo {
 
   // var_uf_map is the variable analogue to val_uf, which is the union-find
   // for all values ever created in a program.
-  struct genhashtable* ppt_entry_var_uf_map;
+  struct genhashtable* ppt_entry_var_uf_map; // Inactive unless --separate-entry-exit-comp is on
   struct genhashtable* ppt_exit_var_uf_map;
 
   // var_tags: A fixed-sized array (indexed by the serial # of Daikon
   // variables at that program point) which contains tags which are the
   // leaders of the comparability sets of their value's tags at that
   // program point.
-  UInt* ppt_entry_var_tags;
+  UInt* ppt_entry_var_tags; // Inactive unless --separate-entry-exit-comp is on
   UInt* ppt_exit_var_tags;
 
   // new_tags: A fixed-sized array (also indexed by # of Daikon variables)
@@ -311,7 +322,7 @@ typedef struct _DaikonFunctionInfo {
   // program point.  This structure is updated EVERY TIME the program
   // executes a program point by querying val_uf with the address of the
   // variable's value being observed and getting back the tag.
-  UInt* ppt_entry_new_tags;
+  UInt* ppt_entry_new_tags; // Inactive unless --separate-entry-exit-comp is on
   UInt* ppt_exit_new_tags;
 
   // The size of var_tags and new_tags can be initialized during the .decls
@@ -323,7 +334,7 @@ typedef struct _DaikonFunctionInfo {
   // output to maintain these variables in the same order).
 
   // This tells the sizes of ppt_[entry|exit]_[var|new]_tags
-  UInt num_entry_daikon_vars;
+  UInt num_entry_daikon_vars; // Inactive unless --separate-entry-exit-comp is on
   UInt num_exit_daikon_vars;
 
 } DaikonFunctionInfo;

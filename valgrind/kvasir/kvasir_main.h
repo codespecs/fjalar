@@ -45,6 +45,7 @@ Bool kvasir_default_disambig;
 Bool kvasir_smart_disambig;
 Bool kvasir_use_bit_level_precision;
 Bool dyncomp_print_debug_info;
+Bool dyncomp_separate_entry_exit_comp;
 int kvasir_array_length_limit;
 // These are used as both strings and boolean flags -
 // They are initialized to 0 upon initiation so if they are
