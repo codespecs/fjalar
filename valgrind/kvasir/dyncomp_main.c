@@ -103,11 +103,11 @@ static __inline__ UInt grab_fresh_tag() {
   // Let's try garbage collecting here.  Remember to assign
   // tag = nextTag AFTER garbage collection (if it occurs) because
   // nextTag may decrease due to the garbage collection step
-/*   if ((!kvasir_dyncomp_no_gc) && */
-/*       totalNumTagsAssigned && // Don't garbage collect when it's zero */
-/*       (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) { */
-/*     garbage_collect_tags(); */
-/*   } */
+  if ((!kvasir_dyncomp_no_gc) &&
+      totalNumTagsAssigned && // Don't garbage collect when it's zero
+      (totalNumTagsAssigned % dyncomp_gc_after_n_tags == 0)) {
+    garbage_collect_tags();
+  }
 
   // For debug:
   //  if ((nextTag % 100000) == 0) {
