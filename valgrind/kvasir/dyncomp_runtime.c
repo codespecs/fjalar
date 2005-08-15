@@ -39,7 +39,13 @@
 void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
                              char isEnter,
                              int numDaikonVars) {
-  if (isEnter) {
+  // Don't do anything if we are attempting to allocate for enter
+  // and are not using --separate-entry-exit-comp
+  if (isEnter && !dyncomp_separate_entry_exit_comp) {
+    return;
+  }
+
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
     // no hash function needed because GenericHashtable.h simply mods
     // it by the current size of the table
     funcPtr->ppt_entry_var_uf_map =
@@ -78,7 +84,13 @@ void allocate_ppt_structures(DaikonFunctionInfo* funcPtr,
 }
 
 void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
-  if (isEnter) {
+  // Don't do anything if we are attempting to allocate for enter
+  // and are not using --separate-entry-exit-comp
+  if (isEnter && !dyncomp_separate_entry_exit_comp) {
+    return;
+  }
+
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
     genfreehashtable(funcPtr->ppt_entry_var_uf_map);
     VG_(free)(funcPtr->ppt_entry_var_tags);
     VG_(free)(funcPtr->ppt_entry_new_tags);
@@ -216,7 +228,9 @@ void DC_post_process_for_variable(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags, *new_tags;
 
-  if (isEnter) {
+  // Remember to use only the EXIT structures unless
+  // isEnter and --separate-entry-exit-comp are both True
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
     new_tags = funcPtr->ppt_entry_new_tags;
@@ -287,7 +301,9 @@ void DC_extra_propagation_post_process(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
-  if (isEnter) {
+  // Remember to use only the EXIT structures unless
+  // isEnter and --separate-entry-exit-comp are both True
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
   }
@@ -333,16 +349,21 @@ int equivalentTags(UInt t1, UInt t2) {
 // First of all, update the tag with its LEADER in the appropriate var_uf_map,
 // because the leaders represent the disjoint sets, not the tags themselves.
 //
-// Here is how we translate from tags to comparability numbers:
+// Here is how we translate from leader tags to comparability numbers:
 // * If the tag is 0, then that means that the variable has never
 //   been observed so we want to assign it a new unique number
 //   to denote that it is not comparable to anything else
 //   (assign it g_curCompNumber and then increment g_curCompNumber)
-// * If the tag is non-zero, look up in g_compNumberMap to see
-//   if a comp. number already exists for that tag.  If it does
+// * If the leader tag is non-zero, look up in g_compNumberMap to see
+//   if a comp. number already exists for that leader tag.  If it does
 //   exist, re-use that number.  If not, then assign g_curCompNumber
 //   to it, add that entry to g_compNumberMap, and
 //   increment g_curCompNumber
+//
+// If the --use-exit-comp-num option is on, then
+// always grab the comparability numbers from the exit ppt
+// of the function in order to ensure that the comparability
+// numbers from the entrance/exit always matches.
 int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
                                char isEnter,
                                int daikonVarIndex) {
@@ -352,7 +373,9 @@ int DC_get_comp_number_for_var(DaikonFunctionInfo* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
-  if (isEnter) {
+  // Remember to use only the EXIT structures unless
+  // isEnter and --separate-entry-exit-comp are both True
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
   }
@@ -702,14 +725,17 @@ void garbage_collect_tags() {
     if (!cur_entry)
       continue;
 
-    for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
-      UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind];
+    if (dyncomp_separate_entry_exit_comp) {
 
-      if (*p_entry_tag) { // Remember to ignore 0 tags
-        reassign_tag(p_entry_tag,
-                     var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag),
-                     &newTagNumber,
-                     oldToNewMap);
+      for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
+        UInt* p_entry_tag = &cur_entry->ppt_entry_var_tags[ind];
+
+        if (*p_entry_tag) { // Remember to ignore 0 tags
+          reassign_tag(p_entry_tag,
+                       var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag),
+                       &newTagNumber,
+                       oldToNewMap);
+        }
       }
     }
 
@@ -724,36 +750,40 @@ void garbage_collect_tags() {
       }
     }
 
-    // Free everything in ppt_entry_var_uf_map and create singleton
-    // sets for all of the new re-assigned leader entries
-    if (cur_entry->ppt_entry_var_uf_map) {
-      UInt key = 1;
 
-      struct geniterator* entry_var_uf_map_it =
-        gengetiterator(cur_entry->ppt_entry_var_uf_map);
+    if (dyncomp_separate_entry_exit_comp) {
 
-      // For some really bizarre reason, gennext() can return 0
-      // and infinite loop even while 'finished' is not set,
-      // so I am also including 'key' in the while loop termination
-      // condition to prevent these nasty infinite loops ...
-      // this still feels uneasy, though ...
-      while (key && !entry_var_uf_map_it->finished) {
-        key = (UInt)(gennext(entry_var_uf_map_it));
-        if (key) {
-          genfreekey(cur_entry->ppt_entry_var_uf_map, (void*)key);
-        }
+      // Free everything in ppt_entry_var_uf_map and create singleton
+      // sets for all of the new re-assigned leader entries
+      if (cur_entry->ppt_entry_var_uf_map) {
+        UInt key = 1;
+
+        struct geniterator* entry_var_uf_map_it =
+          gengetiterator(cur_entry->ppt_entry_var_uf_map);
+
+        // For some really bizarre reason, gennext() can return 0
+        // and infinite loop even while 'finished' is not set,
+        // so I am also including 'key' in the while loop termination
+        // condition to prevent these nasty infinite loops ...
+        // this still feels uneasy, though ...
+        while (key && !entry_var_uf_map_it->finished) {
+          key = (UInt)(gennext(entry_var_uf_map_it));
+          if (key) {
+            genfreekey(cur_entry->ppt_entry_var_uf_map, (void*)key);
+          }
       }
-      //    genfreehashtable(cur_entry->ppt_entry_var_uf_map);
+        //    genfreehashtable(cur_entry->ppt_entry_var_uf_map);
 
-      for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
-        UInt leader_tag = cur_entry->ppt_entry_var_tags[ind];
-        if (leader_tag &&
-            !gencontains(cur_entry->ppt_entry_var_uf_map, (void*)leader_tag)) {
-          var_uf_map_insert_and_make_set(cur_entry->ppt_entry_var_uf_map, leader_tag);
+        for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
+          UInt leader_tag = cur_entry->ppt_entry_var_tags[ind];
+          if (leader_tag &&
+              !gencontains(cur_entry->ppt_entry_var_uf_map, (void*)leader_tag)) {
+            var_uf_map_insert_and_make_set(cur_entry->ppt_entry_var_uf_map, leader_tag);
+          }
         }
-      }
 
-      genfreeiterator(entry_var_uf_map_it);
+        genfreeiterator(entry_var_uf_map_it);
+      }
     }
 
 

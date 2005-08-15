@@ -60,6 +60,7 @@ Bool kvasir_default_disambig = False;
 Bool kvasir_smart_disambig = False;
 Bool kvasir_use_bit_level_precision = False;
 Bool dyncomp_print_debug_info = False;
+Bool dyncomp_separate_entry_exit_comp = False;
 int kvasir_array_length_limit = -1;
 char* kvasir_dump_prog_pt_names_filename = 0;
 char* kvasir_dump_var_names_filename = 0;
@@ -603,6 +604,10 @@ void kvasir_print_usage()
 "                        but may run out of memory for long-running programs)\n"
 "    --dyncomp-fast-mode Approximates the handling of literals for comparability.\n"
 "                        (Loses some precision but faster and takes less memory)\n"
+"    --separate-entry-exit-comp  Allows variables to have distinct comparability\n"
+"                                numbers at function entrance/exit when run with\n"
+"                                DynComp.  This provides more accuracy, but may\n"
+"                                sometimes lead to output that Daikon cannot accept.\n"
 #ifdef KVASIR_DEVEL_BUILD
 "    --asserts-aborts    turn on safety asserts and aborts (ON BY DEFAULT)\n"
 "                        [--asserts-aborts]\n"
@@ -666,6 +671,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("dyncomp-fast-mode", kvasir_dyncomp_fast_mode)
    else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
    else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
+   else VG_YESNO_CLO("separate-entry-exit-comp",  dyncomp_separate_entry_exit_comp)
    else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
    else VG_YESNO_CLO("ignore-static-vars", kvasir_ignore_static_vars)
    else VG_YESNO_CLO("dtrace-append",  kvasir_dtrace_append)
