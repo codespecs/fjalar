@@ -15,6 +15,7 @@
    to a Daikon-compatible .dtrace file
 */
 
+#define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE /* FOR O_LARGEFILE */
 
 #include "dtrace-output.h"
