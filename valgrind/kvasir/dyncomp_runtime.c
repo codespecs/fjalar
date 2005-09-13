@@ -31,6 +31,9 @@
 #include "dyncomp_runtime.h"
 #include <limits.h>
 
+#include "libvex_guest_x86.h"
+#include <stddef.h> // For offsetof macro
+
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
 // TODO: WARNING!  This hashtable-within-hashtable structure may
@@ -509,89 +512,86 @@ void debugPrintTagsInRange(Addr low, Addr high) {
 
 // Tag garbage collector:
 
-
 // Offsets for all of the registers in the x86 guest state
 // as depicted in vex/pub/libvex_guest_x86.h:
 
-#define NUM_TOTAL_X86_OFFSETS 55
+#define NUM_TOTAL_X86_OFFSETS 54 // 55
 
+// Use the offsetof macro to get offsets instead of
+// hand-coding them:
 int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
-  0,  //      UInt  guest_EAX;         /* 0 */
-  4,  //      UInt  guest_ECX;
-  8,  //      UInt  guest_EDX;
-  12, //      UInt  guest_EBX;
-  16, //      UInt  guest_ESP;
-  20, //      UInt  guest_EBP;
-  24, //      UInt  guest_ESI;
-  28, //      UInt  guest_EDI;         /* 28 */
-      /* 4-word thunk used to calculate O S Z A C P flags. */
-  32, //      UInt  guest_CC_OP;       /* 32 */
-  36, //      UInt  guest_CC_DEP1;
-  40, //      UInt  guest_CC_DEP2;
-  44, //      UInt  guest_CC_NDEP;     /* 44 */
-      /* The D flag is stored here, encoded as either -1 or +1 */
-  48, //      UInt  guest_DFLAG;       /* 48 */
-      /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
-  52, //      UInt  guest_IDFLAG;      /* 52 */
-      /* EIP */
-  56, //      UInt  guest_EIP;         /* 56 */
-      /* FPU */
-  60, //      UInt  guest_FTOP;        /* 60 */
-  64, //      ULong guest_FPREG[8];    /* 64 */
-  72,
-  80,
-  88,
-  96,
-  104,
-  112,
-  120,
-  128,  //      UChar guest_FPTAG[8];   /* 128 */
-  129,
-  130,
-  131,
-  132,
-  133,
-  134,
-  135,
-  136, //      UInt  guest_FPROUND;    /* 136 */
-  140, //      UInt  guest_FC3210;     /* 140 */
-  /* SSE */
-  144, //      UInt  guest_SSEROUND;   /* 144 */
-  148, //      U128  guest_XMM0;       /* 148 */
-  164, //      U128  guest_XMM1;
-  180, //      U128  guest_XMM2;
-  196, //      U128  guest_XMM3;
-  212, //      U128  guest_XMM4;
-  228, //      U128  guest_XMM5;
-  244, //      U128  guest_XMM6;
-  260, //      U128  guest_XMM7;
-  /* Segment registers. */
-  276, //      UShort guest_CS;
-  278, //      UShort guest_DS;
-  280, //      UShort guest_ES;
-  282, //      UShort guest_FS;
-  284, //      UShort guest_GS;
-  286, //      UShort guest_SS;
-  /* LDT/GDT stuff. */
-  288, //      HWord  guest_LDT; /* host addr, a VexGuestX86SegDescr* */
-  292, //      HWord  guest_GDT; /* host addr, a VexGuestX86SegDescr* */
+  offsetof(VexGuestX86State, guest_EAX),
+  offsetof(VexGuestX86State, guest_ECX),
+  offsetof(VexGuestX86State, guest_EDX),
+  offsetof(VexGuestX86State, guest_EBX),
 
-  /* Emulation warnings */
-  296, //      UInt   guest_EMWARN;
+  offsetof(VexGuestX86State, guest_ESP),
+  offsetof(VexGuestX86State, guest_EBP),
+  offsetof(VexGuestX86State, guest_ESI),
+  offsetof(VexGuestX86State, guest_EDI),
 
-  /* Translation-invalidation area description.  Not used on x86
-     (there is no invalidate-icache insn), but needed so as to
-     allow users of the library to uniformly assume that the guest
-     state contains these two fields -- otherwise there is
-     compilation breakage.  On x86, these two fields are set to
-     zero by LibVEX_GuestX86_initialise and then should be ignored
-     forever thereafter. */
-  300, //      UInt guest_TISTART;
-  304, //      UInt guest_TILEN;
+  offsetof(VexGuestX86State, guest_CC_OP),
+  offsetof(VexGuestX86State, guest_CC_DEP1),
+  offsetof(VexGuestX86State, guest_CC_DEP2),
+  offsetof(VexGuestX86State, guest_CC_NDEP),
 
-  /* Padding to make it have an 8-aligned size */
-  308  //      UInt   padding;
+  offsetof(VexGuestX86State, guest_DFLAG),
+  offsetof(VexGuestX86State, guest_IDFLAG),
+
+  offsetof(VexGuestX86State, guest_EIP),
+
+  offsetof(VexGuestX86State, guest_FTOP),
+
+  offsetof(VexGuestX86State, guest_FPREG[0]),
+  offsetof(VexGuestX86State, guest_FPREG[1]),
+  offsetof(VexGuestX86State, guest_FPREG[2]),
+  offsetof(VexGuestX86State, guest_FPREG[3]),
+  offsetof(VexGuestX86State, guest_FPREG[4]),
+  offsetof(VexGuestX86State, guest_FPREG[5]),
+  offsetof(VexGuestX86State, guest_FPREG[6]),
+  offsetof(VexGuestX86State, guest_FPREG[7]),
+
+  offsetof(VexGuestX86State, guest_FPTAG[0]),
+  offsetof(VexGuestX86State, guest_FPTAG[1]),
+  offsetof(VexGuestX86State, guest_FPTAG[2]),
+  offsetof(VexGuestX86State, guest_FPTAG[3]),
+  offsetof(VexGuestX86State, guest_FPTAG[4]),
+  offsetof(VexGuestX86State, guest_FPTAG[5]),
+  offsetof(VexGuestX86State, guest_FPTAG[6]),
+  offsetof(VexGuestX86State, guest_FPTAG[7]),
+
+  offsetof(VexGuestX86State, guest_FPROUND),
+  offsetof(VexGuestX86State, guest_FC3210),
+
+  offsetof(VexGuestX86State, guest_SSEROUND),
+
+  offsetof(VexGuestX86State, guest_XMM0),
+  offsetof(VexGuestX86State, guest_XMM1),
+  offsetof(VexGuestX86State, guest_XMM2),
+  offsetof(VexGuestX86State, guest_XMM3),
+  offsetof(VexGuestX86State, guest_XMM4),
+  offsetof(VexGuestX86State, guest_XMM5),
+  offsetof(VexGuestX86State, guest_XMM6),
+  offsetof(VexGuestX86State, guest_XMM7),
+
+  offsetof(VexGuestX86State, guest_CS),
+  offsetof(VexGuestX86State, guest_DS),
+  offsetof(VexGuestX86State, guest_ES),
+  offsetof(VexGuestX86State, guest_FS),
+  offsetof(VexGuestX86State, guest_GS),
+  offsetof(VexGuestX86State, guest_SS),
+
+  offsetof(VexGuestX86State, guest_LDT),
+  offsetof(VexGuestX86State, guest_GDT),
+
+  offsetof(VexGuestX86State, guest_EMWARN),
+
+  offsetof(VexGuestX86State, guest_TISTART),
+  offsetof(VexGuestX86State, guest_TILEN)
+
+  //  offsetof(VexGuestX86State, padding)
 };
+
 
 // Try to find leaderTag's entry in oldToNewMap (map from old tags to
 // new tags).  If it does not exist, then write *p_newTagNumber in the
