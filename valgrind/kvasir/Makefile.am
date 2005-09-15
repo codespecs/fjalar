@@ -12,7 +12,7 @@ include $(top_srcdir)/Makefile.tool-inplace.am
 ## Build Memcheck at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS += -g -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-missing-prototypes
+AM_CFLAGS += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-missing-prototypes
 
 # Use this for speed boost
 #AM_CFLAGS += -O3 -fomit-frame-pointer -Iinclude -Wno-missing-prototypes

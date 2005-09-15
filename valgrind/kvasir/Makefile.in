@@ -121,7 +121,7 @@ AM_CPPFLAGS = $(add_includes)
 
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS = $(WERROR) -Wmissing-prototypes -Winline -Wall -Wshadow -O -g @ARCH_TOOL_AM_CFLAGS@ -g -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-missing-prototypes
+AM_CFLAGS = $(WERROR) -Wmissing-prototypes -Winline -Wall -Wshadow -O -g @ARCH_TOOL_AM_CFLAGS@ -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-missing-prototypes
 AM_CCASFLAGS = $(add_includes)
 
 # Use this for speed boost
