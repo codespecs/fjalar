@@ -131,14 +131,33 @@ static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
   }
 }
 
+
+// Pre: tag is not a KEY in var_uf_map, tag is not zero
+// Inserts a new entry in var_uf_map with tag as the KEY and a
+// freshly-allocated uf_object in a singleton set (instantiated using
+// uf_make_set) as the VALUE
+// Returns the uf_object* to the new entry
+static uf_object* var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
+                                                 UInt tag) {
+  if (!tag) {
+    return;
+  }
+
+  uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
+  uf_make_set(new_obj, tag);
+  genputtable(var_uf_map, (void*)tag, (void*)new_obj);
+  return new_obj;
+}
+
+
 // Unions the uf_objects corresponding to tags tag1 and tag2 in
 // var_uf_map and returns the leader:
+// (Note that if a tag is non-zero but does not yet have an entry in
+//  var_uf_map, a new singleton entry will be created for it.
+//  This seems to allow the garbage collector to work correctly.)
 static UInt var_uf_map_union(struct genhashtable* var_uf_map,
                              UInt tag1,
                              UInt tag2) {
-  uf_object* uf_obj1 = 0;
-  uf_object* uf_obj2 = 0;
-  uf_object* leader_obj = 0;
 
   if (IS_ZERO_TAG(tag1) && IS_ZERO_TAG(tag2)) {
     return 0;
@@ -150,39 +169,23 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     return tag2;
   }
   else { // Good.  Both are valid.
-    uf_obj1 = (uf_object*)gengettable(var_uf_map, (void*)tag1);
-    uf_obj2 = (uf_object*)gengettable(var_uf_map, (void*)tag2);
-    if (uf_obj1 && uf_obj2) {
-      leader_obj = uf_union(uf_obj1, uf_obj2);
-      return leader_obj->tag;
-    }
-    // Ummm ... if one of the tags is NOT in var_uf_map, then
-    // just return the other one and don't union anything
-    else if (uf_obj1) {
-      return tag1;
-    }
-    else if (uf_obj2) {
-      return tag2;
-    }
-    else {
-      return 0;
-    }
-  }
-}
+    uf_object* uf_obj1 = (uf_object*)gengettable(var_uf_map, (void*)tag1);
+    uf_object* uf_obj2 = (uf_object*)gengettable(var_uf_map, (void*)tag2);
+    uf_object* leader_obj = 0;
 
-// Pre: tag is not a KEY in var_uf_map, tag is not zero
-// Inserts a new entry in var_uf_map with tag as the KEY and a
-// freshly-allocated uf_object in a singleton set (instantiated using
-// uf_make_set) as the VALUE
-static void var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
-                                           UInt tag) {
-  if (!tag) {
-    return;
-  }
+    // If one of the tags is NOT in var_uf_map, then
+    // create a new singleton entry for it
+    if (!uf_obj1) {
+      uf_obj1 = var_uf_map_insert_and_make_set(var_uf_map, tag1);
+    }
 
-  uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
-  uf_make_set(new_obj, tag);
-  genputtable(var_uf_map, (void*)tag, (void*)new_obj);
+    if (!uf_obj2) {
+      uf_obj2 = var_uf_map_insert_and_make_set(var_uf_map, tag2);
+    }
+
+    leader_obj = uf_union(uf_obj1, uf_obj2);
+    return leader_obj->tag;
+  }
 }
 
 
@@ -622,16 +625,7 @@ static void reassign_tag(UInt* addr,
   }
 }
 
-// TODO (2005-08-13): For some reason, the garbage collector is currently
-//                    broken and affects correctness :(
-//                    I think it may have to do with the var_uf_maps kept
-//                    along with each DaikonFunctionInfo entry.  We are
-//                    definitely not handling those correctly, but I can't
-//                    seem to fix it at this time.
-//
-// Update (2005-08-14): It now works better than before,
-//                      but it is still far from perfect
-//
+
 // Runs the tag garbage collector
 void garbage_collect_tags() {
   UInt primaryIndex, secondaryIndex;
@@ -685,7 +679,10 @@ void garbage_collect_tags() {
   // the tags of each Daikon variable's value at that program point.
   // (Remember that these tags correspond to entries in the individual
   //  var_uf_map union-find data structures associated with each
-  //  program point, not just the global val_uf union-find structure.)
+  //  program point, not just the global val_uf union-find structure.
+  //  Thus, the correct thing to do is to first find the leader of each
+  //  tag in var_uf_map, and then find the leader of that leader in the
+  //  global val_uf union-find.)
   //
   // 3.) Guest state - There is a tag associated with each register
   // (i.e., EAX, EBX, floating-point stack)
@@ -712,8 +709,13 @@ void garbage_collect_tags() {
 
   // Scan through all of the ppt_entry_var_tags and ppt_exit_var_tags
   // of all program points to see which tags are being held there.
-  // Re-assign these to their leaders in the respective var_uf_map
-  // and delete/re-initialize the values in var_uf_map appropriately
+
+  // First, find the leader of each tag in var_uf_map (specific to that
+  // particular program point) and then find the leader of that leader
+  // tag in the global val_uf union-find.  It is imperative that we
+  // both of these steps or else the garbage collector will not work
+  // correctly.  After we have the 'leader of the leader', we can
+  // re-assign it to a lower tag number using oldToNewMap.
   it = gengetiterator(DaikonFunctionInfoTable);
 
   while(!it->finished) {
@@ -732,7 +734,9 @@ void garbage_collect_tags() {
 
         if (*p_entry_tag) { // Remember to ignore 0 tags
           reassign_tag(p_entry_tag,
-                       var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag),
+                       // We need to first find the leader in var_uf_map,
+                       // then find the leader of that in val_uf:
+                       val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag)),
                        &newTagNumber,
                        oldToNewMap);
         }
@@ -744,7 +748,9 @@ void garbage_collect_tags() {
 
       if (*p_exit_tag) { // Remember to ignore 0 tags
         reassign_tag(p_exit_tag,
-                     var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag),
+                     // We need to first find the leader in var_uf_map,
+                     // then find the leader of that in val_uf:
+                     val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag)),
                      &newTagNumber,
                      oldToNewMap);
       }
@@ -756,23 +762,32 @@ void garbage_collect_tags() {
       // Free everything in ppt_entry_var_uf_map and create singleton
       // sets for all of the new re-assigned leader entries
       if (cur_entry->ppt_entry_var_uf_map) {
-        UInt key = 1;
 
-        struct geniterator* entry_var_uf_map_it =
-          gengetiterator(cur_entry->ppt_entry_var_uf_map);
+        // The slow way to clear all entries in the hash table:
 
-        // For some really bizarre reason, gennext() can return 0
-        // and infinite loop even while 'finished' is not set,
-        // so I am also including 'key' in the while loop termination
-        // condition to prevent these nasty infinite loops ...
-        // this still feels uneasy, though ...
-        while (key && !entry_var_uf_map_it->finished) {
-          key = (UInt)(gennext(entry_var_uf_map_it));
-          if (key) {
-            genfreekey(cur_entry->ppt_entry_var_uf_map, (void*)key);
-          }
-      }
-        //    genfreehashtable(cur_entry->ppt_entry_var_uf_map);
+/*         UInt key = 1; */
+
+/*         struct geniterator* entry_var_uf_map_it = */
+/*           gengetiterator(cur_entry->ppt_entry_var_uf_map); */
+
+/*         // For some really bizarre reason, gennext() can return 0 */
+/*         // and infinite loop even while 'finished' is not set, */
+/*         // so I am also including 'key' in the while loop termination */
+/*         // condition to prevent these nasty infinite loops ... */
+/*         // this still feels uneasy, though ... */
+/*         while (key && !entry_var_uf_map_it->finished) { */
+/*           key = (UInt)(gennext(entry_var_uf_map_it)); */
+/*           if (key) { */
+/*             genfreekey(cur_entry->ppt_entry_var_uf_map, (void*)key); */
+/*           } */
+/*         } */
+
+        // Clear the hashtable and generate a new one:
+        // (Hopefully this won't cause memory leaks or weird crashes)
+        genfreehashtable(cur_entry->ppt_entry_var_uf_map);
+        cur_entry->ppt_entry_var_uf_map =
+          genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                                    (int (*)(void *,void *)) &equivalentTags);
 
         for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
           UInt leader_tag = cur_entry->ppt_entry_var_tags[ind];
@@ -782,31 +797,39 @@ void garbage_collect_tags() {
           }
         }
 
-        genfreeiterator(entry_var_uf_map_it);
+        //        genfreeiterator(entry_var_uf_map_it);
       }
     }
 
 
     if (cur_entry->ppt_exit_var_uf_map) {
-      UInt key = 1;
 
-      // ditto for ppt_exit_var_uf_map
-      struct geniterator* exit_var_uf_map_it =
-        gengetiterator(cur_entry->ppt_exit_var_uf_map);
+      // The  slow way to clear all entries in the hash table:
 
-      // For some really bizarre reason, gennext() can return 0
-      // and infinite loop even while 'finished' is not set,
-      // so I am also including 'key' in the while loop termination
-      // condition to prevent these nasty infinite loops ...
-      // this still feels uneasy, though ...
-      while (key && !exit_var_uf_map_it->finished) {
-        key = (UInt)(gennext(exit_var_uf_map_it));
+/*       UInt key = 1; */
 
-        if (key) {
-          genfreekey(cur_entry->ppt_exit_var_uf_map, (void*)key);
-        }
-      }
-      //    genfreehashtable(cur_entry->ppt_exit_var_uf_map);
+/*       // ditto for ppt_exit_var_uf_map */
+/*       struct geniterator* exit_var_uf_map_it = */
+/*       gengetiterator(cur_entry->ppt_exit_var_uf_map); */
+
+/*       // For some really bizarre reason, gennext() can return 0 */
+/*       // and infinite loop even while 'finished' is not set, */
+/*       // so I am also including 'key' in the while loop termination */
+/*       // condition to prevent these nasty infinite loops ... */
+/*       // this still feels uneasy, though ... */
+/*       while (key && !exit_var_uf_map_it->finished) { */
+/*         key = (UInt)(gennext(exit_var_uf_map_it)); */
+/*         if (key) { */
+/*           genfreekey(cur_entry->ppt_exit_var_uf_map, (void*)key); */
+/*         } */
+/*       } */
+
+      // Clear the hashtable and generate a new one:
+      // (Hopefully this won't cause memory leaks or weird crashes)
+      genfreehashtable(cur_entry->ppt_exit_var_uf_map);
+      cur_entry->ppt_exit_var_uf_map =
+        genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                                  (int (*)(void *,void *)) &equivalentTags);
 
       for (ind = 0; ind < cur_entry->num_exit_daikon_vars; ind++) {
         UInt leader_tag = cur_entry->ppt_exit_var_tags[ind];
@@ -816,7 +839,7 @@ void garbage_collect_tags() {
         }
       }
 
-      genfreeiterator(exit_var_uf_map_it);
+      //      genfreeiterator(exit_var_uf_map_it);
     }
   }
 
