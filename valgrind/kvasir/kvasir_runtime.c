@@ -38,6 +38,8 @@ FunctionEntry* currentFunctionEntryPtr = 0;
 // For debug printouts
 char within_main_program = 0;
 
+extern FILE* dtrace_fp; // This should be initialized in decls-output.c
+
 // Updates the full daikon_name for all functions in DaikonFunctionInfoTable
 // which have C++ mangled names by using the Valgrind VG_(get_fnname) function
 // and also updates the trace_vars_tree
@@ -292,6 +294,13 @@ void handleFunctionEntrance(FunctionEntry* e)
   //  printf("Function entrance: %s\n\n", e->name);
   //  printFunctionEntryStack();
   //  printf("\n");
+
+  // Flush the buffer so that everything for this program point gets
+  // printed to the .dtrace file (useful for observing executions of
+  // interactive programs):
+  if (dtrace_fp) {
+    fflush(dtrace_fp);
+  }
 }
 
 // The main file calls this whenever it exits a function
@@ -341,6 +350,13 @@ void handleFunctionExit(FunctionEntry* e)
 
   if (VG_(strncmp)(e->daikon_name, "..main(", 7) == 0) {
     within_main_program = 0;
+  }
+
+  // Flush the buffer so that everything for this program point gets
+  // printed to the .dtrace file (useful for observing executions of
+  // interactive programs):
+  if (dtrace_fp) {
+    fflush(dtrace_fp);
   }
 }
 
