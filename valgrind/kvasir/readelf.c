@@ -81,6 +81,7 @@ extern void VG_(exit)( int status );
 #include "elf/dwarf2.h"
 
 #include "typedata.h" //PG
+void fixBuffering(FILE *fp);
 
 /* The following headers use the elf/reloc-macros.h file to
    automatically generate relocation recognition functions
@@ -10139,6 +10140,7 @@ process_file (file_name)
       error (_("Input file %s not found.\n"), file_name);
       return 1;
     }
+  fixBuffering(file);
 
   if (! get_file_header (file))
     {
