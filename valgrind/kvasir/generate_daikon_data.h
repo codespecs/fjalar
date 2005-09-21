@@ -87,6 +87,9 @@ typedef struct _DaikonType {
 // Hash table containing DaikonType entries
 // Keys: ID from dwarf_entry
 // Values: DaikonType corresponding to the ID
+//         (Hopefully, if all goes well, the only DaikonType values
+//          in this table are REAL entries whose dwarf_entry has
+//          is_declaration NULL, not fake declaration entries)
 struct genhashtable* DaikonTypesTable;
 
 
@@ -360,6 +363,7 @@ unsigned long highestGlobalVarAddr; // The location of the highest-addr member o
 unsigned long lowestGlobalVarAddr;  // The location of the lowest-addr member of globalVars
 
 void daikon_preprocess_entry_array();
+void initializeStructNamesIDTable();
 void initializeDaikonFunctionInfoTable();
 void initializeGlobalVarsList();
 

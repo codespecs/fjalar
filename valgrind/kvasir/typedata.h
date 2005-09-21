@@ -64,6 +64,11 @@ typedef struct
 typedef struct
 {
   char* name;
+
+  char is_declaration; // If this is non-null, then this entry is simply
+                       // an empty declaration with no real members,
+                       // so we should ignore it
+
   unsigned long byte_size;
 
   unsigned long num_member_vars;
