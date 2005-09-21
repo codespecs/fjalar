@@ -36,6 +36,16 @@ DaikonType GlobalHashcodeType = {0,
                                  4, // sizeof(void*)
                                  0, 0, 0, 0};
 
+// Hash table that maps the names of structs to their ID in
+// dwarf_entry_array
+// (This is needed to make sure that there is only one entry of
+//  each struct with a certain name that all variables can refer to.
+//  Otherwise, lots of variables may refer to entries that are merely
+//  empty declarations in their compilation unit.)
+// Key: name of struct type
+// Value: ID of REAL entry where is_declaration is 0
+static struct genhashtable* StructNamesIDTable = 0;
+
 // Global strings
 
 static char* DAIKON_RETURN_NAME = "return";
@@ -192,6 +202,12 @@ void daikon_preprocess_entry_array()
   // Initialize DaikonTypesTable
   DaikonTypesTable = genallocatehashtable((unsigned int (*)(void *)) & hashID,(int (*)(void *,void *)) &equivalentIDs);
 
+  StructNamesIDTable =
+    genallocatehashtable((unsigned int (*)(void *)) & hashString,
+                         (int (*)(void *,void *)) &equivalentStrings);
+
+  initializeStructNamesIDTable();
+
   initializeDaikonFunctionInfoTable();
 
   // Don't even bother to init this if we set --kvasir-ignore-globals
@@ -212,6 +228,9 @@ void daikon_preprocess_entry_array()
 
   //  printDaikonFunctionInfoTable();
   //  printDaikonGlobalVars();
+
+  genfreehashtable(StructNamesIDTable);
+  StructNamesIDTable = 0;
 }
 
 int entry_is_valid_function(dwarf_entry *entry) {
@@ -410,6 +429,36 @@ void initializeGlobalVarsList()
 /*   return returnValue; */
 /* } */
 
+
+// Initializes StructNamesIDTable by going through dwarf_entry_array
+// and associates each struct/union type declaration with
+// is_declaration = null with its name.  This ensures that in later
+// stages, we only refer to one struct/union entry and not a myriad of
+// 'fake' declaration entries.
+// TODO: Is there the danger of having 2 struct
+// types share the same name but are visibel in different compilation
+// units?
+void initializeStructNamesIDTable()
+{
+  unsigned long i;
+  dwarf_entry* cur_entry = 0;
+
+  for (i = 0; i < dwarf_entry_array_size; i++) {
+    cur_entry = &dwarf_entry_array[i];
+    if (tag_is_collection_type(cur_entry->tag_name)) {
+      collection_type* collectionPtr = (collection_type*)(cur_entry->entry_ptr);
+      if (!collectionPtr->is_declaration &&
+          collectionPtr->name) {
+        //        VG_(printf)("%s (%u)\n", collectionPtr->name, cur_entry->ID);
+
+        genputtable(StructNamesIDTable,
+                    (void*)collectionPtr->name, // key    (char*)
+                    (void*)cur_entry->ID);      // value  (unsigned long)
+
+      }
+    }
+  }
+}
 
 // TODO: This will leak memory if called more than once per program execution
 //       since the entries in DaikonFunctionInfoTable are not being properly
@@ -693,6 +742,11 @@ void extractStructUnionType(DaikonType* t, dwarf_entry* e)
     return;
 
   collectionPtr = (collection_type*)(e->entry_ptr);
+
+  //  VG_(printf)("%s (dec: %u) (ID: %u)\n",
+  //              collectionPtr->name,
+  //              collectionPtr->is_declaration,
+  //              e->ID);
 
   t->isStructUnionType = 1;
   t->repType = R_HASHCODE;
@@ -1228,7 +1282,65 @@ void extractOneVariable(VarList* varListPtr,
 
   if (typePtr)
     {
-      daikonVarPtr->varType = (DaikonType*)gengettable(DaikonTypesTable, (void*)typePtr->ID);
+      // We want to look up the REAL type entry, not a fake one with
+      // is_declaration non-null.
+      //   (Hopefully, if all goes well, the only DaikonType values
+      //    in DaikonTypesTable are REAL entries whose dwarf_entry has
+      //    is_declaration NULL, not fake declaration entries)
+
+      // For struct/union types, we want to make sure that we are
+      // performing a lookup on a REAL entry, not just a declaration:
+      if (tag_is_collection_type(typePtr->tag_name)) {
+        collection_type* collectionPtr = (collection_type*)(typePtr->entry_ptr);
+
+        // If it's a fake entry, we want to look up its name in
+        // StructNamesIDTable and map it to the REAL entry with the
+        // same name:
+        if (collectionPtr->is_declaration &&
+            collectionPtr->name) {
+          unsigned long realID = (unsigned long)gengettable(StructNamesIDTable,
+                                                            (void*)collectionPtr->name);
+          //          VG_(printf)("* %s (Fake ID: %u) (Real ID: %u)\n",
+          //                      collectionPtr->name,
+          //                      typePtr->ID,
+          //                      realID);
+
+          // If realID == 0, that means that we somehow don't have
+          // debugging info for the real entry, so we must just resort
+          // to using the fake entry, reluctantly
+          if (realID) {
+            // Now do a lookup for the REAL ID and not the fake one:
+            daikonVarPtr->varType =
+              (DaikonType*)gengettable(DaikonTypesTable, (void*)realID);
+
+            // If you can't find anything, we'll have to end up calling
+            // extractStructUnionType so let's change typePtr to refer
+            // to the entry in dwarf_entry_array with the REAL ID before
+            // passing it further along:
+            if (!daikonVarPtr->varType) {
+              unsigned long realIndex = 0;
+              if (binary_search_dwarf_entry_array(realID,  &realIndex)) {
+                typePtr = &dwarf_entry_array[realIndex];
+
+                //                VG_(printf)("  realIndex: %u, realID: %u, typePtr->ID: %u\n",
+                //                            realIndex, realID, typePtr->ID);
+              }
+            }
+          }
+          else {
+            daikonVarPtr->varType = (DaikonType*)gengettable(DaikonTypesTable, (void*)typePtr->ID);
+          }
+        }
+        // Do a regular lookup if it's either an unnamed struct or
+        // (even better) a REAL one with is_declaration = null
+        else {
+          daikonVarPtr->varType = (DaikonType*)gengettable(DaikonTypesTable, (void*)typePtr->ID);
+        }
+      }
+      // Just do a lookup for non-struct/union types
+      else {
+        daikonVarPtr->varType = (DaikonType*)gengettable(DaikonTypesTable, (void*)typePtr->ID);
+      }
     }
   // If the entry is not found in DaikonTypesTable, create a new one
   // and add it to the table

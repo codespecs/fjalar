@@ -235,7 +235,7 @@ char tag_is_variable(unsigned long tag) {
 // DW_AT_sibling: collection_type, array_type, function_type, function, enumerator
 // DW_AT_MIPS_linkage_name: function, variable
 // DW_AT_specification: function, variable
-// DW_AT_declaration: function, variable
+// DW_AT_declaration: function, variable, collection_type
 // DW_AT_artificial: variable
 // DW_AT_accessibility: function
 
@@ -312,7 +312,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_variable(tag));
     case DW_AT_declaration:
       return (tag_is_function(tag) ||
-              tag_is_variable(tag));
+              tag_is_variable(tag) ||
+              tag_is_collection_type(tag));
     case DW_AT_artificial:
       return tag_is_variable(tag);
     case DW_AT_accessibility:
@@ -497,6 +498,10 @@ char harvest_declaration_value(dwarf_entry* e, unsigned long value) {
   }
   else if (tag_is_variable(tag)) {
     ((variable*)e->entry_ptr)->is_declaration_or_artificial = value;
+    return 1;
+  }
+  else if (tag_is_collection_type(tag)) {
+    ((collection_type*)e->entry_ptr)->is_declaration = value;
     return 1;
   }
   else
