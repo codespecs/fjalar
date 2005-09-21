@@ -600,7 +600,7 @@ static int openRedirectFile(const char *fname) {
  * Red Hat 9 ones) this seems to work around a bug where the two mallocs
  * both think they own an area of memory. It would be better if we could
  * fix the underlying bug, though. */
-static void fixBuffering(FILE *fp) {
+void fixBuffering(FILE *fp) {
   char *buffer = VG_(malloc)(8192);
   if (setvbuf(fp, buffer, _IOFBF, 8192)) {
      VG_(printf)("setvbuf failed\n");
