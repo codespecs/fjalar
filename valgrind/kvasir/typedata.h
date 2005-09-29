@@ -63,7 +63,11 @@ typedef struct
 //   {DW_TAG_structure_type, _union_type, _enumeration_type}
 typedef struct
 {
-  char* name;
+  char* name;          // For unnamed structs/unions/enums, we should just munge the
+                       // name from the ID field so that we have something
+                       // to use to identify this struct
+                       // We will name it "unnamed_0x$ID" where $ID
+                       // is the ID field in hex.
 
   char is_declaration; // If this is non-null, then this entry is simply
                        // an empty declaration with no real members,

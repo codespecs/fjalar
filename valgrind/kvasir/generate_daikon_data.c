@@ -438,6 +438,15 @@ void initializeGlobalVarsList()
 // TODO: Is there the danger of having 2 struct
 // types share the same name but are visibel in different compilation
 // units?
+//
+// As a side effect, let's also initialize the names of unnamed structs
+// so that we can have something to uniquely identify them with:
+//
+// For unnamed structs/unions/enums, we should just munge the
+// name from the ID field so that we have something
+// to use to identify this struct
+// We will name it "unnamed_0x$ID" where $ID
+// is the ID field in hex.
 void initializeStructNamesIDTable()
 {
   unsigned long i;
@@ -447,14 +456,26 @@ void initializeStructNamesIDTable()
     cur_entry = &dwarf_entry_array[i];
     if (tag_is_collection_type(cur_entry->tag_name)) {
       collection_type* collectionPtr = (collection_type*)(cur_entry->entry_ptr);
-      if (!collectionPtr->is_declaration &&
-          collectionPtr->name) {
+      if (!collectionPtr->is_declaration) {
         //        VG_(printf)("%s (%u)\n", collectionPtr->name, cur_entry->ID);
 
+        // Don't throw in entries with no names because that will be
+        // really confusing
+        if (collectionPtr->name) {
         genputtable(StructNamesIDTable,
                     (void*)collectionPtr->name, // key    (char*)
                     (void*)cur_entry->ID);      // value  (unsigned long)
-
+        }
+        // If it's a true entry (is_declaration == false)
+        // but it's unnamed, then give it a name by munging its ID:
+        else {
+          // The maximum size is 10 + 8 + 1 = 19
+          // 10 for "unnamed_0x", 8 for maximum size for cur_entry->ID,
+          // and 1 for null-terminator
+          char* fake_name = calloc(19, sizeof(*fake_name));
+          sprintf(fake_name, "unnamed_0x%x", cur_entry->ID);
+          collectionPtr->name = fake_name;
+        }
       }
     }
   }
