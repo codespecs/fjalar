@@ -1552,12 +1552,14 @@ void outputDaikonVar(DaikonVariable* var,
     ((numDereferences > 0) && (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
 
 
-  // Don't print out an entry for base (non-pointer) struct/union
+  // Unless kvasir_output_struct_vars is on,
+  // don't print out an entry for base (non-pointer) struct/union
   // variables since they have no substantive meaning for C programs.
   // They are merely represented as hashcode values, and that's kind
   // of deceiving because they aren't really pointer variables either.
-  if (!((layersBeforeBase == 0) &&
-        (var->varType->isStructUnionType))) {
+  if (kvasir_output_struct_vars ||
+      (!((layersBeforeBase == 0) &&
+         (var->varType->isStructUnionType)))) {
 
 
   // .decls, .dtrace, and .disambig files -
