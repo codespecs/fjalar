@@ -59,6 +59,7 @@ Bool kvasir_limit_static_vars = False;
 Bool kvasir_default_disambig = False;
 Bool kvasir_smart_disambig = False;
 Bool kvasir_use_bit_level_precision = False;
+Bool kvasir_output_struct_vars = False;
 Bool dyncomp_print_debug_info = False;
 Bool dyncomp_separate_entry_exit_comp = False;
 int kvasir_array_length_limit = -1;
@@ -620,6 +621,7 @@ void kvasir_print_usage()
 "    --limit-static-vars  limits the output of static vars [--no-limit-static-vars]\n"
 "    --bit-level-precision     Uses bit-level precision to produce more accurate\n"
 "                              output at the expense of speed [--no-bit-level-precision]\n"
+"    --output-struct-vars      Outputs struct variables along with their contents\n"
 "    --nesting-depth=N   limits the maximum number of dereferences of any structure\n"
 "                        to N [--nesting-depth=2]\n"
 "                        (N must be an integer between 0 and 100)\n"
@@ -681,6 +683,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("decls-only",     kvasir_decls_only)
    else VG_YESNO_CLO("limit-static-vars", kvasir_limit_static_vars)
    else VG_YESNO_CLO("bit-level-precision", kvasir_use_bit_level_precision)
+   else VG_YESNO_CLO("output-struct-vars", kvasir_output_struct_vars)
    else VG_YESNO_CLO("smart-disambig", kvasir_smart_disambig)
    else VG_BNUM_CLO(arg, "--struct-depth",  MAX_STRUCT_INSTANCES, 0, 100) // [0 to 100]
    else VG_BNUM_CLO(arg, "--nesting-depth", MAX_NUM_STRUCTS_TO_DEREFERENCE, 0, 100) // [0 to 100]

@@ -44,6 +44,7 @@ Bool kvasir_limit_static_vars;
 Bool kvasir_default_disambig;
 Bool kvasir_smart_disambig;
 Bool kvasir_use_bit_level_precision;
+Bool kvasir_output_struct_vars;
 Bool dyncomp_print_debug_info;
 Bool dyncomp_separate_entry_exit_comp;
 int kvasir_array_length_limit;
