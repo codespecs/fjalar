@@ -46,6 +46,7 @@ int genputtable(struct genhashtable *ht, void * key, void * object) {
     /* Expand hashtable */
     long newcurrentsize=(ht->currentsize<(MAXINT/2))?ht->currentsize*2:MAXINT;
     long oldcurrentsize=ht->currentsize;
+    //    VG_(printf)("genputtable() - resize - old: %u, new: %u\n", oldcurrentsize, newcurrentsize);
     struct genpointerlist **newbins=(struct genpointerlist **) VG_(calloc)(1,sizeof (struct genpointerlist *)*newcurrentsize);
     struct genpointerlist **oldbins=ht->bins;
     long j,i;
@@ -161,6 +162,7 @@ unsigned int genhashfunction(struct genhashtable *ht, void * key) {
 
 struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *, void *)) {
   struct genhashtable *ght=(struct genhashtable *) VG_(calloc)(1,sizeof(struct genhashtable));
+  //  VG_(printf)("genallocate() - allocate - initial: %u\n", geninitialnumbins);
   struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)(1,sizeof(struct genpointerlist *)*geninitialnumbins);
   int i;
   for(i=0;i<geninitialnumbins;i++)
@@ -178,6 +180,7 @@ struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *)
 // PG - Copy-and-paste to create smaller hash tables to not waste as much space.
 struct genhashtable * genallocateSMALLhashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *, void *)) {
   struct genhashtable *ght=(struct genhashtable *) VG_(calloc)(1,sizeof(struct genhashtable));
+  //  VG_(printf)("genallocatesmall() - allocate - initial: %u\n", genSMALLinitialnumbins);
   struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)(1,sizeof(struct genpointerlist *)*genSMALLinitialnumbins);
   int i;
   for(i=0;i<genSMALLinitialnumbins;i++)
@@ -199,6 +202,26 @@ void genfreehashtable(struct genhashtable * ht) {
       struct genpointerlist *genptr=ht->bins[i];
       while(genptr!=NULL) {
 	struct genpointerlist *tmpptr=genptr->next;
+	VG_(free)(genptr);
+	genptr=tmpptr;
+      }
+    }
+  }
+  //  VG_(printf)("genfreetable()\n");
+  VG_(free)(ht->bins);
+  VG_(free)(ht);
+}
+
+// Do not use this if you are not storing pointers to heap-allocated
+// objects in the hash table
+void genfreehashtableandvalues(struct genhashtable * ht) {
+  int i;
+  for (i=0;i<ht->currentsize;i++) {
+    if (ht->bins[i]!=NULL) {
+      struct genpointerlist *genptr=ht->bins[i];
+      while(genptr!=NULL) {
+	struct genpointerlist *tmpptr=genptr->next;
+        VG_(free)(genptr->object); // Also free the object in the hash table
 	VG_(free)(genptr);
 	genptr=tmpptr;
       }

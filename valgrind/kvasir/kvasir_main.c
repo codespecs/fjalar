@@ -74,7 +74,7 @@ char* kvasir_disambig_filename = 0;
 char *kvasir_program_stdout_filename = 0;
 char *kvasir_program_stderr_filename = 0;
 
-int dyncomp_gc_after_n_tags = 5000000;
+int dyncomp_gc_after_n_tags = 10000000;
 
 Bool actually_output_separate_decls_dtrace = 0;
 
@@ -587,6 +587,13 @@ void kvasir_post_clo_init()
   if (kvasir_decls_only && kvasir_with_dyncomp) {
      kvasir_decls_only = False;
      dyncomp_without_dtrace = True;
+  }
+
+  // If we are using DynComp with the garbage collector, initialize
+  // g_oldToNewMap:
+  extern UInt* g_oldToNewMap;
+  if (kvasir_with_dyncomp && !kvasir_dyncomp_no_gc) {
+     g_oldToNewMap = VG_(shadow_alloc)((dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
   }
 
   process_elf_binary_data(filename);
