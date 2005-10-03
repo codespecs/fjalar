@@ -58,6 +58,7 @@ char* decls_folder = "daikon-output/";
 static char* decls_ext = ".decls";
 static char* dtrace_ext = ".dtrace";
 static char* dereference = "[]";
+static char* zeroth_elt = "[0]";
 static char* dot = ".";
 static char* arrow = "->";
 static char* star = "*";
@@ -156,6 +157,7 @@ const char* DaikonRepTypeString[] = {
 // Useful stack of strings for printing out names
 // Only puts REFERENCES to strings, does not do any allocating
 
+// Yes, this is very dirty because it's a global variable ... ahhh!
 // The stack which represents the full name of the variable
 // that we currently want to print out
 char* fullNameStack[MAX_STRING_STACK_SIZE];
@@ -1401,6 +1403,7 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
     }
 }
 
+
 // THIS IS THE MAIN DECLS AND DTRACE OUTPUT FUNCTION!!!
 // Prints one DaikonVariable variable and all of its derived
 // variables to decls_fp if outputType == DECLS_FILE,
@@ -1419,9 +1422,11 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
 void outputDaikonVar(DaikonVariable* var,
 		     VariableOrigin varOrigin,
 		     int numDereferences,
-                     // True if either this has been dereferenced
-                     // before or its struct parent was an array
-		     char isArray,
+                     // True if we have already exhausted the one
+                     // level of sequences that Daikon allows so that
+                     // all further dereferences are single pointer
+                     // dereferences (denoted by blah[0]):
+		     char isAlreadyDaikonSequence,
 		     char stopExpandingArrays,
 		     char stopDerivingMemberVars,
 		     char allowVarDumpToFile,
@@ -1451,13 +1456,19 @@ void outputDaikonVar(DaikonVariable* var,
   char* fullDaikonName = 0;
 
   int layersBeforeBase = (var->repPtrLevels - numDereferences);
-  char isBaseArrayVar = (isArray && (var->repPtrLevels == 0));
+  //  char isBaseArrayVar = (isAlreadyDaikonSequence && (var->repPtrLevels == 0));
 
-  char printAsArray = 0;
-
+  // Initialize these in a group later
+  char printAsSequence = 0;
   char disambigOverrideArrayAsPointer = 0;
+  char derefSingleElement = 0;
 
   FILE* out_file = 0;
+
+  if (!var) {
+    VG_(printf)( "Error! var is null in outputDaikonVar()\n");
+    abort();
+  }
 
   switch (outputType) {
   case DECLS_FILE: out_file = decls_fp; break;
@@ -1466,12 +1477,6 @@ void outputDaikonVar(DaikonVariable* var,
   case DYNCOMP_EXTRA_PROP: out_file = 0; break;
   case FAUX_DECLS_FILE: out_file = dev_null_fp; break;
   }
-
-  if (!var)
-    {
-      VG_(printf)( "Error! var is null in outputDaikonVar\n");
-      abort();
-    }
 
   // If it is an original variable (and not a Daikon-derived one),
   // then initialize a new VisitedStructsTable
@@ -1498,6 +1503,9 @@ void outputDaikonVar(DaikonVariable* var,
 
     char found = 1;
 
+    // TODO: Don't the ENTER and EXIT .disambig values for a
+    // particular variable have to be the same because Daikon expects
+    // the same names and content format for both ENTER and EXIT ppts?
     switch (varOrigin) {
     case FUNCTION_ENTER_FORMAL_PARAM:
     case GLOBAL_VAR: // It doesn't matter (both should be identical)
@@ -1546,10 +1554,25 @@ void outputDaikonVar(DaikonVariable* var,
     }
   }
 
-  // Only do this for the first derference because a 'P' means that
-  // the derived Daikon variable after 1 dereference should NOT be an array
   disambigOverrideArrayAsPointer =
-    ((numDereferences > 0) && (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
+    (kvasir_disambig_ptrs ||
+     (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
+
+  // This clause is very important in controlling the correct output
+  // format (scalar or sequence).  If we are already printing as a
+  // sequence, then .disambig for this variable has no effect.
+  // However, if we are not yet printing as a sequence, then the
+  // .disambig does have an effect.
+  printAsSequence = (isAlreadyDaikonSequence ||
+                     (!disambigOverrideArrayAsPointer && (numDereferences > 0)));
+
+
+  // If we are already a sequence or (if we are not) we choose to
+  // disambiguate arrays as pointers, then we are dereferencing to
+  // print out a single element instead of trying to print out an
+  // array of elements:
+  derefSingleElement = (isAlreadyDaikonSequence ||
+                        disambigOverrideArrayAsPointer);
 
 
   // Unless kvasir_output_struct_vars is on,
@@ -1557,10 +1580,14 @@ void outputDaikonVar(DaikonVariable* var,
   // variables since they have no substantive meaning for C programs.
   // They are merely represented as hashcode values, and that's kind
   // of deceiving because they aren't really pointer variables either.
+
+  // This means that anywhere inside of this 'if' statement, we should
+  // be very careful about mutating state because different state may
+  // be mutated based on whether kvasir_output_struct_vars is on,
+  // which may lead to different-looking results.
   if (kvasir_output_struct_vars ||
       (!((layersBeforeBase == 0) &&
          (var->varType->isStructUnionType)))) {
-
 
   // .decls, .dtrace, and .disambig files -
   //  Line 1: Print out name
@@ -1568,62 +1595,7 @@ void outputDaikonVar(DaikonVariable* var,
     {
       // We are really popping stuff off of the stack in reverse and
       // treating it like a queue :)
-      char* nameWithoutDereferences = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
-
-      if (numDereferences < 0) {
-	numDereferences = 0; // Prevent negatives in calloc of nameForComparison
-      }
-
-      // For .disambig:
-      // Attach a "*" prefix onto the name to denote dereferencing
-      // and use one fewer level of "[]"
-      if (disambigOverrideArrayAsPointer) {
-	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
-				       ((numDereferences - 1) * VG_(strlen)(dereference)) + 2,
-					sizeof(*fullDaikonName));
-
-	VG_(strcpy)(fullDaikonName, star);
-	VG_(strcat)(fullDaikonName, nameWithoutDereferences);
-      }
-      // Push an extra set of "[]" onboard so that Daikon doesn't choke
-      // because it needs this to be a sequence
-      else if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
-                                            ((numDereferences + 1) * VG_(strlen)(dereference))
-                                            + 1,
-                                            sizeof(*fullDaikonName));
-
-	VG_(strcpy)(fullDaikonName, nameWithoutDereferences);
-	VG_(strcat)(fullDaikonName, dereference);
-      }
-      else {
-	fullDaikonName = (char*)VG_(calloc)(VG_(strlen)(nameWithoutDereferences) +
-				       (numDereferences * VG_(strlen)(dereference)) + 1,
-				       sizeof(*fullDaikonName));
-
-	VG_(strcpy)(fullDaikonName, nameWithoutDereferences);
-      }
-
-      // Append "[]" onto the end of names if necessary
-      // TODO: This rule (with the first if clause commented-out)  seems to work well
-      // to print out what we want for now, but  investigate it if it becomes a problem later
-      //  if (isArray && (var->repPtrLevels == 0))
-      //    {
-      //      fputs(dereference, out_file);
-      //    }
-      //  else
-      if (numDereferences > 0) {
-	int i = 0;
-
-	// One less set of "[]" if disambigOverrideArrayAsPointer
-	int levels = (disambigOverrideArrayAsPointer ?
-		      numDereferences - 1 :
-		      numDereferences);
-
-	for (i = 0; i < levels; i++) {
-	  VG_(strcat)(fullDaikonName, dereference);
-	}
-      }
+      fullDaikonName = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
 
       // Now we must check whether we are interested in printing out
       // this variable - if we are not, then punt everything!  This
@@ -1640,9 +1612,7 @@ void outputDaikonVar(DaikonVariable* var,
 		{
 		  DPRINTF("%s NOT FOUND!!!\n", fullDaikonName);
 		  // PUNT EVERYTHING!!!
-		  VG_(free)(nameWithoutDereferences);
 		  VG_(free)(fullDaikonName);
-
 		  return;
 		}
 	    }
@@ -1653,9 +1623,7 @@ void outputDaikonVar(DaikonVariable* var,
 	  // any relevant variables to print
 	  else
 	    {
-	      VG_(free)(nameWithoutDereferences);
 	      VG_(free)(fullDaikonName);
-
 	      return;
 	    }
 	}
@@ -1669,35 +1637,20 @@ void outputDaikonVar(DaikonVariable* var,
         fputs(fullDaikonName, out_file);
       }
 
-      // This has been moved earlier so that it gets integrated directly into
-      // fullDaikonName:
-      // Push an extra set of "[]" onboard so that Daikon doesn't choke
-      // because it needs this to be a sequence
-      //      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-      //	fputs(dereference, out_file);
-      //      }
-
-      //      printf("%s - isBaseArrayVar: %d, numDereferences: %d, layersBeforeBase: %d\n",
-      //	     fullDaikonName, isBaseArrayVar, numDereferences, layersBeforeBase);
-
-      VG_(free)(nameWithoutDereferences);
-
-      // .dtrace and DynComp will need this for keeping track of run-time info:
+      // .dtrace and DynComp will need this for keeping track of
+      // run-time info, so don't free the name for those runs:
       if ((DTRACE_FILE != outputType) &&
           (DYNCOMP_EXTRA_PROP != outputType)) {
         VG_(free)(fullDaikonName);
       }
+
+      //      VG_(printf)("%s\n", fullDaikonName);
     }
   else
     {
       VG_(printf)( "Error! fullNameStack is empty in outputDaikonVar() - no name to print\n");
       abort();
     }
-
-  // We print a variable as an array if it's either a true array variable or it's been
-  // dereferenced at least once, which means that it came from a pointer so that we don't
-  // know its exact size and thus have to assume that the pointer points to an array
-  printAsArray = (isBaseArrayVar || (numDereferences > 0));
 
   if (var_dump_fp && allowVarDumpToFile)
     {
@@ -1716,7 +1669,7 @@ void outputDaikonVar(DaikonVariable* var,
 	      var->name,
 	      varOrigin,
 	      numDereferences,
-	      isArray,
+	      isAlreadyDaikonSequence,
 	      stopExpandingArrays,
 	      stopDerivingMemberVars,
 	      (int)outputType,
@@ -1733,7 +1686,7 @@ void outputDaikonVar(DaikonVariable* var,
 			  (layersBeforeBase > 0), // isHashcode
 			  overrideIsInitialized,
 			  isDummy,
-			  printAsArray,
+			  printAsSequence,
 			  upperBound,
 			  bytesBetweenElts,
 			  // override float as double when printing
@@ -1805,7 +1758,8 @@ void outputDaikonVar(DaikonVariable* var,
       // we want to see if the target of a particular pointer
       // has been observed and whether it refers to 1 or multiple elements
       if ((1 == numDereferences) && variableHasBeenObserved) {
-	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
+	if (printAsSequence && (upperBound > 0)) {
+          //	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
 	  var->disambigMultipleElts = 1;
 	}
 
@@ -1821,6 +1775,7 @@ void outputDaikonVar(DaikonVariable* var,
   else if ((DECLS_FILE == outputType) || (FAUX_DECLS_FILE == outputType))
     {
       char alreadyPutDerefOnLine3;
+      int layers;
       // .decls Line 2: Print out declared type
 
       if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
@@ -1849,13 +1804,26 @@ void outputDaikonVar(DaikonVariable* var,
 	    }
 	}
 
-      // Append a set of "[]" to the declared type if appropriate
-      // if it's either a true array or it's a pointer
-      if (!disambigOverrideArrayAsPointer &&
-	  (isBaseArrayVar || (var->repPtrLevels > 0)))
-	{
-	  fputs(dereference, out_file);
-	}
+      // For the declared type, print out one level of '*' for every
+      // layer above base to denote pointer types
+      for (layers = 0; layers < layersBeforeBase; layers++) {
+        fputs(star, out_file);
+        // TODO: Determine later whether this special case is worth it:
+        // Special case for static array types: use a '[]' to
+        // replace the LAST '*'
+        //        if ((var->isStaticArray) &&
+        //            (layers == (layersBeforeBase - 1))) {
+        //          fputs(dereference, out_file);
+        //        }
+        //        else {
+        //          fputs(star, out_file);
+        //        }
+      }
+
+      // If we print this as a sequence, then we must append '[]'
+      if (printAsSequence) {
+        fputs(dereference, out_file);
+      }
 
       // Original variables in function parameter lists
       // have "# isParam = true"
@@ -1865,6 +1833,7 @@ void outputDaikonVar(DaikonVariable* var,
 	  fputs(" # isParam=true", out_file);
 	}
       fputs("\n", out_file);
+
 
       // .decls Line 3: Print out rep. type
       alreadyPutDerefOnLine3 = 0;
@@ -1898,11 +1867,9 @@ void outputDaikonVar(DaikonVariable* var,
 
       // Append "[]" onto the end of the rep. type if necessary
       if (!alreadyPutDerefOnLine3 &&
-	  (!disambigOverrideArrayAsPointer &&
-	   (isBaseArrayVar || (numDereferences > 0))))
-	{
-	  fputs(dereference, out_file);
-	}
+          printAsSequence) {
+        fputs(dereference, out_file);
+      }
 
       fputs("\n", out_file);
 
@@ -2124,12 +2091,29 @@ void outputDaikonVar(DaikonVariable* var,
 	    }
 	}
 
+      // Push one symbol onto stack to represent the dereference:
+      if (derefSingleElement) {
+        if (kvasir_repair_format) {
+          stringStackPush(fullNameStack, &fullNameStackSize, star);
+        }
+        else {
+          stringStackPush(fullNameStack, &fullNameStackSize, zeroth_elt);
+        }
+      }
+      else {
+        stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+      }
+
       outputDaikonVar(var,
 		      ((varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ?
 		       DERIVED_FLATTENED_ARRAY_VAR :
 		       DERIVED_VAR),
 		      numDereferences + 1,
-		      1,
+                      // If we are dereferencing a single element,
+                      // keep the existing value of is
+                      // AlreadyDaikonSequence; otherwise, definitely
+                      // set it to 1:
+		      (derefSingleElement ? isAlreadyDaikonSequence : 1),
 		      stopExpandingArrays,
 		      stopDerivingMemberVars,
 		      allowVarDumpToFile,
@@ -2144,6 +2128,9 @@ void outputDaikonVar(DaikonVariable* var,
 		      structParentAlreadySetArrayInfo,
                       numStructsDereferenced,
                       varFuncInfo, isEnter);
+
+      // Pop one symbol off
+      stringStackPop(fullNameStack, &fullNameStackSize);
     }
   // If this is the base type of a struct/union variable, then print out all
   // derived member variables:
@@ -2228,7 +2215,7 @@ void outputDaikonVar(DaikonVariable* var,
 	  // then we must expand the member array and print it
 	  // out in its flattened form with one set of derived
 	  // variable for every element in the array:
-	  if ((isArray && !disambigOverrideArrayAsPointer) &&
+	  if ((printAsSequence || (!printAsSequence && kvasir_flatten_arrays)) &&
 	      VAR_IS_STATIC_ARRAY(curVar) &&
 	      !stopExpandingArrays &&
 	      (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
@@ -2239,6 +2226,9 @@ void outputDaikonVar(DaikonVariable* var,
 	      int arrayIndex = 0;
 	      for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++)
 		{
+                  char* top = stringStackTop(fullNameStack, fullNameStackSize);
+                  char numEltsPushedOnStack = 0;
+
 		  char indexStr[5];
 		  sprintf(indexStr, "%d", arrayIndex);
 
@@ -2252,34 +2242,29 @@ void outputDaikonVar(DaikonVariable* var,
 		      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
 		    }
 
-		  // Append "[]" onto the end of names if necessary
-		  // PUSH
-		  if (isBaseArrayVar)
-		    {
-		      stringStackPush(fullNameStack, &fullNameStackSize, dereference);
-		    }
-		  else if (numDereferences > 0)
-		    {
-		      int ind;
-		      for (ind = 0; ind < numDereferences; ind++)
-			{
-			  stringStackPush(fullNameStack, &fullNameStackSize, dereference);
-			}
-		    }
+                  // If the top element is '*', then instead of pushing a
+                  // '.' to make '*.', erase that element and instead push
+                  // '->'.  If last element is '->', then we're fine and
+                  // don't do anything else.  Otherwise, push a '.'
+                  if (top[0] == '*') {
+                    stringStackPop(fullNameStack, &fullNameStackSize);
+                    stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+                    numEltsPushedOnStack = 0;
+                  }
+                  else if (VG_STREQ(top, arrow)) {
+                    numEltsPushedOnStack = 0;
+                  }
+                  else {
+                    stringStackPush(fullNameStack, &fullNameStackSize, dot);
+                    numEltsPushedOnStack = 1;
+                  }
 
-		  // Push the member variable name in order from left to right:
-		  // (The stack is acting more like a FIFO queue)
-
-		  if (disambigOverrideArrayAsPointer) {
-		    stringStackPush(fullNameStack, &fullNameStackSize, arrow);
-		  }
-		  else {
-		    stringStackPush(fullNameStack, &fullNameStackSize, dot);
-		  }
 		  stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
 		  stringStackPush(fullNameStack, &fullNameStackSize, "[");
 		  stringStackPush(fullNameStack, &fullNameStackSize, indexStr);
 		  stringStackPush(fullNameStack, &fullNameStackSize, "]");
+
+                  numEltsPushedOnStack += 4;
 
 		  // Set bytesBetweenElts to the size of the largest enclosing struct
 		  // that is also an array
@@ -2306,11 +2291,17 @@ void outputDaikonVar(DaikonVariable* var,
 		  Also, the upperBound should be set to the upper bound of that struct array as well.
 		  */
 
+                  //                  VG_(printf)("   %s[%s] isAlreadyDaikonSequence: %d, numDereferences: %d\n",
+                  //                              curVar->name, indexStr, isAlreadyDaikonSequence, numDereferences);
+
 		  outputDaikonVar(curVar,
 				  DERIVED_FLATTENED_ARRAY_VAR,
 				  0,
-				  (isArray && !disambigOverrideArrayAsPointer),
-				  (disambigOverrideArrayAsPointer ? 0 : 1),
+                                  // Only change isAlreadyDaikonSequence from 0 to 1
+                                  // if we have dereferenced to get
+                                  // here:
+                                  isAlreadyDaikonSequence,
+                                  !isAlreadyDaikonSequence,
 				  tempStopDerivingMemberVars,
 				  allowVarDumpToFile,
 				  trace_vars_tree,
@@ -2334,24 +2325,9 @@ void outputDaikonVar(DaikonVariable* var,
                                   varFuncInfo, isEnter);
 
 		  // POP all the stuff we pushed on there before
-		  stringStackPop(fullNameStack, &fullNameStackSize);
-		  stringStackPop(fullNameStack, &fullNameStackSize);
-		  stringStackPop(fullNameStack, &fullNameStackSize);
-		  stringStackPop(fullNameStack, &fullNameStackSize);
-		  stringStackPop(fullNameStack, &fullNameStackSize);
-
-		  if (isBaseArrayVar)
-		    {
-		      stringStackPop(fullNameStack, &fullNameStackSize);
-		    }
-		  else if (numDereferences > 0)
-		    {
-		      int ind;
-		      for (ind = 0; ind < numDereferences; ind++)
-			{
-			  stringStackPop(fullNameStack, &fullNameStackSize);
-			}
-		    }
+                  while ((numEltsPushedOnStack--) > 0) {
+                    stringStackPop(fullNameStack, &fullNameStackSize);
+                  }
 
 		  // HACK: Add the count back on at the end
 		  if (gencontains(VisitedStructsTable, (void*)(var->varType)))
@@ -2365,34 +2341,28 @@ void outputDaikonVar(DaikonVariable* var,
 	  // Print out a regular member variable without array flattening
 	  else
 	    {
-	      // Append "[]" onto the end of names if necessary
-	      // PUSH
-	      if (isBaseArrayVar)
-		{
-		  stringStackPush(fullNameStack, &fullNameStackSize, dereference);
-		}
-	      else if (numDereferences > 0)
-		{
-		  int ind;
+              char* top = stringStackTop(fullNameStack, fullNameStackSize);
+              char numEltsPushedOnStack = 0;
 
-		  // One less set of "[]" if disambigOverrideArrayAsPointer
-		  int levels = (disambigOverrideArrayAsPointer ?
-				numDereferences - 1 :
-				numDereferences);
+              // If the top element is '*' or '[0]', then instead of pushing a
+              // '.' to make '*.' or '[0].', erase that element and instead push
+              // '->'.  If last element is '->', then we're fine and
+              // don't do anything else.  Otherwise, push a '.'
+              if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
+                stringStackPop(fullNameStack, &fullNameStackSize);
+                stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+                numEltsPushedOnStack = 0;
+              }
+              else if (VG_STREQ(top, arrow)) {
+                numEltsPushedOnStack = 0;
+              }
+              else {
+                stringStackPush(fullNameStack, &fullNameStackSize, dot);
+                numEltsPushedOnStack = 1;
+              }
 
-		  for (ind = 0; ind < levels; ind++)
-		    {
-		      stringStackPush(fullNameStack, &fullNameStackSize, dereference);
-		    }
-		}
-
-	      if (disambigOverrideArrayAsPointer) {
-		stringStackPush(fullNameStack, &fullNameStackSize, arrow);
-	      }
-	      else {
-		stringStackPush(fullNameStack, &fullNameStackSize, dot);
-	      }
 	      stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+              numEltsPushedOnStack++;
 
 	      DPRINTF("-- %s -- override %d repPtrLevels %d isString %d... %c %c\n",
 		      curVar->name, disambigOverride, curVar->repPtrLevels, curVar->isString,
@@ -2401,8 +2371,9 @@ void outputDaikonVar(DaikonVariable* var,
 	      outputDaikonVar(curVar,
 			      DERIVED_VAR,
 			      0,
-			      (isArray && !disambigOverrideArrayAsPointer),
-			      (disambigOverrideArrayAsPointer ? 0 : stopExpandingArrays),
+                              isAlreadyDaikonSequence,
+                              // TODO: This still looks shady
+                              (isAlreadyDaikonSequence ? 0 : stopExpandingArrays),
 			      // Complex conditional:
 			      // Do not derive any more member variables
 			      // once we have said to stop expanding arrays
@@ -2426,27 +2397,9 @@ void outputDaikonVar(DaikonVariable* var,
                               varFuncInfo, isEnter);
 
 	      // POP everything we've just pushed on
-	      stringStackPop(fullNameStack, &fullNameStackSize);
-	      stringStackPop(fullNameStack, &fullNameStackSize);
-
-	      if (isBaseArrayVar)
-		{
-		  stringStackPop(fullNameStack, &fullNameStackSize);
-		}
-	      else if (numDereferences > 0)
-		{
-		  int ind;
-
-		  // One less set of "[]" if disambigOverrideArrayAsPointer
-		  int levels = (disambigOverrideArrayAsPointer ?
-				numDereferences - 1 :
-				numDereferences);
-
-		  for (ind = 0; ind < levels; ind++)
-		    {
-		      stringStackPop(fullNameStack, &fullNameStackSize);
-		    }
-		}
+              while ((numEltsPushedOnStack--) > 0) {
+                stringStackPop(fullNameStack, &fullNameStackSize);
+              }
 	    }
 	}
     }
