@@ -98,8 +98,6 @@ __inline__ void set_tag ( Addr a, UInt tag )
 static __inline__ UInt grab_fresh_tag() {
   UInt tag;
 
-  // TODO: The garbage collector is currently broken so don't invoke it
-
   // Let's try garbage collecting here.  Remember to assign
   // tag = nextTag AFTER garbage collection (if it occurs) because
   // nextTag may decrease due to the garbage collection step
@@ -110,10 +108,9 @@ static __inline__ UInt grab_fresh_tag() {
   }
 
   // For debug:
-  //  if ((nextTag % 100000) == 0) {
+  //  if ((nextTag % 10000000) == 0) {
   //    VG_(printf)("nextTag: %u\n", nextTag);
   //  }
-
 
   tag = nextTag;
 

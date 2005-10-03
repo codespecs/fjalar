@@ -34,6 +34,16 @@
 #include "libvex_guest_x86.h"
 #include <stddef.h> // For offsetof macro
 
+// Key (Array index): leader of tag which is in use during this step
+//                    of garbage collection
+// Value (Array contents): new tag that is as small as possible (start
+//                         at 1 and increments as newTagNumber)
+// Initialize to (dyncomp_gc_after_n_tags + 1) during the beginning of
+// the program and clear it before every run of garbage_collect_tags()
+// (Remember that index 0 is never used because 0 tag is invalid)
+UInt* g_oldToNewMap = 0;
+
+
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
 // TODO: WARNING!  This hashtable-within-hashtable structure may
@@ -94,7 +104,7 @@ void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
   }
 
   if (dyncomp_separate_entry_exit_comp && isEnter) {
-    genfreehashtable(funcPtr->ppt_entry_var_uf_map);
+    genfreehashtableandvalues(funcPtr->ppt_entry_var_uf_map);
     VG_(free)(funcPtr->ppt_entry_var_tags);
     VG_(free)(funcPtr->ppt_entry_new_tags);
 
@@ -103,7 +113,7 @@ void destroy_ppt_structures(DaikonFunctionInfo* funcPtr, char isEnter) {
     funcPtr->ppt_entry_new_tags = 0;
   }
   else {
-    genfreehashtable(funcPtr->ppt_exit_var_uf_map);
+    genfreehashtableandvalues(funcPtr->ppt_exit_var_uf_map);
     VG_(free)(funcPtr->ppt_exit_var_tags);
     VG_(free)(funcPtr->ppt_exit_new_tags);
 
@@ -140,7 +150,7 @@ static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
 static uf_object* var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
                                                  UInt tag) {
   if (!tag) {
-    return;
+    return 0;
   }
 
   uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
@@ -596,9 +606,9 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 };
 
 
-// Try to find leaderTag's entry in oldToNewMap (map from old tags to
+// Try to find leaderTag's entry in g_oldToNewMap (map from old tags to
 // new tags).  If it does not exist, then write *p_newTagNumber in the
-// contents of the address addr and add a new entry to oldToNewMap
+// contents of the address addr and add a new entry to g_oldToNewMap
 // with the key as leaderTag and the value as *p_newTagNumber.  Then
 // increment *p_newTagNumber.  (The idea here is that we want to do a
 // mapping from tags which can be any number from 1 to nextTag to new
@@ -610,17 +620,14 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 // Pre: leaderTag != 0
 static void reassign_tag(UInt* addr,
                          UInt leaderTag,
-                         UInt* p_newTagNumber,
-                         struct genhashtable* oldToNewMap) {
+                         UInt* p_newTagNumber) {
 
-  if (gencontains(oldToNewMap, (void*)leaderTag)) {
-    *addr = (int)gengettable(oldToNewMap, (void*)leaderTag);
+  if (g_oldToNewMap[leaderTag]) {
+    *addr = g_oldToNewMap[leaderTag];
   }
   else {
     *addr = *p_newTagNumber;
-    genputtable(oldToNewMap,
-                (void*)leaderTag, (void*)(*p_newTagNumber));
-
+    g_oldToNewMap[leaderTag] = *p_newTagNumber;
     (*p_newTagNumber)++;
   }
 }
@@ -640,16 +647,13 @@ void garbage_collect_tags() {
   // values in oldToNewMap)
   UInt newTagNumber = 1;
 
-  // Key: leader of tag which is in use during this step
-  //      of garbage collection
-  // Value: new tag that is as small as possible (start at 1 and
-  //        increments as newTagNumber)
-  struct genhashtable* oldToNewMap =
-    genallocatehashtable(NULL, // no hash function needed for u_int keys
-                         (int (*)(void *,void *)) &equivalentIDs);
+  // Clear g_oldToNewMap before running garbage collector
+  VG_(memset)(g_oldToNewMap,
+              0,
+              (dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
 
 
-  VG_(printf)("  Start tag GC (next tag = %u, total assigned = %u)\n",
+  VG_(printf)("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
 
   // This algorithm goes through all places where tags are kept, finds
@@ -697,8 +701,7 @@ void garbage_collect_tags() {
         if (*addr) { // Remember to ignore 0 tags
           reassign_tag(addr,
                        val_uf_find_leader(*addr),
-                       &newTagNumber,
-                       oldToNewMap);
+                       &newTagNumber);
         }
       }
     }
@@ -737,8 +740,7 @@ void garbage_collect_tags() {
                        // We need to first find the leader in var_uf_map,
                        // then find the leader of that in val_uf:
                        val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_entry_var_uf_map, *p_entry_tag)),
-                       &newTagNumber,
-                       oldToNewMap);
+                       &newTagNumber);
         }
       }
     }
@@ -751,8 +753,7 @@ void garbage_collect_tags() {
                      // We need to first find the leader in var_uf_map,
                      // then find the leader of that in val_uf:
                      val_uf_find_leader(var_uf_map_find_leader(cur_entry->ppt_exit_var_uf_map, *p_exit_tag)),
-                     &newTagNumber,
-                     oldToNewMap);
+                     &newTagNumber);
       }
     }
 
@@ -784,7 +785,8 @@ void garbage_collect_tags() {
 
         // Clear the hashtable and generate a new one:
         // (Hopefully this won't cause memory leaks or weird crashes)
-        genfreehashtable(cur_entry->ppt_entry_var_uf_map);
+        genfreehashtableandvalues(cur_entry->ppt_entry_var_uf_map);
+
         cur_entry->ppt_entry_var_uf_map =
           genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
                                     (int (*)(void *,void *)) &equivalentTags);
@@ -826,7 +828,8 @@ void garbage_collect_tags() {
 
       // Clear the hashtable and generate a new one:
       // (Hopefully this won't cause memory leaks or weird crashes)
-      genfreehashtable(cur_entry->ppt_exit_var_uf_map);
+      genfreehashtableandvalues(cur_entry->ppt_exit_var_uf_map);
+
       cur_entry->ppt_exit_var_uf_map =
         genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
                                   (int (*)(void *,void *)) &equivalentTags);
@@ -865,8 +868,7 @@ void garbage_collect_tags() {
     if ((*addr) > 0) {
       reassign_tag(addr,
                    val_uf_find_leader(*addr),
-                   &newTagNumber,
-                   oldToNewMap);
+                   &newTagNumber);
     }
   }
 
@@ -889,11 +891,8 @@ void garbage_collect_tags() {
   nextTag = newTagNumber;
 
 
-  // Clean-up:
-  genfreehashtable(oldToNewMap);
-
-
-  VG_(printf)("   Done tag GC (next tag = %u, total assigned = %u)\n", nextTag, totalNumTagsAssigned);
+  VG_(printf)("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
+              nextTag, totalNumTagsAssigned);
 
 }
 
