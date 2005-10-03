@@ -344,10 +344,6 @@ char outputDtraceValue(DaikonVariable* var,
   // Default this to 1 unless otherwise changed
   char variableHasBeenObserved = 1;
 
-  if (OVERRIDE_ARRAY_AS_POINTER == disambigOverride) {
-    isArray = 0;
-  }
-
   if (!var)
     {
       VG_(printf)( "outputDtraceValue() - var is null\n");
@@ -461,60 +457,61 @@ char outputDtraceValue(DaikonVariable* var,
   // Struct or union type
   else if (var->varType->isStructUnionType)
     {
-      char allocated = (overrideIsInitialized ? 1 :
-			addressIsAllocated((Addr)ptrValue, sizeof(unsigned char)));
+      if (isArray) {
+        {
+          int limit = upperBound;
+          if (kvasir_array_length_limit != -1)
+            limit = min(limit, kvasir_array_length_limit);
+          DTRACE_PRINTF( "[ ");
+          for (i = 0; i <= limit; i++)
+            {
+              DTRACE_PRINTF( "%u ",
+                             ((unsigned int)(ptrValue + (i*bytesBetweenElts))));
+            }
+          DTRACE_PRINTF( "]\n%d\n",
+                         mapInitToModbit(1));
+        }
+      }
+      // For a single element, check if it's allocated and initialized:
+      else {
+        char allocated = (overrideIsInitialized ? 1 :
+                          addressIsAllocated((Addr)ptrValue, sizeof(unsigned char)));
 
-      char initialized = 0;
+        char initialized = 0;
 
-      DPRINTF("In struct/union branch\n");
+        DPRINTF("In struct/union branch\n");
 
-      if (!allocated)
-	{
-	  DTRACE_PRINTF( "%s\n%d\n",
-		  NONSENSICAL,
-		  mapInitToModbit(0));
+        if (!allocated)
+          {
+            DTRACE_PRINTF( "%s\n%d\n",
+                           NONSENSICAL,
+                           mapInitToModbit(0));
 
-	  return 0;
-	}
+            return 0;
+          }
 
-      // Check if first byte of struct is initialized
-      // (This is a flaky definition of initialization
-      //  but we really care about the struct members,
-      //  not the struct itself since it's just a hashcode)
-      initialized = (overrideIsInitialized ? 1 :
-                     addressIsInitialized((Addr)ptrValue, sizeof(unsigned char)));
+        // Check if first byte of struct is initialized
+        // (This is a flaky definition of initialization
+        //  but we really care about the struct members,
+        //  not the struct itself since it's just a hashcode)
+        initialized = (overrideIsInitialized ? 1 :
+                       addressIsInitialized((Addr)ptrValue, sizeof(unsigned char)));
 
-      if (initialized)
-	{
-	  if (isArray)
-	    {
-              int limit = upperBound;
-              if (kvasir_array_length_limit != -1)
-                limit = min(limit, kvasir_array_length_limit);
-	      DTRACE_PRINTF( "[ ");
-	      for (i = 0; i <= limit; i++)
-		{
-		  DTRACE_PRINTF( "%u ",
-			  ((unsigned int)(ptrValue + (i*bytesBetweenElts))));
-		}
-	      DTRACE_PRINTF( "]\n%d\n",
-		      mapInitToModbit(1));
-	    }
-	  else
-	    {
-	      DTRACE_PRINTF( "%u\n%d\n",
-		      ((unsigned int)(ptrValue)),
-		      mapInitToModbit(1));
-	    }
-	}
-      else
-	{
-	  DTRACE_PRINTF( "%s\n%d\n",
-		  UNINIT,
-		  mapInitToModbit(0));
+        if (initialized)
+          {
+            DTRACE_PRINTF( "%u\n%d\n",
+                           ((unsigned int)(ptrValue)),
+                           mapInitToModbit(1));
+          }
+        else
+          {
+            DTRACE_PRINTF( "%s\n%d\n",
+                           UNINIT,
+                           mapInitToModbit(0));
 
-	  variableHasBeenObserved = 0;
-	}
+            variableHasBeenObserved = 0;
+          }
+      }
     }
   // Base type
   else
