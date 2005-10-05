@@ -473,7 +473,16 @@ void initializeStructNamesIDTable()
           // 10 for "unnamed_0x", 8 for maximum size for cur_entry->ID,
           // and 1 for null-terminator
           char* fake_name = calloc(19, sizeof(*fake_name));
-          sprintf(fake_name, "unnamed_0x%x", cur_entry->ID);
+
+          // Special case for Brian's repair tool -
+          // We will search for 'unnamed' later and fill that in
+          // with a concatenation of field names
+          if (kvasir_repair_format) {
+            sprintf(fake_name, "unnamed", cur_entry->ID);
+          }
+          else {
+            sprintf(fake_name, "unnamed_0x%x", cur_entry->ID);
+          }
           collectionPtr->name = fake_name;
         }
       }
