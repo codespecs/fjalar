@@ -1790,6 +1790,24 @@ void outputDaikonVar(DaikonVariable* var,
 	       var->varType->collectionName)
 	{
 	  fputs(var->varType->collectionName, out_file);
+
+          // For the repair tool, concatenate all of the field names
+          // after the 'unnamed' struct name (after an underscore)
+          if (kvasir_repair_format &&
+              VG_STREQ(var->varType->collectionName, "unnamed")) {
+            VarList* memberVars = var->varType->memberListPtr;
+            VarNode* i = 0;
+            DaikonVariable* curVar = 0;
+
+            fputs("_", out_file);
+
+            for (i = memberVars->first; i != 0; i = i->next) {
+              curVar = &(i->var);
+              if (curVar->name) {
+                fputs(curVar->name, out_file);
+              }
+            }
+          }
 	}
       else
 	{
