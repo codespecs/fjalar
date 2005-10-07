@@ -902,7 +902,11 @@ void outputDeclsFile(char faux_decls)
           generateDisambigFile();
         }
 
-        if (!actually_output_separate_decls_dtrace) {
+        if (actually_output_separate_decls_dtrace) {
+          fclose(decls_fp);
+          decls_fp = 0;
+        }
+        else {
           finishDtraceFile();
         }
         VG_(exit)(0);
@@ -1850,6 +1854,16 @@ void outputDaikonVar(DaikonVariable* var,
 	{
 	  fputs(" # isParam=true", out_file);
 	}
+
+      // Struct variables are annotated with "# isStruct=true"
+      // in order to notify Daikon that the hashcode values printed
+      // out for that variable have no semantic meaning
+      if (kvasir_output_struct_vars &&
+          (layersBeforeBase == 0) &&
+          (var->varType->isStructUnionType)) {
+        fputs(" # isStruct=true", out_file);
+      }
+
       fputs("\n", out_file);
 
 
