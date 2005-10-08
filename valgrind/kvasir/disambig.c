@@ -29,6 +29,7 @@ Bool disambig_writing = False; // True for writing to .disambig, False for readi
 
 // For struct/union types:
 const char* USERTYPE_PREFIX = "usertype.";
+const char* FUNCTION_PREFIX = "function: ";
 
 // Pre: disambig_fp has been initialized and disambig_writing is True
 void generateDisambigFile() {
@@ -74,11 +75,7 @@ void generateDisambigFile() {
           prog_pts_tree_entry_found(cur_func_info_entry)) {
         fputs(ENTRY_DELIMETER, disambig_fp);
         fputs("\n", disambig_fp);
-        printOneFunctionDisambig(cur_func_info_entry, 1);
-
-        fputs(ENTRY_DELIMETER, disambig_fp);
-        fputs("\n", disambig_fp);
-        printOneFunctionDisambig(cur_func_info_entry, 0);
+        printOneFunctionDisambig(cur_func_info_entry);
       }
     }
 
@@ -189,32 +186,22 @@ void generateDisambigFile() {
 }
 
 // Pre: disambig_writing = True and disambig_fp is initialized
-// char isEnter = 1 for function ENTER, 0 for EXIT
-void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr, char isEnter) {
+void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr) {
+  fputs(FUNCTION_PREFIX, disambig_fp);
   fputs(funcPtr->daikon_name, disambig_fp);
+  fputs("\n", disambig_fp);
 
-  if (isEnter)
-    {
-      fputs(":::ENTER\n", disambig_fp);
-    }
-  else
-    {
-      fputs(":::EXIT0\n", disambig_fp);
-    }
+  // We only want one disambig section for each function, so just
+  // pretend like it's the EXIT section.
 
   // Now print out one entry for every formal parameter (actual and derived)
-  printVariablesInVarList(funcPtr, isEnter,
-			  (isEnter ?
-			   FUNCTION_ENTER_FORMAL_PARAM :
-			   FUNCTION_EXIT_FORMAL_PARAM),
-			  0, DISAMBIG_FILE, !isEnter, 0, 0, 0);
+  printVariablesInVarList(funcPtr, 0,
+			   FUNCTION_EXIT_FORMAL_PARAM,
+			  0, DISAMBIG_FILE, 0, 0, 0, 0);
 
-  // If EXIT, print out return value
-  if (!isEnter)
-    {
-      printVariablesInVarList(funcPtr, isEnter, FUNCTION_RETURN_VAR, 0,
-			      DISAMBIG_FILE, !isEnter, 0, 0, 0);
-    }
+  // Print out return value
+  printVariablesInVarList(funcPtr, 0, FUNCTION_RETURN_VAR, 0,
+                          DISAMBIG_FILE, 0, 0, 0, 0);
 
   fputs("\n", disambig_fp);
 }
@@ -250,7 +237,7 @@ void processDisambigFile() {
   int lineLen = 0;
   DisambigEntryType type = NONE;
   char* entryName = 0; // either a function or struct name
-                       // Only relevant when type == {PPT_ENTER, PPT_EXIT, USERTYPE}
+                       // Only relevant when type == {FUNCTION, USERTYPE}
 
   VarList** VarListArray = 0; // Array of VarList* of size VarListArraySize
   int VarListArraySize = 0;
@@ -292,19 +279,19 @@ void processDisambigFile() {
     }
     else {
       // 3 possibilities for an entry:
-      //   1) A program point - e.g. "..foo():::ENTER" or "..foo():::EXIT0"
+      //   1) A function name - e.g. "..foo()"
       //   2) "globals"
       //   3) A user-defined type (ie. struct) name - e.g. "usertype.fooStruct"
       if (nextLineIsEntry) {
 	char* marker = 0;
-	// 1) A program point
-	if ((marker = strstr(line, ENTER_PPT))) {
+	// 1) A function name
+	if ((marker = strstr(line, FUNCTION_PREFIX))) {
           DaikonFunctionInfo* cur_entry = 0;
-	  DPRINTF("PPT_ENTER");
-	  type = PPT_ENTER;
-	  // Strip off the suffix:
-	  *marker = '\0';
-	  entryName = VG_(strdup)(line);
+	  DPRINTF("FUNCTION_PREFIX");
+	  type = FUNCTION;
+	  // Strip off the prefix by moving forward that many spots in the buffer:
+	  entryName = VG_(strdup)(&line[VG_(strlen)(FUNCTION_PREFIX)]);
+          //          VG_(printf)("Function! %s\n", entryName);
 
 	  VarListArraySize = 1;
 	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
@@ -314,24 +301,6 @@ void processDisambigFile() {
           if (cur_entry) {
             VarListArray[0] = &(cur_entry->formalParameters);
           }
-	}
-	else if ((marker = strstr(line, EXIT_PPT))) {
-          DaikonFunctionInfo* cur_entry = 0;
-	  DPRINTF("PPT_EXIT");
-	  type = PPT_EXIT;
-	  // Strip off the suffix:
-	  *marker = '\0';
-	  entryName = VG_(strdup)(line);
-
-	  // One for formalParameters and one for returnValue lists
-	  VarListArraySize = 2;
-	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
-
-	  // Find the appropriate function by name:
-          cur_entry = findFunctionInfoByDaikonNameSlow(entryName);
-          VarListArray[0] = &(cur_entry->formalParameters);
-          // Remember to initialize this:
-          VarListArray[1] = &(cur_entry->returnValue);
 	}
 	// 2) "globals"
 	else if (VG_STREQ(line, GLOBAL_STRING)) {
@@ -404,7 +373,7 @@ void processDisambigFile() {
       }
       // A line that doesn't immediately follow ENTRY_DELIMETER
       // The idea here is to find the correct DaikonVariable entry and
-      // modify its "ppt_enter_disambig" and "ppt_exit_disambig" fields
+      // modify its "disambig" field
       else {
 	DaikonVariable* target = 0;
 
@@ -433,23 +402,18 @@ void processDisambigFile() {
 
 	    if (target) {
 	      switch (type) {
-	      case PPT_ENTER:
-		target->ppt_enter_disambig = disambig_letter;
-		break;
-	      case PPT_EXIT:
-		target->ppt_exit_disambig = disambig_letter;
+	      case FUNCTION:
+		target->disambig = disambig_letter;
 		break;
 	      case GLOBAL:
 	      case USERTYPE:
-		target->ppt_enter_disambig = disambig_letter;
-		target->ppt_exit_disambig = disambig_letter;
+		target->disambig = disambig_letter;
 		break;
 	      default:
 		break;
 	      }
 
-	      DPRINTF("VarListArray[%d]: var:%s [enter: %c, exit: %c]\n", j, target->name,
-			  target->ppt_enter_disambig, target->ppt_exit_disambig);
+	      DPRINTF("VarListArray[%d]: var:%s [%c]\n", j, target->name, target->disambig);
 	    }
 	  }
 	}

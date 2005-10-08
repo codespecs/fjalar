@@ -1203,8 +1203,7 @@ void printAllObjectAndClassDecls() {
          fakeThisVar.declaredPtrLevels = 1;
          // Remember the .disambig for "this" so that it prints
          // out as ONE element and not an array
-         fakeThisVar.ppt_enter_disambig = 'P';
-         fakeThisVar.ppt_exit_disambig = 'P';
+         fakeThisVar.disambig = 'P';
 
          fputs("DECLARE\n", decls_fp);
          fputs(cur_type->collectionName, decls_fp);
@@ -1503,30 +1502,9 @@ void outputDaikonVar(DaikonVariable* var,
   if ((0 == numDereferences) &&
       ((kvasir_disambig_filename && !disambig_writing) ||
        VG_STREQ("this", var->name))) { // either using .disambig or special C++ 'this'
-    char disambig_letter = 0;
+    char disambig_letter = disambig_letter = var->disambig;
 
-    char found = 1;
-
-    // TODO: Don't the ENTER and EXIT .disambig values for a
-    // particular variable have to be the same because Daikon expects
-    // the same names and content format for both ENTER and EXIT ppts?
-    switch (varOrigin) {
-    case FUNCTION_ENTER_FORMAL_PARAM:
-    case GLOBAL_VAR: // It doesn't matter (both should be identical)
-    case DERIVED_VAR:
-    case DERIVED_FLATTENED_ARRAY_VAR:
-      disambig_letter = var->ppt_enter_disambig;
-      break;
-    case FUNCTION_EXIT_FORMAL_PARAM:
-    case FUNCTION_RETURN_VAR:
-      disambig_letter = var->ppt_exit_disambig;
-      break;
-    default:
-      found = 0;
-      break;
-    }
-
-    if (found) {
+    if (disambig_letter) {
       if (var->repPtrLevels == 0) {
 	// 'C' denotes to print out as a one-character string
 	if (var->isString) { // pointer to "char" or "unsigned char"
@@ -2396,9 +2374,9 @@ void outputDaikonVar(DaikonVariable* var,
 	      stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
               numEltsPushedOnStack++;
 
-	      DPRINTF("-- %s -- override %d repPtrLevels %d isString %d... %c %c\n",
+	      DPRINTF("-- %s -- override %d repPtrLevels %d isString %d... %c\n",
 		      curVar->name, disambigOverride, curVar->repPtrLevels, curVar->isString,
-		      curVar->ppt_enter_disambig, curVar->ppt_exit_disambig);
+		      curVar->disambig);
 
 	      outputDaikonVar(curVar,
 			      DERIVED_VAR,
