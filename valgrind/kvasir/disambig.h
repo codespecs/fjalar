@@ -27,8 +27,7 @@ Bool disambig_writing;
 
 typedef enum DisambigEntryType {
   NONE,
-  PPT_ENTER, // function entrance
-  PPT_EXIT,  // function exit
+  FUNCTION,  // function entry
   GLOBAL,    // global variables
   USERTYPE   // ie. struct
 } DisambigEntryType;
@@ -43,7 +42,7 @@ typedef enum DisambigOverride {
 } DisambigOverride;
 
 void generateDisambigFile();
-void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr, char isEnter);
+void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr);
 Bool shouldOutputVarToDisambig(DaikonVariable* var);
 void processDisambigFile();
 

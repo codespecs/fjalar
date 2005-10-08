@@ -195,8 +195,7 @@ typedef struct _DaikonVariable {
   // 'A' for array, 'P' for pointer, 'C' for char, 'I' for integer, 'S' for string
   // (Automatically set a 'P' disambig for the C++ 'this' parameter
   //  since it will always point to one thing)
-  char ppt_enter_disambig;
-  char ppt_exit_disambig;
+  char disambig;
 
 } DaikonVariable;
 

@@ -1225,8 +1225,7 @@ void extractOneVariable(VarList* varListPtr,
   // (I don't know why you would do this) that in a C program, you can have
   // some variable named 'this' and it'll get a 'P' disambig on it
   if (VG_STREQ("this", variableName)) {
-    daikonVarPtr->ppt_enter_disambig = 'P';
-    daikonVarPtr->ppt_exit_disambig = 'P';
+    daikonVarPtr->disambig = 'P';
   }
 
   daikonVarPtr->isGlobal = isGlobal;
