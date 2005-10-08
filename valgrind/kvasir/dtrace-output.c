@@ -619,8 +619,7 @@ int openDtraceFile(const char *fname) {
     // we don't want to confuse Daikon (or bloat up the file size) by
     // repeating this information
     if (!actually_output_separate_decls_dtrace) {
-      extern char do_not_print_out_decls;
-      do_not_print_out_decls = 1;
+      print_declarations = 0;
     }
     mode_str = "a";
   }

@@ -36,6 +36,7 @@ Bool kvasir_print_debug_info;
 Bool kvasir_ignore_globals;
 Bool kvasir_ignore_static_vars;
 Bool kvasir_dtrace_append;
+Bool kvasir_dtrace_no_decs;
 Bool kvasir_dtrace_gzip;
 Bool kvasir_output_fifo;
 Bool kvasir_asserts_aborts_on;
@@ -65,6 +66,7 @@ char *kvasir_program_stderr_filename;
 int dyncomp_gc_after_n_tags;
 
 Bool actually_output_separate_decls_dtrace;
+Bool print_declarations;
 
 Bool dyncomp_without_dtrace;
 
