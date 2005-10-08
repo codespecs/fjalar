@@ -47,6 +47,7 @@ Bool kvasir_print_debug_info = False;
 Bool kvasir_ignore_globals = False;
 Bool kvasir_ignore_static_vars = False;
 Bool kvasir_dtrace_append = False;
+Bool kvasir_dtrace_no_decs = False;
 Bool kvasir_dtrace_gzip = False;
 Bool kvasir_output_fifo = False;
 #ifdef KVASIR_DEVEL_BUILD
@@ -77,6 +78,7 @@ char *kvasir_program_stderr_filename = 0;
 int dyncomp_gc_after_n_tags = 10000000;
 
 Bool actually_output_separate_decls_dtrace = 0;
+Bool print_declarations = 1;
 
 Bool dyncomp_without_dtrace = False;
 
@@ -508,6 +510,7 @@ void kvasir_pre_clo_init()
    kvasir_ignore_globals = False;
    kvasir_ignore_static_vars = False;
    kvasir_dtrace_append = False;
+   kvasir_dtrace_no_decs = False;
    kvasir_dtrace_gzip = False;
    kvasir_output_fifo = False;
 
@@ -589,6 +592,12 @@ void kvasir_post_clo_init()
      dyncomp_without_dtrace = True;
   }
 
+  // If we are only printing .dtrace and have --dtrace-no-decs,
+  // then do not print out declarations
+  if (!actually_output_separate_decls_dtrace && kvasir_dtrace_no_decs) {
+     print_declarations = 0;
+  }
+
   // If we are using DynComp with the garbage collector, initialize
   // g_oldToNewMap:
   extern UInt* g_oldToNewMap;
@@ -604,65 +613,76 @@ void kvasir_post_clo_init()
 void kvasir_print_usage()
 {
    VG_(printf)(
-"    --with-dyncomp      enables DynComp comparability analysis [--no-dyncomp]\n"
-"    --debug             print Kvasir-internal debug messages [--no-debug]\n"
-"    --dyncomp-debug     print DynComp debug messages (--with-dyncomp must also be on)\n"
-"                        [--no-dyncomp-debug]\n"
-"    --gc-num-tags       The number of tags that get assigned between successive runs\n"
-"                        of the garbage collector (between 1 and INT_MAX)\n"
-"                        (The default is to garbage collect every 5,000,000 tags created)\n"
-"    --no-dyncomp-gc     Do NOT use the tag garbage collector for DynComp.  (Faster\n"
-"                        but may run out of memory for long-running programs)\n"
-"    --dyncomp-fast-mode Approximates the handling of literals for comparability.\n"
-"                        (Loses some precision but faster and takes less memory)\n"
-"    --separate-entry-exit-comp  Allows variables to have distinct comparability\n"
-"                                numbers at function entrance/exit when run with\n"
-"                                DynComp.  This provides more accuracy, but may\n"
-"                                sometimes lead to output that Daikon cannot accept.\n"
-#ifdef KVASIR_DEVEL_BUILD
-"    --asserts-aborts    turn on safety asserts and aborts (ON BY DEFAULT)\n"
-"                        [--asserts-aborts]\n"
-#else
-"    --asserts-aborts    turn on safety asserts and aborts (OFF BY DEFAULT)\n"
-"                        [--no-asserts-aborts]\n"
-#endif
-"    --ignore-globals     ignores all global variables [--no-ignore-globals]\n"
-"    --ignore-static-vars ignores all static variables [--no-ignore-static-vars]\n"
-"    --limit-static-vars  limits the output of static vars [--no-limit-static-vars]\n"
-"    --bit-level-precision     Uses bit-level precision to produce more accurate\n"
-"                              output at the expense of speed [--no-bit-level-precision]\n"
-"    --output-struct-vars      Outputs struct variables along with their contents\n"
-"    --repair-format     output for data structure repair tool (internal)\n"
-"    --flatten-arrays    force flattening of statically-sized arrays when possible\n"
-"    --disambig-ptrs     disambiguates all pointer vars. as pointing to a single element\n"
-"    --nesting-depth=N   limits the maximum number of dereferences of any structure\n"
-"                        to N [--nesting-depth=2]\n"
-"                        (N must be an integer between 0 and 100)\n"
-"    --struct-depth=N    limits the maximum number of dereferences of recursively\n"
-"                        defined structures (i.e. linked lists) to N [--struct-depth=2]\n"
-"                        (N must be an integer between 0 and 100)\n"
-"    --dtrace-append     appends .dtrace data to the end of the existing file\n"
-"                        [--no-dtrace-append]\n"
-"    --output-fifo       create output files as named pipes [--no-output-fifo]\n"
-"    --decls-only        exit after creating .decls file [--no-decls-only]\n"
-"    --decls-file=<string>    the output .decls file location\n"
-"                             [daikon-output/FILENAME.decls]\n"
+"\n  Output file format:\n"
+"    --decls-file=<string>    The output .decls file location\n"
 "                             (forces generation of separate .decls file)\n"
-"    --dtrace-file=<string>   the output .dtrace file location\n"
-"                             [daikon-output/FILENAME.dtrace]\n"
-"    --dtrace-gzip            compresses .dtrace data [--no-dtrace-gzip]\n"
+"    --decls-only             Exit after creating .decls file [--no-decls-only]\n"
+"    --dtrace-file=<string>   The output .dtrace file location\n"
+"                             [daikon-output/PROGRAM_NAME.dtrace]\n"
+"    --dtrace-no-decs         Do not include declarations in .dtrace file\n"
+"                             [--no-dtrace-no-decs]\n"
+"    --dtrace-append          Appends .dtrace data to the end of an existing .dtrace file\n"
+"                             [--no-dtrace-append]\n"
+"    --dtrace-gzip            Compresses .dtrace data [--no-dtrace-gzip]\n"
 "                             (Automatically ON if --dtrace-file string ends in '.gz')\n"
-"    --dump-ppt-file=<string> outputs all program point names to a file\n"
-"    --dump-var-file=<string> outputs all variable names to a file\n"
-"    --ppt-list-file=<string> trace only the program points listed in this file\n"
-"    --var-list-file=<string> trace only the variables listed in this file\n"
+"    --output-fifo            Create output files as named pipes [--no-output-fifo]\n"
+"    --program-stdout=<file>  Redirect instrumented program stdout to file\n"
+"                             [Kvasir's stdout, or /dev/tty if --dtrace-file=-]\n"
+"    --program-stderr=<file>  Redirect instrumented program stderr to file\n"
+
+"\n  Selective program tracing:\n"
+"    --ppt-list-file=<string> Trace only the program points listed in this file\n"
+"    --var-list-file=<string> Trace only the variables listed in this file\n"
+"    --dump-ppt-file=<string> Outputs all program point names to a file\n"
+"    --dump-var-file=<string> Outputs all variable names to a file\n"
+"    --ignore-globals         Ignores all global variables [--no-ignore-globals]\n"
+"    --ignore-static-vars     Ignores all static variables [--no-ignore-static-vars]\n"
+"    --limit-static-vars      Limits the output of static vars [--no-limit-static-vars]\n"
+
+"\n  Pointer type disambiguation:\n"
 "    --disambig-file=<string> Reads in disambig file if exists; otherwise creates one\n"
 "    --disambig               Uses <program name>.disambig as the disambig file\n"
 "    --smart-disambig         Infers sensible values for each entry in .disambig file\n"
 "                             generated using the --disambig or --disambig-file options\n"
-"    --program-stdout=<file>  redirect instrumented program stdout to file\n"
-"                             [Kvasir's stdout, or /dev/tty if --dtrace-file=-]\n"
-"    --program-stderr=<file>  redirect instrumented program stderr to file\n"
+"    --disambig-ptrs          Forces all pointer vars. to point to a single element\n"
+
+"\n  DynComp dynamic comparability analysis\n"
+"    --with-dyncomp           Enables DynComp comparability analysis\n"
+"    --gc-num-tags            The number of tags that get assigned between successive runs\n"
+"                             of the garbage collector (between 1 and INT_MAX)\n"
+"                             (The default is to garbage collect every 10,000,000 tags created)\n"
+"    --no-dyncomp-gc          Do NOT use the tag garbage collector for DynComp.  (Faster\n"
+"                             but may run out of memory for long-running programs)\n"
+"    --dyncomp-fast-mode      Approximates the handling of literals for comparability.\n"
+"                             (Loses some precision but faster and takes less memory)\n"
+"    --separate-entry-exit-comp  Allows variables to have distinct comparability\n"
+"                                numbers at function entrance/exit when run with\n"
+"                                DynComp.  This provides more accuracy, but may\n"
+"                                sometimes lead to output that Daikon cannot accept.\n"
+
+"\n  Misc. options:\n"
+"    --flatten-arrays         Force flattening of all statically-sized arrays\n"
+"    --output-struct-vars     Outputs struct variables along with their contents\n"
+"    --bit-level-precision    Uses bit-level precision to produce more accurate\n"
+"                             output at the expense of speed [--no-bit-level-precision]\n"
+"    --nesting-depth=N        Limits the maximum number of dereferences of any\n"
+"                             structure to N (default is 2)\n"
+"    --struct-depth=N         Limits the maximum number of dereferences of recursively\n"
+"                             defined structures (i.e. linked lists) to N (default is 2)\n"
+"                             (N must be an integer between 0 and 100)\n"
+"    --repair-format          Output format for data structure repair tool (internal use)\n"
+
+"\n  Debugging:\n"
+#ifdef KVASIR_DEVEL_BUILD
+"    --asserts-aborts         Turn on safety asserts and aborts (ON BY DEFAULT)\n"
+"                             [--asserts-aborts]\n"
+#else
+"    --asserts-aborts         Turn on safety asserts and aborts (OFF BY DEFAULT)\n"
+"                             [--no-asserts-aborts]\n"
+#endif
+"    --debug                  Print Kvasir-internal debug messages [--no-debug]\n"
+"    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
+"                             [--no-dyncomp-debug]\n"
    );
 }
 
@@ -690,6 +710,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
    else VG_YESNO_CLO("ignore-static-vars", kvasir_ignore_static_vars)
    else VG_YESNO_CLO("dtrace-append",  kvasir_dtrace_append)
+   else VG_YESNO_CLO("dtrace-no-decs",  kvasir_dtrace_no_decs)
    else VG_YESNO_CLO("dtrace-gzip",    kvasir_dtrace_gzip)
    else VG_YESNO_CLO("output-fifo",    kvasir_output_fifo)
    else VG_YESNO_CLO("asserts-aborts", kvasir_asserts_aborts_on)

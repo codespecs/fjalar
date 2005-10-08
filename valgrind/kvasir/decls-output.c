@@ -42,9 +42,6 @@ FILE* decls_fp = 0; // File pointer for .decls file (this will point
 
 static FILE* dev_null_fp; // initialized to "/dev/null"
 
-// Only true if we are doing dtrace append and (!actually_output_separate_decls_dtrace)
-char do_not_print_out_decls = 0;
-
 FILE* dtrace_fp = 0; // File pointer for dtrace file (from dtrace-output.c)
 static char *dtrace_filename; /* File name to open dtrace_fp on */
 
@@ -486,11 +483,11 @@ char createDeclsAndDtraceFiles(char* appname)
     openTheDtraceFile();
 
     // decls_fp and dtrace_fp both point to the .dtrace file
-    if (do_not_print_out_decls) {
-      decls_fp = 0;
+    if (print_declarations) {
+      decls_fp = dtrace_fp;
     }
     else {
-      decls_fp = dtrace_fp;
+      decls_fp = 0;
     }
   }
 
@@ -846,7 +843,7 @@ void outputDeclsFile(char faux_decls)
 		  kvasir_disambig_filename);
   }
 
-  if (!do_not_print_out_decls) {
+  if (print_declarations) {
 
     if (var_dump_fp)
       {
