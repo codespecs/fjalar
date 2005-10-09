@@ -363,6 +363,17 @@ char createDeclsAndDtraceFiles(char* appname)
 	{
 	  DPRINTF("\n\nWRITING %s\n", kvasir_disambig_filename);
 	  disambig_writing = True;
+
+          // Hack for correctly observing struct pointer/array values
+          // when using --smart-disambig.
+          // If we are writing a .disambig file and using run time
+          // observations of the struct behavior to determine whether
+          // a struct pointer always pointed to one element or more than
+          // one element, we must always process base struct variables
+          // or else those observations will be missed.
+          if (kvasir_smart_disambig) {
+            kvasir_output_struct_vars = True;
+          }
 	}
     }
 

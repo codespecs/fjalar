@@ -117,7 +117,10 @@ void generateDisambigFile() {
      // ones which are declared within other types) ...
      // In the future, we may want to have a serial
      // naming system for unnamed structs/unions so that
-     // we can uniquely identify unnamed ones:
+     // we can uniquely identify unnamed ones
+     // (We have implemented a technique where we use the ID
+     //  fields of the entries in the DWARF2 info to uniquely
+     //  identify unnamed structs/unions)
      //
      // Remember to NOT PRINT OUT DUPLICATE ENTRIES, those with the
      // same name in DaikonTypesTable!  An irritating thing about the
@@ -125,8 +128,7 @@ void generateDisambigFile() {
      // entries for the SAME struct type.  When we read in the
      // .disambig file in processDisambigFile(), we assign the
      // disambiguation properties to ALL the entries in
-     // DaikonTypesTable with the matching name.  Here, we do the
-     // complementary thing and
+     // DaikonTypesTable with the matching name.
      if (((cur_type->declaredType == D_STRUCT) ||
 	  (cur_type->declaredType == D_UNION))
 	 && cur_type->collectionName &&
