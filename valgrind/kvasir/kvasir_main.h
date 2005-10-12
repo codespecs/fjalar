@@ -50,6 +50,7 @@ Bool kvasir_repair_format;
 Bool kvasir_flatten_arrays;
 Bool kvasir_disambig_ptrs;
 Bool dyncomp_print_debug_info;
+Bool dyncomp_print_incremental;
 Bool dyncomp_separate_entry_exit_comp;
 int kvasir_array_length_limit;
 // These are used as both strings and boolean flags -
