@@ -262,6 +262,14 @@ void handleFunctionEntrance(FunctionEntry* e)
       return;
     }
 
+  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    // This is a GLOBAL so be careful :)
+    g_compNumberMap = genallocatehashtable(NULL, // no hash function needed for u_int keys
+                                           (int (*)(void *,void *)) &equivalentIDs);
+
+    g_curCompNumber = 1;
+  }
+
   DYNCOMP_DPRINTF("***ENTER %s at EBP=0x%x, lowestESP=0x%x, startPC=%p\n",
                   e->daikon_name,
                   e->EBP,
@@ -301,6 +309,11 @@ void handleFunctionEntrance(FunctionEntry* e)
   if (dtrace_fp) {
     fflush(dtrace_fp);
   }
+
+
+  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    genfreehashtable(g_compNumberMap);
+  }
 }
 
 // The main file calls this whenever it exits a function
@@ -315,6 +328,14 @@ void handleFunctionExit(FunctionEntry* e)
       VG_(printf)("Couldn't find function %s\n", e->daikon_name);
       return;
     }
+
+  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    // This is a GLOBAL so be careful :)
+    g_compNumberMap = genallocatehashtable(NULL, // no hash function needed for u_int keys
+                                           (int (*)(void *,void *)) &equivalentIDs);
+
+    g_curCompNumber = 1;
+  }
 
   DYNCOMP_DPRINTF("***EXIT %s - EBP=0x%x, lowestESP=0x%x\n",
                   e->daikon_name,
@@ -357,6 +378,10 @@ void handleFunctionExit(FunctionEntry* e)
   // interactive programs):
   if (dtrace_fp) {
     fflush(dtrace_fp);
+  }
+
+  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    genfreehashtable(g_compNumberMap);
   }
 }
 
@@ -558,6 +583,8 @@ DaikonVariable* returnGlobalSingletonWithAddress(Addr a) {
 // isEnter = 1 for function ENTER, 0 for EXIT
 void outputFormalParamsAndGlobals(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr, char isEnter)
 {
+  extern FILE* decls_fp;
+
   DPRINTF("In outputFormalParamsAndGlobals\n");
 
   // Error! Function not found
@@ -568,6 +595,23 @@ void outputFormalParamsAndGlobals(FunctionEntry* e, DaikonFunctionInfo* daikonFu
 
   if (!dyncomp_without_dtrace) {
     printDtraceFunctionHeader(daikonFuncPtr, isEnter);
+
+    // For debug only:
+    if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+      fputs(daikonFuncPtr->daikon_name, decls_fp);
+
+      if (isEnter)
+        {
+          fputs(ENTER_PPT, decls_fp);
+          fputs("\n", decls_fp);
+        }
+      else
+        {
+          fputs(EXIT_PPT, decls_fp);
+          fputs("\n", decls_fp);
+        }
+    }
+
   }
 
   DPRINTF("About to print globals\n");
@@ -591,6 +635,32 @@ void outputFormalParamsAndGlobals(FunctionEntry* e, DaikonFunctionInfo* daikonFu
 			   FUNCTION_EXIT_FORMAL_PARAM),
 			  e->virtualStack, DTRACE_FILE, 0,
 			  daikonFuncPtr->trace_vars_tree, 0, 0);
+
+  // For debugging only - print out a .decls entry with all comparability sets
+  // calculated thus far for this program point after printing the .dtrace entry
+  // in order to allow all mergings to occur
+  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    // Reset this properly before traversing through Daikon variables
+    g_daikonVarIndex = 0;
+
+    if (!kvasir_ignore_globals)
+      {
+        extern FunctionTree* globalFunctionTree;
+
+        printVariablesInVarList(daikonFuncPtr, isEnter, GLOBAL_VAR, 0, DECLS_FILE, 0,
+                                (globalFunctionTree ?
+                                 globalFunctionTree->function_variables_tree : 0), 0, 0);
+      }
+
+    printVariablesInVarList(daikonFuncPtr, isEnter,
+                            (isEnter ?
+                             FUNCTION_ENTER_FORMAL_PARAM :
+                             FUNCTION_EXIT_FORMAL_PARAM),
+                            0, DECLS_FILE, 0,
+                            daikonFuncPtr->trace_vars_tree, 0, 0);
+
+    fputs("\n", decls_fp);
+  }
 }
 
 // isEnter = 1 for function ENTER, 0 for EXIT

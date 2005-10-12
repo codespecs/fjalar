@@ -65,6 +65,7 @@ Bool kvasir_repair_format = False;
 Bool kvasir_flatten_arrays = False;
 Bool kvasir_disambig_ptrs = False;
 Bool dyncomp_print_debug_info = False;
+Bool dyncomp_print_incremental = False;
 Bool dyncomp_separate_entry_exit_comp = False;
 int kvasir_array_length_limit = -1;
 char* kvasir_dump_prog_pt_names_filename = 0;
@@ -683,6 +684,8 @@ void kvasir_print_usage()
 "    --debug                  Print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
 "                             [--no-dyncomp-debug]\n"
+"    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
+"                             of every program point (for debug only)\n"
    );
 }
 
@@ -706,6 +709,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("dyncomp-fast-mode", kvasir_dyncomp_fast_mode)
    else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
    else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
+   else VG_YESNO_CLO("dyncomp-print-inc",  dyncomp_print_incremental)
    else VG_YESNO_CLO("separate-entry-exit-comp",  dyncomp_separate_entry_exit_comp)
    else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
    else VG_YESNO_CLO("ignore-static-vars", kvasir_ignore_static_vars)
