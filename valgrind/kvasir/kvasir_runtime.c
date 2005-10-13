@@ -233,7 +233,10 @@ void updateAllGlobalVariableNames()
 	  }
 	}
 
-      VG_(strcat)(globalName, "/");
+      // Don't put leading slashes for globals in repair format:
+      if (!kvasir_repair_format) {
+        VG_(strcat)(globalName, "/");
+      }
       VG_(strcat)(globalName, curVar->name);
 
       // Assign curVar->name to the newly-formed Daikon name:

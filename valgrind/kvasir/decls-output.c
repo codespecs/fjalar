@@ -1764,6 +1764,7 @@ void outputDaikonVar(DaikonVariable* var,
   // .decls
   else if ((DECLS_FILE == outputType) || (FAUX_DECLS_FILE == outputType))
     {
+      char printingFirstAnnotation = 1;
       char alreadyPutDerefOnLine3;
       int layers;
       // .decls Line 2: Print out declared type
@@ -1833,25 +1834,43 @@ void outputDaikonVar(DaikonVariable* var,
         fputs(dereference, out_file);
       }
 
+      // Add annotations as comments in .decls file
+      // (The first one is preceded by ' # ' and all subsequent
+      //  ones are preceded by ',')
+
       // Original variables in function parameter lists
-      // have "# isParam = true"
+      // have "isParam = true"
       if ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
 	  (varOrigin == FUNCTION_EXIT_FORMAL_PARAM))
 	{
-	  fputs(" # isParam=true", out_file);
+          if (printingFirstAnnotation) {fputs(" # ", out_file);}
+          else {fputs(",", out_file);}
+
+	  fputs("isParam=true", out_file);
 	}
 
-      // Struct variables are annotated with "# isStruct=true"
+      // Struct variables are annotated with "isStruct=true"
       // in order to notify Daikon that the hashcode values printed
       // out for that variable have no semantic meaning
       if (kvasir_output_struct_vars &&
           (layersBeforeBase == 0) &&
           (var->varType->isStructUnionType)) {
-        fputs(" # isStruct=true", out_file);
+        if (printingFirstAnnotation) {fputs(" # ", out_file);}
+        else {fputs(",", out_file);}
+
+        fputs("isStruct=true", out_file);
+      }
+
+      // Hashcode variables that can never be null has "hasNull=false".
+      // (e.g., statically-allocated arrays)
+      if (var->isStaticArray && (layersBeforeBase == 1)) {
+        if (printingFirstAnnotation) {fputs(" # ", out_file);}
+        else {fputs(",", out_file);}
+
+        fputs("hasNull=false", out_file);
       }
 
       fputs("\n", out_file);
-
 
       // .decls Line 3: Print out rep. type
       alreadyPutDerefOnLine3 = 0;
