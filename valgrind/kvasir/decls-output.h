@@ -24,14 +24,7 @@
 
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
-// The stack which represents the full name of the variable
-// that we currently want to print out
-#define MAX_STRING_STACK_SIZE 100
-
 int g_daikonVarIndex;
-
-char* fullNameStack[MAX_STRING_STACK_SIZE];
-int fullNameStackSize;
 
 struct genhashtable* g_compNumberMap;
 int g_curCompNumber;
@@ -52,7 +45,7 @@ typedef enum OutputFileType {
   DTRACE_FILE,
   DISAMBIG_FILE,
   DYNCOMP_EXTRA_PROP, // only for DynComp
-  FAUX_DECLS_FILE     // only for DynComp - temporarily redirect decls_fp to '/dev/null'
+  FAUX_DECLS_FILE     // only for DynComp
 } OutputFileType;
 
 // For use by vars_tree:
@@ -68,13 +61,18 @@ const char* EXIT_PPT;
 
 extern int MAX_NUM_STRUCTS_TO_DEREFERENCE;
 
-void stringStackPush(char** stringStack, int* stringStackSizePtr, char* str);
-char* stringStackPop(char** stringStack, int* stringStackSizePtr);
+// String stack:
+#define MAX_STRING_STACK_SIZE 100
+char* fullNameStack[MAX_STRING_STACK_SIZE];
+int fullNameStackSize;
+
+void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
+char* stringStackPop(char** stringStack, int* pStringStackSize);
 char* stringStackTop(char** stringStack, int stringStackSize);
-void stringStackClear(int* stringStackSizePtr);
+void stringStackClear(int* pStringStackSize);
 int stringStackStrLen(char** stringStack, int stringStackSize);
-char* strdupFullNameString(char** stringStack, int stringStackSize);
-char* strdupFullNameStringReverse(char** stringStack, int stringStackSize);
+char* stringStackStrdup(char** stringStack, int stringStackSize);
+
 
 char createDeclsAndDtraceFiles(char* appname);
 char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char** filenamePtr);
@@ -86,7 +84,6 @@ void printAllFunctionDecls(char faux_decls);
 void printAllObjectAndClassDecls();
 
 int compareStrings(const void *a, const void *b);
-//int compareUInts(const void *a, const void *b);
 void initializeProgramPointsTree();
 
 char prog_pts_tree_entry_found(DaikonFunctionInfo* cur_entry);

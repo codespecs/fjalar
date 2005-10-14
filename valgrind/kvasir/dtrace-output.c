@@ -1015,9 +1015,6 @@ switch (decType) \
 }
 
 
-/* For the benefit of the DPRINTF below */
-extern const char* DaikonDeclaredTypeString[20];
-
 // Return 1 if this variable has really been observed,
 //        0 if it has not (UNINIT printed out)
 char printDtraceBaseValue(DaikonVariable* var,
@@ -1031,7 +1028,6 @@ char printDtraceBaseValue(DaikonVariable* var,
 {
   int init = 0, i = 0;
 
-  DPRINTF(DaikonDeclaredTypeString[decType]);
   DPRINTF(" branch - printDtraceBaseValue()\n");
 
   // This check is to make sure that we don't segfault
