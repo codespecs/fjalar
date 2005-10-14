@@ -1305,6 +1305,9 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
   case FUNCTION_RETURN_VAR:
     varListPtr = &(funcPtr->returnValue);
     break;
+  default:
+    // Let varListPtr remain at 0
+    break;
   }
 
   stringStackClear(&fullNameStackSize);
@@ -1414,6 +1417,443 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
     }
 }
 
+/* BEGIN - Helper functions for outputDaikonVar() */
+
+// Checks whether we are interested in tracing this variable, and if
+// so, prints out the variable name to out_file, and if requested,
+// also prints the variable name to the var-list-file specified by
+// var_fump_fp.
+// Pre: varName is allocated and freed by the caller
+static void printVariableName(char* varName,
+                              char allowVarDumpToFile,
+                              FILE* out_file) {
+  if (out_file) {
+    fputs(varName, out_file);
+    fputs("\n", out_file);
+  }
+
+  if (var_dump_fp && allowVarDumpToFile) {
+    fputs(varName, var_dump_fp);
+    fputs("\n", var_dump_fp);
+  }
+}
+
+
+// Print a .decls entry for a particular variable
+// Pre: varName is allocated and freed by caller
+// This consists of 4 lines:
+// var. name, declared type, rep. type, comparability number
+// e.g.,
+// /foo                 <-- variable name
+// char*                <-- declared type
+// java.lang.String     <-- rep. type
+// 22                   <-- comparability number
+static void printDeclsEntry(DaikonVariable* var,
+                            char* varName,
+                            VariableOrigin varOrigin,
+                            char allowVarDumpToFile,
+                            int layersBeforeBase,
+                            char printAsSequence,
+                            DisambigOverride disambigOverride,
+                            DaikonFunctionInfo* varFuncInfo,
+                            char isEnter) {
+  DaikonDeclaredType dType = var->varType->declaredType;
+  DaikonDeclaredType rType = var->varType->repType;
+  int layers;
+  char printingFirstAnnotation = 1;
+  char alreadyPutDerefOnLine3;
+
+  // Line 1: Variable name
+  printVariableName(varName, allowVarDumpToFile, decls_fp);
+
+  // Line 2: Declared type
+
+  if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+    fputs(DaikonRepTypeString[R_INT], decls_fp);
+    fputs(dereference, decls_fp);
+  }
+  else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+    fputs(DaikonRepTypeString[R_INT], decls_fp);
+  }
+  // named struct/union or enumeration
+  else if (((dType == D_ENUMERATION) || (dType == D_STRUCT) || (dType == D_UNION)) &&
+           var->varType->collectionName) {
+    fputs(var->varType->collectionName, decls_fp);
+
+    // For the repair tool, concatenate all of the field names
+    // after the 'unnamed' struct name (after an underscore)
+    if (kvasir_repair_format &&
+        VG_STREQ(var->varType->collectionName, "unnamed")) {
+      VarList* memberVars = var->varType->memberListPtr;
+      VarNode* i = 0;
+      DaikonVariable* curVar = 0;
+
+      fputs("_", decls_fp);
+
+      for (i = memberVars->first; i != 0; i = i->next) {
+        curVar = &(i->var);
+        if (curVar->name) {
+          fputs(curVar->name, decls_fp);
+        }
+      }
+    }
+  }
+  else {
+    // Normal type (or unnamed struct/union)
+    fputs(DaikonDeclaredTypeString[dType], decls_fp);
+    // If we have a string, print it as char*
+    // because the dType of string is "char"
+    // so we need to append a "*" to it
+    if (var->isString) {
+      fputs(star, decls_fp);
+    }
+  }
+
+  // For the declared type, print out one level of '*' for every
+  // layer above base to denote pointer types
+  for (layers = 0; layers < layersBeforeBase; layers++) {
+    fputs(star, decls_fp);
+    // TODO: Determine later whether this special case is worth it:
+    // Special case for static array types: use a '[]' to
+    // replace the LAST '*'
+    //        if ((var->isStaticArray) &&
+    //            (layers == (layersBeforeBase - 1))) {
+    //          fputs(dereference, decls_fp);
+    //        }
+    //        else {
+    //          fputs(star, decls_fp);
+    //        }
+  }
+
+  // If we print this as a sequence, then we must append '[]'
+  if (printAsSequence) {
+    fputs(dereference, decls_fp);
+  }
+
+  // Add annotations as comments in .decls file
+  // (The first one is preceded by ' # ' and all subsequent ones are
+  // preceded by ',')
+
+  // Original vars in function parameter lists have "isParam=true"
+
+  if ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
+      (varOrigin == FUNCTION_EXIT_FORMAL_PARAM)) {
+    if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
+    else {fputs(",", decls_fp);}
+
+    fputs("isParam=true", decls_fp);
+  }
+
+  // Struct variables are annotated with "isStruct=true"
+  // in order to notify Daikon that the hashcode values printed
+  // out for that variable have no semantic meaning
+  if (kvasir_output_struct_vars &&
+      (layersBeforeBase == 0) &&
+      (var->varType->isStructUnionType)) {
+    if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
+    else {fputs(",", decls_fp);}
+
+    fputs("isStruct=true", decls_fp);
+  }
+
+  // Hashcode variables that can never be null has "hasNull=false".
+  // (e.g., statically-allocated arrays)
+  if (var->isStaticArray && (layersBeforeBase == 1)) {
+    if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
+    else {fputs(",", decls_fp);}
+
+    fputs("hasNull=false", decls_fp);
+  }
+
+  fputs("\n", decls_fp);
+
+
+  // Line 3: Rep. type
+  alreadyPutDerefOnLine3 = 0;
+
+  // Print out rep. type as hashcode when you are not done dereferencing
+  // pointer layers:
+  if (layersBeforeBase > 0) {
+    fputs(DaikonRepTypeString[R_HASHCODE], decls_fp);
+  }
+  else {
+    // Special handling for strings and 'C' chars in .disambig
+    if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+      fputs(DaikonRepTypeString[R_INT], decls_fp);
+      fputs(dereference, decls_fp);
+      alreadyPutDerefOnLine3 = 1;
+    }
+    else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+      fputs(DaikonRepTypeString[R_INT], decls_fp);
+    }
+    else if ((var->isString) ||
+             (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
+      fputs(DaikonRepTypeString[R_STRING], decls_fp);
+    }
+    else {
+      tl_assert(rType != 0);
+      fputs(DaikonRepTypeString[rType], decls_fp);
+    }
+  }
+
+  // Append "[]" onto the end of the rep. type if necessary
+  if (!alreadyPutDerefOnLine3 &&
+      printAsSequence) {
+    fputs(dereference, decls_fp);
+  }
+
+  fputs("\n", decls_fp);
+
+
+  // Line 4: Comparability number
+
+  // If we are outputting a REAL .decls with DynComp, that means
+  // that the program has already finished execution so that all
+  // of the comparability information would be already updated:
+  if (kvasir_with_dyncomp) {
+    // Remember that comp_number is a SIGNED INTEGER but the
+    // tags are UNSIGNED INTEGERS so be careful of overflows
+    // which result in negative numbers, which are useless
+    // since Daikon ignores them.
+    int comp_number = DC_get_comp_number_for_var(varFuncInfo,
+                                                 isEnter,
+                                                 g_daikonVarIndex);
+    fprintf(decls_fp, "%d", comp_number);
+    fputs("\n", decls_fp);
+  }
+  else {
+    // Otherwise, print out unknown comparability type "22"
+    fputs("22", decls_fp);
+    fputs("\n", decls_fp);
+  }
+}
+
+
+// Print a .dtrace entry for a particular variable
+// Pre: varName is allocated and freed by caller
+// This consists of 3 lines:
+// var. name, value, modbit
+// e.g.,
+// /foo                 <-- variable name
+// "hello world"        <-- value
+// 1                    <-- modbit
+static void printDtraceEntry(DaikonVariable* var,
+                             char* varName,
+                             VariableOrigin varOrigin,
+                             int numDereferences,
+                             void* basePtrValue,
+                             char overrideIsInitialized,
+                             char isDummy,
+                             int layersBeforeBase,
+                             char printAsSequence,
+                             unsigned long upperBound,
+                             unsigned long bytesBetweenElts,
+                             DisambigOverride disambigOverride,
+                             DaikonFunctionInfo* varFuncInfo,
+                             char isEnter) {
+  char variableHasBeenObserved = 0;
+
+  // Line 1: Variable name
+  printVariableName(varName, 0, dtrace_fp);
+
+  // Lines 2 & 3: Value and modbit
+  variableHasBeenObserved =
+    outputDtraceValue(var,
+                      basePtrValue,
+                      varOrigin,
+                      (layersBeforeBase > 0), // isHashcode
+                      overrideIsInitialized,
+                      isDummy,
+                      printAsSequence,
+                      upperBound,
+                      bytesBetweenElts,
+                      // override float as double when printing
+                      // out function return variables because
+                      // return variables stored in %EAX are always doubles
+                      (varOrigin == FUNCTION_RETURN_VAR),
+                      disambigOverride);
+
+  // DynComp post-processing after observing a variable:
+  if (kvasir_with_dyncomp && variableHasBeenObserved) {
+    Addr a;
+
+    // Special handling for static arrays: Currently, in the
+    // .dtrace, for a static arrays 'int foo[]', we print out
+    // 'foo' as the address of foo and 'foo[]' as the contents of
+    // 'foo'.  However, for comparability, there is no place in
+    // memory where the address of 'foo' is maintained; thus,
+    // there is no tag for it anywhere, so we must not
+    // post-process it and simply allow it to keep a tag of 0.
+    // This implies that all static array hashcode values are
+    // unique and not comparable to one another, which is the
+    // intended behavior.  (Notice that if one wants to assign a
+    // pointer to 'foo', then the address of 'foo' resides
+    // somewhere in memory - where that pointer is located - and
+    // thus gets a fresh tag.  One can then have that pointer
+    // interact with other pointers and have THEM be comparable,
+    // but 'foo' itself still has no tag and is not comparable to
+    // anything else.)
+
+    // Don't do anything if this condition holds:
+    // (layersBeforeBase > 0) is okay since var->isStaticArray implies
+    // that there is only one level of pointer indirection, and for a
+    // static string (static array of 'char'), layersBeforeBase == 0
+    // right away so we still process it
+    if (!(var->isStaticArray &&
+          (layersBeforeBase > 0))) {
+
+      // Special handling for strings.  We are not interested in the
+      // comparability of the 'char*' pointer variable, but rather
+      // we are interested in the comparability of the CONTENTS of
+      // the string.  (Be careful about statically-declared strings,
+      // in which case the address of the first element is the address
+      // of the pointer variable)
+      if (var->isString &&
+          (0 == layersBeforeBase)) {
+        // Depends on whether the variable is a static array or not:
+        a = var->isStaticArray ?
+          (Addr)basePtrValue :
+          *((Addr*)(basePtrValue));
+      }
+      else {
+        a = (Addr)basePtrValue;
+      }
+
+      DYNCOMP_DPRINTF("%s (%d) ", varName, g_daikonVarIndex);
+      DC_post_process_for_variable(varFuncInfo,
+                                   isEnter,
+                                   g_daikonVarIndex,
+                                   a);
+    }
+  }
+
+  // While observing the runtime values,
+  // set var->disambigMultipleElts and
+  // var->pointerHasEverBeenObserved depending on whether
+  // upperBound == 0 (1 element) or not and whether
+  // variableHasBeenObserved:
+  // We do this only when numDereferences == 1 because
+  // we want to see if the target of a particular pointer
+  // has been observed and whether it refers to 1 or multiple elements
+  if ((1 == numDereferences) && variableHasBeenObserved) {
+    if (printAsSequence && (upperBound > 0)) {
+      //	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
+      var->disambigMultipleElts = 1;
+    }
+
+    // If pointerHasEverBeenObserved is not set, then set it
+    if (!var->pointerHasEverBeenObserved) {
+      var->pointerHasEverBeenObserved = 1;
+    }
+  }
+}
+
+
+// Prints a .disambig file entry for a Daikon variable
+// This consists of 2 lines:
+//   variable name, disambig type
+// e.g.,
+// /foo       <-- variable name
+// S          <-- disambig type
+static void printDisambigEntry(DaikonVariable* var, char* varName) {
+
+  // Line 1: Variable name
+  printVariableName(varName, 0, disambig_fp);
+
+  // Line 2: Disambig type
+  // (specified in the "Daikon User Manual" and also due to decisions
+  // made by the Kvasir developers)
+
+  /* Default values:
+     Base type "char" and "unsigned char": 'I' for integer
+     Pointer to "char": 'S' for string
+     Pointer to all other types:
+       - 'A' for array if var->disambigMultipleElts,
+             which means that we've observed array
+             behavior during program's execution
+         or if !var->pointerHasEverBeenObserved,
+            which means that the pointer has never
+            been observed so a conservative guess
+            of 'A' should be the default
+         or if var->isStructUnionMember - don't try
+            to be smart about member variables
+            within structs/unions - just default to "A"
+       - 'P' for pointer if (var->pointerHasEverBeenObserved &&
+             !var->disambigMultipleElts)
+  */
+
+  if (0 == var->declaredPtrLevels) {
+    if ((D_CHAR == var->varType->declaredType) ||
+        (D_UNSIGNED_CHAR == var->varType->declaredType)) {
+      fputs("I", disambig_fp);
+    }
+  }
+
+  // Normal string, not pointer to string
+  else if (var->isString && (0 == var->repPtrLevels)) {
+    fputs("S", disambig_fp);
+  }
+  else if (var->repPtrLevels > 0) {
+    if (var->isStructUnionMember) {
+      fputs("A", disambig_fp);
+    }
+    else {
+      if (var->pointerHasEverBeenObserved) {
+        if (var->disambigMultipleElts) {
+          fputs("A", disambig_fp);
+        }
+        else {
+          fputs("P", disambig_fp);
+        }
+      }
+      // default behavior for variable that was
+      // never observed during the execution
+      else {
+        fputs("A", disambig_fp);
+      }
+    }
+  }
+
+  fputs("\n", disambig_fp);
+}
+
+static void handleDynCompExtraProp(DaikonVariable* var,
+                                   int layersBeforeBase,
+                                   DaikonFunctionInfo* varFuncInfo,
+                                   char isEnter) {
+  // Special handling for static arrays: Currently, in the
+  // .dtrace, for a static arrays 'int foo[]', we print out
+  // 'foo' as the address of foo and 'foo[]' as the contents of
+  // 'foo'.  However, for comparability, there is no place in
+  // memory where the address of 'foo' is maintained; thus,
+  // there is no tag for it anywhere, so we must not
+  // post-process it and simply allow it to keep a tag of 0.
+  // This implies that all static array hashcode values are
+  // unique and not comparable to one another, which is the
+  // intended behavior.  (Notice that if one wants to assign a
+  // pointer to 'foo', then the address of 'foo' resides
+  // somewhere in memory - where that pointer is located - and
+  // thus gets a fresh tag.  One can then have that pointer
+  // interact with other pointers and have THEM be comparable,
+  // but 'foo' itself still has no tag and is not comparable to
+  // anything else.)
+
+  // Don't do anything if this condition holds:
+  // (layersBeforeBase > 0) is okay since var->isStaticArray implies
+  // that there is only one level of pointer indirection, and for a
+  // static string (static array of 'char'), layersBeforeBase == 0
+  // right away so we still process it
+  if (!(var->isStaticArray &&
+        (layersBeforeBase > 0))) {
+    DC_extra_propagation_post_process(varFuncInfo,
+                                      isEnter,
+                                      g_daikonVarIndex);
+  }
+}
+
+/* END   - Helper functions for outputDaikonVar() */
+
+
 
 // THIS IS THE MAIN DECLS AND DTRACE OUTPUT FUNCTION!!!
 // Prints one DaikonVariable variable and all of its derived
@@ -1461,9 +1901,6 @@ void outputDaikonVar(DaikonVariable* var,
                      int numStructsDereferenced,
                      DaikonFunctionInfo* varFuncInfo, char isEnter) // These uniquely identify which program point we are printing (only relevant for DynComp purposes)
 {
-  DaikonDeclaredType dType = var->varType->declaredType;
-  DaikonRepType rType = var->varType->repType;
-
   char* fullDaikonName = 0;
 
   int layersBeforeBase = (var->repPtrLevels - numDereferences);
@@ -1474,19 +1911,12 @@ void outputDaikonVar(DaikonVariable* var,
   char disambigOverrideArrayAsPointer = 0;
   char derefSingleElement = 0;
 
-  FILE* out_file = 0;
+  tl_assert(var);
+  tl_assert(layersBeforeBase >= 0);
 
   if (!var) {
     VG_(printf)( "Error! var is null in outputDaikonVar()\n");
     abort();
-  }
-
-  switch (outputType) {
-  case DECLS_FILE: out_file = decls_fp; break;
-  case DTRACE_FILE: out_file = dtrace_fp; break;
-  case DISAMBIG_FILE: out_file = disambig_fp; break;
-  case DYNCOMP_EXTRA_PROP: out_file = 0; break;
-  case FAUX_DECLS_FILE: out_file = dev_null_fp; break;
   }
 
   // If it is an original variable (and not a Daikon-derived one),
@@ -1579,467 +2009,80 @@ void outputDaikonVar(DaikonVariable* var,
       (!((layersBeforeBase == 0) &&
          (var->varType->isStructUnionType)))) {
 
-  // .decls, .dtrace, and .disambig files -
-  //  Line 1: Print out name
-  if (fullNameStackSize > 0)
-    {
-      // We are really popping stuff off of the stack in reverse and
-      // treating it like a queue :)
-      fullDaikonName = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
+    // .decls, .dtrace, and .disambig files -
+    //  Line 1: Print out variable name
 
-      // Now we must check whether we are interested in printing out
-      // this variable - if we are not, then punt everything!  This
-      // means that no 'children' of this variable will get printed
-      // out if this variable is not printed out.  For example, if
-      // 'foo' is an array, then if the hashcode value of 'foo' is not
-      // printed out, then the actual array value of 'foo[]' won't be
-      // printed out either.
-      if (kvasir_trace_vars_filename)
-	{
-	  if (trace_vars_tree)
-	    {
-	      if (!tfind((void*)fullDaikonName, (void**)&trace_vars_tree, compareStrings))
-		{
-		  DPRINTF("%s NOT FOUND!!!\n", fullDaikonName);
-		  // PUNT EVERYTHING!!!
-		  VG_(free)(fullDaikonName);
-		  return;
-		}
-	    }
-	  // If trace_vars_tree is kept at 0 on purpose
-	  // but kvasir_trace_vars_filename is valid, then still punt
-	  // because we are only supposed to print out variables listed
-	  // in kvasir_trace_vars_filename and obviously there aren't
-	  // any relevant variables to print
-	  else
-	    {
-	      VG_(free)(fullDaikonName);
-	      return;
-	    }
-	}
+    // We are really popping stuff off of the stack in reverse and
+    // treating it like a queue :)
+    // (Notice that this uses strdup to allocate on the heap)
+    tl_assert(fullNameStackSize > 0);
+    fullDaikonName = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
 
-      if (var_dump_fp && allowVarDumpToFile)
-	{
-          fputs(fullDaikonName, var_dump_fp);
-	}
-
-      if (out_file) {
-        fputs(fullDaikonName, out_file);
-      }
-
-      // .dtrace and DynComp will need this for keeping track of
-      // run-time info, so don't free the name for those runs:
-      if ((DTRACE_FILE != outputType) &&
-          (DYNCOMP_EXTRA_PROP != outputType)) {
-        VG_(free)(fullDaikonName);
-      }
-
-      //      VG_(printf)("%s\n", fullDaikonName);
-    }
-  else
-    {
-      VG_(printf)( "Error! fullNameStack is empty in outputDaikonVar() - no name to print\n");
-      abort();
-    }
-
-  if (var_dump_fp && allowVarDumpToFile)
-    {
-      fputs("\n", var_dump_fp);
-    }
-
-  if (out_file) {
-    fputs("\n", out_file);
-  }
-
-  // .dtrace
-  if (DTRACE_FILE == outputType)
-    {
-      char variableHasBeenObserved = 0;
-      DPRINTF("printOneDaikonVar: %s %d %d %d %d %d %d %p %d %d %u %u\n",
-	      var->name,
-	      varOrigin,
-	      numDereferences,
-	      isAlreadyDaikonSequence,
-	      stopExpandingArrays,
-	      stopDerivingMemberVars,
-	      (int)outputType,
-	      basePtrValue,
-	      overrideIsInitialized,
-	      isDummy,
-	      upperBound,
-	      bytesBetweenElts);
-
-      variableHasBeenObserved =
-	outputDtraceValue(var,
-			  basePtrValue,
-			  varOrigin,
-			  (layersBeforeBase > 0), // isHashcode
-			  overrideIsInitialized,
-			  isDummy,
-			  printAsSequence,
-			  upperBound,
-			  bytesBetweenElts,
-			  // override float as double when printing
-			  // out function return variables because
-			  // return variables stored in %EAX are always doubles
-			  (varOrigin == FUNCTION_RETURN_VAR),
-			  disambigOverride);
-
-      // DynComp post-processing:
-      if (kvasir_with_dyncomp && variableHasBeenObserved) {
-        Addr a;
-
-        // Special handling for static arrays: Currently, in the
-        // .dtrace, for a static arrays 'int foo[]', we print out
-        // 'foo' as the address of foo and 'foo[]' as the contents of
-        // 'foo'.  However, for comparability, there is no place in
-        // memory where the address of 'foo' is maintained; thus,
-        // there is no tag for it anywhere, so we must not
-        // post-process it and simply allow it to keep a tag of 0.
-        // This implies that all static array hashcode values are
-        // unique and not comparable to one another, which is the
-        // intended behavior.  (Notice that if one wants to assign a
-        // pointer to 'foo', then the address of 'foo' resides
-        // somewhere in memory - where that pointer is located - and
-        // thus gets a fresh tag.  One can then have that pointer
-        // interact with other pointers and have THEM be comparable,
-        // but 'foo' itself still has no tag and is not comparable to
-        // anything else.)
-
-        // Don't do anything if this condition holds:
-        // (layersBeforeBase > 0) is okay since var->isStaticArray implies
-        // that there is only one level of pointer indirection, and for a
-        // static string (static array of 'char'), layersBeforeBase == 0
-        // right away so we still process it
-        if (!(var->isStaticArray &&
-              (layersBeforeBase > 0))) {
-
-          // Special handling for strings.  We are not interested in the
-          // comparability of the 'char*' pointer variable, but rather
-          // we are interested in the comparability of the CONTENTS of
-          // the string.  (Be careful about statically-declared strings,
-          // in which case the address of the first element is the address
-          // of the pointer variable)
-          if (var->isString &&
-              (0 == layersBeforeBase)) {
-            // Depends on whether the variable is a static array or not:
-            a = var->isStaticArray ?
-              (Addr)basePtrValue :
-              *((Addr*)(basePtrValue));
-          }
-          else {
-            a = (Addr)basePtrValue;
-          }
-
-          DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
-          DC_post_process_for_variable(varFuncInfo,
-                                       isEnter,
-                                       g_daikonVarIndex,
-                                       a);
+    // Now we must check whether we are interested in printing out
+    // this variable - if we are not, then punt everything!  This
+    // means that no 'children' of this variable will get printed
+    // out if this variable is not printed out.  For example, if
+    // 'foo' is an array, then if the hashcode value of 'foo' is not
+    // printed out, then the actual array value of 'foo[]' won't be
+    // printed out either.
+    if (kvasir_trace_vars_filename) {
+      if (trace_vars_tree) {
+        if (!tfind((void*)fullDaikonName, (void**)&trace_vars_tree, compareStrings)) {
+          DPRINTF("%s NOT FOUND!!!\n", fullDaikonName);
+          // PUNT!
+          VG_(free)(fullDaikonName);
+          return;
         }
       }
-
-      // While observing the runtime values,
-      // set var->disambigMultipleElts and
-      // var->pointerHasEverBeenObserved depending on whether
-      // upperBound == 0 (1 element) or not and whether
-      // variableHasBeenObserved:
-      // We do this only when numDereferences == 1 because
-      // we want to see if the target of a particular pointer
-      // has been observed and whether it refers to 1 or multiple elements
-      if ((1 == numDereferences) && variableHasBeenObserved) {
-	if (printAsSequence && (upperBound > 0)) {
-          //	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
-	  var->disambigMultipleElts = 1;
-	}
-
-	// If pointerHasEverBeenObserved is not set, then set it
-	if (!var->pointerHasEverBeenObserved) {
-	  var->pointerHasEverBeenObserved = 1;
-	}
-      }
-
-      VG_(free)(fullDaikonName);
-    }
-  // .decls
-  else if ((DECLS_FILE == outputType) || (FAUX_DECLS_FILE == outputType))
-    {
-      char printingFirstAnnotation = 1;
-      char alreadyPutDerefOnLine3;
-      int layers;
-      // .decls Line 2: Print out declared type
-
-      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-	fputs(DaikonRepTypeString[R_INT], out_file);
-	fputs(dereference, out_file);
-      }
-      else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
-	fputs(DaikonRepTypeString[R_INT], out_file);
-      }
-      // named struct/union or enumeration
-      else if (((dType == D_ENUMERATION) || (dType == D_STRUCT) || (dType == D_UNION)) &&
-	       var->varType->collectionName)
-	{
-	  fputs(var->varType->collectionName, out_file);
-
-          // For the repair tool, concatenate all of the field names
-          // after the 'unnamed' struct name (after an underscore)
-          if (kvasir_repair_format &&
-              VG_STREQ(var->varType->collectionName, "unnamed")) {
-            VarList* memberVars = var->varType->memberListPtr;
-            VarNode* i = 0;
-            DaikonVariable* curVar = 0;
-
-            fputs("_", out_file);
-
-            for (i = memberVars->first; i != 0; i = i->next) {
-              curVar = &(i->var);
-              if (curVar->name) {
-                fputs(curVar->name, out_file);
-              }
-            }
-          }
-	}
-      else
-	{
-	  // Normal type (or unnamed struct/union)
-	  fputs(DaikonDeclaredTypeString[dType], out_file);
-	  // If we have a string, print it as char*
-	  // because the dType of string is "char"
-	  // so we need to append a "*" to it
-	  if (var->isString)
-	    {
-	      fputs(star, out_file);
-	    }
-	}
-
-      // For the declared type, print out one level of '*' for every
-      // layer above base to denote pointer types
-      for (layers = 0; layers < layersBeforeBase; layers++) {
-        fputs(star, out_file);
-        // TODO: Determine later whether this special case is worth it:
-        // Special case for static array types: use a '[]' to
-        // replace the LAST '*'
-        //        if ((var->isStaticArray) &&
-        //            (layers == (layersBeforeBase - 1))) {
-        //          fputs(dereference, out_file);
-        //        }
-        //        else {
-        //          fputs(star, out_file);
-        //        }
-      }
-
-      // If we print this as a sequence, then we must append '[]'
-      if (printAsSequence) {
-        fputs(dereference, out_file);
-      }
-
-      // Add annotations as comments in .decls file
-      // (The first one is preceded by ' # ' and all subsequent
-      //  ones are preceded by ',')
-
-      // Original variables in function parameter lists
-      // have "isParam = true"
-      if ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
-	  (varOrigin == FUNCTION_EXIT_FORMAL_PARAM))
-	{
-          if (printingFirstAnnotation) {fputs(" # ", out_file);}
-          else {fputs(",", out_file);}
-
-	  fputs("isParam=true", out_file);
-	}
-
-      // Struct variables are annotated with "isStruct=true"
-      // in order to notify Daikon that the hashcode values printed
-      // out for that variable have no semantic meaning
-      if (kvasir_output_struct_vars &&
-          (layersBeforeBase == 0) &&
-          (var->varType->isStructUnionType)) {
-        if (printingFirstAnnotation) {fputs(" # ", out_file);}
-        else {fputs(",", out_file);}
-
-        fputs("isStruct=true", out_file);
-      }
-
-      // Hashcode variables that can never be null has "hasNull=false".
-      // (e.g., statically-allocated arrays)
-      if (var->isStaticArray && (layersBeforeBase == 1)) {
-        if (printingFirstAnnotation) {fputs(" # ", out_file);}
-        else {fputs(",", out_file);}
-
-        fputs("hasNull=false", out_file);
-      }
-
-      fputs("\n", out_file);
-
-      // .decls Line 3: Print out rep. type
-      alreadyPutDerefOnLine3 = 0;
-
-      // Print out rep. type as hashcode when you are not done dereferencing
-      // pointer layers:
-      if (layersBeforeBase > 0)
-	{
-	  fputs(DaikonRepTypeString[R_HASHCODE], out_file);
-	}
-      else
-	{
-	  // Special handling for strings and 'C' chars in .disambig
-	  if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-	      fputs(DaikonRepTypeString[R_INT], out_file);
-	      fputs(dereference, out_file);
-	      alreadyPutDerefOnLine3 = 1;
-	  }
-	  else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
-	      fputs(DaikonRepTypeString[R_INT], out_file);
-	  }
-	  else if ((var->isString) ||
-		   (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
-	    fputs(DaikonRepTypeString[R_STRING], out_file);
-	  }
-	  else {
-            tl_assert(rType != 0);
-	    fputs(DaikonRepTypeString[rType], out_file);
-	  }
-	}
-
-      // Append "[]" onto the end of the rep. type if necessary
-      if (!alreadyPutDerefOnLine3 &&
-          printAsSequence) {
-        fputs(dereference, out_file);
-      }
-
-      fputs("\n", out_file);
-
-      // .decls Line 4: Comparability number
-
-      // If we are outputting a REAL .decls with DynComp, that means
-      // that the program has already finished execution so that all
-      // of the comparability information would be already updated:
-      if (kvasir_with_dyncomp &&
-          (DECLS_FILE == outputType)) {
-        // Remember that comp_number is a SIGNED INTEGER but the
-        // tags are UNSIGNED INTEGERS so be careful of overflows
-        // which result in negative numbers, which are useless
-        // since Daikon ignores them.
-        int comp_number = DC_get_comp_number_for_var(varFuncInfo,
-                                                     isEnter,
-                                                     g_daikonVarIndex);
-        fprintf(out_file, "%d", comp_number);
-        fputs("\n", out_file);
-      }
+      // If trace_vars_tree is kept at 0 on purpose
+      // but kvasir_trace_vars_filename is valid, then still punt
+      // because we are only supposed to print out variables listed
+      // in kvasir_trace_vars_filename and obviously there aren't
+      // any relevant variables to print
       else {
-        // Print out unknown comparability type "22"
-        fputs("22", out_file);
-        fputs("\n", out_file);
+        // PUNT!
+        VG_(free)(fullDaikonName);
+        return;
       }
     }
-  // DynComp - extra propagation at the end of the program's execution
-  else if (DYNCOMP_EXTRA_PROP == outputType) {
-    // Special handling for static arrays: Currently, in the
-    // .dtrace, for a static arrays 'int foo[]', we print out
-    // 'foo' as the address of foo and 'foo[]' as the contents of
-    // 'foo'.  However, for comparability, there is no place in
-    // memory where the address of 'foo' is maintained; thus,
-    // there is no tag for it anywhere, so we must not
-    // post-process it and simply allow it to keep a tag of 0.
-    // This implies that all static array hashcode values are
-    // unique and not comparable to one another, which is the
-    // intended behavior.  (Notice that if one wants to assign a
-    // pointer to 'foo', then the address of 'foo' resides
-    // somewhere in memory - where that pointer is located - and
-    // thus gets a fresh tag.  One can then have that pointer
-    // interact with other pointers and have THEM be comparable,
-    // but 'foo' itself still has no tag and is not comparable to
-    // anything else.)
 
-    // Don't do anything if this condition holds:
-    // (layersBeforeBase > 0) is okay since var->isStaticArray implies
-    // that there is only one level of pointer indirection, and for a
-    // static string (static array of 'char'), layersBeforeBase == 0
-    // right away so we still process it
-    if (!(var->isStaticArray &&
-          (layersBeforeBase > 0))) {
-      DYNCOMP_DPRINTF("%s (%d) ", fullDaikonName, g_daikonVarIndex);
-
-      DC_extra_propagation_post_process(varFuncInfo,
-                                        isEnter,
-                                        g_daikonVarIndex);
-    }
-    VG_(free)(fullDaikonName);
-  }
-  // .disambig
-  else if (DISAMBIG_FILE == outputType)
-    {
-      // Line 2: Print out .disambig code for each type
-      // as specified in the "Daikon User Manual" and
-      // also decisions made by the Kvasir developers
-
-      /* Default values:
-	 Base type "char" and "unsigned char": 'I' for integer
-	 Pointer to "char": 'S' for string
-	 Pointer to all other types:
-	   - 'A' for array if var->disambigMultipleElts,
-	                      which means that we've observed array
-			      behavior during program's execution
-			or if !var->pointerHasEverBeenObserved,
-			      which means that the pointer has never
-			      been observed so a conservative guess
-			      of 'A' should be the default
-			or if var->isStructUnionMember - don't try
-			      to be smart about member variables
-			      within structs/unions - just default to "A"
-	   - 'P' for pointer if (var->pointerHasEverBeenObserved &&
-	                         !var->disambigMultipleElts)
-      */
-
-      if (0 == var->declaredPtrLevels) {
-	if ((D_CHAR == var->varType->declaredType) ||
-	    (D_UNSIGNED_CHAR == var->varType->declaredType)) {
-	  fputs("I", out_file);
-	}
-      }
-      // Normal string, not pointer to string
-      else if (var->isString && (0 == var->repPtrLevels)) {
-	fputs("S", out_file);
-      }
-      else if (var->repPtrLevels > 0) {
-	if (var->isStructUnionMember) {
-	  fputs("A", out_file);
-	}
-	else {
-	  if (var->pointerHasEverBeenObserved) {
-	    if (var->disambigMultipleElts) {
-	      fputs("A", out_file);
-	    }
-	    else {
-	      fputs("P", out_file);
-	    }
-	  }
-	  // default behavior for variable that was
-	  // never observed during the execution
-	  else {
-	    fputs("A", out_file);
-	  }
-	}
-      }
-
-      fputs("\n", out_file);
-      // DO NOT DERIVE VARIABLES for .disambig
-      // We are only interested in printing out
-      // the variables which are immediately
-      // visible to the user
+    // Perform the actual output depending on outputType:
+    switch (outputType) {
+    case DECLS_FILE:
+      printDeclsEntry(var, fullDaikonName, varOrigin, allowVarDumpToFile,
+                      layersBeforeBase, printAsSequence, disambigOverride,
+                      varFuncInfo, isEnter);
+      break;
+    case DTRACE_FILE:
+      printDtraceEntry(var, fullDaikonName, varOrigin, numDereferences,
+                       basePtrValue, overrideIsInitialized, isDummy,
+                       layersBeforeBase, printAsSequence, upperBound,
+                       bytesBetweenElts, disambigOverride, varFuncInfo,
+                       isEnter);
+      break;
+    case DISAMBIG_FILE:
+      printDisambigEntry(var, fullDaikonName);
+      // DO NOT DERIVE VARIABLES for .disambig We are only interested
+      // in printing out the variables which are immediately visible
+      // to the user.  Thus, we should RETURN out of the function
+      // altogether instead of simply breaking out of the switch
       return;
-    }
-  else
-    {
+    case DYNCOMP_EXTRA_PROP:
+      handleDynCompExtraProp(var, layersBeforeBase, varFuncInfo, isEnter);
+      break;
+    case FAUX_DECLS_FILE:
+      // Chill and do nothing here because we're making a dry run :)
+      break;
+    default:
       VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
       abort();
+      break;
     }
+  }
 
-
-  } // end if (!((layersBeforeBase == 0) && (var->varType->isStructUnionType)))
-
-
+  // We don't need the name anymore since we're done printing
+  // everything about this variable by now
+  VG_(free)(fullDaikonName);
 
   // Be very careful about where you increment this!
   g_daikonVarIndex++;
@@ -2260,7 +2303,7 @@ void outputDaikonVar(DaikonVariable* var,
 	      !(curVar->isString && (curVar->declaredPtrLevels == 1)))
 	    {
 	      // Only look at the first dimension:
-	      int arrayIndex = 0;
+	      unsigned int arrayIndex = 0;
 	      for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++)
 		{
                   char* top = stringStackTop(fullNameStack, fullNameStackSize);
