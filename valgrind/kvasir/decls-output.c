@@ -1,8 +1,8 @@
 /*
-   This file is part of Kvasir, a Valgrind skin that implements the
+   This file is part of Kvasir, a Valgrind tool that implements the
    C language front-end for the Daikon Invariant Detection System
 
-   Copyright (C) 2004 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -30,6 +30,8 @@
 #include <search.h>
 #include <limits.h>
 
+static int createFIFO(const char *filename);
+
 // This increments every time outputDaikonVar is called and a full
 // Daikon name is successfully generated.  It is used to index into
 // the var_tags and new_tags arrays
@@ -39,8 +41,6 @@ FILE* decls_fp = 0; // File pointer for .decls file (this will point
                     // to the same thing as dtrace_fp by default since
                     // both .decls and .dtrace are outputted to .dtrace
                     // unless otherwise noted by the user)
-
-static FILE* dev_null_fp; // initialized to "/dev/null"
 
 FILE* dtrace_fp = 0; // File pointer for dtrace file (from dtrace-output.c)
 static char *dtrace_filename; /* File name to open dtrace_fp on */
@@ -115,7 +115,7 @@ struct genhashtable* g_compNumberMap = 0;
 int g_curCompNumber = 1;
 
 // This array can be indexed using the DaikonDeclaredType enum
-const char* DaikonDeclaredTypeString[] = {
+static const char* DaikonDeclaredTypeString[] = {
   "no_declared_type", // Create padding
   "unsigned char", //D_UNSIGNED_CHAR,
   "char", //D_CHAR,
@@ -143,7 +143,7 @@ const char* DaikonDeclaredTypeString[] = {
 };
 
 // This array can be indexed using the DaikonRepType enum
-const char* DaikonRepTypeString[] = {
+static const char* DaikonRepTypeString[] = {
   "no_rep_type", //R_NO_TYPE, // Create padding
   "int", //R_INT,
   "double", //R_DOUBLE,
@@ -151,44 +151,35 @@ const char* DaikonRepTypeString[] = {
   "java.lang.String" //R_STRING
 };
 
-// Useful stack of strings for printing out names
-// Only puts REFERENCES to strings, does not do any allocating
-
-// Yes, this is very dirty because it's a global variable ... ahhh!
-// The stack which represents the full name of the variable
-// that we currently want to print out
+// This stack represents the full name of the variable that we
+// currently want to output (Only puts REFERENCES to strings in
+// fullNameStack; does not do any allocations)
 char* fullNameStack[MAX_STRING_STACK_SIZE];
 int fullNameStackSize = 0;
 
-static int createFIFO(const char *filename);
-
-void stringStackPush(char** stringStack, int* stringStackSizePtr, char* str)
+void stringStackPush(char** stringStack, int* pStringStackSize, char* str)
 {
-  if (!str) {
-    VG_(printf)( "Null string passed to push!\n");
-    /* abort(); */
-    str = "<null>";
-  }
-  if (*stringStackSizePtr < MAX_STRING_STACK_SIZE)
-    {
-      stringStack[*stringStackSizePtr] = str;
-      (*stringStackSizePtr)++;
-    }
-  // Don't push on stack overflow
+  tl_assert(str && *pStringStackSize < MAX_STRING_STACK_SIZE);
+
+  // Don't allow null strings at all:
+  //  if (!str) {
+  //    VG_(printf)( "Null string passed to push!\n");
+  //    /* abort(); */
+  //    str = "<null>";
+  //  }
+
+  stringStack[*pStringStackSize] = str;
+  (*pStringStackSize)++;
 }
 
-char* stringStackPop(char** stringStack, int* stringStackSizePtr)
+char* stringStackPop(char** stringStack, int* pStringStackSize)
 {
-  if (*stringStackSizePtr > 0)
-    {
-      char* temp = stringStack[*stringStackSizePtr - 1];
-      (*stringStackSizePtr)--;
-      return temp;
-    }
-  else
-    {
-      return 0;
-    }
+  char* temp;
+  tl_assert(*pStringStackSize > 0);
+
+  temp = stringStack[*pStringStackSize - 1];
+  (*pStringStackSize)--;
+  return temp;
 }
 
 char* stringStackTop(char** stringStack, int stringStackSize)
@@ -196,9 +187,9 @@ char* stringStackTop(char** stringStack, int stringStackSize)
   return stringStack[stringStackSize - 1];
 }
 
-void stringStackClear(int* stringStackSizePtr)
+void stringStackClear(int* pStringStackSize)
 {
-  (*stringStackSizePtr) = 0;
+  (*pStringStackSize) = 0;
 }
 
 // Returns: Total length of all strings on stringStack
@@ -223,27 +214,12 @@ void stringStackPrint(char** stringStack, int stringStackSize)
 }
 
 // Takes all of the strings on stringStack, copies them into a newly
-// calloc'ed string (in proper order), and returns a pointer to that
-char* strdupFullNameString(char** stringStack, int stringStackSize)
+// calloc'ed string (in a queue-like FIFO order), and returns a
+// pointer to that string.
+char* stringStackStrdup(char** stringStack, int stringStackSize)
 {
-  int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1; // 1 for trailing '\0'
-  char* fullName = VG_(calloc)(totalStrLen, sizeof(char));
-  int i;
-
-  // REMEMBER TO GO BACKWARDS!!!
-  for (i = stringStackSize - 1; i >=0; i--)
-    {
-      fullName = VG_(strcat)(fullName, stringStack[i]);
-    }
-  return fullName;
-}
-
-// Takes all of the strings on stringStack, copies them into a newly
-// calloc'ed string (in proper order), and returns a pointer to that
-// THIS GOES IN REVERSE ORDER so it actually acts like a queue
-char* strdupFullNameStringReverse(char** stringStack, int stringStackSize)
-{
-  int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1; // 1 for trailing '\0'
+  // Extra 1 for trailing '\0'
+  int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1;
   char* fullName = VG_(calloc)(totalStrLen, sizeof(char));
   int i;
 
@@ -270,9 +246,6 @@ char createDeclsAndDtraceFiles(char* appname)
   char* newpath_dtrace;
   int success = 0;
   int ret;
-
-  // TODO: This is opened but never closed ... does that even matter?
-  dev_null_fp = fopen("/dev/null", "w");
 
   // Free VisitedStructsTable if it has been allocated
   if (VisitedStructsTable)
@@ -537,6 +510,7 @@ void openTheDtraceFile(void) {
 // After:  *dirnamePtr = "../tests/IntTest/" *filenamePtr = "IntTest"
 // Postcondition - *dirname and *filename are malloc'ed - must be FREE'd!!!
 // Return 1 on success, 0 on failure
+// TODO: This can be replaced with calls to the glibc dirname() and basename() functions
 char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char** filenamePtr)
 {
   int len = VG_(strlen)(input);
@@ -612,24 +586,6 @@ int compareStrings(const void *a, const void *b)
 {
   return VG_(strcmp)((char*)a, (char*)b);
 }
-
-// Remember to get the ordering right:
-// -1 if *a < *b
-//  0 if *a == *b
-//  1 if *a > *b
-/* int compareUInts(const void *a, const void *b) */
-/* { */
-/*   if ((*(UInt*)a) < (*(UInt*)b)) { */
-/*     return -1; */
-/*   } */
-/*   else if ((*(UInt*)a) > (*(UInt*)b)) { */
-/*     return 1; */
-/*   } */
-/*   else { */
-/*     return 0; */
-/*   } */
-/* } */
-
 
 // Iterate through each line of the file trace_prog_pts_input_fp
 // and VG_(strdup) each string into a new entry of prog_pts_tree
@@ -1914,11 +1870,6 @@ void outputDaikonVar(DaikonVariable* var,
   tl_assert(var);
   tl_assert(layersBeforeBase >= 0);
 
-  if (!var) {
-    VG_(printf)( "Error! var is null in outputDaikonVar()\n");
-    abort();
-  }
-
   // If it is an original variable (and not a Daikon-derived one),
   // then initialize a new VisitedStructsTable
   if ((varOrigin != DERIVED_VAR) &&
@@ -2012,11 +1963,9 @@ void outputDaikonVar(DaikonVariable* var,
     // .decls, .dtrace, and .disambig files -
     //  Line 1: Print out variable name
 
-    // We are really popping stuff off of the stack in reverse and
-    // treating it like a queue :)
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
-    fullDaikonName = strdupFullNameStringReverse(fullNameStack, fullNameStackSize);
+    fullDaikonName = stringStackStrdup(fullNameStack, fullNameStackSize);
 
     // Now we must check whether we are interested in printing out
     // this variable - if we are not, then punt everything!  This
