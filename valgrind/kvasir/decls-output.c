@@ -179,6 +179,7 @@ char* stringStackPop(char** stringStack, int* pStringStackSize)
 
   temp = stringStack[*pStringStackSize - 1];
   (*pStringStackSize)--;
+
   return temp;
 }
 
@@ -220,13 +221,12 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 {
   // Extra 1 for trailing '\0'
   int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1;
-  char* fullName = VG_(calloc)(totalStrLen, sizeof(char));
+  char* fullName = (char*)VG_(calloc)(totalStrLen, sizeof(char));
   int i;
 
-  for (i = 0; i < stringStackSize; i++)
-    {
-      fullName = VG_(strcat)(fullName, stringStack[i]);
-    }
+  for (i = 0; i < stringStackSize; i++) {
+    VG_(strcat)(fullName, stringStack[i]);
+  }
   return fullName;
 }
 
@@ -1175,13 +1175,26 @@ void printAllObjectAndClassDecls() {
 
          stringStackPush(fullNameStack, &fullNameStackSize, "this");
 
+#ifndef USE_EXP_VISIT_CODE
          outputDaikonVar(&fakeThisVar,
                          FUNCTION_ENTER_FORMAL_PARAM,
                          0,0,0,0,0,0,
                          DECLS_FILE,
                          0,0,0,0,0,0,0,0,0,0);
+#else
+         visitVariable(&fakeThisVar,
+                       0,
+                       0,
+                       FUNCTION_ENTER_FORMAL_PARAM,
+                       DECLS_FILE,
+                       0,
+                       0,
+                       0,
+                       0);
+#endif
 
          stringStackPop(fullNameStack, &fullNameStackSize);
+
 
          fputs("\n", decls_fp);
 
@@ -1350,6 +1363,7 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
 
       stringStackPush(fullNameStack, &fullNameStackSize, var->name);
 
+#ifndef USE_EXP_VISIT_CODE
       outputDaikonVar(var,
 		      varOrigin,
 		      0,
@@ -1368,6 +1382,17 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr, // 0 for unspecified f
 		      0,
                       0,
                       funcPtr, isEnter);
+#else
+      visitVariable(var,
+                    basePtrValue,
+                    0,
+                    varOrigin,
+                    outputType,
+                    allowVarDumpToFile,
+                    trace_vars_tree,
+                    funcPtr,
+                    isEnter);
+#endif
 
       stringStackPop(fullNameStack, &fullNameStackSize);
     }
@@ -1810,6 +1835,1037 @@ static void handleDynCompExtraProp(DaikonVariable* var,
 /* END   - Helper functions for outputDaikonVar() */
 
 
+/* BEGIN - Functions for visiting variables at every program point */
+
+// Returns 1 if we are interested in visiting this variable and its
+// children, 0 otherwise.  No children of this variable will get
+// visited if this variable is not visited.  For example, if 'foo' is
+// an array, then if the hashcode value of 'foo' is not visited, then
+// the actual array value of 'foo[]' won't be visited either.
+// This performs string matching in trace_vars_tree based on fullDaikonName
+static char interestedInVar(char* fullDaikonName, char* trace_vars_tree) {
+  if (kvasir_trace_vars_filename) {
+    if (trace_vars_tree) {
+      if (!tfind((void*)fullDaikonName, (void**)&trace_vars_tree, compareStrings)) {
+        return 0;
+      }
+    }
+    // If trace_vars_tree is kept at 0 on purpose but
+    // kvasir_trace_vars_filename is valid, then still punt because we
+    // are only supposed to print out variables listed in
+    // kvasir_trace_vars_filename and obviously there aren't any
+    // relevant variables to print
+    else {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+// This is adjustable via the --struct-depth=N option:
+
+// This seems to give the same results as MAX_STRUCT_INSTANCES = 2 for
+// outputDaikonVar():
+UInt MAX_VISIT_STRUCT_INSTANCES = 4;
+UInt MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE = 2;
+
+static void visitSingleVar(DaikonVariable* var,
+                           UInt numDereferences,
+                           void* pValue,
+                           char overrideIsInit,
+                           VariableOrigin varOrigin,
+                           OutputFileType outputType,
+                           char allowVarDumpToFile,
+                           char* trace_vars_tree,
+                           DisambigOverride disambigOverride,
+                           UInt numStructsDereferenced,
+                           DaikonFunctionInfo* varFuncInfo,
+                           char isEnter);
+
+static void visitSequence(DaikonVariable* var,
+                          UInt numDereferences,
+                          void** pValueArray,
+                          UInt numElts,
+                          VariableOrigin varOrigin,
+                          OutputFileType outputType,
+                          char allowVarDumpToFile,
+                          char* trace_vars_tree,
+                          DisambigOverride disambigOverride,
+                          UInt numStructsDereferenced,
+                          DaikonFunctionInfo* varFuncInfo,
+                          char isEnter);
+
+
+// This is the only function that should be called from the outside.
+// It visits a variable by delegating to visitSingleVar()
+// Pre: varOrigin != DERIVED_VAR, varOrigin != DERIVED_FLATTENED_ARRAY_VAR
+// Pre: The name of the variable is initialized in fullNameStack
+void visitVariable(DaikonVariable* var,
+                   void* pValue,
+                   // We only use overrideIsInit when we pass in
+                   // things (e.g. return values) that cannot be
+                   // checked by the Memcheck A and V bits. Never have
+                   // overrideIsInit when you derive variables (make
+                   // recursive calls) because their addresses are
+                   // different from the original's
+                   char overrideIsInit,
+                   VariableOrigin varOrigin,
+                   OutputFileType outputType,
+                   char allowVarDumpToFile,
+                   char* trace_vars_tree, // Binary tree within FunctionTree struct
+                   // These uniquely identify which program point we
+                   // are at (only relevant for DynComp)
+                   DaikonFunctionInfo* varFuncInfo,
+                   char isEnter) {
+  tl_assert(varOrigin != DERIVED_VAR);
+  tl_assert(varOrigin != DERIVED_FLATTENED_ARRAY_VAR);
+
+  // In preparation for a new round of variable visits, initialize a
+  // new VisitedStructsTable, freeing an old one if necessary
+  if (VisitedStructsTable) {
+    genfreehashtable(VisitedStructsTable);
+    VisitedStructsTable = 0;
+  }
+  VisitedStructsTable = genallocatehashtable((unsigned int (*)(void *)) & hashID,
+                                             (int (*)(void *,void *)) &equivalentIDs);
+
+  // Delegate:
+  visitSingleVar(var,
+                 0,
+                 pValue,
+                 overrideIsInit,
+                 varOrigin,
+                 outputType,
+                 allowVarDumpToFile,
+                 trace_vars_tree,
+                 OVERRIDE_NONE,
+                 0,
+                 varFuncInfo,
+                 isEnter);
+}
+
+
+// Visit a single variable uniquely identified by var and
+// numDereferences and then derive additional variables either by
+// dereferencing pointers or by visiting struct members
+// This function calls visitSingleVar() or visitSequence()
+static
+void visitSingleVar(DaikonVariable* var,
+                    UInt numDereferences,
+                    // Pointer to the variable's current value
+                    void* pValue,
+                    // We only use overrideIsInit when we pass in
+                    // things (e.g. return values) that cannot be
+                    // checked by the Memcheck A and V bits. Never have
+                    // overrideIsInit when you derive variables (make
+                    // recursive calls) because their addresses are
+                    // different from the original's
+                    char overrideIsInit,
+                    VariableOrigin varOrigin,
+                    OutputFileType outputType,
+                    char allowVarDumpToFile,
+                    char* trace_vars_tree, // Binary tree within FunctionTree struct
+                    DisambigOverride disambigOverride,
+                    // The number of structs we have dereferenced for
+                    // a particular call of visitVariable(); Starts at
+                    // 0 and increments every time we hit a variable
+                    // which is a base struct type
+                    // Range: [0, MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE]
+                    UInt numStructsDereferenced,
+                    // These uniquely identify which program point we
+                    // are at (only relevant for DynComp)
+                    DaikonFunctionInfo* varFuncInfo,
+                    char isEnter) {
+  char* fullDaikonName = 0;
+  int layersBeforeBase;
+
+  // Initialize these in a group later
+  char disambigOverrideArrayAsPointer = 0;
+  char derefSingleElement = 0;
+
+  tl_assert(var);
+  layersBeforeBase = var->repPtrLevels - numDereferences;
+  tl_assert(layersBeforeBase >= 0);
+
+  // Special handling for overriding in the presence of .disambig:
+  // Only check this for original (numDereferences == 0) variables
+  // to ensure that it's only checked once per variable
+  if ((0 == numDereferences) &&
+      ((kvasir_disambig_filename && !disambig_writing) ||
+       VG_STREQ("this", var->name))) { // either using .disambig or special C++ 'this'
+    char disambig_letter = disambig_letter = var->disambig;
+
+    if (disambig_letter) {
+      if (var->repPtrLevels == 0) {
+	// 'C' denotes to print out as a one-character string
+	if (var->isString) { // pointer to "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("String C - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
+	  }
+	  else if ('A' == disambig_letter) {
+	    DPRINTF("String A - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_INT_ARRAY;
+	  }
+	  else if ('P' == disambig_letter) {
+	    DPRINTF("String P - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_ONE_INT;
+	  }
+	}
+	else if ((D_CHAR == var->varType->declaredType) ||  // "char" or "unsigned char" (or string of chars)
+		 (D_UNSIGNED_CHAR == var->varType->declaredType)) { // "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("Char C - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_CHAR_AS_STRING;
+	  }
+	}
+      }
+      // Ordinary pointer
+      else if ('P' == disambig_letter) {
+	disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
+      }
+    }
+  }
+
+  disambigOverrideArrayAsPointer =
+    (kvasir_disambig_ptrs ||
+     (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
+
+  derefSingleElement = disambigOverrideArrayAsPointer;
+
+
+  // Unless kvasir_output_struct_vars is on,
+  // don't print out an entry for base (non-pointer) struct/union
+  // variables since they have no substantive meaning for C programs.
+  // They are merely represented as hashcode values, and that's kind
+  // of deceiving because they aren't really pointer variables either.
+
+  // This means that anywhere inside of this 'if' statement, we should
+  // be very careful about mutating state because different state may
+  // be mutated based on whether kvasir_output_struct_vars is on,
+  // which may lead to different-looking results.
+  if (kvasir_output_struct_vars ||
+      (!((layersBeforeBase == 0) &&
+         (var->varType->isStructUnionType)))) {
+
+    // (Notice that this uses strdup to allocate on the heap)
+    tl_assert(fullNameStackSize > 0);
+    fullDaikonName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    VG_(printf)("-- %s\n", fullDaikonName);
+    // If we are not interested in visiting this variable or its
+    // children, then PUNT:
+    if (!interestedInVar(fullDaikonName, trace_vars_tree)) {
+      VG_(free)(fullDaikonName);
+      return;
+    }
+
+    // Perform the actual output depending on outputType:
+    switch (outputType) {
+    case DECLS_FILE:
+      printDeclsEntry(var, fullDaikonName, varOrigin, allowVarDumpToFile,
+                      layersBeforeBase, 0, disambigOverride,
+                      varFuncInfo, isEnter);
+      //      VG_(printf)(".decls var: %s\n", fullDaikonName);
+      break;
+    case DTRACE_FILE:
+      VG_(printf)(".dtrace var: %s, pValue: %p\n", fullDaikonName, pValue);
+      break;
+    case DISAMBIG_FILE:
+      printDisambigEntry(var, fullDaikonName);
+      // DO NOT DERIVE VARIABLES for .disambig We are only interested
+      // in printing out the variables which are immediately visible
+      // to the user.  Thus, we should RETURN out of the function
+      // altogether instead of simply breaking out of the switch
+      return;
+    case DYNCOMP_EXTRA_PROP:
+      handleDynCompExtraProp(var, layersBeforeBase, varFuncInfo, isEnter);
+      break;
+    case FAUX_DECLS_FILE:
+      // Chill and do nothing here because we're making a dry run :)
+      break;
+    default:
+      VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
+      abort();
+      break;
+    }
+  }
+
+  // We don't need the name anymore since we're done printing
+  // everything about this variable by now
+  VG_(free)(fullDaikonName);
+
+  // Be very careful about where you increment this!  We want to
+  // increment this once per call of either visitSingleVar() or
+  // visitSequence():
+  g_daikonVarIndex++;
+
+
+  // Now comes the fun part of deriving variables!
+
+  // Dereference and keep on printing out derived variables until we
+  // hit the base type:
+  if (layersBeforeBase > 0) {
+
+    // 1.) Initialize pValue properly and call visitSingleVar() again
+    // because we are dereferencing a single element:
+    if (derefSingleElement) {
+      char derivedIsAllocated = 0;
+      char derivedIsInitialized = 0;
+
+      void* pNewValue = 0;
+
+      // Initialize pNewValue if possible, otherwise leave at 0:
+      if ((DTRACE_FILE == outputType) && pValue) {
+        derivedIsAllocated = (overrideIsInit ? 1 :
+                              addressIsAllocated((Addr)pValue, sizeof(void*)));
+        if (derivedIsAllocated) {
+          derivedIsInitialized = (overrideIsInit ? 1 :
+                                  addressIsInitialized((Addr)pValue, sizeof(void*)));
+          // Make a single dereference
+          pNewValue = *((void **)pValue);
+        }
+      }
+
+      // Push 1 symbol on stack to represent single elt. dereference:
+      if (kvasir_repair_format) {
+        stringStackPush(fullNameStack, &fullNameStackSize, star);
+      }
+      else {
+        stringStackPush(fullNameStack, &fullNameStackSize, zeroth_elt);
+      }
+
+      visitSingleVar(var,
+                     numDereferences + 1,
+                     pNewValue,
+                     overrideIsInit,
+                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                     outputType,
+                     allowVarDumpToFile,
+                     trace_vars_tree,
+                     disambigOverride,
+                     numStructsDereferenced,
+                     varFuncInfo,
+                     isEnter);
+
+      // Pop 1 symbol off
+      stringStackPop(fullNameStack, &fullNameStackSize);
+    }
+    // 2.) Sequence dereference (can either be static or dynamic
+    // array).  We need to initialize pValueArray and numElts
+    // appropriately and call visitSequence()
+    else {
+      void** pValueArray = 0;
+      UInt numElts = 0;
+      UInt bytesBetweenElts = getBytesBetweenElts(var);
+      UInt i;
+
+      // We only need to set pValueArray and numElts for .dtrace output:
+      if ((DTRACE_FILE == outputType) && pValue) {
+        // Static array:
+        if (VAR_IS_STATIC_ARRAY(var)) {
+          // TODO: Add multi-dimensional array support -
+          // Right now we only look at the first dimension
+
+          // Notice the +1 to convert from upper bound to numElts
+          numElts = 1 + var->upperBounds[0];
+          pValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+
+          VG_(printf)("Static array - numElts: %u\n", numElts);
+
+          // Build up pValueArray with pointers to the elements of the
+          // static array starting at pValue
+          for (i = 0; i < numElts; i++) {
+            pValueArray[i] = pValue + (i * bytesBetweenElts);
+          }
+        }
+        // Dynamic array:
+        else {
+          char derivedIsAllocated = 0;
+          char derivedIsInitialized = 0;
+          void* pNewStartValue = 0;
+
+          derivedIsAllocated = (overrideIsInit ? 1 :
+                                addressIsAllocated((Addr)pValue, sizeof(void*)));
+          if (derivedIsAllocated) {
+            derivedIsInitialized = (overrideIsInit ? 1 :
+                                    addressIsInitialized((Addr)pValue, sizeof(void*)));
+            // Make a single dereference to get to the start of the array
+            pNewStartValue = *((void **)pValue);
+          }
+
+          // We should only initialize pValueArray and numElts if the
+          // pointer to the start of the array is valid:
+          if (pNewStartValue) {
+            // Notice the +1 to convert from upper bound to numElts
+            numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
+            pValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+
+            // Build up pValueArray with pointers starting at pNewStartValue
+            for (i = 0; i < numElts; i++) {
+              pValueArray[i] = pNewStartValue + (i * bytesBetweenElts);
+            }
+          }
+        }
+      }
+
+      // Push 1 symbol on stack to represent sequence dereference:
+      stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+
+      visitSequence(var,
+                    numDereferences + 1,
+                    pValueArray,
+                    numElts,
+                    (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                    outputType,
+                    allowVarDumpToFile,
+                    trace_vars_tree,
+                    disambigOverride,
+                    numStructsDereferenced,
+                    varFuncInfo,
+                    isEnter);
+
+      // Pop 1 symbol off
+      stringStackPop(fullNameStack, &fullNameStackSize);
+
+      // Only free if necessary
+      if (pValueArray) {
+        VG_(free)(pValueArray);
+        pValueArray = 0;
+      }
+    }
+  }
+  // If this is the base type of a struct/union variable after all
+  // dereferences have been done (layersBeforeBase == 0), then visit
+  // all derived member variables:
+  else if (var->varType->isStructUnionType) {
+    tl_assert(0 == layersBeforeBase);
+
+    VarList* memberVars;
+    VarNode* i;
+    DaikonVariable* curVar;
+
+    // Check to see if the VisitedStructsTable contains more than
+    // MAX_VISIT_STRUCT_INSTANCES of the current struct type
+    if (gencontains(VisitedStructsTable, (void*)(var->varType))) {
+      UInt count = (UInt)(gengettable(VisitedStructsTable, (void*)(var->varType)));
+
+      if (count <= MAX_VISIT_STRUCT_INSTANCES) {
+        count++;
+        genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
+      }
+      // PUNT because this struct has appeared more than
+      // MAX_VISIT_STRUCT_INSTANCES times during one call to visitVariable()
+      else {
+        return;
+      }
+    }
+    // If not found in the table, initialize this entry with 1
+    else {
+      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)1);
+    }
+
+    // If we have dereferenced more than
+    // MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE structs, then simply PUNT and
+    // stop deriving variables from it.
+    if (numStructsDereferenced > MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE) {
+      return;
+    }
+
+
+    // Walk down the member variables list and visit each one with the
+    // current struct variable name as the prefix:
+    memberVars = var->varType->memberListPtr;
+    i = 0;
+    curVar = 0;
+
+    // No member variables
+    if(!memberVars || !(memberVars->first))
+      return;
+
+    for (i = memberVars->first; i != 0; i = i->next) {
+      char* top;
+      char numEltsPushedOnStack = 0;
+      // Pointer to the value of the current member variable
+      void* pCurVarValue = 0;
+      curVar = &(i->var);
+      assert(curVar);
+
+      if ((DTRACE_FILE == outputType) && pValue) {
+        // The starting address for the member variable is the
+        // struct's starting address plus the location of the variable
+        // within the struct TODO: Are we sure that arithmetic on
+        // void* basePtrValue adds by 1?  Otherwise, we'd have
+        // mis-alignment issues.  (I tried it in gdb and it seems to
+        // work, though.)
+        pCurVarValue = pValue + curVar->data_member_location;
+
+        // Override for D_DOUBLE types: For some reason, the DWARF2
+        // info.  botches the locations of double variables within
+        // structs, setting their data_member_location fields to give
+        // them only 4 bytes of padding instead of 8 against the next
+        // member variable.  If curVar is a double and there exists a
+        // next member variable such that the difference in
+        // data_member_location of this double and the next member
+        // variable is exactly 4, then decrement the double's location
+        // by 4 in order to give it a padding of 8:
+        if ((D_DOUBLE == curVar->varType->declaredType) &&
+            (i->next) &&
+            ((i->next->var.data_member_location -
+              curVar->data_member_location) == 4)) {
+          pCurVarValue -= 4;
+        }
+      }
+
+      top = stringStackTop(fullNameStack, fullNameStackSize);
+
+      // If the top element is '*' or '[0]', then instead of pushing a
+      // '.' to make '*.' or '[0].', erase that element and instead push
+      // '->'.  If last element is '->', then we're fine and
+      // don't do anything else.  Otherwise, push a '.'
+      if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
+        stringStackPop(fullNameStack, &fullNameStackSize);
+        stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+        numEltsPushedOnStack = 0;
+      }
+      else if (VG_STREQ(top, arrow)) {
+        numEltsPushedOnStack = 0;
+      }
+      else {
+        stringStackPush(fullNameStack, &fullNameStackSize, dot);
+        numEltsPushedOnStack = 1;
+      }
+
+      stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+      numEltsPushedOnStack++;
+
+      visitSingleVar(curVar,
+                     0,
+                     pCurVarValue,
+                     0,
+                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                     outputType,
+                     allowVarDumpToFile,
+                     trace_vars_tree,
+                     OVERRIDE_NONE, // Start over again and read new .disambig entry
+                     numStructsDereferenced + 1, // Notice the +1 here
+                     varFuncInfo,
+                     isEnter);
+
+      // POP everything we've just pushed on
+      while ((numEltsPushedOnStack--) > 0) {
+        stringStackPop(fullNameStack, &fullNameStackSize);
+      }
+    }
+  }
+}
+
+
+// Visit a variable sequence uniquely identified by var and
+// numDereferences whose values are referred to by pointers within
+// pValueArray (of size numElts), and then derive additional variables
+// either by dereferencing pointers or by visiting struct members.
+// This function only calls visitSequence() with the same value of
+// numElts because Daikon only supports one level of sequences.
+static
+void visitSequence(DaikonVariable* var,
+                   UInt numDereferences,
+                   // Array of pointers to the current variable's values
+                   void** pValueArray,
+                   UInt numElts, // Size of pValueArray
+                   VariableOrigin varOrigin,
+                   OutputFileType outputType,
+                   char allowVarDumpToFile,
+                   char* trace_vars_tree, // Binary tree within FunctionTree struct
+                   DisambigOverride disambigOverride,
+                   // The number of structs we have dereferenced for
+                   // a particular call of visitVariable(); Starts at
+                   // 0 and increments every time we hit a variable
+                   // which is a base struct type
+                   // Range: [0, MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE]
+                   UInt numStructsDereferenced,
+                   // These uniquely identify which program point we
+                   // are at (only relevant for DynComp)
+                   DaikonFunctionInfo* varFuncInfo,
+                   char isEnter) {
+
+  char* fullDaikonName = 0;
+  int layersBeforeBase;
+
+  tl_assert(var);
+  layersBeforeBase = var->repPtrLevels - numDereferences;
+  tl_assert(layersBeforeBase >= 0);
+
+  // Special handling for overriding in the presence of .disambig:
+  // Only check this for original (numDereferences == 0) variables
+  // to ensure that it's only checked once per variable
+  if ((0 == numDereferences) &&
+      ((kvasir_disambig_filename && !disambig_writing) ||
+       VG_STREQ("this", var->name))) { // either using .disambig or special C++ 'this'
+    char disambig_letter = disambig_letter = var->disambig;
+
+    // Notice that OVERRIDE_ARRAY_AS_POINTER is not a choice here
+    // because it makes no sense at this point.  All arrays are
+    // overriden as pointer by now because we are already visiting a
+    // sequence and Daikon can only handle 1-D sequences so all
+    // further dereferences must be single pointer dereferences
+    if (disambig_letter) {
+      if (var->repPtrLevels == 0) {
+	// 'C' denotes to print out as a one-character string
+	if (var->isString) { // pointer to "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("String C - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
+	  }
+	  else if ('A' == disambig_letter) {
+	    DPRINTF("String A - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_INT_ARRAY;
+	  }
+	  else if ('P' == disambig_letter) {
+	    DPRINTF("String P - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_STRING_AS_ONE_INT;
+	  }
+	}
+	else if ((D_CHAR == var->varType->declaredType) ||  // "char" or "unsigned char" (or string of chars)
+		 (D_UNSIGNED_CHAR == var->varType->declaredType)) { // "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("Char C - %s\n\n", var->name);
+	    disambigOverride = OVERRIDE_CHAR_AS_STRING;
+	  }
+	}
+      }
+    }
+  }
+
+  // Unless kvasir_output_struct_vars is on,
+  // don't print out an entry for base (non-pointer) struct/union
+  // variables since they have no substantive meaning for C programs.
+  // They are merely represented as hashcode values, and that's kind
+  // of deceiving because they aren't really pointer variables either.
+
+  // This means that anywhere inside of this 'if' statement, we should
+  // be very careful about mutating state because different state may
+  // be mutated based on whether kvasir_output_struct_vars is on,
+  // which may lead to different-looking results.
+  if (kvasir_output_struct_vars ||
+      (!((layersBeforeBase == 0) &&
+         (var->varType->isStructUnionType)))) {
+    UInt i;
+
+    // (Notice that this uses strdup to allocate on the heap)
+    tl_assert(fullNameStackSize > 0);
+    fullDaikonName = stringStackStrdup(fullNameStack, fullNameStackSize);
+
+    // If we are not interested in visiting this variable or its
+    // children, then PUNT:
+    if (!interestedInVar(fullDaikonName, trace_vars_tree)) {
+      VG_(free)(fullDaikonName);
+      return;
+    }
+
+    // Perform the actual output depending on outputType:
+    switch (outputType) {
+    case DECLS_FILE:
+      printDeclsEntry(var, fullDaikonName, varOrigin, allowVarDumpToFile,
+                      layersBeforeBase, 1, disambigOverride,
+                      varFuncInfo, isEnter);
+      //      VG_(printf)(".decls sequence var: %s\n", fullDaikonName);
+      break;
+    case DTRACE_FILE:
+      VG_(printf)(".dtrace sequence var: %s, numElts: %u\n", fullDaikonName, numElts);
+      for (i = 0; i < numElts; i++) {
+        VG_(printf)("  [%u]: %p\n", i, pValueArray[i]);
+      }
+      break;
+    case DISAMBIG_FILE:
+      printDisambigEntry(var, fullDaikonName);
+      // DO NOT DERIVE VARIABLES for .disambig We are only interested
+      // in printing out the variables which are immediately visible
+      // to the user.  Thus, we should RETURN out of the function
+      // altogether instead of simply breaking out of the switch
+      return;
+    case DYNCOMP_EXTRA_PROP:
+      handleDynCompExtraProp(var, layersBeforeBase, varFuncInfo, isEnter);
+      break;
+    case FAUX_DECLS_FILE:
+      // Chill and do nothing here because we're making a dry run :)
+      break;
+    default:
+      VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
+      abort();
+      break;
+    }
+  }
+
+  // We don't need the name anymore since we're done printing
+  // everything about this variable by now
+  VG_(free)(fullDaikonName);
+
+  // Be very careful about where you increment this!  We want to
+  // increment this once per call of either visitSingleVar() or
+  // visitSequence():
+  g_daikonVarIndex++;
+
+
+  // Now comes the fun part of deriving variables!
+
+  // Dereference and keep on printing out derived variables until we
+  // hit the base type.  We want to override the old pointer values
+  // within pValueArray with new pointer values ascertained from
+  // dereferencing each element of the array.  If a particular element
+  // is un-allocated or un-initialized, then mark it with a 0.
+  if (layersBeforeBase > 0) {
+    // TODO: Implement static array flattening
+
+    // We only need to set pValueArray and numElts for .dtrace output:
+    if (DTRACE_FILE == outputType) {
+      // Iterate through pValueArray and dereference each pointer
+      // value if possible, then override the entries in pValueArray
+      // with the dereferenced pointers (use a value of 0 for
+      // unallocated or uninit)
+      UInt i;
+      for (i = 0; i < numElts; i++) {
+        char derivedIsAllocated = 0;
+        char derivedIsInitialized = 0;
+        void** pValueArrayEntry = &pValueArray[i];
+
+        // If this entry is already 0, then skip it
+        if (0 == *pValueArrayEntry) {
+          continue;
+        }
+
+        derivedIsAllocated = addressIsAllocated((Addr)(*pValueArrayEntry), sizeof(void*));
+        if (derivedIsAllocated) {
+          derivedIsInitialized = addressIsInitialized((Addr)(*pValueArrayEntry), sizeof(void*));
+          if (derivedIsInitialized) {
+            // Make a single dereference and override pValueArray
+            // entry with the dereferenced value:
+            *pValueArrayEntry = *((void **)(*pValueArrayEntry));
+          }
+          else {
+            // TODO: We need to somehow mark this entry as 'uninit'
+            *pValueArrayEntry = 0;
+          }
+        }
+        else {
+          // TODO: We need to somehow mark this entry as 'unallocated'
+          *pValueArrayEntry = 0;
+        }
+      }
+    }
+
+    // Push 1 symbol on stack to represent single elt. dereference:
+    if (kvasir_repair_format) {
+      stringStackPush(fullNameStack, &fullNameStackSize, star);
+    }
+    else {
+      stringStackPush(fullNameStack, &fullNameStackSize, zeroth_elt);
+    }
+
+    visitSequence(var,
+                  numDereferences + 1,
+                  pValueArray,
+                  numElts,
+                  (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                  outputType,
+                  allowVarDumpToFile,
+                  trace_vars_tree,
+                  disambigOverride,
+                  numStructsDereferenced,
+                  varFuncInfo,
+                  isEnter);
+
+    // Pop 1 symbol off
+    stringStackPop(fullNameStack, &fullNameStackSize);
+  }
+  // If this is the base type of a struct/union variable after all
+  // dereferences have been done (layersBeforeBase == 0), then visit
+  // all derived member variables:
+  else if (var->varType->isStructUnionType) {
+    tl_assert(0 == layersBeforeBase);
+
+    VarList* memberVars;
+    VarNode* i;
+    DaikonVariable* curVar;
+
+    // Check to see if the VisitedStructsTable contains more than
+    // MAX_VISIT_STRUCT_INSTANCES of the current struct type
+    if (gencontains(VisitedStructsTable, (void*)(var->varType))) {
+      UInt count = (UInt)(gengettable(VisitedStructsTable, (void*)(var->varType)));
+
+      if (count <= MAX_VISIT_STRUCT_INSTANCES) {
+        count++;
+        genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
+      }
+      // PUNT because this struct has appeared more than
+      // MAX_VISIT_STRUCT_INSTANCES times during one call to visitVariable()
+      else {
+        return;
+      }
+    }
+    // If not found in the table, initialize this entry with 1
+    else {
+      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)1);
+    }
+
+    // If we have dereferenced more than
+    // MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE structs, then simply PUNT and
+    // stop deriving variables from it.
+    if (numStructsDereferenced > MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE) {
+      return;
+    }
+
+
+    // Walk down the member variables list and visit each one with the
+    // current struct variable name as the prefix:
+    memberVars = var->varType->memberListPtr;
+    i = 0;
+    curVar = 0;
+
+    // No member variables
+    if(!memberVars || !(memberVars->first))
+      return;
+
+    for (i = memberVars->first; i != 0; i = i->next) {
+      UInt ind;
+      void** pCurVarValueArray = 0;
+      char* top;
+      char numEltsPushedOnStack = 0;
+      curVar = &(i->var);
+      assert(curVar);
+
+      // If a member variable is a statically-sized array which is
+      // smaller than MAXIMUM_ARRAY_SIZE_TO_EXPAND and we have not
+      // already performed array flattening, then we must expand the
+      // member array and print it out in its flattened form with one
+      // set of derived variable for every element in the array:
+      if (VAR_IS_STATIC_ARRAY(curVar) &&
+          (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
+          (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
+          // Ignore arrays of characters (strings) inside of the struct:
+          !(curVar->isString && (curVar->declaredPtrLevels == 1))) {
+        // Only look at the first dimension:
+        UInt arrayIndex;
+        for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++) {
+          char indexStr[5];
+          top = stringStackTop(fullNameStack, fullNameStackSize);
+
+          sprintf(indexStr, "%d", arrayIndex);
+
+          // TODO: Subtract and add is a HACK!  Subtract one from the
+          // type of curVar just because we are looping through and
+          // expanding the array
+          if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
+            int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            count--;
+            genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
+          }
+
+          if (DTRACE_FILE == outputType) {
+            // Create pCurVarValueArray to be the same size as pValueArray:
+            pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+
+            // Iterate though pValueArray and fill up
+            // pCurVarValueArray with pointer values offset by the
+            // location of the member variable within the struct plus
+            // the offset given by the array index of the flattened array:
+            for (ind = 0; ind < numElts; ind++) {
+              // The starting address for the member variable is the
+              // struct's starting address plus the location of the
+              // variable within the struct
+              if (pValueArray[ind]) {
+                void* pCurVarValue = pValueArray[ind] + curVar->data_member_location;
+
+                // Override for D_DOUBLE types: For some reason, the DWARF2
+                // info.  botches the locations of double variables within
+                // structs, setting their data_member_location fields to give
+                // them only 4 bytes of padding instead of 8 against the next
+                // member variable.  If curVar is a double and there exists a
+                // next member variable such that the difference in
+                // data_member_location of this double and the next member
+                // variable is exactly 4, then decrement the double's location
+                // by 4 in order to give it a padding of 8:
+                if ((D_DOUBLE == curVar->varType->declaredType) &&
+                    (i->next) &&
+                    ((i->next->var.data_member_location -
+                      curVar->data_member_location) == 4)) {
+                  pCurVarValue -= 4;
+                }
+
+                // Very important!  Add the offset within the
+                // flattened array:
+                pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
+
+                // Now assign that value into pCurVarValueArray:
+                pCurVarValueArray[ind] = pCurVarValue;
+              }
+              // If the original entry was 0, then simply copy 0, which
+              // propagates uninit/unallocated status from structs to
+              // members.
+              else {
+                pCurVarValueArray[ind] = 0;
+              }
+            }
+          }
+
+          // If the top element is '*', then instead of pushing a
+          // '.' to make '*.', erase that element and instead push
+          // '->'.  If last element is '->', then we're fine and
+          // don't do anything else.  Otherwise, push a '.'
+          if (top[0] == '*') {
+            stringStackPop(fullNameStack, &fullNameStackSize);
+            stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+            numEltsPushedOnStack = 0;
+          }
+          else if (VG_STREQ(top, arrow)) {
+            numEltsPushedOnStack = 0;
+          }
+          else {
+            stringStackPush(fullNameStack, &fullNameStackSize, dot);
+            numEltsPushedOnStack = 1;
+          }
+
+          stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+          stringStackPush(fullNameStack, &fullNameStackSize, "[");
+          stringStackPush(fullNameStack, &fullNameStackSize, indexStr);
+          stringStackPush(fullNameStack, &fullNameStackSize, "]");
+
+          numEltsPushedOnStack += 4;
+
+          visitSequence(curVar,
+                        0,
+                        pCurVarValueArray,
+                        numElts,
+                        DERIVED_FLATTENED_ARRAY_VAR,
+                        outputType,
+                        allowVarDumpToFile,
+                        trace_vars_tree,
+                        OVERRIDE_NONE,
+                        numStructsDereferenced + 1, // Notice the +1 here
+                        varFuncInfo,
+                        isEnter);
+
+          // POP all the stuff we pushed on there before
+          while ((numEltsPushedOnStack--) > 0) {
+            stringStackPop(fullNameStack, &fullNameStackSize);
+          }
+
+          // HACK: Add the count back on at the end
+          if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
+            int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            count++;
+            genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
+          }
+
+          // Only free if necessary
+          if (pCurVarValueArray) {
+            VG_(free)(pCurVarValueArray);
+            pCurVarValueArray = 0;
+          }
+        }
+      }
+      // Regular member variable (without array flattening):
+      else {
+
+        if (DTRACE_FILE == outputType) {
+          // Create pCurVarValueArray to be the same size as pValueArray:
+          pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+
+          // Iterate though pValueArray and fill up pCurVarValueArray
+          // with pointer values offset by the location of the member
+          // variable within the struct:
+          for (ind = 0; ind < numElts; ind++) {
+            // The starting address for the member variable is the
+            // struct's starting address plus the location of the
+            // variable within the struct TODO: Are we sure that
+            // arithmetic on void* basePtrValue adds by 1?  Otherwise,
+            // we'd have mis-alignment issues.  (I tried it in gdb and
+            // it seems to work, though.)
+            if (pValueArray[ind]) {
+              void* pCurVarValue = pValueArray[ind] + curVar->data_member_location;
+
+              // Override for D_DOUBLE types: For some reason, the DWARF2
+              // info.  botches the locations of double variables within
+              // structs, setting their data_member_location fields to give
+              // them only 4 bytes of padding instead of 8 against the next
+              // member variable.  If curVar is a double and there exists a
+              // next member variable such that the difference in
+              // data_member_location of this double and the next member
+              // variable is exactly 4, then decrement the double's location
+              // by 4 in order to give it a padding of 8:
+              if ((D_DOUBLE == curVar->varType->declaredType) &&
+                  (i->next) &&
+                  ((i->next->var.data_member_location -
+                    curVar->data_member_location) == 4)) {
+                pCurVarValue -= 4;
+              }
+
+              // Now assign that value into pCurVarValueArray:
+              pCurVarValueArray[ind] = pCurVarValue;
+            }
+            // If the original entry was 0, then simply copy 0, which
+            // propagates uninit/unallocated status from structs to
+            // members.
+            else {
+              pCurVarValueArray[ind] = 0;
+            }
+          }
+        }
+
+        top = stringStackTop(fullNameStack, fullNameStackSize);
+
+        // If the top element is '*' or '[0]', then instead of pushing a
+        // '.' to make '*.' or '[0].', erase that element and instead push
+        // '->'.  If last element is '->', then we're fine and
+        // don't do anything else.  Otherwise, push a '.'
+        if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
+          stringStackPop(fullNameStack, &fullNameStackSize);
+          stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+          numEltsPushedOnStack = 0;
+        }
+        else if (VG_STREQ(top, arrow)) {
+          numEltsPushedOnStack = 0;
+        }
+        else {
+          stringStackPush(fullNameStack, &fullNameStackSize, dot);
+          numEltsPushedOnStack = 1;
+        }
+
+        stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+        numEltsPushedOnStack++;
+
+        visitSequence(curVar,
+                      0,
+                      pCurVarValueArray,
+                      numElts,
+                      (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                      outputType,
+                      allowVarDumpToFile,
+                      trace_vars_tree,
+                      OVERRIDE_NONE,
+                      numStructsDereferenced + 1, // Notice the +1 here
+                      varFuncInfo,
+                      isEnter);
+
+        // POP everything we've just pushed on
+        while ((numEltsPushedOnStack--) > 0) {
+          stringStackPop(fullNameStack, &fullNameStackSize);
+        }
+
+        // Only free if necessary
+        if (pCurVarValueArray) {
+          VG_(free)(pCurVarValueArray);
+          pCurVarValueArray = 0;
+        }
+      }
+    }
+  }
+}
+
+
+/* END   - Functions for visiting variables at every program point */
+
+
 
 // THIS IS THE MAIN DECLS AND DTRACE OUTPUT FUNCTION!!!
 // Prints one DaikonVariable variable and all of its derived
@@ -1959,9 +3015,6 @@ void outputDaikonVar(DaikonVariable* var,
   if (kvasir_output_struct_vars ||
       (!((layersBeforeBase == 0) &&
          (var->varType->isStructUnionType)))) {
-
-    // .decls, .dtrace, and .disambig files -
-    //  Line 1: Print out variable name
 
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);

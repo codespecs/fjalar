@@ -22,6 +22,10 @@
 #include "disambig.h"
 #include <stdio.h>
 
+// Un-comment to use experimental code for visiting variables:
+// e.g., visitVariable(), visitSingleVar(), visitSequence()
+//#define USE_EXP_VISIT_CODE
+
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
 int g_daikonVarIndex;
@@ -124,5 +128,17 @@ void outputDaikonVar(DaikonVariable* var,
 		     char structParentAlreadySetArrayInfo,
                      int numStructsDereferenced,
                      DaikonFunctionInfo* varFuncInfo, char isEnter);
+
+
+
+void visitVariable(DaikonVariable* var,
+                   void* pValue,
+                   char overrideIsInit,
+                   VariableOrigin varOrigin,
+                   OutputFileType outputType,
+                   char allowVarDumpToFile,
+                   char* trace_vars_tree,
+                   DaikonFunctionInfo* varFuncInfo,
+                   char isEnter);
 
 #endif
