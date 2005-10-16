@@ -1618,7 +1618,7 @@ static void printDeclsEntry(DaikonVariable* var,
 // /foo                 <-- variable name
 // "hello world"        <-- value
 // 1                    <-- modbit
-static void printDtraceEntry(DaikonVariable* var,
+static void printDtraceEntryOld(DaikonVariable* var,
                              char* varName,
                              VariableOrigin varOrigin,
                              int numDereferences,
@@ -1718,6 +1718,124 @@ static void printDtraceEntry(DaikonVariable* var,
   // has been observed and whether it refers to 1 or multiple elements
   if ((1 == numDereferences) && variableHasBeenObserved) {
     if (printAsSequence && (upperBound > 0)) {
+      //	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
+      var->disambigMultipleElts = 1;
+    }
+
+    // If pointerHasEverBeenObserved is not set, then set it
+    if (!var->pointerHasEverBeenObserved) {
+      var->pointerHasEverBeenObserved = 1;
+    }
+  }
+}
+
+static void printDtraceEntry(DaikonVariable* var,
+                             UInt numDereferences,
+                             char* varName,
+                             void* pValue,
+                             VariableOrigin varOrigin,
+                             char isHashcode,
+                             char overrideIsInit,
+                             DisambigOverride disambigOverride,
+                             char isSequence,
+                             // pValueArray and numElts only valid if
+                             // isSequence non-null
+                             void** pValueArray,
+                             UInt numElts,
+                             DaikonFunctionInfo* varFuncInfo,
+                             char isEnter) {
+  char variableHasBeenObserved = 0;
+  int layersBeforeBase = var->repPtrLevels - numDereferences;
+  tl_assert(layersBeforeBase >= 0);
+
+  // Line 1: Variable name
+  printVariableName(varName, 0, dtrace_fp);
+
+  // Lines 2 & 3: Value and modbit
+  if (isSequence) {
+    variableHasBeenObserved =
+      printDtraceSequence(var,
+                          pValueArray,
+                          numElts,
+                          varOrigin,
+                          isHashcode,
+                          disambigOverride);
+  }
+  else {
+    variableHasBeenObserved =
+      printDtraceSingleVar(var,
+                           pValue,
+                           varOrigin,
+                           isHashcode,
+                           overrideIsInit,
+                           disambigOverride);
+  }
+
+  // DynComp post-processing after observing a variable:
+  if (kvasir_with_dyncomp && variableHasBeenObserved) {
+    Addr a;
+
+    // Special handling for static arrays: Currently, in the
+    // .dtrace, for a static arrays 'int foo[]', we print out
+    // 'foo' as the address of foo and 'foo[]' as the contents of
+    // 'foo'.  However, for comparability, there is no place in
+    // memory where the address of 'foo' is maintained; thus,
+    // there is no tag for it anywhere, so we must not
+    // post-process it and simply allow it to keep a tag of 0.
+    // This implies that all static array hashcode values are
+    // unique and not comparable to one another, which is the
+    // intended behavior.  (Notice that if one wants to assign a
+    // pointer to 'foo', then the address of 'foo' resides
+    // somewhere in memory - where that pointer is located - and
+    // thus gets a fresh tag.  One can then have that pointer
+    // interact with other pointers and have THEM be comparable,
+    // but 'foo' itself still has no tag and is not comparable to
+    // anything else.)
+
+    // Don't do anything if this condition holds:
+    // (layersBeforeBase > 0) is okay since var->isStaticArray implies
+    // that there is only one level of pointer indirection, and for a
+    // static string (static array of 'char'), layersBeforeBase == 0
+    // right away so we still process it
+    if (!(var->isStaticArray &&
+          (layersBeforeBase > 0))) {
+
+      // Special handling for strings.  We are not interested in the
+      // comparability of the 'char*' pointer variable, but rather
+      // we are interested in the comparability of the CONTENTS of
+      // the string.  (Be careful about statically-declared strings,
+      // in which case the address of the first element is the address
+      // of the pointer variable)
+      if (var->isString &&
+          (0 == layersBeforeBase)) {
+        // Depends on whether the variable is a static array or not:
+        a = var->isStaticArray ?
+          (Addr)pValue :
+          *((Addr*)(pValue));
+      }
+      else {
+        a = (Addr)pValue;
+      }
+
+      DYNCOMP_DPRINTF("%s (%d) ", varName, g_daikonVarIndex);
+      DC_post_process_for_variable(varFuncInfo,
+                                   isEnter,
+                                   g_daikonVarIndex,
+                                   a);
+    }
+  }
+
+
+  // While observing the runtime values,
+  // set var->disambigMultipleElts and
+  // var->pointerHasEverBeenObserved depending on whether
+  // upperBound == 0 (1 element) or not and whether
+  // variableHasBeenObserved:
+  // We do this only when numDereferences == 1 because
+  // we want to see if the target of a particular pointer
+  // has been observed and whether it refers to 1 or multiple elements
+  if ((1 == numDereferences) && variableHasBeenObserved) {
+    if (isSequence && (numElts > 0)) {
       //	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
       var->disambigMultipleElts = 1;
     }
@@ -1834,8 +1952,8 @@ static void handleDynCompExtraProp(DaikonVariable* var,
 
 /* END   - Helper functions for outputDaikonVar() */
 
-
-/* BEGIN - Functions for visiting variables at every program point */
+/* BEGIN experimental code - activated by USE_EXP_VISIT_CODE */
+/* Functions for visiting variables at every program point */
 
 // Returns 1 if we are interested in visiting this variable and its
 // children, 0 otherwise.  No children of this variable will get
@@ -2066,10 +2184,22 @@ void visitSingleVar(DaikonVariable* var,
       printDeclsEntry(var, fullDaikonName, varOrigin, allowVarDumpToFile,
                       layersBeforeBase, 0, disambigOverride,
                       varFuncInfo, isEnter);
-      //      VG_(printf)(".decls var: %s\n", fullDaikonName);
       break;
     case DTRACE_FILE:
-      VG_(printf)(".dtrace var: %s, pValue: %p\n", fullDaikonName, pValue);
+      printDtraceEntry(var,
+                       numDereferences,
+                       fullDaikonName,
+                       pValue,
+                       varOrigin,
+                       (layersBeforeBase > 0),
+                       overrideIsInit,
+                       disambigOverride,
+                       0, // NOT isSequence
+                       0,
+                       0,
+                       varFuncInfo,
+                       isEnter);
+      //      VG_(printf)(".dtrace var: %s, pValue: %p\n", fullDaikonName, pValue);
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
@@ -2367,6 +2497,7 @@ void visitSingleVar(DaikonVariable* var,
 // either by dereferencing pointers or by visiting struct members.
 // This function only calls visitSequence() with the same value of
 // numElts because Daikon only supports one level of sequences.
+// Pre: varOrigin == {DERIVED_VAR, DERIVED_FLATTENED_ARRAY_VAR}
 static
 void visitSequence(DaikonVariable* var,
                    UInt numDereferences,
@@ -2395,6 +2526,8 @@ void visitSequence(DaikonVariable* var,
   tl_assert(var);
   layersBeforeBase = var->repPtrLevels - numDereferences;
   tl_assert(layersBeforeBase >= 0);
+  tl_assert((DERIVED_VAR == varOrigin) ||
+            (DERIVED_FLATTENED_ARRAY_VAR == varOrigin));
 
   // Special handling for overriding in the presence of .disambig:
   // Only check this for original (numDereferences == 0) variables
@@ -2472,10 +2605,23 @@ void visitSequence(DaikonVariable* var,
       //      VG_(printf)(".decls sequence var: %s\n", fullDaikonName);
       break;
     case DTRACE_FILE:
-      VG_(printf)(".dtrace sequence var: %s, numElts: %u\n", fullDaikonName, numElts);
-      for (i = 0; i < numElts; i++) {
-        VG_(printf)("  [%u]: %p\n", i, pValueArray[i]);
-      }
+      printDtraceEntry(var,
+                       numDereferences,
+                       fullDaikonName,
+                       0,
+                       varOrigin,
+                       (layersBeforeBase > 0),
+                       0,
+                       disambigOverride,
+                       1, // YES isSequence
+                       pValueArray,
+                       numElts,
+                       varFuncInfo,
+                       isEnter);
+      //      VG_(printf)(".dtrace sequence var: %s, numElts: %u\n", fullDaikonName, numElts);
+      //      for (i = 0; i < numElts; i++) {
+      //        VG_(printf)("  [%u]: %p\n", i, pValueArray[i]);
+      //      }
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
@@ -2862,9 +3008,7 @@ void visitSequence(DaikonVariable* var,
   }
 }
 
-
-/* END   - Functions for visiting variables at every program point */
-
+/* END   experimental code - activated by USE_EXP_VISIT_CODE */
 
 
 // THIS IS THE MAIN DECLS AND DTRACE OUTPUT FUNCTION!!!
@@ -3056,7 +3200,7 @@ void outputDaikonVar(DaikonVariable* var,
                       varFuncInfo, isEnter);
       break;
     case DTRACE_FILE:
-      printDtraceEntry(var, fullDaikonName, varOrigin, numDereferences,
+      printDtraceEntryOld(var, fullDaikonName, varOrigin, numDereferences,
                        basePtrValue, overrideIsInitialized, isDummy,
                        layersBeforeBase, printAsSequence, upperBound,
                        bytesBetweenElts, disambigOverride, varFuncInfo,
