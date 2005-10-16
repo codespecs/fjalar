@@ -1240,22 +1240,35 @@ char printDtraceBaseValue(DaikonVariable* var,
 
 /* BEGIN experimental code - activated by USE_EXP_VISIT_CODE */
 
+// TODO: We are not handling any of the kvasir_use_bit_level_precision
+// stuff here at all because it's too much work for now without many
+// visible benefits.
+
 #define DTRACE_PRINT_ONE_VAR(TYPE) \
   DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pValue)));
 
-#define DTRACE_BIT_LEVEL_PRINT_ONE_VAR(TYPE) \
-  apply_mask_to_bytes((char*)pValue, TYPE_BYTE_SIZES[decType]);   \
-  PRINT_GLOBAL_TEMP_VAR(TYPE);
-
+#define DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE(TYPE) \
+  DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pCurValue)));
 
 static char printDtraceSingleBaseValue(void* pValue,
                                        DaikonDeclaredType decType,
                                        char overrideIsInit,
                                        DisambigOverride disambigOverride);
 
+static void printDtraceBaseValueSequence(void* pValue,
+                                         DaikonDeclaredType decType,
+                                         void** pValueArray,
+                                         UInt numElts,
+                                         DisambigOverride disambigOverride);
+
 static void printDtraceSingleString(char* actualString,
                                     DisambigOverride disambigOverride);
 
+
+static void printDtraceStringSequence(DaikonVariable* var,
+                                      void** pValueArray,
+                                      UInt numElts,
+                                      DisambigOverride disambigOverride);
 
 // Prints a .dtrace entry for a single variable value denoted by
 // pValue.  Returns 1 if variable successfully observed and printed,
@@ -1266,11 +1279,6 @@ char printDtraceSingleVar(DaikonVariable* var,
                           char isHashcode,
                           char overrideIsInit,
                           DisambigOverride disambigOverride) {
-  // override float as double when printing
-  // out function return variables because
-  // return variables stored in %EAX are always doubles
-  char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
-
   char allocated = 0;
   char initialized = 0;
 
@@ -1311,57 +1319,49 @@ char printDtraceSingleVar(DaikonVariable* var,
   // From this point onwards we know that pValue is safe to
   // dereference because it has been both allocated and initialized
 
-  // First check to see if we have a pointer or a string, both of
-  // which have the danger of being sloppily dereferenced to cause a
-  // nasty segfault
-  if (isHashcode || var->isString) {
-    // Pointer (put this check first before the var->isString check so
-    // that it will work even for pointers to strings):
-    if (isHashcode) {
-      // Be careful of what to print depending on whether the
-      // variable is a static array:
-      // TODO: What about a pointer to a static array?
-      //       var->isStaticArray says that the base variable is a
-      //       static array after all dereferences are done.
-      DTRACE_PRINTF("%u\n%d\n",
-                    var->isStaticArray ? (Addr)pValue : *((Addr*)pValue),
-                    mapInitToModbit(1));
+  // Pointer (put this check first before the var->isString check so
+  // that it will work even for pointers to strings):
+  if (isHashcode) {
+    // Be careful of what to print depending on whether the
+    // variable is a static array:
+    // TODO: What about a pointer to a static array?
+    //       var->isStaticArray says that the base variable is a
+    //       static array after all dereferences are done.
+    DTRACE_PRINTF("%u\n%d\n",
+                  var->isStaticArray ? (Addr)pValue : *((Addr*)pValue),
+                  mapInitToModbit(1));
 
-      // Since we observed all of these bytes as one value, we will
-      // merge all of their tags in memory
-      if (kvasir_with_dyncomp) {
-        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
-                        pValue, sizeof(void*));
-        val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
-      }
+    // Since we observed all of these bytes as one value, we will
+    // merge all of their tags in memory
+    if (kvasir_with_dyncomp) {
+      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                      pValue, sizeof(void*));
+      val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
     }
-    else if (var->isString) {
-      char stringReadable = 0;
+  }
+  // String (not pointer to string)
+  else if (var->isString) {
+    char stringReadable = 0;
 
-      // Depends on whether the variable is a static array or not:
-      char* actualString = (var->isStaticArray ?
-                            pValue :
-                            *((char**)pValue));
+    // Depends on whether the variable is a static array or not:
+    char* actualString = (var->isStaticArray ?
+                          pValue :
+                          *((char**)pValue));
 
-      // If this address hasn't been initialized to anything valid,
-      // then we shouldn't try to do anything further with it because
-      // it's garbage!!!
-      stringReadable = checkStringReadable(actualString);
+    // If this address hasn't been initialized to anything valid,
+    // then we shouldn't try to do anything further with it because
+    // it's garbage!!!
+    stringReadable = checkStringReadable(actualString);
 
-      if (stringReadable) {
-        printDtraceSingleString(actualString,
-                                disambigOverride);
-      }
-      else {
-        DTRACE_PRINTF("%s\n%d\n",
-                      UNINIT,
-                      mapInitToModbit(0));
-        return 0;
-      }
+    if (stringReadable) {
+      printDtraceSingleString(actualString,
+                              disambigOverride);
     }
     else {
-      VG_(printf)( "outputDtraceValue() - Unreachable code reached!\n");
-      abort();
+      DTRACE_PRINTF("%s\n%d\n",
+                    UNINIT,
+                    mapInitToModbit(0));
+      return 0;
     }
   }
   // Base (non-hashcode) struct or union type
@@ -1374,6 +1374,11 @@ char printDtraceSingleVar(DaikonVariable* var,
   // Base type
   else {
     DaikonDeclaredType decType = var->varType->declaredType;
+
+    // override float as double when printing
+    // out function return variables because
+    // return variables stored in %EAX are always doubles
+    char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
 
     if (overrideFloatAsDouble && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
@@ -1402,7 +1407,144 @@ char printDtraceSequence(DaikonVariable* var,
                          VariableOrigin varOrigin,
                          char isHashcode,
                          DisambigOverride disambigOverride) {
-  return 0;
+  int i;
+  char somethingInit = 0;
+
+  assert(var);
+
+  // a pValueArray of 0 or numElts of 0 means nonsensical because
+  // there is no content to dereference:
+  if (!pValueArray || !numElts) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  NONSENSICAL,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+  // If all elements of pValueArray are 0, then this also means
+  // nonsensical because there is no content to dereference:
+  for (i = 0; i < numElts; i++) {
+    if (pValueArray[i]) {
+      somethingInit = 1;
+      break;
+    }
+  }
+  if (!somethingInit) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  NONSENSICAL,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+
+  // Pointer (put this check first before the var->isString check so
+  // that it will work even for pointers to strings):
+  if (isHashcode) {
+      int limit = numElts;
+      if (kvasir_array_length_limit != -1) {
+        limit = min(limit, kvasir_array_length_limit);
+      }
+
+      DTRACE_PRINTF( "[ ");
+
+      for (i = 0; i < limit; i++) {
+        void* pCurValue = pValueArray[i];
+
+        // Check if it's allocated & initialized.  If not, print out a
+        // 'null'
+        char eltAllocAndInit =
+          (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
+           addressIsInitialized((Addr)pCurValue, sizeof(void*)));
+
+        if (eltAllocAndInit) {
+          DTRACE_PRINTF("%u ", var->isStaticArray ?
+                        (Addr)pCurValue :
+                        *((Addr*)pCurValue));
+
+          // Merge the tags of the 4-bytes of the observed pointer as
+          // well as the tags of the first address and the current
+          // address because we are observing everything as a sequence
+          if (kvasir_with_dyncomp) {
+            DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                            pCurValue, sizeof(void*));
+            val_uf_union_tags_in_range((Addr)pCurValue, sizeof(void*));
+            // TODO: This assumes that the 0th element was valid - we
+            // should really merge it with the first valid element:
+            val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+          }
+        }
+        else {
+          DTRACE_PRINTF("null");
+        }
+
+        DTRACE_PRINTF(" ");
+      }
+
+      DTRACE_PRINTF( "]\n%d\n",
+                     mapInitToModbit(1));
+  }
+  // String (not pointer to string)
+  else if (var->isString) {
+    printDtraceStringSequence(var,
+                              pValueArray,
+                              numElts,
+                              disambigOverride);
+  }
+  // Base (non-hashcode) struct or union type
+  // Simply print out its hashcode location
+  else if (var->varType->isStructUnionType) {
+    int limit = numElts;
+    if (kvasir_array_length_limit != -1) {
+      limit = min(limit, kvasir_array_length_limit);
+    }
+
+    DTRACE_PRINTF( "[ ");
+
+    for (i = 0; i < limit; i++) {
+      void* pCurValue = pValueArray[i];
+      DTRACE_PRINTF("%u ", (Addr)pCurValue);
+
+      // Merge the tags of the 4-bytes of the observed pointer as
+      // well as the tags of the first address and the current
+      // address because we are observing everything as a sequence
+      if (kvasir_with_dyncomp) {
+        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                        pCurValue, sizeof(void*));
+        val_uf_union_tags_in_range((Addr)pCurValue, sizeof(void*));
+        // TODO: This assumes that the 0th element was valid - we
+        // should really merge it with the first valid element:
+        val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+      }
+    }
+
+    DTRACE_PRINTF( "]\n%d\n",
+                   mapInitToModbit(1));
+  }
+  // Base type
+  else {
+    DaikonDeclaredType decType = var->varType->declaredType;
+
+    // override float as double when printing
+    // out function return variables because
+    // return variables stored in %EAX are always doubles
+    char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
+
+    if (overrideFloatAsDouble && (decType == D_FLOAT)) {
+      decType = D_DOUBLE;
+    }
+    else if (overrideFloatAsDouble && (decType == D_UNSIGNED_FLOAT)) {
+      decType = D_UNSIGNED_DOUBLE;
+    }
+
+    printDtraceBaseValueSequence(var,
+                                 decType,
+                                 pValueArray,
+                                 numElts,
+                                 disambigOverride);
+  }
+
+  // Default return value:
+  return 1;
 }
 
 
@@ -1450,10 +1592,7 @@ char printDtraceSingleBaseValue(void* pValue,
       DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
     }
     else {
-      DPRINTF("In single-value branch\n");
-      if (kvasir_use_bit_level_precision) {
-        TYPES_SWITCH(DTRACE_BIT_LEVEL_PRINT_ONE_VAR)}
-      else {TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)}
+      TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
         DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
@@ -1472,6 +1611,56 @@ char printDtraceSingleBaseValue(void* pValue,
                   mapInitToModbit(0));
     return 0;
   }
+}
+
+static
+void printDtraceBaseValueSequence(void* pValue,
+                                  DaikonDeclaredType decType,
+                                  void** pValueArray,
+                                  UInt numElts,
+                                  DisambigOverride disambigOverride) {
+  int i = 0;
+  int limit = numElts;
+  if (kvasir_array_length_limit != -1) {
+    limit = min(limit, kvasir_array_length_limit);
+  }
+
+  DTRACE_PRINTF( "[ ");
+
+  for (i = 0; i < limit; i++) {
+    void* pCurValue = pValueArray[i];
+
+    // Check if it's allocated & initialized.  If not, print out a
+    // 'null'
+    char eltAllocAndInit =
+      (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
+       addressIsInitialized((Addr)pCurValue, sizeof(void*)));
+
+    if (eltAllocAndInit) {
+      // Special case for .disambig:
+      if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
+        printOneCharAsDtraceString(*((char*)pValue));
+        DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
+      }
+      else {
+        TYPES_SWITCH(DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE)
+
+          if (kvasir_with_dyncomp) {
+            val_uf_union_tags_in_range((Addr)pCurValue, TYPE_BYTE_SIZES[decType]);
+            // TODO: This assumes that the 0th element was valid - we
+            // should really merge it with the first valid element:
+            val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+          }
+      }
+    }
+    else {
+      DTRACE_PRINTF("null");
+    }
+    DTRACE_PRINTF(" ");
+  }
+
+  DTRACE_PRINTF("]\n%d\n",
+                mapInitToModbit(1));
 }
 
 // Pre: pValue is an initialized null-terminated C string
@@ -1493,6 +1682,67 @@ void printDtraceSingleString(char* actualString,
   }
 
   DTRACE_PRINTF("\n%d\n",
+                mapInitToModbit(1));
+}
+
+static
+void printDtraceStringSequence(DaikonVariable* var,
+                               void** pValueArray,
+                               UInt numElts,
+                               DisambigOverride disambigOverride) {
+  int i = 0;
+  int limit = numElts;
+  if (kvasir_array_length_limit != -1) {
+    limit = min(limit, kvasir_array_length_limit);
+  }
+
+  DTRACE_PRINTF( "[ ");
+
+  for (i = 0; i < limit; i++) {
+    char* pCurValue = (char*)pValueArray[i];
+    // Check if the whole string is legit
+    char ptrReadable = addressIsInitialized((Addr)pCurValue, sizeof(char*));
+
+    if (ptrReadable) {
+      // TODO: Check over accuracy of this later:
+      if (kvasir_with_dyncomp) {
+        // TODO: This assumes that the 0th element was valid - we
+        // should really merge it with the first valid element:
+        val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+      }
+
+      if (!(var->isStaticArray) || var->isGlobal) {
+        pCurValue = *(char**)pCurValue;
+      }
+
+      if (checkStringReadable(pCurValue)) {
+        if (OVERRIDE_STRING_AS_ONE_CHAR_STRING == disambigOverride) {
+          printOneCharAsDtraceString(pCurValue[0]);
+        }
+        // Daikon doesn't support nested sequences like this:
+        // [ [ 1 2 3 ] [ 4 5 6 ] [ 7 8 9 ] ]
+        // so we must resort to only printing out the first entry of each
+        // array like [ 1 4 7 ]
+        else if ((OVERRIDE_STRING_AS_ONE_INT == disambigOverride) ||
+                 (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride)) {
+          char intToPrint = pCurValue[0];
+          DTRACE_PRINTF( "%d", intToPrint);
+        }
+        else {
+          printOneDtraceString(pCurValue);
+        }
+      }
+      else {
+        DTRACE_PRINTF( "null");
+      }
+    }
+    else {
+      DTRACE_PRINTF( "null");
+    }
+    DTRACE_PRINTF( " ");
+  }
+
+  DTRACE_PRINTF("]\n%d\n",
                 mapInitToModbit(1));
 }
 
