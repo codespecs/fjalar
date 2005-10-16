@@ -1773,7 +1773,17 @@ static void printDtraceEntry(DaikonVariable* var,
 
   // DynComp post-processing after observing a variable:
   if (kvasir_with_dyncomp && variableHasBeenObserved) {
-    Addr a;
+    Addr a = 0;
+    void* ptrInQuestion = 0;
+    char ptrAllocAndInit = 0;
+
+    // Pick the first one from the sequence
+    if (isSequence) {
+      ptrInQuestion = pValueArray[0];
+    }
+    else {
+      ptrInQuestion = pValue;
+    }
 
     // Special handling for static arrays: Currently, in the
     // .dtrace, for a static arrays 'int foo[]', we print out
@@ -1808,13 +1818,21 @@ static void printDtraceEntry(DaikonVariable* var,
       // of the pointer variable)
       if (var->isString &&
           (0 == layersBeforeBase)) {
-        // Depends on whether the variable is a static array or not:
-        a = var->isStaticArray ?
-          (Addr)pValue :
-          *((Addr*)(pValue));
+        if (ptrInQuestion) {
+          ptrAllocAndInit =
+            (addressIsAllocated((Addr)ptrInQuestion, sizeof(void*)) &&
+             addressIsInitialized((Addr)ptrInQuestion, sizeof(void*)));
+        }
+
+        if (ptrAllocAndInit) {
+          // Depends on whether the variable is a static array or not:
+          a = var->isStaticArray ?
+            (Addr)ptrInQuestion :
+            *((Addr*)(ptrInQuestion));
+        }
       }
       else {
-        a = (Addr)pValue;
+        a = (Addr)ptrInQuestion;
       }
 
       DYNCOMP_DPRINTF("%s (%d) ", varName, g_daikonVarIndex);
@@ -1835,8 +1853,7 @@ static void printDtraceEntry(DaikonVariable* var,
   // we want to see if the target of a particular pointer
   // has been observed and whether it refers to 1 or multiple elements
   if ((1 == numDereferences) && variableHasBeenObserved) {
-    if (isSequence && (numElts > 0)) {
-      //	if (!disambigOverrideArrayAsPointer && (upperBound > 0)) {
+    if (isSequence && (numElts > 1)) {
       var->disambigMultipleElts = 1;
     }
 
@@ -2170,7 +2187,6 @@ void visitSingleVar(DaikonVariable* var,
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
     fullDaikonName = stringStackStrdup(fullNameStack, fullNameStackSize);
-    VG_(printf)("-- %s\n", fullDaikonName);
     // If we are not interested in visiting this variable or its
     // children, then PUNT:
     if (!interestedInVar(fullDaikonName, trace_vars_tree)) {
@@ -2199,7 +2215,6 @@ void visitSingleVar(DaikonVariable* var,
                        0,
                        varFuncInfo,
                        isEnter);
-      //      VG_(printf)(".dtrace var: %s, pValue: %p\n", fullDaikonName, pValue);
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
@@ -2583,7 +2598,6 @@ void visitSequence(DaikonVariable* var,
   if (kvasir_output_struct_vars ||
       (!((layersBeforeBase == 0) &&
          (var->varType->isStructUnionType)))) {
-    UInt i;
 
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
@@ -2602,7 +2616,6 @@ void visitSequence(DaikonVariable* var,
       printDeclsEntry(var, fullDaikonName, varOrigin, allowVarDumpToFile,
                       layersBeforeBase, 1, disambigOverride,
                       varFuncInfo, isEnter);
-      //      VG_(printf)(".decls sequence var: %s\n", fullDaikonName);
       break;
     case DTRACE_FILE:
       printDtraceEntry(var,
@@ -2618,10 +2631,6 @@ void visitSequence(DaikonVariable* var,
                        numElts,
                        varFuncInfo,
                        isEnter);
-      //      VG_(printf)(".dtrace sequence var: %s, numElts: %u\n", fullDaikonName, numElts);
-      //      for (i = 0; i < numElts; i++) {
-      //        VG_(printf)("  [%u]: %p\n", i, pValueArray[i]);
-      //      }
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
