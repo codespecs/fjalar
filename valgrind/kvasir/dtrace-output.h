@@ -67,4 +67,21 @@ char printDtraceBaseValue(DaikonVariable* var,
 			  unsigned long bytesBetweenElts,
 			  DisambigOverride disambigOverride);
 
+
+
+char printDtraceSingleVar(DaikonVariable* var,
+                          void* pValue,
+                          VariableOrigin varOrigin,
+                          char isHashcode,
+                          char overrideIsInit,
+                          DisambigOverride disambigOverride);
+
+char printDtraceSequence(DaikonVariable* var,
+                         void** pValueArray,
+                         UInt numElts,
+                         VariableOrigin varOrigin,
+                         char isHashcode,
+                         DisambigOverride disambigOverride);
+
+
 #endif

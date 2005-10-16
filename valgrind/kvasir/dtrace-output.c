@@ -951,7 +951,6 @@ char printDtraceString(DaikonVariable* var,
   apply_mask_to_bytes((char*)ptrValue, TYPE_BYTE_SIZES[decType]);   \
   PRINT_GLOBAL_TEMP_VAR(TYPE);
 
-
 #define CLEAR_GLOBAL_MASK_STUFF() \
   VG_(memset)(GLOBAL_TEMP_VAR, 0, 8); \
   VG_(memset)(GLOBAL_MASK, 0, 8)
@@ -1237,3 +1236,265 @@ char printDtraceBaseValue(DaikonVariable* var,
       return 0;
     }
 }
+
+
+/* BEGIN experimental code - activated by USE_EXP_VISIT_CODE */
+
+#define DTRACE_PRINT_ONE_VAR(TYPE) \
+  DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pValue)));
+
+#define DTRACE_BIT_LEVEL_PRINT_ONE_VAR(TYPE) \
+  apply_mask_to_bytes((char*)pValue, TYPE_BYTE_SIZES[decType]);   \
+  PRINT_GLOBAL_TEMP_VAR(TYPE);
+
+
+static char printDtraceSingleBaseValue(void* pValue,
+                                       DaikonDeclaredType decType,
+                                       char overrideIsInit,
+                                       DisambigOverride disambigOverride);
+
+static void printDtraceSingleString(char* actualString,
+                                    DisambigOverride disambigOverride);
+
+
+// Prints a .dtrace entry for a single variable value denoted by
+// pValue.  Returns 1 if variable successfully observed and printed,
+// and 0 otherwise.
+char printDtraceSingleVar(DaikonVariable* var,
+                          void* pValue,
+                          VariableOrigin varOrigin,
+                          char isHashcode,
+                          char overrideIsInit,
+                          DisambigOverride disambigOverride) {
+  // override float as double when printing
+  // out function return variables because
+  // return variables stored in %EAX are always doubles
+  char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
+
+  char allocated = 0;
+  char initialized = 0;
+
+  assert(var);
+
+  // a pValue of 0 means nonsensical because there is no content to
+  // dereference:
+  if (!pValue) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  NONSENSICAL,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+  // At minimum, check whether the first byte is allocated and/or
+  // initialized
+  allocated = (overrideIsInit ? 1 :
+               addressIsAllocated((Addr)pValue, sizeof(char)));
+
+  if (!allocated) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  NONSENSICAL,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+  initialized = (overrideIsInit ? 1 :
+                 addressIsInitialized((Addr)pValue, sizeof(char)));
+
+  if (!initialized) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  UNINIT,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+
+  // From this point onwards we know that pValue is safe to
+  // dereference because it has been both allocated and initialized
+
+  // First check to see if we have a pointer or a string, both of
+  // which have the danger of being sloppily dereferenced to cause a
+  // nasty segfault
+  if (isHashcode || var->isString) {
+    // Pointer (put this check first before the var->isString check so
+    // that it will work even for pointers to strings):
+    if (isHashcode) {
+      // Be careful of what to print depending on whether the
+      // variable is a static array:
+      // TODO: What about a pointer to a static array?
+      //       var->isStaticArray says that the base variable is a
+      //       static array after all dereferences are done.
+      DTRACE_PRINTF("%u\n%d\n",
+                    var->isStaticArray ? (Addr)pValue : *((Addr*)pValue),
+                    mapInitToModbit(1));
+
+      // Since we observed all of these bytes as one value, we will
+      // merge all of their tags in memory
+      if (kvasir_with_dyncomp) {
+        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                        pValue, sizeof(void*));
+        val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
+      }
+    }
+    else if (var->isString) {
+      char stringReadable = 0;
+
+      // Depends on whether the variable is a static array or not:
+      char* actualString = (var->isStaticArray ?
+                            pValue :
+                            *((char**)pValue));
+
+      // If this address hasn't been initialized to anything valid,
+      // then we shouldn't try to do anything further with it because
+      // it's garbage!!!
+      stringReadable = checkStringReadable(actualString);
+
+      if (stringReadable) {
+        printDtraceSingleString(actualString,
+                                disambigOverride);
+      }
+      else {
+        DTRACE_PRINTF("%s\n%d\n",
+                      UNINIT,
+                      mapInitToModbit(0));
+        return 0;
+      }
+    }
+    else {
+      VG_(printf)( "outputDtraceValue() - Unreachable code reached!\n");
+      abort();
+    }
+  }
+  // Base (non-hashcode) struct or union type
+  // Simply print out its hashcode location
+  else if (var->varType->isStructUnionType) {
+    DTRACE_PRINTF("%u\n%d\n",
+                  ((unsigned int)pValue),
+                  mapInitToModbit(1));
+  }
+  // Base type
+  else {
+    DaikonDeclaredType decType = var->varType->declaredType;
+
+    if (overrideFloatAsDouble && (decType == D_FLOAT)) {
+      decType = D_DOUBLE;
+    }
+    else if (overrideFloatAsDouble && (decType == D_UNSIGNED_FLOAT)) {
+      decType = D_UNSIGNED_DOUBLE;
+    }
+
+    return printDtraceSingleBaseValue(pValue,
+                                      decType,
+                                      overrideIsInit,
+                                      disambigOverride);
+  }
+
+  // Default return value:
+  return 1;
+}
+
+
+// Prints a .dtrace entry for a sequence of variable values denoted by
+// pValueArray (size numElts).  Returns 1 if variable successfully
+// observed and printed, and 0 otherwise.
+char printDtraceSequence(DaikonVariable* var,
+                         void** pValueArray,
+                         UInt numElts,
+                         VariableOrigin varOrigin,
+                         char isHashcode,
+                         DisambigOverride disambigOverride) {
+  return 0;
+}
+
+
+static
+char printDtraceSingleBaseValue(void* pValue,
+                                DaikonDeclaredType decType,
+                                char overrideIsInit,
+                                DisambigOverride disambigOverride) {
+  int init = 0;
+
+  // This check is to make sure that we don't segfault
+  if (!overrideIsInit &&
+      !(addressIsAllocated((Addr)pValue, TYPE_BYTE_SIZES[decType]))) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  NONSENSICAL,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+  CLEAR_GLOBAL_MASK_STUFF();
+
+  if (overrideIsInit) {
+    VG_(memset)(GLOBAL_MASK, 0xFF, 8);
+    init = 1;
+  }
+  else {
+    if (kvasir_use_bit_level_precision) {
+      init = are_some_bytes_init((Addr)pValue, TYPE_BYTE_SIZES[decType]);
+      // GLOBAL_MASK initialized in are_some_bytes_init()!
+    }
+    else {
+      init = addressIsInitialized((Addr)pValue, TYPE_BYTE_SIZES[decType]);
+    }
+  }
+
+  // Don't support printing of these types:
+  if ((decType == D_FUNCTION) || (decType == D_VOID)) {
+    init = 0;
+  }
+
+  if (init) {
+    // Special case for .disambig:
+    if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
+      printOneCharAsDtraceString(*((char*)pValue));
+      DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
+    }
+    else {
+      DPRINTF("In single-value branch\n");
+      if (kvasir_use_bit_level_precision) {
+        TYPES_SWITCH(DTRACE_BIT_LEVEL_PRINT_ONE_VAR)}
+      else {TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)}
+
+      if (kvasir_with_dyncomp) {
+        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+                        (Addr)pValue, TYPE_BYTE_SIZES[decType]);
+        val_uf_union_tags_in_range((Addr)pValue, TYPE_BYTE_SIZES[decType]);
+      }
+
+      DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
+    }
+    return 1;
+  }
+  // Print out "uninit" and modbit=2 for uninitialized values
+  else {
+    DTRACE_PRINTF("%s\n%d\n",
+                  UNINIT,
+                  mapInitToModbit(0));
+    return 0;
+  }
+}
+
+// Pre: pValue is an initialized null-terminated C string
+static
+void printDtraceSingleString(char* actualString,
+                             DisambigOverride disambigOverride) {
+  if (OVERRIDE_STRING_AS_ONE_CHAR_STRING == disambigOverride) {
+    printOneCharAsDtraceString(actualString[0]);
+  }
+  else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+    char intToPrint =  actualString[0];
+    DTRACE_PRINTF( "%d", intToPrint);
+  }
+  else if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+    printOneDtraceStringAsIntArray(actualString);
+  }
+  else {
+    printOneDtraceString(actualString);
+  }
+
+  DTRACE_PRINTF("\n%d\n",
+                mapInitToModbit(1));
+}
+
+
+/* END   experimental code - activated by USE_EXP_VISIT_CODE */
