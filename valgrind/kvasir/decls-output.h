@@ -63,7 +63,11 @@ const char* GLOBAL_STRING;
 const char* ENTER_PPT;
 const char* EXIT_PPT;
 
-extern int MAX_NUM_STRUCTS_TO_DEREFERENCE;
+extern UInt MAX_STRUCT_DEPTH;
+extern UInt MAX_NESTING_DEPTH;
+
+extern UInt MAX_VISIT_STRUCT_DEPTH;
+extern UInt MAX_VISIT_NESTING_DEPTH;
 
 // String stack:
 #define MAX_STRING_STACK_SIZE 100

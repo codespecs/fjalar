@@ -25,10 +25,8 @@
 #include "elf/dwarf2.h"
 #include "tool.h"
 #include "kvasir_main.h"
+#include "decls-output.h"
 #include "GenericHashtable.h"
-
-// This is adjustable via the --struct-depth=N option:
-int MAX_STRUCT_INSTANCES = 2;
 
 DaikonType GlobalHashcodeType = {0,
                                  D_VOID,
@@ -1539,7 +1537,7 @@ void printVariablesInList(VarList* varListPtr, int leadingSpaces, DaikonType* st
       //      if (curNode->var.varType == structType)
       if (gencontains(VisitedStructsTable, (void*)(curNode->var.varType)) &&
 	  ((int)(gengettable(VisitedStructsTable, (void*)(curNode->var.varType))) >
-	   MAX_STRUCT_INSTANCES))
+	   MAX_STRUCT_DEPTH))
 	{
 	  printOneDaikonVariable(&(curNode->var), 1, 0);
 	}
@@ -1617,11 +1615,11 @@ void printOneDaikonVariable(DaikonVariable* var, char doNotRecurse, char firstTi
       if (t->isStructUnionType)
 	{
 	  // Check to see if the VisitedStructsTable contains
-	  // more than MAX_STRUCT_INSTANCES of the current struct type:
+	  // more than MAX_STRUCT_DEPTH of the current struct type:
 	  if (gencontains(VisitedStructsTable, (void*)t))
 	    {
 	      int count = (int)(gengettable(VisitedStructsTable, (void*)t));
-	      if (count <= MAX_STRUCT_INSTANCES)
+	      if (count <= MAX_STRUCT_DEPTH)
 		{
 		  count++;
 		  genputtable(VisitedStructsTable, (void*)t, (void*)count);

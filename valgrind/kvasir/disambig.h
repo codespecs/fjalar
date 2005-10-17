@@ -45,5 +45,6 @@ void generateDisambigFile();
 void printOneFunctionDisambig(DaikonFunctionInfo* funcPtr);
 Bool shouldOutputVarToDisambig(DaikonVariable* var);
 void processDisambigFile();
+DisambigOverride returnDisambigOverride(DaikonVariable* var);
 
 #endif

@@ -236,6 +236,49 @@ Bool shouldOutputVarToDisambig(DaikonVariable* var) {
   }
 }
 
+// Returns a DisambigOverride value read from 'var':
+DisambigOverride returnDisambigOverride(DaikonVariable* var) {
+  DisambigOverride override = OVERRIDE_NONE;
+
+  if ((kvasir_disambig_filename && !disambig_writing) || // When we are reading .disambig file
+      VG_STREQ("this", var->name)) { // Always disambiguate C++ 'this' variable
+    char disambig_letter = disambig_letter = var->disambig;
+
+    if (disambig_letter) {
+      if (var->repPtrLevels == 0) {
+	// 'C' denotes to print out as a one-character string
+	if (var->isString) { // pointer to "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("String C - %s\n\n", var->name);
+	    override = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
+	  }
+	  else if ('A' == disambig_letter) {
+	    DPRINTF("String A - %s\n\n", var->name);
+	    override = OVERRIDE_STRING_AS_INT_ARRAY;
+	  }
+	  else if ('P' == disambig_letter) {
+	    DPRINTF("String P - %s\n\n", var->name);
+	    override = OVERRIDE_STRING_AS_ONE_INT;
+	  }
+	}
+	else if ((D_CHAR == var->varType->declaredType) ||  // "char" or "unsigned char" (or string of chars)
+		 (D_UNSIGNED_CHAR == var->varType->declaredType)) { // "char" or "unsigned char"
+	  if ('C' == disambig_letter) {
+	    DPRINTF("Char C - %s\n\n", var->name);
+	    override = OVERRIDE_CHAR_AS_STRING;
+	  }
+	}
+      }
+      // Ordinary pointer
+      else if ('P' == disambig_letter) {
+	override = OVERRIDE_ARRAY_AS_POINTER;
+      }
+    }
+  }
+
+  return override;
+}
+
 
 // Reads in a .disambig file and inserts the appropriate .disambig info
 // into each DaikonVariable

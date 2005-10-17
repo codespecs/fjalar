@@ -852,12 +852,12 @@ char printDtraceString(DaikonVariable* var,
 		}
 	      else
 		{
-		  DTRACE_PRINTF( "null");
+		  DTRACE_PRINTF( "null"); // Should really be "uninit" but we should migrate to new visit code soon anyways
 		}
 	    }
 	  else
 	    {
-	      DTRACE_PRINTF( "null");
+	      DTRACE_PRINTF( "null"); // Should really be "uninit" but we should migrate to new visit code soon anyways
 	    }
 	  DTRACE_PRINTF( " ");
 	}
@@ -1408,7 +1408,8 @@ char printDtraceSequence(DaikonVariable* var,
                          char isHashcode,
                          DisambigOverride disambigOverride) {
   int i;
-  char somethingInit = 0;
+  char someEltNonZero = 0;
+  char someEltInit = 0;
 
   assert(var);
 
@@ -1425,13 +1426,35 @@ char printDtraceSequence(DaikonVariable* var,
   // nonsensical because there is no content to dereference:
   for (i = 0; i < numElts; i++) {
     if (pValueArray[i]) {
-      somethingInit = 1;
+      someEltNonZero = 1;
       break;
     }
   }
-  if (!somethingInit) {
+  if (!someEltNonZero) {
     DTRACE_PRINTF("%s\n%d\n",
                   NONSENSICAL,
+                  mapInitToModbit(0));
+    return 0;
+  }
+
+
+  // If all elements in pValueArray are uninit, then print out UNINIT
+  // and return 0:
+  for (i = 0; i < numElts; i++) {
+    void* pCurValue = pValueArray[i];
+    // Check if it's allocated & initialized.
+    char eltAllocAndInit =
+      (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
+       addressIsInitialized((Addr)pCurValue, sizeof(void*)));
+    if (eltAllocAndInit) {
+      someEltInit = 1;
+      break;
+    }
+  }
+
+  if (!someEltInit) {
+    DTRACE_PRINTF("%s\n%d\n",
+                  UNINIT,
                   mapInitToModbit(0));
     return 0;
   }
@@ -1474,10 +1497,8 @@ char printDtraceSequence(DaikonVariable* var,
           }
         }
         else {
-          DTRACE_PRINTF("null");
+          DTRACE_PRINTF(UNINIT);
         }
-
-        DTRACE_PRINTF(" ");
       }
 
       DTRACE_PRINTF( "]\n%d\n",
@@ -1630,8 +1651,7 @@ void printDtraceBaseValueSequence(void* pValue,
   for (i = 0; i < limit; i++) {
     void* pCurValue = pValueArray[i];
 
-    // Check if it's allocated & initialized.  If not, print out a
-    // 'null'
+    // Check if it's allocated & initialized.  If not, print 'uninit'
     char eltAllocAndInit =
       (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
        addressIsInitialized((Addr)pCurValue, sizeof(void*)));
@@ -1654,7 +1674,7 @@ void printDtraceBaseValueSequence(void* pValue,
       }
     }
     else {
-      DTRACE_PRINTF("null");
+      DTRACE_PRINTF(UNINIT);
     }
     DTRACE_PRINTF(" ");
   }
@@ -1733,11 +1753,11 @@ void printDtraceStringSequence(DaikonVariable* var,
         }
       }
       else {
-        DTRACE_PRINTF( "null");
+        DTRACE_PRINTF(UNINIT);
       }
     }
     else {
-      DTRACE_PRINTF( "null");
+      DTRACE_PRINTF(UNINIT);
     }
     DTRACE_PRINTF( " ");
   }
