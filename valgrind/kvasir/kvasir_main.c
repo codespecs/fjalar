@@ -726,8 +726,16 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("flatten-arrays", kvasir_flatten_arrays)
    else VG_YESNO_CLO("disambig-ptrs", kvasir_disambig_ptrs)
    else VG_YESNO_CLO("smart-disambig", kvasir_smart_disambig)
-   else VG_BNUM_CLO(arg, "--struct-depth",  MAX_STRUCT_INSTANCES, 0, 100) // [0 to 100]
-   else VG_BNUM_CLO(arg, "--nesting-depth", MAX_NUM_STRUCTS_TO_DEREFERENCE, 0, 100) // [0 to 100]
+#ifndef USE_EXP_VISIT_CODE
+   else VG_BNUM_CLO(arg, "--struct-depth",  MAX_STRUCT_DEPTH, 0, 100) // [0 to 100]
+#else
+   else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100) // [0 to 100]
+#endif
+#ifndef USE_EXP_VISIT_CODE
+   else VG_BNUM_CLO(arg, "--nesting-depth", MAX_NESTING_DEPTH, 0, 100) // [0 to 100]
+#else
+   else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100]
+#endif
    else VG_BNUM_CLO(arg, "--array-length-limit", kvasir_array_length_limit,
                     -1, 0x7fffffff)
    else VG_YESNO_CLO("disambig", kvasir_default_disambig)

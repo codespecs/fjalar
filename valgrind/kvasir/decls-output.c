@@ -95,11 +95,15 @@ FunctionTree* globalFunctionTree = 0;
 // TODO: Warning! We never free the memory used by prog_pts_tree and vars_tree
 // but don't worry about it for now
 
+// This is adjustable via the --struct-depth=N option:
+UInt MAX_STRUCT_DEPTH = 2;
+
 // denotes the maximum number of structs (any kind of struct) to expand
-// when dereferencing a Daikon variable (as opposed to MAX_STRUCT_INSTANCES,
+// when dereferencing a Daikon variable (as opposed to MAX_STRUCT_DEPTH,
 // which limits the number of the SAME TYPE of struct - a la linked lists -
 // to dereference in one Daikon variable)
-int MAX_NUM_STRUCTS_TO_DEREFERENCE = 2;
+// This is adjustable via the --nesting-depth=N option:
+UInt MAX_NESTING_DEPTH = 2;
 
 // Maps tags to comparability numbers, which are assigned sequentially
 // for every program point.  This is only used for DynComp.
@@ -1750,6 +1754,15 @@ static void printDtraceEntry(DaikonVariable* var,
 
   // Line 1: Variable name
   printVariableName(varName, 0, dtrace_fp);
+  VG_(printf)("%s - isSequence: %u\n", varName, isSequence);
+  if (pValueArray) {
+    UInt i;
+    VG_(printf)("[ ");
+    for (i = 0; i < numElts; i++) {
+      VG_(printf)("%u ", pValueArray[i]);
+    }
+    VG_(printf)("]\n");
+  }
 
   // Lines 2 & 3: Value and modbit
   if (isSequence) {
@@ -2000,10 +2013,10 @@ static char interestedInVar(char* fullDaikonName, char* trace_vars_tree) {
 
 // This is adjustable via the --struct-depth=N option:
 
-// This seems to give the same results as MAX_STRUCT_INSTANCES = 2 for
+// This seems to give the same results as MAX_STRUCT_DEPTH = 2 for
 // outputDaikonVar():
-UInt MAX_VISIT_STRUCT_INSTANCES = 4;
-UInt MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE = 2;
+UInt MAX_VISIT_STRUCT_DEPTH = 4;
+UInt MAX_VISIT_NESTING_DEPTH = 2;
 
 static void visitSingleVar(DaikonVariable* var,
                            UInt numDereferences,
@@ -2106,7 +2119,7 @@ void visitSingleVar(DaikonVariable* var,
                     // a particular call of visitVariable(); Starts at
                     // 0 and increments every time we hit a variable
                     // which is a base struct type
-                    // Range: [0, MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE]
+                    // Range: [0, MAX_VISIT_NESTING_DEPTH]
                     UInt numStructsDereferenced,
                     // These uniquely identify which program point we
                     // are at (only relevant for DynComp)
@@ -2126,41 +2139,8 @@ void visitSingleVar(DaikonVariable* var,
   // Special handling for overriding in the presence of .disambig:
   // Only check this for original (numDereferences == 0) variables
   // to ensure that it's only checked once per variable
-  if ((0 == numDereferences) &&
-      ((kvasir_disambig_filename && !disambig_writing) ||
-       VG_STREQ("this", var->name))) { // either using .disambig or special C++ 'this'
-    char disambig_letter = disambig_letter = var->disambig;
-
-    if (disambig_letter) {
-      if (var->repPtrLevels == 0) {
-	// 'C' denotes to print out as a one-character string
-	if (var->isString) { // pointer to "char" or "unsigned char"
-	  if ('C' == disambig_letter) {
-	    DPRINTF("String C - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
-	  }
-	  else if ('A' == disambig_letter) {
-	    DPRINTF("String A - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_STRING_AS_INT_ARRAY;
-	  }
-	  else if ('P' == disambig_letter) {
-	    DPRINTF("String P - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_STRING_AS_ONE_INT;
-	  }
-	}
-	else if ((D_CHAR == var->varType->declaredType) ||  // "char" or "unsigned char" (or string of chars)
-		 (D_UNSIGNED_CHAR == var->varType->declaredType)) { // "char" or "unsigned char"
-	  if ('C' == disambig_letter) {
-	    DPRINTF("Char C - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_CHAR_AS_STRING;
-	  }
-	}
-      }
-      // Ordinary pointer
-      else if ('P' == disambig_letter) {
-	disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
-      }
-    }
+  if (0 == numDereferences) {
+    disambigOverride = returnDisambigOverride(var);
   }
 
   disambigOverrideArrayAsPointer =
@@ -2218,7 +2198,7 @@ void visitSingleVar(DaikonVariable* var,
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
-      // DO NOT DERIVE VARIABLES for .disambig We are only interested
+      // DO NOT DERIVE VARIABLES for .disambig.  We are only interested
       // in printing out the variables which are immediately visible
       // to the user.  Thus, we should RETURN out of the function
       // altogether instead of simply breaking out of the switch
@@ -2391,16 +2371,16 @@ void visitSingleVar(DaikonVariable* var,
     DaikonVariable* curVar;
 
     // Check to see if the VisitedStructsTable contains more than
-    // MAX_VISIT_STRUCT_INSTANCES of the current struct type
+    // MAX_VISIT_STRUCT_DEPTH of the current struct type
     if (gencontains(VisitedStructsTable, (void*)(var->varType))) {
       UInt count = (UInt)(gengettable(VisitedStructsTable, (void*)(var->varType)));
 
-      if (count <= MAX_VISIT_STRUCT_INSTANCES) {
+      if (count <= MAX_VISIT_STRUCT_DEPTH) {
         count++;
         genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
       }
       // PUNT because this struct has appeared more than
-      // MAX_VISIT_STRUCT_INSTANCES times during one call to visitVariable()
+      // MAX_VISIT_STRUCT_DEPTH times during one call to visitVariable()
       else {
         return;
       }
@@ -2411,9 +2391,9 @@ void visitSingleVar(DaikonVariable* var,
     }
 
     // If we have dereferenced more than
-    // MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE structs, then simply PUNT and
+    // MAX_VISIT_NESTING_DEPTH structs, then simply PUNT and
     // stop deriving variables from it.
-    if (numStructsDereferenced > MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE) {
+    if (numStructsDereferenced > MAX_VISIT_NESTING_DEPTH) {
       return;
     }
 
@@ -2528,7 +2508,7 @@ void visitSequence(DaikonVariable* var,
                    // a particular call of visitVariable(); Starts at
                    // 0 and increments every time we hit a variable
                    // which is a base struct type
-                   // Range: [0, MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE]
+                   // Range: [0, MAX_VISIT_NESTING_DEPTH]
                    UInt numStructsDereferenced,
                    // These uniquely identify which program point we
                    // are at (only relevant for DynComp)
@@ -2547,42 +2527,8 @@ void visitSequence(DaikonVariable* var,
   // Special handling for overriding in the presence of .disambig:
   // Only check this for original (numDereferences == 0) variables
   // to ensure that it's only checked once per variable
-  if ((0 == numDereferences) &&
-      ((kvasir_disambig_filename && !disambig_writing) ||
-       VG_STREQ("this", var->name))) { // either using .disambig or special C++ 'this'
-    char disambig_letter = disambig_letter = var->disambig;
-
-    // Notice that OVERRIDE_ARRAY_AS_POINTER is not a choice here
-    // because it makes no sense at this point.  All arrays are
-    // overriden as pointer by now because we are already visiting a
-    // sequence and Daikon can only handle 1-D sequences so all
-    // further dereferences must be single pointer dereferences
-    if (disambig_letter) {
-      if (var->repPtrLevels == 0) {
-	// 'C' denotes to print out as a one-character string
-	if (var->isString) { // pointer to "char" or "unsigned char"
-	  if ('C' == disambig_letter) {
-	    DPRINTF("String C - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_STRING_AS_ONE_CHAR_STRING;
-	  }
-	  else if ('A' == disambig_letter) {
-	    DPRINTF("String A - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_STRING_AS_INT_ARRAY;
-	  }
-	  else if ('P' == disambig_letter) {
-	    DPRINTF("String P - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_STRING_AS_ONE_INT;
-	  }
-	}
-	else if ((D_CHAR == var->varType->declaredType) ||  // "char" or "unsigned char" (or string of chars)
-		 (D_UNSIGNED_CHAR == var->varType->declaredType)) { // "char" or "unsigned char"
-	  if ('C' == disambig_letter) {
-	    DPRINTF("Char C - %s\n\n", var->name);
-	    disambigOverride = OVERRIDE_CHAR_AS_STRING;
-	  }
-	}
-      }
-    }
+  if (0 == numDereferences) {
+    disambigOverride = returnDisambigOverride(var);
   }
 
   // Unless kvasir_output_struct_vars is on,
@@ -2634,7 +2580,7 @@ void visitSequence(DaikonVariable* var,
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
-      // DO NOT DERIVE VARIABLES for .disambig We are only interested
+      // DO NOT DERIVE VARIABLES for .disambig.  We are only interested
       // in printing out the variables which are immediately visible
       // to the user.  Thus, we should RETURN out of the function
       // altogether instead of simply breaking out of the switch
@@ -2673,7 +2619,10 @@ void visitSequence(DaikonVariable* var,
     // TODO: Implement static array flattening
 
     // We only need to set pValueArray and numElts for .dtrace output:
-    if (DTRACE_FILE == outputType) {
+    // (If this variable is a static array, then there is no need to
+    //  dereference pointers - very important but subtle point!)
+    if ((DTRACE_FILE == outputType) &&
+        !VAR_IS_STATIC_ARRAY(var)) {
       // Iterate through pValueArray and dereference each pointer
       // value if possible, then override the entries in pValueArray
       // with the dereferenced pointers (use a value of 0 for
@@ -2744,16 +2693,16 @@ void visitSequence(DaikonVariable* var,
     DaikonVariable* curVar;
 
     // Check to see if the VisitedStructsTable contains more than
-    // MAX_VISIT_STRUCT_INSTANCES of the current struct type
+    // MAX_VISIT_STRUCT_DEPTH of the current struct type
     if (gencontains(VisitedStructsTable, (void*)(var->varType))) {
       UInt count = (UInt)(gengettable(VisitedStructsTable, (void*)(var->varType)));
 
-      if (count <= MAX_VISIT_STRUCT_INSTANCES) {
+      if (count <= MAX_VISIT_STRUCT_DEPTH) {
         count++;
         genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
       }
       // PUNT because this struct has appeared more than
-      // MAX_VISIT_STRUCT_INSTANCES times during one call to visitVariable()
+      // MAX_VISIT_STRUCT_DEPTH times during one call to visitVariable()
       else {
         return;
       }
@@ -2764,9 +2713,9 @@ void visitSequence(DaikonVariable* var,
     }
 
     // If we have dereferenced more than
-    // MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE structs, then simply PUNT and
+    // MAX_VISIT_NESTING_DEPTH structs, then simply PUNT and
     // stop deriving variables from it.
-    if (numStructsDereferenced > MAX_VISIT_NUM_STRUCTS_TO_DEREFERENCE) {
+    if (numStructsDereferenced > MAX_VISIT_NESTING_DEPTH) {
       return;
     }
 
@@ -3062,7 +3011,7 @@ void outputDaikonVar(DaikonVariable* var,
 		     char structParentAlreadySetArrayInfo,
                      // The number of structs we have dereferenced for this particular Daikon variable;
                      // Starts at 0 and increments every time we hit a variable which is a base struct type
-                     // Range: [0, MAX_NUM_STRUCTS_TO_DEREFERENCE)
+                     // Range: [0, MAX_NESTING_DEPTH)
                      int numStructsDereferenced,
                      DaikonFunctionInfo* varFuncInfo, char isEnter) // These uniquely identify which program point we are printing (only relevant for DynComp purposes)
 {
@@ -3376,13 +3325,13 @@ void outputDaikonVar(DaikonVariable* var,
       VarNode* i;
       DaikonVariable* curVar;
       // Check to see if the VisitedStructsTable contains
-      // more than MAX_STRUCT_INSTANCES of the current struct type -
+      // more than MAX_STRUCT_DEPTH of the current struct type -
       // (later we will bail out if it contains more than this amount in order
       //  to prevent infinite loops for recursively-defined structs)
       if (gencontains(VisitedStructsTable, (void*)(var->varType)))
 	{
 	  int count = (int)(gengettable(VisitedStructsTable, (void*)(var->varType)));
-	  if (count <= MAX_STRUCT_INSTANCES)
+	  if (count <= MAX_STRUCT_DEPTH)
 	    {
 	      count++;
 	      genputtable(VisitedStructsTable, (void*)(var->varType), (void*)count);
@@ -3434,13 +3383,13 @@ void outputDaikonVar(DaikonVariable* var,
 	    curVarBasePtr -= 4;
 	  }
 
-	  // If a struct type has appeared more than MAX_STRUCT_INSTANCES
-	  // times or if (numStructsDereferenced >= MAX_NUM_STRUCTS_TO_DEREFERENCE),
+	  // If a struct type has appeared more than MAX_STRUCT_DEPTH
+	  // times or if (numStructsDereferenced >= MAX_NESTING_DEPTH),
           // then stop deriving variables from it:
-	  if ((numStructsDereferenced >= MAX_NUM_STRUCTS_TO_DEREFERENCE) ||
+	  if ((numStructsDereferenced >= MAX_NESTING_DEPTH) ||
               (gencontains(VisitedStructsTable, (void*)(curVar->varType)) &&
 	      ((int)(gengettable(VisitedStructsTable, (void*)(curVar->varType))) >
-	       MAX_STRUCT_INSTANCES)))
+	       MAX_STRUCT_DEPTH)))
 	    {
 	      tempStopDerivingMemberVars = 1;
 	    }

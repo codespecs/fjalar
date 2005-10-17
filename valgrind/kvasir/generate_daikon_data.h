@@ -107,9 +107,6 @@ struct genhashtable* VisitedStructsTable;
 // and B has an A* within it, thus leading to A.B, A.B.A, A.B.A, etc...
 // This number limits the maximum number of A's and B's to a certain amount:
 
-// This is adjustable via the --struct-depth=N option:
-extern int MAX_STRUCT_INSTANCES;
-
 unsigned int hashID(int ID);
 int equivalentIDs(int ID1, int ID2);
 
