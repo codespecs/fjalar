@@ -24,7 +24,7 @@
 
 // Un-comment to use experimental code for visiting variables:
 // e.g., visitVariable(), visitSingleVar(), visitSequence()
-//#define USE_EXP_VISIT_CODE
+#define USE_EXP_VISIT_CODE
 
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 

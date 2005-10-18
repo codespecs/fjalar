@@ -256,7 +256,6 @@ void printOneDtraceStringAsIntArray(char* str) {
     }
   DTRACE_PRINTF("]");
 
-
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
@@ -852,12 +851,12 @@ char printDtraceString(DaikonVariable* var,
 		}
 	      else
 		{
-		  DTRACE_PRINTF( "null"); // Should really be "uninit" but we should migrate to new visit code soon anyways
+		  DTRACE_PRINTF( "null"); // Should really be "nonsensical" but we should migrate to new visit code soon anyways
 		}
 	    }
 	  else
 	    {
-	      DTRACE_PRINTF( "null"); // Should really be "uninit" but we should migrate to new visit code soon anyways
+	      DTRACE_PRINTF( "null"); // Should really be "nonsensical" but we should migrate to new visit code soon anyways
 	    }
 	  DTRACE_PRINTF( " ");
 	}
@@ -970,6 +969,9 @@ void apply_mask_to_bytes(char* location, int len) {
 }
 
 
+// Macro for dispatching on different print statements depending on
+// the declared type of the variable (decType) - creates a switch
+// statement parameterized by the OPERATION macro:
 #define TYPES_SWITCH(OPERATION) \
 switch (decType) \
 { \
@@ -1008,7 +1010,7 @@ switch (decType) \
    OPERATION(double) \
    break; \
  default: \
-   DTRACE_PRINTF( "TYPES_SWITCH()\n - unknown type"); \
+   DTRACE_PRINTF( "TYPES_SWITCH() - unknown type"); \
    DABORT("TYPES_SWITCH()\n - unknown type"); \
    break; \
 }
@@ -1255,8 +1257,7 @@ static char printDtraceSingleBaseValue(void* pValue,
                                        char overrideIsInit,
                                        DisambigOverride disambigOverride);
 
-static void printDtraceBaseValueSequence(void* pValue,
-                                         DaikonDeclaredType decType,
+static void printDtraceBaseValueSequence(DaikonDeclaredType decType,
                                          void** pValueArray,
                                          UInt numElts,
                                          DisambigOverride disambigOverride);
@@ -1269,6 +1270,7 @@ static void printDtraceStringSequence(DaikonVariable* var,
                                       void** pValueArray,
                                       UInt numElts,
                                       DisambigOverride disambigOverride);
+
 
 // Prints a .dtrace entry for a single variable value denoted by
 // pValue.  Returns 1 if variable successfully observed and printed,
@@ -1283,6 +1285,8 @@ char printDtraceSingleVar(DaikonVariable* var,
   char initialized = 0;
 
   assert(var);
+
+  //  VG_(printf)("  printDtraceSingleVar(): %p\n", pValue);
 
   // a pValue of 0 means nonsensical because there is no content to
   // dereference:
@@ -1314,7 +1318,6 @@ char printDtraceSingleVar(DaikonVariable* var,
                   mapInitToModbit(0));
     return 0;
   }
-
 
   // From this point onwards we know that pValue is safe to
   // dereference because it has been both allocated and initialized
@@ -1439,14 +1442,11 @@ char printDtraceSequence(DaikonVariable* var,
 
 
   // If all elements in pValueArray are uninit, then print out UNINIT
-  // and return 0:
+  // and return 0. (be conservative and only check the first byte)
   for (i = 0; i < numElts; i++) {
     void* pCurValue = pValueArray[i];
-    // Check if it's allocated & initialized.
-    char eltAllocAndInit =
-      (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
-       addressIsInitialized((Addr)pCurValue, sizeof(void*)));
-    if (eltAllocAndInit) {
+    char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char));
+    if (eltInit) {
       someEltInit = 1;
       break;
     }
@@ -1473,13 +1473,9 @@ char printDtraceSequence(DaikonVariable* var,
       for (i = 0; i < limit; i++) {
         void* pCurValue = pValueArray[i];
 
-        // Check if it's allocated & initialized.  If not, print out a
-        // 'null'
-        char eltAllocAndInit =
-          (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
-           addressIsInitialized((Addr)pCurValue, sizeof(void*)));
+        char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(void*));
 
-        if (eltAllocAndInit) {
+        if (eltInit) {
           DTRACE_PRINTF("%u ", var->isStaticArray ?
                         (Addr)pCurValue :
                         *((Addr*)pCurValue));
@@ -1497,7 +1493,12 @@ char printDtraceSequence(DaikonVariable* var,
           }
         }
         else {
-          DTRACE_PRINTF(UNINIT);
+          // Daikon currently only supports 'nonsensical' values
+          // inside of sequences, not 'uninit' value.
+          if (!kvasir_repair_format) {
+            DTRACE_PRINTF(NONSENSICAL);
+            DTRACE_PRINTF(" ");
+          }
         }
       }
 
@@ -1557,8 +1558,7 @@ char printDtraceSequence(DaikonVariable* var,
       decType = D_UNSIGNED_DOUBLE;
     }
 
-    printDtraceBaseValueSequence(var,
-                                 decType,
+    printDtraceBaseValueSequence(decType,
                                  pValueArray,
                                  numElts,
                                  disambigOverride);
@@ -1569,6 +1569,7 @@ char printDtraceSequence(DaikonVariable* var,
 }
 
 
+// Print a single numerical value to .dtrace pointed-to by pValue
 static
 char printDtraceSingleBaseValue(void* pValue,
                                 DaikonDeclaredType decType,
@@ -1585,20 +1586,22 @@ char printDtraceSingleBaseValue(void* pValue,
     return 0;
   }
 
-  CLEAR_GLOBAL_MASK_STUFF();
+  // TODO: Implement bit-level precision
+
+  //  CLEAR_GLOBAL_MASK_STUFF();
 
   if (overrideIsInit) {
-    VG_(memset)(GLOBAL_MASK, 0xFF, 8);
+    //    VG_(memset)(GLOBAL_MASK, 0xFF, 8);
     init = 1;
   }
   else {
-    if (kvasir_use_bit_level_precision) {
-      init = are_some_bytes_init((Addr)pValue, TYPE_BYTE_SIZES[decType]);
-      // GLOBAL_MASK initialized in are_some_bytes_init()!
-    }
-    else {
+    //    if (kvasir_use_bit_level_precision) {
+    //      init = are_some_bytes_init((Addr)pValue, TYPE_BYTE_SIZES[decType]);
+    //      // GLOBAL_MASK initialized in are_some_bytes_init()!
+    //    }
+    //    else {
       init = addressIsInitialized((Addr)pValue, TYPE_BYTE_SIZES[decType]);
-    }
+      //    }
   }
 
   // Don't support printing of these types:
@@ -1634,9 +1637,21 @@ char printDtraceSingleBaseValue(void* pValue,
   }
 }
 
+// Print a sequence of numerical values of declared type decType
+// pointed-to by elements of pValueArray.  Also print the valid modbit
+// of 1.
+// Pre: At least some values pointed-to by elements in pValueArray are
+// initialized so we will always print at least some values in the
+// sequence.  We print uninitialized values as 'nonsensical' in the
+// sequence because that is all Daikon can support at the moment.
+// (The one exception is the rare D_FUNCTION or D_VOID types, which
+//  we just punt)
+//
+// Sample output:
+// [ 1 2 3 4 5 ]
+// 1
 static
-void printDtraceBaseValueSequence(void* pValue,
-                                  DaikonDeclaredType decType,
+void printDtraceBaseValueSequence(DaikonDeclaredType decType,
                                   void** pValueArray,
                                   UInt numElts,
                                   DisambigOverride disambigOverride) {
@@ -1646,44 +1661,60 @@ void printDtraceBaseValueSequence(void* pValue,
     limit = min(limit, kvasir_array_length_limit);
   }
 
+  // TODO: Add support for bit-level precision here
+
+  // Don't support printing of these types:
+  if ((decType == D_FUNCTION) || (decType == D_VOID)) {
+    // Just punt
+    DTRACE_PRINTF("%s\n%d\n",
+                  NONSENSICAL,
+                  mapInitToModbit(0));
+    return;
+  }
+
   DTRACE_PRINTF( "[ ");
 
   for (i = 0; i < limit; i++) {
     void* pCurValue = pValueArray[i];
 
-    // Check if it's allocated & initialized.  If not, print 'uninit'
-    char eltAllocAndInit =
-      (addressIsAllocated((Addr)pCurValue, sizeof(void*)) &&
-       addressIsInitialized((Addr)pCurValue, sizeof(void*)));
+    // Check if it's initialized based on the size of declared type (I
+    // hope that everything that's initialized is also allocated):
+    char eltInit = addressIsInitialized((Addr)pCurValue, TYPE_BYTE_SIZES[decType]);
 
-    if (eltAllocAndInit) {
+    if (eltInit) {
       // Special case for .disambig:
       if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
-        printOneCharAsDtraceString(*((char*)pValue));
-        DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
+        printOneCharAsDtraceString(*((char*)pCurValue));
       }
       else {
         TYPES_SWITCH(DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE)
 
-          if (kvasir_with_dyncomp) {
-            val_uf_union_tags_in_range((Addr)pCurValue, TYPE_BYTE_SIZES[decType]);
-            // TODO: This assumes that the 0th element was valid - we
-            // should really merge it with the first valid element:
-            val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
-          }
+        if (kvasir_with_dyncomp) {
+          val_uf_union_tags_in_range((Addr)pCurValue, TYPE_BYTE_SIZES[decType]);
+          // TODO: This assumes that the 0th element was valid - we
+          // should really merge it with the first valid element:
+          val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+        }
       }
+
+      DTRACE_PRINTF(" ");
     }
     else {
-      DTRACE_PRINTF(UNINIT);
+      // Daikon currently only supports 'nonsensical' values
+      // inside of sequences, not 'uninit' value.
+
+      if (!kvasir_repair_format) {
+        DTRACE_PRINTF(NONSENSICAL);
+        DTRACE_PRINTF(" ");
+      }
     }
-    DTRACE_PRINTF(" ");
   }
 
   DTRACE_PRINTF("]\n%d\n",
                 mapInitToModbit(1));
 }
 
-// Pre: pValue is an initialized null-terminated C string
+// Pre: actualString is an initialized null-terminated C string
 static
 void printDtraceSingleString(char* actualString,
                              DisambigOverride disambigOverride) {
@@ -1691,7 +1722,7 @@ void printDtraceSingleString(char* actualString,
     printOneCharAsDtraceString(actualString[0]);
   }
   else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
-    char intToPrint =  actualString[0];
+    char intToPrint = actualString[0];
     DTRACE_PRINTF( "%d", intToPrint);
   }
   else if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
@@ -1705,6 +1736,18 @@ void printDtraceSingleString(char* actualString,
                 mapInitToModbit(1));
 }
 
+
+// Print a sequence of strings pointed-to by elements of pValueArray.
+// Also print the valid modbit of 1.
+//
+// Pre: At least some values pointed-to by elements in pValueArray are
+// initialized so we will always print at least some values in the
+// sequence.  We print uninitialized values as 'nonsensical' in the
+// sequence because that is all Daikon can support at the moment.
+//
+// Sample output:
+// [ "hello" "world" "foo" ]
+// 1
 static
 void printDtraceStringSequence(DaikonVariable* var,
                                void** pValueArray,
@@ -1720,10 +1763,9 @@ void printDtraceStringSequence(DaikonVariable* var,
 
   for (i = 0; i < limit; i++) {
     char* pCurValue = (char*)pValueArray[i];
-    // Check if the whole string is legit
-    char ptrReadable = addressIsInitialized((Addr)pCurValue, sizeof(char*));
+    char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char*));
 
-    if (ptrReadable) {
+    if (eltInit) {
       // TODO: Check over accuracy of this later:
       if (kvasir_with_dyncomp) {
         // TODO: This assumes that the 0th element was valid - we
@@ -1751,15 +1793,24 @@ void printDtraceStringSequence(DaikonVariable* var,
         else {
           printOneDtraceString(pCurValue);
         }
+
+        DTRACE_PRINTF(" ");
       }
       else {
-        DTRACE_PRINTF(UNINIT);
+        // Daikon currently only supports 'nonsensical' values
+        // inside of sequences, not 'uninit' value.
+        if (!kvasir_repair_format) {
+          DTRACE_PRINTF(NONSENSICAL);
+          DTRACE_PRINTF(" ");
+        }
       }
     }
     else {
-      DTRACE_PRINTF(UNINIT);
+      if (!kvasir_repair_format) {
+        DTRACE_PRINTF(NONSENSICAL);
+        DTRACE_PRINTF(" ");
+      }
     }
-    DTRACE_PRINTF( " ");
   }
 
   DTRACE_PRINTF("]\n%d\n",

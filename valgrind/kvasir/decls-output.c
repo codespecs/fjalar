@@ -1754,15 +1754,16 @@ static void printDtraceEntry(DaikonVariable* var,
 
   // Line 1: Variable name
   printVariableName(varName, 0, dtrace_fp);
-  VG_(printf)("%s - isSequence: %u\n", varName, isSequence);
-  if (pValueArray) {
-    UInt i;
-    VG_(printf)("[ ");
-    for (i = 0; i < numElts; i++) {
-      VG_(printf)("%u ", pValueArray[i]);
-    }
-    VG_(printf)("]\n");
-  }
+
+/*   VG_(printf)("%s - isSequence: %u (overrideInit: %u)\n", varName, isSequence, overrideIsInit); */
+/*   if (pValueArray) { */
+/*     UInt i; */
+/*     VG_(printf)("[ "); */
+/*     for (i = 0; i < numElts; i++) { */
+/*       VG_(printf)("%u ", pValueArray[i]); */
+/*     } */
+/*     VG_(printf)("]\n"); */
+/*   } */
 
   // Lines 2 & 3: Value and modbit
   if (isSequence) {
@@ -2143,9 +2144,12 @@ void visitSingleVar(DaikonVariable* var,
     disambigOverride = returnDisambigOverride(var);
   }
 
+  if (kvasir_disambig_ptrs) {
+    disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
+  }
+
   disambigOverrideArrayAsPointer =
-    (kvasir_disambig_ptrs ||
-     (OVERRIDE_ARRAY_AS_POINTER == disambigOverride));
+    (OVERRIDE_ARRAY_AS_POINTER == disambigOverride);
 
   derefSingleElement = disambigOverrideArrayAsPointer;
 
@@ -2247,8 +2251,10 @@ void visitSingleVar(DaikonVariable* var,
         if (derivedIsAllocated) {
           derivedIsInitialized = (overrideIsInit ? 1 :
                                   addressIsInitialized((Addr)pValue, sizeof(void*)));
-          // Make a single dereference
-          pNewValue = *((void **)pValue);
+          // Make a single dereference unless the variable is a static
+          // array, in which case we shouldn't make a dereference at
+          // all:
+          pNewValue = var->isStaticArray ? pValue : *((void **)pValue);
         }
       }
 
@@ -2289,14 +2295,24 @@ void visitSingleVar(DaikonVariable* var,
       if ((DTRACE_FILE == outputType) && pValue) {
         // Static array:
         if (VAR_IS_STATIC_ARRAY(var)) {
-          // TODO: Add multi-dimensional array support -
-          // Right now we only look at the first dimension
+          // Flatten multi-dimensional arrays by treating them as one
+          // giant single-dimensional array.  Take the products of the
+          // sizes of all dimensions (remember to add 1 to each to get
+          // from upper bound to size):
+          UInt dim;
 
           // Notice the +1 to convert from upper bound to numElts
           numElts = 1 + var->upperBounds[0];
+
+          // Additional dimensions:
+          for (dim = 1; dim < var->numDimensions; dim++) {
+            numElts *= (1 + var->upperBounds[dim]);
+          }
+
           pValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
 
-          VG_(printf)("Static array - numElts: %u\n", numElts);
+          //          VG_(printf)("Static array - dims: %u, numElts: %u\n",
+          //                      var->numDimensions, numElts);
 
           // Build up pValueArray with pointers to the elements of the
           // static array starting at pValue

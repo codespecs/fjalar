@@ -1234,7 +1234,7 @@ char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numByt
   // the function's EBP and the lowestESP is OFF THE HOOK!!!
   // We treat this as allocated automatically since the function has
   // actually explicitly allocated this on the stack at one time
-  // or another, even though at function exit time, it blows since
+  // or another, even though at function exit time, it's bad because
   // the ESP increments back up near EBP:
   // The reason why we need this check is that during function exit time,
   // Valgrind marks that function's stack frame as invalid even though
