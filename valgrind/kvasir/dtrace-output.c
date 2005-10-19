@@ -1,8 +1,8 @@
 /*
-   This file is part of Kvasir, a Valgrind skin that implements the
+   This file is part of Kvasir, a Valgrind tool that implements the
    C language front-end for the Daikon Invariant Detection System
 
-   Copyright (C) 2004 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -324,6 +324,7 @@ Returns: 1 if the value of the variable was actually observed and outputted
          (ie. it was a valid and initialized value),
          0 if the variable was never observed and either UNINIT or NONSENSICAL was printed out
 */
+// DEPRECATED AS OF 2005-10-18
 char outputDtraceValue(DaikonVariable* var,
 		       void* basePtrValue,
 		       VariableOrigin varOrigin,
@@ -739,6 +740,7 @@ void finishDtraceFile()
   }
 }
 
+// DEPRECATED AS OF 2005-10-18
 void printDtraceHashcode(DaikonVariable* var,
 			 Addr ptrValue,
 			 char isArray,
@@ -794,6 +796,7 @@ void printDtraceHashcode(DaikonVariable* var,
 
 // Return 1 if this variable has really been observed,
 //        0 if it has not (UNINIT printed out)
+// DEPRECATED AS OF 2005-10-18
 char printDtraceString(DaikonVariable* var,
 		       void* ptrValue,
 		       char overrideIsInitialized,
@@ -1018,6 +1021,7 @@ switch (decType) \
 
 // Return 1 if this variable has really been observed,
 //        0 if it has not (UNINIT printed out)
+// DEPRECATED AS OF 2005-10-18
 char printDtraceBaseValue(DaikonVariable* var,
 			  char* ptrValue,
 			  DaikonDeclaredType decType, // not necessarily the same as var's declared type
@@ -1260,7 +1264,8 @@ static char printDtraceSingleBaseValue(void* pValue,
 static void printDtraceBaseValueSequence(DaikonDeclaredType decType,
                                          void** pValueArray,
                                          UInt numElts,
-                                         DisambigOverride disambigOverride);
+                                         DisambigOverride disambigOverride,
+                                         void** pFirstInitElt);
 
 static void printDtraceSingleString(char* actualString,
                                     DisambigOverride disambigOverride);
@@ -1269,7 +1274,8 @@ static void printDtraceSingleString(char* actualString,
 static void printDtraceStringSequence(DaikonVariable* var,
                                       void** pValueArray,
                                       UInt numElts,
-                                      DisambigOverride disambigOverride);
+                                      DisambigOverride disambigOverride,
+                                      void** pFirstInitElt);
 
 
 // Prints a .dtrace entry for a single variable value denoted by
@@ -1404,15 +1410,29 @@ char printDtraceSingleVar(DaikonVariable* var,
 // Prints a .dtrace entry for a sequence of variable values denoted by
 // pValueArray (size numElts).  Returns 1 if variable successfully
 // observed and printed, and 0 otherwise.
+//
+// Upon exit, if pFirstInitElt, then *pFirstInitElt contains the
+// pointer to the first initialized element in the sequence, or 0 if
+// there are no initialized elements in the sequence.  This is useful
+// for DynComp to determine which memory location to use as the
+// canonical one for the entire sequence in terms of getting tags.
 char printDtraceSequence(DaikonVariable* var,
                          void** pValueArray,
                          UInt numElts,
                          VariableOrigin varOrigin,
                          char isHashcode,
-                         DisambigOverride disambigOverride) {
+                         DisambigOverride disambigOverride,
+                         void** pFirstInitElt) {
   int i;
   char someEltNonZero = 0;
   char someEltInit = 0;
+
+  char firstInitEltFound = 0;
+  void* firstInitElt = 0;
+
+  if (pFirstInitElt) {
+    *pFirstInitElt = 0;
+  }
 
   assert(var);
 
@@ -1442,7 +1462,8 @@ char printDtraceSequence(DaikonVariable* var,
 
 
   // If all elements in pValueArray are uninit, then print out UNINIT
-  // and return 0. (be conservative and only check the first byte)
+  // and return 0. (be conservative and only check the first byte so that
+  // we don't mistakenly mark an array of shorts as uninitialized)
   for (i = 0; i < numElts; i++) {
     void* pCurValue = pValueArray[i];
     char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char));
@@ -1476,20 +1497,24 @@ char printDtraceSequence(DaikonVariable* var,
         char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(void*));
 
         if (eltInit) {
+          if (!firstInitEltFound) {
+            firstInitElt = pCurValue;
+            firstInitEltFound = 1;
+          }
+
           DTRACE_PRINTF("%u ", var->isStaticArray ?
                         (Addr)pCurValue :
                         *((Addr*)pCurValue));
 
           // Merge the tags of the 4-bytes of the observed pointer as
-          // well as the tags of the first address and the current
-          // address because we are observing everything as a sequence
-          if (kvasir_with_dyncomp) {
-            DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
-                            pCurValue, sizeof(void*));
+          // well as the tags of the first initialized address and the
+          // current address because we are observing everything as a
+          // sequence
+          // TODO: This may cause unnecessarily large comparability
+          // sets - watch out!
+          if (kvasir_with_dyncomp && firstInitElt) {
             val_uf_union_tags_in_range((Addr)pCurValue, sizeof(void*));
-            // TODO: This assumes that the 0th element was valid - we
-            // should really merge it with the first valid element:
-            val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+            val_uf_union_tags_at_addr((Addr)firstInitElt, (Addr)pCurValue);
           }
         }
         else {
@@ -1510,7 +1535,8 @@ char printDtraceSequence(DaikonVariable* var,
     printDtraceStringSequence(var,
                               pValueArray,
                               numElts,
-                              disambigOverride);
+                              disambigOverride,
+                              &firstInitElt);
   }
   // Base (non-hashcode) struct or union type
   // Simply print out its hashcode location
@@ -1525,18 +1551,6 @@ char printDtraceSequence(DaikonVariable* var,
     for (i = 0; i < limit; i++) {
       void* pCurValue = pValueArray[i];
       DTRACE_PRINTF("%u ", (Addr)pCurValue);
-
-      // Merge the tags of the 4-bytes of the observed pointer as
-      // well as the tags of the first address and the current
-      // address because we are observing everything as a sequence
-      if (kvasir_with_dyncomp) {
-        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
-                        pCurValue, sizeof(void*));
-        val_uf_union_tags_in_range((Addr)pCurValue, sizeof(void*));
-        // TODO: This assumes that the 0th element was valid - we
-        // should really merge it with the first valid element:
-        val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
-      }
     }
 
     DTRACE_PRINTF( "]\n%d\n",
@@ -1561,7 +1575,12 @@ char printDtraceSequence(DaikonVariable* var,
     printDtraceBaseValueSequence(decType,
                                  pValueArray,
                                  numElts,
-                                 disambigOverride);
+                                 disambigOverride,
+                                 &firstInitElt);
+  }
+
+  if (pFirstInitElt) {
+    *pFirstInitElt = firstInitElt;
   }
 
   // Default return value:
@@ -1647,6 +1666,12 @@ char printDtraceSingleBaseValue(void* pValue,
 // (The one exception is the rare D_FUNCTION or D_VOID types, which
 //  we just punt)
 //
+// Upon exit, if pFirstInitElt, then *pFirstInitElt contains the
+// pointer to the first initialized element in the sequence, or 0 if
+// there are no initialized elements in the sequence.  This is useful
+// for DynComp to determine which memory location to use as the
+// canonical one for the entire sequence in terms of getting tags.
+//
 // Sample output:
 // [ 1 2 3 4 5 ]
 // 1
@@ -1654,9 +1679,13 @@ static
 void printDtraceBaseValueSequence(DaikonDeclaredType decType,
                                   void** pValueArray,
                                   UInt numElts,
-                                  DisambigOverride disambigOverride) {
+                                  DisambigOverride disambigOverride,
+                                  void** pFirstInitElt) {
   int i = 0;
   int limit = numElts;
+  char firstInitEltFound = 0;
+  void* firstInitElt = 0;
+
   if (kvasir_array_length_limit != -1) {
     limit = min(limit, kvasir_array_length_limit);
   }
@@ -1682,6 +1711,11 @@ void printDtraceBaseValueSequence(DaikonDeclaredType decType,
     char eltInit = addressIsInitialized((Addr)pCurValue, TYPE_BYTE_SIZES[decType]);
 
     if (eltInit) {
+      if (!firstInitEltFound) {
+        firstInitElt = pCurValue;
+        firstInitEltFound = 1;
+      }
+
       // Special case for .disambig:
       if (OVERRIDE_CHAR_AS_STRING == disambigOverride) {
         printOneCharAsDtraceString(*((char*)pCurValue));
@@ -1689,12 +1723,16 @@ void printDtraceBaseValueSequence(DaikonDeclaredType decType,
       else {
         TYPES_SWITCH(DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE)
 
+        // Merge the tags of all bytes read for this element:
         if (kvasir_with_dyncomp) {
           val_uf_union_tags_in_range((Addr)pCurValue, TYPE_BYTE_SIZES[decType]);
-          // TODO: This assumes that the 0th element was valid - we
-          // should really merge it with the first valid element:
-          val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
         }
+      }
+
+      // Merge the tags of this element and the first initialized
+      // element:
+      if (kvasir_with_dyncomp && firstInitElt) {
+        val_uf_union_tags_at_addr((Addr)firstInitElt, (Addr)pCurValue);
       }
 
       DTRACE_PRINTF(" ");
@@ -1712,6 +1750,11 @@ void printDtraceBaseValueSequence(DaikonDeclaredType decType,
 
   DTRACE_PRINTF("]\n%d\n",
                 mapInitToModbit(1));
+
+  // Set return value via pointer:
+  if (pFirstInitElt) {
+    *pFirstInitElt = firstInitElt;
+  }
 }
 
 // Pre: actualString is an initialized null-terminated C string
@@ -1745,6 +1788,12 @@ void printDtraceSingleString(char* actualString,
 // sequence.  We print uninitialized values as 'nonsensical' in the
 // sequence because that is all Daikon can support at the moment.
 //
+// Upon exit, if pFirstInitElt, then *pFirstInitElt contains the
+// pointer to the first initialized element in the sequence, or 0 if
+// there are no initialized elements in the sequence.  This is useful
+// for DynComp to determine which memory location to use as the
+// canonical one for the entire sequence in terms of getting tags.
+//
 // Sample output:
 // [ "hello" "world" "foo" ]
 // 1
@@ -1752,9 +1801,13 @@ static
 void printDtraceStringSequence(DaikonVariable* var,
                                void** pValueArray,
                                UInt numElts,
-                               DisambigOverride disambigOverride) {
+                               DisambigOverride disambigOverride,
+                               void** pFirstInitElt) {
   int i = 0;
   int limit = numElts;
+  char firstInitEltFound = 0;
+  void* firstInitElt = 0;
+
   if (kvasir_array_length_limit != -1) {
     limit = min(limit, kvasir_array_length_limit);
   }
@@ -1766,11 +1819,15 @@ void printDtraceStringSequence(DaikonVariable* var,
     char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char*));
 
     if (eltInit) {
-      // TODO: Check over accuracy of this later:
-      if (kvasir_with_dyncomp) {
-        // TODO: This assumes that the 0th element was valid - we
-        // should really merge it with the first valid element:
-        val_uf_union_tags_at_addr((Addr)pValueArray[0], (Addr)pCurValue);
+      if (!firstInitEltFound) {
+        firstInitElt = pCurValue;
+        firstInitEltFound = 1;
+      }
+
+      // Merge the tags of this element and the first initialized
+      // element:
+      if (kvasir_with_dyncomp && firstInitElt) {
+        val_uf_union_tags_at_addr((Addr)firstInitElt, (Addr)pCurValue);
       }
 
       if (!(var->isStaticArray) || var->isGlobal) {
@@ -1815,6 +1872,11 @@ void printDtraceStringSequence(DaikonVariable* var,
 
   DTRACE_PRINTF("]\n%d\n",
                 mapInitToModbit(1));
+
+  // Set return value via pointer:
+  if (pFirstInitElt) {
+    *pFirstInitElt = firstInitElt;
+  }
 }
 
 

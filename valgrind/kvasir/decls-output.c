@@ -1622,6 +1622,7 @@ static void printDeclsEntry(DaikonVariable* var,
 // /foo                 <-- variable name
 // "hello world"        <-- value
 // 1                    <-- modbit
+// DEPRECATED AS OF 2005-10-18
 static void printDtraceEntryOld(DaikonVariable* var,
                              char* varName,
                              VariableOrigin varOrigin,
@@ -1750,6 +1751,8 @@ static void printDtraceEntry(DaikonVariable* var,
                              char isEnter) {
   char variableHasBeenObserved = 0;
   int layersBeforeBase = var->repPtrLevels - numDereferences;
+  void* firstInitElt = 0;
+
   tl_assert(layersBeforeBase >= 0);
 
   // Line 1: Variable name
@@ -1773,7 +1776,8 @@ static void printDtraceEntry(DaikonVariable* var,
                           numElts,
                           varOrigin,
                           isHashcode,
-                          disambigOverride);
+                          disambigOverride,
+                          &firstInitElt);
   }
   else {
     variableHasBeenObserved =
@@ -1791,9 +1795,9 @@ static void printDtraceEntry(DaikonVariable* var,
     void* ptrInQuestion = 0;
     char ptrAllocAndInit = 0;
 
-    // Pick the first one from the sequence
+    // Pick the first initialized element from the sequence
     if (isSequence) {
-      ptrInQuestion = pValueArray[0];
+      ptrInQuestion = firstInitElt;
     }
     else {
       ptrInQuestion = pValue;
@@ -1816,7 +1820,7 @@ static void printDtraceEntry(DaikonVariable* var,
     // but 'foo' itself still has no tag and is not comparable to
     // anything else.)
 
-    // Don't do anything if this condition holds:
+    // Don't do anything if it's a base static array variable
     // (layersBeforeBase > 0) is okay since var->isStaticArray implies
     // that there is only one level of pointer indirection, and for a
     // static string (static array of 'char'), layersBeforeBase == 0
@@ -1849,11 +1853,12 @@ static void printDtraceEntry(DaikonVariable* var,
         a = (Addr)ptrInQuestion;
       }
 
-      DYNCOMP_DPRINTF("%s (%d) ", varName, g_daikonVarIndex);
-      DC_post_process_for_variable(varFuncInfo,
-                                   isEnter,
-                                   g_daikonVarIndex,
-                                   a);
+      if (a) {
+        DC_post_process_for_variable(varFuncInfo,
+                                     isEnter,
+                                     g_daikonVarIndex,
+                                     a);
+      }
     }
   }
 
@@ -3000,6 +3005,7 @@ void visitSequence(DaikonVariable* var,
 // TODO: We REALLY NEED to clean up this function and make it smaller.
 // Perhaps take in function pointer parameters and delegate to separate
 // handler functions for .decls, .dtrace, .disambig, and DynComp
+// DEPRECATED AS OF 2005-10-18
 void outputDaikonVar(DaikonVariable* var,
 		     VariableOrigin varOrigin,
 		     int numDereferences,

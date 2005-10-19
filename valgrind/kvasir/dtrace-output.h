@@ -81,7 +81,8 @@ char printDtraceSequence(DaikonVariable* var,
                          UInt numElts,
                          VariableOrigin varOrigin,
                          char isHashcode,
-                         DisambigOverride disambigOverride);
+                         DisambigOverride disambigOverride,
+                         void** pFirstInitElt);
 
 
 #endif
