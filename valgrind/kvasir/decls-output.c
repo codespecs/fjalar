@@ -2437,70 +2437,161 @@ void visitSingleVar(DaikonVariable* var,
       curVar = &(i->var);
       assert(curVar);
 
-      if ((DTRACE_FILE == outputType) && pValue) {
-        // The starting address for the member variable is the
-        // struct's starting address plus the location of the variable
-        // within the struct TODO: Are we sure that arithmetic on
-        // void* basePtrValue adds by 1?  Otherwise, we'd have
-        // mis-alignment issues.  (I tried it in gdb and it seems to
-        // work, though.)
-        pCurVarValue = pValue + curVar->data_member_location;
+      // Only flatten static arrays when the --flatten-arrays option
+      // is used.  Normally we do not have to flatten static arrays at
+      // this point because we can simply visit them as an entire
+      // sequence.
+      if (VAR_IS_STATIC_ARRAY(curVar) &&
+          kvasir_flatten_arrays &&
+          (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
+          (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
+          // Ignore arrays of characters (strings) inside of the struct:
+          !(curVar->isString && (curVar->declaredPtrLevels == 1))) {
+        // Only look at the first dimension:
+        UInt arrayIndex;
+        for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++) {
+          char indexStr[5];
+          top = stringStackTop(fullNameStack, fullNameStackSize);
 
-        // Override for D_DOUBLE types: For some reason, the DWARF2
-        // info.  botches the locations of double variables within
-        // structs, setting their data_member_location fields to give
-        // them only 4 bytes of padding instead of 8 against the next
-        // member variable.  If curVar is a double and there exists a
-        // next member variable such that the difference in
-        // data_member_location of this double and the next member
-        // variable is exactly 4, then decrement the double's location
-        // by 4 in order to give it a padding of 8:
-        if ((D_DOUBLE == curVar->varType->declaredType) &&
-            (i->next) &&
-            ((i->next->var.data_member_location -
-              curVar->data_member_location) == 4)) {
-          pCurVarValue -= 4;
+          sprintf(indexStr, "%d", arrayIndex);
+
+          // TODO: Subtract and add is a HACK!  Subtract one from the
+          // type of curVar just because we are looping through and
+          // expanding the array
+          if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
+            int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            count--;
+            genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
+          }
+
+          if (DTRACE_FILE == outputType) {
+            // The starting address for the member variable is the
+            // struct's starting address plus the location of the
+            // variable within the struct
+            pCurVarValue = pValue + curVar->data_member_location;
+
+            // Very important! Add offset within the flattened array:
+            pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
+          }
+
+          // If the top element is '*', then instead of pushing a
+          // '.' to make '*.', erase that element and instead push
+          // '->'.  If last element is '->', then we're fine and
+          // don't do anything else.  Otherwise, push a '.'
+          if (top[0] == '*') {
+            stringStackPop(fullNameStack, &fullNameStackSize);
+            stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+            numEltsPushedOnStack = 0;
+          }
+          else if (VG_STREQ(top, arrow)) {
+            numEltsPushedOnStack = 0;
+          }
+          else {
+            stringStackPush(fullNameStack, &fullNameStackSize, dot);
+            numEltsPushedOnStack = 1;
+          }
+
+          stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+          stringStackPush(fullNameStack, &fullNameStackSize, "[");
+          stringStackPush(fullNameStack, &fullNameStackSize, indexStr);
+          stringStackPush(fullNameStack, &fullNameStackSize, "]");
+
+          numEltsPushedOnStack += 4;
+
+
+          visitSingleVar(curVar,
+                         0,
+                         pCurVarValue,
+                         0,
+                         DERIVED_FLATTENED_ARRAY_VAR,
+                         outputType,
+                         allowVarDumpToFile,
+                         trace_vars_tree,
+                         OVERRIDE_NONE, // Start over again and read new .disambig entry
+                         numStructsDereferenced + 1, // Notice the +1 here
+                         varFuncInfo,
+                         isEnter);
+
+          // POP all the stuff we pushed on there before
+          while ((numEltsPushedOnStack--) > 0) {
+            stringStackPop(fullNameStack, &fullNameStackSize);
+          }
+
+          // HACK: Add the count back on at the end
+          if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
+            int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            count++;
+            genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
+          }
         }
       }
-
-      top = stringStackTop(fullNameStack, fullNameStackSize);
-
-      // If the top element is '*' or '[0]', then instead of pushing a
-      // '.' to make '*.' or '[0].', erase that element and instead push
-      // '->'.  If last element is '->', then we're fine and
-      // don't do anything else.  Otherwise, push a '.'
-      if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
-        stringStackPop(fullNameStack, &fullNameStackSize);
-        stringStackPush(fullNameStack, &fullNameStackSize, arrow);
-        numEltsPushedOnStack = 0;
-      }
-      else if (VG_STREQ(top, arrow)) {
-        numEltsPushedOnStack = 0;
-      }
+      // Regular member variable (without array flattening):
       else {
-        stringStackPush(fullNameStack, &fullNameStackSize, dot);
-        numEltsPushedOnStack = 1;
-      }
+        if ((DTRACE_FILE == outputType) && pValue) {
+          // The starting address for the member variable is the
+          // struct's starting address plus the location of the variable
+          // within the struct TODO: Are we sure that arithmetic on
+          // void* basePtrValue adds by 1?  Otherwise, we'd have
+          // mis-alignment issues.  (I tried it in gdb and it seems to
+          // work, though.)
+          pCurVarValue = pValue + curVar->data_member_location;
 
-      stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
-      numEltsPushedOnStack++;
+          // Override for D_DOUBLE types: For some reason, the DWARF2
+          // info.  botches the locations of double variables within
+          // structs, setting their data_member_location fields to give
+          // them only 4 bytes of padding instead of 8 against the next
+          // member variable.  If curVar is a double and there exists a
+          // next member variable such that the difference in
+          // data_member_location of this double and the next member
+          // variable is exactly 4, then decrement the double's location
+          // by 4 in order to give it a padding of 8:
+          if ((D_DOUBLE == curVar->varType->declaredType) &&
+              (i->next) &&
+              ((i->next->var.data_member_location -
+                curVar->data_member_location) == 4)) {
+            pCurVarValue -= 4;
+          }
+        }
 
-      visitSingleVar(curVar,
-                     0,
-                     pCurVarValue,
-                     0,
-                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
-                     outputType,
-                     allowVarDumpToFile,
-                     trace_vars_tree,
-                     OVERRIDE_NONE, // Start over again and read new .disambig entry
-                     numStructsDereferenced + 1, // Notice the +1 here
-                     varFuncInfo,
-                     isEnter);
+        top = stringStackTop(fullNameStack, fullNameStackSize);
 
-      // POP everything we've just pushed on
-      while ((numEltsPushedOnStack--) > 0) {
-        stringStackPop(fullNameStack, &fullNameStackSize);
+        // If the top element is '*' or '[0]', then instead of pushing a
+        // '.' to make '*.' or '[0].', erase that element and instead push
+        // '->'.  If last element is '->', then we're fine and
+        // don't do anything else.  Otherwise, push a '.'
+        if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
+          stringStackPop(fullNameStack, &fullNameStackSize);
+          stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+          numEltsPushedOnStack = 0;
+        }
+        else if (VG_STREQ(top, arrow)) {
+          numEltsPushedOnStack = 0;
+        }
+        else {
+          stringStackPush(fullNameStack, &fullNameStackSize, dot);
+          numEltsPushedOnStack = 1;
+        }
+
+        stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+        numEltsPushedOnStack++;
+
+        visitSingleVar(curVar,
+                       0,
+                       pCurVarValue,
+                       0,
+                       (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                       outputType,
+                       allowVarDumpToFile,
+                       trace_vars_tree,
+                       OVERRIDE_NONE, // Start over again and read new .disambig entry
+                       numStructsDereferenced + 1, // Notice the +1 here
+                       varFuncInfo,
+                       isEnter);
+
+        // POP everything we've just pushed on
+        while ((numEltsPushedOnStack--) > 0) {
+          stringStackPop(fullNameStack, &fullNameStackSize);
+        }
       }
     }
   }
