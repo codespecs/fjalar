@@ -63,9 +63,6 @@ const char* GLOBAL_STRING;
 const char* ENTER_PPT;
 const char* EXIT_PPT;
 
-extern UInt MAX_STRUCT_DEPTH;
-extern UInt MAX_NESTING_DEPTH;
-
 extern UInt MAX_VISIT_STRUCT_DEPTH;
 extern UInt MAX_VISIT_NESTING_DEPTH;
 
@@ -83,10 +80,14 @@ char* stringStackStrdup(char** stringStack, int stringStackSize);
 
 
 char createDeclsAndDtraceFiles(char* appname);
-char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char** filenamePtr);
+char splitDirectoryAndFilename(const char* input,
+                               char** dirnamePtr,
+                               char** filenamePtr);
 
 void printDeclsHeader();
-void printOneFunctionDecl(DaikonFunctionInfo* funcPtr, char isEnter, char faux_decls);
+void printOneFunctionDecl(DaikonFunctionInfo* funcPtr,
+                          char isEnter,
+                          char faux_decls);
 
 void printAllFunctionDecls(char faux_decls);
 void printAllObjectAndClassDecls();
@@ -112,28 +113,6 @@ void printVariablesInVarList(DaikonFunctionInfo* funcPtr,
 			     char* trace_vars_tree,
                              char printClassProgramPoint,
                              char stopAfterFirstVar);
-
-void outputDaikonVar(DaikonVariable* var,
-		     VariableOrigin varOrigin,
-		     int numDereferences,
-		     char isAlreadyDaikonSequence,
-		     char stopExpandingArrays,
-		     char stopDerivingMemberVars,
-		     char allowVarDumpToFile,
-		     char* trace_vars_tree, // Binary tree within FunctionTree struct
-		     OutputFileType outputType,
-		     DisambigOverride disambigOverride, // Only relevant for .disambig
-		     // only valid if isDtraceFilePrint:
-		     void* basePtrValue,
-		     char overrideIsInitialized,
-		     char isDummy,
-		     unsigned long upperBound,
-		     unsigned long bytesBetweenElts,
-		     char structParentAlreadySetArrayInfo,
-                     int numStructsDereferenced,
-                     DaikonFunctionInfo* varFuncInfo, char isEnter);
-
-
 
 void visitVariable(DaikonVariable* var,
                    void* pValue,

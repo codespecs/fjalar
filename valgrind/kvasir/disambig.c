@@ -162,12 +162,6 @@ void generateDisambigFile() {
 
 	 stringStackPush(fullNameStack, &fullNameStackSize, var->name);
 
-#ifndef USE_EXP_VISIT_CODE
-	 outputDaikonVar(var,
-			 DERIVED_VAR, 0, 0, 0, 0, 0, 0,
-			 DISAMBIG_FILE, 0, 0, 0, 0, 0, 0, 0,0,
-                         0, 0);
-#else
          visitVariable(var,
                        0,
                        0,
@@ -177,7 +171,6 @@ void generateDisambigFile() {
                        0,
                        0,
                        0);
-#endif
 
 	 stringStackPop(fullNameStack, &fullNameStackSize);
        }

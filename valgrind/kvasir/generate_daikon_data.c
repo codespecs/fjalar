@@ -1,8 +1,8 @@
 /*
-   This file is part of Kvasir, a Valgrind skin that implements the
+   This file is part of Kvasir, a Valgrind tool that implements the
    C language front-end for the Daikon Invariant Detection System
 
-   Copyright (C) 2004 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -1537,7 +1537,7 @@ void printVariablesInList(VarList* varListPtr, int leadingSpaces, DaikonType* st
       //      if (curNode->var.varType == structType)
       if (gencontains(VisitedStructsTable, (void*)(curNode->var.varType)) &&
 	  ((int)(gengettable(VisitedStructsTable, (void*)(curNode->var.varType))) >
-	   MAX_STRUCT_DEPTH))
+	   MAX_VISIT_STRUCT_DEPTH))
 	{
 	  printOneDaikonVariable(&(curNode->var), 1, 0);
 	}
@@ -1615,11 +1615,11 @@ void printOneDaikonVariable(DaikonVariable* var, char doNotRecurse, char firstTi
       if (t->isStructUnionType)
 	{
 	  // Check to see if the VisitedStructsTable contains
-	  // more than MAX_STRUCT_DEPTH of the current struct type:
+	  // more than MAX_VISIT_STRUCT_DEPTH of the current struct type:
 	  if (gencontains(VisitedStructsTable, (void*)t))
 	    {
 	      int count = (int)(gengettable(VisitedStructsTable, (void*)t));
-	      if (count <= MAX_STRUCT_DEPTH)
+	      if (count <= MAX_VISIT_STRUCT_DEPTH)
 		{
 		  count++;
 		  genputtable(VisitedStructsTable, (void*)t, (void*)count);
