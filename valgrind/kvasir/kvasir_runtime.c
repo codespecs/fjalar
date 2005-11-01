@@ -753,29 +753,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
       // be the address of the struct/union, so pass that along ...
       // NO extra level of indirection needed
 
-#ifndef USE_EXP_VISIT_CODE
-      outputDaikonVar(&(cur_node->var),
-		      FUNCTION_RETURN_VAR,
-		      0,
-		      0,
-		      0,
-		      0,
-		      0,
-		      daikonFuncPtr->trace_vars_tree,
-		      DTRACE_FILE,
-		      0,
-		      (void*)e->EAX,
-                      // No longer need to overrideIsInitialized
-                      // because we now keep shadow V-bits for e->EAX
-                      // and friends
-		      0, // e->EAXvalid,
-		      0,
-		      0,
-		      0,
-		      0,
-                      0,
-                      daikonFuncPtr, 0);
-#else
       visitVariable(&(cur_node->var),
                     (void*)e->EAX,
                     // No longer need to overrideIsInitialized
@@ -788,7 +765,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                     daikonFuncPtr->trace_vars_tree,
                     daikonFuncPtr,
                     0);
-#endif
     }
   // Double type - use FPU
   else if ((cur_node->var.declaredPtrLevels == 0) &&
@@ -797,30 +773,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
       // SPECIAL CASE: The value in FPU must be interpreted as a double
       // even if its true type may be a float
 
-#ifndef USE_EXP_VISIT_CODE
-      // Need an additional indirection level
-      outputDaikonVar(&(cur_node->var),
-		      FUNCTION_RETURN_VAR,
-		      0,
-		      0,
-		      0,
-		      0,
-		      0,
-		      daikonFuncPtr->trace_vars_tree,
-		      DTRACE_FILE,
-		      0,
-		      &(e->FPU),
-                      // No longer need to overrideIsInitialized
-                      // because we now keep shadow V-bits for e->EAX
-                      // and friends
-                      0, // e->FPUvalid,
-		      0,
-		      0,
-		      0,
-		      0,
-                      0,
-                      daikonFuncPtr, 0);
-#else
       visitVariable(&(cur_node->var),
                     &(e->FPU),
                     0,
@@ -830,7 +782,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                     daikonFuncPtr->trace_vars_tree,
                     daikonFuncPtr,
                     0);
-#endif
     }
   // Remember that long long int types use EAX as the low 4 bytes
   // and EDX as the high 4 bytes
@@ -848,29 +799,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                                   (Addr)(&uLong) + (Addr)sizeof(e->EAX),
                                   sizeof(e->EDX));
 
-#ifndef USE_EXP_VISIT_CODE
-      outputDaikonVar(&(cur_node->var),
-		      FUNCTION_RETURN_VAR,
-		      0,
-		      0,
-		      0,
-		      0,
-		      0,
-		      daikonFuncPtr->trace_vars_tree,
-		      DTRACE_FILE,
-		      0,
-		      &uLong,
-                      // No longer need to overrideIsInitialized
-                      // because we now keep shadow V-bits for e->EAX
-                      // and friends
-		      0, // e->EAXvalid,
-		      0,
-		      0,
-		      0,
-		      0,
-                      0,
-                      daikonFuncPtr, 0);
-#else
       visitVariable(&(cur_node->var),
                     &uLong,
                     0,
@@ -880,7 +808,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                     daikonFuncPtr->trace_vars_tree,
                     daikonFuncPtr,
                     0);
-#endif
     }
   else if ((cur_node->var.declaredPtrLevels == 0) &&
            (cur_node->var.varType->declaredType == D_LONG_LONG_INT))
@@ -895,29 +822,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                                   (Addr)(&signedLong) + (Addr)sizeof(e->EAX),
                                   sizeof(e->EDX));
 
-#ifndef USE_EXP_VISIT_CODE
-      outputDaikonVar(&(cur_node->var),
-		      FUNCTION_RETURN_VAR,
-		      0,
-		      0,
-		      0,
-		      0,
-		      0,
-		      daikonFuncPtr->trace_vars_tree,
-		      DTRACE_FILE,
-		      0,
-		      &signedLong,
-                      // No longer need to overrideIsInitialized
-                      // because we now keep shadow V-bits for e->EAX
-                      // and friends
-		      0, // e->EAXvalid,
-		      0,
-		      0,
-		      0,
-		      0,
-                      0,
-                      daikonFuncPtr, 0);
-#else
       visitVariable(&(cur_node->var),
                     &signedLong,
                     0,
@@ -927,7 +831,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                     daikonFuncPtr->trace_vars_tree,
                     daikonFuncPtr,
                     0);
-#endif
     }
   // All other types (integer and pointer) - use EAX
   else
@@ -936,29 +839,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
       DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p\n",
 	      cur_node, &(e->EAX));
 
-#ifndef USE_EXP_VISIT_CODE
-      outputDaikonVar(&(cur_node->var),
-		      FUNCTION_RETURN_VAR,
-		      0,
-		      0,
-		      0,
-		      0,
-		      0,
-		      daikonFuncPtr->trace_vars_tree,
-		      DTRACE_FILE,
-		      0,
-		      &(e->EAX),
-                      // No longer need to overrideIsInitialized
-                      // because we now keep shadow V-bits for e->EAX
-                      // and friends
-		      0, // e->EAXvalid,
-		      0,
-		      0,
-		      0,
-		      0,
-                      0,
-                      daikonFuncPtr, 0);
-#else
       visitVariable(&(cur_node->var),
                     &(e->EAX),
                     0,
@@ -968,7 +848,6 @@ void outputReturnValue(FunctionEntry* e, DaikonFunctionInfo* daikonFuncPtr)
                     daikonFuncPtr->trace_vars_tree,
                     daikonFuncPtr,
                     0);
-#endif
     }
 
   stringStackPop(fullNameStack, &fullNameStackSize);

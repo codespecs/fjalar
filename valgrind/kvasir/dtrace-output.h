@@ -26,48 +26,6 @@
 int openDtraceFile(const char *fname);
 void printDtraceFunctionHeader(DaikonFunctionInfo* funcPtr, char isEnter);
 void finishDtraceFile();
-char mapInitToModbit(char init);
-
-char outputDtraceValue(DaikonVariable* var,
-		       void* basePtrValue,
-		       VariableOrigin varOrigin,
-		       char isHashcode,
-		       char overrideIsInitialized,
-		       char isDummy,
-		       char isArray,
-		       unsigned long upperBound,
-		       unsigned long bytesBetweenElts,
-		       char overrideFloatAsDouble,
-		       DisambigOverride disambigOverride);
-
-void printOneDtraceString(char* str);
-void printOneCharAsDtraceString(char c);
-void printOneDtraceStringAsIntArray(char* str);
-
-void printDtraceHashcode(DaikonVariable* var,
-			 Addr ptrValue,
-			 char isArray,
-			 unsigned long upperBound,
-			 unsigned long bytesBetweenElts);
-
-char printDtraceString(DaikonVariable* var,
-		       void* ptrValue,
-		       char overrideIsInitialized,
-		       DisambigOverride disambigOverride,
-		       char isArray,
-		       unsigned long upperBound,
-		       unsigned long bytesBetweenElts);
-
-char printDtraceBaseValue(DaikonVariable* var,
-			  char* ptrValue, // Make pointer arithmetic increment by 1
-			  DaikonDeclaredType decType, // not necessarily the same as var's declared type
-			  char overrideIsInitialized,
-			  char isArray,
-			  unsigned long upperBound,
-			  unsigned long bytesBetweenElts,
-			  DisambigOverride disambigOverride);
-
-
 
 char printDtraceSingleVar(DaikonVariable* var,
                           void* pValue,
