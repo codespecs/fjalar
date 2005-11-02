@@ -84,6 +84,17 @@ typedef struct _DaikonType {
 
 } DaikonType;
 
+// WARNING: The only entries in DaikonTypesTable are for types that
+// are actually associated with variables used in the program.  If no
+// variable in your program uses a certain type, then it does not have
+// an entry in here!!!  This prevents us from including all sorts of
+// junky types from libraries in this table (which have entries in the
+// debug. info.) and ensures that we only have types in here that are
+// referenced by variables that we are tracing.  The one down-side of
+// this strategy is that when you are coercing types using a .disambig
+// file, you must coerce it to a type that is used by some other
+// variable, or else it doesn't appear in this table.
+
 // Hash table containing DaikonType entries
 // Keys: ID from dwarf_entry
 // Values: DaikonType corresponding to the ID
@@ -92,6 +103,7 @@ typedef struct _DaikonType {
 //          is_declaration NULL, not fake declaration entries)
 struct genhashtable* DaikonTypesTable;
 
+DaikonType* findDaikonTypeByName(char* name);
 
 // Hash table containing structs already visited while
 // deriving Daikon variables
