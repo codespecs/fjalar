@@ -1781,3 +1781,25 @@ unsigned int hashString(char* str) {
 int equivalentStrings(char* str1, char* str2) {
   return VG_STREQ(str1, str2);
 }
+
+
+// Returns the first DaikonType entry found in DaikonTypesTable with
+// collectionName matching the given name, and return 0 if nothing
+// found.
+DaikonType* findDaikonTypeByName(char* name) {
+  struct geniterator* it = gengetiterator(DaikonTypesTable);
+
+  while (!it->finished) {
+    DaikonType* cur_type = (DaikonType*)
+      gengettable(DaikonTypesTable, gennext(it));
+
+    if (cur_type->collectionName &&
+        VG_STREQ(cur_type->collectionName, name)) {
+      genfreeiterator(it);
+      return cur_type;
+    }
+  }
+
+  genfreeiterator(it);
+  return 0;
+}

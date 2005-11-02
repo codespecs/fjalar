@@ -1,8 +1,8 @@
 /*
-   This file is part of Kvasir, a Valgrind skin that implements the
+   This file is part of Kvasir, a Valgrind tool that implements the
    C language front-end for the Daikon Invariant Detection System
 
-   Copyright (C) 2004 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -428,11 +428,50 @@ void processDisambigFile() {
 	DaikonVariable* target = 0;
 
 	char* varName = VG_(strdup)(line);
-        char disambig_letter;
+        char* disambigLine = 0;
 
-	// Eat up the next line, which should be just one character:
-	fgets(line, 10, disambig_fp);
-	disambig_letter = line[0];
+        char* firstToken = 0;
+        char* secondToken = 0;
+
+        char disambig_letter;
+        char* coercion_type = 0;
+
+	// Eat up the next line
+        // There are two possibilities here:
+        //   1.) It is just a single disambig letter (e.g., "A", "P")
+        //   2.) It consists of a type coercion statement after the
+        //   single disambig letter (e.g., "P foo_type")
+	fgets(line, 200, disambig_fp);
+        lineLen = VG_(strlen)(line);
+        // Strip '\n' off the end of the line
+        // NOTE: Only do this if the end of the line is a newline character.
+        // If the very last line of a file is not followed by a newline character,
+        // then blindly stripping off the last character will truncate the actual
+        // string, which is undesirable.
+        if (line[lineLen - 1] == '\n') {
+          line[lineLen - 1] = '\0';
+        }
+
+        disambigLine = VG_(strdup)(line);
+
+        firstToken = strtok(disambigLine, " ");
+        secondToken = strtok(NULL, " ");
+
+        //        VG_(printf)(" first_token: %s| second_token: %s|\n",
+        //                    firstToken, secondToken);
+
+        // The first token should always be the disambig letter
+        tl_assert(VG_(strlen)(firstToken) == 1);
+	disambig_letter = *firstToken;
+
+        //        VG_(printf)(" var_name: %s\n", varName);
+        //        VG_(printf)("  disambig_letter: %c\n", disambig_letter);
+
+        // If the second token is non-empty, then it is the coercion type
+        if (secondToken) {
+          coercion_type = secondToken;
+          //          VG_(printf)("  coercion_type: %s\n", coercion_type);
+        }
 
 	if (VarListArraySize > 0) {
 	  int j;
@@ -453,11 +492,19 @@ void processDisambigFile() {
 	    if (target) {
 	      switch (type) {
 	      case FUNCTION:
-		target->disambig = disambig_letter;
-		break;
 	      case GLOBAL:
 	      case USERTYPE:
 		target->disambig = disambig_letter;
+                // Change the type of the variable to point to the one
+                // named by coercion_type:
+                if (coercion_type) {
+                  DaikonType* new_type = findDaikonTypeByName(coercion_type);
+                  if (new_type) {
+                    target->varType = new_type;
+                    VG_(printf)("  .disambig: Coerced variable %s into type '%s'\n",
+                                varName, coercion_type);
+                  }
+                }
 		break;
 	      default:
 		break;
@@ -468,6 +515,7 @@ void processDisambigFile() {
 	  }
 	}
 	VG_(free)(varName);
+        VG_(free)(disambigLine);
       }
 
       nextLineIsEntry = 0;
