@@ -106,6 +106,7 @@ void destroyFunctionEntry(FunctionEntry* f);
 //         variables
 struct genhashtable* VisitedStructsTable;
 
+// Trivial hash and comparison functions:
 unsigned int hashID(int ID);
 int equivalentIDs(int ID1, int ID2);
 
@@ -286,8 +287,6 @@ unsigned long lowestGlobalVarAddr;  // The location of the lowest-addr member of
 
 void initializeAllFjalarData(); //daikon_preprocess_entry_array();
 
-void verifyStackParamWordAlignment(FunctionEntry* f);
-
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 //char isAddrInGlobalSpace(unsigned long a, int numBytes);
 
@@ -295,6 +294,9 @@ unsigned int hashString(char* str);
 int equivalentStrings(char* str1, char* str2);
 
 
+// TODO: Perhaps we can print out variables and stuff in XML format?
+// It would be much easier for humans to read through with a graphical
+// browser:
 void printFunctionTable();
 void printGlobalVars();
 void printOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting);
