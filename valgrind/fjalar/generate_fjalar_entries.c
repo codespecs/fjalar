@@ -28,6 +28,8 @@
 #include "tool.h"
 #include "GenericHashtable.h"
 
+#include "fjalar_tool.h"
+
 //#include "kvasir_main.h"
 //#include "decls-output.h"
 
@@ -1611,7 +1613,7 @@ TypeEntry* findTypeEntryByName(char* name) {
 }
 
 
-void printFunctionTable()
+void XMLprintFunctionTable()
 {
   VarNode* formalParamNode = 0;
   VarNode* localArrayVarNode = 0;
@@ -1657,7 +1659,7 @@ void printFunctionTable()
   genfreeiterator(it);
 }
 
-void printGlobalVars()
+void XMLprintGlobalVars()
 {
   VarNode* globalVarNode = 0;
 
@@ -1672,7 +1674,7 @@ void printGlobalVars()
     }
 }
 
-void printVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType)
+void XMLprintVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType)
 {
   VarNode* curNode = 0;
   int i = 0;
@@ -1705,7 +1707,7 @@ void printVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* str
 
 // Prints one VariableEntry on one line followed by the type information
 // of its TypeEntry on the next line and then a newline
-void printOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting)
+void XMLprintOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting)
 {
   TypeEntry* t;
   if (!var)
