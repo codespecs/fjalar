@@ -86,18 +86,6 @@ typedef struct _TypeEntry {
 
 } TypeEntry;
 
-// Default constructor that the user has to implement, which should
-// return a particular sub-class of an object.  This should call
-// VG_(calloc) the proper amount of space for the object and
-// initialize it with whatever initial state is necessary.
-VariableEntry* constructVariableEntry();
-TypeEntry* constructTypeEntry();
-FunctionEntry* constructFunctionEntry();
-
-// Destructors that should call VG_(free) on the respective entries.
-void destroyVariableEntry(VariableEntry* v);
-void destroyTypeEntry(TypeEntry* t);
-void destroyFunctionEntry(FunctionEntry* f);
 
 // Hash table containing structs already visited while
 // deriving variables
@@ -297,9 +285,9 @@ int equivalentStrings(char* str1, char* str2);
 // TODO: Perhaps we can print out variables and stuff in XML format?
 // It would be much easier for humans to read through with a graphical
 // browser:
-void printFunctionTable();
-void printGlobalVars();
-void printOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting);
-void printVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType);
+void XMLprintFunctionTable();
+void XMLprintGlobalVars();
+void XMLprintOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting);
+void XMLprintVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType);
 
 #endif
