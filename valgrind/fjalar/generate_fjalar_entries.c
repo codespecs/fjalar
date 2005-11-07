@@ -28,8 +28,8 @@
 #include "tool.h"
 #include "GenericHashtable.h"
 
-#include "kvasir_main.h"
-#include "decls-output.h"
+//#include "kvasir_main.h"
+//#include "decls-output.h"
 
 static void initializeStructNamesIDTable();
 static void initializeFunctionTable();
@@ -38,12 +38,29 @@ static void initializeAllClassMemberFunctions();
 
 static int determineVariableByteSize(VariableEntry* var);
 
+static void extractOneVariable(VarList* varListPtr,
+                               dwarf_entry* typePtr,
+                               char* variableName,
+                               char* fileName,
+                               unsigned long byteOffset,
+                               char isGlobal,
+                               char isExternal,
+                               unsigned long globalLocation,
+                               unsigned long functionStartPC,
+                               char isStructUnionMember,
+                               unsigned long data_member_location,
+                               int internalByteSize,
+                               int internalBitOffset,
+                               int internalBitSize,
+                               TypeEntry* structParentType,
+                               char isFormalParam);
 
-TypeEntry GlobalHashcodeType = {0,
-                                 D_VOID,
-                                 R_HASHCODE,
-                                 4, // sizeof(void*)
-                                 0, 0, 0, 0};
+
+// A sentinel for a void* type
+TypeEntry GlobalHashcodeType = {0,             // collectionName
+                                D_VOID,        // decType
+                                sizeof(void*), // byteSize
+                                0, 0, 0, 0};
 
 // Hash table that maps the names of structs to their ID's in
 // dwarf_entry_array
@@ -243,7 +260,7 @@ void initializeAllFjalarData()
   StructNamesIDTable = 0;
 }
 
-int entry_is_valid_function(dwarf_entry *entry) {
+static int entry_is_valid_function(dwarf_entry *entry) {
   if (tag_is_function(entry->tag_name)) {
     function* funcPtr = (function*)(entry->entry_ptr);
     if (funcPtr->name != 0 &&
@@ -265,11 +282,6 @@ int entry_is_valid_function(dwarf_entry *entry) {
 //unsigned int hashGlobalVarAddr(unsigned long ID) {
 //  return ((unsigned int)ID) % geninitialnumbins;
 //}
-
-// Super-trivial key comparison method -
-int equivalentGlobalVarAddrs(unsigned long ID1, unsigned long ID2) {
-  return (ID1 == ID2);
-}
 
 
 // Pre: e->tag_name == DW_TAG_variable
@@ -330,7 +342,7 @@ static void initializeGlobalVarsList()
   //                   and values = {string which is the global variable name}
   struct genhashtable* GlobalVarsTable =
     genallocatehashtable((unsigned int (*)(void *)) &hashID,
-			 (int (*)(void *,void *)) &equivalentGlobalVarAddrs);
+			 (int (*)(void *,void *)) &equivalentIDs);
 
   DPRINTF("Entering initializeGlobalVarsList()\n");
 
@@ -777,7 +789,7 @@ static void extractSubroutineType(TypeEntry* t, function_type* functionPtr)
 // Modifies: t
 static void extractVoidType(TypeEntry* t)
 {
-  t->byteSize = 1; // TODO: Why does this only take up one byte?
+  t->byteSize = 4; // TODO: Why does this only take up one byte?
                    // Shouldn't it take up 4?
   t->decType = D_VOID;
   t->repType = R_HASHCODE;
@@ -928,7 +940,7 @@ void extractLocalArrayAndStructVariables(FunctionEntry* f,
 // Valgrind gains control at the beginning of a function, the parameters
 // are not guaranteed to be at those locations yet -
 // We have devised our own calculation that word-aligns everything.
-void verifyStackParamWordAlignment(FunctionEntry* f)
+static void verifyStackParamWordAlignment(FunctionEntry* f)
 {
   VarNode* cur_node;
   int offset = 8;
@@ -1449,208 +1461,6 @@ void extractOneVariable(VarList* varListPtr,
   }
 }
 
-void printFunctionTable()
-{
-  VarNode* formalParamNode = 0;
-  VarNode* localArrayVarNode = 0;
-  VarNode* returnVarNode = 0;
-  FunctionEntry* cur_entry;
-  struct geniterator* it = gengetiterator(FunctionTable);
-
-  while (!it->finished)
-    {
-      cur_entry = (FunctionEntry*)
-        gengettable(FunctionTable, gennext(it));
-
-      if (!cur_entry)
-        continue;
-
-      printf("\n%s (%s) startPC=%p\n\n",
-             cur_entry->fjalar_name,
-             cur_entry->filename,
-	     (void*)cur_entry->startPC);
-
-      for (formalParamNode = cur_entry->formalParameters.first;
-           formalParamNode != 0; formalParamNode = formalParamNode->next)
-        {
-          printf("  PARAM: ");
-          printOneVariable(&(formalParamNode->var), 0, 1);
-        }
-
-      for (localArrayVarNode = cur_entry->localArrayVariables.first;
-           localArrayVarNode != 0; localArrayVarNode = localArrayVarNode->next)
-        {
-          printf("  LOCAL: ");
-          printOneVariable(&(localArrayVarNode->var), 0, 1);
-        }
-
-      for (returnVarNode = cur_entry->returnValue.first;
-           returnVarNode != 0; returnVarNode = returnVarNode->next)
-        {
-          printf("  RETURN: ");
-          printOneVariable(&(returnVarNode->var), 0, 1);
-        }
-    }
-
-  genfreeiterator(it);
-}
-
-void printDaikonGlobalVars()
-{
-  VarNode* globalVarNode = 0;
-
-  printf("\nGlobal variables:\n\n");
-
-  for (globalVarNode = globalVars.first;
-       globalVarNode != 0;
-       globalVarNode = globalVarNode->next)
-    {
-          printf("  GLOBAL: ");
-          printOneVariable(&(globalVarNode->var), 0, 1);
-    }
-}
-
-void printVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType)
-{
-  VarNode* curNode = 0;
-  int i = 0;
-
-  if (!varListPtr)
-    return;
-
-  for (curNode = varListPtr->first;
-       curNode != 0;
-       curNode = curNode->next)
-    {
-      for (i = 0; i < leadingSpaces; i++)
-	printf(" ");
-
-      // Avoid printing out repeated entries for recursively-defined structs
-      // (ie. linked lists)
-      //      if (curNode->var.varType == structType)
-      if (gencontains(VisitedStructsTable, (void*)(curNode->var.varType)) &&
-	  ((int)(gengettable(VisitedStructsTable, (void*)(curNode->var.varType))) >
-	   MAX_VISIT_STRUCT_DEPTH))
-	{
-	  printOneVariable(&(curNode->var), 1, 0);
-	}
-      else
-	{
-	  printOneVariable(&(curNode->var), 0, 0);
-	}
-    }
-}
-
-// Prints one VariableEntry on one line followed by the type information
-// of its TypeEntry on the next line and then a newline
-void printOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting)
-{
-  TypeEntry* t;
-  if (!var)
-    return;
-
-  if (firstTimePrinting)
-    {
-      // Initialize VisitedStructsTable if necessary
-      if (VisitedStructsTable)
-	{
-	  genfreehashtable(VisitedStructsTable);
-	}
-      VisitedStructsTable = genallocatehashtable((unsigned int (*)(void *)) & hashID,(int (*)(void *,void *)) &equivalentIDs);
-    }
-
-   t = var->varType;
-
-  printf("name: %s, ptrLevels R/D:%d/%d, init:%d, byteOffset:%d, isGlobal:%d, globalLocation:0x%lx",
-         var->name,
-	 var->repPtrLevels,
-	 var->declaredPtrLevels,
-	 var->isInitialized,
-	 var->byteOffset,
-	 var->isGlobal,
-	 var->globalLocation);
-
-  // Print out array information
-  if (var->isStaticArray)
-    {
-      int i = 0;
-      printf(", ARRAY dims:");
-      for (i = 0; i < var->numDimensions; i++)
-	{
-	  printf(" %lu", var->upperBounds[i]);
-	}
-    }
-
-  if (var->isStructUnionMember)
-    {
-      printf(", memberLocation: %lu, structParent: %s",
-	     var->data_member_location,
-	     (var->structParentType ?
-	      var->structParentType->collectionName :
-	      "(no parent)"));
-    }
-
-  if (t)
-    {
-      printf("\n     %s, decType: %s, repType: %s, byteSize: %d",
-	     t->collectionName,
-	     DaikonDeclaredTypeNames[t->decType],
-	     DaikonRepTypeNames[t->repType],
-	     t->byteSize);
-
-      if (var->isString)
-	{
-	  printf(" CHARACTER STRING!");
-	}
-
-      printf("\n");
-
-      if (t->isStructUnionType)
-	{
-	  // Check to see if the VisitedStructsTable contains
-	  // more than MAX_VISIT_STRUCT_DEPTH of the current struct type:
-	  if (gencontains(VisitedStructsTable, (void*)t))
-	    {
-	      int count = (int)(gengettable(VisitedStructsTable, (void*)t));
-	      if (count <= MAX_VISIT_STRUCT_DEPTH)
-		{
-		  count++;
-		  genputtable(VisitedStructsTable, (void*)t, (void*)count);
-		}
-	      else
-		{
-		  printf("   >>> RECURSION STOPPED by VisitedStructsTable to prevent infinite loop\n");
-		  return;
-		}
-	    }
-	  else
-	    {
-	      genputtable(VisitedStructsTable, (void*)t, (void*)1);
-	    }
-
-	  if (doNotRecurse)
-	    {
-	      printf("    >>> RECURSION STOPPED to prevent infinite loop\n");
-	    }
-	  else
-	    {
-	      printf("   BEGIN struct members of %s:\n",
-		     t->collectionName);
-
-	      printVariablesInList(t->memberListPtr, 5, t);
-
-	      printf("   END struct members of %s\n",
-		     t->collectionName);
-	    }
-	}
-    }
-  else
-    {
-      printf("   No type information found for variable %s\n",
-	     var->name);
-    }
-}
-
 // Pre: All entries in TypesTable have already been set
 //      so run this AFTER we've set up all the stuff in TypesTable
 // Effect: Iterate through all collection (Struct/Union/Class)
@@ -1798,4 +1608,206 @@ TypeEntry* findTypeEntryByName(char* name) {
 
   genfreeiterator(it);
   return 0;
+}
+
+
+void printFunctionTable()
+{
+  VarNode* formalParamNode = 0;
+  VarNode* localArrayVarNode = 0;
+  VarNode* returnVarNode = 0;
+  FunctionEntry* cur_entry;
+  struct geniterator* it = gengetiterator(FunctionTable);
+
+  while (!it->finished)
+    {
+      cur_entry = (FunctionEntry*)
+        gengettable(FunctionTable, gennext(it));
+
+      if (!cur_entry)
+        continue;
+
+      printf("\n%s (%s) startPC=%p\n\n",
+             cur_entry->fjalar_name,
+             cur_entry->filename,
+	     (void*)cur_entry->startPC);
+
+      for (formalParamNode = cur_entry->formalParameters.first;
+           formalParamNode != 0; formalParamNode = formalParamNode->next)
+        {
+          printf("  PARAM: ");
+          printOneVariable(&(formalParamNode->var), 0, 1);
+        }
+
+      for (localArrayVarNode = cur_entry->localArrayVariables.first;
+           localArrayVarNode != 0; localArrayVarNode = localArrayVarNode->next)
+        {
+          printf("  LOCAL: ");
+          printOneVariable(&(localArrayVarNode->var), 0, 1);
+        }
+
+      for (returnVarNode = cur_entry->returnValue.first;
+           returnVarNode != 0; returnVarNode = returnVarNode->next)
+        {
+          printf("  RETURN: ");
+          printOneVariable(&(returnVarNode->var), 0, 1);
+        }
+    }
+
+  genfreeiterator(it);
+}
+
+void printGlobalVars()
+{
+  VarNode* globalVarNode = 0;
+
+  printf("\nGlobal variables:\n\n");
+
+  for (globalVarNode = globalVars.first;
+       globalVarNode != 0;
+       globalVarNode = globalVarNode->next)
+    {
+          printf("  GLOBAL: ");
+          printOneVariable(&(globalVarNode->var), 0, 1);
+    }
+}
+
+void printVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType)
+{
+  VarNode* curNode = 0;
+  int i = 0;
+
+  if (!varListPtr)
+    return;
+
+  for (curNode = varListPtr->first;
+       curNode != 0;
+       curNode = curNode->next)
+    {
+      for (i = 0; i < leadingSpaces; i++)
+	printf(" ");
+
+      // Avoid printing out repeated entries for recursively-defined structs
+      // (ie. linked lists)
+      //      if (curNode->var.varType == structType)
+      if (gencontains(VisitedStructsTable, (void*)(curNode->var.varType)) &&
+	  ((int)(gengettable(VisitedStructsTable, (void*)(curNode->var.varType))) >
+	   MAX_VISIT_STRUCT_DEPTH))
+	{
+	  printOneVariable(&(curNode->var), 1, 0);
+	}
+      else
+	{
+	  printOneVariable(&(curNode->var), 0, 0);
+	}
+    }
+}
+
+// Prints one VariableEntry on one line followed by the type information
+// of its TypeEntry on the next line and then a newline
+void printOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting)
+{
+  TypeEntry* t;
+  if (!var)
+    return;
+
+  if (firstTimePrinting)
+    {
+      // Initialize VisitedStructsTable if necessary
+      if (VisitedStructsTable)
+	{
+	  genfreehashtable(VisitedStructsTable);
+	}
+      VisitedStructsTable = genallocatehashtable((unsigned int (*)(void *)) & hashID,(int (*)(void *,void *)) &equivalentIDs);
+    }
+
+   t = var->varType;
+
+  printf("name: %s, ptrLevels R/D:%d/%d, init:%d, byteOffset:%d, isGlobal:%d, globalLocation:0x%lx",
+         var->name,
+	 var->repPtrLevels,
+	 var->declaredPtrLevels,
+	 var->isInitialized,
+	 var->byteOffset,
+	 var->isGlobal,
+	 var->globalLocation);
+
+  // Print out array information
+  if (var->isStaticArray)
+    {
+      int i = 0;
+      printf(", ARRAY dims:");
+      for (i = 0; i < var->numDimensions; i++)
+	{
+	  printf(" %lu", var->upperBounds[i]);
+	}
+    }
+
+  if (var->isStructUnionMember)
+    {
+      printf(", memberLocation: %lu, structParent: %s",
+	     var->data_member_location,
+	     (var->structParentType ?
+	      var->structParentType->collectionName :
+	      "(no parent)"));
+    }
+
+  if (t)
+    {
+      printf("\n     %s, decType: %s, byteSize: %d",
+	     t->collectionName,
+	     DeclaredTypeNames[t->decType],
+	     t->byteSize);
+
+      if (var->isString)
+	{
+	  printf(" CHARACTER STRING!");
+	}
+
+      printf("\n");
+
+      if (t->isStructUnionType)
+	{
+	  // Check to see if the VisitedStructsTable contains
+	  // more than MAX_VISIT_STRUCT_DEPTH of the current struct type:
+	  if (gencontains(VisitedStructsTable, (void*)t))
+	    {
+	      int count = (int)(gengettable(VisitedStructsTable, (void*)t));
+	      if (count <= MAX_VISIT_STRUCT_DEPTH)
+		{
+		  count++;
+		  genputtable(VisitedStructsTable, (void*)t, (void*)count);
+		}
+	      else
+		{
+		  printf("   >>> RECURSION STOPPED by VisitedStructsTable to prevent infinite loop\n");
+		  return;
+		}
+	    }
+	  else
+	    {
+	      genputtable(VisitedStructsTable, (void*)t, (void*)1);
+	    }
+
+	  if (doNotRecurse)
+	    {
+	      printf("    >>> RECURSION STOPPED to prevent infinite loop\n");
+	    }
+	  else
+	    {
+	      printf("   BEGIN struct members of %s:\n",
+		     t->collectionName);
+
+	      printVariablesInList(t->memberListPtr, 5, t);
+
+	      printf("   END struct members of %s\n",
+		     t->collectionName);
+	    }
+	}
+    }
+  else
+    {
+      printf("   No type information found for variable %s\n",
+	     var->name);
+    }
 }
