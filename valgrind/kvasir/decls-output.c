@@ -1579,7 +1579,10 @@ static void printDeclsEntry(DaikonVariable* var,
 }
 
 
-static void printDtraceEntry(DaikonVariable* var,
+// Returns 1 if the variable has been successfully observed, 0
+// otherwise.  If this function returns 0, then all subsequent
+// traversals should print out NONSENSICAL
+static char printDtraceEntry(DaikonVariable* var,
                              UInt numDereferences,
                              char* varName,
                              void* pValue,
@@ -1603,7 +1606,8 @@ static void printDtraceEntry(DaikonVariable* var,
   // Line 1: Variable name
   printVariableName(varName, 0, dtrace_fp);
 
-/*   VG_(printf)("%s - isSequence: %u (overrideInit: %u)\n", varName, isSequence, overrideIsInit); */
+  //  VG_(printf)("%s - isSequence: %u (overrideInit: %u) disambigOverride: %d, isSeq:%d, pValueArray: %p\n",
+  //              varName, isSequence, overrideIsInit, disambigOverride, isSequence, pValueArray);
 /*   if (pValueArray) { */
 /*     UInt i; */
 /*     VG_(printf)("[ "); */
@@ -1726,6 +1730,8 @@ static void printDtraceEntry(DaikonVariable* var,
       var->pointerHasEverBeenObserved = 1;
     }
   }
+
+  return variableHasBeenObserved;
 }
 
 
@@ -1974,6 +1980,9 @@ void visitSingleVar(DaikonVariable* var,
   char disambigOverrideArrayAsPointer = 0;
   char derefSingleElement = 0;
 
+  // Only valid for .dtrace - affects pValue
+  char variableHasBeenObserved = 0;
+
   tl_assert(var);
   layersBeforeBase = var->repPtrLevels - numDereferences;
   tl_assert(layersBeforeBase >= 0);
@@ -2027,19 +2036,20 @@ void visitSingleVar(DaikonVariable* var,
                       varFuncInfo, isEnter);
       break;
     case DTRACE_FILE:
-      printDtraceEntry(var,
-                       numDereferences,
-                       fullDaikonName,
-                       pValue,
-                       varOrigin,
-                       (layersBeforeBase > 0),
-                       overrideIsInit,
-                       disambigOverride,
-                       0, // NOT isSequence
-                       0,
-                       0,
-                       varFuncInfo,
-                       isEnter);
+      variableHasBeenObserved =
+        printDtraceEntry(var,
+                         numDereferences,
+                         fullDaikonName,
+                         pValue,
+                         varOrigin,
+                         (layersBeforeBase > 0),
+                         overrideIsInit,
+                         disambigOverride,
+                         0, // NOT isSequence
+                         0,
+                         0,
+                         varFuncInfo,
+                         isEnter);
       break;
     case DISAMBIG_FILE:
       printDisambigEntry(var, fullDaikonName);
@@ -2061,6 +2071,16 @@ void visitSingleVar(DaikonVariable* var,
     }
   }
 
+  // This is an ugly hack that's required to properly not print out
+  // base struct variables but still make sure that derived variables
+  // are properly printed out.  We want to set variableHasBeenObserved
+  // to 1 if we encounter a base struct variable because we need its
+  // member variables to be properly observed:
+  if ((layersBeforeBase == 0) &&
+      (var->varType->isStructUnionType)) {
+    variableHasBeenObserved = 1;
+  }
+
   // We don't need the name anymore since we're done printing
   // everything about this variable by now
   VG_(free)(fullDaikonName);
@@ -2070,6 +2090,7 @@ void visitSingleVar(DaikonVariable* var,
   // visitSequence():
   g_daikonVarIndex++;
 
+  //  VG_(printf)("    variableHasBeenObserved: %d\n", variableHasBeenObserved);
 
   // Now comes the fun part of deriving variables!
 
@@ -2086,7 +2107,10 @@ void visitSingleVar(DaikonVariable* var,
       void* pNewValue = 0;
 
       // Initialize pNewValue if possible, otherwise leave at 0:
-      if ((DTRACE_FILE == outputType) && pValue) {
+      // VERY IMPORTANT: Only derive if variableHasBeenObserved
+      if ((DTRACE_FILE == outputType) &&
+          pValue &&
+          variableHasBeenObserved) {
         derivedIsAllocated = (overrideIsInit ? 1 :
                               addressIsAllocated((Addr)pValue, sizeof(void*)));
         if (derivedIsAllocated) {
@@ -2133,7 +2157,10 @@ void visitSingleVar(DaikonVariable* var,
       UInt i;
 
       // We only need to set pValueArray and numElts for .dtrace output:
-      if ((DTRACE_FILE == outputType) && pValue) {
+      // VERY IMPORTANT: Only derive if variableHasBeenObserved
+      if ((DTRACE_FILE == outputType) &&
+          pValue &&
+          variableHasBeenObserved) {
         // Static array:
         if (VAR_IS_STATIC_ARRAY(var)) {
           // Flatten multi-dimensional arrays by treating them as one
@@ -2300,7 +2327,10 @@ void visitSingleVar(DaikonVariable* var,
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
 
-          if (DTRACE_FILE == outputType) {
+          // Only derive a pointer value inside of the struct if
+          // variableHasBeenObserved; else leave pCurVarValue at 0:
+          if (DTRACE_FILE == outputType &&
+              variableHasBeenObserved) {
             // The starting address for the member variable is the
             // struct's starting address plus the location of the
             // variable within the struct
@@ -2363,7 +2393,11 @@ void visitSingleVar(DaikonVariable* var,
       }
       // Regular member variable (without array flattening):
       else {
-        if ((DTRACE_FILE == outputType) && pValue) {
+        // Only derive a pointer value inside of the struct if
+        // variableHasBeenObserved; else leave pCurVarValue at 0:
+        if ((DTRACE_FILE == outputType) &&
+            pValue &&
+            variableHasBeenObserved) {
           // The starting address for the member variable is the
           // struct's starting address plus the location of the variable
           // within the struct TODO: Are we sure that arithmetic on
