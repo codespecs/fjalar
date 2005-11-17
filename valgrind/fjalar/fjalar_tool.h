@@ -21,12 +21,31 @@ must implement
 #define FJALAR_TOOL_H
 
 #include "generate_fjalar_entries.h"
-
+#include "tool.h"
 
 // Initialization and tear-down code:
+
+// Runs before processing command-line options:
 void fjalar_tool_pre_clo_init();
+// Runs after processing command-line options:
 void fjalar_tool_post_clo_init();
+// Prints instructions when the --help option is invoked:
+void fjalar_tool_print_usage();
+// Processes command-line options:
+Bool fjalar_tool_process_cmd_line_option(Char* arg);
+// Runs after the tool exits:
 void fjalar_tool_finish();
+
+
+// When this function is called, Valgrind proper is already
+// initialized so that tools can now have access to more useful
+// Valgrind functions such as C++ name demangling:
+void fjalar_tool_handle_first_function_entrance();
+
+// These functions are called during every instance of a function
+// entrance and exit, respectively:
+void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state);
+void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state);
 
 
 // Constructors and destructors for classes that can be sub-classed:
@@ -39,7 +58,8 @@ VariableEntry* constructVariableEntry();
 TypeEntry* constructTypeEntry();
 FunctionEntry* constructFunctionEntry();
 
-// Destructors that should call VG_(free) on the respective entries.
+// Destructors that should clean-up and then call VG_(free) on the
+// respective entries.
 void destroyVariableEntry(VariableEntry* v);
 void destroyTypeEntry(TypeEntry* t);
 void destroyFunctionEntry(FunctionEntry* f);

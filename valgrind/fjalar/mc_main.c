@@ -234,7 +234,7 @@ static __inline__ UChar get_vbyte ( Addr a )
    return sm->vbyte[sm_off];
 }
 
-// PG - made it non-static for Kvasir
+// pgbovine - made it non-static for Fjalar
 /* __inline__ */ void set_abit ( Addr a, UChar abit )
 {
    SecMap* sm;
@@ -249,7 +249,7 @@ static __inline__ UChar get_vbyte ( Addr a )
       BITARR_CLEAR(sm->abits, sm_off);
 }
 
-// PG - made it non-static for Kvasir
+// pgbovine - made it non-static for Fjalar
 __inline__ void set_vbyte ( Addr a, UChar vbyte )
 {
    SecMap* sm;
@@ -639,7 +639,7 @@ static Bool mc_check_noaccess ( Addr a, SizeT len, Addr* bad_addr )
    return True;
 }
 
-// PG - made it non-static for Kvasir
+// pgbovine - made it non-static for Fjalar
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr )
 {
    SizeT i;
@@ -661,7 +661,7 @@ Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr )
 //   MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
 //} MC_ReadResult;
 
-// PG - made it non-static for Kvasir (notice that the return type has changed too)
+// pgbovine - made it non-static for Fjalar (notice that the return type has changed too)
 MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr )
 {
    SizeT i;
@@ -1665,19 +1665,19 @@ Bool  MC_(clo_avoid_strlen_errors)    = True;
 
 Bool TL_(process_cmd_line_option)(Char* arg)
 {
-        VG_BOOL_CLO(arg, "--avoid-strlen-errors", MC_(clo_avoid_strlen_errors))
-   else
-      return kvasir_process_cmd_line_option(arg); // PG
+  VG_BOOL_CLO(arg, "--avoid-strlen-errors", MC_(clo_avoid_strlen_errors))
+  else
+    return MAC_(process_common_cmd_line_option)(arg);
 
-   return True;
+  return True;
 }
 
 void TL_(print_usage)(void)
 {
-   // PG
-   kvasir_print_usage();
+   // pgbovine
+   fjalar_print_usage();
 
-   VG_(printf)("\n  user options for MemCheck portion of Kvasir:\n");
+   VG_(printf)("\n  User options for MemCheck portion of Fjalar:\n");
 
    MAC_(print_common_usage)();
    VG_(printf)(
@@ -1769,7 +1769,7 @@ Int alloc_client_block ( void )
    return cgb_used-1;
 }
 
-// PG - deprecated
+// pgbovine - deprecated
 /* static void show_client_block_stats ( void ) */
 /* { */
 /*    VG_(message)(Vg_DebugMsg, */
@@ -2061,7 +2061,7 @@ void TL_(fini) ( Int exitcode )
 {
    fjalar_finish();
 
-   // PG - Disable MemCheck memory leak detection to speed up Kvasir
+   // pgbovine - Disable MemCheck memory leak detection for fast shutdown
       //   MAC_(common_fini)( mc_detect_memory_leaks );
 
       //   if (0) {
@@ -2071,7 +2071,7 @@ void TL_(fini) ( Int exitcode )
       //   }
 }
 
-// PG - We want to keep much more shadow space than Memcheck does.
+// pgbovine - We want to keep much more shadow space than Memcheck does.
 
 // Memcheck uses 9./8 because there are 8 V-bits and 1 A-bit for every
 // 8 bits of client memory, but we want 8 V-bits + 1 A-bit + 32 tag

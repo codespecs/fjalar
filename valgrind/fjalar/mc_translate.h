@@ -31,8 +31,9 @@
 #ifndef MC_TRANSLATE_H
 #define MC_TRANSLATE_H
 
-// Comment this out or else it won't compile:
-//typedef  IRExpr  IRAtom;
+#include "tool.h"
+
+typedef IRExpr IRAtom;
 
 /* assign value to tmp */
 #define assign(_bb,_tmp,_expr)   \

@@ -20,8 +20,10 @@
 #ifndef GENERATE_FJALAR_ENTRIES_H
 #define GENERATE_FJALAR_ENTRIES_H
 
+#include "tool.h"
 #include "typedata.h"
 #include "GenericHashtable.h"
+#include <stdio.h>
 
 /*
 
@@ -29,9 +31,6 @@ The three main types here are: FunctionEntry, VariableEntry, and
 TypeEntry.  All of these should be allowed to be 'sub-classed', so we
 need to make sure to be careful when creating these entries to make
 sure that we allocate enough space for them.
-
-Perhaps we can use 'constructor' functions that the user must
-implement for FunctionEntry, VariableEntry, and TypeEntry.
 
 */
 
@@ -64,25 +63,38 @@ typedef enum DeclaredType
 typedef struct _VarList VarList;
 typedef struct _VarNode VarNode;
 
+typedef struct _FunctionEntry FunctionEntry;
+
 // THIS TYPE SHOULD BE IMMUTABLE SINCE IT IS SHARED!!!  TypeEntry only
 // exist for structs and base types and NOT pointer types.  Pointers
-// are represented using the ptr_levels field of the VariableEntry
-// object.
+// are represented using the ptrLevels field of the VariableEntry
+// object.  Thus, arbitrary levels of pointers to a particular type
+// can be represented by one TypeEntry instance.
 typedef struct _TypeEntry {
 
-  char* collectionName; // Only valid if declaredType == D_ENUMERATION,
-                        // D_STRUCT, or D_UNION
   DeclaredType decType;
+  char* collectionName; // Only valid if decType == 
+                        // {D_ENUMERATION, D_STRUCT, D_UNION}
 
   int byteSize; // Number of bytes that this type takes up
 
   char isStructUnionType;
-  VarList* memberListPtr;
+  // Everything below here is only valid if isStructUnionType:
 
-  // Shared with the corresponding collection_type entry
-  unsigned long num_member_funcs;
-  dwarf_entry** member_funcs; // Array of size num_members; Each element is a
-                              // POINTER to a dwarf_entry of type = {function}
+  // Non-static (instance) member variables:
+  VarList* memberVarList;
+
+  // Static (class) member variables (only non-null if at least 1
+  // exists):
+  // Remember that static member variables are actually allocated
+  // at statically-fixed locations like global variables
+  VarList* staticMemberVarList;
+
+  // For C++: Array of pointers to member functions of this class:
+  // (only non-null if there is at least 1 member function)
+  FunctionEntry** memberFunctionArray;
+  // The size of memberFunctionArray:
+  UInt memberFunctionArraySize;
 
 } TypeEntry;
 
@@ -100,41 +112,63 @@ int equivalentIDs(int ID1, int ID2);
 
 // THIS TYPE IS IMMUTABLE AFTER INITIALIZATION (DO NOT TRY TO MODIFY
 // IT UNLESS YOU ARE STILL IN THE PROCESS OF GENERATING IT)
+// (with the exception of the disambigMultipleElts and
+// pointerHasEverBeenObserved fields)
 typedef struct _VariableEntry {
-  char* name; // This name gets initialized to a full-fledged name (with
-              // filename and function names appended)
-              // in updateAllGlobalVariableNames if this is a global variable
-
-  char isInitialized; // 0 if uninitialized, 1 if initialized
+  char* name; // For non-global variables, this name is how it appears
+              // in the program, but for globals and file-static
+              // variables, it is made into a unique identifier by
+              // appending filename and function names if necessary.
 
   int byteOffset; // Byte offset for function parameters and local variables
 
   // Global variable information:
-  char isGlobal;
-  char isExternal; // False if it's file static
-  unsigned long globalLocation; // The location of this variable (if isGlobal)
+  char isGlobal;   // True if it's either global or file-static
+  char isExternal; // True if visible outside of fileName;
+                   // False if it's file-static
+
+  char isStaticArray; // Is the variable a statically-sized array?
+		      // (Placed here so that the compiler can
+		      // hopefully pack all the chars together to save
+		      // space)
+
+  char isString; // Does this variable look like a C-style string (or
+		 // a pointer to a string, or a pointer to a pointer
+		 // to a string, etc)?  True iff varType == D_CHAR and
+		 // ptrLevels > 0
+
   char* fileName; // ONLY USED by global variables
-  unsigned long functionStartPC; // The start PC address of the function which
-                                 // this variable belongs to - THIS IS ONLY
-                                 // VALID (non-null) FOR FILE STATIC VARIABLES
-                                 // WHICH ARE DECLARED WITHIN FUNCTIONS -
-                                 // see extractOneGlobalVariable()
+
+  Addr globalLocation; // The compiled location of this global variable
+  Addr functionStartPC; // The start PC address of the function which
+                        // this variable belongs to - THIS IS ONLY
+                        // VALID (non-null) FOR FILE STATIC VARIABLES
+                        // WHICH ARE DECLARED WITHIN FUNCTIONS -
+                        // see extractOneGlobalVariable()
 
   // varType refers to the type of the variable after all pointer
   // dereferences are completed ... so don't directly use
   // varType->byteSize ... use getBytesBetweenElts() instead
   TypeEntry* varType;
 
-  // Levels of pointer indirection until we reach varType
+  // Levels of pointer indirection until we reach varType.  This
+  // allows a single VarType instance to be able to represent
+  // variables that are pointers to that type.
   int ptrLevels;
 
-  // Statically-allocated array information:
-  char isStaticArray;
+  // Statically-allocated array information
+  // (Only valid if isStaticArray)
   int numDimensions; // The number of dimensions of this array
   // This is an array of size numDimensions:
-  unsigned long* upperBounds; // The upper bound in each dimension
+  unsigned int* upperBounds; // The upper bound in each dimension
   // e.g. myArray[30][40][50] would have numDimensions = 3
   // and upperBounds = {30, 40, 50}
+
+  // For .disambig option: 0 for no disambig info, 'A' for array, 'P'
+  // for pointer, 'C' for char, 'I' for integer, 'S' for string
+  // (Automatically set a 'P' disambig for the C++ 'this' parameter
+  // since it will always point to one element)
+  char disambig;
 
   // Struct member information
   char isStructUnionMember;
@@ -143,17 +177,29 @@ typedef struct _VariableEntry {
   // (0 for unions)
   unsigned long data_member_location;
 
+  // For bit-fields (not yet implemented)
+  int internalByteSize;
+  int internalBitOffset;  // Bit offset from the start of byteOffset
+  int internalBitSize;    // Bit size for bitfields
+
   TypeEntry* structParentType; // This is active (along with isGlobal) for C++ class static
                                 // member variables, or it's also active (without isGlobal)
                                 // for all struct member variables
+
+  // Only relevant for pointer variables (ptrLevels > 0):
+  // 1 if this particular variable has ever pointed to
+  // more than 1 element, 0 otherwise.
+  // These are the only two fields of this struct which should
+  // EVER be modified after their creation.
+  // They are used to generate a .disambig file using --smart-disambig
+  char disambigMultipleElts;
+  char pointerHasEverBeenObserved;
+
 } VariableEntry;
 
-// Macro predicates for determining types for VariableEntry objects
+
 #define VAR_IS_STRUCT(var)                                            \
   ((var->ptrLevels == 0) && (var->varType->isStructUnionType))
-#define VAR_IS_STATIC_ARRAY(var) \
-  ((var->isStaticArray) && (var->numDimensions >= 1))
-
 
 // Defines a doubly-linked list of VariableEntry objects - each node
 // contains a POINTER to an entry so that it can be sub-classed.
@@ -177,12 +223,12 @@ void deleteTailNode(VarList* varListPtr);
 
 
 // Contains a block of information about a particular function
-typedef struct _FunctionEntry {
+struct _FunctionEntry {
   char* name;           // The standard C name for a function - i.e. "sum"
   char* mangled_name;// The mangled name (C++ only)
 
   char* demangled_name; // mangled_name becomes demangled (C++ only)
-                        // after running updateAllDaikonFunctionInfoEntries()
+                        // after running updateAllFunctionEntryNames()
                         // i.e. "sum(int*, int)"
                         // this is like 'name' except with a full
                         // function signature
@@ -203,16 +249,16 @@ typedef struct _FunctionEntry {
                      // initializeFunctionTable() but it is
                      // deleted and re-initialized to a full function
                      // name with parameters and de-munging (for C++)
-                     // in updateAllDaikonFunctionInfoEntries()
+                     // in updateAllFunctionEntryNames()
 
   // All instructions within the function are between
   // startPC and endPC, inclusive I believe)
-  unsigned long startPC;
-  unsigned long endPC;
+  Addr startPC;
+  Addr endPC;
 
   char isExternal; // 1 if it's globally visible, 0 if it's file static
   VarList formalParameters; // Variables for formal parameters
-  VarList localArrayVariables;   // keep only locally-declared STATIC ARRAYS
+  VarList localArrayAndStructVars; // Locally-declared structs and static array variables
   VarList returnValue;      // Variables for return value
 
   TypeEntry* parentClass; // only non-null if this is a C++ member function;
@@ -225,10 +271,10 @@ typedef struct _FunctionEntry {
 
   // GNU Binary tree of variables to trace within this function - only valid when
   // Kvasir is run with the --var-list-file command-line option:
-  // This is initialized in updateAllDaikonFunctionInfoEntries()
+  // This is initialized in updateAllFunctionEntryNames()
   char* trace_vars_tree;
   char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
-} FunctionEntry;
+};
 
 // Hashtable that holds information about all functions
 // Key: (unsigned int) address of the function
@@ -236,7 +282,7 @@ typedef struct _FunctionEntry {
 struct genhashtable* FunctionTable;
 
 FunctionEntry* findFunctionEntryByFjalarNameSlow(char* unique_name);
-inline FunctionEntry* findFunctionEntryByStartAddr(unsigned int startPC);
+__inline__ FunctionEntry* findFunctionEntryByStartAddr(unsigned int startPC);
 FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr);
 
 
@@ -269,25 +315,67 @@ TypeEntry* findTypeEntryByName(char* name);
 VarList globalVars;
 
 // Range of global variable addresses
-unsigned long highestGlobalVarAddr; // The location of the highest-addr member of globalVars + its byte size
-unsigned long lowestGlobalVarAddr;  // The location of the lowest-addr member of globalVars
+
+// The location of the highest-addr member of globalVars + its byte size
+Addr highestGlobalVarAddr;
+
+// The location of the lowest-addr member of globalVars
+Addr lowestGlobalVarAddr;
 
 
-void initializeAllFjalarData(); //daikon_preprocess_entry_array();
+// Dynamic entries for tracking state at function entrances and exits
+// (used mainly by FunctionExecutionStateStack in fjalar_main.c)
+// THIS CANNOT BE SUB-CLASSED RIGHT NOW because it is placed inline
+// into FunctionExecutionStateStacka
+typedef struct {
+  FunctionEntry* func; // The function whose state we are tracking
+
+  Addr  EBP; // %ebp as calculated from %esp at function entrance time
+
+  Addr  lowestESP; // The LOWEST value of %ESP that is encountered
+                   // while we are in this function -
+                   // We need this to see how deep a function penetrates
+                   // into the stack to see what is safe to dereference
+                   // when this function exits
+
+  // Return values of function exit -
+  // These should NOT be valid on the stack, they should
+  // only be valid right after popping an entry off the
+  // stack upon function exit:
+  // (TODO: What does this mean?  Is this still valid?)
+
+  // As of Valgrind 3.0, we now keep V-bits for all of these
+  // in the shadow memory:
+  int EAX; // %EAX
+  int EDX; // %EDX
+  double FPU; // FPU %st(0)
+
+  // This is a copy of the portion of the Valgrind stack
+  // that is above EBP - it holds function formal parameter
+  // values that was passed into this function upon entrance.
+  // We reference this virtualStack at function exit in order
+  // to print out the SAME formal parameter values upon exit
+  // as upon entrance.
+  char* virtualStack;
+  int virtualStackByteSize; // Number of 1-byte entries in virtualStack
+
+} FunctionExecutionState;
+
+
+void initializeAllFjalarData();
+
+// Call this function whenever you want to check that the data
+// structures in this file all satisfy their respective
+// rep. invariants.  This can only be run after
+// initializeAllFjalarData() has initialized these data structures.
+void repCheckAllEntries();
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
-//char isAddrInGlobalSpace(unsigned long a, int numBytes);
 
 unsigned int hashString(char* str);
 int equivalentStrings(char* str1, char* str2);
 
-
-// TODO: Perhaps we can print out variables and stuff in XML format?
-// It would be much easier for humans to read through with a graphical
-// browser:
-void XMLprintFunctionTable();
-void XMLprintGlobalVars();
-void XMLprintOneVariable(VariableEntry* var, char doNotRecurse, char firstTimePrinting);
-void XMLprintVariablesInList(VarList* varListPtr, int leadingSpaces, TypeEntry* structType);
+FILE* xml_output_fp;
+void outputAllXMLDeclarations();
 
 #endif

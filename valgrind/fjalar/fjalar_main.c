@@ -25,239 +25,99 @@
 
 #include "tool.h"
 #include "generate_fjalar_entries.h"
+#include "fjalar_main.h"
+#include "fjalar_runtime.h"
+#include "fjalar_tool.h"
+#include "fjalar_select.h"
+#include "disambig.h"
 #include "mc_include.h"
 
-#include "kvasir_main.h"
-#include "decls-output.h"
-#include "dtrace-output.h"
-#include "disambig.h"
-#include "dyncomp_main.h"
-#include "dyncomp_runtime.h"
-
 // Global variables that are set by command-line options
-char* kvasir_decls_filename = 0;
-char* kvasir_dtrace_filename = 0;
-Bool kvasir_with_dyncomp = False;
-Bool kvasir_dyncomp_no_gc = False;
-Bool kvasir_dyncomp_fast_mode = False;
-Bool kvasir_print_debug_info = False;
-Bool kvasir_ignore_globals = False;
-Bool kvasir_ignore_static_vars = False;
-Bool kvasir_dtrace_append = False;
-Bool kvasir_dtrace_no_decs = False;
-Bool kvasir_dtrace_gzip = False;
-Bool kvasir_output_fifo = False;
-#ifdef KVASIR_DEVEL_BUILD
-Bool kvasir_asserts_aborts_on = True;
-#else
-Bool kvasir_asserts_aborts_on = False;
-#endif
-Bool kvasir_decls_only = False;
-Bool kvasir_limit_static_vars = False;
-Bool kvasir_default_disambig = False;
-Bool kvasir_smart_disambig = False;
-Bool kvasir_use_bit_level_precision = False;
-Bool kvasir_output_struct_vars = False;
-Bool kvasir_repair_format = False;
-Bool kvasir_flatten_arrays = False;
-Bool kvasir_disambig_ptrs = False;
-Bool dyncomp_print_debug_info = False;
-Bool dyncomp_print_incremental = False;
-Bool dyncomp_separate_entry_exit_comp = False;
-int kvasir_array_length_limit = -1;
-char* kvasir_dump_prog_pt_names_filename = 0;
-char* kvasir_dump_var_names_filename = 0;
-char* kvasir_trace_prog_pts_filename = 0;
-char* kvasir_trace_vars_filename = 0;
-char* kvasir_disambig_filename = 0;
-char *kvasir_program_stdout_filename = 0;
-char *kvasir_program_stderr_filename = 0;
+Bool fjalar_debug = False;
+Bool fjalar_ignore_globals = False;
+Bool fjalar_ignore_static_vars = False;
+Bool fjalar_limit_static_vars = False;
+Bool fjalar_default_disambig = False;
+Bool fjalar_smart_disambig = False;
+Bool fjalar_use_bit_level_precision = False;
+Bool fjalar_output_struct_vars = False;
+Bool fjalar_flatten_arrays = False;
+Bool fjalar_disambig_ptrs = False;
+int  fjalar_array_length_limit = -1;
 
-int dyncomp_gc_after_n_tags = 10000000;
+// adjustable via the --struct-depth=N option:
+UInt MAX_VISIT_STRUCT_DEPTH = 4;
+// adjustable via the --nesting-depth=N option:
+UInt MAX_VISIT_NESTING_DEPTH = 2;
 
-Bool actually_output_separate_decls_dtrace = 0;
-Bool print_declarations = 1;
+// These are used as both strings and boolean flags -
+// They are initialized to 0 upon initiation so if they are
+// never filled with values by the respective command-line
+// options, then they can be treated as False
+char* fjalar_dump_prog_pt_names_filename = 0;
+char* fjalar_dump_var_names_filename = 0;
+char* fjalar_trace_prog_pts_filename = 0;
+char* fjalar_trace_vars_filename = 0;
+char* fjalar_disambig_filename = 0;
+char* fjalar_program_stdout_filename = 0;
+char* fjalar_program_stderr_filename = 0;
+char* fjalar_xml_output_filename = 0;
 
-Bool dyncomp_without_dtrace = False;
+// The filename of the target executable:
+char* executable_filename = 0;
 
-/*------------------------------------------------------------*/
-/*--- Function stack                                       ---*/
-/*------------------------------------------------------------*/
-// TODO: Should I MAKE THIS HUGE??? or dynamically-allocate??? (original = 10000)
-#define FN_STACK_SIZE 10000
+// TODO: We cannot sub-class FunctionExecutionState unless we make
+// this into an array of pointers:
+FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
+// The first free slot in FunctionExecutionStateStack
+// right above the top element:
+int fn_stack_first_free_index;
+// The top element of the stack is:
+//   FunctionExecutionStateStack[fn_stack_first_free_index]
 
-FunctionEntry fn_stack[FN_STACK_SIZE];
-Int fn_stack_top;       // actually just above top -- next free slot
-
-void printFunctionEntryStack()
-{
-   int i;
-   for (i = fn_stack_top - 1; i >= 0; i--)
-      {
-         FunctionEntry* cur_fn = &fn_stack[i];
-         VG_(printf)("fn_stack[%d] %s - EBP: 0x%x, lowestESP: 0x%x, localArrayVarPtr: %p\n",
-                i,
-                cur_fn->daikon_name,
-                cur_fn->EBP,
-                cur_fn->lowestESP,
-                cur_fn->localArrayVariablesPtr);
-      }
+// "Pushes" a new entry onto the stack by returning a pointer to it
+// and incrementing fn_stack_first_free_index (Notice that this has
+// slightly has different semantics than a normal stack push)
+__inline__ FunctionExecutionState* fnStackPush() {
+  tl_assert(fn_stack_first_free_index < FN_STACK_SIZE);
+  fn_stack_first_free_index++;
+  return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
-/*------------------------------------------------------------*/
-/*--- Function entry/exit                                  ---*/
-/*------------------------------------------------------------*/
-
-/*
-Requires:
-Modifies: fn_stack, fn_stack_top
-Returns:
-Effects: pushes a FunctionEntry onto the top of fn_stack and initializes
-         it with function name (f), and EBP values.
-         This is called during function entrance.  Initializes
-         "virtual stack" and then calls handleFunctionEntrance() to
-         generate .dtrace file output at function entrance time
-*/
-static void push_fn(Char* daikon_name, Addr EBP, Addr startPC)
-{
-  DaikonFunctionInfo* daikonFuncPtr =
-    findFunctionInfoByStartAddr(startPC);
-
-  int formalParamStackByteSize =
-     determineFormalParametersStackByteSize(daikonFuncPtr);
-
-  FunctionEntry* top;
-
-  DPRINTF("formalParamStackByteSize is %d\n", formalParamStackByteSize);
-
-  //  VG_(printf)(" @@@ push_fn: %s\n", daikon_name);
-
-  if (fn_stack_top >= FN_STACK_SIZE) VG_(tool_panic)("overflowed fn_stack");
-
-  top = &fn_stack[ fn_stack_top ];
-
-  top->daikon_name = daikon_name;
-  top->EBP = EBP;
-  top->startPC = startPC;
-  top->lowestESP = EBP + 4;
-  top->EAX = 0;
-  top->EDX = 0;
-  top->FPU = 0;
-
-  // Initialize virtual stack and copy parts of the Valgrind stack
-  // into that virtual stack
-  if (formalParamStackByteSize > 0) {
-     // For some reason, VG_(calloc) doesn't work here:
-      // This is the error msg. that it gives:
-      //   kvasir: the `impossible' happened:
-      //   add_MAC_Chunk: shadow area is accessible
-     top->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
-     top->virtualStackByteSize = formalParamStackByteSize;
-
-     VG_(memcpy)(top->virtualStack, (void*)EBP, (formalParamStackByteSize * sizeof(char)));
-     // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
-     // (As a consequence, this copies over the tags as well - look in mc_main.c)
-     mc_copy_address_range_state(EBP, (Addr)(top->virtualStack), formalParamStackByteSize);
-  }
-  else {
-     // Watch out for null pointer segfaults here:
-     top->virtualStack = 0;
-     top->virtualStackByteSize = 0;
-  }
-
-  // Initialize the FunctionEntry.localArrayVariablesPtr field:
-  top->localArrayVariablesPtr = &(daikonFuncPtr->localArrayVariables);
-
-  fn_stack_top++;
-
-  // We used to do this BEFORE the push - does it make a difference???
-  //  VG_(printf)("-- PUSH_FN: fn_stack_top: %d, f: %s\n", fn_stack_top, daikon_name);
-
-  // Do this AFTER initializing virtual stack and lowestESP
-  handleFunctionEntrance(top);
+// Returns the top element of the stack and pops it off
+__inline__ FunctionExecutionState* fnStackPop() {
+  tl_assert(fn_stack_first_free_index > 0);
+  fn_stack_first_free_index--;
+  return &(FunctionExecutionStateStack[fn_stack_first_free_index]);
 }
 
-/*
-Requires:
-Modifies: fn_stack, fn_stack_top
-Returns:
-Effects: pops a FunctionEntry off of the top of fn_stack and initializes
-         it with EAX, EDX, and FPU values. Then calls handleFunctionExit()
-         to generate .dtrace file output at function exit time
-*/
-static void pop_fn(Char* daikon_name,
-                   int EAX, int EDX, double FPU_top,
-                   UInt EAXshadow, UInt EDXshadow, ULong FPUshadow,
-                   UInt EAXtag, UInt EDXtag, UInt FPUtag)
-{
-   FunctionEntry* top;
-   int i;
-
-   //   VG_(printf)(" *** pop_fn: %s\n", daikon_name);
-
-   // s is null if an "unwind" is popped off the stack
-   // Only do something if this function name matches what's on the top of the stack
-   if (!daikon_name || (!VG_STREQ(fn_stack[fn_stack_top - 1].daikon_name, daikon_name))) {
-      VG_(printf)("MISMATCHED on pop_fn! top name: %s, daikon_name: %s\n",
-                  fn_stack[fn_stack_top - 1].daikon_name,
-                  daikon_name);
-      return;
-   }
-
-  if (fn_stack_top < 1) VG_(tool_panic)("underflowed fn_stack");
-
-  top =  &fn_stack[ fn_stack_top - 1 ];
-
-  top->EAX = EAX;
-  top->EDX = EDX;
-  top->FPU = FPU_top;
-
-  // Very important!  Set the A and V bits of the appropriate
-  // FunctionEntry object and the tags from the (x86) guest state
-  // as well:
-
-  for (i = 0; i < 4; i++) {
-     set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID);
-     set_abit((Addr)(&(top->EDX)) + (Addr)i, VGM_BIT_VALID);
-     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
-
-     set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8)));
-     set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8)));
-     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
-
-     if (kvasir_with_dyncomp) {
-        set_tag((Addr)(&(top->EAX)) + (Addr)i, EAXtag);
-        set_tag((Addr)(&(top->EDX)) + (Addr)i, EDXtag);
-        set_tag((Addr)(&(top->FPU)) + (Addr)i, FPUtag);
-     }
-  }
-
-  for (i = 4; i < 8; i++) {
-     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
-
-     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
-
-     if (kvasir_with_dyncomp) {
-        set_tag((Addr)(&(top->FPU)) + (Addr)i, FPUtag);
-     }
-  }
-
-  //  VG_(printf)("-- POP_FN: fn_stack_top: %d, s: %s\n", fn_stack_top, daikon_name);
-
-  handleFunctionExit(top);
-
-   // Destroy the memory allocated by virtualStack
-   if (top->virtualStack) {
-      // For some reason, VG_(calloc) still doesn't work!!!
-      // This is the error msg. that it gives:
-      //   kvasir: the `impossible' happened:
-      //   add_MAC_Chunk: shadow area is accessible
-      free(top->virtualStack);
-   }
-
-   fn_stack_top--; // Now pop it off by decrementing fn_stack_top
+// Returns the top element of the stack
+__inline__ FunctionExecutionState* fnStackTop() {
+  tl_assert(fn_stack_first_free_index >= 0);
+  return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
+
+void printFunctionExecutionStateStack()
+{
+  int i;
+  for (i = fn_stack_first_free_index - 1; i >= 0; i--) {
+    FunctionExecutionState* cur_fn = &FunctionExecutionStateStack[i];
+    VG_(printf)("FunctionExecutionStateStack[%d] %s - EBP: 0x%x, lowestESP: 0x%x\n",
+		i,
+		cur_fn->func->fjalar_name,
+		cur_fn->EBP,
+		cur_fn->lowestESP);
+  }
+}
+
+//extern char* prog_pts_tree; // from decls-output.c
+static char atLeastOneFunctionHandled = 0;
+
+// This gets updated whenever we encounter a Ist_IMark instruction.
+// It is required to track function exits because the address does not
+// come with the Ist_Exit IR instruction:
+static Addr currentAddr = 0;
 
 // This is called whenever we encounter an IMark statement.  From the
 // IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
@@ -269,218 +129,339 @@ static void pop_fn(Char* daikon_name,
 // stated length at the stated guest address.  This information is
 // needed by some kinds of profiling tools.
 
-// This gets updated whenever we encounter a Ist_IMark instruction.
-// It is required to track function exits because the address does not
-// come with the Ist_Exit IR instruction:
-static Addr currentAddr = 0;
-
-extern char* prog_pts_tree; // from decls-output.c
-
-static char atLeastOneFunctionHandled = 0;
-
 // We will utilize this information to pause the target program at
-// function entrances
+// function entrances.  This is called from mc_translate.c.
 void handle_possible_entry(MCEnv* mce, Addr64 addr) {
-   IRDirty  *di;
-   DaikonFunctionInfo* curFuncPtr = 0;
+  IRDirty  *di;
+  FunctionEntry* curFuncPtr = 0;
 
-   // Right now, for x86, we only care about 32-bit instructions
+  // Right now, for x86, we only care about 32-bit instructions
 
-   // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
-   // truly a function entry:
-   currentAddr = (Addr)(addr);
+  // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
+  // truly a function entry so that handle_possible_exit() can work
+  // properly:
+  currentAddr = (Addr)(addr);
 
-   // If this is truly a function entry and we are interested in
-   // tracking this particular function ...  This ensures that we only
-   // track functions which we have in DaikonFunctionInfoTable!!!
-   curFuncPtr = findFunctionInfoByStartAddr(currentAddr);
+  // If this is truly a function entry and we are interested in
+  // tracking this particular function ...  This ensures that we only
+  // track functions which we have in FunctionTable!!!
+  curFuncPtr = findFunctionEntryByStartAddr(currentAddr);
 
+  if (curFuncPtr && !atLeastOneFunctionHandled) {
+    fjalar_tool_handle_first_function_entrance();
+    atLeastOneFunctionHandled = 1;
+  }
 
-  // If it's the first time you've ever handled a possible function entrance,
-  // then you better run outputDeclsAndCloseFile so that Kvasir
-  // can take advantage of all of Valgrind's name demangling functionality
-  // while still producing a complete .decls file before the .dtrace file
-  // in order to allow streaming feeds into Daikon:
-  if (curFuncPtr && !atLeastOneFunctionHandled)
-    {
-      // Remember to not actually output the .decls right now when
-      // we're running DynComp.  We need to wait until the end to
-      // actually output .decls, but we need to make a fake run in
-      // order to set up the proper data structures
-      outputDeclsFile(kvasir_with_dyncomp);
+  if (curFuncPtr &&
+      // Also, if fjalar_trace_prog_pts_filename is on (we are reading
+      // in a ppt list file), then DO NOT generate IR code to call
+      // helper functions for functions whose name is NOT located in
+      // prog_pts_tree.  This will greatly speed up processing because
+      // these functions are filtered out at translation-time, not at
+      // run-time
+      (!fjalar_trace_prog_pts_filename ||
+       prog_pts_tree_entry_found(curFuncPtr))) {
+    // The only argument to enter_function() is a pointer to the
+    // FunctionEntry for the function that we are entering
+    di = unsafeIRDirty_0_N(1/*regparms*/,
+			   "enter_function",
+			   &enter_function,
+			   mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr))));
 
-      if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
-	openTheDtraceFile();
-      }
+/*     di = unsafeIRDirty_0_N(2, */
+/* 			   "enter_function", */
+/* 			   &enter_function, */
+/* 			   mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)curFuncPtr)), */
+/* 					 IRExpr_Const(IRConst_U32(currentAddr)))); */
 
-      atLeastOneFunctionHandled = 1;
-    }
+    // For function entry, we are interested in observing the ESP so make
+    // sure that it's updated by setting the proper annotations:
+    di->nFxState = 1;
+    di->fxState[0].fx     = Ifx_Read;
+    di->fxState[0].offset = mce->layout->offset_SP;
+    di->fxState[0].size   = mce->layout->sizeof_SP;
 
-   if (curFuncPtr &&
-       // Also, if kvasir_trace_prog_pts_filename is on (we are
-       // reading in a ppt list file), then DO NOT generate IR code
-       // to call helper functions for functions whose name is
-       // NOT located in prog_pts_tree.  This
-       // will greatly speed up processing because these functions
-       // are filtered out at translation-time, not at run-time
-       (!kvasir_trace_prog_pts_filename ||
-        prog_pts_tree_entry_found(curFuncPtr))) {
+    stmt( mce->bb, IRStmt_Dirty(di) );
+  }
+}
 
-      //         VG_(printf)("entry (Addr: 0x%u) | Daikon name: %s\n",
-      //                      currentAddr, curFuncPtr->daikon_name);
+// Handle a function exit statement, which contains a jump kind of
+// 'Ret'.  It seems pretty accurate to cue off of currentAddr, a value
+// that is updated every time an Ist_IMark statement is translated,
+// which is quite often
+void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
+  if (Ijk_Ret == jk) {
+    IRDirty  *di;
 
-      di = unsafeIRDirty_0_N(2/*regparms*/,
-                             "enter_function",
-                             &enter_function,
-                             mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name)),
-                                           IRExpr_Const(IRConst_U32(currentAddr))));
+    FunctionEntry* curFuncPtr = findFunctionEntryByAddrSlow(currentAddr);
+    
+    if (curFuncPtr &&
+	// Also, if fjalar_trace_prog_pts_filename is on (we are
+	// reading in a ppt list file), then DO NOT generate IR code
+	// to call helper functions for functions whose names are NOT
+	// located in prog_pts_tree.  This will greatly speed up
+	// processing because these functions are filtered out at
+	// translation-time, not at run-time
+	(!fjalar_trace_prog_pts_filename ||
+	 prog_pts_tree_entry_found(curFuncPtr))) {
 
-      // For function entry, we are interested in observing the ESP so make
-      // sure that it's updated by setting the proper annotations:
-      di->nFxState = 1;
+      // The only argument to exit_function() is a pointer to the
+      // FunctionEntry for the function that we are exiting
+      di = unsafeIRDirty_0_N(1/*regparms*/,
+			     "exit_function",
+			     &exit_function,
+			     mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr))));
+
+      // For function exit, we are interested in observing the ESP,
+      // EAX, EDX, FPTOP, and FPREG[], so make sure that they are
+      // updated by setting the proper annotations:
+      di->nFxState = 4;
       di->fxState[0].fx     = Ifx_Read;
       di->fxState[0].offset = mce->layout->offset_SP;
       di->fxState[0].size   = mce->layout->sizeof_SP;
 
+      // Now I'm totally hacking based upon the definition of
+      // VexGuestX86State in vex/pub/libvex_guest_x86.h:
+      // (This is TOTALLY x86 dependent right now, but oh well)
+      di->fxState[1].fx     = Ifx_Read;
+      di->fxState[1].offset = 0; // offset of EAX
+      di->fxState[1].size   = sizeof(UInt); // 4 bytes
+      
+      di->fxState[2].fx     = Ifx_Read;
+      di->fxState[2].offset = 8; // offset of EDX
+      di->fxState[2].size   = sizeof(UInt); // 4 bytes
+      
+      di->fxState[3].fx     = Ifx_Read;
+      di->fxState[3].offset = 60; // offset of FPTOP
+      // Size of FPTOP + all 8 elements of FPREG
+      di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
+      
       stmt( mce->bb, IRStmt_Dirty(di) );
-   }
-}
-
-// Handle a function exit statement, which contains a jump kind of
-// 'Ret'.  It seems pretty accurate to cue off of currentAddr, which
-// is updated every time an Ist_IMark statement is translated, which
-// is quite often
-void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
-   if (Ijk_Ret == jk) {
-      IRDirty  *di;
-
-      DaikonFunctionInfo* curFuncPtr = findFunctionInfoByAddrSlow(currentAddr);
-
-      if (curFuncPtr &&
-          // Also, if kvasir_trace_prog_pts_filename is on (we are
-          // reading in a ppt list file), then DO NOT generate IR
-          // code to call helper functions for functions whose
-          // names are NOT located in prog_pts_tree.  This will
-          // greatly speed up processing because these functions
-          // are filtered out at translation-time, not at run-time
-          (!kvasir_trace_prog_pts_filename ||
-           prog_pts_tree_entry_found(curFuncPtr))) {
-
-         //            VG_(printf)("exit Daikon name: %s\n",
-         //                        curFuncPtr->daikon_name);
-
-         di = unsafeIRDirty_0_N(1/*regparms*/,
-                                "exit_function",
-                                &exit_function,
-                                mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr->daikon_name))));
-
-         // For function exit, we are interested in observing the
-         // ESP, EAX, EDX, FPTOP, and FPREG[], so make sure that
-         // they are updated by setting the proper annotations:
-         di->nFxState = 4;
-         di->fxState[0].fx     = Ifx_Read;
-         di->fxState[0].offset = mce->layout->offset_SP;
-         di->fxState[0].size   = mce->layout->sizeof_SP;
-
-         // Now I'm totally hacking based upon the definition of
-         // VexGuestX86State in vex/pub/libvex_guest_x86.h:
-         // (This is TOTALLY x86 dependent right now, but oh well)
-         di->fxState[1].fx     = Ifx_Read;
-         di->fxState[1].offset = 0; // offset of EAX
-         di->fxState[1].size   = sizeof(UInt); // 4 bytes
-
-         di->fxState[2].fx     = Ifx_Read;
-         di->fxState[2].offset = 8; // offset of EDX
-         di->fxState[2].size   = sizeof(UInt); // 4 bytes
-
-         di->fxState[3].fx     = Ifx_Read;
-         di->fxState[3].offset = 60; // offset of FPTOP
-         // Size of FPTOP + all 8 elements of FPREG
-         di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
-
-         stmt( mce->bb, IRStmt_Dirty(di) );
-      }
-   }
+    }
+  }
 }
 
 
 /*
-Requires:
-Modifies: fn_stack, fn_stack_top
-Returns:
-Effects: This is the hook into Valgrind that is called whenever the target
-         program enters a function.  Calls push_fn() if all goes well.
+This is the hook into Valgrind that is called whenever the target
+program enters a function.  Pushes an entry onto the top of
+FunctionExecutionStateStack and calls out to a handler function
+implemented by the Fjalar tool.
 */
-// Rudimentary function entrance/exit tracking
-VGA_REGPARM(2)
-void enter_function(Char* daikon_name, Addr StartPC)
-{
-   Addr  ESP = VG_(get_SP)(VG_(get_running_tid)());
-   // Assign %esp - 4 to %ebp - empirically tested to be
-   // correct for calling conventions
-   Addr  EBP = ESP - 4;
-
-   DPRINTF("Enter function: %s - StartPC: %p\n",
-	   daikon_name, (void*)StartPC);
-
-   DPRINTF("Calling push_fn for %s\n", daikon_name);
-
-   push_fn(daikon_name, EBP, StartPC);
-}
-
-/*
-Requires:
-Modifies: fn_stack, fn_stack_top, topEntry
-Returns:
-Effects: This is the hook into Valgrind that is called whenever the target
-         program exits a function.  Initializes topEntry of fn_stack with
-         return values from EAX, EDX, and FPU.  Calls pop_fn() if all goes well.
-*/
-//
 VGA_REGPARM(1)
-void exit_function(Char* daikon_name)
+void enter_function(FunctionEntry* f)
 {
-   ThreadId currentTID = VG_(get_running_tid)();
+  FunctionExecutionState* newEntry = fnStackPush();
 
-   // Get the value at the simulated %EAX (integer and pointer return
-   // values are stored here upon function exit)
-   Addr EAX = VG_(get_EAX)(currentTID);
+  Addr  ESP = VG_(get_SP)(VG_(get_running_tid)());
+  // Assign %esp - 4 to %ebp - empirically tested to be
+  // correct for calling conventions
+  Addr  EBP = ESP - 4;
+  
+  FJALAR_DPRINTF("Enter function: %s - StartPC: %p\n",
+	  f->fjalar_name, (void*)f->startPC);
+  
+  int formalParamStackByteSize = 
+    determineFormalParametersStackByteSize(f);
 
-   // Get the value of the simulated %EDX (the high 32-bits of the
-   // long long int return value is stored here upon function exit)
-   Addr EDX = VG_(get_EDX)(currentTID);
+  newEntry->func = f;
+  newEntry->EBP = EBP;
+  newEntry->lowestESP = ESP;
+  newEntry->EAX = 0;
+  newEntry->EDX = 0;
+  newEntry->FPU = 0;
 
-   // Ok, in Valgrind 2.X, we needed to directly code some assembly to grab
-   // the top of the floating-point stack, but Valgrind 3.0 provides a virtual
-   // FPU stack, so we can just grab that.  Plus, we now have shadow V-bits
-   // for the FPU stack.
-   double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
+  // Initialize virtual stack and copy parts of the Valgrind stack
+  // into that virtual stack
+  if (formalParamStackByteSize > 0) {
+    // For some reason, VG_(calloc) doesn't work here:
+    // This is the error msg. that it gives:
+    //   the `impossible' happened:
+    //   add_MAC_Chunk: shadow area is accessible
+    newEntry->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
+    newEntry->virtualStackByteSize = formalParamStackByteSize;
 
-   // 64 bits
-   // Use SHADOW values of Valgrind simulated registers to get V-bits
-   UInt EAXshadow = VG_(get_shadow_EAX)(currentTID);
-   UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
-   ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
+    VG_(memcpy)(newEntry->virtualStack, (void*)EBP, (formalParamStackByteSize * sizeof(char)));
+    // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
+    // (As a consequence, this copies over the tags as well - look in mc_main.c)
+    mc_copy_address_range_state(EBP, (Addr)(newEntry->virtualStack), formalParamStackByteSize);
+  }
+  else {
+    // Watch out for null pointer segfaults here:
+    newEntry->virtualStack = 0;
+    newEntry->virtualStackByteSize = 0;
+  }
 
-   UInt EAXtag = 0;
-   UInt EDXtag = 0;
-   UInt FPUtag = 0;
+  // Do this AFTER initializing virtual stack and lowestESP
+  fjalar_tool_handle_function_entrance(newEntry);
+}
 
-   if (kvasir_with_dyncomp) {
-      EAXtag = VG_(get_EAX_tag)(currentTID);
-      EDXtag = VG_(get_EDX_tag)(currentTID);
-      FPUtag = VG_(get_FPU_stack_top_tag)(currentTID);
-   }
+/*
+This is the hook into Valgrind that is called whenever the target
+program exits a function.  Initializes the top entry of
+FunctionExecutionStateStack with return values from EAX, EDX, and FPU,
+then calls out to a handler function implemented by the Fjalar tool.
+*/
+VGA_REGPARM(1)
+void exit_function(FunctionEntry* f)
+{
+  FunctionExecutionState* top = fnStackPop();
+  int i;
 
-   DPRINTF("Exit function: %s - EAX: 0x%x, EAXshadow: 0x%x, EDXshadow: 0x%x FPUshadow: 0x%x %x\n",
-               daikon_name, EAX,
-               EAXshadow, EDXshadow,
-               (UInt)(FPUshadow & 0xffffffff), (UInt)(FPUshadow >> 32));
+  ThreadId currentTID = VG_(get_running_tid)();
 
-   pop_fn(daikon_name,
-          EAX, EDX, fpuReturnVal,
-          EAXshadow, EDXshadow, FPUshadow,
-          EAXtag, EDXtag, FPUtag);
+  // Get the value at the simulated %EAX (integer and pointer return
+  // values are stored here upon function exit)
+  Addr EAX = VG_(get_EAX)(currentTID);
+
+  // Get the value of the simulated %EDX (the high 32-bits of the long
+  // long int return value is stored here upon function exit)
+  Addr EDX = VG_(get_EDX)(currentTID);
+
+  // Ok, in Valgrind 2.X, we needed to directly code some assembly to
+  // grab the top of the floating-point stack, but Valgrind 3.0
+  // provides a virtual FPU stack, so we can just grab that.  Plus, we
+  // now have shadow V-bits for the FPU stack.
+  double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
+
+  // 64 bits
+  // Use SHADOW values of Valgrind simulated registers to get V-bits
+  UInt EAXshadow = VG_(get_shadow_EAX)(currentTID);
+  UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
+  ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
+
+  // s is null if an "unwind" is popped off the stack (WHAT?)
+  // Only do something if top->func matches func
+  if (!(top->func->fjalar_name) || (top->func != f)) {
+    VG_(printf)("MISMATCHED on exit_function! %s != f: %s\n",
+		top->func->fjalar_name,
+		f->fjalar_name);
+    return;
+  }
+
+  top->EAX = EAX;
+  top->EDX = EDX;
+  top->FPU = fpuReturnVal;
+  
+  // Very important!  Set the A and V bits of the appropriate
+  // FunctionExecutionState object and the tags from the (x86) guest
+  // state as well:
+  for (i = 0; i < 4; i++) {
+    set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID);
+    set_abit((Addr)(&(top->EDX)) + (Addr)i, VGM_BIT_VALID);
+    set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
+
+    set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8)));
+    set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8)));
+    set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+  }
+
+  for (i = 4; i < 8; i++) {
+    set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
+    set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));    
+  }
+  
+  fjalar_tool_handle_function_exit(top);
+
+  // Destroy the memory allocated by virtualStack
+  // AFTER the tool has handled the exit
+  if (top->virtualStack) {
+    // For some reason, VG_(calloc) still doesn't work!!!
+    // This is the error msg. that it gives:
+    //   the `impossible' happened:
+    //   add_MAC_Chunk: shadow area is accessible
+    free(top->virtualStack);
+  }
+}
+
+
+// Opens the appropriate files for reading or writing to handle
+// selective program point tracing, selective variable tracing, and
+// pointer type disambiguation, and make the proper calls to
+// initialize those files if necessary
+static void open_files_and_load_data() {
+
+  if (fjalar_xml_output_filename) {
+    xml_output_fp = fopen(fjalar_xml_output_filename, "w");
+    outputAllXMLDeclarations();
+  }
+  else {
+    xml_output_fp = 0;
+  }
+
+  if (fjalar_dump_prog_pt_names_filename) {
+    prog_pt_dump_fp = fopen(fjalar_dump_prog_pt_names_filename, "w");
+  }
+  else {
+    prog_pt_dump_fp = 0;
+  }
+
+  if (fjalar_dump_var_names_filename) {
+    var_dump_fp = fopen(fjalar_dump_var_names_filename, "w");
+  }
+  else {
+    var_dump_fp = 0;
+  }
+
+  if (fjalar_trace_prog_pts_filename) {
+    if ((trace_prog_pts_input_fp = 
+	 fopen(fjalar_trace_prog_pts_filename, "r"))) {
+      VG_(printf)( "\nBegin processing program point list file \"%s\" ...\n",
+		   fjalar_trace_prog_pts_filename);
+      initializeProgramPointsTree();
+      VG_(printf)( "Done processing program point list file \"%s\"\n",
+		   fjalar_trace_prog_pts_filename);
+    }
+    else {
+      VG_(printf)( "\nError: \"%s\" is an invalid filename for the program point list file specified by the --ppt-list-file option.\n\nExiting.\n\n",
+		   fjalar_trace_prog_pts_filename);
+
+      VG_(exit)(1);
+    }
+  }
+
+  if (fjalar_trace_vars_filename) {
+    if ((trace_vars_input_fp 
+	 = fopen(fjalar_trace_vars_filename, "r"))) {
+      VG_(printf)( "\nBegin processing variable list file \"%s\" ...\n",
+		   fjalar_trace_vars_filename);
+      initializeVarsTree();
+      VG_(printf)( "Done processing variable list file \"%s\"\n",
+		   fjalar_trace_vars_filename);
+    }
+    else {
+      VG_(printf)( "\nError: \"%s\" is an invalid filename for the variable list file specified by the --var-list-file option.\n\nExiting.\n\n",
+		   fjalar_trace_vars_filename);
+      
+      VG_(exit)(1);
+    }
+  }
+
+  if (fjalar_disambig_filename) {
+    // Try to open it for reading, but if it doesn't exist, create a
+    // new file by writing to it
+    if ((disambig_fp = 
+	 fopen(fjalar_disambig_filename, "r"))) {
+      FJALAR_DPRINTF("\n\nREADING %s\n", fjalar_disambig_filename);
+      disambig_writing = False;
+    }
+    else if ((disambig_fp = 
+	      fopen(fjalar_disambig_filename, "wx"))) {
+      FJALAR_DPRINTF("\n\nWRITING %s\n", fjalar_disambig_filename);
+      disambig_writing = True;
+      
+      // Hack for correctly observing struct pointer/array values
+      // when using --smart-disambig.
+      // If we are writing a .disambig file and using run time
+      // observations of the struct behavior to determine whether
+      // a struct pointer always pointed to one element or more than
+      // one element, we must always process base struct variables
+      // or else those observations will be missed.
+      if (fjalar_smart_disambig) {
+	fjalar_output_struct_vars = True;
+      }
+    }
+  }
 }
 
 
@@ -488,7 +469,7 @@ void exit_function(Char* daikon_name)
 Requires:
 Modifies: lots of global stuff
 Returns:
-Effects: All of the Kvasir initialization is performed right here;
+Effects: All of the Fjalar initialization is performed right here;
          Memcheck mc_main.c calls this at the end of its own
          initialization and this must extract DWARF2 debugging
          information from the ELF executable, process the
@@ -498,140 +479,67 @@ Effects: All of the Kvasir initialization is performed right here;
 // Before processing command-line options
 void fjalar_pre_clo_init()
 {
-   // Clear fn_stack
-   VG_(memset)(fn_stack, 0, FN_STACK_SIZE * sizeof(*fn_stack));
+  // Clear FunctionExecutionStateStack
+  VG_(memset)(FunctionExecutionStateStack, 0, 
+	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack));
 
-   // Clear all global variables before processing command-line options:
-   kvasir_decls_filename = 0;
-   kvasir_dtrace_filename = 0;
-   kvasir_print_debug_info = False;
-   kvasir_ignore_globals = False;
-   kvasir_ignore_static_vars = False;
-   kvasir_dtrace_append = False;
-   kvasir_dtrace_no_decs = False;
-   kvasir_dtrace_gzip = False;
-   kvasir_output_fifo = False;
+  // TODO: Do we need to clear all global variables before processing
+  // command-line options?  We don't need to as long as this function
+  // is only run once at the beginning of program execution
 
-#ifdef KVASIR_DEVEL_BUILD
-   kvasir_asserts_aborts_on = True;
-#else
-   kvasir_asserts_aborts_on = False;
-#endif
-
-   kvasir_decls_only = False;
-   kvasir_limit_static_vars = False;
-   kvasir_default_disambig = False;
-   kvasir_dump_prog_pt_names_filename = 0;
-   kvasir_dump_var_names_filename = 0;
-   kvasir_trace_prog_pts_filename = 0;
-   kvasir_trace_vars_filename = 0;
-   kvasir_disambig_filename = 0;
-   kvasir_program_stdout_filename = 0;
-   kvasir_program_stderr_filename = 0;
-
-   fjalar_tool_pre_clo_init();
+  // Make sure to execute this last!
+  fjalar_tool_pre_clo_init();
 }
 
-// Initialize kvasir after processing command-line options
+// Initialize Fjalar after processing command-line options
 void fjalar_post_clo_init()
 {
   // Assume that the filename is the FIRST string in
   // VG(client_argv) since that is the client argv array
   // after being parsed by the Valgrind core:
-  char* filename = VG_(client_argv)[0];
+  executable_filename = VG_(client_argv)[0];
 
   // Handle variables set by command-line options:
   char* DISAMBIG = ".disambig";
   int DISAMBIG_LEN = VG_(strlen)(DISAMBIG);
 
-  DPRINTF("\nReading binary file \"%s\" [0x%x] (Assumes that filename is first argument in client_argv)\n\n",
-	  filename, filename);
-  DPRINTF("handleFunctionEntrance is at %p\n", handleFunctionEntrance);
+  FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%x] (Assumes that filename is first argument in client_argv)\n\n",
+	  executable_filename, executable_filename);
 
-  // --disambig results in the disambig filename being ${filename}.disambig
+  // --disambig results in the disambig filename being ${executable_filename}.disambig
   // (overrides --disambig-file option)
-  if (kvasir_default_disambig) {
+  if (fjalar_default_disambig) {
     char* disambig_filename =
-      VG_(calloc)(VG_(strlen)(filename) + DISAMBIG_LEN + 1,
+      VG_(calloc)(VG_(strlen)(executable_filename) + DISAMBIG_LEN + 1,
 	     sizeof(*disambig_filename));
 
-    VG_(strcpy)(disambig_filename, filename);
+    VG_(strcpy)(disambig_filename, executable_filename);
     VG_(strcat)(disambig_filename, DISAMBIG);
-    kvasir_disambig_filename = disambig_filename;
+    fjalar_disambig_filename = disambig_filename;
   }
 
-  DPRINTF("\n%s\n\n", kvasir_disambig_filename);
+  FJALAR_DPRINTF("\n%s\n\n", fjalar_disambig_filename);
 
-  // Special-case .dtrace handling if kvasir_dtrace_filename ends in ".gz"
-  if (kvasir_dtrace_filename) {
-    int filename_len = VG_(strlen)(kvasir_dtrace_filename);
-    if VG_STREQ(kvasir_dtrace_filename + filename_len - 3, ".gz") {
-      DPRINTF("\nFilename ends in .gz\n");
-      // Chop off '.gz' from the end of the filename
-      kvasir_dtrace_filename[filename_len - 3] = '\0';
-      // Activate kvasir_dtrace_gzip
-      kvasir_dtrace_gzip = True;
-    }
-  }
+  // Calls into typedata.c:
+  process_elf_binary_data(executable_filename);
 
-  // Output separate .decls and .dtrace files if:
-  // --decls-only is on OR --decls-file=<filename> is on
-  // OR kvasir_with_dyncomp is ON (since DynComp needs to create .decls
-  // at the END of the target program's execution so that it can include
-  // the comparability info)
-  if (kvasir_decls_only || kvasir_decls_filename || kvasir_with_dyncomp) {
-    DPRINTF("\nSeparate .decls\n\n");
-    actually_output_separate_decls_dtrace = True;
-  }
+  // Calls into generate_fjalar_entries.c:
+  initializeAllFjalarData();
 
-  // Special handling for BOTH kvasir_with_dyncomp and kvasir_decls_only
-  // We need to actually do a full .dtrace run but just not output anything
-  // to the .dtrace file
-  if (kvasir_decls_only && kvasir_with_dyncomp) {
-     kvasir_decls_only = False;
-     dyncomp_without_dtrace = True;
-  }
+  // Call this AFTER data has been initialized by
+  // generate_fjalar_entries.c:
+  open_files_and_load_data();
 
-  // If we are only printing .dtrace and have --dtrace-no-decs,
-  // then do not print out declarations
-  if (!actually_output_separate_decls_dtrace && kvasir_dtrace_no_decs) {
-     print_declarations = 0;
-  }
-
-  // If we are using DynComp with the garbage collector, initialize
-  // g_oldToNewMap:
-  extern UInt* g_oldToNewMap;
-  if (kvasir_with_dyncomp && !kvasir_dyncomp_no_gc) {
-     g_oldToNewMap = VG_(shadow_alloc)((dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
-  }
-
+  // Make sure to execute this last!
   fjalar_tool_post_clo_init();
-
-  process_elf_binary_data(filename);
-  daikon_preprocess_entry_array();
-  createDeclsAndDtraceFiles(filename);
 }
 
-void kvasir_print_usage()
-{
-   VG_(printf)(
-"\n  Output file format:\n"
-"    --decls-file=<string>    The output .decls file location\n"
-"                             (forces generation of separate .decls file)\n"
-"    --decls-only             Exit after creating .decls file [--no-decls-only]\n"
-"    --dtrace-file=<string>   The output .dtrace file location\n"
-"                             [daikon-output/PROGRAM_NAME.dtrace]\n"
-"    --dtrace-no-decs         Do not include declarations in .dtrace file\n"
-"                             [--no-dtrace-no-decs]\n"
-"    --dtrace-append          Appends .dtrace data to the end of an existing .dtrace file\n"
-"                             [--no-dtrace-append]\n"
-"    --dtrace-gzip            Compresses .dtrace data [--no-dtrace-gzip]\n"
-"                             (Automatically ON if --dtrace-file string ends in '.gz')\n"
-"    --output-fifo            Create output files as named pipes [--no-output-fifo]\n"
-"    --program-stdout=<file>  Redirect instrumented program stdout to file\n"
-"                             [Kvasir's stdout, or /dev/tty if --dtrace-file=-]\n"
-"    --program-stderr=<file>  Redirect instrumented program stderr to file\n"
 
+void fjalar_print_usage()
+{
+   VG_(printf)("\n  User options for Fjalar framework:\n");
+
+   VG_(printf)(
 "\n  Selective program tracing:\n"
 "    --ppt-list-file=<string> Trace only the program points listed in this file\n"
 "    --var-list-file=<string> Trace only the variables listed in this file\n"
@@ -648,20 +556,6 @@ void kvasir_print_usage()
 "                             generated using the --disambig or --disambig-file options\n"
 "    --disambig-ptrs          Forces all pointer vars. to point to a single element\n"
 
-"\n  DynComp dynamic comparability analysis\n"
-"    --with-dyncomp           Enables DynComp comparability analysis\n"
-"    --gc-num-tags            The number of tags that get assigned between successive runs\n"
-"                             of the garbage collector (between 1 and INT_MAX)\n"
-"                             (The default is to garbage collect every 10,000,000 tags created)\n"
-"    --no-dyncomp-gc          Do NOT use the tag garbage collector for DynComp.  (Faster\n"
-"                             but may run out of memory for long-running programs)\n"
-"    --dyncomp-fast-mode      Approximates the handling of literals for comparability.\n"
-"                             (Loses some precision but faster and takes less memory)\n"
-"    --separate-entry-exit-comp  Allows variables to have distinct comparability\n"
-"                                numbers at function entrance/exit when run with\n"
-"                                DynComp.  This provides more accuracy, but may\n"
-"                                sometimes lead to output that Daikon cannot accept.\n"
-
 "\n  Misc. options:\n"
 "    --flatten-arrays         Force flattening of all statically-sized arrays\n"
 "    --output-struct-vars     Outputs struct variables along with their contents\n"
@@ -670,24 +564,16 @@ void kvasir_print_usage()
 "    --nesting-depth=N        Limits the maximum number of dereferences of any\n"
 "                             structure to N (default is 2)\n"
 "    --struct-depth=N         Limits the maximum number of dereferences of recursively\n"
-"                             defined structures (i.e. linked lists) to N (default is 2)\n"
+"                             defined structures (i.e. linked lists) to N (default is 4)\n"
 "                             (N must be an integer between 0 and 100)\n"
-"    --repair-format          Output format for data structure repair tool (internal use)\n"
-
-"\n  Debugging:\n"
-#ifdef KVASIR_DEVEL_BUILD
-"    --asserts-aborts         Turn on safety asserts and aborts (ON BY DEFAULT)\n"
-"                             [--asserts-aborts]\n"
-#else
-"    --asserts-aborts         Turn on safety asserts and aborts (OFF BY DEFAULT)\n"
-"                             [--no-asserts-aborts]\n"
-#endif
-"    --debug                  Print Kvasir-internal debug messages [--no-debug]\n"
-"    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
-"                             [--no-dyncomp-debug]\n"
-"    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
-"                             of every program point (for debug only)\n"
+"    --fjalar-debug           Print internal Fjalar debug messages\n"
+"    --program-stdout=<string>   The name of the file to use for stdout\n"
+"    --program-stderr=<string>   The name of the file to use for stderr\n"
+"    --xml-output-file=<string>  Output declarations in XML format to a file\n"        
    );
+
+   // Make sure to execute this last!
+   fjalar_tool_print_usage();
 }
 
 /* Like VG_BOOL_CLO, but of the form "--foo", "--no-foo" rather than
@@ -699,48 +585,35 @@ void kvasir_print_usage()
    else if (VG_CLO_STREQ(arg, "--no-"qq_option))  { (qq_var) = False; }
 
 // Processes command-line options
-Bool kvasir_process_cmd_line_option(Char* arg)
+// (Called from MAC_(process_common_cmd_line_option)() in mac_needs.c)
+Bool fjalar_process_cmd_line_option(Char* arg)
 {
-   VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename)
-   else VG_STR_CLO(arg, "--dtrace-file",    kvasir_dtrace_filename)
-   else VG_YESNO_CLO("with-dyncomp",   kvasir_with_dyncomp)
-   else VG_BNUM_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
-                    1, 0x7fffffff)
-   else VG_YESNO_CLO("no-dyncomp-gc",     kvasir_dyncomp_no_gc)
-   else VG_YESNO_CLO("dyncomp-fast-mode", kvasir_dyncomp_fast_mode)
-   else VG_YESNO_CLO("debug",          kvasir_print_debug_info)
-   else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
-   else VG_YESNO_CLO("dyncomp-print-inc",  dyncomp_print_incremental)
-   else VG_YESNO_CLO("separate-entry-exit-comp",  dyncomp_separate_entry_exit_comp)
-   else VG_YESNO_CLO("ignore-globals", kvasir_ignore_globals)
-   else VG_YESNO_CLO("ignore-static-vars", kvasir_ignore_static_vars)
-   else VG_YESNO_CLO("dtrace-append",  kvasir_dtrace_append)
-   else VG_YESNO_CLO("dtrace-no-decs",  kvasir_dtrace_no_decs)
-   else VG_YESNO_CLO("dtrace-gzip",    kvasir_dtrace_gzip)
-   else VG_YESNO_CLO("output-fifo",    kvasir_output_fifo)
-   else VG_YESNO_CLO("asserts-aborts", kvasir_asserts_aborts_on)
-   else VG_YESNO_CLO("decls-only",     kvasir_decls_only)
-   else VG_YESNO_CLO("limit-static-vars", kvasir_limit_static_vars)
-   else VG_YESNO_CLO("bit-level-precision", kvasir_use_bit_level_precision)
-   else VG_YESNO_CLO("output-struct-vars", kvasir_output_struct_vars)
-   else VG_YESNO_CLO("repair-format", kvasir_repair_format)
-   else VG_YESNO_CLO("flatten-arrays", kvasir_flatten_arrays)
-   else VG_YESNO_CLO("disambig-ptrs", kvasir_disambig_ptrs)
-   else VG_YESNO_CLO("smart-disambig", kvasir_smart_disambig)
-   else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100) // [0 to 100]
-   else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100]
-   else VG_BNUM_CLO(arg, "--array-length-limit", kvasir_array_length_limit,
-                    -1, 0x7fffffff)
-   else VG_YESNO_CLO("disambig", kvasir_default_disambig)
-   else VG_STR_CLO(arg, "--dump-ppt-file",  kvasir_dump_prog_pt_names_filename)
-   else VG_STR_CLO(arg, "--dump-var-file",  kvasir_dump_var_names_filename)
-   else VG_STR_CLO(arg, "--ppt-list-file",  kvasir_trace_prog_pts_filename)
-   else VG_STR_CLO(arg, "--var-list-file",  kvasir_trace_vars_filename)
-   else VG_STR_CLO(arg, "--disambig-file",  kvasir_disambig_filename)
-   else VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename)
-   else VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename)
-   else
-      return MAC_(process_common_cmd_line_option)(arg);
+  VG_YESNO_CLO("fjalar-debug", fjalar_debug)
+  else VG_YESNO_CLO("ignore-globals", fjalar_ignore_globals)
+  else VG_YESNO_CLO("ignore-static-vars", fjalar_ignore_static_vars)
+  else VG_YESNO_CLO("limit-static-vars", fjalar_limit_static_vars)
+  else VG_YESNO_CLO("disambig", fjalar_default_disambig)
+  else VG_YESNO_CLO("smart-disambig", fjalar_smart_disambig)
+  else VG_YESNO_CLO("bit-level-precision", fjalar_use_bit_level_precision)
+  else VG_YESNO_CLO("output-struct-vars", fjalar_output_struct_vars)
+  else VG_YESNO_CLO("flatten-arrays", fjalar_flatten_arrays)
+  else VG_YESNO_CLO("disambig-ptrs", fjalar_disambig_ptrs)
+  else VG_BNUM_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
+		   -1, 0x7fffffff)
+
+  else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  // [0 to 100]
+  else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100]
+    
+  else VG_STR_CLO(arg, "--dump-ppt-file",  fjalar_dump_prog_pt_names_filename)
+  else VG_STR_CLO(arg, "--dump-var-file",  fjalar_dump_var_names_filename)
+  else VG_STR_CLO(arg, "--ppt-list-file",  fjalar_trace_prog_pts_filename)
+  else VG_STR_CLO(arg, "--var-list-file",  fjalar_trace_vars_filename)
+  else VG_STR_CLO(arg, "--disambig-file",  fjalar_disambig_filename)
+  else VG_STR_CLO(arg, "--program-stdout", fjalar_program_stdout_filename)
+  else VG_STR_CLO(arg, "--program-stderr", fjalar_program_stderr_filename)
+  else VG_STR_CLO(arg, "--xml-output-file", fjalar_xml_output_filename)
+  else
+    return fjalar_tool_process_cmd_line_option(arg);
 
   return True;
 }
@@ -748,34 +621,16 @@ Bool kvasir_process_cmd_line_option(Char* arg)
 
 // This runs after the target program exits
 void fjalar_finish() {
-  extern UInt nextTag;
 
-  // If kvasir_smart_disambig is on, then
+  // If fjalar_smart_disambig is on, then
   // we must create the .disambig file at the very end after
-  // Kvasir has run though the entire program so that it can
+  // Fjalar has run though the entire program so that it can
   // determine whether each pointer variable has only referenced
   // one element or multiple elements throughout this particular execution
-  if (disambig_writing && kvasir_smart_disambig) {
+  if (disambig_writing && fjalar_smart_disambig) {
     generateDisambigFile();
   }
 
-  if (kvasir_with_dyncomp) {
-     // Do one extra propagation of variable comparability at the end
-     // of execution once all of the value comparability sets have
-     // been properly updated:
-     DC_extra_propagate_val_to_var_sets();
-
-     // Now print out the .decls file at the very end of execution:
-     DC_outputDeclsAtEnd();
-  }
-
-  DYNCOMP_DPRINTF("\n*** nextTag: %u ***\n\n", nextTag);
-
-  //  VG_(printf)("\n*** nextTag: %u ***\n\n", nextTag);
-
-  if (!dyncomp_without_dtrace) {
-     finishDtraceFile();
-  }
-
+  // Make sure to execute this last!
   fjalar_tool_finish();
 }

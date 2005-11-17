@@ -34,12 +34,11 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "mc_include.h"
 #include "mc_translate.h"
-#include "dyncomp_translate.h"
-#include "kvasir_main.h"
+#include "mc_include.h"
+#include "fjalar_main.h"
 
-// PG - All of this has been moved into mc_translate.h
+// pgbovine - All of this has been moved into mc_translate.h
 
 /*------------------------------------------------------------*/
 /*--- Forward decls                                        ---*/
@@ -191,7 +190,7 @@ Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
    given type.  The only valid shadow types are Bit, I8, I16, I32,
    I64, V128. */
 
-// PG - This function seems okay to use for DynComp because it returns
+// pgbovine - This function seems okay to use for DynComp because it returns
 // the integer type with the matching size as the input type 'ty'. It
 // seems safe to use this return value for size calculations and
 // comparisons, but NOT to create new tags.  The thing is that all
@@ -631,7 +630,7 @@ static void setHelperAnns ( MCEnv* mce, IRDirty* di ) {
    value to an existing shadow tmp as this breaks SSAness -- resulting
    in the post-instrumentation sanity checker spluttering in disapproval.
 */
-// PG - This function is now deprecated because we don't want to do
+// pgbovine - This function is now deprecated because we don't want to do
 //      invalidity checking
 //static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
 //{
@@ -792,7 +791,7 @@ void do_shadow_PUTI ( MCEnv* mce,
    arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom(mce,ix));
-   //   complainIfUndefined(mce,ix); // PG
+   //   complainIfUndefined(mce,ix); // pgbovine
    if (isAlwaysDefd(mce, descr->base, arrSize)) {
       /* later: no ... */
       /* emit code to emit a complaint if any of the vbits are 1. */
@@ -838,7 +837,7 @@ IRExpr* shadow_GETI ( MCEnv* mce, IRArray* descr, IRAtom* ix, Int bias )
    Int arrSize = descr->nElems * sizeofIRType(ty);
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom(mce,ix));
-   //   complainIfUndefined(mce,ix); // PG
+   //   complainIfUndefined(mce,ix); // pgbovine
    if (isAlwaysDefd(mce, descr->base, arrSize)) {
       /* Always defined, return all zeroes of the relevant type */
       return definedOfType(tyS);
@@ -1333,7 +1332,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_ShlN16x4:
       case Iop_ShlN32x2:
          /* Same scheme as with all other shifts. */
-            //            complainIfUndefined(mce, atom2); // PG
+            //            complainIfUndefined(mce, atom2); // pgbovine
          return assignNew(mce, Ity_I64, binop(op, vatom1, atom2));
 
       case Iop_QNarrow32Sx2:
@@ -1396,7 +1395,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_ShlN32x4:
       case Iop_ShlN64x2:
          /* Same scheme as with all other shifts. */
-            //            complainIfUndefined(mce, atom2); // PG
+            //            complainIfUndefined(mce, atom2); // pgbovine
          return assignNew(mce, Ity_V128, binop(op, vatom1, atom2));
 
       case Iop_QSub8Ux16:
@@ -1620,22 +1619,22 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_Shl32: case Iop_Shr32: case Iop_Sar32:
          /* Complain if the shift amount is undefined.  Then simply
             shift the first arg's V bits by the real shift amount. */
-            // complainIfUndefined(mce, atom2); // PG
+            // complainIfUndefined(mce, atom2); // pgbovine
          return assignNew(mce, Ity_I32, binop(op, vatom1, atom2));
 
       case Iop_Shl16: case Iop_Shr16: case Iop_Sar16:
          /* Same scheme as with 32-bit shifts. */
-            // complainIfUndefined(mce, atom2); // PG
+            // complainIfUndefined(mce, atom2); // pgbovine
          return assignNew(mce, Ity_I16, binop(op, vatom1, atom2));
 
       case Iop_Shl8: case Iop_Shr8:
          /* Same scheme as with 32-bit shifts. */
-            // complainIfUndefined(mce, atom2); // PG
+            // complainIfUndefined(mce, atom2); // pgbovine
          return assignNew(mce, Ity_I8, binop(op, vatom1, atom2));
 
       case Iop_Shl64: case Iop_Shr64:
          /* Same scheme as with 32-bit shifts. */
-            // complainIfUndefined(mce, atom2); // PG
+            // complainIfUndefined(mce, atom2); // pgbovine
          return assignNew(mce, Ity_I64, binop(op, vatom1, atom2));
 
       case Iop_AndV128:
@@ -1800,7 +1799,7 @@ IRAtom* expr2vbits_LDle_WRK ( MCEnv* mce, IRType ty, IRAtom* addr, UInt bias )
 
    /* First, emit a definedness test for the address.  This also sets
       the address (shadow) to 'defined' following the test. */
-   //   complainIfUndefined( mce, addr ); // PG
+   //   complainIfUndefined( mce, addr ); // pgbovine
 
    /* Now cook up a call to the relevant helper function, to read the
       data V bits from shadow memory. */
@@ -2023,7 +2022,7 @@ void do_shadow_STle ( MCEnv* mce,
 
    /* First, emit a definedness test for the address.  This also sets
       the address (shadow) to 'defined' following the test. */
-   //   complainIfUndefined( mce, addr ); // PG
+   //   complainIfUndefined( mce, addr ); // pgbovine
 
    /* Now decide which helper function to call to write the data V
       bits into shadow memory. */
@@ -2122,7 +2121,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
    IRTemp  dst;
 
    /* First check the guard. */
-   //   complainIfUndefined(mce, d->guard); // PG
+   //   complainIfUndefined(mce, d->guard); // pgbovine
 
    /* Now round up all inputs and PCast over them. */
    curr = definedOfType(Ity_I32);
@@ -2183,7 +2182,7 @@ void do_shadow_Dirty ( MCEnv* mce, IRDirty* d )
          definedness right now.  Post-instrumentation optimisation
          should remove all but this test. */
       tl_assert(d->mAddr);
-      //      complainIfUndefined(mce, d->mAddr); // PG
+      //      complainIfUndefined(mce, d->mAddr); // pgbovine
 
       tyAddr = typeOfIRExpr(mce->bb->tyenv, d->mAddr);
       tl_assert(tyAddr == Ity_I32 || tyAddr == Ity_I64);
@@ -2378,7 +2377,7 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
 }
 
 
-// Modified by PG - duplicated all instrumentation calls
+// Modified by pgbovine - duplicated all instrumentation calls
 //                  to also call DynComp versions (suffixed by _DC)
 IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
                         IRType gWordTy, IRType hWordTy )
@@ -2388,7 +2387,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    Int     i, j, first_stmt;
    IRStmt* st;
    MCEnv   mce;
-   DCEnv   dce; // PG
+   //   DCEnv   dce; // pgbovine - DynComp
    IRBB*   bb;
 
    if (gWordTy != hWordTy) {
@@ -2413,20 +2412,21 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    for (i = 0; i < mce.n_originalTmps; i++)
       mce.tmpMap[i] = IRTemp_INVALID;
 
-   // PG
+   // pgbovine
    // Is this aliasing of 'bb' going to be a problem?
    // Not if we allocate enough space for the shadow tag guest state
    // and adjust the offsets appropriately
-   if (kvasir_with_dyncomp) {
-      dce.bb             = bb;
-      dce.layout         = layout;
-      dce.n_originalTmps = bb->tyenv->types_used;
-      dce.hWordTy        = hWordTy;
-      dce.bogusLiterals  = False;
-      dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
-      for (i = 0; i < dce.n_originalTmps; i++)
-         dce.tmpMap[i] = IRTemp_INVALID;
-   }
+
+   //   if (kvasir_with_dyncomp) {
+   //      dce.bb             = bb;
+   //      dce.layout         = layout;
+   //      dce.n_originalTmps = bb->tyenv->types_used;
+   //      dce.hWordTy        = hWordTy;
+   //      dce.bogusLiterals  = False;
+   //      dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
+   //      for (i = 0; i < dce.n_originalTmps; i++)
+   //         dce.tmpMap[i] = IRTemp_INVALID;
+   //   }
 
    /* Iterate over the stmts. */
 
@@ -2483,12 +2483,12 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             break;
 
          case Ist_Exit:
-            handle_possible_exit( &mce, st->Ist.Exit.jk ); // PG
-            // complainIfUndefined( &mce, st->Ist.Exit.guard ); // PG
+            handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
+            // complainIfUndefined( &mce, st->Ist.Exit.guard ); // pgbovine
             break;
 
          case Ist_IMark:
-            handle_possible_entry( &mce, st->Ist.IMark.addr ); // PG
+            handle_possible_entry( &mce, st->Ist.IMark.addr ); // pgbovine
             break;
 
          case Ist_NoOp:
@@ -2507,78 +2507,79 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
 
       } /* switch (st->tag) */
 
-      // PG - duplicated version for DynComp
-      if (kvasir_with_dyncomp) {
-         if (!dce.bogusLiterals) {
-            dce.bogusLiterals = checkForBogusLiterals(st);
-            if (0&& dce.bogusLiterals) {
-               VG_(printf)("bogus: ");
-               ppIRStmt(st);
-               VG_(printf)("\n");
-            }
-         }
+      // pgbovine - duplicated version for DynComp
 
-         switch (st->tag) {
+      //      if (kvasir_with_dyncomp) {
+      //         if (!dce.bogusLiterals) {
+      //            dce.bogusLiterals = checkForBogusLiterals(st);
+      //            if (0&& dce.bogusLiterals) {
+      //               VG_(printf)("bogus: ");
+      //               ppIRStmt(st);
+      //               VG_(printf)("\n");
+      //            }
+      //         }
 
-         case Ist_Tmp:
-            assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
-                    expr2tags_DC( &dce, st->Ist.Tmp.data) );
-            break;
+      //         switch (st->tag) {
 
-         case Ist_Put:
-            do_shadow_PUT_DC( &dce,
-                              st->Ist.Put.offset,
-                              st->Ist.Put.data,
-                              NULL /* shadow atom */ );
-            break;
+      //         case Ist_Tmp:
+      //            assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
+      //                    expr2tags_DC( &dce, st->Ist.Tmp.data) );
+      //            break;
 
-         case Ist_PutI:
-            do_shadow_PUTI_DC( &dce,
-                               st->Ist.PutI.descr,
-                               st->Ist.PutI.ix,
-                               st->Ist.PutI.bias,
-                               st->Ist.PutI.data );
-            break;
+      //         case Ist_Put:
+      //            do_shadow_PUT_DC( &dce,
+      //                              st->Ist.Put.offset,
+      //                              st->Ist.Put.data,
+      //                              NULL /* shadow atom */ );
+      //            break;
 
-         case Ist_STle:
-            do_shadow_STle_DC( &dce, st->Ist.STle.addr, 0/* addr bias */,
-                               st->Ist.STle.data);
-            break;
+      //         case Ist_PutI:
+      //            do_shadow_PUTI_DC( &dce,
+      //                               st->Ist.PutI.descr,
+      //                               st->Ist.PutI.ix,
+      //                               st->Ist.PutI.bias,
+      //                               st->Ist.PutI.data );
+      //            break;
 
-         case Ist_Exit:
-            do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
-            break;
+      //         case Ist_STle:
+      //            do_shadow_STle_DC( &dce, st->Ist.STle.addr, 0/* addr bias */,
+      //                               st->Ist.STle.data);
+      //            break;
 
-         case Ist_IMark:
-         case Ist_NoOp:
-         case Ist_MFence:
-            break;
+      //         case Ist_Exit:
+      //            do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
+      //            break;
 
-         case Ist_Dirty:
-               // PG - TODO: In the future, we probably want to handle
-               // dirty helper calls just like how we handle clean
-               // helper calls.  Assume that all relevant
-               // (non-masked?) operands interact.
-               // do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
-            break;
+      //         case Ist_IMark:
+      //         case Ist_NoOp:
+      //         case Ist_MFence:
+      //            break;
 
-         default:
-            VG_(printf)("\n");
-            ppIRStmt(st);
-            VG_(printf)("\n");
-            VG_(tool_panic)("dyncomp: unhandled IRStmt");
+      //         case Ist_Dirty:
+      //               // pgbovine - TODO: In the future, we probably want to handle
+      //               // dirty helper calls just like how we handle clean
+      //               // helper calls.  Assume that all relevant
+      //               // (non-masked?) operands interact.
+      //               // do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
+      //            break;
 
-         } /* switch (st->tag) */
+      //         default:
+      //            VG_(printf)("\n");
+      //            ppIRStmt(st);
+      //            VG_(printf)("\n");
+      //            VG_(tool_panic)("dyncomp: unhandled IRStmt");
 
-         if (verboze) {
-            for (j = first_stmt; j < bb->stmts_used; j++) {
-               VG_(printf)("   ");
-               ppIRStmt(bb->stmts[j]);
-               VG_(printf)("\n");
-            }
-            VG_(printf)("\n");
-         }
-      }
+      //         } /* switch (st->tag) */
+
+      //         if (verboze) {
+      //            for (j = first_stmt; j < bb->stmts_used; j++) {
+      //               VG_(printf)("   ");
+      //               ppIRStmt(bb->stmts[j]);
+      //               VG_(printf)("\n");
+      //            }
+      //            VG_(printf)("\n");
+      //         }
+      //      }
 
       /* ... and finally copy the stmt itself to the output. */
       addStmtToIRBB(bb, st);
@@ -2594,7 +2595,7 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       VG_(printf)("\n\n");
    }
 
-   //   complainIfUndefined( &mce, bb->next ); // PG
+   //   complainIfUndefined( &mce, bb->next ); // pgbovine
 
    if (verboze) {
       for (j = first_stmt; j < bb->stmts_used; j++) {
@@ -2605,14 +2606,14 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
       VG_(printf)("\n");
    }
 
-   // PG - The IRBB itself may contain a Ret (return) as its
+   // pgbovine - The IRBB itself may contain a Ret (return) as its
    // end-of-block jump.  If so, then this is possibly a cue for a
    // function exit.  This is very important for detecting function
    // exits!
    handle_possible_exit( &mce, bb->jumpkind );
 
 
-   // PG - Uncomment to pretty-print the basic block
+   // pgbovine - Uncomment to pretty-print the basic block
    //      (This is great for debugging when you can compare IR
    //       to gcc-generated assembly)
    //   ppIRBB(bb);
