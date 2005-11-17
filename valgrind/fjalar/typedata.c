@@ -23,7 +23,7 @@
 #include <string.h>
 
 #include "typedata.h"
-#include "generate_daikon_data.h"
+#include "generate_fjalar_entries.h"
 
 #include "elf/dwarf2.h"
 

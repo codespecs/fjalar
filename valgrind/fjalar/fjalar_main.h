@@ -18,105 +18,84 @@
 #ifndef FJALAR_MAIN_H
 #define FJALAR_MAIN_H
 
-// Comment this out when we want to release Kvasir to end-users:
-// #define KVASIR_DEVEL_BUILD
-
 #include <assert.h>
 #include "tool.h"
 #include "mc_translate.h"
 
-//#include "kvasir_runtime.h"
+#include "generate_fjalar_entries.h"
 
 // Global variables that are set by command-line options
-char* kvasir_decls_filename;
-char* kvasir_dtrace_filename;
-Bool kvasir_with_dyncomp;
-Bool kvasir_dyncomp_no_gc;
-Bool kvasir_dyncomp_fast_mode;
-Bool kvasir_print_debug_info;
-Bool kvasir_ignore_globals;
-Bool kvasir_ignore_static_vars;
-Bool kvasir_dtrace_append;
-Bool kvasir_dtrace_no_decs;
-Bool kvasir_dtrace_gzip;
-Bool kvasir_output_fifo;
-Bool kvasir_asserts_aborts_on;
-Bool kvasir_decls_only;
-Bool kvasir_limit_static_vars;
-Bool kvasir_default_disambig;
-Bool kvasir_smart_disambig;
-Bool kvasir_use_bit_level_precision;
-Bool kvasir_output_struct_vars;
-Bool kvasir_repair_format;
-Bool kvasir_flatten_arrays;
-Bool kvasir_disambig_ptrs;
-Bool dyncomp_print_debug_info;
-Bool dyncomp_print_incremental;
-Bool dyncomp_separate_entry_exit_comp;
-int kvasir_array_length_limit;
+
+// Boolean flags
+Bool fjalar_debug;
+Bool fjalar_ignore_globals;
+Bool fjalar_ignore_static_vars;
+Bool fjalar_limit_static_vars;
+Bool fjalar_default_disambig;
+Bool fjalar_smart_disambig;
+Bool fjalar_use_bit_level_precision;
+Bool fjalar_output_struct_vars;
+Bool fjalar_flatten_arrays;
+Bool fjalar_disambig_ptrs;
+int  fjalar_array_length_limit;
+
+UInt MAX_VISIT_STRUCT_DEPTH;
+UInt MAX_VISIT_NESTING_DEPTH;
+
 // These are used as both strings and boolean flags -
 // They are initialized to 0 upon initiation so if they are
 // never filled with values by the respective command-line
 // options, then they can be treated as False
-char* kvasir_dump_prog_pt_names_filename;
-char* kvasir_dump_var_names_filename;
-char* kvasir_trace_prog_pts_filename;
-char* kvasir_trace_vars_filename;
-char* kvasir_disambig_filename;
-char *kvasir_program_stdout_filename;
-char *kvasir_program_stderr_filename;
-int dyncomp_gc_after_n_tags;
+char* fjalar_dump_prog_pt_names_filename;
+char* fjalar_dump_var_names_filename;
+char* fjalar_trace_prog_pts_filename;
+char* fjalar_trace_vars_filename;
+char* fjalar_disambig_filename;
+char* fjalar_program_stdout_filename;
+char* fjalar_program_stderr_filename;
+char* fjalar_xml_output_filename;
 
-Bool actually_output_separate_decls_dtrace;
-Bool print_declarations;
+// The filename of the target executable:
+char* executable_filename;
 
-Bool dyncomp_without_dtrace;
-
-// Turn this off to not have DPRINTFs expand to anything, just in
-// case you want to optimize for performance,
-// but leave it on if you want the --debug command-line option to work
-#define USE_DPRINTFS
-
-#ifdef USE_DPRINTFS
-#define DPRINTF(...) do { if (kvasir_print_debug_info) \
+#define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       VG_(printf)(__VA_ARGS__); } while (0)
 
-#define DYNCOMP_DPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_debug_info) \
-      VG_(printf)(__VA_ARGS__); } while (0)
-#endif
+/* #define DABORT(...) do { if (kvasir_asserts_aborts_on) { \ */
+/*       VG_(printf)(__VA_ARGS__); abort();} } while (0) */
 
-// Define these to expand to nothing if USE_DPRINTFS is off
-#ifndef USE_DPRINTFS
-#define DPRINTF(...)
-#define DYNCOMP_DPRINTF(...)
-#endif
+/* #define DASSERT(target) do { if (kvasir_asserts_aborts_on) \ */
+/*       tl_assert(target); } while (0) */
 
-#define DABORT(...) do { if (kvasir_asserts_aborts_on) { \
-      VG_(printf)(__VA_ARGS__); abort();} } while (0)
-
-#define DASSERT(target) do { if (kvasir_asserts_aborts_on) \
-      tl_assert(target); } while (0)
 
 void handle_possible_entry(MCEnv* mce, Addr64 addr);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
-extern VGA_REGPARM(2) void enter_function(Char* daikon_name, Addr StartPC);
-extern VGA_REGPARM(1) void exit_function(Char* daikon_name);
 
-void check_ESP();
+extern VGA_REGPARM(1) void enter_function(FunctionEntry* f);
+extern VGA_REGPARM(1) void exit_function(FunctionEntry* f);
+
 
 void fjalar_pre_clo_init();
 void fjalar_post_clo_init();
 void fjalar_finish();
+void fjalar_print_usage();
+Bool fjalar_process_cmd_line_option(Char* arg);
 
 void printFunctionEntryStack();
-void kvasir_print_usage();
-Bool kvasir_process_cmd_line_option(Char* arg);
+
+// The stack should never grow this deep!
+#define FN_STACK_SIZE 1000
+
+FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
+int fn_stack_first_free_index;
+
+__inline__ FunctionExecutionState* fnStackTop();
 
 
 /*
 Requires:
-Modifies: fn_stack[ fn_stack_top - 1 ].lowestESP
+Modifies: lowestESP of the top entry in FunctionExecutionStateStack
 Returns:
 Effects: Compares the current ESP with the lowestESP from the current
          function and sets lowestESP to current ESP if current ESP
@@ -144,22 +123,21 @@ This is called from hooks within mac_shared.h
 // (Remember that this code will be inserted in mc_main.c so it needs to have
 //  the proper extern variables declared.)
 #define CHECK_ESP(currentESP)                                           \
-   if (fn_stack_top > 0) {                                              \
-      FunctionEntry* curFunc = &(fn_stack[ fn_stack_top - 1]);          \
-      if (currentESP < curFunc->lowestESP) {                            \
-         fn_stack[ fn_stack_top - 1].lowestESP = currentESP;            \
-      }                                                                 \
-   }
+  FunctionExecutionState* curFunc = fnStackTop();			\
+  if (curFunc &&							\
+      (currentESP < curFunc->lowestESP)) {				\
+    curFunc->lowestESP = currentESP;					\
+  }
 
 // Slower because we need to explicitly get the ESP
 #define CHECK_ESP_SLOW()                                                \
-   if (fn_stack_top > 0) {                                              \
-      FunctionEntry* curFunc = &(fn_stack[ fn_stack_top - 1]);          \
-      Addr  currentESP = VG_(get_SP)(VG_(get_running_tid)());           \
-      if (currentESP < curFunc->lowestESP) {                            \
-         fn_stack[ fn_stack_top - 1].lowestESP = currentESP;            \
-      }                                                                 \
-   }
+  FunctionExecutionState* curFunc = fnStackTop();			\
+  if (curFunc) {							\
+    Addr currentESP = VG_(get_SP)(VG_(get_running_tid)());		\
+    if (currentESP < curFunc->lowestESP) {				\
+      curFunc->lowestESP = currentESP;					\
+    }									\
+  }
 
 
 #endif

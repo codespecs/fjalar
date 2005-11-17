@@ -424,8 +424,8 @@ extern                void MAC_(new_mem_stack) ( Addr a, SizeT len);
                             ALIGNED8_NEW,  ALIGNED8_DIE,                      \
                             UNALIGNED_NEW, UNALIGNED_DIE)                     \
                                                                               \
-extern FunctionEntry fn_stack[];                                              \
-extern Int   fn_stack_top;                                                    \
+extern FunctionExecutionState FunctionExecutionStateStack[];                  \
+extern int fn_stack_first_free_index;                                         \
                                                                               \
 void VGA_REGPARM(1) MAC_(new_mem_stack_4)(Addr new_ESP)                       \
 {                                                                             \

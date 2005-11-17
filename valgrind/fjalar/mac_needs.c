@@ -30,6 +30,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#include "fjalar_main.h"
 
 #include "mac_shared.h"
 
@@ -78,7 +79,8 @@ Bool MAC_(process_common_cmd_line_option)(Char* arg)
       MAC_(clo_leak_resolution) = Vg_HighRes;
 
    else
-      return VG_(replacement_malloc_process_cmd_line_option)(arg);
+     return fjalar_process_cmd_line_option(arg); // pgbovine
+     //      return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
    return True;
 }
