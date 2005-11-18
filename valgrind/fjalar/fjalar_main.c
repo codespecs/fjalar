@@ -43,6 +43,7 @@ Bool fjalar_smart_disambig = False;
 Bool fjalar_use_bit_level_precision = False;
 Bool fjalar_output_struct_vars = False;
 Bool fjalar_flatten_arrays = False;
+Bool fjalar_func_disambig_ptrs = False;
 Bool fjalar_disambig_ptrs = False;
 int  fjalar_array_length_limit = -1;
 
@@ -558,7 +559,9 @@ void fjalar_print_usage()
 "    --disambig               Uses <program name>.disambig as the disambig file\n"
 "    --smart-disambig         Infers sensible values for each entry in .disambig file\n"
 "                             generated using the --disambig or --disambig-file options\n"
-"    --disambig-ptrs          Forces all pointer vars. to point to a single element\n"
+"    --func-disambig-ptrs     Treats function parameter and return value pointer\n"
+"                             variables as pointing to a single element\n"
+"    --disambig-ptrs          Treats all pointer vars. as pointing to a single element\n"
 
 "\n  Misc. options:\n"
 "    --flatten-arrays         Force flattening of all statically-sized arrays\n"
@@ -601,6 +604,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("bit-level-precision", fjalar_use_bit_level_precision)
   else VG_YESNO_CLO("output-struct-vars", fjalar_output_struct_vars)
   else VG_YESNO_CLO("flatten-arrays", fjalar_flatten_arrays)
+  else VG_YESNO_CLO("func-disambig-ptrs", fjalar_func_disambig_ptrs)
   else VG_YESNO_CLO("disambig-ptrs", fjalar_disambig_ptrs)
   else VG_BNUM_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
 		   -1, 0x7fffffff)
