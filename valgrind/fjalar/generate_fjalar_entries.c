@@ -31,7 +31,6 @@
 static void initializeStructNamesIDTable();
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
-static void initializeGlobalAddrRange();
 
 static void extractFormalParameterVars(FunctionEntry* f,
 				       function* dwarfFunctionEntry);
@@ -72,11 +71,58 @@ static void XMLprintOneVariable(VariableEntry* var);
 
 FILE* xml_output_fp = 0;
 
-// A sentinel for a void* type
-TypeEntry GlobalHashcodeType = {D_VOID,        // decType
-				0,             // collectionName
-                                sizeof(void*), // byteSize
-                                0, 0, 0, 0, 0};
+// Global singleton entries for basic types.  These do not need to be
+// placed in TypesTable because they are un-interesting.
+TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0};
+TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0};
+TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0};
+TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0};
+TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0};
+TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0};
+TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0};
+TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
+TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
+TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
+TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
+TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
+TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0};
+TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0};
+TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0};
+
+// Array indexed by DeclaredType where each entry is a pointer to one
+// of the above singleton entries:
+
+TypeEntry* BasicTypesArray[22] = {
+  0,  //  D_NO_TYPE, // Create padding
+  &UnsignedCharType,  //  D_UNSIGNED_CHAR,
+  &CharType,  //  D_CHAR,
+  &UnsignedShortType,  //  D_UNSIGNED_SHORT,
+  &ShortType,  //  D_SHORT,
+  &UnsignedIntType, //  D_UNSIGNED_INT,
+  &IntType, //  D_INT,
+  &UnsignedLongLongIntType, //  D_UNSIGNED_LONG_LONG_INT,
+  &LongLongIntType, //  D_LONG_LONG_INT,
+  &UnsignedFloatType, //  D_UNSIGNED_FLOAT, // currently unused
+  &FloatType, //  D_FLOAT,
+  &UnsignedDoubleType, //  D_UNSIGNED_DOUBLE, // currently unused
+  &DoubleType, //  D_DOUBLE,
+  &UnsignedLongDoubleType, //  D_UNSIGNED_LONG_DOUBLE, // currently unused
+  &LongDoubleType, //  D_LONG_DOUBLE,
+  0, //  D_ENUMERATION,
+  0, //  D_STRUCT,
+  0, //  D_UNION,
+  &FunctionType, //  D_FUNCTION,
+  &VoidType, //  D_VOID,
+  0, //  D_CHAR_AS_STRING, // when .disambig 'C' option is used with chars
+  &BoolType //  D_BOOL            // C++ only
+};
+
+// To figure out if a certain DeclaredType t is a basic type, simply
+// query whether its entry in BasicTypesArray is non-null:
+#define IS_BASIC_TYPE(t) (BasicTypesArray[t])
+
 
 // Hash table that maps the names of structs to their ID's in
 // dwarf_entry_array
@@ -261,6 +307,7 @@ void clearVarList(VarList* varListPtr) {
 //  will probably get lots of memory leaks.)
 void initializeAllFjalarData()
 {
+
   // First delete everything that's in the globalVars list
   clearVarList(&globalVars);
 
@@ -285,21 +332,31 @@ void initializeAllFjalarData()
   initializeFunctionTable();
 
   // We need to initialize this list even if we are ignoring globals
-  // (with --ignore-globals) because otherwise lowestGlobalVarAddr and
-  // highestGlobalVarAddr won't be set properly, and we won't be able
-  // to find references to global variables from pointer parameters:
+  // (with --ignore-globals) because otherwise we won't be able to
+  // find references to global variables from pointer parameters:
   initializeGlobalVarsList();
-
-
-  initializeGlobalAddrRange();
 
   genfreehashtable(StructNamesIDTable);
   StructNamesIDTable = 0;
+
+  VG_(printf)(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
+              data_section_size, data_section_addr,
+              bss_section_size, bss_section_addr,
+              rodata_section_size, rodata_section_addr);
 
   // Should only be called here:
   VG_(printf)("BEGIN checking the representation of internal data structures ...\n");
   repCheckAllEntries();
   VG_(printf)("DONE with representation checks.\n");
+}
+
+// Returns true iff the address is within a global area as specified
+// by the executable's symbol table (it lies within the .data, .bss,
+// or .rodata sections):
+char addressIsGlobal(unsigned int addr) {
+  return (((addr >= data_section_addr) && (addr < data_section_addr + data_section_size)) ||
+          ((addr >= bss_section_addr) && (addr < bss_section_addr + bss_section_size)) ||
+          ((addr >= rodata_section_addr) && (addr < rodata_section_addr + rodata_section_size)));
 }
 
 // Performs a scan over all VariableEntry, TypeEntry, and
@@ -421,6 +478,10 @@ void repCheckAllEntries() {
     TypeEntry* t = (TypeEntry*)
       gengettable(TypesTable, gennext(it));
 
+    // All TypeEntry instances within TypesTable should NOT be basic
+    // types:
+    tl_assert(!IS_BASIC_TYPE(t->decType));
+
     // Properties that should hold true for all TypeEntry instances:
     if (t->collectionName) {
       tl_assert((D_ENUMERATION == t->decType) ||
@@ -540,17 +601,14 @@ static void repCheckOneVariable(VariableEntry* var) {
       tl_assert(var->fileName);
     }
 
-    VG_(printf)(" --- checking var (t: %s) (%p): %s, globalLoc: %p, [%p, %p)\n",
+    VG_(printf)(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
 		var->structParentType ? var->structParentType->collectionName : "no parent",
 		var,
 		var->name,
-		var->globalLocation,
-		lowestGlobalVarAddr,
-		highestGlobalVarAddr);
+		var->globalLocation);
 
     if (var->globalLocation) {
-      tl_assert(var->globalLocation >= lowestGlobalVarAddr);
-      tl_assert(var->globalLocation <= highestGlobalVarAddr);
+      tl_assert(addressIsGlobal(var->globalLocation));
     }
 
     // These properties should hold for file-static variables declared
@@ -593,13 +651,11 @@ static void repCheckOneVariable(VariableEntry* var) {
     tl_assert(0 == var->internalBitSize);
   }
 
-  VG_(printf)(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p, [%p, %p)\n",
+  VG_(printf)(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
 	      var->structParentType ? var->structParentType->collectionName : "no parent",
 	      var,
 	      var->name,
-	      var->globalLocation,
-	      lowestGlobalVarAddr,
-	      highestGlobalVarAddr);
+	      var->globalLocation);
 }
 
 
@@ -667,7 +723,6 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 
 // Initializes the global variables list (globalVars) and fills it up
 // with global variable entries from dwarf_entry_array.
-// Also initializes lowestGlobalVarAddr and highestGlobalVarAddr
 
 // Note: If two or more source files include the same header file
 // which has global declarations, then the entry for these global
@@ -776,90 +831,6 @@ static void initializeGlobalVarsList()
   genfreehashtable(GlobalVarsTable);
 }
 
-// Must be called only after globalVars list and TypesTable are
-// completely initialized.  Traverses globalVars and all C++ static
-// member variables in TypesTable to determine the lower and upper
-// bounds on the memory region where global variables reside:
-static void initializeGlobalAddrRange() {
-
-  struct geniterator* it;
-  VarNode* node;
-
-  VariableEntry* maxGlobalVar = 0;
-  VariableEntry* minGlobalVar = 0;
-
-  // Iterate through global variables first:
-  for (node = globalVars.first;
-       node != 0;
-       node = node->next) {
-    VariableEntry* currentVar = node->var;
-    if (currentVar->globalLocation) {
-      if (!minGlobalVar ||
-	  (currentVar->globalLocation < minGlobalVar->globalLocation)) {
-	minGlobalVar = currentVar;
-      }
-      if (!maxGlobalVar ||
-	  (currentVar->globalLocation > maxGlobalVar->globalLocation)) {
-	  maxGlobalVar = currentVar;
-      }
-    }
-  }
-
-  // Now iterate through TypesTable looking for C++ static member
-  // variables, because those are allocated in the same memory region
-  // as globals:
-  it = gengetiterator(TypesTable);
-
-  while (!it->finished) {
-    TypeEntry* t = (TypeEntry*)
-      gengettable(TypesTable, gennext(it));
-
-    if (t->staticMemberVarList) {
-      VarNode* n;
-      for (n = t->staticMemberVarList->first;
-	   n != 0;
-	   n = n->next) {
-	VariableEntry* curMember = n->var;
-
-	if (curMember->globalLocation) {
-	  VG_(printf)("  t: %s, var (%p): %s (%p)\n",
-		      t->collectionName,
-		      curMember,
-		      curMember->name,
-		      curMember->globalLocation);
-
-	  if (!minGlobalVar ||
-	      (curMember->globalLocation < minGlobalVar->globalLocation)) {
-	    minGlobalVar = curMember;
-	  }
-	  if (!maxGlobalVar ||
-	      (curMember->globalLocation > maxGlobalVar->globalLocation)) {
-	    maxGlobalVar = curMember;
-	  }
-	}
-      }
-    }
-  }
-
-  genfreeiterator(it);
-
-  highestGlobalVarAddr = maxGlobalVar ?
-    maxGlobalVar->globalLocation + determineVariableByteSize(maxGlobalVar) :
-    0;
-
-  lowestGlobalVarAddr = minGlobalVar ?
-    minGlobalVar->globalLocation :
-    0;
-
-  // TODO: Are the defaults of 0 for both lowestGlobalVarAddr and
-  // highestGlobalVarAddr safe?  Yes, I think so, because anything
-  // above highestGlobalVarAddr and below ESP is approximately the
-  // heap, so if we underestimate it at 0, at least we won't miss any
-  // chances to probe the heap in fjalar_runtime.c.
-
-  FJALAR_DPRINTF("highestGlobalVarAddr = 0x%lx, lowestGlobalVarAddr = 0x%lx\n",
-		 highestGlobalVarAddr, lowestGlobalVarAddr);
-}
 
 // Initializes StructNamesIDTable by going through dwarf_entry_array
 // and associating each struct/union type declaration that has
@@ -1061,89 +1032,79 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
   return arrayPtr->type_ptr;
 }
 
-// Extracts base type information
-// Modifies: t
-static void extractBaseType(TypeEntry* t, base_type* basePtr)
+// Extracts base type information by assigning var->varType to a basic
+// type TypeEntry in BasicTypesArray
+// Modifies: var->varType
+static void extractBaseType(VariableEntry* var, base_type* basePtr)
 {
   // Figure out what basic type it is
-  switch(basePtr->encoding)
-    {
-    case DW_ATE_float:
-      if (basePtr->byte_size == sizeof(float))
-        {
-          t->decType = D_FLOAT;
-        }
-      else if (basePtr->byte_size == sizeof(double))
-        {
-          t->decType = D_DOUBLE;
-        }
-      else if (basePtr->byte_size == sizeof(long double))
-        {
-          t->decType = D_LONG_DOUBLE;
-        }
-
-      // TODO: Need to write a Kvasir/Fjalar function to scan over all
-      // TypeEntry entries and map their declared types to rep. types
-      // (which should run after TypesTable has been completely
-      // initialized), then erase all mention of repType from this
-      // file:
-      //      t->repType = R_DOUBLE;
-      break;
-
-    case DW_ATE_signed:
-    case DW_ATE_signed_char:
-      if (basePtr->byte_size == sizeof(char))
-        {
-          t->decType = D_CHAR;
-        }
-      else if (basePtr->byte_size == sizeof(short))
-        {
-          t->decType = D_SHORT;
-        }
-      else if (basePtr->byte_size == sizeof(int))
-        {
-          t->decType = D_INT;
-        }
-      else if (basePtr->byte_size == sizeof(long long int))
-        {
-          t->decType = D_LONG_LONG_INT;
-        }
-
-      //      t->repType = R_INT;
-      break;
-
-    case DW_ATE_unsigned:
-    case DW_ATE_unsigned_char:
-      if (basePtr->byte_size == sizeof(unsigned char))
-        {
-          t->decType = D_UNSIGNED_CHAR;
-        }
-      else if (basePtr->byte_size == sizeof(unsigned short))
-        {
-          t->decType = D_UNSIGNED_SHORT;
-        }
-      else if (basePtr->byte_size == sizeof(unsigned int))
-        {
-          t->decType = D_UNSIGNED_INT;
-        }
-      else if (basePtr->byte_size == sizeof(unsigned long long int))
-        {
-          t->decType = D_UNSIGNED_LONG_LONG_INT;
-        }
-
-      //      t->repType = R_INT;
-      break;
-
-    case DW_ATE_boolean:
-      t->decType = D_BOOL;
-      //      t->repType = R_INT;
-      break;
-
-    default:
-      tl_assert(0 && "Unknown primitive type");
+  switch(basePtr->encoding) {
+  case DW_ATE_float:
+    if (basePtr->byte_size == sizeof(float)) {
+      var->varType = BasicTypesArray[D_FLOAT];
+    }
+    else if (basePtr->byte_size == sizeof(double)) {
+      var->varType = BasicTypesArray[D_DOUBLE];
+    }
+    else if (basePtr->byte_size == sizeof(long double)) {
+      var->varType = BasicTypesArray[D_LONG_DOUBLE];
     }
 
-  t->byteSize = basePtr->byte_size;
+    // TODO: Need to write a Kvasir/Fjalar function to scan over all
+    // TypeEntry entries and map their declared types to rep. types
+    // (which should run after TypesTable has been completely
+    // initialized), then erase all mention of repType from this
+    // file:
+    //      t->repType = R_DOUBLE;
+    break;
+
+  case DW_ATE_signed:
+  case DW_ATE_signed_char:
+    if (basePtr->byte_size == sizeof(char)) {
+      var->varType = BasicTypesArray[D_CHAR];
+    }
+    else if (basePtr->byte_size == sizeof(short)) {
+      var->varType= BasicTypesArray[D_SHORT];
+    }
+    else if (basePtr->byte_size == sizeof(int)) {
+      var->varType = BasicTypesArray[D_INT];
+    }
+    else if (basePtr->byte_size == sizeof(long long int)) {
+      var->varType = BasicTypesArray[D_LONG_LONG_INT];
+    }
+
+    //      t->repType = R_INT;
+    break;
+
+  case DW_ATE_unsigned:
+  case DW_ATE_unsigned_char:
+    if (basePtr->byte_size == sizeof(unsigned char)) {
+      var->varType = BasicTypesArray[D_UNSIGNED_CHAR];
+    }
+    else if (basePtr->byte_size == sizeof(unsigned short)) {
+      var->varType = BasicTypesArray[D_UNSIGNED_SHORT];
+    }
+    else if (basePtr->byte_size == sizeof(unsigned int)) {
+      var->varType = BasicTypesArray[D_UNSIGNED_INT];
+    }
+    else if (basePtr->byte_size == sizeof(unsigned long long int)) {
+      var->varType = BasicTypesArray[D_UNSIGNED_LONG_LONG_INT];
+    }
+
+    //      t->repType = R_INT;
+    break;
+
+  case DW_ATE_boolean:
+    var->varType = BasicTypesArray[D_BOOL];
+    //      t->repType = R_INT;
+    break;
+
+  default:
+    tl_assert(0 && "Unknown primitive type");
+  }
+
+  // Post-condition:
+  tl_assert(IS_BASIC_TYPE(var->varType->decType));
 }
 
 // Extracts enumeration type info
@@ -1158,25 +1119,25 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 }
 
 
-// Extracts subroutine type corresponding to a function pointer parameter
-// Modifies: t
-static void extractSubroutineType(TypeEntry* t, function_type* functionPtr)
-{
-  t->byteSize = 4; // TODO: Why does this only take up one byte?
-                   // Shouldn't it take up 4?
-  t->decType = D_FUNCTION;
-  //  t->repType = R_HASHCODE;
-}
+/* // Extracts subroutine type corresponding to a function pointer parameter */
+/* // Modifies: t */
+/* static void extractSubroutineType(TypeEntry* t, function_type* functionPtr) */
+/* { */
+/*   t->byteSize = 4; // TODO: Why does this only take up one byte? */
+/*                    // Shouldn't it take up 4? */
+/*   t->decType = D_FUNCTION; */
+/*   //  t->repType = R_HASHCODE; */
+/* } */
 
-// Extracts type information from a void pointer
-// Modifies: t
-static void extractVoidType(TypeEntry* t)
-{
-  t->byteSize = 4; // TODO: Why does this only take up one byte?
-                   // Shouldn't it take up 4?
-  t->decType = D_VOID;
-  //  t->repType = R_HASHCODE;
-}
+/* // Extracts type information from a void pointer */
+/* // Modifies: t */
+/* static void extractVoidType(TypeEntry* t) */
+/* { */
+/*   t->byteSize = 4; // TODO: Why does this only take up one byte? */
+/*                    // Shouldn't it take up 4? */
+/*   t->decType = D_VOID; */
+/*   //  t->repType = R_HASHCODE; */
+/* } */
 
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList and entries for
@@ -1637,7 +1598,6 @@ void extractOneVariable(VarList* varListPtr,
 // just because that's how the C language works
 {
   VariableEntry* varPtr = 0;
-  int newlyAddedTypeEntry = 0;
   int ptrLevels = 0;
 
   FJALAR_DPRINTF("Entering extractOneVariable for %s\n", variableName);
@@ -1732,7 +1692,7 @@ void extractOneVariable(VarList* varListPtr,
     if ((varPtr->ptrLevels > 0) &&
         ignore_type_with_name(type_name)) {
       //      VG_(printf)("IGNORED --- %s\n", type_name);
-      varPtr->varType = &GlobalHashcodeType;
+      varPtr->varType = &VoidType;
       return; // punt at this point
     }
   }
@@ -1747,72 +1707,84 @@ void extractOneVariable(VarList* varListPtr,
   varPtr->varType = 0;
   // We are passing in the true ID but casting it so the compiler won't warn me:
 
-  if (typePtr)
-    {
-      // We want to look up the REAL type entry, not a fake one with
-      // is_declaration non-null.
-      //   (Hopefully, if all goes well, the only TypeEntry values
-      //    in TypesTable are REAL entries whose dwarf_entry has
-      //    is_declaration NULL, not fake declaration entries)
 
-      // For struct/union types, we want to make sure that we are
-      // performing a lookup on a REAL entry, not just a declaration:
-      if (tag_is_collection_type(typePtr->tag_name)) {
-        collection_type* collectionPtr = (collection_type*)(typePtr->entry_ptr);
+  // WARNING: Some typedefs do not have targets - if typePtr == NULL,
+  // just say screw it and make this variable into a dummy null
+  // variable: Void typePtr entries will NOT be in TypesTable :(
+  if (!typePtr) {
+    // Got void; probably was void *, const void *, etc.
+    varPtr->varType = BasicTypesArray[D_VOID];
+  }
+  // (From this point forward, we know that typePtr is non-null,
+  //  as long as we keep doing 'else if's)
+  // For base and function types, DO NOT use the TypesTable and
+  // instead use one of the entries in BasicTypesArray:
+  else if (tag_is_base_type(typePtr->tag_name)) {
+    base_type* basePtr = (base_type*)(typePtr->entry_ptr);
+    extractBaseType(varPtr, basePtr);
+  }
+  else if (typePtr->tag_name == DW_TAG_subroutine_type) {
+    // Function (from a function pointer)
+    // Treat sorta like a hashcode, for the moment.
+    varPtr->varType = BasicTypesArray[D_FUNCTION];
+  }
+  // For struct/union types, we want to make sure that we are
+  // performing a lookup on a REAL entry, not just a declaration:
+  else if (tag_is_collection_type(typePtr->tag_name)) {
+    // We want to look up the REAL type entry, not a fake one with
+    // is_declaration non-null.
+    //   (Hopefully, if all goes well, the only TypeEntry values
+    //    in TypesTable are REAL entries whose dwarf_entry has
+    //    is_declaration NULL, not fake declaration entries)
+    collection_type* collectionPtr = (collection_type*)(typePtr->entry_ptr);
 
-        // If it's a fake entry, we want to look up its name in
-        // StructNamesIDTable and map it to the REAL entry with the
-        // same name:
-        if (collectionPtr->is_declaration &&
-            collectionPtr->name) {
-          unsigned long realID = (unsigned long)gengettable(StructNamesIDTable,
-                                                            (void*)collectionPtr->name);
-          //          VG_(printf)("* %s (Fake ID: %u) (Real ID: %u)\n",
-          //                      collectionPtr->name,
-          //                      typePtr->ID,
-          //                      realID);
+    // If it's a fake entry, we want to look up its name in
+    // StructNamesIDTable and map it to the REAL entry with the
+    // same name:
+    if (collectionPtr->is_declaration &&
+        collectionPtr->name) {
+      unsigned long realID = (unsigned long)gengettable(StructNamesIDTable,
+                                                        (void*)collectionPtr->name);
+      //          VG_(printf)("* %s (Fake ID: %u) (Real ID: %u)\n",
+      //                      collectionPtr->name,
+      //                      typePtr->ID,
+      //                      realID);
 
-          // If realID == 0, that means that we somehow don't have
-          // debugging info for the real entry, so we must just resort
-          // to using the fake entry, reluctantly
-          if (realID) {
-            // Now do a lookup for the REAL ID and not the fake one:
-            varPtr->varType =
-              (TypeEntry*)gengettable(TypesTable, (void*)realID);
+      // If realID == 0, that means that we somehow don't have
+      // debugging info for the real entry, so we must just resort
+      // to using the fake entry, reluctantly
+      if (realID) {
+        // Now do a lookup for the REAL ID and not the fake one:
+        varPtr->varType =
+          (TypeEntry*)gengettable(TypesTable, (void*)realID);
 
-            // If you can't find anything, we'll have to end up calling
-            // extractStructUnionType so let's change typePtr to refer
-            // to the entry in dwarf_entry_array with the REAL ID before
-            // passing it further along:
-            if (!varPtr->varType) {
-              unsigned long realIndex = 0;
-              if (binary_search_dwarf_entry_array(realID,  &realIndex)) {
-                typePtr = &dwarf_entry_array[realIndex];
+        // If you can't find anything, we'll have to end up calling
+        // extractStructUnionType so let's change typePtr to refer
+        // to the entry in dwarf_entry_array with the REAL ID before
+        // passing it further along:
+        if (!varPtr->varType) {
+          unsigned long realIndex = 0;
+          if (binary_search_dwarf_entry_array(realID,  &realIndex)) {
+            typePtr = &dwarf_entry_array[realIndex];
 
-                //                VG_(printf)("  realIndex: %u, realID: %u, typePtr->ID: %u\n",
-                //                            realIndex, realID, typePtr->ID);
-              }
-            }
+            //                VG_(printf)("  realIndex: %u, realID: %u, typePtr->ID: %u\n",
+            //                            realIndex, realID, typePtr->ID);
           }
-          else {
-            varPtr->varType = (TypeEntry*)gengettable(TypesTable, (void*)typePtr->ID);
-          }
-        }
-        // Do a regular lookup if it's either an unnamed struct or
-        // (even better) a REAL one with is_declaration = null
-        else {
-          varPtr->varType = (TypeEntry*)gengettable(TypesTable, (void*)typePtr->ID);
         }
       }
-      // Just do a lookup for non-struct/union types
       else {
         varPtr->varType = (TypeEntry*)gengettable(TypesTable, (void*)typePtr->ID);
       }
     }
-  // If the entry is not found in TypesTable, create a new one
-  // and add it to the table
-  if (!varPtr->varType)
-    {
+    // Do a regular lookup if it's either an unnamed struct or
+    // (even better) a REAL one with is_declaration = null
+    else {
+      varPtr->varType = (TypeEntry*)gengettable(TypesTable, (void*)typePtr->ID);
+    }
+
+    // If the entry is not found in TypesTable, create a new one
+    // and add it to the table
+    if (!varPtr->varType) {
       FJALAR_DPRINTF("Adding type entry for %s\n", variableName);
 
       varPtr->varType = (TypeEntry*)VG_(calloc)(1, sizeof(*varPtr->varType));
@@ -1820,51 +1792,19 @@ void extractOneVariable(VarList* varListPtr,
       if (typePtr) {
         genputtable(TypesTable, (void*)typePtr->ID, varPtr->varType);
       }
-      newlyAddedTypeEntry = 1;
-    }
 
-  if (newlyAddedTypeEntry)
-    {
-       // WARNING: Some typedefs do not have targets - if typePtr == NULL,
-       // just say screw it and make this variable into a dummy null variable:
-       // Void typePtr entries will NOT be in TypesTable :(
-      if (!typePtr)
-	{
-	  // Got void; probably was void *, const void *, etc.
-	  extractVoidType(varPtr->varType);
-	}
-      // If the parameter type is a basic type, then we're golden!
-      // Base types are the easiest to handle!
-      else if (tag_is_base_type(typePtr->tag_name))
-	{
-	  base_type* basePtr = (base_type*)(typePtr->entry_ptr);
-	  extractBaseType(varPtr->varType, basePtr);
-	}
       // If the parameter is an enumeration type
-      else if (typePtr->tag_name == DW_TAG_enumeration_type)
-	{
-	  collection_type* collectionPtr = (collection_type*)(typePtr->entry_ptr);
-	  extractEnumerationType(varPtr->varType, collectionPtr);
-	}
-      else if (typePtr->tag_name == DW_TAG_subroutine_type)
-	{
-	  // Function (from a function pointer)
-	  // Treat sorta like a hashcode, for the moment.
-	  function_type* func_type = (function_type *)(typePtr->entry_ptr);
-	  extractSubroutineType(varPtr->varType, func_type);
-	}
-      // Struct or union type
+      if (typePtr->tag_name == DW_TAG_enumeration_type) {
+        collection_type* colPtr = (collection_type*)(typePtr->entry_ptr);
+        extractEnumerationType(varPtr->varType, colPtr);
+      }
+      // Struct or union type (where most of the action takes place)
       else if  ((typePtr->tag_name == DW_TAG_structure_type) ||
-		(typePtr->tag_name == DW_TAG_union_type))
-	{
-          extractStructUnionType(varPtr->varType, typePtr);
-	}
-      else
-	{
-	  VG_(printf)("Unknown type encountered while trying to parse variable: %s\n",
-		      variableName);
-	}
+		(typePtr->tag_name == DW_TAG_union_type)) {
+        extractStructUnionType(varPtr->varType, typePtr);
+      }
     }
+  }
 
   // Set isString to true if the variable is a pointer to a char (or a
   // pointer to a pointer to a char, etc...)
@@ -1881,14 +1821,14 @@ void extractOneVariable(VarList* varListPtr,
   // varPtr->varType->decType != D_CHAR) or (ptrLevels > 2 and
   // varPtr->varType->decType == D_CHAR), then
   // we turn it into a 1-D array of hashcodes by setting ptrLevels = 1
-  // and pointing the type to GlobalHashcodeType.
+  // and pointing the type to VoidType.
   // This means that we do not support multidimensional arrays
   // (but we didn't used to either) but fail more gracefully on them now
   if (varPtr->isStaticArray &&
       (ptrLevels > ((varPtr->varType->decType == D_CHAR) ?
                     2 : 1))) {
     varPtr->ptrLevels = 1;
-    varPtr->varType = &GlobalHashcodeType;
+    varPtr->varType = &VoidType;
   }
 }
 
@@ -2106,10 +2046,13 @@ static void XMLprintTypesTable() {
 	       DeclaredTypeNames[cur_entry->decType]);
     XML_PRINTF("<byte-size>%d</byte-size>\n",
 	       cur_entry->byteSize);
-    if (cur_entry->isStructUnionType) {
+
+    if (cur_entry->collectionName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
 		 cur_entry->collectionName);
+    }
 
+    if (cur_entry->isStructUnionType) {
       XML_PRINTF("<member-variables>\n");
       XMLprintVariablesInList(cur_entry->memberVarList);
       XML_PRINTF("</member-variables>\n");
@@ -2212,7 +2155,8 @@ static void XMLprintOneVariable(VariableEntry* var) {
 	       DeclaredTypeNames[t->decType]);
     XML_PRINTF("<byte-size>%d</byte-size>\n",
 	       t->byteSize);
-    if (t->isStructUnionType) {
+
+    if (t->collectionName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
 		 t->collectionName);
     }

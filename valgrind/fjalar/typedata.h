@@ -288,6 +288,14 @@ struct genhashtable* VariableSymbolTable;
 __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr);
 __inline__ void insertIntoVariableSymbolTable(char* name, void* addr);
 
+// The addresses and sizes of the sections (.data, .bss, .rodata) that
+// hold global variables (initialized in readelf.c):
+unsigned int data_section_addr;
+unsigned int data_section_size;
+unsigned int bss_section_addr;
+unsigned int bss_section_size;
+unsigned int rodata_section_addr;
+unsigned int rodata_section_size;
 
 // Function declarations
 

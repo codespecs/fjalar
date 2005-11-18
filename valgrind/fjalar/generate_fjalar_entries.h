@@ -303,8 +303,32 @@ FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr);
 //         (Hopefully, if all goes well, the only TypeEntry values
 //          in this table are REAL entries whose dwarf_entry has
 //          is_declaration NULL, not fake declaration entries)
+
+// Only non-basic types (IS_BASIC_TYPE(t) == 0) should appear in
+// TypesTable:
 struct genhashtable* TypesTable;
 TypeEntry* findTypeEntryByName(char* name);
+
+
+// Global singleton entries for basic types.  These do not need to be
+// placed in TypesTable because they are un-interesting.
+TypeEntry UnsignedCharType;
+TypeEntry CharType;
+TypeEntry UnsignedShortType;
+TypeEntry ShortType;
+TypeEntry UnsignedIntType;
+TypeEntry IntType;
+TypeEntry UnsignedLongLongIntType;
+TypeEntry LongLongIntType;
+TypeEntry UnsignedFloatType;
+TypeEntry FloatType;
+TypeEntry UnsignedDoubleType;
+TypeEntry DoubleType;
+TypeEntry UnsignedLongDoubleType;
+TypeEntry LongDoubleType;
+TypeEntry FunctionType;
+TypeEntry VoidType;
+TypeEntry BoolType;
 
 
 // List of all global variables
@@ -313,15 +337,6 @@ TypeEntry* findTypeEntryByName(char* name);
 //  only try to print them during program points whose FunctionEntry::parentClass ==
 //  VariableEntry::structParentType
 VarList globalVars;
-
-// Range of global variable addresses
-
-// The location of the highest-addr member of globalVars + its byte size
-Addr highestGlobalVarAddr;
-
-// The location of the lowest-addr member of globalVars
-Addr lowestGlobalVarAddr;
-
 
 // Dynamic entries for tracking state at function entrances and exits
 // (used mainly by FunctionExecutionStateStack in fjalar_main.c)
@@ -363,6 +378,11 @@ typedef struct {
 
 
 void initializeAllFjalarData();
+
+// Returns true iff the address is within a global area as specified
+// by the executable's symbol table (it lies within the .data, .bss,
+// or .rodata sections):
+char addressIsGlobal(unsigned int addr);
 
 // Call this function whenever you want to check that the data
 // structures in this file all satisfy their respective

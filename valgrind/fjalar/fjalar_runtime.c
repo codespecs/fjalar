@@ -543,8 +543,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   FJALAR_DPRINTF("Checking for upper bound of %p\n", varLocation);
 
   // 1. Search if varLocation is within a global variable
-  if ((varLocation >= lowestGlobalVarAddr) &&
-      (varLocation < highestGlobalVarAddr)) {
+  if (addressIsGlobal(varLocation)) {
     targetVar = returnArrayVariableWithAddr(&globalVars,
                                             varLocation,
                                             1, 0, &baseAddr);
@@ -608,7 +607,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     // since all areas on the stack and global regions are ALLOCATED
     // so probing won't do us much good
     if ((varLocation < curFunctionExecutionStatePtr->EBP) &&
-        (varLocation > highestGlobalVarAddr)) {
+        !addressIsGlobal(varLocation)) {
       int size;
       FJALAR_DPRINTF("Location looks reasonable, probing at %p\n",
               varLocation);

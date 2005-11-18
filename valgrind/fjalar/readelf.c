@@ -5034,10 +5034,33 @@ process_symbol_table (file)
 	  Elf_Internal_Sym *symtab;
 	  Elf_Internal_Sym *psym;
 
+          //          VG_(printf) (_("'%s'\n"), SECTION_NAME (section));
 
-	  if (   section->sh_type != SHT_SYMTAB
-	      && section->sh_type != SHT_DYNSYM)
+          // PG - harvest address and size information for the .data,
+          // .bss, and .rodata sections:
+          if (0 == VG_(strcmp(SECTION_NAME (section), ".data"))) {
+            data_section_addr = section->sh_addr;
+            data_section_size = section->sh_size;
+          }
+          else if (0 == VG_(strcmp(SECTION_NAME (section), ".bss"))) {
+            bss_section_addr = section->sh_addr;
+            bss_section_size = section->sh_size;
+          }
+          else if (0 == VG_(strcmp(SECTION_NAME (section), ".rodata"))) {
+            rodata_section_addr = section->sh_addr;
+            rodata_section_size = section->sh_size;
+          }
+
+          // PG - only look for symbols in the regular symbol table
+          // (.symtab), NOT the dynamic symbols (.dynsym), because
+          // they seem to contain lots of library junk:
+	  if (section->sh_type != SHT_SYMTAB) {
 	    continue;
+          }
+
+          //	  if (   section->sh_type != SHT_SYMTAB
+          //	      && section->sh_type != SHT_DYNSYM)
+          //	    continue;
 
           //	  VG_(printf) (_("\nSymbol table '%s' contains %lu entries:\n"),
           //          		  SECTION_NAME (section),

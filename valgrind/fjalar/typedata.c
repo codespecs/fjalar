@@ -55,6 +55,15 @@ dwarf_entry* dwarf_entry_array = 0;
 unsigned long dwarf_entry_array_size = 0;
 
 
+// The addresses and sizes of the sections (.data, .bss, and .rodata)
+// that hold global variables (initialized in readelf.c):
+unsigned int data_section_addr = 0;
+unsigned int data_section_size = 0;
+unsigned int bss_section_addr = 0;
+unsigned int bss_section_size = 0;
+unsigned int rodata_section_addr = 0;
+unsigned int rodata_section_size = 0;
+
 // typedef names optimization:
 // This was implemented as an optimization to speed up
 // determineTypedefNameForEntry(), which has been determined to be a
