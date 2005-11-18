@@ -48,6 +48,7 @@ Bool kvasir_use_bit_level_precision;
 Bool kvasir_output_struct_vars;
 Bool kvasir_repair_format;
 Bool kvasir_flatten_arrays;
+Bool kvasir_func_disambig_ptrs;
 Bool kvasir_disambig_ptrs;
 Bool dyncomp_print_debug_info;
 Bool dyncomp_print_incremental;

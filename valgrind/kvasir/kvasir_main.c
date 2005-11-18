@@ -63,6 +63,7 @@ Bool kvasir_use_bit_level_precision = False;
 Bool kvasir_output_struct_vars = False;
 Bool kvasir_repair_format = False;
 Bool kvasir_flatten_arrays = False;
+Bool kvasir_func_disambig_ptrs = False;
 Bool kvasir_disambig_ptrs = False;
 Bool dyncomp_print_debug_info = False;
 Bool dyncomp_print_incremental = False;
@@ -645,7 +646,9 @@ void kvasir_print_usage()
 "    --disambig               Uses <program name>.disambig as the disambig file\n"
 "    --smart-disambig         Infers sensible values for each entry in .disambig file\n"
 "                             generated using the --disambig or --disambig-file options\n"
-"    --disambig-ptrs          Forces all pointer vars. to point to a single element\n"
+"    --func-disambig-ptrs     Treats function parameter and return value pointer\n"
+"                             variables as pointing to a single element\n"
+"    --disambig-ptrs          Treats all pointer vars. as pointing to a single element\n"
 
 "\n  DynComp dynamic comparability analysis\n"
 "    --with-dyncomp           Enables DynComp comparability analysis\n"
@@ -724,6 +727,7 @@ Bool kvasir_process_cmd_line_option(Char* arg)
    else VG_YESNO_CLO("output-struct-vars", kvasir_output_struct_vars)
    else VG_YESNO_CLO("repair-format", kvasir_repair_format)
    else VG_YESNO_CLO("flatten-arrays", kvasir_flatten_arrays)
+   else VG_YESNO_CLO("func-disambig-ptrs", kvasir_func_disambig_ptrs)
    else VG_YESNO_CLO("disambig-ptrs", kvasir_disambig_ptrs)
    else VG_YESNO_CLO("smart-disambig", kvasir_smart_disambig)
    else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100) // [0 to 100]
