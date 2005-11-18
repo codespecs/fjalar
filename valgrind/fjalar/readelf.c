@@ -35,9 +35,9 @@
 
    This file interprets the DWARF2 debugging information within
    the ELF binary and then calls functions in typedata.c
-   My changes are denoted by //PG marks
+   My changes are denoted by // PG marks
 */
-
+
 
 #include <assert.h>
 #include <sys/types.h>
@@ -80,7 +80,7 @@ extern void VG_(exit)( int status );
 #include "elf/internal.h"
 #include "elf/dwarf2.h"
 
-#include "typedata.h" //PG
+#include "typedata.h" // PG
 void fixBuffering(FILE *fp);
 
 /* The following headers use the elf/reloc-macros.h file to
@@ -142,10 +142,10 @@ int do_arch;
 int do_notes;
 int is_32bit_elf;
 
-//PG set this equal to 1 to print out results
+// PG set this equal to 1 to print out results
 int print_results = 0;
 
-//PG declarations
+// PG declarations
 /*
 char tag_is_relevant_entry(unsigned long tag);
 void initialize_dwarf_entry_array(unsigned long num_entries);
@@ -358,7 +358,7 @@ static int process_extended_line_op
 static void reset_state_machine
   PARAMS ((int));
 //char *get_TAG_name
-//  PARAMS ((unsigned long)); //PG don't make this static since typedata.c needs it - put it in typedata.h instead
+//  PARAMS ((unsigned long)); // PG don't make this static since typedata.c needs it - put it in typedata.h instead
 static char *get_AT_name
   PARAMS ((unsigned long));
 static char *get_FORM_name
@@ -455,7 +455,7 @@ typedef int Elf32_Word;
   (is_32bit_elf ? get_32bit_elf_symbols (file, section)	\
    : get_64bit_elf_symbols (file, section))
 
-//PG - begin custom libiberty.a functions
+// PG - begin custom libiberty.a functions
 
 PTR xmalloc (size_t size)
 {
@@ -469,7 +469,7 @@ PTR xrealloc (PTR oldmem, size_t size)
 
 #define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
-//PG - end
+// PG - end
 
 static void
 error VPARAMS ((const char *message, ...))
@@ -2654,7 +2654,7 @@ get_32bit_section_headers (file, num)
 		     VG_(malloc) (num * sizeof (Elf_Internal_Shdr)));
 
   //  printf("Just allocated section_headers at 0x%x, size = %d * %d\n",
-  //         section_headers, num, sizeof (Elf_Internal_Shdr)); //PG
+  //         section_headers, num, sizeof (Elf_Internal_Shdr)); // PG
 
   if (section_headers == NULL)
     {
@@ -4803,28 +4803,27 @@ process_version_sections (file)
   return 1;
 }
 
-// PG - commented-out for lack of use
-/* static const char * */
-/* get_symbol_binding (binding) */
-/*      unsigned int binding; */
-/* { */
-/*   static char buff[32]; */
+static const char *
+get_symbol_binding (binding)
+     unsigned int binding;
+{
+  static char buff[32];
 
-/*   switch (binding) */
-/*     { */
-/*     case STB_LOCAL:	return "LOCAL"; */
-/*     case STB_GLOBAL:	return "GLOBAL"; */
-/*     case STB_WEAK:	return "WEAK"; */
-/*     default: */
-/*       if (binding >= STB_LOPROC && binding <= STB_HIPROC) */
-/* 	sprintf (buff, _("<processor specific>: %d"), binding); */
-/*       else if (binding >= STB_LOOS && binding <= STB_HIOS) */
-/* 	sprintf (buff, _("<OS specific>: %d"), binding); */
-/*       else */
-/* 	sprintf (buff, _("<unknown>: %d"), binding); */
-/*       return buff; */
-/*     } */
-/* } */
+  switch (binding)
+    {
+    case STB_LOCAL:	return "LOCAL";
+    case STB_GLOBAL:	return "GLOBAL";
+    case STB_WEAK:	return "WEAK";
+    default:
+      if (binding >= STB_LOPROC && binding <= STB_HIPROC)
+	sprintf (buff, _("<processor specific>: %d"), binding);
+      else if (binding >= STB_LOOS && binding <= STB_HIOS)
+	sprintf (buff, _("<OS specific>: %d"), binding);
+      else
+	sprintf (buff, _("<unknown>: %d"), binding);
+      return buff;
+    }
+}
 
 static const char *
 get_symbol_type (type)
@@ -4856,46 +4855,45 @@ get_symbol_type (type)
     }
 }
 
-// PG - commented out due to lack of use
-/* static const char * */
-/* get_symbol_visibility (visibility) */
-/*      unsigned int visibility; */
-/* { */
-/*   switch (visibility) */
-/*     { */
-/*     case STV_DEFAULT:	return "DEFAULT"; */
-/*     case STV_INTERNAL:	return "INTERNAL"; */
-/*     case STV_HIDDEN:	return "HIDDEN"; */
-/*     case STV_PROTECTED: return "PROTECTED"; */
-/*     default: abort (); */
-/*     } */
-/* } */
+static const char *
+get_symbol_visibility (visibility)
+     unsigned int visibility;
+{
+  switch (visibility)
+    {
+    case STV_DEFAULT:	return "DEFAULT";
+    case STV_INTERNAL:	return "INTERNAL";
+    case STV_HIDDEN:	return "HIDDEN";
+    case STV_PROTECTED: return "PROTECTED";
+    default: abort ();
+    }
+}
 
-/* static const char * */
-/* get_symbol_index_type (type) */
-/*      unsigned int type; */
-/* { */
-/*   static char buff[32]; */
+static const char *
+get_symbol_index_type (type)
+     unsigned int type;
+{
+  static char buff[32];
 
-/*   switch (type) */
-/*     { */
-/*     case SHN_UNDEF:	return "UND"; */
-/*     case SHN_ABS:	return "ABS"; */
-/*     case SHN_COMMON:	return "COM"; */
-/*     default: */
-/*       if (type >= SHN_LOPROC && type <= SHN_HIPROC) */
-/* 	sprintf (buff, "PRC[0x%04x]", type); */
-/*       else if (type >= SHN_LOOS && type <= SHN_HIOS) */
-/* 	sprintf (buff, "OS [0x%04x]", type); */
-/*       else if (type >= SHN_LORESERVE && type <= SHN_HIRESERVE) */
-/* 	sprintf (buff, "RSV[0x%04x]", type); */
-/*       else */
-/* 	sprintf (buff, "%3d", type); */
-/*       break; */
-/*     } */
+  switch (type)
+    {
+    case SHN_UNDEF:	return "UND";
+    case SHN_ABS:	return "ABS";
+    case SHN_COMMON:	return "COM";
+    default:
+      if (type >= SHN_LOPROC && type <= SHN_HIPROC)
+	sprintf (buff, "PRC[0x%04x]", type);
+      else if (type >= SHN_LOOS && type <= SHN_HIOS)
+	sprintf (buff, "OS [0x%04x]", type);
+      else if (type >= SHN_LORESERVE && type <= SHN_HIRESERVE)
+	sprintf (buff, "RSV[0x%04x]", type);
+      else
+	sprintf (buff, "%3d", type);
+      break;
+    }
 
-/*   return buff; */
-/* } */
+  return buff;
+}
 
 static int *
 get_dynamic_data (file, number)
@@ -4948,6 +4946,9 @@ process_symbol_table (file)
   int nchains = 0;
   int *buckets = NULL;
   int *chains = NULL;
+
+  //  VG_(printf)("\n\nprocess_symbol_table - do_syms: %d do_histogram: %d\n\n",
+  //              do_syms, do_histogram);
 
   if (! do_syms && !do_histogram)
     return 1;
@@ -5038,13 +5039,13 @@ process_symbol_table (file)
 	      && section->sh_type != SHT_DYNSYM)
 	    continue;
 
-	  //printf (_("\nSymbol table '%s' contains %lu entries:\n"),
-          //		  SECTION_NAME (section),
-          //		  (unsigned long) (section->sh_size / section->sh_entsize));
-          //if (is_32bit_elf)
-	    //printf (_("   Num:    Value  Size Type    Bind   Vis      Ndx Name\n"));
-          //else
-	    //printf (_("   Num:    Value          Size Type    Bind   Vis      Ndx Name\n"));
+          //	  VG_(printf) (_("\nSymbol table '%s' contains %lu entries:\n"),
+          //          		  SECTION_NAME (section),
+          //          		  (unsigned long) (section->sh_size / section->sh_entsize));
+          //          if (is_32bit_elf)
+          //	    VG_(printf) (_("   Num:    Value  Size Type    Bind   Vis      Ndx Name\n"));
+          //          else
+          //	    VG_(printf) (_("   Num:    Value          Size Type    Bind   Vis      Ndx Name\n"));
 
 	  symtab = GET_ELF_SYMBOLS (file, section);
 	  if (symtab == NULL)
@@ -5069,11 +5070,35 @@ process_symbol_table (file)
 	    {
               // DEPRECATED!  We no longer do this!
 
-              // Ignore all entries which aren't "FUNC" or have an address of 0:
-              if ((VG_(strcmp)((get_symbol_type (ELF_ST_TYPE (psym->st_info))),
-                               "FUNC")) ||
-                  (!psym->st_value)){
-                continue;
+              //              // Ignore all entries which aren't "FUNC" or have an address of 0:
+              //              if ((VG_(strcmp)((get_symbol_type (ELF_ST_TYPE (psym->st_info))),
+              //                               "FUNC")) ||
+              //                  (!psym->st_value)){
+              //                continue;
+              //              }
+
+
+              // PG - harvest object symbols so that we can get
+              // addresses for global and C++ static class variables
+              // and non-static function start addresses (we can get
+              // this from DWARF info, but it's a good sanity check)
+              // Don't harvest "HIDDEN" entries (just a heuristic) and
+              // also don't harvest entries with a 0 value because
+              // that's probably useless (yet another heuristic):
+              if (((STT_OBJECT == ELF_ST_TYPE (psym->st_info)) ||
+                   (STT_FUNC == ELF_ST_TYPE (psym->st_info))) &&
+                  psym->st_value &&
+                  (STV_HIDDEN != ELF_ST_VISIBILITY (psym->st_other))) {
+
+                // PG - remember that this is strdup'ed!
+                char* symbol_name = VG_(strdup)(&strtab[psym->st_name]);
+
+                if (STT_OBJECT == ELF_ST_TYPE (psym->st_info)) {
+                  insertIntoVariableSymbolTable(symbol_name, psym->st_value);
+                }
+                else if (STT_FUNC == ELF_ST_TYPE (psym->st_info)) {
+                  insertIntoFunctionSymbolTable(symbol_name, psym->st_value);
+                }
               }
 
 	      //printf ("%6d: ", si);
@@ -5963,7 +5988,7 @@ display_debug_pubnames (section, start, file)
   return 1;
 }
 
-//PG don't make this static!
+// PG don't make this static!
 char *
 get_TAG_name (tag)
      unsigned long tag;
@@ -8102,11 +8127,11 @@ display_debug_info (section, start, file)
   unsigned char *end = start + section->sh_size;
   unsigned char *section_begin = start;
 
-  //PG - Number of relevant entries to record in the dwarf_entry array
+  // PG - Number of relevant entries to record in the dwarf_entry array
   unsigned long num_relevant_entries = 0;
   unsigned long idx = 0; // The index in the array, (< dwarf_entry_array_size)
 
-  //PG - Do one dummy run to see how many entries need to be put in the dwarf_entry array
+  // PG - Do one dummy run to see how many entries need to be put in the dwarf_entry array
   // The sole purpose of this run is to get a number into num_relevant_entries
   Elf_Internal_Shdr *section_dummy = section;
   unsigned char *start_dummy = start;
@@ -8282,7 +8307,7 @@ display_debug_info (section, start, file)
 	  unsigned long abbrev_number;
 	  abbrev_entry *entry;
 	  abbrev_attr *attr;
-          char is_relevant_entry; //PG
+          char is_relevant_entry; // PG
           dwarf_entry my_dwarf_entry = {0, 0, 0, NULL};
 
 	  abbrev_number = read_leb128 (tags, & bytes_read, 0);
@@ -8309,7 +8334,7 @@ display_debug_info (section, start, file)
 	      return 0;
 	    }
 
-          //PG - increment relevant entry and make a note of it:
+          // PG - increment relevant entry and make a note of it:
           is_relevant_entry = tag_is_relevant_entry(entry->tag);
           if (is_relevant_entry)
             {
@@ -8339,14 +8364,14 @@ display_debug_info (section, start, file)
 #ifdef SHOW_DEBUG
   printf ("Number of relevant entries: %u\n\n", num_relevant_entries);
 #endif
-  //PG - End dummy run code
+  // PG - End dummy run code
 
   // Construct the global dwarf_entry array
   // Question - when do we destroy it???
   dwarf_entry_array_size = num_relevant_entries;
   initialize_dwarf_entry_array(num_relevant_entries);
 
-  //PG - Begin real code
+  // PG - Begin real code
 #ifdef SHOW_DEBUG
   printf (_("The section %s contains:\n\n"), SECTION_NAME (section));
 #endif
@@ -8518,7 +8543,7 @@ display_debug_info (section, start, file)
 	  unsigned long abbrev_number;
 	  abbrev_entry *entry;
 	  abbrev_attr *attr;
-          char is_relevant_entry; //PG
+          char is_relevant_entry; // PG
 
 	  abbrev_number = read_leb128 (tags, & bytes_read, 0);
 	  tags += bytes_read;
@@ -8546,7 +8571,7 @@ display_debug_info (section, start, file)
 
           is_relevant_entry = tag_is_relevant_entry(entry->tag);
           if (is_relevant_entry)
-            //PG - This is where all the action takes place
+            // PG - This is where all the action takes place
             //     store the info. as a dwarf_entry struct in dwarf_entry_array
             {
               unsigned long temp_ID = (unsigned long) (tags - section_begin - bytes_read);
@@ -8613,7 +8638,7 @@ display_debug_info (section, start, file)
   free_debug_str ();
   free_debug_loc ();
 
-  //PG - Now that all of the entries are in the array, finish initializing
+  // PG - Now that all of the entries are in the array, finish initializing
   //     it by creating various links and filling in all dwarf_entry fields
   finish_dwarf_entry_array_init();
 
@@ -10162,20 +10187,20 @@ process_file (file_name)
     printf (_("\nFile: %s\n"), file_name);
 #endif
 
-  //  printf("before process_file_header()\n"); //PG
+  //  printf("before process_file_header()\n"); // PG
 
   if (! process_file_header ())
     {
-      printf("failed process_file_header()\n"); //PG
+      printf("failed process_file_header()\n"); // PG
       fclose (file);
       return 1;
     }
 
-  //  printf("before process_section_headers()\n"); //PG
+  //  printf("before process_section_headers()\n"); // PG
 
   if (! process_section_headers (file))
     {
-      printf("failed process_section_headers()\n"); //PG
+      printf("failed process_section_headers()\n"); // PG
       /* Without loaded section headers we
 	 cannot process lots of things.  */
       do_unwind = do_version = do_dump = do_arch = 0;
@@ -10184,27 +10209,27 @@ process_file (file_name)
 	do_syms = do_reloc = 0;
     }
 
-  //  printf("before process_program_headers()\n"); //PG
+  //  printf("before process_program_headers()\n"); // PG
 
   if (process_program_headers (file))
     process_dynamic_segment (file);
-  //  printf("before process_relocs()\n"); //PG
+  //  printf("before process_relocs()\n"); // PG
   process_relocs (file);
-  //  printf("before process_unwind()\n"); //PG
+  //  printf("before process_unwind()\n"); // PG
   process_unwind (file);
-  //  printf("before process_symbol_table()\n"); //PG
+  //  printf("before process_symbol_table()\n"); // PG
   process_symbol_table (file);
-  //  printf("before process_syminfo()\n"); //PG
+  //  printf("before process_syminfo()\n"); // PG
   process_syminfo (file);
-  //  printf("before process_version_sections()\n"); //PG
+  //  printf("before process_version_sections()\n"); // PG
   process_version_sections (file);
-  //  printf("before process_section_contents()\n"); //PG
+  //  printf("before process_section_contents()\n"); // PG
   process_section_contents (file);
-  //  printf("before process_corefile_contents()\n"); //PG
+  //  printf("before process_corefile_contents()\n"); // PG
   process_corefile_contents (file);
-  //  printf("before process_gnu_liblist()\n"); //PG
+  //  printf("before process_gnu_liblist()\n"); // PG
   process_gnu_liblist (file);
-  //  printf("before process_arch_specific()\n"); //PG
+  //  printf("before process_arch_specific()\n"); // PG
   process_arch_specific (file);
 
   fclose (file);
@@ -10263,7 +10288,7 @@ db_task_printsym (unsigned int addr)
 }
 #endif
 
-//PG insert a fake main which is a hacked copy that can be called
+// PG insert a fake main which is a hacked copy that can be called
 // with a filename argument
 
 int process_elf_binary_data(char* filename)
@@ -10272,34 +10297,44 @@ int process_elf_binary_data(char* filename)
   char *cmdline_dump_sects = NULL;
 
   char **hack_argv = 0;
-  int argc = 3;
+
+  // Set this to the right number!!!
+  int argc = 4;
 
   static char default_exec_name[10] = "./readelf"; // dummy!!!
-  static char default_option[18] = "--debug-dump=info";
 
-/* //PG
-argument format - argv[0] is executable, argv[1] is the option that we want
-                  to hijack - "--debug-dump=info" - and argv[2] is the filename
+  // Trick readelf into printing out symbol table and DWARF2 debug info
+  static char symbol_table_option[3] = "-s";
+  static char debug_info_option[18] = "--debug-dump=info";
+
+/* // PG
+argument format - argv[0] is executable, argv[1] and argv[2] are the options
+                 that we want pass in - "-s --debug-dump=info" -
+                 and argv[3] is the filename
+
 argv[0] = ./readelf (executable name)
 argv[1] = --debug-dump=info (desired option)
-argv[2] = ../tests/TypesTest/TypesTest (filename)
+argv[2] = --debug-dump=info (desired option)
+argv[3] = ../tests/TypesTest/TypesTest (filename)
 
-Here is my hack.  Instead of requiring the user to pass in "--debug-dump=info",
+Here is my hack.  Instead of requiring the user to pass in "-s --debug-dump=info",
 we just make the user pass in the filename as the only argument and then
-apply "--debug-dump=info" by default
+apply "-s --debug-dump=info" by default
 
 Let's create our own hack_argv array:
 
 hack_argv[0] = "./readelf"
-hack_argv[1] = "--debug-dump=info"
-hack_argv[2] = filename
+hack_argv[1] = "-s"
+hack_argv[2] = "--debug-dump=info"
+hack_argv[3] = filename
 */
 
-  hack_argv = VG_(malloc)(3 * sizeof(*hack_argv));
+  hack_argv = VG_(malloc)(4 * sizeof(*hack_argv));
 
   hack_argv[0] = default_exec_name;
-  hack_argv[1] = default_option;
-  hack_argv[2] = filename;
+  hack_argv[1] = symbol_table_option;
+  hack_argv[2] = debug_info_option;
+  hack_argv[3] = filename;
 
 #ifdef SHOW_DEBUG
   {
@@ -10342,7 +10377,7 @@ hack_argv[2] = filename
   err = 0;
   //  while (optind < argc)
   //    {
-  //      err |= process_file (hack_argv[optind++]); //PG - replace argv with hack_argv
+  //      err |= process_file (hack_argv[optind++]); // PG - replace argv with hack_argv
   //
   //      /* Reset dump requests.  */
   //      if (optind < argc && dump_sects != NULL)
@@ -10353,7 +10388,7 @@ hack_argv[2] = filename
   //	}
   //    }
 
-  err = process_file (hack_argv[argc - 1]); //PG - replace argv with hack_argv
+  err = process_file (hack_argv[argc - 1]); // PG - replace argv with hack_argv
 
   //  printf("AFTER process_file(0x%x)\n", hack_argv[argc-1]);
 
@@ -10370,7 +10405,7 @@ hack_argv[2] = filename
   return err;
 }
 
-// End //PG
+// End // PG
 
 /*
 int main PARAMS ((int, char **));

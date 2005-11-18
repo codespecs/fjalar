@@ -31,6 +31,7 @@
 #include "fjalar_select.h"
 #include "disambig.h"
 #include "mc_include.h"
+#include "typedata.h"
 
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
@@ -194,7 +195,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
     IRDirty  *di;
 
     FunctionEntry* curFuncPtr = findFunctionEntryByAddrSlow(currentAddr);
-    
+
     if (curFuncPtr &&
 	// Also, if fjalar_trace_prog_pts_filename is on (we are
 	// reading in a ppt list file), then DO NOT generate IR code
@@ -226,16 +227,16 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[1].fx     = Ifx_Read;
       di->fxState[1].offset = 0; // offset of EAX
       di->fxState[1].size   = sizeof(UInt); // 4 bytes
-      
+
       di->fxState[2].fx     = Ifx_Read;
       di->fxState[2].offset = 8; // offset of EDX
       di->fxState[2].size   = sizeof(UInt); // 4 bytes
-      
+
       di->fxState[3].fx     = Ifx_Read;
       di->fxState[3].offset = 60; // offset of FPTOP
       // Size of FPTOP + all 8 elements of FPREG
       di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
-      
+
       stmt( mce->bb, IRStmt_Dirty(di) );
     }
   }
@@ -257,11 +258,11 @@ void enter_function(FunctionEntry* f)
   // Assign %esp - 4 to %ebp - empirically tested to be
   // correct for calling conventions
   Addr  EBP = ESP - 4;
-  
+
   FJALAR_DPRINTF("Enter function: %s - StartPC: %p\n",
 	  f->fjalar_name, (void*)f->startPC);
-  
-  int formalParamStackByteSize = 
+
+  int formalParamStackByteSize =
     determineFormalParametersStackByteSize(f);
 
   newEntry->func = f;
@@ -342,7 +343,7 @@ void exit_function(FunctionEntry* f)
   top->EAX = EAX;
   top->EDX = EDX;
   top->FPU = fpuReturnVal;
-  
+
   // Very important!  Set the A and V bits of the appropriate
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
@@ -358,9 +359,9 @@ void exit_function(FunctionEntry* f)
 
   for (i = 4; i < 8; i++) {
     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
-    set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));    
+    set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
   }
-  
+
   fjalar_tool_handle_function_exit(top);
 
   // Destroy the memory allocated by virtualStack
@@ -404,7 +405,7 @@ static void open_files_and_load_data() {
   }
 
   if (fjalar_trace_prog_pts_filename) {
-    if ((trace_prog_pts_input_fp = 
+    if ((trace_prog_pts_input_fp =
 	 fopen(fjalar_trace_prog_pts_filename, "r"))) {
       VG_(printf)( "\nBegin processing program point list file \"%s\" ...\n",
 		   fjalar_trace_prog_pts_filename);
@@ -421,7 +422,7 @@ static void open_files_and_load_data() {
   }
 
   if (fjalar_trace_vars_filename) {
-    if ((trace_vars_input_fp 
+    if ((trace_vars_input_fp
 	 = fopen(fjalar_trace_vars_filename, "r"))) {
       VG_(printf)( "\nBegin processing variable list file \"%s\" ...\n",
 		   fjalar_trace_vars_filename);
@@ -432,7 +433,7 @@ static void open_files_and_load_data() {
     else {
       VG_(printf)( "\nError: \"%s\" is an invalid filename for the variable list file specified by the --var-list-file option.\n\nExiting.\n\n",
 		   fjalar_trace_vars_filename);
-      
+
       VG_(exit)(1);
     }
   }
@@ -440,16 +441,16 @@ static void open_files_and_load_data() {
   if (fjalar_disambig_filename) {
     // Try to open it for reading, but if it doesn't exist, create a
     // new file by writing to it
-    if ((disambig_fp = 
+    if ((disambig_fp =
 	 fopen(fjalar_disambig_filename, "r"))) {
       FJALAR_DPRINTF("\n\nREADING %s\n", fjalar_disambig_filename);
       disambig_writing = False;
     }
-    else if ((disambig_fp = 
+    else if ((disambig_fp =
 	      fopen(fjalar_disambig_filename, "wx"))) {
       FJALAR_DPRINTF("\n\nWRITING %s\n", fjalar_disambig_filename);
       disambig_writing = True;
-      
+
       // Hack for correctly observing struct pointer/array values
       // when using --smart-disambig.
       // If we are writing a .disambig file and using run time
@@ -480,7 +481,7 @@ Effects: All of the Fjalar initialization is performed right here;
 void fjalar_pre_clo_init()
 {
   // Clear FunctionExecutionStateStack
-  VG_(memset)(FunctionExecutionStateStack, 0, 
+  VG_(memset)(FunctionExecutionStateStack, 0,
 	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack));
 
   // TODO: Do we need to clear all global variables before processing
@@ -521,6 +522,9 @@ void fjalar_post_clo_init()
   FJALAR_DPRINTF("\n%s\n\n", fjalar_disambig_filename);
 
   // Calls into typedata.c:
+  initialize_typedata_structures();
+
+  // Calls into readelf.c:
   process_elf_binary_data(executable_filename);
 
   // Calls into generate_fjalar_entries.c:
@@ -569,7 +573,7 @@ void fjalar_print_usage()
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
 "    --program-stdout=<string>   The name of the file to use for stdout\n"
 "    --program-stderr=<string>   The name of the file to use for stderr\n"
-"    --xml-output-file=<string>  Output declarations in XML format to a file\n"        
+"    --xml-output-file=<string>  Output declarations in XML format to a file\n"
    );
 
    // Make sure to execute this last!
@@ -603,7 +607,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
 
   else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  // [0 to 100]
   else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100]
-    
+
   else VG_STR_CLO(arg, "--dump-ppt-file",  fjalar_dump_prog_pt_names_filename)
   else VG_STR_CLO(arg, "--dump-var-file",  fjalar_dump_var_names_filename)
   else VG_STR_CLO(arg, "--ppt-list-file",  fjalar_trace_prog_pts_filename)

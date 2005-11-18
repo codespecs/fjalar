@@ -2007,3 +2007,26 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
     }
   return 0;
 }
+
+
+// Initialize FunctionSymbolTable and VariableSymbolTable:
+void initialize_typedata_structures() {
+  FunctionSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
+                                             (int (*)(void *,void *)) &equivalentStrings);
+  VariableSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
+                                             (int (*)(void *,void *)) &equivalentStrings);
+}
+
+__inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
+  VG_(printf)("FunctionSymbolTable insert: %p  %s\n", addr, name);
+  genputtable(FunctionSymbolTable,
+              (void*)name,
+              (void*)addr);
+}
+
+__inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {
+  VG_(printf)("VariableSymbolTable insert: %p  %s\n", addr, name);
+  genputtable(VariableSymbolTable,
+              (void*)name,
+              (void*)addr);
+}

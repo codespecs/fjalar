@@ -97,7 +97,7 @@ static struct genhashtable* StructNamesIDTable = 0;
 // criteria for deciding on the 'best' entry when there are duplicates:
 
 // 1.) Favor ones with is_declaration = false
-// 2.) Favor ones for which the static member variables are initialized 
+// 2.) Favor ones for which the static member variables are initialized
 //     with global addresses
 
 // Suggested implementation: Make a hashtable mapping struct names
@@ -344,7 +344,7 @@ void repCheckAllEntries() {
       gengettable(FunctionTable, gennext(it));
 
     VarNode* n;
-    
+
     unsigned int numFormalParams = 0;
     unsigned int numLocalArrayVars = 0;
     unsigned int numReturnVars = 0;
@@ -487,16 +487,16 @@ void repCheckAllEntries() {
 
 	  VG_(printf)(" checking STATIC member %s for %s\n",
 		      curMember->name, t->collectionName);
-	  
+
 	  // Specific checks for static member variables:
 	  tl_assert(curMember->isStructUnionMember);
 	  tl_assert(0 == curMember->byteOffset);
 	  tl_assert(0 == curMember->data_member_location);
 	  tl_assert(curMember->isGlobal);
 	  tl_assert(curMember->structParentType == t);
-	  
+
 	  repCheckOneVariable(curMember);
-	  
+
 	  numStaticMemberVars++;
 	}
 	tl_assert(numStaticMemberVars == t->staticMemberVarList->numVars);
@@ -579,7 +579,7 @@ static void repCheckOneVariable(VariableEntry* var) {
     tl_assert(D_CHAR == var->varType->decType);
     tl_assert(var->ptrLevels > 0);
   }
-  
+
   if(var->isStructUnionMember) {
     tl_assert(var->structParentType);
   }
@@ -708,7 +708,7 @@ static void initializeGlobalVarsList()
 
 	char* existingName;
 	if (!variable_ptr->name) {
-	  VG_(printf)( "Skipping weird unnamed global variable ID#%x - addr: %x\n", 
+	  VG_(printf)( "Skipping weird unnamed global variable ID#%x - addr: %x\n",
 		       cur_entry->ID, variable_ptr->globalVarAddr);
 	  continue;
 	}
@@ -787,16 +787,16 @@ static void initializeGlobalAddrRange() {
   VariableEntry* minGlobalVar = 0;
 
   // Iterate through global variables first:
-  for (node = globalVars.first; 
-       node != 0; 
+  for (node = globalVars.first;
+       node != 0;
        node = node->next) {
     VariableEntry* currentVar = node->var;
     if (currentVar->globalLocation) {
-      if (!minGlobalVar || 
+      if (!minGlobalVar ||
 	  (currentVar->globalLocation < minGlobalVar->globalLocation)) {
 	minGlobalVar = currentVar;
       }
-      if (!maxGlobalVar || 
+      if (!maxGlobalVar ||
 	  (currentVar->globalLocation > maxGlobalVar->globalLocation)) {
 	  maxGlobalVar = currentVar;
       }
@@ -820,7 +820,7 @@ static void initializeGlobalAddrRange() {
 	VariableEntry* curMember = n->var;
 
 	if (curMember->globalLocation) {
-	  VG_(printf)("  t: %s, var (%p): %s (%p)\n", 
+	  VG_(printf)("  t: %s, var (%p): %s (%p)\n",
 		      t->collectionName,
 		      curMember,
 		      curMember->name,
@@ -844,8 +844,8 @@ static void initializeGlobalAddrRange() {
   highestGlobalVarAddr = maxGlobalVar ?
     maxGlobalVar->globalLocation + determineVariableByteSize(maxGlobalVar) :
     0;
-  
-  lowestGlobalVarAddr = minGlobalVar ? 
+
+  lowestGlobalVarAddr = minGlobalVar ?
     minGlobalVar->globalLocation :
     0;
 
@@ -1219,17 +1219,17 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     t->memberFunctionArray = VG_(calloc)(t->memberFunctionArraySize,
 					 sizeof(*(t->memberFunctionArray)));
 
-    for (member_func_index = 0; 
+    for (member_func_index = 0;
 	 member_func_index < t->memberFunctionArraySize;
 	 member_func_index++) {
-      function* funcPtr = 
+      function* funcPtr =
 	(function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
-      
-      FunctionEntry* memberFunc = 
+
+      FunctionEntry* memberFunc =
 	findFunctionEntryByStartAddr(funcPtr->start_pc);
-      
+
       t->memberFunctionArray[member_func_index] = memberFunc;
-      
+
       // If it's a valid function, then set the parent class field of
       // the member function to this type entry:
       if (memberFunc) {
@@ -1278,7 +1278,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     for (ind = 0; ind < collectionPtr->num_static_member_vars; ind++) {
       variable* staticMemberPtr =
 	(variable*)((collectionPtr->static_member_vars[ind])->entry_ptr);
-      
+
       VG_(printf)("Trying to extractOneVariable on member var: %s at %p\n",
 		  staticMemberPtr->mangled_name,
 		  staticMemberPtr->globalVarAddr);
@@ -2052,7 +2052,7 @@ static void XMLprintFunctionTable()
       XML_PRINTF("<fjalar-name>%s</fjalar-name>\n",
 		 cur_entry->fjalar_name);
     }
-    
+
     XML_PRINTF("<start-PC>%p</start-PC>\n",
 	       (void*)cur_entry->startPC);
     XML_PRINTF("<end-PC>%p</end-PC>\n",
@@ -2071,8 +2071,8 @@ static void XMLprintFunctionTable()
 
     XML_PRINTF("<local-array-and-struct-variables>\n");
     XMLprintVariablesInList(&cur_entry->localArrayAndStructVars);
-    XML_PRINTF("</local-array-and-struct-variables>\n");    
-    
+    XML_PRINTF("</local-array-and-struct-variables>\n");
+
     XML_PRINTF("<return-value>\n");
     XMLprintVariablesInList(&cur_entry->returnValue);
     XML_PRINTF("</return-value>\n");
@@ -2115,9 +2115,9 @@ static void XMLprintTypesTable() {
 
     XML_PRINTF("</type>\n");
   }
-  
+
   XML_PRINTF("</type-declarations>\n");
-  
+
   genfreeiterator(it);
 }
 
@@ -2164,7 +2164,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
 	XML_PRINTF("<function-start-PC>%p</function-start-PC>\n",
 		   (void*)var->functionStartPC);
       }
-      
+
       XML_PRINTF("</file-static-var>\n");
     }
 
@@ -2221,6 +2221,6 @@ static void XMLprintOneVariable(VariableEntry* var) {
 
     XML_PRINTF("</var-type>\n");
   }
-    
+
   XML_PRINTF("</variable>\n");
 }
