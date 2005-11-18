@@ -208,10 +208,11 @@ void daikon_preprocess_entry_array()
 
   initializeDaikonFunctionInfoTable();
 
-  // Don't even bother to init this if we set --kvasir-ignore-globals
-  if (!kvasir_ignore_globals) {
-    initializeGlobalVarsList();
-  }
+  // We need to initialize this list even if we are ignoring globals
+  // (with --ignore-globals) because otherwise lowestGlobalVarAddr and
+  // highestGlobalVarAddr won't be set properly, and we won't be able
+  // to find references to global variables from pointer parameters:
+  initializeGlobalVarsList();
 
   initializeAllClassMemberFunctions();
 
@@ -405,8 +406,8 @@ void initializeGlobalVarsList()
 
   DPRINTF("Exiting initializeGlobalVarsList()\n");
 
-  //  printf("highestGlobalVarAddr = 0x%lx, lowestGlobalVarAddr = 0x%lx\n",
-  //	 highestGlobalVarAddr, lowestGlobalVarAddr);
+  //  VG_(printf)("highestGlobalVarAddr = 0x%lx, lowestGlobalVarAddr = 0x%lx\n",
+  //  	 highestGlobalVarAddr, lowestGlobalVarAddr);
 
   genfreehashtable(GlobalVarsTable);
 }
