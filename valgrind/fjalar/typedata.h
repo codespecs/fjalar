@@ -272,6 +272,23 @@ unsigned int hashString(char* str);
 int equivalentStrings(char* str1, char* str2);
 
 
+// The following are extracted from the executable's symbol table by
+// running readelf with the -s option:
+
+void initialize_typedata_structures();
+
+// Key: String that represents the (possibly mangled) name of a function
+// Value: A 32-bit int that represents the global address of that function
+struct genhashtable* FunctionSymbolTable;
+
+// Key: String that represents the (possibly mangled) name of a variable
+// Value: A 32-bit int that represents the global address of that variable
+struct genhashtable* VariableSymbolTable;
+
+__inline__ void insertIntoFunctionSymbolTable(char* name, void* addr);
+__inline__ void insertIntoVariableSymbolTable(char* name, void* addr);
+
+
 // Function declarations
 
 // From readelf.c

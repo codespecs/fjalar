@@ -73,7 +73,7 @@ typedef struct _FunctionEntry FunctionEntry;
 typedef struct _TypeEntry {
 
   DeclaredType decType;
-  char* collectionName; // Only valid if decType == 
+  char* collectionName; // Only valid if decType ==
                         // {D_ENUMERATION, D_STRUCT, D_UNION}
 
   int byteSize; // Number of bytes that this type takes up
