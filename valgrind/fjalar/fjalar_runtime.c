@@ -476,24 +476,24 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
   // Now do a SECOND pass and probe BACKWARDS until we reach the
   // first set of bytes with at least one byte whose V-bit is SET
   while ((arraySize > 0) &&
-         // If at least ONE byte within the element (struct or
-         // primitive) of size typeSize is initialized, then consider
-         // the entire element to be initialized.  This is done
-         // because sometimes only certain members of a struct are
-         // initialized, and if we perform the more stringent check
-         // for whether ALL members are initialized, then we will
-         // falsely mark partially-initialized structs as
-         // uninitialized and lose information.  For instance,
-         // consider struct point{int x; int y;} - Let's say you had
-         // struct point foo[10] and initialized only the 'x' member
-         // var. in every element of foo (foo[0].x, foo[1].x, etc...)
-         // but left the 'y' member var uninitialized.  Every element
-         // of foo has typeSize = 2 * sizeof(int) = 8, but only the
-         // first 4 bytes are initialized ('x') while the last 4 are
-         // uninitialized ('y').  This function should return 10 for
-         // the size of foo, so it must mark each element as
-         // initialized when at least ONE byte is initialized (in this
-         // case, a byte within 'x').
+         // If at least ONE byte within the element of size typeSize
+         // is initialized, then consider the entire element to be
+         // initialized.  This is done because sometimes only certain
+         // members of a struct are initialized, and if we perform the
+         // more stringent check for whether ALL members are
+         // initialized, then we will falsely mark
+         // partially-initialized structs as uninitialized and lose
+         // information.  For instance, consider struct point{int x;
+         // int y;} - Let's say you had struct point foo[10] and
+         // initialized only the 'x' member var. in every element of
+         // foo (foo[0].x, foo[1].x, etc...)  but left the 'y' member
+         // var uninitialized.  Every element of foo has typeSize = 2
+         // * sizeof(int) = 8, but only the first 4 bytes are
+         // initialized ('x') while the last 4 are uninitialized
+         // ('y').  This function should return 10 for the size of
+         // foo, so it must mark each element as initialized when at
+         // least ONE byte is initialized (in this case, a byte within
+         // 'x').
          !MC_(are_some_bytes_initialized)(startAddr, typeSize, 0)) {
     arraySize--;
     startAddr-=typeSize;
@@ -543,20 +543,26 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   FJALAR_DPRINTF("Checking for upper bound of %p\n", varLocation);
 
   // 1. Search if varLocation is within a global variable
-  targetVar = returnArrayVariableWithAddr(&globalVars,
-                                          varLocation,
-                                          1, 0, &baseAddr);
+  if ((varLocation >= lowestGlobalVarAddr) &&
+      (varLocation < highestGlobalVarAddr)) {
+    targetVar = returnArrayVariableWithAddr(&globalVars,
+                                            varLocation,
+                                            1, 0, &baseAddr);
 
-  if (targetVar) {
-    foundGlobalArrayVariable = 1;
-  }
-  else {
-    targetVar = returnGlobalSingletonWithAddress(varLocation);
     if (targetVar) {
+      foundGlobalArrayVariable = 1;
+    }
+    else {
+      // UNCONDITIONALLY RETURN 0 IF WE CANNOT FIND A GLOBAL ARRAY
+      // VARIABLE.  WE DO NOT WANT TO PROBE IN THE GLOBAL SPACE
+      // BECAUSE ALL OF IT MAY POSSIBLY BE INITIALIZED.
+
+      //      targetVar = returnGlobalSingletonWithAddress(varLocation);
+      //      if (targetVar) {
       return 0;
+        //      }
     }
   }
-
   // 2. If not found, then search if varLocation is within the stack
   //    frame of a function currently on the stack
   if (!targetVar) {

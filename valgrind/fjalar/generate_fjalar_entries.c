@@ -284,10 +284,12 @@ void initializeAllFjalarData()
 
   initializeFunctionTable();
 
-  // Don't even bother to init this if we set --ignore-globals
-  if (!fjalar_ignore_globals) {
-    initializeGlobalVarsList();
-  }
+  // We need to initialize this list even if we are ignoring globals
+  // (with --ignore-globals) because otherwise lowestGlobalVarAddr and
+  // highestGlobalVarAddr won't be set properly, and we won't be able
+  // to find references to global variables from pointer parameters:
+  initializeGlobalVarsList();
+
 
   initializeGlobalAddrRange();
 

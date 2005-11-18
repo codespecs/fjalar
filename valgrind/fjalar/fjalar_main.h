@@ -36,6 +36,7 @@ Bool fjalar_smart_disambig;
 Bool fjalar_use_bit_level_precision;
 Bool fjalar_output_struct_vars;
 Bool fjalar_flatten_arrays;
+Bool fjalar_func_disambig_ptrs;
 Bool fjalar_disambig_ptrs;
 int  fjalar_array_length_limit;
 
