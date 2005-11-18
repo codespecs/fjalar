@@ -1998,6 +1998,13 @@ void visitSingleVar(DaikonVariable* var,
     disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
   }
 
+  if ((kvasir_func_disambig_ptrs) &&
+      ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
+       (varOrigin == FUNCTION_EXIT_FORMAL_PARAM) ||
+       (varOrigin == FUNCTION_RETURN_VAR))) {
+    disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
+  }
+
   disambigOverrideArrayAsPointer =
     (OVERRIDE_ARRAY_AS_POINTER == disambigOverride);
 
