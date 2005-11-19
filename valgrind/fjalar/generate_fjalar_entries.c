@@ -2039,8 +2039,30 @@ void outputAllXMLDeclarations() {
   fclose(xml_output_fp);
 }
 
-static void XMLprintOneFunction(FunctionEntry* cur_entry) {
-  XML_PRINTF("<function>\n");
+// Format things slightly differently for member functions:
+static void XMLprintOneFunction(FunctionEntry* cur_entry, char isMemberFunc) {
+
+  XML_PRINTF("<function");
+  // Add function attributes:
+  if (isMemberFunc) {
+    XML_PRINTF(" type=\"");
+    switch (cur_entry->accessibility) {
+    case DW_ACCESS_private:
+      XML_PRINTF("private-member-function");
+      break;
+    case DW_ACCESS_protected:
+      XML_PRINTF("protected-member-function");
+    break;
+    default:
+      XML_PRINTF("public-member-function");
+      break;
+    }
+    XML_PRINTF("\"");
+  }
+  else if (!cur_entry->isExternal) {
+    XML_PRINTF(" type=\"file-static\"");
+  }
+  XML_PRINTF(">\n");
 
   if (cur_entry->name) {
     XML_PRINTF("<name>%s</name>\n",
@@ -2062,17 +2084,15 @@ static void XMLprintOneFunction(FunctionEntry* cur_entry) {
                cur_entry->filename);
   }
 
-  if (!cur_entry->isExternal) {
-    XML_PRINTF("<file-static-function/>\n");
-  }
-
   XML_PRINTF("<formal-parameters>\n");
   XMLprintVariablesInList(&cur_entry->formalParameters);
   XML_PRINTF("</formal-parameters>\n");
 
-  XML_PRINTF("<local-array-and-struct-variables>\n");
-  XMLprintVariablesInList(&cur_entry->localArrayAndStructVars);
-  XML_PRINTF("</local-array-and-struct-variables>\n");
+  if (cur_entry->localArrayAndStructVars.numVars > 0) {
+    XML_PRINTF("<local-array-and-struct-variables>\n");
+    XMLprintVariablesInList(&cur_entry->localArrayAndStructVars);
+    XML_PRINTF("</local-array-and-struct-variables>\n");
+  }
 
   XML_PRINTF("<return-value>\n");
   XMLprintVariablesInList(&cur_entry->returnValue);
@@ -2108,7 +2128,7 @@ static void XMLprintFunctionTable()
       continue;
     }
 
-    XMLprintOneFunction(cur_entry);
+    XMLprintOneFunction(cur_entry, 0);
   }
 
   XML_PRINTF("</function-declarations>\n");
@@ -2131,15 +2151,16 @@ static void XMLprintTypesTable() {
 
     XML_PRINTF("<type>\n");
 
-    XML_PRINTF("<declared-type>%s</declared-type>\n",
-	       DeclaredTypeNames[cur_entry->decType]);
-    XML_PRINTF("<byte-size>%d</byte-size>\n",
-	       cur_entry->byteSize);
-
     if (cur_entry->collectionName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
 		 cur_entry->collectionName);
     }
+
+    XML_PRINTF("<byte-size>%d</byte-size>\n",
+	       cur_entry->byteSize);
+
+    XML_PRINTF("<declared-type>%s</declared-type>\n",
+	       DeclaredTypeNames[cur_entry->decType]);
 
     if (cur_entry->isStructUnionType) {
       unsigned int i;
@@ -2153,7 +2174,7 @@ static void XMLprintTypesTable() {
 
       XML_PRINTF("<member-functions>\n");
       for (i = 0; i < cur_entry->memberFunctionArraySize; i++) {
-        XMLprintOneFunction(cur_entry->memberFunctionArray[i]);
+        XMLprintOneFunction(cur_entry->memberFunctionArray[i], 1);
       }
       XML_PRINTF("</member-functions>\n");
     }
