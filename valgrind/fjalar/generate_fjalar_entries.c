@@ -1940,7 +1940,7 @@ void initializeAllMemberFunctions() {
         void* start_PC = (void*)(*pCurMemberFunc);
         tl_assert(start_PC);
 
-        VG_(printf)("  hacked start_pc: %p\n", start_PC);
+        VG_(printf)("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
 
         // Hopefully this will always be non-null
         *pCurMemberFunc = findFunctionEntryByStartAddr(start_PC);
