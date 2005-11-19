@@ -31,6 +31,7 @@
 static void initializeStructNamesIDTable();
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
+static void initializeAllMemberFunctions();
 
 static void extractFormalParameterVars(FunctionEntry* f,
 				       function* dwarfFunctionEntry);
@@ -335,6 +336,10 @@ void initializeAllFjalarData()
   // (with --ignore-globals) because otherwise we won't be able to
   // find references to global variables from pointer parameters:
   initializeGlobalVarsList();
+
+  // Initialize member functions last after TypesTable and
+  // FunctionTable have already been initialized:
+  initializeAllMemberFunctions();
 
   genfreehashtable(StructNamesIDTable);
   StructNamesIDTable = 0;
@@ -908,16 +913,17 @@ void initializeFunctionTable()
       //      FJALAR_DPRINTF("i: %d\n", i);
       cur_entry = &dwarf_entry_array[i];
       // Ignore invalid functions and DUPLICATE function entries
-      // with the same start_pc
+      // with the same start_pc (only test if there is start_pc)
       if (entry_is_valid_function(cur_entry) &&
-          !gencontains(FunctionTable,
-                        (void*)(((function*)cur_entry->entry_ptr)->start_pc)))
+          ((((function*)cur_entry->entry_ptr)->start_pc) &&
+           !gencontains(FunctionTable,
+                        (void*)(((function*)cur_entry->entry_ptr)->start_pc))))
         {
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
 
           cur_func_entry = VG_(calloc)(1, sizeof(*cur_func_entry));
 
-	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
+	  VG_(printf)("Adding function %s\n", dwarfFunctionPtr->name);
 
           cur_func_entry->name = dwarfFunctionPtr->name;
           cur_func_entry->mangled_name = dwarfFunctionPtr->mangled_name;
@@ -1140,13 +1146,16 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 /* } */
 
 // Extracts struct/union type info from collectionPtr and creates
-// entries for member variables in t->memberVarList and entries for
-// member functions in memberFunctionArray
+// entries for member variables in t->memberVarList
+// (DO NOT attempt to initialize t->memberFunctionArray right now
+//  because FunctionTable has not been fully initialized yet)
 static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 {
   collection_type* collectionPtr = 0;
   UInt i = 0, member_func_index = 0;
   VarNode* memberNodePtr = 0;
+  int numMemberFunctions = 0;
+  UInt memberFunctionArrayIndex = 0;
 
   if (!(e->tag_name == DW_TAG_structure_type) &&
       !(e->tag_name == DW_TAG_union_type))
@@ -1169,37 +1178,83 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   t->collectionName = collectionPtr->name;
 
-  t->memberVarList = (VarList*)VG_(calloc)(1, sizeof(*(t->memberVarList)));
+  // This is a bit of a hack, but since FunctionTable probably hasn't
+  // finished being initialized yet, we will fill up each entry in
+  // t->memberFunctionArray with the start PC of the function, then
+  // later in initializeAllMemberFunctions(), we will use those start
+  // PC values to look up the actual FunctionEntry entries using
+  // findFunctionEntryByStartAddr().  Thus, we temporarily overload
+  // memberFunctionArray[] to hold start PC pointer values.
 
-  // Initialize memberFunctionArray and memberFunctionArraySize by
-  // iterating through the member_funcs array of the corresponding
-  // collection_type entry:
-  t->memberFunctionArraySize = collectionPtr->num_member_funcs;
+  // First make a dry pass to determine how many functions we actually
+  // have debug. info for, and try to fill in start_pc if necessary:
+  for (member_func_index = 0;
+       member_func_index < collectionPtr->num_member_funcs;
+       member_func_index++) {
+    function* funcPtr =
+      (function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
+    FunctionEntry* memberFunc;
 
-  // Allocate an array of pointers if there is at least 1 member
-  // function:
-  if (t->memberFunctionArraySize) {
-    t->memberFunctionArray = VG_(calloc)(t->memberFunctionArraySize,
-					 sizeof(*(t->memberFunctionArray)));
+    VG_(printf)("  *** funcPtr->mangled_name: %s\n", funcPtr->mangled_name);
 
-    for (member_func_index = 0;
-	 member_func_index < t->memberFunctionArraySize;
-	 member_func_index++) {
-      function* funcPtr =
-	(function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
-
-      FunctionEntry* memberFunc =
-	findFunctionEntryByStartAddr(funcPtr->start_pc);
-
-      t->memberFunctionArray[member_func_index] = memberFunc;
-
-      // If it's a valid function, then set the parent class field of
-      // the member function to this type entry:
-      if (memberFunc) {
-	memberFunc->parentClass = t;
+    // Look up the start_pc of the function in FunctionSymbolTable if
+    // there is no start_pc:
+    if (!funcPtr->start_pc) {
+      // Try the C++ mangled name first ...
+      if (funcPtr->mangled_name) {
+        funcPtr->start_pc = (unsigned long)gengettable(FunctionSymbolTable,
+                                                       (void*)funcPtr->mangled_name);
+      }
+      // then try the regular name:
+      else if (funcPtr->name) {
+        funcPtr->start_pc = (unsigned long)gengettable(FunctionSymbolTable,
+                                                       (void*)funcPtr->name);
       }
     }
+
+    // If we can't even find a start_pc, then just punt it:
+    if (!funcPtr->start_pc) {
+      continue;
+    }
+
+    VG_(printf)("         funcPtr->start_pc: %p\n", funcPtr->start_pc);
+
+    // Success!
+    numMemberFunctions++;
   }
+
+  if (numMemberFunctions > 0) {
+    t->memberFunctionArraySize = numMemberFunctions;
+    t->memberFunctionArray = VG_(calloc)(numMemberFunctions,
+                                         sizeof(*(t->memberFunctionArray)));
+
+    VG_(printf)(" - numMemberFunctions: %d\n", numMemberFunctions);
+
+    // Make the second pass to populate memberFunctionArray (The
+    // conditions must PRECISELY match the previous pass or else we'll
+    // have problems)
+    for (member_func_index = 0;
+         member_func_index < collectionPtr->num_member_funcs;
+         member_func_index++) {
+      function* funcPtr =
+        (function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
+      FunctionEntry* memberFunc;
+
+      // If we can't even find a start_pc, then just punt it:
+      if (!funcPtr->start_pc) {
+        continue;
+      }
+
+      // Success!
+      // SUPER HACK!!! BE CAREFUL!!!
+      t->memberFunctionArray[memberFunctionArrayIndex] = (FunctionEntry*)(funcPtr->start_pc);
+      memberFunc->parentClass = t;
+      memberFunctionArrayIndex++;
+    }
+  }
+
+
+  t->memberVarList = (VarList*)VG_(calloc)(1, sizeof(*(t->memberVarList)));
 
   // Look up the dwarf_entry for the struct/union and iterate
   // through its member_vars array (of pointers to members)
@@ -1242,7 +1297,17 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       variable* staticMemberPtr =
 	(variable*)((collectionPtr->static_member_vars[ind])->entry_ptr);
 
-      VG_(printf)("Trying to extractOneVariable on member var: %s at %p\n",
+      // Try to find a global address in VariableSymbolTable if it
+      // doesn't exist yet:
+      if (!staticMemberPtr->globalVarAddr) {
+        // Try the C++ mangled name:
+        if (staticMemberPtr->mangled_name) {
+          staticMemberPtr->globalVarAddr = (Addr)gengettable(VariableSymbolTable,
+                                                             (void*)staticMemberPtr->mangled_name);
+        }
+      }
+
+      VG_(printf)("Trying to extractOneVariable on static member var: %s at %p\n",
 		  staticMemberPtr->mangled_name,
 		  staticMemberPtr->globalVarAddr);
 
@@ -1845,6 +1910,48 @@ unsigned int hashID(int ID) {
 // Super-trivial key comparison method -
 int equivalentIDs(int ID1, int ID2) {
   return (ID1 == ID2);
+}
+
+// Initializes all member functions for structs in TypesTable:
+// Pre: This should only be run after TypesTable and FunctionTable have
+//      been initialized.
+void initializeAllMemberFunctions() {
+  struct geniterator* it = gengetiterator(TypesTable);
+  // Iterate through all entries in TypesTable:
+  while (!it->finished) {
+    TypeEntry* t = (TypeEntry*)
+      gengettable(TypesTable, gennext(it));
+
+    // Only do this for struct/union types:
+    if ((t->decType == D_STRUCT) ||
+        (t->decType == D_UNION)) {
+      // This is a bit of a hack, but in extractStructUnionType(), we
+      // initialized the entries of t->memberFunctionArray with the
+      // start PC of the member functions (we had to do this because
+      // FunctionTable wasn't initialized at that time).  Thus, we
+      // temporarily overload memberFunctionArray[] to hold start PC
+      // pointer values.  Now we will iterate over those values and
+      // use findFunctionEntryByStartAddr() to try to fill them in
+      // with actual FunctionEntry instances:
+      int i;
+
+      for (i = 0; i < t->memberFunctionArraySize; i++) {
+        FunctionEntry** pCurMemberFunc = &t->memberFunctionArray[i];
+        void* start_PC = (void*)(*pCurMemberFunc);
+        tl_assert(start_PC);
+
+        VG_(printf)("  hacked start_pc: %p\n", start_PC);
+
+        // Hopefully this will always be non-null
+        *pCurMemberFunc = findFunctionEntryByStartAddr(start_PC);
+        tl_assert(*pCurMemberFunc);
+        // Very important!  Signify that it's a member function
+        (*pCurMemberFunc)->parentClass = t;
+      }
+    }
+  }
+
+  genfreeiterator(it);
 }
 
 
