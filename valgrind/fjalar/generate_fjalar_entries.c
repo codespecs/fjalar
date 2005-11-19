@@ -32,6 +32,7 @@ static void initializeFunctionTable();
 static void initializeGlobalVarsList();
 static void initializeAllMemberFunctions();
 static void createNamesForUnnamedDwarfEntries();
+static void updateAllVarTypes();
 
 static void extractFormalParameterVars(FunctionEntry* f,
 				       function* dwarfFunctionEntry);
@@ -320,6 +321,8 @@ void initializeAllFjalarData()
   // Initialize member functions last after TypesTable and
   // FunctionTable have already been initialized:
   initializeAllMemberFunctions();
+
+  updateAllVarTypes();
 
   VG_(printf)(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
               data_section_size, data_section_addr,
@@ -1598,6 +1601,41 @@ static void extractReturnVar(FunctionEntry* f,
 		     0,0,0,0,0,0,0);
 }
 
+
+
+// Scan through varsToUpdateTypes, look at the varType entries, look
+// them up in TypesTable, replace the entries with the real versions,
+// and free the faux TypeEntry:
+void updateAllVarTypes() {
+  VarNode* n;
+
+  if (0 == varsToUpdateTypes.numVars) {
+    return;
+  }
+
+  for (n = varsToUpdateTypes.first;
+       n != NULL;
+       n = n->next) {
+    VariableEntry* var = n->var;
+    TypeEntry* fake_type = var->varType;
+    TypeEntry* real_type = 0;
+
+    tl_assert(fake_type->collectionName);
+
+    real_type = (TypeEntry*)gengettable(TypesTable,
+                                        (void*)(fake_type->collectionName));
+    tl_assert(real_type);
+    var->varType = real_type;
+
+    // Remember to free this!
+    VG_(free)(fake_type);
+  }
+
+  // Remember to destroy this list now that we're done with it!
+  clearVarList(&varsToUpdateTypes);
+}
+
+
 // Extracts one variable and inserts it at the end of varListPtr
 void extractOneVariable(VarList* varListPtr,
 			dwarf_entry* typePtr,
@@ -2001,6 +2039,48 @@ void outputAllXMLDeclarations() {
   fclose(xml_output_fp);
 }
 
+static void XMLprintOneFunction(FunctionEntry* cur_entry) {
+  XML_PRINTF("<function>\n");
+
+  if (cur_entry->name) {
+    XML_PRINTF("<name>%s</name>\n",
+               cur_entry->name);
+  }
+
+  if (cur_entry->fjalar_name) {
+    XML_PRINTF("<fjalar-name>%s</fjalar-name>\n",
+               cur_entry->fjalar_name);
+  }
+
+  XML_PRINTF("<start-PC>%p</start-PC>\n",
+             (void*)cur_entry->startPC);
+  XML_PRINTF("<end-PC>%p</end-PC>\n",
+             (void*)cur_entry->endPC);
+
+  if (cur_entry->filename) {
+    XML_PRINTF("<filename>%s</filename>\n",
+               cur_entry->filename);
+  }
+
+  if (!cur_entry->isExternal) {
+    XML_PRINTF("<file-static-function/>\n");
+  }
+
+  XML_PRINTF("<formal-parameters>\n");
+  XMLprintVariablesInList(&cur_entry->formalParameters);
+  XML_PRINTF("</formal-parameters>\n");
+
+  XML_PRINTF("<local-array-and-struct-variables>\n");
+  XMLprintVariablesInList(&cur_entry->localArrayAndStructVars);
+  XML_PRINTF("</local-array-and-struct-variables>\n");
+
+  XML_PRINTF("<return-value>\n");
+  XMLprintVariablesInList(&cur_entry->returnValue);
+  XML_PRINTF("</return-value>\n");
+
+  XML_PRINTF("</function>\n");
+}
+
 static void XMLprintGlobalVars()
 {
   XML_PRINTF("<global-variable-declarations>\n");
@@ -2022,43 +2102,13 @@ static void XMLprintFunctionTable()
       continue;
     }
 
-    XML_PRINTF("<function>\n");
-
-    if (cur_entry->name) {
-      XML_PRINTF("<name>%s</name>\n",
-		 cur_entry->name);
+    // DO NOT print out C++ member functions here.  Instead, print
+    // them out as part of the <type> entry
+    if (cur_entry->parentClass) {
+      continue;
     }
 
-    if (cur_entry->fjalar_name) {
-      XML_PRINTF("<fjalar-name>%s</fjalar-name>\n",
-		 cur_entry->fjalar_name);
-    }
-
-    XML_PRINTF("<start-PC>%p</start-PC>\n",
-	       (void*)cur_entry->startPC);
-    XML_PRINTF("<end-PC>%p</end-PC>\n",
-	       (void*)cur_entry->endPC);
-
-    XML_PRINTF("<filename>%s</filename>\n",
-	       cur_entry->filename);
-
-    if (!cur_entry->isExternal) {
-      XML_PRINTF("<file-static-function/>\n");
-    }
-
-    XML_PRINTF("<formal-parameters>\n");
-    XMLprintVariablesInList(&cur_entry->formalParameters);
-    XML_PRINTF("</formal-parameters>\n");
-
-    XML_PRINTF("<local-array-and-struct-variables>\n");
-    XMLprintVariablesInList(&cur_entry->localArrayAndStructVars);
-    XML_PRINTF("</local-array-and-struct-variables>\n");
-
-    XML_PRINTF("<return-value>\n");
-    XMLprintVariablesInList(&cur_entry->returnValue);
-    XML_PRINTF("</return-value>\n");
-
-    XML_PRINTF("</function>\n");
+    XMLprintOneFunction(cur_entry);
   }
 
   XML_PRINTF("</function-declarations>\n");
@@ -2092,9 +2142,20 @@ static void XMLprintTypesTable() {
     }
 
     if (cur_entry->isStructUnionType) {
+      unsigned int i;
       XML_PRINTF("<member-variables>\n");
       XMLprintVariablesInList(cur_entry->memberVarList);
       XML_PRINTF("</member-variables>\n");
+
+      XML_PRINTF("<static-member-variables>\n");
+      XMLprintVariablesInList(cur_entry->staticMemberVarList);
+      XML_PRINTF("</static-member-variables>\n");
+
+      XML_PRINTF("<member-functions>\n");
+      for (i = 0; i < cur_entry->memberFunctionArraySize; i++) {
+        XMLprintOneFunction(cur_entry->memberFunctionArray[i]);
+      }
+      XML_PRINTF("</member-functions>\n");
     }
 
     XML_PRINTF("</type>\n");
@@ -2139,7 +2200,11 @@ static void XMLprintOneVariable(VariableEntry* var) {
 
     XML_PRINTF("<location>%p</location>\n",
 	       (void*)var->globalLocation);
-    XML_PRINTF("<filename>%s</filename>\n", var->fileName);
+
+    if (var->fileName) {
+      XML_PRINTF("<filename>%s</filename>\n",
+                 var->fileName);
+    }
 
     if (!var->isExternal) {
       XML_PRINTF("<file-static-var>\n");
