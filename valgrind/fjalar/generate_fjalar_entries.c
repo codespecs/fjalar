@@ -136,23 +136,18 @@ TypeEntry* BasicTypesArray[22] = {
 static struct genhashtable* StructNamesIDTable = 0;
 
 
-// TODO: We need a way of making sure that we do not have any entries
-// in TypesTable with duplicate names.  One way to ensure this is to
-// have the keys of the table be the names, but this doesn't seem very
-// robust because the problem is that we don't know which entry is the
-// 'best' one until after we have added all entries.  Here are some
-// criteria for deciding on the 'best' entry when there are duplicates:
-
-// 1.) Favor ones with is_declaration = false
-// 2.) Favor ones for which the static member variables are initialized
-//     with global addresses
-
-// Suggested implementation: Make a hashtable mapping struct names
-// with a count of how many entries in TypesTable have that name.
-// Then iterate thru this table, and for each entry with a count of
-// GREATER THAN 1, we need to arbitrate and only pick the 'best' one
-// to keep.
-
+// A temporary data structure of variables that need to have their
+// varType entries updated after TypesTable has been initialized.
+// This is used for variables whose type entries are 'fake'
+// (is_declaration == 1) so we want to fill them in with 'real' values
+// of the same name later.  All variables in this list have their
+// varType initialized to a dynamically-allocated TypeEntry whose
+// collectionName is initialized properly, but all other fields in
+// this TypeEntry are empty.  During updateAllVarTypes(), we scan
+// through this list, look at the varType entries, look them up in
+// TypesTable, replace the entries with the real versions, and free
+// the faux TypeEntry:
+VarList varsToUpdateTypes = {0, 0, 0};
 
 // Global strings
 
@@ -321,8 +316,8 @@ void initializeAllFjalarData()
 
   // Initialize TypesTable
   TypesTable =
-    genallocatehashtable((unsigned int (*)(void *)) & hashID,
-                         (int (*)(void *,void *)) &equivalentIDs);
+    genallocatehashtable((unsigned int (*)(void *)) & hashString,
+                         (int (*)(void *,void *)) &equivalentStrings);
 
   StructNamesIDTable =
     genallocatehashtable((unsigned int (*)(void *)) & hashString,
@@ -488,11 +483,14 @@ void repCheckAllEntries() {
     tl_assert(!IS_BASIC_TYPE(t->decType));
 
     // Properties that should hold true for all TypeEntry instances:
-    if (t->collectionName) {
-      tl_assert((D_ENUMERATION == t->decType) ||
-		(D_STRUCT == t->decType) ||
-		(D_UNION == t->decType));
-    }
+
+    tl_assert((D_ENUMERATION == t->decType) ||
+              (D_STRUCT == t->decType) ||
+              (D_UNION == t->decType));
+
+    // Because TypesTable is indexed by name, there should be no
+    // unnamed entries in TypesTable:
+    tl_assert(t->collectionName);
 
     if (t->isStructUnionType) {
       VarNode* n;
@@ -1193,7 +1191,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
        member_func_index++) {
     function* funcPtr =
       (function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
-    FunctionEntry* memberFunc;
 
     VG_(printf)("  *** funcPtr->mangled_name: %s\n", funcPtr->mangled_name);
 
@@ -1238,8 +1235,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
          member_func_index++) {
       function* funcPtr =
         (function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
-      FunctionEntry* memberFunc;
-
       // If we can't even find a start_pc, then just punt it:
       if (!funcPtr->start_pc) {
         continue;
@@ -1248,7 +1243,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       // Success!
       // SUPER HACK!!! BE CAREFUL!!!
       t->memberFunctionArray[memberFunctionArrayIndex] = (FunctionEntry*)(funcPtr->start_pc);
-      memberFunc->parentClass = t;
       memberFunctionArrayIndex++;
     }
   }
@@ -1665,7 +1659,7 @@ void extractOneVariable(VarList* varListPtr,
   VariableEntry* varPtr = 0;
   int ptrLevels = 0;
 
-  FJALAR_DPRINTF("Entering extractOneVariable for %s\n", variableName);
+  VG_(printf)("Entering extractOneVariable for %s\n", variableName);
 
   // Don't extract the variable if it has a bogus name:
   if (ignore_variable_with_name(variableName))
@@ -1793,80 +1787,71 @@ void extractOneVariable(VarList* varListPtr,
     // Treat sorta like a hashcode, for the moment.
     varPtr->varType = BasicTypesArray[D_FUNCTION];
   }
-  // For struct/union types, we want to make sure that we are
+  // For struct/union/enum types, we want to make sure that we are
   // performing a lookup on a REAL entry, not just a declaration:
+  // (Hopefully, if all goes well, the only TypeEntry values in
+  // TypesTable are REAL entries whose dwarf_entry has is_declaration
+  // NULL, not fake declaration entries).  We also want to ensure that
+  // there is at most one entry in TypesTable for a particular
+  // collection name.
   else if (tag_is_collection_type(typePtr->tag_name)) {
-    // We want to look up the REAL type entry, not a fake one with
-    // is_declaration non-null.
-    //   (Hopefully, if all goes well, the only TypeEntry values
-    //    in TypesTable are REAL entries whose dwarf_entry has
-    //    is_declaration NULL, not fake declaration entries)
     collection_type* collectionPtr = (collection_type*)(typePtr->entry_ptr);
 
-    // If it's a fake entry, we want to look up its name in
-    // StructNamesIDTable and map it to the REAL entry with the
-    // same name:
-    if (collectionPtr->is_declaration &&
-        collectionPtr->name) {
-      unsigned long realID = (unsigned long)gengettable(StructNamesIDTable,
-                                                        (void*)collectionPtr->name);
-      //          VG_(printf)("* %s (Fake ID: %u) (Real ID: %u)\n",
-      //                      collectionPtr->name,
-      //                      typePtr->ID,
-      //                      realID);
+    // I dunno what to do if we don't have a name - we need to pull
+    // one out of thin air (or maybe make one from the DWARF ID):
+    tl_assert(collectionPtr->name);
 
-      // If realID == 0, that means that we somehow don't have
-      // debugging info for the real entry, so we must just resort
-      // to using the fake entry, reluctantly
-      if (realID) {
-        // Now do a lookup for the REAL ID and not the fake one:
-        varPtr->varType =
-          (TypeEntry*)gengettable(TypesTable, (void*)realID);
+    // If it's a fake entry (is_declaration == 1), then we will create
+    // a fake entry for varType and insert the variable in the
+    // varsToUpdateTypes list so that updateAllVarTypes() can later
+    // replace them with their real types:
+    if (collectionPtr->is_declaration) {
+      TypeEntry* fake_entry = VG_(calloc)(1, sizeof(*fake_entry));
 
-        // If you can't find anything, we'll have to end up calling
-        // extractStructUnionType so let's change typePtr to refer
-        // to the entry in dwarf_entry_array with the REAL ID before
-        // passing it further along:
-        if (!varPtr->varType) {
-          unsigned long realIndex = 0;
-          if (binary_search_dwarf_entry_array(realID,  &realIndex)) {
-            typePtr = &dwarf_entry_array[realIndex];
+      fake_entry->collectionName = collectionPtr->name;
 
-            //                VG_(printf)("  realIndex: %u, realID: %u, typePtr->ID: %u\n",
-            //                            realIndex, realID, typePtr->ID);
-          }
-        }
-      }
-      else {
-        varPtr->varType = (TypeEntry*)gengettable(TypesTable, (void*)typePtr->ID);
-      }
+      varPtr->varType = fake_entry;
+      insertNewNode(&varsToUpdateTypes);
+      varsToUpdateTypes.last->var = varPtr;
+
+      VG_(printf)("  Inserted *fake* entry for variable %s with type %s\n",
+                  variableName, collectionPtr->name);
     }
-    // Do a regular lookup if it's either an unnamed struct or
-    // (even better) a REAL one with is_declaration = null
+    // Otherwise, try to find an entry in TypesTable if one already exists
     else {
-      varPtr->varType = (TypeEntry*)gengettable(TypesTable, (void*)typePtr->ID);
-    }
+      TypeEntry* existing_entry = (TypeEntry*)gengettable(TypesTable,
+                                                          (void*)collectionPtr->name);
 
-    // If the entry is not found in TypesTable, create a new one
-    // and add it to the table
-    if (!varPtr->varType) {
-      FJALAR_DPRINTF("Adding type entry for %s\n", variableName);
+      VG_(printf)("  Try to find existing entry %p in TypesTable with name %s\n",
+                  existing_entry, collectionPtr->name);
 
-      varPtr->varType = (TypeEntry*)VG_(calloc)(1, sizeof(*varPtr->varType));
-      // We are passing in the true ID but casting it so the compiler won't warn me:
-      if (typePtr) {
-        genputtable(TypesTable, (void*)typePtr->ID, varPtr->varType);
+      if (existing_entry) {
+        VG_(printf)("  Using existing type entry for %s\n", variableName);
+        varPtr->varType = existing_entry;
+        // We are done!
       }
+      // No entry exists for this name, so insert a new one:
+      else {
+        VG_(printf)("  Adding type entry for %s\n", variableName);
 
-      // If the parameter is an enumeration type
-      if (typePtr->tag_name == DW_TAG_enumeration_type) {
-        collection_type* colPtr = (collection_type*)(typePtr->entry_ptr);
-        extractEnumerationType(varPtr->varType, colPtr);
-      }
-      // Struct or union type (where most of the action takes place)
-      else if  ((typePtr->tag_name == DW_TAG_structure_type) ||
-		(typePtr->tag_name == DW_TAG_union_type)) {
-        extractStructUnionType(varPtr->varType, typePtr);
+        varPtr->varType = (TypeEntry*)VG_(calloc)(1, sizeof(*varPtr->varType));
+
+        // Insert it into the table BEFORE calling
+        // extractStructUnionType() or else we may infinitely recurse!
+        genputtable(TypesTable,
+                    (void*)collectionPtr->name,
+                    varPtr->varType);
+
+        // If the parameter is an enumeration type
+        if (typePtr->tag_name == DW_TAG_enumeration_type) {
+          collection_type* colPtr = (collection_type*)(typePtr->entry_ptr);
+          extractEnumerationType(varPtr->varType, colPtr);
+        }
+        // Struct or union type (where most of the action takes place)
+        else if  ((typePtr->tag_name == DW_TAG_structure_type) ||
+                  (typePtr->tag_name == DW_TAG_union_type)) {
+          extractStructUnionType(varPtr->varType, typePtr);
+        }
       }
     }
   }
@@ -1933,11 +1918,11 @@ void initializeAllMemberFunctions() {
       // pointer values.  Now we will iterate over those values and
       // use findFunctionEntryByStartAddr() to try to fill them in
       // with actual FunctionEntry instances:
-      int i;
+      unsigned int i;
 
       for (i = 0; i < t->memberFunctionArraySize; i++) {
         FunctionEntry** pCurMemberFunc = &t->memberFunctionArray[i];
-        void* start_PC = (void*)(*pCurMemberFunc);
+        unsigned int start_PC = (unsigned int)(*pCurMemberFunc);
         tl_assert(start_PC);
 
         VG_(printf)("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
@@ -2034,22 +2019,8 @@ int equivalentStrings(char* str1, char* str2) {
 // Returns the first TypeEntry entry found in TypesTable with
 // collectionName matching the given name, and return 0 if nothing
 // found.
-TypeEntry* findTypeEntryByName(char* name) {
-  struct geniterator* it = gengetiterator(TypesTable);
-
-  while (!it->finished) {
-    TypeEntry* cur_type = (TypeEntry*)
-      gengettable(TypesTable, gennext(it));
-
-    if (cur_type->collectionName &&
-        VG_STREQ(cur_type->collectionName, name)) {
-      genfreeiterator(it);
-      return cur_type;
-    }
-  }
-
-  genfreeiterator(it);
-  return 0;
+__inline__ TypeEntry* findTypeEntryByName(char* name) {
+  return (TypeEntry*)gengettable(TypesTable, (void*)name);
 }
 
 #define XML_PRINTF(...) fprintf(xml_output_fp, __VA_ARGS__)
