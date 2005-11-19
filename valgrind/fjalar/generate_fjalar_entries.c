@@ -28,10 +28,10 @@
 
 #include "fjalar_tool.h"
 
-static void initializeStructNamesIDTable();
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
 static void initializeAllMemberFunctions();
+static void createNamesForUnnamedDwarfEntries();
 
 static void extractFormalParameterVars(FunctionEntry* f,
 				       function* dwarfFunctionEntry);
@@ -123,17 +123,6 @@ TypeEntry* BasicTypesArray[22] = {
 // To figure out if a certain DeclaredType t is a basic type, simply
 // query whether its entry in BasicTypesArray is non-null:
 #define IS_BASIC_TYPE(t) (BasicTypesArray[t])
-
-
-// Hash table that maps the names of structs to their ID's in
-// dwarf_entry_array
-// (This is needed to make sure that there is only one entry of
-//  each struct with a certain name that all variables can refer to.
-//  Otherwise, lots of variables may refer to entries that are merely
-//  empty declarations in their compilation unit.)
-// Key: name of struct type
-// Value: ID of REAL entry where is_declaration is 0
-static struct genhashtable* StructNamesIDTable = 0;
 
 
 // A temporary data structure of variables that need to have their
@@ -307,8 +296,8 @@ void initializeAllFjalarData()
   // First delete everything that's in the globalVars list
   clearVarList(&globalVars);
 
-  // TODO: We need to free up the entries in TypesTable and
-  // StructNamesIDTable if we are really trying to be robust
+  // TODO: We need to free up the entries in TypesTable if we are
+  // really trying to be robust
 
   VisitedStructsTable = 0;
 
@@ -319,11 +308,7 @@ void initializeAllFjalarData()
     genallocatehashtable((unsigned int (*)(void *)) & hashString,
                          (int (*)(void *,void *)) &equivalentStrings);
 
-  StructNamesIDTable =
-    genallocatehashtable((unsigned int (*)(void *)) & hashString,
-                         (int (*)(void *,void *)) &equivalentStrings);
-
-  initializeStructNamesIDTable();
+  createNamesForUnnamedDwarfEntries();
 
   initializeFunctionTable();
 
@@ -335,9 +320,6 @@ void initializeAllFjalarData()
   // Initialize member functions last after TypesTable and
   // FunctionTable have already been initialized:
   initializeAllMemberFunctions();
-
-  genfreehashtable(StructNamesIDTable);
-  StructNamesIDTable = 0;
 
   VG_(printf)(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
               data_section_size, data_section_addr,
@@ -834,25 +816,15 @@ static void initializeGlobalVarsList()
   genfreehashtable(GlobalVarsTable);
 }
 
-
-// Initializes StructNamesIDTable by going through dwarf_entry_array
-// and associating each struct/union type declaration that has
-// is_declaration = null with its name.  This ensures that in later
-// stages, we only refer to one struct/union entry and not a myriad of
-// 'fake' declaration entries.
-// TODO: Is there the danger of having 2 struct
-// types share the same name but are visibel in different compilation
-// units?
-//
-// As a side effect, let's also initialize the names of unnamed structs
-// so that we can have something to uniquely identify them with:
+// Initialize the names of unnamed structs so that we can have
+// something to uniquely identify them with:
 //
 // For unnamed structs/unions/enums, we should just munge the
 // name from the ID field so that we have something
 // to use to identify this struct
 // We will name it "unnamed_0x$ID" where $ID
 // is the ID field in hex.
-static void initializeStructNamesIDTable()
+static void createNamesForUnnamedDwarfEntries()
 {
   unsigned long i;
   dwarf_entry* cur_entry = 0;
@@ -861,26 +833,16 @@ static void initializeStructNamesIDTable()
     cur_entry = &dwarf_entry_array[i];
     if (tag_is_collection_type(cur_entry->tag_name)) {
       collection_type* collectionPtr = (collection_type*)(cur_entry->entry_ptr);
-      if (!collectionPtr->is_declaration) {
+      if (!collectionPtr->is_declaration &&
+          !collectionPtr->name) {
         //        VG_(printf)("%s (%u)\n", collectionPtr->name, cur_entry->ID);
 
-        // Don't throw in entries with no names because that will be
-        // really confusing
-        if (collectionPtr->name) {
-        genputtable(StructNamesIDTable,
-                    (void*)collectionPtr->name, // key    (char*)
-                    (void*)cur_entry->ID);      // value  (unsigned long)
-        }
-        // If it's a true entry (is_declaration == false)
-        // but it's unnamed, then give it a name by munging its ID:
-        else {
-          // The maximum size is 10 + 8 + 1 = 19
-          // 10 for "unnamed_0x", 8 for maximum size for cur_entry->ID,
-          // and 1 for null-terminator
-          char* fake_name = calloc(19, sizeof(*fake_name));
-          sprintf(fake_name, "unnamed_0x%lx", cur_entry->ID);
-          collectionPtr->name = fake_name;
-        }
+        // The maximum size is 10 + 8 + 1 = 19 10 for "unnamed_0x", 8
+        // for maximum size for cur_entry->ID, and 1 for
+        // null-terminator
+        char* fake_name = calloc(19, sizeof(*fake_name));
+        sprintf(fake_name, "unnamed_0x%lx", cur_entry->ID);
+        collectionPtr->name = fake_name;
       }
     }
   }
@@ -1883,7 +1845,6 @@ void extractOneVariable(VarList* varListPtr,
 }
 
 
-// TypesTable - hash table containing TypeEntry entries
 // FunctionTable - hash table containing FunctionEntry entries
 
 // Super-trivial division hashing method - do nothing.  We could
