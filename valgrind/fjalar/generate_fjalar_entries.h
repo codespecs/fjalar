@@ -298,8 +298,8 @@ FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr);
 // variable, or else it doesn't appear in this table.
 
 // Hash table containing TypeEntry entries
-// Keys: ID from dwarf_entry
-// Values: TypeEntry corresponding to the ID
+// Keys: the name of a TypeEntry (TypeEntry::collectionName)
+// Values: TypeEntry corresponding to that name
 //         (Hopefully, if all goes well, the only TypeEntry values
 //          in this table are REAL entries whose dwarf_entry has
 //          is_declaration NULL, not fake declaration entries)
@@ -307,7 +307,7 @@ FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr);
 // Only non-basic types (IS_BASIC_TYPE(t) == 0) should appear in
 // TypesTable:
 struct genhashtable* TypesTable;
-TypeEntry* findTypeEntryByName(char* name);
+__inline__ TypeEntry* findTypeEntryByName(char* name);
 
 
 // Global singleton entries for basic types.  These do not need to be
