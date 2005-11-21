@@ -150,6 +150,9 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
   curFuncPtr = findFunctionEntryByStartAddr(currentAddr);
 
   if (curFuncPtr && !atLeastOneFunctionHandled) {
+    // Right before we handle the first function entrance, update all
+    // the fjalar_name fields of all entries in FunctionTable:
+    updateAllFunctionEntryNames();
     fjalar_tool_handle_first_function_entrance();
     atLeastOneFunctionHandled = 1;
   }

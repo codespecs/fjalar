@@ -42,6 +42,7 @@ static void updateAllGlobalVariableNames();
 // Updates the full fjalar_name for all functions in FunctionTable
 // which have C++ mangled names by using the Valgrind VG_(get_fnname)
 // function and also updates the trace_vars_tree
+// MUST BE CALLED BEFORE HANDLING THE FIRST RUNNING FUNCTION
 void updateAllFunctionEntryNames() {
   extern FunctionTree* vars_tree;
   struct geniterator* it = gengetiterator(FunctionTable);
