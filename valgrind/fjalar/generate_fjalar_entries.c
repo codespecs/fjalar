@@ -1142,9 +1142,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   UShort numSuperclasses = 0;
   UShort superclassArrayIndex = 0;
 
-  if (!(e->tag_name == DW_TAG_structure_type) &&
-      !(e->tag_name == DW_TAG_union_type))
-    return;
+  tl_assert((e->tag_name == DW_TAG_structure_type) ||
+            (e->tag_name == DW_TAG_union_type));
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
@@ -1235,16 +1234,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     }
   }
 
-  // Initialize superclass entries.  This is also a minor hack.
-  // Because TypesTable hasn't been fully initialized yet, we aren't
-  // guaranteed to find an entry for the superclass(es) in TypesTable
-  // at this point.  Instead, we will just initialize the className
-  // field of each Superclass entry in the array (and the inheritance
-  // and member_var_offset fields).  Then later in
-  // initMemberFuncsAndSupers(), we use those names to look up the
-  // appropriate entries in TypesTable and populate the elements of
-  // t->superclassArray[].class with TypeEntry instances.
-
   for (superclass_index = 0;
        superclass_index < collectionPtr->num_superclasses;
        superclass_index++) {
@@ -1255,15 +1244,15 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     unsigned long super_type_loc = 0;
     if (binary_search_dwarf_entry_array(inh->superclass_type_ID, &super_type_loc)) {
       dwarf_entry* super_type_entry = &dwarf_entry_array[super_type_loc];
-      collection_type* super = 0;
+      collection_type* dwarf_super = 0;
       // Make sure that it's a collection entry
       tl_assert(tag_is_collection_type(super_type_entry->tag_name));
 
-      super = (collection_type*)(super_type_entry->entry_ptr);
+      dwarf_super = (collection_type*)(super_type_entry->entry_ptr);
 
       // Make sure that it has a name; otherwise just give up on it
-      if (super->name) {
-        VG_(printf)(" +++ super->name: %s\n", super->name);
+      if (dwarf_super->name) {
+        VG_(printf)(" +++ super->name: %s\n", dwarf_super->name);
         numSuperclasses++;
       }
     }
@@ -1285,16 +1274,17 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       unsigned long super_type_loc = 0;
       if (binary_search_dwarf_entry_array(inh->superclass_type_ID, &super_type_loc)) {
         dwarf_entry* super_type_entry = &dwarf_entry_array[super_type_loc];
-        collection_type* super = 0;
+        collection_type* dwarf_super = 0;
         // Make sure that it's a collection entry
         tl_assert(tag_is_collection_type(super_type_entry->tag_name));
 
-        super = (collection_type*)(super_type_entry->entry_ptr);
+        dwarf_super = (collection_type*)(super_type_entry->entry_ptr);
 
         // Make sure that it has a name; otherwise just give up on it
-        if (super->name) {
+        if (dwarf_super->name) {
+          TypeEntry* existing_entry = 0;
           Superclass* curSuper = &(t->superclassArray[superclassArrayIndex]);
-          curSuper->className = VG_(strdup)(super->name);
+          curSuper->className = VG_(strdup)(dwarf_super->name);
 
           switch (inh->accessibility) {
           case DW_ACCESS_private:
@@ -1309,6 +1299,36 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
           }
 
           curSuper->member_var_offset = inh->member_var_offset;
+
+          // Force the superclass TypeEntry to be loaded from
+          // TypesTable or created if it doesn't yet exist:
+          existing_entry = (TypeEntry*)gengettable(TypesTable,
+                                                   (void*)curSuper->className);
+
+          VG_(printf)("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
+                      existing_entry, curSuper->className);
+
+          if (existing_entry) {
+            curSuper->class = existing_entry;
+            // We are done!
+          }
+          // No entry exists for this name, so insert a new one:
+          else {
+            curSuper->class = (TypeEntry*)VG_(calloc)(1, sizeof(*(curSuper->class)));
+
+            // Insert it into the table BEFORE calling
+            // extractStructUnionType() or else we may infinitely
+            // recurse!
+            genputtable(TypesTable,
+                        (void*)curSuper->className,
+                        curSuper->class);
+
+            tl_assert((super_type_entry->tag_name == DW_TAG_structure_type) ||
+                      (super_type_entry->tag_name == DW_TAG_union_type));
+
+            VG_(printf)("  Doesn't exist ... trying to add class %s\n", curSuper->className);
+            extractStructUnionType(curSuper->class, super_type_entry);
+          }
 
           superclassArrayIndex++;
         }
@@ -2051,13 +2071,6 @@ void initMemberFuncsAndSupers() {
         tl_assert(*pCurMemberFunc);
         // Very important!  Signify that it's a member function
         (*pCurMemberFunc)->parentClass = t;
-      }
-
-      // Initialize the class field of each entry
-      for (i = 0; i < t->superclassArraySize; i++) {
-        Superclass* curSuper = &(t->superclassArray[i]);
-        curSuper->class = (TypeEntry*)gengettable(TypesTable,
-                                                  (void*)curSuper->className);
       }
     }
   }
