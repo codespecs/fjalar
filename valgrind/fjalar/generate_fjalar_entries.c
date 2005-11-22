@@ -30,7 +30,7 @@
 
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
-static void initMemberFuncsAndSupers();
+static void initMemberFuncs();
 static void createNamesForUnnamedDwarfEntries();
 static void updateAllVarTypes();
 
@@ -319,9 +319,9 @@ void initializeAllFjalarData()
   // find references to global variables from pointer parameters:
   initializeGlobalVarsList();
 
-  // Initialize member functions and superclasses last after
-  // TypesTable and FunctionTable have already been initialized:
-  initMemberFuncsAndSupers();
+  // Initialize member functions last after TypesTable and
+  // FunctionTable have already been initialized:
+  initMemberFuncs();
 
   updateAllVarTypes();
 
@@ -1165,7 +1165,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
   // t->memberFunctionArray with the start PC of the function, then
-  // later in initMemberFuncsAndSupers(), we will
+  // later in initMemberFuncs(), we will
   // use those start PC values to look up the actual FunctionEntry
   // entries using findFunctionEntryByStartAddr().  Thus, we
   // temporarily overload memberFunctionArray[] to hold start PC
@@ -2035,11 +2035,10 @@ int equivalentIDs(int ID1, int ID2) {
   return (ID1 == ID2);
 }
 
-// Initializes all member functions and superclass arrays for structs
-// in TypesTable.
-// Pre: This should only be run after TypesTable and FunctionTable have
-//      been initialized.
-void initMemberFuncsAndSupers() {
+// Initializes all member functions for structs in TypesTable.
+// Pre: This should only be run after TypesTable and FunctionTable
+// have been initialized.
+void initMemberFuncs() {
   struct geniterator* it = gengetiterator(TypesTable);
   // Iterate through all entries in TypesTable:
   while (!it->finished) {
@@ -2304,19 +2303,28 @@ static void XMLprintTypesTable() {
 
     if (cur_entry->isStructUnionType) {
       unsigned int i;
-      XML_PRINTF("<member-variables>\n");
-      XMLprintVariablesInList(cur_entry->memberVarList);
-      XML_PRINTF("</member-variables>\n");
 
-      XML_PRINTF("<static-member-variables>\n");
-      XMLprintVariablesInList(cur_entry->staticMemberVarList);
-      XML_PRINTF("</static-member-variables>\n");
-
-      XML_PRINTF("<member-functions>\n");
-      for (i = 0; i < cur_entry->memberFunctionArraySize; i++) {
-        XMLprintOneFunction(cur_entry->memberFunctionArray[i], 1);
+      if (cur_entry->memberVarList &&
+          (cur_entry->memberVarList->numVars > 0)) {
+        XML_PRINTF("<member-variables>\n");
+        XMLprintVariablesInList(cur_entry->memberVarList);
+        XML_PRINTF("</member-variables>\n");
       }
-      XML_PRINTF("</member-functions>\n");
+
+      if (cur_entry->staticMemberVarList &&
+          (cur_entry->staticMemberVarList->numVars > 0)) {
+        XML_PRINTF("<static-member-variables>\n");
+        XMLprintVariablesInList(cur_entry->staticMemberVarList);
+        XML_PRINTF("</static-member-variables>\n");
+      }
+
+      if (cur_entry->memberFunctionArraySize > 0) {
+        XML_PRINTF("<member-functions>\n");
+        for (i = 0; i < cur_entry->memberFunctionArraySize; i++) {
+          XMLprintOneFunction(cur_entry->memberFunctionArray[i], 1);
+        }
+        XML_PRINTF("</member-functions>\n");
+      }
 
       for (i = 0; i < cur_entry->superclassArraySize; i++) {
         XML_PRINTF("<superclass ");
@@ -2332,6 +2340,9 @@ static void XMLprintTypesTable() {
         default:
           XML_PRINTF("inheritance=\"public\"");
         }
+
+        XML_PRINTF(" member-var-offset=\"%u\"",
+                   cur_entry->superclassArray[i].member_var_offset);
 
         XML_PRINTF(">%s</superclass>\n",
                    cur_entry->superclassArray[i].className);
@@ -2422,7 +2433,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
   }
 
   if (var->isStructUnionMember) {
-    XML_PRINTF("<struct-member visibility=\"");
+    XML_PRINTF("<member-var visibility=\"");
     switch(var->visibility) {
     case PRIVATE_VISIBILITY:
       XML_PRINTF("private");
@@ -2442,7 +2453,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("<parent-type>%s</parent-type>\n",
 	       var->structParentType->collectionName);
 
-    XML_PRINTF("</struct-member>\n");
+    XML_PRINTF("</member-var>\n");
   }
 
   if (t) {
