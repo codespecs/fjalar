@@ -65,6 +65,8 @@ typedef struct _VarNode VarNode;
 
 typedef struct _FunctionEntry FunctionEntry;
 
+typedef struct _Superclass Superclass;
+
 // THIS TYPE SHOULD BE IMMUTABLE SINCE IT IS SHARED!!!  TypeEntry only
 // exist for structs and base types and NOT pointer types.  Pointers
 // are represented using the ptrLevels field of the VariableEntry
@@ -81,6 +83,10 @@ typedef struct _TypeEntry {
   char isStructUnionType;
   // Everything below here is only valid if isStructUnionType:
 
+  // (Make these small and put them together to save space)
+  UShort memberFunctionArraySize; // The size of memberFunctionArray
+  UShort superclassArraySize;     // The size of superclassArray
+
   // Non-static (instance) member variables:
   VarList* memberVarList;
 
@@ -90,14 +96,28 @@ typedef struct _TypeEntry {
   // at statically-fixed locations like global variables
   VarList* staticMemberVarList;
 
+
   // For C++: Array of pointers to member functions of this class:
   // (only non-null if there is at least 1 member function)
   FunctionEntry** memberFunctionArray;
-  // The size of memberFunctionArray:
-  UInt memberFunctionArraySize;
+
+  // A list of classes that are the superclasses of this class
+  // (only non-null if there is at least 1 superclass)
+  Superclass* superclassArray;
 
 } TypeEntry;
 
+typedef enum VisibilityType {
+  PUBLIC_VISIBILITY,
+  PROTECTED_VISIBILITY,
+  PRIVATE_VISIBILITY
+} VisibilityType;
+
+struct _Superclass {
+  char* className;
+  TypeEntry* class;
+  VisibilityType inheritance;
+};
 
 // Hash table containing structs already visited while
 // deriving variables

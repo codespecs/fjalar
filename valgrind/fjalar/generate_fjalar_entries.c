@@ -30,7 +30,7 @@
 
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
-static void initializeAllMemberFunctions();
+static void initMemberFuncsAndSupers();
 static void createNamesForUnnamedDwarfEntries();
 static void updateAllVarTypes();
 
@@ -75,23 +75,23 @@ FILE* xml_output_fp = 0;
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
-TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0};
-TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0};
-TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0};
-TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0};
-TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0};
-TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0};
-TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0};
-TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
-TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
-TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
-TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
-TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
-TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0};
-TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0};
-TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0};
+TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
@@ -318,9 +318,9 @@ void initializeAllFjalarData()
   // find references to global variables from pointer parameters:
   initializeGlobalVarsList();
 
-  // Initialize member functions last after TypesTable and
-  // FunctionTable have already been initialized:
-  initializeAllMemberFunctions();
+  // Initialize member functions and superclasses last after
+  // TypesTable and FunctionTable have already been initialized:
+  initMemberFuncsAndSupers();
 
   updateAllVarTypes();
 
@@ -358,7 +358,7 @@ void repCheckAllEntries() {
 
   // Rep. check all variables in globalVars:
 
-  VG_(printf)("  Rep. checking global variables list ... ");
+  VG_(printf)("  Rep. checking global variables list ...\n");
   for (curNode = globalVars.first;
        curNode != 0;
        curNode = curNode->next) {
@@ -382,7 +382,7 @@ void repCheckAllEntries() {
   // Rep. check all entries in FunctionTable
   it = gengetiterator(FunctionTable);
 
-  VG_(printf)("  Rep. checking function entries ... ");
+  VG_(printf)("  Rep. checking function entries ...\n");
   while (!it->finished) {
     FunctionEntry* f = (FunctionEntry*)
       gengettable(FunctionTable, gennext(it));
@@ -454,7 +454,7 @@ void repCheckAllEntries() {
 
   VG_(printf)("DONE\n");
 
-  VG_(printf)("  Rep. checking type entries ... ");
+  VG_(printf)("  Rep. checking type entries ...\n");
 
   // Rep. check all entries in TypesTable
   it = gengetiterator(TypesTable);
@@ -481,7 +481,8 @@ void repCheckAllEntries() {
       VarNode* n;
       unsigned int numMemberVars = 0;
       unsigned int prev_data_member_location = 0;
-      UInt memberFuncIndex = 0;
+      UShort memberFuncIndex = 0;
+      UShort superclassIndex = 0;
 
       tl_assert(t->collectionName);
 
@@ -566,6 +567,19 @@ void repCheckAllEntries() {
 	tl_assert(t->memberFunctionArray[memberFuncIndex]->parentClass == t);
       }
       VG_(printf)("After checking member functions\n");
+
+      // Rep. check superclasses
+      for (superclassIndex = 0;
+           superclassIndex < t->superclassArraySize;
+           superclassIndex++) {
+        // Make sure that all Superclass entries have a className and
+        // it matches the className of the corresponding TypeEntry:
+        Superclass* curSuper = &(t->superclassArray[superclassIndex]);
+        tl_assert(curSuper->className);
+        tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->collectionName));
+        VG_(printf)("superclassIndex: %u, curSuper->className: %s, inheritance: %d\n",
+                    superclassIndex, curSuper->className, curSuper->inheritance);
+      }
     }
   }
 
@@ -1111,14 +1125,20 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList
 // (DO NOT attempt to initialize t->memberFunctionArray right now
-//  because FunctionTable has not been fully initialized yet)
+//  because FunctionTable has not been fully initialized yet, and
+//  DO NOT attempt to initialize t->superclassArray right now
+//  because TypesTable has not been fully initialized yet.)
 static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 {
   collection_type* collectionPtr = 0;
-  UInt i = 0, member_func_index = 0;
+  UInt i = 0, member_func_index = 0, superclass_index = 0;
   VarNode* memberNodePtr = 0;
-  int numMemberFunctions = 0;
-  UInt memberFunctionArrayIndex = 0;
+
+  UShort numMemberFunctions = 0;
+  UShort memberFunctionArrayIndex = 0;
+
+  UShort numSuperclasses = 0;
+  UShort superclassArrayIndex = 0;
 
   if (!(e->tag_name == DW_TAG_structure_type) &&
       !(e->tag_name == DW_TAG_union_type))
@@ -1144,10 +1164,11 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
   // t->memberFunctionArray with the start PC of the function, then
-  // later in initializeAllMemberFunctions(), we will use those start
-  // PC values to look up the actual FunctionEntry entries using
-  // findFunctionEntryByStartAddr().  Thus, we temporarily overload
-  // memberFunctionArray[] to hold start PC pointer values.
+  // later in initMemberFuncsAndSupers(), we will
+  // use those start PC values to look up the actual FunctionEntry
+  // entries using findFunctionEntryByStartAddr().  Thus, we
+  // temporarily overload memberFunctionArray[] to hold start PC
+  // pointer values.
 
   // First make a dry pass to determine how many functions we actually
   // have debug. info for, and try to fill in start_pc if necessary:
@@ -1212,6 +1233,84 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     }
   }
 
+  // Initialize superclass entries.  This is also a minor hack.
+  // Because TypesTable hasn't been fully initialized yet, we aren't
+  // guaranteed to find an entry for the superclass(es) in TypesTable
+  // at this point.  Instead, we will just initialize the className
+  // field of each Superclass entry in the array (and the inheritance
+  // field).  Then later in initMemberFuncsAndSupers(), we use those
+  // names to look up the appropriate entries in TypesTable and
+  // populate the elements of t->superclassArray[].class with
+  // TypeEntry instances.
+
+  for (superclass_index = 0;
+       superclass_index < collectionPtr->num_superclasses;
+       superclass_index++) {
+    inheritance_type* inh =
+      (inheritance_type*)(collectionPtr->superclasses[superclass_index])->entry_ptr;
+
+    // Follow the type pointer:
+    unsigned long super_type_loc = 0;
+    if (binary_search_dwarf_entry_array(inh->superclass_type_ID, &super_type_loc)) {
+      dwarf_entry* super_type_entry = &dwarf_entry_array[super_type_loc];
+      collection_type* super = 0;
+      // Make sure that it's a collection entry
+      tl_assert(tag_is_collection_type(super_type_entry->tag_name));
+
+      super = (collection_type*)(super_type_entry->entry_ptr);
+
+      // Make sure that it has a name; otherwise just give up on it
+      if (super->name) {
+        VG_(printf)(" +++ super->name: %s\n", super->name);
+        numSuperclasses++;
+      }
+    }
+  }
+
+  // Now make a second pass and initialize superclassArray:
+  if (numSuperclasses > 0) {
+    t->superclassArraySize = numSuperclasses;
+    t->superclassArray = (Superclass*)VG_(calloc)(numSuperclasses,
+                                                  sizeof(*(t->superclassArray)));
+
+    for (superclass_index = 0;
+         superclass_index < collectionPtr->num_superclasses;
+         superclass_index++) {
+      inheritance_type* inh =
+        (inheritance_type*)(collectionPtr->superclasses[superclass_index])->entry_ptr;
+
+      // Follow the type pointer:
+      unsigned long super_type_loc = 0;
+      if (binary_search_dwarf_entry_array(inh->superclass_type_ID, &super_type_loc)) {
+        dwarf_entry* super_type_entry = &dwarf_entry_array[super_type_loc];
+        collection_type* super = 0;
+        // Make sure that it's a collection entry
+        tl_assert(tag_is_collection_type(super_type_entry->tag_name));
+
+        super = (collection_type*)(super_type_entry->entry_ptr);
+
+        // Make sure that it has a name; otherwise just give up on it
+        if (super->name) {
+          Superclass* curSuper = &(t->superclassArray[superclassArrayIndex]);
+          curSuper->className = VG_(strdup)(super->name);
+
+          switch (inh->accessibility) {
+          case DW_ACCESS_private:
+            curSuper->inheritance = PRIVATE_VISIBILITY;
+            break;
+          case DW_ACCESS_protected:
+            curSuper->inheritance = PROTECTED_VISIBILITY;
+            break;
+          case DW_ACCESS_public:
+          default:
+            curSuper->inheritance = PUBLIC_VISIBILITY;
+          }
+
+          superclassArrayIndex++;
+        }
+      }
+    }
+  }
 
   t->memberVarList = (VarList*)VG_(calloc)(1, sizeof(*(t->memberVarList)));
 
@@ -1896,10 +1995,11 @@ int equivalentIDs(int ID1, int ID2) {
   return (ID1 == ID2);
 }
 
-// Initializes all member functions for structs in TypesTable:
+// Initializes all member functions and superclass arrays for structs
+// in TypesTable.
 // Pre: This should only be run after TypesTable and FunctionTable have
 //      been initialized.
-void initializeAllMemberFunctions() {
+void initMemberFuncsAndSupers() {
   struct geniterator* it = gengetiterator(TypesTable);
   // Iterate through all entries in TypesTable:
   while (!it->finished) {
@@ -1917,7 +2017,7 @@ void initializeAllMemberFunctions() {
       // pointer values.  Now we will iterate over those values and
       // use findFunctionEntryByStartAddr() to try to fill them in
       // with actual FunctionEntry instances:
-      unsigned int i;
+      UShort i;
 
       for (i = 0; i < t->memberFunctionArraySize; i++) {
         FunctionEntry** pCurMemberFunc = &t->memberFunctionArray[i];
@@ -1931,6 +2031,13 @@ void initializeAllMemberFunctions() {
         tl_assert(*pCurMemberFunc);
         // Very important!  Signify that it's a member function
         (*pCurMemberFunc)->parentClass = t;
+      }
+
+      // Initialize the class field of each entry
+      for (i = 0; i < t->superclassArraySize; i++) {
+        Superclass* curSuper = &(t->superclassArray[i]);
+        curSuper->class = (TypeEntry*)gengettable(TypesTable,
+                                                  (void*)curSuper->className);
       }
     }
   }
@@ -2177,6 +2284,25 @@ static void XMLprintTypesTable() {
         XMLprintOneFunction(cur_entry->memberFunctionArray[i], 1);
       }
       XML_PRINTF("</member-functions>\n");
+
+      for (i = 0; i < cur_entry->superclassArraySize; i++) {
+        XML_PRINTF("<superclass ");
+
+        switch(cur_entry->superclassArray[i].inheritance) {
+        case PRIVATE_VISIBILITY:
+          XML_PRINTF("inheritance=\"private\"");
+          break;
+        case PROTECTED_VISIBILITY:
+          XML_PRINTF("inheritance=\"protected\"");
+          break;
+        case PUBLIC_VISIBILITY:
+        default:
+          XML_PRINTF("inheritance=\"public\"");
+        }
+
+        XML_PRINTF(">%s</superclass>\n",
+                   cur_entry->superclassArray[i].className);
+      }
     }
 
     XML_PRINTF("</type>\n");

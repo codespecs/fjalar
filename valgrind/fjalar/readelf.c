@@ -7977,15 +7977,15 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
 	{
 	case DW_ACCESS_public:
           if (print_results_and_ok) printf ("(public)");
-          if (ok) harvest_function_accessibility(entry, DW_ACCESS_public);
+          if (ok) harvest_accessibility(entry, DW_ACCESS_public);
           break;
 	case DW_ACCESS_protected:
           if (print_results_and_ok) printf ("(protected)");
-          if (ok) harvest_function_accessibility(entry, DW_ACCESS_protected);
+          if (ok) harvest_accessibility(entry, DW_ACCESS_protected);
           break;
 	case DW_ACCESS_private:
           if (print_results_and_ok) printf ("(private)");
-          if (ok) harvest_function_accessibility(entry, DW_ACCESS_private);
+          if (ok) harvest_accessibility(entry, DW_ACCESS_private);
           break;
 	default:
 	  if (print_results_and_ok) printf ("(unknown accessibility)");
