@@ -253,7 +253,7 @@ char tag_is_inheritance(unsigned long tag) {
 // DW_AT_specification: function, variable
 // DW_AT_declaration: function, variable, collection_type
 // DW_AT_artificial: variable
-// DW_AT_accessibility: function, inheritance
+// DW_AT_accessibility: function, inheritance, member, variable
 
 // Returns: 1 if the entry has a type that is listening for the
 // given attribute (attr), 0 otherwise
@@ -335,7 +335,9 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return tag_is_variable(tag);
     case DW_AT_accessibility:
       return (tag_is_function(tag) ||
-              tag_is_inheritance(tag));
+              tag_is_inheritance(tag) ||
+              tag_is_member(tag) ||
+              tag_is_variable(tag));
     default:
       return 0;
     }
@@ -583,6 +585,18 @@ char harvest_accessibility(dwarf_entry* e, char a) {
     {
       ((inheritance_type*)e->entry_ptr)->accessibility = a;
       VG_(printf)("harvest_accessibility (inheritance) %d\n", a);
+      return 1;
+    }
+  else if (tag_is_member(tag))
+    {
+      ((member*)e->entry_ptr)->accessibility = a;
+      VG_(printf)("harvest_accessibility (member var.) %d\n", a);
+      return 1;
+    }
+  else if (tag_is_variable(tag))
+    {
+      ((variable*)e->entry_ptr)->accessibility = a;
+      VG_(printf)("harvest_accessibility (variable) %d\n", a);
       return 1;
     }
   else

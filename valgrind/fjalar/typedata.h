@@ -66,6 +66,7 @@ typedef struct
 {
   unsigned long superclass_type_ID; // the ID of the superclass
   unsigned long accessibility;      // the type of inheritance (public, protected, private)
+  unsigned long member_var_offset;  // the offset of member variables inherited from this class
 } inheritance_type;
 
 // collection_type corresponds to the following DWARF2 types:
@@ -120,6 +121,8 @@ typedef struct
                              // This is stored as:
                              // (DW_OP_plus_uconst: x)
                              // where x is the location relative to struct head
+
+  unsigned long accessibility;  // accessibility of this member variable (public, protected, or private)
 
   // TODO: support for bit fields not yet implemented
   //  char is_bit_field; // 1 = bit field
@@ -277,6 +280,9 @@ typedef struct
   unsigned long globalVarAddr; // only valid for global variables
   int offset; // only valid for local variables
 
+  // accessibility of this variable (public, protected, or private)
+  // (only relevant if isStaticMemberVar)
+  unsigned long accessibility;
 } variable;
 
 // Globals

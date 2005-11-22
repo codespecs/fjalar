@@ -206,6 +206,8 @@ typedef struct _VariableEntry {
                                 // member variables, or it's also active (without isGlobal)
                                 // for all struct member variables
 
+  VisibilityType visibility; // Only relevant for C++ member variables
+
   // Only relevant for pointer variables (ptrLevels > 0):
   // 1 if this particular variable has ever pointed to
   // more than 1 element, 0 otherwise.
