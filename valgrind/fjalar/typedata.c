@@ -235,7 +235,7 @@ char tag_is_inheritance(unsigned long tag) {
 // List of attributes and the types which listen for them:
 
 // DW_AT_location: formal_parameter, variable
-// DW_AT_data_member_location: member
+// DW_AT_data_member_location: member, inheritance
 // DW_AT_name: collection_type, member, enumerator, function, formal_parameter, compile_unit, variable, typedef
 // DW_AT_byte_size: base_type, collection_type, member
 // DW_AT_bit_offset: base_type, member
@@ -277,7 +277,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return (tag_is_formal_parameter(tag) ||
               tag_is_variable(tag));
     case DW_AT_data_member_location:
-      return tag_is_member(tag);
+      return (tag_is_member(tag) ||
+              tag_is_inheritance(tag));
     case DW_AT_name:
       return (tag_is_collection_type(tag) ||
               tag_is_member(tag) ||
@@ -809,6 +810,11 @@ char harvest_data_member_location(dwarf_entry* e, unsigned long value)
   if (tag_is_member(tag))
     {
       ((member*)e->entry_ptr)->data_member_location = value;
+      return 1;
+    }
+  if (tag_is_inheritance(tag))
+    {
+      ((inheritance_type*)e->entry_ptr)->member_var_offset = value;
       return 1;
     }
   else

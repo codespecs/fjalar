@@ -117,6 +117,12 @@ struct _Superclass {
   char* className;
   TypeEntry* class;
   VisibilityType inheritance;
+  // All the member vars of this superclass are located within the
+  // subclass starting at location member_var_offset.  This means that
+  // we must add member_var_offset to the data_member_location of
+  // member variables in 'class' in order to find them in the
+  // sub-class:
+  unsigned long member_var_offset;
 };
 
 // Hash table containing structs already visited while
