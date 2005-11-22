@@ -1240,10 +1240,10 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // guaranteed to find an entry for the superclass(es) in TypesTable
   // at this point.  Instead, we will just initialize the className
   // field of each Superclass entry in the array (and the inheritance
-  // field).  Then later in initMemberFuncsAndSupers(), we use those
-  // names to look up the appropriate entries in TypesTable and
-  // populate the elements of t->superclassArray[].class with
-  // TypeEntry instances.
+  // and member_var_offset fields).  Then later in
+  // initMemberFuncsAndSupers(), we use those names to look up the
+  // appropriate entries in TypesTable and populate the elements of
+  // t->superclassArray[].class with TypeEntry instances.
 
   for (superclass_index = 0;
        superclass_index < collectionPtr->num_superclasses;
@@ -1307,6 +1307,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
           default:
             curSuper->inheritance = PUBLIC_VISIBILITY;
           }
+
+          curSuper->member_var_offset = inh->member_var_offset;
 
           superclassArrayIndex++;
         }
