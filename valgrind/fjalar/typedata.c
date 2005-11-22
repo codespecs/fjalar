@@ -88,7 +88,7 @@ Returns: 1 if tag = {DW_TAG_base_type, _const_type, _enumerator,
                      _array_type, _subprogram,
                      _union_type, _enumeration_type, _member, _subroutine_type
                      _structure_type, _volatile_type, _compile_unit,
-                     _array_type, _subrange_type, _typedef, _variable},
+                     _array_type, _subrange_type, _typedef, _variable, _inheritance},
                      0 otherwise
 Effects: Used to determine which entries to record into a dwarf_entry structure;
          All relevant entries should be included here
@@ -115,6 +115,7 @@ char tag_is_relevant_entry(unsigned long tag)
     case DW_TAG_subrange_type:
     case DW_TAG_typedef:
     case DW_TAG_variable:
+    case DW_TAG_inheritance:
       return 1;
     default:
       return 0;
@@ -220,6 +221,10 @@ char tag_is_variable(unsigned long tag) {
   return (tag == DW_TAG_variable);
 }
 
+char tag_is_inheritance(unsigned long tag) {
+  return (tag == DW_TAG_inheritance);
+}
+
 /*------------------
  Attribute listeners
  ------------------*/
@@ -236,7 +241,7 @@ char tag_is_variable(unsigned long tag) {
 // DW_AT_bit_offset: base_type, member
 // DW_AT_bit_size: base_type, member
 // DW_AT_const_value: enumerator
-// DW_AT_type: modifier, member, function, formal_parameter, array_type, subrange_type, variable, typedef
+// DW_AT_type: modifier, member, function, formal_parameter, array_type, subrange_type, variable, typedef, inheritance
 // DW_AT_encoding: base_type
 // DW_AT_comp_dir: compile_unit
 // DW_AT_external: function, variable
@@ -248,7 +253,7 @@ char tag_is_variable(unsigned long tag) {
 // DW_AT_specification: function, variable
 // DW_AT_declaration: function, variable, collection_type
 // DW_AT_artificial: variable
-// DW_AT_accessibility: function
+// DW_AT_accessibility: function, inheritance
 
 // Returns: 1 if the entry has a type that is listening for the
 // given attribute (attr), 0 otherwise
@@ -302,7 +307,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_function_type(tag) ||
               tag_is_array_type(tag) ||
               tag_is_typedef(tag) ||
-              tag_is_variable(tag));
+              tag_is_variable(tag) ||
+              tag_is_inheritance(tag));
     case DW_AT_encoding:
       return tag_is_base_type(tag);
     case DW_AT_comp_dir:
@@ -328,7 +334,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_artificial:
       return tag_is_variable(tag);
     case DW_AT_accessibility:
-      return tag_is_function(tag);
+      return (tag_is_function(tag) ||
+              tag_is_inheritance(tag));
     default:
       return 0;
     }
@@ -388,6 +395,12 @@ char harvest_type_value(dwarf_entry* e, unsigned long value)
   else if (tag_is_variable(tag))
     {
       ((variable*)e->entry_ptr)->type_ID = value;
+      return 1;
+    }
+  else if (tag_is_inheritance(tag))
+    {
+      VG_(printf)("inheritance superclass type = 0x%x\n", value);
+      ((inheritance_type*)e->entry_ptr)->superclass_type_ID = value;
       return 1;
     }
   else
@@ -543,7 +556,7 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value) {
 
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->specification_ID = value;
-    //    VG_(printf)("harvest_function_specification_value %x\n", value);
+    //    VG_(printf)("harvest_specification_value %x\n", value);
     return 1;
   }
   else if (value && (tag_is_variable(tag))) {
@@ -554,7 +567,7 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value) {
     return 0;
 }
 
-char harvest_function_accessibility(dwarf_entry* e, char a) {
+char harvest_accessibility(dwarf_entry* e, char a) {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
     return 0;
@@ -563,9 +576,15 @@ char harvest_function_accessibility(dwarf_entry* e, char a) {
 
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->accessibility = a;
-    //    VG_(printf)("harvest_function_accessibility %d\n", a);
+    //    VG_(printf)("harvest_accessibility %d\n", a);
     return 1;
   }
+  else if (tag_is_inheritance(tag))
+    {
+      ((inheritance_type*)e->entry_ptr)->accessibility = a;
+      VG_(printf)("harvest_accessibility (inheritance) %d\n", a);
+      return 1;
+    }
   else
     return 0;
 }
@@ -1180,18 +1199,21 @@ void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end)
 }
 
 // Same as above except linking collections (structs, classes, unions, enums)
-// with their member variables (both static and instance) and functions
+// with their member variables (both static and instance), functions,
+// and superclasses (if any)
 // Precondition: In dwarf_entry_array, all members and member functions
 // are listed after the collection's entry with its "level" as 1
 // greater than the "level" of the collection's dwarf_entry 'e',
 // 'e' if of type {collection}
 // Postcondition: num_member_vars, member_vars, num_member_funcs, member_funcs
-// num_static_member_vars, static_member_vars are all properly initialized
+// num_static_member_vars, static_member_vars, num_superclasses, superclasses
+// are all properly initialized
 void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 {
-  unsigned long member_var_count = 0;
-  unsigned long static_member_var_count = 0;
-  unsigned long member_func_count = 0;
+  unsigned short member_var_count = 0;
+  unsigned short static_member_var_count = 0;
+  unsigned short member_func_count = 0;
+  unsigned short superclass_count = 0;
 
   int collection_entry_level = e->level;
   int local_dist_to_end = dist_to_end;
@@ -1212,8 +1234,9 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
-  // structs/classes expect DW_TAG_variable as static member variables
-  // and DW_TAG_subprogram as member functions
+  // structs/classes expect DW_TAG_variable as static member variables,
+  // DW_TAG_subprogram as member functions, and DW_TAG_inheritance as
+  // superclass identifiers
 
   // Make one pass from the collection entry all the way to
   // to get the numbers of member variables
@@ -1242,6 +1265,9 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
           // Set the is_member_func flag here:
           ((function*)(cur_entry->entry_ptr))->is_member_func = 1;
         }
+        else if (tag_is_inheritance(cur_entry->tag_name)) {
+          superclass_count++;
+        }
       }
     }
 
@@ -1252,8 +1278,9 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   collection_ptr->num_member_vars = member_var_count;
   collection_ptr->num_static_member_vars = static_member_var_count;
   collection_ptr->num_member_funcs = member_func_count;
+  collection_ptr->num_superclasses = superclass_count;
 
-  // Make a second pass (actually three second passes)
+  // Make a second pass (actually four second passes)
   // to actually populate the newly-created arrays with entries
   if (member_var_count > 0) {
     int member_var_index = 0;
@@ -1326,6 +1353,27 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
       local_dist_to_end--;
     }
   }
+
+  if (superclass_count > 0) {
+    int superclass_index = 0;
+    collection_ptr->superclasses = (dwarf_entry**)VG_(calloc)(superclass_count, sizeof(dwarf_entry*));
+
+    cur_entry = (e + 1);
+    local_dist_to_end = dist_to_end;
+
+    while ((local_dist_to_end > 0) &&
+	   (cur_entry->level > collection_entry_level)) {
+      if (cur_entry->level == (collection_entry_level + 1)) {
+        if (tag_is_inheritance(cur_entry->tag_name)) {
+          collection_ptr->superclasses[superclass_index] = cur_entry;
+          superclass_index++;
+	}
+      }
+
+      cur_entry++; // Move to the next entry in dwarf_entry_array
+      local_dist_to_end--;
+    }
+  }
 }
 
 // Same as above except linking functions with formal parameters and local variables
@@ -1344,8 +1392,8 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 //  mangled_name, return_type_ID, and accessibility from X to e
 void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_to_end)
 {
-  unsigned long param_count = 0;
-  unsigned long var_count = 0;
+  unsigned short param_count = 0;
+  unsigned short var_count = 0;
 
   int function_entry_level = e->level;
   int local_dist_to_end = dist_to_end;
@@ -1945,6 +1993,13 @@ void initialize_dwarf_entry_ptr(dwarf_entry* e)
         {
           e->entry_ptr = VG_(calloc)(1, sizeof(variable));
         }
+      else if (tag_is_inheritance(e->tag_name))
+        {
+          e->entry_ptr = VG_(calloc)(1, sizeof(inheritance_type));
+        }
+      else {
+        tl_assert(0); // Error
+      }
     }
 }
 

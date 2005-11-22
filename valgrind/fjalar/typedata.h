@@ -61,6 +61,13 @@ typedef struct
   dwarf_entry* target_ptr; // Type that this entry modifies (DW_AT_type)
 } modifier_type;
 
+// For C++ inheritance:
+typedef struct
+{
+  unsigned long superclass_type_ID; // the ID of the superclass
+  unsigned long accessibility;      // the type of inheritance (public, protected, private)
+} inheritance_type;
+
 // collection_type corresponds to the following DWARF2 types:
 //   {DW_TAG_structure_type, _union_type, _enumeration_type}
 typedef struct
@@ -77,11 +84,15 @@ typedef struct
 
   unsigned long byte_size;
 
-  unsigned long num_member_vars;
+  // Make these small and smash them together to save space:
+  unsigned short num_member_vars;
+  unsigned short num_member_funcs; // C++ only - for member functions
+  unsigned short num_static_member_vars; // C++ only - for static member variables
+  unsigned short num_superclasses; // C++ only - for superclasses
+
   dwarf_entry** member_vars; // Array of size num_members; Each element is a
                             // POINTER to a dwarf_entry of type = {member, enumerator}
 
-  unsigned long num_member_funcs; // C++ only - for member functions
   dwarf_entry** member_funcs; // Array of size num_members; Each element is a
                               // POINTER to a dwarf_entry of type = {function}
                               // but these functions are only "declarations" and we need
@@ -89,9 +100,12 @@ typedef struct
                               // (This is only true if function definitions and declarations
                               //  are made in separate .h and .cpp files in typical C++ fashion)
 
-  unsigned long num_static_member_vars; // C++ only - for static member variables
   dwarf_entry** static_member_vars; // Array of size num_static_member_vars; Each element is a
                                     // POINTER to a dwarf_entry of type = {variable}
+
+  // The superclasses of this class (C++ only) - gotten from DW_TAG_inheritance
+  dwarf_entry** superclasses; // Array of size num_superclasses; each entry is a POINTER
+                              // to a dwarf_entry of type {inheritance_type}
 } collection_type;
 
 // struct or union member
@@ -133,14 +147,16 @@ typedef struct
   unsigned long return_type_ID;
   dwarf_entry* return_type;
 
+  // Make these small and smash them together to save space:
+  unsigned short num_formal_params;
+  unsigned short num_local_vars;
+
   // This array is NO LONGER inlined within dwarf_entry_array
-  unsigned long num_formal_params;
   dwarf_entry** params; // Array of size num_formal_params, type = {formal_parameter}
                         // Each entry of this array is a POINTER to a dwarf_entry
                         // of type {formal_parameter}
 
   // This array is NO LONGER inlined within dwarf_entry_array
-  unsigned long num_local_vars;
   dwarf_entry** local_vars; // Array of size num_local_vars, type = {variable}
                             // Each entry of this array is a POINTER to a dwarf_entry
                             // of type {variable}
@@ -314,6 +330,7 @@ char tag_is_function(unsigned long tag);
 char tag_is_formal_parameter(unsigned long tag);
 char tag_is_compile_unit(unsigned long tag);
 char tag_is_function_type(unsigned long tag);
+char tag_is_inheritance(unsigned long tag);
 char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr);
 
 char harvest_type_value(dwarf_entry* e, unsigned long value);
@@ -337,7 +354,7 @@ char harvest_sibling(dwarf_entry* e, unsigned long value);
 char harvest_declaration_value(dwarf_entry* e, unsigned long value);
 char harvest_artificial_value(dwarf_entry* e, unsigned long value);
 char harvest_specification_value(dwarf_entry* e, unsigned long value);
-char harvest_function_accessibility(dwarf_entry* e, char a);
+char harvest_accessibility(dwarf_entry* e, char a);
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
 
