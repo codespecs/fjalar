@@ -61,6 +61,7 @@ static void extractOneVariable(VarList* varListPtr,
                                int internalBitOffset,
                                int internalBitSize,
                                TypeEntry* structParentType,
+                               unsigned long dwarf_accessibility,
                                char isFormalParam);
 
 static void repCheckOneVariable(VariableEntry* var);
@@ -576,6 +577,7 @@ void repCheckAllEntries() {
         // it matches the className of the corresponding TypeEntry:
         Superclass* curSuper = &(t->superclassArray[superclassIndex]);
         tl_assert(curSuper->className);
+        tl_assert(curSuper->class);
         tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->collectionName));
         VG_(printf)("superclassIndex: %u, curSuper->className: %s, inheritance: %d\n",
                     superclassIndex, curSuper->className, curSuper->inheritance);
@@ -718,7 +720,7 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 		     variablePtr->is_external,
                      variablePtr->globalVarAddr,
 		     functionStartPC,
-		     0,0,0,0,0,0,0);
+		     0,0,0,0,0,0,0,0);
 
   FJALAR_DPRINTF("EXIT extractOneGlobalVariable(%p)\n", e);
 }
@@ -1335,6 +1337,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
                        memberPtr->internal_bit_offset,
                        memberPtr->internal_bit_size,
                        t,
+                       memberPtr->accessibility,
                        0);
   }
 
@@ -1382,6 +1385,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 			 0,
 			 1, 0, 0, 0, 0,
 			 t,
+                         staticMemberPtr->accessibility,
 			 0);
 
       FJALAR_DPRINTF("Finished Trying to extractOneVariable on member var: %s\n",
@@ -1595,7 +1599,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 		     0,
 		     0,
 		     0,
-		     0,0,0,0,0,0,1);
+		     0,0,0,0,0,0,0,1);
 }
 
 static void extractFormalParameterVars(FunctionEntry* f,
@@ -1666,7 +1670,7 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
 		     0,
 		     0,
 		     0,
-		     0,0,0,0,0,0,0);
+		     0,0,0,0,0,0,0,0);
 }
 
 static void extractReturnVar(FunctionEntry* f,
@@ -1697,7 +1701,7 @@ static void extractReturnVar(FunctionEntry* f,
 		     0,
 		     0,
 		     0,
-		     0,0,0,0,0,0,0);
+		     0,0,0,0,0,0,0,0);
 }
 
 
@@ -1751,6 +1755,7 @@ void extractOneVariable(VarList* varListPtr,
 			int internalBitOffset,
 			int internalBitSize,
 			TypeEntry* structParentType,
+                        unsigned long dwarf_accessibility,
                         char isFormalParam) // All static arrays which are
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
@@ -1796,6 +1801,19 @@ void extractOneVariable(VarList* varListPtr,
   varPtr->internalBitOffset = internalBitOffset;
   varPtr->internalBitSize = internalBitSize;
   varPtr->structParentType = structParentType;
+
+  // Figure out varPtr->visibility:
+  switch (dwarf_accessibility) {
+  case DW_ACCESS_private:
+    varPtr->visibility = PRIVATE_VISIBILITY;
+    break;
+  case DW_ACCESS_protected:
+    varPtr->visibility = PROTECTED_VISIBILITY;
+    break;
+  case DW_ACCESS_public:
+  default:
+    varPtr->visibility = PUBLIC_VISIBILITY;
+  }
 
   FJALAR_DPRINTF("About to strip modifiers for %s\n", variableName);
 
@@ -2389,7 +2407,19 @@ static void XMLprintOneVariable(VariableEntry* var) {
   }
 
   if (var->isStructUnionMember) {
-    XML_PRINTF("<struct-member>\n");
+    XML_PRINTF("<struct-member visibility=\"");
+    switch(var->visibility) {
+    case PRIVATE_VISIBILITY:
+      XML_PRINTF("private");
+      break;
+    case PROTECTED_VISIBILITY:
+      XML_PRINTF("protected");
+      break;
+    case PUBLIC_VISIBILITY:
+    default:
+      XML_PRINTF("public");
+    }
+    XML_PRINTF("\">\n");
 
     XML_PRINTF("<member-location>%lu</member-location>\n",
 	       var->data_member_location);
