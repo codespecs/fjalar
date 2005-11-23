@@ -234,6 +234,10 @@ void genfreehashtableandvalues(struct genhashtable * ht) {
 struct geniterator * gengetiterator(struct genhashtable *ht) {
   struct geniterator *gi=(struct geniterator*)VG_(calloc)(1,sizeof(struct geniterator));
   gi->ptr=ht->list;
+  // pgbovine - to handle an iterator to an empty hashtable
+  if (!gi->ptr) {
+    gi->finished = 1;
+  }
   return gi;
 }
 

@@ -180,11 +180,19 @@ typedef struct _VariableEntry {
   // Levels of pointer indirection until we reach varType.  This
   // allows a single VarType instance to be able to represent
   // variables that are pointers to that type.
-  int ptrLevels;
+  // If something is an array, that increments ptrLevels as well.
+  // [For C++, this does NOT take reference (&) modifiers into account]
+  char ptrLevels;
+
+  // For C++ only, this is 1 if this variable is a reference to the
+  // type denoted by varType (this shouldn't really increase above 1
+  // because you can't have multiple levels of references, I don't
+  // think)
+  char referenceLevels;
 
   // Statically-allocated array information
   // (Only valid if isStaticArray)
-  int numDimensions; // The number of dimensions of this array
+  char numDimensions; // The number of dimensions of this array
   // This is an array of size numDimensions:
   unsigned int* upperBounds; // The upper bound in each dimension
   // e.g. myArray[30][40][50] would have numDimensions = 3
@@ -195,6 +203,15 @@ typedef struct _VariableEntry {
   // (Automatically set a 'P' disambig for the C++ 'this' parameter
   // since it will always point to one element)
   char disambig;
+
+  // Only relevant for pointer variables (ptrLevels > 0):
+  // 1 if this particular variable has ever pointed to
+  // more than 1 element, 0 otherwise.
+  // These are the only two fields of this struct which should
+  // EVER be modified after their creation.
+  // They are used to generate a .disambig file using --smart-disambig
+  char disambigMultipleElts;
+  char pointerHasEverBeenObserved;
 
   // Struct member information
   char isStructUnionMember;
@@ -213,15 +230,6 @@ typedef struct _VariableEntry {
                                 // for all struct member variables
 
   VisibilityType visibility; // Only relevant for C++ member variables
-
-  // Only relevant for pointer variables (ptrLevels > 0):
-  // 1 if this particular variable has ever pointed to
-  // more than 1 element, 0 otherwise.
-  // These are the only two fields of this struct which should
-  // EVER be modified after their creation.
-  // They are used to generate a .disambig file using --smart-disambig
-  char disambigMultipleElts;
-  char pointerHasEverBeenObserved;
 
 } VariableEntry;
 
