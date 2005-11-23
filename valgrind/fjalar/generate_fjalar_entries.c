@@ -655,6 +655,13 @@ static void repCheckOneVariable(VariableEntry* var) {
     tl_assert(0 == var->internalBitSize);
   }
 
+  tl_assert(var->ptrLevels >= 0);
+
+  // C++ reference vars should never have more than 1 level of
+  // reference '&' right?
+  tl_assert((var->referenceLevels == 0) ||
+            (var->referenceLevels == 1));
+
   VG_(printf)(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
 	      var->structParentType ? var->structParentType->collectionName : "no parent",
 	      var,
@@ -983,7 +990,6 @@ void initializeFunctionTable()
 
 
 // Extracts dummy modifier type information from modifierPtr
-// "const", "volatile", or "pointer": it simply discards tag and moves on,
 // returning the new stripped dwarf entry
 static dwarf_entry* extractModifierType(modifier_type* modifierPtr)
 {
@@ -1319,6 +1325,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
             // Insert it into the table BEFORE calling
             // extractStructUnionType() or else we may infinitely
             // recurse!
+            VG_(printf)("  Insert %s (superclass) into TypesTable\n", curSuper->className);
             genputtable(TypesTable,
                         (void*)curSuper->className,
                         curSuper->class);
@@ -1783,7 +1790,8 @@ void extractOneVariable(VarList* varListPtr,
 // just because that's how the C language works
 {
   VariableEntry* varPtr = 0;
-  int ptrLevels = 0;
+  char ptrLevels = 0;
+  char referenceLevels = 0;
 
   VG_(printf)("Entering extractOneVariable for %s\n", variableName);
 
@@ -1852,17 +1860,18 @@ void extractOneVariable(VarList* varListPtr,
 
 	  // If the parameter is a "pointer" type, create one pointer
 	  // variable then one derived variable for every layer of indirection
-	  if (typePtr->tag_name == DW_TAG_pointer_type)
-	    {
-	      typePtr = extractModifierType(modifierPtr);
-	      ptrLevels++;
-	    }
-	  else
-	    {
-	      // If the parameter is a "const" or "volatile" type, just strip
-	      // off the "const" or "volatile" and process it again
-	      typePtr = extractModifierType(modifierPtr);
-	    }
+	  if (typePtr->tag_name == DW_TAG_pointer_type) {
+            ptrLevels++;
+          }
+          // If the parameter is a C++ reference:
+          // (this should really be incremented only once)
+	  else if (typePtr->tag_name == DW_TAG_reference_type) {
+              referenceLevels++;
+          }
+
+          // If the parameter is a "const" or "volatile" type, just strip
+          // off the "const" or "volatile" and process it again
+          typePtr = extractModifierType(modifierPtr);
 	}
       else if (tag_is_array_type(typePtr->tag_name))
 	{
@@ -1881,6 +1890,7 @@ void extractOneVariable(VarList* varListPtr,
   FJALAR_DPRINTF("typePtr is %p\n", typePtr);
 
   varPtr->ptrLevels = ptrLevels;
+  varPtr->referenceLevels = referenceLevels;
 
   if (typePtr && (typePtr->tag_name == DW_TAG_structure_type)) {
     char* type_name = ((collection_type*)(typePtr->entry_ptr))->name;
@@ -1977,6 +1987,7 @@ void extractOneVariable(VarList* varListPtr,
 
         // Insert it into the table BEFORE calling
         // extractStructUnionType() or else we may infinitely recurse!
+        VG_(printf)("  Insert %s into TypesTable\n", collectionPtr->name);
         genputtable(TypesTable,
                     (void*)collectionPtr->name,
                     varPtr->varType);
@@ -2384,7 +2395,6 @@ static void XMLprintOneVariable(VariableEntry* var) {
   XML_PRINTF("<variable>\n");
 
   XML_PRINTF("<name>%s</name>\n", var->name);
-  XML_PRINTF("<pointer-levels>%d</pointer-levels>\n", var->ptrLevels);
 
   if (var->isGlobal) {
     XML_PRINTF("<global-var>\n");
@@ -2457,7 +2467,20 @@ static void XMLprintOneVariable(VariableEntry* var) {
   }
 
   if (t) {
-    XML_PRINTF("<var-type>\n");
+    XML_PRINTF("<var-type");
+
+    if (var->ptrLevels > 0) {
+      XML_PRINTF(" pointer-levels=\"%d\"", var->ptrLevels);
+    }
+    if (var->referenceLevels > 0) {
+      XML_PRINTF(" reference-levels=\"%d\"", var->referenceLevels);
+    }
+    if (var->isString) {
+      XML_PRINTF(" is-string=\"true\"");
+    }
+
+    XML_PRINTF(">\n");
+
     XML_PRINTF("<declared-type>%s</declared-type>\n",
 	       DeclaredTypeNames[t->decType]);
     XML_PRINTF("<byte-size>%d</byte-size>\n",
@@ -2466,10 +2489,6 @@ static void XMLprintOneVariable(VariableEntry* var) {
     if (t->collectionName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
 		 t->collectionName);
-    }
-
-    if (var->isString) {
-      XML_PRINTF("<is-string/>\n");
     }
 
     XML_PRINTF("</var-type>\n");
