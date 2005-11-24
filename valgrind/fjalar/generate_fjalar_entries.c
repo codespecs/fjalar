@@ -227,6 +227,67 @@ static char ignore_type_with_name(char* name) {
     return 0;
 }
 
+// Super simple list - doesn't do any dynamic allocation or
+// deallocation of elt - just stores pointers:
+
+// Insert elt at the head of lst, allocating a new SimpleNode
+void SimpleListPush(SimpleList* lst, void* elt) {
+  SimpleNode* newNode;
+  tl_assert(lst);
+  newNode = VG_(calloc)(1, sizeof(*newNode));
+  newNode->elt = elt;
+
+  if (lst->first) {
+    tl_assert(lst->numElts > 0);
+    newNode->next = lst->first;
+  }
+  else {
+    tl_assert(lst->numElts == 0);
+    newNode->next = NULL;
+  }
+
+  lst->first = newNode;
+  lst->numElts++;
+}
+
+// Pops off head element and returns it.
+// Returns 0 if no more stuff to pop
+void* SimpleListPop(SimpleList* lst) {
+  if (lst->first) {
+    SimpleNode* curNode;
+    void* ret;
+    tl_assert(lst->numElts > 0);
+
+    curNode = lst->first;
+    ret = curNode->elt;
+    lst->first = curNode->next;
+    lst->numElts--;
+    VG_(free)(curNode);
+    return ret;
+  }
+  else {
+    tl_assert(lst->numElts == 0);
+    VG_(printf)(" Warning - SimpleListPop() attempting to pop an empty list\n");
+    return 0;
+  }
+}
+
+// Clears all elts in lst, freeing all SimpleNode(s)
+void SimpleListClear(SimpleList* lst) {
+  while (lst->first) {
+    SimpleNode* tmp = lst->first;
+    lst->first = tmp->next;
+    VG_(free)(tmp);
+    lst->numElts--;
+  }
+  tl_assert(lst->numElts == 0);
+}
+
+void SimpleListInit(SimpleList* lst) {
+  lst->first = NULL;
+  lst->numElts = 0;
+}
+
 // Inserts a new node at the end of varListPtr
 void insertNewNode(VarList* varListPtr)
 {
