@@ -31,6 +31,7 @@
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
 static void initMemberFuncs();
+static void initConstructorsAndDestructors();
 static void createNamesForUnnamedDwarfEntries();
 static void updateAllVarTypes();
 
@@ -185,7 +186,8 @@ static char ignore_function_with_name(char* name) {
       (0 == VG_(strncmp)(name, "._", 2)) ||
       (0 == VG_(strncmp)(name, "_S_", 3)) ||
       (0 == VG_(strncmp)(name, "_M_", 3)) ||
-      (0 == VG_(strncmp)(name, "_GLOBAL", 7)))
+      (0 == VG_(strncmp)(name, "_GLOBAL", 7)) ||
+      (0 == VG_(strncmp)(name, "__tcf", 5)))
     return 1;
   else
     return 0;
@@ -322,6 +324,10 @@ void initializeAllFjalarData()
   // Initialize member functions last after TypesTable and
   // FunctionTable have already been initialized:
   initMemberFuncs();
+
+  // Initialize all constructors and destructors by using a heuristic
+  // to pattern match names to type names:
+  initConstructorsAndDestructors();
 
   updateAllVarTypes();
 
@@ -2046,10 +2052,71 @@ int equivalentIDs(int ID1, int ID2) {
   return (ID1 == ID2);
 }
 
+// More C++ fun.  So apparently constructors and destructors are
+// printed in the DWARF debugging information as regular functions,
+// not member functions.  Thus, the only reasonable way to infer that
+// a function is a constructor or a destructor is to pattern match the
+// names of functions to names of types in TypesTable.
+static void initConstructorsAndDestructors() {
+  struct geniterator* it = gengetiterator(FunctionTable);
+  // Iterate through all entries in TypesTable:
+  while (!it->finished) {
+    FunctionEntry* f = (FunctionEntry*)
+      gengettable(FunctionTable, gennext(it));
+
+    // Here are our pattern-matching heuristics:
+
+    // A function is a constructor iff:
+    // 1.) Its name matches the name of a type in TypesTable
+    // 2.) Its first parameter has the name 'this'
+    // (The 2nd condition prevents false positives of C functions that
+    // have the same name as structs - e.g., 'struct foo' and 'foo()'.
+    // I don't know why you would ever do that, but it's legal.)
+
+    // A function is a destructor iff:
+    // 1.) Its name starts with '~'
+    // 2.) Its name with the '~' stripped off the front matches the name
+    //     of a type in TypesTable
+    // 3.) Its first parameter has the name 'this'
+
+    if ((f->formalParameters.numVars > 0) &&
+        (f->formalParameters.first->var) &&
+        VG_STREQ("this", f->formalParameters.first->var->name)) {
+
+      TypeEntry* parentClass = 0;
+
+      // Use the regular (not mangled or demangled) name for matching
+      tl_assert(f->name);
+
+      // See if it's a constructor:
+      parentClass = (TypeEntry*)gengettable(TypesTable,
+                                            (void*)f->name);
+
+      if (parentClass) {
+        VG_(printf)(" *** CONSTRUCTOR! func-name: %s\n", f->name);
+        f->parentClass = parentClass;
+      }
+      // See if it's a destructor
+      else if ('~' == f->name[0]) {
+        // Notice how we skip forward one letter to cut off the '~':
+        parentClass = (TypeEntry*)gengettable(TypesTable,
+                                              (void*)(&(f->name[1])));
+
+        if (parentClass) {
+          VG_(printf)(" *** DESTRUCTOR! func-name: %s\n", f->name);
+          f->parentClass = parentClass;
+        }
+      }
+    }
+  }
+
+  genfreeiterator(it);
+}
+
 // Initializes all member functions for structs in TypesTable.
 // Pre: This should only be run after TypesTable and FunctionTable
 // have been initialized.
-void initMemberFuncs() {
+static void initMemberFuncs() {
   struct geniterator* it = gengetiterator(TypesTable);
   // Iterate through all entries in TypesTable:
   while (!it->finished) {
