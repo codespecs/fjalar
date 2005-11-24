@@ -152,6 +152,7 @@ vgtool_fjalar_so_SOURCES = \
 	fjalar_select.c \
 	generate_fjalar_entries.c \
 	GenericHashtable.c \
+	fjalar_traversal.c \
 	readelf.c \
 	typedata.c \
 	disambig.c \
@@ -188,8 +189,8 @@ am_vgtool_fjalar_so_OBJECTS = mac_leakcheck.$(OBJEXT) \
 	mc_translate.$(OBJEXT) fjalar_main.$(OBJEXT) \
 	fjalar_runtime.$(OBJEXT) fjalar_select.$(OBJEXT) \
 	generate_fjalar_entries.$(OBJEXT) GenericHashtable.$(OBJEXT) \
-	readelf.$(OBJEXT) typedata.$(OBJEXT) disambig.$(OBJEXT) \
-	trivial-tool.$(OBJEXT)
+	fjalar_traversal.$(OBJEXT) readelf.$(OBJEXT) typedata.$(OBJEXT) \
+	disambig.$(OBJEXT) trivial-tool.$(OBJEXT)
 vgtool_fjalar_so_OBJECTS = $(am_vgtool_fjalar_so_OBJECTS)
 vgtool_fjalar_so_LDADD = $(LDADD)
 vgtool_fjalar_so_DEPENDENCIES =
@@ -205,6 +206,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/disambig.Po ./$(DEPDIR)/fjalar_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_runtime.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_select.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/fjalar_traversal.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/generate_fjalar_entries.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mac_leakcheck.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mac_malloc_wrappers.Po \
@@ -284,6 +286,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_runtime.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_select.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_traversal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/generate_fjalar_entries.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mac_leakcheck.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mac_malloc_wrappers.Po@am__quote@

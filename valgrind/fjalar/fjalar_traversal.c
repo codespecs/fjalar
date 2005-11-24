@@ -15,6 +15,11 @@
 */
 
 #include "fjalar_traversal.h"
+#include "fjalar_main.h"
+#include "fjalar_runtime.h"
+#include "fjalar_select.h"
+#include "generate_fjalar_entries.h"
+#include "disambig.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -29,17 +34,21 @@
 // properly!
 int g_variableIndex = 0;
 
+extern FunctionTree* globalFunctionTree;
+
 // Symbols for Fjalar variable names that are created by concatenating
 // together struct, array, and field names:
 static char* DEREFERENCE = "[]";
 static char* ZEROTH_ELT = "[0]";
 static char* DOT = ".";
 static char* ARROW = "->";
-static char* STAR = "*";
+//static char* STAR = "*";
 
 // This stack represents the full name of the variable that we
 // currently want to output (Only puts REFERENCES to strings in
 // fullNameStack; does not do any allocations)
+#define MAX_STRING_STACK_SIZE 100
+
 char* fullNameStack[MAX_STRING_STACK_SIZE];
 int fullNameStackSize = 0;
 
@@ -122,23 +131,22 @@ void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified functi
 			     VariableOrigin varOrigin,
 			     char* stackBaseAddr,
                              // This function performs an action for each variable visited:
-                             char (*performAction)(VariableEntry*,
-                                                   UInt,
-                                                   char*,
-                                                   VariableOrigin,
-                                                   char,
-                                                   char,
-                                                   DisambigOverride,
-                                                   char,
-                                                   void*,
-                                                   void**,
-                                                   UInt,
-                                                   FunctionEntry*,
-                                                   char)) {
+                             TraversalResult (*performAction)(VariableEntry*,
+                                                              char*,
+                                                              VariableOrigin,
+                                                              UInt,
+                                                              UInt,
+                                                              char,
+                                                              DisambigOverride,
+                                                              char,
+                                                              void*,
+                                                              void**,
+                                                              UInt,
+                                                              FunctionEntry*,
+                                                              char)) {
   VarNode* i = 0;
 
   VarList* varListPtr = 0;
-  int numIters = 0;
 
   // If funcPtr is null, then you better be GLOBAL_VAR
   if (!funcPtr) {
@@ -171,7 +179,7 @@ void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified functi
       VariableEntry* var;
       void* basePtrValue = 0;
 
-      var = &(i->var);
+      var = i->var;
 
       if (!var->name) {
 	VG_(printf)( "  Warning! Weird null variable name!\n");
@@ -361,7 +369,7 @@ void visitVariable(VariableEntry* var,
                    FunctionEntry* varFuncInfo,
                    char isEnter) {
 
-  trace_vars_tree* var_tree = 0;
+  char* trace_vars_tree = 0;
 
   tl_assert(varOrigin != DERIVED_VAR);
   tl_assert(varOrigin != DERIVED_FLATTENED_ARRAY_VAR);
@@ -378,11 +386,11 @@ void visitVariable(VariableEntry* var,
   // Also initialize trace_vars_tree based on varOrigin and
   // varFuncInfo:
   if (varOrigin == GLOBAL_VAR) {
-    var_tree = (globalFunctionTree ?
+    trace_vars_tree = (globalFunctionTree ?
                 globalFunctionTree->function_variables_tree : 0);
   }
   else {
-    var_tree = varFuncInfo->trace_vars_tree;
+    trace_vars_tree = varFuncInfo->trace_vars_tree;
   }
 
   // Delegate:
@@ -390,7 +398,7 @@ void visitVariable(VariableEntry* var,
                  0,
                  pValue,
                  overrideIsInit,
-                 performAction
+                 performAction,
                  varOrigin,
                  trace_vars_tree,
                  OVERRIDE_NONE,
@@ -452,7 +460,7 @@ void visitSingleVar(VariableEntry* var,
   TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
-  layersBeforeBase = var->repPtrLevels - numDereferences;
+  layersBeforeBase = var->ptrLevels - numDereferences;
   tl_assert(layersBeforeBase >= 0);
 
   // Special handling for overriding in the presence of .disambig:
@@ -535,7 +543,7 @@ void visitSingleVar(VariableEntry* var,
   // variable, we need to set DEREF_MORE_POINTERS because we need its
   // member variables to be properly observed:
   if ((layersBeforeBase == 0) &&
-      (var->varType->isStructUnionType) {
+      (var->varType->isStructUnionType)) {
     tResult = DEREF_MORE_POINTERS;
   }
 
@@ -612,7 +620,7 @@ void visitSingleVar(VariableEntry* var,
       // tResult == DEREF_MORE_POINTERS:
       if (pValue && (tResult == DEREF_MORE_POINTERS)) {
         // Static array:
-        if (VAR_IS_STATIC_ARRAY(var)) {
+        if (var->isStaticArray) {
           // Flatten multi-dimensional arrays by treating them as one
           // giant single-dimensional array.  Take the products of the
           // sizes of all dimensions (remember to add 1 to each to get
@@ -675,7 +683,7 @@ void visitSingleVar(VariableEntry* var,
                     numDereferences + 1,
                     pValueArray,
                     numElts,
-                    performAction
+                    performAction,
                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                     trace_vars_tree,
                     disambigOverride,
@@ -733,7 +741,7 @@ void visitSingleVar(VariableEntry* var,
 
     // Walk down the member variables list and visit each one with the
     // current struct variable name as the prefix:
-    memberVars = var->varType->memberListPtr;
+    memberVars = var->varType->memberVarList;
     i = 0;
     curVar = 0;
 
@@ -753,12 +761,12 @@ void visitSingleVar(VariableEntry* var,
       // is used.  Normally we do not have to flatten static arrays at
       // this point because we can simply visit them as an entire
       // sequence.
-      if (VAR_IS_STATIC_ARRAY(curVar) &&
+      if (curVar->isStaticArray &&
           fjalar_flatten_arrays &&
           (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
           (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
           // Ignore arrays of characters (strings) inside of the struct:
-          !(curVar->isString && (curVar->declaredPtrLevels == 1))) {
+          !(curVar->isString && (curVar->ptrLevels == 1))) {
         // Only look at the first dimension:
         UInt arrayIndex;
         for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++) {
@@ -861,9 +869,9 @@ void visitSingleVar(VariableEntry* var,
           // data_member_location of this double and the next member
           // variable is exactly 4, then decrement the double's location
           // by 4 in order to give it a padding of 8:
-          if ((D_DOUBLE == curVar->varType->declaredType) &&
+          if ((D_DOUBLE == curVar->varType->decType) &&
               (i->next) &&
-              ((i->next->var.data_member_location -
+              ((i->next->var->data_member_location -
                 curVar->data_member_location) == 4)) {
             pCurVarValue -= 4;
           }
@@ -959,7 +967,7 @@ void visitSequence(VariableEntry* var,
   TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
-  layersBeforeBase = var->repPtrLevels - numDereferences;
+  layersBeforeBase = var->ptrLevels - numDereferences;
   tl_assert(layersBeforeBase >= 0);
   tl_assert((DERIVED_VAR == varOrigin) ||
             (DERIVED_FLATTENED_ARRAY_VAR == varOrigin));
@@ -1042,7 +1050,7 @@ void visitSequence(VariableEntry* var,
     // (If this variable is a static array, then there is no need to
     //  dereference pointers - very important but subtle point!)
     if ((tResult == DEREF_MORE_POINTERS) &&
-        !VAR_IS_STATIC_ARRAY(var)) {
+        !var->isStaticArray) {
       // Iterate through pValueArray and dereference each pointer
       // value if possible, then override the entries in pValueArray
       // with the dereferenced pointers (use a value of 0 for
@@ -1142,7 +1150,7 @@ void visitSequence(VariableEntry* var,
 
     // Walk down the member variables list and visit each one with the
     // current struct variable name as the prefix:
-    memberVars = var->varType->memberListPtr;
+    memberVars = var->varType->memberVarList;
     i = 0;
     curVar = 0;
 
@@ -1155,7 +1163,7 @@ void visitSequence(VariableEntry* var,
       void** pCurVarValueArray = 0;
       char* top;
       char numEltsPushedOnStack = 0;
-      curVar = &(i->var);
+      curVar = i->var;
       assert(curVar);
 
       // If a member variable is a statically-sized array which is
@@ -1163,11 +1171,11 @@ void visitSequence(VariableEntry* var,
       // already performed array flattening, then we must expand the
       // member array and print it out in its flattened form with one
       // set of derived variable for every element in the array:
-      if (VAR_IS_STATIC_ARRAY(curVar) &&
+      if (curVar->isStaticArray &&
           (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
           (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
           // Ignore arrays of characters (strings) inside of the struct:
-          !(curVar->isString && (curVar->declaredPtrLevels == 1))) {
+          !(curVar->isString && (curVar->ptrLevels == 1))) {
         // Only look at the first dimension:
         UInt arrayIndex;
         for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++) {
@@ -1209,9 +1217,9 @@ void visitSequence(VariableEntry* var,
                 // data_member_location of this double and the next member
                 // variable is exactly 4, then decrement the double's location
                 // by 4 in order to give it a padding of 8:
-                if ((D_DOUBLE == curVar->varType->declaredType) &&
+                if ((D_DOUBLE == curVar->varType->decType) &&
                     (i->next) &&
-                    ((i->next->var.data_member_location -
+                    ((i->next->var->data_member_location -
                       curVar->data_member_location) == 4)) {
                   pCurVarValue -= 4;
                 }
@@ -1316,9 +1324,9 @@ void visitSequence(VariableEntry* var,
               // data_member_location of this double and the next member
               // variable is exactly 4, then decrement the double's location
               // by 4 in order to give it a padding of 8:
-              if ((D_DOUBLE == curVar->varType->declaredType) &&
+              if ((D_DOUBLE == curVar->varType->decType) &&
                   (i->next) &&
-                  ((i->next->var.data_member_location -
+                  ((i->next->var->data_member_location -
                     curVar->data_member_location) == 4)) {
                 pCurVarValue -= 4;
               }
