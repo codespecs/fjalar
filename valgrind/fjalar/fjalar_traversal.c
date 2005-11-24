@@ -29,11 +29,13 @@
 // properly!
 int g_variableIndex = 0;
 
-static char* dereference = "[]";
-static char* zeroth_elt = "[0]";
-static char* dot = ".";
-static char* arrow = "->";
-static char* star = "*";
+// Symbols for Fjalar variable names that are created by concatenating
+// together struct, array, and field names:
+static char* DEREFERENCE = "[]";
+static char* ZEROTH_ELT = "[0]";
+static char* DOT = ".";
+static char* ARROW = "->";
+static char* STAR = "*";
 
 // This stack represents the full name of the variable that we
 // currently want to output (Only puts REFERENCES to strings in
@@ -118,7 +120,21 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified function
                              char isEnter,           // 1 for function entrance, 0 for exit
 			     VariableOrigin varOrigin,
-			     char* stackBaseAddr) {
+			     char* stackBaseAddr,
+                             // This function performs an action for each variable visited:
+                             char (*performAction)(VariableEntry*,
+                                                   UInt,
+                                                   char*,
+                                                   VariableOrigin,
+                                                   char,
+                                                   char,
+                                                   DisambigOverride,
+                                                   char,
+                                                   void*,
+                                                   void**,
+                                                   UInt,
+                                                   FunctionEntry*,
+                                                   char)) {
   VarNode* i = 0;
 
   VarList* varListPtr = 0;
@@ -202,6 +218,7 @@ void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified functi
       visitVariable(var,
                     basePtrValue,
                     0,
+                    performAction,
                     varOrigin,
                     funcPtr,
                     isEnter);
@@ -244,6 +261,20 @@ void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
                     void* pValue,
                     char overrideIsInit,
+                    // This function performs an action for each variable visited:
+                    char (*performAction)(VariableEntry*,
+                                          UInt,
+                                          char*,
+                                          VariableOrigin,
+                                          char,
+                                          char,
+                                          DisambigOverride,
+                                          char,
+                                          void*,
+                                          void**,
+                                          UInt,
+                                          FunctionEntry*,
+                                          char),
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -256,12 +287,50 @@ void visitSequence(VariableEntry* var,
                    UInt numDereferences,
                    void** pValueArray,
                    UInt numElts,
+                   // This function performs an action for each variable visited:
+                   char (*performAction)(VariableEntry*,
+                                         UInt,
+                                         char*,
+                                         VariableOrigin,
+                                         char,
+                                         char,
+                                         DisambigOverride,
+                                         char,
+                                         void*,
+                                         void**,
+                                         UInt,
+                                         FunctionEntry*,
+                                         char),
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
                    UInt numStructsDereferenced,
                    FunctionEntry* varFuncInfo,
                    char isEnter);
+
+// This is an example of a function that's valid to be passed in as
+// the performAction parameter to visitVariable:
+// (The return value is 1 if we we want to keep on deriving values
+// after visiting this variable or 0 if we want to give up on deriving
+// values and simply treat all further values as null)
+/*
+char performAction(VariableEntry* var,
+                   UInt numDereferences,
+                   char* varName,
+                   VariableOrigin varOrigin,
+                   char isHashcode,
+                   char overrideIsInit,
+                   DisambigOverride disambigOverride,
+                   char isSequence,
+                   // pValue only valid if isSequence is false
+                   void* pValue,
+                   // pValueArray and numElts only valid if
+                   // isSequence is true
+                   void** pValueArray,
+                   UInt numElts,
+                   FunctionEntry* varFuncInfo,
+                   char isEnter);
+*/
 
 // This visits a variable by delegating to visitSingleVar()
 // Pre: varOrigin != DERIVED_VAR, varOrigin != DERIVED_FLATTENED_ARRAY_VAR
@@ -277,6 +346,20 @@ void visitVariable(VariableEntry* var,
                    // recursive calls) because their addresses are
                    // different from the original's
                    char overrideIsInit,
+                   // This function performs an action for each variable visited:
+                   char (*performAction)(VariableEntry*,
+                                         UInt,
+                                         char*,
+                                         VariableOrigin,
+                                         char,
+                                         char,
+                                         DisambigOverride,
+                                         char,
+                                         void*,
+                                         void**,
+                                         UInt,
+                                         FunctionEntry*,
+                                         char),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    char isEnter) {
@@ -310,6 +393,7 @@ void visitVariable(VariableEntry* var,
                  0,
                  pValue,
                  overrideIsInit,
+                 performAction
                  varOrigin,
                  trace_vars_tree,
                  OVERRIDE_NONE,
@@ -335,6 +419,20 @@ void visitSingleVar(VariableEntry* var,
                     // recursive calls) because their addresses are
                     // different from the original's
                     char overrideIsInit,
+                    // This function performs an action for each variable visited:
+                    char (*performAction)(VariableEntry*,
+                                          UInt,
+                                          char*,
+                                          VariableOrigin,
+                                          char,
+                                          char,
+                                          DisambigOverride,
+                                          char,
+                                          void*,
+                                          void**,
+                                          UInt,
+                                          FunctionEntry*,
+                                          char),
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -507,16 +605,17 @@ void visitSingleVar(VariableEntry* var,
       // Push 1 symbol on stack to represent single elt. dereference:
 
       //      if (kvasir_repair_format) {
-      //        stringStackPush(fullNameStack, &fullNameStackSize, star);
+      //        stringStackPush(fullNameStack, &fullNameStackSize, STAR);
       //      }
       //      else {
-      stringStackPush(fullNameStack, &fullNameStackSize, zeroth_elt);
+      stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
         //      }
 
       visitSingleVar(var,
                      numDereferences + 1,
                      pNewValue,
                      overrideIsInit,
+                     performAction,
                      (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                      trace_vars_tree,
                      disambigOverride,
@@ -599,12 +698,13 @@ void visitSingleVar(VariableEntry* var,
       }
 
       // Push 1 symbol on stack to represent sequence dereference:
-      stringStackPush(fullNameStack, &fullNameStackSize, dereference);
+      stringStackPush(fullNameStack, &fullNameStackSize, DEREFERENCE);
 
       visitSequence(var,
                     numDereferences + 1,
                     pValueArray,
                     numElts,
+                    performAction
                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                     trace_vars_tree,
                     disambigOverride,
@@ -724,14 +824,14 @@ void visitSingleVar(VariableEntry* var,
           // don't do anything else.  Otherwise, push a '.'
           if (top[0] == '*') {
             stringStackPop(fullNameStack, &fullNameStackSize);
-            stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+            stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
             numEltsPushedOnStack = 0;
           }
-          else if (VG_STREQ(top, arrow)) {
+          else if (VG_STREQ(top, ARROW)) {
             numEltsPushedOnStack = 0;
           }
           else {
-            stringStackPush(fullNameStack, &fullNameStackSize, dot);
+            stringStackPush(fullNameStack, &fullNameStackSize, DOT);
             numEltsPushedOnStack = 1;
           }
 
@@ -747,6 +847,7 @@ void visitSingleVar(VariableEntry* var,
                          0,
                          pCurVarValue,
                          0,
+                         performAction,
                          DERIVED_FLATTENED_ARRAY_VAR,
                          trace_vars_tree,
                          OVERRIDE_NONE, // Start over again and read new .disambig entry
@@ -805,16 +906,16 @@ void visitSingleVar(VariableEntry* var,
         // '.' to make '*.' or '[0].', erase that element and instead push
         // '->'.  If last element is '->', then we're fine and
         // don't do anything else.  Otherwise, push a '.'
-        if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
+        if ((top[0] == '*') || (VG_STREQ(top, ZEROTH_ELT))) {
           stringStackPop(fullNameStack, &fullNameStackSize);
-          stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+          stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
           numEltsPushedOnStack = 0;
         }
-        else if (VG_STREQ(top, arrow)) {
+        else if (VG_STREQ(top, ARROW)) {
           numEltsPushedOnStack = 0;
         }
         else {
-          stringStackPush(fullNameStack, &fullNameStackSize, dot);
+          stringStackPush(fullNameStack, &fullNameStackSize, DOT);
           numEltsPushedOnStack = 1;
         }
 
@@ -825,6 +926,7 @@ void visitSingleVar(VariableEntry* var,
                        0,
                        pCurVarValue,
                        0,
+                       performAction,
                        (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                        trace_vars_tree,
                        OVERRIDE_NONE, // Start over again and read new .disambig entry
@@ -847,7 +949,7 @@ void visitSingleVar(VariableEntry* var,
 // pValueArray (of size numElts), and then derive additional variables
 // either by dereferencing pointers or by visiting struct members.
 // This function only calls visitSequence() with the same value of
-// numElts because Daikon only supports one level of sequences.
+// numElts because Fjalar currently only supports one level of sequences.
 // Pre: varOrigin == {DERIVED_VAR, DERIVED_FLATTENED_ARRAY_VAR}
 static
 void visitSequence(VariableEntry* var,
@@ -855,6 +957,20 @@ void visitSequence(VariableEntry* var,
                    // Array of pointers to the current variable's values
                    void** pValueArray,
                    UInt numElts, // Size of pValueArray
+                   // This function performs an action for each variable visited:
+                   char (*performAction)(VariableEntry*,
+                                         UInt,
+                                         char*,
+                                         VariableOrigin,
+                                         char,
+                                         char,
+                                         DisambigOverride,
+                                         char,
+                                         void*,
+                                         void**,
+                                         UInt,
+                                         FunctionEntry*,
+                                         char),
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
@@ -945,7 +1061,7 @@ void visitSequence(VariableEntry* var,
       // Chill and do nothing here because we're making a dry run :)
       break;
     default:
-      VG_(printf)( "Error! Invalid outputType in outputDaikonVar()\n");
+      VG_(printf)( "Error! Invalid outputType in visitSequence()\n");
       abort();
       break;
     }
@@ -1014,16 +1130,17 @@ void visitSequence(VariableEntry* var,
     // Push 1 symbol on stack to represent single elt. dereference:
 
     //    if (kvasir_repair_format) {
-    //      stringStackPush(fullNameStack, &fullNameStackSize, star);
+    //      stringStackPush(fullNameStack, &fullNameStackSize, STAR);
     //    }
     //    else {
-    stringStackPush(fullNameStack, &fullNameStackSize, zeroth_elt);
+    stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
       //    }
 
     visitSequence(var,
                   numDereferences + 1,
                   pValueArray,
                   numElts,
+                  performAction,
                   (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                   trace_vars_tree,
                   disambigOverride,
@@ -1170,14 +1287,14 @@ void visitSequence(VariableEntry* var,
           // don't do anything else.  Otherwise, push a '.'
           if (top[0] == '*') {
             stringStackPop(fullNameStack, &fullNameStackSize);
-            stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+            stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
             numEltsPushedOnStack = 0;
           }
-          else if (VG_STREQ(top, arrow)) {
+          else if (VG_STREQ(top, ARROW)) {
             numEltsPushedOnStack = 0;
           }
           else {
-            stringStackPush(fullNameStack, &fullNameStackSize, dot);
+            stringStackPush(fullNameStack, &fullNameStackSize, DOT);
             numEltsPushedOnStack = 1;
           }
 
@@ -1192,6 +1309,7 @@ void visitSequence(VariableEntry* var,
                         0,
                         pCurVarValueArray,
                         numElts,
+                        performAction,
                         DERIVED_FLATTENED_ARRAY_VAR,
                         trace_vars_tree,
                         OVERRIDE_NONE,
@@ -1272,16 +1390,16 @@ void visitSequence(VariableEntry* var,
         // '.' to make '*.' or '[0].', erase that element and instead push
         // '->'.  If last element is '->', then we're fine and
         // don't do anything else.  Otherwise, push a '.'
-        if ((top[0] == '*') || (VG_STREQ(top, zeroth_elt))) {
+        if ((top[0] == '*') || (VG_STREQ(top, ZEROTH_ELT))) {
           stringStackPop(fullNameStack, &fullNameStackSize);
-          stringStackPush(fullNameStack, &fullNameStackSize, arrow);
+          stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
           numEltsPushedOnStack = 0;
         }
-        else if (VG_STREQ(top, arrow)) {
+        else if (VG_STREQ(top, ARROW)) {
           numEltsPushedOnStack = 0;
         }
         else {
-          stringStackPush(fullNameStack, &fullNameStackSize, dot);
+          stringStackPush(fullNameStack, &fullNameStackSize, DOT);
           numEltsPushedOnStack = 1;
         }
 
@@ -1292,6 +1410,7 @@ void visitSequence(VariableEntry* var,
                       0,
                       pCurVarValueArray,
                       numElts,
+                      performAction,
                       (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                       trace_vars_tree,
                       OVERRIDE_NONE,
