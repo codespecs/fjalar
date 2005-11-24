@@ -100,6 +100,11 @@ typedef struct _TypeEntry {
   // (Only non-null if there is at least 1 member function)
   SimpleList* /* FunctionEntry* */ memberFunctionList;
 
+  // Special member functions that are constructors/destructors:
+  // (Only non-null if there is at least 1 of them)
+  SimpleList* /* FunctionEntry* */ constructorList;
+  SimpleList* /* FunctionEntry* */ destructorList;
+
   // A list of classes that are the superclasses of this class
   // Every elt is a Superclass* so this is like List<Superclass>
   // (Only non-null if there is at least 1 superclass)
