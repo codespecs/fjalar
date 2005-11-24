@@ -50,7 +50,21 @@ typedef enum VariableOrigin {
 void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified function
                              char isEnter,           // 1 for function entrance, 0 for exit
 			     VariableOrigin varOrigin,
-			     char* stackBaseAddr);
+			     char* stackBaseAddr,
+                             // This function performs an action for each variable visited:
+                             char (*performAction)(VariableEntry*,
+                                                   UInt,
+                                                   char*,
+                                                   VariableOrigin,
+                                                   char,
+                                                   char,
+                                                   DisambigOverride,
+                                                   char,
+                                                   void*,
+                                                   void**,
+                                                   UInt,
+                                                   FunctionEntry*,
+                                                   char));
 
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
@@ -63,8 +77,22 @@ void visitVariable(VariableEntry* var,
                    // recursive calls) because their addresses are
                    // different from the original's
                    char overrideIsInit,
+                   // This function performs an action for each variable visited:
+                   char (*performAction)(VariableEntry*,
+                                         UInt,
+                                         char*,
+                                         VariableOrigin,
+                                         char,
+                                         char,
+                                         DisambigOverride,
+                                         char,
+                                         void*,
+                                         void**,
+                                         UInt,
+                                         FunctionEntry*,
+                                         char),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
-                   char isEnter);
+                   char isEnter) {
 
 #endif
