@@ -17,26 +17,13 @@
 #ifndef FJALAR_TRAVERSAL_H
 #define FJALAR_TRAVERSAL_H
 
-
 #include "fjalar_main.h"
 #include "fjalar_runtime.h"
+#include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
-
-#include "fjalar_traversal.h"
+#include "disambig.h"
 
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
-
-// String stack:
-#define MAX_STRING_STACK_SIZE 100
-char* fullNameStack[MAX_STRING_STACK_SIZE];
-int fullNameStackSize;
-
-void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
-char* stringStackPop(char** stringStack, int* pStringStackSize);
-char* stringStackTop(char** stringStack, int stringStackSize);
-void stringStackClear(int* pStringStackSize);
-int stringStackStrLen(char** stringStack, int stringStackSize);
-char* stringStackStrdup(char** stringStack, int stringStackSize);
 
 typedef enum {
   DERIVED_VAR, // Always switches to this after one recursive call
@@ -108,6 +95,6 @@ void visitVariable(VariableEntry* var,
                                                     char),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
-                   char isEnter) {
+                   char isEnter);
 
 #endif
