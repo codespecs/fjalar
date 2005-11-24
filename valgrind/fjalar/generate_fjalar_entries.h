@@ -257,6 +257,27 @@ void clearVarList(VarList* varListPtr);
 void insertNewNode(VarList* varListPtr);
 void deleteTailNode(VarList* varListPtr);
 
+// Ultra generic singly-linked list with a void* element
+// Only meant to support forward traversal
+// Doesn't do any dynamic memory allocation or de-allocation
+
+typedef struct _SimpleList SimpleList;
+typedef struct _SimpleNode SimpleNode;
+
+struct _SimpleNode {
+  void* elt;
+  SimpleNode* next;
+};
+
+struct _SimpleList {
+  SimpleNode* first;
+  UInt numElts;
+};
+
+void SimpleListPush(SimpleList* lst, void* elt);
+void* SimpleListPop(SimpleList* lst);
+void SimpleListClear(SimpleList* lst);
+void SimpleListInit(SimpleList* lst);
 
 // Contains a block of information about a particular function
 struct _FunctionEntry {
