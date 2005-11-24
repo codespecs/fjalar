@@ -181,6 +181,37 @@ typedef struct
   // of a dwarf_entry (of type function) if this function entry represents
   // the actual data for the entry with ID equal to specification_ID
 
+  unsigned long abstract_origin_ID; // Relevant for C++ member functions
+  // that are declared within a class definition.  For these cases,
+  // there will be a function dwarf_entry with the proper start_pc and
+  // end_pc and the abstract_origin_ID that points to another function
+  // dwarf_entry.  That dwarf_entry will have a specification_ID that
+  // points to the REAL function entry with the name.  Example:
+  /*
+
+ <1><180a1>: Abbrev Number: 136 (DW_TAG_subprogram)
+     DW_AT_sibling     : <180d1>
+     DW_AT_abstract_origin: <18069>
+     DW_AT_low_pc      : 0x8048c16
+     DW_AT_high_pc     : 0x8048c5d
+     DW_AT_frame_base  : 1 byte block: 55 	(DW_OP_reg5)
+
+ <1><18069>: Abbrev Number: 132 (DW_TAG_subprogram)
+     DW_AT_sibling     : <1809c>
+     DW_AT_specification: <17e25>
+     DW_AT_inline      : 2	(declared as inline but ignored)
+
+ <2><17e25>: Abbrev Number: 56 (DW_TAG_subprogram)
+     DW_AT_sibling     : <17e51>
+     DW_AT_external    : 1
+     DW_AT_name        : push
+     DW_AT_decl_file   : 53
+     DW_AT_decl_line   : 27
+     DW_AT_MIPS_linkage_name: _ZN5Stack4pushEPc
+     DW_AT_declaration : 1
+
+  */
+
   unsigned long start_pc; /* Location of the function in memory */
   unsigned long end_pc;   /* Location of the highest address of an
                              instruction in the function */
@@ -300,7 +331,7 @@ int equivalentStrings(char* str1, char* str2);
 void initialize_typedata_structures();
 
 // Key: String that represents the (possibly mangled) name of a function
-// Value: A 32-bit int that represents the global address of that function
+// Value: A 32-bit int that represents the global start_PC address of that function
 struct genhashtable* FunctionSymbolTable;
 
 // Key: String that represents the (possibly mangled) name of a variable
@@ -360,6 +391,7 @@ char harvest_sibling(dwarf_entry* e, unsigned long value);
 char harvest_declaration_value(dwarf_entry* e, unsigned long value);
 char harvest_artificial_value(dwarf_entry* e, unsigned long value);
 char harvest_specification_value(dwarf_entry* e, unsigned long value);
+char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
