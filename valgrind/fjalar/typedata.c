@@ -254,6 +254,7 @@ char tag_is_inheritance(unsigned long tag) {
 // DW_AT_declaration: function, variable, collection_type
 // DW_AT_artificial: variable
 // DW_AT_accessibility: function, inheritance, member, variable
+// DW_AT_abstract_origin: function
 
 // Returns: 1 if the entry has a type that is listening for the
 // given attribute (attr), 0 otherwise
@@ -339,6 +340,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_inheritance(tag) ||
               tag_is_member(tag) ||
               tag_is_variable(tag));
+    case DW_AT_abstract_origin:
+      return tag_is_function(tag);
     default:
       return 0;
     }
@@ -559,11 +562,27 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value) {
 
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->specification_ID = value;
-    //    VG_(printf)("harvest_specification_value %x\n", value);
+    VG_(printf)("harvest_specification_value %x for %p\n", value, e);
     return 1;
   }
   else if (value && (tag_is_variable(tag))) {
     ((variable*)e->entry_ptr)->specification_ID = value;
+    return 1;
+  }
+  else
+    return 0;
+}
+
+char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value) {
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+  if (tag_is_function(tag)) {
+    ((function*)e->entry_ptr)->abstract_origin_ID = value;
+    VG_(printf)("harvest_abstract_origin_value %x for %p\n", value, e);
     return 1;
   }
   else
@@ -1140,6 +1159,153 @@ static void link_entries_to_type_entries()
     }
 }
 
+
+// C++ code produces some fun debugging information!  The basic idea
+// is that we want to have the start_pc and end_pc fields of function
+// entries initialized to proper values.  There can be up to 2 levels
+// of indirection here.  There is an entry with DW_AT_abstract_origin
+// that contains the start_pc and end_pc that we are looking for.
+// That points to an entry with no name but with a
+// DW_AT_specification, which points to an entry with a name.  As far
+// as I can tell, the 'real' entry is the one with the
+// DW_AT_specification, so we want to copy the name from the version
+// with the name and the start_pc/end_pc from the version with the
+// start_pc/end_pc.
+/*
+
+This one is fake except we really need the start_pc and end_pc from it
+(we can get start_pc from symbol table, but not end_pc ... arggggg!!!)
+
+ <1><180a1>: Abbrev Number: 136 (DW_TAG_subprogram)
+     DW_AT_sibling     : <180d1>
+     DW_AT_abstract_origin: <18069>
+     DW_AT_low_pc      : 0x8048c16
+     DW_AT_high_pc     : 0x8048c5d
+     DW_AT_frame_base  : 1 byte block: 55 	(DW_OP_reg5)
+
+This is the one we want to keep because it contains the actual
+parameters:
+
+ <1><18069>: Abbrev Number: 132 (DW_TAG_subprogram)
+     DW_AT_sibling     : <1809c>
+     DW_AT_specification: <17e25>
+     DW_AT_inline      : 2	(declared as inline but ignored)
+
+Notice that this has is_declaration == 1 so it is a 'fake'
+entry, but we really want to steal its name fields
+
+ <2><17e25>: Abbrev Number: 56 (DW_TAG_subprogram)
+     DW_AT_sibling     : <17e51>
+     DW_AT_external    : 1
+     DW_AT_name        : push
+     DW_AT_decl_file   : 53
+     DW_AT_decl_line   : 27
+     DW_AT_MIPS_linkage_name: _ZN5Stack4pushEPc
+     DW_AT_declaration : 1
+*/
+
+// In some cases, we only have 1 level of indirection so we don't have
+// to do as much work:
+/*
+
+This is the one we want to keep, and it already has start_pc and
+end_pc ... how convenient!
+
+ <1><2fb87>: Abbrev Number: 129 (DW_TAG_subprogram)
+     DW_AT_sibling     : <2fbce>
+     DW_AT_specification: <18698>
+     DW_AT_decl_file   : 1
+     DW_AT_decl_line   : 47
+     DW_AT_low_pc      : 0x8048d2e
+     DW_AT_high_pc     : 0x8048d75
+     DW_AT_frame_base  : 1 byte block: 55 	(DW_OP_reg5)
+
+Notice that this has is_declaration == 1 so it is a 'fake'
+entry, but we really want to steal its name fields
+
+ <2><18698>: Abbrev Number: 12 (DW_TAG_subprogram)
+     DW_AT_sibling     : <186c4>
+     DW_AT_external    : 1
+     DW_AT_name        : push
+     DW_AT_decl_file   : 2
+     DW_AT_decl_line   : 14
+     DW_AT_MIPS_linkage_name: _ZN5Stack4pushEPc
+     DW_AT_declaration : 1
+*/
+
+//  For every function entry e with a non-null specification_ID, attempt to
+//  look up the entry X with the ID given by specification_ID and copy the
+//  start_pc from e to X while copying (aliasing) the name,
+//  mangled_name, return_type_ID, and accessibility from X to e
+void init_specification_and_abstract_stuff() {
+  unsigned long idx;
+  dwarf_entry* cur_entry = 0;
+
+  // Make a first pass looking for all functions with a
+  // abstract_origin_ID field, find the targets, and copy over the
+  // start_pc and end_pc fields:
+  for (idx = 0; idx < dwarf_entry_array_size; idx++) {
+    cur_entry = &dwarf_entry_array[idx];
+    if (tag_is_function(cur_entry->tag_name)) {
+      function* cur_func = (function*)(cur_entry->entry_ptr);
+
+      if (cur_func->abstract_origin_ID) {
+        unsigned long aliased_index = 0;
+
+        if (binary_search_dwarf_entry_array(cur_func->abstract_origin_ID,
+                                            &aliased_index)) {
+          dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
+          function* aliased_func_ptr = 0;
+
+          tl_assert(tag_is_function(aliased_entry->tag_name));
+
+          aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
+
+          // We better have start_pc and end_pc fields!
+          tl_assert(cur_func->start_pc);
+          tl_assert(cur_func->end_pc);
+
+          aliased_func_ptr->start_pc = cur_func->start_pc;
+          aliased_func_ptr->end_pc = cur_func->end_pc;
+
+          // Mark cur_func's entry with is_declaration = 1 just to
+          // make sure it gets ignored later:
+          cur_func->is_declaration = 1;
+        }
+      }
+    }
+  }
+
+  // Now make a second pass looking for all functions with a
+  // specification_ID field, find their targets, and copy over the
+  // names:
+  for (idx = 0; idx < dwarf_entry_array_size; idx++) {
+    cur_entry = &dwarf_entry_array[idx];
+    if (tag_is_function(cur_entry->tag_name)) {
+      function* cur_func = (function*)(cur_entry->entry_ptr);
+
+      if (cur_func->specification_ID) {
+        unsigned long aliased_index = 0;
+
+        if (binary_search_dwarf_entry_array(cur_func->specification_ID,
+                                            &aliased_index)) {
+          dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
+          function* aliased_func_ptr = 0;
+
+          tl_assert(tag_is_function(aliased_entry->tag_name));
+
+          aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
+
+          cur_func->name = aliased_func_ptr->name;
+          cur_func->mangled_name = aliased_func_ptr->mangled_name;
+          cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
+          cur_func->accessibility = aliased_func_ptr->accessibility;
+        }
+      }
+    }
+  }
+}
+
 /*
 Requires: dist_to_end indicates distance from e until end of dwarf_entry_array,
           e points to an element of dwarf_entry_array
@@ -1404,12 +1570,6 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 // Postcondition: num_formal_params, params, num_local_vars, and local_vars
 //                are properly initialized for the given dwarf_entry e which
 //                is of type {function}
-
-// This also attempts to do the following:
-//  For every function entry e with a non-null specification_ID, attempt to
-//  look up the entry X with the ID given by specification_ID and copy the
-//  start_pc from e to X while copying (aliasing) the name,
-//  mangled_name, return_type_ID, and accessibility from X to e
 void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_to_end)
 {
   unsigned short param_count = 0;
@@ -1418,36 +1578,9 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   int function_entry_level = e->level;
   int local_dist_to_end = dist_to_end;
   //  unsigned long sibling_entry_ID = e->sibling_ID;
-  char success = 0;
 
   dwarf_entry* cur_entry = e;
-  unsigned long aliased_index = 0;
   function* function_ptr = (function*)(e->entry_ptr);
-
-  if (function_ptr->specification_ID) {
-    success = binary_search_dwarf_entry_array(function_ptr->specification_ID, &aliased_index);
-    if (success) {
-      dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
-      if (tag_is_function(aliased_entry->tag_name)) {
-        function* aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
-
-        aliased_func_ptr->start_pc = function_ptr->start_pc;
-
-        function_ptr->name = aliased_func_ptr->name;
-        function_ptr->mangled_name = aliased_func_ptr->mangled_name;
-        function_ptr->return_type_ID = aliased_func_ptr->return_type_ID;
-        function_ptr->accessibility = aliased_func_ptr->accessibility;
-
-        // However, aliased_func_ptr will still have is_declaration == 1
-        // so it will NOT be added to FunctionTable - instead,
-        // function_ptr will be added so that when we do a lookup for
-        // findFunctionInfoByStartAddr(aliased_func_ptr->start_pc),
-        // we will get the function_ptr entry.
-        // This is CRUCIAL because the function_ptr entry has the REAL names and offsets
-        // of the parameters whereas the aliased_func_ptr is only an empty shell
-      }
-    }
-  }
 
   // If you are at the end of the array, you're screwed anyways
   if(dist_to_end == 0)
@@ -2036,6 +2169,8 @@ void finish_dwarf_entry_array_init(void)
 
   // typedef names optimization:
   initialize_typedef_names_map();
+
+  init_specification_and_abstract_stuff();
 
   link_array_entries_to_members();
   initialize_function_filenames();

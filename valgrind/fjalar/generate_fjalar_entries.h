@@ -313,7 +313,7 @@ struct _FunctionEntry {
 };
 
 // Hashtable that holds information about all functions
-// Key: (unsigned int) address of the function
+// Key: (unsigned int) address of the function's first instruction (startPC)
 // Value: (FunctionEntry*) Pointer to FunctionEntry
 struct genhashtable* FunctionTable;
 

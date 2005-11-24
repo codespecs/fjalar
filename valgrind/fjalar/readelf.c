@@ -7778,6 +7778,9 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
 	  if (DW_AT_specification == attribute) {
 	    harvest_specification_value(entry, uvalue + cu_offset);
 	  }
+          if (DW_AT_abstract_origin == attribute) {
+            harvest_abstract_origin_value(entry, uvalue + cu_offset);
+          }
 
           if (print_results)
             {
