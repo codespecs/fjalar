@@ -63,8 +63,10 @@ typedef enum DeclaredType
 typedef struct _VarList VarList;
 typedef struct _VarNode VarNode;
 
-typedef struct _FunctionEntry FunctionEntry;
+typedef struct _SimpleList SimpleList;
+typedef struct _SimpleNode SimpleNode;
 
+typedef struct _FunctionEntry FunctionEntry;
 typedef struct _Superclass Superclass;
 
 // THIS TYPE SHOULD BE IMMUTABLE SINCE IT IS SHARED!!!  TypeEntry only
@@ -83,11 +85,8 @@ typedef struct _TypeEntry {
   char isStructUnionType;
   // Everything below here is only valid if isStructUnionType:
 
-  // (Make these small and put them together to save space)
-  UShort memberFunctionArraySize; // The size of memberFunctionArray
-  UShort superclassArraySize;     // The size of superclassArray
-
-  // Non-static (instance) member variables:
+  // Non-static (instance) member variables (only non-null if at least
+  // 1 exists):
   VarList* memberVarList;
 
   // Static (class) member variables (only non-null if at least 1
@@ -96,15 +95,17 @@ typedef struct _TypeEntry {
   // at statically-fixed locations like global variables
   VarList* staticMemberVarList;
 
-
-  // For C++: Array of pointers to member functions of this class:
-  // (only non-null if there is at least 1 member function)
-  FunctionEntry** memberFunctionArray;
+  // For C++: List of pointers to member functions of this class:
+  // Every elt is a FunctionEntry* so this is like List<FunctionEntry>
+  // (Only non-null if there is at least 1 member function)
+  SimpleList* /* FunctionEntry* */ memberFunctionList;
 
   // A list of classes that are the superclasses of this class
-  // (only non-null if there is at least 1 superclass)
-  Superclass* superclassArray;
-
+  // Every elt is a Superclass* so this is like List<Superclass>
+  // (Only non-null if there is at least 1 superclass)
+  // (We never free the dynamically-allocated Superclass entries,
+  //  but that shouldn't really matter in practice - oh well...)
+  SimpleList* /* Superclass* */ superclassList;
 } TypeEntry;
 
 typedef enum VisibilityType {
@@ -260,9 +261,6 @@ void deleteTailNode(VarList* varListPtr);
 // Ultra generic singly-linked list with a void* element
 // Only meant to support forward traversal
 // Doesn't do any dynamic memory allocation or de-allocation
-
-typedef struct _SimpleList SimpleList;
-typedef struct _SimpleNode SimpleNode;
 
 struct _SimpleNode {
   void* elt;
