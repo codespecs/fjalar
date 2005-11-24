@@ -262,19 +262,19 @@ void visitSingleVar(VariableEntry* var,
                     void* pValue,
                     char overrideIsInit,
                     // This function performs an action for each variable visited:
-                    char (*performAction)(VariableEntry*,
-                                          UInt,
-                                          char*,
-                                          VariableOrigin,
-                                          char,
-                                          char,
-                                          DisambigOverride,
-                                          char,
-                                          void*,
-                                          void**,
-                                          UInt,
-                                          FunctionEntry*,
-                                          char),
+                    TraversalResult (*performAction)(VariableEntry*,
+                                                     char*,
+                                                     VariableOrigin,
+                                                     UInt,
+                                                     UInt,
+                                                     char,
+                                                     DisambigOverride,
+                                                     char,
+                                                     void*,
+                                                     void**,
+                                                     UInt,
+                                                     FunctionEntry*,
+                                                     char),
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -288,19 +288,19 @@ void visitSequence(VariableEntry* var,
                    void** pValueArray,
                    UInt numElts,
                    // This function performs an action for each variable visited:
-                   char (*performAction)(VariableEntry*,
-                                         UInt,
-                                         char*,
-                                         VariableOrigin,
-                                         char,
-                                         char,
-                                         DisambigOverride,
-                                         char,
-                                         void*,
-                                         void**,
-                                         UInt,
-                                         FunctionEntry*,
-                                         char),
+                   TraversalResult (*performAction)(VariableEntry*,
+                                                    char*,
+                                                    VariableOrigin,
+                                                    UInt,
+                                                    UInt,
+                                                    char,
+                                                    DisambigOverride,
+                                                    char,
+                                                    void*,
+                                                    void**,
+                                                    UInt,
+                                                    FunctionEntry*,
+                                                    char),
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
@@ -310,26 +310,23 @@ void visitSequence(VariableEntry* var,
 
 // This is an example of a function that's valid to be passed in as
 // the performAction parameter to visitVariable:
-// (The return value is 1 if we we want to keep on deriving values
-// after visiting this variable or 0 if we want to give up on deriving
-// values and simply treat all further values as null)
 /*
-char performAction(VariableEntry* var,
-                   UInt numDereferences,
-                   char* varName,
-                   VariableOrigin varOrigin,
-                   char isHashcode,
-                   char overrideIsInit,
-                   DisambigOverride disambigOverride,
-                   char isSequence,
-                   // pValue only valid if isSequence is false
-                   void* pValue,
-                   // pValueArray and numElts only valid if
-                   // isSequence is true
-                   void** pValueArray,
-                   UInt numElts,
-                   FunctionEntry* varFuncInfo,
-                   char isEnter);
+TraversalResult performAction(VariableEntry* var,
+                              char* varName,
+                              VariableOrigin varOrigin,
+                              UInt numDereferences,
+                              UInt layersBeforeBase,
+                              char overrideIsInit,
+                              DisambigOverride disambigOverride,
+                              char isSequence,
+                              // pValue only valid if isSequence is false
+                              void* pValue,
+                              // pValueArray and numElts only valid if
+                              // isSequence is true
+                              void** pValueArray,
+                              UInt numElts,
+                              FunctionEntry* varFuncInfo,
+                              char isEnter);
 */
 
 // This visits a variable by delegating to visitSingleVar()
@@ -347,19 +344,19 @@ void visitVariable(VariableEntry* var,
                    // different from the original's
                    char overrideIsInit,
                    // This function performs an action for each variable visited:
-                   char (*performAction)(VariableEntry*,
-                                         UInt,
-                                         char*,
-                                         VariableOrigin,
-                                         char,
-                                         char,
-                                         DisambigOverride,
-                                         char,
-                                         void*,
-                                         void**,
-                                         UInt,
-                                         FunctionEntry*,
-                                         char),
+                   TraversalResult (*performAction)(VariableEntry*,
+                                                    char*,
+                                                    VariableOrigin,
+                                                    UInt,
+                                                    UInt,
+                                                    char,
+                                                    DisambigOverride,
+                                                    char,
+                                                    void*,
+                                                    void**,
+                                                    UInt,
+                                                    FunctionEntry*,
+                                                    char),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    char isEnter) {
@@ -420,19 +417,19 @@ void visitSingleVar(VariableEntry* var,
                     // different from the original's
                     char overrideIsInit,
                     // This function performs an action for each variable visited:
-                    char (*performAction)(VariableEntry*,
-                                          UInt,
-                                          char*,
-                                          VariableOrigin,
-                                          char,
-                                          char,
-                                          DisambigOverride,
-                                          char,
-                                          void*,
-                                          void**,
-                                          UInt,
-                                          FunctionEntry*,
-                                          char),
+                    TraversalResult (*performAction)(VariableEntry*,
+                                                     char*,
+                                                     VariableOrigin,
+                                                     UInt,
+                                                     UInt,
+                                                     char,
+                                                     DisambigOverride,
+                                                     char,
+                                                     void*,
+                                                     void**,
+                                                     UInt,
+                                                     FunctionEntry*,
+                                                     char),
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -452,8 +449,7 @@ void visitSingleVar(VariableEntry* var,
   char disambigOverrideArrayAsPointer = 0;
   char derefSingleElement = 0;
 
-  // Only valid for .dtrace - affects pValue
-  char variableHasBeenObserved = 0;
+  TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
   layersBeforeBase = var->repPtrLevels - numDereferences;
@@ -483,11 +479,10 @@ void visitSingleVar(VariableEntry* var,
   derefSingleElement = disambigOverrideArrayAsPointer;
 
 
-  // Unless fjalar_output_struct_vars is on,
-  // don't print out an entry for base (non-pointer) struct/union
-  // variables since they have no substantive meaning for C programs.
-  // They are merely represented as hashcode values, and that's kind
-  // of deceiving because they aren't really pointer variables either.
+  // Unless fjalar_output_struct_vars is on, don't perform any action
+  // for base (non-pointer) struct/union variables since they have no
+  // substantive meaning for C programs.  We are only interested in
+  // the fields of the struct, not the struct itself.
 
   // This means that anywhere inside of this 'if' statement, we should
   // be very careful about mutating state because different state may
@@ -507,69 +502,47 @@ void visitSingleVar(VariableEntry* var,
       return;
     }
 
-    // Perform the actual output depending on outputType:
-    switch (outputType) {
-    case DECLS_FILE:
-      printDeclsEntry(var, fullFjalarName, varOrigin, allowVarDumpToFile,
-                      layersBeforeBase, 0, disambigOverride,
-                      varFuncInfo, isEnter);
-      break;
-    case DTRACE_FILE:
-      variableHasBeenObserved =
-        printDtraceEntry(var,
-                         numDereferences,
-                         fullFjalarName,
-                         pValue,
-                         varOrigin,
-                         (layersBeforeBase > 0),
-                         overrideIsInit,
-                         disambigOverride,
-                         0, // NOT isSequence
-                         0,
-                         0,
-                         varFuncInfo,
-                         isEnter);
-      break;
-    case DISAMBIG_FILE:
-      printDisambigEntry(var, fullFjalarName);
-      // DO NOT DERIVE VARIABLES for .disambig.  We are only interested
-      // in printing out the variables which are immediately visible
-      // to the user.  Thus, we should RETURN out of the function
-      // altogether instead of simply breaking out of the switch
+    // Perform the action action for this particular variable:
+    tResult = (*performAction)(var,
+                               fullFjalarName,
+                               varOrigin,
+                               numDereferences,
+                               layersBeforeBase,
+                               overrideIsInit,
+                               disambigOverride,
+                               0,
+                               pValue,
+                               0,
+                               0,
+                               varFuncInfo,
+                               isEnter);
+
+    tl_assert(tResult != INVALID_RESULT);
+
+    // We don't need the name anymore since we're done printing
+    // everything about this variable by now
+    VG_(free)(fullFjalarName);
+
+    // Punt!
+    if (tResult == STOP_TRAVERSAL) {
       return;
-    case DYNCOMP_EXTRA_PROP:
-      handleDynCompExtraProp(var, layersBeforeBase, varFuncInfo, isEnter);
-      break;
-    case FAUX_DECLS_FILE:
-      // Chill and do nothing here because we're making a dry run :)
-      break;
-    default:
-      VG_(printf)( "Error! Invalid outputType in visitSingleVar()\n");
-      abort();
-      break;
     }
   }
 
   // This is an ugly hack that's required to properly not print out
   // base struct variables but still make sure that derived variables
-  // are properly printed out.  We want to set variableHasBeenObserved
-  // to 1 if we encounter a base struct variable because we need its
+  // are properly printed out.  When we encounter a base struct
+  // variable, we need to set DEREF_MORE_POINTERS because we need its
   // member variables to be properly observed:
   if ((layersBeforeBase == 0) &&
-      (var->varType->isStructUnionType)) {
-    variableHasBeenObserved = 1;
+      (var->varType->isStructUnionType) {
+    tResult = DEREF_MORE_POINTERS;
   }
-
-  // We don't need the name anymore since we're done printing
-  // everything about this variable by now
-  VG_(free)(fullFjalarName);
 
   // Be very careful about where you increment this!  We want to
   // increment this once per call of either visitSingleVar() or
   // visitSequence():
   g_variableIndex++;
-
-  //  VG_(printf)("    variableHasBeenObserved: %d\n", variableHasBeenObserved);
 
   // Now comes the fun part of deriving variables!
 
@@ -586,10 +559,9 @@ void visitSingleVar(VariableEntry* var,
       void* pNewValue = 0;
 
       // Initialize pNewValue if possible, otherwise leave at 0:
-      // VERY IMPORTANT: Only derive if variableHasBeenObserved
-      if ((DTRACE_FILE == outputType) &&
-          pValue &&
-          variableHasBeenObserved) {
+      // VERY IMPORTANT: Only derive by dereferencing pointers if
+      // tResult == DEREF_MORE_POINTERS:
+      if (pValue && (tResult == DEREF_MORE_POINTERS)) {
         derivedIsAllocated = (overrideIsInit ? 1 :
                               addressIsAllocated((Addr)pValue, sizeof(void*)));
         if (derivedIsAllocated) {
@@ -636,10 +608,9 @@ void visitSingleVar(VariableEntry* var,
       UInt i;
 
       // We only need to set pValueArray and numElts for .dtrace output:
-      // VERY IMPORTANT: Only derive if variableHasBeenObserved
-      if ((DTRACE_FILE == outputType) &&
-          pValue &&
-          variableHasBeenObserved) {
+      // VERY IMPORTANT: Only derive by dereferencing pointers if
+      // tResult == DEREF_MORE_POINTERS:
+      if (pValue && (tResult == DEREF_MORE_POINTERS)) {
         // Static array:
         if (VAR_IS_STATIC_ARRAY(var)) {
           // Flatten multi-dimensional arrays by treating them as one
@@ -806,9 +777,9 @@ void visitSingleVar(VariableEntry* var,
           }
 
           // Only derive a pointer value inside of the struct if
-          // variableHasBeenObserved; else leave pCurVarValue at 0:
-          if (DTRACE_FILE == outputType &&
-              variableHasBeenObserved) {
+          // (tResult == DEREF_MORE_POINTERS); else leave pCurVarValue
+          // at 0:
+          if (tResult == DEREF_MORE_POINTERS) {
             // The starting address for the member variable is the
             // struct's starting address plus the location of the
             // variable within the struct
@@ -871,10 +842,8 @@ void visitSingleVar(VariableEntry* var,
       // Regular member variable (without array flattening):
       else {
         // Only derive a pointer value inside of the struct if
-        // variableHasBeenObserved; else leave pCurVarValue at 0:
-        if ((DTRACE_FILE == outputType) &&
-            pValue &&
-            variableHasBeenObserved) {
+        // (tResult == DEREF_MORE_POINTERS); else leave pCurVarValue at 0:
+        if (pValue && (tResult == DEREF_MORE_POINTERS)) {
           // The starting address for the member variable is the
           // struct's starting address plus the location of the variable
           // within the struct TODO: Are we sure that arithmetic on
@@ -958,19 +927,19 @@ void visitSequence(VariableEntry* var,
                    void** pValueArray,
                    UInt numElts, // Size of pValueArray
                    // This function performs an action for each variable visited:
-                   char (*performAction)(VariableEntry*,
-                                         UInt,
-                                         char*,
-                                         VariableOrigin,
-                                         char,
-                                         char,
-                                         DisambigOverride,
-                                         char,
-                                         void*,
-                                         void**,
-                                         UInt,
-                                         FunctionEntry*,
-                                         char),
+                   TraversalResult (*performAction)(VariableEntry*,
+                                                    char*,
+                                                    VariableOrigin,
+                                                    UInt,
+                                                    UInt,
+                                                    char,
+                                                    DisambigOverride,
+                                                    char,
+                                                    void*,
+                                                    void**,
+                                                    UInt,
+                                                    FunctionEntry*,
+                                                    char),
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
@@ -987,6 +956,8 @@ void visitSequence(VariableEntry* var,
   char* fullFjalarName = 0;
   int layersBeforeBase;
 
+  TraversalResult tResult = INVALID_RESULT;
+
   tl_assert(var);
   layersBeforeBase = var->repPtrLevels - numDereferences;
   tl_assert(layersBeforeBase >= 0);
@@ -1000,11 +971,10 @@ void visitSequence(VariableEntry* var,
     disambigOverride = returnDisambigOverride(var);
   }
 
-  // Unless fjalar_output_struct_vars is on,
-  // don't print out an entry for base (non-pointer) struct/union
-  // variables since they have no substantive meaning for C programs.
-  // They are merely represented as hashcode values, and that's kind
-  // of deceiving because they aren't really pointer variables either.
+  // Unless fjalar_output_struct_vars is on, don't perform any action
+  // for base (non-pointer) struct/union variables since they have no
+  // substantive meaning for C programs.  We are only interested in
+  // the fields of the struct, not the struct itself.
 
   // This means that anywhere inside of this 'if' statement, we should
   // be very careful about mutating state because different state may
@@ -1025,51 +995,32 @@ void visitSequence(VariableEntry* var,
       return;
     }
 
-    // Perform the actual output depending on outputType:
-    switch (outputType) {
-    case DECLS_FILE:
-      printDeclsEntry(var, fullFjalarName, varOrigin, allowVarDumpToFile,
-                      layersBeforeBase, 1, disambigOverride,
-                      varFuncInfo, isEnter);
-      break;
-    case DTRACE_FILE:
-      printDtraceEntry(var,
-                       numDereferences,
-                       fullFjalarName,
-                       0,
-                       varOrigin,
-                       (layersBeforeBase > 0),
-                       0,
-                       disambigOverride,
-                       1, // YES isSequence
-                       pValueArray,
-                       numElts,
-                       varFuncInfo,
-                       isEnter);
-      break;
-    case DISAMBIG_FILE:
-      printDisambigEntry(var, fullFjalarName);
-      // DO NOT DERIVE VARIABLES for .disambig.  We are only interested
-      // in printing out the variables which are immediately visible
-      // to the user.  Thus, we should RETURN out of the function
-      // altogether instead of simply breaking out of the switch
+    // Perform the action action for this particular variable:
+    tResult = (*performAction)(var,
+                               fullFjalarName,
+                               varOrigin,
+                               numDereferences,
+                               layersBeforeBase,
+                               0, // Do not overrideIsInit
+                               disambigOverride,
+                               1, // YES isSequence
+                               0,
+                               pValueArray,
+                               numElts,
+                               varFuncInfo,
+                               isEnter);
+
+    tl_assert(tResult != INVALID_RESULT);
+
+    // We don't need the name anymore since we're done printing
+    // everything about this variable by now
+    VG_(free)(fullFjalarName);
+
+    // Punt!
+    if (tResult == STOP_TRAVERSAL) {
       return;
-    case DYNCOMP_EXTRA_PROP:
-      handleDynCompExtraProp(var, layersBeforeBase, varFuncInfo, isEnter);
-      break;
-    case FAUX_DECLS_FILE:
-      // Chill and do nothing here because we're making a dry run :)
-      break;
-    default:
-      VG_(printf)( "Error! Invalid outputType in visitSequence()\n");
-      abort();
-      break;
     }
   }
-
-  // We don't need the name anymore since we're done printing
-  // everything about this variable by now
-  VG_(free)(fullFjalarName);
 
   // Be very careful about where you increment this!  We want to
   // increment this once per call of either visitSingleVar() or
@@ -1090,7 +1041,7 @@ void visitSequence(VariableEntry* var,
     // We only need to set pValueArray and numElts for .dtrace output:
     // (If this variable is a static array, then there is no need to
     //  dereference pointers - very important but subtle point!)
-    if ((DTRACE_FILE == outputType) &&
+    if ((tResult == DEREF_MORE_POINTERS) &&
         !VAR_IS_STATIC_ARRAY(var)) {
       // Iterate through pValueArray and dereference each pointer
       // value if possible, then override the entries in pValueArray
@@ -1234,7 +1185,7 @@ void visitSequence(VariableEntry* var,
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
 
-          if (DTRACE_FILE == outputType) {
+          if (tResult == DEREF_MORE_POINTERS) {
             // Create pCurVarValueArray to be the same size as pValueArray:
             pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
 
@@ -1339,7 +1290,7 @@ void visitSequence(VariableEntry* var,
       // Regular member variable (without array flattening):
       else {
 
-        if (DTRACE_FILE == outputType) {
+        if (tResult == DEREF_MORE_POINTERS) {
           // Create pCurVarValueArray to be the same size as pValueArray:
           pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
 
