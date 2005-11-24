@@ -77,23 +77,23 @@ FILE* xml_output_fp = 0;
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
-TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0};
+TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0};
+TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0};
+TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0};
+TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0};
+TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0};
+TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0};
+TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
+TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
+TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
+TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
+TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
+TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0};
+TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0};
+TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
@@ -549,8 +549,12 @@ void repCheckAllEntries() {
       VarNode* n;
       unsigned int numMemberVars = 0;
       unsigned int prev_data_member_location = 0;
-      UShort memberFuncIndex = 0;
-      UShort superclassIndex = 0;
+
+      SimpleNode* memberFunctionNode;
+      SimpleNode* superclassNode;
+
+      UInt numMemberFunctions = 0;
+      UInt numSuperclasses = 0;
 
       tl_assert(t->collectionName);
 
@@ -558,42 +562,43 @@ void repCheckAllEntries() {
 
       tl_assert((D_STRUCT == t->decType) ||
 		(D_UNION == t->decType));
-      tl_assert(t->memberVarList);
 
-      // Rep. check member variables:
-      for (n = t->memberVarList->first;
-	   n != 0;
-	   n = n->next) {
-	VariableEntry* curMember = n->var;
+      // Rep. check member variables (if there are any):
+      if (t->memberVarList) {
+        for (n = t->memberVarList->first;
+             n != 0;
+             n = n->next) {
+          VariableEntry* curMember = n->var;
 
-	VG_(printf)(" checking member %s for %s\n",
-		    curMember->name, t->collectionName);
+          VG_(printf)(" checking member %s for %s\n",
+                      curMember->name, t->collectionName);
 
-	// Specific checks for member variables:
-	tl_assert(curMember->isStructUnionMember);
-	tl_assert(0 == curMember->byteOffset);
+          // Specific checks for member variables:
+          tl_assert(curMember->isStructUnionMember);
+          tl_assert(0 == curMember->byteOffset);
 
-	// For a struct, check that data_member_location is greater
-	// than the one of the previous member variable.  Notice that
-	// data_member_location can be 0.
-	if (D_STRUCT == t->decType) {
-	  if (prev_data_member_location > 0) {
-	    tl_assert(curMember->data_member_location > prev_data_member_location);
-	  }
-	  prev_data_member_location = curMember->data_member_location;
-	}
-	// For a union, all offsets should be 0
-	else if (D_UNION == t->decType) {
-	  tl_assert(0 == curMember->data_member_location);
-	}
+          // For a struct, check that data_member_location is greater
+          // than the one of the previous member variable.  Notice that
+          // data_member_location can be 0.
+          if (D_STRUCT == t->decType) {
+            if (prev_data_member_location > 0) {
+              tl_assert(curMember->data_member_location > prev_data_member_location);
+            }
+            prev_data_member_location = curMember->data_member_location;
+          }
+          // For a union, all offsets should be 0
+          else if (D_UNION == t->decType) {
+            tl_assert(0 == curMember->data_member_location);
+          }
 
-	tl_assert(curMember->structParentType == t);
+          tl_assert(curMember->structParentType == t);
 
-	repCheckOneVariable(curMember);
+          repCheckOneVariable(curMember);
 
-	numMemberVars++;
+          numMemberVars++;
+        }
+        tl_assert(numMemberVars == t->memberVarList->numVars);
       }
-      tl_assert(numMemberVars == t->memberVarList->numVars);
 
       // Rep. check static member variables (if there are any):
       if (t->staticMemberVarList) {
@@ -622,32 +627,34 @@ void repCheckAllEntries() {
 	tl_assert(numStaticMemberVars == t->staticMemberVarList->numVars);
       }
 
-      VG_(printf)("Before checking member functions (num: %u)\n",
-		  t->memberFunctionArraySize);
       // Rep. check member functions:
-      for (memberFuncIndex = 0;
-	   memberFuncIndex < t->memberFunctionArraySize;
-	   memberFuncIndex++) {
-	// Make sure that all of their parentClass fields point to t:
-	VG_(printf)("memberFuncIndex: %u, t->memberFunctionArray[memberFuncIndex]: %p\n",
-		    memberFuncIndex, t->memberFunctionArray[memberFuncIndex]);
-
-	tl_assert(t->memberFunctionArray[memberFuncIndex]->parentClass == t);
+      if (t->memberFunctionList) {
+        for (memberFunctionNode = t->memberFunctionList->first;
+             memberFunctionNode != NULL;
+             memberFunctionNode = memberFunctionNode->next) {
+          // Make sure that all of their parentClass fields point to t:
+          tl_assert(((FunctionEntry*)(memberFunctionNode->elt))->parentClass == t);
+          numMemberFunctions++;
+        }
+        tl_assert(numMemberFunctions == t->memberFunctionList->numElts);
       }
-      VG_(printf)("After checking member functions\n");
 
       // Rep. check superclasses
-      for (superclassIndex = 0;
-           superclassIndex < t->superclassArraySize;
-           superclassIndex++) {
-        // Make sure that all Superclass entries have a className and
-        // it matches the className of the corresponding TypeEntry:
-        Superclass* curSuper = &(t->superclassArray[superclassIndex]);
-        tl_assert(curSuper->className);
-        tl_assert(curSuper->class);
-        tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->collectionName));
-        VG_(printf)("superclassIndex: %u, curSuper->className: %s, inheritance: %d\n",
-                    superclassIndex, curSuper->className, curSuper->inheritance);
+      if (t->superclassList) {
+        for (superclassNode = t->superclassList->first;
+             superclassNode != NULL;
+             superclassNode = superclassNode->next) {
+          // Make sure that all Superclass entries have a className and
+          // it matches the className of the corresponding TypeEntry:
+          Superclass* curSuper = (Superclass*)superclassNode->elt;
+          tl_assert(curSuper->className);
+          tl_assert(curSuper->class);
+          tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->collectionName));
+          VG_(printf)("  curSuper->className: %s, inheritance: %d\n",
+                      curSuper->className, curSuper->inheritance);
+          numSuperclasses++;
+        }
+        tl_assert(numSuperclasses == t->superclassList->numElts);
       }
     }
   }
@@ -1199,21 +1206,11 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList
-// (DO NOT attempt to initialize t->memberFunctionArray right now
-//  because FunctionTable has not been fully initialized yet, and
-//  DO NOT attempt to initialize t->superclassArray right now
-//  because TypesTable has not been fully initialized yet.)
 static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 {
   collection_type* collectionPtr = 0;
   UInt i = 0, member_func_index = 0, superclass_index = 0;
   VarNode* memberNodePtr = 0;
-
-  UShort numMemberFunctions = 0;
-  UShort memberFunctionArrayIndex = 0;
-
-  UShort numSuperclasses = 0;
-  UShort superclassArrayIndex = 0;
 
   tl_assert((e->tag_name == DW_TAG_structure_type) ||
             (e->tag_name == DW_TAG_union_type));
@@ -1237,11 +1234,11 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
-  // t->memberFunctionArray with the start PC of the function, then
+  // t->memberFunctionList with the start PC of the function, then
   // later in initMemberFuncs(), we will
   // use those start PC values to look up the actual FunctionEntry
   // entries using findFunctionEntryByStartAddr().  Thus, we
-  // temporarily overload memberFunctionArray[] to hold start PC
+  // temporarily overload memberFunctionList elts to hold start PC
   // pointer values.
 
   // First make a dry pass to determine how many functions we actually
@@ -1277,34 +1274,14 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     VG_(printf)("         funcPtr->start_pc: %p\n", funcPtr->start_pc);
 
     // Success!
-    numMemberFunctions++;
-  }
-
-  if (numMemberFunctions > 0) {
-    t->memberFunctionArraySize = numMemberFunctions;
-    t->memberFunctionArray = VG_(calloc)(numMemberFunctions,
-                                         sizeof(*(t->memberFunctionArray)));
-
-    VG_(printf)(" - numMemberFunctions: %d\n", numMemberFunctions);
-
-    // Make the second pass to populate memberFunctionArray (The
-    // conditions must PRECISELY match the previous pass or else we'll
-    // have problems)
-    for (member_func_index = 0;
-         member_func_index < collectionPtr->num_member_funcs;
-         member_func_index++) {
-      function* funcPtr =
-        (function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
-      // If we can't even find a start_pc, then just punt it:
-      if (!funcPtr->start_pc) {
-        continue;
-      }
-
-      // Success!
-      // SUPER HACK!!! BE CAREFUL!!!
-      t->memberFunctionArray[memberFunctionArrayIndex] = (FunctionEntry*)(funcPtr->start_pc);
-      memberFunctionArrayIndex++;
+    // If memberFunctionList hasn't been allocated yet, calloc it:
+    if (!t->memberFunctionList) {
+      t->memberFunctionList =
+        (SimpleList*)VG_(calloc)(1, sizeof(*(t->memberFunctionList)));
     }
+
+    SimpleListPush(t->memberFunctionList,
+                   (void*)funcPtr->start_pc);
   }
 
   for (superclass_index = 0;
@@ -1325,118 +1302,102 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
       // Make sure that it has a name; otherwise just give up on it
       if (dwarf_super->name) {
+
+        TypeEntry* existing_entry = 0;
+        // Note: We never ever free this! (whoops!)
+        Superclass* curSuper = VG_(calloc)(1, sizeof(*curSuper));
+        curSuper->className = VG_(strdup)(dwarf_super->name);
+
+        // Success!
+        // If superclassList hasn't been allocated yet, calloc it:
+        if (!t->superclassList) {
+          t->superclassList =
+            (SimpleList*)VG_(calloc)(1, sizeof(*(t->superclassList)));
+        }
+
+        // Insert new superclass element:
+        SimpleListPush(t->superclassList,
+                       (void*)curSuper);
+
         VG_(printf)(" +++ super->name: %s\n", dwarf_super->name);
-        numSuperclasses++;
-      }
-    }
-  }
 
-  // Now make a second pass and initialize superclassArray:
-  if (numSuperclasses > 0) {
-    t->superclassArraySize = numSuperclasses;
-    t->superclassArray = (Superclass*)VG_(calloc)(numSuperclasses,
-                                                  sizeof(*(t->superclassArray)));
+        switch (inh->accessibility) {
+        case DW_ACCESS_private:
+          curSuper->inheritance = PRIVATE_VISIBILITY;
+          break;
+        case DW_ACCESS_protected:
+          curSuper->inheritance = PROTECTED_VISIBILITY;
+          break;
+        case DW_ACCESS_public:
+        default:
+          curSuper->inheritance = PUBLIC_VISIBILITY;
+        }
 
-    for (superclass_index = 0;
-         superclass_index < collectionPtr->num_superclasses;
-         superclass_index++) {
-      inheritance_type* inh =
-        (inheritance_type*)(collectionPtr->superclasses[superclass_index])->entry_ptr;
+        curSuper->member_var_offset = inh->member_var_offset;
 
-      // Follow the type pointer:
-      unsigned long super_type_loc = 0;
-      if (binary_search_dwarf_entry_array(inh->superclass_type_ID, &super_type_loc)) {
-        dwarf_entry* super_type_entry = &dwarf_entry_array[super_type_loc];
-        collection_type* dwarf_super = 0;
-        // Make sure that it's a collection entry
-        tl_assert(tag_is_collection_type(super_type_entry->tag_name));
+        // Force the superclass TypeEntry to be loaded from
+        // TypesTable or created if it doesn't yet exist:
+        existing_entry = (TypeEntry*)gengettable(TypesTable,
+                                                 (void*)curSuper->className);
 
-        dwarf_super = (collection_type*)(super_type_entry->entry_ptr);
+        VG_(printf)("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
+                    existing_entry, curSuper->className);
 
-        // Make sure that it has a name; otherwise just give up on it
-        if (dwarf_super->name) {
-          TypeEntry* existing_entry = 0;
-          Superclass* curSuper = &(t->superclassArray[superclassArrayIndex]);
-          curSuper->className = VG_(strdup)(dwarf_super->name);
+        if (existing_entry) {
+          curSuper->class = existing_entry;
+          // We are done!
+        }
+        // No entry exists for this name, so insert a new one:
+        else {
+          curSuper->class = (TypeEntry*)VG_(calloc)(1, sizeof(*(curSuper->class)));
 
-          switch (inh->accessibility) {
-          case DW_ACCESS_private:
-            curSuper->inheritance = PRIVATE_VISIBILITY;
-            break;
-          case DW_ACCESS_protected:
-            curSuper->inheritance = PROTECTED_VISIBILITY;
-            break;
-          case DW_ACCESS_public:
-          default:
-            curSuper->inheritance = PUBLIC_VISIBILITY;
-          }
+          // Insert it into the table BEFORE calling
+          // extractStructUnionType() or else we may infinitely
+          // recurse!
+          VG_(printf)("  Insert %s (superclass) into TypesTable\n", curSuper->className);
+          genputtable(TypesTable,
+                      (void*)curSuper->className,
+                      curSuper->class);
 
-          curSuper->member_var_offset = inh->member_var_offset;
+          tl_assert((super_type_entry->tag_name == DW_TAG_structure_type) ||
+                    (super_type_entry->tag_name == DW_TAG_union_type));
 
-          // Force the superclass TypeEntry to be loaded from
-          // TypesTable or created if it doesn't yet exist:
-          existing_entry = (TypeEntry*)gengettable(TypesTable,
-                                                   (void*)curSuper->className);
-
-          VG_(printf)("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
-                      existing_entry, curSuper->className);
-
-          if (existing_entry) {
-            curSuper->class = existing_entry;
-            // We are done!
-          }
-          // No entry exists for this name, so insert a new one:
-          else {
-            curSuper->class = (TypeEntry*)VG_(calloc)(1, sizeof(*(curSuper->class)));
-
-            // Insert it into the table BEFORE calling
-            // extractStructUnionType() or else we may infinitely
-            // recurse!
-            VG_(printf)("  Insert %s (superclass) into TypesTable\n", curSuper->className);
-            genputtable(TypesTable,
-                        (void*)curSuper->className,
-                        curSuper->class);
-
-            tl_assert((super_type_entry->tag_name == DW_TAG_structure_type) ||
-                      (super_type_entry->tag_name == DW_TAG_union_type));
-
-            VG_(printf)("  Doesn't exist ... trying to add class %s\n", curSuper->className);
-            extractStructUnionType(curSuper->class, super_type_entry);
-          }
-
-          superclassArrayIndex++;
+          VG_(printf)("  Doesn't exist ... trying to add class %s\n", curSuper->className);
+          extractStructUnionType(curSuper->class, super_type_entry);
         }
       }
     }
   }
 
-  t->memberVarList = (VarList*)VG_(calloc)(1, sizeof(*(t->memberVarList)));
+  if (collectionPtr->num_member_vars > 0) {
+    t->memberVarList =
+      (VarList*)VG_(calloc)(1, sizeof(*(t->memberVarList)));
 
-  // Look up the dwarf_entry for the struct/union and iterate
-  // through its member_vars array (of pointers to members)
-  // in order to extract each member variable
+    // Look up the dwarf_entry for the struct/union and iterate
+    // through its member_vars array (of pointers to members)
+    // in order to extract each member variable
 
-  for (i = 0; i < collectionPtr->num_member_vars; i++) {
-    member* memberPtr = (member*)((collectionPtr->member_vars[i])->entry_ptr);
-    extractOneVariable(t->memberVarList,
-                       memberPtr->type_ptr,
-                       memberPtr->name,
-                       0,
-                       0,
-                       0,
-                       0,
-                       0,
-                       0,
-                       1,
-                       memberPtr->data_member_location,
-                       memberPtr->internal_byte_size,
-                       memberPtr->internal_bit_offset,
-                       memberPtr->internal_bit_size,
-                       t,
-                       memberPtr->accessibility,
-                       0);
+    for (i = 0; i < collectionPtr->num_member_vars; i++) {
+      member* memberPtr = (member*)((collectionPtr->member_vars[i])->entry_ptr);
+      extractOneVariable(t->memberVarList,
+                         memberPtr->type_ptr,
+                         memberPtr->name,
+                         0,
+                         0,
+                         0,
+                         0,
+                         0,
+                         0,
+                         1,
+                         memberPtr->data_member_location,
+                         memberPtr->internal_byte_size,
+                         memberPtr->internal_bit_offset,
+                         memberPtr->internal_bit_size,
+                         t,
+                         memberPtr->accessibility,
+                         0);
+    }
   }
-
 
   VG_(printf)("t: %s, num_static_member_vars: %u\n",
 	      t->collectionName,
@@ -2188,27 +2149,30 @@ static void initMemberFuncs() {
     if ((t->decType == D_STRUCT) ||
         (t->decType == D_UNION)) {
       // This is a bit of a hack, but in extractStructUnionType(), we
-      // initialized the entries of t->memberFunctionArray with the
+      // initialized the entries of t->memberFunctionList with the
       // start PC of the member functions (we had to do this because
       // FunctionTable wasn't initialized at that time).  Thus, we
-      // temporarily overload memberFunctionArray[] to hold start PC
+      // temporarily overload memberFunctionList elts to hold start PC
       // pointer values.  Now we will iterate over those values and
       // use findFunctionEntryByStartAddr() to try to fill them in
       // with actual FunctionEntry instances:
-      UShort i;
+      SimpleNode* n;
 
-      for (i = 0; i < t->memberFunctionArraySize; i++) {
-        FunctionEntry** pCurMemberFunc = &t->memberFunctionArray[i];
-        unsigned int start_PC = (unsigned int)(*pCurMemberFunc);
-        tl_assert(start_PC);
+      if (t->memberFunctionList) {
+        for (n = t->memberFunctionList->first;
+             n != NULL;
+             n = n->next) {
+          unsigned int start_PC = (unsigned int)(n->elt);
+          tl_assert(start_PC);
 
-        VG_(printf)("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
+          VG_(printf)("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
 
-        // Hopefully this will always be non-null
-        *pCurMemberFunc = findFunctionEntryByStartAddr(start_PC);
-        tl_assert(*pCurMemberFunc);
+          // Hopefully this will always be non-null
+          n->elt = (FunctionEntry*)findFunctionEntryByStartAddr(start_PC);
+          tl_assert(n->elt);
         // Very important!  Signify that it's a member function
-        (*pCurMemberFunc)->parentClass = t;
+          ((FunctionEntry*)(n->elt))->parentClass = t;
+        }
       }
     }
   }
@@ -2441,7 +2405,6 @@ static void XMLprintTypesTable() {
 	       DeclaredTypeNames[cur_entry->decType]);
 
     if (cur_entry->isStructUnionType) {
-      unsigned int i;
 
       if (cur_entry->memberVarList &&
           (cur_entry->memberVarList->numVars > 0)) {
@@ -2457,34 +2420,46 @@ static void XMLprintTypesTable() {
         XML_PRINTF("</static-member-variables>\n");
       }
 
-      if (cur_entry->memberFunctionArraySize > 0) {
+      if (cur_entry->memberFunctionList &&
+          (cur_entry->memberFunctionList->numElts > 0)) {
+        SimpleNode* n;
         XML_PRINTF("<member-functions>\n");
-        for (i = 0; i < cur_entry->memberFunctionArraySize; i++) {
-          XMLprintOneFunction(cur_entry->memberFunctionArray[i], 1);
+        for (n = cur_entry->memberFunctionList->first;
+             n != NULL;
+             n = n->next) {
+          XMLprintOneFunction((FunctionEntry*)(n->elt), 1);
         }
         XML_PRINTF("</member-functions>\n");
       }
 
-      for (i = 0; i < cur_entry->superclassArraySize; i++) {
-        XML_PRINTF("<superclass ");
+      if (cur_entry->superclassList &&
+          (cur_entry->superclassList->numElts > 0)) {
+        SimpleNode* n;
+        for (n = cur_entry->superclassList->first;
+             n != NULL;
+             n = n->next) {
+          Superclass* super = (Superclass*)(n->elt);
 
-        switch(cur_entry->superclassArray[i].inheritance) {
-        case PRIVATE_VISIBILITY:
-          XML_PRINTF("inheritance=\"private\"");
-          break;
-        case PROTECTED_VISIBILITY:
-          XML_PRINTF("inheritance=\"protected\"");
-          break;
-        case PUBLIC_VISIBILITY:
-        default:
-          XML_PRINTF("inheritance=\"public\"");
+          XML_PRINTF("<superclass ");
+
+          switch(super->inheritance) {
+          case PRIVATE_VISIBILITY:
+            XML_PRINTF("inheritance=\"private\"");
+            break;
+          case PROTECTED_VISIBILITY:
+            XML_PRINTF("inheritance=\"protected\"");
+            break;
+          case PUBLIC_VISIBILITY:
+          default:
+            XML_PRINTF("inheritance=\"public\"");
+          }
+
+          XML_PRINTF(" member-var-offset=\"%lu\"",
+                     super->member_var_offset);
+
+          XML_PRINTF(">%s</superclass>\n",
+                     super->className);
         }
-
-        XML_PRINTF(" member-var-offset=\"%u\"",
-                   cur_entry->superclassArray[i].member_var_offset);
-
-        XML_PRINTF(">%s</superclass>\n",
-                   cur_entry->superclassArray[i].className);
       }
     }
 
