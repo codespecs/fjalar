@@ -40,6 +40,7 @@ vgtool_fjalar_so_SOURCES = \
 	fjalar_select.c \
 	generate_fjalar_entries.c \
 	GenericHashtable.c \
+	fjalar_traversal.c \
 	readelf.c \
 	typedata.c \
 	disambig.c \
