@@ -230,23 +230,27 @@ static char ignore_type_with_name(char* name) {
 // Super simple list - doesn't do any dynamic allocation or
 // deallocation of elt - just stores pointers:
 
-// Insert elt at the head of lst, allocating a new SimpleNode
-void SimpleListPush(SimpleList* lst, void* elt) {
+// Insert elt at the END of lst, allocating a new SimpleNode
+void SimpleListInsert(SimpleList* lst, void* elt) {
   SimpleNode* newNode;
   tl_assert(lst);
   newNode = VG_(calloc)(1, sizeof(*newNode));
   newNode->elt = elt;
+  newNode->next = NULL;
 
   if (lst->first) {
-    tl_assert(lst->numElts > 0);
-    newNode->next = lst->first;
+    tl_assert(lst->numElts > 0 &&
+              lst->last &&
+              (lst->last->next == NULL));
+    lst->last->next = newNode;
+    lst->last = newNode;
   }
   else {
-    tl_assert(lst->numElts == 0);
-    newNode->next = NULL;
+    tl_assert(lst->numElts == 0 &&
+              !lst->last);
+    lst->first = lst->last = newNode;
   }
 
-  lst->first = newNode;
   lst->numElts++;
 }
 
@@ -280,11 +284,13 @@ void SimpleListClear(SimpleList* lst) {
     VG_(free)(tmp);
     lst->numElts--;
   }
+  lst->last = NULL;
   tl_assert(lst->numElts == 0);
 }
 
 void SimpleListInit(SimpleList* lst) {
   lst->first = NULL;
+  lst->last = NULL;
   lst->numElts = 0;
 }
 
@@ -357,6 +363,9 @@ void clearVarList(VarList* varListPtr) {
 //  will probably get lots of memory leaks.)
 void initializeAllFjalarData()
 {
+  // For debugging:
+  //  int x = 0;
+  //  while (!x) {}
 
   // First delete everything that's in the globalVars list
   clearVarList(&globalVars);
@@ -1280,8 +1289,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         (SimpleList*)VG_(calloc)(1, sizeof(*(t->memberFunctionList)));
     }
 
-    SimpleListPush(t->memberFunctionList,
-                   (void*)funcPtr->start_pc);
+    SimpleListInsert(t->memberFunctionList,
+                     (void*)funcPtr->start_pc);
   }
 
   for (superclass_index = 0;
@@ -1316,8 +1325,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         }
 
         // Insert new superclass element:
-        SimpleListPush(t->superclassList,
-                       (void*)curSuper);
+        SimpleListInsert(t->superclassList,
+                         (void*)curSuper);
 
         VG_(printf)(" +++ super->name: %s\n", dwarf_super->name);
 
@@ -1458,9 +1467,9 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // (if member is actually a struct type, then its byte size should already
   //  have been computed by the recursive version of this call to that struct)
   // - Round struct size up to the nearest word (multiple of 4)
-  memberNodePtr = t->memberVarList->last;
-  if (memberNodePtr)
-    {
+  if (t->memberVarList) {
+    memberNodePtr = t->memberVarList->last;
+    if (memberNodePtr) {
       int structByteSize = 0;
       VariableEntry* memberVarPtr = memberNodePtr->var;
       structByteSize = memberVarPtr->data_member_location +
@@ -1471,6 +1480,10 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
       FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->collectionName, t->byteSize);
     }
+  }
+  else {
+    t->byteSize = 0;
+  }
 }
 
 
@@ -2117,6 +2130,14 @@ static void initConstructorsAndDestructors() {
       if (parentClass) {
         VG_(printf)(" *** CONSTRUCTOR! func-name: %s\n", f->name);
         f->parentClass = parentClass;
+
+        // Insert f into the parent class's memberFunctionList,
+        // allocating it if necessary:
+        if (!parentClass->memberFunctionList) {
+          parentClass->memberFunctionList =
+            (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->memberFunctionList)));
+        }
+        SimpleListInsert(parentClass->memberFunctionList, (void*)f);
       }
       // See if it's a destructor
       else if ('~' == f->name[0]) {
@@ -2127,6 +2148,14 @@ static void initConstructorsAndDestructors() {
         if (parentClass) {
           VG_(printf)(" *** DESTRUCTOR! func-name: %s\n", f->name);
           f->parentClass = parentClass;
+
+          // Insert f into the parent class's memberFunctionList,
+          // allocating it if necessary:
+          if (!parentClass->memberFunctionList) {
+            parentClass->memberFunctionList =
+              (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->memberFunctionList)));
+          }
+          SimpleListInsert(parentClass->memberFunctionList, (void*)f);
         }
       }
     }

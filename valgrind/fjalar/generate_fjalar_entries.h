@@ -269,10 +269,11 @@ struct _SimpleNode {
 
 struct _SimpleList {
   SimpleNode* first;
+  SimpleNode* last;
   UInt numElts;
 };
 
-void SimpleListPush(SimpleList* lst, void* elt);
+void SimpleListInsert(SimpleList* lst, void* elt);
 void* SimpleListPop(SimpleList* lst);
 void SimpleListClear(SimpleList* lst);
 void SimpleListInit(SimpleList* lst);
