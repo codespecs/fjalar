@@ -38,7 +38,7 @@ void stringStackClear(int* pStringStackSize);
 int stringStackStrLen(char** stringStack, int stringStackSize);
 char* stringStackStrdup(char** stringStack, int stringStackSize);
 
-typedef enum VariableOrigin {
+typedef enum {
   DERIVED_VAR, // Always switches to this after one recursive call
   DERIVED_FLATTENED_ARRAY_VAR, // A derived variable as a result of flattening an array
   GLOBAL_VAR,
@@ -47,24 +47,39 @@ typedef enum VariableOrigin {
   FUNCTION_RETURN_VAR // Assume for function exits only
 } VariableOrigin;
 
+typedef enum {
+  INVALID_RESULT = 0,
+  // When we don't care about deriving further values by dereferencing
+  // pointers.  All values of variables derived from the visited
+  // variable will simply be null.  However, we will still continue to
+  // derive variables by traversing inside of structs and arrays:
+  DO_NOT_DEREF_MORE_POINTERS,
+  // Attempt to derive more values by dereferencing pointers after
+  // visiting the current variable:
+  DEREF_MORE_POINTERS,
+  // Stop the traversal after this variable and do not derive anything
+  // further:
+  STOP_TRAVERSAL
+} TraversalResult;
+
 void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified function
                              char isEnter,           // 1 for function entrance, 0 for exit
 			     VariableOrigin varOrigin,
 			     char* stackBaseAddr,
                              // This function performs an action for each variable visited:
-                             char (*performAction)(VariableEntry*,
-                                                   UInt,
-                                                   char*,
-                                                   VariableOrigin,
-                                                   char,
-                                                   char,
-                                                   DisambigOverride,
-                                                   char,
-                                                   void*,
-                                                   void**,
-                                                   UInt,
-                                                   FunctionEntry*,
-                                                   char));
+                             TraversalResult (*performAction)(VariableEntry*,
+                                                              char*,
+                                                              VariableOrigin,
+                                                              UInt,
+                                                              UInt,
+                                                              char,
+                                                              DisambigOverride,
+                                                              char,
+                                                              void*,
+                                                              void**,
+                                                              UInt,
+                                                              FunctionEntry*,
+                                                              char));
 
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
@@ -78,19 +93,19 @@ void visitVariable(VariableEntry* var,
                    // different from the original's
                    char overrideIsInit,
                    // This function performs an action for each variable visited:
-                   char (*performAction)(VariableEntry*,
-                                         UInt,
-                                         char*,
-                                         VariableOrigin,
-                                         char,
-                                         char,
-                                         DisambigOverride,
-                                         char,
-                                         void*,
-                                         void**,
-                                         UInt,
-                                         FunctionEntry*,
-                                         char),
+                   TraversalResult (*performAction)(VariableEntry*,
+                                                    char*,
+                                                    VariableOrigin,
+                                                    UInt,
+                                                    UInt,
+                                                    char,
+                                                    DisambigOverride,
+                                                    char,
+                                                    void*,
+                                                    void**,
+                                                    UInt,
+                                                    FunctionEntry*,
+                                                    char),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    char isEnter) {
