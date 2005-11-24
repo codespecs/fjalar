@@ -77,23 +77,23 @@ FILE* xml_output_fp = 0;
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
-TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0};
-TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0};
-TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0};
-TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0};
-TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0};
-TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0};
-TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0};
-TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
-TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0};
-TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
-TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
-TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0};
-TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0};
-TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0};
-TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0};
+TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
@@ -2131,13 +2131,13 @@ static void initConstructorsAndDestructors() {
         VG_(printf)(" *** CONSTRUCTOR! func-name: %s\n", f->name);
         f->parentClass = parentClass;
 
-        // Insert f into the parent class's memberFunctionList,
+        // Insert f into the parent class's constructorList,
         // allocating it if necessary:
-        if (!parentClass->memberFunctionList) {
-          parentClass->memberFunctionList =
-            (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->memberFunctionList)));
+        if (!parentClass->constructorList) {
+          parentClass->constructorList =
+            (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->constructorList)));
         }
-        SimpleListInsert(parentClass->memberFunctionList, (void*)f);
+        SimpleListInsert(parentClass->constructorList, (void*)f);
       }
       // See if it's a destructor
       else if ('~' == f->name[0]) {
@@ -2149,13 +2149,13 @@ static void initConstructorsAndDestructors() {
           VG_(printf)(" *** DESTRUCTOR! func-name: %s\n", f->name);
           f->parentClass = parentClass;
 
-          // Insert f into the parent class's memberFunctionList,
+          // Insert f into the parent class's destructorList,
           // allocating it if necessary:
-          if (!parentClass->memberFunctionList) {
-            parentClass->memberFunctionList =
-              (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->memberFunctionList)));
+          if (!parentClass->destructorList) {
+            parentClass->destructorList =
+              (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->destructorList)));
           }
-          SimpleListInsert(parentClass->memberFunctionList, (void*)f);
+          SimpleListInsert(parentClass->destructorList, (void*)f);
         }
       }
     }
@@ -2310,12 +2310,19 @@ void outputAllXMLDeclarations() {
   fclose(xml_output_fp);
 }
 
+typedef enum {
+  MEMBER_FUNCTION,
+  CONSTRUCTOR_OR_DESTRUCTOR,
+  REGULAR_FUNCTION
+} FunctionXMLPrintType;
+
 // Format things slightly differently for member functions:
-static void XMLprintOneFunction(FunctionEntry* cur_entry, char isMemberFunc) {
+static void XMLprintOneFunction(FunctionEntry* cur_entry,
+                                FunctionXMLPrintType printType) {
 
   XML_PRINTF("<function");
   // Add function attributes:
-  if (isMemberFunc) {
+  if (printType == MEMBER_FUNCTION) {
     XML_PRINTF(" type=\"");
     switch (cur_entry->accessibility) {
     case DW_ACCESS_private:
@@ -2330,8 +2337,10 @@ static void XMLprintOneFunction(FunctionEntry* cur_entry, char isMemberFunc) {
     }
     XML_PRINTF("\"");
   }
-  else if (!cur_entry->isExternal) {
-    XML_PRINTF(" type=\"file-static\"");
+  else if (printType == REGULAR_FUNCTION) {
+    if (!cur_entry->isExternal) {
+      XML_PRINTF(" type=\"file-static\"");
+    }
   }
   XML_PRINTF(">\n");
 
@@ -2399,7 +2408,7 @@ static void XMLprintFunctionTable()
       continue;
     }
 
-    XMLprintOneFunction(cur_entry, 0);
+    XMLprintOneFunction(cur_entry, REGULAR_FUNCTION);
   }
 
   XML_PRINTF("</function-declarations>\n");
@@ -2449,14 +2458,44 @@ static void XMLprintTypesTable() {
         XML_PRINTF("</static-member-variables>\n");
       }
 
+      if (cur_entry->constructorList &&
+          (cur_entry->constructorList->numElts > 0)) {
+        SimpleNode* n;
+        XML_PRINTF("<constructors>\n");
+
+        for (n = cur_entry->constructorList->first;
+             n != NULL;
+             n = n->next) {
+          XMLprintOneFunction((FunctionEntry*)(n->elt),
+                              CONSTRUCTOR_OR_DESTRUCTOR);
+        }
+        XML_PRINTF("</constructors>\n");
+      }
+
+      if (cur_entry->destructorList &&
+          (cur_entry->destructorList->numElts > 0)) {
+        SimpleNode* n;
+        XML_PRINTF("<destructors>\n");
+
+        for (n = cur_entry->destructorList->first;
+             n != NULL;
+             n = n->next) {
+          XMLprintOneFunction((FunctionEntry*)(n->elt),
+                              CONSTRUCTOR_OR_DESTRUCTOR);
+        }
+        XML_PRINTF("</destructors>\n");
+      }
+
       if (cur_entry->memberFunctionList &&
           (cur_entry->memberFunctionList->numElts > 0)) {
         SimpleNode* n;
         XML_PRINTF("<member-functions>\n");
+
         for (n = cur_entry->memberFunctionList->first;
              n != NULL;
              n = n->next) {
-          XMLprintOneFunction((FunctionEntry*)(n->elt), 1);
+          XMLprintOneFunction((FunctionEntry*)(n->elt),
+                              MEMBER_FUNCTION);
         }
         XML_PRINTF("</member-functions>\n");
       }
