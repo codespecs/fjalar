@@ -32,6 +32,53 @@ Bool disambig_writing = False; // True for writing to .disambig, False for readi
 const char* USERTYPE_PREFIX = "usertype.";
 const char* FUNCTION_PREFIX = "function: ";
 
+static Bool shouldOutputVarToDisambig(VariableEntry* var);
+static void processDisambigFile();
+
+// Call this AFTER initializeAllFjalarData() so that all relevant data
+// structures are already initialized.
+// Try to open a .disambig file for reading, but if it doesn't exist,
+// create a new file by writing to it.
+// Pre: fjalar_disambig_filename is non-null
+void handleDisambigFile() {
+  tl_assert(fjalar_disambig_filename);
+
+  if ((disambig_fp = fopen(fjalar_disambig_filename, "r"))) {
+    FJALAR_DPRINTF("\n\nREADING %s\n", fjalar_disambig_filename);
+    disambig_writing = False;
+
+    VG_(printf)( "\nBegin processing disambiguation file \"%s\" ...\n",
+                 fjalar_disambig_filename);
+
+    processDisambigFile();
+
+    VG_(printf)( "Done processing disambiguation file \"%s\"\n",
+                 fjalar_disambig_filename);
+  }
+  else if ((disambig_fp = fopen(fjalar_disambig_filename, "wx"))) {
+    FJALAR_DPRINTF("\n\nWRITING %s\n", fjalar_disambig_filename);
+    disambig_writing = True;
+
+    // If we are writing a .disambig file, then we always want to
+    // visit all the struct variables so that we can generate
+    // .disambig entries for them:
+    fjalar_output_struct_vars = True;
+
+    // If fjalar_smart_disambig is on, then we need to wait until the
+    // END of program execution before printing out the .disambig
+    // information (see fjalar_finish()):
+    if (!fjalar_smart_disambig) {
+      generateDisambigFile();
+      VG_(printf)("\nDone generating .disambig file %s\n",
+                  fjalar_disambig_filename);
+      fclose(disambig_fp);
+      disambig_fp = 0;
+      VG_(exit)(0);
+    }
+  }
+}
+
+
 // Prints a .disambig file entry for a given variable
 // This consists of 2 lines:
 //   variable name, disambig type
@@ -211,7 +258,7 @@ void generateDisambigFile() {
 // Returns True if var should be output to .disambig:
 // - Any var of type "char" or "unsigned char"
 // - Any pointer
-Bool shouldOutputVarToDisambig(VariableEntry* var) {
+static Bool shouldOutputVarToDisambig(VariableEntry* var) {
   if (var->ptrLevels > 0) {
     return True;
   }
@@ -276,7 +323,7 @@ DisambigOverride returnDisambigOverride(VariableEntry* var) {
 //      disambig_fp is valid and disambig_writing = False
 //      * Run AFTER updateAllFunctionEntries() so that
 //        VariableEntry names are properly initialized
-void processDisambigFile() {
+static void processDisambigFile() {
   // TODO: This is crude and unsafe but works for now
   char line[200];
   char nextLineIsEntry = 0;
@@ -325,7 +372,7 @@ void processDisambigFile() {
     }
     else {
       // 3 possibilities for an entry:
-      //   1) A function name - e.g. "..foo()"
+      //   1) A function name - e.g. "function: ..foo()"
       //   2) "globals"
       //   3) A user-defined type (ie. struct) name - e.g. "usertype.fooStruct"
       if (nextLineIsEntry) {

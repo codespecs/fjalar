@@ -42,10 +42,8 @@ typedef enum DisambigOverride {
   OVERRIDE_ARRAY_AS_POINTER     // 'P' for pointer to anything
 } DisambigOverride;
 
-void generateDisambigFile();
-void printOneFunctionDisambig(FunctionEntry* funcPtr);
-Bool shouldOutputVarToDisambig(VariableEntry* var);
-void processDisambigFile();
+void handleDisambigFile();
 DisambigOverride returnDisambigOverride(VariableEntry* var);
+void generateDisambigFile();
 
 #endif
