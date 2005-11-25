@@ -257,6 +257,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
   switch (varOrigin) {
   case GLOBAL_VAR:
+    // Punt if we are ignoring globals!
+    if (fjalar_ignore_globals) {
+      return;
+    }
     varListPtr = &globalVars;
     break;
   case FUNCTION_FORMAL_PARAM:
@@ -293,10 +297,16 @@ void visitVariableGroup(VariableOrigin varOrigin,
       else if (varOrigin == GLOBAL_VAR) {
         basePtrValue = (void*)(var->globalLocation);
 
+        // if "--ignore-static-vars" option was selected, do not visit
+        // file-static global variables:
+        if (!var->isExternal && fjalar_ignore_static_vars) {
+          continue;
+        }
+
         // If "--limit-static-vars" option was selected, then:
-        // * Only print file-static variables at program points
+        // * Only visit file-static variables at program points
         //   in the file in which the variables were declared
-        // * Only print static variables declared within functions
+        // * Only visit static variables declared within functions
         //   at program points of that particular function
         if (!var->isExternal && fjalar_limit_static_vars && funcPtr) {
           // Declared within a function
