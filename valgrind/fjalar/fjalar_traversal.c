@@ -125,6 +125,103 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
   return fullName;
 }
 
+
+// Takes a TypeEntry* and a pointer to it, and traverses through all
+// of the members of the specified class (or struct/union).  This
+// should also traverse inside of the class's superclasses and visit
+// variables in them as well.
+// Pre: class->decType == {D_STRUCT, D_UNION}
+void visitClassMemberVariables(TypeEntry* class,
+                               Addr objectAddr,
+                               // This function performs an action for each variable visited:
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char)) {
+  tl_assert((class->decType == D_STRUCT) ||
+            (class->decType == D_UNION));
+
+  // Visit member variables:
+  if (class->memberVarList) {
+    VarNode* i = NULL;
+    for (i = class->memberVarList->first;
+         i != NULL;
+         i = i->next) {
+      VariableEntry* var;
+      Addr memberVarAddr = 0;
+      var = i->var;
+
+      if (!var->name) {
+	VG_(printf)( "  Warning! Weird null member variable name!\n");
+	continue;
+      }
+
+      // Calculate the offset from the beginning of the structure
+      // (Don't bother to calculate the member variable address if we
+      // don't even pass in objectAddr):
+      if (objectAddr) {
+        memberVarAddr = objectAddr + var->data_member_location;
+      }
+
+      stringStackPush(fullNameStack, &fullNameStackSize, var->name);
+
+      visitVariable(var,
+                    memberVarAddr,
+                    0,
+                    performAction,
+                    GLOBAL_VAR, // not quite ... but seems to work for now
+                    0,
+                    0);
+
+      stringStackPop(fullNameStack, &fullNameStackSize);
+    }
+  }
+
+  // Now traverse inside of all superclasses and visit all of their
+  // member variables (while appending a prefix to them):
+  if (class->superclassList) {
+    SimpleNode* n = NULL;
+    for (n = class->superclassList->first;
+         n != NULL;
+         n = n->next) {
+      Superclass* curSuper = (Superclass*)(n->elt);
+      tl_assert(curSuper && curSuper->class);
+
+      // Push a name prefix to denote that we are traversing into a
+      // superclass:
+      stringStackPush(fullNameStack, &fullNameStackSize, curSuper->className);
+      stringStackPush(fullNameStack, &fullNameStackSize, "(super).");
+
+      // This recursive call will handle multiple levels of
+      // inheritance (e.g., if A extends B, B extends C, and C extends
+      // D, then A will get all of its members visited, then visit the
+      // members of B, then C, then D):
+      visitClassMemberVariables(curSuper->class,
+                                // IMPORTANT to add this offset, even
+                                // though most of the time, it will be
+                                // 0 except when you have multiple
+                                // inheritance:
+                                objectAddr + curSuper->member_var_offset,
+                                performAction);
+
+      stringStackPop(fullNameStack, &fullNameStackSize);
+      stringStackPop(fullNameStack, &fullNameStackSize);
+    }
+  }
+
+  // TODO: Visit static member variables (remember that they have
+  // global addresses):
+}
+
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
@@ -175,7 +272,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
   stringStackClear(&fullNameStackSize);
 
-  assert(varListPtr);
+  tl_assert(varListPtr);
 
   for (i = varListPtr->first;
        i != NULL;
@@ -212,15 +309,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
           else if (!VG_STREQ(funcPtr->filename, var->fileName)) {
             continue;
           }
-        }
-
-        // Under normal circumstances, DON'T PRINT OUT C++ static member variables
-        // UNLESS it belongs to the SAME CLASS as the function we are printing
-        // Print out all regular globals normally (hence the check for
-        // var->structParentType)
-        if (var->structParentType && funcPtr &&
-            (var->structParentType != funcPtr->parentClass)) {
-          continue;
         }
       }
 
