@@ -429,34 +429,13 @@ static void loadAuxiliaryFileData() {
       VG_(exit)(1);
     }
   }
-
-  if (fjalar_disambig_filename) {
-    // Try to open it for reading, but if it doesn't exist, create a
-    // new file by writing to it
-    if ((disambig_fp =
-	 fopen(fjalar_disambig_filename, "r"))) {
-      FJALAR_DPRINTF("\n\nREADING %s\n", fjalar_disambig_filename);
-      disambig_writing = False;
-    }
-    else if ((disambig_fp =
-	      fopen(fjalar_disambig_filename, "wx"))) {
-      FJALAR_DPRINTF("\n\nWRITING %s\n", fjalar_disambig_filename);
-      disambig_writing = True;
-
-      // If we are writing a .disambig file, then we always want to
-      // visit all the struct variables so that we can generate
-      // .disambig entries for them:
-      fjalar_output_struct_vars = True;
-
-    }
-  }
 }
 
 
-// If we want to dump program point list, variable list, .disambig
-// info, or XML to output files, do it here, close the appropriate
-// files, and then exit (notice that this supports writing to more
-// than 1 kind of file before exiting).  We want to do this after
+// If we want to dump program point list, variable list, or XML to
+// output files, do it here, close the appropriate files, and then
+// exit (notice that this supports writing to more than 1 kind of file
+// before exiting).  We want to do this after
 // initializeAllFjalarData() so that all of the data from
 // generate_fjalar_entries.h will be available.
 // This function has no effect if we are not using any of the options
@@ -464,7 +443,6 @@ static void loadAuxiliaryFileData() {
 // Handles the following command-line options:
 //   --dump-ppt-file
 //   --dump-var-file
-//   --disambig, --disambig-file (when we are writing out to a file)
 //   --xml-output-file
 static void outputAuxiliaryFilesAndExit() {
   if (fjalar_dump_prog_pt_names_filename ||
@@ -489,15 +467,6 @@ static void outputAuxiliaryFilesAndExit() {
                   fjalar_dump_var_names_filename);
       fclose(var_dump_fp);
       var_dump_fp = 0;
-    }
-
-    if (fjalar_disambig_filename && disambig_writing) {
-      tl_assert(disambig_fp);
-      generateDisambigFile();
-      VG_(printf)("\nDone generating .disambig file %s\n",
-                  fjalar_disambig_filename);
-      fclose(disambig_fp);
-      disambig_fp = 0;
     }
 
     // Output the declarations in XML format if desired, and then exit:
@@ -582,6 +551,10 @@ void fjalar_post_clo_init()
 
   // Calls into generate_fjalar_entries.c:
   initializeAllFjalarData();
+
+  if (fjalar_disambig_filename) {
+    handleDisambigFile();
+  }
 
   // Call this AFTER initializeAllFjalarData() so that all of the
   // proper data is ready:
@@ -689,6 +662,10 @@ void fjalar_finish() {
   // one element or multiple elements throughout this particular execution
   if (disambig_writing && fjalar_smart_disambig) {
     generateDisambigFile();
+    VG_(printf)("\nDone generating .disambig file %s\n",
+                fjalar_disambig_filename);
+    fclose(disambig_fp);
+    disambig_fp = 0;
   }
 
   // Make sure to execute this last!
