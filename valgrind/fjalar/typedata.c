@@ -405,7 +405,6 @@ char harvest_type_value(dwarf_entry* e, unsigned long value)
     }
   else if (tag_is_inheritance(tag))
     {
-      VG_(printf)("inheritance superclass type = 0x%x\n", value);
       ((inheritance_type*)e->entry_ptr)->superclass_type_ID = value;
       return 1;
     }
@@ -562,7 +561,6 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value) {
 
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->specification_ID = value;
-    VG_(printf)("harvest_specification_value %x for %p\n", value, e);
     return 1;
   }
   else if (value && (tag_is_variable(tag))) {
@@ -582,7 +580,6 @@ char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value) {
 
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->abstract_origin_ID = value;
-    VG_(printf)("harvest_abstract_origin_value %x for %p\n", value, e);
     return 1;
   }
   else
@@ -604,19 +601,16 @@ char harvest_accessibility(dwarf_entry* e, char a) {
   else if (tag_is_inheritance(tag))
     {
       ((inheritance_type*)e->entry_ptr)->accessibility = a;
-      VG_(printf)("harvest_accessibility (inheritance) %d\n", a);
       return 1;
     }
   else if (tag_is_member(tag))
     {
       ((member*)e->entry_ptr)->accessibility = a;
-      VG_(printf)("harvest_accessibility (member var.) %d\n", a);
       return 1;
     }
   else if (tag_is_variable(tag))
     {
       ((variable*)e->entry_ptr)->accessibility = a;
-      VG_(printf)("harvest_accessibility (variable) %d\n", a);
       return 1;
     }
   else
@@ -2237,14 +2231,14 @@ void initialize_typedata_structures() {
 }
 
 __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
-  VG_(printf)("FunctionSymbolTable insert: %p  %s\n", addr, name);
+  //  VG_(printf)("FunctionSymbolTable insert: %p  %s\n", addr, name);
   genputtable(FunctionSymbolTable,
               (void*)name,
               (void*)addr);
 }
 
 __inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {
-  VG_(printf)("VariableSymbolTable insert: %p  %s\n", addr, name);
+  //  VG_(printf)("VariableSymbolTable insert: %p  %s\n", addr, name);
   genputtable(VariableSymbolTable,
               (void*)name,
               (void*)addr);

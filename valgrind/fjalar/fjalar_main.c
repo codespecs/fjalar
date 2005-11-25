@@ -378,79 +378,23 @@ void exit_function(FunctionEntry* f)
 }
 
 // This code is run when Valgrind stops execution at the first
-// function entrance.  At this point, we have full access to
-// Valgrind's name demangling mechanism so we can perform the rest of
-// our initialization code that requires this functionality.
+// function entrance.
 static void handle_first_function_entrance() {
   // Let the tool do its initialization:
   fjalar_tool_handle_first_function_entrance();
   atLeastOneFunctionHandled = 1;
-
-  // If we want to dump program point, variable, or .disambig info to
-  // output files, do it here, close the appropriate files, and then
-  // exit (notice that this supports writing to more than 1 kind of
-  // file before exiting):
-  if (fjalar_dump_prog_pt_names_filename ||
-      fjalar_dump_var_names_filename ||
-      (fjalar_disambig_filename && disambig_writing)) {
-    if (fjalar_dump_prog_pt_names_filename) {
-      tl_assert(prog_pt_dump_fp);
-      outputProgramPointsToFile();
-      VG_(printf)("\nDone generating program point list (ppt-list) file %s\n",
-                  fjalar_dump_prog_pt_names_filename);
-      fclose(prog_pt_dump_fp);
-      prog_pt_dump_fp = 0;
-    }
-
-    if (fjalar_dump_var_names_filename) {
-      tl_assert(var_dump_fp);
-      outputVariableNamesToFile();
-      VG_(printf)("\nDone generating variable list (var-list) file %s\n",
-                  fjalar_dump_var_names_filename);
-      fclose(var_dump_fp);
-      var_dump_fp = 0;
-    }
-
-    if (fjalar_disambig_filename && disambig_writing) {
-      tl_assert(disambig_fp);
-      // TODO: Write .disambig entries to file
-      fclose(disambig_fp);
-    }
-
-    VG_(exit)(0);
-  }
 }
 
 
-// Opens the appropriate files for reading or writing to handle
-// selective program point tracing, selective variable tracing, and
-// pointer type disambiguation, and make the proper calls to
-// initialize those files if necessary
-static void open_files_and_load_data() {
-
-  if (fjalar_xml_output_filename) {
-    xml_output_fp = fopen(fjalar_xml_output_filename, "w");
-    outputAllXMLDeclarations();
-    VG_(printf)("\nDone outputting XML file %s\n",
-                fjalar_xml_output_filename);
-  }
-  else {
-    xml_output_fp = 0;
-  }
-
-  if (fjalar_dump_prog_pt_names_filename) {
-    prog_pt_dump_fp = fopen(fjalar_dump_prog_pt_names_filename, "w");
-  }
-  else {
-    prog_pt_dump_fp = 0;
-  }
-
-  if (fjalar_dump_var_names_filename) {
-    var_dump_fp = fopen(fjalar_dump_var_names_filename, "w");
-  }
-  else {
-    var_dump_fp = 0;
-  }
+// Opens the appropriate files and loads data to handle selective
+// program point tracing, selective variable tracing, and pointer type
+// disambiguation.  Call this before initializeAllFjalarData() because
+// it might depend on the vars_tree being initialized.
+// Handles the following command-line options:
+//   --ppt-list-file
+//   --var-list-file
+//   --disambig, --disambig-file (when we are reading in from a file)
+static void loadAuxiliaryFileData() {
 
   if (fjalar_trace_prog_pts_filename) {
     if ((trace_prog_pts_input_fp =
@@ -510,6 +454,64 @@ static void open_files_and_load_data() {
 	fjalar_output_struct_vars = True;
       }
     }
+  }
+}
+
+
+// If we want to dump program point list, variable list, .disambig
+// info, or XML to output files, do it here, close the appropriate
+// files, and then exit (notice that this supports writing to more
+// than 1 kind of file before exiting).  We want to do this after
+// initializeAllFjalarData() so that all of the data from
+// generate_fjalar_entries.h will be available.
+// This function has no effect if we are not using any of the options
+// to output auxiliary files.
+// Handles the following command-line options:
+//   --dump-ppt-file
+//   --dump-var-file
+//   --disambig, --disambig-file (when we are writing out to a file)
+//   --xml-output-file
+static void outputAuxiliaryFilesAndExit() {
+  if (fjalar_dump_prog_pt_names_filename ||
+      fjalar_dump_var_names_filename ||
+      (fjalar_disambig_filename && disambig_writing) ||
+      fjalar_xml_output_filename) {
+    if (fjalar_dump_prog_pt_names_filename) {
+      prog_pt_dump_fp = fopen(fjalar_dump_prog_pt_names_filename, "w");
+      tl_assert(prog_pt_dump_fp);
+      outputProgramPointsToFile();
+      VG_(printf)("\nDone generating program point list (ppt-list) file %s\n",
+                  fjalar_dump_prog_pt_names_filename);
+      fclose(prog_pt_dump_fp);
+      prog_pt_dump_fp = 0;
+    }
+
+    if (fjalar_dump_var_names_filename) {
+      var_dump_fp = fopen(fjalar_dump_var_names_filename, "w");
+      tl_assert(var_dump_fp);
+      outputVariableNamesToFile();
+      VG_(printf)("\nDone generating variable list (var-list) file %s\n",
+                  fjalar_dump_var_names_filename);
+      fclose(var_dump_fp);
+      var_dump_fp = 0;
+    }
+
+    if (fjalar_disambig_filename && disambig_writing) {
+      tl_assert(disambig_fp);
+      // TODO: Write .disambig entries to file
+      fclose(disambig_fp);
+    }
+
+    // Output the declarations in XML format if desired, and then exit:
+    if (fjalar_xml_output_filename) {
+      xml_output_fp = fopen(fjalar_xml_output_filename, "w");
+      outputAllXMLDeclarations();
+      VG_(printf)("\nDone generating XML file %s\n",
+                  fjalar_xml_output_filename);
+      xml_output_fp = 0;
+    }
+
+    VG_(exit)(0);
   }
 }
 
@@ -575,12 +577,16 @@ void fjalar_post_clo_init()
   // Calls into readelf.c:
   process_elf_binary_data(executable_filename);
 
+  // Call this BEFORE initializeAllFjalarData() so that the vars_tree
+  // objects can be initialized for the --var-list-file option:
+  loadAuxiliaryFileData();
+
   // Calls into generate_fjalar_entries.c:
   initializeAllFjalarData();
 
-  // Call this AFTER data has been initialized by
-  // generate_fjalar_entries.c:
-  open_files_and_load_data();
+  // Call this AFTER initializeAllFjalarData() so that all of the
+  // proper data is ready:
+  outputAuxiliaryFilesAndExit();
 
   // Make sure to execute this last!
   fjalar_tool_post_clo_init();
