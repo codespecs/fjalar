@@ -40,10 +40,7 @@ FILE* trace_vars_input_fp = 0;
 
 const char COMMENT_CHAR = '#';
 const char* ENTRY_DELIMETER = "----SECTION----";
-const int ENTRY_DELIMETER_LEN = 15;
 const char* GLOBAL_STRING = "globals";
-const int GLOBAL_STRING_LEN = 7;
-
 
 // Temporary scratch buffer for reading lines in from files
 //  TODO: This is crude and unsafe but works for now
@@ -186,8 +183,7 @@ void initializeVarsTree()
         input_line[lineLen - 1] = '\0';
       }
 
-      // For some weird reason, it crashes when you don't use strncmp
-      if (VG_(strncmp)(input_line, ENTRY_DELIMETER, ENTRY_DELIMETER_LEN) == 0)
+      if (VG_STREQ(input_line, ENTRY_DELIMETER))
 	{
 	  nextLineIsFunction = 1;
 	}
@@ -203,9 +199,7 @@ void initializeVarsTree()
 	      tsearch((void*)currentFunctionTree, (void**)&vars_tree, compareFunctionTrees);
 
 	      // Keep a special pointer for global variables to trace
-
-              // For some weird reason, it crashes when you don't use strncmp
-              if (VG_(strncmp)(input_line, GLOBAL_STRING, GLOBAL_STRING_LEN) == 0)
+              if (VG_STREQ(input_line, GLOBAL_STRING))
 		{
 		  globalFunctionTree = currentFunctionTree;
                   VG_(printf)("globalFunctionTree: %p\n", globalFunctionTree);
