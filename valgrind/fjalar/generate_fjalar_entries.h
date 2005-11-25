@@ -93,6 +93,9 @@ typedef struct _TypeEntry {
   // exists):
   // Remember that static member variables are actually allocated
   // at statically-fixed locations like global variables
+  // (All VariableEntry instances in this list are also aliased in the
+  // globalVars list because static member variables are really
+  // globals albeit with limited scoping)
   VarList* staticMemberVarList;
 
   // For C++: List of pointers to member functions of this class:

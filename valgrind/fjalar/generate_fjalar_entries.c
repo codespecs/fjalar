@@ -983,6 +983,14 @@ static void updateAllGlobalVariableNames() {
     curVar = curNode->var;
     tl_assert(curVar->isGlobal);
 
+    // Do not bother to make unique names for C++ static member
+    // variables that are in the globalVars list because they should
+    // already have unique names since their class name is appended to
+    // the front of their names: e.g. "Stack::publicNumLinksCreated"
+    if (curVar->structParentType) {
+      continue;
+    }
+
     // For file static global variables, we are going to append the
     // filename in front of it
     if (curVar->isExternal) {
@@ -1548,6 +1556,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // there is at least 1 static member variable:
   if (collectionPtr->num_static_member_vars > 0) {
     unsigned long ind;
+    VarNode* node = 0;
 
     t->staticMemberVarList =
       (VarList*)VG_(calloc)(1, sizeof(*(t->staticMemberVarList)));
@@ -1590,6 +1599,25 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
       FJALAR_DPRINTF("Finished Trying to extractOneVariable on member var: %s\n",
 		     staticMemberPtr->mangled_name);
+    }
+
+    // This is a very important step.  We want to iterate over
+    // t->staticMemberVarList and insert every VariableEntry element
+    // into the globalVars list because static member variables are
+    // really globals albeit with limited scope:
+    for (node = t->staticMemberVarList->first;
+         node != NULL;
+         node = node->next) {
+      VariableEntry* curStaticVar = node->var;
+      VarNode* lastGlobalNode = 0;
+
+      // Insert a new node into globalVars:
+      insertNewNode(&globalVars);
+      lastGlobalNode = globalVars.last;
+      // FREE the VG_(calloc)'ed VariableEntry since we don't want to
+      // use it (we will replace it with curStaticVar):
+      destroyVariableEntry(lastGlobalNode->var);
+      lastGlobalNode->var = curStaticVar;
     }
   }
 
@@ -2459,7 +2487,6 @@ void outputAllXMLDeclarations() {
   XMLprintTypesTable();
 
   XML_PRINTF("</program>\n");
-  fclose(xml_output_fp);
 }
 
 typedef enum {
