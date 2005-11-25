@@ -512,6 +512,10 @@ void repCheckAllEntries() {
     tl_assert(numLocalArrayVars == f->localArrayAndStructVars.numVars);
 
     // Return value:
+
+    // A function either has 0 or 1 return values
+    tl_assert(f->returnValue.numVars <= 1);
+
     for (n = f->returnValue.first;
 	 n != 0;
 	 n = n->next) {

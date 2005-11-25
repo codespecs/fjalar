@@ -29,9 +29,8 @@ typedef enum {
   DERIVED_VAR, // Always switches to this after one recursive call
   DERIVED_FLATTENED_ARRAY_VAR, // A derived variable as a result of flattening an array
   GLOBAL_VAR,
-  FUNCTION_ENTER_FORMAL_PARAM,
-  FUNCTION_EXIT_FORMAL_PARAM,
-  FUNCTION_RETURN_VAR // Assume for function exits only
+  FUNCTION_FORMAL_PARAM,
+  FUNCTION_RETURN_VAR // Only relevant for function exits
 } VariableOrigin;
 
 typedef enum {
@@ -49,24 +48,30 @@ typedef enum {
   STOP_TRAVERSAL
 } TraversalResult;
 
-void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified function
-                             char isEnter,           // 1 for function entrance, 0 for exit
-			     VariableOrigin varOrigin,
-			     char* stackBaseAddr,
-                             // This function performs an action for each variable visited:
-                             TraversalResult (*performAction)(VariableEntry*,
-                                                              char*,
-                                                              VariableOrigin,
-                                                              UInt,
-                                                              UInt,
-                                                              char,
-                                                              DisambigOverride,
-                                                              char,
-                                                              void*,
-                                                              void**,
-                                                              UInt,
-                                                              FunctionEntry*,
-                                                              char));
+// Visits an entire group of variables, depending on the value of varOrigin:
+// If varOrigin == GLOBAL_VAR, then visit all global variables
+// If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
+// of the function denoted by funcPtr
+// If varOrigin == FUNCTION_RETURN_VAR, then visit the return value variable
+// of the function denoted by funcPtr
+void visitVariableGroup(VariableOrigin varOrigin,
+                        FunctionEntry* funcPtr, // 0 for unspecified function
+                        char isEnter,           // 1 for function entrance, 0 for exit
+                        char* stackBaseAddr,
+                        // This function performs an action for each variable visited:
+                        TraversalResult (*performAction)(VariableEntry*,
+                                                         char*,
+                                                         VariableOrigin,
+                                                         UInt,
+                                                         UInt,
+                                                         char,
+                                                         DisambigOverride,
+                                                         char,
+                                                         void*,
+                                                         void**,
+                                                         UInt,
+                                                         FunctionEntry*,
+                                                         char));
 
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's

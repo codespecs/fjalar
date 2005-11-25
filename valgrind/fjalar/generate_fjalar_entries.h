@@ -320,7 +320,7 @@ struct _FunctionEntry {
   char isExternal; // 1 if it's globally visible, 0 if it's file static
   VarList formalParameters; // Variables for formal parameters
   VarList localArrayAndStructVars; // Locally-declared structs and static array variables
-  VarList returnValue;      // Variables for return value
+  VarList returnValue;      // Variable for return value (should contain at most 1)
 
   TypeEntry* parentClass; // only non-null if this is a C++ member function;
                           // points to the class which this function belongs to
