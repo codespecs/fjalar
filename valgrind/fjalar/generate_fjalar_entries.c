@@ -20,9 +20,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <search.h>
 
 #include "fjalar_main.h"
 #include "generate_fjalar_entries.h"
+#include "fjalar_select.h"
 #include "elf/dwarf2.h"
 #include "GenericHashtable.h"
 
@@ -30,6 +32,7 @@
 
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
+static void updateAllGlobalVariableNames();
 static void initMemberFuncs();
 static void initConstructorsAndDestructors();
 static void createNamesForUnnamedDwarfEntries();
@@ -394,6 +397,8 @@ void initializeAllFjalarData()
   // Initialize member functions last after TypesTable and
   // FunctionTable have already been initialized:
   initMemberFuncs();
+
+  updateAllGlobalVariableNames();
 
   // Initialize all constructors and destructors by using a heuristic
   // to pattern match names to type names:
@@ -799,12 +804,6 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
   variablePtr = (variable*)(e->entry_ptr);
   typePtr = variablePtr->type_ptr;
 
-  // If --ignore-static-vars, don't even let static variables
-  // be CREATED in the first place!!!
-  if (!variablePtr->is_external && fjalar_ignore_static_vars) {
-    return;
-  }
-
   extractOneVariable(&globalVars,
                      typePtr,
                      variablePtr->name,
@@ -961,15 +960,93 @@ static void createNamesForUnnamedDwarfEntries()
   }
 }
 
+
+// Pre: initializeFunctionTable() and initializeGlobalVarsList() MUST
+// BE RUN before running this function.
+// Iterates through globalVars and generates a fully-qualified name
+// for each global variable so that they are not ambiguous.
+// (Also demangles C++ names if necessary.)
+static void updateAllGlobalVariableNames() {
+  char* globalName = 0;
+  char *loc_part; /* Part of the name to specify where the variable came from
+		     (doesn't exist in the real language) */
+  char *p;
+
+  VarNode* curNode;
+  VariableEntry* curVar;
+
+  for (curNode = globalVars.first;
+       curNode != NULL;
+       curNode = curNode->next) {
+    FunctionEntry* var_func = 0;
+
+    curVar = curNode->var;
+    tl_assert(curVar->isGlobal);
+
+    // For file static global variables, we are going to append the
+    // filename in front of it
+    if (curVar->isExternal) {
+      /* A leading slash indicates a true global */
+      loc_part = "";
+    }
+    else {
+      loc_part = curVar->fileName;
+    }
+
+    /* We want to print static variables in subdir/filename.c
+       as "subdir/filename_c/static_var for globally-declared static variables
+       or as "subdir/filename_c@function_name/static_var for static vars declared within functions
+    */
+    tl_assert(curVar->name);
+
+    if (curVar->functionStartPC) {
+      // Try to find a function entry with that start PC:
+      var_func = (FunctionEntry*)gengettable(FunctionTable,
+                                             (void*)curVar->functionStartPC);
+
+      tl_assert(var_func);
+      tl_assert(var_func->name);
+
+      globalName = VG_(calloc)(VG_(strlen)(loc_part) + 1 +
+                               VG_(strlen)(var_func->name) + 1 + 1 +
+                               VG_(strlen)(curVar->name) + 1, sizeof(*globalName));
+    }
+    else {
+      globalName = VG_(calloc)(VG_(strlen)(loc_part) + 1 + 1 +
+                               VG_(strlen)(curVar->name) + 1, sizeof(*globalName));
+    }
+
+    VG_(strcpy)(globalName, loc_part);
+    for (p = globalName; *p; p++) {
+      if (!isalpha(*p) && !isdigit(*p) && *p != '/' && *p != '_')
+        *p = '_';
+    }
+
+    if (curVar->functionStartPC) {
+      VG_(strcat)(globalName, "@");
+      VG_(strcat)(globalName, var_func->name);
+
+      for (p = globalName; *p; p++) {
+        if (!isalpha(*p) && !isdigit(*p) && *p != '/' && *p != '_' && *p != '@')
+          *p = '_';
+      }
+    }
+
+    VG_(strcat)(globalName, "/");
+    VG_(strcat)(globalName, curVar->name);
+
+    // Assign curVar->name to the newly-formed name:
+    curVar->name = globalName;
+  }
+}
+
+
 // TODO: This will leak memory if called more than once per program
 // execution since the entries in FunctionTable are not being properly
 // freed.  However, during normal execution, this should only be
 // called once.
-
-// After this function is called, the 'fjalar_name' field of all
-// functions within FunctionTable should be initialized EXCEPT for C++
-// function names which require demangling.  Demangling occurs in
-// updateAllFunctionEntryNames() in fjalar_runtime.c
+// This initializes all names of functions in FunctionTable,
+// demangling C++ function names if necessary
 void initializeFunctionTable()
 {
   unsigned long i;
@@ -993,6 +1070,12 @@ void initializeFunctionTable()
                         (void*)(((function*)cur_entry->entry_ptr)->start_pc))))
         {
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
+          char *the_class;
+          char *buf, *p;
+
+          // This is non-null only if we have successfully demangled a
+          // C++ name:
+          char* demangled_name = 0;
 
           cur_func_entry = VG_(calloc)(1, sizeof(*cur_func_entry));
 
@@ -1008,41 +1091,80 @@ void initializeFunctionTable()
 
           cur_func_entry->isExternal = dwarfFunctionPtr->is_external;
 
-          // Ok, here's the deal.  If cur_func_entry->mangled_name
-          // exists, then we know that it's a C++ mangled function
-          // name that requires demangling later at run-time in
-          // updateAllFunctionEntryNames() (Valgrind's
-          // demangler doesn't work at this point for some reason -
-          // maybe it's too 'early' in the execution).  That function
-          // will demangle mangled_name and turn it into a proper
-          // Fjalar-approved name, so we don't have to initialize
-          // fjalar_name right now.  So only generate fjalar_name
-          // right now if there is no mangled name.
-          if (!cur_func_entry->mangled_name) {
-            char *the_class;
-            char *buf, *p;
-
-            if (dwarfFunctionPtr->is_external) {
-              /* Globals print as "..main()", etc. */
-              the_class = ".";
-            } else {
-              the_class = cur_func_entry->filename;
-            }
-            /* We want to print static_fn in subdir/filename.c
-               as "subdir/filename.c.static_fn() */
-            buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
-                              VG_(strlen)(cur_func_entry->name) + 3);
-            VG_(strcpy)(buf, the_class);
-            for (p = buf; *p; p++) {
-              if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
-                  && *p != '_')
-                *p = '_';
-            }
-            VG_(strcat)(buf, ".");
-            VG_(strcat)(buf, cur_func_entry->name);
-            VG_(strcat)(buf, "()");
-            cur_func_entry->fjalar_name = buf;
+          // If there is a C++ mangled name, then call Valgrind core
+          // to try to demangle the name (remember the demangled name
+          // is malloc'ed):
+          if (cur_func_entry->mangled_name) {
+            extern char* VG_(cplus_demangle_v3) (const char* mangled);
+            demangled_name = VG_(cplus_demangle_v3)(cur_func_entry->mangled_name);
+            // I hope the demangling always works!
+            tl_assert(demangled_name);
+            // Set the name of the function to be the demangled name:
+            cur_func_entry->name = demangled_name;
           }
+
+          if (dwarfFunctionPtr->is_external) {
+            /* Globals print as "..main()", etc. */
+            the_class = ".";
+          }
+          else {
+            the_class = cur_func_entry->filename;
+          }
+
+          /* We want to print static_fn in subdir/filename.c
+             as "subdir/filename.c.static_fn() */
+          buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
+                            VG_(strlen)(cur_func_entry->name) + 3);
+          VG_(strcpy)(buf, the_class);
+          for (p = buf; *p; p++) {
+            if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
+                && *p != '_')
+              *p = '_';
+          }
+          VG_(strcat)(buf, ".");
+          VG_(strcat)(buf, cur_func_entry->name);
+
+          // If we didnt need to demangle a C++ name, then we just
+          // have a plain C name without trailing parens.  If that's
+          // the case, then tack on some parens:
+          if (!demangled_name) {
+            VG_(strcat)(buf, "()");
+          }
+
+          cur_func_entry->fjalar_name = buf;
+
+          // See if we are interested in tracing variables for this
+          // file, and if so, we must initialize
+          // cur_func_entry->trace_vars_tree appropriately.  We cannot
+          // initialize it any earlier because we need to use the
+          // Fjalar name of the function to identify its entry in
+          // vars_tree, and this is the earliest point where the
+          // Fjalar name is guaranteed to be initialized.
+          if (fjalar_trace_vars_filename &&
+              (!cur_func_entry->trace_vars_tree_already_initialized)) {
+            extern FunctionTree* vars_tree;
+
+            FunctionTree** foundFuncTree = 0;
+            FunctionTree searchFuncTree;
+            searchFuncTree.function_fjalar_name = cur_func_entry->fjalar_name;
+            searchFuncTree.function_variables_tree = 0;
+
+            if ((foundFuncTree =
+                 (FunctionTree**)tfind((void*)&searchFuncTree,
+                                       (void**)&vars_tree,
+                                       compareFunctionTrees))) {
+	      cur_func_entry->trace_vars_tree = (*foundFuncTree)->function_variables_tree;
+	      FJALAR_DPRINTF("FOUND FOUND FOUND!!! - %s\n",
+                             (*foundFuncTree)->function_fjalar_name);
+	    }
+            else {
+	      cur_func_entry->trace_vars_tree = 0;
+	    }
+          }
+
+          // No matter what, we've ran it once for this function so
+          // trace_vars_tree has been initialized
+          cur_func_entry->trace_vars_tree_already_initialized = 1;
 
           // This was formerly in extractTypeDataFromFunctionInfoArray():
 
@@ -1834,9 +1956,13 @@ void extractOneVariable(VarList* varListPtr,
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
 {
+  extern char* VG_(cplus_demangle_v3) (const char* mangled);
+
   VariableEntry* varPtr = 0;
   char ptrLevels = 0;
   char referenceLevels = 0;
+
+  char* demangled_name = 0;
 
   VG_(printf)("Entering extractOneVariable for %s\n", variableName);
 
@@ -1850,7 +1976,16 @@ void extractOneVariable(VarList* varListPtr,
   // Work on the last variable in varListPtr
   varPtr = varListPtr->last->var;
 
-  varPtr->name = variableName;
+  // Attempt to demangle C++ names (nothing happens if it's not a
+  // mangled name)
+  demangled_name = VG_(cplus_demangle_v3)(variableName);
+  if (demangled_name) {
+    varPtr->name = demangled_name;
+  }
+  else {
+    varPtr->name = variableName;
+  }
+
   varPtr->fileName = fileName;
   varPtr->byteOffset = byteOffset;
 

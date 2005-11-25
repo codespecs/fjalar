@@ -285,21 +285,12 @@ void SimpleListInit(SimpleList* lst);
 
 // Contains a block of information about a particular function
 struct _FunctionEntry {
-  char* name;           // The standard C name for a function - i.e. "sum"
-  char* mangled_name;// The mangled name (C++ only)
+  // The standard C name for a function (i.e. "sum") or a full C++
+  // name after demangling in initializeFunctionTable()
+  // (i.e. "sum(int,int)")
+  char* name;
 
-  char* demangled_name; // mangled_name becomes demangled (C++ only)
-                        // after running updateAllFunctionEntryNames()
-                        // i.e. "sum(int*, int)"
-                        // this is like 'name' except with a full
-                        // function signature
-
-  // Using VG_(get_fnname) and VG_(get_fnname_if_entry), Valgrind
-  // returns function names that are either regular ole' names which
-  // match 'name' or demangled C++ names which match 'demangled_name'.
-  // We are using a very simple heuristic to tell which one has been
-  // returned.  If the last character is a ')', then it's a demangled
-  // C++ name; otherwise, it's a regular C name.
+  char* mangled_name;   // The mangled name (C++ only)
 
   char* filename;
   /* fjalar_name is like name, but made unique by prepending a munged copy
@@ -307,10 +298,7 @@ struct _FunctionEntry {
   char *fjalar_name; // This is initialized once when the
                      // FunctionEntry entry is created from the
                      // corresponding dwarf_entry in
-                     // initializeFunctionTable() but it is
-                     // deleted and re-initialized to a full function
-                     // name with parameters and de-munging (for C++)
-                     // in updateAllFunctionEntryNames()
+                     // initializeFunctionTable()
 
   // All instructions within the function are between
   // startPC and endPC, inclusive I believe)
@@ -332,7 +320,7 @@ struct _FunctionEntry {
 
   // GNU Binary tree of variables to trace within this function - only valid when
   // Kvasir is run with the --var-list-file command-line option:
-  // This is initialized in updateAllFunctionEntryNames()
+  // This is initialized in initializeFunctionTable()
   char* trace_vars_tree;
   char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
 };
