@@ -21,7 +21,8 @@ void fjalar_tool_print_usage() {
 
 // Processes command-line options:
 Bool fjalar_tool_process_cmd_line_option(Char* arg) {
-  return True;
+  // Return false because we have no options to process
+  return False;
 }
 
 // Runs after the tool exits:
@@ -29,6 +30,26 @@ void fjalar_tool_finish() {
   VG_(printf)("\nfjalar_tool_finish()\n");
 }
 
+
+TraversalResult trivialAction(VariableEntry* var,
+                              char* varName,
+                              VariableOrigin varOrigin,
+                              UInt numDereferences,
+                              UInt layersBeforeBase,
+                              char overrideIsInit,
+                              DisambigOverride disambigOverride,
+                              char isSequence,
+                              // pValue only valid if isSequence is false
+                              void* pValue,
+                              // pValueArray and numElts only valid if
+                              // isSequence is true
+                              void** pValueArray,
+                              UInt numElts,
+                              FunctionEntry* varFuncInfo,
+                              char isEnter) {
+  VG_(printf)("   varName: %s\n", varName);
+  return DO_NOT_DEREF_MORE_POINTERS;
+}
 
 // When this function is called, Valgrind proper is already
 // initialized so that tools can now have access to more useful
@@ -40,13 +61,43 @@ void fjalar_tool_handle_first_function_entrance() {
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
-  VG_(printf)("fjalar_tool_handle_function_entrance(%s)\n",
+  VG_(printf)("%s (enter)\n",
 	      f_state->func->fjalar_name);
+
+  visitVariableGroup(GLOBAL_VAR,
+                     0,
+                     1,
+                     0,
+                     &trivialAction);
+
+  visitVariableGroup(FUNCTION_FORMAL_PARAM,
+                     f_state->func,
+                     1,
+                     0,
+                     &trivialAction);
 }
 
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
-  VG_(printf)("fjalar_tool_handle_function_exit(%s)\n",
+  VG_(printf)("%s (exit)\n",
 	      f_state->func->fjalar_name);
+
+  visitVariableGroup(GLOBAL_VAR,
+                     0,
+                     0,
+                     0,
+                     &trivialAction);
+
+  visitVariableGroup(FUNCTION_FORMAL_PARAM,
+                     f_state->func,
+                     0,
+                     0,
+                     &trivialAction);
+
+  visitVariableGroup(FUNCTION_RETURN_VAR,
+                     f_state->func,
+                     0,
+                     0,
+                     &trivialAction);
 }
 
 

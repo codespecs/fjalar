@@ -68,6 +68,8 @@ char* fjalar_xml_output_filename = 0;
 // The filename of the target executable:
 char* executable_filename = 0;
 
+static void handle_first_function_entrance();
+
 // TODO: We cannot sub-class FunctionExecutionState unless we make
 // this into an array of pointers:
 FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
@@ -150,11 +152,7 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
   curFuncPtr = findFunctionEntryByStartAddr(currentAddr);
 
   if (curFuncPtr && !atLeastOneFunctionHandled) {
-    // Right before we handle the first function entrance, update all
-    // the fjalar_name fields of all entries in FunctionTable:
-    updateAllFunctionEntryNames();
-    fjalar_tool_handle_first_function_entrance();
-    atLeastOneFunctionHandled = 1;
+    handle_first_function_entrance();
   }
 
   if (curFuncPtr &&
@@ -379,6 +377,54 @@ void exit_function(FunctionEntry* f)
   }
 }
 
+// This code is run when Valgrind stops execution at the first
+// function entrance.  At this point, we have full access to
+// Valgrind's name demangling mechanism so we can perform the rest of
+// our initialization code that requires this functionality.
+static void handle_first_function_entrance() {
+  // Right before we handle the first function entrance, update all
+  // the fjalar_name fields of all entries in FunctionTable:
+  updateAllFunctionEntryNames();
+
+  // Let the tool do its initialization:
+  fjalar_tool_handle_first_function_entrance();
+  atLeastOneFunctionHandled = 1;
+
+  // If we want to dump program point, variable, or .disambig info to
+  // output files, do it here, close the appropriate files, and then
+  // exit (notice that this supports writing to more than 1 kind of
+  // file before exiting):
+  if (fjalar_dump_prog_pt_names_filename ||
+      fjalar_dump_var_names_filename ||
+      (fjalar_disambig_filename && disambig_writing)) {
+    if (fjalar_dump_prog_pt_names_filename) {
+      tl_assert(prog_pt_dump_fp);
+      outputProgramPointsToFile();
+      VG_(printf)("\nDone generating program point list (ppt-list) file %s\n",
+                  fjalar_dump_prog_pt_names_filename);
+      fclose(prog_pt_dump_fp);
+      prog_pt_dump_fp = 0;
+    }
+
+    if (fjalar_dump_var_names_filename) {
+      tl_assert(var_dump_fp);
+      outputVariableNamesToFile();
+      VG_(printf)("\nDone generating variable list (var-list) file %s\n",
+                  fjalar_dump_var_names_filename);
+      fclose(var_dump_fp);
+      var_dump_fp = 0;
+    }
+
+    if (fjalar_disambig_filename && disambig_writing) {
+      tl_assert(disambig_fp);
+      // TODO: Write .disambig entries to file
+      fclose(disambig_fp);
+    }
+
+    VG_(exit)(0);
+  }
+}
+
 
 // Opens the appropriate files for reading or writing to handle
 // selective program point tracing, selective variable tracing, and
@@ -389,6 +435,8 @@ static void open_files_and_load_data() {
   if (fjalar_xml_output_filename) {
     xml_output_fp = fopen(fjalar_xml_output_filename, "w");
     outputAllXMLDeclarations();
+    VG_(printf)("\nDone outputting XML file %s\n",
+                fjalar_xml_output_filename);
   }
   else {
     xml_output_fp = 0;

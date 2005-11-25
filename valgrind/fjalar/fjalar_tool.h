@@ -21,6 +21,7 @@ must implement
 #define FJALAR_TOOL_H
 
 #include "generate_fjalar_entries.h"
+#include "fjalar_traversal.h"
 #include "tool.h"
 
 // Initialization and tear-down code:
@@ -31,8 +32,14 @@ void fjalar_tool_pre_clo_init();
 void fjalar_tool_post_clo_init();
 // Prints instructions when the --help option is invoked:
 void fjalar_tool_print_usage();
+
 // Processes command-line options:
+// Returns True if a command-line option has been successfully
+// matched, False otherwise.  It's very important that you return
+// False if a command-line option doesn't match because otherwise
+// Fjalar will fail silently when a command-line option is mis-typed.
 Bool fjalar_tool_process_cmd_line_option(Char* arg);
+
 // Runs after the tool exits:
 void fjalar_tool_finish();
 

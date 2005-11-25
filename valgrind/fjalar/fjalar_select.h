@@ -53,4 +53,7 @@ int compareStrings(const void *a, const void *b);
 void initializeProgramPointsTree();
 void initializeVarsTree();
 
+void outputProgramPointsToFile();
+void outputVariableNamesToFile();
+
 #endif

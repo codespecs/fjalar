@@ -125,25 +125,30 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
   return fullName;
 }
 
-// Visit all variables in a particular VarList depending on varOrigin:
-void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified function
-                             char isEnter,           // 1 for function entrance, 0 for exit
-			     VariableOrigin varOrigin,
-			     char* stackBaseAddr,
-                             // This function performs an action for each variable visited:
-                             TraversalResult (*performAction)(VariableEntry*,
-                                                              char*,
-                                                              VariableOrigin,
-                                                              UInt,
-                                                              UInt,
-                                                              char,
-                                                              DisambigOverride,
-                                                              char,
-                                                              void*,
-                                                              void**,
-                                                              UInt,
-                                                              FunctionEntry*,
-                                                              char)) {
+// Visits an entire group of variables, depending on the value of varOrigin:
+// If varOrigin == GLOBAL_VAR, then visit all global variables
+// If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
+// of the function denoted by funcPtr
+// If varOrigin == FUNCTION_RETURN_VAR, then visit the return value variable
+// of the function denoted by funcPtr
+void visitVariableGroup(VariableOrigin varOrigin,
+                        FunctionEntry* funcPtr, // 0 for unspecified function
+                        char isEnter,           // 1 for function entrance, 0 for exit
+                        char* stackBaseAddr,
+                        // This function performs an action for each variable visited:
+                        TraversalResult (*performAction)(VariableEntry*,
+                                                         char*,
+                                                         VariableOrigin,
+                                                         UInt,
+                                                         UInt,
+                                                         char,
+                                                         DisambigOverride,
+                                                         char,
+                                                         void*,
+                                                         void**,
+                                                         UInt,
+                                                         FunctionEntry*,
+                                                         char)) {
   VarNode* i = 0;
 
   VarList* varListPtr = 0;
@@ -157,8 +162,7 @@ void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified functi
   case GLOBAL_VAR:
     varListPtr = &globalVars;
     break;
-  case FUNCTION_ENTER_FORMAL_PARAM:
-  case FUNCTION_EXIT_FORMAL_PARAM:
+  case FUNCTION_FORMAL_PARAM:
     varListPtr = &(funcPtr->formalParameters);
     break;
   case FUNCTION_RETURN_VAR:
@@ -186,8 +190,7 @@ void visitAllVariablesInList(FunctionEntry* funcPtr, // 0 for unspecified functi
 	continue;
       }
 
-      if ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
-	  (varOrigin == FUNCTION_EXIT_FORMAL_PARAM)) {
+      if (varOrigin == FUNCTION_FORMAL_PARAM) {
         basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
       }
       else if (varOrigin == GLOBAL_VAR) {
@@ -475,8 +478,7 @@ void visitSingleVar(VariableEntry* var,
   }
 
   if ((fjalar_func_disambig_ptrs) &&
-      ((varOrigin == FUNCTION_ENTER_FORMAL_PARAM) ||
-       (varOrigin == FUNCTION_EXIT_FORMAL_PARAM) ||
+      ((varOrigin == FUNCTION_FORMAL_PARAM) ||
        (varOrigin == FUNCTION_RETURN_VAR))) {
     disambigOverride = OVERRIDE_ARRAY_AS_POINTER;
   }
@@ -754,7 +756,7 @@ void visitSingleVar(VariableEntry* var,
       char numEltsPushedOnStack = 0;
       // Pointer to the value of the current member variable
       void* pCurVarValue = 0;
-      curVar = &(i->var);
+      curVar = i->var;
       assert(curVar);
 
       // Only flatten static arrays when the --flatten-arrays option

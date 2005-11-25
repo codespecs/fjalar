@@ -26,6 +26,7 @@ variables.
 #include "fjalar_main.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
+#include "fjalar_traversal.h"
 
 // Output file pointer for dumping program point names
 FILE* prog_pt_dump_fp = 0;
@@ -289,4 +290,150 @@ int compareFunctionTrees(const void *a, const void *b)
 int compareStrings(const void *a, const void *b)
 {
   return VG_(strcmp)((char*)a, (char*)b);
+}
+
+// Set this appropriately before using printVarNameAction:
+FILE* g_open_fp = 0;
+
+extern char* VG_(cplus_demangle_v3) (const char* mangled);
+
+// All this action does is print out the name of a variable to
+// g_open_fp:
+TraversalResult printVarNameAction(VariableEntry* var,
+                                   char* varName,
+                                   VariableOrigin varOrigin,
+                                   UInt numDereferences,
+                                   UInt layersBeforeBase,
+                                   char overrideIsInit,
+                                   DisambigOverride disambigOverride,
+                                   char isSequence,
+                                   void* pValue,
+                                   void** pValueArray,
+                                   UInt numElts,
+                                   FunctionEntry* varFuncInfo,
+                                   char isEnter) {
+  fprintf(g_open_fp, "%s\n", varName);
+  return DO_NOT_DEREF_MORE_POINTERS;
+}
+
+
+// Output a list of program points to the file specified by
+// prog_pt_dump_fp.  The format is a list of program point names.  If
+// mangled_name exists, then use it (with a MANGLED_TOKEN indicator),
+// but if it doesn't, then use the fjalar_name.  Example file:
+/*
+..main()
+(mangled) _ZN5Stack19getNumStacksCreatedEv Stack.cpp.Stack::getNumStacksCreated()
+(mangled) _ZN5Stack4Link10initializeEPcPS0_ Stack.cpp.Stack::Link::initialize(char*, Stack::Link*)
+Stack.cpp.Stack()
+Stack.cpp.~Stack()
+(mangled) _ZN5Stack7getNameEv Stack.cpp.Stack::getName()
+(mangled) _ZN5Stack12privateStuffEv Stack.cpp.Stack::privateStuff()
+(mangled) _ZN5Stack4pushEPc Stack.cpp.Stack::push(char*)
+(mangled) _ZN5Stack4peekEv Stack.cpp.Stack::peek()
+(mangled) _ZN5Stack3popEv Stack.cpp.Stack::pop()
+*/
+void outputProgramPointsToFile() {
+  struct geniterator* it = gengetiterator(FunctionTable);
+
+  // Print out all program points in FunctionTable
+  while(!it->finished) {
+    FunctionEntry* cur_entry =
+      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+
+    tl_assert(cur_entry);
+
+    // If the mangled name exists, then print out the following:
+    // (mangled) MANGLED_NAME fjalar_name
+
+    // Otherwise, just print out fjalar_name
+
+    if (cur_entry->mangled_name) {
+      fprintf(prog_pt_dump_fp, "%s %s ",
+              MANGLED_TOKEN, cur_entry->mangled_name);
+    }
+
+    fputs(cur_entry->fjalar_name, prog_pt_dump_fp);
+    fputs("\n", prog_pt_dump_fp);
+  }
+  genfreeiterator(it);
+}
+
+// Output a list of variable names to the file specified by
+// var_dump_fp.  Example file:
+/*
+----SECTION----
+globals
+/_ZN5Stack21publicNumLinksCreatedE
+/_ZN5Stack16numStacksCreatedE
+/_ZN5Stack21publicNumLinksCreatedE
+/_ZN5Stack16numStacksCreatedE
+
+----SECTION----
+Stack.cpp.Stack::Link::initialize(char*, Stack::Link*)
+this
+this->data
+this->next
+this->next[].data
+this->next[].next
+this->next[].next->data
+this->next[].next->next
+*/
+void outputVariableNamesToFile() {
+  struct geniterator* it;
+  g_open_fp = var_dump_fp;
+
+  // Print out a section for all global variables:
+  fputs(ENTRY_DELIMETER, var_dump_fp);
+  fputs("\n", var_dump_fp);
+  fputs(GLOBAL_STRING, var_dump_fp);
+  fputs("\n", var_dump_fp);
+
+  visitVariableGroup(GLOBAL_VAR,
+                     0,
+                     0,
+                     0,
+                     &printVarNameAction);
+
+  fputs("\n", var_dump_fp);
+
+  it = gengetiterator(FunctionTable);
+
+  while(!it->finished) {
+    FunctionEntry* cur_entry =
+      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+
+    tl_assert(cur_entry);
+
+    // Only dump variable entries for program points that are listed
+    // in prog-pts-file, if we are using the --prog-pts-file option:
+    if (!fjalar_trace_prog_pts_filename ||
+        // If fjalar_trace_prog_pts_filename is on (we are reading in
+        // a ppt list file), then DO NOT OUTPUT entries for program
+        // points that we are not interested in.
+        prog_pts_tree_entry_found(cur_entry)) {
+      fputs(ENTRY_DELIMETER, var_dump_fp);
+      fputs("\n", var_dump_fp);
+      fputs(cur_entry->fjalar_name, var_dump_fp);
+      fputs("\n", var_dump_fp);
+
+      // Print out all function parameter return value variable names:
+      visitVariableGroup(FUNCTION_FORMAL_PARAM,
+                         cur_entry,
+                         0,
+                         0,
+                         &printVarNameAction);
+
+      visitVariableGroup(FUNCTION_RETURN_VAR,
+                         cur_entry,
+                         0,
+                         0,
+                         &printVarNameAction);
+
+      fputs("\n", var_dump_fp);
+    }
+  }
+  genfreeiterator(it);
+
+  g_open_fp = 0;
 }
