@@ -406,15 +406,15 @@ void initializeAllFjalarData()
 
   updateAllVarTypes();
 
-  VG_(printf)(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
+  FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
               data_section_size, data_section_addr,
               bss_section_size, bss_section_addr,
               rodata_section_size, rodata_section_addr);
 
   // Should only be called here:
-  VG_(printf)("BEGIN checking the representation of internal data structures ...\n");
+  VG_(printf)("\nChecking the representation of internal data structures ...\n");
   repCheckAllEntries();
-  VG_(printf)("DONE with representation checks.\n");
+  VG_(printf)("All representation checks PASSED.\n");
 }
 
 // Returns true iff the address is within a global area as specified
@@ -459,7 +459,7 @@ void repCheckAllEntries() {
   tl_assert(numGlobalVars == globalVars.numVars);
 
 
-  VG_(printf)("DONE\n");
+  VG_(printf)("  DONE\n");
 
   // Rep. check all entries in FunctionTable
   it = gengetiterator(FunctionTable);
@@ -538,7 +538,7 @@ void repCheckAllEntries() {
 
   genfreeiterator(it);
 
-  VG_(printf)("DONE\n");
+  VG_(printf)("  DONE\n");
 
   VG_(printf)("  Rep. checking type entries ...\n");
 
@@ -588,7 +588,7 @@ void repCheckAllEntries() {
              n = n->next) {
           VariableEntry* curMember = n->var;
 
-          VG_(printf)(" checking member %s for %s\n",
+          FJALAR_DPRINTF(" checking member %s for %s\n",
                       curMember->name, t->collectionName);
 
           // Specific checks for member variables:
@@ -628,7 +628,7 @@ void repCheckAllEntries() {
 	     node = node->next) {
 	  VariableEntry* curMember = node->var;
 
-	  VG_(printf)(" checking STATIC member %s for %s\n",
+	  FJALAR_DPRINTF(" checking STATIC member %s for %s\n",
 		      curMember->name, t->collectionName);
 
 	  // Specific checks for static member variables:
@@ -679,7 +679,7 @@ void repCheckAllEntries() {
 
   genfreeiterator(it);
 
-  VG_(printf)("DONE\n");
+  VG_(printf)("  DONE\n");
 }
 
 // Checks rep. invariants for a VariableEntry (only performs general
@@ -697,7 +697,7 @@ static void repCheckOneVariable(VariableEntry* var) {
       tl_assert(var->fileName);
     }
 
-    VG_(printf)(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
+    FJALAR_DPRINTF(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
 		var->structParentType ? var->structParentType->collectionName : "no parent",
 		var,
 		var->name,
@@ -754,7 +754,7 @@ static void repCheckOneVariable(VariableEntry* var) {
   tl_assert((var->referenceLevels == 0) ||
             (var->referenceLevels == 1));
 
-  VG_(printf)(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
+  FJALAR_DPRINTF(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
 	      var->structParentType ? var->structParentType->collectionName : "no parent",
 	      var,
 	      var->name,
@@ -1046,7 +1046,10 @@ static void updateAllGlobalVariableNames() {
 // freed.  However, during normal execution, this should only be
 // called once.
 // This initializes all names of functions in FunctionTable,
-// demangling C++ function names if necessary
+// demangling C++ function names if necessary.
+
+// Pre: If we are using the --var-list-file= option, the var-list file
+// must have already been processed by the time this function runs
 void initializeFunctionTable()
 {
   unsigned long i;
@@ -1079,7 +1082,7 @@ void initializeFunctionTable()
 
           cur_func_entry = VG_(calloc)(1, sizeof(*cur_func_entry));
 
-	  VG_(printf)("Adding function %s\n", dwarfFunctionPtr->name);
+	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
 
           cur_func_entry->name = dwarfFunctionPtr->name;
           cur_func_entry->mangled_name = dwarfFunctionPtr->mangled_name;
@@ -1140,6 +1143,9 @@ void initializeFunctionTable()
           // Fjalar name of the function to identify its entry in
           // vars_tree, and this is the earliest point where the
           // Fjalar name is guaranteed to be initialized.
+
+          // Note that we must read in and process the var-list-file
+          // BEFORE calling this function:
           if (fjalar_trace_vars_filename &&
               (!cur_func_entry->trace_vars_tree_already_initialized)) {
             extern FunctionTree* vars_tree;
@@ -1384,7 +1390,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     function* funcPtr =
       (function*)((collectionPtr->member_funcs[member_func_index])->entry_ptr);
 
-    VG_(printf)("  *** funcPtr->mangled_name: %s\n", funcPtr->mangled_name);
+    FJALAR_DPRINTF("  *** funcPtr->mangled_name: %s\n", funcPtr->mangled_name);
 
     // Look up the start_pc of the function in FunctionSymbolTable if
     // there is no start_pc:
@@ -1406,7 +1412,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       continue;
     }
 
-    VG_(printf)("         funcPtr->start_pc: %p\n", funcPtr->start_pc);
+    FJALAR_DPRINTF("         funcPtr->start_pc: %p\n", funcPtr->start_pc);
 
     // Success!
     // If memberFunctionList hasn't been allocated yet, calloc it:
@@ -1475,8 +1481,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         existing_entry = (TypeEntry*)gengettable(TypesTable,
                                                  (void*)curSuper->className);
 
-        VG_(printf)("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
-                    existing_entry, curSuper->className);
+        FJALAR_DPRINTF("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
+                       existing_entry, curSuper->className);
 
         if (existing_entry) {
           curSuper->class = existing_entry;
@@ -1534,7 +1540,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     }
   }
 
-  VG_(printf)("t: %s, num_static_member_vars: %u\n",
+  FJALAR_DPRINTF("t: %s, num_static_member_vars: %u\n",
 	      t->collectionName,
 	      collectionPtr->num_static_member_vars);
 
@@ -1560,13 +1566,15 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         }
       }
 
-      VG_(printf)("Trying to extractOneVariable on static member var: %s at %p\n",
-		  staticMemberPtr->mangled_name,
-		  staticMemberPtr->globalVarAddr);
+      FJALAR_DPRINTF("Trying to extractOneVariable on static member var: %s at %p\n",
+                     staticMemberPtr->mangled_name,
+                     staticMemberPtr->globalVarAddr);
 
       extractOneVariable(t->staticMemberVarList,
 			 staticMemberPtr->type_ptr,
-			 (staticMemberPtr->mangled_name ?  // TODO: demangle this later
+                         // If a mangled name exists, pass it in so
+                         // that it can be de-mangled:
+			 (staticMemberPtr->mangled_name ?
 			  staticMemberPtr->mangled_name :
 			  staticMemberPtr->name),
 			 0,
@@ -1964,7 +1972,7 @@ void extractOneVariable(VarList* varListPtr,
 
   char* demangled_name = 0;
 
-  VG_(printf)("Entering extractOneVariable for %s\n", variableName);
+  FJALAR_DPRINTF("Entering extractOneVariable for %s\n", variableName);
 
   // Don't extract the variable if it has a bogus name:
   if (ignore_variable_with_name(variableName))
@@ -2143,31 +2151,34 @@ void extractOneVariable(VarList* varListPtr,
       insertNewNode(&varsToUpdateTypes);
       varsToUpdateTypes.last->var = varPtr;
 
-      VG_(printf)("  Inserted *fake* entry for variable %s with type %s\n",
-                  variableName, collectionPtr->name);
+      FJALAR_DPRINTF("  Inserted *fake* entry for variable %s with type %s\n",
+                     variableName, collectionPtr->name);
     }
     // Otherwise, try to find an entry in TypesTable if one already exists
     else {
       TypeEntry* existing_entry = (TypeEntry*)gengettable(TypesTable,
                                                           (void*)collectionPtr->name);
 
-      VG_(printf)("  Try to find existing entry %p in TypesTable with name %s\n",
-                  existing_entry, collectionPtr->name);
+      FJALAR_DPRINTF("  Try to find existing entry %p in TypesTable with name %s\n",
+                     existing_entry, collectionPtr->name);
 
       if (existing_entry) {
-        VG_(printf)("  Using existing type entry for %s\n", variableName);
+        FJALAR_DPRINTF("  Using existing type entry for %s\n", variableName);
+
         varPtr->varType = existing_entry;
         // We are done!
       }
       // No entry exists for this name, so insert a new one:
       else {
-        VG_(printf)("  Adding type entry for %s\n", variableName);
+        FJALAR_DPRINTF("  Adding type entry for %s\n", variableName);
 
         varPtr->varType = (TypeEntry*)VG_(calloc)(1, sizeof(*varPtr->varType));
 
         // Insert it into the table BEFORE calling
         // extractStructUnionType() or else we may infinitely recurse!
-        VG_(printf)("  Insert %s into TypesTable\n", collectionPtr->name);
+
+        FJALAR_DPRINTF("  Insert %s into TypesTable\n", collectionPtr->name);
+
         genputtable(TypesTable,
                     (void*)collectionPtr->name,
                     varPtr->varType);
@@ -2267,7 +2278,8 @@ static void initConstructorsAndDestructors() {
                                             (void*)f->name);
 
       if (parentClass) {
-        VG_(printf)(" *** CONSTRUCTOR! func-name: %s\n", f->name);
+        FJALAR_DPRINTF(" *** CONSTRUCTOR! func-name: %s\n", f->name);
+
         f->parentClass = parentClass;
 
         // Insert f into the parent class's constructorList,
@@ -2285,7 +2297,8 @@ static void initConstructorsAndDestructors() {
                                               (void*)(&(f->name[1])));
 
         if (parentClass) {
-          VG_(printf)(" *** DESTRUCTOR! func-name: %s\n", f->name);
+          FJALAR_DPRINTF(" *** DESTRUCTOR! func-name: %s\n", f->name);
+
           f->parentClass = parentClass;
 
           // Insert f into the parent class's destructorList,
@@ -2333,7 +2346,7 @@ static void initMemberFuncs() {
           unsigned int start_PC = (unsigned int)(n->elt);
           tl_assert(start_PC);
 
-          VG_(printf)("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
+          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
 
           // Hopefully this will always be non-null
           n->elt = (FunctionEntry*)findFunctionEntryByStartAddr(start_PC);
