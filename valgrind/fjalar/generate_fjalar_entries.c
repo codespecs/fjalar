@@ -668,7 +668,7 @@ void repCheckAllEntries() {
           tl_assert(curSuper->className);
           tl_assert(curSuper->class);
           tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->collectionName));
-          VG_(printf)("  curSuper->className: %s, inheritance: %d\n",
+          FJALAR_DPRINTF("  curSuper->className: %s, inheritance: %d\n",
                       curSuper->className, curSuper->inheritance);
           numSuperclasses++;
         }
@@ -1460,7 +1460,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         SimpleListInsert(t->superclassList,
                          (void*)curSuper);
 
-        VG_(printf)(" +++ super->name: %s\n", dwarf_super->name);
+        FJALAR_DPRINTF(" +++ super->name: %s\n", dwarf_super->name);
 
         switch (inh->accessibility) {
         case DW_ACCESS_private:
