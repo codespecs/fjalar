@@ -27,8 +27,6 @@ tools.
 
 //#define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
-void updateAllFunctionEntryNames();
-
 int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize);
 int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation);
 int getBytesBetweenElts(VariableEntry* var);

@@ -382,10 +382,6 @@ void exit_function(FunctionEntry* f)
 // Valgrind's name demangling mechanism so we can perform the rest of
 // our initialization code that requires this functionality.
 static void handle_first_function_entrance() {
-  // Right before we handle the first function entrance, update all
-  // the fjalar_name fields of all entries in FunctionTable:
-  updateAllFunctionEntryNames();
-
   // Let the tool do its initialization:
   fjalar_tool_handle_first_function_entrance();
   atLeastOneFunctionHandled = 1;
