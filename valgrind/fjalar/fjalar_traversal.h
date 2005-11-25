@@ -48,6 +48,27 @@ typedef enum {
   STOP_TRAVERSAL
 } TraversalResult;
 
+// Takes a TypeEntry* and (optionally, a pointer to its memory
+// location), and traverses through all of the members of the
+// specified class (or struct/union).  This should also traverse
+// inside of the class's superclasses and visit variables in them:
+void visitClassMemberVariables(TypeEntry* class,
+                               Addr objectAddr,
+                               // This function performs an action for each variable visited:
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char));
+
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters

@@ -51,9 +51,6 @@ TraversalResult trivialAction(VariableEntry* var,
   return DO_NOT_DEREF_MORE_POINTERS;
 }
 
-// When this function is called, Valgrind proper is already
-// initialized so that tools can now have access to more useful
-// Valgrind functions such as C++ name demangling:
 void fjalar_tool_handle_first_function_entrance() {
   VG_(printf)("\nfjalar_tool_handle_first_function_entrance\n");
 }
@@ -61,8 +58,21 @@ void fjalar_tool_handle_first_function_entrance() {
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
+  struct geniterator* it;
+
   VG_(printf)("%s (enter)\n",
 	      f_state->func->fjalar_name);
+
+/*   it = gengetiterator(TypesTable); */
+
+/*   while (!it->finished) { */
+/*     TypeEntry* t = (TypeEntry*)gengettable(TypesTable, gennext(it)); */
+/*     VG_(printf)("BEGIN class: %s\n", t->collectionName); */
+/*     visitClassMemberVariables(t, 0, &trivialAction); */
+/*     VG_(printf)("END   class: %s\n", t->collectionName); */
+/*   } */
+
+/*   genfreeiterator(it); */
 
   visitVariableGroup(GLOBAL_VAR,
                      0,

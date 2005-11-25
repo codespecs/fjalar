@@ -443,16 +443,11 @@ static void loadAuxiliaryFileData() {
       FJALAR_DPRINTF("\n\nWRITING %s\n", fjalar_disambig_filename);
       disambig_writing = True;
 
-      // Hack for correctly observing struct pointer/array values
-      // when using --smart-disambig.
-      // If we are writing a .disambig file and using run time
-      // observations of the struct behavior to determine whether
-      // a struct pointer always pointed to one element or more than
-      // one element, we must always process base struct variables
-      // or else those observations will be missed.
-      if (fjalar_smart_disambig) {
-	fjalar_output_struct_vars = True;
-      }
+      // If we are writing a .disambig file, then we always want to
+      // visit all the struct variables so that we can generate
+      // .disambig entries for them:
+      fjalar_output_struct_vars = True;
+
     }
   }
 }
@@ -498,8 +493,11 @@ static void outputAuxiliaryFilesAndExit() {
 
     if (fjalar_disambig_filename && disambig_writing) {
       tl_assert(disambig_fp);
-      // TODO: Write .disambig entries to file
+      generateDisambigFile();
+      VG_(printf)("\nDone generating .disambig file %s\n",
+                  fjalar_disambig_filename);
       fclose(disambig_fp);
+      disambig_fp = 0;
     }
 
     // Output the declarations in XML format if desired, and then exit:
@@ -508,6 +506,7 @@ static void outputAuxiliaryFilesAndExit() {
       outputAllXMLDeclarations();
       VG_(printf)("\nDone generating XML file %s\n",
                   fjalar_xml_output_filename);
+      fclose(xml_output_fp);
       xml_output_fp = 0;
     }
 

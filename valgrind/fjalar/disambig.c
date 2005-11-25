@@ -18,6 +18,7 @@
 #include "disambig.h"
 #include "fjalar_main.h"
 #include "fjalar_select.h"
+#include "fjalar_traversal.h"
 #include "GenericHashtable.h"
 
 #include <stdlib.h>
@@ -31,9 +32,180 @@ Bool disambig_writing = False; // True for writing to .disambig, False for readi
 const char* USERTYPE_PREFIX = "usertype.";
 const char* FUNCTION_PREFIX = "function: ";
 
+// Prints a .disambig file entry for a given variable
+// This consists of 2 lines:
+//   variable name, disambig type
+// e.g.,
+// /foo       <-- variable name
+// S          <-- disambig type
+TraversalResult printDisambigAction(VariableEntry* var,
+                                    char* varName,
+                                    VariableOrigin varOrigin,
+                                    UInt numDereferences,
+                                    UInt layersBeforeBase,
+                                    char overrideIsInit,
+                                    DisambigOverride disambigOverride,
+                                    char isSequence,
+                                    void* pValue,
+                                    void** pValueArray,
+                                    UInt numElts,
+                                    FunctionEntry* varFuncInfo,
+                                    char isEnter) {
+  // If this is not a variable that's worthy of being outputted to the
+  // .disambig file, then punt:
+  if (!shouldOutputVarToDisambig(var)) {
+    // We do not want to traverse any further than the surface level
+    // for .disambig:
+    return STOP_TRAVERSAL;
+  }
+
+  // Line 1: Variable name
+  fputs(varName, disambig_fp);
+  fputs("\n", disambig_fp);
+
+  // Line 2: Disambig type
+
+  /* Default values:
+     Base type "char" and "unsigned char": 'I' for integer
+     Pointer to "char": 'S' for string
+     Pointer to all other types:
+       - 'A' for array if var->disambigMultipleElts,
+             which means that we've observed array
+             behavior during program's execution
+         or if !var->pointerHasEverBeenObserved,
+            which means that the pointer has never
+            been observed so a conservative guess
+            of 'A' should be the default
+         or if var->isStructUnionMember - don't try
+            to be smart about member variables
+            within structs/unions - just default to "A"
+       - 'P' for pointer if (var->pointerHasEverBeenObserved &&
+             !var->disambigMultipleElts)
+  */
+
+  if (0 == var->ptrLevels) {
+    if ((D_CHAR == var->varType->decType) ||
+        (D_UNSIGNED_CHAR == var->varType->decType)) {
+      fputs("I", disambig_fp);
+    }
+  }
+  // Special case for C++ 'this' parameter - always make it 'P'
+  else if (VG_STREQ(var->name, "this")) {
+    fputs("P", disambig_fp);
+  }
+  // Normal string, not pointer to string
+  else if (var->isString &&
+           (1 == var->ptrLevels)) {
+    fputs("S", disambig_fp);
+  }
+  else if (var->ptrLevels > 0) {
+    if (var->isStructUnionMember) {
+      fputs("A", disambig_fp);
+    }
+    else {
+      if (var->pointerHasEverBeenObserved) {
+        if (var->disambigMultipleElts) {
+          fputs("A", disambig_fp);
+        }
+        else {
+          fputs("P", disambig_fp);
+        }
+      }
+      // default behavior for variable that was
+      // never observed during the execution
+      else {
+        fputs("A", disambig_fp);
+      }
+    }
+  }
+
+  fputs("\n", disambig_fp);
+
+  // We do not want to traverse any further than the surface level for
+  // .disambig:
+  return STOP_TRAVERSAL;
+}
+
 // Pre: disambig_fp has been initialized and disambig_writing is True
 void generateDisambigFile() {
-  VG_(printf)("\ngenerateDisambigFile() not yet implemented\n");
+  struct geniterator* it;
+
+  // Write entries for global variables:
+  fputs(ENTRY_DELIMETER, disambig_fp);
+  fputs("\n", disambig_fp);
+  fputs(GLOBAL_STRING, disambig_fp);
+  fputs("\n", disambig_fp);
+
+  visitVariableGroup(GLOBAL_VAR,
+                     0,
+                     0,
+                     0,
+                     &printDisambigAction);
+
+  fputs("\n", disambig_fp);
+
+  // Write entries for function parameters and return values:
+  it = gengetiterator(FunctionTable);
+
+  while(!it->finished) {
+    FunctionEntry* cur_entry =
+      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+
+    tl_assert(cur_entry);
+
+    // Only write .disambig entries for program points that are listed
+    // in prog-pts-file, if we are using the --prog-pts-file option:
+    if (!fjalar_trace_prog_pts_filename ||
+        // If fjalar_trace_prog_pts_filename is on (we are reading in
+        // a ppt list file), then DO NOT OUTPUT entries for program
+        // points that we are not interested in.
+        prog_pts_tree_entry_found(cur_entry)) {
+      fputs(ENTRY_DELIMETER, disambig_fp);
+      fputs("\n", disambig_fp);
+      fputs(FUNCTION_PREFIX, disambig_fp);
+      fputs(cur_entry->fjalar_name, disambig_fp);
+      fputs("\n", disambig_fp);
+
+      // Print out all function parameter return value variable names:
+      visitVariableGroup(FUNCTION_FORMAL_PARAM,
+                         cur_entry,
+                         0,
+                         0,
+                         &printDisambigAction);
+
+      visitVariableGroup(FUNCTION_RETURN_VAR,
+                         cur_entry,
+                         0,
+                         0,
+                         &printDisambigAction);
+
+      fputs("\n", disambig_fp);
+    }
+  }
+  genfreeiterator(it);
+
+  // Write entries for every struct/class in TypesTable, with the
+  // type's name prefixed by 'usertype.':
+  it = gengetiterator(TypesTable);
+
+  while (!it->finished) {
+    TypeEntry* cur_entry = (TypeEntry*)gengettable(TypesTable, gennext(it));
+
+    tl_assert(cur_entry && cur_entry->collectionName);
+
+    fputs(ENTRY_DELIMETER, disambig_fp);
+    fputs("\n", disambig_fp);
+    fputs(USERTYPE_PREFIX, disambig_fp);
+    fputs(cur_entry->collectionName, disambig_fp);
+    fputs("\n", disambig_fp);
+
+    visitClassMemberVariables(cur_entry,
+                              0,
+                              &printDisambigAction);
+
+    fputs("\n", disambig_fp);
+  }
+  genfreeiterator(it);
 }
 
 // Returns True if var should be output to .disambig:

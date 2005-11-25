@@ -52,7 +52,7 @@ typedef enum DeclaredType
   D_UNSIGNED_LONG_DOUBLE, // currently unused
   D_LONG_DOUBLE,
   D_ENUMERATION,
-  D_STRUCT,
+  D_STRUCT,         // This includes C++ classes as well!!!
   D_UNION,
   D_FUNCTION,
   D_VOID,
