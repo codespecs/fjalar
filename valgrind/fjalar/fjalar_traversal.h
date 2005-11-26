@@ -53,6 +53,13 @@ typedef enum {
   STOP_TRAVERSAL
 } TraversalResult;
 
+char* DEREFERENCE;
+char* ZEROTH_ELT;
+char* DOT;
+char* ARROW;
+char* STAR;
+
+
 // Takes a TypeEntry* and (optionally, a pointer to its memory
 // location), and traverses through all of the members of the
 // specified class (or struct/union).  This should also traverse
