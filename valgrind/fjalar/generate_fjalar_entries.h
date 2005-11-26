@@ -262,7 +262,7 @@ struct _VarList {
   unsigned int numVars;
 };
 
-void clearVarList(VarList* varListPtr);
+void clearVarList(VarList* varListPtr, char destroyVariableEntries);
 void insertNewNode(VarList* varListPtr);
 void deleteTailNode(VarList* varListPtr);
 
