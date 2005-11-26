@@ -371,14 +371,17 @@ void deleteTailNode(VarList* varListPtr)
     }
 }
 
-// Clears the list:
-void clearVarList(VarList* varListPtr) {
+// Clears the list and FREEs the var contents if
+// destroyVariableEntries is 1:
+void clearVarList(VarList* varListPtr, char destroyVariableEntries) {
   VarNode* node = varListPtr->first;
   VarNode* nextNode = 0;
 
   while (node) {
     nextNode = node->next;
-    destroyVariableEntry(node->var);
+    if (destroyVariableEntries) {
+      destroyVariableEntry(node->var);
+    }
     VG_(free)(node);
     node = nextNode;
   }
@@ -395,11 +398,12 @@ void clearVarList(VarList* varListPtr) {
 void initializeAllFjalarData()
 {
   // For debugging:
-  //  int x = 0;
-  //  while (!x) {}
+  if (fjalar_with_gdb) {
+    int x = 0;
+    while (!x) {}
+  }
 
-  // First delete everything that's in the globalVars list
-  clearVarList(&globalVars);
+  tl_assert(globalVars.numVars == 0);
 
   // TODO: We need to free up the entries in TypesTable if we are
   // really trying to be robust
@@ -1994,8 +1998,9 @@ void updateAllVarTypes() {
     VG_(free)(fake_type);
   }
 
-  // Remember to destroy this list now that we're done with it!
-  clearVarList(&varsToUpdateTypes);
+  // Remember to NOT destroy the VariableEntry entries inside the list
+  // because they are aliased elsewhere:
+  clearVarList(&varsToUpdateTypes, 0);
 }
 
 

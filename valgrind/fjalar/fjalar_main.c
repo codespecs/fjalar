@@ -35,6 +35,7 @@
 
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
+Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_globals = False;
 Bool fjalar_ignore_static_vars = False;
 Bool fjalar_limit_static_vars = False;
@@ -594,6 +595,7 @@ void fjalar_print_usage()
 "                             defined structures (i.e. linked lists) to N (default is 4)\n"
 "                             (N must be an integer between 0 and 100)\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
+"    --with-gdb               Hang during init. so that GDB can attach to it\n"
 "    --xml-output-file=<string>  Output declarations in XML format to a file\n"
    );
 
@@ -614,6 +616,7 @@ void fjalar_print_usage()
 Bool fjalar_process_cmd_line_option(Char* arg)
 {
   VG_YESNO_CLO("fjalar-debug", fjalar_debug)
+  else VG_YESNO_CLO("with-gdb", fjalar_with_gdb)
   else VG_YESNO_CLO("ignore-globals", fjalar_ignore_globals)
   else VG_YESNO_CLO("ignore-static-vars", fjalar_ignore_static_vars)
   else VG_YESNO_CLO("limit-static-vars", fjalar_limit_static_vars)

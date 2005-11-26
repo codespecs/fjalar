@@ -28,6 +28,7 @@
 
 // Boolean flags
 Bool fjalar_debug;
+Bool fjalar_with_gdb;
 Bool fjalar_ignore_globals;
 Bool fjalar_ignore_static_vars;
 Bool fjalar_limit_static_vars;
