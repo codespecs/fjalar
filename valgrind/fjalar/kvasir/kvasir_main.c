@@ -639,19 +639,17 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
 void fjalar_tool_finish() {
   extern UInt nextTag;
 
-#ifdef DYNCOMP
   if (kvasir_with_dyncomp) {
      // Do one extra propagation of variable comparability at the end
      // of execution once all of the value comparability sets have
      // been properly updated:
+#ifdef DYNCOMP
      DC_extra_propagate_val_to_var_sets();
+#endif
 
      // Now print out the .decls file at the very end of execution:
      DC_outputDeclsAtEnd();
   }
-
-  DYNCOMP_DPRINTF("\n*** nextTag: %u ***\n\n", nextTag);
-#endif
 
   if (!dyncomp_without_dtrace) {
      finishDtraceFile();

@@ -59,7 +59,7 @@ static const char* DaikonRepTypeString[] = {
   "int", //R_INT,
   "double", //R_DOUBLE,
   "hashcode", //R_HASHCODE,
-  "java.lang.String" //R_STRING
+  "java.lang.String", //R_STRING
   "boolean" //R_BOOL
 };
 
@@ -98,6 +98,7 @@ void outputDeclsFile(char faux_decls)
 // Print .decls at the end of program execution and then close it
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
+  VG_(printf)("DC_outputDeclsAtEnd()\n");
   printAllFunctionDecls(0);
   printAllObjectAndClassDecls();
 
@@ -368,6 +369,9 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
                                                  isEnter,
                                                  g_daikonVarIndex);
     fprintf(decls_fp, "%d", comp_number);
+    fputs("\n", decls_fp);
+#else
+    fputs("22", decls_fp);
     fputs("\n", decls_fp);
 #endif
   }

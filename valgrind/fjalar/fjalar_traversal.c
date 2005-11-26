@@ -175,7 +175,7 @@ void visitClassMemberVariables(TypeEntry* class,
       stringStackPush(fullNameStack, &fullNameStackSize, var->name);
 
       visitVariable(var,
-                    memberVarAddr,
+                    (void*)memberVarAddr,
                     0,
                     performAction,
                     GLOBAL_VAR, // not quite ... but seems to work for now
@@ -562,6 +562,14 @@ void visitSingleVar(VariableEntry* var,
 
   tl_assert(var);
   layersBeforeBase = var->ptrLevels - numDereferences;
+
+  // Special hack for strings:
+  if (var->isString && (layersBeforeBase > 0)) {
+    layersBeforeBase--;
+    //    VG_(printf)("var: %s is string - layersBeforeBase: %d\n",
+    //                var->name, layersBeforeBase);
+  }
+
   tl_assert(layersBeforeBase >= 0);
 
   // Special handling for overriding in the presence of .disambig:
@@ -725,7 +733,7 @@ void visitSingleVar(VariableEntry* var,
           // giant single-dimensional array.  Take the products of the
           // sizes of all dimensions (remember to add 1 to each to get
           // from upper bound to size):
-          UInt dim;
+          int dim;
 
           // Notice the +1 to convert from upper bound to numElts
           numElts = 1 + var->upperBounds[0];
@@ -1068,6 +1076,14 @@ void visitSequence(VariableEntry* var,
 
   tl_assert(var);
   layersBeforeBase = var->ptrLevels - numDereferences;
+
+  // Special hack for strings:
+  if (var->isString && (layersBeforeBase > 0)) {
+    layersBeforeBase--;
+    //    VG_(printf)("var: %s is string - layersBeforeBase: %d\n",
+    //                var->name, layersBeforeBase);
+  }
+
   tl_assert(layersBeforeBase >= 0);
   tl_assert((DERIVED_VAR == varOrigin) ||
             (DERIVED_FLATTENED_ARRAY_VAR == varOrigin));
