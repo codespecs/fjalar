@@ -1,7 +1,6 @@
 #include $(top_srcdir)/Makefile.tool.am
 
-# PG - Build Fjalar with a trivial tool (in the trivial-tool
-#      sub-directory)
+# PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
 
 SUBDIRS = .
 
@@ -44,7 +43,8 @@ vgtool_fjalar_so_SOURCES = \
 	readelf.c \
 	typedata.c \
 	disambig.c \
-	trivial-tool/trivial-tool.c
+	kvasir/kvasir_main.c \
+	kvasir/decls-output.c
 
 vgtool_fjalar_so_LDFLAGS = -shared
 

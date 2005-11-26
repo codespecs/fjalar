@@ -23,6 +23,11 @@
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
 
+// This increments every time a call to visitSingleVar() or
+// visitSequence() is made.  It is up to the caller to reset this
+// properly!
+int g_variableIndex;
+
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
 typedef enum {
