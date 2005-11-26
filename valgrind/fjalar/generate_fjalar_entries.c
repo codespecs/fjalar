@@ -126,6 +126,34 @@ TypeEntry* BasicTypesArray[22] = {
   &BoolType //  D_BOOL            // C++ only
 };
 
+// This array can be indexed using the DelaredType enum
+const char* DeclaredTypeString[] = {
+  "no_declared_type", // Create padding
+  "unsigned char", //D_UNSIGNED_CHAR,
+  "char", //D_CHAR,
+  "unsigned short", //D_UNSIGNED_SHORT,
+  "short", //D_SHORT,
+  "unsigned int", //D_UNSIGNED_INT,
+  "int", //D_INT,
+  "unsigned long long int", //D_UNSIGNED_LONG_LONG_INT,
+  "long long int", //D_LONG_LONG_INT,
+  "unsigned float", //D_UNSIGNED_FLOAT, // currently unused
+  "float", //D_FLOAT,
+  "unsigned double", //D_UNSIGNED_DOUBLE, // currently unused
+  "double", //D_DOUBLE,
+  "unsigned long double", //D_UNSIGNED_LONG_DOUBLE, // currently unused
+  "long double", //D_LONG_DOUBLE,
+  // This should NOT be used unless you created an unnamed struct/union!
+  // Use DaikonVariable::collectionName instead
+  "enumeration", //D_ENUMERATION
+  "struct", //D_STRUCT
+  "union", //D_UNION
+  "function", //D_FUNCTION
+  "void", //D_VOID
+  "char", //D_CHAR_AS_STRING, // when .disambig 'C' option is used with chars
+  "bool", //D_BOOL            // C++ only
+};
+
 // To figure out if a certain DeclaredType t is a basic type, simply
 // query whether its entry in BasicTypesArray is non-null:
 #define IS_BASIC_TYPE(t) (BasicTypesArray[t])
@@ -440,7 +468,7 @@ void repCheckAllEntries() {
 
   // Rep. check all variables in globalVars:
 
-  VG_(printf)("  Rep. checking global variables list ...\n");
+  VG_(printf)("  Rep. checking global variables list ...");
   for (curNode = globalVars.first;
        curNode != 0;
        curNode = curNode->next) {
@@ -459,12 +487,12 @@ void repCheckAllEntries() {
   tl_assert(numGlobalVars == globalVars.numVars);
 
 
-  VG_(printf)("  DONE\n");
+  VG_(printf)(" DONE\n");
 
   // Rep. check all entries in FunctionTable
   it = gengetiterator(FunctionTable);
 
-  VG_(printf)("  Rep. checking function entries ...\n");
+  VG_(printf)("  Rep. checking function entries ...");
   while (!it->finished) {
     FunctionEntry* f = (FunctionEntry*)
       gengettable(FunctionTable, gennext(it));
@@ -538,9 +566,9 @@ void repCheckAllEntries() {
 
   genfreeiterator(it);
 
-  VG_(printf)("  DONE\n");
+  VG_(printf)(" DONE\n");
 
-  VG_(printf)("  Rep. checking type entries ...\n");
+  VG_(printf)("  Rep. checking type entries ...");
 
   // Rep. check all entries in TypesTable
   it = gengetiterator(TypesTable);
@@ -679,7 +707,7 @@ void repCheckAllEntries() {
 
   genfreeiterator(it);
 
-  VG_(printf)("  DONE\n");
+  VG_(printf)(" DONE\n");
 }
 
 // Checks rep. invariants for a VariableEntry (only performs general

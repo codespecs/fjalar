@@ -38,11 +38,11 @@ extern FunctionTree* globalFunctionTree;
 
 // Symbols for Fjalar variable names that are created by concatenating
 // together struct, array, and field names:
-static char* DEREFERENCE = "[]";
-static char* ZEROTH_ELT = "[0]";
-static char* DOT = ".";
-static char* ARROW = "->";
-//static char* STAR = "*";
+char* DEREFERENCE = "[]";
+char* ZEROTH_ELT = "[0]";
+char* DOT = ".";
+char* ARROW = "->";
+char* STAR = "*";
 
 // This stack represents the full name of the variable that we
 // currently want to output (Only puts REFERENCES to strings in

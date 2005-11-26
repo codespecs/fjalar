@@ -34,8 +34,7 @@ sure that we allocate enough space for them.
 
 */
 
-typedef enum DeclaredType
-{
+typedef enum {
   D_NO_TYPE, // Create padding
   D_UNSIGNED_CHAR,
   D_CHAR,
@@ -59,6 +58,7 @@ typedef enum DeclaredType
   D_CHAR_AS_STRING, // when .disambig 'C' option is used with chars
   D_BOOL            // C++ only
 } DeclaredType;
+
 
 typedef struct _VarList VarList;
 typedef struct _VarNode VarNode;
