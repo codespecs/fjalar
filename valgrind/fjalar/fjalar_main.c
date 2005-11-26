@@ -40,7 +40,6 @@ Bool fjalar_ignore_static_vars = False;
 Bool fjalar_limit_static_vars = False;
 Bool fjalar_default_disambig = False;
 Bool fjalar_smart_disambig = False;
-Bool fjalar_use_bit_level_precision = False;
 Bool fjalar_output_struct_vars = False;
 Bool fjalar_flatten_arrays = False;
 Bool fjalar_func_disambig_ptrs = False;
@@ -61,8 +60,6 @@ char* fjalar_dump_var_names_filename = 0;
 char* fjalar_trace_prog_pts_filename = 0;
 char* fjalar_trace_vars_filename = 0;
 char* fjalar_disambig_filename = 0;
-char* fjalar_program_stdout_filename = 0;
-char* fjalar_program_stderr_filename = 0;
 char* fjalar_xml_output_filename = 0;
 
 // The filename of the target executable:
@@ -591,16 +588,12 @@ void fjalar_print_usage()
 "\n  Misc. options:\n"
 "    --flatten-arrays         Force flattening of all statically-sized arrays\n"
 "    --output-struct-vars     Outputs struct variables along with their contents\n"
-"    --bit-level-precision    Uses bit-level precision to produce more accurate\n"
-"                             output at the expense of speed [--no-bit-level-precision]\n"
 "    --nesting-depth=N        Limits the maximum number of dereferences of any\n"
 "                             structure to N (default is 2)\n"
 "    --struct-depth=N         Limits the maximum number of dereferences of recursively\n"
 "                             defined structures (i.e. linked lists) to N (default is 4)\n"
 "                             (N must be an integer between 0 and 100)\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
-"    --program-stdout=<string>   The name of the file to use for stdout\n"
-"    --program-stderr=<string>   The name of the file to use for stderr\n"
 "    --xml-output-file=<string>  Output declarations in XML format to a file\n"
    );
 
@@ -626,7 +619,6 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("limit-static-vars", fjalar_limit_static_vars)
   else VG_YESNO_CLO("disambig", fjalar_default_disambig)
   else VG_YESNO_CLO("smart-disambig", fjalar_smart_disambig)
-  else VG_YESNO_CLO("bit-level-precision", fjalar_use_bit_level_precision)
   else VG_YESNO_CLO("output-struct-vars", fjalar_output_struct_vars)
   else VG_YESNO_CLO("flatten-arrays", fjalar_flatten_arrays)
   else VG_YESNO_CLO("func-disambig-ptrs", fjalar_func_disambig_ptrs)
@@ -642,8 +634,6 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else VG_STR_CLO(arg, "--ppt-list-file",  fjalar_trace_prog_pts_filename)
   else VG_STR_CLO(arg, "--var-list-file",  fjalar_trace_vars_filename)
   else VG_STR_CLO(arg, "--disambig-file",  fjalar_disambig_filename)
-  else VG_STR_CLO(arg, "--program-stdout", fjalar_program_stdout_filename)
-  else VG_STR_CLO(arg, "--program-stderr", fjalar_program_stderr_filename)
   else VG_STR_CLO(arg, "--xml-output-file", fjalar_xml_output_filename)
   else
     return fjalar_tool_process_cmd_line_option(arg);

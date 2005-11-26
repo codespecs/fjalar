@@ -16,8 +16,7 @@
 
 #include $(top_srcdir)/Makefile.tool.am
 
-# PG - Build Fjalar with a trivial tool (in the trivial-tool
-#      sub-directory)
+# PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
 SHELL = @SHELL@
 
 srcdir = @srcdir@
@@ -156,7 +155,8 @@ vgtool_fjalar_so_SOURCES = \
 	readelf.c \
 	typedata.c \
 	disambig.c \
-	trivial-tool/trivial-tool.c
+	kvasir/kvasir_main.c \
+	kvasir/decls-output.c
 
 
 vgtool_fjalar_so_LDFLAGS = -shared
@@ -190,7 +190,7 @@ am_vgtool_fjalar_so_OBJECTS = mac_leakcheck.$(OBJEXT) \
 	fjalar_runtime.$(OBJEXT) fjalar_select.$(OBJEXT) \
 	generate_fjalar_entries.$(OBJEXT) GenericHashtable.$(OBJEXT) \
 	fjalar_traversal.$(OBJEXT) readelf.$(OBJEXT) typedata.$(OBJEXT) \
-	disambig.$(OBJEXT) trivial-tool.$(OBJEXT)
+	disambig.$(OBJEXT) kvasir_main.$(OBJEXT) decls-output.$(OBJEXT)
 vgtool_fjalar_so_OBJECTS = $(am_vgtool_fjalar_so_OBJECTS)
 vgtool_fjalar_so_LDADD = $(LDADD)
 vgtool_fjalar_so_DEPENDENCIES =
@@ -203,18 +203,20 @@ LIBS = @LIBS@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/GenericHashtable.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/disambig.Po ./$(DEPDIR)/fjalar_main.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/decls-output.Po ./$(DEPDIR)/disambig.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/fjalar_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_runtime.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_select.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_traversal.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/generate_fjalar_entries.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/kvasir_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mac_leakcheck.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mac_malloc_wrappers.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mac_needs.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mac_replace_strmem.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mc_errcontext.Po ./$(DEPDIR)/mc_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mc_translate.Po ./$(DEPDIR)/readelf.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/trivial-tool.Po ./$(DEPDIR)/typedata.Po
+@AMDEP_TRUE@	./$(DEPDIR)/typedata.Po
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
@@ -270,7 +272,8 @@ clean-valPROGRAMS:
 vgpreload_fjalar.so$(EXEEXT): $(vgpreload_fjalar_so_OBJECTS) $(vgpreload_fjalar_so_DEPENDENCIES) 
 	@rm -f vgpreload_fjalar.so$(EXEEXT)
 	$(LINK) $(vgpreload_fjalar_so_LDFLAGS) $(vgpreload_fjalar_so_OBJECTS) $(vgpreload_fjalar_so_LDADD) $(LIBS)
-trivial-tool.$(OBJEXT): trivial-tool/trivial-tool.c
+kvasir_main.$(OBJEXT): kvasir/kvasir_main.c
+decls-output.$(OBJEXT): kvasir/decls-output.c
 vgtool_fjalar.so$(EXEEXT): $(vgtool_fjalar_so_OBJECTS) $(vgtool_fjalar_so_DEPENDENCIES) 
 	@rm -f vgtool_fjalar.so$(EXEEXT)
 	$(LINK) $(vgtool_fjalar_so_LDFLAGS) $(vgtool_fjalar_so_OBJECTS) $(vgtool_fjalar_so_LDADD) $(LIBS)
@@ -282,12 +285,14 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GenericHashtable.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/decls-output.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/disambig.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_runtime.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_select.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_traversal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/generate_fjalar_entries.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kvasir_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mac_leakcheck.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mac_malloc_wrappers.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mac_needs.Po@am__quote@
@@ -296,7 +301,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mc_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mc_translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/readelf.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/trivial-tool.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/typedata.Po@am__quote@
 
 distclean-depend:
@@ -314,17 +318,29 @@ distclean-depend:
 @AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 	$(COMPILE) -c `cygpath -w $<`
 
-trivial-tool.o: trivial-tool/trivial-tool.c
-@AMDEP_TRUE@	source='trivial-tool/trivial-tool.c' object='trivial-tool.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@	depfile='$(DEPDIR)/trivial-tool.Po' tmpdepfile='$(DEPDIR)/trivial-tool.TPo' @AMDEPBACKSLASH@
+kvasir_main.o: kvasir/kvasir_main.c
+@AMDEP_TRUE@	source='kvasir/kvasir_main.c' object='kvasir_main.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/kvasir_main.Po' tmpdepfile='$(DEPDIR)/kvasir_main.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o trivial-tool.o `test -f 'trivial-tool/trivial-tool.c' || echo '$(srcdir)/'`trivial-tool/trivial-tool.c
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o kvasir_main.o `test -f 'kvasir/kvasir_main.c' || echo '$(srcdir)/'`kvasir/kvasir_main.c
 
-trivial-tool.obj: trivial-tool/trivial-tool.c
-@AMDEP_TRUE@	source='trivial-tool/trivial-tool.c' object='trivial-tool.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@	depfile='$(DEPDIR)/trivial-tool.Po' tmpdepfile='$(DEPDIR)/trivial-tool.TPo' @AMDEPBACKSLASH@
+kvasir_main.obj: kvasir/kvasir_main.c
+@AMDEP_TRUE@	source='kvasir/kvasir_main.c' object='kvasir_main.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/kvasir_main.Po' tmpdepfile='$(DEPDIR)/kvasir_main.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o trivial-tool.obj `cygpath -w trivial-tool/trivial-tool.c`
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o kvasir_main.obj `cygpath -w kvasir/kvasir_main.c`
+
+decls-output.o: kvasir/decls-output.c
+@AMDEP_TRUE@	source='kvasir/decls-output.c' object='decls-output.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/decls-output.Po' tmpdepfile='$(DEPDIR)/decls-output.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o decls-output.o `test -f 'kvasir/decls-output.c' || echo '$(srcdir)/'`kvasir/decls-output.c
+
+decls-output.obj: kvasir/decls-output.c
+@AMDEP_TRUE@	source='kvasir/decls-output.c' object='decls-output.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/decls-output.Po' tmpdepfile='$(DEPDIR)/decls-output.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o decls-output.obj `cygpath -w kvasir/decls-output.c`
 CCDEPMODE = @CCDEPMODE@
 uninstall-info-am:
 mcincludeHEADERS_INSTALL = $(INSTALL_HEADER)

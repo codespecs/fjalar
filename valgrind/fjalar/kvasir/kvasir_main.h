@@ -17,18 +17,22 @@
 #ifndef KVASIR_MAIN_H
 #define KVASIR_MAIN_H
 
-// Comment this out when we want to release Kvasir to end-users:
-// #define KVASIR_DEVEL_BUILD
-
-#include <assert.h>
 #include "../fjalar_main.h"
 
-#include "kvasir_runtime.h"
+FILE* decls_fp; // File pointer for .decls file (this will point
+                // to the same thing as dtrace_fp by default since
+                // both .decls and .dtrace are outputted to .dtrace
+                // unless otherwise noted by the user)
+
+FILE* dtrace_fp; // File pointer for dtrace file (from dtrace-output.c)
+
 
 // Kvasir/DynComp-specific global variables that are set by
 // command-line options
 char* kvasir_decls_filename;
 char* kvasir_dtrace_filename;
+char* kvasir_program_stdout_filename;
+char* kvasir_program_stderr_filename;
 Bool kvasir_dtrace_append;
 Bool kvasir_dtrace_no_decs;
 Bool kvasir_dtrace_gzip;
@@ -48,6 +52,10 @@ Bool dyncomp_print_debug_info;
 Bool dyncomp_print_incremental;
 Bool dyncomp_separate_entry_exit_comp;
 
+#define DPRINTF(...) do { if (kvasir_print_debug_info) \
+      VG_(printf)(__VA_ARGS__); } while (0)
+
 #define DYNCOMP_DPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_debug_info) \
       VG_(printf)(__VA_ARGS__); } while (0)
 
+#endif

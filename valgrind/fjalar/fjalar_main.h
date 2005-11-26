@@ -33,7 +33,6 @@ Bool fjalar_ignore_static_vars;
 Bool fjalar_limit_static_vars;
 Bool fjalar_default_disambig;
 Bool fjalar_smart_disambig;
-Bool fjalar_use_bit_level_precision;
 Bool fjalar_output_struct_vars;
 Bool fjalar_flatten_arrays;
 Bool fjalar_func_disambig_ptrs;

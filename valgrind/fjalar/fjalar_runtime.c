@@ -445,9 +445,9 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 
     if (foundGlobalArrayVariable) {
       while ((highestAddr > varLocation) &&
-             (fjalar_use_bit_level_precision ?
-              (!MC_(are_some_bytes_initialized)(highestAddr, bytesBetweenElts, 0)) :
-              (MC_Ok != mc_check_readable(highestAddr, bytesBetweenElts, 0)))) {
+             //             (fjalar_use_bit_level_precision ?
+             //              (!MC_(are_some_bytes_initialized)(highestAddr, bytesBetweenElts, 0)) :
+              (MC_Ok != mc_check_readable(highestAddr, bytesBetweenElts, 0))) {
         highestAddr -= bytesBetweenElts;
       }
     }
