@@ -172,7 +172,7 @@ TraversalResult nullAction(VariableEntry* var,
                            UInt numElts,
                            FunctionEntry* varFuncInfo,
                            char isEnter) {
-  return DO_NOT_DEREF_MORE_POINTERS;
+  return DISREGARD_PTR_DEREFS;
 }
 
 
@@ -382,7 +382,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   }
 
   // We are done!
-  return DO_NOT_DEREF_MORE_POINTERS;
+  return DISREGARD_PTR_DEREFS;
 }
 
 // Print out the Daikon .decls header depending on whether DynComp is

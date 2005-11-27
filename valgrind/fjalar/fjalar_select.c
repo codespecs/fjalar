@@ -272,7 +272,7 @@ TraversalResult printVarNameAction(VariableEntry* var,
                                    FunctionEntry* varFuncInfo,
                                    char isEnter) {
   fprintf(g_open_fp, "%s\n", varName);
-  return DO_NOT_DEREF_MORE_POINTERS;
+  return DISREGARD_PTR_DEREFS;
 }
 
 

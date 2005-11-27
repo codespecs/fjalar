@@ -38,9 +38,15 @@ typedef enum {
   FUNCTION_RETURN_VAR // Only relevant for function exits
 } VariableOrigin;
 
+// These result values control the actions of the data structure
+// traversal machinery:
 typedef enum {
   INVALID_RESULT = 0,
-  // When we don't care about deriving further values by dereferencing
+  // When we don't really care about pointer dereferences at all
+  // (not the same as DO_NOT_DEREF_MORE_POINTERS!)
+  DISREGARD_PTR_DEREFS,
+
+  // When we don't want to derive further values by dereferencing
   // pointers.  All values of variables derived from the visited
   // variable will simply be null.  However, we will still continue to
   // derive variables by traversing inside of structs and arrays:
@@ -48,6 +54,7 @@ typedef enum {
   // Attempt to derive more values by dereferencing pointers after
   // visiting the current variable:
   DEREF_MORE_POINTERS,
+
   // Stop the traversal after this variable and do not derive anything
   // further:
   STOP_TRAVERSAL
