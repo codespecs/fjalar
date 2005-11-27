@@ -299,7 +299,7 @@ then calls out to a handler function implemented by the Fjalar tool.
 VGA_REGPARM(1)
 void exit_function(FunctionEntry* f)
 {
-  FunctionExecutionState* top = fnStackPop();
+  FunctionExecutionState* top = fnStackTop();
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
 
@@ -368,6 +368,10 @@ void exit_function(FunctionEntry* f)
     //   add_MAC_Chunk: shadow area is accessible
     free(top->virtualStack);
   }
+
+  // Pop at the VERY end after the tool is done handling the exit.
+  // This is subtle but important:
+  fnStackPop();
 }
 
 
