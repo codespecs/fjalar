@@ -802,11 +802,11 @@ void visitSingleVar(VariableEntry* var,
     }
   }
 
-  // This is an ugly hack that's required to properly not print out
-  // base struct variables but still make sure that derived variables
-  // are properly printed out.  When we encounter a base struct
-  // variable, we need to set DEREF_MORE_POINTERS because we need its
-  // member variables to be properly observed:
+  // This is an ugly hack that's required to properly not visit base
+  // struct variables but still make sure that derived variables are
+  // properly visited.  When we encounter a base struct variable, we
+  // need to set DEREF_MORE_POINTERS because we need its member
+  // variables to be properly visited:
   if ((layersBeforeBase == 0) &&
       (var->varType->isStructUnionType)) {
     tResult = DEREF_MORE_POINTERS;
@@ -849,6 +849,7 @@ void visitSingleVar(VariableEntry* var,
 
       // Push 1 symbol on stack to represent single elt. dereference:
 
+      // TODO: Re-factor all of this repair tool stuff:
       //      if (kvasir_repair_format) {
       //        stringStackPush(fullNameStack, &fullNameStackSize, STAR);
       //      }
@@ -1303,6 +1304,16 @@ void visitSequence(VariableEntry* var,
     }
   }
 
+  // This is an ugly hack that's required to properly not visit base
+  // struct variables but still make sure that derived variables are
+  // properly visited.  When we encounter a base struct variable, we
+  // need to set DEREF_MORE_POINTERS because we need its member
+  // variables to be properly visited:
+  if ((layersBeforeBase == 0) &&
+      (var->varType->isStructUnionType)) {
+    tResult = DEREF_MORE_POINTERS;
+  }
+
   // Be very careful about where you increment this!  We want to
   // increment this once per call of either visitSingleVar() or
   // visitSequence():
@@ -1319,11 +1330,9 @@ void visitSequence(VariableEntry* var,
   if (layersBeforeBase > 0) {
     // TODO: Implement static array flattening
 
-    // We only need to set pValueArray and numElts for .dtrace output:
     // (If this variable is a static array, then there is no need to
     //  dereference pointers - very important but subtle point!)
-    if ((tResult == DEREF_MORE_POINTERS) &&
-        !var->isStaticArray) {
+    if (pValueArray && !var->isStaticArray) {
       // Iterate through pValueArray and dereference each pointer
       // value if possible, then override the entries in pValueArray
       // with the dereferenced pointers (use a value of 0 for
