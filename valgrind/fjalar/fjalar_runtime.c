@@ -82,7 +82,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   // in between its EBP and lowestESP
   // (this isn't exactly accurate because there are issues
   //  with lowestESP, but at least it'll give us some info.)
-  cur_fn = &FunctionExecutionStateStack[fn_stack_first_free_index - 1];
+  cur_fn = fnStackTop();
 
   if ((cur_fn->EBP >= a) && (cur_fn->lowestESP <= a)) {
     return cur_fn;
