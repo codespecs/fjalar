@@ -1475,7 +1475,8 @@ void visitSequence(VariableEntry* var,
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
 
-          if (tResult == DEREF_MORE_POINTERS) {
+          if ((tResult == DEREF_MORE_POINTERS) ||
+              (tResult == DO_NOT_DEREF_MORE_POINTERS)) {
             // Create pCurVarValueArray to be the same size as pValueArray:
             pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
 
@@ -1580,7 +1581,8 @@ void visitSequence(VariableEntry* var,
       // Regular member variable (without array flattening):
       else {
 
-        if (tResult == DEREF_MORE_POINTERS) {
+        if ((tResult == DEREF_MORE_POINTERS) ||
+            (tResult == DO_NOT_DEREF_MORE_POINTERS)) {
           // Create pCurVarValueArray to be the same size as pValueArray:
           pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
 
