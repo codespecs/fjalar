@@ -43,12 +43,6 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg);
 // Runs after the tool exits:
 void fjalar_tool_finish();
 
-
-// When this function is called, Valgrind proper is already
-// initialized so that tools can now have access to more useful
-// Valgrind functions such as C++ name demangling:
-void fjalar_tool_handle_first_function_entrance();
-
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state);

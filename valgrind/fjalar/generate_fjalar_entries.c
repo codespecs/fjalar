@@ -78,6 +78,36 @@ static void XMLprintOneVariable(VariableEntry* var);
 
 FILE* xml_output_fp = 0;
 
+// The indices to this array must match the DeclaredType enum
+const int DecTypeByteSizes[] = {
+  sizeof(char), //     D_NO_TYPE, // Create padding
+  sizeof(unsigned char),   //     D_UNSIGNED_CHAR,
+  sizeof(char),   //     D_CHAR,
+  sizeof(unsigned short),  //     D_UNSIGNED_SHORT,
+  sizeof(short),  //     D_SHORT,
+  sizeof(unsigned int),   //     D_UNSIGNED_INT,
+  sizeof(int),   //     D_INT,
+  sizeof(unsigned long long int), //     D_UNSIGNED_LONG_LONG_INT,
+  sizeof(long long int), //     D_LONG_LONG_INT,
+  sizeof(float), //     D_UNSIGNED_FLOAT, // currently unused
+  sizeof(float), //     D_FLOAT,
+  sizeof(double),//     D_UNSIGNED_DOUBLE, // currently unused
+  sizeof(double),//     D_DOUBLE,
+
+  sizeof(long double), //     D_UNSIGNED_LONG_DOUBLE, // currently unused
+  sizeof(long double), //     D_LONG_DOUBLE, // currently unused
+
+  sizeof(int),   //     D_ENUMERATION,
+
+  sizeof(void*), //     D_STRUCT, // currently unused
+  sizeof(void*), //     D_UNION, // currently unused
+  sizeof(void*), //     D_FUNCTION, // currently unused
+  sizeof(void*), //     D_VOID // currently unused
+
+  sizeof(char), //     D_CHAR_AS_STRING
+  sizeof(char), //     D_BOOL
+};
+
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
 TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};

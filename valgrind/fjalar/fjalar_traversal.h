@@ -106,6 +106,22 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                          FunctionEntry*,
                                                          char));
 
+void visitReturnValue(FunctionExecutionState* e,
+                      // This function performs an action for each variable visited:
+                      TraversalResult (*performAction)(VariableEntry*,
+                                                       char*,
+                                                       VariableOrigin,
+                                                       UInt,
+                                                       UInt,
+                                                       char,
+                                                       DisambigOverride,
+                                                       char,
+                                                       void*,
+                                                       void**,
+                                                       UInt,
+                                                       FunctionEntry*,
+                                                       char));
+
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:

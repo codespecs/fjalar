@@ -656,13 +656,8 @@ void fjalar_tool_finish() {
   }
 }
 
-
-void fjalar_tool_handle_first_function_entrance() {
-}
-
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
-
-  // TODO: Call out to kvasir_runtime.c
+  printDtraceForFunction(f_state, 1);
 }
 
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
@@ -692,7 +687,7 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
   }
 #endif
 
-  // TODO: Call out to kvasir_runtime.c
+  printDtraceForFunction(f_state, 0);
 }
 
 

@@ -16,10 +16,10 @@
 
 #include "fjalar_traversal.h"
 #include "fjalar_main.h"
-#include "fjalar_runtime.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
+#include "mc_include.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -227,11 +227,12 @@ void visitClassMemberVariables(TypeEntry* class,
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
 // of the function denoted by funcPtr
 // If varOrigin == FUNCTION_RETURN_VAR, then visit the return value variable
-// of the function denoted by funcPtr
+// of the function denoted by funcPtr (use visitReturnValue() if you
+// want to grab the actual return value at runtime and not just the name)
 void visitVariableGroup(VariableOrigin varOrigin,
                         FunctionEntry* funcPtr, // 0 for unspecified function
                         char isEnter,           // 1 for function entrance, 0 for exit
-                        char* stackBaseAddr,
+                        char* stackBaseAddr,    // should only be used for FUNCTION_FORMAL_PARAM
                         // This function performs an action for each variable visited:
                         TraversalResult (*performAction)(VariableEntry*,
                                                          char*,
@@ -253,6 +254,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
   // If funcPtr is null, then you better be GLOBAL_VAR
   if (!funcPtr) {
     tl_assert(varOrigin == GLOBAL_VAR);
+  }
+
+  // You shouldn't be passing in a stackBaseAddr if you're not
+  // interested in visiting function formal params:
+  if (stackBaseAddr) {
+    tl_assert(varOrigin == FUNCTION_FORMAL_PARAM);
   }
 
   switch (varOrigin) {
@@ -334,6 +341,156 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
       stringStackPop(fullNameStack, &fullNameStackSize);
     }
+}
+
+
+// Grabs the appropriate return value of the function denoted by the
+// execution state 'e' from Valgrind simulated registers and visits
+// the variables to perform some action.  This differs from calling
+// visitVariableGroup() with the FUNCTION_RETURN_VAR parameter because
+// it actually grabs the appropriate value from the simulated
+// registers.
+void visitReturnValue(FunctionExecutionState* e,
+                      // This function performs an action for each variable visited:
+                      TraversalResult (*performAction)(VariableEntry*,
+                                                       char*,
+                                                       VariableOrigin,
+                                                       UInt,
+                                                       UInt,
+                                                       char,
+                                                       DisambigOverride,
+                                                       char,
+                                                       void*,
+                                                       void**,
+                                                       UInt,
+                                                       FunctionEntry*,
+                                                       char)) {
+  VarNode* cur_node;
+  FunctionEntry* funcPtr;
+  tl_assert(e);
+
+  funcPtr = e->func;
+  tl_assert(funcPtr);
+
+  // We need to push the return value name onto the string stack!
+  stringStackClear(&fullNameStackSize);
+
+  cur_node = funcPtr->returnValue.first;
+
+  // This happens when there is a void function with no return value:
+  if (!cur_node) {
+    return;
+  }
+
+  tl_assert(cur_node->var);
+  tl_assert(cur_node->var->name);
+  tl_assert(cur_node->var->varType);
+
+  stringStackPush(fullNameStack, &fullNameStackSize, cur_node->var->name);
+
+  // Struct/union type - use EAX but remember that EAX holds
+  // a POINTER to the struct/union so we must dereference appropriately
+  // WE NEED TO CHECK THAT declaredPtrLevels == 0 since we need a
+  // real struct/union, not just a pointer to one
+  // BE CAREFUL WITH declaredType - it may be misleading since all
+  // pointers share the same declaredType
+  if ((cur_node->var->ptrLevels == 0) &&
+      (cur_node->var->varType->isStructUnionType)) {
+    // e->EAX is the contents of the virtual EAX, which should be the
+    // address of the struct/union, so pass that along ...  NO extra
+    // level of indirection needed
+
+    visitVariable(cur_node->var,
+                  (void*)e->EAX,
+                  // No longer need to overrideIsInitialized
+                  // because we now keep shadow V-bits for e->EAX
+                  // and friends
+                  0, // e->EAXvalid,
+                  performAction,
+                  FUNCTION_RETURN_VAR,
+                  funcPtr,
+                  0);
+  }
+  // Floating-point type - use FPU
+  else if ((cur_node->var->ptrLevels == 0) &&
+	   ((cur_node->var->varType->decType == D_FLOAT) ||
+            (cur_node->var->varType->decType == D_DOUBLE) ||
+            (cur_node->var->varType->decType == D_LONG_DOUBLE) ||
+            (cur_node->var->varType->decType == D_UNSIGNED_FLOAT) ||
+            (cur_node->var->varType->decType == D_UNSIGNED_DOUBLE) ||
+            // TODO: I dunno if long doubles fit in the FPU registers
+            (cur_node->var->varType->decType == D_UNSIGNED_LONG_DOUBLE))) {
+    // SPECIAL CASE: The value in FPU must be interpreted as a double
+    // even if its true type may be a float
+    visitVariable(cur_node->var,
+                  &(e->FPU),
+                  0,
+                  performAction,
+                  FUNCTION_RETURN_VAR,
+                  funcPtr,
+                  0);
+  }
+  // Remember that long long int types use EAX as the low 4 bytes
+  // and EDX as the high 4 bytes
+  // long long ints - create a long long int and pass its address
+  else if ((cur_node->var->ptrLevels == 0) &&
+           (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
+    unsigned long long int uLong = (e->EAX) | (((unsigned long long int)(e->EDX)) << 32);
+
+    // Remember to copy A and V-bits over:
+    mc_copy_address_range_state((Addr)(&(e->EAX)),
+                                (Addr)(&uLong),
+                                sizeof(e->EAX));
+
+    mc_copy_address_range_state((Addr)(&(e->EDX)),
+                                (Addr)(&uLong) + (Addr)sizeof(e->EAX),
+                                sizeof(e->EDX));
+
+    visitVariable(cur_node->var,
+                  &uLong,
+                  0,
+                  performAction,
+                  FUNCTION_RETURN_VAR,
+                  funcPtr,
+                  0);
+  }
+  else if ((cur_node->var->ptrLevels == 0) &&
+           (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
+    long long int signedLong = (e->EAX) | (((long long int)(e->EDX)) << 32);
+
+    // Remember to copy A and V-bits over:
+    mc_copy_address_range_state((Addr)(&(e->EAX)),
+                                (Addr)(&signedLong),
+                                sizeof(e->EAX));
+
+    mc_copy_address_range_state((Addr)(&(e->EDX)),
+                                (Addr)(&signedLong) + (Addr)sizeof(e->EAX),
+                                sizeof(e->EDX));
+
+    visitVariable(cur_node->var,
+                  &signedLong,
+                  0,
+                  performAction,
+                  FUNCTION_RETURN_VAR,
+                  funcPtr,
+                  0);
+  }
+  // All other types (integer and pointer) - use EAX
+  else {
+    // Need an additional indirection level
+    FJALAR_DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p\n",
+                   cur_node, &(e->EAX));
+
+    visitVariable(cur_node->var,
+                  &(e->EAX),
+                  0,
+                  performAction,
+                  FUNCTION_RETURN_VAR,
+                  funcPtr,
+                  0);
+  }
+
+  stringStackPop(fullNameStack, &fullNameStackSize);
 }
 
 

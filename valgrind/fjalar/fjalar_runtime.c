@@ -34,9 +34,6 @@ tools.
 
 FunctionExecutionState* curFunctionExecutionStatePtr = 0;
 
-// For debug printouts
-char within_main_program = 0;
-
 // Return a pointer to a FunctionExecutionState which contains the address
 // specified by "a" in its stack frame
 // Assumes: The stack grows DOWNWARD on x86 Linux so this returns

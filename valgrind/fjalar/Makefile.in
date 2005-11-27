@@ -156,7 +156,8 @@ vgtool_fjalar_so_SOURCES = \
 	typedata.c \
 	disambig.c \
 	kvasir/kvasir_main.c \
-	kvasir/decls-output.c
+	kvasir/decls-output.c \
+	kvasir/dtrace-output.c
 
 
 vgtool_fjalar_so_LDFLAGS = -shared
@@ -190,7 +191,8 @@ am_vgtool_fjalar_so_OBJECTS = mac_leakcheck.$(OBJEXT) \
 	fjalar_runtime.$(OBJEXT) fjalar_select.$(OBJEXT) \
 	generate_fjalar_entries.$(OBJEXT) GenericHashtable.$(OBJEXT) \
 	fjalar_traversal.$(OBJEXT) readelf.$(OBJEXT) typedata.$(OBJEXT) \
-	disambig.$(OBJEXT) kvasir_main.$(OBJEXT) decls-output.$(OBJEXT)
+	disambig.$(OBJEXT) kvasir_main.$(OBJEXT) decls-output.$(OBJEXT) \
+	dtrace-output.$(OBJEXT)
 vgtool_fjalar_so_OBJECTS = $(am_vgtool_fjalar_so_OBJECTS)
 vgtool_fjalar_so_LDADD = $(LDADD)
 vgtool_fjalar_so_DEPENDENCIES =
@@ -204,6 +206,7 @@ depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/GenericHashtable.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/decls-output.Po ./$(DEPDIR)/disambig.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/dtrace-output.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_runtime.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_select.Po \
@@ -274,6 +277,7 @@ vgpreload_fjalar.so$(EXEEXT): $(vgpreload_fjalar_so_OBJECTS) $(vgpreload_fjalar_
 	$(LINK) $(vgpreload_fjalar_so_LDFLAGS) $(vgpreload_fjalar_so_OBJECTS) $(vgpreload_fjalar_so_LDADD) $(LIBS)
 kvasir_main.$(OBJEXT): kvasir/kvasir_main.c
 decls-output.$(OBJEXT): kvasir/decls-output.c
+dtrace-output.$(OBJEXT): kvasir/dtrace-output.c
 vgtool_fjalar.so$(EXEEXT): $(vgtool_fjalar_so_OBJECTS) $(vgtool_fjalar_so_DEPENDENCIES) 
 	@rm -f vgtool_fjalar.so$(EXEEXT)
 	$(LINK) $(vgtool_fjalar_so_LDFLAGS) $(vgtool_fjalar_so_OBJECTS) $(vgtool_fjalar_so_LDADD) $(LIBS)
@@ -287,6 +291,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/GenericHashtable.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/decls-output.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/disambig.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dtrace-output.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_runtime.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_select.Po@am__quote@
@@ -341,6 +346,18 @@ decls-output.obj: kvasir/decls-output.c
 @AMDEP_TRUE@	depfile='$(DEPDIR)/decls-output.Po' tmpdepfile='$(DEPDIR)/decls-output.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o decls-output.obj `cygpath -w kvasir/decls-output.c`
+
+dtrace-output.o: kvasir/dtrace-output.c
+@AMDEP_TRUE@	source='kvasir/dtrace-output.c' object='dtrace-output.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dtrace-output.Po' tmpdepfile='$(DEPDIR)/dtrace-output.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dtrace-output.o `test -f 'kvasir/dtrace-output.c' || echo '$(srcdir)/'`kvasir/dtrace-output.c
+
+dtrace-output.obj: kvasir/dtrace-output.c
+@AMDEP_TRUE@	source='kvasir/dtrace-output.c' object='dtrace-output.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dtrace-output.Po' tmpdepfile='$(DEPDIR)/dtrace-output.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dtrace-output.obj `cygpath -w kvasir/dtrace-output.c`
 CCDEPMODE = @CCDEPMODE@
 uninstall-info-am:
 mcincludeHEADERS_INSTALL = $(INSTALL_HEADER)
