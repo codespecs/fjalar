@@ -1325,13 +1325,6 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(long double)) {
       var->varType = BasicTypesArray[D_LONG_DOUBLE];
     }
-
-    // TODO: Need to write a Kvasir/Fjalar function to scan over all
-    // TypeEntry entries and map their declared types to rep. types
-    // (which should run after TypesTable has been completely
-    // initialized), then erase all mention of repType from this
-    // file:
-    //      t->repType = R_DOUBLE;
     break;
 
   case DW_ATE_signed:
@@ -1348,8 +1341,6 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(long long int)) {
       var->varType = BasicTypesArray[D_LONG_LONG_INT];
     }
-
-    //      t->repType = R_INT;
     break;
 
   case DW_ATE_unsigned:
@@ -1366,13 +1357,10 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(unsigned long long int)) {
       var->varType = BasicTypesArray[D_UNSIGNED_LONG_LONG_INT];
     }
-
-    //      t->repType = R_INT;
     break;
 
   case DW_ATE_boolean:
     var->varType = BasicTypesArray[D_BOOL];
-    //      t->repType = R_INT;
     break;
 
   default:
@@ -1390,30 +1378,8 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
   t->decType = D_ENUMERATION;
   t->collectionName = collectionPtr->name;
 
-  //  t->repType = R_INT;
   t->byteSize = sizeof(int); // An enumeration is an int
 }
-
-
-/* // Extracts subroutine type corresponding to a function pointer parameter */
-/* // Modifies: t */
-/* static void extractSubroutineType(TypeEntry* t, function_type* functionPtr) */
-/* { */
-/*   t->byteSize = 4; // TODO: Why does this only take up one byte? */
-/*                    // Shouldn't it take up 4? */
-/*   t->decType = D_FUNCTION; */
-/*   //  t->repType = R_HASHCODE; */
-/* } */
-
-/* // Extracts type information from a void pointer */
-/* // Modifies: t */
-/* static void extractVoidType(TypeEntry* t) */
-/* { */
-/*   t->byteSize = 4; // TODO: Why does this only take up one byte? */
-/*                    // Shouldn't it take up 4? */
-/*   t->decType = D_VOID; */
-/*   //  t->repType = R_HASHCODE; */
-/* } */
 
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList
@@ -1434,7 +1400,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   //              e->ID);
 
   t->isStructUnionType = 1;
-  //  t->repType = R_HASHCODE;
 
   if (e->tag_name == DW_TAG_union_type)
     t->decType = D_UNION;
