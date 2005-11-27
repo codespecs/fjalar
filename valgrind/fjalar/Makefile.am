@@ -44,7 +44,8 @@ vgtool_fjalar_so_SOURCES = \
 	typedata.c \
 	disambig.c \
 	kvasir/kvasir_main.c \
-	kvasir/decls-output.c
+	kvasir/decls-output.c \
+	kvasir/dtrace-output.c
 
 vgtool_fjalar_so_LDFLAGS = -shared
 

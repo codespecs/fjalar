@@ -51,10 +51,6 @@ TraversalResult trivialAction(VariableEntry* var,
   return DO_NOT_DEREF_MORE_POINTERS;
 }
 
-void fjalar_tool_handle_first_function_entrance() {
-  VG_(printf)("\nfjalar_tool_handle_first_function_entrance\n");
-}
-
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {

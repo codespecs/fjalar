@@ -29,6 +29,9 @@ typedef enum {
   R_BOOLEAN
 } DaikonRepType;
 
+const char* ENTER_PPT;
+const char* EXIT_PPT;
+
 void outputDeclsFile(char faux_decls);
 void DC_outputDeclsAtEnd();
 

@@ -66,8 +66,6 @@ char* fjalar_xml_output_filename = 0;
 // The filename of the target executable:
 char* executable_filename = 0;
 
-static void handle_first_function_entrance();
-
 // TODO: We cannot sub-class FunctionExecutionState unless we make
 // this into an array of pointers:
 FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
@@ -113,9 +111,6 @@ void printFunctionExecutionStateStack()
   }
 }
 
-//extern char* prog_pts_tree; // from decls-output.c
-static char atLeastOneFunctionHandled = 0;
-
 // This gets updated whenever we encounter a Ist_IMark instruction.
 // It is required to track function exits because the address does not
 // come with the Ist_Exit IR instruction:
@@ -148,10 +143,6 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
   // tracking this particular function ...  This ensures that we only
   // track functions which we have in FunctionTable!!!
   curFuncPtr = findFunctionEntryByStartAddr(currentAddr);
-
-  if (curFuncPtr && !atLeastOneFunctionHandled) {
-    handle_first_function_entrance();
-  }
 
   if (curFuncPtr &&
       // Also, if fjalar_trace_prog_pts_filename is on (we are reading
@@ -253,6 +244,7 @@ VGA_REGPARM(1)
 void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry = fnStackPush();
+  extern FunctionExecutionState* curFunctionExecutionStatePtr;
 
   Addr  ESP = VG_(get_SP)(VG_(get_running_tid)());
   // Assign %esp - 4 to %ebp - empirically tested to be
@@ -294,6 +286,7 @@ void enter_function(FunctionEntry* f)
   }
 
   // Do this AFTER initializing virtual stack and lowestESP
+  curFunctionExecutionStatePtr = newEntry;
   fjalar_tool_handle_function_entrance(newEntry);
 }
 
@@ -307,6 +300,7 @@ VGA_REGPARM(1)
 void exit_function(FunctionEntry* f)
 {
   FunctionExecutionState* top = fnStackPop();
+  extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
 
   ThreadId currentTID = VG_(get_running_tid)();
@@ -362,6 +356,7 @@ void exit_function(FunctionEntry* f)
     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
   }
 
+  curFunctionExecutionStatePtr = top;
   fjalar_tool_handle_function_exit(top);
 
   // Destroy the memory allocated by virtualStack
@@ -373,14 +368,6 @@ void exit_function(FunctionEntry* f)
     //   add_MAC_Chunk: shadow area is accessible
     free(top->virtualStack);
   }
-}
-
-// This code is run when Valgrind stops execution at the first
-// function entrance.
-static void handle_first_function_entrance() {
-  // Let the tool do its initialization:
-  fjalar_tool_handle_first_function_entrance();
-  atLeastOneFunctionHandled = 1;
 }
 
 
