@@ -2226,15 +2226,23 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
 void initialize_typedata_structures() {
   FunctionSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
                                              (int (*)(void *,void *)) &equivalentStrings);
+  ReverseFunctionSymbolTable = genallocatehashtable((unsigned int (*)(void *)) &hashID,
+                                                    (int (*)(void *,void *)) &equivalentIDs);
   VariableSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
                                              (int (*)(void *,void *)) &equivalentStrings);
 }
 
 __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
   //  VG_(printf)("FunctionSymbolTable insert: %p  %s\n", addr, name);
+  // Insert into both the regular and reverse tables:
+
   genputtable(FunctionSymbolTable,
               (void*)name,
               (void*)addr);
+
+  genputtable(ReverseFunctionSymbolTable,
+              (void*)addr,
+              (void*)name);
 }
 
 __inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {

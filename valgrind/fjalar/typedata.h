@@ -334,6 +334,11 @@ void initialize_typedata_structures();
 // Value: A 32-bit int that represents the global start_PC address of that function
 struct genhashtable* FunctionSymbolTable;
 
+// (reverse of FunctionSymbolTable)
+// Key: A 32-bit int that represents the global start_PC address of that function
+// Value: String that represents the (possibly mangled) name of a function
+struct genhashtable* ReverseFunctionSymbolTable;
+
 // Key: String that represents the (possibly mangled) name of a variable
 // Value: A 32-bit int that represents the global address of that variable
 struct genhashtable* VariableSymbolTable;
