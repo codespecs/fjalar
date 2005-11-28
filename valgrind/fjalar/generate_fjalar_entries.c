@@ -474,9 +474,11 @@ void initializeAllFjalarData()
               rodata_section_size, rodata_section_addr);
 
   // Should only be called here:
-  VG_(printf)("\nChecking the representation of internal data structures ...\n");
+  FJALAR_DPRINTF("\nChecking the representation of internal data structures ...\n");
+
   repCheckAllEntries();
-  VG_(printf)("All representation checks PASSED.\n");
+
+  FJALAR_DPRINTF("All representation checks PASSED.\n");
 }
 
 // Returns true iff the address is within a global area as specified
@@ -502,7 +504,8 @@ void repCheckAllEntries() {
 
   // Rep. check all variables in globalVars:
 
-  VG_(printf)("  Rep. checking global variables list ...");
+  FJALAR_DPRINTF("  Rep. checking global variables list ...");
+
   for (curNode = globalVars.first;
        curNode != 0;
        curNode = curNode->next) {
@@ -521,12 +524,12 @@ void repCheckAllEntries() {
   tl_assert(numGlobalVars == globalVars.numVars);
 
 
-  VG_(printf)(" DONE\n");
+  FJALAR_DPRINTF(" DONE\n");
 
   // Rep. check all entries in FunctionTable
   it = gengetiterator(FunctionTable);
 
-  VG_(printf)("  Rep. checking function entries ...");
+  FJALAR_DPRINTF("  Rep. checking function entries ...");
   while (!it->finished) {
     FunctionEntry* f = (FunctionEntry*)
       gengettable(FunctionTable, gennext(it));
@@ -600,9 +603,9 @@ void repCheckAllEntries() {
 
   genfreeiterator(it);
 
-  VG_(printf)(" DONE\n");
+  FJALAR_DPRINTF(" DONE\n");
 
-  VG_(printf)("  Rep. checking type entries ...");
+  FJALAR_DPRINTF("  Rep. checking type entries ...");
 
   // Rep. check all entries in TypesTable
   it = gengetiterator(TypesTable);
@@ -741,7 +744,7 @@ void repCheckAllEntries() {
 
   genfreeiterator(it);
 
-  VG_(printf)(" DONE\n");
+  FJALAR_DPRINTF(" DONE\n");
 }
 
 // Checks rep. invariants for a VariableEntry (only performs general
@@ -1166,6 +1169,28 @@ void initializeFunctionTable()
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
           cur_func_entry->isExternal = dwarfFunctionPtr->is_external;
+
+          FJALAR_DPRINTF("cur_func_entry->startPC: %p (%s %s)\n",
+                         cur_func_entry->startPC,
+                         cur_func_entry->name,
+                         cur_func_entry->mangled_name);
+
+          // This seems to happen with class constructors.  If there
+          // is NO C++ mangled name but there is a startPC, then
+          // attempt to look up the C++ mangled name from the symbol
+          // table (FunctionSymbolTable):
+          if (!cur_func_entry->mangled_name &&
+              cur_func_entry->startPC) {
+            char* maybe_mangled_name = (char*)gengettable(ReverseFunctionSymbolTable,
+                                                          (void*)cur_func_entry->startPC);
+
+            // If it doesn't match the regular ole' name, then we may
+            // have something interesting:
+            if (!VG_STREQ(maybe_mangled_name, cur_func_entry->name)) {
+              FJALAR_DPRINTF("  maybe_mangled_name: %s\n", maybe_mangled_name);
+              cur_func_entry->mangled_name = maybe_mangled_name;
+            }
+          }
 
           // If there is a C++ mangled name, then call Valgrind core
           // to try to demangle the name (remember the demangled name
@@ -2558,12 +2583,12 @@ static void XMLprintOneFunction(FunctionEntry* cur_entry,
   XML_PRINTF(">\n");
 
   if (cur_entry->name) {
-    XML_PRINTF("<name>%s</name>\n",
+    XML_PRINTF("<name><![CDATA[%s]]></name>\n",
                cur_entry->name);
   }
 
   if (cur_entry->fjalar_name) {
-    XML_PRINTF("<fjalar-name>%s</fjalar-name>\n",
+    XML_PRINTF("<fjalar-name><![CDATA[%s]]></fjalar-name>\n",
                cur_entry->fjalar_name);
   }
 
@@ -2778,7 +2803,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
 
   XML_PRINTF("<variable>\n");
 
-  XML_PRINTF("<name>%s</name>\n", var->name);
+  XML_PRINTF("<name><![CDATA[%s]]></name>\n", var->name);
 
   if (var->isGlobal) {
     XML_PRINTF("<global-var>\n");
