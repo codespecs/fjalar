@@ -20,12 +20,9 @@
 //#include "mc_include.h"
 #include "decls-output.h"
 #include "kvasir_main.h"
+#include "dyncomp_runtime.h"
 
 #include "../fjalar_traversal.h"
-
-#ifdef DYNCOMP
-#include "dyncomp_runtime.h"
-#endif
 
 #include <stdlib.h>
 #include <string.h>
@@ -35,21 +32,6 @@
 
 const char* ENTER_PPT = ":::ENTER";
 const char* EXIT_PPT = ":::EXIT0";
-
-#ifdef DYNCOMP
-// Maps tags to comparability numbers, which are assigned sequentially
-// for every program point.  This is only used for DynComp.
-// Key: tag (unsigned int)
-// Value: comparability number (int) - notice that this is SIGNED because that
-//                                     is what Daikon requires
-struct genhashtable* g_compNumberMap = 0;
-
-// This is the current sequential comparability number (only for
-// DynComp).  It increments after it has been assigned as a value in
-// g_compNumberMap, and it is reset back to 1 during every program
-// point.
-int g_curCompNumber = 1;
-#endif
 
 extern const char* DeclaredTypeString[];
 
@@ -360,20 +342,15 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   // that the program has already finished execution so that all
   // of the comparability information would be already updated:
   if (kvasir_with_dyncomp) {
-#ifdef DYNCOMP
     // Remember that comp_number is a SIGNED INTEGER but the
     // tags are UNSIGNED INTEGERS so be careful of overflows
     // which result in negative numbers, which are useless
     // since Daikon ignores them.
     int comp_number = DC_get_comp_number_for_var(varFuncInfo,
                                                  isEnter,
-                                                 g_daikonVarIndex);
+                                                 g_variableIndex);
     fprintf(decls_fp, "%d", comp_number);
     fputs("\n", decls_fp);
-#else
-    fputs("22", decls_fp);
-    fputs("\n", decls_fp);
-#endif
   }
   else {
     // Otherwise, print out unknown comparability type "22"
@@ -439,7 +416,6 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
       fputs("\n", decls_fp);
     }
 
-#ifdef DYNCOMP
     // For outputting real .decls when running with DynComp,
     // initialize a global hashtable which associates tags with
     // sequentially-assigned comparability numbers
@@ -450,14 +426,13 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
 
       g_curCompNumber = 1;
     }
-#endif
   }
 
   // Print out globals (visitVariableGroup() ignores the globals if
   // --ignore-globals is used):
   visitVariableGroup(GLOBAL_VAR,
-                     0,
-                     1,
+                     funcPtr, // need this for DynComp to work properly
+                     isEnter,
                      0,
                      (faux_decls ?
                       &nullAction : &printDeclsEntryAction));
@@ -484,20 +459,18 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
     fputs("\n", decls_fp);
   }
 
-#ifdef DYNCOMP
   if (kvasir_with_dyncomp) {
     if (faux_decls) {
       // Allocate program point data structures if we are using DynComp:
       // (This should only be run once for every ppt)
       // This must be run at the end because its results depend on
-      // g_daikonVarIndex being properly incremented
-      allocate_ppt_structures(funcPtr, isEnter, g_daikonVarIndex);
+      // g_variableIndex being properly incremented
+      allocate_ppt_structures(funcPtr, isEnter, g_variableIndex);
     }
     else {
       genfreehashtable(g_compNumberMap);
     }
   }
-#endif
 
 }
 
