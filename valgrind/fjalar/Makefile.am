@@ -45,7 +45,11 @@ vgtool_fjalar_so_SOURCES = \
 	disambig.c \
 	kvasir/kvasir_main.c \
 	kvasir/decls-output.c \
-	kvasir/dtrace-output.c
+	kvasir/dtrace-output.c \
+	kvasir/union_find.c \
+	kvasir/dyncomp_main.c \
+	kvasir/dyncomp_runtime.c \
+	kvasir/dyncomp_translate.c
 
 vgtool_fjalar_so_LDFLAGS = -shared
 

@@ -157,7 +157,11 @@ vgtool_fjalar_so_SOURCES = \
 	disambig.c \
 	kvasir/kvasir_main.c \
 	kvasir/decls-output.c \
-	kvasir/dtrace-output.c
+	kvasir/dtrace-output.c \
+	kvasir/union_find.c \
+	kvasir/dyncomp_main.c \
+	kvasir/dyncomp_runtime.c \
+	kvasir/dyncomp_translate.c
 
 
 vgtool_fjalar_so_LDFLAGS = -shared
@@ -192,7 +196,9 @@ am_vgtool_fjalar_so_OBJECTS = mac_leakcheck.$(OBJEXT) \
 	generate_fjalar_entries.$(OBJEXT) GenericHashtable.$(OBJEXT) \
 	fjalar_traversal.$(OBJEXT) readelf.$(OBJEXT) typedata.$(OBJEXT) \
 	disambig.$(OBJEXT) kvasir_main.$(OBJEXT) decls-output.$(OBJEXT) \
-	dtrace-output.$(OBJEXT)
+	dtrace-output.$(OBJEXT) union_find.$(OBJEXT) \
+	dyncomp_main.$(OBJEXT) dyncomp_runtime.$(OBJEXT) \
+	dyncomp_translate.$(OBJEXT)
 vgtool_fjalar_so_OBJECTS = $(am_vgtool_fjalar_so_OBJECTS)
 vgtool_fjalar_so_LDADD = $(LDADD)
 vgtool_fjalar_so_DEPENDENCIES =
@@ -207,6 +213,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/GenericHashtable.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/decls-output.Po ./$(DEPDIR)/disambig.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/dtrace-output.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/dyncomp_main.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/dyncomp_runtime.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/dyncomp_translate.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_runtime.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_select.Po \
@@ -219,7 +228,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/mac_replace_strmem.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mc_errcontext.Po ./$(DEPDIR)/mc_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/mc_translate.Po ./$(DEPDIR)/readelf.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/typedata.Po
+@AMDEP_TRUE@	./$(DEPDIR)/typedata.Po ./$(DEPDIR)/union_find.Po
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
@@ -278,6 +287,10 @@ vgpreload_fjalar.so$(EXEEXT): $(vgpreload_fjalar_so_OBJECTS) $(vgpreload_fjalar_
 kvasir_main.$(OBJEXT): kvasir/kvasir_main.c
 decls-output.$(OBJEXT): kvasir/decls-output.c
 dtrace-output.$(OBJEXT): kvasir/dtrace-output.c
+union_find.$(OBJEXT): kvasir/union_find.c
+dyncomp_main.$(OBJEXT): kvasir/dyncomp_main.c
+dyncomp_runtime.$(OBJEXT): kvasir/dyncomp_runtime.c
+dyncomp_translate.$(OBJEXT): kvasir/dyncomp_translate.c
 vgtool_fjalar.so$(EXEEXT): $(vgtool_fjalar_so_OBJECTS) $(vgtool_fjalar_so_DEPENDENCIES) 
 	@rm -f vgtool_fjalar.so$(EXEEXT)
 	$(LINK) $(vgtool_fjalar_so_LDFLAGS) $(vgtool_fjalar_so_OBJECTS) $(vgtool_fjalar_so_LDADD) $(LIBS)
@@ -292,6 +305,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/decls-output.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/disambig.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dtrace-output.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dyncomp_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dyncomp_runtime.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/dyncomp_translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_runtime.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_select.Po@am__quote@
@@ -307,6 +323,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mc_translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/readelf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/typedata.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/union_find.Po@am__quote@
 
 distclean-depend:
 	-rm -rf ./$(DEPDIR)
@@ -358,6 +375,54 @@ dtrace-output.obj: kvasir/dtrace-output.c
 @AMDEP_TRUE@	depfile='$(DEPDIR)/dtrace-output.Po' tmpdepfile='$(DEPDIR)/dtrace-output.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dtrace-output.obj `cygpath -w kvasir/dtrace-output.c`
+
+union_find.o: kvasir/union_find.c
+@AMDEP_TRUE@	source='kvasir/union_find.c' object='union_find.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/union_find.Po' tmpdepfile='$(DEPDIR)/union_find.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o union_find.o `test -f 'kvasir/union_find.c' || echo '$(srcdir)/'`kvasir/union_find.c
+
+union_find.obj: kvasir/union_find.c
+@AMDEP_TRUE@	source='kvasir/union_find.c' object='union_find.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/union_find.Po' tmpdepfile='$(DEPDIR)/union_find.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o union_find.obj `cygpath -w kvasir/union_find.c`
+
+dyncomp_main.o: kvasir/dyncomp_main.c
+@AMDEP_TRUE@	source='kvasir/dyncomp_main.c' object='dyncomp_main.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dyncomp_main.Po' tmpdepfile='$(DEPDIR)/dyncomp_main.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dyncomp_main.o `test -f 'kvasir/dyncomp_main.c' || echo '$(srcdir)/'`kvasir/dyncomp_main.c
+
+dyncomp_main.obj: kvasir/dyncomp_main.c
+@AMDEP_TRUE@	source='kvasir/dyncomp_main.c' object='dyncomp_main.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dyncomp_main.Po' tmpdepfile='$(DEPDIR)/dyncomp_main.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dyncomp_main.obj `cygpath -w kvasir/dyncomp_main.c`
+
+dyncomp_runtime.o: kvasir/dyncomp_runtime.c
+@AMDEP_TRUE@	source='kvasir/dyncomp_runtime.c' object='dyncomp_runtime.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dyncomp_runtime.Po' tmpdepfile='$(DEPDIR)/dyncomp_runtime.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dyncomp_runtime.o `test -f 'kvasir/dyncomp_runtime.c' || echo '$(srcdir)/'`kvasir/dyncomp_runtime.c
+
+dyncomp_runtime.obj: kvasir/dyncomp_runtime.c
+@AMDEP_TRUE@	source='kvasir/dyncomp_runtime.c' object='dyncomp_runtime.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dyncomp_runtime.Po' tmpdepfile='$(DEPDIR)/dyncomp_runtime.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dyncomp_runtime.obj `cygpath -w kvasir/dyncomp_runtime.c`
+
+dyncomp_translate.o: kvasir/dyncomp_translate.c
+@AMDEP_TRUE@	source='kvasir/dyncomp_translate.c' object='dyncomp_translate.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dyncomp_translate.Po' tmpdepfile='$(DEPDIR)/dyncomp_translate.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dyncomp_translate.o `test -f 'kvasir/dyncomp_translate.c' || echo '$(srcdir)/'`kvasir/dyncomp_translate.c
+
+dyncomp_translate.obj: kvasir/dyncomp_translate.c
+@AMDEP_TRUE@	source='kvasir/dyncomp_translate.c' object='dyncomp_translate.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/dyncomp_translate.Po' tmpdepfile='$(DEPDIR)/dyncomp_translate.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o dyncomp_translate.obj `cygpath -w kvasir/dyncomp_translate.c`
 CCDEPMODE = @CCDEPMODE@
 uninstall-info-am:
 mcincludeHEADERS_INSTALL = $(INSTALL_HEADER)

@@ -1150,7 +1150,10 @@ void initializeFunctionTable()
           // C++ name:
           char* demangled_name = 0;
 
-          cur_func_entry = VG_(calloc)(1, sizeof(*cur_func_entry));
+          // Remember to use the tool's constructor,
+          // constructFunctionEntry(), in order to properly support
+          // sub-classing:
+          cur_func_entry = constructFunctionEntry();
 
 	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
 
@@ -1525,7 +1528,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         }
         // No entry exists for this name, so insert a new one:
         else {
-          curSuper->class = (TypeEntry*)VG_(calloc)(1, sizeof(*(curSuper->class)));
+          // Use the tool's constructor to support sub-classing:
+          curSuper->class = constructTypeEntry();
 
           // Insert it into the table BEFORE calling
           // extractStructUnionType() or else we may infinitely
@@ -2199,7 +2203,8 @@ void extractOneVariable(VarList* varListPtr,
     // varsToUpdateTypes list so that updateAllVarTypes() can later
     // replace them with their real types:
     if (collectionPtr->is_declaration) {
-      TypeEntry* fake_entry = VG_(calloc)(1, sizeof(*fake_entry));
+      // Use the tool's constructor to properly support sub-classing:
+      TypeEntry* fake_entry = constructTypeEntry();
 
       fake_entry->collectionName = collectionPtr->name;
 
@@ -2228,7 +2233,8 @@ void extractOneVariable(VarList* varListPtr,
       else {
         FJALAR_DPRINTF("  Adding type entry for %s\n", variableName);
 
-        varPtr->varType = (TypeEntry*)VG_(calloc)(1, sizeof(*varPtr->varType));
+        // Use the tool's constructor to properly support sub-classing:
+        varPtr->varType = constructTypeEntry();
 
         // Insert it into the table BEFORE calling
         // extractStructUnionType() or else we may infinitely recurse!

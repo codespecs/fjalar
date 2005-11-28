@@ -32,10 +32,8 @@
 #include <limits.h>
 #include <errno.h>
 
-#ifdef DYNCOMP
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
-#endif
 
 #include "../fjalar_tool.h"
 #include "../fjalar_main.h"
@@ -525,12 +523,11 @@ void fjalar_tool_post_clo_init()
 
   // If we are using DynComp with the garbage collector, initialize
   // g_oldToNewMap:
-#ifdef DYNCOMP
+
   extern UInt* g_oldToNewMap;
   if (kvasir_with_dyncomp && !dyncomp_no_gc) {
      g_oldToNewMap = VG_(shadow_alloc)((dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
   }
-#endif
 
   createDeclsAndDtraceFiles(executable_filename);
 
@@ -643,9 +640,8 @@ void fjalar_tool_finish() {
      // Do one extra propagation of variable comparability at the end
      // of execution once all of the value comparability sets have
      // been properly updated:
-#ifdef DYNCOMP
+
      DC_extra_propagate_val_to_var_sets();
-#endif
 
      // Now print out the .decls file at the very end of execution:
      DC_outputDeclsAtEnd();
@@ -662,8 +658,9 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
 
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
 
-#ifdef DYNCOMP
   if (kvasir_with_dyncomp) {
+    ThreadId currentTID = VG_(get_running_tid)();
+
     // For DynComp, update tags of saved register values
     int i;
 
@@ -682,14 +679,12 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
     }
 
     for (i = 4; i < 8; i++) {
-      set_tag((Addr)(&(top->FPU)) + (Addr)i, FPUtag);
+      set_tag((Addr)(&(f_state->FPU)) + (Addr)i, FPUtag);
     }
   }
-#endif
 
   printDtraceForFunction(f_state, 0);
 }
-
 
 
 
@@ -707,8 +702,10 @@ TypeEntry* constructTypeEntry() {
   return (TypeEntry*)(VG_(calloc)(1, sizeof(TypeEntry)));
 }
 
+// Remember that we have sub-classed FunctionEntry with
+// DaikonFunctionEntry:
 FunctionEntry* constructFunctionEntry() {
-  return (FunctionEntry*)(VG_(calloc)(1, sizeof(FunctionEntry)));
+  return (FunctionEntry*)(VG_(calloc)(1, sizeof(DaikonFunctionEntry)));
 }
 
 // Destructors that should clean-up and then call VG_(free) on the
@@ -721,6 +718,8 @@ void destroyTypeEntry(TypeEntry* t) {
   VG_(free)(t);
 }
 
+// Remember that we have sub-classed FunctionEntry with
+// DaikonFunctionEntry:
 void destroyFunctionEntry(FunctionEntry* f) {
-  VG_(free)(f);
+  VG_(free)((DaikonFunctionEntry*)f);
 }

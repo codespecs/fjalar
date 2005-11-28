@@ -15,6 +15,9 @@
       Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
       Fjalar, a dynamic analysis framework for C/C++ programs.
 
+      (Added in a few modifications for the DynComp tool -
+       grep for "kvasir_with_dyncomp" or "PG dyncomp" for details)
+
    Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -39,8 +42,10 @@
 #include "memcheck.h"   /* for client requests */
 //#include "vg_profile.c"
 
-//#include "dyncomp_main.h"
+#include "kvasir/dyncomp_main.h" // PG dyncomp
 #include "fjalar_main.h"
+
+Bool kvasir_with_dyncomp; // PG dyncomp
 
 /* Define to debug the mem audit system. */
 /* #define VG_DEBUG_MEMORY */
@@ -466,11 +471,11 @@ static void mc_make_noaccess ( Addr a, SizeT len )
    PROF_EVENT(35);
    DEBUG("mc_make_noaccess(%p, %llu)\n", a, (ULong)len);
    set_address_range_perms ( a, len, VGM_BIT_INVALID, VGM_BIT_INVALID );
-   // PG - Anytime you make a whole range of addresses invalid,
+   // PG dyncomp - Anytime you make a whole range of addresses invalid,
    // clear all tags associated with those addresses
-   //   if (kvasir_with_dyncomp) {
-   //      clear_all_tags_in_range(a, len);
-   //   }
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, len);
+   }
 }
 
 static void mc_make_writable ( Addr a, SizeT len )
@@ -485,14 +490,14 @@ static void mc_make_readable ( Addr a, SizeT len )
    PROF_EVENT(37);
    DEBUG("mc_make_readable(%p, %llu)\n", a, (ULong)len);
    set_address_range_perms ( a, len, VGM_BIT_VALID, VGM_BIT_VALID );
-   // PG - Anytime you make a chunk of memory readable (set both A and
+   // PG dyncomp - Anytime you make a chunk of memory readable (set both A and
    // V bits), we need to allocate new unique tags to each byte
    // within the chunk (Without language-level information about which
    // bytes correspond to which variables, we have no choice but to
    // give each byte a unique tag)
-   //   if (kvasir_with_dyncomp) {
-   //      allocate_new_unique_tags(a, len);
-   //   }
+   if (kvasir_with_dyncomp) {
+      allocate_new_unique_tags(a, len);
+   }
 }
 
 static __inline__
@@ -532,10 +537,10 @@ void make_aligned_word_noaccess(Addr a)
    sm->abits[sm_off >> 3] |= mask;
    VGP_POPCC(VgpESPAdj);
 
-   // PG - When you make stuff noaccess, destroy those tags
-   //   if (kvasir_with_dyncomp) {
-   //      clear_all_tags_in_range(a, 4);
-   //   }
+   // PG dyncomp - When you make stuff noaccess, destroy those tags
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, 4);
+   }
 }
 
 /* Nb: by "aligned" here we mean 8-byte aligned */
@@ -570,10 +575,10 @@ void make_aligned_doubleword_noaccess(Addr a)
    ((UInt*)(sm->vbyte))[(sm_off >> 2) + 1] = VGM_WORD_INVALID;
    VGP_POPCC(VgpESPAdj);
 
-   // PG - When you make stuff noaccess, destroy those tags
-   //   if (kvasir_with_dyncomp) {
-   //      clear_all_tags_in_range(a, 8);
-   //   }
+   // PG dyncomp - When you make stuff noaccess, destroy those tags
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, 8);
+   }
 }
 
 /* The %esp update handling functions */
@@ -603,11 +608,11 @@ void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
       set_vbyte ( dst+i, vbyte );
    }
 
-   // PG - If you're copying over V-bits, you might as well copy
+   // PG dyncomp - If you're copying over V-bits, you might as well copy
    // over the tags of the relevant bytes
-   //   if (kvasir_with_dyncomp) {
-   //      copy_tags(src, dst, len);
-   //   }
+   if (kvasir_with_dyncomp) {
+      copy_tags(src, dst, len);
+   }
 }
 
 /*------------------------------------------------------------*/
