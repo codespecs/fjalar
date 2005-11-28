@@ -20,6 +20,7 @@
 #include "tool.h"
 #include "kvasir_main.h"
 #include "decls-output.h"
+#include "dtrace-output.h"
 
 #include <fcntl.h>
 #include <stdlib.h>
@@ -537,6 +538,14 @@ void fjalar_tool_post_clo_init()
   // the proper data structures
   outputDeclsFile(kvasir_with_dyncomp);
 
+  // if --decls-only PUNT now!
+  if (kvasir_decls_only) {
+    if (decls_fp) {
+      fclose(decls_fp);
+    }
+    VG_(exit)(0);
+  }
+
   // TODO: Re-factor this
   if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
     openTheDtraceFile();
@@ -634,8 +643,6 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
 
 
 void fjalar_tool_finish() {
-  extern UInt nextTag;
-
   if (kvasir_with_dyncomp) {
      // Do one extra propagation of variable comparability at the end
      // of execution once all of the value comparability sets have

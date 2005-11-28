@@ -85,6 +85,7 @@ static const char* TYPE_FORMAT_STRINGS[] = {
 // declared in generate_fjalar_entries.h:
 extern const int DecTypeByteSizes[];
 
+extern void printDaikonFunctionName(FunctionEntry* f, FILE* fp);
 
 // If there are function names (e.g., C++ demangled names) that are
 // illegal for Daikon, we can patch them up here before writing them
@@ -96,7 +97,7 @@ void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
   tl_assert(dtrace_fp);
 
   fputs("\n", dtrace_fp);
-  fputs(funcPtr->fjalar_name, dtrace_fp);
+  printDaikonFunctionName(funcPtr, dtrace_fp);
 
   if (isEnter) {
     fputs(ENTER_PPT, dtrace_fp);
@@ -1121,7 +1122,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
 
     // For debug only:
     if (dyncomp_print_incremental && kvasir_with_dyncomp) {
-      fputs(funcPtr->fjalar_name, decls_fp);
+      printDaikonFunctionName(funcPtr, decls_fp);
 
       if (isEnter) {
         fputs(ENTER_PPT, decls_fp);

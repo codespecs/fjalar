@@ -32,6 +32,7 @@
 
 static void initializeFunctionTable();
 static void initializeGlobalVarsList();
+static void initFunctionFjalarNames();
 static void updateAllGlobalVariableNames();
 static void initMemberFuncs();
 static void initConstructorsAndDestructors();
@@ -288,6 +289,40 @@ static char ignore_type_with_name(char* name) {
     return 0;
 }
 
+// Grabs the C++ function name after tearing off all of the '::'
+// scope-resolution operators in the function name - BEFORE the first
+// '(' because anything inside the paren is part of the arguments, not
+// the function name (does NOT allocate a new buffer, simply moves the
+// input char* cppFnName to a new location and returns it)
+//
+// Input:  Stack::Link::initialize(char*, Stack::Link*)
+// Output: initialize(char*, Stack::Link*)
+char* getRawCppFunctionName(char* cppFnName) {
+  // This works by looking for the last '::' and returning a pointer
+  // to the letter right after it (or returning the original pointer
+  // if no '::' found.
+  int i, len;
+  tl_assert(cppFnName);
+  len = VG_(strlen)(cppFnName);
+
+  char* rawNameStart = cppFnName;
+
+  for (i = 1; i < len; i++) {
+    char prev = cppFnName[i-1];
+    char cur = cppFnName[i];
+
+    if (cur == '(') {
+      break;
+    }
+
+    if ((prev == ':') && (cur == ':') && (i < (len - 1))) {
+      rawNameStart = &cppFnName[i+1];
+    }
+  }
+
+  return rawNameStart;
+}
+
 // Super simple list - doesn't do any dynamic allocation or
 // deallocation of elt - just stores pointers:
 
@@ -467,6 +502,10 @@ void initializeAllFjalarData()
   initConstructorsAndDestructors();
 
   updateAllVarTypes();
+
+  // Run this after everything else that deal with entries in
+  // FunctionTable:
+  initFunctionFjalarNames();
 
   FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
               data_section_size, data_section_addr,
@@ -1114,15 +1153,127 @@ static void updateAllGlobalVariableNames() {
 }
 
 
+// Initializes all the fully-unique Fjalar names and trace_vars_tree
+// for all functions in FunctionTable:
+// Pre: If we are using the --var-list-file= option, the var-list file
+// must have already been processed by the time this function runs
+static void initFunctionFjalarNames() {
+  struct geniterator* it = gengetiterator(FunctionTable);
+
+  while(!it->finished) {
+    FunctionEntry* cur_entry =
+      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+
+    char *the_class;
+    char *buf, *p;
+
+    char* name_to_use;
+    int name_len;
+
+    tl_assert(cur_entry);
+
+    // Use the demangled name if there is one (sometimes in C++), or
+    // just the regular name if there isn't one (C):
+    name_to_use = (cur_entry->demangled_name ?
+                   cur_entry->demangled_name :
+                   cur_entry->name);
+
+    name_len = VG_(strlen)(name_to_use);
+    tl_assert(name_len);
+
+    // What should we use as a prefix for function names?
+    // Global functions should print as: ..main()
+    // File-static functions should print as: dirname/filename.c.staticFunction()
+    // C++ member functions should print as: className.memberFunction()
+    if (cur_entry->parentClass) {
+      the_class = cur_entry->parentClass->collectionName;
+      // If there is demangled name like: "Stack::Link::initialize(char*, Stack::Link*)",
+      // we want to strip off all but "initialize(char*, Stack::Link*)" and then tack
+      // on the class name to that to form "Link.initialize(char*, Stack::Link*)"
+      // in order to make it look cleaner:
+      if (cur_entry->demangled_name) {
+        name_to_use = getRawCppFunctionName(cur_entry->demangled_name);
+      }
+    }
+    else if (cur_entry->isExternal) {
+      the_class = ".";
+    }
+    else {
+      the_class = cur_entry->filename;
+    }
+
+    tl_assert(the_class);
+
+    /* We want to print static_fn in subdir/filename.c
+       as "subdir/filename.c.static_fn() */
+    buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
+                      name_len + 3); // 3 for possible trailing parens
+    VG_(strcpy)(buf, the_class);
+    for (p = buf; *p; p++) {
+      if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
+          && *p != '_')
+        *p = '_';
+    }
+    VG_(strcat)(buf, ".");
+    VG_(strcat)(buf, name_to_use);
+
+    // If we didnt need to demangle a C++ name, then we just have a
+    // plain C name without the last character being a right paren.
+    // If that's the case, then tack on some parens:
+    if (!cur_entry->demangled_name) {
+      VG_(strcat)(buf, "()");
+    }
+
+    // Woohoo, we have constructed a Fjalar name!
+    cur_entry->fjalar_name = buf;
+
+    // See if we are interested in tracing variables for this file,
+    // and if so, we must initialize cur_entry->trace_vars_tree
+    // appropriately.  We cannot initialize it any earlier because we
+    // need to use the Fjalar name of the function to identify its
+    // entry in vars_tree, and this is the earliest point where the
+    // Fjalar name is guaranteed to be initialized.
+
+    // Note that we must read in and process the var-list-file BEFORE
+    // calling this function:
+    if (fjalar_trace_vars_filename &&
+        (!cur_entry->trace_vars_tree_already_initialized)) {
+      extern FunctionTree* vars_tree;
+
+      FunctionTree** foundFuncTree = 0;
+      FunctionTree searchFuncTree;
+      searchFuncTree.function_fjalar_name = cur_entry->fjalar_name;
+      searchFuncTree.function_variables_tree = 0;
+
+      if ((foundFuncTree =
+           (FunctionTree**)tfind((void*)&searchFuncTree,
+                                 (void**)&vars_tree,
+                                 compareFunctionTrees))) {
+        cur_entry->trace_vars_tree = (*foundFuncTree)->function_variables_tree;
+        FJALAR_DPRINTF("FOUND FOUND FOUND!!! - %s\n",
+                       (*foundFuncTree)->function_fjalar_name);
+      }
+      else {
+        cur_entry->trace_vars_tree = 0;
+      }
+    }
+
+    // No matter what, we've ran it once for this function so
+    // trace_vars_tree has been initialized
+    cur_entry->trace_vars_tree_already_initialized = 1;
+  }
+
+  genfreeiterator(it);
+}
+
 // TODO: This will leak memory if called more than once per program
 // execution since the entries in FunctionTable are not being properly
 // freed.  However, during normal execution, this should only be
 // called once.
-// This initializes all names of functions in FunctionTable,
-// demangling C++ function names if necessary.
 
-// Pre: If we are using the --var-list-file= option, the var-list file
-// must have already been processed by the time this function runs
+// Note: This does NOT initialize the fjalar_name fields of the
+// functions in FunctionTable.  It is up to initFunctionFjalarNames()
+// to do that after all the smoke has cleared.
 void initializeFunctionTable()
 {
   unsigned long i;
@@ -1146,9 +1297,6 @@ void initializeFunctionTable()
                         (void*)(((function*)cur_entry->entry_ptr)->start_pc))))
         {
           function* dwarfFunctionPtr = (function*)(cur_entry->entry_ptr);
-          char *the_class;
-          char *buf, *p;
-
           // This is non-null only if we have successfully demangled a
           // C++ name:
           char* demangled_name = 0;
@@ -1200,77 +1348,9 @@ void initializeFunctionTable()
             demangled_name = VG_(cplus_demangle_v3)(cur_func_entry->mangled_name);
             // I hope the demangling always works!
             tl_assert(demangled_name);
-            // Set the name of the function to be the demangled name:
-            cur_func_entry->name = demangled_name;
+            // Set the demangled_name of the function to be the demangled name:
+            cur_func_entry->demangled_name = demangled_name;
           }
-
-          if (dwarfFunctionPtr->is_external) {
-            /* Globals print as "..main()", etc. */
-            the_class = ".";
-          }
-          else {
-            the_class = cur_func_entry->filename;
-          }
-
-          /* We want to print static_fn in subdir/filename.c
-             as "subdir/filename.c.static_fn() */
-          buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
-                            VG_(strlen)(cur_func_entry->name) + 3);
-          VG_(strcpy)(buf, the_class);
-          for (p = buf; *p; p++) {
-            if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
-                && *p != '_')
-              *p = '_';
-          }
-          VG_(strcat)(buf, ".");
-          VG_(strcat)(buf, cur_func_entry->name);
-
-          // If we didnt need to demangle a C++ name, then we just
-          // have a plain C name without trailing parens.  If that's
-          // the case, then tack on some parens:
-          if (!demangled_name) {
-            VG_(strcat)(buf, "()");
-          }
-
-          cur_func_entry->fjalar_name = buf;
-
-          // See if we are interested in tracing variables for this
-          // file, and if so, we must initialize
-          // cur_func_entry->trace_vars_tree appropriately.  We cannot
-          // initialize it any earlier because we need to use the
-          // Fjalar name of the function to identify its entry in
-          // vars_tree, and this is the earliest point where the
-          // Fjalar name is guaranteed to be initialized.
-
-          // Note that we must read in and process the var-list-file
-          // BEFORE calling this function:
-          if (fjalar_trace_vars_filename &&
-              (!cur_func_entry->trace_vars_tree_already_initialized)) {
-            extern FunctionTree* vars_tree;
-
-            FunctionTree** foundFuncTree = 0;
-            FunctionTree searchFuncTree;
-            searchFuncTree.function_fjalar_name = cur_func_entry->fjalar_name;
-            searchFuncTree.function_variables_tree = 0;
-
-            if ((foundFuncTree =
-                 (FunctionTree**)tfind((void*)&searchFuncTree,
-                                       (void**)&vars_tree,
-                                       compareFunctionTrees))) {
-	      cur_func_entry->trace_vars_tree = (*foundFuncTree)->function_variables_tree;
-	      FJALAR_DPRINTF("FOUND FOUND FOUND!!! - %s\n",
-                             (*foundFuncTree)->function_fjalar_name);
-	    }
-            else {
-	      cur_func_entry->trace_vars_tree = 0;
-	    }
-          }
-
-          // No matter what, we've ran it once for this function so
-          // trace_vars_tree has been initialized
-          cur_func_entry->trace_vars_tree_already_initialized = 1;
-
-          // This was formerly in extractTypeDataFromFunctionInfoArray():
 
           // Extract all formal parameter variables
           extractFormalParameterVars(cur_func_entry, dwarfFunctionPtr);
@@ -2339,7 +2419,7 @@ static void initConstructorsAndDestructors() {
     // Here are our pattern-matching heuristics:
 
     // A function is a constructor iff:
-    // 1.) Its name matches the name of a type in TypesTable
+    // 1.) Its raw C name (f->name) matches the name of a type in TypesTable
     // 2.) Its first parameter has the name 'this'
     // (The 2nd condition prevents false positives of C functions that
     // have the same name as structs - e.g., 'struct foo' and 'foo()'.

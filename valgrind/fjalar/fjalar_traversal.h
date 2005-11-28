@@ -66,6 +66,9 @@ char* DOT;
 char* ARROW;
 char* STAR;
 
+char* stringStackPop(char** stringStack, int* pStringStackSize);
+void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
+
 
 // Takes a TypeEntry* and (optionally, a pointer to its memory
 // location), and traverses through all of the members of the
@@ -140,6 +143,13 @@ void visitVariable(VariableEntry* var,
                    // recursive calls) because their addresses are
                    // different from the original's
                    char overrideIsInit,
+                   // This should almost always be 0, but whenever you
+                   // want finer control over struct dereferences, you
+                   // can override this with a number representing the
+                   // number of structs you have dereferenced so far
+                   // to get here (this is useful for the 'this'
+                   // parameter of member functions):
+                   UInt numStructsDereferenced,
                    // This function performs an action for each variable visited:
                    TraversalResult (*performAction)(VariableEntry*,
                                                     char*,
