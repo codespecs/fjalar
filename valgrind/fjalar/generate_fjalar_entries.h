@@ -288,12 +288,11 @@ void SimpleListInit(SimpleList* lst);
 
 // Contains a block of information about a particular function
 struct _FunctionEntry {
-  // The standard C name for a function (i.e. "sum") or a full C++
-  // name after demangling in initializeFunctionTable()
-  // (i.e. "sum(int,int)")
+  // The standard C name for a function (i.e. "sum")
   char* name;
 
   char* mangled_name;   // The mangled name (C++ only)
+  char* demangled_name;   // The de-mangled name (C++ only)
 
   char* filename;
   /* fjalar_name is like name, but made unique by prepending a munged copy
@@ -449,5 +448,7 @@ int equivalentStrings(char* str1, char* str2);
 
 FILE* xml_output_fp;
 void outputAllXMLDeclarations();
+
+char* getRawCppFunctionName(char* cppFnName);
 
 #endif

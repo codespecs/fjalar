@@ -177,6 +177,7 @@ void visitClassMemberVariables(TypeEntry* class,
       visitVariable(var,
                     (void*)memberVarAddr,
                     0,
+                    1, // This is 1 because we are assuming we've already visited the struct called 'this'
                     performAction,
                     GLOBAL_VAR, // not quite ... but seems to work for now
                     0,
@@ -334,6 +335,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       visitVariable(var,
                     basePtrValue,
                     0,
+                    0,
                     performAction,
                     varOrigin,
                     funcPtr,
@@ -406,6 +408,7 @@ void visitReturnValue(FunctionExecutionState* e,
                   // because we now keep shadow V-bits for e->EAX
                   // and friends
                   0, // e->EAXvalid,
+                  0,
                   performAction,
                   FUNCTION_RETURN_VAR,
                   funcPtr,
@@ -424,6 +427,7 @@ void visitReturnValue(FunctionExecutionState* e,
     // even if its true type may be a float
     visitVariable(cur_node->var,
                   &(e->FPU),
+                  0,
                   0,
                   performAction,
                   FUNCTION_RETURN_VAR,
@@ -449,6 +453,7 @@ void visitReturnValue(FunctionExecutionState* e,
     visitVariable(cur_node->var,
                   &uLong,
                   0,
+                  0,
                   performAction,
                   FUNCTION_RETURN_VAR,
                   funcPtr,
@@ -470,6 +475,7 @@ void visitReturnValue(FunctionExecutionState* e,
     visitVariable(cur_node->var,
                   &signedLong,
                   0,
+                  0,
                   performAction,
                   FUNCTION_RETURN_VAR,
                   funcPtr,
@@ -483,6 +489,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   &(e->EAX),
+                  0,
                   0,
                   performAction,
                   FUNCTION_RETURN_VAR,
@@ -609,6 +616,13 @@ void visitVariable(VariableEntry* var,
                    // recursive calls) because their addresses are
                    // different from the original's
                    char overrideIsInit,
+                   // This should almost always be 0, but whenever you
+                   // want finer control over struct dereferences, you
+                   // can override this with a number representing the
+                   // number of structs you have dereferenced so far
+                   // to get here (this is useful for the 'this'
+                   // parameter of member functions):
+                   UInt numStructsDereferenced,
                    // This function performs an action for each variable visited:
                    TraversalResult (*performAction)(VariableEntry*,
                                                     char*,
@@ -660,7 +674,7 @@ void visitVariable(VariableEntry* var,
                  varOrigin,
                  trace_vars_tree,
                  OVERRIDE_NONE,
-                 0,
+                 numStructsDereferenced,
                  varFuncInfo,
                  isEnter);
 }

@@ -48,7 +48,13 @@ static const char* DaikonRepTypeString[] = {
 
 static void printDeclsHeader();
 static void printAllFunctionDecls(char faux_decls);
-void printAllObjectAndClassDecls();
+static void printAllObjectPPTDecls();
+
+// Use this function to print out a function name for .decls/.dtrace.
+void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
+  //  VG_(printf)("f->fjalar_name: %s\n", f->fjalar_name);
+  fputs(f->fjalar_name, fp);
+}
 
 // This has different behavior depending on if faux_decls is on.  If
 // faux_decls is on, then we do all the processing but don't actually
@@ -63,7 +69,7 @@ void outputDeclsFile(char faux_decls)
 
   // For DynComp, print this out at the end of execution
   if (!kvasir_with_dyncomp) {
-    printAllObjectAndClassDecls();
+    printAllObjectPPTDecls();
   }
 
   // Clean-up:
@@ -82,7 +88,8 @@ void outputDeclsFile(char faux_decls)
 void DC_outputDeclsAtEnd() {
   VG_(printf)("DC_outputDeclsAtEnd()\n");
   printAllFunctionDecls(0);
-  printAllObjectAndClassDecls();
+
+  printAllObjectPPTDecls();
 
   fclose(decls_fp);
   decls_fp = 0;
@@ -405,7 +412,7 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
 
   if (!faux_decls) {
     fputs("DECLARE\n", decls_fp);
-    fputs(funcPtr->fjalar_name, decls_fp);
+    printDaikonFunctionName(funcPtr, decls_fp);
 
     if (isEnter) {
       fputs(ENTER_PPT, decls_fp);
@@ -510,27 +517,14 @@ static void printAllFunctionDecls(char faux_decls)
 // The object program point should consist of class_name:::OBJECT
 // and all information from 'this'
 
-// For C++ only: Print out a :::CLASS program point.
-// The class program point should consist of class_name:::CLASS
-// and all information about only STATIC variables belonging to this class
-
 // DynComp: Right now, do NOT try to print out comparability
 // information for OBJECT and CLASS program points.  We may support
 // this in the future if necessary.
+static void printAllObjectPPTDecls() {
+  struct geniterator* it = gengetiterator(TypesTable);
 
-void printAllObjectAndClassDecls() {
-#ifdef BLAHBLAH
-  struct geniterator* it = gengetiterator(DaikonTypesTable);
-
-  // Hashtable which contains the names of classes which have already printed
-  // OBJECT and CLASS program points.  This is so that we can allow duplicate
-  // entries in DaikonTypesTable but only print out ONE OBJECT/CLASS .decls program
-  // point for each entry with a particular name
-  // Key: Class name, Value: Doesn't matter - we only check if the table
-  // "contains the entry"
-  struct genhashtable* ClassNamesAlreadyPrinted =
-    genallocatehashtable((unsigned int (*)(void *)) & hashString,
-                         (int (*)(void *,void *)) &equivalentStrings);
+  extern char* fullNameStack[];
+  extern int fullNameStackSize;
 
   Bool hacked_dyncomp_switch = False;
 
@@ -544,87 +538,46 @@ void printAllObjectAndClassDecls() {
   }
 
   while(!it->finished) {
-    DaikonType* cur_type = (DaikonType*)
-         gengettable(DaikonTypesTable, gennext(it));
+    TypeEntry* cur_type =
+      (TypeEntry*)gengettable(TypesTable, gennext(it));
 
-    if (!cur_type)
-         continue;
+    VG_(printf)("cur_type: %p\n", cur_type);
+
+    tl_assert(cur_type);
 
     // Only print out .decls for :::OBJECT and :::CLASS program points
-    // if num_member_funcs > 0 - otherwise we have no member functions
-    // so these program points will never be reached :)
-    // Also, only print them out if their name is NOT contained in
-    // ClassNamesAlreadyPrinted - otherwise there is a duplicate so don't
-    // print it out!
-    if ((cur_type->num_member_funcs > 0) &&
-        (cur_type->collectionName) && // Do NOT try to print out unnamed anonymous classes
-                                      // because we will have a naming ambiguity
-        !gencontains(ClassNamesAlreadyPrinted, cur_type->collectionName)) {
-         // Make up a fake DaikonFunctionInfo entry and populate the parentClass field
-         DaikonFunctionInfo fakeFuncInfo;
+    // if there is at least 1 member function.  Otherwise, don't
+    // bother because object program points will never be printed out
+    // for this class in the .dtrace file.
+    if ((cur_type->memberFunctionList && (cur_type->memberFunctionList->numElts > 0)) &&
+        cur_type->collectionName) {
+      tl_assert(cur_type->collectionName);
 
-         // Make up a fake DaikonVariable named 'this' and set its type to cur_type
-         DaikonVariable fakeThisVar;
+      fputs("DECLARE\n", decls_fp);
+      fputs(cur_type->collectionName, decls_fp);
+      fputs(":::OBJECT\n", decls_fp);
 
-         memset(&fakeFuncInfo, 0, sizeof(fakeFuncInfo));
-         fakeFuncInfo.parentClass = cur_type;
+      stringStackPush(fullNameStack, &fullNameStackSize, "this");
+      stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
+      // Print out regular member vars.
+      visitClassMemberVariables(cur_type,
+                                0,
+                                &printDeclsEntryAction);
 
-         memset(&fakeThisVar, 0, sizeof(fakeThisVar));
-         fakeThisVar.name = "this";
-         fakeThisVar.varType = cur_type;
-         fakeThisVar.repPtrLevels = 1;
-         fakeThisVar.declaredPtrLevels = 1;
-         // Remember the .disambig for "this" so that it prints
-         // out as ONE element and not an array
-         fakeThisVar.disambig = 'P';
+      stringStackPop(fullNameStack, &fullNameStackSize);
+      stringStackPop(fullNameStack, &fullNameStackSize);
 
-         fputs("DECLARE\n", decls_fp);
-         fputs(cur_type->collectionName, decls_fp);
-         fputs(":::OBJECT\n", decls_fp);
+      fputs("\n", decls_fp);
 
-         stringStackPush(fullNameStack, &fullNameStackSize, "this");
-
-         visitVariable(&fakeThisVar,
-                       0,
-                       0,
-                       FUNCTION_ENTER_FORMAL_PARAM,
-                       DECLS_FILE,
-                       0,
-                       0,
-                       0,
-                       0);
-
-         stringStackPop(fullNameStack, &fullNameStackSize);
-
-
-         fputs("\n", decls_fp);
-
-         fputs("DECLARE\n", decls_fp);
-         fputs(cur_type->collectionName, decls_fp);
-         fputs(":::CLASS\n", decls_fp);
-
-         printVariablesInVarList(&fakeFuncInfo, 1, // set 'isEnter' to 1 here (arbitrary choice)
-                                 GLOBAL_VAR,
-                                 0,
-                                 DECLS_FILE,
-                                 0,
-                                 0,
-                                 1,
-                                 0);
-
-         fputs("\n", decls_fp);
-
-         genputtable(ClassNamesAlreadyPrinted, cur_type->collectionName, 0);
+      // TODO: What do we do about static member vars?
+      // Jeff says that we don't need :::CLASS program points anymore
     }
   }
 
   genfreeiterator(it);
-  genfreehashtable(ClassNamesAlreadyPrinted);
 
   // HACK ALERT! Remember to restore original state
   if (hacked_dyncomp_switch) {
     kvasir_with_dyncomp = True;
   }
-
-#endif // #ifdef BLAHBLAH
 }
