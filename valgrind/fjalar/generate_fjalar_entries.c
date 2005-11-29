@@ -271,7 +271,8 @@ static char ignore_variable_with_name(char* name) {
   if (VG_STREQ(name, "__ioinit") ||
       (0 == VG_(strncmp)(name, "_vptr.", 6)) ||
       (0 == VG_(strncmp)(name, "_ZTI", 4)) ||
-      (0 == VG_(strncmp)(name, "_ZTS", 4)))
+      (0 == VG_(strncmp)(name, "_ZTS", 4)) ||
+      (VG_STREQ(name, "__in_chrg"))) // Found in C++ destructors
     return 1;
   else
     return 0;
