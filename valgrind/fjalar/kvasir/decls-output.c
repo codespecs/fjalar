@@ -472,7 +472,7 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
       // (This should only be run once for every ppt)
       // This must be run at the end because its results depend on
       // g_variableIndex being properly incremented
-      allocate_ppt_structures(funcPtr, isEnter, g_variableIndex);
+      allocate_ppt_structures((DaikonFunctionEntry*)funcPtr, isEnter, g_variableIndex);
     }
     else {
       genfreehashtable(g_compNumberMap);

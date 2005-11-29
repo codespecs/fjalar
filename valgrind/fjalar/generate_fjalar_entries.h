@@ -141,8 +141,7 @@ struct _Superclass {
 //         variables
 struct genhashtable* VisitedStructsTable;
 
-// Trivial hash and comparison functions:
-unsigned int hashID(int ID);
+// Trivial comparison functions:
 int equivalentIDs(int ID1, int ID2);
 
 // THIS TYPE IS IMMUTABLE AFTER INITIALIZATION (DO NOT TRY TO MODIFY
@@ -358,6 +357,7 @@ FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr);
 // Only non-basic types (IS_BASIC_TYPE(t) == 0) should appear in
 // TypesTable:
 struct genhashtable* TypesTable;
+
 __inline__ TypeEntry* findTypeEntryByName(char* name);
 
 
