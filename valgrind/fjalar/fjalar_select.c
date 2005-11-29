@@ -202,10 +202,10 @@ void initializeVarsTree()
               if (VG_STREQ(input_line, GLOBAL_STRING))
 		{
 		  globalFunctionTree = currentFunctionTree;
-                  VG_(printf)("globalFunctionTree: %p\n", globalFunctionTree);
+                  //                  VG_(printf)("globalFunctionTree: %p\n", globalFunctionTree);
 		}
               else {
-                VG_(printf)("Function: %s\n", currentFunctionTree->function_fjalar_name);
+                //                VG_(printf)("Function: %s\n", currentFunctionTree->function_fjalar_name);
               }
 	    }
 	  // Otherwise, create a new variable and stuff it into
@@ -214,7 +214,7 @@ void initializeVarsTree()
 	    {
 	      char* newString = VG_(strdup)(input_line);
 	      tsearch((void*)newString, (void**)&(currentFunctionTree->function_variables_tree), compareStrings);
-              VG_(printf)("variable: %s\n", newString);
+              //              VG_(printf)("variable: %s\n", newString);
 	    }
 
 	  nextLineIsFunction = 0;
