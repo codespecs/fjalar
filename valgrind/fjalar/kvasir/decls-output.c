@@ -518,8 +518,8 @@ static void printAllFunctionDecls(char faux_decls)
 // and all information from 'this'
 
 // DynComp: Right now, do NOT try to print out comparability
-// information for OBJECT and CLASS program points.  We may support
-// this in the future if necessary.
+// information for OBJECT program points.  We may support this in the
+// future if necessary.
 static void printAllObjectPPTDecls() {
   struct geniterator* it = gengetiterator(TypesTable);
 
@@ -529,9 +529,9 @@ static void printAllObjectPPTDecls() {
   Bool hacked_dyncomp_switch = False;
 
   // HACK ALERT: We need to temporarily pretend that we are not using
-  // kvasir_with_dyncomp in order to print out the OBJECT and CLASS
-  // program points normally.  We need to set this back at the end of
-  // the function:
+  // kvasir_with_dyncomp in order to print out the OBJECT program
+  // points normally.  We need to set this back at the end of the
+  // function:
   if (kvasir_with_dyncomp) {
     kvasir_with_dyncomp = False;
     hacked_dyncomp_switch = True;
@@ -557,12 +557,10 @@ static void printAllObjectPPTDecls() {
 
       stringStackPush(fullNameStack, &fullNameStackSize, "this");
       stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
-      // Print out regular member vars.
 
-      // TODO: Re-implement:
-      //      visitClassMemberVariables(cur_type,
-      //                                0,
-      //                                &printDeclsEntryAction);
+      // Print out regular member vars.
+      visitClassMembersNoValues(cur_type,
+                                &printDeclsEntryAction);
 
       stringStackPop(fullNameStack, &fullNameStackSize);
       stringStackPop(fullNameStack, &fullNameStackSize);

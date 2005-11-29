@@ -397,6 +397,40 @@ void visitSingleMemberVariable(VarNode* varNode,
   }
 }
 
+// Visits all member variables of the class and superclass without
+// regard to actually grabbing pointer values.  This is useful for
+// printing out names and performing other non-value-dependent
+// operations.
+void visitClassMembersNoValues(TypeEntry* class,
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char)) {
+  visitClassMemberVariables(class,
+                            0,
+                            0,
+                            0,
+                            0,
+                            performAction,
+                            GLOBAL_VAR, // doesn't matter, I don't think
+                            0,
+                            // This should be 1 because we count
+                            // 'this' struct as one level of struct
+                            // dereferences:
+                            1,
+                            0,
+                            0,
+                            INVALID_RESULT);
+}
 
 // Takes a TypeEntry* and a pointer to it (or an array of pointers if
 // isSequence), and traverses through all of the members of the
