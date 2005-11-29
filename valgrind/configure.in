@@ -418,7 +418,7 @@ AC_OUTPUT(
    none/tests/arm/Makefile
    none/tests/x86/Makefile
    none/docs/Makefile
-   kvasir/Makefile
+   fjalar/Makefile
 )
 
 cat<<EOF

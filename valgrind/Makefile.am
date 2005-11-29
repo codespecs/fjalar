@@ -8,6 +8,7 @@ include $(top_srcdir)/Makefile.all.am
 TOOLS =		memcheck \
 		corecheck \
 		kvasir \
+		fjalar \
 		none
 
 ##		massif \
