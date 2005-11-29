@@ -541,8 +541,6 @@ static void printAllObjectPPTDecls() {
     TypeEntry* cur_type =
       (TypeEntry*)gengettable(TypesTable, gennext(it));
 
-    VG_(printf)("cur_type: %p\n", cur_type);
-
     tl_assert(cur_type);
 
     // Only print out .decls for :::OBJECT and :::CLASS program points
@@ -560,9 +558,11 @@ static void printAllObjectPPTDecls() {
       stringStackPush(fullNameStack, &fullNameStackSize, "this");
       stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
       // Print out regular member vars.
-      visitClassMemberVariables(cur_type,
-                                0,
-                                &printDeclsEntryAction);
+
+      // TODO: Re-implement:
+      //      visitClassMemberVariables(cur_type,
+      //                                0,
+      //                                &printDeclsEntryAction);
 
       stringStackPop(fullNameStack, &fullNameStackSize);
       stringStackPop(fullNameStack, &fullNameStackSize);
