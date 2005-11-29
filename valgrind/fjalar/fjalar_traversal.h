@@ -75,7 +75,12 @@ void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
 // specified class (or struct/union).  This should also traverse
 // inside of the class's superclasses and visit variables in them:
 void visitClassMemberVariables(TypeEntry* class,
-                               Addr objectAddr,
+                               void* pValue,
+                               char isSequence,
+                               // An array of pointers to values (only
+                               // valid if isSequence non-null):
+                               void** pValueArray,
+                               UInt numElts, // Size of pValueArray
                                // This function performs an action for each variable visited:
                                TraversalResult (*performAction)(VariableEntry*,
                                                                 char*,
