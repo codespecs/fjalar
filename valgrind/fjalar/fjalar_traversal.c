@@ -276,9 +276,6 @@ void visitClassMemberVariables(TypeEntry* class,
                                FunctionEntry* varFuncInfo,
                                char isEnter,
                                TraversalResult tResult) {
-  char* top;
-  char numEltsPushedOnStack = 0;
-
   tl_assert((class->decType == D_STRUCT) ||
             (class->decType == D_UNION));
 
@@ -318,6 +315,9 @@ void visitClassMemberVariables(TypeEntry* class,
          i = i->next) {
       VariableEntry* curVar;
       curVar = i->var;
+
+      char* top = 0;
+      char numEltsPushedOnStack = 0;
 
       // Pointer to the value of the current member variable (only
       // valid if !isSequence):
@@ -430,14 +430,14 @@ void visitClassMemberVariables(TypeEntry* class,
 
           // If the top element is already a dot (from a superclass
           // name perhaps), then don't push anything on:
-          if (VG_STREQ(top, DOT)) {
+          if (top && VG_STREQ(top, DOT)) {
             numEltsPushedOnStack = 0;
           }
           // If the top element is '*', then instead of pushing a
           // '.' to make '*.', erase that element and instead push
           // '->'.  If last element is '->', then we're fine and
           // don't do anything else.  Otherwise, push a '.'
-          else if (top[0] == '*') {
+          else if (top && top[0] == '*') {
             stringStackPop(fullNameStack, &fullNameStackSize);
             stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
             numEltsPushedOnStack = 0;
@@ -590,14 +590,15 @@ void visitClassMemberVariables(TypeEntry* class,
 
         // If the top element is already a dot (from a superclass name
         // perhaps), then don't push anything on:
-        if (VG_STREQ(top, DOT)) {
+        if (top && VG_STREQ(top, DOT)) {
           numEltsPushedOnStack = 0;
         }
         // If the top element is '*' or '[0]', then instead of pushing
         // a '.' to make '*.' or '[0].', erase that element and
         // instead push '->'.  If last element is '->', then we're
         // fine and don't do anything else.  Otherwise, push a '.'
-        else if ((top[0] == '*') || (VG_STREQ(top, ZEROTH_ELT))) {
+        else if (top &&
+                 ((top[0] == '*') || (VG_STREQ(top, ZEROTH_ELT)))) {
           stringStackPop(fullNameStack, &fullNameStackSize);
           stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
           numEltsPushedOnStack = 0;
@@ -662,8 +663,9 @@ void visitClassMemberVariables(TypeEntry* class,
          n != NULL;
          n = n->next) {
       void** superclassOffsetPtrValues = 0;
-      int numEltsPushedOnStack = 0;
-      char* top;
+
+      char* top = 0;
+      char numEltsPushedOnStack = 0;
 
       Superclass* curSuper = (Superclass*)(n->elt);
       tl_assert(curSuper && curSuper->class);
