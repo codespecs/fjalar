@@ -202,201 +202,6 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 }
 
 
-void visitSingleMemberVariable(VarNode* varNode,
-                               void* structBasePtrValue,
-                               // This function performs an action for each variable visited:
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                char,
-                                                                DisambigOverride,
-                                                                char,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                char),
-                               VariableOrigin varOrigin,
-                               char* trace_vars_tree,
-                               // The number of structs we have dereferenced for
-                               // a particular call of visitVariable(); Starts at
-                               // 0 and increments every time we hit a variable
-                               // which is a base struct type
-                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
-                               UInt numStructsDereferenced,
-                               // These uniquely identify the program point
-                               FunctionEntry* varFuncInfo,
-                               char isEnter,
-                               TraversalResult tResult) {
-  char* top;
-  char numEltsPushedOnStack = 0;
-  // Pointer to the value of the current member variable
-  void* pCurVarValue = 0;
-
-  VariableEntry* curVar = varNode->var;
-
-  tl_assert(curVar);
-
-  // Only flatten static arrays when the --flatten-arrays option is
-  // used.  Normally we do not have to flatten static arrays at this
-  // point because we can simply visit them as an entire sequence.
-  if (curVar->isStaticArray &&
-      fjalar_flatten_arrays &&
-      (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
-      (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
-      // Ignore arrays of characters (strings) inside of the struct:
-      !(curVar->isString && (curVar->ptrLevels == 1))) {
-    // Only look at the first dimension:
-    UInt arrayIndex;
-    for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++) {
-      char indexStr[5];
-      top = stringStackTop(fullNameStack, fullNameStackSize);
-
-      sprintf(indexStr, "%d", arrayIndex);
-
-      // TODO: Subtract and add is a HACK!  Subtract one from the
-      // type of curVar just because we are looping through and
-      // expanding the array
-      if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
-        int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
-        count--;
-        genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
-      }
-
-      // Only derive a pointer value inside of the struct if
-      // (tResult == DEREF_MORE_POINTERS); else leave pCurVarValue
-      // at 0:
-      if (tResult == DEREF_MORE_POINTERS) {
-        // The starting address for the member variable is the
-        // struct's starting address plus the location of the
-        // variable within the struct
-        pCurVarValue = structBasePtrValue + curVar->data_member_location;
-
-        // Very important! Add offset within the flattened array:
-        pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
-      }
-
-      // If the top element is '*', then instead of pushing a
-      // '.' to make '*.', erase that element and instead push
-      // '->'.  If last element is '->', then we're fine and
-      // don't do anything else.  Otherwise, push a '.'
-      if (top[0] == '*') {
-        stringStackPop(fullNameStack, &fullNameStackSize);
-        stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
-        numEltsPushedOnStack = 0;
-      }
-      else if (VG_STREQ(top, ARROW)) {
-        numEltsPushedOnStack = 0;
-      }
-      else {
-        stringStackPush(fullNameStack, &fullNameStackSize, DOT);
-        numEltsPushedOnStack = 1;
-      }
-
-      stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
-      stringStackPush(fullNameStack, &fullNameStackSize, "[");
-      stringStackPush(fullNameStack, &fullNameStackSize, indexStr);
-      stringStackPush(fullNameStack, &fullNameStackSize, "]");
-
-      numEltsPushedOnStack += 4;
-
-      visitSingleVar(curVar,
-                     0,
-                     pCurVarValue,
-                     0,
-                     performAction,
-                     DERIVED_FLATTENED_ARRAY_VAR,
-                     trace_vars_tree,
-                     OVERRIDE_NONE, // Start over again and read new .disambig entry
-                     numStructsDereferenced + 1, // Notice the +1 here
-                     varFuncInfo,
-                     isEnter);
-
-      // POP all the stuff we pushed on there before
-      while ((numEltsPushedOnStack--) > 0) {
-        stringStackPop(fullNameStack, &fullNameStackSize);
-      }
-
-      // HACK: Add the count back on at the end
-      if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
-        int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
-        count++;
-        genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
-      }
-    }
-  }
-  // Regular member variable (without array flattening):
-  else {
-    // Only derive a pointer value inside of the struct if
-    // (tResult == DEREF_MORE_POINTERS); else leave pCurVarValue at 0:
-    if (structBasePtrValue && (tResult == DEREF_MORE_POINTERS)) {
-      // The starting address for the member variable is the struct's
-      // starting address plus the location of the variable within the
-      // struct TODO: Are we sure that arithmetic on void*
-      // structBasePtrValue adds by 1?  Otherwise, we'd have mis-alignment
-      // issues.  (I tried it in gdb and it seems to work, though.)
-      pCurVarValue = structBasePtrValue + curVar->data_member_location;
-
-      // Override for D_DOUBLE types: For some reason, the DWARF2
-      // info.  botches the locations of double variables within
-      // structs, setting their data_member_location fields to give
-      // them only 4 bytes of padding instead of 8 against the next
-      // member variable.  If curVar is a double and there exists a
-      // next member variable such that the difference in
-      // data_member_location of this double and the next member
-      // variable is exactly 4, then decrement the double's location
-      // by 4 in order to give it a padding of 8:
-      if ((D_DOUBLE == curVar->varType->decType) &&
-          (varNode->next) &&
-          ((varNode->next->var->data_member_location -
-            curVar->data_member_location) == 4)) {
-        pCurVarValue -= 4;
-      }
-    }
-
-    top = stringStackTop(fullNameStack, fullNameStackSize);
-
-    // If the top element is '*' or '[0]', then instead of pushing a
-    // '.' to make '*.' or '[0].', erase that element and instead push
-    // '->'.  If last element is '->', then we're fine and
-    // don't do anything else.  Otherwise, push a '.'
-    if ((top[0] == '*') || (VG_STREQ(top, ZEROTH_ELT))) {
-      stringStackPop(fullNameStack, &fullNameStackSize);
-      stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
-      numEltsPushedOnStack = 0;
-    }
-    else if (VG_STREQ(top, ARROW)) {
-      numEltsPushedOnStack = 0;
-    }
-    else {
-      stringStackPush(fullNameStack, &fullNameStackSize, DOT);
-      numEltsPushedOnStack = 1;
-    }
-
-    stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
-    numEltsPushedOnStack++;
-
-    visitSingleVar(curVar,
-                   0,
-                   pCurVarValue,
-                   0,
-                   performAction,
-                   (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
-                   trace_vars_tree,
-                   OVERRIDE_NONE, // Start over again and read new .disambig entry
-                   numStructsDereferenced + 1, // Notice the +1 here
-                   varFuncInfo,
-                   isEnter);
-
-    // POP everything we've just pushed on
-    while ((numEltsPushedOnStack--) > 0) {
-      stringStackPop(fullNameStack, &fullNameStackSize);
-    }
-  }
-}
-
 // Visits all member variables of the class and superclass without
 // regard to actually grabbing pointer values.  This is useful for
 // printing out names and performing other non-value-dependent
@@ -431,6 +236,7 @@ void visitClassMembersNoValues(TypeEntry* class,
                             0,
                             INVALID_RESULT);
 }
+
 
 // Takes a TypeEntry* and a pointer to it (or an array of pointers if
 // isSequence), and traverses through all of the members of the
@@ -553,8 +359,9 @@ void visitClassMemberVariables(TypeEntry* class,
           }
 
           if (isSequence) {
-            if ((tResult == DEREF_MORE_POINTERS) ||
-                (tResult == DO_NOT_DEREF_MORE_POINTERS)) {
+            if (pValueArray &&
+                ((tResult == DEREF_MORE_POINTERS) ||
+                 (tResult == DO_NOT_DEREF_MORE_POINTERS))) {
               UInt ind;
 
               // Create pCurVarValueArray to be the same size as pValueArray:
@@ -570,7 +377,7 @@ void visitClassMemberVariables(TypeEntry* class,
                 // struct's starting address plus the location of the
                 // variable within the struct
                 if (pValueArray[ind]) {
-                  void* pCurVarValue = pValueArray[ind] + curVar->data_member_location;
+                  void* curVal = pValueArray[ind] + curVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
                   // DWARF2 info.  botches the locations of double
@@ -587,15 +394,15 @@ void visitClassMemberVariables(TypeEntry* class,
                       (i->next) &&
                       ((i->next->var->data_member_location -
                         curVar->data_member_location) == 4)) {
-                    pCurVarValue -= 4;
+                    curVal -= 4;
                   }
 
                   // Very important!  Add the offset within the
                   // flattened array:
-                  pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
+                  curVal += (arrayIndex * getBytesBetweenElts(curVar));
 
                   // Now assign that value into pCurVarValueArray:
-                  pCurVarValueArray[ind] = pCurVarValue;
+                  pCurVarValueArray[ind] = curVal;
                 }
                 // If the original entry was 0, then simply copy 0, which
                 // propagates uninit/unallocated status from structs to
@@ -699,8 +506,9 @@ void visitClassMemberVariables(TypeEntry* class,
       // Regular member variable (without array flattening):
       else {
         if (isSequence) {
-          if ((tResult == DEREF_MORE_POINTERS) ||
-              (tResult == DO_NOT_DEREF_MORE_POINTERS)) {
+          if (pValueArray &&
+              ((tResult == DEREF_MORE_POINTERS) ||
+               (tResult == DO_NOT_DEREF_MORE_POINTERS))) {
             UInt ind;
             // Create pCurVarValueArray to be the same size as
             // pValueArray:
@@ -717,7 +525,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // Otherwise, we'd have mis-alignment issues.  (I tried
               // it in gdb and it seems to work, though.)
               if (pValueArray[ind]) {
-                void* pCurVarValue = pValueArray[ind] + curVar->data_member_location;
+                void* curVal = pValueArray[ind] + curVar->data_member_location;
 
                 // Override for D_DOUBLE types: For some reason, the
                 // DWARF2 info.  botches the locations of double
@@ -734,11 +542,11 @@ void visitClassMemberVariables(TypeEntry* class,
                     (i->next) &&
                     ((i->next->var->data_member_location -
                       curVar->data_member_location) == 4)) {
-                  pCurVarValue -= 4;
+                  curVal -= 4;
                 }
 
                 // Now assign that value into pCurVarValueArray:
-                pCurVarValueArray[ind] = pCurVarValue;
+                pCurVarValueArray[ind] = curVal;
               }
               // If the original entry was 0, then simply copy 0, which
               // propagates uninit/unallocated status from structs to
@@ -853,10 +661,14 @@ void visitClassMemberVariables(TypeEntry* class,
     for (n = class->superclassList->first;
          n != NULL;
          n = n->next) {
+      void** superclassOffsetPtrValues = 0;
+      int numEltsPushedOnStack = 0;
+      char* top;
+
       Superclass* curSuper = (Superclass*)(n->elt);
       tl_assert(curSuper && curSuper->class);
 
-      void** superclassOffsetPtrValues = 0;
+      top = stringStackTop(fullNameStack, fullNameStackSize);
 
       // If this superclass's member variables are at a non-zero
       // offset from the beginning of this class and isSequence, then
@@ -876,10 +688,17 @@ void visitClassMemberVariables(TypeEntry* class,
         }
       }
 
+      // Push an extra dot before superclass name if necessary
+      if (!VG_STREQ(DOT, top) && !VG_STREQ(ARROW,top)) {
+        stringStackPush(fullNameStack, &fullNameStackSize, DOT);
+        numEltsPushedOnStack += 1;
+      }
+
       // Push a name prefix to denote that we are traversing into a
       // superclass:
       stringStackPush(fullNameStack, &fullNameStackSize, curSuper->className);
       stringStackPush(fullNameStack, &fullNameStackSize, DOT);
+      numEltsPushedOnStack += 2;
 
       // This recursive call will handle multiple levels of
       // inheritance (e.g., if A extends B, B extends C, and C extends
@@ -893,7 +712,11 @@ void visitClassMemberVariables(TypeEntry* class,
                                 (isSequence ?
                                  0 : pValue + curSuper->member_var_offset),
                                 isSequence,
-                                superclassOffsetPtrValues,
+                                // Use the offset one if available,
+                                // otherwise use the regular one if
+                                // member_var_offset is 0:
+                                (superclassOffsetPtrValues ?
+                                 superclassOffsetPtrValues : pValueArray),
                                 numElts,
                                 performAction,
                                 varOrigin,
@@ -903,8 +726,10 @@ void visitClassMemberVariables(TypeEntry* class,
                                 isEnter,
                                 tResult);
 
-      stringStackPop(fullNameStack, &fullNameStackSize);
-      stringStackPop(fullNameStack, &fullNameStackSize);
+      // POP all the stuff we pushed on there before
+      while ((numEltsPushedOnStack--) > 0) {
+        stringStackPop(fullNameStack, &fullNameStackSize);
+      }
 
       if (superclassOffsetPtrValues) {
         VG_(free)(superclassOffsetPtrValues);
