@@ -109,6 +109,7 @@ inplacedir = $(top_builddir)/.in_place
 TOOLS = memcheck \
 		corecheck \
 		kvasir \
+		fjalar \
 		none
 
 
