@@ -2017,7 +2017,7 @@ void initialize_dwarf_entry_array(unsigned long num_entries)
   dwarf_entry_array = VG_(calloc)(num_entries, sizeof *dwarf_entry_array);
 
   // Also initialize typedef_names_map at this time
-  typedef_names_map = genallocatehashtable((unsigned int (*)(void *)) & hashID,
+  typedef_names_map = genallocatehashtable(0,
                                            (int (*)(void *,void *)) &equivalentIDs);
 }
 
@@ -2226,7 +2226,7 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
 void initialize_typedata_structures() {
   FunctionSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
                                              (int (*)(void *,void *)) &equivalentStrings);
-  ReverseFunctionSymbolTable = genallocatehashtable((unsigned int (*)(void *)) &hashID,
+  ReverseFunctionSymbolTable = genallocatehashtable(0,
                                                     (int (*)(void *,void *)) &equivalentIDs);
   VariableSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
                                              (int (*)(void *,void *)) &equivalentStrings);

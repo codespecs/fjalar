@@ -189,6 +189,11 @@ const char* DeclaredTypeString[] = {
 // query whether its entry in BasicTypesArray is non-null:
 #define IS_BASIC_TYPE(t) (BasicTypesArray[t])
 
+// You need to define global variables in a .c file and init. it to 0
+// or else Valgrind places it in some bizarre place ... I dunno???
+struct genhashtable* TypesTable = 0;
+struct genhashtable* FunctionTable = 0;
+struct genhashtable* VisitedStructsTable = 0;
 
 // A temporary data structure of variables that need to have their
 // varType entries updated after TypesTable has been initialized.
@@ -479,7 +484,7 @@ void initializeAllFjalarData()
 
   // Initialize TypesTable
   TypesTable =
-    genallocatehashtable((unsigned int (*)(void *)) & hashString,
+    genallocatehashtable((unsigned int (*)(void *)) &hashString,
                          (int (*)(void *,void *)) &equivalentStrings);
 
   createNamesForUnnamedDwarfEntries();
@@ -941,7 +946,7 @@ static void initializeGlobalVarsList()
   // Create a hashtable with keys = {unsigned long (globalVarAddr), non-zero}
   //                   and values = {string which is the global variable name}
   struct genhashtable* GlobalVarsTable =
-    genallocatehashtable((unsigned int (*)(void *)) &hashID,
+    genallocatehashtable(0,
 			 (int (*)(void *,void *)) &equivalentIDs);
 
   FJALAR_DPRINTF("ENTER initializeGlobalVarsList() - %d\n",
@@ -1282,7 +1287,7 @@ void initializeFunctionTable()
   unsigned long num_functions_added = 0;
 
   FunctionTable =
-    genallocatehashtable((unsigned int (*)(void *)) & hashID,
+    genallocatehashtable(0,
                          (int (*)(void *,void *)) &equivalentIDs);
 
   for (i = 0; i < dwarf_entry_array_size; i++)
@@ -2392,12 +2397,6 @@ void extractOneVariable(VarList* varListPtr,
 
 
 // FunctionTable - hash table containing FunctionEntry entries
-
-// Super-trivial division hashing method - do nothing.  We could
-// improve upon this to increase efficiency, but it's ok for now
-unsigned int hashID(int ID) {
-  return ID;
-}
 
 // Super-trivial key comparison method -
 int equivalentIDs(int ID1, int ID2) {

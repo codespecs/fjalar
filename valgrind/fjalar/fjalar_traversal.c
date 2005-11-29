@@ -652,7 +652,7 @@ void visitVariable(VariableEntry* var,
     genfreehashtable(VisitedStructsTable);
     VisitedStructsTable = 0;
   }
-  VisitedStructsTable = genallocatehashtable((unsigned int (*)(void *)) &hashID,
+  VisitedStructsTable = genallocatehashtable(0,
                                              (int (*)(void *,void *)) &equivalentIDs);
 
   // Also initialize trace_vars_tree based on varOrigin and
