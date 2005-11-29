@@ -353,7 +353,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // tags are UNSIGNED INTEGERS so be careful of overflows
     // which result in negative numbers, which are useless
     // since Daikon ignores them.
-    int comp_number = DC_get_comp_number_for_var(varFuncInfo,
+    int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                  isEnter,
                                                  g_variableIndex);
     fprintf(decls_fp, "%d", comp_number);
@@ -543,11 +543,13 @@ static void printAllObjectPPTDecls() {
 
     tl_assert(cur_type);
 
-    // Only print out .decls for :::OBJECT and :::CLASS program points
-    // if there is at least 1 member function.  Otherwise, don't
-    // bother because object program points will never be printed out
-    // for this class in the .dtrace file.
+    // Only print out .decls for :::OBJECT program points if there is
+    // at least 1 member function.  Otherwise, don't bother because
+    // object program points will never be printed out for this class
+    // in the .dtrace file.  Also, only print it out if there is at
+    // least 1 member variable, or else there is no point.
     if ((cur_type->memberFunctionList && (cur_type->memberFunctionList->numElts > 0)) &&
+        (cur_type->memberVarList && (cur_type->memberVarList->numVars > 0)) &&
         cur_type->collectionName) {
       tl_assert(cur_type->collectionName);
 
@@ -568,7 +570,6 @@ static void printAllObjectPPTDecls() {
       fputs("\n", decls_fp);
 
       // TODO: What do we do about static member vars?
-      // Jeff says that we don't need :::CLASS program points anymore
     }
   }
 
