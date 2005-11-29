@@ -1176,10 +1176,18 @@ void visitSingleVar(VariableEntry* var,
   // Initialize these in a group later
   char disambigOverrideArrayAsPointer = 0;
   char derefSingleElement = 0;
-
+  char needToDerefCppRef = 0;
   TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
+
+  needToDerefCppRef = ((var->referenceLevels > 0) && (numDereferences == 0));
+
+  // Reset this counter to get C++ reference parameter variables to work properly:
+  if ((var->referenceLevels > 0) && (numDereferences == 1)) {
+    numDereferences = 0;
+  }
+
   layersBeforeBase = var->ptrLevels - numDereferences;
 
   // Special hack for strings:
@@ -1211,7 +1219,9 @@ void visitSingleVar(VariableEntry* var,
   disambigOverrideArrayAsPointer =
     (OVERRIDE_ARRAY_AS_POINTER == disambigOverride);
 
-  derefSingleElement = disambigOverrideArrayAsPointer;
+  // Remember to dereference a single element if we are dereferencing
+  // the contents of a C++ reference parameter:
+  derefSingleElement = (disambigOverrideArrayAsPointer || needToDerefCppRef);
 
 
   // Unless fjalar_output_struct_vars is on, don't perform any action
@@ -1219,13 +1229,19 @@ void visitSingleVar(VariableEntry* var,
   // substantive meaning for C programs.  We are only interested in
   // the fields of the struct, not the struct itself.
 
+  // For C++, do NOT output anything for reference parameter variables
+  // - e.g., "foo(int& a)" - because they are immutable and
+  // un-interesting pointer values.  Instead, we want to dereference
+  // one level of pointers and print the resulting value:
+
   // This means that anywhere inside of this 'if' statement, we should
   // be very careful about mutating state because different state may
   // be mutated based on whether fjalar_output_struct_vars is on,
   // which may lead to different-looking results.
-  if (fjalar_output_struct_vars ||
-      (!((layersBeforeBase == 0) &&
-         (var->varType->isStructUnionType)))) {
+  if (!needToDerefCppRef &&
+      (fjalar_output_struct_vars ||
+       (!((layersBeforeBase == 0) &&
+          (var->varType->isStructUnionType))))) {
 
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
@@ -1269,8 +1285,10 @@ void visitSingleVar(VariableEntry* var,
   // properly visited.  When we encounter a base struct variable, we
   // need to set DEREF_MORE_POINTERS because we need its member
   // variables to be properly visited:
-  if ((layersBeforeBase == 0) &&
-      (var->varType->isStructUnionType)) {
+  // Same thing with a C++ reference variable
+  if (needToDerefCppRef ||
+      ((layersBeforeBase == 0) &&
+       (var->varType->isStructUnionType))) {
     tResult = DEREF_MORE_POINTERS;
   }
 
@@ -1283,7 +1301,8 @@ void visitSingleVar(VariableEntry* var,
 
   // Dereference and keep on printing out derived variables until we
   // hit the base type:
-  if (layersBeforeBase > 0) {
+  // (Remember to dereference C++ reference parameter variables exactly ONCE)
+  if ((layersBeforeBase > 0) || needToDerefCppRef) {
 
     // 1.) Initialize pValue properly and call visitSingleVar() again
     // because we are dereferencing a single element:
@@ -1311,13 +1330,9 @@ void visitSingleVar(VariableEntry* var,
 
       // Push 1 symbol on stack to represent single elt. dereference:
 
-      // TODO: Re-factor all of this repair tool stuff:
-      //      if (kvasir_repair_format) {
-      //        stringStackPush(fullNameStack, &fullNameStackSize, STAR);
-      //      }
-      //      else {
-      stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
-        //      }
+      if (!((var->referenceLevels > 0) && (numDereferences == 0))) {
+        stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
+      }
 
       visitSingleVar(var,
                      numDereferences + 1,
@@ -1332,7 +1347,9 @@ void visitSingleVar(VariableEntry* var,
                      isEnter);
 
       // Pop 1 symbol off
-      stringStackPop(fullNameStack, &fullNameStackSize);
+      if (!((var->referenceLevels > 0) && (numDereferences == 0))) {
+        stringStackPop(fullNameStack, &fullNameStackSize);
+      }
     }
     // 2.) Sequence dereference (can either be static or dynamic
     // array).  We need to initialize pValueArray and numElts
