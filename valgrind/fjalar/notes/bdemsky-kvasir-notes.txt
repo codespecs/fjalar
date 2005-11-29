@@ -1,0 +1,787 @@
+Notes from meeting with Brian Demsky on 2005-07-26 regarding his
+experiences with Kvasir on Freeciv and CTAS
+
+Created: 2005-07-26 by Philip J. Guo
+Last Modified: 2005-07-28
+
+
+Perhaps it will help to only compile part of the program with debug. info.???
+
+crap readelf for CTAS is 221 MB, that's freaking humoungous!!!  I think it's taking an ass-long time processing DWARF info.
+
+It seems to be our fault:
+  link_array_entries_to_members() is a real time-hog
+
+especially:
+  determineTypedefNameForEntry()
+
+I noticed that findFunctionInfoByNameSlow() really causes a helluva a lot of slowdown at translation-time.  I guess this is like O(n^2) or something like that since the names are not the keys.  Perhaps we'll suck it up and add another hashtable where the names are keys.  I noticed that when I used findFunctionInfoByAddrSlow (which didn't end up working in all cases, unfortunately), it was a bit faster ... perhaps this is a point where we can optimize, but is it worth the trouble?
+
+
+
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+*(#$&()*@#$&*(@#$@&#&$*(
+
+
+IMMEDIATE TO-DO's:
+
+
+VERY IMPORTANT - DON'T USE FREAKING OPTIMIZATIONS! IT SCREWS UP FUNCTION ENTRANCE/EXIT TRACKING
+
+See everything worked just fine before ... was it my decision to only throw Daikon names into the fn_entry structs instead of whatever name Valgrind fed to me?  Maybe???
+This crap worked just fine on the Kvasir tests in the old days when we did name matching without the special case for "main" or ')', so look closer into what we changed.
+
+
+* Add FunctionNamesTest (is that the right name?) to the Kvasir test
+  suite as a C++ test because it exercises interesting qualities of
+  function names such as file-static functions and C++ mangled names
+  (Not checked-in yet)
+
+* Write progress report:
+
+Accomplishments - added section to Daikon manual on selective tracing
+Fixed bugs and got ppt-list-file and var-list-file to play well together
+Optimized ppt-list-file program point pruning to be done at translation-time and not run-time
+Fixed Brian's map.tiles bug where it wasn't properly finding array sizes for arrays of partially-init structs
+
+* Remember to get stuff done for August 1st Daikon release -
+  checked-in by Sunday night - update the CHANGES file
+
+* Perhaps add some regression tests with var and ppt list files???
+  Start with FunctionNamesTest???
+
+* Acknowledge that this hasn't been well-tested with C++ classes yet
+
+* Remember that DisambigTest hasn't been checked into CVS because
+  dtrace-diff.pl has that one-line fix which I haven't checked-in yet
+  checked-it in! - CHECKED-IN
+
+* Ummmm, .disambig files are generating duplicates now for structs
+  such as usertype.TestBuffer - FIXED
+
+What I wrote in CHANGES:
+
+  User changes:
+
+    The selective program point and variable tracing functionality
+    (--ppt-list-file and --var-list-file options, respectively) now
+    work more efficiently and reliably than before, and can integrate
+    with the pointer type disambiguation functionality (--disambig).
+
+    Grant the user the ability to comment-out lines in the program point
+    and variable list files by placing a '#' character at the beginning
+    of lines.
+
+    Added a --smart-disambig option to allow Kvasir to heuristically
+    infer pointer type information when generating a disambiguation file.
+
+  Documentation Changes
+
+    Added "Tracing only part of a program" and "Using pointer type
+    disambiguation with partial program tracing" entries to the Kvasir
+    section of the Daikon User Manual.
+
+
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+@*($&*()@#$&*()@#$&*(@#$
+
+
+Upshot:
+-------
+
+In order for Kvasir to run on large programs, the disambiguation, var
+list, and ppt list handling must be very efficient.  This is because
+it's not practical to do full program traces of these huge programs.
+Thus, I need to invest more time into improving these aspects of
+Kvasir which, up until now, have been sitting in a dark corner
+somewhere with very little testing or attention.
+
+
+General issues:
+---------------
+
+1.)
+
+It is unclear how to get the var list and disambig files to work
+together.  What should the variables be named in the var list file?
+e.g., foo[] vs. *foo?  From my recollection (need to verify, though),
+the *foo naming scheme is never used in the disambig files.  It is
+only used in the .decls/.dtrace for more aesthetically-pleasing output
+to Daikon.  Well, the reason why *foo isn't in the disambig file is
+because it's not a POINTER variable.  Only pointer variables appear in
+the .disambig.
+
+We need to develop reasonable semantics for working with .disambig and
+var/ppt list files, get it implemented, tested, and DOCUMENTED, and
+hopefully get something working on Freeciv and CTAS.
+
+One example semantics:
+- when you use --disambig AND --dump-var-file, the var file generated
+should match .disambig names, and when you use --var-list-file again,
+you should use the SAME disambig file --- yes, this seems to work fine
+- I need to document it now
+
+It may take quite a while to create .disambig files when we are
+currently creating them at the END of program execution and trying to
+be 'smart' about it and predict whether each pointer is an 'A' or a
+'P'.  Perhaps this isn't that bad when you only specify a small number
+of program points using the --ppt-list-file option.  Verify that it
+only produces disambig entries for certain selected program points
+under that circumstance.  Perhaps have the default behavior for
+disambig file generation create the file at the BEGINNING of execution
+and then PUNT, which eliminates the 'smartness' but with a marked
+increase in speed.  Also have like a --create-smart-disambig option
+that tries to do the 'smart' thing.
+
+
+2.)
+
+It seems like it takes a really long time to produce var and ppt list
+files at start-up (using --dump-ppt-file and --dump-var-file) and also
+to process those files, according to Brian.  This is pretty slow for
+Freeciv and HORRENDOUSLY slow for CTAS.  Investigate what accounts for
+this horrendous start-up time.
+
+Hmmm, as a side note, what if you use --dump-var-file with
+--ppt-list-file?  Does it only dump the variables at program points
+listed in --ppt-list-file?  It should do that, if things are working
+properly.
+
+
+3.)
+
+In order to greatly speed up Kvasir when running with a program point
+file by omitting program points at translation and not runtime, I have
+chosen to append the start PC address in front of the full Daikon name
+of the function.  Brian thinks that this is annoying because if you
+recompile the program and the start PC address changes, then you need
+to re-generate a new program point file, which is a pain.  I need to
+think of an efficient way to get the translation-time pruning of
+program points while still only using their names.  (Note that there
+is no demangling for C programs, but there is still the problem of
+non-unique function names for file-static functions.)
+
+
+Freeciv:
+--------
+
+Brian runs Freeciv by creating 7 AI players and having the computer
+play a game with all of those players.  Here is what he does:
+
+1.) First, we must set up the environment by setting the FREECIV_PATH
+environment variable:
+
+For my version in parsnip scratch, do the following:
+
+FREECIV_PATH=/scratch/pgbovine/freeciv/data/:./data
+export FREECIV_PATH
+
+(The 'export' step is required in BASH, I guess)
+
+2.) Now start up ./civserver in the server sub-directory and type in
+the following commands (not the stuff preceded by '#'):
+
+set aifill=7		# Set the number of players
+set timeout=-1		# Don't wait to start
+set seed=532532
+set randseed=3525
+set endyear=-2500	# The more negative, the shorter the game
+create player1
+hard
+start
+
+
+Use the var and ppt files listed in the Appendix to see what options
+with which to run Kvasir.
+
+
+Ok, here is the main problem.  Look at map.tiles[] in the .dtrace
+file.  It should have 4000 elements (80 x 50) because the size is the
+product of map.xsize and map.ysize.  However, Kvasir only shows that
+it is a 1-element array.  This is a major problem.
+
+However, this does the correct thing on a much smaller test program
+that Brian wrote which read in data from a file and generated a 'map'
+data structure.
+
+... but Brian didn't write an even more trivial program that
+dynamically calloc'ed a large array of tiles to see if Kvasir can read
+all of their entries and fields as 0's.
+
+This data structure is a global variable named 'map' of type 'civ_map'
+as defined in 'freeciv/common/map.h'
+
+The tiles array is dynamically-allocated in map_allocate() in map.c so
+Memcheck should provide the correct redzones, right?
+
+One thing I noticed about the Makefiles is that -O2 optimization is on
+for all relevant sub-directories (server, ai, intl, common).   Try
+turning -O2 off and see if that helps.
+
+Look at the 'city' field within map.tiles[].  This is a perfect
+application for disambiguation information because each tile should
+have at most one city.  See if disambiguation works properly with
+this.
+
+I've tried to look at map.tiles[] within GDB, and at the points where
+we are stopping, it seems like there is real content there.  The first
+80 elements of the 'terrain' field should be T_ARCTIC because that
+represents the top-most layer of the map.
+
+Here is how you build maptest:
+
+gcc -I. -I../common -I../ai -I../intl -g -Wall  -o maptest maptest.c ../common/libcivcommon.a ../ai/libcivai.a ./libcivserver.a  ../common/libcivcommon.a ../ai/libcivai.a ./libcivserver.a -lreadline   -lm -lstdc++ -lz
+
+
+Ok, when I ran Kvasir on the tiny test program maptest.c that I wrote,
+it did the correct thing and read the correct size of map.tiles[].  I
+used calloc there instead of fc_malloc.  Ok, now I'm gonna use
+fc_malloc to mimic what Freeciv actually does.
+
+Hmmm, perhaps the use of fc_malloc to do the dynamic memory allocation
+within map_allocate() in map.c screws us up because it does something
+funky and interferes with normal Memcheck behavior.
+
+This may be the culprit because when I used fc_malloc with maptest.c,
+Kvasir was NOT able to properly find the size of the map.tiles[]
+array.
+
+Perhaps because fc_malloc is a wrapper for normal malloc, somehow
+Valgrind doesn't hook onto it properly and do the redzones?  However,
+that shouldn't really be the case because fc_malloc does call regular
+ole' malloc.
+
+Yeah, I think the fc_malloc thing may be a red herring since there is
+the same bug with regular malloc() (but calloc() works fine).  Kvasir
+is probably simply getting the array sizes confused.
+
+Ok, here is what works and doesn't:
+
+fc_malloc and repeated tile_init() calls - NO (this is what Freeciv
+does)
+malloc and repeated tile_init() calls - NO (this is what Freeciv does)
+calloc and repeated tile_init() calls - YES
+malloc and memset to 0 - YES
+fc_malloc and memset to 0 - YES
+
+
+Ok, I think I may see the problem.  When you memset() to zero
+EVERYTHING out, EVERYTHING in the contiguous block is considered as
+initialized (V-bits set), and Memcheck prods V-bits as well as A-bits
+in order to read only initialized members of arrays.  When you simply
+use tile_init() to initialize just the tiles, not all fields in every
+tile is initialized (tile.continent and tile.movecost[] are NOT
+initialized), thereby creating 'holes' of non-set V-bits in the shadow
+memory.  When Memcheck probes the V-bits, it will only find that ONE
+element is valid - the first one - even though ALL elements are
+allocated.
+
+Possible solutions:
+
+1.) Super easy way - say that a struct is initialized if at least one
+byte within it is initialized
+
+2.) Slightly more detailed way - iterate through all members of a
+struct and say that a struct is initialized if at least one MEMBER
+within it is initialized (would this be recursive for structs within
+structs?  This sounds like more trouble than it's worth).
+
+I opt for 1.) for now since it's just easier to implement.
+
+
+CTAS:
+-----
+
+CTAS is located at /a/ctas/ctas/realtime_procs/comm_mgr/ on
+repair.csail.mit.edu and cannot be moved due to security reasons.
+
+
+In order to get the CTAS GUI to start running, you need to check the
+BOX under 6 little checkboxes on the top, the box with the first
+'File:' box located underneath it.  Also there is a 'Time rate:' box
+that controls how fast it runs.  To see whether we are hitting the
+program points that we want, run tail on .dtrace repeatedly to see
+when these program points have been exercised and data has been spewed
+out.
+
+Basically, the problem with CTAS is the inability to use disambig with
+var lists.
+
+More CTAS instructions (from Brian's emails):
+
+
+What variables and ppts to track in CTAS:
+----------------------------
+instrumentation points:
+
+check_entry_to_landed_zone
+all variables reachable from:
+ac->flight_plan
+
+initialize_new_aircraft
+all variables reachable from:
+(fp)
+
+initialize_old_aircraft
+all variables reachable from:
+(fp)
+-----------------------------
+
+
+How Brian got CTAS to run:
+--------------------------------------------
+1. Setup paths
+export PATH=/root/research/invariants/scripts:$PATH
+export DAIKONDIR=/root/research/invariants
+export JDKDIR=/usr/local/jdk1.5.0_01/
+export JDK5DIR=/usr/local/jdk1.5.0_01/
+export INV=/root/research/invariants
+source /root/research/invariants/scripts/daikon.bashrc
+export
+CLASSPATH=$CLASSPATH:/root/research/invariants/java/lib/java-getopt.jar
+export CLASSPATH=$CLASSPATH:/root/research/invariants/java/lib/junit.jar
+export CLASSPATH=$CLASSPATH:/root/research/invariants/java/
+
+2. Run kvasir on communication manager with the following options:
+
+/root/research/invariants/scripts/kvasir-dtrace --ppt-list-file=ppt
+--var-list-file=var ./cm -data ZFW_DFW
+
+3. Build daikon
+make
+
+4. Run daikon
+java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.unary.scalar.OneOfScalar.size=9  --config_option daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option daikon.inv.ternary.threeScalar.FunctionBinary.enabled=false  --config_option daikon.PptSplitter.split_bi_implications=true --config_option daikon.PrintInvariants.repair_debug=true --format=repair cm.dtrace ../splitnothing.spinfo
+
+--------------------------------------------
+
+
+Possible application for comparability and anecdote for our paper
+(CTAS is a million-line program so it will be VERY impressive if
+comparability works on it, and even more impressive if it gets useful
+results):
+
+CTAS has a special universal null value (-999,999) so that there are a
+bunch of spurious invariants generated without comparability
+information - e.g. (departure_time == departure_runway) during
+arriving flights because all departure fields are uninitialized so
+they are all set to some sentinel value representing uninit.
+
+Try to get comparability to work with CTAS and see how much slower it
+is.  Remember to heavily restrict output with ppt and var list
+files!!!
+
+
+
+Appendix:
+---------
+
+Use the following files for Freeciv
+(omit "--- [BEGIN|END] FILE ---" lines):
+
+Use the following ppt list file:
+--- BEGIN FILE ---
+srv_main.c.begin_turn()
+--- END FILE ---
+
+
+Use the following var list file:
+--- BEGIN FILE ---
+----SECTION----
+globals
+/map
+/map.xsize
+/map.ysize
+/map.seed
+/map.riches
+/map.is_earth
+/map.huts
+/map.landpercent
+/map.grasssize
+/map.swampsize
+/map.deserts
+/map.mountains
+/map.riverlength
+/map.forestsize
+/map.generator
+/map.tinyisles
+/map.separatepoles
+/map.num_start_positions
+/map.fixed_start_positions
+/map.have_specials
+/map.have_huts
+/map.have_rivers_overlay
+/map.num_continents
+/map.tiles
+/map.tiles[]
+/map.tiles[].terrain
+/map.tiles[].special
+/map.tiles[].city
+/map.tiles[].city[]
+/map.tiles[].city[].id
+/map.tiles[].city[].owner
+/map.tiles[].city[].x
+/map.tiles[].city[].y
+/map.tiles[].city[].name
+/map.tiles[].city[].size
+/map.tiles[].city[].ppl_happy[0]
+/map.tiles[].city[].ppl_happy[0][]
+/map.tiles[].city[].ppl_happy[1]
+/map.tiles[].city[].ppl_happy[1][]
+/map.tiles[].city[].ppl_happy[2]
+/map.tiles[].city[].ppl_happy[2][]
+/map.tiles[].city[].ppl_happy[3]
+/map.tiles[].city[].ppl_happy[3][]
+/map.tiles[].city[].ppl_happy[4]
+/map.tiles[].city[].ppl_happy[4][]
+/map.tiles[].city[].ppl_content[0]
+/map.tiles[].city[].ppl_content[0][]
+/map.tiles[].city[].ppl_content[1]
+/map.tiles[].city[].ppl_content[1][]
+/map.tiles[].city[].ppl_content[2]
+/map.tiles[].city[].ppl_content[2][]
+/map.tiles[].city[].ppl_content[3]
+/map.tiles[].city[].ppl_content[3][]
+/map.tiles[].city[].ppl_content[4]
+/map.tiles[].city[].ppl_content[4][]
+/map.tiles[].city[].ppl_unhappy[0]
+/map.tiles[].city[].ppl_unhappy[0][]
+/map.tiles[].city[].ppl_unhappy[1]
+/map.tiles[].city[].ppl_unhappy[1][]
+/map.tiles[].city[].ppl_unhappy[2]
+/map.tiles[].city[].ppl_unhappy[2][]
+/map.tiles[].city[].ppl_unhappy[3]
+/map.tiles[].city[].ppl_unhappy[3][]
+/map.tiles[].city[].ppl_unhappy[4]
+/map.tiles[].city[].ppl_unhappy[4][]
+/map.tiles[].city[].ppl_angry[0]
+/map.tiles[].city[].ppl_angry[0][]
+/map.tiles[].city[].ppl_angry[1]
+/map.tiles[].city[].ppl_angry[1][]
+/map.tiles[].city[].ppl_angry[2]
+/map.tiles[].city[].ppl_angry[2][]
+/map.tiles[].city[].ppl_angry[3]
+/map.tiles[].city[].ppl_angry[3][]
+/map.tiles[].city[].ppl_angry[4]
+/map.tiles[].city[].ppl_angry[4][]
+/map.tiles[].city[].ppl_elvis
+/map.tiles[].city[].ppl_scientist
+/map.tiles[].city[].ppl_taxman
+/map.tiles[].city[].trade[0]
+/map.tiles[].city[].trade[0][]
+/map.tiles[].city[].trade[1]
+/map.tiles[].city[].trade[1][]
+/map.tiles[].city[].trade[2]
+/map.tiles[].city[].trade[2][]
+/map.tiles[].city[].trade[3]
+/map.tiles[].city[].trade[3][]
+/map.tiles[].city[].trade_value[0]
+/map.tiles[].city[].trade_value[0][]
+/map.tiles[].city[].trade_value[1]
+/map.tiles[].city[].trade_value[1][]
+/map.tiles[].city[].trade_value[2]
+/map.tiles[].city[].trade_value[2][]
+/map.tiles[].city[].trade_value[3]
+/map.tiles[].city[].trade_value[3][]
+/map.tiles[].city[].food_prod
+/map.tiles[].city[].food_surplus
+/map.tiles[].city[].shield_prod
+/map.tiles[].city[].shield_surplus
+/map.tiles[].city[].trade_prod
+/map.tiles[].city[].corruption
+/map.tiles[].city[].tile_trade
+/map.tiles[].city[].shield_bonus
+/map.tiles[].city[].tax_bonus
+/map.tiles[].city[].science_bonus
+/map.tiles[].city[].luxury_total
+/map.tiles[].city[].tax_total
+/map.tiles[].city[].science_total
+/map.tiles[].city[].food_stock
+/map.tiles[].city[].shield_stock
+/map.tiles[].city[].pollution
+/map.tiles[].city[].incite_revolt_cost
+/map.tiles[].city[].is_building_unit
+/map.tiles[].city[].currently_building
+/map.tiles[].city[].improvements
+/map.tiles[].city[].improvements[]
+/map.tiles[].city[].effects
+/map.tiles[].city[].worklist
+/map.tiles[].city[].city_map[0]
+/map.tiles[].city[].city_map[0][]
+/map.tiles[].city[].city_map[1]
+/map.tiles[].city[].city_map[1][]
+/map.tiles[].city[].city_map[2]
+/map.tiles[].city[].city_map[2][]
+/map.tiles[].city[].city_map[3]
+/map.tiles[].city[].city_map[3][]
+/map.tiles[].city[].city_map[4]
+/map.tiles[].city[].city_map[4][]
+/map.tiles[].city[].units_supported
+/map.tiles[].city[].steal
+/map.tiles[].city[].did_buy
+/map.tiles[].city[].did_sell
+/map.tiles[].city[].is_updated
+/map.tiles[].city[].turn_last_built
+/map.tiles[].city[].turn_changed_target
+/map.tiles[].city[].changed_from_id
+/map.tiles[].city[].changed_from_is_unit
+/map.tiles[].city[].disbanded_shields
+/map.tiles[].city[].caravan_shields
+/map.tiles[].city[].before_change_shields
+/map.tiles[].city[].anarchy
+/map.tiles[].city[].rapture
+/map.tiles[].city[].was_happy
+/map.tiles[].city[].airlift
+/map.tiles[].city[].original
+/map.tiles[].city[].city_options
+/map.tiles[].city[].synced
+/map.tiles[].city[].info_units_supported
+/map.tiles[].city[].info_units_present
+/map.tiles[].city[].ai
+/map.tiles[].units
+/map.tiles[].units[].list
+/map.tiles[].known
+/map.tiles[].sent
+/map.tiles[].assigned
+/map.tiles[].worked
+/map.tiles[].worked[]
+/map.tiles[].worked[].id
+/map.tiles[].worked[].owner
+/map.tiles[].worked[].x
+/map.tiles[].worked[].y
+/map.tiles[].worked[].name
+/map.tiles[].worked[].size
+/map.tiles[].worked[].ppl_happy[0]
+/map.tiles[].worked[].ppl_happy[0][]
+/map.tiles[].worked[].ppl_happy[1]
+/map.tiles[].worked[].ppl_happy[1][]
+/map.tiles[].worked[].ppl_happy[2]
+/map.tiles[].worked[].ppl_happy[2][]
+/map.tiles[].worked[].ppl_happy[3]
+/map.tiles[].worked[].ppl_happy[3][]
+/map.tiles[].worked[].ppl_happy[4]
+/map.tiles[].worked[].ppl_happy[4][]
+/map.tiles[].worked[].ppl_content[0]
+/map.tiles[].worked[].ppl_content[0][]
+/map.tiles[].worked[].ppl_content[1]
+/map.tiles[].worked[].ppl_content[1][]
+/map.tiles[].worked[].ppl_content[2]
+/map.tiles[].worked[].ppl_content[2][]
+/map.tiles[].worked[].ppl_content[3]
+/map.tiles[].worked[].ppl_content[3][]
+/map.tiles[].worked[].ppl_content[4]
+/map.tiles[].worked[].ppl_content[4][]
+/map.tiles[].worked[].ppl_unhappy[0]
+/map.tiles[].worked[].ppl_unhappy[0][]
+/map.tiles[].worked[].ppl_unhappy[1]
+/map.tiles[].worked[].ppl_unhappy[1][]
+/map.tiles[].worked[].ppl_unhappy[2]
+/map.tiles[].worked[].ppl_unhappy[2][]
+/map.tiles[].worked[].ppl_unhappy[3]
+/map.tiles[].worked[].ppl_unhappy[3][]
+/map.tiles[].worked[].ppl_unhappy[4]
+/map.tiles[].worked[].ppl_unhappy[4][]
+/map.tiles[].worked[].ppl_angry[0]
+/map.tiles[].worked[].ppl_angry[0][]
+/map.tiles[].worked[].ppl_angry[1]
+/map.tiles[].worked[].ppl_angry[1][]
+/map.tiles[].worked[].ppl_angry[2]
+/map.tiles[].worked[].ppl_angry[2][]
+/map.tiles[].worked[].ppl_angry[3]
+/map.tiles[].worked[].ppl_angry[3][]
+/map.tiles[].worked[].ppl_angry[4]
+/map.tiles[].worked[].ppl_angry[4][]
+/map.tiles[].worked[].ppl_elvis
+/map.tiles[].worked[].ppl_scientist
+/map.tiles[].worked[].ppl_taxman
+/map.tiles[].worked[].trade[0]
+/map.tiles[].worked[].trade[0][]
+/map.tiles[].worked[].trade[1]
+/map.tiles[].worked[].trade[1][]
+/map.tiles[].worked[].trade[2]
+/map.tiles[].worked[].trade[2][]
+/map.tiles[].worked[].trade[3]
+/map.tiles[].worked[].trade[3][]
+/map.tiles[].worked[].trade_value[0]
+/map.tiles[].worked[].trade_value[0][]
+/map.tiles[].worked[].trade_value[1]
+/map.tiles[].worked[].trade_value[1][]
+/map.tiles[].worked[].trade_value[2]
+/map.tiles[].worked[].trade_value[2][]
+/map.tiles[].worked[].trade_value[3]
+/map.tiles[].worked[].trade_value[3][]
+/map.tiles[].worked[].food_prod
+/map.tiles[].worked[].food_surplus
+/map.tiles[].worked[].shield_prod
+/map.tiles[].worked[].shield_surplus
+/map.tiles[].worked[].trade_prod
+/map.tiles[].worked[].corruption
+/map.tiles[].worked[].tile_trade
+/map.tiles[].worked[].shield_bonus
+/map.tiles[].worked[].tax_bonus
+/map.tiles[].worked[].science_bonus
+/map.tiles[].worked[].luxury_total
+/map.tiles[].worked[].tax_total
+/map.tiles[].worked[].science_total
+/map.tiles[].worked[].food_stock
+/map.tiles[].worked[].shield_stock
+/map.tiles[].worked[].pollution
+/map.tiles[].worked[].incite_revolt_cost
+/map.tiles[].worked[].is_building_unit
+/map.tiles[].worked[].currently_building
+/map.tiles[].worked[].improvements
+/map.tiles[].worked[].improvements[]
+/map.tiles[].worked[].effects
+/map.tiles[].worked[].worklist
+/map.tiles[].worked[].city_map[0]
+/map.tiles[].worked[].city_map[0][]
+/map.tiles[].worked[].city_map[1]
+/map.tiles[].worked[].city_map[1][]
+/map.tiles[].worked[].city_map[2]
+/map.tiles[].worked[].city_map[2][]
+/map.tiles[].worked[].city_map[3]
+/map.tiles[].worked[].city_map[3][]
+/map.tiles[].worked[].city_map[4]
+/map.tiles[].worked[].city_map[4][]
+/map.tiles[].worked[].units_supported
+/map.tiles[].worked[].steal
+/map.tiles[].worked[].did_buy
+/map.tiles[].worked[].did_sell
+/map.tiles[].worked[].is_updated
+/map.tiles[].worked[].turn_last_built
+/map.tiles[].worked[].turn_changed_target
+/map.tiles[].worked[].changed_from_id
+/map.tiles[].worked[].changed_from_is_unit
+/map.tiles[].worked[].disbanded_shields
+/map.tiles[].worked[].caravan_shields
+/map.tiles[].worked[].before_change_shields
+/map.tiles[].worked[].anarchy
+/map.tiles[].worked[].rapture
+/map.tiles[].worked[].was_happy
+/map.tiles[].worked[].airlift
+/map.tiles[].worked[].original
+/map.tiles[].worked[].city_options
+/map.tiles[].worked[].synced
+/map.tiles[].worked[].info_units_supported
+/map.tiles[].worked[].info_units_present
+/map.tiles[].worked[].ai
+/map.tiles[].continent
+/map.tiles[].move_cost
+/map.start_positions
+/map.start_positions[]
+/map.start_positions[].x
+/map.start_positions[].y
+--- END FILE ---
+
+
+
+
+
+-----------------------------------------------
+Ok, report to Brian about progress - 2005-08-01
+-----------------------------------------------
+
+Hi Brian,
+
+I've dedicated the past week to fixing up Kvasir so that it now works significantly better on large target programs, focusing on your requests regarding Freeciv and CTAS.  Here is what I have accomplished:
+
+1.) Fixed the map.tiles[] array size bug in Freeciv.
+
+2.) Made an optimization to greatly speed-up the initialization time of Kvasir.  Now it starts up in a reasonable amount of time (several seconds) even on CTAS whereas it used to take FOREVER (I definitely shared your frustration when trying to run CTAS and having to wait a long time, so I decided to hunt down and fix the problem).
+
+3.) Refined the semantics for having selective program point tracking, variable tracking, and pointer type disambiguation work together.  I have documented the behavior in detail in the following sections of the Daikon User Manual under the Kvasir section:
+
+* Tracing only part of a program
+* Using pointer type disambiguation with partial program tracing
+
+To get the latest version of the Daikon User Manual, go to the
+research/invariants/doc directory and run 'make'.  The manual is daikon.html.  Please read these sections very carefully, as they describe how to properly utilize the --ppt-list-file, --var-list-file, and --disambig command-line options together.
+
+4.) Successfully ran CTAS with the instructions you provided to track only selected program points and variables:
+
+----------------------------
+instrumentation points:
+
+check_entry_to_landed_zone
+all variables reachable from:
+ac->flight_plan
+
+initialize_new_aircraft
+all variables reachable from:
+(fp)
+
+initialize_old_aircraft
+all variables reachable from:
+(fp)
+-----------------------------
+
+Here is what I did to get CTAS to run with these guidelines (it actually ran in a reasonable amount of time, so I was excited!):
+
+All files I reference are located here:
+http://people.csail.mit.edu/pgbovine/bdemsky/
+
+
+1. Login to repair as pgbovine and cd to /a/pgbovine/ctas/ctas/realtime_procs/comm_mgr (You placed a copy here for me because I don't have write permissions for your original copy)
+
+2.) Run CTAS to first create a program point list (ppt-list) file of all program points so that I can edit it to only include the 3 desired ones.
+
+kvasir-dtrace --dump-ppt-file=cm.ppts ./cm -data ZFW_DFW
+
+This took 12 seconds and produced cm.ppts.  I edited cm.ppts to only include these three program points:
+
+update_aircraft.c.initialize_new_aircraft()
+update_aircraft.c.initialize_old_aircraft()
+update_aircraft.c.check_entry_to_landed_zone()
+
+3.) Run CTAS again with cm.ppts and --disambig to generate the disambiguation file (this is fast because entries are only generated for globals and those 3 program points as opposed to all program points):
+
+kvasir-dtrace --ppt-list-file=cm.ppts --disambig ./cm -data ZFW_DFW
+
+Remember that --disambig first tries to READ IN a file named cm.disambig, but if one doesn't exist, tries to CREATE one.  So make sure cm.disambig doesn't exist, or if you want, use the --disambig-file option.  Right before the program exits, it should say:
+
+Begin generating disambiguation file: "./cm.disambig" ...
+Done generating disambiguation file: "./cm.disambig"
+
+Now you have a nice .disambig file to edit.  I'm going to edit it to say that the 'ac' and 'fp' parameters are pointers to one element and not arrays, which is what you originally wanted.  I deleted all other entries besides the ones for those parameters because they are not relevant.  I have linked to the file as cm.disambig.
+
+5.) Now we are going to generate the variable list file using the .disambig file that we have just generated as a guide.  This ensures that the variable list file will have the correct variable names according to disambiguation so that it can properly work together with the .disambig file.  Run:
+
+kvasir-dtrace --ppt-list-file=cm.ppts --disambig --dump-var-file=cm.vars ./cm -data ZFW_DFW
+
+Remember that because cm.disambig already exists, --disambig will attempt to now read it in and use it.  After the program exits, cm.vars is the variable list file with the proper names for use with the .disambig file.
+
+Since you said that you were only interested in all variables reachable from (fp) or ac->flight_plan, I edited cm.vars (and linked to it) to only include those entries.
+
+6.) Now for the real action!  We are going to combine everything we have just created to perform the selective tracing of CTAS!
+
+kvasir-dtrace --ignore-globals --disambig --ppt-list-file=cm.ppts --var-list-file=cm.vars ./cm -data ZFW_DFW
+
+
+I have included --ignore-globals to speed things up even more since we don't care about globals at all anyways.  Notice how we are using cm.ppts, cm.vars, and cm.disambig together.  Let the program run and the GUI should start within a few minutes.
+
+Click the partially-hidden button to start the simulation, set the Time rate higher (I used 12.000X), and you should see the .dtrace file start to fill up.
+
+When the program terminates, you should see the results that you want (hopefully).  I have linked to my example trace file as cm.dtrace.
+
+
+7.) I successfully managed to run Daikon on cm.dtrace using a subset of your options:
+
+java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.unary.scalar.OneOfScalar.size=9  --config_option daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option daikon.inv.ternary.threeScalar.FunctionBinary.enabled=false cm.dtrace
+
+
+
+From now on, I will have to devote the majority of my time to the comparability experiments and paper that Mike wants me to do, but if you have questions about what I have just mentioned, please feel free to ask.
+
+
+Philip
+
+
+P.S. Remember that Kvasir doesn't play well with optimizations (especially when tracking function entries and exits), so try to turn them off if possible.
