@@ -246,10 +246,8 @@ void generateDisambigFile() {
     fputs(cur_entry->collectionName, disambig_fp);
     fputs("\n", disambig_fp);
 
-    // TODO: Re-implement:
-    //    visitClassMemberVariables(cur_entry,
-    //                              0,
-    //                              &printDisambigAction);
+    visitClassMembersNoValues(cur_entry,
+                              &printDisambigAction);
 
     fputs("\n", disambig_fp);
   }

@@ -70,6 +70,22 @@ char* stringStackPop(char** stringStack, int* pStringStackSize);
 void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
 
 
+
+void visitClassMembersNoValues(TypeEntry* class,
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char));
+
 // Takes a TypeEntry* and (optionally, a pointer to its memory
 // location), and traverses through all of the members of the
 // specified class (or struct/union).  This should also traverse
