@@ -89,7 +89,20 @@ void visitClassMemberVariables(TypeEntry* class,
                                                                 void**,
                                                                 UInt,
                                                                 FunctionEntry*,
-                                                                char));
+                                                                char),
+                               VariableOrigin varOrigin,
+                               char* trace_vars_tree,
+                               // The number of structs we have dereferenced for
+                               // a particular call of visitVariable(); Starts at
+                               // 0 and increments every time we hit a variable
+                               // which is a base struct type
+                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
+                               UInt numStructsDereferenced,
+                               // These uniquely identify the program point
+                               FunctionEntry* varFuncInfo,
+                               char isEnter,
+                               TraversalResult tResult);
+
 
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables

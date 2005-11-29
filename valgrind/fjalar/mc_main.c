@@ -1958,14 +1958,17 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 
 void TL_(pre_clo_init)(void)
 {
-   VG_(details_name)            ("fjalar");
+   VG_(details_name)            ("kvasir");
    /* This next line is automatically updated by the toplevel Daikon
       distribution Makefile; be careful with its formatting -SMcC */
    VG_(details_version)         ("4.1.7");
-   VG_(details_description)     ("Fjalar, a dynamic analysis framework for C/C++ programs");
+   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool");
    VG_(details_copyright_author)(
       "Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group");
    VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
+
+   // PG - customize the fields above for each Fjalar tool
+
    VG_(details_avg_translation_sizeB) ( 370 );
 
    VG_(basic_tool_funcs)          (TL_(post_clo_init),
