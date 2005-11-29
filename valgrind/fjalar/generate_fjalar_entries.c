@@ -501,6 +501,8 @@ void initializeAllFjalarData()
   // FunctionTable have already been initialized:
   initMemberFuncs();
 
+  // Run after initializeFunctionTable() so that function demangled
+  // names are available if necessary:
   updateAllGlobalVariableNames();
 
   // Initialize all constructors and destructors by using a heuristic
@@ -512,6 +514,7 @@ void initializeAllFjalarData()
   // Run this after everything else that deal with entries in
   // FunctionTable:
   initFunctionFjalarNames();
+
 
   FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
               data_section_size, data_section_addr,
@@ -1089,6 +1092,7 @@ static void updateAllGlobalVariableNames() {
        curNode != NULL;
        curNode = curNode->next) {
     FunctionEntry* var_func = 0;
+    char* name_to_use = 0;
 
     curVar = curNode->var;
     tl_assert(curVar->isGlobal);
@@ -1123,10 +1127,16 @@ static void updateAllGlobalVariableNames() {
                                              (void*)curVar->functionStartPC);
 
       tl_assert(var_func);
-      tl_assert(var_func->name);
+
+      // Use the demangled name of the function (if available) to
+      // disambiguate in the presence of overloading:
+      name_to_use = var_func->demangled_name ?
+        var_func->demangled_name : var_func->name;
+
+      tl_assert(name_to_use);
 
       globalName = VG_(calloc)(VG_(strlen)(loc_part) + 1 +
-                               VG_(strlen)(var_func->name) + 1 + 1 +
+                               VG_(strlen)(name_to_use) + 1 + 1 +
                                VG_(strlen)(curVar->name) + 1, sizeof(*globalName));
     }
     else {
@@ -1142,7 +1152,7 @@ static void updateAllGlobalVariableNames() {
 
     if (curVar->functionStartPC) {
       VG_(strcat)(globalName, "@");
-      VG_(strcat)(globalName, var_func->name);
+      VG_(strcat)(globalName, name_to_use);
 
       for (p = globalName; *p; p++) {
         if (!isalpha(*p) && !isdigit(*p) && *p != '/' && *p != '_' && *p != '@')
