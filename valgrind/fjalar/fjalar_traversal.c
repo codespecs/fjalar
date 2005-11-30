@@ -1320,6 +1320,8 @@ void visitSingleVar(VariableEntry* var,
       char derivedIsInitialized = 0;
 
       void* pNewValue = 0;
+      // The default is DERIVED_VAR.  Tweak later if necessary.
+      VariableOrigin newVarOrigin = DERIVED_VAR;
 
       // Initialize pNewValue if possible, otherwise leave at 0:
       // VERY IMPORTANT: Only derive by dereferencing pointers if
@@ -1337,6 +1339,16 @@ void visitSingleVar(VariableEntry* var,
         }
       }
 
+      // This is so --func-disambig-ptrs can work properly:
+      if (needToDerefCppRef &&
+          ((varOrigin == FUNCTION_FORMAL_PARAM) ||
+           (varOrigin == FUNCTION_RETURN_VAR))) {
+        newVarOrigin = varOrigin;
+      }
+      else if (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) {
+        newVarOrigin = DERIVED_FLATTENED_ARRAY_VAR;
+      }
+
       // Push 1 symbol on stack to represent single elt. dereference:
 
       if (!needToDerefCppRef) {
@@ -1349,7 +1361,7 @@ void visitSingleVar(VariableEntry* var,
                      overrideIsInit,
                      needToDerefCppRef,
                      performAction,
-                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
+                     newVarOrigin,
                      trace_vars_tree,
                      disambigOverride,
                      numStructsDereferenced,
