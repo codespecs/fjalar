@@ -587,10 +587,6 @@ void fjalar_tool_print_usage()
 "                                numbers at function entrance/exit when run with\n"
 "                                DynComp.  This provides more accuracy, but may\n"
 "                                sometimes lead to output that Daikon cannot accept.\n"
-
-"\n  Misc. options:\n"
-"    --repair-format          Output format for data structure repair tool (internal use)\n"
-
 "\n  Debugging:\n"
 "    --asserts-aborts         Turn on safety asserts and aborts (OFF BY DEFAULT)\n"
 "                             [--no-asserts-aborts]\n"

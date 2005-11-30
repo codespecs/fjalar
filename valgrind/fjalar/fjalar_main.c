@@ -382,7 +382,6 @@ void exit_function(FunctionEntry* f)
 // Handles the following command-line options:
 //   --ppt-list-file
 //   --var-list-file
-//   --disambig, --disambig-file (when we are reading in from a file)
 static void loadAuxiliaryFileData() {
 
   if (fjalar_trace_prog_pts_filename) {
@@ -436,7 +435,6 @@ static void loadAuxiliaryFileData() {
 static void outputAuxiliaryFilesAndExit() {
   if (fjalar_dump_prog_pt_names_filename ||
       fjalar_dump_var_names_filename ||
-      (fjalar_disambig_filename && disambig_writing) ||
       fjalar_xml_output_filename) {
     if (fjalar_dump_prog_pt_names_filename) {
       prog_pt_dump_fp = fopen(fjalar_dump_prog_pt_names_filename, "w");
