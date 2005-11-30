@@ -43,6 +43,7 @@ void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
                     void* pValue,
                     char overrideIsInit,
+                    char alreadyDerefedCppRef, // only relevant for C++ reference parameters
                     // This function performs an action for each variable visited:
                     TraversalResult (*performAction)(VariableEntry*,
                                                      char*,
@@ -429,8 +430,10 @@ void visitClassMemberVariables(TypeEntry* class,
           }
 
           // If the top element is already a dot (from a superclass
-          // name perhaps), then don't push anything on:
-          if (top && VG_STREQ(top, DOT)) {
+          // name perhaps) or there is NO top element (e.g., printing
+          // disambig) then don't push anything on:
+          if (!top ||
+              (top && VG_STREQ(top, DOT))) {
             numEltsPushedOnStack = 0;
           }
           // If the top element is '*', then instead of pushing a
@@ -474,6 +477,7 @@ void visitClassMemberVariables(TypeEntry* class,
             visitSingleVar(curVar,
                            0,
                            pCurVarValue,
+                           0,
                            0,
                            performAction,
                            DERIVED_FLATTENED_ARRAY_VAR,
@@ -589,8 +593,10 @@ void visitClassMemberVariables(TypeEntry* class,
         top = stringStackTop(fullNameStack, fullNameStackSize);
 
         // If the top element is already a dot (from a superclass name
-        // perhaps), then don't push anything on:
-        if (top && VG_STREQ(top, DOT)) {
+        // perhaps) or there is NO top element (e.g., printing
+        // disambig) then don't push anything on:
+        if (!top ||
+            (top && VG_STREQ(top, DOT))) {
           numEltsPushedOnStack = 0;
         }
         // If the top element is '*' or '[0]', then instead of pushing
@@ -631,6 +637,7 @@ void visitClassMemberVariables(TypeEntry* class,
           visitSingleVar(curVar,
                          0,
                          pCurVarValue,
+                         0,
                          0,
                          performAction,
                          (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
@@ -819,7 +826,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	continue;
       }
 
-      if (varOrigin == FUNCTION_FORMAL_PARAM) {
+      if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
         basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
       }
       else if (varOrigin == GLOBAL_VAR) {
@@ -1118,6 +1125,7 @@ void visitVariable(VariableEntry* var,
                  0,
                  pValue,
                  overrideIsInit,
+                 0,
                  performAction,
                  varOrigin,
                  trace_vars_tree,
@@ -1144,6 +1152,7 @@ void visitSingleVar(VariableEntry* var,
                     // recursive calls) because their addresses are
                     // different from the original's
                     char overrideIsInit,
+                    char alreadyDerefedCppRef, // only relevant for C++ reference parameters
                     // This function performs an action for each variable visited:
                     TraversalResult (*performAction)(VariableEntry*,
                                                      char*,
@@ -1184,7 +1193,7 @@ void visitSingleVar(VariableEntry* var,
   needToDerefCppRef = ((var->referenceLevels > 0) && (numDereferences == 0));
 
   // Reset this counter to get C++ reference parameter variables to work properly:
-  if ((var->referenceLevels > 0) && (numDereferences == 1)) {
+  if (alreadyDerefedCppRef) {
     numDereferences = 0;
   }
 
@@ -1330,7 +1339,7 @@ void visitSingleVar(VariableEntry* var,
 
       // Push 1 symbol on stack to represent single elt. dereference:
 
-      if (!((var->referenceLevels > 0) && (numDereferences == 0))) {
+      if (!needToDerefCppRef) {
         stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
       }
 
@@ -1338,6 +1347,7 @@ void visitSingleVar(VariableEntry* var,
                      numDereferences + 1,
                      pNewValue,
                      overrideIsInit,
+                     needToDerefCppRef,
                      performAction,
                      (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
                      trace_vars_tree,
