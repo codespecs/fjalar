@@ -20,10 +20,10 @@
 #ifndef GENERATE_FJALAR_ENTRIES_H
 #define GENERATE_FJALAR_ENTRIES_H
 
+#include "fjalar_include.h"
 #include "tool.h"
 #include "typedata.h"
 #include "GenericHashtable.h"
-#include "fjalar_include.h"
 #include <stdio.h>
 
 
@@ -42,10 +42,6 @@ int equivalentIDs(int ID1, int ID2);
 // Key: (unsigned int) address of the function's first instruction (startPC)
 // Value: (FunctionEntry*) Pointer to FunctionEntry
 struct genhashtable* FunctionTable;
-
-FunctionEntry* findFunctionEntryByFjalarNameSlow(char* unique_name);
-__inline__ FunctionEntry* findFunctionEntryByStartAddr(unsigned int startPC);
-FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr);
 
 
 // WARNING: The only entries in TypesTable are for types that are
@@ -78,11 +74,6 @@ struct genhashtable* TypesTable;
 VarList globalVars;
 
 void initializeAllFjalarData();
-
-// Returns true iff the address is within a global area as specified
-// by the executable's symbol table (it lies within the .data, .bss,
-// or .rodata sections):
-char addressIsGlobal(unsigned int addr);
 
 // Call this function whenever you want to check that the data
 // structures in this file all satisfy their respective

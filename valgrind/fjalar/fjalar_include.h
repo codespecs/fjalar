@@ -21,6 +21,7 @@ tools to access.
 #define FJALAR_INCLUDE_H
 
 #include "GenericHashtable.h"
+#include "tool.h"
 
 typedef enum {
   D_NO_TYPE, // Create padding
@@ -269,6 +270,16 @@ void clearVarList(VarList* varListPtr, char destroyVariableEntries);
 void insertNewNode(VarList* varListPtr);
 void deleteTailNode(VarList* varListPtr);
 
+typedef struct {
+  VarNode* curNode;
+} VarIterator;
+
+VarIterator* newVarIterator(VarList* vlist);
+char hasNextVar(VarIterator* varIt);
+VariableEntry* nextVar(VarIterator* varIt);
+void deleteVarIterator(VarIterator* varIt);
+
+
 // Ultra generic singly-linked list with a void* element
 // Only meant to support forward traversal
 // Doesn't do any dynamic memory allocation or de-allocation
@@ -330,14 +341,18 @@ struct _FunctionEntry {
   char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
 };
 
+FunctionEntry* getFunctionEntryFromFjalarName(char* fjalar_name);
+__inline__ FunctionEntry* getFunctionEntryFromStartAddr(unsigned int startPC);
+FunctionEntry* getFunctionEntryFromAddr(unsigned int addr);
+
 typedef struct {
   struct geniterator* it;
 } FuncIterator;
 
 FuncIterator* newFuncIterator();
-char hasNextFunc(FuncIterator* typeIt);
-FunctionEntry* nextFunc(FuncIterator* typeIt);
-void deleteFuncIterator(FuncIterator* typeIt);
+char hasNextFunc(FuncIterator* funcIt);
+FunctionEntry* nextFunc(FuncIterator* funcIt);
+void deleteFuncIterator(FuncIterator* funcIt);
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
@@ -359,10 +374,11 @@ TypeEntry FunctionType;
 TypeEntry VoidType;
 TypeEntry BoolType;
 
+
 // Dynamic entries for tracking state at function entrances and exits
 // (used mainly by FunctionExecutionStateStack in fjalar_main.c)
 // THIS CANNOT BE SUB-CLASSED RIGHT NOW because it is placed inline
-// into FunctionExecutionStateStacka
+// into FunctionExecutionStateStack
 typedef struct {
   FunctionEntry* func; // The function whose state we are tracking
 
@@ -396,5 +412,204 @@ typedef struct {
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
 
 } FunctionExecutionState;
+
+
+
+typedef enum {
+  DERIVED_VAR, // Always switches to this after one recursive call
+  DERIVED_FLATTENED_ARRAY_VAR, // A derived variable as a result of flattening an array
+  GLOBAL_VAR,
+  FUNCTION_FORMAL_PARAM,
+  FUNCTION_RETURN_VAR // Only relevant for function exits
+} VariableOrigin;
+
+// These result values control the actions of the data structure
+// traversal machinery:
+typedef enum {
+  INVALID_RESULT = 0,
+  // When we don't really care about pointer dereferences at all
+  // (not the same as DO_NOT_DEREF_MORE_POINTERS!)
+  DISREGARD_PTR_DEREFS,
+
+  // When we don't want to derive further values by dereferencing
+  // pointers.  All values of variables derived from the visited
+  // variable will simply be null.  However, we will still continue to
+  // derive variables by traversing inside of structs and arrays:
+  DO_NOT_DEREF_MORE_POINTERS,
+  // Attempt to derive more values by dereferencing pointers after
+  // visiting the current variable:
+  DEREF_MORE_POINTERS,
+
+  // Stop the traversal after this variable and do not derive anything
+  // further:
+  STOP_TRAVERSAL
+} TraversalResult;
+
+
+typedef enum DisambigOverride {
+  OVERRIDE_NONE,
+  OVERRIDE_CHAR_AS_STRING, // 'C' for base "char" and "unsigned char" types
+  OVERRIDE_STRING_AS_ONE_CHAR_STRING, // 'C' for pointer to "char" and "unsigned char"
+  OVERRIDE_STRING_AS_INT_ARRAY, // 'A' for pointer to "char" and "unsigned char"
+  OVERRIDE_STRING_AS_ONE_INT,   // 'P' for pointer to "char" and "unsigned char"
+  OVERRIDE_ARRAY_AS_POINTER     // 'P' for pointer to anything
+} DisambigOverride;
+
+
+// This increments every time a call to visitSingleVar() or
+// visitSequence() is made.  It is up to the caller to reset this
+// properly!
+int g_variableIndex;
+
+void visitClassMembersNoValues(TypeEntry* class,
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char));
+
+// Takes a TypeEntry* and (optionally, a pointer to its memory
+// location), and traverses through all of the members of the
+// specified class (or struct/union).  This should also traverse
+// inside of the class's superclasses and visit variables in them:
+void visitClassMemberVariables(TypeEntry* class,
+                               void* pValue,
+                               char isSequence,
+                               // An array of pointers to values (only
+                               // valid if isSequence non-null):
+                               void** pValueArray,
+                               UInt numElts, // Size of pValueArray
+                               // This function performs an action for each variable visited:
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char),
+                               VariableOrigin varOrigin,
+                               char* trace_vars_tree,
+                               // The number of structs we have dereferenced for
+                               // a particular call of visitVariable(); Starts at
+                               // 0 and increments every time we hit a variable
+                               // which is a base struct type
+                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
+                               UInt numStructsDereferenced,
+                               // These uniquely identify the program point
+                               FunctionEntry* varFuncInfo,
+                               char isEnter,
+                               TraversalResult tResult);
+
+
+// Visits an entire group of variables, depending on the value of varOrigin:
+// If varOrigin == GLOBAL_VAR, then visit all global variables
+// If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
+// of the function denoted by funcPtr
+// If varOrigin == FUNCTION_RETURN_VAR, then visit the return value variable
+// of the function denoted by funcPtr
+void visitVariableGroup(VariableOrigin varOrigin,
+                        FunctionEntry* funcPtr, // 0 for unspecified function
+                        char isEnter,           // 1 for function entrance, 0 for exit
+                        char* stackBaseAddr,
+                        // This function performs an action for each variable visited:
+                        TraversalResult (*performAction)(VariableEntry*,
+                                                         char*,
+                                                         VariableOrigin,
+                                                         UInt,
+                                                         UInt,
+                                                         char,
+                                                         DisambigOverride,
+                                                         char,
+                                                         void*,
+                                                         void**,
+                                                         UInt,
+                                                         FunctionEntry*,
+                                                         char));
+
+void visitReturnValue(FunctionExecutionState* e,
+                      // This function performs an action for each variable visited:
+                      TraversalResult (*performAction)(VariableEntry*,
+                                                       char*,
+                                                       VariableOrigin,
+                                                       UInt,
+                                                       UInt,
+                                                       char,
+                                                       DisambigOverride,
+                                                       char,
+                                                       void*,
+                                                       void**,
+                                                       UInt,
+                                                       FunctionEntry*,
+                                                       char));
+
+void visitVariable(VariableEntry* var,
+                   // Pointer to the location of the variable's
+                   // current value in memory:
+                   void* pValue,
+                   // We only use overrideIsInit when we pass in
+                   // things (e.g. return values) that cannot be
+                   // checked by the Memcheck A and V bits. Never have
+                   // overrideIsInit when you derive variables (make
+                   // recursive calls) because their addresses are
+                   // different from the original's
+                   char overrideIsInit,
+                   // This should almost always be 0, but whenever you
+                   // want finer control over struct dereferences, you
+                   // can override this with a number representing the
+                   // number of structs you have dereferenced so far
+                   // to get here (this is useful for the 'this'
+                   // parameter of member functions):
+                   UInt numStructsDereferenced,
+                   // This function performs an action for each variable visited:
+                   TraversalResult (*performAction)(VariableEntry*,
+                                                    char*,
+                                                    VariableOrigin,
+                                                    UInt,
+                                                    UInt,
+                                                    char,
+                                                    DisambigOverride,
+                                                    char,
+                                                    void*,
+                                                    void**,
+                                                    UInt,
+                                                    FunctionEntry*,
+                                                    char),
+                   VariableOrigin varOrigin,
+                   FunctionEntry* varFuncInfo,
+                   char isEnter);
+
+
+
+// Returns true iff the address is within a global area as specified
+// by the executable's symbol table (it lies within the .data, .bss,
+// or .rodata sections):
+char addressIsGlobal(unsigned int addr);
+
+// TODO: Insert some stuff to access symbol table information
+//       FunctionSymbolTable, ReverseFunctionSymbolTable, VariableSymbolTable
+
+int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation);
+int getBytesBetweenElts(VariableEntry* var);
+
+#define addressIsAllocated(addressInQuestion, numBytes) addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1)
+#define addressIsInitialized(addressInQuestion, numBytes) addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0)
+
+char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numBytes, char allocatedOrInitialized);
+char are_some_bytes_init(Addr addressInQuestion, unsigned int numBytes);
+
 
 #endif

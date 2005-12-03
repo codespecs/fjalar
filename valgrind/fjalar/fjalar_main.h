@@ -22,6 +22,7 @@
 #include "tool.h"
 #include "mc_translate.h"
 
+#include "fjalar_include.h"
 #include "generate_fjalar_entries.h"
 
 // Global variables that are set by command-line options
