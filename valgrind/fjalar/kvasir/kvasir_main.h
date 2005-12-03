@@ -18,7 +18,6 @@
 #define KVASIR_MAIN_H
 
 #include "../fjalar_include.h"
-#include "../GenericHashtable.h"
 #include <stdio.h>
 
 FILE* decls_fp; // File pointer for .decls file (this will point
