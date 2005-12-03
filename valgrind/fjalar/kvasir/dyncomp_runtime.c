@@ -21,16 +21,10 @@
   General Public License for more details.
 */
 
-#include "../fjalar_main.h"
-#include "../fjalar_traversal.h"
-#include "../generate_fjalar_entries.h"
-#include "../fjalar_include.h"
-
 #include "decls-output.h"
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
 #include "union_find.h"
-#include "../GenericHashtable.h"
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
 #include <limits.h>

@@ -1777,7 +1777,7 @@ static void link_array_entries_to_members()
 // (This only has to happen once.)
 void initialize_typedef_names_map() {
   unsigned long idx;
-  unsigned int totalNumTypedefs = 0;
+  //  unsigned int totalNumTypedefs = 0;
   dwarf_entry* cur_entry = 0;
 
   // Linearly traverse the array and pick off typedef entries
@@ -1818,7 +1818,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                function_ptr->filename,
                function_ptr->return_type_ID,
                ((simplified && function_ptr->return_type) ?
-                function_ptr->return_type - dwarf_entry_array :
+                (UInt)function_ptr->return_type - (UInt)dwarf_entry_array :
                 (unsigned long)(function_ptr->return_type)),
 	       function_ptr->is_external,
 	       function_ptr->start_pc);
@@ -1831,7 +1831,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                ((simplified && formal_param_ptr->type_ptr) ?
-                formal_param_ptr->type_ptr - dwarf_entry_array :
+                (UInt)formal_param_ptr->type_ptr - (UInt)dwarf_entry_array :
                 (unsigned long)(formal_param_ptr->type_ptr)),
                formal_param_ptr->location);
         break;
@@ -1839,16 +1839,16 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_member:
       {
         member* member_ptr = (member*)(e->entry_ptr);
-        printf("  Name: %s, Type ID (addr): 0x%lx (0x%lx), Data member location: %ld, Byte size: %ld, Bit offset: %ld, Bit size: %ld\n",
+        printf("  Name: %s, Type ID (addr): 0x%x (0x%x), Data member location: %d, Byte size: %d, Bit offset: %d, Bit size: %d\n",
                member_ptr->name,
-               member_ptr->type_ID,
+               (UInt)member_ptr->type_ID,
                ((simplified && member_ptr->type_ptr) ?
-                member_ptr->type_ptr - dwarf_entry_array :
-                (unsigned long)(member_ptr->type_ptr)),
-               member_ptr->data_member_location,
-               member_ptr->internal_byte_size,
-               member_ptr->internal_bit_offset,
-               member_ptr->internal_bit_size);
+                (UInt)member_ptr->type_ptr - (UInt)dwarf_entry_array :
+                (UInt)(member_ptr->type_ptr)),
+               (UInt)member_ptr->data_member_location,
+               (UInt)member_ptr->internal_byte_size,
+               (UInt)member_ptr->internal_bit_offset,
+               (UInt)member_ptr->internal_bit_size);
         break;
       }
     case DW_TAG_enumerator:
@@ -1929,7 +1929,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
         printf("  Target ID (addr): 0x%lx (0x%lx)\n",
                modifier_ptr->target_ID,
                ((simplified && modifier_ptr->target_ptr) ?
-                modifier_ptr->target_ptr - dwarf_entry_array :
+                (UInt)modifier_ptr->target_ptr - (UInt)dwarf_entry_array :
                 (unsigned long)(modifier_ptr->target_ptr)));
         break;
       }
@@ -1939,7 +1939,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
         printf("  Type ID (addr): 0x%lx (0x%lx), Num. subrange entries: %ld\n",
                array_ptr->type_ID,
                ((simplified && array_ptr->type_ptr) ?
-                (array_ptr->type_ptr - dwarf_entry_array) :
+                ((UInt)array_ptr->type_ptr - (UInt)dwarf_entry_array) :
                 (unsigned long)(array_ptr->type_ptr)),
                array_ptr->num_subrange_entries);
         break;
@@ -1958,7 +1958,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                typedef_ptr->name,
                typedef_ptr->target_type_ID,
                ((simplified && typedef_ptr->target_type_ptr) ?
-                (typedef_ptr->target_type_ptr - dwarf_entry_array) :
+                ((UInt)typedef_ptr->target_type_ptr - (UInt)dwarf_entry_array) :
                 (unsigned long)(typedef_ptr->target_type_ptr)));
         break;
       }
@@ -1969,7 +1969,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                variable_ptr->name,
                variable_ptr->type_ID,
                ((simplified && variable_ptr->type_ptr) ?
-                (variable_ptr->type_ptr - dwarf_entry_array) :
+                ((UInt)variable_ptr->type_ptr - (UInt)dwarf_entry_array) :
                 (unsigned long)(variable_ptr->type_ptr)),
 	       variable_ptr->is_external,
                variable_ptr->couldBeGlobalVar,
@@ -2064,13 +2064,13 @@ void print_dwarf_entry_array()
 
 void print_dwarf_entry_array_helper(char simplified)
 {
-  unsigned long i;
+  UInt i;
   printf("--- BEGIN DWARF ENTRY ARRAY - size: %ld\n", dwarf_entry_array_size);
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
 
-      printf("array[%ld] (0x%lx): ", i,
-             (simplified ? i : (int)(dwarf_entry_array + i)));
+      printf("array[%u] (0x%x): ", i,
+             (simplified ? i : ((UInt)dwarf_entry_array + (UInt)i)));
       print_dwarf_entry(&dwarf_entry_array[i], simplified);
     }
   printf("--- END DWARF ENTRY ARRAY\n");

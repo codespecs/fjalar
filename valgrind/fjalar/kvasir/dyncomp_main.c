@@ -26,6 +26,7 @@
 #include "kvasir_main.h"
 #include "mc_include.h"
 #include "dyncomp_main.h"
+#include "dyncomp_runtime.h"
 #include <limits.h>
 
 // Special reserved tags

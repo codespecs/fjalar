@@ -26,14 +26,6 @@
 
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
-char* DEREFERENCE;
-char* ZEROTH_ELT;
-char* DOT;
-char* ARROW;
-char* STAR;
-
-char* stringStackPop(char** stringStack, int* pStringStackSize);
-void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
 
 
 

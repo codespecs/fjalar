@@ -18,7 +18,7 @@
 #ifndef DECLS_OUTPUT_H
 #define DECLS_OUTPUT_H
 
-#include "../generate_fjalar_entries.h"
+#include "../fjalar_include.h"
 
 typedef enum {
   R_NO_TYPE, // Create padding

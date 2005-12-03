@@ -25,40 +25,6 @@
 #include "fjalar_include.h"
 #include "generate_fjalar_entries.h"
 
-// Global variables that are set by command-line options
-
-// Boolean flags
-Bool fjalar_debug;
-Bool fjalar_with_gdb;
-Bool fjalar_ignore_globals;
-Bool fjalar_ignore_static_vars;
-Bool fjalar_limit_static_vars;
-Bool fjalar_default_disambig;
-Bool fjalar_smart_disambig;
-Bool fjalar_output_struct_vars;
-Bool fjalar_flatten_arrays;
-Bool fjalar_func_disambig_ptrs;
-Bool fjalar_disambig_ptrs;
-int  fjalar_array_length_limit;
-
-UInt MAX_VISIT_STRUCT_DEPTH;
-UInt MAX_VISIT_NESTING_DEPTH;
-
-// These are used as both strings and boolean flags -
-// They are initialized to 0 upon initiation so if they are
-// never filled with values by the respective command-line
-// options, then they can be treated as False
-char* fjalar_dump_prog_pt_names_filename;
-char* fjalar_dump_var_names_filename;
-char* fjalar_trace_prog_pts_filename;
-char* fjalar_trace_vars_filename;
-char* fjalar_disambig_filename;
-char* fjalar_program_stdout_filename;
-char* fjalar_program_stderr_filename;
-char* fjalar_xml_output_filename;
-
-// The filename of the target executable:
-char* executable_filename;
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       VG_(printf)(__VA_ARGS__); } while (0)

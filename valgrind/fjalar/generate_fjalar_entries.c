@@ -2600,6 +2600,7 @@ VarIterator* newVarIterator(VarList* vlist) {
   VarIterator* varIt = (VarIterator*)VG_(calloc)(1, sizeof(*varIt));
   tl_assert(vlist);
   varIt->curNode = vlist->first; // This could be null!
+  return varIt;
 }
 
 char hasNextVar(VarIterator* varIt) {
