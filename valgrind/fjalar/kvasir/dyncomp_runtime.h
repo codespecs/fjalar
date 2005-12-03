@@ -24,7 +24,7 @@
 #ifndef DYNCOMP_RUNTIME_H
 #define DYNCOMP_RUNTIME_H
 
-#include "../generate_fjalar_entries.h"
+#include "../fjalar_include.h"
 
 // Maps tags to comparability numbers, which are assigned sequentially
 // for every program point.  This is only used for DynComp.

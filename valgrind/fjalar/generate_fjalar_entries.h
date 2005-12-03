@@ -34,9 +34,6 @@
 //         variables
 struct genhashtable* VisitedStructsTable;
 
-// Trivial comparison functions:
-int equivalentIDs(int ID1, int ID2);
-
 
 // Hashtable that holds information about all functions
 // Key: (unsigned int) address of the function's first instruction (startPC)
@@ -82,9 +79,6 @@ void initializeAllFjalarData();
 void repCheckAllEntries();
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
-
-unsigned int hashString(char* str);
-int equivalentStrings(char* str1, char* str2);
 
 FILE* xml_output_fp;
 void outputAllXMLDeclarations();

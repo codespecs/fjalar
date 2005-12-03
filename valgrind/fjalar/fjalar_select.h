@@ -21,6 +21,7 @@ variables.
 #define FJALAR_SELECT_H
 
 #include "generate_fjalar_entries.h"
+#include "fjalar_include.h"
 
 const char COMMENT_CHAR;
 const char* ENTRY_DELIMETER;
@@ -45,7 +46,6 @@ typedef struct {
   char* function_variables_tree; // A GNU binary tree of variable names (strings)
 } FunctionTree;
 
-char prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 
 int compareFunctionTrees(const void *a, const void *b);
 int compareStrings(const void *a, const void *b);

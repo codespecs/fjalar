@@ -28,7 +28,7 @@
 #include "mc_translate.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
-#include "../fjalar_runtime.h"
+#include "../fjalar_include.h"
 #include "kvasir_main.h"
 #include "libvex_guest_offsets.h"
 #include <limits.h>

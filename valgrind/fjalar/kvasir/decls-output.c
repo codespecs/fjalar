@@ -17,13 +17,9 @@
 
 */
 
-//#include "mc_include.h"
 #include "decls-output.h"
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
-
-#include "../fjalar_traversal.h"
-#include "../fjalar_include.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -516,8 +512,6 @@ static void printAllFunctionDecls(char faux_decls)
 }
 
 
-// TODO: REWRITE THIS!!!
-
 // For C++ only: Print out an :::OBJECT program point.
 // The object program point should consist of class_name:::OBJECT
 // and all information from 'this'
@@ -573,6 +567,7 @@ static void printAllObjectPPTDecls() {
       fputs("\n", decls_fp);
 
       // TODO: What do we do about static member vars?
+      // Right now we just print them out like globals
     }
   }
 

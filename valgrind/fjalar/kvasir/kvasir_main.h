@@ -17,9 +17,9 @@
 #ifndef KVASIR_MAIN_H
 #define KVASIR_MAIN_H
 
-#include "../fjalar_main.h"
-#include "../generate_fjalar_entries.h"
+#include "../fjalar_include.h"
 #include "../GenericHashtable.h"
+#include <stdio.h>
 
 FILE* decls_fp; // File pointer for .decls file (this will point
                 // to the same thing as dtrace_fp by default since

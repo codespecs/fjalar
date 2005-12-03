@@ -21,9 +21,8 @@
 #include "dtrace-output.h"
 #include "decls-output.h"
 #include "kvasir_main.h"
-#include "../disambig.h"
-#include "../fjalar_runtime.h"
-#include "../fjalar_traversal.h"
+
+#include "../fjalar_include.h"
 
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
@@ -398,7 +397,7 @@ char printDtraceSingleVar(VariableEntry* var,
     //       var->isStaticArray says that the base variable is a
     //       static array after all dereferences are done.
     DTRACE_PRINTF("%u\n%d\n",
-                  var->isStaticArray ? (Addr)pValue : *((Addr*)pValue),
+                  var->isStaticArray ? (UInt)pValue : (UInt)(*((Addr*)pValue)),
                   mapInitToModbit(1));
 
     // Since we observed all of these bytes as one value, we will
@@ -484,7 +483,7 @@ char printDtraceSequence(VariableEntry* var,
                          char isHashcode,
                          DisambigOverride disambigOverride,
                          void** pFirstInitElt) {
-  int i;
+  UInt i;
   char someEltNonZero = 0;
   char someEltInit = 0;
 
@@ -545,6 +544,7 @@ char printDtraceSequence(VariableEntry* var,
   // Pointer (put this check first before the var->isString check so
   // that it will work even for pointers to strings):
   if (isHashcode) {
+      int ind;
       int limit = numElts;
       if (fjalar_array_length_limit != -1) {
         limit = min(limit, fjalar_array_length_limit);
@@ -552,8 +552,8 @@ char printDtraceSequence(VariableEntry* var,
 
       DTRACE_PRINTF( "[ ");
 
-      for (i = 0; i < limit; i++) {
-        void* pCurValue = pValueArray[i];
+      for (ind = 0; ind < limit; ind++) {
+        void* pCurValue = pValueArray[ind];
 
         char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(void*));
 
@@ -564,8 +564,8 @@ char printDtraceSequence(VariableEntry* var,
           }
 
           DTRACE_PRINTF("%u ", var->isStaticArray ?
-                        (Addr)pCurValue :
-                        *((Addr*)pCurValue));
+                        (UInt)pCurValue :
+                        (UInt)(*((Addr*)pCurValue)));
 
           // Merge the tags of the 4-bytes of the observed pointer as
           // well as the tags of the first initialized address and the
@@ -602,6 +602,7 @@ char printDtraceSequence(VariableEntry* var,
   // Base (non-hashcode) struct or union type
   // Simply print out its hashcode location
   else if (var->varType->isStructUnionType) {
+    int ind;
     int limit = numElts;
     if (fjalar_array_length_limit != -1) {
       limit = min(limit, fjalar_array_length_limit);
@@ -609,9 +610,9 @@ char printDtraceSequence(VariableEntry* var,
 
     DTRACE_PRINTF( "[ ");
 
-    for (i = 0; i < limit; i++) {
-      void* pCurValue = pValueArray[i];
-      DTRACE_PRINTF("%u ", (Addr)pCurValue);
+    for (ind = 0; ind < limit; ind++) {
+      void* pCurValue = pValueArray[ind];
+      DTRACE_PRINTF("%u ", (UInt)pCurValue);
     }
 
     DTRACE_PRINTF( "]\n%d\n",
@@ -1050,7 +1051,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
       }
 
       if (a) {
-        DC_post_process_for_variable(varFuncInfo,
+        DC_post_process_for_variable((DaikonFunctionEntry*)varFuncInfo,
                                      isEnter,
                                      g_variableIndex,
                                      a);

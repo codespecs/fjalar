@@ -18,6 +18,10 @@
 #define _LARGEFILE64_SOURCE /* FOR O_LARGEFILE */
 
 #include "tool.h"
+
+#include "../fjalar_tool.h"
+#include "../fjalar_include.h"
+
 #include "kvasir_main.h"
 #include "decls-output.h"
 #include "dtrace-output.h"
@@ -26,8 +30,9 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
-#include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <limits.h>
@@ -36,9 +41,6 @@
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
 
-#include "../fjalar_tool.h"
-#include "../fjalar_main.h"
-#include "../fjalar_runtime.h"
 
 // Global variables that are set by command-line options
 char* kvasir_decls_filename = 0;
