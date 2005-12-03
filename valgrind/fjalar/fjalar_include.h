@@ -17,6 +17,10 @@ tools to access.
 
 */
 
+#ifndef FJALAR_INCLUDE_H
+#define FJALAR_INCLUDE_H
+
+#include "GenericHashtable.h"
 
 typedef enum {
   D_NO_TYPE, // Create padding
@@ -118,7 +122,17 @@ typedef struct _TypeEntry {
   SimpleList* /* Superclass* */ superclassList;
 } TypeEntry;
 
-__inline__ TypeEntry* findTypeEntryByName(char* name);
+// Return a type entry, given the name of the type:
+TypeEntry* getTypeEntry(char* typeName);
+
+typedef struct {
+  struct geniterator* it;
+} TypeIterator;
+
+TypeIterator* newTypeIterator();
+char hasNextType(TypeIterator* typeIt);
+TypeEntry* nextType(TypeIterator* typeIt);
+void deleteTypeIterator(TypeIterator* typeIt);
 
 
 struct _Superclass {
@@ -316,7 +330,14 @@ struct _FunctionEntry {
   char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
 };
 
+typedef struct {
+  struct geniterator* it;
+} FuncIterator;
 
+FuncIterator* newFuncIterator();
+char hasNextFunc(FuncIterator* typeIt);
+FunctionEntry* nextFunc(FuncIterator* typeIt);
+void deleteFuncIterator(FuncIterator* typeIt);
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
@@ -375,3 +396,5 @@ typedef struct {
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
 
 } FunctionExecutionState;
+
+#endif

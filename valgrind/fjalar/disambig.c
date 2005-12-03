@@ -175,7 +175,8 @@ TraversalResult printDisambigAction(VariableEntry* var,
 
 // Pre: disambig_fp has been initialized and disambig_writing is True
 void generateDisambigFile() {
-  struct geniterator* it;
+  FuncIterator* funcIt;
+  TypeIterator* typeIt;
 
   // Write entries for global variables:
   fputs(ENTRY_DELIMETER, disambig_fp);
@@ -192,11 +193,10 @@ void generateDisambigFile() {
   fputs("\n", disambig_fp);
 
   // Write entries for function parameters and return values:
-  it = gengetiterator(FunctionTable);
+  funcIt = newFuncIterator();
 
-  while(!it->finished) {
-    FunctionEntry* cur_entry =
-      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
 
     tl_assert(cur_entry);
 
@@ -229,14 +229,14 @@ void generateDisambigFile() {
       fputs("\n", disambig_fp);
     }
   }
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 
   // Write entries for every struct/class in TypesTable, with the
   // type's name prefixed by 'usertype.':
-  it = gengetiterator(TypesTable);
+  typeIt = newTypeIterator();
 
-  while (!it->finished) {
-    TypeEntry* cur_entry = (TypeEntry*)gengettable(TypesTable, gennext(it));
+  while (hasNextType(typeIt)) {
+    TypeEntry* cur_entry = nextType(typeIt);
 
     tl_assert(cur_entry && cur_entry->collectionName);
 
@@ -251,7 +251,8 @@ void generateDisambigFile() {
 
     fputs("\n", disambig_fp);
   }
-  genfreeiterator(it);
+
+  deleteTypeIterator(typeIt);
 }
 
 // Returns True if var should be output to .disambig:
@@ -406,7 +407,7 @@ static void processDisambigFile() {
 	// 3) A user-defined type
 	//    (USERTYPE_PREFIX must be the prefix of the string)
 	else if (strstr(line, USERTYPE_PREFIX) == line) {
-          struct geniterator* it = 0;
+	  TypeIterator* typeIt;
           int i = 0;
 	  type = USERTYPE;
 	  FJALAR_DPRINTF("USERTYPE");
@@ -426,11 +427,10 @@ static void processDisambigFile() {
 
 	  VarListArraySize = 0;
 
-	  it = gengetiterator(TypesTable);
+	  typeIt = newTypeIterator();
 
-	  while (!it->finished) {
-	    TypeEntry* cur_type = (TypeEntry*)
-	      gengettable(TypesTable, gennext(it));
+	  while (hasNextType(typeIt)) {
+	    TypeEntry* cur_type = nextType(typeIt);
 
 	    if (cur_type->collectionName &&
 		VG_STREQ(cur_type->collectionName, entryName)) {
@@ -439,16 +439,15 @@ static void processDisambigFile() {
 	    }
 	  }
 
-	  genfreeiterator(it);
+	  deleteTypeIterator(typeIt);
 
 	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
 
-	  it = gengetiterator(TypesTable);
+	  typeIt = newTypeIterator();
 	  i = 0;
 
-	  while (!it->finished) {
-	    TypeEntry* cur_type = (TypeEntry*)
-	      gengettable(TypesTable, gennext(it));
+	  while (hasNextType(typeIt)) {
+	    TypeEntry* cur_type = nextType(typeIt);
 
 	    if (cur_type->collectionName &&
 		VG_STREQ(cur_type->collectionName, entryName)) {
@@ -458,7 +457,7 @@ static void processDisambigFile() {
 	    }
 	  }
 
-	  genfreeiterator(it);
+	  deleteTypeIterator(typeIt);
 	}
 
 	FJALAR_DPRINTF(" ENTRY: %s\n", (entryName ? entryName : "<no name>"));
@@ -540,7 +539,7 @@ static void processDisambigFile() {
                 // Change the type of the variable to point to the one
                 // named by coercion_type:
                 if (coercion_type) {
-                  TypeEntry* new_type = findTypeEntryByName(coercion_type);
+                  TypeEntry* new_type = getTypeEntry(coercion_type);
                   if (new_type) {
                     target->varType = new_type;
                     VG_(printf)("  .disambig: Coerced variable %s into type '%s'\n",
