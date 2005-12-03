@@ -59,17 +59,6 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
   VG_(printf)("%s (enter)\n",
 	      f_state->func->fjalar_name);
 
-/*   it = gengetiterator(TypesTable); */
-
-/*   while (!it->finished) { */
-/*     TypeEntry* t = (TypeEntry*)gengettable(TypesTable, gennext(it)); */
-/*     VG_(printf)("BEGIN class: %s\n", t->collectionName); */
-/*     visitClassMemberVariables(t, 0, &trivialAction); */
-/*     VG_(printf)("END   class: %s\n", t->collectionName); */
-/*   } */
-
-/*   genfreeiterator(it); */
-
   visitVariableGroup(GLOBAL_VAR,
                      0,
                      1,
