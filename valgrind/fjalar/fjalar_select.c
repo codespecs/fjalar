@@ -292,19 +292,17 @@ Stack.cpp.Stack::peek()
 Stack.cpp.Stack::pop()
 */
 void outputProgramPointsToFile() {
-  struct geniterator* it = gengetiterator(FunctionTable);
-
+  FuncIterator* funcIt = newFuncIterator();
   // Print out all program points in FunctionTable
-  while(!it->finished) {
-    FunctionEntry* cur_entry =
-      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
 
     tl_assert(cur_entry);
 
     fputs(cur_entry->fjalar_name, prog_pt_dump_fp);
     fputs("\n", prog_pt_dump_fp);
   }
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 }
 
 // Output a list of variable names to the file specified by
@@ -331,7 +329,7 @@ this->next[].data
 this->next[].data[0]
 */
 void outputVariableNamesToFile() {
-  struct geniterator* it;
+  FuncIterator* funcIt;
   g_open_fp = var_dump_fp;
 
   // Print out a section for all global variables:
@@ -348,12 +346,11 @@ void outputVariableNamesToFile() {
 
   fputs("\n", var_dump_fp);
 
-  it = gengetiterator(FunctionTable);
+  funcIt = newFuncIterator();
 
   // Print out a section for all relevant functions:
-  while(!it->finished) {
-    FunctionEntry* cur_entry =
-      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
 
     tl_assert(cur_entry);
 
@@ -385,7 +382,7 @@ void outputVariableNamesToFile() {
       fputs("\n", var_dump_fp);
     }
   }
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 
   g_open_fp = 0;
 }

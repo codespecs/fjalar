@@ -24,6 +24,7 @@
 
 #include "fjalar_main.h"
 #include "generate_fjalar_entries.h"
+#include "fjalar_include.h"
 #include "fjalar_select.h"
 #include "elf/dwarf2.h"
 #include "GenericHashtable.h"
@@ -548,7 +549,8 @@ char addressIsGlobal(unsigned int addr) {
 void repCheckAllEntries() {
   VarNode* curNode;
   unsigned int numGlobalVars = 0;
-  struct geniterator* it;
+  FuncIterator* funcIt;
+  TypeIterator* typeIt;
 
   // Rep. check all variables in globalVars:
 
@@ -575,12 +577,11 @@ void repCheckAllEntries() {
   FJALAR_DPRINTF(" DONE\n");
 
   // Rep. check all entries in FunctionTable
-  it = gengetiterator(FunctionTable);
+  funcIt = newFuncIterator();
 
   FJALAR_DPRINTF("  Rep. checking function entries ...");
-  while (!it->finished) {
-    FunctionEntry* f = (FunctionEntry*)
-      gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* f = nextFunc(funcIt);
 
     VarNode* n;
 
@@ -649,18 +650,17 @@ void repCheckAllEntries() {
 
   }
 
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 
   FJALAR_DPRINTF(" DONE\n");
 
   FJALAR_DPRINTF("  Rep. checking type entries ...");
 
   // Rep. check all entries in TypesTable
-  it = gengetiterator(TypesTable);
+  typeIt = newTypeIterator();
 
-  while (!it->finished) {
-    TypeEntry* t = (TypeEntry*)
-      gengettable(TypesTable, gennext(it));
+  while (hasNextType(typeIt)) {
+    TypeEntry* t = nextType(typeIt);
 
     // All TypeEntry instances within TypesTable should NOT be basic
     // types:
@@ -790,7 +790,7 @@ void repCheckAllEntries() {
     }
   }
 
-  genfreeiterator(it);
+  deleteTypeIterator(typeIt);
 
   FJALAR_DPRINTF(" DONE\n");
 }
@@ -1174,11 +1174,10 @@ static void updateAllGlobalVariableNames() {
 // Pre: If we are using the --var-list-file= option, the var-list file
 // must have already been processed by the time this function runs
 static void initFunctionFjalarNames() {
-  struct geniterator* it = gengetiterator(FunctionTable);
+  FuncIterator* funcIt = newFuncIterator();
 
-  while(!it->finished) {
-    FunctionEntry* cur_entry =
-      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
 
     char *the_class;
     char *buf, *p;
@@ -1279,7 +1278,7 @@ static void initFunctionFjalarNames() {
     cur_entry->trace_vars_tree_already_initialized = 1;
   }
 
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 }
 
 // TODO: This will leak memory if called more than once per program
@@ -1637,8 +1636,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
         // Force the superclass TypeEntry to be loaded from
         // TypesTable or created if it doesn't yet exist:
-        existing_entry = (TypeEntry*)gengettable(TypesTable,
-                                                 (void*)curSuper->className);
+        existing_entry = getTypeEntry(curSuper->className);
 
         FJALAR_DPRINTF("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
                        existing_entry, curSuper->className);
@@ -2109,8 +2107,7 @@ void updateAllVarTypes() {
 
     tl_assert(fake_type->collectionName);
 
-    real_type = (TypeEntry*)gengettable(TypesTable,
-                                        (void*)(fake_type->collectionName));
+    real_type = getTypeEntry(fake_type->collectionName);
     tl_assert(real_type);
     var->varType = real_type;
 
@@ -2338,8 +2335,7 @@ void extractOneVariable(VarList* varListPtr,
     }
     // Otherwise, try to find an entry in TypesTable if one already exists
     else {
-      TypeEntry* existing_entry = (TypeEntry*)gengettable(TypesTable,
-                                                          (void*)collectionPtr->name);
+      TypeEntry* existing_entry = getTypeEntry(collectionPtr->name);
 
       FJALAR_DPRINTF("  Try to find existing entry %p in TypesTable with name %s\n",
                      existing_entry, collectionPtr->name);
@@ -2420,11 +2416,11 @@ int equivalentIDs(int ID1, int ID2) {
 // a function is a constructor or a destructor is to pattern match the
 // names of functions to names of types in TypesTable.
 static void initConstructorsAndDestructors() {
-  struct geniterator* it = gengetiterator(FunctionTable);
+  FuncIterator* funcIt = newFuncIterator();
+
   // Iterate through all entries in TypesTable:
-  while (!it->finished) {
-    FunctionEntry* f = (FunctionEntry*)
-      gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* f = nextFunc(funcIt);
 
     // Here are our pattern-matching heuristics:
 
@@ -2451,8 +2447,7 @@ static void initConstructorsAndDestructors() {
       tl_assert(f->name);
 
       // See if it's a constructor:
-      parentClass = (TypeEntry*)gengettable(TypesTable,
-                                            (void*)f->name);
+      parentClass = getTypeEntry(f->name);
 
       if (parentClass) {
         FJALAR_DPRINTF(" *** CONSTRUCTOR! func-name: %s\n", f->name);
@@ -2470,8 +2465,7 @@ static void initConstructorsAndDestructors() {
       // See if it's a destructor
       else if ('~' == f->name[0]) {
         // Notice how we skip forward one letter to cut off the '~':
-        parentClass = (TypeEntry*)gengettable(TypesTable,
-                                              (void*)(&(f->name[1])));
+        parentClass = getTypeEntry((char*)(&(f->name[1])));
 
         if (parentClass) {
           FJALAR_DPRINTF(" *** DESTRUCTOR! func-name: %s\n", f->name);
@@ -2490,18 +2484,18 @@ static void initConstructorsAndDestructors() {
     }
   }
 
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 }
 
 // Initializes all member functions for structs in TypesTable.
 // Pre: This should only be run after TypesTable and FunctionTable
 // have been initialized.
 static void initMemberFuncs() {
-  struct geniterator* it = gengetiterator(TypesTable);
+  TypeIterator* typeIt = newTypeIterator();
+
   // Iterate through all entries in TypesTable:
-  while (!it->finished) {
-    TypeEntry* t = (TypeEntry*)
-      gengettable(TypesTable, gennext(it));
+  while (hasNextType(typeIt)) {
+    TypeEntry* t = nextType(typeIt);
 
     // Only do this for struct/union types:
     if ((t->decType == D_STRUCT) ||
@@ -2535,7 +2529,7 @@ static void initMemberFuncs() {
     }
   }
 
-  genfreeiterator(it);
+  deleteTypeIterator(typeIt);
 }
 
 
@@ -2544,23 +2538,16 @@ static void initMemberFuncs() {
 // This is SLOW because we must traverse all values,
 // looking for the fjalar_name
 FunctionEntry* findFunctionEntryByFjalarNameSlow(char* fjalar_name) {
-  struct geniterator* it = gengetiterator(FunctionTable);
-  FunctionEntry* entry = 0;
-
-  while (!it->finished) {
-    entry = (FunctionEntry*)
-      gengettable(FunctionTable, gennext(it));
-
-    if (!entry)
-      continue;
-
+  FuncIterator* funcIt = newFuncIterator();
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* entry = nextFunc(funcIt);
+    tl_assert(entry);
     if (VG_STREQ(entry->fjalar_name, fjalar_name)) {
-      genfreeiterator(it);
+      deleteFuncIterator(funcIt);
       return entry;
     }
   }
-
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
   return 0;
 }
 
@@ -2569,24 +2556,17 @@ FunctionEntry* findFunctionEntryByFjalarNameSlow(char* fjalar_name) {
 // desired address addr, inclusive.  Thus addr is in the range of
 // [startPC, endPC]
 FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr) {
-  struct geniterator* it = gengetiterator(FunctionTable);
-  FunctionEntry* entry = 0;
-
-  while (!it->finished) {
-
-    entry = (FunctionEntry*)
-      gengettable(FunctionTable, gennext(it));
-
-    if (!entry)
-      continue;
-
+  FuncIterator* funcIt = newFuncIterator();
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* entry = nextFunc(funcIt);
+    tl_assert(entry && entry->startPC && entry->endPC);
     if ((entry->startPC <= addr) &&
         (addr <= entry->endPC)) {
-      genfreeiterator(it);
+      deleteFuncIterator(funcIt);
       return entry;
     }
   }
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
   return 0;
 }
 
@@ -2615,12 +2595,65 @@ int equivalentStrings(char* str1, char* str2) {
 }
 
 
-// Returns the first TypeEntry entry found in TypesTable with
-// collectionName matching the given name, and return 0 if nothing
-// found.
-__inline__ TypeEntry* findTypeEntryByName(char* name) {
-  return (TypeEntry*)gengettable(TypesTable, (void*)name);
+// Returns the TypeEntry entry found in TypesTable with collectionName
+// matching the given name, and return 0 if nothing found.
+TypeEntry* getTypeEntry(char* typeName) {
+  return (TypeEntry*)gengettable(TypesTable, (void*)typeName);
 }
+
+TypeIterator* newTypeIterator() {
+  TypeIterator* typeIt = VG_(calloc)(1, sizeof(*typeIt));
+  typeIt->it = gengetiterator(TypesTable);
+  return typeIt;
+}
+
+char hasNextType(TypeIterator* typeIt) {
+  return !(typeIt->it->finished);
+}
+
+TypeEntry* nextType(TypeIterator* typeIt) {
+  if (typeIt->it->finished) {
+    return 0;
+  }
+  else {
+    return (TypeEntry*)(gengettable(TypesTable, gennext(typeIt->it)));
+  }
+}
+
+void deleteTypeIterator(TypeIterator* typeIt) {
+  tl_assert(typeIt && typeIt->it);
+  genfreeiterator(typeIt->it);
+  VG_(free)(typeIt);
+}
+
+
+// Copy-and-paste alert! (but let's not resort to macros)
+FuncIterator* newFuncIterator() {
+  FuncIterator* funcIt = VG_(calloc)(1, sizeof(*funcIt));
+  funcIt->it = gengetiterator(FunctionTable);
+  return funcIt;
+}
+
+char hasNextFunc(FuncIterator* funcIt) {
+  return !(funcIt->it->finished);
+}
+
+FunctionEntry* nextFunc(FuncIterator* funcIt) {
+  if (funcIt->it->finished) {
+    return 0;
+  }
+  else {
+    return (FunctionEntry*)(gengettable(FunctionTable, gennext(funcIt->it)));
+  }
+}
+
+void deleteFuncIterator(FuncIterator* funcIt) {
+  tl_assert(funcIt && funcIt->it);
+  genfreeiterator(funcIt->it);
+  VG_(free)(funcIt);
+}
+
+
 
 #define XML_PRINTF(...) fprintf(xml_output_fp, __VA_ARGS__)
 
@@ -2718,13 +2751,12 @@ static void XMLprintGlobalVars()
 
 static void XMLprintFunctionTable()
 {
-  struct geniterator* it = gengetiterator(FunctionTable);
+  FuncIterator* funcIt = newFuncIterator();
 
   XML_PRINTF("<function-declarations>\n");
 
-  while (!it->finished) {
-    FunctionEntry* cur_entry = (FunctionEntry*)
-      gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
 
     if (!cur_entry) {
       continue;
@@ -2741,17 +2773,16 @@ static void XMLprintFunctionTable()
 
   XML_PRINTF("</function-declarations>\n");
 
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 }
 
 static void XMLprintTypesTable() {
-  struct geniterator* it = gengetiterator(TypesTable);
+  TypeIterator* typeIt = newTypeIterator();
 
   XML_PRINTF("<type-declarations>\n");
 
-  while (!it->finished) {
-    TypeEntry* cur_entry = (TypeEntry*)
-      gengettable(TypesTable, gennext(it));
+  while (hasNextType(typeIt)) {
+    TypeEntry* cur_entry = nextType(typeIt);
 
     if (!cur_entry) {
       continue;
@@ -2864,7 +2895,7 @@ static void XMLprintTypesTable() {
 
   XML_PRINTF("</type-declarations>\n");
 
-  genfreeiterator(it);
+  deleteTypeIterator(typeIt);
 }
 
 static void XMLprintVariablesInList(VarList* varListPtr) {

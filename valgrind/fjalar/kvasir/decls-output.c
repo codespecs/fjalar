@@ -23,6 +23,7 @@
 #include "dyncomp_runtime.h"
 
 #include "../fjalar_traversal.h"
+#include "../fjalar_include.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -490,11 +491,10 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
 // Print out all function declarations in Daikon .decls format
 static void printAllFunctionDecls(char faux_decls)
 {
-  struct geniterator* it = gengetiterator(FunctionTable);
+  FuncIterator* funcIt = newFuncIterator();
 
-  while(!it->finished) {
-    FunctionEntry* cur_entry =
-      (FunctionEntry*)gengettable(FunctionTable, gennext(it));
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
 
     tl_assert(cur_entry);
 
@@ -512,7 +512,7 @@ static void printAllFunctionDecls(char faux_decls)
     }
   }
 
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 }
 
 
@@ -526,7 +526,7 @@ static void printAllFunctionDecls(char faux_decls)
 // information for OBJECT program points.  We may support this in the
 // future if necessary.
 static void printAllObjectPPTDecls() {
-  struct geniterator* it = gengetiterator(TypesTable);
+  TypeIterator* typeIt = newTypeIterator();
 
   extern char* fullNameStack[];
   extern int fullNameStackSize;
@@ -542,10 +542,8 @@ static void printAllObjectPPTDecls() {
     hacked_dyncomp_switch = True;
   }
 
-  while(!it->finished) {
-    TypeEntry* cur_type =
-      (TypeEntry*)gengettable(TypesTable, gennext(it));
-
+  while (hasNextType(typeIt)) {
+    TypeEntry* cur_type = nextType(typeIt);
     tl_assert(cur_type);
 
     // Only print out .decls for :::OBJECT program points if there is
@@ -578,7 +576,7 @@ static void printAllObjectPPTDecls() {
     }
   }
 
-  genfreeiterator(it);
+  deleteTypeIterator(typeIt);
 
   // HACK ALERT! Remember to restore original state
   if (hacked_dyncomp_switch) {

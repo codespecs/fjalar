@@ -24,6 +24,8 @@
 #include "../fjalar_main.h"
 #include "../fjalar_traversal.h"
 #include "../generate_fjalar_entries.h"
+#include "../fjalar_include.h"
+
 #include "decls-output.h"
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
@@ -544,16 +546,12 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
 // Do one extra round of value-to-variable tag comparability set
 // propagations at the end of program execution
 void DC_extra_propagate_val_to_var_sets() {
+  FuncIterator* funcIt = newFuncIterator();
   DYNCOMP_DPRINTF("DC_extra_propagate_val_to_var_sets()\n");
-  struct geniterator* it = gengetiterator(FunctionTable);
 
-  while(!it->finished) {
-    FunctionEntry* cur_entry = (FunctionEntry*)
-         gengettable(FunctionTable, gennext(it));
-
-    if (!cur_entry)
-         continue;
-
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_entry = nextFunc(funcIt);
+    tl_assert(cur_entry);
     // Remember to only propagate through the functions to be traced
     // if kvasir_trace_prog_pts_filename is on:
     if (!fjalar_trace_prog_pts_filename ||
@@ -567,8 +565,7 @@ void DC_extra_propagate_val_to_var_sets() {
       DC_extra_propagate_one_function(cur_entry, 0);
     }
   }
-
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 }
 
 void debugPrintTagsInRange(Addr low, Addr high) {
@@ -703,7 +700,7 @@ static void reassign_tag(UInt* addr,
 // Runs the tag garbage collector
 void garbage_collect_tags() {
   UInt primaryIndex, secondaryIndex;
-  struct geniterator* it;
+  FuncIterator* funcIt;
   ThreadId currentTID;
   UInt curTag, i;
 
@@ -786,16 +783,12 @@ void garbage_collect_tags() {
   // both of these steps or else the garbage collector will not work
   // correctly.  After we have the 'leader of the leader', we can
   // re-assign it to a lower tag number using oldToNewMap.
-  it = gengetiterator(FunctionTable);
+  funcIt = newFuncIterator();
 
-  while(!it->finished) {
+  while (hasNextFunc(funcIt)) {
     UInt ind;
-
-    DaikonFunctionEntry* cur_entry = (DaikonFunctionEntry*)
-      gengettable(FunctionTable, gennext(it));
-
-    if (!cur_entry)
-      continue;
+    DaikonFunctionEntry* cur_entry = (DaikonFunctionEntry*)nextFunc(funcIt);
+    tl_assert(cur_entry);
 
     if (dyncomp_separate_entry_exit_comp) {
 
@@ -913,7 +906,7 @@ void garbage_collect_tags() {
     }
   }
 
-  genfreeiterator(it);
+  deleteFuncIterator(funcIt);
 
 
   // 3.) Guest state:
