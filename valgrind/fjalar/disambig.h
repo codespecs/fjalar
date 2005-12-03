@@ -33,14 +33,6 @@ typedef enum DisambigEntryType {
   USERTYPE   // ie. struct
 } DisambigEntryType;
 
-typedef enum DisambigOverride {
-  OVERRIDE_NONE,
-  OVERRIDE_CHAR_AS_STRING, // 'C' for base "char" and "unsigned char" types
-  OVERRIDE_STRING_AS_ONE_CHAR_STRING, // 'C' for pointer to "char" and "unsigned char"
-  OVERRIDE_STRING_AS_INT_ARRAY, // 'A' for pointer to "char" and "unsigned char"
-  OVERRIDE_STRING_AS_ONE_INT,   // 'P' for pointer to "char" and "unsigned char"
-  OVERRIDE_ARRAY_AS_POINTER     // 'P' for pointer to anything
-} DisambigOverride;
 
 void handleDisambigFile();
 DisambigOverride returnDisambigOverride(VariableEntry* var);

@@ -390,7 +390,7 @@ static void processDisambigFile() {
 	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
 
 	  // Find the appropriate function by name:
-          cur_entry = findFunctionEntryByFjalarNameSlow(entryName);
+          cur_entry = getFunctionEntryFromFjalarName(entryName);
           if (cur_entry) {
             VarListArray[0] = &(cur_entry->formalParameters);
           }

@@ -1536,7 +1536,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // t->memberFunctionList with the start PC of the function, then
   // later in initMemberFuncs(), we will
   // use those start PC values to look up the actual FunctionEntry
-  // entries using findFunctionEntryByStartAddr().  Thus, we
+  // entries using getFunctionEntryFromStartAddr().  Thus, we
   // temporarily overload memberFunctionList elts to hold start PC
   // pointer values.
 
@@ -2506,7 +2506,7 @@ static void initMemberFuncs() {
       // FunctionTable wasn't initialized at that time).  Thus, we
       // temporarily overload memberFunctionList elts to hold start PC
       // pointer values.  Now we will iterate over those values and
-      // use findFunctionEntryByStartAddr() to try to fill them in
+      // use getFunctionEntryFromStartAddr() to try to fill them in
       // with actual FunctionEntry instances:
       SimpleNode* n;
 
@@ -2520,7 +2520,7 @@ static void initMemberFuncs() {
           FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
 
           // Hopefully this will always be non-null
-          n->elt = (FunctionEntry*)findFunctionEntryByStartAddr(start_PC);
+          n->elt = getFunctionEntryFromStartAddr(start_PC);
           tl_assert(n->elt);
         // Very important!  Signify that it's a member function
           ((FunctionEntry*)(n->elt))->parentClass = t;
@@ -2535,9 +2535,9 @@ static void initMemberFuncs() {
 
 // FunctionTable
 
-// This is SLOW because we must traverse all values,
-// looking for the fjalar_name
-FunctionEntry* findFunctionEntryByFjalarNameSlow(char* fjalar_name) {
+// This is SLOW because we must traverse all values, looking for the
+// fjalar_name
+FunctionEntry* getFunctionEntryFromFjalarName(char* fjalar_name) {
   FuncIterator* funcIt = newFuncIterator();
   while (hasNextFunc(funcIt)) {
     FunctionEntry* entry = nextFunc(funcIt);
@@ -2555,7 +2555,7 @@ FunctionEntry* findFunctionEntryByFjalarNameSlow(char* fjalar_name) {
 // looking for an entry whose startPC and endPC encompass the
 // desired address addr, inclusive.  Thus addr is in the range of
 // [startPC, endPC]
-FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr) {
+FunctionEntry* getFunctionEntryFromAddr(unsigned int addr) {
   FuncIterator* funcIt = newFuncIterator();
   while (hasNextFunc(funcIt)) {
     FunctionEntry* entry = nextFunc(funcIt);
@@ -2572,7 +2572,7 @@ FunctionEntry* findFunctionEntryByAddrSlow(unsigned int addr) {
 
 // This is FAST because the keys of the hash table are addresses
 // startPC must match the starting address of the function
-__inline__ FunctionEntry* findFunctionEntryByStartAddr(unsigned int startPC) {
+__inline__ FunctionEntry* getFunctionEntryFromStartAddr(unsigned int startPC) {
   return (FunctionEntry*)gengettable(FunctionTable, (void*)startPC);
 }
 
@@ -2595,6 +2595,38 @@ int equivalentStrings(char* str1, char* str2) {
 }
 
 
+
+VarIterator* newVarIterator(VarList* vlist) {
+  VarIterator* varIt = (VarIterator*)VG_(calloc)(1, sizeof(*varIt));
+  tl_assert(vlist);
+  varIt->curNode = vlist->first; // This could be null!
+}
+
+char hasNextVar(VarIterator* varIt) {
+  // Empty list:
+  if (!varIt->curNode) {
+    return 0;
+  }
+  else if (!varIt->curNode->next) {
+    return 0;
+  }
+  else {
+    return 1;
+  }
+}
+
+VariableEntry* nextVar(VarIterator* varIt) {
+  VariableEntry* v = varIt->curNode->var;
+  varIt->curNode = varIt->curNode->next;
+  return v;
+}
+
+void deleteVarIterator(VarIterator* varIt) {
+  tl_assert(varIt);
+  VG_(free)(varIt);
+}
+
+
 // Returns the TypeEntry entry found in TypesTable with collectionName
 // matching the given name, and return 0 if nothing found.
 TypeEntry* getTypeEntry(char* typeName) {
@@ -2602,7 +2634,7 @@ TypeEntry* getTypeEntry(char* typeName) {
 }
 
 TypeIterator* newTypeIterator() {
-  TypeIterator* typeIt = VG_(calloc)(1, sizeof(*typeIt));
+  TypeIterator* typeIt = (TypeIterator*)VG_(calloc)(1, sizeof(*typeIt));
   typeIt->it = gengetiterator(TypesTable);
   return typeIt;
 }
@@ -2629,7 +2661,7 @@ void deleteTypeIterator(TypeIterator* typeIt) {
 
 // Copy-and-paste alert! (but let's not resort to macros)
 FuncIterator* newFuncIterator() {
-  FuncIterator* funcIt = VG_(calloc)(1, sizeof(*funcIt));
+  FuncIterator* funcIt = (FuncIterator*)VG_(calloc)(1, sizeof(*funcIt));
   funcIt->it = gengetiterator(FunctionTable);
   return funcIt;
 }

@@ -24,18 +24,11 @@ tools.
 #include "tool.h"
 #include "typedata.h"
 #include "generate_fjalar_entries.h"
+#include "fjalar_include.h"
 
 //#define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
 int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize);
-int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation);
-int getBytesBetweenElts(VariableEntry* var);
-
-#define addressIsAllocated(addressInQuestion, numBytes) addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1)
-#define addressIsInitialized(addressInQuestion, numBytes) addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0)
-
-char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numBytes, char allocatedOrInitialized);
-char are_some_bytes_init(Addr addressInQuestion, unsigned int numBytes);
 
 void fixBuffering(FILE *fp);
 

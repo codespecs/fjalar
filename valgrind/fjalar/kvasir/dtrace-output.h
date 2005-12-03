@@ -18,7 +18,7 @@
 #ifndef DTRACE_OUTPUT_H
 #define DTRACE_OUTPUT_H
 
-#include "../generate_fjalar_entries.h"
+#include "../fjalar_include.h"
 
 void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter);
 

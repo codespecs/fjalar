@@ -142,7 +142,7 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
   // If this is truly a function entry and we are interested in
   // tracking this particular function ...  This ensures that we only
   // track functions which we have in FunctionTable!!!
-  curFuncPtr = findFunctionEntryByStartAddr(currentAddr);
+  curFuncPtr = getFunctionEntryFromStartAddr(currentAddr);
 
   if (curFuncPtr &&
       // Also, if fjalar_trace_prog_pts_filename is on (we are reading
@@ -185,7 +185,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
   if (Ijk_Ret == jk) {
     IRDirty  *di;
 
-    FunctionEntry* curFuncPtr = findFunctionEntryByAddrSlow(currentAddr);
+    FunctionEntry* curFuncPtr = getFunctionEntryFromAddr(currentAddr);
 
     if (curFuncPtr &&
 	// Also, if fjalar_trace_prog_pts_filename is on (we are
