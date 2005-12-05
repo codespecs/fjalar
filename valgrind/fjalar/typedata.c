@@ -88,7 +88,8 @@ Returns: 1 if tag = {DW_TAG_base_type, _const_type, _enumerator,
                      _array_type, _subprogram,
                      _union_type, _enumeration_type, _member, _subroutine_type
                      _structure_type, _volatile_type, _compile_unit,
-                     _array_type, _subrange_type, _typedef, _variable, _inheritance},
+                     _array_type, _subrange_type, _typedef, _variable, _inheritance,
+		     _namespace},
                      0 otherwise
 Effects: Used to determine which entries to record into a dwarf_entry structure;
          All relevant entries should be included here
@@ -116,6 +117,7 @@ char tag_is_relevant_entry(unsigned long tag)
     case DW_TAG_typedef:
     case DW_TAG_variable:
     case DW_TAG_inheritance:
+    case DW_TAG_namespace:
       return 1;
     default:
       return 0;
@@ -225,6 +227,10 @@ char tag_is_inheritance(unsigned long tag) {
   return (tag == DW_TAG_inheritance);
 }
 
+char tag_is_namespace(unsigned long tag) {
+  return (tag == DW_TAG_namespace);
+}
+
 /*------------------
  Attribute listeners
  ------------------*/
@@ -236,7 +242,7 @@ char tag_is_inheritance(unsigned long tag) {
 
 // DW_AT_location: formal_parameter, variable
 // DW_AT_data_member_location: member, inheritance
-// DW_AT_name: collection_type, member, enumerator, function, formal_parameter, compile_unit, variable, typedef
+// DW_AT_name: collection_type, member, enumerator, function, formal_parameter, compile_unit, variable, typedef, namespace
 // DW_AT_byte_size: base_type, collection_type, member
 // DW_AT_bit_offset: base_type, member
 // DW_AT_bit_size: base_type, member
@@ -288,6 +294,7 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_formal_parameter(tag) ||
               tag_is_compile_unit(tag) ||
               tag_is_typedef(tag) ||
+              tag_is_namespace(tag) ||
               tag_is_variable(tag));
     case DW_AT_byte_size:
       return (tag_is_base_type(tag) ||
@@ -728,6 +735,11 @@ char harvest_name(dwarf_entry* e, const char* str)
   else if (tag_is_variable(tag))
     {
       ((variable*)e->entry_ptr)->name = VG_(strdup)(str);
+      return 1;
+    }
+  else if (tag_is_namespace(tag))
+    {
+      ((namespace_type*)e->entry_ptr)->namespace_name = VG_(strdup)(str);
       return 1;
     }
   else
@@ -1742,7 +1754,7 @@ static void link_array_entries_to_members()
       else if (tag_is_function(cur_entry->tag_name))
         link_function_to_params_and_local_vars(cur_entry, dwarf_entry_array_size - idx - 1);
 
-      // Link C++ static member variables
+      // Link C++ static member variables (as well as global variables produced in gcc 4.0)
       // Copy all the information into the version of the variable "declaration" one
       // which is INSIDE the appropriate class/struct DWARF entry
       else if (tag_is_variable(cur_entry->tag_name)) {
@@ -1757,9 +1769,22 @@ static void link_array_entries_to_members()
             if (tag_is_variable(aliased_entry->tag_name)) {
               variable* aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);
               aliased_var_ptr->globalVarAddr = variablePtr->globalVarAddr;
-              aliased_var_ptr->couldBeGlobalVar = 0;
-              aliased_var_ptr->isStaticMemberVar = 1;
               aliased_var_ptr->is_declaration_or_artificial = 0;
+
+	      // We distinguish between true global variables and C++
+	      // static member variables by whether there is a
+	      // non-null mangled_name.  This is just a heuristic, but
+	      // it seems to work in practice.  Static member
+	      // variables have mangled names, but global variables
+	      // don't:
+	      if (aliased_var_ptr->mangled_name) {
+		aliased_var_ptr->couldBeGlobalVar = 0;
+		aliased_var_ptr->isStaticMemberVar = 1;
+	      }
+	      else {
+		aliased_var_ptr->couldBeGlobalVar = 1;
+		aliased_var_ptr->isStaticMemberVar = 0;
+	      }
 
               //              VG_(printf)("mangled_name: %s - ID: %x - globalVarAddr: 0x%x\n",
               //                          aliased_var_ptr->mangled_name,
@@ -2144,6 +2169,10 @@ void initialize_dwarf_entry_ptr(dwarf_entry* e)
         {
           e->entry_ptr = VG_(calloc)(1, sizeof(inheritance_type));
         }
+      else if (tag_is_namespace(e->tag_name))
+        {
+          e->entry_ptr = VG_(calloc)(1, sizeof(namespace_type));
+        }
       else {
         tl_assert(0); // Error
       }
@@ -2196,6 +2225,32 @@ char* findFilenameForEntry(dwarf_entry* e)
   return 0;
 }
 
+// Finds the first namespace_type entry to the LEFT of the given entry
+// e with a level lower than e's level and return it:
+namespace_type* findNamespaceForVariableEntry(dwarf_entry* e) {
+  int idx;
+  dwarf_entry* cur_entry = 0;
+  unsigned long entry_index;
+
+  // TODO: We can avoid this and get entry_index directly if we assume
+  // that 'e' is within dwarf_entry_array, which it should be:
+  char success = binary_search_dwarf_entry_array(e->ID, &entry_index);
+
+  if (!success)
+    return 0;
+
+  // Traverse backwards (to the LEFT) in dwarf_entry_array
+  for (idx = entry_index; idx >= 0; idx--)
+    {
+      cur_entry = &dwarf_entry_array[idx];
+
+      if ((tag_is_namespace(cur_entry->tag_name)) &&
+	  (cur_entry->level < e->level))
+        return (namespace_type*)(cur_entry->entry_ptr);
+    }
+  return 0;
+}
+
 // Finds the first function entry to the LEFT of the given entry e
 // with a level lower than e's level and grabs its startPC
 unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
@@ -2204,6 +2259,8 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
   dwarf_entry* cur_entry = 0;
   unsigned long entry_index;
 
+  // TODO: We can avoid this and get entry_index directly if we assume
+  // that 'e' is within dwarf_entry_array, which it should be:
   char success = binary_search_dwarf_entry_array(e->ID, &entry_index);
 
   if (!success)
@@ -2250,4 +2307,21 @@ __inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {
   genputtable(VariableSymbolTable,
               (void*)name,
               (void*)addr);
+}
+
+
+Addr getFunctionStartAddr(char* name) {
+  return (Addr)gengettable(FunctionSymbolTable, (void*)name);
+}
+
+// This queries ReverseFunctionSymbolTable:
+// (Returns regular name for C and mangled name for C++)
+char* getFunctionName(Addr startAddr) {
+  return (char*)gengettable(ReverseFunctionSymbolTable, (void*)startAddr);
+}
+
+// This queries VariableSymbolTable:
+// (Accepts regular name for C and mangled name for C++)
+Addr getGlobalVarAddr(char* name) {
+  return (Addr)gengettable(VariableSymbolTable, (void*)name);
 }

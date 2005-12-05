@@ -599,8 +599,7 @@ void visitVariable(VariableEntry* var,
 // or .rodata sections):
 char addressIsGlobal(unsigned int addr);
 
-// TODO: Insert some stuff to access symbol table information
-//       FunctionSymbolTable, ReverseFunctionSymbolTable, VariableSymbolTable
+
 
 // This queries FunctionSymbolTable:
 // (Accepts regular name for C and mangled name for C++)
