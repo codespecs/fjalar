@@ -69,6 +69,13 @@ typedef struct
   unsigned long member_var_offset;  // the offset of member variables inherited from this class
 } inheritance_type;
 
+// For C++ namespaces
+typedef struct
+{
+  char* namespace_name; // "::" is the name for the default namespace
+} namespace_type;
+
+
 // collection_type corresponds to the following DWARF2 types:
 //   {DW_TAG_structure_type, _union_type, _enumeration_type}
 typedef struct
@@ -302,12 +309,15 @@ typedef struct
   // Set this to 1 if you encounter a DW_AT_artificial attribute
   // for a DWARF variable entry as well as a DW_AT_declaration attribute
 
-  char isStaticMemberVar; // only for C++ static member variables
+  char isStaticMemberVar; // only for C++ static member variables (I dunno if we still use this)
 
   unsigned long specification_ID; // Relevant fo C++:
   // DO NOT add an entry with specification_ID non-null to any variable
   // lists because it's an empty shell
 
+  // We should try to grab this from the symbol table if one is not
+  // provided because g++ 4.0 doesn't provide global variable
+  // addresses in the debug. info.
   unsigned long globalVarAddr; // only valid for global variables
   int offset; // only valid for local variables
 
@@ -428,5 +438,6 @@ char tag_is_variable(unsigned long tag);
 
 char* findFilenameForEntry(dwarf_entry* e);
 unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e);
+namespace_type* findNamespaceForVariableEntry(dwarf_entry* e);
 
 #endif
