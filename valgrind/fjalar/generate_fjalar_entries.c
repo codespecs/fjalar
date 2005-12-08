@@ -2965,6 +2965,13 @@ static void XMLprintVariablesInList(VarList* varListPtr) {
   for (curNode = varListPtr->first;
        curNode != 0;
        curNode = curNode->next) {
+    // Special case: Skip C++ member variables that
+    // are in the globalVars list:
+    if ((varListPtr == &globalVars) &&
+	curNode->var->structParentType) {
+      continue;
+    }
+
     XMLprintOneVariable(curNode->var);
   }
 }
