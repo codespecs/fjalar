@@ -775,9 +775,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                          UInt,
                                                          FunctionEntry*,
                                                          char)) {
-  VarNode* i = 0;
-
   VarList* varListPtr = 0;
+  VarIterator* varIt = 0;
 
   // If funcPtr is null, then you better be GLOBAL_VAR
   if (!funcPtr) {
@@ -813,63 +812,63 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
   tl_assert(varListPtr);
 
-  for (i = varListPtr->first;
-       i != NULL;
-       i = i->next) {
-      VariableEntry* var;
-      void* basePtrValue = 0;
+  varIt = newVarIterator(varListPtr);
 
-      var = i->var;
+  while (hasNextVar(varIt)) {
+    VariableEntry* var = nextVar(varIt);
+    void* basePtrValue = 0;
 
-      if (!var->name) {
-	VG_(printf)( "  Warning! Weird null variable name!\n");
+    if (!var->name) {
+      VG_(printf)( "  Warning! Weird null variable name!\n");
+      continue;
+    }
+
+    if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
+      basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
+    }
+    else if (varOrigin == GLOBAL_VAR) {
+      basePtrValue = (void*)(var->globalLocation);
+
+      // if "--ignore-static-vars" option was selected, do not visit
+      // file-static global variables:
+      if (!var->isExternal && fjalar_ignore_static_vars) {
 	continue;
       }
 
-      if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
-        basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
+      // If "--limit-static-vars" option was selected, then:
+      // * Only visit file-static variables at program points
+      //   in the file in which the variables were declared
+      // * Only visit static variables declared within functions
+      //   at program points of that particular function
+      if (!var->isExternal && fjalar_limit_static_vars && funcPtr) {
+	// Declared within a function
+	if (var->functionStartPC) {
+	  if (funcPtr->startPC != var->functionStartPC) {
+	    continue;
+	  }
+	}
+	// Declared globally
+	else if (!VG_STREQ(funcPtr->filename, var->fileName)) {
+	  continue;
+	}
       }
-      else if (varOrigin == GLOBAL_VAR) {
-        basePtrValue = (void*)(var->globalLocation);
-
-        // if "--ignore-static-vars" option was selected, do not visit
-        // file-static global variables:
-        if (!var->isExternal && fjalar_ignore_static_vars) {
-          continue;
-        }
-
-        // If "--limit-static-vars" option was selected, then:
-        // * Only visit file-static variables at program points
-        //   in the file in which the variables were declared
-        // * Only visit static variables declared within functions
-        //   at program points of that particular function
-        if (!var->isExternal && fjalar_limit_static_vars && funcPtr) {
-          // Declared within a function
-          if (var->functionStartPC) {
-            if (funcPtr->startPC != var->functionStartPC) {
-              continue;
-            }
-          }
-          // Declared globally
-          else if (!VG_STREQ(funcPtr->filename, var->fileName)) {
-            continue;
-          }
-        }
-      }
-
-      stringStackPush(fullNameStack, &fullNameStackSize, var->name);
-
-      visitVariable(var,
-                    basePtrValue,
-                    0,
-                    0,
-                    performAction,
-                    varOrigin,
-                    funcPtr,
-                    isEnter);
-
-      stringStackPop(fullNameStack, &fullNameStackSize);
     }
+
+    stringStackPush(fullNameStack, &fullNameStackSize, var->name);
+
+    visitVariable(var,
+		  basePtrValue,
+		  0,
+		  0,
+		  performAction,
+		  varOrigin,
+		  funcPtr,
+		  isEnter);
+    
+    stringStackPop(fullNameStack, &fullNameStackSize);
+  }
+
+  deleteVarIterator(varIt);
 }
 
 

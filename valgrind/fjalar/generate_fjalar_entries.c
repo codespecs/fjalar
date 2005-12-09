@@ -2623,7 +2623,7 @@ int equivalentStrings(char* str1, char* str2) {
 VarIterator* newVarIterator(VarList* vlist) {
   VarIterator* varIt = (VarIterator*)VG_(calloc)(1, sizeof(*varIt));
   tl_assert(vlist);
-  varIt->curNode = vlist->first; // This could be null!
+  varIt->curNode = vlist->first; // This could be null for an empty list
   return varIt;
 }
 
@@ -2632,16 +2632,15 @@ char hasNextVar(VarIterator* varIt) {
   if (!varIt->curNode) {
     return 0;
   }
-  else if (!varIt->curNode->next) {
-    return 0;
-  }
   else {
     return 1;
   }
 }
 
 VariableEntry* nextVar(VarIterator* varIt) {
-  VariableEntry* v = varIt->curNode->var;
+  VariableEntry* v = 0;
+  tl_assert(varIt && varIt->curNode);
+  v = varIt->curNode->var;
   varIt->curNode = varIt->curNode->next;
   return v;
 }
@@ -2956,24 +2955,23 @@ static void XMLprintTypesTable() {
 }
 
 static void XMLprintVariablesInList(VarList* varListPtr) {
-  VarNode* curNode;
+  VarIterator* varIt;
+  tl_assert(varListPtr);
+  varIt = newVarIterator(varListPtr);
 
-  if (!varListPtr) {
-    return;
-  }
-
-  for (curNode = varListPtr->first;
-       curNode != 0;
-       curNode = curNode->next) {
+  while (hasNextVar(varIt)) {
+    VariableEntry* cur_var = nextVar(varIt);
     // Special case: Skip C++ member variables that
     // are in the globalVars list:
     if ((varListPtr == &globalVars) &&
-	curNode->var->structParentType) {
+	cur_var->structParentType) {
       continue;
     }
 
-    XMLprintOneVariable(curNode->var);
+    XMLprintOneVariable(cur_var);
   }
+
+  deleteVarIterator(varIt);
 }
 
 // Prints one VariableEntry
