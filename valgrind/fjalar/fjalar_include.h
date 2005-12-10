@@ -1,6 +1,6 @@
 /*
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file is part of Fjalar, a dynamic analysis framework for
+   C and C++ programs.
 
    Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
@@ -10,23 +10,20 @@
    License, or (at your option) any later version.
 */
 
-/* fjalar_include.h
-
+/*********************************************************************
+fjalar_include.h
 These are the Fjalar functions that are available for tools to access.
-
-*/
+**********************************************************************/
 
 #ifndef FJALAR_INCLUDE_H
 #define FJALAR_INCLUDE_H
 
 #include "GenericHashtable.h"
-#include "tool.h"
+#include "tool.h" // This forms the interface with Valgrind
 
-/********************************************************************
-
+/*********************************************************************
 Supporting data structures and enums
-
-*********************************************************************/
+**********************************************************************/
 
 typedef enum {
   D_NO_TYPE, // Create padding
@@ -97,8 +94,7 @@ void SimpleListClear(SimpleList* lst);
 
 
 
-/********************************************************************
-
+/*********************************************************************
 These are three main types that represent the compile-time information
 in the target program: FunctionEntry, VariableEntry, TypeEntry
 
@@ -109,9 +105,7 @@ TypeEntry     - types: base types, structs, unions, C++ classes
 All of these types can be 'sub-classed' by tools, so tools should only
 create and destroy instances using functions listed in fjalar_tool.h
 and not directly use VG_(malloc) and VG_(free)
-
-*********************************************************************/
-
+**********************************************************************/
 
 // TypeEntry instances only exist for structs, classes, and base types
 // and NOT pointers to those types.  Pointers are represented using
@@ -165,23 +159,23 @@ typedef struct _TypeEntry {
 // Global singleton entries for basic types.  To see whether a
 // particular TypeEntry instances is a basic type, simply do a pointer
 // comparison to the address of one of the following entries:
-TypeEntry UnsignedCharType;
-TypeEntry CharType;
-TypeEntry UnsignedShortType;
-TypeEntry ShortType;
-TypeEntry UnsignedIntType;
-TypeEntry IntType;
-TypeEntry UnsignedLongLongIntType;
-TypeEntry LongLongIntType;
-TypeEntry UnsignedFloatType;
-TypeEntry FloatType;
-TypeEntry UnsignedDoubleType;
-TypeEntry DoubleType;
-TypeEntry UnsignedLongDoubleType;
-TypeEntry LongDoubleType;
-TypeEntry FunctionType;
-TypeEntry VoidType;
-TypeEntry BoolType;
+const TypeEntry UnsignedCharType;
+const TypeEntry CharType;
+const TypeEntry UnsignedShortType;
+const TypeEntry ShortType;
+const TypeEntry UnsignedIntType;
+const TypeEntry IntType;
+const TypeEntry UnsignedLongLongIntType;
+const TypeEntry LongLongIntType;
+const TypeEntry UnsignedFloatType;
+const TypeEntry FloatType;
+const TypeEntry UnsignedDoubleType;
+const TypeEntry DoubleType;
+const TypeEntry UnsignedLongDoubleType;
+const TypeEntry LongDoubleType;
+const TypeEntry FunctionType;
+const TypeEntry VoidType;
+const TypeEntry BoolType;
 
 
 // Return a type entry, given the name of the type (only for
@@ -351,7 +345,7 @@ typedef struct _VariableEntry {
 struct _VarNode {
   // dynamically-allocated with constructVariableEntry() - must be
   // destroyed with destroyVariableEntry() (see fjalar_tool.h)
-  VariableEntry* var; 
+  VariableEntry* var;
   VarNode* prev;
   VarNode* next;
 };
@@ -402,48 +396,85 @@ void deleteVarIterator(VarIterator* varIt);
 // Contains information about a particular function
 typedef struct _FunctionEntry {
   // The standard C name for a function (i.e. "sum")
+  // (Even C++ functions with mangled names also have regular C names as well)
   char* name;
 
-  char* mangled_name;   // The mangled name (C++ only)
+  char* mangled_name;     // The mangled name (C++ only)
   char* demangled_name;   // The de-mangled name (C++ only)
 
-  char* filename;
-  /* fjalar_name is like name, but made unique by prepending a munged copy
-     of filename */
-  char *fjalar_name; // This is initialized once when the
+  char* filename;         // The file where this function is defined
+
+  // fjalar_name is a version of name that is guaranteed (hopefully)
+  // to be unique.
+
+  // Global functions have a '..' appended to the front: eg ..main()
+  // File-static functions have filename appended:
+  //    dirname/filename.c.staticFunction()
+  // C++ member functions have class name appended:
+  //    className.memberFunction()
+  char *fjalar_name; // This is initialized only once when the
                      // FunctionEntry entry is created from the
                      // corresponding dwarf_entry in
                      // initializeFunctionTable()
 
   // All instructions within the function are between
-  // startPC and endPC, inclusive I believe)
+  // startPC and endPC, inclusive I believe
   Addr startPC;
   Addr endPC;
 
-  char isExternal; // 1 if it's globally visible, 0 if it's file static
-  VarList formalParameters; // Variables for formal parameters
-  VarList localArrayAndStructVars; // Locally-declared structs and static array variables
-  VarList returnValue;      // Variable for return value (should contain at most 1)
+  char isExternal; // 1 if it's globally visible, 0 if it's file-static
+
+  VarList formalParameters;        // List of formal parameter variables
+  VarList localArrayAndStructVars; // Local struct and static array
+                                   // variables (useful for finding
+                                   // out how many elements a pointer
+                                   // to the stack refers to)
+  VarList returnValue; // Variable for the return value (should
+                       // contain at most 1 element)
 
   TypeEntry* parentClass; // only non-null if this is a C++ member function;
                           // points to the class which this function belongs to
 
+  // TODO: Refactor to use VisibilityType
   char accessibility; // 0 if none - ASSUMED TO BE PUBLIC!!!
                       // 1 (DW_ACCESS_public) if public,
                       // 2 (DW_ACCESS_protected) if protected,
                       // 3 (DW_ACCESS_private) if private
 
-  // GNU Binary tree of variables to trace within this function - only valid when
-  // Kvasir is run with the --var-list-file command-line option:
-  // This is initialized in initializeFunctionTable()
+  // GNU Binary tree of variables (accessed using tsearch(), tfind(),
+  // etc...) to trace within this function.  This is only valid when
+  // Fjalar is run with the --var-list-file command-line option.  This
+  // is initialized in initializeFunctionTable().
   char* trace_vars_tree;
-  char trace_vars_tree_already_initialized; // Has trace_vars_tree been initialized?
+  // Has trace_vars_tree been initialized?
+  char trace_vars_tree_already_initialized;
 } FunctionEntry;
 
-FunctionEntry* getFunctionEntryFromFjalarName(char* fjalar_name);
+// Returns a FunctionEntry* given its starting address (startPC)
+// [Fast hashtable lookup]
 __inline__ FunctionEntry* getFunctionEntryFromStartAddr(unsigned int startPC);
+// Returns a FunctionEntry* given its fjalar_name
+// [Slow linear search lookup]
+FunctionEntry* getFunctionEntryFromFjalarName(char* fjalar_name);
+// Returns a FunctionEntry* given an address within the range of
+// [startPC, endPC], inclusive
+// [Slow linear search lookup]
 FunctionEntry* getFunctionEntryFromAddr(unsigned int addr);
 
+
+/*
+Programming idiom for iterating over all functions used in the target
+program (including C++ member functions):
+
+  FuncIterator* funcIt = newFuncIterator();
+
+  while (hasNextFunc(funcIt)) {
+    FunctionEntry* cur_func = nextFunc(funcIt);
+    ... work with cur_func ...
+  }
+
+  deleteFuncIterator(funcIt);
+*/
 typedef struct {
   struct geniterator* it;
 } FuncIterator;
@@ -454,77 +485,101 @@ FunctionEntry* nextFunc(FuncIterator* funcIt);
 void deleteFuncIterator(FuncIterator* funcIt);
 
 
-// Dynamic entries for tracking state at function entrances and exits
-// (used mainly by FunctionExecutionStateStack in fjalar_main.c)
-// THIS CANNOT BE SUB-CLASSED RIGHT NOW because it is placed inline
-// into FunctionExecutionStateStack
+/*********************************************************************
+These data structures and functions provide mechanisms for runtime
+traversals within data structures and arrays
+**********************************************************************/
+
+// Entries for tracking the runtime state of functions at entrances
+// and exits (used mainly by FunctionExecutionStateStack in
+// fjalar_main.c) THIS CANNOT BE SUB-CLASSED RIGHT NOW because it is
+// placed inline into FunctionExecutionStateStack.
 typedef struct {
-  FunctionEntry* func; // The function whose state we are tracking
+  FunctionEntry* func; // The function whose runtime state we are tracking
 
-  Addr  EBP; // %ebp as calculated from %esp at function entrance time
+  Addr EBP; // %ebp as calculated from %esp at function entrance time
 
-  Addr  lowestESP; // The LOWEST value of %ESP that is encountered
-                   // while we are in this function -
-                   // We need this to see how deep a function penetrates
-                   // into the stack to see what is safe to dereference
-                   // when this function exits
+  Addr lowestESP; // The LOWEST value of %esp that has ever been
+                  // encountered while we are in this function.  The
+                  // problem is that Fjalar's function exit handling
+                  // code runs after the function increments ESP so
+                  // that everything in the current function's stack
+                  // frame is marked invalid by Memcheck.  Thus, we
+                  // need this value to see how deep a function has
+                  // penetrated into the stack, so that we can know
+                  // what values are valid when this function exits.
 
-  // Return values of function exit -
-  // These should NOT be valid on the stack, they should
-  // only be valid right after popping an entry off the
-  // stack upon function exit:
-  // (TODO: What does this mean?  Is this still valid?)
+  // Return values of function exit
 
-  // As of Valgrind 3.0, we now keep V-bits for all of these
-  // in the shadow memory:
-  int EAX; // %EAX
-  int EDX; // %EDX
-  double FPU; // FPU %st(0)
+  // As of Valgrind 3.0, we now keep V-bits for all of these in the
+  // shadow memory:
+  int EAX;     // %EAX
+  int EDX;     // %EDX
+  double FPU;  // FPU %st(0)
 
-  // This is a copy of the portion of the Valgrind stack
-  // that is above EBP - it holds function formal parameter
-  // values that was passed into this function upon entrance.
-  // We reference this virtualStack at function exit in order
-  // to print out the SAME formal parameter values upon exit
-  // as upon entrance.
+  // This is a copy of the portion of the function's (Valgrind) stack
+  // frame that is above EBP.  It holds function formal parameter
+  // values that were passed into this function at entrance-time.  We
+  // reference this virtualStack at function exit in order to print
+  // out the SAME formal parameter values upon exit as upon entrance.
+  // We need this because the compiler is free to modify the formal
+  // parameter values that are on the real stack when executing the
+  // function.  Using the virtualStack means that local changes to
+  // formal parameters are not visible at function exit (but changes
+  // made via params passed by pointers are visible).  This is okay
+  // because local changes should be invisible to the calling
+  // function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
 
 } FunctionExecutionState;
 
 
-
+// Enum for storing the state of a traversal process:
 typedef enum {
-  DERIVED_VAR, // Always switches to this after one recursive call
-  DERIVED_FLATTENED_ARRAY_VAR, // A derived variable as a result of flattening an array
+  DERIVED_VAR, // A variable that was derived either from
+               // dereferencing a pointer or traversing inside of a
+               // data structure
+  DERIVED_FLATTENED_ARRAY_VAR, // A derived variable as a result of
+                               // flattening an array
   GLOBAL_VAR,
   FUNCTION_FORMAL_PARAM,
-  FUNCTION_RETURN_VAR // Only relevant for function exits
+  FUNCTION_RETURN_VAR          // Only relevant for function exits
 } VariableOrigin;
 
+
 // These result values control the actions of the data structure
-// traversal machinery:
+// traversal mechanism.  It is the type of the value that the tool's
+// traversal callback function must return.
 typedef enum {
-  INVALID_RESULT = 0,
-  // When we don't really care about pointer dereferences at all
-  // (not the same as DO_NOT_DEREF_MORE_POINTERS!)
+  INVALID_RESULT = 0, // Should never happen
+  // Return this when you don't really care about pointer dereferences
+  // at all; e.g., you might just be interested in the names of the
+  // variables and not their actual values (this is not the same as
+  // DO_NOT_DEREF_MORE_POINTERS!)
   DISREGARD_PTR_DEREFS,
 
-  // When we don't want to derive further values by dereferencing
-  // pointers.  All values of variables derived from the visited
-  // variable will simply be null.  However, we will still continue to
-  // derive variables by traversing inside of structs and arrays:
+  // Return this when you don't want to derive further values by
+  // dereferencing pointers.  All values of variables derived from the
+  // current variable will simply be null.  However, we will still
+  // continue to derive variables by traversing inside of data
+  // structures and arrays:
   DO_NOT_DEREF_MORE_POINTERS,
-  // Attempt to derive more values by dereferencing pointers after
-  // visiting the current variable:
+  // Return this when you want to attempt to derive more values by
+  // dereferencing pointers after visiting the current variable:
   DEREF_MORE_POINTERS,
 
-  // Stop the traversal after this variable and do not derive anything
-  // further:
+  // Stop the entire traversal process after the current variable and
+  // do not derive anything further:
   STOP_TRAVERSAL
+
 } TraversalResult;
 
 
+// Enum for determining whether a pointer-type disambiguation
+// (.disambig) option is in effect:
+// (See http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Pointer-type-disambiguation
+//  for detailed instructions on pointer-type disambiguation)
 typedef enum DisambigOverride {
   OVERRIDE_NONE,
   OVERRIDE_CHAR_AS_STRING, // 'C' for base "char" and "unsigned char" types
@@ -535,63 +590,62 @@ typedef enum DisambigOverride {
 } DisambigOverride;
 
 
-// This increments every time a call to visitSingleVar() or
-// visitSequence() is made.  It is up to the caller to reset this
-// properly!
+// This variable keeps a running count of how many actual & derived
+// variables have been visited.  It increments every time a call to
+// visitSingleVar() or visitSequence() is made.  It is up to the
+// caller to reset this properly at the beginning of every sequence of
+// traversals!  (This interface is kind of ugly at the moment, so
+// please see code samples from tools for usage examples.  I will
+// attempt to improve it in the future.)
 int g_variableIndex;
 
-void visitClassMembersNoValues(TypeEntry* class,
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                char,
-                                                                DisambigOverride,
-                                                                char,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                char));
 
-// Takes a TypeEntry* and (optionally, a pointer to its memory
-// location), and traverses through all of the members of the
-// specified class (or struct/union).  This should also traverse
-// inside of the class's superclasses and visit variables in them:
-void visitClassMemberVariables(TypeEntry* class,
-                               void* pValue,
-                               char isSequence,
-                               // An array of pointers to values (only
-                               // valid if isSequence non-null):
-                               void** pValueArray,
-                               UInt numElts, // Size of pValueArray
-                               // This function performs an action for each variable visited:
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                char,
-                                                                DisambigOverride,
-                                                                char,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                char),
-                               VariableOrigin varOrigin,
-                               char* trace_vars_tree,
-                               // The number of structs we have dereferenced for
-                               // a particular call of visitVariable(); Starts at
-                               // 0 and increments every time we hit a variable
-                               // which is a base struct type
-                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
-                               UInt numStructsDereferenced,
-                               // These uniquely identify the program point
-                               FunctionEntry* varFuncInfo,
-                               char isEnter,
-                               TraversalResult tResult);
+/*
+The traversal functions below all take a performAction function
+pointer to indicate a callback function that should be called for each
+variable visited.  Here is the prototype of such a function:
+
+TraversalResult performAction(VariableEntry* var,
+                              char* varName,
+                              VariableOrigin varOrigin,
+                              UInt numDereferences,
+                              UInt layersBeforeBase,
+                              char overrideIsInit,
+                              DisambigOverride disambigOverride,
+                              char isSequence,
+                              void* pValue,
+                              void** pValueArray,
+                              UInt numElts,
+                              FunctionEntry* varFuncInfo,
+                              char isEnter);
+
+Each time that the traversal visits a variable, it calls the given
+function and populates its parameters with the following information:
+
+VariableEntry* var - The current variable
+char* varName - The variable name with all prefixed appended
+                e.g., "foo->bar[].baz"
+VariableOrigin varOrigin - The origin of this variable
+UInt numDereferences - The number of pointer dereferences of 'var'
+                       at this point of the traversal
+UInt layersBeforeBase - The number of pointer levels left before reaching
+                        the base variable indicated by 'var'
+char overrideIsInit - 1 if the pointer referring to this variable's value
+                      should automatically be deemed as valid, and 0
+                      otherwise (most of the time, it's 0)
+DisambigOverride disambigOverride - See .disambig option
+char isSequence - Are we traversing a single value or a sequence of values?
+void* pValue - A pointer to the value of the current variable
+               (Only valid if isSequence is 0)
+void** pValueArray - An array of pointers to the values of the current variable
+                     sequence (Only valid if isSequence is 1)
+UInt numElts - The number of elements in pValueArray
+               (Only valid if isSequence is 1)
+FunctionEntry* varFuncInfo - The function that is active during the current
+                             traversal (may be null sometimes)
+char isEnter - 1 if this is a function entrance, 0 if exit
+
+*/
 
 
 // Visits an entire group of variables, depending on the value of varOrigin:
@@ -599,12 +653,19 @@ void visitClassMemberVariables(TypeEntry* class,
 // If varOrigin == FUNCTION_FORMAL_PARAM, then visit all formal parameters
 // of the function denoted by funcPtr
 // If varOrigin == FUNCTION_RETURN_VAR, then visit the return value variable
-// of the function denoted by funcPtr
+// of the function denoted by funcPtr (but this does not work for trying to
+// actually grab the return value; it only grabs the names.  Instead, use
+// visitReturnValue() when you need the names and values)
 void visitVariableGroup(VariableOrigin varOrigin,
                         FunctionEntry* funcPtr, // 0 for unspecified function
-                        char isEnter,           // 1 for function entrance, 0 for exit
+                        char isEnter,           // 1 for function entrance,
+                                                // 0 for exit
+                        // Address of the base of the currently
+                        // executing function's stack frame: (Only used for
+                        // varOrigin == FUNCTION_FORMAL_PARAM)
                         char* stackBaseAddr,
-                        // This function performs an action for each variable visited:
+                        // This function performs an action for each
+                        // variable visited:
                         TraversalResult (*performAction)(VariableEntry*,
                                                          char*,
                                                          VariableOrigin,
@@ -619,8 +680,15 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                          FunctionEntry*,
                                                          char));
 
+// Grabs the appropriate return value of the function denoted by the
+// execution state 'e' from Valgrind simulated registers and visits
+// the derived variables to perform some action.  This differs from
+// calling visitVariableGroup() with the FUNCTION_RETURN_VAR parameter
+// because it actually grabs the appropriate value from the simulated
+// registers.  This should only be called at function exit time.
 void visitReturnValue(FunctionExecutionState* e,
-                      // This function performs an action for each variable visited:
+                      // This function performs an action for each
+                      // variable visited:
                       TraversalResult (*performAction)(VariableEntry*,
                                                        char*,
                                                        VariableOrigin,
@@ -635,6 +703,8 @@ void visitReturnValue(FunctionExecutionState* e,
                                                        FunctionEntry*,
                                                        char));
 
+// Visits one variable (denoted by 'var') and all variables that are
+// derived from it by traversing inside of data structures and arrays.
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
@@ -650,10 +720,11 @@ void visitVariable(VariableEntry* var,
                    // want finer control over struct dereferences, you
                    // can override this with a number representing the
                    // number of structs you have dereferenced so far
-                   // to get here (this is useful for the 'this'
-                   // parameter of member functions):
+                   // to get here (Useful for the 'this' parameter of
+                   // member functions):
                    UInt numStructsDereferenced,
-                   // This function performs an action for each variable visited:
+                   // This function performs an action for each
+                   // variable visited:
                    TraversalResult (*performAction)(VariableEntry*,
                                                     char*,
                                                     VariableOrigin,
@@ -671,43 +742,150 @@ void visitVariable(VariableEntry* var,
                    FunctionEntry* varFuncInfo,
                    char isEnter);
 
+// Visits all member variables of the class and all of its
+// superclasses (and variables derived from those members) without
+// regard to actually grabbing their values.  This is useful for
+// printing out names and performing other non-value-dependent
+// operations.
+void visitClassMembersNoValues(TypeEntry* class,
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char));
 
+// Takes a TypeEntry* and (optionally, a pointer to its current value
+// in memory), and traverses through all of the members of the
+// specified class.  This should also traverse inside of the class's
+// superclasses and visit variables within them (as well as derived
+// variables):
+void visitClassMemberVariables(TypeEntry* class,
+                               // Pointer to the current value of an
+                               // instance of 'class' (only valid if
+                               // isSequence is 0)
+                               void* pValue,
+                               char isSequence,
+                               // An array of pointers to instances of
+                               // 'class' (only valid if isSequence is
+                               // non-zero):
+                               void** pValueArray,
+                               UInt numElts, // Size of pValueArray
+                               // This function performs an action for
+                               // each variable visited:
+                               TraversalResult (*performAction)(VariableEntry*,
+                                                                char*,
+                                                                VariableOrigin,
+                                                                UInt,
+                                                                UInt,
+                                                                char,
+                                                                DisambigOverride,
+                                                                char,
+                                                                void*,
+                                                                void**,
+                                                                UInt,
+                                                                FunctionEntry*,
+                                                                char),
+                               VariableOrigin varOrigin,
+                               // A (possibly null) GNU binary tree of
+                               // variables to trace:
+                               char* trace_vars_tree,
+                               // The number of structs we have
+                               // dereferenced for a particular call
+                               // of visitVariable(); Starts at 0 and
+                               // increments every time we hit a
+                               // variable which is a base struct type
+                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
+                               UInt numStructsDereferenced,
+                               FunctionEntry* varFuncInfo,
+                               char isEnter,
+                               TraversalResult tResult);
+
+
+// Misc. symbols that are useful for printing variable names during
+// the traversal process:
+char* DEREFERENCE; // "[]"
+char* ZEROTH_ELT;  // "[0]"
+char* DOT;         // "."
+char* ARROW;       // "->"
+char* STAR;        // "*"
+
+
+/*********************************************************************
+These functions provide information extracted from an executable's
+symbol table:
+**********************************************************************/
 
 // Returns true iff the address is within a global area as specified
 // by the executable's symbol table (it lies within the .data, .bss,
 // or .rodata sections):
 char addressIsGlobal(unsigned int addr);
 
-
-
-// This queries FunctionSymbolTable:
-// (Accepts regular name for C and mangled name for C++)
+// Returns the start address of a function with a particular name.
+// Accepts regular name for C and mangled name for C++.
+// [Fast hashtable lookup in FunctionSymbolTable]
 Addr getFunctionStartAddr(char* name);
-// This queries ReverseFunctionSymbolTable:
-// (Returns regular name for C and mangled name for C++)
+// Returns the regular name for C and mangled name for C++, given a
+// function's start address.
+// [Fast hashtable lookup in ReverseFunctionSymbolTable]
 char* getFunctionName(Addr startAddr);
-// This queries VariableSymbolTable:
-// (Accepts regular name for C and mangled name for C++)
+// Returns the address of a global variable, given its regular name
+// for C and its mangled name for C++.
+// [Fast hashtable lookup in VariableSymbolTable]
 Addr getGlobalVarAddr(char* name);
 
+
+/*********************************************************************
+These functions provide Fjalar's run-time memory initialization and
+array size calculation functionality:
+**********************************************************************/
+
+// Takes a variable (var) and its current address in memory
+// (varLocation) and returns the upper bound of the array starting at
+// varLocation (returns 0 if it only points to 1 element).  This
+// function tries to look for arrays in the global region, on the
+// stack, and on the heap.
 int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation);
+
+// Returns the number of bytes between successive elements of the
+// variable var.  This is useful for figuring how how much separation
+// there is between elements in an array.  It also indicates how much
+// room this particular variable takes up in memory.  It returns
+// var->varType->byteSize if ptrLevels == 0, sizeof(void*) otherwise
 int getBytesBetweenElts(VariableEntry* var);
 
-#define addressIsAllocated(addressInQuestion, numBytes) addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1)
-#define addressIsInitialized(addressInQuestion, numBytes) addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0)
+// Returns 1 if all numBytes bytes starting at addressInQuestion have
+// been allocated, 0 otherwise
+#define addressIsAllocated(addressInQuestion, numBytes) \
+addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1)
+// Returns 1 if all numBytes bytes starting at addressInQuestion have
+// been initialized by the program, 0 otherwise (indicates a possible
+// garbage value)
+#define addressIsInitialized(addressInQuestion, numBytes) \
+addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0)
 
-char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numBytes, char allocatedOrInitialized);
-char are_some_bytes_init(Addr addressInQuestion, unsigned int numBytes);
-
-char* DEREFERENCE;
-char* ZEROTH_ELT;
-char* DOT;
-char* ARROW;
-char* STAR;
+// This is called by the 2 macros above:
+char addressIsAllocatedOrInitialized(Addr addressInQuestion,
+                                     unsigned int numBytes,
+                                     char allocatedOrInitialized);
 
 
+/*********************************************************************
+These global variables are set by command-line options.  Please see
+this section in the Daikon User Manual for descriptions of these
+command-line options (most of the options are part of Fjalar, but some
+are specific to the Kvasir and DynComp tools built on top of Fjalar)
 
-// Global variables that are set by command-line options
+http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Kvasir-options
+
+**********************************************************************/
 
 // Boolean flags
 Bool fjalar_debug;
