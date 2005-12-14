@@ -1,7 +1,7 @@
 // A really basic tool built upon Fjalar
-// (used for internal testing of the framework)
-// by Philip Guo
+// by Philip Guo, Dec. 2005
 
+// Only implements the functions required by fjalar_tool.h
 #include "../fjalar_tool.h"
 
 // Runs before processing command-line options:
@@ -47,7 +47,12 @@ TraversalResult trivialAction(VariableEntry* var,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
                               char isEnter) {
-  VG_(printf)("   varName: %s\n", varName);
+  if (isSequence) {
+    VG_(printf)("    %s - %d element array\n", varName, numElts);
+  }
+  else {
+    VG_(printf)("    %s\n", varName);
+  }
   return DO_NOT_DEREF_MORE_POINTERS;
 }
 
@@ -102,6 +107,8 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
 // object.  This should call VG_(calloc) the proper amount of space
 // for the object and initialize it with whatever initial state is
 // necessary.
+
+// We do not implement any sub-classing:
 VariableEntry* constructVariableEntry() {
   return (VariableEntry*)(VG_(calloc)(1, sizeof(VariableEntry)));
 }

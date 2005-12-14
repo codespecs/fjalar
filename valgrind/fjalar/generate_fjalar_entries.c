@@ -112,23 +112,23 @@ const int DecTypeByteSizes[] = {
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
-const TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
-const TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
