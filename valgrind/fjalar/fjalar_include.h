@@ -12,6 +12,7 @@
 
 /*********************************************************************
 fjalar_include.h
+
 These are the Fjalar functions that are available for tools to access.
 **********************************************************************/
 
@@ -159,23 +160,23 @@ typedef struct _TypeEntry {
 // Global singleton entries for basic types.  To see whether a
 // particular TypeEntry instances is a basic type, simply do a pointer
 // comparison to the address of one of the following entries:
-const TypeEntry UnsignedCharType;
-const TypeEntry CharType;
-const TypeEntry UnsignedShortType;
-const TypeEntry ShortType;
-const TypeEntry UnsignedIntType;
-const TypeEntry IntType;
-const TypeEntry UnsignedLongLongIntType;
-const TypeEntry LongLongIntType;
-const TypeEntry UnsignedFloatType;
-const TypeEntry FloatType;
-const TypeEntry UnsignedDoubleType;
-const TypeEntry DoubleType;
-const TypeEntry UnsignedLongDoubleType;
-const TypeEntry LongDoubleType;
-const TypeEntry FunctionType;
-const TypeEntry VoidType;
-const TypeEntry BoolType;
+TypeEntry UnsignedCharType;
+TypeEntry CharType;
+TypeEntry UnsignedShortType;
+TypeEntry ShortType;
+TypeEntry UnsignedIntType;
+TypeEntry IntType;
+TypeEntry UnsignedLongLongIntType;
+TypeEntry LongLongIntType;
+TypeEntry UnsignedFloatType;
+TypeEntry FloatType;
+TypeEntry UnsignedDoubleType;
+TypeEntry DoubleType;
+TypeEntry UnsignedLongDoubleType;
+TypeEntry LongDoubleType;
+TypeEntry FunctionType;
+TypeEntry VoidType;
+TypeEntry BoolType;
 
 
 // Return a type entry, given the name of the type (only for
@@ -888,49 +889,51 @@ http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Kvasir-options
 **********************************************************************/
 
 // Boolean flags
-Bool fjalar_debug;
-Bool fjalar_with_gdb;
-Bool fjalar_ignore_globals;
-Bool fjalar_ignore_static_vars;
-Bool fjalar_limit_static_vars;
-Bool fjalar_default_disambig;
-Bool fjalar_smart_disambig;
-Bool fjalar_output_struct_vars;
-Bool fjalar_flatten_arrays;
-Bool fjalar_func_disambig_ptrs;
-Bool fjalar_disambig_ptrs;
-int  fjalar_array_length_limit;
+Bool fjalar_debug;                         // --fjalar-debug
+Bool fjalar_with_gdb;                      // --with-gdb
+Bool fjalar_ignore_globals;                // --ignore-globals
+Bool fjalar_ignore_static_vars;            // --ignore-static-vars
+Bool fjalar_limit_static_vars;             // --limit-static-vars
+Bool fjalar_default_disambig;              // --disambig
+Bool fjalar_smart_disambig;                // --smart-disambig
+Bool fjalar_output_struct_vars;            // --output-struct-vars
+Bool fjalar_flatten_arrays;                // --flatten-arrays
+Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
+Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
+int  fjalar_array_length_limit;            // --array-length-limit
 
-UInt MAX_VISIT_STRUCT_DEPTH;
-UInt MAX_VISIT_NESTING_DEPTH;
+UInt MAX_VISIT_STRUCT_DEPTH;               // --struct-depth
+UInt MAX_VISIT_NESTING_DEPTH;              // --nesting-depth
 
-// These are used as both strings and boolean flags -
-// They are initialized to 0 upon initiation so if they are
-// never filled with values by the respective command-line
-// options, then they can be treated as False
-char* fjalar_dump_prog_pt_names_filename;
-char* fjalar_dump_var_names_filename;
-char* fjalar_trace_prog_pts_filename;
-char* fjalar_trace_vars_filename;
-char* fjalar_disambig_filename;
-char* fjalar_program_stdout_filename;
-char* fjalar_program_stderr_filename;
-char* fjalar_xml_output_filename;
+// The following are used both as strings and as boolean flags - They
+// are initialized to 0 so if they are never filled with values by the
+// respective command-line options, then they can be treated as False
+char* fjalar_dump_prog_pt_names_filename;  // --dump-ppt-file
+char* fjalar_dump_var_names_filename;      // --dump-var-file
+char* fjalar_trace_prog_pts_filename;      // --ppt-list-file
+char* fjalar_trace_vars_filename;          // --var-list-file
+char* fjalar_disambig_filename;            // --disambig-file
+char* fjalar_xml_output_filename;          // --xml-output-file
+
+
+/*********************************************************************
+Misc.
+**********************************************************************/
 
 // The filename of the target executable:
 char* executable_filename;
 
-
-// Trivial comparison functions:
+// returns ID1 == ID2 - needed for GenericHashtable
 int equivalentIDs(int ID1, int ID2);
-
-unsigned int hashString(char* str);
+// returns whether 2 strings are equal - needed for GenericHashtable
 int equivalentStrings(char* str1, char* str2);
+// hashes a string (in very primitive way ... could improve if needed)
+unsigned int hashString(char* str);
 
-char* stringStackPop(char** stringStack, int* pStringStackSize);
-void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
-
-
+// Returns 1 if the FunctionEntry denoted by cur_entry has been
+// specified by the user in a ppt-list-file
+// Only relevant if the --ppt-list-file option is used (and
+// fjalar_trace_prog_pts_filename is non-null)
 char prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 
 

@@ -1,6 +1,6 @@
 /*
-   This file is part of Fjalar, a dynamic analysis framework for C/C++
-   programs.
+   This file is part of Fjalar, a dynamic analysis framework for
+   C and C++ programs.
 
    Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
@@ -10,12 +10,12 @@
    License, or (at your option) any later version.
 */
 
-/* fjalar_tool.h:
+/*********************************************************************
+fjalar_tool.h
 
-This file contains all of the functions that a tool built upon Fjalar
-must implement
-
-*/
+These are the functions that every tool built upon Fjalar must
+implement in order to compile properly
+**********************************************************************/
 
 #ifndef FJALAR_TOOL_H
 #define FJALAR_TOOL_H
@@ -24,13 +24,16 @@ must implement
 #include "fjalar_traversal.h"
 #include "tool.h"
 
-// Initialization and tear-down code:
 
-// Runs before processing command-line options:
+/*********************************************************************
+Functions that run at specific times during execution:
+**********************************************************************/
+
+// Runs before command-line options are processed:
 void fjalar_tool_pre_clo_init();
-// Runs after processing command-line options:
+// Runs after command-line options are processed:
 void fjalar_tool_post_clo_init();
-// Prints instructions when the --help option is invoked:
+// Prints instructions for the tool when the --help option is used:
 void fjalar_tool_print_usage();
 
 // Processes command-line options:
@@ -40,7 +43,7 @@ void fjalar_tool_print_usage();
 // Fjalar will fail silently when a command-line option is mis-typed.
 Bool fjalar_tool_process_cmd_line_option(Char* arg);
 
-// Runs after the tool exits:
+// Runs when the program is about to exit:
 void fjalar_tool_finish();
 
 // These functions are called during every instance of a function
@@ -49,12 +52,15 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state);
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state);
 
 
-// Constructors and destructors for classes that can be sub-classed:
+/*********************************************************************
+Constructors and destructors for classes that can be sub-classed:
+**********************************************************************/
 
-// Default constructor that should return a particular sub-class of an
-// object.  This should call VG_(calloc) the proper amount of space
-// for the object and initialize it with whatever initial state is
-// necessary.
+// Constructor should return a particular sub-class of an object.
+// This should call VG_(calloc) the proper amount of space for the
+// object and initialize it with whatever initial state is necessary.
+// DO NOT USE libc malloc/calloc, use the Valgrind versions provided
+// in tool.h instead.
 VariableEntry* constructVariableEntry();
 TypeEntry* constructTypeEntry();
 FunctionEntry* constructFunctionEntry();

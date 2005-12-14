@@ -25,7 +25,6 @@
 #include "fjalar_include.h"
 #include "generate_fjalar_entries.h"
 
-
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       VG_(printf)(__VA_ARGS__); } while (0)
 
@@ -106,6 +105,12 @@ This is called from hooks within mac_shared.h
       curFunc->lowestESP = currentESP;					\
     }									\
   }
+
+
+// Even though these aren't used anywhere, for some really bizarre
+// reason, if you take them out, things will fail strangely ... weird!
+char* fjalar_program_stdout_filename;
+char* fjalar_program_stderr_filename;
 
 
 #endif

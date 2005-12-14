@@ -522,10 +522,14 @@ static void printAllFunctionDecls(char faux_decls)
 static void printAllObjectPPTDecls() {
   TypeIterator* typeIt = newTypeIterator();
 
+  Bool hacked_dyncomp_switch = False;
+
+  extern void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
+  extern char* stringStackPop(char** stringStack, int* pStringStackSize);
+
   extern char* fullNameStack[];
   extern int fullNameStackSize;
 
-  Bool hacked_dyncomp_switch = False;
 
   // HACK ALERT: We need to temporarily pretend that we are not using
   // kvasir_with_dyncomp in order to print out the OBJECT program
