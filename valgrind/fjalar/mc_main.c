@@ -15,6 +15,9 @@
       Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
       Fjalar, a dynamic analysis framework for C/C++ programs.
 
+      (Added in a few modifications for the DynComp tool -
+       grep for "kvasir_with_dyncomp" or "PG dyncomp" for details)
+
    Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -39,7 +42,10 @@
 #include "memcheck.h"   /* for client requests */
 //#include "vg_profile.c"
 
+#include "kvasir/dyncomp_main.h" // PG dyncomp
 #include "fjalar_main.h"
+
+Bool kvasir_with_dyncomp; // PG dyncomp
 
 /* Define to debug the mem audit system. */
 /* #define VG_DEBUG_MEMORY */
@@ -465,6 +471,11 @@ static void mc_make_noaccess ( Addr a, SizeT len )
    PROF_EVENT(35);
    DEBUG("mc_make_noaccess(%p, %llu)\n", a, (ULong)len);
    set_address_range_perms ( a, len, VGM_BIT_INVALID, VGM_BIT_INVALID );
+   // PG dyncomp - Anytime you make a whole range of addresses invalid,
+   // clear all tags associated with those addresses
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, len);
+   }
 }
 
 static void mc_make_writable ( Addr a, SizeT len )
@@ -479,6 +490,14 @@ static void mc_make_readable ( Addr a, SizeT len )
    PROF_EVENT(37);
    DEBUG("mc_make_readable(%p, %llu)\n", a, (ULong)len);
    set_address_range_perms ( a, len, VGM_BIT_VALID, VGM_BIT_VALID );
+   // PG dyncomp - Anytime you make a chunk of memory readable (set both A and
+   // V bits), we need to allocate new unique tags to each byte
+   // within the chunk (Without language-level information about which
+   // bytes correspond to which variables, we have no choice but to
+   // give each byte a unique tag)
+   if (kvasir_with_dyncomp) {
+      allocate_new_unique_tags(a, len);
+   }
 }
 
 static __inline__
@@ -518,6 +537,10 @@ void make_aligned_word_noaccess(Addr a)
    sm->abits[sm_off >> 3] |= mask;
    VGP_POPCC(VgpESPAdj);
 
+   // PG dyncomp - When you make stuff noaccess, destroy those tags
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, 4);
+   }
 }
 
 /* Nb: by "aligned" here we mean 8-byte aligned */
@@ -552,6 +575,10 @@ void make_aligned_doubleword_noaccess(Addr a)
    ((UInt*)(sm->vbyte))[(sm_off >> 2) + 1] = VGM_WORD_INVALID;
    VGP_POPCC(VgpESPAdj);
 
+   // PG dyncomp - When you make stuff noaccess, destroy those tags
+   if (kvasir_with_dyncomp) {
+      clear_all_tags_in_range(a, 8);
+   }
 }
 
 /* The %esp update handling functions */
@@ -581,6 +608,11 @@ void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
       set_vbyte ( dst+i, vbyte );
    }
 
+   // PG dyncomp - If you're copying over V-bits, you might as well copy
+   // over the tags of the relevant bytes
+   if (kvasir_with_dyncomp) {
+      copy_tags(src, dst, len);
+   }
 }
 
 /*------------------------------------------------------------*/
@@ -1926,12 +1958,14 @@ Bool TL_(handle_client_request) ( ThreadId tid, UWord* arg, UWord* ret )
 
 void TL_(pre_clo_init)(void)
 {
-   VG_(details_name)            ("fjalar-tool");
-   VG_(details_version)         ("1.0");
-   VG_(details_description)     ("Tool built on top of the Fjalar C/C++ dynamic analysis framework");
+   VG_(details_name)            ("kvasir");
+   /* This next line is automatically updated by the toplevel Daikon
+      distribution Makefile; be careful with its formatting -SMcC */
+   VG_(details_version)         ("4.2.0");
+   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool");
    VG_(details_copyright_author)(
       "Copyright (C) 2004-2005, Philip Guo, MIT CSAIL Program Analysis Group");
-   VG_(details_bug_reports_to)  ("pgbovine@mit.edu");
+   VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
 
    // PG - customize the fields above for each Fjalar tool
 
@@ -2044,6 +2078,26 @@ void TL_(fini) ( Int exitcode )
       //      show_client_block_stats();
       //   }
 }
+
+// pgbovine - We want to keep much more shadow space than Memcheck does.
+
+// Memcheck uses 9./8 because there are 8 V-bits and 1 A-bit for every
+// 8 bits of client memory, but we want 8 V-bits + 1 A-bit + 32 tag
+// bits + 96 for uf_objects = 137 bits for every 8 bits of client
+// memory
+
+// Uhhh ... but it blows up when running Kvasir (without DynComp) if
+// we make this number too big
+
+
+// TODO: We may want to switch this back to 9./8 when we're not running
+// with DynComp and only do 137./8 when we're using DynComp for fear
+// of running out of memory.
+
+
+//VG_DETERMINE_INTERFACE_VERSION(TL_(pre_clo_init), 137./8)
+
+//float TL_(shadow_ratio) = 137./8;
 
 VG_DETERMINE_INTERFACE_VERSION(TL_(pre_clo_init), 9./8)
 
