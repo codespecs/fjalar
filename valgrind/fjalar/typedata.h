@@ -439,5 +439,6 @@ char tag_is_variable(unsigned long tag);
 char* findFilenameForEntry(dwarf_entry* e);
 unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e);
 namespace_type* findNamespaceForVariableEntry(dwarf_entry* e);
+dwarf_entry* find_struct_entry_with_name(char* name);
 
 #endif

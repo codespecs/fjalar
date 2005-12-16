@@ -2225,6 +2225,30 @@ char* findFilenameForEntry(dwarf_entry* e)
   return 0;
 }
 
+// Returns a struct entry that matches the following two criteria:
+// 1. It's a collection_type
+// 2. .is_declaration == 0
+// 3. .name == name
+dwarf_entry* find_struct_entry_with_name(char* name) {
+  unsigned long idx;
+  //  unsigned int totalNumTypedefs = 0;
+  dwarf_entry* cur_entry = 0;
+
+  for (idx = 0; idx < dwarf_entry_array_size; idx++) {
+    cur_entry = &dwarf_entry_array[idx];
+
+    if (tag_is_collection_type(cur_entry->tag_name)) {
+      collection_type* collectionPtr = (collection_type*)cur_entry->entry_ptr;
+      if (!(collectionPtr->is_declaration) &&
+          VG_STREQ(collectionPtr->name, name)) {
+        return cur_entry;
+      }
+    }
+  }
+
+  return 0;
+}
+
 // Finds the first namespace_type entry to the LEFT of the given entry
 // e with a level lower than e's level and return it:
 namespace_type* findNamespaceForVariableEntry(dwarf_entry* e) {

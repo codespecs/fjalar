@@ -712,9 +712,11 @@ void repCheckAllEntries() {
           // than the one of the previous member variable.  Notice that
           // data_member_location can be 0.
           if (D_STRUCT == t->decType) {
-            if (prev_data_member_location > 0) {
-              tl_assert(curMember->data_member_location > prev_data_member_location);
-            }
+            // We don't do a strictly '>' check because of bit-fields,
+            // which share the same data_member_location but have
+            // different bit offsets within that location.  We
+            // currently don't support bit-fields.
+            tl_assert(curMember->data_member_location >= prev_data_member_location);
             prev_data_member_location = curMember->data_member_location;
           }
           // For a union, all offsets should be 0
@@ -2122,6 +2124,8 @@ void updateAllVarTypes() {
     return;
   }
 
+  FJALAR_DPRINTF("varsToUpdateTypes.numVars: %d\n", varsToUpdateTypes.numVars);
+
   for (n = varsToUpdateTypes.first;
        n != NULL;
        n = n->next) {
@@ -2129,14 +2133,43 @@ void updateAllVarTypes() {
     TypeEntry* fake_type = var->varType;
     TypeEntry* real_type = 0;
 
+    // If we punted on this already, then don't do anything about it:
+    if (fake_type == &VoidType) {
+      continue;
+    }
+
     tl_assert(fake_type->collectionName);
 
+    // Try to look in TypesTable for the entry:
     real_type = getTypeEntry(fake_type->collectionName);
-    tl_assert(real_type);
-    var->varType = real_type;
 
-    // Remember to free this!
-    VG_(free)(fake_type);
+    // If we don't find it already in TypesTable, then look directly
+    // in the DWARF debug info for a REAL struct entry (is_declaration
+    // == 0) whose name matches the given collectionName.  If it's
+    // found, then allocate a new TypeEntry, populate it with that
+    // data, and stuff it into TypesTable.  If it's not found, then
+    // simply give up.
+    if (!real_type) {
+      dwarf_entry* struct_dwarf_ptr =
+        find_struct_entry_with_name(fake_type->collectionName);
+
+      if (struct_dwarf_ptr) {
+        real_type = constructTypeEntry();
+        extractStructUnionType(real_type, struct_dwarf_ptr);
+
+        // Add it to TypesTable
+        genputtable(TypesTable,
+                    (void*)real_type->collectionName,
+                    real_type);
+
+        tl_assert(real_type);
+        var->varType = real_type;
+
+        // Remember to free this only if we have assigned var->varType
+        // away to real_type.
+        VG_(free)(fake_type);
+      }
+    }
   }
 
   // Remember to NOT destroy the VariableEntry entries inside the list
