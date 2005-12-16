@@ -481,8 +481,7 @@ UInt run_thread_for_a_while ( ThreadId tid )
    vg_assert(a_vex + sz_vex == a_vexsh);
 
    vg_assert(sz_spill == LibVEX_N_SPILL_BYTES);
-   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
-   vg_assert(a_vex + 6 * sz_vex == a_spill);
+   vg_assert(a_vex + 2 * sz_vex == a_spill);
 
    VGP_PUSHCC(VgpRun);
 
