@@ -292,7 +292,7 @@ extern ThreadId VG_(first_matching_thread_stack)
 extern Addr VG_(get_SP) ( ThreadId tid );
 extern Addr VG_(get_IP) ( ThreadId tid );
 
-// PG - Hacked for Kvasir (we really need a more elegant solution)
+// PG - Hacked for Fjalar (we really need a more elegant solution)
 extern UInt VG_(get_EAX) ( ThreadId tid );
 extern UInt VG_(get_EDX) ( ThreadId tid );
 extern double VG_(get_FPU_stack_top) ( ThreadId tid ); // 64-bit read
@@ -301,12 +301,6 @@ extern UInt VG_(get_shadow_EAX) ( ThreadId tid );
 extern UInt VG_(get_shadow_EDX) ( ThreadId tid );
 extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
-// SUPER HACK!  Watch out now.
-extern UInt VG_(get_EAX_tag) ( ThreadId tid );
-extern UInt VG_(get_EDX_tag) ( ThreadId tid );
-extern UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid );
-// Super-duper hack!!!
-extern UInt* VG_(get_tag_ptr_for_x86_guest_offset) ( ThreadId tid, UInt offset );
 
 /*====================================================================*/
 /*=== Valgrind's version of libc                                   ===*/
