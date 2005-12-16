@@ -1,4 +1,5 @@
-// A really basic tool built upon Fjalar
+// A really basic tool built upon Fjalar that prints out variable
+// names and array sizes at function entrances and exits
 // by Philip Guo, Dec. 2005
 
 // Only implements the functions required by fjalar_tool.h
@@ -6,17 +7,17 @@
 
 // Runs before processing command-line options:
 void fjalar_tool_pre_clo_init() {
-  VG_(printf)("\nfjalar_tool_pre_clo_init()\n");
+  VG_(printf)("\nfjalar_tool_pre_clo_init()\n\n");
 }
 
 // Runs after processing command-line options:
 void fjalar_tool_post_clo_init() {
-  VG_(printf)("\nfjalar_tool_post_clo_init()\n");
+  VG_(printf)("\nfjalar_tool_post_clo_init()\n\n");
 }
 
 // Prints instructions when the --help option is invoked:
 void fjalar_tool_print_usage() {
-  VG_(printf)("\nfjalar_tool_print_usage()\n");
+  VG_(printf)("\nfjalar_tool_print_usage()\n\n");
 }
 
 // Processes command-line options:
@@ -30,8 +31,9 @@ void fjalar_tool_finish() {
   VG_(printf)("\nfjalar_tool_finish()\n");
 }
 
-
-TraversalResult trivialAction(VariableEntry* var,
+// This simple callback function prints out variable names, and if
+// it's a sequence, the number of elements
+TraversalResult basicAction(VariableEntry* var,
                               char* varName,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
@@ -48,67 +50,70 @@ TraversalResult trivialAction(VariableEntry* var,
                               FunctionEntry* varFuncInfo,
                               char isEnter) {
   if (isSequence) {
-    VG_(printf)("    %s - %d element array\n", varName, numElts);
+    VG_(printf)("     %s - %d elements\n", varName, numElts);
   }
   else {
-    VG_(printf)("    %s\n", varName);
+    VG_(printf)("     %s\n", varName);
   }
-  return DO_NOT_DEREF_MORE_POINTERS;
+
+  // We want to deref. more pointers so that we can find out array
+  // sizes for derived variables:
+  return DEREF_MORE_POINTERS;
 }
 
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
-  struct geniterator* it;
 
-  VG_(printf)("%s (enter)\n",
+  VG_(printf)("[%s - ENTER]\n",
 	      f_state->func->fjalar_name);
 
+  VG_(printf)("  Global variables:\n");
   visitVariableGroup(GLOBAL_VAR,
                      0,
                      1,
                      0,
-                     &trivialAction);
+                     &basicAction);
 
+  VG_(printf)("  Function formal parameters:\n");
+  // We need to use the virtual stack for function parameters:
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      f_state->func,
                      1,
-                     0,
-                     &trivialAction);
+                     f_state->virtualStack,
+                     &basicAction);
 }
 
 void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
-  VG_(printf)("%s (exit)\n",
+  VG_(printf)("[%s - EXIT]\n",
 	      f_state->func->fjalar_name);
 
+  VG_(printf)("  Global variables:\n");
   visitVariableGroup(GLOBAL_VAR,
                      0,
                      0,
                      0,
-                     &trivialAction);
+                     &basicAction);
 
+  VG_(printf)("  Function formal parameters:\n");
+  // We need to use the virtual stack for function parameters:
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      f_state->func,
                      0,
-                     0,
-                     &trivialAction);
+                     f_state->virtualStack,
+                     &basicAction);
 
-  visitVariableGroup(FUNCTION_RETURN_VAR,
-                     f_state->func,
-                     0,
-                     0,
-                     &trivialAction);
+  VG_(printf)("  Return value:\n");
+  visitReturnValue(f_state, &basicAction);
+
 }
 
 
 // Constructors and destructors for classes that can be sub-classed:
 
-// Default constructor that should return a particular sub-class of an
-// object.  This should call VG_(calloc) the proper amount of space
-// for the object and initialize it with whatever initial state is
-// necessary.
-
-// We do not implement any sub-classing:
+// We do not implement any sub-classing so just implement the
+// 'default' constructor/destructor by calling VG_(calloc) and
+// VG_(free), respectively
 VariableEntry* constructVariableEntry() {
   return (VariableEntry*)(VG_(calloc)(1, sizeof(VariableEntry)));
 }
@@ -121,8 +126,6 @@ FunctionEntry* constructFunctionEntry() {
   return (FunctionEntry*)(VG_(calloc)(1, sizeof(FunctionEntry)));
 }
 
-// Destructors that should clean-up and then call VG_(free) on the
-// respective entries.
 void destroyVariableEntry(VariableEntry* v) {
   VG_(free)(v);
 }
