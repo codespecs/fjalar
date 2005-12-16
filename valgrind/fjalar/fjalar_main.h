@@ -28,13 +28,6 @@
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       VG_(printf)(__VA_ARGS__); } while (0)
 
-/* #define DABORT(...) do { if (kvasir_asserts_aborts_on) { \ */
-/*       VG_(printf)(__VA_ARGS__); abort();} } while (0) */
-
-/* #define DASSERT(target) do { if (kvasir_asserts_aborts_on) \ */
-/*       tl_assert(target); } while (0) */
-
-
 void handle_possible_entry(MCEnv* mce, Addr64 addr);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 

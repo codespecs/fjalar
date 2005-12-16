@@ -864,7 +864,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 		  varOrigin,
 		  funcPtr,
 		  isEnter);
-    
+
     stringStackPop(fullNameStack, &fullNameStackSize);
   }
 
@@ -1672,12 +1672,7 @@ void visitSequence(VariableEntry* var,
 
     // Push 1 symbol on stack to represent single elt. dereference:
 
-    //    if (kvasir_repair_format) {
-    //      stringStackPush(fullNameStack, &fullNameStackSize, STAR);
-    //    }
-    //    else {
     stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
-      //    }
 
     visitSequence(var,
                   numDereferences + 1,
