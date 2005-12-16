@@ -1,0 +1,44 @@
+Notes for releasing Fjalar stand-alone as a package:
+
+1.) Copy over the entire valgrind-3 directory and all sub-directories
+into a folder and cd there.
+
+2.) Remove all CVS/ directories - find . -type d -name 'CVS' blah blah
+
+3.) Remove all temporary ~ files created by emacs
+
+4.) Remove notes sub-directories, etc...
+
+5.) ln -s valgrind-3/valgrind/fjalar/ fjalar-source to create a
+convenient link from the top level
+
+6.) Make a copy of the Fjalar home page and programmer's manual into
+the directory
+
+7.) Make a README file with the following contents:
+
+8.) Remove other crappy temp files like .# files "find . -name '.#*' -exec echo rm {} \;"
+
+9.) grep for kvasir, dyncomp, etc... to make sure we don't have any strays
+
+--------------------------------------------
+
+Fjalar: A Dynamic Analysis Framework for C and C++ Programs
+
+Copyright (C) 2004-2005 Philip Guo (pgbovine@mit.edu),
+MIT CSAIL Program Analysis Group
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License as
+published by the Free Software Foundation; either version 2 of the
+License, or (at your option) any later version.
+
+Please refer to the Fjalar web site for the most updated
+documentation: http://pag.csail.mit.edu/fjalar/
+
+-----------
+
+Version 1.0 - Released Dec. 16, 2005
+
+This is the first stand-alone release, so feedback is greatly
+appreciated.  Please send emails to Philip Guo (pgbovine@mit.edu).
