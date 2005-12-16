@@ -14,9 +14,6 @@
       Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
       Fjalar, a dynamic analysis framework for C/C++ programs.
 
-      (Added in a few modifications for the DynComp tool -
-       grep for "kvasir_with_dyncomp" or "PG dyncomp" for details)
-
    Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -40,9 +37,6 @@
 #include "mc_translate.h"
 #include "mc_include.h"
 #include "fjalar_main.h"
-
-#include "kvasir/dyncomp_translate.h"
-Bool kvasir_with_dyncomp; // PG dyncomp
 
 // pgbovine - All of this has been moved into mc_translate.h
 
@@ -196,12 +190,6 @@ Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
    given type.  The only valid shadow types are Bit, I8, I16, I32,
    I64, V128. */
 
-// PG dyncomp - This function seems okay to use for DynComp because it returns
-// the integer type with the matching size as the input type 'ty'. It
-// seems safe to use this return value for size calculations and
-// comparisons, but NOT to create new tags.  The thing is that all
-// tags are 32-bit integers whereas shadow memory chunks were as big
-// as the original chunks which they shadow
 IRType shadowType ( IRType ty )
 {
    switch (ty) {
@@ -2383,8 +2371,6 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
 }
 
 
-// Modified by pgbovine - duplicated all instrumentation calls
-//                  to also call DynComp versions (suffixed by _DC) (PG dyncomp)
 IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
                         IRType gWordTy, IRType hWordTy )
 {
@@ -2393,7 +2379,6 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    Int     i, j, first_stmt;
    IRStmt* st;
    MCEnv   mce;
-   DCEnv   dce; // pgbovine - DynComp (PG dyncomp)
    IRBB*   bb;
 
    if (gWordTy != hWordTy) {
@@ -2417,22 +2402,6 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
    mce.tmpMap         = LibVEX_Alloc(mce.n_originalTmps * sizeof(IRTemp));
    for (i = 0; i < mce.n_originalTmps; i++)
       mce.tmpMap[i] = IRTemp_INVALID;
-
-   // pgbovine (PG dyncomp)
-   // Is this aliasing of 'bb' going to be a problem?
-   // Not if we allocate enough space for the shadow tag guest state
-   // and adjust the offsets appropriately
-
-   if (kvasir_with_dyncomp) {
-      dce.bb             = bb;
-      dce.layout         = layout;
-      dce.n_originalTmps = bb->tyenv->types_used;
-      dce.hWordTy        = hWordTy;
-      dce.bogusLiterals  = False;
-      dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
-      for (i = 0; i < dce.n_originalTmps; i++)
-         dce.tmpMap[i] = IRTemp_INVALID;
-   }
 
    /* Iterate over the stmts. */
 
@@ -2512,79 +2481,6 @@ IRBB* TL_(instrument) ( IRBB* bb_in, VexGuestLayout* layout,
             VG_(tool_panic)("memcheck: unhandled IRStmt");
 
       } /* switch (st->tag) */
-
-      // pgbovine - duplicated version for DynComp (PG dyncomp)
-
-      if (kvasir_with_dyncomp) {
-         if (!dce.bogusLiterals) {
-            dce.bogusLiterals = checkForBogusLiterals(st);
-            if (0&& dce.bogusLiterals) {
-               VG_(printf)("bogus: ");
-               ppIRStmt(st);
-               VG_(printf)("\n");
-            }
-         }
-
-         switch (st->tag) {
-         case Ist_Tmp:
-            assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
-                    expr2tags_DC( &dce, st->Ist.Tmp.data) );
-            break;
-
-         case Ist_Put:
-            do_shadow_PUT_DC( &dce,
-                              st->Ist.Put.offset,
-                              st->Ist.Put.data,
-                              NULL /* shadow atom */ );
-            break;
-
-         case Ist_PutI:
-            do_shadow_PUTI_DC( &dce,
-                               st->Ist.PutI.descr,
-                               st->Ist.PutI.ix,
-                               st->Ist.PutI.bias,
-                               st->Ist.PutI.data );
-            break;
-
-         case Ist_STle:
-            do_shadow_STle_DC( &dce, st->Ist.STle.addr, 0/* addr bias */,
-                               st->Ist.STle.data);
-            break;
-
-         case Ist_Exit:
-            do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
-            break;
-
-         case Ist_IMark:
-         case Ist_NoOp:
-         case Ist_MFence:
-            break;
-
-         case Ist_Dirty:
-            // pgbovine - TODO: In the future, we probably want to handle
-            // dirty helper calls just like how we handle clean
-            // helper calls.  Assume that all relevant
-            // (non-masked?) operands interact.
-            // do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
-            break;
-
-         default:
-            VG_(printf)("\n");
-            ppIRStmt(st);
-            VG_(printf)("\n");
-            VG_(tool_panic)("dyncomp: unhandled IRStmt");
-
-         } /* switch (st->tag) */
-
-         if (verboze) {
-            for (j = first_stmt; j < bb->stmts_used; j++) {
-               VG_(printf)("   ");
-               ppIRStmt(bb->stmts[j]);
-               VG_(printf)("\n");
-            }
-            VG_(printf)("\n");
-         }
-      }
 
       /* ... and finally copy the stmt itself to the output. */
       addStmtToIRBB(bb, st);
