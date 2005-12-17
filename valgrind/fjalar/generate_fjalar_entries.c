@@ -2161,15 +2161,21 @@ void updateAllVarTypes() {
         genputtable(TypesTable,
                     (void*)real_type->collectionName,
                     real_type);
-
-        tl_assert(real_type);
-        var->varType = real_type;
-
-        // Remember to free this only if we have assigned var->varType
-        // away to real_type.
-        VG_(free)(fake_type);
       }
     }
+
+    // If we have found a real type, then assign it to var->varType:
+    if (real_type) {
+      var->varType = real_type;
+    }
+    // Otherwise, assign it to a generic void type:
+    else {
+      var->varType = &VoidType;
+    }
+
+    // Free this because in either code path, we have assigned
+    // var->varType away already
+    VG_(free)(fake_type);
   }
 
   // Remember to NOT destroy the VariableEntry entries inside the list
