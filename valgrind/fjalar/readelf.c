@@ -6928,17 +6928,36 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_breg29:
 	case DW_OP_breg30:
 	case DW_OP_breg31:
-          if (print_results_and_ok)
+          if (ok_to_harvest)
             {
-              printf ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
-                      read_leb128 (data, &bytes_read, 1));
+              unsigned long breg_value = read_leb128 (data, &bytes_read, 1);
+              if (print_results_and_ok)
+                {
+                  printf ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
+                          breg_value);
+                }
+
+              // It seems like bregXX is only used for local vars,
+              // but that's based on just a few empirical observations - PG
+              if (tag_is_variable(entry->tag_name)) {
+                harvest_local_var_offset(entry, breg_value);
+              }
+
               data += bytes_read;
             }
-          else
-            {
-              read_leb128 (data, &bytes_read, 1);
-              data += bytes_read;
-            }
+          else {
+            if (print_results_and_ok)
+              {
+                printf ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
+                        read_leb128 (data, &bytes_read, 1));
+                data += bytes_read;
+              }
+            else
+              {
+                read_leb128 (data, &bytes_read, 1);
+                data += bytes_read;
+              }
+          }
 	  break;
 
 	case DW_OP_regx:
