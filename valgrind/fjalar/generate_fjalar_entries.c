@@ -1679,7 +1679,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
           // Insert it into the table BEFORE calling
           // extractStructUnionType() or else we may infinitely
           // recurse!
-          VG_(printf)("  Insert %s (superclass) into TypesTable\n", curSuper->className);
+          FJALAR_DPRINTF("  Insert %s (superclass) into TypesTable\n", curSuper->className);
           genputtable(TypesTable,
                       (void*)curSuper->className,
                       curSuper->class);
@@ -1687,7 +1687,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
           tl_assert((super_type_entry->tag_name == DW_TAG_structure_type) ||
                     (super_type_entry->tag_name == DW_TAG_union_type));
 
-          VG_(printf)("  Doesn't exist ... trying to add class %s\n", curSuper->className);
+          FJALAR_DPRINTF("  Doesn't exist ... trying to add class %s\n", curSuper->className);
           extractStructUnionType(curSuper->class, super_type_entry);
         }
       }

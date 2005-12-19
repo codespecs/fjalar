@@ -789,7 +789,7 @@ char harvest_comp_dir(dwarf_entry* e, const char* str)
 }
 
 // The strange thing is that variable offsets should be NEGATIVE
-// but DW_OP_fbreg returns an unsigned value
+// but DW_OP_fbreg and DW_OP_breg5 return unsigned values
 char harvest_local_var_offset(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
