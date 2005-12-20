@@ -38,7 +38,7 @@ Bool fjalar_debug = False;
 Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_globals = False;
 Bool fjalar_ignore_static_vars = False;
-Bool fjalar_limit_static_vars = False;
+Bool fjalar_all_static_vars = False;
 Bool fjalar_default_disambig = False;
 Bool fjalar_smart_disambig = False;
 Bool fjalar_output_struct_vars = False;
@@ -564,7 +564,7 @@ void fjalar_print_usage()
 "    --dump-var-file=<string> Outputs all variable names to a file\n"
 "    --ignore-globals         Ignores all global variables [--no-ignore-globals]\n"
 "    --ignore-static-vars     Ignores all static variables [--no-ignore-static-vars]\n"
-"    --limit-static-vars      Limits the output of static vars [--no-limit-static-vars]\n"
+"    --all-static-vars        Output all static vars [--no-all-static-vars]\n"
 
 "\n  Pointer type disambiguation:\n"
 "    --disambig-file=<string> Reads in disambig file if exists; otherwise creates one\n"
@@ -608,7 +608,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("with-gdb", fjalar_with_gdb)
   else VG_YESNO_CLO("ignore-globals", fjalar_ignore_globals)
   else VG_YESNO_CLO("ignore-static-vars", fjalar_ignore_static_vars)
-  else VG_YESNO_CLO("limit-static-vars", fjalar_limit_static_vars)
+  else VG_YESNO_CLO("all-static-vars", fjalar_all_static_vars)
   else VG_YESNO_CLO("disambig", fjalar_default_disambig)
   else VG_YESNO_CLO("smart-disambig", fjalar_smart_disambig)
   else VG_YESNO_CLO("output-struct-vars", fjalar_output_struct_vars)
