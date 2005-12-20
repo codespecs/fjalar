@@ -835,12 +835,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	continue;
       }
 
-      // If "--limit-static-vars" option was selected, then:
+      // If "--all-static-vars" option was NOT selected (default), then:
       // * Only visit file-static variables at program points
       //   in the file in which the variables were declared
       // * Only visit static variables declared within functions
       //   at program points of that particular function
-      if (!var->isExternal && fjalar_limit_static_vars && funcPtr) {
+      if (!var->isExternal && (!fjalar_all_static_vars) && funcPtr) {
 	// Declared within a function
 	if (var->functionStartPC) {
 	  if (funcPtr->startPC != var->functionStartPC) {

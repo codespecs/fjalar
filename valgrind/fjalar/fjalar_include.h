@@ -893,7 +893,7 @@ Bool fjalar_debug;                         // --fjalar-debug
 Bool fjalar_with_gdb;                      // --with-gdb
 Bool fjalar_ignore_globals;                // --ignore-globals
 Bool fjalar_ignore_static_vars;            // --ignore-static-vars
-Bool fjalar_limit_static_vars;             // --limit-static-vars
+Bool fjalar_all_static_vars;               // --all-static-vars
 Bool fjalar_default_disambig;              // --disambig
 Bool fjalar_smart_disambig;                // --smart-disambig
 Bool fjalar_output_struct_vars;            // --output-struct-vars
