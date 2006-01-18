@@ -1098,14 +1098,6 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   funcPtr = f_state->func;
   tl_assert(funcPtr);
 
-  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
-    // This is a GLOBAL so be careful :)
-    g_compNumberMap = genallocatehashtable(NULL, // no hash function needed for u_int keys
-                                           (int (*)(void *,void *)) &equivalentIDs);
-
-    g_curCompNumber = 1;
-  }
-
   //  VG_(printf)("* %s %s at EBP=0x%x, lowestESP=0x%x, startPC=%p\n",
               //              (isEnter ? "ENTER" : "EXIT "),
               //              f_state->func->fjalar_name,
@@ -1120,20 +1112,6 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   // Print out function header
   if (!dyncomp_without_dtrace) {
     printDtraceFunctionHeader(funcPtr, isEnter);
-
-    // For debug only:
-    if (dyncomp_print_incremental && kvasir_with_dyncomp) {
-      printDaikonFunctionName(funcPtr, decls_fp);
-
-      if (isEnter) {
-        fputs(ENTER_PPT, decls_fp);
-        fputs("\n", decls_fp);
-      }
-      else {
-        fputs(EXIT_PPT, decls_fp);
-        fputs("\n", decls_fp);
-      }
-    }
   }
 
 
@@ -1160,6 +1138,16 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   }
 
 
+  // For debugging only - print out a .decls entry with all
+  // comparability sets calculated thus far for this program point
+  // after printing the .dtrace entry in order to allow all mergings
+  // to occur:
+  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    fputs("INTERMEDIATE ", decls_fp);
+    printOneFunctionDecl(funcPtr, isEnter, 0);
+    fflush(decls_fp);
+  }
+
   // Flush the buffer so that everything for this program point gets
   // printed to the .dtrace file (useful for observing executions of
   // interactive programs):
@@ -1167,7 +1155,4 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
     fflush(dtrace_fp);
   }
 
-  if (dyncomp_print_incremental && kvasir_with_dyncomp) {
-    genfreehashtable(g_compNumberMap);
-  }
 }

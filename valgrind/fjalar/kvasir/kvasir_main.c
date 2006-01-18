@@ -66,6 +66,11 @@ Bool dyncomp_print_debug_info = False;
 Bool dyncomp_print_incremental = False;
 Bool dyncomp_separate_entry_exit_comp = False;
 
+// Special modes for DynComp
+// Changes the definition of what constitutes an interaction
+Bool dyncomp_units_mode = False;                // Tries to be consistent with units
+Bool dyncomp_dataflow_only_mode = False;             // Nothing is an interaction
+Bool dyncomp_dataflow_comparisons_mode = False; // Only comparisons are interactions
 
 
 FILE* decls_fp = 0; // File pointer for .decls file (this will point
@@ -589,6 +594,9 @@ void fjalar_tool_print_usage()
 "                                numbers at function entrance/exit when run with\n"
 "                                DynComp.  This provides more accuracy, but may\n"
 "                                sometimes lead to output that Daikon cannot accept.\n"
+"    --dyncomp-units          Only counts interactions that are consistent with units\n"
+"    --dyncomp-dataflow-only  Tracks no interactions, just dataflow\n"
+"    --dyncomp-dataflow-comp  Only counts comparison operations as interactions\n"
 "\n  Debugging:\n"
 "    --asserts-aborts         Turn on safety asserts and aborts (OFF BY DEFAULT)\n"
 "                             [--no-asserts-aborts]\n"
@@ -628,6 +636,9 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("dyncomp-fast-mode", dyncomp_fast_mode)
   else VG_BNUM_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
 		   1, 0x7fffffff)
+  else VG_YESNO_CLO("dyncomp-units",         dyncomp_units_mode)
+  else VG_YESNO_CLO("dyncomp-dataflow-only", dyncomp_dataflow_only_mode)
+  else VG_YESNO_CLO("dyncomp-dataflow-comp", dyncomp_dataflow_comparisons_mode)
   else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
   else VG_YESNO_CLO("dyncomp-print-inc",  dyncomp_print_incremental)
   else VG_YESNO_CLO("separate-entry-exit-comp",  dyncomp_separate_entry_exit_comp)

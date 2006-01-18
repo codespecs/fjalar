@@ -38,4 +38,8 @@ void DC_outputDeclsAtEnd();
 DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
                                      char isString);
 
+void printOneFunctionDecl(FunctionEntry* funcPtr,
+                          char isEnter,
+                          char faux_decls);
+
 #endif

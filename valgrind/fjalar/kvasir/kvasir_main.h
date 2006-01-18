@@ -127,6 +127,9 @@ Bool dyncomp_without_dtrace;
 Bool dyncomp_print_debug_info;
 Bool dyncomp_print_incremental;
 Bool dyncomp_separate_entry_exit_comp;
+Bool dyncomp_units_mode;
+Bool dyncomp_dataflow_only_mode;
+Bool dyncomp_dataflow_comparisons_mode;
 
 #define DPRINTF(...) do { if (kvasir_print_debug_info) \
       VG_(printf)(__VA_ARGS__); } while (0)

@@ -88,7 +88,7 @@ void outputDeclsFile(char faux_decls)
 // Print .decls at the end of program execution and then close it
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
-  VG_(printf)("DC_outputDeclsAtEnd()\n");
+  //  VG_(printf)("DC_outputDeclsAtEnd()\n");
   printAllFunctionDecls(0);
 
   printAllObjectPPTDecls();
@@ -405,9 +405,9 @@ int
 // the proper data structures (no .decls output is made during this dry run)
 // and faux_decls = False if we are really outputting .decls, which is in the
 // beginning of execution without DynComp and at the END of execution with DynComp
-static void printOneFunctionDecl(FunctionEntry* funcPtr,
-                                 char isEnter,
-                                 char faux_decls) {
+void printOneFunctionDecl(FunctionEntry* funcPtr,
+                          char isEnter,
+                          char faux_decls) {
   // This is a GLOBAL so be careful :)
   // Reset it before doing any traversals
   g_variableIndex = 0;
@@ -456,12 +456,12 @@ static void printOneFunctionDecl(FunctionEntry* funcPtr,
 
   // If EXIT, print out return value
   if (!isEnter) {
-  visitVariableGroup(FUNCTION_RETURN_VAR,
-                     funcPtr,
-                     0,
-                     0,
-                     (faux_decls ?
-                      &nullAction : &printDeclsEntryAction));
+    visitVariableGroup(FUNCTION_RETURN_VAR,
+                       funcPtr,
+                       0,
+                       0,
+                       (faux_decls ?
+                        &nullAction : &printDeclsEntryAction));
   }
 
   if (!faux_decls) {
