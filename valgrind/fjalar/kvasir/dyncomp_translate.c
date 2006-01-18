@@ -303,6 +303,13 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // Integers:
    case Iop_Add8:  case Iop_Add16:  case Iop_Add32:  case Iop_Add64:
    case Iop_Sub8:  case Iop_Sub16:  case Iop_Sub32:  case Iop_Sub64:
+
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
       /* Signless mul.  MullS/MullU is elsewhere. */
    case Iop_Mul8:  case Iop_Mul16:  case Iop_Mul32:  case Iop_Mul64:
    case Iop_Or8:   case Iop_Or16:   case Iop_Or32:   case Iop_Or64:
@@ -324,10 +331,24 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // of which lo half is div and hi half is mod
    case Iop_DivModS128to64: // ditto, signed
 
+      if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
       /* ------ Floating point.  We try and be IEEE754 compliant. ------ */
 
       /* Binary operations mandated by IEEE754. */
-   case Iop_AddF64: case Iop_SubF64: case Iop_MulF64: case Iop_DivF64: /* Iop_RemF64, */
+   case Iop_AddF64: case Iop_SubF64:
+
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
+   case Iop_MulF64: case Iop_DivF64: /* Iop_RemF64, */
 
       /* Binary ops supported by IA32 but not mandated by 754. */
    case Iop_AtanF64:       /* FPATAN,  arctan(arg1/arg2)       */
@@ -339,6 +360,12 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       /* Note that on x86 guest, PRem1{C3210} has the same behaviour
          as the IEEE mandated RemF64, except it is limited in the
          range of its operand.  Hence the partialness. */
+
+      if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
 
       /* ------------------ 64-bit SIMD Integer. ------------------ */
 
@@ -352,11 +379,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QSub8Ux8: case Iop_QSub16Ux4:
    case Iop_QSub8Sx8: case Iop_QSub16Sx4:
 
-      /* MULTIPLICATION (normal / high half of signed/unsigned) */
-   case Iop_Mul16x4:
-   case Iop_MulHi16Ux4:
-   case Iop_MulHi16Sx4:
-
       /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
    case Iop_Avg8Ux8:
    case Iop_Avg16Ux4:
@@ -367,32 +389,69 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Min16Sx4:
    case Iop_Min8Ux8:
 
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
+      /* MULTIPLICATION (normal / high half of signed/unsigned) */
+   case Iop_Mul16x4:
+   case Iop_MulHi16Ux4:
+   case Iop_MulHi16Sx4:
+
+      if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
+
       /* ------------------ 128-bit SIMD FP. ------------------ */
 
       /* --- 32x4 vector FP --- */
 
-   case Iop_Add32Fx4: case Iop_Sub32Fx4: case Iop_Mul32Fx4: case Iop_Div32Fx4:
+   case Iop_Add32Fx4: case Iop_Sub32Fx4:
    case Iop_Max32Fx4: case Iop_Min32Fx4:
 
       /* --- 32x4 lowest-lane-only scalar FP --- */
 
-   case Iop_Add32F0x4: case Iop_Sub32F0x4: case Iop_Mul32F0x4: case Iop_Div32F0x4:
+   case Iop_Add32F0x4: case Iop_Sub32F0x4:
    case Iop_Max32F0x4: case Iop_Min32F0x4:
 
       /* --- 64x2 vector FP --- */
 
-   case Iop_Add64Fx2: case Iop_Sub64Fx2: case Iop_Mul64Fx2: case Iop_Div64Fx2:
+   case Iop_Add64Fx2: case Iop_Sub64Fx2:
    case Iop_Max64Fx2: case Iop_Min64Fx2:
 
       /* --- 64x2 lowest-lane-only scalar FP --- */
 
-   case Iop_Add64F0x2: case Iop_Sub64F0x2: case Iop_Mul64F0x2: case Iop_Div64F0x2:
+   case Iop_Add64F0x2: case Iop_Sub64F0x2:
    case Iop_Max64F0x2: case Iop_Min64F0x2:
 
-      /* ------------------ 128-bit SIMD Integer. ------------------ */
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
 
-      /* BITWISE OPS */
-   case Iop_AndV128: case Iop_OrV128: case Iop_XorV128:
+      /* --- 32x4 vector FP --- */
+   case Iop_Mul32Fx4: case Iop_Div32Fx4:
+      /* --- 32x4 lowest-lane-only scalar FP --- */
+   case Iop_Mul32F0x4: case Iop_Div32F0x4:
+      /* --- 64x2 vector FP --- */
+   case Iop_Mul64Fx2: case Iop_Div64Fx2:
+      /* --- 64x2 lowest-lane-only scalar FP --- */
+   case Iop_Mul64F0x2: case Iop_Div64F0x2:
+
+      if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
+
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
 
       /* ADDITION (normal / unsigned sat / signed sat) */
    case Iop_Add8x16:   case Iop_Add16x8:   case Iop_Add32x4:  case Iop_Add64x2:
@@ -404,21 +463,35 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QSub8Ux16: case Iop_QSub16Ux8:
    case Iop_QSub8Sx16: case Iop_QSub16Sx8:
 
-      /* MULTIPLICATION (normal / high half of signed/unsigned) */
-   case Iop_Mul16x8:
-   case Iop_MulHi16Ux8:
-   case Iop_MulHi16Sx8:
-
-      /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
-   case Iop_Avg8Ux16:
-   case Iop_Avg16Ux8:
-
       /* MIN/MAX */
    case Iop_Max16Sx8:
    case Iop_Max8Ux16:
    case Iop_Min16Sx8:
    case Iop_Min8Ux16:
 
+      /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
+   case Iop_Avg8Ux16:
+   case Iop_Avg16Ux8:
+
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
+
+      /* BITWISE OPS */
+   case Iop_AndV128: case Iop_OrV128: case Iop_XorV128:
+
+      /* MULTIPLICATION (normal / high half of signed/unsigned) */
+   case Iop_Mul16x8:
+   case Iop_MulHi16Ux8:
+   case Iop_MulHi16Sx8:
+
+      if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
+      break;
 
       // Conversions where we concatenate two arguments together to form a
       // larger one seem to qualify as interactions:
@@ -434,7 +507,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       // 128-bit SIMD FP
    case Iop_64HLtoV128:   // :: (I64,I64) -> V128
-
 
       // Weird 64-bit SIMD narrowing and interleave seem like interactions,
       // although this is a bit shadiy
@@ -464,8 +536,10 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_InterleaveLO8x16: case Iop_InterleaveLO16x8:
    case Iop_InterleaveLO32x4: case Iop_InterleaveLO64x2:
 
-      helper = &MC_(helperc_MERGE_TAGS);
-      hname = "MC_(helperc_MERGE_TAGS)";
+      if (!dyncomp_dataflow_comparisons_mode) {
+         helper = &MC_(helperc_MERGE_TAGS);
+         hname = "MC_(helperc_MERGE_TAGS)";
+      }
       break;
 
       // Comparisons qualify as interactions:, but they are special
@@ -557,7 +631,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // of the first argument
    case Iop_SetV128lo32:  // :: (V128,I32) -> V128
 
-      return vatom1;
+      if (!dyncomp_dataflow_comparisons_mode) {
+         return vatom1;
+      }
       break;
 
 
@@ -607,7 +683,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          rounding mode. */
    case Iop_RoundF64:
 
-      return vatom2;
+      if (!dyncomp_dataflow_comparisons_mode) {
+         return vatom2;
+      }
       break;
 
 
@@ -628,6 +706,12 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    default:
       ppIROp(op);
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
+   }
+
+   // In this mode, NOTHING is an interaction:
+   if (dyncomp_dataflow_only_mode) {
+      helper = 0;
+      hname = 0;
    }
 
    if (helper) {
