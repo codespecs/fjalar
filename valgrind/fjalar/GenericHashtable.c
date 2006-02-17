@@ -17,7 +17,11 @@
 #include <stdlib.h>
 #include <values.h>
 #include "GenericHashtable.h"
-#include "tool_asm.h" //#include "vg_constants_skin.h"
+
+#define VGAPPEND(str1,str2) str1##str2
+#define VG_(str)    VGAPPEND(vgPlain_,str)
+
+//#include "tool_asm.h" //#include "vg_constants_skin.h"
 //#include "dmalloc.h"
 
 extern void  VG_(free)           ( void* p );

@@ -232,6 +232,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
 
+            // TODO: Why is this dirty rather than clean?
             datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
             di = unsafeIRDirty_1_N(datatag,
                                    2,
@@ -254,7 +255,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    }
 }
 
-
+UInt numConsts = 0;
 /*------------------------------------------------------------*/
 /*--- Generate shadow values from all kinds of IRExprs.    ---*/
 /*------------------------------------------------------------*/
@@ -265,6 +266,9 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
 // Yes, this code can be cleaned up a bit, but I'll leave it
 // as one big switch statement for now in order to provide
 // flexibility for future edits
+
+// TODO: Update with new opcodes for Valgrind 3.1.0
+//       Look at expr2vbits_Binop() from mc_translate.c:
 static
 IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
@@ -272,6 +276,21 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 {
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
+
+   if ((atom1->tag == Iex_Const) || (atom2->tag == Iex_Const)) {
+      numConsts++;
+      //      ppIRExpr(vatom1);
+      //      VG_(printf)("\n");
+      //      ppIRExpr(vatom2);
+      //      VG_(printf)("\n");
+   }
+
+        // &&        (vatom1->Iex.CCall.cee->addr == &MC_(helperc_CREATE_TAG))) ||
+
+   //   if ((vatom1->tag == Iex_CCall) ||
+   //       (vatom2->tag == Iex_CCall)) {
+   //      numConsts++;
+   //   }
 
    void*    helper = 0;
    Char*    hname = 0;
@@ -681,7 +700,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_F64toF32:  /* IRRoundingMode(I32) x F64 -> F32 */
       /* F64 -> F64, also takes an I32 first argument encoding the
          rounding mode. */
-   case Iop_RoundF64:
+      //   case Iop_RoundF64: // pgbovine - not in Valgrind 3.1.0
 
       if (!dyncomp_dataflow_comparisons_mode) {
          return vatom2;
@@ -737,6 +756,35 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       //      setHelperAnns_DC( dce, di );
       //      stmt( dce->bb, IRStmt_Dirty(di) );
       //      return mkexpr(datatag);
+
+      // If either argument is a constant and helper is equal to
+      // &MC_(helperc_MERGE_TAGS), then return the tag of the other
+      // argument.  For &MC_(helperc_MERGE_TAGS_RETURN_0), simply
+      // return 0:
+
+      // TODO: This doesn't happen THAT often, so there must be a
+      // better way to tell whether we can make this optimization
+      // without simply checking whether the atoms are consts
+
+      //#define BLAH
+#ifdef BLAH
+      if (atom1->tag == Iex_Const) {
+         if (helper == &MC_(helperc_MERGE_TAGS)) {
+            return vatom2;
+         }
+         else {
+            return IRExpr_Const(IRConst_U32(0));
+         }
+      }
+      else if (atom2->tag == Iex_Const) {
+         if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
+            return vatom1;
+         }
+         else {
+            return IRExpr_Const(IRConst_U32(0));
+         }
+      }
+#endif
 
       // Let's try a clean call.  It seems to be correct
       // because of the fact that merging the same 2 things more than
@@ -972,6 +1020,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
    IRDirty* di;
    IRTemp   datatag;
 
+   //   ppIRExpr(e);
+   //   VG_(printf)("\n");
+
    switch (e->tag) {
 
       case Iex_Get:
@@ -993,6 +1044,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
             return IRExpr_Const(IRConst_U32(LITERAL_TAG));
          }
          else {
+
+            //            VG_(printf)("******PREV CONST******\n");
 
             // Create one new tag for each dynamic instance of a program
             // literal - this provides perfect context sensitivity, but
@@ -1021,9 +1074,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
       case Iex_Unop:
          return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
-      case Iex_LDle:
-         return expr2tags_LDle_DC( dce, e->Iex.LDle.ty,
-                                      e->Iex.LDle.addr, 0/*addr bias*/ );
+      case Iex_Load:
+         return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
+                                      e->Iex.Load.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
          return handleCCall_DC( dce,
@@ -1043,6 +1096,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
    }
 }
 
+// TODO: STle has been changed to Store in the Valgrind IR, so look at
+// void do_shadow_Store() in mc_translate.c to see how to mimic it
+// more accurately
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr, UInt bias,
                       IRAtom* data )

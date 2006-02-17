@@ -1,38 +1,31 @@
-#include $(top_srcdir)/Makefile.tool.am
+include $(top_srcdir)/Makefile.tool.am
 
+# Only support x86-Linux for now ...
 # PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
-
-SUBDIRS = .
-
-include $(top_srcdir)/Makefile.all.am
-include $(top_srcdir)/Makefile.tool-flags.am
-include $(top_srcdir)/Makefile.tool-inplace.am
 
 ## Build Memcheck at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-missing-prototypes
+AM_CFLAGS_X86_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
-# Use this for speed boost
-#AM_CFLAGS += -O3 -fomit-frame-pointer -Iinclude -Wno-missing-prototypes
+noinst_PROGRAMS = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 
-# PG - Change the name of the shared library
-val_PROGRAMS = vgtool_fjalar.so vgpreload_fjalar.so
+VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c
 
-vgpreload_fjalar_so_SOURCES = \
-	mac_replace_strmem.c
-vgpreload_fjalar_so_DEPENDENCIES = $(top_builddir)/coregrind/lib_replace_malloc.a
-vgpreload_fjalar_so_LDFLAGS = -shared -Wl,-z,interpose,-z,initfirst \
-	-Wl,--whole-archive \
-	$(top_builddir)/coregrind/lib_replace_malloc.a \
-	-Wl,--no-whole-archive
+vgpreload_fjalar_x86_linux_so_SOURCES      = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
+vgpreload_fjalar_x86_linux_so_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
+vgpreload_fjalar_x86_linux_so_CFLAGS       = $(AM_CFLAGS_X86_LINUX) $(AM_CFLAGS_PIC)
+vgpreload_fjalar_x86_linux_so_CCASFLAGS    = $(AM_CCASFLAGS_X86_LINUX)
+vgpreload_fjalar_x86_linux_so_DEPENDENCIES = $(LIBREPLACEMALLOC_X86_LINUX)
+vgpreload_fjalar_x86_linux_so_LDFLAGS      = \
+	$(PRELOAD_LDFLAGS_X86_LINUX) \
+	$(LIBREPLACEMALLOC_LDFLAGS_X86_LINUX)
 
-vgtool_fjalar_so_SOURCES = \
+FJALAR_SOURCES_COMMON = \
 	mac_leakcheck.c \
 	mac_malloc_wrappers.c \
-	mac_needs.c \
-	mc_errcontext.c \
 	mc_main.c \
+	mac_shared.c \
 	mc_translate.c \
 	fjalar_main.c \
 	fjalar_runtime.c \
@@ -51,7 +44,13 @@ vgtool_fjalar_so_SOURCES = \
 	kvasir/dyncomp_runtime.c \
 	kvasir/dyncomp_translate.c
 
-vgtool_fjalar_so_LDFLAGS = -shared
+fjalar_x86_linux_SOURCES      = $(FJALAR_SOURCES_COMMON)
+fjalar_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
+fjalar_x86_linux_CFLAGS       = $(AM_CFLAGS_X86_LINUX)
+fjalar_x86_linux_CCASFLAGS    = $(AM_CCASFLAGS_X86_LINUX)
+fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
+fjalar_x86_linux_LDADD        = $(TOOL_LDADD_X86_LINUX) /usr/lib/libc.a
+fjalar_x86_linux_LDFLAGS      = $(TOOL_LDFLAGS_X86_LINUX)
 
 mcincludedir = $(includedir)/valgrind
 
@@ -60,8 +59,8 @@ mcinclude_HEADERS = \
 
 noinst_HEADERS =	\
 	mac_shared.h	\
-	mc_asm.h	\
-	mc_include.h	\
-	mc_translate.h
+	mc_include.h
 
 mac_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
+
+mc_main.o: CFLAGS += -fomit-frame-pointer

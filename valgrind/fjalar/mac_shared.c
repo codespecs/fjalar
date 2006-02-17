@@ -1,16 +1,22 @@
 
 /*--------------------------------------------------------------------*/
 /*--- Code that is shared between MemCheck and AddrCheck.          ---*/
-/*---                                                  mac_needs.c ---*/
+/*---                                                 mac_shared.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
    This file is part of MemCheck, a heavyweight Valgrind tool for
-   detecting memory errors, and AddrCheck, a lightweight Valgrind tool 
+   detecting memory errors, and AddrCheck, a lightweight Valgrind tool
    for detecting memory errors.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
+
+      Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
+      Fjalar, a dynamic analysis framework for C/C++ programs.
+
+      (Added in support for processing Fjalar command-line options.
+      grep for "pgbovine" for details.)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -30,10 +36,19 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "fjalar_main.h"
-
+#include "pub_tool_basics.h"
+#include "pub_tool_errormgr.h"      // For mac_shared.h
+#include "pub_tool_execontext.h"    // For mac_shared.h
+#include "pub_tool_hashtable.h"     // For mac_shared.h
+#include "pub_tool_libcassert.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_libcprint.h"
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_machine.h"
+#include "pub_tool_options.h"
+#include "pub_tool_replacemalloc.h"
+#include "pub_tool_threadstate.h"
 #include "mac_shared.h"
-
 #include "memcheck.h"   /* for VG_USERREQ__* */
 
 /*------------------------------------------------------------*/
@@ -48,8 +63,8 @@
 /*--- Command line options                                 ---*/
 /*------------------------------------------------------------*/
 
-Bool          MAC_(clo_partial_loads_ok)       = True;
-Int           MAC_(clo_freelist_vol)           = 1000000;
+Bool          MAC_(clo_partial_loads_ok)       = False;
+Int           MAC_(clo_freelist_vol)           = 5000000;
 LeakCheckMode MAC_(clo_leak_check)             = LC_Summary;
 VgRes         MAC_(clo_leak_resolution)        = Vg_LowRes;
 Bool          MAC_(clo_show_reachable)         = False;
@@ -60,9 +75,9 @@ Bool MAC_(process_common_cmd_line_option)(Char* arg)
 	VG_BOOL_CLO(arg, "--partial-loads-ok",      MAC_(clo_partial_loads_ok))
    else VG_BOOL_CLO(arg, "--show-reachable",        MAC_(clo_show_reachable))
    else VG_BOOL_CLO(arg, "--workaround-gcc296-bugs",MAC_(clo_workaround_gcc296_bugs))
-   
+
    else VG_BNUM_CLO(arg, "--freelist-vol",  MAC_(clo_freelist_vol), 0, 1000000000)
-   
+
    else if (VG_CLO_STREQ(arg, "--leak-check=no"))
       MAC_(clo_leak_check) = LC_Off;
    else if (VG_CLO_STREQ(arg, "--leak-check=summary"))
@@ -79,8 +94,8 @@ Bool MAC_(process_common_cmd_line_option)(Char* arg)
       MAC_(clo_leak_resolution) = Vg_HighRes;
 
    else
-     return fjalar_process_cmd_line_option(arg); // pgbovine
-     //      return VG_(replacement_malloc_process_cmd_line_option)(arg);
+      return fjalar_process_cmd_line_option(arg); // pgbovine
+        //      return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
    return True;
 }
@@ -88,14 +103,15 @@ Bool MAC_(process_common_cmd_line_option)(Char* arg)
 void MAC_(print_common_usage)(void)
 {
    VG_(printf)(
-"    --partial-loads-ok=no|yes        too hard to explain here; see manual [yes]\n"
-"    --freelist-vol=<number>          volume of freed blocks queue [1000000]\n"
 "    --leak-check=no|summary|full     search for memory leaks at exit?  [summary]\n"
 "    --leak-resolution=low|med|high   how much bt merging in leak check [low]\n"
 "    --show-reachable=no|yes          show reachable blocks in leak check? [no]\n"
+"    --partial-loads-ok=no|yes        too hard to explain here; see manual [no]\n"
+"    --freelist-vol=<number>          volume of freed blocks queue [5000000]\n"
 "    --workaround-gcc296-bugs=no|yes  self explanatory [no]\n"
    );
-   VG_(replacement_malloc_print_usage)();
+   // pgbovine
+   //   VG_(replacement_malloc_print_usage)();
 }
 
 void MAC_(print_common_debug_usage)(void)
@@ -130,9 +146,9 @@ void MAC_(clear_MAC_Error) ( MAC_Error* err_extra )
 __attribute__ ((unused))
 static Bool eq_AddrInfo ( VgRes res, AddrInfo* ai1, AddrInfo* ai2 )
 {
-   if (ai1->akind != Undescribed 
+   if (ai1->akind != Undescribed
        && ai2->akind != Undescribed
-       && ai1->akind != ai2->akind) 
+       && ai1->akind != ai2->akind)
       return False;
    if (ai1->akind == Freed || ai1->akind == Mallocd) {
       if (ai1->blksize != ai2->blksize)
@@ -147,14 +163,14 @@ static Bool eq_AddrInfo ( VgRes res, AddrInfo* ai1, AddrInfo* ai2 )
    are otherwise the same, the faulting addrs and associated rwoffsets
    are allowed to be different.  */
 
-Bool TL_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
+Bool MAC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
 {
    MAC_Error* e1_extra = VG_(get_error_extra)(e1);
    MAC_Error* e2_extra = VG_(get_error_extra)(e2);
 
    /* Guaranteed by calling function */
    tl_assert(VG_(get_error_kind)(e1) == VG_(get_error_kind)(e2));
-   
+
    switch (VG_(get_error_kind)(e1)) {
       case CoreMemErr: {
          Char *e1s, *e2s;
@@ -166,12 +182,18 @@ Bool TL_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
          return False;
       }
 
-      case UserErr:
+      // Perhaps we should also check the addrinfo.akinds for equality.
+      // That would result in more error reports, but only in cases where
+      // a register contains uninitialised bytes and points to memory
+      // containing uninitialised bytes.  Currently, the 2nd of those to be
+      // detected won't be reported.  That is (nearly?) always the memory
+      // error, which is good.
       case ParamErr:
-         if (e1_extra->isUnaddr != e2_extra->isUnaddr)         return False;
-         if (VG_(get_error_kind)(e1) == ParamErr 
-             && 0 != VG_(strcmp)(VG_(get_error_string)(e1),
-                                 VG_(get_error_string)(e2)))   return False;
+         if (0 != VG_(strcmp)(VG_(get_error_string)(e1),
+                              VG_(get_error_string)(e2)))   return False;
+         // fall through
+      case UserErr:
+         if (e1_extra->isUnaddr != e2_extra->isUnaddr)      return False;
          return True;
 
       case FreeErr:
@@ -181,7 +203,7 @@ Bool TL_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
             below does that.  So don't compare either the .addr field
             or the .addrinfo fields. */
          /* if (e1->addr != e2->addr) return False; */
-         /* if (!eq_AddrInfo(res, &e1_extra->addrinfo, &e2_extra->addrinfo)) 
+         /* if (!eq_AddrInfo(res, &e1_extra->addrinfo, &e2_extra->addrinfo))
                return False;
          */
          return True;
@@ -190,7 +212,7 @@ Bool TL_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
          /* if (e1_extra->axskind != e2_extra->axskind) return False; */
          if (e1_extra->size != e2_extra->size) return False;
          /*
-         if (!eq_AddrInfo(res, &e1_extra->addrinfo, &e2_extra->addrinfo)) 
+         if (!eq_AddrInfo(res, &e1_extra->addrinfo, &e2_extra->addrinfo))
             return False;
          */
          return True;
@@ -203,37 +225,42 @@ Bool TL_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
          return True;
 
       case LeakErr:
-         VG_(tool_panic)("Shouldn't get LeakErr in TL_(eq_Error),\n"
+         VG_(tool_panic)("Shouldn't get LeakErr in MAC_(eq_Error),\n"
                          "since it's handled with VG_(unique_error)()!");
 
       case IllegalMempoolErr:
          return True;
 
-      default: 
+      default:
          VG_(printf)("Error:\n  unknown error code %d\n",
                      VG_(get_error_kind)(e1));
-         VG_(tool_panic)("unknown error code in TL_(eq_Error)");
+         VG_(tool_panic)("unknown error code in MAC_(eq_Error)");
    }
 }
 
 void MAC_(pp_AddrInfo) ( Addr a, AddrInfo* ai )
 {
+   HChar* xpre  = VG_(clo_xml) ? "  <auxwhat>" : " ";
+   HChar* xpost = VG_(clo_xml) ? "</auxwhat>"  : "";
+
    switch (ai->akind) {
-      case Stack: 
-         VG_(message)(Vg_UserMsg, 
-                      " Address 0x%x is on thread %d's stack", 
-                      a, ai->stack_tid);
+      case Stack:
+         VG_(message)(Vg_UserMsg,
+                      "%sAddress 0x%llx is on thread %d's stack%s",
+                      xpre, (ULong)a, ai->stack_tid, xpost);
          break;
       case Unknown:
          if (ai->maybe_gcc) {
-            VG_(message)(Vg_UserMsg, 
-               " Address 0x%x is just below %%esp.  Possibly a bug in GCC/G++",
-               a);
-            VG_(message)(Vg_UserMsg, 
-               "  v 2.96 or 3.0.X.  To suppress, use: --workaround-gcc296-bugs=yes");
+            VG_(message)(Vg_UserMsg,
+               "%sAddress 0x%llx is just below the stack ptr.  "
+               "To suppress, use: --workaround-gcc296-bugs=yes%s",
+               xpre, (ULong)a, xpost
+            );
 	 } else {
-            VG_(message)(Vg_UserMsg, 
-               " Address 0x%x is not stack'd, malloc'd or (recently) free'd",a);
+            VG_(message)(Vg_UserMsg,
+               "%sAddress 0x%llx "
+               "is not stack'd, malloc'd or (recently) free'd%s",
+               xpre, (ULong)a, xpost);
          }
          break;
       case Freed: case Mallocd: case UserG: case Mempool: {
@@ -258,13 +285,15 @@ void MAC_(pp_AddrInfo) ( Addr a, AddrInfo* ai )
             delta    = ai->rwoffset;
             relative = "inside";
          }
-         VG_(message)(Vg_UserMsg, 
-            " Address 0x%x is %llu bytes %s a %s of size %d %s",
-            a, (ULong)delta, relative, kind,
+         VG_(message)(Vg_UserMsg,
+            "%sAddress 0x%lx is %,lu bytes %s a %s of size %,lu %s%s",
+            xpre,
+            a, delta, relative, kind,
             ai->blksize,
-            ai->akind==Mallocd ? "alloc'd" 
-               : ai->akind==Freed ? "free'd" 
-                                  : "client-defined");
+            ai->akind==Mallocd ? "alloc'd"
+               : ai->akind==Freed ? "free'd"
+                                  : "client-defined",
+            xpost);
          VG_(pp_ExeContext)(ai->lastchange);
          break;
       }
@@ -283,14 +312,26 @@ void MAC_(pp_shared_Error) ( Error* err )
 {
    MAC_Error* err_extra = VG_(get_error_extra)(err);
 
+   HChar* xpre  = VG_(clo_xml) ? "  <what>" : "";
+   HChar* xpost = VG_(clo_xml) ? "</what>"  : "";
+
    switch (VG_(get_error_kind)(err)) {
       case FreeErr:
-         VG_(message)(Vg_UserMsg, "Invalid free() / delete / delete[]");
-         /* fall through */
+         if (VG_(clo_xml))
+            VG_(message)(Vg_UserMsg, "  <kind>InvalidFree</kind>");
+         VG_(message)(Vg_UserMsg,
+                      "%sInvalid free() / delete / delete[]%s",
+                      xpre, xpost);
+         VG_(pp_ExeContext)( VG_(get_error_where)(err) );
+         MAC_(pp_AddrInfo)(VG_(get_error_address)(err), &err_extra->addrinfo);
+         break;
+
       case FreeMismatchErr:
-         if (VG_(get_error_kind)(err) == FreeMismatchErr)
-            VG_(message)(Vg_UserMsg, 
-                         "Mismatched free() / delete / delete []");
+         if (VG_(clo_xml))
+            VG_(message)(Vg_UserMsg, "  <kind>MismatchedFree</kind>");
+         VG_(message)(Vg_UserMsg,
+                      "%sMismatched free() / delete / delete []%s",
+                      xpre, xpost);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          MAC_(pp_AddrInfo)(VG_(get_error_address)(err), &err_extra->addrinfo);
          break;
@@ -298,19 +339,29 @@ void MAC_(pp_shared_Error) ( Error* err )
       case AddrErr:
          switch (err_extra->axskind) {
             case ReadAxs:
-               VG_(message)(Vg_UserMsg, "Invalid read of size %d", 
-                                        err_extra->size ); 
+               if (VG_(clo_xml))
+                  VG_(message)(Vg_UserMsg, "  <kind>InvalidRead</kind>");
+               VG_(message)(Vg_UserMsg,
+                            "%sInvalid read of size %d%s",
+                            xpre, err_extra->size, xpost );
                break;
             case WriteAxs:
-               VG_(message)(Vg_UserMsg, "Invalid write of size %d", 
-                                        err_extra->size ); 
+               if (VG_(clo_xml))
+                  VG_(message)(Vg_UserMsg, "  <kind>InvalidWrite</kind>");
+               VG_(message)(Vg_UserMsg,
+                           "%sInvalid write of size %d%s",
+                           xpre, err_extra->size, xpost );
                break;
             case ExecAxs:
-               VG_(message)(Vg_UserMsg, "Jump to the invalid address "
-                                        "stated on the next line");
+               if (VG_(clo_xml))
+                  VG_(message)(Vg_UserMsg, "  <kind>InvalidJump</kind>");
+               VG_(message)(Vg_UserMsg,
+                            "%sJump to the invalid address "
+                            "stated on the next line%s",
+                            xpre, xpost);
                break;
-            default: 
-               VG_(tool_panic)("TL_(pp_shared_Error)(axskind)");
+            default:
+               VG_(tool_panic)("MAC_(pp_shared_Error)(axskind)");
          }
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          MAC_(pp_AddrInfo)(VG_(get_error_address)(err), &err_extra->addrinfo);
@@ -318,35 +369,40 @@ void MAC_(pp_shared_Error) ( Error* err )
 
       case OverlapErr: {
          OverlapExtra* ov_extra = (OverlapExtra*)VG_(get_error_extra)(err);
+         if (VG_(clo_xml))
+            VG_(message)(Vg_UserMsg, "  <kind>Overlap</kind>");
          if (ov_extra->len == -1)
             VG_(message)(Vg_UserMsg,
-                         "Source and destination overlap in %s(%p, %p)",
+                         "%sSource and destination overlap in %s(%p, %p)%s",
+                         xpre,
                          VG_(get_error_string)(err),
-                         ov_extra->dst, ov_extra->src);
+                         ov_extra->dst, ov_extra->src,
+                         xpost);
          else
             VG_(message)(Vg_UserMsg,
-                         "Source and destination overlap in %s(%p, %p, %d)",
+                         "%sSource and destination overlap in %s(%p, %p, %d)%s",
+                         xpre,
                          VG_(get_error_string)(err),
-                         ov_extra->dst, ov_extra->src, ov_extra->len);
+                         ov_extra->dst, ov_extra->src, ov_extra->len,
+                         xpost);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          break;
       }
       case LeakErr: {
-         /* Totally abusing the types of these spare fields... oh well. */
-         UInt n_this_record   = (UWord)VG_(get_error_address)(err);
-         UInt n_total_records = (UWord)VG_(get_error_string) (err);
-
-         MAC_(pp_LeakError)(err_extra, n_this_record, n_total_records);
+         MAC_(pp_LeakError)(err_extra);
          break;
       }
 
       case IllegalMempoolErr:
-         VG_(message)(Vg_UserMsg, "Illegal memory pool address");
+         if (VG_(clo_xml))
+            VG_(message)(Vg_UserMsg, "  <kind>InvalidMemPool</kind>");
+         VG_(message)(Vg_UserMsg, "%sIllegal memory pool address%s",
+                                  xpre, xpost);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          MAC_(pp_AddrInfo)(VG_(get_error_address)(err), &err_extra->addrinfo);
          break;
 
-      default: 
+      default:
          VG_(printf)("Error:\n  unknown Memcheck/Addrcheck error code %d\n",
                      VG_(get_error_kind)(err));
          VG_(tool_panic)("unknown error code in MAC_(pp_shared_Error)");
@@ -361,34 +417,26 @@ void MAC_(pp_shared_Error) ( Error* err )
    MemCheck for user blocks, which Addrcheck doesn't support. */
 Bool (*MAC_(describe_addr_supp)) ( Addr a, AddrInfo* ai ) = NULL;
 
-/* Callback for searching thread stacks */
-static Bool addr_is_in_bounds(Addr stack_min, Addr stack_max, void *ap)
+/* Function used when searching MAC_Chunk lists */
+static Bool addr_is_in_MAC_Chunk(MAC_Chunk* mc, Addr a)
 {
-   Addr a = *(Addr *)ap;
-  
-   return (stack_min <= a && a <= stack_max);
-}
-
-/* Callback for searching free'd list */
-static Bool addr_is_in_MAC_Chunk(MAC_Chunk* mc, void *ap)
-{
-   Addr a = *(Addr *)ap;
-  
-   return VG_(addr_is_in_block)( a, mc->data, mc->size );
-}
-
-/* Callback for searching malloc'd lists */
-static Bool addr_is_in_HashNode(VgHashNode* sh_ch, void *ap)
-{
-   return addr_is_in_MAC_Chunk( (MAC_Chunk*)sh_ch, ap );
+   // Nb: this is not quite right!  It assumes that the heap block has
+   // a redzone of size MAC_MALLOC_REDZONE_SZB.  That's true for malloc'd
+   // blocks, but not necessarily true for custom-alloc'd blocks.  So
+   // in some cases this could result in an incorrect description (eg.
+   // saying "12 bytes after block A" when really it's within block B.
+   // Fixing would require adding redzone size to MAC_Chunks, though.
+   return VG_(addr_is_in_block)( a, mc->data, mc->size,
+                                 MAC_MALLOC_REDZONE_SZB );
 }
 
 /* Describe an address as best you can, for error messages,
    putting the result in ai. */
 static void describe_addr ( Addr a, AddrInfo* ai )
 {
-   MAC_Chunk* sc;
+   MAC_Chunk* mc;
    ThreadId   tid;
+   Addr       stack_min, stack_max;
 
    /* Perhaps it's a user-def'd block ?  (only check if requested, though) */
    if (NULL != MAC_(describe_addr_supp)) {
@@ -396,29 +444,36 @@ static void describe_addr ( Addr a, AddrInfo* ai )
          return;
    }
    /* Perhaps it's on a thread's stack? */
-   tid = VG_(first_matching_thread_stack)(addr_is_in_bounds, &a);
-   if (tid != VG_INVALID_THREADID) {
-      ai->akind     = Stack;
-      ai->stack_tid = tid;
-      return;
+   VG_(thread_stack_reset_iter)();
+   while ( VG_(thread_stack_next)(&tid, &stack_min, &stack_max) ) {
+      if (stack_min <= a && a <= stack_max) {
+         ai->akind     = Stack;
+         ai->stack_tid = tid;
+         return;
+      }
    }
    /* Search for a recently freed block which might bracket it. */
-   sc = MAC_(first_matching_freed_MAC_Chunk)(addr_is_in_MAC_Chunk, &a);
-   if (NULL != sc) {
-      ai->akind      = Freed;
-      ai->blksize    = sc->size;
-      ai->rwoffset   = (Int)a - (Int)sc->data;
-      ai->lastchange = sc->where;
-      return;
+   mc = MAC_(get_freed_list_head)();
+   while (mc) {
+      if (addr_is_in_MAC_Chunk(mc, a)) {
+         ai->akind      = Freed;
+         ai->blksize    = mc->size;
+         ai->rwoffset   = (Int)a - (Int)mc->data;
+         ai->lastchange = mc->where;
+         return;
+      }
+      mc = mc->next;
    }
    /* Search for a currently malloc'd block which might bracket it. */
-   sc = (MAC_Chunk*)VG_(HT_first_match)(MAC_(malloc_list), addr_is_in_HashNode, &a);
-   if (NULL != sc) {
-      ai->akind      = Mallocd;
-      ai->blksize    = sc->size;
-      ai->rwoffset   = (Int)(a) - (Int)sc->data;
-      ai->lastchange = sc->where;
-      return;
+   VG_(HT_ResetIter)(MAC_(malloc_list));
+   while ( (mc = VG_(HT_Next)(MAC_(malloc_list))) ) {
+      if (addr_is_in_MAC_Chunk(mc, a)) {
+         ai->akind      = Mallocd;
+         ai->blksize    = mc->size;
+         ai->rwoffset   = (Int)(a) - (Int)mc->data;
+         ai->lastchange = mc->where;
+         return;
+      }
    }
    /* Clueless ... */
    ai->akind = Unknown;
@@ -471,12 +526,18 @@ void MAC_(record_core_mem_error) ( ThreadId tid, Bool isUnaddr, Char* msg )
    VG_(maybe_record_error)( tid, CoreMemErr, /*addr*/0, msg, &err_extra );
 }
 
+// Three kinds of param errors:
+// - register arg contains undefined bytes
+// - memory arg is unaddressable
+// - memory arg contains undefined bytes
+// 'isReg' and 'isUnaddr' dictate which of these it is.
 void MAC_(record_param_error) ( ThreadId tid, Addr a, Bool isReg,
                                 Bool isUnaddr, Char* msg )
 {
    MAC_Error err_extra;
 
    tl_assert(VG_INVALID_THREADID != tid);
+   if (isUnaddr) tl_assert(!isReg);    // unaddressable register is impossible
    MAC_(clear_MAC_Error)( &err_extra );
    err_extra.addrinfo.akind = ( isReg ? Register : Undescribed );
    err_extra.isUnaddr = isUnaddr;
@@ -495,7 +556,7 @@ void MAC_(record_jump_error) ( ThreadId tid, Addr a )
    VG_(maybe_record_error)( tid, AddrErr, a, /*s*/NULL, &err_extra );
 }
 
-void MAC_(record_free_error) ( ThreadId tid, Addr a ) 
+void MAC_(record_free_error) ( ThreadId tid, Addr a )
 {
    MAC_Error err_extra;
 
@@ -505,7 +566,7 @@ void MAC_(record_free_error) ( ThreadId tid, Addr a )
    VG_(maybe_record_error)( tid, FreeErr, a, /*s*/NULL, &err_extra );
 }
 
-void MAC_(record_illegal_mempool_error) ( ThreadId tid, Addr a ) 
+void MAC_(record_illegal_mempool_error) ( ThreadId tid, Addr a )
 {
    MAC_Error err_extra;
 
@@ -515,46 +576,83 @@ void MAC_(record_illegal_mempool_error) ( ThreadId tid, Addr a )
    VG_(maybe_record_error)( tid, IllegalMempoolErr, a, /*s*/NULL, &err_extra );
 }
 
-void MAC_(record_freemismatch_error) ( ThreadId tid, Addr a )
+void MAC_(record_freemismatch_error) ( ThreadId tid, Addr a, MAC_Chunk* mc )
 {
    MAC_Error err_extra;
+   AddrInfo* ai;
 
    tl_assert(VG_INVALID_THREADID != tid);
    MAC_(clear_MAC_Error)( &err_extra );
-   err_extra.addrinfo.akind = Undescribed;
+   ai = &err_extra.addrinfo;
+   ai->akind      = Mallocd;     // Nb: not 'Freed'
+   ai->blksize    = mc->size;
+   ai->rwoffset   = (Int)a - (Int)mc->data;
+   ai->lastchange = mc->where;
    VG_(maybe_record_error)( tid, FreeMismatchErr, a, /*s*/NULL, &err_extra );
 }
 
-void MAC_(record_overlap_error) ( ThreadId tid, 
+void MAC_(record_overlap_error) ( ThreadId tid,
                                   Char* function, OverlapExtra* ov_extra )
 {
-   VG_(maybe_record_error)( 
+   VG_(maybe_record_error)(
       tid, OverlapErr, /*addr*/0, /*s*/function, ov_extra );
 }
 
 
 /* Updates the copy with address info if necessary (but not for all errors). */
-UInt TL_(update_extra)( Error* err )
+UInt MAC_(update_extra)( Error* err )
 {
    switch (VG_(get_error_kind)(err)) {
-   case ValueErr:
+   // These two don't have addresses associated with them, and so don't
+   // need any updating.
    case CoreMemErr:
-   case AddrErr: 
-   case ParamErr:
-   case UserErr:
-   case FreeErr:
-   case IllegalMempoolErr:
-   case FreeMismatchErr: {
+   case ValueErr: {
       MAC_Error* extra = VG_(get_error_extra)(err);
-      if (extra != NULL && Undescribed == extra->addrinfo.akind) {
-         describe_addr ( VG_(get_error_address)(err), &(extra->addrinfo) );
-      }
+      tl_assert(Unknown == extra->addrinfo.akind);
       return sizeof(MAC_Error);
    }
-   /* Don't need to return the correct size -- LeakErrs are always shown with
-      VG_(unique_error)() so they're not copied anyway. */
+
+   // ParamErrs sometimes involve a memory address; call describe_addr() in
+   // this case.
+   case ParamErr: {
+      MAC_Error* extra = VG_(get_error_extra)(err);
+      tl_assert(Undescribed == extra->addrinfo.akind ||
+                Register    == extra->addrinfo.akind);
+      if (Undescribed == extra->addrinfo.akind)
+         describe_addr ( VG_(get_error_address)(err), &(extra->addrinfo) );
+      return sizeof(MAC_Error);
+   }
+
+   // These four always involve a memory address.
+   case AddrErr:
+   case UserErr:
+   case FreeErr:
+   case IllegalMempoolErr: {
+      MAC_Error* extra = VG_(get_error_extra)(err);
+      tl_assert(Undescribed == extra->addrinfo.akind);
+      describe_addr ( VG_(get_error_address)(err), &(extra->addrinfo) );
+      return sizeof(MAC_Error);
+   }
+
+   // FreeMismatchErrs have already had their address described;  this is
+   // possible because we have the MAC_Chunk on hand when the error is
+   // detected.  However, the address may be part of a user block, and if so
+   // we override the pre-determined description with a user block one.
+   case FreeMismatchErr: {
+      MAC_Error* extra = VG_(get_error_extra)(err);
+      tl_assert(extra && Mallocd == extra->addrinfo.akind);
+      if (NULL != MAC_(describe_addr_supp))
+         (void)MAC_(describe_addr_supp)( VG_(get_error_address)(err),
+                                         &(extra->addrinfo) );
+      return sizeof(MAC_Error);
+   }
+
+   // No memory address involved with these ones.  Nb:  for LeakErrs the
+   // returned size does not matter -- LeakErrs are always shown with
+   // VG_(unique_error)() so they're not copied.
    case LeakErr:     return 0;
    case OverlapErr:  return sizeof(OverlapExtra);
+
    default: VG_(tool_panic)("update_extra: bad errkind");
    }
 }
@@ -586,7 +684,7 @@ Bool MAC_(shared_recognised_suppression) ( Char* name, Supp* su )
    return True;
 }
 
-Bool TL_(read_extra_suppression_info) ( Int fd, Char* buf, Int nBuf, Supp *su )
+Bool MAC_(read_extra_suppression_info) ( Int fd, Char* buf, Int nBuf, Supp *su )
 {
    Bool eof;
 
@@ -598,7 +696,7 @@ Bool TL_(read_extra_suppression_info) ( Int fd, Char* buf, Int nBuf, Supp *su )
    return True;
 }
 
-Bool TL_(error_matches_suppression)(Error* err, Supp* su)
+Bool MAC_(error_matches_suppression)(Error* err, Supp* su)
 {
    Int        su_size;
    MAC_Error* err_extra = VG_(get_error_extra)(err);
@@ -606,8 +704,8 @@ Bool TL_(error_matches_suppression)(Error* err, Supp* su)
 
    switch (VG_(get_supp_kind)(su)) {
       case ParamSupp:
-         return (ekind == ParamErr 
-              && VG_STREQ(VG_(get_error_string)(err), 
+         return (ekind == ParamErr
+              && VG_STREQ(VG_(get_error_string)(err),
                           VG_(get_supp_string)(su)));
 
       case CoreMemSupp:
@@ -649,20 +747,19 @@ Bool TL_(error_matches_suppression)(Error* err, Supp* su)
                      "  unknown suppression type %d\n",
                      VG_(get_supp_kind)(su));
          VG_(tool_panic)("unknown suppression type in "
-                         "TL_(error_matches_suppression)");
+                         "MAC_(error_matches_suppression)");
    }
 }
 
-Char* TL_(get_error_name) ( Error* err )
+Char* MAC_(get_error_name) ( Error* err )
 {
-   Char* s;
    switch (VG_(get_error_kind)(err)) {
    case ParamErr:           return "Param";
    case UserErr:            return NULL;  /* Can't suppress User errors */
    case FreeMismatchErr:    return "Free";
    case IllegalMempoolErr:  return "Mempool";
    case FreeErr:            return "Free";
-   case AddrErr:            
+   case AddrErr:
       switch ( ((MAC_Error*)VG_(get_error_extra)(err))->size ) {
       case 1:               return "Addr1";
       case 2:               return "Addr2";
@@ -671,7 +768,7 @@ Char* TL_(get_error_name) ( Error* err )
       case 16:              return "Addr16";
       default:              VG_(tool_panic)("unexpected size for Addr");
       }
-     
+
    case ValueErr:
       switch ( ((MAC_Error*)VG_(get_error_extra)(err))->size ) {
       case 0:               return "Cond";
@@ -687,10 +784,11 @@ Char* TL_(get_error_name) ( Error* err )
    case LeakErr:            return "Leak";
    default:                 VG_(tool_panic)("get_error_name: unexpected type");
    }
-   VG_(printf)(s);
+   /*NOTREACHED*/
+   return "??get_error_name??";
 }
 
-void TL_(print_extra_suppression_info) ( Error* err )
+void MAC_(print_extra_suppression_info) ( Error* err )
 {
    if (ParamErr == VG_(get_error_kind)(err)) {
       VG_(printf)("   %s\n", VG_(get_error_string)(err));
@@ -713,13 +811,13 @@ M  21   get_vbyte
    22   set_abit
 M  23   set_vbyte
    24   get_abits4_ALIGNED
-M  25   get_vbytes4_ALIGNED       
+M  25   get_vbytes4_ALIGNED
 
    30   set_address_range_perms
    31   set_address_range_perms(lower byte loop)
    32   set_address_range_perms(quadword loop)
    33   set_address_range_perms(upper byte loop)
-   
+
    35   make_noaccess
    36   make_writable
    37   make_readable
@@ -799,25 +897,35 @@ M  89   fpu_write 10/28/108/512
 
 #ifdef MAC_PROFILE_MEMORY
 
-UInt MAC_(event_ctr)[N_PROF_EVENTS];
+UInt   MAC_(event_ctr)[N_PROF_EVENTS];
+HChar* MAC_(event_ctr_name)[N_PROF_EVENTS];
 
 static void init_prof_mem ( void )
 {
    Int i;
-   for (i = 0; i < N_PROF_EVENTS; i++)
+   for (i = 0; i < N_PROF_EVENTS; i++) {
       MAC_(event_ctr)[i] = 0;
+      MAC_(event_ctr_name)[i] = NULL;
+   }
 }
 
 static void done_prof_mem ( void )
 {
-   Int i;
+   Int  i;
+   Bool spaced = False;
    for (i = 0; i < N_PROF_EVENTS; i++) {
-      if ((i % 10) == 0) 
+      if (!spaced && (i % 10) == 0) {
          VG_(printf)("\n");
-      if (MAC_(event_ctr)[i] > 0)
-         VG_(printf)( "prof mem event %2d: %d\n", i, MAC_(event_ctr)[i] );
+         spaced = True;
+      }
+      if (MAC_(event_ctr)[i] > 0) {
+         spaced = False;
+         VG_(printf)( "prof mem event %3d: %9d   %s\n",
+                      i, MAC_(event_ctr)[i],
+                      MAC_(event_ctr_name)[i]
+                         ? MAC_(event_ctr_name)[i] : "unnamed");
+      }
    }
-   VG_(printf)("\n");
 }
 
 #else
@@ -833,8 +941,8 @@ static void done_prof_mem ( void ) { }
 
 void MAC_(common_pre_clo_init)(void)
 {
-   MAC_(malloc_list) = VG_(HT_construct)();
-   MAC_(mempool_list) = VG_(HT_construct)();
+   MAC_(malloc_list)  = VG_(HT_construct)( 80021 );   // prime, big
+   MAC_(mempool_list) = VG_(HT_construct)( 1009  );   // prime, not so big
    init_prof_mem();
 }
 
@@ -842,12 +950,12 @@ void MAC_(common_fini)(void (*leak_check)(ThreadId tid, LeakCheckMode mode))
 {
    MAC_(print_malloc_stats)();
 
-   if (VG_(clo_verbosity) == 1) {
+   if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
       if (MAC_(clo_leak_check) == LC_Off)
-         VG_(message)(Vg_UserMsg, 
+         VG_(message)(Vg_UserMsg,
              "For a detailed leak analysis,  rerun with: --leak-check=yes");
 
-      VG_(message)(Vg_UserMsg, 
+      VG_(message)(Vg_UserMsg,
                    "For counts of detected errors, rerun with: -v");
    }
    if (MAC_(clo_leak_check) != LC_Off)
@@ -862,13 +970,6 @@ void MAC_(common_fini)(void (*leak_check)(ThreadId tid, LeakCheckMode mode))
 
 Bool MAC_(handle_common_client_requests)(ThreadId tid, UWord* arg, UWord* ret )
 {
-   Char* err  = 
-         "The client requests VALGRIND_MALLOCLIKE_BLOCK and\n"
-      "   VALGRIND_FREELIKE_BLOCK have moved.  Please recompile your\n"
-      "   program to incorporate the updates in the Valgrind header files.\n"
-      "   You shouldn't need to change the text of your program at all.\n"
-      "   Everything should then work as before.  Sorry for the bother.\n";
-   
    switch (arg[0]) {
    case VG_USERREQ__COUNT_LEAKS: { /* count leaked bytes */
       UWord** argp = (UWord**)arg;
@@ -884,17 +985,13 @@ Bool MAC_(handle_common_client_requests)(ThreadId tid, UWord* arg, UWord* ret )
       *ret = 0;
       return True;
    }
-   case VG_USERREQ__MALLOCLIKE_BLOCK__OLD_DO_NOT_USE:
-   case VG_USERREQ__FREELIKE_BLOCK__OLD_DO_NOT_USE:
-      VG_(tool_panic)(err);
-
    case VG_USERREQ__MALLOCLIKE_BLOCK: {
       Addr p         = (Addr)arg[1];
       SizeT sizeB    =       arg[2];
       UInt rzB       =       arg[3];
       Bool is_zeroed = (Bool)arg[4];
 
-      MAC_(new_block) ( tid, p, sizeB, /*ignored*/0, rzB, is_zeroed, 
+      MAC_(new_block) ( tid, p, sizeB, /*ignored*/0, rzB, is_zeroed,
                         MAC_AllocCustom, MAC_(malloc_list) );
       return True;
    }
@@ -952,5 +1049,5 @@ Bool MAC_(handle_common_client_requests)(ThreadId tid, UWord* arg, UWord* ret )
 }
 
 /*--------------------------------------------------------------------*/
-/*--- end                                              mac_needs.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

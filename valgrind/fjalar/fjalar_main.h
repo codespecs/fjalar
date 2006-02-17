@@ -18,8 +18,10 @@
 #ifndef FJALAR_MAIN_H
 #define FJALAR_MAIN_H
 
+#include "pub_tool_basics.h"
+#include "pub_tool_libcbase.h"
+
 #include <assert.h>
-#include "tool.h"
 #include "mc_translate.h"
 
 #include "fjalar_include.h"
@@ -32,17 +34,17 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
 
-extern VGA_REGPARM(1) void enter_function(FunctionEntry* f);
-extern VGA_REGPARM(1) void exit_function(FunctionEntry* f);
+extern VG_REGPARM(1) void enter_function(FunctionEntry* f);
+extern VG_REGPARM(1) void exit_function(FunctionEntry* f);
 
 
-void fjalar_pre_clo_init();
-void fjalar_post_clo_init();
-void fjalar_finish();
-void fjalar_print_usage();
+void fjalar_pre_clo_init(void);
+void fjalar_post_clo_init(void);
+void fjalar_finish(void);
+void fjalar_print_usage(void);
 Bool fjalar_process_cmd_line_option(Char* arg);
 
-void printFunctionEntryStack();
+void printFunctionEntryStack(void);
 
 // The stack should never grow this deep!
 #define FN_STACK_SIZE 1000
@@ -50,7 +52,7 @@ void printFunctionEntryStack();
 FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
 int fn_stack_first_free_index;
 
-__inline__ FunctionExecutionState* fnStackTop();
+__inline__ FunctionExecutionState* fnStackTop(void);
 
 
 /*

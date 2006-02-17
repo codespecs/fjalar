@@ -7,8 +7,10 @@
 
       Modified by Philip Guo to cancel out memory profiling features
       and to only keep the A and V-bit memory tracking for DynComp.
+      (Extracted out lots of stuff from mc_translate.c into here
+       so that it can be shared with DynComp)
 
-   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -31,9 +33,18 @@
 #ifndef MC_TRANSLATE_H
 #define MC_TRANSLATE_H
 
-#include "tool.h"
+//#include "tool.h"
+#include "pub_tool_basics.h"
+#include "pub_tool_hashtable.h"   // For mac_shared.h
+#include "pub_tool_libcassert.h"
+#include "pub_tool_libcprint.h"
+#include "pub_tool_tooliface.h"
+#include "pub_tool_machine.h"     // VG_(fnptr_to_fnentry)
 
-typedef IRExpr IRAtom;
+
+/*------------------------------------------------------------*/
+/*--- Constructing IR fragments                            ---*/
+/*------------------------------------------------------------*/
 
 /* assign value to tmp */
 #define assign(_bb,_tmp,_expr)   \
@@ -53,10 +64,19 @@ typedef IRExpr IRAtom;
 #define mkV128(_n)               IRExpr_Const(IRConst_V128(_n))
 #define mkexpr(_tmp)             IRExpr_Tmp((_tmp))
 
-Bool sameKindedAtoms ( /*IRAtom*/ IRExpr* a1, /*IRAtom*/ IRExpr* a2 );
-IRType  shadowType ( IRType ty );
+/* An atom is either an IRExpr_Const or an IRExpr_Tmp, as defined by
+   isIRAtom() in libvex_ir.h.  Because this instrumenter expects flat
+   input, most of this code deals in atoms.  Usefully, a value atom
+   always has a V-value which is also an atom: constants are shadowed
+   by constants, and temps are shadowed by the corresponding shadow
+   temporary. */
 
-// PG - lifted from mc_translate.c:
+typedef  IRExpr  IRAtom;
+
+
+Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 );
+IRType shadowType ( IRType ty );
+
 
 struct _MCEnv;
 

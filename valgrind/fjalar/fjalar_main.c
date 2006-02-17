@@ -23,7 +23,13 @@
 #include <string.h>
 #include <search.h>
 
-#include "tool.h"
+#include "pub_tool_basics.h"
+#include "pub_tool_options.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_mallocfree.h"
+
+#include "pub_tool_clientstate.h"
+
 #include "generate_fjalar_entries.h"
 #include "fjalar_main.h"
 #include "fjalar_runtime.h"
@@ -240,7 +246,7 @@ program enters a function.  Pushes an entry onto the top of
 FunctionExecutionStateStack and calls out to a handler function
 implemented by the Fjalar tool.
 */
-VGA_REGPARM(1)
+VG_REGPARM(1)
 void enter_function(FunctionEntry* f)
 {
   FunctionExecutionState* newEntry = fnStackPush();
@@ -296,7 +302,7 @@ program exits a function.  Initializes the top entry of
 FunctionExecutionStateStack with return values from EAX, EDX, and FPU,
 then calls out to a handler function implemented by the Fjalar tool.
 */
-VGA_REGPARM(1)
+VG_REGPARM(1)
 void exit_function(FunctionEntry* f)
 {
   FunctionExecutionState* top = fnStackTop();
@@ -342,18 +348,30 @@ void exit_function(FunctionEntry* f)
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
   for (i = 0; i < 4; i++) {
-    set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID);
-    set_abit((Addr)(&(top->EDX)) + (Addr)i, VGM_BIT_VALID);
-    set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
+/*     set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID); */
+/*     set_abit((Addr)(&(top->EDX)) + (Addr)i, VGM_BIT_VALID); */
+/*     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID); */
 
-    set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8)));
-    set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8)));
-    set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+/*     set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8))); */
+/*     set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8))); */
+/*     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8))); */
+
+    /* XXX this doesn't look like it's actually picking up the right
+       bits. -SMcC */
+    // pgbovine - probably because the sizes are now different ...
+    set_abit_and_vbyte((Addr)(&top->EAX) + (Addr)i, VGM_BIT_VALID,
+                      (EAXshadow & 0xff) << (i * 8));
+    set_abit_and_vbyte((Addr)(&top->EDX) + (Addr)i, VGM_BIT_VALID,
+                      (EDXshadow & 0xff) << (i * 8));
+    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
+                      (FPUshadow & 0xff) << (i * 8));
   }
 
   for (i = 4; i < 8; i++) {
-    set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID);
-    set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8)));
+/*     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID); */
+/*     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8))); */
+    set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
+                       (FPUshadow & 0xff) << (i * 8));
   }
 
   curFunctionExecutionStatePtr = top;
@@ -500,10 +518,7 @@ void fjalar_pre_clo_init()
 // Initialize Fjalar after processing command-line options
 void fjalar_post_clo_init()
 {
-  // Assume that the filename is the FIRST string in
-  // VG(client_argv) since that is the client argv array
-  // after being parsed by the Valgrind core:
-  executable_filename = VG_(client_argv)[0];
+  executable_filename = VG_(args_the_exename);
 
   // Handle variables set by command-line options:
   char* DISAMBIG = ".disambig";

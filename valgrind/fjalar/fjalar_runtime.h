@@ -21,7 +21,7 @@ tools.
 #ifndef FJALAR_RUNTIME_H
 #define FJALAR_RUNTIME_H
 
-#include "tool.h"
+//#include "tool.h"
 #include "typedata.h"
 #include "generate_fjalar_entries.h"
 #include "fjalar_include.h"

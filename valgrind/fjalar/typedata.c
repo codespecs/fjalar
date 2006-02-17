@@ -28,8 +28,10 @@
 #include "elf/dwarf2.h"
 
 //#include "tool_asm.h" //#include "vg_constants_skin.h"
-#include "tool.h"
-
+//#include "tool.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_basics.h"
+#include "pub_tool_libcassert.h"
 
 // Forward declarations so that the compiler won't warn me:
 //extern void  VG_(free)           ( void* p );

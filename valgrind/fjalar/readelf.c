@@ -22,7 +22,7 @@
    02111-1307, USA.  */
 
 /* readelf.c
-   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
 
    This file was modified by Philip Guo, MIT CSAIL Program Analysis Group,
    to perform recording of function return types and parameter types
@@ -35,6 +35,7 @@
 
    This file interprets the DWARF2 debugging information within
    the ELF binary and then calls functions in typedata.c
+
    My changes are denoted by // PG marks
 */
 
@@ -45,7 +46,22 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "tool_asm.h" //#include "vg_constants_skin.h"
+#include "pub_tool_basics_asm.h"
+
+//#define VGAPPEND(str1,str2) str1##str2
+
+/* These macros should add different prefixes so the same base
+   name can safely be used across different macros. */
+//#define VG_(str)    VGAPPEND(vgPlain_,str)
+//#define VGA_(str)   VGAPPEND(vgArch_,str)
+//#define VGO_(str)   VGAPPEND(vgOS_,str)
+//#define VGP_(str)   VGAPPEND(vgPlatform_,str)
+
+/* Tool-specific ones.  Note that final name still starts with "vg". */
+//#define TL_(str)    VGAPPEND(vgTool_,str)
+
+
+//#include "tool_asm.h" //#include "vg_constants_skin.h"
 
 // PG
 // Forward declarations so that the compiler won't warn me:
@@ -5038,15 +5054,15 @@ process_symbol_table (file)
 
           // PG - harvest address and size information for the .data,
           // .bss, and .rodata sections:
-          if (0 == VG_(strcmp(SECTION_NAME (section), ".data"))) {
+          if (0 == VG_(strcmp)(SECTION_NAME (section), ".data")) {
             data_section_addr = section->sh_addr;
             data_section_size = section->sh_size;
           }
-          else if (0 == VG_(strcmp(SECTION_NAME (section), ".bss"))) {
+          else if (0 == VG_(strcmp)(SECTION_NAME (section), ".bss")) {
             bss_section_addr = section->sh_addr;
             bss_section_size = section->sh_size;
           }
-          else if (0 == VG_(strcmp(SECTION_NAME (section), ".rodata"))) {
+          else if (0 == VG_(strcmp)(SECTION_NAME (section), ".rodata")) {
             rodata_section_addr = section->sh_addr;
             rodata_section_size = section->sh_size;
           }

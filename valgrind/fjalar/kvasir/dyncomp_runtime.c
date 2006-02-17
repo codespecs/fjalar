@@ -440,6 +440,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   }
 
   return comp_number;
+  //  return var_tags[daikonVarIndex];
 }
 
 TraversalResult dyncompExtraPropAction(VariableEntry* var,

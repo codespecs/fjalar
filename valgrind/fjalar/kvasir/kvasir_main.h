@@ -20,6 +20,8 @@
 #include "../fjalar_include.h"
 #include <stdio.h>
 
+#include "pub_tool_libcassert.h"
+
 FILE* decls_fp; // File pointer for .decls file (this will point
                 // to the same thing as dtrace_fp by default since
                 // both .decls and .dtrace are outputted to .dtrace

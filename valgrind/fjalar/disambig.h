@@ -18,7 +18,7 @@
 #ifndef DISAMBIG_H
 #define DISAMBIG_H
 
-#include "tool.h"
+//#include "tool.h"
 #include "generate_fjalar_entries.h"
 #include <stdio.h>
 
@@ -34,8 +34,8 @@ typedef enum DisambigEntryType {
 } DisambigEntryType;
 
 
-void handleDisambigFile();
+void handleDisambigFile(void);
 DisambigOverride returnDisambigOverride(VariableEntry* var);
-void generateDisambigFile();
+void generateDisambigFile(void);
 
 #endif

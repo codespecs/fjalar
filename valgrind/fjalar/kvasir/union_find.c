@@ -4,7 +4,7 @@
 // Philip Guo
 
 #include "union_find.h"
-#include "tool.h"
+//#include "tool.h"
 #include <limits.h>
 
 uf_name uf_find(uf_object *object) {
