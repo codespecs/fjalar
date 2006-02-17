@@ -44,9 +44,9 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-
-/* For VG_CLO_DEFAULT_LOGPORT and VG_BUGS_TO. */
-#include "core.h"
+#include "pub_core_basics.h"
+#include "pub_core_libcassert.h"    // For VG_BUGS_TO
+#include "pub_core_libcfile.h"      // For VG_CLO_DEFAULT_LOGPORT
 
 
 /*---------------------------------------------------------------*/
@@ -62,7 +62,7 @@ static void panic ( Char* str )
 {
    fprintf(stderr,
            "\nvalgrind-listener: the "
-           "`impossible' happened:\n   %s\n", str);
+           "'impossible' happened:\n   %s\n", str);
    fprintf(stderr,
            "Please report this bug at: %s\n\n", VG_BUGS_TO);
    exit(1);
@@ -72,7 +72,7 @@ __attribute__ ((noreturn))
 static void my_assert_fail ( const Char* expr, const Char* file, Int line, const Char* fn )
 {
    fprintf(stderr,
-           "\nvalgrind-listener: %s:%d (%s): Assertion `%s' failed.\n",
+           "\nvalgrind-listener: %s:%d (%s): Assertion '%s' failed.\n",
            file, line, fn, expr );
    fprintf(stderr,
            "Please report this bug at: %s\n\n", VG_BUGS_TO);
@@ -80,12 +80,10 @@ static void my_assert_fail ( const Char* expr, const Char* file, Int line, const
 }
 
 #undef assert
-#undef STRINGIFY
 
-#define STRINGIFY(__str)  #__str
 #define assert(expr)                                             \
   ((void) ((expr) ? 0 :					         \
-	   (my_assert_fail (STRINGIFY(expr),	                 \
+	   (my_assert_fail (VG_STRINGIFY(expr),	                 \
                             __FILE__, __LINE__,                  \
                             __PRETTY_FUNCTION__), 0)))
 
@@ -98,7 +96,7 @@ int           conn_fd[M_CONNECTIONS];
 struct pollfd conn_pollfd[M_CONNECTIONS];
 
 
-void set_nonblocking ( int sd )
+static void set_nonblocking ( int sd )
 {
    int res;
    res = fcntl(sd, F_GETFL);
@@ -109,7 +107,7 @@ void set_nonblocking ( int sd )
    }
 }
 
-void set_blocking ( int sd )
+static void set_blocking ( int sd )
 {
    int res;
    res = fcntl(sd, F_GETFL);
@@ -121,7 +119,7 @@ void set_blocking ( int sd )
 }
 
 
-void copyout ( char* buf, int nbuf )
+static void copyout ( char* buf, int nbuf )
 {
    int i;
    for (i = 0; i < nbuf; i++) {
@@ -134,7 +132,7 @@ void copyout ( char* buf, int nbuf )
    fflush(stdout);
 }
 
-int read_from_sd ( int sd )
+static int read_from_sd ( int sd )
 {
    char buf[100];
    int n;
@@ -153,7 +151,7 @@ int read_from_sd ( int sd )
 }
 
 
-void snooze ( void )
+static void snooze ( void )
 {
    struct timespec req;
    req.tv_sec = 0;
@@ -163,7 +161,7 @@ void snooze ( void )
 
 
 /* returns 0 if invalid, else port # */
-int atoi_portno ( char* str )
+static int atoi_portno ( char* str )
 {
    int n = 0;
    while (1) {
@@ -182,7 +180,7 @@ int atoi_portno ( char* str )
 }
 
 
-void usage ( void )
+static void usage ( void )
 {
    fprintf(stderr, 
       "\n"
@@ -205,7 +203,7 @@ void usage ( void )
 }
 
 
-void banner ( char* str )
+static void banner ( char* str )
 {
    time_t t;
    t = time(NULL);
@@ -214,14 +212,14 @@ void banner ( char* str )
 }
 
 
-void exit_routine ( void )
+static void exit_routine ( void )
 {
    banner("exited");
    exit(0);
 }
 
 
-void sigint_handler ( int signo )
+static void sigint_handler ( int signo )
 {
    exit_routine();
 }

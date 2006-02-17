@@ -1,0 +1,3 @@
+prog: tinycc
+args: -c test_input_for_tinycc.c
+tools: none memcheck

@@ -418,10 +418,15 @@
 
 #-------- glibc 2.2.5/ Debian 3.0
 {
-   _dl_start/ld-2.2.5.so(Cond)
+   _dl_start(Cond)
    Memcheck:Cond
    fun:_dl_start
-   obj:/lib/ld-2.2.5.so
+}
+
+{
+   _dl_start(Cond)
+   Memcheck:Cond
+   fun:_dl_relocate_object
 }
 
 #-------------------
@@ -491,7 +496,17 @@
    obj:/usr/X11R6/lib/libXt.so.6.0
 }
 
-# LinuxThreads suppressesion
+## Bug in PRE(sys_clone), really.  Some args are not used.
+{
+   LinuxThread clone use (child_tidptr)
+   Memcheck:Param
+   clone(child_tidptr)
+   fun:clone
+   fun:__pthread_initialize_manager
+   fun:pthread_create@@GLIBC_2.2.5
+}
+
+## LinuxThreads manager writes messages containing undefined bytes
 {
    LinuxThreads: write/pthread_create
    Memcheck:Param
@@ -504,4 +519,81 @@
    write(buf)
    fun:write
    fun:pthread_create@@GLIBC_2.1
+}
+{
+   LinuxThreads: write/pthread_onexit_process
+   Memcheck:Param
+   write(buf)
+   fun:write
+   fun:pthread_onexit_process
+   fun:exit
+}
+{
+   LinuxThreads: write/pthread_join
+   Memcheck:Param
+   write(buf)
+   fun:write
+   fun:pthread_join
+}
+{
+   LinuxThreads: write/pthread_create
+   Memcheck:Param
+   write(buf)
+   fun:write
+   fun:pthread_create@@GLIBC_2.2.5
+}
+{
+   LinuxThreads: write/__pthread_initialize_manager/pthread_create
+   Memcheck:Param
+   write(buf)
+   fun:write
+   fun:__pthread_initialize_manager
+   fun:pthread_create@@GLIBC_2.2.5
+}
+
+## LinuxThreads leaks the stack and TLS data for the manager thread
+{
+   LinuxThreads: leaks stack of manager thread
+   Memcheck:Leak
+   fun:malloc
+   fun:__pthread_initialize_manager
+   fun:pthread_create@@GLIBC_2.1
+}
+{
+   LinuxThreads: leaks TLS data for manager thread
+   Memcheck:Leak
+   fun:calloc
+   fun:_dl_allocate_tls
+   fun:__pthread_initialize_minimal
+}
+{
+   LinuxThreads: leaks TLS data for manager thread
+   Memcheck:Leak
+   fun:memalign
+   fun:_dl_allocate_tls
+   fun:__pthread_initialize_minimal
+}
+{
+   LinuxThreads: leaks stack of manager thread
+   Memcheck:Leak
+   fun:malloc
+   fun:__pthread_initialize_manager
+   fun:pthread_create@@GLIBC_2.2.5
+}
+{
+   LinuxThreads: leaks TLS data for manager thread
+   Memcheck:Leak
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls_storage
+   fun:_dl_allocate_tls
+   fun:__pthread_initialize_minimal
+}
+{
+   LinuxThreads: leaks TLS data for manager thread
+   Memcheck:Leak
+   fun:memalign
+   fun:_dl_allocate_tls_storage
+   fun:_dl_allocate_tls
+   fun:__pthread_initialize_minimal
 }

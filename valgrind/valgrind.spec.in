@@ -2,61 +2,53 @@ Summary: Valgrind Memory Debugger
 Name: @PACKAGE@
 Version: @VERSION@
 Release: 1
-Copyright: GPL
+Epoch: 1
+License: GPL
+URL: http://www.valgrind.org/
 Group: Development/Debuggers
 Packager: Jeremy Fitzhardinge <jeremy@goop.org>
 Source: @PACKAGE@-@VERSION@.tar.bz2
 
-Buildroot: %{_tmppath}/@PACKAGE@
+Buildroot: %{_tmppath}/%{name}-root
 
 %description 
 
-Valgrind is a GPL'd system for debugging and profiling x86-Linux programs.
-With the tools that come with Valgrind, you can automatically detect
-many memory management and threading bugs, avoiding hours of frustrating
-bug-hunting, making your programs more stable. You can also perform
-detailed profiling to help speed up your programs.
+Valgrind is an award-winning suite of tools for debugging and profiling
+Linux programs. With the tools that come with Valgrind, you can
+automatically detect many memory management and threading bugs, avoiding
+hours of frustrating bug-hunting, making your programs more stable. You can
+also perform detailed profiling, to speed up and reduce memory use of your
+programs.
 
-The Valgrind distribution includes five tools: two memory error
+The Valgrind distribution currently includes five tools: two memory error
 detectors, a thread error detector, a cache profiler and a heap profiler.
-Several other tools have been built with Valgrind.
 
 %prep
 %setup -n @PACKAGE@-@VERSION@
 
 %build
-./configure --prefix=/usr
+%configure
 make
 
 %install
 make install DESTDIR=$RPM_BUILD_ROOT
 
+%makeinstall
+mkdir docs.installed
+mv $RPM_BUILD_ROOT%{_datadir}/doc/valgrind/* docs.installed/
+
 %files
 %defattr(-,root,root)
-/usr/include/valgrind/valgrind.h
-/usr/include/valgrind/memcheck.h
-#/usr/include/valgrind/helgrind.h
-/usr/include/valgrind/basic_types.h
-/usr/include/valgrind/tool.h
-/usr/include/valgrind/tool_asm.h
-/usr/include/valgrind/amd64/tool_arch.h
-/usr/include/valgrind/arm/tool_arch.h
-/usr/include/valgrind/x86/tool_arch.h
-/usr/include/valgrind/linux/vki.h
-/usr/include/valgrind/amd64-linux/vki_arch.h
-/usr/include/valgrind/amd64-linux/vki_arch_posixtypes.h
-/usr/include/valgrind/arm-linux/vki_arch.h
-/usr/include/valgrind/arm-linux/vki_arch_posixtypes.h
-/usr/include/valgrind/x86-linux/vki_arch.h
-/usr/include/valgrind/x86-linux/vki_arch_posixtypes.h
-/usr/bin/valgrind
-/usr/bin/cg_annotate
-/usr/bin/valgrind-listener
-/usr/lib/valgrind
-/usr/lib/pkgconfig/valgrind.pc
+%doc ACKNOWLEDGEMENTS AUTHORS COPYING FAQ.txt INSTALL NEWS README*
+%doc docs.installed/*.html docs.installed/*.gif
+%{_bindir}/*
+%{_includedir}/valgrind
+%{_libdir}/valgrind
+%{_libdir}/pkgconfig/*
 
 %doc
-/usr/share/doc/valgrind/*
+%defattr(-,root,root)
+%{_mandir}/*/*
 
 %clean
 [ "$RPM_BUILD_ROOT" != "/" ] && rm -rf ${RPM_BUILD_ROOT}
