@@ -1,2 +1,0 @@
-prog: insn_fpu
-prereq: ../../../tests/cputest x86-fpu
