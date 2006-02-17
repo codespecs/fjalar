@@ -1,2 +1,0 @@
-prog: match-overrun
-vgopts: --suppressions=match-overrun.supp
