@@ -1,8 +1,0 @@
-Makefile
-fpeflags
-pushfpopf
-tronical
-*.stdout.diff
-*.stderr.diff*
-*.stdout.out
-*.stderr.out
