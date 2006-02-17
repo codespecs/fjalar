@@ -28,20 +28,26 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "core.h"
+#include "pub_core_basics.h"
 #include "pub_core_execontext.h"
+#include "pub_core_libcassert.h"
+#include "pub_core_libcprint.h"     // For VG_(message)()
+#include "pub_core_mallocfree.h"
+#include "pub_core_options.h"
+#include "pub_core_stacktrace.h"
 
 /*------------------------------------------------------------*/
 /*--- Low-level ExeContext storage.                        ---*/
 /*------------------------------------------------------------*/
 
-/* The first 4 IP values are used in comparisons do remove duplicate errors,
+/* The first 4 IP values are used in comparisons to remove duplicate errors,
    and for comparing against suppression specifications.  The rest are
    purely informational (but often important). */
 
 struct _ExeContext {
    struct _ExeContext * next;
-   /* Variable-length array.  The size is VG_(clo_backtrace_size); at
+   UInt   n_ips;
+   /* Variable-length array.  The size is 'n_ips'; at
       least 1, at most VG_DEEPEST_BACKTRACE.  [0] is the current IP,
       [1] is its caller, [2] is the caller of [1], etc. */
    Addr ips[0];
@@ -49,7 +55,7 @@ struct _ExeContext {
 
 /* Number of lists in which we keep track of ExeContexts.  Should be
    prime. */
-#define N_EC_LISTS 4999 /* a prime number */
+#define N_EC_LISTS 30011 /*4999*/ /* a prime number */
 
 /* The idea is only to ever store any one context once, so as to save
    space and make exact comparisons faster. */
@@ -58,18 +64,18 @@ static ExeContext* ec_list[N_EC_LISTS];
 
 /* Stats only: the number of times the system was searched to locate a
    context. */
-static UInt ec_searchreqs;
+static ULong ec_searchreqs;
 
 /* Stats only: the number of full context comparisons done. */
-static UInt ec_searchcmps;
+static ULong ec_searchcmps;
 
 /* Stats only: total number of stored contexts. */
-static UInt ec_totstored;
+static ULong ec_totstored;
 
 /* Number of 2, 4 and (fast) full cmps done. */
-static UInt ec_cmp2s;
-static UInt ec_cmp4s;
-static UInt ec_cmpAlls;
+static ULong ec_cmp2s;
+static ULong ec_cmp4s;
+static ULong ec_cmpAlls;
 
 
 /*------------------------------------------------------------*/
@@ -101,20 +107,18 @@ void VG_(print_ExeContext_stats) ( void )
 {
    init_ExeContext_storage();
    VG_(message)(Vg_DebugMsg, 
-      "   exectx: %d lists, %d contexts (avg %d per list)",
-      N_EC_LISTS, ec_totstored, 
-      ec_totstored / N_EC_LISTS 
+      "   exectx: %,lu lists, %,llu contexts (avg %,llu per list)",
+      N_EC_LISTS, ec_totstored, ec_totstored / N_EC_LISTS 
    );
    VG_(message)(Vg_DebugMsg, 
-      "   exectx: %d searches, %d full compares (%d per 1000)",
+      "   exectx: %,llu searches, %,llu full compares (%,llu per 1000)",
       ec_searchreqs, ec_searchcmps, 
       ec_searchreqs == 0 
-         ? 0 
-         : (UInt)( (((ULong)ec_searchcmps) * 1000) 
-           / ((ULong)ec_searchreqs )) 
+         ? 0L 
+         : ( (ec_searchcmps * 1000) / ec_searchreqs ) 
    );
    VG_(message)(Vg_DebugMsg, 
-      "   exectx: %d cmp2, %d cmp4, %d cmpAll",
+      "   exectx: %,llu cmp2, %,llu cmp4, %,llu cmpAll",
       ec_cmp2s, ec_cmp4s, ec_cmpAlls 
    );
 }
@@ -123,38 +127,42 @@ void VG_(print_ExeContext_stats) ( void )
 /* Print an ExeContext. */
 void VG_(pp_ExeContext) ( ExeContext* ec )
 {
-   VG_(pp_StackTrace)( ec->ips, VG_(clo_backtrace_size) );
+   VG_(pp_StackTrace)( ec->ips, ec->n_ips );
 }
 
 
 /* Compare two ExeContexts, comparing all callers. */
 Bool VG_(eq_ExeContext) ( VgRes res, ExeContext* e1, ExeContext* e2 )
 {
+   Int i;
+
    if (e1 == NULL || e2 == NULL) 
       return False;
+
+   // Must be at least one address in each trace.
+   tl_assert(e1->n_ips >= 1 && e2->n_ips >= 1);
+
    switch (res) {
    case Vg_LowRes:
       /* Just compare the top two callers. */
       ec_cmp2s++;
-      if (e1->ips[0] != e2->ips[0]) return False;
-
-      if (VG_(clo_backtrace_size) < 2) return True;
-      if (e1->ips[1] != e2->ips[1]) return False;
+      for (i = 0; i < 2; i++) {
+         if ( (e1->n_ips <= i) &&  (e2->n_ips <= i)) return True;
+         if ( (e1->n_ips <= i) && !(e2->n_ips <= i)) return False;
+         if (!(e1->n_ips <= i) &&  (e2->n_ips <= i)) return False;
+         if (e1->ips[i] != e2->ips[i])               return False;
+      }
       return True;
 
    case Vg_MedRes:
       /* Just compare the top four callers. */
       ec_cmp4s++;
-      if (e1->ips[0] != e2->ips[0]) return False;
-
-      if (VG_(clo_backtrace_size) < 2) return True;
-      if (e1->ips[1] != e2->ips[1]) return False;
-
-      if (VG_(clo_backtrace_size) < 3) return True;
-      if (e1->ips[2] != e2->ips[2]) return False;
-
-      if (VG_(clo_backtrace_size) < 4) return True;
-      if (e1->ips[3] != e2->ips[3]) return False;
+      for (i = 0; i < 4; i++) {
+         if ( (e1->n_ips <= i) &&  (e2->n_ips <= i)) return True;
+         if ( (e1->n_ips <= i) && !(e2->n_ips <= i)) return False;
+         if (!(e1->n_ips <= i) &&  (e2->n_ips <= i)) return False;
+         if (e1->ips[i] != e2->ips[i])               return False;
+      }
       return True;
 
    case Vg_HighRes:
@@ -185,20 +193,20 @@ ExeContext* VG_(record_ExeContext) ( ThreadId tid )
    UWord       hash;
    ExeContext* new_ec;
    ExeContext* list;
-
-   VGP_PUSHCC(VgpExeContext);
+   UInt        n_ips;
 
    init_ExeContext_storage();
-   vg_assert(VG_(clo_backtrace_size) >= 1 
-             && VG_(clo_backtrace_size) <= VG_DEEPEST_BACKTRACE);
+   vg_assert(VG_(clo_backtrace_size) >= 1 &&
+             VG_(clo_backtrace_size) <= VG_DEEPEST_BACKTRACE);
 
-   VG_(get_StackTrace)( tid, ips, VG_(clo_backtrace_size) );
+   n_ips = VG_(get_StackTrace)( tid, ips, VG_(clo_backtrace_size) );
+   tl_assert(n_ips >= 1);
 
    /* Now figure out if we've seen this one before.  First hash it so
       as to determine the list number. */
 
    hash = 0;
-   for (i = 0; i < VG_(clo_backtrace_size); i++) {
+   for (i = 0; i < n_ips; i++) {
       hash ^= ips[i];
       hash = (hash << 29) | (hash >> 3);
    }
@@ -214,7 +222,7 @@ ExeContext* VG_(record_ExeContext) ( ThreadId tid )
       if (list == NULL) break;
       ec_searchcmps++;
       same = True;
-      for (i = 0; i < VG_(clo_backtrace_size); i++) {
+      for (i = 0; i < n_ips; i++) {
          if (list->ips[i] != ips[i]) {
             same = False;
             break; 
@@ -226,7 +234,6 @@ ExeContext* VG_(record_ExeContext) ( ThreadId tid )
 
    if (list != NULL) {
       /* Yay!  We found it.  */
-      VGP_POPCC(VgpExeContext);
       return list;
    }
 
@@ -234,16 +241,16 @@ ExeContext* VG_(record_ExeContext) ( ThreadId tid )
    ec_totstored++;
 
    new_ec = VG_(arena_malloc)( VG_AR_EXECTXT, 
-                               sizeof(struct _ExeContext *) 
-                               + VG_(clo_backtrace_size) * sizeof(Addr) );
+                               sizeof(struct _ExeContext) 
+                               + n_ips * sizeof(Addr) );
 
-   for (i = 0; i < VG_(clo_backtrace_size); i++)
+   for (i = 0; i < n_ips; i++)
       new_ec->ips[i] = ips[i];
 
-   new_ec->next = ec_list[hash];
+   new_ec->n_ips = n_ips;
+   new_ec->next  = ec_list[hash];
    ec_list[hash] = new_ec;
 
-   VGP_POPCC(VgpExeContext);
    return new_ec;
 }
 

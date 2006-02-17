@@ -7,7 +7,7 @@
 #  framework.
 #
 #  Copyright (C) 2003 Nicholas Nethercote
-#     njn25@cam.ac.uk
+#     njn@valgrind.org
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License as
@@ -55,15 +55,15 @@
 # Note that filters are necessary for stderr results to filter out things that
 # always change, eg. process id numbers.
 #
-# Expected stdout (filtered) is kept in <test>.stdout.exp[0-9]? (can be more
+# Expected stdout (filtered) is kept in <test>.stdout.exp[0-9]* (can be more
 # than one expected output).  It can be missing if it would be empty.  Expected
-# stderr (filtered) is kept in <test>.stderr.exp[0-9]?. 
+# stderr (filtered) is kept in <test>.stderr.exp[0-9]*. 
 #
 # The prerequisite command, if present, must return 0 otherwise the test is
 # skipped.
 #
 # If results don't match, the output can be found in <test>.std<strm>.out,
-# and the diff between expected and actual in <test>.std<strm>.diff[0-9]?.
+# and the diff between expected and actual in <test>.std<strm>.diff[0-9]*.
 #
 # Notes on adding regression tests for a new tool are in
 # coregrind/docs/coregrind_tools.html.
@@ -236,7 +236,7 @@ sub do_diffs($$$$)
         (-r $f_exp) or die "Could not read `$f_exp'\n";
 
         my $n = "";
-        if ($f_exp =~ /.*\.exp(\d?)/) {
+        if ($f_exp =~ /.*\.exp(\d*)/) {
             $n = $1;
         } else {
             $n = "";
@@ -278,9 +278,14 @@ sub do_one_test($$)
     printf("%-16s valgrind $vgopts $prog $args\n", "$name:");
 
     # Pass the appropriate --tool option for the directory (can be overridden
-    # by an "args:" line, though).  
+    # by an "args:" line, though).  Set both VALGRIND_LIB and
+    # VALGRIND_LIB_INNER in case this Valgrind was configured with
+    # --enable-inner.
     my $tool=determine_tool();
-    mysystem("VALGRINDLIB=$tests_dir/.in_place $valgrind --command-line-only=yes --memcheck:leak-check=no --addrcheck:leak-check=no --tool=$tool $vgopts $prog $args > $name.stdout.out 2> $name.stderr.out");
+    mysystem("VALGRIND_LIB=$tests_dir/.in_place VALGRIND_LIB_INNER=$tests_dir/.in_place "
+           . "$valgrind --command-line-only=yes --memcheck:leak-check=no "
+           . "--addrcheck:leak-check=no --tool=$tool $vgopts "
+           . "$prog $args > $name.stdout.out 2> $name.stderr.out");
 
     if (defined $stdout_filter) {
         mysystem("$stdout_filter < $name.stdout.out > $tmp");
@@ -323,6 +328,9 @@ sub test_one_dir($$)
     # Ignore dirs into which we should not recurse.
     if ($dir =~ /^(BitKeeper|CVS|SCCS|docs|doc)$/) { return; }
 
+    (-x "$tests_dir/tests/cputest") or die 
+        "vg_regtest: 'cputest' is missing.  Did you forget to 'make check'?\n";
+    
     # Ignore any dir whose name matches that of an architecture which is not
     # the architecture we are running on (eg. when running on x86, ignore ppc/
     # directories).
@@ -336,7 +344,6 @@ sub test_one_dir($$)
     my $dashes = "-" x (50 - length $full_dir);
 
     my @fs = glob "*";
-    my @vgtests = grep { $_ =~ /\.vgtest$/ } @fs;
     my $found_tests = (0 != (grep { $_ =~ /\.vgtest$/ } @fs));
 
     if ($found_tests) {

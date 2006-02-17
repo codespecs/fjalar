@@ -1,4 +1,8 @@
 all-local:
-	mkdir -p $(inplacedir)
-	-rm -f $(addprefix $(inplacedir)/,$(val_PROGRAMS))
-	ln -f -s $(addprefix ../$(subdir)/,$(val_PROGRAMS)) $(inplacedir)
+	for f in $(noinst_PROGRAMS); do \
+	  p=`echo $$f | sed -e 's/^[^-]*-//' -e 's/\..*$$//'`; \
+	  n=`echo $$f | sed -e 's/-[^-]\{1,\}-[^-.]\{1,\}//'`; \
+	  mkdir -p $(inplacedir)/$$p; \
+	  rm -f $(inplacedir)/$$p/$$n; \
+	  ln -f -s ../../$(subdir)/$$f $(inplacedir)/$$p/$$n; \
+	done

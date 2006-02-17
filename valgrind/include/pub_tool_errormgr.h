@@ -54,7 +54,8 @@ typedef
    struct _Error
    Error;
 
-/* Useful in TL_(error_matches_suppression)(), TL_(pp_Error)(), etc */
+/* Useful in VG_(tdict).tool_error_matches_suppression(),
+ * VG_(tdict).tool_pp_Error(), etc */
 ExeContext* VG_(get_error_where)   ( Error* err );
 ErrorKind   VG_(get_error_kind)    ( Error* err );
 Addr        VG_(get_error_address) ( Error* err );
@@ -77,9 +78,9 @@ extern void VG_(maybe_record_error) ( ThreadId tid, ErrorKind ekind,
 /* Similar to VG_(maybe_record_error)(), except this one doesn't record the
    error -- useful for errors that can only happen once.  The errors can be
    suppressed, though.  Return value is True if it was suppressed.
-   `print_error' dictates whether to print the error, which is a bit of a
+   'print_error' dictates whether to print the error, which is a bit of a
    hack that's useful sometimes if you just want to know if the error would
-   be suppressed without possibly printing it.  `count_error' dictates
+   be suppressed without possibly printing it.  'count_error' dictates
    whether to add the error in the error total count (another mild hack). */
 extern Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind,
                                 Addr a, Char* s, void* extra,
@@ -112,7 +113,7 @@ typedef
    struct _Supp
    Supp;
 
-/* Useful in TL_(error_matches_suppression)() */
+/* Useful in VG_(tdict).tool_error_matches_suppression() */
 SuppKind VG_(get_supp_kind)   ( Supp* su );
 Char*    VG_(get_supp_string) ( Supp* su );
 void*    VG_(get_supp_extra)  ( Supp* su );

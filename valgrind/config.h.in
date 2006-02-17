@@ -1,16 +1,22 @@
 /* config.h.in.  Generated from configure.in by autoheader.  */
 
+/* configured to run as an inner Valgrind */
+#undef ENABLE_INNER
+
 /* path to GDB */
 #undef GDB_PATH
-
-/* Define to 1 if you're using glibc 2.1.x */
-#undef GLIBC_2_1
 
 /* Define to 1 if you're using glibc 2.2.x */
 #undef GLIBC_2_2
 
 /* Define to 1 if you're using glibc 2.3.x */
 #undef GLIBC_2_3
+
+/* Define to 1 if you're using glibc 2.4.x */
+#undef GLIBC_2_4
+
+/* Define to 1 if gcc supports __builtin_expect. */
+#undef HAVE_BUILTIN_EXPECT
 
 /* Define to 1 if you have the <endian.h> header file. */
 #undef HAVE_ENDIAN_H
@@ -41,9 +47,6 @@
 
 /* Define to 1 if you have the <mqueue.h> header file. */
 #undef HAVE_MQUEUE_H
-
-/* can create position-independent executables */
-#undef HAVE_PIE
 
 /* Define to 1 if you have the `semtimedop' function. */
 #undef HAVE_SEMTIMEDOP

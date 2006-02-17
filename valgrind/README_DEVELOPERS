@@ -3,10 +3,10 @@ Building and not installing it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To run Valgrind without having to install it, run coregrind/valgrind
-with the VALGRINDLIB environment variable set, where <dir> is the root
+with the VALGRIND_LIB environment variable set, where <dir> is the root
 of the source tree (and must be an absolute path).  Eg:
 
-  VALGRINDLIB=~/grind/head4/.in_place ~/grind/head4/coregrind/valgrind 
+  VALGRIND_LIB=~/grind/head4/.in_place ~/grind/head4/coregrind/valgrind 
 
 This allows you to compile and run with "make" instead of "make install",
 saving you time.
@@ -35,18 +35,77 @@ file.  Eg:
 
 Debugging Valgrind with GDB
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-To debug stage 1 just run it under GDB in the normal way.
+To debug the valgrind launcher program (<prefix>/bin/valgrind) just
+run it under gdb in the normal way.
 
-To debug Valgrind proper (stage 2) with GDB, start Valgrind like this:
+Debugging the main body of the valgrind code (and/or the code for
+a particular tool) requires a bit more trickery but can be achieved
+without too much problem by following these steps:
 
-  valgrind --tool=none --wait-for-gdb=yes <prog>
+(1) Set VALGRIND_LAUNCHER to <prefix>/bin/valgrind:
 
-Then start gdb like this in another terminal:
+    export VALGRIND_LAUNCHER=/usr/local/bin/valgrind
 
-  gdb /usr/lib/valgrind/stage2 <pid>
+(2) Run "gdb <prefix>/lib/valgrind/<platform>/<tool>":
 
-Where <pid> is the pid valgrind printed. Then set whatever breakpoints
-you want and do this in gdb:
+    gdb /usr/local/lib/valgrind/ppc32-linux/lackey
 
-  jump *$eip
+(3) Do "handle SIGSEGV SIGILL nostop noprint" in GDB to prevent GDB from
+    stopping on a SIGSEGV or SIGILL:
 
+    (gdb) handle SIGILL SIGSEGV nostop noprint
+
+(4) Set any breakpoints you want and proceed as normal for gdb. The
+    macro VG_(FUNC) is expanded to vgPlain_FUNC, so If you want to set
+    a breakpoint VG_(do_exec), you could do like this in GDB:
+
+    (gdb) b vgPlain_do_exec
+
+(5) Run the tool with required options:
+
+    (gdb) run pwd
+
+
+Self-hosting
+~~~~~~~~~~~~
+To run Valgrind under Valgrind:
+
+(1) Check out 2 trees, "inner" and "outer".  "inner" runs the app
+    directly and is what you will be profiling.  "outer" does the
+    profiling.
+
+(2) Configure inner with --enable-inner and build/install as
+    usual.
+
+(3) Configure outer normally and build/install as usual.
+
+(4) Choose a very simple program (date) and try
+
+    outer/.../bin/valgrind --sim-hints=enable-outer --trace-children=yes  \
+       --tool=cachegrind -v inner/.../bin/valgrind --tool=none -v prog
+
+If you omit the --trace-children=yes, you'll only monitor inner's launcher
+program, not its stage2.
+
+The whole thing is fragile, confusing and slow, but it does work well enough
+for you to get some useful performance data.  The inner Valgrind has most of
+its output (ie. those lines beginning with "==<pid>==") prefixed with a '>',
+which helps a lot.
+
+At the time of writing the allocator is not annotated with client requests
+so Memcheck is not as useful as it could be.  It also has not been tested
+much, so don't be surprised if you hit problems.
+
+
+Printing out problematic blocks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If you want to print out a disassembly of a particular block that
+causes a crash, do the following.
+
+Try running with "--vex-guest-chase-thresh=0 --trace-flags=10000000
+--trace-notbelow=999999".  This should print one line for each block
+translated, and that includes the address.
+
+Then re-run with 999999 changed to the highest bb number shown.
+This will print the one line per block, and also will print a
+disassembly of the block in which the fault occurred.

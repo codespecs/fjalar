@@ -1,3 +1,4 @@
+
 /*--------------------------------------------------------------------*/
 /*--- ErrorMgr: management of errors and suppressions.             ---*/
 /*---                                          pub_core_errormgr.h ---*/
@@ -38,8 +39,6 @@
 
 #include "pub_tool_errormgr.h"
 
-//#include "pub_core_stacktrace.h"
-
 // XXX: should this be in pthreadmodel.c?
 // These must be negative, so as to not overlap with tool error kinds.
 typedef
@@ -49,13 +48,17 @@ typedef
    }
    CoreErrorKind;
 
-extern void VG_(load_suppressions)    ( void );
+extern void VG_(load_suppressions)        ( void );
 
-extern void VG_(show_all_errors)      ( void );
+extern void VG_(show_all_errors)          ( void );
 
-extern Bool VG_(is_action_requested)  ( Char* action, Bool* clo );
+extern void VG_(show_error_counts_as_XML) ( void );
 
-extern UInt VG_(get_n_errs_found)     ( void );
+extern Bool VG_(is_action_requested)      ( Char* action, Bool* clo );
+
+extern Bool VG_(showing_core_errors)      ( void );
+
+extern UInt VG_(get_n_errs_found)         ( void );
 
 #endif   // __PUB_CORE_ERRORMGR_H
 

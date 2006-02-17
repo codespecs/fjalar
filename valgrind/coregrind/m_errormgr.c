@@ -28,10 +28,22 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "core.h"
+#include "pub_core_basics.h"
+#include "pub_core_threadstate.h"      // For VG_N_THREADS
+#include "pub_core_debugger.h"
+#include "pub_core_debuginfo.h"
 #include "pub_core_errormgr.h"
 #include "pub_core_execontext.h"
+#include "pub_core_libcbase.h"
+#include "pub_core_libcassert.h"
+#include "pub_core_libcfile.h"
+#include "pub_core_libcprint.h"
+#include "pub_core_libcproc.h"         // For VG_(getpid)()
+#include "pub_core_mallocfree.h"
+#include "pub_core_options.h"
 #include "pub_core_stacktrace.h"
+#include "pub_core_tooliface.h"
+#include "pub_core_translate.h"        // for VG_(translate)()
 
 /*------------------------------------------------------------*/
 /*--- Globals                                              ---*/
@@ -39,16 +51,16 @@
 
 /* After this many different unsuppressed errors have been observed,
    be more conservative about collecting new ones. */
-#define M_COLLECT_ERRORS_SLOWLY_AFTER 50
+#define M_COLLECT_ERRORS_SLOWLY_AFTER 100
 
 /* After this many different unsuppressed errors have been observed,
    stop collecting errors at all, and tell the user their program is
    evidently a steaming pile of camel dung. */
-#define M_COLLECT_NO_ERRORS_AFTER_SHOWN 300
+#define M_COLLECT_NO_ERRORS_AFTER_SHOWN 1000
 
 /* After this many total errors have been observed, stop collecting
    errors at all.  Counterpart to M_COLLECT_NO_ERRORS_AFTER_SHOWN. */
-#define M_COLLECT_NO_ERRORS_AFTER_FOUND 30000
+#define M_COLLECT_NO_ERRORS_AFTER_FOUND 100000
 
 /* The list of error contexts found, both suppressed and unsuppressed.
    Initially empty, and grows as errors are detected. */
@@ -77,9 +89,9 @@ static ThreadId last_tid_printed = 1;
  * effectively extend it by defining their own enums in the (0..) range. */
 
 /* Errors.  Extensible (via the 'extra' field).  Tools can use a normal
-   enum (with element values in the normal range (0..)) for `ekind'. 
+   enum (with element values in the normal range (0..)) for 'ekind'. 
    Functions for getting/setting the tool-relevant fields are in
-   include/tool.h.
+   include/pub_tool_errormgr.h.
 
    When errors are found and recorded with VG_(maybe_record_error)(), all
    the tool must do is pass in the four parameters;  core will
@@ -87,6 +99,10 @@ static ThreadId last_tid_printed = 1;
 */
 struct _Error {
    struct _Error* next;
+   // Unique tag.  This gives the error a unique identity (handle) by
+   // which it can be referred to afterwords.  Currently only used for
+   // XML printing.
+   UInt unique;
    // NULL if unsuppressed; or ptr to suppression record.
    Supp* supp;
    Int count;
@@ -163,9 +179,9 @@ typedef
    SuppLoc;
 
 /* Suppressions.  Tools can get/set tool-relevant parts with functions
-   declared in include/tool.h.  Extensible via the 'extra' field. 
+   declared in include/pub_tool_errormgr.h.  Extensible via the 'extra' field. 
    Tools can use a normal enum (with element values in the normal range
-   (0..)) for `skind'. */
+   (0..)) for 'skind'. */
 struct _Supp {
    struct _Supp* next;
    Int count;     // The number of times this error has been suppressed.
@@ -219,6 +235,13 @@ void VG_(set_supp_extra)  ( Supp* su, void* extra )
 /*--- Helper fns                                           ---*/
 /*------------------------------------------------------------*/
 
+// Only show core errors if the tool wants to, we're not running with -q,
+// and were not outputting XML.
+Bool VG_(showing_core_errors)(void)
+{
+   return VG_(needs).core_errors && VG_(clo_verbosity) >= 1 && !VG_(clo_xml);
+}
+
 /* Compare error contexts, to detect duplicates.  Note that if they
    are otherwise the same, the faulting addrs and associated rwoffsets
    are allowed to be different.  */
@@ -235,9 +258,9 @@ static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
      //         vg_assert(VG_(needs).core_errors);
      //         return VG_(tm_error_equal)(res, e1, e2);
       default: 
-         if (VG_(needs).tool_errors)
-            return TL_(eq_Error)(res, e1, e2);
-         else {
+         if (VG_(needs).tool_errors) {
+            return VG_TDICT_CALL(tool_eq_Error, res, e1, e2);
+         } else {
             VG_(printf)("\nUnhandled error type: %u. VG_(needs).tool_errors\n"
                         "probably needs to be set.\n",
                         e1->ekind);
@@ -246,13 +269,20 @@ static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
    }
 }
 
-static void pp_Error ( Error* err, Bool printCount )
+static void pp_Error ( Error* err )
 {
-   if (printCount)
-      VG_(message)(Vg_UserMsg, "Observed %d times:", err->count );
-   if (err->tid > 0 && err->tid != last_tid_printed) {
-      VG_(message)(Vg_UserMsg, "Thread %d:", err->tid );
-      last_tid_printed = err->tid;
+   if (VG_(clo_xml)) {
+      VG_(message)(Vg_UserMsg, "<error>");
+      VG_(message)(Vg_UserMsg, "  <unique>0x%x</unique>",
+                                  err->unique);
+      VG_(message)(Vg_UserMsg, "  <tid>%d</tid>", err->tid);
+   }
+
+   if (!VG_(clo_xml)) {
+      if (err->tid > 0 && err->tid != last_tid_printed) {
+         VG_(message)(Vg_UserMsg, "Thread %d:", err->tid );
+         last_tid_printed = err->tid;
+      }
    }
 
    switch (err->ekind) {
@@ -263,7 +293,7 @@ static void pp_Error ( Error* err, Bool printCount )
      //         break;
       default: 
          if (VG_(needs).tool_errors)
-            TL_(pp_Error)( err );
+            VG_TDICT_CALL( tool_pp_Error, err );
          else {
             VG_(printf)("\nUnhandled error type: %u.  VG_(needs).tool_errors\n"
                         "probably needs to be set?\n",
@@ -271,6 +301,9 @@ static void pp_Error ( Error* err, Bool printCount )
             VG_(tool_panic)("unhandled error type");
          }
    }
+
+   if (VG_(clo_xml))
+      VG_(message)(Vg_UserMsg, "</error>");
 }
 
 /* Figure out if we want to perform a given action for this error, possibly
@@ -321,9 +354,13 @@ static __inline__
 void construct_error ( Error* err, ThreadId tid, ErrorKind ekind, Addr a,
                        Char* s, void* extra, ExeContext* where )
 {
+   /* DO NOT MAKE unique_counter NON-STATIC */
+   static UInt unique_counter = 0;
+
    tl_assert(tid < VG_N_THREADS);
 
    /* Core-only parts */
+   err->unique   = unique_counter++;
    err->next     = NULL;
    err->supp     = NULL;
    err->count    = 1;
@@ -343,17 +380,18 @@ void construct_error ( Error* err, ThreadId tid, ErrorKind ekind, Addr a,
    vg_assert( tid < VG_N_THREADS );
 }
 
+#define ERRTXT_LEN   4096
+
 static void printSuppForIp(UInt n, Addr ip)
 {
-   static UChar buf[VG_ERRTXT_LEN];
+   static UChar buf[ERRTXT_LEN];
 
-   if ( VG_(get_fnname_nodemangle) (ip, buf,  VG_ERRTXT_LEN) ) {
+   if ( VG_(get_fnname_nodemangle) (ip, buf,  ERRTXT_LEN) ) {
       VG_(printf)("   fun:%s\n", buf);
-   } else if ( VG_(get_objname)(ip, buf+7, VG_ERRTXT_LEN-7) ) {
+   } else if ( VG_(get_objname)(ip, buf, ERRTXT_LEN) ) {
       VG_(printf)("   obj:%s\n", buf);
    } else {
-      VG_(printf)("   ???:???       "
-                  "# unknown, suppression will not work, sorry\n");
+      VG_(printf)("   obj:*\n");
    }
 }
 
@@ -366,21 +404,23 @@ static void gen_suppression(Error* err)
    if (stop_at > VG_MAX_SUPP_CALLERS) stop_at = VG_MAX_SUPP_CALLERS;
    vg_assert(stop_at > 0);
 
-   VG_(printf)("{\n");
-   VG_(printf)("   <insert a suppression name here>\n");
-
    if (ThreadErr == err->ekind || MutexErr == err->ekind) {
+      VG_(printf)("{\n");
+      VG_(printf)("   <insert a suppression name here>\n");
       VG_(printf)("   core:PThread\n");
 
    } else {
-      Char* name = TL_(get_error_name)(err);
+      Char* name = VG_TDICT_CALL(tool_get_error_name, err);
       if (NULL == name) {
          VG_(message)(Vg_UserMsg, 
-                      "(tool does not allow error to be suppressed)");
+                      "(%s does not allow error to be suppressed)",
+                      VG_(details).name);
          return;
       }
+      VG_(printf)("{\n");
+      VG_(printf)("   <insert a suppression name here>\n");
       VG_(printf)("   %s:%s\n", VG_(details).name, name);
-      TL_(print_extra_suppression_info)(err);
+      VG_TDICT_CALL(tool_print_extra_suppression_info, err);
    }
 
    // Print stack trace elements
@@ -439,7 +479,8 @@ void VG_(maybe_record_error) ( ThreadId tid,
       pointless to continue the Valgrind run after this point. */
    if (VG_(clo_error_limit) 
        && (n_errs_shown >= M_COLLECT_NO_ERRORS_AFTER_SHOWN
-           || n_errs_found >= M_COLLECT_NO_ERRORS_AFTER_FOUND)) {
+           || n_errs_found >= M_COLLECT_NO_ERRORS_AFTER_FOUND)
+       && !VG_(clo_xml)) {
       if (!stopping_message) {
          VG_(message)(Vg_UserMsg, "");
 
@@ -472,7 +513,8 @@ void VG_(maybe_record_error) ( ThreadId tid,
    /* After M_COLLECT_ERRORS_SLOWLY_AFTER different errors have
       been found, be much more conservative about collecting new
       ones. */
-   if (n_errs_shown >= M_COLLECT_ERRORS_SLOWLY_AFTER) {
+   if (n_errs_shown >= M_COLLECT_ERRORS_SLOWLY_AFTER
+       && !VG_(clo_xml)) {
       exe_res = Vg_LowRes;
       if (!slowdown_message) {
          VG_(message)(Vg_UserMsg, "");
@@ -522,24 +564,24 @@ void VG_(maybe_record_error) ( ThreadId tid,
 
    /* OK, we're really going to collect it.  The context is on the stack and
       will disappear shortly, so we must copy it.  First do the main
-      (non-`extra') part.
+      (non-'extra') part.
      
-      Then TL_(update_extra) can update the `extra' part.  This is for when
-      there are more details to fill in which take time to work out but
-      don't affect our earlier decision to include the error -- by
+      Then VG_(tdict).tool_update_extra can update the 'extra' part.  This
+      is for when there are more details to fill in which take time to work
+      out but don't affect our earlier decision to include the error -- by
       postponing those details until now, we avoid the extra work in the
       case where we ignore the error.  Ugly.
 
-      Then, if there is an `extra' part, copy it too, using the size that
-      TL_(update_extra) returned.  Also allow for people using the void*
-      extra field for a scalar value like an integer.
+      Then, if there is an 'extra' part, copy it too, using the size that
+      VG_(tdict).tool_update_extra returned.  Also allow for people using
+      the void* extra field for a scalar value like an integer.
    */
 
    /* copy main part */
    p = VG_(arena_malloc)(VG_AR_ERRORS, sizeof(Error));
    *p = err;
 
-   /* update `extra' */
+   /* update 'extra' */
    switch (ekind) {
      //      case ThreadErr:
      //      case MutexErr:
@@ -548,11 +590,11 @@ void VG_(maybe_record_error) ( ThreadId tid,
      //         break;
       default:
          vg_assert(VG_(needs).tool_errors);
-         extra_size = TL_(update_extra)(p);
+         extra_size = VG_TDICT_CALL(tool_update_extra, p);
          break;
    }
 
-   /* copy block pointed to by `extra', if there is one */
+   /* copy block pointed to by 'extra', if there is one */
    if (NULL != p->extra && 0 != extra_size) { 
       void* new_extra = VG_(malloc)(extra_size);
       VG_(memcpy)(new_extra, p->extra, extra_size);
@@ -566,7 +608,7 @@ void VG_(maybe_record_error) ( ThreadId tid,
       n_errs_found++;
       if (!is_first_shown_context)
          VG_(message)(Vg_UserMsg, "");
-      pp_Error(p, False);
+      pp_Error(p);
       is_first_shown_context = False;
       n_errs_shown++;
       do_actions_on_error(p, /*allow_db_attach*/True);
@@ -580,8 +622,8 @@ void VG_(maybe_record_error) ( ThreadId tid,
    errors that the tool wants to report immediately, eg. because they're
    guaranteed to only happen once.  This avoids all the recording and
    comparing stuff.  But they can be suppressed;  returns True if it is
-   suppressed.  Bool `print_error' dictates whether to print the error. 
-   Bool `count_error' dictates whether to count the error in n_errs_found.
+   suppressed.  Bool 'print_error' dictates whether to print the error. 
+   Bool 'count_error' dictates whether to count the error in n_errs_found.
 */
 Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind, Addr a, Char* s,
                          void* extra, ExeContext* where, Bool print_error,
@@ -595,10 +637,11 @@ Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind, Addr a, Char* s,
    /* Unless it's suppressed, we're going to show it.  Don't need to make
       a copy, because it's only temporary anyway.
 
-      Then update the `extra' part with TL_(update_extra), because that can
-      have an affect on whether it's suppressed.  Ignore the size return
-      value of TL_(update_extra), because we're not copying `extra'. */
-   (void)TL_(update_extra)(&err);
+      Then update the 'extra' part with VG_(tdict).tool_update_extra),
+      because that can have an affect on whether it's suppressed.  Ignore
+      the size return value of VG_(tdict).tool_update_extra, because we're
+      not copying 'extra'. */
+   (void)VG_TDICT_CALL(tool_update_extra, &err);
 
    if (NULL == is_suppressible_error(&err)) {
       if (count_error)
@@ -607,7 +650,7 @@ Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind, Addr a, Char* s,
       if (print_error) {
          if (!is_first_shown_context)
             VG_(message)(Vg_UserMsg, "");
-         pp_Error(&err, False);
+         pp_Error(&err);
          is_first_shown_context = False;
       }
       do_actions_on_error(&err, allow_db_attach);
@@ -625,7 +668,42 @@ Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind, Addr a, Char* s,
 /*--- Exported fns                                         ---*/
 /*------------------------------------------------------------*/
 
-/* This is called not from generated code but from the scheduler */
+/* Show the used suppressions.  Returns False if no suppression
+   got used. */
+static Bool show_used_suppressions ( void )
+{
+   Supp  *su;
+   Bool  any_supp;
+
+   if (VG_(clo_xml))
+      VG_(message)(Vg_DebugMsg, "<suppcounts>");
+
+   any_supp = False;
+   for (su = suppressions; su != NULL; su = su->next) {
+      if (su->count <= 0)
+         continue;
+      any_supp = True;
+      if (VG_(clo_xml)) {
+         VG_(message)(Vg_DebugMsg, 
+                      "  <pair>\n"
+                      "    <count>%d</count>\n"
+                      "    <name>%t</name>\n"
+                      "  </pair>", 
+                      su->count, su->sname);
+      } else {
+         VG_(message)(Vg_DebugMsg, "supp: %4d %s", su->count, su->sname);
+      }
+   }
+
+   if (VG_(clo_xml))
+      VG_(message)(Vg_DebugMsg, "</suppcounts>");
+
+   return any_supp;
+}
+
+
+/* Show all the errors that occurred, and possibly also the
+   suppressions used. */
 void VG_(show_all_errors) ( void )
 {
    Int    i, n_min;
@@ -648,6 +726,15 @@ void VG_(show_all_errors) ( void )
       if (su->count > 0)
          n_supp_contexts++;
    }
+
+   /* If we're printing XML, just show the suppressions and stop.
+    */
+   if (VG_(clo_xml)) {
+      (void)show_used_suppressions();
+      return;
+   }
+
+   /* We only get here if not printing XML. */
    VG_(message)(Vg_UserMsg,
                 "ERROR SUMMARY: "
                 "%d errors from %d contexts (suppressed: %d from %d)",
@@ -674,12 +761,14 @@ void VG_(show_all_errors) ( void )
       VG_(message)(Vg_UserMsg, "%d errors in context %d of %d:",
                    p_min->count,
                    i+1, n_err_contexts);
-      pp_Error( p_min, False );
+      pp_Error( p_min );
 
       if ((i+1 == VG_(clo_dump_error))) {
          StackTrace ips = VG_(extract_StackTrace)(p_min->where);
          VG_(translate) ( 0 /* dummy ThreadId; irrelevant due to debugging*/,
-                          ips[0], /*debugging*/True, 0xFE/*verbosity*/);
+                          ips[0], /*debugging*/True, 0xFE/*verbosity*/,
+                          /*bbs_done*/0,
+                          /*allow redir?*/True);
       }
 
       p_min->count = 1 << 30;
@@ -687,13 +776,7 @@ void VG_(show_all_errors) ( void )
 
    if (n_supp_contexts > 0) 
       VG_(message)(Vg_DebugMsg, "");
-   any_supp = False;
-   for (su = suppressions; su != NULL; su = su->next) {
-      if (su->count > 0) {
-         any_supp = True;
-         VG_(message)(Vg_DebugMsg, "supp: %4d %s", su->count, su->sname);
-      }
-   }
+   any_supp = show_used_suppressions();
 
    if (n_err_contexts > 0) {
       if (any_supp) 
@@ -706,6 +789,29 @@ void VG_(show_all_errors) ( void )
       VG_(message)(Vg_UserMsg, "");
    }
 }
+
+
+/* Show occurrence counts of all errors, in XML form. */
+void VG_(show_error_counts_as_XML) ( void )
+{
+   Error* err;
+   VG_(message)(Vg_UserMsg, "<errorcounts>");
+   for (err = errors; err != NULL; err = err->next) {
+      if (err->supp != NULL)
+         continue;
+      if (err->count <= 0)
+         continue;
+      VG_(message)(
+         Vg_UserMsg, "  <pair>\n"
+                     "    <count>%d</count>\n"
+                     "    <unique>0x%x</unique>\n"
+                     "  </pair>",
+         err->count, err->unique
+      );
+   }
+   VG_(message)(Vg_UserMsg, "</errorcounts>");
+}
+
 
 /*------------------------------------------------------------*/
 /*--- Standard suppressions                                ---*/
@@ -740,7 +846,7 @@ Bool VG_(get_line) ( Int fd, Char* buf, Int nBuf )
          i--; buf[i] = 0; 
       };
 
-      /* VG_(printf)("The line is `%s'\n", buf); */
+      /* VG_(printf)("The line is '%s'\n", buf); */
       /* Ok, we have a line.  If a non-comment line, return.
          If a comment line, start all over again. */
       if (buf[0] != '#') return False;
@@ -795,22 +901,27 @@ Bool tool_name_present(Char *name, Char *names)
 static void load_one_suppressions_file ( Char* filename )
 {
 #  define N_BUF 200
-   Int   fd, i;
-   Bool  eof;
-   Char  buf[N_BUF+1];
-   Char* tool_names;
-   Char* supp_name;
-   Char* err_str = NULL;
+   SysRes sres;
+   Int    fd, i;
+   Bool   eof;
+   Char   buf[N_BUF+1];
+   Char*  tool_names;
+   Char*  supp_name;
+   Char*  err_str = NULL;
    SuppLoc tmp_callers[VG_MAX_SUPP_CALLERS];
 
-   fd = VG_(open)( filename, VKI_O_RDONLY, 0 );
-   if (fd < 0) {
-      VG_(message)(Vg_UserMsg, "FATAL: can't open suppressions file `%s'", 
+   fd   = -1;
+   sres = VG_(open)( filename, VKI_O_RDONLY, 0 );
+   if (sres.isError) {
+      if (VG_(clo_xml))
+         VG_(message)(Vg_UserMsg, "</valgrindoutput>\n");
+      VG_(message)(Vg_UserMsg, "FATAL: can't open suppressions file '%s'", 
                    filename );
       VG_(exit)(1);
    }
+   fd = sres.val;
 
-#define BOMB(S)  { err_str = S;  goto syntax_error; }
+#  define BOMB(S)  { err_str = S;  goto syntax_error; }
 
    while (True) {
       /* Assign and initialise the two suppression halves (core and tool) */
@@ -865,7 +976,7 @@ static void load_one_suppressions_file ( Char* filename )
                tool_name_present(VG_(details).name, tool_names))
       {
          // A tool suppression
-         if (TL_(recognised_suppression)(supp_name, supp)) {
+         if (VG_TDICT_CALL(tool_recognised_suppression, supp_name, supp)) {
             /* Do nothing, function fills in supp->skind */
          } else {
             BOMB("unknown tool suppression type");
@@ -883,7 +994,7 @@ static void load_one_suppressions_file ( Char* filename )
       }
 
       if (VG_(needs).tool_errors && 
-          !TL_(read_extra_suppression_info)(fd, buf, N_BUF, supp))
+          !VG_TDICT_CALL(tool_read_extra_suppression_info, fd, buf, N_BUF, supp))
       {
          BOMB("bad or missing extra suppression info");
       }
@@ -932,8 +1043,10 @@ static void load_one_suppressions_file ( Char* filename )
    return;
 
   syntax_error:
+   if (VG_(clo_xml))
+      VG_(message)(Vg_UserMsg, "</valgrindoutput>\n");
    VG_(message)(Vg_UserMsg, 
-                "FATAL: in suppressions file `%s': %s", filename, err_str );
+                "FATAL: in suppressions file '%s': %s", filename, err_str );
    
    VG_(close)(fd);
    VG_(message)(Vg_UserMsg, "exiting now.");
@@ -965,7 +1078,7 @@ Bool supp_matches_error(Supp* su, Error* err)
          return (err->ekind == ThreadErr || err->ekind == MutexErr);
       default:
          if (VG_(needs).tool_errors) {
-            return TL_(error_matches_suppression)(err, su);
+            return VG_TDICT_CALL(tool_error_matches_suppression, err, su);
          } else {
             VG_(printf)(
                "\nUnhandled suppression type: %u.  VG_(needs).tool_errors\n"
@@ -980,25 +1093,34 @@ static
 Bool supp_matches_callers(Error* err, Supp* su)
 {
    Int i;
-   Char caller_name[VG_ERRTXT_LEN];
+   Char caller_name[ERRTXT_LEN];
    StackTrace ips = VG_(extract_StackTrace)(err->where);
 
    for (i = 0; i < su->n_callers; i++) {
       Addr a = ips[i];
       vg_assert(su->callers[i].name != NULL);
+      // The string to be used in the unknown case ("???") can be anything
+      // that couldn't be a valid function or objname.  --gen-suppressions
+      // prints 'obj:*' for such an entry, which will match any string we
+      // use.
       switch (su->callers[i].ty) {
          case ObjName: 
-            if (!VG_(get_objname)(a, caller_name, VG_ERRTXT_LEN))
-               return False;
+            if (!VG_(get_objname)(a, caller_name, ERRTXT_LEN))
+               VG_(strcpy)(caller_name, "???");
             break; 
 
          case FunName: 
-            // Nb: mangled names used in suppressions
-            if (!VG_(get_fnname_nodemangle)(a, caller_name, VG_ERRTXT_LEN))
-               return False;
+            // Nb: mangled names used in suppressions.  Do, though,
+            // Z-demangle them, since otherwise it's possible to wind
+            // up comparing "malloc" in the suppression against
+            // "_vgrZU_libcZdsoZa_malloc" in the backtrace, and the
+            // two of them need to be made to match.
+            if (!VG_(get_fnname_Z_demangle_only)(a, caller_name, ERRTXT_LEN))
+               VG_(strcpy)(caller_name, "???");
             break;
          default: VG_(tool_panic)("supp_matches_callers");
       }
+      if (0) VG_(printf)("cmp %s %s\n", su->callers[i].name, caller_name);
       if (!VG_(string_match)(su->callers[i].name, caller_name))
          return False;
    }
@@ -1027,5 +1149,5 @@ static Supp* is_suppressible_error ( Error* err )
 }
 
 /*--------------------------------------------------------------------*/
-/*--- end                                             m_errormgr.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

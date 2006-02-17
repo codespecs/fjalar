@@ -1,5 +1,6 @@
 
-SUBDIRS = . unused
+# For AM_FLAG_M3264_PRI
+include $(top_srcdir)/Makefile.flags.am
 
 noinst_SCRIPTS = \
 	vg_regtest \
@@ -18,7 +19,7 @@ check_PROGRAMS = \
 	toobig-allocs \
 	true
 
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g
+AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS = $(AM_CFLAGS)
 
 # generic C ones

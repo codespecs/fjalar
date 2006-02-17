@@ -1,6 +1,15 @@
+
+##------------------------------------------------------------##
+# 
+# The multiple-architecture stuff in this file is pretty
+# cryptic.  Read docs/internals/multiple-architectures.txt
+# for at least a partial explanation of what is going on.
+#
+##------------------------------------------------------------##
+
 # Process this file with autoconf to produce a configure script.
-AC_INIT(Valgrind, 3.0.0.SVN, valgrind-users@lists.sourceforge.net)
-AC_CONFIG_SRCDIR(coregrind/vg_main.c)
+AC_INIT(Valgrind, 3.2.0.SVN, valgrind-users@lists.sourceforge.net)
+AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE
 
@@ -10,19 +19,36 @@ AM_MAINTAINER_MODE
 # Nb: For the 2nd arg, the help string, AS_HELP_STRING is the proper way, but
 #     older autoconfs don't support it... here's what it would say:
 #
-#    AS_HELP_STRING([--with-vex], [Vex directory (must be specified!)]),
+#    AS_HELP_STRING([--with-vex], [Vex directory]),
 #
 AC_ARG_WITH(vex,
-    [  --with-vex=/path/to/vex/dir    Vex directory (must be specified!)],
+    [  --with-vex=/path/to/vex/dir    Vex directory],
 [
     AC_CHECK_FILE($withval/pub/libvex.h,
         [VEX_DIR=$withval],
         [AC_MSG_ERROR([Directory '$withval' does not exist, or does not contain Vex])])
 ],
 [
-    AC_MSG_ERROR([You must specify --with-vex=/path/to/vex/dir])
+    VEX_DIR='$(top_srcdir)/VEX'
 ])
 AC_SUBST(VEX_DIR)
+
+# "make distcheck" first builds a tarball, then extracts it.
+# Then it creates a build directory different from the extracted sources
+# (called _build), and issues
+#
+#   ../configure $(DISTCHECK_CONFIGURE_FLAGS)
+#
+# and then builds, runs "make check", installs using DESTDIR, runs make
+# installcheck, uninstalls, checks whether the installed base is empty
+# again, then does yet another "make dist" and compares the resulting
+# tarball with the one it started off with for identical content.  Then it
+# tests "make distclean" for no leftover files.
+#
+# So this line means:  when doing "make dist", use the same --with-vex value
+# that you used when running configure to configure this tree in the first
+# place.
+AC_SUBST([DISTCHECK_CONFIGURE_FLAGS], [--with-vex=$VEX_DIR])
 
 # Checks for programs.
 CFLAGS="-Wno-long-long"
@@ -56,13 +82,8 @@ ASFLAGS=""
 AC_SUBST(ASFLAGS)
 ])
 
-# This variable will collect the individual suppression files
-# depending on the results of autoconf
 
-DEFAULT_SUPP=""
-
-
-# We don't want gcc 2.7
+# We don't want gcc < 3.0
 AC_MSG_CHECKING([for a supported version of gcc])
 
 gcc_version=`${CC} --version | head -n 1`
@@ -70,7 +91,15 @@ gcc_version=`${CC} --version | head -n 1`
 case "${gcc_version}" in
      gcc-2.7.*)
 	AC_MSG_RESULT([no (${gcc_version})])
-	AC_MSG_ERROR([please use a recent (>= gcc-2.95) version of gcc])
+	AC_MSG_ERROR([please use a recent (>= gcc-3.0) version of gcc])
+	;;
+     gcc-2.8.*)
+	AC_MSG_RESULT([no (${gcc_version})])
+	AC_MSG_ERROR([please use a recent (>= gcc-3.0) version of gcc])
+	;;
+     gcc-2.9*)
+	AC_MSG_RESULT([no (${gcc_version})])
+	AC_MSG_ERROR([please use a recent (>= gcc-3.0) version of gcc])
 	;;
 
      *)
@@ -84,21 +113,18 @@ AC_CANONICAL_HOST
 
 AC_MSG_CHECKING([for a supported CPU])
 AC_SUBST(VG_ARCH)
+
 AC_SUBST(VG_ARCH_ALL)
-VG_ARCH_ALL="amd64 arm x86"
-AC_SUBST(KICKSTART_BASE)
-AC_SUBST(ARCH_CORE_AM_CFLAGS)
-AC_SUBST(ARCH_TOOL_AM_CFLAGS)
-AC_SUBST(ARCH_CORE_AM_CCASFLAGS)
+VG_ARCH_ALL="amd64 ppc32 ppc64 x86"
+
+AC_SUBST(VALT_LOAD_ADDRESS)
 
 case "${host_cpu}" in
      i?86)
 	AC_MSG_RESULT([ok (${host_cpu})])
         VG_ARCH="x86"
-        KICKSTART_BASE="0xb0000000"
-        ARCH_CORE_AM_CFLAGS="@PREFERRED_STACK_BOUNDARY@ -DELFSZ=32"
-        ARCH_TOOL_AM_CFLAGS="@PREFERRED_STACK_BOUNDARY@"
-        ARCH_CORE_AM_CCASFLAGS=""
+        valt_load_address_normal="0xb0000000"
+        valt_load_address_inner="0xa0000000"
         ;;
 
      x86_64)
@@ -107,35 +133,22 @@ case "${host_cpu}" in
         # XXX: relocations under amd64's "small model" are 32-bit signed
         # quantities; therefore going above 0x7fffffff doesn't work... this is
         # a problem.
-        KICKSTART_BASE="0x70000000"
-        ARCH_CORE_AM_CFLAGS="-fomit-frame-pointer @PREFERRED_STACK_BOUNDARY@ -DELFSZ=64"
-        # XXX: need to use -fpic, otherwise when linking tools I get this error
-        # message:
-        #   relocation R_X86_64_32 can not be used when making a shared object;
-        #   recompile with -fPIC
-        #
-        # I don't understand...  --njn
-        ARCH_TOOL_AM_CFLAGS="-fomit-frame-pointer @PREFERRED_STACK_BOUNDARY@ -fpic"
-        ARCH_CORE_AM_CCASFLAGS=""
+        valt_load_address_normal="0x70000000"
+        valt_load_address_inner="0x60000000"
         ;;
 
-     arm*)
-	AC_MSG_RESULT([ok (${host_cpu})])
-        VG_ARCH="arm"
-        KICKSTART_BASE="0xb0000000"
-        ARCH_CORE_AM_CFLAGS="-fomit-frame-pointer @PREFERRED_STACK_BOUNDARY@ -DELFSZ=32"
-        ARCH_TOOL_AM_CFLAGS="-fomit-frame-pointer @PREFERRED_STACK_BOUNDARY@"
-        ARCH_CORE_AM_CCASFLAGS=""
+     powerpc64)
+        AC_MSG_RESULT([ok (${host_cpu})])
+        VG_ARCH="ppc64"
+        valt_load_address_normal="0x70000000"
+        valt_load_address_inner="0x60000000"
         ;;
 
-     powerpc*)
-        AC_MSG_RESULT([no (${host_cpu})])
-        VG_ARCH="ppc"
-        KICKSTART_BASE="0x70000000"
-        ARCH_CORE_AM_CFLAGS="-DELFSZ=32"
-        ARCH_TOOL_AM_CFLAGS="-fpic"
-        ARCH_CORE_AM_CCASFLAGS="-Wa,-maltivec"
-        AC_MSG_ERROR([PowerPC not supported. Sorry])
+     powerpc)
+        AC_MSG_RESULT([ok (${host_cpu})])
+        VG_ARCH="ppc32"
+        valt_load_address_normal="0x70000000"
+        valt_load_address_inner="0x60000000"
         ;;
 
      *)
@@ -144,10 +157,49 @@ case "${host_cpu}" in
 	;;
 esac
 
+# Check if this should be built as an inner Valgrind, to be run within
+# another Valgrind.  Choose the load address accordingly.
+AC_CACHE_CHECK([for use as an inner Valgrind], vg_cv_inner,
+   [AC_ARG_ENABLE(inner,
+      [  --enable-inner          enables self-hosting],
+      [vg_cv_inner=$enableval],
+      [vg_cv_inner=no])])
+if test "$vg_cv_inner" = yes; then
+    AC_DEFINE([ENABLE_INNER], 1, [configured to run as an inner Valgrind])
+    VALT_LOAD_ADDRESS=$valt_load_address_inner
+else
+    VALT_LOAD_ADDRESS=$valt_load_address_normal
+fi
+
+# Sometimes it's convenient to subvert the bi-arch build system and
+# just have a single build even though the underlying platform is
+# capable of both.  Hence handle --enable-only64bit and
+# --enable-only32bit.  Complain if both are issued :-)
+
+# Check if a 64-bit only build has been requested
+AC_CACHE_CHECK([for a 64-bit only build], vg_cv_only64bit,
+   [AC_ARG_ENABLE(only64bit,
+      [  --enable-only64bit      do a 64-bit only build],
+      [vg_cv_only64bit=$enableval],
+      [vg_cv_only64bit=no])])
+
+# Check if a 32-bit only build has been requested
+AC_CACHE_CHECK([for a 32-bit only build], vg_cv_only32bit,
+   [AC_ARG_ENABLE(only32bit,
+      [  --enable-only32bit      do a 32-bit only build],
+      [vg_cv_only32bit=$enableval],
+      [vg_cv_only32bit=no])])
+
+# Stay sane
+if test x$vg_cv_only64bit = xyes -a x$vg_cv_only32bit = xyes; then
+   AC_MSG_ERROR(
+      [Nonsensical: both --enable-only64bit and --enable-only32bit.])
+fi
+
+
+
 AC_MSG_CHECKING([for a supported OS])
 AC_SUBST(VG_OS)
-AC_SUBST(VG_OS_ALL)
-VG_OS_ALL="linux"
 
 case "${host_os}" in
      *linux*)
@@ -189,37 +241,86 @@ case "${host_os}" in
 	;;
 esac
 
+
+# Establish VG_PLATFORM_PRI.  This is the primary build target.  The
+# entire system, including regression and performance tests, will be
+# built for this target.
+#
+# Also establish VG_PLATFORM_SEC, the secondary build target, if
+# possible.  The system will also be built for this target, but not
+# the regression or performance tests.
+#
 AC_MSG_CHECKING([for a supported CPU/OS combination])
-AC_SUBST(VG_PLATFORM)
-AC_SUBST(VG_PLATFORM_ALL)
-VG_PLATFORM_ALL="amd64-linux arm-linux x86-linux"
 
-VG_PLATFORM="$VG_ARCH-$VG_OS"
+AC_SUBST(VG_PLATFORM_PRI)
+AC_SUBST(VG_PLATFORM_SEC)
 
-case $VG_PLATFORM in
-    x86-linux|amd64-linux|arm-linux)
+case "$VG_ARCH-$VG_OS" in
+     x86-linux)
+	VG_PLATFORM_PRI="X86_LINUX"
+	VG_PLATFORM_SEC=""
         AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
-        ;;
-
+	;;
+     amd64-linux)
+	if test x$vg_cv_only64bit = xyes; then
+	   VG_PLATFORM_PRI="AMD64_LINUX"
+	   VG_PLATFORM_SEC=""
+	elif test x$vg_cv_only32bit = xyes; then
+	   VG_PLATFORM_PRI="X86_LINUX"
+	   VG_PLATFORM_SEC=""
+	else
+	   VG_PLATFORM_PRI="AMD64_LINUX"
+	   VG_PLATFORM_SEC="X86_LINUX"
+	fi
+        AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
+	;;
+     ppc32-linux)
+	VG_PLATFORM_PRI="PPC32_LINUX"
+	VG_PLATFORM_SEC=""
+        AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
+	;;
+     ppc64-linux)
+	if test x$vg_cv_only64bit = xyes; then
+	   VG_PLATFORM_PRI="PPC64_LINUX"
+	   VG_PLATFORM_SEC=""
+	elif test x$vg_cv_only32bit = xyes; then
+	   VG_PLATFORM_PRI="PPC32_LINUX"
+	   VG_PLATFORM_SEC=""
+	else
+	   VG_PLATFORM_PRI="PPC64_LINUX"
+	   VG_PLATFORM_SEC="PPC32_LINUX"
+	fi
+        AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
+	;;
     *)
+	VG_PLATFORM_PRI="unknown"
+	VG_PLATFORM_SEC="unknown"
         AC_MSG_RESULT([no (${host_cpu}-${host_os})])
         AC_MSG_ERROR([Valgrind is platform specific. Sorry. Please consider doing a port.])
         ;;
 esac
 
+# Set up VG_<platform>.  Either one or two of these become defined.
+#
+AM_CONDITIONAL(VG_X86_LINUX,
+               test x$VG_PLATFORM_PRI = xX86_LINUX \
+                 -o x$VG_PLATFORM_SEC = xX86_LINUX)
+AM_CONDITIONAL(VG_AMD64_LINUX,
+               test x$VG_PLATFORM_PRI = xAMD64_LINUX)
+AM_CONDITIONAL(VG_PPC32_LINUX,
+               test x$VG_PLATFORM_PRI = xPPC32_LINUX \
+                 -o x$VG_PLATFORM_SEC = xPPC32_LINUX)
+AM_CONDITIONAL(VG_PPC64_LINUX,
+               test x$VG_PLATFORM_PRI = xPPC64_LINUX)
+
+
+# This variable will collect the individual suppression files
+# depending on the results of autoconf
+DEFAULT_SUPP=""
 AC_SUBST(DEFAULT_SUPP)
 
-glibc=""
 
-AC_EGREP_CPP([GLIBC_21], [
-#include <features.h>
-#ifdef __GNU_LIBRARY__
- #if (__GLIBC__ == 2 && __GLIBC_MINOR__ == 1)
-  GLIBC_21
- #endif
-#endif
-],
-glibc="2.1")
+glibc=""
 
 AC_EGREP_CPP([GLIBC_22], [
 #include <features.h>
@@ -241,32 +342,43 @@ AC_EGREP_CPP([GLIBC_23], [
 ],
 glibc="2.3")
 
+AC_EGREP_CPP([GLIBC_24], [
+#include <features.h>
+#ifdef __GNU_LIBRARY__
+ #if (__GLIBC__ == 2 && __GLIBC_MINOR__ == 4)
+  GLIBC_24
+ #endif
+#endif
+],
+glibc="2.4")
+
 AC_MSG_CHECKING([the glibc version])
 
 case "${glibc}" in
-     2.1)
-	AC_MSG_RESULT(2.1 family)
-	AC_DEFINE([GLIBC_2_1], 1, [Define to 1 if you're using glibc 2.1.x])
-	DEFAULT_SUPP="${DEFAULT_SUPP} glibc-2.1.supp"
-	;;
-
      2.2)
 	AC_MSG_RESULT(2.2 family)
 	AC_DEFINE([GLIBC_2_2], 1, [Define to 1 if you're using glibc 2.2.x])
-	DEFAULT_SUPP="${DEFAULT_SUPP} glibc-2.2.supp"
+	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
 	;;
 
      2.3)
 	AC_MSG_RESULT(2.3 family)
 	AC_DEFINE([GLIBC_2_3], 1, [Define to 1 if you're using glibc 2.3.x])
-	DEFAULT_SUPP="${DEFAULT_SUPP} glibc-2.3.supp"
+	DEFAULT_SUPP="glibc-2.3.supp ${DEFAULT_SUPP}"
+	;;
+
+     2.4)
+	AC_MSG_RESULT(2.4 family)
+	AC_DEFINE([GLIBC_2_4], 1, [Define to 1 if you're using glibc 2.4.x])
+	DEFAULT_SUPP="glibc-2.4.supp ${DEFAULT_SUPP}"
 	;;
 
      *)
 	AC_MSG_RESULT(unsupported version)
-	AC_MSG_ERROR([Valgrind requires the glibc version 2.1, 2.2 or 2.3])
+	AC_MSG_ERROR([Valgrind requires glibc version 2.2, 2.3 or 2.4])
 	;;
 esac
+
 
 # We don't know how to detect the X client library version
 # (detecting the server version is easy, bu no help).  So we
@@ -274,9 +386,93 @@ esac
 # versions 3 and 4.
 AC_PATH_X
 if test "${no_x}" != 'yes' ; then
-   DEFAULT_SUPP="${DEFAULT_SUPP} xfree-4.supp"
-   DEFAULT_SUPP="${DEFAULT_SUPP} xfree-3.supp"
+   DEFAULT_SUPP="xfree-4.supp ${DEFAULT_SUPP}"
+   DEFAULT_SUPP="xfree-3.supp ${DEFAULT_SUPP}"
 fi
+
+
+# does this compiler support -m32 ?
+AC_MSG_CHECKING([if gcc accepts -m32])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-m32"
+
+AC_TRY_COMPILE(, [
+int main () { return 0 ; }
+],
+[
+FLAG_M32="-m32"
+AC_MSG_RESULT([yes])
+], [
+FLAG_M32=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_M32)
+
+
+# does this compiler support -m64 ?
+AC_MSG_CHECKING([if gcc accepts -m64])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-m64"
+
+AC_TRY_COMPILE(, [
+int main () { return 0 ; }
+],
+[
+FLAG_M64="-m64"
+AC_MSG_RESULT([yes])
+], [
+FLAG_M64=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_M64)
+
+
+# does this compiler support -mmmx ?
+AC_MSG_CHECKING([if gcc accepts -mmmx])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-mmmx"
+
+AC_TRY_COMPILE(, [
+int main () { return 0 ; }
+],
+[
+FLAG_MMMX="-mmmx"
+AC_MSG_RESULT([yes])
+], [
+FLAG_MMMX=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_MMMX)
+
+
+# does this compiler support -msse ?
+AC_MSG_CHECKING([if gcc accepts -msse])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-msse"
+
+AC_TRY_COMPILE(, [
+int main () { return 0 ; }
+],
+[
+FLAG_MSSE="-msse"
+AC_MSG_RESULT([yes])
+], [
+FLAG_MSSE=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_MSSE)
 
 
 # does this compiler support -mpreferred-stack-boundary=2 ?
@@ -298,6 +494,7 @@ AC_MSG_RESULT([no])
 CFLAGS=$safe_CFLAGS
 
 AC_SUBST(PREFERRED_STACK_BOUNDARY)
+
 
 # does this compiler support -Wno-pointer-sign ?
 AC_MSG_CHECKING([if gcc accepts -Wno-pointer-sign ])
@@ -321,6 +518,51 @@ if test x$no_pointer_sign = xyes; then
   CFLAGS="$CFLAGS -Wno-pointer-sign"
 fi
 
+
+# does this compiler support -Wdeclaration-after-statement ?
+AC_MSG_CHECKING([if gcc accepts -Wdeclaration-after-statement ])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-Wdeclaration-after-statement"
+
+AC_TRY_COMPILE(, [
+int main () { return 0 ; }
+],
+[
+declaration_after_statement=yes
+FLAG_WDECL_AFTER_STMT="-Wdeclaration-after-statement"
+AC_MSG_RESULT([yes])
+], [
+declaration_after_statement=no
+FLAG_WDECL_AFTER_STMT=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_WDECL_AFTER_STMT)
+
+if test x$declaration_after_statement = xyes; then
+  CFLAGS="$CFLAGS -Wdeclaration-after-statement"
+fi
+
+# does this compiler support __builtin_expect?
+AC_MSG_CHECKING([if gcc supports __builtin_expect])
+
+AC_TRY_LINK(, [
+return __builtin_expect(1, 1) ? 1 : 0
+],
+[
+ac_have_builtin_expect=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_builtin_expect=no
+AC_MSG_RESULT([no])
+])
+if test x$ac_have_builtin_expect = xyes ; then
+  AC_DEFINE(HAVE_BUILTIN_EXPECT, 1, [Define to 1 if gcc supports __builtin_expect.])
+fi
+
+
 # Check for TLS support in the compiler and linker
 AC_CACHE_CHECK([for TLS support], vg_cv_tls,
 	       [AC_ARG_ENABLE(tls, [  --enable-tls            platform supports TLS],
@@ -334,35 +576,18 @@ if test "$vg_cv_tls" = yes; then
 AC_DEFINE([HAVE_TLS], 1, [can use __thread to define thread-local variables])
 fi
 
-# Check for PIE support in the compiler and linker
-AC_CACHE_CHECK([for PIE support], vg_cv_pie,
-	       [AC_ARG_ENABLE(pie, [  --enable-pie            platform supports PIE linking],
-		[vg_cv_pie=$enableval],
-               	[safe_CFLAGS=$CFLAGS
-                 CFLAGS="$CFLAGS -fpie"
-                 safe_LDFLAGS=$LDFLAGS
-                 LDFLAGS="$LDFLAGS -pie"
-                 AC_TRY_LINK([int foo;],
-                             [],
-                             [vg_cv_pie=yes],
-                             [vg_cv_pie=no])
-                 CFLAGS=$safe_CFLAGS
-                 LDFLAGS=$safe_LDFLAGS])])
-if test "$vg_cv_pie" = yes; then
-AC_DEFINE([HAVE_PIE], 1, [can create position-independent executables])
-fi
-AM_CONDITIONAL(USE_PIE, test "$vg_cv_pie" = "yes")
-
 
 # Checks for header files.
 AC_HEADER_STDC
 AC_CHECK_HEADERS([sys/endian.h endian.h mqueue.h])
+
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_UID_T
 AC_TYPE_OFF_T
 AC_TYPE_SIZE_T
 AC_HEADER_TIME
+
 
 # Checks for library functions.
 AC_FUNC_MEMCMP
@@ -378,54 +603,24 @@ AC_OUTPUT(
    docs/Makefile
    docs/lib/Makefile
    docs/images/Makefile
+   docs/internals/Makefile
    docs/xml/Makefile
    tests/Makefile
    tests/vg_regtest
-   tests/unused/Makefile
-   include/valgrind.h
+   perf/Makefile
+   perf/vg_perf
    include/Makefile
-   include/amd64/Makefile
-   include/arm/Makefile
-   include/x86/Makefile
-   include/linux/Makefile
-   include/amd64-linux/Makefile
-   include/arm-linux/Makefile
-   include/x86-linux/Makefile
    auxprogs/Makefile
    coregrind/Makefile
-   coregrind/demangle/Makefile
-   coregrind/m_sigframe/Makefile
-   coregrind/m_aspacemgr/Makefile
-   coregrind/amd64/Makefile
-   coregrind/arm/Makefile
-   coregrind/x86/Makefile
-   coregrind/linux/Makefile
-   coregrind/amd64-linux/Makefile
-   coregrind/arm-linux/Makefile
-   coregrind/x86-linux/Makefile
-   memcheck/Makefile
-   memcheck/tests/Makefile
-   memcheck/tests/amd64/Makefile
-   memcheck/tests/arm/Makefile
-   memcheck/tests/x86/Makefile
-   memcheck/docs/Makefile
-   corecheck/Makefile
-   corecheck/tests/Makefile
-   corecheck/docs/Makefile
-   none/Makefile
-   none/tests/Makefile
-   none/tests/amd64/Makefile
-   none/tests/arm/Makefile
-   none/tests/x86/Makefile
-   none/docs/Makefile
    fjalar/Makefile
 )
 
 cat<<EOF
 
-Using the following suppressions by default:
+   Primary build target: ${VG_PLATFORM_PRI}
+       Secondary target: ${VG_PLATFORM_SEC}
+     Default supp files: ${DEFAULT_SUPP}
 
-      ${DEFAULT_SUPP}
 EOF
 
 cat<<EOF > default.supp
