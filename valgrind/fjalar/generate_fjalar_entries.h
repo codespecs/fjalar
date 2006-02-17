@@ -21,7 +21,7 @@
 #define GENERATE_FJALAR_ENTRIES_H
 
 #include "fjalar_include.h"
-#include "tool.h"
+//#include "tool.h"
 #include "typedata.h"
 #include "GenericHashtable.h"
 #include <stdio.h>
@@ -70,18 +70,18 @@ struct genhashtable* TypesTable;
 //  VariableEntry::structParentType
 VarList globalVars;
 
-void initializeAllFjalarData();
+void initializeAllFjalarData(void);
 
 // Call this function whenever you want to check that the data
 // structures in this file all satisfy their respective
 // rep. invariants.  This can only be run after
 // initializeAllFjalarData() has initialized these data structures.
-void repCheckAllEntries();
+void repCheckAllEntries(void);
 
 int determineFormalParametersStackByteSize(FunctionEntry* f);
 
 FILE* xml_output_fp;
-void outputAllXMLDeclarations();
+void outputAllXMLDeclarations(void);
 
 char* getRawCppFunctionName(char* cppFnName);
 

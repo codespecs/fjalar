@@ -338,7 +338,7 @@ int equivalentStrings(char* str1, char* str2);
 // The following are extracted from the executable's symbol table by
 // running readelf with the -s option:
 
-void initialize_typedata_structures();
+void initialize_typedata_structures(void);
 
 // Key: String that represents the (possibly mangled) name of a function
 // Value: A 32-bit int that represents the global start_PC address of that function
@@ -418,8 +418,8 @@ void print_dwarf_entry(dwarf_entry* e, char simplified);
 
 void initialize_dwarf_entry_array(unsigned long num_entries);
 void destroy_dwarf_entry_array(void);
-void simple_print_dwarf_entry_array();
-void print_dwarf_entry_array();
+void simple_print_dwarf_entry_array(void);
+void print_dwarf_entry_array(void);
 void print_dwarf_entry_array_helper(char simplified);
 void initialize_dwarf_entry_ptr(dwarf_entry* e);
 void finish_dwarf_entry_array_init(void);

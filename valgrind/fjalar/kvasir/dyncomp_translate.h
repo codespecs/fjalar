@@ -20,7 +20,7 @@
 #ifndef DYNCOMP_TRANSLATE_H
 #define DYNCOMP_TRANSLATE_H
 
-#include "tool.h"
+//#include "tool.h"
 
 // WARNING! Some comments may be bogus because I've copied-and-pasted
 // from MemCheck

@@ -20,7 +20,9 @@ These are the Fjalar functions that are available for tools to access.
 #define FJALAR_INCLUDE_H
 
 #include "GenericHashtable.h"
-#include "tool.h" // This forms the interface with Valgrind
+//#include "tool.h" // This forms the interface with Valgrind
+#include "pub_tool_basics.h"
+#include "pub_tool_options.h"
 
 /*********************************************************************
 Supporting data structures and enums
@@ -200,7 +202,7 @@ typedef struct {
   struct geniterator* it;
 } TypeIterator;
 
-TypeIterator* newTypeIterator();
+TypeIterator* newTypeIterator(void);
 char hasNextType(TypeIterator* typeIt);
 TypeEntry* nextType(TypeIterator* typeIt);
 void deleteTypeIterator(TypeIterator* typeIt);
@@ -480,7 +482,7 @@ typedef struct {
   struct geniterator* it;
 } FuncIterator;
 
-FuncIterator* newFuncIterator();
+FuncIterator* newFuncIterator(void);
 char hasNextFunc(FuncIterator* funcIt);
 FunctionEntry* nextFunc(FuncIterator* funcIt);
 void deleteFuncIterator(FuncIterator* funcIt);

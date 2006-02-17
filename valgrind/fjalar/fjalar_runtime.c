@@ -290,7 +290,7 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
          // foo, so it must mark each element as initialized when at
          // least ONE byte is initialized (in this case, a byte within
          // 'x').
-         !MC_(are_some_bytes_initialized)(startAddr, typeSize, 0)) {
+         !mc_are_some_bytes_initialized(startAddr, typeSize)) {
     arraySize--;
     startAddr-=typeSize;
   }

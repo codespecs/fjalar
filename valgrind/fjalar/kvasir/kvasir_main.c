@@ -17,7 +17,7 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE /* FOR O_LARGEFILE */
 
-#include "tool.h"
+//#include "tool.h"
 
 #include "../fjalar_tool.h"
 #include "../fjalar_include.h"
@@ -534,7 +534,7 @@ void fjalar_tool_post_clo_init()
 
   extern UInt* g_oldToNewMap;
   if (kvasir_with_dyncomp && !dyncomp_no_gc) {
-     g_oldToNewMap = VG_(shadow_alloc)((dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
+     g_oldToNewMap = VG_(am_shadow_alloc)((dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
   }
 
   createDeclsAndDtraceFiles(executable_filename);
@@ -653,6 +653,10 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
 
 void fjalar_tool_finish() {
   if (kvasir_with_dyncomp) {
+    extern UInt numConsts;
+    extern UInt mergeTagsCount;
+    extern UInt mergeTagsReturn0Count;
+
      // Do one extra propagation of variable comparability at the end
      // of execution once all of the value comparability sets have
      // been properly updated:
@@ -661,6 +665,11 @@ void fjalar_tool_finish() {
 
      // Now print out the .decls file at the very end of execution:
      DC_outputDeclsAtEnd();
+
+     VG_(printf)("num. consts = %u\n", numConsts);
+     VG_(printf)("MERGE_TAG calls = %u\n", mergeTagsCount);
+     VG_(printf)("MERGE_TAG_RETURN_0 calls = %u\n", mergeTagsReturn0Count);
+     VG_(printf)("total num. tags = %u\n", totalNumTagsAssigned);
   }
 
   if (!dyncomp_without_dtrace) {

@@ -50,10 +50,10 @@ typedef struct {
 int compareFunctionTrees(const void *a, const void *b);
 int compareStrings(const void *a, const void *b);
 
-void initializeProgramPointsTree();
-void initializeVarsTree();
+void initializeProgramPointsTree(void);
+void initializeVarsTree(void);
 
-void outputProgramPointsToFile();
-void outputVariableNamesToFile();
+void outputProgramPointsToFile(void);
+void outputVariableNamesToFile(void);
 
 #endif

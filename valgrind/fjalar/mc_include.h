@@ -11,6 +11,13 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
+      Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
+      Fjalar, a dynamic analysis framework for C/C++ programs.
+
+      (Moved a few declarations from mc_main.c and other files into here)
+
+   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
    published by the Free Software Foundation; either version 2 of the
@@ -37,16 +44,15 @@
 #define __MC_INCLUDE_H
 
 #include "mac_shared.h"
-#include "mc_asm.h"
 
+#define MC_(str)    VGAPPEND(vgMemCheck_,str)
 
 /*------------------------------------------------------------*/
 /*--- Command line options                                 ---*/
 /*------------------------------------------------------------*/
 
-/* When instrumenting, omit some checks if tell-tale literals for
-   inlined strlen() are visible in the basic block.  default: YES */
-extern Bool MC_(clo_avoid_strlen_errors);
+/* There are no memcheck-specific ones, only mac-specific
+   ones (those shared by both memcheck and addrcheck). */
 
 
 /*------------------------------------------------------------*/
@@ -54,46 +60,60 @@ extern Bool MC_(clo_avoid_strlen_errors);
 /*------------------------------------------------------------*/
 
 /* Functions defined in mc_main.c */
-extern VGA_REGPARM(1) void MC_(helperc_complain_undef) ( HWord );
+extern VG_REGPARM(1) void MC_(helperc_complain_undef) ( HWord );
+extern void MC_(helperc_value_check8_fail) ( void );
 extern void MC_(helperc_value_check4_fail) ( void );
-extern void MC_(helperc_value_check2_fail) ( void );
 extern void MC_(helperc_value_check1_fail) ( void );
 extern void MC_(helperc_value_check0_fail) ( void );
 
-extern VGA_REGPARM(1) void MC_(helperc_STOREV8) ( Addr, ULong );
-extern VGA_REGPARM(2) void MC_(helperc_STOREV4) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STOREV2) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STOREV1) ( Addr, UInt );
+extern VG_REGPARM(1) void MC_(helperc_STOREV8be) ( Addr, ULong );
+extern VG_REGPARM(1) void MC_(helperc_STOREV8le) ( Addr, ULong );
+extern VG_REGPARM(2) void MC_(helperc_STOREV4be) ( Addr, UWord );
+extern VG_REGPARM(2) void MC_(helperc_STOREV4le) ( Addr, UWord );
+extern VG_REGPARM(2) void MC_(helperc_STOREV2be) ( Addr, UWord );
+extern VG_REGPARM(2) void MC_(helperc_STOREV2le) ( Addr, UWord );
+extern VG_REGPARM(2) void MC_(helperc_STOREV1)   ( Addr, UWord );
 
-extern VGA_REGPARM(1) UInt MC_(helperc_LOADV1)  ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOADV2)  ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOADV4)  ( Addr );
-extern VGA_REGPARM(1) ULong MC_(helperc_LOADV8)  ( Addr );
+extern VG_REGPARM(1) ULong MC_(helperc_LOADV8be) ( Addr );
+extern VG_REGPARM(1) ULong MC_(helperc_LOADV8le) ( Addr );
+extern VG_REGPARM(1) UWord MC_(helperc_LOADV4be) ( Addr );
+extern VG_REGPARM(1) UWord MC_(helperc_LOADV4le) ( Addr );
+extern VG_REGPARM(1) UWord MC_(helperc_LOADV2be) ( Addr );
+extern VG_REGPARM(1) UWord MC_(helperc_LOADV2le) ( Addr );
+extern VG_REGPARM(1) UWord MC_(helperc_LOADV1)   ( Addr );
 
-// PG - begin
+extern void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len );
+
+/* Functions defined in mc_translate.c */
+extern
+IRBB* MC_(instrument) ( VgCallbackClosure* closure,
+                        IRBB* bb_in,
+                        VexGuestLayout* layout,
+                        VexGuestExtents* vge,
+                        IRType gWordTy, IRType hWordTy );
+
+
+// PG - pgbovine - begin
 
 extern void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len );
-extern char MC_(are_some_bytes_initialized) (Addr a, SizeT len, char* bitMask);
+extern char mc_are_some_bytes_initialized (Addr a, SizeT len);
 
 typedef enum {
    MC_Ok = 5, MC_AddrErr = 6, MC_ValueErr = 7
 } MC_ReadResult;
 
-/* __inline__ */ void set_abit ( Addr a, UChar abit );
-__inline__ void set_vbyte ( Addr a, UChar vbyte );
+// /* __inline__ */ void set_abit ( Addr a, UChar abit );
+
+void set_abit_and_vbyte ( Addr a, UWord abit, UWord vbyte );
+void set_vbyte ( Addr a, UWord vbyte );
 
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );
 MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr );
 
-// PG - end
-
-/* Functions defined in mc_errcontext.c */
-extern void MC_(record_value_error)  ( ThreadId tid, Int size );
-extern void MC_(record_user_error)   ( ThreadId tid, Addr a, Bool isWrite,
-                                       Bool isUnaddr );
+// PG - pgbovine - end
 
 
-#endif
+#endif /* ndef __MC_INCLUDE_H */
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

@@ -1,6 +1,6 @@
 
 /*--------------------------------------------------------------------*/
-/*--- Declarations shared between MemCheck and AddrCheck.          ---*/
+/*--- Declarations shared between Memcheck and Addrcheck.          ---*/
 /*---                                                 mac_shared.h ---*/
 /*--------------------------------------------------------------------*/
 
@@ -12,14 +12,16 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
-      Modified by Philip Guo to track ESP as new areas of the stack
-      are allocated.  TODO: In the future, hopefully we can find a
-      faster and more elegant solution because these calls possibly
-      incur a severe performance hit.
+      Modified by Philip Guo (pgbovine@mit.edu) to track ESP as new
+      areas of the stack are allocated.
 
       Added several CHECK_ESP() calls and extern var. declarations.
 
-   Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
+      TODO: In the future, hopefully we can find a faster and more
+      elegant solution because these calls possibly incur a severe
+      performance hit.
+
+   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -45,7 +47,12 @@
 #ifndef __MAC_SHARED_H
 #define __MAC_SHARED_H
 
-#include "tool.h"
+#include "pub_tool_basics.h"
+#include "pub_tool_execontext.h"
+#include "pub_tool_hashtable.h"
+#include "pub_tool_errormgr.h"
+#include "pub_tool_tooliface.h"
+
 
 #define MAC_(str)    VGAPPEND(vgMAC_,str)
 
@@ -168,52 +175,57 @@ typedef
 
 
 /*------------------------------------------------------------*/
-/*--- Profiling of tools and memory events                 ---*/
+/*--- Profiling of memory events                           ---*/
 /*------------------------------------------------------------*/
-
-typedef
-   enum {
-      VgpCheckMem = VgpFini+1,
-      VgpSetMem,
-      VgpESPAdj
-   }
-   VgpToolCC;
 
 /* Define to collect detailed performance info. */
 /* #define MAC_PROFILE_MEMORY */
 
 #ifdef MAC_PROFILE_MEMORY
-#  define N_PROF_EVENTS 150
+#  define N_PROF_EVENTS 500
 
-extern UInt MAC_(event_ctr)[N_PROF_EVENTS];
+extern UInt   MAC_(event_ctr)[N_PROF_EVENTS];
+extern HChar* MAC_(event_ctr_name)[N_PROF_EVENTS];
 
-#  define PROF_EVENT(ev)                                 \
-   do { tl_assert((ev) >= 0 && (ev) < N_PROF_EVENTS);    \
-        MAC_(event_ctr)[ev]++;                           \
+#  define PROF_EVENT(ev, name)                                \
+   do { tl_assert((ev) >= 0 && (ev) < N_PROF_EVENTS);         \
+        /* crude and inaccurate check to ensure the same */   \
+        /* event isn't being used with > 1 name */            \
+        if (MAC_(event_ctr_name)[ev])                         \
+           tl_assert(name == MAC_(event_ctr_name)[ev]);       \
+        MAC_(event_ctr)[ev]++;                                \
+        MAC_(event_ctr_name)[ev] = (name);                    \
    } while (False);
 
 #else
 
-#  define PROF_EVENT(ev) /* */
+#  define PROF_EVENT(ev, name) /* */
 
 #endif   /* MAC_PROFILE_MEMORY */
 
+
 /*------------------------------------------------------------*/
-/*--- V and A bits                                         ---*/
+/*--- V and A bits (Victoria & Albert ?)                   ---*/
 /*------------------------------------------------------------*/
 
 /* expand 1 bit -> 8 */
-#define BIT_EXPAND(b)	((~(((UChar)(b) & 1) - 1)) & 0xFF)
+#define BIT_TO_BYTE(b)  ((~(((UChar)(b) & 1) - 1)) & 0xFF)
 
-#define SECONDARY_SHIFT	16
-#define SECONDARY_SIZE	(1 << SECONDARY_SHIFT)
-#define SECONDARY_MASK	(SECONDARY_SIZE - 1)
+/* The number of entries in the primary map can be altered.  However
+   we hardwire the assumption that each secondary map covers precisely
+   64k of address space. */
+#define SECONDARY_SIZE 65536               /* DO NOT CHANGE */
+#define SECONDARY_MASK (SECONDARY_SIZE-1)  /* DO NOT CHANGE */
 
-#define PRIMARY_SIZE	(1 << (32 - SECONDARY_SHIFT))
-
-#define SM_OFF(addr)	((addr) & SECONDARY_MASK)
-#define PM_IDX(addr)	((addr) >> SECONDARY_SHIFT)
-
+//zz #define SECONDARY_SHIFT	16
+//zz #define SECONDARY_SIZE	(1 << SECONDARY_SHIFT)
+//zz #define SECONDARY_MASK	(SECONDARY_SIZE - 1)
+//zz
+//zz #define PRIMARY_SIZE	(1 << (32 - SECONDARY_SHIFT))
+//zz
+//zz #define SM_OFF(addr)	((addr) & SECONDARY_MASK)
+//zz #define PM_IDX(addr)	((addr) >> SECONDARY_SHIFT)
+/*
 #define IS_DISTINGUISHED_SM(smap)		   \
    ((smap) >= &distinguished_secondary_maps[0] &&  \
     (smap) < &distinguished_secondary_maps[N_SECONDARY_MAPS])
@@ -224,43 +236,62 @@ extern UInt MAC_(event_ctr)[N_PROF_EVENTS];
    do {                                                           \
       if (IS_DISTINGUISHED(addr)) {				  \
 	 primary_map[PM_IDX(addr)] = alloc_secondary_map(caller, primary_map[PM_IDX(addr)]); \
-         /* VG_(printf)("new 2map because of %p\n", addr); */     \
+         if (0) VG_(printf)("new 2map because of %p\n", addr);     \
       }                                                           \
-   } while(0)
+  } while(0)
+*/
 
 #define BITARR_SET(aaa_p,iii_p)                         \
    do {                                                 \
-      UInt   iii = (UInt)iii_p;                         \
-      UChar* aaa = (UChar*)aaa_p;                       \
+      UWord   iii = (UWord)iii_p;                       \
+      UChar*  aaa = (UChar*)aaa_p;                      \
       aaa[iii >> 3] |= (1 << (iii & 7));                \
    } while (0)
 
 #define BITARR_CLEAR(aaa_p,iii_p)                       \
    do {                                                 \
-      UInt   iii = (UInt)iii_p;                         \
-      UChar* aaa = (UChar*)aaa_p;                       \
+      UWord   iii = (UWord)iii_p;                       \
+      UChar*  aaa = (UChar*)aaa_p;                      \
       aaa[iii >> 3] &= ~(1 << (iii & 7));               \
    } while (0)
 
 #define BITARR_TEST(aaa_p,iii_p)                        \
-      (0 != (((UChar*)aaa_p)[ ((UInt)iii_p) >> 3 ]      \
-               & (1 << (((UInt)iii_p) & 7))))           \
+      (0 != (((UChar*)aaa_p)[ ((UWord)iii_p) >> 3 ]     \
+               & (1 << (((UWord)iii_p) & 7))))          \
+
+static inline
+void write_bit_array ( UChar* arr, UWord idx, UWord bit )
+{
+   UWord shift = idx & 7;
+   idx >>= 3;
+   bit &= 1;
+   arr[idx] = (arr[idx] & ~(1<<shift)) | (bit << shift);
+}
+
+static inline
+UWord read_bit_array ( UChar* arr, UWord idx )
+{
+   UWord shift = idx & 7;
+   idx >>= 3;
+   return 1 & (arr[idx] >> shift);
+}
 
 
-#define VGM_BIT_VALID      0
-#define VGM_BIT_INVALID    1
+#define VGM_BIT_VALID       0
+#define VGM_BIT_INVALID     1
 
-#define VGM_NIBBLE_VALID   0
-#define VGM_NIBBLE_INVALID 0xF
+#define VGM_NIBBLE_VALID    0
+#define VGM_NIBBLE_INVALID  0xF
 
-#define VGM_BYTE_VALID     0
-#define VGM_BYTE_INVALID   0xFF
+#define VGM_BYTE_VALID      0
+#define VGM_BYTE_INVALID    0xFF
 
-#define VGM_WORD_VALID     0
-#define VGM_WORD_INVALID   0xFFFFFFFF
+#define VGM_WORD32_VALID    0
+#define VGM_WORD32_INVALID  0xFFFFFFFF
 
-#define VGM_WORD64_VALID     0x0ULL
-#define VGM_WORD64_INVALID   0xFFFFFFFFFFFFFFFFULL
+#define VGM_WORD64_VALID    0ULL
+#define VGM_WORD64_INVALID  0xFFFFFFFFFFFFFFFFULL
+
 
 /*------------------------------------------------------------*/
 /*--- Command line options + defaults                      ---*/
@@ -300,7 +331,7 @@ extern void MAC_(print_common_usage)             ( void );
 extern void MAC_(print_common_debug_usage)       ( void );
 
 /* We want a 16B redzone on heap blocks for Addrcheck and Memcheck */
-#define MALLOC_REDZONE_SZB    16
+#define MAC_MALLOC_REDZONE_SZB    16
 
 /*------------------------------------------------------------*/
 /*--- Variables                                            ---*/
@@ -325,11 +356,11 @@ extern Bool (*MAC_(check_noaccess))( Addr a, SizeT len, Addr* bad_addr );
 extern Bool (*MAC_(describe_addr_supp))    ( Addr a, AddrInfo* ai );
 
 /* For VALGRIND_COUNT_LEAKS client request */
-extern Int MAC_(bytes_leaked);
-extern Int MAC_(bytes_indirect);
-extern Int MAC_(bytes_dubious);
-extern Int MAC_(bytes_reachable);
-extern Int MAC_(bytes_suppressed);
+extern SizeT MAC_(bytes_leaked);
+extern SizeT MAC_(bytes_indirect);
+extern SizeT MAC_(bytes_dubious);
+extern SizeT MAC_(bytes_reachable);
+extern SizeT MAC_(bytes_suppressed);
 
 /*------------------------------------------------------------*/
 /*--- Functions                                            ---*/
@@ -339,7 +370,14 @@ extern void MAC_(pp_AddrInfo) ( Addr a, AddrInfo* ai );
 
 extern void MAC_(clear_MAC_Error)          ( MAC_Error* err_extra );
 
-extern Bool MAC_(shared_recognised_suppression) ( Char* name, Supp* su );
+extern Bool  MAC_(eq_Error) ( VgRes res, Error* e1, Error* e2 );
+extern UInt  MAC_(update_extra)( Error* err );
+extern Bool  MAC_(read_extra_suppression_info) ( Int fd, Char* buf, Int nBuf, Supp *su );
+extern Bool  MAC_(error_matches_suppression)(Error* err, Supp* su);
+extern Char* MAC_(get_error_name) ( Error* err );
+extern void  MAC_(print_extra_suppression_info)  ( Error* err );
+
+extern Bool  MAC_(shared_recognised_suppression) ( Char* name, Supp* su );
 
 extern void* MAC_(new_block) ( ThreadId tid,
                                Addr p, SizeT size, SizeT align, UInt rzB,
@@ -366,14 +404,15 @@ extern void MAC_(record_param_error)       ( ThreadId tid, Addr a, Bool isReg,
                                              Bool isUnaddr, Char* msg );
 extern void MAC_(record_jump_error)        ( ThreadId tid, Addr a );
 extern void MAC_(record_free_error)        ( ThreadId tid, Addr a );
-extern void MAC_(record_freemismatch_error)( ThreadId tid, Addr a );
+extern void MAC_(record_freemismatch_error)( ThreadId tid, Addr a,
+                                             MAC_Chunk* mc);
 extern void MAC_(record_overlap_error)     ( ThreadId tid,
                                              Char* function, OverlapExtra* oe );
 extern void MAC_(record_illegal_mempool_error) ( ThreadId tid, Addr pool );
 
 extern void MAC_(pp_shared_Error)          ( Error* err);
 
-extern MAC_Chunk* MAC_(first_matching_freed_MAC_Chunk)( Bool (*p)(MAC_Chunk*, void*), void* d );
+extern MAC_Chunk* MAC_(get_freed_list_head)( void );
 
 extern void MAC_(common_pre_clo_init) ( void );
 extern void MAC_(common_fini)         ( void (*leak_check)(ThreadId tid,
@@ -383,30 +422,38 @@ extern Bool MAC_(handle_common_client_requests) ( ThreadId tid,
                                                   UWord* arg_block, UWord* ret );
 
 /* For leak checking */
-extern void MAC_(pp_LeakError)(void* vl, UInt n_this_record,
-                                         UInt n_total_records);
+extern void MAC_(pp_LeakError)(void* extra);
 
 extern void MAC_(print_malloc_stats) ( void );
 
 extern void MAC_(do_detect_memory_leaks) (
           ThreadId tid, LeakCheckMode mode,
-          Bool (*is_valid_64k_chunk) ( UInt ),
-          Bool (*is_valid_address)   ( Addr )
+          Bool (*is_within_valid_secondary) ( Addr ),
+          Bool (*is_valid_aligned_word)     ( Addr )
        );
 
-extern VGA_REGPARM(1) void MAC_(new_mem_stack_4)  ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(die_mem_stack_4)  ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(new_mem_stack_8)  ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(die_mem_stack_8)  ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(new_mem_stack_12) ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(die_mem_stack_12) ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(new_mem_stack_16) ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(die_mem_stack_16) ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(new_mem_stack_32) ( Addr old_ESP );
-extern VGA_REGPARM(1) void MAC_(die_mem_stack_32) ( Addr old_ESP );
-extern                void MAC_(die_mem_stack) ( Addr a, SizeT len);
-extern                void MAC_(new_mem_stack) ( Addr a, SizeT len);
+extern VG_REGPARM(1) void MAC_(new_mem_stack_4)  ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(die_mem_stack_4)  ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(new_mem_stack_8)  ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(die_mem_stack_8)  ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(new_mem_stack_12) ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(die_mem_stack_12) ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(new_mem_stack_16) ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(die_mem_stack_16) ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(new_mem_stack_32) ( Addr old_ESP );
+extern VG_REGPARM(1) void MAC_(die_mem_stack_32) ( Addr old_ESP );
+extern               void MAC_(die_mem_stack) ( Addr a, SizeT len);
+extern               void MAC_(new_mem_stack) ( Addr a, SizeT len);
 
+extern void* MAC_(malloc)               ( ThreadId tid, SizeT n );
+extern void* MAC_(__builtin_new)        ( ThreadId tid, SizeT n );
+extern void* MAC_(__builtin_vec_new)    ( ThreadId tid, SizeT n );
+extern void* MAC_(memalign)             ( ThreadId tid, SizeT align, SizeT n );
+extern void* MAC_(calloc)               ( ThreadId tid, SizeT nmemb, SizeT size1 );
+extern void  MAC_(free)                 ( ThreadId tid, void* p );
+extern void  MAC_(__builtin_delete)     ( ThreadId tid, void* p );
+extern void  MAC_(__builtin_vec_delete) ( ThreadId tid, void* p );
+extern void* MAC_(realloc)              ( ThreadId tid, void* p, SizeT new_size );
 
 /*------------------------------------------------------------*/
 /*--- Stack pointer adjustment                             ---*/
@@ -420,176 +467,173 @@ extern                void MAC_(new_mem_stack) ( Addr a, SizeT len);
    factoring, rather than eg. using function pointers.
 */
 
-#define ESP_UPDATE_HANDLERS(ALIGNED4_NEW,  ALIGNED4_DIE,                      \
-                            ALIGNED8_NEW,  ALIGNED8_DIE,                      \
-                            UNALIGNED_NEW, UNALIGNED_DIE)                     \
-                                                                              \
-extern FunctionExecutionState FunctionExecutionStateStack[];                  \
-extern int fn_stack_first_free_index;                                         \
-                                                                              \
-void VGA_REGPARM(1) MAC_(new_mem_stack_4)(Addr new_ESP)                       \
-{                                                                             \
-   CHECK_ESP(new_ESP) /* //PG */                                              \
-   PROF_EVENT(110);                                                           \
-   if (VG_IS_4_ALIGNED(new_ESP)) {                                            \
-      ALIGNED4_NEW  ( new_ESP );                                              \
-   } else {                                                                   \
-      UNALIGNED_NEW ( new_ESP, 4 );                                           \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(die_mem_stack_4)(Addr new_ESP)                       \
-{                                                                             \
-   PROF_EVENT(120);                                                           \
-   if (VG_IS_4_ALIGNED(new_ESP)) {                                            \
-      ALIGNED4_DIE  ( new_ESP-4 );                                            \
-   } else {                                                                   \
-      UNALIGNED_DIE ( new_ESP-4, 4 );                                         \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(new_mem_stack_8)(Addr new_ESP)                       \
-{                                                                             \
-   CHECK_ESP(new_ESP) /* //PG */                                              \
-   PROF_EVENT(111);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_NEW  ( new_ESP );                                              \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_NEW  ( new_ESP   );                                            \
-      ALIGNED4_NEW  ( new_ESP+4 );                                            \
-   } else {                                                                   \
-      UNALIGNED_NEW ( new_ESP, 8 );                                           \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(die_mem_stack_8)(Addr new_ESP)                       \
-{                                                                             \
-   PROF_EVENT(121);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_DIE  ( new_ESP-8 );                                            \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_DIE  ( new_ESP-8 );                                            \
-      ALIGNED4_DIE  ( new_ESP-4 );                                            \
-   } else {                                                                   \
-      UNALIGNED_DIE ( new_ESP-8, 8 );                                         \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(new_mem_stack_12)(Addr new_ESP)                      \
-{                                                                             \
-   CHECK_ESP(new_ESP) /* //PG */                                              \
-   PROF_EVENT(112);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_NEW  ( new_ESP   );                                            \
-      ALIGNED4_NEW  ( new_ESP+8 );                                            \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_NEW  ( new_ESP   );                                            \
-      ALIGNED8_NEW  ( new_ESP+4 );                                            \
-   } else {                                                                   \
-      UNALIGNED_NEW ( new_ESP, 12 );                                          \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(die_mem_stack_12)(Addr new_ESP)                      \
-{                                                                             \
-   PROF_EVENT(122);                                                           \
-   /* Note the -12 in the test */                                             \
-   if (VG_IS_8_ALIGNED(new_ESP-12)) {                                         \
-      ALIGNED8_DIE  ( new_ESP-12 );                                           \
-      ALIGNED4_DIE  ( new_ESP-4  );                                           \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_DIE  ( new_ESP-12 );                                           \
-      ALIGNED8_DIE  ( new_ESP-8  );                                           \
-   } else {                                                                   \
-      UNALIGNED_DIE ( new_ESP-12, 12 );                                       \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(new_mem_stack_16)(Addr new_ESP)                      \
-{                                                                             \
-   CHECK_ESP(new_ESP) /* //PG */                                              \
-   PROF_EVENT(113);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_NEW  ( new_ESP   );                                            \
-      ALIGNED8_NEW  ( new_ESP+8 );                                            \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_NEW  ( new_ESP    );                                           \
-      ALIGNED8_NEW  ( new_ESP+4  );                                           \
-      ALIGNED4_NEW  ( new_ESP+12 );                                           \
-   } else {                                                                   \
-      UNALIGNED_NEW ( new_ESP, 16 );                                          \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(die_mem_stack_16)(Addr new_ESP)                      \
-{                                                                             \
-   PROF_EVENT(123);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_DIE  ( new_ESP-16 );                                           \
-      ALIGNED8_DIE  ( new_ESP-8  );                                           \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_DIE  ( new_ESP-16 );                                           \
-      ALIGNED8_DIE  ( new_ESP-12 );                                           \
-      ALIGNED4_DIE  ( new_ESP-4  );                                           \
-   } else {                                                                   \
-      UNALIGNED_DIE ( new_ESP-16, 16 );                                       \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(new_mem_stack_32)(Addr new_ESP)                      \
-{                                                                             \
-   CHECK_ESP(new_ESP) /* //PG */                                              \
-   PROF_EVENT(114);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_NEW  ( new_ESP    );                                           \
-      ALIGNED8_NEW  ( new_ESP+8  );                                           \
-      ALIGNED8_NEW  ( new_ESP+16 );                                           \
-      ALIGNED8_NEW  ( new_ESP+24 );                                           \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_NEW  ( new_ESP    );                                           \
-      ALIGNED8_NEW  ( new_ESP+4  );                                           \
-      ALIGNED8_NEW  ( new_ESP+12 );                                           \
-      ALIGNED8_NEW  ( new_ESP+20 );                                           \
-      ALIGNED4_NEW  ( new_ESP+28 );                                           \
-   } else {                                                                   \
-      UNALIGNED_NEW ( new_ESP, 32 );                                          \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void VGA_REGPARM(1) MAC_(die_mem_stack_32)(Addr new_ESP)                      \
-{                                                                             \
-   PROF_EVENT(124);                                                           \
-   if (VG_IS_8_ALIGNED(new_ESP)) {                                            \
-      ALIGNED8_DIE  ( new_ESP-32 );                                           \
-      ALIGNED8_DIE  ( new_ESP-24 );                                           \
-      ALIGNED8_DIE  ( new_ESP-16 );                                           \
-      ALIGNED8_DIE  ( new_ESP- 8 );                                           \
-   } else if (VG_IS_4_ALIGNED(new_ESP)) {                                     \
-      ALIGNED4_DIE  ( new_ESP-32 );                                           \
-      ALIGNED8_DIE  ( new_ESP-28 );                                           \
-      ALIGNED8_DIE  ( new_ESP-20 );                                           \
-      ALIGNED8_DIE  ( new_ESP-12 );                                           \
-      ALIGNED4_DIE  ( new_ESP-4  );                                           \
-   } else {                                                                   \
-      UNALIGNED_DIE ( new_ESP-32, 32 );                                       \
-   }                                                                          \
-}                                                                             \
-                                                                              \
-void MAC_(new_mem_stack) ( Addr a, SizeT len )                                \
-{                                                                             \
-   CHECK_ESP_SLOW() /* //PG */                                                \
-   PROF_EVENT(115);                                                           \
-   UNALIGNED_NEW ( a, len );                                                  \
-}                                                                             \
-                                                                              \
-void MAC_(die_mem_stack) ( Addr a, SizeT len )                                \
-{                                                                             \
-   PROF_EVENT(125);                                                           \
-   UNALIGNED_DIE ( a, len );                                                  \
+#define SP_UPDATE_HANDLERS(ALIGNED4_NEW,  ALIGNED4_DIE,           \
+                           ALIGNED8_NEW,  ALIGNED8_DIE,           \
+                           UNALIGNED_NEW, UNALIGNED_DIE)          \
+                                                                  \
+void VG_REGPARM(1) MAC_(new_mem_stack_4)(Addr new_SP)             \
+{                                                                 \
+   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   PROF_EVENT(110, "new_mem_stack_4");                            \
+   if (VG_IS_4_ALIGNED(new_SP)) {                                 \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP );           \
+   } else {                                                       \
+      UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + new_SP, 4 );        \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(die_mem_stack_4)(Addr new_SP)             \
+{                                                                 \
+   PROF_EVENT(120, "die_mem_stack_4");                            \
+   if (VG_IS_4_ALIGNED(new_SP)) {                                 \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-4 );         \
+   } else {                                                       \
+      UNALIGNED_DIE ( -VG_STACK_REDZONE_SZB + new_SP-4, 4 );      \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(new_mem_stack_8)(Addr new_SP)             \
+{                                                                 \
+   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   PROF_EVENT(111, "new_mem_stack_8");                            \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP );           \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP   );         \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+4 );         \
+   } else {                                                       \
+      UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + new_SP, 8 );        \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(die_mem_stack_8)(Addr new_SP)             \
+{                                                                 \
+   PROF_EVENT(121, "die_mem_stack_8");                            \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-8 );         \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-8 );         \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-4 );         \
+   } else {                                                       \
+      UNALIGNED_DIE ( -VG_STACK_REDZONE_SZB + new_SP-8, 8 );      \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(new_mem_stack_12)(Addr new_SP)            \
+{                                                                 \
+   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   PROF_EVENT(112, "new_mem_stack_12");                           \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP   );         \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+8 );         \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP   );         \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+4 );         \
+   } else {                                                       \
+      UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + new_SP, 12 );       \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(die_mem_stack_12)(Addr new_SP)            \
+{                                                                 \
+   PROF_EVENT(122, "die_mem_stack_12");                           \
+   /* Note the -12 in the test */                                 \
+   if (VG_IS_8_ALIGNED(new_SP-12)) {                              \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-12 );        \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-4  );        \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-12 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-8  );        \
+   } else {                                                       \
+      UNALIGNED_DIE ( -VG_STACK_REDZONE_SZB + new_SP-12, 12 );    \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(new_mem_stack_16)(Addr new_SP)            \
+{                                                                 \
+   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   PROF_EVENT(113, "new_mem_stack_16");                           \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP   );         \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+8 );         \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP    );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+4  );        \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+12 );        \
+   } else {                                                       \
+      UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + new_SP, 16 );       \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(die_mem_stack_16)(Addr new_SP)            \
+{                                                                 \
+   PROF_EVENT(123, "die_mem_stack_16");                           \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-16 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-8  );        \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-16 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-12 );        \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-4  );        \
+   } else {                                                       \
+      UNALIGNED_DIE ( -VG_STACK_REDZONE_SZB + new_SP-16, 16 );    \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(new_mem_stack_32)(Addr new_SP)            \
+{                                                                 \
+   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   PROF_EVENT(114, "new_mem_stack_32");                           \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP    );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+8  );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+16 );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+24 );        \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP    );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+4  );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+12 );        \
+      ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+20 );        \
+      ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP+28 );        \
+   } else {                                                       \
+      UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + new_SP, 32 );       \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void VG_REGPARM(1) MAC_(die_mem_stack_32)(Addr new_SP)            \
+{                                                                 \
+   PROF_EVENT(124, "die_mem_stack_32");                           \
+   if (VG_IS_8_ALIGNED(new_SP)) {                                 \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-32 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-24 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-16 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP- 8 );        \
+   } else if (VG_IS_4_ALIGNED(new_SP)) {                          \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-32 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-28 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-20 );        \
+      ALIGNED8_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-12 );        \
+      ALIGNED4_DIE  ( -VG_STACK_REDZONE_SZB + new_SP-4  );        \
+   } else {                                                       \
+      UNALIGNED_DIE ( -VG_STACK_REDZONE_SZB + new_SP-32, 32 );    \
+   }                                                              \
+}                                                                 \
+                                                                  \
+void MAC_(new_mem_stack) ( Addr a, SizeT len )                    \
+{                                                                 \
+   CHECK_ESP_SLOW() /* // PG - pgbovine */                        \
+   PROF_EVENT(115, "new_mem_stack");                              \
+   UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + a, len );              \
+}                                                                 \
+                                                                  \
+void MAC_(die_mem_stack) ( Addr a, SizeT len )                    \
+{                                                                 \
+   PROF_EVENT(125, "die_mem_stack");                              \
+   UNALIGNED_DIE ( -VG_STACK_REDZONE_SZB + a, len );              \
 }
 
 #endif   /* __MAC_SHARED_H */
 
 /*--------------------------------------------------------------------*/
-/*--- end                                             mac_shared.h ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

@@ -4,7 +4,7 @@
   and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
   Seward, jseward@acm.org)
 
-  Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
+  Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -20,10 +20,23 @@
 #ifndef DYNCOMP_MAIN_H
 #define DYNCOMP_MAIN_H
 
-#include "tool.h"
+//#include "tool.h"
+#include "pub_tool_aspacemgr.h"
+#include "pub_tool_libcassert.h"
+
 #include "../mac_shared.h"
-#include "../mc_asm.h"
+#include "../mc_include.h"
 #include "union_find.h"
+
+// Taken from commented-out region in mac_shared.h
+// Warning! - probably subject to change in the future since
+// it was commented-out
+#define SECONDARY_SHIFT	16
+
+#define PRIMARY_SIZE	(1 << (32 - SECONDARY_SHIFT))
+
+#define SM_OFF(addr)	((addr) & SECONDARY_MASK)
+#define PM_IDX(addr)	((addr) >> SECONDARY_SHIFT)
 
 
 // Special reserved tags
@@ -95,24 +108,29 @@ __inline__ UInt val_uf_find_leader(UInt tag);
 void val_uf_make_set_for_tag(UInt tag);
 
 
-extern VGA_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
+extern VG_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
 
 // Remember the special REGPARM(1) for the 64-bit case
 // (still dunno why I need it, but it's necessary)
-extern VGA_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
-extern VGA_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
+extern VG_REGPARM(1) void MC_(helperc_STORE_TAG_8) ( Addr, UInt );
+extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_4) ( Addr, UInt );
+extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_2) ( Addr, UInt );
+extern VG_REGPARM(2) void MC_(helperc_STORE_TAG_1) ( Addr, UInt );
 
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
-extern VGA_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
+extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_8) ( Addr );
+extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
+extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
+extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
-extern VGA_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ( );
+extern VG_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ( void );
 
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
-extern VGA_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
+extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
+extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
 
+extern VG_REGPARM(2) UInt tag1_is_new ( UInt, UInt );
+extern VG_REGPARM(2) UInt tag2_is_new ( UInt, UInt );
+
+extern VG_REGPARM(2) UInt tag1_ESP_tag ( UInt, UInt );
+extern VG_REGPARM(2) UInt tag2_ESP_tag ( UInt, UInt );
 
 #endif

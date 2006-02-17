@@ -22,7 +22,7 @@ implement in order to compile properly
 
 #include "generate_fjalar_entries.h"
 #include "fjalar_traversal.h"
-#include "tool.h"
+//#include "tool.h"
 
 
 /*********************************************************************
