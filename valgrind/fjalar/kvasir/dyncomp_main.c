@@ -491,7 +491,13 @@ UInt MC_(helperc_LOAD_TAG_1) ( Addr a ) {
   return get_tag(a);
 }
 
+// Make this const so gcc can eliminate dead code to improve
+// performance:
+const int dyncomp_profile_tags = 0;
+
 UInt mergeTagsCount = 0;
+UInt merge3TagsCount = 0;
+UInt merge4TagsCount = 0;
 UInt mergeTagsReturn0Count = 0;
 
 VG_REGPARM(2)
@@ -544,7 +550,10 @@ UInt tag2_ESP_tag ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
-  mergeTagsCount++;
+  if (dyncomp_profile_tags) {
+    mergeTagsCount++;
+  }
+
 /*   if (within_main_program) { */
 /*      DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n", */
 /*                      tag1, tag2); */
@@ -586,6 +595,10 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
 // right now (as it should be!):
 VG_REGPARM(3)
 UInt MC_(helperc_MERGE_3_TAGS) (UInt tag1, UInt tag2, UInt tag3) {
+  if (dyncomp_profile_tags) {
+    merge3TagsCount++;
+  }
+
   return MC_(helperc_MERGE_TAGS)(MC_(helperc_MERGE_TAGS)(tag1, tag2),
                                  tag3);
 }
@@ -593,6 +606,10 @@ UInt MC_(helperc_MERGE_3_TAGS) (UInt tag1, UInt tag2, UInt tag3) {
 // Uhhh, I can't do VG_REGPARM(4) :(
 VG_REGPARM(3)
 UInt MC_(helperc_MERGE_4_TAGS) (UInt tag1, UInt tag2, UInt tag3, UInt tag4) {
+  if (dyncomp_profile_tags) {
+    merge4TagsCount++;
+  }
+
   return MC_(helperc_MERGE_TAGS)(MC_(helperc_MERGE_TAGS)(tag1, tag2),
                                  MC_(helperc_MERGE_TAGS)(tag3, tag4));
 }
@@ -603,10 +620,12 @@ UInt MC_(helperc_MERGE_4_TAGS) (UInt tag1, UInt tag2, UInt tag3, UInt tag4) {
 // intended behavior for comparisons, for example).
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
+  if (dyncomp_profile_tags) {
+    mergeTagsReturn0Count++;
+  }
 
   // TODO: What do we do about LITERAL_TAG???
 
-  mergeTagsReturn0Count++;
   if (IS_ZERO_TAG(tag1) ||
       IS_ZERO_TAG(tag2) ||
       (tag1 == ESP_TAG) ||

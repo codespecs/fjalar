@@ -33,6 +33,8 @@
 #include "libvex_guest_offsets.h"
 #include <limits.h>
 
+extern char dyncomp_profile_tags;
+
 /* Find the tmp currently shadowing the given original tmp.  If none
    so far exists, allocate one.  */
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
@@ -255,10 +257,12 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
    }
 }
 
-UInt numConsts = 0;
 /*------------------------------------------------------------*/
 /*--- Generate shadow values from all kinds of IRExprs.    ---*/
 /*------------------------------------------------------------*/
+
+
+UInt numConsts = 0;
 
 // This is where we need to add calls to helper functions to
 // merge tags because here is where the 'interactions' take place
@@ -277,6 +281,16 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
    IRAtom* vatom3 = expr2tags_DC( dce, atom3 );
    IRAtom* vatom4 = expr2tags_DC( dce, atom4 );
+
+
+   if (dyncomp_profile_tags) {
+      if ((atom1->tag == Iex_Const) ||
+          (atom2->tag == Iex_Const) ||
+          (atom3->tag == Iex_Const) ||
+          (atom4->tag == Iex_Const)) {
+         numConsts++;
+      }
+   }
 
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
@@ -328,6 +342,14 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
    IRAtom* vatom3 = expr2tags_DC( dce, atom3 );
+
+   if (dyncomp_profile_tags) {
+      if ((atom1->tag == Iex_Const) ||
+          (atom2->tag == Iex_Const) ||
+          (atom3->tag == Iex_Const)) {
+         numConsts++;
+      }
+   }
 
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
@@ -384,7 +406,6 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
 }
 
 
-
 // TODO: Update with new opcodes for Valgrind 3.1.0
 //       Look at expr2vbits_Binop() from mc_translate.c:
 static
@@ -395,23 +416,16 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
 
-   if ((atom1->tag == Iex_Const) || (atom2->tag == Iex_Const)) {
-      numConsts++;
-      //      ppIRExpr(vatom1);
-      //      VG_(printf)("\n");
-      //      ppIRExpr(vatom2);
-      //      VG_(printf)("\n");
-   }
-
-        // &&        (vatom1->Iex.CCall.cee->addr == &MC_(helperc_CREATE_TAG))) ||
-
-   //   if ((vatom1->tag == Iex_CCall) ||
-   //       (vatom2->tag == Iex_CCall)) {
-   //      numConsts++;
-   //   }
-
    void*    helper = 0;
    Char*    hname = 0;
+
+   if (dyncomp_profile_tags) {
+      if ((atom1->tag == Iex_Const) ||
+          (atom2->tag == Iex_Const)) {
+         numConsts++;
+      }
+   }
+
    //   IRDirty* di;
    //   IRTemp   datatag;
 
