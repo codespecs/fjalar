@@ -131,7 +131,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
 
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
-   tl_assert(sameKindedAtoms(atom, vatom));
+   //   tl_assert(sameKindedAtoms(atom, vatom));
    ty   = descr->elemTy;
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
@@ -267,6 +267,124 @@ UInt numConsts = 0;
 // as one big switch statement for now in order to provide
 // flexibility for future edits
 
+static
+IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
+                           IROp op,
+                           IRAtom* atom1, IRAtom* atom2,
+                           IRAtom* atom3, IRAtom* atom4 )
+{
+   IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
+   IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
+   IRAtom* vatom3 = expr2tags_DC( dce, atom3 );
+   IRAtom* vatom4 = expr2tags_DC( dce, atom4 );
+
+   tl_assert(isOriginalAtom_DC(dce,atom1));
+   tl_assert(isOriginalAtom_DC(dce,atom2));
+   tl_assert(isOriginalAtom_DC(dce,atom3));
+   tl_assert(isOriginalAtom_DC(dce,atom4));
+   tl_assert(isShadowAtom_DC(dce,vatom1));
+   tl_assert(isShadowAtom_DC(dce,vatom2));
+   tl_assert(isShadowAtom_DC(dce,vatom3));
+   tl_assert(isShadowAtom_DC(dce,vatom4));
+
+   //   tl_assert(sameKindedAtoms(atom1,vatom1));
+   //   tl_assert(sameKindedAtoms(atom2,vatom2));
+   //   tl_assert(sameKindedAtoms(atom3,vatom3));
+   //   tl_assert(sameKindedAtoms(atom4,vatom4));
+
+   switch (op) {
+      case Iop_MAddF64:
+      case Iop_MAddF64r32:
+      case Iop_MSubF64:
+      case Iop_MSubF64r32:
+
+         // Let's try a clean call.  It seems to be correct because of
+         // the fact that merging the same 2 things more than once (in
+         // close proximity) doesn't hurt DO NOT use clean call unless
+         // it has NO side effects and is (nearly) purely functional
+         // like an IRExpr (from the point-of-view of IR, at least)
+
+         // TODO: We can't just nest two mkIRExprCCall's because then
+         // Valgrind complains that the basic block is not 'flat':
+
+         return mkIRExprCCall (Ity_I32,
+                               4 /*Int regparms*/,
+                               "MC_(helperc_MERGE_4_TAGS)",
+                               &MC_(helperc_MERGE_4_TAGS),
+                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
+
+      default:
+         ppIROp(op);
+         VG_(tool_panic)("memcheck:expr2vbits_Qop");
+   }
+}
+
+
+static
+IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
+                             IROp op,
+                             IRAtom* atom1, IRAtom* atom2, IRAtom* atom3 )
+{
+   IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
+   IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
+   IRAtom* vatom3 = expr2tags_DC( dce, atom3 );
+
+   tl_assert(isOriginalAtom_DC(dce,atom1));
+   tl_assert(isOriginalAtom_DC(dce,atom2));
+   tl_assert(isOriginalAtom_DC(dce,atom3));
+   tl_assert(isShadowAtom_DC(dce,vatom1));
+   tl_assert(isShadowAtom_DC(dce,vatom2));
+   tl_assert(isShadowAtom_DC(dce,vatom3));
+
+   //   tl_assert(sameKindedAtoms(atom1,vatom1));
+   //   tl_assert(sameKindedAtoms(atom2,vatom2));
+   //   tl_assert(sameKindedAtoms(atom3,vatom3));
+
+   switch (op) {
+      // pgbovine - Hmmm, these looks like interactions:
+      case Iop_AddF64:
+      case Iop_AddF64r32:
+      case Iop_SubF64:
+      case Iop_SubF64r32:
+      case Iop_MulF64:
+      case Iop_MulF64r32:
+      case Iop_DivF64:
+      case Iop_DivF64r32:
+
+         // Let's try a clean call.  It seems to be correct because of
+         // the fact that merging the same 2 things more than once (in
+         // close proximity) doesn't hurt DO NOT use clean call unless
+         // it has NO side effects and is (nearly) purely functional
+         // like an IRExpr (from the point-of-view of IR, at least)
+
+         // We can make this more efficient, but correctness is more
+         // important right now:
+         return mkIRExprCCall (Ity_I32,
+                               3 /*Int regparms*/,
+                               "MC_(helperc_MERGE_3_TAGS)",
+                               &MC_(helperc_MERGE_3_TAGS),
+                               mkIRExprVec_3( vatom1, vatom2, vatom3 ));
+
+      // pgbovine - Hmmm, these don't look like interactions:
+      case Iop_ScaleF64:
+      case Iop_Yl2xF64:
+      case Iop_Yl2xp1F64:
+      case Iop_AtanF64:
+      case Iop_PRemF64:
+      case Iop_PRem1F64:
+      case Iop_PRemC3210F64:
+      case Iop_PRem1C3210F64:
+
+         return IRExpr_Const(IRConst_U32(0));
+
+      default:
+         ppIROp(op);
+         VG_(tool_panic)("memcheck:expr2vbits_Triop");
+   }
+}
+
+
+
 // TODO: Update with new opcodes for Valgrind 3.1.0
 //       Look at expr2vbits_Binop() from mc_translate.c:
 static
@@ -301,8 +419,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    tl_assert(isOriginalAtom_DC(dce,atom2));
    tl_assert(isShadowAtom_DC(dce,vatom1));
    tl_assert(isShadowAtom_DC(dce,vatom2));
-   tl_assert(sameKindedAtoms(atom1,vatom1));
-   tl_assert(sameKindedAtoms(atom2,vatom2));
+
+   // pgbovine - vatom1 and vatom2 are tmps, atom1 and atom2 can be
+   // consts, right?  I dunno.
+   //   tl_assert(sameKindedAtoms(atom1,vatom1));
+   //   tl_assert(sameKindedAtoms(atom2,vatom2));
 
    // Set the appropriate helper functions for binary
    // operations which are deemed as 'interactions'
@@ -1063,6 +1184,21 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
             return mkexpr(datatag);
          }
+
+      case Iex_Qop:
+         return expr2tags_Qop_DC(
+                   dce,
+                   e->Iex.Qop.op,
+                   e->Iex.Qop.arg1, e->Iex.Qop.arg2,
+		   e->Iex.Qop.arg3, e->Iex.Qop.arg4
+                );
+
+      case Iex_Triop:
+         return expr2tags_Triop_DC(
+                   dce,
+                   e->Iex.Triop.op,
+                   e->Iex.Triop.arg1, e->Iex.Triop.arg2, e->Iex.Triop.arg3
+                );
 
       case Iex_Binop:
          return expr2tags_Binop_DC(

@@ -127,6 +127,9 @@ extern VG_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ( void );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
 
+extern VG_REGPARM(3) UInt MC_(helperc_MERGE_3_TAGS) ( UInt, UInt, UInt );
+extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );
+
 extern VG_REGPARM(2) UInt tag1_is_new ( UInt, UInt );
 extern VG_REGPARM(2) UInt tag2_is_new ( UInt, UInt );
 
