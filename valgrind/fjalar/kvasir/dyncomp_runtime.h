@@ -61,13 +61,13 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
 
 int equivalentTags(UInt t1, UInt t2);
 
-void DC_extra_propagate_val_to_var_sets();
+void DC_extra_propagate_val_to_var_sets(void);
 
 void debugPrintTagsInRange(Addr low, Addr high);
 
 // Tag garbage collector
-void check_whether_to_garbage_collect();
+void check_whether_to_garbage_collect(void);
 
-void garbage_collect_tags();
+void garbage_collect_tags(void);
 
 #endif

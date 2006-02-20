@@ -582,6 +582,21 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   }
 }
 
+// We can make this more efficient, but correctness is more important
+// right now (as it should be!):
+VG_REGPARM(3)
+UInt MC_(helperc_MERGE_3_TAGS) (UInt tag1, UInt tag2, UInt tag3) {
+  return MC_(helperc_MERGE_TAGS)(MC_(helperc_MERGE_TAGS)(tag1, tag2),
+                                 tag3);
+}
+
+// Uhhh, I can't do VG_REGPARM(4) :(
+VG_REGPARM(3)
+UInt MC_(helperc_MERGE_4_TAGS) (UInt tag1, UInt tag2, UInt tag3, UInt tag4) {
+  return MC_(helperc_MERGE_TAGS)(MC_(helperc_MERGE_TAGS)(tag1, tag2),
+                                 MC_(helperc_MERGE_TAGS)(tag3, tag4));
+}
+
 
 // Merge tags but return a value of 0.  This simulate interaction of
 // the two parameters but not passing along the tag to the result (the
