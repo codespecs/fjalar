@@ -653,23 +653,32 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
 
 void fjalar_tool_finish() {
   if (kvasir_with_dyncomp) {
+
+    extern char dyncomp_profile_tags;
     extern UInt numConsts;
     extern UInt mergeTagsCount;
+    extern UInt merge3TagsCount;
+    extern UInt merge4TagsCount;
     extern UInt mergeTagsReturn0Count;
 
-     // Do one extra propagation of variable comparability at the end
-     // of execution once all of the value comparability sets have
-     // been properly updated:
+    // Do one extra propagation of variable comparability at the end
+    // of execution once all of the value comparability sets have
+    // been properly updated:
 
-     DC_extra_propagate_val_to_var_sets();
+    DC_extra_propagate_val_to_var_sets();
 
-     // Now print out the .decls file at the very end of execution:
-     DC_outputDeclsAtEnd();
+    // Now print out the .decls file at the very end of execution:
+    DC_outputDeclsAtEnd();
 
-     VG_(printf)("num. consts = %u\n", numConsts);
-     VG_(printf)("MERGE_TAG calls = %u\n", mergeTagsCount);
-     VG_(printf)("MERGE_TAG_RETURN_0 calls = %u\n", mergeTagsReturn0Count);
-     VG_(printf)("total num. tags = %u\n", totalNumTagsAssigned);
+    if (dyncomp_profile_tags) {
+      VG_(printf)("num. static consts in bin/tri/quad ops = %u\n", numConsts);
+      VG_(printf)("MERGE_TAGS calls = %u\n", mergeTagsCount);
+      VG_(printf)("MERGE_3_TAGS calls = %u\n", merge3TagsCount);
+      VG_(printf)("MERGE_4_TAGS calls = %u\n", merge4TagsCount);
+      VG_(printf)("MERGE_TAGS_RETURN_0 calls = %u\n", mergeTagsReturn0Count);
+      VG_(printf)("total num. tags = %u\n", totalNumTagsAssigned);
+    }
+
   }
 
   if (!dyncomp_without_dtrace) {
