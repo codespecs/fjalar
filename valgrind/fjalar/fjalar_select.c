@@ -258,7 +258,7 @@ FILE* g_open_fp = 0;
 
 // All this action does is print out the name of a variable to
 // g_open_fp:
-TraversalResult printVarNameAction(VariableEntry* var,
+static TraversalResult printVarNameAction(VariableEntry* var,
                                    char* varName,
                                    VariableOrigin varOrigin,
                                    UInt numDereferences,

@@ -21,6 +21,8 @@
 #include <stdio.h>
 
 #include "pub_tool_libcassert.h"
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_clientstate.h"
 
 FILE* decls_fp; // File pointer for .decls file (this will point
                 // to the same thing as dtrace_fp by default since

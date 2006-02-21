@@ -20,6 +20,7 @@
 
 #include "pub_tool_basics.h"
 #include "pub_tool_libcbase.h"
+#include "pub_tool_mallocfree.h"
 
 #include <assert.h>
 #include "mc_translate.h"
@@ -107,5 +108,8 @@ This is called from hooks within mac_shared.h
 char* fjalar_program_stdout_filename;
 char* fjalar_program_stderr_filename;
 
+__inline__ FunctionExecutionState* fnStackPush(void);
+__inline__ FunctionExecutionState* fnStackPop(void);
+__inline__ FunctionExecutionState* fnStackTop(void);
 
 #endif

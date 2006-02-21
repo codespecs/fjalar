@@ -91,7 +91,7 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 
 // Lots of boring file-handling stuff:
 
-void openTheDtraceFile() {
+void openTheDtraceFile(void) {
   openDtraceFile(dtrace_filename);
   VG_(free)(dtrace_filename);
   dtrace_filename = 0;
@@ -471,7 +471,7 @@ static int openDtraceFile(const char *fname) {
 
 // Close the stream and finish writing the .dtrace file
 // as well as all other open file streams
-void finishDtraceFile()
+void finishDtraceFile(void)
 {
   if (dtrace_fp) /* If something goes wrong, we can be called with this null */
     fclose(dtrace_fp);
@@ -485,13 +485,13 @@ void finishDtraceFile()
 
 
 
-void fjalar_tool_pre_clo_init()
+void fjalar_tool_pre_clo_init(void)
 {
   // Nothing to do here
 }
 
 // Initialize kvasir after processing command-line options
-void fjalar_tool_post_clo_init()
+void fjalar_tool_post_clo_init(void)
 {
   // Special-case .dtrace handling if kvasir_dtrace_filename ends in ".gz"
   if (kvasir_dtrace_filename) {

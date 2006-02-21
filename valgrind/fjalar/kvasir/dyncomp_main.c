@@ -96,7 +96,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
 
 // Return a fresh tag and create a singleton set
 // for the uf_object associated with that tag
-static __inline__ UInt grab_fresh_tag() {
+static __inline__ UInt grab_fresh_tag(void) {
   UInt tag;
 
   // Let's try garbage collecting here.  Remember to assign

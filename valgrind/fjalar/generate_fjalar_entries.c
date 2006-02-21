@@ -31,14 +31,14 @@
 
 #include "fjalar_tool.h"
 
-static void initializeFunctionTable();
-static void initializeGlobalVarsList();
-static void initFunctionFjalarNames();
-static void updateAllGlobalVariableNames();
-static void initMemberFuncs();
-static void initConstructorsAndDestructors();
-static void createNamesForUnnamedDwarfEntries();
-static void updateAllVarTypes();
+static void initializeFunctionTable(void);
+static void initializeGlobalVarsList(void);
+static void initFunctionFjalarNames(void);
+static void updateAllGlobalVariableNames(void);
+static void initMemberFuncs(void);
+static void initConstructorsAndDestructors(void);
+static void createNamesForUnnamedDwarfEntries(void);
+static void updateAllVarTypes(void);
 
 static void extractFormalParameterVars(FunctionEntry* f,
 				       function* dwarfFunctionEntry);
@@ -72,9 +72,9 @@ static void extractOneVariable(VarList* varListPtr,
 
 static void repCheckOneVariable(VariableEntry* var);
 
-static void XMLprintGlobalVars();
-static void XMLprintFunctionTable();
-static void XMLprintTypesTable();
+static void XMLprintGlobalVars(void);
+static void XMLprintFunctionTable(void);
+static void XMLprintTypesTable(void);
 static void XMLprintVariablesInList(VarList* varListPtr);
 static void XMLprintOneVariable(VariableEntry* var);
 
@@ -467,7 +467,7 @@ void clearVarList(VarList* varListPtr, char destroyVariableEntries) {
 // that this file exports.
 // (THIS SHOULD ONLY BE CALLED ONCE DURING EACH EXECUTION or else we
 //  will probably get lots of memory leaks.)
-void initializeAllFjalarData()
+void initializeAllFjalarData(void)
 {
   // For debugging:
   if (fjalar_with_gdb) {
@@ -546,7 +546,7 @@ char addressIsGlobal(unsigned int addr) {
 // make take a bit of time to run, but it gives us confidence that our
 // data structures are initialized properly and obviates the need for
 // lots of checks later in execution.
-void repCheckAllEntries() {
+void repCheckAllEntries(void) {
   VarNode* curNode;
   unsigned int numGlobalVars = 0;
   FuncIterator* funcIt;
@@ -944,7 +944,7 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 // thing. We must discard these duplicates.  Remember, we must key in
 // on both the variable names and the address locations for removing
 // duplicates.
-static void initializeGlobalVarsList()
+static void initializeGlobalVarsList(void)
 {
   UInt i;
   dwarf_entry* cur_entry = 0;
@@ -1075,7 +1075,7 @@ static void initializeGlobalVarsList()
 // to use to identify this struct
 // We will name it "unnamed_0x$ID" where $ID
 // is the ID field in hex.
-static void createNamesForUnnamedDwarfEntries()
+static void createNamesForUnnamedDwarfEntries(void)
 {
   unsigned long i;
   dwarf_entry* cur_entry = 0;
@@ -1105,7 +1105,7 @@ static void createNamesForUnnamedDwarfEntries()
 // Iterates through globalVars and generates a fully-qualified name
 // for each global variable so that they are not ambiguous.
 // (Also demangles C++ names if necessary.)
-static void updateAllGlobalVariableNames() {
+static void updateAllGlobalVariableNames(void) {
   char* globalName = 0;
   char *loc_part; /* Part of the name to specify where the variable came from
 		     (doesn't exist in the real language) */
@@ -1199,7 +1199,7 @@ static void updateAllGlobalVariableNames() {
 // for all functions in FunctionTable:
 // Pre: If we are using the --var-list-file= option, the var-list file
 // must have already been processed by the time this function runs
-static void initFunctionFjalarNames() {
+static void initFunctionFjalarNames(void) {
   FuncIterator* funcIt = newFuncIterator();
 
   while (hasNextFunc(funcIt)) {
@@ -1315,7 +1315,7 @@ static void initFunctionFjalarNames() {
 // Note: This does NOT initialize the fjalar_name fields of the
 // functions in FunctionTable.  It is up to initFunctionFjalarNames()
 // to do that after all the smoke has cleared.
-void initializeFunctionTable()
+void initializeFunctionTable(void)
 {
   unsigned long i;
   dwarf_entry* cur_entry = 0;
@@ -2117,7 +2117,7 @@ static void extractReturnVar(FunctionEntry* f,
 // Scan through varsToUpdateTypes, look at the varType entries, look
 // them up in TypesTable, replace the entries with the real versions,
 // and free the faux TypeEntry:
-void updateAllVarTypes() {
+void updateAllVarTypes(void) {
   VarNode* n;
 
   if (0 == varsToUpdateTypes.numVars) {
@@ -2478,7 +2478,7 @@ int equivalentIDs(int ID1, int ID2) {
 // not member functions.  Thus, the only reasonable way to infer that
 // a function is a constructor or a destructor is to pattern match the
 // names of functions to names of types in TypesTable.
-static void initConstructorsAndDestructors() {
+static void initConstructorsAndDestructors(void) {
   FuncIterator* funcIt = newFuncIterator();
 
   // Iterate through all entries in TypesTable:
@@ -2553,7 +2553,7 @@ static void initConstructorsAndDestructors() {
 // Initializes all member functions for structs in TypesTable.
 // Pre: This should only be run after TypesTable and FunctionTable
 // have been initialized.
-static void initMemberFuncs() {
+static void initMemberFuncs(void) {
   TypeIterator* typeIt = newTypeIterator();
 
   // Iterate through all entries in TypesTable:
