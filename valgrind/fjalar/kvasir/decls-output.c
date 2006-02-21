@@ -43,9 +43,9 @@ static const char* DaikonRepTypeString[] = {
 };
 
 
-static void printDeclsHeader();
+static void printDeclsHeader(void);
 static void printAllFunctionDecls(char faux_decls);
-static void printAllObjectPPTDecls();
+static void printAllObjectPPTDecls(void);
 
 // Use this function to print out a function name for .decls/.dtrace.
 void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
@@ -373,7 +373,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
 // Print out the Daikon .decls header depending on whether DynComp is
 // activated or not
-static void printDeclsHeader()
+static void printDeclsHeader(void)
 {
   if (kvasir_with_dyncomp) {
     // VarComparability implicit is the DEFAULT so we don't need to
@@ -519,7 +519,7 @@ static void printAllFunctionDecls(char faux_decls)
 // DynComp: Right now, do NOT try to print out comparability
 // information for OBJECT program points.  We may support this in the
 // future if necessary.
-static void printAllObjectPPTDecls() {
+static void printAllObjectPPTDecls(void) {
   TypeIterator* typeIt = newTypeIterator();
 
   Bool hacked_dyncomp_switch = False;

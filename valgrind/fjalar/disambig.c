@@ -33,7 +33,7 @@ const char* USERTYPE_PREFIX = "usertype.";
 const char* FUNCTION_PREFIX = "function: ";
 
 static Bool shouldOutputVarToDisambig(VariableEntry* var);
-static void processDisambigFile();
+static void processDisambigFile(void);
 
 // Call this AFTER initializeAllFjalarData() so that all relevant data
 // structures are already initialized.

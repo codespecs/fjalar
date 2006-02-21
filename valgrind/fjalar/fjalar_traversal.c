@@ -322,7 +322,7 @@ void visitClassMemberVariables(TypeEntry* class,
 
       // Pointer to the value of the current member variable (only
       // valid if !isSequence):
-      void* pCurVarValue = 0;
+      char* pCurVarValue = 0;
       // Only used if isSequence:
       void** pCurVarValueArray = 0;
 
@@ -378,7 +378,7 @@ void visitClassMemberVariables(TypeEntry* class,
                 // struct's starting address plus the location of the
                 // variable within the struct
                 if (pValueArray[ind]) {
-                  void* curVal = pValueArray[ind] + curVar->data_member_location;
+                  char* curVal = (char*)(pValueArray[ind]) + curVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
                   // DWARF2 info.  botches the locations of double
@@ -422,7 +422,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // The starting address for the member variable is the
               // struct's starting address plus the location of the
               // variable within the struct
-              pCurVarValue = pValue + curVar->data_member_location;
+              pCurVarValue = (char*)(pValue) + curVar->data_member_location;
 
               // Very important! Add offset within the flattened array:
               pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
@@ -529,7 +529,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // Otherwise, we'd have mis-alignment issues.  (I tried
               // it in gdb and it seems to work, though.)
               if (pValueArray[ind]) {
-                void* curVal = pValueArray[ind] + curVar->data_member_location;
+                char* curVal = (char*)(pValueArray[ind]) + curVar->data_member_location;
 
                 // Override for D_DOUBLE types: For some reason, the
                 // DWARF2 info.  botches the locations of double
@@ -569,7 +569,7 @@ void visitClassMemberVariables(TypeEntry* class,
             // The starting address for the member variable is the
             // struct's starting address plus the location of the
             // variable within the struct
-            pCurVarValue = pValue + curVar->data_member_location;
+            pCurVarValue = (char*)(pValue) + curVar->data_member_location;
 
             // Override for D_DOUBLE types: For some reason, the
             // DWARF2 info.  botches the locations of double variables
@@ -692,7 +692,7 @@ void visitClassMemberVariables(TypeEntry* class,
         // with pointer values offset by curSuper->member_var_offset:
         for (ind = 0; ind < numElts; ind++) {
           if (pValueArray[ind]) {
-            superclassOffsetPtrValues[ind] = pValueArray[ind] + curSuper->member_var_offset;
+            superclassOffsetPtrValues[ind] = (char*)(pValueArray[ind]) + curSuper->member_var_offset;
           }
         }
       }
@@ -719,7 +719,7 @@ void visitClassMemberVariables(TypeEntry* class,
                                 // 0 except when you have multiple
                                 // inheritance:
                                 (isSequence ?
-                                 0 : pValue + curSuper->member_var_offset),
+                                 0 : (char*)(pValue) + curSuper->member_var_offset),
                                 isSequence,
                                 // Use the offset one if available,
                                 // otherwise use the regular one if
@@ -1409,7 +1409,7 @@ void visitSingleVar(VariableEntry* var,
           // Build up pValueArray with pointers to the elements of the
           // static array starting at pValue
           for (i = 0; i < numElts; i++) {
-            pValueArray[i] = pValue + (i * bytesBetweenElts);
+            pValueArray[i] = (char*)(pValue) + (i * bytesBetweenElts);
           }
         }
         // Dynamic array:
@@ -1436,7 +1436,7 @@ void visitSingleVar(VariableEntry* var,
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {
-              pValueArray[i] = pNewStartValue + (i * bytesBetweenElts);
+              pValueArray[i] = (char*)(pNewStartValue) + (i * bytesBetweenElts);
             }
           }
         }

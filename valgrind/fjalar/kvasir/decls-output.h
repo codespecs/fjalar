@@ -33,7 +33,7 @@ const char* ENTER_PPT;
 const char* EXIT_PPT;
 
 void outputDeclsFile(char faux_decls);
-void DC_outputDeclsAtEnd();
+void DC_outputDeclsAtEnd(void);
 
 DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
                                      char isString);

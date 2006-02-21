@@ -30,11 +30,11 @@ Functions that run at specific times during execution:
 **********************************************************************/
 
 // Runs before command-line options are processed:
-void fjalar_tool_pre_clo_init();
+void fjalar_tool_pre_clo_init(void);
 // Runs after command-line options are processed:
-void fjalar_tool_post_clo_init();
+void fjalar_tool_post_clo_init(void);
 // Prints instructions for the tool when the --help option is used:
-void fjalar_tool_print_usage();
+void fjalar_tool_print_usage(void);
 
 // Processes command-line options:
 // Returns True if a command-line option has been successfully
@@ -44,7 +44,7 @@ void fjalar_tool_print_usage();
 Bool fjalar_tool_process_cmd_line_option(Char* arg);
 
 // Runs when the program is about to exit:
-void fjalar_tool_finish();
+void fjalar_tool_finish(void);
 
 // These functions are called during every instance of a function
 // entrance and exit, respectively:
@@ -61,9 +61,9 @@ Constructors and destructors for classes that can be sub-classed:
 // object and initialize it with whatever initial state is necessary.
 // DO NOT USE libc malloc/calloc, use the Valgrind versions provided
 // in tool.h instead.
-VariableEntry* constructVariableEntry();
-TypeEntry* constructTypeEntry();
-FunctionEntry* constructFunctionEntry();
+VariableEntry* constructVariableEntry(void);
+TypeEntry* constructTypeEntry(void);
+FunctionEntry* constructFunctionEntry(void);
 
 // Destructors that should clean-up and then call VG_(free) on the
 // respective entries.

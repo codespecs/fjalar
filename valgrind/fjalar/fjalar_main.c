@@ -27,7 +27,7 @@
 #include "pub_tool_options.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_mallocfree.h"
-
+#include "pub_tool_threadstate.h"
 #include "pub_tool_clientstate.h"
 
 #include "generate_fjalar_entries.h"
@@ -84,28 +84,27 @@ int fn_stack_first_free_index;
 // "Pushes" a new entry onto the stack by returning a pointer to it
 // and incrementing fn_stack_first_free_index (Notice that this has
 // slightly has different semantics than a normal stack push)
-__inline__ FunctionExecutionState* fnStackPush() {
+__inline__ FunctionExecutionState* fnStackPush(void) {
   tl_assert(fn_stack_first_free_index < FN_STACK_SIZE);
   fn_stack_first_free_index++;
   return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
 // Returns the top element of the stack and pops it off
-__inline__ FunctionExecutionState* fnStackPop() {
+__inline__ FunctionExecutionState* fnStackPop(void) {
   tl_assert(fn_stack_first_free_index > 0);
   fn_stack_first_free_index--;
   return &(FunctionExecutionStateStack[fn_stack_first_free_index]);
 }
 
 // Returns the top element of the stack
-__inline__ FunctionExecutionState* fnStackTop() {
+__inline__ FunctionExecutionState* fnStackTop(void) {
   tl_assert(fn_stack_first_free_index >= 0);
   return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
-
-void printFunctionExecutionStateStack()
-{
+#ifdef BLEH
+static void printFunctionExecutionStateStack(void) {
   int i;
   for (i = fn_stack_first_free_index - 1; i >= 0; i--) {
     FunctionExecutionState* cur_fn = &FunctionExecutionStateStack[i];
@@ -116,6 +115,7 @@ void printFunctionExecutionStateStack()
 		cur_fn->lowestESP);
   }
 }
+#endif
 
 // This gets updated whenever we encounter a Ist_IMark instruction.
 // It is required to track function exits because the address does not
@@ -400,7 +400,7 @@ void exit_function(FunctionEntry* f)
 // Handles the following command-line options:
 //   --ppt-list-file
 //   --var-list-file
-static void loadAuxiliaryFileData() {
+static void loadAuxiliaryFileData(void) {
 
   if (fjalar_trace_prog_pts_filename) {
     if ((trace_prog_pts_input_fp =
@@ -450,7 +450,7 @@ static void loadAuxiliaryFileData() {
 //   --dump-ppt-file
 //   --dump-var-file
 //   --xml-output-file
-static void outputAuxiliaryFilesAndExit() {
+static void outputAuxiliaryFilesAndExit(void) {
   if (fjalar_dump_prog_pt_names_filename ||
       fjalar_dump_var_names_filename ||
       fjalar_xml_output_filename) {
@@ -650,7 +650,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
 
 
 // This runs after the target program exits
-void fjalar_finish() {
+void fjalar_finish(void) {
 
   // If fjalar_smart_disambig is on, then
   // we must create the .disambig file at the very end after

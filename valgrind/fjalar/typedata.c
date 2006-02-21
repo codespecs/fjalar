@@ -32,6 +32,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_basics.h"
 #include "pub_tool_libcassert.h"
+#include "pub_tool_mallocfree.h"
 
 // Forward declarations so that the compiler won't warn me:
 //extern void  VG_(free)           ( void* p );
@@ -229,7 +230,7 @@ char tag_is_inheritance(unsigned long tag) {
   return (tag == DW_TAG_inheritance);
 }
 
-char tag_is_namespace(unsigned long tag) {
+static char tag_is_namespace(unsigned long tag) {
   return (tag == DW_TAG_namespace);
 }
 
@@ -1030,7 +1031,7 @@ Effects: Links every entry with a type_ID to the actual entry of that type
          (relevant for modifier_type, member, function, formal_parameter,
          variable, array_type, and typedef_type entries)
 */
-static void link_entries_to_type_entries()
+static void link_entries_to_type_entries(void)
 {
   unsigned long idx;
   dwarf_entry* cur_entry = 0;
@@ -1245,7 +1246,7 @@ entry, but we really want to steal its name fields
 //  look up the entry X with the ID given by specification_ID and copy the
 //  start_pc from e to X while copying (aliasing) the name,
 //  mangled_name, return_type_ID, and accessibility from X to e
-void init_specification_and_abstract_stuff() {
+static void init_specification_and_abstract_stuff(void) {
   unsigned long idx;
   dwarf_entry* cur_entry = 0;
 
@@ -1694,7 +1695,7 @@ Effects: Initialize the filename field of each function entry
          e.g. [compile_unit foo.c][...][func1][...][func2][...][compile_unit bar.c][func3]
          func1 and func2 belong to foo.c and func3 belongs to bar.c
 */
-static void initialize_function_filenames()
+static void initialize_function_filenames(void)
 {
   unsigned long idx;
   char* cur_file = 0;
@@ -1720,7 +1721,7 @@ Effects: Links function, collections, and array entries to their respective memb
          while structs, unions, and enumeration types need to have lists of members
          and arrays need to have a list of array_subrange_type entries
 */
-static void link_array_entries_to_members()
+static void link_array_entries_to_members(void)
 {
   unsigned long idx;
   dwarf_entry* cur_entry = 0;
@@ -1802,7 +1803,7 @@ static void link_array_entries_to_members()
 // Fills up typedef_names_map with key/value pairs by picking off
 // the appropriate typedef_type entries in dwarf_entry_array.
 // (This only has to happen once.)
-void initialize_typedef_names_map() {
+static void initialize_typedef_names_map(void) {
   unsigned long idx;
   //  unsigned int totalNumTypedefs = 0;
   dwarf_entry* cur_entry = 0;
