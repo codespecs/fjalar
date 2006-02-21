@@ -71,4 +71,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
                          IRAtom* data );
 IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
 
+void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d );
+
 #endif

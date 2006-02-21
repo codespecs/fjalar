@@ -292,6 +292,12 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
       }
    }
 
+   // Punt early!
+   if (dyncomp_dataflow_only_mode ||
+       dyncomp_dataflow_comparisons_mode) {
+      return IRExpr_Const(IRConst_U32(0));
+   }
+
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
    tl_assert(isOriginalAtom_DC(dce,atom3));
@@ -307,30 +313,43 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    //   tl_assert(sameKindedAtoms(atom4,vatom4));
 
    switch (op) {
+
       case Iop_MAddF64:
       case Iop_MAddF64r32:
       case Iop_MSubF64:
       case Iop_MSubF64r32:
 
-         // Let's try a clean call.  It seems to be correct because of
-         // the fact that merging the same 2 things more than once (in
-         // close proximity) doesn't hurt DO NOT use clean call unless
-         // it has NO side effects and is (nearly) purely functional
-         // like an IRExpr (from the point-of-view of IR, at least)
+         // from libvex_ir.h:
+      /* :: IRRoundingMode(I32) x F64 x F64 x F64 -> F64
+            (computes arg2 * arg3 +/- arg4) */
 
-         // TODO: We can't just nest two mkIRExprCCall's because then
-         // Valgrind complains that the basic block is not 'flat':
 
-         return mkIRExprCCall (Ity_I32,
-                               4 /*Int regparms*/,
-                               "MC_(helperc_MERGE_4_TAGS)",
-                               &MC_(helperc_MERGE_4_TAGS),
-                               mkIRExprVec_4( vatom1, vatom2, vatom3, vatom4 ));
+         // If we are running in units mode, then we should merge the
+         // tags of the 3rd and 4th operands:
+         if (dyncomp_units_mode) {
+            return mkIRExprCCall (Ity_I32,
+                                  2 /*Int regparms*/,
+                                  "MC_(helperc_MERGE_TAGS)",
+                                  &MC_(helperc_MERGE_TAGS),
+                                  mkIRExprVec_2( vatom3, vatom4 ));
+         }
+         // Ok, if we are running in the default mode, then we should
+         // merge the tags of the 2nd, 3rd, and 4th operands:
+         else {
+            return mkIRExprCCall (Ity_I32,
+                                  3 /*Int regparms*/,
+                                  "MC_(helperc_MERGE_3_TAGS)",
+                                  &MC_(helperc_MERGE_3_TAGS),
+                                  mkIRExprVec_3( vatom2, vatom3, vatom4 ));
+         }
+         break;
 
       default:
          ppIROp(op);
-         VG_(tool_panic)("memcheck:expr2vbits_Qop");
+         VG_(tool_panic)("memcheck:expr2tags_Qop");
    }
+
+   VG_(tool_panic)("memcheck:expr2tags_Qop");
 }
 
 
@@ -351,6 +370,12 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       }
    }
 
+   // Punt early!
+   if (dyncomp_dataflow_only_mode ||
+       dyncomp_dataflow_comparisons_mode) {
+      return IRExpr_Const(IRConst_U32(0));
+   }
+
    tl_assert(isOriginalAtom_DC(dce,atom1));
    tl_assert(isOriginalAtom_DC(dce,atom2));
    tl_assert(isOriginalAtom_DC(dce,atom3));
@@ -363,29 +388,46 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
    //   tl_assert(sameKindedAtoms(atom3,vatom3));
 
    switch (op) {
-      // pgbovine - Hmmm, these looks like interactions:
+      // The first arg. is the rounding mode, and the second and third
+      // args. actually participate in the operation, so merge the
+      // tags of the second and third args. as appropriate:
+      /* I32(rm) x F64 x F64 -> F64 */
+
       case Iop_AddF64:
       case Iop_AddF64r32:
       case Iop_SubF64:
       case Iop_SubF64r32:
+
+         return mkIRExprCCall (Ity_I32,
+                               2 /*Int regparms*/,
+                               "MC_(helperc_MERGE_TAGS)",
+                               &MC_(helperc_MERGE_TAGS),
+                               // VERY IMPORTANT!!!  We want to merge the
+                               // tags of the 2nd and 3rd operands!!!
+                               // Because the first one is a rounding
+                               // mode (I think)
+                               /* I32(rm) x F64 x F64 -> F64 */
+                               mkIRExprVec_2( vatom2, vatom3 ));
+
       case Iop_MulF64:
       case Iop_MulF64r32:
       case Iop_DivF64:
       case Iop_DivF64r32:
 
-         // Let's try a clean call.  It seems to be correct because of
-         // the fact that merging the same 2 things more than once (in
-         // close proximity) doesn't hurt DO NOT use clean call unless
-         // it has NO side effects and is (nearly) purely functional
-         // like an IRExpr (from the point-of-view of IR, at least)
-
-         // We can make this more efficient, but correctness is more
-         // important right now:
-         return mkIRExprCCall (Ity_I32,
-                               3 /*Int regparms*/,
-                               "MC_(helperc_MERGE_3_TAGS)",
-                               &MC_(helperc_MERGE_3_TAGS),
-                               mkIRExprVec_3( vatom1, vatom2, vatom3 ));
+         if (!dyncomp_units_mode) {
+            return mkIRExprCCall (Ity_I32,
+                                  2 /*Int regparms*/,
+                                  "MC_(helperc_MERGE_TAGS)",
+                                  &MC_(helperc_MERGE_TAGS),
+                                  // VERY IMPORTANT!!!  We want to merge the
+                                  // tags of the 2nd and 3rd operands!!!
+                                  // Because the first one is a rounding
+                                  // mode (I think)
+                                  /* I32(rm) x F64 x F64 -> F64 */
+                                  mkIRExprVec_2( vatom2, vatom3 ));
+         }
+         // Else fall through ...
+         break;
 
       // pgbovine - Hmmm, these don't look like interactions:
       case Iop_ScaleF64:
@@ -396,13 +438,14 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_PRem1F64:
       case Iop_PRemC3210F64:
       case Iop_PRem1C3210F64:
-
-         return IRExpr_Const(IRConst_U32(0));
+         break;
 
       default:
          ppIROp(op);
-         VG_(tool_panic)("memcheck:expr2vbits_Triop");
+         VG_(tool_panic)("memcheck:expr2tags_Triop");
    }
+
+   return IRExpr_Const(IRConst_U32(0));
 }
 
 
@@ -1359,4 +1402,20 @@ void do_shadow_STle_DC ( DCEnv* dce,
       stmt( dce->bb, IRStmt_Dirty(di) );
    }
 
+}
+
+
+// Handle dirty calls really stupidly by simply creating a fresh tag
+// as the result of the dirty call.  This ignores all the stuff that
+// goes on inside of the dirty call, but that should be okay.
+void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d ) {
+   if (d->tmp != IRTemp_INVALID) {
+      IRDirty* di = unsafeIRDirty_1_N(findShadowTmp_DC(dce, d->tmp),
+                                      0/*regparms*/,
+                                      "MC_(helperc_CREATE_TAG)",
+                                      &MC_(helperc_CREATE_TAG),
+                                      mkIRExprVec_0());
+      setHelperAnns_DC( dce, di );
+      stmt( dce->bb, IRStmt_Dirty(di) );
+   }
 }

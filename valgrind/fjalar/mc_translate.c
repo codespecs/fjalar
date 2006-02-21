@@ -3364,11 +3364,7 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_Dirty:
-            // pgbovine - TODO: In the future, we probably want to handle
-            // dirty helper calls just like how we handle clean
-            // helper calls.  Assume that all relevant
-            // (non-masked?) operands interact.
-            // do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
+            do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
             break;
 
          default:
