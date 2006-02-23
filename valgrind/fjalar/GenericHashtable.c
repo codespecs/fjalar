@@ -229,6 +229,7 @@ void genfreehashtableandvalues(struct genhashtable * ht) {
 	VG_(free)(genptr);
 	genptr=tmpptr;
       }
+      ht->bins[i] = 0;
     }
   }
   VG_(free)(ht->bins);
