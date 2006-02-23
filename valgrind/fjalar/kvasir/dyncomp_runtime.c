@@ -50,9 +50,10 @@ int g_curCompNumber = 1;
 //                    of garbage collection
 // Value (Array contents): new tag that is as small as possible (start
 //                         at 1 and increments as newTagNumber)
-// Initialize to (dyncomp_gc_after_n_tags + 1) during the beginning of
-// the program and clear it before every run of garbage_collect_tags()
-// (Remember that index 0 is never used because 0 tag is invalid)
+//
+// Clear and initialize it to (nextTag + 1) before every run of
+// garbage collector (Remember that index 0 is never used because 0
+// tag is invalid)
 UInt* g_oldToNewMap = 0;
 
 
@@ -587,7 +588,7 @@ void debugPrintTagsInRange(Addr low, Addr high) {
 // Offsets for all of the registers in the x86 guest state
 // as depicted in vex/pub/libvex_guest_x86.h:
 
-#define NUM_TOTAL_X86_OFFSETS 54 // 55
+#define NUM_TOTAL_X86_OFFSETS 56 // 55
 
 // Use the offsetof macro to get offsets instead of
 // hand-coding them:
@@ -609,10 +610,9 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 
   offsetof(VexGuestX86State, guest_DFLAG),
   offsetof(VexGuestX86State, guest_IDFLAG),
+  offsetof(VexGuestX86State, guest_ACFLAG),
 
   offsetof(VexGuestX86State, guest_EIP),
-
-  offsetof(VexGuestX86State, guest_FTOP),
 
   offsetof(VexGuestX86State, guest_FPREG[0]),
   offsetof(VexGuestX86State, guest_FPREG[1]),
@@ -634,9 +634,9 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 
   offsetof(VexGuestX86State, guest_FPROUND),
   offsetof(VexGuestX86State, guest_FC3210),
+  offsetof(VexGuestX86State, guest_FTOP),
 
   offsetof(VexGuestX86State, guest_SSEROUND),
-
   offsetof(VexGuestX86State, guest_XMM0),
   offsetof(VexGuestX86State, guest_XMM1),
   offsetof(VexGuestX86State, guest_XMM2),
@@ -661,6 +661,7 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   offsetof(VexGuestX86State, guest_TISTART),
   offsetof(VexGuestX86State, guest_TILEN)
 
+  //  offsetof(VexGuestX86State, guest_NRADDR)
   //  offsetof(VexGuestX86State, padding)
 };
 
@@ -706,11 +707,10 @@ void garbage_collect_tags() {
   // values in oldToNewMap)
   UInt newTagNumber = 1;
 
-  // Clear g_oldToNewMap before running garbage collector
-  VG_(memset)(g_oldToNewMap,
-              0,
-              (dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
-
+  if (g_oldToNewMap) {
+    VG_(free)(g_oldToNewMap);
+  }
+  g_oldToNewMap = VG_(calloc)((nextTag + 1), sizeof(*g_oldToNewMap));
 
   VG_(printf)("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
@@ -840,7 +840,7 @@ void garbage_collect_tags() {
 
         // Clear the hashtable and generate a new one:
         // (Hopefully this won't cause memory leaks or weird crashes)
-        genfreehashtableandvalues(cur_entry->ppt_entry_var_uf_map);
+        genfreehashtable/*andvalues*/(cur_entry->ppt_entry_var_uf_map);
 
         cur_entry->ppt_entry_var_uf_map =
           genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
@@ -883,7 +883,7 @@ void garbage_collect_tags() {
 
       // Clear the hashtable and generate a new one:
       // (Hopefully this won't cause memory leaks or weird crashes)
-      genfreehashtableandvalues(cur_entry->ppt_exit_var_uf_map);
+      genfreehashtable/*andvalues*/(cur_entry->ppt_exit_var_uf_map);
 
       cur_entry->ppt_exit_var_uf_map =
         genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
@@ -950,130 +950,3 @@ void garbage_collect_tags() {
               nextTag, totalNumTagsAssigned);
 
 }
-
-
-// This is called whenever a new 2^16 chunk is allocated (either for
-// holding tags of uf_object entries).  Query the relationship between
-// n_primary_tag_map_init_entries and
-// n_primary_val_uf_object_map_init_entries to determine whether to
-// call the garbage collector
-/* void check_whether_to_garbage_collect() { */
-/*   const int k = 2; */
-
-/*   // As a heuristic, garbage-collect when */
-/*   // (n_primary_val_uf_object_map_init_entries > */
-/*   // (k * n_primary_tag_map_init_entries)) because the maximum amount of */
-/*   // tags in use is (2^16 * n_primary_tag_map_init_entries) and the */
-/*   // number of allocated tags is at most (2^16 * */
-/*   // n_primary_val_uf_object_map_init_entries) */
-/*   // - where k is some constant factor */
-/*   VG_(printf)("Tag map init entries: %u, uf_object map init entries: %u\n", */
-/*               n_primary_tag_map_init_entries, */
-/*               n_primary_val_uf_object_map_init_entries); */
-
-/*   if (n_primary_val_uf_object_map_init_entries > */
-/*       (k * n_primary_tag_map_init_entries)) { */
-/*         garbage_collect_tags(); */
-/*   } */
-
-/*   // As another heuristic, do it every x number of total tag */
-/*   // assignments: */
-
-/* } */
-
-
-// Implementation of reference counting:
-// (alternative to garbage collection)
-
-// Note: The framework is laid down, but the complete system
-//       has not yet been implemented due to some difficulties
-//       in dealing with the Valgrind IR
-
-/* // free_list is actually a uf_object* pointer that points to some */
-/* // element in val_uf (implemented as a two-level uf_object map) that */
-/* // has been freed. All uf_object elements that have been freed must */
-/* // have some special sentinel ref_count value - let's say USHRT_MAX */
-/* // (0xFFFF) - to denote that they have been freed and are in */
-/* // free_list.  All ub_object entries in free_list have their parent */
-/* // fields point to the NEXT freed entry in free_list. The last entry */
-/* // in free_list has a NULL parent field. Notice that we are */
-/* // overloading the parent field to mean different things when an entry */
-/* // is on the free list (linked list link) and not on the free list */
-/* // (union-find set link). */
-/* uf_object* free_list = NULL; */
-
-/* // During run-time, whenever the ref_count of a uf_object drops to 0 */
-/* // (from a non-zero number), then add it to the head of */
-/* // free_list. This involves setting ref_count to USHRT_MAX, */
-/* // decrementing the ref_count field of its parent, setting its parent */
-/* // field to point to whatever free_list points to (the old head of the */
-/* // list), and changing free_list to point to this entry. */
-
-/* // Pre: obj->ref_count just dropped to 0 from a non-zero number */
-/* void free_list_push(uf_object* obj) { */
-
-/*   if (obj->tag == 1706695) { */
-/*     VG_(printf)("free_list_push(): obj->tag=%u\n", obj->tag); */
-/*   } */
-
-/*   DEC_REF_COUNT(obj->parent); */
-/*   obj->ref_count = USHRT_MAX; // Special sentinel value */
-/*   obj->parent = free_list; */
-/*   free_list = obj; */
-/* } */
-
-
-/* // Whenever a new tag is assigned, first check to see if free_list is */
-/* // non-NULL. If so, then there are freed tags waiting to be */
-/* // re-assigned so pop the first element off of free_list (by crawling */
-/* // one element down the list), initialize that popped element to a */
-/* // singleton set, and return the tag associated with that element. */
-
-/* // Pre: free_list is non-NULL */
-/* // Returns the tag of the head element of free_list, pops that element */
-/* // off of free_list, and initializes that element to a singleton set */
-/* UInt free_list_pop() { */
-/*   uf_object* popped_uf_obj = free_list; */
-/*   free_list = popped_uf_obj->parent; */
-/*   uf_make_set(popped_uf_obj, popped_uf_obj->tag); */
-
-/*   //  VG_(printf)("free_list_pop(): tag=%u, free_list=%p\n", */
-/*   //              popped_uf_obj->tag, free_list); */
-
-/*   return popped_uf_obj->tag; */
-/* } */
-
-/* // Increments the ref_count field of the uf_object entry corresponding */
-/* // to this tag.  This should be called whenever an operation causes a */
-/* // tag to be stored in one extra location. */
-
-/* // Pre: A uf_object for this tag has been allocated somewhere, */
-/* //      which means (!IS_SECONDARY_UF_NULL(tag)) */
-/* void inc_ref_count_for_tag(UInt tag) { */
-/*   // Punt if it's a zero tag or UINT_MAX (special for ESP) */
-/*   if (tag && (tag != UINT_MAX)) { */
-/*     uf_object* obj = GET_UF_OBJECT_PTR(tag); */
-/*     INC_REF_COUNT(obj); */
-/*   } */
-/* } */
-
-/* // Decrements the ref_count field of the uf_object entry corresponding */
-/* // to this tag, and if it becomes 0, add it to free_list.  This should */
-/* // be called whenever an operation causes a tag to be removed from */
-/* // some location. */
-
-/* // Pre: A uf_object for this tag has been allocated somewhere, */
-/* //      which means (!IS_SECONDARY_UF_NULL(tag)) */
-/* void dec_ref_count_for_tag(UInt tag) { */
-/*   // Punt if it's a zero tag or UINT_MAX (special for ESP) */
-/*   if (tag && (tag != UINT_MAX)) { */
-
-/*     uf_object* obj = GET_UF_OBJECT_PTR(tag); */
-/*     DEC_REF_COUNT(obj); */
-
-/*     // This tag may be eligible to be added onto free_list: */
-/*     if (0 == obj->ref_count) { */
-/*       free_list_push(obj); */
-/*     } */
-/*   } */
-/* } */

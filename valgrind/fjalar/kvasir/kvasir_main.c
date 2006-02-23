@@ -529,14 +529,6 @@ void fjalar_tool_post_clo_init(void)
      print_declarations = 0;
   }
 
-  // If we are using DynComp with the garbage collector, initialize
-  // g_oldToNewMap:
-
-  extern UInt* g_oldToNewMap;
-  if (kvasir_with_dyncomp && !dyncomp_no_gc) {
-     g_oldToNewMap = VG_(am_shadow_alloc)((dyncomp_gc_after_n_tags + 1) * sizeof(*g_oldToNewMap));
-  }
-
   createDeclsAndDtraceFiles(executable_filename);
 
   // Remember to not actually output the .decls right now when we're
