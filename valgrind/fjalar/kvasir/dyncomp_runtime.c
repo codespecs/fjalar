@@ -840,7 +840,7 @@ void garbage_collect_tags() {
 
         // Clear the hashtable and generate a new one:
         // (Hopefully this won't cause memory leaks or weird crashes)
-        genfreehashtable/*andvalues*/(cur_entry->ppt_entry_var_uf_map);
+        genfreehashtableandvalues(cur_entry->ppt_entry_var_uf_map);
 
         cur_entry->ppt_entry_var_uf_map =
           genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
@@ -883,7 +883,7 @@ void garbage_collect_tags() {
 
       // Clear the hashtable and generate a new one:
       // (Hopefully this won't cause memory leaks or weird crashes)
-      genfreehashtable/*andvalues*/(cur_entry->ppt_exit_var_uf_map);
+      genfreehashtableandvalues(cur_entry->ppt_exit_var_uf_map);
 
       cur_entry->ppt_exit_var_uf_map =
         genallocateSMALLhashtable((unsigned int (*)(void *)) 0,

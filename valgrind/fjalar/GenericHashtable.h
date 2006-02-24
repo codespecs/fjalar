@@ -1,8 +1,11 @@
 /*
-   This file is part of Kvasir, a Valgrind skin that implements the
-   C language front-end for the Daikon Invariant Detection System
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
 
-   Copyright (C) 2004 Brian Demsky, MIT CSAIL
+   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+
+   GenericHashtable created by:
+     Copyright (C) 2004 Brian Demsky, MIT CSAIL
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
