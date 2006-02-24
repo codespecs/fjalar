@@ -1102,12 +1102,23 @@ void visitVariable(VariableEntry* var,
 
   // In preparation for a new round of variable visits, initialize a
   // new VisitedStructsTable, freeing an old one if necessary
-  if (VisitedStructsTable) {
-    genfreehashtable(VisitedStructsTable);
-    VisitedStructsTable = 0;
+
+  // Profiling has shown that allocation of this hashtable takes a lot
+  // of the total execution time because it is called very often, so
+  // we should only do it if this variable is a struct/union type
+  // (otherwise, it's not necessary because there are no derived
+  // variables):
+  if (var->varType->isStructUnionType) {
+
+    if (VisitedStructsTable) {
+      genfreehashtable(VisitedStructsTable);
+      VisitedStructsTable = 0;
+    }
+
+    // Use a small hashtable to save time and space:
+    VisitedStructsTable = genallocateSMALLhashtable(0,
+                                                    (int (*)(void *,void *)) &equivalentIDs);
   }
-  VisitedStructsTable = genallocatehashtable(0,
-                                             (int (*)(void *,void *)) &equivalentIDs);
 
   // Also initialize trace_vars_tree based on varOrigin and
   // varFuncInfo:
