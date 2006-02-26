@@ -221,6 +221,16 @@ void visitClassMembersNoValues(TypeEntry* class,
                                                                 UInt,
                                                                 FunctionEntry*,
                                                                 char)) {
+
+  if (VisitedStructsTable) {
+    genfreehashtable(VisitedStructsTable);
+    VisitedStructsTable = 0;
+  }
+
+  // Use a small hashtable to save time and space:
+  VisitedStructsTable = genallocateSMALLhashtable(0,
+                                                  (int (*)(void *,void *)) &equivalentIDs);
+
   visitClassMemberVariables(class,
                             0,
                             0,
@@ -229,10 +239,7 @@ void visitClassMembersNoValues(TypeEntry* class,
                             performAction,
                             GLOBAL_VAR, // doesn't matter, I don't think
                             0,
-                            // This should be 1 because we count
-                            // 'this' struct as one level of struct
-                            // dereferences:
-                            1,
+                            0,
                             0,
                             0,
                             INVALID_RESULT);
