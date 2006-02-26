@@ -8,7 +8,7 @@
   and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
   Seward, jseward@acm.org)
 
-  Copyright (C) 2004-2005 Philip Guo, MIT CSAIL Program Analysis Group
+  Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -65,44 +65,68 @@ UInt* g_oldToNewMap = 0;
 void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
                              char isEnter,
                              int numDaikonVars) {
-  // Don't do anything if we are attempting to allocate for enter
-  // and are not using --separate-entry-exit-comp
+  // Don't do anything if we are attempting to allocate for enter and
+  // are not using --separate-entry-exit-comp
   if (isEnter && !dyncomp_separate_entry_exit_comp) {
     return;
   }
 
   if (dyncomp_separate_entry_exit_comp && isEnter) {
-    // no hash function needed because GenericHashtable.h simply mods
-    // it by the current size of the table
-    funcPtr->ppt_entry_var_uf_map =
-      genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
-                                (int (*)(void *,void *)) &equivalentTags);
+    if (dyncomp_detailed_mode) {
+      UInt bitarray_size = bitarraySize(numDaikonVars);
+      if (bitarray_size > 0) {
+        funcPtr->ppt_entry_bitmatrix = VG_(calloc)(bitarray_size,
+                                                   sizeof(*(funcPtr->ppt_entry_bitmatrix)));
 
-    if (numDaikonVars > 0) {
-      funcPtr->ppt_entry_var_tags =
-        VG_(calloc)(numDaikonVars,
-                    sizeof(*(funcPtr->ppt_entry_var_tags)));
+        //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
+        //                    numDaikonVars, bitarray_size);
+      }
+    }
+    else {
+      // no hash function needed because GenericHashtable.h simply
+      // mods it by the current size of the table
+      funcPtr->ppt_entry_var_uf_map =
+        genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                                  (int (*)(void *,void *)) &equivalentTags);
 
-      funcPtr->ppt_entry_new_tags =
-        VG_(calloc)(numDaikonVars,
-                    sizeof(*(funcPtr->ppt_entry_new_tags)));
+      if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
+        funcPtr->ppt_entry_var_tags = VG_(calloc)(numDaikonVars,
+                                                  sizeof(*(funcPtr->ppt_entry_var_tags)));
+      }
+    }
+
+    if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
+      funcPtr->ppt_entry_new_tags = VG_(calloc)(numDaikonVars,
+                                                sizeof(*(funcPtr->ppt_entry_new_tags)));
     }
 
     funcPtr->num_entry_daikon_vars = numDaikonVars;
   }
   else {
-    funcPtr->ppt_exit_var_uf_map =
-      genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
-                                (int (*)(void *,void *)) &equivalentTags);
+    if (dyncomp_detailed_mode) {
+      UInt bitarray_size = bitarraySize(numDaikonVars);
+      if (bitarray_size > 0) {
+        funcPtr->ppt_exit_bitmatrix = VG_(calloc)(bitarray_size,
+                                                  sizeof(*(funcPtr->ppt_exit_bitmatrix)));
 
-    if (numDaikonVars > 0) {
-      funcPtr->ppt_exit_var_tags =
-        VG_(calloc)(numDaikonVars,
-                    sizeof(*(funcPtr->ppt_exit_var_tags)));
+        //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
+        //                    numDaikonVars, bitarray_size);
+      }
+    }
+    else {
+      funcPtr->ppt_exit_var_uf_map =
+        genallocateSMALLhashtable((unsigned int (*)(void *)) 0,
+                                  (int (*)(void *,void *)) &equivalentTags);
 
-      funcPtr->ppt_exit_new_tags =
-        VG_(calloc)(numDaikonVars,
-                    sizeof(*(funcPtr->ppt_exit_new_tags)));
+      if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
+        funcPtr->ppt_exit_var_tags = VG_(calloc)(numDaikonVars,
+                                                 sizeof(*(funcPtr->ppt_exit_var_tags)));
+      }
+    }
+
+    if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
+      funcPtr->ppt_exit_new_tags = VG_(calloc)(numDaikonVars,
+                                               sizeof(*(funcPtr->ppt_exit_new_tags)));
     }
 
     funcPtr->num_exit_daikon_vars = numDaikonVars;
@@ -110,28 +134,40 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
 }
 
 void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
-  // Don't do anything if we are attempting to allocate for enter
-  // and are not using --separate-entry-exit-comp
+  // Don't do anything if we are attempting to free for enter and are
+  // not using --separate-entry-exit-comp
   if (isEnter && !dyncomp_separate_entry_exit_comp) {
     return;
   }
 
   if (dyncomp_separate_entry_exit_comp && isEnter) {
-    genfreehashtableandvalues(funcPtr->ppt_entry_var_uf_map);
-    VG_(free)(funcPtr->ppt_entry_var_tags);
-    VG_(free)(funcPtr->ppt_entry_new_tags);
+    if (dyncomp_detailed_mode) {
+      VG_(free)(funcPtr->ppt_entry_bitmatrix);
+      funcPtr->ppt_entry_bitmatrix = 0;
+    }
+    else {
+      genfreehashtableandvalues(funcPtr->ppt_entry_var_uf_map);
+      funcPtr->ppt_entry_var_uf_map = 0;
+      VG_(free)(funcPtr->ppt_entry_var_tags);
+      funcPtr->ppt_entry_var_tags = 0;
+    }
 
-    funcPtr->ppt_entry_var_uf_map = 0;
-    funcPtr->ppt_entry_var_tags = 0;
+    VG_(free)(funcPtr->ppt_entry_new_tags);
     funcPtr->ppt_entry_new_tags = 0;
   }
   else {
-    genfreehashtableandvalues(funcPtr->ppt_exit_var_uf_map);
-    VG_(free)(funcPtr->ppt_exit_var_tags);
-    VG_(free)(funcPtr->ppt_exit_new_tags);
+    if (dyncomp_detailed_mode) {
+      VG_(free)(funcPtr->ppt_exit_bitmatrix);
+      funcPtr->ppt_exit_bitmatrix = 0;
+    }
+    else {
+      genfreehashtableandvalues(funcPtr->ppt_exit_var_uf_map);
+      funcPtr->ppt_exit_var_uf_map = 0;
+      VG_(free)(funcPtr->ppt_exit_var_tags);
+      funcPtr->ppt_exit_var_tags = 0;
+    }
 
-    funcPtr->ppt_exit_var_uf_map = 0;
-    funcPtr->ppt_exit_var_tags = 0;
+    VG_(free)(funcPtr->ppt_exit_new_tags);
     funcPtr->ppt_exit_new_tags = 0;
   }
 }
@@ -257,6 +293,9 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags, *new_tags;
 
+  if (dyncomp_detailed_mode)
+    return;
+
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -330,6 +369,9 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
+  if (dyncomp_detailed_mode)
+    return;
+
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -401,6 +443,9 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
 
   struct genhashtable* var_uf_map;
   UInt *var_tags;
+
+  if (dyncomp_detailed_mode)
+    return 0;
 
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
@@ -949,4 +994,141 @@ void garbage_collect_tags() {
   VG_(printf)("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
 
+}
+
+
+/*******************************************************************
+
+ DynComp detailed mode:
+
+ This mode for converting value to variable comparability takes O(n^2)
+ time and space but provides better precision than the default mode,
+ which takes roughly O(n).  The general idea is to keep a bit-matrix
+ at every program point and mark two variables as comparable at a
+ program point if at any execution they ever held values that
+ interacted (have the same leader tag).
+
+ e.g., for a particular program point, if there are 6 variables,
+       then the matrix would look like the following:
+
+    0  1  2  3  4  5
+
+ 0     X  X  X  X  X
+
+ 1        X  X  X  X
+
+ 2           X  X  X
+
+ 3              X  X
+
+ 4                 X
+
+ 5
+
+
+ For n variables, the maximum number of marks (denoted by 'X') is
+ (1/2)*(n^2 - n).  Only the upper triangle needs to be allocated
+ because the lower triangle (and diagonal) is redundant information.
+
+ Thus, the densest representation possible is a bit array of size
+ (1/2)*(n^2 - n), which can be represented as an array of chars of
+ size (((1/2)*(n^2 - n)) / 8) rounded up to the nearest byte.  This is
+ represented by the "UChar* ppt_[entry|exit]_bitmatrix" fields inside
+ of each DaikonFunctionEntry.
+
+ Bitmatrix Abstraction Function:
+
+ To represent the upper triangle of an n by n matrix, we use a bit
+ array of (1/2)*(n^2 - n) elements.  Here is how the mapping works:
+
+
+    0  1  2  3  4  5 (horizontal entries indexed by j)
+   +-----------------
+ 0 |   0  1  2  3  4
+   |
+ 1 |      5  6  7  8
+   |
+ 2 |         9  10 11
+   |
+ 3 |            12 13
+   |
+ 4 |               14
+   |
+ 5 |
+
+(vertical entries indexed by i)
+
+
+ The numbers indicate the index in the bitarray that corresponds to
+ that spot in the matrix.
+
+     ABSTRACT                      CONCRETE
+  bitmatrix[i][j]   <==>   bitarray[((i*n) - (1/2)(i^2+i)) + (j-i-1)]
+
+  where (i < j), 0 <= i < n, 0 <= j < n
+
+  running example:
+
+  n = 6
+
+     i     j      bitarray index
+  -----------------------------------
+     0     1         0
+     0     2         1
+     0     3         2
+     0     4         3
+     0     5         4
+     1     2         5
+     1     3         6
+     1     4         7
+     1     5         8
+     2     3         9
+     2     4         10
+     2     5         11
+     3     4         12
+     3     5         13
+     4     5         14
+
+ (g_variableIndex is the running variable index that iterates through
+ all n variables, starting at 0 and going up until n - 1.)
+
+*******************************************************************/
+
+// Returns the size (in bytes) of a bit array required to hold the
+// upper triangle of an n by n matrix
+UInt bitarraySize(UInt n) {
+  UInt num_bits = (((n*n) - n)/2);
+  UInt num_bytes = num_bits / 8;
+  // Round up if necessary:
+  if (num_bits % 8) {
+    num_bytes++;
+  }
+  return num_bytes;
+}
+
+// Pre: i < j, 0 <= i < n, 0 <= j < n where n is length(bitarray)
+// Return: 1 if the (i,j)-th spot in the matrix is marked, 0 otherwise.
+char isMarked(UChar* bitarray, UInt n, UInt i, UInt j) {
+  UInt index = ((i*n) - (((i*i)+i)/2)) + (j-i-1);
+  UInt bitarray_base = index / 8;
+  UInt bitarray_offset = index % 8;
+
+  // Remove for performance boost:
+  tl_assert((i < j) && (i < n) && (j < n));
+
+  return ((bitarray[bitarray_base] >> bitarray_offset) & 0x1);
+}
+
+// Pre: i < j, 0 <= i < n, 0 <= j < n where n is length(bitarray)
+// Marks the (i,j)-th spot in the matrix represented by bitarray
+void mark(UChar* bitarray, UInt n, UInt i, UInt j) {
+  UInt index = ((i*n) - (((i*i)+i)/2)) + (j-i-1);
+  UInt bitarray_base = index / 8;
+    UInt bitarray_offset = index % 8;
+  UChar mask = 1 << bitarray_offset;
+
+  // Remove for performance boost:
+  tl_assert((i < j) && (i < n) && (j < n));
+
+  bitarray[bitarray_base] |= mask;
 }

@@ -70,4 +70,9 @@ void check_whether_to_garbage_collect(void);
 
 void garbage_collect_tags(void);
 
+// DynComp detailed mode (--dyncomp-detailed-mode):
+UInt bitarraySize(UInt n);
+char isMarked(UChar* bitarray, UInt n, UInt i, UInt j);
+void mark(UChar* bitarray, UInt n, UInt i, UInt j);
+
 #endif

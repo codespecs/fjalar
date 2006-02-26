@@ -75,6 +75,7 @@ typedef struct {
 
   // var_uf_map is the variable analogue to val_uf, which is the union-find
   // for all values ever created in a program.
+  // (null if --dyncomp-detailed-mode is on)
   struct genhashtable* ppt_entry_var_uf_map; // Inactive unless --separate-entry-exit-comp is on
   struct genhashtable* ppt_exit_var_uf_map;
 
@@ -82,6 +83,7 @@ typedef struct {
   // variables at that program point) which contains tags which are the
   // leaders of the comparability sets of their value's tags at that
   // program point.
+  // (null if --dyncomp-detailed-mode is on)
   UInt* ppt_entry_var_tags; // Inactive unless --separate-entry-exit-comp is on
   UInt* ppt_exit_var_tags;
 
@@ -93,6 +95,14 @@ typedef struct {
   UInt* ppt_entry_new_tags; // Inactive unless --separate-entry-exit-comp is on
   UInt* ppt_exit_new_tags;
 
+  // bitmatrix: For DynComp detailed mode (see the relevant section in
+  // dyncomp_runtime.c), this represents the matrix of variables that
+  // are comparable based upon comparable values they shared
+  // throughout execution.  (Only non-null if --dyncomp-detailed-mode
+  // is on.)
+  UChar* ppt_entry_bitmatrix; // Inactive unless --separate-entry-exit-comp is on
+  UChar* ppt_exit_bitmatrix;
+
   // The size of var_tags and new_tags can be initialized during the .decls
   // run because we can count up how many Daikon variables exist at that
   // program point.  The number of Daikon variables as well as their order
@@ -102,6 +112,8 @@ typedef struct {
   // output to maintain these variables in the same order).
 
   // This tells the sizes of ppt_[entry|exit]_[var|new]_tags
+  // I think that num_exit_daikon_vars >= num_entry_daikon_vars
+  // because at exit points, there are return values
   UInt num_entry_daikon_vars; // Inactive unless --separate-entry-exit-comp is on
   UInt num_exit_daikon_vars;
 
@@ -126,6 +138,7 @@ Bool print_declarations;
 Bool kvasir_with_dyncomp;
 Bool dyncomp_no_gc;
 Bool dyncomp_fast_mode;
+Bool dyncomp_detailed_mode;
 int  dyncomp_gc_after_n_tags;
 Bool dyncomp_without_dtrace;
 Bool dyncomp_print_debug_info;

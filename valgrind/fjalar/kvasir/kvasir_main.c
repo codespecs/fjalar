@@ -60,6 +60,7 @@ Bool print_declarations = 1;
 Bool kvasir_with_dyncomp = False;
 Bool dyncomp_no_gc = False;
 Bool dyncomp_fast_mode = False;
+Bool dyncomp_detailed_mode = False;
 int  dyncomp_gc_after_n_tags = 10000000;
 Bool dyncomp_without_dtrace = False;
 Bool dyncomp_print_debug_info = False;
@@ -582,6 +583,9 @@ void fjalar_tool_print_usage()
 "                             but may run out of memory for long-running programs)\n"
 "    --dyncomp-fast-mode      Approximates the handling of literals for comparability.\n"
 "                             (Loses some precision but faster and takes less memory)\n"
+"    --dyncomp-detailed-mode  Uses an O(n^2) space/time algorithm for determining\n"
+"                             variable comparability, which is potentially more precise\n"
+"                             but takes up more resources than the O(n) default algorithm\n"
 "    --separate-entry-exit-comp  Allows variables to have distinct comparability\n"
 "                                numbers at function entrance/exit when run with\n"
 "                                DynComp.  This provides more accuracy, but may\n"
@@ -626,6 +630,7 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("with-dyncomp",   kvasir_with_dyncomp)
   else VG_YESNO_CLO("no-dyncomp-gc",     dyncomp_no_gc)
   else VG_YESNO_CLO("dyncomp-fast-mode", dyncomp_fast_mode)
+  else VG_YESNO_CLO("dyncomp-detailed-mode", dyncomp_detailed_mode)
   else VG_BNUM_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
 		   1, 0x7fffffff)
   else VG_YESNO_CLO("dyncomp-units",         dyncomp_units_mode)
