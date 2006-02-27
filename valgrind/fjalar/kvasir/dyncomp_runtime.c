@@ -469,9 +469,6 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
-  if (dyncomp_detailed_mode)
-    return 0;
-
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -483,23 +480,11 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
     var_tags = funcPtr->ppt_exit_var_tags;
   }
 
-  tag = var_tags[daikonVarIndex];
-
-  if (0 == tag) {
-    comp_number = g_curCompNumber;
-    g_curCompNumber++;
-  }
-  else {
-    // First, convert the tag to its leader.  This is very
-    // important, because if we don't do this, we are going to
-    // get smaller comparability sets, which is inaccurate.
-    // We should map the LEADERS (not individual tags) to
-    // comparability numbers because the leaders represent
-    // the distinctive sets.
-    UInt leader = var_uf_map_find_leader(var_uf_map, tag);
-
-    var_tags[daikonVarIndex] = leader;
-
+  if (dyncomp_detailed_mode) {
+    // var_tags already contains the leaders, so all we need to do is
+    // to have it interact with g_curCompNumber to produce the correct
+    // numbers:
+    UInt leader = var_tags[daikonVarIndex];
     if (gencontains(g_compNumberMap, (void*)leader)) {
       comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
     }
@@ -507,6 +492,33 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       comp_number = g_curCompNumber;
       g_curCompNumber++;
       genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
+    }
+  }
+  else {  // default behavior
+    tag = var_tags[daikonVarIndex];
+
+    if (0 == tag) {
+      comp_number = g_curCompNumber;
+      g_curCompNumber++;
+    }
+    else {
+      // First, convert the tag to its leader.  This is very
+      // important, because if we don't do this, we are going to get
+      // smaller comparability sets, which is inaccurate.  We should
+      // map the LEADERS (not individual tags) to comparability
+      // numbers because the leaders represent the distinctive sets.
+      UInt leader = var_uf_map_find_leader(var_uf_map, tag);
+
+      var_tags[daikonVarIndex] = leader;
+
+      if (gencontains(g_compNumberMap, (void*)leader)) {
+        comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
+      }
+      else {
+        comp_number = g_curCompNumber;
+        g_curCompNumber++;
+        genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
+      }
     }
   }
 
@@ -1182,19 +1194,130 @@ void DC_detailed_mode_process_ppt_execution(DaikonFunctionEntry* funcPtr,
     num_daikon_vars = funcPtr->num_exit_daikon_vars;
   }
 
-  VG_(printf)("  %s (%s): %u\n",
+  DYNCOMP_DPRINTF("  %s (%s): %u\n",
               funcPtr->funcEntry.name,
               isEnter ? "ENTER" : "EXIT",
               num_daikon_vars);
 
   for (i = 0; i < num_daikon_vars; i++) {
     for (j = i + 1; j < num_daikon_vars; j++) {
-      if (new_tag_leaders[i] == new_tag_leaders[j]) {
+      // DON'T COUNT 0 tags!!!
+      if ((new_tag_leaders[i] == new_tag_leaders[j]) &&
+          (new_tag_leaders[i] != 0)) {
         mark(bitmatrix, num_daikon_vars, i, j);
-        VG_(printf)("    marked: (%u, %u)\n", i, j);
+        DYNCOMP_DPRINTF("    marked: (%u, %u)\n", i, j);
         // Sanity-check ... take out for slight performance boost
         tl_assert(isMarked(bitmatrix, num_daikon_vars, i, j));
       }
     }
+  }
+}
+
+// This should only be run at the end of execution when we need to
+// convert the pairwise variable comparability relations denoted in
+// bitmatrix to the (transitive) comparability sets in a format that
+// Daikon can comprehend.
+// Effects: Allocates var_tags array and populates it with the leaders
+// of sets formed by iterating over the pairwise variable relations in
+// bitmatrix.
+/*
+  For example, if the bitmatrix represented the following:
+
+  A  B  C  D  E  F
+
+A    X     X
+
+B             X
+
+C                X
+
+D
+
+E
+
+F
+
+These are the pairwise relations between variables that directly held
+comparable values: (A, B), (A, D), (B, E), (C, F)
+
+However, because Daikon expects the variable comparability
+relationship to be transitive, we must collapse these pairwise
+relations into the following sets:
+
+{A, B, D, E} {C, F}
+
+Notice that we lose a lot of information this way, but Daikon requires
+transitivity :(
+
+We will perform this conversion by using an union-find disjoint set
+data structure.  We first iterate over all variables and create unique
+singleton set entries for each of them (in var_tags).  Then we iterate
+over bitmatrix and merge the sets of each pair of variables that
+interact.  Finally, we iterate over all variables one more time and
+find the leaders of all the tags.
+*/
+void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
+                                  char isEnter) {
+  UInt num_daikon_vars;
+  UChar* bitmatrix;
+  UInt* var_tags;
+  UInt var_index = 0;
+  UInt i = 0;
+  UInt j = 0;
+
+  tl_assert(dyncomp_detailed_mode);
+
+  // Remember to use only the EXIT structures unless
+  // isEnter and --separate-entry-exit-comp are both True
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
+    bitmatrix = funcPtr->ppt_entry_bitmatrix;
+    num_daikon_vars = funcPtr->num_entry_daikon_vars;
+
+    if (num_daikon_vars == 0) {
+      return;
+    }
+    funcPtr->ppt_entry_var_tags = VG_(calloc)(num_daikon_vars,
+                                              sizeof(*(funcPtr->ppt_entry_var_tags)));
+    var_tags = funcPtr->ppt_entry_var_tags;
+  }
+  else {
+    bitmatrix = funcPtr->ppt_exit_bitmatrix;
+    num_daikon_vars = funcPtr->num_exit_daikon_vars;
+
+    if (num_daikon_vars == 0) {
+      return;
+    }
+    funcPtr->ppt_exit_var_tags = VG_(calloc)(num_daikon_vars,
+                                             sizeof(*(funcPtr->ppt_exit_var_tags)));
+    var_tags = funcPtr->ppt_exit_var_tags;
+  }
+
+  // Iterate over all variables and create singleton sets for all of
+  // them:
+  for (var_index = 0; var_index < num_daikon_vars; var_index++) {
+    uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
+    uf_make_set(new_obj, var_index);
+    // Overload var_tags to hold uf_object* instead of UInt* for now ...
+    // shady!
+    var_tags[var_index] = (UInt)(new_obj);
+  }
+
+  // Now iterate through all pairs of variables i and j and merge
+  // their sets as appropriate:
+  for (i = 0; i < num_daikon_vars; i++) {
+    for (j = i + 1; j < num_daikon_vars; j++) {
+      if (isMarked(bitmatrix, num_daikon_vars, i, j)) {
+        uf_union((uf_object*)var_tags[i], (uf_object*)var_tags[j]);
+      }
+    }
+  }
+
+  // Now iterate one more time, find the leaders, and store the
+  // leaders' tag in var_tags[], thereby completing the conversion
+  // process:
+  for (var_index = 0; var_index < num_daikon_vars; var_index++) {
+    uf_object* cur_obj = (uf_object*)(var_tags[var_index]);
+    uf_object* leader = uf_find(cur_obj);
+    var_tags[var_index] = leader->tag;
   }
 }

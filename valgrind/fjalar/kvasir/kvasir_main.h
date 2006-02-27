@@ -83,7 +83,9 @@ typedef struct {
   // variables at that program point) which contains tags which are the
   // leaders of the comparability sets of their value's tags at that
   // program point.
-  // (null if --dyncomp-detailed-mode is on)
+  // (If --dyncomp-detailed-mode is on, this is used to store the results
+  //  of the conversion of relations from bitmatrix to sets, as performed
+  //  in DC_convert_bitmatrix_to_sets().)
   UInt* ppt_entry_var_tags; // Inactive unless --separate-entry-exit-comp is on
   UInt* ppt_exit_var_tags;
 
