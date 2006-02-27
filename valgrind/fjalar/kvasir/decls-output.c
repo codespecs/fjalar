@@ -434,6 +434,10 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
                                              (int (*)(void *,void *)) &equivalentIDs);
 
       g_curCompNumber = 1;
+
+      if (dyncomp_detailed_mode) {
+        DC_convert_bitmatrix_to_sets(funcPtr, isEnter);
+      }
     }
   }
 
