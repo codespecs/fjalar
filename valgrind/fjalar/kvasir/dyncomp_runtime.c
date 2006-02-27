@@ -81,6 +81,11 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
         //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
         //                    numDaikonVars, bitarray_size);
       }
+
+      if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
+        funcPtr->ppt_entry_new_tag_leaders = VG_(calloc)(numDaikonVars,
+                                                         sizeof(*(funcPtr->ppt_entry_new_tag_leaders)));
+      }
     }
     else {
       // no hash function needed because GenericHashtable.h simply
@@ -95,11 +100,6 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
       }
     }
 
-    if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
-      funcPtr->ppt_entry_new_tags = VG_(calloc)(numDaikonVars,
-                                                sizeof(*(funcPtr->ppt_entry_new_tags)));
-    }
-
     funcPtr->num_entry_daikon_vars = numDaikonVars;
   }
   else {
@@ -112,6 +112,11 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
         //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
         //                    numDaikonVars, bitarray_size);
       }
+
+      if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
+        funcPtr->ppt_exit_new_tag_leaders = VG_(calloc)(numDaikonVars,
+                                                        sizeof(*(funcPtr->ppt_exit_new_tag_leaders)));
+      }
     }
     else {
       funcPtr->ppt_exit_var_uf_map =
@@ -122,11 +127,6 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
         funcPtr->ppt_exit_var_tags = VG_(calloc)(numDaikonVars,
                                                  sizeof(*(funcPtr->ppt_exit_var_tags)));
       }
-    }
-
-    if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
-      funcPtr->ppt_exit_new_tags = VG_(calloc)(numDaikonVars,
-                                               sizeof(*(funcPtr->ppt_exit_new_tags)));
     }
 
     funcPtr->num_exit_daikon_vars = numDaikonVars;
@@ -144,6 +144,8 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
     if (dyncomp_detailed_mode) {
       VG_(free)(funcPtr->ppt_entry_bitmatrix);
       funcPtr->ppt_entry_bitmatrix = 0;
+      VG_(free)(funcPtr->ppt_entry_new_tag_leaders);
+      funcPtr->ppt_entry_new_tag_leaders = 0;
     }
     else {
       genfreehashtableandvalues(funcPtr->ppt_entry_var_uf_map);
@@ -151,14 +153,13 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
       VG_(free)(funcPtr->ppt_entry_var_tags);
       funcPtr->ppt_entry_var_tags = 0;
     }
-
-    VG_(free)(funcPtr->ppt_entry_new_tags);
-    funcPtr->ppt_entry_new_tags = 0;
   }
   else {
     if (dyncomp_detailed_mode) {
       VG_(free)(funcPtr->ppt_exit_bitmatrix);
       funcPtr->ppt_exit_bitmatrix = 0;
+      VG_(free)(funcPtr->ppt_exit_new_tag_leaders);
+      funcPtr->ppt_exit_new_tag_leaders = 0;
     }
     else {
       genfreehashtableandvalues(funcPtr->ppt_exit_var_uf_map);
@@ -166,9 +167,6 @@ void destroy_ppt_structures(DaikonFunctionEntry* funcPtr, char isEnter) {
       VG_(free)(funcPtr->ppt_exit_var_tags);
       funcPtr->ppt_exit_var_tags = 0;
     }
-
-    VG_(free)(funcPtr->ppt_exit_new_tags);
-    funcPtr->ppt_exit_new_tags = 0;
   }
 }
 
@@ -284,6 +282,11 @@ for each variable indexed by v {
   // observed
   var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
 }
+
+If --dyncomp-detailed-mode is on, then instead we run an O(n^2)
+algorithm which marks 2 variables as comparable if they are currently
+holding tags that belong in the same set (have the same leader).
+
 */
 void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                                   char isEnter,
@@ -291,23 +294,44 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                                   Addr a) {
   UInt leader, new_leader, var_tags_v, new_tags_v;
   struct genhashtable* var_uf_map;
-  UInt *var_tags, *new_tags;
-
-  if (dyncomp_detailed_mode)
-    return;
+  UInt* var_tags;
+  UInt* new_tag_leaders;
+  UChar* bitmatrix;
 
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
-    new_tags = funcPtr->ppt_entry_new_tags;
+    bitmatrix = funcPtr->ppt_entry_bitmatrix;
+    new_tag_leaders = funcPtr->ppt_entry_new_tag_leaders;
   }
   else {
     var_uf_map = funcPtr->ppt_exit_var_uf_map;
     var_tags = funcPtr->ppt_exit_var_tags;
-    new_tags = funcPtr->ppt_exit_new_tags;
+    bitmatrix = funcPtr->ppt_exit_bitmatrix;
+    new_tag_leaders = funcPtr->ppt_exit_new_tag_leaders;
   }
+
+  if (dyncomp_detailed_mode) { // detailed O(n^2) algorithm
+    // When iterating through all the variables, simply collect tags
+    // in new_tag_leaders, and then iterate through them after we are
+    // done with all variables:
+    if (a) {
+      new_tag_leaders[daikonVarIndex] = val_uf_find_leader(get_tag(a));
+    }
+    else {
+      // clear this out so that it doesn't leak values from a previous
+      // execution of this program point:
+      new_tag_leaders[daikonVarIndex] = 0;
+    }
+  }
+  else { // default algorithm
+    // Do not bother processing if there is no address!
+    if (!a) {
+      return;
+    }
+
   // Update from any val_uf merges that have occurred for variables on
   // previous executions of this program point.
 
@@ -355,6 +379,7 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                   var_tags[daikonVarIndex],
                   a);
 
+  }
 }
 
 // This runs once for every Daikon variable at the END of the target
@@ -1131,4 +1156,45 @@ void mark(UChar* bitarray, UInt n, UInt i, UInt j) {
   tl_assert((i < j) && (i < n) && (j < n));
 
   bitarray[bitarray_base] |= mask;
+}
+
+// Runs the O(n^2) detailed algorithm to update bitmatrix with X's in
+// the appropriate spots to denote variable comparability based on the
+// leader tags held in new_tag_leaders:
+void DC_detailed_mode_process_ppt_execution(DaikonFunctionEntry* funcPtr,
+                                            char isEnter) {
+  UInt num_daikon_vars;
+  UChar* bitmatrix;
+  UInt* new_tag_leaders;
+  UInt i = 0;
+  UInt j = 0;
+
+  // Remember to use only the EXIT structures unless
+  // isEnter and --separate-entry-exit-comp are both True
+  if (dyncomp_separate_entry_exit_comp && isEnter) {
+    bitmatrix = funcPtr->ppt_entry_bitmatrix;
+    new_tag_leaders = funcPtr->ppt_entry_new_tag_leaders;
+    num_daikon_vars = funcPtr->num_entry_daikon_vars;
+  }
+  else {
+    bitmatrix = funcPtr->ppt_exit_bitmatrix;
+    new_tag_leaders = funcPtr->ppt_exit_new_tag_leaders;
+    num_daikon_vars = funcPtr->num_exit_daikon_vars;
+  }
+
+  VG_(printf)("  %s (%s): %u\n",
+              funcPtr->funcEntry.name,
+              isEnter ? "ENTER" : "EXIT",
+              num_daikon_vars);
+
+  for (i = 0; i < num_daikon_vars; i++) {
+    for (j = i + 1; j < num_daikon_vars; j++) {
+      if (new_tag_leaders[i] == new_tag_leaders[j]) {
+        mark(bitmatrix, num_daikon_vars, i, j);
+        VG_(printf)("    marked: (%u, %u)\n", i, j);
+        // Sanity-check ... take out for slight performance boost
+        tl_assert(isMarked(bitmatrix, num_daikon_vars, i, j));
+      }
+    }
+  }
 }

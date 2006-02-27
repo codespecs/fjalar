@@ -87,14 +87,6 @@ typedef struct {
   UInt* ppt_entry_var_tags; // Inactive unless --separate-entry-exit-comp is on
   UInt* ppt_exit_var_tags;
 
-  // new_tags: A fixed-sized array (also indexed by # of Daikon variables)
-  // of the tags extracted by a certain Daikon variable's value at this
-  // program point.  This structure is updated EVERY TIME the program
-  // executes a program point by querying val_uf with the address of the
-  // variable's value being observed and getting back the tag.
-  UInt* ppt_entry_new_tags; // Inactive unless --separate-entry-exit-comp is on
-  UInt* ppt_exit_new_tags;
-
   // bitmatrix: For DynComp detailed mode (see the relevant section in
   // dyncomp_runtime.c), this represents the matrix of variables that
   // are comparable based upon comparable values they shared
@@ -102,6 +94,16 @@ typedef struct {
   // is on.)
   UChar* ppt_entry_bitmatrix; // Inactive unless --separate-entry-exit-comp is on
   UChar* ppt_exit_bitmatrix;
+
+  // new_tag_leaders: A fixed-sized array (also indexed by # of Daikon
+  // variables) of the leaders of the tags extracted by a certain
+  // Daikon variable's value at this program point.  This structure is
+  // updated EVERY TIME the program executes a program point by
+  // querying val_uf with the address of the variable's value being
+  // observed and getting back the tag.  (Only non-null if
+  // --dyncomp-detailed-mode is on)
+  UInt* ppt_entry_new_tag_leaders; // Inactive unless --separate-entry-exit-comp is on
+  UInt* ppt_exit_new_tag_leaders;
 
   // The size of var_tags and new_tags can be initialized during the .decls
   // run because we can count up how many Daikon variables exist at that
