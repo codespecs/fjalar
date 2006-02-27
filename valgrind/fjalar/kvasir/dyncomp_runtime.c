@@ -315,8 +315,9 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
 
   if (dyncomp_detailed_mode) { // detailed O(n^2) algorithm
     // When iterating through all the variables, simply collect tags
-    // in new_tag_leaders, and then iterate through them after we are
-    // done with all variables:
+    // in new_tag_leaders.  Iterate through all of them in
+    // DC_detailed_mode_process_ppt_execution() after we are done
+    // collecting the leader tags for all variables:
     if (a) {
       new_tag_leaders[daikonVarIndex] = val_uf_find_leader(get_tag(a));
     }
@@ -394,8 +395,11 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   struct genhashtable* var_uf_map;
   UInt *var_tags;
 
-  if (dyncomp_detailed_mode)
+  // We currently do not do any extra propagation when we are in
+  // dyncomp_detailed_mode:
+  if (dyncomp_detailed_mode) {
     return;
+  }
 
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
@@ -482,8 +486,8 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
 
   if (dyncomp_detailed_mode) {
     // var_tags already contains the leaders, so all we need to do is
-    // to have it interact with g_curCompNumber to produce the correct
-    // numbers:
+    // to have it map to g_curCompNumber to produce the correct
+    // comparability numbers:
     UInt leader = var_tags[daikonVarIndex];
     if (gencontains(g_compNumberMap, (void*)leader)) {
       comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
@@ -1181,6 +1185,8 @@ void DC_detailed_mode_process_ppt_execution(DaikonFunctionEntry* funcPtr,
   UInt i = 0;
   UInt j = 0;
 
+  tl_assert(dyncomp_detailed_mode);
+
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -1255,6 +1261,10 @@ singleton set entries for each of them (in var_tags).  Then we iterate
 over bitmatrix and merge the sets of each pair of variables that
 interact.  Finally, we iterate over all variables one more time and
 find the leaders of all the tags.
+
+The reason why we store the results in var_tags is so that we can
+still use DC_get_comp_number_for_var() to convert into comparability
+numbers that we need to output to the .decls file for Daikon.
 */
 void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
                                   char isEnter) {
