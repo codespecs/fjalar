@@ -1050,12 +1050,10 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
         a = (Addr)ptrInQuestion;
       }
 
-      if (a) {
-        DC_post_process_for_variable((DaikonFunctionEntry*)varFuncInfo,
-                                     isEnter,
-                                     g_variableIndex,
-                                     a);
-      }
+      DC_post_process_for_variable((DaikonFunctionEntry*)varFuncInfo,
+                                   isEnter,
+                                   g_variableIndex,
+                                   a);
     }
   }
 
@@ -1155,4 +1153,11 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
     fflush(dtrace_fp);
   }
 
+  // If --dyncomp-detailed-mode is on, at this point we have collected
+  // all of the leader tags of the values of all Daikon variables
+  // during a certain program point execution, so we can process them
+  // all in an O(n^2) manner to mutate bitmatrix.
+  if (kvasir_with_dyncomp && dyncomp_detailed_mode) {
+    DC_detailed_mode_process_ppt_execution(funcPtr, isEnter);
+  }
 }
