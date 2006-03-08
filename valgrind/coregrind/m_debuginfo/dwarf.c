@@ -2010,8 +2010,9 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
          break;
 
       default: 
-         VG_(message)(Vg_DebugMsg, "DWARF2 CFI reader: unhandled CFI "
-                                   "instruction 0:%d", (Int)lo6); 
+	 if (lo6 != 50) /* 0:50 comes from a glibc bug -SMcC */
+	    VG_(message)(Vg_DebugMsg, "DWARF2 CFI reader: unhandled CFI "
+			              "instruction 0:%d", (Int)lo6); 
          i = 0;
          break;
    }
