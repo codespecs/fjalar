@@ -243,6 +243,9 @@ char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
 // (This was all done by empirical observation)
 // Note: DON'T IGNORE FUNCTIONS WITH NO NAMES
 static char ignore_function_with_name(char* name) {
+
+  FJALAR_DPRINTF("  *ppt_name: %s\n", name);
+
   if (!name) {
     return 0;
   }
@@ -255,16 +258,28 @@ static char ignore_function_with_name(char* name) {
       (0 == VG_(strncmp)(name, "_S_", 3)) ||
       (0 == VG_(strncmp)(name, "_M_", 3)) ||
       (0 == VG_(strncmp)(name, "_GLOBAL", 7)) ||
-      (0 == VG_(strncmp)(name, "__tcf", 5)))
+      (0 == VG_(strncmp)(name, "__tcf", 5)) ||
+      // Hopefully the target program doesn't have this function that you want to track
+      (0 == VG_(strncmp)(name, "min<size_t>", 11)) ||
+      // g++-3.4 seems to show this:
+      (0 == VG_(strncmp)(name, "__verify_grouping", 17))) {
     return 1;
-  else
+  }
+  else {
     return 0;
+  }
 }
 
 // Ignores some weirdo C++ variables such as vtable function pointers
 // and friends
+// g++-3.4 seems to create variable names prefixed with '__gnu_cxx'
+// so we will ignore these.
+// (This was all done by empirical observation)
 // Note: DON'T IGNORE VARIABLES WITH NO NAMES
 static char ignore_variable_with_name(char* name) {
+
+  FJALAR_DPRINTF("  *name: %s\n", name);
+
   if (!name) {
     return 0;
   }
@@ -273,10 +288,17 @@ static char ignore_variable_with_name(char* name) {
       (0 == VG_(strncmp)(name, "_vptr.", 6)) ||
       (0 == VG_(strncmp)(name, "_ZTI", 4)) ||
       (0 == VG_(strncmp)(name, "_ZTS", 4)) ||
-      (VG_STREQ(name, "__in_chrg"))) // Found in C++ destructors
+      // libstdc++ stuff (demangled is something like '__gnu_cxx::')
+      (0 == VG_(strncmp)(name, "_ZN9__gnu_cxx10", 15)) ||
+      // ignore std::string stuff
+      (0 == VG_(strncmp)(name, "_ZNSs4", 6)) ||
+      // Found in C++ destructors
+      (VG_STREQ(name, "__in_chrg"))) {
     return 1;
-  else
+  }
+  else {
     return 0;
+  }
 }
 
 // This makes sure that we don't print out variables which
