@@ -2,7 +2,8 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
-   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -103,19 +104,6 @@ __inline__ FunctionExecutionState* fnStackTop(void) {
   return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
-#ifdef BLEH
-static void printFunctionExecutionStateStack(void) {
-  int i;
-  for (i = fn_stack_first_free_index - 1; i >= 0; i--) {
-    FunctionExecutionState* cur_fn = &FunctionExecutionStateStack[i];
-    VG_(printf)("FunctionExecutionStateStack[%d] %s - EBP: 0x%x, lowestESP: 0x%x\n",
-		i,
-		cur_fn->func->fjalar_name,
-		cur_fn->EBP,
-		cur_fn->lowestESP);
-  }
-}
-#endif
 
 // This gets updated whenever we encounter a Ist_IMark instruction.
 // It is required to track function exits because the address does not
@@ -348,17 +336,6 @@ void exit_function(FunctionEntry* f)
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
   for (i = 0; i < 4; i++) {
-/*     set_abit((Addr)(&(top->EAX)) + (Addr)i, VGM_BIT_VALID); */
-/*     set_abit((Addr)(&(top->EDX)) + (Addr)i, VGM_BIT_VALID); */
-/*     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID); */
-
-/*     set_vbyte((Addr)(&(top->EAX)) + (Addr)i, (UChar)((EAXshadow & 0xff) << (i * 8))); */
-/*     set_vbyte((Addr)(&(top->EDX)) + (Addr)i, (UChar)((EDXshadow & 0xff) << (i * 8))); */
-/*     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8))); */
-
-    /* XXX this doesn't look like it's actually picking up the right
-       bits. -SMcC */
-    // pgbovine - probably because the sizes are now different ...
     set_abit_and_vbyte((Addr)(&top->EAX) + (Addr)i, VGM_BIT_VALID,
                       (EAXshadow & 0xff) << (i * 8));
     set_abit_and_vbyte((Addr)(&top->EDX) + (Addr)i, VGM_BIT_VALID,
@@ -368,8 +345,6 @@ void exit_function(FunctionEntry* f)
   }
 
   for (i = 4; i < 8; i++) {
-/*     set_abit((Addr)(&(top->FPU)) + (Addr)i, VGM_BIT_VALID); */
-/*     set_vbyte((Addr)(&(top->FPU)) + (Addr)i, (UChar)((FPUshadow & 0xff) << (i * 8))); */
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
                        (FPUshadow & 0xff) << (i * 8));
   }
@@ -489,18 +464,7 @@ static void outputAuxiliaryFilesAndExit(void) {
 }
 
 
-/*
-Requires:
-Modifies: lots of global stuff
-Returns:
-Effects: All of the Fjalar initialization is performed right here;
-         Memcheck mc_main.c calls this at the end of its own
-         initialization and this must extract DWARF2 debugging
-         information from the ELF executable, process the
-         dwarf_entry_array, and create .decls and .dtrace files
-*/
-
-// Before processing command-line options
+// This is called before command-line options are processed
 void fjalar_pre_clo_init()
 {
   // Clear FunctionExecutionStateStack
@@ -509,13 +473,13 @@ void fjalar_pre_clo_init()
 
   // TODO: Do we need to clear all global variables before processing
   // command-line options?  We don't need to as long as this function
-  // is only run once at the beginning of program execution
+  // is only run once at the beginning of program execution.
 
   // Make sure to execute this last!
   fjalar_tool_pre_clo_init();
 }
 
-// Initialize Fjalar after processing command-line options
+// Initialize Fjalar after command-line options are processed
 void fjalar_post_clo_init()
 {
   executable_filename = VG_(args_the_exename);
@@ -567,6 +531,7 @@ void fjalar_post_clo_init()
 }
 
 
+// Prints the help message when Fjalar is invoked with the --help option
 void fjalar_print_usage()
 {
    VG_(printf)("\n  User options for Fjalar framework:\n");
@@ -607,16 +572,18 @@ void fjalar_print_usage()
    fjalar_tool_print_usage();
 }
 
+
 /* Like VG_BOOL_CLO, but of the form "--foo", "--no-foo" rather than
    "--foo=yes", "--foo=no". Note that qq_option should not have a
    leading "--". */
-
 #define VG_YESNO_CLO(qq_option, qq_var) \
    if (VG_CLO_STREQ(arg, "--"qq_option)) { (qq_var) = True; } \
    else if (VG_CLO_STREQ(arg, "--no-"qq_option))  { (qq_var) = False; }
 
-// Processes command-line options
-// (Called from MAC_(process_common_cmd_line_option)() in mac_needs.c)
+
+// Processes command-line options and sets the values of the
+// appropriate global variables (Called from
+// MAC_(process_common_cmd_line_option)() in mac_shared.c)
 Bool fjalar_process_cmd_line_option(Char* arg)
 {
   VG_YESNO_CLO("fjalar-debug", fjalar_debug)
