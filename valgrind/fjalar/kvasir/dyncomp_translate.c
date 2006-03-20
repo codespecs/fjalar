@@ -450,8 +450,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
 }
 
 
-// TODO: Update with new opcodes for Valgrind 3.1.0
-//       Look at expr2vbits_Binop() from mc_translate.c:
+// pgbovine TODO: Update with new opcodes for Valgrind 3.1.0
+//                Look at expr2vbits_Binop() from ../mc_translate.c:
 static
 IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
@@ -901,6 +901,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
+      // pgbovine TODO: Look at expr2vbits_Binop() from ../mc_translate.c
+      //                and make sure we've covered all possible cases.
    default:
       ppIROp(op);
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
@@ -1003,7 +1005,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
 
    // Do nothing with unary ops.  Just evaluate the
    // sub-expression and return it:
-   // TODO: Actually, when you widen stuff, don't you want to
+   // pgbovine TODO: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
    //       But you can't do that because you only have the 32-bit
    //       tag and NOT the memory locations it came from
@@ -1105,7 +1107,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          //         stmt( dce->bb, IRStmt_Dirty(di) );
          //         return mkexpr(datatag);
 
-         // TODO: Is this merge tags really necessary or too
+         // pgbovine TODO: Is this merge tags really necessary or too
          // premature?  We should aim to do all of the merging on the
          // language level if somebody really reads this as a 128-bit
          // value instead of forcing all of these bytes to be merged
@@ -1290,9 +1292,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
    }
 }
 
-// TODO: STle has been changed to Store in the Valgrind IR, so look at
-// void do_shadow_Store() in mc_translate.c to see how to mimic it
-// more accurately
+// pgbovine TODO: STle has been changed to Store in the Valgrind IR,
+// so look at void do_shadow_Store() in mc_translate.c to see how to
+// mimic it more accurately
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr, UInt bias,
                       IRAtom* data )
