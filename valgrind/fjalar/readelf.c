@@ -22,7 +22,9 @@
    02111-1307, USA.  */
 
 /* readelf.c
-   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
 
    This file was modified by Philip Guo, MIT CSAIL Program Analysis Group,
    to perform recording of function return types and parameter types
