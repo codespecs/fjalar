@@ -1901,7 +1901,9 @@ static void verifyStackParamWordAlignment(FunctionEntry* f)
     // See if the function seturn a struct by value:
     if (firstReturnVar &&
 	(D_STRUCT == firstReturnVar->varType->decType) &&
-	(0 == firstReturnVar->ptrLevels)) {
+	(0 == firstReturnVar->ptrLevels) &&
+	// Don't forget C++ reference variables!
+	(0 == firstReturnVar->referenceLevels)) {
       offset = 12;
     }
   }
