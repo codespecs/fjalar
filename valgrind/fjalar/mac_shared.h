@@ -12,16 +12,16 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
-      Modified by Philip Guo (pgbovine@mit.edu) to track ESP as new
-      areas of the stack are allocated.
-
-      Added several CHECK_ESP() calls and extern var. declarations.
+      Modified by Philip Guo to track ESP as new areas of the stack
+      are allocated.  Added several CHECK_ESP() calls and extern
+      var. declarations.
 
       TODO: In the future, hopefully we can find a faster and more
       elegant solution because these calls possibly incur a severe
       performance hit.
 
-   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as

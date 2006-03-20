@@ -12,13 +12,14 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
-      Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
-      Fjalar, a dynamic analysis framework for C/C++ programs.
+      Modified by Philip Guo to serve as part of Fjalar, a dynamic
+      analysis framework for C/C++ programs.
 
-      (Added in a few modifications for the DynComp tool -
-       grep for "kvasir_with_dyncomp" or "PG dyncomp" for details)
+      Also modified to keep proper track of tags for the DynComp tool
+      (grep for "PG dyncomp" or "pgbovine" for details)
 
-   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as

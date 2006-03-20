@@ -11,12 +11,13 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
-      Modified by Philip Guo (pgbovine@mit.edu) to serve as part of
-      Fjalar, a dynamic analysis framework for C/C++ programs.
+      Modified by Philip Guo to serve as part of Fjalar, a dynamic
+      analysis framework for C/C++ programs.
 
       (Moved a few declarations from mc_main.c and other files into here)
 
-   Copyright (C) 2004-2006 Philip Guo, MIT CSAIL Program Analysis Group
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
