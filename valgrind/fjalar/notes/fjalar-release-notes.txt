@@ -50,8 +50,8 @@ around which take up dead space
 
 - Create a README file with the following contents (below the line)
 
-- Make a copy of the Fjalar programmer's manual and Fjalar home page
-into the top-level directory, along with the CSS stylesheet file
+- Make a copy of the Fjalar programmer's manual into the top-level
+directory, along with the CSS stylesheet file (fjalar_style.css).
 
 - tar it up and put in on the web!
 
@@ -75,7 +75,7 @@ documentation: http://pag.csail.mit.edu/fjalar/
 
 -----------
 
-Version 1.1 - Released Mar. 22, 2006
+Version 1.1 - Released Mar. 21, 2006
 
 Ported over to an SVN head development version of Valgrind 3.2.0 in
 Feb. 2006 and made some significant bug fixes to greatly improve C++
