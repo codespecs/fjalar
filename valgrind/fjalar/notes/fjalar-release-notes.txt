@@ -1,31 +1,68 @@
-Notes for releasing Fjalar stand-alone as a package:
+Instructions for releasing Fjalar stand-alone as a package
+by Philip Guo
 
-1.) Copy over the entire valgrind-3 directory and all sub-directories
+- Copy over the entire valgrind-3 directory and all sub-directories
 into a folder and cd there.
 
-2.) Remove all CVS/ directories - find . -type d -name 'CVS' blah blah
+- do a 'make clean' and 'make distclean'
 
-3.) Remove all temporary ~ files created by emacs
+- Remove all CVS/ directories: find . -type d -name CVS -exec rm -rf '{}' \;
 
-4.) Remove notes sub-directories, etc...
+- Remove all DynComp-specific things from Valgrind and VEX files, in
+addition to Memcheck files:
 
-5.) ln -s valgrind-3/valgrind/fjalar/ fjalar-source to create a
-convenient link from the top level
+(grep for ' PG' or 'pgbovine' to see which files I modified)
 
-6.) Make a copy of the Fjalar home page and programmer's manual into
-the directory
+VEX/priv/host-generic/reg_alloc2.c
+coregrind/m_scheduler/scheduler.c
+coregrind/pub_core_threadstate.h
+coregrind/m_machine.c (only remove DynComp-specific things like the tag stuff)
+include/pub_tool_machine.h (only remove DynComp-specific things like the tag stuff)
 
-7.) Make a README file with the following contents:
+- Cut out all dyncomp-related stuff from mc_main.c and mc_translate.c
+(grep for 'PG', 'pgbovine', or 'dyncomp' - this may not be a trivial
+task)
 
-8.) Remove other crappy temp files like .# files "find . -name '.#*' -exec echo rm {} \;"
+- Remove notes subdirectory and other misc. subdirectories within fjalar/
 
-9.) grep for kvasir, dyncomp, etc... to make sure we don't have any strays
+- Remove kvasir/ sub-directory within fjalar/, leaving only basic-tool
+
+- Change fjalar/Makefile.am to build basic-tool instead of kvasir by
+removing kvasir/ source files and adding 'basic-tool/basic-tool.c' to
+FJALAR_SOURCES_COMMON
+
+- Change mc_pre_clo_init() in mc_main.c to not print out the heading
+that says Kvasir/DynComp but instead print out something
+Fjalar-related.
+
+- ln -s valgrind-3/valgrind/fjalar/ fjalar-source to create a
+convenient link from the top level to the Fjalar source code directory
+
+- Remove all temporary ~ files created by emacs "find . -name '*~' -exec echo rm {} \;"
+
+- Remove other crappy temp files like .# files "find . -name '.#*' -exec echo rm {} \;"
+
+- grep again for kvasir, dyncomp, etc... to make sure we don't have
+any strays
+
+- rm -rf valgrind-3/valgrind/inst to not leave any binaries lying
+around which take up dead space
+
+- Create a README file with the following contents (below the line)
+
+- Make a copy of the Fjalar programmer's manual and Fjalar home page
+into the top-level directory, along with the CSS stylesheet file
+
+- tar it up and put in on the web!
+
+- Put updated copies of fjalar_include.h and fjalar_tool.h on the main
+Fjalar website, because those serve as the public interfaces
 
 --------------------------------------------
 
 Fjalar: A Dynamic Analysis Framework for C and C++ Programs
 
-Copyright (C) 2004-2005 Philip Guo (pgbovine@mit.edu),
+Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
 MIT CSAIL Program Analysis Group
 
 This program is free software; you can redistribute it and/or
@@ -35,6 +72,14 @@ License, or (at your option) any later version.
 
 Please refer to the Fjalar web site for the most updated
 documentation: http://pag.csail.mit.edu/fjalar/
+
+-----------
+
+Version 1.1 - Released Mar. 22, 2006
+
+Ported over to an SVN head development version of Valgrind 3.2.0 in
+Feb. 2006 and made some significant bug fixes to greatly improve C++
+support and overall robustness.
 
 -----------
 
