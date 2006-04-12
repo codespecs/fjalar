@@ -8,9 +8,10 @@ A local copy of the Fjalar webpage appears here:
   ./documentation/fjalar-www/index.html
 
 
-Here is a summary of the contents of the interesting source files:
+Here is a summary of the contents of interesting source files:
 
 Fjalar source files:
+--------------------
 
 fjalar_tool.h - Contains prototypes for all functions that Fjalar
                 tools must implement in order to compile properly
@@ -31,10 +32,75 @@ typedata.[ch] - Hooks into the Readelf debugging info. parser to
                 typedata.c so that it can populate the data structures
                 defined in typedata.h.
 
+generate_fjalar_entries.[ch] - Reads the low-level DWARF info. data
+                               structures produced by typedata.c and
+                               translates them into higher-level
+                               data structures representing functions,
+                               variables, and types (defined in
+                               fjalar_include.h) that will be used by
+                               Fjalar and its tools.  Also contains
+                               functions to produce XML output of
+                               those data structures.
+
+fjalar_runtime.[ch] - Contains functions that interact with the
+                      Valgrind core after initialization and performs
+                      run time functionality that is useful for tools,
+                      such as finding out sizes of
+                      dynamically-allocated arrays and finding what
+                      variable corresponds to a given memory address
+
+fjalar_traversal.[ch] - Contains functions that perform traversals
+                        through data structures at run time.  Each of
+                        these functions takes in a callback function
+                        pointer parameter, which can be used to
+                        perform a specific action during each step of
+                        the traversal.  This forms the core of
+                        Fjalar's ability to recurse into data
+                        structures during execution.
+
+fjalar_select.[ch] - Implements selective program point and variable
+                     tracking
+
+disambig.[ch] - Implements pointer-type disambiguation
 
 
-Kvasir source files:
+Kvasir source files (in kvasir/ sub-directory):
+-----------------------------------------------
+
+kvasir_main.[ch] - Command-line option processing, opening various
+                   files, and hooks for what to do at entrances and
+                   exits of functions
+
+decls-output.[ch] - Outputs declarations to .decls file; mainly
+                    consists of one callback action function to pass
+                    into Fjalar
+
+dtrace-output.[ch] - Outputs runtime values to .dtrace file; consists
+                     of one callback action function to pass into
+                     Fjalar as well as lots of auxiliary functions
+                     (and macros) to print out the correct values
+                     based on raw memory contents and compile-time
+                     type info. provided by Fjalar
 
 
+DynComp source files(in kvasir/ sub-directory):
+-----------------------------------------------
 
-DynComp source files:
+union_find.[ch] - Union-find data structure implementation lifted from
+                  somewhere else (cited in the comments) and modified
+
+dyncomp_main.[ch] - Lots of helper functions to manage tags by
+                    allocating, copying, and freeing them, etc...
+
+dyncomp_runtime.[ch] - Performs the values-to-variable comparability
+                       algorithm at every execution of every program
+                       point, translates between tags and
+                       comparability numbers for Daikon, and
+                       implements the tag garbage collector
+
+dyncomp_translate.[ch] - Emulates mc_translate.[ch] by performing
+                         Valgrind IR instrumentation to add in tag
+                         manipulations wherever there are register or
+                         memory operations; the code is quite dense
+                         and lots of it is copied from
+                         mc_translate.[ch] and modified
