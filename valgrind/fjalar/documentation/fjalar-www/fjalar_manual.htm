@@ -1,0 +1,299 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15">
+<title>Fjalar: A Dynamic Analysis Framework for C and C++ Programs - Programmer's Manual</title>
+<link rel="StyleSheet" href="fjalar_style.css" />
+</head>
+
+<body>
+
+<h1>Fjalar: A Dynamic Analysis Framework for C and C++ Programs</h1>
+<h2>Programmer's Manual</h2>
+
+<p> <a href="http://pag.csail.mit.edu/fjalar/">Fjalar</a> is a framework that facilitates
+the construction of dynamic analysis tools for programs written in C
+and C++.  This document serves as a guide to building tools on top of
+      the Fjalar framework.
+
+<h2 a name="getting-started">Getting Started</h2>
+
+Here are the relevant entries in the directory structure after you
+have un-tarred the Fjalar package (executables shown in bold):
+
+<tt>
+    <ul>
+      <li>valgrind-3/
+	<ul>
+	  <li><b>auto-everything.sh</b>
+	  <li>valgrind/
+	    <ul>
+	      <li>fjalar/
+		<ul>
+		  <li>Makefile.am
+		  <li>fjalar_tool.h
+		  <li>fjalar_include.h
+		  <li>mc_main.c
+		  <li>basic-tool/
+		    <ul>
+		      <li>basic-tool.c
+		      <li>basic-tool-test.c
+		    </ul>
+		</ul>
+	      <li>include/
+		<ul>
+		  <li>pub_tool_*.h
+		</ul>
+	      <li>inst/
+		<ul>
+		  <li>bin/
+		    <ul>
+		      <li><b>valgrind</b>
+		    </ul>
+		  <li>lib/
+		    <ul>
+		      <li>valgrind/
+			<ul>
+			  <li>x86-linux/
+			  <ul>
+			    <li>fjalar
+			    <li>vgpreload_fjalar.so
+			    <li>vgpreload_core.so
+			  </ul>
+			</ul>
+		    </ul>
+		</ul>
+	    </ul>
+	</ul>
+    </ul>
+</tt>
+
+Fjalar is implemented as a tool on top of the <a
+href="http://www.valgrind.org">Valgrind</a> binary instrumentation
+framework, so that is why Valgrind's files dominate the directory
+structure.  Fjalar and its tools are located in the
+<tt>valgrind-3/valgrind/fjalar</tt> sub-directory.  The significance
+of all of these files will be explained in this document.
+
+<h2 a name="programming">Creating Fjalar tools</h2>
+
+To create a new tool:
+<ol>
+<li>Create a sub-directory in the <tt>valgrind-3/valgrind/fjalar</tt>
+directory and place all of your tool's source files in there.
+
+<li>Edit <tt>Makefile.am</tt> in <tt>valgrind-3/valgrind/fjalar</tt>
+	to include all the .c files of your tool by adding them to the
+	list of files assigned to the
+	<tt>FJALAR_SOURCES_COMMON</tt> variable. (Feel free to tweak
+	other variables in that file.  For instance, you can adjust
+	<tt>AM_CFLAGS_X86_LINUX</tt> to add optimizations to boost
+  run-time performance.  The default is to turn off all optimizations
+  in order to ease debugging.)
+
+<li>Run <tt>auto-everything.sh</tt> to create a new <tt>Makefile</tt>
+	from your modified <tt>Makefile.am</tt> and re-compile
+	everything.  You only need to run <tt>auto-everything.sh</tt>
+	whenever you make a change to <tt>Makefile.am</tt>.  (Notice
+	that directly editing <tt>Makefile</tt> and
+	<tt>Makefile.in</tt> is probably futile because they are
+	auto-generated from <tt>Makefile.am</tt> every time
+	<tt>auto-everything.sh</tt> is run.)  If you do not
+  subsequently change <tt>Makefile.am</tt>, you can simply use
+  <tt>make</tt> and <tt>make install</tt> to compile and install,
+  respectively.
+
+<li>At this point, you'll probably get some compilation error.  In
+	order for Fjalar to compile properly with your tool, your
+	tool's source files will need to implement all of the
+	functions listed in <tt><a
+	href="http://pag.csail.mit.edu/fjalar/fjalar_tool.h.txt">fjalar_tool.h</a></tt>.  Include this
+	header file in one of your tool's source files and define
+	stubs for all of the functions (or just copy them from
+	<tt>basic-tool.c</tt>).  Hopefully your tool should
+	compile properly now.
+
+<li>If you've configured everything properly, you should be able to do
+<tt>make</tt> and <tt>make install</tt> in the
+<tt>valgrind-3/valgrind/fjalar</tt> directory to compile Fjalar and
+your tool.  Running <tt>make</tt> creates two shared libraries
+  			    <tt>vgpreload_fjalar.so</tt> and
+			    <tt>vgpreload_core.so</tt>, as well as a
+special <tt>fjalar</tt> file, which are
+dynamically-loaded by Valgrind during execution.  Running <tt>make
+install</tt> moves those shared libraries into
+<tt>valgrind-3/valgrind/inst/lib/valgrind</tt>.
+
+</ol>
+
+Programming tips for Fjalar tools:
+
+<ul>
+
+<li><tt><a
+href="http://pag.csail.mit.edu/fjalar/fjalar_include.h.txt">fjalar_include.h</a></tt>
+contains all of the functions and data structures that Fjalar provides
+for its tools.  This file is fairly well-documented, so please read
+over it to get a feel for what services are available to tools.  Your
+tool should only need to include this file (along with the mandatory
+<tt><a
+href="http://pag.csail.mit.edu/fjalar/fjalar_tool.h.txt">fjalar_tool.h</a></tt>),
+but if it requires additional functionality, you can always
+<tt>extern</tt> variables and functions from the other Fjalar source
+files.
+
+<li>Look at the code of <tt>basic-tool.c</tt> to see a simple
+  tool built on top of Fjalar.  It prints out a list of variables at
+  every function entrance and exit and, if the variable refers to an
+  array of elements, the size of that array at the current point in
+  execution.
+  
+<li>Because Fjalar itself is implemented as a tool on top of Valgrind,
+it interacts with Valgrind through functions defined in
+a group of header files sharing the common name <tt>pub_tool_*.h</tt>.
+  Your tool can also access those functions.
+
+<li><b>DO NOT USE</b> libc functions (e.g., <tt>printf</tt>,
+<tt>malloc</tt>, <tt>strcpy</tt>) in your tool if there is an
+alternative Valgrind version available in <tt>pub_tool_*.h</tt> (Valgrind
+implements a large subset of the standard C library).  The Valgrind
+version of functions will usually be wrapped by a <tt>VG_( )</tt>
+macro.  For example, the Valgrind version of <tt>malloc</tt> is named
+<tt>VG_(malloc)</tt>.  We have had some bad experiences with
+Valgrind's memory allocators conflicting with libc's allocators, so
+please use the Valgrind functions at all times if possible to minimize
+the chance of weird memory corruption errors.  <b>When in doubt, just
+surround your libc function name with <tt>VG_( )</tt></b>.
+
+<li>Use the <tt>tl_assert()</tt> macro (defined in <tt>pub_tool_libcassert.h</tt>) to
+add assert statements in your code, which can be very helpful for
+catching bugs.
+
+<li>Use the <tt>--xml-output-file</tt> option when executing your
+target program to see what data structures Fjalar can properly
+recognize in the target program.  This information can be helpful for
+debugging.
+  
+</ul>
+
+
+<h2 a name="executing">Executing Fjalar tools</h2>
+
+Here is the command for executing your tool:
+
+<pre>
+valgrind-3/valgrind/inst/bin/valgrind --tool=fjalar &lt;command-line args&gt;
+</pre>
+
+The actual executable is <tt>valgrind</tt> because Fjalar is
+implemented as a Valgrind tool (and your Fjalar tool is compiled
+together with Fjalar).  This command can be fairly tedious to type, so
+you should probably make a shell script to alias it.  The only
+mandatory command-line argument is the name of the target program (the
+program to analyze).  Use <tt>--help</tt> as one of your arguments to
+view a list of command-line options.
+
+<p>In order for Fjalar to work, the target program must be compiled
+with DWARF2 debugging information (on an x86/Linux system).  Look at
+<tt>basic-tool-test.c</tt> for a simple target program that exercises
+Fjalar's function entrance/exit tracking and array bounds checking
+features.  First, compile it:</p>
+
+<pre>
+gcc -gdwarf-2 basic-tool-test.c -o basic-tool-test
+</pre>
+
+(The <tt>-gdwarf-2</tt> includes debugging information in the DWARF2
+format.)  Now you should be able to run Fjalar from this directory
+(assuming that you have successfully compiled and installed it) with
+the following command:
+
+<pre>
+../../inst/bin/valgrind --tool=fjalar ./basic-tool-test
+</pre>
+
+If all goes well, the tool should print out the name of each function
+during entrances and exits and the names of all variables visible at
+that point in execution (as well as array sizes, if relevant).
+
+<p>Here are some tips related to executing Fjalar tools:</p>
+
+    <ul>
+      <li>To change what messages are displayed when your tool starts up, you
+	can edit some strings within the <tt>mc_pre_clo_init()</tt> function
+	in <tt>mc_main.c</tt>.
+
+      <li>I believe that the standard Valgrind terminal printing functions,
+	most notably <tt>VG_(printf)</tt>, output to standard error (file descriptor
+	2) by default, so you may find it useful to use <tt>2&gt;&amp;1</tt>
+	to re-direct to standard output.
+    </ul>
+
+<h2 a name="debugging">Debugging Fjalar tools</h2>
+
+If you run your tool with the <tt>--with-gdb</tt> option, Fjalar will
+pause in an infinite loop during initialization.  You can then attach
+a symbolic debugger such as <tt>gdb</tt> to the running process in
+order to debug it:
+
+<ol>
+
+      <li>First start <tt>gdb</tt> with
+	<tt>valgrind-3/valgrind/inst/lib/valgrind/x86-linux/fjalar</tt> as the
+	target program (this is a bit counter-intuitive, but you need to run
+	<tt>gdb</tt> on <tt>fjalar</tt> and NOT on <tt>valgrind</tt>).
+
+      <li>Now use the <tt>at</tt> command to attach <tt>gdb</tt> to
+      the process that's stuck in the infinite loop.  You can see its
+      process ID enclosed in "<tt>==</tt>" next to the start-up banner
+      (e.g., <tt>==3839== ...</tt>), or simply <tt>ps</tt> for it.
+
+<pre>
+  if (fjalar_with_gdb) {
+    int x = 0;
+    while (!x) {}
+  }
+</pre>
+
+      <li>As shown in the code snippet above, Fjalar is stuck in an
+      infinite loop because <tt>x</tt> is 0.  Set <tt>x</tt> to a
+      non-zero value, for instance by typing <tt>p x = 1</tt>, so that
+      it can get out of the infinite loop.
+
+      <li>Now set whatever breakpoints and/or watchpoints you desire,
+      and hit <tt>c</tt> to continue execution.  You'll probably get a
+      mysterious <tt>Segmentation fault</tt> shortly afterwards, but
+      simply hit <tt>c</tt> to continue again, and things should work
+      fine.  Valgrind mucks around with signals, so some error
+      messages sent to the debugger might not be accurate.
+
+      <li>You should now be able to debug as usual.
+
+</ol>
+
+<h2 a name="clo">Fjalar command-line options</h2>
+
+Fjalar provides a variety of command-line options to customize its
+behavior and the behavior of its tools.  These options are all
+documented in the <a
+href="http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Kvasir-options">Kvasir
+section of the Daikon User Manual</a>.  To prevent duplication, these
+descriptions will not be repeated in this document. <a
+href="http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Kvasir">Kvasir</a>
+is a value profiling tool built upon Fjalar, so many options in that
+section of the manual belong to Fjalar (some are Kvasir-specific,
+though).  Useful sub-sections include ones that describe <a
+href="http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Tracing-only-part-of-a-program">tracing
+only part of a program</a> and <a
+href="http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Pointer-type-disambiguation">pointer-type
+disambiguation</a>, which are two ways of giving the user more control
+over run-time data structure traversals.
+
+<hr/>
+
+<a href="http://web.mit.edu/pgbovine/www/">Philip Guo</a> (pgbovine@mit.edu)
+<br/>
+<i>Last modified on March 21, 2006</i>
+
+</body>
+</html>
