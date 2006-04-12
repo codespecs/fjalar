@@ -1,0 +1,40 @@
+Fjalar, a dynamic analysis framework for C/C++ programs
+README file
+Philip Guo
+
+Last updated: 2006-04-12
+
+A local copy of the Fjalar webpage appears here:
+  ./documentation/fjalar-www/index.html
+
+
+Here is a summary of the contents of the interesting source files:
+
+Fjalar source files:
+
+fjalar_tool.h - Contains prototypes for all functions that Fjalar
+                tools must implement in order to compile properly
+
+fjalar_include.h - This is the API that Fjalar provides to its tool.
+                   Contains relevant data structures and functions.
+
+fjalar_main.[ch] - Most of the code that interacts with the Valgrind
+                   core.  Hooks into Valgrind to perform function
+                   entrance and exit tracking, start-up and tear-down
+                   code, command-line option processing.
+
+typedata.[ch] - Hooks into the Readelf debugging info. parser to
+                construct very low-level but organized data structures
+                containing the information present in the DWARF2
+                debug. info.  Essentially, Readelf was meant to only
+                output text, but I hacked it to make calls into
+                typedata.c so that it can populate the data structures
+                defined in typedata.h.
+
+
+
+Kvasir source files:
+
+
+
+DynComp source files:
