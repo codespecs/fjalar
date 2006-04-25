@@ -877,6 +877,15 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_F64toI64:  /* IRRoundingMode(I32) x F64 -> I64 */
    case Iop_I64toF64:  /* IRRoundingMode(I32) x I64 -> F64 */
    case Iop_F64toF32:  /* IRRoundingMode(I32) x F64 -> F32 */
+
+   case Iop_RoundF64toInt:
+   case Iop_RoundF64toF32:
+   case Iop_SinF64:
+   case Iop_CosF64:
+   case Iop_TanF64:
+   case Iop_2xm1F64:
+   case Iop_SqrtF64:
+
       /* F64 -> F64, also takes an I32 first argument encoding the
          rounding mode. */
       //   case Iop_RoundF64: // pgbovine - not in Valgrind 3.1.0
