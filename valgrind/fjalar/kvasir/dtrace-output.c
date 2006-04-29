@@ -1058,25 +1058,6 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
     }
   }
 
-  // While observing the runtime values,
-  // set var->disambigMultipleElts and
-  // var->pointerHasEverBeenObserved depending on whether
-  // upperBound == 0 (1 element) or not and whether
- // variableHasBeenObserved:
-  // We do this only when numDereferences == 1 because
-  // we want to see if the target of a particular pointer
-  // has been observed and whether it refers to 1 or multiple elements
-  if ((1 == numDereferences) && variableHasBeenObserved) {
-    if (isSequence && (numElts > 1)) {
-      var->disambigMultipleElts = 1;
-    }
-
-    // If pointerHasEverBeenObserved is not set, then set it
-    if (!var->pointerHasEverBeenObserved) {
-      var->pointerHasEverBeenObserved = 1;
-    }
-  }
-
   if (variableHasBeenObserved) {
     return DEREF_MORE_POINTERS;
   }

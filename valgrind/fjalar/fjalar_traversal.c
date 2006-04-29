@@ -1280,6 +1280,20 @@ void visitSingleVar(VariableEntry* var,
       return;
     }
 
+    // For disambig: While observing the runtime values, set
+    // pointerHasEverBeenObserved to 1 if the contents of a pointer
+    // variable is initialized (very conservative - only check whether
+    // the 1st byte has been initialized)
+    if (fjalar_smart_disambig &&
+        (1 == numDereferences) && // is pointer variable
+        (!var->pointerHasEverBeenObserved) && // haven't been observed yet
+        // check whether 1st byte is initialized
+        pValue &&
+        (overrideIsInit ? 1 :
+         addressIsInitialized((Addr)pValue, sizeof(char)))) {
+      var->pointerHasEverBeenObserved = 1;
+    }
+
     // Perform the action action for this particular variable:
     tResult = (*performAction)(var,
                                fullFjalarName,
@@ -1596,6 +1610,52 @@ void visitSequence(VariableEntry* var,
     if (!interestedInVar(fullFjalarName, trace_vars_tree)) {
       VG_(free)(fullFjalarName);
       return;
+    }
+
+    // For disambig: While observing the runtime values, set
+    // var->disambigMultipleElts and var->pointerHasEverBeenObserved
+    // depending on whether upperBound == 0 (1 element) or not and
+    // whether variableHasBeenObserved: We do this only when
+    // numDereferences == 1 because we want to see if the target of a
+    // particular pointer has been observed and whether it refers to 1
+    // or multiple elements.
+    if (fjalar_smart_disambig &&
+        (1 == numDereferences) && // is pointer variable
+        pValueArray && numElts) {
+      Bool someEltNonZero = False;
+      int i;
+      // If all elements of pValueArray are 0, then this also means
+      // nonsensical because there is no content to dereference:
+      for (i = 0; i < numElts; i++) {
+        if (pValueArray[i]) {
+          someEltNonZero = True;
+          break;
+        }
+      }
+      if (someEltNonZero) {
+        Bool someEltInit = False;
+        // Make sure there is at least 1 initialized elt in pValueArray
+        for (i = 0; i < numElts; i++) {
+          void* pCurValue = pValueArray[i];
+          char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char));
+          if (eltInit) {
+            someEltInit = True;
+            break;
+          }
+        }
+
+        if (someEltInit) {
+          // Only do this if some element is initialized:
+          if (numElts > 1) {
+            var->disambigMultipleElts = 1;
+          }
+
+          // If pointerHasEverBeenObserved is not set, then set it
+          if (!var->pointerHasEverBeenObserved) {
+            var->pointerHasEverBeenObserved = 1;
+          }
+        }
+      }
     }
 
     // Perform the action action for this particular variable:
