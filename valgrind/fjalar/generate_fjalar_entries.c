@@ -83,32 +83,30 @@ FILE* xml_output_fp = 0;
 
 // The indices to this array must match the DeclaredType enum
 const int DecTypeByteSizes[] = {
-  sizeof(char), //     D_NO_TYPE, // Create padding
-  sizeof(unsigned char),   //     D_UNSIGNED_CHAR,
-  sizeof(char),   //     D_CHAR,
-  sizeof(unsigned short),  //     D_UNSIGNED_SHORT,
-  sizeof(short),  //     D_SHORT,
-  sizeof(unsigned int),   //     D_UNSIGNED_INT,
-  sizeof(int),   //     D_INT,
-  sizeof(unsigned long long int), //     D_UNSIGNED_LONG_LONG_INT,
-  sizeof(long long int), //     D_LONG_LONG_INT,
-  sizeof(float), //     D_UNSIGNED_FLOAT, // currently unused
-  sizeof(float), //     D_FLOAT,
-  sizeof(double),//     D_UNSIGNED_DOUBLE, // currently unused
-  sizeof(double),//     D_DOUBLE,
+  sizeof(char),                   // D_NO_TYPE, // Create padding
 
-  sizeof(long double), //     D_UNSIGNED_LONG_DOUBLE, // currently unused
-  sizeof(long double), //     D_LONG_DOUBLE, // currently unused
+  sizeof(unsigned char),          // D_UNSIGNED_CHAR,
+  sizeof(char),                   // D_CHAR,
+  sizeof(unsigned short),         // D_UNSIGNED_SHORT,
+  sizeof(short),                  // D_SHORT,
+  sizeof(unsigned int),           // D_UNSIGNED_INT,
+  sizeof(int),                    // D_INT,
+  sizeof(unsigned long long int), // D_UNSIGNED_LONG_LONG_INT,
+  sizeof(long long int),          // D_LONG_LONG_INT,
 
-  sizeof(int),   //     D_ENUMERATION,
+  sizeof(float),                  // D_FLOAT,
+  sizeof(double),                 // D_DOUBLE,
+  sizeof(long double),            // D_LONG_DOUBLE,
 
-  sizeof(void*), //     D_STRUCT, // currently unused
-  sizeof(void*), //     D_UNION, // currently unused
-  sizeof(void*), //     D_FUNCTION, // currently unused
-  sizeof(void*), //     D_VOID // currently unused
+  sizeof(int),                    // D_ENUMERATION,
 
-  sizeof(char), //     D_CHAR_AS_STRING
-  sizeof(char), //     D_BOOL
+  sizeof(void*),                  // D_STRUCT_CLASS, // currently unused
+  sizeof(void*),                  // D_UNION, // currently unused
+  sizeof(void*),                  // D_FUNCTION, // currently unused
+  sizeof(void*),                  // D_VOID // currently unused
+
+  sizeof(char),                   // D_CHAR_AS_STRING
+  sizeof(char),                   // D_BOOL
 };
 
 // Global singleton entries for basic types.  These do not need to be
@@ -121,11 +119,8 @@ TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0
 TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedFloatType = {D_UNSIGNED_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedDoubleType = {D_UNSIGNED_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongDoubleType = {D_UNSIGNED_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
 TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
@@ -133,58 +128,59 @@ TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
+TypeEntry* BasicTypesArray[] = {
+  0,                        //  D_NO_TYPE, // Create padding
 
-TypeEntry* BasicTypesArray[22] = {
-  0,  //  D_NO_TYPE, // Create padding
-  &UnsignedCharType,  //  D_UNSIGNED_CHAR,
-  &CharType,  //  D_CHAR,
-  &UnsignedShortType,  //  D_UNSIGNED_SHORT,
-  &ShortType,  //  D_SHORT,
-  &UnsignedIntType, //  D_UNSIGNED_INT,
-  &IntType, //  D_INT,
+  &UnsignedCharType,        //  D_UNSIGNED_CHAR,
+  &CharType,                //  D_CHAR,
+  &UnsignedShortType,       //  D_UNSIGNED_SHORT,
+  &ShortType,               //  D_SHORT,
+  &UnsignedIntType,         //  D_UNSIGNED_INT,
+  &IntType,                 //  D_INT,
   &UnsignedLongLongIntType, //  D_UNSIGNED_LONG_LONG_INT,
-  &LongLongIntType, //  D_LONG_LONG_INT,
-  &UnsignedFloatType, //  D_UNSIGNED_FLOAT, // currently unused
-  &FloatType, //  D_FLOAT,
-  &UnsignedDoubleType, //  D_UNSIGNED_DOUBLE, // currently unused
-  &DoubleType, //  D_DOUBLE,
-  &UnsignedLongDoubleType, //  D_UNSIGNED_LONG_DOUBLE, // currently unused
-  &LongDoubleType, //  D_LONG_DOUBLE,
-  0, //  D_ENUMERATION,
-  0, //  D_STRUCT,
-  0, //  D_UNION,
-  &FunctionType, //  D_FUNCTION,
-  &VoidType, //  D_VOID,
-  0, //  D_CHAR_AS_STRING, // when .disambig 'C' option is used with chars
-  &BoolType //  D_BOOL            // C++ only
+  &LongLongIntType,         //  D_LONG_LONG_INT,
+
+  &FloatType,               //  D_FLOAT,
+  &DoubleType,              //  D_DOUBLE,
+  &LongDoubleType,          //  D_LONG_DOUBLE,
+
+  0,                        //  D_ENUMERATION,
+  0,                        //  D_STRUCT_CLASS,
+  0,                        //  D_UNION,
+
+  &FunctionType,            //  D_FUNCTION,
+  &VoidType,                //  D_VOID,
+  0,                        //  D_CHAR_AS_STRING
+  &BoolType                 //  D_BOOL
 };
 
 // This array can be indexed using the DelaredType enum
 const char* DeclaredTypeString[] = {
-  "no_declared_type", // Create padding
-  "unsigned char", //D_UNSIGNED_CHAR,
-  "char", //D_CHAR,
-  "unsigned short", //D_UNSIGNED_SHORT,
-  "short", //D_SHORT,
-  "unsigned int", //D_UNSIGNED_INT,
-  "int", //D_INT,
-  "unsigned long long int", //D_UNSIGNED_LONG_LONG_INT,
-  "long long int", //D_LONG_LONG_INT,
-  "unsigned float", //D_UNSIGNED_FLOAT, // currently unused
-  "float", //D_FLOAT,
-  "unsigned double", //D_UNSIGNED_DOUBLE, // currently unused
-  "double", //D_DOUBLE,
-  "unsigned long double", //D_UNSIGNED_LONG_DOUBLE, // currently unused
-  "long double", //D_LONG_DOUBLE,
+  "no_declared_type",       // D_NO_TYPE, // Create padding
+
+  "unsigned char",          // D_UNSIGNED_CHAR,
+  "char",                   // D_CHAR,
+  "unsigned short",         // D_UNSIGNED_SHORT,
+  "short",                  // D_SHORT,
+  "unsigned int",           // D_UNSIGNED_INT,
+  "int",                    // D_INT,
+  "unsigned long long int", // D_UNSIGNED_LONG_LONG_INT,
+  "long long int",          // D_LONG_LONG_INT,
+
+  "float",                  // D_FLOAT,
+  "double",                 // D_DOUBLE,
+  "long double",            // D_LONG_DOUBLE,
+
   // This should NOT be used unless you created an unnamed struct/union!
-  // Use DaikonVariable::collectionName instead
-  "enumeration", //D_ENUMERATION
-  "struct", //D_STRUCT
-  "union", //D_UNION
-  "function", //D_FUNCTION
-  "void", //D_VOID
-  "char", //D_CHAR_AS_STRING, // when .disambig 'C' option is used with chars
-  "bool", //D_BOOL            // C++ only
+  // Use TypeEntry::typeName instead
+  "enumeration",            // D_ENUMERATION
+  "struct",                 // D_STRUCT_CLASS
+  "union",                  // D_UNION
+
+  "function",               // D_FUNCTION
+  "void",                   // D_VOID
+  "char",                   // D_CHAR_AS_STRING
+  "bool",                   // D_BOOL
 };
 
 // To figure out if a certain DeclaredType t is a basic type, simply
@@ -203,7 +199,7 @@ struct genhashtable* VisitedStructsTable = 0;
 // (is_declaration == 1) so we want to fill them in with 'real' values
 // of the same name later.  All variables in this list have their
 // varType initialized to a dynamically-allocated TypeEntry whose
-// collectionName is initialized properly, but all other fields in
+// typeName is initialized properly, but all other fields in
 // this TypeEntry are empty.  During updateAllVarTypes(), we scan
 // through this list, look at the varType entries, look them up in
 // TypesTable, replace the entries with the real versions, and free
@@ -232,7 +228,7 @@ char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_UNSIGNED_LONG_DOUBLE", // currently unused
                              "D_LONG_DOUBLE",
                              "D_ENUMERATION",
-                             "D_STRUCT",
+                             "D_STRUCT_CLASS",
                              "D_UNION",
                              "D_FUNCTION",
                              "D_VOID",
@@ -692,12 +688,12 @@ void repCheckAllEntries(void) {
     // Properties that should hold true for all TypeEntry instances:
 
     tl_assert((D_ENUMERATION == t->decType) ||
-              (D_STRUCT == t->decType) ||
+              (D_STRUCT_CLASS == t->decType) ||
               (D_UNION == t->decType));
 
     // Because TypesTable is indexed by name, there should be no
     // unnamed entries in TypesTable:
-    tl_assert(t->collectionName);
+    tl_assert(t->typeName);
 
     if (t->isStructUnionType) {
       VarNode* n;
@@ -710,11 +706,11 @@ void repCheckAllEntries(void) {
       UInt numMemberFunctions = 0;
       UInt numSuperclasses = 0;
 
-      tl_assert(t->collectionName);
+      tl_assert(t->typeName);
 
-      FJALAR_DPRINTF("  collectionName: %s\n", t->collectionName);
+      FJALAR_DPRINTF("  typeName: %s\n", t->typeName);
 
-      tl_assert((D_STRUCT == t->decType) ||
+      tl_assert((D_STRUCT_CLASS == t->decType) ||
 		(D_UNION == t->decType));
 
       // Rep. check member variables (if there are any):
@@ -725,7 +721,7 @@ void repCheckAllEntries(void) {
           VariableEntry* curMember = n->var;
 
           FJALAR_DPRINTF(" checking member %s for %s\n",
-                      curMember->name, t->collectionName);
+                      curMember->name, t->typeName);
 
           // Specific checks for member variables:
           tl_assert(curMember->isStructUnionMember);
@@ -734,7 +730,7 @@ void repCheckAllEntries(void) {
           // For a struct, check that data_member_location is greater
           // than the one of the previous member variable.  Notice that
           // data_member_location can be 0.
-          if (D_STRUCT == t->decType) {
+          if (D_STRUCT_CLASS == t->decType) {
             // We don't do a strictly '>' check because of bit-fields,
             // which share the same data_member_location but have
             // different bit offsets within that location.  We
@@ -767,7 +763,7 @@ void repCheckAllEntries(void) {
 	  VariableEntry* curMember = node->var;
 
 	  FJALAR_DPRINTF(" checking STATIC member %s for %s\n",
-		      curMember->name, t->collectionName);
+		      curMember->name, t->typeName);
 
 	  // Specific checks for static member variables:
 	  tl_assert(curMember->isStructUnionMember);
@@ -805,7 +801,7 @@ void repCheckAllEntries(void) {
           Superclass* curSuper = (Superclass*)superclassNode->elt;
           tl_assert(curSuper->className);
           tl_assert(curSuper->class);
-          tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->collectionName));
+          tl_assert(0 == VG_(strcmp)(curSuper->className, curSuper->class->typeName));
           FJALAR_DPRINTF("  curSuper->className: %s, inheritance: %d\n",
                       curSuper->className, curSuper->inheritance);
           numSuperclasses++;
@@ -836,7 +832,7 @@ static void repCheckOneVariable(VariableEntry* var) {
     }
 
     FJALAR_DPRINTF(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
-		var->structParentType ? var->structParentType->collectionName : "no parent",
+		var->structParentType ? var->structParentType->typeName : "no parent",
 		var,
 		var->name,
 		var->globalLocation);
@@ -893,7 +889,7 @@ static void repCheckOneVariable(VariableEntry* var) {
             (var->referenceLevels == 1));
 
   FJALAR_DPRINTF(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
-	      var->structParentType ? var->structParentType->collectionName : "no parent",
+	      var->structParentType ? var->structParentType->typeName : "no parent",
 	      var,
 	      var->name,
 	      var->globalLocation);
@@ -1250,7 +1246,7 @@ static void initFunctionFjalarNames(void) {
     // File-static functions should print as: dirname/filename.c.staticFunction()
     // C++ member functions should print as: className.memberFunction()
     if (cur_entry->parentClass) {
-      the_class = cur_entry->parentClass->collectionName;
+      the_class = cur_entry->parentClass->typeName;
       // If there is demangled name like: "Stack::Link::initialize(char*, Stack::Link*)",
       // we want to strip off all but "initialize(char*, Stack::Link*)" and then tack
       // on the class name to that to form "Link.initialize(char*, Stack::Link*)"
@@ -1375,7 +1371,18 @@ void initializeFunctionTable(void)
           cur_func_entry->name = dwarfFunctionPtr->name;
           cur_func_entry->mangled_name = dwarfFunctionPtr->mangled_name;
           cur_func_entry->filename = dwarfFunctionPtr->filename;
-          cur_func_entry->accessibility = dwarfFunctionPtr->accessibility;
+
+          switch (dwarfFunctionPtr->accessibility) {
+          case DW_ACCESS_private:
+            cur_func_entry->visibility = PRIVATE_VISIBILITY;
+            break;
+          case DW_ACCESS_protected:
+            cur_func_entry->visibility = PROTECTED_VISIBILITY;
+            break;
+          case DW_ACCESS_public:
+          default:
+            cur_func_entry->visibility = PUBLIC_VISIBILITY;
+          }
 
           cur_func_entry->startPC = dwarfFunctionPtr->start_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
@@ -1548,7 +1555,7 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
 static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 {
   t->decType = D_ENUMERATION;
-  t->collectionName = collectionPtr->name;
+  t->typeName = collectionPtr->name;
 
   t->byteSize = sizeof(int); // An enumeration is an int
 }
@@ -1576,9 +1583,9 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   if (e->tag_name == DW_TAG_union_type)
     t->decType = D_UNION;
   else
-    t->decType = D_STRUCT;
+    t->decType = D_STRUCT_CLASS;
 
-  t->collectionName = collectionPtr->name;
+  t->typeName = collectionPtr->name;
 
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
@@ -1748,7 +1755,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   }
 
   FJALAR_DPRINTF("t: %s, num_static_member_vars: %u\n",
-	      t->collectionName,
+	      t->typeName,
 	      collectionPtr->num_static_member_vars);
 
   // Extract static member variables into staticMemberVarList only if
@@ -1839,7 +1846,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       // Round struct size up to the nearest word (multiple of 4)
       t->byteSize = ((structByteSize + 3) >> 2) << 2;
 
-      FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->collectionName, t->byteSize);
+      FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->typeName, t->byteSize);
     }
   }
   else {
@@ -1901,7 +1908,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f)
     VariableEntry* firstReturnVar = firstNode->var;
     // See if the function seturn a struct by value:
     if (firstReturnVar &&
-	(D_STRUCT == firstReturnVar->varType->decType) &&
+	(D_STRUCT_CLASS == firstReturnVar->varType->decType) &&
 	(0 == firstReturnVar->ptrLevels) &&
 	// Don't forget C++ reference variables!
 	(0 == firstReturnVar->referenceLevels)) {
@@ -2163,20 +2170,20 @@ void updateAllVarTypes(void) {
       continue;
     }
 
-    tl_assert(fake_type->collectionName);
+    tl_assert(fake_type->typeName);
 
     // Try to look in TypesTable for the entry:
-    real_type = getTypeEntry(fake_type->collectionName);
+    real_type = getTypeEntry(fake_type->typeName);
 
     // If we don't find it already in TypesTable, then look directly
     // in the DWARF debug info for a REAL struct entry (is_declaration
-    // == 0) whose name matches the given collectionName.  If it's
+    // == 0) whose name matches the given typeName.  If it's
     // found, then allocate a new TypeEntry, populate it with that
     // data, and stuff it into TypesTable.  If it's not found, then
     // simply give up.
     if (!real_type) {
       dwarf_entry* struct_dwarf_ptr =
-        find_struct_entry_with_name(fake_type->collectionName);
+        find_struct_entry_with_name(fake_type->typeName);
 
       if (struct_dwarf_ptr) {
         real_type = constructTypeEntry();
@@ -2184,7 +2191,7 @@ void updateAllVarTypes(void) {
 
         // Add it to TypesTable
         genputtable(TypesTable,
-                    (void*)real_type->collectionName,
+                    (void*)real_type->typeName,
                     real_type);
       }
     }
@@ -2412,7 +2419,7 @@ void extractOneVariable(VarList* varListPtr,
       // Use the tool's constructor to properly support sub-classing:
       TypeEntry* fake_entry = constructTypeEntry();
 
-      fake_entry->collectionName = collectionPtr->name;
+      fake_entry->typeName = collectionPtr->name;
 
       varPtr->varType = fake_entry;
       insertNewNode(&varsToUpdateTypes);
@@ -2586,7 +2593,7 @@ static void initMemberFuncs(void) {
     TypeEntry* t = nextType(typeIt);
 
     // Only do this for struct/union types:
-    if ((t->decType == D_STRUCT) ||
+    if ((t->decType == D_STRUCT_CLASS) ||
         (t->decType == D_UNION)) {
       // This is a bit of a hack, but in extractStructUnionType(), we
       // initialized the entries of t->memberFunctionList with the
@@ -2605,7 +2612,7 @@ static void initMemberFuncs(void) {
           unsigned int start_PC = (unsigned int)(n->elt);
           tl_assert(start_PC);
 
-          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->collectionName);
+          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->typeName);
 
           // Hopefully this will always be non-null
           n->elt = getFunctionEntryFromStartAddr(start_PC);
@@ -2715,7 +2722,7 @@ void deleteVarIterator(VarIterator* varIt) {
 }
 
 
-// Returns the TypeEntry entry found in TypesTable with collectionName
+// Returns the TypeEntry entry found in TypesTable with typeName
 // matching the given name, and return 0 if nothing found.
 TypeEntry* getTypeEntry(char* typeName) {
   return (TypeEntry*)gengettable(TypesTable, (void*)typeName);
@@ -2805,11 +2812,11 @@ static void XMLprintOneFunction(FunctionEntry* cur_entry,
   // Add function attributes:
   if (printType == MEMBER_FUNCTION) {
     XML_PRINTF(" type=\"");
-    switch (cur_entry->accessibility) {
-    case DW_ACCESS_private:
+    switch (cur_entry->visibility) {
+    case PRIVATE_VISIBILITY:
       XML_PRINTF("private-member-function");
       break;
-    case DW_ACCESS_protected:
+    case PROTECTED_VISIBILITY:
       XML_PRINTF("protected-member-function");
     break;
     default:
@@ -2910,9 +2917,9 @@ static void XMLprintTypesTable() {
 
     XML_PRINTF("<type>\n");
 
-    if (cur_entry->collectionName) {
+    if (cur_entry->typeName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
-		 cur_entry->collectionName);
+		 cur_entry->typeName);
     }
 
     XML_PRINTF("<byte-size>%d</byte-size>\n",
@@ -3117,7 +3124,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
 	       var->data_member_location);
 
     XML_PRINTF("<parent-type>%s</parent-type>\n",
-	       var->structParentType->collectionName);
+	       var->structParentType->typeName);
 
     XML_PRINTF("</member-var>\n");
   }
@@ -3142,9 +3149,9 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("<byte-size>%d</byte-size>\n",
 	       t->byteSize);
 
-    if (t->collectionName) {
+    if (t->typeName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
-		 t->collectionName);
+		 t->typeName);
     }
 
     XML_PRINTF("</var-type>\n");

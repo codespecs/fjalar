@@ -251,7 +251,7 @@ void visitClassMembersNoValues(TypeEntry* class,
 // isSequence), and traverses through all of the members of the
 // specified class (or struct/union).  This should also traverse
 // inside of the class's superclasses and visit variables in them as
-// well.  Pre: class->decType == {D_STRUCT, D_UNION}
+// well.  Pre: class->decType == {D_STRUCT_CLASS, D_UNION}
 void visitClassMemberVariables(TypeEntry* class,
                                void* pValue,
                                char isSequence,
@@ -285,7 +285,7 @@ void visitClassMemberVariables(TypeEntry* class,
                                FunctionEntry* varFuncInfo,
                                char isEnter,
                                TraversalResult tResult) {
-  tl_assert((class->decType == D_STRUCT) ||
+  tl_assert((class->decType == D_STRUCT_CLASS) ||
             (class->decType == D_UNION));
 
 
@@ -1647,12 +1647,12 @@ void visitSequence(VariableEntry* var,
         if (someEltInit) {
           // Only do this if some element is initialized:
           if (numElts > 1) {
-            var->disambigMultipleElts = 1;
+            var->disambigMultipleElts = True;
           }
 
           // If pointerHasEverBeenObserved is not set, then set it
           if (!var->pointerHasEverBeenObserved) {
-            var->pointerHasEverBeenObserved = 1;
+            var->pointerHasEverBeenObserved = True;
           }
         }
       }

@@ -27,11 +27,18 @@ tools.
 #include <limits.h>
 
 #include "fjalar_main.h"
+#include "fjalar_include.h"
 #include "fjalar_runtime.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
 #include "elf/dwarf2.h"
 #include "mc_include.h"
+
+// I don't want to use macros, but this is a useful one for finding
+// out whether a particular VariableEntry refers to a
+// struct/union/class and not a pointer to such:
+#define VAR_IS_STRUCT(var) ((var->ptrLevels == 0) && (var->varType->aggType))
+
 
 FunctionExecutionState* curFunctionExecutionStatePtr = 0;
 
@@ -477,7 +484,9 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 // valid data
 // allocatedOrInitialized = 1 - checks for allocated (A-bits)
 // allocatedOrInitialized = 0 - checks for initialized (V-bits)
-char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numBytes, char allocatedOrInitialized)
+Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
+                                     UInt numBytes,
+                                     Bool allocatedOrInitialized)
 {
   // Everything on the stack frame of the current function IN BETWEEN
   // the function's EBP and the lowestESP is OFF THE HOOK!!!
@@ -517,6 +526,20 @@ char addressIsAllocatedOrInitialized(Addr addressInQuestion, unsigned int numByt
 	}
   }
 }
+
+// Returns True if all numBytes bytes starting at addressInQuestion
+// have been allocated, False otherwise
+Bool addressIsAllocated(Addr addressInQuestion, UInt numBytes) {
+  addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1);
+}
+
+// Returns True if all numBytes bytes starting at addressInQuestion
+// have been initialized by the program, False otherwise (indicates a
+// possible garbage value)
+Bool addressIsInitialized(Addr addressInQuestion, UInt numBytes) {
+  addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0);
+}
+
 
 
 /* Set the buffer for a file handle to a VG_(malloc)ed block, rather than

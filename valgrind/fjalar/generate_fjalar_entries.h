@@ -54,7 +54,7 @@ struct genhashtable* FunctionTable;
 // variable, or else it doesn't appear in this table.
 
 // Hash table containing TypeEntry entries
-// Keys: the name of a TypeEntry (TypeEntry::collectionName)
+// Keys: the name of a TypeEntry (TypeEntry::typeName)
 // Values: TypeEntry corresponding to that name
 //         (Hopefully, if all goes well, the only TypeEntry values
 //          in this table are REAL entries whose dwarf_entry has
@@ -63,13 +63,6 @@ struct genhashtable* FunctionTable;
 // Only non-basic types (IS_BASIC_TYPE(t) == 0) should appear in
 // TypesTable:
 struct genhashtable* TypesTable;
-
-// List of all global variables
-// (including C++ static member variables - these have structParentType initialized
-//  so DON'T TRY TO PRINT THEM AT ALL PROGRAM POINTS OR ELSE WE WILL SEGFAULT OFTEN!
-//  only try to print them during program points whose FunctionEntry::parentClass ==
-//  VariableEntry::structParentType
-VarList globalVars;
 
 void initializeAllFjalarData(void);
 

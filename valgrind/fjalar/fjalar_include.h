@@ -14,14 +14,17 @@
 /*********************************************************************
 fjalar_include.h
 
-These are the Fjalar functions that are available for tools to access.
+This file is the public API of Fjalar and contains the functions and
+data structures that tools can use.
+
 **********************************************************************/
 
 #ifndef FJALAR_INCLUDE_H
 #define FJALAR_INCLUDE_H
 
 #include "GenericHashtable.h"
-//#include "tool.h" // This forms the interface with Valgrind
+
+// Interfaces with Valgrind core:
 #include "pub_tool_basics.h"
 #include "pub_tool_options.h"
 
@@ -29,8 +32,9 @@ These are the Fjalar functions that are available for tools to access.
 Supporting data structures and enums
 **********************************************************************/
 
-typedef enum {
+typedef enum _DeclaredType {
   D_NO_TYPE, // Create padding
+
   D_UNSIGNED_CHAR,
   D_CHAR,
   D_UNSIGNED_SHORT,
@@ -39,15 +43,15 @@ typedef enum {
   D_INT,
   D_UNSIGNED_LONG_LONG_INT,
   D_LONG_LONG_INT,
-  D_UNSIGNED_FLOAT,       // currently unused
+
   D_FLOAT,
-  D_UNSIGNED_DOUBLE,      // currently unused
   D_DOUBLE,
-  D_UNSIGNED_LONG_DOUBLE, // currently unused
   D_LONG_DOUBLE,
+
   D_ENUMERATION,
-  D_STRUCT,           // This includes C++ classes as well
+  D_STRUCT_CLASS,
   D_UNION,
+
   D_FUNCTION,
   D_VOID,
   D_CHAR_AS_STRING,   // when .disambig 'C' option is used with chars
@@ -55,19 +59,17 @@ typedef enum {
 } DeclaredType;
 
 
-typedef enum VisibilityType {
-  PUBLIC_VISIBILITY,
+typedef enum _VisibilityType {
+  PUBLIC_VISIBILITY,    // purposely made this the default
   PROTECTED_VISIBILITY,
   PRIVATE_VISIBILITY
 } VisibilityType;
 
 
-typedef struct _VarList VarList;
-typedef struct _VarNode VarNode;
 
-
-// Ultra-generic singly-linked list with a void* element that is only
-// meant to support forward traversal:
+// Simple generic singly-linked list with a void* element
+// (only meant to support forward traversal)
+//    Yep, re-inventing the wheel once again :)
 typedef struct _SimpleList SimpleList;
 typedef struct _SimpleNode SimpleNode;
 
@@ -82,52 +84,101 @@ struct _SimpleList {
   UInt numElts;
 };
 
-// These list operations don't do any dynamic memory allocation or
-// de-allocation:
+// These list operations don't perform any dynamic memory allocation
+// or de-allocation, so the client needs to explicitly allocate and
+// free 'lst' and 'elt'
 
-// Initializes the list with 0 elements:
+// Initializes the list 'lst' with 0 elements, assuming 'lst' has
+// already been allocated by the client:
 void SimpleListInit(SimpleList* lst);
-// Insert at the end of the list:
+
+// Insert 'elt' at the end of the list 'lst':
 void SimpleListInsert(SimpleList* lst, void* elt);
-// Pops element from head of the list and returns it (Returns 0 if
-// list is empty):
+
+// Pops element from head of the list and returns it
+// (Returns 0 if list is empty):
 void* SimpleListPop(SimpleList* lst);
+
 // Clears all elements in the list by freeing the SimpleNode nodes,
-// but does NOT call free on the actual elts:
+// but does NOT call free on 'elts':
 void SimpleListClear(SimpleList* lst);
 
 
-
 /*********************************************************************
-These are three main types that represent the compile-time information
-in the target program: FunctionEntry, VariableEntry, TypeEntry
+
+These three main types represent the compile-time information in the
+target program: FunctionEntry, VariableEntry, TypeEntry
 
 FunctionEntry - functions
 VariableEntry - variables: globals, function params, member variables
-TypeEntry     - types: base types, structs, unions, C++ classes
+TypeEntry     - types: base types, structs, unions, C++ classes, enums
 
-All of these types can be 'sub-classed' by tools, so tools should only
-create and destroy instances using functions listed in fjalar_tool.h
-and not directly use VG_(malloc) and VG_(free)
+All of these 'classes' can be 'subclassed' by tools, so tools should
+only create and destroy instances using the 'constructor' and
+'destructor' functions listed in fjalar_tool.h and not directly use
+VG_(malloc) and VG_(free).
+
+Each tool can make at most one subclass of each of these classes by
+creating a struct with an instance of one of these classes inlined as
+the first field (structural inheritance) and then specifying for the
+constructor and destructor to allocate and deallocate memory regions
+of the size of the subclass instance (not the base class instance):
+
+Example of subclassing by structural inheritance:
+
+typedef struct _CustomTypeEntry {
+  TypeEntry tE;  // Must be the FIRST member
+  // All additional fields of the subclass
+  int foo;
+  char* bar;
+  double baz;
+
+} CustomTypeEntry
+
+TypeEntry* constructTypeEntry() {
+  return (TypeEntry*)(VG_(calloc)(1, sizeof(CustomTypeEntry)));
+}
+
+void destroyTypeEntry(TypeEntry* t) {
+  VG_(free)((CustomTypeEntry*)t);
+}
+
 **********************************************************************/
 
-// TypeEntry instances only exist for structs, classes, and base types
-// and NOT pointers to those types.  Pointers are represented using
-// the ptrLevels field of the VariableEntry object that contains a
-// TypeEntry.  Thus, arbitrary levels of pointers to a particular type
-// can be represented by one TypeEntry instance.  (Objects of this
-// type should be immutable because it is often aliased and shared.)
+/******** TypeEntry ********/
+
+// TypeEntry instances only exist for structs, classes, unions, enums,
+// and base types.  There is no distinction between a type and a
+// pointer to that type (or a pointer to a pointer to that type,
+// etc.).  Pointers are represented using the ptrLevels field of the
+// VariableEntry object that contains a TypeEntry instance.  Thus,
+// arbitrary levels of pointers to a particular type can be
+// represented by one TypeEntry instance.  Instances of this type
+// should definitely be IMMUTABLE because they are often aliased and
+// shared.
 typedef struct _TypeEntry {
   DeclaredType decType;
-  char* collectionName; // Only non-null if decType ==
-                        // {D_ENUMERATION, D_STRUCT, D_UNION}
 
-  int byteSize; // Number of bytes that this type takes up
+  // The name of the enumeration or struct/union/class type
+  // Only non-null if decType == {D_ENUMERATION, D_STRUCT_CLASS, D_UNION}
+  char* typeName;
 
-  char isStructUnionType;  // also applies to C++ classes
+  // Number of bytes for each variable of this type
+  int byteSize;
 
-  // Everything below here is only valid if isStructUnionType:
+  // Only non-null if this type is a struct/union/class type:
+  // (decType == {D_STRUCT_CLASS, D_UNION})
+  AggregateType* aggType;
 
+} TypeEntry;
+
+
+// Boring forward references:
+typedef struct _VarList VarList;
+typedef struct _VarNode VarNode;
+
+// TypeEntry information for an aggregate type (struct, class, union)
+typedef struct _AggregateType {
   // Non-static (instance) member variables
   // (only non-null if at least 1 exists)
   VarList* memberVarList;
@@ -147,17 +198,33 @@ typedef struct _TypeEntry {
   SimpleList* /* <FunctionEntry> */ memberFunctionList;
 
   // Special member functions that are constructors/destructors:
-  // (Only non-null if there is at least 1 elt)
+  // (Only non-null if there is at least 1 element in the list)
   SimpleList* /* <FunctionEntry> */ constructorList;
   SimpleList* /* <FunctionEntry> */ destructorList;
 
   // A list of classes that are the superclasses of this class
   // Every elt is a Superclass* so this is like List<Superclass>
   // (Only non-null if there is at least 1 superclass)
-  // (We never free the dynamically-allocated Superclass entries,
-  //  but that shouldn't really matter in practice - oh well...)
+  // TODO: We never free the dynamically-allocated Superclass entries,
+  //       but that shouldn't really matter in practice - oh well...
   SimpleList* /* <Superclass> */ superclassList;
-} TypeEntry;
+
+} AggregateType;
+
+
+// Holds information about class inheritance for C++
+typedef struct _Superclass {
+  char* className;
+  TypeEntry* class;           // (class->typeName == className)
+  VisibilityType inheritance; // The visibility of inheritance
+  // All the member vars of this superclass are located within the
+  // subclass starting at location member_var_offset.  This means that
+  // we must add member_var_offset to the data_member_location of
+  // member variables in 'class' in order to find them in the
+  // subclass (this is 0 except when there is multiple inheritance):
+  unsigned long member_var_offset;
+
+} Superclass;
 
 
 // Global singleton entries for basic types.  To see whether a
@@ -171,11 +238,8 @@ TypeEntry UnsignedIntType;
 TypeEntry IntType;
 TypeEntry UnsignedLongLongIntType;
 TypeEntry LongLongIntType;
-TypeEntry UnsignedFloatType;
 TypeEntry FloatType;
-TypeEntry UnsignedDoubleType;
 TypeEntry DoubleType;
-TypeEntry UnsignedLongDoubleType;
 TypeEntry LongDoubleType;
 TypeEntry FunctionType;
 TypeEntry VoidType;
@@ -186,6 +250,8 @@ TypeEntry BoolType;
 // struct/union/class types): [Fast hashtable lookup]
 TypeEntry* getTypeEntry(char* typeName);
 
+
+// Iterator for TypeEntry entries:
 /*
 Programming idiom for iterating over all struct/union/class types used
 in the target program:
@@ -199,71 +265,46 @@ in the target program:
 
   deleteTypeIterator(typeIt);
 */
-typedef struct {
+typedef struct _TypeIterator{
   struct geniterator* it;
 } TypeIterator;
 
 TypeIterator* newTypeIterator(void);
-char hasNextType(TypeIterator* typeIt);
+Bool hasNextType(TypeIterator* typeIt);
 TypeEntry* nextType(TypeIterator* typeIt);
 void deleteTypeIterator(TypeIterator* typeIt);
 
 
-typedef struct _Superclass {
-  char* className;
-  TypeEntry* class;           // (class->collectionName == className)
-  VisibilityType inheritance; // The visibility of inheritance
-  // All the member vars of this superclass are located within the
-  // subclass starting at location member_var_offset.  This means that
-  // we must add member_var_offset to the data_member_location of
-  // member variables in 'class' in order to find them in the
-  // sub-class (this is 0 except when there is multiple inheritance):
-  unsigned long member_var_offset;
-} Superclass;
+/******** VariableEntry ********/
 
-
-// Instances of this type should be mostly immutable after
-// initialization (with the exception of the disambigMultipleElts and
-// pointerHasEverBeenObserved fields).  Do not modify it unless you
-// are in the process of initializing it.
+// VariableEntry contains information about a variable in the program:
+// Instances should be mostly IMMUTABLE after initialization (with the
+// exception of the disambigMultipleElts and
+// pointerHasEverBeenObserved fields).  Do not modify its fields
+// unless you are in the process of initializing it.
 typedef struct _VariableEntry {
-  char* name; // For non-global variables, this name is how it appears
-              // in the program, but for globals and file-static
-              // variables, it is made into a unique identifier by
-              // appending a filename (and possibly a function name)
-              // to the front of it if necessary.
+  // For non-global variables, this is the variable's name as it
+  // appears in the program, but for globals and file-static
+  // variables, this is a UNIQUE name that's the result of prepending
+  // a '/' (for true globals), a filename (for file-static), and a
+  // function name (for file-statics declared within a function) to
+  // the front of the variable's original name.
+  char* name;
 
-  int byteOffset; // Byte offset from head of stack frame (%ebp) for
-		  // function parameters and local variables
+  // Byte offset of this variable from head of stack frame (%ebp) for
+  // function parameters and local variables
+  int byteOffset;
 
   // Global variable information:
-  char isGlobal;   // True if it's either global, file-static, or C++
-		   // static member variable
-  char isExternal; // True if visible outside of fileName;
-                   // False if file-static
+  // (if null, then this variable is not a global variable)
+  GlobalVarInfo* globalVar;
 
-  char isStaticArray; // Is the variable a statically-sized array?
-		      // (Placed here so that the compiler can
-		      // hopefully pack all the chars together to save
-		      // space)
+  // (If null, then this variable is not a static array)
+  StaticArrayInfo* staticArr;
 
-  char isString; // Does this variable look like a C-style string (or
-		 // a pointer to a string, or a pointer to a pointer
-		 // to a string, etc)?  True iff (varType == &CharType)
-		 // and (ptrLevels > 0)
-
-  char* fileName; // Only used by global variables - the file where
-                  // the variable was declared - useful for
-                  // disambiguating two or more file-static variables
-                  // in different files with the same name (in that
-                  // case, the name field will contain the filename
-                  // appended in front of the variable name)
-
-  Addr globalLocation;  // The compiled location of this global variable
-  Addr functionStartPC; // The start PC address of the function which
-                        // this variable belongs to - This is only
-                        // valid (non-null) for file-static variables
-                        // that are declared within functions
+  // Struct/class/union member variable information
+  // (If null, then this is not a member variable)
+  MemberVarInfo* memberVar;
 
   // varType refers to the type of the variable after all pointer
   // dereferences are completed, so don't directly use
@@ -272,14 +313,14 @@ typedef struct _VariableEntry {
   TypeEntry* varType;
 
   // Levels of pointer indirection until we reach the type indicated
-  // by varType.  This allows a single VarType instance to be able to
-  // represent variables that are arbitrary levels of pointers to that
-  // type.  If something is an array, that increments ptrLevels as
-  // well.  [For C++, this does NOT take reference (&) modifiers into
-  // account - see referenceLevels]
-  // For example, a variable of type 'unsigned int**' would have
-  // (varType == &UnsignedIntType) && (ptrLevels == 2)
-  char ptrLevels;
+  // by varType.  This allows a single varType TypeEntry instance to
+  // be able to represent variables that are arbitrary levels of
+  // pointers to that type.  If something is an array, ptrLevels is
+  // incremented by 1.  (For C++, this does NOT take reference (&)
+  // modifiers into account - see the referenceLevels field.)  For
+  // example, a variable of type 'unsigned int**' would have:
+  // (varType == &UnsignedIntType) && (ptrLevels == 2).
+  UInt ptrLevels;
 
   // For C++ only, this is 1 if this variable is a reference to the
   // type denoted by varType (this shouldn't ever increase above 1
@@ -288,64 +329,94 @@ typedef struct _VariableEntry {
   // For example, a variable of type 'unsigned int*&' would have
   // (varType == &UnsignedIntType) && (referenceLevels == 1) &&
   // (ptrLevels == 1)
-  char referenceLevels;
+  UInt referenceLevels;
 
-  // Statically-allocated array information (Only valid if isStaticArray)
-  char numDimensions; // The number of dimensions of this array
-  // This is an array of size numDimensions:
-  unsigned int* upperBounds; // The upper bound in each dimension,
-			     // which is 1 less than the size
-  // e.g. myArray[30][40][50] would have numDimensions = 3
-  // and upperBounds = {29, 39, 49}
+  Bool isString; // Does this variable look like a C-style string (or
+		 // a pointer to a string, or a pointer to a pointer
+		 // to a string, etc)?  True iff (varType == &CharType)
+		 // and (ptrLevels > 0)
 
   // For .disambig option: 0 for no disambig info, 'A' for array, 'P'
   // for pointer, 'C' for char, 'I' for integer, 'S' for string
   // (Automatically set a 'P' disambig for the C++ 'this' parameter
-  // since it will always point to one element)
+  // since that will always point to one element)
   char disambig;
 
-  // Only relevant for pointer variables (ptrLevels > 0): 1 if this
+  // Only relevant for pointer variables (ptrLevels > 0): True if this
   // particular variable has ever pointed to more than 1 element, 0
   // otherwise.  These are the only two fields of this struct that
   // could possibly be modified after initialization.  They are used
   // to generate a .disambig file using the --smart-disambig option.
-  char disambigMultipleElts;
-  char pointerHasEverBeenObserved;
+  Bool disambigMultipleElts;       // mutable
+  Bool pointerHasEverBeenObserved; // mutable
 
-  // Struct/union/class member variable information (everything below
-  // here only relevant if isStructUnionMember)
-  char isStructUnionMember;
+} VariableEntry;
 
+
+// VariableEntry information for struct/class/union member variables:
+typedef struct _MemberVarInfo {
   // The offset of this member variable from the beginning of the
   // struct/union/class (always 0 for unions)
   unsigned long data_member_location;
 
-  // For bit-fields (not yet implemented)
-  int internalByteSize;
-  int internalBitOffset;  // Bit offset from the start of byteOffset
-  int internalBitSize;    // Bit size for bitfields
-
-  // This is non-null (along with isGlobal) for C++ class static
-  // member variables, or it's also non-null (without isGlobal) for
-  // all member variables.  It indicates the struct/union/class to
-  // which this variable belongs:
+  // This is non-null (along with globalVar) for C++ class static
+  // member variables, or it's also non-null (globalVar null) for all
+  // member variables.  It indicates the struct/union/class to which
+  // this variable belongs:
   TypeEntry* structParentType;
 
   // Only relevant for C++ member variables
   VisibilityType visibility;
 
-} VariableEntry;
+  // For bit-fields (full support not yet implemented)
+  int internalByteSize;
+  int internalBitOffset;  // Bit offset from the start of byteOffset
+  int internalBitSize;    // Bit size for bitfields
+
+} MemberVarInfo;
 
 
-// I don't want to use macros, but this is a useful one for finding
-// out whether a particular VariableEntry refers to a
-// struct/union/class and not a pointer to such:
-#define VAR_IS_STRUCT(var)                                            \
-  ((var->ptrLevels == 0) && (var->varType->isStructUnionType))
+// VariableEntry information for global variables:
+typedef struct _GlobalVarInfo {
+  char* fileName;  // The file where this variable was declared -
+                   // useful for disambiguating two or more file-static
+                   // variables in different files with the same name
+                   // (in that case, the name field will contain the
+                   // filename prepended in front of the variable name)
 
-// A doubly-linked list of VariableEntry objects - each node contains
-// a pointer to a VariableEntry instance (in order to support
-// sub-classing)
+  Bool isExternal; // True if this variable is visible outside of
+                   // fileName (i.e., it is truly a global variable).
+                   // False if it is a file-static variable (only
+                   // visible inside of one file) or a static variable
+                   // declared within a function (only visible inside
+                   // of one function).
+
+  Addr globalLocation;  // The address of this global variable
+
+  Addr functionStartPC; // The start PC address of the function which
+                        // this variable belongs to - This is only
+                        // valid (non-null) for file-static variables
+                        // that are declared within functions
+} GlobalVarInfo;
+
+
+// VariableEntry information for static arrays:
+typedef struct _StaticArrayInfo {
+  UInt  numDimensions; // The number of dimensions of this array
+
+  // This is an array of size numDimensions:
+  UInt* upperBounds;   // The upper bound in each dimension,
+                       // which is 1 less than the size
+                       // e.g. myArray[30][40][50] would have
+                       // numDimensions=3 and upperBounds={29, 39, 49}
+} StaticArrayInfo;
+
+
+
+// A more sophisticated linked list for VariableEntry objects.  It is
+// doubly-linked and each node contains a pointer to a VariableEntry
+// instance (in order to support 'subclassing')
+
 struct _VarNode {
   // dynamically-allocated with constructVariableEntry() - must be
   // destroyed with destroyVariableEntry() (see fjalar_tool.h)
@@ -361,9 +432,9 @@ struct _VarList {
 };
 
 // Clears the VarList referred-to by varListPtr, and if
-// destroyVariableEntries is non-null, also calls
-// destroyVariableEntry() on each var in the list.
-void clearVarList(VarList* varListPtr, char destroyVariableEntries);
+// destroyVariableEntries is True, also calls
+// destroyVariableEntry() on each var in the list (see fjalar_tool.h).
+void clearVarList(VarList* varListPtr, Bool destroyVariableEntries);
 
 // Inserts a new node at the tail of the list and allocates a new
 // VariableEntry using constructVariableEntry()
@@ -374,6 +445,7 @@ void insertNewNode(VarList* varListPtr);
 void deleteTailNode(VarList* varListPtr);
 
 
+// Iterator for VariableEntry entries:
 /*
 Programming idiom for iterating over all variables in a given VarList
 
@@ -392,80 +464,100 @@ typedef struct {
 } VarIterator;
 
 VarIterator* newVarIterator(VarList* vlist);
-char hasNextVar(VarIterator* varIt);
+Bool hasNextVar(VarIterator* varIt);
 VariableEntry* nextVar(VarIterator* varIt);
 void deleteVarIterator(VarIterator* varIt);
 
 
-// Contains information about a particular function
+// List of all global variables
+// (including C++ static member variables)
+VarList globalVars;
+
+
+/******** FunctionEntry ********/
+
+// Contains information about a particular function -
+// Should be IMMUTABLE after initialization
 typedef struct _FunctionEntry {
-  // The standard C name for a function (i.e. "sum")
-  // (Even C++ functions with mangled names also have regular C names as well)
+  // The standard C name for a function, with no parens or formal
+  // param types (i.e. "sum")
+  // Even C++ functions have regular C names.
+  // i.e., for a C++ function "sum(int, int)", its C name is "sum"
   char* name;
 
-  char* mangled_name;     // The mangled name (C++ only)
-  char* demangled_name;   // The de-mangled name (C++ only)
+  // The mangled name (C++ only) - based on some standard mangling scheme
+  char* mangled_name;
 
-  char* filename;         // The file where this function is defined
+  // The de-mangled name (C++ only)
+  // This will have parens and formal param types. e.g., "sum(int, int)"
+  char* demangled_name;
+
+  // The file where this function is defined
+  char* filename;
 
   // fjalar_name is a version of name that is guaranteed (hopefully)
   // to be unique.
 
-  // Global functions have a '..' appended to the front: eg ..main()
-  // File-static functions have filename appended:
+  // Global functions have a '..' prepended to the front: eg ..main()
+  // File-static functions have the filename appended:
   //    dirname/filename.c.staticFunction()
   // C++ member functions have class name appended:
   //    className.memberFunction()
-  char *fjalar_name; // This is initialized only once when the
-                     // FunctionEntry entry is created from the
-                     // corresponding dwarf_entry in
-                     // initializeFunctionTable()
+  char *fjalar_name; // (This is initialized only once when the
+                     //  FunctionEntry entry is created from the
+                     //  corresponding dwarf_entry in
+                     //  initializeFunctionTable())
 
-  // All instructions within the function are between
-  // startPC and endPC, inclusive I believe
+  // All instructions within the function are between startPC and
+  // endPC, inclusive
   Addr startPC;
   Addr endPC;
 
-  char isExternal; // 1 if it's globally visible, 0 if it's file-static
+  // True if globally visible, False if file-static scope
+  Bool isExternal;
 
   VarList formalParameters;        // List of formal parameter variables
+
   VarList localArrayAndStructVars; // Local struct and static array
                                    // variables (useful for finding
                                    // out how many elements a pointer
                                    // to the stack refers to)
-  VarList returnValue; // Variable for the return value (should
-                       // contain at most 1 element)
 
-  TypeEntry* parentClass; // only non-null if this is a C++ member function;
-                          // points to the class which this function belongs to
+  VarList returnValue;    // Variable holding the return value (should
+                          // contain at most 1 element)
 
-  // TODO: Refactor to use VisibilityType
-  char accessibility; // 0 if none - ASSUMED TO BE PUBLIC!!!
-                      // 1 (DW_ACCESS_public) if public,
-                      // 2 (DW_ACCESS_protected) if protected,
-                      // 3 (DW_ACCESS_private) if private
+  TypeEntry* parentClass; // only non-null if this is a C++ member
+                          // function; points to the class to which
+                          // this function belongs
+
+  VisibilityType visibility; // Only relevant for C++ member functions
 
   // GNU Binary tree of variables (accessed using tsearch(), tfind(),
-  // etc...) to trace within this function.  This is only valid when
-  // Fjalar is run with the --var-list-file command-line option.  This
-  // is initialized in initializeFunctionTable().
+  // etc...) to trace within this function.  This is only non-null
+  // when Fjalar is run with the --var-list-file command-line option.
+  // This is initialized in initializeFunctionTable().
   char* trace_vars_tree;
   // Has trace_vars_tree been initialized?
-  char trace_vars_tree_already_initialized;
+  Bool trace_vars_tree_already_initialized;
+
 } FunctionEntry;
+
 
 // Returns a FunctionEntry* given its starting address (startPC)
 // [Fast hashtable lookup]
-__inline__ FunctionEntry* getFunctionEntryFromStartAddr(unsigned int startPC);
+__inline__ FunctionEntry* getFunctionEntryFromStartAddr(Addr startPC);
+
 // Returns a FunctionEntry* given its fjalar_name
 // [Slow linear search lookup]
 FunctionEntry* getFunctionEntryFromFjalarName(char* fjalar_name);
+
 // Returns a FunctionEntry* given an address within the range of
 // [startPC, endPC], inclusive
 // [Slow linear search lookup]
-FunctionEntry* getFunctionEntryFromAddr(unsigned int addr);
+FunctionEntry* getFunctionEntryFromAddr(Addr addr);
 
 
+// Iterator for FunctionEntry entries:
 /*
 Programming idiom for iterating over all functions used in the target
 program (including C++ member functions):
@@ -484,7 +576,7 @@ typedef struct {
 } FuncIterator;
 
 FuncIterator* newFuncIterator(void);
-char hasNextFunc(FuncIterator* funcIt);
+Bool hasNextFunc(FuncIterator* funcIt);
 FunctionEntry* nextFunc(FuncIterator* funcIt);
 void deleteFuncIterator(FuncIterator* funcIt);
 
@@ -496,43 +588,42 @@ traversals within data structures and arrays
 
 // Entries for tracking the runtime state of functions at entrances
 // and exits (used mainly by FunctionExecutionStateStack in
-// fjalar_main.c) THIS CANNOT BE SUB-CLASSED RIGHT NOW because it is
+// fjalar_main.c).  This class CANNOT BE SUBCLASSED because it is
 // placed inline into FunctionExecutionStateStack.
 typedef struct {
-  FunctionEntry* func; // The function whose runtime state we are tracking
+  // The function whose runtime state we are currently tracking
+  FunctionEntry* func;
 
-  Addr EBP; // %ebp as calculated from %esp at function entrance time
+  Addr EBP;       // %ebp as calculated from %esp at function entrance
 
   Addr lowestESP; // The LOWEST value of %esp that has ever been
                   // encountered while we are in this function.  The
                   // problem is that Fjalar's function exit handling
-                  // code runs after the function increments ESP so
+                  // code runs AFTER the function increments ESP so
                   // that everything in the current function's stack
                   // frame is marked invalid by Memcheck.  Thus, we
                   // need this value to see how deep a function has
                   // penetrated into the stack, so that we can know
                   // what values are valid when this function exits.
 
-  // Return values of function exit
+  // Return values at function exit
 
-  // As of Valgrind 3.0, we now keep V-bits for all of these in the
-  // shadow memory:
   int EAX;     // %EAX
   int EDX;     // %EDX
   double FPU;  // FPU %st(0)
 
-  // This is a copy of the portion of the function's (Valgrind) stack
-  // frame that is above EBP.  It holds function formal parameter
-  // values that were passed into this function at entrance-time.  We
-  // reference this virtualStack at function exit in order to print
-  // out the SAME formal parameter values upon exit as upon entrance.
-  // We need this because the compiler is free to modify the formal
-  // parameter values that are on the real stack when executing the
-  // function.  Using the virtualStack means that local changes to
-  // formal parameters are not visible at function exit (but changes
-  // made via params passed by pointers are visible).  This is okay
-  // because local changes should be invisible to the calling
-  // function anyways.
+  // This is a copy of the portion of the function's stack frame that
+  // is above EBP.  It holds function formal parameter values that
+  // were passed into this function at entrance time.  We reference
+  // this virtualStack at function exit in order to visit the SAME
+  // formal parameter values upon exit as upon entrance.  We need this
+  // because the compiler is free to modify the formal parameter
+  // values that are on the real stack when executing the function.
+  // Using the virtualStack means that local changes to formal
+  // parameters are not visible at function exit (but changes made via
+  // params passed by pointers are visible).  This is okay and
+  // justified because local changes should be invisible to the
+  // calling function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
 
@@ -540,22 +631,25 @@ typedef struct {
 
 
 // Enum for storing the state of a traversal process:
-typedef enum {
-  DERIVED_VAR, // A variable that was derived either from
-               // dereferencing a pointer or traversing inside of a
-               // data structure
-  DERIVED_FLATTENED_ARRAY_VAR, // A derived variable as a result of
-                               // flattening an array
+typedef enum _VariableOrigin{
+  // A variable that was derived either from dereferencing a pointer
+  // or traversing inside of a data structure
+  DERIVED_VAR,
+  // A derived variable as a result of flattening an array
+  DERIVED_FLATTENED_ARRAY_VAR,
+
   GLOBAL_VAR,
   FUNCTION_FORMAL_PARAM,
-  FUNCTION_RETURN_VAR          // Only relevant for function exits
+
+  // Only relevant for function exits
+  FUNCTION_RETURN_VAR
 } VariableOrigin;
 
 
 // These result values control the actions of the data structure
 // traversal mechanism.  It is the type of the value that the tool's
 // traversal callback function must return.
-typedef enum {
+typedef enum _TraversalResult{
   INVALID_RESULT = 0, // Should never happen
   // Return this when you don't really care about pointer dereferences
   // at all; e.g., you might just be interested in the names of the
@@ -584,7 +678,7 @@ typedef enum {
 // (.disambig) option is in effect:
 // (See http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Pointer-type-disambiguation
 //  for detailed instructions on pointer-type disambiguation)
-typedef enum DisambigOverride {
+typedef enum _DisambigOverride {
   OVERRIDE_NONE,
   OVERRIDE_CHAR_AS_STRING, // 'C' for base "char" and "unsigned char" types
   OVERRIDE_STRING_AS_ONE_CHAR_STRING, // 'C' for pointer to "char" and "unsigned char"
@@ -827,10 +921,10 @@ These functions provide information extracted from an executable's
 symbol table:
 **********************************************************************/
 
-// Returns true iff the address is within a global area as specified
+// Returns True iff the address is within a global area as specified
 // by the executable's symbol table (it lies within the .data, .bss,
 // or .rodata sections):
-char addressIsGlobal(unsigned int addr);
+Bool addressIsGlobal(Addr addr);
 
 // Returns the start address of a function with a particular name.
 // Accepts regular name for C and mangled name for C++.
@@ -865,20 +959,15 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation);
 // var->varType->byteSize if ptrLevels == 0, sizeof(void*) otherwise
 int getBytesBetweenElts(VariableEntry* var);
 
-// Returns 1 if all numBytes bytes starting at addressInQuestion have
-// been allocated, 0 otherwise
-#define addressIsAllocated(addressInQuestion, numBytes) \
-addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1)
-// Returns 1 if all numBytes bytes starting at addressInQuestion have
-// been initialized by the program, 0 otherwise (indicates a possible
-// garbage value)
-#define addressIsInitialized(addressInQuestion, numBytes) \
-addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0)
+// Returns True if all numBytes bytes starting at addressInQuestion
+// have been allocated, False otherwise
+Bool addressIsAllocated(Addr addressInQuestion, UInt numBytes);
 
-// This is called by the 2 macros above:
-char addressIsAllocatedOrInitialized(Addr addressInQuestion,
-                                     unsigned int numBytes,
-                                     char allocatedOrInitialized);
+// Returns True if all numBytes bytes starting at addressInQuestion
+// have been initialized by the program, False otherwise (indicates a
+// possible garbage value)
+Bool addressIsInitialized(Addr addressInQuestion, UInt numBytes);
+
 
 
 /*********************************************************************
@@ -933,11 +1022,11 @@ int equivalentStrings(char* str1, char* str2);
 // hashes a string (in very primitive way ... could improve if needed)
 unsigned int hashString(char* str);
 
-// Returns 1 if the FunctionEntry denoted by cur_entry has been
+// Returns True if the FunctionEntry denoted by cur_entry has been
 // specified by the user in a ppt-list-file
 // Only relevant if the --ppt-list-file option is used (and
 // fjalar_trace_prog_pts_filename is non-null)
-char prog_pts_tree_entry_found(FunctionEntry* cur_entry);
+Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 
 
 #endif
