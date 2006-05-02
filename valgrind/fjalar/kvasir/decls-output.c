@@ -121,11 +121,8 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_BOOL:            // C++ only
     return R_BOOLEAN;
 
-  case D_UNSIGNED_FLOAT: // currently unused
   case D_FLOAT:
-  case D_UNSIGNED_DOUBLE: // currently unused
   case D_DOUBLE:
-  case D_UNSIGNED_LONG_DOUBLE: // currently unused
   case D_LONG_DOUBLE:
     return R_DOUBLE;
 
@@ -215,8 +212,8 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   }
   // named struct/union or enumeration
   else if (((dType == D_ENUMERATION) || (dType == D_STRUCT) || (dType == D_UNION)) &&
-           var->varType->collectionName) {
-    fputs(var->varType->collectionName, decls_fp);
+           var->varType->typeName) {
+    fputs(var->varType->typeName, decls_fp);
 
     // For the repair tool, concatenate all of the field names
     // after the 'unnamed' struct name (after an underscore)
@@ -225,7 +222,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // they involve both Fjalar and Kvasir changes:
 
 /*     if (kvasir_repair_format && */
-/*         VG_STREQ(var->varType->collectionName, "unnamed")) { */
+/*         VG_STREQ(var->varType->typeName, "unnamed")) { */
 /*       VarList* memberVars = var->varType->memberListPtr; */
 /*       VarNode* i = 0; */
 /*       DaikonVariable* curVar = 0; */
@@ -556,11 +553,11 @@ static void printAllObjectPPTDecls(void) {
     // least 1 member variable, or else there is no point.
     if ((cur_type->memberFunctionList && (cur_type->memberFunctionList->numElts > 0)) &&
         (cur_type->memberVarList && (cur_type->memberVarList->numVars > 0)) &&
-        cur_type->collectionName) {
-      tl_assert(cur_type->collectionName);
+        cur_type->typeName) {
+      tl_assert(cur_type->typeName);
 
       fputs("DECLARE\n", decls_fp);
-      fputs(cur_type->collectionName, decls_fp);
+      fputs(cur_type->typeName, decls_fp);
       fputs(":::OBJECT\n", decls_fp);
 
       stringStackPush(fullNameStack, &fullNameStackSize, "this");

@@ -239,12 +239,12 @@ void generateDisambigFile() {
   while (hasNextType(typeIt)) {
     TypeEntry* cur_entry = nextType(typeIt);
 
-    tl_assert(cur_entry && cur_entry->collectionName);
+    tl_assert(cur_entry && cur_entry->typeName);
 
     fputs(ENTRY_DELIMETER, disambig_fp);
     fputs("\n", disambig_fp);
     fputs(USERTYPE_PREFIX, disambig_fp);
-    fputs(cur_entry->collectionName, disambig_fp);
+    fputs(cur_entry->typeName, disambig_fp);
     fputs("\n", disambig_fp);
 
     visitClassMembersNoValues(cur_entry,
@@ -433,9 +433,9 @@ static void processDisambigFile() {
 	  while (hasNextType(typeIt)) {
 	    TypeEntry* cur_type = nextType(typeIt);
 
-	    if (cur_type->collectionName &&
-		VG_STREQ(cur_type->collectionName, entryName)) {
-	      FJALAR_DPRINTF(" FAKE [%s]\n", cur_type->collectionName);
+	    if (cur_type->typeName &&
+		VG_STREQ(cur_type->typeName, entryName)) {
+	      FJALAR_DPRINTF(" FAKE [%s]\n", cur_type->typeName);
 	      VarListArraySize++;
 	    }
 	  }
@@ -450,9 +450,9 @@ static void processDisambigFile() {
 	  while (hasNextType(typeIt)) {
 	    TypeEntry* cur_type = nextType(typeIt);
 
-	    if (cur_type->collectionName &&
-		VG_STREQ(cur_type->collectionName, entryName)) {
-	      FJALAR_DPRINTF(" REAL [%s]\n", cur_type->collectionName);
+	    if (cur_type->typeName &&
+		VG_STREQ(cur_type->typeName, entryName)) {
+	      FJALAR_DPRINTF(" REAL [%s]\n", cur_type->typeName);
 	      VarListArray[i] = cur_type->memberVarList;
 	      i++;
 	    }

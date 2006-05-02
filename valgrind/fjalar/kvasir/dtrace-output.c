@@ -53,32 +53,29 @@ char* NONSENSICAL = "nonsensical";
 // The indices to this array must match the DeclaredType enum
 // declared in generate_fjalar_entries.h:
 static const char* TYPE_FORMAT_STRINGS[] = {
-  "%d - ERROR - D_NO_TYPE", //     D_NO_TYPE, // Create padding
-  "%u",   //     D_UNSIGNED_CHAR,
-  "%d",   //     D_CHAR
-  "%hu",  //     D_UNSIGNED_SHORT,
-  "%hd",  //     D_SHORT,
-  "%u",   //     D_UNSIGNED_INT,
-  "%d",   //     D_INT,
-  "%llu", //     D_UNSIGNED_LONG_LONG_INT,
-  "%lld", //     D_LONG_LONG_INT,
-  "%.9g", //     D_UNSIGNED_FLOAT, // currently unused
-  "%.9g", //     D_FLOAT,
-  "%.17g",//     D_UNSIGNED_DOUBLE, // currently unused
-  "%.17g",//     D_DOUBLE,
+  "%d - ERROR - D_NO_TYPE",        // D_NO_TYPE, // Create padding
 
-  "%.17g",//     D_UNSIGNED_LONG_DOUBLE, // currently unused
-  "%.17g",//     D_LONG_DOUBLE, // currently unused
+  "%u",                            // D_UNSIGNED_CHAR,
+  "%d",                            // D_CHAR
+  "%hu",                           // D_UNSIGNED_SHORT,
+  "%hd",                           // D_SHORT,
+  "%u",                            // D_UNSIGNED_INT,
+  "%d",                            // D_INT,
+  "%llu",                          // D_UNSIGNED_LONG_LONG_INT,
+  "%lld",                          // D_LONG_LONG_INT,
 
-  "%d",   //     D_ENUMERATION,
+  "%.9g",                          // D_FLOAT,
+  "%.17g",                         // D_DOUBLE,
+  "%.17g",                         // D_LONG_DOUBLE,
 
-  "%d - ERROR - D_STRUCT", //     D_STRUCT, // currently unused
-  "%d - ERROR - D_UNION", //     D_UNION, // currently unused
-  "%d - ERROR - D_FUNCTION", //     D_FUNCTION // currently unused
-  "%d - ERROR - D_VOID", //     D_VOID // currently unused
+  "%d",                            // D_ENUMERATION,
+  "%d - ERROR - D_STRUCT",         // D_STRUCT,  // currently unused
+  "%d - ERROR - D_UNION",          // D_UNION,   // currently unused
 
-  "%d - ERROR - D_CHAR_AS_STRING",    //     D_CHAR_AS_STRING // currently unused
-  "%d" ,  //     D_BOOL
+  "%d - ERROR - D_FUNCTION",       // D_FUNCTION // currently unused
+  "%d - ERROR - D_VOID",           // D_VOID     // currently unused
+  "%d - ERROR - D_CHAR_AS_STRING", // D_CHAR_AS_STRING
+  "%d" ,                           // D_BOOL
 };
 
 // The indices to this array must match the DeclaredType enum
