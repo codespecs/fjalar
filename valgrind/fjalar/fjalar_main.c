@@ -537,7 +537,7 @@ void fjalar_print_usage()
    VG_(printf)("\n  User options for Fjalar framework:\n");
 
    VG_(printf)(
-"\n  Selective program tracing:\n"
+"\n  Selective program point and variable tracing:\n"
 "    --ppt-list-file=<string> Trace only the program points listed in this file\n"
 "    --var-list-file=<string> Trace only the variables listed in this file\n"
 "    --dump-ppt-file=<string> Outputs all program point names to a file\n"
@@ -557,15 +557,18 @@ void fjalar_print_usage()
 
 "\n  Misc. options:\n"
 "    --flatten-arrays         Force flattening of all statically-sized arrays\n"
-"    --output-struct-vars     Outputs struct variables along with their contents\n"
+"    --array-length-limit=N   Only visit at most the first N elements of arrays\n"
 "    --nesting-depth=N        Limits the maximum number of dereferences of any\n"
 "                             structure to N (default is 2)\n"
 "    --struct-depth=N         Limits the maximum number of dereferences of recursively\n"
 "                             defined structures (i.e. linked lists) to N (default is 4)\n"
 "                             (N must be an integer between 0 and 100)\n"
-"    --fjalar-debug           Print internal Fjalar debug messages\n"
-"    --with-gdb               Hang during init. so that GDB can attach to it\n"
+"    --output-struct-vars     Outputs struct variables along with their contents\n"
+
+"\n  Debugging:\n"
 "    --xml-output-file=<string>  Output declarations in XML format to a file\n"
+"    --with-gdb               Hang during init. so that GDB can attach to it\n"
+"    --fjalar-debug           Print internal Fjalar debug messages\n"
    );
 
    // Make sure to execute this last!

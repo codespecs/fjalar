@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for
    C and C++ programs.
 
-   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2004-2006 Philip Guo <pgbovine (@) alum (.) mit (.) edu>,
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or

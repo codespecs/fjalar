@@ -2,7 +2,7 @@
    This file is part of Fjalar, a dynamic analysis framework for
    C and C++ programs.
 
-   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2004-2006 Philip Guo <pgbovine (@) alum (.) mit (.) edu>,
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -22,11 +22,10 @@ data structures that tools can use.
 #ifndef FJALAR_INCLUDE_H
 #define FJALAR_INCLUDE_H
 
-#include "GenericHashtable.h"
-
 // Interfaces with Valgrind core:
 #include "pub_tool_basics.h"
 #include "pub_tool_options.h"
+
 
 /*********************************************************************
 Supporting data structures and enums
@@ -929,10 +928,12 @@ Bool addressIsGlobal(Addr addr);
 // Returns the start address of a function with a particular name.
 // Accepts regular name for C and mangled name for C++.
 // [Fast hashtable lookup in FunctionSymbolTable]
+
 Addr getFunctionStartAddr(char* name);
 // Returns the regular name for C and mangled name for C++, given a
 // function's start address.
 // [Fast hashtable lookup in ReverseFunctionSymbolTable]
+
 char* getFunctionName(Addr startAddr);
 // Returns the address of a global variable, given its regular name
 // for C and its mangled name for C++.
@@ -969,14 +970,10 @@ Bool addressIsAllocated(Addr addressInQuestion, UInt numBytes);
 Bool addressIsInitialized(Addr addressInQuestion, UInt numBytes);
 
 
-
 /*********************************************************************
 These global variables are set by command-line options.  Please see
-this section in the Daikon User Manual for descriptions of these
-command-line options (most of the options are part of Fjalar, but some
-are specific to the Kvasir and DynComp tools built on top of Fjalar)
-
-http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Kvasir-options
+the 'Fjalar command-line options section in the Fjalar Programmer's
+Manual (documentation/fjalar-www/fjalar_manual.htm) for details.
 
 **********************************************************************/
 
@@ -1017,6 +1014,7 @@ char* executable_filename;
 
 // returns ID1 == ID2 - needed for GenericHashtable
 int equivalentIDs(int ID1, int ID2);
+
 // returns whether 2 strings are equal - needed for GenericHashtable
 int equivalentStrings(char* str1, char* str2);
 // hashes a string (in very primitive way ... could improve if needed)
