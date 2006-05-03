@@ -12,7 +12,7 @@
 */
 
 /* disambig.h:
-   Implements the pointer-type disambiguation feature of Kvasir
+   Implements the pointer-type disambiguation feature of Fjalar
    (--disambig and --disambig-file=<string> command-line options)
 */
 

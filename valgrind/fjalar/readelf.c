@@ -28,8 +28,7 @@
 
    This file was modified by Philip Guo, MIT CSAIL Program Analysis Group,
    to perform recording of function return types and parameter types
-   for Kvasir, a Valgrind skin that implements the C language
-   front-end for the Daikon Invariant Detection System.
+   for Fjalar, a Valgrind tool that is a C/C++ dynamic analysis framework
 
    2005-04-28:
    Ported over to Valgrind 3 and integrated with the DynComp dynamic
