@@ -717,25 +717,25 @@ the interaction of the <span class="file">ppt-list-file</span>, <span class="fil
    <p>The interaction between selective program point tracing (via
 the <span class="file">ppt-list-file</span>) and pointer type disambiguation is fairly
 straightforward:  If the user creates a .disambig file while running
-Kvasir with a <span class="file">ppt-list-file</span> that only specifies certain program
+Fjalar with a <span class="file">ppt-list-file</span> that only specifies certain program
 points, the generated .disambig file will only contain sections for
 those program points (as well as the global section and sections for
 each struct type).  If the user reads in a .disambig file while running
-Kvasir with a <span class="file">ppt-list-file</span>, then disambiguation information is
+Fjalar with a <span class="file">ppt-list-file</span>, then disambiguation information is
 applied for all variables at the program points to be traced.  This can
 be much faster and generate a much smaller disambiguation file, one that
 only contains information about the program points of interest.
 
    <p>The interaction between selective variable tracing (via the
-<span class="file">var-list-file</span>) and pointer type disambiguation is a bit more
-complicated.  This is because the <span class="file">var-list-file</span> lists variables
-as they appear in the .decls and .dtrace files, but using a .disambig
-file can actually change the way that variable names are printed out in
-the .decls and .dtrace files.  For example, consider the test program
-from the <a href="#Pointer-type-disambiguation-example">Pointer type disambiguation example</a>.  The <code>struct
-record* bar</code> parameter of <code>foo()</code> is treated like an array by
-default.  Hence, the .decls, .dtrace, and <span class="file">var-list-file</span> will list
-the following variables derived from this parameter:
+   <span class="file">var-list-file</span>) and pointer type
+   disambiguation is a bit more complicated.  This is because the
+   <span class="file">var-list-file</span> lists variables with munged
+   Fjalar names, but using a .disambig file can actually change those
+   Fjalar variable names.  For example, in a sample program, the
+   <code>struct record* bar</code> parameter of <code>foo()</code> is
+   treated like an array by default.  Hence, the <span
+   class="file">var-list-file</span> will list the following
+   variables derived from this parameter:
 
 <pre class="example">     ----SECTION----
      ..foo()
@@ -752,9 +752,9 @@ the following variables derived from this parameter:
      bar[].numbers[4]
      bar[].numbers[4][0]
 </pre>
-   <p>However, if we use a disambiguation file to denote <code>bar</code> as a
-pointer to a single element, then the .decls and .dtrace files will
-instead list the following variables:
+   <p>However, if we use a disambiguation file to denote
+   <code>bar</code> as a pointer to a single element, then the
+   var-list-file will instead list the following variables:
 
 <pre class="example">     ----SECTION----
      ..foo()
@@ -764,21 +764,21 @@ instead list the following variables:
      bar-&gt;numbers[]
 </pre>
    <p>Notice how the latter variable list is more compact and reflects the
-fact that <code>bar</code> is a pointer to a single struct.  Thus, the
+fact that <code>bar</code> is now a pointer to a single struct.  Thus, the
 flattening of the <code>numbers[5]</code> static array member variable is no
-longer necessary (it was necessary without disambiguation because Daikon
+longer necessary (it was necessary without disambiguation because Fjalar
 does not support nested arrays of arrays, which can occur if <code>bar</code>
 were itself an array since <code>numbers[5]</code> is already an array).
 
    <p>Notice that, with the exception of the base variable <code>bar</code>, all
 other variable names differ when running without and with
 disambiguation.  Thus, if you used a <span class="file">var-list-file</span> generated on a
-run without the disambiguation information while running Kvasir with the
+run without the disambiguation information while running Fjalar with the
 disambiguation information, the names will not match up at all, and you
 will not get the proper selective variable tracing behavior.
 
-   <p>The suggested way to use selective variable tracing with pointer type
-disambiguation is as follows:
+   <p>Thus, this is the suggested way to use selective variable
+   tracing with pointer type disambiguation:
 
      <ol type=1 start=1>
 <li>First create the proper .disambig file by using either
@@ -788,14 +788,14 @@ You can use <span class="option">--ppt-list-file</span> as well to only create t
 <span class="option">--var-list-file</span> to try to create a .disambig only for certain
 variables; this feature does not work yet.
 Modify the variable
-entries in the Kvasir-generated .disambig file to suit your needs.
+entries in the Fjalar-generated .disambig file to suit your needs.
 <li>Now create a <span class="file">var-list-file</span> by using
-<span class="option">--dump-var-file</span> while running Kvasir with the .disambig file
+<span class="option">--dump-var-file</span> while running Fjalar with the .disambig file
 that you have just created.  This ensures that the variables listed in
 <span class="file">var-list-file</span> will have the proper names for use with that
-particular .disambig file.  Modify the Kvasir-generated
+particular .disambig file.  Modify the Fjalar-generated
 <span class="file">var-list-file</span> to suit your needs.
-<li>Finally, run Kvasir with the <span class="option">--var-list-file</span> option using
+<li>Finally, run Fjalar with the <span class="option">--var-list-file</span> option using
 the <span class="file">var-list-file</span> that you have just created and either the
 <span class="option">--disambig</span> or <span class="option">--disambig-file</span> option with the proper
 .disambig file.  This will perform the desired function: selective
@@ -806,6 +806,65 @@ variables.
    <p>For maximum control of the output, you can use selective program point
 tracing, variable tracing, and disambiguation together all at once.
 
+<h2><a name="Pointer-type-coercion">Pointer type coercion</a></h2>
+
+	<p>In addition to specifying whether a particular pointer
+	refers to one element or to an array of elements, the user can
+	also specify what type of data a pointer refers to.  This type
+	coercion acts like an explicit type cast in C, except that it
+	only works on struct/class types and not on primitive types.
+	This feature is useful for traversing inside of data
+	structures with generic <code>void*</code> pointer fields.
+	Another use is to cast a pointer from one that refers to a
+	'super class' to one that refers to a 'sub class'.  This
+	structural equivalence pattern is often found in C programs
+	that emulate object orientation.  To coerce a pointer to a
+	particular type, simply write the name of the struct type
+	after the disambiguation letter (e.g., A, P, S, C, I) in the
+	<span class="file">.disambig</span> file:
+
+<pre class="example">     ----SECTION----
+     function: ..view_foo_and_bar()
+     f
+     P foo
+     b
+     P bar
+</pre>
+   <p>Without the type coercion, Fjalar cannot visit anything except for a
+hashcode for the two <code>void*</code> parameters of this function:
+
+<pre class="example">     void view_foo_and_bar(void* f, void* b);
+</pre>
+   <p>With type coercion, though, Fjalar treats <code>f</code> as a <code>foo*</code> and
+<code>b</code> as <code>bar*</code> and can traverse inside of them.  Of course, if
+those are not the true runtime types of the variables, then Fjalar's
+traversal will be meaningless.
+
+   <p>Due to the use of typedefs, there may be more than one name for a
+particular struct type.  The exact name that you need to write in the
+<span class="file">.disambig</span> file is the one that appears in that file after the
+<code>usertype</code> prefix.  Note that if a struct does not have any pointer
+fields, then there will be no <code>usertype</code> section for it in the
+<span class="file">.disambig</span> file.  In that case, try different names for the struct
+if necessary until Fjalar accepts the name (names are all one word long;
+you will never have to write <code>struct foo</code>).  There should only be
+at most a few choices to make.  If the coercion if successful, Fjalar
+prints out a message in the following form while it is processing the
+<span class="file">.disambig</span> file:
+
+<pre class="example">       .disambig: Coerced variable f into type 'foo'
+       .disambig: Coerced variable b into type 'bar'
+</pre>
+   <p>One more caveat about type coercion is that you can currently only
+coerce pointers into types that at least one variable in the program
+(e.g., globals, function parameters, struct fields) belongs to.  It is
+not enough to merely declare a struct type in your source code; you must
+have a variable of that type somewhere in your program.  This is a
+limitation of the current implementation, but it should not matter most
+of the time because programs rarely have struct declarations with no
+variables that belong to that type.  If you encounter this problem, you
+can simply create a global variable of a certain type to make type
+coercion work.
 
 <hr/>
 
