@@ -742,6 +742,9 @@ FunctionEntry* constructFunctionEntry() {
 
 // Destructors that should clean-up and then call VG_(free) on the
 // respective entries.
+//
+// TODO: These currently cause memory leaks because these classes have
+// pointer fields that refer to dynamically-allocated memory ...
 void destroyVariableEntry(VariableEntry* v) {
   VG_(free)(v);
 }

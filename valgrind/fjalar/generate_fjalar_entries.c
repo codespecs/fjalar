@@ -1459,15 +1459,15 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
 
   arrayDims = arrayPtr->num_subrange_entries;
 
-  varPtr->isStaticArray = 1;
-  varPtr->numDimensions = arrayDims;
-  varPtr->upperBounds = VG_(calloc)(arrayDims,
-			  sizeof(*(varPtr->upperBounds)));
+  varPtr->staticArr = VG_(calloc)(1, sizeof(*varPtr->staticArr));
+  varPtr->staticArr->numDimensions = arrayDims;
+  varPtr->staticArr->upperBounds = VG_(calloc)(arrayDims,
+                                               sizeof(*(varPtr->staticArr->upperBounds)));
 
   for (i = 0; i < arrayDims; i++) {
     array_subrange_type* subrangeEntry = (array_subrange_type*)
                                          (arrayPtr->subrange_entries[i]->entry_ptr);
-    varPtr->upperBounds[i] = subrangeEntry->upperBound;
+    varPtr->staticArr->upperBounds[i] = subrangeEntry->upperBound;
   }
 
   return arrayPtr->type_ptr;
@@ -1564,12 +1564,14 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   //              collectionPtr->is_declaration,
   //              e->ID);
 
-  t->isStructUnionType = 1;
+  t->aggType = VG_(calloc)(1, sizeof(*t->aggType));
 
-  if (e->tag_name == DW_TAG_union_type)
+  if (e->tag_name == DW_TAG_union_type) {
     t->decType = D_UNION;
-  else
+  }
+  else {
     t->decType = D_STRUCT_CLASS;
+  }
 
   t->typeName = collectionPtr->name;
 
@@ -1616,12 +1618,12 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
     // Success!
     // If memberFunctionList hasn't been allocated yet, calloc it:
-    if (!t->memberFunctionList) {
-      t->memberFunctionList =
-        (SimpleList*)VG_(calloc)(1, sizeof(*(t->memberFunctionList)));
+    if (!t->aggType->memberFunctionList) {
+      t->aggType->memberFunctionList =
+        (SimpleList*)VG_(calloc)(1, sizeof(*(t->aggType->memberFunctionList)));
     }
 
-    SimpleListInsert(t->memberFunctionList,
+    SimpleListInsert(t->aggType->memberFunctionList,
                      (void*)funcPtr->start_pc);
   }
 
@@ -1651,14 +1653,13 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
         // Success!
         // If superclassList hasn't been allocated yet, calloc it:
-        if (!t->superclassList) {
-          t->superclassList =
-            (SimpleList*)VG_(calloc)(1, sizeof(*(t->superclassList)));
+        if (!t->aggType->superclassList) {
+          t->aggType->superclassList =
+            (SimpleList*)VG_(calloc)(1, sizeof(*(t->aggType->superclassList)));
         }
 
         // Insert new superclass element:
-        SimpleListInsert(t->superclassList,
-                         (void*)curSuper);
+        SimpleListInsert(t->aggType->superclassList, (void*)curSuper);
 
         FJALAR_DPRINTF(" +++ super->name: %s\n", dwarf_super->name);
 
@@ -1711,8 +1712,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   }
 
   if (collectionPtr->num_member_vars > 0) {
-    t->memberVarList =
-      (VarList*)VG_(calloc)(1, sizeof(*(t->memberVarList)));
+    t->aggType->memberVarList =
+      (VarList*)VG_(calloc)(1, sizeof(*(t->aggType->memberVarList)));
 
     // Look up the dwarf_entry for the struct/union and iterate
     // through its member_vars array (of pointers to members)
@@ -1720,7 +1721,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
     for (i = 0; i < collectionPtr->num_member_vars; i++) {
       member* memberPtr = (member*)((collectionPtr->member_vars[i])->entry_ptr);
-      extractOneVariable(t->memberVarList,
+      extractOneVariable(t->aggType->memberVarList,
                          memberPtr->type_ptr,
                          memberPtr->name,
                          0,
@@ -1750,8 +1751,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     unsigned long ind;
     VarNode* node = 0;
 
-    t->staticMemberVarList =
-      (VarList*)VG_(calloc)(1, sizeof(*(t->staticMemberVarList)));
+    t->aggType->staticMemberVarList =
+      (VarList*)VG_(calloc)(1, sizeof(*(t->aggType->staticMemberVarList)));
 
     for (ind = 0; ind < collectionPtr->num_static_member_vars; ind++) {
       variable* staticMemberPtr =
@@ -1771,7 +1772,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
                      staticMemberPtr->mangled_name,
                      staticMemberPtr->globalVarAddr);
 
-      extractOneVariable(t->staticMemberVarList,
+      extractOneVariable(t->aggType->staticMemberVarList,
 			 staticMemberPtr->type_ptr,
                          // If a mangled name exists, pass it in so
                          // that it can be de-mangled:
@@ -1797,7 +1798,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     // t->staticMemberVarList and insert every VariableEntry element
     // into the globalVars list because static member variables are
     // really globals albeit with limited scope:
-    for (node = t->staticMemberVarList->first;
+    for (node = t->aggType->staticMemberVarList->first;
          node != NULL;
          node = node->next) {
       VariableEntry* curStaticVar = node->var;
@@ -1821,13 +1822,13 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // (if member is actually a struct type, then its byte size should already
   //  have been computed by the recursive version of this call to that struct)
   // - Round struct size up to the nearest word (multiple of 4)
-  if (t->memberVarList) {
-    memberNodePtr = t->memberVarList->last;
+  if (t->aggType->memberVarList) {
+    memberNodePtr = t->aggType->memberVarList->last;
     if (memberNodePtr) {
       int structByteSize = 0;
       VariableEntry* memberVarPtr = memberNodePtr->var;
-      structByteSize = memberVarPtr->data_member_location +
-	determineVariableByteSize(memberVarPtr);
+      structByteSize =
+        memberVarPtr->memberVar->data_member_location + determineVariableByteSize(memberVarPtr);
 
       // Round struct size up to the nearest word (multiple of 4)
       t->byteSize = ((structByteSize + 3) >> 2) << 2;
@@ -1932,7 +1933,7 @@ static int determineVariableByteSize(VariableEntry* var)
   // Static array of some type
   else if (IS_STATIC_ARRAY_VAR(var))
     {
-      int i;
+      UInt i;
 
       if (var->ptrLevels == 1) {
         byteSize = var->varType->byteSize; // static array of base type
@@ -1952,7 +1953,11 @@ static int determineVariableByteSize(VariableEntry* var)
   }
 
   FJALAR_DPRINTF("detDVBS | name: %s, decPtrLvls: %d, isSA: %d, byteSize: %d, return: %d\n",
-          var->name, var->ptrLevels, var->isStaticArray, var->varType->byteSize, byteSize);
+                 var->name,
+                 var->ptrLevels,
+                 IS_STATIC_ARRAY_VAR(var) ? 1 : 0,
+                 var->varType->byteSize,
+                 byteSize);
 
   return byteSize;
 }
@@ -2253,13 +2258,11 @@ void extractOneVariable(VarList* varListPtr,
     varPtr->name = variableName;
   }
 
-  varPtr->fileName = fileName;
   varPtr->byteOffset = byteOffset;
 
   // Special case for C++ 'this' parameter variables:
   // Automatically put a 'P' disambig on it because
   // 'this' will always refer to one object and not an array
-
   // TODO: This will simple-mindedly pick up any variable named 'this'
   // so it's possible that in a C program, you can have some variable
   // named 'this' and it'll get a 'P' disambig letter assigned to it
@@ -2267,29 +2270,34 @@ void extractOneVariable(VarList* varListPtr,
     varPtr->disambig = 'P';
   }
 
-  varPtr->isGlobal = isGlobal;
-  varPtr->isExternal = isExternal;
-  varPtr->globalLocation = globalLocation;
-  varPtr->functionStartPC = functionStartPC;
+  if (isGlobal) {
+    varPtr->globalVar = VG_(calloc)(1, sizeof(*varPtr->globalVar));
+    varPtr->globalVar->isExternal = isExternal;
+    varPtr->globalVar->fileName = fileName;
+    varPtr->globalVar->globalLocation = globalLocation;
+    varPtr->globalVar->functionStartPC = functionStartPC;
+  }
 
-  varPtr->isStructUnionMember = isStructUnionMember;
-  varPtr->data_member_location = data_member_location;
-  varPtr->internalByteSize = internalByteSize;
-  varPtr->internalBitOffset = internalBitOffset;
-  varPtr->internalBitSize = internalBitSize;
-  varPtr->structParentType = structParentType;
+  if (isStructUnionMember) {
+    varPtr->memberVar = VG_(calloc)(1, sizeof(*varPtr->memberVar));
+    varPtr->memberVar->data_member_location = data_member_location;
+    varPtr->memberVar->internalByteSize = internalByteSize;
+    varPtr->memberVar->internalBitOffset = internalBitOffset;
+    varPtr->memberVar->internalBitSize = internalBitSize;
+    varPtr->memberVar->structParentType = structParentType;
 
-  // Figure out varPtr->visibility:
-  switch (dwarf_accessibility) {
-  case DW_ACCESS_private:
-    varPtr->visibility = PRIVATE_VISIBILITY;
-    break;
-  case DW_ACCESS_protected:
-    varPtr->visibility = PROTECTED_VISIBILITY;
-    break;
-  case DW_ACCESS_public:
-  default:
-    varPtr->visibility = PUBLIC_VISIBILITY;
+    // Figure out varPtr->visibility:
+    switch (dwarf_accessibility) {
+    case DW_ACCESS_private:
+      varPtr->memberVar->visibility = PRIVATE_VISIBILITY;
+      break;
+    case DW_ACCESS_protected:
+      varPtr->memberVar->visibility = PROTECTED_VISIBILITY;
+      break;
+    case DW_ACCESS_public:
+    default:
+      varPtr->memberVar->visibility = PUBLIC_VISIBILITY;
+    }
   }
 
   FJALAR_DPRINTF("About to strip modifiers for %s\n", variableName);
@@ -2354,8 +2362,10 @@ void extractOneVariable(VarList* varListPtr,
 
   // Formal parameters which appear to be statically-sized arrays are
   // actually simply pointers:
-  if (isFormalParam && varPtr->isStaticArray) {
-    varPtr->isStaticArray = 0;
+  if (isFormalParam && IS_STATIC_ARRAY_VAR(varPtr)) {
+    VG_(free)(varPtr->staticArr->upperBounds);
+    VG_(free)(varPtr->staticArr);
+    varPtr->staticArr = 0;
   }
 
   // Link it to a TypeEntry if one already exists
@@ -2468,14 +2478,14 @@ void extractOneVariable(VarList* varListPtr,
   // into base type = int, ptrLevels = 2, isStaticArray = true
   // but it should be base type = hashcode, ptrLevels = 1, isStaticArray = true
 
-  // Proposed solution: If isStaticArray = true and (ptrLevels > 1 and
+  // Proposed solution: If IS_STATIC_ARRAY_VAR() and (ptrLevels > 1 and
   // varPtr->varType->decType != D_CHAR) or (ptrLevels > 2 and
   // varPtr->varType->decType == D_CHAR), then
   // we turn it into a 1-D array of hashcodes by setting ptrLevels = 1
   // and pointing the type to VoidType.
   // This means that we do not support multidimensional arrays
   // (but we didn't used to either) but fail more gracefully on them now
-  if (varPtr->isStaticArray &&
+  if (IS_STATIC_ARRAY_VAR(varPtr) &&
       (ptrLevels > ((varPtr->varType->decType == D_CHAR) ?
                     2 : 1))) {
     varPtr->ptrLevels = 1;
