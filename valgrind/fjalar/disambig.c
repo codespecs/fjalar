@@ -91,14 +91,14 @@ TraversalResult printDisambigAction(VariableEntry* var,
                                     VariableOrigin varOrigin,
                                     UInt numDereferences,
                                     UInt layersBeforeBase,
-                                    char overrideIsInit,
+                                    Bool overrideIsInit,
                                     DisambigOverride disambigOverride,
-                                    char isSequence,
+                                    Bool isSequence,
                                     void* pValue,
                                     void** pValueArray,
                                     UInt numElts,
                                     FunctionEntry* varFuncInfo,
-                                    char isEnter) {
+                                    Bool isEnter) {
   // If this is not a variable that's worthy of being outputted to the
   // .disambig file, then punt:
   if (!shouldOutputVarToDisambig(var)) {
@@ -147,7 +147,7 @@ TraversalResult printDisambigAction(VariableEntry* var,
     fputs("S", disambig_fp);
   }
   else if (var->ptrLevels > 0) {
-    if (var->isStructUnionMember) {
+    if (IS_MEMBER_VAR(var)) {
       fputs("A", disambig_fp);
     }
     else {
@@ -450,10 +450,12 @@ static void processDisambigFile() {
 	  while (hasNextType(typeIt)) {
 	    TypeEntry* cur_type = nextType(typeIt);
 
+            tl_assert(IS_AGGREGATE_TYPE(cur_type));
+
 	    if (cur_type->typeName &&
 		VG_STREQ(cur_type->typeName, entryName)) {
 	      FJALAR_DPRINTF(" REAL [%s]\n", cur_type->typeName);
-	      VarListArray[i] = cur_type->memberVarList;
+	      VarListArray[i] = cur_type->aggType->memberVarList;
 	      i++;
 	    }
 	  }
