@@ -111,20 +111,20 @@ const int DecTypeByteSizes[] = {
 
 // Global singleton entries for basic types.  These do not need to be
 // placed in TypesTable because they are un-interesting.
-TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry IntType = {D_INT, 0, sizeof(int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0, 0, 0, 0, 0, 0, 0};
-TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0, 0, 0, 0, 0, 0, 0};
+TypeEntry UnsignedCharType = {D_UNSIGNED_CHAR, 0, sizeof(unsigned char), 0};
+TypeEntry CharType = {D_CHAR, 0, sizeof(char), 0};
+TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0};
+TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0};
+TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0};
+TypeEntry IntType = {D_INT, 0, sizeof(int), 0};
+TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0};
+TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0};
+TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
+TypeEntry DoubleType = {D_DOUBLE, 0, sizeof(double), 0};
+TypeEntry LongDoubleType = {D_LONG_DOUBLE, 0, sizeof(long double), 0};
+TypeEntry FunctionType = {D_FUNCTION, 0, sizeof(void*), 0};
+TypeEntry VoidType = {D_VOID, 0, sizeof(void*), 0};
+TypeEntry BoolType = {D_BOOL, 0, sizeof(char), 0};
 
 // Array indexed by DeclaredType where each entry is a pointer to one
 // of the above singleton entries:
@@ -464,7 +464,7 @@ void deleteTailNode(VarList* varListPtr)
 
 // Clears the list and FREEs the var contents if
 // destroyVariableEntries is 1:
-void clearVarList(VarList* varListPtr, char destroyVariableEntries) {
+void clearVarList(VarList* varListPtr, Bool destroyVariableEntries) {
   VarNode* node = varListPtr->first;
   VarNode* nextNode = 0;
 
@@ -552,7 +552,7 @@ void initializeAllFjalarData(void)
 // Returns true iff the address is within a global area as specified
 // by the executable's symbol table (it lies within the .data, .bss,
 // or .rodata sections):
-char addressIsGlobal(unsigned int addr) {
+Bool addressIsGlobal(Addr addr) {
   return (((addr >= data_section_addr) && (addr < data_section_addr + data_section_size)) ||
           ((addr >= bss_section_addr) && (addr < bss_section_addr + bss_section_size)) ||
           ((addr >= rodata_section_addr) && (addr < rodata_section_addr + rodata_section_size)));
@@ -581,7 +581,7 @@ void repCheckAllEntries(void) {
     VariableEntry* curGlobalVar = curNode->var;
 
     // Specific requirements for global vars:
-    tl_assert(curGlobalVar->isGlobal);
+    tl_assert(IS_GLOBAL_VAR(curGlobalVar));
 
     // Basic checks:
     repCheckOneVariable(curGlobalVar);
@@ -624,7 +624,7 @@ void repCheckAllEntries(void) {
 	 n = n->next) {
       VariableEntry* v = n->var;
 
-      tl_assert(!v->isGlobal);
+      tl_assert(!IS_GLOBAL_VAR(v));
 
       // Make sure variables are listed in order of increasing byte
       // offsets (no variable should have a 0 byte offset):
@@ -642,7 +642,7 @@ void repCheckAllEntries(void) {
 	 n = n->next) {
       VariableEntry* v = n->var;
 
-      tl_assert(!v->isGlobal);
+      tl_assert(!IS_GLOBAL_VAR(v));
 
       repCheckOneVariable(v);
       numLocalArrayVars++;
@@ -659,7 +659,7 @@ void repCheckAllEntries(void) {
 	 n = n->next) {
       VariableEntry* v = n->var;
 
-      tl_assert(!v->isGlobal);
+      tl_assert(!IS_GLOBAL_VAR(v));
       tl_assert(0 == v->byteOffset);
 
       repCheckOneVariable(v);
@@ -695,7 +695,7 @@ void repCheckAllEntries(void) {
     // unnamed entries in TypesTable:
     tl_assert(t->typeName);
 
-    if (t->isStructUnionType) {
+    if (IS_AGGREGATE_TYPE(t)) {
       VarNode* n;
       unsigned int numMemberVars = 0;
       unsigned int prev_data_member_location = 0;
@@ -714,8 +714,8 @@ void repCheckAllEntries(void) {
 		(D_UNION == t->decType));
 
       // Rep. check member variables (if there are any):
-      if (t->memberVarList) {
-        for (n = t->memberVarList->first;
+      if (t->aggType->memberVarList) {
+        for (n = t->aggType->memberVarList->first;
              n != 0;
              n = n->next) {
           VariableEntry* curMember = n->var;
@@ -724,7 +724,7 @@ void repCheckAllEntries(void) {
                       curMember->name, t->typeName);
 
           // Specific checks for member variables:
-          tl_assert(curMember->isStructUnionMember);
+          tl_assert(IS_MEMBER_VAR(curMember));
           tl_assert(0 == curMember->byteOffset);
 
           // For a struct, check that data_member_location is greater
@@ -735,29 +735,29 @@ void repCheckAllEntries(void) {
             // which share the same data_member_location but have
             // different bit offsets within that location.  We
             // currently don't support bit-fields.
-            tl_assert(curMember->data_member_location >= prev_data_member_location);
-            prev_data_member_location = curMember->data_member_location;
+            tl_assert(curMember->memberVar->data_member_location >= prev_data_member_location);
+            prev_data_member_location = curMember->memberVar->data_member_location;
           }
           // For a union, all offsets should be 0
           else if (D_UNION == t->decType) {
-            tl_assert(0 == curMember->data_member_location);
+            tl_assert(0 == curMember->memberVar->data_member_location);
           }
 
-          tl_assert(curMember->structParentType == t);
+          tl_assert(curMember->memberVar->structParentType == t);
 
           repCheckOneVariable(curMember);
 
           numMemberVars++;
         }
-        tl_assert(numMemberVars == t->memberVarList->numVars);
+        tl_assert(numMemberVars == t->aggType->memberVarList->numVars);
       }
 
       // Rep. check static member variables (if there are any):
-      if (t->staticMemberVarList) {
+      if (t->aggType->staticMemberVarList) {
 	unsigned int numStaticMemberVars = 0;
 	VarNode* node;
 
-	for (node = t->staticMemberVarList->first;
+	for (node = t->aggType->staticMemberVarList->first;
 	     node != 0;
 	     node = node->next) {
 	  VariableEntry* curMember = node->var;
@@ -766,34 +766,34 @@ void repCheckAllEntries(void) {
 		      curMember->name, t->typeName);
 
 	  // Specific checks for static member variables:
-	  tl_assert(curMember->isStructUnionMember);
+	  tl_assert(IS_MEMBER_VAR(curMember));
 	  tl_assert(0 == curMember->byteOffset);
-	  tl_assert(0 == curMember->data_member_location);
-	  tl_assert(curMember->isGlobal);
-	  tl_assert(curMember->structParentType == t);
+	  tl_assert(0 == curMember->memberVar->data_member_location);
+	  tl_assert(IS_GLOBAL_VAR(curMember));
+	  tl_assert(curMember->memberVar->structParentType == t);
 
 	  repCheckOneVariable(curMember);
 
 	  numStaticMemberVars++;
 	}
-	tl_assert(numStaticMemberVars == t->staticMemberVarList->numVars);
+	tl_assert(numStaticMemberVars == t->aggType->staticMemberVarList->numVars);
       }
 
       // Rep. check member functions:
-      if (t->memberFunctionList) {
-        for (memberFunctionNode = t->memberFunctionList->first;
+      if (t->aggType->memberFunctionList) {
+        for (memberFunctionNode = t->aggType->memberFunctionList->first;
              memberFunctionNode != NULL;
              memberFunctionNode = memberFunctionNode->next) {
           // Make sure that all of their parentClass fields point to t:
           tl_assert(((FunctionEntry*)(memberFunctionNode->elt))->parentClass == t);
           numMemberFunctions++;
         }
-        tl_assert(numMemberFunctions == t->memberFunctionList->numElts);
+        tl_assert(numMemberFunctions == t->aggType->memberFunctionList->numElts);
       }
 
       // Rep. check superclasses
-      if (t->superclassList) {
-        for (superclassNode = t->superclassList->first;
+      if (t->aggType->superclassList) {
+        for (superclassNode = t->aggType->superclassList->first;
              superclassNode != NULL;
              superclassNode = superclassNode->next) {
           // Make sure that all Superclass entries have a className and
@@ -806,7 +806,7 @@ void repCheckAllEntries(void) {
                       curSuper->className, curSuper->inheritance);
           numSuperclasses++;
         }
-        tl_assert(numSuperclasses == t->superclassList->numElts);
+        tl_assert(numSuperclasses == t->aggType->superclassList->numElts);
       }
     }
   }
@@ -823,36 +823,30 @@ static void repCheckOneVariable(VariableEntry* var) {
   tl_assert(var);
 
   // These properties should hold for all global vars:
-  if (var->isGlobal) {
+  if (IS_GLOBAL_VAR(var)) {
     tl_assert(0 == var->byteOffset);
 
     // Not true for C++ static member variables
-    if (!var->isStructUnionMember) {
-      tl_assert(var->fileName);
+    if (!IS_MEMBER_VAR(var)) {
+      tl_assert(var->globalVar->fileName);
     }
 
     FJALAR_DPRINTF(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
-		var->structParentType ? var->structParentType->typeName : "no parent",
-		var,
-		var->name,
-		var->globalLocation);
+                   (IS_MEMBER_VAR(var) && var->memberVar->structParentType) ?
+                   var->memberVar->structParentType->typeName : "no parent",
+                   var,
+                   var->name,
+                   var->globalVar->globalLocation);
 
-    if (var->globalLocation) {
-      tl_assert(addressIsGlobal(var->globalLocation));
+    if (var->globalVar->globalLocation) {
+      tl_assert(addressIsGlobal(var->globalVar->globalLocation));
     }
 
     // These properties should hold for file-static variables declared
     // within a function body:
-    if (var->functionStartPC) {
-      tl_assert(!var->isExternal);
+    if (var->globalVar->functionStartPC) {
+      tl_assert(!var->globalVar->isExternal);
     }
-  }
-  // These properties should hold for all non-global vars:
-  else {
-    tl_assert(!var->isExternal);
-    tl_assert(!var->fileName);
-    tl_assert(0 == var->globalLocation);
-    tl_assert(0 == var->functionStartPC);
   }
 
   // These properties hold for all variables:
@@ -860,9 +854,9 @@ static void repCheckOneVariable(VariableEntry* var) {
 
   tl_assert(var->varType);
 
-  if (var->isStaticArray) {
-    tl_assert(var->numDimensions > 0);
-    tl_assert(var->upperBounds);
+  if (IS_STATIC_ARRAY_VAR(var)) {
+    tl_assert(var->staticArr->numDimensions > 0);
+    tl_assert(var->staticArr->upperBounds);
   }
 
   if (var->isString) {
@@ -870,18 +864,9 @@ static void repCheckOneVariable(VariableEntry* var) {
     tl_assert(var->ptrLevels > 0);
   }
 
-  if(var->isStructUnionMember) {
-    tl_assert(var->structParentType);
+  if(IS_MEMBER_VAR(var)) {
+    tl_assert(var->memberVar->structParentType);
   }
-  else {
-    tl_assert(!var->structParentType);
-    tl_assert(0 == var->data_member_location);
-    tl_assert(0 == var->internalByteSize);
-    tl_assert(0 == var->internalBitOffset);
-    tl_assert(0 == var->internalBitSize);
-  }
-
-  tl_assert(var->ptrLevels >= 0);
 
   // C++ reference vars should never have more than 1 level of
   // reference '&' right?
@@ -889,10 +874,11 @@ static void repCheckOneVariable(VariableEntry* var) {
             (var->referenceLevels == 1));
 
   FJALAR_DPRINTF(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
-	      var->structParentType ? var->structParentType->typeName : "no parent",
-	      var,
-	      var->name,
-	      var->globalLocation);
+                 IS_MEMBER_VAR(var) && var->memberVar->structParentType ?
+                 var->memberVar->structParentType->typeName : "no parent",
+                 var,
+                 var->name,
+                 IS_GLOBAL_VAR(var) && var->globalVar->globalLocation);
 }
 
 
@@ -1140,24 +1126,24 @@ static void updateAllGlobalVariableNames(void) {
     char* name_to_use = 0;
 
     curVar = curNode->var;
-    tl_assert(curVar->isGlobal);
+    tl_assert(IS_GLOBAL_VAR(curVar));
 
     // Do not bother to make unique names for C++ static member
     // variables that are in the globalVars list because they should
     // already have unique names since their class name is appended to
     // the front of their names: e.g. "Stack::publicNumLinksCreated"
-    if (curVar->structParentType) {
+    if (IS_MEMBER_VAR(curVar)) {
       continue;
     }
 
     // For file static global variables, we are going to append the
     // filename in front of it
-    if (curVar->isExternal) {
+    if (curVar->globalVar->isExternal) {
       /* A leading slash indicates a true global */
       loc_part = "";
     }
     else {
-      loc_part = curVar->fileName;
+      loc_part = curVar->globalVar->fileName;
     }
 
     /* We want to print static variables in subdir/filename.c
@@ -1166,10 +1152,10 @@ static void updateAllGlobalVariableNames(void) {
     */
     tl_assert(curVar->name);
 
-    if (curVar->functionStartPC) {
+    if (curVar->globalVar->functionStartPC) {
       // Try to find a function entry with that start PC:
       var_func = (FunctionEntry*)gengettable(FunctionTable,
-                                             (void*)curVar->functionStartPC);
+                                             (void*)curVar->globalVar->functionStartPC);
 
       tl_assert(var_func);
 
@@ -1195,7 +1181,7 @@ static void updateAllGlobalVariableNames(void) {
         *p = '_';
     }
 
-    if (curVar->functionStartPC) {
+    if (curVar->globalVar->functionStartPC) {
       VG_(strcat)(globalName, "@");
       VG_(strcat)(globalName, name_to_use);
 
@@ -1944,7 +1930,7 @@ static int determineVariableByteSize(VariableEntry* var)
     byteSize = var->varType->byteSize;
   }
   // Static array of some type
-  else if (var->isStaticArray)
+  else if (IS_STATIC_ARRAY_VAR(var))
     {
       int i;
 
@@ -1955,9 +1941,9 @@ static int determineVariableByteSize(VariableEntry* var)
         byteSize = sizeof(void*); // static array of pointers
       }
 
-      for (i = 0; i < var->numDimensions; i++) {
-        FJALAR_DPRINTF("  upperBounds[%d] = %d\n", i, var->upperBounds[i]);
-        byteSize *= (var->upperBounds[i] + 1);
+      for (i = 0; i < var->staticArr->numDimensions; i++) {
+        FJALAR_DPRINTF("  upperBounds[%d] = %d\n", i, var->staticArr->upperBounds[i]);
+        byteSize *= (var->staticArr->upperBounds[i] + 1);
       }
     }
   // Pointer type
@@ -2548,14 +2534,15 @@ static void initConstructorsAndDestructors(void) {
         FJALAR_DPRINTF(" *** CONSTRUCTOR! func-name: %s\n", f->name);
 
         f->parentClass = parentClass;
+        tl_assert(IS_AGGREGATE_TYPE(parentClass));
 
         // Insert f into the parent class's constructorList,
         // allocating it if necessary:
-        if (!parentClass->constructorList) {
-          parentClass->constructorList =
-            (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->constructorList)));
+        if (!parentClass->aggType->constructorList) {
+          parentClass->aggType->constructorList =
+            (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->aggType->constructorList)));
         }
-        SimpleListInsert(parentClass->constructorList, (void*)f);
+        SimpleListInsert(parentClass->aggType->constructorList, (void*)f);
       }
       // See if it's a destructor
       else if ('~' == f->name[0]) {
@@ -2566,14 +2553,15 @@ static void initConstructorsAndDestructors(void) {
           FJALAR_DPRINTF(" *** DESTRUCTOR! func-name: %s\n", f->name);
 
           f->parentClass = parentClass;
+          tl_assert(IS_AGGREGATE_TYPE(parentClass));
 
           // Insert f into the parent class's destructorList,
           // allocating it if necessary:
-          if (!parentClass->destructorList) {
-            parentClass->destructorList =
-              (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->destructorList)));
+          if (!parentClass->aggType->destructorList) {
+            parentClass->aggType->destructorList =
+              (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->aggType->destructorList)));
           }
-          SimpleListInsert(parentClass->destructorList, (void*)f);
+          SimpleListInsert(parentClass->aggType->destructorList, (void*)f);
         }
       }
     }
@@ -2605,8 +2593,8 @@ static void initMemberFuncs(void) {
       // with actual FunctionEntry instances:
       SimpleNode* n;
 
-      if (t->memberFunctionList) {
-        for (n = t->memberFunctionList->first;
+      if (t->aggType->memberFunctionList) {
+        for (n = t->aggType->memberFunctionList->first;
              n != NULL;
              n = n->next) {
           unsigned int start_PC = (unsigned int)(n->elt);
@@ -2650,7 +2638,7 @@ FunctionEntry* getFunctionEntryFromFjalarName(char* fjalar_name) {
 // looking for an entry whose startPC and endPC encompass the
 // desired address addr, inclusive.  Thus addr is in the range of
 // [startPC, endPC]
-FunctionEntry* getFunctionEntryFromAddr(unsigned int addr) {
+FunctionEntry* getFunctionEntryFromAddr(Addr addr) {
   FuncIterator* funcIt = newFuncIterator();
   while (hasNextFunc(funcIt)) {
     FunctionEntry* entry = nextFunc(funcIt);
@@ -2667,7 +2655,7 @@ FunctionEntry* getFunctionEntryFromAddr(unsigned int addr) {
 
 // This is FAST because the keys of the hash table are addresses
 // startPC must match the starting address of the function
-__inline__ FunctionEntry* getFunctionEntryFromStartAddr(unsigned int startPC) {
+__inline__ FunctionEntry* getFunctionEntryFromStartAddr(Addr startPC) {
   return (FunctionEntry*)gengettable(FunctionTable, (void*)startPC);
 }
 
@@ -2698,7 +2686,7 @@ VarIterator* newVarIterator(VarList* vlist) {
   return varIt;
 }
 
-char hasNextVar(VarIterator* varIt) {
+Bool hasNextVar(VarIterator* varIt) {
   // Empty list:
   if (!varIt->curNode) {
     return 0;
@@ -2734,7 +2722,7 @@ TypeIterator* newTypeIterator() {
   return typeIt;
 }
 
-char hasNextType(TypeIterator* typeIt) {
+Bool hasNextType(TypeIterator* typeIt) {
   return !(typeIt->it->finished);
 }
 
@@ -2761,7 +2749,7 @@ FuncIterator* newFuncIterator() {
   return funcIt;
 }
 
-char hasNextFunc(FuncIterator* funcIt) {
+Bool hasNextFunc(FuncIterator* funcIt) {
   return !(funcIt->it->finished);
 }
 
@@ -2928,28 +2916,28 @@ static void XMLprintTypesTable() {
     XML_PRINTF("<declared-type>%s</declared-type>\n",
 	       DeclaredTypeNames[cur_entry->decType]);
 
-    if (cur_entry->isStructUnionType) {
+    if (IS_AGGREGATE_TYPE(cur_entry)) {
 
-      if (cur_entry->memberVarList &&
-          (cur_entry->memberVarList->numVars > 0)) {
+      if (cur_entry->aggType->memberVarList &&
+          (cur_entry->aggType->memberVarList->numVars > 0)) {
         XML_PRINTF("<member-variables>\n");
-        XMLprintVariablesInList(cur_entry->memberVarList);
+        XMLprintVariablesInList(cur_entry->aggType->memberVarList);
         XML_PRINTF("</member-variables>\n");
       }
 
-      if (cur_entry->staticMemberVarList &&
-          (cur_entry->staticMemberVarList->numVars > 0)) {
+      if (cur_entry->aggType->staticMemberVarList &&
+          (cur_entry->aggType->staticMemberVarList->numVars > 0)) {
         XML_PRINTF("<static-member-variables>\n");
-        XMLprintVariablesInList(cur_entry->staticMemberVarList);
+        XMLprintVariablesInList(cur_entry->aggType->staticMemberVarList);
         XML_PRINTF("</static-member-variables>\n");
       }
 
-      if (cur_entry->constructorList &&
-          (cur_entry->constructorList->numElts > 0)) {
+      if (cur_entry->aggType->constructorList &&
+          (cur_entry->aggType->constructorList->numElts > 0)) {
         SimpleNode* n;
         XML_PRINTF("<constructors>\n");
 
-        for (n = cur_entry->constructorList->first;
+        for (n = cur_entry->aggType->constructorList->first;
              n != NULL;
              n = n->next) {
           XMLprintOneFunction((FunctionEntry*)(n->elt),
@@ -2958,12 +2946,12 @@ static void XMLprintTypesTable() {
         XML_PRINTF("</constructors>\n");
       }
 
-      if (cur_entry->destructorList &&
-          (cur_entry->destructorList->numElts > 0)) {
+      if (cur_entry->aggType->destructorList &&
+          (cur_entry->aggType->destructorList->numElts > 0)) {
         SimpleNode* n;
         XML_PRINTF("<destructors>\n");
 
-        for (n = cur_entry->destructorList->first;
+        for (n = cur_entry->aggType->destructorList->first;
              n != NULL;
              n = n->next) {
           XMLprintOneFunction((FunctionEntry*)(n->elt),
@@ -2972,12 +2960,12 @@ static void XMLprintTypesTable() {
         XML_PRINTF("</destructors>\n");
       }
 
-      if (cur_entry->memberFunctionList &&
-          (cur_entry->memberFunctionList->numElts > 0)) {
+      if (cur_entry->aggType->memberFunctionList &&
+          (cur_entry->aggType->memberFunctionList->numElts > 0)) {
         SimpleNode* n;
         XML_PRINTF("<member-functions>\n");
 
-        for (n = cur_entry->memberFunctionList->first;
+        for (n = cur_entry->aggType->memberFunctionList->first;
              n != NULL;
              n = n->next) {
           XMLprintOneFunction((FunctionEntry*)(n->elt),
@@ -2986,10 +2974,10 @@ static void XMLprintTypesTable() {
         XML_PRINTF("</member-functions>\n");
       }
 
-      if (cur_entry->superclassList &&
-          (cur_entry->superclassList->numElts > 0)) {
+      if (cur_entry->aggType->superclassList &&
+          (cur_entry->aggType->superclassList->numElts > 0)) {
         SimpleNode* n;
-        for (n = cur_entry->superclassList->first;
+        for (n = cur_entry->aggType->superclassList->first;
              n != NULL;
              n = n->next) {
           Superclass* super = (Superclass*)(n->elt);
@@ -3032,10 +3020,9 @@ static void XMLprintVariablesInList(VarList* varListPtr) {
 
   while (hasNextVar(varIt)) {
     VariableEntry* cur_var = nextVar(varIt);
-    // Special case: Skip C++ member variables that
-    // are in the globalVars list:
-    if ((varListPtr == &globalVars) &&
-	cur_var->structParentType) {
+    // Special case: Skip C++ member variables that are in the
+    // globalVars list:
+    if ((varListPtr == &globalVars) && IS_MEMBER_VAR(cur_var)) {
       continue;
     }
 
@@ -3059,23 +3046,23 @@ static void XMLprintOneVariable(VariableEntry* var) {
 
   XML_PRINTF("<name><![CDATA[%s]]></name>\n", var->name);
 
-  if (var->isGlobal) {
+  if (IS_GLOBAL_VAR(var)) {
     XML_PRINTF("<global-var>\n");
 
     XML_PRINTF("<location>%p</location>\n",
-	       (void*)var->globalLocation);
+	       (void*)var->globalVar->globalLocation);
 
-    if (var->fileName) {
+    if (var->globalVar->fileName) {
       XML_PRINTF("<filename>%s</filename>\n",
-                 var->fileName);
+                 var->globalVar->fileName);
     }
 
-    if (!var->isExternal) {
+    if (!var->globalVar->isExternal) {
       XML_PRINTF("<file-static-var>\n");
 
-      if (var->functionStartPC) {
+      if (var->globalVar->functionStartPC) {
 	XML_PRINTF("<function-start-PC>%p</function-start-PC>\n",
-		   (void*)var->functionStartPC);
+		   (void*)var->globalVar->functionStartPC);
       }
 
       XML_PRINTF("</file-static-var>\n");
@@ -3089,25 +3076,25 @@ static void XMLprintOneVariable(VariableEntry* var) {
 	       var->byteOffset);
   }
 
-  if (var->isStaticArray) {
-    int i = 0;
+  if (IS_STATIC_ARRAY_VAR(var)) {
+    UInt i = 0;
 
     XML_PRINTF("<static-array>\n");
 
     XML_PRINTF("<num-dimensions>%d</num-dimensions>\n",
-	       var->numDimensions);
+	       var->staticArr->numDimensions);
 
-    for (i = 0; i < var->numDimensions; i++) {
+    for (i = 0; i < var->staticArr->numDimensions; i++) {
       XML_PRINTF("<upper-bound>%u</upper-bound>\n",
-		 var->upperBounds[i]);
+		 var->staticArr->upperBounds[i]);
     }
 
     XML_PRINTF("</static-array>\n");
   }
 
-  if (var->isStructUnionMember) {
+  if (IS_MEMBER_VAR(var)) {
     XML_PRINTF("<member-var visibility=\"");
-    switch(var->visibility) {
+    switch(var->memberVar->visibility) {
     case PRIVATE_VISIBILITY:
       XML_PRINTF("private");
       break;
@@ -3121,10 +3108,10 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("\">\n");
 
     XML_PRINTF("<member-location>%lu</member-location>\n",
-	       var->data_member_location);
+	       var->memberVar->data_member_location);
 
     XML_PRINTF("<parent-type>%s</parent-type>\n",
-	       var->structParentType->typeName);
+	       var->memberVar->structParentType->typeName);
 
     XML_PRINTF("</member-var>\n");
   }
