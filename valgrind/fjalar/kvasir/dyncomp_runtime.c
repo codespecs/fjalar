@@ -30,6 +30,8 @@
 #include "dyncomp_runtime.h"
 #include <limits.h>
 
+#include "../fjalar_include.h"
+
 #include "libvex_guest_x86.h"
 #include <stddef.h> // For offsetof macro
 
@@ -57,6 +59,23 @@ int g_curCompNumber = 1;
 // tag is invalid)
 UInt* g_oldToNewMap = 0;
 
+
+static TraversalResult dyncompExtraPropAction(VariableEntry* var,
+                                              char* varName,
+                                              VariableOrigin varOrigin,
+                                              UInt numDereferences,
+                                              UInt layersBeforeBase,
+                                              Bool overrideIsInit,
+                                              DisambigOverride disambigOverride,
+                                              Bool isSequence,
+                                              // pValue only valid if isSequence is false
+                                              void* pValue,
+                                              // pValueArray and numElts only valid if
+                                              // isSequence is true
+                                              void** pValueArray,
+                                              UInt numElts,
+                                              FunctionEntry* varFuncInfo,
+                                              Bool isEnter);
 
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
@@ -531,22 +550,22 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   //  return var_tags[daikonVarIndex];
 }
 
-TraversalResult dyncompExtraPropAction(VariableEntry* var,
-                                       char* varName,
-                                       VariableOrigin varOrigin,
-                                       UInt numDereferences,
-                                       UInt layersBeforeBase,
-                                       Bool overrideIsInit,
-                                       DisambigOverride disambigOverride,
-                                       Bool isSequence,
-                                       // pValue only valid if isSequence is false
-                                       void* pValue,
-                                       // pValueArray and numElts only valid if
-                                       // isSequence is true
-                                       void** pValueArray,
-                                       UInt numElts,
-                                       FunctionEntry* varFuncInfo,
-                                       Bool isEnter) {
+static TraversalResult dyncompExtraPropAction(VariableEntry* var,
+                                              char* varName,
+                                              VariableOrigin varOrigin,
+                                              UInt numDereferences,
+                                              UInt layersBeforeBase,
+                                              Bool overrideIsInit,
+                                              DisambigOverride disambigOverride,
+                                              Bool isSequence,
+                                              // pValue only valid if isSequence is false
+                                              void* pValue,
+                                              // pValueArray and numElts only valid if
+                                              // isSequence is true
+                                              void** pValueArray,
+                                              UInt numElts,
+                                              FunctionEntry* varFuncInfo,
+                                              Bool isEnter) {
   // Cast it to a DaikonFunctionEntry in order to access the
   // DynComp-specific fields:
   DaikonFunctionEntry* daikonFuncInfo = (DaikonFunctionEntry*)varFuncInfo;
@@ -1178,7 +1197,7 @@ void mark(UChar* bitarray, UInt n, UInt i, UInt j) {
 // the appropriate spots to denote variable comparability based on the
 // leader tags held in new_tag_leaders:
 void DC_detailed_mode_process_ppt_execution(DaikonFunctionEntry* funcPtr,
-                                            char isEnter) {
+                                            Bool isEnter) {
   UInt num_daikon_vars;
   UChar* bitmatrix;
   UInt* new_tag_leaders;

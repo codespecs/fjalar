@@ -545,36 +545,38 @@ static void printAllObjectPPTDecls(void) {
   while (hasNextType(typeIt)) {
     TypeEntry* cur_type = nextType(typeIt);
     tl_assert(cur_type);
-    tl_assert(IS_AGGREGATE_TYPE(cur_type));
 
-    // Only print out .decls for :::OBJECT program points if there is
-    // at least 1 member function.  Otherwise, don't bother because
-    // object program points will never be printed out for this class
-    // in the .dtrace file.  Also, only print it out if there is at
-    // least 1 member variable, or else there is no point.
-    if ((cur_type->aggType->memberFunctionList && (cur_type->aggType->memberFunctionList->numElts > 0)) &&
-        (cur_type->aggType->memberVarList && (cur_type->aggType->memberVarList->numVars > 0)) &&
-        cur_type->typeName) {
-      tl_assert(cur_type->typeName);
+    if (IS_AGGREGATE_TYPE(cur_type)) {
 
-      fputs("DECLARE\n", decls_fp);
-      fputs(cur_type->typeName, decls_fp);
-      fputs(":::OBJECT\n", decls_fp);
+      // Only print out .decls for :::OBJECT program points if there
+      // is at least 1 member function.  Otherwise, don't bother
+      // because object program points will never be printed out for
+      // this class in the .dtrace file.  Also, only print it out if
+      // there is at least 1 member variable, or else there is no
+      // point.
+      if ((cur_type->aggType->memberFunctionList && (cur_type->aggType->memberFunctionList->numElts > 0)) &&
+          (cur_type->aggType->memberVarList && (cur_type->aggType->memberVarList->numVars > 0)) &&
+          cur_type->typeName) {
+        tl_assert(cur_type->typeName);
 
-      stringStackPush(fullNameStack, &fullNameStackSize, "this");
-      stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
+        fputs("DECLARE\n", decls_fp);
+        fputs(cur_type->typeName, decls_fp);
+        fputs(":::OBJECT\n", decls_fp);
 
-      // Print out regular member vars.
-      visitClassMembersNoValues(cur_type,
-                                &printDeclsEntryAction);
+        stringStackPush(fullNameStack, &fullNameStackSize, "this");
+        stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
 
-      stringStackPop(fullNameStack, &fullNameStackSize);
-      stringStackPop(fullNameStack, &fullNameStackSize);
+        // Print out regular member vars.
+        visitClassMembersNoValues(cur_type, &printDeclsEntryAction);
 
-      fputs("\n", decls_fp);
+        stringStackPop(fullNameStack, &fullNameStackSize);
+        stringStackPop(fullNameStack, &fullNameStackSize);
 
-      // TODO: What do we do about static member vars?
-      // Right now we just print them out like globals
+        fputs("\n", decls_fp);
+
+        // TODO: What do we do about static member vars?
+        // Right now we just print them out like globals
+      }
     }
   }
 
