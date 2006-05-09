@@ -26,6 +26,7 @@ data structures that tools can use.
 #include "pub_tool_basics.h"
 #include "pub_tool_options.h"
 
+#include "GenericHashtable.h"
 
 /*********************************************************************
 Supporting data structures and enums
