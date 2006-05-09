@@ -126,7 +126,7 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_LONG_DOUBLE:
     return R_DOUBLE;
 
-  case D_STRUCT:
+  case D_STRUCT_CLASS:
   case D_UNION:
   case D_FUNCTION:
   case D_VOID:
@@ -180,9 +180,9 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
                                       VariableOrigin varOrigin,
                                       UInt numDereferences,
                                       UInt layersBeforeBase,
-                                      char overrideIsInit,
+                                      Bool overrideIsInit,
                                       DisambigOverride disambigOverride,
-                                      char isSequence,
+                                      Bool isSequence,
                                       // pValue only valid if isSequence is false
                                       void* pValue,
                                       // pValueArray and numElts only valid if
@@ -190,7 +190,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
                                       void** pValueArray,
                                       UInt numElts,
                                       FunctionEntry* varFuncInfo,
-                                      char isEnter) {
+                                      Bool isEnter) {
   DeclaredType dType = var->varType->decType;
   DaikonRepType rType = decTypeToDaikonRepType(dType, var->isString);
   UInt layers;
@@ -211,7 +211,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     fputs(DaikonRepTypeString[R_INT], decls_fp);
   }
   // named struct/union or enumeration
-  else if (((dType == D_ENUMERATION) || (dType == D_STRUCT) || (dType == D_UNION)) &&
+  else if (((dType == D_ENUMERATION) || (dType == D_STRUCT_CLASS) || (dType == D_UNION)) &&
            var->varType->typeName) {
     fputs(var->varType->typeName, decls_fp);
 
@@ -287,7 +287,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   // out for that variable have no semantic meaning
   if (fjalar_output_struct_vars &&
       (layersBeforeBase == 0) &&
-      (var->varType->isStructUnionType)) {
+      (IS_AGGREGATE_TYPE(var->varType))) {
     if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
     else {fputs(",", decls_fp);}
 
@@ -296,7 +296,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
   // Hashcode variables that can never be null has "hasNull=false".
   // (e.g., statically-allocated arrays)
-  if (var->isStaticArray && (layersBeforeBase == 1)) {
+  if (IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase == 1)) {
     if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
     else {fputs(",", decls_fp);}
 
@@ -545,14 +545,15 @@ static void printAllObjectPPTDecls(void) {
   while (hasNextType(typeIt)) {
     TypeEntry* cur_type = nextType(typeIt);
     tl_assert(cur_type);
+    tl_assert(IS_AGGREGATE_TYPE(cur_type));
 
     // Only print out .decls for :::OBJECT program points if there is
     // at least 1 member function.  Otherwise, don't bother because
     // object program points will never be printed out for this class
     // in the .dtrace file.  Also, only print it out if there is at
     // least 1 member variable, or else there is no point.
-    if ((cur_type->memberFunctionList && (cur_type->memberFunctionList->numElts > 0)) &&
-        (cur_type->memberVarList && (cur_type->memberVarList->numVars > 0)) &&
+    if ((cur_type->aggType->memberFunctionList && (cur_type->aggType->memberFunctionList->numElts > 0)) &&
+        (cur_type->aggType->memberVarList && (cur_type->aggType->memberVarList->numVars > 0)) &&
         cur_type->typeName) {
       tl_assert(cur_type->typeName);
 

@@ -536,9 +536,9 @@ TraversalResult dyncompExtraPropAction(VariableEntry* var,
                                        VariableOrigin varOrigin,
                                        UInt numDereferences,
                                        UInt layersBeforeBase,
-                                       char overrideIsInit,
+                                       Bool overrideIsInit,
                                        DisambigOverride disambigOverride,
-                                       char isSequence,
+                                       Bool isSequence,
                                        // pValue only valid if isSequence is false
                                        void* pValue,
                                        // pValueArray and numElts only valid if
@@ -546,7 +546,7 @@ TraversalResult dyncompExtraPropAction(VariableEntry* var,
                                        void** pValueArray,
                                        UInt numElts,
                                        FunctionEntry* varFuncInfo,
-                                       char isEnter) {
+                                       Bool isEnter) {
   // Cast it to a DaikonFunctionEntry in order to access the
   // DynComp-specific fields:
   DaikonFunctionEntry* daikonFuncInfo = (DaikonFunctionEntry*)varFuncInfo;
@@ -573,8 +573,7 @@ TraversalResult dyncompExtraPropAction(VariableEntry* var,
   // that there is only one level of pointer indirection, and for a
   // static string (static array of 'char'), layersBeforeBase == 0
   // right away so we still process it
-  if (!(var->isStaticArray &&
-        (layersBeforeBase > 0))) {
+  if (!IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase > 0)) {
     DC_extra_propagation_post_process(daikonFuncInfo,
                                       isEnter,
                                       g_variableIndex);

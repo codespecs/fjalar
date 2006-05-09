@@ -293,11 +293,9 @@ switch (decType) \
  case D_LONG_LONG_INT: \
    OPERATION(long long int) \
    break; \
- case D_UNSIGNED_FLOAT: \
  case D_FLOAT: \
    OPERATION(float) \
    break; \
- case D_UNSIGNED_DOUBLE: \
  case D_DOUBLE: \
    OPERATION(double) \
    break; \
@@ -395,7 +393,7 @@ char printDtraceSingleVar(VariableEntry* var,
     //       var->isStaticArray says that the base variable is a
     //       static array after all dereferences are done.
     DTRACE_PRINTF("%u\n%d\n",
-                  var->isStaticArray ? (UInt)pValue : (UInt)(*((Addr*)pValue)),
+                  IS_STATIC_ARRAY_VAR(var) ? (UInt)pValue : (UInt)(*((Addr*)pValue)),
                   mapInitToModbit(1));
 
     // Since we observed all of these bytes as one value, we will
@@ -411,7 +409,7 @@ char printDtraceSingleVar(VariableEntry* var,
     char stringReadable = 0;
 
     // Depends on whether the variable is a static array or not:
-    char* actualString = (var->isStaticArray ?
+    char* actualString = (IS_STATIC_ARRAY_VAR(var) ?
                           pValue :
                           *((char**)pValue));
 
@@ -433,7 +431,7 @@ char printDtraceSingleVar(VariableEntry* var,
   }
   // Base (non-hashcode) struct or union type
   // Simply print out its hashcode location
-  else if (var->varType->isStructUnionType) {
+  else if (IS_AGGREGATE_TYPE(var->varType)) {
     DTRACE_PRINTF("%u\n%d\n",
                   ((unsigned int)pValue),
                   mapInitToModbit(1));
@@ -449,9 +447,6 @@ char printDtraceSingleVar(VariableEntry* var,
 
     if (overrideFloatAsDouble && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
-    }
-    else if (overrideFloatAsDouble && (decType == D_UNSIGNED_FLOAT)) {
-      decType = D_UNSIGNED_DOUBLE;
     }
 
     return printDtraceSingleBaseValue(pValue,
@@ -561,7 +556,7 @@ char printDtraceSequence(VariableEntry* var,
             firstInitEltFound = 1;
           }
 
-          DTRACE_PRINTF("%u ", var->isStaticArray ?
+          DTRACE_PRINTF("%u ", IS_STATIC_ARRAY_VAR(var) ?
                         (UInt)pCurValue :
                         (UInt)(*((Addr*)pCurValue)));
 
@@ -599,7 +594,7 @@ char printDtraceSequence(VariableEntry* var,
   }
   // Base (non-hashcode) struct or union type
   // Simply print out its hashcode location
-  else if (var->varType->isStructUnionType) {
+  else if (IS_AGGREGATE_TYPE(var->varType)) {
     int ind;
     int limit = numElts;
     if (fjalar_array_length_limit != -1) {
@@ -627,9 +622,6 @@ char printDtraceSequence(VariableEntry* var,
 
     if (overrideFloatAsDouble && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
-    }
-    else if (overrideFloatAsDouble && (decType == D_UNSIGNED_FLOAT)) {
-      decType = D_UNSIGNED_DOUBLE;
     }
 
     printDtraceBaseValueSequence(decType,
@@ -879,7 +871,7 @@ void printDtraceStringSequence(VariableEntry* var,
         val_uf_union_tags_at_addr((Addr)firstInitElt, (Addr)pCurValue);
       }
 
-      if (!(var->isStaticArray) || var->isGlobal) {
+      if (!IS_STATIC_ARRAY_VAR(var) || IS_GLOBAL_VAR(var)) {
         pCurValue = *(char**)pCurValue;
       }
 
@@ -944,9 +936,9 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
                                        VariableOrigin varOrigin,
                                        UInt numDereferences,
                                        UInt layersBeforeBase,
-                                       char overrideIsInit,
+                                       Bool overrideIsInit,
                                        DisambigOverride disambigOverride,
-                                       char isSequence,
+                                       Bool isSequence,
                                        // pValue only valid if isSequence is false
                                        void* pValue,
                                        // pValueArray and numElts only valid if
@@ -954,7 +946,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
                                        void** pValueArray,
                                        UInt numElts,
                                        FunctionEntry* varFuncInfo,
-                                       char isEnter) {
+                                       Bool isEnter) {
   char variableHasBeenObserved = 0;
   void* firstInitElt = 0;
 
@@ -1020,8 +1012,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
     // that there is only one level of pointer indirection, and for a
     // static string (static array of 'char'), layersBeforeBase == 0
     // right away so we still process it
-    if (!(var->isStaticArray &&
-          (layersBeforeBase > 0))) {
+    if (!IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase > 0)) {
 
       // Special handling for strings.  We are not interested in the
       // comparability of the 'char*' pointer variable, but rather
@@ -1039,7 +1030,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
         if (ptrAllocAndInit) {
           // Depends on whether the variable is a static array or not:
-          a = var->isStaticArray ?
+          a = IS_STATIC_ARRAY_VAR(var) ?
             (Addr)ptrInQuestion :
             *((Addr*)(ptrInQuestion));
         }
