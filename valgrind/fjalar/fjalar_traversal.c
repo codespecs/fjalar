@@ -43,28 +43,28 @@ static
 void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
                     void* pValue,
-                    char overrideIsInit,
-                    char alreadyDerefedCppRef, // only relevant for C++ reference parameters
+                    Bool overrideIsInit,
+                    Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
                     // This function performs an action for each variable visited:
                     TraversalResult (*performAction)(VariableEntry*,
                                                      char*,
                                                      VariableOrigin,
                                                      UInt,
                                                      UInt,
-                                                     char,
+                                                     Bool,
                                                      DisambigOverride,
-                                                     char,
+                                                     Bool,
                                                      void*,
                                                      void**,
                                                      UInt,
                                                      FunctionEntry*,
-                                                     char),
+                                                     Bool),
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
                     UInt numStructsDereferenced,
                     FunctionEntry* varFuncInfo,
-                    char isEnter);
+                    Bool isEnter);
 
 static
 void visitSequence(VariableEntry* var,
@@ -77,20 +77,20 @@ void visitSequence(VariableEntry* var,
                                                     VariableOrigin,
                                                     UInt,
                                                     UInt,
-                                                    char,
+                                                    Bool,
                                                     DisambigOverride,
-                                                    char,
+                                                    Bool,
                                                     void*,
                                                     void**,
                                                     UInt,
                                                     FunctionEntry*,
-                                                    char),
+                                                    Bool),
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
                    UInt numStructsDereferenced,
                    FunctionEntry* varFuncInfo,
-                   char isEnter);
+                   Bool isEnter);
 
 // This is an example of a function that's valid to be passed in as
 // the performAction parameter to visitVariable:
@@ -100,9 +100,9 @@ TraversalResult performAction(VariableEntry* var,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
                               UInt layersBeforeBase,
-                              char overrideIsInit,
+                              Bool overrideIsInit,
                               DisambigOverride disambigOverride,
-                              char isSequence,
+                              Bool isSequence,
                               // pValue only valid if isSequence is false
                               void* pValue,
                               // pValueArray and numElts only valid if
@@ -110,7 +110,7 @@ TraversalResult performAction(VariableEntry* var,
                               void** pValueArray,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
-                              char isEnter);
+                              Bool isEnter);
 */
 
 
@@ -214,14 +214,14 @@ void visitClassMembersNoValues(TypeEntry* class,
                                                                 VariableOrigin,
                                                                 UInt,
                                                                 UInt,
-                                                                char,
+                                                                Bool,
                                                                 DisambigOverride,
-                                                                char,
+                                                                Bool,
                                                                 void*,
                                                                 void**,
                                                                 UInt,
                                                                 FunctionEntry*,
-                                                                char)) {
+                                                                Bool)) {
 
   if (VisitedStructsTable) {
     genfreehashtable(VisitedStructsTable);
@@ -254,7 +254,7 @@ void visitClassMembersNoValues(TypeEntry* class,
 // well.  Pre: class->decType == {D_STRUCT_CLASS, D_UNION}
 void visitClassMemberVariables(TypeEntry* class,
                                void* pValue,
-                               char isSequence,
+                               Bool isSequence,
                                // An array of pointers to values (only
                                // valid if isSequence non-null):
                                void** pValueArray,
@@ -265,14 +265,14 @@ void visitClassMemberVariables(TypeEntry* class,
                                                                 VariableOrigin,
                                                                 UInt,
                                                                 UInt,
-                                                                char,
+                                                                Bool,
                                                                 DisambigOverride,
-                                                                char,
+                                                                Bool,
                                                                 void*,
                                                                 void**,
                                                                 UInt,
                                                                 FunctionEntry*,
-                                                                char),
+                                                                Bool),
                                VariableOrigin varOrigin,
                                char* trace_vars_tree,
                                // The number of structs we have dereferenced for
@@ -283,10 +283,10 @@ void visitClassMemberVariables(TypeEntry* class,
                                UInt numStructsDereferenced,
                                // These uniquely identify the program point
                                FunctionEntry* varFuncInfo,
-                               char isEnter,
+                               Bool isEnter,
                                TraversalResult tResult) {
-  tl_assert((class->decType == D_STRUCT_CLASS) ||
-            (class->decType == D_UNION));
+  tl_assert(((class->decType == D_STRUCT_CLASS) || (class->decType == D_UNION)) &&
+            IS_AGGREGATE_TYPE(class));
 
 
   // Check to see if the VisitedStructsTable contains more than
@@ -317,9 +317,9 @@ void visitClassMemberVariables(TypeEntry* class,
 
 
   // Visit member variables:
-  if (class->memberVarList) {
+  if (class->aggType->memberVarList) {
     VarNode* i = NULL;
-    for (i = class->memberVarList->first;
+    for (i = class->aggType->memberVarList->first;
          i != NULL;
          i = i->next) {
       VariableEntry* curVar;
@@ -339,20 +339,22 @@ void visitClassMemberVariables(TypeEntry* class,
 	continue;
       }
 
+      tl_assert(IS_MEMBER_VAR(curVar));
+
       // Only flatten static arrays when the --flatten-arrays option
       // is used.  Normally we do not have to flatten static arrays at
       // this point because we can simply visit them as an entire
       // sequence.
-      if (curVar->isStaticArray &&
+      if (IS_STATIC_ARRAY_VAR(curVar) &&
           // Always flatten if isSequence because we have no other choice:
           (isSequence ? 1 : fjalar_flatten_arrays) &&
           (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
-          (curVar->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
+          (curVar->staticArr->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
           // Ignore arrays of characters (strings) inside of the struct:
           !(curVar->isString && (curVar->ptrLevels == 1))) {
         // Only look at the first dimension:
         UInt arrayIndex;
-        for (arrayIndex = 0; arrayIndex <= curVar->upperBounds[0]; arrayIndex++) {
+        for (arrayIndex = 0; arrayIndex <= curVar->staticArr->upperBounds[0]; arrayIndex++) {
           char indexStr[5];
           top = stringStackTop(fullNameStack, fullNameStackSize);
 
@@ -386,7 +388,7 @@ void visitClassMemberVariables(TypeEntry* class,
                 // struct's starting address plus the location of the
                 // variable within the struct
                 if (pValueArray[ind]) {
-                  char* curVal = (char*)(pValueArray[ind]) + curVar->data_member_location;
+                  char* curVal = (char*)(pValueArray[ind]) + curVar->memberVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
                   // DWARF2 info.  botches the locations of double
@@ -401,8 +403,8 @@ void visitClassMemberVariables(TypeEntry* class,
                   // give it a padding of 8:
                   if ((D_DOUBLE == curVar->varType->decType) &&
                       (i->next) &&
-                      ((i->next->var->data_member_location -
-                        curVar->data_member_location) == 4)) {
+                      ((i->next->var->memberVar->data_member_location -
+                        curVar->memberVar->data_member_location) == 4)) {
                     curVal -= 4;
                   }
 
@@ -430,7 +432,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // The starting address for the member variable is the
               // struct's starting address plus the location of the
               // variable within the struct
-              pCurVarValue = (char*)(pValue) + curVar->data_member_location;
+              pCurVarValue = (char*)(pValue) + curVar->memberVar->data_member_location;
 
               // Very important! Add offset within the flattened array:
               pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
@@ -537,7 +539,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // Otherwise, we'd have mis-alignment issues.  (I tried
               // it in gdb and it seems to work, though.)
               if (pValueArray[ind]) {
-                char* curVal = (char*)(pValueArray[ind]) + curVar->data_member_location;
+                char* curVal = (char*)(pValueArray[ind]) + curVar->memberVar->data_member_location;
 
                 // Override for D_DOUBLE types: For some reason, the
                 // DWARF2 info.  botches the locations of double
@@ -552,8 +554,8 @@ void visitClassMemberVariables(TypeEntry* class,
                 // give it a padding of 8:
                 if ((D_DOUBLE == curVar->varType->decType) &&
                     (i->next) &&
-                    ((i->next->var->data_member_location -
-                      curVar->data_member_location) == 4)) {
+                    ((i->next->var->memberVar->data_member_location -
+                      curVar->memberVar->data_member_location) == 4)) {
                   curVal -= 4;
                 }
 
@@ -577,7 +579,7 @@ void visitClassMemberVariables(TypeEntry* class,
             // The starting address for the member variable is the
             // struct's starting address plus the location of the
             // variable within the struct
-            pCurVarValue = (char*)(pValue) + curVar->data_member_location;
+            pCurVarValue = (char*)(pValue) + curVar->memberVar->data_member_location;
 
             // Override for D_DOUBLE types: For some reason, the
             // DWARF2 info.  botches the locations of double variables
@@ -591,8 +593,8 @@ void visitClassMemberVariables(TypeEntry* class,
             // it a padding of 8:
             if ((D_DOUBLE == curVar->varType->decType) &&
                 (i->next) &&
-                ((i->next->var->data_member_location -
-                  curVar->data_member_location) == 4)) {
+                ((i->next->var->memberVar->data_member_location -
+                  curVar->memberVar->data_member_location) == 4)) {
               pCurVarValue -= 4;
             }
           }
@@ -672,9 +674,9 @@ void visitClassMemberVariables(TypeEntry* class,
 
   // Now traverse inside of all superclasses and visit all of their
   // member variables (while appending a prefix to them):
-  if (class->superclassList) {
+  if (class->aggType->superclassList) {
     SimpleNode* n = NULL;
-    for (n = class->superclassList->first;
+    for (n = class->aggType->superclassList->first;
          n != NULL;
          n = n->next) {
       void** superclassOffsetPtrValues = 0;
@@ -767,7 +769,7 @@ void visitClassMemberVariables(TypeEntry* class,
 // want to grab the actual return value at runtime and not just the name)
 void visitVariableGroup(VariableOrigin varOrigin,
                         FunctionEntry* funcPtr, // 0 for unspecified function
-                        char isEnter,           // 1 for function entrance, 0 for exit
+                        Bool isEnter,           // 1 for function entrance, 0 for exit
                         char* stackBaseAddr,    // should only be used for FUNCTION_FORMAL_PARAM
                         // This function performs an action for each variable visited:
                         TraversalResult (*performAction)(VariableEntry*,
@@ -775,14 +777,14 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                          VariableOrigin,
                                                          UInt,
                                                          UInt,
-                                                         char,
+                                                         Bool,
                                                          DisambigOverride,
-                                                         char,
+                                                         Bool,
                                                          void*,
                                                          void**,
                                                          UInt,
                                                          FunctionEntry*,
-                                                         char)) {
+                                                         Bool)) {
   VarList* varListPtr = 0;
   VarIterator* varIt = 0;
 
@@ -835,11 +837,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
       basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
     }
     else if (varOrigin == GLOBAL_VAR) {
-      basePtrValue = (void*)(var->globalLocation);
+      tl_assert(IS_GLOBAL_VAR(var));
+      basePtrValue = (void*)(var->globalVar->globalLocation);
 
       // if "--ignore-static-vars" option was selected, do not visit
       // file-static global variables:
-      if (!var->isExternal && fjalar_ignore_static_vars) {
+      if (!var->globalVar->isExternal && fjalar_ignore_static_vars) {
 	continue;
       }
 
@@ -848,15 +851,15 @@ void visitVariableGroup(VariableOrigin varOrigin,
       //   in the file in which the variables were declared
       // * Only visit static variables declared within functions
       //   at program points of that particular function
-      if (!var->isExternal && (!fjalar_all_static_vars) && funcPtr) {
+      if (!var->globalVar->isExternal && (!fjalar_all_static_vars) && funcPtr) {
 	// Declared within a function
-	if (var->functionStartPC) {
-	  if (funcPtr->startPC != var->functionStartPC) {
+	if (var->globalVar->functionStartPC) {
+	  if (funcPtr->startPC != var->globalVar->functionStartPC) {
 	    continue;
 	  }
 	}
 	// Declared globally
-	else if (!VG_STREQ(funcPtr->filename, var->fileName)) {
+	else if (!VG_STREQ(funcPtr->filename, var->globalVar->fileName)) {
 	  continue;
 	}
       }
@@ -893,14 +896,14 @@ void visitReturnValue(FunctionExecutionState* e,
                                                        VariableOrigin,
                                                        UInt,
                                                        UInt,
-                                                       char,
+                                                       Bool,
                                                        DisambigOverride,
-                                                       char,
+                                                       Bool,
                                                        void*,
                                                        void**,
                                                        UInt,
                                                        FunctionEntry*,
-                                                       char)) {
+                                                       Bool)) {
   VarNode* cur_node;
   FunctionEntry* funcPtr;
   tl_assert(e);
@@ -931,7 +934,7 @@ void visitReturnValue(FunctionExecutionState* e,
   // BE CAREFUL WITH declaredType - it may be misleading since all
   // pointers share the same declaredType
   if ((cur_node->var->ptrLevels == 0) &&
-      (cur_node->var->varType->isStructUnionType)) {
+      (IS_AGGREGATE_TYPE(cur_node->var->varType))) {
     // e->EAX is the contents of the virtual EAX, which should be the
     // address of the struct/union, so pass that along ...  NO extra
     // level of indirection needed
@@ -952,11 +955,7 @@ void visitReturnValue(FunctionExecutionState* e,
   else if ((cur_node->var->ptrLevels == 0) &&
 	   ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
-            (cur_node->var->varType->decType == D_LONG_DOUBLE) ||
-            (cur_node->var->varType->decType == D_UNSIGNED_FLOAT) ||
-            (cur_node->var->varType->decType == D_UNSIGNED_DOUBLE) ||
-            // TODO: I dunno if long doubles fit in the FPU registers
-            (cur_node->var->varType->decType == D_UNSIGNED_LONG_DOUBLE))) {
+            (cur_node->var->varType->decType == D_LONG_DOUBLE))) {
     // SPECIAL CASE: The value in FPU must be interpreted as a double
     // even if its true type may be a float
     visitVariable(cur_node->var,
@@ -1077,7 +1076,7 @@ void visitVariable(VariableEntry* var,
                    // overrideIsInit when you derive variables (make
                    // recursive calls) because their addresses are
                    // different from the original's
-                   char overrideIsInit,
+                   Bool overrideIsInit,
                    // This should almost always be 0, but whenever you
                    // want finer control over struct dereferences, you
                    // can override this with a number representing the
@@ -1091,17 +1090,17 @@ void visitVariable(VariableEntry* var,
                                                     VariableOrigin,
                                                     UInt,
                                                     UInt,
-                                                    char,
+                                                    Bool,
                                                     DisambigOverride,
-                                                    char,
+                                                    Bool,
                                                     void*,
                                                     void**,
                                                     UInt,
                                                     FunctionEntry*,
-                                                    char),
+                                                    Bool),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
-                   char isEnter) {
+                   Bool isEnter) {
 
   char* trace_vars_tree = 0;
 
@@ -1116,7 +1115,7 @@ void visitVariable(VariableEntry* var,
   // we should only do it if this variable is a struct/union type
   // (otherwise, it's not necessary because there are no derived
   // variables):
-  if (var->varType->isStructUnionType) {
+  if (IS_AGGREGATE_TYPE(var->varType)) {
 
     if (VisitedStructsTable) {
       genfreehashtable(VisitedStructsTable);
@@ -1169,22 +1168,22 @@ void visitSingleVar(VariableEntry* var,
                     // overrideIsInit when you derive variables (make
                     // recursive calls) because their addresses are
                     // different from the original's
-                    char overrideIsInit,
-                    char alreadyDerefedCppRef, // only relevant for C++ reference parameters
+                    Bool overrideIsInit,
+                    Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
                     // This function performs an action for each variable visited:
                     TraversalResult (*performAction)(VariableEntry*,
                                                      char*,
                                                      VariableOrigin,
                                                      UInt,
                                                      UInt,
-                                                     char,
+                                                     Bool,
                                                      DisambigOverride,
-                                                     char,
+                                                     Bool,
                                                      void*,
                                                      void**,
                                                      UInt,
                                                      FunctionEntry*,
-                                                     char),
+                                                     Bool),
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -1196,7 +1195,7 @@ void visitSingleVar(VariableEntry* var,
                     UInt numStructsDereferenced,
                     // These uniquely identify the program point
                     FunctionEntry* varFuncInfo,
-                    char isEnter) {
+                    Bool isEnter) {
   char* fullFjalarName = 0;
   int layersBeforeBase;
 
@@ -1267,8 +1266,7 @@ void visitSingleVar(VariableEntry* var,
   // which may lead to different-looking results.
   if (!needToDerefCppRef &&
       (fjalar_output_struct_vars ||
-       (!((layersBeforeBase == 0) &&
-          (var->varType->isStructUnionType))))) {
+       (!((layersBeforeBase == 0) && IS_AGGREGATE_TYPE(var->varType))))) {
 
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
@@ -1328,8 +1326,7 @@ void visitSingleVar(VariableEntry* var,
   // variables to be properly visited:
   // Same thing with a C++ reference variable
   if (needToDerefCppRef ||
-      ((layersBeforeBase == 0) &&
-       (var->varType->isStructUnionType))) {
+      ((layersBeforeBase == 0) && IS_AGGREGATE_TYPE(var->varType))) {
     tResult = DEREF_MORE_POINTERS;
   }
 
@@ -1367,7 +1364,7 @@ void visitSingleVar(VariableEntry* var,
           // Make a single dereference unless the variable is a static
           // array, in which case we shouldn't make a dereference at
           // all:
-          pNewValue = var->isStaticArray ? pValue : *((void **)pValue);
+          pNewValue = IS_STATIC_ARRAY_VAR(var) ? pValue : *((void **)pValue);
         }
       }
 
@@ -1419,19 +1416,19 @@ void visitSingleVar(VariableEntry* var,
       // tResult == DEREF_MORE_POINTERS:
       if (pValue && (tResult == DEREF_MORE_POINTERS)) {
         // Static array:
-        if (var->isStaticArray) {
+        if (IS_STATIC_ARRAY_VAR(var)) {
           // Flatten multi-dimensional arrays by treating them as one
           // giant single-dimensional array.  Take the products of the
           // sizes of all dimensions (remember to add 1 to each to get
           // from upper bound to size):
-          int dim;
+          UInt dim;
 
           // Notice the +1 to convert from upper bound to numElts
-          numElts = 1 + var->upperBounds[0];
+          numElts = 1 + var->staticArr->upperBounds[0];
 
           // Additional dimensions:
-          for (dim = 1; dim < var->numDimensions; dim++) {
-            numElts *= (1 + var->upperBounds[dim]);
+          for (dim = 1; dim < var->staticArr->numDimensions; dim++) {
+            numElts *= (1 + var->staticArr->upperBounds[dim]);
           }
 
           pValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
@@ -1503,7 +1500,7 @@ void visitSingleVar(VariableEntry* var,
   // If this is the base type of a struct/union variable after all
   // dereferences have been done (layersBeforeBase == 0), then visit
   // all derived member variables:
-  else if (var->varType->isStructUnionType) {
+  else if (IS_AGGREGATE_TYPE(var->varType)) {
     tl_assert(0 == layersBeforeBase);
 
     visitClassMemberVariables(var->varType,
@@ -1541,14 +1538,14 @@ void visitSequence(VariableEntry* var,
                                                     VariableOrigin,
                                                     UInt,
                                                     UInt,
-                                                    char,
+                                                    Bool,
                                                     DisambigOverride,
-                                                    char,
+                                                    Bool,
                                                     void*,
                                                     void**,
                                                     UInt,
                                                     FunctionEntry*,
-                                                    char),
+                                                    Bool),
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
@@ -1560,7 +1557,7 @@ void visitSequence(VariableEntry* var,
                    UInt numStructsDereferenced,
                    // These uniquely identify the program point
                    FunctionEntry* varFuncInfo,
-                   char isEnter) {
+                   Bool isEnter) {
 
   char* fullFjalarName = 0;
   int layersBeforeBase;
@@ -1598,8 +1595,7 @@ void visitSequence(VariableEntry* var,
   // be mutated based on whether fjalar_output_struct_vars is on,
   // which may lead to different-looking results.
   if (fjalar_output_struct_vars ||
-      (!((layersBeforeBase == 0) &&
-         (var->varType->isStructUnionType)))) {
+      (!((layersBeforeBase == 0) && IS_AGGREGATE_TYPE(var->varType)))) {
 
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
@@ -1623,7 +1619,8 @@ void visitSequence(VariableEntry* var,
         (1 == numDereferences) && // is pointer variable
         pValueArray && numElts) {
       Bool someEltNonZero = False;
-      int i;
+      UInt i;
+
       // If all elements of pValueArray are 0, then this also means
       // nonsensical because there is no content to dereference:
       for (i = 0; i < numElts; i++) {
@@ -1690,8 +1687,7 @@ void visitSequence(VariableEntry* var,
   // properly visited.  When we encounter a base struct variable, we
   // need to set DEREF_MORE_POINTERS because we need its member
   // variables to be properly visited:
-  if ((layersBeforeBase == 0) &&
-      (var->varType->isStructUnionType)) {
+  if ((layersBeforeBase == 0) && IS_AGGREGATE_TYPE(var->varType)) {
     tResult = DEREF_MORE_POINTERS;
   }
 
@@ -1713,7 +1709,7 @@ void visitSequence(VariableEntry* var,
 
     // (If this variable is a static array, then there is no need to
     //  dereference pointers - very important but subtle point!)
-    if (pValueArray && !var->isStaticArray) {
+    if (pValueArray && !IS_STATIC_ARRAY_VAR(var)) {
       // Iterate through pValueArray and dereference each pointer
       // value if possible, then override the entries in pValueArray
       // with the dereferenced pointers (use a value of 0 for
@@ -1771,7 +1767,7 @@ void visitSequence(VariableEntry* var,
   // If this is the base type of a struct/union variable after all
   // dereferences have been done (layersBeforeBase == 0), then visit
   // all derived member variables:
-  else if (var->varType->isStructUnionType) {
+  else if (IS_AGGREGATE_TYPE(var->varType)) {
     tl_assert(0 == layersBeforeBase);
 
     visitClassMemberVariables(var->varType,
