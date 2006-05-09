@@ -675,8 +675,9 @@ typedef enum _TraversalResult{
 
 // Enum for determining whether a pointer-type disambiguation
 // (.disambig) option is in effect:
-// (See http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Pointer-type-disambiguation
-//  for detailed instructions on pointer-type disambiguation)
+// See the Fjalar Programmer's Manual
+// (documentation/fjalar-www/fjalar_manual.htm) for detailed
+// instructions on pointer-type disambiguation.
 typedef enum _DisambigOverride {
   OVERRIDE_NONE,
   OVERRIDE_CHAR_AS_STRING, // 'C' for base "char" and "unsigned char" types
@@ -707,14 +708,14 @@ TraversalResult performAction(VariableEntry* var,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
                               UInt layersBeforeBase,
-                              char overrideIsInit,
+                              Bool overrideIsInit,
                               DisambigOverride disambigOverride,
-                              char isSequence,
+                              Bool isSequence,
                               void* pValue,
                               void** pValueArray,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
-                              char isEnter);
+                              Bool isEnter);
 
 Each time that the traversal visits a variable, it calls the given
 function and populates its parameters with the following information:
@@ -727,11 +728,11 @@ UInt numDereferences - The number of pointer dereferences of 'var'
                        at this point of the traversal
 UInt layersBeforeBase - The number of pointer levels left before reaching
                         the base variable indicated by 'var'
-char overrideIsInit - 1 if the pointer referring to this variable's value
+Bool overrideIsInit - 1 if the pointer referring to this variable's value
                       should automatically be deemed as valid, and 0
                       otherwise (most of the time, it's 0)
 DisambigOverride disambigOverride - See .disambig option
-char isSequence - Are we traversing a single value or a sequence of values?
+Bool isSequence - Are we traversing a single value or a sequence of values?
 void* pValue - A pointer to the value of the current variable
                (Only valid if isSequence is 0)
 void** pValueArray - An array of pointers to the values of the current variable
@@ -740,7 +741,7 @@ UInt numElts - The number of elements in pValueArray
                (Only valid if isSequence is 1)
 FunctionEntry* varFuncInfo - The function that is active during the current
                              traversal (may be null sometimes)
-char isEnter - 1 if this is a function entrance, 0 if exit
+Bool isEnter - 1 if this is a function entrance, 0 if exit
 
 */
 
@@ -755,7 +756,7 @@ char isEnter - 1 if this is a function entrance, 0 if exit
 // visitReturnValue() when you need the names and values)
 void visitVariableGroup(VariableOrigin varOrigin,
                         FunctionEntry* funcPtr, // 0 for unspecified function
-                        char isEnter,           // 1 for function entrance,
+                        Bool isEnter,           // 1 for function entrance,
                                                 // 0 for exit
                         // Address of the base of the currently
                         // executing function's stack frame: (Only used for
@@ -768,14 +769,14 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                          VariableOrigin,
                                                          UInt,
                                                          UInt,
-                                                         char,
+                                                         Bool,
                                                          DisambigOverride,
-                                                         char,
+                                                         Bool,
                                                          void*,
                                                          void**,
                                                          UInt,
                                                          FunctionEntry*,
-                                                         char));
+                                                         Bool));
 
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
@@ -791,14 +792,14 @@ void visitReturnValue(FunctionExecutionState* e,
                                                        VariableOrigin,
                                                        UInt,
                                                        UInt,
-                                                       char,
+                                                       Bool,
                                                        DisambigOverride,
-                                                       char,
+                                                       Bool,
                                                        void*,
                                                        void**,
                                                        UInt,
                                                        FunctionEntry*,
-                                                       char));
+                                                       Bool));
 
 // Visits one variable (denoted by 'var') and all variables that are
 // derived from it by traversing inside of data structures and arrays.
@@ -812,7 +813,7 @@ void visitVariable(VariableEntry* var,
                    // overrideIsInit when you derive variables (make
                    // recursive calls) because their addresses are
                    // different from the original's
-                   char overrideIsInit,
+                   Bool overrideIsInit,
                    // This should almost always be 0, but whenever you
                    // want finer control over struct dereferences, you
                    // can override this with a number representing the
@@ -827,17 +828,17 @@ void visitVariable(VariableEntry* var,
                                                     VariableOrigin,
                                                     UInt,
                                                     UInt,
-                                                    char,
+                                                    Bool,
                                                     DisambigOverride,
-                                                    char,
+                                                    Bool,
                                                     void*,
                                                     void**,
                                                     UInt,
                                                     FunctionEntry*,
-                                                    char),
+                                                    Bool),
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
-                   char isEnter);
+                   Bool isEnter);
 
 // Visits all member variables of the class and all of its
 // superclasses (and variables derived from those members) without
@@ -850,14 +851,14 @@ void visitClassMembersNoValues(TypeEntry* class,
                                                                 VariableOrigin,
                                                                 UInt,
                                                                 UInt,
-                                                                char,
+                                                                Bool,
                                                                 DisambigOverride,
-                                                                char,
+                                                                Bool,
                                                                 void*,
                                                                 void**,
                                                                 UInt,
                                                                 FunctionEntry*,
-                                                                char));
+                                                                Bool));
 
 // Takes a TypeEntry* and (optionally, a pointer to its current value
 // in memory), and traverses through all of the members of the
@@ -869,7 +870,7 @@ void visitClassMemberVariables(TypeEntry* class,
                                // instance of 'class' (only valid if
                                // isSequence is 0)
                                void* pValue,
-                               char isSequence,
+                               Bool isSequence,
                                // An array of pointers to instances of
                                // 'class' (only valid if isSequence is
                                // non-zero):
@@ -882,14 +883,14 @@ void visitClassMemberVariables(TypeEntry* class,
                                                                 VariableOrigin,
                                                                 UInt,
                                                                 UInt,
-                                                                char,
+                                                                Bool,
                                                                 DisambigOverride,
-                                                                char,
+                                                                Bool,
                                                                 void*,
                                                                 void**,
                                                                 UInt,
                                                                 FunctionEntry*,
-                                                                char),
+                                                                Bool),
                                VariableOrigin varOrigin,
                                // A (possibly null) GNU binary tree of
                                // variables to trace:
@@ -902,7 +903,7 @@ void visitClassMemberVariables(TypeEntry* class,
                                // Range: [0, MAX_VISIT_NESTING_DEPTH]
                                UInt numStructsDereferenced,
                                FunctionEntry* varFuncInfo,
-                               char isEnter,
+                               Bool isEnter,
                                TraversalResult tResult);
 
 

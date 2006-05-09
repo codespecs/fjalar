@@ -576,14 +576,6 @@ void fjalar_print_usage()
 }
 
 
-/* Like VG_BOOL_CLO, but of the form "--foo", "--no-foo" rather than
-   "--foo=yes", "--foo=no". Note that qq_option should not have a
-   leading "--". */
-#define VG_YESNO_CLO(qq_option, qq_var) \
-   if (VG_CLO_STREQ(arg, "--"qq_option)) { (qq_var) = True; } \
-   else if (VG_CLO_STREQ(arg, "--no-"qq_option))  { (qq_var) = False; }
-
-
 // Processes command-line options and sets the values of the
 // appropriate global variables (Called from
 // MAC_(process_common_cmd_line_option)() in mac_shared.c)
