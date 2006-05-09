@@ -37,7 +37,7 @@ tools.
 // I don't want to use macros, but this is a useful one for finding
 // out whether a particular VariableEntry refers to a
 // struct/union/class and not a pointer to such:
-#define VAR_IS_STRUCT(var) ((var->ptrLevels == 0) && (var->varType->aggType))
+#define VAR_IS_BASE_STRUCT(var) ((var->ptrLevels == 0) && (IS_AGGREGATE_TYPE(var->varType)))
 
 
 FunctionExecutionState* curFunctionExecutionStatePtr = 0;
@@ -107,31 +107,35 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
 // and repeat this same process because they themselves might contain
 // static arrays
 // *baseAddr = base address of the array variable
-// Pre: VAR_IS_STRUCT(structVar)
+// Pre: VAR_IS_BASE_STRUCT(structVar)
 static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
                                                   Addr structVarBaseAddr,
                                                   Addr targetAddr,
                                                   Addr* baseAddr) {
   VarNode* v = 0;
 
-  for (v = structVar->varType->memberVarList->first;
+  tl_assert(structVar->varType->aggType);
+
+  for (v = structVar->varType->aggType->memberVarList->first;
        v != 0;
        v = v->next) {
-    VariableEntry* potentialVar = v->var;
+    VariableEntry* potentialVar;
+    Addr potentialVarBaseAddr;
 
-    Addr potentialVarBaseAddr =
-      structVarBaseAddr + potentialVar->data_member_location;
+    potentialVar = v->var;
+    tl_assert(IS_MEMBER_VAR(potentialVar));
+    potentialVarBaseAddr = structVarBaseAddr + potentialVar->memberVar->data_member_location;
 
-    if (potentialVar->isStaticArray &&
+    if (IS_STATIC_ARRAY_VAR(potentialVar) &&
         (potentialVarBaseAddr <= targetAddr) &&
         (targetAddr < (potentialVarBaseAddr +
-                       (potentialVar->upperBounds[0] *
+                       (potentialVar->staticArr->upperBounds[0] *
                         getBytesBetweenElts(potentialVar))))) {
       *baseAddr = potentialVarBaseAddr;
       return potentialVar;
     }
     // Recursive step (be careful to avoid infinite recursion)
-    else if VAR_IS_STRUCT(potentialVar) {
+    else if VAR_IS_BASE_STRUCT(potentialVar) {
       VariableEntry* targetVar =
         searchForArrayWithinStruct(potentialVar,
                                    potentialVarBaseAddr,
@@ -175,22 +179,23 @@ returnArrayVariableWithAddr(VarList* varList,
       continue;
 
     if (isGlobal) {
-      potentialVarBaseAddr = potentialVar->globalLocation;
+      tl_assert(IS_GLOBAL_VAR(potentialVar));
+      potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
     }
     else {
       potentialVarBaseAddr = EBP + potentialVar->byteOffset;
     }
 
     // array
-    if (potentialVar->isStaticArray &&
+    if (IS_STATIC_ARRAY_VAR(potentialVar) &&
         (potentialVarBaseAddr <= a) &&
-        (a < (potentialVarBaseAddr + (potentialVar->upperBounds[0] *
+        (a < (potentialVarBaseAddr + (potentialVar->staticArr->upperBounds[0] *
                                       getBytesBetweenElts(potentialVar))))) {
       *baseAddr = potentialVarBaseAddr;
       return potentialVar;
     }
     // struct
-    else if (VAR_IS_STRUCT(potentialVar) &&
+    else if (VAR_IS_BASE_STRUCT(potentialVar) &&
              (potentialVarBaseAddr <= a) &&
              (a < (potentialVarBaseAddr + getBytesBetweenElts(potentialVar)))) {
       return searchForArrayWithinStruct(potentialVar,
@@ -217,7 +222,7 @@ VariableEntry* returnGlobalSingletonWithAddress(Addr a) {
       if (!r)
 	continue;
 
-      if (r->isGlobal && !r->isStaticArray && r->globalLocation == a)
+      if (IS_GLOBAL_VAR(r) && (!IS_STATIC_ARRAY_VAR(r)) && r->globalVar->globalLocation == a)
         {
 	  FJALAR_DPRINTF(" EXIT SUCCESS returnGlobalSingletonWithAddress - %s\n", r->name);
           return r;
@@ -439,9 +444,10 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   else if (baseAddr) {
     int targetVarSize = 0;
     int bytesBetweenElts = getBytesBetweenElts(targetVar);
+    unsigned int highestAddr;
 
-    unsigned int highestAddr = baseAddr +
-      (targetVar->upperBounds[0] * bytesBetweenElts);
+    tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
+    highestAddr = baseAddr + (targetVar->staticArr->upperBounds[0] * bytesBetweenElts);
 
     // NEW!: Probe backwards until you find the first address whose V-bit is SET:
     // but ONLY do this for globals and NOT for stuff on the stack because

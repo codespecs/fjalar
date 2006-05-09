@@ -146,6 +146,8 @@ void destroyTypeEntry(TypeEntry* t) {
 
 /******** TypeEntry ********/
 
+typedef struct _AggregateType AggregateType;
+
 // TypeEntry instances only exist for structs, classes, unions, enums,
 // and base types.  There is no distinction between a type and a
 // pointer to that type (or a pointer to a pointer to that type,
@@ -171,13 +173,16 @@ typedef struct _TypeEntry {
 
 } TypeEntry;
 
+// Macros for identifying properties of TypeEntry instances:
+#define IS_AGGREGATE_TYPE(t) (t->aggType)
+
 
 // Boring forward references:
 typedef struct _VarList VarList;
 typedef struct _VarNode VarNode;
 
 // TypeEntry information for an aggregate type (struct, class, union)
-typedef struct _AggregateType {
+struct _AggregateType {
   // Non-static (instance) member variables
   // (only non-null if at least 1 exists)
   VarList* memberVarList;
@@ -208,7 +213,7 @@ typedef struct _AggregateType {
   //       but that shouldn't really matter in practice - oh well...
   SimpleList* /* <Superclass> */ superclassList;
 
-} AggregateType;
+};
 
 
 // Holds information about class inheritance for C++
@@ -275,6 +280,10 @@ void deleteTypeIterator(TypeIterator* typeIt);
 
 
 /******** VariableEntry ********/
+
+typedef struct _GlobalVarInfo GlobalVarInfo;
+typedef struct _StaticArrayInfo StaticArrayInfo;
+typedef struct _MemberVarInfo MemberVarInfo;
 
 // VariableEntry contains information about a variable in the program:
 // Instances should be mostly IMMUTABLE after initialization (with the
@@ -353,7 +362,7 @@ typedef struct _VariableEntry {
 
 
 // VariableEntry information for struct/class/union member variables:
-typedef struct _MemberVarInfo {
+struct _MemberVarInfo {
   // The offset of this member variable from the beginning of the
   // struct/union/class (always 0 for unions)
   unsigned long data_member_location;
@@ -372,11 +381,11 @@ typedef struct _MemberVarInfo {
   int internalBitOffset;  // Bit offset from the start of byteOffset
   int internalBitSize;    // Bit size for bitfields
 
-} MemberVarInfo;
+};
 
 
 // VariableEntry information for global variables:
-typedef struct _GlobalVarInfo {
+struct _GlobalVarInfo {
   char* fileName;  // The file where this variable was declared -
                    // useful for disambiguating two or more file-static
                    // variables in different files with the same name
@@ -396,11 +405,11 @@ typedef struct _GlobalVarInfo {
                         // this variable belongs to - This is only
                         // valid (non-null) for file-static variables
                         // that are declared within functions
-} GlobalVarInfo;
+};
 
 
 // VariableEntry information for static arrays:
-typedef struct _StaticArrayInfo {
+struct _StaticArrayInfo {
   UInt  numDimensions; // The number of dimensions of this array
 
   // This is an array of size numDimensions:
@@ -408,8 +417,12 @@ typedef struct _StaticArrayInfo {
                        // which is 1 less than the size
                        // e.g. myArray[30][40][50] would have
                        // numDimensions=3 and upperBounds={29, 39, 49}
-} StaticArrayInfo;
+};
 
+// Macros for identifying properties of VariableEntry instances:
+#define IS_GLOBAL_VAR(v) (v->globalVar)
+#define IS_STATIC_ARRAY_VAR(v) (v->staticArr)
+#define IS_MEMBER_VAR(v) (v->memberVar)
 
 
 // A more sophisticated linked list for VariableEntry objects.  It is

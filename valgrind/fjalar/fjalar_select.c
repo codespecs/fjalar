@@ -229,7 +229,7 @@ void initializeVarsTree()
 
 // Returns 1 if the proper function name of cur_entry is found in
 // prog_pts_tree and 0 otherwise.  Always look for cur_entry->fjalar_name.
-char prog_pts_tree_entry_found(FunctionEntry* cur_entry) {
+Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry) {
 
   if (tfind((void*)cur_entry->fjalar_name,
             (void**)&prog_pts_tree,
@@ -264,14 +264,14 @@ static TraversalResult printVarNameAction(VariableEntry* var,
                                    VariableOrigin varOrigin,
                                    UInt numDereferences,
                                    UInt layersBeforeBase,
-                                   char overrideIsInit,
+                                   Bool overrideIsInit,
                                    DisambigOverride disambigOverride,
-                                   char isSequence,
+                                   Bool isSequence,
                                    void* pValue,
                                    void** pValueArray,
                                    UInt numElts,
                                    FunctionEntry* varFuncInfo,
-                                   char isEnter) {
+                                   Bool isEnter) {
   fprintf(g_open_fp, "%s\n", varName);
   return DISREGARD_PTR_DEREFS;
 }
