@@ -1,3 +1,15 @@
+Fjalar, a dynamic analysis framework for C/C++ programs
+README file
+Philip Guo
+
+Last updated: 2006-05-10
+
+A local copy of the Fjalar webpage appears here:
+  ./fjalar/documentation/fjalar-www/index.html
+
+Please consult the Fjalar webpage for information about the Fjalar
+framework and tools.
+
 
 Release notes for Valgrind
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
