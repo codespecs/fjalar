@@ -1012,7 +1012,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
     // that there is only one level of pointer indirection, and for a
     // static string (static array of 'char'), layersBeforeBase == 0
     // right away so we still process it
-    if (!IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase > 0)) {
+    if (!(IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase > 0))) {
 
       // Special handling for strings.  We are not interested in the
       // comparability of the 'char*' pointer variable, but rather
