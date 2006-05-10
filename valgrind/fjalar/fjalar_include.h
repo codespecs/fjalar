@@ -175,7 +175,7 @@ typedef struct _TypeEntry {
 } TypeEntry;
 
 // Macros for identifying properties of TypeEntry instances:
-#define IS_AGGREGATE_TYPE(t) (t->aggType)
+#define IS_AGGREGATE_TYPE(t) ((t->aggType) != 0)
 
 
 // Boring forward references:
@@ -421,9 +421,9 @@ struct _StaticArrayInfo {
 };
 
 // Macros for identifying properties of VariableEntry instances:
-#define IS_GLOBAL_VAR(v) (v->globalVar)
-#define IS_STATIC_ARRAY_VAR(v) (v->staticArr)
-#define IS_MEMBER_VAR(v) (v->memberVar)
+#define IS_GLOBAL_VAR(v) ((v->globalVar) != 0)
+#define IS_STATIC_ARRAY_VAR(v) ((v->staticArr) != 0)
+#define IS_MEMBER_VAR(v) ((v->memberVar) != 0)
 
 
 // A more sophisticated linked list for VariableEntry objects.  It is
