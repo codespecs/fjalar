@@ -592,7 +592,7 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
   // that there is only one level of pointer indirection, and for a
   // static string (static array of 'char'), layersBeforeBase == 0
   // right away so we still process it
-  if (!IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase > 0)) {
+  if (!(IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase > 0))) {
     DC_extra_propagation_post_process(daikonFuncInfo,
                                       isEnter,
                                       g_variableIndex);
