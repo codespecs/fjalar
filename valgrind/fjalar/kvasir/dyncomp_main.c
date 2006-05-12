@@ -109,11 +109,6 @@ static __inline__ UInt grab_fresh_tag(void) {
     garbage_collect_tags();
   }
 
-  // For debug:
-  //  if ((nextTag % 10000000) == 0) {
-  //    VG_(printf)("nextTag: %u\n", nextTag);
-  //  }
-
   tag = nextTag;
 
   // Remember to make a new singleton set for the
@@ -122,6 +117,7 @@ static __inline__ UInt grab_fresh_tag(void) {
 
   if (nextTag == LARGEST_REAL_TAG) {
     VG_(printf)("Error! Maximum tag has been used.\n");
+    VG_(exit)(1);
   }
   else {
     nextTag++;
@@ -258,17 +254,15 @@ static  __inline__ uf_name val_uf_tag_find(UInt tag) {
 /*   } */
 /* } */
 
-// Helper functions called from mc_translate.c:
+// Helper functions called from dyncomp_translate.c:
 
 // Write tag into all addresses in the range [a, a+len)
 static __inline__ void set_tag_for_range(Addr a, SizeT len, UInt tag) {
   Addr curAddr;
-
-  // Don't be as aggressive on the leader optimization for now:
-  //  UInt leader = val_uf_find_leader(tag);
+  UInt leader = val_uf_find_leader(tag);
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    set_tag(curAddr, tag);
+    set_tag(curAddr, leader);
   }
 }
 
@@ -641,9 +635,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 
 
 // Clear all tags for all bytes in range [a, a + len)
-// TODO: We need to do something with their corresponding
-// uf_objects in order to prepare them for garbage collection
-// (when it's implemented)
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
   Addr curAddr;
 
@@ -653,9 +644,6 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 /*   } */
 
   for (curAddr = a; curAddr < (a+len); curAddr++) {
-    // TODO: Do something else with uf_objects (maybe put them on a to-be-freed
-    // list) to prepare them for garbage collection
-
     // Set the tag to 0
     set_tag(curAddr, 0);
   }

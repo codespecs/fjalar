@@ -22,7 +22,7 @@
 
 typedef struct _uf_object uf_object;
 
-// 10 bytes total
+// 12 bytes total
 struct _uf_object {
   uf_object* parent;         // 4 bytes
   // The tag which corresponds to this uf_object
@@ -30,6 +30,7 @@ struct _uf_object {
   unsigned int tag;          // 4 bytes
 
   unsigned short rank;       // 2 bytes
+                             // 2 bytes for alignment
 };
 
 // the name of the equivalence class is the pointer to the root of the tree

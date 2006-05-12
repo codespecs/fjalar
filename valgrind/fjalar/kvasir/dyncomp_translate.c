@@ -78,7 +78,8 @@ static IRAtom* assignNew_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
    return mkexpr(t);
 }
 
-// TODO: Is this the correct behavior for our purposes?
+// TODO: Is this the correct behavior for our purposes? - pgbovine
+//       Not really - smcc
 /* Set the annotations on a dirty helper to indicate that the stack
    pointer and instruction pointers might be read.  This is the
    behaviour of all 'emit-a-complaint' style functions we might
@@ -235,7 +236,8 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
 
-            // TODO: Why is this dirty rather than clean?
+            // TODO: Why is this dirty rather than clean? - pgbovine
+            //       Because it has side effects? - smcc
             datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
             di = unsafeIRDirty_1_N(datatag,
                                    2,
@@ -307,11 +309,6 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    tl_assert(isShadowAtom_DC(dce,vatom2));
    tl_assert(isShadowAtom_DC(dce,vatom3));
    tl_assert(isShadowAtom_DC(dce,vatom4));
-
-   //   tl_assert(sameKindedAtoms(atom1,vatom1));
-   //   tl_assert(sameKindedAtoms(atom2,vatom2));
-   //   tl_assert(sameKindedAtoms(atom3,vatom3));
-   //   tl_assert(sameKindedAtoms(atom4,vatom4));
 
    switch (op) {
 
