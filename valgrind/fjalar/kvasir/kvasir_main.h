@@ -140,6 +140,10 @@ Bool kvasir_print_debug_info;
 Bool actually_output_separate_decls_dtrace;
 Bool print_declarations;
 
+// Temporary - only to be used during the transition period from the
+// old .decls format to the new format (designed in April 2006):
+Bool kvasir_new_decls_format;
+
 Bool kvasir_with_dyncomp;
 Bool dyncomp_no_gc;
 Bool dyncomp_fast_mode;
