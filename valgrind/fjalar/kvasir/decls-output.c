@@ -200,11 +200,15 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   char printAsSequence = isSequence;
 
   if (kvasir_new_decls_format) {
+    // Boolean flags for variables:
+    // TODO: Add more flags later as necessary
+    Bool is_param_flag = False;
+    Bool non_null_flag = False;
+
     // The format: (entries in brackets are optional, indentation
     //              doesn't matter)
     //
-    // variable <internal-name>
-    //   external-name <external-name>
+    // variable <external-name>
     //   rep-type <representation-type>
     //   dec-type <declared-type>
     //   [flags <variable-flags>]
@@ -212,20 +216,13 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     //   [parent <parent-ppt-name> [<parent-var-name>]]
     //   [comparability <comparability-value>]
 
-    // Line 1: Internal variable name
+    // ****** External variable name ******
     fputs("  variable ", decls_fp);
-    // TODO: Generate the proper internal name
-    fputs ("<internal-name>", decls_fp);
-    fputs("\n", decls_fp);
-
-    // Line 2: External variable name
-    fputs("    external-name ", decls_fp);
-
     // TODO: Generate [...] dots for array indices for external names
     fputs(varName, decls_fp);
     fputs("\n", decls_fp);
 
-    // Line 3: Rep. type
+    // ****** Rep. type ******
     fputs("    rep-type ", decls_fp);
 
     // This code is copied and pasted from code in the 'else' branch
@@ -268,7 +265,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
     fputs("\n", decls_fp);
 
-    // Line 4: Declared type
+    // ****** Declared type ******
     fputs("    dec-type ", decls_fp);
 
     // This code is copied and pasted from code in the 'else' branch
@@ -307,6 +304,52 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     }
 
     fputs("\n", decls_fp);
+
+
+    // ****** Flags ****** (optional)
+    if (varOrigin == FUNCTION_FORMAL_PARAM) {
+      is_param_flag = True;
+    }
+
+    if (IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase == 1)) {
+      non_null_flag = True;
+    }
+
+
+    // Only print out optional flags line if at least one flag is True
+    if (is_param_flag || non_null_flag /* || other flags ... */) {
+      fputs("    flags ", decls_fp);
+
+      if (is_param_flag) {
+        fputs("is_param ", decls_fp);
+      }
+
+      if (non_null_flag) {
+        fputs("non_null ", decls_fp);
+      }
+      // TODO: Add output for other supported flags
+
+      fputs("\n", decls_fp);
+    }
+
+    // ****** Comparability ****** (optional)
+
+    // If we are outputting a REAL .decls with DynComp, that means
+    // that the program has already finished execution so that all
+    // of the comparability information would be already updated:
+    if (kvasir_with_dyncomp) {
+      // Remember that comp_number is a SIGNED INTEGER but the
+      // tags are UNSIGNED INTEGERS so be careful of overflows
+      // which result in negative numbers, which are useless
+      // since Daikon ignores them.
+      int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
+                                                   isEnter,
+                                                 g_variableIndex);
+      fputs("    comparability ", decls_fp);
+      fprintf(decls_fp, "%d", comp_number);
+      fputs("\n", decls_fp);
+    }
+
   }
   else {
     // Line 1: Variable name
