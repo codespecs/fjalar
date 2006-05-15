@@ -199,171 +199,250 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
   char printAsSequence = isSequence;
 
-  // Line 1: Variable name
-  fprintf(decls_fp, "%s\n", varName);
+  if (kvasir_new_decls_format) {
+    // The format: (entries in brackets are optional, indentation
+    //              doesn't matter)
+    //
+    // variable <internal-name>
+    //   external-name <external-name>
+    //   rep-type <representation-type>
+    //   dec-type <declared-type>
+    //   [flags <variable-flags>]
+    //   [lang-flags <language-specific-flags>]
+    //   [parent <parent-ppt-name> [<parent-var-name>]]
+    //   [comparability <comparability-value>]
 
-  // Line 2: Declared type
-  if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
-    fputs(DaikonRepTypeString[R_INT], decls_fp);
-    fputs(DEREFERENCE, decls_fp);
-  }
-  else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
-    fputs(DaikonRepTypeString[R_INT], decls_fp);
-  }
-  // named struct/union or enumeration
-  else if (((dType == D_ENUMERATION) || (dType == D_STRUCT_CLASS) || (dType == D_UNION)) &&
-           var->varType->typeName) {
-    fputs(var->varType->typeName, decls_fp);
+    // Line 1: Internal variable name
+    fputs("  variable ", decls_fp);
+    // TODO: Generate the proper internal name
+    fputs ("<internal-name>", decls_fp);
+    fputs("\n", decls_fp);
 
-    // For the repair tool, concatenate all of the field names
-    // after the 'unnamed' struct name (after an underscore)
+    // Line 2: External variable name
+    fputs("    external-name ", decls_fp);
 
-    // TODO: Re-implement all the stuff for the repair tool because
-    // they involve both Fjalar and Kvasir changes:
+    // TODO: Generate [...] dots for array indices for external names
+    fputs(varName, decls_fp);
+    fputs("\n", decls_fp);
 
-/*     if (kvasir_repair_format && */
-/*         VG_STREQ(var->varType->typeName, "unnamed")) { */
-/*       VarList* memberVars = var->varType->memberListPtr; */
-/*       VarNode* i = 0; */
-/*       DaikonVariable* curVar = 0; */
+    // Line 3: Rep. type
+    fputs("    rep-type ", decls_fp);
 
-/*       fputs("_", decls_fp); */
+    // This code is copied and pasted from code in the 'else' branch
+    // (old .decls format)
+    alreadyPutDerefOnLine3 = 0;
 
-/*       for (i = memberVars->first; i != 0; i = i->next) { */
-/*         curVar = &(i->var); */
-/*         if (curVar->name) { */
-/*           fputs(curVar->name, decls_fp); */
-/*         } */
-/*       } */
-/*     } */
-  }
-  else {
-    // Normal type (or unnamed struct/union/enum)
-    fputs(DeclaredTypeString[dType], decls_fp);
-    // If we have a string, print it as char*
-    // because the dType of string is "char"
-    // so we need to append a "*" to it
-    if (var->isString) {
-      fputs(STAR, decls_fp);
+    // Print out rep. type as hashcode when you are not done dereferencing
+    // pointer layers:
+    if (layersBeforeBase > 0) {
+      fputs(DaikonRepTypeString[R_HASHCODE], decls_fp);
     }
-  }
+    else {
+      // Special handling for strings and 'C' chars in .disambig
+      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+        fputs(DaikonRepTypeString[R_INT], decls_fp);
+        fputs(DEREFERENCE, decls_fp);
+        alreadyPutDerefOnLine3 = 1;
+      }
+      else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+        fputs(DaikonRepTypeString[R_INT], decls_fp);
+      }
+      else if ((var->isString) ||
+               (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
+        // TODO: Change this permanently from "java.lang.String" to
+        // "string" in DaikonRepTypeString[] when we're done with the
+        // switch-over to the new .decls format
+        fputs("string", decls_fp);
+      }
+      else {
+        tl_assert(rType != 0);
+        fputs(DaikonRepTypeString[rType], decls_fp);
+      }
+    }
 
-  // For the declared type, print out one level of '*' for every
-  // layer above base to denote pointer types
-  for (layers = 0; layers < layersBeforeBase; layers++) {
-    fputs(STAR, decls_fp);
-    // TODO: Determine later whether this special case is worth it:
-    // Special case for static array types: use a '[]' to
-    // replace the LAST '*'
-    //        if ((var->isStaticArray) &&
-    //            (layers == (layersBeforeBase - 1))) {
-    //          fputs(DEREFERENCE, decls_fp);
-    //        }
-    //        else {
-    //          fputs(STAR, decls_fp);
-    //        }
-  }
+    // Append "[]" onto the end of the rep. type if necessary
+    if (!alreadyPutDerefOnLine3 &&
+        printAsSequence) {
+      fputs(DEREFERENCE, decls_fp);
+    }
 
-  // If we print this as a sequence, then we must append '[]'
-  if (printAsSequence) {
-    fputs(DEREFERENCE, decls_fp);
-  }
+    fputs("\n", decls_fp);
 
-  // Add annotations as comments in .decls file
-  // (The first one is preceded by ' # ' and all subsequent ones are
-  // preceded by ',')
+    // Line 4: Declared type
+    fputs("    dec-type ", decls_fp);
 
-  // Original vars in function parameter lists have "isParam=true"
-
-  if (varOrigin == FUNCTION_FORMAL_PARAM) {
-    if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
-    else {fputs(",", decls_fp);}
-
-    fputs("isParam=true", decls_fp);
-  }
-
-  // Struct variables are annotated with "isStruct=true"
-  // in order to notify Daikon that the hashcode values printed
-  // out for that variable have no semantic meaning
-  if (fjalar_output_struct_vars &&
-      (layersBeforeBase == 0) &&
-      (IS_AGGREGATE_TYPE(var->varType))) {
-    if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
-    else {fputs(",", decls_fp);}
-
-    fputs("isStruct=true", decls_fp);
-  }
-
-  // Hashcode variables that can never be null has "hasNull=false".
-  // (e.g., statically-allocated arrays)
-  if (IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase == 1)) {
-    if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
-    else {fputs(",", decls_fp);}
-
-    fputs("hasNull=false", decls_fp);
-  }
-
-  fputs("\n", decls_fp);
-
-
-  // Line 3: Rep. type
-  alreadyPutDerefOnLine3 = 0;
-
-  // Print out rep. type as hashcode when you are not done dereferencing
-  // pointer layers:
-  if (layersBeforeBase > 0) {
-    fputs(DaikonRepTypeString[R_HASHCODE], decls_fp);
-  }
-  else {
-    // Special handling for strings and 'C' chars in .disambig
+    // This code is copied and pasted from code in the 'else' branch
+    // (old .decls format)
     if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
       fputs(DaikonRepTypeString[R_INT], decls_fp);
       fputs(DEREFERENCE, decls_fp);
-      alreadyPutDerefOnLine3 = 1;
     }
     else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
       fputs(DaikonRepTypeString[R_INT], decls_fp);
     }
-    else if ((var->isString) ||
-             (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
-      fputs(DaikonRepTypeString[R_STRING], decls_fp);
+    // named struct/union or enumeration
+    else if (((dType == D_ENUMERATION) || (dType == D_STRUCT_CLASS) || (dType == D_UNION)) &&
+             var->varType->typeName) {
+      fputs(var->varType->typeName, decls_fp);
     }
     else {
-      tl_assert(rType != 0);
-      fputs(DaikonRepTypeString[rType], decls_fp);
+      // Normal type (or unnamed struct/union/enum)
+      fputs(DeclaredTypeString[dType], decls_fp);
+      // If we have a string, print it as char* because the dType of
+      // string is "char" so we need to append a "*" to it
+      if (var->isString) {
+        fputs(STAR, decls_fp);
+      }
     }
-  }
 
-  // Append "[]" onto the end of the rep. type if necessary
-  if (!alreadyPutDerefOnLine3 &&
-      printAsSequence) {
-    fputs(DEREFERENCE, decls_fp);
-  }
+    // For the declared type, print out one level of '*' for every
+    // layer above base to denote pointer types
+    for (layers = 0; layers < layersBeforeBase; layers++) {
+      fputs(STAR, decls_fp);
+    }
 
-  fputs("\n", decls_fp);
+    // If we print this as a sequence, then we must append '[]'
+    if (printAsSequence) {
+      fputs(DEREFERENCE, decls_fp);
+    }
 
-
-  // Line 4: Comparability number
-
-  // If we are outputting a REAL .decls with DynComp, that means
-  // that the program has already finished execution so that all
-  // of the comparability information would be already updated:
-  if (kvasir_with_dyncomp) {
-    // Remember that comp_number is a SIGNED INTEGER but the
-    // tags are UNSIGNED INTEGERS so be careful of overflows
-    // which result in negative numbers, which are useless
-    // since Daikon ignores them.
-    int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
-                                                 isEnter,
-                                                 g_variableIndex);
-    fprintf(decls_fp, "%d", comp_number);
     fputs("\n", decls_fp);
   }
   else {
-    // Otherwise, print out unknown comparability type "22"
-    fputs("22", decls_fp);
+    // Line 1: Variable name
+    fprintf(decls_fp, "%s\n", varName);
+
+    // Line 2: Declared type
+    if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+      fputs(DaikonRepTypeString[R_INT], decls_fp);
+      fputs(DEREFERENCE, decls_fp);
+    }
+    else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+      fputs(DaikonRepTypeString[R_INT], decls_fp);
+    }
+    // named struct/union or enumeration
+    else if (((dType == D_ENUMERATION) || (dType == D_STRUCT_CLASS) || (dType == D_UNION)) &&
+             var->varType->typeName) {
+      fputs(var->varType->typeName, decls_fp);
+    }
+    else {
+      // Normal type (or unnamed struct/union/enum)
+      fputs(DeclaredTypeString[dType], decls_fp);
+      // If we have a string, print it as char* because the dType of
+      // string is "char" so we need to append a "*" to it
+      if (var->isString) {
+        fputs(STAR, decls_fp);
+      }
+    }
+
+    // For the declared type, print out one level of '*' for every
+    // layer above base to denote pointer types
+    for (layers = 0; layers < layersBeforeBase; layers++) {
+      fputs(STAR, decls_fp);
+    }
+
+    // If we print this as a sequence, then we must append '[]'
+    if (printAsSequence) {
+      fputs(DEREFERENCE, decls_fp);
+    }
+
+    // Add annotations as comments in .decls file
+    // (The first one is preceded by ' # ' and all subsequent ones are
+    // preceded by ',')
+
+    // Original vars in function parameter lists have "isParam=true"
+
+    if (varOrigin == FUNCTION_FORMAL_PARAM) {
+      if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
+      else {fputs(",", decls_fp);}
+
+      fputs("isParam=true", decls_fp);
+    }
+
+    // Struct variables are annotated with "isStruct=true"
+    // in order to notify Daikon that the hashcode values printed
+    // out for that variable have no semantic meaning
+    if (fjalar_output_struct_vars &&
+        (layersBeforeBase == 0) &&
+        (IS_AGGREGATE_TYPE(var->varType))) {
+      if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
+      else {fputs(",", decls_fp);}
+
+      fputs("isStruct=true", decls_fp);
+    }
+
+    // Hashcode variables that can never be null has "hasNull=false".
+    // (e.g., statically-allocated arrays)
+    if (IS_STATIC_ARRAY_VAR(var) && (layersBeforeBase == 1)) {
+      if (printingFirstAnnotation) {fputs(" # ", decls_fp);}
+      else {fputs(",", decls_fp);}
+
+      fputs("hasNull=false", decls_fp);
+    }
+
     fputs("\n", decls_fp);
+
+
+    // Line 3: Rep. type
+    alreadyPutDerefOnLine3 = 0;
+
+    // Print out rep. type as hashcode when you are not done dereferencing
+    // pointer layers:
+    if (layersBeforeBase > 0) {
+      fputs(DaikonRepTypeString[R_HASHCODE], decls_fp);
+    }
+    else {
+      // Special handling for strings and 'C' chars in .disambig
+      if (OVERRIDE_STRING_AS_INT_ARRAY == disambigOverride) {
+        fputs(DaikonRepTypeString[R_INT], decls_fp);
+        fputs(DEREFERENCE, decls_fp);
+        alreadyPutDerefOnLine3 = 1;
+      }
+      else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
+        fputs(DaikonRepTypeString[R_INT], decls_fp);
+      }
+      else if ((var->isString) ||
+               (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
+        fputs(DaikonRepTypeString[R_STRING], decls_fp);
+      }
+      else {
+        tl_assert(rType != 0);
+        fputs(DaikonRepTypeString[rType], decls_fp);
+      }
+    }
+
+    // Append "[]" onto the end of the rep. type if necessary
+    if (!alreadyPutDerefOnLine3 &&
+        printAsSequence) {
+      fputs(DEREFERENCE, decls_fp);
+    }
+
+    fputs("\n", decls_fp);
+
+
+    // Line 4: Comparability number
+
+    // If we are outputting a REAL .decls with DynComp, that means
+    // that the program has already finished execution so that all
+    // of the comparability information would be already updated:
+    if (kvasir_with_dyncomp) {
+      // Remember that comp_number is a SIGNED INTEGER but the
+      // tags are UNSIGNED INTEGERS so be careful of overflows
+      // which result in negative numbers, which are useless
+      // since Daikon ignores them.
+      int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
+                                                   isEnter,
+                                                 g_variableIndex);
+      fprintf(decls_fp, "%d", comp_number);
+      fputs("\n", decls_fp);
+    }
+    else {
+      // Otherwise, print out unknown comparability type "22"
+      fputs("22", decls_fp);
+      fputs("\n", decls_fp);
+    }
   }
+
 
   // We are done!
   return DISREGARD_PTR_DEREFS;
@@ -373,13 +452,31 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 // activated or not
 static void printDeclsHeader(void)
 {
-  if (kvasir_with_dyncomp) {
-    // VarComparability implicit is the DEFAULT so we don't need to
-    // write anything here:
-    //    fputs("VarComparability\nimplicit\n\n", decls_fp);
+  if (kvasir_new_decls_format) {
+    // These are the global records that go at the top of the .decls file
+
+    // TODO: Make separate flags for C and C++; right now this simply
+    // prints C/C++.  This information can be grabbed from the DWARF2
+    // debug. info. using the DW_AT_language tags (try "readelf -w" on
+    // the target program's binary to see what I mean)
+    fputs("input-language C/C++\n", decls_fp);
+    if (kvasir_with_dyncomp) {
+      fputs("var-comparability implicit\n", decls_fp);
+    }
+    else {
+      fputs("var-comparability none\n", decls_fp);
+    }
+    fputs("\n", decls_fp);
   }
   else {
-    fputs("VarComparability\nnone\n\n", decls_fp);
+    if (kvasir_with_dyncomp) {
+      // VarComparability implicit is the DEFAULT so we don't need to
+      // write anything here:
+      //    fputs("VarComparability\nimplicit\n\n", decls_fp);
+    }
+    else {
+      fputs("VarComparability\nnone\n\n", decls_fp);
+    }
   }
 }
 
@@ -411,16 +508,36 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
   g_variableIndex = 0;
 
   if (!faux_decls) {
-    fputs("DECLARE\n", decls_fp);
-    printDaikonFunctionName(funcPtr, decls_fp);
-
-    if (isEnter) {
-      fputs(ENTER_PPT, decls_fp);
-      fputs("\n", decls_fp);
+    if (kvasir_new_decls_format) {
+      fputs("ppt ", decls_fp);
+      printDaikonFunctionName(funcPtr, decls_fp);
+      fputs("\n  ppt-type ", decls_fp);
+      if (isEnter) {
+        fputs("enter\n", decls_fp);
+      }
+      else{
+        fputs("exit\n", decls_fp);
+      }
+      // If it's a member function, then print out its parent, which
+      // is the object program point of its enclosing class:
+      if (funcPtr->parentClass && funcPtr->parentClass->typeName) {
+        fputs("  parent object_method ", decls_fp);
+        fputs(funcPtr->parentClass->typeName, decls_fp);
+        fputs("\n", decls_fp);
+      }
     }
     else {
-      fputs(EXIT_PPT, decls_fp);
-      fputs("\n", decls_fp);
+      fputs("DECLARE\n", decls_fp);
+      printDaikonFunctionName(funcPtr, decls_fp);
+
+      if (isEnter) {
+        fputs(ENTER_PPT, decls_fp);
+        fputs("\n", decls_fp);
+      }
+      else {
+        fputs(EXIT_PPT, decls_fp);
+        fputs("\n", decls_fp);
+      }
     }
 
     // For outputting real .decls when running with DynComp,
@@ -559,9 +676,19 @@ static void printAllObjectPPTDecls(void) {
           cur_type->typeName) {
         tl_assert(cur_type->typeName);
 
-        fputs("DECLARE\n", decls_fp);
-        fputs(cur_type->typeName, decls_fp);
-        fputs(":::OBJECT\n", decls_fp);
+        if (kvasir_new_decls_format) {
+          // Example output:
+          //   ppt Stack
+          //   ppt-type object
+          fputs("ppt ", decls_fp);
+          fputs(cur_type->typeName, decls_fp);
+          fputs("\n  ppt-type object\n", decls_fp);
+        }
+        else {
+          fputs("DECLARE\n", decls_fp);
+          fputs(cur_type->typeName, decls_fp);
+          fputs(":::OBJECT\n", decls_fp);
+        }
 
         stringStackPush(fullNameStack, &fullNameStackSize, "this");
         stringStackPush(fullNameStack, &fullNameStackSize, ARROW);

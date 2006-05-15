@@ -58,6 +58,10 @@ Bool kvasir_print_debug_info = False;
 Bool actually_output_separate_decls_dtrace = 0;
 Bool print_declarations = 1;
 
+// Temporary - only to be used during the transition period from the
+// old .decls format to the new format (designed in April 2006):
+Bool kvasir_new_decls_format = False;
+
 Bool kvasir_with_dyncomp = False;
 Bool dyncomp_no_gc = False;
 Bool dyncomp_fast_mode = False;
@@ -531,6 +535,10 @@ void fjalar_tool_post_clo_init(void)
      print_declarations = 0;
   }
 
+  if (kvasir_new_decls_format) {
+    VG_(printf)("\nUsing new .decls format (designed in April 2006)\n\n");
+  }
+
   createDeclsAndDtraceFiles(executable_filename);
 
   // Remember to not actually output the .decls right now when we're
@@ -602,6 +610,8 @@ void fjalar_tool_print_usage()
 "                             [--no-dyncomp-debug]\n"
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
 "                             of every program point (for debug only)\n"
+"    --new-decls-format       Use the new .decls format designed in April 2006 (temporary flag)\n\n"
+
    );
 }
 
@@ -624,7 +634,7 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("output-fifo",    kvasir_output_fifo)
   else VG_YESNO_CLO("decls-only",     kvasir_decls_only)
   else VG_YESNO_CLO("repair-format", kvasir_repair_format)
-  else VG_YESNO_CLO("kvasir-debug",      kvasir_print_debug_info)
+  else VG_YESNO_CLO("new-decls-format", kvasir_new_decls_format)
   else VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename)
   else VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename)
 
