@@ -247,6 +247,8 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   if (kvasir_new_decls_format) {
     char* declsExternalVarName = 0;
 
+    int len = VG_(strlen)(varName);
+
     // Boolean flags for variables:
     // TODO: Add more flags later as necessary
     Bool is_param_flag = False;
@@ -282,15 +284,30 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
     fputs("    var-kind ", decls_fp);
 
-    // TODO:
-    // <variable-kind> ::= field <name>|function <name>|array|variable
-    if (IS_MEMBER_VAR(var)) {
+    // For a very special case where the suffix of the variable is
+    // ZEROTH_ELT ("[0]"), that represents a pointer deference, so we
+    // will represent it as of kind 'function *'.  Thus, for variable
+    // "foo[0]", the var-kind will be "function *" because it's
+    // equivalent to applying the deference * operator on the variable
+    // foo.
+    if ((varName[len - 3] == '[') &&
+        (varName[len - 2] == '0') &&
+        (varName[len - 1] == ']')) {
+      fputs("function *", decls_fp);
+    }
+    // If numDereferences > 0, then it's an array variable that's the
+    // result of the dereference of either a field or a top-level
+    // variable:
+    else if (numDereferences > 0) {
+      fputs("array", decls_fp);
+    }
+    else if (IS_MEMBER_VAR(var)) {
       fputs("field ", decls_fp);
       // Print out just this variable's name as the field name
       fputs(var->name, decls_fp);
     }
     else {
-      fputs("<unknown-variable-kind>", decls_fp);
+      fputs("variable", decls_fp);
     }
 
     fputs("\n", decls_fp);
@@ -311,6 +328,13 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // ****** Reference type (optional) ******
 
     // ****** Array dimensions (optional) ******
+
+    // Note that currently Daikon does not support more than 1 level
+    // of sequences so the only possible (non-default) value for this
+    // is 'array 1'.
+    if (isSequence) {
+      fputs("    array 1\n", decls_fp);
+    }
 
     // ****** Rep. type ******
     fputs("    rep-type ", decls_fp);
@@ -653,7 +677,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
       // If it's a member function, then print out its parent, which
       // is the object program point of its enclosing class:
       if (funcPtr->parentClass && funcPtr->parentClass->typeName) {
-        fputs("  parent object_method ", decls_fp);
+        fputs("  parent ", decls_fp);
         fputs(funcPtr->parentClass->typeName, decls_fp);
         fputs("\n", decls_fp);
       }
