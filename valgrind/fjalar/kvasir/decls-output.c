@@ -44,6 +44,51 @@ static const char* DaikonRepTypeString[] = {
 };
 
 
+// Converts a variable name given by Fjalar into a Daikon external
+// name.  Currently, the only change that needs to be made is to
+// change '[]' into '[...]' for array indexing.  However, we should
+// only change the first instance of '[]' because Daikon only
+// currently supports one level of sequences.
+// (Allocates a new string and returns it)
+static char* createDaikonExternalVarName(char* fjalarName) {
+  int len = VG_(strlen)(fjalarName), i;
+  int bracketsIndex = -1;
+
+  // Try to look for a set of brackets
+  for (i = 0; i < len; i++) {
+    if (fjalarName[i] == '[') {
+      if (fjalarName[i+1] == ']') {
+        bracketsIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (bracketsIndex >= 0) {
+    // '...' is of length 3, remember 1 extra for '\0' null terminator
+    char* result = VG_(malloc)((len + 4) * sizeof(*result));
+
+    // Copy everything up to the brackets
+    VG_(memcpy)(result, fjalarName, (bracketsIndex + 1));
+    // Insert '...'
+    result[bracketsIndex + 1] = '.';
+    result[bracketsIndex + 2] = '.';
+    result[bracketsIndex + 3] = '.';
+    // Copy everything up to the end of the string
+    VG_(memcpy)(&result[bracketsIndex + 4], &fjalarName[bracketsIndex + 1], (len - bracketsIndex - 1));
+
+    // Cap it off with a '\0'
+    result[len + 3] = '\0';
+
+    return result;
+  }
+  else {
+    // We should still allocate a new string regardless because the
+    // client expects it (may be a bit inefficient, but oh well ...)
+    return VG_(strdup)(fjalarName);
+  }
+}
+
 static void printDeclsHeader(void);
 static void printAllFunctionDecls(char faux_decls);
 static void printAllObjectPPTDecls(void);
@@ -200,6 +245,8 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   char printAsSequence = isSequence;
 
   if (kvasir_new_decls_format) {
+    char* declsExternalVarName = 0;
+
     // Boolean flags for variables:
     // TODO: Add more flags later as necessary
     Bool is_param_flag = False;
@@ -208,19 +255,62 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // The format: (entries in brackets are optional, indentation
     //              doesn't matter)
     //
-    // variable <external-name>
-    //   rep-type <representation-type>
-    //   dec-type <declared-type>
-    //   [flags <variable-flags>]
-    //   [lang-flags <language-specific-flags>]
-    //   [parent <parent-ppt-name> [<parent-var-name>]]
-    //   [comparability <comparability-value>]
+    //      variable <external-name>
+    //        var-kind <variable-kinds>
+    //        [enclosing-var <external-name>]
+    //        [reference-type pointer|offset]
+    //        [array <dim-cnt>]
+    //        [function-args <arg-list>]
+    //        rep-type <representation-type>
+    //        dec-type <declared-type>
+    //        [flags <variable-flags>]
+    //        [lang-flags <language-specific-flags>]
+    //        [parent <parent-ppt-name> [<parent-var-name>]]
+    //        [comparability <comparability-value>]
 
     // ****** External variable name ******
     fputs("  variable ", decls_fp);
-    // TODO: Generate [...] dots for array indices for external names
-    fputs(varName, decls_fp);
+
+    declsExternalVarName = createDaikonExternalVarName(varName);
+
+    fputs(declsExternalVarName, decls_fp);
     fputs("\n", decls_fp);
+
+    VG_(free)(declsExternalVarName);
+
+    // ****** Variable kind ******
+
+    fputs("    var-kind ", decls_fp);
+
+    // TODO:
+    // <variable-kind> ::= field <name>|function <name>|array|variable
+    if (IS_MEMBER_VAR(var)) {
+      fputs("field ", decls_fp);
+      // Print out just this variable's name as the field name
+      fputs(var->name, decls_fp);
+    }
+    else {
+      fputs("<unknown-variable-kind>", decls_fp);
+    }
+
+    fputs("\n", decls_fp);
+
+    // ****** Enclosing variable (optional) ******
+
+    // There is an enclosing variable if enclosingVarNamesStackSize > 0
+    if (enclosingVarNamesStackSize > 0) {
+      char* parentName = createDaikonExternalVarName(enclosingVarNamesStack[enclosingVarNamesStackSize - 1]);
+
+      fputs("    enclosing-var ", decls_fp);
+      fputs(parentName, decls_fp);
+      fputs("\n", decls_fp);
+
+      VG_(free)(parentName);
+    }
+
+    // ****** Reference type (optional) ******
+
+    // ****** Array dimensions (optional) ******
 
     // ****** Rep. type ******
     fputs("    rep-type ", decls_fp);
@@ -349,7 +439,6 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
       fprintf(decls_fp, "%d", comp_number);
       fputs("\n", decls_fp);
     }
-
   }
   else {
     // Line 1: Variable name

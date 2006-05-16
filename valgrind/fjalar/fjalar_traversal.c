@@ -127,8 +127,21 @@ char* STAR = "*";
 // fullNameStack; does not do any allocations)
 #define MAX_STRING_STACK_SIZE 100
 
+// This stack keeps track of all components of the full name of the
+// variable that's currently being visited.  E.g., for a variable
+// "foo->bar[]", this stack may contain something like:
+//   {"foo", "->", "bar", "[]"}.
+// Doing stringStackStrdup() on this stack will result in a full
+// variable name.
 char* fullNameStack[MAX_STRING_STACK_SIZE];
 int fullNameStackSize = 0;
+
+// This stack keeps the FULL names of all variables above the current
+// one in the stack (that is, all of the current variable's
+// ancestors).  For example, for a variable "foo->bar[]", this stack
+// may contain something like: {"foo", "foo->bar"}.
+char* enclosingVarNamesStack[MAX_STRING_STACK_SIZE];
+int enclosingVarNamesStackSize = 0;
 
 void stringStackPush(char** stringStack, int* pStringStackSize, char* str)
 {
@@ -1271,6 +1284,7 @@ void visitSingleVar(VariableEntry* var,
     // (Notice that this uses strdup to allocate on the heap)
     tl_assert(fullNameStackSize > 0);
     fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+
     // If we are not interested in visiting this variable or its
     // children, then PUNT:
     if (!interestedInVar(fullFjalarName, trace_vars_tree)) {
@@ -1308,10 +1322,6 @@ void visitSingleVar(VariableEntry* var,
                                isEnter);
 
     tl_assert(tResult != INVALID_RESULT);
-
-    // We don't need the name anymore since we're done printing
-    // everything about this variable by now
-    VG_(free)(fullFjalarName);
 
     // Punt!
     if (tResult == STOP_TRAVERSAL) {
@@ -1379,9 +1389,13 @@ void visitSingleVar(VariableEntry* var,
       }
 
       // Push 1 symbol on stack to represent single elt. dereference:
-
       if (!needToDerefCppRef) {
         stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
+      }
+
+      // Push fullFjalarName onto enclosingVarNamesStack:
+      if (fullFjalarName) {
+        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
       }
 
       visitSingleVar(var,
@@ -1396,6 +1410,11 @@ void visitSingleVar(VariableEntry* var,
                      numStructsDereferenced,
                      varFuncInfo,
                      isEnter);
+
+      // Pop fullFjalarName from stack
+      if (fullFjalarName) {
+        stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+      }
 
       // Pop 1 symbol off
       if (!((var->referenceLevels > 0) && (numDereferences == 0))) {
@@ -1475,6 +1494,11 @@ void visitSingleVar(VariableEntry* var,
       // Push 1 symbol on stack to represent sequence dereference:
       stringStackPush(fullNameStack, &fullNameStackSize, DEREFERENCE);
 
+      // Push fullFjalarName onto enclosingVarNamesStack:
+      if (fullFjalarName) {
+        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      }
+
       visitSequence(var,
                     numDereferences + 1,
                     pValueArray,
@@ -1486,6 +1510,11 @@ void visitSingleVar(VariableEntry* var,
                     numStructsDereferenced,
                     varFuncInfo,
                     isEnter);
+
+      // Pop fullFjalarName from stack
+      if (fullFjalarName) {
+        stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+      }
 
       // Pop 1 symbol off
       stringStackPop(fullNameStack, &fullNameStackSize);
@@ -1672,10 +1701,6 @@ void visitSequence(VariableEntry* var,
 
     tl_assert(tResult != INVALID_RESULT);
 
-    // We don't need the name anymore since we're done printing
-    // everything about this variable by now
-    VG_(free)(fullFjalarName);
-
     // Punt!
     if (tResult == STOP_TRAVERSAL) {
       return;
@@ -1749,6 +1774,11 @@ void visitSequence(VariableEntry* var,
 
     stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
 
+    // Push fullFjalarName onto enclosingVarNamesStack:
+    if (fullFjalarName) {
+      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+    }
+
     visitSequence(var,
                   numDereferences + 1,
                   pValueArray,
@@ -1760,6 +1790,11 @@ void visitSequence(VariableEntry* var,
                   numStructsDereferenced,
                   varFuncInfo,
                   isEnter);
+
+    // Pop fullFjalarName from stack
+    if (fullFjalarName) {
+      stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+    }
 
     // Pop 1 symbol off
     stringStackPop(fullNameStack, &fullNameStackSize);

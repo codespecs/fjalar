@@ -1041,5 +1041,12 @@ unsigned int hashString(char* str);
 // fjalar_trace_prog_pts_filename is non-null)
 Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 
+// This stack keeps the FULL names of all variables above the current
+// one in the stack (that is, all of the current variable's
+// ancestors).  For example, for a variable "foo->bar[]", this stack
+// may contain something like: {"foo", "foo->bar"}.
+char* enclosingVarNamesStack[];
+int enclosingVarNamesStackSize;
+
 
 #endif
