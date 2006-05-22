@@ -30,6 +30,8 @@
 
 const char* ENTER_PPT = ":::ENTER";
 const char* EXIT_PPT = ":::EXIT0";
+const char* SIMPLE_EXIT_PPT = ":::EXIT";
+const char* OBJECT_PPT = ":::OBJECT";
 
 extern const char* DeclaredTypeString[];
 
@@ -43,6 +45,22 @@ static const char* DaikonRepTypeString[] = {
   "boolean" //R_BOOL
 };
 
+// Changes ' ' to '\_' to eliminate spaces in declared types
+void printDeclaredType(char* name, FILE* fp) {
+  // Change ' ' to '\_' and change '\' to '\\'.
+  while (*name != '\0') {
+    if (*name == ' ') {
+      fputs("\\_", fp);
+    }
+    else if (*name == '\\') {
+      fputs("\\\\", fp);
+    }
+    else {
+      fputc(*name, fp);
+    }
+    name++;
+  }
+}
 
 // Use this function to print out a function name for .decls/.dtrace.
 void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
@@ -65,14 +83,14 @@ void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
     }
 
     // Spaces in program point names must be backslashed,
-    // so change ' ' to '\ '.
+    // so change ' ' to '\_'.
 
     // Backslashes should be double-backslashed,
     // so change '\' to '\\'.
 
     while (*name != '\0') {
       if (*name == ' ') {
-        fputs("\\ ", fp);
+        fputs("\\_", fp);
       }
       else if (*name == '\\') {
         fputs("\\\\", fp);
@@ -98,7 +116,7 @@ void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
 //   1. Change '[]' into '[..]' for array indexing.  However, we
 //      should only change the first instance of '[]' because Daikon
 //      only currently supports one level of sequences.
-//   2. Change ' ' to '\ ' (spaces to backslash-space) and '\' to '\\'
+//   2. Change ' ' to '\_' (spaces to backslash-underscore) and '\' to '\\'
 //      (backslash to double-backslash)
 //   3. Change the leading '/' that Fjalar uses to denote global variables
 //      to '::' in order to be compatible with C++ syntax.
@@ -145,7 +163,7 @@ static void printDaikonExternalVarName(char* fjalarName, FILE* fp) {
       alreadyPrintedBrackets = True;
     }
     else if (*working_name == ' ') {
-        fputs("\\ ", fp);
+        fputs("\\_", fp);
     }
     else if (*working_name == '\\') {
       fputs("\\\\", fp);
@@ -159,104 +177,6 @@ static void printDaikonExternalVarName(char* fjalarName, FILE* fp) {
   }
 }
 
-
-static char* createDaikonExternalVarName(char* fjalarName) {
-  // TODO: Yes, I know that regexps will work, but the overhead of
-  // figuring out how to do them in C is prohibitive (I've already
-  // spent 10 minutes reading the docs for regex.h, and I haven't
-  // found a 'regexp find-and-replace' function yet, so I'm giving up)
-
-  int len = VG_(strlen)(fjalarName), i;
-  int bracketsIndex = -1;
-
-  int numSpaces = 0;
-  int numBackslashes = 0;
-
-  char* result = 0;
-
-  // Try to look for a set of brackets
-  for (i = 0; i < len; i++) {
-    if (fjalarName[i] == '[') {
-      if (fjalarName[i+1] == ']') {
-        bracketsIndex = i;
-        break;
-      }
-    }
-  }
-
-  // Try to look for spaces or backslashes (should be rare)
-  for (i = 0; i < len; i++) {
-    if (fjalarName[i] == ' ') {
-      numSpaces++;
-    }
-    else if (fjalarName[i] == '\\') {
-      numBackslashes++;
-    }
-  }
-
-  // Replace '[]' with '[..]'
-  if (bracketsIndex >= 0) {
-    // '..' is of length 2, remember 1 extra for '\0' null terminator
-    result = VG_(malloc)((len + 3) * sizeof(*result));
-
-    // Copy everything up to the brackets
-    VG_(memcpy)(result, fjalarName, (bracketsIndex + 1));
-    // Insert '..'
-    result[bracketsIndex + 1] = '.';
-    result[bracketsIndex + 2] = '.';
-    // Copy everything up to the end of the string
-    VG_(memcpy)(&result[bracketsIndex + 3], &fjalarName[bracketsIndex + 1], (len - bracketsIndex - 1));
-
-    // Cap it off with a '\0'
-    result[len + 2] = '\0';
-  }
-  else {
-    // We should still allocate a new string regardless because the
-    // client expects it (may be a bit inefficient, but oh well ...)
-    result = VG_(strdup)(fjalarName);
-  }
-
-  // Replace ' ' with '\ ' and '\' with '\\'
-  if ((numSpaces > 0) || (numBackslashes > 0)) {
-    int result_len = VG_(strlen)(result);
-    char* new_result = VG_(malloc)((result_len + numSpaces + numBackslashes + 1) * sizeof(*new_result));
-    char* result_alias = result;
-    char* new_result_alias = new_result;
-
-    // Let's do this old-school UNIX style ...
-
-    // Iterate down result until it ends, replacing ' ' with '\ ' and
-    // '\' with '\\'
-    while (*result_alias != '\0') {
-      if (*result_alias == ' ') {
-        *new_result_alias = '\\';
-        new_result_alias++;
-        *new_result_alias = ' ';
-        new_result_alias++;
-      }
-      else if (*result_alias == '\\') {
-        *new_result_alias = '\\';
-        new_result_alias++;
-        *new_result_alias = '\\';
-        new_result_alias++;
-      }
-      else {
-        *new_result_alias = *result_alias;
-        new_result_alias++;
-      }
-
-      result_alias++;
-    }
-
-    // Cap it off ...
-    *new_result_alias = '\0';
-
-    return new_result;
-  }
-  else {
-    return result;
-  }
-}
 
 static void printDeclsHeader(void);
 static void printAllFunctionDecls(char faux_decls);
@@ -548,11 +468,11 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // named struct/union or enumeration
     else if (((dType == D_ENUMERATION) || (dType == D_STRUCT_CLASS) || (dType == D_UNION)) &&
              var->varType->typeName) {
-      fputs(var->varType->typeName, decls_fp);
+      printDeclaredType(var->varType->typeName, decls_fp);
     }
     else {
       // Normal type (or unnamed struct/union/enum)
-      fputs(DeclaredTypeString[dType], decls_fp);
+      printDeclaredType(DeclaredTypeString[dType], decls_fp);
       // If we have a string, print it as char* because the dType of
       // string is "char" so we need to append a "*" to it
       if (var->isString) {
@@ -597,6 +517,30 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
       }
       // TODO: Add output for other supported flags
 
+      fputs("\n", decls_fp);
+    }
+
+    // ****** Parent ****** (optional)
+
+    // All non-static struct/class member variables should list the
+    // :::OBJECT program points of their struct/class as its parent.
+
+    // (TODO: Add support for static member variables at :::OBJECT
+    //  program points.  This is just implementation effort ...)
+    // Static member variables return True for IS_GLOBAL_VAR(), so
+    // don't count those.
+    if (IS_MEMBER_VAR(var) && !(IS_GLOBAL_VAR(var))) {
+      // Grab the name of the class that this variable belongs to ...
+      tl_assert(IS_AGGREGATE_TYPE(var->memberVar->structParentType));
+      fputs("    parent ", decls_fp);
+      fputs(var->memberVar->structParentType->typeName, decls_fp);
+      fputs(OBJECT_PPT, decls_fp);
+
+      // Now print the field name at the :::OBJECT program point,
+      // which should always be "this->field_name" if the field name
+      // is field_name:
+      fputs(" this->", decls_fp);
+      fputs(var->name, decls_fp);
       fputs("\n", decls_fp);
     }
 
@@ -819,22 +763,68 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
 
   if (!faux_decls) {
     if (kvasir_new_decls_format) {
+      // The format: (entries in brackets are optional, indentation
+      //              doesn't matter)
+
+      //    ppt <pptname>
+      //      ppt-type <ppt-type>
+      //      [parent* <relation-type> <parent-ppt-name>]
+      //      [flags <ppt-flags>]
+
       fputs("ppt ", decls_fp);
       printDaikonFunctionName(funcPtr, decls_fp);
+
+      // Append ":::ENTER" or ":::EXIT"
+      if (isEnter) {
+        fputs(ENTER_PPT, decls_fp);
+      }
+      else {
+        fputs(SIMPLE_EXIT_PPT, decls_fp);
+      }
       fputs("\n  ppt-type ", decls_fp);
+
       if (isEnter) {
         fputs("enter\n", decls_fp);
       }
       else{
         fputs("exit\n", decls_fp);
+
+        // If it's an exit program point, print out an 'enter_exit'
+        // parent point to refer back to the ENTER ppt for this
+        // function:
+        fputs("  parent enter_exit ", decls_fp);
+        printDaikonFunctionName(funcPtr, decls_fp);
+        fputs(ENTER_PPT, decls_fp);
+        fputs("\n", decls_fp);
       }
       // If it's a member function, then print out its parent, which
       // is the object program point of its enclosing class:
       if (funcPtr->parentClass && funcPtr->parentClass->typeName) {
-        fputs("  parent ", decls_fp);
+        fputs("  parent parent ", decls_fp);
         fputs(funcPtr->parentClass->typeName, decls_fp);
+        fputs(OBJECT_PPT, decls_fp);
         fputs("\n", decls_fp);
       }
+      // If any of the format parameters are struct/class or
+      // struct/class pointer types, then add a 'user' parent entry to
+      // link this program point to the :::OBJECT program point of the
+      // struct/class:
+      if (funcPtr->formalParameters.numVars > 0) {
+        VarNode* n;
+        for (n = funcPtr->formalParameters.first;
+             n != 0;
+             n = n->next) {
+          VariableEntry* v = n->var;
+          if (IS_AGGREGATE_TYPE(v->varType)) {
+            tl_assert(v->varType->typeName);
+            fputs("  parent user ", decls_fp);
+            fputs(v->varType->typeName, decls_fp);
+            fputs(OBJECT_PPT, decls_fp);
+            fputs("\n", decls_fp);
+          }
+        }
+      }
+
     }
     else {
       fputs("DECLARE\n", decls_fp);
@@ -975,13 +965,23 @@ static void printAllObjectPPTDecls(void) {
 
     if (IS_AGGREGATE_TYPE(cur_type)) {
 
+      // If we are using the old .decls format (before April 2006):
+
       // Only print out .decls for :::OBJECT program points if there
       // is at least 1 member function.  Otherwise, don't bother
       // because object program points will never be printed out for
       // this class in the .dtrace file.  Also, only print it out if
       // there is at least 1 member variable, or else there is no
       // point.
-      if ((cur_type->aggType->memberFunctionList && (cur_type->aggType->memberFunctionList->numElts > 0)) &&
+
+      // If we are using the new .decls format (after April 2006) with
+      // --new-decls-format flag active:
+
+      // Print :::OBJECT program points for all structs and classes
+      // with at least 1 member var.
+
+      if ((kvasir_new_decls_format ||
+           (cur_type->aggType->memberFunctionList && (cur_type->aggType->memberFunctionList->numElts > 0))) &&
           (cur_type->aggType->memberVarList && (cur_type->aggType->memberVarList->numVars > 0)) &&
           cur_type->typeName) {
         tl_assert(cur_type->typeName);
@@ -992,12 +992,14 @@ static void printAllObjectPPTDecls(void) {
           //   ppt-type object
           fputs("ppt ", decls_fp);
           fputs(cur_type->typeName, decls_fp);
+          fputs(OBJECT_PPT, decls_fp);
           fputs("\n  ppt-type object\n", decls_fp);
         }
         else {
           fputs("DECLARE\n", decls_fp);
           fputs(cur_type->typeName, decls_fp);
-          fputs(":::OBJECT\n", decls_fp);
+          fputs(OBJECT_PPT, decls_fp);
+          fputs("\n", decls_fp);
         }
 
         stringStackPush(fullNameStack, &fullNameStackSize, "this");
@@ -1013,6 +1015,9 @@ static void printAllObjectPPTDecls(void) {
 
         // TODO: What do we do about static member vars?
         // Right now we just print them out like globals
+
+        // (TODO: Add support for static member variables at :::OBJECT
+        //  program points.  This is just implementation effort ...)
       }
     }
   }
