@@ -536,14 +536,7 @@ void fjalar_tool_post_clo_init(void)
   }
 
   if (kvasir_new_decls_format) {
-    // Output struct vars because those need to be present in order
-    // for parent variables to work out properly (otherwise, if a
-    // variable's parent is a struct and it's not present, then Daikon
-    // may croak):
-    if (kvasir_new_decls_format) {
-      fjalar_output_struct_vars = True;
-    }
-    VG_(printf)("\nUsing new .decls format (designed in April 2006)\n\n");
+    VG_(printf)("\nUsing new .decls format (designed by Jeff Perkins et. al. in April 2006)\n\n");
   }
 
   createDeclsAndDtraceFiles(executable_filename);
