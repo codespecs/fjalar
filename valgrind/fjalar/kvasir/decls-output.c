@@ -44,15 +44,122 @@ static const char* DaikonRepTypeString[] = {
 };
 
 
+// Use this function to print out a function name for .decls/.dtrace.
+void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
+  if (kvasir_new_decls_format) {
+    char* name = 0;
+    Bool appendParens = False;
+
+    // Don't use the Fjalar name because it's a real mess with lots of
+    // extra unnecessary stuff.
+
+    // If there is a C++ demangled name, then use it:
+    if (f->demangled_name) {
+      name = f->demangled_name;
+    }
+    // Otherwise, just use the regular C name but append '()' to the
+    // end of it:
+    else {
+      name = f->name;
+      appendParens = True;
+    }
+
+    // Spaces in program point names must be backslashed,
+    // so change ' ' to '\ '.
+
+    // Backslashes should be double-backslashed,
+    // so change '\' to '\\'.
+
+    while (*name != '\0') {
+      if (*name == ' ') {
+        fputs("\\ ", fp);
+      }
+      else if (*name == '\\') {
+        fputs("\\\\", fp);
+      }
+      else {
+        fputc(*name, fp);
+      }
+      name++;
+    }
+
+    if (appendParens) {
+      fputs("()", fp);
+    }
+  }
+  else {
+    fputs(f->fjalar_name, fp);
+  }
+}
+
+
 // Converts a variable name given by Fjalar into a Daikon external
-// name.  Currently, two changes need to be made:
+// name and prints it out to FILE*.  Currently, two changes need to be made:
 //   1. Change '[]' into '[..]' for array indexing.  However, we
 //      should only change the first instance of '[]' because Daikon
 //      only currently supports one level of sequences.
 //   2. Change ' ' to '\ ' (spaces to backslash-space) and '\' to '\\'
 //      (backslash to double-backslash)
-// This function Allocates a new string and returns it (so caller must
-// de-allocate)
+//   3. Change the leading '/' that Fjalar uses to denote global variables
+//      to '::' in order to be compatible with C++ syntax.
+//      (e.g., change "/foo" to "::foo")
+//   4. Strip off everything before the LAST '/' for a global variable to
+//      eliminate all disambiguation information for static variables.
+//      (e.g., change "custom-dir/ArrayTest_c@returnIntSum/static_local_array"
+//       to "::static_local_array".  In this example, static_local_array is
+//       a static variable declared within the returnIntSum() function of
+//       the file 'custom-dir/ArrayTest.c'.)
+static void printDaikonExternalVarName(char* fjalarName, FILE* fp) {
+  int indexOfLastSlash = -1;
+  int len = VG_(strlen)(fjalarName);
+  int i;
+  char* working_name = 0;
+  Bool alreadyPrintedBrackets = False; // Only print out one set of "[..]" max.
+
+  for (i = 0; i < len; i++) {
+    if (fjalarName[i] == '/') {
+      indexOfLastSlash = i;
+    }
+  }
+
+  if (indexOfLastSlash >= 0) {
+    // Ignore everything before the final slash:
+    working_name = &fjalarName[indexOfLastSlash];
+  }
+  // No slashes found, just use the name as is
+  else {
+    working_name = fjalarName;
+  }
+
+  // Special case for printing out leading '/' as '::':
+  if (*working_name == '/') {
+    fputs("::", fp);
+    working_name++;
+  }
+
+  while (*working_name != '\0') {
+    if ((*working_name == '[') &&
+        (*(working_name + 1) == ']') &&
+        !alreadyPrintedBrackets) {
+      fputs("[..", fp);
+      alreadyPrintedBrackets = True;
+    }
+    else if (*working_name == ' ') {
+        fputs("\\ ", fp);
+    }
+    else if (*working_name == '\\') {
+      fputs("\\\\", fp);
+    }
+    // Default ... simply output the current character
+    else {
+      fputc(*working_name, fp);
+    }
+
+    working_name++;
+  }
+}
+
+
 static char* createDaikonExternalVarName(char* fjalarName) {
   // TODO: Yes, I know that regexps will work, but the overhead of
   // figuring out how to do them in C is prohibitive (I've already
@@ -154,12 +261,6 @@ static char* createDaikonExternalVarName(char* fjalarName) {
 static void printDeclsHeader(void);
 static void printAllFunctionDecls(char faux_decls);
 static void printAllObjectPPTDecls(void);
-
-// Use this function to print out a function name for .decls/.dtrace.
-void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
-  //  VG_(printf)("f->fjalar_name: %s\n", f->fjalar_name);
-  fputs(f->fjalar_name, fp);
-}
 
 // This has different behavior depending on if faux_decls is on.  If
 // faux_decls is on, then we do all the processing but don't actually
@@ -307,8 +408,6 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   char printAsSequence = isSequence;
 
   if (kvasir_new_decls_format) {
-    char* declsExternalVarName = 0;
-
     int len = VG_(strlen)(varName);
 
     // Boolean flags for variables:
@@ -334,13 +433,8 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
     // ****** External variable name ******
     fputs("  variable ", decls_fp);
-
-    declsExternalVarName = createDaikonExternalVarName(varName);
-
-    fputs(declsExternalVarName, decls_fp);
+    printDaikonExternalVarName(varName, decls_fp);
     fputs("\n", decls_fp);
-
-    VG_(free)(declsExternalVarName);
 
     // ****** Variable kind ******
 
@@ -378,13 +472,11 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
     // There is an enclosing variable if enclosingVarNamesStackSize > 0
     if (enclosingVarNamesStackSize > 0) {
-      char* parentName = createDaikonExternalVarName(enclosingVarNamesStack[enclosingVarNamesStackSize - 1]);
 
       fputs("    enclosing-var ", decls_fp);
-      fputs(parentName, decls_fp);
+      printDaikonExternalVarName(enclosingVarNamesStack[enclosingVarNamesStackSize - 1],
+                                 decls_fp);
       fputs("\n", decls_fp);
-
-      VG_(free)(parentName);
     }
 
     // ****** Reference type (optional) ******
