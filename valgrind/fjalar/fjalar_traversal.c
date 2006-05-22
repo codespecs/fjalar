@@ -1805,6 +1805,11 @@ void visitSequence(VariableEntry* var,
   else if (IS_AGGREGATE_TYPE(var->varType)) {
     tl_assert(0 == layersBeforeBase);
 
+    // Push fullFjalarName onto enclosingVarNamesStack:
+    if (fullFjalarName) {
+      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+    }
+
     visitClassMemberVariables(var->varType,
                               0,
                               1,
@@ -1817,5 +1822,11 @@ void visitSequence(VariableEntry* var,
                               varFuncInfo,
                               isEnter,
                               tResult);
+
+    // Pop fullFjalarName from stack
+    if (fullFjalarName) {
+      stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+    }
+
   }
 }
