@@ -45,14 +45,27 @@ static const char* DaikonRepTypeString[] = {
 
 
 // Converts a variable name given by Fjalar into a Daikon external
-// name.  Currently, the only change that needs to be made is to
-// change '[]' into '[...]' for array indexing.  However, we should
-// only change the first instance of '[]' because Daikon only
-// currently supports one level of sequences.
-// (Allocates a new string and returns it)
+// name.  Currently, two changes need to be made:
+//   1. Change '[]' into '[..]' for array indexing.  However, we
+//      should only change the first instance of '[]' because Daikon
+//      only currently supports one level of sequences.
+//   2. Change ' ' to '\ ' (spaces to backslash-space) and '\' to '\\'
+//      (backslash to double-backslash)
+// This function Allocates a new string and returns it (so caller must
+// de-allocate)
 static char* createDaikonExternalVarName(char* fjalarName) {
+  // TODO: Yes, I know that regexps will work, but the overhead of
+  // figuring out how to do them in C is prohibitive (I've already
+  // spent 10 minutes reading the docs for regex.h, and I haven't
+  // found a 'regexp find-and-replace' function yet, so I'm giving up)
+
   int len = VG_(strlen)(fjalarName), i;
   int bracketsIndex = -1;
+
+  int numSpaces = 0;
+  int numBackslashes = 0;
+
+  char* result = 0;
 
   // Try to look for a set of brackets
   for (i = 0; i < len; i++) {
@@ -64,28 +77,77 @@ static char* createDaikonExternalVarName(char* fjalarName) {
     }
   }
 
+  // Try to look for spaces or backslashes (should be rare)
+  for (i = 0; i < len; i++) {
+    if (fjalarName[i] == ' ') {
+      numSpaces++;
+    }
+    else if (fjalarName[i] == '\\') {
+      numBackslashes++;
+    }
+  }
+
+  // Replace '[]' with '[..]'
   if (bracketsIndex >= 0) {
-    // '...' is of length 3, remember 1 extra for '\0' null terminator
-    char* result = VG_(malloc)((len + 4) * sizeof(*result));
+    // '..' is of length 2, remember 1 extra for '\0' null terminator
+    result = VG_(malloc)((len + 3) * sizeof(*result));
 
     // Copy everything up to the brackets
     VG_(memcpy)(result, fjalarName, (bracketsIndex + 1));
-    // Insert '...'
+    // Insert '..'
     result[bracketsIndex + 1] = '.';
     result[bracketsIndex + 2] = '.';
-    result[bracketsIndex + 3] = '.';
     // Copy everything up to the end of the string
-    VG_(memcpy)(&result[bracketsIndex + 4], &fjalarName[bracketsIndex + 1], (len - bracketsIndex - 1));
+    VG_(memcpy)(&result[bracketsIndex + 3], &fjalarName[bracketsIndex + 1], (len - bracketsIndex - 1));
 
     // Cap it off with a '\0'
-    result[len + 3] = '\0';
-
-    return result;
+    result[len + 2] = '\0';
   }
   else {
     // We should still allocate a new string regardless because the
     // client expects it (may be a bit inefficient, but oh well ...)
-    return VG_(strdup)(fjalarName);
+    result = VG_(strdup)(fjalarName);
+  }
+
+  // Replace ' ' with '\ ' and '\' with '\\'
+  if ((numSpaces > 0) || (numBackslashes > 0)) {
+    int result_len = VG_(strlen)(result);
+    char* new_result = VG_(malloc)((result_len + numSpaces + numBackslashes + 1) * sizeof(*new_result));
+    char* result_alias = result;
+    char* new_result_alias = new_result;
+
+    // Let's do this old-school UNIX style ...
+
+    // Iterate down result until it ends, replacing ' ' with '\ ' and
+    // '\' with '\\'
+    while (*result_alias != '\0') {
+      if (*result_alias == ' ') {
+        *new_result_alias = '\\';
+        new_result_alias++;
+        *new_result_alias = ' ';
+        new_result_alias++;
+      }
+      else if (*result_alias == '\\') {
+        *new_result_alias = '\\';
+        new_result_alias++;
+        *new_result_alias = '\\';
+        new_result_alias++;
+      }
+      else {
+        *new_result_alias = *result_alias;
+        new_result_alias++;
+      }
+
+      result_alias++;
+    }
+
+    // Cap it off ...
+    *new_result_alias = '\0';
+
+    return new_result;
+  }
+  else {
+    return result;
   }
 }
 
