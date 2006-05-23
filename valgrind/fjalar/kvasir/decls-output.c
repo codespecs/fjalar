@@ -35,6 +35,17 @@ const char* OBJECT_PPT = ":::OBJECT";
 
 extern const char* DeclaredTypeString[];
 
+// Hack alert: Necessary for printing out object program points
+// properly ...
+TypeEntry* cur_type_for_printing_object_ppt = 0;
+
+// Maps strings to a junk number 1 - simply here to prevent duplicates
+// when printing out variable and program point parent entries: (This
+// is initialized at the beginning of every program point and freed at
+// the end)
+struct genhashtable* typeNameStrTable = 0;
+
+
 // This array can be indexed using the DaikonRepType enum
 static const char* DaikonRepTypeString[] = {
   "no_rep_type", //R_NO_TYPE, // Create padding
@@ -401,6 +412,12 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
     // ****** Reference type (optional) ******
 
+    // If it's a static array, set reference type to 'offset'.
+    // Otherwise, just leave it as the default of 'pointer'.
+    if ((layersBeforeBase == 0) && IS_STATIC_ARRAY_VAR(var)) {
+      fputs("    reference-type offset\n", decls_fp);
+    }
+
     // ****** Array dimensions (optional) ******
 
     // Note that currently Daikon does not support more than 1 level
@@ -529,20 +546,50 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     //  program points.  This is just implementation effort ...)
     // Static member variables return True for IS_GLOBAL_VAR(), so
     // don't count those.
+
+    // Hack alert: For OBJECT program points, we don't want to print a
+    // parent entry going back to itself, which currently happens for
+    // top-level fields (no nesting) ... e.g.,:
+
+    // ppt A:::OBJECT
+    //   ppt-type object
+    //   variable this->foo_head
+    //     var-kind field foo_head
+    //     rep-type int
+    //     dec-type int
+    //     parent A:::OBJECT this->foo_head   <--- This is WRONG
+    //   variable this->B
+    //     var-kind field B
+    //     rep-type hashcode
+    //     dec-type unnamed_0x2586*
+    //     flags non_null
+    //     parent A:::OBJECT this->B          <--- This is WRONG
+
+    // The hack is that we want to prevent those entries from being
+    // printed.  One simple check is to see whether the parent type
+    // matches cur_type_for_printing_object_ppt, and if so, ignore it.
+
     if (IS_MEMBER_VAR(var) && !(IS_GLOBAL_VAR(var))) {
       // Grab the name of the class that this variable belongs to ...
       tl_assert(IS_AGGREGATE_TYPE(var->memberVar->structParentType));
-      fputs("    parent ", decls_fp);
-      fputs(var->memberVar->structParentType->typeName, decls_fp);
-      fputs(OBJECT_PPT, decls_fp);
 
-      // Now print the field name at the :::OBJECT program point,
-      // which should always be "this->field_name" if the field name
-      // is field_name:
-      fputs(" this->", decls_fp);
-      fputs(var->name, decls_fp);
-      fputs("\n", decls_fp);
+      // Hack alert ... to prevent loops in OBJECT program points (see
+      // the description above)
+      if (var->memberVar->structParentType !=
+          cur_type_for_printing_object_ppt) {
+        fputs("    parent ", decls_fp);
+        fputs(var->memberVar->structParentType->typeName, decls_fp);
+        fputs(OBJECT_PPT, decls_fp);
+
+        // Now print the field name at the :::OBJECT program point,
+        // which should always be "this->field_name" if the field name
+        // is field_name:
+        fputs(" this->", decls_fp);
+        fputs(var->name, decls_fp);
+        fputs("\n", decls_fp);
+      }
     }
+
 
     // ****** Comparability ****** (optional)
 
@@ -805,24 +852,64 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
         fputs(OBJECT_PPT, decls_fp);
         fputs("\n", decls_fp);
       }
-      // If any of the format parameters are struct/class or
-      // struct/class pointer types, then add a 'user' parent entry to
+
+      // If any of the formal parameters are struct/class or
+      // struct/class pointer types, then add a 'parent' parent entry to
       // link this program point to the :::OBJECT program point of the
-      // struct/class:
-      if (funcPtr->formalParameters.numVars > 0) {
-        VarNode* n;
-        for (n = funcPtr->formalParameters.first;
-             n != 0;
-             n = n->next) {
-          VariableEntry* v = n->var;
-          if (IS_AGGREGATE_TYPE(v->varType)) {
-            tl_assert(v->varType->typeName);
-            fputs("  parent user ", decls_fp);
-            fputs(v->varType->typeName, decls_fp);
-            fputs(OBJECT_PPT, decls_fp);
-            fputs("\n", decls_fp);
+      // struct/class.  If any GLOBAL variables are struct/class or
+      // struct/class pointer types, then also do the same thing.
+
+      // DON'T HAVE DUPLICATES, THOUGH!  So use a Hashtable to prevent
+      // the printing of duplicates:
+      {
+        // Maps strings to a junk number 1 - simply here to prevent
+        // duplicates:
+        typeNameStrTable =
+          genallocatehashtable((unsigned int (*)(void *)) &hashString,
+                               (int (*)(void *,void *)) &equivalentStrings);
+
+        struct geniterator* typeNameStrIt = 0;
+
+        if (funcPtr->formalParameters.numVars > 0) {
+          VarNode* n;
+          for (n = funcPtr->formalParameters.first;
+               n != 0;
+               n = n->next) {
+            VariableEntry* v = n->var;
+            if (IS_AGGREGATE_TYPE(v->varType)) {
+              tl_assert(v->varType->typeName);
+              if (!gencontains(typeNameStrTable, v->varType->typeName)) {
+                genputtable(typeNameStrTable, v->varType->typeName, 1);
+              }
+            }
           }
         }
+        if (globalVars.numVars > 0) {
+          VarNode* n;
+          for (n = globalVars.first;
+               n != 0;
+               n = n->next) {
+            VariableEntry* v = n->var;
+            if (IS_AGGREGATE_TYPE(v->varType)) {
+              tl_assert(v->varType->typeName);
+              if (!gencontains(typeNameStrTable, v->varType->typeName)) {
+                genputtable(typeNameStrTable, v->varType->typeName, 1);
+              }
+            }
+          }
+        }
+
+        typeNameStrIt = gengetiterator(typeNameStrTable);
+        // Print everything out, without duplicates!
+        while (!typeNameStrIt->finished) {
+          char* typeName = (char*)gennext(typeNameStrIt);
+          fputs("  parent parent ", decls_fp);
+          fputs(typeName, decls_fp);
+          fputs(OBJECT_PPT, decls_fp);
+          fputs("\n", decls_fp);
+        }
+
+        genfreeiterator(typeNameStrIt);
       }
 
     }
@@ -900,6 +987,10 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
     }
   }
 
+  if (kvasir_new_decls_format) {
+    genfreehashtable(typeNameStrTable);
+    typeNameStrTable = 0;
+  }
 }
 
 
@@ -987,6 +1078,16 @@ static void printAllObjectPPTDecls(void) {
         tl_assert(cur_type->typeName);
 
         if (kvasir_new_decls_format) {
+          // Maps strings to a junk number 1 - simply here to prevent
+          // duplicates:
+          typeNameStrTable =
+            genallocatehashtable((unsigned int (*)(void *)) &hashString,
+                                 (int (*)(void *,void *)) &equivalentStrings);
+
+          struct geniterator* typeNameStrIt = 0;
+
+          VarNode *n;
+
           // Example output:
           //   ppt Stack
           //   ppt-type object
@@ -994,6 +1095,36 @@ static void printAllObjectPPTDecls(void) {
           fputs(cur_type->typeName, decls_fp);
           fputs(OBJECT_PPT, decls_fp);
           fputs("\n  ppt-type object\n", decls_fp);
+
+          // Now comes time to print the 'parent user' entries.  We
+          // need to print one for every field inside of this struct
+          // that's of a struct type, but not to have duplicates.
+
+          for (n = cur_type->aggType->memberVarList->first;
+               n != 0;
+               n = n->next) {
+            VariableEntry* v = n->var;
+            if (IS_AGGREGATE_TYPE(v->varType)) {
+              tl_assert(v->varType->typeName);
+              if (!gencontains(typeNameStrTable, v->varType->typeName)) {
+                genputtable(typeNameStrTable, v->varType->typeName, 1);
+              }
+            }
+          }
+
+          typeNameStrIt = gengetiterator(typeNameStrTable);
+          // Print everything out, without duplicates!
+          while (!typeNameStrIt->finished) {
+            char* typeName = (char*)gennext(typeNameStrIt);
+            // Gotta use 'parent user' to prevent infinite recursion
+            // (or something like that)
+            fputs("  parent user ", decls_fp);
+            fputs(typeName, decls_fp);
+            fputs(OBJECT_PPT, decls_fp);
+            fputs("\n", decls_fp);
+          }
+
+          genfreeiterator(typeNameStrIt);
         }
         else {
           fputs("DECLARE\n", decls_fp);
@@ -1006,12 +1137,19 @@ static void printAllObjectPPTDecls(void) {
         stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
 
         // Print out regular member vars.
+        cur_type_for_printing_object_ppt = cur_type;
         visitClassMembersNoValues(cur_type, &printDeclsEntryAction);
+        cur_type_for_printing_object_ppt = 0;
 
         stringStackPop(fullNameStack, &fullNameStackSize);
         stringStackPop(fullNameStack, &fullNameStackSize);
 
         fputs("\n", decls_fp);
+
+        if (kvasir_new_decls_format) {
+          genfreehashtable(typeNameStrTable);
+          typeNameStrTable = 0;
+        }
 
         // TODO: What do we do about static member vars?
         // Right now we just print them out like globals
@@ -1023,6 +1161,8 @@ static void printAllObjectPPTDecls(void) {
   }
 
   deleteTypeIterator(typeIt);
+
+  cur_type_for_printing_object_ppt = 0;
 
   // HACK ALERT! Remember to restore original state
   if (hacked_dyncomp_switch) {
