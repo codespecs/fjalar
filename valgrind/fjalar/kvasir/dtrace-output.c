@@ -82,8 +82,6 @@ static const char* TYPE_FORMAT_STRINGS[] = {
 // declared in generate_fjalar_entries.h:
 extern const int DecTypeByteSizes[];
 
-extern void printDaikonFunctionName(FunctionEntry* f, FILE* fp);
-
 // If there are function names (e.g., C++ demangled names) that are
 // illegal for Daikon, we can patch them up here before writing them
 // to the .dtrace file:
@@ -953,7 +951,17 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   char isHashcode = (layersBeforeBase > 0);
 
   // Line 1: Variable name
-  DTRACE_PRINTF("%s\n", varName);
+  if (kvasir_new_decls_format) {
+    // The DTRACE_PRINTF() macro had this condition, so we should
+    // follow it too ...
+    if (!dyncomp_without_dtrace) {
+      printDaikonExternalVarName(varName, dtrace_fp);
+      fputs("\n", dtrace_fp);
+    }
+  }
+  else {
+    DTRACE_PRINTF("%s\n", varName);
+  }
 
   // Lines 2 & 3: Value and modbit
   if (isSequence) {

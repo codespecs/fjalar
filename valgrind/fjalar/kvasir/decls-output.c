@@ -144,12 +144,15 @@ void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
 //       to "::static_local_array".  In this example, static_local_array is
 //       a static variable declared within the returnIntSum() function of
 //       the file 'custom-dir/ArrayTest.c'.)
-static void printDaikonExternalVarName(char* fjalarName, FILE* fp) {
+// For new .decls format (designed in April 2006)
+void printDaikonExternalVarName(char* fjalarName, FILE* fp) {
   int indexOfLastSlash = -1;
   int len = VG_(strlen)(fjalarName);
   int i;
   char* working_name = 0;
   Bool alreadyPrintedBrackets = False; // Only print out one set of "[..]" max.
+
+  tl_assert(kvasir_new_decls_format);
 
   for (i = 0; i < len; i++) {
     if (fjalarName[i] == '/') {
