@@ -22,6 +22,8 @@
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
 
+#include "pub_tool_libcbase.h" // For VG_STREQ
+
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -82,22 +84,7 @@ void printDeclaredType(char* name, FILE* fp) {
 // Use this function to print out a function name for .decls/.dtrace.
 void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
   if (kvasir_new_decls_format) {
-    char* name = 0;
-    Bool appendParens = False;
-
-    // Don't use the Fjalar name because it's a real mess with lots of
-    // extra unnecessary stuff.
-
-    // If there is a C++ demangled name, then use it:
-    if (f->demangled_name) {
-      name = f->demangled_name;
-    }
-    // Otherwise, just use the regular C name but append '()' to the
-    // end of it:
-    else {
-      name = f->name;
-      appendParens = True;
-    }
+    char* name = f->fjalar_name;
 
     // Spaces in program point names must be backslashed,
     // so change ' ' to '\_'.
@@ -116,10 +103,6 @@ void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
         fputc(*name, fp);
       }
       name++;
-    }
-
-    if (appendParens) {
-      fputs("()", fp);
     }
   }
   else {
@@ -588,10 +571,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
       // Hack alert ... to prevent loops in OBJECT program points (see
       // the description above)
-      if (var->memberVar->structParentType !=
-          cur_type_for_printing_object_ppt) {
-        fputs("    parent ", decls_fp);
-
+      if (var->memberVar->structParentType != cur_type_for_printing_object_ppt) {
         // Another hack alert!  We need to print out only types that
         // appear in typeNameStrTable and nothing else, so we use the
         // cur_top_level_type_name_for_printing_all_ppts to take care
@@ -602,18 +582,23 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
           cur_top_level_type_name_for_printing_all_ppts = var->memberVar->structParentType->typeName;
         }
 
-        if (cur_top_level_type_name_for_printing_all_ppts) {
-          fputs(cur_top_level_type_name_for_printing_all_ppts, decls_fp);
+        if (cur_type_for_printing_object_ppt &&
+            VG_STREQ(cur_top_level_type_name_for_printing_all_ppts, cur_type_for_printing_object_ppt->typeName)) {
+          cur_top_level_type_name_for_printing_all_ppts = 0;
         }
 
-        fputs(OBJECT_PPT, decls_fp);
+        if (cur_top_level_type_name_for_printing_all_ppts) {
+          fputs("    parent ", decls_fp);
+          fputs(cur_top_level_type_name_for_printing_all_ppts, decls_fp);
+          fputs(OBJECT_PPT, decls_fp);
 
-        // Now print the field name at the :::OBJECT program point,
-        // which should always be "this->field_name" if the field name
-        // is field_name:
-        fputs(" this->", decls_fp);
-        fputs(var->name, decls_fp);
-        fputs("\n", decls_fp);
+          // Now print the field name at the :::OBJECT program point,
+          // which should always be "this->field_name" if the field name
+          // is field_name:
+          fputs(" this->", decls_fp);
+          fputs(var->name, decls_fp);
+          fputs("\n", decls_fp);
+        }
       }
     }
 
@@ -1014,7 +999,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
     }
   }
 
-  if (kvasir_new_decls_format) {
+  if (!faux_decls && kvasir_new_decls_format) {
     genfreehashtable(typeNameStrTable);
     typeNameStrTable = 0;
   }
@@ -1127,11 +1112,13 @@ static void printAllObjectPPTDecls(void) {
           // need to print one for every field inside of this struct
           // that's of a struct type, but not to have duplicates.
 
+          // DON'T ADD YOURSELF as an entry in typeNameStrTable
           for (n = cur_type->aggType->memberVarList->first;
                n != 0;
                n = n->next) {
             VariableEntry* v = n->var;
-            if (IS_AGGREGATE_TYPE(v->varType)) {
+            if (IS_AGGREGATE_TYPE(v->varType) &&
+                v->varType != cur_type) {
               tl_assert(v->varType->typeName);
               if (!gencontains(typeNameStrTable, v->varType->typeName)) {
                 genputtable(typeNameStrTable, v->varType->typeName, 1);
