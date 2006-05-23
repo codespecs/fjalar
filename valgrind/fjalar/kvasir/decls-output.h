@@ -20,6 +20,7 @@
 #define DECLS_OUTPUT_H
 
 #include "../fjalar_include.h"
+#include <stdio.h>
 
 typedef enum {
   R_NO_TYPE, // Create padding
@@ -42,5 +43,9 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
 void printOneFunctionDecl(FunctionEntry* funcPtr,
                           char isEnter,
                           char faux_decls);
+
+// For new .decls format (designed in April 2006)
+void printDaikonFunctionName(FunctionEntry* f, FILE* fp);
+void printDaikonExternalVarName(char* fjalarName, FILE* fp);
 
 #endif
