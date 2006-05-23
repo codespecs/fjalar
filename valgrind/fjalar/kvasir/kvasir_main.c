@@ -536,6 +536,10 @@ void fjalar_tool_post_clo_init(void)
   }
 
   if (kvasir_new_decls_format) {
+    // Set fjalar_output_struct_vars to True if using new .decls
+    // format so that we can derive all possible variables.
+    fjalar_output_struct_vars = True;
+
     VG_(printf)("\nUsing new .decls format (designed by Jeff Perkins et. al. in April 2006)\n\n");
   }
 
