@@ -39,6 +39,12 @@ extern const char* DeclaredTypeString[];
 // properly ...
 TypeEntry* cur_type_for_printing_object_ppt = 0;
 
+// Another hack alert ... this is a string that represents the name of
+// the top-level type (that appears in typeNameStrTable) which we are
+// currently traversing through.  We need to print this instead of the
+// real type because Daikon likes it that way.
+char* cur_top_level_type_name_for_printing_all_ppts = 0;
+
 // Maps strings to a junk number 1 - simply here to prevent duplicates
 // when printing out variable and program point parent entries: (This
 // is initialized at the beginning of every program point and freed at
@@ -540,7 +546,11 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // ****** Parent ****** (optional)
 
     // All non-static struct/class member variables should list the
-    // :::OBJECT program points of their struct/class as its parent.
+    // :::OBJECT program points of their struct/class as its parent,
+    // but actually, it should be
+    // cur_top_level_type_name_for_printing_all_ppts because that name
+    // must appear in typeNameStrTable and be printed at the program
+    // point level too
 
     // (TODO: Add support for static member variables at :::OBJECT
     //  program points.  This is just implementation effort ...)
@@ -578,7 +588,21 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
       if (var->memberVar->structParentType !=
           cur_type_for_printing_object_ppt) {
         fputs("    parent ", decls_fp);
-        fputs(var->memberVar->structParentType->typeName, decls_fp);
+
+        // Another hack alert!  We need to print out only types that
+        // appear in typeNameStrTable and nothing else, so we use the
+        // cur_top_level_type_name_for_printing_all_ppts to take care
+        // of this ...
+
+        // Check to see if we are at a new top-level type:
+        if (gencontains(typeNameStrTable, var->memberVar->structParentType->typeName)) {
+          cur_top_level_type_name_for_printing_all_ppts = var->memberVar->structParentType->typeName;
+        }
+
+        if (cur_top_level_type_name_for_printing_all_ppts) {
+          fputs(cur_top_level_type_name_for_printing_all_ppts, decls_fp);
+        }
+
         fputs(OBJECT_PPT, decls_fp);
 
         // Now print the field name at the :::OBJECT program point,
