@@ -915,10 +915,15 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
         // Print everything out, without duplicates!
         while (!typeNameStrIt->finished) {
           char* typeName = (char*)gennext(typeNameStrIt);
-          fputs("  parent parent ", decls_fp);
-          fputs(typeName, decls_fp);
-          fputs(OBJECT_PPT, decls_fp);
-          fputs("\n", decls_fp);
+
+          // Don't duplicate ...
+          if (!funcPtr->parentClass ||
+              (!VG_STREQ(funcPtr->parentClass->typeName, typeName))) {
+            fputs("  parent parent ", decls_fp);
+            fputs(typeName, decls_fp);
+            fputs(OBJECT_PPT, decls_fp);
+            fputs("\n", decls_fp);
+          }
         }
 
         genfreeiterator(typeNameStrIt);
