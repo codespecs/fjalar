@@ -333,6 +333,8 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   if (kvasir_new_decls_format) {
     int len = VG_(strlen)(varName);
 
+    Bool special_zeroth_elt_var = False;
+
     // Boolean flags for variables:
     // TODO: Add more flags later as necessary
     Bool is_param_flag = False;
@@ -365,14 +367,13 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
 
     // For a very special case where the suffix of the variable is
     // ZEROTH_ELT ("[0]"), that represents a pointer deference, so we
-    // will represent it as of kind 'function *'.  Thus, for variable
-    // "foo[0]", the var-kind will be "function *" because it's
-    // equivalent to applying the deference * operator on the variable
-    // foo.
+    // will represent it as of var-kind "field [0]".  Thus, for
+    // variable "foo[0]", the var-kind will be "field [0]".
     if ((varName[len - 3] == '[') &&
         (varName[len - 2] == '0') &&
         (varName[len - 1] == ']')) {
-      fputs("function *", decls_fp);
+      special_zeroth_elt_var = True;
+      fputs("field [0]", decls_fp);
     }
     // If numDereferences > 0, then it's an array variable that's the
     // result of the dereference of either a field or a top-level
@@ -536,7 +537,29 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // but actually, it should be
     // cur_top_level_type_name_for_printing_all_ppts because that name
     // must appear in typeNameStrTable and be printed at the program
-    // point level too
+    // point level too.
+
+    // However, it should only list as parents variables that have the
+    // SAME rep./declared type.
+
+    // E.g., the line "parent _buffers:::OBJECT this->age" in this
+    // example is incorrect because this->age is of type 'int' and
+    // ::population[..].age is of type 'int[]'.
+
+    //  variable ::population[..]
+    //     var-kind array
+    //     enclosing-var ::population
+    //     reference-type offset
+    //     array 1
+    //     rep-type hashcode[]
+    //     dec-type _buffers[]
+    //   variable ::population[..].age
+    //     var-kind field age
+    //     enclosing-var ::population[..]
+    //     array 1
+    //     rep-type int[]
+    //     dec-type int[]
+    //     parent _buffers:::OBJECT this->age  <--- WRONG - CUT IT OUT!
 
     // (TODO: Add support for static member variables at :::OBJECT
     //  program points.  This is just implementation effort ...)
@@ -565,7 +588,18 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // printed.  One simple check is to see whether the parent type
     // matches cur_type_for_printing_object_ppt, and if so, ignore it.
 
-    if (IS_MEMBER_VAR(var) && !(IS_GLOBAL_VAR(var))) {
+    if (IS_MEMBER_VAR(var) && !(IS_GLOBAL_VAR(var)) &&
+        // Make sure that the type matches up with the type of
+        // this->field ...  A hack is to check whether printAsSequence
+        // is True and numDereferences == 0 ... if so, then don't
+        // create the entry because chances are, the field is not a
+        // sequence (since even array fields are represented as a
+        // SINGLE hashcode; the array contents variable derived from
+        // them represent a sequence.)
+        !(isSequence && (numDereferences == 0)) &&
+        // Don't print out 'parent' entry for special foo[0]
+        // dereferences either ... uhhh
+        !special_zeroth_elt_var) {
       // Grab the name of the class that this variable belongs to ...
       tl_assert(IS_AGGREGATE_TYPE(var->memberVar->structParentType));
 
@@ -597,6 +631,12 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
           // is field_name:
           fputs(" this->", decls_fp);
           fputs(var->name, decls_fp);
+
+          // Super hack alert: Append a "[..]" if necessary:
+          if (printAsSequence) {
+          fputs("[..]", decls_fp);
+          }
+
           fputs("\n", decls_fp);
         }
       }

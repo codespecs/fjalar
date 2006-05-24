@@ -99,7 +99,12 @@ void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
     fputs("\n", dtrace_fp);
   }
   else {
-    fputs(EXIT_PPT, dtrace_fp);
+    if (kvasir_new_decls_format) {
+      fputs(SIMPLE_EXIT_PPT, dtrace_fp);
+    }
+    else {
+      fputs(EXIT_PPT, dtrace_fp);
+    }
     fputs("\n", dtrace_fp);
   }
 
