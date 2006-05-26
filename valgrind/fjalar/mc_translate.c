@@ -3420,14 +3420,14 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
       VG_(printf)("\n");
    }
 
-   // PG - pgbovine - dyncomp - The IRBB itself may contain a Ret
+   // PG - pgbovine - The IRBB itself may contain a Ret
    // (return) as its end-of-block jump.  If so, then this is possibly
    // a cue for a function exit.  This is very important for detecting
    // function exits!
    handle_possible_exit( &mce, bb->jumpkind );
 
 
-   // PG - pgbovine - dyncomp - Uncomment to pretty-print the basic
+   // PG - pgbovine - Uncomment to pretty-print the basic
    // block (This is great for debugging when you can compare IR to
    // gcc-generated assembly):
    //   ppIRBB(bb);

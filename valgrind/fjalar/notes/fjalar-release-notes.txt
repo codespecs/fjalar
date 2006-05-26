@@ -23,6 +23,10 @@ include/pub_tool_machine.h (only remove DynComp-specific things like the tag stu
 (grep for 'PG', 'pgbovine', or 'dyncomp' - this may not be a trivial
 task)
 
+- Change mc_pre_clo_init() in mc_main.c to not print out the heading
+that says Kvasir/DynComp but instead print out something
+Fjalar-related.  And also change the contact info. and version number.
+
 - Remove notes subdirectory and other misc. subdirectories within fjalar/
 
 - Remove kvasir/ sub-directory within fjalar/, leaving only basic-tool
@@ -31,16 +35,18 @@ task)
 removing kvasir/ source files and adding 'basic-tool/basic-tool.c' to
 FJALAR_SOURCES_COMMON
 
-- Change mc_pre_clo_init() in mc_main.c to not print out the heading
-that says Kvasir/DynComp but instead print out something
-Fjalar-related.
-
 - ln -s valgrind-3/valgrind/fjalar/ fjalar-source to create a
 convenient link from the top level to the Fjalar source code directory
 
-- Remove all temporary ~ files created by emacs "find . -name '*~' -exec echo rm {} \;"
+- Replace the valgrind-3/valgrind/fjalar/README file with the
+following contents (below the line)
 
-- Remove other crappy temp files like .# files "find . -name '.#*' -exec echo rm {} \;"
+- ln -s valgrind-3/valgrind/fjalar/README README to create a
+convenient link from the top level to the Fjalar README file
+
+- Remove all temporary ~ files created by emacs "find . -name '*~' -exec rm {} \;"
+
+- Remove other crappy temp files like .# files "find . -name '.#*' -exec rm {} \;"
 
 - grep again for kvasir, dyncomp, etc... to make sure we don't have
 any strays
@@ -48,15 +54,16 @@ any strays
 - rm -rf valgrind-3/valgrind/inst to not leave any binaries lying
 around which take up dead space
 
-- Create a README file with the following contents (below the line)
-
-- Make a copy of the Fjalar programmer's manual into the top-level
-directory, along with the CSS stylesheet file (fjalar_style.css).
-
-- tar it up and put in on the web!
+- Go to valgrind-3/valgrind/fjalar/documentation/fjalar-www and clear
+out old versions of Fjalar
 
 - Put updated copies of fjalar_include.h and fjalar_tool.h on the main
 Fjalar website, because those serve as the public interfaces
+
+- Make a copy of the Fjalar home page and programmer's manual into the
+valgrind-3/valgrind/fjalar/documentation directory.
+
+- tar it up and put in on the web!
 
 --------------------------------------------
 
@@ -72,6 +79,18 @@ License, or (at your option) any later version.
 
 Please refer to the Fjalar web site for the most updated
 documentation: http://pag.csail.mit.edu/fjalar/
+
+A local copy of the Fjalar webpage appears here:
+  fjalar-source/documentation/fjalar-www/index.html
+
+
+-----------
+
+Version 1.2 - Released May 26, 2006
+
+Re-factored the code to export a cleaner set of data structures in the
+public API, as evident in fjalar_include.h, and made various minor bug
+fixes.
 
 -----------
 
