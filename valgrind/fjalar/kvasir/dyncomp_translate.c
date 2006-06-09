@@ -214,7 +214,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 // clean C calls, I will simply return a tag of 0 for now.
 static
 IRAtom* handleCCall_DC ( DCEnv* dce,
-                         IRAtom** exprvec, IRType finalVtype, IRCallee* cee )
+                         IRAtom** exprvec, IRCallee* cee )
 {
    if (exprvec && exprvec[0]) {
       IRAtom* first = expr2tags_DC(dce, exprvec[0]);
@@ -1004,7 +1004,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
 
 static
-IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IROp op, IRAtom* atom )
+IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
 {
    IRAtom* vatom = expr2tags_DC( dce, atom );
    tl_assert(isOriginalAtom_DC(dce,atom));
@@ -1087,6 +1087,24 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRAtom *v64hi, *v64lo;
    //   IRDirty* di;
    //   IRTemp   datatag;
+   IRAtom   *vaddr;
+   IRTemp   addrTag;
+   IRDirty  *diAddr;
+
+#ifdef NOT_YET
+   /* Compute the tag for the effective address, and throw the result
+      away, but anchor it to a dirty call so that Valgrind doesn't
+      optimize the merges away. */
+   tl_assert(addr);
+   tl_assert(isOriginalAtom_DC(dce, addr));
+   vaddr = expr2tags_DC(dce, addr);
+   tl_assert(isShadowAtom_DC(dce, vaddr));
+   addrTag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
+			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
+   setHelperAnns_DC(dce, diAddr);
+   stmt(dce->bb, IRStmt_Dirty(diAddr));
+#endif
 
    switch (shadowType(ty)) {
       case Ity_I8:
@@ -1274,7 +1292,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                 );
 
       case Iex_Unop:
-         return expr2tags_Unop_DC( dce, e->Iex.Unop.op, e->Iex.Unop.arg );
+         return expr2tags_Unop_DC( dce, e->Iex.Unop.arg );
 
       case Iex_Load:
          return expr2tags_LDle_DC( dce, e->Iex.Load.ty,
@@ -1283,7 +1301,6 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
       case Iex_CCall:
          return handleCCall_DC( dce,
                                 e->Iex.CCall.args,
-                                e->Iex.CCall.retty,
                                 e->Iex.CCall.cee );
 
       case Iex_Mux0X:
@@ -1298,20 +1315,21 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
    }
 }
 
-// pgbovine TODO: STle has been changed to Store in the Valgrind IR,
-// so look at void do_shadow_Store() in mc_translate.c to see how to
-// mimic it more accurately
+/* PG says we might need to resync this with Memcheck's
+   do_shadow_Store().  The only problem I know about is fixing an
+   endianess assumption in the 128-bit case. -SMcC */
 void do_shadow_STle_DC ( DCEnv* dce,
-                      IRAtom* addr, UInt bias,
+                      IRAtom* addr,
                       IRAtom* data )
 {
    IROp     mkAdd;
    IRType   ty, tyAddr;
-   IRDirty  *di, *diLo64, *diHi64;
-   IRAtom   *addrAct, *addrLo64, *addrHi64;
+   IRDirty  *di, *diLo64, *diHi64, *diAddr;
+   IRAtom   *addrHi64;
    IRAtom   *vdata;
    IRAtom   *vdataLo64, *vdataHi64;
-   IRAtom   *eBias, *eBias0, *eBias8;
+   IRAtom   *vaddr;
+   IRTemp   addrTag;
    void*    helper = NULL;
    Char*    hname = NULL;
 
@@ -1320,17 +1338,28 @@ void do_shadow_STle_DC ( DCEnv* dce,
    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
 
    di = diLo64 = diHi64 = NULL;
-   eBias = eBias0 = eBias8 = NULL;
-   addrAct = addrLo64 = addrHi64 = NULL;
+   addrHi64 = NULL;
    vdataLo64 = vdataHi64 = NULL;
 
    tl_assert(data);
    tl_assert(isOriginalAtom_DC(dce, data));
-   tl_assert(bias == 0);
    vdata = expr2tags_DC( dce, data );
-
-   tl_assert(isOriginalAtom_DC(dce,addr));
    tl_assert(isShadowAtom_DC(dce,vdata));
+
+#ifdef NOT_YET
+   /* Compute the tag for the effective address, and throw the result
+      away, but anchor it to a dirty call so that Valgrind doesn't
+      optimize the merges away. */
+   tl_assert(addr);
+   tl_assert(isOriginalAtom_DC(dce, addr));
+   vaddr = expr2tags_DC(dce, addr);
+   tl_assert(isShadowAtom_DC(dce, vaddr));
+   addrTag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
+			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
+   setHelperAnns_DC(dce, diAddr);
+   stmt(dce->bb, IRStmt_Dirty(diAddr));
+#endif
 
    // Get the byte size of the REAL data (and not our tag vdata, which
    // is ALWAYS 32-bits).  This is very different from Memcheck's
@@ -1359,22 +1388,20 @@ void do_shadow_STle_DC ( DCEnv* dce,
    }
 
    if (ty == Ity_V128) {
+      IRAtom *eight = tyAddr==Ity_I32 ? mkU32(8) : mkU64(8);
+      /* XXX this branch assumes little-endianness, and would need to
+	 be fixed for a PPC port. */
 
       /* V128-bit case */
       /* See comment in next clause re 64-bit regparms */
-      eBias0    = tyAddr==Ity_I32 ? mkU32(bias)   : mkU64(bias);
-      addrLo64  = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias0) );
-      vdataLo64 = assignNew_DC(dce, Ity_I64, unop(Iop_V128to64, vdata));
       diLo64    = unsafeIRDirty_0_N(
                      1/*regparms*/, hname, helper,
-                     mkIRExprVec_2( addrLo64, vdataLo64 ));
+                     mkIRExprVec_2( addr, vdata ));
 
-      eBias8    = tyAddr==Ity_I32 ? mkU32(bias+8) : mkU64(bias+8);
-      addrHi64  = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias8) );
-      vdataHi64 = assignNew_DC(dce, Ity_I64, unop(Iop_V128HIto64, vdata));
+      addrHi64  = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eight) );
       diHi64    = unsafeIRDirty_0_N(
                      1/*regparms*/, hname, helper,
-                     mkIRExprVec_2( addrHi64, vdataHi64 ));
+                     mkIRExprVec_2( addrHi64, vdata ));
 
       setHelperAnns_DC( dce, diLo64 );
       setHelperAnns_DC( dce, diHi64 );
@@ -1384,13 +1411,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
    } else {
 
       /* 8/16/32/64-bit cases */
-      /* Generate the actual address into addrAct. */
-      if (bias == 0) {
-         addrAct = addr;
-      } else {
-         eBias   = tyAddr==Ity_I32 ? mkU32(bias) : mkU64(bias);
-         addrAct = assignNew_DC(dce, tyAddr, binop(mkAdd, addr, eBias) );
-      }
 
       // For some reason, we still need to make a special case for
       // 64-bit things ... I dunno why, though ???
@@ -1400,11 +1420,11 @@ void do_shadow_STle_DC ( DCEnv* dce,
             regparm args.  Therefore be different. */
          di = unsafeIRDirty_0_N(
                                 1/*regparms*/, hname, helper,
-                                mkIRExprVec_2( addrAct, vdata ));
+                                mkIRExprVec_2( addr, vdata ));
       } else {
          di = unsafeIRDirty_0_N(
                                 2/*regparms*/, hname, helper,
-                                mkIRExprVec_2( addrAct, vdata ));
+                                mkIRExprVec_2( addr, vdata ));
       }
 
       setHelperAnns_DC( dce, di );

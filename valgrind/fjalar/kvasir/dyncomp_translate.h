@@ -45,7 +45,7 @@ typedef
          size, and Bit-typed original tmps are shadowed by the type
          Ity_I8.  See comment below. */
       IRTemp* tmpMap;
-      Int     n_originalTmps; /* for range checking */
+      UInt     n_originalTmps; /* for range checking */
 
       /* MODIFIED: indicates whether "bogus" literals have so far been
          found.  Starts off False, and may change to True. */
@@ -67,9 +67,7 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                         IRAtom* atom, IRAtom* vatom );
 void do_shadow_PUTI_DC ( DCEnv* dce,
                          IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom );
-void do_shadow_STle_DC ( DCEnv* dce,
-                         IRAtom* addr, UInt bias,
-                         IRAtom* data );
+void do_shadow_STle_DC ( DCEnv* dce, IRAtom* addr, IRAtom* data );
 IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
 
 void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d );
