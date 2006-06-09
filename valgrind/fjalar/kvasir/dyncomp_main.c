@@ -28,6 +28,11 @@
 #include "mc_include.h"
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
+#include "pub_tool_debuginfo.h"
+#include "pub_tool_machine.h"
+#include "pub_tool_threadstate.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_libcprint.h"
 #include <limits.h>
 
 // Special reserved tags
@@ -224,6 +229,13 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
                                  GET_UF_OBJECT_PTR(tag2));
+    if (0) {
+      Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+      Char eip_info[256];
+      VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+      DYNCOMP_DPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
+		      tag1, tag2, leader->tag, eip, eip_info);
+    }
     return leader->tag;
   }
   else {
@@ -522,6 +534,7 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 
 VG_REGPARM(2)
 UInt tag1_ESP_tag ( UInt tag1, UInt tag2 ) {
+  (void)tag1; /* Intentionally unused */
   if IS_ZERO_TAG(tag2) {
     return ESP_TAG;
   }
@@ -532,6 +545,7 @@ UInt tag1_ESP_tag ( UInt tag1, UInt tag2 ) {
 
 VG_REGPARM(2)
 UInt tag2_ESP_tag ( UInt tag1, UInt tag2 ) {
+  (void)tag2; /* Intentionally unused */
   if IS_ZERO_TAG(tag1) {
     return ESP_TAG;
   }
