@@ -520,6 +520,8 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   }
   else {  // default behavior
     tag = var_tags[daikonVarIndex];
+    DYNCOMP_DPRINTF("%s[%d] value tag is %d\n",
+		    funcPtr->funcEntry.name, daikonVarIndex, tag);
 
     if (0 == tag) {
       comp_number = g_curCompNumber;
