@@ -3351,8 +3351,7 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_Store:
-            do_shadow_STle_DC( &dce, st->Ist.Store.addr, 0/* addr bias */,
-                               st->Ist.Store.data);
+            do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
             break;
 
          case Ist_Exit:
