@@ -140,7 +140,8 @@ int fullNameStackSize = 0;
 // one in the stack (that is, all of the current variable's
 // ancestors).  For example, for a variable "foo->bar[]", this stack
 // may contain something like: {"foo", "foo->bar"}.
-char* enclosingVarNamesStack[MAX_STRING_STACK_SIZE];
+char* enclosingVarNamesStackArray[MAX_STRING_STACK_SIZE];
+char **enclosingVarNamesStack = enclosingVarNamesStackArray;
 int enclosingVarNamesStackSize = 0;
 
 void stringStackPush(char** stringStack, int* pStringStackSize, char* str)
