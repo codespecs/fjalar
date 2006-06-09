@@ -1124,9 +1124,14 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   // after printing the .dtrace entry in order to allow all mergings
   // to occur:
   if (dyncomp_print_incremental && kvasir_with_dyncomp) {
+    FILE *saved_decls_fp = decls_fp;
+    /* Though this is a declaration, send it to the .dtrace file so
+       it's easier to correlate with execution. */
+    decls_fp = dtrace_fp;
     fputs("INTERMEDIATE ", decls_fp);
     printOneFunctionDecl(funcPtr, isEnter, 0);
     fflush(decls_fp);
+    decls_fp = saved_decls_fp;
   }
 
   // Flush the buffer so that everything for this program point gets
