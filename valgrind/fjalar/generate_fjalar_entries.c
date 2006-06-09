@@ -824,6 +824,7 @@ static void repCheckOneVariable(VariableEntry* var) {
 
   // These properties should hold for all global vars:
   if (IS_GLOBAL_VAR(var)) {
+    Addr global_loc;
     tl_assert(0 == var->byteOffset);
 
     // Not true for C++ static member variables
@@ -831,15 +832,31 @@ static void repCheckOneVariable(VariableEntry* var) {
       tl_assert(var->globalVar->fileName);
     }
 
+    global_loc = var->globalVar->globalLocation;
     FJALAR_DPRINTF(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
                    (IS_MEMBER_VAR(var) && var->memberVar->structParentType) ?
                    var->memberVar->structParentType->typeName : "no parent",
-                   var,
-                   var->name,
-                   var->globalVar->globalLocation);
+                   var, var->name, global_loc);
 
-    if (var->globalVar->globalLocation) {
-      tl_assert(addressIsGlobal(var->globalVar->globalLocation));
+    if (global_loc) {
+      if (!addressIsGlobal(global_loc) &&
+	  (global_loc < 0x08048000 || global_loc > 0x8100000)) {
+	/* addressIsGlobal() works fine for the normal case of
+	   dynamically linked programs, but if you statically link
+	   with a debugging libc, it will contain some weird variables
+	   whose location is in other sections. The extra numeric
+	   comparison is a fallback hack for that case. */
+	VG_(printf)("Address 0x%08x doesn't look like a global\n",
+		    var->globalVar->globalLocation);
+	VG_(printf)("Data section is 0x%08x to 0x%08x\n",
+		    data_section_addr, data_section_addr + data_section_size);
+	VG_(printf)("BSS section is 0x%08x to 0x%08x\n",
+		    bss_section_addr, bss_section_addr + bss_section_size);
+	VG_(printf)("ROData section is 0x%08x to 0x%08x\n",
+		    rodata_section_addr,
+		    rodata_section_addr + rodata_section_size);
+	tl_assert(0);
+      }
     }
 
     // These properties should hold for file-static variables declared
@@ -1403,10 +1420,11 @@ void initializeFunctionTable(void)
           if (cur_func_entry->mangled_name) {
             extern char* VG_(cplus_demangle_v3) (const char* mangled);
             demangled_name = VG_(cplus_demangle_v3)(cur_func_entry->mangled_name);
-            // I hope the demangling always works!
-            tl_assert(demangled_name);
-            // Set the demangled_name of the function to be the demangled name:
-            cur_func_entry->demangled_name = demangled_name;
+	    if (demangled_name) {
+	      // Set the demangled_name of the function to be the
+	      // demangled name:
+	      cur_func_entry->demangled_name = demangled_name;
+	    }
           }
 
           // Extract all formal parameter variables
@@ -2068,6 +2086,12 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   variablePtr = (variable*)(dwarfVariableEntry->entry_ptr);
   typePtr = variablePtr->type_ptr;
 
+  if (!typePtr) {
+    VG_(printf)( "Unexpected typed local variable %s in %s\n",
+		 variablePtr->name, f->name);
+    return;
+  }
+
   // Only store array types and struct/union types!
   // Also, don't store anything with couldBeGlobalVar == true
   // because that means that it's a static variable.
@@ -2239,7 +2263,7 @@ void extractOneVariable(VarList* varListPtr,
   FJALAR_DPRINTF("Entering extractOneVariable for %s\n", variableName);
 
   // Don't extract the variable if it has a bogus name:
-  if (ignore_variable_with_name(variableName))
+  if (!variableName || ignore_variable_with_name(variableName))
     return;
 
   // Create a new VariableEntry and append it to the end of VarList

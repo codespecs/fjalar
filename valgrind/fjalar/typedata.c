@@ -1272,15 +1272,18 @@ static void init_specification_and_abstract_stuff(void) {
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
           // We better have start_pc and end_pc fields!
-          tl_assert(cur_func->start_pc);
-          tl_assert(cur_func->end_pc);
+	  if (cur_func->start_pc && cur_func->end_pc) {
+	    /* The code used to assert that cur_func->{start,end}_pc
+	       were non-null here, but in some unusual situations
+	       (e.g., statically linked libc) the assertion failed, so
+	       let's just keep going. -SMcC */
+	    aliased_func_ptr->start_pc = cur_func->start_pc;
+	    aliased_func_ptr->end_pc = cur_func->end_pc;
+	  }
 
-          aliased_func_ptr->start_pc = cur_func->start_pc;
-          aliased_func_ptr->end_pc = cur_func->end_pc;
-
-          // Mark cur_func's entry with is_declaration = 1 just to
-          // make sure it gets ignored later:
-          cur_func->is_declaration = 1;
+	  // Mark cur_func's entry with is_declaration = 1 just to
+	  // make sure it gets ignored later:
+	  cur_func->is_declaration = 1;
         }
       }
     }
