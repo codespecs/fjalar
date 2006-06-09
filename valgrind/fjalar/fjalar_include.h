@@ -1045,7 +1045,7 @@ Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 // one in the stack (that is, all of the current variable's
 // ancestors).  For example, for a variable "foo->bar[]", this stack
 // may contain something like: {"foo", "foo->bar"}.
-char* enclosingVarNamesStack[];
+char** enclosingVarNamesStack;
 int enclosingVarNamesStackSize;
 
 
