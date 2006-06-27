@@ -336,7 +336,7 @@ LIBREPLACEMALLOC_LDFLAGS_PPC64_LINUX = \
 
 noinst_PROGRAMS = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 
-VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c
+VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c kvasir/dyncomp_wrappers.c
 
 vgpreload_fjalar_x86_linux_so_SOURCES = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_x86_linux_so_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
@@ -423,7 +423,8 @@ am__objects_1 = fjalar_x86_linux-mac_leakcheck.$(OBJEXT) \
 am_fjalar_x86_linux_OBJECTS = $(am__objects_1)
 fjalar_x86_linux_OBJECTS = $(am_fjalar_x86_linux_OBJECTS)
 am__objects_2 = \
-	vgpreload_fjalar_x86_linux_so-mac_replace_strmem.$(OBJEXT)
+	vgpreload_fjalar_x86_linux_so-mac_replace_strmem.$(OBJEXT) \
+	vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.$(OBJEXT)
 am_vgpreload_fjalar_x86_linux_so_OBJECTS = $(am__objects_2)
 vgpreload_fjalar_x86_linux_so_OBJECTS = \
 	$(am_vgpreload_fjalar_x86_linux_so_OBJECTS)
@@ -453,6 +454,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-readelf.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-typedata.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-union_find.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Po
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
@@ -468,7 +470,7 @@ RECURSIVE_TARGETS = info-recursive dvi-recursive pdf-recursive \
 	all-recursive install-data-recursive install-exec-recursive \
 	installdirs-recursive install-recursive uninstall-recursive \
 	check-recursive installcheck-recursive
-DIST_COMMON = $(mcinclude_HEADERS) $(noinst_HEADERS) \
+DIST_COMMON = README $(mcinclude_HEADERS) $(noinst_HEADERS) \
 	$(srcdir)/Makefile.in $(top_srcdir)/Makefile.all.am \
 	$(top_srcdir)/Makefile.flags.am \
 	$(top_srcdir)/Makefile.install.am \
@@ -524,6 +526,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-readelf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-typedata.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-union_find.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Po@am__quote@
 
 .c.o:
@@ -1031,6 +1034,28 @@ vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj: mac_replace_strmem.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Po' tmpdepfile='$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj `if test -f 'mac_replace_strmem.c'; then $(CYGPATH_W) 'mac_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mac_replace_strmem.c'; fi`
+
+vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o: kvasir/dyncomp_wrappers.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po' tmpdepfile='$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c
+
+vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.obj: kvasir/dyncomp_wrappers.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po' tmpdepfile='$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`
 uninstall-info-am:
 mcincludeHEADERS_INSTALL = $(INSTALL_HEADER)
 install-mcincludeHEADERS: $(mcinclude_HEADERS)

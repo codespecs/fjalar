@@ -10,7 +10,7 @@ AM_CFLAGS_X86_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
 noinst_PROGRAMS = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 
-VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c
+VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c kvasir/dyncomp_wrappers.c
 
 vgpreload_fjalar_x86_linux_so_SOURCES      = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_x86_linux_so_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
