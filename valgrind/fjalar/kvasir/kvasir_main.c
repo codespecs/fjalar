@@ -18,10 +18,11 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE /* FOR O_LARGEFILE */
 
-//#include "tool.h"
-
 #include "../fjalar_tool.h"
 #include "../fjalar_include.h"
+
+#include "pub_tool_threadstate.h"
+#include "pub_tool_debuginfo.h"
 
 #include "kvasir_main.h"
 #include "decls-output.h"
@@ -97,7 +98,7 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 
 // Lots of boring file-handling stuff:
 
-void openTheDtraceFile(void) {
+static void openTheDtraceFile(void) {
   openDtraceFile(dtrace_filename);
   VG_(free)(dtrace_filename);
   dtrace_filename = 0;
@@ -111,7 +112,7 @@ void openTheDtraceFile(void) {
 // else: --- (DEFAULT)
 //   Create a dtrace file and initialize both decls_fp and dtrace_fp
 //   to point to it
-char createDeclsAndDtraceFiles(char* appname)
+static char createDeclsAndDtraceFiles(char* appname)
 {
   char* dirname = 0;
   char* filename = 0;
@@ -477,7 +478,7 @@ static int openDtraceFile(const char *fname) {
 
 // Close the stream and finish writing the .dtrace file
 // as well as all other open file streams
-void finishDtraceFile(void)
+static void finishDtraceFile(void)
 {
   if (dtrace_fp) /* If something goes wrong, we can be called with this null */
     fclose(dtrace_fp);
@@ -662,6 +663,21 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   return True;
 }
 
+/* Do initializion-like tasks that we'd like to postpone until near
+   the end of program startup (right before main()). For instance,
+   anything that depends on shared libraries having been loaded. */
+static void kvasir_late_init(void) {
+  if (kvasir_with_dyncomp) {
+    const SegInfo *si;
+    for (si = VG_(next_seginfo)(0); si; si =  VG_(next_seginfo)(si)) {
+      Addr got_addr = VG_(seginfo_sect_start)(si, Vg_SectGOT);
+      SizeT got_size = VG_(seginfo_sect_size)(si, Vg_SectGOT);
+      if (got_size) {
+	set_tag_for_GOT(got_addr, got_size);
+      }
+    }
+  }
+}
 
 void fjalar_tool_finish() {
   if (kvasir_with_dyncomp) {
@@ -698,7 +714,13 @@ void fjalar_tool_finish() {
   }
 }
 
+Bool kvasir_late_init_done = False;
+
 void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
+  if (!kvasir_late_init_done) {
+    kvasir_late_init();
+    kvasir_late_init_done = True;
+  }
   printDtraceForFunction(f_state, 1);
 }
 

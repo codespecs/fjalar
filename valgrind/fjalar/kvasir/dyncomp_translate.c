@@ -111,10 +111,10 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    ty = typeOfIRExpr(dce->bb->tyenv, vatom);
    tl_assert(ty != Ity_I1);
 
-   // Don't do a PUT of tags into ESP in order to avoid tons of false
-   // mergings of relative address literals derived from arithmetic
-   // with ESP
-   if (offset == OFFSET_x86_ESP) {
+   // Don't do a PUT of tags into ESP or EBP in order to avoid tons of
+   // false mergings of relative address literals derived from
+   // arithmetic with ESP
+   if (offset == OFFSET_x86_ESP || offset == OFFSET_x86_EBP) {
       return;
    }
 
@@ -159,12 +159,16 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
 
-   // Return a special tag of ESP_TAG for a GET call into ESP, in
-   // order to avoid tons of false mergings of relative address
-   // literals derived from arithmetic with ESP
-   if (offset == OFFSET_x86_ESP) {
-      // Return a special tag of ESP_TAG for a tag retrieved from ESP
-      return IRExpr_Const(IRConst_U32(ESP_TAG));
+   // Return a special tag for a GET call into ESP or EBP,
+   // in order to avoid tons of false mergings of relative address
+   // literals derived from arithmetic with the stack pointer
+   /* XXX This won't do the right thing if your code uses %ebp for
+      some purpose other than the frame pointer. Let's hope that
+      doesn't happen too often in unoptimized code. The only better
+      solution would be to track as an independent bit which values of
+      ESP-derived, which would be a pain. -SMcC */
+   if (offset == OFFSET_x86_ESP || offset == OFFSET_x86_EBP) {
+      return IRExpr_Const(IRConst_U32(WEAK_FRESH_TAG));
    }
 
    // The floating-point stack on the x86 is located between offsets
@@ -953,25 +957,22 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // better way to tell whether we can make this optimization
       // without simply checking whether the atoms are consts
 
-      //#define BLAH
-#ifdef BLAH
       if (atom1->tag == Iex_Const) {
          if (helper == &MC_(helperc_MERGE_TAGS)) {
             return vatom2;
          }
-         else {
+         else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
             return IRExpr_Const(IRConst_U32(0));
          }
       }
       else if (atom2->tag == Iex_Const) {
-         if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
+         if (helper == &MC_(helperc_MERGE_TAGS)) {
             return vatom1;
          }
-         else {
+         else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
             return IRExpr_Const(IRConst_U32(0));
          }
       }
-#endif
 
       // Let's try a clean call.  It seems to be correct
       // because of the fact that merging the same 2 things more than
@@ -1091,7 +1092,6 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    IRTemp   addrTag;
    IRDirty  *diAddr;
 
-#ifdef NOT_YET
    /* Compute the tag for the effective address, and throw the result
       away, but anchor it to a dirty call so that Valgrind doesn't
       optimize the merges away. */
@@ -1104,7 +1104,6 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
    stmt(dce->bb, IRStmt_Dirty(diAddr));
-#endif
 
    switch (shadowType(ty)) {
       case Ity_I8:
@@ -1243,10 +1242,10 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
       case Iex_Const:
 
          // Fast mode implementation - create a special reserved
-         // LITERAL_TAG tag one tag for each static instance of a
+         // WEAKE_FRESH_TAG tag one tag for each static instance of a
          // program literal:
          if (dyncomp_fast_mode) {
-            return IRExpr_Const(IRConst_U32(LITERAL_TAG));
+	    return IRExpr_Const(IRConst_U32(WEAK_FRESH_TAG));
          }
          else {
 
@@ -1317,7 +1316,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 
 /* PG says we might need to resync this with Memcheck's
    do_shadow_Store().  The only problem I know about is fixing an
-   endianess assumption in the 128-bit case. -SMcC */
+   endianness assumption in the 128-bit case. -SMcC */
 void do_shadow_STle_DC ( DCEnv* dce,
                       IRAtom* addr,
                       IRAtom* data )
@@ -1332,6 +1331,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
    IRTemp   addrTag;
    void*    helper = NULL;
    Char*    hname = NULL;
+   Int      pcOffset = -1;
 
    tyAddr = dce->hWordTy;
    mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
@@ -1343,10 +1343,27 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
    tl_assert(data);
    tl_assert(isOriginalAtom_DC(dce, data));
-   vdata = expr2tags_DC( dce, data );
+   if (data->tag == Iex_Const && 
+       (tyAddr == Ity_I32 && data->Iex.Const.con->tag == Ico_U32)) {
+      pcOffset = data->Iex.Const.con->Ico.U32 - dce->origAddr;
+   } else if (data->tag == Iex_Const && 
+	      (tyAddr == Ity_I64 && data->Iex.Const.con->tag == Ico_U64)) {
+      pcOffset = data->Iex.Const.con->Ico.U64 - dce->origAddr;
+   }
+   if (pcOffset > 0 && pcOffset < 20) {
+      /* We're storing what looks like the address of the sequentially
+	 next instruction, so we're probably pushing the PC on the
+	 stack in a call. Normally it wouldn't matter what tag this
+	 value had, since the value is only used later in a jump, but
+	 for PIC x86 code a return address is also used to initialize
+	 the GOT pointer, and we don't want that to have a tag that
+	 falsely links all the globals accessed via it. */
+      vdata = IRExpr_Const(IRConst_U32(0));
+   } else {
+      vdata = expr2tags_DC( dce, data );
+   }
    tl_assert(isShadowAtom_DC(dce,vdata));
 
-#ifdef NOT_YET
    /* Compute the tag for the effective address, and throw the result
       away, but anchor it to a dirty call so that Valgrind doesn't
       optimize the merges away. */
@@ -1359,7 +1376,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
    stmt(dce->bb, IRStmt_Dirty(diAddr));
-#endif
 
    // Get the byte size of the REAL data (and not our tag vdata, which
    // is ALWAYS 32-bits).  This is very different from Memcheck's
