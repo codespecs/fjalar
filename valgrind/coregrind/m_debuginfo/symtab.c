@@ -3187,6 +3187,28 @@ ULong VG_(seginfo_sym_offset)(const SegInfo* si)
    return si->offset;
 }
 
+Addr VG_(seginfo_sect_start)(const SegInfo *si, VgSectKind kind) {
+   switch (kind) {
+   case Vg_SectData: return si->data_start_vma;
+   case Vg_SectBSS:  return si-> bss_start_vma;
+   case Vg_SectPLT:  return si-> plt_start_vma;
+   case Vg_SectGOT:  return si-> got_start_vma;
+   default:
+      VG_(core_panic)("unexpected VgSectKind in seginfo_sect_start");
+   }
+}
+
+SizeT VG_(seginfo_sect_size)(const SegInfo *si, VgSectKind kind) {
+   switch (kind) {
+   case Vg_SectData: return si->data_size;
+   case Vg_SectBSS:  return si-> bss_size;
+   case Vg_SectPLT:  return si-> plt_size;
+   case Vg_SectGOT:  return si-> got_size;
+   default:
+      VG_(core_panic)("unexpected VgSectKind in seginfo_sect_size");
+   }
+}
+
 VgSectKind VG_(seginfo_sect_kind)(Addr a)
 {
    SegInfo* si;

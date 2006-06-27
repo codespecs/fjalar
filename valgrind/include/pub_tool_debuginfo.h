@@ -138,6 +138,11 @@ typedef
 
 extern VgSectKind VG_(seginfo_sect_kind)(Addr);
 
+/* Return the starting address or size of the data, bss, got, or plt
+   section of the given segment, or 0 if there is no such section. */
+extern Addr VG_(seginfo_sect_start)(const SegInfo *si, VgSectKind kind);
+extern SizeT VG_(seginfo_sect_size)(const SegInfo *si, VgSectKind kind);
+
 #endif   // __PUB_TOOL_DEBUGINFO_H
 
 /*--------------------------------------------------------------------*/
