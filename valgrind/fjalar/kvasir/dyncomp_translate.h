@@ -58,6 +58,10 @@ typedef
          arguments of type 'HWord' to be passed to helper functions.
          Ity_I32 or Ity_I64 only. */
       IRType hWordTy;
+
+      /* MODIFIED: Original address of guest instruction whose IR
+	 we're now processing, as taken from the last IMark we saw. */
+      Addr origAddr;
    }
    DCEnv;
 

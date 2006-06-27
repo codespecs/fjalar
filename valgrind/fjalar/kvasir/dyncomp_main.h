@@ -41,8 +41,7 @@
 
 
 // Special reserved tags
-const UInt ESP_TAG;
-const UInt LITERAL_TAG;
+const UInt WEAK_FRESH_TAG;
 const UInt LARGEST_REAL_TAG;
 
 UInt nextTag;
@@ -108,6 +107,7 @@ __inline__ UInt val_uf_find_leader(UInt tag);
 
 void val_uf_make_set_for_tag(UInt tag);
 
+void set_tag_for_GOT(Addr a, SizeT len);
 
 extern VG_REGPARM(1) UInt MC_(helperc_TAG_NOP) ( UInt );
 
@@ -133,8 +133,5 @@ extern VG_REGPARM(3) UInt MC_(helperc_MERGE_4_TAGS) ( UInt, UInt, UInt, UInt );
 
 extern VG_REGPARM(2) UInt tag1_is_new ( UInt, UInt );
 extern VG_REGPARM(2) UInt tag2_is_new ( UInt, UInt );
-
-extern VG_REGPARM(2) UInt tag1_ESP_tag ( UInt, UInt );
-extern VG_REGPARM(2) UInt tag2_ESP_tag ( UInt, UInt );
 
 #endif

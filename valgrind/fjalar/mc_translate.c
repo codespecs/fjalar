@@ -3359,6 +3359,9 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_IMark:
+	    dce.origAddr = st->Ist.IMark.addr;
+	    break;
+
          case Ist_NoOp:
          case Ist_MFence:
             break;
