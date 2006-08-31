@@ -40,7 +40,6 @@
 
 /* Move an fd into the Valgrind-safe range */
 extern Int VG_(safe_fd) ( Int oldfd );
-extern Int VG_(fcntl)   ( Int fd, Int cmd, Int arg );
 
 /* Convert an fd into a filename */
 extern Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf );

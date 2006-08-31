@@ -451,6 +451,24 @@ Int VG_(fork) ( void )
 }
 
 /* ---------------------------------------------------------------------
+   Some other common process-related syscalls for the use of tools
+   ------------------------------------------------------------------ */
+
+Int VG_(execv) ( const Char* exec, Char *const argv[])
+{
+  static Char** envp = NULL;
+  VG_(setrlimit)(VKI_RLIMIT_DATA, &VG_(client_rlimit_data));
+  envp = VG_(env_clone)(VG_(client_envp));
+  VG_(env_remove_valgrind_env_stuff)( envp ); 
+  
+  (void)VG_(do_syscall3)(__NR_execve, 
+			 (UWord)exec, (UWord)argv, (UWord)envp);
+
+  /* If we're still alive here, execve failed. */
+  VG_(exit)(1);
+}
+
+/* ---------------------------------------------------------------------
    Timing stuff
    ------------------------------------------------------------------ */
 

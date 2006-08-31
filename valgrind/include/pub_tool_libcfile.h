@@ -41,12 +41,16 @@ extern Int    VG_(read)   ( Int fd, void* buf, Int count);
 extern Int    VG_(write)  ( Int fd, const void* buf, Int count);
 extern Int    VG_(pipe)   ( Int fd[2] );
 extern OffT   VG_(lseek)  ( Int fd, OffT offset, Int whence );
+extern Int    VG_(fcntl)  ( Int fd, Int cmd, Int arg );
 
-extern SysRes VG_(stat)   ( Char* file_name, struct vki_stat* buf );
-extern Int    VG_(fstat)  ( Int   fd,        struct vki_stat* buf );
+extern SysRes VG_(stat)   ( const Char* file_name, struct vki_stat* buf );
+extern Int    VG_(fstat)  ( Int   fd,              struct vki_stat* buf );
 extern SysRes VG_(dup)    ( Int oldfd );
-extern Int    VG_(rename) ( Char* old_name, Char* new_name );
-extern Int    VG_(unlink) ( Char* file_name );
+extern Int    VG_(dup2)   ( Int oldfd, Int newfd );
+extern Int    VG_(rename) ( const Char* old_name, const Char* new_name );
+extern Int    VG_(unlink) ( const Char* file_name );
+extern SysRes VG_(mkdir)  ( const Char* path_name, Int mode );
+extern Int    VG_(mknod)  ( const Char* path_name, Int mode, Int dev );
 
 // Returns False on failure (eg. if the buffer isn't big enough).
 extern Bool   VG_(getcwd) ( Char* buf, SizeT size );

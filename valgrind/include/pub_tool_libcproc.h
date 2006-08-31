@@ -50,8 +50,11 @@ extern const Char *VG_(libdir);
    Important syscalls
    ------------------------------------------------------------------ */
 
-extern Int VG_(waitpid)( Int pid, Int *status, Int options );
-extern Int VG_(system) ( Char* cmd );
+extern Int  VG_(waitpid)( Int pid, Int *status, Int options );
+extern Int  VG_(system) ( Char* cmd );
+extern Int  VG_(fork)   ( void );
+extern void VG_(exit)   ( Int status ); /* Equivalent to libc's _exit() */
+extern Int  VG_(execv)  ( const Char* exec, Char *const argv[] );
 
 /* ---------------------------------------------------------------------
    Resource limits

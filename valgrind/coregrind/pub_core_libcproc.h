@@ -80,7 +80,6 @@ extern Int  VG_(poll)( struct vki_pollfd *, UInt nfds, Int timeout);
 extern void VG_(nanosleep) ( struct vki_timespec * );
 extern Int  VG_(getgroups)( Int size, UInt* list );
 extern Int  VG_(ptrace)( Int request, Int pid, void *addr, void *data );
-extern Int  VG_(fork)( void );
 
 // atfork
 typedef void (*vg_atfork_t)(ThreadId);
