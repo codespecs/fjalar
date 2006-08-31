@@ -31,6 +31,4 @@ tools.
 
 int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize);
 
-void fixBuffering(FILE *fp);
-
 #endif

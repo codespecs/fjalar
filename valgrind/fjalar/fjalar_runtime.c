@@ -531,27 +531,12 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
 // Returns True if all numBytes bytes starting at addressInQuestion
 // have been allocated, False otherwise
 Bool addressIsAllocated(Addr addressInQuestion, UInt numBytes) {
-  addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1);
+  return addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 1);
 }
 
 // Returns True if all numBytes bytes starting at addressInQuestion
 // have been initialized by the program, False otherwise (indicates a
 // possible garbage value)
 Bool addressIsInitialized(Addr addressInQuestion, UInt numBytes) {
-  addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0);
-}
-
-
-
-/* Set the buffer for a file handle to a VG_(malloc)ed block, rather than
- * a glibc-malloced one as it would otherwise be. On some systems (e.g.,
- * Red Hat 9 ones) this seems to work around a bug where the two mallocs
- * both think they own an area of memory. It would be better if we could
- * fix the underlying bug, though. */
-void fixBuffering(FILE *fp) {
-  /* This should not be needed, now that we don't use the system libc. */
-  /* char *buffer = VG_(malloc)(8192);
-  if (setvbuf(fp, buffer, _IOFBF, 8192)) {
-     VG_(printf)("setvbuf failed\n");
-     } */
+  return addressIsAllocatedOrInitialized(addressInQuestion, numBytes, 0);
 }
