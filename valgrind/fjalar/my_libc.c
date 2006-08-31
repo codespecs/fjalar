@@ -1,6 +1,10 @@
 /* Replacement implementations of libc-like functions that
    aren't provided in Valgrind's core. */
 
+/* Most of this code has been borrowed from dietlibc, by Felix von
+   Leitner <felix-dietlibc@fefe.de> et al., and is licensed under the
+   GPL. */
+
 #include "my_libc.h"
 
 #include "pub_tool_basics.h"
