@@ -363,6 +363,8 @@ FJALAR_SOURCES_COMMON = \
 	readelf.c \
 	typedata.c \
 	disambig.c \
+	my_libc.c \
+	tsearch.c \
 	kvasir/kvasir_main.c \
 	kvasir/decls-output.c \
 	kvasir/dtrace-output.c \
@@ -377,7 +379,7 @@ fjalar_x86_linux_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
 fjalar_x86_linux_CFLAGS = $(AM_CFLAGS_X86_LINUX)
 fjalar_x86_linux_CCASFLAGS = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
-fjalar_x86_linux_LDADD = $(TOOL_LDADD_X86_LINUX) /usr/lib/libc.a
+fjalar_x86_linux_LDADD = $(TOOL_LDADD_X86_LINUX)
 fjalar_x86_linux_LDFLAGS = $(TOOL_LDFLAGS_X86_LINUX)
 
 mcincludedir = $(includedir)/valgrind
@@ -413,6 +415,8 @@ am__objects_1 = fjalar_x86_linux-mac_leakcheck.$(OBJEXT) \
 	fjalar_x86_linux-readelf.$(OBJEXT) \
 	fjalar_x86_linux-typedata.$(OBJEXT) \
 	fjalar_x86_linux-disambig.$(OBJEXT) \
+	fjalar_x86_linux-my_libc.$(OBJEXT) \
+	fjalar_x86_linux-tsearch.$(OBJEXT) \
 	fjalar_x86_linux-kvasir_main.$(OBJEXT) \
 	fjalar_x86_linux-decls-output.$(OBJEXT) \
 	fjalar_x86_linux-dtrace-output.$(OBJEXT) \
@@ -451,7 +455,9 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-mac_shared.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-mc_main.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-mc_translate.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-my_libc.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-readelf.Po \
+@AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-tsearch.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-typedata.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fjalar_x86_linux-union_find.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po \
@@ -523,7 +529,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mac_shared.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_translate.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-my_libc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-readelf.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-tsearch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-typedata.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-union_find.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po@am__quote@
@@ -858,6 +866,50 @@ fjalar_x86_linux-disambig.obj: disambig.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/fjalar_x86_linux-disambig.Po' tmpdepfile='$(DEPDIR)/fjalar_x86_linux-disambig.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-disambig.obj `if test -f 'disambig.c'; then $(CYGPATH_W) 'disambig.c'; else $(CYGPATH_W) '$(srcdir)/disambig.c'; fi`
+
+fjalar_x86_linux-my_libc.o: my_libc.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-my_libc.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-my_libc.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o fjalar_x86_linux-my_libc.o `test -f 'my_libc.c' || echo '$(srcdir)/'`my_libc.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-my_libc.Tpo" "$(DEPDIR)/fjalar_x86_linux-my_libc.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/fjalar_x86_linux-my_libc.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='my_libc.c' object='fjalar_x86_linux-my_libc.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/fjalar_x86_linux-my_libc.Po' tmpdepfile='$(DEPDIR)/fjalar_x86_linux-my_libc.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-my_libc.o `test -f 'my_libc.c' || echo '$(srcdir)/'`my_libc.c
+
+fjalar_x86_linux-my_libc.obj: my_libc.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-my_libc.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-my_libc.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o fjalar_x86_linux-my_libc.obj `if test -f 'my_libc.c'; then $(CYGPATH_W) 'my_libc.c'; else $(CYGPATH_W) '$(srcdir)/my_libc.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-my_libc.Tpo" "$(DEPDIR)/fjalar_x86_linux-my_libc.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/fjalar_x86_linux-my_libc.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='my_libc.c' object='fjalar_x86_linux-my_libc.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/fjalar_x86_linux-my_libc.Po' tmpdepfile='$(DEPDIR)/fjalar_x86_linux-my_libc.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-my_libc.obj `if test -f 'my_libc.c'; then $(CYGPATH_W) 'my_libc.c'; else $(CYGPATH_W) '$(srcdir)/my_libc.c'; fi`
+
+fjalar_x86_linux-tsearch.o: tsearch.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-tsearch.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-tsearch.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o fjalar_x86_linux-tsearch.o `test -f 'tsearch.c' || echo '$(srcdir)/'`tsearch.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-tsearch.Tpo" "$(DEPDIR)/fjalar_x86_linux-tsearch.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/fjalar_x86_linux-tsearch.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='tsearch.c' object='fjalar_x86_linux-tsearch.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/fjalar_x86_linux-tsearch.Po' tmpdepfile='$(DEPDIR)/fjalar_x86_linux-tsearch.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-tsearch.o `test -f 'tsearch.c' || echo '$(srcdir)/'`tsearch.c
+
+fjalar_x86_linux-tsearch.obj: tsearch.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-tsearch.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-tsearch.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o fjalar_x86_linux-tsearch.obj `if test -f 'tsearch.c'; then $(CYGPATH_W) 'tsearch.c'; else $(CYGPATH_W) '$(srcdir)/tsearch.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-tsearch.Tpo" "$(DEPDIR)/fjalar_x86_linux-tsearch.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/fjalar_x86_linux-tsearch.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='tsearch.c' object='fjalar_x86_linux-tsearch.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/fjalar_x86_linux-tsearch.Po' tmpdepfile='$(DEPDIR)/fjalar_x86_linux-tsearch.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-tsearch.obj `if test -f 'tsearch.c'; then $(CYGPATH_W) 'tsearch.c'; else $(CYGPATH_W) '$(srcdir)/tsearch.c'; fi`
 
 fjalar_x86_linux-kvasir_main.o: kvasir/kvasir_main.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-kvasir_main.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-kvasir_main.Tpo" \

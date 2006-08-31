@@ -1,0 +1,146 @@
+/* Headers for replacement implementations of libc-like functions that
+   aren't provided in Valgrind's core. */
+
+#ifndef MY_LIBC_H
+#define MY_LIBC_H
+
+#include "vki-linux.h"
+#include <stdarg.h>
+
+/* alloca.h */
+extern void *alloca (unsigned __size);
+#define alloca(size)   __builtin_alloca (size)
+
+/* ctype.h */
+int isalnum(int c);
+int isalpha(int c);
+int isdigit(int c);
+int isspace(int c);
+int isxdigit(int c);
+
+/* errno.h */
+
+extern int errno;
+
+/* search.h */
+
+typedef int (*__compar_fn_t) (const void *, const void *);
+
+typedef enum
+{
+  preorder,
+  postorder,
+  endorder,
+  leaf
+}
+VISIT;
+
+/* Search for an entry matching the given KEY in the tree pointed to
+   by *ROOTP and insert a new element if not found.  */
+void *tsearch (const void *__key, void **__rootp,
+	       __compar_fn_t __compar);
+
+/* Search for an entry matching the given KEY in the tree pointed to
+   by *ROOTP.  If no matching entry is available return NULL.  */
+void *tfind (const void *__key, void *const *__rootp,
+	     __compar_fn_t __compar);
+
+/* Remove the element matching KEY from the tree pointed to by *ROOTP.  */
+void *tdelete (const void *__restrict __key,
+	       void **__restrict __rootp,
+	       __compar_fn_t __compar);
+
+typedef void (*__action_fn_t) (const void *__nodep, VISIT __value,
+                               int __level);
+
+/* Walk through the whole tree and call the ACTION callback for every node
+   or leaf.  */
+extern void twalk (const void *__root, __action_fn_t __action);
+
+/* Callback type for function to free a tree node.  If the keys are atomic
+   data this function should do nothing.  */
+typedef void (*__free_fn_t) (void *__nodep);
+
+/* Destroy the whole tree, call FREEFCT for each node or leaf.  */
+extern void tdestroy (void *__root, __free_fn_t __freefct);
+
+/* stddef.h */
+
+#ifdef __GNUC__
+typedef __PTRDIFF_TYPE__ ptrdiff_t;
+typedef __SIZE_TYPE__ size_t;
+#if !defined(__cplusplus)
+typedef __WCHAR_TYPE__ wchar_t;
+#endif
+#else
+typedef signed long ptrdiff_t;
+typedef unsigned long size_t;
+typedef int wchar_t;
+#endif
+
+#undef NULL
+#if defined(__cplusplus)
+#define NULL 0
+#else
+#define NULL (void*)0
+#endif
+
+#undef offsetof
+#define offsetof(type,member) ((size_t) &((type*)0)->member)
+
+/* stdio.h */
+
+struct __stdio_file;
+typedef struct __stdio_file FILE;
+
+extern FILE *stdin, *stdout, *stderr;
+
+FILE *fopen (const char *path, const char *mode);
+FILE *fdopen(int filedes, const char *mode);
+int fflush(FILE *stream);
+int fclose(FILE *stream);
+
+int feof(FILE *stream);
+int ferror(FILE *stream);
+
+int fgetc(FILE *stream);
+char *fgets(char *s, int size, FILE *stream);
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+
+#define putc(c,stream) fputc(c,stream)
+#define putchar(c) fputc(c,stdout)
+int fputc(int c, FILE *stream);
+int fputs(const char *s, FILE *stream);
+int puts(const char *s);
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
+
+int printf(const char *format, ...) __attribute__((__format__(__printf__,1,2)));
+int fprintf(FILE *stream, const char *format, ...) __attribute__((__format__(__printf__,2,3)));
+int sprintf(char *str, const char *format, ...) __attribute__((__format__(__printf__,2,3)));
+
+int vprintf(const char *format, va_list ap) __attribute__((__format__(__printf__,1,0)));
+int vfprintf(FILE *stream, const char *format, va_list ap) __attribute__((__format__(__printf__,2,0)));
+
+int fseek(FILE *stream, long offset, int whence);
+long ftell(FILE *stream);
+
+#define EOF (-1)
+
+/* stdlib.h */
+
+void abort(void);
+
+long int strtol(const char *nptr, char **endptr, int base);
+unsigned long int strtoul(const char *nptr, char **endptr, int base);
+int atoi(const char* s);
+
+/* string.h */
+
+char *strtok(char *s, const char *delim);
+const char* strerror(int errnum);
+
+/* unistd.h */
+
+int mkfifo(const char *fn, int mode);
+
+#endif /* MY_LIBC_H */
