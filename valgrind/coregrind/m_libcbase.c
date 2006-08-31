@@ -233,7 +233,7 @@ Int VG_(strncmp_ws) ( const Char* s1, const Char* s2, SizeT nmax )
    }
 }
 
-Char* VG_(strstr) ( const Char* haystack, Char* needle )
+Char* VG_(strstr) ( const Char* haystack, const Char* needle )
 {
    Int n; 
    if (haystack == NULL)

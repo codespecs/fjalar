@@ -61,7 +61,7 @@ extern Char* VG_(strcpy)         ( Char* dest, const Char* src );
 extern Char* VG_(strncpy)        ( Char* dest, const Char* src, SizeT ndest );
 extern Int   VG_(strcmp)         ( const Char* s1, const Char* s2 );
 extern Int   VG_(strncmp)        ( const Char* s1, const Char* s2, SizeT nmax );
-extern Char* VG_(strstr)         ( const Char* haystack, Char* needle );
+extern Char* VG_(strstr)         ( const Char* haystack, const Char* needle );
 extern Char* VG_(strchr)         ( const Char* s, Char c );
 extern Char* VG_(strrchr)        ( const Char* s, Char c );
 

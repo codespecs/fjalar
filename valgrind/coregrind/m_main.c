@@ -2219,7 +2219,8 @@ Int main(Int argc, HChar **argv, HChar **envp)
    if (!need_help) {
       HChar  buf[50], buf2[50+64];
       HChar  nul[1];
-      Int    fd, r;
+      Int    fd;
+      SysRes res;
       HChar* exename;
 
       VG_(debugLog)(1, "main", "Create fake /proc/<pid>/cmdline\n");
@@ -2248,8 +2249,8 @@ Int main(Int argc, HChar **argv, HChar **envp)
 	 That is probably more robust across fork() etc. */
 
       /* Now delete it, but hang on to the fd. */
-      r = VG_(unlink)( buf2 );
-      if (r)
+      res = VG_(unlink)( buf2 );
+      if (res.isError)
          config_error("Can't delete client cmdline file in /tmp.");
 
       VG_(cl_cmdline_fd) = fd;
