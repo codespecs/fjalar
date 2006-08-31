@@ -110,6 +110,7 @@ void set_vbyte ( Addr a, UWord vbyte );
 
 Bool mc_check_writable ( Addr a, SizeT len, Addr* bad_addr );
 MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr );
+void mc_make_noaccess ( Addr a, SizeT len );
 
 // PG - pgbovine - end
 

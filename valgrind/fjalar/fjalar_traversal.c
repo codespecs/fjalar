@@ -15,20 +15,14 @@
    Functions for traversing through data structures at run time
 */
 
+#include "my_libc.h"
+
 #include "fjalar_traversal.h"
 #include "fjalar_main.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
 #include "mc_include.h"
-
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/errno.h>
-#include <assert.h>
-#include <search.h>
-#include <limits.h>
 
 // This increments every time a call to visitSingleVar() or
 // visitSequence() is made.  It is up to the caller to reset this

@@ -14,12 +14,8 @@
    License, or (at your option) any later version.
 */
 
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <values.h>
+#include "my_libc.h"
+
 #include "GenericHashtable.h"
 
 #define VGAPPEND(str1,str2) str1##str2
@@ -30,6 +26,8 @@
 
 extern void  VG_(free)           ( void* p );
 extern void* VG_(calloc)         ( unsigned int n, unsigned int bytes_per_elem );
+
+#define MAXINT 2147483647
 
 int genputtable(struct genhashtable *ht, void * key, void * object) {
   unsigned int bin=genhashfunction(ht,key);

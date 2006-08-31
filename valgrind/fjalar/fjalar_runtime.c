@@ -19,12 +19,7 @@ tools.
 
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <search.h>
-#include <limits.h>
+#include "my_libc.h"
 
 #include "fjalar_main.h"
 #include "fjalar_include.h"
@@ -554,8 +549,9 @@ Bool addressIsInitialized(Addr addressInQuestion, UInt numBytes) {
  * both think they own an area of memory. It would be better if we could
  * fix the underlying bug, though. */
 void fixBuffering(FILE *fp) {
-  char *buffer = VG_(malloc)(8192);
+  /* This should not be needed, now that we don't use the system libc. */
+  /* char *buffer = VG_(malloc)(8192);
   if (setvbuf(fp, buffer, _IOFBF, 8192)) {
      VG_(printf)("setvbuf failed\n");
-  }
+     } */
 }

@@ -28,14 +28,8 @@
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
+#include "../my_libc.h"
+
 #include "mc_include.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))

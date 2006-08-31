@@ -23,7 +23,6 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_mallocfree.h"
 
-#include <assert.h>
 #include "mc_translate.h"
 
 #include "fjalar_include.h"

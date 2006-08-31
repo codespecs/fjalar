@@ -733,7 +733,7 @@ static void set_address_range_perms ( Addr aA, SizeT len,
 
 /* --- Set permissions for arbitrary address ranges --- */
 
-static void mc_make_noaccess ( Addr a, SizeT len )
+void mc_make_noaccess ( Addr a, SizeT len )
 {
    PROF_EVENT(40, "mc_make_noaccess");
    DEBUG("mc_make_noaccess(%p, %llu)\n", a, (ULong)len);

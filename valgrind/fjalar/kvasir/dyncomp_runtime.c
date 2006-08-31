@@ -28,12 +28,12 @@
 #include "union_find.h"
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
-#include <limits.h>
+
+#include "../my_libc.h"
 
 #include "../fjalar_include.h"
 
 #include "libvex_guest_x86.h"
-#include <stddef.h> // For offsetof macro
 
 // Maps tags to comparability numbers, which are assigned sequentially
 // for every program point.  This is only used for DynComp.

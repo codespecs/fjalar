@@ -21,11 +21,12 @@
 #ifndef GENERATE_FJALAR_ENTRIES_H
 #define GENERATE_FJALAR_ENTRIES_H
 
+#include "my_libc.h"
+
 #include "fjalar_include.h"
 //#include "tool.h"
 #include "typedata.h"
 #include "GenericHashtable.h"
-#include <stdio.h>
 
 
 // Hash table containing structs already visited while

@@ -19,7 +19,8 @@
 
 #include "union_find.h"
 //#include "tool.h"
-#include <limits.h>
+
+#include "../my_libc.h"
 
 uf_name uf_find(uf_object *object) {
   uf_object *root, *next;

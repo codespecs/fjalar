@@ -18,10 +18,7 @@
    structures that tools can access.
 */
 
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <search.h>
+#include "my_libc.h"
 
 #include "fjalar_main.h"
 #include "generate_fjalar_entries.h"
@@ -1113,7 +1110,7 @@ static void createNamesForUnnamedDwarfEntries(void)
         // The maximum size is 10 + 8 + 1 = 19 10 for "unnamed_0x", 8
         // for maximum size for cur_entry->ID, and 1 for
         // null-terminator
-        char* fake_name = calloc(19, sizeof(*fake_name));
+        char* fake_name = VG_(calloc)(19, sizeof(*fake_name));
         sprintf(fake_name, "unnamed_0x%lx", cur_entry->ID);
         collectionPtr->name = fake_name;
       }

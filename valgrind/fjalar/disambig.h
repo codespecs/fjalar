@@ -21,7 +21,6 @@
 
 //#include "tool.h"
 #include "generate_fjalar_entries.h"
-#include <stdio.h>
 
 FILE* disambig_fp;
 Bool disambig_writing; // True if we are writing out to a .disambig file,
