@@ -48,9 +48,9 @@ extern Int    VG_(fstat)  ( Int   fd,              struct vki_stat* buf );
 extern SysRes VG_(dup)    ( Int oldfd );
 extern Int    VG_(dup2)   ( Int oldfd, Int newfd );
 extern Int    VG_(rename) ( const Char* old_name, const Char* new_name );
-extern Int    VG_(unlink) ( const Char* file_name );
+extern SysRes VG_(unlink) ( const Char* file_name );
 extern SysRes VG_(mkdir)  ( const Char* path_name, Int mode );
-extern Int    VG_(mknod)  ( const Char* path_name, Int mode, Int dev );
+extern SysRes VG_(mknod)  ( const Char* path_name, Int mode, Int dev );
 
 // Returns False on failure (eg. if the buffer isn't big enough).
 extern Bool   VG_(getcwd) ( Char* buf, SizeT size );

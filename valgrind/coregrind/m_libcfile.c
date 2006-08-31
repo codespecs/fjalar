@@ -170,10 +170,9 @@ Int VG_(rename) ( const Char* old_name, const Char* new_name )
    return res.isError ? (-1) : 0;
 }
 
-Int VG_(unlink) ( const Char* file_name )
+SysRes VG_(unlink) ( const Char* file_name )
 {
-   SysRes res = VG_(do_syscall1)(__NR_unlink, (UWord)file_name);
-   return res.isError ? (-1) : 0;
+   return VG_(do_syscall1)(__NR_unlink, (UWord)file_name);
 }
 
 SysRes VG_(mkdir) ( const Char* path_name, Int mode )
@@ -181,11 +180,10 @@ SysRes VG_(mkdir) ( const Char* path_name, Int mode )
    return VG_(do_syscall2)(__NR_mkdir, (UWord)path_name, (UWord)mode);
 }
 
-Int VG_(mknod) ( const Char* path_name, Int mode, Int dev )
+SysRes VG_(mknod) ( const Char* path_name, Int mode, Int dev )
 {
-   SysRes res = VG_(do_syscall3)(__NR_mknod, (UWord)path_name, (UWord)mode,
-				 (UWord)dev);
-   return res.isError ? (-1) : 0;
+   return VG_(do_syscall3)(__NR_mknod, (UWord)path_name, (UWord)mode,
+			   (UWord)dev);
 }
 
 /* Nb: we do not allow the Linux extension which malloc()s memory for the
