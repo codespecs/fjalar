@@ -306,17 +306,18 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 }
 
 static int createFIFO(const char *filename) {
+  SysRes res;
   int ret;
-  ret = VG_(unlink)(filename);
-  if (ret == -1 && errno != VKI_ENOENT) {
+  res = VG_(unlink)(filename);
+  if (res.isError && res.val != VKI_ENOENT) {
     VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
-	    strerror(errno));
+		 strerror(res.val));
     return 0;
   }
   ret = mkfifo(filename, 0666);
   if (ret == -1) {
     VG_(printf)( "Couldn't make %s as a FIFO: %s\n", filename,
-	    strerror(errno));
+		 strerror(errno));
     return 0;
   }
   return 1;
@@ -338,7 +339,7 @@ static int openRedirectFile(const char *fname) {
     }
     new_fd = sr.val;
   } else {
-    sr = VG_(open)(fname, VKI_O_WRONLY|VKI_O_CREAT/*|VKI_O_LARGEFILE*/|VKI_O_TRUNC,
+    sr = VG_(open)(fname, VKI_O_WRONLY|VKI_O_CREAT|VKI_O_LARGEFILE|VKI_O_TRUNC,
 		  0666);
     if (sr.isError) {
       VG_(printf)( "Couldn't open %s for writing: %s\n",
@@ -396,7 +397,6 @@ static int openDtraceFile(const char *fname) {
       VG_(close)(fds[1]);
       return 0;
     }
-    fixBuffering(dtrace_fp);
 
     if (!pid) {
       /* In child */
@@ -411,7 +411,7 @@ static int openDtraceFile(const char *fname) {
       if (!VG_STREQ(fname, "-")) {
 	SysRes sr;
 	/* Redirect stdout to the dtrace.gz file */
-	mode = VKI_O_CREAT  /* | VKI_O_LARGEFILE */ | VKI_O_TRUNC |
+	mode = VKI_O_CREAT | VKI_O_LARGEFILE | VKI_O_TRUNC |
 	  (*mode_str == 'a' ? VKI_O_APPEND : VKI_O_WRONLY);
 	sr = VG_(open)(new_fname, mode, 0666);
 	if (sr.isError) {
@@ -438,13 +438,11 @@ static int openDtraceFile(const char *fname) {
     if (!dtrace_fp) {
       return 0;
     }
-    fixBuffering(dtrace_fp);
   } else {
     dtrace_fp = fopen(fname, mode_str);
     if (!dtrace_fp) {
       return 0;
     }
-    fixBuffering(dtrace_fp);
   }
 
   if (stdout_redir) {

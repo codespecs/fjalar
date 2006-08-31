@@ -168,6 +168,7 @@ FILE *fopen(const char *path, const char *mode) {
   SysRes sr;
 
   f=__stdio_parse_mode(mode);
+  f |= VKI_O_LARGEFILE;
   sr = VG_(open)(path, f, 0666);
   if (sr.isError) {
     errno = sr.val;
@@ -193,8 +194,9 @@ int fflush(FILE *stream) {
 	VG_(lseek)(stream->fd,tmp,VKI_SEEK_CUR);
     }
     stream->bs=stream->bm=0;
-  } else {
-    if (stream->bm && VG_(write)(stream->fd,stream->buf,stream->bm)!=stream->bm) {
+  } else if (stream->bm) {
+    int ret = VG_(write)(stream->fd,stream->buf,stream->bm);
+    if (ret == -1 || (UInt)ret != stream->bm) {
       stream->flags|=ERRORINDICATOR;
       return -1;
     }
@@ -308,14 +310,13 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
 
   if ( !(stream->flags&FDPIPE) && (j>stream->buflen)) {
     size_t tmp=j-i;
-    Int res;
     size_t inbuf=stream->bs-stream->bm;
     VG_(memcpy)((char *)ptr+i,(char *)stream->buf+stream->bm,inbuf);
     stream->bm=stream->bs=0;
     tmp-=inbuf;
     i+=inbuf;
     if (fflush(stream)) return 0;
-    while ((res=VG_(read)(stream->fd,ptr+i,tmp))<(Int)tmp) {
+    while ((res=VG_(read)(stream->fd,(char *)ptr+i,tmp))<(Int)tmp) {
       if (res==-1) {
         stream->flags|=ERRORINDICATOR;
         goto exit;
@@ -1286,5 +1287,11 @@ const char* strerror(int errnum)
 
 /* unistd.h */
 int mkfifo(const char *fn, int mode) {
-  return VG_(mknod)(fn, mode|VKI_S_IFIFO, 0);
+  SysRes res = VG_(mknod)(fn, mode|VKI_S_IFIFO, 0);
+  if (res.isError) {
+    errno = res.val;
+    return -1;
+  } else {
+    return res.val;
+  }
 }
