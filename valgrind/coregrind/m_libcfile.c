@@ -119,7 +119,7 @@ OffT VG_(lseek) ( Int fd, OffT offset, Int whence )
       change VG_(pread) and all other usage points. */
 }
 
-SysRes VG_(stat) ( Char* file_name, struct vki_stat* buf )
+SysRes VG_(stat) ( const Char* file_name, struct vki_stat* buf )
 {
    SysRes res = VG_(do_syscall2)(__NR_stat, (UWord)file_name, (UWord)buf);
    return res;
@@ -151,6 +151,12 @@ SysRes VG_(dup) ( Int oldfd )
    return VG_(do_syscall1)(__NR_dup, oldfd);
 }
 
+Int VG_(dup2) ( Int oldfd, Int newfd )
+{
+   SysRes res = VG_(do_syscall2)(__NR_dup2, oldfd, newfd);
+   return res.isError ? (-1) : res.val;
+}
+
 /* Returns -1 on error. */
 Int VG_(fcntl) ( Int fd, Int cmd, Int arg )
 {
@@ -158,15 +164,27 @@ Int VG_(fcntl) ( Int fd, Int cmd, Int arg )
    return res.isError ? -1 : res.val;
 }
 
-Int VG_(rename) ( Char* old_name, Char* new_name )
+Int VG_(rename) ( const Char* old_name, const Char* new_name )
 {
    SysRes res = VG_(do_syscall2)(__NR_rename, (UWord)old_name, (UWord)new_name);
    return res.isError ? (-1) : 0;
 }
 
-Int VG_(unlink) ( Char* file_name )
+Int VG_(unlink) ( const Char* file_name )
 {
    SysRes res = VG_(do_syscall1)(__NR_unlink, (UWord)file_name);
+   return res.isError ? (-1) : 0;
+}
+
+SysRes VG_(mkdir) ( const Char* path_name, Int mode )
+{
+   return VG_(do_syscall2)(__NR_mkdir, (UWord)path_name, (UWord)mode);
+}
+
+Int VG_(mknod) ( const Char* path_name, Int mode, Int dev )
+{
+   SysRes res = VG_(do_syscall3)(__NR_mknod, (UWord)path_name, (UWord)mode,
+				 (UWord)dev);
    return res.isError ? (-1) : 0;
 }
 
