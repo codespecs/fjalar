@@ -36,6 +36,8 @@ FJALAR_SOURCES_COMMON = \
 	readelf.c \
 	typedata.c \
 	disambig.c \
+	my_libc.c \
+	tsearch.c \
 	kvasir/kvasir_main.c \
 	kvasir/decls-output.c \
 	kvasir/dtrace-output.c \
@@ -49,7 +51,7 @@ fjalar_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
 fjalar_x86_linux_CFLAGS       = $(AM_CFLAGS_X86_LINUX)
 fjalar_x86_linux_CCASFLAGS    = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
-fjalar_x86_linux_LDADD        = $(TOOL_LDADD_X86_LINUX) /usr/lib/libc.a
+fjalar_x86_linux_LDADD        = $(TOOL_LDADD_X86_LINUX)
 fjalar_x86_linux_LDFLAGS      = $(TOOL_LDFLAGS_X86_LINUX)
 
 mcincludedir = $(includedir)/valgrind
