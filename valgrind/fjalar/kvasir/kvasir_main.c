@@ -21,6 +21,8 @@
 #include "../fjalar_tool.h"
 #include "../fjalar_include.h"
 
+#include "pub_tool_libcfile.h"
+#include "pub_tool_libcproc.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_debuginfo.h"
 
@@ -28,17 +30,7 @@
 #include "decls-output.h"
 #include "dtrace-output.h"
 
-#include <fcntl.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#include <sys/errno.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-
-#include <unistd.h>
-#include <string.h>
-#include <limits.h>
-#include <errno.h>
+#include "../my_libc.h"
 
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
@@ -119,7 +111,7 @@ static char createDeclsAndDtraceFiles(char* appname)
   char* newpath_decls = 0;
   char* newpath_dtrace;
   int success = 0;
-  int ret;
+  SysRes res;
 
   // Free VisitedStructsTable if it has been allocated
   if (VisitedStructsTable)
@@ -186,9 +178,9 @@ static char createDeclsAndDtraceFiles(char* appname)
   }
 
   // Step 2: Make the daikon-output/ directory
-  ret = mkdir(decls_folder, 0777); // more abbreviated UNIX form
-  if (ret == -1 && errno != EEXIST)
-    VG_(printf)( "Couldn't create %s: %s\n", decls_folder, strerror(errno));
+  res = VG_(mkdir)(decls_folder, 0777); // more abbreviated UNIX form
+  if (res.isError && res.val != VKI_EEXIST)
+    VG_(printf)( "Couldn't create %s: %s\n", decls_folder, strerror(res.val));
 
   // ASSUME mkdir succeeded! (or that the directory already exists)
 
@@ -315,8 +307,8 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 
 static int createFIFO(const char *filename) {
   int ret;
-  ret = remove(filename);
-  if (ret == -1 && errno != ENOENT) {
+  ret = VG_(unlink)(filename);
+  if (ret == -1 && errno != VKI_ENOENT) {
     VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
 	    strerror(errno));
     return 0;
@@ -336,20 +328,24 @@ static int createFIFO(const char *filename) {
    and returns -1 if something goes wrong. */
 static int openRedirectFile(const char *fname) {
   int new_fd;
+  SysRes sr;
   if (fname[0] == '&') {
-    new_fd = dup(atoi(fname + 1));
-    if (new_fd == -1) {
+    sr = VG_(dup)(atoi(fname + 1));
+    if (sr.isError) {
       VG_(printf)( "Couldn't duplicate FD `%s': %s\n",
 	      fname+1, strerror(errno));
       return -1;
     }
+    new_fd = sr.val;
   } else {
-    new_fd = open(fname, O_WRONLY|O_CREAT|O_LARGEFILE|O_TRUNC, 0666);
-    if (new_fd == -1) {
+    sr = VG_(open)(fname, VKI_O_WRONLY|VKI_O_CREAT/*|VKI_O_LARGEFILE*/|VKI_O_TRUNC,
+		  0666);
+    if (sr.isError) {
       VG_(printf)( "Couldn't open %s for writing: %s\n",
 	      fname, strerror(errno));
       return -1;
     }
+    new_fd = sr.val;
   }
   return new_fd;
 }
@@ -361,7 +357,7 @@ static int openDtraceFile(const char *fname) {
   char *stdout_redir = kvasir_program_stdout_filename;
   char *stderr_redir = kvasir_program_stderr_filename;
 
-  char *env_val = getenv("DTRACEAPPEND");
+  char *env_val = VG_(getenv)("DTRACEAPPEND");
   if (env_val || kvasir_dtrace_append) {
     // If we are appending and not printing out separate decls and
     // dtrace files, do NOT print out decls again since we assume that
@@ -383,21 +379,21 @@ static int openDtraceFile(const char *fname) {
     stdout_redir = "/dev/tty";
   }
 
-  if (kvasir_dtrace_gzip || getenv("DTRACEGZIP")) {
+  if (kvasir_dtrace_gzip || VG_(getenv)("DTRACEGZIP")) {
     int fds[2]; /* fds[0] for reading (child), fds[1] for writing (parent) */
-    pid_t pid;
+    vki_pid_t pid;
     int fd;
     int mode;
-    char *new_fname = VG_(malloc)(strlen(fname) + 4);
+    char *new_fname = VG_(malloc)(VG_(strlen)(fname) + 4);
     VG_(strcpy)(new_fname, fname);
     VG_(strcat)(new_fname, ".gz");
 
-    if (pipe(fds) < 0)
+    if (VG_(pipe)(fds) < 0)
       return 0;
 
-    if (!(dtrace_fp = fdopen(fds[1], "w")) || (pid = fork()) < 0) {
-      close(fds[0]);
-      close(fds[1]);
+    if (!(dtrace_fp = fdopen(fds[1], "w")) || (pid = VG_(fork)()) < 0) {
+      VG_(close)(fds[0]);
+      VG_(close)(fds[1]);
       return 0;
     }
     fixBuffering(dtrace_fp);
@@ -405,35 +401,39 @@ static int openDtraceFile(const char *fname) {
     if (!pid) {
       /* In child */
       char *const argv[] = {"gzip", "-c", 0};
-      close(fds[1]);
+      VG_(close)(fds[1]);
 
       /* Redirect stdin from the pipe */
-      close(0);
-      dup2(fds[0], 0);
-      close(fds[0]);
+      VG_(close)(0);
+      VG_(dup2)(fds[0], 0);
+      VG_(close)(fds[0]);
 
       if (!VG_STREQ(fname, "-")) {
+	SysRes sr;
 	/* Redirect stdout to the dtrace.gz file */
-	mode = O_CREAT | O_LARGEFILE | O_TRUNC |
-	  (*mode_str == 'a' ? O_APPEND : O_WRONLY);
-	fd = open(new_fname, mode, 0666);
-	if (fd == -1) {
+	mode = VKI_O_CREAT  /* | VKI_O_LARGEFILE */ | VKI_O_TRUNC |
+	  (*mode_str == 'a' ? VKI_O_APPEND : VKI_O_WRONLY);
+	sr = VG_(open)(new_fname, mode, 0666);
+	if (sr.isError) {
 	  VG_(printf)( "Couldn't open %s for writing\n", fname);
 	}
-	close(1);
-	dup2(fd, 1);
-	close(fd);
+	fd = sr.val;
+	VG_(close)(1);
+	VG_(dup2)(fd, 1);
+	VG_(close)(fd);
       }
 
-      execv("/bin/gzip", argv);
-      _exit(127);
+      VG_(execv)("/bin/gzip", argv);
+      VG_(exit)(127);
     }
 
-    close(fds[0]);
-    fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    VG_(close)(fds[0]);
+    VG_(fcntl)(fds[1], VKI_F_SETFD, VKI_FD_CLOEXEC);
     gzip_pid = pid;
   } else if VG_STREQ(fname, "-") {
-    int dtrace_fd = dup(1);
+    SysRes sr = VG_(dup)(1);
+    int dtrace_fd = sr.val;
+    /* Check sr.isError? */
     dtrace_fp = fdopen(dtrace_fd, mode_str);
     if (!dtrace_fp) {
       return 0;
@@ -451,26 +451,26 @@ static int openDtraceFile(const char *fname) {
     int new_stdout = openRedirectFile(stdout_redir);
     if (new_stdout == -1)
       return 0;
-    close(1);
-    dup2(new_stdout, 1);
+    VG_(close)(1);
+    VG_(dup2)(new_stdout, 1);
     if (stderr_redir && VG_STREQ(stdout_redir, stderr_redir)) {
       /* If the same name was supplied for stdout and stderr, do the
 	 equivalent of the shell's 2>&1, rather than having them overwrite
 	 each other */
-      close(2);
-      dup2(new_stdout, 2);
+      VG_(close)(2);
+      VG_(dup2)(new_stdout, 2);
       stderr_redir = 0;
     }
-    close(new_stdout);
+    VG_(close)(new_stdout);
   }
 
   if (stderr_redir) {
     int new_stderr = openRedirectFile(stderr_redir);
     if (new_stderr == -1)
       return 0;
-    close(2);
-    dup2(new_stderr, 2);
-    close(new_stderr);
+    VG_(close)(2);
+    VG_(dup2)(new_stderr, 2);
+    VG_(close)(new_stderr);
   }
 
   return 1;
@@ -484,7 +484,7 @@ static void finishDtraceFile(void)
     fclose(dtrace_fp);
   if (gzip_pid) {
     int status;
-    waitpid(gzip_pid, &status, 0);
+    VG_(waitpid)(gzip_pid, &status, 0);
     /* Perhaps check return value? */
     gzip_pid = 0;
   }

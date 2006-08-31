@@ -16,14 +16,13 @@
    (--disambig and --disambig-file=<string> command-line options)
 */
 
+#include "my_libc.h"
+
 #include "disambig.h"
 #include "fjalar_main.h"
 #include "fjalar_select.h"
 #include "fjalar_traversal.h"
 #include "GenericHashtable.h"
-
-#include <stdlib.h>
-#include <string.h>
 
 FILE* disambig_fp = 0; // File pointer for either reading or writing to .disambig file
 Bool disambig_writing = False; // True for writing to .disambig, False for reading
@@ -379,7 +378,7 @@ static void processDisambigFile() {
       if (nextLineIsEntry) {
 	char* marker = 0;
 	// 1) A function name
-	if ((marker = strstr(line, FUNCTION_PREFIX))) {
+	if ((marker = VG_(strstr)(line, FUNCTION_PREFIX))) {
           FunctionEntry* cur_entry = 0;
 	  FJALAR_DPRINTF("FUNCTION_PREFIX");
 	  type = FUNCTION;
@@ -407,7 +406,7 @@ static void processDisambigFile() {
 	}
 	// 3) A user-defined type
 	//    (USERTYPE_PREFIX must be the prefix of the string)
-	else if (strstr(line, USERTYPE_PREFIX) == line) {
+	else if (VG_(strstr)(line, USERTYPE_PREFIX) == line) {
 	  TypeIterator* typeIt;
           int i = 0;
 	  type = USERTYPE;

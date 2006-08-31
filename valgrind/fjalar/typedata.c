@@ -19,9 +19,7 @@
    This should NOT be visible to tools.
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "my_libc.h"
 
 #include "typedata.h"
 #include "generate_fjalar_entries.h"

@@ -19,7 +19,8 @@
 #define KVASIR_MAIN_H
 
 #include "../fjalar_include.h"
-#include <stdio.h>
+
+#include "../my_libc.h"
 
 #include "pub_tool_libcassert.h"
 #include "pub_tool_mallocfree.h"

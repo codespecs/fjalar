@@ -19,10 +19,7 @@ variables.
 
 */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <search.h>
+#include "my_libc.h"
 
 #include "fjalar_main.h"
 #include "fjalar_select.h"

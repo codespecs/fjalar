@@ -40,14 +40,11 @@
    My changes are denoted by // PG marks
 */
 
+#include "my_libc.h"
 
-#include <assert.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <stdio.h>
-#include <time.h>
-
+#include "pub_tool_basics.h"
 #include "pub_tool_basics_asm.h"
+#include "pub_tool_libcassert.h"
 
 //#define VGAPPEND(str1,str2) str1##str2
 
@@ -1905,279 +1902,6 @@ request_dump (section, type)
   return;
 }
 
-static void
-parse_args (argc, argv)
-     int argc;
-     char **argv;
-{
-  int c;
-
-  if (argc < 2)
-    usage ();
-
-  while ((c = getopt_long
-	  (argc, argv, "ersuahnldSDAIw::x:i:vVWH", options, NULL)) != EOF)
-    {
-      char *cp;
-      int section;
-
-      switch (c)
-	{
-	case 0:
-	  /* Long options.  */
-	  break;
-	case 'H':
-	  usage ();
-	  break;
-
-	case 'a':
-	  do_syms++;
-	  do_reloc++;
-	  do_unwind++;
-	  do_dynamic++;
-	  do_header++;
-	  do_sections++;
-	  do_segments++;
-	  do_version++;
-	  do_histogram++;
-	  do_arch++;
-	  do_notes++;
-	  break;
-	case 'e':
-	  do_header++;
-	  do_sections++;
-	  do_segments++;
-	  break;
-	case 'A':
-	  do_arch++;
-	  break;
-	case 'D':
-	  do_using_dynamic++;
-	  break;
-	case 'r':
-	  do_reloc++;
-	  break;
-	case 'u':
-	  do_unwind++;
-	  break;
-	case 'h':
-	  do_header++;
-	  break;
-	case 'l':
-	  do_segments++;
-	  break;
-	case 's':
-	  do_syms++;
-	  break;
-	case 'S':
-	  do_sections++;
-	  break;
-	case 'd':
-	  do_dynamic++;
-	  break;
-	case 'I':
-	  do_histogram++;
-	  break;
-	case 'n':
-	  do_notes++;
-	  break;
-	case 'x':
-	  do_dump++;
-	  section = strtoul (optarg, & cp, 0);
-	  if (! *cp && section >= 0)
-	    {
-	      request_dump (section, HEX_DUMP);
-	      break;
-	    }
-	  goto oops;
-	case 'w':
-	  do_dump++;
-	  if (optarg == 0)
-	    do_debugging = 1;
-	  else
-	    {
-	      unsigned int idx = 0;
-
-	      do_debugging = 0;
-
-	      while (optarg[idx])
-		switch (optarg[idx++])
-		  {
-		  case 'i':
-		  case 'I':
-		    do_debug_info = 1;
-		    break;
-
-		  case 'a':
-		  case 'A':
-		    do_debug_abbrevs = 1;
-		    break;
-
-		  case 'l':
-		  case 'L':
-		    do_debug_lines = 1;
-		    break;
-
-		  case 'p':
-		  case 'P':
-		    do_debug_pubnames = 1;
-		    break;
-
-		  case 'r':
-		  case 'R':
-		    do_debug_aranges = 1;
-		    break;
-
-		  case 'F':
-		    do_debug_frames_interp = 1;
-		  case 'f':
-		    do_debug_frames = 1;
-		    break;
-
-		  case 'm':
-		  case 'M':
-		    do_debug_macinfo = 1;
-		    break;
-
-		  case 's':
-		  case 'S':
-		    do_debug_str = 1;
-		    break;
-
-		  case 'o':
-		  case 'O':
-		    do_debug_loc = 1;
-		    break;
-
-		  default:
-		    warn (_("Unrecognized debug option '%s'\n"), optarg);
-		    break;
-		  }
-	    }
-	  break;
-	case OPTION_DEBUG_DUMP:
-	  do_dump++;
-	  if (optarg == 0)
-	    do_debugging = 1;
-	  else
-	    {
-	      static const char *debug_dump_opt[]
-		= { "line", "info", "abbrev", "pubnames", "ranges",
-		    "macro", "frames", "frames-interp", "str", "loc", NULL };
-	      unsigned int idx;
-	      const char *p;
-
-	      do_debugging = 0;
-
-	      p = optarg;
-	      while (*p)
-		{
-		  for (idx = 0; debug_dump_opt[idx]; idx++)
-		    {
-		      size_t len = VG_(strlen) (debug_dump_opt[idx]);
-
-		      if (VG_(strncmp) (p, debug_dump_opt[idx], len) == 0
-			  && (p[len] == ',' || p[len] == '\0'))
-			{
-			  switch (p[0])
-			    {
-			    case 'i':
-			      do_debug_info = 1;
-			      break;
-
-			    case 'a':
-			      do_debug_abbrevs = 1;
-			      break;
-
-			    case 'l':
-			      if (p[1] == 'i')
-				do_debug_lines = 1;
-			      else
-				do_debug_loc = 1;
-			      break;
-
-			    case 'p':
-			      do_debug_pubnames = 1;
-			      break;
-
-			    case 'r':
-			      do_debug_aranges = 1;
-			      break;
-
-			    case 'f':
-			      if (len > 6)
-				do_debug_frames_interp = 1;
-			      do_debug_frames = 1;
-			      break;
-
-			    case 'm':
-			      do_debug_macinfo = 1;
-			      break;
-
-			    case 's':
-			      do_debug_str = 1;
-			      break;
-			    }
-
-			  p += len;
-			  break;
-			}
-		    }
-
-		  if (debug_dump_opt[idx] == NULL)
-		    {
-		      warn (_("Unrecognized debug option '%s'\n"), p);
-		      p = VG_(strchr) (p, ',');
-		      if (p == NULL)
-			break;
-		    }
-
-		  if (*p == ',')
-		    p++;
-		}
-	    }
-	  break;
-#ifdef SUPPORT_DISASSEMBLY
-	case 'i':
-	  do_dump++;
-	  section = strtoul (optarg, & cp, 0);
-	  if (! *cp && section >= 0)
-	    {
-	      request_dump (section, DISASS_DUMP);
-	      break;
-	    }
-	  goto oops;
-#endif
-	case 'v':
-          //	  print_version (program_name); // PG - this is lame & useless so I killed it
-	  break;
-	case 'V':
-	  do_version++;
-	  break;
-	case 'W':
-	  do_wide++;
-	  break;
-	default:
-	oops:
-	  /* xgettext:c-format */
-	  error (_("Invalid option '-%c'\n"), c);
-	  /* Drop through.  */
-	case '?':
-	  usage ();
-	}
-    }
-
-  if (!do_dynamic && !do_syms && !do_reloc && !do_unwind && !do_sections
-      && !do_segments && !do_header && !do_dump && !do_version
-      && !do_histogram && !do_debugging && !do_arch && !do_notes)
-    usage ();
-  else if (argc < 3)
-    {
-      warn (_("Nothing to do.\n"));
-      usage();
-    }
-}
-
 static const char *
 get_elf_class (elf_class)
      unsigned int elf_class;
@@ -2590,7 +2314,8 @@ process_program_headers (file)
 	  else
 	    {
 	      program_interpreter[0] = 0;
-	      fscanf (file, "%63s", program_interpreter);
+	      /* fscanf (file, "%63s", program_interpreter);*/
+	      fgets(program_interpreter, 62, file);
 
 	      if (do_segments)
 		printf (_("\n      [Requesting program interpreter: %s]"),
@@ -2614,7 +2339,7 @@ process_program_headers (file)
       printf (_("\n Section to Segment mapping:\n"));
       printf (_("  Segment Sections...\n"));
 
-      assert (string_table != NULL);
+      tl_assert (string_table != NULL);
 
       for (i = 0; i < elf_header.e_phnum; i++)
 	{
@@ -3825,12 +3550,12 @@ get_dynamic_flags (flags)
 
       switch (flag)
 	{
-	case DF_ORIGIN:		strcpy (p, "ORIGIN"); break;
-	case DF_SYMBOLIC:	strcpy (p, "SYMBOLIC"); break;
-	case DF_TEXTREL:	strcpy (p, "TEXTREL"); break;
-	case DF_BIND_NOW:	strcpy (p, "BIND_NOW"); break;
-	case DF_STATIC_TLS:	strcpy (p, "STATIC_TLS"); break;
-	default:		strcpy (p, "unknown"); break;
+	case DF_ORIGIN:		VG_(strcpy) (p, "ORIGIN"); break;
+	case DF_SYMBOLIC:	VG_(strcpy) (p, "SYMBOLIC"); break;
+	case DF_TEXTREL:	VG_(strcpy) (p, "TEXTREL"); break;
+	case DF_BIND_NOW:	VG_(strcpy) (p, "BIND_NOW"); break;
+	case DF_STATIC_TLS:	VG_(strcpy) (p, "STATIC_TLS"); break;
+	default:		VG_(strcpy) (p, "unknown"); break;
 	}
 
       p = VG_(strchr) (p, '\0');
@@ -3953,7 +3678,7 @@ process_dynamic_segment (file)
 	    {
 	      /* Note: these braces are necessary to avoid a syntax
 		 error from the SunOS4 C compiler.  */
-	      assert (sizeof (Elf_External_Syminfo) == entry->d_un.d_val);
+	      tl_assert (sizeof (Elf_External_Syminfo) == entry->d_un.d_val);
 	    }
 	  else if (entry->d_tag == DT_SYMINSZ)
 	    syminsz = entry->d_un.d_val;
@@ -4341,17 +4066,6 @@ process_dynamic_segment (file)
 	  break;
 
 	case DT_GNU_PRELINKED:
-	  if (do_dynamic)
-	    {
-	      struct tm *tmp;
-	      time_t the_time = entry->d_un.d_val;
-
-	      tmp = gmtime (&the_time);
-	      printf ("%04u-%02u-%02uT%02u:%02u:%02u\n",
-		      tmp->tm_year + 1900, tmp->tm_mon + 1, tmp->tm_mday,
-		      tmp->tm_hour, tmp->tm_min, tmp->tm_sec);
-
-	    }
 	  break;
 
 	default:
@@ -8892,7 +8606,7 @@ frame_display_row (fc, need_col_headers, max_regs)
 
   printf ("%08lx ", fc->pc_begin);
   if (fc->cfa_exp)
-    strcpy (tmp, "exp");
+    VG_(strcpy) (tmp, "exp");
   else
     sprintf (tmp, "r%d%+d", fc->cfa_reg, fc->cfa_offset);
   printf ("%-8s ", tmp);
@@ -8904,10 +8618,10 @@ frame_display_row (fc, need_col_headers, max_regs)
 	  switch (fc->col_type[r])
 	    {
 	    case DW_CFA_undefined:
-	      strcpy (tmp, "u");
+	      VG_(strcpy) (tmp, "u");
 	      break;
 	    case DW_CFA_same_value:
-	      strcpy (tmp, "s");
+	      VG_(strcpy) (tmp, "s");
 	      break;
 	    case DW_CFA_offset:
 	      sprintf (tmp, "c%+d", fc->col_offset[r]);
@@ -8916,10 +8630,10 @@ frame_display_row (fc, need_col_headers, max_regs)
 	      sprintf (tmp, "r%d", fc->col_offset[r]);
 	      break;
 	    case DW_CFA_expression:
-	      strcpy (tmp, "exp");
+	      VG_(strcpy) (tmp, "exp");
 	      break;
 	    default:
-	      strcpy (tmp, "n/a");
+	      VG_(strcpy) (tmp, "n/a");
 	      break;
 	    }
 	  printf ("%-5s", tmp);
@@ -10007,7 +9721,7 @@ process_corefile_note_segment (file, offset, length)
 	      break;
 	    }
 
-	  strncpy (temp, inote.namedata, inote.namesz);
+	  VG_(strncpy) (temp, inote.namedata, inote.namesz);
 	  temp[inote.namesz] = 0;
 
 	  /* warn (_("'%s' NOTE name not properly null terminated\n"), temp);  */
@@ -10212,14 +9926,7 @@ process_file (file_name)
      char *file_name;
 {
   FILE *file;
-  struct stat statbuf;
   unsigned int i;
-
-  if (stat (file_name, & statbuf) < 0)
-    {
-      error (_("Cannot stat input file %s.\n"), file_name);
-      return 1;
-    }
 
   file = fopen (file_name, "rb");
   if (file == NULL)
@@ -10410,11 +10117,14 @@ hack_argv[3] = filename
 #endif
 
   // PG - now hijack parse_args and pass in my hacked argv
+  // SMcC - instead, do this by hand to avoid having to link in getopt
   //  parse_args (argc, argv);
   //  printf("before parse_args(%d, 0x%x)\n", argc, hack_argv);
-  parse_args (argc, hack_argv);
+  //  parse_args (argc, hack_argv);
   //  printf("after parse_args\n");
   //  printf("optind = %d\n", optind);
+  do_syms++; /* -s */
+  do_dump++; do_debug_info++; /* --debug-dump=info */
 
   //  if (optind < (argc - 1))
   show_name = 1;
@@ -10450,9 +10160,9 @@ hack_argv[3] = filename
   //	}
   //    }
 
-  err = process_file (hack_argv[argc - 1]); // PG - replace argv with hack_argv
+  err = process_file (filename); // PG/SMcC - rather than argv[argc - 1]
 
-  //  printf("AFTER process_file(0x%x)\n", hack_argv[argc-1]);
+  //  printf("AFTER process_file(0x%x)\n", filename);
 
   if (dump_sects != NULL) {
     VG_(free) (dump_sects);

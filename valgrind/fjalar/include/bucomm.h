@@ -21,55 +21,17 @@
 #ifndef _BUCOMM_H
 #define _BUCOMM_H
 
+#include <stdarg.h>
+
 #include "ansidecl.h"
-#include <stdio.h>
-#include <sys/types.h>
 
 #include "config.h"
 #include "bin-bugs.h"
-
-#ifdef ANSI_PROTOTYPES
-#include <stdarg.h>
-#else
-#include <varargs.h>
-#endif
 
 #ifdef USE_BINARY_FOPEN
 #include "fopen-bin.h"
 #else
 #include "fopen-same.h"
-#endif
-
-#include <errno.h>
-#ifndef errno
-extern int errno;
-#endif
-
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
-#ifdef HAVE_STRING_H
-#include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#else
-extern char *strchr ();
-extern char *strrchr ();
-#endif
-#endif
-
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#else
-#ifdef HAVE_SYS_FILE_H
-#include <sys/file.h>
-#endif
 #endif
 
 #ifdef NEED_DECLARATION_STRSTR
@@ -125,19 +87,6 @@ void *alloca ();
 # endif /* HAVE_ALLOCA_H */
 #endif
 
-#ifdef HAVE_LOCALE_H
-# include <locale.h>
-#endif
-
-#ifdef ENABLE_NLS
-# include <libintl.h>
-# define _(String) gettext (String)
-# ifdef gettext_noop
-#  define N_(String) gettext_noop (String)
-# else
-#  define N_(String) (String)
-# endif
-#else
 # define gettext(Msgid) (Msgid)
 # define dgettext(Domainname, Msgid) (Msgid)
 # define dcgettext(Domainname, Msgid, Category) (Msgid)
@@ -145,7 +94,6 @@ void *alloca ();
 # define bindtextdomain(Domainname, Dirname) while (0) /* nothing */
 # define _(String) (String)
 # define N_(String) (String)
-#endif
 
 /* bucomm.c */
 void bfd_nonfatal

@@ -24,11 +24,7 @@
 
 #include "pub_tool_libcbase.h" // For VG_STREQ
 
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/errno.h>
-#include <limits.h>
+#include "../my_libc.h"
 
 const char* ENTER_PPT = ":::ENTER";
 const char* EXIT_PPT = ":::EXIT0";

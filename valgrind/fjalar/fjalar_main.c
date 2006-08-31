@@ -18,11 +18,7 @@
    launching-point for Fjalar.
 */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <search.h>
+#include "my_libc.h"
 
 #include "pub_tool_basics.h"
 #include "pub_tool_options.h"
@@ -261,16 +257,19 @@ void enter_function(FunctionEntry* f)
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
   if (formalParamStackByteSize > 0) {
-    // For some reason, VG_(calloc) doesn't work here:
-    // This is the error msg. that it gives:
-    //   the `impossible' happened:
-    //   add_MAC_Chunk: shadow area is accessible
-    newEntry->virtualStack = calloc(formalParamStackByteSize, sizeof(char));
+    newEntry->virtualStack = VG_(calloc)(formalParamStackByteSize,
+					 sizeof(char));
     newEntry->virtualStackByteSize = formalParamStackByteSize;
 
     VG_(memcpy)(newEntry->virtualStack, (void*)EBP, (formalParamStackByteSize * sizeof(char)));
-    // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to virtualStack!!!
-    // (As a consequence, this copies over the tags as well - look in mc_main.c)
+
+    // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to
+    // virtualStack!!!  (As a consequence, this copies over the tags
+    // as well - look in mc_main.c). Note that the way do this means
+    // that the copy is now guest-accessible, if they guessed the
+    // VG_(calloc)ed address, which is a bit weird. It would be more
+    // elegant to copy the metadata to an inaccessible place, but that
+    // would be more work.
     mc_copy_address_range_state(EBP, (Addr)(newEntry->virtualStack), formalParamStackByteSize);
   }
   else {
@@ -355,11 +354,13 @@ void exit_function(FunctionEntry* f)
   // Destroy the memory allocated by virtualStack
   // AFTER the tool has handled the exit
   if (top->virtualStack) {
-    // For some reason, VG_(calloc) still doesn't work!!!
-    // This is the error msg. that it gives:
-    //   the `impossible' happened:
-    //   add_MAC_Chunk: shadow area is accessible
-    free(top->virtualStack);
+    /* We were previously using the V bits associated with the area to
+       store guest V bits, but Memcheck doesn't normally expect
+       VG_(malloc)'ed memory to be client accessible, so we have to
+       make it inaccessible again before allowing Valgrind's malloc to
+       use it, lest assertions fail later. */
+    mc_make_noaccess((Addr)top->virtualStack, top->virtualStackByteSize);
+    VG_(free)(top->virtualStack);
   }
 
   // Pop at the VERY end after the tool is done handling the exit.

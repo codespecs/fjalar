@@ -33,11 +33,13 @@
 #include "pub_tool_threadstate.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
-#include <limits.h>
+
+#include "../my_libc.h"
 
 // Special reserved tags
-const UInt WEAK_FRESH_TAG   =  UINT_MAX;
-const UInt LARGEST_REAL_TAG = (UINT_MAX - 1);
+#define MY_UINT_MAX 0xffffffffU
+const UInt WEAK_FRESH_TAG   =  MY_UINT_MAX;
+const UInt LARGEST_REAL_TAG = (MY_UINT_MAX - 1);
 
 /* WEAK_FRESH_TAG unifies and replaces the previous special
    LITERAL_TAG and ESP_TAG values. When you merge it with a real tag,

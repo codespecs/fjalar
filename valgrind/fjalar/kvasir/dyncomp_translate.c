@@ -32,7 +32,8 @@
 #include "../fjalar_include.h"
 #include "kvasir_main.h"
 #include "libvex_guest_offsets.h"
-#include <limits.h>
+
+#include "my_libc.h"
 
 extern char dyncomp_profile_tags;
 
