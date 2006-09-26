@@ -107,6 +107,12 @@ int fgetc(FILE *stream);
 char *fgets(char *s, int size, FILE *stream);
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 
+#undef putc
+#undef putchar
+int putc(int c, FILE *stream);
+int putchar(int c);
+/* putc and putchar are traditionally macros, but defining them as
+   functions too seems maximally compatible. */
 #define putc(c,stream) fputc(c,stream)
 #define putchar(c) fputc(c,stdout)
 int fputc(int c, FILE *stream);

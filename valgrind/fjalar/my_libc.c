@@ -367,6 +367,15 @@ kaputt:
   return 0;
 }
 
+#undef putc
+int putc(int c, FILE *stream) {
+  return fputc(c, stream);
+}
+
+#undef putchar
+int putchar(int c) {
+  return fputc(c,stdout);
+}
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
  {
