@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -62,7 +62,7 @@
    MByte/sec.  Once the size increases enough to fall out of the cache
    into memory, the rate falls by about a factor of 3. 
 */
-#define N_TEMPORARY_BYTES 2400000
+#define N_TEMPORARY_BYTES 4000000
 
 static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(8)));
 static HChar* temporary_first = &temporary[0];

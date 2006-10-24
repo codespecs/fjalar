@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -64,7 +64,9 @@ DisResult disInstr_AMD64 ( IRBB*        irbb,
                            UChar*       guest_code,
                            Long         delta,
                            Addr64       guest_IP,
+                           VexArch      guest_arch,
                            VexArchInfo* archinfo,
+                           VexMiscInfo* miscinfo,
                            Bool         host_bigendian );
 
 /* Used by the optimiser to specialise calls to helpers. */
@@ -179,12 +181,12 @@ extern ULong amd64g_dirtyhelper_RDTSC ( void );
 #define AMD64G_CC_SHIFT_C   0
 #define AMD64G_CC_SHIFT_P   2
 
-#define AMD64G_CC_MASK_O    (1 << AMD64G_CC_SHIFT_O)
-#define AMD64G_CC_MASK_S    (1 << AMD64G_CC_SHIFT_S)
-#define AMD64G_CC_MASK_Z    (1 << AMD64G_CC_SHIFT_Z)
-#define AMD64G_CC_MASK_A    (1 << AMD64G_CC_SHIFT_A)
-#define AMD64G_CC_MASK_C    (1 << AMD64G_CC_SHIFT_C)
-#define AMD64G_CC_MASK_P    (1 << AMD64G_CC_SHIFT_P)
+#define AMD64G_CC_MASK_O    (1ULL << AMD64G_CC_SHIFT_O)
+#define AMD64G_CC_MASK_S    (1ULL << AMD64G_CC_SHIFT_S)
+#define AMD64G_CC_MASK_Z    (1ULL << AMD64G_CC_SHIFT_Z)
+#define AMD64G_CC_MASK_A    (1ULL << AMD64G_CC_SHIFT_A)
+#define AMD64G_CC_MASK_C    (1ULL << AMD64G_CC_SHIFT_C)
+#define AMD64G_CC_MASK_P    (1ULL << AMD64G_CC_SHIFT_P)
 
 /* FPU flag masks */
 #define AMD64G_FC_SHIFT_C3   14
@@ -192,10 +194,10 @@ extern ULong amd64g_dirtyhelper_RDTSC ( void );
 #define AMD64G_FC_SHIFT_C1   9
 #define AMD64G_FC_SHIFT_C0   8
 
-#define AMD64G_FC_MASK_C3    (1 << AMD64G_FC_SHIFT_C3)
-#define AMD64G_FC_MASK_C2    (1 << AMD64G_FC_SHIFT_C2)
-#define AMD64G_FC_MASK_C1    (1 << AMD64G_FC_SHIFT_C1)
-#define AMD64G_FC_MASK_C0    (1 << AMD64G_FC_SHIFT_C0)
+#define AMD64G_FC_MASK_C3    (1ULL << AMD64G_FC_SHIFT_C3)
+#define AMD64G_FC_MASK_C2    (1ULL << AMD64G_FC_SHIFT_C2)
+#define AMD64G_FC_MASK_C1    (1ULL << AMD64G_FC_SHIFT_C1)
+#define AMD64G_FC_MASK_C0    (1ULL << AMD64G_FC_SHIFT_C0)
 
 
 /* %RFLAGS thunk descriptors.  A four-word thunk is used to record

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -143,6 +143,9 @@ Int main ( void )
   printf("#define OFFSET_ppc32_GPR0      %3d\n",
          offsetof(VexGuestPPC32State,guest_GPR0));
 
+  printf("#define OFFSET_ppc32_GPR2      %3d\n",
+         offsetof(VexGuestPPC32State,guest_GPR2));
+
   printf("#define OFFSET_ppc32_GPR3      %3d\n",
          offsetof(VexGuestPPC32State,guest_GPR3));
 
@@ -161,6 +164,12 @@ Int main ( void )
   printf("#define OFFSET_ppc32_GPR8      %3d\n",
          offsetof(VexGuestPPC32State,guest_GPR8));
 
+  printf("#define OFFSET_ppc32_GPR9      %3d\n",
+         offsetof(VexGuestPPC32State,guest_GPR9));
+
+  printf("#define OFFSET_ppc32_GPR10     %3d\n",
+         offsetof(VexGuestPPC32State,guest_GPR10));
+
   printf("#define OFFSET_ppc32_CIA       %3d\n",
          offsetof(VexGuestPPC32State,guest_CIA));
 
@@ -172,6 +181,9 @@ Int main ( void )
   // ppc64
   printf("#define OFFSET_ppc64_GPR0     %4d\n",
          offsetof(VexGuestPPC64State,guest_GPR0));
+
+  printf("#define OFFSET_ppc64_GPR2     %4d\n",
+         offsetof(VexGuestPPC64State,guest_GPR2));
 
   printf("#define OFFSET_ppc64_GPR3     %4d\n",
          offsetof(VexGuestPPC64State,guest_GPR3));
@@ -190,6 +202,12 @@ Int main ( void )
 
   printf("#define OFFSET_ppc64_GPR8     %4d\n",
          offsetof(VexGuestPPC64State,guest_GPR8));
+
+  printf("#define OFFSET_ppc64_GPR9     %4d\n",
+         offsetof(VexGuestPPC64State,guest_GPR9));
+
+  printf("#define OFFSET_ppc64_GPR10    %4d\n",
+         offsetof(VexGuestPPC64State,guest_GPR10));
 
   printf("#define OFFSET_ppc64_CIA      %4d\n",
          offsetof(VexGuestPPC64State,guest_CIA));

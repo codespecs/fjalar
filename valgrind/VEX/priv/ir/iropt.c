@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -1403,6 +1403,31 @@ static IRExpr* fold_Expr ( IRExpr* e )
              && e->Iex.Binop.arg2->tag == Iex_Const
              && e->Iex.Binop.arg2->Iex.Const.con->Ico.U32 == 0) {
             e2 = e->Iex.Binop.arg1;
+         } else
+
+         /* Add32(t,t) ==> t << 1.  Memcheck doesn't understand that
+            x+x produces a defined least significant bit, and it seems
+            simplest just to get rid of the problem by rewriting it
+            out, since the opportunity to do so exists. */
+         if (e->Iex.Binop.op == Iop_Add32
+             && e->Iex.Binop.arg1->tag == Iex_Tmp
+             && e->Iex.Binop.arg2->tag == Iex_Tmp
+             && e->Iex.Binop.arg1->Iex.Tmp.tmp 
+                == e->Iex.Binop.arg2->Iex.Tmp.tmp) {
+            e2 = IRExpr_Binop(Iop_Shl32,
+                              e->Iex.Binop.arg1,
+                              IRExpr_Const(IRConst_U8(1)));
+         } else
+
+         /* Add64(t,t) ==> t << 1;  rationale as for Add32(t,t) above. */
+         if (e->Iex.Binop.op == Iop_Add64
+             && e->Iex.Binop.arg1->tag == Iex_Tmp
+             && e->Iex.Binop.arg2->tag == Iex_Tmp
+             && e->Iex.Binop.arg1->Iex.Tmp.tmp 
+                == e->Iex.Binop.arg2->Iex.Tmp.tmp) {
+            e2 = IRExpr_Binop(Iop_Shl64,
+                              e->Iex.Binop.arg1,
+                              IRExpr_Const(IRConst_U8(1)));
          } else
 
          /* Or64/Add64(x,0) ==> x */

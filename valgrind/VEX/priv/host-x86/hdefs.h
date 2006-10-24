@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -665,7 +665,9 @@ extern Int          emit_X86Instr        ( UChar* buf, Int nbuf, X86Instr*,
 extern X86Instr*    genSpill_X86         ( HReg rreg, Int offset, Bool );
 extern X86Instr*    genReload_X86        ( HReg rreg, Int offset, Bool );
 extern void         getAllocableRegs_X86 ( Int*, HReg** );
-extern HInstrArray* iselBB_X86           ( IRBB*, VexArchInfo* );
+extern HInstrArray* iselBB_X86           ( IRBB*, VexArch,
+                                                  VexArchInfo*,
+                                                  VexMiscInfo* );
 
 #endif /* ndef __LIBVEX_HOST_X86_HDEFS_H */
 

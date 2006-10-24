@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -54,6 +54,8 @@
 /*---------------------------------------------------------------*/
 /*--- Vex's representation of the PPC32 CPU state             ---*/
 /*---------------------------------------------------------------*/
+
+#define VEX_GUEST_PPC32_REDIR_STACK_SIZE (16/*entries*/ * 2/*words per entry*/)
 
 typedef
    struct {
@@ -214,10 +216,25 @@ typedef
          Note, this is only set for wrap-style redirects, not for
          replace-style ones. */
       /* 956 */ UInt guest_NRADDR;
+      /* 960 */ UInt guest_NRADDR_GPR2; /* needed by aix */
+
+     /* A grows-upwards stack for hidden saves/restores of LR and R2
+        needed for function interception and wrapping on ppc32-aix5.
+        A horrible hack.  REDIR_SP points to the highest live entry,
+        and so starts at -1. */
+      /* 964 */ UInt guest_REDIR_SP;
+      /* 968 */ UInt guest_REDIR_STACK[VEX_GUEST_PPC32_REDIR_STACK_SIZE];
+
+      /* Needed for AIX: CIA at the last SC insn.  Used when backing up
+         to restart a syscall that has been interrupted by a signal. */
+      /* ??? */ UInt guest_CIA_AT_SC; 
+
+      /* SPRG3, which AIUI is readonly in user space.  Needed for
+         threading on AIX. */
+      /* ??? */ UInt guest_SPRG3_RO;
 
       /* Padding to make it have an 8-aligned size */
-      /* 956 */ UInt  padding;
-      /* 960 */
+      /* UInt  padding; */
    }
    VexGuestPPC32State;
 

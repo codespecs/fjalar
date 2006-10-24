@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -135,6 +135,7 @@ typedef  unsigned long HWord;
 
 #undef VEX_HOST_WORDSIZE
 
+/* The following 4 work OK for Linux. */
 #if defined(__x86_64__)
 #   define VEX_HOST_WORDSIZE 8
 #elif defined(__i386__)
@@ -143,6 +144,12 @@ typedef  unsigned long HWord;
 #   define VEX_HOST_WORDSIZE 8
 #elif defined(__powerpc__) && !defined(__powerpc64__)
 #   define VEX_HOST_WORDSIZE 4
+
+#elif defined(_AIX) && !defined(__64BIT__)
+#   define VEX_HOST_WORDSIZE 4
+#elif defined(_AIX) && defined(__64BIT__)
+#   define VEX_HOST_WORDSIZE 8
+
 #else
 #   error "Vex: Fatal: Can't establish the host architecture"
 #endif
