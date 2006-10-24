@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@
 #define __PUB_TOOL_TOOLIFACE_H
 
 #include "pub_tool_errormgr.h"   // for Error, Supp
-#include "libvex.h"              // for VexGuestLayout
+#include "libvex.h"              // for all Vex stuff
 
 /* ------------------------------------------------------------------ */
 /* The interface version */
@@ -74,7 +74,7 @@ extern const ToolInfo VG_(tool_info);
 /* Basic tool functions */
 
 /* The tool_instrument function is passed as a callback to
-   LibVEX_Translate.  VgInstrumentClosure carries additional info
+   LibVEX_Translate.  VgCallbackClosure carries additional info
    which the instrumenter might like to know, but which is opaque to
    Vex.
 */
@@ -93,14 +93,151 @@ extern void VG_(basic_tool_funcs)(
 
    // Instrument a basic block.  Must be a true function, ie. the same
    // input always results in the same output, because basic blocks
-   // can be retranslated.  Unless you're doing something really
-   // strange...  Note that orig_addr_noredir is not necessarily the
-   // same as the address of the first instruction in the IR, due to
-   // function redirection.
-   IRBB*(*instrument)(VgCallbackClosure*, 
+   // can be retranslated, unless you're doing something really
+   // strange.  Anyway, the arguments.  Mostly they are straightforward
+   // except for the distinction between redirected and non-redirected
+   // guest code addresses, which is important to understand.
+   //
+   // VgCallBackClosure* closure contains extra arguments passed
+   // from Valgrind to the instrumenter, which Vex doesn't know about.
+   // You are free to look inside this structure.
+   //
+   // * closure->tid is the ThreadId of the thread requesting the
+   //   translation.  Not sure why this is here; perhaps callgrind
+   //   uses it.
+   //
+   // * closure->nraddr is the non-redirected guest address of the
+   //   start of the translation.  In other words, the translation is
+   //   being constructed because the guest program jumped to 
+   //   closure->nraddr but no translation of it was found.
+   //
+   // * closure->readdr is the redirected guest address, from which
+   //   the translation was really made.
+   //
+   //   To clarify this, consider what happens when, in Memcheck, the
+   //   first call to malloc() happens.  The guest program will be
+   //   trying to jump to malloc() in libc; hence ->nraddr will contain
+   //   that address.  However, Memcheck intercepts and replaces
+   //   malloc, hence ->readdr will be the address of Memcheck's
+   //   malloc replacement in
+   //   coregrind/m_replacemalloc/vg_replacemalloc.c.  It follows
+   //   that the first IMark in the translation will be labelled as
+   //   from ->readdr rather than ->nraddr.
+   //
+   //   Since most functions are not redirected, the majority of the
+   //   time ->nraddr will be the same as ->readdr.  However, you
+   //   cannot assume this: if your tool has metadata associated
+   //   with code addresses it will get into deep trouble if it does
+   //   make this assumption.
+   //
+   // IRBB* bb_in is the incoming bb to be instrumented, in flat IR
+   // form.
+   //
+   // VexGuestLayout* layout contains limited info on the layout of
+   // the guest state: where the stack pointer and program counter
+   // are, and which fields should be regarded as 'always defined'.
+   // Memcheck uses this.
+   //
+   // VexGuestExtents* vge points to a structure which states the
+   // precise byte ranges of original code from which this translation
+   // was made (there may be up to three different ranges involved).
+   // Note again that these are the real addresses from which the code
+   // came.  And so it should be the case that closure->readdr is the
+   // same as vge->base[0]; indeed Cachegrind contains this assertion.
+   //
+   // Tools which associate shadow data with code addresses
+   // (cachegrind, callgrind) need to be particularly clear about
+   // whether they are making the association with redirected or
+   // non-redirected code addresses.  Both approaches are viable
+   // but you do need to understand what's going on.  See comments
+   // below on discard_basic_block_info().
+   //
+   // IRType gWordTy and IRType hWordTy contain the types of native
+   // words on the guest (simulated) and host (real) CPUs.  They will
+   // by either Ity_I32 or Ity_I64.  So far we have never built a
+   // cross-architecture Valgrind so they should always be the same.
+   //
+   /* --- Further comments about the IR that your --- */
+   /* --- instrumentation function will receive. --- */
+   /*
+      In the incoming IRBB, the IR for each instruction begins with an
+      IRStmt_IMark, which states the address and length of the
+      instruction from which this IR came.  This makes it easy for
+      profiling-style tools to know precisely which guest code
+      addresses are being executed.
+
+      However, before the first IRStmt_IMark, there may be other IR
+      statements -- a preamble.  In most cases this preamble is empty,
+      but when it isn't, what it contains is some supporting IR that
+      the JIT uses to ensure control flow works correctly.  This
+      preamble does not modify any architecturally defined guest state
+      (registers or memory) and so does not contain anything that will
+      be of interest to your tool.
+
+      You should therefore 
+
+      (1) copy any IR preceding the first IMark verbatim to the start
+          of the output IRBB.
+
+      (2) not try to instrument it or modify it in any way.
+
+      For the record, stuff that may be in the preamble at
+      present is:
+
+      - A self-modifying-code check has been requested for this block.
+        The preamble will contain instructions to checksum the block,
+        compare against the expected value, and exit the dispatcher
+        requesting a discard (hence forcing a retranslation) if they
+        don't match.
+
+      - This block is known to be the entry point of a wrapper of some
+        function F.  In this case the preamble contains code to write
+        the address of the original F (the fn being wrapped) into a
+        'hidden' guest state register _NRADDR.  The wrapper can later
+        read this register using a client request and make a
+        non-redirected call to it using another client-request-like
+        magic macro.
+
+      - For platforms that use the AIX ABI (including ppc64-linux), it
+        is necessary to have a preamble even for replacement functions
+        (not just for wrappers), because it is necessary to switch the
+        R2 register (constant-pool pointer) to a different value when
+        swizzling the program counter.
+
+        Hence the preamble pushes both R2 and LR (the return address)
+        on a small 16-entry stack in the guest state and sets R2 to an
+        appropriate value for the wrapper/replacement fn.  LR is then
+        set so that the wrapper/replacement fn returns to a magic IR
+        stub which restores R2 and LR and returns.
+
+        It's all hugely ugly and fragile.  And it places a stringent
+        requirement on m_debuginfo to find out the correct R2 (toc
+        pointer) value for the wrapper/replacement function.  So much
+        so that m_redir will refuse to honour a redirect-to-me request
+        if it cannot find (by asking m_debuginfo) a plausible R2 value
+        for 'me'.
+
+        Because this mechanism maintains a shadow stack of (R2,LR)
+        pairs in the guest state, it will fail if the
+        wrapper/redirection function, or anything it calls, longjumps
+        out past the wrapper, because then the magic return stub will
+        not be run and so the shadow stack will not be popped.  So it
+        will quickly fill up.  Fortunately none of this applies to
+        {x86,amd64,ppc32}-linux; on those platforms, wrappers can
+        longjump and recurse arbitrarily and everything should work
+        fine.
+
+      Note that copying the preamble verbatim may cause complications
+      for your instrumenter if you shadow IR temporaries.  See big
+      comment in MC_(instrument) in memcheck/mc_translate.c for
+      details.
+   */
+   IRBB*(*instrument)(VgCallbackClosure* closure, 
                       IRBB* bb_in, 
-                      VexGuestLayout*, VexGuestExtents*, 
-                      IRType gWordTy, IRType hWordTy),
+                      VexGuestLayout*    layout, 
+                      VexGuestExtents*   vge, 
+                      IRType             gWordTy, 
+                      IRType             hWordTy),
 
    // Finish up, print out any results, etc.  `exitcode' is program's exit
    // code.  The shadow can be found with VG_(get_exit_status_shadow)().
@@ -112,7 +249,7 @@ extern void VG_(basic_tool_funcs)(
 
 /* Default value for avg_translations_sizeB (in bytes), indicating typical
    code expansion of about 6:1. */
-#define VG_DEFAULT_TRANS_SIZEB   100
+#define VG_DEFAULT_TRANS_SIZEB   172
 
 /* Information used in the startup message.  `name' also determines the
    string used for identifying suppressions in a suppression file as
@@ -137,9 +274,6 @@ extern void VG_(details_bug_reports_to)   ( Char* bug_reports_to );
 
 /* ------------------------------------------------------------------ */
 /* Needs */
-
-/* Booleans that decide core behaviour, but don't require extra
-   operations to be defined if `True' */
 
 /* Should __libc_freeres() be run?  Bugs in it can crash the tool. */
 extern void VG_(needs_libc_freeres) ( void );
@@ -218,9 +352,10 @@ extern void VG_(needs_basic_block_discards) (
    // - If info is being stored at a per-translation level, use orig_addr
    //   to identify which translation is being discarded.  Each translation
    //   will be discarded exactly once.
-   //   This orig_addr will match the orig_addr which was passed to
-   //   to instrument() when this translation was made.  Note that orig_addr
-   //   won't necessarily be the same as the first address in "extents".
+   //   This orig_addr will match the closure->nraddr which was passed to
+   //   to instrument() (see extensive comments above) when this 
+   //   translation was made.  Note that orig_addr won't necessarily be 
+   //   the same as the first address in "extents".
    // - If info is being stored at a per-instruction level, you can get
    //   the address range(s) being discarded by stepping through "extents".
    //   Note that any single instruction may belong to more than one
@@ -299,6 +434,11 @@ extern void VG_(needs_malloc_replacement)(
    SizeT client_malloc_redzone_szB
 );
 
+/* Can the tool do XML output?  This is a slight misnomer, because the tool
+ * is not requesting the core to do anything, rather saying "I can handle
+ * it". */
+extern void VG_(needs_xml_output)( void );
+
 /* ------------------------------------------------------------------ */
 /* Core events to track */
 
@@ -349,16 +489,24 @@ void VG_(track_die_mem_munmap)      (void(*f)(Addr a, SizeT len));
  */
 void VG_(track_new_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_12)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_16)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_32)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_16) (VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_32) (VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_112)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_128)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_144)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_160)(VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack)                 (void(*f)(Addr a, SizeT len));
 
 void VG_(track_die_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_12)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_16)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_32)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_16) (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_32) (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_112)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_128)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_144)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_160)(VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack)                 (void(*f)(Addr a, SizeT len));
 
 /* Used for redzone at end of thread stacks */

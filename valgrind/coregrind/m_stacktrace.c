@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_aspacemgr.h"     // For VG_(is_addressable)()
@@ -38,6 +39,7 @@
 #include "pub_core_machine.h"
 #include "pub_core_options.h"
 #include "pub_core_stacktrace.h"
+#include "pub_core_clientstate.h"   // VG_(client__dl_sysinfo_int80)
 #include "pub_core_trampoline.h"
 
 /*------------------------------------------------------------*/
@@ -58,9 +60,17 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
                             Addr ip, Addr sp, Addr fp, Addr lr,
                             Addr fp_min, Addr fp_max_orig )
 {
-#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
-   Bool  lr_is_first_RA = False; /* ppc only */
-#endif
+#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
+                               || defined(VGP_ppc32_aix5) \
+                               || defined(VGP_ppc64_aix5)
+   Bool  lr_is_first_RA = False;
+#  endif
+#  if defined(VGP_ppc64_linux) || defined(VGP_ppc64_aix5) \
+                               || defined(VGP_ppc32_aix5)
+   Word redir_stack_size = 0;
+   Word redirs_used      = 0;
+#  endif
+
    Bool  debug = False;
    Int   i;
    Addr  fp_max;
@@ -152,9 +162,9 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
          continue;
       }
 
-      /* That didn't work out, so see if there is any CFI info to hand
+      /* That didn't work out, so see if there is any CF info to hand
          which can be used. */
-      if ( VG_(use_CFI_info)( &ip, &sp, &fp, fp_min, fp_max ) ) {
+      if ( VG_(use_CF_info)( &ip, &sp, &fp, fp_min, fp_max ) ) {
          ips[i++] = ip;
          if (debug)
             VG_(printf)("     ipsC[%d]=%08p\n", i-1, ips[i-1]);
@@ -200,7 +210,7 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
 
       /* First off, see if there is any CFI info to hand which can
          be used. */
-      if ( VG_(use_CFI_info)( &ip, &sp, &fp, fp_min, fp_max ) ) {
+      if ( VG_(use_CF_info)( &ip, &sp, &fp, fp_min, fp_max ) ) {
          ips[i++] = ip;
          if (debug)
             VG_(printf)("     ipsC[%d]=%08p\n", i-1, ips[i-1]);
@@ -208,7 +218,7 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
          continue;
       }
 
-      /* If VG_(use_CFI_info) fails, it won't modify ip/sp/fp, so
+      /* If VG_(use_CF_info) fails, it won't modify ip/sp/fp, so
          we can safely try the old-fashioned method. */
       /* This bit is supposed to deal with frames resulting from
          functions which begin "pushq %rbp ; movq %rsp, %rbp".
@@ -233,26 +243,45 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
       break;
    }
 
-#  elif defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#  elif defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
+        || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
 
    /*--------------------- ppc32/64 ---------------------*/
 
    /* fp is %r1.  ip is %cia.  Note, ppc uses r1 as both the stack and
       frame pointers. */
 
-#  if defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc64_linux) || defined(VGP_ppc64_aix5)
+   redir_stack_size = VEX_GUEST_PPC64_REDIR_STACK_SIZE;
+   redirs_used      = 0;
+#  elif defined(VGP_ppc32_aix5)
+   redir_stack_size = VEX_GUEST_PPC32_REDIR_STACK_SIZE;
+   redirs_used      = 0;
+#  endif
+
+#  if defined(VG_PLAT_USES_PPCTOC)
    /* Deal with bogus LR values caused by function
-      interception/wrapping; see comment on similar code a few lines
-      further down. */
-   if (lr == (Addr)&VG_(ppc64_linux_magic_redirect_return_stub)
+      interception/wrapping on ppc-TOC platforms; see comment on
+      similar code a few lines further down. */
+   if (ULong_to_Ptr(lr) == (void*)&VG_(ppctoc_magic_redirect_return_stub)
        && VG_(is_valid_tid)(tid_if_known)) {
-      Long hsp = VG_(threads)[tid_if_known].arch.vex.guest_REDIR_SP;
-      if (hsp >= 1 && hsp < VEX_GUEST_PPC64_REDIR_STACK_SIZE)
+      Word hsp = VG_(threads)[tid_if_known].arch.vex.guest_REDIR_SP;
+      redirs_used++;
+      if (hsp >= 1 && hsp < redir_stack_size)
          lr = VG_(threads)[tid_if_known]
                  .arch.vex.guest_REDIR_STACK[hsp-1];
    }
 #  endif
 
+   /* We have to determine whether or not LR currently holds this fn
+      (call it F)'s return address.  It might not if F has previously
+      called some other function, hence overwriting LR with a pointer
+      to some part of F.  Hence if LR and IP point to the same
+      function then we conclude LR does not hold this function's
+      return address; instead the LR at entry must have been saved in
+      the stack by F's prologue and so we must get it from there
+      instead.  Note all this guff only applies to the innermost
+      frame. */
    lr_is_first_RA = False;
    {
 #     define M_VG_ERRTXT 1000
@@ -274,10 +303,11 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
 
       while (True) {
 
-        /* on ppc64-linux (ppc64-elf, really), the lr save slot is 2
-           words back from sp, whereas on ppc32-elf(?) it's only one
-           word back. */
-#        if defined(VGP_ppc64_linux)
+        /* On ppc64-linux (ppc64-elf, really), and on AIX, the lr save
+           slot is 2 words back from sp, whereas on ppc32-elf(?) it's
+           only one word back. */
+#        if defined(VGP_ppc64_linux) \
+            || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
          const Int lr_offset = 2;
 #        else
          const Int lr_offset = 1;
@@ -296,19 +326,23 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
             else
                ip = (((UWord*)fp)[lr_offset]);
 
-#           if defined(VGP_ppc64_linux)
+#           if defined(VG_PLAT_USES_PPCTOC)
             /* Nasty hack to do with function replacement/wrapping on
-               ppc64-linux.  If LR points to our magic return stub,
-               then we are in a wrapped or intercepted function, in
-               which LR has been messed with.  The original LR will
-               have been pushed onto the thread's hidden REDIR stack
-               one down from the top (top element is the saved R2) and
-               so we should restore the value from there instead. */
-            if (i == 1 
-                && ip == (Addr)&VG_(ppc64_linux_magic_redirect_return_stub)
+               ppc64-linux/ppc64-aix/ppc32-aix.  If LR points to our
+               magic return stub, then we are in a wrapped or
+               intercepted function, in which LR has been messed with.
+               The original LR will have been pushed onto the thread's
+               hidden REDIR stack one down from the top (top element
+               is the saved R2) and so we should restore the value
+               from there instead.  Since nested redirections can and
+               do happen, we keep track of the number of nested LRs
+               used by the unwinding so far with 'redirs_used'. */
+            if (ip == (Addr)&VG_(ppctoc_magic_redirect_return_stub)
                 && VG_(is_valid_tid)(tid_if_known)) {
-               Long hsp = VG_(threads)[tid_if_known].arch.vex.guest_REDIR_SP;
-               if (hsp >= 1 && hsp < VEX_GUEST_PPC64_REDIR_STACK_SIZE)
+               Word hsp = VG_(threads)[tid_if_known].arch.vex.guest_REDIR_SP;
+               hsp -= 2 * redirs_used;
+               redirs_used ++;
+               if (hsp >= 1 && hsp < redir_stack_size)
                   ip = VG_(threads)[tid_if_known]
                           .arch.vex.guest_REDIR_STACK[hsp-1];
             }
@@ -344,16 +378,26 @@ UInt VG_(get_StackTrace) ( ThreadId tid, StackTrace ips, UInt n_ips )
    Addr stack_highest_word = VG_(threads)[tid].client_stack_highest_word;
 
 #  if defined(VGP_x86_linux)
-   /* Nasty little hack to deal with sysinfo syscalls - if libc is
-      using the sysinfo page for syscalls (the TLS version does), then
-      ip will always appear to be in that page when doing a syscall,
-      not the actual libc function doing the syscall.  This check sees
-      if IP is within the syscall code, and pops the return address
-      off the stack so that ip is placed within the library function
-      calling the syscall.  This makes stack backtraces much more
-      useful.  */
-   if (ip >= (Addr)&VG_(trampoline_stuff_start) 
-       && ip < (Addr)&VG_(trampoline_stuff_end)
+   /* Nasty little hack to deal with syscalls - if libc is using its
+      _dl_sysinfo_int80 function for syscalls (the TLS version does),
+      then ip will always appear to be in that function when doing a
+      syscall, not the actual libc function doing the syscall.  This
+      check sees if IP is within that function, and pops the return
+      address off the stack so that ip is placed within the library
+      function calling the syscall.  This makes stack backtraces much
+      more useful.
+
+      The function is assumed to look like this (from glibc-2.3.6 sources):
+         _dl_sysinfo_int80:
+            int $0x80
+            ret
+      That is 3 (2+1) bytes long.  We could be more thorough and check
+      the 3 bytes of the function are as expected, but I can't be
+      bothered.
+   */
+   if (VG_(client__dl_sysinfo_int80) != 0 /* we know its address */
+       && ip >= VG_(client__dl_sysinfo_int80)
+       && ip < VG_(client__dl_sysinfo_int80)+3
        && VG_(am_is_valid_for_client)(sp, sizeof(Addr), VKI_PROT_READ)) {
       ip = *(Addr *)sp;
       sp += sizeof(Addr);
@@ -401,8 +445,8 @@ void VG_(pp_StackTrace) ( StackTrace ips, UInt n_ips )
 void VG_(get_and_pp_StackTrace) ( ThreadId tid, UInt n_ips )
 {
    Addr ips[n_ips];
-   VG_(get_StackTrace)(tid, ips, n_ips);
-   VG_(pp_StackTrace) (     ips, n_ips);
+   UInt n_ips_obtained = VG_(get_StackTrace)(tid, ips, n_ips);
+   VG_(pp_StackTrace)(ips, n_ips_obtained);
 }
 
 

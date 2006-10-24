@@ -1,14 +1,14 @@
 
 /*--------------------------------------------------------------------*/
 /*--- The core dispatch loop, for jumping to a code address.       ---*/
-/*---                                               dispatch-x86.S ---*/
+/*---                                         dispatch-x86-linux.S ---*/
 /*--------------------------------------------------------------------*/
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2005 Julian Seward 
+  Copyright (C) 2000-2006 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -51,6 +51,7 @@ UWord VG_(run_innerloop) ( void* guest_state, UWord do_profiling );
 */
 .text
 .globl VG_(run_innerloop)
+.type  VG_(run_innerloop), @function
 VG_(run_innerloop):
 	/* 4(%esp) holds guest_state */
 	/* 8(%esp) holds do_profiling */
@@ -251,6 +252,7 @@ run_innerloop_exit_REALLY:
 	popl	%ecx
 	popl	%ebx
 	ret	
+.size VG_(run_innerloop), .-VG_(run_innerloop)
 
 
 /*------------------------------------------------------------*/
@@ -273,6 +275,7 @@ void VG_(run_a_noredir_translation) ( UWord* argblock );
 */
 .align 16
 .global VG_(run_a_noredir_translation)
+.type VG_(run_a_noredir_translation), @function
 VG_(run_a_noredir_translation):
 	/* Save callee-saves regs */
 	pushl %esi
@@ -298,6 +301,7 @@ VG_(run_a_noredir_translation__return_point):
 	popl %edi
 	popl %esi
 	ret
+.size VG_(run_a_noredir_translation), .-VG_(run_a_noredir_translation)
 
 			
 /* Let the linker know we don't need an executable stack */

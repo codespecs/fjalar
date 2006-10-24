@@ -240,7 +240,8 @@ sub mysystem($)
     }
 }
 
-# Run program N times, return the best user time.
+# Run program N times, return the best user time.  Use the POSIX
+# -p flag on /usr/bin/time so as to get something parseable on AIX.
 sub time_prog($$)
 {
     my ($cmd, $n) = @_;
@@ -252,9 +253,9 @@ sub time_prog($$)
             die "\n*** Command returned non-zero ($retval)"
               . "\n*** See perf.{cmd,stdout,stderr} to determine what went wrong.\n";
         my $out = `cat perf.stderr`;
-        ($out =~ /usertime: ([\d\.]+)s/) or 
+        ($out =~ /[Uu]ser([ ]+)([\d\.]+)/) or 
             die "\n*** missing usertime in perf.stderr\n";
-        $tmin = $1 if ($1 < $tmin);
+        $tmin = $2 if ($2 < $tmin);
     }
     # Avoid divisions by zero!
     return (0 == $tmin ? 0.01 : $tmin);
@@ -277,7 +278,7 @@ sub do_one_test($$)
         }
     }
 
-    my $timecmd = "/usr/bin/time -f 'usertime: %Us'";
+    my $timecmd = "/usr/bin/time -p";
 
     # Do the native run(s).
     printf("-- $name --\n") if (@vgdirs > 1);
@@ -294,16 +295,19 @@ sub do_one_test($$)
         printf("%-10s:", $vgdirname);
         
         # Native execution time
-        printf("%4.1fs  ", $tNative);
+        printf("%4.2fs", $tNative);
 
         foreach my $tool (@tools) {
             (defined $toolnames{$tool}) or 
                 die "unknown tool $tool, please add to %toolnames\n";
 
             # Do the tool run(s).  Set both VALGRIND_LIB and VALGRIND_LIB_INNER
-            # in case this Valgrind was configured with --enable-inner.
-            printf("%s:", $toolnames{$tool});
-            my $vgsetup = "VALGRIND_LIB=$vgdir/.in_place "
+            # in case this Valgrind was configured with --enable-inner.  And
+            # also VALGRINDLIB, which was the old name for the variable, to
+            # allow comparison against old Valgrind versions (eg. 2.4.X).
+            printf("  %s:", $toolnames{$tool});
+            my $vgsetup = "VALGRINDLIB=$vgdir/.in_place "
+                        . "VALGRIND_LIB=$vgdir/.in_place "
                         . "VALGRIND_LIB_INNER=$vgdir/.in_place ";
             my $vgcmd   = "$vgdir/coregrind/valgrind "
                         . "--command-line-only=yes --tool=$tool -q "
@@ -319,10 +323,10 @@ sub do_one_test($$)
             # the speedup.
             if (not defined $first_tTool{$tool}) {
                 $first_tTool{$tool} = $tTool;
-                print(" -----)  ");
+                print(" -----)");
             } else {
                 my $speedup = 100 - (100 * $tTool / $first_tTool{$tool});
-                printf("%5.1f%%)  ", $speedup);
+                printf("%5.1f%%)", $speedup);
             }
 
             $num_timings_done++;

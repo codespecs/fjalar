@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2005 Julian Seward 
+  Copyright (C) 2000-2006 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@
 */
 
 #include "pub_core_basics_asm.h"
-#include "vki_unistd.h"
+#include "pub_core_vkiscnums.h"
 #include "libvex_guest_offsets.h"
 		
 	

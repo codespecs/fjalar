@@ -8,9 +8,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Nicholas Nethercote
+   Copyright (C) 2000-2006 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2005 Paul Mackerras
+   Copyright (C) 2004-2006 Paul Mackerras
       paulus@samba.org
 
    This program is free software; you can redistribute it and/or
@@ -32,6 +32,8 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
+#include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -44,7 +46,6 @@
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
 #include "pub_core_transtab.h"      // VG_(discard_translations)
-#include "vki_unistd-ppc64-linux.h" // __NR_rt_sigreturn
 
 
 /* This module creates and removes signal frames for signal deliveries
@@ -133,7 +134,7 @@ struct rt_sigframe {
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
    ThreadId tid = tst->tid;
-   NSegment *stackseg = NULL;
+   NSegment const *stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);

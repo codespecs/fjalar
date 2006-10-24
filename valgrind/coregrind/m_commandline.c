@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcfile.h"
@@ -80,16 +81,16 @@ static HChar* read_dot_valgrindrc ( HChar* dir )
                            ( NULL == dir ? "" : dir ) );
    fd = VG_(open)(filename, 0, VKI_S_IRUSR);
    if ( !fd.isError ) {
-      size = VG_(fsize)(fd.val);
+      size = VG_(fsize)(fd.res);
       if (size > 0) {
          f_clo = VG_(malloc)(size+1);
          vg_assert(f_clo);
-         n = VG_(read)(fd.val, f_clo, size);
+         n = VG_(read)(fd.res, f_clo, size);
          if (n == -1) n = 0;
          vg_assert(n >= 0 && n <= size+1);
          f_clo[n] = '\0';
       }
-      VG_(close)(fd.val);
+      VG_(close)(fd.res);
    }
    return f_clo;
 }

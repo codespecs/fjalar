@@ -1,9 +1,10 @@
 EXTRA_DIST = \
-	3_0_BUGSTATUS.txt 3_1_BUGSTATUS.txt 64-bit-cleanness.txt \
+	3_0_BUGSTATUS.txt 3_1_BUGSTATUS.txt \
 	darwin-notes.txt darwin-syscalls.txt \
 	directory-structure.txt \
 	m_replacemalloc.txt \
 	m_syswrap.txt module-structure.txt notes.txt porting-HOWTO.txt \
+	mpi2entries.txt \
 	porting-to-ARM.txt \
 	register-uses.txt \
 	release-HOWTO.txt roadmap.txt \

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_machine.h"
@@ -64,7 +65,7 @@
 #endif
 
 /* TODO: GIVE THIS A PROPER HOME
-   TODO: MERGE THIS WITH DUPLICATES IN m_main.c and mac_leakcheck.c
+   TODO: MERGE THIS WITH DUPLICATES IN m_main.c and mc_leakcheck.c
    Extract from aspacem a vector of the current segment start
    addresses.  The vector is dynamically allocated and should be freed
    by the caller when done.  REQUIRES m_mallocfree to be running.
@@ -289,7 +290,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
    Char *coreext = "";
    Int seq = 0;
    Int core_fd;
-   NSegment *seg;
+   NSegment const * seg;
    ESZ(Ehdr) ehdr;
    ESZ(Phdr) *phdrs;
    Int num_phdrs;
@@ -322,11 +323,11 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
                        VKI_O_CREAT|VKI_O_WRONLY|VKI_O_EXCL|VKI_O_TRUNC, 
                        VKI_S_IRUSR|VKI_S_IWUSR);
       if (!sres.isError) {
-         core_fd = sres.val;
+         core_fd = sres.res;
 	 break;
       }
 
-      if (sres.isError && sres.val != VKI_EEXIST)
+      if (sres.isError && sres.err != VKI_EEXIST)
 	 return;		/* can't create file */
    }
 

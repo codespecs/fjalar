@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -34,6 +34,7 @@
 //--------------------------------------------------------------------
 // PURPOSE: This module contains all the libc code that relates to
 // files and sockets:  opening, reading, writing, etc.
+// To use, you must first include: pub_core_vki.h
 //--------------------------------------------------------------------
 
 #include "pub_tool_libcfile.h"

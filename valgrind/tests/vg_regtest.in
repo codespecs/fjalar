@@ -31,7 +31,12 @@
 #
 # Options:
 #   --all:      run tests in all subdirs
-#   --valgrind: valgrind to use.  Default is one built from this source tree.
+#   --valgrind: valgrind launcher to use.  Default is ./coregrind/valgrind.
+#               (This option should probably only be used in conjunction with
+#               --valgrind-lib.)
+#   --valgrind-lib: valgrind libraries to use.  Default is $tests_dir/.in_place.
+#               (This option should probably only be used in conjunction with
+#               --valgrind.)
 #
 # The easiest way is to run all tests in valgrind/ with (assuming you installed
 # in $PREFIX):
@@ -50,6 +55,7 @@
 #   - stdout_filter: <filter to run stdout through> (default: none)
 #   - stderr_filter: <filter to run stderr through> (default: ./filter_stderr)
 #   - prereq: <prerequisite command>                (default: none)
+#   - posttest: <post-test check command>           (default: none)
 #   - cleanup: <post-test cleanup cmd to run>       (default: none)
 #
 # Note that filters are necessary for stderr results to filter out things that
@@ -60,10 +66,17 @@
 # stderr (filtered) is kept in <test>.stderr.exp[0-9]*. 
 #
 # The prerequisite command, if present, must return 0 otherwise the test is
-# skipped.
+# skipped.  The post-test command, if present, must return 0 and its stdout
+# must match the expected stdout which is kept in <test>.posttest.exp[0-9]*.
 #
 # If results don't match, the output can be found in <test>.std<strm>.out,
 # and the diff between expected and actual in <test>.std<strm>.diff[0-9]*.
+#
+# Sometimes it is useful to run all the tests at a high sanity check
+# level or with arbitrary other flags.  To make this simple, extra 
+# options, applied to all tests run, are read from $EXTRA_REGTEST_OPTS,
+# and handed to valgrind prior to any other flags specified by the 
+# .vgtest file.
 #
 # Notes on adding regression tests for a new tool are in
 # coregrind/docs/coregrind_tools.html.
@@ -75,7 +88,7 @@ use strict;
 #----------------------------------------------------------------------------
 # Global vars
 #----------------------------------------------------------------------------
-my $usage="vg_regtest [--all, --valgrind]\n";
+my $usage="vg_regtest [--all, --valgrind, --valgrind-lib]\n";
 
 my $tmp="vg_regtest.tmp.$$";
 
@@ -86,17 +99,20 @@ my $args;               # test prog args
 my $stdout_filter;      # filter program to run stdout results file through
 my $stderr_filter;      # filter program to run stderr results file through
 my $prereq;             # prerequisite test to satisfy before running test
+my $posttest;           # check command after running test
 my $cleanup;            # cleanup command to run
 
 my @failures;           # List of failed tests
 
 my $num_tests_done      = 0;
-my %num_failures        = (stderr => 0, stdout => 0);
+my %num_failures        = (stderr => 0, stdout => 0, posttest => 0);
 
 # Default valgrind to use is this build tree's (uninstalled) one
 my $valgrind = "./coregrind/valgrind";
 
 chomp(my $tests_dir = `pwd`);
+
+my $valgrind_lib = "$tests_dir/.in_place";
 
 # default filter is the one named "filter_stderr" in the test's directory
 my $default_stderr_filter = "filter_stderr";
@@ -143,6 +159,8 @@ sub process_command_line()
                 $alldirs = 1;
             } elsif ($arg =~ /^--valgrind=(.*)$/) {
                 $valgrind = $1;
+            } elsif ($arg =~ /^--valgrind-lib=(.*)$/) {
+                $valgrind_lib = $1;
             } else {
                 die $usage;
             }
@@ -172,8 +190,9 @@ sub read_vgtest_file($)
     my ($f) = @_;
 
     # Defaults.
-    ($vgopts, $prog, $args, $stdout_filter, $stderr_filter, $prereq, $cleanup)
-      = ("", undef, "", undef, undef, undef, undef);
+    ($vgopts, $prog, $args)          = ("", undef, "");
+    ($stdout_filter, $stderr_filter) = (undef, undef);
+    ($prereq, $posttest, $cleanup)   = (undef, undef, undef);
 
     # Every test directory must have a "filter_stderr"
     $stderr_filter = validate_program(".", $default_stderr_filter, 1, 1);
@@ -195,6 +214,8 @@ sub read_vgtest_file($)
             $stderr_filter = validate_program(".", $1, 1, 1);
         } elsif ($line =~ /^\s*prereq:\s*(.*)$/) {
             $prereq = $1;
+        } elsif ($line =~ /^\s*posttest:\s*(.*)$/) {
+            $posttest = $1;
         } elsif ($line =~ /^\s*cleanup:\s*(.*)$/) {
             $cleanup = $1;
         } else {
@@ -243,8 +264,8 @@ sub do_diffs($$$$)
             ($f_exp eq "/dev/null") or die "Unexpected .exp file: $f_exp\n";
         }
 
-        #print("diff -C0 $f_exp $name.$mid.out > $name.$mid.diff$n\n");
-        mysystem("diff -C0 $f_exp $name.$mid.out > $name.$mid.diff$n");
+        #print("diff $f_exp $name.$mid.out > $name.$mid.diff$n\n");
+        mysystem("diff $f_exp $name.$mid.out > $name.$mid.diff$n");
 
         if (not -s "$name.$mid.diff$n") {
             # A match;  remove .out and any previously created .diff files.
@@ -266,6 +287,11 @@ sub do_one_test($$)
     my $name = $1;
     my $fullname = "$dir/$name"; 
 
+    # Pull any extra options (for example, --sanity-level=4)
+    # from $EXTRA_REGTEST_OPTS.
+    my $maybe_extraopts = $ENV{"EXTRA_REGTEST_OPTS"};
+    my $extraopts = $maybe_extraopts ?  $maybe_extraopts  : "";
+
     read_vgtest_file($vgtest);
 
     if (defined $prereq) {
@@ -275,37 +301,48 @@ sub do_one_test($$)
         }
     }
 
-    printf("%-16s valgrind $vgopts $prog $args\n", "$name:");
+    printf("%-16s valgrind $extraopts $vgopts $prog $args\n", "$name:");
 
     # Pass the appropriate --tool option for the directory (can be overridden
     # by an "args:" line, though).  Set both VALGRIND_LIB and
     # VALGRIND_LIB_INNER in case this Valgrind was configured with
     # --enable-inner.
     my $tool=determine_tool();
-    mysystem("VALGRIND_LIB=$tests_dir/.in_place VALGRIND_LIB_INNER=$tests_dir/.in_place "
+    mysystem("VALGRIND_LIB=$valgrind_lib VALGRIND_LIB_INNER=$valgrind_lib "
            . "$valgrind --command-line-only=yes --memcheck:leak-check=no "
-           . "--addrcheck:leak-check=no --tool=$tool $vgopts "
+           . "--tool=$tool $extraopts $vgopts "
            . "$prog $args > $name.stdout.out 2> $name.stderr.out");
 
+    # Filter stdout
     if (defined $stdout_filter) {
         mysystem("$stdout_filter < $name.stdout.out > $tmp");
         rename($tmp, "$name.stdout.out");
     }
-
-    mysystem("$stderr_filter < $name.stderr.out > $tmp");
-    rename($tmp, "$name.stderr.out");
-
-
     # Find all the .stdout.exp files.  If none, use /dev/null.
     my @stdout_exps = <$name.stdout.exp*>;
     @stdout_exps = ( "/dev/null" ) if (0 == scalar @stdout_exps);
+    do_diffs($fullname, $name, "stdout", \@stdout_exps); 
 
+    # Filter stderr
+    mysystem("$stderr_filter < $name.stderr.out > $tmp");
+    rename($tmp, "$name.stderr.out");
     # Find all the .stderr.exp files.  $name.stderr.exp must exist.
     my @stderr_exps = <$name.stderr.exp*>;
     (-r "$name.stderr.exp") or die "Could not read `$name.stderr.exp'\n";
-    
-    do_diffs($fullname, $name, "stdout", \@stdout_exps); 
     do_diffs($fullname, $name, "stderr", \@stderr_exps); 
+ 
+    # Maybe do post-test check
+    if (defined $posttest) {
+	if (mysystem("$posttest > $name.posttest.out") != 0) {
+	    print("posttest failed: $posttest\n");
+	    $num_failures{"posttest"}++;
+	} else {
+	    # Find all the .posttest.exp files.  If none, use /dev/null.
+	    my @posttest_exps = <$name.posttest.exp*>;
+	    @posttest_exps = ( "/dev/null" ) if (0 == scalar @posttest_exps);
+	    do_diffs($fullname, $name, "posttest", \@posttest_exps);
+	}
+    }
  
     if (defined $cleanup) {
         (system("$cleanup") == 0) or 
@@ -375,10 +412,12 @@ sub summarise_results
 {
     my $x = ( $num_tests_done == 1 ? "test" : "tests" );
     
-    printf("\n== %d test%s, %d stderr failure%s, %d stdout failure%s =================\n", 
+    printf("\n== %d test%s, %d stderr failure%s, %d stdout failure%s, "
+                         . "%d posttest failure%s ==\n", 
            $num_tests_done, plural($num_tests_done),
            $num_failures{"stderr"}, plural($num_failures{"stderr"}),
-           $num_failures{"stdout"}, plural($num_failures{"stdout"}));
+           $num_failures{"stdout"},   plural($num_failures{"stdout"}),
+           $num_failures{"posttest"}, plural($num_failures{"posttest"}));
 
     foreach my $failure (@failures) {
         print "$failure\n";
@@ -389,9 +428,21 @@ sub summarise_results
 #----------------------------------------------------------------------------
 # main(), sort of
 #----------------------------------------------------------------------------
+sub warn_about_EXTRA_REGTEST_OPTS()
+{
+    print "WARNING: \$EXTRA_REGTEST_OPTS is set.  You probably don't want\n";
+    print "to run the regression tests with it set, unless you are doing some\n";
+    print "strange experiment, and/or you really know what you are doing.\n";
+    print "\n";
+}
 
 # nuke VALGRIND_OPTS
 $ENV{"VALGRIND_OPTS"} = "";
+
+if ($ENV{"EXTRA_REGTEST_OPTS"}) {
+    print "\n";
+    warn_about_EXTRA_REGTEST_OPTS();
+}
 
 my @fs = process_command_line();
 foreach my $f (@fs) {
@@ -415,7 +466,13 @@ foreach my $f (@fs) {
 }
 summarise_results();
 
-if (0 == $num_failures{"stdout"} && 0 == $num_failures{"stderr"}) {
+if ($ENV{"EXTRA_REGTEST_OPTS"}) {
+    warn_about_EXTRA_REGTEST_OPTS();
+}
+
+if (0 == $num_failures{"stdout"} &&
+    0 == $num_failures{"stderr"} &&
+    0 == $num_failures{"posttest"}) {
     exit 0;
 } else {
     exit 1;

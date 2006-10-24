@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Nicholas Nethercote
+   Copyright (C) 2000-2006 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -93,6 +93,7 @@ VgNeeds VG_(needs) = {
    .sanity_checks        = False,
    .data_syms	         = False,
    .malloc_replacement   = False,
+   .xml_output           = False,
 };
 
 /* static */
@@ -115,7 +116,11 @@ Bool VG_(sanity_check_needs)(Char** failmsg)
          VG_(tdict).track_new_mem_stack_8  ||
          VG_(tdict).track_new_mem_stack_12 ||
          VG_(tdict).track_new_mem_stack_16 ||
-         VG_(tdict).track_new_mem_stack_32 ) &&
+         VG_(tdict).track_new_mem_stack_32  ||
+         VG_(tdict).track_new_mem_stack_112 ||
+         VG_(tdict).track_new_mem_stack_128 ||
+         VG_(tdict).track_new_mem_stack_144 ||
+         VG_(tdict).track_new_mem_stack_160 ) &&
        ! VG_(tdict).track_new_mem_stack) 
    {
       *failmsg = "Tool error: one of the specialised 'new_mem_stack_n'\n"
@@ -128,7 +133,11 @@ Bool VG_(sanity_check_needs)(Char** failmsg)
          VG_(tdict).track_die_mem_stack_8  ||
          VG_(tdict).track_die_mem_stack_12 ||
          VG_(tdict).track_die_mem_stack_16 ||
-         VG_(tdict).track_die_mem_stack_32 ) &&
+         VG_(tdict).track_die_mem_stack_32  ||
+         VG_(tdict).track_die_mem_stack_112 ||
+         VG_(tdict).track_die_mem_stack_128 ||
+         VG_(tdict).track_die_mem_stack_144 ||
+         VG_(tdict).track_die_mem_stack_160 ) &&
        ! VG_(tdict).track_die_mem_stack) 
    {
       *failmsg = "Tool error: one of the specialised 'die_mem_stack_n'\n"
@@ -153,6 +162,7 @@ Bool VG_(sanity_check_needs)(Char** failmsg)
 NEEDS(libc_freeres)
 NEEDS(core_errors)
 NEEDS(data_syms)
+NEEDS(xml_output)
 
 void VG_(needs_basic_block_discards)(
    void (*discard)(Addr64, VexGuestExtents)
@@ -282,6 +292,10 @@ DEF2(track_new_mem_stack_8,      Addr)
 DEF2(track_new_mem_stack_12,     Addr)
 DEF2(track_new_mem_stack_16,     Addr)
 DEF2(track_new_mem_stack_32,     Addr)
+DEF2(track_new_mem_stack_112,    Addr)
+DEF2(track_new_mem_stack_128,    Addr)
+DEF2(track_new_mem_stack_144,    Addr)
+DEF2(track_new_mem_stack_160,    Addr)
 DEF (track_new_mem_stack,        Addr, SizeT)
 
 DEF2(track_die_mem_stack_4,      Addr)
@@ -289,6 +303,10 @@ DEF2(track_die_mem_stack_8,      Addr)
 DEF2(track_die_mem_stack_12,     Addr)
 DEF2(track_die_mem_stack_16,     Addr)
 DEF2(track_die_mem_stack_32,     Addr)
+DEF2(track_die_mem_stack_112,    Addr)
+DEF2(track_die_mem_stack_128,    Addr)
+DEF2(track_die_mem_stack_144,    Addr)
+DEF2(track_die_mem_stack_160,    Addr)
 DEF (track_die_mem_stack,        Addr, SizeT)
 
 DEF(track_ban_mem_stack,         Addr, SizeT)

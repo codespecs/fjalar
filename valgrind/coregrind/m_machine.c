@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
@@ -422,60 +423,78 @@ Bool VG_(machine_get_hwcaps)( void )
      struct vki_sigaction saved_act, tmp_act;
 
      volatile Bool have_F, have_V, have_FX, have_GX;
+     Int r;
 
      VG_(sigemptyset)(&tmp_set);
      VG_(sigaddset)(&tmp_set, VKI_SIGILL);
 
-     VG_(sigprocmask)(VKI_SIG_UNBLOCK, &tmp_set, &saved_set);
+     r = VG_(sigprocmask)(VKI_SIG_UNBLOCK, &tmp_set, &saved_set);
+     vg_assert(r == 0);
 
-     VG_(sigaction)(VKI_SIGILL, NULL, &saved_act);
+     r = VG_(sigaction)(VKI_SIGILL, NULL, &saved_act);
+     vg_assert(r == 0);
      tmp_act = saved_act;
 
+     /* NODEFER: signal handler does not return (from the kernel's point of
+        view), hence if it is to successfully catch a signal more than once,
+        we need the NODEFER flag. */
      tmp_act.sa_flags &= ~VKI_SA_RESETHAND;
      tmp_act.sa_flags &= ~VKI_SA_SIGINFO;
+     tmp_act.sa_flags |=  VKI_SA_NODEFER;
 
      /* standard FP insns */
      have_F = True;
      tmp_act.ksa_handler = handler_sigill;
-     VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     r = VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     vg_assert(r == 0);
      if (__builtin_setjmp(env_sigill)) {
         have_F = False;
      } else {
-        __asm__ __volatile__("fmr 0,0");
+        __asm__ __volatile__(".long 0xFC000090"); /*fmr 0,0 */
      }
 
      /* Altivec insns */
      have_V = True;
      tmp_act.ksa_handler = handler_sigill;
-     VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     r = VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     vg_assert(r == 0);
      if (__builtin_setjmp(env_sigill)) {
         have_V = False;
      } else {
-        __asm__ __volatile__("vor 0,0,0");
+        /* Unfortunately some older assemblers don't speak Altivec (or
+           choose not to), so to be safe we directly emit the 32-bit
+           word corresponding to "vor 0,0,0".  This fixes a build
+           problem that happens on Debian 3.1 (ppc32), and probably
+           various other places. */
+        __asm__ __volatile__(".long 0x10000484"); /*vor 0,0,0*/
      }
 
      /* General-Purpose optional (fsqrt, fsqrts) */
      have_FX = True;
      tmp_act.ksa_handler = handler_sigill;
-     VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     r = VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     vg_assert(r == 0);
      if (__builtin_setjmp(env_sigill)) {
         have_FX = False;
      } else {
-        __asm__ __volatile__("fsqrt 0,0");
+        __asm__ __volatile__(".long 0xFC00002C"); /*fsqrt 0,0 */
      }
 
      /* Graphics optional (stfiwx, fres, frsqrte, fsel) */
      have_GX = True;
      tmp_act.ksa_handler = handler_sigill;
-     VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     r = VG_(sigaction)(VKI_SIGILL, &tmp_act, NULL);
+     vg_assert(r == 0);
      if (__builtin_setjmp(env_sigill)) {
         have_GX = False;
      } else {
-        __asm__ __volatile__("frsqrte 0,0");
+        __asm__ __volatile__(".long 0xFC000034"); /* frsqrte 0,0 */
      }
 
-     VG_(sigaction)(VKI_SIGILL, &saved_act, NULL);
-     VG_(sigprocmask)(VKI_SIG_SETMASK, &saved_set, NULL);
+     r = VG_(sigaction)(VKI_SIGILL, &saved_act, NULL);
+     vg_assert(r == 0);
+     r = VG_(sigprocmask)(VKI_SIG_SETMASK, &saved_set, NULL);
+     vg_assert(r == 0);
      /*
         VG_(printf)("F %d V %d FX %d GX %d\n",
                     (Int)have_F, (Int)have_V, (Int)have_FX, (Int)have_GX);
@@ -519,8 +538,12 @@ Bool VG_(machine_get_hwcaps)( void )
      VG_(sigaction)(VKI_SIGILL, NULL, &saved_act);
      tmp_act = saved_act;
 
+     /* NODEFER: signal handler does not return (from the kernel's point of
+        view), hence if it is to successfully catch a signal more than once,
+        we need the NODEFER flag. */
      tmp_act.sa_flags &= ~VKI_SA_RESETHAND;
      tmp_act.sa_flags &= ~VKI_SA_SIGINFO;
+     tmp_act.sa_flags |=  VKI_SA_NODEFER;
 
      /* standard FP insns */
      have_F = True;
@@ -539,7 +562,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (__builtin_setjmp(env_sigill)) {
         have_V = False;
      } else {
-        __asm__ __volatile__("vor 0,0,0");
+        __asm__ __volatile__(".long 0x10000484"); /*vor 0,0,0*/
      }
 
      /* General-Purpose optional (fsqrt, fsqrts) */
@@ -549,7 +572,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (__builtin_setjmp(env_sigill)) {
         have_FX = False;
      } else {
-        __asm__ __volatile__("fsqrt 0,0");
+        __asm__ __volatile__(".long 0xFC00002C"); /*fsqrt 0,0*/
      }
 
      /* Graphics optional (stfiwx, fres, frsqrte, fsel) */
@@ -559,7 +582,7 @@ Bool VG_(machine_get_hwcaps)( void )
      if (__builtin_setjmp(env_sigill)) {
         have_GX = False;
      } else {
-        __asm__ __volatile__("frsqrte 0,0");
+        __asm__ __volatile__(".long 0xFC000034"); /*frsqrte 0,0*/
      }
 
      VG_(sigaction)(VKI_SIGILL, &saved_act, NULL);
@@ -639,22 +662,18 @@ void VG_(machine_get_VexArchInfo)( /*OUT*/VexArch* pVa,
 
 
 // Given a pointer to a function as obtained by "& functionname" in C,
-// produce a pointer to the actual entry point for the function.  For
-// most platforms it's the identity function.  Unfortunately, on
-// ppc64-linux it isn't (sigh).
+// produce a pointer to the actual entry point for the function.
 void* VG_(fnptr_to_fnentry)( void* f )
 {
-#if defined(VGP_x86_linux)
+#if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
+                           || defined(VGP_ppc32_linux)
    return f;
-#elif defined(VGP_amd64_linux)
-   return f;
-#elif defined(VGP_ppc32_linux)
-   return f;
-#elif defined(VGP_ppc64_linux)
-   /* f is a pointer to a 3-word function descriptor, of which
-      the first word is the entry address. */
-   /* Don't ask me.  Really.  I have no idea why. */
-   ULong* descr = (ULong*)f;
+#elif defined(VGP_ppc64_linux) || defined(VGP_ppc32_aix5) \
+                               || defined(VGP_ppc64_aix5)
+   /* All other ppc variants use the AIX scheme, in which f is a
+      pointer to a 3-word function descriptor, of which the first word
+      is the entry address. */
+   UWord* descr = (UWord*)f;
    return (void*)(descr[0]);
 #else
 #  error "Unknown platform"

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -76,8 +76,6 @@ extern void   VG_(env_remove_valgrind_env_stuff) ( Char** env );
 extern Char **VG_(env_clone)    ( Char **env_clone );
 
 // misc
-extern Int  VG_(poll)( struct vki_pollfd *, UInt nfds, Int timeout);
-extern void VG_(nanosleep) ( struct vki_timespec * );
 extern Int  VG_(getgroups)( Int size, UInt* list );
 extern Int  VG_(ptrace)( Int request, Int pid, void *addr, void *data );
 

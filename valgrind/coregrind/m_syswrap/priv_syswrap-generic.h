@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -170,7 +170,6 @@ DECL_TEMPLATE(generic, sys_newfstat);              // * P (SVr4,BSD4.3)
 
 // For the remainder, not really sure yet
 DECL_TEMPLATE(generic, sys_ptrace);                // (x86?) (almost-P)
-DECL_TEMPLATE(generic, sys_sigsuspend);            // POSIX, but L (proto varies across archs)
 DECL_TEMPLATE(generic, sys_setrlimit);             // SVr4, 4.3BSD
 DECL_TEMPLATE(generic, sys_ioctl);                 // x86? (various)
 DECL_TEMPLATE(generic, sys_old_getrlimit);         // SVr4, 4.3BSD L?

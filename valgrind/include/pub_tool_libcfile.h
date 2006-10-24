@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -34,6 +34,8 @@
 /* ---------------------------------------------------------------------
    File-related functions.
    ------------------------------------------------------------------ */
+
+/* To use this file you must first include pub_tool_vki.h. */
 
 extern SysRes VG_(open)   ( const Char* pathname, Int flags, Int mode );
 extern void   VG_(close)  ( Int fd );

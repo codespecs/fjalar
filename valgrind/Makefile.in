@@ -36,14 +36,14 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 host_triplet = @host@
-@VG_X86_LINUX_TRUE@am__append_1 = valt_load_address_x86_linux.lds
-@VG_X86_LINUX_TRUE@am__append_2 = valt_load_address_x86_linux.lds
-@VG_AMD64_LINUX_TRUE@am__append_3 = valt_load_address_amd64_linux.lds
-@VG_AMD64_LINUX_TRUE@am__append_4 = valt_load_address_amd64_linux.lds
-@VG_PPC32_LINUX_TRUE@am__append_5 = valt_load_address_ppc32_linux.lds
-@VG_PPC32_LINUX_TRUE@am__append_6 = valt_load_address_ppc32_linux.lds
-@VG_PPC64_LINUX_TRUE@am__append_7 = valt_load_address_ppc64_linux.lds
-@VG_PPC64_LINUX_TRUE@am__append_8 = valt_load_address_ppc64_linux.lds
+@VGP_X86_LINUX_TRUE@am__append_1 = valt_load_address_x86_linux.lds
+@VGP_X86_LINUX_TRUE@am__append_2 = valt_load_address_x86_linux.lds
+@VGP_AMD64_LINUX_TRUE@am__append_3 = valt_load_address_amd64_linux.lds
+@VGP_AMD64_LINUX_TRUE@am__append_4 = valt_load_address_amd64_linux.lds
+@VGP_PPC32_LINUX_TRUE@am__append_5 = valt_load_address_ppc32_linux.lds
+@VGP_PPC32_LINUX_TRUE@am__append_6 = valt_load_address_ppc32_linux.lds
+@VGP_PPC64_LINUX_TRUE@am__append_7 = valt_load_address_ppc64_linux.lds
+@VGP_PPC64_LINUX_TRUE@am__append_8 = valt_load_address_ppc64_linux.lds
 ACLOCAL = @ACLOCAL@
 AMDEP_FALSE = @AMDEP_FALSE@
 AMDEP_TRUE = @AMDEP_TRUE@
@@ -52,6 +52,10 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BUILD_MPIWRAP_PRI_FALSE = @BUILD_MPIWRAP_PRI_FALSE@
+BUILD_MPIWRAP_PRI_TRUE = @BUILD_MPIWRAP_PRI_TRUE@
+BUILD_MPIWRAP_SEC_FALSE = @BUILD_MPIWRAP_SEC_FALSE@
+BUILD_MPIWRAP_SEC_TRUE = @BUILD_MPIWRAP_SEC_TRUE@
 CC = @CC@
 CCAS = @CCAS@
 CCASFLAGS = @CCASFLAGS@
@@ -74,6 +78,8 @@ EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FLAG_M32 = @FLAG_M32@
 FLAG_M64 = @FLAG_M64@
+FLAG_MAIX32 = @FLAG_MAIX32@
+FLAG_MAIX64 = @FLAG_MAIX64@
 FLAG_MMMX = @FLAG_MMMX@
 FLAG_MSSE = @FLAG_MSSE@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
@@ -91,6 +97,7 @@ MAINT = @MAINT@
 MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
+MPI_CC = @MPI_CC@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -108,19 +115,29 @@ STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
 VEX_DIR = @VEX_DIR@
-VG_AMD64_LINUX_FALSE = @VG_AMD64_LINUX_FALSE@
-VG_AMD64_LINUX_TRUE = @VG_AMD64_LINUX_TRUE@
+VGO_AIX5_FALSE = @VGO_AIX5_FALSE@
+VGO_AIX5_TRUE = @VGO_AIX5_TRUE@
+VGO_LINUX_FALSE = @VGO_LINUX_FALSE@
+VGO_LINUX_TRUE = @VGO_LINUX_TRUE@
+VGP_AMD64_LINUX_FALSE = @VGP_AMD64_LINUX_FALSE@
+VGP_AMD64_LINUX_TRUE = @VGP_AMD64_LINUX_TRUE@
+VGP_HAVE_SECONDARY_FALSE = @VGP_HAVE_SECONDARY_FALSE@
+VGP_HAVE_SECONDARY_TRUE = @VGP_HAVE_SECONDARY_TRUE@
+VGP_PPC32_AIX5_FALSE = @VGP_PPC32_AIX5_FALSE@
+VGP_PPC32_AIX5_TRUE = @VGP_PPC32_AIX5_TRUE@
+VGP_PPC32_LINUX_FALSE = @VGP_PPC32_LINUX_FALSE@
+VGP_PPC32_LINUX_TRUE = @VGP_PPC32_LINUX_TRUE@
+VGP_PPC64_AIX5_FALSE = @VGP_PPC64_AIX5_FALSE@
+VGP_PPC64_AIX5_TRUE = @VGP_PPC64_AIX5_TRUE@
+VGP_PPC64_LINUX_FALSE = @VGP_PPC64_LINUX_FALSE@
+VGP_PPC64_LINUX_TRUE = @VGP_PPC64_LINUX_TRUE@
+VGP_X86_LINUX_FALSE = @VGP_X86_LINUX_FALSE@
+VGP_X86_LINUX_TRUE = @VGP_X86_LINUX_TRUE@
 VG_ARCH = @VG_ARCH@
 VG_ARCH_ALL = @VG_ARCH_ALL@
 VG_OS = @VG_OS@
 VG_PLATFORM_PRI = @VG_PLATFORM_PRI@
 VG_PLATFORM_SEC = @VG_PLATFORM_SEC@
-VG_PPC32_LINUX_FALSE = @VG_PPC32_LINUX_FALSE@
-VG_PPC32_LINUX_TRUE = @VG_PPC32_LINUX_TRUE@
-VG_PPC64_LINUX_FALSE = @VG_PPC64_LINUX_FALSE@
-VG_PPC64_LINUX_TRUE = @VG_PPC64_LINUX_TRUE@
-VG_X86_LINUX_FALSE = @VG_X86_LINUX_FALSE@
-VG_X86_LINUX_TRUE = @VG_X86_LINUX_TRUE@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
 ac_ct_RANLIB = @ac_ct_RANLIB@
@@ -171,7 +188,8 @@ SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) docs
 DIST_SUBDIRS = $(SUBDIRS)
 
 SUPP_FILES = \
-	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp \
+	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
+	aix5libc.supp \
 	xfree-3.supp xfree-4.supp
 
 
@@ -217,6 +235,8 @@ VEX_PUBLIC_HDRS = \
 
 # These list the bits of vex we need to copy into the tarball
 VEX_PRIMARY_SOURCES = \
+	VEX/quote.txt \
+	VEX/newline.txt \
 	VEX/HACKING.README \
 	VEX/LICENSE.README \
 	VEX/LICENSE.GPL \
@@ -767,6 +787,10 @@ uninstall-info: uninstall-info-recursive
 # builds.  So, for the time being, serialise all Valgrind building.
 # (this is equivalent to enforcing "make -j 1".
 .NOTPARALLEL:
+# No need to generate valt_load_address*.lds; the final executables
+# can be linked to be at any address.  They will be relocated by
+# AIX kernel when they are loaded.
+# Ditto
 
 default.supp: $(SUPP_FILES)
 

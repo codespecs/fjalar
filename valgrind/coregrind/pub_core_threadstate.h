@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -67,8 +67,8 @@ typedef
 typedef
    enum {
       VgSrc_None,	 /* not exiting yet */
-      VgSrc_ExitSyscall, /* client called exit().  This is the normal
-                            route out. */
+      VgSrc_ExitThread,  /* just this thread is exiting */
+      VgSrc_ExitProcess, /* entire process is exiting */
       VgSrc_FatalSig	 /* Killed by the default action of a fatal
 			    signal */
    }
@@ -88,6 +88,7 @@ typedef
 #endif
 
 
+/* Architecture-specific thread state */
 typedef
    struct {
       /* --- BEGIN vex-mandated guest state --- */
@@ -108,8 +109,10 @@ typedef
    }
    ThreadArchState;
 
+
 /* OS-specific thread state */
-typedef struct {
+typedef
+   struct {
    /* who we are */
    Int	lwpid;			// PID of kernel task
    Int	threadgroup;		// thread group id
@@ -121,11 +124,27 @@ typedef struct {
    Addr valgrind_stack_init_SP; // starting value for SP
 
    /* exit details */
-   Int  exitcode;		// in the case of exitgroup, set by someone else
+      Word exitcode; // in the case of exitgroup, set by someone else
    Int  fatalsig;		// fatal signal
-} os_thread_t;
+
+#     if defined(VGO_aix5)
+      /* AIX specific fields to make thread cancellation sort-of work */
+      /* What is this thread's current cancellation state a la
+         POSIX (deferred vs async, enable vs disabled) ? */
+      Bool cancel_async;   // current cancel mode (async vs deferred)
+      Bool cancel_disabled; // cancellation disabled?
+      /* What's happened so far? */
+      enum { Canc_NoRequest=0, // no cancellation requested
+             Canc_Requested=1, // requested but not actioned
+             Canc_Actioned=2 } // requested and actioned
+           cancel_progress;
+      /* Initial state is False, False, Canc_Normal. */
+#     endif
+   }
+   ThreadOSstate;
 
 
+/* Overall thread state */
 typedef struct {
    /* ThreadId == 0 (and hence vg_threads[0]) is NEVER USED.
       The thread identity is simply the index in vg_threads[].
@@ -174,30 +193,25 @@ typedef struct {
       only then is the old one deallocated and a new one
       allocated.
 
-      For the main thread (threadid == 0), this mechanism doesn't
+      For the main thread (threadid == 1), this mechanism doesn't
       apply.  We don't know the size of the stack since we didn't
       allocate it, and furthermore we never reallocate it. */
 
    /* The allocated size of this thread's stack (permanently zero
-      if this is ThreadId == 0, since we didn't allocate its stack) */
+      if this is ThreadId == 1, since we didn't allocate its stack) */
    SizeT client_stack_szB;
 
    /* Address of the highest legitimate word in this stack.  This is
       used for error messages only -- not critical for execution
       correctness.  Is is set for all stacks, specifically including
-      ThreadId == 0 (the main thread). */
+      ThreadId == 1 (the main thread). */
    Addr client_stack_highest_word;
 
    /* Alternate signal stack */
    vki_stack_t altstack;
 
    /* OS-specific thread state */
-   os_thread_t os_state;
-
-   /* Used in the syscall handlers.  Set to True to indicate that the
-      PRE routine for a syscall has set the syscall result already and
-      so the syscall does not need to be handed to the kernel. */
-   Bool syscall_result_set;
+   ThreadOSstate os_state;
 
    /* Per-thread jmp_buf to resume scheduler after a signal */
    Bool    sched_jmpbuf_valid;
@@ -240,6 +254,9 @@ extern Bool VG_(is_exiting)(ThreadId tid);
 
 /* Return the number of non-dead Threads */
 extern Int VG_(count_living_threads)(void);
+
+/* Return the number of threads in VgTs_Runnable state */
+extern Int VG_(count_runnable_threads)(void);
 
 /* Given an LWP id (ie, real kernel thread id), find the corresponding
    ThreadId */

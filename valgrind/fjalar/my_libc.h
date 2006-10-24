@@ -4,7 +4,7 @@
 #ifndef MY_LIBC_H
 #define MY_LIBC_H
 
-#include "vki-linux.h"
+#include "pub_tool_vki.h"
 #include <stdarg.h>
 
 /* alloca.h */

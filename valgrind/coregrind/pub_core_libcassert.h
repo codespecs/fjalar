@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -70,6 +70,9 @@ extern void  VG_(core_panic_at)   ( Char* str,
    Prints a msg and aborts. */
 extern void VG_(unimplemented) ( Char* msg )
             __attribute__((__noreturn__));
+
+/* Show the state of all threads.  Mostly for debugging V. */
+extern void VG_(show_sched_status) ( void );
 
 #endif   // __PUB_CORE_LIBCASSERT_H
 
