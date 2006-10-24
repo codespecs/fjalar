@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -90,6 +90,7 @@ typedef
       Bool sanity_checks;
       Bool data_syms;
       Bool malloc_replacement;
+      Bool xml_output;
    } 
    VgNeeds;
 
@@ -168,16 +169,24 @@ typedef struct {
 
    void VG_REGPARM(1) (*track_new_mem_stack_4) (Addr);
    void VG_REGPARM(1) (*track_new_mem_stack_8) (Addr);
-   void VG_REGPARM(1) (*track_new_mem_stack_12)(Addr);
-   void VG_REGPARM(1) (*track_new_mem_stack_16)(Addr);
-   void VG_REGPARM(1) (*track_new_mem_stack_32)(Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_12) (Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_16) (Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_32) (Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_112)(Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_128)(Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_144)(Addr);
+   void VG_REGPARM(1) (*track_new_mem_stack_160)(Addr);
    void (*track_new_mem_stack)(Addr, SizeT);
 
    void VG_REGPARM(1) (*track_die_mem_stack_4) (Addr);
    void VG_REGPARM(1) (*track_die_mem_stack_8) (Addr);
-   void VG_REGPARM(1) (*track_die_mem_stack_12)(Addr);
-   void VG_REGPARM(1) (*track_die_mem_stack_16)(Addr);
-   void VG_REGPARM(1) (*track_die_mem_stack_32)(Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_12) (Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_16) (Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_32) (Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_112)(Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_128)(Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_144)(Addr);
+   void VG_REGPARM(1) (*track_die_mem_stack_160)(Addr);
    void (*track_die_mem_stack)(Addr, SizeT);
 
    void (*track_ban_mem_stack)(Addr, SizeT);

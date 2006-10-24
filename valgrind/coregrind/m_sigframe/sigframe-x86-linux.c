@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Nicholas Nethercote
+   Copyright (C) 2000-2006 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h" /* find_segment */
 #include "pub_core_libcbase.h"
@@ -37,10 +38,10 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_machine.h"
 #include "pub_core_options.h"
-#include "pub_core_sigframe.h"
 #include "pub_core_signals.h"
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
+#include "pub_core_sigframe.h"   /* self */
 
 
 /* This module creates and removes signal frames for signal deliveries
@@ -395,7 +396,7 @@ void synth_ucontext(ThreadId tid, const vki_siginfo_t *si,
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
    ThreadId tid = tst->tid;
-   NSegment *stackseg = NULL;
+   NSegment const* stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);
@@ -630,8 +631,7 @@ void restore_sigcontext( ThreadState *tst,
    tst->arch.vex.guest_ESI     = sc->esi;
    tst->arch.vex.guest_EDI     = sc->edi;
 //::    tst->arch.vex.guest_eflags  = sc->eflags;
-//::    tst->arch.vex.guest_EIP     = sc->eip;
-
+   tst->arch.vex.guest_EIP     = sc->eip;
    tst->arch.vex.guest_CS      = sc->cs; 
    tst->arch.vex.guest_SS      = sc->ss;
    tst->arch.vex.guest_DS      = sc->ds;

@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
-   Copyright (C) 2003-2005 Jeremy Fitzhardinge
+   Copyright (C) 2003-2006 Jeremy Fitzhardinge
       jeremy@goop.org
 
    This program is free software; you can redistribute it and/or
@@ -43,7 +43,7 @@
 #include "pub_core_trampoline.h"
 #include "pub_core_transtab.h"
 #include "pub_core_tooliface.h"    // VG_(needs).malloc_replacement
-#include "pub_tool_machine.h"      // VG_(fnptr_to_fnentry)
+#include "pub_core_machine.h"      // VG_(fnptr_to_fnentry)
 #include "pub_core_aspacemgr.h"    // VG_(am_find_nsegment)
 #include "pub_core_clientstate.h"  // VG_(client___libc_freeres_wrapper)
 #include "pub_core_demangle.h"     // VG_(maybe_Z_demangle)
@@ -269,11 +269,13 @@ static void*  symtab_alloc(SizeT);
 static void   symtab_free(void*);
 static HChar* symtab_strdup(HChar*);
 static Bool   is_plausible_guest_addr(Addr);
+static Bool   is_aix5_glink_idiom(Addr);
 
 static void   show_redir_state ( HChar* who );
 static void   show_active ( HChar* left, Active* act );
 
-static void   handle_maybe_load_notifier( HChar* symbol, Addr addr );
+static void   handle_maybe_load_notifier( const UChar* soname, 
+                                                HChar* symbol, Addr addr );
 
 
 /*------------------------------------------------------------*/
@@ -306,12 +308,19 @@ void VG_(redir_notify_new_SegInfo)( SegInfo* newsi )
    TopSpec* ts;
    TopSpec* newts;
    HChar*   sym_name;
-   Addr     sym_addr;
+   Addr         sym_addr, sym_toc;
    HChar    demangled_sopatt[N_DEMANGLED];
    HChar    demangled_fnpatt[N_DEMANGLED];
+   Bool         check_ppcTOCs = False;
+   const UChar* newsi_soname;
+
+#  if defined(VG_PLAT_USES_PPCTOC)
+   check_ppcTOCs = True;
+#  endif
 
    vg_assert(newsi);
-   vg_assert(VG_(seginfo_soname)(newsi) != NULL);
+   newsi_soname = VG_(seginfo_soname)(newsi);
+   vg_assert(newsi_soname != NULL);
 
    /* stay sane: we don't already have this. */
    for (ts = topSpecs; ts; ts = ts->next)
@@ -324,13 +333,21 @@ void VG_(redir_notify_new_SegInfo)( SegInfo* newsi )
 
    nsyms = VG_(seginfo_syms_howmany)( newsi );
    for (i = 0; i < nsyms; i++) {
-      VG_(seginfo_syms_getidx)( newsi, i, &sym_addr, NULL, &sym_name );
+      VG_(seginfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc, 
+                                          NULL, &sym_name );
       ok = VG_(maybe_Z_demangle)( sym_name, demangled_sopatt, N_DEMANGLED,
 				  demangled_fnpatt, N_DEMANGLED, &isWrap );
       if (!ok) {
          /* It's not a full-scale redirect, but perhaps it is a load-notify
             fn?  Let the load-notify department see it. */
-         handle_maybe_load_notifier( sym_name, sym_addr );
+         handle_maybe_load_notifier( newsi_soname, sym_name, sym_addr );
+         continue; 
+      }
+      if (check_ppcTOCs && sym_toc == 0) {
+         /* This platform uses toc pointers, but none could be found
+            for this symbol, so we can't safely redirect/wrap to it.
+            Just skip it; we'll make a second pass over the symbols in
+            the following loop, and complain at that point. */
          continue; 
       }
       spec = symtab_alloc(sizeof(Spec));
@@ -346,6 +363,35 @@ void VG_(redir_notify_new_SegInfo)( SegInfo* newsi )
       spec->next = specList;
       spec->mark = False; /* not significant */
       specList = spec;
+   }
+
+   if (check_ppcTOCs) {
+      for (i = 0; i < nsyms; i++) {
+         VG_(seginfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc, 
+                                             NULL, &sym_name );
+         ok = VG_(maybe_Z_demangle)( sym_name, demangled_sopatt, N_DEMANGLED,
+                                     demangled_fnpatt, N_DEMANGLED, &isWrap );
+         if (!ok)
+            /* not a redirect.  Ignore. */
+            continue;
+         if (sym_toc != 0)
+            /* has a valid toc pointer.  Ignore. */
+            continue;
+
+         for (spec = specList; spec; spec = spec->next) 
+            if (0 == VG_(strcmp)(spec->from_sopatt, demangled_sopatt)
+                && 0 == VG_(strcmp)(spec->from_fnpatt, demangled_fnpatt))
+               break;
+         if (spec)
+	   /* a redirect to some other copy of that symbol, which does have
+              a TOC value, already exists */
+          continue;
+
+         /* Complain */
+         VG_(message)(Vg_DebugMsg,
+                      "WARNING: no TOC ptr for redir/wrap to %s %s",
+                      demangled_sopatt, demangled_fnpatt);
+      }
    }
 
    /* Ok.  Now specList holds the list of specs from the SegInfo. 
@@ -441,7 +487,18 @@ void generate_and_add_actives (
       of trashing the caches less. */
    nsyms = VG_(seginfo_syms_howmany)( si );
    for (i = 0; i < nsyms; i++) {
-      VG_(seginfo_syms_getidx)( si, i, &sym_addr, NULL, &sym_name );
+      VG_(seginfo_syms_getidx)( si, i, &sym_addr, NULL, NULL, &sym_name );
+
+      /* On AIX, we cannot redirect calls to a so-called glink
+         function for reasons which are not obvious - something to do
+         with saving r2 across the call.  Not a problem, as we don't
+         want to anyway; presumably it is the target of the glink we
+         need to redirect.  Hence just spot them and ignore them.
+         They are always of a very specific (more or less
+         ABI-mandated) form. */
+      if (is_aix5_glink_idiom(sym_addr))
+         continue;
+
       for (sp = specs; sp; sp = sp->next) {
          if (!sp->mark)
             continue; /* soname doesn't match */
@@ -573,11 +630,16 @@ void VG_(redir_notify_delete_SegInfo)( SegInfo* delsi )
               && (act->parent_spec->mark || act->parent_sym->mark);
 
       /* While we're at it, a bit of paranoia: delete any actives
-	 which don't have both feet in valid client executable
-	 areas. */
-      if (!delMe) {
-         if (!is_plausible_guest_addr(act->from_addr)) delMe = True;
-         if (!is_plausible_guest_addr(act->to_addr)) delMe = True;
+         which don't have both feet in valid client executable areas.
+         But don't delete hardwired-at-startup ones; these are denoted
+         by having parent_spec or parent_sym being NULL.  */
+      if ( (!delMe)
+           && act->parent_spec != NULL
+           && act->parent_sym  != NULL ) {
+         if (!is_plausible_guest_addr(act->from_addr))
+            delMe = True;
+         if (!is_plausible_guest_addr(act->to_addr))
+            delMe = True;
       }
 
       if (delMe) {
@@ -721,13 +783,6 @@ void VG_(redir_initialise) ( void )
    // The rest of this function just adds initial Specs.   
 
 #  if defined(VGP_x86_linux)
-   /* Redirect _dl_sysinfo_int80, which is glibc's default system call
-      routine, to our copy so that the special sysinfo unwind hack in
-      m_stacktrace.c will kick in. */
-   add_hardwired_spec(
-      "ld-linux.so.2", "_dl_sysinfo_int80",
-      (Addr)&VG_(x86_linux_REDIR_FOR__dl_sysinfo_int80) 
-   );
    /* If we're using memcheck, use this intercept right from the
       start, otherwise ld.so (glibc-2.3.5) makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
@@ -760,6 +815,10 @@ void VG_(redir_initialise) ( void )
          "ld.so.1", "strcmp",
          (Addr)&VG_(ppc32_linux_REDIR_FOR_strcmp)
       );
+      add_hardwired_spec(
+         "ld.so.1", "index",
+         (Addr)&VG_(ppc32_linux_REDIR_FOR_strchr)
+      );
    }
 
 #  elif defined(VGP_ppc64_linux)
@@ -778,6 +837,12 @@ void VG_(redir_initialise) ( void )
       );   
 
    }
+
+#  elif defined(VGP_ppc32_aix5)
+   /* nothing so far */
+
+#  elif defined(VGP_ppc64_aix5)
+   /* nothing so far */
 
 #  else
 #    error Unknown platform
@@ -811,19 +876,72 @@ static HChar* symtab_strdup(HChar* str)
    in m_translate. */
 static Bool is_plausible_guest_addr(Addr a)
 {
-   NSegment* seg = VG_(am_find_nsegment)(a);
+   NSegment const* seg = VG_(am_find_nsegment)(a);
    return seg != NULL
           && (seg->kind == SkAnonC || seg->kind == SkFileC)
           && (seg->hasX || seg->hasR); /* crude x86-specific hack */
 }
 
+/* A function which spots AIX 'glink' functions.  A 'glink' function
+   is a stub function which has something to do with AIX-style dynamic
+   linking, and jumps to the real target (with which it typically
+   shares the same name).  See also comment where this function is
+   used (above). */
+static Bool is_aix5_glink_idiom ( Addr sym_addr )
+{
+#  if defined(VGP_ppc32_aix5)
+   UInt* w = (UInt*)sym_addr;
+   if (VG_IS_4_ALIGNED(w)
+       && is_plausible_guest_addr((Addr)(w+0))
+       && is_plausible_guest_addr((Addr)(w+6))
+       && (w[0] & 0xFFFF0000) == 0x81820000 /* lwz r12,func@toc(r2) */
+       && w[1] == 0x90410014                /* stw r2,20(r1) */
+       && w[2] == 0x800c0000                /* lwz r0,0(r12) */
+       && w[3] == 0x804c0004                /* lwz r2,4(r12) */
+       && w[4] == 0x7c0903a6                /* mtctr r0 */
+       && w[5] == 0x4e800420                /* bctr */
+       && w[6] == 0x00000000                /* illegal */)
+      return True;
+#  elif defined(VGP_ppc64_aix5)
+   UInt* w = (UInt*)sym_addr;
+   if (VG_IS_4_ALIGNED(w)
+       && is_plausible_guest_addr((Addr)(w+0))
+       && is_plausible_guest_addr((Addr)(w+6))
+       && (w[0] & 0xFFFF0000) == 0xE9820000 /* ld  r12,func@toc(r2) */
+       && w[1] == 0xF8410028                /* std r2,40(r1) */
+       && w[2] == 0xE80C0000                /* ld  r0,0(r12) */
+       && w[3] == 0xE84C0008                /* ld  r2,8(r12) */
+       && w[4] == 0x7c0903a6                /* mtctr r0 */
+       && w[5] == 0x4e800420                /* bctr */
+       && w[6] == 0x00000000                /* illegal */)
+      return True;
+#  endif
+   return False;
+}
 
 /*------------------------------------------------------------*/
 /*--- NOTIFY-ON-LOAD FUNCTIONS                             ---*/
 /*------------------------------------------------------------*/
 
-static void handle_maybe_load_notifier( HChar* symbol, Addr addr )
+static 
+void handle_maybe_load_notifier( const UChar* soname, 
+                                       HChar* symbol, Addr addr )
 {
+#  if defined(VGP_x86_linux)
+   /* x86-linux only: if we see _dl_sysinfo_int80, note its address.
+      See comment on declaration of VG_(client__dl_sysinfo_int80) for
+      the reason.  As far as I can tell, the relevant symbol is always
+      in object with soname "ld-linux.so.2". */
+   if (symbol && symbol[0] == '_' 
+              && 0 == VG_(strcmp)(symbol, "_dl_sysinfo_int80")
+              && 0 == VG_(strcmp)(soname, "ld-linux.so.2")) {
+      if (VG_(client__dl_sysinfo_int80) == 0)
+         VG_(client__dl_sysinfo_int80) = addr;
+   }
+#  endif
+
+   /* Normal load-notifier handling after here.  First, ignore all
+      symbols lacking the right prefix. */
    if (0 != VG_(strncmp)(symbol, VG_NOTIFY_ON_LOAD_PREFIX, 
                                  VG_NOTIFY_ON_LOAD_PREFIX_LEN))
       /* Doesn't have the right prefix */
@@ -831,9 +949,6 @@ static void handle_maybe_load_notifier( HChar* symbol, Addr addr )
 
    if (VG_(strcmp)(symbol, VG_STRINGIFY(VG_NOTIFY_ON_LOAD(freeres))) == 0)
       VG_(client___libc_freeres_wrapper) = addr;
-// else
-// if (VG_(strcmp)(symbol, STR(VG_WRAPPER(pthread_startfunc_wrapper))) == 0)
-//    VG_(pthread_startfunc_wrapper)((Addr)(si->offset + sym->st_value));
    else
       vg_assert2(0, "unrecognised load notification function: %s", symbol);
 }
@@ -846,7 +961,7 @@ static void handle_maybe_load_notifier( HChar* symbol, Addr addr )
 static void show_spec ( HChar* left, Spec* spec )
 {
    VG_(message)(Vg_DebugMsg, 
-                  "%s%18s %30s %s-> 0x%08llx",
+                  "%s%25s %30s %s-> 0x%08llx",
                   left,
                   spec->from_sopatt, spec->from_fnpatt,
                   spec->isWrap ? "W" : "R",
@@ -864,7 +979,7 @@ static void show_active ( HChar* left, Active* act )
    ok = VG_(get_fnname_w_offset)(act->to_addr, name2, 64);
    if (!ok) VG_(strcpy)(name2, "???");
 
-   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%10s) %s-> 0x%08llx %s", 
+   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%20s) %s-> 0x%08llx %s", 
                              left, 
                              (ULong)act->from_addr, name1,
                              act->isWrap ? "W" : "R",

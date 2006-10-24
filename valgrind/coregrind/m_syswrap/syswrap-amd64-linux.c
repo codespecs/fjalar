@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Nicholas Nethercote
+   Copyright (C) 2000-2006 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,8 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
+#include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -48,9 +50,8 @@
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
 #include "priv_syswrap-linux.h"     /* for decls of linux-ish wrappers */
+#include "priv_syswrap-linux-variants.h" /* decls of linux variant wrappers */
 #include "priv_syswrap-main.h"
-
-#include "vki_unistd.h"              /* for the __NR_* constants */
 
 
 /* ---------------------------------------------------------------------
@@ -204,7 +205,7 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UWord*       stack;
-   NSegment*    seg;
+   NSegment const* seg;
    SysRes       res;
    Long         rax;
    vki_sigset_t blockall, savedmask;
@@ -362,6 +363,7 @@ DECL_TEMPLATE(amd64_linux, sys_pread64);
 DECL_TEMPLATE(amd64_linux, sys_pwrite64);
 DECL_TEMPLATE(amd64_linux, sys_fadvise64);
 DECL_TEMPLATE(amd64_linux, sys_mmap);
+DECL_TEMPLATE(amd64_linux, sys_syscall184);
 
 
 PRE(sys_clone)
@@ -634,7 +636,7 @@ POST(sys_accept)
 PRE(sys_sendto)
 {
    *flags |= SfMayBlock;
-   PRINT("sys_sendto ( %d, %s, %d, %u, %p, %d )",ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+   PRINT("sys_sendto ( %d, %p, %d, %u, %p, %d )",ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
    PRE_REG_READ6(long, "sendto",
                  int, s, const void *, msg, int, len, 
                  unsigned int, flags, 
@@ -943,6 +945,41 @@ PRE(sys_mmap)
    SET_STATUS_from_SysRes(r);
 }
 
+
+/* ---------------------------------------------------------------
+   PRE/POST wrappers for AMD64/Linux-variant specific syscalls
+   ------------------------------------------------------------ */
+
+PRE(sys_syscall184)
+{
+   Int err;
+
+   /* 184 is used by sys_bproc.  If we're not on a declared bproc
+      variant, fail in the usual way, since it is otherwise unused. */
+
+   if (!VG_(strstr)(VG_(clo_kernel_variant), "bproc")) {
+      PRINT("non-existent syscall! (syscall 184)");
+      PRE_REG_READ0(long, "ni_syscall(184)");
+      SET_STATUS_Failure( VKI_ENOSYS );
+      return;
+   }
+
+   err = ML_(linux_variant_PRE_sys_bproc)( ARG1, ARG2, ARG3, 
+                                           ARG4, ARG5, ARG6 );
+   if (err) {
+      SET_STATUS_Failure( err );
+      return;
+   }
+   /* Let it go through. */
+   *flags |= SfMayBlock; /* who knows?  play safe. */
+}
+
+POST(sys_syscall184)
+{
+   ML_(linux_variant_POST_sys_bproc)( ARG1, ARG2, ARG3, 
+                                      ARG4, ARG5, ARG6 );
+}
+
 #undef PRE
 #undef POST
 
@@ -1012,7 +1049,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENXY(__NR_setitimer,         sys_setitimer),      // 38 
    GENX_(__NR_getpid,            sys_getpid),         // 39 
 
-   //   (__NR_sendfile,          sys_sendfile64),     // 40 
+   LINXY(__NR_sendfile,          sys_sendfile),       // 40 
    PLAXY(__NR_socket,            sys_socket),         // 41 
    PLAX_(__NR_connect,           sys_connect),        // 42
    PLAXY(__NR_accept,            sys_accept),         // 43 
@@ -1163,7 +1200,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_settimeofday,      sys_settimeofday),   // 164 
 
    LINX_(__NR_mount,             sys_mount),          // 165
-   //   (__NR_umount2,           sys_umount),         // 166 
+   LINX_(__NR_umount2,           sys_umount),         // 166 
    //   (__NR_swapon,            sys_swapon),         // 167 
    //   (__NR_swapoff,           sys_swapoff),        // 168 
    //   (__NR_reboot,            sys_reboot),         // 169 
@@ -1184,7 +1221,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    //   (__NR_getpmsg,           sys_ni_syscall),     // 181
    //   (__NR_putpmsg,           sys_ni_syscall),     // 182
    //   (__NR_afs_syscall,       sys_ni_syscall),     // 183 
-   //   (__NR_tuxcall,           sys_ni_syscall),     // 184
+   PLAXY(184,                    sys_syscall184),     // 184 // sys_bproc?
 
    //   (__NR_security,          sys_ni_syscall),     // 185 
    LINX_(__NR_gettid,            sys_gettid),         // 186 
@@ -1204,7 +1241,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_lremovexattr,      sys_lremovexattr),   // 198 
    LINX_(__NR_fremovexattr,      sys_fremovexattr),   // 199 
 
-   //   (__NR_tkill,             sys_tkill),             // 200 
+   LINXY(__NR_tkill,             sys_tkill),             // 200 
    GENXY(__NR_time,              sys_time), /*was sys_time64*/ // 201 
    LINXY(__NR_futex,             sys_futex),             // 202 
    LINX_(__NR_sched_setaffinity, sys_sched_setaffinity), // 203 
@@ -1271,6 +1308,28 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_inotify_add_watch, sys_inotify_add_watch), // 254
 
    LINX_(__NR_inotify_rm_watch,	 sys_inotify_rm_watch), // 255
+//   LINX_(__NR_migrate_pages,	 sys_migrate_pages),    // 256
+   LINXY(__NR_openat,		 sys_openat),           // 257
+   LINX_(__NR_mkdirat,		 sys_mkdirat),          // 258
+   LINX_(__NR_mknodat,		 sys_mknodat),          // 259
+
+   LINX_(__NR_fchownat,		 sys_fchownat),         // 260
+   LINX_(__NR_futimesat,	 sys_futimesat),        // 261
+   LINXY(__NR_newfstatat,	 sys_newfstatat),       // 262
+   LINX_(__NR_unlinkat,		 sys_unlinkat),         // 263
+   LINX_(__NR_renameat,		 sys_renameat),         // 264
+
+   LINX_(__NR_linkat,		 sys_linkat),           // 265
+   LINX_(__NR_symlinkat,	 sys_symlinkat),        // 266
+   LINX_(__NR_readlinkat,	 sys_readlinkat),       // 267
+   LINX_(__NR_fchmodat,		 sys_fchmodat),         // 268
+   LINX_(__NR_faccessat,	 sys_faccessat),        // 269
+
+//   LINX_(__NR_pselect6,		 sys_ni_syscall),       // 270
+//   LINXY(__NR_ppoll,		 sys_ni_syscall),       // 271
+//   LINX_(__NR_unshare,		 sys_unshare),          // 272
+   LINX_(__NR_set_robust_list,	 sys_set_robust_list),  // 273
+   LINXY(__NR_get_robust_list,	 sys_get_robust_list),  // 274
 };
 
 const UInt ML_(syscall_table_size) = 

@@ -7,7 +7,7 @@
    This file is part of Valgrind,  a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005 Jeremy Fitzhardinge
+   Copyright (C) 2005-2006 Jeremy Fitzhardinge
       jeremy@goop.org
 
    This program is free software; you can redistribute it and/or
@@ -61,6 +61,7 @@
  */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_errormgr.h"
 #include "pub_core_execontext.h"
 #include "pub_core_libcassert.h"

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -134,7 +134,7 @@ extern Int VG_(am_get_segment_starts)( Addr* starts, Int nStarts );
 
 
 // See pub_core_aspacemgr.h for description.
-extern NSegment* VG_(am_find_nsegment) ( Addr a ); 
+extern NSegment const * VG_(am_find_nsegment) ( Addr a ); 
 
 // See pub_core_aspacemgr.h for description.
 extern HChar* VG_(am_get_filename)( NSegment* );
@@ -146,6 +146,10 @@ extern Bool VG_(am_is_valid_for_client) ( Addr start, SizeT len,
 // See pub_core_aspacemgr.h for description.
 /* Really just a wrapper around VG_(am_mmap_anon_float_valgrind). */
 extern void* VG_(am_shadow_alloc)(SizeT size);
+
+/* Unmap the given address range and update the segment array
+   accordingly.  This fails if the range isn't valid for valgrind. */
+extern SysRes VG_(am_munmap_valgrind)( Addr start, SizeT length );
 
 #endif   // __PUB_TOOL_ASPACEMGR_H
 

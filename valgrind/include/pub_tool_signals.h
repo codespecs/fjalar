@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -36,8 +36,8 @@
 // not expected to return.
 //
 // It's frustrating that we need this header for a single function used
-// only by Memcheck and Addrcheck during leak checking.  We should find
-// a way to remove the need for this file.
+// only by Memcheck during leak checking.  We should find a way to remove
+// the need for this file.
 extern void VG_(set_fault_catcher)(void (*catcher)(Int sig, Addr addr));
 
 #endif   // __PUB_TOOL_SIGNALS_H

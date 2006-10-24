@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Nicholas Nethercote
+   Copyright (C) 2000-2006 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -34,6 +34,8 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
+#include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_debuginfo.h"     // VG_(di_notify_mmap)
 #include "pub_core_aspacemgr.h"
@@ -57,8 +59,6 @@
 #include "priv_syswrap-linux.h"      /* for decls of linux-ish wrappers */
 #include "priv_syswrap-linux-variants.h" /* decls of linux variant wrappers */
 #include "priv_syswrap-main.h"
-
-#include "vki_unistd.h"              /* for the __NR_* constants */
 
 
 /* ---------------------------------------------------------------------
@@ -213,7 +213,7 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UWord*       stack;
-   NSegment*    seg;
+   NSegment const* seg;
    SysRes       res;
    Int          eax;
    vki_sigset_t blockall, savedmask;
@@ -758,6 +758,7 @@ static void setup_child ( /*OUT*/ ThreadArchState *child,
    magic. */
 DECL_TEMPLATE(x86_linux, sys_socketcall);
 DECL_TEMPLATE(x86_linux, sys_stat64);
+DECL_TEMPLATE(x86_linux, sys_fstatat64);
 DECL_TEMPLATE(x86_linux, sys_fstat64);
 DECL_TEMPLATE(x86_linux, sys_lstat64);
 DECL_TEMPLATE(x86_linux, sys_clone);
@@ -771,7 +772,10 @@ DECL_TEMPLATE(x86_linux, sys_set_thread_area);
 DECL_TEMPLATE(x86_linux, sys_get_thread_area);
 DECL_TEMPLATE(x86_linux, sys_ptrace);
 DECL_TEMPLATE(x86_linux, sys_sigaction);
+DECL_TEMPLATE(x86_linux, sys_sigsuspend);
 DECL_TEMPLATE(x86_linux, old_select);
+DECL_TEMPLATE(x86_linux, sys_vm86old);
+DECL_TEMPLATE(x86_linux, sys_vm86);
 DECL_TEMPLATE(x86_linux, sys_syscall223);
 
 PRE(old_select)
@@ -1330,7 +1334,7 @@ POST(sys_lstat64)
 
 PRE(sys_stat64)
 {
-   PRINT("sys_stat64 ( %p, %p )",ARG1,ARG2);
+   PRINT("sys_stat64 ( %p(%s), %p )",ARG1,ARG1,ARG2);
    PRE_REG_READ2(long, "stat64", char *, file_name, struct stat64 *, buf);
    PRE_MEM_RASCIIZ( "stat64(file_name)", ARG1 );
    PRE_MEM_WRITE( "stat64(buf)", ARG2, sizeof(struct vki_stat64) );
@@ -1339,6 +1343,20 @@ PRE(sys_stat64)
 POST(sys_stat64)
 {
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat64) );
+}
+
+PRE(sys_fstatat64)
+{
+   PRINT("sys_fstatat64 ( %d, %p(%s), %p )",ARG1,ARG2,ARG2,ARG3);
+   PRE_REG_READ3(long, "fstatat64",
+                 int, dfd, char *, file_name, struct stat64 *, buf);
+   PRE_MEM_RASCIIZ( "fstatat64(file_name)", ARG2 );
+   PRE_MEM_WRITE( "fstatat64(buf)", ARG3, sizeof(struct vki_stat64) );
+}
+
+POST(sys_fstatat64)
+{
+   POST_MEM_WRITE( ARG3, sizeof(struct vki_stat64) );
 }
 
 PRE(sys_fstat64)
@@ -1677,6 +1695,50 @@ POST(sys_sigaction)
       POST_MEM_WRITE( ARG3, sizeof(struct vki_old_sigaction));
 }
 
+PRE(sys_sigsuspend)
+{
+   /* The C library interface to sigsuspend just takes a pointer to
+      a signal mask but this system call has three arguments - the first
+      two don't appear to be used by the kernel and are always passed as
+      zero by glibc and the third is the first word of the signal mask
+      so only 32 signals are supported.
+     
+      In fact glibc normally uses rt_sigsuspend if it is available as
+      that takes a pointer to the signal mask so supports more signals.
+    */
+   *flags |= SfMayBlock;
+   PRINT("sys_sigsuspend ( %d, %d, %d )", ARG1,ARG2,ARG3 );
+   PRE_REG_READ3(int, "sigsuspend",
+                 int, history0, int, history1,
+                 vki_old_sigset_t, mask);
+}
+
+PRE(sys_vm86old)
+{
+   PRINT("sys_vm86old ( %p )", ARG1);
+   PRE_REG_READ1(int, "vm86old", struct vm86_struct *, info);
+   PRE_MEM_WRITE( "vm86old(info)", ARG1, sizeof(struct vki_vm86_struct));
+}
+
+POST(sys_vm86old)
+{
+   POST_MEM_WRITE( ARG1, sizeof(struct vki_vm86_struct));
+}
+
+PRE(sys_vm86)
+{
+   PRINT("sys_vm86 ( %d, %p )", ARG1,ARG2);
+   PRE_REG_READ2(int, "vm86", unsigned long, fn, struct vm86plus_struct *, v86);
+   if (ARG1 == VKI_VM86_ENTER || ARG1 == VKI_VM86_ENTER_NO_BYPASS)
+      PRE_MEM_WRITE( "vm86(v86)", ARG2, sizeof(struct vki_vm86plus_struct));
+}
+
+POST(sys_vm86)
+{
+   if (ARG1 == VKI_VM86_ENTER || ARG1 == VKI_VM86_ENTER_NO_BYPASS)
+      POST_MEM_WRITE( ARG2, sizeof(struct vki_vm86plus_struct));
+}
+
 
 /* ---------------------------------------------------------------
    PRE/POST wrappers for x86/Linux-variant specific syscalls
@@ -1820,7 +1882,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 //zz 
    LINX_(__NR_setreuid,          sys_setreuid16),     // 70
    LINX_(__NR_setregid,          sys_setregid16),     // 71
-//zz    GENX_(__NR_sigsuspend,        sys_sigsuspend),     // 72
+   PLAX_(__NR_sigsuspend,        sys_sigsuspend),     // 72
    LINXY(__NR_sigpending,        sys_sigpending),     // 73
 //zz    //   (__NR_sethostname,       sys_sethostname),    // 74 */*
 //zz 
@@ -1869,7 +1931,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_iopl,              sys_iopl),           // 110
    LINX_(__NR_vhangup,           sys_vhangup),        // 111
    GENX_(__NR_idle,              sys_ni_syscall),     // 112
-//zz    //   (__NR_vm86old,           sys_vm86old),        // 113 x86/Linux-only
+   PLAXY(__NR_vm86old,           sys_vm86old),        // 113 x86/Linux-only
    GENXY(__NR_wait4,             sys_wait4),          // 114
 //zz 
 //zz    //   (__NR_swapoff,           sys_swapoff),        // 115 */Linux 
@@ -1935,7 +1997,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_setresuid,         sys_setresuid16),    // 164
 
    LINXY(__NR_getresuid,         sys_getresuid16),    // 165
-//zz    //   (__NR_vm86,              sys_vm86),           // 166 x86/Linux-only
+   PLAXY(__NR_vm86,              sys_vm86),           // 166 x86/Linux-only
    GENX_(__NR_query_module,      sys_ni_syscall),     // 167
    GENXY(__NR_poll,              sys_poll),           // 168
 //zz    //   (__NR_nfsservctl,        sys_nfsservctl),     // 169 */Linux
@@ -2022,7 +2084,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_removexattr,       sys_removexattr),    // 235
    LINX_(__NR_lremovexattr,      sys_lremovexattr),   // 236
    LINX_(__NR_fremovexattr,      sys_fremovexattr),   // 237
-//zz    LINX_(__NR_tkill,             sys_tkill),          // 238 */Linux
+   LINXY(__NR_tkill,             sys_tkill),          // 238 */Linux
    LINXY(__NR_sendfile64,        sys_sendfile64),     // 239
 
    LINXY(__NR_futex,             sys_futex),             // 240
@@ -2089,6 +2151,29 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_inotify_init,	 sys_inotify_init),   // 291
    LINX_(__NR_inotify_add_watch, sys_inotify_add_watch), // 292
    LINX_(__NR_inotify_rm_watch,	 sys_inotify_rm_watch), // 293
+//   LINX_(__NR_migrate_pages,	 sys_migrate_pages),    // 294
+
+   LINXY(__NR_openat,		 sys_openat),           // 295
+   LINX_(__NR_mkdirat,		 sys_mkdirat),          // 296
+   LINX_(__NR_mknodat,		 sys_mknodat),          // 297
+   LINX_(__NR_fchownat,		 sys_fchownat),         // 298
+   LINX_(__NR_futimesat,	 sys_futimesat),        // 299
+
+   PLAXY(__NR_fstatat64,	 sys_fstatat64),        // 300
+   LINX_(__NR_unlinkat,		 sys_unlinkat),         // 301
+   LINX_(__NR_renameat,		 sys_renameat),         // 302
+   LINX_(__NR_linkat,		 sys_linkat),           // 303
+   LINX_(__NR_symlinkat,	 sys_symlinkat),        // 304
+
+   LINX_(__NR_readlinkat,	 sys_readlinkat),       // 305
+   LINX_(__NR_fchmodat,		 sys_fchmodat),         // 306
+   LINX_(__NR_faccessat,	 sys_faccessat),        // 307
+   LINX_(__NR_pselect6,		 sys_pselect6),         // 308
+   LINXY(__NR_ppoll,		 sys_ppoll),            // 309
+
+//   LINX_(__NR_unshare,		 sys_unshare),          // 310
+   LINX_(__NR_set_robust_list,	 sys_set_robust_list),  // 311
+   LINXY(__NR_get_robust_list,	 sys_get_robust_list),  // 312
 };
 
 const UInt ML_(syscall_table_size) = 

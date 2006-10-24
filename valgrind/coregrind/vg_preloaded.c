@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -55,7 +55,7 @@ void VG_NOTIFY_ON_LOAD(freeres)( void );
 void VG_NOTIFY_ON_LOAD(freeres)( void )
 {
    int res;
-#ifndef __UCLIBC__
+#if !defined(__UCLIBC__) && !defined(VGO_aix5)
    extern void __libc_freeres(void);
    __libc_freeres();
 #endif

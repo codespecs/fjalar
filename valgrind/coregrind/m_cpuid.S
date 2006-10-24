@@ -1,13 +1,13 @@
 
-##--------------------------------------------------------------------##
-##--- CPUID interface.                                   m_cpuid.S ---##
-##--------------------------------------------------------------------##
+/*--------------------------------------------------------------------*/
+/*--- CPUID interface.                                   m_cpuid.S ---*/
+/*--------------------------------------------------------------------*/
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2005 Julian Seward 
+  Copyright (C) 2000-2006 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -60,8 +60,6 @@
     VG_(has_cpuid):
         movq    $1, %rax
         ret
-#elif defined(VGA_appc32)
-//CAB: TODO
 #endif
 
 /*
@@ -143,13 +141,13 @@
         movq    %rbp, %rsp
         popq    %rbp
         ret
-#elif defined(VGA_appc32)
-//CAB: TODO
 #endif
         
+#if defined(VGA_x86) || defined(VGA_amd64)        
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
+#endif
 		
-##--------------------------------------------------------------------##
-##--- end                                                          ---##
-##--------------------------------------------------------------------##
+/*--------------------------------------------------------------------*/
+/*--- end                                                          ---*/
+/*--------------------------------------------------------------------*/

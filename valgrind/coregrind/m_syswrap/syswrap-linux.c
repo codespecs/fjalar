@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Nicholas Nethercote
+   Copyright (C) 2000-2006 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -29,10 +29,13 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
+#include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuginfo.h"    // VG_(di_notify_*)
 #include "pub_core_transtab.h"     // VG_(discard_translations)
+#include "pub_core_clientstate.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
@@ -52,7 +55,6 @@
 #include "priv_syswrap-generic.h"
 #include "priv_syswrap-linux.h"
 
-#include "vki_unistd.h"              /* for the __NR_* constants */
 
 // Run a thread from beginning to end and return the thread's
 // scheduler-return-code.
@@ -69,7 +71,7 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    vg_assert(tst->status == VgTs_Init);
 
    /* make sure we get the CPU lock before doing anything significant */
-   VG_(set_running)(tid);
+   VG_(set_running)(tid, "thread_wrapper(starting new thread)");
 
    if (0)
       VG_(printf)("thread tid %d started: stack = %p\n",
@@ -323,7 +325,7 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
 # error Unknown platform
 #endif
 
-   if (!res.isError && res.val == 0) {
+   if (!res.isError && res.res == 0) {
       /* child */
       VG_(do_atfork_child)(tid);
 
@@ -331,11 +333,11 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
    } 
    else 
-   if (!res.isError && res.val > 0) {
+   if (!res.isError && res.res > 0) {
       /* parent */
       if (VG_(clo_trace_syscalls))
 	  VG_(printf)("   clone(fork): process %d created child %d\n", 
-                      VG_(getpid)(), res.val);
+                      VG_(getpid)(), res.res);
 
       /* restore signal mask */
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
@@ -551,11 +553,11 @@ PRE(sys_exit_group)
          )
          continue;
 
-      VG_(threads)[t].exitreason = VgSrc_ExitSyscall;
+      VG_(threads)[t].exitreason = VgSrc_ExitThread;
       VG_(threads)[t].os_state.exitcode = ARG1;
 
       if (t != tid)
-	 VG_(kill_thread)(t);	/* unblock it, if blocked */
+	 VG_(get_thread_out_of_syscall)(t); /* unblock it, if blocked */
    }
 
    /* We have to claim the syscall already succeeded. */
@@ -754,9 +756,31 @@ PRE(sys_futex)
       ARG6 - int val3				CMP_REQUEUE
     */
    PRINT("sys_futex ( %p, %d, %d, %p, %p )", ARG1,ARG2,ARG3,ARG4,ARG5);
+   switch(ARG2) {
+   case VKI_FUTEX_CMP_REQUEUE:
    PRE_REG_READ6(long, "futex", 
                  vki_u32 *, futex, int, op, int, val,
                  struct timespec *, utime, vki_u32 *, uaddr2, int, val3);
+      break;
+   case VKI_FUTEX_REQUEUE:
+      PRE_REG_READ5(long, "futex", 
+                    vki_u32 *, futex, int, op, int, val,
+                    struct timespec *, utime, vki_u32 *, uaddr2);
+      break;
+   case VKI_FUTEX_WAIT:
+      PRE_REG_READ4(long, "futex", 
+                    vki_u32 *, futex, int, op, int, val,
+                    struct timespec *, utime);
+      break;
+   case VKI_FUTEX_WAKE:
+   case VKI_FUTEX_FD:
+      PRE_REG_READ3(long, "futex", 
+                    vki_u32 *, futex, int, op, int, val);
+      break;
+   default:
+      PRE_REG_READ2(long, "futex", vki_u32 *, futex, int, op);
+      break;
+   }
 
    PRE_MEM_READ( "futex(futex)", ARG1, sizeof(Int) );
 
@@ -795,6 +819,97 @@ POST(sys_futex)
          if (VG_(clo_track_fds))
             ML_(record_fd_open_nameless)(tid, RES);
       }
+   }
+}
+
+PRE(sys_set_robust_list)
+{
+   PRINT("sys_set_robust_list ( %p, %d )", ARG1,ARG2);
+   PRE_REG_READ2(long, "set_robust_list", 
+                 struct vki_robust_list_head *, head, vki_size_t, len);
+
+   /* Just check the robust_list_head structure is readable - don't
+      try and chase the list as the kernel will only read it when
+      the thread exits so the current contents is irrelevant. */
+   if (ARG1 != 0)
+      PRE_MEM_READ("set_robust_list(head)", ARG1, ARG2);
+}
+
+PRE(sys_get_robust_list)
+{
+   PRINT("sys_get_robust_list ( %d, %p, %d )", ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "get_robust_list",
+                 int, pid,
+                 struct vki_robust_list_head **, head_ptr,
+                 vki_size_t *, len_ptr);
+   PRE_MEM_WRITE("get_robust_list(head_ptr)",
+                 ARG2, sizeof(struct vki_robust_list_head *));
+   PRE_MEM_WRITE("get_robust_list(len_ptr)",
+                 ARG3, sizeof(struct vki_size_t *));
+}
+POST(sys_get_robust_list)
+{
+   POST_MEM_WRITE(ARG2, sizeof(struct vki_robust_list_head *));
+   POST_MEM_WRITE(ARG3, sizeof(struct vki_size_t *));
+}
+
+PRE(sys_pselect6)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_pselect6 ( %d, %p, %p, %p, %p, %p )", ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+   PRE_REG_READ6(long, "pselect6",
+                 int, n, vki_fd_set *, readfds, vki_fd_set *, writefds,
+                 vki_fd_set *, exceptfds, struct vki_timeval *, timeout,
+                 void *, sig);
+   // XXX: this possibly understates how much memory is read.
+   if (ARG2 != 0)
+      PRE_MEM_READ( "pselect6(readfds)",   
+		     ARG2, ARG1/8 /* __FD_SETSIZE/8 */ );
+   if (ARG3 != 0)
+      PRE_MEM_READ( "pselect6(writefds)",  
+		     ARG3, ARG1/8 /* __FD_SETSIZE/8 */ );
+   if (ARG4 != 0)
+      PRE_MEM_READ( "pselect6(exceptfds)", 
+		     ARG4, ARG1/8 /* __FD_SETSIZE/8 */ );
+   if (ARG5 != 0)
+      PRE_MEM_READ( "pselect6(timeout)", ARG5, sizeof(struct vki_timeval) );
+   if (ARG6 != 0)
+      PRE_MEM_READ( "pselect6(sig)", ARG6, sizeof(void *)+sizeof(vki_size_t) );
+}
+
+PRE(sys_ppoll)
+{
+   UInt i;
+   struct vki_pollfd* ufds = (struct vki_pollfd *)ARG1;
+   *flags |= SfMayBlock;
+   PRINT("sys_ppoll ( %p, %d, %p, %p, %llu )\n", ARG1,ARG2,ARG3,ARG4,ARG5);
+   PRE_REG_READ5(long, "ppoll",
+                 struct vki_pollfd *, ufds, unsigned int, nfds,
+                 struct vki_timespec *, tsp, vki_sigset_t *, sigmask,
+                 vki_size_t, sigsetsize);
+
+   for (i = 0; i < ARG2; i++) {
+      PRE_MEM_READ( "ppoll(ufds.fd)",
+                    (Addr)(&ufds[i].fd), sizeof(ufds[i].fd) );
+      PRE_MEM_READ( "ppoll(ufds.events)",
+                    (Addr)(&ufds[i].events), sizeof(ufds[i].events) );
+      PRE_MEM_WRITE( "ppoll(ufd.reventss)",
+                     (Addr)(&ufds[i].revents), sizeof(ufds[i].revents) );
+   }
+
+   if (ARG3)
+      PRE_MEM_READ( "ppoll(tsp)", ARG3, sizeof(struct vki_timespec) );
+   if (ARG4)
+      PRE_MEM_READ( "ppoll(sigmask)", ARG4, sizeof(vki_sigset_t) );
+}
+
+POST(sys_ppoll)
+{
+   if (RES > 0) {
+      UInt i;
+      struct vki_pollfd* ufds = (struct vki_pollfd *)ARG1;
+      for (i = 0; i < ARG2; i++)
+	 POST_MEM_WRITE( (Addr)(&ufds[i].revents), sizeof(ufds[i].revents) );
    }
 }
 
@@ -867,29 +982,46 @@ PRE(sys_set_tid_address)
    PRE_REG_READ1(long, "set_tid_address", int *, tidptr);
 }
 
-//zz PRE(sys_tkill, Special)
-//zz {
-//zz    /* int tkill(pid_t tid, int sig); */
-//zz    PRINT("sys_tkill ( %d, %d )", ARG1,ARG2);
-//zz    PRE_REG_READ2(long, "tkill", int, tid, int, sig);
-//zz    if (!ML_(client_signal_OK)(ARG2)) {
-//zz       SET_STATUS_( -VKI_EINVAL );
-//zz       return;
-//zz    }
-//zz 
-//zz    /* If we're sending SIGKILL, check to see if the target is one of
-//zz       our threads and handle it specially. */
-//zz    if (ARG2 == VKI_SIGKILL && ML_(do_sigkill)(ARG1, -1))
-//zz       SET_STATUS_(0);
-//zz    else
-//zz       SET_STATUS_(VG_(do_syscall2)(SYSNO, ARG1, ARG2));
-//zz 
-//zz    if (VG_(clo_trace_signals))
-//zz       VG_(message)(Vg_DebugMsg, "tkill: sent signal %d to pid %d",
-//zz 		   ARG2, ARG1);
-//zz    // Check to see if this kill gave us a pending signal
-//zz    XXX FIXME VG_(poll_signals)(tid);
-//zz }
+PRE(sys_tkill)
+{
+   PRINT("sys_tgkill ( %d, %d )", ARG1,ARG2);
+   PRE_REG_READ2(long, "tkill", int, tid, int, sig);
+   if (!ML_(client_signal_OK)(ARG2)) {
+      SET_STATUS_Failure( VKI_EINVAL );
+      return;
+   }
+   
+   /* Check to see if this kill gave us a pending signal */
+   *flags |= SfPollAfter;
+
+   if (VG_(clo_trace_signals))
+      VG_(message)(Vg_DebugMsg, "tkill: sending signal %d to pid %d",
+		   ARG2, ARG1);
+
+   /* If we're sending SIGKILL, check to see if the target is one of
+      our threads and handle it specially. */
+   if (ARG2 == VKI_SIGKILL && ML_(do_sigkill)(ARG1, -1)) {
+      SET_STATUS_Success(0);
+      return;
+   }
+
+   /* Ask to handle this syscall via the slow route, since that's the
+      only one that sets tst->status to VgTs_WaitSys.  If the result
+      of doing the syscall is an immediate run of
+      async_signalhandler() in m_signals, then we need the thread to
+      be properly tidied away.  I have the impression the previous
+      version of this wrapper worked on x86/amd64 only because the
+      kernel did not immediately deliver the async signal to this
+      thread (on ppc it did, which broke the assertion re tst->status
+      at the top of async_signalhandler()). */
+   *flags |= SfMayBlock;
+}
+POST(sys_tkill)
+{
+   if (VG_(clo_trace_signals))
+      VG_(message)(Vg_DebugMsg, "tkill: sent signal %d to pid %d",
+                   ARG2, ARG1);
+}
 
 PRE(sys_tgkill)
 {
@@ -1366,7 +1498,7 @@ PRE(sys_clock_nanosleep)
 }
 POST(sys_clock_nanosleep)
 {
-   if (ARG4 != 0 && FAILURE && RES_unchecked == VKI_EINTR)
+   if (ARG4 != 0 && FAILURE && ERR == VKI_EINTR)
       POST_MEM_WRITE( ARG4, sizeof(struct vki_timespec) );
 }
 
@@ -2196,6 +2328,204 @@ ML_(linux_POST_sys_msgctl) ( ThreadId tid,
       POST_MEM_WRITE( arg2, sizeof(struct vki_msqid64_ds) );
       break;
    }
+}
+
+/* ---------------------------------------------------------------------
+   *at wrappers
+   ------------------------------------------------------------------ */
+
+PRE(sys_openat)
+{
+   HChar  name[30];
+   SysRes sres;
+
+   if (ARG3 & VKI_O_CREAT) {
+      // 4-arg version
+      PRINT("sys_openat ( %d, %p(%s), %d, %d )",ARG1,ARG2,ARG2,ARG3,ARG4);
+      PRE_REG_READ4(long, "openat",
+                    int, dfd, const char *, filename, int, flags, int, mode);
+   } else {
+      // 3-arg version
+      PRINT("sys_openat ( %d, %p(%s), %d )",ARG1,ARG2,ARG2,ARG3);
+      PRE_REG_READ3(long, "openat",
+                    int, dfd, const char *, filename, int, flags);
+   }
+
+   if (!ML_(fd_allowed)(ARG1, "openat", tid, False))
+      SET_STATUS_Failure( VKI_EBADF );
+   else
+      PRE_MEM_RASCIIZ( "openat(filename)", ARG2 );
+
+   /* Handle the case where the open is of /proc/self/cmdline or
+      /proc/<pid>/cmdline, and just give it a copy of the fd for the
+      fake file we cooked up at startup (in m_main).  Also, seek the
+      cloned fd back to the start. */
+
+   VG_(sprintf)(name, "/proc/%d/cmdline", VG_(getpid)());
+   if (ML_(safe_to_deref)( (void*)ARG2, 1 )
+       && (VG_(strcmp)((Char *)ARG2, name) == 0 
+           || VG_(strcmp)((Char *)ARG2, "/proc/self/cmdline") == 0)) {
+      sres = VG_(dup)( VG_(cl_cmdline_fd) );
+      SET_STATUS_from_SysRes( sres );
+      if (!sres.isError) {
+         OffT off = VG_(lseek)( sres.res, 0, VKI_SEEK_SET );
+         if (off < 0)
+            SET_STATUS_Failure( VKI_EMFILE );
+      }
+      return;
+   }
+
+   /* Otherwise handle normally */
+   *flags |= SfMayBlock;
+}
+
+POST(sys_openat)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "openat", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_with_given_name)(tid, RES, (Char*)ARG2);
+   }
+}
+
+PRE(sys_mkdirat)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_mkdirat ( %d, %p(%s), %d )", ARG1,ARG2,ARG2,ARG3);
+   PRE_REG_READ3(long, "mkdirat",
+                 int, dfd, const char *, pathname, int, mode);
+   PRE_MEM_RASCIIZ( "mkdirat(pathname)", ARG2 );
+}
+
+PRE(sys_mknodat)
+{
+   PRINT("sys_mknodat ( %d, %p(%s), 0x%x, 0x%x )", ARG1,ARG2,ARG2,ARG3,ARG4 );
+   PRE_REG_READ4(long, "mknodat",
+                 int, dfd, const char *, pathname, int, mode, unsigned, dev);
+   PRE_MEM_RASCIIZ( "mknodat(pathname)", ARG2 );
+}
+
+PRE(sys_fchownat)
+{
+   PRINT("sys_fchownat ( %d, %p(%s), 0x%x, 0x%x )", ARG1,ARG2,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "fchownat",
+                 int, dfd, const char *, path,
+                 vki_uid_t, owner, vki_gid_t, group);
+   PRE_MEM_RASCIIZ( "fchownat(path)", ARG2 );
+}
+
+PRE(sys_futimesat)
+{
+   PRINT("sys_futimesat ( %d, %p(%s), %p )", ARG1,ARG2,ARG2,ARG3);
+   PRE_REG_READ3(long, "futimesat",
+                 int, dfd, char *, filename, struct timeval *, tvp);
+   PRE_MEM_RASCIIZ( "futimesat(filename)", ARG2 );
+   if (ARG3 != 0)
+      PRE_MEM_READ( "futimesat(tvp)", ARG3, sizeof(struct vki_timeval) );
+}
+
+PRE(sys_newfstatat)
+{
+   PRINT("sys_newfstatat ( %d, %p(%s), %p )", ARG1,ARG2,ARG2,ARG3);
+   PRE_REG_READ3(long, "fstatat",
+                 int, dfd, char *, file_name, struct stat *, buf);
+   PRE_MEM_RASCIIZ( "fstatat(file_name)", ARG2 );
+   PRE_MEM_WRITE( "fstatat(buf)", ARG3, sizeof(struct vki_stat) );
+}
+
+POST(sys_newfstatat)
+{
+   POST_MEM_WRITE( ARG3, sizeof(struct vki_stat) );
+}
+
+PRE(sys_unlinkat)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_unlinkat ( %d, %p(%s) )", ARG1,ARG2,ARG2);
+   PRE_REG_READ2(long, "unlinkat", int, dfd, const char *, pathname);
+   PRE_MEM_RASCIIZ( "unlinkat(pathname)", ARG2 );
+}
+
+PRE(sys_renameat)
+{
+   PRINT("sys_renameat ( %d, %p(%s), %d, %p(%s) )", ARG1,ARG2,ARG2,ARG3,ARG4,ARG4);
+   PRE_REG_READ4(long, "renameat",
+                 int, olddfd, const char *, oldpath,
+                 int, newdfd, const char *, newpath);
+   PRE_MEM_RASCIIZ( "renameat(oldpath)", ARG2 );
+   PRE_MEM_RASCIIZ( "renameat(newpath)", ARG4 );
+}
+
+PRE(sys_linkat)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_linkat ( %d, %p(%s), %d, %p(%s), %d )",ARG1,ARG2,ARG2,ARG3,ARG4,ARG4,ARG5);
+   PRE_REG_READ5(long, "linkat",
+                 int, olddfd, const char *, oldpath,
+                 int, newdfd, const char *, newpath,
+                 int, flags);
+   PRE_MEM_RASCIIZ( "linkat(oldpath)", ARG2);
+   PRE_MEM_RASCIIZ( "linkat(newpath)", ARG4);
+}
+
+PRE(sys_symlinkat)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_symlinkat ( %p(%s), %d, %p(%s) )",ARG1,ARG1,ARG2,ARG3,ARG3);
+   PRE_REG_READ3(long, "symlinkat",
+                 const char *, oldpath, int, newdfd, const char *, newpath);
+   PRE_MEM_RASCIIZ( "symlinkat(oldpath)", ARG1 );
+   PRE_MEM_RASCIIZ( "symlinkat(newpath)", ARG3 );
+}
+
+PRE(sys_readlinkat)
+{
+   HChar name[25];
+   Word  saved = SYSNO;
+
+   PRINT("sys_readlinkat ( %d, %p(%s), %p, %llu )", ARG1,ARG2,ARG2,ARG3,(ULong)ARG4);
+   PRE_REG_READ4(long, "readlinkat",
+                 int, dfd, const char *, path, char *, buf, int, bufsiz);
+   PRE_MEM_RASCIIZ( "readlinkat(path)", ARG2 );
+   PRE_MEM_WRITE( "readlinkat(buf)", ARG3,ARG4 );
+
+   /*
+    * Handle the case where readlinkat is looking at /proc/self/exe or
+    * /proc/<pid>/exe.
+    */
+   VG_(sprintf)(name, "/proc/%d/exe", VG_(getpid)());
+   if (ML_(safe_to_deref)((void*)ARG2, 1)
+       && (VG_(strcmp)((Char *)ARG2, name) == 0 
+           || VG_(strcmp)((Char *)ARG2, "/proc/self/exe") == 0)) {
+      VG_(sprintf)(name, "/proc/self/fd/%d", VG_(cl_exec_fd));
+      SET_STATUS_from_SysRes( VG_(do_syscall4)(saved, ARG1, (UWord)name, 
+                                                      ARG3, ARG4));
+   } else {
+      /* Normal case */
+      SET_STATUS_from_SysRes( VG_(do_syscall4)(saved, ARG1, ARG2, ARG3, ARG4));
+   }
+
+   if (SUCCESS && RES > 0)
+      POST_MEM_WRITE( ARG3, RES );
+}
+
+PRE(sys_fchmodat)
+{
+   PRINT("sys_fchmodat ( %d, %p(%s), %d )", ARG1,ARG2,ARG2,ARG3);
+   PRE_REG_READ3(long, "fchmodat",
+                 int, dfd, const char *, path, vki_mode_t, mode);
+   PRE_MEM_RASCIIZ( "fchmodat(path)", ARG2 );
+}
+
+PRE(sys_faccessat)
+{
+   PRINT("sys_faccessat ( %d, %p(%s), %d )", ARG1,ARG2,ARG2,ARG3);
+   PRE_REG_READ3(long, "faccessat",
+                 int, dfd, const char *, pathname, int, mode);
+   PRE_MEM_RASCIIZ( "faccessat(pathname)", ARG2 );
 }
 
 #undef PRE

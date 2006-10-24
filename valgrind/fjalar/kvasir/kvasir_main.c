@@ -179,8 +179,8 @@ static char createDeclsAndDtraceFiles(char* appname)
 
   // Step 2: Make the daikon-output/ directory
   res = VG_(mkdir)(decls_folder, 0777); // more abbreviated UNIX form
-  if (res.isError && res.val != VKI_EEXIST)
-    VG_(printf)( "Couldn't create %s: %s\n", decls_folder, strerror(res.val));
+  if (res.isError && res.err != VKI_EEXIST)
+    VG_(printf)( "Couldn't create %s: %s\n", decls_folder, strerror(res.err));
 
   // ASSUME mkdir succeeded! (or that the directory already exists)
 
@@ -309,9 +309,9 @@ static int createFIFO(const char *filename) {
   SysRes res;
   int ret;
   res = VG_(unlink)(filename);
-  if (res.isError && res.val != VKI_ENOENT) {
+  if (res.isError && res.err != VKI_ENOENT) {
     VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
-		 strerror(res.val));
+		 strerror(res.err));
     return 0;
   }
   ret = mkfifo(filename, 0666);
@@ -337,7 +337,7 @@ static int openRedirectFile(const char *fname) {
 	      fname+1, strerror(errno));
       return -1;
     }
-    new_fd = sr.val;
+    new_fd = sr.res;
   } else {
     sr = VG_(open)(fname, VKI_O_WRONLY|VKI_O_CREAT|VKI_O_LARGEFILE|VKI_O_TRUNC,
 		  0666);
@@ -346,7 +346,7 @@ static int openRedirectFile(const char *fname) {
 	      fname, strerror(errno));
       return -1;
     }
-    new_fd = sr.val;
+    new_fd = sr.res;
   }
   return new_fd;
 }
@@ -417,7 +417,7 @@ static int openDtraceFile(const char *fname) {
 	if (sr.isError) {
 	  VG_(printf)( "Couldn't open %s for writing\n", fname);
 	}
-	fd = sr.val;
+	fd = sr.res;
 	VG_(close)(1);
 	VG_(dup2)(fd, 1);
 	VG_(close)(fd);
@@ -432,7 +432,7 @@ static int openDtraceFile(const char *fname) {
     gzip_pid = pid;
   } else if VG_STREQ(fname, "-") {
     SysRes sr = VG_(dup)(1);
-    int dtrace_fd = sr.val;
+    int dtrace_fd = sr.res;
     /* Check sr.isError? */
     dtrace_fp = fdopen(dtrace_fd, mode_str);
     if (!dtrace_fp) {

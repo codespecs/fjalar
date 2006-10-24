@@ -24,9 +24,9 @@
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../memcheck/docs/mc-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
-  <xi:include href="../../addrcheck/docs/ac-manual.xml" parse="xml"  
-      xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../cachegrind/docs/cg-manual.xml" parse="xml"  
+      xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="../../callgrind/docs/cl-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../massif/docs/ms-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
@@ -35,6 +35,8 @@
   <xi:include href="../../none/docs/nl-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../lackey/docs/lk-manual.xml" parse="xml"  
+      xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="manual-writing-tools.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
 
 </book>

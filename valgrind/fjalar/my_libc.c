@@ -175,10 +175,10 @@ FILE *fopen(const char *path, const char *mode) {
   f |= VKI_O_LARGEFILE;
   sr = VG_(open)(path, f, 0666);
   if (sr.isError) {
-    errno = sr.val;
+    errno = sr.err;
     return 0;
   }
-  fd = sr.val;
+  fd = sr.res;
   return __stdio_init_file(fd,1,f);
 }
 
@@ -1302,9 +1302,9 @@ const char* strerror(int errnum)
 int mkfifo(const char *fn, int mode) {
   SysRes res = VG_(mknod)(fn, mode|VKI_S_IFIFO, 0);
   if (res.isError) {
-    errno = res.val;
+    errno = res.err;
     return -1;
   } else {
-    return res.val;
+    return res.res;
   }
 }

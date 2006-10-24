@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -81,6 +81,13 @@ extern Int VG_(fd_hard_limit);
 /* Useful addresses extracted from the client */
 /* Where is the __libc_freeres_wrapper routine we made? */
 extern Addr VG_(client___libc_freeres_wrapper);
+
+/* x86-linux only: where is ld.so's _dl_sysinfo_int80 function?
+   Finding it isn't essential, but knowing where it is does sometimes
+   help produce better back traces.  See big comment in
+   VG_(get_StackTrace) in m_stacktrace.c for further info. */
+extern Addr VG_(client__dl_sysinfo_int80);
+
 
 #endif   // __PUB_CORE_CLIENTSTATE_H
 

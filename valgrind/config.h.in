@@ -1,5 +1,8 @@
 /* config.h.in.  Generated from configure.in by autoheader.  */
 
+/* Define to 1 if you're using AIX 5.1, 5.2 or 5.3 */
+#undef AIX5_LIBC
+
 /* configured to run as an inner Valgrind */
 #undef ENABLE_INNER
 
@@ -14,6 +17,12 @@
 
 /* Define to 1 if you're using glibc 2.4.x */
 #undef GLIBC_2_4
+
+/* Define to 1 if you're using glibc 2.5.x */
+#undef GLIBC_2_5
+
+/* Define to 1 if as supports mtocrf/mfocrf. */
+#undef HAVE_AS_PPC_MFTOCRF
 
 /* Define to 1 if gcc supports __builtin_expect. */
 #undef HAVE_BUILTIN_EXPECT

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -46,6 +46,8 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_libcassert.h"    // For VG_BUGS_TO
+#include "pub_core_vki.h"           // Avoids warnings from 
+                                    // pub_core_libcfile.h
 #include "pub_core_libcfile.h"      // For VG_CLO_DEFAULT_LOGPORT
 
 
@@ -228,7 +230,8 @@ static void sigint_handler ( int signo )
 int main (int argc, char** argv) 
 {
    int    i, j, k, res, one;
-   int    main_sd, new_sd, client_len;
+   int    main_sd, new_sd;
+   socklen_t client_len;
    struct sockaddr_in client_addr, server_addr;
 
    char /*bool*/ exit_when_zero = 0;
@@ -304,7 +307,7 @@ int main (int argc, char** argv)
 
            /* ok, we have someone waiting to connect.  Get the sd. */
            client_len = sizeof(client_addr);
-           new_sd = accept(main_sd, (struct sockaddr *) &client_addr, 
+           new_sd = accept(main_sd, (struct sockaddr *)&client_addr, 
                                                        &client_len);
            if (new_sd < 0) {
               perror("cannot accept connection ");

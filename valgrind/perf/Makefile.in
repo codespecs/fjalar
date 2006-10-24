@@ -44,6 +44,10 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BUILD_MPIWRAP_PRI_FALSE = @BUILD_MPIWRAP_PRI_FALSE@
+BUILD_MPIWRAP_PRI_TRUE = @BUILD_MPIWRAP_PRI_TRUE@
+BUILD_MPIWRAP_SEC_FALSE = @BUILD_MPIWRAP_SEC_FALSE@
+BUILD_MPIWRAP_SEC_TRUE = @BUILD_MPIWRAP_SEC_TRUE@
 CC = @CC@
 CCAS = @CCAS@
 CCASFLAGS = @CCASFLAGS@
@@ -66,6 +70,8 @@ EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FLAG_M32 = @FLAG_M32@
 FLAG_M64 = @FLAG_M64@
+FLAG_MAIX32 = @FLAG_MAIX32@
+FLAG_MAIX64 = @FLAG_MAIX64@
 FLAG_MMMX = @FLAG_MMMX@
 FLAG_MSSE = @FLAG_MSSE@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
@@ -83,6 +89,7 @@ MAINT = @MAINT@
 MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
+MPI_CC = @MPI_CC@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -100,19 +107,29 @@ STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
 VEX_DIR = @VEX_DIR@
-VG_AMD64_LINUX_FALSE = @VG_AMD64_LINUX_FALSE@
-VG_AMD64_LINUX_TRUE = @VG_AMD64_LINUX_TRUE@
+VGO_AIX5_FALSE = @VGO_AIX5_FALSE@
+VGO_AIX5_TRUE = @VGO_AIX5_TRUE@
+VGO_LINUX_FALSE = @VGO_LINUX_FALSE@
+VGO_LINUX_TRUE = @VGO_LINUX_TRUE@
+VGP_AMD64_LINUX_FALSE = @VGP_AMD64_LINUX_FALSE@
+VGP_AMD64_LINUX_TRUE = @VGP_AMD64_LINUX_TRUE@
+VGP_HAVE_SECONDARY_FALSE = @VGP_HAVE_SECONDARY_FALSE@
+VGP_HAVE_SECONDARY_TRUE = @VGP_HAVE_SECONDARY_TRUE@
+VGP_PPC32_AIX5_FALSE = @VGP_PPC32_AIX5_FALSE@
+VGP_PPC32_AIX5_TRUE = @VGP_PPC32_AIX5_TRUE@
+VGP_PPC32_LINUX_FALSE = @VGP_PPC32_LINUX_FALSE@
+VGP_PPC32_LINUX_TRUE = @VGP_PPC32_LINUX_TRUE@
+VGP_PPC64_AIX5_FALSE = @VGP_PPC64_AIX5_FALSE@
+VGP_PPC64_AIX5_TRUE = @VGP_PPC64_AIX5_TRUE@
+VGP_PPC64_LINUX_FALSE = @VGP_PPC64_LINUX_FALSE@
+VGP_PPC64_LINUX_TRUE = @VGP_PPC64_LINUX_TRUE@
+VGP_X86_LINUX_FALSE = @VGP_X86_LINUX_FALSE@
+VGP_X86_LINUX_TRUE = @VGP_X86_LINUX_TRUE@
 VG_ARCH = @VG_ARCH@
 VG_ARCH_ALL = @VG_ARCH_ALL@
 VG_OS = @VG_OS@
 VG_PLATFORM_PRI = @VG_PLATFORM_PRI@
 VG_PLATFORM_SEC = @VG_PLATFORM_SEC@
-VG_PPC32_LINUX_FALSE = @VG_PPC32_LINUX_FALSE@
-VG_PPC32_LINUX_TRUE = @VG_PPC32_LINUX_TRUE@
-VG_PPC64_LINUX_FALSE = @VG_PPC64_LINUX_FALSE@
-VG_PPC64_LINUX_TRUE = @VG_PPC64_LINUX_TRUE@
-VG_X86_LINUX_FALSE = @VG_X86_LINUX_FALSE@
-VG_X86_LINUX_TRUE = @VG_X86_LINUX_TRUE@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
 ac_ct_RANLIB = @ac_ct_RANLIB@
@@ -172,7 +189,7 @@ AM_CPPFLAGS_AMD64_LINUX = $(add_includes_amd64_linux)
 AM_CFLAGS_AMD64_LINUX = $(WERROR) @FLAG_M64@ -fomit-frame-pointer \
 				 @PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
 
-AM_CCASFLAGS_AMD64_LINUX = $(add_includes_amd64_linux) -m64 -g
+AM_CCASFLAGS_AMD64_LINUX = $(add_includes_amd64_linux) @FLAG_M64@ -g
 
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
 AM_CPPFLAGS_PPC32_LINUX = $(add_includes_ppc32_linux)
@@ -182,7 +199,21 @@ AM_CCASFLAGS_PPC32_LINUX = $(add_includes_ppc32_linux) -Wa,-maltivec @FLAG_M32@ 
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
 AM_CPPFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux)
 AM_CFLAGS_PPC64_LINUX = $(WERROR) @FLAG_M64@ $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux) -Wa,-maltivec -m64 -g
+AM_CCASFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux) -Wa,-maltivec @FLAG_M64@ -g
+
+AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
+AM_CPPFLAGS_PPC32_AIX5 = $(add_includes_ppc32_aix5)
+AM_CFLAGS_PPC32_AIX5 = $(WERROR) @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_AIX5 = $(add_includes_ppc32_aix5) \
+				@FLAG_MAIX32@ -mcpu=powerpc -g
+
+
+AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
+AM_CPPFLAGS_PPC64_AIX5 = $(add_includes_ppc64_aix5)
+AM_CFLAGS_PPC64_AIX5 = $(WERROR) @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_AIX5 = $(add_includes_ppc64_aix5) \
+				@FLAG_MAIX64@ -mcpu=powerpc64 -g
+
 
 # Flags for the primary target.  These must be used to build the
 # regtests and performance tests.  In fact, these must be used to
@@ -192,6 +223,20 @@ AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VG_PLATFORM_PRI@)
 AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VG_PLATFORM_PRI@)
 AM_CFLAGS_PRI = $(AM_CFLAGS_@VG_PLATFORM_PRI@)
 AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VG_PLATFORM_PRI@)
+@VGP_HAVE_SECONDARY_FALSE@AM_FLAG_M3264_SEC = 
+
+@VGP_HAVE_SECONDARY_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VG_PLATFORM_SEC@)
+
+# Baseline link flags for making dynamic shared objects.
+#
+PRELOAD_LDFLAGS_COMMON_LINUX = -nostdlib -shared -Wl,-z,interpose,-z,initfirst
+PRELOAD_LDFLAGS_COMMON_AIX5 = -nostdlib -shared -Wl,-G -Wl,-bnogc
+PRELOAD_LDFLAGS_X86_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
+PRELOAD_LDFLAGS_AMD64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
+PRELOAD_LDFLAGS_PPC32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
+PRELOAD_LDFLAGS_PPC64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
+PRELOAD_LDFLAGS_PPC32_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX32@
+PRELOAD_LDFLAGS_PPC64_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX64@
 
 
 # For AM_FLAG_M3264_PRI
@@ -221,6 +266,8 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 fbench_CFLAGS = $(AM_FLAG_M3264_PRI) -g -O2
 fbench_LDADD = 
 ffbench_LDADD = -lm
+
+tinycc_CFLAGS = $(AM_CFLAGS) -Wno-shadow
 subdir = perf
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
@@ -257,7 +304,7 @@ sarp_LDADD = $(LDADD)
 sarp_DEPENDENCIES =
 sarp_LDFLAGS =
 tinycc_SOURCES = tinycc.c
-tinycc_OBJECTS = tinycc.$(OBJEXT)
+tinycc_OBJECTS = tinycc-tinycc.$(OBJEXT)
 tinycc_LDADD = $(LDADD)
 tinycc_DEPENDENCIES =
 tinycc_LDFLAGS =
@@ -270,7 +317,7 @@ am__depfiles_maybe = depfiles
 @AMDEP_TRUE@DEP_FILES = ./$(DEPDIR)/bigcode.Po ./$(DEPDIR)/bz2.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/fbench-fbench.Po ./$(DEPDIR)/ffbench.Po \
 @AMDEP_TRUE@	./$(DEPDIR)/heap.Po ./$(DEPDIR)/sarp.Po \
-@AMDEP_TRUE@	./$(DEPDIR)/tinycc.Po
+@AMDEP_TRUE@	./$(DEPDIR)/tinycc-tinycc.Po
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
@@ -328,7 +375,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ffbench.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/heap.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sarp.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tinycc.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/tinycc-tinycc.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	if $(COMPILE) -MT $@ -MD -MP -MF "$(DEPDIR)/$*.Tpo" \
@@ -373,6 +420,28 @@ fbench-fbench.obj: fbench.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/fbench-fbench.Po' tmpdepfile='$(DEPDIR)/fbench-fbench.TPo' @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(fbench_CFLAGS) $(CFLAGS) -c -o fbench-fbench.obj `if test -f 'fbench.c'; then $(CYGPATH_W) 'fbench.c'; else $(CYGPATH_W) '$(srcdir)/fbench.c'; fi`
+
+tinycc-tinycc.o: tinycc.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(tinycc_CFLAGS) $(CFLAGS) -MT tinycc-tinycc.o -MD -MP -MF "$(DEPDIR)/tinycc-tinycc.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o tinycc-tinycc.o `test -f 'tinycc.c' || echo '$(srcdir)/'`tinycc.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/tinycc-tinycc.Tpo" "$(DEPDIR)/tinycc-tinycc.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/tinycc-tinycc.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='tinycc.c' object='tinycc-tinycc.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/tinycc-tinycc.Po' tmpdepfile='$(DEPDIR)/tinycc-tinycc.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(tinycc_CFLAGS) $(CFLAGS) -c -o tinycc-tinycc.o `test -f 'tinycc.c' || echo '$(srcdir)/'`tinycc.c
+
+tinycc-tinycc.obj: tinycc.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(tinycc_CFLAGS) $(CFLAGS) -MT tinycc-tinycc.obj -MD -MP -MF "$(DEPDIR)/tinycc-tinycc.Tpo" \
+@am__fastdepCC_TRUE@	  -c -o tinycc-tinycc.obj `if test -f 'tinycc.c'; then $(CYGPATH_W) 'tinycc.c'; else $(CYGPATH_W) '$(srcdir)/tinycc.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/tinycc-tinycc.Tpo" "$(DEPDIR)/tinycc-tinycc.Po"; \
+@am__fastdepCC_TRUE@	else rm -f "$(DEPDIR)/tinycc-tinycc.Tpo"; exit 1; \
+@am__fastdepCC_TRUE@	fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='tinycc.c' object='tinycc-tinycc.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/tinycc-tinycc.Po' tmpdepfile='$(DEPDIR)/tinycc-tinycc.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(tinycc_CFLAGS) $(CFLAGS) -c -o tinycc-tinycc.obj `if test -f 'tinycc.c'; then $(CYGPATH_W) 'tinycc.c'; else $(CYGPATH_W) '$(srcdir)/tinycc.c'; fi`
 uninstall-info-am:
 
 ETAGS = etags

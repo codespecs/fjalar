@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -59,6 +59,8 @@ extern Bool VG_(is_action_requested)      ( Char* action, Bool* clo );
 extern Bool VG_(showing_core_errors)      ( void );
 
 extern UInt VG_(get_n_errs_found)         ( void );
+
+extern void VG_(print_errormgr_stats)     ( void );
 
 #endif   // __PUB_CORE_ERRORMGR_H
 

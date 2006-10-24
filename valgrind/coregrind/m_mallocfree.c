@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward 
+   Copyright (C) 2000-2006 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_vki.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_aspacemgr.h"
@@ -453,6 +454,7 @@ void ensure_mm_init ( ArenaId aid )
       larger prev/next ptr.
    */
    if (VG_AR_CLIENT == aid) {
+      Int ar_client_sbszB;
       if (client_inited) {
          // This assertion ensures that a tool cannot try to change the client
          // redzone size with VG_(needs_malloc_replacement)() after this module
@@ -473,8 +475,17 @@ void ensure_mm_init ( ArenaId aid )
             VG_(exit)(1);
          }
       }
-      // Initialise the client arena
-      arena_init ( VG_AR_CLIENT,    "client",   client_rz_szB, 1048576 );
+      // Initialise the client arena.  On AIX it's important to have
+      // relatively large client blocks so as not to cause excessively
+      // fine-grained interleaving of V and C address space.  On Linux
+      // this is irrelevant since aspacem can keep the two spaces
+      // well apart, but not so on AIX.
+#     if defined(VGO_aix5)
+      ar_client_sbszB = 16777216;
+#     else
+      ar_client_sbszB = 1048576;
+#     endif
+      arena_init ( VG_AR_CLIENT,    "client",   client_rz_szB, ar_client_sbszB );
       client_inited = True;
 
    } else {
@@ -547,7 +558,6 @@ Superblock* newSuperblock ( Arena* a, SizeT cszB )
 {
    Superblock* sb;
    SysRes      sres;
-   NSegment*   seg;
 
    // Take into account admin bytes in the Superblock.
    cszB += sizeof(Superblock);
@@ -557,30 +567,30 @@ Superblock* newSuperblock ( Arena* a, SizeT cszB )
 
    if (a->clientmem) {
       // client allocation -- return 0 to client if it fails
-      sres = VG_(am_mmap_anon_float_client)
+      sres = VG_(am_sbrk_anon_float_client)
                 ( cszB, VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC );
       if (sres.isError)
          return 0;
-      sb = (Superblock*)sres.val;
+      sb = (Superblock*)sres.res;
       // Mark this segment as containing client heap.  The leak
       // checker needs to be able to identify such segments so as not
       // to use them as sources of roots during leak checks.
-      seg = VG_(am_find_nsegment)( (Addr)sb );
-      vg_assert(seg && seg->kind == SkAnonC);
-      seg->isCH = True;
+      VG_(am_set_segment_isCH_if_SkAnonC)( 
+         (NSegment*) VG_(am_find_nsegment)( (Addr)sb )
+      );
    } else {
       // non-client allocation -- abort if it fails
-      sres = VG_(am_mmap_anon_float_valgrind)( cszB );
+      sres = VG_(am_sbrk_anon_float_valgrind)( cszB );
       if (sres.isError) {
          VG_(out_of_memory_NORETURN)("newSuperblock", cszB);
          /* NOTREACHED */
          sb = NULL; /* keep gcc happy */
       } else {
-         sb = (Superblock*)sres.val;
+         sb = (Superblock*)sres.res;
       }
    }
    vg_assert(NULL != sb);
-   //zzVALGRIND_MAKE_WRITABLE(sb, cszB);
+   //zzVALGRIND_MAKE_MEM_UNDEFINED(sb, cszB);
    vg_assert(0 == (Addr)sb % VG_MIN_MALLOC_SZB);
    sb->n_payload_bytes = cszB - sizeof(Superblock);
    a->bytes_mmaped += cszB;
@@ -914,7 +924,7 @@ void mkFreeBlock ( Arena* a, Block* b, SizeT bszB, UInt b_lno )
 {
    SizeT pszB = bszB_to_pszB(a, bszB);
    vg_assert(b_lno == pszB_to_listNo(pszB));
-   //zzVALGRIND_MAKE_WRITABLE(b, bszB);
+   //zzVALGRIND_MAKE_MEM_UNDEFINED(b, bszB);
    // Set the size fields and indicate not-in-use.
    set_bszB(b, mk_free_bszB(bszB));
 
@@ -943,7 +953,7 @@ void mkInuseBlock ( Arena* a, Block* b, SizeT bszB )
 {
    UInt i;
    vg_assert(bszB >= min_useful_bszB(a));
-   //zzVALGRIND_MAKE_WRITABLE(b, bszB);
+   //zzVALGRIND_MAKE_MEM_UNDEFINED(b, bszB);
    set_bszB(b, mk_inuse_bszB(bszB));
    set_prev_b(b, NULL);    // Take off freelist
    set_next_b(b, NULL);    // ditto

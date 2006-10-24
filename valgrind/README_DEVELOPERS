@@ -1,7 +1,6 @@
 
 Building and not installing it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
 To run Valgrind without having to install it, run coregrind/valgrind
 with the VALGRIND_LIB environment variable set, where <dir> is the root
 of the source tree (and must be an absolute path).  Eg:
@@ -31,6 +30,30 @@ file.  Eg:
   perl tests/vg_regtest memcheck
   perl tests/vg_regtest memcheck/tests/badfree.vgtest
   perl tests/vg_regtest memcheck/tests/badfree
+
+
+Running the performance tests
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To build and run all the performance tests, run "make [--quiet] perf".
+
+To run a subset of the performance suite, execute:
+
+  perl perf/vg_perf <name>
+
+where <name> is a directory (all tests within will be run) or a single
+.vgperf test file, or the name of a program which has a like-named .vgperf
+file.  Eg:
+
+  perl perf/vg_perf perf/
+  perl perf/vg_perf perf/bz2.vgperf
+  perl perf/vg_perf perf/bz2
+
+To compare multiple versions of Valgrind, use the --vg= option multiple
+times.  For example, if you have two Valgrinds next to each other, one in
+trunk1/ and one in trunk2/, from within either trunk1/ or trunk2/ do this to
+compare them on all the performance tests:
+
+  perl perf/vg_perf --vg=../trunk1 --vg=../trunk2 perf/
 
 
 Debugging Valgrind with GDB
@@ -95,6 +118,9 @@ which helps a lot.
 At the time of writing the allocator is not annotated with client requests
 so Memcheck is not as useful as it could be.  It also has not been tested
 much, so don't be surprised if you hit problems.
+
+When using self-hosting with an outer callgrind tool, use '--pop-on-jump'
+(on the outer). Otherwise, callgrind has much higher memory requirements. 
 
 
 Printing out problematic blocks

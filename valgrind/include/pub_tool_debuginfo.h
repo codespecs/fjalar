@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2005 Julian Seward
+   Copyright (C) 2000-2006 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -87,9 +87,6 @@ extern Bool VG_(get_objname)  ( Addr a, Char* objname,  Int n_objname  );
 */
 extern Char* VG_(describe_IP)(Addr eip, Char* buf, Int n_buf);
 
-/* Returns a string containing an expression for the given
-   address. String is malloced with VG_(malloc)() */
-Char *VG_(describe_addr)(ThreadId, Addr);
 
 /*====================================================================*/
 /*=== Obtaining segment information                                ===*/
@@ -122,6 +119,7 @@ extern Int  VG_(seginfo_syms_howmany) ( const SegInfo *si );
 extern void VG_(seginfo_syms_getidx)  ( const SegInfo *si, 
                                         Int idx,
                                         /*OUT*/Addr*   addr,
+                                        /*OUT*/Addr*   tocptr,
                                         /*OUT*/UInt*   size,
                                         /*OUT*/HChar** name );
 
