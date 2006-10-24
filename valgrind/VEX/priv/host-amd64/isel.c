@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -172,7 +172,7 @@ static void addInstr ( ISelEnv* env, AMD64Instr* instr )
 {
    addHInstr(env->code, instr);
    if (vex_traceflags & VEX_TRACE_VCODE) {
-      ppAMD64Instr(instr, False);
+      ppAMD64Instr(instr, True);
       vex_printf("\n");
    }
 }
@@ -1636,6 +1636,42 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
       break;
    }
 
+   /* --------- TERNARY OP --------- */
+   case Iex_Triop: {
+      /* C3210 flags following FPU partial remainder (fprem), both
+         IEEE compliant (PREM1) and non-IEEE compliant (PREM). */
+      if (e->Iex.Triop.op == Iop_PRemC3210F64) {
+         AMD64AMode* m8_rsp = AMD64AMode_IR(-8, hregAMD64_RSP());
+         HReg        arg1   = iselDblExpr(env, e->Iex.Triop.arg2);
+         HReg        arg2   = iselDblExpr(env, e->Iex.Triop.arg3);
+         HReg        dst    = newVRegI(env);
+         addInstr(env, AMD64Instr_A87Free(2));
+
+         /* one arg -> top of x87 stack */
+         addInstr(env, AMD64Instr_SseLdSt(False/*store*/, 8, arg2, m8_rsp));
+         addInstr(env, AMD64Instr_A87PushPop(m8_rsp, True/*push*/));
+
+         /* other arg -> top of x87 stack */
+         addInstr(env, AMD64Instr_SseLdSt(False/*store*/, 8, arg1, m8_rsp));
+         addInstr(env, AMD64Instr_A87PushPop(m8_rsp, True/*push*/));
+
+         switch (e->Iex.Triop.op) {
+            case Iop_PRemC3210F64:
+               addInstr(env, AMD64Instr_A87FpOp(Afp_PREM));
+               break;
+            default: 
+               vassert(0);
+         }
+         /* Ignore the result, and instead make off with the FPU's
+	    C3210 flags (in the status word). */
+         addInstr(env, AMD64Instr_A87StSW(m8_rsp));
+         addInstr(env, AMD64Instr_Alu64R(Aalu_MOV,AMD64RMI_Mem(m8_rsp),dst));
+         addInstr(env, AMD64Instr_Alu64R(Aalu_AND,AMD64RMI_Imm(0x4700),dst));
+         return dst;
+      }
+      break;
+   }
+
    default: 
    break;
    } /* switch (e->tag) */
@@ -2853,13 +2889,15 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
        && (e->Iex.Triop.op == Iop_ScaleF64
            || e->Iex.Triop.op == Iop_AtanF64
            || e->Iex.Triop.op == Iop_Yl2xF64
-           || e->Iex.Triop.op == Iop_Yl2xp1F64)
+           || e->Iex.Triop.op == Iop_Yl2xp1F64
+           || e->Iex.Triop.op == Iop_PRemF64)
       ) {
       AMD64AMode* m8_rsp = AMD64AMode_IR(-8, hregAMD64_RSP());
       HReg        arg1   = iselDblExpr(env, e->Iex.Triop.arg2);
       HReg        arg2   = iselDblExpr(env, e->Iex.Triop.arg3);
       HReg        dst    = newVRegV(env);
-      Bool     arg2first = toBool(e->Iex.Triop.op == Iop_ScaleF64);
+      Bool     arg2first = toBool(e->Iex.Triop.op == Iop_ScaleF64 
+                                  || e->Iex.Triop.op == Iop_PRemF64);
       addInstr(env, AMD64Instr_A87Free(2));
 
       /* one arg -> top of x87 stack */
@@ -2887,6 +2925,9 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
             break;
          case Iop_Yl2xp1F64: 
             addInstr(env, AMD64Instr_A87FpOp(Afp_YL2XP1));
+            break;
+         case Iop_PRemF64:
+            addInstr(env, AMD64Instr_A87FpOp(Afp_PREM));
             break;
          default: 
             vassert(0);
@@ -3760,7 +3801,9 @@ static void iselNext ( ISelEnv* env, IRExpr* next, IRJumpKind jk )
 
 /* Translate an entire BB to amd64 code. */
 
-HInstrArray* iselBB_AMD64 ( IRBB* bb, VexArchInfo* archinfo_host )
+HInstrArray* iselBB_AMD64 ( IRBB* bb, VexArch      arch_host,
+                                      VexArchInfo* archinfo_host,
+                                      VexMiscInfo* vmi/*UNUSED*/ )
 {
    Int      i, j;
    HReg     hreg, hregHI;
@@ -3768,6 +3811,7 @@ HInstrArray* iselBB_AMD64 ( IRBB* bb, VexArchInfo* archinfo_host )
    UInt     hwcaps_host = archinfo_host->hwcaps;
 
    /* sanity ... */
+   vassert(arch_host == VexArchAMD64);
    vassert(0 == (hwcaps_host & ~(VEX_HWCAPS_AMD64_SSE3)));
 
    /* Make up an initial environment to use. */

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -958,12 +958,6 @@ IRExpr* guest_amd64_spechelper ( HChar* function_name,
                            binop(Iop_Shl64,cc_dep2,mkU8(32))));
       }
 
-//..       if (isU32(cc_op, AMD64G_CC_OP_SUBL) && isU32(cond, X86CondNZ)) {
-//..          /* long sub/cmp, then NZ --> test dst!=src */
-//..          return unop(Iop_1Uto32,
-//..                      binop(Iop_CmpNE32, cc_dep1, cc_dep2));
-//..       }
-
       if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondL)) {
          /* long sub/cmp, then L (signed less than) 
             --> test dst <s src */
@@ -992,12 +986,15 @@ IRExpr* guest_amd64_spechelper ( HChar* function_name,
                            binop(Iop_Shl64,cc_dep2,mkU8(32))));
       }
 
-//..       if (isU32(cc_op, AMD64G_CC_OP_SUBL) && isU32(cond, X86CondB)) {
-//..          /* long sub/cmp, then B (unsigned less than)
-//..             --> test dst <u src */
-//..          return unop(Iop_1Uto32,
-//..                      binop(Iop_CmpLT32U, cc_dep1, cc_dep2));
-//..       }
+      if (isU64(cc_op, AMD64G_CC_OP_SUBL) && isU64(cond, AMD64CondNBE)) {
+         /* long sub/cmp, then NBE (unsigned greater than)
+            --> test src <u dst */
+         /* Note, args are opposite way round from the usual */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64U, 
+                           binop(Iop_Shl64,cc_dep2,mkU8(32)),
+                           binop(Iop_Shl64,cc_dep1,mkU8(32))));
+      }
 
       /*---------------- SUBW ----------------*/
 
@@ -1010,7 +1007,7 @@ IRExpr* guest_amd64_spechelper ( HChar* function_name,
       }
 
       if (isU64(cc_op, AMD64G_CC_OP_SUBW) && isU64(cond, AMD64CondLE)) {
-         /* 16-bit sub/cmp, then LE (signed less than or equal) 
+         /* word sub/cmp, then LE (signed less than or equal) 
             --> test dst <=s src */
          return unop(Iop_1Uto64,
                      binop(Iop_CmpLE64S, 
@@ -1027,6 +1024,29 @@ IRExpr* guest_amd64_spechelper ( HChar* function_name,
                      binop(Iop_CmpEQ8, 
                            unop(Iop_64to8,cc_dep1),
                            unop(Iop_64to8,cc_dep2)));
+      }
+
+      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondNZ)) {
+         /* byte sub/cmp, then NZ --> test dst!=src */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpNE8, 
+                           unop(Iop_64to8,cc_dep1),
+                           unop(Iop_64to8,cc_dep2)));
+      }
+
+      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondS)
+                                          && isU64(cc_dep2, 0)) {
+         /* byte sub/cmp of zero, then S --> test (dst-0 <s 0)
+                                         --> test dst <s 0
+                                         --> (ULong)dst[7]
+            This is yet another scheme by which gcc figures out if the
+            top bit of a byte is 1 or 0.  See also LOGICB/CondS below. */
+         /* Note: isU64(cc_dep2, 0) is correct, even though this is
+            for an 8-bit comparison, since the args to the helper
+            function are always U64s. */
+         return binop(Iop_And64,
+                      binop(Iop_Shr64,cc_dep1,mkU8(7)),
+                      mkU64(1));
       }
 
 //      if (isU64(cc_op, AMD64G_CC_OP_SUBB) && isU64(cond, AMD64CondNZ)) {
@@ -1130,6 +1150,19 @@ IRExpr* guest_amd64_spechelper ( HChar* function_name,
          return unop(Iop_1Uto64,
                      binop(Iop_CmpEQ64, binop(Iop_And64,cc_dep1,mkU64(255)), 
                                         mkU64(0)));
+      }
+
+      if (isU64(cc_op, AMD64G_CC_OP_LOGICB) && isU64(cond, AMD64CondS)) {
+         /* this is an idiom gcc sometimes uses to find out if the top
+            bit of a byte register is set: eg testb %al,%al; js ..
+            Since it just depends on the top bit of the byte, extract
+            that bit and explicitly get rid of all the rest.  This
+            helps memcheck avoid false positives in the case where any
+            of the other bits in the byte are undefined. */
+         /* byte and/or/xor, then S --> (UInt)result[7] */
+         return binop(Iop_And64,
+                      binop(Iop_Shr64,cc_dep1,mkU8(7)),
+                      mkU64(1));
       }
 
       /*---------------- INCB ----------------*/

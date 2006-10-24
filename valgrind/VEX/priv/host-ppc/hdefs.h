@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -838,7 +838,9 @@ extern Int          emit_PPCInstr        ( UChar* buf, Int nbuf, PPCInstr*,
 extern PPCInstr*    genSpill_PPC         ( HReg rreg, UShort offsetB, Bool mode64 );
 extern PPCInstr*    genReload_PPC        ( HReg rreg, UShort offsetB, Bool mode64 );
 extern void         getAllocableRegs_PPC ( Int*, HReg**, Bool mode64 );
-extern HInstrArray* iselBB_PPC           ( IRBB*, VexArchInfo* );
+extern HInstrArray* iselBB_PPC           ( IRBB*, VexArch,
+                                                  VexArchInfo*,
+                                                  VexMiscInfo* );
 
 #endif /* ndef __LIBVEX_HOST_PPC_HDEFS_H */
 

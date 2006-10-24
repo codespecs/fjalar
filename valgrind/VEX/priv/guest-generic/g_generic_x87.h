@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -103,6 +103,10 @@ typedef
 #define FP_ENV_OPOFF  10 /* and 11 */
 #define FP_ENV_OPSEL  12
 #define FP_REG(ii)    (10*(7-(ii)))
+
+
+/* Do the computations for x86/amd64 FXTRACT */
+extern ULong x86amd64g_calculate_FXTRACT ( ULong arg, HWord getExp );
 
 
 

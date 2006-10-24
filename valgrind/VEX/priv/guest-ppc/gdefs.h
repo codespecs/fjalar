@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2005 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -65,7 +65,9 @@ DisResult disInstr_PPC ( IRBB*        irbb,
                          UChar*       guest_code,
                          Long         delta,
                          Addr64       guest_IP,
+                         VexArch      guest_arch,
                          VexArchInfo* archinfo,
+                         VexMiscInfo* miscinfo,
                          Bool         host_bigendian );
 
 /* Used by the optimiser to specialise calls to helpers. */
