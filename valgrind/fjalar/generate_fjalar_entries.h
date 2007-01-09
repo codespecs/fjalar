@@ -42,6 +42,9 @@ struct genhashtable* VisitedStructsTable;
 // Value: (FunctionEntry*) Pointer to FunctionEntry
 struct genhashtable* FunctionTable;
 
+// Like FunctionTable, but indexed by the address where we do entry
+// instrumentation.
+struct genhashtable* FunctionTable_by_entryPC;
 
 // WARNING: The only entries in TypesTable are for types that are
 // actually associated with variables used in the program.  If no

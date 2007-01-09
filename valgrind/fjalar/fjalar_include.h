@@ -65,7 +65,11 @@ typedef enum _VisibilityType {
   PRIVATE_VISIBILITY
 } VisibilityType;
 
-
+typedef enum _LocationType {
+  NO_LOCATION = 0,
+  FP_OFFSET_LOCATION,
+  REGISTER_LOCATION
+} LocationType;
 
 // Simple generic singly-linked list with a void* element
 // (only meant to support forward traversal)
@@ -300,8 +304,11 @@ typedef struct _VariableEntry {
   // the front of the variable's original name.
   char* name;
 
+  LocationType locationType;
+
   // Byte offset of this variable from head of stack frame (%ebp) for
   // function parameters and local variables
+  // when locationType == FP_OFFSET_LOCATION
   int byteOffset;
 
   // Global variable information:
@@ -526,6 +533,13 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
+  // The address of the instruction before which we do entry
+  // instrumentation for this function. Usually a bit past startPC,
+  // since we don't want to look at the parameters until the function
+  // prolog has had a chance to copy them into the appropriate
+  // locations.
+  Addr entryPC;
+
   // True if globally visible, False if file-static scope
   Bool isExternal;
 
@@ -553,6 +567,10 @@ typedef struct _FunctionEntry {
   // Has trace_vars_tree been initialized?
   Bool trace_vars_tree_already_initialized;
 
+  // Estimate of the amount of stack space used by the function's formal
+  // parameters. This amount of memory is copied so that we can see
+  // the pre-states of the parameters at exit.
+  int formalParamStackByteSize;
 } FunctionEntry;
 
 
@@ -607,7 +625,8 @@ typedef struct {
   // The function whose runtime state we are currently tracking
   FunctionEntry* func;
 
-  Addr EBP;       // %ebp as calculated from %esp at function entrance
+  Addr EBP;       // %ebp as recorded or calculated from %esp at
+		  // function entrance
 
   Addr lowestESP; // The LOWEST value of %esp that has ever been
                   // encountered while we are in this function.  The
@@ -626,19 +645,21 @@ typedef struct {
   double FPU;  // FPU %st(0)
 
   // This is a copy of the portion of the function's stack frame that
-  // is above EBP.  It holds function formal parameter values that
-  // were passed into this function at entrance time.  We reference
-  // this virtualStack at function exit in order to visit the SAME
-  // formal parameter values upon exit as upon entrance.  We need this
-  // because the compiler is free to modify the formal parameter
-  // values that are on the real stack when executing the function.
-  // Using the virtualStack means that local changes to formal
-  // parameters are not visible at function exit (but changes made via
-  // params passed by pointers are visible).  This is okay and
-  // justified because local changes should be invisible to the
-  // calling function anyways.
+  // is in use after the function prolog has executed, including the
+  // formal parameters in the caller's frame.  It holds function
+  // formal parameter values that were passed into this function at
+  // entrance time.  We reference this virtualStack at function exit
+  // in order to visit the SAME formal parameter values upon exit as
+  // upon entrance.  We need this because the compiler is free to
+  // modify the formal parameter values that are on the real stack
+  // when executing the function.  Using the virtualStack means that
+  // local changes to formal parameters are not visible at function
+  // exit (but changes made via params passed by pointers are
+  // visible).  This is okay and justified because local changes
+  // should be invisible to the calling function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
+  int virtualStackEBPOffset; // Where in the stack EBP was
 
 } FunctionExecutionState;
 
