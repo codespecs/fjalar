@@ -70,7 +70,9 @@ char* fjalar_xml_output_filename = 0;
 char* executable_filename = 0;
 
 // TODO: We cannot sub-class FunctionExecutionState unless we make
-// this into an array of pointers:
+// this into an array of pointers.
+// Also, from the fact that this is a single global, you can see
+// we only support single-threaded execution.
 FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
 // The first free slot in FunctionExecutionStateStack
 // right above the top element:
@@ -100,6 +102,37 @@ __inline__ FunctionExecutionState* fnStackTop(void) {
   return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
+static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
+				       struct genhashtable *table,
+				       char *func_name,
+				       void func(FunctionEntry*)) {
+  IRDirty  *di;
+  FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
+
+  // If fjalar_trace_prog_pts_filename is on (we are using a ppt list
+  // file), then DO NOT generate IR code to call helper functions for
+  // functions whose name is NOT located in prog_pts_tree. It's faster
+  // to filter them out at translation-time instead of run-time
+  if (entry && (!fjalar_trace_prog_pts_filename ||
+		prog_pts_tree_entry_found(entry))) {
+    UInt entry32 = (UInt)entry; /* XXX 64-bit? */
+    di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func, 
+			   mkIRExprVec_1(IRExpr_Const(IRConst_U32(entry32))));
+
+    // For function entry, we are interested in observing the stack
+    // and frame pointers so make sure that they're updated by setting
+    // the proper annotations:
+    di->nFxState = 2;
+    di->fxState[0].fx     = Ifx_Read;
+    di->fxState[0].offset = mce->layout->offset_SP;
+    di->fxState[0].size   = mce->layout->sizeof_SP;
+    di->fxState[1].fx     = Ifx_Read;
+    di->fxState[1].offset = 20; /* XXX x86 %ebp */
+    di->fxState[1].size   = 4; /* XXX x86 */
+
+    stmt( mce->bb, IRStmt_Dirty(di) );
+  }
+}
 
 // This gets updated whenever we encounter a Ist_IMark instruction.
 // It is required to track function exits because the address does not
@@ -119,52 +152,25 @@ static Addr currentAddr = 0;
 // We will utilize this information to pause the target program at
 // function entrances.  This is called from mc_translate.c.
 void handle_possible_entry(MCEnv* mce, Addr64 addr) {
-  IRDirty  *di;
-  FunctionEntry* curFuncPtr = 0;
-
   // Right now, for x86, we only care about 32-bit instructions
 
   // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
   // truly a function entry so that handle_possible_exit() can work
   // properly:
-  currentAddr = (Addr)(addr);
+  currentAddr = (Addr)addr;
 
-  // If this is truly a function entry and we are interested in
-  // tracking this particular function ...  This ensures that we only
-  // track functions which we have in FunctionTable!!!
-  curFuncPtr = getFunctionEntryFromStartAddr(currentAddr);
+  /* If this is the very first instruction in the function, add a call
+     to the prime_function helper. */
+  handle_possible_entry_func(mce, addr, FunctionTable,
+			     "prime_function",
+			     &prime_function);
 
-  if (curFuncPtr &&
-      // Also, if fjalar_trace_prog_pts_filename is on (we are reading
-      // in a ppt list file), then DO NOT generate IR code to call
-      // helper functions for functions whose name is NOT located in
-      // prog_pts_tree.  This will greatly speed up processing because
-      // these functions are filtered out at translation-time, not at
-      // run-time
-      (!fjalar_trace_prog_pts_filename ||
-       prog_pts_tree_entry_found(curFuncPtr))) {
-    // The only argument to enter_function() is a pointer to the
-    // FunctionEntry for the function that we are entering
-    di = unsafeIRDirty_0_N(1/*regparms*/,
-			   "enter_function",
-			   &enter_function,
-			   mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr))));
-
-/*     di = unsafeIRDirty_0_N(2, */
-/* 			   "enter_function", */
-/* 			   &enter_function, */
-/* 			   mkIRExprVec_2(IRExpr_Const(IRConst_U32((Addr)curFuncPtr)), */
-/* 					 IRExpr_Const(IRConst_U32(currentAddr)))); */
-
-    // For function entry, we are interested in observing the ESP so make
-    // sure that it's updated by setting the proper annotations:
-    di->nFxState = 1;
-    di->fxState[0].fx     = Ifx_Read;
-    di->fxState[0].offset = mce->layout->offset_SP;
-    di->fxState[0].size   = mce->layout->sizeof_SP;
-
-    stmt( mce->bb, IRStmt_Dirty(di) );
-  }
+  /* If this is the first instruction in the function after the prolog
+     (not exclusive with the condition above), add a call to the
+     enter_function helper. */
+  handle_possible_entry_func(mce, addr, FunctionTable_by_entryPC,
+			     "enter_function",
+			     &enter_function);
 }
 
 // Handle a function exit statement, which contains a jump kind of
@@ -223,6 +229,23 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
   }
 }
 
+/* A disadvantage of putting the call to enter_function after the
+   prolog is that it occasionally ends up at a label that the compiler
+   jumps back to in the middle of executing a function, say if the
+   whole function is a single loop. If we were to do all the stuff in
+   enter_function() again in this case, things would get very
+   confused. Instead, we want to only do enter_function() once per
+   invocation of the function, where we define an invocation to be an
+   execution of the very first instruction. To accomplish that, we put
+   a call to the prime_function() hook there; it initializes a global
+   to point to the current function. In enter_function(), we check
+   that pointer before doing anything, and then clear it. */
+static FunctionEntry* primed_function = 0;
+VG_REGPARM(1) void prime_function(FunctionEntry *f)
+{
+  primed_function = f;
+  return;
+}
 
 /*
 This is the hook into Valgrind that is called whenever the target
@@ -233,19 +256,31 @@ implemented by the Fjalar tool.
 VG_REGPARM(1)
 void enter_function(FunctionEntry* f)
 {
-  FunctionExecutionState* newEntry = fnStackPush();
+  FunctionExecutionState* newEntry;
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
 
-  Addr  ESP = VG_(get_SP)(VG_(get_running_tid)());
-  // Assign %esp - 4 to %ebp - empirically tested to be
-  // correct for calling conventions
-  Addr  EBP = ESP - 4;
+  ThreadId tid = VG_(get_running_tid)();
+  Addr ESP = VG_(get_SP)(tid);
+  Addr EBP;
+  int offset, size;
+
+  if (f != primed_function)
+    return;
+  primed_function = 0;
+
+  if (f->entryPC != f->startPC) {
+    /* Prolog has run, so just use the real %ebp */
+    EBP = VG_(get_FP)(VG_(get_running_tid)());
+  } else {
+    /* Don't know about prolog, so fake its effects, given we know that
+       ESP hasn't yet been modified: */
+    EBP = ESP - 4;
+  }
 
   FJALAR_DPRINTF("Enter function: %s - StartPC: %p\n",
 	  f->fjalar_name, (void*)f->startPC);
 
-  int formalParamStackByteSize =
-    determineFormalParametersStackByteSize(f);
+  newEntry  = fnStackPush();
 
   newEntry->func = f;
   newEntry->EBP = EBP;
@@ -256,21 +291,25 @@ void enter_function(FunctionEntry* f)
 
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
-  if (formalParamStackByteSize > 0) {
-    newEntry->virtualStack = VG_(calloc)(formalParamStackByteSize,
-					 sizeof(char));
-    newEntry->virtualStackByteSize = formalParamStackByteSize;
+  offset = EBP - ESP; /* amount in our frame */ 
+  tl_assert(offset >= 0);
+  size = offset + f->formalParamStackByteSize;/* plus stuff in caller's*/
+  tl_assert(size >= 0);
+  if (size != 0) {
+    newEntry->virtualStack = VG_(calloc)(size, sizeof(char));
+    newEntry->virtualStackByteSize = size;
+    newEntry->virtualStackEBPOffset = offset;
 
-    VG_(memcpy)(newEntry->virtualStack, (void*)EBP, (formalParamStackByteSize * sizeof(char)));
+    VG_(memcpy)(newEntry->virtualStack, (void*)ESP, size);
 
-    // VERY IMPORTANT!!! Copy all the A & V bits over from EBP to
+    // VERY IMPORTANT!!! Copy all the A & V bits over the real stack to
     // virtualStack!!!  (As a consequence, this copies over the tags
     // as well - look in mc_main.c). Note that the way do this means
     // that the copy is now guest-accessible, if they guessed the
     // VG_(calloc)ed address, which is a bit weird. It would be more
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
-    mc_copy_address_range_state(EBP, (Addr)(newEntry->virtualStack), formalParamStackByteSize);
+    mc_copy_address_range_state(ESP, (Addr)(newEntry->virtualStack), size);
   }
   else {
     // Watch out for null pointer segfaults here:
@@ -320,7 +359,10 @@ void exit_function(FunctionEntry* f)
 
   // s is null if an "unwind" is popped off the stack (WHAT?)
   // Only do something if top->func matches func
-  if (!(top->func->fjalar_name) || (top->func != f)) {
+  if (!top->func) {
+    VG_(printf)("More exit_function()s than entry_function()s!\n");
+    return;
+  } else if (!(top->func->fjalar_name) || (top->func != f)) {
     VG_(printf)("MISMATCHED on exit_function! %s != f: %s\n",
 		top->func->fjalar_name,
 		f->fjalar_name);
