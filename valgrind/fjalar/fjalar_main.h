@@ -35,6 +35,7 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
 
+extern VG_REGPARM(1) void prime_function(FunctionEntry* f);
 extern VG_REGPARM(1) void enter_function(FunctionEntry* f);
 extern VG_REGPARM(1) void exit_function(FunctionEntry* f);
 
