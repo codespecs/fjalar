@@ -206,6 +206,7 @@ returnArrayVariableWithAddr(VarList* varList,
 // Return a single global variable, not an array, which matches the supplied
 // address if any. When pointed to, such a variable can be treated as
 // a 1-element array of its type.
+static
 VariableEntry* returnGlobalSingletonWithAddress(Addr a) {
   VarNode* cur_node = 0;
   VariableEntry* r = 0;
@@ -485,6 +486,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 // valid data
 // allocatedOrInitialized = 1 - checks for allocated (A-bits)
 // allocatedOrInitialized = 0 - checks for initialized (V-bits)
+static
 Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
                                      UInt numBytes,
                                      Bool allocatedOrInitialized)
