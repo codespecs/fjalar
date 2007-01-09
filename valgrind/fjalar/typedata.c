@@ -809,7 +809,7 @@ char harvest_local_var_offset(dwarf_entry* e, unsigned long value)
     return 0;
 }
 
-char harvest_formal_param_location(dwarf_entry* e, unsigned long value)
+char harvest_formal_param_location_offset(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
@@ -819,6 +819,8 @@ char harvest_formal_param_location(dwarf_entry* e, unsigned long value)
 
   if (tag_is_formal_parameter(tag))
     {
+      tl_assert(((formal_parameter*)e->entry_ptr)->location_type == LT_NONE);
+      ((formal_parameter*)e->entry_ptr)->location_type = LT_FP_OFFSET;
       ((formal_parameter*)e->entry_ptr)->location = value;
       return 1;
     }
@@ -2316,6 +2318,9 @@ void initialize_typedata_structures() {
                                                     (int (*)(void *,void *)) &equivalentIDs);
   VariableSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
                                              (int (*)(void *,void *)) &equivalentStrings);
+
+  next_line_addr =
+    genallocatehashtable(0, (int (*)(void *,void *))&equivalentIDs);
 }
 
 __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {

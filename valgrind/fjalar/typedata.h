@@ -235,12 +235,19 @@ typedef struct {
   dwarf_entry* return_type;
 } function_type;
 
+enum location_type {
+  LT_NONE = 0,
+  LT_FP_OFFSET,
+  LT_REGISTER
+};
+
 // function formal parameter
 typedef struct
 {
   char* name;
   unsigned long type_ID;
   dwarf_entry* type_ptr;
+  enum location_type location_type;
   unsigned long location; // Offset from function base
                  // This is stored as: (DW_OP_fbreg: x),
                  // where x is location offset
@@ -312,7 +319,7 @@ typedef struct
 
   char isStaticMemberVar; // only for C++ static member variables (I dunno if we still use this)
 
-  unsigned long specification_ID; // Relevant fo C++:
+  unsigned long specification_ID; // Relevant for C++:
   // DO NOT add an entry with specification_ID non-null to any variable
   // lists because it's an empty shell
 
@@ -342,20 +349,27 @@ int equivalentStrings(char* str1, char* str2);
 void initialize_typedata_structures(void);
 
 // Key: String that represents the (possibly mangled) name of a function
-// Value: A 32-bit int that represents the global start_PC address of that function
+// Value: An int that represents the global start_PC address of that function
 struct genhashtable* FunctionSymbolTable;
 
 // (reverse of FunctionSymbolTable)
-// Key: A 32-bit int that represents the global start_PC address of that function
+// Key: An int that represents the global start_PC address of that function
 // Value: String that represents the (possibly mangled) name of a function
 struct genhashtable* ReverseFunctionSymbolTable;
 
 // Key: String that represents the (possibly mangled) name of a variable
-// Value: A 32-bit int that represents the global address of that variable
+// Value: An int that represents the global address of that variable
 struct genhashtable* VariableSymbolTable;
 
 __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr);
 __inline__ void insertIntoVariableSymbolTable(char* name, void* addr);
+
+// Initialized based on the .debug_lines DWARF section, this table
+// records the code addresses for each statement; more specifically,
+// it maps from an address representing the start of one statement to
+// an address representing the start of the next. We use this
+// information to skip function prologues.
+struct genhashtable *next_line_addr;
 
 // The addresses and sizes of the sections (.data, .bss, .rodata) that
 // hold global variables (initialized in readelf.c):
@@ -395,7 +409,7 @@ char harvest_const_value(dwarf_entry* e, unsigned long value);
 char harvest_name(dwarf_entry* e, const char* str);
 char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
-char harvest_formal_param_location(dwarf_entry* e, unsigned long value);
+char harvest_formal_param_location_offset(dwarf_entry* e, unsigned long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
 char harvest_external_flag_value(dwarf_entry *e, unsigned long value);
