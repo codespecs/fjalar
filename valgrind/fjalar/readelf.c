@@ -45,39 +45,8 @@
 #include "pub_tool_basics.h"
 #include "pub_tool_basics_asm.h"
 #include "pub_tool_libcassert.h"
-
-//#define VGAPPEND(str1,str2) str1##str2
-
-/* These macros should add different prefixes so the same base
-   name can safely be used across different macros. */
-//#define VG_(str)    VGAPPEND(vgPlain_,str)
-//#define VGA_(str)   VGAPPEND(vgArch_,str)
-//#define VGO_(str)   VGAPPEND(vgOS_,str)
-//#define VGP_(str)   VGAPPEND(vgPlatform_,str)
-
-/* Tool-specific ones.  Note that final name still starts with "vg". */
-//#define TL_(str)    VGAPPEND(vgTool_,str)
-
-
-//#include "tool_asm.h" //#include "vg_constants_skin.h"
-
-// PG
-// Forward declarations so that the compiler won't warn me:
-extern void* VG_(malloc)         ( unsigned int nbytes );
-extern void  VG_(free)           ( void* p );
-extern void* VG_(calloc)         ( unsigned int n, unsigned int nbytes );
-extern void* VG_(realloc)        ( void* p, unsigned int size );
-
-extern int   VG_(strlen)         ( const char* str );
-extern char* VG_(strcat)         ( char* dest, const char* src );
-extern int   VG_(strcmp)         ( const char* s1, const char* s2 );
-extern int   VG_(strncmp)        ( const char* s1, const char* s2, int nmax );
-extern char* VG_(strchr)         ( const char* s, char c );
-extern void* VG_(memcpy)         ( void *d, const void *s, int sz );
-extern void* VG_(memset)         ( void *s, int c, int sz );
-extern char* VG_(strdup)         ( const char* s);
-
-extern void VG_(exit)( int status );
+#include "pub_tool_libcbase.h"
+#include "pub_tool_mallocfree.h"
 
 #if __GNUC__ >= 2
 /* Define BFD64 here, even if our default architecture is 32 bit ELF
@@ -105,7 +74,6 @@ extern void VG_(exit)( int status );
 #include "elf/i386.h"
 
 #include "bucomm.h"
-#include "getopt.h"
 //#include "libiberty.h"
 
 char *program_name = "readelf";
@@ -254,20 +222,8 @@ static const char *get_ia64_section_type_name
   PARAMS ((unsigned int));
 static const char *get_section_type_name
   PARAMS ((unsigned int));
-//static const char *get_symbol_binding
-//  PARAMS ((unsigned int));
-static const char *get_symbol_type
-  PARAMS ((unsigned int));
-//static const char *get_symbol_visibility
-//  PARAMS ((unsigned int));
-//static const char *get_symbol_index_type
-//  PARAMS ((unsigned int));
 static const char *get_dynamic_flags
   PARAMS ((bfd_vma));
-static void usage
-  PARAMS ((void));
-static void parse_args
-  PARAMS ((int, char **));
 static int process_file_header
   PARAMS ((void));
 static int process_program_headers
@@ -1602,6 +1558,7 @@ get_machine_flags (e_flags, e_machine)
 {
   static char buf[1024];
 
+  (void)e_flags; (void)e_machine; /* Quiet unused variable warning */
   buf[0] = '\0';
   return buf;
 }
@@ -1610,6 +1567,7 @@ static const char *
 get_mips_segment_type (type)
      unsigned long type;
 {
+  (void)type; /* Quiet unused variable warning */
   return NULL;
 }
 
@@ -1617,6 +1575,7 @@ static const char *
 get_parisc_segment_type (type)
      unsigned long type;
 {
+  (void)type; /* Quiet unused variable warning */
   return NULL;
 }
 
@@ -1624,6 +1583,7 @@ static const char *
 get_ia64_segment_type (type)
      unsigned long type;
 {
+  (void)type; /* Quiet unused variable warning */
   return NULL;
 }
 
@@ -1707,6 +1667,7 @@ static const char *
 get_mips_section_type_name (sh_type)
      unsigned int sh_type;
 {
+  (void)sh_type; /* Quiet unused variable warning */
   return NULL;
 }
 
@@ -1714,6 +1675,7 @@ static const char *
 get_parisc_section_type_name (sh_type)
      unsigned int sh_type;
 {
+  (void)sh_type; /* Quiet unused variable warning */
   return NULL;
 }
 
@@ -1721,6 +1683,7 @@ static const char *
 get_ia64_section_type_name (sh_type)
      unsigned int sh_type;
 {
+  (void)sh_type; /* Quiet unused variable warning */
   return NULL;
 }
 
@@ -1797,78 +1760,6 @@ get_section_type_name (sh_type)
 }
 
 #define OPTION_DEBUG_DUMP	512
-
-struct option options[] =
-{
-  {"all",	       no_argument, 0, 'a'},
-  {"file-header",      no_argument, 0, 'h'},
-  {"program-headers",  no_argument, 0, 'l'},
-  {"headers",	       no_argument, 0, 'e'},
-  {"histogram",	       no_argument, 0, 'I'},
-  {"segments",	       no_argument, 0, 'l'},
-  {"sections",	       no_argument, 0, 'S'},
-  {"section-headers",  no_argument, 0, 'S'},
-  {"symbols",	       no_argument, 0, 's'},
-  {"syms",	       no_argument, 0, 's'},
-  {"relocs",	       no_argument, 0, 'r'},
-  {"notes",	       no_argument, 0, 'n'},
-  {"dynamic",	       no_argument, 0, 'd'},
-  {"arch-specific",    no_argument, 0, 'A'},
-  {"version-info",     no_argument, 0, 'V'},
-  {"use-dynamic",      no_argument, 0, 'D'},
-  {"hex-dump",	       required_argument, 0, 'x'},
-  {"debug-dump",       optional_argument, 0, OPTION_DEBUG_DUMP},
-  {"unwind",	       no_argument, 0, 'u'},
-#ifdef SUPPORT_DISASSEMBLY
-  {"instruction-dump", required_argument, 0, 'i'},
-#endif
-
-  {"version",	       no_argument, 0, 'v'},
-  {"wide",	       no_argument, 0, 'W'},
-  {"help",	       no_argument, 0, 'H'},
-  {0,		       no_argument, 0, 0}
-};
-
-static void
-usage ()
-{
-  fprintf (stdout, _("Usage: readelf <option(s)> elf-file(s)\n"));
-  fprintf (stdout, _(" Display information about the contents of ELF format files\n"));
-  fprintf (stdout, _(" Options are:\n\
-  -a --all               Equivalent to: -h -l -S -s -r -d -V -A -I\n\
-  -h --file-header       Display the ELF file header\n\
-  -l --program-headers   Display the program headers\n\
-     --segments          An alias for --program-headers\n\
-  -S --section-headers   Display the sections' header\n\
-     --sections          An alias for --section-headers\n\
-  -e --headers           Equivalent to: -h -l -S\n\
-  -s --syms              Display the symbol table\n\
-      --symbols          An alias for --syms\n\
-  -n --notes             Display the core notes (if present)\n\
-  -r --relocs            Display the relocations (if present)\n\
-  -u --unwind            Display the unwind info (if present)\n\
-  -d --dynamic           Display the dynamic segment (if present)\n\
-  -V --version-info      Display the version sections (if present)\n\
-  -A --arch-specific     Display architecture specific information (if any).\n\
-  -D --use-dynamic       Use the dynamic section info when displaying symbols\n\
-  -x --hex-dump=<number> Dump the contents of section <number>\n\
-  -w[liaprmfFso] or\n\
-  --debug-dump[=line,=info,=abbrev,=pubnames,=ranges,=macro,=frames,=str,=loc]\n\
-                         Display the contents of DWARF2 debug sections\n"));
-#ifdef SUPPORT_DISASSEMBLY
-  fprintf (stdout, _("\
-  -i --instruction-dump=<number>\n\
-                         Disassemble the contents of section <number>\n"));
-#endif
-  fprintf (stdout, _("\
-  -I --histogram         Display histogram of bucket list lengths\n\
-  -W --wide              Allow output width to exceed 80 characters\n\
-  -H --help              Display this information\n\
-  -v --version           Display the version number of readelf\n"));
-  fprintf (stdout, _("Report bugs to %s\n"), REPORT_BUGS_TO);
-
-  VG_(exit)(0);
-}
 
 static void
 request_dump (section, type)
@@ -3115,6 +3006,7 @@ static void
 dump_ia64_unwind (aux)
      struct unw_aux_info *aux;
 {
+  (void)aux; /* Quiet unused variable warning */
 }
 
 static int
@@ -3441,6 +3333,7 @@ static void
 dynamic_segment_ia64_val (entry)
      Elf_Internal_Dyn *entry;
 {
+  (void)entry; /* Quiet unused variable warning */
 }
 
 static int
@@ -4533,98 +4426,6 @@ process_version_sections (file)
   return 1;
 }
 
-static const char *
-get_symbol_binding (binding)
-     unsigned int binding;
-{
-  static char buff[32];
-
-  switch (binding)
-    {
-    case STB_LOCAL:	return "LOCAL";
-    case STB_GLOBAL:	return "GLOBAL";
-    case STB_WEAK:	return "WEAK";
-    default:
-      if (binding >= STB_LOPROC && binding <= STB_HIPROC)
-	sprintf (buff, _("<processor specific>: %d"), binding);
-      else if (binding >= STB_LOOS && binding <= STB_HIOS)
-	sprintf (buff, _("<OS specific>: %d"), binding);
-      else
-	sprintf (buff, _("<unknown>: %d"), binding);
-      return buff;
-    }
-}
-
-static const char *
-get_symbol_type (type)
-     unsigned int type;
-{
-  static char buff[32];
-
-  switch (type)
-    {
-    case STT_NOTYPE:	return "NOTYPE";
-    case STT_OBJECT:	return "OBJECT";
-    case STT_FUNC:	return "FUNC";
-    case STT_SECTION:	return "SECTION";
-    case STT_FILE:	return "FILE";
-    case STT_COMMON:	return "COMMON";
-    case STT_TLS:	return "TLS";
-    default:
-      if (type >= STT_LOPROC && type <= STT_HIPROC)
-	{
-	  sprintf (buff, _("<processor specific>: %d"), type);
-	}
-      else if (type >= STT_LOOS && type <= STT_HIOS)
-	{
-	  sprintf (buff, _("<OS specific>: %d"), type);
-	}
-      else
-	sprintf (buff, _("<unknown>: %d"), type);
-      return buff;
-    }
-}
-
-static const char *
-get_symbol_visibility (visibility)
-     unsigned int visibility;
-{
-  switch (visibility)
-    {
-    case STV_DEFAULT:	return "DEFAULT";
-    case STV_INTERNAL:	return "INTERNAL";
-    case STV_HIDDEN:	return "HIDDEN";
-    case STV_PROTECTED: return "PROTECTED";
-    default: abort ();
-    }
-}
-
-static const char *
-get_symbol_index_type (type)
-     unsigned int type;
-{
-  static char buff[32];
-
-  switch (type)
-    {
-    case SHN_UNDEF:	return "UND";
-    case SHN_ABS:	return "ABS";
-    case SHN_COMMON:	return "COM";
-    default:
-      if (type >= SHN_LOPROC && type <= SHN_HIPROC)
-	sprintf (buff, "PRC[0x%04x]", type);
-      else if (type >= SHN_LOOS && type <= SHN_HIOS)
-	sprintf (buff, "OS [0x%04x]", type);
-      else if (type >= SHN_LORESERVE && type <= SHN_HIRESERVE)
-	sprintf (buff, "RSV[0x%04x]", type);
-      else
-	sprintf (buff, "%3d", type);
-      break;
-    }
-
-  return buff;
-}
-
 static int *
 get_dynamic_data (file, number)
      FILE *file;
@@ -4847,10 +4648,12 @@ process_symbol_table (file)
                 char* symbol_name = VG_(strdup)(&strtab[psym->st_name]);
 
                 if (STT_OBJECT == ELF_ST_TYPE (psym->st_info)) {
-                  insertIntoVariableSymbolTable(symbol_name, psym->st_value);
+                  insertIntoVariableSymbolTable(symbol_name,
+						(void *)(int)psym->st_value);
                 }
                 else if (STT_FUNC == ELF_ST_TYPE (psym->st_info)) {
-                  insertIntoFunctionSymbolTable(symbol_name, psym->st_value);
+                  insertIntoFunctionSymbolTable(symbol_name,
+						(void *)(int)psym->st_value);
                 }
               }
 
@@ -5283,6 +5086,7 @@ read_leb128 (data, length_return, sign)
 typedef struct State_Machine_Registers
 {
   unsigned long address;
+  unsigned long last_address; /* Added for Kvasir */
   unsigned int file;
   unsigned int line;
   unsigned int column;
@@ -5336,34 +5140,26 @@ process_extended_line_op (data, is_stmt, pointer_size)
   len += bytes_read;
   op_code = *data++;
 
-  printf (_("  Extended opcode %d: "), op_code);
-
   switch (op_code)
     {
     case DW_LNE_end_sequence:
-      printf (_("End of Sequence\n\n"));
       reset_state_machine (is_stmt);
       break;
 
     case DW_LNE_set_address:
       adr = byte_get (data, pointer_size);
-      printf (_("set Address to 0x%lx\n"), adr);
-      state_machine_regs.address = adr;
+      state_machine_regs.address = state_machine_regs.last_address = adr;
       break;
 
     case DW_LNE_define_file:
-      printf (_("  define new File Table entry\n"));
-      printf (_("  Entry\tDir\tTime\tSize\tName\n"));
-
-      printf (_("   %d\t"), ++state_machine_regs.last_file_entry);
+      ++state_machine_regs.last_file_entry;
       name = data;
       data += VG_(strlen) ((char *) data) + 1;
-      printf (_("%lu\t"), read_leb128 (data, & bytes_read, 0));
+      read_leb128(data, & bytes_read, 0);
       data += bytes_read;
-      printf (_("%lu\t"), read_leb128 (data, & bytes_read, 0));
+      read_leb128(data, & bytes_read, 0);
       data += bytes_read;
-      printf (_("%lu\t"), read_leb128 (data, & bytes_read, 0));
-      printf (_("%s\n\n"), name);
+      read_leb128(data, & bytes_read, 0);
       break;
 
     default:
@@ -5391,12 +5187,8 @@ display_debug_lines (section, start, file)
   unsigned char *data = start;
   unsigned char *end = start + section->sh_size;
   unsigned char *end_of_sequence;
-  int i;
   int offset_size;
   int initial_length_size;
-
-  printf (_("\nDump of debug contents of section %s:\n\n"),
-	  SECTION_NAME (section));
 
   while (data < end)
     {
@@ -5453,15 +5245,6 @@ display_debug_lines (section, start, file)
       info.li_line_base <<= 24;
       info.li_line_base >>= 24;
 
-      printf (_("  Length:                      %ld\n"), info.li_length);
-      printf (_("  DWARF Version:               %d\n"), info.li_version);
-      printf (_("  Prologue Length:             %d\n"), info.li_prologue_length);
-      printf (_("  Minimum Instruction Length:  %d\n"), info.li_min_insn_length);
-      printf (_("  Initial value of 'is_stmt':  %d\n"), info.li_default_is_stmt);
-      printf (_("  Line Base:                   %d\n"), info.li_line_base);
-      printf (_("  Line Range:                  %d\n"), info.li_line_range);
-      printf (_("  Opcode Base:                 %d\n"), info.li_opcode_base);
-
       end_of_sequence = data + info.li_length + initial_length_size;
 
       reset_state_machine (info.li_default_is_stmt);
@@ -5469,24 +5252,13 @@ display_debug_lines (section, start, file)
       /* Display the contents of the Opcodes table.  */
       standard_opcodes = hdrptr;
 
-      printf (_("\n Opcodes:\n"));
-
-      for (i = 1; i < info.li_opcode_base; i++)
-	printf (_("  Opcode %d has %d args\n"), i, standard_opcodes[i - 1]);
-
       /* Display the contents of the Directory table.  */
       data = standard_opcodes + info.li_opcode_base - 1;
 
-      if (*data == 0)
-	printf (_("\n The Directory Table is empty.\n"));
-      else
+      if (*data != 0)
 	{
-	  printf (_("\n The Directory Table:\n"));
-
 	  while (*data != 0)
 	    {
-	      printf (_("  %s\n"), data);
-
 	      data += VG_(strlen) ((char *) data) + 1;
 	    }
 	}
@@ -5495,39 +5267,29 @@ display_debug_lines (section, start, file)
       data++;
 
       /* Display the contents of the File Name table.  */
-      if (*data == 0)
-	printf (_("\n The File Name Table is empty.\n"));
-      else
+      if (*data != 0)
 	{
-	  printf (_("\n The File Name Table:\n"));
-	  printf (_("  Entry\tDir\tTime\tSize\tName\n"));
-
 	  while (*data != 0)
 	    {
 	      unsigned char *name;
 	      int bytes_read;
 
-	      printf (_("  %d\t"), ++state_machine_regs.last_file_entry);
+	      ++state_machine_regs.last_file_entry;
 	      name = data;
 
 	      data += VG_(strlen) ((char *) data) + 1;
 
-	      printf (_("%lu\t"), read_leb128 (data, & bytes_read, 0));
+	      read_leb128(data, &bytes_read, 0);
 	      data += bytes_read;
-	      printf (_("%lu\t"), read_leb128 (data, & bytes_read, 0));
+	      read_leb128(data, & bytes_read, 0);
 	      data += bytes_read;
-	      printf (_("%lu\t"), read_leb128 (data, & bytes_read, 0));
+	      read_leb128(data, & bytes_read, 0);
 	      data += bytes_read;
-	      printf (_("%s\n"), name);
 	    }
 	}
 
       /* Skip the NUL at the end of the table.  */
       data++;
-
-      /* Now display the statements.  */
-      printf (_("\n Line Number Statements:\n"));
-
 
       while (data < end_of_sequence)
 	{
@@ -5542,12 +5304,12 @@ display_debug_lines (section, start, file)
 	      op_code -= info.li_opcode_base;
 	      adv      = (op_code / info.li_line_range) * info.li_min_insn_length;
 	      state_machine_regs.address += adv;
-	      printf (_("  Special opcode %d: advance Address by %d to 0x%lx"),
-		      op_code, adv, state_machine_regs.address);
+	      genputtable(next_line_addr,
+			  (void *)(int)state_machine_regs.last_address,
+			  (void *)(int)state_machine_regs.address);
+	      state_machine_regs.last_address = state_machine_regs.address;
 	      adv = (op_code % info.li_line_range) + info.li_line_base;
 	      state_machine_regs.line += adv;
-	      printf (_(" and Line by %d to %d\n"),
-		      adv, state_machine_regs.line);
 	    }
 	  else switch (op_code)
 	    {
@@ -5557,49 +5319,43 @@ display_debug_lines (section, start, file)
 	      break;
 
 	    case DW_LNS_copy:
-	      printf (_("  Copy\n"));
 	      break;
 
 	    case DW_LNS_advance_pc:
 	      adv = info.li_min_insn_length * read_leb128 (data, & bytes_read, 0);
 	      data += bytes_read;
 	      state_machine_regs.address += adv;
-	      printf (_("  Advance PC by %d to %lx\n"), adv,
-		      state_machine_regs.address);
+	      genputtable(next_line_addr,
+			  (void *)(int)state_machine_regs.last_address,
+			  (void *)(int)state_machine_regs.address);
+	      state_machine_regs.last_address = state_machine_regs.address;
 	      break;
 
 	    case DW_LNS_advance_line:
 	      adv = read_leb128 (data, & bytes_read, 1);
 	      data += bytes_read;
 	      state_machine_regs.line += adv;
-	      printf (_("  Advance Line by %d to %d\n"), adv,
-		      state_machine_regs.line);
 	      break;
 
 	    case DW_LNS_set_file:
 	      adv = read_leb128 (data, & bytes_read, 0);
 	      data += bytes_read;
-	      printf (_("  Set File Name to entry %d in the File Name Table\n"),
-		      adv);
 	      state_machine_regs.file = adv;
 	      break;
 
 	    case DW_LNS_set_column:
 	      adv = read_leb128 (data, & bytes_read, 0);
 	      data += bytes_read;
-	      printf (_("  Set column to %d\n"), adv);
 	      state_machine_regs.column = adv;
 	      break;
 
 	    case DW_LNS_negate_stmt:
 	      adv = state_machine_regs.is_stmt;
 	      adv = ! adv;
-	      printf (_("  Set is_stmt to %d\n"), adv);
 	      state_machine_regs.is_stmt = adv;
 	      break;
 
 	    case DW_LNS_set_basic_block:
-	      printf (_("  Set basic block\n"));
 	      state_machine_regs.basic_block = 1;
 	      break;
 
@@ -5607,48 +5363,41 @@ display_debug_lines (section, start, file)
 	      adv = (((255 - info.li_opcode_base) / info.li_line_range)
 		     * info.li_min_insn_length);
 	      state_machine_regs.address += adv;
-	      printf (_("  Advance PC by constant %d to 0x%lx\n"), adv,
-		      state_machine_regs.address);
 	      break;
 
 	    case DW_LNS_fixed_advance_pc:
 	      adv = byte_get (data, 2);
 	      data += 2;
 	      state_machine_regs.address += adv;
-	      printf (_("  Advance PC by fixed size amount %d to 0x%lx\n"),
-		      adv, state_machine_regs.address);
+	      genputtable(next_line_addr,
+			  (void *)(int)state_machine_regs.last_address,
+			  (void *)(int)state_machine_regs.address);
+	      state_machine_regs.last_address = state_machine_regs.address;
 	      break;
 
 	    case DW_LNS_set_prologue_end:
-	      printf (_("  Set prologue_end to true\n"));
 	      break;
 
 	    case DW_LNS_set_epilogue_begin:
-	      printf (_("  Set epilogue_begin to true\n"));
 	      break;
 
 	    case DW_LNS_set_isa:
 	      adv = read_leb128 (data, & bytes_read, 0);
 	      data += bytes_read;
-	      printf (_("  Set ISA to %d\n"), adv);
 	      break;
 
 	    default:
-	      printf (_("  Unknown opcode %d with operands: "), op_code);
 	      {
 		int j;
 		for (j = standard_opcodes[op_code - 1]; j > 0 ; --j)
 		  {
-		    printf ("0x%lx%s", read_leb128 (data, &bytes_read, 0),
-			    j == 1 ? "" : ", ");
+		    read_leb128 (data, &bytes_read, 0);
 		    data += bytes_read;
 		  }
-		putchar ('\n');
 	      }
 	      break;
 	    }
 	}
-      putchar ('\n');
     }
 
   return 1;
@@ -6715,7 +6464,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
                 harvest_local_var_offset(entry, fbreg_value);
               }
               else if (tag_is_formal_parameter(entry->tag_name)) {
-                harvest_formal_param_location(entry, fbreg_value);
+                harvest_formal_param_location_offset(entry, fbreg_value);
               }
 
               data += bytes_read;
@@ -9518,6 +9267,7 @@ static int
 process_mips_specific (file)
      FILE *file;
 {
+  (void)file; /* Quiet unused parameter warning */
   /* We have a lot of special sections.  Thanks SGI!  */
   if (dynamic_segment == NULL)
     /* No information available.  */
@@ -9529,6 +9279,7 @@ static int
 process_gnu_liblist (file)
      FILE *file;
 {
+  (void)file; /* Quiet unused parameter warning */
   return 1;
 }
 
@@ -10063,100 +9814,10 @@ int process_elf_binary_data(char* filename)
   int err;
   char *cmdline_dump_sects = NULL;
 
-  char **hack_argv = 0;
-
-  // Set this to the right number!!!
-  int argc = 4;
-
-  static char default_exec_name[10] = "./readelf"; // dummy!!!
-
-  // Trick readelf into printing out symbol table and DWARF2 debug info
-  static char symbol_table_option[3] = "-s";
-  static char debug_info_option[18] = "--debug-dump=info";
-
-/* // PG
-argument format - argv[0] is executable, argv[1] and argv[2] are the options
-                 that we want pass in - "-s --debug-dump=info" -
-                 and argv[3] is the filename
-
-argv[0] = ./readelf (executable name)
-argv[1] = --debug-dump=info (desired option)
-argv[2] = --debug-dump=info (desired option)
-argv[3] = ../tests/TypesTest/TypesTest (filename)
-
-Here is my hack.  Instead of requiring the user to pass in "-s --debug-dump=info",
-we just make the user pass in the filename as the only argument and then
-apply "-s --debug-dump=info" by default
-
-Let's create our own hack_argv array:
-
-hack_argv[0] = "./readelf"
-hack_argv[1] = "-s"
-hack_argv[2] = "--debug-dump=info"
-hack_argv[3] = filename
-*/
-
-  hack_argv = VG_(malloc)(4 * sizeof(*hack_argv));
-
-  hack_argv[0] = default_exec_name;
-  hack_argv[1] = symbol_table_option;
-  hack_argv[2] = debug_info_option;
-  hack_argv[3] = filename;
-
-#ifdef SHOW_DEBUG
-  {
-    int i;
-    printf("filename: 0x%x\n", filename);
-    for (i = 0; i < argc; i++)
-      printf("hack_argv[%d] = %s\n", i, hack_argv[i]);
-
-    printf("\n-------------------------------------\n\n");
-  }
-#endif
-
-  // PG - now hijack parse_args and pass in my hacked argv
-  // SMcC - instead, do this by hand to avoid having to link in getopt
-  //  parse_args (argc, argv);
-  //  printf("before parse_args(%d, 0x%x)\n", argc, hack_argv);
-  //  parse_args (argc, hack_argv);
-  //  printf("after parse_args\n");
-  //  printf("optind = %d\n", optind);
   do_syms++; /* -s */
-  do_dump++; do_debug_info++; /* --debug-dump=info */
+  do_dump++; do_debug_info++; do_debug_lines++; /* --debug-dump=info,lines */
 
-  //  if (optind < (argc - 1))
   show_name = 1;
-
-  /* When processing more than one file remember the dump requests
-     issued on command line to reset them after each file.  */
-
-  /*
-  if (optind + 1 < argc && dump_sects != NULL)
-    {
-      cmdline_dump_sects = VG_(malloc) (num_dump_sects);
-      if (cmdline_dump_sects == NULL)
-	error (_("Out of memory allocating dump request table."));
-      else
-	{
-	  VG_(memcpy) (cmdline_dump_sects, dump_sects, num_dump_sects);
-	  num_cmdline_dump_sects = num_dump_sects;
-	}
-    }
-  */
-
-  err = 0;
-  //  while (optind < argc)
-  //    {
-  //      err |= process_file (hack_argv[optind++]); // PG - replace argv with hack_argv
-  //
-  //      /* Reset dump requests.  */
-  //      if (optind < argc && dump_sects != NULL)
-  //	{
-  //	  num_dump_sects = num_cmdline_dump_sects;
-  //	  if (num_cmdline_dump_sects > 0)
-  //	    VG_(memcpy) (dump_sects, cmdline_dump_sects, num_cmdline_dump_sects);
-  //	}
-  //    }
 
   err = process_file (filename); // PG/SMcC - rather than argv[argc - 1]
 
