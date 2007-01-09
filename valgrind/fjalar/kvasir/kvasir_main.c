@@ -400,7 +400,7 @@ static int openDtraceFile(const char *fname) {
 
     if (!pid) {
       /* In child */
-      char *const argv[] = {"gzip", "-c", 0};
+      Char *const argv[] = {"gzip", "-c", 0};
       VG_(close)(fds[1]);
 
       /* Redirect stdin from the pipe */
@@ -630,14 +630,15 @@ void fjalar_tool_print_usage()
 Bool fjalar_tool_process_cmd_line_option(Char* arg)
 {
   VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename)
-  else VG_STR_CLO(arg, "--dtrace-file",    kvasir_dtrace_filename)
-  else VG_YESNO_CLO("dtrace-append",  kvasir_dtrace_append)
-  else VG_YESNO_CLO("dtrace-no-decs",  kvasir_dtrace_no_decs)
-  else VG_YESNO_CLO("dtrace-gzip",    kvasir_dtrace_gzip)
-  else VG_YESNO_CLO("output-fifo",    kvasir_output_fifo)
-  else VG_YESNO_CLO("decls-only",     kvasir_decls_only)
-  else VG_YESNO_CLO("repair-format", kvasir_repair_format)
+  else VG_STR_CLO(arg, "--dtrace-file", kvasir_dtrace_filename)
+  else VG_YESNO_CLO("dtrace-append",    kvasir_dtrace_append)
+  else VG_YESNO_CLO("dtrace-no-decs",   kvasir_dtrace_no_decs)
+  else VG_YESNO_CLO("dtrace-gzip",      kvasir_dtrace_gzip)
+  else VG_YESNO_CLO("output-fifo",      kvasir_output_fifo)
+  else VG_YESNO_CLO("decls-only",       kvasir_decls_only)
+  else VG_YESNO_CLO("repair-format",    kvasir_repair_format)
   else VG_YESNO_CLO("new-decls-format", kvasir_new_decls_format)
+  else VG_YESNO_CLO("kvasir-debug",     kvasir_print_debug_info)
   else VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename)
   else VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename)
 
