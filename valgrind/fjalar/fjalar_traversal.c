@@ -842,6 +842,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
     }
 
     if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
+      /* Note that it's OK for byteOffset to be negative here, since
+	 stackBaseAddr is the fake %ebp, pointing in the middle of
+	 the virtualStack frame. */
       basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
     }
     else if (varOrigin == GLOBAL_VAR) {
