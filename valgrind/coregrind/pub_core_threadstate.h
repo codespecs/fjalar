@@ -100,7 +100,7 @@ typedef
       VexGuestArchState vex_shadow;
 
       /* PG - pgbovine - Extra shadow guest state for DynComp */
-      VexGuestX86State vex_extra_shadow[4];
+      VexGuestArchState vex_extra_shadow[4];
 
       /* Spill area. */
       UChar vex_spill[LibVEX_N_SPILL_BYTES];
