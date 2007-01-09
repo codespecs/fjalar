@@ -48,25 +48,25 @@ static void extractReturnVar(FunctionEntry* f,
 			     function* dwarfFunctionEntry);
 
 static int determineVariableByteSize(VariableEntry* var);
-static void verifyStackParamWordAlignment(FunctionEntry* f);
+static void verifyStackParamWordAlignment(FunctionEntry* f, int replace);
 
-static void extractOneVariable(VarList* varListPtr,
-                               dwarf_entry* typePtr,
-                               char* variableName,
-                               char* fileName,
-                               unsigned long byteOffset,
-                               char isGlobal,
-                               char isExternal,
-                               unsigned long globalLocation,
-                               unsigned long functionStartPC,
-                               char isStructUnionMember,
-                               unsigned long data_member_location,
-                               int internalByteSize,
-                               int internalBitOffset,
-                               int internalBitSize,
-                               TypeEntry* structParentType,
-                               unsigned long dwarf_accessibility,
-                               char isFormalParam);
+static VariableEntry*
+extractOneVariable(VarList* varListPtr,
+		   dwarf_entry* typePtr,
+		   char* variableName,
+		   char* fileName,
+		   char isGlobal,
+		   char isExternal,
+		   unsigned long globalLocation,
+		   unsigned long functionStartPC,
+		   char isStructUnionMember,
+		   unsigned long data_member_location,
+		   int internalByteSize,
+		   int internalBitOffset,
+		   int internalBitSize,
+		   TypeEntry* structParentType,
+		   unsigned long dwarf_accessibility,
+		   char isFormalParam);
 
 static void repCheckOneVariable(VariableEntry* var);
 
@@ -188,6 +188,7 @@ const char* DeclaredTypeString[] = {
 // or else Valgrind places it in some bizarre place ... I dunno???
 struct genhashtable* TypesTable = 0;
 struct genhashtable* FunctionTable = 0;
+struct genhashtable* FunctionTable_by_entryPC = 0;
 struct genhashtable* VisitedStructsTable = 0;
 
 // A temporary data structure of variables that need to have their
@@ -623,9 +624,11 @@ void repCheckAllEntries(void) {
 
       tl_assert(!IS_GLOBAL_VAR(v));
 
-      // Make sure variables are listed in order of increasing byte
-      // offsets (no variable should have a 0 byte offset):
-      tl_assert(v->byteOffset > prevByteOffset);
+      // It is no longer the case that the byteOffsets will be strictly
+      // increasing, since we're now using the locations in the debugging
+      // information, some of which may be copies in the function's private
+      // data area.
+      // tl_assert(v->byteOffset > prevByteOffset);
       prevByteOffset = v->byteOffset;
 
       repCheckOneVariable(v);
@@ -942,7 +945,6 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
                      typePtr,
                      variablePtr->name,
 		     findFilenameForEntry(e),
-                     0,
                      variablePtr->couldBeGlobalVar,
 		     variablePtr->is_external,
                      variablePtr->globalVarAddr,
@@ -1345,6 +1347,10 @@ void initializeFunctionTable(void)
     genallocatehashtable(0,
                          (int (*)(void *,void *)) &equivalentIDs);
 
+  FunctionTable_by_entryPC =
+    genallocatehashtable(0,
+                         (int (*)(void *,void *)) &equivalentIDs);
+
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
       //      FJALAR_DPRINTF("i: %d\n", i);
@@ -1433,15 +1439,37 @@ void initializeFunctionTable(void)
           // Extract return variable
           extractReturnVar(cur_func_entry, dwarfFunctionPtr);
 
-          // Make one more pass-through to make sure that byteOffsets are correct
-          // for the word-aligned stack!
-          // We must do this AFTER extracting the return variable
-          verifyStackParamWordAlignment(cur_func_entry);
-
           // Add to FunctionTable
           genputtable(FunctionTable,
                       (void*)cur_func_entry->startPC, // key    (unsigned long)
 		      (void*)cur_func_entry);         // value  (FunctionEntry*)
+
+	  if (gencontains(next_line_addr, (void*)cur_func_entry->startPC)) {
+	    cur_func_entry->entryPC = (Addr)
+	      gengettable(next_line_addr, (void*)cur_func_entry->startPC);
+	    FJALAR_DPRINTF("Entering %s at 0x%08x instead of 0x%08x\n",
+			   cur_func_entry->name, cur_func_entry->entryPC,
+			   cur_func_entry->startPC);
+	    /* Leave DWARF offsets alone if the exist, since we should
+	       be properly placed to use them. */
+	    verifyStackParamWordAlignment(cur_func_entry, 0);
+	  } else {
+	    // Make one more pass-through to make sure that byteOffsets
+	    // are correct for the word-aligned stack!
+	    // We must do this AFTER extracting the return variable.
+	    // Should only be needed when we weren't able to skip the
+	    // prolog, and so can't rely on the DWARF information to
+	    // have the correct parameter locations.
+	    cur_func_entry->entryPC = cur_func_entry->startPC;
+	    verifyStackParamWordAlignment(cur_func_entry, 1);
+	  }
+          genputtable(FunctionTable_by_entryPC,
+                      (void*)cur_func_entry->entryPC,
+		      (void*)cur_func_entry);
+
+	  cur_func_entry->formalParamStackByteSize
+	    = determineFormalParametersStackByteSize(cur_func_entry);
+
           num_functions_added++;
         }
     }
@@ -1744,7 +1772,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
                          0,
                          0,
                          0,
-                         0,
                          1,
                          memberPtr->data_member_location,
                          memberPtr->internal_byte_size,
@@ -1794,7 +1821,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 			 (staticMemberPtr->mangled_name ?
 			  staticMemberPtr->mangled_name :
 			  staticMemberPtr->name),
-			 0,
 			 0,
 			 1,
 			 staticMemberPtr->is_external,
@@ -1889,11 +1915,15 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
 // Otherwise it cannot tell whether the function returns a struct type!!!
 //
-// We are ignoring the offsets that DWARF2 provides for us because when
-// Valgrind gains control at the beginning of a function, the parameters
-// are not guaranteed to be at those locations yet -
-// We have devised our own calculation that word-aligns everything.
-static void verifyStackParamWordAlignment(FunctionEntry* f)
+// We potentially want to ignore the offsets that DWARF2 provides for
+// us because if Valgrind gains control at the beginning of a
+// function, the parameters are not guaranteed to be at those
+// locations yet. We have devised our own calculation that
+// word-aligns everything in the caller's stack frame (positive offsets
+// from EBP). We always use this computed value if the DWARF information
+// didn't provide a location (which can happen for instance if the parameter
+// is unused), or if replace == 1.
+static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 {
   VarNode* cur_node;
   int offset = 8;
@@ -1923,7 +1953,10 @@ static void verifyStackParamWordAlignment(FunctionEntry* f)
        cur_node = cur_node->next)
     {
       int cur_byteSize = 0;
-      cur_node->var->byteOffset = offset;
+      if (cur_node->var->locationType == NO_LOCATION || replace) {
+	cur_node->var->locationType = FP_OFFSET_LOCATION;
+	cur_node->var->byteOffset = offset;
+      }
       cur_byteSize = determineVariableByteSize(cur_node->var);
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
@@ -1994,19 +2027,13 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
        cur_node != NULL;
        cur_node = cur_node->next)
     {
-      // Assuming that we have already run verifyStackParamWordAlignment,
-      // the byteOffset field of every cur_node->var should be updated
-      // and all we have to do is to collect byteOffset + byteSize of
-      // the LAST formal parameter in order to find the total required stack size.
-      // So we will be lazy and just assign totalByteSize to byteOffset + byteSize
-      // of EVERY formal parameter since we know that the last one we hit
-      // will have the highest value.
-      totalByteSize = (cur_node->var->byteOffset +
-                       determineVariableByteSize(cur_node->var));
-      // Just to be safe, round UP to the next multiple of 4
-      totalByteSize += 4;
-      totalByteSize -= (totalByteSize % 4);
+      int this_end = cur_node->var->byteOffset +
+	determineVariableByteSize(cur_node->var);
+      totalByteSize = MAX(totalByteSize, this_end);
     }
+  // PG comment said "Just to be safe, round UP to the next multiple
+  // of 4". For the moment, live dangerously and see if anything
+  // breaks. -SMcC
   return totalByteSize;
 }
 
@@ -2017,6 +2044,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 {
   formal_parameter* paramPtr = 0;
   dwarf_entry* typePtr = 0;
+  VariableEntry *varPtr;
 
   if (dwarfParamEntry == NULL || !tag_is_formal_parameter(dwarfParamEntry->tag_name)) {
     VG_(printf)( "Error, formal parameter information struct is null or belongs to the incorrect type\n");
@@ -2036,16 +2064,20 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 	  f->name,
 	  paramPtr->name);
 
-  extractOneVariable(&(f->formalParameters),
-                     typePtr,
-		     paramPtr->name,
-		     0,
-                     paramPtr->location,
-                     0,
-		     0,
-		     0,
-		     0,
-		     0,0,0,0,0,0,0,1);
+  varPtr = extractOneVariable(&(f->formalParameters),
+			      typePtr,
+			      paramPtr->name,
+			      0,
+			      0,
+			      0,
+			      0,
+			      0,
+			      0,0,0,0,0,0,0,1);
+
+  if (paramPtr->location_type == LT_FP_OFFSET) {
+    varPtr->locationType = FP_OFFSET_LOCATION;
+    varPtr->byteOffset = paramPtr->location;
+  }
 }
 
 static void extractFormalParameterVars(FunctionEntry* f,
@@ -2074,6 +2106,7 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
 {
   variable* variablePtr = 0;
   dwarf_entry* typePtr = 0;
+  VariableEntry *varPtr;
 
   if (dwarfVariableEntry == NULL || !tag_is_variable(dwarfVariableEntry->tag_name)) {
     VG_(printf)( "Error, local variable information struct is null or belongs to the incorrect type\n");
@@ -2113,16 +2146,18 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
 		 &(f->localArrayAndStructVars),
 		 f->localArrayAndStructVars.numVars);
 
-  extractOneVariable(&(f->localArrayAndStructVars),
-                     typePtr,
-                     variablePtr->name,
-		     0,
-                     variablePtr->offset,
-                     0,
-		     0,
-		     0,
-		     0,
-		     0,0,0,0,0,0,0,0);
+  varPtr = extractOneVariable(&(f->localArrayAndStructVars),
+			      typePtr,
+			      variablePtr->name,
+			      0,
+			      0,
+			      0,
+			      0,
+			      0,
+			      0,0,0,0,0,0,0,0);
+
+  varPtr->locationType = FP_OFFSET_LOCATION;
+  varPtr->byteOffset = variablePtr->offset;
 }
 
 static void extractReturnVar(FunctionEntry* f,
@@ -2148,7 +2183,6 @@ static void extractReturnVar(FunctionEntry* f,
                      typePtr,
                      RETURN_VALUE_NAME,
 		     0,
-                     0,
                      0,
 		     0,
 		     0,
@@ -2229,23 +2263,23 @@ void updateAllVarTypes(void) {
 
 
 // Extracts one variable and inserts it at the end of varListPtr
-void extractOneVariable(VarList* varListPtr,
-			dwarf_entry* typePtr,
-			char* variableName,
-			char* fileName,
-			unsigned long byteOffset,
-			char isGlobal,
-			char isExternal,
-			unsigned long globalLocation,
-			unsigned long functionStartPC,
-			char isStructUnionMember,
-			unsigned long data_member_location,
-			int internalByteSize,
-			int internalBitOffset,
-			int internalBitSize,
-			TypeEntry* structParentType,
-                        unsigned long dwarf_accessibility,
-                        char isFormalParam) // All static arrays which are
+static VariableEntry*
+extractOneVariable(VarList* varListPtr,
+		   dwarf_entry* typePtr,
+		   char* variableName,
+		   char* fileName,
+		   char isGlobal,
+		   char isExternal,
+		   unsigned long globalLocation,
+		   unsigned long functionStartPC,
+		   char isStructUnionMember,
+		   unsigned long data_member_location,
+		   int internalByteSize,
+		   int internalBitOffset,
+		   int internalBitSize,
+		   TypeEntry* structParentType,
+		   unsigned long dwarf_accessibility,
+		   char isFormalParam) // All static arrays which are
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
 {
@@ -2261,7 +2295,7 @@ void extractOneVariable(VarList* varListPtr,
 
   // Don't extract the variable if it has a bogus name:
   if (!variableName || ignore_variable_with_name(variableName))
-    return;
+    return 0;
 
   // Create a new VariableEntry and append it to the end of VarList
   insertNewNode(varListPtr);
@@ -2278,8 +2312,6 @@ void extractOneVariable(VarList* varListPtr,
   else {
     varPtr->name = variableName;
   }
-
-  varPtr->byteOffset = byteOffset;
 
   // Special case for C++ 'this' parameter variables:
   // Automatically put a 'P' disambig on it because
@@ -2377,7 +2409,7 @@ void extractOneVariable(VarList* varListPtr,
         ignore_type_with_name(type_name)) {
       //      VG_(printf)("IGNORED --- %s\n", type_name);
       varPtr->varType = &VoidType;
-      return; // punt at this point
+      return varPtr; // punt at this point
     }
   }
 
@@ -2512,6 +2544,8 @@ void extractOneVariable(VarList* varListPtr,
     varPtr->ptrLevels = 1;
     varPtr->varType = &VoidType;
   }
+  
+  return varPtr;
 }
 
 
