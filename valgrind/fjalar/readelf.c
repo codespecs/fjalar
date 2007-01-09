@@ -6416,10 +6416,11 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
                           breg_value);
                 }
 
-              // It seems like bregXX is only used for local vars,
-              // but that's based on just a few empirical observations - PG
               if (tag_is_variable(entry->tag_name)) {
                 harvest_local_var_offset(entry, breg_value);
+              }
+              else if (tag_is_formal_parameter(entry->tag_name)) {
+                harvest_formal_param_location_offset(entry, breg_value);
               }
 
               data += bytes_read;
