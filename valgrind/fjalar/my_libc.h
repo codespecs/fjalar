@@ -4,6 +4,11 @@
 #ifndef MY_LIBC_H
 #define MY_LIBC_H
 
+/* These aren't in libc, but I find myself using them a lot, so this is
+   a good place to define them once and for all. -SMcC */
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 #include "pub_tool_vki.h"
 #include <stdarg.h>
 
