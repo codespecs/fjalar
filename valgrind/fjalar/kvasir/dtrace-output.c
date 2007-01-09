@@ -1102,7 +1102,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      funcPtr,
                      isEnter,
                      // Remember to use the virtual stack!
-                     f_state->virtualStack,
+                     f_state->virtualStack + f_state->virtualStackEBPOffset,
                      &printDtraceEntryAction);
 
   // If isEnter == 0, print out return value:
