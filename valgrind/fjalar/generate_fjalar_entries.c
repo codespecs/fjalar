@@ -486,12 +486,6 @@ void clearVarList(VarList* varListPtr, Bool destroyVariableEntries) {
 //  will probably get lots of memory leaks.)
 void initializeAllFjalarData(void)
 {
-  // For debugging:
-  if (fjalar_with_gdb) {
-    int x = 0;
-    while (!x) {}
-  }
-
   tl_assert(globalVars.numVars == 0);
 
   // TODO: We need to free up the entries in TypesTable if we are

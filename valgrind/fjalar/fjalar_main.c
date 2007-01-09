@@ -525,11 +525,17 @@ void fjalar_pre_clo_init()
 // Initialize Fjalar after command-line options are processed
 void fjalar_post_clo_init()
 {
-  executable_filename = VG_(args_the_exename);
-
-  // Handle variables set by command-line options:
   char* DISAMBIG = ".disambig";
   int DISAMBIG_LEN = VG_(strlen)(DISAMBIG);
+
+  executable_filename = VG_(args_the_exename);
+
+  if (fjalar_with_gdb) {
+    int x = 0;
+    while (!x) {} /* In GDB, say "p x=1" and then "c" to continue */
+  }
+
+  // Handle variables set by command-line options:
 
   FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%x] (Assumes that filename is first argument in client_argv)\n\n",
 	  executable_filename, executable_filename);
