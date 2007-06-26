@@ -12,8 +12,8 @@
    Copyright (C) 2000-2005 Julian Seward
       jseward@acm.org
 
-      Modified by Philip Guo to track ESP as new areas of the stack
-      are allocated.  Added several CHECK_ESP() calls and extern
+      Modified by Philip Guo to track SP as new areas of the stack
+      are allocated.  Added several CHECK_SP() calls and extern
       var. declarations.
 
       TODO: In the future, hopefully we can find a faster and more
@@ -473,7 +473,7 @@ extern void* MAC_(realloc)              ( ThreadId tid, void* p, SizeT new_size 
                                                                   \
 void VG_REGPARM(1) MAC_(new_mem_stack_4)(Addr new_SP)             \
 {                                                                 \
-   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   CHECK_SP(new_SP) /* // PG - pgbovine */                       \
    PROF_EVENT(110, "new_mem_stack_4");                            \
    if (VG_IS_4_ALIGNED(new_SP)) {                                 \
       ALIGNED4_NEW  ( -VG_STACK_REDZONE_SZB + new_SP );           \
@@ -494,7 +494,7 @@ void VG_REGPARM(1) MAC_(die_mem_stack_4)(Addr new_SP)             \
                                                                   \
 void VG_REGPARM(1) MAC_(new_mem_stack_8)(Addr new_SP)             \
 {                                                                 \
-   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   CHECK_SP(new_SP) /* // PG - pgbovine */                       \
    PROF_EVENT(111, "new_mem_stack_8");                            \
    if (VG_IS_8_ALIGNED(new_SP)) {                                 \
       ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP );           \
@@ -521,7 +521,7 @@ void VG_REGPARM(1) MAC_(die_mem_stack_8)(Addr new_SP)             \
                                                                   \
 void VG_REGPARM(1) MAC_(new_mem_stack_12)(Addr new_SP)            \
 {                                                                 \
-   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   CHECK_SP(new_SP) /* // PG - pgbovine */                       \
    PROF_EVENT(112, "new_mem_stack_12");                           \
    if (VG_IS_8_ALIGNED(new_SP)) {                                 \
       ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP   );         \
@@ -551,7 +551,7 @@ void VG_REGPARM(1) MAC_(die_mem_stack_12)(Addr new_SP)            \
                                                                   \
 void VG_REGPARM(1) MAC_(new_mem_stack_16)(Addr new_SP)            \
 {                                                                 \
-   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   CHECK_SP(new_SP) /* // PG - pgbovine */                       \
    PROF_EVENT(113, "new_mem_stack_16");                           \
    if (VG_IS_8_ALIGNED(new_SP)) {                                 \
       ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP   );         \
@@ -582,7 +582,7 @@ void VG_REGPARM(1) MAC_(die_mem_stack_16)(Addr new_SP)            \
                                                                   \
 void VG_REGPARM(1) MAC_(new_mem_stack_32)(Addr new_SP)            \
 {                                                                 \
-   CHECK_ESP(new_SP) /* // PG - pgbovine */                       \
+   CHECK_SP(new_SP) /* // PG - pgbovine */                       \
    PROF_EVENT(114, "new_mem_stack_32");                           \
    if (VG_IS_8_ALIGNED(new_SP)) {                                 \
       ALIGNED8_NEW  ( -VG_STACK_REDZONE_SZB + new_SP    );        \
@@ -621,7 +621,7 @@ void VG_REGPARM(1) MAC_(die_mem_stack_32)(Addr new_SP)            \
                                                                   \
 void MAC_(new_mem_stack) ( Addr a, SizeT len )                    \
 {                                                                 \
-   CHECK_ESP_SLOW() /* // PG - pgbovine */                        \
+   CHECK_SP_SLOW() /* // PG - pgbovine */                        \
    PROF_EVENT(115, "new_mem_stack");                              \
    UNALIGNED_NEW ( -VG_STACK_REDZONE_SZB + a, len );              \
 }                                                                 \

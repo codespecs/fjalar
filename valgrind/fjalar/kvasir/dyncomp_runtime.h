@@ -81,5 +81,6 @@ void DC_detailed_mode_process_ppt_execution(DaikonFunctionEntry* funcPtr,
 
 void DC_convert_bitmatrix_to_new_tag_leaders(DaikonFunctionEntry* funcPtr,
                                              char isEnter);
-
+void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
+                                  char isEnter);
 #endif

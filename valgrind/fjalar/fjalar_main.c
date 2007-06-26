@@ -35,6 +35,7 @@
 #include "disambig.h"
 #include "mc_include.h"
 #include "typedata.h"
+#include "vex_common.h"
 
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
@@ -115,9 +116,9 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
   // to filter them out at translation-time instead of run-time
   if (entry && (!fjalar_trace_prog_pts_filename ||
 		prog_pts_tree_entry_found(entry))) {
-    UInt entry32 = (UInt)entry; /* XXX 64-bit? */
+    UWord entry_w = (UWord)entry;
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func, 
-			   mkIRExprVec_1(IRExpr_Const(IRConst_U32(entry32))));
+			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
     // For function entry, we are interested in observing the stack
     // and frame pointers so make sure that they're updated by setting
@@ -127,8 +128,8 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di->fxState[0].offset = mce->layout->offset_SP;
     di->fxState[0].size   = mce->layout->sizeof_SP;
     di->fxState[1].fx     = Ifx_Read;
-    di->fxState[1].offset = 20; /* XXX x86 %ebp */
-    di->fxState[1].size   = 4; /* XXX x86 */
+    di->fxState[1].offset = mce->layout->offset_FP;
+    di->fxState[1].size   = mce->layout->sizeof_FP;
 
     stmt( mce->bb, IRStmt_Dirty(di) );
   }
@@ -198,31 +199,31 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di = unsafeIRDirty_0_N(1/*regparms*/,
 			     "exit_function",
 			     &exit_function,
-			     mkIRExprVec_1(IRExpr_Const(IRConst_U32((Addr)curFuncPtr))));
+			     mkIRExprVec_1(IRExpr_Const(IRConst_UWord((Addr)curFuncPtr))));
 
       // For function exit, we are interested in observing the ESP,
-      // EAX, EDX, FPTOP, and FPREG[], so make sure that they are
+      // xAX, xDX, FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations:
-      di->nFxState = 4;
+      di->nFxState = 5;
       di->fxState[0].fx     = Ifx_Read;
       di->fxState[0].offset = mce->layout->offset_SP;
       di->fxState[0].size   = mce->layout->sizeof_SP;
 
-      // Now I'm totally hacking based upon the definition of
-      // VexGuestX86State in vex/pub/libvex_guest_x86.h:
-      // (This is TOTALLY x86 dependent right now, but oh well)
       di->fxState[1].fx     = Ifx_Read;
-      di->fxState[1].offset = 0; // offset of EAX
-      di->fxState[1].size   = sizeof(UInt); // 4 bytes
+      di->fxState[1].offset = mce->layout->offset_xAX;
+      di->fxState[1].size   = mce->layout->sizeof_xAX;
 
       di->fxState[2].fx     = Ifx_Read;
-      di->fxState[2].offset = 8; // offset of EDX
-      di->fxState[2].size   = sizeof(UInt); // 4 bytes
+      di->fxState[2].offset = mce->layout->offset_xDX;
+      di->fxState[2].size   = mce->layout->sizeof_xDX;
 
       di->fxState[3].fx     = Ifx_Read;
-      di->fxState[3].offset = 60; // offset of FPTOP
-      // Size of FPTOP + all 8 elements of FPREG
-      di->fxState[3].size   = sizeof(UInt) + (8 * sizeof(ULong));
+      di->fxState[3].offset = offsetof(VexGuestArchState, guest_FTOP);
+      di->fxState[3].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
+
+      di->fxState[4].fx     = Ifx_Read;
+      di->fxState[4].offset = offsetof(VexGuestArchState, guest_FPREG);
+      di->fxState[4].size   = 8 * sizeof(ULong);
 
       stmt( mce->bb, IRStmt_Dirty(di) );
     }
@@ -260,8 +261,8 @@ void enter_function(FunctionEntry* f)
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
 
   ThreadId tid = VG_(get_running_tid)();
-  Addr ESP = VG_(get_SP)(tid);
-  Addr EBP;
+  Addr stack_ptr = VG_(get_SP)(tid);
+  Addr frame_ptr; /* E.g., %ebp */
   int offset, size;
 
   if (f != primed_function)
@@ -270,11 +271,11 @@ void enter_function(FunctionEntry* f)
 
   if (f->entryPC != f->startPC) {
     /* Prolog has run, so just use the real %ebp */
-    EBP = VG_(get_FP)(VG_(get_running_tid)());
+    frame_ptr = VG_(get_FP)(VG_(get_running_tid)());
   } else {
     /* Don't know about prolog, so fake its effects, given we know that
        ESP hasn't yet been modified: */
-    EBP = ESP - 4;
+    frame_ptr = stack_ptr - 4;
   }
 
   FJALAR_DPRINTF("Enter function: %s - StartPC: %p\n",
@@ -283,24 +284,25 @@ void enter_function(FunctionEntry* f)
   newEntry  = fnStackPush();
 
   newEntry->func = f;
-  newEntry->EBP = EBP;
-  newEntry->lowestESP = ESP;
-  newEntry->EAX = 0;
-  newEntry->EDX = 0;
+  newEntry->FP = frame_ptr;
+  newEntry->lowestSP = stack_ptr;
+  newEntry->xAX = 0;
+  newEntry->xDX = 0;
   newEntry->FPU = 0;
 
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
-  offset = EBP - ESP; /* amount in our frame */ 
+  offset = frame_ptr - stack_ptr + VG_STACK_REDZONE_SZB; /* in our frame */ 
   tl_assert(offset >= 0);
   size = offset + f->formalParamStackByteSize;/* plus stuff in caller's*/
   tl_assert(size >= 0);
   if (size != 0) {
     newEntry->virtualStack = VG_(calloc)(size, sizeof(char));
     newEntry->virtualStackByteSize = size;
-    newEntry->virtualStackEBPOffset = offset;
+    newEntry->virtualStackFPOffset = offset;
 
-    VG_(memcpy)(newEntry->virtualStack, (void*)ESP, size);
+    VG_(memcpy)(newEntry->virtualStack,
+		(char*)stack_ptr - VG_STACK_REDZONE_SZB, size);
 
     // VERY IMPORTANT!!! Copy all the A & V bits over the real stack to
     // virtualStack!!!  (As a consequence, this copies over the tags
@@ -309,7 +311,8 @@ void enter_function(FunctionEntry* f)
     // VG_(calloc)ed address, which is a bit weird. It would be more
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
-    mc_copy_address_range_state(ESP, (Addr)(newEntry->virtualStack), size);
+    mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
+				(Addr)(newEntry->virtualStack), size);
   }
   else {
     // Watch out for null pointer segfaults here:
@@ -317,7 +320,7 @@ void enter_function(FunctionEntry* f)
     newEntry->virtualStackByteSize = 0;
   }
 
-  // Do this AFTER initializing virtual stack and lowestESP
+  // Do this AFTER initializing virtual stack and lowestSP
   curFunctionExecutionStatePtr = newEntry;
   fjalar_tool_handle_function_entrance(newEntry);
 }
@@ -339,11 +342,11 @@ void exit_function(FunctionEntry* f)
 
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
-  Addr EAX = VG_(get_EAX)(currentTID);
+  Addr xAX = VG_(get_xAX)(currentTID);
 
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
-  Addr EDX = VG_(get_EDX)(currentTID);
+  Addr xDX = VG_(get_xDX)(currentTID);
 
   // Ok, in Valgrind 2.X, we needed to directly code some assembly to
   // grab the top of the floating-point stack, but Valgrind 3.0
@@ -353,8 +356,8 @@ void exit_function(FunctionEntry* f)
 
   // 64 bits
   // Use SHADOW values of Valgrind simulated registers to get V-bits
-  UInt EAXshadow = VG_(get_shadow_EAX)(currentTID);
-  UInt EDXshadow = VG_(get_shadow_EDX)(currentTID);
+  UInt xAXshadow = VG_(get_shadow_xAX)(currentTID);
+  UInt xDXshadow = VG_(get_shadow_xDX)(currentTID);
   ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
   // s is null if an "unwind" is popped off the stack (WHAT?)
@@ -369,18 +372,19 @@ void exit_function(FunctionEntry* f)
     return;
   }
 
-  top->EAX = EAX;
-  top->EDX = EDX;
+  top->xAX = xAX;
+  top->xDX = xDX;
   top->FPU = fpuReturnVal;
 
   // Very important!  Set the A and V bits of the appropriate
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
+  /* XXX word size */
   for (i = 0; i < 4; i++) {
-    set_abit_and_vbyte((Addr)(&top->EAX) + (Addr)i, VGM_BIT_VALID,
-                      (EAXshadow & 0xff) << (i * 8));
-    set_abit_and_vbyte((Addr)(&top->EDX) + (Addr)i, VGM_BIT_VALID,
-                      (EDXshadow & 0xff) << (i * 8));
+    set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
+                      (xAXshadow & 0xff) << (i * 8));
+    set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
+                      (xDXshadow & 0xff) << (i * 8));
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
                       (FPUshadow & 0xff) << (i * 8));
   }

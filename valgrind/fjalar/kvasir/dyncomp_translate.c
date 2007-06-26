@@ -32,6 +32,7 @@
 #include "../fjalar_include.h"
 #include "kvasir_main.h"
 #include "libvex_guest_offsets.h"
+#include "vex_common.h"
 
 #include "my_libc.h"
 
@@ -46,7 +47,7 @@ IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig )
       dce->tmpMap[orig]
          = newIRTemp(dce->bb->tyenv,
                      //shadowType_DC(dce->bb->tyenv->types[orig]));
-                     Ity_I32); // PG - tags are always 32 bits
+                     Ity_Word); // PG - tags are always word-sized
    }
    return dce->tmpMap[orig];
 }
@@ -112,10 +113,10 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    ty = typeOfIRExpr(dce->bb->tyenv, vatom);
    tl_assert(ty != Ity_I1);
 
-   // Don't do a PUT of tags into ESP or EBP in order to avoid tons of
+   // Don't do a PUT of tags into SP or FP in order to avoid tons of
    // false mergings of relative address literals derived from
-   // arithmetic with ESP
-   if (offset == OFFSET_x86_ESP || offset == OFFSET_x86_EBP) {
+   // arithmetic with SP
+   if (offset == dce->layout->offset_SP || offset == dce->layout->offset_FP) {
       return;
    }
 
@@ -146,7 +147,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
    //      which requires (4 * offset) + (2 * base size)
    IRArray* new_descr
       = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
-                   Ity_I32, descr->nElems); // Tags are 32 bits
+                   Ity_Word, descr->nElems); // Tags are word-sized
 
    stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
 }
@@ -160,7 +161,7 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
 
-   // Return a special tag for a GET call into ESP or EBP,
+   // Return a special tag for a GET call into SP or FP,
    // in order to avoid tons of false mergings of relative address
    // literals derived from arithmetic with the stack pointer
    /* XXX This won't do the right thing if your code uses %ebp for
@@ -168,8 +169,8 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
       doesn't happen too often in unoptimized code. The only better
       solution would be to track as an independent bit which values of
       ESP-derived, which would be a pain. -SMcC */
-   if (offset == OFFSET_x86_ESP || offset == OFFSET_x86_EBP) {
-      return IRExpr_Const(IRConst_U32(WEAK_FRESH_TAG));
+   if (offset == dce->layout->offset_SP || offset == dce->layout->offset_FP) {
+      return IRExpr_Const(IRConst_UWord(WEAK_FRESH_TAG));
    }
 
    // The floating-point stack on the x86 is located between offsets
@@ -177,10 +178,12 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // region since our (4 * offset) trick won't work properly here.
    // This should (hopefully) never happen since floating-point
    // accesses are always done using GETI's.
-   tl_assert(!((offset >= 64) && (offset < 128)));
+   tl_assert(!((offset >= offsetof(VexGuestArchState, guest_FPREG)) &&
+	       (offset <  offsetof(VexGuestArchState, guest_FPREG)
+		+ 8 * sizeof(ULong))));
 
    return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB),
-                      Ity_I32 ); // Tags are 32 bits
+                      Ity_Word ); // Tags are word-sized
 }
 
 static
@@ -195,7 +198,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
    //      which requires (4 * offset) + (2 * base size)
    IRArray* new_descr
       = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
-                   Ity_I32, descr->nElems); // Tags are 32 bits
+                   Ity_Word, descr->nElems); // Tags are word-sized
 
    return IRExpr_GetI( new_descr, ix, bias );
 }
@@ -243,7 +246,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
 
             // TODO: Why is this dirty rather than clean? - pgbovine
             //       Because it has side effects? - smcc
-            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+            datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
             di = unsafeIRDirty_1_N(datatag,
                                    2,
                                    "MC_(helperc_MERGE_TAGS_RETURN_0)",
@@ -258,10 +261,10 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
       //      return first;
 
       // Or, always return 0
-      return IRExpr_Const(IRConst_U32(0));
+      return IRExpr_Const(IRConst_UWord(0));
    }
    else {
-      return IRExpr_Const(IRConst_U32(0));
+      return IRExpr_Const(IRConst_UWord(0));
    }
 }
 
@@ -303,7 +306,7 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    // Punt early!
    if (dyncomp_dataflow_only_mode ||
        dyncomp_dataflow_comparisons_mode) {
-      return IRExpr_Const(IRConst_U32(0));
+      return IRExpr_Const(IRConst_UWord(0));
    }
 
    tl_assert(isOriginalAtom_DC(dce,atom1));
@@ -330,7 +333,7 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
          // If we are running in units mode, then we should merge the
          // tags of the 3rd and 4th operands:
          if (dyncomp_units_mode) {
-            return mkIRExprCCall (Ity_I32,
+            return mkIRExprCCall (Ity_Word,
                                   2 /*Int regparms*/,
                                   "MC_(helperc_MERGE_TAGS)",
                                   &MC_(helperc_MERGE_TAGS),
@@ -339,7 +342,7 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
          // Ok, if we are running in the default mode, then we should
          // merge the tags of the 2nd, 3rd, and 4th operands:
          else {
-            return mkIRExprCCall (Ity_I32,
+            return mkIRExprCCall (Ity_Word,
                                   3 /*Int regparms*/,
                                   "MC_(helperc_MERGE_3_TAGS)",
                                   &MC_(helperc_MERGE_3_TAGS),
@@ -376,7 +379,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
    // Punt early!
    if (dyncomp_dataflow_only_mode ||
        dyncomp_dataflow_comparisons_mode) {
-      return IRExpr_Const(IRConst_U32(0));
+      return IRExpr_Const(IRConst_UWord(0));
    }
 
    tl_assert(isOriginalAtom_DC(dce,atom1));
@@ -401,7 +404,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_SubF64:
       case Iop_SubF64r32:
 
-         return mkIRExprCCall (Ity_I32,
+         return mkIRExprCCall (Ity_Word,
                                2 /*Int regparms*/,
                                "MC_(helperc_MERGE_TAGS)",
                                &MC_(helperc_MERGE_TAGS),
@@ -418,7 +421,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_DivF64r32:
 
          if (!dyncomp_units_mode) {
-            return mkIRExprCCall (Ity_I32,
+            return mkIRExprCCall (Ity_Word,
                                   2 /*Int regparms*/,
                                   "MC_(helperc_MERGE_TAGS)",
                                   &MC_(helperc_MERGE_TAGS),
@@ -448,7 +451,7 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
          VG_(tool_panic)("memcheck:expr2tags_Triop");
    }
 
-   return IRExpr_Const(IRConst_U32(0));
+   return IRExpr_Const(IRConst_UWord(0));
 }
 
 
@@ -761,10 +764,10 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       /* Integer comparisons. */
    case Iop_CmpEQ8:  case Iop_CmpEQ16:  case Iop_CmpEQ32:  case Iop_CmpEQ64:
    case Iop_CmpNE8:  case Iop_CmpNE16:  case Iop_CmpNE32:  case Iop_CmpNE64:
-   case Iop_CmpLT32S:
-   case Iop_CmpLE32S:
-   case Iop_CmpLT32U:
-   case Iop_CmpLE32U:
+   case Iop_CmpLT32S:  case Iop_CmpLT64S:
+   case Iop_CmpLE32S:  case Iop_CmpLE64S:
+   case Iop_CmpLT32U:  case Iop_CmpLT64U:
+   case Iop_CmpLE32U:  case Iop_CmpLE64U:
 
       // Floating-point comparison
    case Iop_CmpF64:
@@ -937,8 +940,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // that interaction was correctly captured by the clean call.
 
       // The standard way to make a dirty helper call (I think):
-      // Tags are always 32 bits
-      //      datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+      // Tags are always word-sized
+      //      datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
       //      di = unsafeIRDirty_1_N(datatag,
       //                             2,
       //                             hname,
@@ -963,7 +966,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
             return vatom2;
          }
          else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
-            return IRExpr_Const(IRConst_U32(0));
+            return IRExpr_Const(IRConst_UWord(0));
          }
       }
       else if (atom2->tag == Iex_Const) {
@@ -971,7 +974,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
             return vatom1;
          }
          else if (helper == &MC_(helperc_MERGE_TAGS_RETURN_0)) {
-            return IRExpr_Const(IRConst_U32(0));
+            return IRExpr_Const(IRConst_UWord(0));
          }
       }
 
@@ -981,7 +984,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // DO NOT use clean call unless it has NO side effects and
       // is (nearly) purely functional like an IRExpr
       // (from the point-of-view of IR, at least)
-      return mkIRExprCCall (Ity_I32,
+      return mkIRExprCCall (Ity_Word,
                             2 /*Int regparms*/,
                             hname,
                             helper,
@@ -1000,7 +1003,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    // 'c' didn't really interact with either 'a' or 'b'.
    // Is this correct?
    else {
-      return IRExpr_Const(IRConst_U32(0));
+      return IRExpr_Const(IRConst_UWord(0));
    }
 }
 
@@ -1015,7 +1018,7 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    // sub-expression and return it:
    // pgbovine TODO: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
-   //       But you can't do that because you only have the 32-bit
+   //       But you can't do that because you only have the word-sized
    //       tag and NOT the memory locations it came from
    //       ... I guess we don't care since during binary ops.,
    //       we only consider the tag of the first bytes of each
@@ -1072,7 +1075,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    /* We need to have a place to park the tag we're just about to
       read. */
    //   datatag = newIRTemp(dce->bb->tyenv, tyS);
-   datatag = newIRTemp(dce->bb->tyenv, Ity_I32); // PG - tags are always 32 bits
+   datatag = newIRTemp(dce->bb->tyenv, Ity_Word); // PG - tags are word-sized
    di = unsafeIRDirty_1_N( datatag,
                            1/*regparms*/, hname, helper,
                            mkIRExprVec_1( addrAct ));
@@ -1100,7 +1103,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    tl_assert(isOriginalAtom_DC(dce, addr));
    vaddr = expr2tags_DC(dce, addr);
    tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   addrTag = newIRTemp(dce->bb->tyenv, Ity_Word);
    diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
@@ -1120,7 +1123,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // lower and upper 64-bit loads:
 
          // Dirty call version:
-         //         datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+         //         datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
          //         di = unsafeIRDirty_1_N(datatag,
          //                                2,
          //                                "MC_(helperc_MERGE_TAGS)",
@@ -1140,7 +1143,7 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
          // On second thought, let's just go ahead and do it for now:
 
          // Clean call version:
-         return mkIRExprCCall (Ity_I32,
+         return mkIRExprCCall (Ity_Word,
                                2 /*Int regparms*/,
                                "MC_(helperc_MERGE_TAGS)",
                                &MC_(helperc_MERGE_TAGS),
@@ -1170,7 +1173,7 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
    // This prevents the IR optimizer from deleting all of these
    // interactions from the parallel tag IR tree (or so we hope)
    vbitsC = expr2tags_DC(dce, cond);
-   datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
    di = unsafeIRDirty_1_N(datatag,
                           1,
                           "MC_(helperc_TAG_NOP)",
@@ -1185,9 +1188,9 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
    // with the ORIGINAL condition 'cond'
    vbits0 = expr2tags_DC(dce, expr0);
    vbitsX = expr2tags_DC(dce, exprX);
-   tl_assert(sameKindedAtoms(vbits0, vbitsX)); // Both should be 32-bit tags
+   tl_assert(sameKindedAtoms(vbits0, vbitsX));// Both should be word-sized tags
 
-   return assignNew_DC(dce, Ity_I32, IRExpr_Mux0X(cond, vbits0, vbitsX));
+   return assignNew_DC(dce, Ity_Word, IRExpr_Mux0X(cond, vbits0, vbitsX));
 }
 
 
@@ -1204,7 +1207,7 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
    IRTemp   datatag;
 
    guardtag = expr2tags_DC(dce, guard);
-   datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
    di = unsafeIRDirty_1_N(datatag,
                           1,
                           "MC_(helperc_TAG_NOP)",
@@ -1246,7 +1249,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          // WEAKE_FRESH_TAG tag one tag for each static instance of a
          // program literal:
          if (dyncomp_fast_mode) {
-	    return IRExpr_Const(IRConst_U32(WEAK_FRESH_TAG));
+	    return IRExpr_Const(IRConst_UWord(WEAK_FRESH_TAG));
          }
          else {
 
@@ -1257,7 +1260,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
             // at the expense of memory and time overheads:
 
             // Try it with a dirty call:
-            datatag = newIRTemp(dce->bb->tyenv, Ity_I32);
+            datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
             di = unsafeIRDirty_1_N( datatag,
                                     0/*regparms*/,
                                     "MC_(helperc_CREATE_TAG)",
@@ -1359,7 +1362,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
 	 for PIC x86 code a return address is also used to initialize
 	 the GOT pointer, and we don't want that to have a tag that
 	 falsely links all the globals accessed via it. */
-      vdata = IRExpr_Const(IRConst_U32(0));
+      vdata = IRExpr_Const(IRConst_UWord(0));
    } else {
       vdata = expr2tags_DC( dce, data );
    }
@@ -1372,14 +1375,14 @@ void do_shadow_STle_DC ( DCEnv* dce,
    tl_assert(isOriginalAtom_DC(dce, addr));
    vaddr = expr2tags_DC(dce, addr);
    tl_assert(isShadowAtom_DC(dce, vaddr));
-   addrTag = newIRTemp(dce->bb->tyenv, Ity_I32);
+   addrTag = newIRTemp(dce->bb->tyenv, Ity_Word);
    diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
    stmt(dce->bb, IRStmt_Dirty(diAddr));
 
    // Get the byte size of the REAL data (and not our tag vdata, which
-   // is ALWAYS 32-bits).  This is very different from Memcheck's
+   // is ALWAYS word-sized).  This is very different from Memcheck's
    // V-bits, which is always guaranteed to be the same byte size as 'data'
    // Also, we must use shadowType to translate all type sizes
    // to integral sizes
