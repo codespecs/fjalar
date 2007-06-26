@@ -311,7 +311,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA CYGPATH_W PACKAGE VERSION ACLOCAL AUTOCONF AUTOMAKE AUTOHEADER MAKEINFO AMTAR install_sh STRIP ac_ct_STRIP INSTALL_STRIP_PROGRAM AWK SET_MAKE am__leading_dot MAINTAINER_MODE_TRUE MAINTAINER_MODE_FALSE MAINT VEX_DIR DISTCHECK_CONFIGURE_FLAGS LN_S CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT DEPDIR am__include am__quote AMDEP_TRUE AMDEP_FALSE AMDEPBACKSLASH CCDEPMODE am__fastdepCC_TRUE am__fastdepCC_FALSE CPP CXX CXXFLAGS ac_ct_CXX CXXDEPMODE am__fastdepCXX_TRUE am__fastdepCXX_FALSE RANLIB ac_ct_RANLIB PERL GDB CCAS CCASFLAGS build build_cpu build_vendor build_os host host_cpu host_vendor host_os VG_ARCH VG_ARCH_ALL VALT_LOAD_ADDRESS VG_OS VG_PLATFORM_PRI VG_PLATFORM_SEC VGP_X86_LINUX_TRUE VGP_X86_LINUX_FALSE VGP_AMD64_LINUX_TRUE VGP_AMD64_LINUX_FALSE VGP_PPC32_LINUX_TRUE VGP_PPC32_LINUX_FALSE VGP_PPC64_LINUX_TRUE VGP_PPC64_LINUX_FALSE VGP_PPC32_AIX5_TRUE VGP_PPC32_AIX5_FALSE VGP_PPC64_AIX5_TRUE VGP_PPC64_AIX5_FALSE VGO_LINUX_TRUE VGO_LINUX_FALSE VGO_AIX5_TRUE VGO_AIX5_FALSE VGP_HAVE_SECONDARY_TRUE VGP_HAVE_SECONDARY_FALSE DEFAULT_SUPP EGREP FLAG_M32 FLAG_MAIX32 FLAG_M64 FLAG_MAIX64 FLAG_MMMX FLAG_MSSE PREFERRED_STACK_BOUNDARY FLAG_WDECL_AFTER_STMT LIBOBJS MPI_CC BUILD_MPIWRAP_PRI_TRUE BUILD_MPIWRAP_PRI_FALSE BUILD_MPIWRAP_SEC_TRUE BUILD_MPIWRAP_SEC_FALSE LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA CYGPATH_W PACKAGE VERSION ACLOCAL AUTOCONF AUTOMAKE AUTOHEADER MAKEINFO AMTAR install_sh STRIP ac_ct_STRIP INSTALL_STRIP_PROGRAM AWK SET_MAKE am__leading_dot MAINTAINER_MODE_TRUE MAINTAINER_MODE_FALSE MAINT VEX_DIR DISTCHECK_CONFIGURE_FLAGS LN_S CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT DEPDIR am__include am__quote AMDEP_TRUE AMDEP_FALSE AMDEPBACKSLASH CCDEPMODE am__fastdepCC_TRUE am__fastdepCC_FALSE CPP CXX CXXFLAGS ac_ct_CXX CXXDEPMODE am__fastdepCXX_TRUE am__fastdepCXX_FALSE RANLIB ac_ct_RANLIB PERL GDB CCAS CCASFLAGS build build_cpu build_vendor build_os host host_cpu host_vendor host_os VG_ARCH VG_ARCH_ALL VALT_LOAD_ADDRESS VG_OS VG_PLATFORM_PRI VG_PLATFORM_SEC VGP_X86_LINUX_TRUE VGP_X86_LINUX_FALSE VGP_AMD64_LINUX_TRUE VGP_AMD64_LINUX_FALSE VGP_PPC32_LINUX_TRUE VGP_PPC32_LINUX_FALSE VGP_PPC64_LINUX_TRUE VGP_PPC64_LINUX_FALSE VGP_PPC32_AIX5_TRUE VGP_PPC32_AIX5_FALSE VGP_PPC64_AIX5_TRUE VGP_PPC64_AIX5_FALSE VGO_LINUX_TRUE VGO_LINUX_FALSE VGO_AIX5_TRUE VGO_AIX5_FALSE VGP_HAVE_SECONDARY_TRUE VGP_HAVE_SECONDARY_FALSE DEFAULT_SUPP EGREP FLAG_M32 FLAG_MAIX32 FLAG_M64 FLAG_MAIX64 FLAG_MMMX FLAG_MSSE PREFERRED_STACK_BOUNDARY FLAG_WDECL_AFTER_STMT FLAG_FNO_STACK_PROTECTOR LIBOBJS MPI_CC BUILD_MPIWRAP_PRI_TRUE BUILD_MPIWRAP_PRI_FALSE BUILD_MPIWRAP_SEC_TRUE BUILD_MPIWRAP_SEC_FALSE LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -5443,6 +5443,78 @@ if test x$declaration_after_statement = xyes; then
 fi
 
 
+# does this compiler support -fno-stack-protector ?
+echo "$as_me:$LINENO: checking if gcc accepts -fno-stack-protector " >&5
+echo $ECHO_N "checking if gcc accepts -fno-stack-protector ... $ECHO_C" >&6
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-fno-stack-protector"
+
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+int main () { return 0 ; }
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+
+no_stack_protector=yes
+FLAG_FNO_STACK_PROTECTOR="-fno-stack-protector"
+echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+
+no_stack_protector=no
+FLAG_FNO_STACK_PROTECTOR=""
+echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+CFLAGS=$safe_CFLAGS
+
+
+
+if test x$no_stack_protector = xyes; then
+  CFLAGS="$CFLAGS -fno-stack-protector"
+fi
+
+
 # does this compiler support __builtin_expect?
 echo "$as_me:$LINENO: checking if gcc supports __builtin_expect" >&5
 echo $ECHO_N "checking if gcc supports __builtin_expect... $ECHO_C" >&6
@@ -8018,6 +8090,7 @@ s,@FLAG_MMMX@,$FLAG_MMMX,;t t
 s,@FLAG_MSSE@,$FLAG_MSSE,;t t
 s,@PREFERRED_STACK_BOUNDARY@,$PREFERRED_STACK_BOUNDARY,;t t
 s,@FLAG_WDECL_AFTER_STMT@,$FLAG_WDECL_AFTER_STMT,;t t
+s,@FLAG_FNO_STACK_PROTECTOR@,$FLAG_FNO_STACK_PROTECTOR,;t t
 s,@LIBOBJS@,$LIBOBJS,;t t
 s,@MPI_CC@,$MPI_CC,;t t
 s,@BUILD_MPIWRAP_PRI_TRUE@,$BUILD_MPIWRAP_PRI_TRUE,;t t
