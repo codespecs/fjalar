@@ -1,14 +1,21 @@
 include $(top_srcdir)/Makefile.tool.am
 
-# Only support x86-Linux for now ...
 # PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
 
 ## Build Memcheck at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS_X86_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
+AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
+AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
-noinst_PROGRAMS = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
+noinst_PROGRAMS =
+if VGP_X86_LINUX
+noinst_PROGRAMS += fjalar-x86-linux vgpreload_fjalar-x86-linux.so
+endif
+if VGP_AMD64_LINUX
+noinst_PROGRAMS += fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
+endif
+# PPC not supported yet
 
 VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c kvasir/dyncomp_wrappers.c
 
@@ -20,6 +27,16 @@ vgpreload_fjalar_x86_linux_so_DEPENDENCIES = $(LIBREPLACEMALLOC_X86_LINUX)
 vgpreload_fjalar_x86_linux_so_LDFLAGS      = \
 	$(PRELOAD_LDFLAGS_X86_LINUX) \
 	$(LIBREPLACEMALLOC_LDFLAGS_X86_LINUX)
+
+vgpreload_fjalar_amd64_linux_so_SOURCES      = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
+vgpreload_fjalar_amd64_linux_so_CPPFLAGS     = $(AM_CPPFLAGS_AMD64_LINUX)
+vgpreload_fjalar_amd64_linux_so_CFLAGS       = $(AM_CFLAGS_AMD64_LINUX) $(AM_CFLAGS_PIC)
+vgpreload_fjalar_amd64_linux_so_CCASFLAGS    = $(AM_CCASFLAGS_AMD64_LINUX)
+vgpreload_fjalar_amd64_linux_so_DEPENDENCIES = $(LIBREPLACEMALLOC_AMD64_LINUX)
+vgpreload_fjalar_amd64_linux_so_LDFLAGS      = \
+	$(PRELOAD_LDFLAGS_AMD64_LINUX) \
+	$(LIBREPLACEMALLOC_LDFLAGS_AMD64_LINUX)
+
 
 FJALAR_SOURCES_COMMON = \
 	mac_leakcheck.c \
@@ -53,6 +70,14 @@ fjalar_x86_linux_CCASFLAGS    = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
 fjalar_x86_linux_LDADD        = $(TOOL_LDADD_X86_LINUX)
 fjalar_x86_linux_LDFLAGS      = $(TOOL_LDFLAGS_X86_LINUX)
+
+fjalar_amd64_linux_SOURCES      = $(FJALAR_SOURCES_COMMON)
+fjalar_amd64_linux_CPPFLAGS     = $(AM_CPPFLAGS_AMD64_LINUX)
+fjalar_amd64_linux_CFLAGS       = $(AM_CFLAGS_AMD64_LINUX)
+fjalar_amd64_linux_CCASFLAGS    = $(AM_CCASFLAGS_AMD64_LINUX)
+fjalar_amd64_linux_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_LINUX)
+fjalar_amd64_linux_LDADD        = $(TOOL_LDADD_AMD64_LINUX)
+fjalar_amd64_linux_LDFLAGS      = $(TOOL_LDFLAGS_AMD64_LINUX)
 
 mcincludedir = $(includedir)/valgrind
 
