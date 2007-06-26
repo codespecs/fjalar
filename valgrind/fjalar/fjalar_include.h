@@ -625,24 +625,26 @@ typedef struct {
   // The function whose runtime state we are currently tracking
   FunctionEntry* func;
 
-  Addr EBP;       // %ebp as recorded or calculated from %esp at
-		  // function entrance
+  Addr FP;       // Frame pointer (%ebp, %rbp) as recorded or
+		 // calculated from the stack pointer at function
+		 // entrance
 
-  Addr lowestESP; // The LOWEST value of %esp that has ever been
-                  // encountered while we are in this function.  The
-                  // problem is that Fjalar's function exit handling
-                  // code runs AFTER the function increments ESP so
-                  // that everything in the current function's stack
-                  // frame is marked invalid by Memcheck.  Thus, we
-                  // need this value to see how deep a function has
-                  // penetrated into the stack, so that we can know
-                  // what values are valid when this function exits.
+  Addr lowestSP;  // The LOWEST value of the stack pointer (%esp,
+                  // %rsp) that has ever been encountered while we are
+                  // in this function.  The problem is that Fjalar's
+                  // function exit handling code runs AFTER the
+                  // function increments SP so that everything in the
+                  // current function's stack frame is marked invalid
+                  // by Memcheck.  Thus, we need this value to see how
+                  // deep a function has penetrated into the stack, so
+                  // that we can know what values are valid when this
+                  // function exits.
 
   // Return values at function exit
 
-  int EAX;     // %EAX
-  int EDX;     // %EDX
-  double FPU;  // FPU %st(0)
+  Word xAX;     // primary integer return value (%eax, %rax)
+  Word xDX;     // secondary integer return value (%edx, %rdx)
+  double FPU;   // floating-point return value (x86 %st(0))
 
   // This is a copy of the portion of the function's stack frame that
   // is in use after the function prolog has executed, including the
@@ -659,7 +661,7 @@ typedef struct {
   // should be invisible to the calling function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
-  int virtualStackEBPOffset; // Where in the stack EBP was
+  int virtualStackFPOffset; // Where in the stack the frame pointer was
 
 } FunctionExecutionState;
 
