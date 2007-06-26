@@ -41,6 +41,8 @@
 #define INSTR_PTR(regs)    ((regs).vex.VG_INSTR_PTR)
 #define STACK_PTR(regs)    ((regs).vex.VG_STACK_PTR)
 #define FRAME_PTR(regs)    ((regs).vex.VG_FRAME_PTR)
+#define INT_RET_REG(regs)  ((regs).vex.VG_INT_RET_REG)
+#define INT_RET2_REG(regs) ((regs).vex.VG_INT_RET2_REG)
 
 Addr VG_(get_SP) ( ThreadId tid )
 {
@@ -68,6 +70,16 @@ Addr VG_(get_LR) ( ThreadId tid )
 #  endif
 }
 
+Addr VG_(get_xAX) ( ThreadId tid )
+{
+   return INT_RET_REG( VG_(threads)[tid].arch );
+}
+
+Addr VG_(get_xDX) ( ThreadId tid )
+{
+   return INT_RET2_REG( VG_(threads)[tid].arch );
+}
+
 void VG_(set_SP) ( ThreadId tid, Addr sp )
 {
    STACK_PTR( VG_(threads)[tid].arch ) = sp;
@@ -82,16 +94,6 @@ void VG_(set_IP) ( ThreadId tid, Addr ip )
 
 // PG begin - Hacked to provide useful return value information for
 // Kvasir (we really need a more elegant solution)
-UInt VG_(get_EAX) ( ThreadId tid )
-{
-   return VG_(threads)[tid].arch.vex.guest_EAX;
-}
-
-UInt VG_(get_EDX) ( ThreadId tid )
-{
-   return VG_(threads)[tid].arch.vex.guest_EDX;
-}
-
 double VG_(get_FPU_stack_top) ( ThreadId tid ) // 64-bit read
 {
    // Remember to re-interpret cast this as a double instead of a ULong
@@ -99,14 +101,14 @@ double VG_(get_FPU_stack_top) ( ThreadId tid ) // 64-bit read
                         [VG_(threads)[tid].arch.vex.guest_FTOP & 7])));
 }
 
-UInt VG_(get_shadow_EAX) ( ThreadId tid )
+UInt VG_(get_shadow_xAX) ( ThreadId tid )
 {
-   return VG_(threads)[tid].arch.vex_shadow.guest_EAX;
+   return VG_(threads)[tid].arch.vex_shadow.VG_INT_RET_REG;
 }
 
-UInt VG_(get_shadow_EDX) ( ThreadId tid )
+UInt VG_(get_shadow_xDX) ( ThreadId tid )
 {
-   return VG_(threads)[tid].arch.vex_shadow.guest_EDX;
+   return VG_(threads)[tid].arch.vex_shadow.VG_INT_RET2_REG;
 }
 
 ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
@@ -118,19 +120,16 @@ ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
 // Ok, if the stuff before were hacks, then these are SUPER HACKS
 // because it relies on our ad-hoc (4 * offset) reference into
 // VexGuestX86State vex_extra_shadow[4] within TheadArchState:
-UInt VG_(get_EAX_tag) ( ThreadId tid )
+UInt VG_(get_xAX_tag) ( ThreadId tid )
 {
-   // EAX is assumed to be the first element of the VexGuestX86State,
-   // so its offset is 0 and is thus unaffected by the (4 * offset)
-   // deal:
-   return VG_(threads)[tid].arch.vex_extra_shadow[0].guest_EAX;
+   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
+							    VG_INT_RET_REG)));
 }
 
-UInt VG_(get_EDX_tag) ( ThreadId tid )
+UInt VG_(get_xDX_tag) ( ThreadId tid )
 {
-   // EDX is assumed to be the third element of the VexGuestX86State,
-   // so its offset is 8.  (4 * 8) = 32.
-   return *((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) + 32));
+   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
+							    VG_INT_RET2_REG)));
 }
 
 UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
@@ -141,8 +140,7 @@ UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
    // from that tells us where the top of the FPU stack is
    int offset = FPUoffset + 64;
 
-   return *((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
-                    (4 * offset)));
+   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offset));
 }
 
 // This is a generalization of all the other tag getter functions,
@@ -150,7 +148,7 @@ UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
 // the member variable locations in vex/pub/libvex_guest_x86.h)
 // and performs the (4 * offset) hack and returns the address of
 // the associated tag
-UInt* VG_(get_tag_ptr_for_x86_guest_offset) ( ThreadId tid, UInt offset )
+UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset )
 {
    return ((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
                    (4 * offset)));

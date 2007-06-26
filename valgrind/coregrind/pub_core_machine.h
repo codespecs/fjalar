@@ -72,18 +72,26 @@
 #  define VG_INSTR_PTR        guest_EIP
 #  define VG_STACK_PTR        guest_ESP
 #  define VG_FRAME_PTR        guest_EBP
+#  define VG_INT_RET_REG      guest_EAX
+#  define VG_INT_RET2_REG     guest_EDX
 #elif defined(VGA_amd64)
 #  define VG_INSTR_PTR        guest_RIP
 #  define VG_STACK_PTR        guest_RSP
 #  define VG_FRAME_PTR        guest_RBP
+#  define VG_INT_RET_REG      guest_RAX
+#  define VG_INT_RET2_REG     guest_RDX
 #elif defined(VGA_ppc32)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
+#  define VG_INT_RET_REG      guest_GPR3
+#  define VG_INT_RET2_REG     guest_GPR4
 #elif defined(VGA_ppc64)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
+#  define VG_INT_RET_REG      guest_GPR3
+#  define VG_INT_RET2_REG     guest_GPR4
 #else
 #  error Unknown arch
 #endif

@@ -77,6 +77,8 @@ extern Addr VG_(get_SP) ( ThreadId tid );
 extern Addr VG_(get_IP) ( ThreadId tid );
 extern Addr VG_(get_FP) ( ThreadId tid );
 extern Addr VG_(get_LR) ( ThreadId tid );
+extern Addr VG_(get_xAX)( ThreadId tid );
+extern Addr VG_(get_xDX)( ThreadId tid );
 
 extern void VG_(set_SP) ( ThreadId tid, Addr sp );
 extern void VG_(set_IP) ( ThreadId tid, Addr ip );
@@ -84,20 +86,18 @@ extern void VG_(set_IP) ( ThreadId tid, Addr ip );
 // BEGIN - pgbovine
 
 // PG - Hacked for Kvasir (we really need a more elegant solution)
-extern UInt VG_(get_EAX) ( ThreadId tid );
-extern UInt VG_(get_EDX) ( ThreadId tid );
 extern double VG_(get_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
-extern UInt VG_(get_shadow_EAX) ( ThreadId tid );
-extern UInt VG_(get_shadow_EDX) ( ThreadId tid );
+extern UInt VG_(get_shadow_xAX) ( ThreadId tid );
+extern UInt VG_(get_shadow_xDX) ( ThreadId tid );
 extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
 // SUPER HACK!  Watch out now.
-extern UInt VG_(get_EAX_tag) ( ThreadId tid );
-extern UInt VG_(get_EDX_tag) ( ThreadId tid );
+extern UInt VG_(get_xAX_tag) ( ThreadId tid );
+extern UInt VG_(get_xDX_tag) ( ThreadId tid );
 extern UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid );
 // Super-duper hack!!!
-extern UInt* VG_(get_tag_ptr_for_x86_guest_offset) ( ThreadId tid, UInt offset );
+extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 
 // END - pgbovine
 
