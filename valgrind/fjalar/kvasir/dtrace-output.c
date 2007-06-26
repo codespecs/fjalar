@@ -165,7 +165,7 @@ static void printOneDtraceString(char* str)
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
-    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (string)\n",
                     (Addr)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
@@ -224,7 +224,7 @@ static void printOneDtraceStringAsIntArray(char* str) {
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
-    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (string as int)\n",
                     (Addr)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
@@ -396,7 +396,7 @@ char printDtraceSingleVar(VariableEntry* var,
     // Since we observed all of these bytes as one value, we will
     // merge all of their tags in memory
     if (kvasir_with_dyncomp) {
-      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (pointer)\n",
                       pValue, sizeof(void*));
       val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
     }
@@ -439,7 +439,7 @@ char printDtraceSingleVar(VariableEntry* var,
 
     // override float as double when printing
     // out function return variables because
-    // return variables stored in %EAX are always doubles
+    // return variables stored in registers are always doubles
     char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
 
     if (overrideFloatAsDouble && (decType == D_FLOAT)) {
@@ -614,7 +614,7 @@ char printDtraceSequence(VariableEntry* var,
 
     // override float as double when printing
     // out function return variables because
-    // return variables stored in %EAX are always doubles
+    // return variables stored in registers are always doubles
     char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
 
     if (overrideFloatAsDouble && (decType == D_FLOAT)) {
@@ -676,7 +676,7 @@ char printDtraceSingleBaseValue(void* pValue,
       TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
-        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d)\n",
+        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (single base)\n",
                         (Addr)pValue, DecTypeByteSizes[decType]);
         val_uf_union_tags_in_range((Addr)pValue, DecTypeByteSizes[decType]);
       }
@@ -1073,11 +1073,11 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   funcPtr = f_state->func;
   tl_assert(funcPtr);
 
-  //  VG_(printf)("* %s %s at EBP=0x%x, lowestESP=0x%x, startPC=%p\n",
+  //  VG_(printf)("* %s %s at FP=0x%x, lowestSP=0x%x, startPC=%p\n",
               //              (isEnter ? "ENTER" : "EXIT "),
               //              f_state->func->fjalar_name,
-              //              f_state->EBP,
-              //              f_state->lowestESP,
+              //              f_state->FP,
+              //              f_state->lowestSP,
               //              (void*)f_state->func->startPC);
 
   // Reset this properly!
@@ -1102,7 +1102,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      funcPtr,
                      isEnter,
                      // Remember to use the virtual stack!
-                     f_state->virtualStack + f_state->virtualStackEBPOffset,
+                     f_state->virtualStack + f_state->virtualStackFPOffset,
                      &printDtraceEntryAction);
 
   // If isEnter == 0, print out return value:
