@@ -64,11 +64,11 @@ PUB_INCLUDES = -Ipub
 PRIV_INCLUDES = -Ipriv
 
 
-ifndef $(CC)
-   CC = gcc 
-endif 
-ifndef $(AR)
-   AR = ar 
+ifndef CC
+   CC = gcc
+endif
+ifndef AR
+   AR = ar
 endif
 
 # Put -g -O2 after any flags we inherit from V.  -O2 vs -O
@@ -108,7 +108,7 @@ libvex.a: $(LIB_OBJS)
 	$(AR) clq libvex.a $(LIB_OBJS)
 
 
-# The idea with these TAG_s is to mark the flavour of libvex.a 
+# The idea with these TAG_s is to mark the flavour of libvex.a
 # most recently built, so if the same target is re-requested, we
 # don't rebuild everything, but if a different one is requested
 # then we scrub everything and start over.
@@ -172,7 +172,7 @@ minidist: version
 		test_main.c test_main.h				\
 		Makefile					\
 		`echo $(LIB_OBJS) | sed "s/\.o/\.c/g"`
-	@echo 
+	@echo
 	@echo minidist done, size and svnversion follow:
 	@ls -l vex--minidist-2005MMDD.tar
 	@cat priv/main/vex_svnversion.h
