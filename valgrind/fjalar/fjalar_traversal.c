@@ -300,7 +300,7 @@ void visitClassMemberVariables(TypeEntry* class,
   // Check to see if the VisitedStructsTable contains more than
   // MAX_VISIT_STRUCT_DEPTH of the current struct type
   if (gencontains(VisitedStructsTable, (void*)class)) {
-    UInt count = (UInt)(gengettable(VisitedStructsTable, (void*)class));
+    UWord count = (UWord)(gengettable(VisitedStructsTable, (void*)class));
 
     if (count <= MAX_VISIT_STRUCT_DEPTH) {
       count++;
@@ -372,7 +372,7 @@ void visitClassMemberVariables(TypeEntry* class,
           // type of curVar just because we are looping through and
           // expanding the array
           if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
-            int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            Word count = (Word)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
             count--;
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
@@ -513,7 +513,7 @@ void visitClassMemberVariables(TypeEntry* class,
 
           // HACK: Add the count back on at the end
           if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
-            int count = (int)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            Word count = (Word)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
             count++;
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
@@ -845,7 +845,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       /* Note that it's OK for byteOffset to be negative here, since
 	 stackBaseAddr is the fake %ebp, pointing in the middle of
 	 the virtualStack frame. */
-      basePtrValue = (void*)((int)stackBaseAddr + var->byteOffset);
+      basePtrValue = (void *)(stackBaseAddr + var->byteOffset);
     }
     else if (varOrigin == GLOBAL_VAR) {
       tl_assert(IS_GLOBAL_VAR(var));
@@ -938,7 +938,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
   stringStackPush(fullNameStack, &fullNameStackSize, cur_node->var->name);
 
-  // Struct/union type - use EAX but remember that EAX holds
+  // Struct/union type - use xAX but remember that xAX holds
   // a POINTER to the struct/union so we must dereference appropriately
   // WE NEED TO CHECK THAT declaredPtrLevels == 0 since we need a
   // real struct/union, not just a pointer to one
@@ -946,16 +946,16 @@ void visitReturnValue(FunctionExecutionState* e,
   // pointers share the same declaredType
   if ((cur_node->var->ptrLevels == 0) &&
       (IS_AGGREGATE_TYPE(cur_node->var->varType))) {
-    // e->EAX is the contents of the virtual EAX, which should be the
+    // e->xAX is the contents of the virtual xAX, which should be the
     // address of the struct/union, so pass that along ...  NO extra
     // level of indirection needed
 
     visitVariable(cur_node->var,
-                  (void*)e->EAX,
+                  (void*)e->xAX,
                   // No longer need to overrideIsInitialized
-                  // because we now keep shadow V-bits for e->EAX
+                  // because we now keep shadow V-bits for e->xAX
                   // and friends
-                  0, // e->EAXvalid,
+                  0, // e->xAXvalid,
                   0,
                   performAction,
                   FUNCTION_RETURN_VAR,
@@ -978,21 +978,22 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
-  // Remember that long long int types use EAX as the low 4 bytes
-  // and EDX as the high 4 bytes
+  // Remember that x86 long long int types use xAX as the low 4 bytes
+  // and xDX as the high 4 bytes
   // long long ints - create a long long int and pass its address
+  /* XXX shouldn't do this for 64-bit long long on AMD64 */
   else if ((cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
-    unsigned long long int uLong = (e->EAX) | (((unsigned long long int)(e->EDX)) << 32);
+    unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
 
     // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->EAX)),
+    mc_copy_address_range_state((Addr)(&(e->xAX)),
                                 (Addr)(&uLong),
-                                sizeof(e->EAX));
+                                sizeof(e->xAX));
 
-    mc_copy_address_range_state((Addr)(&(e->EDX)),
-                                (Addr)(&uLong) + (Addr)sizeof(e->EAX),
-                                sizeof(e->EDX));
+    mc_copy_address_range_state((Addr)(&(e->xDX)),
+                                (Addr)(&uLong) + (Addr)sizeof(e->xAX),
+                                sizeof(e->xDX));
 
     visitVariable(cur_node->var,
                   &uLong,
@@ -1005,16 +1006,16 @@ void visitReturnValue(FunctionExecutionState* e,
   }
   else if ((cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
-    long long int signedLong = (e->EAX) | (((long long int)(e->EDX)) << 32);
+    long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);
 
     // Remember to copy A and V-bits over:
-    mc_copy_address_range_state((Addr)(&(e->EAX)),
+    mc_copy_address_range_state((Addr)(&(e->xAX)),
                                 (Addr)(&signedLong),
-                                sizeof(e->EAX));
+                                sizeof(e->xAX));
 
-    mc_copy_address_range_state((Addr)(&(e->EDX)),
-                                (Addr)(&signedLong) + (Addr)sizeof(e->EAX),
-                                sizeof(e->EDX));
+    mc_copy_address_range_state((Addr)(&(e->xDX)),
+                                (Addr)(&signedLong) + (Addr)sizeof(e->xAX),
+                                sizeof(e->xDX));
 
     visitVariable(cur_node->var,
                   &signedLong,
@@ -1025,14 +1026,14 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
-  // All other types (integer and pointer) - use EAX
+  // All other types (integer and pointer) - use xAX
   else {
     // Need an additional indirection level
     FJALAR_DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p\n",
-                   cur_node, &(e->EAX));
+                   cur_node, &(e->xAX));
 
     visitVariable(cur_node->var,
-                  &(e->EAX),
+                  &(e->xAX),
                   0,
                   0,
                   performAction,

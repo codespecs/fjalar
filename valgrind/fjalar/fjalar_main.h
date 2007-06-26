@@ -59,10 +59,10 @@ __inline__ FunctionExecutionState* fnStackTop(void);
 
 /*
 Requires:
-Modifies: lowestESP of the top entry in FunctionExecutionStateStack
+Modifies: lowestSP of the top entry in FunctionExecutionStateStack
 Returns:
-Effects: Compares the current ESP with the lowestESP from the current
-         function and sets lowestESP to current ESP if current ESP
+Effects: Compares the current SP with the lowestSP from the current
+         function and sets lowestSP to current SP if current SP
          is lower.  This will provide an indicator of how far down
          the function has ever reached on the stack.
 
@@ -74,7 +74,7 @@ This is called from hooks within mac_shared.h
   //function that we are recording calls another function that
   //we do not record, that new function will mess around with the
   //stack all it wants, but those values aren't accurately reflected
-  //by the lowestESP of the function we are currently recording.
+  //by the lowestSP of the function we are currently recording.
   //For example, if my function "foo" drives the stack down to 100,000
   //and then it calls printf which calls other crap, driving the stack
   //down to 50,000, as far as foo is concerned, it only drove
@@ -86,20 +86,20 @@ This is called from hooks within mac_shared.h
 // Macro version to improve speed:
 // (Remember that this code will be inserted in mc_main.c so it needs to have
 //  the proper extern variables declared.)
-#define CHECK_ESP(currentESP)                                           \
+#define CHECK_SP(currentSP)                                           \
   FunctionExecutionState* curFunc = fnStackTop();			\
   if (curFunc &&							\
-      (currentESP < curFunc->lowestESP)) {				\
-    curFunc->lowestESP = currentESP;					\
+      (currentSP < curFunc->lowestSP)) {				\
+    curFunc->lowestSP = currentSP;					\
   }
 
 // Slower because we need to explicitly get the ESP
-#define CHECK_ESP_SLOW()                                                \
+#define CHECK_SP_SLOW()                                                \
   FunctionExecutionState* curFunc = fnStackTop();			\
   if (curFunc) {							\
-    Addr currentESP = VG_(get_SP)(VG_(get_running_tid)());		\
-    if (currentESP < curFunc->lowestESP) {				\
-      curFunc->lowestESP = currentESP;					\
+    Addr currentSP = VG_(get_SP)(VG_(get_running_tid)());		\
+    if (currentSP < curFunc->lowestSP) {				\
+      curFunc->lowestSP = currentSP;					\
     }									\
   }
 

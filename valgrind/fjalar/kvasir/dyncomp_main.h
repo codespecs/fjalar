@@ -34,7 +34,13 @@
 // it was commented-out
 #define SECONDARY_SHIFT	16
 
+#if VG_WORDSIZE == 4
 #define PRIMARY_SIZE	(1 << (32 - SECONDARY_SHIFT))
+#else
+/* XXX Valgrind usually only uses the lower 32GB of the address space,
+   but if things go beyond that, this will overflow! */
+#define PRIMARY_SIZE	(1 << (35 - SECONDARY_SHIFT))
+#endif
 
 #define SM_OFF(addr)	((addr) & SECONDARY_MASK)
 #define PM_IDX(addr)	((addr) >> SECONDARY_SHIFT)

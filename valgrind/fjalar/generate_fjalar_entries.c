@@ -1917,6 +1917,7 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
 // from EBP). We always use this computed value if the DWARF information
 // didn't provide a location (which can happen for instance if the parameter
 // is unused), or if replace == 1.
+// This code will need a major rewrite to support AMD64.
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 {
   VarNode* cur_node;
@@ -2005,8 +2006,8 @@ static int determineVariableByteSize(VariableEntry* var)
 }
 
 
-// Determines the number of bytes needed above EBP in the stack
-// to hold the values of all function formal parameters for
+// Determines the number of bytes needed above the frame pointer in
+// the stack to hold the values of all function formal parameters for
 // a particular function
 int determineFormalParametersStackByteSize(FunctionEntry* f)
 {

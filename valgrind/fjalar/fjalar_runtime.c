@@ -39,9 +39,9 @@ FunctionExecutionState* curFunctionExecutionStatePtr = 0;
 
 // Return a pointer to a FunctionExecutionState which contains the address
 // specified by "a" in its stack frame
-// Assumes: The stack grows DOWNWARD on x86 Linux so this returns
-//          the function entry with the smallest EBP that is HIGHER
-//          than "a" and a lowestESP that is LOWER than "a"
+// Assumes: The stack grows DOWNWARD on all supported platforms so this
+//          returns the function entry with the smallest FP that is HIGHER
+//          than "a" and a lowestSP that is LOWER than "a"
 // Returns 0 if no function found
 static
 FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
@@ -73,7 +73,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
       // then the stack frame of this function lies in between
       // the EBP of that function and the function immediately
       // following it on the stack
-      if ((cur_fn->EBP >= a) && (next_fn->EBP <= a)) {
+      if ((cur_fn->FP >= a) && (next_fn->FP <= a)) {
 	return cur_fn;
       }
     }
@@ -82,12 +82,12 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   // look at the most recent function on the stack:
   // If it is the most recent function on the stack,
   // then the stack frame can only be approximated to lie
-  // in between its EBP and lowestESP
+  // in between its FP and lowestSP
   // (this isn't exactly accurate because there are issues
-  //  with lowestESP, but at least it'll give us some info.)
+  //  with lowestSP, but at least it'll give us some info.)
   cur_fn = fnStackTop();
 
-  if ((cur_fn->EBP >= a) && (cur_fn->lowestESP <= a)) {
+  if ((cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
     return cur_fn;
   }
 
@@ -154,13 +154,13 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
 // location(r) <= "a" < location(r) + (getBytesBetweenElts(r))
 //   [if struct]
 // where location(.) is the global location if isGlobal and stack location
-// based on EBP if !isGlobal
+// based on frame_ptr if !isGlobal
 // *baseAddr = the base address of the variable returned
 static VariableEntry*
 returnArrayVariableWithAddr(VarList* varList,
                             Addr a,
                             char isGlobal,
-                            Addr EBP,
+                            Addr frame_ptr,
                             Addr* baseAddr) {
   VarNode* cur_node = 0;
 
@@ -178,7 +178,7 @@ returnArrayVariableWithAddr(VarList* varList,
       potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
     }
     else {
-      potentialVarBaseAddr = EBP + potentialVar->byteOffset;
+      potentialVarBaseAddr = frame_ptr + potentialVar->byteOffset;
     }
 
     // array
@@ -387,17 +387,17 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 
       if (localArrayAndStructVars &&
           // hopefully ensures that it's not totally bogus
-          ((unsigned int)localArrayAndStructVars > 0x100) &&
+          ((Addr)localArrayAndStructVars > 0x100) &&
           (localArrayAndStructVars->numVars > 0)) {
         targetVar = returnArrayVariableWithAddr(localArrayAndStructVars,
                                                 varLocation,
-                                                0, e->EBP, &baseAddr);
+                                                0, e->FP, &baseAddr);
       }
     }
   }
 
   // 3. If still not found, then search the heap for varLocation
-  //    if it is lower than the current EBP
+  //    if it is lower than the current frame pointer
   // This is a last-ditch desperation attempt and won't yield valid-looking
   // results in cases like when you have a pointer to an int which is located
   // within a struct malloc'ed on the heap.
@@ -411,9 +411,9 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     // where we erroneously conclude that the array size is HUGE
     // since all areas on the stack and global regions are ALLOCATED
     // so probing won't do us much good
-    if ((varLocation < curFunctionExecutionStatePtr->EBP) &&
+    if ((varLocation < curFunctionExecutionStatePtr->FP) &&
         !addressIsGlobal(varLocation)) {
-      int size;
+      Word size;
       FJALAR_DPRINTF("Location looks reasonable, probing at %p\n",
               varLocation);
 
@@ -438,9 +438,9 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   // TODO: Hmmmm, what are we gonna do without repTypes???  I need to
   // investigate this 'if' condition more carefully later:
   else if (baseAddr) {
-    int targetVarSize = 0;
-    int bytesBetweenElts = getBytesBetweenElts(targetVar);
-    unsigned int highestAddr;
+    Word targetVarSize = 0;
+    Word bytesBetweenElts = getBytesBetweenElts(targetVar);
+    Addr highestAddr;
 
     tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
     highestAddr = baseAddr + (targetVar->staticArr->upperBounds[0] * bytesBetweenElts);
@@ -492,11 +492,11 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
                                      Bool allocatedOrInitialized)
 {
   // Everything on the stack frame of the current function IN BETWEEN
-  // the function's EBP and the lowestESP is OFF THE HOOK!!!
+  // the function's FP and the lowestSP is OFF THE HOOK!!!
   // We treat this as allocated automatically since the function has
   // actually explicitly allocated this on the stack at one time
   // or another, even though at function exit time, it's bad because
-  // the ESP increments back up near EBP:
+  // the ESP increments back up near FP:
   // The reason why we need this check is that during function exit time,
   // Valgrind marks that function's stack frame as invalid even though
   // it's technically still valid at the moment we exit because
@@ -509,8 +509,8 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
   //       a copy of the V-bits and store them with the function
   int wraparound = ((addressInQuestion + numBytes) < addressInQuestion);
   if ((curFunctionExecutionStatePtr && !wraparound &&
-       ((addressInQuestion + numBytes) <= curFunctionExecutionStatePtr->EBP) &&
-       (addressInQuestion >= curFunctionExecutionStatePtr->lowestESP)))
+       ((addressInQuestion + numBytes) <= curFunctionExecutionStatePtr->FP) &&
+       (addressInQuestion >= curFunctionExecutionStatePtr->lowestSP)))
     {
       tl_assert(addressInQuestion != 0xffffffff);
       return 1;

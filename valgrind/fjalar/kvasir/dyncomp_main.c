@@ -88,7 +88,13 @@ UInt* primary_tag_map[PRIMARY_SIZE];
 // Range is [0, PRIMARY_SIZE]
 UInt n_primary_tag_map_init_entries = 0;
 
+#if VG_WORDSIZE == 4
 #define IS_SECONDARY_TAG_MAP_NULL(a) (primary_tag_map[PM_IDX(a)] == NULL)
+#else
+/* In this case, need an overflow check */
+#define IS_SECONDARY_TAG_MAP_NULL(a) (PM_IDX(a) >= PRIMARY_SIZE || \
+                                      primary_tag_map[PM_IDX(a)] == NULL)
+#endif
 
 __inline__ UInt get_tag ( Addr a )
 {
@@ -143,6 +149,14 @@ static __inline__ UInt grab_fresh_tag(void) {
   }
 
   totalNumTagsAssigned++;
+
+  if (0) {
+    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+    Char eip_info[256];
+    VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+    DYNCOMP_DPRINTF("Creating fresh tag %d at 0x%08x (%s)\n",
+		    tag, eip, eip_info);
+  }
 
   return tag;
 }

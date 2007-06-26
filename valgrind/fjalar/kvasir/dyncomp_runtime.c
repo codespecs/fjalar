@@ -22,6 +22,11 @@
   General Public License for more details.
 */
 
+#include "pub_tool_basics.h"
+#include "pub_tool_libcprint.h"
+#include "pub_tool_machine.h"
+#include "pub_tool_threadstate.h"
+
 #include "decls-output.h"
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
@@ -520,8 +525,6 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   }
   else {  // default behavior
     tag = var_tags[daikonVarIndex];
-    DYNCOMP_DPRINTF("%s[%d] value tag is %d\n",
-		    funcPtr->funcEntry.name, daikonVarIndex, tag);
 
     if (0 == tag) {
       comp_number = g_curCompNumber;
@@ -571,6 +574,11 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
   // Cast it to a DaikonFunctionEntry in order to access the
   // DynComp-specific fields:
   DaikonFunctionEntry* daikonFuncInfo = (DaikonFunctionEntry*)varFuncInfo;
+
+  /* Silence unused-variable warnings */
+  (void)varName; (void)varOrigin; (void)numDereferences;
+  (void)overrideIsInit; (void)disambigOverride; (void)isSequence;
+  (void)pValue; (void)pValueArray; (void)numElts;
 
   // Special handling for static arrays: Currently, in the
   // .dtrace, for a static arrays 'int foo[]', we print out
@@ -1021,12 +1029,13 @@ void garbage_collect_tags() {
 
   // Just go through all of the registers in the x86 guest state
   // as depicted in vex/pub/libvex_guest_x86.h
+  /* XXX AMD64 support */
   currentTID = VG_(get_running_tid)();
 
   for (i = 0; i < NUM_TOTAL_X86_OFFSETS; i++) {
     addr =
-      VG_(get_tag_ptr_for_x86_guest_offset)(currentTID,
-                                            x86_guest_state_offsets[i]);
+      VG_(get_tag_ptr_for_guest_offset)(currentTID,
+					 x86_guest_state_offsets[i]);
     if ((*addr) > 0) {
       reassign_tag(addr,
                    val_uf_find_leader(*addr),
@@ -1171,9 +1180,9 @@ UInt bitarraySize(UInt n) {
 // Pre: i < j, 0 <= i < n, 0 <= j < n where n is length(bitarray)
 // Return: 1 if the (i,j)-th spot in the matrix is marked, 0 otherwise.
 char isMarked(UChar* bitarray, UInt n, UInt i, UInt j) {
-  UInt index = ((i*n) - (((i*i)+i)/2)) + (j-i-1);
-  UInt bitarray_base = index / 8;
-  UInt bitarray_offset = index % 8;
+  UInt idx = ((i*n) - (((i*i)+i)/2)) + (j-i-1);
+  UInt bitarray_base = idx / 8;
+  UInt bitarray_offset = idx % 8;
 
   // Remove for performance boost:
   tl_assert((i < j) && (i < n) && (j < n));
@@ -1184,9 +1193,9 @@ char isMarked(UChar* bitarray, UInt n, UInt i, UInt j) {
 // Pre: i < j, 0 <= i < n, 0 <= j < n where n is length(bitarray)
 // Marks the (i,j)-th spot in the matrix represented by bitarray
 void mark(UChar* bitarray, UInt n, UInt i, UInt j) {
-  UInt index = ((i*n) - (((i*i)+i)/2)) + (j-i-1);
-  UInt bitarray_base = index / 8;
-    UInt bitarray_offset = index % 8;
+  UInt idx = ((i*n) - (((i*i)+i)/2)) + (j-i-1);
+  UInt bitarray_base = idx / 8;
+  UInt bitarray_offset = idx % 8;
   UChar mask = 1 << bitarray_offset;
 
   // Remove for performance boost:

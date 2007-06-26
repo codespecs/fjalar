@@ -731,17 +731,17 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
     // For DynComp, update tags of saved register values
     int i;
 
-    UInt EAXtag = 0;
-    UInt EDXtag = 0;
+    UInt xAXtag = 0;
+    UInt xDXtag = 0;
     UInt FPUtag = 0;
 
-    EAXtag = VG_(get_EAX_tag)(currentTID);
-    EDXtag = VG_(get_EDX_tag)(currentTID);
+    xAXtag = VG_(get_xAX_tag)(currentTID);
+    xDXtag = VG_(get_xDX_tag)(currentTID);
     FPUtag = VG_(get_FPU_stack_top_tag)(currentTID);
 
     for (i = 0; i < 4; i++) {
-      set_tag((Addr)(&(f_state->EAX)) + (Addr)i, EAXtag);
-      set_tag((Addr)(&(f_state->EDX)) + (Addr)i, EDXtag);
+      set_tag((Addr)(&(f_state->xAX)) + (Addr)i, xAXtag);
+      set_tag((Addr)(&(f_state->xDX)) + (Addr)i, xDXtag);
       set_tag((Addr)(&(f_state->FPU)) + (Addr)i, FPUtag);
     }
 
