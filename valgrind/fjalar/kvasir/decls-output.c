@@ -775,6 +775,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // that the program has already finished execution so that all
     // of the comparability information would be already updated:
     if (kvasir_with_dyncomp) {
+      DaikonFunctionEntry *entry = varFuncInfo;
       // Remember that comp_number is a SIGNED INTEGER but the
       // tags are UNSIGNED INTEGERS so be careful of overflows
       // which result in negative numbers, which are useless
@@ -782,6 +783,9 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
       int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                    isEnter,
                                                  g_variableIndex);
+      DYNCOMP_DPRINTF("%s[%s] value tag is %d\n",
+		      entry->funcEntry.name, varName,
+		      entry->ppt_exit_var_tags[g_variableIndex]);
       fprintf(decls_fp, "%d", comp_number);
       fputs("\n", decls_fp);
     }
