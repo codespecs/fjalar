@@ -2335,9 +2335,21 @@ VexGuestLayout
           .offset_SP = offsetof(VexGuestX86State,guest_ESP),
           .sizeof_SP = 4,
 
+          /* Describe the frame pointer. */
+          .offset_FP = offsetof(VexGuestX86State,guest_EBP),
+          .sizeof_FP = 4,
+
           /* Describe the instruction pointer. */
           .offset_IP = offsetof(VexGuestX86State,guest_EIP),
           .sizeof_IP = 4,
+
+          /* Describe the primary integer return register. */
+          .offset_xAX = offsetof(VexGuestX86State,guest_EAX),
+          .sizeof_xAX = 4,
+
+          /* Describe the secondary integer return register. */
+          .offset_xDX = offsetof(VexGuestX86State,guest_EDX),
+          .sizeof_xDX = 4,
 
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */

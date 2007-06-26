@@ -319,9 +319,18 @@ typedef
       /* Whereabouts is the stack pointer? */
       Int offset_SP;
       Int sizeof_SP; /* 4 or 8 */
+      /* Whereabouts is the frame pointer? */
+      Int offset_FP;
+      Int sizeof_FP; /* 4 or 8 */
       /* Whereabouts is the instruction pointer? */
       Int offset_IP;
       Int sizeof_IP; /* 4 or 8 */
+      /* Whereabouts is the primary integer return register? */
+      Int offset_xAX;
+      Int sizeof_xAX; /* 4 or 8 */
+      /* Whereabouts is the secondary integer return register? */
+      Int offset_xDX;
+      Int sizeof_xDX; /* 4 or 8 */
       /* Describe parts of the guest state regarded as 'always
          defined'. */
       Int n_alwaysDefd;
