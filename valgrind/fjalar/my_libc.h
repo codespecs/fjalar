@@ -13,7 +13,7 @@
 #include <stdarg.h>
 
 /* alloca.h */
-extern void *alloca (unsigned __size);
+extern void *alloca (vki_size_t __size);
 #define alloca(size)   __builtin_alloca (size)
 
 /* ctype.h */
