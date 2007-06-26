@@ -2057,9 +2057,21 @@ VexGuestLayout
           .offset_SP = offsetof(VexGuestAMD64State,guest_RSP),
           .sizeof_SP = 8,
 
+          /* Describe the frame pointer. */
+          .offset_FP = offsetof(VexGuestAMD64State,guest_RBP),
+          .sizeof_FP = 8,
+
           /* Describe the instruction pointer. */
           .offset_IP = offsetof(VexGuestAMD64State,guest_RIP),
           .sizeof_IP = 8,
+
+          /* Describe the primary integer return register. */
+          .offset_xAX = offsetof(VexGuestAMD64State,guest_RAX),
+          .sizeof_xAX = 8,
+
+          /* Describe the secondary integer return register. */
+          .offset_xDX = offsetof(VexGuestAMD64State,guest_RDX),
+          .sizeof_xDX = 8,
 
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */
