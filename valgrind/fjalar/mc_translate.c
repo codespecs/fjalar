@@ -3370,6 +3370,10 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
             do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
             break;
 
+         case Ist_AbiHint:
+            do_AbiHint( &mce, st->Ist.AbiHint.base, st->Ist.AbiHint.len );
+            break;
+
          default:
             VG_(printf)("\n");
             ppIRStmt(st);
