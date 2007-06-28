@@ -278,8 +278,8 @@ void enter_function(FunctionEntry* f)
     frame_ptr = stack_ptr - 4;
   }
 
-  FJALAR_DPRINTF("Enter function: %s - StartPC: %p\n",
-	  f->fjalar_name, (void*)f->startPC);
+  FJALAR_DPRINTF("Enter function: %s - StartPC: %p, EntryPC: %p\n",
+		 f->fjalar_name, (void*)f->startPC, (void*)f->entryPC);
 
   newEntry  = fnStackPush();
 
@@ -356,8 +356,8 @@ void exit_function(FunctionEntry* f)
 
   // 64 bits
   // Use SHADOW values of Valgrind simulated registers to get V-bits
-  UInt xAXshadow = VG_(get_shadow_xAX)(currentTID);
-  UInt xDXshadow = VG_(get_shadow_xDX)(currentTID);
+  UWord xAXshadow = VG_(get_shadow_xAX)(currentTID);
+  UWord xDXshadow = VG_(get_shadow_xDX)(currentTID);
   ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
   // s is null if an "unwind" is popped off the stack (WHAT?)
