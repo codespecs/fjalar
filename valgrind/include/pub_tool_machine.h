@@ -88,14 +88,14 @@ extern void VG_(set_IP) ( ThreadId tid, Addr ip );
 // PG - Hacked for Kvasir (we really need a more elegant solution)
 extern double VG_(get_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
-extern UInt VG_(get_shadow_xAX) ( ThreadId tid );
-extern UInt VG_(get_shadow_xDX) ( ThreadId tid );
+extern UWord VG_(get_shadow_xAX) ( ThreadId tid );
+extern UWord VG_(get_shadow_xDX) ( ThreadId tid );
 extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
 // SUPER HACK!  Watch out now.
-extern UInt VG_(get_xAX_tag) ( ThreadId tid );
-extern UInt VG_(get_xDX_tag) ( ThreadId tid );
-extern UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid );
+extern UWord VG_(get_xAX_tag) ( ThreadId tid );
+extern UWord VG_(get_xDX_tag) ( ThreadId tid );
+extern UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid );
 // Super-duper hack!!!
 extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 
