@@ -101,12 +101,12 @@ double VG_(get_FPU_stack_top) ( ThreadId tid ) // 64-bit read
                         [VG_(threads)[tid].arch.vex.guest_FTOP & 7])));
 }
 
-UInt VG_(get_shadow_xAX) ( ThreadId tid )
+UWord VG_(get_shadow_xAX) ( ThreadId tid )
 {
    return VG_(threads)[tid].arch.vex_shadow.VG_INT_RET_REG;
 }
 
-UInt VG_(get_shadow_xDX) ( ThreadId tid )
+UWord VG_(get_shadow_xDX) ( ThreadId tid )
 {
    return VG_(threads)[tid].arch.vex_shadow.VG_INT_RET2_REG;
 }
@@ -120,19 +120,19 @@ ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
 // Ok, if the stuff before were hacks, then these are SUPER HACKS
 // because it relies on our ad-hoc (4 * offset) reference into
 // VexGuestX86State vex_extra_shadow[4] within TheadArchState:
-UInt VG_(get_xAX_tag) ( ThreadId tid )
+UWord VG_(get_xAX_tag) ( ThreadId tid )
 {
    return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
 							    VG_INT_RET_REG)));
 }
 
-UInt VG_(get_xDX_tag) ( ThreadId tid )
+UWord VG_(get_xDX_tag) ( ThreadId tid )
 {
    return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
 							    VG_INT_RET2_REG)));
 }
 
-UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
+UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid )
 {
    int FPUoffset = VG_(threads)[tid].arch.vex.guest_FTOP & 7;
 
@@ -151,7 +151,7 @@ UInt VG_(get_FPU_stack_top_tag) ( ThreadId tid )
 UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset )
 {
    return ((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
-                   (4 * offset)));
+		    (4 * offset)));
 }
 
 // END - pgbovine
