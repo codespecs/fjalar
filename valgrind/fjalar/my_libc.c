@@ -443,7 +443,7 @@ static inline int write_pad(struct arg_printf* fn, int len, int padwith) {
   return nr;
 }
 
-static void *memmove(void *dst, const void *src, size_t count)
+static void *my_memmove(void *dst, const void *src, size_t count)
 {
   char *a = dst;
   const char *b = src;
@@ -489,7 +489,7 @@ static int __lltostr(char *s, int size, unsigned long long i, int base,
     i=i/base;
     j++;
   }
-  memmove(s,tmp,j+1);
+  my_memmove(s,tmp,j+1);
 
   return j;
 }
@@ -520,7 +520,7 @@ static int __ltostr(char *s, unsigned int size, unsigned long i,
     i=i/base;
     j++;
   }
-  memmove(s,tmp,j+1);
+  my_memmove(s,tmp,j+1);
 
   return j;
 }
@@ -533,7 +533,7 @@ static int copystring(char* buf,int maxlen, const char* s) {
   return i;
 }
 
-static int isinf(double d) {
+static int my_isinf(double d) {
   union {
     unsigned long long l;
     double d;
@@ -542,18 +542,18 @@ static int isinf(double d) {
   return (u.l==0x7FF0000000000000ll?1:u.l==0xFFF0000000000000ll?-1:0);
 }
 
-static int isnan(double d) {
+static int my_isnan(double d) {
   union {
     unsigned long long l;
     double d;
   } u;
   u.d=d;
-  return (u.l==0x7FF8000000000000ll || u.l==0x7FF0000000000000ll
-	  || u.l==0xfff8000000000000ll);
+  return (u.l & 0x7FF0000000000000LL) == 0x7FF0000000000000LL &&
+    (u.l & 0xfffffffffffffLL) != 0;
 }
 
-static int __dtostr(double d,char *buf,unsigned int maxlen,
-		    unsigned int prec,unsigned int prec2,int g) {
+static int __dtostr(double d,char *buf,int maxlen,
+		    int prec,int prec2,int g) {
   union {
     unsigned long long l;
     double d;
@@ -564,13 +564,13 @@ static int __dtostr(double d,char *buf,unsigned int maxlen,
   /* step 2: exponent is base 2, compute exponent for base 10 */
   signed long e10;
   /* step 3: calculate 10^e10 */
-  unsigned int i;
+  int i;
   double backup=d;
   double tmp;
   char *oldbuf=buf;
 
-  if ((i=isinf(d))) return copystring(buf,maxlen,i>0?"inf":"-inf");
-  if (isnan(d)) return copystring(buf,maxlen,"nan");
+  if ((i=my_isinf(d))) return copystring(buf,maxlen,i>0?"inf":"-inf");
+  if (my_isnan(d)) return copystring(buf,maxlen,"nan");
   e10=1+(long)(e*0.30102999566398119802); /* log10(2) */
   /* Wir iterieren von Links bis wir bei 0 sind oder maxlen erreicht
    * ist.  Wenn maxlen erreicht ist, machen wir das nochmal in
@@ -657,7 +657,7 @@ static int __dtostr(double d,char *buf,unsigned int maxlen,
     if (!maxlen) return 0; --maxlen;
     *buf='0'; ++buf;
   }
-  if (prec2 || prec>(unsigned int)(buf-oldbuf)+1) {	/* more digits wanted */
+  if (prec2 || prec>(buf-oldbuf)+1) {	/* more digits wanted */
     if (!maxlen) return 0; --maxlen;
     *buf='.'; ++buf;
     if (g) {
@@ -1076,7 +1076,8 @@ static int swrite(void*ptr, size_t nmemb, struct str_data* sd) {
   return nmemb;
 }
 
-int vsnprintf(char* str, size_t size, const char *format, va_list arg_ptr) {
+static int my_vsnprintf(char* str, size_t size, const char *format,
+			va_list arg_ptr) {
   int n;
   struct str_data sd = { str, 0, size?size-1:0 };
   struct arg_printf ap = { &sd, (int(*)(void*,size_t,void*)) swrite };
@@ -1088,9 +1089,9 @@ int vsnprintf(char* str, size_t size, const char *format, va_list arg_ptr) {
   return n;
 }
 
-int vsprintf(char *dest,const char *format, va_list arg_ptr)
+static int my_vsprintf(char *dest,const char *format, va_list arg_ptr)
 {
-  return vsnprintf(dest,(size_t)-1,format,arg_ptr);
+  return my_vsnprintf(dest,(size_t)-1,format,arg_ptr);
 }
 
 int sprintf(char *dest,const char *format,...)
@@ -1098,7 +1099,7 @@ int sprintf(char *dest,const char *format,...)
   int n;
   va_list arg_ptr;
   va_start(arg_ptr, format);
-  n=vsprintf(dest,format,arg_ptr);
+  n=my_vsprintf(dest,format,arg_ptr);
   va_end (arg_ptr);
   return n;
 }
@@ -1223,7 +1224,7 @@ int atoi(const char* s) {
 
 /* string.h */
 
-size_t strspn(const char *s, const char *accept)
+static size_t my_strspn(const char *s, const char *accept)
 {
   size_t l=0;
   int a=1,i,al=VG_(strlen)(accept);
@@ -1238,7 +1239,7 @@ size_t strspn(const char *s, const char *accept)
   return l;
 }
 
-size_t strcspn(const char *s, const char *reject)
+static size_t my_strcspn(const char *s, const char *reject)
 {
   size_t l=0;
   int a=1,i,al=VG_(strlen)(reject);
@@ -1257,10 +1258,10 @@ static char* strtok_r(char*s,const char*delim,char**ptrptr) {
   char*tmp=0;
 
   if (s==0) s=*ptrptr;
-  s+=strspn(s,delim);           /* overread leading delimiter */
+  s+=my_strspn(s,delim);           /* overread leading delimiter */
   if (*s) {
     tmp=s;
-    s+=strcspn(s,delim);
+    s+=my_strcspn(s,delim);
     if (*s) *s++=0;   /* not the end ? => terminate it */
   }
   *ptrptr=s;
