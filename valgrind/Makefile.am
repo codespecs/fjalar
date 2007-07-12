@@ -5,7 +5,7 @@ include $(top_srcdir)/Makefile.all.am
 
 TOOLS =	fjalar
 
-SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) docs
+SUBDIRS = include coregrind . tests perf $(TOOLS) docs
 DIST_SUBDIRS  = $(SUBDIRS)
 
 SUPP_FILES = \
