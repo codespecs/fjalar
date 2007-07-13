@@ -62,6 +62,7 @@ Bool dyncomp_detailed_mode = False;
 int  dyncomp_gc_after_n_tags = 10000000;
 Bool dyncomp_without_dtrace = False;
 Bool dyncomp_print_debug_info = False;
+Bool dyncomp_print_trace_info = False;
 Bool dyncomp_print_incremental = False;
 Bool dyncomp_separate_entry_exit_comp = False;
 
@@ -611,6 +612,8 @@ void fjalar_tool_print_usage()
 "    --kvasir-debug           Print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
 "                             [--no-dyncomp-debug]\n"
+"    --dyncomp-trace          Similar, but very detailed\n"
+"                             [--no-dyncomp-trace]\n"
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
 "                             of every program point (for debug only)\n"
 "    --new-decls-format       Use the new .decls format designed in April 2006 (temporary flag)\n\n"
@@ -652,6 +655,7 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("dyncomp-dataflow-only", dyncomp_dataflow_only_mode)
   else VG_YESNO_CLO("dyncomp-dataflow-comp", dyncomp_dataflow_comparisons_mode)
   else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
+  else VG_YESNO_CLO("dyncomp-trace",  dyncomp_print_trace_info)
   else VG_YESNO_CLO("dyncomp-print-inc",  dyncomp_print_incremental)
   else VG_YESNO_CLO("separate-entry-exit-comp",  dyncomp_separate_entry_exit_comp)
   else

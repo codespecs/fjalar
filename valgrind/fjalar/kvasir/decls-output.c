@@ -23,6 +23,7 @@
 #include "dyncomp_runtime.h"
 
 #include "pub_tool_libcbase.h" // For VG_STREQ
+#include "pub_tool_libcprint.h"
 
 #include "../my_libc.h"
 
@@ -783,8 +784,8 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
       int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                    isEnter,
                                                  g_variableIndex);
-      DYNCOMP_DPRINTF("%s[%s] value tag is %d\n",
-		      entry->funcEntry.name, varName,
+      DYNCOMP_TPRINTF("%s[%d](%s) value tag is %d\n",
+		      entry->funcEntry.name, g_variableIndex, varName,
 		      entry->ppt_exit_var_tags[g_variableIndex]);
       fprintf(decls_fp, "%d", comp_number);
       fputs("\n", decls_fp);
