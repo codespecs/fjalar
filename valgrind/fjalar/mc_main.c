@@ -2758,7 +2758,12 @@ static void mc_pre_clo_init(void)
                                    MAC_(error_matches_suppression),
                                    MAC_(get_error_name),
                                    MAC_(print_extra_suppression_info));
-   VG_(needs_libc_freeres)        ();
+   /* Memcheck has Valgrind call libc_freeres(), a glibc function that
+      does extra cleanup, to avoid counting libc-held data as leaked.
+      But we don't need it for that, and running extra code that doesn't
+      run when the program executes normally seems like a recipe for
+      hard-to-debug problems (and seems to have already caused one) */
+   /*VG_(needs_libc_freeres)        ();*/
    VG_(needs_command_line_options)(mc_process_cmd_line_option,
                                    mc_print_usage,
                                    mc_print_debug_usage);
