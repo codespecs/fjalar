@@ -150,11 +150,11 @@ static __inline__ UInt grab_fresh_tag(void) {
 
   totalNumTagsAssigned++;
 
-  if (0) {
+  if (dyncomp_print_trace_info) {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    DYNCOMP_DPRINTF("Creating fresh tag %d at 0x%08x (%s)\n",
+    DYNCOMP_TPRINTF("Creating fresh tag %d at 0x%08x (%s)\n",
 		    tag, eip, eip_info);
   }
 
@@ -173,6 +173,7 @@ __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     newTag = grab_fresh_tag();
     set_tag(curAddr, newTag);
+    DYNCOMP_TPRINTF("New tag for 0x%08x is %d\n", curAddr, newTag);
   }
 }
 
@@ -257,11 +258,11 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
                                  GET_UF_OBJECT_PTR(tag2));
-    if (0) {
+    if (dyncomp_print_trace_info) {
       Addr eip = VG_(get_IP)(VG_(get_running_tid)());
       Char eip_info[256];
       VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-      DYNCOMP_DPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
+      DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
 		      tag1, tag2, leader->tag, eip, eip_info);
     }
     return leader->tag;
@@ -510,11 +511,11 @@ UInt MC_(helperc_CREATE_TAG) () {
 /*                     newTag, nextTag); */
 /*   } */
 
-  if (0) {
+  if (dyncomp_print_trace_info) {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    DYNCOMP_DPRINTF("Creating new tag %d at 0x%08x (%s)\n",
+    DYNCOMP_TPRINTF("Creating new tag %d at 0x%08x (%s)\n",
 		    newTag, eip, eip_info);
   }
 

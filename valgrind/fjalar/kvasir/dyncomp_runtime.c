@@ -221,11 +221,12 @@ static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
 // Returns the uf_object* to the new entry
 static uf_object* var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map,
                                                  UInt tag) {
+  uf_object *new_obj;
   if (!tag) {
     return 0;
   }
 
-  uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
+  new_obj = VG_(malloc)(sizeof(*new_obj));
   uf_make_set(new_obj, tag);
   genputtable(var_uf_map, (void*)tag, (void*)new_obj);
   return new_obj;
@@ -373,6 +374,11 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   if (leader != var_tags_v) {
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
+    DYNCOMP_TPRINTF("Variable processing in %s[%d]: propagating value "
+		    "merge of %d (old) and %d (new) to %d\n",
+		    funcPtr->funcEntry.name, daikonVarIndex, var_tags_v,
+		    leader, var_tags[daikonVarIndex]);
+    var_tags_v = var_tags[daikonVarIndex];
   }
 
   // Make sure that an entry is created in var_uf_map for the tag
@@ -387,6 +393,8 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   if (new_leader && // Add a constraint that leader has to be non-zero
       !gengettable(var_uf_map, (void*)new_leader)) {
     var_uf_map_insert_and_make_set(var_uf_map, new_leader);
+    DYNCOMP_TPRINTF("Variable processing in %s[%d]: making new set for %d\n",
+		    funcPtr->funcEntry.name, daikonVarIndex, new_leader);
   }
 
   // Merge the sets of all values that were observed before for this
@@ -395,7 +403,14 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   //  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
+  if (var_tags_v != new_leader) {
+    DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values "
+		    "%d (old) and %d (new) to %d\n",
+		    funcPtr->funcEntry.name, daikonVarIndex,
+		    var_tags_v, new_leader, var_tags[daikonVarIndex]);
+  }
 
+  /*
   DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
                   new_tags_v,
@@ -403,7 +418,7 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                   var_tags_v,
                   daikonVarIndex,
                   var_tags[daikonVarIndex],
-                  a);
+                  a);*/
 
   }
 }
@@ -451,13 +466,17 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   if (leader != var_tags_v) {
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
+    DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values "
+		    "%d (old) and %d (new) to %d (final round)\n",
+		    funcPtr->funcEntry.name, daikonVarIndex,
+		    var_tags_v, leader, var_tags[daikonVarIndex]);
   }
 
-  DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
+  /*DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
                   leader,
                   var_tags_v,
                   daikonVarIndex,
-                  var_tags[daikonVarIndex]);
+                  var_tags[daikonVarIndex]);*/
 
 }
 

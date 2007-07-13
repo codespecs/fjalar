@@ -152,6 +152,7 @@ Bool dyncomp_detailed_mode;
 int  dyncomp_gc_after_n_tags;
 Bool dyncomp_without_dtrace;
 Bool dyncomp_print_debug_info;
+Bool dyncomp_print_trace_info;
 Bool dyncomp_print_incremental;
 Bool dyncomp_separate_entry_exit_comp;
 Bool dyncomp_units_mode;
@@ -162,6 +163,9 @@ Bool dyncomp_dataflow_comparisons_mode;
       VG_(printf)(__VA_ARGS__); } while (0)
 
 #define DYNCOMP_DPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_debug_info) \
+      VG_(printf)(__VA_ARGS__); } while (0)
+
+#define DYNCOMP_TPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_trace_info) \
       VG_(printf)(__VA_ARGS__); } while (0)
 
 #endif
