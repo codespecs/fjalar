@@ -134,6 +134,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
 {
    IRAtom* vatom;
    IRType  ty;
+   IRArray *new_descr;
 
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
@@ -145,7 +146,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
       area. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
-   IRArray* new_descr
+   new_descr
       = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
@@ -178,8 +179,8 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    // region since our (4 * offset) trick won't work properly here.
    // This should (hopefully) never happen since floating-point
    // accesses are always done using GETI's.
-   tl_assert(!((offset >= offsetof(VexGuestArchState, guest_FPREG)) &&
-	       (offset <  offsetof(VexGuestArchState, guest_FPREG)
+   tl_assert(!(((UInt)offset >= offsetof(VexGuestArchState, guest_FPREG)) &&
+	       ((UInt)offset <  offsetof(VexGuestArchState, guest_FPREG)
 		+ 8 * sizeof(ULong))));
 
    return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB),
@@ -190,13 +191,14 @@ static
 IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
+   IRArray *new_descr;
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
    /* return a cloned version of the Get that refers to the
       tag shadow area. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
-   IRArray* new_descr
+   new_descr
       = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
