@@ -361,14 +361,18 @@ static int openDtraceFile(const char *fname) {
 
   char *env_val = VG_(getenv)("DTRACEAPPEND");
   if (env_val || kvasir_dtrace_append) {
-    // If we are appending and not printing out separate decls and
-    // dtrace files, do NOT print out decls again since we assume that
-    // our existing dtrace file already has the decls info in it and
-    // we don't want to confuse Daikon (or bloat up the file size) by
-    // repeating this information
-    if (!actually_output_separate_decls_dtrace) {
-      print_declarations = 0;
-    }
+    // I've commented this out because multiple decls permits Daikon to
+    // check them for consistency (avoid errors with inconsistent appending),
+    // and because one might set the environment variable before the
+    // file is actually created.  A user can suppress this by specifying
+    // /dev/null as the .decls file.  -MDE
+    // if (!actually_output_separate_decls_dtrace) {
+    //   // We are appending and not printing out separate decls and dtrace files.
+    //   // Do NOT print out decls again since we assume that our existing
+    //   // dtrace file already has the decls info in it, and we don't want
+    //   // to bloat the file size by repeating this information.
+    //   print_declarations = 0;
+    // }
     mode_str = "a";
   }
   else {
