@@ -363,9 +363,9 @@ static int openDtraceFile(const char *fname) {
   if (env_val || kvasir_dtrace_append) {
     // I've commented this out because multiple decls permits Daikon to
     // check them for consistency (avoid errors with inconsistent appending),
-    // and because one might set the environment variable before the
-    // file is actually created.  A user can suppress this by specifying
-    // /dev/null as the .decls file.  -MDE
+    // and because one might set the environment variable before the first
+    // Kvasir run that creates the file.  A user can suppress the duplicate
+    // decls by specifying /dev/null as the .decls file.  -MDE
     // if (!actually_output_separate_decls_dtrace) {
     //   // We are appending and not printing out separate decls and dtrace files.
     //   // Do NOT print out decls again since we assume that our existing
