@@ -19,18 +19,25 @@ static long tag_launder_long(long x) {
     return y;
 }
 
-/* glibc's __libc_start_main does the moral equivalent of "environ =
-   argv[argc + 1]", but it's unintuitive for argc and argv to always
-   be comparable, so launder argc's tag. Note that argc and argv will
-   often still end up comparable if the program actually looks at its
-   arguments, since it's common to index argv by a value derived from
-   argc. */
+/* glibc's __libc_start_main does something like "foo = argv[argc +
+   1]", but it's unintuitive for argc and argv to always be
+   comparable, so hide this by tag laundring. This computation is done
+   to determine the value of the environment pointer passed by the
+   kernel, but versions of glibc differ in whether the value is
+   assigned to environ in a dynamically linked libc (environ was
+   actually already set up by the dynamic linker, so it's somewhat
+   superfluous).
+   Note that argc and argv will often still end up comparable if the
+   program actually looks at its arguments, since it's common to index
+   argv by a value derived from argc. */
 int I_WRAP_SONAME_FNNAME_ZU(NONE, main)(int argc, char **argv, char **env);
 int I_WRAP_SONAME_FNNAME_ZU(NONE, main)(int argc, char **argv, char **env) {
     OrigFn fn;
     int result;
     VALGRIND_GET_ORIG_FN(fn);
     argc = tag_launder_long(argc);
+    argv = (char **)tag_launder_long((long)argv);
+    env = (char **)tag_launder_long((long)env);
     CALL_FN_W_WWW(result, fn, argc, argv, env);
     return result;
 }
