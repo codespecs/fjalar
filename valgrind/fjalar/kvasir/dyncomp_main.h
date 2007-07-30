@@ -129,7 +129,7 @@ extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
-extern VG_REGPARM(0) UInt MC_(helperc_CREATE_TAG) ( void );
+extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Int static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
