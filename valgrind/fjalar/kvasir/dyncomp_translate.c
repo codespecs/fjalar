@@ -168,8 +168,8 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
    /* XXX This won't do the right thing if your code uses %ebp for
       some purpose other than the frame pointer. Let's hope that
       doesn't happen too often in unoptimized code. The only better
-      solution would be to track as an independent bit which values of
-      ESP-derived, which would be a pain. -SMcC */
+      solution would be to track with an independent bit which values
+      are ESP-derived, which would be a pain. -SMcC */
    if (offset == dce->layout->offset_SP || offset == dce->layout->offset_FP) {
       return IRExpr_Const(IRConst_UWord(WEAK_FRESH_TAG));
    }
@@ -1254,6 +1254,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 	    return IRExpr_Const(IRConst_UWord(WEAK_FRESH_TAG));
          }
          else {
+	    static Int static_fresh_count = 0;
 
             //            VG_(printf)("******PREV CONST******\n");
 
@@ -1261,17 +1262,35 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
             // literal - this provides perfect context sensitivity, but
             // at the expense of memory and time overheads:
 
-            // Try it with a dirty call:
+	    /* Being a clean call means that the creation of the tag
+	       can be optimized away if it's not used, which is
+	       semantically OK and desirable for performance. It would
+	       also means that if there are multiple tags created
+	       together, they can be optimized into one, which is
+	       theoretically not OK. This hasn't come up in an example
+	       yet, but avoid it by passing a unique integer to each
+	       call; this is also convenient during debugging. */
+	    return assignNew_DC
+	       (dce, Ity_Word, 
+		mkIRExprCCall(Ity_Word,
+			      1 /*Int regparms*/,
+			      "MC_(helperc_CREATE_TAG)",
+			      &MC_(helperc_CREATE_TAG),
+			      mkIRExprVec_1(IRExpr_Const
+					    (IRConst_U32
+					     (static_fresh_count++)))));
+
+            /* Old, slower dirty call variant: 
             datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
             di = unsafeIRDirty_1_N( datatag,
-                                    0/*regparms*/,
+                                    0*regparms*,
                                     "MC_(helperc_CREATE_TAG)",
                                     &MC_(helperc_CREATE_TAG),
                                     mkIRExprVec_0());
             setHelperAnns_DC( dce, di );
             stmt( dce->bb, IRStmt_Dirty(di) );
 
-            return mkexpr(datatag);
+            return mkexpr(datatag);*/
          }
 
       case Iex_Qop:

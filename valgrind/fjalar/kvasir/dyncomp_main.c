@@ -502,8 +502,8 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 // to use this literal, then it will get assigned somewhere ... otherwise
 // there is no record of it anywhere in memory so that it can get
 // garbage-collected.
-VG_REGPARM(0)
-UInt MC_(helperc_CREATE_TAG) () {
+VG_REGPARM(1)
+UInt MC_(helperc_CREATE_TAG)(Int static_id) {
   UInt newTag = grab_fresh_tag();
 
 /*   if (within_main_program) { */
@@ -515,8 +515,8 @@ UInt MC_(helperc_CREATE_TAG) () {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    DYNCOMP_TPRINTF("Creating new tag %d at 0x%08x (%s)\n",
-		    newTag, eip, eip_info);
+    DYNCOMP_TPRINTF("Creating new tag %d at #%x (%s)\n",
+		    newTag, static_id, eip_info);
   }
 
   return newTag;
