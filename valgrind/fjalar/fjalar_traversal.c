@@ -330,8 +330,7 @@ void visitClassMemberVariables(TypeEntry* class,
     for (i = class->aggType->memberVarList->first;
          i != NULL;
          i = i->next) {
-      VariableEntry* curVar;
-      curVar = i->var;
+      VariableEntry* curVar = i->var;
 
       char* top = 0;
       char numEltsPushedOnStack = 0;
@@ -1324,6 +1323,7 @@ void visitSingleVar(VariableEntry* var,
 
     // Punt!
     if (tResult == STOP_TRAVERSAL) {
+      VG_(free)(fullFjalarName);
       return;
     }
   }
@@ -1544,6 +1544,8 @@ void visitSingleVar(VariableEntry* var,
                               isEnter,
                               tResult);
   }
+  if (fullFjalarName)
+    VG_(free)(fullFjalarName);
 }
 
 
@@ -1702,6 +1704,7 @@ void visitSequence(VariableEntry* var,
 
     // Punt!
     if (tResult == STOP_TRAVERSAL) {
+      VG_(free)(fullFjalarName);
       return;
     }
   }
@@ -1828,4 +1831,5 @@ void visitSequence(VariableEntry* var,
     }
 
   }
+  VG_(free)(fullFjalarName);
 }
