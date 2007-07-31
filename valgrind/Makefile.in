@@ -249,7 +249,6 @@ VEX_PRIMARY_SOURCES = \
 	VEX/LICENSE.README \
 	VEX/LICENSE.GPL \
 	VEX/Makefile \
-	VEX/auxprogs/genoffsets.c \
 	VEX/pub/libvex_guest_amd64.h \
 	VEX/pub/libvex_ir.h \
 	VEX/pub/libvex_guest_ppc32.h \
@@ -565,7 +564,7 @@ distcleancheck_listfiles = find . -type f -print
 distdir: $(DISTFILES)
 	$(am__remove_distdir)
 	mkdir $(distdir)
-	$(mkinstalldirs) $(distdir)/. $(distdir)/VEX $(distdir)/VEX/auxprogs $(distdir)/VEX/priv/guest-amd64 $(distdir)/VEX/priv/guest-arm $(distdir)/VEX/priv/guest-generic $(distdir)/VEX/priv/guest-ppc $(distdir)/VEX/priv/guest-x86 $(distdir)/VEX/priv/host-amd64 $(distdir)/VEX/priv/host-arm $(distdir)/VEX/priv/host-generic $(distdir)/VEX/priv/host-ppc $(distdir)/VEX/priv/host-x86 $(distdir)/VEX/priv/ir $(distdir)/VEX/priv/main $(distdir)/VEX/pub $(distdir)/perf $(distdir)/tests
+	$(mkinstalldirs) $(distdir)/. $(distdir)/VEX $(distdir)/VEX/priv/guest-amd64 $(distdir)/VEX/priv/guest-arm $(distdir)/VEX/priv/guest-generic $(distdir)/VEX/priv/guest-ppc $(distdir)/VEX/priv/guest-x86 $(distdir)/VEX/priv/host-amd64 $(distdir)/VEX/priv/host-arm $(distdir)/VEX/priv/host-generic $(distdir)/VEX/priv/host-ppc $(distdir)/VEX/priv/host-x86 $(distdir)/VEX/priv/ir $(distdir)/VEX/priv/main $(distdir)/VEX/pub $(distdir)/perf $(distdir)/tests
 	@srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`; \
 	topsrcdirstrip=`echo "$(top_srcdir)" | sed 's|.|.|g'`; \
 	list='$(DISTFILES)'; for file in $$list; do \
