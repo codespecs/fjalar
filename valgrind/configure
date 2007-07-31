@@ -7904,7 +7904,7 @@ fi
 
 # -------------------- ok.  We're done. --------------------
 
-ac_config_files="$ac_config_files Makefile valgrind.spec valgrind.pc docs/Makefile docs/lib/Makefile docs/images/Makefile docs/internals/Makefile docs/xml/Makefile tests/Makefile tests/vg_regtest perf/Makefile perf/vg_perf include/Makefile include/vki/Makefile auxprogs/Makefile coregrind/Makefile fjalar/Makefile"
+ac_config_files="$ac_config_files Makefile valgrind.spec valgrind.pc docs/Makefile docs/lib/Makefile docs/images/Makefile docs/internals/Makefile docs/xml/Makefile tests/Makefile tests/vg_regtest perf/Makefile perf/vg_perf include/Makefile include/vki/Makefile coregrind/Makefile fjalar/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -8589,7 +8589,6 @@ do
     "perf/vg_perf") CONFIG_FILES="$CONFIG_FILES perf/vg_perf" ;;
     "include/Makefile") CONFIG_FILES="$CONFIG_FILES include/Makefile" ;;
     "include/vki/Makefile") CONFIG_FILES="$CONFIG_FILES include/vki/Makefile" ;;
-    "auxprogs/Makefile") CONFIG_FILES="$CONFIG_FILES auxprogs/Makefile" ;;
     "coregrind/Makefile") CONFIG_FILES="$CONFIG_FILES coregrind/Makefile" ;;
     "fjalar/Makefile") CONFIG_FILES="$CONFIG_FILES fjalar/Makefile" ;;
 

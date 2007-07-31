@@ -919,7 +919,6 @@ AC_OUTPUT(
    perf/vg_perf
    include/Makefile 
    include/vki/Makefile 
-   auxprogs/Makefile
    coregrind/Makefile 
    fjalar/Makefile
 ) 

@@ -106,7 +106,6 @@ VEX_PRIMARY_SOURCES = \
 	VEX/LICENSE.README \
 	VEX/LICENSE.GPL \
 	VEX/Makefile \
-	VEX/auxprogs/genoffsets.c \
 	VEX/pub/libvex_guest_amd64.h \
 	VEX/pub/libvex_ir.h \
 	VEX/pub/libvex_guest_ppc32.h \
