@@ -10,13 +10,13 @@
    is excessively clever, but adding a client request would be a
    pain. -SMcC */
 static long tag_launder_long(long x) {
-    long y = 0;
+    unsigned long y = 0;
     unsigned i;
     for (i = 0; i < 8*sizeof(long); i++) {
-	if (x & (1 << i))
-	    y |= 1 << i;
+	if (x & (1UL << i))
+	    y |= 1UL << i;
     }
-    return y;
+    return (long)y;
 }
 
 /* glibc's __libc_start_main does something like "foo = argv[argc +

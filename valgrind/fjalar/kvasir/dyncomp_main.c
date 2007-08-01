@@ -107,6 +107,12 @@ __inline__ UInt get_tag ( Addr a )
 __inline__ void set_tag ( Addr a, UInt tag )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
+    if (PM_IDX(a) >= PRIMARY_SIZE) {
+      VG_(printf)("Address too large for DynComp: 0x%llx.\n", a);
+      VG_(printf)("Terminating program.\n");
+      VG_(exit)(1);
+    }
+
     UInt* new_tag_array =
       (UInt*)VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
     VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
@@ -503,7 +509,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 // there is no record of it anywhere in memory so that it can get
 // garbage-collected.
 VG_REGPARM(1)
-UInt MC_(helperc_CREATE_TAG)(Int static_id) {
+UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
   UInt newTag = grab_fresh_tag();
 
 /*   if (within_main_program) { */

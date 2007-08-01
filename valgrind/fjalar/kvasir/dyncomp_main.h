@@ -29,17 +29,18 @@
 #include "../mc_include.h"
 #include "union_find.h"
 
-// Taken from commented-out region in mac_shared.h
-// Warning! - probably subject to change in the future since
-// it was commented-out
-#define SECONDARY_SHIFT	16
-
 #if VG_WORDSIZE == 4
+#define SECONDARY_SHIFT	16
 #define PRIMARY_SIZE	(1 << (32 - SECONDARY_SHIFT))
 #else
-/* XXX Valgrind usually only uses the lower 32GB of the address space,
-   but if things go beyond that, this will overflow! */
-#define PRIMARY_SIZE	(1 << (35 - SECONDARY_SHIFT))
+/* This supports address space sizes up to 2**40 = 1TB, which happens to
+   also be the maximum amount of physical RAM supported by current
+   x86-64 processors. It would be nice to support 2**48 (the current
+   address-space limit) or 2**64 (the architectural limit), but those
+   would require a redesign of the table structure to have more levels
+   or a different kind of top level (like Memcheck). */
+#define SECONDARY_SHIFT	20
+#define PRIMARY_SIZE	(1 << (40 - SECONDARY_SHIFT))
 #endif
 
 #define SM_OFF(addr)	((addr) & SECONDARY_MASK)
@@ -129,7 +130,7 @@ extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_4) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_2) ( Addr );
 extern VG_REGPARM(1) UInt MC_(helperc_LOAD_TAG_1) ( Addr );
 
-extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Int static_id );
+extern VG_REGPARM(1) UInt MC_(helperc_CREATE_TAG) ( Addr static_id );
 
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS) ( UInt, UInt );
 extern VG_REGPARM(2) UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt, UInt );
