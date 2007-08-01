@@ -1277,7 +1277,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 			      "MC_(helperc_CREATE_TAG)",
 			      &MC_(helperc_CREATE_TAG),
 			      mkIRExprVec_1(IRExpr_Const
-					    (IRConst_U32
+					    (IRConst_UWord
 					     (static_fresh_count++)))));
 
             /* Old, slower dirty call variant: 
