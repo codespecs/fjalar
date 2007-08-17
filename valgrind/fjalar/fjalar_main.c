@@ -362,6 +362,8 @@ void exit_function(FunctionEntry* f)
   UWord xDXshadow = VG_(get_shadow_xDX)(currentTID);
   ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
+  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
+
   // s is null if an "unwind" is popped off the stack (WHAT?)
   // Only do something if top->func matches func
   if (!top->func) {

@@ -1276,6 +1276,9 @@ void visitSingleVar(VariableEntry* var,
       var->pointerHasEverBeenObserved = 1;
     }
 
+    FJALAR_DPRINTF("Callback for single variable %s\n",
+		   fullFjalarName);
+
     // Perform the action action for this particular variable:
     tResult = (*performAction)(var,
                                fullFjalarName,
@@ -1441,14 +1444,18 @@ void visitSingleVar(VariableEntry* var,
         // Dynamic array:
         else {
           char derivedIsAllocated = 0;
-          char derivedIsInitialized = 0;
           Addr pNewStartValue = 0;
 
-          derivedIsAllocated = (overrideIsInit ? 1 :
-                                addressIsAllocated((Addr)pValue, sizeof(void*)));
+	  if (overrideIsInit)
+	    derivedIsAllocated = 1;
+	  else if (!pValueGuest)
+	    /* This has no address, because it was somewhere like a
+	       register. No need to check A bits. */
+	    derivedIsAllocated = 1;
+	  else
+	    derivedIsAllocated = addressIsAllocated(pValue, sizeof(void*));
+
           if (derivedIsAllocated) {
-            derivedIsInitialized = (overrideIsInit ? 1 :
-                                    addressIsInitialized((Addr)pValue, sizeof(void*)));
             // Make a single dereference to get to the start of the array
             pNewStartValue = *((Addr*)pValue);
           }
@@ -1658,6 +1665,9 @@ void visitSequence(VariableEntry* var,
         }
       }
     }
+
+    FJALAR_DPRINTF("Callback for sequence variable %s\n",
+		   fullFjalarName);
 
     // Perform the action action for this particular variable:
     tResult = (*performAction)(var,
