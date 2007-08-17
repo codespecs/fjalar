@@ -79,7 +79,7 @@ extern const int DecTypeByteSizes[];
 // If there are function names (e.g., C++ demangled names) that are
 // illegal for Daikon, we can patch them up here before writing them
 // to the .dtrace file:
-void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
+static void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
 {
   DPRINTF("Printing dtrace header for %s\n", funcPtr->fjalar_name);
   DPRINTF("dtrace_fp is %p\n", dtrace_fp);
@@ -309,37 +309,37 @@ switch (decType) \
 #define DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE(TYPE) \
   DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pCurValue)));
 
-static char printDtraceSingleBaseValue(void* pValue,
+static char printDtraceSingleBaseValue(Addr pValue,
                                        DeclaredType decType,
                                        char overrideIsInit,
                                        DisambigOverride disambigOverride);
 
 static void printDtraceBaseValueSequence(DeclaredType decType,
-                                         void** pValueArray,
+                                         Addr* pValueArray,
                                          UInt numElts,
                                          DisambigOverride disambigOverride,
-                                         void** pFirstInitElt);
+                                         Addr* pFirstInitElt);
 
 static void printDtraceSingleString(char* actualString,
                                     DisambigOverride disambigOverride);
 
 
 static void printDtraceStringSequence(VariableEntry* var,
-                                      void** pValueArray,
+                                      Addr* pValueArray,
                                       UInt numElts,
                                       DisambigOverride disambigOverride,
-                                      void** pFirstInitElt);
+                                      Addr* pFirstInitElt);
 
 
 // Prints a .dtrace entry for a single variable value denoted by
 // pValue.  Returns 1 if variable successfully observed and printed,
 // and 0 otherwise.
-char printDtraceSingleVar(VariableEntry* var,
-                          void* pValue,
-                          VariableOrigin varOrigin,
-                          char isHashcode,
-                          char overrideIsInit,
-                          DisambigOverride disambigOverride) {
+static char printDtraceSingleVar(VariableEntry* var,
+				 Addr pValue,
+				 VariableOrigin varOrigin,
+				 char isHashcode,
+				 char overrideIsInit,
+				 DisambigOverride disambigOverride) {
   char allocated = 0;
   char initialized = 0;
 
@@ -406,9 +406,9 @@ char printDtraceSingleVar(VariableEntry* var,
     char stringReadable = 0;
 
     // Depends on whether the variable is a static array or not:
-    char* actualString = (IS_STATIC_ARRAY_VAR(var) ?
-                          pValue :
-                          *((char**)pValue));
+    char * actualString = (IS_STATIC_ARRAY_VAR(var) ?
+			   (char *)pValue :
+			   *((char **)pValue));
 
     // If this address hasn't been initialized to anything valid,
     // then we shouldn't try to do anything further with it because
@@ -466,19 +466,19 @@ char printDtraceSingleVar(VariableEntry* var,
 // there are no initialized elements in the sequence.  This is useful
 // for DynComp to determine which memory location to use as the
 // canonical one for the entire sequence in terms of getting tags.
-char printDtraceSequence(VariableEntry* var,
-                         void** pValueArray,
-                         UInt numElts,
-                         VariableOrigin varOrigin,
-                         char isHashcode,
-                         DisambigOverride disambigOverride,
-                         void** pFirstInitElt) {
+static char printDtraceSequence(VariableEntry* var,
+				Addr* pValueArray,
+				UInt numElts,
+				VariableOrigin varOrigin,
+				char isHashcode,
+				DisambigOverride disambigOverride,
+				Addr* pFirstInitElt) {
   UInt i;
   char someEltNonZero = 0;
   char someEltInit = 0;
 
   char firstInitEltFound = 0;
-  void* firstInitElt = 0;
+  Addr firstInitElt = 0;
 
   if (pFirstInitElt) {
     *pFirstInitElt = 0;
@@ -515,8 +515,8 @@ char printDtraceSequence(VariableEntry* var,
   // and return 0. (be conservative and only check the first byte so that
   // we don't mistakenly mark an array of shorts as uninitialized)
   for (i = 0; i < numElts; i++) {
-    void* pCurValue = pValueArray[i];
-    char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char));
+    Addr pCurValue = pValueArray[i];
+    char eltInit = addressIsInitialized(pCurValue, sizeof(char));
     if (eltInit) {
       someEltInit = 1;
       break;
@@ -543,9 +543,9 @@ char printDtraceSequence(VariableEntry* var,
       DTRACE_PRINTF( "[ ");
 
       for (ind = 0; ind < limit; ind++) {
-        void* pCurValue = pValueArray[ind];
+        Addr pCurValue = pValueArray[ind];
 
-        char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(void*));
+        char eltInit = addressIsInitialized(pCurValue, sizeof(void*));
 
         if (eltInit) {
           if (!firstInitEltFound) {
@@ -601,7 +601,7 @@ char printDtraceSequence(VariableEntry* var,
     DTRACE_PRINTF( "[ ");
 
     for (ind = 0; ind < limit; ind++) {
-      void* pCurValue = pValueArray[ind];
+      Addr pCurValue = pValueArray[ind];
       DTRACE_PRINTF("%u ", (UInt)pCurValue);
     }
 
@@ -639,7 +639,7 @@ char printDtraceSequence(VariableEntry* var,
 
 // Print a single numerical value to .dtrace pointed-to by pValue
 static
-char printDtraceSingleBaseValue(void* pValue,
+char printDtraceSingleBaseValue(Addr pValue,
                                 DeclaredType decType,
                                 char overrideIsInit,
                                 DisambigOverride disambigOverride) {
@@ -647,7 +647,7 @@ char printDtraceSingleBaseValue(void* pValue,
 
   // This check is to make sure that we don't segfault
   if (!overrideIsInit &&
-      !(addressIsAllocated((Addr)pValue, DecTypeByteSizes[decType]))) {
+      !(addressIsAllocated(pValue, DecTypeByteSizes[decType]))) {
     DTRACE_PRINTF("%s\n%d\n",
                   NONSENSICAL,
                   mapInitToModbit(0));
@@ -658,7 +658,7 @@ char printDtraceSingleBaseValue(void* pValue,
     init = 1;
   }
   else {
-    init = addressIsInitialized((Addr)pValue, DecTypeByteSizes[decType]);
+    init = addressIsInitialized(pValue, DecTypeByteSizes[decType]);
   }
 
   // Don't support printing of these types:
@@ -715,14 +715,14 @@ char printDtraceSingleBaseValue(void* pValue,
 // 1
 static
 void printDtraceBaseValueSequence(DeclaredType decType,
-                                  void** pValueArray,
+                                  Addr* pValueArray,
                                   UInt numElts,
                                   DisambigOverride disambigOverride,
-                                  void** pFirstInitElt) {
+                                  Addr* pFirstInitElt) {
   int i = 0;
   int limit = numElts;
   char firstInitEltFound = 0;
-  void* firstInitElt = 0;
+  Addr firstInitElt = 0;
 
   if (fjalar_array_length_limit != -1) {
     limit = min(limit, fjalar_array_length_limit);
@@ -742,7 +742,7 @@ void printDtraceBaseValueSequence(DeclaredType decType,
   DTRACE_PRINTF( "[ ");
 
   for (i = 0; i < limit; i++) {
-    void* pCurValue = pValueArray[i];
+    Addr pCurValue = pValueArray[i];
 
     // Check if it's initialized based on the size of declared type (I
     // hope that everything that's initialized is also allocated):
@@ -837,14 +837,14 @@ void printDtraceSingleString(char* actualString,
 // 1
 static
 void printDtraceStringSequence(VariableEntry* var,
-                               void** pValueArray,
+                               Addr* pValueArray,
                                UInt numElts,
                                DisambigOverride disambigOverride,
-                               void** pFirstInitElt) {
+                               Addr* pFirstInitElt) {
   int i = 0;
   int limit = numElts;
   char firstInitEltFound = 0;
-  void* firstInitElt = 0;
+  Addr firstInitElt = 0;
 
   if (fjalar_array_length_limit != -1) {
     limit = min(limit, fjalar_array_length_limit);
@@ -858,7 +858,7 @@ void printDtraceStringSequence(VariableEntry* var,
 
     if (eltInit) {
       if (!firstInitEltFound) {
-        firstInitElt = pCurValue;
+        firstInitElt = (Addr)pCurValue;
         firstInitEltFound = 1;
       }
 
@@ -937,17 +937,19 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
                                        DisambigOverride disambigOverride,
                                        Bool isSequence,
                                        // pValue only valid if isSequence is false
-                                       void* pValue,
+                                       Addr pValue,
                                        // pValueArray and numElts only valid if
                                        // isSequence is true
-                                       void** pValueArray,
+                                       Addr* pValueArray,
                                        UInt numElts,
                                        FunctionEntry* varFuncInfo,
                                        Bool isEnter) {
   char variableHasBeenObserved = 0;
-  void* firstInitElt = 0;
+  Addr firstInitElt = 0;
 
   char isHashcode = (layersBeforeBase > 0);
+
+  (void)numDereferences; /* silence unused variable warning */
 
   // Line 1: Variable name
   if (kvasir_new_decls_format) {
@@ -986,7 +988,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   // DynComp post-processing after observing a variable:
   if (kvasir_with_dyncomp && variableHasBeenObserved) {
     Addr a = 0;
-    void* ptrInQuestion = 0;
+    Addr ptrInQuestion = 0;
     char ptrAllocAndInit = 0;
 
     // Pick the first initialized element from the sequence
@@ -1102,7 +1104,8 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      funcPtr,
                      isEnter,
                      // Remember to use the virtual stack!
-                     f_state->virtualStack + f_state->virtualStackFPOffset,
+                     (Addr)f_state->virtualStack
+		       + f_state->virtualStackFPOffset,
                      &printDtraceEntryAction);
 
   // If isEnter == 0, print out return value:
@@ -1140,6 +1143,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   // during a certain program point execution, so we can process them
   // all in an O(n^2) manner to mutate bitmatrix.
   if (kvasir_with_dyncomp && dyncomp_detailed_mode) {
-    DC_detailed_mode_process_ppt_execution(funcPtr, isEnter);
+    DC_detailed_mode_process_ppt_execution((DaikonFunctionEntry *)funcPtr,
+					   isEnter);
   }
 }

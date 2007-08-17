@@ -748,8 +748,8 @@ TraversalResult performAction(VariableEntry* var,
                               Bool overrideIsInit,
                               DisambigOverride disambigOverride,
                               Bool isSequence,
-                              void* pValue,
-                              void** pValueArray,
+                              Addr pValue,
+                              Addr* pValueArray,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
                               Bool isEnter);
@@ -770,9 +770,9 @@ Bool overrideIsInit - 1 if the pointer referring to this variable's value
                       otherwise (most of the time, it's 0)
 DisambigOverride disambigOverride - See .disambig option
 Bool isSequence - Are we traversing a single value or a sequence of values?
-void* pValue - A pointer to the value of the current variable
-               (Only valid if isSequence is 0)
-void** pValueArray - An array of pointers to the values of the current variable
+Addr pValue - Address where the variable is stored
+              (Only valid if isSequence is 0)
+Addr* pValueArray - An array of addresses of the variable
                      sequence (Only valid if isSequence is 1)
 UInt numElts - The number of elements in pValueArray
                (Only valid if isSequence is 1)
@@ -782,6 +782,19 @@ Bool isEnter - 1 if this is a function entrance, 0 if exit
 
 */
 
+typedef TraversalResult (TraversalAction)(VariableEntry* var,
+					  char* varName,
+					  VariableOrigin varOrigin,
+					  UInt numDereferences,
+					  UInt layersBeforeBase,
+					  Bool overrideIsInit,
+					  DisambigOverride disambigOverride,
+					  Bool isSequence,
+					  Addr pValue,
+					  Addr* pValueArray,
+					  UInt numElts,
+					  FunctionEntry* varFuncInfo,
+					  Bool isEnter);
 
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
@@ -798,22 +811,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // Address of the base of the currently
                         // executing function's stack frame: (Only used for
                         // varOrigin == FUNCTION_FORMAL_PARAM)
-                        char* stackBaseAddr,
+                        Addr stackBaseAddr,
                         // This function performs an action for each
                         // variable visited:
-                        TraversalResult (*performAction)(VariableEntry*,
-                                                         char*,
-                                                         VariableOrigin,
-                                                         UInt,
-                                                         UInt,
-                                                         Bool,
-                                                         DisambigOverride,
-                                                         Bool,
-                                                         void*,
-                                                         void**,
-                                                         UInt,
-                                                         FunctionEntry*,
-                                                         Bool));
+			TraversalAction *performAction);
 
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
@@ -824,26 +825,14 @@ void visitVariableGroup(VariableOrigin varOrigin,
 void visitReturnValue(FunctionExecutionState* e,
                       // This function performs an action for each
                       // variable visited:
-                      TraversalResult (*performAction)(VariableEntry*,
-                                                       char*,
-                                                       VariableOrigin,
-                                                       UInt,
-                                                       UInt,
-                                                       Bool,
-                                                       DisambigOverride,
-                                                       Bool,
-                                                       void*,
-                                                       void**,
-                                                       UInt,
-                                                       FunctionEntry*,
-                                                       Bool));
+		      TraversalAction *performAction);
 
 // Visits one variable (denoted by 'var') and all variables that are
 // derived from it by traversing inside of data structures and arrays.
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
-                   void* pValue,
+                   Addr pValue,
                    // We only use overrideIsInit when we pass in
                    // things (e.g. return values) that cannot be
                    // checked by the Memcheck A and V bits. Never have
@@ -860,19 +849,7 @@ void visitVariable(VariableEntry* var,
                    UInt numStructsDereferenced,
                    // This function performs an action for each
                    // variable visited:
-                   TraversalResult (*performAction)(VariableEntry*,
-                                                    char*,
-                                                    VariableOrigin,
-                                                    UInt,
-                                                    UInt,
-                                                    Bool,
-                                                    DisambigOverride,
-                                                    Bool,
-                                                    void*,
-                                                    void**,
-                                                    UInt,
-                                                    FunctionEntry*,
-                                                    Bool),
+		   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter);
@@ -883,19 +860,7 @@ void visitVariable(VariableEntry* var,
 // printing out names and performing other non-value-dependent
 // operations.
 void visitClassMembersNoValues(TypeEntry* class,
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                Bool,
-                                                                DisambigOverride,
-                                                                Bool,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                Bool));
+			       TraversalAction *performAction);
 
 // Takes a TypeEntry* and (optionally, a pointer to its current value
 // in memory), and traverses through all of the members of the
@@ -906,28 +871,16 @@ void visitClassMemberVariables(TypeEntry* class,
                                // Pointer to the current value of an
                                // instance of 'class' (only valid if
                                // isSequence is 0)
-                               void* pValue,
+                               Addr pValue,
                                Bool isSequence,
                                // An array of pointers to instances of
                                // 'class' (only valid if isSequence is
                                // non-zero):
-                               void** pValueArray,
+                               Addr* pValueArray,
                                UInt numElts, // Size of pValueArray
                                // This function performs an action for
                                // each variable visited:
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                Bool,
-                                                                DisambigOverride,
-                                                                Bool,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                Bool),
+			       TraversalAction *performAction,
                                VariableOrigin varOrigin,
                                // A (possibly null) GNU binary tree of
                                // variables to trace:

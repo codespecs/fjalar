@@ -86,6 +86,7 @@
 
 #include "my_libc.h"
 #include "pub_tool_basics.h"
+#include "pub_tool_libcbase.h"
 #include "pub_tool_mallocfree.h"
 
 typedef struct node_t
@@ -351,7 +352,7 @@ tdelete (const void *key, void **vrootp, __compar_fn_t compar)
 	      node **newstack;
 	      stacksize += 20;
 	      newstack = alloca (sizeof (node *) * stacksize);
-	      nodestack = memcpy (newstack, nodestack, sp * sizeof (node *));
+	      nodestack = VG_(memcpy)(newstack, nodestack, sp * sizeof (node *));
 	    }
 	  nodestack[sp++] = parent;
 	  parent = up;

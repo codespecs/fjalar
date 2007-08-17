@@ -85,19 +85,27 @@ void handleDisambigFile() {
 // e.g.,
 // /foo       <-- variable name
 // S          <-- disambig type
-TraversalResult printDisambigAction(VariableEntry* var,
-                                    char* varName,
-                                    VariableOrigin varOrigin,
-                                    UInt numDereferences,
-                                    UInt layersBeforeBase,
-                                    Bool overrideIsInit,
-                                    DisambigOverride disambigOverride,
-                                    Bool isSequence,
-                                    void* pValue,
-                                    void** pValueArray,
-                                    UInt numElts,
-                                    FunctionEntry* varFuncInfo,
-                                    Bool isEnter) {
+static TraversalResult
+printDisambigAction(VariableEntry* var,
+		    char* varName,
+		    VariableOrigin varOrigin,
+		    UInt numDereferences,
+		    UInt layersBeforeBase,
+		    Bool overrideIsInit,
+		    DisambigOverride disambigOverride,
+		    Bool isSequence,
+		    Addr pValue,
+		    Addr* pValueArray,
+		    UInt numElts,
+		    FunctionEntry* varFuncInfo,
+		    Bool isEnter) {
+  /* silence unused variable warnings */
+  (void)varOrigin; (void)numDereferences; (void)layersBeforeBase;
+  (void)overrideIsInit; (void)disambigOverride; (void)isSequence;
+  (void)pValue; (void)pValueArray; (void)numElts; (void)varFuncInfo;
+  (void)isEnter;
+
+
   // If this is not a variable that's worthy of being outputted to the
   // .disambig file, then punt:
   if (!shouldOutputVarToDisambig(var)) {
@@ -406,7 +414,7 @@ static void processDisambigFile() {
 	}
 	// 3) A user-defined type
 	//    (USERTYPE_PREFIX must be the prefix of the string)
-	else if (VG_(strstr)(line, USERTYPE_PREFIX) == line) {
+	else if (VG_(strstr)(line, USERTYPE_PREFIX) == (Char *)line) {
 	  TypeIterator* typeIt;
           int i = 0;
 	  type = USERTYPE;

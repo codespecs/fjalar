@@ -62,7 +62,7 @@ static const char* DaikonRepTypeString[] = {
 };
 
 // Changes ' ' to '\_' to eliminate spaces in declared types
-void printDeclaredType(char* name, FILE* fp) {
+static void printDeclaredType(const char* name, FILE* fp) {
   // Change ' ' to '\_' and change '\' to '\\'.
   while (*name != '\0') {
     if (*name == ' ') {
@@ -273,22 +273,27 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
 // of the variables.  This is used by DynComp to see how many
 // variables (both actual and derived) are present at a program point
 // (g_variableIndex increments during each variable visit).
-TraversalResult nullAction(VariableEntry* var,
-                           char* varName,
-                           VariableOrigin varOrigin,
-                           UInt numDereferences,
-                           UInt layersBeforeBase,
-                           char overrideIsInit,
-                           DisambigOverride disambigOverride,
-                           char isSequence,
-                           // pValue only valid if isSequence is false
-                           void* pValue,
-                           // pValueArray and numElts only valid if
-                           // isSequence is true
-                           void** pValueArray,
-                           UInt numElts,
-                           FunctionEntry* varFuncInfo,
-                           char isEnter) {
+static TraversalResult
+nullAction(VariableEntry* var,
+	   char* varName,
+	   VariableOrigin varOrigin,
+	   UInt numDereferences,
+	   UInt layersBeforeBase,
+	   Bool overrideIsInit,
+	   DisambigOverride disambigOverride,
+	   Bool isSequence,
+	   // pValue only valid if isSequence is false
+	   Addr pValue,
+	   // pValueArray and numElts only valid if
+	   // isSequence is true
+	   Addr* pValueArray,
+	   UInt numElts,
+	   FunctionEntry* varFuncInfo,
+	   Bool isEnter) {
+  (void)var; (void)varName; (void)varOrigin; (void)numDereferences;
+  (void)layersBeforeBase; (void)overrideIsInit; (void)disambigOverride;
+  (void)isSequence; (void)pValue; (void)pValueArray; (void)numElts;
+  (void)varFuncInfo; (void)isEnter; /* silence unused variable warnings */
   return DISREGARD_PTR_DEREFS;
 }
 
@@ -303,22 +308,23 @@ TraversalResult nullAction(VariableEntry* var,
 // char*                <-- declared type
 // java.lang.String     <-- rep. type
 // 22                   <-- comparability number
-TraversalResult printDeclsEntryAction(VariableEntry* var,
-                                      char* varName,
-                                      VariableOrigin varOrigin,
-                                      UInt numDereferences,
-                                      UInt layersBeforeBase,
-                                      Bool overrideIsInit,
-                                      DisambigOverride disambigOverride,
-                                      Bool isSequence,
-                                      // pValue only valid if isSequence is false
-                                      void* pValue,
-                                      // pValueArray and numElts only valid if
-                                      // isSequence is true
-                                      void** pValueArray,
-                                      UInt numElts,
-                                      FunctionEntry* varFuncInfo,
-                                      Bool isEnter) {
+static TraversalResult
+printDeclsEntryAction(VariableEntry* var,
+		      char* varName,
+		      VariableOrigin varOrigin,
+		      UInt numDereferences,
+		      UInt layersBeforeBase,
+		      Bool overrideIsInit,
+		      DisambigOverride disambigOverride,
+		      Bool isSequence,
+		      // pValue only valid if isSequence is false
+		      Addr pValue,
+		      // pValueArray and numElts only valid if
+		      // isSequence is true
+		      Addr* pValueArray,
+		      UInt numElts,
+		      FunctionEntry* varFuncInfo,
+		      Bool isEnter) {
   DeclaredType dType = var->varType->decType;
   DaikonRepType rType = decTypeToDaikonRepType(dType, var->isString);
   UInt layers;
@@ -326,6 +332,9 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
   char alreadyPutDerefOnLine3;
 
   char printAsSequence = isSequence;
+
+  /* silence unused variable warnings */
+  (void)overrideIsInit; (void)pValue; (void)pValueArray; (void)numElts;
 
   if (kvasir_new_decls_format) {
     int len = VG_(strlen)(varName);
@@ -776,7 +785,7 @@ TraversalResult printDeclsEntryAction(VariableEntry* var,
     // that the program has already finished execution so that all
     // of the comparability information would be already updated:
     if (kvasir_with_dyncomp) {
-      DaikonFunctionEntry *entry = varFuncInfo;
+      DaikonFunctionEntry *entry = (DaikonFunctionEntry *)varFuncInfo;
       // Remember that comp_number is a SIGNED INTEGER but the
       // tags are UNSIGNED INTEGERS so be careful of overflows
       // which result in negative numbers, which are useless
@@ -915,13 +924,13 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
       // DON'T HAVE DUPLICATES, THOUGH!  So use a Hashtable to prevent
       // the printing of duplicates:
       {
+        struct geniterator* typeNameStrIt = 0;
+
         // Maps strings to a junk number 1 - simply here to prevent
         // duplicates:
         typeNameStrTable =
           genallocatehashtable((unsigned int (*)(void *)) &hashString,
                                (int (*)(void *,void *)) &equivalentStrings);
-
-        struct geniterator* typeNameStrIt = 0;
 
         if (funcPtr->formalParameters.numVars > 0) {
           VarNode* n;
@@ -932,7 +941,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
             if (IS_AGGREGATE_TYPE(v->varType)) {
               tl_assert(v->varType->typeName);
               if (!gencontains(typeNameStrTable, v->varType->typeName)) {
-                genputtable(typeNameStrTable, v->varType->typeName, 1);
+                genputtable(typeNameStrTable, v->varType->typeName, (void *)1);
               }
             }
           }
@@ -946,7 +955,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
             if (IS_AGGREGATE_TYPE(v->varType)) {
               tl_assert(v->varType->typeName);
               if (!gencontains(typeNameStrTable, v->varType->typeName)) {
-                genputtable(typeNameStrTable, v->varType->typeName, 1);
+                genputtable(typeNameStrTable, v->varType->typeName, (void *)1);
               }
             }
           }
@@ -996,7 +1005,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
       g_curCompNumber = 1;
 
       if (dyncomp_detailed_mode) {
-        DC_convert_bitmatrix_to_sets(funcPtr, isEnter);
+        DC_convert_bitmatrix_to_sets((DaikonFunctionEntry *)funcPtr, isEnter);
       }
     }
   }
@@ -1136,15 +1145,14 @@ static void printAllObjectPPTDecls(void) {
         tl_assert(cur_type->typeName);
 
         if (kvasir_new_decls_format) {
+          struct geniterator* typeNameStrIt = 0;
+          VarNode *n;
+
           // Maps strings to a junk number 1 - simply here to prevent
           // duplicates:
           typeNameStrTable =
             genallocatehashtable((unsigned int (*)(void *)) &hashString,
                                  (int (*)(void *,void *)) &equivalentStrings);
-
-          struct geniterator* typeNameStrIt = 0;
-
-          VarNode *n;
 
           // Example output:
           //   ppt Stack
@@ -1167,7 +1175,7 @@ static void printAllObjectPPTDecls(void) {
                 v->varType != cur_type) {
               tl_assert(v->varType->typeName);
               if (!gencontains(typeNameStrTable, v->varType->typeName)) {
-                genputtable(typeNameStrTable, v->varType->typeName, 1);
+                genputtable(typeNameStrTable, v->varType->typeName, (void *)1);
               }
             }
           }
