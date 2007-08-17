@@ -336,6 +336,7 @@ static void printDtraceStringSequence(VariableEntry* var,
 // and 0 otherwise.
 static char printDtraceSingleVar(VariableEntry* var,
 				 Addr pValue,
+				 Addr pValueGuest,
 				 VariableOrigin varOrigin,
 				 char isHashcode,
 				 char overrideIsInit,
@@ -390,7 +391,8 @@ static char printDtraceSingleVar(VariableEntry* var,
     //       var->isStaticArray says that the base variable is a
     //       static array after all dereferences are done.
     DTRACE_PRINTF("%u\n%d\n",
-                  IS_STATIC_ARRAY_VAR(var) ? (UInt)pValue : (UInt)(*((Addr*)pValue)),
+                  IS_STATIC_ARRAY_VAR(var) ? (UInt)pValueGuest
+		  : (UInt)(*((Addr*)pValue)),
                   mapInitToModbit(1));
 
     // Since we observed all of these bytes as one value, we will
@@ -430,7 +432,7 @@ static char printDtraceSingleVar(VariableEntry* var,
   // Simply print out its hashcode location
   else if (IS_AGGREGATE_TYPE(var->varType)) {
     DTRACE_PRINTF("%u\n%d\n",
-                  ((unsigned int)pValue),
+                  ((UInt)pValue),
                   mapInitToModbit(1));
   }
   // Base type
@@ -468,6 +470,7 @@ static char printDtraceSingleVar(VariableEntry* var,
 // canonical one for the entire sequence in terms of getting tags.
 static char printDtraceSequence(VariableEntry* var,
 				Addr* pValueArray,
+				Addr* pValueArrayGuest,
 				UInt numElts,
 				VariableOrigin varOrigin,
 				char isHashcode,
@@ -544,6 +547,7 @@ static char printDtraceSequence(VariableEntry* var,
 
       for (ind = 0; ind < limit; ind++) {
         Addr pCurValue = pValueArray[ind];
+        Addr pCurValueGuest = pValueArrayGuest[ind];
 
         char eltInit = addressIsInitialized(pCurValue, sizeof(void*));
 
@@ -554,7 +558,7 @@ static char printDtraceSequence(VariableEntry* var,
           }
 
           DTRACE_PRINTF("%u ", IS_STATIC_ARRAY_VAR(var) ?
-                        (UInt)pCurValue :
+                        (UInt)pCurValueGuest :
                         (UInt)(*((Addr*)pCurValue)));
 
           // Merge the tags of the 4-bytes of the observed pointer as
@@ -601,8 +605,8 @@ static char printDtraceSequence(VariableEntry* var,
     DTRACE_PRINTF( "[ ");
 
     for (ind = 0; ind < limit; ind++) {
-      Addr pCurValue = pValueArray[ind];
-      DTRACE_PRINTF("%u ", (UInt)pCurValue);
+      Addr pCurValueGuest = pValueArray[ind];
+      DTRACE_PRINTF("%u ", (UInt)pCurValueGuest);
     }
 
     DTRACE_PRINTF( "]\n%d\n",
@@ -938,9 +942,11 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
                                        Bool isSequence,
                                        // pValue only valid if isSequence is false
                                        Addr pValue,
+                                       Addr pValueGuest,
                                        // pValueArray and numElts only valid if
                                        // isSequence is true
                                        Addr* pValueArray,
+                                       Addr* pValueArrayGuest,
                                        UInt numElts,
                                        FunctionEntry* varFuncInfo,
                                        Bool isEnter) {
@@ -969,6 +975,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
     variableHasBeenObserved =
       printDtraceSequence(var,
                           pValueArray,
+                          pValueArrayGuest,
                           numElts,
                           varOrigin,
                           isHashcode,
@@ -979,6 +986,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
     variableHasBeenObserved =
       printDtraceSingleVar(var,
                            pValue,
+                           pValueGuest,
                            varOrigin,
                            isHashcode,
                            overrideIsInit,
@@ -1097,6 +1105,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      funcPtr,
                      isEnter,
                      0,
+		     0,
                      &printDtraceEntryAction);
 
   // Print out function formal parameters:
@@ -1106,6 +1115,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      // Remember to use the virtual stack!
                      (Addr)f_state->virtualStack
 		       + f_state->virtualStackFPOffset,
+		     f_state->FP,
                      &printDtraceEntryAction);
 
   // If isEnter == 0, print out return value:

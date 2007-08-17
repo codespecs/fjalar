@@ -64,23 +64,7 @@ int g_curCompNumber = 1;
 // tag is invalid)
 UInt* g_oldToNewMap = 0;
 
-
-static TraversalResult dyncompExtraPropAction(VariableEntry* var,
-                                              char* varName,
-                                              VariableOrigin varOrigin,
-                                              UInt numDereferences,
-                                              UInt layersBeforeBase,
-                                              Bool overrideIsInit,
-                                              DisambigOverride disambigOverride,
-                                              Bool isSequence,
-                                              // pValue only valid if isSequence is false
-                                              Addr pValue,
-                                              // pValueArray and numElts only valid if
-                                              // isSequence is true
-                                              Addr* pValueArray,
-                                              UInt numElts,
-                                              FunctionEntry* varFuncInfo,
-                                              Bool isEnter);
+static TraversalAction dyncompExtraPropAction;
 
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
@@ -584,9 +568,11 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
                                               Bool isSequence,
                                               // pValue only valid if isSequence is false
                                               Addr pValue,
+                                              Addr pValueGuest,
                                               // pValueArray and numElts only valid if
                                               // isSequence is true
                                               Addr* pValueArray,
+                                              Addr* pValueArrayGuest,
                                               UInt numElts,
                                               FunctionEntry* varFuncInfo,
                                               Bool isEnter) {
@@ -598,6 +584,7 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
   (void)varName; (void)varOrigin; (void)numDereferences;
   (void)overrideIsInit; (void)disambigOverride; (void)isSequence;
   (void)pValue; (void)pValueArray; (void)numElts;
+  (void)pValueGuest; (void)pValueArrayGuest;
 
   // Special handling for static arrays: Currently, in the
   // .dtrace, for a static arrays 'int foo[]', we print out
@@ -653,6 +640,7 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                      funcPtr, // need this for DynComp to work properly
                      isEnter,
                      0,
+		     0,
                      &dyncompExtraPropAction);
 
   // Propagate through formal params.
@@ -660,6 +648,7 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                      funcPtr,
                      isEnter,
                      0,
+		     0,
                      &dyncompExtraPropAction);
 
   // If EXIT, propagate through return value
@@ -668,6 +657,7 @@ static void DC_extra_propagate_one_function(FunctionEntry* funcPtr,
                      funcPtr,
                      0,
                      0,
+		     0,
                      &dyncompExtraPropAction);
   }
 }

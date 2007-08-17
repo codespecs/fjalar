@@ -284,16 +284,20 @@ nullAction(VariableEntry* var,
 	   Bool isSequence,
 	   // pValue only valid if isSequence is false
 	   Addr pValue,
+	   Addr pValueGuest,
 	   // pValueArray and numElts only valid if
 	   // isSequence is true
 	   Addr* pValueArray,
+	   Addr* pValueArrayGuest,
 	   UInt numElts,
 	   FunctionEntry* varFuncInfo,
 	   Bool isEnter) {
+  /* silence unused variable warnings */
   (void)var; (void)varName; (void)varOrigin; (void)numDereferences;
   (void)layersBeforeBase; (void)overrideIsInit; (void)disambigOverride;
   (void)isSequence; (void)pValue; (void)pValueArray; (void)numElts;
-  (void)varFuncInfo; (void)isEnter; /* silence unused variable warnings */
+  (void)varFuncInfo; (void)isEnter; (void)pValueGuest; (void)pValueArrayGuest;
+
   return DISREGARD_PTR_DEREFS;
 }
 
@@ -319,9 +323,11 @@ printDeclsEntryAction(VariableEntry* var,
 		      Bool isSequence,
 		      // pValue only valid if isSequence is false
 		      Addr pValue,
+		      Addr pValueGuest,
 		      // pValueArray and numElts only valid if
 		      // isSequence is true
 		      Addr* pValueArray,
+		      Addr* pValueArrayGuest,
 		      UInt numElts,
 		      FunctionEntry* varFuncInfo,
 		      Bool isEnter) {
@@ -335,6 +341,7 @@ printDeclsEntryAction(VariableEntry* var,
 
   /* silence unused variable warnings */
   (void)overrideIsInit; (void)pValue; (void)pValueArray; (void)numElts;
+  (void)pValueGuest; (void)pValueArrayGuest;
 
   if (kvasir_new_decls_format) {
     int len = VG_(strlen)(varName);
@@ -1016,6 +1023,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
                      funcPtr, // need this for DynComp to work properly
                      isEnter,
                      0,
+		     0,
                      (faux_decls ?
                       &nullAction : &printDeclsEntryAction));
 
@@ -1024,6 +1032,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
                      funcPtr,
                      isEnter,
                      0,
+		     0,
                      (faux_decls ?
                       &nullAction : &printDeclsEntryAction));
 
@@ -1033,6 +1042,7 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
                        funcPtr,
                        0,
                        0,
+		       0,
                        (faux_decls ?
                         &nullAction : &printDeclsEntryAction));
   }

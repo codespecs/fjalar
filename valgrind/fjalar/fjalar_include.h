@@ -749,6 +749,7 @@ TraversalResult performAction(VariableEntry* var,
                               DisambigOverride disambigOverride,
                               Bool isSequence,
                               Addr pValue,
+			      Addr pValueGuest,
                               Addr* pValueArray,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
@@ -772,8 +773,14 @@ DisambigOverride disambigOverride - See .disambig option
 Bool isSequence - Are we traversing a single value or a sequence of values?
 Addr pValue - Address where the variable is stored
               (Only valid if isSequence is 0)
+Addr pValueGuest - The guest-program-space address corresponding to pValue.
+                   Usually the same as pValue, but will be different if
+                   you're doing traversal over a copy of program data.
+                   0 if the the value is in a non-memory location like a 
+                   register.
 Addr* pValueArray - An array of addresses of the variable
                      sequence (Only valid if isSequence is 1)
+Addr* pValueArrayGuest - Guest-program-space version of pValueArray
 UInt numElts - The number of elements in pValueArray
                (Only valid if isSequence is 1)
 FunctionEntry* varFuncInfo - The function that is active during the current
@@ -791,7 +798,9 @@ typedef TraversalResult (TraversalAction)(VariableEntry* var,
 					  DisambigOverride disambigOverride,
 					  Bool isSequence,
 					  Addr pValue,
+					  Addr pValueGuest,
 					  Addr* pValueArray,
+					  Addr* pValueArrayGuest,
 					  UInt numElts,
 					  FunctionEntry* varFuncInfo,
 					  Bool isEnter);
@@ -810,8 +819,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                 // 0 for exit
                         // Address of the base of the currently
                         // executing function's stack frame: (Only used for
-                        // varOrigin == FUNCTION_FORMAL_PARAM)
+                        // varOrigin == FUNCTION_FORMAL_PARAM). The guest
+			// version should be in the program's address space
+			// and the non-guest one can be a copy in our
+			// address space (it's what we'll dereference)
                         Addr stackBaseAddr,
+                        Addr stackBaseAddrGuest,
                         // This function performs an action for each
                         // variable visited:
 			TraversalAction *performAction);
@@ -833,6 +846,11 @@ void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
                    Addr pValue,
+		   // If pValue points to a copy of the guest
+		   // program's state, this is the pointer to the
+		   // original. If the value wass in a register, this is 0.
+		   // Otherwise, same as pValue.
+                   Addr pValueGuest,
                    // We only use overrideIsInit when we pass in
                    // things (e.g. return values) that cannot be
                    // checked by the Memcheck A and V bits. Never have
@@ -872,11 +890,13 @@ void visitClassMemberVariables(TypeEntry* class,
                                // instance of 'class' (only valid if
                                // isSequence is 0)
                                Addr pValue,
+			       Addr pValueGuest,
                                Bool isSequence,
                                // An array of pointers to instances of
                                // 'class' (only valid if isSequence is
                                // non-zero):
                                Addr* pValueArray,
+                               Addr* pValueArrayGuest,
                                UInt numElts, // Size of pValueArray
                                // This function performs an action for
                                // each variable visited:
