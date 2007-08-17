@@ -37,6 +37,7 @@ static
 void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
                     Addr pValue,
+                    Addr pValueGuest,
                     Bool overrideIsInit,
                     Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
                     // This function performs an action for each variable visited:
@@ -52,6 +53,7 @@ static
 void visitSequence(VariableEntry* var,
                    UInt numDereferences,
                    Addr* pValueArray,
+                   Addr* pValueArrayGuest,
                    UInt numElts,
                    // This function performs an action for each variable visited:
 		   TraversalAction *performAction,
@@ -74,10 +76,12 @@ TraversalResult performAction(VariableEntry* var,
                               DisambigOverride disambigOverride,
                               Bool isSequence,
                               // pValue only valid if isSequence is false
-                              void* pValue,
+                              Addr pValue,
+                              Addr pValueGuest,
                               // pValueArray and numElts only valid if
                               // isSequence is true
-                              void** pValueArray,
+                              Addr* pValueArray,
+                              Addr* pValueArrayGuest,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
                               Bool isEnter);
@@ -201,14 +205,16 @@ void visitClassMembersNoValues(TypeEntry* class,
   }
 
   // Use a small hashtable to save time and space:
-  VisitedStructsTable = genallocateSMALLhashtable(0,
-                                                  (int (*)(void *,void *)) &equivalentIDs);
+  VisitedStructsTable =
+    genallocateSMALLhashtable(0, (int (*)(void *,void *)) &equivalentIDs);
 
   visitClassMemberVariables(class,
                             0,
+			    0,
                             0,
                             0,
                             0,
+			    0,
                             performAction,
                             GLOBAL_VAR, // doesn't matter, I don't think
                             0,
@@ -226,10 +232,12 @@ void visitClassMembersNoValues(TypeEntry* class,
 // well.  Pre: class->decType == {D_STRUCT_CLASS, D_UNION}
 void visitClassMemberVariables(TypeEntry* class,
                                Addr pValue,
+                               Addr pValueGuest,
                                Bool isSequence,
                                // An array of pointers to values (only
                                // valid if isSequence non-null):
                                Addr* pValueArray,
+                               Addr* pValueArrayGuest,
                                UInt numElts, // Size of pValueArray
                                // This function performs an action for each variable visited:
 			       TraversalAction *performAction,
@@ -290,8 +298,10 @@ void visitClassMemberVariables(TypeEntry* class,
       // Address of the value of the current member variable (only
       // valid if !isSequence):
       Addr pCurVarValue = 0;
+      Addr pCurVarValueGuest = 0;
       // Only used if isSequence:
       Addr* pCurVarValueArray = 0;
+      Addr* pCurVarValueArrayGuest = 0;
 
       if (!curVar->name) {
 	VG_(printf)( "  Warning! Weird null member variable name!\n");
@@ -336,6 +346,8 @@ void visitClassMemberVariables(TypeEntry* class,
 
               // Create pCurVarValueArray to be the same size as pValueArray:
               pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+              pCurVarValueArrayGuest =
+		(Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
               // Iterate though pValueArray and fill up
               // pCurVarValueArray with pointer values offset by the
@@ -349,6 +361,8 @@ void visitClassMemberVariables(TypeEntry* class,
                 if (pValueArray[ind]) {
                   Addr curVal =
 		    pValueArray[ind] + curVar->memberVar->data_member_location;
+		  Addr curValGuest = pValueArrayGuest[ind] + 
+		    curVar->memberVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
                   // DWARF2 info.  botches the locations of double
@@ -366,20 +380,24 @@ void visitClassMemberVariables(TypeEntry* class,
                       ((i->next->var->memberVar->data_member_location -
                         curVar->memberVar->data_member_location) == 4)) {
                     curVal -= 4;
+                    curValGuest -= 4;
                   }
 
                   // Very important!  Add the offset within the
                   // flattened array:
                   curVal += (arrayIndex * getBytesBetweenElts(curVar));
+                  curValGuest += (arrayIndex * getBytesBetweenElts(curVar));
 
                   // Now assign that value into pCurVarValueArray:
                   pCurVarValueArray[ind] = curVal;
+                  pCurVarValueArrayGuest[ind] = curValGuest;
                 }
                 // If the original entry was 0, then simply copy 0, which
                 // propagates uninit/unallocated status from structs to
                 // members.
                 else {
                   pCurVarValueArray[ind] = 0;
+                  pCurVarValueArrayGuest[ind] = 0;
                 }
               }
             }
@@ -393,9 +411,12 @@ void visitClassMemberVariables(TypeEntry* class,
               // struct's starting address plus the location of the
               // variable within the struct
               pCurVarValue = pValue + curVar->memberVar->data_member_location;
+              pCurVarValueGuest  =
+		pValueGuest + curVar->memberVar->data_member_location;
 
               // Very important! Add offset within the flattened array:
               pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
+              pCurVarValueGuest += (arrayIndex * getBytesBetweenElts(curVar));
             }
           }
 
@@ -434,6 +455,7 @@ void visitClassMemberVariables(TypeEntry* class,
             visitSequence(curVar,
                           0,
                           pCurVarValueArray,
+                          pCurVarValueArrayGuest,
                           numElts,
                           performAction,
                           DERIVED_FLATTENED_ARRAY_VAR,
@@ -447,6 +469,7 @@ void visitClassMemberVariables(TypeEntry* class,
             visitSingleVar(curVar,
                            0,
                            pCurVarValue,
+                           pCurVarValueGuest,
                            0,
                            0,
                            performAction,
@@ -474,6 +497,8 @@ void visitClassMemberVariables(TypeEntry* class,
           if (pCurVarValueArray) {
             VG_(free)(pCurVarValueArray);
             pCurVarValueArray = 0;
+            VG_(free)(pCurVarValueArrayGuest);
+            pCurVarValueArrayGuest = 0;
           }
         }
       }
@@ -487,6 +512,8 @@ void visitClassMemberVariables(TypeEntry* class,
             // Create pCurVarValueArray to be the same size as
             // pValueArray:
             pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+            pCurVarValueArrayGuest = 
+	      (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
             // Iterate though pValueArray and fill up
             // pCurVarValueArray with pointer values offset by the
@@ -501,6 +528,8 @@ void visitClassMemberVariables(TypeEntry* class,
               if (pValueArray[ind]) {
                 Addr curVal = 
 		  pValueArray[ind] + curVar->memberVar->data_member_location;
+                Addr curValGuest = pValueArrayGuest[ind] +
+		  curVar->memberVar->data_member_location;
 
                 // Override for D_DOUBLE types: For some reason, the
                 // DWARF2 info.  botches the locations of double
@@ -518,16 +547,19 @@ void visitClassMemberVariables(TypeEntry* class,
                     ((i->next->var->memberVar->data_member_location -
                       curVar->memberVar->data_member_location) == 4)) {
                   curVal -= 4;
+                  curValGuest -= 4;
                 }
 
                 // Now assign that value into pCurVarValueArray:
                 pCurVarValueArray[ind] = curVal;
+                pCurVarValueArrayGuest[ind] = curValGuest;
               }
               // If the original entry was 0, then simply copy 0, which
               // propagates uninit/unallocated status from structs to
               // members.
               else {
                 pCurVarValueArray[ind] = 0;
+                pCurVarValueArrayGuest[ind] = 0;
               }
             }
           }
@@ -541,6 +573,8 @@ void visitClassMemberVariables(TypeEntry* class,
             // struct's starting address plus the location of the
             // variable within the struct
             pCurVarValue = pValue + curVar->memberVar->data_member_location;
+            pCurVarValueGuest = 
+	      pValueGuest + curVar->memberVar->data_member_location;
 
             // Override for D_DOUBLE types: For some reason, the
             // DWARF2 info.  botches the locations of double variables
@@ -557,6 +591,7 @@ void visitClassMemberVariables(TypeEntry* class,
                 ((i->next->var->memberVar->data_member_location -
                   curVar->memberVar->data_member_location) == 4)) {
               pCurVarValue -= 4;
+              pCurVarValueGuest -= 4;
             }
           }
         }
@@ -595,6 +630,7 @@ void visitClassMemberVariables(TypeEntry* class,
           visitSequence(curVar,
                         0,
                         pCurVarValueArray,
+                        pCurVarValueArrayGuest,
                         numElts,
                         performAction,
                         (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
@@ -608,6 +644,7 @@ void visitClassMemberVariables(TypeEntry* class,
           visitSingleVar(curVar,
                          0,
                          pCurVarValue,
+                         pCurVarValueGuest,
                          0,
                          0,
                          performAction,
@@ -641,6 +678,7 @@ void visitClassMemberVariables(TypeEntry* class,
          n != NULL;
          n = n->next) {
       Addr* superclassOffsetPtrValues = 0;
+      Addr* superclassOffsetPtrValuesGuest = 0;
 
       char* top = 0;
       char numEltsPushedOnStack = 0;
@@ -658,6 +696,8 @@ void visitClassMemberVariables(TypeEntry* class,
           (curSuper->member_var_offset > 0)) {
         UInt ind;
         superclassOffsetPtrValues = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+        superclassOffsetPtrValuesGuest =
+	  (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
         // Iterate though pValueArray and fill up superclassOffsetPtrValues
         // with pointer values offset by curSuper->member_var_offset:
@@ -665,6 +705,8 @@ void visitClassMemberVariables(TypeEntry* class,
           if (pValueArray[ind]) {
             superclassOffsetPtrValues[ind] =
 	      pValueArray[ind] + curSuper->member_var_offset;
+            superclassOffsetPtrValuesGuest[ind] =
+	      pValueArrayGuest[ind] + curSuper->member_var_offset;
           }
         }
       }
@@ -692,12 +734,17 @@ void visitClassMemberVariables(TypeEntry* class,
                                 // inheritance:
                                 (isSequence ?
                                  0 : pValue + curSuper->member_var_offset),
+                                (isSequence ?
+                                 0 : pValueGuest+curSuper->member_var_offset),
                                 isSequence,
                                 // Use the offset one if available,
                                 // otherwise use the regular one if
                                 // member_var_offset is 0:
                                 (superclassOffsetPtrValues ?
                                  superclassOffsetPtrValues : pValueArray),
+                                (superclassOffsetPtrValuesGuest ?
+                                 superclassOffsetPtrValuesGuest 
+				 : pValueArrayGuest),
                                 numElts,
                                 performAction,
                                 varOrigin,
@@ -714,6 +761,7 @@ void visitClassMemberVariables(TypeEntry* class,
 
       if (superclassOffsetPtrValues) {
         VG_(free)(superclassOffsetPtrValues);
+        VG_(free)(superclassOffsetPtrValuesGuest);
       }
     }
   }
@@ -733,6 +781,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         FunctionEntry* funcPtr, // 0 for unspecified function
                         Bool isEnter,           // 1 for function entrance, 0 for exit
                         Addr stackBaseAddr,     // should only be used for FUNCTION_FORMAL_PARAM
+                        Addr stackBaseAddrGuest,// should only be used for FUNCTION_FORMAL_PARAM
                         // This function performs an action for each
                         // variable visited:
 			TraversalAction *performAction) {
@@ -778,6 +827,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
   while (hasNextVar(varIt)) {
     VariableEntry* var = nextVar(varIt);
     Addr basePtrValue = 0;
+    Addr basePtrValueGuest = 0;
 
     if (!var->name) {
       VG_(printf)( "  Warning! Weird null variable name!\n");
@@ -789,10 +839,11 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	 stackBaseAddr is the fake %ebp, pointing in the middle of
 	 the virtualStack frame. */
       basePtrValue = stackBaseAddr + var->byteOffset;
+      basePtrValueGuest = stackBaseAddrGuest + var->byteOffset;
     }
     else if (varOrigin == GLOBAL_VAR) {
       tl_assert(IS_GLOBAL_VAR(var));
-      basePtrValue = var->globalVar->globalLocation;
+      basePtrValue = basePtrValueGuest = var->globalVar->globalLocation;
 
       // if "--ignore-static-vars" option was selected, do not visit
       // file-static global variables:
@@ -823,6 +874,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
     visitVariable(var,
 		  basePtrValue,
+		  basePtrValueGuest,
 		  0,
 		  0,
 		  performAction,
@@ -883,6 +935,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   (Addr)e->xAX,
+		  0, /* register, no guest location*/
                   // No longer need to overrideIsInitialized
                   // because we now keep shadow V-bits for e->xAX
                   // and friends
@@ -902,6 +955,7 @@ void visitReturnValue(FunctionExecutionState* e,
     // even if its true type may be a float
     visitVariable(cur_node->var,
                   (Addr)&(e->FPU),
+		  0, /* register, no guest location */
                   0,
                   0,
                   performAction,
@@ -928,6 +982,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   (Addr)&uLong,
+		  0, /* registers, no guest location */
                   0,
                   0,
                   performAction,
@@ -950,6 +1005,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   (Addr)&signedLong,
+		  0, /* registers, no guest location */
                   0,
                   0,
                   performAction,
@@ -965,6 +1021,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   (Addr)&(e->xAX),
+		  0, /* register, no guest location */
                   0,
                   0,
                   performAction,
@@ -1013,6 +1070,7 @@ void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
                    Addr pValue,
+                   Addr pValueGuest,
                    // We only use overrideIsInit when we pass in
                    // things (e.g. return values) that cannot be
                    // checked by the Memcheck A and V bits. Never have
@@ -1055,8 +1113,8 @@ void visitVariable(VariableEntry* var,
     }
 
     // Use a small hashtable to save time and space:
-    VisitedStructsTable = genallocateSMALLhashtable(0,
-                                                    (int (*)(void *,void *)) &equivalentIDs);
+    VisitedStructsTable =
+      genallocateSMALLhashtable(0, (int (*)(void *,void *)) &equivalentIDs);
   }
 
   // Also initialize trace_vars_tree based on varOrigin and
@@ -1073,6 +1131,7 @@ void visitVariable(VariableEntry* var,
   visitSingleVar(var,
                  0,
                  pValue,
+		 pValueGuest,
                  overrideIsInit,
                  0,
                  performAction,
@@ -1094,6 +1153,7 @@ void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
                     // Pointer to the variable's current value
                     Addr pValue,
+                    Addr pValueGuest,
                     // We only use overrideIsInit when we pass in
                     // things (e.g. return values) that cannot be
                     // checked by the Memcheck A and V bits. Never have
@@ -1210,7 +1270,7 @@ void visitSingleVar(VariableEntry* var,
         // check whether 1st byte is initialized
         pValue &&
         (overrideIsInit ? 1 :
-         addressIsInitialized((Addr)pValue, sizeof(char)))) {
+         addressIsInitialized(pValue, sizeof(char)))) {
       var->pointerHasEverBeenObserved = 1;
     }
 
@@ -1224,8 +1284,10 @@ void visitSingleVar(VariableEntry* var,
                                disambigOverride,
                                0,
                                pValue,
+			       pValueGuest,
                                0,
                                0,
+			       0,
                                varFuncInfo,
                                isEnter);
 
@@ -1310,6 +1372,7 @@ void visitSingleVar(VariableEntry* var,
       visitSingleVar(var,
                      numDereferences + 1,
                      pNewValue,
+		     pNewValue,
                      overrideIsInit,
                      needToDerefCppRef,
                      performAction,
@@ -1335,6 +1398,7 @@ void visitSingleVar(VariableEntry* var,
     // appropriately and call visitSequence()
     else {
       Addr* pValueArray = 0;
+      Addr* pValueArrayGuest = 0;
       UInt numElts = 0;
       UInt bytesBetweenElts = getBytesBetweenElts(var);
       UInt i;
@@ -1360,6 +1424,7 @@ void visitSingleVar(VariableEntry* var,
           }
 
           pValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+          pValueArrayGuest = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
           //          VG_(printf)("Static array - dims: %u, numElts: %u\n",
           //                      var->numDimensions, numElts);
@@ -1368,6 +1433,7 @@ void visitSingleVar(VariableEntry* var,
           // static array starting at pValue
           for (i = 0; i < numElts; i++) {
             pValueArray[i] = pValue + (i * bytesBetweenElts);
+            pValueArrayGuest[i] = pValueGuest + (i * bytesBetweenElts);
           }
         }
         // Dynamic array:
@@ -1391,10 +1457,12 @@ void visitSingleVar(VariableEntry* var,
             // Notice the +1 to convert from upper bound to numElts
             numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
             pValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+            pValueArrayGuest = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {
               pValueArray[i] = pNewStartValue + (i * bytesBetweenElts);
+              pValueArrayGuest[i] = pNewStartValue + (i * bytesBetweenElts);
             }
           }
         }
@@ -1411,6 +1479,7 @@ void visitSingleVar(VariableEntry* var,
       visitSequence(var,
                     numDereferences + 1,
                     pValueArray,
+		    pValueArrayGuest,
                     numElts,
                     performAction,
                     (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
@@ -1432,6 +1501,8 @@ void visitSingleVar(VariableEntry* var,
       if (pValueArray) {
         VG_(free)(pValueArray);
         pValueArray = 0;
+        VG_(free)(pValueArrayGuest);
+        pValueArrayGuest = 0;
       }
     }
   }
@@ -1443,7 +1514,9 @@ void visitSingleVar(VariableEntry* var,
 
     visitClassMemberVariables(var->varType,
                               pValue,
+                              pValueGuest,
                               0,
+			      0,
                               0,
                               0,
                               performAction,
@@ -1471,6 +1544,7 @@ void visitSequence(VariableEntry* var,
                    UInt numDereferences,
                    // Array of pointers to the current variable's values
                    Addr* pValueArray,
+                   Addr* pValueArrayGuest,
                    UInt numElts, // Size of pValueArray
                    // This function performs an action for each variable visited:
 		   TraversalAction *performAction,
@@ -1593,7 +1667,9 @@ void visitSequence(VariableEntry* var,
                                disambigOverride,
                                1, // YES isSequence
                                0,
+			       0,
                                pValueArray,
+                               pValueArrayGuest,
                                numElts,
                                varFuncInfo,
                                isEnter);
@@ -1644,6 +1720,7 @@ void visitSequence(VariableEntry* var,
         char derivedIsAllocated = 0;
         char derivedIsInitialized = 0;
         Addr* pValueArrayEntry = &pValueArray[i];
+	Addr* pValueArrayEntryGuest = &pValueArrayGuest[i];
 
         // If this entry is already 0, then skip it
         if (0 == *pValueArrayEntry) {
@@ -1656,16 +1733,17 @@ void visitSequence(VariableEntry* var,
           if (derivedIsInitialized) {
             // Make a single dereference and override pValueArray
             // entry with the dereferenced value:
-            *pValueArrayEntry = *((Addr*)(*pValueArrayEntry));
+            *pValueArrayEntryGuest = *pValueArrayEntry = 
+	      *((Addr*)(*pValueArrayEntry));
           }
           else {
             // TODO: We need to somehow mark this entry as 'uninit'
-            *pValueArrayEntry = 0;
+            *pValueArrayEntryGuest = *pValueArrayEntry = 0;
           }
         }
         else {
           // TODO: We need to somehow mark this entry as 'unallocated'
-          *pValueArrayEntry = 0;
+          *pValueArrayEntryGuest = *pValueArrayEntry = 0;
         }
       }
     }
@@ -1682,6 +1760,7 @@ void visitSequence(VariableEntry* var,
     visitSequence(var,
                   numDereferences + 1,
                   pValueArray,
+                  pValueArrayGuest,
                   numElts,
                   performAction,
                   (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
@@ -1712,8 +1791,10 @@ void visitSequence(VariableEntry* var,
 
     visitClassMemberVariables(var->varType,
                               0,
+			      0,
                               1,
                               pValueArray,
+                              pValueArrayGuest,
                               numElts,
                               performAction,
                               varOrigin,

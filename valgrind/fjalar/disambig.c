@@ -95,7 +95,9 @@ printDisambigAction(VariableEntry* var,
 		    DisambigOverride disambigOverride,
 		    Bool isSequence,
 		    Addr pValue,
+		    Addr pValueGuest,
 		    Addr* pValueArray,
+		    Addr* pValueArrayGuest,
 		    UInt numElts,
 		    FunctionEntry* varFuncInfo,
 		    Bool isEnter) {
@@ -103,7 +105,7 @@ printDisambigAction(VariableEntry* var,
   (void)varOrigin; (void)numDereferences; (void)layersBeforeBase;
   (void)overrideIsInit; (void)disambigOverride; (void)isSequence;
   (void)pValue; (void)pValueArray; (void)numElts; (void)varFuncInfo;
-  (void)isEnter;
+  (void)isEnter; (void)pValueGuest; (void)pValueArrayGuest;
 
 
   // If this is not a variable that's worthy of being outputted to the
@@ -196,6 +198,7 @@ void generateDisambigFile() {
                      0,
                      0,
                      0,
+		     0,
                      &printDisambigAction);
 
   fputs("\n", disambig_fp);
@@ -226,12 +229,14 @@ void generateDisambigFile() {
                          cur_entry,
                          0,
                          0,
+			 0,
                          &printDisambigAction);
 
       visitVariableGroup(FUNCTION_RETURN_VAR,
                          cur_entry,
                          0,
                          0,
+			 0,
                          &printDisambigAction);
 
       fputs("\n", disambig_fp);

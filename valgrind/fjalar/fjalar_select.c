@@ -266,14 +266,17 @@ printVarNameAction(VariableEntry* var,
 		   DisambigOverride disambigOverride,
 		   Bool isSequence,
 		   Addr pValue,
+		   Addr pValueGuest,
 		   Addr* pValueArray,
+		   Addr* pValueArrayGuest,
 		   UInt numElts,
 		   FunctionEntry* varFuncInfo,
 		   Bool isEnter) {
+  /* silence unused variable warnings */
   (void)var; (void)varOrigin; (void)numDereferences;
   (void)layersBeforeBase; (void)overrideIsInit; (void)disambigOverride;
   (void)isSequence; (void)pValue; (void)pValueArray; (void)numElts;
-  (void)varFuncInfo; (void)isEnter; /* silence unused variable warnings */
+  (void)varFuncInfo; (void)isEnter; (void)pValueGuest; (void)pValueArrayGuest;
 
   fprintf(g_open_fp, "%s\n", varName);
   return DISREGARD_PTR_DEREFS;
@@ -346,6 +349,7 @@ void outputVariableNamesToFile() {
                      0,
                      0,
                      0,
+		     0,
                      &printVarNameAction);
 
   fputs("\n", var_dump_fp);
@@ -375,12 +379,14 @@ void outputVariableNamesToFile() {
                          cur_entry,
                          0,
                          0,
+			 0,
                          &printVarNameAction);
 
       visitVariableGroup(FUNCTION_RETURN_VAR,
                          cur_entry,
                          0,
                          0,
+			 0,
                          &printVarNameAction);
 
       fputs("\n", var_dump_fp);
