@@ -232,7 +232,7 @@ static AuxMapEnt* auxmap      = &hacky_auxmaps[0];
 */
 static AuxMapEnt* maybe_find_in_auxmap ( Addr a )
 {
-   UWord i;
+   Word i;
    tl_assert(a > MAX_PRIMARY_ADDRESS);
 
    a &= ~(Addr)0xFFFF;
@@ -1407,6 +1407,7 @@ void mc_new_mem_startup( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
    /* Ignore the permissions, just make it readable.  Seems to work... */
    DEBUG("mc_new_mem_startup(%p, %llu, rr=%u, ww=%u, xx=%u)\n",
          a,(ULong)len,rr,ww,xx);
+   (void)rr; (void)ww; (void)xx;
    mc_make_readable(a, len);
 }
 
@@ -1423,12 +1424,14 @@ void mc_new_mem_heap ( Addr a, SizeT len, Bool is_inited )
 static
 void mc_new_mem_mmap ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx )
 {
+   (void)rr; (void)ww; (void)xx;
    mc_make_readable(a, len);
 }
 
 static
 void mc_post_mem_write(CorePart part, ThreadId tid, Addr a, SizeT len)
 {
+  (void)part; (void)tid;
    mc_make_readable(a, len);
 }
 
@@ -1447,6 +1450,7 @@ static void mc_post_reg_write ( CorePart part, ThreadId tid,
 {
 #  define MAX_REG_WRITE_SIZE 1392
    UChar area[MAX_REG_WRITE_SIZE];
+   (void)part;
    tl_assert(size <= MAX_REG_WRITE_SIZE);
    VG_(memset)(area, VGM_BYTE_VALID, size);
    VG_(set_shadow_regs_area)( tid, offset, size, area );
@@ -1458,6 +1462,7 @@ void mc_post_reg_write_clientcall ( ThreadId tid,
                                     OffT offset, SizeT size,
                                     Addr f)
 {
+   (void)f;
    mc_post_reg_write(/*dummy*/0, tid, offset, size);
 }
 
@@ -1468,11 +1473,12 @@ void mc_post_reg_write_clientcall ( ThreadId tid,
 static void mc_pre_reg_read ( CorePart part, ThreadId tid, Char* s,
                               OffT offset, SizeT size)
 {
-   Int   i;
+   UInt   i;
    Bool  bad;
 
    UChar area[16];
-   tl_assert(size <= 16);
+   tl_assert(size <= 16U);
+   (void)part;
 
    VG_(get_shadow_regs_area)( tid, offset, size, area );
 
@@ -1589,6 +1595,7 @@ static void mc_record_user_error ( ThreadId tid, Addr a, Bool isWrite,
 {
    MAC_Error err_extra;
 
+   (void)isWrite;
    tl_assert(VG_INVALID_THREADID != tid);
    MAC_(clear_MAC_Error)( &err_extra );
    err_extra.addrinfo.akind = Undescribed;
@@ -2227,7 +2234,7 @@ static void mc_detect_memory_leaks ( ThreadId tid, LeakCheckMode mode )
 
 static void init_shadow_memory ( void )
 {
-   Int     i;
+   UInt    i;
    SecMap* sm;
 
    /* Build the 3 distinguished secondaries */
@@ -2282,7 +2289,8 @@ static Bool mc_cheap_sanity_check ( void )
 
 static Bool mc_expensive_sanity_check ( void )
 {
-   Int     i, n_secmaps_found;
+   UInt    i;
+   Int     n_secmaps_found;
    SecMap* sm;
    Bool    bad = False;
 
@@ -2347,7 +2355,7 @@ static Bool mc_expensive_sanity_check ( void )
      }
    }
 
-   for (i = 0; i < auxmap_used; i++) {
+   for (i = 0; i < (UInt)auxmap_used; i++) {
       if (auxmap[i].sm == NULL) {
          bad = True;
       } else {
@@ -2368,7 +2376,7 @@ static Bool mc_expensive_sanity_check ( void )
    /* check that auxmap only covers address space that the primary
       doesn't */
 
-   for (i = 0; i < auxmap_used; i++)
+   for (i = 0; i < (UInt)auxmap_used; i++)
       if (auxmap[i].base <= MAX_PRIMARY_ADDRESS)
          bad = True;
 
@@ -2484,6 +2492,7 @@ Int alloc_client_block ( void )
 }
 
 
+#ifdef UNDEFINED_FOO
 static void show_client_block_stats ( void )
 {
    VG_(message)(Vg_DebugMsg,
@@ -2491,6 +2500,7 @@ static void show_client_block_stats ( void )
       cgb_allocs, cgb_discards, cgb_used_MAX, cgb_search
    );
 }
+#endif
 
 static Bool client_perm_maybe_describe( Addr a, AddrInfo* ai )
 {
@@ -2615,7 +2625,7 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
              (cgbs[arg[2]].start == 0 && cgbs[arg[2]].size == 0)) {
             *ret = 1;
          } else {
-            tl_assert(arg[2] >= 0 && arg[2] < cgb_used);
+            tl_assert(arg[2] < cgb_used);
             cgbs[arg[2]].start = cgbs[arg[2]].size = 0;
             VG_(free)(cgbs[arg[2]].desc);
             cgb_discards++;
@@ -2671,13 +2681,13 @@ static void mc_post_clo_init ( void )
 
 static void mc_fini ( Int exitcode )
 {
+   // PG - pgbovine - disable Memcheck leak detection for faster
+   // shutdown:
+   (void)exitcode;
+#ifdef UNDEFINED_FOO
    Int     i, n_accessible_dist;
    SecMap* sm;
 
-   // PG - pgbovine - disable Memcheck leak detection for faster
-   // shutdown:
-
-#ifdef UNDEFINED_FOO
    MAC_(common_fini)( mc_detect_memory_leaks );
 
    if (VG_(clo_verbosity) > 1) {

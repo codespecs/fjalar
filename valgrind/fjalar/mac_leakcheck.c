@@ -756,7 +756,7 @@ void MAC_(do_detect_memory_leaks) (
       categorisation, which [if the users ever manage to understand it]
       is really useful for detecting lost cycles.
    */
-   { NSegment* seg;
+   { const NSegment* seg;
      Addr*     seg_starts;
      Int       n_seg_starts;
      seg_starts = get_seg_starts( &n_seg_starts );

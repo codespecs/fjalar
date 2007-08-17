@@ -173,6 +173,7 @@ Bool MAC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
    MAC_Error* e1_extra = VG_(get_error_extra)(e1);
    MAC_Error* e2_extra = VG_(get_error_extra)(e2);
 
+   (void)res;
    /* Guaranteed by calling function */
    tl_assert(VG_(get_error_kind)(e1) == VG_(get_error_kind)(e2));
 
@@ -283,7 +284,7 @@ void MAC_(pp_AddrInfo) ( Addr a, AddrInfo* ai )
          if (ai->rwoffset < 0) {
             delta    = (SizeT)(- ai->rwoffset);
             relative = "before";
-         } else if (ai->rwoffset >= ai->blksize) {
+         } else if ((UWord)ai->rwoffset >= ai->blksize) {
             delta    = ai->rwoffset - ai->blksize;
             relative = "after";
          } else {
@@ -597,10 +598,10 @@ void MAC_(record_freemismatch_error) ( ThreadId tid, Addr a, MAC_Chunk* mc )
 }
 
 void MAC_(record_overlap_error) ( ThreadId tid,
-                                  Char* function, OverlapExtra* ov_extra )
+                                  Char* func, OverlapExtra* ov_extra )
 {
    VG_(maybe_record_error)(
-      tid, OverlapErr, /*addr*/0, /*s*/function, ov_extra );
+      tid, OverlapErr, /*addr*/0, /*s*/func, ov_extra );
 }
 
 

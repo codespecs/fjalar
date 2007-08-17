@@ -206,6 +206,7 @@ returnArrayVariableWithAddr(VarList* varList,
 // Return a single global variable, not an array, which matches the supplied
 // address if any. When pointed to, such a variable can be treated as
 // a 1-element array of its type.
+/*
 static
 VariableEntry* returnGlobalSingletonWithAddress(Addr a) {
   VarNode* cur_node = 0;
@@ -226,7 +227,7 @@ VariableEntry* returnGlobalSingletonWithAddress(Addr a) {
     }
   FJALAR_DPRINTF(" EXIT FAILURE returnGlobalSingletonWithAddress\n");
   return 0;
-}
+} */
 
 
 // Takes a pointer to a variable of size typeSize starting at startAddr

@@ -36,23 +36,11 @@ extern FunctionTree* globalFunctionTree;
 static
 void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
-                    void* pValue,
+                    Addr pValue,
                     Bool overrideIsInit,
                     Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
                     // This function performs an action for each variable visited:
-                    TraversalResult (*performAction)(VariableEntry*,
-                                                     char*,
-                                                     VariableOrigin,
-                                                     UInt,
-                                                     UInt,
-                                                     Bool,
-                                                     DisambigOverride,
-                                                     Bool,
-                                                     void*,
-                                                     void**,
-                                                     UInt,
-                                                     FunctionEntry*,
-                                                     Bool),
+                    TraversalAction *performAction,
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -63,22 +51,10 @@ void visitSingleVar(VariableEntry* var,
 static
 void visitSequence(VariableEntry* var,
                    UInt numDereferences,
-                   void** pValueArray,
+                   Addr* pValueArray,
                    UInt numElts,
                    // This function performs an action for each variable visited:
-                   TraversalResult (*performAction)(VariableEntry*,
-                                                    char*,
-                                                    VariableOrigin,
-                                                    UInt,
-                                                    UInt,
-                                                    Bool,
-                                                    DisambigOverride,
-                                                    Bool,
-                                                    void*,
-                                                    void**,
-                                                    UInt,
-                                                    FunctionEntry*,
-                                                    Bool),
+		   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
@@ -217,19 +193,7 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 // printing out names and performing other non-value-dependent
 // operations.
 void visitClassMembersNoValues(TypeEntry* class,
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                Bool,
-                                                                DisambigOverride,
-                                                                Bool,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                Bool)) {
+			       TraversalAction *performAction) {
 
   if (VisitedStructsTable) {
     genfreehashtable(VisitedStructsTable);
@@ -261,26 +225,14 @@ void visitClassMembersNoValues(TypeEntry* class,
 // inside of the class's superclasses and visit variables in them as
 // well.  Pre: class->decType == {D_STRUCT_CLASS, D_UNION}
 void visitClassMemberVariables(TypeEntry* class,
-                               void* pValue,
+                               Addr pValue,
                                Bool isSequence,
                                // An array of pointers to values (only
                                // valid if isSequence non-null):
-                               void** pValueArray,
+                               Addr* pValueArray,
                                UInt numElts, // Size of pValueArray
                                // This function performs an action for each variable visited:
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                Bool,
-                                                                DisambigOverride,
-                                                                Bool,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                Bool),
+			       TraversalAction *performAction,
                                VariableOrigin varOrigin,
                                char* trace_vars_tree,
                                // The number of structs we have dereferenced for
@@ -335,11 +287,11 @@ void visitClassMemberVariables(TypeEntry* class,
       char* top = 0;
       char numEltsPushedOnStack = 0;
 
-      // Pointer to the value of the current member variable (only
+      // Address of the value of the current member variable (only
       // valid if !isSequence):
-      char* pCurVarValue = 0;
+      Addr pCurVarValue = 0;
       // Only used if isSequence:
-      void** pCurVarValueArray = 0;
+      Addr* pCurVarValueArray = 0;
 
       if (!curVar->name) {
 	VG_(printf)( "  Warning! Weird null member variable name!\n");
@@ -383,7 +335,7 @@ void visitClassMemberVariables(TypeEntry* class,
               UInt ind;
 
               // Create pCurVarValueArray to be the same size as pValueArray:
-              pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+              pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
               // Iterate though pValueArray and fill up
               // pCurVarValueArray with pointer values offset by the
@@ -395,7 +347,8 @@ void visitClassMemberVariables(TypeEntry* class,
                 // struct's starting address plus the location of the
                 // variable within the struct
                 if (pValueArray[ind]) {
-                  char* curVal = (char*)(pValueArray[ind]) + curVar->memberVar->data_member_location;
+                  Addr curVal =
+		    pValueArray[ind] + curVar->memberVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
                   // DWARF2 info.  botches the locations of double
@@ -439,7 +392,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // The starting address for the member variable is the
               // struct's starting address plus the location of the
               // variable within the struct
-              pCurVarValue = (char*)(pValue) + curVar->memberVar->data_member_location;
+              pCurVarValue = pValue + curVar->memberVar->data_member_location;
 
               // Very important! Add offset within the flattened array:
               pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
@@ -533,7 +486,7 @@ void visitClassMemberVariables(TypeEntry* class,
             UInt ind;
             // Create pCurVarValueArray to be the same size as
             // pValueArray:
-            pCurVarValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+            pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
             // Iterate though pValueArray and fill up
             // pCurVarValueArray with pointer values offset by the
@@ -546,7 +499,8 @@ void visitClassMemberVariables(TypeEntry* class,
               // Otherwise, we'd have mis-alignment issues.  (I tried
               // it in gdb and it seems to work, though.)
               if (pValueArray[ind]) {
-                char* curVal = (char*)(pValueArray[ind]) + curVar->memberVar->data_member_location;
+                Addr curVal = 
+		  pValueArray[ind] + curVar->memberVar->data_member_location;
 
                 // Override for D_DOUBLE types: For some reason, the
                 // DWARF2 info.  botches the locations of double
@@ -586,7 +540,7 @@ void visitClassMemberVariables(TypeEntry* class,
             // The starting address for the member variable is the
             // struct's starting address plus the location of the
             // variable within the struct
-            pCurVarValue = (char*)(pValue) + curVar->memberVar->data_member_location;
+            pCurVarValue = pValue + curVar->memberVar->data_member_location;
 
             // Override for D_DOUBLE types: For some reason, the
             // DWARF2 info.  botches the locations of double variables
@@ -686,7 +640,7 @@ void visitClassMemberVariables(TypeEntry* class,
     for (n = class->aggType->superclassList->first;
          n != NULL;
          n = n->next) {
-      void** superclassOffsetPtrValues = 0;
+      Addr* superclassOffsetPtrValues = 0;
 
       char* top = 0;
       char numEltsPushedOnStack = 0;
@@ -703,13 +657,14 @@ void visitClassMemberVariables(TypeEntry* class,
       if (isSequence &&
           (curSuper->member_var_offset > 0)) {
         UInt ind;
-        superclassOffsetPtrValues = (void**)VG_(malloc)(numElts * sizeof(void*));
+        superclassOffsetPtrValues = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
         // Iterate though pValueArray and fill up superclassOffsetPtrValues
         // with pointer values offset by curSuper->member_var_offset:
         for (ind = 0; ind < numElts; ind++) {
           if (pValueArray[ind]) {
-            superclassOffsetPtrValues[ind] = (char*)(pValueArray[ind]) + curSuper->member_var_offset;
+            superclassOffsetPtrValues[ind] =
+	      pValueArray[ind] + curSuper->member_var_offset;
           }
         }
       }
@@ -736,7 +691,7 @@ void visitClassMemberVariables(TypeEntry* class,
                                 // 0 except when you have multiple
                                 // inheritance:
                                 (isSequence ?
-                                 0 : (char*)(pValue) + curSuper->member_var_offset),
+                                 0 : pValue + curSuper->member_var_offset),
                                 isSequence,
                                 // Use the offset one if available,
                                 // otherwise use the regular one if
@@ -777,21 +732,10 @@ void visitClassMemberVariables(TypeEntry* class,
 void visitVariableGroup(VariableOrigin varOrigin,
                         FunctionEntry* funcPtr, // 0 for unspecified function
                         Bool isEnter,           // 1 for function entrance, 0 for exit
-                        char* stackBaseAddr,    // should only be used for FUNCTION_FORMAL_PARAM
-                        // This function performs an action for each variable visited:
-                        TraversalResult (*performAction)(VariableEntry*,
-                                                         char*,
-                                                         VariableOrigin,
-                                                         UInt,
-                                                         UInt,
-                                                         Bool,
-                                                         DisambigOverride,
-                                                         Bool,
-                                                         void*,
-                                                         void**,
-                                                         UInt,
-                                                         FunctionEntry*,
-                                                         Bool)) {
+                        Addr stackBaseAddr,     // should only be used for FUNCTION_FORMAL_PARAM
+                        // This function performs an action for each
+                        // variable visited:
+			TraversalAction *performAction) {
   VarList* varListPtr = 0;
   VarIterator* varIt = 0;
 
@@ -833,7 +777,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
   while (hasNextVar(varIt)) {
     VariableEntry* var = nextVar(varIt);
-    void* basePtrValue = 0;
+    Addr basePtrValue = 0;
 
     if (!var->name) {
       VG_(printf)( "  Warning! Weird null variable name!\n");
@@ -844,11 +788,11 @@ void visitVariableGroup(VariableOrigin varOrigin,
       /* Note that it's OK for byteOffset to be negative here, since
 	 stackBaseAddr is the fake %ebp, pointing in the middle of
 	 the virtualStack frame. */
-      basePtrValue = (void *)(stackBaseAddr + var->byteOffset);
+      basePtrValue = stackBaseAddr + var->byteOffset;
     }
     else if (varOrigin == GLOBAL_VAR) {
       tl_assert(IS_GLOBAL_VAR(var));
-      basePtrValue = (void*)(var->globalVar->globalLocation);
+      basePtrValue = var->globalVar->globalLocation;
 
       // if "--ignore-static-vars" option was selected, do not visit
       // file-static global variables:
@@ -901,19 +845,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 // registers.
 void visitReturnValue(FunctionExecutionState* e,
                       // This function performs an action for each variable visited:
-                      TraversalResult (*performAction)(VariableEntry*,
-                                                       char*,
-                                                       VariableOrigin,
-                                                       UInt,
-                                                       UInt,
-                                                       Bool,
-                                                       DisambigOverride,
-                                                       Bool,
-                                                       void*,
-                                                       void**,
-                                                       UInt,
-                                                       FunctionEntry*,
-                                                       Bool)) {
+		      TraversalAction *performAction) {
   VarNode* cur_node;
   FunctionEntry* funcPtr;
   tl_assert(e);
@@ -950,7 +882,7 @@ void visitReturnValue(FunctionExecutionState* e,
     // level of indirection needed
 
     visitVariable(cur_node->var,
-                  (void*)e->xAX,
+                  (Addr)e->xAX,
                   // No longer need to overrideIsInitialized
                   // because we now keep shadow V-bits for e->xAX
                   // and friends
@@ -969,7 +901,7 @@ void visitReturnValue(FunctionExecutionState* e,
     // SPECIAL CASE: The value in FPU must be interpreted as a double
     // even if its true type may be a float
     visitVariable(cur_node->var,
-                  &(e->FPU),
+                  (Addr)&(e->FPU),
                   0,
                   0,
                   performAction,
@@ -995,7 +927,7 @@ void visitReturnValue(FunctionExecutionState* e,
                                 sizeof(e->xDX));
 
     visitVariable(cur_node->var,
-                  &uLong,
+                  (Addr)&uLong,
                   0,
                   0,
                   performAction,
@@ -1017,7 +949,7 @@ void visitReturnValue(FunctionExecutionState* e,
                                 sizeof(e->xDX));
 
     visitVariable(cur_node->var,
-                  &signedLong,
+                  (Addr)&signedLong,
                   0,
                   0,
                   performAction,
@@ -1032,7 +964,7 @@ void visitReturnValue(FunctionExecutionState* e,
                    cur_node, &(e->xAX));
 
     visitVariable(cur_node->var,
-                  &(e->xAX),
+                  (Addr)&(e->xAX),
                   0,
                   0,
                   performAction,
@@ -1080,7 +1012,7 @@ static char interestedInVar(char* fullFjalarName, char* trace_vars_tree) {
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
-                   void* pValue,
+                   Addr pValue,
                    // We only use overrideIsInit when we pass in
                    // things (e.g. return values) that cannot be
                    // checked by the Memcheck A and V bits. Never have
@@ -1095,20 +1027,9 @@ void visitVariable(VariableEntry* var,
                    // to get here (this is useful for the 'this'
                    // parameter of member functions):
                    UInt numStructsDereferenced,
-                   // This function performs an action for each variable visited:
-                   TraversalResult (*performAction)(VariableEntry*,
-                                                    char*,
-                                                    VariableOrigin,
-                                                    UInt,
-                                                    UInt,
-                                                    Bool,
-                                                    DisambigOverride,
-                                                    Bool,
-                                                    void*,
-                                                    void**,
-                                                    UInt,
-                                                    FunctionEntry*,
-                                                    Bool),
+                   // This function performs an action for each
+                   // variable visited:
+		   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter) {
@@ -1172,7 +1093,7 @@ static
 void visitSingleVar(VariableEntry* var,
                     UInt numDereferences,
                     // Pointer to the variable's current value
-                    void* pValue,
+                    Addr pValue,
                     // We only use overrideIsInit when we pass in
                     // things (e.g. return values) that cannot be
                     // checked by the Memcheck A and V bits. Never have
@@ -1181,20 +1102,9 @@ void visitSingleVar(VariableEntry* var,
                     // different from the original's
                     Bool overrideIsInit,
                     Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
-                    // This function performs an action for each variable visited:
-                    TraversalResult (*performAction)(VariableEntry*,
-                                                     char*,
-                                                     VariableOrigin,
-                                                     UInt,
-                                                     UInt,
-                                                     Bool,
-                                                     DisambigOverride,
-                                                     Bool,
-                                                     void*,
-                                                     void**,
-                                                     UInt,
-                                                     FunctionEntry*,
-                                                     Bool),
+                    // This function performs an action for each
+                    // variable visited:
+		    TraversalAction *performAction,
                     VariableOrigin varOrigin,
                     char* trace_vars_tree,
                     DisambigOverride disambigOverride,
@@ -1357,7 +1267,7 @@ void visitSingleVar(VariableEntry* var,
       char derivedIsAllocated = 0;
       char derivedIsInitialized = 0;
 
-      void* pNewValue = 0;
+      Addr pNewValue = 0;
       // The default is DERIVED_VAR.  Tweak later if necessary.
       VariableOrigin newVarOrigin = DERIVED_VAR;
 
@@ -1373,7 +1283,7 @@ void visitSingleVar(VariableEntry* var,
           // Make a single dereference unless the variable is a static
           // array, in which case we shouldn't make a dereference at
           // all:
-          pNewValue = IS_STATIC_ARRAY_VAR(var) ? pValue : *((void **)pValue);
+          pNewValue = IS_STATIC_ARRAY_VAR(var) ? pValue : *((Addr*)pValue);
         }
       }
 
@@ -1424,7 +1334,7 @@ void visitSingleVar(VariableEntry* var,
     // array).  We need to initialize pValueArray and numElts
     // appropriately and call visitSequence()
     else {
-      void** pValueArray = 0;
+      Addr* pValueArray = 0;
       UInt numElts = 0;
       UInt bytesBetweenElts = getBytesBetweenElts(var);
       UInt i;
@@ -1449,7 +1359,7 @@ void visitSingleVar(VariableEntry* var,
             numElts *= (1 + var->staticArr->upperBounds[dim]);
           }
 
-          pValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+          pValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
           //          VG_(printf)("Static array - dims: %u, numElts: %u\n",
           //                      var->numDimensions, numElts);
@@ -1457,14 +1367,14 @@ void visitSingleVar(VariableEntry* var,
           // Build up pValueArray with pointers to the elements of the
           // static array starting at pValue
           for (i = 0; i < numElts; i++) {
-            pValueArray[i] = (char*)(pValue) + (i * bytesBetweenElts);
+            pValueArray[i] = pValue + (i * bytesBetweenElts);
           }
         }
         // Dynamic array:
         else {
           char derivedIsAllocated = 0;
           char derivedIsInitialized = 0;
-          void* pNewStartValue = 0;
+          Addr pNewStartValue = 0;
 
           derivedIsAllocated = (overrideIsInit ? 1 :
                                 addressIsAllocated((Addr)pValue, sizeof(void*)));
@@ -1472,7 +1382,7 @@ void visitSingleVar(VariableEntry* var,
             derivedIsInitialized = (overrideIsInit ? 1 :
                                     addressIsInitialized((Addr)pValue, sizeof(void*)));
             // Make a single dereference to get to the start of the array
-            pNewStartValue = *((void **)pValue);
+            pNewStartValue = *((Addr*)pValue);
           }
 
           // We should only initialize pValueArray and numElts if the
@@ -1480,11 +1390,11 @@ void visitSingleVar(VariableEntry* var,
           if (pNewStartValue) {
             // Notice the +1 to convert from upper bound to numElts
             numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
-            pValueArray = (void**)VG_(malloc)(numElts * sizeof(void*));
+            pValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {
-              pValueArray[i] = (char*)(pNewStartValue) + (i * bytesBetweenElts);
+              pValueArray[i] = pNewStartValue + (i * bytesBetweenElts);
             }
           }
         }
@@ -1560,22 +1470,10 @@ static
 void visitSequence(VariableEntry* var,
                    UInt numDereferences,
                    // Array of pointers to the current variable's values
-                   void** pValueArray,
+                   Addr* pValueArray,
                    UInt numElts, // Size of pValueArray
                    // This function performs an action for each variable visited:
-                   TraversalResult (*performAction)(VariableEntry*,
-                                                    char*,
-                                                    VariableOrigin,
-                                                    UInt,
-                                                    UInt,
-                                                    Bool,
-                                                    DisambigOverride,
-                                                    Bool,
-                                                    void*,
-                                                    void**,
-                                                    UInt,
-                                                    FunctionEntry*,
-                                                    Bool),
+		   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    char* trace_vars_tree,
                    DisambigOverride disambigOverride,
@@ -1663,8 +1561,8 @@ void visitSequence(VariableEntry* var,
         Bool someEltInit = False;
         // Make sure there is at least 1 initialized elt in pValueArray
         for (i = 0; i < numElts; i++) {
-          void* pCurValue = pValueArray[i];
-          char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char));
+          Addr pCurValue = pValueArray[i];
+          char eltInit = addressIsInitialized(pCurValue, sizeof(char));
           if (eltInit) {
             someEltInit = True;
             break;
@@ -1745,7 +1643,7 @@ void visitSequence(VariableEntry* var,
       for (i = 0; i < numElts; i++) {
         char derivedIsAllocated = 0;
         char derivedIsInitialized = 0;
-        void** pValueArrayEntry = &pValueArray[i];
+        Addr* pValueArrayEntry = &pValueArray[i];
 
         // If this entry is already 0, then skip it
         if (0 == *pValueArrayEntry) {
@@ -1758,7 +1656,7 @@ void visitSequence(VariableEntry* var,
           if (derivedIsInitialized) {
             // Make a single dereference and override pValueArray
             // entry with the dereferenced value:
-            *pValueArrayEntry = *((void **)(*pValueArrayEntry));
+            *pValueArrayEntry = *((Addr*)(*pValueArrayEntry));
           }
           else {
             // TODO: We need to somehow mark this entry as 'uninit'

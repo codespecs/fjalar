@@ -103,10 +103,12 @@ __inline__ FunctionExecutionState* fnStackTop(void) {
   return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
 }
 
+typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
+
 static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 				       struct genhashtable *table,
 				       char *func_name,
-				       void func(FunctionEntry*)) {
+				       entry_func func) {
   IRDirty  *di;
   FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
 
@@ -648,8 +650,10 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else VG_BNUM_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
 		   -1, 0x7fffffff)
 
-  else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  // [0 to 100]
-  else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100]
+    /* else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  // [0 to 100]
+       else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100] */
+  else VG_NUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH)
+  else VG_NUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH)
 
   else VG_STR_CLO(arg, "--dump-ppt-file",  fjalar_dump_prog_pt_names_filename)
   else VG_STR_CLO(arg, "--dump-var-file",  fjalar_dump_var_names_filename)

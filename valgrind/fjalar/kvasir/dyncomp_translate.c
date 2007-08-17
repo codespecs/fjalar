@@ -1227,9 +1227,6 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 {
-   IRDirty* di;
-   IRTemp   datatag;
-
    //   ppIRExpr(e);
    //   VG_(printf)("\n");
 
@@ -1281,6 +1278,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 					     (static_fresh_count++)))));
 
             /* Old, slower dirty call variant: 
+	    IRDirty* di;
+	    IRTemp   datatag;
             datatag = newIRTemp(dce->bb->tyenv, Ity_Word);
             di = unsafeIRDirty_1_N( datatag,
                                     0*regparms*,

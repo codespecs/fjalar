@@ -107,13 +107,15 @@ __inline__ UInt get_tag ( Addr a )
 __inline__ void set_tag ( Addr a, UInt tag )
 {
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
+    UInt* new_tag_array;
+
     if (PM_IDX(a) >= PRIMARY_SIZE) {
       VG_(printf)("Address too large for DynComp: 0x%llx.\n", a);
       VG_(printf)("Terminating program.\n");
       VG_(exit)(1);
     }
 
-    UInt* new_tag_array =
+    new_tag_array =
       (UInt*)VG_(am_shadow_alloc)(SECONDARY_SIZE * sizeof(*new_tag_array));
     VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
     primary_tag_map[PM_IDX(a)] = new_tag_array;

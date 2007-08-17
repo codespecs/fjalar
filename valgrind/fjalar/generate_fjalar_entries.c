@@ -326,10 +326,11 @@ char* getRawCppFunctionName(char* cppFnName) {
   // to the letter right after it (or returning the original pointer
   // if no '::' found.
   int i, len;
+  char* rawNameStart;
   tl_assert(cppFnName);
   len = VG_(strlen)(cppFnName);
 
-  char* rawNameStart = cppFnName;
+  rawNameStart = cppFnName;
 
   for (i = 1; i < len; i++) {
     char prev = cppFnName[i-1];
@@ -993,11 +994,11 @@ static void initializeGlobalVarsList(void)
                                                 // We deal with them in extractStructUnionType()
           (!variable_ptr->specification_ID) &&
           (!variable_ptr->is_declaration_or_artificial)) {
+	char* existingName;
 
 	FJALAR_DPRINTF("dwarf_entry_array[%d] is a global named %s at addr: %p\n",
 		       i, variable_ptr->name, variable_ptr->globalVarAddr);
 
-	char* existingName;
 	if (!variable_ptr->name) {
 	  VG_(printf)( "Skipping weird unnamed global variable ID#%x - addr: %x\n",
 		       cur_entry->ID, variable_ptr->globalVarAddr);
@@ -1922,15 +1923,15 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
 {
   VarNode* cur_node;
   int offset = 8;
+  VarNode* firstNode = f->returnValue.first;
 
   FJALAR_DPRINTF("ENTER verifyStackParamWordAlignment(%s): %p\n",
-		 f->fjalar_name, f->returnValue.first);
+		 f->fjalar_name, firstNode);
 
   // Start with default offset of 8 from EBP (*EBP = old EBP, *(EBP+4) = return addr)
   // unless the function returns a struct by value - then we start
   // with an offset of 12 since *(EBP+8) = pointer to the place to put the struct)
 
-  VarNode* firstNode = f->returnValue.first;
   if (firstNode) {
     VariableEntry* firstReturnVar = firstNode->var;
     // See if the function seturn a struct by value:

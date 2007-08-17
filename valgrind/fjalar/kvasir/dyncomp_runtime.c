@@ -74,10 +74,10 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
                                               DisambigOverride disambigOverride,
                                               Bool isSequence,
                                               // pValue only valid if isSequence is false
-                                              void* pValue,
+                                              Addr pValue,
                                               // pValueArray and numElts only valid if
                                               // isSequence is true
-                                              void** pValueArray,
+                                              Addr* pValueArray,
                                               UInt numElts,
                                               FunctionEntry* varFuncInfo,
                                               Bool isEnter);
@@ -583,10 +583,10 @@ static TraversalResult dyncompExtraPropAction(VariableEntry* var,
                                               DisambigOverride disambigOverride,
                                               Bool isSequence,
                                               // pValue only valid if isSequence is false
-                                              void* pValue,
+                                              Addr pValue,
                                               // pValueArray and numElts only valid if
                                               // isSequence is true
-                                              void** pValueArray,
+                                              Addr* pValueArray,
                                               UInt numElts,
                                               FunctionEntry* varFuncInfo,
                                               Bool isEnter) {

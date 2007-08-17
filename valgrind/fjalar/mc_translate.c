@@ -104,7 +104,7 @@ static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
    so far exists, allocate one.  */
 static IRTemp findShadowTmp ( MCEnv* mce, IRTemp orig )
 {
-   tl_assert(orig < mce->n_originalTmps);
+  tl_assert(orig < (UInt)mce->n_originalTmps);
    if (mce->tmpMap[orig] == IRTemp_INVALID) {
       mce->tmpMap[orig]
          = newIRTemp(mce->bb->tyenv,
@@ -138,7 +138,7 @@ static Bool isOriginalAtom ( MCEnv* mce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp < mce->n_originalTmps)
+   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp < (UInt)mce->n_originalTmps)
       return True;
    return False;
 }
@@ -149,7 +149,7 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp >= mce->n_originalTmps)
+   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp >= (UInt)mce->n_originalTmps)
       return True;
    return False;
 }
@@ -3172,6 +3172,8 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
    DCEnv   dce; // PG - pgbovine - dyncomp
    IRBB*   bb;
 
+   (void)closure; (void)vge; /* silence unused variable warnings */
+
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
       VG_(tool_panic)("host/guest word size mismatch");
@@ -3213,7 +3215,7 @@ IRBB* MC_(instrument) ( VgCallbackClosure* closure,
       dce.hWordTy        = hWordTy;
       dce.bogusLiterals  = False;
       dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
-      for (i = 0; i < dce.n_originalTmps; i++)
+      for (i = 0; i < (Int)dce.n_originalTmps; i++)
          dce.tmpMap[i] = IRTemp_INVALID;
    }
 

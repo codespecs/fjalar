@@ -256,19 +256,25 @@ FILE* g_open_fp = 0;
 
 // All this action does is print out the name of a variable to
 // g_open_fp:
-static TraversalResult printVarNameAction(VariableEntry* var,
-                                   char* varName,
-                                   VariableOrigin varOrigin,
-                                   UInt numDereferences,
-                                   UInt layersBeforeBase,
-                                   Bool overrideIsInit,
-                                   DisambigOverride disambigOverride,
-                                   Bool isSequence,
-                                   void* pValue,
-                                   void** pValueArray,
-                                   UInt numElts,
-                                   FunctionEntry* varFuncInfo,
-                                   Bool isEnter) {
+static TraversalResult
+printVarNameAction(VariableEntry* var,
+		   char* varName,
+		   VariableOrigin varOrigin,
+		   UInt numDereferences,
+		   UInt layersBeforeBase,
+		   Bool overrideIsInit,
+		   DisambigOverride disambigOverride,
+		   Bool isSequence,
+		   Addr pValue,
+		   Addr* pValueArray,
+		   UInt numElts,
+		   FunctionEntry* varFuncInfo,
+		   Bool isEnter) {
+  (void)var; (void)varOrigin; (void)numDereferences;
+  (void)layersBeforeBase; (void)overrideIsInit; (void)disambigOverride;
+  (void)isSequence; (void)pValue; (void)pValueArray; (void)numElts;
+  (void)varFuncInfo; (void)isEnter; /* silence unused variable warnings */
+
   fprintf(g_open_fp, "%s\n", varName);
   return DISREGARD_PTR_DEREFS;
 }
