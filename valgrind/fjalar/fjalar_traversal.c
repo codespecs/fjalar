@@ -665,6 +665,8 @@ void visitClassMemberVariables(TypeEntry* class,
         if (pCurVarValueArray) {
           VG_(free)(pCurVarValueArray);
           pCurVarValueArray = 0;
+          VG_(free)(pCurVarValueArrayGuest);
+          pCurVarValueArrayGuest = 0;
         }
       }
     }
