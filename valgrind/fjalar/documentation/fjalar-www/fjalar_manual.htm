@@ -16,6 +16,8 @@ the construction of dynamic analysis tools for programs written in C
 and C++.  This document serves as a guide to building tools on top of
       the Fjalar framework.
 
+This version of the manual describes Fjalar version 1.3.
+
 <h2><a name="getting-started">Getting Started</a></h2>
 
 Here are the relevant entries in the directory structure after you
@@ -75,6 +77,10 @@ structure.  Fjalar and its tools are located in the
 <tt>valgrind-3/valgrind/fjalar</tt> sub-directory.  The significance
 of all of these files will be explained in this document.
 
+If your system is an x86-64 (AMD64 or Intel64) machine running in
+64-bit mode, substitute "amd64" for "x86" in this and all the
+following examples.
+    
 <h2><a name="programming">Creating Fjalar tools</a></h2>
 
 To create a new tool:
@@ -153,17 +159,13 @@ it interacts with Valgrind through functions defined in
 a group of header files sharing the common name <tt>pub_tool_*.h</tt>.
   Your tool can also access those functions.
 
-<li><b>DO NOT USE</b> libc functions (e.g., <tt>printf</tt>,
-<tt>malloc</tt>, <tt>strcpy</tt>) in your tool if there is an
-alternative Valgrind version available in <tt>pub_tool_*.h</tt> (Valgrind
-implements a large subset of the standard C library).  The Valgrind
-version of functions will usually be wrapped by a <tt>VG_( )</tt>
-macro.  For example, the Valgrind version of <tt>malloc</tt> is named
-<tt>VG_(malloc)</tt>.  We have had some bad experiences with
-Valgrind's memory allocators conflicting with libc's allocators, so
-please use the Valgrind functions at all times if possible to minimize
-the chance of weird memory corruption errors.  <b>When in doubt, just
-surround your libc function name with <tt>VG_( )</tt></b>.
+<li>The system C library is not available in Valgrind tools. However,
+  some of your favorite functions from it are reimplemented by
+  Valgrind, generally with names wrapped by a <tt>VG_( )</tt> macro:
+  e.g., the Valgrind version of <tt>malloc</tt> is named
+  <tt>VG_(malloc)</tt>. Fjalar also provides some other useful libc
+  functions that Valgrind doesn't: see the header <tt>my_libc.h</tt>
+  for prototypes.</li>
 
 <li>Use the <tt>tl_assert()</tt> macro (defined in <tt>pub_tool_libcassert.h</tt>) to
 add assert statements in your code, which can be very helpful for
@@ -223,7 +225,7 @@ that point in execution (as well as array sizes, if relevant).
 	can edit some strings within the <tt>mc_pre_clo_init()</tt> function
 	in <tt>mc_main.c</tt>.
 
-      <li>I believe that the standard Valgrind terminal printing functions,
+      <li>The standard Valgrind terminal printing functions,
 	most notably <tt>VG_(printf)</tt>, output to standard error (file descriptor
 	2) by default, so you may find it useful to use <tt>2&gt;&amp;1</tt>
 	to re-direct to standard output.
@@ -270,6 +272,11 @@ order to debug it:
       <li>You should now be able to debug as usual.
 
 </ol>
+
+Alternatively, because the role of the loader is less important in
+modern versions of Valgrind, it is also possible to run the
+<tt>fjalar</tt> binary directly under <tt>gdb</tt>. See
+<tt>valgrind-3/valgrind/README_DEVELOPERS</tt> for instructions.
 
 <h2><a name="clo">Fjalar command-line options</a></h2>
 
