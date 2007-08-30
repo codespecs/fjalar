@@ -1,6 +1,7 @@
 // A really basic tool built upon Fjalar that prints out variable
 // names and array sizes at function entrances and exits
 // by Philip Guo, Dec. 2005
+// updated for Fjalar 1.3 interfaces: Stephen McCamant, Aug 2007
 
 // Only implements the functions required by fjalar_tool.h
 #include "../fjalar_tool.h"
@@ -38,17 +39,19 @@ TraversalResult basicAction(VariableEntry* var,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
                               UInt layersBeforeBase,
-                              char overrideIsInit,
+                              Bool overrideIsInit,
                               DisambigOverride disambigOverride,
                               char isSequence,
                               // pValue only valid if isSequence is false
-                              void* pValue,
+                              Addr pValue,
+                              Addr pValueGuest,
                               // pValueArray and numElts only valid if
                               // isSequence is true
-                              void** pValueArray,
+                              Addr* pValueArray,
+                              Addr* pValueArrayGuest,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
-                              char isEnter) {
+                              Bool isEnter) {
   if (isSequence) {
     VG_(printf)("     %s - %d elements\n", varName, numElts);
   }
@@ -72,7 +75,7 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
   visitVariableGroup(GLOBAL_VAR,
                      0,
                      1,
-                     0,
+                     0, 0,
                      &basicAction);
 
   VG_(printf)("  Function formal parameters:\n");
@@ -80,7 +83,9 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      f_state->func,
                      1,
-                     f_state->virtualStack,
+		     (Addr)f_state->virtualStack 
+		       + f_state->virtualStackFPOffset,
+                     f_state->FP,
                      &basicAction);
 }
 
@@ -92,7 +97,7 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
   visitVariableGroup(GLOBAL_VAR,
                      0,
                      0,
-                     0,
+                     0, 0,
                      &basicAction);
 
   VG_(printf)("  Function formal parameters:\n");
@@ -100,7 +105,9 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      f_state->func,
                      0,
-                     f_state->virtualStack,
+		     (Addr)f_state->virtualStack 
+		       + f_state->virtualStackFPOffset,
+                     f_state->FP,
                      &basicAction);
 
   VG_(printf)("  Return value:\n");
