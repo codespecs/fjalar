@@ -65,7 +65,11 @@ typedef enum _VisibilityType {
   PRIVATE_VISIBILITY
 } VisibilityType;
 
-
+typedef enum _LocationType {
+  NO_LOCATION = 0,
+  FP_OFFSET_LOCATION,
+  REGISTER_LOCATION
+} LocationType;
 
 // Simple generic singly-linked list with a void* element
 // (only meant to support forward traversal)
@@ -300,8 +304,11 @@ typedef struct _VariableEntry {
   // the front of the variable's original name.
   char* name;
 
+  LocationType locationType;
+
   // Byte offset of this variable from head of stack frame (%ebp) for
   // function parameters and local variables
+  // when locationType == FP_OFFSET_LOCATION
   int byteOffset;
 
   // Global variable information:
@@ -526,6 +533,13 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
+  // The address of the instruction before which we do entry
+  // instrumentation for this function. Usually a bit past startPC,
+  // since we don't want to look at the parameters until the function
+  // prolog has had a chance to copy them into the appropriate
+  // locations.
+  Addr entryPC;
+
   // True if globally visible, False if file-static scope
   Bool isExternal;
 
@@ -553,6 +567,10 @@ typedef struct _FunctionEntry {
   // Has trace_vars_tree been initialized?
   Bool trace_vars_tree_already_initialized;
 
+  // Estimate of the amount of stack space used by the function's formal
+  // parameters. This amount of memory is copied so that we can see
+  // the pre-states of the parameters at exit.
+  int formalParamStackByteSize;
 } FunctionEntry;
 
 
@@ -607,38 +625,43 @@ typedef struct {
   // The function whose runtime state we are currently tracking
   FunctionEntry* func;
 
-  Addr EBP;       // %ebp as calculated from %esp at function entrance
+  Addr FP;       // Frame pointer (%ebp, %rbp) as recorded or
+		 // calculated from the stack pointer at function
+		 // entrance
 
-  Addr lowestESP; // The LOWEST value of %esp that has ever been
-                  // encountered while we are in this function.  The
-                  // problem is that Fjalar's function exit handling
-                  // code runs AFTER the function increments ESP so
-                  // that everything in the current function's stack
-                  // frame is marked invalid by Memcheck.  Thus, we
-                  // need this value to see how deep a function has
-                  // penetrated into the stack, so that we can know
-                  // what values are valid when this function exits.
+  Addr lowestSP;  // The LOWEST value of the stack pointer (%esp,
+                  // %rsp) that has ever been encountered while we are
+                  // in this function.  The problem is that Fjalar's
+                  // function exit handling code runs AFTER the
+                  // function increments SP so that everything in the
+                  // current function's stack frame is marked invalid
+                  // by Memcheck.  Thus, we need this value to see how
+                  // deep a function has penetrated into the stack, so
+                  // that we can know what values are valid when this
+                  // function exits.
 
   // Return values at function exit
 
-  int EAX;     // %EAX
-  int EDX;     // %EDX
-  double FPU;  // FPU %st(0)
+  Word xAX;     // primary integer return value (%eax, %rax)
+  Word xDX;     // secondary integer return value (%edx, %rdx)
+  double FPU;   // floating-point return value (x86 %st(0))
 
   // This is a copy of the portion of the function's stack frame that
-  // is above EBP.  It holds function formal parameter values that
-  // were passed into this function at entrance time.  We reference
-  // this virtualStack at function exit in order to visit the SAME
-  // formal parameter values upon exit as upon entrance.  We need this
-  // because the compiler is free to modify the formal parameter
-  // values that are on the real stack when executing the function.
-  // Using the virtualStack means that local changes to formal
-  // parameters are not visible at function exit (but changes made via
-  // params passed by pointers are visible).  This is okay and
-  // justified because local changes should be invisible to the
-  // calling function anyways.
+  // is in use after the function prolog has executed, including the
+  // formal parameters in the caller's frame.  It holds function
+  // formal parameter values that were passed into this function at
+  // entrance time.  We reference this virtualStack at function exit
+  // in order to visit the SAME formal parameter values upon exit as
+  // upon entrance.  We need this because the compiler is free to
+  // modify the formal parameter values that are on the real stack
+  // when executing the function.  Using the virtualStack means that
+  // local changes to formal parameters are not visible at function
+  // exit (but changes made via params passed by pointers are
+  // visible).  This is okay and justified because local changes
+  // should be invisible to the calling function anyways.
   char* virtualStack;
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
+  int virtualStackFPOffset; // Where in the stack the frame pointer was
 
 } FunctionExecutionState;
 
@@ -725,8 +748,9 @@ TraversalResult performAction(VariableEntry* var,
                               Bool overrideIsInit,
                               DisambigOverride disambigOverride,
                               Bool isSequence,
-                              void* pValue,
-                              void** pValueArray,
+                              Addr pValue,
+			      Addr pValueGuest,
+                              Addr* pValueArray,
                               UInt numElts,
                               FunctionEntry* varFuncInfo,
                               Bool isEnter);
@@ -747,10 +771,16 @@ Bool overrideIsInit - 1 if the pointer referring to this variable's value
                       otherwise (most of the time, it's 0)
 DisambigOverride disambigOverride - See .disambig option
 Bool isSequence - Are we traversing a single value or a sequence of values?
-void* pValue - A pointer to the value of the current variable
-               (Only valid if isSequence is 0)
-void** pValueArray - An array of pointers to the values of the current variable
+Addr pValue - Address where the variable is stored
+              (Only valid if isSequence is 0)
+Addr pValueGuest - The guest-program-space address corresponding to pValue.
+                   Usually the same as pValue, but will be different if
+                   you're doing traversal over a copy of program data.
+                   0 if the the value is in a non-memory location like a 
+                   register.
+Addr* pValueArray - An array of addresses of the variable
                      sequence (Only valid if isSequence is 1)
+Addr* pValueArrayGuest - Guest-program-space version of pValueArray
 UInt numElts - The number of elements in pValueArray
                (Only valid if isSequence is 1)
 FunctionEntry* varFuncInfo - The function that is active during the current
@@ -759,6 +789,21 @@ Bool isEnter - 1 if this is a function entrance, 0 if exit
 
 */
 
+typedef TraversalResult (TraversalAction)(VariableEntry* var,
+					  char* varName,
+					  VariableOrigin varOrigin,
+					  UInt numDereferences,
+					  UInt layersBeforeBase,
+					  Bool overrideIsInit,
+					  DisambigOverride disambigOverride,
+					  Bool isSequence,
+					  Addr pValue,
+					  Addr pValueGuest,
+					  Addr* pValueArray,
+					  Addr* pValueArrayGuest,
+					  UInt numElts,
+					  FunctionEntry* varFuncInfo,
+					  Bool isEnter);
 
 // Visits an entire group of variables, depending on the value of varOrigin:
 // If varOrigin == GLOBAL_VAR, then visit all global variables
@@ -774,23 +819,15 @@ void visitVariableGroup(VariableOrigin varOrigin,
                                                 // 0 for exit
                         // Address of the base of the currently
                         // executing function's stack frame: (Only used for
-                        // varOrigin == FUNCTION_FORMAL_PARAM)
-                        char* stackBaseAddr,
+                        // varOrigin == FUNCTION_FORMAL_PARAM). The guest
+			// version should be in the program's address space
+			// and the non-guest one can be a copy in our
+			// address space (it's what we'll dereference)
+                        Addr stackBaseAddr,
+                        Addr stackBaseAddrGuest,
                         // This function performs an action for each
                         // variable visited:
-                        TraversalResult (*performAction)(VariableEntry*,
-                                                         char*,
-                                                         VariableOrigin,
-                                                         UInt,
-                                                         UInt,
-                                                         Bool,
-                                                         DisambigOverride,
-                                                         Bool,
-                                                         void*,
-                                                         void**,
-                                                         UInt,
-                                                         FunctionEntry*,
-                                                         Bool));
+			TraversalAction *performAction);
 
 // Grabs the appropriate return value of the function denoted by the
 // execution state 'e' from Valgrind simulated registers and visits
@@ -801,26 +838,19 @@ void visitVariableGroup(VariableOrigin varOrigin,
 void visitReturnValue(FunctionExecutionState* e,
                       // This function performs an action for each
                       // variable visited:
-                      TraversalResult (*performAction)(VariableEntry*,
-                                                       char*,
-                                                       VariableOrigin,
-                                                       UInt,
-                                                       UInt,
-                                                       Bool,
-                                                       DisambigOverride,
-                                                       Bool,
-                                                       void*,
-                                                       void**,
-                                                       UInt,
-                                                       FunctionEntry*,
-                                                       Bool));
+		      TraversalAction *performAction);
 
 // Visits one variable (denoted by 'var') and all variables that are
 // derived from it by traversing inside of data structures and arrays.
 void visitVariable(VariableEntry* var,
                    // Pointer to the location of the variable's
                    // current value in memory:
-                   void* pValue,
+                   Addr pValue,
+		   // If pValue points to a copy of the guest
+		   // program's state, this is the pointer to the
+		   // original. If the value wass in a register, this is 0.
+		   // Otherwise, same as pValue.
+                   Addr pValueGuest,
                    // We only use overrideIsInit when we pass in
                    // things (e.g. return values) that cannot be
                    // checked by the Memcheck A and V bits. Never have
@@ -837,19 +867,7 @@ void visitVariable(VariableEntry* var,
                    UInt numStructsDereferenced,
                    // This function performs an action for each
                    // variable visited:
-                   TraversalResult (*performAction)(VariableEntry*,
-                                                    char*,
-                                                    VariableOrigin,
-                                                    UInt,
-                                                    UInt,
-                                                    Bool,
-                                                    DisambigOverride,
-                                                    Bool,
-                                                    void*,
-                                                    void**,
-                                                    UInt,
-                                                    FunctionEntry*,
-                                                    Bool),
+		   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter);
@@ -860,19 +878,7 @@ void visitVariable(VariableEntry* var,
 // printing out names and performing other non-value-dependent
 // operations.
 void visitClassMembersNoValues(TypeEntry* class,
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                Bool,
-                                                                DisambigOverride,
-                                                                Bool,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                Bool));
+			       TraversalAction *performAction);
 
 // Takes a TypeEntry* and (optionally, a pointer to its current value
 // in memory), and traverses through all of the members of the
@@ -883,28 +889,18 @@ void visitClassMemberVariables(TypeEntry* class,
                                // Pointer to the current value of an
                                // instance of 'class' (only valid if
                                // isSequence is 0)
-                               void* pValue,
+                               Addr pValue,
+			       Addr pValueGuest,
                                Bool isSequence,
                                // An array of pointers to instances of
                                // 'class' (only valid if isSequence is
                                // non-zero):
-                               void** pValueArray,
+                               Addr* pValueArray,
+                               Addr* pValueArrayGuest,
                                UInt numElts, // Size of pValueArray
                                // This function performs an action for
                                // each variable visited:
-                               TraversalResult (*performAction)(VariableEntry*,
-                                                                char*,
-                                                                VariableOrigin,
-                                                                UInt,
-                                                                UInt,
-                                                                Bool,
-                                                                DisambigOverride,
-                                                                Bool,
-                                                                void*,
-                                                                void**,
-                                                                UInt,
-                                                                FunctionEntry*,
-                                                                Bool),
+			       TraversalAction *performAction,
                                VariableOrigin varOrigin,
                                // A (possibly null) GNU binary tree of
                                // variables to trace:
@@ -1045,7 +1041,7 @@ Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 // one in the stack (that is, all of the current variable's
 // ancestors).  For example, for a variable "foo->bar[]", this stack
 // may contain something like: {"foo", "foo->bar"}.
-char* enclosingVarNamesStack[];
+char** enclosingVarNamesStack;
 int enclosingVarNamesStackSize;
 
 

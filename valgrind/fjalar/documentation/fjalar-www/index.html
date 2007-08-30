@@ -39,9 +39,9 @@ million lines of code, including <tt>gcc</tt>, <tt>xemacs</tt>,
 <tt>Apache</tt>, and <tt>CTAS</tt>.  However, because Fjalar is built
 upon the <a href="http://valgrind.org/">Valgrind</a> binary
 instrumentation framework, it shares many of Valgrind's limitations.
-In particular, Fjalar can only work on x86 executables on the Linux
-platform, and imposes around a 100X slowdown while executing the
-instrumented program.</p>
+In particular, Fjalar can only work on x86 and x86-64 executables on
+the Linux platform, and imposes around a 100X slowdown while executing
+the instrumented program.</p>
 
 <h2 a name="features">Features</h2>
 
@@ -188,12 +188,16 @@ collection.
 
 <h2>Download</h2>
 
-<p>Download <a href="fjalar-1.2.tar.gz">Fjalar 1.2</a> (4.0 MB) -
+<p>Download <a href="fjalar-1.3.tar.gz">Fjalar 1.3</a> (x.x MB) -
 includes source code for Valgrind, Fjalar, and a basic tool built upon
-Fjalar (Released May 26, 2006)</p>
+Fjalar (Released Aug 30, 2007)</p>
 
 <p>Older versions:
 <ul>
+  <li>
+<a href="fjalar-1.2.tar.gz">Fjalar 1.2</a> (4.0 MB) - (Released May 26, 2006)
+  </li>
+
   <li>
 <a href="fjalar-1.1.tar.gz">Fjalar 1.1</a> (3.9 MB) - (Released Mar. 21, 2006)
   </li>
@@ -364,8 +368,7 @@ with the Daikon distribution
       query language<p/></li>
 
       <li>We would like to extend Fjalar to work on additional
-      platforms that Valgrind now supports, such as
-      AMD64/Linux<p/></li>
+      platforms that Valgrind now supports, such as the PowerPC.<p/></li>
 
 </ul>
 
