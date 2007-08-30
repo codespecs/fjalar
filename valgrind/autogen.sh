@@ -11,7 +11,7 @@ run ()
     fi
 }
 
-run aclocal-1.7
+run aclocal
 run autoheader
-run automake-1.7 -a
+run automake -a
 run autoconf
