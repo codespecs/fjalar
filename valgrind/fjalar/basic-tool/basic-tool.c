@@ -41,7 +41,7 @@ TraversalResult basicAction(VariableEntry* var,
                               UInt layersBeforeBase,
                               Bool overrideIsInit,
                               DisambigOverride disambigOverride,
-                              char isSequence,
+                              Bool isSequence,
                               // pValue only valid if isSequence is false
                               Addr pValue,
                               Addr pValueGuest,
