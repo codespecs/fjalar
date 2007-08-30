@@ -1,0 +1,399 @@
+diff -ur valgrind-kvasir/coregrind/m_machine.c valgrind/coregrind/m_machine.c
+--- valgrind-kvasir/coregrind/m_machine.c	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/coregrind/m_machine.c	2007-08-30 16:03:15.000000000 -0400
+@@ -117,43 +117,6 @@
+       vex_shadow.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
+ }
+ 
+-// Ok, if the stuff before were hacks, then these are SUPER HACKS
+-// because it relies on our ad-hoc (4 * offset) reference into
+-// VexGuestX86State vex_extra_shadow[4] within TheadArchState:
+-UWord VG_(get_xAX_tag) ( ThreadId tid )
+-{
+-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
+-							    VG_INT_RET_REG)));
+-}
+-
+-UWord VG_(get_xDX_tag) ( ThreadId tid )
+-{
+-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
+-							    VG_INT_RET2_REG)));
+-}
+-
+-UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid )
+-{
+-   int FPUoffset = VG_(threads)[tid].arch.vex.guest_FTOP & 7;
+-
+-   // The start of the FPU stack is at offset 64 so an added offset
+-   // from that tells us where the top of the FPU stack is
+-   int offset = FPUoffset + 64;
+-
+-   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offset));
+-}
+-
+-// This is a generalization of all the other tag getter functions,
+-// which takes in an offset from the guest state (as denoted by
+-// the member variable locations in vex/pub/libvex_guest_x86.h)
+-// and performs the (4 * offset) hack and returns the address of
+-// the associated tag
+-UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset )
+-{
+-   return ((UInt*)((char*)(VG_(threads)[tid].arch.vex_extra_shadow) +
+-		    (4 * offset)));
+-}
+-
+ // END - pgbovine
+ 
+ 
+diff -ur valgrind-kvasir/coregrind/m_scheduler/scheduler.c valgrind/coregrind/m_scheduler/scheduler.c
+--- valgrind-kvasir/coregrind/m_scheduler/scheduler.c	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/coregrind/m_scheduler/scheduler.c	2007-08-30 16:03:15.000000000 -0400
+@@ -533,8 +533,7 @@
+    vg_assert(a_vex + sz_vex == a_vexsh);
+ 
+    vg_assert(sz_spill == LibVEX_N_SPILL_BYTES);
+-   // PG - pgbovine - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+-   vg_assert(a_vex + 6 * sz_vex == a_spill);
++   vg_assert(a_vex + 2 * sz_vex == a_spill);
+ 
+ #  if defined(VGA_ppc32) || defined(VGA_ppc64)
+    /* ppc guest_state vector regs must be 16 byte aligned for
+diff -ur valgrind-kvasir/coregrind/pub_core_threadstate.h valgrind/coregrind/pub_core_threadstate.h
+--- valgrind-kvasir/coregrind/pub_core_threadstate.h	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/coregrind/pub_core_threadstate.h	2007-08-30 16:03:15.000000000 -0400
+@@ -99,9 +99,6 @@
+       /* Saved shadow context. */
+       VexGuestArchState vex_shadow;
+ 
+-      /* PG - pgbovine - Extra shadow guest state for DynComp */
+-      VexGuestArchState vex_extra_shadow[4];
+-
+       /* Spill area. */
+       UChar vex_spill[LibVEX_N_SPILL_BYTES];
+ 
+diff -ur valgrind-kvasir/fjalar/Makefile.am valgrind/fjalar/Makefile.am
+--- valgrind-kvasir/fjalar/Makefile.am	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/fjalar/Makefile.am	2007-08-30 16:03:15.000000000 -0400
+@@ -1,6 +1,6 @@
+ include $(top_srcdir)/Makefile.tool.am
+ 
+-# PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
++# PG - Build Fjalar with a basic tool (in the basic-tool sub-directory)
+ 
+ ## Build Memcheck at a higher optimisation level
+ # PG - don't do optimizations for the sake of debugging, instead add debugging info.
+@@ -17,7 +17,7 @@
+ endif
+ # PPC not supported yet
+ 
+-VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c kvasir/dyncomp_wrappers.c
++VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c
+ 
+ vgpreload_fjalar_x86_linux_so_SOURCES      = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
+ vgpreload_fjalar_x86_linux_so_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
+@@ -55,13 +55,7 @@
+ 	disambig.c \
+ 	my_libc.c \
+ 	tsearch.c \
+-	kvasir/kvasir_main.c \
+-	kvasir/decls-output.c \
+-	kvasir/dtrace-output.c \
+-	kvasir/union_find.c \
+-	kvasir/dyncomp_main.c \
+-	kvasir/dyncomp_runtime.c \
+-	kvasir/dyncomp_translate.c
++	basic-tool/basic-tool.c
+ 
+ fjalar_x86_linux_SOURCES      = $(FJALAR_SOURCES_COMMON)
+ fjalar_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
+diff -ur valgrind-kvasir/fjalar/mc_main.c valgrind/fjalar/mc_main.c
+--- valgrind-kvasir/fjalar/mc_main.c	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/fjalar/mc_main.c	2007-08-30 16:03:15.000000000 -0400
+@@ -63,11 +63,8 @@
+ #include "mc_include.h"
+ #include "memcheck.h"   /* for client requests */
+ 
+-#include "kvasir/dyncomp_main.h" // PG - pgbovine - dyncomp
+ #include "fjalar_main.h"
+ 
+-Bool kvasir_with_dyncomp; // PG - pgbovine - dyncomp
+-
+ #ifdef HAVE_BUILTIN_EXPECT
+ #define EXPECTED_TAKEN(cond)     __builtin_expect((cond),1)
+ #define EXPECTED_NOT_TAKEN(cond) __builtin_expect((cond),0)
+@@ -738,13 +735,6 @@
+    PROF_EVENT(40, "mc_make_noaccess");
+    DEBUG("mc_make_noaccess(%p, %llu)\n", a, (ULong)len);
+    set_address_range_perms ( a, len, VGM_BIT_INVALID, VGM_BIT_INVALID );
+-
+-   // PG - pgbovine - dyncomp - Anytime you make a whole range of
+-   // addresses invalid, clear all tags associated with those
+-   // addresses:
+-   if (kvasir_with_dyncomp) {
+-      clear_all_tags_in_range(a, len);
+-   }
+ }
+ 
+ static void mc_make_writable ( Addr a, SizeT len )
+@@ -759,23 +749,12 @@
+    PROF_EVENT(42, "mc_make_readable");
+    DEBUG("mc_make_readable(%p, %llu)\n", a, (ULong)len);
+    set_address_range_perms ( a, len, VGM_BIT_VALID, VGM_BIT_VALID );
+-
+-   // PG - pgbovine - dyncomp - Anytime you make a chunk of memory
+-   // readable (set both A and V bits), we need to allocate new unique
+-   // tags to each byte within the chunk (Without language-level
+-   // information about which bytes correspond to which variables, we
+-   // have no choice but to give each byte a unique tag):
+-   if (kvasir_with_dyncomp) {
+-      allocate_new_unique_tags(a, len);
+-   }
+ }
+ 
+ 
+ /* --- Block-copy permissions (needed for implementing realloc() and
+        sys_mremap). --- */
+ 
+-// PG - pgbovine - We need to use this for copying A & V bits to
+-//                 virtualStack so make it non-static:
+ void mc_copy_address_range_state ( Addr src, Addr dst, SizeT len )
+ {
+    SizeT i, j;
+@@ -802,12 +781,6 @@
+          set_abit_and_vbyte( dst+i, abit, vbyte );
+       }
+    }
+-
+-   // PG - pgbovine - dyncomp - If you're copying over V-bits, you
+-   // might as well copy over the tags of the relevant bytes:
+-   if (kvasir_with_dyncomp) {
+-      copy_tags(src, dst, len);
+-   }
+ }
+ 
+ 
+@@ -896,13 +869,6 @@
+    /* mask now contains 1s where we wish to make address bits invalid
+       (1s). */
+    sm->abits[a_off] |= mask;
+-
+-   // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
+-   // those tags (only put it in this branch of the #ifdef because
+-   // the other branch calls mc_make_noaccess()):
+-   if (kvasir_with_dyncomp) {
+-      clear_all_tags_in_range(aA, 4);
+-   }
+ #  endif
+ }
+ 
+@@ -985,13 +951,6 @@
+ 
+    /* Make the abandoned area inaccessible. */
+    sm->abits[a_off] = VGM_BYTE_INVALID;
+-
+-   // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
+-   // those tags (only put it in this branch of the #ifdef because
+-   // the other branch calls mc_make_noaccess()):
+-   if (kvasir_with_dyncomp) {
+-      clear_all_tags_in_range(aA, 8);
+-   }
+ #  endif
+ }
+ 
+@@ -2742,16 +2701,14 @@
+ 
+ static void mc_pre_clo_init(void)
+ {
+-   VG_(details_name)            ("kvasir");
+-   /* This next line is automatically updated by the toplevel Daikon
+-      distribution Makefile; be careful with its formatting -SMcC */
+-   VG_(details_version)         ("4.3.1");
+-   VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool");
++   VG_(details_name)            ("fjalar");
++   VG_(details_version)         ("put version here");
++   VG_(details_description)     ("Fjalar: A Dynamic Analysis Framework for C and C++ Programs");
+    VG_(details_copyright_author)(
+       "Copyright (C) 2004-2006, Philip Guo, MIT CSAIL Program Analysis Group");
+-   VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
++   VG_(details_bug_reports_to)  ("pgbovine@alum.mit.edu, smcc@csail.mit.edu");
+ 
+-   // PG - pgbovine - customize the fields above for each Fjalar tool
++   // customize the fields above for each Fjalar tool
+ 
+    VG_(details_avg_translation_sizeB) ( 370 );
+ 
+diff -ur valgrind-kvasir/fjalar/mc_translate.c valgrind/fjalar/mc_translate.c
+--- valgrind-kvasir/fjalar/mc_translate.c	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/fjalar/mc_translate.c	2007-08-30 16:04:52.000000000 -0400
+@@ -45,13 +45,9 @@
+ #include "pub_tool_tooliface.h"
+ #include "pub_tool_machine.h"     // VG_(fnptr_to_fnentry)
+ #include "mc_include.h"
+-
+-// pgbovine
++// pgbovine:
+ #include "mc_translate.h"
+ #include "fjalar_main.h"
+-#include "kvasir/dyncomp_main.h"
+-#include "kvasir/dyncomp_translate.h"
+-Bool kvasir_with_dyncomp; // pgbovine - dyncomp
+ 
+ /* This file implements the Memcheck instrumentation, and in
+    particular contains the core of its undefined value detection
+@@ -176,13 +172,6 @@
+    given type.  The only valid shadow types are Bit, I8, I16, I32,
+    I64, V128. */
+ 
+-// PG - pgbovine - dyncomp - This function seems okay to use for
+-// DynComp because it returns the integer type with the matching size
+-// as the input type 'ty'. It seems safe to use this return value for
+-// size calculations and comparisons, but NOT to create new tags.  The
+-// thing is that all tags are 32-bit integers whereas shadow memory
+-// chunks were as big as the original chunks which they shadow
+-// (made it non-static)
+ IRType shadowType ( IRType ty )
+ {
+    switch (ty) {
+@@ -3169,7 +3158,6 @@
+    Int     i, j, first_stmt;
+    IRStmt* st;
+    MCEnv   mce;
+-   DCEnv   dce; // PG - pgbovine - dyncomp
+    IRBB*   bb;
+ 
+    (void)closure; (void)vge; /* silence unused variable warnings */
+@@ -3204,22 +3192,6 @@
+    for (i = 0; i < mce.n_originalTmps; i++)
+       mce.tmpMap[i] = IRTemp_INVALID;
+ 
+-   // PG - pgbovine - dyncomp
+-   // Is this aliasing of 'bb' going to be a problem?
+-   // Not if we allocate enough space for the shadow tag guest state
+-   // and adjust the offsets appropriately
+-   if (kvasir_with_dyncomp) {
+-      dce.bb             = bb;
+-      dce.layout         = layout;
+-      dce.n_originalTmps = bb->tyenv->types_used;
+-      dce.hWordTy        = hWordTy;
+-      dce.bogusLiterals  = False;
+-      dce.tmpMap         = LibVEX_Alloc(dce.n_originalTmps * sizeof(IRTemp));
+-      for (i = 0; i < (Int)dce.n_originalTmps; i++)
+-         dce.tmpMap[i] = IRTemp_INVALID;
+-   }
+-
+-
+    /* Make a preliminary inspection of the statements, to see if there
+       are any dodgy-looking literals.  If there are, we generate
+       extra-detailed (hence extra-expensive) instrumentation in
+@@ -3319,81 +3291,6 @@
+ 
+       } /* switch (st->tag) */
+ 
+-
+-      // PG - pgbovine - dyncomp - duplicated instrumentation code for DynComp
+-      if (kvasir_with_dyncomp) {
+-         if (!dce.bogusLiterals) {
+-            dce.bogusLiterals = checkForBogusLiterals(st);
+-            if (0&& dce.bogusLiterals) {
+-               VG_(printf)("bogus: ");
+-               ppIRStmt(st);
+-               VG_(printf)("\n");
+-            }
+-         }
+-
+-         switch (st->tag) {
+-         case Ist_Tmp:
+-            assign( bb, findShadowTmp_DC(&dce, st->Ist.Tmp.tmp),
+-                    expr2tags_DC( &dce, st->Ist.Tmp.data) );
+-            break;
+-
+-         case Ist_Put:
+-            do_shadow_PUT_DC( &dce,
+-                              st->Ist.Put.offset,
+-                              st->Ist.Put.data,
+-                              NULL /* shadow atom */ );
+-            break;
+-
+-         case Ist_PutI:
+-            do_shadow_PUTI_DC( &dce,
+-                               st->Ist.PutI.descr,
+-                               st->Ist.PutI.ix,
+-                               st->Ist.PutI.bias,
+-                               st->Ist.PutI.data );
+-            break;
+-
+-         case Ist_Store:
+-            do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
+-            break;
+-
+-         case Ist_Exit:
+-            do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
+-            break;
+-
+-         case Ist_IMark:
+-	    dce.origAddr = st->Ist.IMark.addr;
+-	    break;
+-
+-         case Ist_NoOp:
+-         case Ist_MFence:
+-            break;
+-
+-         case Ist_Dirty:
+-            do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
+-            break;
+-
+-         case Ist_AbiHint:
+-            do_AbiHint( &mce, st->Ist.AbiHint.base, st->Ist.AbiHint.len );
+-            break;
+-
+-         default:
+-            VG_(printf)("\n");
+-            ppIRStmt(st);
+-            VG_(printf)("\n");
+-            VG_(tool_panic)("dyncomp: unhandled IRStmt");
+-
+-         } /* switch (st->tag) */
+-
+-         if (verboze) {
+-            for (j = first_stmt; j < bb->stmts_used; j++) {
+-               VG_(printf)("   ");
+-               ppIRStmt(bb->stmts[j]);
+-               VG_(printf)("\n");
+-            }
+-            VG_(printf)("\n");
+-         }
+-      }
+-
+       if (verboze) {
+          for (j = first_stmt; j < bb->stmts_used; j++) {
+             VG_(printf)("   ");
+diff -ur valgrind-kvasir/include/pub_tool_machine.h valgrind/include/pub_tool_machine.h
+--- valgrind-kvasir/include/pub_tool_machine.h	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/include/pub_tool_machine.h	2007-08-30 16:03:15.000000000 -0400
+@@ -92,13 +92,6 @@
+ extern UWord VG_(get_shadow_xDX) ( ThreadId tid );
+ extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
+ 
+-// SUPER HACK!  Watch out now.
+-extern UWord VG_(get_xAX_tag) ( ThreadId tid );
+-extern UWord VG_(get_xDX_tag) ( ThreadId tid );
+-extern UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid );
+-// Super-duper hack!!!
+-extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
+-
+ // END - pgbovine
+ 
+ // For get/set, 'area' is where the asked-for shadow state will be copied
+diff -ur valgrind-kvasir/VEX/priv/host-generic/reg_alloc2.c valgrind/VEX/priv/host-generic/reg_alloc2.c
+--- valgrind-kvasir/VEX/priv/host-generic/reg_alloc2.c	2007-08-30 16:02:54.000000000 -0400
++++ valgrind/VEX/priv/host-generic/reg_alloc2.c	2007-08-30 16:03:15.000000000 -0400
+@@ -750,8 +750,7 @@
+       /* This reflects LibVEX's hard-wired knowledge of the baseBlock
+          layout: the guest state, then an equal sized area following
+          it for shadow state, and then the spill area. */
+-   // PG - pgbovine - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+-      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 6 + k * 8);
++      vreg_lrs[j].spill_offset = toShort(guest_sizeB * 2 + k * 8);
+ 
+       /* if (j > max_ss_no) */
+       /*    max_ss_no = j; */
