@@ -1,7 +1,8 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html>
 <head>
-<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15">
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15" />
 <title>Fjalar: A Dynamic Analysis Framework for C and C++ Programs</title>
 <link rel="StyleSheet" href="fjalar_style.css" />
 </head>
@@ -43,18 +44,20 @@ In particular, Fjalar can only work on x86 and x86-64 executables on
 the Linux platform, and imposes around a 100X slowdown while executing
 the instrumented program.</p>
 
-<h2 a name="features">Features</h2>
+<h2 id="features">Features</h2>
 
 <p>Here are some services that Fjalar provides to tools built upon it:</p>
-</p>
 
 <ul>
 
   <li><b>Rich compile-time information about data structures,
-  variables, and functions</b><p/>Fjalar parses the debugging symbols,
+  variables, and functions</b>
+
+  <p>Fjalar parses the debugging symbols,
   filters out uninteresting and redundant data, and makes information
   available to tools in a convenient format consisting of entries for
-  types, variables, and functions.<p/></li>
+  types, variables, and functions.</p>
+
   <ul>
 
     <li>Provides access to variable names, types, addresses, sizes for
@@ -84,15 +87,14 @@ the instrumented program.</p>
       <li>Outputs compile-time program structure in XML format for
       debugging, program understanding, and further processing.  Here
       is a <a href="fjalar_stack.xml">sample XML file</a>
-      showing a C++ stack class and its test program.<p/></li>
+      showing a C++ stack class and its test program.</li>
 
   </ul>
-
+  </li>
 
   <li><b>Enables analysis code to run at arbitrary points during
-  program execution</b><p/>
+  program execution</b>
 
-    </li>
   <ul>
 
       <li>The default functionality allows tools to run analysis code
@@ -110,9 +112,10 @@ the instrumented program.</p>
       frame.<p/></li>
 
     </ul>
+    </li>
 
     <li><b>Run-time memory initialization and array size
-    information</b><p/></li>
+    information</b>
 
      <ul>
 
@@ -128,13 +131,15 @@ the instrumented program.</p>
       given type this address refers to.<p/></li>
 
     </ul>
+  </li>
 
     <li><b>Safe recursive traversals within data structures and
-    arrays</b><p/>
+    arrays</b>
 
+    <p>
 	Fjalar allows analyses to traverse through data structures at
 	run time and perform operations based on observed
-	values.<p/></li>
+	values.</p>
 
     <ul>
 
@@ -163,6 +168,7 @@ the instrumented program.</p>
       structures within the target program.<p/></li>
 
     </ul>
+  </li>
 
   <li><b>All instrumentation functionality provided by Valgrind</b>
   <p/> Valgrind provides an API and plug-in architecture for creating
@@ -172,8 +178,10 @@ the instrumented program.</p>
 
 </ul>
 
-<h2 a name="implementation">Implementation</h2>
 
+<h2 id="implementation">Implementation</h2>
+
+<p>
 Fjalar is implemented in C as a plug-in tool for the <a
 href="http://valgrind.org/">Valgrind</a> dynamic binary
 instrumentation framework.  It uses Valgrind to instrument the target
@@ -185,6 +193,7 @@ language-level information by parsing debugging information in the
 DWARF2 format using the Readelf program from the <a
 href="http://www.gnu.org/software/binutils/">GNU Binutils</a>
 collection.
+</p>
 
 <h2>Download</h2>
 
@@ -193,6 +202,8 @@ includes source code for Valgrind, Fjalar, and a basic tool built upon
 Fjalar (Released Aug 30, 2007)</p>
 
 <p>Older versions:
+</p>
+
 <ul>
   <li>
 <a href="fjalar-1.2.tar.gz">Fjalar 1.2</a> (4.0 MB) - (Released May 26, 2006)
@@ -206,7 +217,7 @@ Fjalar (Released Aug 30, 2007)</p>
 <a href="fjalar-1.0.tar.gz">Fjalar 1.0</a> (3.2 MB) - (Released Dec. 16, 2005)
   </li>
 </ul>
-</p>
+
 
 <p>View the <a href="fjalar_manual.htm">Fjalar Programmer's Manual</a>
 for documentation related to implementing Fjalar tools.</p>
@@ -215,6 +226,7 @@ for documentation related to implementing Fjalar tools.</p>
 its tools and also serve as documentation: <b><tt><a
 href="fjalar_include.h.txt">fjalar_include.h</a></tt></b> and <b><tt><a
 href="fjalar_tool.h.txt">fjalar_tool.h</a></tt></b>
+</p>
 
 <p>Fjalar is also distributed as part of the Kvasir and DynComp
 tools within the <a
@@ -256,7 +268,10 @@ Workshop, September 2005.
 
 <h2>Applications of Fjalar</h2>
 
+<p>
 We have used Fjalar to build two dynamic analysis tools.
+</p>
+
 <!-- <b>(TODO: Add
 a third trivial tool for Fjalar that demonstrates some small
 functionality that can be implemented in a few lines using Fjalar)</b>
@@ -269,8 +284,6 @@ their values to a trace file.  The main role of Kvasir is to serve as
 a C/C++ front end for the Daikon dynamic invariant detector.  Kvasir
 provides Daikon with value traces, and Daikon infers likely invariants
 over the data structures observed in those traces.</p>
-
-<p>
 
 <ul>
 
@@ -410,7 +423,7 @@ name of the Valgrind framework.  <i>Valgrind</i> is the name of a
 legendary gate from Norse mythology.
 </p>
 
-<hr>
+<hr />
 
 <a href="http://alum.mit.edu/www/pgbovine/">Philip Guo</a> &lt;pgbovine <!--boo-->(@) <!--foo-->alum <!--bar-->(.) <!--baz-->mit <!--void-->(.) <!--star-->edu&gt;
 <br/>
