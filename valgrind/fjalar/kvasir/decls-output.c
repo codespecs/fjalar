@@ -845,7 +845,12 @@ static void printDeclsHeader(void)
       //    fputs("VarComparability\nimplicit\n\n", decls_fp);
     }
     else {
-      fputs("VarComparability\nnone\n\n", decls_fp);
+      if(kvasir_dtrace_append) { // Don't put VarComparability information twice in a file
+        fputs("\n", decls_fp);
+      }
+      else {
+        fputs("VarComparability\nnone\n\n", decls_fp);
+      }
     }
   }
 }
