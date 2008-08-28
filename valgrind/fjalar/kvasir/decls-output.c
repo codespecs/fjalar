@@ -215,19 +215,9 @@ static void printDeclsHeader(void);
 static void printAllFunctionDecls(char faux_decls);
 static void printAllObjectPPTDecls(void);
 
-// This has different behavior depending on if faux_decls is on.  If
-// faux_decls is on, then we do all the processing but don't actually
-// output anything to the .decls file.
-void outputDeclsFile(char faux_decls)
+// Initializes all the data structures needed to perform decls
+initDecls()
 {
-  // Punt if you are not printing declarations at all:
-  if (!print_declarations) {
-    return;
-  }
-
-  if (!faux_decls) {
-    printDeclsHeader();
-  }
   //Initialize needed hash tables.
   if(!nameToType) {
      nameToType =
@@ -247,6 +237,38 @@ void outputDeclsFile(char faux_decls)
                              (int (*)(void *,void *)) &equivalentIDs);
     }
 
+}
+
+cleanupDecls()
+{
+  // Clean-up tables.
+  if(nameToType) {
+    genfreehashtable(nameToType);
+    nameToType = 0;
+  }
+  if(objectIdTable) {
+    genfreehashtable(objectIdTable);
+    objectIdTable  = 0;
+  }
+
+
+}
+
+// This has different behavior depending on if faux_decls is on.  If
+// faux_decls is on, then we do all the processing but don't actually
+// output anything to the .decls file.
+void outputDeclsFile(char faux_decls)
+{
+  // Punt if you are not printing declarations at all:
+  if (!print_declarations) {
+    return;
+  }
+
+  if (!faux_decls) {
+    printDeclsHeader();
+  }
+
+  initDecls();
   printAllFunctionDecls(faux_decls);
 
   // For DynComp, print this out at the end of execution
@@ -263,28 +285,21 @@ void outputDeclsFile(char faux_decls)
       decls_fp = 0;
     }
   }
-  // Clean-up tables.
-  if(nameToType) {
-    genfreehashtable(nameToType);
-    nameToType = 0;
-  }
-  if(objectIdTable) {
-    genfreehashtable(objectIdTable);
-    objectIdTable  = 0;
-  }
-
+  cleanupDecls();
 }
 
 // Print .decls at the end of program execution and then close it
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
   //  VG_(printf)("DC_outputDeclsAtEnd()\n");
+  initDecls();
   printAllFunctionDecls(0);
 
   printAllObjectPPTDecls();
 
   fclose(decls_fp);
   decls_fp = 0;
+  cleanupDecls();
 }
 
 
