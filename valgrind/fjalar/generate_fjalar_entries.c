@@ -191,6 +191,10 @@ struct genhashtable* FunctionTable = 0;
 struct genhashtable* FunctionTable_by_entryPC = 0;
 struct genhashtable* VisitedStructsTable = 0;
 
+// Data structure to check for duplicate function names in the
+// debugging information.
+struct genhashtable* FuncNameTable = 0;
+
 // A temporary data structure of variables that need to have their
 // varType entries updated after TypesTable has been initialized.
 // This is used for variables whose type entries are 'fake'
@@ -1211,6 +1215,26 @@ static void updateAllGlobalVariableNames(void) {
 }
 
 
+// Utility function for prepending class/file name
+static char* PrependClass(char* class, char* func, int func_name_len) {
+  char *buf = NULL, *p = NULL;
+
+  /* We want to print static_fn in subdir/filename.c
+     as "subdir/filename.c.static_fn() */
+  buf = VG_(malloc)(VG_(strlen)(class) + 1 +
+                    func_name_len + 3); // 3 for possible trailing parens
+  VG_(strcpy)(buf, class);
+  for (p = buf; *p; p++) {
+    if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
+        && *p != '_')
+      *p = '_';
+  }
+  VG_(strcat)(buf, ".");
+  VG_(strcat)(buf, func);
+  return buf;
+}
+
+
 // Initializes all the fully-unique Fjalar names and trace_vars_tree
 // for all functions in FunctionTable:
 // Pre: If we are using the --var-list-file= option, the var-list file
@@ -1222,10 +1246,10 @@ static void initFunctionFjalarNames(void) {
     FunctionEntry* cur_entry = nextFunc(funcIt);
 
     char *the_class;
-    char *buf, *p;
+    char *buf;
 
     char* name_to_use;
-    int name_len;
+    int name_len, fjalar_name_len;
 
     tl_assert(cur_entry);
 
@@ -1261,18 +1285,8 @@ static void initFunctionFjalarNames(void) {
 
     tl_assert(the_class);
 
-    /* We want to print static_fn in subdir/filename.c
-       as "subdir/filename.c.static_fn() */
-    buf = VG_(malloc)(VG_(strlen)(the_class) + 1 +
-                      name_len + 3); // 3 for possible trailing parens
-    VG_(strcpy)(buf, the_class);
-    for (p = buf; *p; p++) {
-      if (!isalpha(*p) && !isdigit(*p) && *p != '.' && *p != '/'
-          && *p != '_')
-        *p = '_';
-    }
-    VG_(strcat)(buf, ".");
-    VG_(strcat)(buf, name_to_use);
+    buf = PrependClass(the_class, name_to_use, name_len);
+    fjalar_name_len = VG_(strlen)(buf);
 
     // If we didnt need to demangle a C++ name, then we just have a
     // plain C name without the last character being a right paren.
@@ -1281,8 +1295,57 @@ static void initFunctionFjalarNames(void) {
       VG_(strcat)(buf, "()");
     }
 
+    //    printf("Adding function %s\n", buf);
+
+    // Rudd 2.0 - There seems to be an issue in regards to C++ files
+    // having duplicate function names in the debugging info. I haven't
+    // verified as to why this happens, but this issue was present in the
+    // first large C++ program I tested.
+
+    // This will attempt to disambiguate duplicate function names
+    // my prepending the filename to them. (It may also be reasonable
+    // to just throw out the duplicate name, because it's very unlikely
+    // that a program would have 2 identically named non-static functinos
+    // with different semantics, but let's just be safe)
+
+    if(gencontains(FuncNameTable, buf)) {
+      char* bufOld = NULL, *bufNew=NULL;
+      FunctionEntry* collided_func = gengettable(FuncNameTable, buf);
+      tl_assert(collided_func);
+
+      // Prepend filename to new entry
+      the_class = cur_entry->filename;
+      bufNew = PrependClass(the_class, buf, fjalar_name_len);
+
+      // Prepend filename to old entry
+      the_class = collided_func->filename;
+      VG_(free)(collided_func->fjalar_name);
+      bufOld = PrependClass(the_class, buf, fjalar_name_len);
+
+      // Check if entries are the same. If they are, clean up and continue
+      if(!VG_(strcmp)(bufOld, bufNew)) {
+        VG_(free)(buf);
+
+        genfreekey(FunctionTable_by_entryPC, cur_entry->entryPC);
+        genfreekey(FunctionTable, cur_entry->startPC);
+
+        continue;
+      }
+
+      collided_func->fjalar_name = bufOld;
+
+      VG_(free)(buf);
+      buf = bufNew;
+
+    }
+    else {
+      genputtable(FuncNameTable, buf, cur_entry);
+    }
+
+
     // Woohoo, we have constructed a Fjalar name!
     cur_entry->fjalar_name = buf;
+
 
     // See if we are interested in tracing variables for this file,
     // and if so, we must initialize cur_entry->trace_vars_tree
@@ -1346,6 +1409,10 @@ void initializeFunctionTable(void)
     genallocatehashtable(0,
                          (int (*)(void *,void *)) &equivalentIDs);
 
+  FuncNameTable =
+    genallocatehashtable((unsigned int (*)(void *)) &hashString,
+                         (int (*)(void *,void *)) &equivalentStrings);
+
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
       //      FJALAR_DPRINTF("i: %d\n", i);
@@ -1368,6 +1435,7 @@ void initializeFunctionTable(void)
           cur_func_entry = constructFunctionEntry();
 
 	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
+
 
           cur_func_entry->name = dwarfFunctionPtr->name;
           cur_func_entry->mangled_name = dwarfFunctionPtr->mangled_name;
@@ -2540,7 +2608,7 @@ extractOneVariable(VarList* varListPtr,
     varPtr->ptrLevels = 1;
     varPtr->varType = &VoidType;
   }
-  
+
   return varPtr;
 }
 

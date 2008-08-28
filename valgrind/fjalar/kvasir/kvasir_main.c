@@ -53,7 +53,10 @@ Bool print_declarations = 1;
 
 // Temporary - only to be used during the transition period from the
 // old .decls format to the new format (designed in April 2006):
-Bool kvasir_new_decls_format = False;
+Bool kvasir_old_decls_format = False;
+Bool kvasir_parent_records = False;
+Bool kvasir_transitioning = False;
+Bool kvasir_unambiguous_fields = False;
 
 Bool kvasir_with_dyncomp = False;
 Bool dyncomp_no_gc = False;
@@ -503,6 +506,13 @@ void fjalar_tool_pre_clo_init(void)
 // Initialize kvasir after processing command-line options
 void fjalar_tool_post_clo_init(void)
 {
+
+  fjalar_output_struct_vars = False;
+
+  // RUDD 2.0 to make transition testing easier
+  if(kvasir_transitioning)
+    fjalar_output_struct_vars = True;
+
   // Special-case .dtrace handling if kvasir_dtrace_filename ends in ".gz"
   if (kvasir_dtrace_filename) {
     int filename_len = VG_(strlen)(kvasir_dtrace_filename);
@@ -539,12 +549,10 @@ void fjalar_tool_post_clo_init(void)
      print_declarations = 0;
   }
 
-  if (kvasir_new_decls_format) {
+  if (!kvasir_old_decls_format) {
     // Set fjalar_output_struct_vars to True if using new .decls
     // format so that we can derive all possible variables.
     fjalar_output_struct_vars = True;
-
-    VG_(printf)("\nUsing new .decls format (designed by Jeff Perkins et. al. in April 2006)\n\n");
   }
 
   createDeclsAndDtraceFiles(executable_filename);
@@ -620,7 +628,7 @@ void fjalar_tool_print_usage()
 "                             [--no-dyncomp-trace]\n"
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
 "                             of every program point (for debug only)\n"
-"    --new-decls-format       Use the new .decls format designed in April 2006 (temporary flag)\n\n"
+"    --old-decls-format       Use the old(1.0) decls format\n\n"
 
    );
 }
@@ -644,7 +652,8 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else VG_YESNO_CLO("output-fifo",      kvasir_output_fifo)
   else VG_YESNO_CLO("decls-only",       kvasir_decls_only)
   else VG_YESNO_CLO("repair-format",    kvasir_repair_format)
-  else VG_YESNO_CLO("new-decls-format", kvasir_new_decls_format)
+  else VG_YESNO_CLO("old-decls-format", kvasir_old_decls_format)
+  else VG_YESNO_CLO("parent-records",   kvasir_parent_records)
   else VG_YESNO_CLO("kvasir-debug",     kvasir_print_debug_info)
   else VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename)
   else VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename)
