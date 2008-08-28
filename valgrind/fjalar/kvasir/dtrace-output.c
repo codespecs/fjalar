@@ -93,12 +93,7 @@ static void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
     fputs("\n", dtrace_fp);
   }
   else {
-    if (kvasir_new_decls_format) {
-      fputs(SIMPLE_EXIT_PPT, dtrace_fp);
-    }
-    else {
-      fputs(EXIT_PPT, dtrace_fp);
-    }
+    fputs(EXIT_PPT, dtrace_fp);
     fputs("\n", dtrace_fp);
   }
 
@@ -958,16 +953,16 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   (void)numDereferences; /* silence unused variable warning */
 
   // Line 1: Variable name
-  if (kvasir_new_decls_format) {
+  if (kvasir_old_decls_format) {
+    DTRACE_PRINTF("%s\n", varName);
+  }
+  else {
     // The DTRACE_PRINTF() macro had this condition, so we should
     // follow it too ...
     if (!dyncomp_without_dtrace) {
-      printDaikonExternalVarName(varName, dtrace_fp);
+      printDaikonExternalVarName(var, varName, dtrace_fp);
       fputs("\n", dtrace_fp);
     }
-  }
-  else {
-    DTRACE_PRINTF("%s\n", varName);
   }
 
   // Lines 2 & 3: Value and modbit

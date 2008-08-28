@@ -29,6 +29,14 @@
 // properly!
 int g_variableIndex = 0;
 
+// Somewhat dirty hack. Since superclass parsing is handled recursively
+// and by the same function that handles struct parsing, I need to
+// differentiate whether or not the current variable belongs to a super
+// class.
+
+static int traversing_super = 0;
+
+
 extern FunctionTree* globalFunctionTree;
 
 
@@ -108,6 +116,7 @@ char* STAR = "*";
 // Doing stringStackStrdup() on this stack will result in a full
 // variable name.
 char* fullNameStack[MAX_STRING_STACK_SIZE];
+char** fullNameStackPtr = fullNameStack;
 int fullNameStackSize = 0;
 
 // This stack keeps the FULL names of all variables above the current
@@ -122,12 +131,12 @@ void stringStackPush(char** stringStack, int* pStringStackSize, char* str)
 {
   tl_assert(str && *pStringStackSize < MAX_STRING_STACK_SIZE);
 
-  // Don't allow null strings at all:
-  //  if (!str) {
-  //    VG_(printf)( "Null string passed to push!\n");
-  //    /* abort(); */
-  //    str = "<null>";
-  //  }
+  //Don't allow null strings at all:
+  if (!str) {
+    VG_(printf)( "Null string passed to push!\n");
+    /* abort(); */
+    str = "<null>";
+  }
 
   stringStack[*pStringStackSize] = str;
   (*pStringStackSize)++;
@@ -136,6 +145,9 @@ void stringStackPush(char** stringStack, int* pStringStackSize, char* str)
 char* stringStackPop(char** stringStack, int* pStringStackSize)
 {
   char* temp;
+  if(*pStringStackSize <= 0){
+      int test = *(int *)0;
+    }
   tl_assert(*pStringStackSize > 0);
 
   temp = stringStack[*pStringStackSize - 1];
@@ -199,6 +211,8 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 void visitClassMembersNoValues(TypeEntry* class,
 			       TraversalAction *performAction) {
 
+  char *fullFjalarName = NULL, *top = NULL;
+
   if (VisitedStructsTable) {
     genfreehashtable(VisitedStructsTable);
     VisitedStructsTable = 0;
@@ -207,6 +221,32 @@ void visitClassMembersNoValues(TypeEntry* class,
   // Use a small hashtable to save time and space:
   VisitedStructsTable =
     genallocateSMALLhashtable(0, (int (*)(void *,void *)) &equivalentIDs);
+
+  // RUDD 2.0 Making use of EnclosingVarStack to keep track of
+  // struct/class members.
+  // TODO: Make this less string based
+  top = stringStackTop(fullNameStack, fullNameStackSize);
+
+    //Need a proper enclosing variable name
+  if (!top ||
+      (top && VG_STREQ(top, DOT)) ||
+      (top && VG_STREQ(top, ZEROTH_ELT)) ||
+      (top && VG_STREQ(top, ARROW))) {
+    stringStackPop(fullNameStack, &fullNameStackSize);
+    fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    if (fullFjalarName) {
+      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+    }
+    stringStackPush(fullNameStack, &fullNameStackSize, top);
+  }
+  else {
+    fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    if (fullFjalarName) {
+      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+    }
+  }
+
+
 
   visitClassMemberVariables(class,
                             0,
@@ -222,6 +262,10 @@ void visitClassMembersNoValues(TypeEntry* class,
                             0,
                             0,
                             INVALID_RESULT);
+
+  if (fullFjalarName) {
+    stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+  }
 }
 
 
@@ -253,6 +297,9 @@ void visitClassMemberVariables(TypeEntry* class,
                                FunctionEntry* varFuncInfo,
                                Bool isEnter,
                                TraversalResult tResult) {
+
+  char* fullFjalarName = NULL;
+
   tl_assert(((class->decType == D_STRUCT_CLASS) || (class->decType == D_UNION)) &&
             IS_AGGREGATE_TYPE(class));
 
@@ -361,7 +408,7 @@ void visitClassMemberVariables(TypeEntry* class,
                 if (pValueArray[ind]) {
                   Addr curVal =
 		    pValueArray[ind] + curVar->memberVar->data_member_location;
-		  Addr curValGuest = pValueArrayGuest[ind] + 
+		  Addr curValGuest = pValueArrayGuest[ind] +
 		    curVar->memberVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
@@ -512,7 +559,7 @@ void visitClassMemberVariables(TypeEntry* class,
             // Create pCurVarValueArray to be the same size as
             // pValueArray:
             pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
-            pCurVarValueArrayGuest = 
+            pCurVarValueArrayGuest =
 	      (Addr*)VG_(malloc)(numElts * sizeof(Addr));
 
             // Iterate though pValueArray and fill up
@@ -526,7 +573,7 @@ void visitClassMemberVariables(TypeEntry* class,
               // Otherwise, we'd have mis-alignment issues.  (I tried
               // it in gdb and it seems to work, though.)
               if (pValueArray[ind]) {
-                Addr curVal = 
+                Addr curVal =
 		  pValueArray[ind] + curVar->memberVar->data_member_location;
                 Addr curValGuest = pValueArrayGuest[ind] +
 		  curVar->memberVar->data_member_location;
@@ -573,7 +620,7 @@ void visitClassMemberVariables(TypeEntry* class,
             // struct's starting address plus the location of the
             // variable within the struct
             pCurVarValue = pValue + curVar->memberVar->data_member_location;
-            pCurVarValueGuest = 
+            pCurVarValueGuest =
 	      pValueGuest + curVar->memberVar->data_member_location;
 
             // Override for D_DOUBLE types: For some reason, the
@@ -722,8 +769,23 @@ void visitClassMemberVariables(TypeEntry* class,
       // Push a name prefix to denote that we are traversing into a
       // superclass:
       stringStackPush(fullNameStack, &fullNameStackSize, curSuper->className);
+
+      // RUDD 2.0  Trying to make use of EnclosingVar stack for Nested Classes and Structs.
+      // Push fullFjalarName onto enclosingVarNamesStack:
+      fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+      if (fullFjalarName) {
+        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      }
+
+      // RUDD COMMENTED CODE
+      /*      if(fullFjalarName)
+              printf("This is my fullname,%s\n", fullFjalarName);*/
+
+
       stringStackPush(fullNameStack, &fullNameStackSize, DOT);
       numEltsPushedOnStack += 2;
+
+      traversing_super++;
 
       // This recursive call will handle multiple levels of
       // inheritance (e.g., if A extends B, B extends C, and C extends
@@ -745,7 +807,7 @@ void visitClassMemberVariables(TypeEntry* class,
                                 (superclassOffsetPtrValues ?
                                  superclassOffsetPtrValues : pValueArray),
                                 (superclassOffsetPtrValuesGuest ?
-                                 superclassOffsetPtrValuesGuest 
+                                 superclassOffsetPtrValuesGuest
 				 : pValueArrayGuest),
                                 numElts,
                                 performAction,
@@ -755,6 +817,12 @@ void visitClassMemberVariables(TypeEntry* class,
                                 varFuncInfo,
                                 isEnter,
                                 tResult);
+
+      traversing_super = 0;
+
+      if (fullFjalarName) {
+        stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+      }
 
       // POP all the stuff we pushed on there before
       while ((numEltsPushedOnStack--) > 0) {
@@ -929,8 +997,9 @@ void visitReturnValue(FunctionExecutionState* e,
   // real struct/union, not just a pointer to one
   // BE CAREFUL WITH declaredType - it may be misleading since all
   // pointers share the same declaredType
+  // RUDD - Need an extra indirection level for references.
   if ((cur_node->var->ptrLevels == 0) &&
-      (IS_AGGREGATE_TYPE(cur_node->var->varType))) {
+      (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
     // e->xAX is the contents of the virtual xAX, which should be the
     // address of the struct/union, so pass that along ...  NO extra
     // level of indirection needed
@@ -1519,7 +1588,34 @@ void visitSingleVar(VariableEntry* var,
   // dereferences have been done (layersBeforeBase == 0), then visit
   // all derived member variables:
   else if (IS_AGGREGATE_TYPE(var->varType)) {
+    char* top = NULL;
+
     tl_assert(0 == layersBeforeBase);
+
+
+    // RUDD 2.0 Trying to make use of EnclosingVar stack for Nested Classes and Structs.
+    // Push fullFjalarName onto enclosingVarNamesStack:
+    top = stringStackTop(fullNameStack, fullNameStackSize);
+
+    //Need a proper enclosing variable name
+    if (!top ||
+        (top && VG_STREQ(top, DOT)) ||
+        (top && VG_STREQ(top, ZEROTH_ELT)) ||
+        (top && VG_STREQ(top, ARROW))) {
+      stringStackPop(fullNameStack, &fullNameStackSize);
+      fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+
+      if (fullFjalarName) {
+        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      }
+      stringStackPush(fullNameStack, &fullNameStackSize, top);
+    }
+    else {
+      fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+      if (fullFjalarName) {
+        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      }
+    }
 
     visitClassMemberVariables(var->varType,
                               pValue,
@@ -1535,9 +1631,14 @@ void visitSingleVar(VariableEntry* var,
                               varFuncInfo,
                               isEnter,
                               tResult);
+  if (fullFjalarName) {
+    stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
   }
+
+
   if (fullFjalarName)
     VG_(free)(fullFjalarName);
+  }
 }
 
 
@@ -1745,7 +1846,7 @@ void visitSequence(VariableEntry* var,
           if (derivedIsInitialized) {
             // Make a single dereference and override pValueArray
             // entry with the dereferenced value:
-            *pValueArrayEntryGuest = *pValueArrayEntry = 
+            *pValueArrayEntryGuest = *pValueArrayEntry =
 	      *((Addr*)(*pValueArrayEntry));
           }
           else {

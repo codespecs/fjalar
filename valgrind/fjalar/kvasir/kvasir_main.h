@@ -144,7 +144,23 @@ Bool print_declarations;
 
 // Temporary - only to be used during the transition period from the
 // old .decls format to the new format (designed in April 2006):
-Bool kvasir_new_decls_format;
+Bool kvasir_old_decls_format;
+
+
+Bool kvasir_transitioning;
+
+// Parent Records is by default off. The issue is the current implementaiton
+// of Fjalar treats structs and classes relatively similarly. The latter is
+// well supported, however structs takes some hacking to get into the correct
+// format. In general it's safe to use it for C++, however.
+Bool kvasir_parent_records;
+
+// Kvasir by default will print field names as how they would be accessed,
+// I.E. this->var even if var is a field of a superclass. However, this
+// can cause errors in the case of multiple inheritence. Since in general
+// cases like that are avoided due to their confusing nature, I've decided
+// to make this not the default.
+Bool kvasir_unambiguous_fields;
 
 Bool kvasir_with_dyncomp;
 Bool dyncomp_no_gc;

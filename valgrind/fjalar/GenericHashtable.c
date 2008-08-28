@@ -134,7 +134,8 @@ void genfreekey(struct genhashtable *ht, void * key) {
     if (ptr->inext!=NULL)
       ptr->inext->iprev=ptr->iprev;
 
-    VG_(free)(ptr);
+
+    //    VG_(free)(ptr);
     ht->counter--;
     return;
   }
@@ -158,7 +159,6 @@ void genfreekey(struct genhashtable *ht, void * key) {
   }
   //  printf("XXXXXXXXX: COULDN'T FIND ENTRY FOR KEY %p\n",key);
 }
-
 unsigned int genhashfunction(struct genhashtable *ht, void * key) {
   if (ht->hash_function==NULL)
     return ((long unsigned int)key) % ht->currentsize;

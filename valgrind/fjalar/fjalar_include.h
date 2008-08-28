@@ -318,10 +318,6 @@ typedef struct _VariableEntry {
   // (If null, then this variable is not a static array)
   StaticArrayInfo* staticArr;
 
-  // Struct/class/union member variable information
-  // (If null, then this is not a member variable)
-  MemberVarInfo* memberVar;
-
   // varType refers to the type of the variable after all pointer
   // dereferences are completed, so don't directly use
   // varType->byteSize to get the size of the variable that a
@@ -337,6 +333,10 @@ typedef struct _VariableEntry {
   // example, a variable of type 'unsigned int**' would have:
   // (varType == &UnsignedIntType) && (ptrLevels == 2).
   UInt ptrLevels;
+
+  // Struct/class/union member variable information
+  // (If null, then this is not a member variable)
+  MemberVarInfo* memberVar;
 
   // For C++ only, this is 1 if this variable is a reference to the
   // type denoted by varType (this shouldn't ever increase above 1
@@ -383,6 +383,9 @@ struct _MemberVarInfo {
 
   // Only relevant for C++ member variables
   VisibilityType visibility;
+
+  // Struct/class/union member information
+  // provides information
 
   // For bit-fields (full support not yet implemented)
   int internalByteSize;
@@ -776,7 +779,7 @@ Addr pValue - Address where the variable is stored
 Addr pValueGuest - The guest-program-space address corresponding to pValue.
                    Usually the same as pValue, but will be different if
                    you're doing traversal over a copy of program data.
-                   0 if the the value is in a non-memory location like a 
+                   0 if the the value is in a non-memory location like a
                    register.
 Addr* pValueArray - An array of addresses of the variable
                      sequence (Only valid if isSequence is 1)
@@ -1044,5 +1047,13 @@ Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 char** enclosingVarNamesStack;
 int enclosingVarNamesStackSize;
 
+// This stack keeps track of all components of the full name of the
+// variable that's currently being visited.  E.g., for a variable
+// "foo->bar[]", this stack may contain something like:
+//   {"foo", "->", "bar", "[]"}.
+// Doing stringStackStrdup() on this stack will result in a full
+// variable name.
+char** fullNameStackPtr;
+int fullNameStackSize;
 
 #endif
