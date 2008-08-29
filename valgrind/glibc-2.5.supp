@@ -16,13 +16,12 @@
 #
 # For Memcheck, the supp_kinds are:
 #
-#     Param Value1 Value2 Value4 Value8 Value16
+#     Param Value1 Value2 Value4 Value8 Value16 Jump
 #     Free Addr1 Addr2 Addr4 Addr8 Addr16
 #     Cond (previously known as Value0)
 #
 # and the optional extra info is:
 #     if Param: name of system call param
-#     if Free: name of free-ing fn)
 
 {
    dl-hack1
@@ -197,4 +196,20 @@
    obj:/*libc-2.5.so
    obj:/*libc-2.5.so
    obj:/*libc-2.5.so
+}
+
+##----------------------------------------------------------------------##
+# MontaVista Linux 4.0.1 on ppc32
+{
+    MVL-401-linuxthreads-pthread_create
+    Memcheck:Param
+    write(buf)
+    fun:pthread_create
+}
+{
+   MVL-401-linuxthreads-pthread_create
+   Memcheck:Param
+   write(buf)
+   obj:/lib/libpthread-0.10.so
+   fun:pthread_create
 }

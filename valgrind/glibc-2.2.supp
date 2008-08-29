@@ -16,13 +16,12 @@
 #
 # For Memcheck, the supp_kinds are:
 #
-#     Param Value1 Value2 Value4 Value8 Value16
+#     Param Value1 Value2 Value4 Value8 Value16 Jump
 #     Free Addr1 Addr2 Addr4 Addr8 Addr16
 #     Cond (previously known as Value0)
 #
 # and the optional extra info is:
 #     if Param: name of system call param
-#     if Free: name of free-ing fn)
 
 #-------- For SuSE 8.2 (gcc 3.3, glibc 2.3.2)
 {
@@ -169,90 +168,6 @@
    fun:free
    fun:free_mem
    fun:__libc_freeres
-}
-
-#-------- Data races
-{
-   _dl_lookup_symbol/fixup/_dl_runtime_resolve
-   Helgrind:Eraser
-   fun:_dl_lookup_symbol
-   fun:fixup
-   fun:_dl_runtime_resolve
-}
-
-{
-   _dl_lookup_symbol_internal/fixup/_dl_runtime_resolve
-   Helgrind:Eraser
-   fun:_dl_lookup_symbol_internal
-   fun:fixup
-   fun:_dl_runtime_resolve
-}
-
-{
-   _dl_lookup_versioned_symbol/fixup/_dl_runtime_resolve
-   Helgrind:Eraser
-   fun:_dl_lookup_versioned_symbol
-   fun:fixup
-   fun:_dl_runtime_resolve
-}
-
-{
-   _dl_lookup_versioned_symbol_internal/fixup/_dl_runtime_resolve
-   Helgrind:Eraser
-   fun:_dl_lookup_versioned_symbol_internal
-   fun:fixup
-   fun:_dl_runtime_resolve
-}
-
-{
-   _dl_fini/exit/__libc_start_main
-   Helgrind:Eraser
-   fun:_dl_fini
-   fun:exit
-   fun:__libc_start_main
-}
-
-{
-   _dl_map_object_deps/dl_open_worker/_dl_catch_error/_dl_open
-   Helgrind:Eraser
-   fun:_dl_map_object_deps
-   fun:dl_open_worker
-   fun:_dl_catch_error
-   fun:_dl_open
-}
-
-{
-   _dl_map_object_deps_internal/dl_open_worker/_dl_catch_error_internal/_dl_open
-   Helgrind:Eraser
-   fun:_dl_map_object_deps_internal
-   fun:dl_open_worker
-   fun:_dl_catch_error_internal
-   fun:_dl_open
-}
-
-#-------- Threading bugs?
-# glibc 'knows' that destroying a locked mutex will unlock it
-{
-   pthread_error/pthread_mutex_destroy/__closedir
-   core:PThread
-   fun:pthread_error
-   fun:pthread_mutex_destroy
-   fun:__closedir
-}
-
-{
-   pthread_error/pthread_mutex_destroy/_IO_default_finish
-   core:PThread
-   fun:pthread_error
-   fun:pthread_mutex_destroy
-   fun:_IO_default_finish*
-}
-
-{
-   pthread_mutex_unlock/_IO_funlockfile
-   core:PThread
-   fun:pthread_mutex_unlock
-   fun:_IO_funlockfile
 }
 
 # even more glibc suppressions ?
