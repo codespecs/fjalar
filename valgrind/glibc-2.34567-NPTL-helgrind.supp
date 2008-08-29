@@ -1,0 +1,501 @@
+
+##----------------------------------------------------------------------##
+# Suppressions for the Helgrind tool when using 
+# a glibc-2.{2,3,4,5,6} system
+
+######------------ glibc-2.5 specific ------------######
+#
+## NB.  This is the "reference set".  Derived sets for
+## glibc 2.7, 2.6, 2.4 and 2.3 follow below.
+{
+   helgrind-glibc25-001
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/ld-2.5.*so
+}
+{
+   helgrind-glibc25-002
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/libc-2.5.*so
+   obj:/lib*/ld-2.5.*so
+}
+{
+   helgrind-glibc25-003
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/libc-2.5.*so
+   obj:/lib*/libc-2.5.*so
+}
+{
+   helgrind-glibc25-004
+   Helgrind:Race
+   obj:/lib*/libc-2.5.*so
+   obj:/lib*/libc-2.5.*so
+}
+{
+   helgrind-glibc25-005
+   Helgrind:Race
+   obj:/lib*/libpthread-2.5.*so
+   obj:/lib*/libpthread-2.5.*so
+   obj:/lib*/libpthread-2.5.*so
+}
+{
+   helgrind-glibc25-006
+   Helgrind:Race
+   obj:/lib*/libpthread-2.5.*so
+   obj:/lib*/libpthread-2.5.*so
+   obj:/lib*/libc-2.5.*so
+}
+{
+   helgrind-glibc25-007
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/libc-2.5.*so
+   obj:/lib*/libdl-2.5.*so
+}
+{
+   helgrind-glibc25-008
+   Helgrind:Race
+   obj:/lib*/libpthread-2.5.*so
+   obj:/lib*/libc-2.5.*so
+}
+{
+   helgrind-glibc25-009
+   Helgrind:Race
+   obj:/lib*/libc-2.5.*so
+   fun:*
+   obj:/lib*/libc-2.5.*so
+}
+{
+   helgrind-glibc25-010
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/libpthread-2.5.*so
+}
+{
+   helgrind-glibc25-011
+   Helgrind:Race
+   obj:/lib*/libc-2.5.*so
+   obj:/lib*/libpthread-2.5.*so
+}
+{
+   helgrind-glibc25-013
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   fun:*
+   obj:/lib*/ld-2.5.*so
+}
+{
+   helgrind-glibc25-014
+   Helgrind:Race
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/ld-2.5.*so
+   obj:/lib*/libpthread-2.5.*so
+}
+
+# These are very ugly.  They are needed to suppress errors inside (eg)
+# NPTL's pthread_cond_signal.  Why only one stack frame -- at least we
+# should see the wrapper calling the real functions, right?
+# Unfortunately, no: the real functions are handwritten assembly (in
+# the glibc-2.5 sources) and does not create a proper stack frame.
+# Therefore it's only one level of unwinding before we're back out in
+# user code rather than the 2 levels you'd expect.
+{
+   helgrind-glibc25-101
+   Helgrind:Race
+   obj:/lib*/libpthread-2.5.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc25-102
+   Helgrind:Race
+   fun:mythread_wrapper
+   obj:/lib*/libpthread-2.5.*so
+}
+{
+   helgrind-glibc25-103
+   Helgrind:Race
+   fun:pthread_cond_*@@GLIBC_2.3.2
+}
+{
+   helgrind-glibc25-104
+   Helgrind:Race
+   fun:__lll_mutex_*
+}
+{
+   helgrind-glibc25-105
+   Helgrind:Race
+   fun:pthread_rwlock_*lock*
+}
+{
+   helgrind-glibc25-107
+   Helgrind:Race
+   obj:/lib*/libpthread-2.5.*so
+   fun:sem_*
+}
+{
+   helgrind-glibc25-108
+   Helgrind:Race
+   fun:clone
+}
+{
+   helgrind-glibc25-109
+   Helgrind:Race
+   fun:start_thread
+}
+
+######------------ glibc-2.8 specific ---------######
+#
+{
+   helgrind-glibc28-001
+   Helgrind:Race
+   obj:/lib*/ld-2.8.*so
+   obj:/lib*/ld-2.8.*so
+}
+{
+   helgrind-glibc28-002
+   Helgrind:Race
+   obj:/lib*/ld-2.8.*so
+   obj:/lib*/libc-2.8.*so
+   obj:/lib*/ld-2.8.*so
+}
+{
+   helgrind-glibc28-003
+   Helgrind:Race
+   obj:/lib*/ld-2.8.*so
+   obj:/lib*/libc-2.8.*so
+   obj:/lib*/libc-2.8.*so
+}
+{
+   helgrind-glibc28-004
+   Helgrind:Race
+   obj:/lib*/libc-2.8.*so
+   obj:/lib*/libc-2.8.*so
+}
+{
+   helgrind-glibc28-006
+   Helgrind:Race
+   obj:/lib*/libpthread-2.8.*so
+   obj:/lib*/libpthread-2.8.*so
+   obj:/lib*/libc-2.8.*so
+}
+{
+   helgrind-glibc28-010
+   Helgrind:Race
+   obj:/lib*/ld-2.8.*so
+   obj:/lib*/libpthread-2.8.*so
+}
+
+{
+   helgrind-glibc28-101
+   Helgrind:Race
+   obj:/lib*/libpthread-2.8.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc28-102
+   Helgrind:Race
+   fun:mythread_wrapper
+   obj:/lib*/libpthread-2.8.*so
+}
+{
+   helgrind-glibc28-110
+   Helgrind:Race
+   obj:/lib*/libc-2.8.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc28-111
+   Helgrind:Race
+   fun:__lll_*lock_*
+}
+
+######------------ glibc-2.7 specific ---------######
+#
+{
+   helgrind-glibc27-001
+   Helgrind:Race
+   obj:/lib*/ld-2.7.*so
+   obj:/lib*/ld-2.7.*so
+}
+{
+   helgrind-glibc27-003
+   Helgrind:Race
+   obj:/lib*/ld-2.7.*so
+   obj:/lib*/libc-2.7.*so
+   obj:/lib*/libc-2.7.*so
+}
+{
+   helgrind-glibc27-004
+   Helgrind:Race
+   obj:/lib*/libc-2.7.*so
+   obj:/lib*/libc-2.7.*so
+}
+{
+   helgrind-glibc27-005
+   Helgrind:Race
+   obj:/lib*/libpthread-2.7.*so
+   obj:/lib*/libpthread-2.7.*so
+   obj:/lib*/libpthread-2.7.*so
+}
+{
+   helgrind-glibc27-011
+   Helgrind:Race
+   obj:/lib*/libc-2.7.*so
+   obj:/lib*/libpthread-2.7.*so
+}
+
+{
+   helgrind-glibc27-101
+   Helgrind:Race
+   obj:/lib*/libpthread-2.7.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc27-102
+   Helgrind:Race
+   fun:mythread_wrapper
+   obj:/lib*/libpthread-2.7.*so
+}
+{
+   helgrind-glibc27-107
+   Helgrind:Race
+   obj:/lib*/libpthread-2.7.*so
+   fun:sem_*
+}
+
+######------------ glibc-2.6 specific ---------######
+#
+{
+   helgrind-glibc26-001
+   Helgrind:Race
+   obj:/lib*/ld-2.6.*so
+   obj:/lib*/ld-2.6.*so
+}
+{
+   helgrind-glibc26-003
+   Helgrind:Race
+   obj:/lib*/ld-2.6.*so
+   obj:/lib*/libc-2.6.*so
+   obj:/lib*/libc-2.6.*so
+}
+{
+   helgrind-glibc26-004
+   Helgrind:Race
+   obj:/lib*/libc-2.6.*so
+   obj:/lib*/libc-2.6.*so
+}
+{
+   helgrind-glibc26-005
+   Helgrind:Race
+   obj:/lib*/libpthread-2.6.*so
+   obj:/lib*/libpthread-2.6.*so
+   obj:/lib*/libpthread-2.6.*so
+}
+{
+   helgrind-glibc26-006
+   Helgrind:Race
+   obj:/lib*/libpthread-2.6.*so
+   obj:/lib*/libpthread-2.6.*so
+   obj:/lib*/libc-2.6.*so
+}
+{
+   helgrind-glibc26-008
+   Helgrind:Race
+   obj:/lib*/libpthread-2.6.*so
+   obj:/lib*/libc-2.6.*so
+}
+{
+   helgrind-glibc26-011
+   Helgrind:Race
+   obj:/lib*/libc-2.6.*so
+   obj:/lib*/libpthread-2.6.*so
+}
+{
+   helgrind-glibc26-014
+   Helgrind:Race
+   obj:/lib*/ld-2.6.*so
+   obj:/lib*/ld-2.6.*so
+   obj:/lib*/libpthread-2.6.*so
+}
+
+{
+   helgrind-glibc26-101
+   Helgrind:Race
+   obj:/lib*/libpthread-2.6.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc26-102
+   Helgrind:Race
+   fun:mythread_wrapper
+   obj:/lib*/libpthread-2.6.*so
+}
+{
+   helgrind-glibc26-106
+   Helgrind:Race
+   fun:__lll_lock_wait
+}
+{
+   helgrind-glibc26-107
+   Helgrind:Race
+   obj:/lib*/libpthread-2.6.*so
+   fun:sem_*
+}
+
+######------------ glibc-2.4 specific ------------######
+#
+{
+   helgrind-glibc24-001
+   Helgrind:Race
+   obj:/lib*/ld-2.4.*so
+   obj:/lib*/ld-2.4.*so
+}
+{
+   helgrind-glibc24-003
+   Helgrind:Race
+   obj:/lib*/ld-2.4.*so
+   obj:/lib*/libc-2.4.*so
+   obj:/lib*/libc-2.4.*so
+}
+{
+   helgrind-glibc24-004
+   Helgrind:Race
+   obj:/lib*/libc-2.4.*so
+   obj:/lib*/libc-2.4.*so
+}
+{
+   helgrind-glibc24-005
+   Helgrind:Race
+   obj:/lib*/libpthread-2.4.*so
+   obj:/lib*/libpthread-2.4.*so
+   obj:/lib*/libpthread-2.4.*so
+}
+{
+   helgrind-glibc24-006
+   Helgrind:Race
+   obj:/lib*/libpthread-2.4.*so
+   obj:/lib*/libpthread-2.4.*so
+   obj:/lib*/libc-2.4.*so
+}
+{
+   helgrind-glibc24-008
+   Helgrind:Race
+   obj:/lib*/libpthread-2.4.*so
+   obj:/lib*/libc-2.4.*so
+}
+{
+   helgrind-glibc24-010
+   Helgrind:Race
+   obj:/lib*/ld-2.4.*so
+   obj:/lib*/libpthread-2.4.*so
+}
+{
+   helgrind-glibc24-011
+   Helgrind:Race
+   obj:/lib*/libc-2.4.*so
+   obj:/lib*/libpthread-2.4.*so
+}
+
+{
+   helgrind-glibc24-101
+   Helgrind:Race
+   obj:/lib*/libpthread-2.4.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc24-102
+   Helgrind:Race
+   fun:mythread_wrapper
+   obj:/lib*/libpthread-2.4.*so
+}
+
+######--------- glibc-2.3 specific ---------######
+{
+   helgrind-glibc23-001
+   Helgrind:Race
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/ld-2.3.*so
+}
+{
+   helgrind-glibc23-002
+   Helgrind:Race
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/libc-2.3.*so
+   obj:/lib*/ld-2.3.*so
+}
+{
+   helgrind-glibc23-003
+   Helgrind:Race
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/libc-2.3.*so
+   obj:/lib*/libc-2.3.*so
+}
+{
+   helgrind-glibc23-004
+   Helgrind:Race
+   obj:/lib*/libc-2.3.*so
+   obj:/lib*/libc-2.3.*so
+}
+{
+   helgrind-glibc23-006
+   Helgrind:Race
+   obj:/lib*/libpthread-2.3.*so
+   obj:/lib*/libpthread-2.3.*so
+   obj:/lib*/libc-2.3.*so
+}
+{
+   helgrind-glibc23-008
+   Helgrind:Race
+   obj:/lib*/libpthread-2.3.*so
+   obj:/lib*/libc-2.3.*so
+}
+{
+   helgrind-glibc23-009
+   Helgrind:Race
+   obj:/lib*/libc-2.3.*so
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/libc-2.3.*so
+}
+{
+   helgrind-glibc23-011
+   Helgrind:Race
+   obj:/lib*/libc-2.3.*so
+   obj:/lib*/libpthread-2.3.*so
+}
+{
+   helgrind-glibc23-012
+   Helgrind:Race
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/libc-2.3.*so
+}
+{
+   helgrind-glibc23-014
+   Helgrind:Race
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/ld-2.3.*so
+   obj:/lib*/libpthread-2.3.*so
+}
+
+{
+   helgrind-glibc23-100
+   Helgrind:Race
+   obj:/lib*/libpthread-2.3.*so
+   fun:pthread_*
+}
+{
+   helgrind-glibc23-101
+   Helgrind:Race
+   fun:mythread_wrapper
+   obj:/lib*/libpthread-2.3.*so
+}
+
+######------ qt4 specific (GNU mangling) ------######
+{
+   helgrind-qt4-QMutex::lock()-twice
+   Helgrind:Race
+   fun:_ZN6QMutex4lockEv
+   fun:_ZN6QMutex4lockEv
+}

@@ -18,8 +18,14 @@
 /* Define to 1 if you're using glibc 2.4.x */
 #undef GLIBC_2_4
 
-/* Define to 1 if you're using glibc 2.5.x */
+/* Define to 1 if you're using glibc 2.7.x */
 #undef GLIBC_2_5
+
+/* Define to 1 if you're using glibc 2.6.x */
+#undef GLIBC_2_6
+
+/* Define to 1 if you're using glibc 2.8.x */
+#undef GLIBC_2_8
 
 /* Define to 1 if as supports mtocrf/mfocrf. */
 #undef HAVE_AS_PPC_MFTOCRF
