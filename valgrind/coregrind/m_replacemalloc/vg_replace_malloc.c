@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,7 +45,7 @@
    ------------------------------------------------------------------ */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"           // VKI_EINVAL, VKI_ENOMEM, VKI_PAGE_SIZE
+#include "pub_core_vki.h"           // VKI_EINVAL, VKI_ENOMEM
 #include "pub_core_clreq.h"         // for VALGRIND_INTERNAL_PRINTF,
                                     //   VALGRIND_NON_SIMD_CALL[12]
 #include "pub_core_debuginfo.h"     // needed for pub_core_redir.h :(
@@ -103,7 +103,7 @@ extern void _exit(int);
    memcpy() is used by gcc for a struct assignment in mallinfo()
    below.  Add the following conservative implementation (memmove,
    really). */
-#if defined(VGO_aix5)
+#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
 __attribute__((weak))
 void *memcpy(void *destV, const void *srcV, unsigned long n)
 {
@@ -205,15 +205,18 @@ static void init(void) __attribute__((constructor));
 // malloc
 ALLOC_or_NULL(m_libstdcxx_soname, malloc,      malloc);
 ALLOC_or_NULL(m_libc_soname,      malloc,      malloc);
+#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+ALLOC_or_NULL(m_libc_soname,      malloc_common, malloc);
+#endif
 
 
 /*---------------------- new ----------------------*/
 
 // operator new(unsigned int), not mangled (for gcc 2.96)
-ALLOC_or_BOMB(m_libcstdcxx_soname, builtin_new,    __builtin_new);
+ALLOC_or_BOMB(m_libstdcxx_soname,  builtin_new,    __builtin_new);
 ALLOC_or_BOMB(m_libc_soname,       builtin_new,    __builtin_new);
 
-ALLOC_or_BOMB(m_libcstdcxx_soname, __builtin_new,  __builtin_new);
+ALLOC_or_BOMB(m_libstdcxx_soname,  __builtin_new,  __builtin_new);
 ALLOC_or_BOMB(m_libc_soname,       __builtin_new,  __builtin_new);
 
 // operator new(unsigned int), GNU mangling
@@ -257,7 +260,7 @@ ALLOC_or_BOMB(m_libc_soname,       __builtin_new,  __builtin_new);
 /*---------------------- new [] ----------------------*/
 
 // operator new[](unsigned int), not mangled (for gcc 2.96)
-ALLOC_or_BOMB(m_libcstdcxx_soname, __builtin_vec_new, __builtin_vec_new );
+ALLOC_or_BOMB(m_libstdcxx_soname,  __builtin_vec_new, __builtin_vec_new );
 ALLOC_or_BOMB(m_libc_soname,       __builtin_vec_new, __builtin_vec_new );
 
 // operator new[](unsigned int), GNU mangling
@@ -318,6 +321,9 @@ ALLOC_or_BOMB(m_libc_soname,       __builtin_vec_new, __builtin_vec_new );
 // free
 FREE(m_libstdcxx_soname,  free,                 free );
 FREE(m_libc_soname,       free,                 free );
+#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+FREE(m_libc_soname,       free_common,          free );
+#endif
 
 
 /*---------------------- cfree ----------------------*/
@@ -329,7 +335,7 @@ FREE(m_libc_soname,       cfree,                free );
 
 /*---------------------- delete ----------------------*/
 // operator delete(void*), not mangled (for gcc 2.96)
-FREE(m_libcstdcxx_soname,  __builtin_delete,     __builtin_delete );
+FREE(m_libstdcxx_soname,   __builtin_delete,     __builtin_delete );
 FREE(m_libc_soname,        __builtin_delete,     __builtin_delete );
 
 // operator delete(void*), GNU mangling
@@ -351,7 +357,7 @@ FREE(m_libc_soname,      _ZdlPvRKSt9nothrow_t,  __builtin_delete );
 
 /*---------------------- delete [] ----------------------*/
 // operator delete[](void*), not mangled (for gcc 2.96)
-FREE(m_libcstdcxx_soname,  __builtin_vec_delete, __builtin_vec_delete );
+FREE(m_libstdcxx_soname,   __builtin_vec_delete, __builtin_vec_delete );
 FREE(m_libc_soname,        __builtin_vec_delete, __builtin_vec_delete );
 
 // operator delete[](void*), GNU mangling
@@ -389,6 +395,9 @@ FREE(m_libc_soname,       _ZdaPvRKSt9nothrow_t, __builtin_vec_delete );
    }
 
 CALLOC(m_libc_soname, calloc);
+#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+CALLOC(m_libc_soname, calloc_common);
+#endif
 
 
 /*---------------------- realloc ----------------------*/
@@ -418,6 +427,9 @@ CALLOC(m_libc_soname, calloc);
    }
 
 REALLOC(m_libc_soname, realloc);
+#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+REALLOC(m_libc_soname, realloc_common);
+#endif
 
 
 /*---------------------- memalign ----------------------*/
@@ -450,12 +462,25 @@ MEMALIGN(m_libc_soname, memalign);
 
 /*---------------------- valloc ----------------------*/
 
+static int local__getpagesize ( void ) {
+#  if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+   return 4096; /* kludge - toc problems prevent calling getpagesize() */
+#  else
+   extern int getpagesize (void);
+   return getpagesize();
+#  endif
+}
+
 #define VALLOC(soname, fnname) \
    \
    void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT size ); \
    void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT size )  \
    { \
-      return VG_REPLACE_FUNCTION_ZU(m_libc_soname,memalign)(VKI_PAGE_SIZE, size); \
+      static int pszB = 0; \
+      if (pszB == 0) \
+         pszB = local__getpagesize(); \
+      return VG_REPLACE_FUNCTION_ZU(m_libc_soname,memalign) \
+                ((SizeT)pszB, size); \
    }
 
 VALLOC(m_libc_soname, valloc);
@@ -542,6 +567,12 @@ MALLOC_TRIM(m_libc_soname, malloc_trim);
    }
 
 POSIX_MEMALIGN(m_libc_soname, posix_memalign);
+#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+/* 27 Nov 07: it appears that xlc links into executables, a
+   posix_memalign, which calls onwards to memalign_common, with the
+   same args. */
+POSIX_MEMALIGN(m_libc_soname, memalign_common);
+#endif
 
 
 /*---------------------- malloc_usable_size ----------------------*/
@@ -588,9 +619,18 @@ static void panic(const char *str)
    }
 
 PANIC(m_libc_soname, pvalloc);
-PANIC(m_libc_soname, malloc_stats);
 PANIC(m_libc_soname, malloc_get_state);
 PANIC(m_libc_soname, malloc_set_state);
+
+#define MALLOC_STATS(soname, fnname) \
+   \
+   void VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void ); \
+   void VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void )  \
+   { \
+      /* Valgrind's malloc_stats implementation does nothing. */ \
+   } 
+
+MALLOC_STATS(m_libc_soname, malloc_stats);
 
 
 /*---------------------- mallinfo ----------------------*/

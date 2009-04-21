@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -69,7 +69,8 @@ typedef
 // the kernel: ie. it's a file, it's readable and executable, and it's in
 // either ELF or "#!" format.  On success, 'out_fd' gets the fd of the file
 // if it's non-NULL.  Otherwise the fd is closed.
-extern SysRes VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd);
+extern SysRes VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd,
+                                  Bool allow_setuid);
 
 // Does everything short of actually running 'exe': finds the file,
 // checks execute permissions, sets up interpreter if program is a script, 

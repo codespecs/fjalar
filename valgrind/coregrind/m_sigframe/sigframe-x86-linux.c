@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Nicholas Nethercote
+   Copyright (C) 2000-2008 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -99,7 +99,8 @@ struct vg_sigframe
 
    /* XXX This is wrong.  Surely we should store the shadow values
       into the shadow memory behind the actual values? */
-   VexGuestX86State vex_shadow;
+   VexGuestX86State vex_shadow1;
+   VexGuestX86State vex_shadow2;
 
    /* HACK ALERT */
    VexGuestX86State vex;
@@ -344,8 +345,8 @@ struct rt_sigframe
    bits of sigcontext at the moment.
 */
 static 
-void synth_ucontext(ThreadId tid, const vki_siginfo_t *si, 
-                    const vki_sigset_t *set, 
+void synth_ucontext(ThreadId tid, const vki_siginfo_t *si,
+                    UWord trapno, UWord err, const vki_sigset_t *set, 
                     struct vki_ucontext *uc, struct _vki_fpstate *fpstate)
 {
    ThreadState *tst = VG_(get_ThreadState)(tid);
@@ -381,8 +382,8 @@ void synth_ucontext(ThreadId tid, const vki_siginfo_t *si,
    sc->eflags = LibVEX_GuestX86_get_eflags(&tst->arch.vex);
    SC2(ss,SS);
    /* XXX esp_at_signal */
-   /* XXX trapno */
-   /* XXX err */
+   sc->trapno = trapno;
+   sc->err = err;
 #  undef SC2
 
    sc->cr2 = (UInt)si->_sifields._sigfault._addr;
@@ -395,20 +396,20 @@ void synth_ucontext(ThreadId tid, const vki_siginfo_t *si,
 */
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
-   ThreadId tid = tst->tid;
+   ThreadId        tid = tst->tid;
    NSegment const* stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);
       if (0 && stackseg)
-	 VG_(printf)("frame=%p seg=%p-%p\n",
+	 VG_(printf)("frame=%#lx seg=%#lx-%#lx\n",
 		     addr, stackseg->start, stackseg->end);
    }
 
    if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
       VG_(message)(
          Vg_UserMsg,
-         "Can't extend stack to %p during signal delivery for thread %d:",
+         "Can't extend stack to %#lx during signal delivery for thread %d:",
          addr, tid);
       if (stackseg == NULL)
          VG_(message)(Vg_UserMsg, "  no stack segment");
@@ -427,7 +428,7 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
    /* For tracking memory events, indicate the entire frame has been
       allocated. */
    VG_TRACK( new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-             size + VG_STACK_REDZONE_SZB );
+             size + VG_STACK_REDZONE_SZB, tid );
 
    return True;
 }
@@ -443,7 +444,8 @@ static void build_vg_sigframe(struct vg_sigframe *frame,
 {
    frame->sigNo_private = sigNo;
    frame->magicPI       = 0x31415927;
-   frame->vex_shadow    = tst->arch.vex_shadow;
+   frame->vex_shadow1   = tst->arch.vex_shadow1;
+   frame->vex_shadow2   = tst->arch.vex_shadow2;
    /* HACK ALERT */
    frame->vex           = tst->arch.vex;
    /* end HACK ALERT */
@@ -456,6 +458,7 @@ static void build_vg_sigframe(struct vg_sigframe *frame,
 static Addr build_sigframe(ThreadState *tst,
 			   Addr esp_top_of_frame,
 			   const vki_siginfo_t *siginfo,
+                           const struct vki_ucontext *siguc,
 			   void *handler, UInt flags,
 			   const vki_sigset_t *mask,
 			   void *restorer)
@@ -463,6 +466,8 @@ static Addr build_sigframe(ThreadState *tst,
    struct sigframe *frame;
    Addr esp = esp_top_of_frame;
    Int	sigNo = siginfo->si_signo;
+   UWord trapno;
+   UWord err;
    struct vki_ucontext uc;
 
    vg_assert((flags & VKI_SA_SIGINFO) == 0);
@@ -485,7 +490,15 @@ static Addr build_sigframe(ThreadState *tst,
    else
       frame->retaddr = (Addr)&VG_(x86_linux_SUBST_FOR_sigreturn);
 
-   synth_ucontext(tst->tid, siginfo, mask, &uc, &frame->fpstate);
+   if (siguc) {
+      trapno = siguc->uc_mcontext.trapno;
+      err = siguc->uc_mcontext.err;
+   } else {
+      trapno = 0;
+      err = 0;
+   }
+
+   synth_ucontext(tst->tid, siginfo, trapno, err, mask, &uc, &frame->fpstate);
 
    VG_(memcpy)(&frame->sigContext, &uc.uc_mcontext, 
 	       sizeof(struct vki_sigcontext));
@@ -503,6 +516,7 @@ static Addr build_sigframe(ThreadState *tst,
 static Addr build_rt_sigframe(ThreadState *tst,
 			      Addr esp_top_of_frame,
 			      const vki_siginfo_t *siginfo,
+                              const struct vki_ucontext *siguc,
 			      void *handler, UInt flags,
 			      const vki_sigset_t *mask,
 			      void *restorer)
@@ -510,6 +524,8 @@ static Addr build_rt_sigframe(ThreadState *tst,
    struct rt_sigframe *frame;
    Addr esp = esp_top_of_frame;
    Int	sigNo = siginfo->si_signo;
+   UWord trapno;
+   UWord err;
 
    vg_assert((flags & VKI_SA_SIGINFO) != 0);
 
@@ -531,6 +547,14 @@ static Addr build_rt_sigframe(ThreadState *tst,
    else
       frame->retaddr = (Addr)&VG_(x86_linux_SUBST_FOR_rt_sigreturn);
 
+   if (siguc) {
+      trapno = siguc->uc_mcontext.trapno;
+      err = siguc->uc_mcontext.err;
+   } else {
+      trapno = 0;
+      err = 0;
+   }
+
    frame->psigInfo = (Addr)&frame->sigInfo;
    frame->puContext = (Addr)&frame->uContext;
    VG_(memcpy)(&frame->sigInfo, siginfo, sizeof(vki_siginfo_t));
@@ -540,7 +564,8 @@ static Addr build_rt_sigframe(ThreadState *tst,
       frame->sigInfo._sifields._sigfault._addr 
          = (void*)tst->arch.vex.guest_EIP;
 
-   synth_ucontext(tst->tid, siginfo, mask, &frame->uContext, &frame->fpstate);
+   synth_ucontext(tst->tid, siginfo, trapno, err, mask,
+                  &frame->uContext, &frame->fpstate);
 
    VG_TRACK( post_mem_write,  Vg_CoreSignal, tst->tid, 
              esp, offsetof(struct rt_sigframe, vg) );
@@ -555,6 +580,7 @@ static Addr build_rt_sigframe(ThreadState *tst,
 void VG_(sigframe_create)( ThreadId tid, 
                            Addr esp_top_of_frame,
                            const vki_siginfo_t *siginfo,
+                           const struct vki_ucontext *siguc,
                            void *handler, 
                            UInt flags,
                            const vki_sigset_t *mask,
@@ -564,11 +590,11 @@ void VG_(sigframe_create)( ThreadId tid,
    ThreadState* tst = VG_(get_ThreadState)(tid);
 
    if (flags & VKI_SA_SIGINFO)
-      esp = build_rt_sigframe(tst, esp_top_of_frame, siginfo, 
+      esp = build_rt_sigframe(tst, esp_top_of_frame, siginfo, siguc,
                                    handler, flags, mask, restorer);
    else
-      esp = build_sigframe(tst, esp_top_of_frame, 
-                                siginfo, handler, flags, mask, restorer);
+      esp = build_sigframe(tst, esp_top_of_frame, siginfo, siguc,
+                                handler, flags, mask, restorer);
 
    /* Set the thread so it will next run the handler. */
    /* tst->m_esp  = esp;  also notify the tool we've updated ESP */
@@ -581,8 +607,8 @@ void VG_(sigframe_create)( ThreadId tid,
       caller to do. */
 
    if (0)
-      VG_(printf)("pushed signal frame; %%ESP now = %p, "
-                  "next %%EIP = %p, status=%d\n", 
+      VG_(printf)("pushed signal frame; %%ESP now = %#lx, "
+                  "next %%EIP = %#x, status=%d\n",
 		  esp, tst->arch.vex.guest_EIP, tst->status);
 }
 
@@ -607,13 +633,14 @@ Bool restore_vg_sigframe ( ThreadState *tst,
       *sigNo = VKI_SIGSEGV;
       return False;
    }
-   tst->sig_mask        = frame->mask;
-   tst->tmp_sig_mask    = frame->mask;
-   tst->arch.vex_shadow = frame->vex_shadow;
+   tst->sig_mask         = frame->mask;
+   tst->tmp_sig_mask     = frame->mask;
+   tst->arch.vex_shadow1 = frame->vex_shadow1;
+   tst->arch.vex_shadow2 = frame->vex_shadow2;
    /* HACK ALERT */
-   tst->arch.vex        = frame->vex;
+   tst->arch.vex         = frame->vex;
    /* end HACK ALERT */
-   *sigNo               = frame->sigNo_private;
+   *sigNo                = frame->sigNo_private;
    return True;
 }
 
@@ -688,7 +715,7 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    if (VG_(clo_trace_signals))
       VG_(message)(
          Vg_DebugMsg, 
-         "VG_(signal_return) (thread %d): isRT=%d valid magic; EIP=%p", 
+         "VG_(signal_return) (thread %d): isRT=%d valid magic; EIP=%#x",
          tid, isRT, tst->arch.vex.guest_EIP);
 
    /* tell the tools */

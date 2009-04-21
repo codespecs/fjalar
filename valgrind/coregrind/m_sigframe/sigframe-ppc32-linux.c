@@ -8,9 +8,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Nicholas Nethercote
+   Copyright (C) 2000-2008 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2006 Paul Mackerras
+   Copyright (C) 2004-2008 Paul Mackerras
       paulus@samba.org
 
    This program is free software; you can redistribute it and/or
@@ -94,7 +94,8 @@
 struct vg_sig_private {
    UInt magicPI;
    UInt sigNo_private;
-   VexGuestPPC32State shadow;
+   VexGuestPPC32State vex_shadow1;
+   VexGuestPPC32State vex_shadow2;
 };
 
 /* Structure put on stack for signal handlers with SA_SIGINFO clear. */
@@ -133,7 +134,7 @@ struct rt_sigframe {
 static 
 void stack_mcontext ( struct vki_mcontext *mc, 
                       ThreadState* tst, 
-                      Int ret,
+                      Bool use_rt_sigreturn,
                       UInt fault_addr )
 {
    VG_TRACK( pre_mem_write, Vg_CoreSignal, tst->tid, "signal frame mcontext",
@@ -164,10 +165,18 @@ void stack_mcontext ( struct vki_mcontext *mc,
    /* XXX should do FP and vector regs */
 
    /* set up signal return trampoline */
+   /* NB.  5 Sept 07.  mc->mc_pad[0..1] used to contain a the code to
+      which the signal handler returns, and it just did sys_sigreturn
+      or sys_rt_sigreturn.  But this doesn't work if the stack is
+      non-executable, and it isn't consistent with the x86-linux and
+      amd64-linux scheme for removing the stack frame.  So instead be
+      consistent and use a stub in m_trampoline.  Then it doesn't
+      matter whether or not the (guest) stack is executable.  This
+      fixes #149519 and #145837. */
    VG_TRACK(pre_mem_write, Vg_CoreSignal, tst->tid, "signal frame mcontext",
             (Addr)&mc->mc_pad, sizeof(mc->mc_pad));
-   mc->mc_pad[0] = 0x38000000U + ret;   /* li 0,ret */
-   mc->mc_pad[1] = 0x44000002U;         /* sc */
+   mc->mc_pad[0] = 0; /* invalid */
+   mc->mc_pad[1] = 0; /* invalid */
    VG_TRACK( post_mem_write,  Vg_CoreSignal, tst->tid, 
              (Addr)&mc->mc_pad, sizeof(mc->mc_pad) );
    /* invalidate any translation of this area */
@@ -175,7 +184,10 @@ void stack_mcontext ( struct vki_mcontext *mc,
                               sizeof(mc->mc_pad), "stack_mcontext" );   
 
    /* set the signal handler to return to the trampoline */
-   SET_SIGNAL_LR(tst, (Addr) &mc->mc_pad[0]);
+   SET_SIGNAL_LR(tst, (Addr)(use_rt_sigreturn 
+                               ? (Addr)&VG_(ppc32_linux_SUBST_FOR_rt_sigreturn)
+                               : (Addr)&VG_(ppc32_linux_SUBST_FOR_sigreturn)
+                      ));
 }
 
 //:: /* Valgrind-specific parts of the signal frame */
@@ -493,20 +505,20 @@ void stack_mcontext ( struct vki_mcontext *mc,
 */
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
-   ThreadId tid = tst->tid;
-   NSegment const *stackseg = NULL;
+   ThreadId        tid = tst->tid;
+   NSegment const* stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);
       if (0 && stackseg)
-	 VG_(printf)("frame=%p seg=%p-%p\n",
+	 VG_(printf)("frame=%#lx seg=%#lx-%#lx\n",
 		     addr, stackseg->start, stackseg->end);
    }
 
    if (stackseg == NULL || !stackseg->hasR || !stackseg->hasW) {
       VG_(message)(
          Vg_UserMsg,
-         "Can't extend stack to %p during signal delivery for thread %d:",
+         "Can't extend stack to %#lx during signal delivery for thread %d:",
          addr, tid);
       if (stackseg == NULL)
          VG_(message)(Vg_UserMsg, "  no stack segment");
@@ -525,7 +537,7 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
    /* For tracking memory events, indicate the entire frame has been
       allocated. */
    VG_TRACK( new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-             size + VG_STACK_REDZONE_SZB );
+             size + VG_STACK_REDZONE_SZB, tid );
 
    return True;
 }
@@ -654,6 +666,7 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 void VG_(sigframe_create)( ThreadId tid, 
                            Addr sp_top_of_frame,
                            const vki_siginfo_t *siginfo,
+                           const struct vki_ucontext *siguc,
                            void *handler, 
                            UInt flags,
                            const vki_sigset_t *mask,
@@ -719,7 +732,7 @@ void VG_(sigframe_create)( ThreadId tid,
                 (Addr)&ucp->uc_regs,
                 sizeof(ucp->uc_regs) + sizeof(ucp->uc_sigmask) );
 
-      stack_mcontext(&ucp->uc_mcontext, tst, __NR_rt_sigreturn, faultaddr);
+      stack_mcontext(&ucp->uc_mcontext, tst, True/*use_rt_sigreturn*/, faultaddr);
       priv = &frame->priv;
 
       SET_SIGNAL_GPR(tid, 4, (Addr) &frame->siginfo);
@@ -741,7 +754,7 @@ void VG_(sigframe_create)( ThreadId tid,
       VG_TRACK( post_mem_write, Vg_CoreSignal, tid,
                 (Addr)&scp->_unused[3], sizeof(*scp) - 3 * sizeof(UInt) );
 
-      stack_mcontext(&frame->mcontext, tst, __NR_sigreturn, faultaddr);
+      stack_mcontext(&frame->mcontext, tst, False/*!use_rt_sigreturn*/, faultaddr);
       priv = &frame->priv;
 
       SET_SIGNAL_GPR(tid, 4, (Addr) scp);
@@ -749,7 +762,8 @@ void VG_(sigframe_create)( ThreadId tid,
 
    priv->magicPI       = 0x31415927;
    priv->sigNo_private = sigNo;
-   priv->shadow        = tst->arch.vex_shadow;
+   priv->vex_shadow1   = tst->arch.vex_shadow1;
+   priv->vex_shadow2   = tst->arch.vex_shadow2;
 
    SET_SIGNAL_GPR(tid, 1, sp);
    SET_SIGNAL_GPR(tid, 3, sigNo);
@@ -775,8 +789,8 @@ void VG_(sigframe_create)( ThreadId tid,
 //..       caller to do. */
 
    if (0)
-      VG_(printf)("pushed signal frame; %R1 now = %p, "
-                  "next %%CIA = %p, status=%d\n", 
+      VG_(printf)("pushed signal frame; %%R1 now = %#lx, "
+                  "next %%CIA = %#x, status=%d\n",
 		  sp, tst->arch.vex.guest_CIA, tst->status);
 }
 
@@ -919,13 +933,14 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    tst->arch.vex.guest_CTR = mc->mc_gregs[VKI_PT_CTR];
    LibVEX_GuestPPC32_put_XER( mc->mc_gregs[VKI_PT_XER], &tst->arch.vex );
 
-   tst->arch.vex_shadow = priv->shadow;
+   tst->arch.vex_shadow1 = priv->vex_shadow1;
+   tst->arch.vex_shadow2 = priv->vex_shadow2;
 
    VG_TRACK(die_mem_stack_signal, sp, frame_size);
 
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-                   "vg_pop_signal_frame (thread %d): isRT=%d valid magic; EIP=%p",
+                   "vg_pop_signal_frame (thread %d): isRT=%d valid magic; EIP=%#x",
                    tid, has_siginfo, tst->arch.vex.guest_CIA);
 
    /* tell the tools */

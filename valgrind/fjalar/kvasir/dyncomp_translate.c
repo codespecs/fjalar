@@ -26,7 +26,6 @@
 */
 
 #include "mc_include.h"
-#include "mc_translate.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
@@ -58,7 +57,7 @@ static Bool isOriginalAtom_DC ( DCEnv* dce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp < dce->n_originalTmps)
+   if (a1->tag == Iex_RdTmp && a1->Iex.RdTmp.tmp < dce->n_originalTmps)
       return True;
    return False;
 }
@@ -69,14 +68,14 @@ static Bool isShadowAtom_DC ( DCEnv* dce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp >= dce->n_originalTmps)
+   if (a1->tag == Iex_RdTmp && a1->Iex.RdTmp.tmp >= dce->n_originalTmps)
       return True;
    return False;
 }
 
 static IRAtom* assignNew_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
    IRTemp t = newIRTemp(dce->bb->tyenv, ty);
-   assign(dce->bb, t, e);
+   assign_DC('V', dce, t, e);
    return mkexpr(t);
 }
 
@@ -123,18 +122,18 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
    /* Do a plain shadow Put. */
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
-   stmt( dce->bb,
-         IRStmt_Put( (4 * offset) + (2 * dce->layout->total_sizeB), vatom ) );
+   stmt_DC('V',  dce,
+         IRStmt_Put( (4 * offset) + (3 * dce->layout->total_sizeB), vatom ) );
 }
 
 // A PUTI stores a value (dynamically indexed) into the guest state
 // (for x86, this seems to be only used for floating point values)
 void do_shadow_PUTI_DC ( DCEnv* dce,
-                      IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
+                      IRRegArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
 {
    IRAtom* vatom;
    IRType  ty;
-   IRArray *new_descr;
+   IRRegArray *new_descr;
 
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
@@ -147,10 +146,10 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
    new_descr
-      = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
+      = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
-   stmt( dce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
+   stmt_DC( 'V', dce, IRStmt_PutI( new_descr, ix, bias, vatom ));
 }
 
 static
@@ -183,15 +182,15 @@ IRExpr* shadow_GET_DC ( DCEnv* dce, Int offset, IRType ty )
 	       ((UInt)offset <  offsetof(VexGuestArchState, guest_FPREG)
 		+ 8 * sizeof(ULong))));
 
-   return IRExpr_Get( (4 * offset) + (2 * dce->layout->total_sizeB),
+   return IRExpr_Get( (4 * offset) + (3 * dce->layout->total_sizeB),
                       Ity_Word ); // Tags are word-sized
 }
 
 static
-IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
+IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
-   IRArray *new_descr;
+   IRRegArray *new_descr;
    tl_assert(ty != Ity_I1);
    tl_assert(isOriginalAtom_DC(dce,ix));
    /* return a cloned version of the Get that refers to the
@@ -199,7 +198,7 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRArray* descr, IRAtom* ix, Int bias )
    // PG - Remember the new layout in ThreadArchState
    //      which requires (4 * offset) + (2 * base size)
    new_descr
-      = mkIRArray( (4 * descr->base) + (2 * dce->layout->total_sizeB),
+      = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
    return IRExpr_GetI( new_descr, ix, bias );
@@ -226,7 +225,7 @@ static
 IRAtom* handleCCall_DC ( DCEnv* dce,
                          IRAtom** exprvec, IRCallee* cee )
 {
-   if (exprvec && exprvec[0]) {
+  if (exprvec && exprvec[0]) {
       IRAtom* first = expr2tags_DC(dce, exprvec[0]);
       Int i;
       IRAtom* cur;
@@ -256,7 +255,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
                                    mkIRExprVec_2( first, cur ));
 
             setHelperAnns_DC( dce, di );
-            stmt(dce->bb, IRStmt_Dirty(di));
+            stmt_DC('V', dce, IRStmt_Dirty(di));
          }
       }
       // Return the tag of the first argument, if there is one
@@ -1043,7 +1042,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 
    /* Now cook up a call to the relevant helper function, to read the
       tag for the given address. */
-   ty = shadowType(ty);
+   ty = shadowTypeV(ty);
    switch (ty) {
       case Ity_I64: helper = &MC_(helperc_LOAD_TAG_8);
                     hname = "MC_(helperc_LOAD_TAG_8)";
@@ -1082,7 +1081,7 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
                            1/*regparms*/, hname, helper,
                            mkIRExprVec_1( addrAct ));
    setHelperAnns_DC( dce, di );
-   stmt( dce->bb, IRStmt_Dirty(di) );
+   stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
    return mkexpr(datatag);
 }
@@ -1109,9 +1108,9 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
    diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
-   stmt(dce->bb, IRStmt_Dirty(diAddr));
+   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
-   switch (shadowType(ty)) {
+   switch (shadowTypeV(ty)) {
       case Ity_I8:
       case Ity_I16:
       case Ity_I32:
@@ -1183,7 +1182,7 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
                           mkIRExprVec_1( vbitsC ));
 
    setHelperAnns_DC( dce, di );
-   stmt( dce->bb, IRStmt_Dirty(di) );
+   stmt_DC('V', dce, IRStmt_Dirty(di) );
 
    // Do the real work of generating tag IR trees for expr0 and exprX
    // and then making a parallel Mux which contains these two trees
@@ -1217,7 +1216,7 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
                           mkIRExprVec_1( guardtag ));
 
    setHelperAnns_DC( dce, di );
-   stmt( dce->bb, IRStmt_Dirty(di) );
+   stmt_DC('V', dce, IRStmt_Dirty(di) );
 
    return mkexpr(datatag);
 }
@@ -1239,8 +1238,8 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          return shadow_GETI_DC( dce, e->Iex.GetI.descr,
                                 e->Iex.GetI.ix, e->Iex.GetI.bias );
 
-      case Iex_Tmp:
-         return IRExpr_Tmp( findShadowTmp_DC(dce, e->Iex.Tmp.tmp) );
+      case Iex_RdTmp:
+         return IRExpr_RdTmp( findShadowTmp_DC(dce, e->Iex.RdTmp.tmp) );
 
       case Iex_Const:
 
@@ -1399,14 +1398,14 @@ void do_shadow_STle_DC ( DCEnv* dce,
    diAddr = unsafeIRDirty_1_N(addrTag, 1, "MC_(helperc_TAG_NOP)",
 			      &MC_(helperc_TAG_NOP), mkIRExprVec_1(vaddr));
    setHelperAnns_DC(dce, diAddr);
-   stmt(dce->bb, IRStmt_Dirty(diAddr));
+   stmt_DC('V', dce, IRStmt_Dirty(diAddr));
 
    // Get the byte size of the REAL data (and not our tag vdata, which
    // is ALWAYS word-sized).  This is very different from Memcheck's
    // V-bits, which is always guaranteed to be the same byte size as 'data'
    // Also, we must use shadowType to translate all type sizes
    // to integral sizes
-   ty = shadowType(typeOfIRExpr(dce->bb->tyenv, data));
+   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, data));
 
    /* Now decide which helper function to call to write the data tag
       into shadow memory. */
@@ -1445,8 +1444,8 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
       setHelperAnns_DC( dce, diLo64 );
       setHelperAnns_DC( dce, diHi64 );
-      stmt( dce->bb, IRStmt_Dirty(diLo64) );
-      stmt( dce->bb, IRStmt_Dirty(diHi64) );
+      stmt_DC('V',  dce, IRStmt_Dirty(diLo64) );
+      stmt_DC('V',  dce, IRStmt_Dirty(diHi64) );
 
    } else {
 
@@ -1468,7 +1467,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
       }
 
       setHelperAnns_DC( dce, di );
-      stmt( dce->bb, IRStmt_Dirty(di) );
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
    }
 
 }
@@ -1485,6 +1484,6 @@ void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d ) {
                                       &MC_(helperc_CREATE_TAG),
                                       mkIRExprVec_0());
       setHelperAnns_DC( dce, di );
-      stmt( dce->bb, IRStmt_Dirty(di) );
+      stmt_DC('V',  dce, IRStmt_Dirty(di) );
    }
 }

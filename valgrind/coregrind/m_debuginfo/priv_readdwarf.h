@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -39,21 +39,21 @@
 
 
 /* --------------------
-   DWARF2 reader
+   DWARF3 reader
    -------------------- */
 extern
-void ML_(read_debuginfo_dwarf2)
-        ( struct _SegInfo* si, OffT debug_offset,
-          UChar* debuginfo,   Int debug_info_sz,  /* .debug_info */
-          UChar* debugabbrev,                     /* .debug_abbrev */
-          UChar* debugline,   Int debug_line_sz,  /* .debug_line */
-          UChar* debugstr );
+void ML_(read_debuginfo_dwarf3)
+        ( struct _DebugInfo* di,
+          UChar* debug_info_img, Word debug_info_sz,  /* .debug_info */
+          UChar* debug_abbv_img, Word debug_abbv_sz,  /* .debug_abbrev */
+          UChar* debug_line_img, Word debug_line_sz,  /* .debug_line */
+          UChar* debug_str_img,  Word debug_str_sz ); /* .debug_str */
 
 /* --------------------
    DWARF1 reader
    -------------------- */
 extern
-void ML_(read_debuginfo_dwarf1) ( struct _SegInfo* si,
+void ML_(read_debuginfo_dwarf1) ( struct _DebugInfo* di,
                                   UChar* dwarf1d, Int dwarf1d_sz,
                                   UChar* dwarf1l, Int dwarf1l_sz );
 
@@ -61,9 +61,8 @@ void ML_(read_debuginfo_dwarf1) ( struct _SegInfo* si,
    CFI reader
    -------------------- */
 extern
-void ML_(read_callframe_info_dwarf2)
-    ( /*OUT*/struct _SegInfo* si, 
-      UChar* ehframe, Int ehframe_sz, Addr ehframe_addr );
+void ML_(read_callframe_info_dwarf3)
+    ( /*OUT*/struct _DebugInfo* di, UChar* ehframe );
 
 
 #endif /* ndef __PRIV_READDWARF_H */

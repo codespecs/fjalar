@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -26,6 +26,11 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+
+   Neither the names of the U.S. Department of Energy nor the
+   University of California nor the names of its contributors may be
+   used to endorse or promote products derived from this software
+   without prior written permission.
 */
 
 #ifndef __PRIV_SYSWRAP_AIX5_H
@@ -66,7 +71,6 @@ extern HChar* ML_(aix5debugstuff_pc_to_fnname) ( Addr pc );
 
 DECL_TEMPLATE(aix5, sys___libc_sbrk);
 DECL_TEMPLATE(aix5, sys___msleep);
-DECL_TEMPLATE(aix5, sys__clock_gettime);
 DECL_TEMPLATE(aix5, sys__clock_settime);
 DECL_TEMPLATE(aix5, sys__exit);
 DECL_TEMPLATE(aix5, sys__fp_fpscrx_sc);
@@ -99,6 +103,7 @@ DECL_TEMPLATE(aix5, sys_close);
 DECL_TEMPLATE(aix5, sys_connext);
 DECL_TEMPLATE(aix5, sys_execve);
 DECL_TEMPLATE(aix5, sys_finfo);
+DECL_TEMPLATE(aix5, sys_fstatfs);
 DECL_TEMPLATE(aix5, sys_fstatx);
 DECL_TEMPLATE(aix5, sys_fsync);
 DECL_TEMPLATE(aix5, sys_getdirent);
@@ -126,6 +131,7 @@ DECL_TEMPLATE(aix5, sys_kpread);
 DECL_TEMPLATE(aix5, sys_kread);
 DECL_TEMPLATE(aix5, sys_kreadv);
 DECL_TEMPLATE(aix5, sys_kthread_ctl);
+DECL_TEMPLATE(aix5, sys_ktruncate);
 DECL_TEMPLATE(aix5, sys_kwaitpid);
 DECL_TEMPLATE(aix5, sys_kwrite);
 DECL_TEMPLATE(aix5, sys_kwritev);
@@ -136,6 +142,7 @@ DECL_TEMPLATE(aix5, sys_lseek);
 DECL_TEMPLATE(aix5, sys_mkdir);
 DECL_TEMPLATE(aix5, sys_mmap);
 DECL_TEMPLATE(aix5, sys_mprotect);
+DECL_TEMPLATE(aix5, sys_mntctl);
 DECL_TEMPLATE(aix5, sys_munmap);
 DECL_TEMPLATE(aix5, sys_naccept);
 DECL_TEMPLATE(aix5, sys_ngetpeername);

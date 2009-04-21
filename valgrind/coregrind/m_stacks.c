@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_debuglog.h"
+#include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
@@ -98,16 +99,74 @@ static UWord next_id;  /* Next id we hand out to a newly registered stack */
  */
 static Stack *current_stack;
 
+/* Find 'st' in the stacks_list and move it one step closer the the
+   front of the list, so as to make subsequent searches for it
+   cheaper. */
+static void move_Stack_one_step_forward ( Stack* st )
+{
+   Stack *st0, *st1, *st2;
+   if (st == stacks)
+      return; /* already at head of list */
+   vg_assert(st != NULL);
+   st0 = stacks;
+   st1 = NULL;
+   st2 = NULL;
+   while (True) {
+      if (st0 == NULL || st0 == st) break;
+      st2 = st1;
+      st1 = st0;
+      st0 = st0->next;
+   }
+   vg_assert(st0 == st);
+   if (st0 != NULL && st1 != NULL && st2 != NULL) {
+      Stack* tmp;
+      /* st0 points to st, st1 to its predecessor, and st2 to st1's
+         predecessor.  Swap st0 and st1, that is, move st0 one step
+         closer to the start of the list. */
+      vg_assert(st2->next == st1);
+      vg_assert(st1->next == st0);
+      tmp = st0->next;
+      st2->next = st0;
+      st0->next = st1;
+      st1->next = tmp;
+   }
+   else
+   if (st0 != NULL && st1 != NULL && st2 == NULL) {
+      /* it's second in the list. */
+      vg_assert(stacks == st1);
+      vg_assert(st1->next == st0);
+      st1->next = st0->next;
+      st0->next = st1;
+      stacks = st0;
+   }
+}
+
 /* Find what stack an address falls into. */
 static Stack* find_stack_by_addr(Addr sp)
 {
+   static UWord n_fails = 0;
+   static UWord n_searches = 0;
+   static UWord n_steps = 0;
    Stack *i = stacks;
+   n_searches++;
+   if (0 && 0 == (n_searches % 10000))
+      VG_(printf)("(hgdev) %lu searches, %lu steps, %lu fails\n",
+                  n_searches, n_steps+1, n_fails);
+   /* fast track common case */
+   if (i && sp >= i->start && sp <= i->end)
+      return i;
+   /* else search the list */
    while (i) {
+      n_steps++;
       if (sp >= i->start && sp <= i->end) {
+         if (1 && (n_searches & 0x3F) == 0) {
+            move_Stack_one_step_forward( i );
+         }
          return i;
       }
       i = i->next;
    }
+   n_fails++;
    return NULL;
 }
 
@@ -126,7 +185,7 @@ UWord VG_(register_stack)(Addr start, Addr end)
       start = t;
    }
 
-   i = (Stack *)VG_(arena_malloc)(VG_AR_CORE, sizeof(Stack));
+   i = (Stack *)VG_(arena_malloc)(VG_AR_CORE, "stacks.rs.1", sizeof(Stack));
    i->start = start;
    i->end = end;
    i->id = next_id++;
@@ -154,7 +213,7 @@ void VG_(deregister_stack)(UWord id)
 
    VG_(debugLog)(2, "stacks", "deregister stack %lu\n", id);
 
-   if (current_stack->id == id) {
+   if (current_stack && current_stack->id == id) { 
       current_stack = NULL;
    }
 
@@ -195,12 +254,26 @@ void VG_(change_stack)(UWord id, Addr start, Addr end)
    }
 }
 
+/*
+ * Find the bounds of the stack (if any) which includes the
+ * specified stack pointer.
+ */
+void VG_(stack_limits)(Addr SP, Addr *start, Addr *end )
+{
+   Stack* stack = find_stack_by_addr(SP);
+
+   if (stack) {
+      *start = stack->start;
+      *end = stack->end;
+   }
+}
+
 /* This function gets called if new_mem_stack and/or die_mem_stack are
    tracked by the tool, and one of the specialised cases
    (eg. new_mem_stack_4) isn't used in preference.  
 */
-VG_REGPARM(2)
-void VG_(unknown_SP_update)( Addr old_SP, Addr new_SP )
+VG_REGPARM(3)
+void VG_(unknown_SP_update)( Addr old_SP, Addr new_SP, UInt ecu )
 {
    static Int moans = 3;
    Word delta  = (Word)new_SP - (Word)old_SP;
@@ -209,7 +282,8 @@ void VG_(unknown_SP_update)( Addr old_SP, Addr new_SP )
    if (current_stack == NULL ||
        new_SP < current_stack->start || new_SP > current_stack->end) {
       Stack* new_stack = find_stack_by_addr(new_SP);
-      if (new_stack && new_stack->id != current_stack->id) {
+      if (new_stack 
+          && (current_stack == NULL || new_stack->id != current_stack->id)) { 
          /* The stack pointer is now in another stack.  Update the current
             stack information and return without doing anything else. */
          current_stack = new_stack;
@@ -227,13 +301,13 @@ void VG_(unknown_SP_update)( Addr old_SP, Addr new_SP )
          permissions.  Seems to work well with Netscape 4.X.  Really the
          only remaining difficulty is knowing exactly when a stack switch is
          happening. */
-      if (VG_(clo_verbosity) > 0 && moans > 0) {
+      if (VG_(clo_verbosity) > 0 && moans > 0 && !VG_(clo_xml)) {
          moans--;
          VG_(message)(Vg_UserMsg,
             "Warning: client switching stacks?  "
-            "SP change: %p --> %p", old_SP, new_SP);
+            "SP change: 0x%lx --> 0x%lx", old_SP, new_SP);
          VG_(message)(Vg_UserMsg,
-            "         to suppress, use: --max-stackframe=%d or greater",
+            "         to suppress, use: --max-stackframe=%ld or greater",
             (delta < 0 ? -delta : delta));
          if (moans == 0)
             VG_(message)(Vg_UserMsg,
@@ -241,7 +315,8 @@ void VG_(unknown_SP_update)( Addr old_SP, Addr new_SP )
                 "will not be shown.");
       }
    } else if (delta < 0) {
-      VG_TRACK( new_mem_stack, new_SP, -delta );
+      VG_TRACK( new_mem_stack_w_ECU, new_SP, -delta, ecu );
+      VG_TRACK( new_mem_stack,       new_SP, -delta );
 
    } else if (delta > 0) {
       VG_TRACK( die_mem_stack, old_SP,  delta );

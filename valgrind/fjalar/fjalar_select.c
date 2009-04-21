@@ -108,7 +108,7 @@ void initializeProgramPointsTree()
         input_line[lineLen - 1] = '\0';
       }
 
-      newString = VG_(strdup)(input_line);
+      newString = VG_(strdup)("fjalar_selec.c: initializePPT", input_line);
 
       // That is the Fjalar name of the function so grab it
       tsearch((void*)newString, (void**)&prog_pts_tree, compareStrings);
@@ -190,8 +190,8 @@ void initializeVarsTree()
 	  // Create a new FunctionTree and insert it into vars_tree
 	  if (nextLineIsFunction)
 	    {
-	      currentFunctionTree = VG_(malloc)(sizeof(*currentFunctionTree));
-	      currentFunctionTree->function_fjalar_name = VG_(strdup)(input_line);
+	      currentFunctionTree = VG_(malloc)("fjalar_selec.c: initVT", sizeof(*currentFunctionTree));
+	      currentFunctionTree->function_fjalar_name = VG_(strdup)("fjalar_selec.c: initVT.2", input_line);
 	      currentFunctionTree->function_variables_tree = NULL; // Remember to initialize to null!
 
 	      tsearch((void*)currentFunctionTree, (void**)&vars_tree, compareFunctionTrees);
@@ -210,7 +210,7 @@ void initializeVarsTree()
 	  // the function_variables_tree of the current function_tree
 	  else
 	    {
-	      char* newString = VG_(strdup)(input_line);
+	      char* newString = VG_(strdup)("fjalar_selec.c: initVT.3", input_line);
 	      tsearch((void*)newString, (void**)&(currentFunctionTree->function_variables_tree), compareStrings);
               //              VG_(printf)("variable: %s\n", newString);
 	    }

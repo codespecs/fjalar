@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -50,53 +50,185 @@ Bool VG_(isdigit) ( Char c )
    Converting strings to numbers
    ------------------------------------------------------------------ */
 
-Long VG_(atoll) ( Char* str )
+static Bool is_oct_digit(Char c, Long* digit)
+{
+   if (c >= '0' && c <= '7') { *digit = (Long)(c - '0'); return True; }
+   return False;
+}
+
+static Bool is_dec_digit(Char c, Long* digit)
+{
+   if (c >= '0' && c <= '9') { *digit = (Long)(c - '0'); return True; }
+   return False;
+}
+
+static Bool is_hex_digit(Char c, Long* digit)
+{
+   if (c >= '0' && c <= '9') { *digit = (Long)(c - '0');        return True; }
+   if (c >= 'A' && c <= 'F') { *digit = (Long)((c - 'A') + 10); return True; }
+   if (c >= 'a' && c <= 'f') { *digit = (Long)((c - 'a') + 10); return True; }
+   return False;
+}
+
+static Bool is_base36_digit(Char c, Long* digit)
+{
+   if (c >= '0' && c <= '9') { *digit = (Long)(c - '0');        return True; }
+   if (c >= 'A' && c <= 'Z') { *digit = (Long)((c - 'A') + 10); return True; }
+   if (c >= 'a' && c <= 'z') { *digit = (Long)((c - 'a') + 10); return True; }
+   return False;
+}
+
+Long VG_(strtoll8) ( Char* str, Char** endptr )
 {
    Bool neg = False;
-   Long n = 0;
-   if (*str == '-') { str++; neg = True; };
-   while (*str >= '0' && *str <= '9') {
-      n = 10*n + (Long)(*str - '0');
+   Long n = 0, digit = 0;
+
+   // Skip leading whitespace.
+   while (VG_(isspace)(*str)) str++;
+
+   // Allow a leading '-' or '+'.
+   if (*str == '-') { str++; neg = True; }
+   else if (*str == '+') { str++; }
+
+   while (is_oct_digit(*str, &digit)) {
+      n = 8*n + digit;
       str++;
    }
+
    if (neg) n = -n;
+   if (endptr) *endptr = str;    // Record first failing character.
    return n;
+}
+
+Long VG_(strtoll10) ( Char* str, Char** endptr )
+{
+   Bool neg = False;
+   Long n = 0, digit = 0;
+
+   // Skip leading whitespace.
+   while (VG_(isspace)(*str)) str++;
+
+   // Allow a leading '-' or '+'.
+   if (*str == '-') { str++; neg = True; }
+   else if (*str == '+') { str++; }
+
+   while (is_dec_digit(*str, &digit)) {
+      n = 10*n + digit;
+      str++;
+   }
+
+   if (neg) n = -n;
+   if (endptr) *endptr = str;    // Record first failing character.
+   return n;
+}
+
+Long VG_(strtoll16) ( Char* str, Char** endptr )
+{
+   Bool neg = False;
+   Long n = 0, digit = 0;
+
+   // Skip leading whitespace.
+   while (VG_(isspace)(*str)) str++;
+
+   // Allow a leading '-' or '+'.
+   if (*str == '-') { str++; neg = True; }
+   else if (*str == '+') { str++; }
+
+   // Allow leading "0x", but only if there's a hex digit
+   // following it.
+   if (*str == '0'
+    && (*(str+1) == 'x' || *(str+1) == 'X')
+    && is_hex_digit( *(str+2), &digit )) {
+      str += 2;
+   }
+
+   while (is_hex_digit(*str, &digit)) {
+      n = 16*n + digit;
+      str++;
+   }
+
+   if (neg) n = -n;
+   if (endptr) *endptr = str;    // Record first failing character.
+   return n;
+}
+
+Long VG_(strtoll36) ( Char* str, Char** endptr )
+{
+   Bool neg = False;
+   Long n = 0, digit = 0;
+
+   // Skip leading whitespace.
+   while (VG_(isspace)(*str)) str++;
+
+   // Allow a leading '-' or '+'.
+   if (*str == '-') { str++; neg = True; }
+   else if (*str == '+') { str++; }
+
+   while (is_base36_digit(*str, &digit)) {
+      n = 36*n + digit;
+      str++;
+   }
+
+   if (neg) n = -n;
+   if (endptr) *endptr = str;    // Record first failing character.
+   return n;
+}
+
+double VG_(strtod) ( Char* str, Char** endptr )
+{
+   Bool neg = False;
+   Long digit;
+   double n = 0, frac = 0, x = 0.1;
+
+   // Skip leading whitespace.
+   while (VG_(isspace)(*str)) str++;
+
+   // Allow a leading '-' or '+'.
+   if (*str == '-') { str++; neg = True; }
+   else if (*str == '+') { str++; }
+
+   while (is_dec_digit(*str, &digit)) {
+      n = 10*n + digit;
+      str++;
+   }
+
+   if (*str == '.') {
+      str++;
+      while (is_dec_digit(*str, &digit)) {
+         frac += x*digit;
+         x /= 10;
+         str++;
+      }
+   }
+
+   n += frac;
+   if (neg) n = -n;
+   if (endptr) *endptr = str;    // Record first failing character.
+   return n;
+}
+
+Long VG_(atoll) ( Char* str )
+{
+   return VG_(strtoll10)(str, NULL);
+}
+
+Long VG_(atoll16) ( Char* str )
+{
+   return VG_(strtoll16)(str, NULL);
 }
 
 Long VG_(atoll36) ( Char* str )
 {
-   Bool neg = False;
-   Long n = 0;
-   if (*str == '-') { str++; neg = True; };
-   while (True) {
-      Char c = *str;
-      if (c >= '0' && c <= (Char)'9') {
-         n = 36*n + (Long)(c - '0');
-      }
-      else 
-      if (c >= 'A' && c <= (Char)'Z') {
-         n = 36*n + (Long)((c - 'A') + 10);
-      }
-      else 
-      if (c >= 'a' && c <= (Char)'z') {
-         n = 36*n + (Long)((c - 'a') + 10);
-      }
-      else {
-	break;
-      }
-      str++;
-   }
-   if (neg) n = -n;
-   return n;
+   return VG_(strtoll36)(str, NULL);
 }
 
 /* ---------------------------------------------------------------------
    String functions
    ------------------------------------------------------------------ */
 
-Int VG_(strlen) ( const Char* str )
+SizeT VG_(strlen) ( const Char* str )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (str[i] != 0) i++;
    return i;
 }
@@ -144,7 +276,7 @@ Char* VG_(strcpy) ( Char* dest, const Char* src )
    zero termination. */
 void VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (True) {
       dest[i] = 0;
       if (src[i] == 0) return;
@@ -156,7 +288,7 @@ void VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest )
 
 Char* VG_(strncpy) ( Char* dest, const Char* src, SizeT ndest )
 {
-   Int i = 0;
+   SizeT i = 0;
    while (True) {
       if (i >= ndest) return dest;     /* reached limit */
       dest[i] = src[i];
@@ -203,7 +335,7 @@ Int VG_(strcmp_ws) ( const Char* s1, const Char* s2 )
 
 Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
 {
-   Int n = 0;
+   SizeT n = 0;
    while (True) {
       if (n >= nmax) return 0;
       if (*s1 == 0 && *s2 == 0) return 0;
@@ -235,7 +367,7 @@ Int VG_(strncmp_ws) ( const Char* s1, const Char* s2, SizeT nmax )
 
 Char* VG_(strstr) ( const Char* haystack, const Char* needle )
 {
-   Int n; 
+   SizeT n; 
    if (haystack == NULL)
       return NULL;
    n = VG_(strlen)(needle);
@@ -266,65 +398,32 @@ Char* VG_(strrchr) ( const Char* s, Char c )
    return NULL;
 }
 
-/* ---------------------------------------------------------------------
-   A simple string matching routine, purloined from Hugs98.
-      '*'    matches any sequence of zero or more characters
-      '?'    matches any single character exactly 
-      '\c'   matches the character c only (ignoring special chars)
-      c      matches the character c only
-   ------------------------------------------------------------------ */
-
-/* Keep track of recursion depth. */
-static Int recDepth;
-
-// Nb: vg_assert disabled because we can't use it from this module...
-static Bool string_match_wrk ( const Char* pat, const Char* str )
+SizeT VG_(strspn) ( const Char* s, const Char* accept )
 {
-   //vg_assert(recDepth >= 0 && recDepth < 500);
-   recDepth++;
-   for (;;) {
-      switch (*pat) {
-      case '\0':recDepth--;
-                return (*str=='\0');
-      case '*': do {
-                   if (string_match_wrk(pat+1,str)) {
-                      recDepth--;
-                      return True;
-                   }
-                } while (*str++);
-                recDepth--;
-                return False;
-      case '?': if (*str++=='\0') {
-                   recDepth--;
-                   return False;
-                }
-                pat++;
-                break;
-      case '\\':if (*++pat == '\0') {
-                   recDepth--;
-                   return False; /* spurious trailing \ in pattern */
-                }
-                /* falls through to ... */
-      default : if (*pat++ != *str++) {
-                   recDepth--;
-                   return False;
-                }
-                break;
-      }
+   const Char *p, *a;
+   SizeT count = 0;
+   for (p = s; *p != '\0'; ++p) {
+      for (a = accept; *a != '\0'; ++a)
+         if (*p == *a)
+            break;
+      if (*a == '\0')
+         return count;
+      else
+         ++count;
    }
+   return count;
 }
 
-Bool VG_(string_match) ( const Char* pat, const Char* str )
+SizeT VG_(strcspn) ( const Char* s, const char* reject )
 {
-   Bool b;
-   recDepth = 0;
-   b = string_match_wrk ( pat, str );
-   //vg_assert(recDepth == 0);
-   /*
-   VG_(printf)("%s   %s   %s\n",
-	       b?"TRUE ":"FALSE", pat, str);
-   */
-   return b;
+   SizeT count = 0;
+   while (*s != '\0') {
+      if (VG_(strchr) (reject, *s++) == NULL)
+         ++count;
+      else
+         return count;
+   }
+   return count;
 }
 
 
@@ -369,23 +468,57 @@ void* VG_(memcpy) ( void *dest, const void *src, SizeT sz )
    return dest;
 }
 
-void* VG_(memset) ( void *dest, Int c, SizeT sz )
+void* VG_(memmove)(void *dest, const void *src, SizeT sz)
 {
-   Char *d = (Char *)dest;
-   while (sz >= 4) {
-      d[0] = c;
-      d[1] = c;
-      d[2] = c;
-      d[3] = c;
-      d += 4;
-      sz -= 4;
+   SizeT i;
+   if (sz == 0)
+      return dest;
+   if (dest < src) {
+      for (i = 0; i < sz; i++) {
+         ((UChar*)dest)[i] = ((UChar*)src)[i];
+      }
    }
-   while (sz > 0) {
+   else if (dest > src) {
+      for (i = sz - 1; i >= 0; i--) {
+         ((UChar*)dest)[i] = ((UChar*)src)[i];
+      }
+   }
+   return dest;
+}
+
+void* VG_(memset) ( void *destV, Int c, SizeT sz )
+{
+   Int   c4;
+   Char* d = (Char*)destV;
+   while ((!VG_IS_4_ALIGNED(d)) && sz >= 1) {
       d[0] = c;
       d++;
       sz--;
    }
-   return dest;
+   if (sz == 0)
+      return destV;
+   c4 = c & 0xFF;
+   c4 |= (c4 << 8);
+   c4 |= (c4 << 16);
+   while (sz >= 16) {
+      ((Int*)d)[0] = c4;
+      ((Int*)d)[1] = c4;
+      ((Int*)d)[2] = c4;
+      ((Int*)d)[3] = c4;
+      d += 16;
+      sz -= 16;
+   }
+   while (sz >= 4) {
+      ((Int*)d)[0] = c4;
+      d += 4;
+      sz -= 4;
+   }
+   while (sz >= 1) {
+      d[0] = c;
+      d++;
+      sz--;
+   }
+   return destV;
 }
 
 Int VG_(memcmp) ( const void* s1, const void* s2, SizeT n )
@@ -413,101 +546,164 @@ Int VG_(memcmp) ( const void* s1, const void* s2, SizeT n )
    Misc useful functions
    ------------------------------------------------------------------ */
 
-/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power of two. */
-Int VG_(log2) ( Int x ) 
+/////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////
+/// begin Bentley-McIlroy style quicksort
+/// See "Engineering a Sort Function".  Jon L Bentley, M. Douglas
+/// McIlroy.  Software Practice and Experience Vol 23(11), Nov 1993.
+
+#define BM_MIN(a, b)                                     \
+   (a) < (b) ? a : b
+
+#define BM_SWAPINIT(a, es)                               \
+   swaptype =   ((a-(Char*)0) | es) % sizeof(Word)  ? 2  \
+              : es > (SizeT)sizeof(Word) ? 1             \
+              : 0
+
+#define BM_EXCH(a, b, t)                                 \
+   (t = a, a = b, b = t)
+
+#define BM_SWAP(a, b)                                    \
+   swaptype != 0                                         \
+      ? bm_swapfunc(a, b, es, swaptype)                  \
+      : (void)BM_EXCH(*(Word*)(a), *(Word*)(b), t)
+
+#define BM_VECSWAP(a, b, n)                              \
+   if (n > 0) bm_swapfunc(a, b, n, swaptype)
+
+#define BM_PVINIT(pv, pm)                                \
+   if (swaptype != 0)                                    \
+      pv = a, BM_SWAP(pv, pm);                           \
+   else                                                  \
+      pv = (Char*)&v, v = *(Word*)pm
+
+static Char* bm_med3 ( Char* a, Char* b, Char* c, 
+                       Int (*cmp)(void*,void*) ) {
+   return cmp(a, b) < 0
+          ? (cmp(b, c) < 0 ? b : cmp(a, c) < 0 ? c : a)
+          : (cmp(b, c) > 0 ? b : cmp(a, c) > 0 ? c : a);
+}
+
+static void bm_swapfunc ( Char* a, Char* b, SizeT n, Int swaptype )
+{
+   if (swaptype <= 1) {
+      Word t;
+      for ( ; n > 0; a += sizeof(Word), b += sizeof(Word),
+                                        n -= sizeof(Word))
+         BM_EXCH(*(Word*)a, *(Word*)b, t);
+   } else {
+      Char t;
+      for ( ; n > 0; a += 1, b += 1, n -= 1)
+         BM_EXCH(*a, *b, t);
+   }
+}
+
+static void bm_qsort ( Char* a, SizeT n, SizeT es,
+                       Int (*cmp)(void*,void*) )
+{
+   Char  *pa, *pb, *pc, *pd, *pl, *pm, *pn, *pv;
+   Int   r, swaptype;
+   Word  t, v;
+   SizeT s, s1, s2;
+  tailcall:
+   BM_SWAPINIT(a, es);
+   if (n < 7) {
+      for (pm = a + es; pm < a + n*es; pm += es)
+         for (pl = pm; pl > a && cmp(pl-es, pl) > 0; pl -= es)
+            BM_SWAP(pl, pl-es);
+      return;
+   }
+   pm = a + (n/2)*es;
+   if (n > 7) {
+      pl = a;
+      pn = a + (n-1)*es;
+      if (n > 40) {
+         s = (n/8)*es;
+         pl = bm_med3(pl, pl+s, pl+2*s, cmp);
+         pm = bm_med3(pm-s, pm, pm+s, cmp);
+         pn = bm_med3(pn-2*s, pn-s, pn, cmp);
+      }
+      pm = bm_med3(pl, pm, pn, cmp);
+   }
+   BM_PVINIT(pv, pm);
+   pa = pb = a;
+   pc = pd = a + (n-1)*es;
+   for (;;) {
+      while (pb <= pc && (r = cmp(pb, pv)) <= 0) {
+         if (r == 0) { BM_SWAP(pa, pb); pa += es; }
+         pb += es;
+      }
+      while (pc >= pb && (r = cmp(pc, pv)) >= 0) {
+         if (r == 0) { BM_SWAP(pc, pd); pd -= es; }
+         pc -= es;
+      }
+      if (pb > pc) break;
+      BM_SWAP(pb, pc);
+      pb += es;
+      pc -= es;
+   }
+   pn = a + n*es;
+   s = BM_MIN(pa-a,  pb-pa   ); BM_VECSWAP(a,  pb-s, s);
+   s = BM_MIN(pd-pc, pn-pd-es); BM_VECSWAP(pb, pn-s, s);
+   /* Now recurse.  Do the smaller partition first with an explicit
+      recursion, then do the larger partition using a tail call.
+      Except we can't rely on gcc to implement a tail call in any sane
+      way, so simply jump back to the start.  This guarantees stack
+      growth can never exceed O(log N) even in the worst case. */
+   s1 = pb-pa;
+   s2 = pd-pc;
+   if (s1 < s2) {
+      if (s1 > es) {
+         bm_qsort(a, s1/es, es, cmp);
+      }
+      if (s2 > es) {
+         /* bm_qsort(pn-s2, s2/es, es, cmp); */
+         a = pn-s2; n = s2/es; es = es; cmp = cmp;
+         goto tailcall;
+      }
+   } else {
+      if (s2 > es) {
+         bm_qsort(pn-s2, s2/es, es, cmp);
+      }
+      if (s1 > es) {
+         /* bm_qsort(a, s1/es, es, cmp); */
+         a = a; n = s1/es; es = es; cmp = cmp;
+         goto tailcall;
+      } 
+   }
+}
+
+#undef BM_MIN
+#undef BM_SWAPINIT
+#undef BM_EXCH
+#undef BM_SWAP
+#undef BM_VECSWAP
+#undef BM_PVINIT
+
+/// end Bentley-McIlroy style quicksort
+/////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////
+
+/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power
+   of two. */
+Int VG_(log2) ( UInt x ) 
 {
    Int i;
    /* Any more than 32 and we overflow anyway... */
    for (i = 0; i < 32; i++) {
-      if (1 << i == x) return i;
+      if ((1U << i) == x) return i;
    }
    return -1;
 }
 
 
-// Generic shell sort.  Like stdlib.h's qsort().
+// Generic quick sort.
 void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
                  Int (*compar)(void*, void*) )
 {
-   Int   incs[14] = { 1, 4, 13, 40, 121, 364, 1093, 3280,
-                      9841, 29524, 88573, 265720,
-                      797161, 2391484 };
-   Int   lo = 0;
-   Int   hi = nmemb-1;
-   Int   i, j, h, bigN, hp;
-
-   bigN = hi - lo + 1; if (bigN < 2) return;
-   hp = 0; while (hp < 14 && incs[hp] < bigN) hp++; hp--;
-
-   #define SORT \
-   for ( ; hp >= 0; hp--) { \
-      h = incs[hp]; \
-      for (i = lo + h; i <= hi; i++) { \
-         ASSIGN(v,0, a,i); \
-         j = i; \
-         while (COMPAR(a,(j-h), v,0) > 0) { \
-            ASSIGN(a,j, a,(j-h)); \
-            j = j - h; \
-            if (j <= (lo + h - 1)) break; \
-         } \
-         ASSIGN(a,j, v,0); \
-      } \
-   }
-
-   // Specialised cases
-   if (sizeof(ULong) == size) {
-
-      #define ASSIGN(dst, dsti, src, srci) \
-      (dst)[(dsti)] = (src)[(srci)];      
-      
-      #define COMPAR(dst, dsti, src, srci) \
-      compar( (void*)(& (dst)[(dsti)]), (void*)(& (src)[(srci)]) )
-
-      ULong* a = (ULong*)base;
-      ULong  v[1];
-
-      SORT;
-
-   } else if (sizeof(UInt) == size) {
-
-      UInt* a = (UInt*)base;
-      UInt  v[1];
-
-      SORT;
-
-   } else if (sizeof(UShort) == size) {
-      UShort* a = (UShort*)base;
-      UShort  v[1];
-
-      SORT;
-
-   } else if (sizeof(UChar) == size) {
-      UChar* a = (UChar*)base;
-      UChar  v[1];
-
-      SORT;
-
-      #undef ASSIGN
-      #undef COMPAR
-
-   // General case
-   } else {
-      char* a = base;
-      char  v[size];      // will be at least 'size' bytes
-
-      #define ASSIGN(dst, dsti, src, srci) \
-      VG_(memcpy)( &dst[size*(dsti)], &src[size*(srci)], size );
-
-      #define COMPAR(dst, dsti, src, srci) \
-      compar( &dst[size*(dsti)], &src[size*(srci)] )
-
-      SORT;
-
-      #undef ASSIGN
-      #undef COMPAR
-   }
-   #undef SORT
+   bm_qsort(base,nmemb,size,compar);
 }
+
 
 // This random number generator is based on the one suggested in Kernighan
 // and Ritchie's "The C Programming Language".

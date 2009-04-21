@@ -50,10 +50,13 @@ First of all:
 For each release candidate (should do release candidates for feature
 releases, bug-fix-only releases might not need one):
 
+- Build.  Don't forget to rebuild the Vex header file that specifies which
+  version of Vex is being used (so that it matches that mentioned in the final
+  release notes).  [This was forgotten for 3.2.2.]
+
 - Do pre-release testing:
 
   * Check it builds and regtests on a vanilla gcc-2.96 / RedHat 7.3 distro.
-    Also check that callgrind builds/installs alongside it OK.
 
   * Check standard build and regtest on the following cpus:
        x86, sse2 (P4)
@@ -131,20 +134,20 @@ For the official release:
   branches too.  Useful examples:
 
     cd valgrind
-    svn copy trunk tags/VALGRIND_3_1_0
-    svn copy trunk branches/VALGRIND_3_1_BRANCH
+    svn copy trunk tags/VALGRIND_3_3_0
+    svn copy trunk branches/VALGRIND_3_3_BRANCH
 
     cd vex
-    svn copy trunk tags/VEX_3_1_0
-    svn copy trunk branches/VEX_3_1_BRANCH
+    svn copy trunk tags/VEX_3_3_0
+    svn copy trunk branches/VEX_3_3_BRANCH
 
     cd valgrind
-    cd VALGRIND_3_1_0
+    cd tags/VALGRIND_3_3_0
     svn propset svn:externals \
-       "VEX svn://svn.valgrind.org/vex/tags/VEX_3_1_0" .
-    cd VALGRIND_3_1_BRANCH
+       "VEX svn://svn.valgrind.org/vex/tags/VEX_3_3_0" .
+    cd branches/VALGRIND_3_3_BRANCH
     svn propset svn:externals \
-       "VEX svn://svn.valgrind.org/vex/branches/VEX_3_1_BRANCH" .
+       "VEX svn://svn.valgrind.org/vex/branches/VEX_3_3_BRANCH" .
 
 - Update website: 
   - Put the tarball up.
@@ -164,6 +167,8 @@ For the official release:
   it's a feature release).
 
 - Add new entries to docs/internals/roadmap.txt for the next release(s).
+
+- Copy the release notes into the trunk's NEWS file.
 
 - Announce the release:
   - Email valgrind-users, valgrind-developers, and valgrind-announce.

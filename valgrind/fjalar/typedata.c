@@ -701,47 +701,47 @@ char harvest_name(dwarf_entry* e, const char* str)
 
   if (tag_is_enumerator(tag))
     {
-      ((enumerator*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((enumerator*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.1", str);
       return 1;
     }
   else if (tag_is_collection_type(tag))
     {
-      ((collection_type*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((collection_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.2", str);
       return 1;
     }
   else if (tag_is_member(tag))
     {
-      ((member*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((member*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.3", str);
       return 1;
     }
   else if (tag_is_function(tag))
     {
-      ((function*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str);
       return 1;
     }
   else if (tag_is_formal_parameter(tag))
     {
-      ((formal_parameter*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((formal_parameter*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.5",str);
       return 1;
     }
   else if (tag_is_compile_unit(tag))
     {
-      ((compile_unit*)e->entry_ptr)->filename = VG_(strdup)(str);
+      ((compile_unit*)e->entry_ptr)->filename = VG_(strdup)("typedata.c: harv_name.6",str);
       return 1;
     }
   else if (tag_is_typedef(tag))
     {
-      ((typedef_type*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((typedef_type*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.7",str);
       return 1;
     }
   else if (tag_is_variable(tag))
     {
-      ((variable*)e->entry_ptr)->name = VG_(strdup)(str);
+      ((variable*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.8",str);
       return 1;
     }
   else if (tag_is_namespace(tag))
     {
-      ((namespace_type*)e->entry_ptr)->namespace_name = VG_(strdup)(str);
+      ((namespace_type*)e->entry_ptr)->namespace_name = VG_(strdup)("typedata.c: harv_name.9", str);
       return 1;
     }
   else
@@ -761,12 +761,12 @@ char harvest_mangled_name(dwarf_entry* e, const char* str)
 
   if (tag_is_function(tag))
     {
-      ((function*)e->entry_ptr)->mangled_name = VG_(strdup)(str);
+      ((function*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.1",str);
       return 1;
     }
   else if (tag_is_variable(tag))
     {
-      ((variable*)e->entry_ptr)->mangled_name = VG_(strdup)(str);
+      ((variable*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.2",str);
       return 1;
     }
   else
@@ -783,7 +783,7 @@ char harvest_comp_dir(dwarf_entry* e, const char* str)
 
   if (tag_is_compile_unit(tag))
     {
-      ((compile_unit*)e->entry_ptr)->comp_dir = VG_(strdup)(str);
+      ((compile_unit*)e->entry_ptr)->comp_dir = VG_(strdup)("typedata.c: harv_comp_dir",str);
       return 1;
     }
   else
@@ -1376,7 +1376,7 @@ void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // to actually populate the newly-created array with entries
   if (member_count > 0) {
     int member_index = 0;
-    array_ptr->subrange_entries = (dwarf_entry**)VG_(calloc)(member_count, sizeof(dwarf_entry*));
+    array_ptr->subrange_entries = (dwarf_entry**)VG_(calloc)("typedata.c: link_array_type_to_members", member_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -1483,7 +1483,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // to actually populate the newly-created arrays with entries
   if (member_var_count > 0) {
     int member_var_index = 0;
-    collection_ptr->member_vars = (dwarf_entry**)VG_(calloc)(member_var_count, sizeof(dwarf_entry*));
+    collection_ptr->member_vars = (dwarf_entry**)VG_(calloc)("typedata.c: link_collection_to_members", member_var_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -1513,7 +1513,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   if (static_member_var_count > 0) {
     int static_member_var_index = 0;
     collection_ptr->static_member_vars =
-      (dwarf_entry**)VG_(calloc)(static_member_var_count, sizeof(dwarf_entry*));
+      (dwarf_entry**)VG_(calloc)("typedata.c: link_collection_to_members.2", static_member_var_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -1534,7 +1534,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 
   if (member_func_count > 0) {
     int member_func_index = 0;
-    collection_ptr->member_funcs = (dwarf_entry**)VG_(calloc)(member_func_count, sizeof(dwarf_entry*));
+    collection_ptr->member_funcs = (dwarf_entry**)VG_(calloc)("typedata.c: link_collection_to_members.3", member_func_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -1555,7 +1555,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 
   if (superclass_count > 0) {
     int superclass_index = 0;
-    collection_ptr->superclasses = (dwarf_entry**)VG_(calloc)(superclass_count, sizeof(dwarf_entry*));
+    collection_ptr->superclasses = (dwarf_entry**)VG_(calloc)("typedata.c: link_collection_to_members.4", superclass_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -1646,7 +1646,7 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   // to actually populate the newly-created arrays with entries
   if (param_count > 0) {
     int param_index = 0;
-    function_ptr->params = (dwarf_entry**)VG_(calloc)(param_count, sizeof(dwarf_entry*));
+    function_ptr->params = (dwarf_entry**)VG_(calloc)("typedata.c: link_function_to_params_and_local_vars", param_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -1667,7 +1667,7 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
 
   if (var_count > 0) {
     int var_index = 0;
-    function_ptr->local_vars = (dwarf_entry**)VG_(calloc)(var_count, sizeof(dwarf_entry*));
+    function_ptr->local_vars = (dwarf_entry**)VG_(calloc)("typedata.c: link_function_to_params_and_local_vars.2", var_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
@@ -2046,7 +2046,7 @@ Effects: Initializes sets up dwarf_entry_array to hold num_entries components
 void initialize_dwarf_entry_array(unsigned long num_entries)
 {
   // use calloc to blank everything upon initialization
-  dwarf_entry_array = VG_(calloc)(num_entries, sizeof *dwarf_entry_array);
+  dwarf_entry_array = VG_(calloc)("typedata.c: initialize_dwarf_entry_array", num_entries, sizeof *dwarf_entry_array);
 
   // Also initialize typedef_names_map at this time
   typedef_names_map = genallocatehashtable(0,
@@ -2122,63 +2122,63 @@ void initialize_dwarf_entry_ptr(dwarf_entry* e)
     {
       if (tag_is_base_type(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(base_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.1", 1, sizeof(base_type));
         }
       else if (tag_is_modifier_type(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(modifier_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.2", 1, sizeof(modifier_type));
         }
       else if (tag_is_collection_type(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(collection_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.3", 1, sizeof(collection_type));
         }
       else if (tag_is_member(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(member));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.4", 1, sizeof(member));
         }
       else if (tag_is_enumerator(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(enumerator));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.5", 1, sizeof(enumerator));
         }
       else if (tag_is_function(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(function));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.6", 1, sizeof(function));
         }
       else if (tag_is_formal_parameter(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(formal_parameter));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.7", 1, sizeof(formal_parameter));
         }
       else if (tag_is_compile_unit(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(compile_unit));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.8", 1, sizeof(compile_unit));
         }
       else if (tag_is_function_type(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(function_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.9", 1, sizeof(function_type));
         }
       else if (tag_is_array_type(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(array_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.10", 1, sizeof(array_type));
         }
       else if (tag_is_array_subrange_type(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(array_subrange_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.11", 1, sizeof(array_subrange_type));
         }
       else if (tag_is_typedef(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(typedef_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.12", 1, sizeof(typedef_type));
         }
       else if (tag_is_variable(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(variable));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.13", 1, sizeof(variable));
         }
       else if (tag_is_inheritance(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(inheritance_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.14", 1, sizeof(inheritance_type));
         }
       else if (tag_is_namespace(e->tag_name))
         {
-          e->entry_ptr = VG_(calloc)(1, sizeof(namespace_type));
+          e->entry_ptr = VG_(calloc)("typedata.c: initialize_dwarf_entry_ptr.15", 1, sizeof(namespace_type));
         }
       else {
         tl_assert(0); // Error

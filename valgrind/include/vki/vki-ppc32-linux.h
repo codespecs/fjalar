@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2006 Julian Seward
+   Copyright (C) 2005-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -61,9 +61,12 @@ typedef struct {
 // From linux-2.6.9/include/asm-ppc/page.h
 //----------------------------------------------------------------------
 
-/* PAGE_SHIFT determines the page size */
-#define VKI_PAGE_SHIFT	12
-#define VKI_PAGE_SIZE	(1UL << VKI_PAGE_SHIFT)
+/* PAGE_SHIFT determines the page size, unfortunately
+   page size might vary between 32-bit and 64-bit ppc kernels */
+extern unsigned long VKI_PAGE_SHIFT;
+extern unsigned long VKI_PAGE_SIZE;
+#define VKI_MAX_PAGE_SHIFT	16
+#define VKI_MAX_PAGE_SIZE	(1UL << VKI_MAX_PAGE_SHIFT)
 
 //----------------------------------------------------------------------
 // From linux-2.6.9/include/asm-ppc/signal.h
@@ -297,6 +300,8 @@ struct vki_sigcontext {
 #define VKI_O_APPEND		02000
 #define VKI_O_NONBLOCK		04000
 #define VKI_O_LARGEFILE     0200000
+
+#define VKI_AT_FDCWD            -100
 
 #define VKI_F_DUPFD		 0			/* dup */
 #define VKI_F_GETFD		 1			/* get close_on_exec */

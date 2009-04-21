@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -98,9 +98,11 @@ void* VG_(cli_malloc) ( SizeT align, SizeT nbytes )
    // 'align' should be valid (ie. big enough and a power of two) by now.
    // VG_(arena_memalign)() will abort if it's not.
    if (VG_MIN_MALLOC_SZB == align)
-      return VG_(arena_malloc)   ( VG_AR_CLIENT, nbytes ); 
+      return VG_(arena_malloc)   ( VG_AR_CLIENT, "replacemalloc.cm.1", 
+                                   nbytes ); 
    else                                                                       
-      return VG_(arena_memalign) ( VG_AR_CLIENT, align, nbytes );
+      return VG_(arena_memalign) ( VG_AR_CLIENT, "replacemalloc.cm.2", 
+                                   align, nbytes );
 }                                                                             
 
 void VG_(cli_free) ( void* p )                                   

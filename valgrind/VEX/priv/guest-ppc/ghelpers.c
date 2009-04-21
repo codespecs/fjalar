@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -95,6 +95,24 @@ ULong ppcg_dirtyhelper_MFTB ( void )
    return res;
 #  else
    return 1ULL;
+#  endif
+}
+
+
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (non-referentially transparent) */
+UInt ppc32g_dirtyhelper_MFSPR_268_269 ( UInt r269 )
+{
+#  if defined(__powerpc__) || defined(_AIX)
+   UInt spr;
+   if (r269) {
+      __asm__ __volatile__("mfspr %0,269" : "=b"(spr));
+   } else {
+      __asm__ __volatile__("mfspr %0,268" : "=b"(spr));
+   }
+   return spr;
+#  else
+   return 0;
 #  endif
 }
 
@@ -739,6 +757,10 @@ VexGuestLayout
           .offset_SP = offsetof(VexGuestPPC32State,guest_GPR1),
           .sizeof_SP = 4,
 
+          /* Describe the frame pointer. */
+          .offset_FP = offsetof(VexGuestPPC32State,guest_GPR1),
+          .sizeof_FP = 4,
+
           /* Describe the instruction pointer. */
           .offset_IP = offsetof(VexGuestPPC32State,guest_CIA),
           .sizeof_IP = 4,
@@ -776,6 +798,10 @@ VexGuestLayout
           /* Describe the stack pointer. */
           .offset_SP = offsetof(VexGuestPPC64State,guest_GPR1),
           .sizeof_SP = 8,
+
+          /* Describe the frame pointer. */
+          .offset_FP = offsetof(VexGuestPPC64State,guest_GPR1),
+          .sizeof_FP = 8,
 
           /* Describe the instruction pointer. */
           .offset_IP = offsetof(VexGuestPPC64State,guest_CIA),

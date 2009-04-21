@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -54,7 +54,7 @@ extern Int  VG_(waitpid)( Int pid, Int *status, Int options );
 extern Int  VG_(system) ( Char* cmd );
 extern Int  VG_(fork)   ( void );
 extern void VG_(exit)   ( Int status ); /* Equivalent to libc's _exit() */
-extern Int  VG_(execv)  ( const Char* exec, Char *const argv[] );
+extern void VG_(execv)  ( Char* filename, Char** argv );
 
 /* ---------------------------------------------------------------------
    Resource limits
@@ -78,7 +78,18 @@ extern Int VG_(getegid) ( void );
    Timing
    ------------------------------------------------------------------ */
 
+// Returns the number of milliseconds passed since the progam started
+// (roughly;  it gets initialised partway through Valgrind's initialisation
+// steps).
 extern UInt VG_(read_millisecond_timer) ( void );
+
+/* ---------------------------------------------------------------------
+   atfork
+   ------------------------------------------------------------------ */
+
+typedef void (*vg_atfork_t)(ThreadId);
+extern void VG_(atfork)(vg_atfork_t pre, vg_atfork_t parent, vg_atfork_t child);
+
 
 #endif   // __PUB_TOOL_LIBCPROC_H
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,6 +40,7 @@
 #include "pub_core_libcassert.h"  // VG_(exit), vg_assert
 #include "pub_core_mallocfree.h"  // VG_(malloc), VG_(free)
 #include "pub_core_threadstate.h"
+#include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
 #include "pub_core_options.h"
 
@@ -78,7 +79,7 @@ static Addr* get_seg_starts ( /*OUT*/Int* n_acquired )
 
    n_starts = 1;
    while (True) {
-      starts = VG_(malloc)( n_starts * sizeof(Addr) );
+      starts = VG_(malloc)( "coredump-elf.gss.1", n_starts * sizeof(Addr) );
       if (starts == NULL)
          break;
       r = VG_(am_get_segment_starts)( starts, n_starts );
@@ -183,7 +184,7 @@ static void add_note(struct note **list, const Char *name, UInt type, const void
    Int notelen = sizeof(struct note) + 
       VG_ROUNDUP(namelen, 4) + 
       VG_ROUNDUP(datasz, 4);
-   struct note *n = VG_(arena_malloc)(VG_AR_CORE, notelen);
+   struct note *n = VG_(arena_malloc)(VG_AR_CORE, "coredump-elf.an.1", notelen);
 
    VG_(memset)(n, 0, notelen);
 
@@ -285,7 +286,7 @@ static void fill_xfpu(const ThreadState *tst, vki_elf_fpxregset_t *xfpu)
 static
 void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
 {
-   Char buf[1000];
+   Char* buf = NULL;
    Char *basename = "vgcore";
    Char *coreext = "";
    Int seq = 0;
@@ -305,8 +306,17 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
 
    if (VG_(clo_log_name) != NULL) {
       coreext = ".core";
-      basename = VG_(clo_log_name);
+      basename = VG_(expand_file_name)(
+                    "--log-file (while creating core filename)",
+                    VG_(clo_log_name));
    }
+
+   vg_assert(coreext);
+   vg_assert(basename);
+   buf = VG_(malloc)( "coredump-elf.mec.1", 
+                      VG_(strlen)(coreext) + VG_(strlen)(basename)
+                         + 100/*for the two %ds. */ );
+   vg_assert(buf);
 
    for(;;) {
       SysRes sres;
@@ -348,7 +358,8 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
    notelist = NULL;
 
    /* Second, work out their layout */
-   phdrs = VG_(arena_malloc)(VG_AR_CORE, sizeof(*phdrs) * num_phdrs);
+   phdrs = VG_(arena_malloc)(VG_AR_CORE, "coredump-elf.mec.1", 
+                             sizeof(*phdrs) * num_phdrs);
 
    for(i = 1; i < VG_N_THREADS; i++) {
       vki_elf_fpregset_t  fpu;

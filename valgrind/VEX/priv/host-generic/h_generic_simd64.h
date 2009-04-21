@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -83,6 +83,7 @@ extern ULong h_generic_calc_QSub16Ux4 ( ULong, ULong );
 extern ULong h_generic_calc_QSub8Ux8  ( ULong, ULong );
 
 extern ULong h_generic_calc_Mul16x4    ( ULong, ULong );
+extern ULong h_generic_calc_Mul32x2    ( ULong, ULong );
 extern ULong h_generic_calc_MulHi16Sx4 ( ULong, ULong );
 extern ULong h_generic_calc_MulHi16Ux4 ( ULong, ULong );
 
@@ -108,12 +109,18 @@ extern ULong h_generic_calc_InterleaveLO16x4 ( ULong, ULong );
 extern ULong h_generic_calc_InterleaveHI32x2 ( ULong, ULong );
 extern ULong h_generic_calc_InterleaveLO32x2 ( ULong, ULong );
 
+extern ULong h_generic_calc_CatOddLanes16x4 ( ULong, ULong );
+extern ULong h_generic_calc_CatEvenLanes16x4 ( ULong, ULong );
+extern ULong h_generic_calc_Perm8x8 ( ULong, ULong );
+
+extern ULong h_generic_calc_ShlN8x8  ( ULong, UInt );
 extern ULong h_generic_calc_ShlN16x4 ( ULong, UInt );
 extern ULong h_generic_calc_ShlN32x2 ( ULong, UInt );
 
 extern ULong h_generic_calc_ShrN16x4 ( ULong, UInt );
 extern ULong h_generic_calc_ShrN32x2 ( ULong, UInt );
 
+extern ULong h_generic_calc_SarN8x8  ( ULong, UInt );
 extern ULong h_generic_calc_SarN16x4 ( ULong, UInt );
 extern ULong h_generic_calc_SarN32x2 ( ULong, UInt );
 

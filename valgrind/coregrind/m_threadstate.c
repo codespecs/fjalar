@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -126,7 +126,7 @@ Int VG_(count_runnable_threads)(void)
 
 /* Given an LWP id (ie, real kernel thread id), find the corresponding
    ThreadId */
-ThreadId VG_(get_lwp_tid)(Int lwp)
+ThreadId VG_(lwpid_to_vgtid)(Int lwp)
 {
    ThreadId tid;
    

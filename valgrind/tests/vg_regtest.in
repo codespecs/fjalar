@@ -55,22 +55,24 @@
 #   - stdout_filter: <filter to run stdout through> (default: none)
 #   - stderr_filter: <filter to run stderr through> (default: ./filter_stderr)
 #   - prereq: <prerequisite command>                (default: none)
-#   - posttest: <post-test check command>           (default: none)
-#   - cleanup: <post-test cleanup cmd to run>       (default: none)
+#   - post: <post-test check command>               (default: none)
+#   - cleanup: <post-test cleanup cmd>              (default: none)
 #
 # Note that filters are necessary for stderr results to filter out things that
 # always change, eg. process id numbers.
 #
-# Expected stdout (filtered) is kept in <test>.stdout.exp[0-9]* (can be more
+# Expected stdout (filtered) is kept in <test>.stdout.exp* (can be more
 # than one expected output).  It can be missing if it would be empty.  Expected
-# stderr (filtered) is kept in <test>.stderr.exp[0-9]*. 
+# stderr (filtered) is kept in <test>.stderr.exp*.   There must be at least
+# one stderr.exp* file.  Any .exp* file that ends in '~' or '#' is ignored;
+# this is because Emacs creates temporary files of these names.
 #
 # The prerequisite command, if present, must return 0 otherwise the test is
 # skipped.  The post-test command, if present, must return 0 and its stdout
-# must match the expected stdout which is kept in <test>.posttest.exp[0-9]*.
+# must match the expected stdout which is kept in <test>.post.exp*.
 #
 # If results don't match, the output can be found in <test>.std<strm>.out,
-# and the diff between expected and actual in <test>.std<strm>.diff[0-9]*.
+# and the diff between expected and actual in <test>.std<strm>.diff*.
 #
 # Sometimes it is useful to run all the tests at a high sanity check
 # level or with arbitrary other flags.  To make this simple, extra 
@@ -78,8 +80,8 @@
 # and handed to valgrind prior to any other flags specified by the 
 # .vgtest file.
 #
-# Notes on adding regression tests for a new tool are in
-# coregrind/docs/coregrind_tools.html.
+# Some more notes on adding regression tests for a new tool are in
+# docs/xml/manual-writing-tools.xml.
 #----------------------------------------------------------------------------
 
 use warnings;
@@ -88,7 +90,11 @@ use strict;
 #----------------------------------------------------------------------------
 # Global vars
 #----------------------------------------------------------------------------
-my $usage="vg_regtest [--all, --valgrind, --valgrind-lib]\n";
+my $usage="\n"
+          . "Usage:\n"
+          . "   vg_regtest [--all, --valgrind, --valgrind-lib]\n"
+          . "   Use EXTRA_REGTEST_OPTS to supply extra args for all tests\n"
+          . "\n";
 
 my $tmp="vg_regtest.tmp.$$";
 
@@ -99,13 +105,13 @@ my $args;               # test prog args
 my $stdout_filter;      # filter program to run stdout results file through
 my $stderr_filter;      # filter program to run stderr results file through
 my $prereq;             # prerequisite test to satisfy before running test
-my $posttest;           # check command after running test
+my $post;               # check command after running test
 my $cleanup;            # cleanup command to run
 
 my @failures;           # List of failed tests
 
 my $num_tests_done      = 0;
-my %num_failures        = (stderr => 0, stdout => 0, posttest => 0);
+my %num_failures        = (stderr => 0, stdout => 0, post => 0);
 
 # Default valgrind to use is this build tree's (uninstalled) one
 my $valgrind = "./coregrind/valgrind";
@@ -192,7 +198,7 @@ sub read_vgtest_file($)
     # Defaults.
     ($vgopts, $prog, $args)          = ("", undef, "");
     ($stdout_filter, $stderr_filter) = (undef, undef);
-    ($prereq, $posttest, $cleanup)   = (undef, undef, undef);
+    ($prereq, $post, $cleanup)       = (undef, undef, undef);
 
     # Every test directory must have a "filter_stderr"
     $stderr_filter = validate_program(".", $default_stderr_filter, 1, 1);
@@ -214,8 +220,8 @@ sub read_vgtest_file($)
             $stderr_filter = validate_program(".", $1, 1, 1);
         } elsif ($line =~ /^\s*prereq:\s*(.*)$/) {
             $prereq = $1;
-        } elsif ($line =~ /^\s*posttest:\s*(.*)$/) {
-            $posttest = $1;
+        } elsif ($line =~ /^\s*post:\s*(.*)$/) {
+            $post = $1;
         } elsif ($line =~ /^\s*cleanup:\s*(.*)$/) {
             $cleanup = $1;
         } else {
@@ -236,7 +242,9 @@ sub read_vgtest_file($)
 # propagate a Ctrl-C enabling us to quit.
 sub mysystem($) 
 {
-    (system($_[0]) != 2) or exit 1;      # 2 is SIGINT
+    my $exit_code = system($_[0]);
+    ($exit_code == 2) and exit 1;      # 2 is SIGINT
+    return $exit_code;
 }
 
 # from a directory name like "/foo/cachesim/tests/" determine the tool name
@@ -256,22 +264,27 @@ sub do_diffs($$$$)
     for my $f_exp (@$f_exps) {
         (-r $f_exp) or die "Could not read `$f_exp'\n";
 
-        my $n = "";
-        if ($f_exp =~ /.*\.exp(\d*)/) {
-            $n = $1;
-        } else {
-            $n = "";
-            ($f_exp eq "/dev/null") or die "Unexpected .exp file: $f_exp\n";
-        }
+        # Emacs produces temporary files that end in '~' and '#'.  We ignore
+        # these.
+        if ($f_exp !~ /[~#]$/) {
+            # $n is the (optional) suffix after the ".exp";  we tack it onto
+            # the ".diff" file.
+            my $n = "";
+            if ($f_exp =~ /.*\.exp(.*)$/) {
+                $n = $1;
+            } else {
+                $n = "";
+                ($f_exp eq "/dev/null") or die "Unexpected .exp file: $f_exp\n";
+            }
 
-        #print("diff $f_exp $name.$mid.out > $name.$mid.diff$n\n");
-        mysystem("diff $f_exp $name.$mid.out > $name.$mid.diff$n");
+            mysystem("diff $f_exp $name.$mid.out > $name.$mid.diff$n");
 
-        if (not -s "$name.$mid.diff$n") {
-            # A match;  remove .out and any previously created .diff files.
-            unlink("$name.$mid.out");
-            unlink(<$name.$mid.diff*>);
-            return;
+            if (not -s "$name.$mid.diff$n") {
+                # A match;  remove .out and any previously created .diff files.
+                unlink("$name.$mid.out");
+                unlink(<$name.$mid.diff*>);
+                return;
+            }
         }
     }
     # If we reach here, none of the .exp files matched.
@@ -472,7 +485,7 @@ if ($ENV{"EXTRA_REGTEST_OPTS"}) {
 
 if (0 == $num_failures{"stdout"} &&
     0 == $num_failures{"stderr"} &&
-    0 == $num_failures{"posttest"}) {
+    0 == $num_failures{"post"}) {
     exit 0;
 } else {
     exit 1;

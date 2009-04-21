@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -103,7 +103,9 @@ extern void VG_(am_show_nsegments) ( Int logLevel, HChar* who );
 /* Get the filename corresponding to this segment, if known and if it
    has one.  The returned name's storage cannot be assumed to be
    persistent, so the caller should immediately copy the name
-   elsewhere. */
+   elsewhere.  This may return NULL if the file name is not known or
+   for arbitrary other implementation-dependent reasons, so callers
+   need to be able to handle a NULL return value. */
 // Is in tool-visible header file.
 // extern HChar* VG_(am_get_filename)( NSegment* );
 
@@ -368,8 +370,13 @@ extern Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 // stacks.  The address space manager provides and suitably
 // protects such stacks.
 
-#define VG_STACK_GUARD_SZB  8192   // 2 pages
-#define VG_STACK_ACTIVE_SZB 65536  // 16 pages
+#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+# define VG_STACK_GUARD_SZB  65536  // 1 or 16 pages
+# define VG_STACK_ACTIVE_SZB 131072 // 2 or 32 pages
+#else
+# define VG_STACK_GUARD_SZB  8192   // 2 pages
+# define VG_STACK_ACTIVE_SZB 65536  // 16 pages
+#endif
 
 typedef
    struct {

@@ -42,7 +42,7 @@ endif
 # Build the launcher (valgrind) for the primary target only.
 #
 bin_PROGRAMS = \
-	valgrind
+	valgrind no_op_client_for_valgrind
 
 if VGO_AIX5
 valgrind_SOURCES = \
@@ -59,6 +59,12 @@ valgrind_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
 valgrind_CFLAGS    = $(AM_CFLAGS_PRI)
 valgrind_CCASFLAGS = $(AM_CCASFLAGS_PRI)
 valgrind_LDFLAGS   = $(AM_CFLAGS_PRI)
+
+no_op_client_for_valgrind_SOURCES = no_op_client_for_valgrind.c
+no_op_client_for_valgrind_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
+no_op_client_for_valgrind_CFLAGS    = $(AM_CFLAGS_PRI)
+no_op_client_for_valgrind_CCASFLAGS = $(AM_CCASFLAGS_PRI)
+no_op_client_for_valgrind_LDFLAGS   = $(AM_CFLAGS_PRI)
 #
 #----------------------------------------------------------
 
@@ -112,17 +118,17 @@ noinst_HEADERS = \
 	pub_core_mallocfree.h	\
 	pub_core_options.h	\
 	pub_core_oset.h		\
-	pub_core_pthreadmodel.h	\
 	pub_core_redir.h	\
 	pub_core_replacemalloc.h\
 	pub_core_scheduler.h	\
+	pub_core_seqmatch.h	\
 	pub_core_sigframe.h	\
 	pub_core_signals.h	\
+	pub_core_sparsewa.h	\
 	pub_core_stacks.h	\
 	pub_core_stacktrace.h	\
 	pub_core_syscall.h	\
 	pub_core_syswrap.h	\
-	pub_core_threadmodel.h	\
 	pub_core_threadstate.h	\
 	pub_core_tooliface.h	\
 	pub_core_trampoline.h	\
@@ -132,16 +138,24 @@ noinst_HEADERS = \
 	pub_core_ume.h		\
 	pub_core_vki.h		\
 	pub_core_vkiscnums.h	\
+	pub_core_wordfm.h	\
+	pub_core_xarray.h	\
 	m_coredump/priv_elf.h	\
+	m_debuginfo/priv_misc.h	\
 	m_debuginfo/priv_storage.h	\
+	m_debuginfo/priv_tytypes.h      \
 	m_debuginfo/priv_readstabs.h	\
+	m_debuginfo/priv_d3basics.h	\
 	m_debuginfo/priv_readdwarf.h	\
+	m_debuginfo/priv_readdwarf3.h	\
 	m_debuginfo/priv_readelf.h	\
 	m_debuginfo/priv_readxcoff.h	\
 	m_demangle/ansidecl.h	\
+	m_demangle/cp-demangle.h \
 	m_demangle/dyn-string.h	\
 	m_demangle/demangle.h	\
 	m_demangle/safe-ctype.h \
+	m_demangle/vg_libciface.h \
 	m_scheduler/priv_sema.h \
 	m_syswrap/priv_types_n_macros.h \
 	m_syswrap/priv_syswrap-generic.h \
@@ -177,13 +191,13 @@ COREGRIND_SOURCES_COMMON = \
 	m_mallocfree.c \
 	m_options.c \
 	m_oset.c \
-	m_pthreadmodel.c \
 	m_redir.c \
+	m_seqmatch.c \
 	m_signals.c \
+	m_sparsewa.c \
 	m_stacks.c \
 	m_stacktrace.c \
 	m_syscall.c \
-	m_threadmodel.c \
 	m_threadstate.c \
 	m_tooliface.c \
 	m_trampoline.S \
@@ -192,9 +206,14 @@ COREGRIND_SOURCES_COMMON = \
 	m_ume.c \
 	m_vki.c \
 	m_vkiscnums.c \
+	m_wordfm.c \
+	m_xarray.c \
 	m_aspacemgr/aspacemgr-common.c \
+	m_debuginfo/misc.c \
+	m_debuginfo/d3basics.c \
 	m_debuginfo/storage.c \
 	m_debuginfo/debuginfo.c \
+	m_debuginfo/tytypes.c \
 	m_demangle/cp-demangle.c \
 	m_demangle/cplus-dem.c \
 	m_demangle/demangle.c \
@@ -213,6 +232,7 @@ COREGRIND_LINUX_SOURCE = \
 	m_initimg/initimg-linux.c \
 	m_debuginfo/readelf.c \
 	m_debuginfo/readdwarf.c \
+	m_debuginfo/readdwarf3.c \
 	m_debuginfo/readstabs.c \
 	m_syswrap/syswrap-generic.c
 
@@ -344,7 +364,7 @@ m_syswrap/syscall-ppc64-aix5.S:		 libvex_guest_offsets.h
 m_syswrap/syswrap-main.c: 		 libvex_guest_offsets.h
 
 libvex_guest_offsets.h:
-	$(MAKE) -C @VEX_DIR@ pub/libvex_guest_offsets.h
+	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" pub/libvex_guest_offsets.h
 
 VGPRELOAD_CORE_SOURCES_COMMON = vg_preloaded.c
 

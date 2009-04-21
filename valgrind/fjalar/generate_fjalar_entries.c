@@ -26,6 +26,7 @@
 #include "fjalar_select.h"
 #include "elf/dwarf2.h"
 #include "GenericHashtable.h"
+#include "../coregrind/m_demangle/demangle.h"
 
 #include "fjalar_tool.h"
 
@@ -359,7 +360,7 @@ char* getRawCppFunctionName(char* cppFnName) {
 void SimpleListInsert(SimpleList* lst, void* elt) {
   SimpleNode* newNode;
   tl_assert(lst);
-  newNode = VG_(calloc)(1, sizeof(*newNode));
+  newNode = VG_(calloc)("generate_fjalar_entries.c: SimpleListInsert", 1, sizeof(*newNode));
   newNode->elt = elt;
   newNode->next = NULL;
 
@@ -424,14 +425,14 @@ void insertNewNode(VarList* varListPtr)
 {
   if (varListPtr->last)
     {
-      varListPtr->last->next = VG_(calloc)(1, sizeof(VarNode));
+      varListPtr->last->next = VG_(calloc)("generate_fjalar_entries.c: insertNewNode.1", 1, sizeof(VarNode));
       varListPtr->last->next->prev = varListPtr->last;
       varListPtr->last = varListPtr->last->next;
       varListPtr->numVars++;
     }
   else
     {
-      varListPtr->last = varListPtr->first = VG_(calloc)(1, sizeof(VarNode));
+      varListPtr->last = varListPtr->first = VG_(calloc)("generate_fjalar_entries.c: insertNewNode.2", 1, sizeof(VarNode));
       varListPtr->numVars = 1;
     }
 
@@ -534,9 +535,9 @@ void initializeAllFjalarData(void)
 
 
   FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
-              data_section_size, data_section_addr,
-              bss_section_size, bss_section_addr,
-              rodata_section_size, rodata_section_addr);
+		 data_section_size, (void *)data_section_addr,
+		 bss_section_size, (void *)bss_section_addr,
+		 rodata_section_size, (void *)rodata_section_addr);
 
   // Should only be called here:
   FJALAR_DPRINTF("\nChecking the representation of internal data structures ...\n");
@@ -835,7 +836,7 @@ static void repCheckOneVariable(VariableEntry* var) {
     FJALAR_DPRINTF(" --- checking var (t: %s) (%p): %s, globalLoc: %p\n",
                    (IS_MEMBER_VAR(var) && var->memberVar->structParentType) ?
                    var->memberVar->structParentType->typeName : "no parent",
-                   var, var->name, global_loc);
+                   var, var->name, (void *)global_loc);
 
     if (global_loc) {
       if (!addressIsGlobal(global_loc) &&
@@ -846,7 +847,7 @@ static void repCheckOneVariable(VariableEntry* var) {
 	   whose location is in other sections. The extra numeric
 	   comparison is a fallback hack for that case. */
 	VG_(printf)("Address 0x%08x doesn't look like a global\n",
-		    var->globalVar->globalLocation);
+		    (unsigned int)var->globalVar->globalLocation);
 	VG_(printf)("Data section is 0x%08x to 0x%08x\n",
 		    data_section_addr, data_section_addr + data_section_size);
 	VG_(printf)("BSS section is 0x%08x to 0x%08x\n",
@@ -892,9 +893,9 @@ static void repCheckOneVariable(VariableEntry* var) {
   FJALAR_DPRINTF(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
                  IS_MEMBER_VAR(var) && var->memberVar->structParentType ?
                  var->memberVar->structParentType->typeName : "no parent",
-                 var,
+                 (void *)var,
                  var->name,
-                 IS_GLOBAL_VAR(var) && var->globalVar->globalLocation);
+                 (void *)(IS_GLOBAL_VAR(var) && var->globalVar->globalLocation));
 }
 
 
@@ -976,7 +977,7 @@ static void initializeGlobalVarsList(void)
 			 (int (*)(void *,void *)) &equivalentIDs);
 
   FJALAR_DPRINTF("ENTER initializeGlobalVarsList() - %d\n",
-		 dwarf_entry_array_size);
+		 (int)dwarf_entry_array_size);
 
   for (i = 0; i < dwarf_entry_array_size; i++) {
     cur_entry = &dwarf_entry_array[i];
@@ -986,8 +987,8 @@ static void initializeGlobalVarsList(void)
       FJALAR_DPRINTF("Var (%d): %s 0x%x static: %d, dec: %d\n",
 		     cur_entry->level,
 		     variable_ptr->name,
-		     variable_ptr->globalVarAddr,
-		     variable_ptr->isStaticMemberVar,
+		     (unsigned int)variable_ptr->globalVarAddr,
+		     (unsigned int)variable_ptr->isStaticMemberVar,
 		     variable_ptr->is_declaration_or_artificial);
 
       // IGNORE variables with is_declaration_or_artificial or
@@ -1001,11 +1002,11 @@ static void initializeGlobalVarsList(void)
 	char* existingName;
 
 	FJALAR_DPRINTF("dwarf_entry_array[%d] is a global named %s at addr: %p\n",
-		       i, variable_ptr->name, variable_ptr->globalVarAddr);
+		       i, variable_ptr->name, (void *)variable_ptr->globalVarAddr);
 
 	if (!variable_ptr->name) {
 	  VG_(printf)( "Skipping weird unnamed global variable ID#%x - addr: %x\n",
-		       cur_entry->ID, variable_ptr->globalVarAddr);
+		       (unsigned int)cur_entry->ID, (unsigned int)variable_ptr->globalVarAddr);
 	  continue;
 	}
 	else if (VG_STREQ(variable_ptr->name, "_IO_stdin_used")) {
@@ -1111,7 +1112,7 @@ static void createNamesForUnnamedDwarfEntries(void)
         // The maximum size is 10 + 8 + 1 = 19 10 for "unnamed_0x", 8
         // for maximum size for cur_entry->ID, and 1 for
         // null-terminator
-        char* fake_name = VG_(calloc)(19, sizeof(*fake_name));
+        char* fake_name = VG_(calloc)("generate_fjalar_entries.c: createNamesForUnnamedDwarfEntries", 19, sizeof(*fake_name));
         sprintf(fake_name, "unnamed_0x%lx", cur_entry->ID);
         collectionPtr->name = fake_name;
       }
@@ -1181,12 +1182,12 @@ static void updateAllGlobalVariableNames(void) {
 
       tl_assert(name_to_use);
 
-      globalName = VG_(calloc)(VG_(strlen)(loc_part) + 1 +
+      globalName = VG_(calloc)("generate_fjalar_entries.c: updateAllGlobalVariableNames.1", VG_(strlen)(loc_part) + 1 +
                                VG_(strlen)(name_to_use) + 1 + 1 +
                                VG_(strlen)(curVar->name) + 1, sizeof(*globalName));
     }
     else {
-      globalName = VG_(calloc)(VG_(strlen)(loc_part) + 1 + 1 +
+      globalName = VG_(calloc)("generate_fjalar_entries.c: updateAllGlobalVariableNames.2", VG_(strlen)(loc_part) + 1 + 1 +
                                VG_(strlen)(curVar->name) + 1, sizeof(*globalName));
     }
 
@@ -1221,7 +1222,7 @@ static char* PrependClass(char* class, char* func, int func_name_len) {
 
   /* We want to print static_fn in subdir/filename.c
      as "subdir/filename.c.static_fn() */
-  buf = VG_(malloc)(VG_(strlen)(class) + 1 +
+  buf = VG_(malloc)("genereate_fjalar_entries.c: prependClass.1", VG_(strlen)(class) + 1 +
                     func_name_len + 3); // 3 for possible trailing parens
   VG_(strcpy)(buf, class);
   for (p = buf; *p; p++) {
@@ -1325,9 +1326,9 @@ static void initFunctionFjalarNames(void) {
       // Check if entries are the same. If they are, clean up and continue
       if(!VG_(strcmp)(bufOld, bufNew)) {
         VG_(free)(buf);
-
-        genfreekey(FunctionTable_by_entryPC, cur_entry->entryPC);
-        genfreekey(FunctionTable, cur_entry->startPC);
+	
+        genfreekey(FunctionTable_by_entryPC, (void *)cur_entry->entryPC);
+        genfreekey(FunctionTable, (void *)cur_entry->startPC);
 
         continue;
       }
@@ -1459,7 +1460,7 @@ void initializeFunctionTable(void)
           cur_func_entry->isExternal = dwarfFunctionPtr->is_external;
 
           FJALAR_DPRINTF("cur_func_entry->startPC: %p (%s %s)\n",
-                         cur_func_entry->startPC,
+                         (void *)cur_func_entry->startPC,
                          cur_func_entry->name,
                          cur_func_entry->mangled_name);
 
@@ -1484,9 +1485,10 @@ void initializeFunctionTable(void)
           // to try to demangle the name (remember the demangled name
           // is malloc'ed):
           if (cur_func_entry->mangled_name) {
-            extern char* VG_(cplus_demangle_v3) (const char* mangled);
-            demangled_name = VG_(cplus_demangle_v3)(cur_func_entry->mangled_name);
+            //extern char* cplus_demangle_v3 (const char* mangled, int options);
+            demangled_name = cplus_demangle_v3(cur_func_entry->mangled_name, DMGL_PARAMS | DMGL_ANSI);
 	    if (demangled_name) {
+	      VG_(printf)("demangling: %s\n", demangled_name);
 	      // Set the demangled_name of the function to be the
 	      // demangled name:
 	      cur_func_entry->demangled_name = demangled_name;
@@ -1511,8 +1513,8 @@ void initializeFunctionTable(void)
 	    cur_func_entry->entryPC = (Addr)
 	      gengettable(next_line_addr, (void*)cur_func_entry->startPC);
 	    FJALAR_DPRINTF("Entering %s at 0x%08x instead of 0x%08x\n",
-			   cur_func_entry->name, cur_func_entry->entryPC,
-			   cur_func_entry->startPC);
+			   cur_func_entry->name, (unsigned int)cur_func_entry->entryPC,
+			   (unsigned int)cur_func_entry->startPC);
 	    /* Leave DWARF offsets alone if the exist, since we should
 	       be properly placed to use them. */
 	    verifyStackParamWordAlignment(cur_func_entry, 0);
@@ -1565,9 +1567,9 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
 
   arrayDims = arrayPtr->num_subrange_entries;
 
-  varPtr->staticArr = VG_(calloc)(1, sizeof(*varPtr->staticArr));
+  varPtr->staticArr = VG_(calloc)("generate_fjalar_entries.c: extractArrayType.1", 1, sizeof(*varPtr->staticArr));
   varPtr->staticArr->numDimensions = arrayDims;
-  varPtr->staticArr->upperBounds = VG_(calloc)(arrayDims,
+  varPtr->staticArr->upperBounds = VG_(calloc)("generate_fjalar_entries.c: extractArrayType.2", arrayDims,
                                                sizeof(*(varPtr->staticArr->upperBounds)));
 
   for (i = 0; i < arrayDims; i++) {
@@ -1670,7 +1672,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   //              collectionPtr->is_declaration,
   //              e->ID);
 
-  t->aggType = VG_(calloc)(1, sizeof(*t->aggType));
+  t->aggType = VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.1", 1, sizeof(*t->aggType));
 
   if (e->tag_name == DW_TAG_union_type) {
     t->decType = D_UNION;
@@ -1720,13 +1722,13 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       continue;
     }
 
-    FJALAR_DPRINTF("         funcPtr->start_pc: %p\n", funcPtr->start_pc);
+    FJALAR_DPRINTF("         funcPtr->start_pc: %p\n", (void *)funcPtr->start_pc);
 
     // Success!
     // If memberFunctionList hasn't been allocated yet, calloc it:
     if (!t->aggType->memberFunctionList) {
       t->aggType->memberFunctionList =
-        (SimpleList*)VG_(calloc)(1, sizeof(*(t->aggType->memberFunctionList)));
+        (SimpleList*)VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.2", 1, sizeof(*(t->aggType->memberFunctionList)));
     }
 
     SimpleListInsert(t->aggType->memberFunctionList,
@@ -1754,14 +1756,14 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
         TypeEntry* existing_entry = 0;
         // Note: We never ever free this! (whoops!)
-        Superclass* curSuper = VG_(calloc)(1, sizeof(*curSuper));
-        curSuper->className = VG_(strdup)(dwarf_super->name);
+        Superclass* curSuper = VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.3", 1, sizeof(*curSuper));
+        curSuper->className = VG_(strdup)("genereate_fjalar_entries.c: extractStructUnionType.3.1", dwarf_super->name);
 
         // Success!
         // If superclassList hasn't been allocated yet, calloc it:
         if (!t->aggType->superclassList) {
           t->aggType->superclassList =
-            (SimpleList*)VG_(calloc)(1, sizeof(*(t->aggType->superclassList)));
+            (SimpleList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.4", 1, sizeof(*(t->aggType->superclassList)));
         }
 
         // Insert new superclass element:
@@ -1819,7 +1821,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   if (collectionPtr->num_member_vars > 0) {
     t->aggType->memberVarList =
-      (VarList*)VG_(calloc)(1, sizeof(*(t->aggType->memberVarList)));
+      (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.5", 1, sizeof(*(t->aggType->memberVarList)));
 
     // Look up the dwarf_entry for the struct/union and iterate
     // through its member_vars array (of pointers to members)
@@ -1857,7 +1859,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
     VarNode* node = 0;
 
     t->aggType->staticMemberVarList =
-      (VarList*)VG_(calloc)(1, sizeof(*(t->aggType->staticMemberVarList)));
+      (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.6", 1, sizeof(*(t->aggType->staticMemberVarList)));
 
     for (ind = 0; ind < collectionPtr->num_static_member_vars; ind++) {
       variable* staticMemberPtr =
@@ -1875,7 +1877,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
       FJALAR_DPRINTF("Trying to extractOneVariable on static member var: %s at %p\n",
                      staticMemberPtr->mangled_name,
-                     staticMemberPtr->globalVarAddr);
+                     (void *)staticMemberPtr->globalVarAddr);
 
       extractOneVariable(t->aggType->staticMemberVarList,
 			 staticMemberPtr->type_ptr,
@@ -2347,7 +2349,7 @@ extractOneVariable(VarList* varListPtr,
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
 {
-  extern char* VG_(cplus_demangle_v3) (const char* mangled);
+  extern char* cplus_demangle_v3 (const char* mangled, int options);
 
   VariableEntry* varPtr = 0;
   char ptrLevels = 0;
@@ -2369,7 +2371,7 @@ extractOneVariable(VarList* varListPtr,
 
   // Attempt to demangle C++ names (nothing happens if it's not a
   // mangled name)
-  demangled_name = VG_(cplus_demangle_v3)(variableName);
+  demangled_name = cplus_demangle_v3(variableName, 3);
   if (demangled_name) {
     varPtr->name = demangled_name;
   }
@@ -2388,7 +2390,7 @@ extractOneVariable(VarList* varListPtr,
   }
 
   if (isGlobal) {
-    varPtr->globalVar = VG_(calloc)(1, sizeof(*varPtr->globalVar));
+    varPtr->globalVar = VG_(calloc)("generate_fjalar_entries.c: extractOneVariable.1",1, sizeof(*varPtr->globalVar));
     varPtr->globalVar->isExternal = isExternal;
     varPtr->globalVar->fileName = fileName;
     varPtr->globalVar->globalLocation = globalLocation;
@@ -2396,7 +2398,7 @@ extractOneVariable(VarList* varListPtr,
   }
 
   if (isStructUnionMember) {
-    varPtr->memberVar = VG_(calloc)(1, sizeof(*varPtr->memberVar));
+    varPtr->memberVar = VG_(calloc)("generate_fjalar_entries.c: extractOneVariable.2", 1, sizeof(*varPtr->memberVar));
     varPtr->memberVar->data_member_location = data_member_location;
     varPtr->memberVar->internalByteSize = internalByteSize;
     varPtr->memberVar->internalBitOffset = internalBitOffset;
@@ -2669,7 +2671,7 @@ static void initConstructorsAndDestructors(void) {
         // allocating it if necessary:
         if (!parentClass->aggType->constructorList) {
           parentClass->aggType->constructorList =
-            (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->aggType->constructorList)));
+            (SimpleList*)VG_(calloc)("generate_fjalar_entries.c: initConstructorsandDestructors.1", 1, sizeof(*(parentClass->aggType->constructorList)));
         }
         SimpleListInsert(parentClass->aggType->constructorList, (void*)f);
       }
@@ -2688,7 +2690,7 @@ static void initConstructorsAndDestructors(void) {
           // allocating it if necessary:
           if (!parentClass->aggType->destructorList) {
             parentClass->aggType->destructorList =
-              (SimpleList*)VG_(calloc)(1, sizeof(*(parentClass->aggType->destructorList)));
+              (SimpleList*)VG_(calloc)("generate_fjalar_entries.c: initConstructorsandDestructors.2", 1, sizeof(*(parentClass->aggType->destructorList)));
           }
           SimpleListInsert(parentClass->aggType->destructorList, (void*)f);
         }
@@ -2729,7 +2731,7 @@ static void initMemberFuncs(void) {
           unsigned int start_PC = (unsigned int)(n->elt);
           tl_assert(start_PC);
 
-          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", start_PC, t->typeName);
+          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", (void *)start_PC, t->typeName);
 
           // Hopefully this will always be non-null
           n->elt = getFunctionEntryFromStartAddr(start_PC);
@@ -2809,7 +2811,7 @@ int equivalentStrings(char* str1, char* str2) {
 
 
 VarIterator* newVarIterator(VarList* vlist) {
-  VarIterator* varIt = (VarIterator*)VG_(calloc)(1, sizeof(*varIt));
+  VarIterator* varIt = (VarIterator*)VG_(calloc)("generate_fjalar_entries.c: newVarIterator", 1, sizeof(*varIt));
   tl_assert(vlist);
   varIt->curNode = vlist->first; // This could be null for an empty list
   return varIt;
@@ -2846,7 +2848,7 @@ TypeEntry* getTypeEntry(char* typeName) {
 }
 
 TypeIterator* newTypeIterator() {
-  TypeIterator* typeIt = (TypeIterator*)VG_(calloc)(1, sizeof(*typeIt));
+  TypeIterator* typeIt = (TypeIterator*)VG_(calloc)("generateFjalarEntries.c: newTypeIterator", 1, sizeof(*typeIt));
   typeIt->it = gengetiterator(TypesTable);
   return typeIt;
 }
@@ -2873,7 +2875,7 @@ void deleteTypeIterator(TypeIterator* typeIt) {
 
 // Copy-and-paste alert! (but let's not resort to macros)
 FuncIterator* newFuncIterator() {
-  FuncIterator* funcIt = (FuncIterator*)VG_(calloc)(1, sizeof(*funcIt));
+  FuncIterator* funcIt = (FuncIterator*)VG_(calloc)("generateFjalarEntries.c: newFuncIterator", 1, sizeof(*funcIt));
   funcIt->it = gengetiterator(FunctionTable);
   return funcIt;
 }

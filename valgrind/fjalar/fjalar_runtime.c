@@ -52,7 +52,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   FunctionExecutionState* next_fn = 0;
 
   FJALAR_DPRINTF("Looking for function corresponding "
-	  "to stack variable 0x%x\n", a);
+	  "to stack variable 0x%x\n", (unsigned int)a);
 
   // Traverse the function stack from the function with
   // the highest ESP to the one with the lowest ESP
@@ -266,7 +266,7 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
 	{
 	  if (arraySize % 1000 == 0)
 	    VG_(printf)( "Made it to %d elements at 0x%x\n", arraySize,
-		    startAddr);
+			 (unsigned int)startAddr);
 	}
       /* Cut off the search if we can already see it's really big:
          no need to look further than we're going to print. */
@@ -346,7 +346,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   Addr baseAddr = 0;
   char foundGlobalArrayVariable = 0;
 
-  FJALAR_DPRINTF("Checking for upper bound of %p\n", varLocation);
+  FJALAR_DPRINTF("Checking for upper bound of %p\n", (void *)varLocation);
 
   // 1. Search if varLocation is within a global variable
   if (addressIsGlobal(varLocation)) {
@@ -416,7 +416,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
         !addressIsGlobal(varLocation)) {
       Word size;
       FJALAR_DPRINTF("Location looks reasonable, probing at %p\n",
-              varLocation);
+		     (void *)varLocation);
 
       size =
         probeAheadDiscoverHeapArraySize(varLocation,

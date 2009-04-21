@@ -53,7 +53,7 @@ Bool print_declarations = 1;
 
 // Temporary - only to be used during the transition period from the
 // old .decls format to the new format (designed in April 2006):
-Bool kvasir_old_decls_format = False;
+Bool kvasir_old_decls_format = True;
 Bool kvasir_parent_records = False;
 Bool kvasir_transitioning = False;
 Bool kvasir_unambiguous_fields = False;
@@ -138,10 +138,10 @@ static char createDeclsAndDtraceFiles(char* appname)
 
   if (actually_output_separate_decls_dtrace) {
     if (kvasir_decls_filename) {
-      newpath_decls = VG_(strdup)(kvasir_decls_filename);
+      newpath_decls = VG_(strdup)("kvasir_main.c: createDecls.1", kvasir_decls_filename);
     }
     else {
-      newpath_decls = (char*)VG_(malloc)((VG_(strlen)(decls_folder) +
+      newpath_decls = (char*)VG_(malloc)("kvasir_main.c: createDecls.2", (VG_(strlen)(decls_folder) +
 					  VG_(strlen)(filename) +
 					  VG_(strlen)(decls_ext) + 1) *
 					 sizeof(char));
@@ -152,10 +152,10 @@ static char createDeclsAndDtraceFiles(char* appname)
     }
 
     if (kvasir_dtrace_filename) {
-      newpath_dtrace = VG_(strdup)(kvasir_dtrace_filename);
+      newpath_dtrace = VG_(strdup)("kvasir_main.c: createDecls.3", kvasir_dtrace_filename);
     }
     else {
-      newpath_dtrace = (char*)VG_(malloc)((VG_(strlen)(decls_folder) +
+      newpath_dtrace = (char*)VG_(malloc)("kvasir_main.c: createDecls.4", (VG_(strlen)(decls_folder) +
 					   VG_(strlen)(filename) +
 					   VG_(strlen)(dtrace_ext) + 1) *
 					  sizeof(char));
@@ -167,10 +167,10 @@ static char createDeclsAndDtraceFiles(char* appname)
   }
   else { // DEFAULT - just .dtrace
     if (kvasir_dtrace_filename) {
-      newpath_dtrace = VG_(strdup)(kvasir_dtrace_filename);
+      newpath_dtrace = VG_(strdup)("kvasir_main.c: createDecls.5", kvasir_dtrace_filename);
     }
     else {
-      newpath_dtrace = (char*)VG_(malloc)((VG_(strlen)(decls_folder) +
+      newpath_dtrace = (char*)VG_(malloc)("kvasir_main.c: createDecls.6", (VG_(strlen)(decls_folder) +
 					   VG_(strlen)(filename) +
 					   VG_(strlen)(dtrace_ext) + 1) *
 					  sizeof(char));
@@ -202,7 +202,7 @@ static char createDeclsAndDtraceFiles(char* appname)
     }
   }
 
-  dtrace_filename = VG_(strdup)(newpath_dtrace); /* But don't open it til later */
+  dtrace_filename = VG_(strdup)("kvasir_main.c: createDecls.7", newpath_dtrace); /* But don't open it til later */
 
   // Step 4: Open the .decls file for writing
   if (actually_output_separate_decls_dtrace) {
@@ -273,8 +273,8 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
       if ((input[i] == '/') && ((i + 1) < len))
         {
           //          printf("i=%d, len=%d\n", i, len);
-          filename = VG_(malloc)((len - i) * sizeof(char));
-          dirname = VG_(malloc)((i + 2) * sizeof(char));
+          filename = VG_(malloc)("kvasir_main.c: splitDir.1", (len - i) * sizeof(char));
+          dirname = VG_(malloc)("kvasir_main.c: splitDir.2", (i + 2) * sizeof(char));
 
           // I didn't get the regular strncpy to work properly ...
           //          strncpy(dirname, input, i + 1);
@@ -304,7 +304,7 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
         }
     }
   // If we don't find a '/' anywhere, just set filename to equal input
-  filename = VG_(strdup)(input);
+  filename = VG_(strdup)("kvasir_main.c: splitDir.3", input);
   *filenamePtr = filename;
   return 1;
 }
@@ -312,10 +312,11 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 static int createFIFO(const char *filename) {
   SysRes res;
   int ret;
-  res = VG_(unlink)(filename);
-  if (res.isError && res.err != VKI_ENOENT) {
+  ret = VG_(unlink)((char *)filename);
+  //if (res.isError && res.err != VKI_ENOENT) {
+  if (ret == -1) {
     VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
-		 strerror(res.err));
+		 strerror(ret));
     return 0;
   }
   ret = mkfifo(filename, 0666);
@@ -393,7 +394,7 @@ static int openDtraceFile(const char *fname) {
     vki_pid_t pid;
     int fd;
     int mode;
-    char *new_fname = VG_(malloc)(VG_(strlen)(fname) + 4);
+    char *new_fname = VG_(malloc)("kvasir_main.c: openDtrace.1", VG_(strlen)(fname) + 4);
     VG_(strcpy)(new_fname, fname);
     VG_(strcat)(new_fname, ".gz");
 
@@ -683,16 +684,17 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
    the end of program startup (right before main()). For instance,
    anything that depends on shared libraries having been loaded. */
 static void kvasir_late_init(void) {
-  if (kvasir_with_dyncomp) {
-    const SegInfo *si;
-    for (si = VG_(next_seginfo)(0); si; si =  VG_(next_seginfo)(si)) {
-      Addr got_addr = VG_(seginfo_sect_start)(si, Vg_SectGOT);
-      SizeT got_size = VG_(seginfo_sect_size)(si, Vg_SectGOT);
-      if (got_size) {
-	set_tag_for_GOT(got_addr, got_size);
-      }
-    }
-  }
+  // RUDD - reimplement
+/*   if (kvasir_with_dyncomp) { */
+/*     const DebugInfo *si; */
+/*     for (si = VG_(next_seginfo)(0); si; si =  VG_(next_seginfo)(si)) { */
+/*       Addr got_addr = VG_(seginfo_sect_start)(si, Vg_SectGOT); */
+/*       SizeT got_size = VG_(seginfo_sect_size)(si, Vg_SectGOT); */
+/*       if (got_size) { */
+/* 	set_tag_for_GOT(got_addr, got_size); */
+/*       } */
+/*     } */
+/*   } */
 }
 
 void fjalar_tool_finish() {
@@ -779,17 +781,17 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
 // for the object and initialize it with whatever initial state is
 // necessary.
 VariableEntry* constructVariableEntry() {
-  return (VariableEntry*)(VG_(calloc)(1, sizeof(VariableEntry)));
+  return (VariableEntry*)(VG_(calloc)("kvasir_main.c: constructVariableEntry", 1, sizeof(VariableEntry)));
 }
 
 TypeEntry* constructTypeEntry() {
-  return (TypeEntry*)(VG_(calloc)(1, sizeof(TypeEntry)));
+  return (TypeEntry*)(VG_(calloc)("kvasir_main.c: constructTypeEntry", 1, sizeof(TypeEntry)));
 }
 
 // Remember that we have sub-classed FunctionEntry with
 // DaikonFunctionEntry:
 FunctionEntry* constructFunctionEntry() {
-  return (FunctionEntry*)(VG_(calloc)(1, sizeof(DaikonFunctionEntry)));
+  return (FunctionEntry*)(VG_(calloc)("kvasir_main.c: constructFunctioneEntry", 1, sizeof(DaikonFunctionEntry)));
 }
 
 // Destructors that should clean-up and then call VG_(free) on the

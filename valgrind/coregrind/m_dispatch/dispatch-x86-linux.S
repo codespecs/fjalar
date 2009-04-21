@@ -8,7 +8,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2006 Julian Seward 
+  Copyright (C) 2000-2008 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -120,16 +120,15 @@ VG_(run_innerloop__dispatch_unprofiled):
 	jz	counter_is_zero
 
 	/* try a fast lookup in the translation cache */
-	movl	%eax, %ebx
-	andl	$VG_TT_FAST_MASK, %ebx
-	movl	VG_(tt_fast)(,%ebx,4), %ecx
-	cmpl	%eax, (%ecx)
+	movl	%eax, %ebx			/* next guest addr */
+	andl	$ VG_TT_FAST_MASK, %ebx		/* entry# */
+	movl	0+VG_(tt_fast)(,%ebx,8), %esi	/* .guest */
+	movl	4+VG_(tt_fast)(,%ebx,8), %edi	/* .host */
+	cmpl	%eax, %esi
 	jnz	fast_lookup_failed
 
-	/* Found a match.  Jump to tce[1], which is 8 bytes along,
-	since each tce element is a 64-bit int. */
-	addl 	$8, %ecx
-	jmp 	*%ecx
+	/* Found a match.  Jump to .host. */
+	jmp 	*%edi
 	ud2	/* persuade insn decoders not to speculate past here */
 	/* generated code should run, then jump back to
 	   VG_(run_innerloop__dispatch_unprofiled). */
@@ -157,11 +156,13 @@ VG_(run_innerloop__dispatch_profiled):
 	jz	counter_is_zero
 
 	/* try a fast lookup in the translation cache */
-	movl	%eax, %ebx
-	andl	$VG_TT_FAST_MASK, %ebx
-	movl	VG_(tt_fast)(,%ebx,4), %ecx
-	cmpl	%eax, (%ecx)
+	movl	%eax, %ebx			/* next guest addr */
+	andl	$ VG_TT_FAST_MASK, %ebx		/* entry# */
+	movl	0+VG_(tt_fast)(,%ebx,8), %esi	/* .guest */
+	movl	4+VG_(tt_fast)(,%ebx,8), %edi	/* .host */
+	cmpl	%eax, %esi
 	jnz	fast_lookup_failed
+
 	/* increment bb profile counter */
 	/* note: innocuous as this sounds, it causes a huge amount more
            stress on D1 and significantly slows everything down. */
@@ -169,10 +170,8 @@ VG_(run_innerloop__dispatch_profiled):
 	/* Use "addl $1", not "incl", to avoid partial-flags stall on P4 */
 	addl	$1, (%edx)
 
-	/* Found a match.  Jump to tce[1], which is 8 bytes along,
-	since each tce element is a 64-bit int. */
-	addl 	$8, %ecx
-	jmp 	*%ecx
+	/* Found a match.  Jump to .host. */
+	jmp 	*%edi
 	ud2	/* persuade insn decoders not to speculate past here */
 	/* generated code should run, then jump back to
 	   VG_(run_innerloop__dispatch_profiled). */
@@ -200,7 +199,7 @@ counter_is_zero:
 	/* %EIP is up to date here */
 	/* back out decrement of the dispatch counter */
 	addl	$1, VG_(dispatch_ctr)
-	movl	$VG_TRC_INNER_COUNTERZERO, %eax
+	movl	$ VG_TRC_INNER_COUNTERZERO, %eax
 	jmp	run_innerloop_exit
 	/*NOTREACHED*/
 
@@ -208,7 +207,7 @@ fast_lookup_failed:
 	/* %EIP is up to date here */
 	/* back out decrement of the dispatch counter */
 	addl	$1, VG_(dispatch_ctr)
-	movl	$VG_TRC_INNER_FASTMISS, %eax
+	movl	$ VG_TRC_INNER_FASTMISS, %eax
 	jmp	run_innerloop_exit
 	/*NOTREACHED*/
 
@@ -241,7 +240,7 @@ L2:	/* otherwise we're OK */
 	jmp	run_innerloop_exit_REALLY
 
 invariant_violation:
-	movl	$VG_TRC_INVARIANT_FAILED, %eax
+	movl	$ VG_TRC_INVARIANT_FAILED, %eax
 	jmp	run_innerloop_exit_REALLY
 
 run_innerloop_exit_REALLY:

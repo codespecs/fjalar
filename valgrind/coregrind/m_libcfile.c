@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,6 +37,7 @@
 #include "pub_core_libcfile.h"
 #include "pub_core_libcprint.h"     // VG_(sprintf)
 #include "pub_core_libcproc.h"      // VG_(getpid), VG_(getppid)
+#include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"   // VG_(fd_hard_limit)
 #include "pub_core_syscall.h"
 
@@ -46,8 +47,7 @@
 
 static inline Bool fd_exists(Int fd)
 {
-   struct vki_stat st;
-
+   struct vg_stat st;
    return VG_(fstat)(fd, &st) == 0;
 }
 
@@ -138,55 +138,118 @@ OffT VG_(lseek) ( Int fd, OffT offset, Int whence )
       change VG_(pread) and all other usage points. */
 }
 
-SysRes VG_(stat) ( const Char* file_name, struct vki_stat* buf )
+
+/* stat/fstat support.  It's uggerly.  We have impedance-match into a
+   'struct vg_stat' in order to have a single structure that callers
+   can use consistently on all platforms. */
+
+#define TRANSLATE_TO_vg_stat(_p_vgstat, _p_vkistat) \
+   do { \
+      (_p_vgstat)->st_dev        = (ULong)( (_p_vkistat)->st_dev ); \
+      (_p_vgstat)->st_ino        = (ULong)( (_p_vkistat)->st_ino ); \
+      (_p_vgstat)->st_nlink      = (ULong)( (_p_vkistat)->st_nlink ); \
+      (_p_vgstat)->st_mode       = (UInt)( (_p_vkistat)->st_mode ); \
+      (_p_vgstat)->st_uid        = (UInt)( (_p_vkistat)->st_uid ); \
+      (_p_vgstat)->st_gid        = (UInt)( (_p_vkistat)->st_gid ); \
+      (_p_vgstat)->st_rdev       = (ULong)( (_p_vkistat)->st_rdev ); \
+      (_p_vgstat)->st_size       = (Long)( (_p_vkistat)->st_size ); \
+      (_p_vgstat)->st_blksize    = (ULong)( (_p_vkistat)->st_blksize ); \
+      (_p_vgstat)->st_blocks     = (ULong)( (_p_vkistat)->st_blocks ); \
+      (_p_vgstat)->st_atime      = (ULong)( (_p_vkistat)->st_atime ); \
+      (_p_vgstat)->st_atime_nsec = (ULong)( (_p_vkistat)->st_atime_nsec ); \
+      (_p_vgstat)->st_mtime      = (ULong)( (_p_vkistat)->st_mtime ); \
+      (_p_vgstat)->st_mtime_nsec = (ULong)( (_p_vkistat)->st_mtime_nsec ); \
+      (_p_vgstat)->st_ctime      = (ULong)( (_p_vkistat)->st_ctime ); \
+      (_p_vgstat)->st_ctime_nsec = (ULong)( (_p_vkistat)->st_ctime_nsec ); \
+   } while (0)
+
+SysRes VG_(stat) ( Char* file_name, struct vg_stat* vgbuf )
 {
+   SysRes res;
+   VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
 #  if defined(VGO_linux)
-   SysRes res = VG_(do_syscall2)(__NR_stat, (UWord)file_name, (UWord)buf);
-   return res;
+#  if defined(__NR_stat64)
+   { struct vki_stat64 buf64;
+     res = VG_(do_syscall2)(__NR_stat64, (UWord)file_name, (UWord)&buf64);
+     if (!(res.isError && res.err == VKI_ENOSYS)) {
+        /* Success, or any failure except ENOSYS */
+        if (!res.isError)
+           TRANSLATE_TO_vg_stat(vgbuf, &buf64);
+        return res;
+     }
+   }
+#  endif /* if defined(__NR_stat64) */
+   { struct vki_stat buf;
+     res = VG_(do_syscall2)(__NR_stat, (UWord)file_name, (UWord)&buf);
+     if (!res.isError)
+        TRANSLATE_TO_vg_stat(vgbuf, &buf);
+     return res;
+   }
 #  elif defined(VGO_aix5)
-   SysRes res = VG_(do_syscall4)(__NR_AIX5_statx,
-                                 (UWord)file_name,
-                                 (UWord)buf,
-                                 sizeof(struct vki_stat),
-                                 VKI_STX_NORMAL);
-   return res;
+   { struct vki_stat buf;
+     res = VG_(do_syscall4)(__NR_AIX5_statx,
+                            (UWord)file_name,
+                            (UWord)&buf,
+                            sizeof(struct vki_stat),
+                            VKI_STX_NORMAL);
+     if (!res.isError) {
+        VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
+        vgbuf->st_dev  = (ULong)buf.st_dev;
+        vgbuf->st_ino  = (ULong)buf.st_ino;
+        vgbuf->st_mode = (UInt)buf.st_mode;
+        vgbuf->st_uid  = (UInt)buf.st_uid;
+        vgbuf->st_gid  = (UInt)buf.st_gid;
+        vgbuf->st_size = (Long)buf.st_size;
+     }
+     return res;
+   }
 #  else
 #    error Unknown OS
 #  endif
 }
 
-Int VG_(fstat) ( Int fd, struct vki_stat* buf )
+Int VG_(fstat) ( Int fd, struct vg_stat* vgbuf )
 {
+   SysRes res;
+   VG_(memset)(vgbuf, 0, sizeof(*vgbuf));
 #  if defined(VGO_linux)
-   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)buf);
-   return res.isError ? (-1) : 0;
+#  if defined(__NR_fstat64)
+   { struct vki_stat64 buf64;
+     res = VG_(do_syscall2)(__NR_fstat64, (UWord)fd, (UWord)&buf64);
+     if (!(res.isError && res.err == VKI_ENOSYS)) {
+        /* Success, or any failure except ENOSYS */
+        if (!res.isError)
+           TRANSLATE_TO_vg_stat(vgbuf, &buf64);
+        return res.isError ? (-1) : 0;
+     }
+   }
+#  endif /* if defined(__NR_fstat64) */
+   { struct vki_stat buf;
+     res = VG_(do_syscall2)(__NR_fstat, (UWord)fd, (UWord)&buf);
+     if (!res.isError)
+        TRANSLATE_TO_vg_stat(vgbuf, &buf);
+     return res.isError ? (-1) : 0;
+   }
 #  elif defined(VGO_aix5)
    I_die_here;
 #  else
 #    error Unknown OS
-#  endif 
+#  endif
 }
 
-Int VG_(fsize) ( Int fd )
+#undef TRANSLATE_TO_vg_stat
+
+
+Long VG_(fsize) ( Int fd )
 {
-#  if defined(VGO_linux) && defined(__NR_fstat64)
-   struct vki_stat64 buf;
-   SysRes res = VG_(do_syscall2)(__NR_fstat64, fd, (UWord)&buf);
-   return res.isError ? (-1) : buf.st_size;
-#  elif defined(VGO_linux) && !defined(__NR_fstat64)
-   struct vki_stat buf;
-   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
-   return res.isError ? (-1) : buf.st_size;
-#  elif defined(VGO_aix5)
-   I_die_here;
-#  else
-#  error Unknown OS
-#  endif
+   struct vg_stat buf;
+   Int res = VG_(fstat)( fd, &buf );
+   return (res == -1) ? (-1LL) : buf.st_size;
 }
 
 Bool VG_(is_dir) ( HChar* f )
 {
-   struct vki_stat buf;
+   struct vg_stat buf;
    SysRes res = VG_(stat)(f, &buf);
    return res.isError ? False
                       : VKI_S_ISDIR(buf.st_mode) ? True : False;
@@ -197,10 +260,15 @@ SysRes VG_(dup) ( Int oldfd )
    return VG_(do_syscall1)(__NR_dup, oldfd);
 }
 
-Int VG_(dup2) ( Int oldfd, Int newfd )
+SysRes VG_(dup2) ( Int oldfd, Int newfd )
 {
-   SysRes res = VG_(do_syscall2)(__NR_dup2, oldfd, newfd);
-   return res.isError ? (-1) : res.res;
+#  if defined(VGO_linux)
+   return VG_(do_syscall2)(__NR_dup2, oldfd, newfd);
+#  elif defined(VGO_aix5)
+   I_die_here;
+#  else
+#    error Unknown OS
+#  endif
 }
 
 /* Returns -1 on error. */
@@ -209,18 +277,7 @@ Int VG_(fcntl) ( Int fd, Int cmd, Int arg )
    SysRes res = VG_(do_syscall3)(__NR_fcntl, fd, cmd, arg);
    return res.isError ? -1 : res.res;
 }
-
-Int VG_(rename) ( const Char* old_name, const Char* new_name )
-{
-   SysRes res = VG_(do_syscall2)(__NR_rename, (UWord)old_name, (UWord)new_name);
-   return res.isError ? (-1) : 0;
-}
-
-SysRes VG_(unlink) ( const Char* file_name )
-{
-   return VG_(do_syscall1)(__NR_unlink, (UWord)file_name);
-}
-
+// RUDD - OK?
 SysRes VG_(mkdir) ( const Char* path_name, Int mode )
 {
    return VG_(do_syscall2)(__NR_mkdir, (UWord)path_name, (UWord)mode);
@@ -232,25 +289,83 @@ SysRes VG_(mknod) ( const Char* path_name, Int mode, Int dev )
 			   (UWord)dev);
 }
 
-Bool VG_(getcwd) ( Char* buf, SizeT size )
+Int VG_(rename) ( Char* old_name, Char* new_name )
 {
+   SysRes res = VG_(do_syscall2)(__NR_rename, (UWord)old_name, (UWord)new_name);
+   return res.isError ? (-1) : 0;
+}
+
+Int VG_(unlink) ( Char* file_name )
+{
+   SysRes res = VG_(do_syscall1)(__NR_unlink, (UWord)file_name);
+   return res.isError ? (-1) : 0;
+}
+
+/* The working directory at startup.  AIX doesn't provide an easy
+   system call to do getcwd, but fortunately we don't need arbitrary
+   getcwd support.  All that is really needed is to note the cwd at
+   process startup.  Hence VG_(record_startup_wd) notes it (in a
+   platform dependent way) and VG_(get_startup_wd) produces the noted
+   value.  Hence: */
+static HChar startup_wd[VKI_PATH_MAX];
+static Bool  startup_wd_acquired = False;
+
+/* Record the process' working directory at startup.  Is intended to
+   be called exactly once, at startup, before the working directory
+   changes.  Return True for success, False for failure, so that the
+   caller can bomb out suitably without creating module cycles if
+   there is a problem. */
+Bool VG_(record_startup_wd) ( void )
+{
+   const Int szB = sizeof(startup_wd);
+   vg_assert(!startup_wd_acquired);
+   vg_assert(szB >= 512 && szB <= 16384/*let's say*/); /* stay sane */
+   VG_(memset)(startup_wd, 0, szB);
 #  if defined(VGO_linux)
-   SysRes res;
-   vg_assert(buf != NULL);
-   res = VG_(do_syscall2)(__NR_getcwd, (UWord)buf, size);
-   return res.isError ? False : True;
+   /* Simple: just ask the kernel */
+   { SysRes res
+        = VG_(do_syscall2)(__NR_getcwd, (UWord)startup_wd, szB-1);
+     vg_assert(startup_wd[szB-1] == 0);
+     if (res.isError) {
+        return False;
+     } else {
+        startup_wd_acquired = True;
+        return True;
+     }
+   }
 #  elif defined(VGO_aix5)
-   static Int complaints = 3;
-   if (complaints-- > 0)
-      VG_(debugLog)(0, "libcfile",
-                       "Warning: AIX5: m_libcfile.c: kludged 'getcwd'\n");
-   if (size < 2) return False;
-   buf[0] = '.';
-   buf[1] = 0;
-   return True;
+   /* We can't ask the kernel, so instead rely on launcher-aix5.c to
+      tell us the startup path.  Note the env var is keyed to the
+      parent's PID, not ours, since our parent is the launcher
+      process. */
+   { Char  envvar[100];
+     Char* wd = NULL;
+     VG_(memset)(envvar, 0, sizeof(envvar));
+     VG_(sprintf)(envvar, "VALGRIND_STARTUP_PWD_%d_XYZZY", 
+                          (Int)VG_(getppid)());
+     wd = VG_(getenv)( envvar );
+     if (wd == NULL || (1+VG_(strlen)(wd) >= szB))
+        return False;
+     VG_(strncpy_safely)(startup_wd, wd, szB);
+     vg_assert(startup_wd[szB-1] == 0);
+     startup_wd_acquired = True;
+     return True;
+   }
 #  else
 #    error Unknown OS
 #  endif
+}
+
+/* Copy the previously acquired startup_wd into buf[0 .. size-1],
+   or return False if buf isn't big enough. */
+Bool VG_(get_startup_wd) ( Char* buf, SizeT size )
+{
+   vg_assert(startup_wd_acquired);
+   vg_assert(startup_wd[ sizeof(startup_wd)-1 ] == 0);
+   if (1+VG_(strlen)(startup_wd) >= size)
+      return False;
+   VG_(strncpy_safely)(buf, startup_wd, size);
+   return True;
 }
 
 Int VG_(readlink) (Char* path, Char* buf, UInt bufsiz)
@@ -290,7 +405,7 @@ Int VG_(access) ( HChar* path, Bool irusr, Bool iwusr, Bool ixusr )
    SysRes res = VG_(do_syscall2)(__NR_access, (UWord)path, w);
    return res.isError ? 1 : 0;   
 #  else
-#  error "Don't know how to do VG_(access) on this OS"
+#    error "Don't know how to do VG_(access) on this OS"
 #  endif
 }
 
@@ -301,31 +416,35 @@ Int VG_(access) ( HChar* path, Bool irusr, Bool iwusr, Bool ixusr )
    if group matches, then use the group permissions, else
    use other permissions.
 
-   Note that we can't deal with SUID/SGID, so we refuse to run them
-   (otherwise the executable may misbehave if it doesn't have the
-   permissions it thinks it does).
+   Note that we can't deal properly with SUID/SGID.  By default
+   (allow_setuid == False), we refuse to run them (otherwise the
+   executable may misbehave if it doesn't have the permissions it
+   thinks it does).  However, the caller may indicate that setuid
+   executables are allowed, for example if we are going to exec them
+   but not trace into them (iow, client sys_execve when
+   clo_trace_children == False).
+
+   If VKI_EACCES is returned (iow, permission was refused), then
+   *is_setuid is set to True iff permission was refused because the
+   executable is setuid.
 */
 /* returns: 0 = success, non-0 is failure */
-Int VG_(check_executable)(HChar* f)
+Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
+                          HChar* f, Bool allow_setuid)
 {
-  /* This is something of a kludge.  Really we should fix VG_(stat) to
-     do this itself, but not clear how to do it as it depends on
-     having a 'struct vki_stat64' which is different from 'struct
-     vki_stat'. */
-#  if defined(VGO_linux) && defined(__NR_stat64)
-   struct vki_stat64 st;
-   SysRes res = VG_(do_syscall2)(__NR_stat64, (UWord)f, (UWord)&st);
-#  else
-   struct vki_stat st;
+   struct vg_stat st;
    SysRes res = VG_(stat)(f, &st);
-#  endif
+
+   if (is_setuid)
+      *is_setuid = False;
 
    if (res.isError) {
       return res.err;
    }
 
-   if (st.st_mode & (VKI_S_ISUID | VKI_S_ISGID)) {
-      /* VG_(printf)("Can't execute suid/sgid executable %s\n", exe); */
+   if ( (st.st_mode & (VKI_S_ISUID | VKI_S_ISGID)) && !allow_setuid ) {
+      if (is_setuid)
+         *is_setuid = True;
       return VKI_EACCES;
    }
 
@@ -742,4 +861,3 @@ Int VG_(getsockopt) ( Int sd, Int level, Int optname, void *optval,
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/
-

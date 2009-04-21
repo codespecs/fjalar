@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-/*
+/* 
    Overview
 
    Valgrind tries to emulate the kernel's threading as closely as
@@ -38,13 +38,13 @@
    There are no extra threads.
 
    The main difference is that Valgrind only allows one client thread
-   to run at once.  This is controlled with the VCPU semaphore,
-   "run_sema".  Any time a thread wants to run client code or
+   to run at once.  This is controlled with the CPU Big Lock,
+   "the_BigLock".  Any time a thread wants to run client code or
    manipulate any shared state (which is anything other than its own
-   ThreadState entry), it must hold the run_sema.
+   ThreadState entry), it must hold the_BigLock.
 
    When a thread is about to block in a blocking syscall, it releases
-   run_sema, and re-takes it when it becomes runnable again (either
+   the_BigLock, and re-takes it when it becomes runnable again (either
    because the syscall finished, or we took a signal).
 
    VG_(scheduler) therefore runs in each thread.  It returns only when
@@ -58,6 +58,7 @@
  */
 
 #include "pub_core_basics.h"
+#include "pub_core_debuglog.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"    // __NR_sched_yield
 #include "pub_core_threadstate.h"
@@ -124,17 +125,17 @@ static UInt sanity_slow_count = 0;
 void VG_(print_scheduler_stats)(void)
 {
    VG_(message)(Vg_DebugMsg,
-      "scheduler: %,llu jumps (bb entries).", bbs_done );
+      "scheduler: %'llu jumps (bb entries).", bbs_done );
    VG_(message)(Vg_DebugMsg,
-      "scheduler: %,llu/%,llu major/minor sched events.",
+      "scheduler: %'llu/%'llu major/minor sched events.",
       n_scheduling_events_MAJOR, n_scheduling_events_MINOR);
-   VG_(message)(Vg_DebugMsg,
+   VG_(message)(Vg_DebugMsg, 
                 "   sanity: %d cheap, %d expensive checks.",
                 sanity_fast_count, sanity_slow_count );
 }
 
 /* CPU semaphore, so that threads can run exclusively */
-static vg_sema_t run_sema;
+static vg_sema_t the_BigLock;
 
 
 /* ---------------------------------------------------------------------
@@ -187,15 +188,15 @@ ThreadId VG_(alloc_ThreadState) ( void )
    /*NOTREACHED*/
 }
 
-/*
-   Mark a thread as Runnable.  This will block until the run_sema is
+/* 
+   Mark a thread as Runnable.  This will block until the_BigLock is
    available, so that we get exclusive access to all the shared
-   structures and the CPU.  Up until we get the sema, we must not
+   structures and the CPU.  Up until we get the_BigLock, we must not
    touch any shared state.
 
    When this returns, we'll actually be running.
  */
-void VG_(set_running)(ThreadId tid, HChar* who)
+void VG_(acquire_BigLock)(ThreadId tid, HChar* who)
 {
    ThreadState *tst;
 
@@ -208,15 +209,15 @@ void VG_(set_running)(ThreadId tid, HChar* who)
    }
 #endif
 
-   /* First, acquire the lock.  We can't do anything else safely prior
-      to this point.  Even doing debug printing prior to this point
-      is, technically, wrong. */
-   ML_(sema_down)(&run_sema);
+   /* First, acquire the_BigLock.  We can't do anything else safely
+      prior to this point.  Even doing debug printing prior to this
+      point is, technically, wrong. */
+   ML_(sema_down)(&the_BigLock);
 
    tst = VG_(get_ThreadState)(tid);
 
    vg_assert(tst->status != VgTs_Runnable);
-
+   
    tst->status = VgTs_Runnable;
 
    if (VG_(running_tid) != VG_INVALID_THREADID)
@@ -224,7 +225,9 @@ void VG_(set_running)(ThreadId tid, HChar* who)
    vg_assert(VG_(running_tid) == VG_INVALID_THREADID);
    VG_(running_tid) = tid;
 
-   VG_(unknown_SP_update)(VG_(get_SP(tid)), VG_(get_SP(tid)));
+   { Addr gsp = VG_(get_SP)(tid);
+     VG_(unknown_SP_update)(gsp, gsp, 0/*unknown origin*/);
+   }
 
    if (VG_(clo_trace_sched)) {
       HChar buf[150];
@@ -232,20 +235,16 @@ void VG_(set_running)(ThreadId tid, HChar* who)
       VG_(sprintf)(buf, " acquired lock (%s)", who);
       print_sched_event(tid, buf);
    }
-
-   // While thre modeling is disable, issue thread_run events here
-   // VG_(tm_thread_switchto)(tid);
-   VG_TRACK( thread_run, tid );
 }
 
-/*
+/* 
    Set a thread into a sleeping state, and give up exclusive access to
    the CPU.  On return, the thread must be prepared to block until it
    is ready to run again (generally this means blocking in a syscall,
    but it may mean that we remain in a Runnable state and we're just
    yielding the CPU to another thread).
  */
-void VG_(set_sleeping)(ThreadId tid, ThreadStatus sleepstate, HChar* who)
+void VG_(release_BigLock)(ThreadId tid, ThreadStatus sleepstate, HChar* who)
 {
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
@@ -267,9 +266,9 @@ void VG_(set_sleeping)(ThreadId tid, ThreadStatus sleepstate, HChar* who)
       print_sched_event(tid, buf);
    }
 
-   /* Release the run_sema; this will reschedule any runnable
+   /* Release the_BigLock; this will reschedule any runnable
       thread. */
-   ML_(sema_up)(&run_sema);
+   ML_(sema_up)(&the_BigLock);
 }
 
 /* Clear out the ThreadState and release the semaphore. Leaves the
@@ -290,7 +289,7 @@ void VG_(exit_thread)(ThreadId tid)
    if (VG_(clo_trace_sched))
       print_sched_event(tid, "release lock in VG_(exit_thread)");
 
-   ML_(sema_up)(&run_sema);
+   ML_(sema_up)(&the_BigLock);
 }
 
 /* If 'tid' is blocked in a syscall, send it SIGVGKILL so as to get it
@@ -310,7 +309,7 @@ void VG_(get_thread_out_of_syscall)(ThreadId tid)
    }
 }
 
-/*
+/* 
    Yield the CPU for a short time to let some other thread run.
  */
 void VG_(vg_yield)(void)
@@ -320,14 +319,14 @@ void VG_(vg_yield)(void)
    vg_assert(tid != VG_INVALID_THREADID);
    vg_assert(VG_(threads)[tid].os_state.lwpid == VG_(gettid)());
 
-   VG_(set_sleeping)(tid, VgTs_Yielding, "VG_(vg_yield)");
+   VG_(release_BigLock)(tid, VgTs_Yielding, "VG_(vg_yield)");
 
-   /*
+   /* 
       Tell the kernel we're yielding.
     */
-      VG_(do_syscall0)(__NR_sched_yield);
+   VG_(do_syscall0)(__NR_sched_yield);
 
-   VG_(set_running)(tid, "VG_(vg_yield)");
+   VG_(acquire_BigLock)(tid, "VG_(vg_yield)");
 }
 
 
@@ -371,7 +370,7 @@ static void os_state_init(ThreadState *tst)
    os_state_clear(tst);
 }
 
-static
+static 
 void mostly_clear_thread_record ( ThreadId tid )
 {
    vki_sigset_t savedmask;
@@ -399,23 +398,23 @@ void mostly_clear_thread_record ( ThreadId tid )
    VG_(threads)[tid].sched_jmpbuf_valid = False;
 }
 
-/*
+/*                                                                             
    Called in the child after fork.  If the parent has multiple
    threads, then we've inherited a VG_(threads) array describing them,
    but only the thread which called fork() is actually alive in the
    child.  This functions needs to clean up all those other thread
    structures.
-
-   Whichever tid in the parent which called fork() becomes the
-   master_tid in the child.  That's because the only living slot in
-   VG_(threads) in the child after fork is VG_(threads)[tid], and it
-   would be too hard to try to re-number the thread and relocate the
-   thread state down to VG_(threads)[1].
-
-   This function also needs to reinitialize the run_sema, since
+                                                                               
+   Whichever tid in the parent which called fork() becomes the                 
+   master_tid in the child.  That's because the only living slot in            
+   VG_(threads) in the child after fork is VG_(threads)[tid], and it           
+   would be too hard to try to re-number the thread and relocate the           
+   thread state down to VG_(threads)[1].                                       
+                                                                               
+   This function also needs to reinitialize the_BigLock, since
    otherwise we may end up sharing its state with the parent, which
    would be deeply confusing.
-*/
+*/                                          
 static void sched_fork_cleanup(ThreadId me)
 {
    ThreadId tid;
@@ -434,26 +433,24 @@ static void sched_fork_cleanup(ThreadId me)
    }
 
    /* re-init and take the sema */
-   ML_(sema_deinit)(&run_sema);
-   ML_(sema_init)(&run_sema);
-   ML_(sema_down)(&run_sema);
+   ML_(sema_deinit)(&the_BigLock);
+   ML_(sema_init)(&the_BigLock);
+   ML_(sema_down)(&the_BigLock);
 }
 
 
-/* Initialise the scheduler.  Create a single "main" thread ready to
-   run, with special ThreadId of one.  This is called at startup.  The
-   caller subsequently initialises the guest state components of this
-   main thread, thread 1.
+/* First phase of initialisation of the scheduler.  Initialise the
+   bigLock, zeroise the VG_(threads) structure and decide on the
+   ThreadId of the root thread.
 */
-void VG_(scheduler_init) ( Addr clstack_end, SizeT clstack_size )
+ThreadId VG_(scheduler_init_phase1) ( void )
 {
    Int i;
    ThreadId tid_main;
 
-   vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
-   vg_assert(VG_IS_PAGE_ALIGNED(clstack_size));
+   VG_(debugLog)(1,"sched","sched_init_phase1\n");
 
-   ML_(sema_init)(&run_sema);
+   ML_(sema_init)(&the_BigLock);
 
    for (i = 0 /* NB; not 1 */; i < VG_N_THREADS; i++) {
       /* Paranoia .. completely zero it out. */
@@ -470,14 +467,42 @@ void VG_(scheduler_init) ( Addr clstack_end, SizeT clstack_size )
    }
 
    tid_main = VG_(alloc_ThreadState)();
+
+   /* Bleh.  Unfortunately there are various places in the system that
+      assume that the main thread has a ThreadId of 1.
+      - Helgrind (possibly)
+      - stack overflow message in default_action() in m_signals.c
+      - definitely a lot more places
+   */
    vg_assert(tid_main == 1);
 
-   VG_(threads)[tid_main].client_stack_highest_word
+   return tid_main;
+}
+
+
+/* Second phase of initialisation of the scheduler.  Given the root
+   ThreadId computed by first phase of initialisation, fill in stack
+   details and acquire bigLock.  Initialise the scheduler.  This is
+   called at startup.  The caller subsequently initialises the guest
+   state components of this main thread.
+*/
+void VG_(scheduler_init_phase2) ( ThreadId tid_main,
+                                  Addr     clstack_end, 
+                                  SizeT    clstack_size )
+{
+   VG_(debugLog)(1,"sched","sched_init_phase2: tid_main=%d, "
+                   "cls_end=0x%lx, cls_sz=%ld\n",
+                   tid_main, clstack_end, clstack_size);
+
+   vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
+   vg_assert(VG_IS_PAGE_ALIGNED(clstack_size));
+
+   VG_(threads)[tid_main].client_stack_highest_word 
       = clstack_end + 1 - sizeof(UWord);
-   VG_(threads)[tid_main].client_stack_szB
+   VG_(threads)[tid_main].client_stack_szB 
       = clstack_size;
 
-   VG_(atfork_child)(sched_fork_cleanup);
+   VG_(atfork)(NULL, NULL, sched_fork_cleanup);
 }
 
 
@@ -506,42 +531,66 @@ void VG_(scheduler_init) ( Addr clstack_end, SizeT clstack_size )
 
 /* Do various guest state alignment checks prior to running a thread.
    Specifically, check that what we have matches Vex's guest state
-   layout requirements. */
-static void do_pre_run_checks ( volatile ThreadState* tst )
+   layout requirements.  See libvex.h for details, but in short the
+   requirements are: There must be no holes in between the primary
+   guest state, its two copies, and the spill area.  In short, all 4
+   areas must have a 16-aligned size and be 16-aligned, and placed
+   back-to-back. */
+static void do_pre_run_checks ( ThreadState* tst )
 {
-   Addr a_vex    = (Addr) & tst->arch.vex;
-   Addr a_vexsh  = (Addr) & tst->arch.vex_shadow;
-   Addr a_spill  = (Addr) & tst->arch.vex_spill;
-   UInt sz_vex   = (UInt) sizeof tst->arch.vex;
-   UInt sz_vexsh = (UInt) sizeof tst->arch.vex_shadow;
-   UInt sz_spill = (UInt) sizeof tst->arch.vex_spill;
+   Addr a_vex     = (Addr) & tst->arch.vex;
+   Addr a_vexsh1  = (Addr) & tst->arch.vex_shadow1;
+   Addr a_vexsh2  = (Addr) & tst->arch.vex_shadow2;
+   Addr a_spill   = (Addr) & tst->arch.vex_spill;
+   UInt sz_vex    = (UInt) sizeof tst->arch.vex;
+   UInt sz_vexsh1 = (UInt) sizeof tst->arch.vex_shadow1;
+   UInt sz_vexsh2 = (UInt) sizeof tst->arch.vex_shadow2;
+   UInt sz_spill  = (UInt) sizeof tst->arch.vex_spill;
 
    if (0)
-   VG_(printf)("%p %d %p %d %p %d\n",
-               (void*)a_vex, sz_vex, (void*)a_vexsh, sz_vexsh,
+   VG_(printf)("gst %p %d, sh1 %p %d, "
+               "sh2 %p %d, spill %p %d\n",
+               (void*)a_vex, sz_vex,
+               (void*)a_vexsh1, sz_vexsh1,
+               (void*)a_vexsh2, sz_vexsh2,
                (void*)a_spill, sz_spill );
 
-   vg_assert(VG_IS_8_ALIGNED(sz_vex));
-   vg_assert(VG_IS_8_ALIGNED(sz_vexsh));
+   vg_assert(VG_IS_16_ALIGNED(sz_vex));
+   vg_assert(VG_IS_16_ALIGNED(sz_vexsh1));
+   vg_assert(VG_IS_16_ALIGNED(sz_vexsh2));
    vg_assert(VG_IS_16_ALIGNED(sz_spill));
 
-   vg_assert(VG_IS_4_ALIGNED(a_vex));
-   vg_assert(VG_IS_4_ALIGNED(a_vexsh));
-   vg_assert(VG_IS_4_ALIGNED(a_spill));
+   vg_assert(VG_IS_16_ALIGNED(a_vex));
+   vg_assert(VG_IS_16_ALIGNED(a_vexsh1));
+   vg_assert(VG_IS_16_ALIGNED(a_vexsh2));
+   vg_assert(VG_IS_16_ALIGNED(a_spill));
 
-   vg_assert(sz_vex == sz_vexsh);
-   vg_assert(a_vex + sz_vex == a_vexsh);
-
+   /* Check that the guest state and its two shadows have the same
+      size, and that there are no holes in between.  The latter is
+      important because Memcheck assumes that it can reliably access
+      the shadows by indexing off a pointer to the start of the
+      primary guest state area. */
+   vg_assert(sz_vex == sz_vexsh1);
+   vg_assert(sz_vex == sz_vexsh2);
+   vg_assert(a_vex + 1 * sz_vex == a_vexsh1);
+   vg_assert(a_vex + 2 * sz_vex == a_vexsh2);
+   /* Also check there's no hole between the second shadow area and
+      the spill area. */
    vg_assert(sz_spill == LibVEX_N_SPILL_BYTES);
-   // PG - pgbovine - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
-   vg_assert(a_vex + 6 * sz_vex == a_spill);
+   // PG - pgbovine - changed from 2 to 7 to account for vex_extra_shadow in ThreadArchState
+   vg_assert(a_vex + 7 * sz_vex == a_spill);
 
 #  if defined(VGA_ppc32) || defined(VGA_ppc64)
    /* ppc guest_state vector regs must be 16 byte aligned for
-      loads/stores */
+      loads/stores.  This is important! */
    vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex.guest_VR0));
-   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow.guest_VR0));
-#  endif
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow1.guest_VR0));
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow2.guest_VR0));
+   /* be extra paranoid .. */
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex.guest_VR1));
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow1.guest_VR1));
+   vg_assert(VG_IS_16_ALIGNED(& tst->arch.vex_shadow2.guest_VR1));
+#  endif   
 }
 
 
@@ -561,7 +610,7 @@ static UInt run_thread_for_a_while ( ThreadId tid )
    vg_assert(!VG_(is_exiting)(tid));
 
    tst = VG_(get_ThreadState)(tid);
-   do_pre_run_checks(tst);
+   do_pre_run_checks( (ThreadState*)tst );
    /* end Paranoia */
 
    trc = 0;
@@ -581,7 +630,7 @@ static UInt run_thread_for_a_while ( ThreadId tid )
    /* Clear any existing reservation that this thread might have made
       last time it was running. */
    VG_(threads)[tid].arch.vex.guest_RESVN = 0;
-#  endif
+#  endif   
 
 #  if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
    /* On AIX, we need to get a plausible value for SPRG3 for this
@@ -613,16 +662,20 @@ static UInt run_thread_for_a_while ( ThreadId tid )
       VG_(printf)("\n");
    }
 
+   // Tell the tool this thread is about to run client code
+   VG_TRACK( start_client_code, tid, bbs_done );
+
    vg_assert(VG_(in_generated_code) == False);
    VG_(in_generated_code) = True;
 
    SCHEDSETJMP(
-      tid,
-      jumped,
+      tid, 
+      jumped, 
       trc = (UInt)VG_(run_innerloop)( (void*)&tst->arch.vex,
                                       VG_(clo_profile_flags) > 0 ? 1 : 0 )
    );
 
+   vg_assert(VG_(in_generated_code) == True);
    VG_(in_generated_code) = False;
 
    if (jumped) {
@@ -631,12 +684,15 @@ static UInt run_thread_for_a_while ( ThreadId tid )
       vg_assert(trc == 0);
       trc = VG_TRC_FAULT_SIGNAL;
       block_signals(tid);
-   }
+   } 
 
    done_this_time = (Int)dispatch_ctr_SAVED - (Int)VG_(dispatch_ctr) - 0;
 
    vg_assert(done_this_time >= 0);
    bbs_done += (ULong)done_this_time;
+
+   // Tell the tool this thread has stopped running client code
+   VG_TRACK( stop_client_code, tid, bbs_done );
 
    return trc;
 }
@@ -647,8 +703,9 @@ static UInt run_thread_for_a_while ( ThreadId tid )
 static UInt run_noredir_translation ( Addr hcode, ThreadId tid )
 {
    volatile Int          jumped;
-   volatile ThreadState* tst;
+   volatile ThreadState* tst; 
    volatile UWord        argblock[4];
+   volatile UInt         retval;
 
    /* Paranoia */
    vg_assert(VG_(is_valid_tid)(tid));
@@ -656,7 +713,7 @@ static UInt run_noredir_translation ( Addr hcode, ThreadId tid )
    vg_assert(!VG_(is_exiting)(tid));
 
    tst = VG_(get_ThreadState)(tid);
-   do_pre_run_checks(tst);
+   do_pre_run_checks( (ThreadState*)tst );
    /* end Paranoia */
 
 #  if defined(VGA_ppc32) || defined(VGA_ppc64)
@@ -683,12 +740,15 @@ static UInt run_noredir_translation ( Addr hcode, ThreadId tid )
    argblock[2] = 0; /* next guest IP is written here */
    argblock[3] = 0; /* guest state ptr afterwards is written here */
 
+   // Tell the tool this thread is about to run client code
+   VG_TRACK( start_client_code, tid, bbs_done );
+
    vg_assert(VG_(in_generated_code) == False);
    VG_(in_generated_code) = True;
 
    SCHEDSETJMP(
-      tid,
-      jumped,
+      tid, 
+      jumped, 
       VG_(run_a_noredir_translation)( &argblock[0] )
    );
 
@@ -700,16 +760,23 @@ static UInt run_noredir_translation ( Addr hcode, ThreadId tid )
       vg_assert(argblock[2] == 0); /* next guest IP was not written */
       vg_assert(argblock[3] == 0); /* trc was not written */
       block_signals(tid);
-      return VG_TRC_FAULT_SIGNAL;
+      retval = VG_TRC_FAULT_SIGNAL;
    } else {
       /* store away the guest program counter */
       VG_(set_IP)( tid, argblock[2] );
       if (argblock[3] == argblock[1])
          /* the guest state pointer afterwards was unchanged */
-         return VG_TRC_BORING;
+         retval = VG_TRC_BORING;
       else
-         return (UInt)argblock[3];
+         retval = (UInt)argblock[3];
    }
+
+   bbs_done++;
+
+   // Tell the tool this thread has stopped running client code
+   VG_TRACK( stop_client_code, tid, bbs_done );
+
+   return retval;
 }
 
 
@@ -727,11 +794,11 @@ static void handle_tt_miss ( ThreadId tid )
    found = VG_(search_transtab)( NULL, ip, True/*upd_fast_cache*/ );
    if (!found) {
       /* Not found; we need to request a translation. */
-      if (VG_(translate)( tid, ip, /*debug*/False, 0/*not verbose*/,
+      if (VG_(translate)( tid, ip, /*debug*/False, 0/*not verbose*/, 
                           bbs_done, True/*allow redirection*/ )) {
-	 found = VG_(search_transtab)( NULL, ip, True );
+	 found = VG_(search_transtab)( NULL, ip, True ); 
          vg_assert2(found, "VG_TRC_INNER_FASTMISS: missing tt_fast entry");
-
+      
       } else {
 	 // If VG_(translate)() fails, it's because it had to throw a
 	 // signal because the client jumped to a bad address.  That
@@ -744,8 +811,8 @@ static void handle_tt_miss ( ThreadId tid )
 
 static void handle_syscall(ThreadId tid)
 {
-   ThreadState *tst = VG_(get_ThreadState)(tid);
-   Bool jumped;
+   ThreadState * volatile tst = VG_(get_ThreadState)(tid);
+   Bool jumped; 
 
    /* Syscall may or may not block; either way, it will be
       complete by the time this call returns, and we'll be
@@ -764,7 +831,7 @@ static void handle_syscall(ThreadId tid)
       VG_(printf)("tid %d not running; VG_(running_tid)=%d, tid %d status %d\n",
 		  tid, VG_(running_tid), tid, tst->status);
    vg_assert(VG_(is_running_thread)(tid));
-
+   
    if (jumped) {
       block_signals(tid);
       VG_(poll_signals)(tid);
@@ -787,7 +854,7 @@ static UInt/*trc*/ handle_noredir_jump ( ThreadId tid )
 
          found = VG_(search_unredir_transtab)( &hcode, ip );
          vg_assert2(found, "unredir translation missing after creation?!");
-
+      
       } else {
 	 // If VG_(translate)() fails, it's because it had to throw a
 	 // signal because the client jumped to a bad address.  That
@@ -802,15 +869,15 @@ static UInt/*trc*/ handle_noredir_jump ( ThreadId tid )
    vg_assert(found);
    vg_assert(hcode != 0);
 
-   /* Otherwise run it and return the resulting VG_TRC_* value. */
+   /* Otherwise run it and return the resulting VG_TRC_* value. */ 
    return run_noredir_translation( hcode, tid );
 }
 
 
-/*
+/* 
    Run a thread until it wants to exit.
-
-   We assume that the caller has already called VG_(set_running) for
+   
+   We assume that the caller has already called VG_(acquire_BigLock) for
    us, so we own the VCPU.  Also, all signals are blocked.
  */
 VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
@@ -819,11 +886,11 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
    if (VG_(clo_trace_sched))
-      print_sched_event(tid, "entering VG_(scheduler)");
+      print_sched_event(tid, "entering VG_(scheduler)");      
 
    /* set the proper running signal mask */
    block_signals(tid);
-
+   
    vg_assert(VG_(is_running_thread)(tid));
 
    VG_(dispatch_ctr) = SCHEDULING_QUANTUM + 1;
@@ -857,8 +924,8 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 /* 3 Aug 06: doing sys__nsleep works but crashes some apps.
             sys_yield also helps the problem, whilst not crashing apps. */
 
-	 VG_(set_sleeping)(tid, VgTs_Yielding, 
-                                "VG_(scheduler):timeslice");
+	 VG_(release_BigLock)(tid, VgTs_Yielding, 
+                                   "VG_(scheduler):timeslice");
 	 /* ------------ now we don't have The Lock ------------ */
 
 #        if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
@@ -875,7 +942,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          }
 #        endif
 
-	 VG_(set_running)(tid, "VG_(scheduler):timeslice");
+	 VG_(acquire_BigLock)(tid, "VG_(scheduler):timeslice");
 	 /* ------------ now we do have The Lock ------------ */
 
 	 /* OK, do some relatively expensive housekeeping stuff */
@@ -910,7 +977,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       n_scheduling_events_MINOR++;
 
       if (0)
-	 VG_(message)(Vg_DebugMsg, "thread %d: running for %d bbs",
+	 VG_(message)(Vg_DebugMsg, "thread %d: running for %d bbs", 
 		      tid, VG_(dispatch_ctr) - 1 );
 
       trc = run_thread_for_a_while ( tid );
@@ -942,7 +1009,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 vg_assert(VG_(dispatch_ctr) > 1);
 	 handle_tt_miss(tid);
 	 break;
-
+	    
       case VEX_TRC_JMP_CLIENTREQ:
 	 do_client_request(tid);
 	 break;
@@ -1029,13 +1096,17 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          break;
       }
 
-      case VEX_TRC_JMP_TRAP:
+      case VEX_TRC_JMP_SIGTRAP:
          VG_(synth_sigtrap)(tid);
+         break;
+
+      case VEX_TRC_JMP_SIGSEGV:
+         VG_(synth_fault)(tid);
          break;
 
       case VEX_TRC_JMP_NODECODE:
    VG_(message)(Vg_UserMsg,
-      "valgrind: Unrecognised instruction at address %p.", VG_(get_IP)(tid));
+      "valgrind: Unrecognised instruction at address %#lx.", VG_(get_IP)(tid));
 #define M(a) VG_(message)(Vg_UserMsg, a);
    M("Your program just tried to execute an instruction that Valgrind" );
    M("did not recognise.  There are two possible reasons for this."    );
@@ -1091,7 +1162,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
                        "sysenter_x86 on non-x86 platform?!?!");
 #        endif
 
-      default:
+      default: 
 	 vg_assert2(0, "VG_(scheduler), phase 3: "
                        "unexpected thread return code (%u)", trc);
 	 /* NOTREACHED */
@@ -1105,14 +1176,11 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 
    vg_assert(VG_(is_exiting)(tid));
 
-   //if (VG_(clo_model_pthreads))
-   //   VG_(tm_thread_exit)(tid);
-
    return tst->exitreason;
 }
 
 
-/*
+/* 
    This causes all threads to forceably exit.  They aren't actually
    dead by the time this returns; you need to call
    VG_(reap_threads)() to wait for them.
@@ -1192,7 +1260,7 @@ static Bool os_client_request(ThreadId tid, UWord *args)
       /* This is equivalent to an exit() syscall, but we don't set the
 	 exitcode (since it might already be set) */
       if (0 || VG_(clo_trace_syscalls) || VG_(clo_trace_sched))
-	 VG_(message)(Vg_DebugMsg,
+	 VG_(message)(Vg_DebugMsg, 
 		      "__libc_freeres() done; really quitting!");
       VG_(threads)[tid].exitreason = VgSrc_ExitThread;
       break;
@@ -1208,7 +1276,7 @@ static Bool os_client_request(ThreadId tid, UWord *args)
 
 /* Do a client request for the thread tid.  After the request, tid may
    or may not still be runnable; if not, the scheduler will have to
-   choose a new thread to run.
+   choose a new thread to run.  
 */
 static
 void do_client_request ( ThreadId tid )
@@ -1260,13 +1328,13 @@ void do_client_request ( ThreadId tid )
          break;
 
       case VG_USERREQ__PRINTF: {
-         Int count =
+         Int count = 
             VG_(vmessage)( Vg_ClientMsg, (char *)arg[1], (void*)arg[2] );
             SET_CLREQ_RETVAL( tid, count );
          break; }
 
       case VG_USERREQ__INTERNAL_PRINTF: {
-         Int count =
+         Int count = 
             VG_(vmessage)( Vg_DebugMsg, (char *)arg[1], (void*)arg[2] );
             SET_CLREQ_RETVAL( tid, count );
          break; }
@@ -1320,17 +1388,17 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__DISCARD_TRANSLATIONS:
          if (VG_(clo_verbosity) > 2)
             VG_(printf)( "client request: DISCARD_TRANSLATIONS,"
-                         " addr %p,  len %d\n",
+                         " addr %p,  len %lu\n",
                          (void*)arg[1], arg[2] );
 
-         VG_(discard_translations)(
-            arg[1], arg[2], "scheduler(VG_USERREQ__DISCARD_TRANSLATIONS)"
+         VG_(discard_translations)( 
+            arg[1], arg[2], "scheduler(VG_USERREQ__DISCARD_TRANSLATIONS)" 
          );
 
          SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
 	 break;
 
-      case VG_USERREQ__COUNT_ERRORS:
+      case VG_USERREQ__COUNT_ERRORS:  
          SET_CLREQ_RETVAL( tid, VG_(get_n_errs_found)() );
          break;
 
@@ -1341,7 +1409,7 @@ void do_client_request ( ThreadId tid )
 	    UWord ret;
 
             if (VG_(clo_verbosity) > 2)
-               VG_(printf)("client request: code %x,  addr %p,  len %d\n",
+               VG_(printf)("client request: code %lx,  addr %p,  len %lu\n",
                            arg[0], (void*)arg[1], arg[2] );
 
 	    if ( VG_TDICT_CALL(tool_handle_client_request, tid, arg, &ret) )
@@ -1357,7 +1425,7 @@ void do_client_request ( ThreadId tid )
                if (c1 == 0) c1 = '_';
                if (c2 == 0) c2 = '_';
 	       VG_(message)(Vg_UserMsg, "Warning:\n"
-                   "  unhandled client request: 0x%x (%c%c+0x%x).  Perhaps\n"
+                   "  unhandled client request: 0x%lx (%c%c+0x%lx).  Perhaps\n"
 		   "  VG_(needs).client_requests should be set?",
 			    arg[0], c1, c2, arg[0] & 0xffff);
 	       whined = True;
@@ -1384,7 +1452,7 @@ void scheduler_sanity ( ThreadId tid )
    if (!VG_(is_running_thread)(tid)) {
       VG_(message)(Vg_DebugMsg,
 		   "Thread %d is supposed to be running, "
-                   "but doesn't own run_sema (owned by %d)\n", 
+                   "but doesn't own the_BigLock (owned by %d)\n", 
 		   tid, VG_(running_tid));
       bad = True;
    }
@@ -1396,9 +1464,9 @@ void scheduler_sanity ( ThreadId tid )
       bad = True;
    }
 
-   if (lwpid != run_sema.owner_thread) {
+   if (lwpid != the_BigLock.owner_lwpid) {
       VG_(message)(Vg_DebugMsg,
-                   "Thread %d doesn't own the run_sema\n",
+                   "Thread (LWPID) %d doesn't own the_BigLock\n",
                    tid);
       bad = True;
    }
@@ -1446,7 +1514,7 @@ void VG_(sanity_check_general) ( Bool force_expensive )
       Gradually increase the interval between such checks so as not to
       burden long-running programs too much. */
    if ( force_expensive
-     || VG_(clo_sanity_level) > 1
+        || VG_(clo_sanity_level) > 1
         || (VG_(clo_sanity_level) == 1 
             && sanity_fast_count == next_slow_check_at)) {
 
@@ -1469,14 +1537,14 @@ void VG_(sanity_check_general) ( Bool force_expensive )
 	     VG_(threads)[tid].status == VgTs_Zombie)
 	    continue;
 
-         stack
+         stack 
             = (VgStack*)
               VG_(get_ThreadState)(tid)->os_state.valgrind_stack_base;
-	 remains
+	 remains 
             = VG_(am_get_VgStack_unused_szB)(stack);
 	 if (remains < VKI_PAGE_SIZE)
-	    VG_(message)(Vg_DebugMsg,
-                         "WARNING: Thread %d is within %d bytes "
+	    VG_(message)(Vg_DebugMsg, 
+                         "WARNING: Thread %d is within %ld bytes "
                          "of running out of stack!",
 		         tid, remains);
       }

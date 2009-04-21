@@ -428,12 +428,12 @@ typedef int Elf32_Word;
 
 PTR xmalloc (size_t size)
 {
-  return VG_(malloc)(size);
+  return VG_(malloc)("readelf.c: xmalloc", size);
 }
 
 PTR xrealloc (PTR oldmem, size_t size)
 {
-  return VG_(realloc)(oldmem, size);
+  return VG_(realloc)("readelf.c: xrealloc", oldmem, size);
 }
 
 #define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
@@ -486,7 +486,7 @@ get_data (var, file, offset, size, reason)
   mvar = var;
   if (mvar == NULL)
     {
-      mvar = (PTR) VG_(malloc) (size);
+      mvar = (PTR) VG_(malloc) ("readelf.c: get_data", size);
 
       if (mvar == NULL)
 	{
@@ -895,7 +895,7 @@ slurp_rela_relocs (file, rel_offset, rel_size, relasp, nrelasp)
       nrelas = rel_size / sizeof (Elf32_External_Rela);
 
       relas = (Elf_Internal_Rela *)
-	VG_(malloc) (nrelas * sizeof (Elf_Internal_Rela));
+	VG_(malloc) ("readelf.c: slurp_rela_relocs", nrelas * sizeof (Elf_Internal_Rela));
 
       if (relas == NULL)
 	{
@@ -924,7 +924,7 @@ slurp_rela_relocs (file, rel_offset, rel_size, relasp, nrelasp)
       nrelas = rel_size / sizeof (Elf64_External_Rela);
 
       relas = (Elf_Internal_Rela *)
-	VG_(malloc) (nrelas * sizeof (Elf_Internal_Rela));
+	VG_(malloc) ("readelf.c: slurp_rela_relocs.2", nrelas * sizeof (Elf_Internal_Rela));
 
       if (relas == NULL)
 	{
@@ -969,7 +969,7 @@ slurp_rel_relocs (file, rel_offset, rel_size, relsp, nrelsp)
 
       nrels = rel_size / sizeof (Elf32_External_Rel);
 
-      rels = (Elf_Internal_Rela *) VG_(malloc) (nrels * sizeof (Elf_Internal_Rela));
+      rels = (Elf_Internal_Rela *) VG_(malloc) ("readelf.c: slurp_rel_relocs", nrels * sizeof (Elf_Internal_Rela));
 
       if (rels == NULL)
 	{
@@ -997,7 +997,7 @@ slurp_rel_relocs (file, rel_offset, rel_size, relsp, nrelsp)
 
       nrels = rel_size / sizeof (Elf64_External_Rel);
 
-      rels = (Elf_Internal_Rela *) VG_(malloc) (nrels * sizeof (Elf_Internal_Rela));
+      rels = (Elf_Internal_Rela *) VG_(malloc) ("readelf.c: slurp_rel_relocs.2", nrels * sizeof (Elf_Internal_Rela));
 
       if (rels == NULL)
 	{
@@ -1770,7 +1770,7 @@ request_dump (section, type)
     {
       char *new_dump_sects;
 
-      new_dump_sects = (char *) VG_(calloc) (section + 1, 1);
+      new_dump_sects = (char *) VG_(calloc) ("readelf.c: request_dump", section + 1, 1);
 
       if (new_dump_sects == NULL)
 	error (_("Out of memory allocating dump request table."));
@@ -2049,7 +2049,7 @@ process_program_headers (file)
     }
 
   program_headers = (Elf_Internal_Phdr *) VG_(malloc)
-    (elf_header.e_phnum * sizeof (Elf_Internal_Phdr));
+    ("readelf.c: process_program_headers", elf_header.e_phnum * sizeof (Elf_Internal_Phdr));
 
   if (program_headers == NULL)
     {
@@ -2283,7 +2283,7 @@ get_32bit_section_headers (file, num)
     return 0;
 
   section_headers = ((Elf_Internal_Shdr *)
-		     VG_(malloc) (num * sizeof (Elf_Internal_Shdr)));
+		     VG_(malloc) ("readelf.c: get_32b_sh", num * sizeof (Elf_Internal_Shdr)));
 
   //  printf("Just allocated section_headers at 0x%x, size = %d * %d\n",
   //         section_headers, num, sizeof (Elf_Internal_Shdr)); // PG
@@ -2332,7 +2332,7 @@ get_64bit_section_headers (file, num)
     return 0;
 
   section_headers = ((Elf_Internal_Shdr *)
-		     VG_(malloc) (num * sizeof (Elf_Internal_Shdr)));
+		     VG_(malloc) ("readelf.c: get_64b_sh", num * sizeof (Elf_Internal_Shdr)));
 
   if (section_headers == NULL)
     {
@@ -2395,7 +2395,7 @@ get_32bit_elf_symbols (file, section)
     }
 
   number = section->sh_size / section->sh_entsize;
-  isyms = (Elf_Internal_Sym *) VG_(malloc) (number * sizeof (Elf_Internal_Sym));
+  isyms = (Elf_Internal_Sym *) VG_(malloc) ("readelf.c: get_32b_elfsy", number * sizeof (Elf_Internal_Sym));
 
   if (isyms == NULL)
     {
@@ -2462,7 +2462,7 @@ get_64bit_elf_symbols (file, section)
     }
 
   number = section->sh_size / section->sh_entsize;
-  isyms = (Elf_Internal_Sym *) VG_(malloc) (number * sizeof (Elf_Internal_Sym));
+  isyms = (Elf_Internal_Sym *) VG_(malloc) ("readelf.c: get_64b_elfsym", number * sizeof (Elf_Internal_Sym));
 
   if (isyms == NULL)
     {
@@ -3357,7 +3357,7 @@ get_32bit_dynamic_segment (file)
     ;
 
   dynamic_segment = (Elf_Internal_Dyn *)
-    VG_(malloc) (dynamic_size * sizeof (Elf_Internal_Dyn));
+    VG_(malloc) ("readelf.c: get_32b_dynseg", dynamic_size * sizeof (Elf_Internal_Dyn));
 
   if (dynamic_segment == NULL)
     {
@@ -3400,7 +3400,7 @@ get_64bit_dynamic_segment (file)
     ;
 
   dynamic_segment = (Elf_Internal_Dyn *)
-    VG_(malloc) (dynamic_size * sizeof (Elf_Internal_Dyn));
+    VG_(malloc) ("readelf.c: get_64b_dynseg", dynamic_size * sizeof (Elf_Internal_Dyn));
 
   if (dynamic_segment == NULL)
     {
@@ -3590,7 +3590,7 @@ process_dynamic_segment (file)
 	  if (!extsyminfo)
 	    return 0;
 
-	  dynamic_syminfo = (Elf_Internal_Syminfo *) VG_(malloc) (syminsz);
+	  dynamic_syminfo = (Elf_Internal_Syminfo *) VG_(malloc) ("readelf.c: proc_dynseg", syminsz);
 	  if (dynamic_syminfo == NULL)
 	    {
 	      error (_("Out of memory\n"));
@@ -4261,7 +4261,7 @@ process_version_sections (file)
 		break;
 	      }
 
-	    data = (unsigned short *) VG_(malloc) (total * sizeof (short));
+	    data = (unsigned short *) VG_(malloc) ("readelf.c: get_verflag", total * sizeof (short));
 
 	    for (cnt = total; cnt --;)
 	      data[cnt] = byte_get (edata + cnt * sizeof (short),
@@ -4434,7 +4434,7 @@ get_dynamic_data (file, number)
   unsigned char *e_data;
   int *i_data;
 
-  e_data = (unsigned char *) VG_(malloc) (number * 4);
+  e_data = (unsigned char *) VG_(malloc) ("readelf.c: get_dyndata", number * 4);
 
   if (e_data == NULL)
     {
@@ -4448,7 +4448,7 @@ get_dynamic_data (file, number)
       return NULL;
     }
 
-  i_data = (int *) VG_(malloc) (number * sizeof (*i_data));
+  i_data = (int *) VG_(malloc) ("readelf.c: get_dyndata.2", number * sizeof (*i_data));
 
   if (i_data == NULL)
     {
@@ -4645,7 +4645,7 @@ process_symbol_table (file)
                   (STV_HIDDEN != ELF_ST_VISIBILITY (psym->st_other))) {
 
                 // PG - remember that this is strdup'ed!
-                char* symbol_name = VG_(strdup)(&strtab[psym->st_name]);
+                char* symbol_name = VG_(strdup)("readelf.c: proc_symtable", &strtab[psym->st_name]);
 
                 if (STT_OBJECT == ELF_ST_TYPE (psym->st_info)) {
                   insertIntoVariableSymbolTable(symbol_name,
@@ -4823,7 +4823,7 @@ process_symbol_table (file)
 	      nbuckets);
       printf (_(" Length  Number     %% of total  Coverage\n"));
 
-      lengths = (int *) VG_(calloc) (nbuckets, sizeof (int));
+      lengths = (int *) VG_(calloc) ("readelf.c: process_symbol_table.1",nbuckets, sizeof (int));
       if (lengths == NULL)
 	{
 	  error (_("Out of memory"));
@@ -4842,7 +4842,7 @@ process_symbol_table (file)
 	    }
 	}
 
-      counts = (int *) VG_(calloc) (maxlength + 1, sizeof (int));
+      counts = (int *) VG_(calloc) ("readelf.c: process_symbol_table.2",maxlength + 1, sizeof (int));
       if (counts == NULL)
 	{
 	  error (_("Out of memory"));
@@ -5781,7 +5781,7 @@ add_abbrev (number, tag, children)
 {
   abbrev_entry *entry;
 
-  entry = (abbrev_entry *) VG_(malloc) (sizeof (*entry));
+  entry = (abbrev_entry *) VG_(malloc) ("readelf.c: add_abbrev", sizeof (*entry));
 
   if (entry == NULL)
     /* ugg */
@@ -5809,7 +5809,7 @@ add_abbrev_attr (attribute, form)
 {
   abbrev_attr *attr;
 
-  attr = (abbrev_attr *) VG_(malloc) (sizeof (*attr));
+  attr = (abbrev_attr *) VG_(malloc) ("readelf.c: add_abbrev_attr", sizeof (*attr));
 
   if (attr == NULL)
     /* ugg */
@@ -9463,7 +9463,7 @@ process_corefile_note_segment (file, offset, length)
 	 namesz.  */
       if (inote.namedata[inote.namesz] != '\0')
 	{
-	  temp = VG_(malloc) (inote.namesz + 1);
+	  temp = VG_(malloc) ("readelf.c: proc_core", inote.namesz + 1);
 
 	  if (temp == NULL)
 	    {
@@ -9503,7 +9503,7 @@ process_corefile_note_segments (file)
   int res = 1;
 
   program_headers = (Elf_Internal_Phdr *) VG_(malloc)
-    (elf_header.e_phnum * sizeof (Elf_Internal_Phdr));
+    ("readelf.c: proc_corefile_note_seg", elf_header.e_phnum * sizeof (Elf_Internal_Phdr));
 
   if (program_headers == NULL)
     {
@@ -9705,21 +9705,21 @@ process_file (file_name)
   if (show_name)
     printf (_("\nFile: %s\n"), file_name);
 #endif
-
-  //  printf("before process_file_header()\n"); // PG
+ 
+  //printf("before process_file_header()\n"); // PG
 
   if (! process_file_header ())
     {
-      printf("failed process_file_header()\n"); // PG
+      //  printf("failed process_file_header()\n"); // PG
       fclose (file);
       return 1;
     }
 
-  //  printf("before process_section_headers()\n"); // PG
+  //    printf("before process_section_headers()\n"); // PG
 
   if (! process_section_headers (file))
     {
-      printf("failed process_section_headers()\n"); // PG
+      //  printf("failed process_section_headers()\n"); // PG
       /* Without loaded section headers we
 	 cannot process lots of things.  */
       do_unwind = do_version = do_dump = do_arch = 0;
@@ -9728,27 +9728,27 @@ process_file (file_name)
 	do_syms = do_reloc = 0;
     }
 
-  //  printf("before process_program_headers()\n"); // PG
+  //    printf("before process_program_headers()\n"); // PG
 
   if (process_program_headers (file))
     process_dynamic_segment (file);
-  //  printf("before process_relocs()\n"); // PG
+  //    printf("before process_relocs()\n"); // PG
   process_relocs (file);
   //  printf("before process_unwind()\n"); // PG
   process_unwind (file);
-  //  printf("before process_symbol_table()\n"); // PG
+  //    printf("before process_symbol_table()\n"); // PG
   process_symbol_table (file);
-  //  printf("before process_syminfo()\n"); // PG
+  //    printf("before process_syminfo()\n"); // PG
   process_syminfo (file);
-  //  printf("before process_version_sections()\n"); // PG
+  //   printf("before process_version_sections()\n"); // PG
   process_version_sections (file);
-  //  printf("before process_section_contents()\n"); // PG
+  //    printf("before process_section_contents()\n"); // PG
   process_section_contents (file);
-  //  printf("before process_corefile_contents()\n"); // PG
+  //    printf("before process_corefile_contents()\n"); // PG
   process_corefile_contents (file);
-  //  printf("before process_gnu_liblist()\n"); // PG
+  //    printf("before process_gnu_liblist()\n"); // PG
   process_gnu_liblist (file);
-  //  printf("before process_arch_specific()\n"); // PG
+  //    printf("before process_arch_specific()\n"); // PG
   process_arch_specific (file);
 
   fclose (file);
@@ -9814,6 +9814,7 @@ int process_elf_binary_data(char* filename)
 {
   int err;
   char *cmdline_dump_sects = NULL;
+  // printf("Entry: process_elf_binary_data\n"); RUDD
 
   do_syms++; /* -s */
   do_dump++; do_debug_info++; do_debug_lines++; /* --debug-dump=info,lines */

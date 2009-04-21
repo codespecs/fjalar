@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,6 +37,32 @@
 
 /* To use this file you must first include pub_tool_vki.h. */
 
+/* Note that VG_(stat) and VG_(fstat) write to a 'struct vg_stat*' and
+   not a 'struct vki_stat*' or a 'struct vki_stat64*'.  'struct
+   vg_stat*' is not the same as either of the vki_ versions.  No
+   specific vki_stat{,64} kernel structure will work and is
+   consistently available on different architectures on Linux, so we
+   have to use this 'struct vg_stat' impedance-matching type
+   instead. */
+struct vg_stat {
+   ULong   st_dev;
+   ULong   st_ino;
+   ULong   st_nlink;
+   UInt    st_mode;
+   UInt    st_uid;
+   UInt    st_gid;
+   ULong   st_rdev;
+   Long    st_size;
+   ULong   st_blksize;
+   ULong   st_blocks;
+   ULong   st_atime;
+   ULong   st_atime_nsec;
+   ULong   st_mtime;
+   ULong   st_mtime_nsec;
+   ULong   st_ctime;
+   ULong   st_ctime_nsec;
+};
+
 extern SysRes VG_(open)   ( const Char* pathname, Int flags, Int mode );
 extern void   VG_(close)  ( Int fd );
 extern Int    VG_(read)   ( Int fd, void* buf, Int count);
@@ -45,17 +71,19 @@ extern Int    VG_(pipe)   ( Int fd[2] );
 extern OffT   VG_(lseek)  ( Int fd, OffT offset, Int whence );
 extern Int    VG_(fcntl)  ( Int fd, Int cmd, Int arg );
 
-extern SysRes VG_(stat)   ( const Char* file_name, struct vki_stat* buf );
-extern Int    VG_(fstat)  ( Int   fd,              struct vki_stat* buf );
+extern SysRes VG_(stat)   ( Char* file_name, struct vg_stat* buf );
+extern Int    VG_(fstat)  ( Int   fd,              struct vg_stat* buf );
 extern SysRes VG_(dup)    ( Int oldfd );
-extern Int    VG_(dup2)   ( Int oldfd, Int newfd );
-extern Int    VG_(rename) ( const Char* old_name, const Char* new_name );
-extern SysRes VG_(unlink) ( const Char* file_name );
+extern SysRes VG_(dup2)   ( Int oldfd, Int newfd );
+extern Int    VG_(rename) ( Char* old_name, Char* new_name );
+extern Int    VG_(unlink) ( Char* file_name );
 extern SysRes VG_(mkdir)  ( const Char* path_name, Int mode );
 extern SysRes VG_(mknod)  ( const Char* path_name, Int mode, Int dev );
 
-// Returns False on failure (eg. if the buffer isn't big enough).
-extern Bool   VG_(getcwd) ( Char* buf, SizeT size );
+/* Copy the working directory at startup into buf[0 .. size-1], or return
+   False if buf is too small. */
+extern Bool VG_(get_startup_wd) ( Char* buf, SizeT size );
+ 
 
 extern Int    VG_(readlink)( Char* path, Char* buf, UInt bufsize );
 extern Int    VG_(getdents)( UInt fd, struct vki_dirent *dirp, UInt count );

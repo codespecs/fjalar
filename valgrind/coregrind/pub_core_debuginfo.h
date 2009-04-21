@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -39,15 +39,25 @@
 
 #include "pub_tool_debuginfo.h"
 
+/* Initialise the entire module.  Must be called first of all. */
+extern void VG_(di_initialise) ( void );
+
 /* LINUX: Notify the debuginfo system about a new mapping, or the
    disappearance of such, or a permissions change on an existing
    mapping.  This is the way new debug information gets loaded.  If
    allow_SkFileV is True, it will try load debug info if the mapping
    at 'a' belongs to Valgrind; whereas normally (False) it will not do
    that.  This allows us to carefully control when the thing will read
-   symbols from the Valgrind executable itself. */
+   symbols from the Valgrind executable itself.
+
+   If a call to VG_(di_notify_mmap) causes debug info to be read, then
+   the returned ULong is an abstract handle which can later be used to
+   refer to the debuginfo read as a result of this specific mapping,
+   in later queries to m_debuginfo.  In this case the handle value
+   will be one or above.  If the returned value is zero, no debug info
+   was read. */
 #if defined(VGO_linux)
-extern void VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV );
+extern ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV );
 
 extern void VG_(di_notify_munmap)( Addr a, SizeT len );
 
@@ -59,18 +69,23 @@ extern void VG_(di_notify_mprotect)( Addr a, SizeT len, UInt prot );
    parameters describe a code segment and its associated data segment,
    that have recently been mapped in -- so we need to read debug info
    for it -- or conversely, have recently been dumped, in which case
-   the relevant debug info has to be unloaded. */
-extern void VG_(di_aix5_notify_segchange)( 
-               Addr   code_start,
-               Word   code_len,
-               Addr   data_start,
-               Word   data_len,
-               UChar* file_name,
-               UChar* mem_name,
-               Bool   is_mainexe,
-               Bool   acquire
-            );
+   the relevant debug info has to be unloaded.
+
+   The returned ULong has the same meaning as documented for
+   VG_(di_notify_mmap) just above. */
+extern ULong VG_(di_aix5_notify_segchange)( 
+                Addr   code_start,
+                Word   code_len,
+                Addr   data_start,
+                Word   data_len,
+                UChar* file_name,
+                UChar* mem_name,
+                Bool   is_mainexe,
+                Bool   acquire
+             );
 #endif
+
+extern void VG_(di_discard_ALL_debuginfo)( void );
 
 extern Bool VG_(get_fnname_nodemangle)( Addr a, 
                                         Char* fnname, Int n_fnname );

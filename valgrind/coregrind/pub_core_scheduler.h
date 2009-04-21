@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -57,7 +57,7 @@ extern void VG_(nuke_all_threads_except) ( ThreadId me,
    thread state to VgTs_Runnable, and the thread will attempt to take
    the CPU lock.  By the time it returns, tid will be the running
    thread. */
-extern void VG_(set_running) ( ThreadId tid, HChar* who );
+extern void VG_(acquire_BigLock) ( ThreadId tid, HChar* who );
 
 /* Set a thread into a sleeping state.  Before the call, the thread
    must be runnable, and holding the CPU lock.  When this call
@@ -67,7 +67,7 @@ extern void VG_(set_running) ( ThreadId tid, HChar* who );
    caller must be careful not to touch any shared state.  It is also
    the caller's responsibility to actually block until the thread is
    ready to run again. */
-extern void VG_(set_sleeping) ( ThreadId tid, ThreadStatus state, HChar* who );
+extern void VG_(release_BigLock) ( ThreadId tid, ThreadStatus state, HChar* who );
 
 /* Yield the CPU for a while */
 extern void VG_(vg_yield)(void);
@@ -75,8 +75,15 @@ extern void VG_(vg_yield)(void);
 // The scheduler.
 extern VgSchedReturnCode VG_(scheduler) ( ThreadId tid );
 
-// Initialise.  Is passed the extent of the root thread's client stack.
-extern void VG_(scheduler_init) ( Addr clstack_end, SizeT clstack_size );
+// Initialise, phase 1.  Zero out VG_(threads), decide on the root
+// ThreadId and initialise the bigLock.
+extern ThreadId VG_(scheduler_init_phase1) ( void );
+
+// Initialise, phase 2.  Is passed the extent of the root thread's
+// client stack and the root ThreadId decided on by phase 1.
+extern void VG_(scheduler_init_phase2) ( ThreadId main_tid, 
+                                         Addr     clstack_end, 
+                                         SizeT    clstack_size );
 
 /* Stats ... */
 extern void VG_(print_scheduler_stats) ( void );

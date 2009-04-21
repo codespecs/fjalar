@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -307,7 +307,7 @@ typedef
    enum {
       Afp_INVALID,
       /* Binary */
-      Afp_SCALE, Afp_ATAN, Afp_YL2X, Afp_YL2XP1, Afp_PREM,
+      Afp_SCALE, Afp_ATAN, Afp_YL2X, Afp_YL2XP1, Afp_PREM, Afp_PREM1,
       /* Unary */
       Afp_SQRT,
       Afp_SIN, Afp_COS, Afp_TAN,
@@ -369,6 +369,7 @@ typedef
       Ain_Sh64,        /* 64-bit shift/rotate, dst=REG or MEM */
       Ain_Test64,      /* 64-bit test (AND, set flags, discard result) */
       Ain_Unary64,     /* 64-bit not and neg */
+      Ain_Lea64,       /* 64-bit compute EA into a reg */
       Ain_MulL,        /* widening multiply */
       Ain_Div,         /* div and mod */
 //..       Xin_Sh3232,    /* shldl or shrdl */
@@ -450,6 +451,11 @@ typedef
             AMD64UnaryOp op;
             HReg         dst;
          } Unary64;
+         /* 64-bit compute EA into a reg */
+         struct {
+            AMD64AMode* am;
+            HReg        dst;
+         } Lea64;
          /* 64 x 64 -> 128 bit widening multiply: RDX:RAX = RAX *s/u
             r/m64 */
          struct {
@@ -666,6 +672,7 @@ extern AMD64Instr* AMD64Instr_Imm64      ( ULong imm64, HReg dst );
 extern AMD64Instr* AMD64Instr_Alu64R     ( AMD64AluOp, AMD64RMI*, HReg );
 extern AMD64Instr* AMD64Instr_Alu64M     ( AMD64AluOp, AMD64RI*,  AMD64AMode* );
 extern AMD64Instr* AMD64Instr_Unary64    ( AMD64UnaryOp op, HReg dst );
+extern AMD64Instr* AMD64Instr_Lea64      ( AMD64AMode* am, HReg dst );
 extern AMD64Instr* AMD64Instr_Sh64       ( AMD64ShiftOp, UInt, HReg );
 extern AMD64Instr* AMD64Instr_Test64     ( UInt imm32, HReg dst );
 extern AMD64Instr* AMD64Instr_MulL       ( Bool syned, AMD64RM* );
@@ -725,9 +732,9 @@ extern Int          emit_AMD64Instr        ( UChar* buf, Int nbuf, AMD64Instr*,
 extern AMD64Instr*  genSpill_AMD64         ( HReg rreg, Int offset, Bool );
 extern AMD64Instr*  genReload_AMD64        ( HReg rreg, Int offset, Bool );
 extern void         getAllocableRegs_AMD64 ( Int*, HReg** );
-extern HInstrArray* iselBB_AMD64           ( IRBB*, VexArch,
+extern HInstrArray* iselSB_AMD64           ( IRSB*, VexArch,
                                                     VexArchInfo*,
-                                                    VexMiscInfo* );
+                                                    VexAbiInfo* );
 
 #endif /* ndef __LIBVEX_HOST_AMD64_HDEFS_H */
 

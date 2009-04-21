@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -26,6 +26,11 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+
+   Neither the names of the U.S. Department of Energy nor the
+   University of California nor the names of its contributors may be
+   used to endorse or promote products derived from this software
+   without prior written permission.
 */
 
 /* Cut-down version of the normal launcher, except it is completely
@@ -467,6 +472,10 @@ static UInt gen_addi_rd_rs_N ( UInt rd, UInt rs, UInt N ) {
    assert(rs != 0);
    return mkFormD(14, rd, rs, N & 0xFFFF); /* addi rd,rs,N */
 }
+static UInt gen_addis_rd_rs_N ( UInt rd, UInt rs, UInt N ) {
+   assert(rs != 0);
+   return mkFormD(15, rd, rs, N & 0xFFFF); /* addis rd,rs,N */
+}
 static UInt gen_crorc_6_6_6 ( void ) {
    return 0x4CC63342; /* crorc 6,6,6 */
 }
@@ -521,7 +530,8 @@ static Int emit_insn ( UInt* code, Int ix, UInt insn ) {
 }
 static Int emit_li32 ( UInt* code, Int ix, UInt rd, UInt imm32 ) {
    code[ix++] = gen_lis_r_N(rd, imm32 >> 16);
-   code[ix++] = gen_ori_r_r_N(rd, imm32 & 0xFFFF);
+   if (imm32 & 0xFFFF)
+      code[ix++] = gen_ori_r_r_N(rd, imm32 & 0xFFFF);
    return ix;
 }
 static Int emit_dosc ( UInt* code, Int ix ) {
@@ -836,16 +846,18 @@ static char* write_bootstrap_loader_into_child
 
    /* So, the code.  First, prepare for and do a _loadx syscall, to
       get the tool aboard:
+         addis 1, 1, -4
          imm  2, __NR__loadx
          imm  3, VKI_DL_LOAD
-         imm  4, 0
-         mr   5, 4
+         mr   4, 1
+         imm  5, 3<<16
          addi 6, 31, offset_of_toolfile
          mr   7, 4
          mr   8, 4
          mr   9, 4
          mr   10,4
          SYSCALL_SEQUENCE
+         addis 1, 1, 4
 
       If the syscall failed, r4 will be nonzero.  Branch elsewhere if so.
          cmpi 4, 0
@@ -985,17 +997,21 @@ static char* write_bootstrap_loader_into_child
    } else {
 
       /* 32-bit sequence */
+      ix = emit_insn( &block.code[0],ix,
+                      gen_addis_rd_rs_N(1,1,-4) );
       ix = emit_li32( &block.code[0],ix, 2, __nr___loadx );
       ix = emit_li32( &block.code[0],ix, 3, VKI_DL_LOAD );
-      ix = emit_li32( &block.code[0],ix, 4, 0 );
-      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(5,4) );
+      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(4,1) );
+      ix = emit_li32( &block.code[0],ix, 5, 3<<16 );
       ix = emit_insn( &block.code[0],ix, 
                       gen_addi_rd_rs_N(6,31,offsetof(AIX5Bootblock,toolfile)));
-      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(7,4) );
-      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(8,4) );
-      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(9,4) );
-      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(10,4) );
+      ix = emit_li32( &block.code[0],ix, 7, 0);
+      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(8,7) );
+      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(9,7) );
+      ix = emit_insn( &block.code[0],ix, gen_mr_rd_rs(10,7) );
       ix = emit_dosc( &block.code[0],ix );
+      ix = emit_insn( &block.code[0],ix,
+		      gen_addis_rd_rs_N(1,1,4) );
       ix = emit_insn( &block.code[0],ix, gen_cmpli_cr7_r_N(4,0) );
       Int ix_bne = ix; /* Patch this later */
       ix = emit_insn( &block.code[0],ix, 0 );
@@ -1318,7 +1334,7 @@ int main ( int argc, char** argv, char** envp )
    Child child;
    Int i, loglevel;
    const char *toolname = NULL;
-   const char *clientname = NULL;
+         char *clientname = NULL;
 
    /* First, look in our own /proc/<pid>/sysent file to find
       the syscall numbers for kwrite and _getpid.  These are needed
@@ -1410,6 +1426,44 @@ int main ( int argc, char** argv, char** envp )
 
    assert(PAGE_SIZE == 4096); /* stay sane */
 
+   const char* valgrind_lib = VG_LIBDIR;
+
+   /* If there is no program to run, which will be the case if the
+      user just does "valgrind --help", etc, run a dummy do-nothing
+      program so at least the tool can get started and handle the
+      --help/--version etc.  It spots the fact that this is a dummy
+      program and acts like it was started with no program, hence
+      behaving the same as the Linux ports would have. */
+   if (clientname == NULL) {
+      Int j;
+      char** new_argv;
+      const char* noop_exe_name = "no_op_client_for_valgrind";
+      const char* up_n_bindir = "/../../bin";
+      clientname = malloc(strlen(valgrind_lib) + strlen(up_n_bindir)
+                          + 2 + strlen(noop_exe_name));
+      if (clientname == NULL) {
+         fprintf(stderr,"%s: malloc of clientname failed\n", argv[0]);
+         return 1;
+      }
+      sprintf(clientname, "%s%s/%s", valgrind_lib, up_n_bindir, noop_exe_name);
+      /* now we have to add it to the end of argv, which means making
+	 that one word longer.  How tedious. */
+      for (j = 0; argv[j]; j++)
+	;
+      j += 2; 
+      new_argv = calloc(j, sizeof(char*));
+      if (new_argv == NULL) {
+         fprintf(stderr,"%s: malloc of new_argv failed\n", argv[0]);
+         return 1;
+      }
+      for (i = 0; i < j-2; i++)
+	new_argv[i] = argv[i];
+      new_argv[j-2] = clientname;
+      assert(new_argv[j-1] == NULL);
+      argv = new_argv;
+      argc++;
+   }
+
    if (argc < 2 || toolname == NULL || clientname == NULL)
       barf(1, argv[0], "usage: valgrind [args-for-valgrind] prog args"); 
 
@@ -1417,7 +1471,7 @@ int main ( int argc, char** argv, char** envp )
       executable. */
    VG_(debugLog)(1, "launcher", "searching for client in $PATH\n");
    if (strchr(clientname, '/') == NULL)
-      clientname = find_client(clientname);
+      clientname = (char*)find_client(clientname);
    VG_(debugLog)(1, "launcher", "found %s\n", clientname);
 
    Int client_exekind = examine_client ( clientname );
@@ -1439,7 +1493,6 @@ int main ( int argc, char** argv, char** envp )
    VG_(debugLog)(1, "launcher", "client is an XCOFF%d executable\n", 
                     client_exekind);
 
-   const char* valgrind_lib = VG_LIBDIR;
    const char* platform = child.is64 ? "ppc64-aix5" : "ppc32-aix5";
 
    VG_(debugLog)(1, "launcher", "looking for the tool file\n");
@@ -1470,6 +1523,29 @@ int main ( int argc, char** argv, char** envp )
    putenv_err = putenv("MP_SHARED_MEMORY=no");
    if (putenv_err) {
       fprintf(stderr,"%s: putenv(\"MP_SHARED_MEMORY=no\") failed\n", argv[0]);
+      return 1;
+   }
+
+   /* Find out what the current working directory is, and stuff it into the
+      environment so that the child can find it. */
+   char wd_buf[4096];
+   memset(wd_buf, 0, sizeof(wd_buf));
+   if (getcwd(wd_buf, sizeof(wd_buf)-1) == NULL) {
+      fprintf(stderr,"%s: getcwd(..) failed\n", argv[0]);
+      return 1;
+   }
+   assert(wd_buf[ sizeof(wd_buf)-1 ] == 0);
+   char* set_cwd = calloc(1, 100+sizeof(wd_buf));   
+   if (set_cwd == NULL) {
+      fprintf(stderr,"%s: calloc of set_cwd failed\n", argv[0]);
+      return 1;
+   }
+   sprintf(set_cwd, "VALGRIND_STARTUP_PWD_%d_XYZZY=%s", getpid(), wd_buf);
+   VG_(debugLog)(1, "launcher", "doing putenv(\"%s\")\n", set_cwd);
+   putenv_err = putenv(set_cwd);
+   if (putenv_err) {
+      fprintf(stderr,"%s: putenv(\"VALGRIND_STARTUP_PWD_...\") failed\n", 
+                     argv[0]);
       return 1;
    }
 

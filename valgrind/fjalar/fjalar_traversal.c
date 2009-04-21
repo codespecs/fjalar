@@ -146,7 +146,7 @@ char* stringStackPop(char** stringStack, int* pStringStackSize)
 {
   char* temp;
   if(*pStringStackSize <= 0){
-      int test = *(int *)0;
+    tl_assert(0);
     }
   tl_assert(*pStringStackSize > 0);
 
@@ -194,7 +194,7 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 {
   // Extra 1 for trailing '\0'
   int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1;
-  char* fullName = (char*)VG_(calloc)(totalStrLen, sizeof(char));
+  char* fullName = (char*)VG_(calloc)("fjalar_traversal.c: sSSd" ,totalStrLen, sizeof(char));
   int i;
 
   for (i = 0; i < stringStackSize; i++) {
@@ -392,9 +392,9 @@ void visitClassMemberVariables(TypeEntry* class,
               UInt ind;
 
               // Create pCurVarValueArray to be the same size as pValueArray:
-              pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+              pCurVarValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.1", numElts * sizeof(Addr));
               pCurVarValueArrayGuest =
-		(Addr*)VG_(malloc)(numElts * sizeof(Addr));
+		(Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.2", numElts * sizeof(Addr));
 
               // Iterate though pValueArray and fill up
               // pCurVarValueArray with pointer values offset by the
@@ -558,9 +558,9 @@ void visitClassMemberVariables(TypeEntry* class,
             UInt ind;
             // Create pCurVarValueArray to be the same size as
             // pValueArray:
-            pCurVarValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+            pCurVarValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.3",numElts * sizeof(Addr));
             pCurVarValueArrayGuest =
-	      (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+	      (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.4", numElts * sizeof(Addr));
 
             // Iterate though pValueArray and fill up
             // pCurVarValueArray with pointer values offset by the
@@ -744,9 +744,9 @@ void visitClassMemberVariables(TypeEntry* class,
       if (isSequence &&
           (curSuper->member_var_offset > 0)) {
         UInt ind;
-        superclassOffsetPtrValues = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+        superclassOffsetPtrValues = (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.5",numElts * sizeof(Addr));
         superclassOffsetPtrValuesGuest =
-	  (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+	  (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.6", numElts * sizeof(Addr));
 
         // Iterate though pValueArray and fill up superclassOffsetPtrValues
         // with pointer values offset by curSuper->member_var_offset:
@@ -974,6 +974,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
   funcPtr = e->func;
   tl_assert(funcPtr);
+  FJALAR_DPRINTF("visitReturnValue\n");
 
   // We need to push the return value name onto the string stack!
   stringStackClear(&fullNameStackSize);
@@ -1003,7 +1004,7 @@ void visitReturnValue(FunctionExecutionState* e,
     // e->xAX is the contents of the virtual xAX, which should be the
     // address of the struct/union, so pass that along ...  NO extra
     // level of indirection needed
-
+    FJALAR_DPRINTF("struct union type\n");
     visitVariable(cur_node->var,
                   (Addr)e->xAX,
 		  0, /* register, no guest location*/
@@ -1022,6 +1023,7 @@ void visitReturnValue(FunctionExecutionState* e,
 	   ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
             (cur_node->var->varType->decType == D_LONG_DOUBLE))) {
+    FJALAR_DPRINTF("floating point type\n");
     // SPECIAL CASE: The value in FPU must be interpreted as a double
     // even if its true type may be a float
     visitVariable(cur_node->var,
@@ -1040,6 +1042,7 @@ void visitReturnValue(FunctionExecutionState* e,
   /* XXX shouldn't do this for 64-bit long long on AMD64 */
   else if ((cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
+    FJALAR_DPRINTF("long long int type\n");
     unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
 
     // Remember to copy A and V-bits over:
@@ -1086,9 +1089,10 @@ void visitReturnValue(FunctionExecutionState* e,
   }
   // All other types (integer and pointer) - use xAX
   else {
+    FJALAR_DPRINTF("int or pointer  type\n");
     // Need an additional indirection level
-    FJALAR_DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p\n",
-                   cur_node, &(e->xAX));
+    FJALAR_DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p, value in xAX: %d\n",
+                   cur_node, &(e->xAX), (int)e->xAX);
 
     visitVariable(cur_node->var,
                   (Addr)&(e->xAX),
@@ -1497,8 +1501,8 @@ void visitSingleVar(VariableEntry* var,
             numElts *= (1 + var->staticArr->upperBounds[dim]);
           }
 
-          pValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
-          pValueArrayGuest = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+          pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.1" , numElts * sizeof(Addr));
+          pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.2", numElts * sizeof(Addr));
 
           //          VG_(printf)("Static array - dims: %u, numElts: %u\n",
           //                      var->numDimensions, numElts);
@@ -1534,8 +1538,8 @@ void visitSingleVar(VariableEntry* var,
           if (pNewStartValue) {
             // Notice the +1 to convert from upper bound to numElts
             numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
-            pValueArray = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
-            pValueArrayGuest = (Addr*)VG_(malloc)(numElts * sizeof(Addr));
+            pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.3", numElts * sizeof(Addr));
+            pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.4" ,numElts * sizeof(Addr));
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {

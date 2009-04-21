@@ -65,18 +65,18 @@ PRIV_INCLUDES = -Ipriv
 
 
 ifndef CC
-   CC = gcc
-endif
+   CC = gcc 
+endif 
 ifndef AR
-   AR = ar
+   AR = ar 
 endif
 
 # Put -g -O2 after any flags we inherit from V.  -O2 vs -O
 # makes a significant difference, at least with gcc4.
-CCFLAGS = -Wall -Wmissing-prototypes -Wshadow -Winline \
+CCFLAGS = -Wall -Wmissing-prototypes -Wshadow \
 		-Wpointer-arith -Wbad-function-cast -Wcast-qual \
 		-Wcast-align -Wmissing-declarations \
-		$(EXTRA_CFLAGS) -g -O2
+		$(EXTRA_CFLAGS) -g -O2 -fstrict-aliasing
 
 #CC = icc
 #CCFLAGS = -g -Wall -wd981 -wd279 -wd1287 -wd869 -wd111 -wd188 -wd186
@@ -108,7 +108,7 @@ libvex.a: $(LIB_OBJS)
 	$(AR) clq libvex.a $(LIB_OBJS)
 
 
-# The idea with these TAG_s is to mark the flavour of libvex.a
+# The idea with these TAG_s is to mark the flavour of libvex.a 
 # most recently built, so if the same target is re-requested, we
 # don't rebuild everything, but if a different one is requested
 # then we scrub everything and start over.
@@ -124,6 +124,18 @@ libvex_amd64_linux.a: TAG_amd64_linux libvex.a
 TAG_amd64_linux:
 	if [ ! -f TAG_amd64_linux ] ; then rm -f $(LIB_OBJS) TAG_* libvex.a ; fi
 	touch TAG_amd64_linux
+
+libvex_x86_darwin.a: TAG_x86_darwin libvex.a
+	mv -f libvex.a libvex_x86_darwin.a
+TAG_x86_darwin:
+	if [ ! -f TAG_x86_darwin ] ; then rm -f $(LIB_OBJS) TAG_* libvex.a ; fi
+	touch TAG_x86_darwin
+
+libvex_amd64_darwin.a: TAG_amd64_darwin libvex.a
+	mv -f libvex.a libvex_amd64_darwin.a
+TAG_amd64_darwin:
+	if [ ! -f TAG_amd64_darwin ] ; then rm -f $(LIB_OBJS) TAG_* libvex.a ; fi
+	touch TAG_amd64_darwin
 
 libvex_ppc32_linux.a: TAG_ppc32_linux libvex.a
 	mv -f libvex.a libvex_ppc32_linux.a
@@ -156,7 +168,8 @@ TAG_ppc64_aix5:
 # doing 'make ; make clean ; make' (or distclean) would fail.
 clean:
 	rm -f $(LIB_OBJS) *.a vex test_main.o TAG_* \
-		pub/libvex_guest_offsets.h
+		pub/libvex_guest_offsets.h \
+		auxprogs/genoffsets.s
 
 version:
 	rm -f priv/main/vex_svnversion.h
@@ -172,15 +185,23 @@ minidist: version
 		test_main.c test_main.h				\
 		Makefile					\
 		`echo $(LIB_OBJS) | sed "s/\.o/\.c/g"`
-	@echo
+	@echo 
 	@echo minidist done, size and svnversion follow:
 	@ls -l vex--minidist-2005MMDD.tar
 	@cat priv/main/vex_svnversion.h
 	@echo
 
+# This is very uggerly.  Need to sed out both "xyzzyN" and
+# "xyzzy$N" since gcc on different targets emits the constants
+# differently -- with a leading $ on x86/amd64 but none on ppc32/64.
 pub/libvex_guest_offsets.h:
-	$(CC) -Wall -g -o auxprogs/genoffsets auxprogs/genoffsets.c
-	./auxprogs/genoffsets > pub/libvex_guest_offsets.h
+	rm -f auxprogs/genoffsets.s
+	$(CC) $(CCFLAGS) -O -S -o auxprogs/genoffsets.s \
+				auxprogs/genoffsets.c
+	grep xyzzy auxprogs/genoffsets.s | grep define \
+	   | sed "s/xyzzy\\$$//g" | sed "s/xyzzy//g" \
+	   > pub/libvex_guest_offsets.h
+	rm -f auxprogs/genoffsets.s
 
 
 ALL_HEADERS  = $(PUB_HEADERS) $(PRIV_HEADERS)

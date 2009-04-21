@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -58,7 +58,7 @@
 /* Convert one ppc insn to IR.  See the type DisOneInstrFn in
    bb_to_IR.h. */
 extern
-DisResult disInstr_PPC ( IRBB*        irbb,
+DisResult disInstr_PPC ( IRSB*        irbb,
                          Bool         put_IP,
                          Bool         (*resteerOkFn) ( void*, Addr64 ),
                          void*        callback_opaque,
@@ -67,7 +67,7 @@ DisResult disInstr_PPC ( IRBB*        irbb,
                          Addr64       guest_IP,
                          VexArch      guest_arch,
                          VexArchInfo* archinfo,
-                         VexMiscInfo* miscinfo,
+                         VexAbiInfo*  abiinfo,
                          Bool         host_bigendian );
 
 /* Used by the optimiser to specialise calls to helpers. */
@@ -147,6 +147,8 @@ enum {
 /* --- DIRTY HELPERS --- */
 
 extern ULong ppcg_dirtyhelper_MFTB ( void );
+
+extern UInt ppc32g_dirtyhelper_MFSPR_268_269 ( UInt );
 
 extern void ppc32g_dirtyhelper_LVS ( VexGuestPPC32State* gst,
                                      UInt vD_idx, UInt sh,

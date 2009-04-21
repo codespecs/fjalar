@@ -24,6 +24,7 @@
 
 #include "pub_tool_libcassert.h"
 #include "pub_tool_mallocfree.h"
+#include "pub_tool_xarray.h" //for clientstate
 #include "pub_tool_clientstate.h"
 #include "pub_tool_libcprint.h"
 

@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,12 +37,14 @@
 #include "pub_core_libcfile.h"
 #include "pub_core_libcproc.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_machine.h"
 #include "pub_core_ume.h"
 #include "pub_core_options.h"
+#include "pub_core_syscall.h"
 #include "pub_core_tooliface.h"       /* VG_TRACK */
 #include "pub_core_threadstate.h"     /* ThreadArchState */
 #include "pub_core_initimg.h"         /* self */
@@ -176,9 +178,6 @@ static void load_client ( /*OUT*/ExeInfo* info,
    }
 
    VG_(memset)(info, 0, sizeof(*info));
-   info->exe_base = VG_(client_base);
-   info->exe_end  = VG_(client_end);
-
    ret = VG_(do_exec)(exe_name, info);
 
    // The client was successfully loaded!  Continue.
@@ -239,12 +238,13 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    Int preload_tool_path_len = vglib_len + VG_(strlen)(toolname) 
                                          + sizeof(VG_PLATFORM) + 16;
    Int preload_string_len    = preload_core_path_len + preload_tool_path_len;
-   HChar* preload_string     = VG_(malloc)(preload_string_len);
+   HChar* preload_string     = VG_(malloc)("initimg-linux.sce.1",
+                                           preload_string_len);
    vg_assert(preload_string);
 
    /* Determine if there's a vgpreload_<tool>.so file, and setup
       preload_string. */
-   preload_tool_path = VG_(malloc)(preload_tool_path_len);
+   preload_tool_path = VG_(malloc)("initimg-linux.sce.2", preload_tool_path_len);
    vg_assert(preload_tool_path);
    VG_(snprintf)(preload_tool_path, preload_tool_path_len,
                  "%s/%s/vgpreload_%s.so", VG_(libdir), VG_PLATFORM, toolname);
@@ -266,7 +266,8 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       envc++;
 
    /* Allocate a new space */
-   ret = VG_(malloc) (sizeof(HChar *) * (envc+1+1)); /* 1 new entry + NULL */
+   ret = VG_(malloc) ("initimg-linux.sce.3",
+                      sizeof(HChar *) * (envc+1+1)); /* 1 new entry + NULL */
    vg_assert(ret);
 
    /* copy it over */
@@ -280,7 +281,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    for (cpp = ret; cpp && *cpp; cpp++) {
       if (VG_(memcmp)(*cpp, ld_preload, ld_preload_len) == 0) {
          Int len = VG_(strlen)(*cpp) + preload_string_len;
-         HChar *cp = VG_(malloc)(len);
+         HChar *cp = VG_(malloc)("initimg-linux.sce.4", len);
          vg_assert(cp);
 
          VG_(snprintf)(cp, len, "%s%s:%s",
@@ -295,7 +296,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    /* Add the missing bits */
    if (!ld_preload_done) {
       Int len = ld_preload_len + preload_string_len;
-      HChar *cp = VG_(malloc) (len);
+      HChar *cp = VG_(malloc) ("initimg-linux.sce.5", len);
       vg_assert(cp);
 
       VG_(snprintf)(cp, len, "%s%s", ld_preload, preload_string);
@@ -438,6 +439,7 @@ Addr setup_client_stack( void*  init_sp,
    Bool have_exename;
 
    vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
+   vg_assert( VG_(args_for_client) );
 
    /* use our own auxv as a prototype */
    orig_auxv = VG_(find_auxv)(init_sp);
@@ -464,9 +466,11 @@ Addr setup_client_stack( void*  init_sp,
    if (have_exename)
       stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
 
-   for (i = 0; i < VG_(args_for_client).used; i++) {
+   for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       argc++;
-      stringsize += VG_(strlen)( VG_(args_for_client).strs[i] ) + 1;
+      stringsize += VG_(strlen)( * (HChar**) 
+                                   VG_(indexXA)( VG_(args_for_client), i ))
+                    + 1;
    }
 
    /* ...and the environment */
@@ -563,24 +567,37 @@ Addr setup_client_stack( void*  init_sp,
 #    endif
 
      if (0)
-        VG_(printf)("%p 0x%x  %p 0x%x\n", 
+        VG_(printf)("%#lx 0x%lx  %#lx 0x%lx\n",
                     resvn_start, resvn_size, anon_start, anon_size);
 
      /* Create a shrinkable reservation followed by an anonymous
         segment.  Together these constitute a growdown stack. */
+     res = VG_(mk_SysRes_Error)(0);
      ok = VG_(am_create_reservation)(
              resvn_start,
              resvn_size -inner_HACK,
              SmUpper, 
              anon_size +inner_HACK
           );
+     if (ok) {
+        /* allocate a stack - mmap enough space for the stack */
+        res = VG_(am_mmap_anon_fixed_client)(
+                 anon_start -inner_HACK,
+                 anon_size +inner_HACK,
+	         VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC
+	      );
+     }
+     if ((!ok) || res.isError) {
+        /* Allocation of the stack failed.  We have to stop. */
+        VG_(printf)("valgrind: "
+                    "I failed to allocate space for the application's stack.\n");
+        VG_(printf)("valgrind: "
+                    "This may be the result of a very large --main-stacksize=\n");
+        VG_(printf)("valgrind: setting.  Cannot continue.  Sorry.\n\n");
+        VG_(exit)(0);
+     }
+
      vg_assert(ok);
-     /* allocate a stack - mmap enough space for the stack */
-     res = VG_(am_mmap_anon_fixed_client)(
-              anon_start -inner_HACK,
-              anon_size +inner_HACK,
-	      VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC
-	   );
      vg_assert(!res.isError); 
    }
 
@@ -604,8 +621,11 @@ Addr setup_client_stack( void*  init_sp,
    if (have_exename)
       *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
 
-   for (i = 0; i < VG_(args_for_client).used; i++) {
-      *ptr++ = (Addr)copy_str(&strtab, VG_(args_for_client).strs[i]);
+   for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
+      *ptr++ = (Addr)copy_str(
+                       &strtab, 
+                       * (HChar**) VG_(indexXA)( VG_(args_for_client), i )
+                     );
    }
    *ptr++ = 0;
 
@@ -741,7 +761,7 @@ Addr setup_client_stack( void*  init_sp,
 
    /* client_SP is pointing at client's argc/argv */
 
-   if (0) VG_(printf)("startup SP = %p\n", client_SP);
+   if (0) VG_(printf)("startup SP = %#lx\n", client_SP);
    return client_SP;
 }
 
@@ -818,19 +838,13 @@ static void setup_client_dataseg ( SizeT max_size )
 /*====================================================================*/
 
 /* Create the client's initial memory image. */
-
-ClientInitImgInfo
-   VG_(setup_client_initial_image)(
-      /*IN*/ HChar** argv,
-      /*IN*/ HChar** envp,
-      /*IN*/ HChar*  toolname,
-      /*IN*/ Addr    clstack_top,
-      /*IN*/ SizeT   clstack_max_size
-   )
+IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
 {
-   ClientInitImgInfo ciii = { 0, 0, 0, NULL };
-   ExeInfo           info;
-   HChar**           env = NULL;
+   ExeInfo info;
+   HChar** env = NULL;
+
+   IIFinaliseImageInfo iifii;
+   VG_(memset)( &iifii, 0, sizeof(iifii) );
 
    //--------------------------------------------------------------
    // Load client executable, finding in $PATH if necessary
@@ -842,7 +856,7 @@ ClientInitImgInfo
    if (VG_(args_the_exename) == NULL)
       VG_(err_missing_prog)();
 
-   load_client(&info, &ciii.initial_client_IP, &ciii.initial_client_TOC);
+   load_client(&info, &iifii.initial_client_IP, &iifii.initial_client_TOC);
 
    //--------------------------------------------------------------
    // Set up client's environment
@@ -850,7 +864,7 @@ ClientInitImgInfo
    //   p: get_helprequest_and_toolname [for toolname]
    //--------------------------------------------------------------
    VG_(debugLog)(1, "initimg", "Setup client env\n");
-   env = setup_client_env(envp, toolname);
+   env = setup_client_env(iicii.envp, iicii.toolname);
 
    //--------------------------------------------------------------
    // Setup client stack, eip, and VG_(client_arg[cv])
@@ -858,29 +872,48 @@ ClientInitImgInfo
    //   p: fix_environment() [for 'env']
    //--------------------------------------------------------------
    {
-      void* init_sp = argv - 1;
+      /* When allocating space for the client stack on Linux, take
+         notice of the --main-stacksize value.  This makes it possible
+         to run programs with very large (primary) stack requirements
+         simply by specifying --main-stacksize. */
+      /* Logic is as follows:
+         - by default, use the client's current stack rlimit
+         - if that exceeds 16M, clamp to 16M
+         - if a larger --main-stacksize value is specified, use that instead
+         - in all situations, the minimum allowed stack size is 1M
+      */
+      void* init_sp = iicii.argv - 1;
       SizeT m1  = 1024 * 1024;
       SizeT m16 = 16 * m1;
-      VG_(debugLog)(1, "initimg", "Setup client stack\n");
-      clstack_max_size = (SizeT)VG_(client_rlimit_stack).rlim_cur;
-      if (clstack_max_size < m1)  clstack_max_size = m1;
-      if (clstack_max_size > m16) clstack_max_size = m16;
-      clstack_max_size = VG_PGROUNDUP(clstack_max_size);
+      SizeT szB = (SizeT)VG_(client_rlimit_stack).rlim_cur;
+      if (szB < m1) szB = m1;
+      if (szB > m16) szB = m16;
+      if (VG_(clo_main_stacksize) > 0) szB = VG_(clo_main_stacksize);
+      if (szB < m1) szB = m1;
+      szB = VG_PGROUNDUP(szB);
+      VG_(debugLog)(1, "initimg",
+                       "Setup client stack: size will be %ld\n", szB);
 
-      ciii.initial_client_SP
+      iifii.clstack_max_size = szB;
+
+      iifii.initial_client_SP
          = setup_client_stack( init_sp, env, 
-                               &info, &ciii.client_auxv, 
-                               clstack_top, clstack_max_size );
+                               &info, &iifii.client_auxv, 
+                               iicii.clstack_top, iifii.clstack_max_size );
 
       VG_(free)(env);
 
       VG_(debugLog)(2, "initimg",
                        "Client info: "
-                       "initial_IP=%p initial_SP=%p initial_TOC=%p brk_base=%p\n",
-                       (void*)(ciii.initial_client_IP), 
-                       (void*)(ciii.initial_client_SP),
-                       (void*)(ciii.initial_client_TOC),
+                       "initial_IP=%p initial_TOC=%p brk_base=%p\n",
+                       (void*)(iifii.initial_client_IP), 
+                       (void*)(iifii.initial_client_TOC),
                        (void*)VG_(brk_base) );
+      VG_(debugLog)(2, "initimg",
+                       "Client info: "
+                       "initial_SP=%p max_stack_size=%ld\n",
+                       (void*)(iifii.initial_client_SP),
+                       (SizeT)iifii.clstack_max_size );
    }
 
    //--------------------------------------------------------------
@@ -900,7 +933,7 @@ ClientInitImgInfo
       setup_client_dataseg( dseg_max_size );
    }
 
-   return ciii;
+   return iifii;
 }
 
 
@@ -908,31 +941,33 @@ ClientInitImgInfo
 /*=== TOP-LEVEL: VG_(finalise_thread1state)                        ===*/
 /*====================================================================*/
 
-/* Make final adjustments to the initial image.  Also, initialise the
-   VEX guest state for thread 1 (the root thread) and copy in
-   essential starting values.  Is handed the ClientInitImgInfo created
-   by VG_(setup_client_initial_image).  Upon return, the client's
-   memory and register state should be ready to start the JIT. */
-extern 
-void VG_(finalise_thread1state)( /*MOD*/ThreadArchState* arch,
-                                 ClientInitImgInfo ciii )
+/* Just before starting the client, we may need to make final
+   adjustments to its initial image.  Also we need to set up the VEX
+   guest state for thread 1 (the root thread) and copy in essential
+   starting values.  This is handed the IIFinaliseImageInfo created by
+   VG_(ii_create_image).
+*/
+void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
 {
+   ThreadArchState* arch = &VG_(threads)[1].arch;
+
    /* On Linux we get client_{ip/sp/toc}, and start the client with
       all other registers zeroed. */
 
 #  if defined(VGP_x86_linux)
-   vg_assert(0 == sizeof(VexGuestX86State) % 8);
+   vg_assert(0 == sizeof(VexGuestX86State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
    LibVEX_GuestX86_initialise(&arch->vex);
 
-   /* Zero out the shadow area. */
-   VG_(memset)(&arch->vex_shadow, 0, sizeof(VexGuestX86State));
+   /* Zero out the shadow areas. */
+   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestX86State));
+   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestX86State));
 
    /* Put essential stuff into the new state. */
-   arch->vex.guest_ESP = ciii.initial_client_SP;
-   arch->vex.guest_EIP = ciii.initial_client_IP;
+   arch->vex.guest_ESP = iifii.initial_client_SP;
+   arch->vex.guest_EIP = iifii.initial_client_IP;
 
    /* initialise %cs, %ds and %ss to point at the operating systems
       default code, data and stack segments */
@@ -941,32 +976,34 @@ void VG_(finalise_thread1state)( /*MOD*/ThreadArchState* arch,
    asm volatile("movw %%ss, %0" : : "m" (arch->vex.guest_SS));
 
 #  elif defined(VGP_amd64_linux)
-   vg_assert(0 == sizeof(VexGuestAMD64State) % 8);
+   vg_assert(0 == sizeof(VexGuestAMD64State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
    LibVEX_GuestAMD64_initialise(&arch->vex);
 
-   /* Zero out the shadow area. */
-   VG_(memset)(&arch->vex_shadow, 0, sizeof(VexGuestAMD64State));
+   /* Zero out the shadow areas. */
+   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestAMD64State));
+   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestAMD64State));
 
    /* Put essential stuff into the new state. */
-   arch->vex.guest_RSP = ciii.initial_client_SP;
-   arch->vex.guest_RIP = ciii.initial_client_IP;
+   arch->vex.guest_RSP = iifii.initial_client_SP;
+   arch->vex.guest_RIP = iifii.initial_client_IP;
 
 #  elif defined(VGP_ppc32_linux)
-   vg_assert(0 == sizeof(VexGuestPPC32State) % 8);
+   vg_assert(0 == sizeof(VexGuestPPC32State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
    LibVEX_GuestPPC32_initialise(&arch->vex);
 
-   /* Zero out the shadow area. */
-   VG_(memset)(&arch->vex_shadow, 0, sizeof(VexGuestPPC32State));
+   /* Zero out the shadow areas. */
+   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestPPC32State));
+   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestPPC32State));
 
    /* Put essential stuff into the new state. */
-   arch->vex.guest_GPR1 = ciii.initial_client_SP;
-   arch->vex.guest_CIA  = ciii.initial_client_IP;
+   arch->vex.guest_GPR1 = iifii.initial_client_SP;
+   arch->vex.guest_CIA  = iifii.initial_client_IP;
 
 #  elif defined(VGP_ppc64_linux)
    vg_assert(0 == sizeof(VexGuestPPC64State) % 16);
@@ -975,13 +1012,14 @@ void VG_(finalise_thread1state)( /*MOD*/ThreadArchState* arch,
       sane way. */
    LibVEX_GuestPPC64_initialise(&arch->vex);
 
-   /* Zero out the shadow area. */
-   VG_(memset)(&arch->vex_shadow, 0, sizeof(VexGuestPPC64State));
+   /* Zero out the shadow areas. */
+   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestPPC64State));
+   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestPPC64State));
 
    /* Put essential stuff into the new state. */
-   arch->vex.guest_GPR1 = ciii.initial_client_SP;
-   arch->vex.guest_GPR2 = ciii.initial_client_TOC;
-   arch->vex.guest_CIA  = ciii.initial_client_IP;
+   arch->vex.guest_GPR1 = iifii.initial_client_SP;
+   arch->vex.guest_GPR2 = iifii.initial_client_TOC;
+   arch->vex.guest_CIA  = iifii.initial_client_IP;
 
 #  else
 #    error Unknown platform

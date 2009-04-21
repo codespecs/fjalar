@@ -3,14 +3,14 @@ AUTOMAKE_OPTIONS = foreign 1.7 dist-bzip2
 
 include $(top_srcdir)/Makefile.all.am
 
-TOOLS =	fjalar
+TOOLS = fjalar
 
 SUBDIRS = include coregrind . tests perf $(TOOLS) docs
 DIST_SUBDIRS  = $(SUBDIRS)
 
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
-	glibc-2.6.supp glibc-2.7.supp glibc-2.8.supp \
+	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
 	aix5libc.supp \
 	xfree-3.supp xfree-4.supp
 
@@ -55,7 +55,11 @@ default.supp: $(SUPP_FILES)
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
 regtest: check
+	@PERL@ tests/vg_regtest $(TOOLS) $(EXP_TOOLS)
+nonexp-regtest: check
 	@PERL@ tests/vg_regtest $(TOOLS)
+exp-regtest: check
+	@PERL@ tests/vg_regtest $(EXP_TOOLS)
 
 ## Preprend @PERL@ because tests/vg_per isn't executable
 perf: check
@@ -69,7 +73,8 @@ EXTRA_DIST = \
 	valgrind.spec.in valgrind.pc.in \
 	Makefile.all.am Makefile.tool.am Makefile.core.am \
 	Makefile.tool-inplace.am \
-	$(VEX_PRIMARY_SOURCES)
+	$(vex_primary_sources) \
+	vg-in-place
 
 install-exec-hook:
 	$(mkinstalldirs) $(DESTDIR)$(valdir)
@@ -100,7 +105,7 @@ VEX_PUBLIC_HDRS = \
 
 # These list the bits of vex we need to copy into the tarball
 
-VEX_PRIMARY_SOURCES = \
+vex_primary_sources = \
 	VEX/quote.txt \
 	VEX/newline.txt \
 	VEX/HACKING.README \
@@ -187,27 +192,27 @@ VEX_PRIMARY_SOURCES = \
 valt_load_address_x86_linux.lds: Makefile
 	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
 		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_amd64_linux.lds: Makefile
 	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
 		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_ppc32_linux.lds: Makefile
 	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
 		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_ppc64_linux.lds: Makefile
 	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
 		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@

@@ -8,9 +8,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2006 Nicholas Nethercote
+   Copyright (C) 2005-2008 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -54,14 +54,29 @@
 
 #if defined(VGP_x86_linux)
 #  include "vki/vki-scnums-x86-linux.h"
+
 #elif defined(VGP_amd64_linux)
 #  include "vki/vki-scnums-amd64-linux.h"
+
 #elif defined(VGP_ppc32_linux)
 #  include "vki/vki-scnums-ppc32-linux.h"
+
 #elif defined(VGP_ppc64_linux)
 #  include "vki/vki-scnums-ppc64-linux.h"
+
 #elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
 #  include "vki/vki-scnums-aix5.h"
+
+/* Make it possible to include this file in assembly sources. */
+#if !defined(VG_IN_ASSEMBLY_SOURCE)
+
+/* Look up the name of a syscall, using the bindings previously
+   created by VG_(aix5_register_syscall), for the purposes of making
+   error messages. */
+extern UChar* VG_(aix5_sysno_to_sysname)( Int sysno );
+
+#endif /* !defined(VG_IN_ASSEMBLY_SOURCE) */
+
 #else
 #  error Unknown platform
 #endif

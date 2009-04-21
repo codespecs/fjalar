@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -174,6 +174,16 @@ typedef unsigned int	        vki_uint;
 #endif
 
 //----------------------------------------------------------------------
+// From linux-2.6.20.1/include/linux/types.h
+//----------------------------------------------------------------------
+
+typedef		__vki_s32	vki_int32_t;
+
+typedef		__vki_u8	vki_uint8_t;
+typedef		__vki_u16	vki_uint16_t;
+typedef		__vki_u32	vki_uint32_t;
+
+//----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/limits.h
 //----------------------------------------------------------------------
 
@@ -203,6 +213,11 @@ struct vki_sysinfo {
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/time.h
 //----------------------------------------------------------------------
+
+#define VKI_CLOCK_REALTIME            0
+#define VKI_CLOCK_MONOTONIC           1
+#define VKI_CLOCK_PROCESS_CPUTIME_ID  2
+#define VKI_CLOCK_THREAD_CPUTIME_ID   3
 
 struct vki_timespec {
 	vki_time_t	tv_sec;		/* seconds */
@@ -313,6 +328,8 @@ struct vki_utimbuf {
 struct vki_sched_param {
 	int sched_priority;
 };
+
+#define VKI_TASK_COMM_LEN 16
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-generic/siginfo.h
@@ -1141,6 +1158,7 @@ struct  vki_seminfo {
 #define VKI_FUTEX_FD (2)
 #define VKI_FUTEX_REQUEUE (3)
 #define VKI_FUTEX_CMP_REQUEUE (4)
+#define VKI_FUTEX_PRIVATE_FLAG (128)
 
 struct vki_robust_list {
 	struct vki_robust_list __user *next;
@@ -2089,7 +2107,7 @@ struct vki_console_font_op {
 typedef __vki_kernel_uid32_t vki_qid_t; /* Type in which we store ids in memory */
 
 //----------------------------------------------------------------------
-// From linux-2.6.9/include/linux/ptrace.h
+// From linux-2.6.20.1/include/linux/ptrace.h
 //----------------------------------------------------------------------
 
 #define VKI_PTRACE_TRACEME         0
@@ -2098,7 +2116,11 @@ typedef __vki_kernel_uid32_t vki_qid_t; /* Type in which we store ids in memory 
 #define VKI_PTRACE_PEEKUSR	   3
 #define VKI_PTRACE_POKEUSR	   6
 
-#define VKI_PTRACE_DETACH       0x11
+#define VKI_PTRACE_DETACH         17
+
+#define VKI_PTRACE_GETEVENTMSG	0x4201
+#define VKI_PTRACE_GETSIGINFO	0x4202
+#define VKI_PTRACE_SETSIGINFO	0x4203
 
 //----------------------------------------------------------------------
 // From linux-2.6.14/include/sound/asound.h
@@ -2184,6 +2206,344 @@ struct vki_vt_consize {
 #define VKI_VT_RESIZEX      0x560A  /* set kernel's idea of screensize + more */
 #define VKI_VT_LOCKSWITCH   0x560B  /* disallow vt switching */
 #define VKI_VT_UNLOCKSWITCH 0x560C  /* allow vt switching */
+
+//----------------------------------------------------------------------
+// From linux-2.6.19/include/linux/prctl.h
+//----------------------------------------------------------------------
+
+#define VKI_PR_SET_PDEATHSIG  1  /* Second arg is a signal */
+#define VKI_PR_GET_PDEATHSIG  2  /* Second arg is a ptr to return the signal */
+
+#define VKI_PR_GET_DUMPABLE   3
+#define VKI_PR_SET_DUMPABLE   4
+
+#define VKI_PR_GET_UNALIGN	  5
+#define VKI_PR_SET_UNALIGN	  6
+# define VKI_PR_UNALIGN_NOPRINT	1	/* silently fix up unaligned user accesses */
+# define VKI_PR_UNALIGN_SIGBUS	2	/* generate SIGBUS on unaligned user access */
+
+#define VKI_PR_GET_KEEPCAPS   7
+#define VKI_PR_SET_KEEPCAPS   8
+
+#define VKI_PR_GET_FPEMU  9
+#define VKI_PR_SET_FPEMU 10
+# define VKI_PR_FPEMU_NOPRINT	1	/* silently emulate fp operations accesses */
+# define VKI_PR_FPEMU_SIGFPE	2	/* don't emulate fp operations, send SIGFPE instead */
+
+#define VKI_PR_GET_FPEXC	11
+#define VKI_PR_SET_FPEXC	12
+# define VKI_PR_FP_EXC_SW_ENABLE	0x80	/* Use FPEXC for FP exception enables */
+# define VKI_PR_FP_EXC_DIV		0x010000	/* floating point divide by zero */
+# define VKI_PR_FP_EXC_OVF		0x020000	/* floating point overflow */
+# define VKI_PR_FP_EXC_UND		0x040000	/* floating point underflow */
+# define VKI_PR_FP_EXC_RES		0x080000	/* floating point inexact result */
+# define VKI_PR_FP_EXC_INV		0x100000	/* floating point invalid operation */
+# define VKI_PR_FP_EXC_DISABLED	0	/* FP exceptions disabled */
+# define VKI_PR_FP_EXC_NONRECOV	1	/* async non-recoverable exc. mode */
+# define VKI_PR_FP_EXC_ASYNC	2	/* async recoverable exception mode */
+# define VKI_PR_FP_EXC_PRECISE	3	/* precise exception mode */
+
+#define VKI_PR_GET_TIMING   13
+#define VKI_PR_SET_TIMING   14
+# define VKI_PR_TIMING_STATISTICAL  0       /* Normal, traditional,
+                                                   statistical process timing */
+# define VKI_PR_TIMING_TIMESTAMP    1       /* Accurate timestamp based
+                                                   process timing */
+
+#define VKI_PR_SET_NAME    15		/* Set process name */
+#define VKI_PR_GET_NAME    16		/* Get process name */
+
+#define VKI_PR_GET_ENDIAN	19
+#define VKI_PR_SET_ENDIAN	20
+# define VKI_PR_ENDIAN_BIG		0
+# define VKI_PR_ENDIAN_LITTLE	1	/* True little endian mode */
+# define VKI_PR_ENDIAN_PPC_LITTLE	2	/* "PowerPC" pseudo little endian */
+
+//----------------------------------------------------------------------
+// From linux-2.6.19/include/linux/usbdevice_fs.h
+//----------------------------------------------------------------------
+
+struct vki_usbdevfs_ctrltransfer {
+	__vki_u8 bRequestType;
+	__vki_u8 bRequest;
+	__vki_u16 wValue;
+	__vki_u16 wIndex;
+	__vki_u16 wLength;
+	__vki_u32 timeout;  /* in milliseconds */
+ 	void __user *data;
+};
+
+struct vki_usbdevfs_bulktransfer {
+	unsigned int ep;
+	unsigned int len;
+	unsigned int timeout; /* in milliseconds */
+	void __user *data;
+};
+
+#define VKI_USBDEVFS_MAXDRIVERNAME 255
+
+struct vki_usbdevfs_getdriver {
+	unsigned int interface;
+	char driver[VKI_USBDEVFS_MAXDRIVERNAME + 1];
+};
+
+struct vki_usbdevfs_connectinfo {
+	unsigned int devnum;
+	unsigned char slow;
+};
+
+struct vki_usbdevfs_iso_packet_desc {
+	unsigned int length;
+	unsigned int actual_length;
+	unsigned int status;
+};
+
+struct vki_usbdevfs_urb {
+	unsigned char type;
+	unsigned char endpoint;
+	int status;
+	unsigned int flags;
+	void __user *buffer;
+	int buffer_length;
+	int actual_length;
+	int start_frame;
+	int number_of_packets;
+	int error_count;
+	unsigned int signr;  /* signal to be sent on error, -1 if none should be sent */
+	void *usercontext;
+	struct vki_usbdevfs_iso_packet_desc iso_frame_desc[0];
+};
+
+struct vki_usbdevfs_ioctl {
+	int	ifno;		/* interface 0..N ; negative numbers reserved */
+	int	ioctl_code;	/* MUST encode size + direction of data so the
+				 * macros in <asm/ioctl.h> give correct values */
+	void __user *data;	/* param buffer (in, or out) */
+};
+
+#define VKI_USBDEVFS_CONTROL           _VKI_IOWR('U', 0, struct vki_usbdevfs_ctrltransfer)
+#define VKI_USBDEVFS_BULK              _VKI_IOWR('U', 2, struct vki_usbdevfs_bulktransfer)
+#define VKI_USBDEVFS_GETDRIVER         _VKI_IOW('U', 8, struct vki_usbdevfs_getdriver)
+#define VKI_USBDEVFS_SUBMITURB         _VKI_IOR('U', 10, struct vki_usbdevfs_urb)
+#define VKI_USBDEVFS_REAPURB           _VKI_IOW('U', 12, void *)
+#define VKI_USBDEVFS_REAPURBNDELAY     _VKI_IOW('U', 13, void *)
+#define VKI_USBDEVFS_CONNECTINFO       _VKI_IOW('U', 17, struct vki_usbdevfs_connectinfo)
+#define VKI_USBDEVFS_IOCTL             _VKI_IOWR('U', 18, struct vki_usbdevfs_ioctl)
+
+//----------------------------------------------------------------------
+// From linux-2.6.20.1/include/linux/i2c.h
+//----------------------------------------------------------------------
+
+#define VKI_I2C_SLAVE		0x0703	/* Change slave address			*/
+					/* Attn.: Slave address is 7 or 10 bits */
+#define VKI_I2C_SLAVE_FORCE	0x0706	/* Change slave address			*/
+					/* Attn.: Slave address is 7 or 10 bits */
+					/* This changes the address, even if it */
+					/* is already taken!			*/
+#define VKI_I2C_TENBIT		0x0704	/* 0 for 7 bit addrs, != 0 for 10 bit	*/
+#define VKI_I2C_FUNCS		0x0705	/* Get the adapter functionality */
+#define VKI_I2C_PEC		0x0708	/* != 0 for SMBus PEC                   */
+
+//----------------------------------------------------------------------
+// From linux-2.6.20.1/include/linux/keyctl.h
+//----------------------------------------------------------------------
+
+/* keyctl commands */
+#define VKI_KEYCTL_GET_KEYRING_ID	0	/* ask for a keyring's ID */
+#define VKI_KEYCTL_JOIN_SESSION_KEYRING	1	/* join or start named session keyring */
+#define VKI_KEYCTL_UPDATE		2	/* update a key */
+#define VKI_KEYCTL_REVOKE		3	/* revoke a key */
+#define VKI_KEYCTL_CHOWN		4	/* set ownership of a key */
+#define VKI_KEYCTL_SETPERM		5	/* set perms on a key */
+#define VKI_KEYCTL_DESCRIBE		6	/* describe a key */
+#define VKI_KEYCTL_CLEAR		7	/* clear contents of a keyring */
+#define VKI_KEYCTL_LINK			8	/* link a key into a keyring */
+#define VKI_KEYCTL_UNLINK		9	/* unlink a key from a keyring */
+#define VKI_KEYCTL_SEARCH		10	/* search for a key in a keyring */
+#define VKI_KEYCTL_READ			11	/* read a key or keyring's contents */
+#define VKI_KEYCTL_INSTANTIATE		12	/* instantiate a partially constructed key */
+#define VKI_KEYCTL_NEGATE		13	/* negate a partially constructed key */
+#define VKI_KEYCTL_SET_REQKEY_KEYRING	14	/* set default request-key keyring */
+#define VKI_KEYCTL_SET_TIMEOUT		15	/* set key timeout */
+#define VKI_KEYCTL_ASSUME_AUTHORITY	16	/* assume request_key() authorisation */
+
+/*--------------------------------------------------------------------*/
+// From linux-2.6.20.1/include/linux/key.h
+/*--------------------------------------------------------------------*/
+
+/* key handle serial number */
+typedef vki_int32_t vki_key_serial_t;
+
+/* key handle permissions mask */
+typedef vki_uint32_t vki_key_perm_t;
+
+//----------------------------------------------------------------------
+// From linux-2.6.24.7/include/linux/wireless.h
+// (wireless extensions version 22, 2007-03-16)
+//----------------------------------------------------------------------
+
+/*
+ * [[Wireless extensions ioctls.]]
+ */
+
+/* Wireless Identification */
+#define VKI_SIOCSIWCOMMIT	0x8B00	/* Commit pending changes to driver */
+#define VKI_SIOCGIWNAME		0x8B01	/* get name == wireless protocol */
+
+/* Basic operations */
+#define VKI_SIOCSIWNWID		0x8B02	/* set network id (pre-802.11) */
+#define VKI_SIOCGIWNWID		0x8B03	/* get network id (the cell) */
+#define VKI_SIOCSIWFREQ		0x8B04	/* set channel/frequency (Hz) */
+#define VKI_SIOCGIWFREQ		0x8B05	/* get channel/frequency (Hz) */
+#define VKI_SIOCSIWMODE		0x8B06	/* set operation mode */
+#define VKI_SIOCGIWMODE		0x8B07	/* get operation mode */
+#define VKI_SIOCSIWSENS		0x8B08	/* set sensitivity (dBm) */
+#define VKI_SIOCGIWSENS		0x8B09	/* get sensitivity (dBm) */
+
+/* Informative stuff */
+#define VKI_SIOCSIWRANGE	0x8B0A	/* Unused */
+#define VKI_SIOCGIWRANGE	0x8B0B	/* Get range of parameters */
+#define VKI_SIOCSIWPRIV		0x8B0C	/* Unused */
+#define VKI_SIOCGIWPRIV		0x8B0D	/* get private ioctl interface info */
+#define VKI_SIOCSIWSTATS	0x8B0E	/* Unused */
+#define VKI_SIOCGIWSTATS	0x8B0F	/* Get /proc/net/wireless stats */
+
+/* Spy support (statistics per MAC address - used for Mobile IP support) */
+#define VKI_SIOCSIWSPY		0x8B10	/* set spy addresses */
+#define VKI_SIOCGIWSPY		0x8B11	/* get spy info (quality of link) */
+#define VKI_SIOCSIWTHRSPY	0x8B12	/* set spy threshold (spy event) */
+#define VKI_SIOCGIWTHRSPY	0x8B13	/* get spy threshold */
+
+/* Access Point manipulation */
+#define VKI_SIOCSIWAP		0x8B14	/* set access point MAC addresses */
+#define VKI_SIOCGIWAP		0x8B15	/* get access point MAC addresses */
+#define VKI_SIOCGIWAPLIST	0x8B17	/* Deprecated in favor of scanning */
+#define VKI_SIOCSIWSCAN         0x8B18	/* trigger scanning (list cells) */
+#define VKI_SIOCGIWSCAN         0x8B19	/* get scanning results */
+
+/* 802.11 specific support */
+#define VKI_SIOCSIWESSID	0x8B1A	/* set ESSID (network name) */
+#define VKI_SIOCGIWESSID	0x8B1B	/* get ESSID */
+#define VKI_SIOCSIWNICKN	0x8B1C	/* set node name/nickname */
+#define VKI_SIOCGIWNICKN	0x8B1D	/* get node name/nickname */
+
+/* Other parameters useful in 802.11 and some other devices */
+#define VKI_SIOCSIWRATE		0x8B20	/* set default bit rate (bps) */
+#define VKI_SIOCGIWRATE		0x8B21	/* get default bit rate (bps) */
+#define VKI_SIOCSIWRTS		0x8B22	/* set RTS/CTS threshold (bytes) */
+#define VKI_SIOCGIWRTS		0x8B23	/* get RTS/CTS threshold (bytes) */
+#define VKI_SIOCSIWFRAG		0x8B24	/* set fragmentation thr (bytes) */
+#define VKI_SIOCGIWFRAG		0x8B25	/* get fragmentation thr (bytes) */
+#define VKI_SIOCSIWTXPOW	0x8B26	/* set transmit power (dBm) */
+#define VKI_SIOCGIWTXPOW	0x8B27	/* get transmit power (dBm) */
+#define VKI_SIOCSIWRETRY	0x8B28	/* set retry limits and lifetime */
+#define VKI_SIOCGIWRETRY	0x8B29	/* get retry limits and lifetime */
+
+/* Encoding stuff (scrambling, hardware security, WEP...) */
+#define VKI_SIOCSIWENCODE	0x8B2A	/* set encoding token & mode */
+#define VKI_SIOCGIWENCODE	0x8B2B	/* get encoding token & mode */
+
+/* Power saving stuff (power management, unicast and multicast) */
+#define VKI_SIOCSIWPOWER	0x8B2C	/* set Power Management settings */
+#define VKI_SIOCGIWPOWER	0x8B2D	/* get Power Management settings */
+
+/* WPA : Generic IEEE 802.11 informatiom element (e.g., for WPA/RSN/WMM). */
+#define VKI_SIOCSIWGENIE	0x8B30		/* set generic IE */
+#define VKI_SIOCGIWGENIE	0x8B31		/* get generic IE */
+
+/* WPA : IEEE 802.11 MLME requests */
+#define VKI_SIOCSIWMLME		0x8B16	/* request MLME operation; uses
+					 * struct iw_mlme */
+/* WPA : Authentication mode parameters */
+#define VKI_SIOCSIWAUTH		0x8B32	/* set authentication mode params */
+#define VKI_SIOCGIWAUTH		0x8B33	/* get authentication mode params */
+
+/* WPA : Extended version of encoding configuration */
+#define VKI_SIOCSIWENCODEEXT	0x8B34	/* set encoding token & mode */
+#define VKI_SIOCGIWENCODEEXT	0x8B35	/* get encoding token & mode */
+
+/* WPA2 : PMKSA cache management */
+#define VKI_SIOCSIWPMKSA	0x8B36	/* PMKSA cache operation */
+
+/*
+ * [[Payload for the wireless extensions ioctls.]]
+ */
+
+struct	vki_iw_param
+{
+  __vki_s32	value;		/* The value of the parameter itself */
+  __vki_u8	fixed;		/* Hardware should not use auto select */
+  __vki_u8	disabled;	/* Disable the feature */
+  __vki_u16	flags;		/* Various specifc flags (if any) */
+};
+
+struct	vki_iw_point
+{
+  void __user	*pointer;	/* Pointer to the data  (in user space) */
+  __vki_u16	length;		/* number of fields or size in bytes */
+  __vki_u16	flags;		/* Optional params */
+};
+
+struct	vki_iw_freq
+{
+	__vki_s32	m;		/* Mantissa */
+	__vki_s16	e;		/* Exponent */
+	__vki_u8	i;		/* List index (when in range struct) */
+	__vki_u8	flags;		/* Flags (fixed/auto) */
+};
+
+struct	vki_iw_quality
+{
+	__vki_u8	qual;		/* link quality (%retries, SNR,
+					   %missed beacons or better...) */
+	__vki_u8	level;		/* signal level (dBm) */
+	__vki_u8	noise;		/* noise level (dBm) */
+	__vki_u8	updated;	/* Flags to know if updated */
+};
+
+union	vki_iwreq_data
+{
+	/* Config - generic */
+	char		name[VKI_IFNAMSIZ];
+	/* Name : used to verify the presence of  wireless extensions.
+	 * Name of the protocol/provider... */
+
+	struct vki_iw_point	essid;	/* Extended network name */
+	struct vki_iw_param	nwid;	/* network id (or domain - the cell) */
+	struct vki_iw_freq	freq;	/* frequency or channel :
+					 * 0-1000 = channel
+					 * > 1000 = frequency in Hz */
+
+	struct vki_iw_param	sens;	/* signal level threshold */
+	struct vki_iw_param	bitrate;/* default bit rate */
+	struct vki_iw_param	txpower;/* default transmit power */
+	struct vki_iw_param	rts;	/* RTS threshold threshold */
+	struct vki_iw_param	frag;	/* Fragmentation threshold */
+	__vki_u32		mode;	/* Operation mode */
+	struct vki_iw_param	retry;	/* Retry limits & lifetime */
+
+	struct vki_iw_point	encoding; /* Encoding stuff : tokens */
+	struct vki_iw_param	power;	/* PM duration/timeout */
+	struct vki_iw_quality	qual;	/* Quality part of statistics */
+
+	struct vki_sockaddr ap_addr;	/* Access point address */
+	struct vki_sockaddr addr;	/* Destination address (hw/mac) */
+
+	struct vki_iw_param	param;	/* Other small parameters */
+	struct vki_iw_point	data;	/* Other large parameters */
+};
+
+struct	vki_iwreq 
+{
+	union
+	{
+		char ifrn_name[VKI_IFNAMSIZ];	/* if name, e.g. "eth0" */
+	} ifr_ifrn;
+
+	/* Data part (defined just above) */
+	union	vki_iwreq_data	u;
+};
+
 
 #endif // __VKI_LINUX_H
 

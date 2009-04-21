@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -57,7 +57,7 @@
 /* Convert one x86 insn to IR.  See the type DisOneInstrFn in
    bb_to_IR.h. */
 extern
-DisResult disInstr_X86 ( IRBB*        irbb,
+DisResult disInstr_X86 ( IRSB*        irbb,
                          Bool         put_IP,
                          Bool         (*resteerOkFn) ( void*, Addr64 ),
                          void*        callback_opaque,
@@ -66,7 +66,7 @@ DisResult disInstr_X86 ( IRBB*        irbb,
                          Addr64       guest_IP,
                          VexArch      guest_arch,
                          VexArchInfo* archinfo,
-                         VexMiscInfo* miscinfo,
+                         VexAbiInfo*  abiinfo,
                          Bool         host_bigendian );
 
 /* Used by the optimiser to specialise calls to helpers. */
@@ -114,6 +114,8 @@ extern ULong x86g_calculate_RCL (
                 UInt arg, UInt rot_amt, UInt eflags_in, UInt sz 
              );
 
+extern UInt x86g_calculate_daa_das_aaa_aas ( UInt AX_and_flags, UInt opcode );
+
 extern ULong x86g_check_fldcw ( UInt fpucw );
 
 extern UInt  x86g_create_fpucw ( UInt fpround );
@@ -160,6 +162,9 @@ extern ULong x86g_dirtyhelper_RDTSC ( void );
 extern UInt x86g_dirtyhelper_IN  ( UInt portno, UInt sz/*1,2 or 4*/ );
 extern void x86g_dirtyhelper_OUT ( UInt portno, UInt data, 
                                    UInt sz/*1,2 or 4*/ );
+
+extern VexEmWarn
+            x86g_dirtyhelper_FXRSTOR ( VexGuestX86State*, HWord );
 
 extern VexEmWarn
             x86g_dirtyhelper_FRSTOR ( VexGuestX86State*, HWord );

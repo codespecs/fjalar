@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -247,11 +247,11 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "lwz 4,0(28)\n\t"      /* set %r4 = buf */
       "lwz 5,4(28)\n\t"      /* set %r5 = n */
 
+      "crorc 6,6,6\n\t"
       ".long 0x48000005\n\t" /* bl .+4 */
       "mflr  29\n\t"
-      "addi  29,29,20\n\t"
+      "addi  29,29,16\n\t"
       "mtlr  29\n\t"
-      "crorc 6,6,6\n\t"
       "sc\n\t"               /* write() */
 
       "stw 3,0(28)\n\t"      /* result */
@@ -288,11 +288,11 @@ static UInt local_sys_getpid ( void )
 
       "lwz   2,0(28)\n\t"    /* set %r2 = __NR_getpid */
 
+      "crorc 6,6,6\n\t"
       ".long 0x48000005\n\t" /* bl .+4 */
       "mflr  29\n\t"
-      "addi  29,29,20\n\t"
+      "addi  29,29,16\n\t"
       "mtlr  29\n\t"
-      "crorc 6,6,6\n\t"
       "sc\n\t"               /* getpid() */
 
       "stw   3,0(28)\n\t"    /* result -> block[0] */
@@ -330,11 +330,11 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "ld  4,0(28)\n\t"      /* set %r4 = buf */
       "ld  5,8(28)\n\t"      /* set %r5 = n */
 
+      "crorc 6,6,6\n\t"
       ".long 0x48000005\n\t" /* bl .+4 */
       "mflr  29\n\t"
-      "addi  29,29,20\n\t"
+      "addi  29,29,16\n\t"
       "mtlr  29\n\t"
-      "crorc 6,6,6\n\t"
       "sc\n\t"               /* write() */
 
       "std 3,0(28)\n\t"      /* result */
@@ -369,11 +369,11 @@ static UInt local_sys_getpid ( void )
 
       "ld    2,0(28)\n\t"    /* set %r2 = __NR_getpid */
 
+      "crorc 6,6,6\n\t"
       ".long 0x48000005\n\t" /* bl .+4 */
       "mflr  29\n\t"
-      "addi  29,29,20\n\t"
+      "addi  29,29,16\n\t"
       "mtlr  29\n\t"
-      "crorc 6,6,6\n\t"
       "sc\n\t"               /* getpid() */
 
       "std  3,0(28)\n\t"     /* result -> block[0] */
@@ -446,7 +446,7 @@ static void emit ( HChar* buf, Int n )
 #define VG_MSG_LJUSTIFY  4 /* Must justify on the left. */
 #define VG_MSG_PAREN     8 /* Parenthesize if present (for %y) */
 #define VG_MSG_COMMA    16 /* Add commas to numbers (for %d, %u) */
-
+#define VG_MSG_ALTFORMAT 32 /* Convert the value to alternate format */
 
 /* Copy a string into the buffer. */
 static 
@@ -543,13 +543,14 @@ UInt myvprintf_int64 ( void(*send)(HChar,void*),
                        Int flags, 
                        Int base, 
                        Int width, 
+                       Bool capitalised,
                        ULong p )
 {
    HChar  buf[40];
    Int    ind = 0;
    Int    i, nc = 0;
    Bool   neg = False;
-   HChar* digits = "0123456789ABCDEF";
+   HChar* digits = capitalised ? "0123456789ABCDEF" : "0123456789abcdef";
    UInt   ret = 0;
 
    if (base < 2 || base > 16)
@@ -620,7 +621,7 @@ VG_(debugLog_vprintf) (
    Int  flags;
    Int  width;
    Int  n_ls = 0;
-   Bool is_long;
+   Bool is_long, caps;
 
    /* We assume that vargs has already been initialised by the 
       caller, using va_start, and that the caller will similarly
@@ -646,25 +647,34 @@ VG_(debugLog_vprintf) (
       flags = 0;
       n_ls  = 0;
       width = 0; /* length of the field. */
-      if (format[i] == '(') {
-         flags |= VG_MSG_PAREN;
+      while (1) {
+         switch (format[i]) {
+         case '(':
+            flags |= VG_MSG_PAREN;
+            break;
+         case ',':
+         case '\'':
+            /* If ',' or '\'' follows '%', commas will be inserted. */
+            flags |= VG_MSG_COMMA;
+            break;
+         case '-':
+            /* If '-' follows '%', justify on the left. */
+            flags |= VG_MSG_LJUSTIFY;
+            break;
+         case '0':
+            /* If '0' follows '%', pads will be inserted. */
+            flags |= VG_MSG_ZJUSTIFY;
+            break;
+         case '#':
+            /* If '#' follows '%', alternative format will be used. */
+            flags |= VG_MSG_ALTFORMAT;
+            break;
+         default:
+            goto parse_fieldwidth;
+         }
          i++;
       }
-      /* If ',' follows '%', commas will be inserted. */
-      if (format[i] == ',') {
-         flags |= VG_MSG_COMMA;
-         i++;
-      }
-      /* If '-' follows '%', justify on the left. */
-      if (format[i] == '-') {
-         flags |= VG_MSG_LJUSTIFY;
-         i++;
-      }
-      /* If '0' follows '%', pads will be inserted. */
-      if (format[i] == '0') {
-         flags |= VG_MSG_ZJUSTIFY;
-         i++;
-      }
+     parse_fieldwidth:
       /* Compute the field length. */
       while (format[i] >= '0' && format[i] <= '9') {
          width *= 10;
@@ -686,33 +696,40 @@ VG_(debugLog_vprintf) (
          case 'd': /* %d */
             flags |= VG_MSG_SIGNED;
             if (is_long)
-               ret += myvprintf_int64(send, send_arg2, flags, 10, width, 
+               ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
                                       (ULong)(va_arg (vargs, Long)));
             else
-               ret += myvprintf_int64(send, send_arg2, flags, 10, width, 
+               ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
                                       (ULong)(va_arg (vargs, Int)));
             break;
          case 'u': /* %u */
             if (is_long)
-               ret += myvprintf_int64(send, send_arg2, flags, 10, width, 
+               ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
                                       (ULong)(va_arg (vargs, ULong)));
             else
-               ret += myvprintf_int64(send, send_arg2, flags, 10, width, 
+               ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
                                       (ULong)(va_arg (vargs, UInt)));
             break;
          case 'p': /* %p */
             ret += 2;
             send('0',send_arg2);
             send('x',send_arg2);
-            ret += myvprintf_int64(send, send_arg2, flags, 16, width, 
+            ret += myvprintf_int64(send, send_arg2, flags, 16, width, True,
                                    (ULong)((UWord)va_arg (vargs, void *)));
             break;
          case 'x': /* %x */
+         case 'X': /* %X */
+            caps = toBool(format[i] == 'X');
+            if (flags & VG_MSG_ALTFORMAT) {
+               ret += 2;
+               send('0',send_arg2);
+               send('x',send_arg2);
+            }
             if (is_long)
-               ret += myvprintf_int64(send, send_arg2, flags, 16, width, 
+               ret += myvprintf_int64(send, send_arg2, flags, 16, width, caps,
                                       (ULong)(va_arg (vargs, ULong)));
             else
-               ret += myvprintf_int64(send, send_arg2, flags, 16, width, 
+               ret += myvprintf_int64(send, send_arg2, flags, 16, width, caps,
                                       (ULong)(va_arg (vargs, UInt)));
             break;
          case 'c': /* %c */
@@ -843,9 +860,9 @@ void VG_(debugLog) ( Int level, const HChar* modulename,
    }
    
    (void)myvprintf_str ( add_to_buf, &buf, 0, 2, "--", False );
-   (void)myvprintf_int64 ( add_to_buf, &buf, 0, 10, 1, (ULong)pid );
+   (void)myvprintf_int64 ( add_to_buf, &buf, 0, 10, 1, False, (ULong)pid );
    (void)myvprintf_str ( add_to_buf, &buf, 0, 1, ":", False );
-   (void)myvprintf_int64 ( add_to_buf, &buf, 0, 10, 1, (ULong)level );
+   (void)myvprintf_int64 ( add_to_buf, &buf, 0, 10, 1, False, (ULong)level );
    (void)myvprintf_str ( add_to_buf, &buf, 0, 1, ":", False );
    (void)myvprintf_str ( add_to_buf, &buf, 0, 8, (HChar*)modulename, False );
    (void)myvprintf_str ( add_to_buf, &buf, 0, indent, "", False );

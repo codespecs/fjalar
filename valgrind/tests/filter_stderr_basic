@@ -6,10 +6,10 @@
 dir=`dirname $0`
 
 # Remove ==pid== and --pid-- and ++pid++ and **pid** strings 
-sed "s/\(==\|--\|\+\+\|\*\*\)[0-9]\{1,6\}\1 //"             |
+sed "s/\(==\|--\|\+\+\|\*\*\)[0-9]\{1,7\}\1 //"             |
 
 # Remove any --pid:0: strings (debuglog level zero output)
-sed "/^--[0-9]\{1,6\}:0:*/d" |
+sed "/^--[0-9]\{1,7\}:0:*/d" |
 
 # Remove "WARNING: assuming toc 0x.." strings
 sed "/^WARNING: assuming toc 0x*/d" |
@@ -40,6 +40,12 @@ $dir/filter_libc                                                       |
 
 # Remove line info out of order warnings
 sed "/warning: line info addresses out of order/d"                     |
+
+# Older bash versions print abnormal termination messages on the stderr
+# of the bash process. Newer bash versions redirect such messages properly.
+# Suppress any redirected abnormal termination messages. You can find the
+# complete list of messages in the bash source file siglist.c.
+sed -r "/^(Segmentation fault|Alarm clock|Aborted)( \(core dumped\))?$/d" |
 
 # Remove any ": dumping core" message as the user might have a
 # limit set that prevents the core dump

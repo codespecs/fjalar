@@ -21,6 +21,14 @@
 #ifndef DYNCOMP_TRANSLATE_H
 #define DYNCOMP_TRANSLATE_H
 
+#include "pub_tool_basics.h"
+#include "pub_tool_execontext.h"
+#include "pub_tool_hashtable.h"
+#include "pub_tool_errormgr.h"
+#include "mc_translate.h"
+
+#include "libvex.h"              // for all Vex stuff
+
 //#include "tool.h"
 
 // WARNING! Some comments may be bogus because I've copied-and-pasted
@@ -28,49 +36,12 @@
 
 //typedef  IRExpr  IRAtom;
 
-/* Carries around state during DynComp instrumentation. */
-struct _DCEnv;
-
-typedef
-   struct _DCEnv {
-      /* MODIFIED: the bb being constructed.  IRStmts are added. */
-      IRBB* bb;
-
-      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
-         original temps to their current their current shadow temp.
-         Initially all entries are IRTemp_INVALID.  Entries are added
-         lazily since many original temps are not used due to
-         optimisation prior to instrumentation.  Note that floating
-         point original tmps are shadowed by integer tmps of the same
-         size, and Bit-typed original tmps are shadowed by the type
-         Ity_I8.  See comment below. */
-      IRTemp* tmpMap;
-      UInt     n_originalTmps; /* for range checking */
-
-      /* MODIFIED: indicates whether "bogus" literals have so far been
-         found.  Starts off False, and may change to True. */
-      Bool    bogusLiterals;
-
-      /* READONLY: the guest layout.  This indicates which parts of
-         the guest state should be regarded as 'always defined'. */
-      VexGuestLayout* layout;
-      /* READONLY: the host word type.  Needed for constructing
-         arguments of type 'HWord' to be passed to helper functions.
-         Ity_I32 or Ity_I64 only. */
-      IRType hWordTy;
-
-      /* MODIFIED: Original address of guest instruction whose IR
-	 we're now processing, as taken from the last IMark we saw. */
-      Addr origAddr;
-   }
-   DCEnv;
-
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig );
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e );
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                         IRAtom* atom, IRAtom* vatom );
 void do_shadow_PUTI_DC ( DCEnv* dce,
-                         IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom );
+                         IRRegArray* descr, IRAtom* ix, Int bias, IRAtom* atom );
 void do_shadow_STle_DC ( DCEnv* dce, IRAtom* addr, IRAtom* data );
 IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard);
 

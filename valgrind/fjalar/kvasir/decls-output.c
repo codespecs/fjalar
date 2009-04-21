@@ -168,6 +168,7 @@ void printDaikonExternalVarName(VariableEntry* var, char* fjalarName, FILE* fp) 
   int len = VG_(strlen)(fjalarName);
   int i;
   char* working_name;
+  (void) var;
   Bool alreadyPrintedBrackets = False; // Only print out one set of "[..]" max.
 
   tl_assert(!kvasir_old_decls_format);
@@ -216,7 +217,7 @@ static void printAllFunctionDecls(char faux_decls);
 static void printAllObjectPPTDecls(void);
 
 // Initializes all the data structures needed to perform decls
-initDecls()
+void initDecls()
 {
   //Initialize needed hash tables.
   if(!nameToType) {
@@ -239,7 +240,7 @@ initDecls()
 
 }
 
-cleanupDecls()
+void cleanupDecls()
 {
   // Clean-up tables.
   if(nameToType) {
@@ -922,6 +923,7 @@ printDeclsEntryAction(VariableEntry* var,
       // that the program has already finished execution so that all
       // of the comparability information would be already updated:
       if (kvasir_with_dyncomp) {
+	VG_(printf)("Getting comp number for varaible %s\n", varName);
         // Remember that comp_number is a SIGNED INTEGER but the
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
@@ -1055,6 +1057,7 @@ printDeclsEntryAction(VariableEntry* var,
       // that the program has already finished execution so that all
       // of the comparability information would be already updated:
       if (kvasir_with_dyncomp) {
+	VG_(printf)("Getting comp number for varaible %s ", varName);
         DaikonFunctionEntry *entry = (DaikonFunctionEntry *)varFuncInfo;
         // Remember that comp_number is a SIGNED INTEGER but the
         // tags are UNSIGNED INTEGERS so be careful of overflows
@@ -1727,7 +1730,7 @@ printDeclsEntryAction(VariableEntry* var,
        cur_id = cur_id/10;
      }
 
-   ppt_par_id = VG_(calloc)(1, digits+1); // Digits + whitespace
+   ppt_par_id = VG_(calloc)("decls-output.c: gPID", 1, digits+1); // Digits + whitespace
 
    if(!objectIdTable) {
        objectIdTable =
@@ -1736,7 +1739,7 @@ printDeclsEntryAction(VariableEntry* var,
    }
 
    if(!gencontains(objectIdTable, typeName)) {
-       int *new_id = VG_(malloc)(sizeof(int));
+       int *new_id = VG_(malloc)("decls-output.c: gPID.2", sizeof(int));
        *new_id = curr_par_id;
        genputtable(objectIdTable, typeName, new_id);
        curr_par_id++;
@@ -1766,7 +1769,7 @@ printDeclsEntryAction(VariableEntry* var,
  char* stringArrayFlatten(char** stringArr, int start, int end)
  {
    int i, str_len = stringArrayLen(stringArr, start, end);
-   char* str = VG_(calloc)(str_len, sizeof(char));
+   char* str = VG_(calloc)("decls-output.c: stringArrayFlatten", str_len, sizeof(char));
 
    for(i = start; i < end; i++) {
      VG_(strcat)(str, stringArr[i]);
