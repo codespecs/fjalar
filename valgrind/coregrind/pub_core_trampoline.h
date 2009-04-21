@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -69,12 +69,15 @@ extern void VG_(amd64_linux_REDIR_FOR_vtime);
 #endif
 
 #if defined(VGP_ppc32_linux)
+extern void  VG_(ppc32_linux_SUBST_FOR_sigreturn);
+extern void  VG_(ppc32_linux_SUBST_FOR_rt_sigreturn);
 extern UInt  VG_(ppc32_linux_REDIR_FOR_strlen)( void* );
 extern UInt  VG_(ppc32_linux_REDIR_FOR_strcmp)( void*, void* );
 extern void* VG_(ppc32_linux_REDIR_FOR_strchr)( void*, Int );
 #endif
 
 #if defined(VGP_ppc64_linux)
+extern void  VG_(ppc64_linux_SUBST_FOR_rt_sigreturn);
 extern UInt  VG_(ppc64_linux_REDIR_FOR_strlen)( void* );
 extern void* VG_(ppc64_linux_REDIR_FOR_strchr)( void*, Int );
 /* A label (sans dot) marking the ultra-magical return stub via which

@@ -25,9 +25,15 @@
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_libcassert.h"
 
-#include "../mac_shared.h"
+//RUDD-REMOVE
+//#include "../mac_shared.h"
+#include "../mc_translate.h"
 #include "../mc_include.h"
 #include "union_find.h"
+
+//RUDD-MERGE, no longer in memcheck
+#define SECONDARY_SIZE 65536               /* DO NOT CHANGE */
+#define SECONDARY_MASK (SECONDARY_SIZE-1)  /* DO NOT CHANGE */
 
 #if VG_WORDSIZE == 4
 #define SECONDARY_SHIFT	16

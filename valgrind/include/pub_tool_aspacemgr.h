@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -99,10 +99,10 @@ typedef
       /* Shrinkable? (SkResvn only) */
       ShrinkMode smode;
       /* Associated file (SkFile{C,V} only) */
-      UWord   dev;
-      UWord   ino;
-      UInt    mode;
+      ULong   dev;
+      ULong   ino;
       ULong   offset;
+      UInt    mode;
       Int     fnIdx;    // file name table index, if name is known
       /* Permissions (SkAnon{C,V}, SkFile{C,V} only) */
       Bool    hasR;
@@ -137,7 +137,7 @@ extern Int VG_(am_get_segment_starts)( Addr* starts, Int nStarts );
 extern NSegment const * VG_(am_find_nsegment) ( Addr a ); 
 
 // See pub_core_aspacemgr.h for description.
-extern HChar* VG_(am_get_filename)( NSegment* );
+extern HChar* VG_(am_get_filename)( NSegment const * );
 
 // See pub_core_aspacemgr.h for description.
 extern Bool VG_(am_is_valid_for_client) ( Addr start, SizeT len, 

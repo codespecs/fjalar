@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -598,7 +598,7 @@ X86Instr* X86Instr_Sh32 ( X86ShiftOp op, UInt src, HReg dst ) {
    i->Xin.Sh32.dst = dst;
    return i;
 }
-X86Instr* X86Instr_Test32 ( UInt imm32, HReg dst ) {
+X86Instr* X86Instr_Test32 ( UInt imm32, X86RM* dst ) {
    X86Instr* i         = LibVEX_Alloc(sizeof(X86Instr));
    i->tag              = Xin_Test32;
    i->Xin.Test32.imm32 = imm32;
@@ -610,6 +610,13 @@ X86Instr* X86Instr_Unary32 ( X86UnaryOp op, HReg dst ) {
    i->tag             = Xin_Unary32;
    i->Xin.Unary32.op  = op;
    i->Xin.Unary32.dst = dst;
+   return i;
+}
+X86Instr* X86Instr_Lea32 ( X86AMode* am, HReg dst ) {
+   X86Instr* i        = LibVEX_Alloc(sizeof(X86Instr));
+   i->tag             = Xin_Lea32;
+   i->Xin.Lea32.am    = am;
+   i->Xin.Lea32.dst   = dst;
    return i;
 }
 X86Instr* X86Instr_MulL ( Bool syned, X86RM* src ) {
@@ -737,7 +744,7 @@ X86Instr* X86Instr_FpLdSt ( Bool isLoad, UChar sz, HReg reg, X86AMode* addr ) {
    i->Xin.FpLdSt.sz     = sz;
    i->Xin.FpLdSt.reg    = reg;
    i->Xin.FpLdSt.addr   = addr;
-   vassert(sz == 4 || sz == 8);
+   vassert(sz == 4 || sz == 8 || sz == 10);
    return i;
 }
 X86Instr* X86Instr_FpLdStI ( Bool isLoad, UChar sz,  
@@ -901,11 +908,17 @@ void ppX86Instr ( X86Instr* i, Bool mode64 ) {
          return;
       case Xin_Test32:
          vex_printf("testl $%d,", (Int)i->Xin.Test32.imm32);
-         ppHRegX86(i->Xin.Test32.dst);
+         ppX86RM(i->Xin.Test32.dst);
          return;
       case Xin_Unary32:
          vex_printf("%sl ", showX86UnaryOp(i->Xin.Unary32.op));
          ppHRegX86(i->Xin.Unary32.dst);
+         return;
+      case Xin_Lea32:
+         vex_printf("leal ");
+         ppX86AMode(i->Xin.Lea32.am);
+         vex_printf(",");
+         ppHRegX86(i->Xin.Lea32.dst);
          return;
       case Xin_MulL:
          vex_printf("%cmull ", i->Xin.MulL.syned ? 's' : 'u');
@@ -1005,12 +1018,14 @@ void ppX86Instr ( X86Instr* i, Bool mode64 ) {
          break;
       case Xin_FpLdSt:
          if (i->Xin.FpLdSt.isLoad) {
-            vex_printf("gld%c " , i->Xin.FpLdSt.sz==8 ? 'D' : 'F');
+            vex_printf("gld%c " ,  i->Xin.FpLdSt.sz==10 ? 'T'
+                                   : (i->Xin.FpLdSt.sz==8 ? 'D' : 'F'));
             ppX86AMode(i->Xin.FpLdSt.addr);
             vex_printf(", ");
             ppHRegX86(i->Xin.FpLdSt.reg);
          } else {
-            vex_printf("gst%c " , i->Xin.FpLdSt.sz==8 ? 'D' : 'F');
+            vex_printf("gst%c " , i->Xin.FpLdSt.sz==10 ? 'T'
+                                  : (i->Xin.FpLdSt.sz==8 ? 'D' : 'F'));
             ppHRegX86(i->Xin.FpLdSt.reg);
             vex_printf(", ");
             ppX86AMode(i->Xin.FpLdSt.addr);
@@ -1158,10 +1173,14 @@ void getRegUsage_X86Instr (HRegUsage* u, X86Instr* i, Bool mode64)
             addHRegUse(u, HRmRead, hregX86_ECX());
          return;
       case Xin_Test32:
-         addHRegUse(u, HRmRead, i->Xin.Test32.dst);
+         addRegUsage_X86RM(u, i->Xin.Test32.dst, HRmRead);
          return;
       case Xin_Unary32:
          addHRegUse(u, HRmModify, i->Xin.Unary32.dst);
+         return;
+      case Xin_Lea32:
+         addRegUsage_X86AMode(u, i->Xin.Lea32.am);
+         addHRegUse(u, HRmWrite, i->Xin.Lea32.dst);
          return;
       case Xin_MulL:
          addRegUsage_X86RM(u, i->Xin.MulL.src, HRmRead);
@@ -1383,10 +1402,14 @@ void mapRegs_X86Instr ( HRegRemap* m, X86Instr* i, Bool mode64 )
          mapReg(m, &i->Xin.Sh32.dst);
          return;
       case Xin_Test32:
-         mapReg(m, &i->Xin.Test32.dst);
+         mapRegs_X86RM(m, i->Xin.Test32.dst);
          return;
       case Xin_Unary32:
          mapReg(m, &i->Xin.Unary32.dst);
+         return;
+      case Xin_Lea32:
+         mapRegs_X86AMode(m, i->Xin.Lea32.am);
+         mapReg(m, &i->Xin.Lea32.dst);
          return;
       case Xin_MulL:
          mapRegs_X86RM(m, i->Xin.MulL.src);
@@ -1558,7 +1581,7 @@ X86Instr* genSpill_X86 ( HReg rreg, Int offsetB, Bool mode64 )
       case HRcInt32:
          return X86Instr_Alu32M ( Xalu_MOV, X86RI_Reg(rreg), am );
       case HRcFlt64:
-         return X86Instr_FpLdSt ( False/*store*/, 8, rreg, am );
+         return X86Instr_FpLdSt ( False/*store*/, 10, rreg, am );
       case HRcVec128:
          return X86Instr_SseLdSt ( False/*store*/, rreg, am );
       default: 
@@ -1578,13 +1601,89 @@ X86Instr* genReload_X86 ( HReg rreg, Int offsetB, Bool mode64 )
       case HRcInt32:
          return X86Instr_Alu32R ( Xalu_MOV, X86RMI_Mem(am), rreg );
       case HRcFlt64:
-         return X86Instr_FpLdSt ( True/*load*/, 8, rreg, am );
+         return X86Instr_FpLdSt ( True/*load*/, 10, rreg, am );
       case HRcVec128:
          return X86Instr_SseLdSt ( True/*load*/, rreg, am );
       default: 
          ppHRegClass(hregClass(rreg));
          vpanic("genReload_X86: unimplemented regclass");
    }
+}
+
+/* The given instruction reads the specified vreg exactly once, and
+   that vreg is currently located at the given spill offset.  If
+   possible, return a variant of the instruction to one which instead
+   references the spill slot directly. */
+
+X86Instr* directReload_X86( X86Instr* i, HReg vreg, Short spill_off )
+{
+   vassert(spill_off >= 0 && spill_off < 10000); /* let's say */
+
+   /* Deal with form: src=RMI_Reg, dst=Reg where src == vreg 
+      Convert to: src=RMI_Mem, dst=Reg 
+   */
+   if (i->tag == Xin_Alu32R
+       && (i->Xin.Alu32R.op == Xalu_MOV || i->Xin.Alu32R.op == Xalu_OR
+           || i->Xin.Alu32R.op == Xalu_XOR)
+       && i->Xin.Alu32R.src->tag == Xrmi_Reg
+       && i->Xin.Alu32R.src->Xrmi.Reg.reg == vreg) {
+      vassert(i->Xin.Alu32R.dst != vreg);
+      return X86Instr_Alu32R( 
+                i->Xin.Alu32R.op, 
+                X86RMI_Mem( X86AMode_IR( spill_off, hregX86_EBP())),
+                i->Xin.Alu32R.dst
+             );
+   }
+
+   /* Deal with form: src=RMI_Imm, dst=Reg where dst == vreg 
+      Convert to: src=RI_Imm, dst=Mem
+   */
+   if (i->tag == Xin_Alu32R
+       && (i->Xin.Alu32R.op == Xalu_CMP)
+       && i->Xin.Alu32R.src->tag == Xrmi_Imm
+       && i->Xin.Alu32R.dst == vreg) {
+      return X86Instr_Alu32M( 
+                i->Xin.Alu32R.op,
+		X86RI_Imm( i->Xin.Alu32R.src->Xrmi.Imm.imm32 ),
+                X86AMode_IR( spill_off, hregX86_EBP())
+             );
+   }
+
+   /* Deal with form: Push(RMI_Reg)
+      Convert to: Push(RMI_Mem) 
+   */
+   if (i->tag == Xin_Push
+       && i->Xin.Push.src->tag == Xrmi_Reg
+       && i->Xin.Push.src->Xrmi.Reg.reg == vreg) {
+      return X86Instr_Push(
+                X86RMI_Mem( X86AMode_IR( spill_off, hregX86_EBP()))
+             );
+   }
+
+   /* Deal with form: CMov32(src=RM_Reg, dst) where vreg == src
+      Convert to CMov32(RM_Mem, dst) */
+   if (i->tag == Xin_CMov32
+       && i->Xin.CMov32.src->tag == Xrm_Reg
+       && i->Xin.CMov32.src->Xrm.Reg.reg == vreg) {
+      vassert(i->Xin.CMov32.dst != vreg);
+      return X86Instr_CMov32( 
+                i->Xin.CMov32.cond,
+                X86RM_Mem( X86AMode_IR( spill_off, hregX86_EBP() )),
+                i->Xin.CMov32.dst
+             );
+   }
+
+   /* Deal with form: Test32(imm,RM_Reg vreg) -> Test32(imm,amode) */
+   if (i->tag == Xin_Test32
+       && i->Xin.Test32.dst->tag == Xrm_Reg
+       && i->Xin.Test32.dst->Xrm.Reg.reg == vreg) {
+      return X86Instr_Test32(
+                i->Xin.Test32.imm32,
+                X86RM_Mem( X86AMode_IR( spill_off, hregX86_EBP() ) )
+             );
+   }
+
+   return NULL;
 }
 
 
@@ -1987,6 +2086,7 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
       switch (i->Xin.Alu32M.op) {
          case Xalu_ADD: opc = 0x01; subopc_imm = 0; break;
          case Xalu_SUB: opc = 0x29; subopc_imm = 5; break;
+         case Xalu_CMP: opc = 0x39; subopc_imm = 7; break;
          default: goto bad;
       }
       switch (i->Xin.Alu32M.src->tag) {
@@ -2031,11 +2131,19 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
       goto done;
 
    case Xin_Test32:
-      /* testl $imm32, %reg */
-      *p++ = 0xF7;
-      p = doAMode_R(p, fake(0), i->Xin.Test32.dst);
-      p = emit32(p, i->Xin.Test32.imm32);
-      goto done;
+      if (i->Xin.Test32.dst->tag == Xrm_Reg) {
+         /* testl $imm32, %reg */
+         *p++ = 0xF7;
+         p = doAMode_R(p, fake(0), i->Xin.Test32.dst->Xrm.Reg.reg);
+         p = emit32(p, i->Xin.Test32.imm32);
+         goto done;
+      } else {
+         /* testl $imm32, amode */
+         *p++ = 0xF7;
+         p = doAMode_M(p, fake(0), i->Xin.Test32.dst->Xrm.Mem.am);
+         p = emit32(p, i->Xin.Test32.imm32);
+         goto done;
+      }
 
    case Xin_Unary32:
       if (i->Xin.Unary32.op == Xun_NOT) {
@@ -2049,6 +2157,11 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
          goto done;
       }
       break;
+
+   case Xin_Lea32:
+      *p++ = 0x8D;
+      p = doAMode_M(p, i->Xin.Lea32.dst, i->Xin.Lea32.am);
+      goto done;
 
    case Xin_MulL:
       subopc = i->Xin.MulL.syned ? 5 : 4;
@@ -2163,6 +2276,12 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
          case Ijk_Sys_int128:
             *p++ = 0xBD;
             p = emit32(p, VEX_TRC_JMP_SYS_INT128); break;
+         case Ijk_Sys_int129:
+            *p++ = 0xBD;
+            p = emit32(p, VEX_TRC_JMP_SYS_INT129); break;
+         case Ijk_Sys_int130:
+            *p++ = 0xBD;
+            p = emit32(p, VEX_TRC_JMP_SYS_INT130); break;
          case Ijk_Yield: 
             *p++ = 0xBD;
             p = emit32(p, VEX_TRC_JMP_YIELD); break;
@@ -2184,6 +2303,12 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
          case Ijk_Sys_sysenter:
             *p++ = 0xBD;
             p = emit32(p, VEX_TRC_JMP_SYS_SYSENTER); break;
+         case Ijk_SigTRAP:
+            *p++ = 0xBD;
+            p = emit32(p, VEX_TRC_JMP_SIGTRAP); break;
+         case Ijk_SigSEGV:
+            *p++ = 0xBD;
+            p = emit32(p, VEX_TRC_JMP_SIGSEGV); break;
          case Ijk_Ret:
 	 case Ijk_Call:
          case Ijk_Boring:
@@ -2288,6 +2413,13 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
          /* movzwl */
          *p++ = 0x0F;
          *p++ = 0xB7;
+         p = doAMode_M(p, i->Xin.LoadEX.dst, i->Xin.LoadEX.src); 
+         goto done;
+      }
+      if (i->Xin.LoadEX.szSmall == 1 && i->Xin.LoadEX.syned) {
+         /* movsbl */
+         *p++ = 0x0F;
+         *p++ = 0xBE;
          p = doAMode_M(p, i->Xin.LoadEX.dst, i->Xin.LoadEX.src); 
          goto done;
       }
@@ -2494,14 +2626,27 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
       goto done;
 
    case Xin_FpLdSt:
-      vassert(i->Xin.FpLdSt.sz == 4 || i->Xin.FpLdSt.sz == 8);
       if (i->Xin.FpLdSt.isLoad) {
          /* Load from memory into %fakeN.  
-            --> ffree %st(7) ; fld{s/l} amode ; fstp st(N+1) 
+            --> ffree %st(7) ; fld{s/l/t} amode ; fstp st(N+1) 
          */
          p = do_ffree_st7(p);
-         *p++ = toUChar(i->Xin.FpLdSt.sz==4 ? 0xD9 : 0xDD);
-	 p = doAMode_M(p, fake(0)/*subopcode*/, i->Xin.FpLdSt.addr);
+         switch (i->Xin.FpLdSt.sz) {
+            case 4:
+               *p++ = 0xD9;
+               p = doAMode_M(p, fake(0)/*subopcode*/, i->Xin.FpLdSt.addr);
+               break;
+            case 8:
+               *p++ = 0xDD;
+               p = doAMode_M(p, fake(0)/*subopcode*/, i->Xin.FpLdSt.addr);
+               break;
+            case 10:
+               *p++ = 0xDB;
+               p = doAMode_M(p, fake(5)/*subopcode*/, i->Xin.FpLdSt.addr);
+               break;
+            default:
+               vpanic("emitX86Instr(FpLdSt,load)");
+         }
          p = do_fstp_st(p, 1+hregNumber(i->Xin.FpLdSt.reg));
          goto done;
       } else {
@@ -2510,8 +2655,22 @@ Int emit_X86Instr ( UChar* buf, Int nbuf, X86Instr* i,
 	 */
          p = do_ffree_st7(p);
          p = do_fld_st(p, 0+hregNumber(i->Xin.FpLdSt.reg));
-         *p++ = toUChar(i->Xin.FpLdSt.sz==4 ? 0xD9 : 0xDD);
-         p = doAMode_M(p, fake(3)/*subopcode*/, i->Xin.FpLdSt.addr);
+         switch (i->Xin.FpLdSt.sz) {
+            case 4:
+               *p++ = 0xD9;
+               p = doAMode_M(p, fake(3)/*subopcode*/, i->Xin.FpLdSt.addr);
+               break;
+            case 8:
+               *p++ = 0xDD;
+               p = doAMode_M(p, fake(3)/*subopcode*/, i->Xin.FpLdSt.addr);
+               break;
+            case 10:
+               *p++ = 0xDB;
+               p = doAMode_M(p, fake(7)/*subopcode*/, i->Xin.FpLdSt.addr);
+               break;
+            default:
+               vpanic("emitX86Instr(FpLdSt,store)");
+         }
          goto done;
       }
       break;

@@ -10,7 +10,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,11 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+
+   Neither the names of the U.S. Department of Energy nor the
+   University of California nor the names of its contributors may be
+   used to endorse or promote products derived from this software
+   without prior written permission.
 */
 
 /* *************************************************************
@@ -196,7 +201,9 @@ static AixSegments asegs_told;
 /* The assumed size of the main thread's stack, so that we can add a
    segment for it at startup. */
 
-#define N_FAKE_STACK_PAGES 4096 /* 16M fake stack */
+#define N_FAKE_STACK_PAGES_MIN 4096  /* 16M fake stack */ /* default size */
+#define N_FAKE_STACK_PAGES_MAX 32768 /* 128M fake stack */ /* max size? */
+
 
 /* Hacks which are probably for AIX 'millicode'.  Note: ensure
    these stay page aligned. */
@@ -1157,6 +1164,8 @@ void VG_(am_aix5_set_initial_client_sp)( Addr sp )
 {
    static Bool done = False;
    AixSegment  seg;
+   Word n_fake_stack_pages;
+   Word m1 = 1048576;
 
    aspacem_assert(!done);
    done = True;
@@ -1175,7 +1184,6 @@ void VG_(am_aix5_set_initial_client_sp)( Addr sp )
       0xFFF'FFFF'FFFF'E920, and the accessible area extends to
       0xFFF'FFFF'FFFF'FFFF.  So in both cases, (64k roundup of sp) - 1
       gives the end of the accessible area. */
-
    VG_(debugLog)(1,"aspacem", "aix5_set_initial_client_sp( %p )\n",
                    (void*)sp);
 
@@ -1192,7 +1200,29 @@ void VG_(am_aix5_set_initial_client_sp)( Addr sp )
       seg.end = AM_64K_ROUNDUP(sp) - 1;
    }
 
-   seg.start = seg.end+1 - N_FAKE_STACK_PAGES * VKI_PAGE_SIZE;
+   n_fake_stack_pages = N_FAKE_STACK_PAGES_MIN;
+   if (VG_(clo_main_stacksize) > 0 
+       && ((m1+VG_(clo_main_stacksize)) / VKI_PAGE_SIZE) > n_fake_stack_pages) {
+      n_fake_stack_pages = (m1+VG_(clo_main_stacksize)) / VKI_PAGE_SIZE;
+   }
+   if (n_fake_stack_pages > N_FAKE_STACK_PAGES_MAX) {
+      /* Allocation of the stack failed.  We have to stop. */
+      VG_(debugLog)(
+         0, "aspacem",
+            "valgrind: "
+            "I failed to allocate space for the application's stack.\n");
+      VG_(debugLog)(
+         0, "aspacem",
+            "valgrind: "
+            "This may be the result of a very large --max-stackframe=\n");
+      VG_(debugLog)(
+         0, "aspacem",
+            "valgrind: "
+            "setting.  Cannot continue.  Sorry.\n\n");
+      ML_(am_exit)(0);
+   }
+
+   seg.start = seg.end+1 - n_fake_stack_pages * VKI_PAGE_SIZE;
 
    VG_(debugLog)(1,"aspacem", "aix5_set_initial_client_sp: stack seg:\n");
    show_AixSegment(1,0, &seg);
@@ -1233,11 +1263,11 @@ void VG_(am_show_nsegments) ( Int logLevel, HChar* who )
 /* Get the filename corresponding to this segment, if known and if it
    has one.  The returned name's storage cannot be assumed to be
    persistent, so the caller should immediately copy the name
-   elsewhere. */
-HChar* VG_(am_get_filename)( NSegment* seg )
+   elsewhere.  On AIX5, we don't know what this is (in general)
+   so just return NULL. */
+HChar* VG_(am_get_filename)( NSegment const* seg )
 {
-   ML_(am_barf)("unimplemented: VG_(am_get_filename)");
-   return NULL; /* placate gcc -Wall */
+   return NULL;
 }
 
 /* Collect up the start addresses of all non-free, non-resvn segments.

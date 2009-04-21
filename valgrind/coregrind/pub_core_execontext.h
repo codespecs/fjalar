@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -50,7 +50,9 @@ extern void VG_(print_ExeContext_stats) ( void );
 // (Minor hack: we use Addr* as the return type instead of StackTrace so
 // that modules #including this file don't also have to #include
 // pub_core_stacktrace.h also.)
-extern /*StackTrace*/Addr* VG_(extract_StackTrace) ( ExeContext* e );
+extern
+/*StackTrace*/Addr* VG_(get_ExeContext_StackTrace) ( ExeContext* e );
+
 
 #endif   // __PUB_CORE_EXECONTEXT_H
 

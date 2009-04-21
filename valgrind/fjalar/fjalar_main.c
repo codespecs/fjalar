@@ -20,10 +20,19 @@
 
 #include "my_libc.h"
 
+
 #include "pub_tool_basics.h"
+#include "pub_tool_aspacemgr.h"
+#include "pub_tool_hashtable.h"     // For mc_include.h
+#include "pub_tool_xarray.h" //for clientstate
 #include "pub_tool_options.h"
 #include "pub_tool_libcbase.h"
+#include "pub_tool_libcassert.h"
+#include "pub_tool_libcprint.h"
+#include "pub_tool_machine.h"
 #include "pub_tool_mallocfree.h"
+#include "pub_tool_oset.h"
+#include "pub_tool_replacemalloc.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_clientstate.h"
 
@@ -133,7 +142,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di->fxState[1].offset = mce->layout->offset_FP;
     di->fxState[1].size   = mce->layout->sizeof_FP;
 
-    stmt( mce->bb, IRStmt_Dirty(di) );
+    stmt('V',  mce, IRStmt_Dirty(di) );
   }
 }
 
@@ -227,7 +236,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[4].offset = offsetof(VexGuestArchState, guest_FPREG);
       di->fxState[4].size   = 8 * sizeof(ULong);
 
-      stmt( mce->bb, IRStmt_Dirty(di) );
+      stmt('V',  mce, IRStmt_Dirty(di) );
     }
   }
 }
@@ -299,7 +308,7 @@ void enter_function(FunctionEntry* f)
   size = offset + f->formalParamStackByteSize;/* plus stuff in caller's*/
   tl_assert(size >= 0);
   if (size != 0) {
-    newEntry->virtualStack = VG_(calloc)(size, sizeof(char));
+    newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",  size, sizeof(char));
     newEntry->virtualStackByteSize = size;
     newEntry->virtualStackFPOffset = offset;
 
@@ -313,6 +322,7 @@ void enter_function(FunctionEntry* f)
     // VG_(calloc)ed address, which is a bit weird. It would be more
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
+    FJALAR_DPRINTF("Copying over stack, located at %x - size %d\n", newEntry->virtualStack, size);
     mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
 				(Addr)(newEntry->virtualStack), size);
   }
@@ -349,6 +359,8 @@ void exit_function(FunctionEntry* f)
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
   Addr xDX = VG_(get_xDX)(currentTID);
+
+  FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
 
   // Ok, in Valgrind 2.X, we needed to directly code some assembly to
   // grab the top of the floating-point stack, but Valgrind 3.0
@@ -546,13 +558,13 @@ void fjalar_post_clo_init()
   // Handle variables set by command-line options:
 
   FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%x] (Assumes that filename is first argument in client_argv)\n\n",
-	  executable_filename, executable_filename);
+	  executable_filename, (unsigned int)executable_filename);
 
   // --disambig results in the disambig filename being ${executable_filename}.disambig
   // (overrides --disambig-file option)
   if (fjalar_default_disambig) {
     char* disambig_filename =
-      VG_(calloc)(VG_(strlen)(executable_filename) + DISAMBIG_LEN + 1,
+      VG_(calloc)("fjalar_main.c: fj_po_clo_init", VG_(strlen)(executable_filename) + DISAMBIG_LEN + 1,
 	     sizeof(*disambig_filename));
 
     VG_(strcpy)(disambig_filename, executable_filename);
@@ -560,21 +572,26 @@ void fjalar_post_clo_init()
     fjalar_disambig_filename = disambig_filename;
   }
 
+
+
   FJALAR_DPRINTF("\n%s\n\n", fjalar_disambig_filename);
 
   // Calls into typedata.c:
   initialize_typedata_structures();
 
+  FJALAR_DPRINTF("Typedata structures completed\n");
+
   // Calls into readelf.c:
   process_elf_binary_data(executable_filename);
 
+  FJALAR_DPRINTF("Process elf binary completed\n");
   // Call this BEFORE initializeAllFjalarData() so that the vars_tree
   // objects can be initialized for the --var-list-file option:
   loadAuxiliaryFileData();
 
   // Calls into generate_fjalar_entries.c:
   initializeAllFjalarData();
-
+  FJALAR_DPRINTF("Fjalar data initialized\n");
   if (fjalar_disambig_filename) {
     handleDisambigFile();
   }
@@ -583,8 +600,10 @@ void fjalar_post_clo_init()
   // proper data is ready:
   outputAuxiliaryFilesAndExit();
 
+  FJALAR_DPRINTF("Files output\n");
   // Make sure to execute this last!
   fjalar_tool_post_clo_init();
+  FJALAR_DPRINTF("Tool clo initialized\n");
 }
 
 

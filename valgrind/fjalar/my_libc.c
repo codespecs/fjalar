@@ -135,9 +135,9 @@ static int __stdio_parse_mode(const char *mode) {
 }
 
 static FILE*__stdio_init_file(int fd,int closeonerror,int mode) {
-    FILE *tmp=(FILE*)VG_(malloc)(sizeof(FILE));
+    FILE *tmp=(FILE*)VG_(malloc)("my_libc.c: stdio_init_file.1", sizeof(FILE));
   if (!tmp) goto err_out;
-  tmp->buf=(char*)VG_(malloc)(BUFSIZE);
+  tmp->buf=(char*)VG_(malloc)("my_libc.c: stdio_init_file.2", BUFSIZE);
   if (!tmp->buf) {
     VG_(free)(tmp);
 err_out:
@@ -150,7 +150,7 @@ err_out:
   tmp->bs=0;
   tmp->buflen=BUFSIZE;
   {
-    struct vki_stat st;
+    struct vg_stat st;
     VG_(fstat)(fd,&st);
     tmp->flags=(VKI_S_ISFIFO(st.st_mode))?FDPIPE:0;
   }

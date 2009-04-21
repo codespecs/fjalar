@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -34,11 +34,33 @@
 // The basic stack trace type:  just an array of code addresses.
 typedef Addr* StackTrace;
 
-// Walks the stack to get instruction pointers from the top stack frames for
-// thread 'tid'.  Maximum of 'n_ips' addresses put into 'ips';  0 is the top
-// of the stack, 1 is its caller, etc.  Everything from ips[n_ips] onwards
-// is undefined and should not be read.
-extern UInt VG_(get_StackTrace) ( ThreadId tid, StackTrace ips, UInt n_ips );
+// Walks the stack to get instruction pointers from the top stack frames 
+// for thread 'tid'.  Maximum of 'n_ips' addresses put into 'ips';
+// 0 is the top of the stack, 1 is its caller, etc.  Everything from
+// ips[return_value] onwards is undefined and should not be read.
+// The initial IP value to use is adjusted by first_ip_delta before
+// the stack is unwound. A safe value to pass is zero.
+//
+// The specific meaning of the returned addresses is:
+//
+// [0] is the IP of thread 'tid'
+// [1] points to the last byte of the call instruction that called [0].
+// [2] points to the last byte of the call instruction that called [1].
+// etc etc
+//
+// Hence ips[0 .. return_value-1] should all point to currently
+// 'active' (in the sense of a stack of unfinished function calls)
+// instructions.  [0] points to the start of an arbitrary instruction.#
+// [1 ..] point to the last byte of a chain of call instructions.
+//
+// If sps and fps are non-NULL, the corresponding frame-pointer and
+// stack-pointer values for each frame are stored there.
+
+extern UInt VG_(get_StackTrace) ( ThreadId tid, 
+                                  /*OUT*/StackTrace ips, UInt n_ips,
+                                  /*OUT*/StackTrace sps,
+                                  /*OUT*/StackTrace fps,
+                                  Word first_ip_delta );
 
 // Apply a function to every element in the StackTrace.  The parameter 'n'
 // gives the index of the passed ip.  Doesn't go below main() unless

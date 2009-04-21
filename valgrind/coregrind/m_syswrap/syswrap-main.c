@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 
 #include "libvex_guest_offsets.h"
 #include "pub_core_basics.h"
+#include "pub_core_aspacemgr.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
@@ -38,13 +39,14 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_libcproc.h"      // For VG_(getpid)()
 #include "pub_core_libcsignal.h"
-#include "pub_core_scheduler.h"     // For VG_(set_sleeping), VG_(set_running),
+#include "pub_core_scheduler.h"     // For VG_({acquire,release}_BigLock),
                                     //   and VG_(vg_yield)
 #include "pub_core_stacktrace.h"    // For VG_(get_and_pp_StackTrace)()
 #include "pub_core_tooliface.h"
 #include "pub_core_options.h"
 #include "pub_core_signals.h"       // For VG_SIGVGKILL, VG_(poll_signals)
 #include "pub_core_syscall.h"
+#include "pub_core_machine.h"
 #include "pub_core_syswrap.h"
 
 #include "priv_types_n_macros.h"
@@ -81,6 +83,9 @@
 /* The main function is VG_(client_syscall).  The simulation calls it
    whenever a client thread wants to do a syscall.  The following is a
    sketch of what it does.
+
+   * Ensures the root thread's stack is suitably mapped.  Tedious and
+     arcane.  See big big comment in VG_(client_syscall).
 
    * First, it rounds up the syscall number and args (which is a
      platform dependent activity) and puts them in a struct ("args")
@@ -682,6 +687,11 @@ void bad_before ( ThreadId              tid,
 {
    VG_(message)
       (Vg_DebugMsg,"WARNING: unhandled syscall: %llu", (ULong)args->sysno);
+#  if defined(VGO_aix5)
+   VG_(message)
+      (Vg_DebugMsg,"           name of syscall: \"%s\"",
+                    VG_(aix5_sysno_to_sysname)(args->sysno));
+#  endif
    if (VG_(clo_verbosity) > 1) {
       VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
    }
@@ -689,6 +699,10 @@ void bad_before ( ThreadId              tid,
       (Vg_DebugMsg,"You may be able to write your own handler.");
    VG_(message)
       (Vg_DebugMsg,"Read the file README_MISSING_SYSCALL_OR_IOCTL.");
+   VG_(message)
+      (Vg_DebugMsg,"Nevertheless we consider this a bug.  Please report");
+   VG_(message)
+      (Vg_DebugMsg,"it at http://valgrind.org/support/bug_reports.html.");
 
    SET_STATUS_Failure(VKI_ENOSYS);
 }
@@ -780,6 +794,93 @@ void VG_(client_syscall) ( ThreadId tid )
 
    tst = VG_(get_ThreadState)(tid);
 
+   /* BEGIN ensure root thread's stack is suitably mapped */
+   /* In some rare circumstances, we may do the syscall without the
+      bottom page of the stack being mapped, because the stack pointer
+      was moved down just a few instructions before the syscall
+      instruction, and there have been no memory references since
+      then, that would cause a call to VG_(extend_stack) to have
+      happened.
+
+      In native execution that's OK: the kernel automagically extends
+      the stack's mapped area down to cover the stack pointer (or sp -
+      redzone, really).  In simulated normal execution that's OK too,
+      since any signals we get from accessing below the mapped area of
+      the (guest's) stack lead us to VG_(extend_stack), where we
+      simulate the kernel's stack extension logic.  But that leaves
+      the problem of entering a syscall with the SP unmapped.  Because
+      the kernel doesn't know that the segment immediately above SP is
+      supposed to be a grow-down segment, it causes the syscall to
+      fail, and thereby causes a divergence between native behaviour
+      (syscall succeeds) and simulated behaviour (syscall fails).
+
+      This is quite a rare failure mode.  It has only been seen
+      affecting calls to sys_readlink on amd64-linux, and even then it
+      requires a certain code sequence around the syscall to trigger
+      it.  Here is one:
+
+      extern int my_readlink ( const char* path );
+      asm(
+      ".text\n"
+      ".globl my_readlink\n"
+      "my_readlink:\n"
+      "\tsubq    $0x1008,%rsp\n"
+      "\tmovq    %rdi,%rdi\n"              // path is in rdi
+      "\tmovq    %rsp,%rsi\n"              // &buf[0] -> rsi
+      "\tmovl    $0x1000,%edx\n"           // sizeof(buf) in rdx
+      "\tmovl    $"__NR_READLINK",%eax\n"  // syscall number
+      "\tsyscall\n"
+      "\taddq    $0x1008,%rsp\n"
+      "\tret\n"
+      ".previous\n"
+      );
+
+      For more details, see bug #156404
+      (https://bugs.kde.org/show_bug.cgi?id=156404).
+
+      The fix is actually very simple.  We simply need to call
+      VG_(extend_stack) for this thread, handing it the lowest
+      possible valid address for stack (sp - redzone), to ensure the
+      pages all the way down to that address, are mapped.  Because
+      this is a potentially expensive and frequent operation, we
+      filter in two ways:
+
+      First, only the main thread (tid=1) has a growdown stack.  So
+      ignore all others.  It is conceivable, although highly unlikely,
+      that the main thread exits, and later another thread is
+      allocated tid=1, but that's harmless, I believe;
+      VG_(extend_stack) will do nothing when applied to a non-root
+      thread.
+
+      Secondly, first call VG_(am_find_nsegment) directly, to see if
+      the page holding (sp - redzone) is mapped correctly.  If so, do
+      nothing.  This is almost always the case.  VG_(extend_stack)
+      calls VG_(am_find_nsegment) twice, so this optimisation -- and
+      that's all it is -- more or less halves the number of calls to
+      VG_(am_find_nsegment) required.
+
+      TODO: the test "seg->kind == SkAnonC" is really inadequate,
+      because although it tests whether the segment is mapped
+      _somehow_, it doesn't check that it has the right permissions
+      (r,w, maybe x) ?  We could test that here, but it will also be
+      necessary to fix the corresponding test in VG_(extend_stack).
+
+      All this guff is of course Linux-specific.  Hence the ifdef.
+   */
+#  if defined(VGO_linux)
+   if (tid == 1/*ROOT THREAD*/) {
+      Addr     stackMin   = VG_(get_SP)(tid) - VG_STACK_REDZONE_SZB;
+      NSegment const* seg = VG_(am_find_nsegment)(stackMin);
+      if (seg && seg->kind == SkAnonC) {
+         /* stackMin is already mapped.  Nothing to do. */
+      } else {
+         (void)VG_(extend_stack)( stackMin,
+                                  tst->client_stack_szB );
+      }
+   }
+#  endif
+   /* END ensure root thread's stack is suitably mapped */
+
    /* First off, get the syscall args and number.  This is a
       platform-dependent action. */
 
@@ -858,12 +959,17 @@ void VG_(client_syscall) ( ThreadId tid )
    if (sci->status.what == SsComplete && !sci->status.sres.isError) {
       /* The pre-handler completed the syscall itself, declaring
          success. */
-      PRINT(" --> [pre-success] Success(0x%llx)\n", (ULong)sci->status.sres.res );
-                                       
+      if (sci->flags & SfNoWriteResult) {
+         PRINT(" --> [pre-success] NoWriteResult\n");
+      } else {
+         PRINT(" --> [pre-success] Success(0x%llx)\n",
+               (ULong)sci->status.sres.res );
+      }                                      
       /* In this case the allowable flags are to ask for a signal-poll
          and/or a yield after the call.  Changing the args isn't
          allowed. */
-      vg_assert(0 == (sci->flags & ~(SfPollAfter | SfYieldAfter)));
+      vg_assert(0 == (sci->flags 
+                      & ~(SfPollAfter | SfYieldAfter | SfNoWriteResult)));
       vg_assert(eq_SyscallArgs(&sci->args, &sci->orig_args));
    }
 
@@ -915,7 +1021,7 @@ void VG_(client_syscall) ( ThreadId tid )
          putSyscallArgsIntoGuestState( &sci->args, &tst->arch.vex );
 
          /* Drop the lock */
-         VG_(set_sleeping)(tid, VgTs_WaitSys, "VG_(client_syscall)[async]");
+         VG_(release_BigLock)(tid, VgTs_WaitSys, "VG_(client_syscall)[async]");
 
          /* Do the call, which operates directly on the guest state,
             not on our abstracted copies of the args/result. */
@@ -930,14 +1036,14 @@ void VG_(client_syscall) ( ThreadId tid )
             to the scheduler.  */
 
          /* Reacquire the lock */
-         VG_(set_running)(tid, "VG_(client_syscall)[async]");
+         VG_(acquire_BigLock)(tid, "VG_(client_syscall)[async]");
 
          /* Even more impedance matching.  Extract the syscall status
             from the guest state. */
          getSyscallStatusFromGuestState( &sci->status, &tst->arch.vex );
          vg_assert(sci->status.what == SsComplete);
 
-         PRINT("SYSCALL[%d,%d](%3d) ... [async] --> %s(0x%llx)\n",
+         PRINT("SYSCALL[%d,%d](%3ld) ... [async] --> %s(0x%llx)\n",
                VG_(getpid)(), tid, sysno, 
                sci->status.sres.isError ? "Failure" : "Success",
                sci->status.sres.isError ? (ULong)sci->status.sres.err
@@ -971,7 +1077,8 @@ void VG_(client_syscall) ( ThreadId tid )
 
    /* Dump the syscall result back in the guest state.  This is
       a platform-specific action. */
-   putSyscallStatusIntoGuestState( &sci->status, &tst->arch.vex );
+   if (!(sci->flags & SfNoWriteResult))
+      putSyscallStatusIntoGuestState( &sci->status, &tst->arch.vex );
 
    /* Situation now:
       - the guest state is now correctly modified following the syscall
@@ -1022,11 +1129,13 @@ void VG_(post_syscall) (ThreadId tid)
 
    /* Validate current syscallInfo entry.  In particular we require
       that the current .status matches what's actually in the guest
-      state. */
+      state.  At least in the normal case where we have actually
+      previously written the result into the guest state. */
    vg_assert(sci->status.what == SsComplete);
 
    getSyscallStatusFromGuestState( &test_status, &tst->arch.vex );
-   vg_assert(eq_SyscallStatus( &sci->status, &test_status ));
+   if (!(sci->flags & SfNoWriteResult))
+      vg_assert(eq_SyscallStatus( &sci->status, &test_status ));
    /* Ok, looks sane */
 
    /* Get the system call number.  Because the pre-handler isn't
@@ -1061,7 +1170,8 @@ void VG_(post_syscall) (ThreadId tid)
       post-handler for sys_open can change the result from success to
       failure if the kernel supplied a fd that it doesn't like), once
       again dump the syscall result back in the guest state.*/
-   putSyscallStatusIntoGuestState( &sci->status, &tst->arch.vex );
+   if (!(sci->flags & SfNoWriteResult))
+      putSyscallStatusIntoGuestState( &sci->status, &tst->arch.vex );
 
    /* Do any post-syscall actions required by the tool. */
    if (VG_(needs).syscall_wrapper)
@@ -1137,7 +1247,7 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
       
       if (p[0] != 0xcd || p[1] != 0x80)
          VG_(message)(Vg_DebugMsg,
-                      "?! restarting over syscall at %p %02x %02x\n",
+                      "?! restarting over syscall at %#x %02x %02x\n",
                       arch->vex.guest_EIP, p[0], p[1]); 
 
       vg_assert(p[0] == 0xcd && p[1] == 0x80);
@@ -1156,7 +1266,7 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
       
       if (p[0] != 0x0F || p[1] != 0x05)
          VG_(message)(Vg_DebugMsg,
-                      "?! restarting over syscall at %p %02x %02x\n",
+                      "?! restarting over syscall at %#llx %02x %02x\n",
                       arch->vex.guest_RIP, p[0], p[1]); 
 
       vg_assert(p[0] == 0x0F && p[1] == 0x05);
@@ -1175,8 +1285,8 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
 
       if (p[0] != 0x44 || p[1] != 0x0 || p[2] != 0x0 || p[3] != 0x02)
          VG_(message)(Vg_DebugMsg,
-                      "?! restarting over syscall at %p %02x %02x %02x %02x\n",
-                      arch->vex.guest_CIA, p[0], p[1], p[2], p[3]);
+                      "?! restarting over syscall at %#llx %02x %02x %02x %02x\n",
+                      arch->vex.guest_CIA + 0ULL, p[0], p[1], p[2], p[3]);
 
       vg_assert(p[0] == 0x44 && p[1] == 0x0 && p[2] == 0x0 && p[3] == 0x2);
    }
@@ -1201,8 +1311,8 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
 
       if (p[0] != 0x44 || p[1] != 0x0 || p[2] != 0x0 || p[3] != 0x02)
          VG_(message)(Vg_DebugMsg,
-                      "?! restarting over syscall at %p %02x %02x %02x %02x\n",
-                      arch->vex.guest_CIA, p[0], p[1], p[2], p[3]);
+                      "?! restarting over syscall at %#lx %02x %02x %02x %02x\n",
+                      (UWord)arch->vex.guest_CIA, p[0], p[1], p[2], p[3]);
 
       vg_assert(p[0] == 0x44 && p[1] == 0x0 && p[2] == 0x0 && p[3] == 0x2);
    }
@@ -1283,7 +1393,7 @@ VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid,
       (real) IP at the time of the signal, and act accordingly. */
 
    if (ip < ML_(blksys_setup) || ip >= ML_(blksys_finished)) {
-      VG_(printf)("  not in syscall (%p - %p)\n", 
+      VG_(printf)("  not in syscall (%#lx - %#lx)\n",
                   ML_(blksys_setup), ML_(blksys_finished));
       /* Looks like we weren't in a syscall at all.  Hmm. */
       vg_assert(sci->status.what != SsIdle);
@@ -1314,7 +1424,8 @@ VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid,
          canonical = convert_SysRes_to_SyscallStatus( 
                         VG_(mk_SysRes_Error)( VKI_EINTR ) 
                      );
-         putSyscallStatusIntoGuestState( &canonical, &th_regs->vex );
+         if (!(sci->flags & SfNoWriteResult))
+            putSyscallStatusIntoGuestState( &canonical, &th_regs->vex );
          sci->status = canonical;
          VG_(post_syscall)(tid);
       }
@@ -1328,7 +1439,8 @@ VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid,
       if (debug)
          VG_(printf)("  completed\n");
       canonical = convert_SysRes_to_SyscallStatus( sres );
-      putSyscallStatusIntoGuestState( &canonical, &th_regs->vex );
+      if (!(sci->flags & SfNoWriteResult))
+         putSyscallStatusIntoGuestState( &canonical, &th_regs->vex );
       sci->status = canonical;
       VG_(post_syscall)(tid);
    } 

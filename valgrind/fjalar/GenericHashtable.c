@@ -25,13 +25,13 @@
 //#include "dmalloc.h"
 
 extern void  VG_(free)           ( void* p );
-extern void* VG_(calloc)         ( unsigned int n, unsigned int bytes_per_elem );
+extern void* VG_(calloc)         (char *c, unsigned int n, unsigned int bytes_per_elem );
 
 #define MAXINT 2147483647
 
 int genputtable(struct genhashtable *ht, void * key, void * object) {
   unsigned int bin=genhashfunction(ht,key);
-  struct genpointerlist * newptrlist=(struct genpointerlist *) VG_(calloc)(1,sizeof(struct genpointerlist));
+  struct genpointerlist * newptrlist=(struct genpointerlist *) VG_(calloc)("GenericHashTable.c: genputtable.1", 1,sizeof(struct genpointerlist));
   newptrlist->src=key;
   newptrlist->object=object;
   newptrlist->next=ht->bins[bin];
@@ -53,7 +53,7 @@ int genputtable(struct genhashtable *ht, void * key, void * object) {
     long newcurrentsize=(ht->currentsize<(MAXINT/2))?ht->currentsize*2:MAXINT;
     long oldcurrentsize=ht->currentsize;
     //    VG_(printf)("genputtable() - resize - old: %u, new: %u\n", oldcurrentsize, newcurrentsize);
-    struct genpointerlist **newbins=(struct genpointerlist **) VG_(calloc)(1,sizeof (struct genpointerlist *)*newcurrentsize);
+    struct genpointerlist **newbins=(struct genpointerlist **) VG_(calloc)("GenericHashTable.c: genputtable.2", 1,sizeof (struct genpointerlist *)*newcurrentsize);
     struct genpointerlist **oldbins=ht->bins;
     long j,i;
     for(j=0;j<newcurrentsize;j++) newbins[j]=NULL;
@@ -167,9 +167,9 @@ unsigned int genhashfunction(struct genhashtable *ht, void * key) {
 }
 
 struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *, void *)) {
-  struct genhashtable *ght=(struct genhashtable *) VG_(calloc)(1,sizeof(struct genhashtable));
-  //  VG_(printf)("genallocate() - allocate - initial: %u\n", geninitialnumbins);
-  struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)(1,sizeof(struct genpointerlist *)*geninitialnumbins);
+  //VG_(printf)("genallocate() - allocate - initial: %u @ %x\n", geninitialnumbins, ght);
+  struct genhashtable *ght=(struct genhashtable *) VG_(calloc)("GenericHashTable.c: genallocatehashtable.1", 1,sizeof(struct genhashtable));
+  struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)("GenericHashTable.c: genallocatehashtable.2", 1,sizeof(struct genpointerlist *)*geninitialnumbins);
   int i;
   for(i=0;i<geninitialnumbins;i++)
     gpl[i]=NULL;
@@ -185,9 +185,9 @@ struct genhashtable * genallocatehashtable(unsigned int (*hash_function)(void *)
 
 // PG - Copy-and-paste to create smaller hash tables to not waste as much space.
 struct genhashtable * genallocateSMALLhashtable(unsigned int (*hash_function)(void *),int (*comp_function)(void *, void *)) {
-  struct genhashtable *ght=(struct genhashtable *) VG_(calloc)(1,sizeof(struct genhashtable));
-  //  VG_(printf)("genallocatesmall() - allocate - initial: %u\n", genSMALLinitialnumbins);
-  struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)(1,sizeof(struct genpointerlist *)*genSMALLinitialnumbins);
+  //VG_(printf)("genallocatesmall() - allocate - initial: %u @ %x\n", geninitialnumbins, ght);
+  struct genhashtable *ght=(struct genhashtable *) VG_(calloc)("GenericHashTable.c: genallocateSMALLhashtable.1", 1,sizeof(struct genhashtable));
+  struct genpointerlist **gpl=(struct genpointerlist **) VG_(calloc)("GenericHashTable.c: genallocateSMALLhashtable.2", 1,sizeof(struct genpointerlist *)*genSMALLinitialnumbins);
   int i;
   for(i=0;i<genSMALLinitialnumbins;i++)
     gpl[i]=NULL;
@@ -239,7 +239,7 @@ void genfreehashtableandvalues(struct genhashtable * ht) {
 }
 
 struct geniterator * gengetiterator(struct genhashtable *ht) {
-  struct geniterator *gi=(struct geniterator*)VG_(calloc)(1,sizeof(struct geniterator));
+  struct geniterator *gi=(struct geniterator*)VG_(calloc)("GenericHashTable.c: gengetiterator",1,sizeof(struct geniterator));
   gi->ptr=ht->list;
   // pgbovine - to handle an iterator to an empty hashtable
   if (!gi->ptr) {

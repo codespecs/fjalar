@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -59,6 +59,8 @@ typedef unsigned int vki_u32;
 
 #define VKI_PAGE_SHIFT	12
 #define VKI_PAGE_SIZE	(1UL << VKI_PAGE_SHIFT)
+#define VKI_MAX_PAGE_SHIFT	VKI_PAGE_SHIFT
+#define VKI_MAX_PAGE_SIZE	VKI_PAGE_SIZE
 
 //----------------------------------------------------------------------
 // From linux-2.6.9/include/asm-x86_64/signal.h
@@ -237,6 +239,8 @@ struct vki_sigcontext {
 #define VKI_O_APPEND	  02000
 #define VKI_O_NONBLOCK	  04000
 #define VKI_O_LARGEFILE	0100000
+
+#define VKI_AT_FDCWD            -100
 
 #define VKI_F_DUPFD		0	/* dup */
 #define VKI_F_GETFD		1	/* get close_on_exec */

@@ -1,4 +1,3 @@
-
 ## This file should be included by *every* Makefile.am, except those for docs/
 ## and tests/ subdirectories.
 

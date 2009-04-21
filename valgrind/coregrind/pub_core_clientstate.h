@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -41,9 +41,6 @@
 #include "pub_tool_clientstate.h"
 
 // Address space globals
-
-extern Addr  VG_(client_base);	 // client address space limits
-extern Addr  VG_(client_end);
 
 extern Addr  VG_(clstk_base);	 // client stack range
 extern Addr  VG_(clstk_end);

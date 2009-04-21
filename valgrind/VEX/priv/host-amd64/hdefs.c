@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -168,7 +168,7 @@ void getAllocableRegs_AMD64 ( Int* nregs, HReg** arr )
    (*arr)[ 5] = hregAMD64_XMM9();
 #endif
 #if 1
-   *nregs = 19;
+   *nregs = 20;
    *arr = LibVEX_Alloc(*nregs * sizeof(HReg));
    (*arr)[ 0] = hregAMD64_RSI();
    (*arr)[ 1] = hregAMD64_RDI();
@@ -190,7 +190,7 @@ void getAllocableRegs_AMD64 ( Int* nregs, HReg** arr )
    (*arr)[16] = hregAMD64_XMM10();
    (*arr)[17] = hregAMD64_XMM11();
    (*arr)[18] = hregAMD64_XMM12();
-
+   (*arr)[19] = hregAMD64_R10();
 #endif
 }
 
@@ -549,7 +549,7 @@ HChar* showA87FpOp ( A87FpOp op ) {
       case Afp_YL2X:   return "yl2x";
       case Afp_YL2XP1: return "yl2xp1";
       case Afp_PREM:   return "prem";
-//..       case Xfp_PREM1:  return "prem1";
+      case Afp_PREM1:  return "prem1";
       case Afp_SQRT:   return "sqrt";
 //..       case Xfp_ABS:    return "abs";
 //..       case Xfp_NEG:    return "chs";
@@ -681,6 +681,13 @@ AMD64Instr* AMD64Instr_Unary64 ( AMD64UnaryOp op, HReg dst ) {
    i->tag             = Ain_Unary64;
    i->Ain.Unary64.op  = op;
    i->Ain.Unary64.dst = dst;
+   return i;
+}
+AMD64Instr* AMD64Instr_Lea64 ( AMD64AMode* am, HReg dst ) {
+   AMD64Instr* i      = LibVEX_Alloc(sizeof(AMD64Instr));
+   i->tag             = Ain_Lea64;
+   i->Ain.Lea64.am    = am;
+   i->Ain.Lea64.dst   = dst;
    return i;
 }
 AMD64Instr* AMD64Instr_MulL ( Bool syned, AMD64RM* src ) {
@@ -1062,6 +1069,12 @@ void ppAMD64Instr ( AMD64Instr* i, Bool mode64 )
          vex_printf("%sq ", showAMD64UnaryOp(i->Ain.Unary64.op));
          ppHRegAMD64(i->Ain.Unary64.dst);
          return;
+      case Ain_Lea64:
+         vex_printf("leaq ");
+         ppAMD64AMode(i->Ain.Lea64.am);
+         vex_printf(",");
+         ppHRegAMD64(i->Ain.Lea64.dst);
+         return;
       case Ain_MulL:
          vex_printf("%cmulq ", i->Ain.MulL.syned ? 's' : 'u');
          ppAMD64RM(i->Ain.MulL.src);
@@ -1385,6 +1398,10 @@ void getRegUsage_AMD64Instr ( HRegUsage* u, AMD64Instr* i, Bool mode64 )
       case Ain_Unary64:
          addHRegUse(u, HRmModify, i->Ain.Unary64.dst);
          return;
+      case Ain_Lea64:
+         addRegUsage_AMD64AMode(u, i->Ain.Lea64.am);
+         addHRegUse(u, HRmWrite, i->Ain.Lea64.dst);
+         return;
       case Ain_MulL:
          addRegUsage_AMD64RM(u, i->Ain.MulL.src, HRmRead);
          addHRegUse(u, HRmModify, hregAMD64_RAX());
@@ -1664,6 +1681,10 @@ void mapRegs_AMD64Instr ( HRegRemap* m, AMD64Instr* i, Bool mode64 )
          return;
       case Ain_Unary64:
          mapReg(m, &i->Ain.Unary64.dst);
+         return;
+      case Ain_Lea64:
+         mapRegs_AMD64AMode(m, i->Ain.Lea64.am);
+         mapReg(m, &i->Ain.Lea64.dst);
          return;
       case Ain_MulL:
          mapRegs_AMD64RM(m, i->Ain.MulL.src);
@@ -1969,6 +1990,17 @@ static Bool fits8bits ( UInt w32 )
 {
    Int i32 = (Int)w32;
    return toBool(i32 == ((i32 << 24) >> 24));
+}
+/* Can the lower 32 bits be signedly widened to produce the whole
+   64-bit value?  In other words, are the top 33 bits either all 0 or
+   all 1 ? */
+static Bool fitsIn32Bits ( ULong x )
+{
+   Long y0 = (Long)x;
+   Long y1 = y0;
+   y1 <<= 32;
+   y1 >>=/*s*/ 32;
+   return toBool(x == y1);
 }
 
 
@@ -2473,6 +2505,12 @@ Int emit_AMD64Instr ( UChar* buf, Int nbuf, AMD64Instr* i,
       }
       break;
 
+   case Ain_Lea64:
+      *p++ = rexAMode_M(i->Ain.Lea64.dst, i->Ain.Lea64.am);
+      *p++ = 0x8D;
+      p = doAMode_M(p, i->Ain.Lea64.dst, i->Ain.Lea64.am);
+      goto done;
+
    case Ain_MulL:
       subopc = i->Ain.MulL.syned ? 5 : 4;
       switch (i->Ain.MulL.src->tag)  {
@@ -2574,25 +2612,36 @@ Int emit_AMD64Instr ( UChar* buf, Int nbuf, AMD64Instr* i,
             goto bad;
       }
 
-   case Ain_Call:
+   case Ain_Call: {
       /* As per detailed comment for Ain_Call in
          getRegUsage_AMD64Instr above, %r11 is used as an address
          temporary. */
       /* jump over the following two insns if the condition does not
          hold */
+      Bool shortImm = fitsIn32Bits(i->Ain.Call.target);
       if (i->Ain.Call.cond != Acc_ALWAYS) {
          *p++ = toUChar(0x70 + (0xF & (i->Ain.Call.cond ^ 1)));
-         *p++ = 13; /* 13 bytes in the next two insns */
+         *p++ = shortImm ? 10 : 13;
+         /* 10 or 13 bytes in the next two insns */
       }
-      /* movabsq $target, %r11 */
-      *p++ = 0x49;
-      *p++ = 0xBB;
-      p = emit64(p, i->Ain.Call.target);
-      /* call *%r11 */
+      if (shortImm) {
+         /* 7 bytes: movl sign-extend(imm32), %r11 */
+         *p++ = 0x49;
+         *p++ = 0xC7;
+         *p++ = 0xC3;
+         p = emit32(p, (UInt)i->Ain.Call.target);
+      } else {
+         /* 10 bytes: movabsq $target, %r11 */
+         *p++ = 0x49;
+         *p++ = 0xBB;
+         p = emit64(p, i->Ain.Call.target);
+      }
+      /* 3 bytes: call *%r11 */
       *p++ = 0x41;
       *p++ = 0xFF;
       *p++ = 0xD3;
       goto done;
+   }
 
    case Ain_Goto:
       /* Use ptmp for backpatching conditional jumps. */
@@ -2640,6 +2689,12 @@ Int emit_AMD64Instr ( UChar* buf, Int nbuf, AMD64Instr* i,
          case Ijk_NoRedir:
             *p++ = 0xBD;
             p = emit32(p, VEX_TRC_JMP_NOREDIR); break;
+         case Ijk_SigTRAP:
+            *p++ = 0xBD;
+            p = emit32(p, VEX_TRC_JMP_SIGTRAP); break;
+         case Ijk_SigSEGV:
+            *p++ = 0xBD;
+            p = emit32(p, VEX_TRC_JMP_SIGSEGV); break;
          case Ijk_Ret:
          case Ijk_Call:
          case Ijk_Boring:
@@ -2671,11 +2726,19 @@ Int emit_AMD64Instr ( UChar* buf, Int nbuf, AMD64Instr* i,
          destined for %rax immediately prior to this Ain_Goto. */
       vassert(sizeof(ULong) == sizeof(void*));
       vassert(dispatch != NULL);
-      /* movabsq $imm64, %rdx */
-      *p++ = 0x48;
-      *p++ = 0xBA;
-      p = emit64(p, Ptr_to_ULong(dispatch));
 
+      if (fitsIn32Bits(Ptr_to_ULong(dispatch))) {
+         /* movl sign-extend(imm32), %rdx */
+         *p++ = 0x48;
+         *p++ = 0xC7;
+         *p++ = 0xC2;
+         p = emit32(p, (UInt)Ptr_to_ULong(dispatch));
+      } else {
+         /* movabsq $imm64, %rdx */
+         *p++ = 0x48;
+         *p++ = 0xBA;
+         p = emit64(p, Ptr_to_ULong(dispatch));
+      }
       /* jmp *%rdx */
       *p++ = 0xFF;
       *p++ = 0xE2;
@@ -2822,6 +2885,7 @@ Int emit_AMD64Instr ( UChar* buf, Int nbuf, AMD64Instr* i,
          case Afp_YL2X:   *p++ = 0xD9; *p++ = 0xF1; break;
          case Afp_YL2XP1: *p++ = 0xD9; *p++ = 0xF9; break;
          case Afp_PREM:   *p++ = 0xD9; *p++ = 0xF8; break;
+         case Afp_PREM1:  *p++ = 0xD9; *p++ = 0xF5; break;
          default: goto bad;
       }
       goto done;

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -178,9 +178,10 @@ DECL_TEMPLATE(generic, sys_fstatfs);               // * L?
 DECL_TEMPLATE(generic, sys_iopl);                  // (x86/amd64) L
 DECL_TEMPLATE(generic, sys_ipc);                   // (x86) L
 DECL_TEMPLATE(generic, sys_newuname);              // * P
-DECL_TEMPLATE(generic, sys_init_module);           // * L?
-DECL_TEMPLATE(generic, sys_pread64);               // * (Unix98?)
-DECL_TEMPLATE(generic, sys_pwrite64);              // * (Unix98?)
+DECL_TEMPLATE(generic, sys_pread64_on32bitplat);   // * (Unix98?)
+DECL_TEMPLATE(generic, sys_pread64_on64bitplat);   // * (Unix98?)
+DECL_TEMPLATE(generic, sys_pwrite64_on32bitplat);  // * (Unix98?)
+DECL_TEMPLATE(generic, sys_pwrite64_on64bitplat);  // * (Unix98?)
 DECL_TEMPLATE(generic, sys_sigaltstack);           // (x86) (XPG4-UNIX)
 DECL_TEMPLATE(generic, sys_getpmsg);               // (?) (?)
 DECL_TEMPLATE(generic, sys_putpmsg);               // (?) (?)
@@ -191,7 +192,6 @@ DECL_TEMPLATE(generic, sys_lchown);                // * (L?)
 DECL_TEMPLATE(generic, sys_mincore);               // * L?
 DECL_TEMPLATE(generic, sys_getdents64);            // * (SVr4,SVID?)
 DECL_TEMPLATE(generic, sys_fcntl64);               // * P?
-DECL_TEMPLATE(generic, sys_lookup_dcookie);        // (*/32/64) L
 DECL_TEMPLATE(generic, sys_statfs64);              // * (?)
 DECL_TEMPLATE(generic, sys_fstatfs64);             // * (?)
 

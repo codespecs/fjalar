@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -129,7 +129,7 @@ static HReg newVRegI ( ISelEnv* env )
 static ARMAMode1*     iselIntExpr_AMode1_wrk ( ISelEnv* env, IRExpr* e );
 static ARMAMode1*     iselIntExpr_AMode1     ( ISelEnv* env, IRExpr* e );
 
-static ARMAMode2*     iselIntExpr_AMode2_wrk ( ISelEnv* env, IRExpr* e );
+/* static ARMAMode2*     iselIntExpr_AMode2_wrk ( ISelEnv* env, IRExpr* e ); */
 static ARMAMode2*     iselIntExpr_AMode2     ( ISelEnv* env, IRExpr* e );
 
 static ARMAMode3*     iselIntExpr_AMode3_wrk ( ISelEnv* env, IRExpr* e );
@@ -487,7 +487,7 @@ void doHelperCall ( ISelEnv* env,
    offset. */
 
 static
-ARMAMode2* genGuestArrayOffset ( ISelEnv* env, IRArray* descr, 
+ARMAMode2* genGuestArrayOffset ( ISelEnv* env, IRRegArray* descr, 
 				 IRExpr* off, Int bias )
 {
    HReg tmp, tmp2, roff;
@@ -601,6 +601,7 @@ static ARMAMode1* iselIntExpr_AMode1_wrk ( ISelEnv* env, IRExpr* e )
 
 /* ---------------- Addressing Mode 2 ---------------- */
 
+__attribute__((unused))
 static Bool sane_AMode2 ( ARMAMode2* am )
 {
    switch (am->tag) {
@@ -609,12 +610,14 @@ static Bool sane_AMode2 ( ARMAMode2* am )
    }
 }
 
+/* Apparently unused
 static ARMAMode2* iselIntExpr_AMode2_wrk ( ISelEnv* env, IRExpr* e )
 {
     ARMAMode2* am = iselIntExpr_AMode2_wrk(env, e);
     vassert(sane_AMode2(am));
     return am;
 }
+*/
 
 /* DO NOT CALL THIS DIRECTLY ! */
 static ARMAMode2* iselIntExpr_AMode2 ( ISelEnv* env, IRExpr* e )
@@ -824,12 +827,12 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
 
    /* --------- TMP --------- */
    /* assign value to temporary */
-   case Ist_Tmp: {
-      IRTemp tmp = stmt->Ist.Tmp.tmp;
+   case Ist_WrTmp: {
+      IRTemp tmp = stmt->Ist.WrTmp.tmp;
       IRType ty = typeOfIRTemp(env->type_env, tmp);
 
       if (ty == Ity_I32 || ty == Ity_I16 || ty == Ity_I8) {
-         ARMAMode1* am = iselIntExpr_AMode1(env, stmt->Ist.Tmp.data);
+         ARMAMode1* am = iselIntExpr_AMode1(env, stmt->Ist.WrTmp.data);
          HReg dst = lookupIRTemp(env, tmp);
          addInstr(env, ARMInstr_DPInstr1(ARMalu_MOV,dst,am));
          return;
@@ -927,9 +930,9 @@ static void iselNext ( ISelEnv* env, IRExpr* next, IRJumpKind jk )
 /*--- Insn selector top-level                           ---*/
 /*---------------------------------------------------------*/
 
-/* Translate an entire BB to arm code. */
+/* Translate an entire SB to arm code. */
 
-HInstrArray* iselBB_ARM ( IRBB* bb )
+HInstrArray* iselSB_ARM ( IRSB* bb )
 {
     Int     i, j;
 

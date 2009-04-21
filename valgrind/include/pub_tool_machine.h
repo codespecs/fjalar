@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -101,12 +101,28 @@ extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 
 // END - pgbovine
 
-// For get/set, 'area' is where the asked-for shadow state will be copied
-// into/from.
-extern void VG_(get_shadow_regs_area) ( ThreadId tid, OffT guest_state_offset,
-                                        SizeT size, UChar* area );
-extern void VG_(set_shadow_regs_area) ( ThreadId tid, OffT guest_state_offset,
-                                        SizeT size, const UChar* area );
+// For get/set, 'area' is where the asked-for guest state will be copied
+// into/from.  If shadowNo == 0, the real (non-shadow) guest state is
+// accessed.  If shadowNo == 1, the first shadow area is accessed, and
+// if shadowNo == 2, the second shadow area is accessed.  This gives a
+// completely general way to read/modify a thread's guest register state
+// providing you know the offsets you need.
+void
+VG_(get_shadow_regs_area) ( ThreadId tid, 
+                            /*DST*/UChar* dst,
+                            /*SRC*/Int shadowNo, OffT offset, SizeT size );
+void
+VG_(set_shadow_regs_area) ( ThreadId tid, 
+                            /*DST*/Int shadowNo, OffT offset, SizeT size,
+                            /*SRC*/const UChar* src );
+
+// Sets the shadow values for the syscall return value register(s).
+// This is platform specific.
+void VG_(set_syscall_return_shadows) ( ThreadId tid,
+                                       /* shadow vals for the result */
+                                       UWord s1res, UWord s2res,
+                                       /* shadow vals for the error val */
+                                       UWord s1err, UWord s2err );
 
 // Apply a function 'f' to all the general purpose registers in all the
 // current threads.
@@ -114,11 +130,19 @@ extern void VG_(set_shadow_regs_area) ( ThreadId tid, OffT guest_state_offset,
 // doing leak checking.
 extern void VG_(apply_to_GP_regs)(void (*f)(UWord val));
 
-// This iterator lets you inspect each live thread's stack bounds.  The
-// params are all 'out' params.  Returns False at the end.
-extern void VG_(thread_stack_reset_iter) ( void );
-extern Bool VG_(thread_stack_next)       ( ThreadId* tid, Addr* stack_min,
-                                                          Addr* stack_max );
+// This iterator lets you inspect each live thread's stack bounds.
+// Returns False at the end.  'tid' is the iterator and you can only
+// safely change it by making calls to these functions.
+extern void VG_(thread_stack_reset_iter) ( /*OUT*/ThreadId* tid );
+extern Bool VG_(thread_stack_next)       ( /*MOD*/ThreadId* tid,
+                                           /*OUT*/Addr* stack_min, 
+                                           /*OUT*/Addr* stack_max );
+
+// Returns .client_stack_highest_word for the given thread
+extern Addr VG_(thread_get_stack_max) ( ThreadId tid );
+
+// Returns how many bytes have been allocated for the stack of the given thread
+extern Addr VG_(thread_get_stack_size) ( ThreadId tid );
 
 // Given a pointer to a function as obtained by "& functionname" in C,
 // produce a pointer to the actual entry point for the function.  For

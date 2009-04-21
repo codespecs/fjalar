@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -80,9 +80,9 @@ extern Int  VG_(getgroups)( Int size, UInt* list );
 extern Int  VG_(ptrace)( Int request, Int pid, void *addr, void *data );
 
 // atfork
-typedef void (*vg_atfork_t)(ThreadId);
-extern void VG_(atfork_child)    ( vg_atfork_t child_action );
-extern void VG_(do_atfork_child) ( ThreadId tid );
+extern void VG_(do_atfork_pre)    ( ThreadId tid );
+extern void VG_(do_atfork_parent) ( ThreadId tid );
+extern void VG_(do_atfork_child)  ( ThreadId tid );
 
 #endif   // __PUB_CORE_LIBCPROC_H
 

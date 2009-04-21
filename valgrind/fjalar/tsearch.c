@@ -234,7 +234,7 @@ tsearch (const void *key, void **vrootp, __compar_fn_t compar)
       p_r = r;
     }
 
-  q = (struct node_t *) VG_(malloc) (sizeof (struct node_t));
+  q = (struct node_t *) VG_(malloc) ("tsearch.c: tsearch", sizeof (struct node_t));
   if (q != NULL)
     {
       *nextp = q;			/* link new node to old */

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -141,6 +141,16 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
       guest is amd64-linux                ==> 128
       guest is other                      ==> inapplicable
 
+   guest_amd64_assume_fs_is_zero
+      guest is amd64-linux                ==> True
+      guest is amd64-darwin               ==> False
+      guest is other                      ==> inapplicable
+
+   guest_amd64_assume_gs_is_0x60
+      guest is amd64-darwin               ==> True
+      guest is amd64-linux                ==> False
+      guest is other                      ==> inapplicable
+
    guest_ppc_zap_RZ_at_blr
       guest is ppc64-linux                ==> True
       guest is ppc32-linux                ==> False
@@ -179,6 +189,16 @@ typedef
          stack pointer are validly addressible? */
       Int guest_stack_redzone_size;
 
+      /* AMD64 GUESTS only: should we translate %fs-prefixed
+         instructions using the assumption that %fs always contains
+         zero? */
+      Bool guest_amd64_assume_fs_is_zero;
+
+      /* AMD64 GUESTS only: should we translate %gs-prefixed
+         instructions using the assumption that %gs always contains
+         0x60? */
+      Bool guest_amd64_assume_gs_is_0x60;
+
       /* PPC GUESTS only: should we zap the stack red zone at a 'blr'
          (function return) ? */
       Bool guest_ppc_zap_RZ_at_blr;
@@ -204,11 +224,11 @@ typedef
          reg if it is even-numbered?  True => yes, False => no. */
       Bool host_ppc32_regalign_int64_args;
    }
-   VexMiscInfo;
+   VexAbiInfo;
 
-/* Write default settings info *vmi. */
+/* Write default settings info *vbi. */
 extern 
-void LibVEX_default_VexMiscInfo ( /*OUT*/VexMiscInfo* vmi );
+void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi );
 
 
 /*-------------------------------------------------------*/
@@ -344,14 +364,18 @@ typedef
 /* A note about guest state layout.
 
    LibVEX defines the layout for the guest state, in the file
-   pub/libvex_guest_<arch>.h.  The struct will have an 8-aligned size.
-   Each translated bb is assumed to be entered with a specified
-   register pointing at such a struct.  Beyond that is a shadow
-   state area with the same size as the struct.  Beyond that is
-   a spill area that LibVEX may spill into.  It must have size
+   pub/libvex_guest_<arch>.h.  The struct will have an 16-aligned
+   size.  Each translated bb is assumed to be entered with a specified
+   register pointing at such a struct.  Beyond that is two copies of
+   the shadow state area with the same size as the struct.  Beyond
+   that is a spill area that LibVEX may spill into.  It must have size
    LibVEX_N_SPILL_BYTES, and this must be a 16-aligned number.
 
-   On entry, the baseblock pointer register must be 8-aligned.
+   On entry, the baseblock pointer register must be 16-aligned.
+
+   There must be no holes in between the primary guest state, its two
+   copies, and the spill area.  In short, all 4 areas must have a
+   16-aligned size and be 16-aligned, and placed back-to-back.
 */
 
 #define LibVEX_N_SPILL_BYTES 2048
@@ -419,7 +443,7 @@ typedef
       VexArchInfo  archinfo_guest;
       VexArch      arch_host;
       VexArchInfo  archinfo_host;
-      VexMiscInfo  miscinfo_both;
+      VexAbiInfo   abiinfo_both;
 
       /* IN: an opaque value which is passed as the first arg to all
          callback functions supplied in this struct.  Vex has no idea
@@ -450,16 +474,18 @@ typedef
 
       /* IN: optionally, two instrumentation functions.  May be
 	 NULL. */
-      IRBB*   (*instrument1) ( /*callback_opaque*/void*, 
-                               IRBB*, 
+      IRSB*   (*instrument1) ( /*callback_opaque*/void*, 
+                               IRSB*, 
                                VexGuestLayout*, 
                                VexGuestExtents*,
                                IRType gWordTy, IRType hWordTy );
-      IRBB*   (*instrument2) ( /*callback_opaque*/void*, 
-                               IRBB*, 
+      IRSB*   (*instrument2) ( /*callback_opaque*/void*, 
+                               IRSB*, 
                                VexGuestLayout*, 
                                VexGuestExtents*,
                                IRType gWordTy, IRType hWordTy );
+
+      IRSB* (*finaltidy) ( IRSB* );
 
       /* IN: should this translation be self-checking?  default: False */
       Bool    do_self_check;
@@ -467,13 +493,13 @@ typedef
       /* IN: optionally, a callback which allows the caller to add its
          own IR preamble following the self-check and any other
          VEX-generated preamble, if any.  May be NULL.  If non-NULL,
-         the IRBB under construction is handed to this function, which
+         the IRSB under construction is handed to this function, which
          presumably adds IR statements to it.  The callback may
          optionally complete the block and direct bb_to_IR not to
          disassemble any instructions into it; this is indicated by
          the callback returning True.
       */
-      Bool    (*preamble_function)(/*callback_opaque*/void*, IRBB*);
+      Bool    (*preamble_function)(/*callback_opaque*/void*, IRSB*);
 
       /* IN: debug: trace vex activity at various points */
       Int     traceflags;

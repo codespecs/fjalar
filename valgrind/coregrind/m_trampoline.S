@@ -7,9 +7,11 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2006 Julian Seward 
+  Copyright (C) 2000-2008 Julian Seward 
      jseward@acm.org
-
+  Copyright (C) 2006-2008 OpenWorks LLP
+     info@open-works.co.uk
+	
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
   published by the Free Software Foundation; either version 2 of the
@@ -65,14 +67,14 @@ VG_(x86_linux_SUBST_FOR_sigreturn):
            x86_fallback_frame_state() in
            gcc-4.1.0/gcc/config/i386/linux-unwind.h */
         popl    %eax
-        movl    $__NR_sigreturn, %eax
+        movl    $ __NR_sigreturn, %eax
         int     $0x80
         ud2
 
 .global VG_(x86_linux_SUBST_FOR_rt_sigreturn)
 VG_(x86_linux_SUBST_FOR_rt_sigreturn):
         /* Likewise for rt signal frames */
-        movl    $__NR_rt_sigreturn, %eax
+        movl    $ __NR_rt_sigreturn, %eax
         int     $0x80
         ud2
 
@@ -82,12 +84,11 @@ VG_(x86_linux_SUBST_FOR_rt_sigreturn):
 
    unsigned char* REDIR_FOR_index ( const char* s, int c ) 
    { 
-      unsigned char  ch   = (unsigned char)((unsigned int)c); 
-      unsigned char* p    = (unsigned char*)s; 
-      unsigned char* last = 0; 
+      unsigned char  ch = (unsigned char)((unsigned int)c); 
+      unsigned char* p  = (unsigned char*)s; 
       while (1) { 
-         if (*p == ch) last = p; 
-         if (*p == 0) return last; 
+         if (*p == ch) return p;
+         if (*p == 0)  return 0; 
          p++; 
       } 
    }
@@ -97,23 +98,22 @@ VG_(x86_linux_SUBST_FOR_rt_sigreturn):
 VG_(x86_linux_REDIR_FOR_index):
         pushl   %ebp
         movl    %esp, %ebp
-        pushl   %ebx
-        movb    12(%ebp), %al
-        movl    8(%ebp), %ecx
-        movl    $0, %ebx
-.L2:
-        movb    (%ecx), %dl
-        cmpb    %dl, %al
-        jne     .L3
-        movl    %ecx, %ebx
-.L3:
-        testb   %dl, %dl
-        je      .L8
-        addl    $1, %ecx
+        movl    8(%ebp), %eax
+        movzbl  12(%ebp), %ecx
+        movzbl  (%eax), %edx
+        cmpb    %dl, %cl
+        jne     .L9
         jmp     .L2
-.L8:
-        movl    %ebx, %eax
-        popl    %ebx
+.L11:
+        addl    $1, %eax
+        movzbl  (%eax), %edx
+        cmpb    %dl, %cl
+        je      .L2
+.L9:
+        testb   %dl, %dl
+        jne     .L11
+        xorl    %eax, %eax
+.L2:
         popl    %ebp
         ret
 .size VG_(x86_linux_REDIR_FOR_index), .-VG_(x86_linux_REDIR_FOR_index)
@@ -155,16 +155,64 @@ VG_(amd64_linux_SUBST_FOR_rt_sigreturn):
         ud2
 
 .global VG_(amd64_linux_REDIR_FOR_vgettimeofday)
+.type   VG_(amd64_linux_REDIR_FOR_vgettimeofday), @function
 VG_(amd64_linux_REDIR_FOR_vgettimeofday):
+.LfnB2:
         movq    $__NR_gettimeofday, %rax
         syscall
         ret
-
+.LfnE2:
+.size VG_(amd64_linux_REDIR_FOR_vgettimeofday), .-.LfnB2
+	
 .global VG_(amd64_linux_REDIR_FOR_vtime)
+.type   VG_(amd64_linux_REDIR_FOR_vtime), @function
 VG_(amd64_linux_REDIR_FOR_vtime):
+.LfnB3:	
         movq    $__NR_time, %rax
         syscall
         ret
+.LfnE3:
+.size VG_(amd64_linux_REDIR_FOR_vtime), .-.LfnB3
+
+/* A CIE for the above two functions, followed by their FDEs */
+	.section .eh_frame,"a",@progbits
+.Lframe1:
+        .long   .LEcie1-.LScie1
+.LScie1:
+        .long   0x0
+        .byte   0x1
+        .string "zR"
+        .uleb128 0x1
+        .sleb128 -8
+        .byte   0x10
+        .uleb128 0x1
+        .byte   0x3
+        .byte   0xc
+        .uleb128 0x7
+        .uleb128 0x8
+        .byte   0x90
+        .uleb128 0x1
+        .align 8
+.LEcie1:
+.LSfde2:
+        .long   .LEfde2-.LASfde2
+.LASfde2:
+        .long   .LASfde2-.Lframe1
+        .long   .LfnB2
+        .long   .LfnE2-.LfnB2
+        .uleb128 0x0
+        .align 8
+.LEfde2:
+.LSfde3:
+        .long   .LEfde3-.LASfde3
+.LASfde3:
+        .long   .LASfde3-.Lframe1
+        .long   .LfnB3
+        .long   .LfnE3-.LfnB3
+        .uleb128 0x0
+        .align 8
+.LEfde3:
+	.previous
 
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
@@ -194,6 +242,18 @@ VG_(trampoline_stuff_end):
 .global VG_(trampoline_stuff_start)
 VG_(trampoline_stuff_start):
 
+.global VG_(ppc32_linux_SUBST_FOR_sigreturn)
+VG_(ppc32_linux_SUBST_FOR_sigreturn):
+	li 0,__NR_sigreturn
+        sc
+        .long 0	/*illegal insn*/
+
+.global VG_(ppc32_linux_SUBST_FOR_rt_sigreturn)
+VG_(ppc32_linux_SUBST_FOR_rt_sigreturn):
+	li 0,__NR_rt_sigreturn
+        sc
+        .long 0	/*illegal insn*/
+	
 /* There's no particular reason that this needs to be handwritten
    assembly, but since that's what this file contains, here's a
    simple strlen implementation (written in C and compiled by gcc.)
@@ -258,21 +318,22 @@ VG_(ppc32_linux_REDIR_FOR_strcmp):
 .type   VG_(ppc32_linux_REDIR_FOR_strchr), @function
 VG_(ppc32_linux_REDIR_FOR_strchr):
         lbz 0,0(3)
+        rlwinm 4,4,0,0xff
         cmpw 7,4,0
         beqlr 7
         cmpwi 7,0,0
-        beq 7,.L307
-        .p2align 4,,15
-.L310:
+        bne 7,.L308
+        b .L304
+.L309:	
+        beq 6,.L304
+.L308:	
         lbzu 0,1(3)
-        cmpw 7,0,4
+        cmpw 7,4,0
         cmpwi 6,0,0
-        beq 7,.L313
-        bne 6,.L310
-.L307:
-        li 3,0
+        bne 7,.L309
         blr
-.L313:
+.L304:	
+        li 3,0
         blr
 .size   VG_(ppc32_linux_REDIR_FOR_strchr),.-VG_(ppc32_linux_REDIR_FOR_strchr)
 	
@@ -303,6 +364,12 @@ VG_(trampoline_stuff_end):
 
 .global VG_(trampoline_stuff_start)
 VG_(trampoline_stuff_start):
+
+.global VG_(ppc64_linux_SUBST_FOR_rt_sigreturn)
+VG_(ppc64_linux_SUBST_FOR_rt_sigreturn):
+	li 0,__NR_rt_sigreturn
+        sc
+        .long 0	/*illegal insn*/
 
 	/* See comment in pub_core_trampoline.h for what this is for */
 .global VG_(ppctoc_magic_redirect_return_stub)
@@ -352,19 +419,23 @@ VG_(ppc64_linux_REDIR_FOR_strchr):
         .type   VG_(ppc64_linux_REDIR_FOR_strchr),@function
 	
 .L.VG_(ppc64_linux_REDIR_FOR_strchr):
+        lbz 0,0(3)
         rldicl 4,4,0,56
-        li 9,0
-.L11:
-        lbz 0,0(3)
-        cmpw 7,0,4
-        bne+ 7,.L12
-        mr 9,3
-.L12:
-        lbz 0,0(3)
-        addi 3,3,1
-        cmpwi 7,0,0
-        bne+ 7,.L11
-        mr 3,9
+        cmpw 7,4,0
+        beqlr 7
+        cmpdi 7,0,0
+        bne 7,.L18
+        b .L14
+.L19:	
+        beq 6,.L14
+.L18:	
+        lbzu 0,1(3)
+        cmpw 7,4,0
+        cmpdi 6,0,0
+        bne 7,.L19
+        blr
+.L14:	
+        li 3,0
         blr
         .long 0
         .byte 0,0,0,0,0,0,0,0
@@ -416,7 +487,9 @@ VG_(ppc32_aix5_do_preloads_then_start_client):
 	lwz	2,0(3)		/* r2 = __NR___loadx */
 	lwz	5,20(3)		/* r5 = off_preloadcorename */
 	add	6,3,5		/* r6 = preloadcorename */
+	addis	1,1,-4
 	bl	do___loadx
+	addis	1,1,4
 	cmpwi	0,3,0
 	beq	.Lfailed
 
@@ -427,7 +500,9 @@ VG_(ppc32_aix5_do_preloads_then_start_client):
 	cmpwi	0,5,0		/* skip tool preload if */
 	beq	.Ltry_preload	/* name not present */
 	add	6,3,5		/* r6 = preloadtoolname */
+	addis	1,1,-4
 	bl	do___loadx
+	addis	1,1,4
 	cmpwi	0,3,0
 	beq	.Lfailed
 
@@ -439,7 +514,9 @@ VG_(ppc32_aix5_do_preloads_then_start_client):
 	cmpwi	0,5,0		/* skip ld_preload if */
 	beq	.Lstart_client	/* name not present */
 	add	6,3,5		/* r6 = ld_preloadname */
+	addis	1,1,-4
 	bl	do___loadx
+	addis	1,1,4
 	cmpwi	0,3,0
 	beq	.Lfailed
 	
@@ -494,14 +571,16 @@ do___loadx:
 	/* On entry: r2 = __NR___loadx,	r6 = name of module */
 	li	3,1
 	slwi	3,3,24	/* r3 = 0x1000000 = VKI_DL_LOAD */
-	li	4,0
-	li	5,0
+	mr	4,1
+	lis	5,3
 	li	7,0
 	li	8,0
 	li	9,0
 	li	10,0
 do_syscall:
+	crorc	6,6,6
 	sc
+	trap
 	/* sc continues at 'lr', hence this 
 	constitutes an automatic return */
 
@@ -635,6 +714,7 @@ do_kload:
 	li	9,0
 	li	10,0
 do_syscall:
+	crorc	6,6,6
 	sc
 	/* sc continues at 'lr', hence this 
 	constitutes an automatic return */

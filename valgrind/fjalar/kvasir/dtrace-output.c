@@ -39,10 +39,12 @@
 #define DTRACE_PRINTF(...) do { if (!dyncomp_without_dtrace) \
       fprintf(dtrace_fp, __VA_ARGS__); } while (0)
 
+int print_info = 0;
 
 char* UNINIT = "uninit";
 char* NONSENSICAL = "nonsensical";
-
+char* func_name = 0;
+int is_enter = 0;
 
 // The indices to this array must match the DeclaredType enum
 // declared in generate_fjalar_entries.h:
@@ -341,11 +343,12 @@ static char printDtraceSingleVar(VariableEntry* var,
 
   tl_assert(var);
 
-  //  VG_(printf)("  printDtraceSingleVar(): %p\n", pValue);
+  DPRINTF("  printDtraceSingleVar(): %p(guest %p)\n", pValue, pValueGuest);
 
   // a pValue of 0 means nonsensical because there is no content to
   // dereference:
   if (!pValue) {
+    DPRINTF("no address\n");
     DTRACE_PRINTF("%s\n%d\n",
                   NONSENSICAL,
                   mapInitToModbit(0));
@@ -358,6 +361,7 @@ static char printDtraceSingleVar(VariableEntry* var,
                addressIsAllocated((Addr)pValue, sizeof(char)));
 
   if (!allocated) {
+    DPRINTF("unallocated\n");
     DTRACE_PRINTF("%s\n%d\n",
                   NONSENSICAL,
                   mapInitToModbit(0));
@@ -368,6 +372,7 @@ static char printDtraceSingleVar(VariableEntry* var,
                  addressIsInitialized((Addr)pValue, sizeof(char)));
 
   if (!initialized) {
+    DPRINTF("uninit\n");
     DTRACE_PRINTF("%s\n%d\n",
                   UNINIT,
                   mapInitToModbit(0));
@@ -951,6 +956,9 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   char isHashcode = (layersBeforeBase > 0);
 
   (void)numDereferences; /* silence unused variable warning */
+  DPRINTF("\n*********************************\n%s - %s\n*********************************\n", varName, func_name);
+
+  DPRINTF("pValue: %x\n pValueGuest: %x\n pValueArray: %x\n pValueArrayGuest:%x\n", pValue, pValueGuest, pValueArray, pValueGuest);
 
   // Line 1: Variable name
   if (kvasir_old_decls_format) {
@@ -978,6 +986,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
                           &firstInitElt);
   }
   else {
+    DPRINTF("Single Variable\n");
     variableHasBeenObserved =
       printDtraceSingleVar(var,
                            pValue,
@@ -990,6 +999,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
   // DynComp post-processing after observing a variable:
   if (kvasir_with_dyncomp && variableHasBeenObserved) {
+    DPRINTF("printDtraceEntryAction %s\n", varName);
     Addr a = 0;
     Addr ptrInQuestion = 0;
     char ptrAllocAndInit = 0;
@@ -1050,14 +1060,15 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
       else {
         a = (Addr)ptrInQuestion;
       }
-
+      if(print_info)
+	VG_(printf)("%s - ", varName);
       DC_post_process_for_variable((DaikonFunctionEntry*)varFuncInfo,
                                    isEnter,
                                    g_variableIndex,
                                    a);
     }
   }
-
+  DPRINTF("\n*********************************\n%s\n*********************************\n\n", varName);
   if (variableHasBeenObserved) {
     return DEREF_MORE_POINTERS;
   }
@@ -1078,12 +1089,12 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   funcPtr = f_state->func;
   tl_assert(funcPtr);
 
-  //  VG_(printf)("* %s %s at FP=0x%x, lowestSP=0x%x, startPC=%p\n",
-              //              (isEnter ? "ENTER" : "EXIT "),
-              //              f_state->func->fjalar_name,
-              //              f_state->FP,
-              //              f_state->lowestSP,
-              //              (void*)f_state->func->startPC);
+  DPRINTF("* %s %s at FP=0x%x, lowestSP=0x%x, startPC=%p\n",
+	      (isEnter ? "ENTER" : "EXIT "),
+	      f_state->func->fjalar_name,
+	  f_state->FP,
+	      f_state->lowestSP,
+                            (void*)f_state->func->startPC);
 
   // Reset this properly!
   g_variableIndex = 0;
@@ -1094,7 +1105,15 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
     printDtraceFunctionHeader(funcPtr, isEnter);
   }
 
+  if( (VG_(strstr)(f_state->func->fjalar_name, "main") != 0) ) {
+    print_info = 1;
+  }
 
+  if(isEnter)
+    is_enter = 1;
+
+  func_name = f_state->func->fjalar_name;
+  
   // Print out globals:
   visitVariableGroup(GLOBAL_VAR,
                      funcPtr,
@@ -1102,6 +1121,8 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      0,
 		     0,
                      &printDtraceEntryAction);
+  is_enter = 0;
+  //  print_info = 0;
 
   // Print out function formal parameters:
   visitVariableGroup(FUNCTION_FORMAL_PARAM,

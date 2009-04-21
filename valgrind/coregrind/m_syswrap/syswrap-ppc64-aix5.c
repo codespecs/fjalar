@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -26,6 +26,11 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+
+   Neither the names of the U.S. Department of Energy nor the
+   University of California nor the names of its contributors may be
+   used to endorse or promote products derived from this software
+   without prior written permission.
 */
 
 #include "pub_core_basics.h"
@@ -94,13 +99,13 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    vg_assert(tst->status == VgTs_Init);
 
    /* make sure we get the CPU lock before doing anything significant */
-   VG_(set_running)(tid, "thread_wrapper(starting new thread)");
+   VG_(acquire_BigLock)(tid, "thread_wrapper(starting new thread)");
 
    if (0)
       VG_(printf)("thread tid %d started: stack = %p\n",
                   tid, &tid);
 
-   VG_TRACK ( post_thread_create, tst->os_state.parent, tid );
+   VG_TRACK( pre_thread_first_insn, tid );
 
    tst->os_state.lwpid = VG_(gettid)();
    tst->os_state.threadgroup = VG_(getpid)();
@@ -205,6 +210,7 @@ static void run_a_thread_NORETURN ( Word tidW )
           "mr 2,23\n\t"            /* r2 = __NR_exit */
           "mr 3,22\n\t"            /* set r3 = tst->os_state.exitcode */
           /* set up for syscall */
+          "crorc 6,6,6\n\t"
           ".long 0x48000005\n\t"   /* "bl here+4" */
           "mflr 29\n\t"
           "addi 29,29,16\n\t"
@@ -332,12 +338,27 @@ void VG_(cleanup_thread) ( ThreadArchState* arch )
 #define PRE(name)       DEFN_PRE_TEMPLATE(ppc64_aix5, name)
 #define POST(name)      DEFN_POST_TEMPLATE(ppc64_aix5, name)
 
+DECL_TEMPLATE(ppc64_aix5, sys__clock_gettime);
 DECL_TEMPLATE(ppc64_aix5, sys__fp_fpscrx64_);
 DECL_TEMPLATE(ppc64_aix5, sys_kload);
 DECL_TEMPLATE(ppc64_aix5, sys_kunload64);
 DECL_TEMPLATE(ppc64_aix5, sys_thread_setstate);
 DECL_TEMPLATE(ppc64_aix5, sys_FAKE_SIGRETURN);
 
+
+PRE(sys__clock_gettime)
+{
+   /* Seems like ARG2 points at a destination buffer? */
+   /* _clock_gettime (UNDOCUMENTED) ( 0, 0xA, 0x2FF21808 ) */
+   PRINT("_clock_gettime (UNDOCUMENTED) ( %ld, %#lx, %#lx )", ARG1, ARG2, ARG3 );
+   PRE_REG_READ3(int, "_clock_gettime", int, arg1, int, arg2, void*, arg3);
+   PRE_MEM_WRITE( "_clock_gettime(dst)", ARG2, sizeof(struct timespec) );
+}
+POST(sys__clock_gettime)
+{
+   vg_assert(SUCCESS);
+   POST_MEM_WRITE( ARG2, sizeof(struct timespec) );
+}
 
 PRE(sys__fp_fpscrx64_)
 {
@@ -346,14 +367,14 @@ PRE(sys__fp_fpscrx64_)
 
 PRE(sys_kload)
 {
-   PRINT("kload (UNDOCUMENTED)( %p(%s), %ld, %ld )", 
-         ARG1,ARG1, ARG2, ARG3 );
+   PRINT("kload (UNDOCUMENTED)( %#lx(%s), %ld, %ld )", 
+         ARG1,(Char*)ARG1, ARG2, ARG3 );
    PRE_REG_READ3(void*, "kload", char*, name, long, arg2, char*, arg3);
 }
 POST(sys_kload)
 {
    vg_assert(SUCCESS);
-   if (0) VG_(printf)("kload result = %p\n", RES);
+   if (0) VG_(printf)("kload result = %#lx\n", RES);
    if (RES)
       POST_MEM_WRITE( RES, 64 );
    ML_(aix5_rescan_procmap_after_load_or_unload)();
@@ -361,7 +382,7 @@ POST(sys_kload)
 
 PRE(sys_kunload64)
 {
-   PRINT("kunload64 (UNDOCUMENTED)( %p, %ld, %ld, %p )", 
+   PRINT("kunload64 (UNDOCUMENTED)( %#lx, %ld, %ld, %#lx )", 
          ARG1, ARG2, ARG3, ARG4 );
    PRE_REG_READ4(long, "kunload64",
                  void*, arg1, long, arg2, long, arg3, void*, arg4);
@@ -578,9 +599,11 @@ POST(sys_thread_setstate)
 
 PRE(sys_FAKE_SIGRETURN)
 {
-   ThreadState* tst;
+   /* See comments on PRE(sys_rt_sigreturn) in syswrap-amd64-linux.c for
+      an explanation of what follows. */
    /* This handles the fake signal-return system call created by
       sigframe-ppc64-aix5.c. */
+
    PRINT("FAKE_SIGRETURN ( )");
 
    vg_assert(VG_(is_valid_tid)(tid));
@@ -591,18 +614,12 @@ PRE(sys_FAKE_SIGRETURN)
       in the process restoring the pre-signal guest state. */
    VG_(sigframe_destroy)(tid, True);
 
-   /* Now the pre-signal registers are restored.  Unfortunately the
-      syscall driver logic will want to copy back the syscall result
-      (not that there is one) into guest r3/r4.  So we'd better cook
-      up a syscall result which, when copied back, makes no change. */ 
-   tst = VG_(get_ThreadState)(tid);
-   SET_STATUS_from_SysRes( 
-      VG_(mk_SysRes_ppc64_aix5)(
-         tst->arch.vex.guest_GPR3,
-         tst->arch.vex.guest_GPR4 
-      )
-   );
+   /* Tell the driver not to update the guest state with the "result",
+      and set a bogus result to keep it happy. */
+   *flags |= SfNoWriteResult;
+   SET_STATUS_Success(0);
 
+   /* Check to see if any signals arose as a result of this. */
    *flags |= SfPollAfter;
 }
 
@@ -636,6 +653,7 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
 = {
     AIXXY(__NR_AIX5___libc_sbrk,        sys___libc_sbrk),
     AIXX_(__NR_AIX5___msleep,           sys___msleep),
+    PLAXY(__NR_AIX5__clock_gettime,     sys__clock_gettime),
     AIXX_(__NR_AIX5__exit,              sys__exit),
     PLAX_(__NR_AIX5__fp_fpscrx64_,      sys__fp_fpscrx64_),
     AIXX_(__NR_AIX5__getpid,            sys__getpid),
@@ -643,6 +661,7 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXX_(__NR_AIX5__pause,             sys__pause),
     AIXXY(__NR_AIX5__poll,              sys__poll),
     AIXX_(__NR_AIX5__select,            sys__select),
+    AIXX_(__NR_AIX5__sem_wait,          sys__sem_wait),
     AIXXY(__NR_AIX5__sigaction,         sys__sigaction),
     AIXX_(__NR_AIX5__thread_self,       sys__thread_self),
     AIXX_(__NR_AIX5_access,             sys_access),
@@ -658,6 +677,8 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXX_(__NR_AIX5_close,              sys_close),
     AIXX_(__NR_AIX5_connext,            sys_connext),
     AIXX_(__NR_AIX5_execve,             sys_execve),
+    AIXXY(__NR_AIX5_finfo,              sys_finfo),
+    AIXXY(__NR_AIX5_fstatfs,            sys_fstatfs),
     AIXXY(__NR_AIX5_fstatx,             sys_fstatx),
     AIXXY(__NR_AIX5_getdirent,          sys_getdirent),
     AIXXY(__NR_AIX5_getdirent64,        sys_getdirent64),
@@ -681,6 +702,7 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXXY(__NR_AIX5_kread,              sys_kread),
     AIXXY(__NR_AIX5_kreadv,             sys_kreadv),
     AIXX_(__NR_AIX5_kthread_ctl,        sys_kthread_ctl),
+    AIXX_(__NR_AIX5_ktruncate,          sys_ktruncate),
     PLAXY(__NR_AIX5_kunload64,          sys_kunload64),
     AIXXY(__NR_AIX5_kwaitpid,           sys_kwaitpid),
     AIXX_(__NR_AIX5_kwrite,             sys_kwrite),
@@ -688,6 +710,7 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXX_(__NR_AIX5_lseek,              sys_lseek),
     AIXX_(__NR_AIX5_mkdir,              sys_mkdir),
     AIXXY(__NR_AIX5_mmap,               sys_mmap),
+    AIXXY(__NR_AIX5_mntctl,             sys_mntctl),
     AIXXY(__NR_AIX5_mprotect,           sys_mprotect),
     AIXXY(__NR_AIX5_munmap,             sys_munmap),
     AIXXY(__NR_AIX5_ngetpeername,       sys_ngetpeername),
@@ -699,6 +722,8 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXX_(__NR_AIX5_privcheck,          sys_privcheck),
     AIXX_(__NR_AIX5_rename,             sys_rename),
     AIXXY(__NR_AIX5_sbrk,               sys_sbrk),
+    AIXXY(__NR_AIX5_sem_init,           sys_sem_init),
+    AIXXY(__NR_AIX5_sem_post,           sys_sem_post),
     AIXX_(__NR_AIX5_send,               sys_send),
     AIXX_(__NR_AIX5_setgid,             sys_setgid),
     AIXX_(__NR_AIX5_setsockopt,         sys_setsockopt),
@@ -726,6 +751,7 @@ AIX5SCTabEntry aix5_ppc64_syscall_table[]
     AIXX_(__NR_AIX5_thread_unlock,      sys_thread_unlock),
     AIXX_(__NR_AIX5_thread_waitlock_,   sys_thread_waitlock_),
     AIXXY(__NR_AIX5_times,              sys_times),
+    AIXXY(__NR_AIX5_uname,              sys_uname),
     AIXX_(__NR_AIX5_unlink,             sys_unlink),
     AIXX_(__NR_AIX5_utimes,             sys_utimes),
     AIXXY(__NR_AIX5_vmgetinfo,          sys_vmgetinfo),

@@ -119,6 +119,37 @@ Catalog/Stylesheet Location
 in recent distros.
 
 
+Notes [Mar. 2007]
+-----------------
+For SuSE 10.1, I have to install the following packages to get a
+working toolchain.  Non-indented ones I asked YaST to install;
+indented ones are extras it added on:
+
+docbook_4
+  iso_ent
+  xmlcharent
+docbook-dsssl-stylesheets
+  docbook_3
+docbook-xsl-stylesheets
+xmltex
+  gd
+  latex-ucs
+  te_latex
+  tetex
+  xaw3d
+passivetex
+xpdf
+  xpdf-tools
+
+pdfxmltex still bombs when building the print docs.  On SuSE 10.1 I
+edited /etc/texmf/web2c/texmf.cnf and changed
+  pool_size.pdfxmltex = 500000
+to
+  pool_size.pdfxmltex = 1500000
+and that fixes it.
+
+It is also reported that the print docs build OK on Fedora Core 5.
+
 
 Notes [Nov. 2005]
 -----------------

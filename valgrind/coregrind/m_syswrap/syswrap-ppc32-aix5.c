@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -26,6 +26,11 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+
+   Neither the names of the U.S. Department of Energy nor the
+   University of California nor the names of its contributors may be
+   used to endorse or promote products derived from this software
+   without prior written permission.
 */
 
 #include "pub_core_basics.h"
@@ -94,13 +99,13 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    vg_assert(tst->status == VgTs_Init);
 
    /* make sure we get the CPU lock before doing anything significant */
-   VG_(set_running)(tid, "thread_wrapper(starting new thread)");
+   VG_(acquire_BigLock)(tid, "thread_wrapper(starting new thread)");
 
    if (0)
       VG_(printf)("thread tid %d started: stack = %p\n",
                   tid, &tid);
 
-   VG_TRACK ( post_thread_create, tst->os_state.parent, tid );
+   VG_TRACK( pre_thread_first_insn, tid );
 
    tst->os_state.lwpid = VG_(gettid)();
    tst->os_state.threadgroup = VG_(getpid)();
@@ -205,6 +210,7 @@ static void run_a_thread_NORETURN ( Word tidW )
           "mr 2,23\n\t"            /* r2 = __NR_exit */
           "mr 3,22\n\t"            /* set r3 = tst->os_state.exitcode */
           /* set up for syscall */
+          "crorc 6,6,6\n\t"
           ".long 0x48000005\n\t"   /* "bl here+4" */
           "mflr 29\n\t"
           "addi 29,29,16\n\t"
@@ -334,6 +340,7 @@ void VG_(cleanup_thread) ( ThreadArchState* arch )
 
 DECL_TEMPLATE(ppc32_aix5, sys___loadx);
 DECL_TEMPLATE(ppc32_aix5, sys___unload);
+DECL_TEMPLATE(ppc32_aix5, sys__clock_gettime);
 DECL_TEMPLATE(ppc32_aix5, sys_thread_setmymask_fast);
 DECL_TEMPLATE(ppc32_aix5, sys_thread_setstate);
 DECL_TEMPLATE(ppc32_aix5, sys_FAKE_SIGRETURN);
@@ -343,9 +350,9 @@ PRE(sys___loadx)
 {
    *flags |= SfMayBlock;
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_LOAD) {
-      PRINT("__loadx(0x%x(DL_LOAD),0x%x,%d,0x%x(%s),0x%x(%s))",
+      PRINT("__loadx(0x%lx(DL_LOAD),0x%lx,%ld,0x%lx(%s),0x%lx(%s))",
             ARG1,ARG2,ARG3,
-            ARG4,ARG4,
+            ARG4,(HChar*)ARG4,
             ARG5, (ARG5 ? (HChar*)ARG5 : "nil") );
       /* It would appear that (ARG2, ARG3) describe a buffer
          which is written into by the kernel on success. */
@@ -353,7 +360,7 @@ PRE(sys___loadx)
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_POSTLOADQ) {
-      PRINT("__loadx(0x%x(DL_POSTLOADQ),0x%x,%d,0x%x)",
+      PRINT("__loadx(0x%lx(DL_POSTLOADQ),0x%lx,%ld,0x%lx)",
             ARG1,ARG2,ARG3,ARG4);
     /* It would appear that (ARG2, ARG3) describe a buffer                      
         which is written into by the kernel on success. */
@@ -361,40 +368,40 @@ PRE(sys___loadx)
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_GLOBALSYM) {
-      PRINT("__loadx(0x%x(DL_GLOBALSYM),0x%x(%s),0x%x,0x%x,0x%x)",
-            ARG1, ARG2,ARG2,
+      PRINT("__loadx(0x%lx(DL_GLOBALSYM),0x%lx(%s),0x%lx,0x%lx,0x%lx)",
+            ARG1, ARG2,(Char*)ARG2,
             ARG3, ARG4, ARG5);
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_EXITQ) {
-      PRINT("__loadx(0x%x(DL_EXITQ),0x%x,%d)", ARG1, ARG2, ARG3);
+      PRINT("__loadx(0x%lx(DL_EXITQ),0x%lx,%ld)", ARG1, ARG2, ARG3);
       PRE_MEM_WRITE("__loadx(DL_EXITQ)(ARG2,ARG3)", ARG2, ARG3);
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_EXECQ) {
-      PRINT("__loadx(0x%x(DL_EXECQ),0x%x,%d)", ARG1, ARG2, ARG3);
+      PRINT("__loadx(0x%lx(DL_EXECQ),0x%lx,%ld)", ARG1, ARG2, ARG3);
       PRE_MEM_WRITE("__loadx(DL_EXECQ)(ARG2,ARG3)", ARG2, ARG3);
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_GETSYM) {
-      PRINT("__loadx(0x%x(DL_GETSYM),0x%x(%s),%d,0x%x)", 
-            ARG1, ARG2,ARG2, ARG3, ARG4);
+      PRINT("__loadx(0x%lx(DL_GETSYM),0x%lx(%s),%ld,0x%lx)", 
+            ARG1, ARG2,(Char*)ARG2, ARG3, ARG4);
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == VKI_DL_PREUNLOADQ) {
-      PRINT("__loadx(0x%x(DL_PREUNLOADQ),0x%x,%d,0x%x)", 
+      PRINT("__loadx(0x%lx(DL_PREUNLOADQ),0x%lx,%ld,0x%lx)", 
             ARG1,ARG2,ARG3,ARG4);
       PRE_MEM_WRITE("__loadx(DL_PREUNLOADQ)(ARG2,ARG3)", ARG2, ARG3);
    }
    else
    if ((ARG1 & VKI_DL_FUNCTION_MASK) == 0x0D000000) {
-      PRINT("__loadx(0x%x(UNDOCUMENTED),0x%x,0x%xd,0x%x)", 
+      PRINT("__loadx(0x%lx(UNDOCUMENTED),0x%lx,0x%lx,0x%lx)", 
             ARG1,ARG2,ARG3,ARG4);
       /* This doesn't appear to have any args, from the examples I've
          seen. */
    }
    else {
-      PRINT("__loadx (BOGUS HANDLER) (0x%x, ..)", ARG1);
+      PRINT("__loadx (BOGUS HANDLER) (0x%lx, ..)", ARG1);
    }
 }
 POST(sys___loadx)
@@ -437,13 +444,27 @@ POST(sys___loadx)
 
 PRE(sys___unload)
 {
-   PRINT("__unload (UNDOCUMENTED) ( %p )", ARG1);
+   PRINT("__unload (UNDOCUMENTED) ( %#lx )", ARG1);
 }
 POST(sys___unload)
 {
    /* A module unload succeeded.  Tell m_debuginfo, m_transtab, and the
       tool. */
    ML_(aix5_rescan_procmap_after_load_or_unload)();
+}
+
+PRE(sys__clock_gettime)
+{
+   /* Seems like ARG3 points at a destination buffer? */
+   /* _clock_gettime (UNDOCUMENTED) ( 0, 0xA, 0x2FF21808 ) */
+   PRINT("_clock_gettime (UNDOCUMENTED) ( %ld, %#lx, %#lx )", ARG1, ARG2, ARG3 );
+   PRE_REG_READ3(int, "_clock_gettime", int, arg1, int, arg2, void*, arg3);
+   PRE_MEM_WRITE( "_clock_gettime(dst)", ARG3, sizeof(struct timespec) );
+}
+POST(sys__clock_gettime)
+{
+   vg_assert(SUCCESS);
+   POST_MEM_WRITE( ARG3, sizeof(struct timespec) );
 }
 
 PRE(sys_thread_setmymask_fast)
@@ -453,7 +474,7 @@ PRE(sys_thread_setmymask_fast)
       mask, we act like sigprocmask(SIG_SETMASK, set, NULL) and don't
       hand this to the kernel.  Layout verified 30 July 06. */
    vki_sigset_t set;
-   PRINT("thread_setmymask_fast (BOGUS HANDLER)( %08x %08x )", ARG1,ARG2 );
+   PRINT("thread_setmymask_fast (BOGUS HANDLER)( %08lx %08lx )", ARG1,ARG2 );
    vg_assert(sizeof(vki_sigset_t) == 8);
    set.sig[0] = ARG1; /* sigs 1-32 */
    set.sig[1] = ARG2; /* sigs 32-64 */
@@ -668,9 +689,11 @@ POST(sys_thread_setstate)
 
 PRE(sys_FAKE_SIGRETURN)
 {
-   ThreadState* tst;
+   /* See comments on PRE(sys_rt_sigreturn) in syswrap-amd64-linux.c for
+      an explanation of what follows. */
    /* This handles the fake signal-return system call created by
       sigframe-ppc32-aix5.c. */
+
    PRINT("FAKE_SIGRETURN ( )");
 
    vg_assert(VG_(is_valid_tid)(tid));
@@ -681,17 +704,13 @@ PRE(sys_FAKE_SIGRETURN)
       in the process restoring the pre-signal guest state. */
    VG_(sigframe_destroy)(tid, True);
 
-   /* Now the pre-signal registers are restored.  Unfortunately the
-      syscall driver logic will want to copy back the syscall result
-      (not that there is one) into guest r3/r4.  So we'd better cook
-      up a syscall result which, when copied back, makes no change. */ 
-   tst = VG_(get_ThreadState)(tid);
-   SET_STATUS_from_SysRes( 
-      VG_(mk_SysRes_ppc32_aix5)(
-         tst->arch.vex.guest_GPR3,
-         tst->arch.vex.guest_GPR4 
-      )
-   );
+   /* Tell the driver not to update the guest state with the "result",
+      and set a bogus result to keep it happy. */
+   *flags |= SfNoWriteResult;
+   SET_STATUS_Success(0);
+
+   /* Check to see if any signals arose as a result of this. */
+   *flags |= SfPollAfter;
 }
 
 
@@ -726,7 +745,7 @@ AIX5SCTabEntry aix5_ppc32_syscall_table[]
     PLAXY(__NR_AIX5___loadx,            sys___loadx),
     AIXX_(__NR_AIX5___msleep,           sys___msleep),
     PLAXY(__NR_AIX5___unload,           sys___unload),
-    AIXX_(__NR_AIX5__clock_gettime,     sys__clock_gettime),
+    PLAXY(__NR_AIX5__clock_gettime,     sys__clock_gettime),
     AIXX_(__NR_AIX5__clock_settime,     sys__clock_settime),
     AIXX_(__NR_AIX5__exit,              sys__exit),
     AIXX_(__NR_AIX5__fp_fpscrx_sc,      sys__fp_fpscrx_sc),
@@ -759,6 +778,7 @@ AIX5SCTabEntry aix5_ppc32_syscall_table[]
     AIXX_(__NR_AIX5_connext,            sys_connext),
     AIXX_(__NR_AIX5_execve,             sys_execve),
     AIXXY(__NR_AIX5_finfo,              sys_finfo),
+    AIXXY(__NR_AIX5_fstatfs,            sys_fstatfs),
     AIXXY(__NR_AIX5_fstatx,             sys_fstatx),
     AIXX_(__NR_AIX5_fsync,              sys_fsync),
     AIXXY(__NR_AIX5_getdirent,          sys_getdirent),
@@ -769,6 +789,7 @@ AIX5SCTabEntry aix5_ppc32_syscall_table[]
     AIXXY(__NR_AIX5_gethostname,        sys_gethostname),
     AIXXY(__NR_AIX5_getpriv,            sys_getpriv),
     AIXXY(__NR_AIX5_getprocs,           sys_getprocs),
+    AIXXY(__NR_AIX5_getprocs64,         sys_getprocs), /* XXX: correct? */
     AIXX_(__NR_AIX5_getrpid,            sys_getrpid),
     AIXXY(__NR_AIX5_getsockopt,         sys_getsockopt),
     AIXX_(__NR_AIX5_gettimerid,         sys_gettimerid),
@@ -786,6 +807,7 @@ AIX5SCTabEntry aix5_ppc32_syscall_table[]
     AIXXY(__NR_AIX5_kread,              sys_kread),
     AIXXY(__NR_AIX5_kreadv,             sys_kreadv),
     AIXX_(__NR_AIX5_kthread_ctl,        sys_kthread_ctl),
+    AIXX_(__NR_AIX5_ktruncate,          sys_ktruncate),
     AIXXY(__NR_AIX5_kwaitpid,           sys_kwaitpid),
     AIXX_(__NR_AIX5_kwrite,             sys_kwrite),
     AIXX_(__NR_AIX5_kwritev,            sys_kwritev),
@@ -795,6 +817,7 @@ AIX5SCTabEntry aix5_ppc32_syscall_table[]
     AIXX_(__NR_AIX5_lseek,              sys_lseek),
     AIXX_(__NR_AIX5_mkdir,              sys_mkdir),
     AIXXY(__NR_AIX5_mmap,               sys_mmap),
+    AIXXY(__NR_AIX5_mntctl,             sys_mntctl),
     AIXXY(__NR_AIX5_mprotect,           sys_mprotect),
     AIXXY(__NR_AIX5_munmap,             sys_munmap),
     AIXXY(__NR_AIX5_naccept,            sys_naccept),
@@ -848,7 +871,7 @@ AIX5SCTabEntry aix5_ppc32_syscall_table[]
     AIXX_(__NR_AIX5_thread_waitlock_,   sys_thread_waitlock_),
     AIXXY(__NR_AIX5_times,              sys_times),
     AIXX_(__NR_AIX5_umask,              sys_umask),
-    AIXX_(__NR_AIX5_uname,              sys_uname),
+    AIXXY(__NR_AIX5_uname,              sys_uname),
     AIXX_(__NR_AIX5_unlink,             sys_unlink),
     AIXX_(__NR_AIX5_utimes,             sys_utimes),
     AIXXY(__NR_AIX5_vmgetinfo,          sys_vmgetinfo),

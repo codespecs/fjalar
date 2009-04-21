@@ -22,15 +22,21 @@
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="manual-core.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="manual-core-adv.xml" parse="xml"  
+      xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../memcheck/docs/mc-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../cachegrind/docs/cg-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../callgrind/docs/cl-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="../../helgrind/docs/hg-manual.xml" parse="xml"  
+      xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="../../drd/docs/drd-manual.xml" parse="xml"  
+      xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../massif/docs/ms-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
-  <xi:include href="../../helgrind/docs/hg-manual.xml" parse="xml"  
+  <xi:include href="../../exp-ptrcheck/docs/pc-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../none/docs/nl-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />

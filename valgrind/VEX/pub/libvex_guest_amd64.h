@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -85,8 +85,7 @@ typedef
       /* 144 */ ULong  guest_CC_DEP2;
       /* 152 */ ULong  guest_CC_NDEP;
       /* The D flag is stored here, encoded as either -1 or +1 */
-      /* 160 */ ULong  guest_DFLAG;       /* 48 */
-      /* RIP */
+      /* 160 */ ULong  guest_DFLAG;
       /* 168 */ ULong  guest_RIP;
       /* Probably a lot more stuff too. 
          D,ID flags
@@ -96,16 +95,16 @@ typedef
       */
 
       /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
-      ULong guest_IDFLAG;
+      /* 176 */ ULong guest_IDFLAG;
 
       /* HACK to make tls on amd64-linux work.  %fs only ever seems to
          hold zero, and so guest_FS_ZERO holds the 64-bit offset
          associated with a %fs value of zero. */
-      ULong guest_FS_ZERO;
+      /* 184 */ ULong guest_FS_ZERO;
 
       /* XMM registers */
-      ULong guest_SSEROUND;
-      U128  guest_XMM0;
+      /* 192 */ULong guest_SSEROUND;
+      /* 200 */U128  guest_XMM0;
       U128  guest_XMM1;
       U128  guest_XMM2;
       U128  guest_XMM3;
@@ -126,14 +125,14 @@ typedef
       /* Note.  Setting guest_FTOP to be ULong messes up the
          delicately-balanced PutI/GetI optimisation machinery.
          Therefore best to leave it as a UInt. */
-      UInt  guest_FTOP;
+      /* 456 */UInt  guest_FTOP;
       ULong guest_FPREG[8];
-      UChar guest_FPTAG[8];
-      ULong guest_FPROUND;
-      ULong guest_FC3210;
+      /* 528 */ UChar guest_FPTAG[8];
+      /* 536 */ ULong guest_FPROUND;
+      /* 544 */ ULong guest_FC3210;
 
       /* Emulation warnings */
-      UInt   guest_EMWARN;
+      /* 552 */ UInt  guest_EMWARN;
 
       /* Translation-invalidation area description.  Not used on amd64
          (there is no invalidate-icache insn), but needed so as to
@@ -153,8 +152,17 @@ typedef
          replace-style ones. */
       ULong guest_NRADDR;
 
-      /* Padding to make it have an 8-aligned size */
-      /* UInt   padding; */
+      /* Used for Darwin syscall dispatching. */
+      ULong guest_SC_CLASS;
+
+      /* HACK to make tls on darwin work.  %gs only ever seems to
+         hold 0x60, and so guest_GS_0x60 holds the 64-bit offset
+         associated with a %gs value of 0x60.  (A direct analogue
+         of the %fs-zero hack for amd64-linux). */
+      ULong guest_GS_0x60;
+
+      /* Padding to make it have an 16-aligned size */
+      ULong padding;
    }
    VexGuestAMD64State;
 
@@ -176,6 +184,13 @@ void LibVEX_GuestAMD64_initialise ( /*OUT*/VexGuestAMD64State* vex_state );
    corresponding native %rflags value. */
 extern 
 ULong LibVEX_GuestAMD64_get_rflags ( /*IN*/VexGuestAMD64State* vex_state );
+
+/* Set the carry flag in the given state to 'new_carry_flag', which
+   should be zero or one. */
+extern
+void
+LibVEX_GuestAMD64_put_rflag_c ( ULong new_carry_flag,
+                                /*MOD*/VexGuestAMD64State* vex_state );
 
 
 #if 0

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -832,7 +832,6 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          return unop(Iop_1Uto32,
                      binop(Iop_CmpEQ32, cc_dep1, cc_dep2));
       }
-
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNZ)) {
          /* long sub/cmp, then NZ --> test dst!=src */
          return unop(Iop_1Uto32,
@@ -845,6 +844,14 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          return unop(Iop_1Uto32,
                      binop(Iop_CmpLT32S, cc_dep1, cc_dep2));
       }
+      if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNL)) {
+         /* long sub/cmp, then NL (signed greater than or equal) 
+            --> test !(dst <s src) */
+         return binop(Iop_Xor32,
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpLT32S, cc_dep1, cc_dep2)),
+                      mkU32(1));
+      }
 
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondLE)) {
          /* long sub/cmp, then LE (signed less than or equal)
@@ -852,9 +859,8 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          return unop(Iop_1Uto32,
                      binop(Iop_CmpLE32S, cc_dep1, cc_dep2));
       }
-
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNLE)) {
-         /* long sub/cmp, then LE (signed not less than or equal)
+         /* long sub/cmp, then NLE (signed not less than or equal)
             --> test dst >s src 
             --> test !(dst <=s src) */
          return binop(Iop_Xor32,
@@ -869,6 +875,14 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          return unop(Iop_1Uto32,
                      binop(Iop_CmpLE32U, cc_dep1, cc_dep2));
       }
+      if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNBE)) {
+         /* long sub/cmp, then BE (unsigned greater than)
+            --> test !(dst <=u src) */
+         return binop(Iop_Xor32,
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpLE32U, cc_dep1, cc_dep2)),
+                      mkU32(1));
+      }
 
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondB)) {
          /* long sub/cmp, then B (unsigned less than)
@@ -876,13 +890,30 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          return unop(Iop_1Uto32,
                      binop(Iop_CmpLT32U, cc_dep1, cc_dep2));
       }
+      if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNB)) {
+         /* long sub/cmp, then NB (unsigned greater than or equal)
+            --> test !(dst <u src) */
+         return binop(Iop_Xor32,
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpLT32U, cc_dep1, cc_dep2)),
+                      mkU32(1));
+      }
 
       if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondS)) {
-         /* long sub/cmp, then S --> test (dst-src <s 0) */
+         /* long sub/cmp, then S (negative) --> test (dst-src <s 0) */
          return unop(Iop_1Uto32,
                      binop(Iop_CmpLT32S, 
                            binop(Iop_Sub32, cc_dep1, cc_dep2),
                            mkU32(0)));
+      }
+      if (isU32(cc_op, X86G_CC_OP_SUBL) && isU32(cond, X86CondNS)) {
+         /* long sub/cmp, then NS (not negative) --> test !(dst-src <s 0) */
+         return binop(Iop_Xor32,
+                      unop(Iop_1Uto32,
+                           binop(Iop_CmpLT32S, 
+                                 binop(Iop_Sub32, cc_dep1, cc_dep2),
+                                 mkU32(0))),
+                      mkU32(1));
       }
 
       /*---------------- SUBW ----------------*/
@@ -891,6 +922,13 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          /* word sub/cmp, then Z --> test dst==src */
          return unop(Iop_1Uto32,
                      binop(Iop_CmpEQ16, 
+                           unop(Iop_32to16,cc_dep1), 
+                           unop(Iop_32to16,cc_dep2)));
+      }
+      if (isU32(cc_op, X86G_CC_OP_SUBW) && isU32(cond, X86CondNZ)) {
+         /* word sub/cmp, then NZ --> test dst!=src */
+         return unop(Iop_1Uto32,
+                     binop(Iop_CmpNE16, 
                            unop(Iop_32to16,cc_dep1), 
                            unop(Iop_32to16,cc_dep2)));
       }
@@ -904,7 +942,6 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
                            unop(Iop_32to8,cc_dep1), 
                            unop(Iop_32to8,cc_dep2)));
       }
-
       if (isU32(cc_op, X86G_CC_OP_SUBB) && isU32(cond, X86CondNZ)) {
          /* byte sub/cmp, then NZ --> test dst!=src */
          return unop(Iop_1Uto32,
@@ -937,6 +974,18 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
                       binop(Iop_Shr32,cc_dep1,mkU8(7)),
                       mkU32(1));
       }
+      if (isU32(cc_op, X86G_CC_OP_SUBB) && isU32(cond, X86CondNS)
+                                        && isU32(cc_dep2, 0)) {
+         /* byte sub/cmp of zero, then NS --> test !(dst-0 <s 0) 
+                                          --> test !(dst <s 0)
+                                          --> (UInt) !dst[7] 
+         */
+         return binop(Iop_Xor32,
+                      binop(Iop_And32,
+                            binop(Iop_Shr32,cc_dep1,mkU8(7)),
+                            mkU32(1)),
+                mkU32(1));
+      }
 
       /*---------------- LOGICL ----------------*/
 
@@ -944,7 +993,6 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
          /* long and/or/xor, then Z --> test dst==0 */
          return unop(Iop_1Uto32,binop(Iop_CmpEQ32, cc_dep1, mkU32(0)));
       }
-
       if (isU32(cc_op, X86G_CC_OP_LOGICL) && isU32(cond, X86CondNZ)) {
          /* long and/or/xor, then NZ --> test dst!=0 */
          return unop(Iop_1Uto32,binop(Iop_CmpNE32, cc_dep1, mkU32(0)));
@@ -1002,17 +1050,6 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
                       binop(Iop_Shr32,cc_dep1,mkU8(15)),
                       mkU32(1));
       }
-      //Probably correct, but no test case for it yet found
-      //if (isU32(cc_op, X86G_CC_OP_LOGICW) && isU32(cond, X86CondNS)) {
-      //   /* see comment below for (LOGICB, CondNS) */
-      //   /* word and/or/xor, then S --> (UInt) ~ result[15] */
-      //   vassert(0+0);
-      //   return binop(Iop_Xor32,
-      //          binop(Iop_And32,
-      //                binop(Iop_Shr32,cc_dep1,mkU8(15)),
-      //                mkU32(1)),
-      //          mkU32(1));
-      //}
 
       /*---------------- LOGICB ----------------*/
 
@@ -1022,7 +1059,6 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
                      binop(Iop_CmpEQ32, binop(Iop_And32,cc_dep1,mkU32(255)), 
                                         mkU32(0)));
       }
-
       if (isU32(cc_op, X86G_CC_OP_LOGICB) && isU32(cond, X86CondNZ)) {
          /* byte and/or/xor, then Z --> test dst!=0 */
          /* b9ac9:       84 c0                   test   %al,%al
@@ -1100,10 +1136,10 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
 
       if (isU32(cc_op, X86G_CC_OP_COPY) && 
           (isU32(cond, X86CondBE) || isU32(cond, X86CondNBE))) {
-         /* COPY, then BE --> extract C and Z from dep1, and test (C
-            or Z == 1). */
-         /* COPY, then NBE --> extract C and Z from dep1, and test (C
-            or Z == 0). */
+         /* COPY, then BE --> extract C and Z from dep1, and test 
+            (C or Z) == 1. */
+         /* COPY, then NBE --> extract C and Z from dep1, and test
+            (C or Z) == 0. */
          UInt nnn = isU32(cond, X86CondBE) ? 1 : 0;
          return
             unop(
@@ -1124,8 +1160,8 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
             );
       }
       
-      if (isU32(cc_op, X86G_CC_OP_COPY) && 
-          (isU32(cond, X86CondB) || isU32(cond, X86CondNB))) {
+      if (isU32(cc_op, X86G_CC_OP_COPY) 
+          && (isU32(cond, X86CondB) || isU32(cond, X86CondNB))) {
          /* COPY, then B --> extract C from dep1, and test (C == 1). */
          /* COPY, then NB --> extract C from dep1, and test (C == 0). */
          UInt nnn = isU32(cond, X86CondB) ? 1 : 0;
@@ -1144,19 +1180,42 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
             );
       }
 
-      if (isU32(cc_op, X86G_CC_OP_COPY) && isU32(cond, X86CondZ)) {
+      if (isU32(cc_op, X86G_CC_OP_COPY) 
+          && (isU32(cond, X86CondZ) || isU32(cond, X86CondNZ))) {
          /* COPY, then Z --> extract Z from dep1, and test (Z == 1). */
+         /* COPY, then NZ --> extract Z from dep1, and test (Z == 0). */
+         UInt nnn = isU32(cond, X86CondZ) ? 1 : 0;
          return
             unop(
                Iop_1Uto32,
                binop(
-                  Iop_CmpNE32,
+                  Iop_CmpEQ32,
                   binop(
                      Iop_And32,
                      binop(Iop_Shr32, cc_dep1, mkU8(X86G_CC_SHIFT_Z)),
                      mkU32(1)
                   ),
-                  mkU32(0)
+                  mkU32(nnn)
+               )
+            );
+      }
+
+      if (isU32(cc_op, X86G_CC_OP_COPY) 
+          && (isU32(cond, X86CondP) || isU32(cond, X86CondNP))) {
+         /* COPY, then P --> extract P from dep1, and test (P == 1). */
+         /* COPY, then NP --> extract P from dep1, and test (P == 0). */
+         UInt nnn = isU32(cond, X86CondP) ? 1 : 0;
+         return
+            unop(
+               Iop_1Uto32,
+               binop(
+                  Iop_CmpEQ32,
+                  binop(
+                     Iop_And32,
+                     binop(Iop_Shr32, cc_dep1, mkU8(X86G_CC_SHIFT_P)),
+                     mkU32(1)
+                  ),
+                  mkU32(nnn)
                )
             );
       }
@@ -1205,6 +1264,13 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
                binop(Iop_Shr32, cc_dep1, mkU8(X86G_CC_SHIFT_C)),
                mkU32(1)
             );
+      }
+      if (isU32(cc_op, X86G_CC_OP_ADDL)) {
+         /* C after add denotes sum <u either arg */
+         return unop(Iop_1Uto32,
+                     binop(Iop_CmpLT32U, 
+                           binop(Iop_Add32, cc_dep1, cc_dep2), 
+                           cc_dep1));
       }
 #     if 0
       if (cc_op->tag == Iex_Const) {
@@ -1680,6 +1746,86 @@ void x86g_dirtyhelper_FXSAVE ( VexGuestX86State* gst, HWord addr )
 
 
 /* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (writes guest state, reads guest mem) */
+VexEmWarn x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
+{
+   Fpu_State tmp;
+   VexEmWarn warnX87 = EmWarn_NONE;
+   VexEmWarn warnXMM = EmWarn_NONE;
+   UShort*   addrS   = (UShort*)addr;
+   UChar*    addrC   = (UChar*)addr;
+   U128*     xmm     = (U128*)(addr + 160);
+   UShort    fp_tags;
+   Int       r, stno, i;
+
+   /* Restore %xmm0 .. %xmm7.  If the host is big-endian, these need
+      to be byte-swapped. */
+   vassert(host_is_little_endian());
+
+#  define COPY_U128(_dst,_src)                       \
+      do { _dst[0] = _src[0]; _dst[1] = _src[1];     \
+           _dst[2] = _src[2]; _dst[3] = _src[3]; }   \
+      while (0)
+
+   COPY_U128( gst->guest_XMM0, xmm[0] );
+   COPY_U128( gst->guest_XMM1, xmm[1] );
+   COPY_U128( gst->guest_XMM2, xmm[2] );
+   COPY_U128( gst->guest_XMM3, xmm[3] );
+   COPY_U128( gst->guest_XMM4, xmm[4] );
+   COPY_U128( gst->guest_XMM5, xmm[5] );
+   COPY_U128( gst->guest_XMM6, xmm[6] );
+   COPY_U128( gst->guest_XMM7, xmm[7] );
+
+#  undef COPY_U128
+
+   /* Copy the x87 registers out of the image, into a temporary
+      Fpu_State struct. */
+   for (i = 0; i < 14; i++) tmp.env[i] = 0;
+   for (i = 0; i < 80; i++) tmp.reg[i] = 0;
+   /* fill in tmp.reg[0..7] */
+   for (stno = 0; stno < 8; stno++) {
+      UShort* dstS = (UShort*)(&tmp.reg[10*stno]);
+      UShort* srcS = (UShort*)(&addrS[16 + 8*stno]);
+      dstS[0] = srcS[0];
+      dstS[1] = srcS[1];
+      dstS[2] = srcS[2];
+      dstS[3] = srcS[3];
+      dstS[4] = srcS[4];
+   }
+   /* fill in tmp.env[0..13] */
+   tmp.env[FP_ENV_CTRL] = addrS[0]; /* FCW: fpu control word */
+   tmp.env[FP_ENV_STAT] = addrS[1]; /* FCW: fpu status word */
+
+   fp_tags = 0;
+   for (r = 0; r < 8; r++) {
+      if (addrC[4] & (1<<r))
+         fp_tags |= (0 << (2*r)); /* EMPTY */
+      else 
+         fp_tags |= (3 << (2*r)); /* VALID -- not really precise enough. */
+   }
+   tmp.env[FP_ENV_TAG] = fp_tags;
+
+   /* Now write 'tmp' into the guest state. */
+   warnX87 = do_put_x87( True/*moveRegs*/, (UChar*)&tmp, gst );
+
+   { UInt w32 = (((UInt)addrS[12]) & 0xFFFF)
+                | ((((UInt)addrS[13]) & 0xFFFF) << 16);
+     ULong w64 = x86g_check_ldmxcsr( w32 );
+
+     warnXMM = (VexEmWarn)(w64 >> 32);
+
+     gst->guest_SSEROUND = (UInt)w64;
+   }
+
+   /* Prefer an X87 emwarn over an XMM one, if both exist. */
+   if (warnX87 != EmWarn_NONE)
+      return warnX87;
+   else
+      return warnXMM;
+}
+
+
+/* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (reads guest state, writes guest mem) */
 void x86g_dirtyhelper_FSAVE ( VexGuestX86State* gst, HWord addr )
 {
@@ -1828,6 +1974,135 @@ ULong x86g_calculate_RCL ( UInt arg, UInt rot_amt, UInt eflags_in, UInt sz )
 }
 
 
+/* CALLED FROM GENERATED CODE: CLEAN HELPER */
+/* Calculate both flags and value result for DAA/DAS/AAA/AAS.
+   AX value in low half of arg, OSZACP in upper half.
+   See guest-x86/toIR.c usage point for details.
+*/
+static UInt calc_parity_8bit ( UInt w32 ) {
+   UInt i;
+   UInt p = 1;
+   for (i = 0; i < 8; i++)
+      p ^= (1 & (w32 >> i));
+   return p;
+}
+UInt x86g_calculate_daa_das_aaa_aas ( UInt flags_and_AX, UInt opcode )
+{
+   UInt r_AL = (flags_and_AX >> 0) & 0xFF;
+   UInt r_AH = (flags_and_AX >> 8) & 0xFF;
+   UInt r_O  = (flags_and_AX >> (16 + X86G_CC_SHIFT_O)) & 1;
+   UInt r_S  = (flags_and_AX >> (16 + X86G_CC_SHIFT_S)) & 1;
+   UInt r_Z  = (flags_and_AX >> (16 + X86G_CC_SHIFT_Z)) & 1;
+   UInt r_A  = (flags_and_AX >> (16 + X86G_CC_SHIFT_A)) & 1;
+   UInt r_C  = (flags_and_AX >> (16 + X86G_CC_SHIFT_C)) & 1;
+   UInt r_P  = (flags_and_AX >> (16 + X86G_CC_SHIFT_P)) & 1;
+   UInt result = 0;
+
+   switch (opcode) {
+      case 0x27: { /* DAA */
+         UInt old_AL = r_AL;
+         UInt old_C  = r_C;
+         r_C = 0;
+         if ((r_AL & 0xF) > 9 || r_A == 1) {
+            r_AL = r_AL + 6;
+            r_C  = old_C;
+            if (r_AL >= 0x100) r_C = 1;
+            r_A = 1;
+         } else {
+            r_A = 0;
+         }
+         if (old_AL > 0x99 || old_C == 1) {
+            r_AL = r_AL + 0x60;
+            r_C  = 1;
+         } else {
+            r_C = 0;
+         }
+         /* O is undefined.  S Z and P are set according to the
+	    result. */
+         r_AL &= 0xFF;
+         r_O = 0; /* let's say */
+         r_S = (r_AL & 0x80) ? 1 : 0;
+         r_Z = (r_AL == 0) ? 1 : 0;
+         r_P = calc_parity_8bit( r_AL );
+         break;
+      }
+      case 0x2F: { /* DAS */
+         UInt old_AL = r_AL;
+         UInt old_C  = r_C;
+         r_C = 0;
+         if ((r_AL & 0xF) > 9 || r_A == 1) {
+            Bool borrow = r_AL < 6;
+            r_AL = r_AL - 6;
+            r_C  = old_C;
+            if (borrow) r_C = 1;
+            r_A = 1;
+         } else {
+            r_A = 0;
+         }
+         if (old_AL > 0x99 || old_C == 1) {
+            r_AL = r_AL - 0x60;
+            r_C  = 1;
+         } else {
+            /* Intel docs are wrong: r_C = 0; */
+         }
+         /* O is undefined.  S Z and P are set according to the
+	    result. */
+         r_AL &= 0xFF;
+         r_O = 0; /* let's say */
+         r_S = (r_AL & 0x80) ? 1 : 0;
+         r_Z = (r_AL == 0) ? 1 : 0;
+         r_P = calc_parity_8bit( r_AL );
+         break;
+      }
+      case 0x37: { /* AAA */
+         Bool nudge = r_AL > 0xF9;
+         if ((r_AL & 0xF) > 9 || r_A == 1) {
+            r_AL = r_AL + 6;
+            r_AH = r_AH + 1 + (nudge ? 1 : 0);
+            r_A  = 1;
+            r_C  = 1;
+            r_AL = r_AL & 0xF;
+         } else {
+            r_A  = 0;
+            r_C  = 0;
+            r_AL = r_AL & 0xF;
+         }
+         /* O S Z and P are undefined. */
+         r_O = r_S = r_Z = r_P = 0; /* let's say */
+         break;
+      }
+      case 0x3F: { /* AAS */
+         Bool nudge = r_AL < 0x06;
+         if ((r_AL & 0xF) > 9 || r_A == 1) {
+            r_AL = r_AL - 6;
+            r_AH = r_AH - 1 - (nudge ? 1 : 0);
+            r_A  = 1;
+            r_C  = 1;
+            r_AL = r_AL & 0xF;
+         } else {
+            r_A  = 0;
+            r_C  = 0;
+            r_AL = r_AL & 0xF;
+         }
+         /* O S Z and P are undefined. */
+         r_O = r_S = r_Z = r_P = 0; /* let's say */
+         break;
+      }
+      default:
+         vassert(0);
+   }
+   result =   ( (r_O & 1) << (16 + X86G_CC_SHIFT_O) )
+            | ( (r_S & 1) << (16 + X86G_CC_SHIFT_S) )
+            | ( (r_Z & 1) << (16 + X86G_CC_SHIFT_Z) )
+            | ( (r_A & 1) << (16 + X86G_CC_SHIFT_A) )
+            | ( (r_C & 1) << (16 + X86G_CC_SHIFT_C) )
+            | ( (r_P & 1) << (16 + X86G_CC_SHIFT_P) )
+            | ( (r_AH & 0xFF) << 8 )
+            | ( (r_AL & 0xFF) << 0 );
+   return result;
+}
+
+
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (non-referentially-transparent) */
 /* Horrible hack.  On non-x86 platforms, return 1. */
@@ -1899,37 +2174,118 @@ void x86g_dirtyhelper_CPUID_sse1 ( VexGuestX86State* st )
    }
 }
 
-/* Claim to be the following SSE2-capable CPU:
+/* Claim to be the following SSSE3-capable CPU (2 x ...):
    vendor_id       : GenuineIntel
-   cpu family      : 15
-   model           : 2
-   model name      : Intel(R) Pentium(R) 4 CPU 2.40GHz
-   stepping        : 7
-   cpu MHz         : 2394.234
-   cache size      : 512 KB
+   cpu family      : 6
+   model           : 15
+   model name      : Intel(R) Core(TM)2 CPU 6600 @ 2.40GHz
+   stepping        : 6
+   cpu MHz         : 2394.000
+   cache size      : 4096 KB
+   physical id     : 0
+   siblings        : 2
+   core id         : 0
+   cpu cores       : 2
+   fpu             : yes
+   fpu_exception   : yes
+   cpuid level     : 10
+   wp              : yes
+   flags           : fpu vme de pse tsc msr pae mce cx8 apic sep
+                     mtrr pge mca cmov pat pse36 clflush dts acpi
+                     mmx fxsr sse sse2 ss ht tm syscall nx lm
+                     constant_tsc pni monitor ds_cpl vmx est tm2
+                     cx16 xtpr lahf_lm
+   bogomips        : 4798.78
+   clflush size    : 64
+   cache_alignment : 64
+   address sizes   : 36 bits physical, 48 bits virtual
+   power management:
 */
 void x86g_dirtyhelper_CPUID_sse2 ( VexGuestX86State* st )
 {
+#  define SET_ABCD(_a,_b,_c,_d)               \
+      do { st->guest_EAX = (UInt)(_a);        \
+           st->guest_EBX = (UInt)(_b);        \
+           st->guest_ECX = (UInt)(_c);        \
+           st->guest_EDX = (UInt)(_d);        \
+      } while (0)
+
    switch (st->guest_EAX) {
-      case 0: 
-         st->guest_EAX = 0x00000002;
-         st->guest_EBX = 0x756e6547;
-         st->guest_ECX = 0x6c65746e;
-         st->guest_EDX = 0x49656e69;
+      case 0x00000000:
+         SET_ABCD(0x0000000a, 0x756e6547, 0x6c65746e, 0x49656e69);
          break;
-      case 1: 
-         st->guest_EAX = 0x00000f27;
-         st->guest_EBX = 0x00010809;
-         st->guest_ECX = 0x00004400;
-         st->guest_EDX = 0xbfebfbff;
+      case 0x00000001:
+         SET_ABCD(0x000006f6, 0x00020800, 0x0000e3bd, 0xbfebfbff);
+         break;
+      case 0x00000002:
+         SET_ABCD(0x05b0b101, 0x005657f0, 0x00000000, 0x2cb43049);
+         break;
+      case 0x00000003:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x00000004: {
+         switch (st->guest_ECX) {
+            case 0x00000000: SET_ABCD(0x04000121, 0x01c0003f,
+                                      0x0000003f, 0x00000001); break;
+            case 0x00000001: SET_ABCD(0x04000122, 0x01c0003f,
+                                      0x0000003f, 0x00000001); break;
+            case 0x00000002: SET_ABCD(0x04004143, 0x03c0003f,
+                                      0x00000fff, 0x00000001); break;
+            default:         SET_ABCD(0x00000000, 0x00000000,
+                                      0x00000000, 0x00000000); break;
+         }
+         break;
+      }
+      case 0x00000005:
+         SET_ABCD(0x00000040, 0x00000040, 0x00000003, 0x00000020);
+         break;
+      case 0x00000006:
+         SET_ABCD(0x00000001, 0x00000002, 0x00000001, 0x00000000);
+         break;
+      case 0x00000007:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x00000008:
+         SET_ABCD(0x00000400, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x00000009:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x0000000a:
+      unhandled_eax_value:
+         SET_ABCD(0x07280202, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x80000000:
+         SET_ABCD(0x80000008, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x80000001:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000001, 0x20100000);
+         break;
+      case 0x80000002:
+         SET_ABCD(0x65746e49, 0x2952286c, 0x726f4320, 0x4d542865);
+         break;
+      case 0x80000003:
+         SET_ABCD(0x43203229, 0x20205550, 0x20202020, 0x20202020);
+         break;
+      case 0x80000004:
+         SET_ABCD(0x30303636, 0x20402020, 0x30342e32, 0x007a4847);
+         break;
+      case 0x80000005:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x80000006:
+         SET_ABCD(0x00000000, 0x00000000, 0x10008040, 0x00000000);
+         break;
+      case 0x80000007:
+         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         break;
+      case 0x80000008:
+         SET_ABCD(0x00003024, 0x00000000, 0x00000000, 0x00000000);
          break;
       default:
-         st->guest_EAX = 0x665b5101;
-         st->guest_EBX = 0x00000000;
-         st->guest_ECX = 0x00000000;
-         st->guest_EDX = 0x007b7040;
-         break;
+         goto unhandled_eax_value;
    }
+#  undef SET_ABCD
 }
 
 
@@ -2277,7 +2633,8 @@ void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
    vex_state->guest_TISTART = 0;
    vex_state->guest_TILEN   = 0;
 
-   vex_state->guest_NRADDR = 0;
+   vex_state->guest_NRADDR   = 0;
+   vex_state->guest_SC_CLASS = 0;
 }
 
 
@@ -2350,6 +2707,7 @@ VexGuestLayout
           /* Describe the secondary integer return register. */
           .offset_xDX = offsetof(VexGuestX86State,guest_EDX),
           .sizeof_xDX = 4,
+
 
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */

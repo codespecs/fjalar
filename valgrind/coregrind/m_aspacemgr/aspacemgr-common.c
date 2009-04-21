@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -151,8 +151,10 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    SysRes res;
    aspacem_assert(VG_IS_PAGE_ALIGNED(offset));
 #  if defined(VGP_x86_linux) || defined(VGP_ppc32_linux)
+   /* mmap2 uses 4096 chunks even if actual page size is bigger. */
+   aspacem_assert((offset % 4096) == 0);
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
-                          prot, flags, fd, offset / VKI_PAGE_SIZE);
+                          prot, flags, fd, offset / 4096);
 #  elif defined(VGP_amd64_linux) || defined(VGP_ppc64_linux) \
         || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, 
@@ -253,8 +255,8 @@ Int ML_(am_readlink)(HChar* path, HChar* buf, UInt bufsiz)
 /* Get the dev, inode and mode info for a file descriptor, if
    possible.  Returns True on success. */
 Bool ML_(am_get_fd_d_i_m)( Int fd, 
-                           /*OUT*/UWord* dev, 
-                           /*OUT*/UWord* ino, /*OUT*/UInt* mode )
+                           /*OUT*/ULong* dev, 
+                           /*OUT*/ULong* ino, /*OUT*/UInt* mode )
 {
    SysRes          res;
    struct vki_stat buf;
@@ -265,17 +267,17 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
    struct vki_stat64 buf64;
    res = VG_(do_syscall2)(__NR_fstat64, fd, (UWord)&buf64);
    if (!res.isError) {
-      *dev  = buf64.st_dev;
-      *ino  = buf64.st_ino;
-      *mode = buf64.st_mode;
+      *dev  = (ULong)buf64.st_dev;
+      *ino  = (ULong)buf64.st_ino;
+      *mode = (UInt) buf64.st_mode;
       return True;
    }
 #  endif
    res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
    if (!res.isError) {
-      *dev  = buf.st_dev;
-      *ino  = buf.st_ino;
-      *mode = buf.st_mode;
+      *dev  = (ULong)buf.st_dev;
+      *ino  = (ULong)buf.st_ino;
+      *mode = (UInt) buf.st_mode;
       return True;
    }
    return False;

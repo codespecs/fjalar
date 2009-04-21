@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -130,7 +130,8 @@ static void report_and_quit ( const Char* report,
 {
    Addr stacktop;
    Addr ips[BACKTRACE_DEPTH];
-   ThreadState *tst = VG_(get_ThreadState)( VG_(get_lwp_tid)(VG_(gettid)()) );
+   ThreadState *tst 
+      = VG_(get_ThreadState)( VG_(lwpid_to_vgtid)( VG_(gettid)() ) );
  
    // If necessary, fake up an ExeContext which is of our actual real CPU
    // state.  Could cause problems if we got the panic/exception within the
@@ -141,8 +142,13 @@ static void report_and_quit ( const Char* report,
  
    stacktop = tst->os_state.valgrind_stack_init_SP;
  
-   VG_(get_StackTrace2)(0/*tid is unknown*/, 
-                        ips, BACKTRACE_DEPTH, ip, sp, fp, lr, sp, stacktop);
+   VG_(get_StackTrace_wrk)(
+      0/*tid is unknown*/, 
+      ips, BACKTRACE_DEPTH, 
+      NULL/*array to dump SP values in*/,
+      NULL/*array to dump FP values in*/,
+      ip, sp, fp, lr, sp, stacktop
+   );
    VG_(pp_StackTrace)  (ips, BACKTRACE_DEPTH);
  
    VG_(show_sched_status)();
@@ -188,7 +194,7 @@ void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
    // Treat vg_assert2(0, "foo") specially, as a panicky abort
    if (VG_STREQ(expr, "0")) {
       VG_(printf)("\n%s: %s:%d (%s): the 'impossible' happened.\n",
-                  component, file, line, fn, expr );
+                  component, file, line, fn );
    } else {
       VG_(printf)("\n%s: %s:%d (%s): Assertion '%s' failed.\n",
                   component, file, line, fn, expr );

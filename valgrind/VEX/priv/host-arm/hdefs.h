@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -451,7 +451,7 @@ extern Int          emit_ARMInstr        ( UChar* buf, Int nbuf, ARMInstr* );
 extern ARMInstr*    genSpill_ARM         ( HReg rreg, Int offset );
 extern ARMInstr*    genReload_ARM        ( HReg rreg, Int offset );
 extern void         getAllocableRegs_ARM ( Int*, HReg** );
-extern HInstrArray* iselBB_ARM           ( IRBB* );
+extern HInstrArray* iselSB_ARM           ( IRSB* );
 
 #endif /* ndef __LIBVEX_ARMH_DEFS_H */
 

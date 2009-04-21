@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -87,17 +87,18 @@ typedef
       Int o_arg4;
       Int o_arg5;
       Int o_arg6;
-      Int o_arg8;
       Int o_arg7;
+      Int o_arg8;
       Int o_retval;
    }
    SyscallArgLayout;
 
 /* Flags describing syscall wrappers */
-#define SfMayBlock   (1 << 1)    /* may block                       */
-#define SfPostOnFail (1 << 2)    /* call POST() function on failure */
-#define SfPollAfter  (1 << 3)    /* poll for signals on completion  */
-#define SfYieldAfter (1 << 4)    /* yield on completion             */
+#define SfMayBlock      (1 << 1) /* may block                         */
+#define SfPostOnFail    (1 << 2) /* call POST() function on failure   */
+#define SfPollAfter     (1 << 3) /* poll for signals on completion    */
+#define SfYieldAfter    (1 << 4) /* yield on completion               */
+#define SfNoWriteResult (1 << 5) /* don't write result to guest state */
 
 
 /* ---------------------------------------------------------------------
@@ -310,13 +311,6 @@ static inline UWord getERR ( SyscallStatus* st ) {
    do {                                              \
      status->what = SsComplete;                      \
      status->sres = (zzz);                           \
-   } while (0)
-
-/* A lamentable kludge */
-#define SET_STATUS_Failure_NO_SANITY_CHECK(zzz)      \
-   do { Word wzz = (Word)(zzz);                      \
-        status->what = SsFailure;                    \
-        status->val  = wzz;                          \
    } while (0)
 
 

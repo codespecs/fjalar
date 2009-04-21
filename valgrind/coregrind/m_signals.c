@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -84,6 +84,7 @@
 #include "pub_core_vkiscnums.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_threadstate.h"
+#include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debugger.h"      // For VG_(start_debugger)
@@ -113,7 +114,7 @@
 
 static void sync_signalhandler  ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext * );
 static void async_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext * );
-static void sigvgkill_handler	   ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext * );
+static void sigvgkill_handler	( Int sigNo, vki_siginfo_t *info, struct vki_ucontext * );
 
 static const Char *signame(Int sigNo);
 
@@ -305,7 +306,7 @@ typedef struct SigQueue {
       return VG_UCONTEXT_STACK_PTR(ucV);
    }
 
-#else
+#else 
 #  error Unknown platform
 #endif
 
@@ -430,7 +431,7 @@ void pp_SKSS ( void )
    Int sig;
    VG_(printf)("\n\nSKSS:\n");
    for (sig = 1; sig <= _VKI_NSIG; sig++) {
-      VG_(printf)("sig %d:  handler 0x%x,  flags 0x%x\n", sig,
+      VG_(printf)("sig %d:  handler %p,  flags 0x%x\n", sig,
                   skss.skss_per_sig[sig].skss_handler,
                   skss.skss_per_sig[sig].skss_flags );
 
@@ -657,12 +658,12 @@ static void handle_SCSS_change ( Bool force_update )
 
       if (VG_(clo_trace_signals) && VG_(clo_verbosity) > 2)
          VG_(message)(Vg_DebugMsg, 
-            "setting ksig %d to: hdlr 0x%x, flags 0x%x, "
-            "mask(63..0) 0x%x 0x%x",
+            "setting ksig %d to: hdlr %p, flags 0x%lx, "
+            "mask(63..0) 0x%lx 0x%lx",
             sig, ksa.ksa_handler,
-            ksa.sa_flags,
-            ksa.sa_mask.sig[1], 
-            ksa.sa_mask.sig[0] 
+            (UWord)ksa.sa_flags,
+            (UWord)ksa.sa_mask.sig[1], 
+            (UWord)ksa.sa_mask.sig[0] 
          );
 
       res = VG_(sigaction)( sig, &ksa, &ksa_old );
@@ -764,7 +765,7 @@ SysRes VG_(do_sys_sigaction) ( Int signo,
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugExtraMsg, 
          "sys_sigaction: sigNo %d, "
-         "new %p, old %p, new flags 0x%llx",
+         "new %#lx, old %#lx, new flags 0x%llx",
          signo, (UWord)new_act, (UWord)old_act,
          (ULong)(new_act ? new_act->sa_flags : 0) );
 
@@ -821,7 +822,7 @@ SysRes VG_(do_sys_sigaction) ( Int signo,
    return VG_(mk_SysRes_Success)( 0 );
 
   bad_signo:
-   if (VG_(showing_core_errors)()) {
+   if (VG_(showing_core_errors)() && !VG_(clo_xml)) {
       VG_(message)(Vg_UserMsg,
                    "Warning: bad signal number %d in sigaction()", 
                    signo);
@@ -829,7 +830,7 @@ SysRes VG_(do_sys_sigaction) ( Int signo,
    return VG_(mk_SysRes_Error)( VKI_EINVAL );
 
   bad_signo_reserved:
-   if (VG_(showing_core_errors)()) {
+   if (VG_(showing_core_errors)() && !VG_(clo_xml)) {
       VG_(message)(Vg_UserMsg,
 		   "Warning: ignored attempt to set %s handler in sigaction();",
 		   signame(signo));
@@ -840,7 +841,7 @@ SysRes VG_(do_sys_sigaction) ( Int signo,
    return VG_(mk_SysRes_Error)( VKI_EINVAL );
 
   bad_sigkill_or_sigstop:
-   if (VG_(showing_core_errors)()) {
+   if (VG_(showing_core_errors)() && !VG_(clo_xml)) {
       VG_(message)(Vg_UserMsg,
 		   "Warning: ignored attempt to set %s handler in sigaction();",
 		   signame(signo));
@@ -883,13 +884,15 @@ const Char *format_sigset ( const vki_sigset_t* set )
 
    for (w = _VKI_NSIG_WORDS - 1; w >= 0; w--)
    {
-#if _VKI_NSIG_BPW == 32
-      VG_(sprintf)(buf + VG_(strlen)(buf), "%08lx", set ? set->sig[w] : 0);
-#elif _VKI_NSIG_BPW == 64
-      VG_(sprintf)(buf + VG_(strlen)(buf), "%16lx", set ? set->sig[w] : 0);
-#else
-#error "Unsupported value for _VKI_NSIG_BPW"
-#endif
+#     if _VKI_NSIG_BPW == 32
+      VG_(sprintf)(buf + VG_(strlen)(buf), "%08llx",
+                   set ? (ULong)set->sig[w] : 0);
+#     elif _VKI_NSIG_BPW == 64
+      VG_(sprintf)(buf + VG_(strlen)(buf), "%16llx",
+                   set ? (ULong)set->sig[w] : 0);
+#     else
+#       error "Unsupported value for _VKI_NSIG_BPW"
+#     endif
    }
 
    return buf;
@@ -1001,7 +1004,7 @@ void VG_(clear_out_queued_signals)( ThreadId tid, vki_sigset_t* saved_mask )
 /* Set up a stack frame (VgSigContext) for the client's signal
    handler. */
 static
-void push_signal_frame ( ThreadId tid, const vki_siginfo_t *siginfo )
+void push_signal_frame ( ThreadId tid, const vki_siginfo_t *siginfo, const struct vki_ucontext *uc )
 {
    Addr         esp_top_of_frame;
    ThreadState* tst;
@@ -1028,11 +1031,11 @@ void push_signal_frame ( ThreadId tid, const vki_siginfo_t *siginfo )
          = (Addr)(tst->altstack.ss_sp) + tst->altstack.ss_size;
       if (VG_(clo_trace_signals))
          VG_(message)(Vg_DebugMsg,
-		      "delivering signal %d (%s) to thread %d: on ALT STACK (%p-%p; %d bytes)", 
+		      "delivering signal %d (%s) to thread %d: on ALT STACK (%p-%p; %ld bytes)",
 		      sigNo, signame(sigNo), tid, 
 		      tst->altstack.ss_sp,
 		      (UChar *)tst->altstack.ss_sp + tst->altstack.ss_size,
-		      tst->altstack.ss_size );
+		      (unsigned long)tst->altstack.ss_size );
 
       /* Signal delivery to tools */
       VG_TRACK( pre_deliver_signal, tid, sigNo, /*alt_stack*/True );
@@ -1050,7 +1053,7 @@ void push_signal_frame ( ThreadId tid, const vki_siginfo_t *siginfo )
    /* This may fail if the client stack is busted; if that happens,
       the whole process will exit rather than simply calling the
       signal handler. */
-   VG_(sigframe_create) (tid, esp_top_of_frame, siginfo,
+   VG_(sigframe_create) (tid, esp_top_of_frame, siginfo, uc,
                          scss.scss_per_sig[sigNo].scss_handler,
                          scss.scss_per_sig[sigNo].scss_flags,
                          &tst->sig_mask,
@@ -1205,7 +1208,8 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
 	 core = False;
    }
 
-   if (VG_(clo_verbosity) > 1 || (could_core && info->si_code > VKI_SI_USER)) {
+   if ( (VG_(clo_verbosity) > 1 || (could_core && info->si_code > VKI_SI_USER)) 
+        && !VG_(clo_xml) ) {
       VG_(message)(Vg_UserMsg, "");
       VG_(message)(Vg_UserMsg, 
                    "Process terminating with default action of signal %d (%s)%s", 
@@ -1273,7 +1277,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
 	    case VKI_BUS_OBJERR: event = "Hardware error"; break;
 	    }
 	    break;
-	 }
+	 } /* switch (sigNo) */
 
 	 if (event != NULL) {
 	    if (haveaddr)
@@ -1283,9 +1287,32 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
 	       VG_(message)(Vg_UserMsg, " %s", event);
 	 }
       }
-
-      if (tid != VG_INVALID_THREADID) {
-         VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
+      /* Print a stack trace.  Be cautious if the thread's SP is in an
+         obviously stupid place (not mapped readable) that would
+         likely cause a segfault. */
+      if (VG_(is_valid_tid)(tid)) {
+         ExeContext* ec = VG_(am_is_valid_for_client)
+                             (VG_(get_SP)(tid), sizeof(Addr), VKI_PROT_READ)
+                        ? VG_(record_ExeContext)( tid, 0/*first_ip_delta*/ )
+                      : VG_(record_depth_1_ExeContext)( tid );
+         vg_assert(ec);
+         VG_(pp_ExeContext)( ec );
+      }
+      if (sigNo == VKI_SIGSEGV 
+          && info && info->si_code > VKI_SI_USER 
+          && info->si_code == VKI_SEGV_MAPERR) {
+         VG_(message)(Vg_UserMsg, " If you believe this happened as a "
+                                  "result of a stack overflow in your");
+         VG_(message)(Vg_UserMsg, " program's main thread (unlikely but"
+                                  " possible), you can try to increase");
+         VG_(message)(Vg_UserMsg, " the size of the main thread stack"
+                                  " using the --main-stacksize= flag.");
+         // FIXME: assumes main ThreadId == 1
+         if (VG_(is_valid_tid)(1)) {
+            VG_(message)(Vg_UserMsg, 
+               " The main thread stack size used in this run was %d.",
+               (Int)VG_(threads)[1].client_stack_szB);
+         }
       }
    }
 
@@ -1321,7 +1348,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
    This updates the thread state, but it does not set it to be
    Runnable.
 */
-static void deliver_signal ( ThreadId tid, const vki_siginfo_t *info )
+static void deliver_signal ( ThreadId tid, const vki_siginfo_t *info, const struct vki_ucontext *uc )
 {
    Int			sigNo = info->si_signo;
    SCSS_Per_Signal	*handler = &scss.scss_per_sig[sigNo];
@@ -1368,7 +1395,7 @@ static void deliver_signal ( ThreadId tid, const vki_siginfo_t *info )
       */
       vg_assert(VG_(is_valid_tid)(tid));
 
-      push_signal_frame ( tid, info );
+      push_signal_frame ( tid, info, uc );
 
       if (handler->scss_flags & VKI_SA_ONESHOT) {
 	 /* Do the ONESHOT thing. */
@@ -1423,7 +1450,7 @@ static void synth_fault_common(ThreadId tid, Addr addr, Int si_code)
    if (VG_(sigismember)(&VG_(threads)[tid].sig_mask, VKI_SIGSEGV))
       VG_(set_default_handler)(VKI_SIGSEGV);
 
-   deliver_signal(tid, &info);
+   deliver_signal(tid, &info, NULL);
 }
 
 // Synthesize a fault where the address is OK, but the page
@@ -1453,25 +1480,32 @@ void VG_(synth_sigill)(ThreadId tid, Addr addr)
    vg_assert(VG_(threads)[tid].status == VgTs_Runnable);
 
    info.si_signo = VKI_SIGILL;
-   info.si_code = VKI_ILL_ILLOPC; /* jrs: no idea what this should be */
+   info.si_code  = VKI_ILL_ILLOPC; /* jrs: no idea what this should be */
    info.VKI_SIGINFO_si_addr = (void*)addr;
 
    resume_scheduler(tid);
-   deliver_signal(tid, &info);
+   deliver_signal(tid, &info, NULL);
 }
 
 // Synthesise a SIGTRAP.
 void VG_(synth_sigtrap)(ThreadId tid)
 {
    vki_siginfo_t info;
+   struct vki_ucontext uc;
 
    vg_assert(VG_(threads)[tid].status == VgTs_Runnable);
 
    info.si_signo = VKI_SIGTRAP;
-   info.si_code = VKI_TRAP_TRACE; /* jrs: no idea what this should be */
+   info.si_code = VKI_TRAP_BRKPT; /* tjh: only ever called for a brkpt ins */
+#if defined(VGA_x86) || defined(VGA_amd64)
+   uc.uc_mcontext.trapno = 3;     /* tjh: this is the x86 trap number
+                                          for a breakpoint trap... */
+   uc.uc_mcontext.err = 0;        /* tjh: no error code for x86
+                                          breakpoint trap... */
+#endif
 
    resume_scheduler(tid);
-   deliver_signal(tid, &info);
+   deliver_signal(tid, &info, &uc);
 }
 
 /* Make a signal pending for a thread, for later delivery.
@@ -1494,7 +1528,8 @@ void queue_signal(ThreadId tid, const vki_siginfo_t *si)
    block_all_host_signals(&savedmask);
 
    if (tst->sig_queue == NULL) {
-      tst->sig_queue = VG_(arena_malloc)(VG_AR_CORE, sizeof(*tst->sig_queue));
+      tst->sig_queue = VG_(arena_malloc)(VG_AR_CORE, "signals.qs.1",
+                                         sizeof(*tst->sig_queue));
       VG_(memset)(tst->sig_queue, 0, sizeof(*tst->sig_queue));
    }
    sq = tst->sig_queue;
@@ -1555,7 +1590,7 @@ static vki_siginfo_t *next_queued(ThreadId tid, const vki_sigset_t *set)
       idx = (idx + 1) % N_QUEUED_SIGNALS;
    } while(idx != sq->next);
   out:   
-   return ret;   
+   return ret;
 }
 
 /* 
@@ -1567,7 +1602,7 @@ static vki_siginfo_t *next_queued(ThreadId tid, const vki_sigset_t *set)
 static 
 void async_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *uc )
 {
-   ThreadId tid = VG_(get_lwp_tid)(VG_(gettid)());
+   ThreadId tid = VG_(lwpid_to_vgtid)(VG_(gettid)());
    ThreadState *tst = VG_(get_ThreadState)(tid);
 
 #ifdef VGO_linux
@@ -1589,7 +1624,7 @@ void async_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *
    vg_assert(tst->status == VgTs_WaitSys);
 
    /* The thread isn't currently running, make it so before going on */
-   VG_(set_running)(tid, "async_signalhandler");
+   VG_(acquire_BigLock)(tid, "async_signalhandler");
 
    /* Update thread state properly */
    VG_(fixup_guest_state_after_syscall_interrupted)(
@@ -1602,7 +1637,7 @@ void async_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *
 
    /* Set up the thread's state to deliver a signal */
    if (!is_sig_ign(info->si_signo))
-      deliver_signal(tid, info);
+      deliver_signal(tid, info, uc);
 
    /* longjmp back to the thread's main loop to start executing the
       handler. */
@@ -1631,7 +1666,7 @@ Bool VG_(extend_stack)(Addr addr, UInt maxsize)
       = VG_(am_find_nsegment)(addr);
    NSegment const* seg_next 
       = seg ? VG_(am_next_nsegment)( (NSegment*)seg, True/*fwds*/ )
-                            : NULL;
+            : NULL;
 
    if (seg && seg->kind == SkAnonC)
       /* addr is already mapped.  Nothing to do. */
@@ -1687,7 +1722,7 @@ void VG_(set_fault_catcher)(void (*catcher)(Int, Addr))
 static
 void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *uc )
 {
-   ThreadId tid = VG_(get_lwp_tid)(VG_(gettid)());
+   ThreadId tid = VG_(lwpid_to_vgtid)(VG_(gettid)());
 
    vg_assert(info != NULL);
    vg_assert(info->si_signo == sigNo);
@@ -1759,7 +1794,7 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
 
 	 /* It's a fatal signal, so we force the default handler. */
 	 VG_(set_default_handler)(sigNo);
-	 deliver_signal(tid, info);
+	 deliver_signal(tid, info, uc);
 	 resume_scheduler(tid);
 	 VG_(exit)(99);		/* If we can't resume, then just exit */
       }
@@ -1781,7 +1816,7 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
 
    if (VG_(clo_trace_signals)) {
       VG_(message)(Vg_DebugMsg, "signal %d arrived ... si_code=%d, "
-                                "EIP=%p, eip=%p",
+                                "EIP=%#lx, eip=%#lx",
                    sigNo, info->si_code, VG_(get_IP)(tid), 
 		   VG_UCONTEXT_INSTR_PTR(uc) );
    }
@@ -1810,18 +1845,18 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
          = VG_(am_find_nsegment)(fault);
       NSegment const* seg_next 
          = seg ? VG_(am_next_nsegment)( (NSegment*)seg, True/*fwds*/ )
-                               : NULL;
+               : NULL;
 
       if (VG_(clo_trace_signals)) {
 	 if (seg == NULL)
 	    VG_(message)(Vg_DebugMsg,
-			 "SIGSEGV: si_code=%d faultaddr=%p tid=%d ESP=%p "
+			 "SIGSEGV: si_code=%d faultaddr=%#lx tid=%d ESP=%#lx "
                          "seg=NULL",
 			 info->si_code, fault, tid, esp);
 	 else
 	    VG_(message)(Vg_DebugMsg,
-			 "SIGSEGV: si_code=%d faultaddr=%p tid=%d ESP=%p "
-                          "seg=%p-%p",
+			 "SIGSEGV: si_code=%d faultaddr=%#lx tid=%d ESP=%#lx "
+                          "seg=%#lx-%#lx",
 			 info->si_code, fault, tid, esp, seg->start, seg->end);
       }
       if (info->si_code == VKI_SEGV_MAPERR
@@ -1841,13 +1876,13 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
 	 if (VG_(extend_stack)(base, VG_(threads)[tid].client_stack_szB)) {
 	    if (VG_(clo_trace_signals))
 	       VG_(message)(Vg_DebugMsg, 
-			    "       -> extended stack base to %p", 
+			    "       -> extended stack base to %#lx",
                             VG_PGROUNDDN(fault));
             return; // extension succeeded, restart host (hence guest)
                     // instruction
 	 } else
 	    VG_(message)(Vg_UserMsg, 
-                         "Stack overflow in thread %d: can't grow stack to %p", 
+                         "Stack overflow in thread %d: can't grow stack to %#lx",
 			 tid, fault);
       }
       /* Fall into normal signal handling for all other cases */
@@ -1857,7 +1892,8 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
       from the client's code, then we can jump back into the scheduler
       and have it delivered.  Otherwise it's a Valgrind bug. */
    {   
-      ThreadState *tst = VG_(get_ThreadState)(VG_(get_lwp_tid)(VG_(gettid)()));
+      ThreadState *tst 
+         = VG_(get_ThreadState)(VG_(lwpid_to_vgtid)(VG_(gettid)()));
 
       if (VG_(sigismember)(&tst->sig_mask, sigNo)) {
 	 /* signal is blocked, but they're not allowed to block faults */
@@ -1867,7 +1903,7 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
       if (VG_(in_generated_code)) {
 	 /* Can't continue; must longjmp back to the scheduler and thus
 	    enter the sighandler immediately. */
-	 deliver_signal(tid, info);
+	 deliver_signal(tid, info, uc);
 	 resume_scheduler(tid);
       }
 
@@ -1881,7 +1917,7 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
 		   sigNo, signame(sigNo));
 
       VG_(message)(Vg_DebugMsg, 
-		   "si_code=%x;  Faulting address: %p;  sp: %p",
+		   "si_code=%x;  Faulting address: %p;  sp: %#lx",
 		   info->si_code, info->VKI_SIGINFO_si_addr,
                    VG_UCONTEXT_STACK_PTR(uc));
 
@@ -1908,14 +1944,14 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
  */
 static void sigvgkill_handler(int signo, vki_siginfo_t *si, struct vki_ucontext *uc)
 {
-   ThreadId tid = VG_(get_lwp_tid)(VG_(gettid)());
+   ThreadId     tid = VG_(lwpid_to_vgtid)(VG_(gettid)());
    ThreadStatus at_signal = VG_(threads)[tid].status;
 
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg, 
                    "sigvgkill for lwp %d tid %d", VG_(gettid)(), tid);
 
-   VG_(set_running)(tid, "sigvgkill_handler");
+   VG_(acquire_BigLock)(tid, "sigvgkill_handler");
 
    vg_assert(signo == VG_SIGVGKILL);
    vg_assert(si->si_signo == signo);
@@ -1925,13 +1961,13 @@ static void sigvgkill_handler(int signo, vki_siginfo_t *si, struct vki_ucontext 
       is runnable - see VG_(nuke_all_threads_except) in the scheduler.
       Hence comment these out ..  
 
-   vg_assert(VG_(threads)[tid].status == VgTs_WaitSys);
+      vg_assert(VG_(threads)[tid].status == VgTs_WaitSys);
       VG_(post_syscall)(tid);
 
       and instead do:
    */
    if (at_signal == VgTs_WaitSys)
-   VG_(post_syscall)(tid);
+      VG_(post_syscall)(tid);
    /* jrs 2006 August 3 ends */
 
    resume_scheduler(tid);
@@ -1949,7 +1985,7 @@ void pp_ksigaction ( struct vki_sigaction* sa )
 #              if !defined(VGP_ppc32_aix5) && !defined(VGP_ppc64_aix5)
                   sa->sa_restorer
 #              else
-                  0
+                  (void*)0
 #              endif
               );
    VG_(printf)("pp_ksigaction: { ");
@@ -2015,7 +2051,7 @@ void VG_(poll_signals)(ThreadId tid)
 	 VG_(message)(Vg_DebugMsg, "Polling found signal %d for tid %d", 
 		      sip->si_signo, tid);
       if (!is_sig_ign(sip->si_signo))
-	 deliver_signal(tid, sip);
+	 deliver_signal(tid, sip, NULL);
       else if (VG_(clo_trace_signals))
 	 VG_(message)(Vg_DebugMsg, "   signal %d ignored", sip->si_signo);
 	 
@@ -2075,7 +2111,7 @@ void VG_(sigstartup_actions) ( void )
       VG_(max_signal) = i;
 
       if (VG_(clo_trace_signals) && VG_(clo_verbosity) > 2)
-         VG_(printf)("snaffling handler 0x%x for signal %d\n", 
+         VG_(printf)("snaffling handler 0x%lx for signal %d\n", 
                      (Addr)(sa.ksa_handler), i );
 
       scss.scss_per_sig[i].scss_handler  = sa.ksa_handler;

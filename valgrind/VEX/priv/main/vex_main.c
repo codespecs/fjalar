@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -186,24 +186,25 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       from the target instruction set. */
    HReg* available_real_regs;
    Int   n_available_real_regs;
-   Bool         (*isMove)      ( HInstr*, HReg*, HReg* );
-   void         (*getRegUsage) ( HRegUsage*, HInstr*, Bool );
-   void         (*mapRegs)     ( HRegRemap*, HInstr*, Bool );
-   HInstr*      (*genSpill)    ( HReg, Int, Bool );
-   HInstr*      (*genReload)   ( HReg, Int, Bool );
-   void         (*ppInstr)     ( HInstr*, Bool );
-   void         (*ppReg)       ( HReg );
-   HInstrArray* (*iselBB)      ( IRBB*, VexArch, VexArchInfo*, 
-                                                 VexMiscInfo* );
-   Int          (*emit)        ( UChar*, Int, HInstr*, Bool, void* );
-   IRExpr*      (*specHelper)  ( HChar*, IRExpr** );
+   Bool         (*isMove)       ( HInstr*, HReg*, HReg* );
+   void         (*getRegUsage)  ( HRegUsage*, HInstr*, Bool );
+   void         (*mapRegs)      ( HRegRemap*, HInstr*, Bool );
+   HInstr*      (*genSpill)     ( HReg, Int, Bool );
+   HInstr*      (*genReload)    ( HReg, Int, Bool );
+   HInstr*      (*directReload) ( HInstr*, HReg, Short );
+   void         (*ppInstr)      ( HInstr*, Bool );
+   void         (*ppReg)        ( HReg );
+   HInstrArray* (*iselSB)       ( IRSB*, VexArch, VexArchInfo*, 
+                                                  VexAbiInfo* );
+   Int          (*emit)         ( UChar*, Int, HInstr*, Bool, void* );
+   IRExpr*      (*specHelper)   ( HChar*, IRExpr** );
    Bool         (*preciseMemExnsFn) ( Int, Int );
 
    DisOneInstrFn disInstrFn;
 
    VexGuestLayout* guest_layout;
    Bool            host_is_bigendian = False;
-   IRBB*           irbb;
+   IRSB*           irsb;
    HInstrArray*    vcode;
    HInstrArray*    rcode;
    Int             i, j, k, out_used, guest_sizeB;
@@ -221,9 +222,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    mapRegs                = NULL;
    genSpill               = NULL;
    genReload              = NULL;
+   directReload           = NULL;
    ppInstr                = NULL;
    ppReg                  = NULL;
-   iselBB                 = NULL;
+   iselSB                 = NULL;
    emit                   = NULL;
    specHelper             = NULL;
    preciseMemExnsFn       = NULL;
@@ -246,18 +248,19 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    switch (vta->arch_host) {
 
       case VexArchX86:
-         mode64      = False;
+         mode64       = False;
          getAllocableRegs_X86 ( &n_available_real_regs,
                                 &available_real_regs );
-         isMove      = (Bool(*)(HInstr*,HReg*,HReg*)) isMove_X86Instr;
-         getRegUsage = (void(*)(HRegUsage*,HInstr*, Bool)) getRegUsage_X86Instr;
-         mapRegs     = (void(*)(HRegRemap*,HInstr*, Bool)) mapRegs_X86Instr;
-         genSpill    = (HInstr*(*)(HReg,Int, Bool)) genSpill_X86;
-         genReload   = (HInstr*(*)(HReg,Int, Bool)) genReload_X86;
-         ppInstr     = (void(*)(HInstr*, Bool)) ppX86Instr;
-         ppReg       = (void(*)(HReg)) ppHRegX86;
-         iselBB      = iselBB_X86;
-         emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_X86Instr;
+         isMove       = (Bool(*)(HInstr*,HReg*,HReg*)) isMove_X86Instr;
+         getRegUsage  = (void(*)(HRegUsage*,HInstr*, Bool)) getRegUsage_X86Instr;
+         mapRegs      = (void(*)(HRegRemap*,HInstr*, Bool)) mapRegs_X86Instr;
+         genSpill     = (HInstr*(*)(HReg,Int, Bool)) genSpill_X86;
+         genReload    = (HInstr*(*)(HReg,Int, Bool)) genReload_X86;
+         directReload = (HInstr*(*)(HInstr*,HReg,Short)) directReload_X86;
+         ppInstr      = (void(*)(HInstr*, Bool)) ppX86Instr;
+         ppReg        = (void(*)(HReg)) ppHRegX86;
+         iselSB       = iselSB_X86;
+         emit         = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_X86Instr;
          host_is_bigendian = False;
          host_word_type    = Ity_I32;
          vassert(are_valid_hwcaps(VexArchX86, vta->archinfo_host.hwcaps));
@@ -275,7 +278,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          genReload   = (HInstr*(*)(HReg,Int, Bool)) genReload_AMD64;
          ppInstr     = (void(*)(HInstr*, Bool)) ppAMD64Instr;
          ppReg       = (void(*)(HReg)) ppHRegAMD64;
-         iselBB      = iselBB_AMD64;
+         iselSB      = iselSB_AMD64;
          emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_AMD64Instr;
          host_is_bigendian = False;
          host_word_type    = Ity_I64;
@@ -294,7 +297,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          genReload   = (HInstr*(*)(HReg,Int,Bool)) genReload_PPC;
          ppInstr     = (void(*)(HInstr*,Bool)) ppPPCInstr;
          ppReg       = (void(*)(HReg)) ppHRegPPC;
-         iselBB      = iselBB_PPC;
+         iselSB      = iselSB_PPC;
          emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_PPCInstr;
          host_is_bigendian = True;
          host_word_type    = Ity_I32;
@@ -313,7 +316,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          genReload   = (HInstr*(*)(HReg,Int, Bool)) genReload_PPC;
          ppInstr     = (void(*)(HInstr*, Bool)) ppPPCInstr;
          ppReg       = (void(*)(HReg)) ppHRegPPC;
-         iselBB      = iselBB_PPC;
+         iselSB      = iselSB_PPC;
          emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_PPCInstr;
          host_is_bigendian = True;
          host_word_type    = Ity_I64;
@@ -424,7 +427,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                    " Front end "
                    "------------------------\n\n");
 
-   irbb = bb_to_IR ( vta->guest_extents,
+   irsb = bb_to_IR ( vta->guest_extents,
                      vta->callback_opaque,
                      disInstrFn,
                      vta->guest_bytes, 
@@ -433,7 +436,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                      host_is_bigendian,
                      vta->arch_guest,
                      &vta->archinfo_guest,
-                     &vta->miscinfo_both,
+                     &vta->abiinfo_both,
                      guest_word_type,
                      vta->do_self_check,
                      vta->preamble_function,
@@ -442,7 +445,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
 
    vexAllocSanityCheck();
 
-   if (irbb == NULL) {
+   if (irsb == NULL) {
       /* Access failure. */
       vexSetAllocModeTEMP_and_clear();
       vex_traceflags = 0;
@@ -471,22 +474,22 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    }
 
    /* Sanity check the initial IR. */
-   sanityCheckIRBB( irbb, "initial IR", 
+   sanityCheckIRSB( irsb, "initial IR", 
                     False/*can be non-flat*/, guest_word_type );
 
    vexAllocSanityCheck();
 
    /* Clean it up, hopefully a lot. */
-   irbb = do_iropt_BB ( irbb, specHelper, preciseMemExnsFn, 
+   irsb = do_iropt_BB ( irsb, specHelper, preciseMemExnsFn, 
                               vta->guest_bytes_addr );
-   sanityCheckIRBB( irbb, "after initial iropt", 
+   sanityCheckIRSB( irsb, "after initial iropt", 
                     True/*must be flat*/, guest_word_type );
 
    if (vex_traceflags & VEX_TRACE_OPT1) {
       vex_printf("\n------------------------" 
                    " After pre-instr IR optimisation "
                    "------------------------\n\n");
-      ppIRBB ( irbb );
+      ppIRSB ( irsb );
       vex_printf("\n");
    }
 
@@ -494,15 +497,15 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
 
    /* Get the thing instrumented. */
    if (vta->instrument1)
-      irbb = vta->instrument1(vta->callback_opaque,
-                              irbb, guest_layout, 
+      irsb = vta->instrument1(vta->callback_opaque,
+                              irsb, guest_layout, 
                               vta->guest_extents,
                               guest_word_type, host_word_type);
    vexAllocSanityCheck();
 
    if (vta->instrument2)
-      irbb = vta->instrument2(vta->callback_opaque,
-                              irbb, guest_layout,
+      irsb = vta->instrument2(vta->callback_opaque,
+                              irsb, guest_layout,
                               vta->guest_extents,
                               guest_word_type, host_word_type);
       
@@ -510,20 +513,20 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       vex_printf("\n------------------------" 
                    " After instrumentation "
                    "------------------------\n\n");
-      ppIRBB ( irbb );
+      ppIRSB ( irsb );
       vex_printf("\n");
    }
 
    if (vta->instrument1 || vta->instrument2)
-      sanityCheckIRBB( irbb, "after instrumentation",
+      sanityCheckIRSB( irsb, "after instrumentation",
                        True/*must be flat*/, guest_word_type );
 
    /* Do a post-instrumentation cleanup pass. */
    if (vta->instrument1 || vta->instrument2) {
-      do_deadcode_BB( irbb );
-      irbb = cprop_BB( irbb );
-      do_deadcode_BB( irbb );
-      sanityCheckIRBB( irbb, "after post-instrumentation cleanup",
+      do_deadcode_BB( irsb );
+      irsb = cprop_BB( irsb );
+      do_deadcode_BB( irsb );
+      sanityCheckIRSB( irsb, "after post-instrumentation cleanup",
                        True/*must be flat*/, guest_word_type );
    }
 
@@ -533,13 +536,17 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       vex_printf("\n------------------------" 
                    " After post-instr IR optimisation "
                    "------------------------\n\n");
-      ppIRBB ( irbb );
+      ppIRSB ( irsb );
       vex_printf("\n");
    }
 
    /* Turn it into virtual-registerised code.  Build trees -- this
       also throws away any dead bindings. */
-   ado_treebuild_BB( irbb );
+   ado_treebuild_BB( irsb );
+
+   if (vta->finaltidy) {
+      irsb = vta->finaltidy(irsb);
+   }
 
    vexAllocSanityCheck();
 
@@ -547,7 +554,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       vex_printf("\n------------------------" 
                    "  After tree-building "
                    "------------------------\n\n");
-      ppIRBB ( irbb );
+      ppIRSB ( irsb );
       vex_printf("\n");
    }
 
@@ -560,8 +567,8 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                    " Instruction selection "
                    "------------------------\n");
 
-   vcode = iselBB ( irbb, vta->arch_host, &vta->archinfo_host, 
-                                          &vta->miscinfo_both );
+   vcode = iselSB ( irsb, vta->arch_host, &vta->archinfo_host, 
+                                          &vta->abiinfo_both );
 
    vexAllocSanityCheck();
 
@@ -581,7 +588,8 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    rcode = doRegisterAllocation ( vcode, available_real_regs,
                                   n_available_real_regs,
                                   isMove, getRegUsage, mapRegs, 
-                                  genSpill, genReload, guest_sizeB,
+                                  genSpill, genReload, directReload, 
+                                  guest_sizeB,
                                   ppInstr, ppReg, mode64 );
 
    vexAllocSanityCheck();
@@ -705,15 +713,17 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai )
    vai->ppc_cache_line_szB = 0;
 }
 
-/* Write default settings info *vmi. */
-void LibVEX_default_VexMiscInfo ( /*OUT*/VexMiscInfo* vmi )
+/* Write default settings info *vbi. */
+void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi )
 {
-   vmi->guest_stack_redzone_size       = 0;
-   vmi->guest_ppc_zap_RZ_at_blr        = False;
-   vmi->guest_ppc_zap_RZ_at_bl         = NULL;
-   vmi->guest_ppc_sc_continues_at_LR   = False;
-   vmi->host_ppc_calls_use_fndescrs    = False;
-   vmi->host_ppc32_regalign_int64_args = False;
+   vbi->guest_stack_redzone_size       = 0;
+   vbi->guest_amd64_assume_fs_is_zero  = False;
+   vbi->guest_amd64_assume_gs_is_0x60  = False;
+   vbi->guest_ppc_zap_RZ_at_blr        = False;
+   vbi->guest_ppc_zap_RZ_at_bl         = NULL;
+   vbi->guest_ppc_sc_continues_at_LR   = False;
+   vbi->host_ppc_calls_use_fndescrs    = False;
+   vbi->host_ppc32_regalign_int64_args = False;
 }
 
 

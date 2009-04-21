@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2006 OpenWorks LLP
+   Copyright (C) 2006-2008 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -27,6 +27,11 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+
+   Neither the names of the U.S. Department of Energy nor the
+   University of California nor the names of its contributors may be
+   used to endorse or promote products derived from this software
+   without prior written permission.
 */
 
 #include "pub_core_basics.h"
@@ -58,7 +63,8 @@
 struct hacky_sigframe {
    UChar              lower_guardzone[512];  // put nothing here
    VexGuestPPC32State gst;
-   VexGuestPPC32State gshadow;
+   VexGuestPPC32State gshadow1;
+   VexGuestPPC32State gshadow2;
    UInt               magicPI;
    UInt               sigNo_private;
    UInt               tramp[2];
@@ -72,10 +78,15 @@ struct hacky_sigframe {
 */
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
+   ThreadId tid = tst->tid;
    /* For tracking memory events, indicate the entire frame has been
       allocated.  Except, don't mess with the area which
       overlaps the previous frame's redzone. */
-   VG_TRACK( new_mem_stack_signal, addr, size - VG_STACK_REDZONE_SZB );
+   /* XXX is the following call really right?  compared with the
+      amd64-linux version, this doesn't appear to handle the redzone
+      in the same way. */
+   VG_TRACK( new_mem_stack_signal,
+             addr, size - VG_STACK_REDZONE_SZB, tid );
    return True;
 }
 
@@ -98,6 +109,7 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 void VG_(sigframe_create) ( ThreadId tid,
                             Addr sp_top_of_frame,
                             const vki_siginfo_t *siginfo,
+                            const struct vki_ucontext *siguc,
                             void *handler,
                             UInt flags,
                             const vki_sigset_t *mask,
@@ -124,12 +136,14 @@ void VG_(sigframe_create) ( ThreadId tid,
 
    /* clear it (very conservatively) */
    VG_(memset)(&frame->lower_guardzone, 0, 512);
-   VG_(memset)(&frame->gst,     0, sizeof(VexGuestPPC32State));
-   VG_(memset)(&frame->gshadow, 0, sizeof(VexGuestPPC32State));
+   VG_(memset)(&frame->gst,      0, sizeof(VexGuestPPC32State));
+   VG_(memset)(&frame->gshadow1, 0, sizeof(VexGuestPPC32State));
+   VG_(memset)(&frame->gshadow2, 0, sizeof(VexGuestPPC32State));
 
    /* save stuff in frame */
    frame->gst           = tst->arch.vex;
-   frame->gshadow       = tst->arch.vex_shadow;
+   frame->gshadow1      = tst->arch.vex_shadow1;
+   frame->gshadow2      = tst->arch.vex_shadow2;
    frame->sigNo_private = sigNo;
    frame->magicPI       = 0x31415927;
 
@@ -167,8 +181,8 @@ void VG_(sigframe_create) ( ThreadId tid,
             (Addr)&frame->tramp, sizeof(frame->tramp));
 
    if (0) {
-      VG_(printf)("pushed signal frame for sig %d; R1 now = %p, "
-                  "next %%CIA = %p, status=%d\n", 
+      VG_(printf)("pushed signal frame for sig %d; R1 now = %#lx, "
+                  "next %%CIA = %#x, status=%d\n", 
                   sigNo,
 	          sp, tst->arch.vex.guest_CIA, tst->status);
       VG_(printf)("trampoline is at %p\n",  &frame->tramp[0]);
@@ -195,16 +209,17 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    frame = (struct hacky_sigframe*)(sp - 256);
    vg_assert(frame->magicPI == 0x31415927);
 
-   /* restore the entire guest state, and shadow, from the
+   /* restore the entire guest state, and shadows, from the
       frame.  Note, as per comments above, this is a kludge - should
       restore it from saved ucontext.  Oh well. */
    tst->arch.vex = frame->gst;
-   tst->arch.vex_shadow = frame->gshadow;
+   tst->arch.vex_shadow1 = frame->gshadow1;
+   tst->arch.vex_shadow2 = frame->gshadow2;
    sigNo = frame->sigNo_private;
 
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-                   "vg_pop_signal_frame (thread %d): valid magic; CIA=%p",
+                   "vg_pop_signal_frame (thread %d): valid magic; CIA=%#x",
                    tid, tst->arch.vex.guest_CIA);
 
    VG_TRACK( die_mem_stack_signal, 

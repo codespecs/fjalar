@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,15 +45,15 @@
 /*--- Types                                                ---*/
 /*------------------------------------------------------------*/
 
-/*
+/* 
    Thread state machine:
 
    Empty -> Init -> Runnable <=> WaitSys/Yielding
      ^                 |
-     \---- Zombie -----/
+     \---- Zombie -----/		       
  */
 typedef
-   enum ThreadStatus {
+   enum ThreadStatus { 
       VgTs_Empty,      /* this slot is not in use */
       VgTs_Init,       /* just allocated */
       VgTs_Runnable,   /* ready to run */
@@ -65,7 +65,7 @@ typedef
 
 /* Return codes from the scheduler. */
 typedef
-   enum {
+   enum { 
       VgSrc_None,	 /* not exiting yet */
       VgSrc_ExitThread,  /* just this thread is exiting */
       VgSrc_ExitProcess, /* entire process is exiting */
@@ -89,43 +89,50 @@ typedef
 
 
 /* Architecture-specific thread state */
-typedef
+typedef 
    struct {
       /* --- BEGIN vex-mandated guest state --- */
 
-      /* Saved machine context. */
-      VexGuestArchState vex;
+      /* Note that for code generation reasons, we require that the
+         guest state area, its two shadows, and the spill area, are
+         16-aligned and have 16-aligned sizes, and there are no holes
+         in between.  This is checked by do_pre_run_checks() in
+         scheduler.c. */
 
-      /* Saved shadow context. */
-      VexGuestArchState vex_shadow;
+      /* Saved machine context. */
+      VexGuestArchState vex __attribute__((aligned(16)));
+
+      /* Saved shadow context (2 copies). */
+      VexGuestArchState vex_shadow1 __attribute__((aligned(16)));
+      VexGuestArchState vex_shadow2 __attribute__((aligned(16)));
 
       /* PG - pgbovine - Extra shadow guest state for DynComp */
-      VexGuestArchState vex_extra_shadow[4];
+      VexGuestArchState vex_extra_shadow[4] __attribute__((aligned(16)));
 
       /* Spill area. */
-      UChar vex_spill[LibVEX_N_SPILL_BYTES];
+      UChar vex_spill[LibVEX_N_SPILL_BYTES] __attribute__((aligned(16)));
 
       /* --- END vex-mandated guest state --- */
-   }
+   } 
    ThreadArchState;
 
 
 /* OS-specific thread state */
 typedef
    struct {
-   /* who we are */
-   Int	lwpid;			// PID of kernel task
-   Int	threadgroup;		// thread group id
+      /* who we are */
+      Int lwpid;        // PID of kernel task
+      Int threadgroup;  // thread group id
 
-   ThreadId parent;		// parent tid (if any)
+      ThreadId parent;  // parent tid (if any)
 
-   /* runtime details */
-   Addr valgrind_stack_base;    // Valgrind's stack (VgStack*)
-   Addr valgrind_stack_init_SP; // starting value for SP
+      /* runtime details */
+      Addr valgrind_stack_base;    // Valgrind's stack (VgStack*)
+      Addr valgrind_stack_init_SP; // starting value for SP
 
-   /* exit details */
+      /* exit details */
       Word exitcode; // in the case of exitgroup, set by someone else
-   Int  fatalsig;		// fatal signal
+      Int  fatalsig; // fatal signal
 
 #     if defined(VGO_aix5)
       /* AIX specific fields to make thread cancellation sort-of work */
@@ -191,14 +198,13 @@ typedef struct {
       stack; we just leave it lying around for the next use of the
       slot.  If the next use of the slot requires a larger stack,
       only then is the old one deallocated and a new one
-      allocated.
+      allocated. 
 
       For the main thread (threadid == 1), this mechanism doesn't
       apply.  We don't know the size of the stack since we didn't
       allocate it, and furthermore we never reallocate it. */
 
-   /* The allocated size of this thread's stack (permanently zero
-      if this is ThreadId == 1, since we didn't allocate its stack) */
+   /* The allocated size of this thread's stack */
    SizeT client_stack_szB;
 
    /* Address of the highest legitimate word in this stack.  This is
@@ -260,7 +266,7 @@ extern Int VG_(count_runnable_threads)(void);
 
 /* Given an LWP id (ie, real kernel thread id), find the corresponding
    ThreadId */
-extern ThreadId VG_(get_lwp_tid)(Int lwpid);
+extern ThreadId VG_(lwpid_to_vgtid)(Int lwpid);
 
 #endif   // __PUB_CORE_THREADSTATE_H
 

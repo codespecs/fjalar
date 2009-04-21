@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,6 +40,13 @@
  * alloc/freeing. */
 extern void* VG_(cli_malloc) ( SizeT align, SizeT nbytes );
 extern void  VG_(cli_free)   ( void* p );
+
+/* If a tool uses deferred freeing (e.g. memcheck to catch accesses to
+   freed memory) it can maintain number and total size of queued blocks
+   in these variable to provide more accurate statistics about client
+   memory usage. Currently used by mallinfo(). */
+extern Long VG_(free_queue_volume);
+extern Long VG_(free_queue_length);
 
 /* Check if an address is within a range, allowing for redzones at edges */
 extern Bool VG_(addr_is_in_block)( Addr a, Addr start,

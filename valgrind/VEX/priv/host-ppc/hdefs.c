@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -630,6 +630,10 @@ HChar* showPPCFpOp ( PPCFpOp op ) {
       case Pfp_MOV:    return "fmr";
       case Pfp_RES:    return "fres";
       case Pfp_RSQRTE: return "frsqrte";
+      case Pfp_FRIM:   return "frim";
+      case Pfp_FRIN:   return "frin";
+      case Pfp_FRIP:   return "frip";
+      case Pfp_FRIZ:   return "friz";
       default: vpanic("showPPCFpOp");
    }
 }
@@ -1301,7 +1305,7 @@ void ppPPCInstr ( PPCInstr* i, Bool mode64 )
       Bool idxd = toBool(i->Pin.Load.src->tag == Pam_RR);
       UChar sz = i->Pin.Load.sz;
       UChar c_sz = sz==1 ? 'b' : sz==2 ? 'h' : sz==4 ? 'w' : 'd';
-      vex_printf("l%cz%s ", c_sz, idxd ? "x" : "" );
+      vex_printf("l%c%s%s ", c_sz, sz==8 ? "" : "z", idxd ? "x" : "" );
       ppHRegPPC(i->Pin.Load.dst);
       vex_printf(",");
       ppPPCAMode(i->Pin.Load.src);
@@ -2388,8 +2392,9 @@ static UChar* doAMode_IR ( UChar* p, UInt opc1, UInt rSD,
 
    if (opc1 == 58 || opc1 == 62) { // ld/std: mode64 only
       vassert(mode64);
-      // kludge DS form: lowest 2 bits = 00
-      idx &= 0xFFFC;
+      /* stay sane with DS form: lowest 2 bits must be 00.  This
+         should be guaranteed to us by iselWordExpr_AMode. */
+      vassert(0 == (idx & 3));
    }
    p = mkFormD(p, opc1, rSD, rA, idx);
    return p;
@@ -2448,7 +2453,7 @@ static UChar* mkLoadImm ( UChar* p, UInt r_dst, ULong imm, Bool mode64 )
 
          // ori r_dst, r_dst, (imm>>32) & 0xFFFF
          if ((imm>>32) & 0xFFFF)
-         p = mkFormD(p, 24, r_dst, r_dst, (imm>>32) & 0xFFFF);
+            p = mkFormD(p, 24, r_dst, r_dst, (imm>>32) & 0xFFFF);
          
          // shift r_dst low word to high word => rldicr
          p = mkFormMD(p, 30, r_dst, r_dst, 32, 31, 1);
@@ -2457,11 +2462,11 @@ static UChar* mkLoadImm ( UChar* p, UInt r_dst, ULong imm, Bool mode64 )
 
          // oris r_dst, r_dst, (imm>>16) & 0xFFFF
          if ((imm>>16) & 0xFFFF)
-         p = mkFormD(p, 25, r_dst, r_dst, (imm>>16) & 0xFFFF);
+            p = mkFormD(p, 25, r_dst, r_dst, (imm>>16) & 0xFFFF);
 
          // ori r_dst, r_dst, (imm) & 0xFFFF
          if (imm & 0xFFFF)
-         p = mkFormD(p, 24, r_dst, r_dst, imm & 0xFFFF);
+            p = mkFormD(p, 24, r_dst, r_dst, imm & 0xFFFF);
       }
    }
    return p;
@@ -2705,7 +2710,13 @@ Int emit_PPCInstr ( UChar* buf, Int nbuf, PPCInstr* i,
                /* srawi (PPC32 p507) */
                UInt n = srcR->Prh.Imm.imm16;
                vassert(!srcR->Prh.Imm.syned);
-               vassert(n > 0 && n < 32);
+               /* In 64-bit mode, we allow right shifts by zero bits
+                  as that is a handy way to sign extend the lower 32
+                  bits into the upper 32 bits. */
+               if (mode64)
+                  vassert(n >= 0 && n < 32);
+               else 
+                  vassert(n > 0 && n < 32);
                p = mkFormX(p, 31, r_srcL, r_dst, n, 824, 0);
             } else {
                /* sraw (PPC32 p506) */
@@ -2942,7 +2953,7 @@ Int emit_PPCInstr ( UChar* buf, Int nbuf, PPCInstr* i,
          case Ijk_NoDecode:    trc = VEX_TRC_JMP_NODECODE;    break;
          case Ijk_TInval:      trc = VEX_TRC_JMP_TINVAL;      break;
          case Ijk_NoRedir:     trc = VEX_TRC_JMP_NOREDIR;     break;
-         case Ijk_Trap:        trc = VEX_TRC_JMP_TRAP;        break;
+         case Ijk_SigTRAP:     trc = VEX_TRC_JMP_SIGTRAP;     break;
          case Ijk_Ret:
          case Ijk_Call:
          case Ijk_Boring:
@@ -3028,6 +3039,10 @@ Int emit_PPCInstr ( UChar* buf, Int nbuf, PPCInstr* i,
       UInt opc1, opc2, sz = i->Pin.Load.sz;
       switch (am_addr->tag) {
       case Pam_IR:
+         if (mode64 && (sz == 4 || sz == 8)) {
+            /* should be guaranteed to us by iselWordExpr_AMode */
+            vassert(0 == (am_addr->Pam.IR.index & 3));
+         }
          switch(sz) {
             case 1:  opc1 = 34; break;
             case 2:  opc1 = 40; break;
@@ -3099,6 +3114,10 @@ Int emit_PPCInstr ( UChar* buf, Int nbuf, PPCInstr* i,
       UInt opc1, opc2, sz = i->Pin.Store.sz;
       switch (i->Pin.Store.dst->tag) {
       case Pam_IR:
+         if (mode64 && (sz == 4 || sz == 8)) {
+            /* should be guaranteed to us by iselWordExpr_AMode */
+            vassert(0 == (am_addr->Pam.IR.index & 3));
+         }
          switch(sz) {
          case 1: opc1 = 38; break;
          case 2: opc1 = 44; break;
@@ -3149,6 +3168,18 @@ Int emit_PPCInstr ( UChar* buf, Int nbuf, PPCInstr* i,
          break;
       case Pfp_MOV:   // fmr, PPC32 p410
          p = mkFormX(p, 63, fr_dst, 0, fr_src, 72, 0);
+         break;
+      case Pfp_FRIM:  // frim, PPC ISA 2.05 p137
+         p = mkFormX(p, 63, fr_dst, 0, fr_src, 488, 0);
+         break;
+      case Pfp_FRIP:  // frip, PPC ISA 2.05 p137
+         p = mkFormX(p, 63, fr_dst, 0, fr_src, 456, 0);
+         break;
+      case Pfp_FRIN:  // frin, PPC ISA 2.05 p137
+         p = mkFormX(p, 63, fr_dst, 0, fr_src, 392, 0);
+         break;
+      case Pfp_FRIZ:  // friz, PPC ISA 2.05 p137
+         p = mkFormX(p, 63, fr_dst, 0, fr_src, 424, 0);
          break;
       default:
          goto bad;

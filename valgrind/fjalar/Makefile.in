@@ -14,6 +14,19 @@
 
 @SET_MAKE@
 
+# What the first for loop does: it copies a bunch of files which names
+# of the form wurble-arch-os to $prefix/lib/valgrind/arch-os/wurble.
+# There is some complexity in the sed mangling because wurble may itself
+# contain a dash, which must be ignored.  For example we want
+#    exp-omega-x86-linux
+# to be installed in 
+#    $prefix/lib/valgrind/x86-linux/exp-omega
+# and not in
+#    $prefix/lib/valgrind/omega-x86-linux/exp
+# or similarly mutant place.
+#
+# Note there is identical sed magic in Makefile.tool-inplace.am.
+
 # What the second for loop does: it copies libcoregrind.a and libvex.a
 # into the correct (target-specific) lib dirs at install time.
 # $(noinst_LIBRARIES) will look like this:
@@ -23,6 +36,9 @@
 # pD and pU are the (arch,os) target pairs separated by a dash (pD) or
 # an underscore (pU) respectively, eg amd64-linux (pD) and amd64_linux (pU).
 # It then copies libcoregrind.a and libvex.a to the right places.
+
+# For a description of what these magic sed commands do, see comments
+# in Makefile.install.am (which has identical magic)
 
 
 srcdir = @srcdir@
@@ -70,11 +86,12 @@ CONFIG_CLEAN_FILES =
 @VGP_AMD64_LINUX_TRUE@am__EXEEXT_2 = fjalar-amd64-linux$(EXEEXT) \
 @VGP_AMD64_LINUX_TRUE@	vgpreload_fjalar-amd64-linux.so$(EXEEXT)
 PROGRAMS = $(noinst_PROGRAMS)
-am__objects_1 = fjalar_amd64_linux-mac_leakcheck.$(OBJEXT) \
-	fjalar_amd64_linux-mac_malloc_wrappers.$(OBJEXT) \
+am__objects_1 = fjalar_amd64_linux-mc_leakcheck.$(OBJEXT) \
+	fjalar_amd64_linux-mc_malloc_wrappers.$(OBJEXT) \
 	fjalar_amd64_linux-mc_main.$(OBJEXT) \
-	fjalar_amd64_linux-mac_shared.$(OBJEXT) \
 	fjalar_amd64_linux-mc_translate.$(OBJEXT) \
+	fjalar_amd64_linux-mc_machine.$(OBJEXT) \
+	fjalar_amd64_linux-mc_errors.$(OBJEXT) \
 	fjalar_amd64_linux-fjalar_main.$(OBJEXT) \
 	fjalar_amd64_linux-fjalar_runtime.$(OBJEXT) \
 	fjalar_amd64_linux-fjalar_select.$(OBJEXT) \
@@ -100,11 +117,12 @@ am__DEPENDENCIES_1 =  \
 	@VEX_DIR@/libvex_amd64_linux.a
 am__DEPENDENCIES_2 =
 am__DEPENDENCIES_3 = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2)
-am__objects_2 = fjalar_x86_linux-mac_leakcheck.$(OBJEXT) \
-	fjalar_x86_linux-mac_malloc_wrappers.$(OBJEXT) \
+am__objects_2 = fjalar_x86_linux-mc_leakcheck.$(OBJEXT) \
+	fjalar_x86_linux-mc_malloc_wrappers.$(OBJEXT) \
 	fjalar_x86_linux-mc_main.$(OBJEXT) \
-	fjalar_x86_linux-mac_shared.$(OBJEXT) \
 	fjalar_x86_linux-mc_translate.$(OBJEXT) \
+	fjalar_x86_linux-mc_machine.$(OBJEXT) \
+	fjalar_x86_linux-mc_errors.$(OBJEXT) \
 	fjalar_x86_linux-fjalar_main.$(OBJEXT) \
 	fjalar_x86_linux-fjalar_runtime.$(OBJEXT) \
 	fjalar_x86_linux-fjalar_select.$(OBJEXT) \
@@ -130,14 +148,14 @@ am__DEPENDENCIES_4 =  \
 	@VEX_DIR@/libvex_x86_linux.a
 am__DEPENDENCIES_5 = $(am__DEPENDENCIES_4) $(am__DEPENDENCIES_2)
 am__objects_3 =  \
-	vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.$(OBJEXT) \
+	vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.$(OBJEXT) \
 	vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.$(OBJEXT)
 am_vgpreload_fjalar_amd64_linux_so_OBJECTS = $(am__objects_3)
 vgpreload_fjalar_amd64_linux_so_OBJECTS =  \
 	$(am_vgpreload_fjalar_amd64_linux_so_OBJECTS)
 vgpreload_fjalar_amd64_linux_so_LDADD = $(LDADD)
 am__objects_4 =  \
-	vgpreload_fjalar_x86_linux_so-mac_replace_strmem.$(OBJEXT) \
+	vgpreload_fjalar_x86_linux_so-mc_replace_strmem.$(OBJEXT) \
 	vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.$(OBJEXT)
 am_vgpreload_fjalar_x86_linux_so_OBJECTS = $(am__objects_4)
 vgpreload_fjalar_x86_linux_so_OBJECTS =  \
@@ -180,14 +198,21 @@ ACLOCAL = @ACLOCAL@
 AMDEP_FALSE = @AMDEP_FALSE@
 AMDEP_TRUE = @AMDEP_TRUE@
 AMTAR = @AMTAR@
+AR = @AR@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BOOST_CFLAGS = @BOOST_CFLAGS@
+BOOST_LIBS = @BOOST_LIBS@
 BUILD_MPIWRAP_PRI_FALSE = @BUILD_MPIWRAP_PRI_FALSE@
 BUILD_MPIWRAP_PRI_TRUE = @BUILD_MPIWRAP_PRI_TRUE@
 BUILD_MPIWRAP_SEC_FALSE = @BUILD_MPIWRAP_SEC_FALSE@
 BUILD_MPIWRAP_SEC_TRUE = @BUILD_MPIWRAP_SEC_TRUE@
+BUILD_SSE3_TESTS_FALSE = @BUILD_SSE3_TESTS_FALSE@
+BUILD_SSE3_TESTS_TRUE = @BUILD_SSE3_TESTS_TRUE@
+BUILD_SSSE3_TESTS_FALSE = @BUILD_SSSE3_TESTS_FALSE@
+BUILD_SSSE3_TESTS_TRUE = @BUILD_SSSE3_TESTS_TRUE@
 CC = @CC@
 CCAS = @CCAS@
 CCASFLAGS = @CCASFLAGS@
@@ -215,9 +240,23 @@ FLAG_MAIX32 = @FLAG_MAIX32@
 FLAG_MAIX64 = @FLAG_MAIX64@
 FLAG_MMMX = @FLAG_MMMX@
 FLAG_MSSE = @FLAG_MSSE@
+FLAG_UNLIMITED_INLINE_UNIT_GROWTH = @FLAG_UNLIMITED_INLINE_UNIT_GROWTH@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
+FLAG_W_EXTRA = @FLAG_W_EXTRA@
+FLAG_W_NO_FORMAT_ZERO_LENGTH = @FLAG_W_NO_FORMAT_ZERO_LENGTH@
 GDB = @GDB@
+GLIBC_VERSION = @GLIBC_VERSION@
 GREP = @GREP@
+HAS_ALTIVEC_FALSE = @HAS_ALTIVEC_FALSE@
+HAS_ALTIVEC_TRUE = @HAS_ALTIVEC_TRUE@
+HAVE_ALTIVEC_H_FALSE = @HAVE_ALTIVEC_H_FALSE@
+HAVE_ALTIVEC_H_TRUE = @HAVE_ALTIVEC_H_TRUE@
+HAVE_BOOST_1_35_FALSE = @HAVE_BOOST_1_35_FALSE@
+HAVE_BOOST_1_35_TRUE = @HAVE_BOOST_1_35_TRUE@
+HAVE_OPENMP_FALSE = @HAVE_OPENMP_FALSE@
+HAVE_OPENMP_TRUE = @HAVE_OPENMP_TRUE@
+HAVE_QTCORE_FALSE = @HAVE_QTCORE_FALSE@
+HAVE_QTCORE_TRUE = @HAVE_QTCORE_TRUE@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
@@ -241,7 +280,10 @@ PACKAGE_TARNAME = @PACKAGE_TARNAME@
 PACKAGE_VERSION = @PACKAGE_VERSION@
 PATH_SEPARATOR = @PATH_SEPARATOR@
 PERL = @PERL@
+PKG_CONFIG = @PKG_CONFIG@
 PREFERRED_STACK_BOUNDARY = @PREFERRED_STACK_BOUNDARY@
+QTCORE_CFLAGS = @QTCORE_CFLAGS@
+QTCORE_LIBS = @QTCORE_LIBS@
 RANLIB = @RANLIB@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
@@ -267,12 +309,12 @@ VGP_PPC64_LINUX_FALSE = @VGP_PPC64_LINUX_FALSE@
 VGP_PPC64_LINUX_TRUE = @VGP_PPC64_LINUX_TRUE@
 VGP_X86_LINUX_FALSE = @VGP_X86_LINUX_FALSE@
 VGP_X86_LINUX_TRUE = @VGP_X86_LINUX_TRUE@
-VG_ARCH = @VG_ARCH@
 VG_ARCH_ALL = @VG_ARCH_ALL@
+VG_ARCH_MAX = @VG_ARCH_MAX@
+VG_ARCH_PRI = @VG_ARCH_PRI@
 VG_OS = @VG_OS@
 VG_PLATFORM_PRI = @VG_PLATFORM_PRI@
 VG_PLATFORM_SEC = @VG_PLATFORM_SEC@
-XMKMF = @XMKMF@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
@@ -359,11 +401,21 @@ add_includes_ppc64_aix5 = -I$(top_srcdir)/include \
 		-DVGP_ppc64_aix5=1
 
 
-# Baseline flags for all compilations
-AM_CFLAGS_BASE = -O -g -Wmissing-prototypes -Winline -Wall -Wshadow \
-                 -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations
+# Baseline flags for all compilations.  Aim here is to maximise
+# performance and get whatever useful warnings we can out of gcc.
+# RUDD TODO O2
+AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
+                 -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
+		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
+                 -fno-strict-aliasing 
 
-AM_CFLAGS_PIC = -fpic -fno-omit-frame-pointer
+
+# These flags are used for building the preload shared objects.
+# The aim is to give reasonable performance but also to have good
+# stack traces, since users often see stack traces extending 
+# into (and through) the preloads.
+# -O
+AM_CFLAGS_PIC = -g -fpic -fno-omit-frame-pointer -fno-strict-aliasing
 
 # Flags for specific targets
 AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
@@ -417,8 +469,8 @@ AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VG_PLATFORM_PRI@)
 
 # Baseline link flags for making dynamic shared objects.
 #
-PRELOAD_LDFLAGS_COMMON_LINUX = -nostdlib -shared -Wl,-z,interpose,-z,initfirst
-PRELOAD_LDFLAGS_COMMON_AIX5 = -nostdlib -shared -Wl,-G -Wl,-bnogc
+PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
+PRELOAD_LDFLAGS_COMMON_AIX5 = -nodefaultlibs -shared -Wl,-G -Wl,-bnogc
 PRELOAD_LDFLAGS_X86_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
 PRELOAD_LDFLAGS_AMD64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_PPC32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
@@ -527,8 +579,8 @@ LIBREPLACEMALLOC_LDFLAGS_PPC32_AIX5 = \
 LIBREPLACEMALLOC_LDFLAGS_PPC64_AIX5 = \
 	$(LIBREPLACEMALLOC_PPC64_AIX5)
 
-# PPC not supported yet
-VGPRELOAD_FJALAR_SOURCES_COMMON = mac_replace_strmem.c kvasir/dyncomp_wrappers.c
+# PG - no PPC
+VGPRELOAD_FJALAR_SOURCES_COMMON = mc_replace_strmem.c kvasir/dyncomp_wrappers.c
 vgpreload_fjalar_x86_linux_so_SOURCES = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_x86_linux_so_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
 vgpreload_fjalar_x86_linux_so_CFLAGS = $(AM_CFLAGS_X86_LINUX) $(AM_CFLAGS_PIC)
@@ -548,11 +600,12 @@ vgpreload_fjalar_amd64_linux_so_LDFLAGS = \
 	$(LIBREPLACEMALLOC_LDFLAGS_AMD64_LINUX)
 
 FJALAR_SOURCES_COMMON = \
-	mac_leakcheck.c \
-	mac_malloc_wrappers.c \
+	mc_leakcheck.c \
+	mc_malloc_wrappers.c \
 	mc_main.c \
-	mac_shared.c \
 	mc_translate.c \
+	mc_machine.c \
+	mc_errors.c \
 	fjalar_main.c \
 	fjalar_runtime.c \
 	fjalar_select.c \
@@ -574,14 +627,14 @@ FJALAR_SOURCES_COMMON = \
 
 fjalar_x86_linux_SOURCES = $(FJALAR_SOURCES_COMMON)
 fjalar_x86_linux_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
-fjalar_x86_linux_CFLAGS = $(AM_CFLAGS_X86_LINUX)
+fjalar_x86_linux_CFLAGS = $(AM_CFLAGS_X86_LINUX) -O2
 fjalar_x86_linux_CCASFLAGS = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
 fjalar_x86_linux_LDADD = $(TOOL_LDADD_X86_LINUX)
 fjalar_x86_linux_LDFLAGS = $(TOOL_LDFLAGS_X86_LINUX)
 fjalar_amd64_linux_SOURCES = $(FJALAR_SOURCES_COMMON)
 fjalar_amd64_linux_CPPFLAGS = $(AM_CPPFLAGS_AMD64_LINUX)
-fjalar_amd64_linux_CFLAGS = $(AM_CFLAGS_AMD64_LINUX)
+fjalar_amd64_linux_CFLAGS = $(AM_CFLAGS_AMD64_LINUX) -O2
 fjalar_amd64_linux_CCASFLAGS = $(AM_CCASFLAGS_AMD64_LINUX)
 fjalar_amd64_linux_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_LINUX)
 fjalar_amd64_linux_LDADD = $(TOOL_LDADD_AMD64_LINUX)
@@ -591,7 +644,6 @@ mcinclude_HEADERS = \
 	memcheck.h
 
 noinst_HEADERS = \
-	mac_shared.h	\
 	mc_include.h
 
 all: all-recursive
@@ -607,9 +659,9 @@ $(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --gnu  fjalar/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign  fjalar/Makefile'; \
 	cd $(top_srcdir) && \
-	  $(AUTOMAKE) --gnu  fjalar/Makefile
+	  $(AUTOMAKE) --foreign  fjalar/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \
@@ -662,10 +714,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-fjalar_traversal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-generate_fjalar_entries.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-kvasir_main.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mac_shared.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mc_errors.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mc_machine.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mc_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-mc_translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-my_libc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-readelf.Po@am__quote@
@@ -685,10 +738,11 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-fjalar_traversal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-generate_fjalar_entries.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-kvasir_main.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mac_shared.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_errors.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_machine.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-mc_translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-my_libc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-readelf.Po@am__quote@
@@ -696,9 +750,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-typedata.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-union_find.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	if $(COMPILE) -MT $@ -MD -MP -MF "$(DEPDIR)/$*.Tpo" -c -o $@ $<; \
@@ -714,33 +768,33 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(COMPILE) -c `$(CYGPATH_W) '$<'`
 
-fjalar_amd64_linux-mac_leakcheck.o: mac_leakcheck.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mac_leakcheck.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Tpo" -c -o fjalar_amd64_linux-mac_leakcheck.o `test -f 'mac_leakcheck.c' || echo '$(srcdir)/'`mac_leakcheck.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_leakcheck.c' object='fjalar_amd64_linux-mac_leakcheck.o' libtool=no @AMDEPBACKSLASH@
+fjalar_amd64_linux-mc_leakcheck.o: mc_leakcheck.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_leakcheck.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Tpo" -c -o fjalar_amd64_linux-mc_leakcheck.o `test -f 'mc_leakcheck.c' || echo '$(srcdir)/'`mc_leakcheck.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_leakcheck.c' object='fjalar_amd64_linux-mc_leakcheck.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mac_leakcheck.o `test -f 'mac_leakcheck.c' || echo '$(srcdir)/'`mac_leakcheck.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_leakcheck.o `test -f 'mc_leakcheck.c' || echo '$(srcdir)/'`mc_leakcheck.c
 
-fjalar_amd64_linux-mac_leakcheck.obj: mac_leakcheck.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mac_leakcheck.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Tpo" -c -o fjalar_amd64_linux-mac_leakcheck.obj `if test -f 'mac_leakcheck.c'; then $(CYGPATH_W) 'mac_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mac_leakcheck.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mac_leakcheck.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_leakcheck.c' object='fjalar_amd64_linux-mac_leakcheck.obj' libtool=no @AMDEPBACKSLASH@
+fjalar_amd64_linux-mc_leakcheck.obj: mc_leakcheck.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_leakcheck.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Tpo" -c -o fjalar_amd64_linux-mc_leakcheck.obj `if test -f 'mc_leakcheck.c'; then $(CYGPATH_W) 'mc_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mc_leakcheck.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_leakcheck.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_leakcheck.c' object='fjalar_amd64_linux-mc_leakcheck.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mac_leakcheck.obj `if test -f 'mac_leakcheck.c'; then $(CYGPATH_W) 'mac_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mac_leakcheck.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_leakcheck.obj `if test -f 'mc_leakcheck.c'; then $(CYGPATH_W) 'mc_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mc_leakcheck.c'; fi`
 
-fjalar_amd64_linux-mac_malloc_wrappers.o: mac_malloc_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mac_malloc_wrappers.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Tpo" -c -o fjalar_amd64_linux-mac_malloc_wrappers.o `test -f 'mac_malloc_wrappers.c' || echo '$(srcdir)/'`mac_malloc_wrappers.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_malloc_wrappers.c' object='fjalar_amd64_linux-mac_malloc_wrappers.o' libtool=no @AMDEPBACKSLASH@
+fjalar_amd64_linux-mc_malloc_wrappers.o: mc_malloc_wrappers.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_malloc_wrappers.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Tpo" -c -o fjalar_amd64_linux-mc_malloc_wrappers.o `test -f 'mc_malloc_wrappers.c' || echo '$(srcdir)/'`mc_malloc_wrappers.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_malloc_wrappers.c' object='fjalar_amd64_linux-mc_malloc_wrappers.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mac_malloc_wrappers.o `test -f 'mac_malloc_wrappers.c' || echo '$(srcdir)/'`mac_malloc_wrappers.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_malloc_wrappers.o `test -f 'mc_malloc_wrappers.c' || echo '$(srcdir)/'`mc_malloc_wrappers.c
 
-fjalar_amd64_linux-mac_malloc_wrappers.obj: mac_malloc_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mac_malloc_wrappers.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Tpo" -c -o fjalar_amd64_linux-mac_malloc_wrappers.obj `if test -f 'mac_malloc_wrappers.c'; then $(CYGPATH_W) 'mac_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mac_malloc_wrappers.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mac_malloc_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_malloc_wrappers.c' object='fjalar_amd64_linux-mac_malloc_wrappers.obj' libtool=no @AMDEPBACKSLASH@
+fjalar_amd64_linux-mc_malloc_wrappers.obj: mc_malloc_wrappers.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_malloc_wrappers.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Tpo" -c -o fjalar_amd64_linux-mc_malloc_wrappers.obj `if test -f 'mc_malloc_wrappers.c'; then $(CYGPATH_W) 'mc_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mc_malloc_wrappers.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_malloc_wrappers.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_malloc_wrappers.c' object='fjalar_amd64_linux-mc_malloc_wrappers.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mac_malloc_wrappers.obj `if test -f 'mac_malloc_wrappers.c'; then $(CYGPATH_W) 'mac_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mac_malloc_wrappers.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_malloc_wrappers.obj `if test -f 'mc_malloc_wrappers.c'; then $(CYGPATH_W) 'mc_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mc_malloc_wrappers.c'; fi`
 
 fjalar_amd64_linux-mc_main.o: mc_main.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_main.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_main.Tpo" -c -o fjalar_amd64_linux-mc_main.o `test -f 'mc_main.c' || echo '$(srcdir)/'`mc_main.c; \
@@ -756,20 +810,6 @@ fjalar_amd64_linux-mc_main.obj: mc_main.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_main.obj `if test -f 'mc_main.c'; then $(CYGPATH_W) 'mc_main.c'; else $(CYGPATH_W) '$(srcdir)/mc_main.c'; fi`
 
-fjalar_amd64_linux-mac_shared.o: mac_shared.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mac_shared.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Tpo" -c -o fjalar_amd64_linux-mac_shared.o `test -f 'mac_shared.c' || echo '$(srcdir)/'`mac_shared.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_shared.c' object='fjalar_amd64_linux-mac_shared.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mac_shared.o `test -f 'mac_shared.c' || echo '$(srcdir)/'`mac_shared.c
-
-fjalar_amd64_linux-mac_shared.obj: mac_shared.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mac_shared.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Tpo" -c -o fjalar_amd64_linux-mac_shared.obj `if test -f 'mac_shared.c'; then $(CYGPATH_W) 'mac_shared.c'; else $(CYGPATH_W) '$(srcdir)/mac_shared.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mac_shared.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_shared.c' object='fjalar_amd64_linux-mac_shared.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mac_shared.obj `if test -f 'mac_shared.c'; then $(CYGPATH_W) 'mac_shared.c'; else $(CYGPATH_W) '$(srcdir)/mac_shared.c'; fi`
-
 fjalar_amd64_linux-mc_translate.o: mc_translate.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_translate.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_translate.Tpo" -c -o fjalar_amd64_linux-mc_translate.o `test -f 'mc_translate.c' || echo '$(srcdir)/'`mc_translate.c; \
 @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_translate.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_translate.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_translate.Tpo"; exit 1; fi
@@ -783,6 +823,34 @@ fjalar_amd64_linux-mc_translate.obj: mc_translate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_translate.c' object='fjalar_amd64_linux-mc_translate.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_translate.obj `if test -f 'mc_translate.c'; then $(CYGPATH_W) 'mc_translate.c'; else $(CYGPATH_W) '$(srcdir)/mc_translate.c'; fi`
+
+fjalar_amd64_linux-mc_machine.o: mc_machine.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_machine.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Tpo" -c -o fjalar_amd64_linux-mc_machine.o `test -f 'mc_machine.c' || echo '$(srcdir)/'`mc_machine.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_machine.c' object='fjalar_amd64_linux-mc_machine.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_machine.o `test -f 'mc_machine.c' || echo '$(srcdir)/'`mc_machine.c
+
+fjalar_amd64_linux-mc_machine.obj: mc_machine.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_machine.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Tpo" -c -o fjalar_amd64_linux-mc_machine.obj `if test -f 'mc_machine.c'; then $(CYGPATH_W) 'mc_machine.c'; else $(CYGPATH_W) '$(srcdir)/mc_machine.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_machine.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_machine.c' object='fjalar_amd64_linux-mc_machine.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_machine.obj `if test -f 'mc_machine.c'; then $(CYGPATH_W) 'mc_machine.c'; else $(CYGPATH_W) '$(srcdir)/mc_machine.c'; fi`
+
+fjalar_amd64_linux-mc_errors.o: mc_errors.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_errors.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Tpo" -c -o fjalar_amd64_linux-mc_errors.o `test -f 'mc_errors.c' || echo '$(srcdir)/'`mc_errors.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_errors.c' object='fjalar_amd64_linux-mc_errors.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_errors.o `test -f 'mc_errors.c' || echo '$(srcdir)/'`mc_errors.c
+
+fjalar_amd64_linux-mc_errors.obj: mc_errors.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-mc_errors.obj -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Tpo" -c -o fjalar_amd64_linux-mc_errors.obj `if test -f 'mc_errors.c'; then $(CYGPATH_W) 'mc_errors.c'; else $(CYGPATH_W) '$(srcdir)/mc_errors.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Tpo" "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Po"; else rm -f "$(DEPDIR)/fjalar_amd64_linux-mc_errors.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_errors.c' object='fjalar_amd64_linux-mc_errors.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-mc_errors.obj `if test -f 'mc_errors.c'; then $(CYGPATH_W) 'mc_errors.c'; else $(CYGPATH_W) '$(srcdir)/mc_errors.c'; fi`
 
 fjalar_amd64_linux-fjalar_main.o: fjalar_main.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -MT fjalar_amd64_linux-fjalar_main.o -MD -MP -MF "$(DEPDIR)/fjalar_amd64_linux-fjalar_main.Tpo" -c -o fjalar_amd64_linux-fjalar_main.o `test -f 'fjalar_main.c' || echo '$(srcdir)/'`fjalar_main.c; \
@@ -1036,33 +1104,33 @@ fjalar_amd64_linux-dyncomp_translate.obj: kvasir/dyncomp_translate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_amd64_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_amd64_linux_CFLAGS) $(CFLAGS) -c -o fjalar_amd64_linux-dyncomp_translate.obj `if test -f 'kvasir/dyncomp_translate.c'; then $(CYGPATH_W) 'kvasir/dyncomp_translate.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_translate.c'; fi`
 
-fjalar_x86_linux-mac_leakcheck.o: mac_leakcheck.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mac_leakcheck.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Tpo" -c -o fjalar_x86_linux-mac_leakcheck.o `test -f 'mac_leakcheck.c' || echo '$(srcdir)/'`mac_leakcheck.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Tpo" "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_leakcheck.c' object='fjalar_x86_linux-mac_leakcheck.o' libtool=no @AMDEPBACKSLASH@
+fjalar_x86_linux-mc_leakcheck.o: mc_leakcheck.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_leakcheck.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Tpo" -c -o fjalar_x86_linux-mc_leakcheck.o `test -f 'mc_leakcheck.c' || echo '$(srcdir)/'`mc_leakcheck.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_leakcheck.c' object='fjalar_x86_linux-mc_leakcheck.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mac_leakcheck.o `test -f 'mac_leakcheck.c' || echo '$(srcdir)/'`mac_leakcheck.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_leakcheck.o `test -f 'mc_leakcheck.c' || echo '$(srcdir)/'`mc_leakcheck.c
 
-fjalar_x86_linux-mac_leakcheck.obj: mac_leakcheck.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mac_leakcheck.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Tpo" -c -o fjalar_x86_linux-mac_leakcheck.obj `if test -f 'mac_leakcheck.c'; then $(CYGPATH_W) 'mac_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mac_leakcheck.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Tpo" "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mac_leakcheck.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_leakcheck.c' object='fjalar_x86_linux-mac_leakcheck.obj' libtool=no @AMDEPBACKSLASH@
+fjalar_x86_linux-mc_leakcheck.obj: mc_leakcheck.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_leakcheck.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Tpo" -c -o fjalar_x86_linux-mc_leakcheck.obj `if test -f 'mc_leakcheck.c'; then $(CYGPATH_W) 'mc_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mc_leakcheck.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_leakcheck.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_leakcheck.c' object='fjalar_x86_linux-mc_leakcheck.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mac_leakcheck.obj `if test -f 'mac_leakcheck.c'; then $(CYGPATH_W) 'mac_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mac_leakcheck.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_leakcheck.obj `if test -f 'mc_leakcheck.c'; then $(CYGPATH_W) 'mc_leakcheck.c'; else $(CYGPATH_W) '$(srcdir)/mc_leakcheck.c'; fi`
 
-fjalar_x86_linux-mac_malloc_wrappers.o: mac_malloc_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mac_malloc_wrappers.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Tpo" -c -o fjalar_x86_linux-mac_malloc_wrappers.o `test -f 'mac_malloc_wrappers.c' || echo '$(srcdir)/'`mac_malloc_wrappers.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_malloc_wrappers.c' object='fjalar_x86_linux-mac_malloc_wrappers.o' libtool=no @AMDEPBACKSLASH@
+fjalar_x86_linux-mc_malloc_wrappers.o: mc_malloc_wrappers.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_malloc_wrappers.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Tpo" -c -o fjalar_x86_linux-mc_malloc_wrappers.o `test -f 'mc_malloc_wrappers.c' || echo '$(srcdir)/'`mc_malloc_wrappers.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_malloc_wrappers.c' object='fjalar_x86_linux-mc_malloc_wrappers.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mac_malloc_wrappers.o `test -f 'mac_malloc_wrappers.c' || echo '$(srcdir)/'`mac_malloc_wrappers.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_malloc_wrappers.o `test -f 'mc_malloc_wrappers.c' || echo '$(srcdir)/'`mc_malloc_wrappers.c
 
-fjalar_x86_linux-mac_malloc_wrappers.obj: mac_malloc_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mac_malloc_wrappers.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Tpo" -c -o fjalar_x86_linux-mac_malloc_wrappers.obj `if test -f 'mac_malloc_wrappers.c'; then $(CYGPATH_W) 'mac_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mac_malloc_wrappers.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mac_malloc_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_malloc_wrappers.c' object='fjalar_x86_linux-mac_malloc_wrappers.obj' libtool=no @AMDEPBACKSLASH@
+fjalar_x86_linux-mc_malloc_wrappers.obj: mc_malloc_wrappers.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_malloc_wrappers.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Tpo" -c -o fjalar_x86_linux-mc_malloc_wrappers.obj `if test -f 'mc_malloc_wrappers.c'; then $(CYGPATH_W) 'mc_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mc_malloc_wrappers.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_malloc_wrappers.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_malloc_wrappers.c' object='fjalar_x86_linux-mc_malloc_wrappers.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mac_malloc_wrappers.obj `if test -f 'mac_malloc_wrappers.c'; then $(CYGPATH_W) 'mac_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mac_malloc_wrappers.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_malloc_wrappers.obj `if test -f 'mc_malloc_wrappers.c'; then $(CYGPATH_W) 'mc_malloc_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/mc_malloc_wrappers.c'; fi`
 
 fjalar_x86_linux-mc_main.o: mc_main.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_main.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_main.Tpo" -c -o fjalar_x86_linux-mc_main.o `test -f 'mc_main.c' || echo '$(srcdir)/'`mc_main.c; \
@@ -1078,20 +1146,6 @@ fjalar_x86_linux-mc_main.obj: mc_main.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_main.obj `if test -f 'mc_main.c'; then $(CYGPATH_W) 'mc_main.c'; else $(CYGPATH_W) '$(srcdir)/mc_main.c'; fi`
 
-fjalar_x86_linux-mac_shared.o: mac_shared.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mac_shared.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mac_shared.Tpo" -c -o fjalar_x86_linux-mac_shared.o `test -f 'mac_shared.c' || echo '$(srcdir)/'`mac_shared.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mac_shared.Tpo" "$(DEPDIR)/fjalar_x86_linux-mac_shared.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mac_shared.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_shared.c' object='fjalar_x86_linux-mac_shared.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mac_shared.o `test -f 'mac_shared.c' || echo '$(srcdir)/'`mac_shared.c
-
-fjalar_x86_linux-mac_shared.obj: mac_shared.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mac_shared.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mac_shared.Tpo" -c -o fjalar_x86_linux-mac_shared.obj `if test -f 'mac_shared.c'; then $(CYGPATH_W) 'mac_shared.c'; else $(CYGPATH_W) '$(srcdir)/mac_shared.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mac_shared.Tpo" "$(DEPDIR)/fjalar_x86_linux-mac_shared.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mac_shared.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_shared.c' object='fjalar_x86_linux-mac_shared.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mac_shared.obj `if test -f 'mac_shared.c'; then $(CYGPATH_W) 'mac_shared.c'; else $(CYGPATH_W) '$(srcdir)/mac_shared.c'; fi`
-
 fjalar_x86_linux-mc_translate.o: mc_translate.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_translate.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_translate.Tpo" -c -o fjalar_x86_linux-mc_translate.o `test -f 'mc_translate.c' || echo '$(srcdir)/'`mc_translate.c; \
 @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_translate.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_translate.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_translate.Tpo"; exit 1; fi
@@ -1105,6 +1159,34 @@ fjalar_x86_linux-mc_translate.obj: mc_translate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_translate.c' object='fjalar_x86_linux-mc_translate.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_translate.obj `if test -f 'mc_translate.c'; then $(CYGPATH_W) 'mc_translate.c'; else $(CYGPATH_W) '$(srcdir)/mc_translate.c'; fi`
+
+fjalar_x86_linux-mc_machine.o: mc_machine.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_machine.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_machine.Tpo" -c -o fjalar_x86_linux-mc_machine.o `test -f 'mc_machine.c' || echo '$(srcdir)/'`mc_machine.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_machine.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_machine.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_machine.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_machine.c' object='fjalar_x86_linux-mc_machine.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_machine.o `test -f 'mc_machine.c' || echo '$(srcdir)/'`mc_machine.c
+
+fjalar_x86_linux-mc_machine.obj: mc_machine.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_machine.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_machine.Tpo" -c -o fjalar_x86_linux-mc_machine.obj `if test -f 'mc_machine.c'; then $(CYGPATH_W) 'mc_machine.c'; else $(CYGPATH_W) '$(srcdir)/mc_machine.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_machine.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_machine.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_machine.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_machine.c' object='fjalar_x86_linux-mc_machine.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_machine.obj `if test -f 'mc_machine.c'; then $(CYGPATH_W) 'mc_machine.c'; else $(CYGPATH_W) '$(srcdir)/mc_machine.c'; fi`
+
+fjalar_x86_linux-mc_errors.o: mc_errors.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_errors.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_errors.Tpo" -c -o fjalar_x86_linux-mc_errors.o `test -f 'mc_errors.c' || echo '$(srcdir)/'`mc_errors.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_errors.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_errors.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_errors.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_errors.c' object='fjalar_x86_linux-mc_errors.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_errors.o `test -f 'mc_errors.c' || echo '$(srcdir)/'`mc_errors.c
+
+fjalar_x86_linux-mc_errors.obj: mc_errors.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-mc_errors.obj -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-mc_errors.Tpo" -c -o fjalar_x86_linux-mc_errors.obj `if test -f 'mc_errors.c'; then $(CYGPATH_W) 'mc_errors.c'; else $(CYGPATH_W) '$(srcdir)/mc_errors.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/fjalar_x86_linux-mc_errors.Tpo" "$(DEPDIR)/fjalar_x86_linux-mc_errors.Po"; else rm -f "$(DEPDIR)/fjalar_x86_linux-mc_errors.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_errors.c' object='fjalar_x86_linux-mc_errors.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-mc_errors.obj `if test -f 'mc_errors.c'; then $(CYGPATH_W) 'mc_errors.c'; else $(CYGPATH_W) '$(srcdir)/mc_errors.c'; fi`
 
 fjalar_x86_linux-fjalar_main.o: fjalar_main.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -MT fjalar_x86_linux-fjalar_main.o -MD -MP -MF "$(DEPDIR)/fjalar_x86_linux-fjalar_main.Tpo" -c -o fjalar_x86_linux-fjalar_main.o `test -f 'fjalar_main.c' || echo '$(srcdir)/'`fjalar_main.c; \
@@ -1358,19 +1440,19 @@ fjalar_x86_linux-dyncomp_translate.obj: kvasir/dyncomp_translate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-dyncomp_translate.obj `if test -f 'kvasir/dyncomp_translate.c'; then $(CYGPATH_W) 'kvasir/dyncomp_translate.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_translate.c'; fi`
 
-vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.o: mac_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.o `test -f 'mac_replace_strmem.c' || echo '$(srcdir)/'`mac_replace_strmem.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_replace_strmem.c' object='vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.o' libtool=no @AMDEPBACKSLASH@
+vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o: mc_replace_strmem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.o `test -f 'mac_replace_strmem.c' || echo '$(srcdir)/'`mac_replace_strmem.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c
 
-vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.obj: mac_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.obj `if test -f 'mac_replace_strmem.c'; then $(CYGPATH_W) 'mac_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mac_replace_strmem.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_replace_strmem.c' object='vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.obj' libtool=no @AMDEPBACKSLASH@
+vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.obj: mc_replace_strmem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_linux_so-mac_replace_strmem.obj `if test -f 'mac_replace_strmem.c'; then $(CYGPATH_W) 'mac_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mac_replace_strmem.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`
 
 vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.o: kvasir/dyncomp_wrappers.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.Tpo" -c -o vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c; \
@@ -1386,19 +1468,19 @@ vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.obj: kvasir/dyncomp_wrappers.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`
 
-vgpreload_fjalar_x86_linux_so-mac_replace_strmem.o: mac_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-mac_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_linux_so-mac_replace_strmem.o `test -f 'mac_replace_strmem.c' || echo '$(srcdir)/'`mac_replace_strmem.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_replace_strmem.c' object='vgpreload_fjalar_x86_linux_so-mac_replace_strmem.o' libtool=no @AMDEPBACKSLASH@
+vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o: mc_replace_strmem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-mac_replace_strmem.o `test -f 'mac_replace_strmem.c' || echo '$(srcdir)/'`mac_replace_strmem.c
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c
 
-vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj: mac_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj `if test -f 'mac_replace_strmem.c'; then $(CYGPATH_W) 'mac_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mac_replace_strmem.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mac_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mac_replace_strmem.c' object='vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj' libtool=no @AMDEPBACKSLASH@
+vgpreload_fjalar_x86_linux_so-mc_replace_strmem.obj: mc_replace_strmem.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-mc_replace_strmem.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_linux_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_x86_linux_so-mc_replace_strmem.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-mac_replace_strmem.obj `if test -f 'mac_replace_strmem.c'; then $(CYGPATH_W) 'mac_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mac_replace_strmem.c'; fi`
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_linux_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`
 
 vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o: kvasir/dyncomp_wrappers.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Tpo" -c -o vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c; \
@@ -1714,10 +1796,10 @@ uninstall-info: uninstall-info-recursive
 install-exec-local:
 	if [ -n "$(noinst_PROGRAMS)" ] ; then \
 	  for f in $(noinst_PROGRAMS); do \
-	    p=`echo $$f | sed -e 's/^[^-]*-//' -e 's/\..*$$//'`; \
-	    n=`echo $$f | sed -e 's/-[^-]\{1,\}-[^-.]\{1,\}//'`; \
-	    $(mkinstalldirs) $(DESTDIR)$(valdir)/$$p; \
-	    $(INSTALL_PROGRAM) $$f $(DESTDIR)$(valdir)/$$p/$$n; \
+	    name=`echo $$f | sed -e 's/-\([^-]*-[^-.]*\)\(\..*\)\?$$/\2/'`; \
+	    plat=`echo $$f | sed -e 's/^.*-\([^-]*-[^-.]*\)\(\..*\)\?$$/\1/'`; \
+	    $(mkinstalldirs) $(DESTDIR)$(valdir)/$$plat; \
+	    $(INSTALL_PROGRAM) $$f $(DESTDIR)$(valdir)/$$plat/$$name; \
 	  done ; \
 	fi ; \
 	if [ -n "$(noinst_LIBRARIES)" ] ; then \
@@ -1726,18 +1808,22 @@ install-exec-local:
 	      pU=`echo $$f | sed -e 's/libcoregrind_//g' -e 's/\.a//g'` ; \
 	      pD=`echo $$pU | sed -e 's/_/-/g'` ; \
 	      $(INSTALL_DATA) $$f $(DESTDIR)$(valdir)/$$pD/libcoregrind.a ; \
-	      $(INSTALL_DATA) @VEX_DIR@/libvex_$$pU.a $(DESTDIR)$(valdir)/$$pD/libvex.a ; \
+	      $(INSTALL_DATA) @VEX_DIR@/libvex_$$pU.a \
+				$(DESTDIR)$(valdir)/$$pD/libvex.a ; \
 	    fi ; \
 	  done ; \
 	fi
+
 all-local:
-	for f in $(noinst_PROGRAMS); do \
-	  p=`echo $$f | sed -e 's/^[^-]*-//' -e 's/\..*$$//'`; \
-	  n=`echo $$f | sed -e 's/-[^-]\{1,\}-[^-.]\{1,\}//'`; \
-	  mkdir -p $(inplacedir)/$$p; \
-	  rm -f $(inplacedir)/$$p/$$n; \
-	  ln -f -s ../../$(subdir)/$$f $(inplacedir)/$$p/$$n; \
-	done
+	if [ -n "$(noinst_PROGRAMS)" ] ; then \
+	  for f in $(noinst_PROGRAMS); do \
+	    name=`echo $$f | sed -e 's/-\([^-]*-[^-.]*\)\(\..*\)\?$$/\2/'`; \
+	    plat=`echo $$f | sed -e 's/^.*-\([^-]*-[^-.]*\)\(\..*\)\?$$/\1/'`; \
+	    mkdir -p $(inplacedir)/$$plat; \
+	    rm -f $(inplacedir)/$$plat/$$name; \
+	    ln -f -s ../../$(subdir)/$$f $(inplacedir)/$$plat/$$name; \
+	  done ; \
+	fi
 
 @VEX_DIR@/libvex_x86_linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
@@ -1778,7 +1864,7 @@ all-local:
 @VEX_DIR@/priv/main/vex_svnversion.h:
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" version
 
-mac_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
+mc_replace_strmem.o: CFLAGS = -fno-omit-frame-pointer
 
 mc_main.o: CFLAGS += -fomit-frame-pointer
 # Tell versions [3.59,3.63) of GNU make to not export all variables.

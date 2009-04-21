@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,6 +47,7 @@ extern
 void VG_(sigframe_create) ( ThreadId tid, 
                             Addr sp_top_of_frame,
                             const vki_siginfo_t *siginfo,
+                            const struct vki_ucontext *uc,
                             void *handler, 
                             UInt flags,
                             const vki_sigset_t *mask,

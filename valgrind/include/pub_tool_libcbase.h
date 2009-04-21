@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -42,18 +42,40 @@ extern Bool VG_(isdigit) ( Char c );
    Converting strings to numbers
    ------------------------------------------------------------------ */
 
-extern Long  VG_(atoll)   ( Char* str );     // base 10
-extern Long  VG_(atoll36) ( Char* str );     // base 36
+// Convert strings to numbers according to various bases.  Leading
+// whitespace is ignored.  A subsequent '-' or '+' is accepted.  For strtoll16,
+// accepts an initial "0x" or "0X" prefix, but only if it's followed by a
+// hex digit (if not, the '0' will be read and then it will stop on the
+// "x"/"X".)  If 'endptr' isn't NULL, it gets filled in with the first
+// non-digit char.  None of them test that the number fits into 64 bits.
+//
+// Nb: if you're wondering why we don't just have a single VG_(strtol) which
+// takes a base, it's because I wanted it to assert if it was given a bogus
+// base (the standard glibc one sets 'errno' in this case).  But
+// m_libcbase.c doesn't import any code, not even vg_assert. --njn
+extern Long  VG_(strtoll8)  ( Char* str, Char** endptr );
+extern Long  VG_(strtoll10) ( Char* str, Char** endptr );
+extern Long  VG_(strtoll16) ( Char* str, Char** endptr );
+extern Long  VG_(strtoll36) ( Char* str, Char** endptr );
+
+   // Convert a string to a double.  After leading whitespace is ignored,
+   // it accepts a non-empty sequence of decimal digits possibly containing
+   // a '.'.
+extern double VG_(strtod)  ( Char* str, Char** endptr );
+
+extern Long  VG_(atoll)   ( Char* str ); // base 10
+extern Long  VG_(atoll16) ( Char* str ); // base 16; leading 0x accepted
+extern Long  VG_(atoll36) ( Char* str ); // base 36
 
 /* ---------------------------------------------------------------------
    String functions and macros
    ------------------------------------------------------------------ */
 
 /* Use this for normal null-termination-style string comparison */
-#define VG_STREQ(s1,s2) (s1 != NULL && s2 != NULL \
-                         && VG_(strcmp)((s1),(s2))==0)
+#define VG_STREQ(s1,s2) ( (s1 != NULL && s2 != NULL \
+                           && VG_(strcmp)((s1),(s2))==0) ? True : False )
 
-extern Int   VG_(strlen)         ( const Char* str );
+extern SizeT VG_(strlen)         ( const Char* str );
 extern Char* VG_(strcat)         ( Char* dest, const Char* src );
 extern Char* VG_(strncat)        ( Char* dest, const Char* src, SizeT n );
 extern Char* VG_(strpbrk)        ( const Char* s, const Char* accpt );
@@ -64,6 +86,8 @@ extern Int   VG_(strncmp)        ( const Char* s1, const Char* s2, SizeT nmax );
 extern Char* VG_(strstr)         ( const Char* haystack, const Char* needle );
 extern Char* VG_(strchr)         ( const Char* s, Char c );
 extern Char* VG_(strrchr)        ( const Char* s, Char c );
+extern SizeT VG_(strspn)         ( const Char* s, const Char* accept );
+extern SizeT VG_(strcspn)        ( const Char* s, const char* reject );
 
 /* Like strcmp() and strncmp(), but stop comparing at any whitespace. */
 extern Int   VG_(strcmp_ws)      ( const Char* s1, const Char* s2 );
@@ -73,15 +97,12 @@ extern Int   VG_(strncmp_ws)     ( const Char* s1, const Char* s2, SizeT nmax );
    last character. */
 extern void  VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest );
 
-/* Mini-regexp function.  Searches for 'pat' in 'str'.  Supports
- * meta-symbols '*' and '?'.  '\' escapes meta-symbols. */
-extern Bool  VG_(string_match)   ( const Char* pat, const Char* str );
-
 /* ---------------------------------------------------------------------
    mem* functions
    ------------------------------------------------------------------ */
 
 extern void* VG_(memcpy) ( void *d, const void *s, SizeT sz );
+extern void* VG_(memmove)( void *d, const void *s, SizeT sz );
 extern void* VG_(memset) ( void *s, Int c, SizeT sz );
 extern Int   VG_(memcmp) ( const void* s1, const void* s2, SizeT n );
 
@@ -108,17 +129,20 @@ extern Int   VG_(memcmp) ( const void* s1, const void* s2, SizeT n );
    Misc useful functions
    ------------------------------------------------------------------ */
 
-/* Like qsort(), but does shell-sort.  The size==1/2/4 cases are specialised. */
+/* Like qsort().  The name VG_(ssort) is for historical reasons -- it used
+ * to be a shell sort, but is now a quicksort. */
 extern void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
                         Int (*compar)(void*, void*) );
 
-/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power of two. */
-extern Int VG_(log2) ( Int x );
+/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power
+   of two. */
+extern Int VG_(log2) ( UInt x );
 
 // A pseudo-random number generator returning a random UInt.  If pSeed
 // is NULL, it uses its own seed, which starts at zero.  If pSeed is
 // non-NULL, it uses and updates whatever pSeed points at.
 extern UInt VG_(random) ( /*MOD*/UInt* pSeed );
+#define VG_RAND_MAX (1ULL << 32)
 
 #endif   // __PUB_TOOL_LIBCBASE_H
 

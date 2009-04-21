@@ -10,7 +10,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -325,11 +325,12 @@ static Addr aspacem_vStart = 0;
 /* ------ end of STATE for the address-space manager ------ */
 
 /* ------ Forwards decls ------ */
+inline
 static Int  find_nsegment_idx ( Addr a );
 
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
-                              UInt dev, UInt ino, ULong offset, 
+                              ULong dev, ULong ino, ULong offset, 
                               const UChar* filename ),
       void (*record_gap)( Addr addr, SizeT len )
    );
@@ -343,8 +344,8 @@ static void parse_procselfmaps (
 
 /* Extract the device, inode and mode numbers for a fd. */
 static 
-Bool get_inode_for_fd ( Int fd, /*OUT*/UWord* dev, 
-                                /*OUT*/UWord* ino, /*OUT*/UInt* mode )
+Bool get_inode_for_fd ( Int fd, /*OUT*/ULong* dev, 
+                                /*OUT*/ULong* ino, /*OUT*/UInt* mode )
 {
    return ML_(am_get_fd_d_i_m)(fd, dev, ino, mode);
 }
@@ -503,7 +504,7 @@ static void __attribute__ ((unused))
       (ULong)seg->start,
       (ULong)seg->end,
       show_ShrinkMode(seg->smode),
-      (ULong)seg->dev, (ULong)seg->ino, (ULong)seg->offset, seg->fnIdx,
+      seg->dev, seg->ino, seg->offset, seg->fnIdx,
       (Int)seg->hasR, (Int)seg->hasW, (Int)seg->hasX, (Int)seg->hasT,
       (Int)seg->mark, 
       name
@@ -552,7 +553,7 @@ static void show_nsegment ( Int logLevel, Int segNo, NSegment* seg )
             seg->hasR ? 'r' : '-', seg->hasW ? 'w' : '-', 
             seg->hasX ? 'x' : '-', seg->hasT ? 'T' : '-', 
             seg->isCH ? 'H' : '-',
-            (ULong)seg->dev, (ULong)seg->ino, (Long)seg->offset, seg->fnIdx
+            seg->dev, seg->ino, (Long)seg->offset, seg->fnIdx
          );
          break;
 
@@ -603,7 +604,7 @@ void VG_(am_show_nsegments) ( Int logLevel, HChar* who )
    has one.  The returned name's storage cannot be assumed to be
    persistent, so the caller should immediately copy the name
    elsewhere. */
-HChar* VG_(am_get_filename)( NSegment* seg )
+HChar* VG_(am_get_filename)( NSegment const * seg )
 {
    Int i;
    aspacem_assert(seg);
@@ -871,7 +872,7 @@ static Bool preen_nsegments ( void )
 static Bool sync_check_ok = False;
 
 static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
-                                          UInt dev, UInt ino, ULong offset, 
+                                          ULong dev, ULong ino, ULong offset, 
                                           const UChar* filename )
 {
    Int  iLo, iHi, i;
@@ -908,7 +909,7 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
       These kernels report which mappings are really executable in
       the /proc/self/maps output rather than mirroring what was asked
       for when each mapping was created. In order to cope with this we
-      have a slopyXcheck mode which we enable on x86 - in this mode we
+      have a sloppyXcheck mode which we enable on x86 - in this mode we
       allow the kernel to report execute permission when we weren't
       expecting it but not vice versa. */
    sloppyXcheck = False;
@@ -988,7 +989,7 @@ static void sync_check_mapping_callback ( Addr addr, SizeT len, UInt prot,
                    "segment mismatch: kernel's seg:\n");
    VG_(debugLog)(0,"aspacem", 
                    "start=0x%llx end=0x%llx prot=%u "
-                   "dev=%u ino=%u offset=%lld name=\"%s\"\n",
+                   "dev=%llu ino=%llu offset=%lld name=\"%s\"\n",
                    (ULong)addr, ((ULong)addr) + ((ULong)len) - 1,
                    prot, dev, ino, offset, 
                    filename ? (HChar*)filename : "(none)" );
@@ -1100,8 +1101,19 @@ void ML_(am_do_sanity_check)( void )
 /*-----------------------------------------------------------------*/
 
 /* Binary search the interval array for a given address.  Since the
-   array covers the entire address space the search cannot fail. */
-static Int find_nsegment_idx ( Addr a )
+   array covers the entire address space the search cannot fail.  The
+   _WRK function does the real work.  Its caller (just below) caches
+   the results thereof, to save time.  With N_CACHE of 63 we get a hit
+   rate exceeding 90% when running OpenOffice.
+
+   Re ">> 12", it doesn't matter that the page size of some targets
+   might be different from 12.  Really "(a >> 12) % N_CACHE" is merely
+   a hash function, and the actual cache entry is always validated
+   correctly against the selected cache entry before use.
+*/
+/* Don't call find_nsegment_idx_WRK; use find_nsegment_idx instead. */
+__attribute__((noinline))
+static Int find_nsegment_idx_WRK ( Addr a )
 {
    Addr a_mid_lo, a_mid_hi;
    Int  mid,
@@ -1124,6 +1136,52 @@ static Int find_nsegment_idx ( Addr a )
       return mid;
    }
 }
+
+inline static Int find_nsegment_idx ( Addr a )
+{
+#  define N_CACHE 63
+   static Addr cache_pageno[N_CACHE];
+   static Int  cache_segidx[N_CACHE];
+   static Bool cache_inited = False;
+
+   static UWord n_q = 0;
+   static UWord n_m = 0;
+
+   UWord ix;
+
+   if (LIKELY(cache_inited)) {
+      /* do nothing */
+   } else {
+      for (ix = 0; ix < N_CACHE; ix++) {
+         cache_pageno[ix] = 0;
+         cache_segidx[ix] = -1;
+      }
+      cache_inited = True;
+   }
+
+   ix = (a >> 12) % N_CACHE;
+
+   n_q++;
+   if (0 && 0 == (n_q & 0xFFFF))
+      VG_(debugLog)(0,"xxx","find_nsegment_idx: %lu %lu\n", n_q, n_m);
+
+   if ((a >> 12) == cache_pageno[ix]
+       && cache_segidx[ix] >= 0
+       && cache_segidx[ix] < nsegments_used
+       && nsegments[cache_segidx[ix]].start <= a
+       && a <= nsegments[cache_segidx[ix]].end) {
+      /* hit */
+      /* aspacem_assert( cache_segidx[ix] == find_nsegment_idx_WRK(a) ); */
+      return cache_segidx[ix];
+   }
+   /* miss */
+   n_m++;
+   cache_segidx[ix] = find_nsegment_idx_WRK(a);
+   cache_pageno[ix] = a >> 12;
+   return cache_segidx[ix];
+#  undef N_CACHE
+}
+
 
 
 /* Finds the segment containing 'a'.  Only returns file/anon/resvn
@@ -1469,7 +1527,7 @@ static void init_resvn ( /*OUT*/NSegment* seg, Addr start, Addr end )
 /*-----------------------------------------------------------------*/
 
 static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
-                                 UInt dev, UInt ino, ULong offset, 
+                                 ULong dev, ULong ino, ULong offset, 
                                  const UChar* filename )
 {
    NSegment seg;
@@ -1517,13 +1575,12 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    aspacem_assert(sizeof(SizeT)  == sizeof(void*));
    aspacem_assert(sizeof(SSizeT) == sizeof(void*));
 
-   { 
-      /* If these fail, we'd better change the type of dev and ino in
-         NSegment accordingly. */
-      struct vki_stat buf;
-      aspacem_assert(sizeof(buf.st_dev) == sizeof(seg.dev));
-      aspacem_assert(sizeof(buf.st_ino) == sizeof(seg.ino));
-   }
+   /* Check that we can store the largest imaginable dev, ino and
+      offset numbers in an NSegment. */
+   aspacem_assert(sizeof(seg.dev)    == 8);
+   aspacem_assert(sizeof(seg.ino)    == 8);
+   aspacem_assert(sizeof(seg.offset) == 8);
+   aspacem_assert(sizeof(seg.mode)   == 4);
 
    /* Add a single interval covering the entire address space. */
    init_nsegment(&seg);
@@ -1545,7 +1602,10 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 #  if VG_WORDSIZE == 8
      aspacem_maxAddr = (Addr)0x800000000 - 1; // 32G
 #    ifdef ENABLE_INNER
-     aspacem_maxAddr = VG_PGROUNDDN( sp_at_startup ) - 1;
+     { Addr cse = VG_PGROUNDDN( sp_at_startup ) - 1;
+       if (aspacem_maxAddr > cse)
+          aspacem_maxAddr = cse;
+     }
 #    endif
 #  else
      aspacem_maxAddr = VG_PGROUNDDN( sp_at_startup ) - 1;
@@ -1875,7 +1935,7 @@ VG_(am_notify_client_mmap)( Addr a, SizeT len, UInt prot, UInt flags,
                             Int fd, Off64T offset )
 {
    HChar    buf[VKI_PATH_MAX];
-   UWord    dev, ino;
+   ULong    dev, ino;
    UInt     mode;
    NSegment seg;
    Bool     needDiscard;
@@ -2067,7 +2127,7 @@ SysRes VG_(am_mmap_file_fixed_client)
    Addr       advised;
    Bool       ok;
    MapRequest req;
-   UWord      dev, ino;
+   ULong      dev, ino;
    UInt       mode;
    HChar      buf[VKI_PATH_MAX];
 
@@ -2344,7 +2404,7 @@ SysRes VG_(am_mmap_file_float_valgrind) ( SizeT length, UInt prot,
    Addr       advised;
    Bool       ok;
    MapRequest req;
-   UWord      dev, ino;
+   ULong      dev, ino;
    UInt       mode;
    HChar      buf[VKI_PATH_MAX];
  
@@ -2932,7 +2992,7 @@ static Int readhex64 ( const Char* buf, ULong* val )
    return n;
 }
 
-static Int readdec ( const Char* buf, UInt* val )
+static Int readdec64 ( const Char* buf, ULong* val )
 {
    Int n = 0;
    *val = 0;
@@ -3000,7 +3060,7 @@ static void read_procselfmaps_into_buf ( void )
 */
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
-                              UInt dev, UInt ino, ULong offset, 
+                              ULong dev, ULong ino, ULong offset, 
                               const UChar* filename ),
       void (*record_gap)( Addr addr, SizeT len )
    )
@@ -3009,9 +3069,9 @@ static void parse_procselfmaps (
    Addr   start, endPlusOne, gapStart;
    UChar* filename;
    UChar  rr, ww, xx, pp, ch, tmp;
-   UInt	  ino, prot;
-   UWord  maj, min, dev;
-   ULong  foffset;
+   UInt	  prot;
+   UWord  maj, min;
+   ULong  foffset, dev, ino;
 
    foffset = ino = 0; /* keep gcc-4.1.0 happy */
 
@@ -3069,7 +3129,7 @@ static void parse_procselfmaps (
       j = readchar(&procmap_buf[i], &ch);
       if (j == 1 && ch == ' ') i += j; else goto syntaxerror;
 
-      j = readdec(&procmap_buf[i], &ino);
+      j = readdec64(&procmap_buf[i], &ino);
       if (j > 0) i += j; else goto syntaxerror;
  
       goto read_line_ok;
@@ -3147,9 +3207,10 @@ static void parse_procselfmaps (
       if (record_gap && gapStart < start)
          (*record_gap) ( gapStart, start-gapStart );
 
-      (*record_mapping) ( start, endPlusOne-start, 
-                          prot, dev, ino,
-                          foffset, filename );
+      if (record_mapping && start < endPlusOne)
+         (*record_mapping) ( start, endPlusOne-start,
+                             prot, dev, ino,
+                             foffset, filename );
 
       if ('\0' != tmp) {
          filename[i_eol - i] = tmp;

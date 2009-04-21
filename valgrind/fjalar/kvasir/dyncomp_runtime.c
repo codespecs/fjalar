@@ -40,6 +40,11 @@
 
 #include "libvex_guest_x86.h"
 
+extern int print_info, is_enter;
+extern char* func_name;
+
+
+
 // Maps tags to comparability numbers, which are assigned sequentially
 // for every program point.  This is only used for DynComp.
 // Key: tag (unsigned int)
@@ -84,7 +89,7 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
     if (dyncomp_detailed_mode) {
       UInt bitarray_size = bitarraySize(numDaikonVars);
       if (bitarray_size > 0) {
-        funcPtr->ppt_entry_bitmatrix = VG_(calloc)(bitarray_size,
+        funcPtr->ppt_entry_bitmatrix = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.1", bitarray_size,
                                                    sizeof(*(funcPtr->ppt_entry_bitmatrix)));
 
         //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
@@ -92,7 +97,7 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
       }
 
       if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
-        funcPtr->ppt_entry_new_tag_leaders = VG_(calloc)(numDaikonVars,
+        funcPtr->ppt_entry_new_tag_leaders = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.2", numDaikonVars,
                                                          sizeof(*(funcPtr->ppt_entry_new_tag_leaders)));
       }
     }
@@ -104,7 +109,7 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
                                   (int (*)(void *,void *)) &equivalentTags);
 
       if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
-        funcPtr->ppt_entry_var_tags = VG_(calloc)(numDaikonVars,
+        funcPtr->ppt_entry_var_tags = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.3", numDaikonVars,
                                                   sizeof(*(funcPtr->ppt_entry_var_tags)));
       }
     }
@@ -115,7 +120,7 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
     if (dyncomp_detailed_mode) {
       UInt bitarray_size = bitarraySize(numDaikonVars);
       if (bitarray_size > 0) {
-        funcPtr->ppt_exit_bitmatrix = VG_(calloc)(bitarray_size,
+        funcPtr->ppt_exit_bitmatrix = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.4", bitarray_size,
                                                   sizeof(*(funcPtr->ppt_exit_bitmatrix)));
 
         //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
@@ -123,7 +128,7 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
       }
 
       if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
-        funcPtr->ppt_exit_new_tag_leaders = VG_(calloc)(numDaikonVars,
+        funcPtr->ppt_exit_new_tag_leaders = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.5", numDaikonVars,
                                                         sizeof(*(funcPtr->ppt_exit_new_tag_leaders)));
       }
     }
@@ -133,7 +138,7 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
                                   (int (*)(void *,void *)) &equivalentTags);
 
       if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
-        funcPtr->ppt_exit_var_tags = VG_(calloc)(numDaikonVars,
+        funcPtr->ppt_exit_var_tags = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.6", numDaikonVars,
                                                  sizeof(*(funcPtr->ppt_exit_var_tags)));
       }
     }
@@ -210,7 +215,7 @@ static uf_object* var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map
     return 0;
   }
 
-  new_obj = VG_(malloc)(sizeof(*new_obj));
+  new_obj = VG_(malloc)("dyncomp_runtime.c: var_uf_mims", sizeof(*new_obj));
   uf_make_set(new_obj, tag);
   genputtable(var_uf_map, (void*)tag, (void*)new_obj);
   return new_obj;
@@ -251,6 +256,8 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     }
 
     leader_obj = uf_union(uf_obj1, uf_obj2);
+    DYNCOMP_TPRINTF("Merging %d with %d to get %d at (%s - %s)\n", 
+		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name ); 
     return leader_obj->tag;
   }
 }
@@ -298,16 +305,18 @@ algorithm which marks 2 variables as comparable if they are currently
 holding tags that belong in the same set (have the same leader).
 
 */
-void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
+ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
                                   char isEnter,
                                   int daikonVarIndex,
                                   Addr a) {
+
   UInt leader, new_leader, var_tags_v, new_tags_v;
   struct genhashtable* var_uf_map;
   UInt* var_tags;
   UInt* new_tag_leaders;
   UChar* bitmatrix;
 
+  DPRINTF("DC_post_process_for_variable - %x\n", a);
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -329,6 +338,7 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
     // DC_detailed_mode_process_ppt_execution() after we are done
     // collecting the leader tags for all variables:
     if (a) {
+
       new_tag_leaders[daikonVarIndex] = val_uf_find_leader(get_tag(a));
     }
     else {
@@ -354,14 +364,19 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
   //  }
   var_tags_v = var_tags[daikonVarIndex];
+  //  VG_(printf)("Tag for this var is %u\n", var_tags_v);
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
-    DYNCOMP_TPRINTF("Variable processing in %s[%d]: propagating value "
-		    "merge of %d (old) and %d (new) to %d\n",
-		    funcPtr->funcEntry.name, daikonVarIndex, var_tags_v,
-		    leader, var_tags[daikonVarIndex]);
+/*     DPRINTF("Variable processing in %s[%d]: propagating value " */
+/* 		    "merge of %d (old) and %d (new) to %d\n", */
+/* 		    funcPtr->funcEntry.name, daikonVarIndex, var_tags_v, */
+/* 		    leader, var_tags[daikonVarIndex]); */
+/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: propagating value " */
+/* 		    "merge of %d (old) and %d (new) to %d\n", */
+/* 		    funcPtr->funcEntry.name, daikonVarIndex, var_tags_v, */
+/* 		    leader, var_tags[daikonVarIndex]); */
     var_tags_v = var_tags[daikonVarIndex];
   }
 
@@ -373,12 +388,18 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   //    var_uf_map.insert(new_leader, make_set(new uf_object));
   //  }
   new_tags_v = get_tag(a);
+  if(print_info) {
+    DYNCOMP_TPRINTF("tag is %u\n", new_tags_v);
+    //  VG_(printf)("New tag is %u\n", new_tags_v);
+  }
   new_leader = val_uf_find_leader(new_tags_v);
   if (new_leader && // Add a constraint that leader has to be non-zero
       !gengettable(var_uf_map, (void*)new_leader)) {
     var_uf_map_insert_and_make_set(var_uf_map, new_leader);
-    DYNCOMP_TPRINTF("Variable processing in %s[%d]: making new set for %d\n",
-		    funcPtr->funcEntry.name, daikonVarIndex, new_leader);
+/*     DPRINTF("Variable processing in %s[%d]: making new set for %d\n", */
+/* 		    funcPtr->funcEntry.name, daikonVarIndex, new_leader); */
+/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: making new set for %d\n", */
+/* 		    funcPtr->funcEntry.name, daikonVarIndex, new_leader); */
   }
 
   // Merge the sets of all values that were observed before for this
@@ -388,21 +409,34 @@ void DC_post_process_for_variable(DaikonFunctionEntry* funcPtr,
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
   if (var_tags_v != new_leader) {
-    DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values "
-		    "%d (old) and %d (new) to %d\n",
-		    funcPtr->funcEntry.name, daikonVarIndex,
-		    var_tags_v, new_leader, var_tags[daikonVarIndex]);
+/*     DPRINTF("Variable processing in %s[%d]: merging distinct values " */
+/* 	    "%d (old) and %d (new) to %d\n", */
+/* 	    funcPtr->funcEntry.name, daikonVarIndex, */
+/* 	    var_tags_v, new_leader, var_tags[daikonVarIndex]); */
+/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values " */
+/* 		    "%d (old) and %d (new) to %d\n", */
+/* 		    funcPtr->funcEntry.name, daikonVarIndex, */
+/* 		    var_tags_v, new_leader, var_tags[daikonVarIndex]); */
   }
 
-  /*
-  DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
+/*   DPRINTF(" new_tags[%d]: %u, var_uf_map_union(old_leader: %u new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n", */
+/*                   daikonVarIndex, */
+/*                   new_tags_v, */
+/* 	  leader, */
+/*                   new_leader, */
+/*                   var_tags_v, */
+/*                   daikonVarIndex, */
+/*                   var_tags[daikonVarIndex], */
+/* 	  a); */
+/*   * */
+  DYNCOMP_TPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
                   new_tags_v,
                   new_leader,
                   var_tags_v,
                   daikonVarIndex,
                   var_tags[daikonVarIndex],
-                  a);*/
+                  a);
 
   }
 }
@@ -450,10 +484,10 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   if (leader != var_tags_v) {
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
-    DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values "
-		    "%d (old) and %d (new) to %d (final round)\n",
-		    funcPtr->funcEntry.name, daikonVarIndex,
-		    var_tags_v, leader, var_tags[daikonVarIndex]);
+/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values " */
+/* 		    "%d (old) and %d (new) to %d (final round)\n", */
+/* 		    funcPtr->funcEntry.name, daikonVarIndex, */
+/* 		    var_tags_v, leader, var_tags[daikonVarIndex]); */
   }
 
   /*DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
@@ -528,7 +562,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   }
   else {  // default behavior
     tag = var_tags[daikonVarIndex];
-
+    VG_(printf)(" - tag %d ", tag);
     if (0 == tag) {
       comp_number = g_curCompNumber;
       g_curCompNumber++;
@@ -541,8 +575,9 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       // numbers because the leaders represent the distinctive sets.
       UInt leader = var_uf_map_find_leader(var_uf_map, tag);
 
-      var_tags[daikonVarIndex] = leader;
+      
 
+      var_tags[daikonVarIndex] = leader;
       if (gencontains(g_compNumberMap, (void*)leader)) {
         comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
       }
@@ -554,6 +589,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
     }
   }
 
+  VG_(printf)("\n");
   return comp_number;
   //  return var_tags[daikonVarIndex];
 }
@@ -834,7 +870,7 @@ void garbage_collect_tags() {
   if (g_oldToNewMap) {
     VG_(free)(g_oldToNewMap);
   }
-  g_oldToNewMap = VG_(calloc)((nextTag + 1), sizeof(*g_oldToNewMap));
+  g_oldToNewMap = VG_(calloc)("dyncomp_runtime.c: garbage_collect_tags.1 ", (nextTag + 1), sizeof(*g_oldToNewMap));
 
   VG_(printf)("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
@@ -1325,7 +1361,7 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
     if (num_daikon_vars == 0) {
       return;
     }
-    funcPtr->ppt_entry_var_tags = VG_(calloc)(num_daikon_vars,
+    funcPtr->ppt_entry_var_tags = VG_(calloc)("dyncomp_runtime.c: DC_convert_bitmatrix_to_sets.1", num_daikon_vars,
                                               sizeof(*(funcPtr->ppt_entry_var_tags)));
     var_tags = funcPtr->ppt_entry_var_tags;
   }
@@ -1336,7 +1372,7 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
     if (num_daikon_vars == 0) {
       return;
     }
-    funcPtr->ppt_exit_var_tags = VG_(calloc)(num_daikon_vars,
+    funcPtr->ppt_exit_var_tags = VG_(calloc)("dyncomp_runtime.c: DC_convert_bitmatrix_to_sets.2", num_daikon_vars,
                                              sizeof(*(funcPtr->ppt_exit_var_tags)));
     var_tags = funcPtr->ppt_exit_var_tags;
   }
@@ -1344,7 +1380,7 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
   // Iterate over all variables and create singleton sets for all of
   // them:
   for (var_index = 0; var_index < num_daikon_vars; var_index++) {
-    uf_object* new_obj = VG_(malloc)(sizeof(*new_obj));
+    uf_object* new_obj = VG_(malloc)("dyncomp_runtime.c: DC_convert_bm_to_sets", sizeof(*new_obj));
     uf_make_set(new_obj, var_index);
     // Overload var_tags to hold uf_object* instead of UInt* for now ...
     // shady!

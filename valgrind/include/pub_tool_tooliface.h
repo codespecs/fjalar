@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward
+   Copyright (C) 2000-2008 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@
 /* The version number indicates binary-incompatible changes to the
    interface;  if the core and tool versions don't match, Valgrind
    will abort.  */
-#define VG_CORE_INTERFACE_VERSION   9
+#define VG_CORE_INTERFACE_VERSION   11
 
 typedef struct _ToolInfo {
    Int	sizeof_ToolInfo;
@@ -130,8 +130,8 @@ extern void VG_(basic_tool_funcs)(
    //   with code addresses it will get into deep trouble if it does
    //   make this assumption.
    //
-   // IRBB* bb_in is the incoming bb to be instrumented, in flat IR
-   // form.
+   // IRSB* sb_in is the incoming superblock to be instrumented,
+   // in flat IR form.
    //
    // VexGuestLayout* layout contains limited info on the layout of
    // the guest state: where the stack pointer and program counter
@@ -160,7 +160,7 @@ extern void VG_(basic_tool_funcs)(
    /* --- Further comments about the IR that your --- */
    /* --- instrumentation function will receive. --- */
    /*
-      In the incoming IRBB, the IR for each instruction begins with an
+      In the incoming IRSB, the IR for each instruction begins with an
       IRStmt_IMark, which states the address and length of the
       instruction from which this IR came.  This makes it easy for
       profiling-style tools to know precisely which guest code
@@ -177,7 +177,7 @@ extern void VG_(basic_tool_funcs)(
       You should therefore 
 
       (1) copy any IR preceding the first IMark verbatim to the start
-          of the output IRBB.
+          of the output IRSB.
 
       (2) not try to instrument it or modify it in any way.
 
@@ -232,8 +232,8 @@ extern void VG_(basic_tool_funcs)(
       comment in MC_(instrument) in memcheck/mc_translate.c for
       details.
    */
-   IRBB*(*instrument)(VgCallbackClosure* closure, 
-                      IRBB* bb_in, 
+   IRSB*(*instrument)(VgCallbackClosure* closure, 
+                      IRSB* bb_in, 
                       VexGuestLayout*    layout, 
                       VexGuestExtents*   vge, 
                       IRType             gWordTy, 
@@ -303,6 +303,9 @@ extern void VG_(needs_tool_errors) (
    // Print error context.
    void (*pp_Error)(Error* err),
 
+   // Should the core indicate which ThreadId each error comes from?
+   Bool show_ThreadIDs_for_errors,
+
    // Should fill in any details that could be postponed until after the
    // decision whether to ignore the error (ie. details not affecting the
    // result of VG_(tdict).tool_eq_Error()).  This saves time when errors
@@ -345,7 +348,7 @@ extern void VG_(needs_tool_errors) (
    .so unloading, or otherwise at the discretion of m_transtab, eg
    when the table becomes too full) to avoid stale information being
    reused for new translations. */
-extern void VG_(needs_basic_block_discards) (
+extern void VG_(needs_superblock_discards) (
    // Discard any information that pertains to specific translations
    // or instructions within the address range given.  There are two
    // possible approaches.
@@ -362,13 +365,15 @@ extern void VG_(needs_basic_block_discards) (
    //   translation, and so could be covered by the "extents" of more than
    //   one call to this function.
    // Doing it the first way (as eg. Cachegrind does) is probably easier.
-   void (*discard_basic_block_info)(Addr64 orig_addr, VexGuestExtents extents)
+   void (*discard_superblock_info)(Addr64 orig_addr, VexGuestExtents extents)
 );
 
 /* Tool defines its own command line options? */
 extern void VG_(needs_command_line_options) (
    // Return True if option was recognised.  Presumably sets some state to
-   // record the option as well.
+   // record the option as well.  Nb: tools can assume that the argv will
+   // never disappear.  So they can, for example, store a pointer to a string
+   // within an option, rather than having to make a copy.
    Bool (*process_cmd_line_option)(Char* argv),
 
    // Print out command line usage for options for normal tool operation.
@@ -411,11 +416,8 @@ extern void VG_(needs_sanity_checks) (
    Bool(*expensive_sanity_check)(void)
 );
 
-/* Do we need to see data symbols? */
-extern void VG_(needs_data_syms) ( void );
-
-/* Does the tool need shadow memory allocated? */
-extern void VG_(needs_shadow_memory)( void );
+/* Do we need to see variable type and location information? */
+extern void VG_(needs_var_info) ( void );
 
 /* Does the tool replace malloc() and friends with its own versions?
    This has to be combined with the use of a vgpreload_<tool>.so module
@@ -439,13 +441,19 @@ extern void VG_(needs_malloc_replacement)(
  * it". */
 extern void VG_(needs_xml_output)( void );
 
+/* Does the tool want to have one final pass over the IR after tree
+   building but before instruction selection?  If so specify the
+   function here. */
+extern void VG_(needs_final_IR_tidy_pass) ( IRSB*(*final_tidy)(IRSB*) );
+
+
 /* ------------------------------------------------------------------ */
 /* Core events to track */
 
 /* Part of the core from which this call was made.  Useful for determining
    what kind of error message should be emitted. */
 typedef
-   enum { Vg_CoreStartup, Vg_CorePThread, Vg_CoreSignal, Vg_CoreSysCall,
+   enum { Vg_CoreStartup=1, Vg_CoreSignal, Vg_CoreSysCall,
           Vg_CoreTranslate, Vg_CoreClientReq }
    CorePart;
 
@@ -461,14 +469,26 @@ typedef
    Memory events (Nb: to track heap allocation/freeing, a tool must replace
    malloc() et al.  See above how to do this.)
 
-   These ones occur at startup, upon some signals, and upon some syscalls
- */
+   These ones occur at startup, upon some signals, and upon some syscalls.
+
+   For new_mem_brk and new_mem_stack_signal, the supplied ThreadId
+   indicates the thread for whom the new memory is being allocated.
+
+   For new_mem_startup and new_mem_mmap, the di_handle argument is a
+   handle which can be used to retrieve debug info associated with the
+   mapping or allocation (because it is of a file that Valgrind has
+   decided to read debug info from).  If the value is zero, there is
+   no associated debug info.  If the value exceeds zero, it can be
+   supplied as an argument to selected queries in m_debuginfo.
+*/
 void VG_(track_new_mem_startup)     (void(*f)(Addr a, SizeT len,
-                                              Bool rr, Bool ww, Bool xx));
-void VG_(track_new_mem_stack_signal)(void(*f)(Addr a, SizeT len));
-void VG_(track_new_mem_brk)         (void(*f)(Addr a, SizeT len));
+                                              Bool rr, Bool ww, Bool xx,
+                                              ULong di_handle));
+void VG_(track_new_mem_stack_signal)(void(*f)(Addr a, SizeT len, ThreadId tid));
+void VG_(track_new_mem_brk)         (void(*f)(Addr a, SizeT len, ThreadId tid));
 void VG_(track_new_mem_mmap)        (void(*f)(Addr a, SizeT len,
-                                              Bool rr, Bool ww, Bool xx));
+                                              Bool rr, Bool ww, Bool xx,
+                                              ULong di_handle));
 
 void VG_(track_copy_mem_remap)      (void(*f)(Addr from, Addr to, SizeT len));
 void VG_(track_change_mem_mprotect) (void(*f)(Addr a, SizeT len,
@@ -487,6 +507,29 @@ void VG_(track_die_mem_munmap)      (void(*f)(Addr a, SizeT len));
 
    Nb: all the specialised ones must use the VG_REGPARM(n) attribute.
  */
+ 
+/*    For the _new functions, a tool may specify with with-ECU
+    (ExeContext Unique) or without-ECU version for each size, but not
+    both.  If the with-ECU version is supplied, then the core will
+    arrange to pass, as the ecu argument, a 32-bit int which uniquely
+    identifies the instruction moving the stack pointer down.  This
+    32-bit value is as obtained from VG_(get_ECU_from_ExeContext).
+    VG_(get_ExeContext_from_ECU) can then be used to retrieve the
+    associated depth-1 ExeContext for the location.  All this
+    complexity is provided to support origin tracking in Memcheck.
+ */
+ void VG_(track_new_mem_stack_4_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_8_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_12_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_16_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_32_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_112_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_128_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_144_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_160_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+ void VG_(track_new_mem_stack_w_ECU)                  (void(*f)(Addr a, SizeT len,
+                                                                        UInt ecu));
+ 
 void VG_(track_new_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr new_ESP));
@@ -537,31 +580,65 @@ void VG_(track_post_reg_write_clientcall_return)(
 
 
 /* Scheduler events (not exhaustive) */
-void VG_(track_thread_run)(void(*f)(ThreadId tid));
+
+/* Called when 'tid' starts or stops running client code blocks.
+   Gives the total dispatched block count at that event.  Note, this
+   is not the same as 'tid' holding the BigLock (the lock that ensures
+   that only one thread runs at a time): a thread can hold the lock
+   for other purposes (making translations, etc) yet not be running
+   client blocks.  Obviously though, a thread must hold the lock in
+   order to run client code blocks, so the times bracketed by
+   'start_client_code'..'stop_client_code' are a subset of the times
+   when thread 'tid' holds the cpu lock.
+*/
+void VG_(track_start_client_code)(
+        void(*f)(ThreadId tid, ULong blocks_dispatched)
+     );
+void VG_(track_stop_client_code)(
+        void(*f)(ThreadId tid, ULong blocks_dispatched)
+     );
 
 
 /* Thread events (not exhaustive)
 
-   Called during thread create, before the new thread has run any
-   instructions (or touched any memory).
- */
-void VG_(track_post_thread_create)(void(*f)(ThreadId tid, ThreadId child));
-void VG_(track_post_thread_join)  (void(*f)(ThreadId joiner, ThreadId joinee));
+   ll_create: low level thread creation.  Called before the new thread
+   has run any instructions (or touched any memory).  In fact, called
+   immediately before the new thread has come into existence; the new
+   thread can be assumed to exist when notified by this call.
 
-/* Mutex events (not exhaustive)
-   "void *mutex" is really a pthread_mutex *
+   ll_exit: low level thread exit.  Called after the exiting thread
+   has run its last instruction.
 
-   Called before a thread can block while waiting for a mutex (called
-   regardless of whether the thread will block or not).  */
-void VG_(track_pre_mutex_lock)(void(*f)(ThreadId tid, void* mutex));
+   The _ll_ part makes it clear these events are not to do with
+   pthread_create or pthread_exit/pthread_join (etc), which are a
+   higher level abstraction synthesised by libpthread.  What you can
+   be sure of from _ll_create/_ll_exit is the absolute limits of each
+   thread's lifetime, and hence be assured that all memory references
+   made by the thread fall inside the _ll_create/_ll_exit pair.  This
+   is important for tools that need a 100% accurate account of which
+   thread is responsible for every memory reference in the process.
 
-/* Called once the thread actually holds the mutex (always paired with
-   pre_mutex_lock).  */
-void VG_(track_post_mutex_lock)(void(*f)(ThreadId tid, void* mutex));
+   pthread_create/join/exit do not give this property.  Calls/returns
+   to/from them happen arbitrarily far away from the relevant
+   low-level thread create/quit event.  In general a few hundred
+   instructions; hence a few hundred(ish) memory references could get
+   misclassified each time.
 
-/* Called after a thread has released a mutex (no need for a corresponding
-   pre_mutex_unlock, because unlocking can't block).  */
-void VG_(track_post_mutex_unlock)(void(*f)(ThreadId tid, void* mutex));
+   pre_thread_first_insn: is called when the thread is all set up and
+   ready to go (stack in place, etc) but has not executed its first
+   instruction yet.  Gives threading tools a chance to ask questions
+   about the thread (eg, what is its initial client stack pointer)
+   that are not easily answered at pre_thread_ll_create time.
+
+   For a given thread, the call sequence is:
+      ll_create (in the parent's context)
+      first_insn (in the child's context)
+      ll_exit (in the child's context)
+*/
+void VG_(track_pre_thread_ll_create) (void(*f)(ThreadId tid, ThreadId child));
+void VG_(track_pre_thread_first_insn)(void(*f)(ThreadId tid));
+void VG_(track_pre_thread_ll_exit)   (void(*f)(ThreadId tid));
+
 
 /* Signal events (not exhaustive)
 
@@ -574,10 +651,6 @@ void VG_(track_pre_deliver_signal) (void(*f)(ThreadId tid, Int sigNo,
 /* Called after a signal is delivered.  Nb: unfortunately, if the signal
    handler longjmps, this won't be called.  */
 void VG_(track_post_deliver_signal)(void(*f)(ThreadId tid, Int sigNo));
-
-/* Others... condition variables...
-   ...
- */
 
 #endif   // __PUB_TOOL_TOOLIFACE_H
 

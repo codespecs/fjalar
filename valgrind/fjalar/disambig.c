@@ -396,11 +396,11 @@ static void processDisambigFile() {
 	  FJALAR_DPRINTF("FUNCTION_PREFIX");
 	  type = FUNCTION;
 	  // Strip off the prefix by moving forward that many spots in the buffer:
-	  entryName = VG_(strdup)(&line[VG_(strlen)(FUNCTION_PREFIX)]);
+	  entryName = VG_(strdup)("disambig.c: processDisambigFile.0.1", &line[VG_(strlen)(FUNCTION_PREFIX)]);
           //          VG_(printf)("Function! %s\n", entryName);
 
 	  VarListArraySize = 1;
-	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
+	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.1",  VarListArraySize, sizeof(*VarListArray));
 
 	  // Find the appropriate function by name:
           cur_entry = getFunctionEntryFromFjalarName(entryName);
@@ -413,7 +413,7 @@ static void processDisambigFile() {
 	  type = GLOBAL;
 	  FJALAR_DPRINTF("GLOBAL");
 	  VarListArraySize = 1;
-	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
+	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.2", VarListArraySize, sizeof(*VarListArray));
 
 	  VarListArray[0] = &globalVars;
 	}
@@ -425,7 +425,7 @@ static void processDisambigFile() {
 	  type = USERTYPE;
 	  FJALAR_DPRINTF("USERTYPE");
 	  // Strip off the prefix:
-	  entryName = VG_(strdup)(line + VG_(strlen)(USERTYPE_PREFIX));
+	  entryName = VG_(strdup)("disambig.c: processDisambigFile.2.1", line + VG_(strlen)(USERTYPE_PREFIX));
 
 	  // Find ALL THE TypeEntry entries with the matching name
 	  // and throw their memberVarList entries in VarListArray
@@ -454,7 +454,7 @@ static void processDisambigFile() {
 
 	  deleteTypeIterator(typeIt);
 
-	  VarListArray = (VarList**)VG_(calloc)(VarListArraySize, sizeof(*VarListArray));
+	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.3", VarListArraySize, sizeof(*VarListArray));
 
 	  typeIt = newTypeIterator();
 	  i = 0;
@@ -483,7 +483,7 @@ static void processDisambigFile() {
       else {
 	VariableEntry* target = 0;
 
-	char* varName = VG_(strdup)(line);
+	char* varName = VG_(strdup)("disambig.c: processDisambigFile.3.1", line);
         char* disambigLine = 0;
 
         char* firstToken = 0;
@@ -508,7 +508,7 @@ static void processDisambigFile() {
           line[lineLen - 1] = '\0';
         }
 
-        disambigLine = VG_(strdup)(line);
+        disambigLine = VG_(strdup)("disambig.c: processDisambigFile.4.1", line);
 
         firstToken = strtok(disambigLine, " ");
         secondToken = strtok(NULL, " ");

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -52,6 +52,9 @@
 // For varargs types
 #include <stdarg.h>
 
+/* For HAVE_BUILTIN_EXPECT */
+#include "config.h"
+
 
 /* ---------------------------------------------------------------------
    builtin types
@@ -79,6 +82,9 @@ typedef ULong                 Off64T;     // 64             64
 #if !defined(NULL)
 #  define NULL ((void*)0)
 #endif
+
+/* This is just too useful to not have around the place somewhere. */
+typedef  struct { UWord uw1; UWord uw2; }  UWordPair;
 
 
 /* ---------------------------------------------------------------------
@@ -154,6 +160,16 @@ typedef
 
 // Where to send bug reports to.
 #define VG_BUGS_TO "www.valgrind.org"
+
+/* Branch prediction hints. */
+#if HAVE_BUILTIN_EXPECT
+#  define LIKELY(x)   __builtin_expect(!!(x), 1)
+#  define UNLIKELY(x) __builtin_expect((x), 0)
+#else
+#  define LIKELY(x)   (x)
+#  define UNLIKELY(x) (x)
+#endif
+
 
 #endif /* __PUB_TOOL_BASICS_H */
 

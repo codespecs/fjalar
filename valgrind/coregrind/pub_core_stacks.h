@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -39,9 +39,10 @@
 extern UWord VG_(register_stack)   ( Addr start, Addr end );
 extern void  VG_(deregister_stack) ( UWord id );
 extern void  VG_(change_stack)     ( UWord id, Addr start, Addr end );
+extern void  VG_(stack_limits)     ( Addr SP, Addr *start, Addr *end );
 
-extern VG_REGPARM(2)
-       void  VG_(unknown_SP_update) ( Addr old_SP, Addr new_SP );
+extern VG_REGPARM(3)
+       void VG_(unknown_SP_update) ( Addr old_SP, Addr new_SP, UInt otag );
 
 #endif   // __PUB_CORE_STACKS_H
 

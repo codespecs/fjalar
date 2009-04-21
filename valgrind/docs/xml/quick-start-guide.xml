@@ -25,30 +25,71 @@
 <sect1 id="quick-start.intro" xreflabel="Introduction">
 <title>Introduction</title>
 
-<para>The Valgrind distribution has multiple tools.  The most popular is
-the memory checking tool (called Memcheck) which can detect many common
+<para>The Valgrind tool suite provides a number of debugging and
+profiling tools.  The most popular is
+Memcheck, a memory checking tool which can detect many common
 memory errors such as:</para>
 
 <itemizedlist>
   <listitem>
-    <para>touching memory you shouldn't (eg. overrunning heap block
-    boundaries);</para>
+    <para>Touching memory you shouldn't (eg. overrunning heap block
+    boundaries, or reading/writing freed memory).</para>
   </listitem>
   <listitem>
-    <para>using values before they have been initialized;</para>
+    <para>Using values before they have been initialized.</para>
   </listitem>
   <listitem>
-    <para>incorrect freeing of memory, such as double-freeing heap
-    blocks;</para>
+    <para>Incorrect freeing of memory, such as double-freeing heap
+    blocks.</para>
   </listitem>
   <listitem>
-    <para>memory leaks.</para>
+    <para>Memory leaks.</para>
   </listitem>
 </itemizedlist>
 
+<para>Memcheck is only one of the tools in the Valgrind suite.
+Other tools you may find useful are:</para>
+
+<itemizedlist>
+  <listitem>
+    <para>Cachegrind: a profiling tool which produces detailed data on
+    cache (miss) and branch (misprediction) events.  Statistics are
+    gathered for the entire program, for each function, and for each
+    line of code, if you need that level of detail.</para>
+  </listitem>
+  <listitem>
+    <para>Callgrind: a profiling tool that shows cost relationships
+    across function calls, optionally with cache simulation similar to
+    Cachegrind.  Information gathered by Callgrind can be viewed
+    either with an included command line tool, or by using the
+    KCachegrind GUI.  KCachegrind is not part of the Valgrind suite 
+    -- it is part of the KDE Desktop Environment.</para>
+  </listitem>
+  <listitem>
+    <para>Massif: a space profiling tool.  It allows you to explore
+    in detail which parts of your program allocate memory.</para>
+  </listitem>
+  <listitem>
+    <para>Helgrind: a debugging tool for threaded programs.  Helgrind
+    looks for various kinds of synchronisation errors in code that uses
+    the POSIX PThreads API.</para>
+  </listitem>
+  <listitem>
+    <para>In addition, there are a number of "experimental" tools in
+    the codebase.  They can be distinguished by the "exp-" prefix on
+    their names.  Experimental tools are not subject to the same
+    quality control standards that apply to our production-grade tools
+    (Memcheck, Cachegrind, Callgrind, Massif, Helgrind and DRD).</para>
+  </listitem>
+</itemizedlist>
+
+<para>The rest of this guide discusses only the Memcheck tool.  For
+full documentation on the other tools, and for Memcheck, see the
+Valgrind User Manual.</para>
+
 <para>What follows is the minimum information you need to start
 detecting memory errors in your program with Memcheck.  Note that this
-guide applies to Valgrind version 2.4.0 and later; some of the
+guide applies to Valgrind version 3.4.0 and later.  Some of the
 information is not quite right for earlier versions.</para>
 
 </sect1>
@@ -63,7 +104,8 @@ numbers.  Using <computeroutput>-O0</computeroutput> is also a good
 idea, if you can tolerate the slowdown.  With
 <computeroutput>-O1</computeroutput> line numbers in error messages can
 be inaccurate, although generally speaking Memchecking code compiled at
-<computeroutput>-O1</computeroutput> works fairly well.  Use of
+<computeroutput>-O1</computeroutput> works fairly well and is
+recommended.  Use of
 <computeroutput>-O2</computeroutput> and above is not recommended as
 Memcheck occasionally reports uninitialised-value errors which don't
 really exist.</para>
@@ -74,16 +116,16 @@ really exist.</para>
 <sect1 id="quick-start.mcrun" xreflabel="Running your program under Memcheck">
 <title>Running your program under Memcheck</title>
 
-<para>If you normally run your program like this:
+<para>If you normally run your program like this:</para>
 <programlisting>    myprog arg1 arg2
 </programlisting>
 
-Use this command line:
+<para>Use this command line:</para>
 <programlisting>    valgrind --leak-check=yes myprog arg1 arg2
 </programlisting>
 
-Memcheck is the default tool.  The <option>--leak-check</option> option
-turns on the detailed memory leak detector.</para>
+<para>Memcheck is the default tool.  The <option>--leak-check</option>
+option turns on the detailed memory leak detector.</para>
 
 <para>Your program will run much slower (eg. 20 to 30 times) than
 normal, and use a lot more memory.  Memcheck will issue messages about
@@ -95,7 +137,8 @@ memory errors and leaks that it detects.</para>
 <sect1 id="quick-start.interpret" 
        xreflabel="Interpreting Memcheck's output">
 <title>Interpreting Memcheck's output</title>
-<para>Here's an example C program with a memory error and a memory leak.
+<para>Here's an example C program with a memory error and a memory
+leak.</para>
 
 <programlisting>
   #include &lt;stdlib.h&gt;
@@ -113,8 +156,8 @@ memory errors and leaks that it detects.</para>
   }
 </programlisting>
 
-Most error messages look like the following, which describes problem 1,
-the heap block overrun:
+<para>Most error messages look like the following, which describes
+problem 1, the heap block overrun:</para>
 
 <programlisting>
   ==19182== Invalid write of size 4
@@ -126,7 +169,7 @@ the heap block overrun:
   ==19182==    by 0x80483AB: main (example.c:11)
 </programlisting>
 
-Things to notice:
+<para>Things to notice:</para>
 
 <itemizedlist>
   <listitem>
@@ -161,10 +204,11 @@ Things to notice:
   </listitem>
 </itemizedlist>
 
-It's worth fixing errors in the order they are reported, as later errors
-can be caused by earlier errors.</para>
+<para>It's worth fixing errors in the order they are reported, as
+later errors can be caused by earlier errors.  Failing to do this is a
+common cause of difficulty with Memcheck.</para>
 
-<para>Memory leak messages look like this:
+<para>Memory leak messages look like this:</para>
 
 <programlisting>
   ==19182== 40 bytes in 1 blocks are definitely lost in loss record 1 of 1
@@ -173,12 +217,13 @@ can be caused by earlier errors.</para>
   ==19182==    by 0x80483AB: main (a.c:11)
 </programlisting>
 
-The stack trace tells you where the leaked memory was allocated.
-Memcheck cannot tell you why the memory leaked, unfortunately.  (Ignore
-the "vg_replace_malloc.c", that's an implementation detail.)</para>
+<para>The stack trace tells you where the leaked memory was allocated.
+Memcheck cannot tell you why the memory leaked, unfortunately.
+(Ignore the "vg_replace_malloc.c", that's an implementation
+detail.)</para>
 
 <para>There are several kinds of leaks; the two most important
-categories are:
+categories are:</para>
 
 <itemizedlist>
   <listitem>
@@ -192,7 +237,14 @@ categories are:
   </listitem>
 </itemizedlist>
 
-If you don't understand an error message, please consult 
+<para>It can be difficult to track down the root causes of
+uninitialised-value errors reported by Memcheck.  Try using
+the <option>--track-origins=yes</option> to get extra information.
+This makes Memcheck run slower, but the extra information you get
+often saves a lot of time figuring out where the uninitialised values
+are coming from.</para>
+
+<para>If you don't understand an error message, please consult
 <xref linkend="mc-manual.errormsgs"/> in the <xref linkend="manual"/>
 which has examples of all the error messages Memcheck produces.</para>
 
@@ -209,14 +261,23 @@ However, it is typically right 99% of the time, so you should be wary of
 ignoring its error messages.  After all, you wouldn't ignore warning
 messages produced by a compiler, right?  The suppression mechanism is
 also useful if Memcheck is reporting errors in library code that you
-cannot change; the default suppression set hides a lot of these, but you
+cannot change.  The default suppression set hides a lot of these, but you
 may come across more.</para>
 
-<para>Memcheck also cannot detect every memory error your program has.
-For example, it can't detect if you overrun the bounds of an array that
-is allocated statically or on the stack.  But it should detect every
-error that could crash your program (eg. cause a segmentation
+<para>Memcheck cannot detect every memory error your program has.
+For example, it can't detect out-of-range reads or writes to arrays
+that are allocated statically or on the stack.  But it should detect many
+errors that could crash your program (eg. cause a segmentation
 fault).</para>
+
+<para>Try to make your program so clean that Memcheck reports no
+errors.  Once you achieve this state, it is much easier to see when
+changes to the program cause Memcheck to report new errors.
+Experience from several years of Memcheck use shows that it is
+possible to make even huge programs run Memcheck-clean.  For example,
+large parts of KDE 3.5.X, and recent versions of OpenOffice.org
+(2.3.0) are Memcheck-clean, or very close to it.</para>
+
 
 </sect1>
 

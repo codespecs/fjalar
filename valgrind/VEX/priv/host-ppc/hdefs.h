@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2006 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -288,7 +288,7 @@ typedef
    PPCRI;
 
 extern PPCRI* PPCRI_Imm ( ULong );
-extern PPCRI* PPCRI_Reg ( HReg );
+extern PPCRI* PPCRI_Reg( HReg );
 
 extern void ppPPCRI ( PPCRI* );
 
@@ -377,7 +377,8 @@ typedef
       Pfp_ADDS, Pfp_SUBS, Pfp_MULS, Pfp_DIVS, 
 
       /* Unary */
-      Pfp_SQRT, Pfp_ABS, Pfp_NEG, Pfp_MOV, Pfp_RES, Pfp_RSQRTE
+      Pfp_SQRT, Pfp_ABS, Pfp_NEG, Pfp_MOV, Pfp_RES, Pfp_RSQRTE,
+      Pfp_FRIN, Pfp_FRIM, Pfp_FRIP, Pfp_FRIZ
    }
    PPCFpOp;
 
@@ -838,9 +839,9 @@ extern Int          emit_PPCInstr        ( UChar* buf, Int nbuf, PPCInstr*,
 extern PPCInstr*    genSpill_PPC         ( HReg rreg, UShort offsetB, Bool mode64 );
 extern PPCInstr*    genReload_PPC        ( HReg rreg, UShort offsetB, Bool mode64 );
 extern void         getAllocableRegs_PPC ( Int*, HReg**, Bool mode64 );
-extern HInstrArray* iselBB_PPC           ( IRBB*, VexArch,
+extern HInstrArray* iselSB_PPC           ( IRSB*, VexArch,
                                                   VexArchInfo*,
-                                                  VexMiscInfo* );
+                                                  VexAbiInfo* );
 
 #endif /* ndef __LIBVEX_HOST_PPC_HDEFS_H */
 
