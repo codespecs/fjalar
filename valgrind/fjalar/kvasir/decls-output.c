@@ -292,10 +292,12 @@ void outputDeclsFile(char faux_decls)
 // Print .decls at the end of program execution and then close it
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
+  // TODO: Function is almost identical to outputDeclsFile, may as well refactor them
+  // into one function.
   //  VG_(printf)("DC_outputDeclsAtEnd()\n");
+  printDeclsHeader();
   initDecls();
   printAllFunctionDecls(0);
-
   printAllObjectPPTDecls();
 
   fclose(decls_fp);
