@@ -265,9 +265,16 @@ void outputDeclsFile(char faux_decls)
     return;
   }
 
-  if (!faux_decls) {
-    printDeclsHeader();
+  // Only print out the delcaration header if not in append mode. The first run
+  // will print out the header, subsequent lines will only insert a newline.
+  if(!kvasir_dtrace_append) {
+    if (!faux_decls) {
+      printDeclsHeader();
+    }
+  } else {
+    fputs("\n", decls_fp);
   }
+    
 
   initDecls();
   printAllFunctionDecls(faux_decls);
