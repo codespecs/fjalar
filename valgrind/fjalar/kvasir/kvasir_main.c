@@ -53,7 +53,7 @@ Bool print_declarations = 1;
 
 // Temporary - only to be used during the transition period from the
 // old .decls format to the new format (designed in April 2006):
-Bool kvasir_old_decls_format = True;
+Bool kvasir_old_decls_format = False;
 Bool kvasir_parent_records = False;
 Bool kvasir_transitioning = False;
 Bool kvasir_unambiguous_fields = False;
