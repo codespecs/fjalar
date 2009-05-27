@@ -48,9 +48,13 @@ static UChar transbuf[N_TRANSBUF];
 static Bool verbose = True;
 
 /* Forwards */
-#if 0 /* UNUSED */
-static IRBB* ac_instrument ( IRBB*, VexGuestLayout*, IRType );
-static IRBB* mc_instrument ( IRBB*, VexGuestLayout*, IRType, IRType );
+#if 1 /* UNUSED */
+static IRSB* ac_instrument ( IRSB*, VexGuestLayout*, IRType );
+static
+IRSB* mc_instrument ( void* closureV,
+                      IRSB* bb_in, VexGuestLayout* layout, 
+                      VexGuestExtents* vge,
+                      IRType gWordTy, IRType hWordTy );
 #endif
 
 static Bool chase_into_not_ok ( void* opaque, Addr64 dst ) { return False; }
@@ -67,7 +71,7 @@ int main ( int argc, char** argv )
    VexControl vcon;
    VexGuestExtents vge;
    VexArchInfo vai_x86, vai_amd64, vai_ppc32;
-   VexMiscInfo vmi;
+   VexAbiInfo vbi;
    VexTranslateArgs vta;
 
    if (argc != 2) {
@@ -127,7 +131,8 @@ int main ( int argc, char** argv )
 
       /* FIXME: put sensible values into the .hwcaps fields */
       LibVEX_default_VexArchInfo(&vai_x86);
-      vai_x86.hwcaps = 0;
+      vai_x86.hwcaps = VEX_HWCAPS_X86_SSE1
+                       | VEX_HWCAPS_X86_SSE2 | VEX_HWCAPS_X86_SSE3;
 
       LibVEX_default_VexArchInfo(&vai_amd64);
       vai_amd64.hwcaps = 0;
@@ -136,10 +141,10 @@ int main ( int argc, char** argv )
       vai_ppc32.hwcaps = 0;
       vai_ppc32.ppc_cache_line_szB = 128;
 
-      LibVEX_default_VexMiscInfo(&vmi);
+      LibVEX_default_VexAbiInfo(&vbi);
 
       /* ----- Set up args for LibVEX_Translate ----- */
-#if 1 /* ppc32 -> ppc32 */
+#if 0 /* ppc32 -> ppc32 */
       vta.arch_guest     = VexArchPPC32;
       vta.archinfo_guest = vai_ppc32;
       vta.arch_host      = VexArchPPC32;
@@ -151,13 +156,13 @@ int main ( int argc, char** argv )
       vta.arch_host      = VexArchAMD64;
       vta.archinfo_host  = vai_amd64;
 #endif
-#if 0 /* x86 -> x86 */
+#if 1 /* x86 -> x86 */
       vta.arch_guest     = VexArchX86;
       vta.archinfo_guest = vai_x86;
       vta.arch_host      = VexArchX86;
       vta.archinfo_host  = vai_x86;
 #endif
-      vta.miscinfo_both   = vmi;
+      vta.abiinfo_both    = vbi;
       vta.guest_bytes     = origbuf;
       vta.guest_bytes_addr = (Addr64)orig_addr;
       vta.callback_opaque = NULL;
@@ -166,7 +171,7 @@ int main ( int argc, char** argv )
       vta.host_bytes      = transbuf;
       vta.host_bytes_size = N_TRANSBUF;
       vta.host_bytes_used = &trans_used;
-#if 1 /* no instrumentation */
+#if 0 /* no instrumentation */
       vta.instrument1     = NULL;
       vta.instrument2     = NULL;
 #endif
@@ -174,7 +179,7 @@ int main ( int argc, char** argv )
       vta.instrument1     = ac_instrument;
       vta.instrument2     = NULL;
 #endif
-#if 0 /* memcheck */
+#if 1 /* memcheck */
       vta.instrument1     = mc_instrument;
       vta.instrument2     = NULL;
 #endif
@@ -186,6 +191,8 @@ int main ( int argc, char** argv )
 #else /* ppc32, ppc64 hosts */
       vta.dispatch        = NULL;
 #endif
+
+      vta.finaltidy = NULL;
 
       for (i = 0; i < TEST_N_ITERS; i++)
          tres = LibVEX_Translate ( &vta );
@@ -230,7 +237,7 @@ void panic ( HChar* s )
 }
 
 static
-IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
+IRSB* ac_instrument (IRSB* bb_in, VexGuestLayout* layout, IRType hWordTy )
 {
 /* Use this rather than eg. -1 because it's a UInt. */
 #define INVALID_DATA_SIZE   999999
@@ -244,7 +251,7 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
    Bool needSz;
 
    /* Set up BB */
-   IRBB* bb     = emptyIRBB();
+   IRSB* bb     = emptyIRSB();
    bb->tyenv    = dopyIRTypeEnv(bb_in->tyenv);
    bb->next     = dopyIRExpr(bb_in->next);
    bb->jumpkind = bb_in->jumpkind;
@@ -276,7 +283,7 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
                                                   needSz = True; break;
                }
                if (needSz) {
-                  addStmtToIRBB( 
+                  addStmtToIRSB( 
                      bb,
                      IRStmt_Dirty(
                         unsafeIRDirty_0_N( helper->regparms, 
@@ -284,7 +291,7 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
                                            mkIRExprVec_2(addr, mkIRExpr_HWord(sz)))
                   ));
                } else {
-                  addStmtToIRBB( 
+                  addStmtToIRSB( 
                      bb,
                      IRStmt_Dirty(
                         unsafeIRDirty_0_N( helper->regparms, 
@@ -314,7 +321,7 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
                                                needSz = True; break;
             }
             if (needSz) {
-               addStmtToIRBB( 
+               addStmtToIRSB( 
                   bb,
                   IRStmt_Dirty(
                      unsafeIRDirty_0_N( helper->regparms, 
@@ -322,7 +329,7 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
                                         mkIRExprVec_2(addr, mkIRExpr_HWord(sz)))
                ));
             } else {
-               addStmtToIRBB( 
+               addStmtToIRSB( 
                   bb,
                   IRStmt_Dirty(
                      unsafeIRDirty_0_N( helper->regparms,
@@ -360,7 +367,7 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
             panic("addrcheck: unhandled IRStmt");
       }
 
-      addStmtToIRBB( bb, dopyIRStmt(st));
+      addStmtToIRSB( bb, dopyIRStmt(st));
    }
 
    return bb;
@@ -376,7 +383,15 @@ IRBB* ac_instrument (IRBB* bb_in, VexGuestLayout* layout, IRType hWordTy )
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 
-#if 0 /* UNUSED */
+#if 1 /* UNUSED */
+
+static
+__attribute((noreturn))
+void panic ( HChar* s )
+{
+  printf("\npanic: %s\n", s);
+  failure_exit();
+}
 
 #define tl_assert(xxx) assert(xxx)
 #define VG_(xxxx) xxxx
@@ -421,7 +436,7 @@ static void MC_helperc_value_check4_fail( void ) { }
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2006 Julian Seward 
+   Copyright (C) 2000-2008 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -463,7 +478,7 @@ static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
 typedef
    struct _MCEnv {
       /* MODIFIED: the bb being constructed.  IRStmts are added. */
-      IRBB* bb;
+      IRSB* bb;
 
       /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
          original temps to their current their current shadow temp.
@@ -557,7 +572,7 @@ static Bool isOriginalAtom ( MCEnv* mce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp < mce->n_originalTmps)
+   if (a1->tag == Iex_RdTmp && a1->Iex.RdTmp.tmp < mce->n_originalTmps)
       return True;
    return False;
 }
@@ -568,7 +583,7 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp >= mce->n_originalTmps)
+   if (a1->tag == Iex_RdTmp && a1->Iex.RdTmp.tmp >= mce->n_originalTmps)
       return True;
    return False;
 }
@@ -577,7 +592,7 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
    are identically-kinded. */
 static Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
 {
-   if (a1->tag == Iex_Tmp && a1->tag == Iex_Tmp)
+   if (a1->tag == Iex_RdTmp && a1->tag == Iex_RdTmp)
       return True;
    if (a1->tag == Iex_Const && a1->tag == Iex_Const)
       return True;
@@ -631,11 +646,11 @@ static IRExpr* definedOfType ( IRType ty ) {
 
 /* assign value to tmp */
 #define assign(_bb,_tmp,_expr)   \
-   addStmtToIRBB((_bb), IRStmt_Tmp((_tmp),(_expr)))
+   addStmtToIRSB((_bb), IRStmt_WrTmp((_tmp),(_expr)))
 
 /* add stmt to a bb */
 #define stmt(_bb,_stmt)    \
-   addStmtToIRBB((_bb), (_stmt))
+   addStmtToIRSB((_bb), (_stmt))
 
 /* build various kinds of expressions */
 #define binop(_op, _arg1, _arg2) IRExpr_Binop((_op),(_arg1),(_arg2))
@@ -645,7 +660,7 @@ static IRExpr* definedOfType ( IRType ty ) {
 #define mkU32(_n)                IRExpr_Const(IRConst_U32(_n))
 #define mkU64(_n)                IRExpr_Const(IRConst_U64(_n))
 #define mkV128(_n)               IRExpr_Const(IRConst_V128(_n))
-#define mkexpr(_tmp)             IRExpr_Tmp((_tmp))
+#define mkexpr(_tmp)             IRExpr_RdTmp((_tmp))
 
 /* bind the given expression to a new temporary, and return the
    temporary.  This effectively converts an arbitrary expression into
@@ -1026,10 +1041,10 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
       getting a new value. */
    tl_assert(isIRAtom(vatom));
    /* sameKindedAtoms ... */
-   if (vatom->tag == Iex_Tmp) {
-      tl_assert(atom->tag == Iex_Tmp);
-      newShadowTmp(mce, atom->Iex.Tmp.tmp);
-      assign(mce->bb, findShadowTmp(mce, atom->Iex.Tmp.tmp), 
+   if (vatom->tag == Iex_RdTmp) {
+      tl_assert(atom->tag == Iex_RdTmp);
+      newShadowTmp(mce, atom->Iex.RdTmp.tmp);
+      assign(mce->bb, findShadowTmp(mce, atom->Iex.RdTmp.tmp), 
                       definedOfType(ty));
    }
 }
@@ -1107,7 +1122,7 @@ void do_shadow_PUT ( MCEnv* mce,  Int offset,
 */
 static
 void do_shadow_PUTI ( MCEnv* mce, 
-                      IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
+                      IRRegArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
 {
    IRAtom* vatom;
    IRType  ty, tyS;
@@ -1129,8 +1144,8 @@ void do_shadow_PUTI ( MCEnv* mce,
    } else {
       /* Do a cloned version of the Put that refers to the shadow
          area. */
-      IRArray* new_descr 
-         = mkIRArray( descr->base + mce->layout->total_sizeB, 
+      IRRegArray* new_descr 
+         = mkIRRegArray( descr->base + mce->layout->total_sizeB, 
                       tyS, descr->nElems);
       stmt( mce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
    }
@@ -1160,7 +1175,7 @@ IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
    given GETI (passed in in pieces). 
 */
 static
-IRExpr* shadow_GETI ( MCEnv* mce, IRArray* descr, IRAtom* ix, Int bias )
+IRExpr* shadow_GETI ( MCEnv* mce, IRRegArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
    IRType tyS  = shadowType(ty);
@@ -1174,8 +1189,8 @@ IRExpr* shadow_GETI ( MCEnv* mce, IRArray* descr, IRAtom* ix, Int bias )
    } else {
       /* return a cloned version of the Get that refers to the shadow
          area. */
-      IRArray* new_descr 
-         = mkIRArray( descr->base + mce->layout->total_sizeB, 
+      IRRegArray* new_descr 
+         = mkIRRegArray( descr->base + mce->layout->total_sizeB, 
                       tyS, descr->nElems);
       return IRExpr_GetI( new_descr, ix, bias );
    }
@@ -1681,7 +1696,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       /* Scalar floating point */
 
-      case Iop_RoundF64:
+         //      case Iop_RoundF64:
       case Iop_F64toI64:
       case Iop_I64toF64:
          /* First arg is I32 (rounding mode), second is F64 or I64
@@ -2065,8 +2080,8 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
          return shadow_GETI( mce, e->Iex.GetI.descr, 
                                   e->Iex.GetI.ix, e->Iex.GetI.bias );
 
-      case Iex_Tmp:
-         return IRExpr_Tmp( findShadowTmp(mce, e->Iex.Tmp.tmp) );
+      case Iex_RdTmp:
+         return IRExpr_RdTmp( findShadowTmp(mce, e->Iex.RdTmp.tmp) );
 
       case Iex_Const:
          return definedOfType(shadowType(typeOfIRExpr(mce->bb->tyenv, e)));
@@ -2081,9 +2096,9 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
       case Iex_Unop:
          return expr2vbits_Unop( mce, e->Iex.Unop.op, e->Iex.Unop.arg );
 
-      case Iex_LDle:
-         return expr2vbits_LDle( mce, e->Iex.LDle.ty, 
-                                      e->Iex.LDle.addr, 0/*addr bias*/ );
+      case Iex_Load:
+         return expr2vbits_LDle( mce, e->Iex.Load.ty, 
+                                      e->Iex.Load.addr, 0/*addr bias*/ );
 
       case Iex_CCall:
          return mkLazyN( mce, e->Iex.CCall.args, 
@@ -2151,7 +2166,7 @@ void do_shadow_STle ( MCEnv* mce,
    IRAtom   *vdataLo64, *vdataHi64;
    IRAtom   *eBias, *eBias0, *eBias8;
    void*    helper = NULL;
-   Char*    hname = NULL;
+   HChar*   hname = NULL;
 
    tyAddr = mce->hWordTy;
    mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
@@ -2444,7 +2459,7 @@ static Bool isBogusAtom ( IRAtom* at )
    ULong n = 0;
    IRConst* con;
    tl_assert(isIRAtom(at));
-   if (at->tag == Iex_Tmp)
+   if (at->tag == Iex_RdTmp)
       return False;
    tl_assert(at->tag == Iex_Const);
    con = at->Iex.Const.con;
@@ -2467,11 +2482,11 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
    Int     i;
    IRExpr* e;
    switch (st->tag) {
-      case Ist_Tmp:
-         e = st->Ist.Tmp.data;
+      case Ist_WrTmp:
+         e = st->Ist.WrTmp.data;
          switch (e->tag) {
             case Iex_Get:
-            case Iex_Tmp:
+            case Iex_RdTmp:
                return False;
             case Iex_Unop: 
                return isBogusAtom(e->Iex.Unop.arg);
@@ -2482,8 +2497,8 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
                return isBogusAtom(e->Iex.Mux0X.cond)
                       || isBogusAtom(e->Iex.Mux0X.expr0)
                       || isBogusAtom(e->Iex.Mux0X.exprX);
-            case Iex_LDle: 
-               return isBogusAtom(e->Iex.LDle.addr);
+            case Iex_Load: 
+               return isBogusAtom(e->Iex.Load.addr);
             case Iex_CCall:
                for (i = 0; e->Iex.CCall.args[i]; i++)
                   if (isBogusAtom(e->Iex.CCall.args[i]))
@@ -2494,9 +2509,9 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
          }
       case Ist_Put:
          return isBogusAtom(st->Ist.Put.data);
-      case Ist_STle:
-         return isBogusAtom(st->Ist.STle.addr) 
-                || isBogusAtom(st->Ist.STle.data);
+      case Ist_Store:
+         return isBogusAtom(st->Ist.Store.addr) 
+                || isBogusAtom(st->Ist.Store.data);
       case Ist_Exit:
          return isBogusAtom(st->Ist.Exit.guard);
       default: 
@@ -2506,7 +2521,9 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
    }
 }
 
-IRBB* mc_instrument ( IRBB* bb_in, VexGuestLayout* layout, 
+IRSB* mc_instrument ( void* closureV,
+                      IRSB* bb_in, VexGuestLayout* layout, 
+                      VexGuestExtents* vge,
                       IRType gWordTy, IRType hWordTy )
 {
    Bool verboze = False; //True; 
@@ -2518,9 +2535,9 @@ IRBB* mc_instrument ( IRBB* bb_in, VexGuestLayout* layout,
    MCEnv mce;
 
    /* Set up BB */
-   IRBB* bb     = emptyIRBB();
-   bb->tyenv    = dopyIRTypeEnv(bb_in->tyenv);
-   bb->next     = dopyIRExpr(bb_in->next);
+   IRSB* bb     = emptyIRSB();
+   bb->tyenv    = deepCopyIRTypeEnv(bb_in->tyenv);
+   bb->next     = deepCopyIRExpr(bb_in->next);
    bb->jumpkind = bb_in->jumpkind;
 
    /* Set up the running environment.  Only .bb is modified as we go
@@ -2560,9 +2577,9 @@ IRBB* mc_instrument ( IRBB* bb_in, VexGuestLayout* layout,
 
       switch (st->tag) {
 
-         case Ist_Tmp:
-            assign( bb, findShadowTmp(&mce, st->Ist.Tmp.tmp), 
-                        expr2vbits( &mce, st->Ist.Tmp.data) );
+         case Ist_WrTmp:
+            assign( bb, findShadowTmp(&mce, st->Ist.WrTmp.tmp), 
+                        expr2vbits( &mce, st->Ist.WrTmp.data) );
             break;
 
          case Ist_Put:
@@ -2580,9 +2597,9 @@ IRBB* mc_instrument ( IRBB* bb_in, VexGuestLayout* layout,
                             st->Ist.PutI.data );
             break;
 
-         case Ist_STle:
-            do_shadow_STle( &mce, st->Ist.STle.addr, 0/* addr bias */,
-                                  st->Ist.STle.data,
+         case Ist_Store:
+            do_shadow_STle( &mce, st->Ist.Store.addr, 0/* addr bias */,
+                                  st->Ist.Store.data,
                                   NULL /* shadow data */ );
             break;
 
@@ -2616,7 +2633,7 @@ IRBB* mc_instrument ( IRBB* bb_in, VexGuestLayout* layout,
          VG_(printf)("\n");
       }
 
-      addStmtToIRBB(bb, st);
+      addStmtToIRSB(bb, st);
 
    }
 
