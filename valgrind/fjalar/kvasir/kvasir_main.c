@@ -183,8 +183,9 @@ static char createDeclsAndDtraceFiles(char* appname)
 
   // Step 2: Make the daikon-output/ directory
   res = VG_(mkdir)(decls_folder, 0777); // more abbreviated UNIX form
-  if (res.isError && res.err != VKI_EEXIST)
-    VG_(printf)( "Couldn't create %s: %s\n", decls_folder, strerror(res.err));
+  if (sr_isError(res) && sr_Err(res) != VKI_EEXIST)
+    VG_(printf)( "Couldn't create %s: %s\n", decls_folder,
+		 strerror(sr_Err(res)));
 
   // ASSUME mkdir succeeded! (or that the directory already exists)
 
@@ -310,10 +311,8 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 }
 
 static int createFIFO(const char *filename) {
-  SysRes res;
   int ret;
   ret = VG_(unlink)((char *)filename);
-  //if (res.isError && res.err != VKI_ENOENT) {
   if (ret == -1) {
     VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
 		 strerror(ret));
@@ -337,21 +336,21 @@ static int openRedirectFile(const char *fname) {
   SysRes sr;
   if (fname[0] == '&') {
     sr = VG_(dup)(atoi(fname + 1));
-    if (sr.isError) {
+    if (sr_isError(sr)) {
       VG_(printf)( "Couldn't duplicate FD `%s': %s\n",
-	      fname+1, strerror(errno));
+		   fname+1, strerror(sr_Err(sr)));
       return -1;
     }
-    new_fd = sr.res;
+    new_fd = sr_Res(sr);
   } else {
     sr = VG_(open)(fname, VKI_O_WRONLY|VKI_O_CREAT|VKI_O_LARGEFILE|VKI_O_TRUNC,
 		  0666);
-    if (sr.isError) {
+    if (sr_isError(sr)) {
       VG_(printf)( "Couldn't open %s for writing: %s\n",
-	      fname, strerror(errno));
+		   fname, strerror(sr_Err(sr)));
       return -1;
     }
-    new_fd = sr.res;
+    new_fd = sr_Res(sr);
   }
   return new_fd;
 }
@@ -423,10 +422,10 @@ static int openDtraceFile(const char *fname) {
 	mode = VKI_O_CREAT | VKI_O_LARGEFILE | VKI_O_TRUNC |
 	  (*mode_str == 'a' ? VKI_O_APPEND : VKI_O_WRONLY);
 	sr = VG_(open)(new_fname, mode, 0666);
-	if (sr.isError) {
+	if (sr_isError(sr)) {
 	  VG_(printf)( "Couldn't open %s for writing\n", fname);
 	}
-	fd = sr.res;
+	fd = sr_Res(sr);
 	VG_(close)(1);
 	VG_(dup2)(fd, 1);
 	VG_(close)(fd);
@@ -441,7 +440,7 @@ static int openDtraceFile(const char *fname) {
     gzip_pid = pid;
   } else if VG_STREQ(fname, "-") {
     SysRes sr = VG_(dup)(1);
-    int dtrace_fd = sr.res;
+    int dtrace_fd = sr_Res(sr);
     /* Check sr.isError? */
     dtrace_fp = fdopen(dtrace_fd, mode_str);
     if (!dtrace_fp) {
@@ -634,44 +633,39 @@ void fjalar_tool_print_usage()
    );
 }
 
-/* Like VG_BOOL_CLO, but of the form "--foo", "--no-foo" rather than
-   "--foo=yes", "--foo=no". Note that qq_option should not have a
-   leading "--". */
-
-#define VG_YESNO_CLO(qq_option, qq_var) \
-   if (VG_CLO_STREQ(arg, "--"qq_option)) { (qq_var) = True; } \
-   else if (VG_CLO_STREQ(arg, "--no-"qq_option))  { (qq_var) = False; }
-
 // Processes command-line options
 Bool fjalar_tool_process_cmd_line_option(Char* arg)
 {
-  VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename)
-  else VG_STR_CLO(arg, "--dtrace-file", kvasir_dtrace_filename)
-  else VG_YESNO_CLO("dtrace-append",    kvasir_dtrace_append)
-  else VG_YESNO_CLO("dtrace-no-decs",   kvasir_dtrace_no_decs)
-  else VG_YESNO_CLO("dtrace-gzip",      kvasir_dtrace_gzip)
-  else VG_YESNO_CLO("output-fifo",      kvasir_output_fifo)
-  else VG_YESNO_CLO("decls-only",       kvasir_decls_only)
-  else VG_YESNO_CLO("repair-format",    kvasir_repair_format)
-  else VG_YESNO_CLO("old-decls-format", kvasir_old_decls_format)
-  else VG_YESNO_CLO("parent-records",   kvasir_parent_records)
-  else VG_YESNO_CLO("kvasir-debug",     kvasir_print_debug_info)
-  else VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename)
-  else VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename)
+  if VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename) {}
+  else if VG_STR_CLO(arg, "--dtrace-file", kvasir_dtrace_filename) {}
+  else if VG_YESNO_CLO(arg, "dtrace-append",    kvasir_dtrace_append) {}
+  else if VG_YESNO_CLO(arg, "dtrace-no-decs",   kvasir_dtrace_no_decs) {}
+  else if VG_YESNO_CLO(arg, "dtrace-gzip",      kvasir_dtrace_gzip) {}
+  else if VG_YESNO_CLO(arg, "output-fifo",      kvasir_output_fifo) {}
+  else if VG_YESNO_CLO(arg, "decls-only",       kvasir_decls_only) {}
+  else if VG_YESNO_CLO(arg, "repair-format",    kvasir_repair_format) {}
+  else if VG_YESNO_CLO(arg, "old-decls-format", kvasir_old_decls_format) {}
+  else if VG_YESNO_CLO(arg, "parent-records",   kvasir_parent_records) {}
+  else if VG_YESNO_CLO(arg, "kvasir-debug",     kvasir_print_debug_info) {}
+  else if VG_STR_CLO(arg, "--program-stdout", kvasir_program_stdout_filename){}
+  else if VG_STR_CLO(arg, "--program-stderr", kvasir_program_stderr_filename){}
 
-  else VG_YESNO_CLO("with-dyncomp",   kvasir_with_dyncomp)
-  else VG_YESNO_CLO("no-dyncomp-gc",     dyncomp_no_gc)
-  else VG_YESNO_CLO("dyncomp-fast-mode", dyncomp_fast_mode)
-  else VG_YESNO_CLO("dyncomp-detailed-mode", dyncomp_detailed_mode)
-  else VG_BNUM_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
-		   1, 0x7fffffff)
-  else VG_YESNO_CLO("dyncomp-units",         dyncomp_units_mode)
-  else VG_YESNO_CLO("dyncomp-dataflow-only", dyncomp_dataflow_only_mode)
-  else VG_YESNO_CLO("dyncomp-dataflow-comp", dyncomp_dataflow_comparisons_mode)
-  else VG_YESNO_CLO("dyncomp-debug",  dyncomp_print_debug_info)
-  else VG_YESNO_CLO("dyncomp-trace",  dyncomp_print_trace_info)
-  else VG_YESNO_CLO("dyncomp-print-inc",  dyncomp_print_incremental)
-  else VG_YESNO_CLO("separate-entry-exit-comp",  dyncomp_separate_entry_exit_comp)
+  else if VG_YESNO_CLO(arg, "with-dyncomp",   kvasir_with_dyncomp) {}
+  else if VG_YESNO_CLO(arg, "no-dyncomp-gc",     dyncomp_no_gc) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-fast-mode", dyncomp_fast_mode) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-detailed-mode", dyncomp_detailed_mode) {}
+  else if VG_BINT_CLO(arg, "--gc-num-tags", dyncomp_gc_after_n_tags,
+		      1, 0x7fffffff) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-units",         dyncomp_units_mode) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-dataflow-only",
+		       dyncomp_dataflow_only_mode) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-dataflow-comp",
+		       dyncomp_dataflow_comparisons_mode) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-debug",  dyncomp_print_debug_info) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-trace",  dyncomp_print_trace_info) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-print-inc",  dyncomp_print_incremental) {}
+  else if VG_YESNO_CLO(arg, "separate-entry-exit-comp", 
+		       dyncomp_separate_entry_exit_comp) {}
   else
     return False;   // If no options match, return False so that an error
                     // message can be reported by the Valgrind core.

@@ -657,31 +657,32 @@ void fjalar_print_usage()
 // MAC_(process_common_cmd_line_option)() in mac_shared.c)
 Bool fjalar_process_cmd_line_option(Char* arg)
 {
-  VG_YESNO_CLO("fjalar-debug", fjalar_debug)
-  else VG_YESNO_CLO("with-gdb", fjalar_with_gdb)
-  else VG_YESNO_CLO("ignore-globals", fjalar_ignore_globals)
-  else VG_YESNO_CLO("ignore-static-vars", fjalar_ignore_static_vars)
-  else VG_YESNO_CLO("all-static-vars", fjalar_all_static_vars)
-  else VG_YESNO_CLO("disambig", fjalar_default_disambig)
-  else VG_YESNO_CLO("smart-disambig", fjalar_smart_disambig)
-  else VG_YESNO_CLO("output-struct-vars", fjalar_output_struct_vars)
-  else VG_YESNO_CLO("flatten-arrays", fjalar_flatten_arrays)
-  else VG_YESNO_CLO("func-disambig-ptrs", fjalar_func_disambig_ptrs)
-  else VG_YESNO_CLO("disambig-ptrs", fjalar_disambig_ptrs)
-  else VG_BNUM_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
-		   -1, 0x7fffffff)
+  if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}
+  else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
+  else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
+  else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}
+  else if VG_YESNO_CLO(arg, "all-static-vars", fjalar_all_static_vars) {}
+  else if VG_YESNO_CLO(arg, "disambig", fjalar_default_disambig) {}
+  else if VG_YESNO_CLO(arg, "smart-disambig", fjalar_smart_disambig) {}
+  else if VG_YESNO_CLO(arg, "output-struct-vars", fjalar_output_struct_vars) {}
+  else if VG_YESNO_CLO(arg, "flatten-arrays", fjalar_flatten_arrays) {}
+  else if VG_YESNO_CLO(arg, "func-disambig-ptrs", fjalar_func_disambig_ptrs) {}
+  else if VG_YESNO_CLO(arg, "disambig-ptrs", fjalar_disambig_ptrs) {}
+  else if VG_BINT_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
+		      -1, 0x7fffffff) {}
 
-    /* else VG_BNUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  // [0 to 100]
-       else VG_BNUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) // [0 to 100] */
-  else VG_NUM_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH)
-  else VG_NUM_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH)
+  /* else if VG_BINT_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  {} // [0 to 100]
+     else if VG_BINT_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) {} // [0 to 100] */
+  else if VG_INT_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH) {}
+  else if VG_INT_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH) {}
 
-  else VG_STR_CLO(arg, "--dump-ppt-file",  fjalar_dump_prog_pt_names_filename)
-  else VG_STR_CLO(arg, "--dump-var-file",  fjalar_dump_var_names_filename)
-  else VG_STR_CLO(arg, "--ppt-list-file",  fjalar_trace_prog_pts_filename)
-  else VG_STR_CLO(arg, "--var-list-file",  fjalar_trace_vars_filename)
-  else VG_STR_CLO(arg, "--disambig-file",  fjalar_disambig_filename)
-  else VG_STR_CLO(arg, "--xml-output-file", fjalar_xml_output_filename)
+  else if VG_STR_CLO(arg, "--dump-ppt-file", 
+		     fjalar_dump_prog_pt_names_filename) {}
+  else if VG_STR_CLO(arg, "--dump-var-file",  fjalar_dump_var_names_filename){}
+  else if VG_STR_CLO(arg, "--ppt-list-file",  fjalar_trace_prog_pts_filename){}
+  else if VG_STR_CLO(arg, "--var-list-file",  fjalar_trace_vars_filename) {}
+  else if VG_STR_CLO(arg, "--disambig-file",  fjalar_disambig_filename) {}
+  else if VG_STR_CLO(arg, "--xml-output-file", fjalar_xml_output_filename) {}
   else
     return fjalar_tool_process_cmd_line_option(arg);
 
