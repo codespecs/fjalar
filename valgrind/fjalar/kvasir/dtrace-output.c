@@ -41,7 +41,9 @@
 
 int print_info = 0;
 
-char* UNINIT = "uninit";
+// Daikon officially supports only "nonsensical", not "uninit".
+// Having two strings in this code makes the reason clearer, though.
+char* UNINIT = "nonsensical";
 char* NONSENSICAL = "nonsensical";
 char* func_name = 0;
 int is_enter = 0;
@@ -1113,7 +1115,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
     is_enter = 1;
 
   func_name = f_state->func->fjalar_name;
-  
+
   // Print out globals:
   visitVariableGroup(GLOBAL_VAR,
                      funcPtr,
