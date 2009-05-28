@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,38 +37,22 @@
 /* ------------------------------------------------------------------ */
 /* The interface version */
 
-/* The version number indicates binary-incompatible changes to the
-   interface;  if the core and tool versions don't match, Valgrind
-   will abort.  */
-#define VG_CORE_INTERFACE_VERSION   11
+/* Initialise tool.   Must do the following:
+   - initialise the `details' struct, via the VG_(details_*)() functions
+   - register the basic tool functions, via VG_(basic_tool_funcs)().
+   May do the following:
+   - initialise the `needs' struct to indicate certain requirements, via
+     the VG_(needs_*)() functions
+   - any other tool-specific initialisation
+*/
+extern void (*VG_(tl_pre_clo_init)) ( void );
 
-typedef struct _ToolInfo {
-   Int	sizeof_ToolInfo;
-   Int	interface_version;
-
-   /* Initialise tool.   Must do the following:
-      - initialise the `details' struct, via the VG_(details_*)() functions
-      - register any helpers called by generated code
-      
-      May do the following:
-      - initialise the `needs' struct to indicate certain requirements, via
-      the VG_(needs_*)() functions
-      - initialize all the tool's entrypoints via the VG_(init_*)() functions
-      - register any tool-specific profiling events
-      - any other tool-specific initialisation
-   */
-   void (*tl_pre_clo_init) ( void );
-} ToolInfo;
-
-extern const ToolInfo VG_(tool_info);
-
-/* Every tool must include this macro somewhere, exactly once. */
-#define VG_DETERMINE_INTERFACE_VERSION(pre_clo_init)           \
-   const ToolInfo VG_(tool_info) = {                           \
-      .sizeof_ToolInfo   = sizeof(ToolInfo),                   \
-      .interface_version = VG_CORE_INTERFACE_VERSION,          \
-      .tl_pre_clo_init   = pre_clo_init,                       \
-   };
+/* Every tool must include this macro somewhere, exactly once.  The
+   interface version is no longer relevant, but we kept the same name
+   to avoid requiring changes to tools.
+*/
+#define VG_DETERMINE_INTERFACE_VERSION(pre_clo_init) \
+   void (*VG_(tl_pre_clo_init)) ( void ) = pre_clo_init;
 
 /* ------------------------------------------------------------------ */
 /* Basic tool functions */
@@ -433,6 +417,7 @@ extern void VG_(needs_malloc_replacement)(
    void  (*p__builtin_delete)     ( ThreadId tid, void* p ),
    void  (*p__builtin_vec_delete) ( ThreadId tid, void* p ),
    void* (*prealloc)              ( ThreadId tid, void* p, SizeT new_size ),
+   SizeT (*pmalloc_usable_size)   ( ThreadId tid, void* p), 
    SizeT client_malloc_redzone_szB
 );
 
@@ -567,15 +552,15 @@ void VG_(track_post_mem_write)     (void(*f)(CorePart part, ThreadId tid,
 /* Register events.  Use VG_(set_shadow_state_area)() to set the shadow regs
    for these events.  */
 void VG_(track_pre_reg_read)  (void(*f)(CorePart part, ThreadId tid,
-                                        Char* s, OffT guest_state_offset,
+                                        Char* s, PtrdiffT guest_state_offset,
                                         SizeT size));
 void VG_(track_post_reg_write)(void(*f)(CorePart part, ThreadId tid,
-                                        OffT guest_state_offset,
+                                        PtrdiffT guest_state_offset,
                                         SizeT size));
 
 /* This one is called for malloc() et al if they are replaced by a tool. */
 void VG_(track_post_reg_write_clientcall_return)(
-      void(*f)(ThreadId tid, OffT guest_state_offset, SizeT size, Addr f));
+      void(*f)(ThreadId tid, PtrdiffT guest_state_offset, SizeT size, Addr f));
 
 
 /* Scheduler events (not exhaustive) */

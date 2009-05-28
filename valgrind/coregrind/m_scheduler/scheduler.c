@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -83,10 +83,9 @@
 #include "pub_core_tooliface.h"
 #include "pub_core_translate.h"     // For VG_(translate)()
 #include "pub_core_transtab.h"
+#include "pub_core_debuginfo.h"     // VG_(di_notify_pdb_debuginfo)
 #include "priv_sema.h"
 #include "pub_core_scheduler.h"     // self
-
-/* #include "pub_core_debuginfo.h" */   // DEBUGGING HACK ONLY
 
 
 /* ---------------------------------------------------------------------
@@ -332,7 +331,7 @@ void VG_(vg_yield)(void)
 
 /* Set the standard set of blocked signals, used whenever we're not
    running a client syscall. */
-static void block_signals(ThreadId tid)
+static void block_signals(void)
 {
    vki_sigset_t mask;
 
@@ -683,7 +682,7 @@ static UInt run_thread_for_a_while ( ThreadId tid )
          handler to longjmp. */
       vg_assert(trc == 0);
       trc = VG_TRC_FAULT_SIGNAL;
-      block_signals(tid);
+      block_signals();
    } 
 
    done_this_time = (Int)dispatch_ctr_SAVED - (Int)VG_(dispatch_ctr) - 0;
@@ -759,7 +758,7 @@ static UInt run_noredir_translation ( Addr hcode, ThreadId tid )
          handler to longjmp. */
       vg_assert(argblock[2] == 0); /* next guest IP was not written */
       vg_assert(argblock[3] == 0); /* trc was not written */
-      block_signals(tid);
+      block_signals();
       retval = VG_TRC_FAULT_SIGNAL;
    } else {
       /* store away the guest program counter */
@@ -833,7 +832,7 @@ static void handle_syscall(ThreadId tid)
    vg_assert(VG_(is_running_thread)(tid));
    
    if (jumped) {
-      block_signals(tid);
+      block_signals();
       VG_(poll_signals)(tid);
    }
 }
@@ -889,7 +888,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       print_sched_event(tid, "entering VG_(scheduler)");      
 
    /* set the proper running signal mask */
-   block_signals(tid);
+   block_signals();
    
    vg_assert(VG_(is_running_thread)(tid));
 
@@ -1105,8 +1104,9 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          break;
 
       case VEX_TRC_JMP_NODECODE:
-   VG_(message)(Vg_UserMsg,
-      "valgrind: Unrecognised instruction at address %#lx.", VG_(get_IP)(tid));
+         VG_(message)(Vg_UserMsg,
+            "valgrind: Unrecognised instruction at address %#lx.",
+            VG_(get_IP)(tid));
 #define M(a) VG_(message)(Vg_UserMsg, a);
    M("Your program just tried to execute an instruction that Valgrind" );
    M("did not recognise.  There are two possible reasons for this."    );
@@ -1150,13 +1150,11 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
             guest_EIP to point at the code to execute after the
             sysenter, since Vex-generated code will not have set it --
             vex does not know what it should be.  Vex sets the next
-            address to zero, so if you don't guest_EIP, the thread will
-            jump to zero afterwards and probably die as a result. */
-#        if defined(VGA_x86)
-         //FIXME: VG_(threads)[tid].arch.vex.guest_EIP = ....
-         //handle_sysenter_x86(tid);
+            address to zero, so if you don't set guest_EIP, the thread
+            will jump to zero afterwards and probably die as a result. */
+#        if defined(VGP_x86_linux)
          vg_assert2(0, "VG_(scheduler), phase 3: "
-                       "sysenter_x86 on not yet implemented");
+                       "sysenter_x86 on x86-linux is not supported");
 #        else
          vg_assert2(0, "VG_(scheduler), phase 3: "
                        "sysenter_x86 on non-x86 platform?!?!");
@@ -1373,8 +1371,8 @@ void do_client_request ( ThreadId tid )
 	 info->tl_free                 = VG_(tdict).tool_free;
 	 info->tl___builtin_delete     = VG_(tdict).tool___builtin_delete;
 	 info->tl___builtin_vec_delete = VG_(tdict).tool___builtin_vec_delete;
+         info->tl_malloc_usable_size   = VG_(tdict).tool_malloc_usable_size;
 
-	 info->arena_payload_szB       = VG_(arena_payload_szB);
 	 info->mallinfo                = VG_(mallinfo);
 	 info->clo_trace_malloc        = VG_(clo_trace_malloc);
 
@@ -1400,6 +1398,11 @@ void do_client_request ( ThreadId tid )
 
       case VG_USERREQ__COUNT_ERRORS:  
          SET_CLREQ_RETVAL( tid, VG_(get_n_errs_found)() );
+         break;
+
+      case VG_USERREQ__LOAD_PDB_DEBUGINFO:
+         VG_(di_notify_pdb_debuginfo)( arg[1], arg[2], arg[3], arg[4] );
+         SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
          break;
 
       default:

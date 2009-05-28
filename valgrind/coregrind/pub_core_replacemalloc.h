@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -49,7 +49,7 @@ struct vg_mallocfunc_info {
    void  (*tl___builtin_delete)    (ThreadId tid, void* p);
    void  (*tl___builtin_vec_delete)(ThreadId tid, void* p);
    void* (*tl_realloc)             (ThreadId tid, void* p, SizeT size);
-   SizeT (*arena_payload_szB)      (ThreadId tid, ArenaId aid, void* payload);
+   SizeT (*tl_malloc_usable_size)  (ThreadId tid, void* payload);
    void  (*mallinfo)               (ThreadId tid, struct vg_mallinfo* mi);
    Bool	clo_trace_malloc;
 };

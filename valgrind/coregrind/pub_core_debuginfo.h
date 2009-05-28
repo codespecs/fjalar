@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,6 +62,11 @@ extern ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV );
 extern void VG_(di_notify_munmap)( Addr a, SizeT len );
 
 extern void VG_(di_notify_mprotect)( Addr a, SizeT len, UInt prot );
+
+/* this should really return ULong, as per VG_(di_notify_mmap). */
+extern void VG_(di_notify_pdb_debuginfo)( Int fd, Addr avma,
+                                          SizeT total_size,
+                                          PtrdiffT unknown_purpose__reloc );
 #endif
 
 #if defined(VGO_aix5)
@@ -87,8 +92,18 @@ extern ULong VG_(di_aix5_notify_segchange)(
 
 extern void VG_(di_discard_ALL_debuginfo)( void );
 
-extern Bool VG_(get_fnname_nodemangle)( Addr a, 
-                                        Char* fnname, Int n_fnname );
+/* Like VG_(get_fnname), but it does not do C++ demangling nor Z-demangling
+ * nor below-main renaming.
+ * It should not be used for any names that will be shown to users.
+ * It should only be used in cases where the names of interest will have
+ * particular (ie. non-mangled) forms, or the mangled form is acceptable. */
+extern
+Bool VG_(get_fnname_raw) ( Addr a, Char* buf, Int nbuf );
+
+/* Like VG_(get_fnname), but without C++ demangling.  (But it does
+ * Z-demangling and below-main renaming.) */
+extern
+Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, Char* buf, Int nbuf );
 
 /* Use DWARF2/3 CFA information to do one step of stack unwinding. */
 extern Bool VG_(use_CF_info) ( /*MOD*/Addr* ipP,
@@ -97,16 +112,17 @@ extern Bool VG_(use_CF_info) ( /*MOD*/Addr* ipP,
                                Addr min_accessible,
                                Addr max_accessible );
 
+/* Use MSVC FPO data to do one step of stack unwinding. */
+extern Bool VG_(use_FPO_info) ( /*MOD*/Addr* ipP,
+                                /*MOD*/Addr* spP,
+                                /*MOD*/Addr* fpP,
+                                Addr min_accessible,
+                                Addr max_accessible );
+
 /* ppc64-linux only: find the TOC pointer (R2 value) that should be in
    force at the entry point address of the function containing
    guest_code_addr.  Returns 0 if not known. */
 extern Addr VG_(get_tocptr) ( Addr guest_code_addr );
-
-/* This is only available to core... don't demangle C++ names, but do
-   do Z-demangling, match anywhere in function, and don't show
-   offsets. */
-extern
-Bool VG_(get_fnname_Z_demangle_only) ( Addr a, Char* buf, Int nbuf );
 
 /* Map a function name to its entry point and toc pointer.  Is done by
    sequential search of all symbol tables, so is very slow.  To

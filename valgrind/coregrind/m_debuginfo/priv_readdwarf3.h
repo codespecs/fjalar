@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2008 OpenWorks LLP
+   Copyright (C) 2008-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@
 #define __PRIV_READDWARF3_H
 
 
-/* Read DWARF3 ".debug_info" sections. */
+/* Read variables and types from DWARF3 ".debug_info" sections. */
 void 
 ML_(new_dwarf3_reader) (
    struct _DebugInfo* di,

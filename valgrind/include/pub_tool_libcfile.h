@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -43,24 +43,29 @@
    specific vki_stat{,64} kernel structure will work and is
    consistently available on different architectures on Linux, so we
    have to use this 'struct vg_stat' impedance-matching type
-   instead. */
+   instead.
+
+   Also note that the fieldnames aren't prefixed with "st_".  This is because
+   st_atime et al are macros in sys/stat.h on Darwin, and using those names
+   screws things up.
+*/
 struct vg_stat {
-   ULong   st_dev;
-   ULong   st_ino;
-   ULong   st_nlink;
-   UInt    st_mode;
-   UInt    st_uid;
-   UInt    st_gid;
-   ULong   st_rdev;
-   Long    st_size;
-   ULong   st_blksize;
-   ULong   st_blocks;
-   ULong   st_atime;
-   ULong   st_atime_nsec;
-   ULong   st_mtime;
-   ULong   st_mtime_nsec;
-   ULong   st_ctime;
-   ULong   st_ctime_nsec;
+   ULong   dev;
+   ULong   ino;
+   ULong   nlink;
+   UInt    mode;
+   UInt    uid;
+   UInt    gid;
+   ULong   rdev;
+   Long    size;
+   ULong   blksize;
+   ULong   blocks;
+   ULong   atime;
+   ULong   atime_nsec;
+   ULong   mtime;
+   ULong   mtime_nsec;
+   ULong   ctime;
+   ULong   ctime_nsec;
 };
 
 extern SysRes VG_(open)   ( const Char* pathname, Int flags, Int mode );
@@ -71,22 +76,21 @@ extern Int    VG_(pipe)   ( Int fd[2] );
 extern OffT   VG_(lseek)  ( Int fd, OffT offset, Int whence );
 extern Int    VG_(fcntl)  ( Int fd, Int cmd, Int arg );
 
-extern SysRes VG_(stat)   ( Char* file_name, struct vg_stat* buf );
-extern Int    VG_(fstat)  ( Int   fd,              struct vg_stat* buf );
+extern SysRes VG_(stat)   ( const Char* file_name, struct vg_stat* buf );
+extern Int    VG_(fstat)  ( Int   fd,        struct vg_stat* buf );
 extern SysRes VG_(dup)    ( Int oldfd );
 extern SysRes VG_(dup2)   ( Int oldfd, Int newfd );
-extern Int    VG_(rename) ( Char* old_name, Char* new_name );
-extern Int    VG_(unlink) ( Char* file_name );
+extern Int    VG_(rename) ( const Char* old_name, const Char* new_name );
+extern Int    VG_(unlink) ( const Char* file_name );
 extern SysRes VG_(mkdir)  ( const Char* path_name, Int mode );
 extern SysRes VG_(mknod)  ( const Char* path_name, Int mode, Int dev );
+
+extern Int    VG_(readlink)( const Char* path, Char* buf, UInt bufsize );
+extern Int    VG_(getdents)( Int fd, struct vki_dirent *dirp, UInt count );
 
 /* Copy the working directory at startup into buf[0 .. size-1], or return
    False if buf is too small. */
 extern Bool VG_(get_startup_wd) ( Char* buf, SizeT size );
- 
-
-extern Int    VG_(readlink)( Char* path, Char* buf, UInt bufsize );
-extern Int    VG_(getdents)( UInt fd, struct vki_dirent *dirp, UInt count );
 
 #endif   // __PUB_TOOL_LIBCFILE_H
 

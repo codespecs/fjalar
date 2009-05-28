@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -54,8 +54,8 @@ extern void VG_(poll_signals) ( ThreadId );
 extern SysRes VG_(do_sys_sigaltstack) ( ThreadId tid, vki_stack_t* ss,
                                                       vki_stack_t* oss );
 extern SysRes VG_(do_sys_sigaction)   ( Int signo, 
-                                        const struct vki_sigaction *new_act, 
-                                        struct vki_sigaction *old_act );
+                                        const vki_sigaction_toK_t* new_act, 
+                                        vki_sigaction_fromK_t* old_act );
 extern SysRes VG_(do_sys_sigprocmask) ( ThreadId tid, Int how, 
                                         vki_sigset_t* set,
                                         vki_sigset_t* oldset );

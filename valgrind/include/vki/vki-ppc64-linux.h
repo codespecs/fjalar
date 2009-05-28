@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2008 Julian Seward
+   Copyright (C) 2005-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -164,12 +164,18 @@ struct vki_old_sigaction {
   __vki_sigrestore_t sa_restorer;
 };
 
-struct vki_sigaction {
+struct vki_sigaction_base {
   __vki_sighandler_t ksa_handler;
   unsigned long sa_flags;
   __vki_sigrestore_t sa_restorer;
   vki_sigset_t sa_mask;               /* mask last for extensibility */
 };
+
+/* On Linux we use the same type for passing sigactions to
+   and from the kernel.  Hence: */
+typedef  struct vki_sigaction_base  vki_sigaction_toK_t;
+typedef  struct vki_sigaction_base  vki_sigaction_fromK_t;
+
 
 typedef struct vki_sigaltstack {
   void __user *ss_sp;
@@ -404,7 +410,8 @@ struct vki_sigcontext {
 
 #define VKI_SIOCSPGRP       0x8902
 #define VKI_SIOCGPGRP       0x8904
-#define VKI_SIOCGSTAMP      0x8906          /* Get stamp */
+#define VKI_SIOCGSTAMP      0x8906          /* Get stamp (timeval) */
+#define VKI_SIOCGSTAMPNS    0x8907          /* Get stamp (timespec) */
 
 //----------------------------------------------------------------------
 // From linux-2.6.13/include/asm-ppc64/stat.h

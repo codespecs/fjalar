@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -98,15 +98,15 @@ struct _AddrInfo {
          BlockKind   block_kind;
          Char*       block_desc;    // "block", "mempool" or user-defined
          SizeT       block_szB;
-         OffT        rwoffset;
+         PtrdiffT    rwoffset;
          ExeContext* lastchange;
       } Block;
 
-      // In a global .data symbol.  This holds the first 63 chars of
-      // the variable's (zero terminated), plus an offset.
+      // In a global .data symbol.  This holds the first 127 chars of
+      // the variable's name (zero terminated), plus a (memory) offset.
       struct {
-         Char name[128];
-         OffT offset;
+         Char     name[128];
+         PtrdiffT offset;
       } DataSym;
 
       // Is described by Dwarf debug info.  Arbitrary strings.  Must
@@ -242,7 +242,7 @@ struct _MC_Error {
       struct {
          UInt        n_this_record;
          UInt        n_total_records;
-         LossRecord* lossRecord;
+         LossRecord* lr;
       } Leak;
 
       // A memory pool error.
@@ -286,10 +286,10 @@ static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
          break;
 
       case Addr_Block: {
-         SizeT block_szB  = ai->Addr.Block.block_szB;
-         OffT  rwoffset   = ai->Addr.Block.rwoffset;
-         SizeT delta;
-         const Char* relative;
+         SizeT    block_szB = ai->Addr.Block.block_szB;
+         PtrdiffT rwoffset  = ai->Addr.Block.rwoffset;
+         SizeT    delta;
+         const    Char* relative;
 
          if (rwoffset < 0) {
             delta    = (SizeT)(-rwoffset);
@@ -355,8 +355,8 @@ static const HChar* str_leak_lossmode ( Reachedness lossmode )
    switch (lossmode) {
       case Unreached:    loss = "definitely lost"; break;
       case IndirectLeak: loss = "indirectly lost"; break;
-      case Interior:     loss = "possibly lost"; break;
-      case Proper:       loss = "still reachable"; break;
+      case Possible:     loss = "possibly lost"; break;
+      case Reachable:    loss = "still reachable"; break;
    }
    return loss;
 }
@@ -367,8 +367,8 @@ static const HChar* xml_leak_kind ( Reachedness lossmode )
    switch (lossmode) {
       case Unreached:    loss = "Leak_DefinitelyLost"; break;
       case IndirectLeak: loss = "Leak_IndirectlyLost"; break;
-      case Interior:     loss = "Leak_PossiblyLost"; break;
-      case Proper:       loss = "Leak_StillReachable"; break;
+      case Possible:     loss = "Leak_PossiblyLost"; break;
+      case Reachable:    loss = "Leak_StillReachable"; break;
    }
    return loss;
 }
@@ -565,49 +565,49 @@ void MC_(pp_Error) ( Error* err )
          HChar*      xpost = VG_(clo_xml) ? "</what>"  : "";
          UInt        n_this_record   = extra->Err.Leak.n_this_record;
          UInt        n_total_records = extra->Err.Leak.n_total_records;
-         LossRecord* l               = extra->Err.Leak.lossRecord;
+         LossRecord* lr              = extra->Err.Leak.lr;
 
          if (VG_(clo_xml)) {
             VG_(message_no_f_c)(Vg_UserMsg, "  <kind>%t</kind>",
-                                xml_leak_kind(l->loss_mode));
+                                xml_leak_kind(lr->key.state));
          } else {
             VG_(message)(Vg_UserMsg, "");
          }
 
-         if (l->indirect_bytes) {
+         if (lr->indirect_szB > 0) {
             VG_(message)(Vg_UserMsg, 
                "%s%'lu (%'lu direct, %'lu indirect) bytes in %'u blocks"
                " are %s in loss record %'u of %'u%s",
                xpre,
-               l->total_bytes + l->indirect_bytes, 
-               l->total_bytes, l->indirect_bytes, l->num_blocks,
-               str_leak_lossmode(l->loss_mode), n_this_record, n_total_records,
+               lr->szB + lr->indirect_szB, lr->szB, lr->indirect_szB,
+               lr->num_blocks,
+               str_leak_lossmode(lr->key.state), n_this_record, n_total_records,
                xpost
             );
             if (VG_(clo_xml)) {
                // Nb: don't put commas in these XML numbers 
                VG_(message)(Vg_UserMsg, "  <leakedbytes>%lu</leakedbytes>", 
-                                        l->total_bytes + l->indirect_bytes);
+                                        lr->szB + lr->indirect_szB);
                VG_(message)(Vg_UserMsg, "  <leakedblocks>%u</leakedblocks>", 
-                                        l->num_blocks);
+                                        lr->num_blocks);
             }
          } else {
             VG_(message)(
                Vg_UserMsg, 
                "%s%'lu bytes in %'u blocks are %s in loss record %'u of %'u%s",
                xpre,
-               l->total_bytes, l->num_blocks,
-               str_leak_lossmode(l->loss_mode), n_this_record, n_total_records,
+               lr->szB, lr->num_blocks,
+               str_leak_lossmode(lr->key.state), n_this_record, n_total_records,
                xpost
             );
             if (VG_(clo_xml)) {
                VG_(message)(Vg_UserMsg, "  <leakedbytes>%ld</leakedbytes>",
-                                        l->total_bytes);
+                                        lr->szB);
                VG_(message)(Vg_UserMsg, "  <leakedblocks>%d</leakedblocks>", 
-                                        l->num_blocks);
+                                        lr->num_blocks);
             }
          }
-         VG_(pp_ExeContext)(l->allocated_at);
+         VG_(pp_ExeContext)(lr->key.allocated_at);
          break;
       }
 
@@ -715,9 +715,8 @@ void MC_(record_cond_error) ( ThreadId tid, UInt otag )
 
 /* --- Called from non-generated code --- */
 
-/* This is for memory errors in pthread functions, as opposed to pthread API
-   errors which are found by the core. */
-void MC_(record_core_mem_error) ( ThreadId tid, Bool isAddrErr, Char* msg )
+/* This is for memory errors in signal-related memory. */
+void MC_(record_core_mem_error) ( ThreadId tid, Char* msg )
 {
    VG_(maybe_record_error)( tid, Err_CoreMem, /*addr*/0, msg, /*extra*/NULL );
 }
@@ -803,16 +802,16 @@ void MC_(record_overlap_error) ( ThreadId tid, Char* function,
 }
 
 Bool MC_(record_leak_error) ( ThreadId tid, UInt n_this_record,
-                              UInt n_total_records, LossRecord* lossRecord,
+                              UInt n_total_records, LossRecord* lr,
                               Bool print_record )
 {
    MC_Error extra;
    extra.Err.Leak.n_this_record   = n_this_record;
    extra.Err.Leak.n_total_records = n_total_records;
-   extra.Err.Leak.lossRecord      = lossRecord;
+   extra.Err.Leak.lr              = lr;
    return
    VG_(unique_error) ( tid, Err_Leak, /*Addr*/0, /*s*/NULL, &extra,
-                       lossRecord->allocated_at, print_record,
+                       lr->key.allocated_at, print_record,
                        /*allow_GDB_attach*/False, /*count_error*/False );
 }
 

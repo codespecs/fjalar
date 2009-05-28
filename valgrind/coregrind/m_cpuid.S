@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2008 Julian Seward 
+  Copyright (C) 2000-2009 Julian Seward 
      jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -143,7 +143,7 @@
         ret
 #endif
 
-#if defined(VGA_x86) || defined(VGA_amd64)        
+#if defined(VGO_linux)
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
 #endif

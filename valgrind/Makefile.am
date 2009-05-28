@@ -13,8 +13,22 @@ SUPP_FILES = \
 	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
 	aix5libc.supp \
 	xfree-3.supp xfree-4.supp
+DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
-dist_val_DATA = $(SUPP_FILES) default.supp
+# We include all the base .supp files in the distribution, but not
+# default.supp, as it is built from the base .supp files at compile-time.
+# The "val" in "val_DATA" ties in with $(valdir), defined in
+# Makefile.all.am.  From the automake info pages:
+#
+#   Sometimes the standard directories--even as augmented by Automake--are
+#   not enough.  In particular it is sometimes useful, for clarity, to
+#   install objects in a subdirectory of some predefined directory.  To this
+#   end, Automake allows you to extend the list of possible installation
+#   directories.  A given prefix (e.g., `zar') is valid if a variable of the
+#   same name with `dir' appended is defined (e.g., `zardir').
+#
+dist_noinst_DATA = $(SUPP_FILES)
+val_DATA    = default.supp
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = valgrind.pc
@@ -23,35 +37,37 @@ incincdir = $(includedir)/valgrind
 nodist_incinc_HEADERS = $(VEX_PUBLIC_HDRS)
 
 BUILT_SOURCES  = default.supp valgrind.pc
-CLEANFILES     = 
-DISTCLEANFILES = default.supp
+CLEANFILES     = default.supp
 
-if VGP_X86_LINUX
+if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
 BUILT_SOURCES += valt_load_address_x86_linux.lds
 CLEANFILES += valt_load_address_x86_linux.lds
 endif
-if VGP_AMD64_LINUX
+if VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX
 BUILT_SOURCES += valt_load_address_amd64_linux.lds
 CLEANFILES += valt_load_address_amd64_linux.lds
 endif
-if VGP_PPC32_LINUX
+if VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX
 BUILT_SOURCES += valt_load_address_ppc32_linux.lds
 CLEANFILES += valt_load_address_ppc32_linux.lds
 endif
-if VGP_PPC64_LINUX
+if VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX
 BUILT_SOURCES += valt_load_address_ppc64_linux.lds
 CLEANFILES += valt_load_address_ppc64_linux.lds
 endif
-if VGP_PPC32_AIX5
+if VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5
 # No need to generate valt_load_address*.lds; the final executables
 # can be linked to be at any address.  They will be relocated by
 # AIX kernel when they are loaded.
 endif
-if VGP_PPC64_AIX5
+if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
 # Ditto
 endif
 
-default.supp: $(SUPP_FILES)
+default.supp: $(DEFAULT_SUPP_FILES)
+	echo "# This is a generated file, composed of the following suppression rules:" > default.supp
+	echo "# " $(DEFAULT_SUPP_FILES) >> default.supp
+	cat $(DEFAULT_SUPP_FILES) >> default.supp
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
 regtest: check
@@ -61,31 +77,30 @@ nonexp-regtest: check
 exp-regtest: check
 	@PERL@ tests/vg_regtest $(EXP_TOOLS)
 
-## Preprend @PERL@ because tests/vg_per isn't executable
+## Preprend @PERL@ because tests/vg_perf isn't executable
 perf: check
 	@PERL@ perf/vg_perf perf
 
+# Nb: no need to include any Makefile.am files here, or files included from
+# them, as automake includes them automatically.
 EXTRA_DIST = \
 	ACKNOWLEDGEMENTS \
 	README_DEVELOPERS \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \
 	valgrind.spec.in valgrind.pc.in \
-	Makefile.all.am Makefile.tool.am Makefile.core.am \
-	Makefile.tool-inplace.am \
 	$(vex_primary_sources) \
 	vg-in-place
 
 install-exec-hook:
 	$(mkinstalldirs) $(DESTDIR)$(valdir)
 
-all-local:
+all-local: default.supp
 	mkdir -p $(inplacedir)
-	rm -f $(addprefix $(inplacedir)/,default.supp $(SUPP_FILES))
+	rm -f $(inplacedir)/default.supp
 	ln -s ../default.supp $(inplacedir)
-	ln -s $(addprefix ../$(top_srcdir)/,$(SUPP_FILES)) $(inplacedir)
 
-distclean-local:
+clean-local:
 	rm -rf $(inplacedir)
 
 # These list the bits of vex we need to install
@@ -193,26 +208,26 @@ valt_load_address_x86_linux.lds: Makefile
 	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_amd64_linux.lds: Makefile
 	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_ppc32_linux.lds: Makefile
 	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_ppc64_linux.lds: Makefile
 	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@

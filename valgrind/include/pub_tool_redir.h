@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -158,6 +158,62 @@
 #define VG_WRAP_FUNCTION_ZU(soname,fnname) VG_CONCAT4(_vgwZU_,soname,_,fnname)
 #define VG_WRAP_FUNCTION_ZZ(soname,fnname) VG_CONCAT4(_vgwZZ_,soname,_,fnname)
 
+/* --------- Some handy Z-encoded names. --------- */
+
+// Nb: ALL THESE NAMES MUST BEGIN WITH "VG_Z_".  Why?  If we applied
+// conditional compilation inconsistently we could accidentally use an
+// undefined constant like VG_Z_LIBC_DOT_A, resulting in a bogus Z-encoded
+// name like "_vgrZU_VG_Z_LIBC_DOT_A_foo".  This can't be detected at
+// compile-time, because both the constant's name and its value are
+// identifiers.  However, by always using "VG_Z_" as a prefix, we can do a
+// run-time check and abort if any name has "VG_Z_" in it, because that
+// indicates that the constant has been used without being defined.
+
+/* --- Soname of the standard C library. --- */
+
+#if defined(VGO_linux)
+#  define  VG_Z_LIBC_SONAME  libcZdsoZa              // libc.so*
+#elif defined(VGP_ppc32_aix5)
+   /* AIX has both /usr/lib/libc.a and /usr/lib/libc_r.a. */
+#  define  VG_Z_LIBC_SONAME  libcZaZdaZLshrZdoZR     // libc*.a(shr.o)
+#elif defined(VGP_ppc64_aix5)
+#  define  VG_Z_LIBC_SONAME  libcZaZdaZLshrZu64ZdoZR // libc*.a(shr_64.o)
+#else
+#  error "Unknown platform"
+#endif
+
+/* --- Soname of the GNU C++ library. --- */
+
+// Valid on all platforms(?)
+#define  VG_Z_LIBSTDCXX_SONAME  libstdcZpZpZa           // libstdc++*
+
+/* --- Soname of XLC's C++ library. --- */
+
+/* AIX: xlC's C++ runtime library is called libC.a, and the
+   interesting symbols appear to be in ansicore_32.o or ansicore_64.o
+   respectively. */
+#if defined(VGP_ppc32_aix5)
+#  define  VG_Z_LIBC_DOT_A   libCZdaZLansicoreZu32ZdoZR // libC.a(ansicore_32.o)
+#elif defined(VGP_ppc64_aix5)
+#  define  VG_Z_LIBC_DOT_A   libCZdaZLansicoreZu64ZdoZR // libC.a(ansicore_64.o)
+#endif
+
+/* --- Soname of the pthreads library. --- */
+
+#if defined(VGO_linux) || defined(VGO_aix5)
+#  define  VG_Z_LIBPTHREAD_SONAME  libpthreadZdsoZd0     // libpthread.so.0
+#else
+#  error "Unknown platform"
+#endif
+
+/* --- Sonames for Linux ELF linkers. --- */
+
+#if defined(VGO_linux)
+#define  VG_Z_LD_LINUX_SO_2         ldZhlinuxZdsoZd2           // ld-linux.so.2
+#define  VG_Z_LD_LINUX_X86_64_SO_2  ldZhlinuxZhx86Zh64ZdsoZd2  // ld-linux-x86-64.so.2
+#define  VG_Z_LD64_SO_1             ld64ZdsoZd1                // ld64.so.1
+#define  VG_Z_LD_SO_1               ldZdsoZd1                  // ld.so.1
+#endif
 
 #endif   // __PUB_TOOL_REDIR_H
 

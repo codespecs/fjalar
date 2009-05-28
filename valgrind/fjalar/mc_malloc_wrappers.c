@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -155,6 +155,7 @@ MC_Chunk* create_MC_Chunk ( ExeContext* ec, Addr p, SizeT szB,
 /*--- client_malloc(), etc                                 ---*/
 /*------------------------------------------------------------*/
 
+// XXX: should make this a proper error (bug #79311).
 static Bool complain_about_silly_args(SizeT sizeB, Char* fn)
 {
    // Cast to a signed type to catch any unexpectedly negative args.  We're
@@ -183,7 +184,7 @@ static Bool complain_about_silly_args2(SizeT n, SizeT sizeB)
 
 /* Allocate memory and note change in memory available */
 void* MC_(new_block) ( ThreadId tid,
-                       Addr p, SizeT szB, SizeT alignB, UInt rzB,
+                       Addr p, SizeT szB, SizeT alignB,
                        Bool is_zeroed, MC_AllocKind kind, VgHashTable table)
 {
    ExeContext* ec;
@@ -233,8 +234,7 @@ void* MC_(malloc) ( ThreadId tid, SizeT n )
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
-         MC_MALLOC_REDZONE_SZB, /*is_zeroed*/False, MC_AllocMalloc,
-         MC_(malloc_list));
+         /*is_zeroed*/False, MC_AllocMalloc, MC_(malloc_list));
    }
 }
 
@@ -244,8 +244,7 @@ void* MC_(__builtin_new) ( ThreadId tid, SizeT n )
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
-         MC_MALLOC_REDZONE_SZB, /*is_zeroed*/False, MC_AllocNew,
-         MC_(malloc_list));
+         /*is_zeroed*/False, MC_AllocNew, MC_(malloc_list));
    }
 }
 
@@ -255,8 +254,7 @@ void* MC_(__builtin_vec_new) ( ThreadId tid, SizeT n )
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
-         MC_MALLOC_REDZONE_SZB, /*is_zeroed*/False, MC_AllocNewVec,
-         MC_(malloc_list));
+         /*is_zeroed*/False, MC_AllocNewVec, MC_(malloc_list));
    }
 }
 
@@ -266,8 +264,7 @@ void* MC_(memalign) ( ThreadId tid, SizeT alignB, SizeT n )
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, alignB, 
-         MC_MALLOC_REDZONE_SZB, /*is_zeroed*/False, MC_AllocMalloc,
-         MC_(malloc_list));
+         /*is_zeroed*/False, MC_AllocMalloc, MC_(malloc_list));
    }
 }
 
@@ -277,8 +274,7 @@ void* MC_(calloc) ( ThreadId tid, SizeT nmemb, SizeT size1 )
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, nmemb*size1, VG_(clo_alignment),
-         MC_MALLOC_REDZONE_SZB, /*is_zeroed*/True, MC_AllocMalloc,
-         MC_(malloc_list));
+         /*is_zeroed*/True, MC_AllocMalloc, MC_(malloc_list));
    }
 }
 
@@ -483,6 +479,16 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
    return p_new;
 }
 
+SizeT MC_(malloc_usable_size) ( ThreadId tid, void* p )
+{
+   MC_Chunk* mc = VG_(HT_lookup) ( MC_(malloc_list), (UWord)p );
+
+   // There may be slop, but pretend there isn't because only the asked-for
+   // area will be marked as addressable.
+   return ( mc ? mc->szB : 0 );
+}
+
+
 /* Memory pool stuff. */
 
 void MC_(create_mempool)(Addr pool, UInt rzB, Bool is_zeroed)
@@ -650,7 +656,7 @@ void MC_(mempool_alloc)(ThreadId tid, Addr pool, Addr addr, SizeT szB)
       MC_(record_illegal_mempool_error) ( tid, pool );
    } else {
       check_mempool_sane(mp);
-      MC_(new_block)(tid, addr, szB, /*ignored*/0, mp->rzB, mp->is_zeroed,
+      MC_(new_block)(tid, addr, szB, /*ignored*/0, mp->is_zeroed,
                      MC_AllocCustom, mp->chunks);
       check_mempool_sane(mp);
    }

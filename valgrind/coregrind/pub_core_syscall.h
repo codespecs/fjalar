@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@
 // PURPOSE: This module contains the code for actually executing syscalls.
 //--------------------------------------------------------------------
 
-/* Do a syscall on this platform, with 6 args, and return the result
+/* Do a syscall on this platform, with 8 args, and return the result
    in canonical format in a SysRes value. */
 
 // We use a full prototype for VG_(do_syscall) rather than "..." to ensure
@@ -58,21 +58,26 @@ extern SysRes VG_(do_syscall) ( UWord sysno,
                                                            0,0,0,0,0,0)
 #define vgPlain_do_syscall3(s,a,b,c)       VG_(do_syscall)((s),(a),(b),(c),\
                                                            0,0,0,0,0)
-#define vgPlain_do_syscall4(s,a,b,c,d)     VG_(do_syscall)((s),(a),(b),\
-                                                           (c),(d),0,0,0,0)
-#define vgPlain_do_syscall5(s,a,b,c,d,e)   VG_(do_syscall)((s),(a),(b),\
-                                                           (c),(d),(e),0,0,0)
+#define vgPlain_do_syscall4(s,a,b,c,d)     VG_(do_syscall)((s),(a),(b),(c),\
+                                                           (d),0,0,0,0)
+#define vgPlain_do_syscall5(s,a,b,c,d,e)   VG_(do_syscall)((s),(a),(b),(c),\
+                                                           (d),(e),0,0,0)
 #define vgPlain_do_syscall6(s,a,b,c,d,e,f) VG_(do_syscall)((s),(a),(b),(c),\
                                                            (d),(e),(f),0,0)
+#define vgPlain_do_syscall7(s,a,b,c,d,e,f,g) VG_(do_syscall)((s),(a),(b),(c),\
+                                                           (d),(e),(f),(g),0)
+#define vgPlain_do_syscall8(s,a,b,c,d,e,f,g,h) VG_(do_syscall)((s),(a),(b),(c),\
+                                                           (d),(e),(f),(g),(h))
 
-extern SysRes VG_(mk_SysRes_x86_linux)   ( UInt  val );
-extern SysRes VG_(mk_SysRes_amd64_linux) ( ULong val );
+extern SysRes VG_(mk_SysRes_x86_linux)   ( Int  val );
+extern SysRes VG_(mk_SysRes_amd64_linux) ( Long val );
 extern SysRes VG_(mk_SysRes_ppc32_linux) ( UInt  val, UInt  cr0so );
 extern SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so );
 extern SysRes VG_(mk_SysRes_ppc32_aix5)  ( UInt val, UInt err );
 extern SysRes VG_(mk_SysRes_ppc64_aix5)  ( ULong val, ULong err );
 extern SysRes VG_(mk_SysRes_Error)       ( UWord val );
 extern SysRes VG_(mk_SysRes_Success)     ( UWord val );
+
 
 
 /* Return a string which gives the name of an error value.  Note,

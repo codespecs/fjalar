@@ -8,11 +8,13 @@ include $(top_srcdir)/Makefile.tool.am
 AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
+SUBDIRS +=
+
 noinst_PROGRAMS = 
-if VGP_X86_LINUX
+if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
 noinst_PROGRAMS += fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 endif
-if VGP_AMD64_LINUX
+if VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX
 noinst_PROGRAMS += fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
 endif
 # PG - no PPC

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -41,7 +41,7 @@
    Stabs reader
    -------------------- */
 extern
-void ML_(read_debuginfo_stabs) ( struct _DebugInfo* di, OffT debug_offset,
+void ML_(read_debuginfo_stabs) ( struct _DebugInfo* di,
                                  UChar* stabC,   Int stab_sz,
                                  UChar* stabstr, Int stabstr_sz );
 

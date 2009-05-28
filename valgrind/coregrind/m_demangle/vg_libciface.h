@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,7 +45,7 @@
 
 
 #define abort()              vg_assert(0)
-#define atoi(_str)           VG_(atoll)((_str))
+#define atoi(_str)           VG_(strtoll10)((_str), NULL)
 #define free(_pt)            VG_(arena_free)   (VG_AR_DEMANGLE,(_pt))
 #define memcmp(_s1,_s2,_sz)  VG_(memcmp)((_s1),(_s2),(_sz))
 #define memcpy(_dd,_ss,_sz)  VG_(memcpy)((_dd),(_ss),(_sz))

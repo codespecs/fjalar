@@ -18,9 +18,28 @@ while (<>)
     s/\(in \/.*libc.*\)$/(in \/...libc...)/;
     s/\(within \/.*libc.*\)$/(within \/...libc...)/;
 
-    s/\(below main\) \(.+\.[cS]:\d+\)$/(below main) (in \/...libc...)/;
+    # Remove the filename -- on some platforms (eg. Linux) it will be in
+    # libc, on some (eg. Darwin) it will be in the main executable.
+    s/\(below main\) \(.+\)$/(below main)/;
 
     s/($libc_symbols) \(.+\.[cS]:\d+\)$/$1 (in \/...libc...)/;
+
+    # Merge the different C++ operator variations.
+    s/(at.*)__builtin_new/$1...operator new.../;
+    s/(at.*)operator new\(unsigned(| int| long)\)/$1...operator new.../;
+
+    s/(at.*)__builtin_vec_new/$1...operator new.../;
+    s/(at.*)operator new\[\]\(unsigned(| int| long)\)/$1...operator new[].../;
+
+    s/(at.*)__builtin_delete/$1...operator delete.../;
+    s/(at.*)operator delete\(void\*\)/$1...operator delete.../;
+
+    s/(at.*)__builtin_vec_delete/$1...operator delete[].../;
+    s/(at.*)operator delete\[\]\(void\*\)/$1...operator delete[].../;
+
+    # Tidy up in cases where glibc (+ libdl + libpthread + ld) have
+    # been built with debugging information, hence source locs are present.
+    s/\((exit|_exit|brk|sbrk).c:[0-9]*\)/(in \/...libc...)/;
 
     print;
 }

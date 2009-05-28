@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -70,7 +70,7 @@ typedef UChar UByte;
 
 /* Layout of an in-use block:
 
-      cost center (OPTIONAL)   (sizeof(ULong) bytes, only when h-p enabled)
+      cost center (OPTIONAL)   (VG_MIN_MALLOC_SZB bytes, only when h-p enabled)
       this block total szB     (sizeof(SizeT) bytes)
       red zone bytes           (depends on Arena.rz_szB, but >= sizeof(void*))
       (payload bytes)
@@ -79,7 +79,7 @@ typedef UChar UByte;
 
    Layout of a block on the free list:
 
-      cost center (OPTIONAL)   (sizeof(ULong) bytes, only when h-p enabled)
+      cost center (OPTIONAL)   (VG_MIN_MALLOC_SZB bytes, only when h-p enabled)
       this block total szB     (sizeof(SizeT) bytes)
       freelist previous ptr    (sizeof(void*) bytes)
       excess red zone bytes    (if Arena.rz_szB > sizeof(void*))
@@ -95,7 +95,7 @@ typedef UChar UByte;
 
    when heap profiling is not enabled, and
 
-      bszB == pszB + 2*sizeof(SizeT) + 2*a->rz_szB + sizeof(ULong)
+      bszB == pszB + 2*sizeof(SizeT) + 2*a->rz_szB + VG_MIN_MALLOC_SZB
 
    when it is enabled.  It follows that the minimum overhead per heap
    block for arenas used by the core is:
@@ -105,8 +105,8 @@ typedef UChar UByte;
 
    when heap profiling is not enabled, and
 
-      32-bit platforms:  2*4 + 2*4 + 8 == 24 bytes
-      64-bit platforms:  2*8 + 2*8 + 8 == 40 bytes
+      32-bit platforms:  2*4 + 2*4 + 8  == 24 bytes
+      64-bit platforms:  2*8 + 2*8 + 16 == 48 bytes
 
    when it is enabled.  In all cases, extra overhead may be incurred
    when rounding the payload size up to VG_MIN_MALLOC_SZB.
@@ -200,23 +200,29 @@ typedef
 
 #define SIZE_T_0x1      ((SizeT)0x1)
 
+static char* probably_your_fault =
+   "This is probably caused by your program erroneously writing past the\n"
+   "end of a heap block and corrupting heap metadata.  If you fix any\n"
+   "invalid writes reported by Memcheck, this assertion failure will\n"
+   "probably go away.  Please try that before reporting this as a bug.\n";
+
 // Mark a bszB as in-use, and not in-use, and remove the in-use attribute.
 static __inline__
 SizeT mk_inuse_bszB ( SizeT bszB )
 {
-   vg_assert(bszB != 0);
+   vg_assert2(bszB != 0, probably_your_fault);
    return bszB & (~SIZE_T_0x1);
 }
 static __inline__
 SizeT mk_free_bszB ( SizeT bszB )
 {
-   vg_assert(bszB != 0);
+   vg_assert2(bszB != 0, probably_your_fault);
    return bszB | SIZE_T_0x1;
 }
 static __inline__
 SizeT mk_plain_bszB ( SizeT bszB )
 {
-   vg_assert(bszB != 0);
+   vg_assert2(bszB != 0, probably_your_fault);
    return bszB & (~SIZE_T_0x1);
 }
 
@@ -225,7 +231,7 @@ SizeT mk_plain_bszB ( SizeT bszB )
 static __inline__
 SizeT hp_overhead_szB ( void )
 {
-   return VG_(clo_profile_heap)  ? sizeof(ULong)  : 0;
+   return VG_(clo_profile_heap)  ? VG_MIN_MALLOC_SZB  : 0;
 }
 
 //---------------------------------------------------------------------------
@@ -238,9 +244,8 @@ SizeT get_bszB_as_is ( Block* b )
    SizeT bszB_lo = *(SizeT*)&b2[0 + hp_overhead_szB()];
    SizeT bszB_hi = *(SizeT*)&b2[mk_plain_bszB(bszB_lo) - sizeof(SizeT)];
    vg_assert2(bszB_lo == bszB_hi, 
-      "Heap block lo/hi size mismatch: lo = %llu, hi = %llu.\n"
-      "Probably caused by overrunning/underrunning a heap block's bounds.\n",
-      (ULong)bszB_lo, (ULong)bszB_hi);
+      "Heap block lo/hi size mismatch: lo = %llu, hi = %llu.\n%s",
+      (ULong)bszB_lo, (ULong)bszB_hi, probably_your_fault);
    return bszB_lo;
 }
 
@@ -267,7 +272,7 @@ static __inline__
 Bool is_inuse_block ( Block* b )
 {
    SizeT bszB = get_bszB_as_is(b);
-   vg_assert(bszB != 0);
+   vg_assert2(bszB != 0, probably_your_fault);
    return (0 != (bszB & SIZE_T_0x1)) ? False : True;
 }
 
@@ -312,7 +317,7 @@ SizeT pszB_to_bszB ( Arena* a, SizeT pszB )
 static __inline__
 SizeT bszB_to_pszB ( Arena* a, SizeT bszB )
 {
-   vg_assert(bszB >= overhead_szB(a));
+   vg_assert2(bszB >= overhead_szB(a), probably_your_fault);
    return bszB - overhead_szB(a);
 }
 
@@ -402,25 +407,25 @@ Block* get_predecessor_block ( Block* b )
 
 // Read and write the lower and upper red-zone bytes of a block.
 static __inline__
-void set_rz_lo_byte ( Arena* a, Block* b, UInt rz_byteno, UByte v )
+void set_rz_lo_byte ( Block* b, UInt rz_byteno, UByte v )
 {
    UByte* b2 = (UByte*)b;
    b2[hp_overhead_szB() + sizeof(SizeT) + rz_byteno] = v;
 }
 static __inline__
-void set_rz_hi_byte ( Arena* a, Block* b, UInt rz_byteno, UByte v )
+void set_rz_hi_byte ( Block* b, UInt rz_byteno, UByte v )
 {
    UByte* b2 = (UByte*)b;
    b2[get_bszB(b) - sizeof(SizeT) - rz_byteno - 1] = v;
 }
 static __inline__
-UByte get_rz_lo_byte ( Arena* a, Block* b, UInt rz_byteno )
+UByte get_rz_lo_byte ( Block* b, UInt rz_byteno )
 {
    UByte* b2 = (UByte*)b;
    return b2[hp_overhead_szB() + sizeof(SizeT) + rz_byteno];
 }
 static __inline__
-UByte get_rz_hi_byte ( Arena* a, Block* b, UInt rz_byteno )
+UByte get_rz_hi_byte ( Block* b, UInt rz_byteno )
 {
    UByte* b2 = (UByte*)b;
    return b2[get_bszB(b) - sizeof(SizeT) - rz_byteno - 1];
@@ -467,9 +472,7 @@ void arena_init ( ArenaId aid, Char* name, SizeT rz_szB, SizeT min_sblock_szB )
    // redzone size if necessary to achieve this.
    a->rz_szB = rz_szB;
    while (0 != overhead_szB_lo(a) % VG_MIN_MALLOC_SZB) a->rz_szB++;
-   //   vg_assert(overhead_szB_lo(a) == overhead_szB_hi(a));
-   vg_assert(0 == overhead_szB_lo(a) % VG_MIN_MALLOC_SZB);
-   vg_assert(0 == overhead_szB_hi(a) % VG_MIN_MALLOC_SZB);
+   vg_assert(overhead_szB_lo(a) - hp_overhead_szB() == overhead_szB_hi(a));
 
    a->min_sblock_szB = min_sblock_szB;
    for (i = 0; i < N_MALLOC_LISTS; i++) a->freelist[i] = NULL;
@@ -602,6 +605,7 @@ void ensure_mm_init ( ArenaId aid )
 /*--- Superblock management                                ---*/
 /*------------------------------------------------------------*/
 
+__attribute__((noreturn))
 void VG_(out_of_memory_NORETURN) ( HChar* who, SizeT szB )
 {
    static Bool alreadyCrashing = False;
@@ -635,6 +639,7 @@ void VG_(out_of_memory_NORETURN) ( HChar* who, SizeT szB )
    } else {
       VG_(debugLog)(0,"mallocfree", s1, who, (ULong)szB, tot_alloc);
    }
+
    VG_(exit)(1);
 }
 
@@ -666,9 +671,9 @@ Superblock* newSuperblock ( Arena* a, SizeT cszB )
       // client allocation -- return 0 to client if it fails
       sres = VG_(am_sbrk_anon_float_client)
                 ( cszB, VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC );
-      if (sres.isError)
+      if (sr_isError(sres))
          return 0;
-      sb = (Superblock*)sres.res;
+      sb = (Superblock*)(AddrH)sr_Res(sres);
       // Mark this segment as containing client heap.  The leak
       // checker needs to be able to identify such segments so as not
       // to use them as sources of roots during leak checks.
@@ -678,12 +683,12 @@ Superblock* newSuperblock ( Arena* a, SizeT cszB )
    } else {
       // non-client allocation -- abort if it fails
       sres = VG_(am_sbrk_anon_float_valgrind)( cszB );
-      if (sres.isError) {
+      if (sr_isError(sres)) {
          VG_(out_of_memory_NORETURN)("newSuperblock", cszB);
          /* NOTREACHED */
          sb = NULL; /* keep gcc happy */
       } else {
-         sb = (Superblock*)sres.res;
+         sb = (Superblock*)(AddrH)sr_Res(sres);
       }
    }
    vg_assert(NULL != sb);
@@ -888,10 +893,10 @@ Bool blockSane ( Arena* a, Block* b )
    // to get_rz_hi_byte().
    if (!a->clientmem && is_inuse_block(b)) {
       for (i = 0; i < a->rz_szB; i++) {
-         if (get_rz_lo_byte(a, b, i) != 
+         if (get_rz_lo_byte(b, i) != 
             (UByte)(((Addr)b&0xff) ^ REDZONE_LO_MASK))
                {BLEAT("redzone-lo");return False;}
-         if (get_rz_hi_byte(a, b, i) != 
+         if (get_rz_hi_byte(b, i) != 
             (UByte)(((Addr)b&0xff) ^ REDZONE_HI_MASK))
                {BLEAT("redzone-hi");return False;}
       }      
@@ -1213,8 +1218,8 @@ void mkInuseBlock ( Arena* a, Block* b, SizeT bszB )
    set_next_b(b, NULL);    // ditto
    if (!a->clientmem) {
       for (i = 0; i < a->rz_szB; i++) {
-         set_rz_lo_byte(a, b, i, (UByte)(((Addr)b&0xff) ^ REDZONE_LO_MASK));
-         set_rz_hi_byte(a, b, i, (UByte)(((Addr)b&0xff) ^ REDZONE_HI_MASK));
+         set_rz_lo_byte(b, i, (UByte)(((Addr)b&0xff) ^ REDZONE_LO_MASK));
+         set_rz_hi_byte(b, i, (UByte)(((Addr)b&0xff) ^ REDZONE_HI_MASK));
       }
    }
 #  ifdef DEBUG_MALLOC
@@ -1321,12 +1326,12 @@ void* VG_(arena_malloc) ( ArenaId aid, HChar* cc, SizeT req_pszB )
       Superblock ** array;
       SysRes sres = VG_(am_sbrk_anon_float_valgrind)(sizeof(Superblock *) *
                                                      a->sblocks_size * 2);
-      if (sres.isError) {
+      if (sr_isError(sres)) {
          VG_(out_of_memory_NORETURN)("arena_init", sizeof(Superblock *) * 
                                                    a->sblocks_size * 2);
          /* NOTREACHED */
       }
-      array = (Superblock**) sres.res;
+      array = (Superblock**)(AddrH)sr_Res(sres);
       for (i = 0; i < a->sblocks_used; ++i) array[i] = a->sblocks[i];
 
       a->sblocks_size *= 2;
@@ -1587,8 +1592,10 @@ void* VG_(arena_memalign) ( ArenaId aid, HChar* cc,
    if (req_alignB < VG_MIN_MALLOC_SZB
        || req_alignB > 1048576
        || VG_(log2)( req_alignB ) == -1 /* not a power of 2 */) {
-      VG_(printf)("VG_(arena_memalign)(%p, %lu, %lu)\nbad alignment", 
-                  a, req_alignB, req_pszB );
+      VG_(printf)("VG_(arena_memalign)(%p, %lu, %lu)\n"
+                  "bad alignment value %lu\n"
+                  "(it is too small, too big, or not a power of two)",
+                  a, req_alignB, req_pszB, req_alignB );
       VG_(core_panic)("VG_(arena_memalign)");
       /*NOTREACHED*/
    }
@@ -1664,8 +1671,7 @@ void* VG_(arena_memalign) ( ArenaId aid, HChar* cc,
 }
 
 
-// The ThreadId doesn't matter, it's not used.
-SizeT VG_(arena_payload_szB) ( ThreadId tid, ArenaId aid, void* ptr )
+SizeT VG_(arena_malloc_usable_size) ( ArenaId aid, void* ptr )
 {
    Arena* a = arenaId_to_ArenaP(aid);
    Block* b = get_payload_block(a, ptr);
@@ -1853,7 +1859,7 @@ Char* VG_(strdup) ( HChar* cc, const Char* s )
 // Useful for querying user blocks.           
 SizeT VG_(malloc_usable_size) ( void* p )                    
 {                                                            
-   return VG_(arena_payload_szB)(VG_INVALID_THREADID, VG_AR_CLIENT, p);    
+   return VG_(arena_malloc_usable_size)(VG_AR_CLIENT, p);
 }                                                            
   
 

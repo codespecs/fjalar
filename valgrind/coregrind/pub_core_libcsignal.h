@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -57,16 +57,26 @@ extern Int  VG_(sigismember) ( const vki_sigset_t* set, Int signum );
 
 extern void VG_(sigaddset_from_set) ( vki_sigset_t* dst, vki_sigset_t* src );
 extern void VG_(sigdelset_from_set) ( vki_sigset_t* dst, vki_sigset_t* src );
+extern void VG_(sigintersectset)    ( vki_sigset_t* dst, vki_sigset_t* src );
+extern void VG_(sigcomplementset)   ( vki_sigset_t* dst, vki_sigset_t* src );
 
 /* --- Mess with the kernel's sig state --- */
 /* VG_(sigprocmask) is in pub_tool_libcsignal.h. */
 
 extern Int VG_(sigaction)   ( Int signum,
-                              const struct vki_sigaction* act,
-                              struct vki_sigaction* oldact );
+                              const vki_sigaction_toK_t* act,
+                              vki_sigaction_fromK_t* oldact );
+
+/* Convert a sigaction which you got from the kernel (a _fromK_t) to
+   one which you can give back to the kernel (a _toK_t).  On Linux and
+   AIX, vki_sigaction_{toK,fromK}_t are identical, so this is a no-op
+   (structure copy), but on Darwin it's not a no-op. */
+extern void VG_(convert_sigaction_fromK_to_toK)(
+               vki_sigaction_fromK_t*, /*OUT*/vki_sigaction_toK_t*);
+
 
 extern Int VG_(kill)        ( Int pid, Int signo );
-extern Int VG_(tkill)       ( ThreadId tid, Int signo );
+extern Int VG_(tkill)       ( Int lwpid, Int signo );
 
 /* A cut-down version of POSIX sigtimedwait: poll for pending signals
    mentioned in the sigset_t, and if any are present, select one

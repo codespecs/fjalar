@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -58,6 +58,7 @@
 #include "pub_core_xarray.h"
 #include "priv_misc.h"
 #include "priv_tytypes.h"
+#include "pub_tool_debuginfo.h"
 #include "priv_d3basics.h"
 #include "priv_storage.h"
 #include "priv_readxcoff.h"        /* self */

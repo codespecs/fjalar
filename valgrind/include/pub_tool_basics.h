@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -46,9 +46,6 @@
 // Addr32, Addr64, HWord, HChar, Bool, False and True.
 #include "libvex_basictypes.h"
 
-// For the VG_() macro
-#include "pub_tool_basics_asm.h"
-
 // For varargs types
 #include <stdarg.h>
 
@@ -57,27 +54,66 @@
 
 
 /* ---------------------------------------------------------------------
+   symbol prefixing
+   ------------------------------------------------------------------ */
+ 
+// All symbols externally visible from Valgrind are prefixed
+// as specified here to avoid namespace conflict problems.
+//
+// VG_ is for symbols exported from modules.  ML_ (module-local) is
+// for symbols which are not intended to be visible outside modules,
+// but which cannot be declared as C 'static's since they need to be
+// visible across C files within a given module.  It is a mistake for
+// a ML_ name to appear in a pub_core_*.h or pub_tool_*.h file.
+// Likewise it is a mistake for a VG_ name to appear in a priv_*.h
+// file. 
+
+#define VGAPPEND(str1,str2) str1##str2
+
+#define VG_(str)    VGAPPEND(vgPlain_,          str)
+#define ML_(str)    VGAPPEND(vgModuleLocal_,    str)
+
+
+/* ---------------------------------------------------------------------
    builtin types
    ------------------------------------------------------------------ */
 
 // By choosing the right types, we can get these right for 32-bit and 64-bit
 // platforms without having to do any conditional compilation or anything.
+// POSIX references:
+// - http://www.opengroup.org/onlinepubs/009695399/basedefs/sys/types.h.html
+// - http://www.opengroup.org/onlinepubs/009695399/basedefs/stddef.h.html
 // 
 // Size in bits on:                          32-bit archs   64-bit archs
 //                                           ------------   ------------
 typedef unsigned long          UWord;     // 32             64
+typedef   signed long           Word;     // 32             64
 
-typedef signed long            Word;      // 32             64
-
+// Addr is for holding an address.  AddrH was intended to be "Addr on the
+// host", for the notional case where host word size != guest word size.
+// But since the assumption that host arch == guest arch has become so
+// deeply wired in, it's a pretty pointless distinction now.
 typedef UWord                  Addr;      // 32             64
 typedef UWord                  AddrH;     // 32             64
 
+// Our equivalents of POSIX 'size_t' and 'ssize_t':
+// - size_t is an "unsigned integer type of the result of the sizeof operator".
+// - ssize_t is "used for a count of bytes or an error indication".
 typedef UWord                  SizeT;     // 32             64
 typedef  Word                 SSizeT;     // 32             64
 
-typedef  Word                   OffT;     // 32             64
+// Our equivalent of POSIX 'ptrdiff_t':
+// - ptrdiff_t is a "signed integer type of the result of subtracting two
+//   pointers".
+// We use it for memory offsets, eg. the offset into a memory block.
+typedef  Word                 PtrdiffT;   // 32             64
 
-typedef ULong                 Off64T;     // 64             64
+// Our equivalent of POSIX 'off_t':
+// - off_t is "used for file sizes".
+// At one point we were using it for memory offsets, but PtrdiffT should be
+// used in those cases.
+typedef Word                   OffT;      // 32             64
+typedef Long                 Off64T;      // 64             64
 
 #if !defined(NULL)
 #  define NULL ((void*)0)
@@ -99,32 +135,88 @@ typedef UInt ThreadId;
 
 /* An abstraction of syscall return values.
    Linux:
-      When .isError == False, 
-         res holds the return value, and err is zero.
-      When .isError == True,  
-         err holds the error code, and res is zero.
+      When _isError == False, 
+         _val holds the return value.
+      When _isError == True,  
+         _err holds the error code.
 
    AIX:
-      res is the POSIX result of the syscall.
-      err is the corresponding errno value.
-      isError === err==0
+      _res is the POSIX result of the syscall.
+      _err is the corresponding errno value.
+      _isError === _err==0
 
-      Unlike on Linux, it is possible for 'err' to be nonzero (thus an
-      error has occurred), nevertheless 'res' is also nonzero.  AIX
-      userspace does not appear to consistently inspect 'err' to
+      Unlike on Linux, it is possible for _err to be nonzero (thus an
+      error has occurred), nevertheless _res is also nonzero.  AIX
+      userspace does not appear to consistently inspect _err to
       determine whether or not an error has occurred.  For example,
-      sys_open() will return -1 for 'val' if a file cannot be opened,
-      as well as the relevant errno value in 'err', but AIX userspace
-      then consults 'val' to figure out if the syscall failed, rather
-      than looking at 'err'.  Hence we need to represent them both.
+      sys_open() will return -1 for _val if a file cannot be opened,
+      as well as the relevant errno value in _err, but AIX userspace
+      then consults _val to figure out if the syscall failed, rather
+      than looking at _err.  Hence we need to represent them both.
+
+   Darwin:
+      Interpretation depends on _mode:
+      MACH, MDEP:
+         these can never 'fail' (apparently).  The result of the
+         syscall is a single host word, _wLO.
+      UNIX:
+         Can record a double-word error or a double-word result:
+         When _mode is SysRes_UNIX_OK,  _wHI:_wLO holds the result.
+         When _mode is SysRes_UNIX_ERR, _wHI:_wLO holds the error code.
+         Probably the high word of an error is always ignored by
+         userspace, but we have to record it, so that we can correctly
+         update both {R,E}DX and {R,E}AX (in guest state) given a SysRes,
+         if we're required to.
 */
+#if defined(VGO_linux)
 typedef
    struct {
-      UWord res;
-      UWord err;
-      Bool  isError;
+      UWord _val;
+      Bool  _isError;
    }
    SysRes;
+#elif defined(VGO_aix5)
+typedef
+   struct {
+      UWord _res;
+      UWord _err;
+      Bool  _isError;
+   }
+   SysRes;
+#else
+#  error "Unknown OS"
+#endif
+
+
+/* ---- And now some basic accessor functions for it. ---- */
+
+#if defined(VGO_linux)
+
+static inline Bool sr_isError ( SysRes sr ) {
+   return sr._isError;
+}
+static inline UWord sr_Res ( SysRes sr ) {
+   return sr._isError ? 0 : sr._val;
+}
+static inline UWord sr_ResHI ( SysRes sr ) {
+   return 0;
+}
+static inline UWord sr_Err ( SysRes sr ) {
+   return sr._isError ? sr._val : 0;
+}
+static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
+   return sr1._val == sr2._val 
+          && ((sr1._isError && sr2._isError) 
+              || (!sr1._isError && !sr2._isError));
+}
+
+#elif defined(VGO_aix5)
+#  error "need to define SysRes accessors on AIX5 (copy from 3.4.1 sources)"
+
+
+#else
+#  error "Unknown OS"
+#endif
 
 
 /* ---------------------------------------------------------------------
@@ -143,6 +235,8 @@ typedef
 #  define VG_LITTLEENDIAN 1
 #elif defined(VGA_ppc32) || defined(VGA_ppc64)
 #  define VG_BIGENDIAN 1
+#else
+#  error Unknown arch
 #endif
 
 /* Regparmness */

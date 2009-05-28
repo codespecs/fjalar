@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2008 OpenWorks LLP
+   Copyright (C) 2008-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -133,6 +133,7 @@
    groupies always show up at the top of performance profiles. */
 
 #include "pub_core_basics.h"
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
@@ -343,7 +344,6 @@ static UWord get_UWord ( Cursor* c ) {
    vg_assert(0);
 }
 
-
 /* Read a DWARF3 'Initial Length' field */
 static ULong get_Initial_Length ( /*OUT*/Bool* is64,
                                   Cursor* c, 
@@ -386,7 +386,12 @@ typedef
       Bool   is_dw64;
       /* Which DWARF version ?  (2 or 3) */
       UShort version;
-      /* Length of this Compilation Unit, excluding its Header */
+      /* Length of this Compilation Unit, as stated in the
+         .unit_length :: InitialLength field of the CU Header.
+         However, this size (as specified by the D3 spec) does not
+         include the size of the .unit_length field itself, which is
+         either 4 or 12 bytes (32-bit or 64-bit Dwarf3).  That value
+         can be obtained through the expression ".is_dw64 ? 12 : 4". */
       ULong  unit_length;
       /* Offset of start of this unit in .debug_info */
       UWord  cu_start_offset;
@@ -412,6 +417,9 @@ typedef
       /* Where is .debug_line? */
       UChar* debug_line_img;
       UWord  debug_line_sz;
+      /* Where is .debug_info? */
+      UChar* debug_info_img;
+      UWord  debug_info_sz;
       /* --- Needed so we can add stuff to the string table. --- */
       struct _DebugInfo* di;
       /* --- a cache for set_abbv_Cursor --- */
@@ -465,97 +473,8 @@ typedef
    it more logically belongs. */
 
 
-/* "Comment_Regarding_DWARF3_Text_Biasing" (is referred to elsewhere)
-    -----------------------------------------------------------------
-    apply_kludgey_text_bias() is our mechanism for biasing text
-    addresses found in DWARF3 .debug_info, .debug_ranges, .debug_loc
-    sections.  This is a nasty and unprincipled hack.
-
-    Biasing the text svmas, so as to obtain text avmas, should be
-    straightforward, right?  We just add on di->text_bias, as
-    carefully computed by readelf.c.
-
-    That works OK most of the time.  But in the following case it fails:
-    1. The object is made in the usual way (gcc -g, etc)
-    2. The DWARF3 stuff removed from it and parked in a .debuginfo object
-    3. The remaining (base) object is then prelinked.
-
-    Prelinking changes the text svmas throughout an object by some
-    constant amount, including the DWARF3 stuff.  So if the DWARF3
-    stuff remains attached to the original object, then there is no
-    problem.  However, if the DWARF3 stuff is detached, and the
-    remaining object is prelinked and the debuginfo object isn't, then
-    we have a problem: the text bias computed for the main object
-    isn't correct for the debuginfo object.
-
-    So the following kludged is used to bias text svmas.
-
-    1. First, try with the text bias computed for the main object.  If
-       that gives an avma inside the area in which the text segment is
-       known to have been mapped, then all well and good.
-
-    2. If not, try using the avma of the text mapped area as a bias.
-       Again, if that works out, fine.  This is the heart of the
-       kludge.  It implicitly treats the svma-s to be biased as if
-       they had been prelinked to zero.
-
-    3. If even that doesn't work, just return the avma unchanged.
-
-    For each object/object-pair, we count the number of times each
-    case occurs.  We flag an error (which the user gets to see) if (3)
-    ever occurs, or if a mixture of (1) and (2) occurs.  That should
-    at least catch the most obvious snafus.
-
-    Caveats: the main remaining worry is whether this problem somehow
-    also affects the data-biasing done for case DW_OP_addr in
-    ML_(evaluate_Dwarf3_Expr) in d3basics.c.  This is currently
-    unknown.
-
-    Possible sources of info: canonical description seems to be:
-
-       http://people.redhat.com/jakub/prelink.pdf
-
-    See para at line 337 starting "DWARF 2 debugging information ..."
-
-    This thread looks like the gdb people hitting the same issue:
-
-       http://sourceware.org/ml/gdb-patches/2007-01/msg00278.html
-*/
-typedef
-   struct {
-      /* FIXED */
-      Addr  rx_map_avma;
-      SizeT rx_map_size;
-      OffT  text_bias;
-      /* VARIABLE -- count stats */
-      UWord n_straightforward_biasings;
-      UWord n_kludgey_biasings;
-      UWord n_failed_biasings;
-   }
-   KludgeyTextBiaser;
-
-static Addr apply_kludgey_text_bias ( KludgeyTextBiaser* ktb,
-                                      Addr allegedly_text_svma ) {
-   Addr res;
-   res = allegedly_text_svma + ktb->text_bias;
-   if (res >= ktb->rx_map_avma 
-       && res < ktb->rx_map_avma + ktb->rx_map_size) {
-      ktb->n_straightforward_biasings++;
-      return res;
-   }
-   res = allegedly_text_svma + ktb->rx_map_avma;
-   if (res >= ktb->rx_map_avma 
-       && res < ktb->rx_map_avma + ktb->rx_map_size) {
-      ktb->n_kludgey_biasings++;
-      return res;
-   }
-   ktb->n_failed_biasings++;
-   return allegedly_text_svma; /* this svma is a luzer */
-}
-
-
-/* Apply a text bias to a GX.  Kludgily :-( */
-static void bias_GX ( /*MOD*/GExpr* gx, KludgeyTextBiaser* ktb )
+/* Apply a text bias to a GX. */
+static void bias_GX ( /*MOD*/GExpr* gx, struct _DebugInfo* di )
 {
    UShort nbytes;
    Addr*  pA;
@@ -573,11 +492,11 @@ static void bias_GX ( /*MOD*/GExpr* gx, KludgeyTextBiaser* ktb )
       vg_assert(uc == 0);
       /* t-bias aMin */
       pA = (Addr*)p;
-      *pA = apply_kludgey_text_bias( ktb, *pA );
+      *pA += di->text_debug_bias;
       p += sizeof(Addr);
       /* t-bias aMax */
       pA = (Addr*)p;
-      *pA = apply_kludgey_text_bias( ktb, *pA );
+      *pA += di->text_debug_bias;
       p += sizeof(Addr);
       /* nbytes, and actual expression */
       nbytes = * (UShort*)p; p += sizeof(UShort);
@@ -895,7 +814,8 @@ void parse_CU_Header ( /*OUT*/CUConst* cc,
 
    /* address size.  If this isn't equal to the host word size, just
       give up.  This makes it safe to assume elsewhere that
-      DW_FORM_addr can be treated as a host word. */
+      DW_FORM_addr and DW_FORM_ref_addr can be treated as a host
+      word. */
    address_size = get_UChar( c );
    if (address_size != sizeof(void*))
       cc->barf( "parse_CU_Header: invalid address_size" );
@@ -977,13 +897,13 @@ void set_abbv_Cursor ( /*OUT*/Cursor* c, Bool td3,
    /* Now iterate though the table until we find the requested
       entry. */
    while (True) {
-      ULong atag;
-      UInt  has_children;
+      //ULong atag;
+      //UInt  has_children;
       acode = get_ULEB128( c );
       if (acode == 0) break; /* end of the table */
       if (acode == abbv_code) break; /* found it */
-      atag         = get_ULEB128( c );
-      has_children = get_UChar( c );
+      /*atag         = */ get_ULEB128( c );
+      /*has_children = */ get_UChar( c );
       //TRACE_D3("   %llu      %s    [%s]\n", 
       //         acode, pp_DW_TAG(atag), pp_DW_children(has_children));
       while (True) {
@@ -1077,12 +997,43 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsSzB = sizeof(UWord);
          TRACE_D3("0x%lx", (UWord)*cts);
          break;
+
+      case DW_FORM_ref_addr:
+         /* We make the same word-size assumption as DW_FORM_addr. */
+         /* What does this really mean?  From D3 Sec 7.5.4,
+            description of "reference", it would appear to reference
+            some other DIE, by specifying the offset from the
+            beginning of a .debug_info section.  The D3 spec mentions
+            that this might be in some other shared object and
+            executable.  But I don't see how the name of the other
+            object/exe is specified.
+
+            At least for the DW_FORM_ref_addrs created by icc11, the
+            references seem to be within the same object/executable.
+            So for the moment we merely range-check, to see that they
+            actually do specify a plausible offset within this
+            object's .debug_info, and return the value unchanged.
+         */
+         *cts = (ULong)(UWord)get_UWord(c);
+         *ctsSzB = sizeof(UWord);
+         TRACE_D3("0x%lx", (UWord)*cts);
+         if (0) VG_(printf)("DW_FORM_ref_addr 0x%lx\n", (UWord)*cts);
+         if (/* the following 2 are surely impossible, but ... */
+             cc->debug_info_img == NULL || cc->debug_info_sz == 0
+             || *cts >= (ULong)cc->debug_info_sz) {
+            /* Hmm.  Offset is nonsensical for this object's .debug_info
+               section.  Be safe and reject it. */
+            cc->barf("get_Form_contents: DW_FORM_ref_addr points "
+                     "outside .debug_info");
+         }
+         break;
+
       case DW_FORM_strp: {
          /* this is an offset into .debug_str */
          UChar* str;
          UWord uw = (UWord)get_Dwarfish_UWord( c, cc->is_dw64 );
          if (cc->debug_str_img == NULL || uw >= cc->debug_str_sz)
-            cc->barf("read_and_show_Form: DW_FORM_strp "
+            cc->barf("get_Form_contents: DW_FORM_strp "
                      "points outside .debug_str");
          /* FIXME: check the entire string lies inside debug_str,
             not just the first byte of it. */
@@ -1143,8 +1094,9 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          break;
       }
       default:
-         VG_(printf)("get_Form_contents: unhandled %d (%s)\n",
-                     form, ML_(pp_DW_FORM)(form));
+         VG_(printf)(
+            "get_Form_contents: unhandled %d (%s) at <%lx>\n",
+            form, ML_(pp_DW_FORM)(form), get_position_of_Cursor(c));
          c->barf("get_Form_contents: unhandled DW_FORM");
    }
 }
@@ -1350,13 +1302,7 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
    Bool   is_dw64;
    Cursor c;
    Word   i;
-   ULong  unit_length;
    UShort version;
-   ULong  header_length;
-   UChar  minimum_instruction_length;
-   UChar  default_is_stmt;
-   Char   line_base;
-   UChar  line_range;
    UChar  opcode_base;
    UChar* str;
 
@@ -1369,18 +1315,18 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
                 cc->debug_line_sz, debug_line_offset, cc->barf, 
                 "Overrun whilst reading .debug_line section(1)" );
 
-   unit_length 
-      = get_Initial_Length( &is_dw64, &c,
+   /* unit_length = */
+      get_Initial_Length( &is_dw64, &c,
            "read_filename_table: invalid initial-length field" );
    version = get_UShort( &c );
    if (version != 2)
      cc->barf("read_filename_table: Only DWARF version 2 line info "
               "is currently supported.");
-   header_length = (ULong)get_Dwarfish_UWord( &c, is_dw64 );
-   minimum_instruction_length = get_UChar( &c );
-   default_is_stmt            = get_UChar( &c );
-   line_base                  = (Char)get_UChar( &c );
-   line_range                 = get_UChar( &c );
+   /*header_length              = (ULong)*/ get_Dwarfish_UWord( &c, is_dw64 );
+   /*minimum_instruction_length = */ get_UChar( &c );
+   /*default_is_stmt            = */ get_UChar( &c );
+   /*line_base                  = (Char)*/ get_UChar( &c );
+   /*line_range                 = */ get_UChar( &c );
    opcode_base                = get_UChar( &c );
    /* skip over "standard_opcode_lengths" */
    for (i = 1; i < (Word)opcode_base; i++)
@@ -1631,7 +1577,6 @@ static void parse_var_DIE (
       GExpr* gexpr       = NULL;
       Int    n_attrs     = 0;
       UWord  abs_ori     = (UWord)D3_INVALID_CUOFF;
-      Bool   declaration = False;
       Int    lineNo      = 0;
       UChar* fileName    = NULL;
       while (True) {
@@ -1661,7 +1606,7 @@ static void parse_var_DIE (
             abs_ori = (UWord)cts;
          }
          if (attr == DW_AT_declaration && ctsSzB > 0 && cts > 0) {
-            declaration = True;
+            /*declaration = True;*/
          }
          if (attr == DW_AT_decl_line && ctsSzB > 0) {
             lineNo = (Int)cts;
@@ -2178,14 +2123,13 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       typeE.Te.TyPorR.typeR = D3_FAKEVOID_CUOFF;
       typeE.Te.TyPorR.isPtr = dtag == DW_TAG_pointer_type
                               || dtag == DW_TAG_ptr_to_member_type;
-      /* Pointer types don't *have* to specify their size, in which
-         case we assume it's a machine word.  But if they do specify
-         it, it must be a machine word :-) This probably assumes that
-         the word size of the Dwarf3 we're reading is the same size as
-         that on the machine.  gcc appears to give a size whereas icc9
-         doesn't. */
-      if (typeE.Te.TyPorR.isPtr)
-         typeE.Te.TyPorR.szB = sizeof(Word);
+      /* These three type kinds don't *have* to specify their size, in
+         which case we assume it's a machine word.  But if they do
+         specify it, it must be a machine word :-)  This probably
+         assumes that the word size of the Dwarf3 we're reading is the
+         same size as that on the machine.  gcc appears to give a size
+         whereas icc9 doesn't. */
+      typeE.Te.TyPorR.szB = sizeof(UWord);
       while (True) {
          DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
          DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
@@ -2200,7 +2144,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          }
       }
       /* Do we have something that looks sane? */
-      if (typeE.Te.TyPorR.szB != sizeof(Word))
+      if (typeE.Te.TyPorR.szB != sizeof(UWord))
          goto bad_DIE;
       else
          goto acquire_Type;
@@ -2230,9 +2174,14 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             typeE.Te.TyEnum.szB = cts;
          }
       }
+
+      if (!typeE.Te.TyEnum.name)
+         typeE.Te.TyEnum.name 
+            = ML_(dinfo_strdup)( "di.readdwarf3.pTD.enum_type.3",
+                                 "<anon_enum_type>" );
+
       /* Do we have something that looks sane? */
-      if (typeE.Te.TyEnum.szB == 0 /* we must know the size */
-         /* But the name can be present, or not */)
+      if (typeE.Te.TyEnum.szB == 0 /* we must know the size */)
          goto bad_DIE;
       /* On't stack! */
       typestack_push( cc, parser, td3, &typeE, level );
@@ -2476,7 +2425,6 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       Bool have_count = False;
       Long lower = 0;
       Long upper = 0;
-      Long count = 0;
 
       switch (parser->language) {
          case 'C': have_lower = True;  lower = 0; break;
@@ -2504,7 +2452,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             have_upper = True;
          }
          if (attr == DW_AT_count && ctsSzB > 0) {
-            count      = cts;
+            /*count    = (Long)cts;*/
             have_count = True;
          }
       }
@@ -3160,8 +3108,6 @@ void new_dwarf3_reader_wrk (
    Word  i, j, n;
    Bool td3 = di->trace_symtab;
    XArray* /* of TempVar* */ dioff_lookup_tab;
-   Bool text_biasing_borked;
-   KludgeyTextBiaser ktb;
 #if 0
    /* This doesn't work properly because it assumes all entries are
       packed end to end, with no holes.  But that doesn't always
@@ -3367,12 +3313,30 @@ void new_dwarf3_reader_wrk (
    while (True) {
       UWord   cu_start_offset, cu_offset_now;
       CUConst cc;
+      /* It may be that the stated size of this CU is larger than the
+         amount of stuff actually in it.  icc9 seems to generate CUs
+         thusly.  We use these variables to figure out if this is
+         indeed the case, and if so how many bytes we need to skip to
+         get to the start of the next CU.  Not skipping those bytes
+         causes us to misidentify the start of the next CU, and it all
+         goes badly wrong after that (not surprisingly). */
+      UWord cu_size_including_IniLen, cu_amount_used;
 
       /* It seems icc9 finishes the DIE info before debug_info_sz
          bytes have been used up.  So be flexible, and declare the
          sequence complete if there is not enough remaining bytes to
          hold even the smallest conceivable CU header.  (11 bytes I
          reckon). */
+      /* JRS 23Jan09: I suspect this is no longer necessary now that
+         the code below contains a 'while (cu_amount_used <
+         cu_size_including_IniLen ...'  style loop, which skips over
+         any leftover bytes at the end of a CU in the case where the
+         CU's stated size is larger than its actual size (as
+         determined by reading all its DIEs).  However, for prudence,
+         I'll leave the following test in place.  I can't see that a
+         CU header can be smaller than 11 bytes, so I don't think
+         there's any harm possible through the test -- it just adds
+         robustness. */
       Word avail = get_remaining_length_Cursor( &info );
       if (avail < 11) {
          if (avail > 0)
@@ -3408,6 +3372,8 @@ void new_dwarf3_reader_wrk (
       cc.debug_loc_sz     = debug_loc_sz;
       cc.debug_line_img   = debug_line_img;
       cc.debug_line_sz    = debug_line_sz;
+      cc.debug_info_img   = debug_info_img;
+      cc.debug_info_sz    = debug_info_sz;
       cc.cu_start_offset  = cu_start_offset;
       cc.di = di;
       /* The CU's svma can be deduced by looking at the AT_low_pc
@@ -3446,10 +3412,36 @@ void new_dwarf3_reader_wrk (
                 &info, td3, &cc, 0 );
 
       cu_offset_now = get_position_of_Cursor( &info );
+
+      if (0) VG_(printf)("Travelled: %lu  size %llu\n",
+                         cu_offset_now - cc.cu_start_offset,
+                         cc.unit_length + (cc.is_dw64 ? 12 : 4));
+
+      /* How big the CU claims it is .. */
+      cu_size_including_IniLen = cc.unit_length + (cc.is_dw64 ? 12 : 4);
+      /* .. vs how big we have found it to be */
+      cu_amount_used = cu_offset_now - cc.cu_start_offset;
+
       if (1) TRACE_D3("offset now %ld, d-i-size %ld\n",
                       cu_offset_now, debug_info_sz);
       if (cu_offset_now > debug_info_sz)
          barf("toplevel DIEs beyond end of CU");
+
+      /* If the CU is bigger than it claims to be, we've got a serious
+         problem. */
+      if (cu_amount_used > cu_size_including_IniLen)
+         barf("CU's actual size appears to be larger than it claims it is");
+
+      /* If the CU is smaller than it claims to be, we need to skip some
+         bytes.  Loop updates cu_offset_new and cu_amount_used. */
+      while (cu_amount_used < cu_size_including_IniLen
+             && get_remaining_length_Cursor( &info ) > 0) {
+         if (0) VG_(printf)("SKIP\n");
+         (void)get_UChar( &info );
+         cu_offset_now = get_position_of_Cursor( &info );
+         cu_amount_used = cu_offset_now - cc.cu_start_offset;
+      }
+
       if (cu_offset_now == debug_info_sz)
          break;
 
@@ -3536,19 +3528,14 @@ void new_dwarf3_reader_wrk (
    vg_assert(!di->admin_tyents);
    di->admin_tyents = tyents_to_keep;
 
-   /* Bias all the location expressions.  See
-      "Comment_Regarding_DWARF3_Text_Biasing" above. */
+   /* Bias all the location expressions. */
    TRACE_D3("\n");
    TRACE_D3("------ Biasing the location expressions ------\n" );
-   VG_(memset)( &ktb, 0, sizeof(ktb ));
-   ktb.rx_map_avma = di->rx_map_avma;
-   ktb.rx_map_size = di->rx_map_size;
-   ktb.text_bias   = di->text_bias;
 
    n = VG_(sizeXA)( gexprs );
    for (i = 0; i < n; i++) {
       gexpr = *(GExpr**)VG_(indexXA)( gexprs, i );
-      bias_GX( gexpr, &ktb );
+      bias_GX( gexpr, di );
    }
 
    TRACE_D3("\n");
@@ -3738,8 +3725,8 @@ void new_dwarf3_reader_wrk (
 
            /* Apply text biasing, for non-global variables. */
            if (varp->level > 0) {
-              pcMin = apply_kludgey_text_bias( &ktb, pcMin );
-              pcMax = apply_kludgey_text_bias( &ktb, pcMax );
+              pcMin += di->text_debug_bias;
+              pcMax += di->text_debug_bias;
            } 
 
            if (i > 0 && (i%2) == 0) 
@@ -3759,27 +3746,6 @@ void new_dwarf3_reader_wrk (
       TRACE_D3("\n\n");
       /* and move on to the next var */
    }
-
-   /* For the text biasing to work out, we expect that:
-      - there were no failures, and
-      - either all were done straightforwardly, or all kludgily,
-        but not with a mixture
-   */ 
-   text_biasing_borked 
-      = ktb.n_failed_biasings > 0 
-        || (ktb.n_straightforward_biasings > 0 && ktb.n_kludgey_biasings > 0);
-
-   if (td3 || text_biasing_borked) {
-      VG_(printf)("TEXT SVMA BIASING STATISTICS:\n");
-      VG_(printf)("   straightforward biasings: %lu\n",
-                  ktb.n_straightforward_biasings );
-      VG_(printf)("           kludgey biasings: %lu\n",
-                  ktb.n_kludgey_biasings );
-      VG_(printf)("            failed biasings: %lu\n\n",
-                  ktb.n_failed_biasings );
-   }
-   if (text_biasing_borked)
-      barf("couldn't make sense of DWARF3 text-svma biasing; details above");
 
    /* Now free all the TempVars */
    n = VG_(sizeXA)( tempvars );

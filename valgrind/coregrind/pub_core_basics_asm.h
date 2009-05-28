@@ -1,7 +1,6 @@
 
 /*--------------------------------------------------------------------*/
-/*--- Header imported directly by every core asm file, and         ---*/
-/*--- (via pub_core_basics.h) by every core C file.                ---*/
+/*--- Header imported directly by every core asm file.             ---*/
 /*---                                        pub_core_basics_asm.h ---*/
 /*--------------------------------------------------------------------*/
 
@@ -9,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -34,9 +33,8 @@
 #define __PUB_CORE_BASICS_ASM_H
 
 //--------------------------------------------------------------------
-// PURPOSE: This header should be imported by every single asm and 
-// (indirectly) by every C file in the core.  It contains really basic
-// things needed everywhere.
+// PURPOSE: This header should be imported by every single asm file
+// in the core.  It contains really basic things needed everywhere.
 //--------------------------------------------------------------------
 
 #include "pub_tool_basics_asm.h"

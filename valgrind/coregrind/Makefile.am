@@ -1,42 +1,74 @@
 
 # Be very careful when renaming any files, targets, whatever, in this
-# Makefile.  The install-exec-local target in ../Makefile.install.am
-# does some fragile sed file-name-mangling which is liable to break if
-# the names of noinst_LIBRARIES or noinst_PROGRAMS change 'shape'.
+# Makefile.  Various parts of the system rely on these names having
+# particular forms.
 
 include $(top_srcdir)/Makefile.all.am
-include $(top_srcdir)/Makefile.core.am
-include $(top_srcdir)/Makefile.install.am
+include $(top_srcdir)/Makefile.flags.am
+include $(top_srcdir)/Makefile.core-tool.am
 
-AM_CPPFLAGS_X86_LINUX   += -DVG_LIBDIR="\"$(valdir)"\"
-AM_CPPFLAGS_AMD64_LINUX += -DVG_LIBDIR="\"$(valdir)"\"
-AM_CPPFLAGS_PPC32_LINUX += -DVG_LIBDIR="\"$(valdir)"\"
-AM_CPPFLAGS_PPC64_LINUX += -DVG_LIBDIR="\"$(valdir)"\"
-AM_CPPFLAGS_PPC32_AIX5  += -DVG_LIBDIR="\"$(valdir)"\"
-AM_CPPFLAGS_PPC64_AIX5  += -DVG_LIBDIR="\"$(valdir)"\"
+
+AM_CPPFLAGS_CORE_COMMON = \
+	-I$(top_srcdir)/coregrind \
+	-DVG_LIBDIR="\"$(valdir)"\"
+
+AM_CPPFLAGS_X86_LINUX   += \
+    $(AM_CPPFLAGS_CORE_COMMON) -DVG_PLATFORM="\"x86-linux\""
+AM_CPPFLAGS_AMD64_LINUX += \
+    $(AM_CPPFLAGS_CORE_COMMON) -DVG_PLATFORM="\"amd64-linux\""
+AM_CPPFLAGS_PPC32_LINUX += \
+    $(AM_CPPFLAGS_CORE_COMMON) -DVG_PLATFORM="\"ppc32-linux\""
+AM_CPPFLAGS_PPC64_LINUX += \
+    $(AM_CPPFLAGS_CORE_COMMON) -DVG_PLATFORM="\"ppc64-linux\""
+AM_CPPFLAGS_PPC32_AIX5  += \
+    $(AM_CPPFLAGS_CORE_COMMON) -DVG_PLATFORM="\"ppc32-aix5\""
+AM_CPPFLAGS_PPC64_AIX5  += \
+    $(AM_CPPFLAGS_CORE_COMMON) -DVG_PLATFORM="\"ppc64-aix5\""
 
 
 default.supp: $(SUPP_FILES)
 
-noinst_LIBRARIES =
-if VGP_X86_LINUX
-noinst_LIBRARIES += libcoregrind_x86_linux.a libreplacemalloc_toolpreload_x86_linux.a
+
+noinst_PROGRAMS =
+pkglib_LIBRARIES =
+LIBVEX =
+
+if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
+noinst_PROGRAMS  += vgpreload_core-x86-linux.so
+pkglib_LIBRARIES += libcoregrind-x86-linux.a libreplacemalloc_toolpreload-x86-linux.a
+LIBVEX           += libvex-x86-linux.a
 endif
-if VGP_AMD64_LINUX
-noinst_LIBRARIES += libcoregrind_amd64_linux.a libreplacemalloc_toolpreload_amd64_linux.a
+
+if VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX
+noinst_PROGRAMS  += vgpreload_core-amd64-linux.so
+pkglib_LIBRARIES += libcoregrind-amd64-linux.a libreplacemalloc_toolpreload-amd64-linux.a
+LIBVEX           += libvex-amd64-linux.a
 endif
-if VGP_PPC32_LINUX
-noinst_LIBRARIES += libcoregrind_ppc32_linux.a libreplacemalloc_toolpreload_ppc32_linux.a
+
+if VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX
+noinst_PROGRAMS  += vgpreload_core-ppc32-linux.so
+pkglib_LIBRARIES += libcoregrind-ppc32-linux.a libreplacemalloc_toolpreload-ppc32-linux.a
+LIBVEX           += libvex-ppc32-linux.a
 endif
-if VGP_PPC64_LINUX
-noinst_LIBRARIES += libcoregrind_ppc64_linux.a libreplacemalloc_toolpreload_ppc64_linux.a
+
+if VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX
+noinst_PROGRAMS  += vgpreload_core-ppc64-linux.so
+pkglib_LIBRARIES += libcoregrind-ppc64-linux.a libreplacemalloc_toolpreload-ppc64-linux.a
+LIBVEX           += libvex-ppc64-linux.a
 endif
-if VGP_PPC32_AIX5
-noinst_LIBRARIES += libcoregrind_ppc32_aix5.a libreplacemalloc_toolpreload_ppc32_aix5.a
+
+if VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5
+noinst_PROGRAMS  += vgpreload_core-ppc32-aix5.so
+pkglib_LIBRARIES += libcoregrind-ppc32-aix5.a libreplacemalloc_toolpreload-ppc32-aix5.a
+LIBVEX           += libvex-ppc32-aix5.a
 endif
-if VGP_PPC64_AIX5
-noinst_LIBRARIES += libcoregrind_ppc64_aix5.a libreplacemalloc_toolpreload_ppc64_aix5.a
+
+if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
+noinst_PROGRAMS  += vgpreload_core-ppc64-aix5.so
+pkglib_LIBRARIES += libcoregrind-ppc64-aix5.a libreplacemalloc_toolpreload-ppc64-aix5.a
+LIBVEX           += libvex-ppc64-aix5.a
 endif
+
 
 #------------------------- launcher -----------------------
 # Build the launcher (valgrind) for the primary target only.
@@ -44,15 +76,16 @@ endif
 bin_PROGRAMS = \
 	valgrind no_op_client_for_valgrind
 
-if VGO_AIX5
+if VGCONF_OS_IS_LINUX
+valgrind_SOURCES = \
+	launcher-linux.c \
+	m_debuglog.c
+endif
+if VGCONF_OS_IS_AIX5
 valgrind_SOURCES = \
 	launcher-aix5.c \
 	m_debuglog.c \
 	m_vkiscnums.c
-else
-valgrind_SOURCES = \
-	launcher-linux.c \
-	m_debuglog.c
 endif
 
 valgrind_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
@@ -69,27 +102,9 @@ no_op_client_for_valgrind_LDFLAGS   = $(AM_CFLAGS_PRI)
 #----------------------------------------------------------
 
 
-noinst_PROGRAMS =
-if VGP_X86_LINUX
-noinst_PROGRAMS += vgpreload_core-x86-linux.so
-endif
-if VGP_AMD64_LINUX
-noinst_PROGRAMS += vgpreload_core-amd64-linux.so
-endif
-if VGP_PPC32_LINUX
-noinst_PROGRAMS += vgpreload_core-ppc32-linux.so
-endif
-if VGP_PPC64_LINUX
-noinst_PROGRAMS += vgpreload_core-ppc64-linux.so
-endif
-if VGP_PPC32_AIX5
-noinst_PROGRAMS += vgpreload_core-ppc32-aix5.so
-endif
-if VGP_PPC64_AIX5
-noinst_PROGRAMS += vgpreload_core-ppc64-aix5.so
-endif
-
 noinst_HEADERS = \
+	launcher-aix5-bootblock.h \
+	pub_core_aspacehl.h	\
 	pub_core_aspacemgr.h	\
 	pub_core_basics.h	\
 	pub_core_basics_asm.h	\
@@ -140,11 +155,13 @@ noinst_HEADERS = \
 	pub_core_vkiscnums.h	\
 	pub_core_wordfm.h	\
 	pub_core_xarray.h	\
+	m_aspacemgr/priv_aspacemgr.h \
 	m_coredump/priv_elf.h	\
 	m_debuginfo/priv_misc.h	\
 	m_debuginfo/priv_storage.h	\
 	m_debuginfo/priv_tytypes.h      \
 	m_debuginfo/priv_readstabs.h	\
+	m_debuginfo/priv_readpdb.h	\
 	m_debuginfo/priv_d3basics.h	\
 	m_debuginfo/priv_readdwarf.h	\
 	m_debuginfo/priv_readdwarf3.h	\
@@ -156,6 +173,8 @@ noinst_HEADERS = \
 	m_demangle/demangle.h	\
 	m_demangle/safe-ctype.h \
 	m_demangle/vg_libciface.h \
+	m_initimg/priv_initimg_pathscan.h \
+	m_initimg/simple_huffman.c \
 	m_scheduler/priv_sema.h \
 	m_syswrap/priv_types_n_macros.h \
 	m_syswrap/priv_syswrap-generic.h \
@@ -163,9 +182,7 @@ noinst_HEADERS = \
 	m_syswrap/priv_syswrap-linux-variants.h \
 	m_syswrap/priv_syswrap-aix5.h \
 	m_syswrap/priv_syswrap-main.h \
-	m_aspacemgr/priv_aspacemgr.h \
-	launcher-aix5-bootblock.h \
-	m_initimg/simple_huffman.c
+	m_ume/priv_ume.h
 
 BUILT_SOURCES = 
 CLEANFILES = 
@@ -203,11 +220,11 @@ COREGRIND_SOURCES_COMMON = \
 	m_trampoline.S \
 	m_translate.c \
 	m_transtab.c \
-	m_ume.c \
 	m_vki.c \
 	m_vkiscnums.c \
 	m_wordfm.c \
 	m_xarray.c \
+	m_aspacehl.c \
 	m_aspacemgr/aspacemgr-common.c \
 	m_debuginfo/misc.c \
 	m_debuginfo/d3basics.c \
@@ -222,24 +239,29 @@ COREGRIND_SOURCES_COMMON = \
 	m_replacemalloc/replacemalloc_core.c \
 	m_scheduler/scheduler.c \
 	m_scheduler/sema.c \
-	m_syswrap/syswrap-main.c
+	m_syswrap/syswrap-main.c \
+	m_ume/elf.c \
+	m_ume/main.c \
+	m_ume/script.c
 
 COREGRIND_LINUX_SOURCE = \
-	m_coredump/coredump-elf.c \
-	m_syswrap/syswrap-linux.c \
-	m_syswrap/syswrap-linux-variants.c \
 	m_aspacemgr/aspacemgr-linux.c \
-	m_initimg/initimg-linux.c \
+	m_coredump/coredump-elf.c \
 	m_debuginfo/readelf.c \
 	m_debuginfo/readdwarf.c \
 	m_debuginfo/readdwarf3.c \
 	m_debuginfo/readstabs.c \
+	m_debuginfo/readpdb.c \
+	m_initimg/initimg-linux.c \
+	m_initimg/initimg-pathscan.c \
+	m_syswrap/syswrap-linux.c \
+	m_syswrap/syswrap-linux-variants.c \
 	m_syswrap/syswrap-generic.c
 
 COREGRIND_AIX5_SOURCE = \
 	m_aspacemgr/aspacemgr-aix5.c \
-	m_initimg/initimg-aix5.c \
 	m_debuginfo/readxcoff.c \
+	m_initimg/initimg-aix5.c \
 	m_syswrap/syswrap-aix5.c
 
 libcoregrind_x86_linux_a_SOURCES = \
@@ -250,7 +272,6 @@ libcoregrind_x86_linux_a_SOURCES = \
 	m_sigframe/sigframe-x86-linux.c \
 	m_syswrap/syscall-x86-linux.S \
 	m_syswrap/syswrap-x86-linux.c
-
 libcoregrind_x86_linux_a_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
 libcoregrind_x86_linux_a_CFLAGS = $(AM_CFLAGS_X86_LINUX)
 libcoregrind_x86_linux_a_CCASFLAGS = $(AM_CCASFLAGS_X86_LINUX)
@@ -263,7 +284,6 @@ libcoregrind_amd64_linux_a_SOURCES = \
 	m_sigframe/sigframe-amd64-linux.c \
 	m_syswrap/syscall-amd64-linux.S \
 	m_syswrap/syswrap-amd64-linux.c
-
 libcoregrind_amd64_linux_a_CPPFLAGS = $(AM_CPPFLAGS_AMD64_LINUX)
 libcoregrind_amd64_linux_a_CFLAGS = $(AM_CFLAGS_AMD64_LINUX)
 libcoregrind_amd64_linux_a_CCASFLAGS = $(AM_CCASFLAGS_AMD64_LINUX)
@@ -276,7 +296,6 @@ libcoregrind_ppc32_linux_a_SOURCES = \
 	m_sigframe/sigframe-ppc32-linux.c \
 	m_syswrap/syscall-ppc32-linux.S \
 	m_syswrap/syswrap-ppc32-linux.c
-
 libcoregrind_ppc32_linux_a_CPPFLAGS = $(AM_CPPFLAGS_PPC32_LINUX)
 libcoregrind_ppc32_linux_a_CFLAGS = $(AM_CFLAGS_PPC32_LINUX)
 libcoregrind_ppc32_linux_a_CCASFLAGS = $(AM_CCASFLAGS_PPC32_LINUX)
@@ -289,7 +308,6 @@ libcoregrind_ppc64_linux_a_SOURCES = \
 	m_sigframe/sigframe-ppc64-linux.c \
 	m_syswrap/syscall-ppc64-linux.S \
 	m_syswrap/syswrap-ppc64-linux.c
-
 libcoregrind_ppc64_linux_a_CPPFLAGS = $(AM_CPPFLAGS_PPC64_LINUX)
 libcoregrind_ppc64_linux_a_CFLAGS = $(AM_CFLAGS_PPC64_LINUX)
 libcoregrind_ppc64_linux_a_CCASFLAGS = $(AM_CCASFLAGS_PPC64_LINUX)
@@ -302,7 +320,6 @@ libcoregrind_ppc32_aix5_a_SOURCES = \
 	m_sigframe/sigframe-ppc32-aix5.c \
 	m_syswrap/syscall-ppc32-aix5.S \
 	m_syswrap/syswrap-ppc32-aix5.c
-
 libcoregrind_ppc32_aix5_a_CPPFLAGS = $(AM_CPPFLAGS_PPC32_AIX5)
 libcoregrind_ppc32_aix5_a_CFLAGS = $(AM_CFLAGS_PPC32_AIX5)
 libcoregrind_ppc32_aix5_a_CCASFLAGS = $(AM_CCASFLAGS_PPC32_AIX5)
@@ -316,7 +333,6 @@ libcoregrind_ppc64_aix5_a_SOURCES = \
 	m_sigframe/sigframe-ppc64-aix5.c \
 	m_syswrap/syscall-ppc64-aix5.S \
 	m_syswrap/syswrap-ppc64-aix5.c
-
 libcoregrind_ppc64_aix5_a_CPPFLAGS = $(AM_CPPFLAGS_PPC64_AIX5)
 libcoregrind_ppc64_aix5_a_CFLAGS = $(AM_CFLAGS_PPC64_AIX5)
 libcoregrind_ppc64_aix5_a_CCASFLAGS = $(AM_CCASFLAGS_PPC64_AIX5)
@@ -325,28 +341,28 @@ libcoregrind_ppc64_aix5_a_AR = $(AR) -X64 cru
 
 libreplacemalloc_toolpreload_x86_linux_a_SOURCES = m_replacemalloc/vg_replace_malloc.c
 libreplacemalloc_toolpreload_x86_linux_a_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
-libreplacemalloc_toolpreload_x86_linux_a_CFLAGS = $(AM_CFLAGS_X86_LINUX) -fpic -fno-omit-frame-pointer
+libreplacemalloc_toolpreload_x86_linux_a_CFLAGS = $(AM_CFLAGS_X86_LINUX) $(AM_CFLAGS_PIC)
 
 libreplacemalloc_toolpreload_amd64_linux_a_SOURCES = m_replacemalloc/vg_replace_malloc.c
 libreplacemalloc_toolpreload_amd64_linux_a_CPPFLAGS = $(AM_CPPFLAGS_AMD64_LINUX)
-libreplacemalloc_toolpreload_amd64_linux_a_CFLAGS = $(AM_CFLAGS_AMD64_LINUX) -fpic -fno-omit-frame-pointer
+libreplacemalloc_toolpreload_amd64_linux_a_CFLAGS = $(AM_CFLAGS_AMD64_LINUX) $(AM_CFLAGS_PIC)
 
 libreplacemalloc_toolpreload_ppc32_linux_a_SOURCES = m_replacemalloc/vg_replace_malloc.c
 libreplacemalloc_toolpreload_ppc32_linux_a_CPPFLAGS = $(AM_CPPFLAGS_PPC32_LINUX)
-libreplacemalloc_toolpreload_ppc32_linux_a_CFLAGS = $(AM_CFLAGS_PPC32_LINUX) -fpic -fno-omit-frame-pointer
+libreplacemalloc_toolpreload_ppc32_linux_a_CFLAGS = $(AM_CFLAGS_PPC32_LINUX) $(AM_CFLAGS_PIC)
 
 libreplacemalloc_toolpreload_ppc64_linux_a_SOURCES = m_replacemalloc/vg_replace_malloc.c
 libreplacemalloc_toolpreload_ppc64_linux_a_CPPFLAGS = $(AM_CPPFLAGS_PPC64_LINUX)
-libreplacemalloc_toolpreload_ppc64_linux_a_CFLAGS = $(AM_CFLAGS_PPC64_LINUX) -fpic -fno-omit-frame-pointer
+libreplacemalloc_toolpreload_ppc64_linux_a_CFLAGS = $(AM_CFLAGS_PPC64_LINUX) $(AM_CFLAGS_PIC)
 
 libreplacemalloc_toolpreload_ppc32_aix5_a_SOURCES = m_replacemalloc/vg_replace_malloc.c
 libreplacemalloc_toolpreload_ppc32_aix5_a_CPPFLAGS = $(AM_CPPFLAGS_PPC32_AIX5)
-libreplacemalloc_toolpreload_ppc32_aix5_a_CFLAGS = $(AM_CFLAGS_PPC32_AIX5) -fpic -fno-omit-frame-pointer
+libreplacemalloc_toolpreload_ppc32_aix5_a_CFLAGS = $(AM_CFLAGS_PPC32_AIX5) $(AM_CFLAGS_PIC)
 libreplacemalloc_toolpreload_ppc32_aix5_a_AR = $(AR) -X32 cru
 
 libreplacemalloc_toolpreload_ppc64_aix5_a_SOURCES = m_replacemalloc/vg_replace_malloc.c
 libreplacemalloc_toolpreload_ppc64_aix5_a_CPPFLAGS = $(AM_CPPFLAGS_PPC64_AIX5)
-libreplacemalloc_toolpreload_ppc64_aix5_a_CFLAGS = $(AM_CFLAGS_PPC64_AIX5) -fpic -fno-omit-frame-pointer
+libreplacemalloc_toolpreload_ppc64_aix5_a_CFLAGS = $(AM_CFLAGS_PPC64_AIX5) $(AM_CFLAGS_PIC)
 libreplacemalloc_toolpreload_ppc64_aix5_a_AR = $(AR) -X64 cru
 
 m_dispatch/dispatch-x86-linux.S:	 libvex_guest_offsets.h
@@ -398,19 +414,20 @@ vgpreload_core_ppc64_aix5_so_CPPFLAGS = $(AM_CPPFLAGS_PPC64_AIX5)
 vgpreload_core_ppc64_aix5_so_CFLAGS = $(AM_CFLAGS_PPC64_AIX5) $(AM_CFLAGS_PIC)
 vgpreload_core_ppc64_aix5_so_LDFLAGS = $(PRELOAD_LDFLAGS_PPC64_AIX5)
 
+all-local: inplace-noinst_PROGRAMS
+
 clean-local:
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" clean
 
-MANUAL_DEPS = $(noinst_HEADERS) $(include_HEADERS)
-
-all-local:
-	for f in $(noinst_PROGRAMS); do \
-	  p=`echo $$f | sed -e 's/^[^-]*-//' -e 's/\..*$$//'`; \
-	  n=`echo $$f | sed -e 's/-[^-]\{1,\}-[^-.]\{1,\}//'`; \
-	  mkdir -p $(inplacedir)/$$p; \
-	  rm -f $(inplacedir)/$$p/$$n; \
-	  ln -f -s ../../$(subdir)/$$f $(inplacedir)/$$p/$$n; \
+# Nb: The loop installs the libvex library for possible use by standalone
+# tools.
+install-exec-local: install-noinst_PROGRAMS
+	for v in $(LIBVEX) ; do \
+	  $(INSTALL_DATA) @VEX_DIR@/$$v $(DESTDIR)$(valdir) ; \
 	done
+
+
+MANUAL_DEPS = $(noinst_HEADERS) $(include_HEADERS)
 
 EXTRA_DIST = \
 	m_debuginfo/UNUSED_STABS.txt \

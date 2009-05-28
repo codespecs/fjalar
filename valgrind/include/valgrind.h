@@ -12,7 +12,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward.  All rights reserved.
+   Copyright (C) 2000-2009 Julian Seward.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -581,11 +581,15 @@ typedef
 /* Use these to write the name of your wrapper.  NOTE: duplicates
    VG_WRAP_FUNCTION_Z{U,Z} in pub_tool_redir.h. */
 
+/* Use an extra level of macroisation so as to ensure the soname/fnname
+   args are fully macro-expanded before pasting them together. */
+#define VG_CONCAT4(_aa,_bb,_cc,_dd) _aa##_bb##_cc##_dd
+
 #define I_WRAP_SONAME_FNNAME_ZU(soname,fnname)                    \
-   _vgwZU_##soname##_##fnname
+   VG_CONCAT4(_vgwZU_,soname,_,fnname)
 
 #define I_WRAP_SONAME_FNNAME_ZZ(soname,fnname)                    \
-   _vgwZZ_##soname##_##fnname
+   VG_CONCAT4(_vgwZZ_,soname,_,fnname)
 
 /* Use this macro from within a wrapper function to collect the
    context (address and possibly other info) of the original function.
@@ -615,6 +619,22 @@ typedef
 #define CALL_FN_v_WWW(fnptr, arg1,arg2,arg3)                      \
    do { volatile unsigned long _junk;                             \
         CALL_FN_W_WWW(_junk,fnptr,arg1,arg2,arg3); } while (0)
+
+#define CALL_FN_v_WWWW(fnptr, arg1,arg2,arg3,arg4)                \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_WWWW(_junk,fnptr,arg1,arg2,arg3,arg4); } while (0)
+
+#define CALL_FN_v_5W(fnptr, arg1,arg2,arg3,arg4,arg5)             \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_5W(_junk,fnptr,arg1,arg2,arg3,arg4,arg5); } while (0)
+
+#define CALL_FN_v_6W(fnptr, arg1,arg2,arg3,arg4,arg5,arg6)        \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_6W(_junk,fnptr,arg1,arg2,arg3,arg4,arg5,arg6); } while (0)
+
+#define CALL_FN_v_7W(fnptr, arg1,arg2,arg3,arg4,arg5,arg6,arg7)   \
+   do { volatile unsigned long _junk;                             \
+        CALL_FN_W_7W(_junk,fnptr,arg1,arg2,arg3,arg4,arg5,arg6,arg7); } while (0)
 
 /* ------------------------- x86-linux ------------------------- */
 
@@ -3652,7 +3672,10 @@ typedef
           /* Stack support. */
           VG_USERREQ__STACK_REGISTER   = 0x1501,
           VG_USERREQ__STACK_DEREGISTER = 0x1502,
-          VG_USERREQ__STACK_CHANGE     = 0x1503
+          VG_USERREQ__STACK_CHANGE     = 0x1503,
+
+          /* Wine support */
+          VG_USERREQ__LOAD_PDB_DEBUGINFO = 0x1601
    } Vg_ClientRequest;
 
 #if !defined(__GNUC__)
@@ -3907,6 +3930,7 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
 
 /* Return 1 if a mempool exists, else 0. */
 #define VALGRIND_MEMPOOL_EXISTS(pool)                             \
+   __extension__                                                  \
    ({unsigned int _qzz_res;                                       \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
                                VG_USERREQ__MEMPOOL_EXISTS,        \
@@ -3916,6 +3940,7 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
 
 /* Mark a piece of memory as being a stack. Returns a stack id. */
 #define VALGRIND_STACK_REGISTER(start, end)                       \
+   __extension__                                                  \
    ({unsigned int _qzz_res;                                       \
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
                                VG_USERREQ__STACK_REGISTER,        \
@@ -3938,6 +3963,14 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
     VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
                                VG_USERREQ__STACK_CHANGE,          \
                                id, start, end, 0, 0);             \
+   }
+
+/* Load PDB debug info for Wine PE image_map. */
+#define VALGRIND_LOAD_PDB_DEBUGINFO(fd, ptr, total_size, delta)   \
+   {unsigned int _qzz_res;                                        \
+    VALGRIND_DO_CLIENT_REQUEST(_qzz_res, 0,                       \
+                               VG_USERREQ__LOAD_PDB_DEBUGINFO,    \
+                               fd, ptr, total_size, delta, 0);    \
    }
 
 

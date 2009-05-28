@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -80,7 +80,7 @@ typedef enum { N_UNDEF = 0,	/* undefined symbol, new stringtab  */
 /* Read stabs-format debug info.  This is all rather horrible because
    stabs is a underspecified, kludgy hack.
 */
-void ML_(read_debuginfo_stabs) ( DebugInfo* di,  OffT debug_offset,
+void ML_(read_debuginfo_stabs) ( DebugInfo* di,
                                  UChar* stabC,   Int stab_sz, 
                                  UChar* stabstr, Int stabstr_sz )
 {
@@ -129,11 +129,12 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,  OffT debug_offset,
       const struct nlist *st = &stab[i];
       Char *string;
 
-      if (debug && 1) {
-         VG_(printf) ( "%2d  type=%d   othr=%d   desc=%d   value=0x%x   strx=%d  %s\n", i,
+      if (di->trace_symtab) {
+         VG_(printf) ( "%2d  type=%d   othr=%d   desc=%d   "
+                       "value=0x%x   strx=%d  %s\n", i,
                        st->n_type, st->n_other, st->n_desc, 
-                       (int)st->n_value,
-                       (int)st->n_un.n_strx, 
+                       (Int)st->n_value,
+                       (Int)st->n_un.n_strx, 
                        stabstr + st->n_un.n_strx );
       }
 
@@ -336,7 +337,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,  OffT debug_offset,
                line.first = True;
 
                /* line ends at start of next function */
-               addr = debug_offset + st->n_value;
+               addr = di->text_debug_bias + st->n_value;
 
                func.start = addr;
             }

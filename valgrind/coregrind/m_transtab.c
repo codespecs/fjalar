@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -714,21 +714,21 @@ static void initialiseSector ( Int sno )
       VG_(debugLog)(1,"transtab", "allocate sector %d\n", sno);
 
       sres = VG_(am_mmap_anon_float_valgrind)( 8 * tc_sector_szQ );
-      if (sres.isError) {
+      if (sr_isError(sres)) {
          VG_(out_of_memory_NORETURN)("initialiseSector(TC)", 
                                      8 * tc_sector_szQ );
 	 /*NOTREACHED*/
       }
-      sec->tc = (ULong*)sres.res;
+      sec->tc = (ULong*)(AddrH)sr_Res(sres);
 
       sres = VG_(am_mmap_anon_float_valgrind)
                 ( N_TTES_PER_SECTOR * sizeof(TTEntry) );
-      if (sres.isError) {
+      if (sr_isError(sres)) {
          VG_(out_of_memory_NORETURN)("initialiseSector(TT)", 
                                      N_TTES_PER_SECTOR * sizeof(TTEntry) );
 	 /*NOTREACHED*/
       }
-      sec->tt = (TTEntry*)sres.res;
+      sec->tt = (TTEntry*)(AddrH)sr_Res(sres);
 
       for (i = 0; i < N_TTES_PER_SECTOR; i++) {
          sec->tt[i].status   = Empty;
@@ -1313,12 +1313,14 @@ static void init_unredir_tt_tc ( void )
 {
    Int i;
    if (unredir_tc == NULL) {
-      SysRes sres = VG_(am_mmap_anon_float_valgrind)( N_UNREDIR_TT * UNREDIR_SZB );
-      if (sres.isError) {
-         VG_(out_of_memory_NORETURN)("init_unredir_tt_tc", N_UNREDIR_TT * UNREDIR_SZB);
+      SysRes sres = VG_(am_mmap_anon_float_valgrind)
+                       ( N_UNREDIR_TT * UNREDIR_SZB );
+      if (sr_isError(sres)) {
+         VG_(out_of_memory_NORETURN)("init_unredir_tt_tc",
+                                     N_UNREDIR_TT * UNREDIR_SZB);
          /*NOTREACHED*/
       }
-      unredir_tc = (ULong *)sres.res;
+      unredir_tc = (ULong *)(AddrH)sr_Res(sres);
    }
    unredir_tc_used = 0;
    for (i = 0; i < N_UNREDIR_TT; i++)
@@ -1350,8 +1352,7 @@ static Bool sanity_check_redir_tt_tc ( void )
 void VG_(add_to_unredir_transtab)( VexGuestExtents* vge,
                                    Addr64           entry,
                                    AddrH            code,
-                                   UInt             code_len,
-                                   Bool             is_self_checking )
+                                   UInt             code_len )
 {
    Int   i, j, code_szQ;
    HChar *srcP, *dstP;

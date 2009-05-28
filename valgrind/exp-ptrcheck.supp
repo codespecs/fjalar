@@ -17,14 +17,11 @@
    exp-ptrcheck:Arith
    obj:/*lib*/ld-2.*so*
    obj:/*lib*/ld-2.*so*
-   obj:/*lib*/ld-2.*so*
 }
 
 {
    ld-2.X possibly applying relocations
    exp-ptrcheck:SorG
-   obj:/*lib*/ld-2.*so*
-   obj:/*lib*/ld-2.*so*
    obj:/*lib*/ld-2.*so*
    obj:/*lib*/ld-2.*so*
 }
@@ -42,5 +39,19 @@
    exp-ptrcheck:Heap
    obj:/*lib*/ld-2.*so*
    obj:/*lib*/ld-2.*so*
-   obj:/*lib*/ld-2.*so*
 }
+
+{
+   I think this is glibc's ultra optimised getenv doing 2 byte reads
+   exp-ptrcheck:SorG
+   fun:getenv
+}
+
+{
+   Occurs on Fedora 7--9?
+   exp-ptrcheck:Heap
+   fun:_dl_fini
+   fun:exit
+   fun:(below main)
+}
+

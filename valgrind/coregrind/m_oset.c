@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2009 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -174,7 +174,7 @@ void* fast_key_of_node(AvlNode* n)
 }
 
 // Compare the first word of each element.  Inlining is *crucial*.
-static inline Word fast_cmp(void* k, AvlNode* n)
+static inline Word fast_cmp(const void* k, const AvlNode* n)
 {
    UWord w1 = *(UWord*)k;
    UWord w2 = *(UWord*)elem_of_node(n);
@@ -282,7 +282,7 @@ static inline Bool stackPop(AvlTree* t, AvlNode** n, Int* i)
 /*--------------------------------------------------------------------*/
 
 // The underscores avoid GCC complaints about overshadowing global names.
-AvlTree* VG_(OSetGen_Create)(OffT _keyOff, OSetCmp_t _cmp,
+AvlTree* VG_(OSetGen_Create)(PtrdiffT _keyOff, OSetCmp_t _cmp,
                              OSetAlloc_t _alloc, HChar* _cc,
                              OSetFree_t _free)
 {
@@ -785,7 +785,7 @@ Bool VG_(OSetWord_Next)(AvlTree* t, UWord* val)
 // produced VG_(OSetGen_Next) is the smallest key in the map 
 // >= start_at.  Naturally ">=" is defined by the comparison 
 // function supplied to VG_(OSetGen_Create).
-void VG_(OSetGen_ResetIterAt)(AvlTree* oset, void* k)
+void VG_(OSetGen_ResetIterAt)(AvlTree* oset, const void* k)
 {
    Int     i;
    AvlNode *n, *t;
@@ -808,9 +808,6 @@ void VG_(OSetGen_ResetIterAt)(AvlTree* oset, void* k)
       if (oset->cmp) {
          cmpresS = (Word)slow_cmp(oset, k, t);
       } else {
-         /* this is believed to be correct, but really needs testing
-            before the assertion is removed. */
-         vg_assert(0);
          cmpresS = fast_cmp(k, t);
       }
 

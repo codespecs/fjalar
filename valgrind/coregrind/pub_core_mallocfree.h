@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -69,7 +69,18 @@ typedef Int ArenaId;
 // This is both the minimum payload size of a malloc'd block, and its
 // minimum alignment.  Must be a power of 2 greater than 4, and should be
 // greater than 8.
-#define VG_MIN_MALLOC_SZB        8
+#if   defined(VGP_x86_linux)   || \
+      defined(VGP_ppc32_linux) || \
+      defined(VGP_ppc32_aix5)
+#  define VG_MIN_MALLOC_SZB        8
+#elif defined(VGP_amd64_linux) || \
+      defined(VGP_ppc64_linux) || \
+      defined(VGP_ppc64_aix5)
+#  define VG_MIN_MALLOC_SZB       16
+#else
+#  error Unknown platform
+#endif
+
 
 /* This struct definition MUST match the system one. */
 /* SVID2/XPG mallinfo structure */
@@ -97,8 +108,7 @@ extern void* VG_(arena_memalign)( ArenaId aid, HChar* cc,
 extern Char* VG_(arena_strdup)  ( ArenaId aid, HChar* cc, 
                                   const Char* s);
 
-// Nb: The ThreadId doesn't matter, it's not used.
-extern SizeT VG_(arena_payload_szB) ( ThreadId tid, ArenaId aid, void* payload );
+extern SizeT VG_(arena_malloc_usable_size) ( ArenaId aid, void* payload );
 
 extern void  VG_(mallinfo) ( ThreadId tid, struct vg_mallinfo* mi );
 

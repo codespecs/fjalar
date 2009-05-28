@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -81,6 +81,17 @@ typedef
 typedef
    struct {
       Int o_sysno;
+#     if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
+         || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+      Int o_arg1;
+      Int o_arg2;
+      Int o_arg3;
+      Int o_arg4;
+      Int o_arg5;
+      Int o_arg6;
+      Int uu_arg7;
+      Int uu_arg8;
+#     elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;
@@ -89,7 +100,9 @@ typedef
       Int o_arg6;
       Int o_arg7;
       Int o_arg8;
-      Int o_retval;
+#     else
+#       error "Unknown platform"
+#     endif
    }
    SyscallArgLayout;
 
@@ -274,22 +287,29 @@ SyscallTableEntry* ML_(get_ppc64_aix5_syscall_entry) ( UInt sysno );
 
 /* Reference to the syscall's current result status/value.  General
    paranoia all round. */
-#define SUCCESS       (status->what == SsComplete && !status->sres.isError)
-#define FAILURE       (status->what == SsComplete &&  status->sres.isError)
+#define SUCCESS       (status->what == SsComplete && !sr_isError(status->sres))
+#define FAILURE       (status->what == SsComplete &&  sr_isError(status->sres))
 #define SWHAT         (status->what)
 #define RES           (getRES(status))
+#define RESHI         (getRESHI(status))
 #define ERR           (getERR(status))
 
 static inline UWord getRES ( SyscallStatus* st ) {
    vg_assert(st->what == SsComplete);
-   vg_assert(!st->sres.isError);
-   return st->sres.res;
+   vg_assert(!sr_isError(st->sres));
+   return sr_Res(st->sres);
+}
+
+static inline UWord getRESHI ( SyscallStatus* st ) {
+   vg_assert(st->what == SsComplete);
+   vg_assert(!sr_isError(st->sres));
+   return sr_ResHI(st->sres);
 }
 
 static inline UWord getERR ( SyscallStatus* st ) {
    vg_assert(st->what == SsComplete);
-   vg_assert(st->sres.isError);
-   return st->sres.err;
+   vg_assert(sr_isError(st->sres));
+   return sr_Err(st->sres);
 }
 
 
@@ -344,16 +364,16 @@ static inline UWord getERR ( SyscallStatus* st ) {
    since the least significant parts of the guest register are stored
    in memory at the lowest address.
 */
-#define PRRAn_LE(n,s,t,a)                            \
-    do {                                             \
-       Int here = layout->o_arg##n;                  \
-       vg_assert(sizeof(t) <= sizeof(UWord));        \
-       vg_assert(here >= 0);                         \
-       VG_(tdict).track_pre_reg_read(                \
-          Vg_CoreSysCall, tid, s"("#a")",            \
-          here, sizeof(t)                            \
-       );                                            \
-    } while (0)
+#define PRRAn_LE(n,s,t,a)                          \
+   do {                                            \
+      Int here = layout->o_arg##n;                 \
+      vg_assert(sizeof(t) <= sizeof(UWord));       \
+      vg_assert(here >= 0);                        \
+      VG_(tdict).track_pre_reg_read(               \
+         Vg_CoreSysCall, tid, s"("#a")",           \
+         here, sizeof(t)                           \
+      );                                           \
+   } while (0)
 
 /* big-endian: the part of the guest state being read is
       let next = offset_of_reg + sizeof(reg) 
@@ -361,17 +381,17 @@ static inline UWord getERR ( SyscallStatus* st ) {
    since the least significant parts of the guest register are stored
    in memory at the highest address.
 */
-#define PRRAn_BE(n,s,t,a)                            \
-    do {                                             \
-       Int here = layout->o_arg##n;                  \
-       Int next = layout->o_arg##n + sizeof(UWord);  \
-       vg_assert(sizeof(t) <= sizeof(UWord));        \
-       vg_assert(here >= 0);                         \
-       VG_(tdict).track_pre_reg_read(                \
-          Vg_CoreSysCall, tid, s"("#a")",            \
-          next-sizeof(t), sizeof(t)                  \
-       );                                            \
-    } while (0)
+#define PRRAn_BE(n,s,t,a)                          \
+   do {                                            \
+      Int here = layout->o_arg##n;                 \
+      Int next = layout->o_arg##n + sizeof(UWord); \
+      vg_assert(sizeof(t) <= sizeof(UWord));       \
+      vg_assert(here >= 0);                        \
+      VG_(tdict).track_pre_reg_read(               \
+         Vg_CoreSysCall, tid, s"("#a")",           \
+         next-sizeof(t), sizeof(t)                 \
+      );                                           \
+   } while (0)
 
 #if defined(VG_BIGENDIAN)
 #  define PRRAn(n,s,t,a) PRRAn_BE(n,s,t,a)
@@ -431,6 +451,16 @@ static inline UWord getERR ( SyscallStatus* st ) {
 
 #define POST_MEM_WRITE(zzaddr, zzlen) \
    VG_TRACK( post_mem_write, Vg_CoreSysCall, tid, zzaddr, zzlen)
+
+
+#define PRE_FIELD_READ(zzname, zzfield) \
+    PRE_MEM_READ(zzname, (UWord)&zzfield, sizeof(zzfield))
+
+#define PRE_FIELD_WRITE(zzname, zzfield) \
+    PRE_MEM_WRITE(zzname, (UWord)&zzfield, sizeof(zzfield))
+
+#define POST_FIELD_WRITE(zzfield) \
+    POST_MEM_WRITE((UWord)&zzfield, sizeof(zzfield))
 
 
 #endif   // __PRIV_TYPES_N_MACROS_H

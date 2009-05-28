@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -83,8 +83,7 @@ extern
 void VG_(add_to_unredir_transtab)( VexGuestExtents* vge,
                                    Addr64           entry,
                                    AddrH            code,
-                                   UInt             code_len,
-                                   Bool             is_self_checking );
+                                   UInt             code_len );
 extern 
 Bool VG_(search_unredir_transtab) ( /*OUT*/AddrH* result,
                                     Addr64        guest_addr );

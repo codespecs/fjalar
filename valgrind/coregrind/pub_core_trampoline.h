@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -111,7 +111,7 @@ extern void VG_(ppctoc_magic_redirect_return_stub);
 /* See comment for ppc32_aix5 equivalent above. */
 extern void VG_(ppc64_aix5_do_preloads_then_start_client);
 #endif
- 
+
 #endif   // __PUB_CORE_TRAMPOLINE_H
 
 /*--------------------------------------------------------------------*/

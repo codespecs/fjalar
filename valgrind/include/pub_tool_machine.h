@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -110,10 +110,10 @@ extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 void
 VG_(get_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/UChar* dst,
-                            /*SRC*/Int shadowNo, OffT offset, SizeT size );
+                            /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size );
 void
 VG_(set_shadow_regs_area) ( ThreadId tid, 
-                            /*DST*/Int shadowNo, OffT offset, SizeT size,
+                            /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src );
 
 // Sets the shadow values for the syscall return value register(s).

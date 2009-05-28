@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -74,13 +74,26 @@ extern Bool VG_(get_filename_linenum)
    entry points within it. */
 extern Bool VG_(get_fnname_if_entry) ( Addr a, Char* fnname, Int n_fnname );
 
+typedef
+   enum {
+      Vg_FnNameNormal,        // A normal function.
+      Vg_FnNameMain,          // "main"
+      Vg_FnNameBelowMain      // Something below "main", eg. __libc_start_main.
+   } Vg_FnNameKind;           //   Such names are often filtered.
+
+/* Indicates what kind of fnname it is. */
+extern Vg_FnNameKind VG_(get_fnname_kind) ( Char* name );
+
+/* Like VG_(get_fnname_kind), but takes a code address. */
+extern Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip );
+
 /* Looks up data_addr in the collection of data symbols, and if found
    puts its name (or as much as will fit) into dname[0 .. n_dname-1],
    which is guaranteed to be zero terminated.  Also data_addr's offset
    from the symbol start is put into *offset. */
 extern Bool VG_(get_datasym_and_offset)( Addr data_addr,
                                          /*OUT*/Char* dname, Int n_dname,
-                                         /*OUT*/OffT* offset );
+                                         /*OUT*/PtrdiffT* offset );
 
 /* Try to form some description of data_addr by looking at the DWARF3
    debug info we have.  This considers all global variables, and all
@@ -113,11 +126,11 @@ extern Char* VG_(describe_IP)(Addr eip, Char* buf, Int n_buf);
 
 typedef
    struct {
-      OffT  base;     /* offset from sp or fp */
-      SizeT szB;      /* size in bytes */
-      Bool  spRel;    /* True => sp-rel, False => fp-rel */
-      Bool  isVec;    /* does block have an array type, or not? */
-      HChar name[16]; /* first 15 chars of name (asciiz) */
+      PtrdiffT base;       /* offset from sp or fp */
+      SizeT    szB;        /* size in bytes */
+      Bool     spRel;      /* True => sp-rel, False => fp-rel */
+      Bool     isVec;      /* does block have an array type, or not? */
+      HChar    name[16];   /* first 15 chars of name (asciiz) */
    }
    StackBlock;
 
@@ -167,7 +180,7 @@ extern       Addr     VG_(seginfo_get_gotplt_avma)( const DebugInfo *di );
 extern       SizeT    VG_(seginfo_get_gotplt_size)( const DebugInfo *di );
 extern const UChar*   VG_(seginfo_soname)       ( const DebugInfo *di );
 extern const UChar*   VG_(seginfo_filename)     ( const DebugInfo *di );
-extern       ULong    VG_(seginfo_get_text_bias)( const DebugInfo *di );
+extern       PtrdiffT VG_(seginfo_get_text_bias)( const DebugInfo *di );
 
 /* Function for traversing the seginfo list.  When called with NULL it
    returns the first element; otherwise it returns the given element's

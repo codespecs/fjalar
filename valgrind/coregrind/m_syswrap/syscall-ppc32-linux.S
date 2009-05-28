@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2005-2008 Paul Mackerras (paulus@samba.org)
+  Copyright (C) 2005-2009 Paul Mackerras (paulus@samba.org)
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -66,7 +66,7 @@
 				  void* guest_state,		// r4
 				  const vki_sigset_t *sysmask,	// r5
 				  const vki_sigset_t *postmask,	// r6
-				  Int nsigwords)		// r7
+				  Int sigsetSzB)		// r7
 */
 /* from vki_arch.h */
 #define VKI_SIG_SETMASK 2
@@ -82,7 +82,7 @@ ML_(do_syscall_for_client_WRK):
         mr      31,3            /* syscall number */
         mr      30,4            /* guest_state */
         mr      29,6            /* postmask */
-        mr      28,7            /* nsigwords */
+        mr      28,7            /* sigsetSzB */
 
         /* set the signal mask for doing the system call */
         /* set up for sigprocmask(SIG_SETMASK, sysmask, postmask) */
