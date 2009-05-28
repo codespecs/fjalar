@@ -3368,8 +3368,8 @@ typedef
       volatile unsigned long _argvec[3+9];                        \
       volatile unsigned long _res;                                \
       /* _argvec[0] holds current r2 across the call */           \
-      _argvec[1] = (unsigned long)_orig.r2;                       \
-      _argvec[2] = (unsigned long)_orig.nraddr;                   \
+      _argvec[1]   = (unsigned long)_orig.r2;                     \
+      _argvec[2]   = (unsigned long)_orig.nraddr;                 \
       _argvec[2+1] = (unsigned long)arg1;                         \
       _argvec[2+2] = (unsigned long)arg2;                         \
       _argvec[2+3] = (unsigned long)arg3;                         \
@@ -3382,7 +3382,7 @@ typedef
       __asm__ volatile(                                           \
          "mr 11,%1\n\t"                                           \
          VG_EXPAND_FRAME_BY_trashes_r3(512)                       \
-         "std 2,-16(11)\n\t"  /* save tocptr */                   \
+         "std  2,-16(11)\n\t" /* save tocptr */                   \
          "ld   2,-8(11)\n\t"  /* use nraddr's tocptr */           \
          VG_EXPAND_FRAME_BY_trashes_r3(128)                       \
          /* arg9 */                                               \
@@ -3433,7 +3433,7 @@ typedef
       __asm__ volatile(                                           \
          "mr 11,%1\n\t"                                           \
          VG_EXPAND_FRAME_BY_trashes_r3(512)                       \
-         "std 2,-16(11)\n\t"  /* save tocptr */                   \
+         "std  2,-16(11)\n\t" /* save tocptr */                   \
          "ld   2,-8(11)\n\t"  /* use nraddr's tocptr */           \
          VG_EXPAND_FRAME_BY_trashes_r3(128)                       \
          /* arg10 */                                              \
@@ -3488,7 +3488,7 @@ typedef
       __asm__ volatile(                                           \
          "mr 11,%1\n\t"                                           \
          VG_EXPAND_FRAME_BY_trashes_r3(512)                       \
-         "std 2,-16(11)\n\t"  /* save tocptr */                   \
+         "std  2,-16(11)\n\t" /* save tocptr */                   \
          "ld   2,-8(11)\n\t"  /* use nraddr's tocptr */           \
          VG_EXPAND_FRAME_BY_trashes_r3(144)                       \
          /* arg11 */                                              \

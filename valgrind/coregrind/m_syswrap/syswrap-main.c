@@ -482,15 +482,15 @@ void getSyscallStatusFromGuestState ( /*OUT*/SyscallStatus*     canonical,
    canonical->what = SsComplete;
 
 #  elif defined(VGP_ppc32_linux)
-   VexGuestPPC32State* gst = (VexGuestPPC32State*)gst_vanilla;
-   UInt                cr  = LibVEX_GuestPPC32_get_CR( gst );
+   VexGuestPPC32State* gst   = (VexGuestPPC32State*)gst_vanilla;
+   UInt                cr    = LibVEX_GuestPPC32_get_CR( gst );
    UInt                cr0so = (cr >> 28) & 1;
    canonical->sres = VG_(mk_SysRes_ppc32_linux)( gst->guest_GPR3, cr0so );
    canonical->what = SsComplete;
 
 #  elif defined(VGP_ppc64_linux)
-   VexGuestPPC64State* gst = (VexGuestPPC64State*)gst_vanilla;
-   UInt                cr  = LibVEX_GuestPPC64_get_CR( gst );
+   VexGuestPPC64State* gst   = (VexGuestPPC64State*)gst_vanilla;
+   UInt                cr    = LibVEX_GuestPPC64_get_CR( gst );
    UInt                cr0so = (cr >> 28) & 1;
    canonical->sres = VG_(mk_SysRes_ppc64_linux)( gst->guest_GPR3, cr0so );
    canonical->what = SsComplete;
@@ -508,7 +508,7 @@ void getSyscallStatusFromGuestState ( /*OUT*/SyscallStatus*     canonical,
    canonical->what = SsComplete;
 
 #  else
-#  error "getSyscallStatusFromGuestState: unknown arch"
+#    error "getSyscallStatusFromGuestState: unknown arch"
 #  endif
 }
 
@@ -581,7 +581,7 @@ void putSyscallStatusIntoGuestState ( /*IN*/ SyscallStatus*     canonical,
    gst->guest_GPR4 = canonical->sres.err;
 
 #  else
-#  error "putSyscallStatusIntoGuestState: unknown arch"
+#    error "putSyscallStatusIntoGuestState: unknown arch"
 #  endif
 }
 
@@ -1059,7 +1059,7 @@ void VG_(client_syscall) ( ThreadId tid )
             incorrect. */
          SysRes sres 
             = VG_(do_syscall)(sysno, sci->args.arg1, sci->args.arg2, 
-                                      sci->args.arg3, sci->args.arg4, 
+                                     sci->args.arg3, sci->args.arg4, 
                                      sci->args.arg5, sci->args.arg6,
                                      sci->args.arg7, sci->args.arg8 );
          sci->status = convert_SysRes_to_SyscallStatus(sres);

@@ -92,10 +92,10 @@ extern Bool VG_(get_fnname_nodemangle)( Addr a,
 
 /* Use DWARF2/3 CFA information to do one step of stack unwinding. */
 extern Bool VG_(use_CF_info) ( /*MOD*/Addr* ipP,
-                                /*MOD*/Addr* spP,
-                                /*MOD*/Addr* fpP,
-                                Addr min_accessible,
-                                Addr max_accessible );
+                               /*MOD*/Addr* spP,
+                               /*MOD*/Addr* fpP,
+                               Addr min_accessible,
+                               Addr max_accessible );
 
 /* ppc64-linux only: find the TOC pointer (R2 value) that should be in
    force at the entry point address of the function containing

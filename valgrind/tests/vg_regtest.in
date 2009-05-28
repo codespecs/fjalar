@@ -339,21 +339,21 @@ sub do_one_test($$)
     # Filter stderr
     mysystem("$stderr_filter < $name.stderr.out > $tmp");
     rename($tmp, "$name.stderr.out");
-    # Find all the .stderr.exp files.  $name.stderr.exp must exist.
+    # Find all the .stderr.exp files.  At least one must exist.
     my @stderr_exps = <$name.stderr.exp*>;
-    (-r "$name.stderr.exp") or die "Could not read `$name.stderr.exp'\n";
+    (0 != scalar @stderr_exps) or die "Could not find `$name.stderr.exp*'\n";
     do_diffs($fullname, $name, "stderr", \@stderr_exps); 
- 
+
     # Maybe do post-test check
-    if (defined $posttest) {
-	if (mysystem("$posttest > $name.posttest.out") != 0) {
-	    print("posttest failed: $posttest\n");
-	    $num_failures{"posttest"}++;
+    if (defined $post) {
+	if (mysystem("$post > $name.post.out") != 0) {
+	    print("post check failed: $post\n");
+	    $num_failures{"post"}++;
 	} else {
-	    # Find all the .posttest.exp files.  If none, use /dev/null.
-	    my @posttest_exps = <$name.posttest.exp*>;
-	    @posttest_exps = ( "/dev/null" ) if (0 == scalar @posttest_exps);
-	    do_diffs($fullname, $name, "posttest", \@posttest_exps);
+	    # Find all the .post.exp files.  If none, use /dev/null.
+	    my @post_exps = <$name.post.exp*>;
+	    @post_exps = ( "/dev/null" ) if (0 == scalar @post_exps);
+	    do_diffs($fullname, $name, "post", \@post_exps);
 	}
     }
  
@@ -426,11 +426,11 @@ sub summarise_results
     my $x = ( $num_tests_done == 1 ? "test" : "tests" );
     
     printf("\n== %d test%s, %d stderr failure%s, %d stdout failure%s, "
-                         . "%d posttest failure%s ==\n", 
+                         . "%d post failure%s ==\n", 
            $num_tests_done, plural($num_tests_done),
-           $num_failures{"stderr"}, plural($num_failures{"stderr"}),
+           $num_failures{"stderr"},   plural($num_failures{"stderr"}),
            $num_failures{"stdout"},   plural($num_failures{"stdout"}),
-           $num_failures{"posttest"}, plural($num_failures{"posttest"}));
+           $num_failures{"post"},     plural($num_failures{"post"}));
 
     foreach my $failure (@failures) {
         print "$failure\n";

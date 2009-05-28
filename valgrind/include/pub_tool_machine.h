@@ -44,12 +44,12 @@
 #  define VG_STACK_REDZONE_SZB    128
 #elif defined(VGP_ppc32_linux)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4
+#  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB      0
 #elif defined(VGP_ppc64_linux)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4
+#  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB    288  // number of addressable bytes below R1
                                        // from 64-bit PowerPC ELF ABI Supplement 1.7

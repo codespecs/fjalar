@@ -5,7 +5,7 @@
 AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
-                 -fno-strict-aliasing 
+                 -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
@@ -24,7 +24,7 @@ AM_CCASFLAGS_X86_LINUX    = $(add_includes_x86_linux) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
 AM_CPPFLAGS_AMD64_LINUX   = $(add_includes_amd64_linux)
 AM_CFLAGS_AMD64_LINUX     = $(WERROR) @FLAG_M64@ -fomit-frame-pointer \
-				 @PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
+				@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_AMD64_LINUX  = $(add_includes_amd64_linux) @FLAG_M64@ -g
 
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@

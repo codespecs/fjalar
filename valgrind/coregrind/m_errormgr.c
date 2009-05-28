@@ -469,8 +469,8 @@ void do_actions_on_error(Error* err, Bool allow_db_attach)
       ) {
       gen_suppression(err);
    }
-      if (VG_(clo_gen_suppressions) == 1 && !still_noisy)
-         VG_(clo_gen_suppressions) = 0;
+   if (VG_(clo_gen_suppressions) == 1 && !still_noisy)
+      VG_(clo_gen_suppressions) = 0;
 }
 
 /* Shared between VG_(maybe_record_error)() and VG_(unique_error)(),
@@ -554,8 +554,8 @@ void VG_(maybe_record_error) ( ThreadId tid,
 
    /* First, see if we've got an error record matching this one. */
    em_errlist_searches++;
-   p      = errors;
-   p_prev = NULL;
+   p       = errors;
+   p_prev  = NULL;
    while (p != NULL) {
       em_errlist_cmps++;
       if (eq_Error(exe_res, p, &err)) {

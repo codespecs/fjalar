@@ -173,7 +173,7 @@ void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
 
    static Bool entered = False;
    if (entered) 
-     VG_(exit)(2);
+      VG_(exit)(2);
    entered = True;
 
    va_start(vargs, format);

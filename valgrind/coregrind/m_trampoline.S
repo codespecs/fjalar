@@ -751,7 +751,7 @@ VG_(trampoline_stuff_end):
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
 #endif
-		
+
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

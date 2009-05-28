@@ -172,7 +172,7 @@ Int VG_(kill)( Int pid, Int signo )
    return res.isError ? -1 : 0;
 }
 
- 
+
 Int VG_(tkill)( ThreadId tid, Int signo )
 {
    SysRes res = VG_(mk_SysRes_Error)(VKI_ENOSYS);

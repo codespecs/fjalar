@@ -233,7 +233,7 @@ extern void VG_(basic_tool_funcs)(
       details.
    */
    IRSB*(*instrument)(VgCallbackClosure* closure, 
-                      IRSB* bb_in, 
+                      IRSB*              sb_in, 
                       VexGuestLayout*    layout, 
                       VexGuestExtents*   vge, 
                       IRType             gWordTy, 
@@ -506,32 +506,31 @@ void VG_(track_die_mem_munmap)      (void(*f)(Addr a, SizeT len));
    specialised cases are defined, the general case must be defined too.
 
    Nb: all the specialised ones must use the VG_REGPARM(n) attribute.
- */
- 
-/*    For the _new functions, a tool may specify with with-ECU
-    (ExeContext Unique) or without-ECU version for each size, but not
-    both.  If the with-ECU version is supplied, then the core will
-    arrange to pass, as the ecu argument, a 32-bit int which uniquely
-    identifies the instruction moving the stack pointer down.  This
-    32-bit value is as obtained from VG_(get_ECU_from_ExeContext).
-    VG_(get_ExeContext_from_ECU) can then be used to retrieve the
-    associated depth-1 ExeContext for the location.  All this
-    complexity is provided to support origin tracking in Memcheck.
- */
- void VG_(track_new_mem_stack_4_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_8_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_12_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_16_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_32_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_112_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_128_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_144_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_160_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
- void VG_(track_new_mem_stack_w_ECU)                  (void(*f)(Addr a, SizeT len,
-                                                                        UInt ecu));
- 
-void VG_(track_new_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr new_ESP));
+
+   For the _new functions, a tool may specify with with-ECU
+   (ExeContext Unique) or without-ECU version for each size, but not
+   both.  If the with-ECU version is supplied, then the core will
+   arrange to pass, as the ecu argument, a 32-bit int which uniquely
+   identifies the instruction moving the stack pointer down.  This
+   32-bit value is as obtained from VG_(get_ECU_from_ExeContext).
+   VG_(get_ExeContext_from_ECU) can then be used to retrieve the
+   associated depth-1 ExeContext for the location.  All this
+   complexity is provided to support origin tracking in Memcheck.
+*/
+void VG_(track_new_mem_stack_4_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_8_w_ECU)  (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_12_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_16_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_32_w_ECU) (VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_112_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_128_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_144_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_160_w_ECU)(VG_REGPARM(2) void(*f)(Addr new_ESP, UInt ecu));
+void VG_(track_new_mem_stack_w_ECU)                  (void(*f)(Addr a, SizeT len,
+                                                                       UInt ecu));
+
+void VG_(track_new_mem_stack_4)  (VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_8)  (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_16) (VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_32) (VG_REGPARM(1) void(*f)(Addr new_ESP));
@@ -539,10 +538,10 @@ void VG_(track_new_mem_stack_112)(VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_128)(VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_144)(VG_REGPARM(1) void(*f)(Addr new_ESP));
 void VG_(track_new_mem_stack_160)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack)                 (void(*f)(Addr a, SizeT len));
+void VG_(track_new_mem_stack)                  (void(*f)(Addr a, SizeT len));
 
-void VG_(track_die_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_4)  (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_8)  (VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_16) (VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_32) (VG_REGPARM(1) void(*f)(Addr die_ESP));
@@ -550,7 +549,7 @@ void VG_(track_die_mem_stack_112)(VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_128)(VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_144)(VG_REGPARM(1) void(*f)(Addr die_ESP));
 void VG_(track_die_mem_stack_160)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack)                 (void(*f)(Addr a, SizeT len));
+void VG_(track_die_mem_stack)                  (void(*f)(Addr a, SizeT len));
 
 /* Used for redzone at end of thread stacks */
 void VG_(track_ban_mem_stack)      (void(*f)(Addr a, SizeT len));
