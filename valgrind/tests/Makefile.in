@@ -14,6 +14,9 @@
 
 @SET_MAKE@
 
+# This file is used for tool tests, and also in perf/Makefile.am.
+
+
 srcdir = @srcdir@
 top_srcdir = @top_srcdir@
 VPATH = @srcdir@
@@ -36,9 +39,12 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(srcdir)/vg_regtest.in $(top_srcdir)/Makefile.flags.am
-check_PROGRAMS = cputest$(EXEEXT) toobig-allocs$(EXEEXT) true$(EXEEXT)
+DIST_COMMON = $(noinst_HEADERS) $(srcdir)/Makefile.am \
+	$(srcdir)/Makefile.in $(srcdir)/vg_regtest.in \
+	$(top_srcdir)/Makefile.flags.am \
+	$(top_srcdir)/Makefile.tool-tests.am
+check_PROGRAMS = arch_test$(EXEEXT) os_test$(EXEEXT) true$(EXEEXT) \
+	x86_amd64_features$(EXEEXT)
 subdir = tests
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
@@ -47,14 +53,18 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES = vg_regtest
-am_cputest_OBJECTS = cputest-cputest.$(OBJEXT)
-cputest_OBJECTS = $(am_cputest_OBJECTS)
-am_toobig_allocs_OBJECTS = toobig-allocs.$(OBJEXT)
-toobig_allocs_OBJECTS = $(am_toobig_allocs_OBJECTS)
-toobig_allocs_LDADD = $(LDADD)
-am_true_OBJECTS = true.$(OBJEXT)
-true_OBJECTS = $(am_true_OBJECTS)
+arch_test_SOURCES = arch_test.c
+arch_test_OBJECTS = arch_test.$(OBJEXT)
+arch_test_LDADD = $(LDADD)
+os_test_SOURCES = os_test.c
+os_test_OBJECTS = os_test.$(OBJEXT)
+os_test_LDADD = $(LDADD)
+true_SOURCES = true.c
+true_OBJECTS = true.$(OBJEXT)
 true_LDADD = $(LDADD)
+x86_amd64_features_SOURCES = x86_amd64_features.c
+x86_amd64_features_OBJECTS = x86_amd64_features.$(OBJEXT)
+x86_amd64_features_LDADD = $(LDADD)
 SCRIPTS = $(noinst_SCRIPTS)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
@@ -63,9 +73,9 @@ COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
-SOURCES = $(cputest_SOURCES) $(toobig_allocs_SOURCES) $(true_SOURCES)
-DIST_SOURCES = $(cputest_SOURCES) $(toobig_allocs_SOURCES) \
-	$(true_SOURCES)
+SOURCES = arch_test.c os_test.c true.c x86_amd64_features.c
+DIST_SOURCES = arch_test.c os_test.c true.c x86_amd64_features.c
+HEADERS = $(noinst_HEADERS)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -102,6 +112,7 @@ CYGPATH_W = @CYGPATH_W@
 DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
+DIFF = @DIFF@
 DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
@@ -130,6 +141,14 @@ HAVE_BOOST_1_35_FALSE = @HAVE_BOOST_1_35_FALSE@
 HAVE_BOOST_1_35_TRUE = @HAVE_BOOST_1_35_TRUE@
 HAVE_OPENMP_FALSE = @HAVE_OPENMP_FALSE@
 HAVE_OPENMP_TRUE = @HAVE_OPENMP_TRUE@
+HAVE_PTHREAD_BARRIER_FALSE = @HAVE_PTHREAD_BARRIER_FALSE@
+HAVE_PTHREAD_BARRIER_TRUE = @HAVE_PTHREAD_BARRIER_TRUE@
+HAVE_PTHREAD_CREATE_GLIBC_2_0_FALSE = @HAVE_PTHREAD_CREATE_GLIBC_2_0_FALSE@
+HAVE_PTHREAD_CREATE_GLIBC_2_0_TRUE = @HAVE_PTHREAD_CREATE_GLIBC_2_0_TRUE@
+HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE = @HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE@
+HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE = @HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE@
+HAVE_PTHREAD_SPINLOCK_FALSE = @HAVE_PTHREAD_SPINLOCK_FALSE@
+HAVE_PTHREAD_SPINLOCK_TRUE = @HAVE_PTHREAD_SPINLOCK_TRUE@
 HAVE_QTCORE_FALSE = @HAVE_QTCORE_FALSE@
 HAVE_QTCORE_TRUE = @HAVE_QTCORE_TRUE@
 INSTALL_DATA = @INSTALL_DATA@
@@ -166,30 +185,36 @@ STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
 VEX_DIR = @VEX_DIR@
-VGO_AIX5_FALSE = @VGO_AIX5_FALSE@
-VGO_AIX5_TRUE = @VGO_AIX5_TRUE@
-VGO_LINUX_FALSE = @VGO_LINUX_FALSE@
-VGO_LINUX_TRUE = @VGO_LINUX_TRUE@
-VGP_AMD64_LINUX_FALSE = @VGP_AMD64_LINUX_FALSE@
-VGP_AMD64_LINUX_TRUE = @VGP_AMD64_LINUX_TRUE@
-VGP_HAVE_SECONDARY_FALSE = @VGP_HAVE_SECONDARY_FALSE@
-VGP_HAVE_SECONDARY_TRUE = @VGP_HAVE_SECONDARY_TRUE@
-VGP_PPC32_AIX5_FALSE = @VGP_PPC32_AIX5_FALSE@
-VGP_PPC32_AIX5_TRUE = @VGP_PPC32_AIX5_TRUE@
-VGP_PPC32_LINUX_FALSE = @VGP_PPC32_LINUX_FALSE@
-VGP_PPC32_LINUX_TRUE = @VGP_PPC32_LINUX_TRUE@
-VGP_PPC64_AIX5_FALSE = @VGP_PPC64_AIX5_FALSE@
-VGP_PPC64_AIX5_TRUE = @VGP_PPC64_AIX5_TRUE@
-VGP_PPC64_LINUX_FALSE = @VGP_PPC64_LINUX_FALSE@
-VGP_PPC64_LINUX_TRUE = @VGP_PPC64_LINUX_TRUE@
-VGP_X86_LINUX_FALSE = @VGP_X86_LINUX_FALSE@
-VGP_X86_LINUX_TRUE = @VGP_X86_LINUX_TRUE@
-VG_ARCH_ALL = @VG_ARCH_ALL@
-VG_ARCH_MAX = @VG_ARCH_MAX@
-VG_ARCH_PRI = @VG_ARCH_PRI@
-VG_OS = @VG_OS@
-VG_PLATFORM_PRI = @VG_PLATFORM_PRI@
-VG_PLATFORM_SEC = @VG_PLATFORM_SEC@
+VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
+VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
+VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
+VGCONF_ARCHS_INCLUDE_PPC32_TRUE = @VGCONF_ARCHS_INCLUDE_PPC32_TRUE@
+VGCONF_ARCHS_INCLUDE_PPC64_FALSE = @VGCONF_ARCHS_INCLUDE_PPC64_FALSE@
+VGCONF_ARCHS_INCLUDE_PPC64_TRUE = @VGCONF_ARCHS_INCLUDE_PPC64_TRUE@
+VGCONF_ARCHS_INCLUDE_X86_FALSE = @VGCONF_ARCHS_INCLUDE_X86_FALSE@
+VGCONF_ARCHS_INCLUDE_X86_TRUE = @VGCONF_ARCHS_INCLUDE_X86_TRUE@
+VGCONF_ARCH_PRI = @VGCONF_ARCH_PRI@
+VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@
+VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@
+VGCONF_OS = @VGCONF_OS@
+VGCONF_OS_IS_AIX5_FALSE = @VGCONF_OS_IS_AIX5_FALSE@
+VGCONF_OS_IS_AIX5_TRUE = @VGCONF_OS_IS_AIX5_TRUE@
+VGCONF_OS_IS_LINUX_FALSE = @VGCONF_OS_IS_LINUX_FALSE@
+VGCONF_OS_IS_LINUX_TRUE = @VGCONF_OS_IS_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@
+VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
+VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
@@ -243,7 +268,7 @@ target_alias = @target_alias@
 AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
-                 -fno-strict-aliasing 
+                 -fno-strict-aliasing
 
 
 # These flags are used for building the preload shared objects.
@@ -253,50 +278,90 @@ AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
 # -O
 AM_CFLAGS_PIC = -g -fpic -fno-omit-frame-pointer -fno-strict-aliasing
 
-# Flags for specific targets
+# Flags for specific targets.
+#
+# Nb: the AM_CPPFLAGS_* values are suitable for building tools and auxprogs.
+# For building the core, coregrind/Makefile.am files add some extra things.
+#
+# Also: in newer versions of automake (1.10 onwards?) asm files ending with
+# '.S' are considered "pre-processed" (as opposed to those ending in '.s')
+# and so the CPPFLAGS are passed to the assembler.  But this is not true for
+# older automakes (e.g. 1.8.5, 1.9.6), sigh.  So we include
+# AM_CPPFLAGS_<PLATFORM> in each AM_CCASFLAGS_<PLATFORM> variable.  This
+# means some of the flags are duplicated on systems with newer versions of
+# automake, but this does not really matter and seems hard to avoid.
+AM_CPPFLAGS_COMMON = \
+		-I$(top_srcdir) \
+		-I$(top_srcdir)/include \
+		-I@VEX_DIR@/pub
+
 AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
-AM_CPPFLAGS_X86_LINUX = $(add_includes_x86_linux)
-AM_CFLAGS_X86_LINUX = $(WERROR) @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
+AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_x86=1 \
+			    -DVGO_linux=1 \
+			    -DVGP_x86_linux=1
+
+AM_CFLAGS_X86_LINUX = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
 			 	$(AM_CFLAGS_BASE)
 
-AM_CCASFLAGS_X86_LINUX = $(add_includes_x86_linux) @FLAG_M32@ -g
+AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_AMD64_LINUX = $(add_includes_amd64_linux)
-AM_CFLAGS_AMD64_LINUX = $(WERROR) @FLAG_M64@ -fomit-frame-pointer \
-				 @PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
+AM_CPPFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_amd64=1 \
+			    -DVGO_linux=1 \
+			    -DVGP_amd64_linux=1
 
-AM_CCASFLAGS_AMD64_LINUX = $(add_includes_amd64_linux) @FLAG_M64@ -g
+AM_CFLAGS_AMD64_LINUX = @FLAG_M64@ -fomit-frame-pointer \
+				@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
+
+AM_CCASFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_AMD64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
-AM_CPPFLAGS_PPC32_LINUX = $(add_includes_ppc32_linux)
-AM_CFLAGS_PPC32_LINUX = $(WERROR) @FLAG_M32@ $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC32_LINUX = $(add_includes_ppc32_linux) -Wa,-maltivec @FLAG_M32@ -g
+AM_CPPFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_COMMON) \
+		-DVGA_ppc32=1 \
+		-DVGO_linux=1 \
+		-DVGP_ppc32_linux=1
+
+AM_CFLAGS_PPC32_LINUX = @FLAG_M32@ $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_PPC32_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux)
-AM_CFLAGS_PPC64_LINUX = $(WERROR) @FLAG_M64@ $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux) -Wa,-maltivec @FLAG_M64@ -g
+AM_CPPFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_ppc64=1 \
+			    -DVGO_linux=1 \
+			    -DVGP_ppc64_linux=1
+
+AM_CFLAGS_PPC64_LINUX = @FLAG_M64@ $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_PPC64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
-AM_CPPFLAGS_PPC32_AIX5 = $(add_includes_ppc32_aix5)
-AM_CFLAGS_PPC32_AIX5 = $(WERROR) @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC32_AIX5 = $(add_includes_ppc32_aix5) \
-				@FLAG_MAIX32@ -mcpu=powerpc -g
+AM_CPPFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_ppc32=1 \
+			    -DVGO_aix5=1 \
+			    -DVGP_ppc32_aix5=1
+
+AM_CFLAGS_PPC32_AIX5 = @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_PPC32_AIX5) \
+			    @FLAG_MAIX32@ -mcpu=powerpc -g
 
 AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
-AM_CPPFLAGS_PPC64_AIX5 = $(add_includes_ppc64_aix5)
-AM_CFLAGS_PPC64_AIX5 = $(WERROR) @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC64_AIX5 = $(add_includes_ppc64_aix5) \
-				@FLAG_MAIX64@ -mcpu=powerpc64 -g
+AM_CPPFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_ppc64=1 \
+			    -DVGO_aix5=1 \
+			    -DVGP_ppc64_aix5=1
+
+AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
+			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
 
 
 # Flags for the primary target.  These must be used to build the
 # regtests and performance tests.  In fact, these must be used to
 # build anything which is built only once on a dual-arch build.
 #
-AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VG_PLATFORM_PRI@)
-AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VG_PLATFORM_PRI@)
-AM_CFLAGS_PRI = $(AM_CFLAGS_@VG_PLATFORM_PRI@)
-AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VG_PLATFORM_PRI@)
-@VGP_HAVE_SECONDARY_FALSE@AM_FLAG_M3264_SEC = 
-@VGP_HAVE_SECONDARY_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VG_PLATFORM_SEC@)
+AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CFLAGS_PRI = $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+@VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@AM_FLAG_M3264_SEC = 
+@VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 
 # Baseline link flags for making dynamic shared objects.
 #
@@ -308,34 +373,41 @@ PRELOAD_LDFLAGS_PPC32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
 PRELOAD_LDFLAGS_PPC64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_PPC32_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX32@
 PRELOAD_LDFLAGS_PPC64_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX64@
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
+		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
+		-I@VEX_DIR@/pub \
+		-DVGA_$(VGCONF_ARCH_PRI)=1 \
+		-DVGO_$(VGCONF_OS)=1 \
+		-DVGP_$(VGCONF_ARCH_PRI)_$(VGCONF_OS)=1
 
-# For AM_FLAG_M3264_PRI
+# Nb: Tools need to augment these flags with an arch-selection option, such
+# as $(AM_FLAG_M3264_PRI).
+AM_CFLAGS = -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+AM_CXXFLAGS = -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+# Include AM_CPPFLAGS in AM_CCASFLAGS to allow for older versions of
+# automake;  see comments in Makefile.flags.am for more detail.
+AM_CCASFLAGS = $(AM_CPPFLAGS)
 noinst_SCRIPTS = \
-	vg_regtest \
 	filter_addresses \
 	filter_discards \
 	filter_libc \
 	filter_numbers \
 	filter_stderr_basic \
 	filter_sink \
-	filter_test_paths
+	platform_test \
+	vg_regtest
+
+noinst_HEADERS = \
+	asm.h \
+	malloc.h \
+	sys_mman.h
 
 EXTRA_DIST = $(noinst_SCRIPTS)
-AM_CFLAGS = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
-AM_CXXFLAGS = $(AM_CFLAGS)
-
-# generic C ones
-cputest_SOURCES = cputest.c
-cputest_CFLAGS = $(AM_CFLAGS) -D__$(VG_ARCH_MAX)__
-cputest_DEPENDENCIES = 
-cputest_LDADD = 
-toobig_allocs_SOURCES = toobig-allocs.c
-true_SOURCES = true.c
 all: all-am
 
 .SUFFIXES:
 .SUFFIXES: .c .o .obj
-$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.flags.am $(am__configure_deps)
+$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool-tests.am $(top_srcdir)/Makefile.flags.am $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -369,15 +441,18 @@ vg_regtest: $(top_builddir)/config.status $(srcdir)/vg_regtest.in
 
 clean-checkPROGRAMS:
 	-test -z "$(check_PROGRAMS)" || rm -f $(check_PROGRAMS)
-cputest$(EXEEXT): $(cputest_OBJECTS) $(cputest_DEPENDENCIES) 
-	@rm -f cputest$(EXEEXT)
-	$(LINK) $(cputest_LDFLAGS) $(cputest_OBJECTS) $(cputest_LDADD) $(LIBS)
-toobig-allocs$(EXEEXT): $(toobig_allocs_OBJECTS) $(toobig_allocs_DEPENDENCIES) 
-	@rm -f toobig-allocs$(EXEEXT)
-	$(LINK) $(toobig_allocs_LDFLAGS) $(toobig_allocs_OBJECTS) $(toobig_allocs_LDADD) $(LIBS)
+arch_test$(EXEEXT): $(arch_test_OBJECTS) $(arch_test_DEPENDENCIES) 
+	@rm -f arch_test$(EXEEXT)
+	$(LINK) $(arch_test_LDFLAGS) $(arch_test_OBJECTS) $(arch_test_LDADD) $(LIBS)
+os_test$(EXEEXT): $(os_test_OBJECTS) $(os_test_DEPENDENCIES) 
+	@rm -f os_test$(EXEEXT)
+	$(LINK) $(os_test_LDFLAGS) $(os_test_OBJECTS) $(os_test_LDADD) $(LIBS)
 true$(EXEEXT): $(true_OBJECTS) $(true_DEPENDENCIES) 
 	@rm -f true$(EXEEXT)
 	$(LINK) $(true_LDFLAGS) $(true_OBJECTS) $(true_LDADD) $(LIBS)
+x86_amd64_features$(EXEEXT): $(x86_amd64_features_OBJECTS) $(x86_amd64_features_DEPENDENCIES) 
+	@rm -f x86_amd64_features$(EXEEXT)
+	$(LINK) $(x86_amd64_features_LDFLAGS) $(x86_amd64_features_OBJECTS) $(x86_amd64_features_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -385,9 +460,10 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cputest-cputest.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/toobig-allocs.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/arch_test.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/os_test.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/true.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/x86_amd64_features.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	if $(COMPILE) -MT $@ -MD -MP -MF "$(DEPDIR)/$*.Tpo" -c -o $@ $<; \
@@ -402,20 +478,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(COMPILE) -c `$(CYGPATH_W) '$<'`
-
-cputest-cputest.o: cputest.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cputest_CFLAGS) $(CFLAGS) -MT cputest-cputest.o -MD -MP -MF "$(DEPDIR)/cputest-cputest.Tpo" -c -o cputest-cputest.o `test -f 'cputest.c' || echo '$(srcdir)/'`cputest.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/cputest-cputest.Tpo" "$(DEPDIR)/cputest-cputest.Po"; else rm -f "$(DEPDIR)/cputest-cputest.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cputest.c' object='cputest-cputest.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cputest_CFLAGS) $(CFLAGS) -c -o cputest-cputest.o `test -f 'cputest.c' || echo '$(srcdir)/'`cputest.c
-
-cputest-cputest.obj: cputest.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cputest_CFLAGS) $(CFLAGS) -MT cputest-cputest.obj -MD -MP -MF "$(DEPDIR)/cputest-cputest.Tpo" -c -o cputest-cputest.obj `if test -f 'cputest.c'; then $(CYGPATH_W) 'cputest.c'; else $(CYGPATH_W) '$(srcdir)/cputest.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/cputest-cputest.Tpo" "$(DEPDIR)/cputest-cputest.Po"; else rm -f "$(DEPDIR)/cputest-cputest.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='cputest.c' object='cputest-cputest.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(cputest_CFLAGS) $(CFLAGS) -c -o cputest-cputest.obj `if test -f 'cputest.c'; then $(CYGPATH_W) 'cputest.c'; else $(CYGPATH_W) '$(srcdir)/cputest.c'; fi`
 uninstall-info-am:
 
 ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
@@ -497,7 +559,7 @@ distdir: $(DISTFILES)
 check-am: all-am
 	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
 check: check-am
-all-am: Makefile $(SCRIPTS)
+all-am: Makefile $(SCRIPTS) $(HEADERS)
 installdirs:
 install: install-am
 install-exec: install-exec-am

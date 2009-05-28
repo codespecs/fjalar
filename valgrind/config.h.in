@@ -9,6 +9,9 @@
 /* path to GDB */
 #undef GDB_PATH
 
+/* Define to 1 if you're using glibc 2.10.x */
+#undef GLIBC_2_10
+
 /* Define to 1 if you're using glibc 2.2.x */
 #undef GLIBC_2_2
 
@@ -32,6 +35,9 @@
 
 /* Define to 1 if you're using glibc 2.9.x */
 #undef GLIBC_2_9
+
+/* Define to 1 if you have the <asm/unistd.h> header file. */
+#undef HAVE_ASM_UNISTD_H
 
 /* Define to 1 if as supports mtocrf/mfocrf. */
 #undef HAVE_AS_PPC_MFTOCRF
@@ -75,9 +81,6 @@
 /* Define to 1 if you have the `klogctl' function. */
 #undef HAVE_KLOGCTL
 
-/* Define to 1 if FILE has a member called _lock. */
-#undef HAVE_LIBC_FILE_LOCK
-
 /* Define to 1 if you have the `rt' library (-lrt). */
 #undef HAVE_LIBRT
 
@@ -105,8 +108,14 @@
 /* Define to 1 if you have the `ppoll' function. */
 #undef HAVE_PPOLL
 
+/* Define to 1 if you have the `pthread_barrier_init' function. */
+#undef HAVE_PTHREAD_BARRIER_INIT
+
 /* Define to 1 if you have the `pthread_condattr_setclock' function. */
 #undef HAVE_PTHREAD_CONDATTR_SETCLOCK
+
+/* Define to 1 if you have the `pthread_create@glibc2.0' function. */
+#undef HAVE_PTHREAD_CREATE_GLIBC_2_0
 
 /* Define to 1 if you have the `PTHREAD_MUTEX_ADAPTIVE_NP' constant. */
 #undef HAVE_PTHREAD_MUTEX_ADAPTIVE_NP
@@ -116,6 +125,9 @@
 
 /* Define to 1 if you have the `PTHREAD_MUTEX_RECURSIVE_NP' constant. */
 #undef HAVE_PTHREAD_MUTEX_RECURSIVE_NP
+
+/* Define to 1 if you have the `pthread_mutex_timedlock' function. */
+#undef HAVE_PTHREAD_MUTEX_TIMEDLOCK
 
 /* Define to 1 if pthread_mutex_t has a member __data.__kind. */
 #undef HAVE_PTHREAD_MUTEX_T__DATA__KIND
@@ -127,6 +139,15 @@
    constant. */
 #undef HAVE_PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
 
+/* Define to 1 if you have the `pthread_rwlock_timedrdlock' function. */
+#undef HAVE_PTHREAD_RWLOCK_TIMEDRDLOCK
+
+/* Define to 1 if you have the `pthread_rwlock_timedwrlock' function. */
+#undef HAVE_PTHREAD_RWLOCK_TIMEDWRLOCK
+
+/* Define to 1 if you have the `pthread_spin_lock' function. */
+#undef HAVE_PTHREAD_SPIN_LOCK
+
 /* Define to 1 if the installed version of Qt4 provides QMutex::tryLock(int).
    */
 #undef HAVE_QTCORE_QMUTEX_TRYLOCK_INT
@@ -136,6 +157,9 @@
 
 /* Define to 1 if you have the `signalfd' function. */
 #undef HAVE_SIGNALFD
+
+/* Define to 1 if you have the `sigwaitinfo' function. */
+#undef HAVE_SIGWAITINFO
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
