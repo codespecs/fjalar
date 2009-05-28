@@ -1764,15 +1764,16 @@ static void make_mem_defined_if_addressable ( Addr a, SizeT len )
 
 /* --- Block-copy permissions (needed for implementing realloc() and
        sys_mremap). --- */
+
 // PG - pgbovine - We need to use this for copying A & V bits to
 //                 virtualStack so make it non-static:
 void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
 {
-  // RUDD - len is used as a working variable, so we need to keep it's
-  // value for dyncomp's copy_tags call.
-  SizeT i, j, orig_size = len;
-  UChar vabits2, vabits8;
-  Bool  aligned, nooverlap;
+   // RUDD - len is used as a working variable, so we need to keep it's
+   // value for dyncomp's copy_tags call.
+   SizeT i, j, orig_size = len;
+   UChar vabits2, vabits8;
+   Bool  aligned, nooverlap;
 
    DEBUG("MC_(copy_address_range_state)\n");
    PROF_EVENT(50, "MC_(copy_address_range_state)");
@@ -3819,13 +3820,12 @@ void check_mem_is_defined_asciiz ( CorePart part, ThreadId tid,
 static
 void mc_new_mem_startup( Addr a, SizeT len,
                          Bool rr, Bool ww, Bool xx, ULong di_handle )
-
 {
 
   //Silenced GCC warnings - Rudd
   (void)rr; (void)ww; (void)xx; (void)di_handle;
 
-  /* Ignore the permissions, just make it defined.  Seems to work... */
+   /* Ignore the permissions, just make it defined.  Seems to work... */
    // Because code is defined, initialised variables get put in the data
    // segment and are defined, and uninitialised variables get put in the
    // bss segment and are auto-zeroed (and so defined).  
@@ -3925,7 +3925,7 @@ void mc_post_reg_write_clientcall ( ThreadId tid,
 */
 static void mc_pre_reg_read ( CorePart part, ThreadId tid, Char* s, 
                               OffT offset, SizeT size)
-{ 
+{
   // Silence GCC warnings - RUDD (INT->UINT)
    UInt   i;
    Bool  bad;
