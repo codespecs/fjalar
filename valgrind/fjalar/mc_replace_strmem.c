@@ -470,6 +470,7 @@ STPCPY(m_libc_soname,         stpcpy)
 STPCPY(m_ld_linux_so_2,        stpcpy)
 STPCPY(m_ld_linux_x86_64_so_2, stpcpy)
    
+
 #define MEMSET(soname, fnname) \
    void* VG_REPLACE_FUNCTION_ZU(soname,fnname)(void *s, Int c, SizeT n); \
    void* VG_REPLACE_FUNCTION_ZU(soname,fnname)(void *s, Int c, SizeT n) \
@@ -640,41 +641,45 @@ GLIBC25___STRCPY_CHK(m_libc_soname, __strcpy_chk)
 GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
 
 
-/* mempcpy */
-/* #define GLIBC25_MEMPCPY(soname, fnname) \ */
-/*    void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \ */
-/*             ( void *dst, const void *src, SizeT len ); \ */
-/*    void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \ */
-/*             ( void *dst, const void *src, SizeT len ) \ */
-/*    { \ */
-/*       register char *d; \ */
-/*       register char *s; \ */
-/*       SizeT len_saved = len; \ */
-/*       \ */
-/*       if (len == 0) \ */
-/*          return dst; \ */
-/*       \ */
-/*       if (is_overlap(dst, src, len, len)) \ */
-/*          RECORD_OVERLAP_ERROR("mempcpy", dst, src, len); \ */
-/*       \ */
-/*       if ( dst > src ) { \ */
-/*          d = (char *)dst + len - 1; \ */
-/*          s = (char *)src + len - 1; \ */
-/*          while ( len-- ) { \ */
-/*             *d-- = *s--; \ */
-/*          } \ */
-/*       } else if ( dst < src ) { \ */
-/*          d = (char *)dst; \ */
-/*          s = (char *)src; \ */
-/*          while ( len-- ) { \ */
-/*             *d++ = *s++; \ */
-/*          } \ */
-/*       } \ */
-/*       return (void*)( ((char*)dst) + len_saved ); \ */
-/*    } */
+#if 0
+/* We're disabling this replacement for Fjalar (why? -SMcC) */
 
-/* GLIBC25_MEMPCPY(m_libc_soname, mempcpy) */
-/* GLIBC25_MEMPCPY(m_ld_so_1,     mempcpy) /\* ld.so.1 *\/ */
+/* mempcpy */
+#define GLIBC25_MEMPCPY(soname, fnname) \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+            ( void *dst, const void *src, SizeT len ); \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+            ( void *dst, const void *src, SizeT len ) \
+   { \
+      register char *d; \
+      register char *s; \
+      SizeT len_saved = len; \
+      \
+      if (len == 0) \
+         return dst; \
+      \
+      if (is_overlap(dst, src, len, len)) \
+         RECORD_OVERLAP_ERROR("mempcpy", dst, src, len); \
+      \
+      if ( dst > src ) { \
+         d = (char *)dst + len - 1; \
+         s = (char *)src + len - 1; \
+         while ( len-- ) { \
+            *d-- = *s--; \
+         } \
+      } else if ( dst < src ) { \
+         d = (char *)dst; \
+         s = (char *)src; \
+         while ( len-- ) { \
+            *d++ = *s++; \
+         } \
+      } \
+      return (void*)( ((char*)dst) + len_saved ); \
+   }
+
+GLIBC25_MEMPCPY(m_libc_soname, mempcpy)
+GLIBC25_MEMPCPY(m_ld_so_1,     mempcpy) /* ld.so.1 */
+#endif
 
 
 #define GLIBC26___MEMCPY_CHK(soname, fnname) \

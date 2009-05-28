@@ -3579,7 +3579,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       switch (st->tag) {
 
          case Ist_WrTmp:
-	   assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
+            assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
                                expr2vbits( &mce, st->Ist.WrTmp.data) );
             break;
 
@@ -3711,12 +3711,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          }
          VG_(printf)("\n");
       }
+
       }
       /* ... and finally copy the stmt itself to the output. */
       stmt('C', &mce, st);
 
-      }
-   
+   }
+
    /* Now we need to complain if the jump target is undefined. */
    first_stmt = bb->stmts_used;
 
@@ -3749,7 +3750,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    //   ppIRBB(bb);
 
    return bb;
-   }
+}
 
 /*------------------------------------------------------------*/
 /*--- Post-tree-build final tidying                        ---*/
