@@ -79,7 +79,7 @@ leaks.</para>
   <listitem>
     <para><option>callgrind</option> adds call graph tracing to cachegrind.  It can be
     used to get call counts and inclusive cost for each call happening in your
-    program. In addition to cachegrind, callgrind can annotate threads separatly,
+    program. In addition to cachegrind, callgrind can annotate threads separately,
     and every instruction of disassembler output of your program with the number of
     instructions executed and cache misses incurred.</para>
   </listitem>
@@ -210,9 +210,20 @@ leaks.</para>
 <title>Callgrind Options</title>
 
 <xi:include href="../../callgrind/docs/cl-manual.xml" 
-            xpointer="cl.opts.list"
+            xpointer="cl.opts.list.misc"
             xmlns:xi="http://www.w3.org/2001/XInclude" />
-
+<xi:include href="../../callgrind/docs/cl-manual.xml" 
+            xpointer="cl.opts.list.creation"
+            xmlns:xi="http://www.w3.org/2001/XInclude" />
+<xi:include href="../../callgrind/docs/cl-manual.xml" 
+            xpointer="cl.opts.list.activity"
+            xmlns:xi="http://www.w3.org/2001/XInclude" />
+<xi:include href="../../callgrind/docs/cl-manual.xml" 
+            xpointer="cl.opts.list.collection"
+            xmlns:xi="http://www.w3.org/2001/XInclude" />
+<xi:include href="../../callgrind/docs/cl-manual.xml" 
+            xpointer="cl.opts.list.simulation"
+            xmlns:xi="http://www.w3.org/2001/XInclude" />
 </refsect1>
 
 
@@ -233,6 +244,17 @@ leaks.</para>
 
 <xi:include href="../../helgrind/docs/hg-manual.xml" 
             xpointer="hg.opts.list"
+            xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+</refsect1>
+
+
+
+<refsect1 id="ptrcheck-options">
+<title>Ptrcheck Options</title>
+
+<xi:include href="../../exp-ptrcheck/docs/pc-manual.xml" 
+            xpointer="pc.opts.list"
             xmlns:xi="http://www.w3.org/2001/XInclude" />
 
 </refsect1>

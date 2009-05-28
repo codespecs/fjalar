@@ -1253,7 +1253,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_truncate,          sys_truncate),           //  92
    GENX_(__NR_ftruncate,         sys_ftruncate),          //  93
    GENX_(__NR_fchmod,            sys_fchmod),             //  94
-
+   
    GENX_(__NR_fchown,            sys_fchown),             //  95
 // _____(__NR_getpriority,       sys_getpriority),        //  96
 // _____(__NR_setpriority,       sys_setpriority),        //  97

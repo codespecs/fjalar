@@ -1,3 +1,4 @@
+
 /*--------------------------------------------------------------------*/
 /*--- Top level management of symbols and debugging information.   ---*/
 /*---                                                  debuginfo.c ---*/

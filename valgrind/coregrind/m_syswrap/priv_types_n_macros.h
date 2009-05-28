@@ -141,7 +141,7 @@ typedef
 extern const SyscallTableEntry ML_(syscall_table)[];
 
 extern const UInt ML_(syscall_table_size);
-   
+
 #elif defined(VGP_ppc32_aix5)
 /* On AIX5 this is more complex than the simple fixed table lookup on
    Linux, since the syscalls don't have fixed numbers.  So it's

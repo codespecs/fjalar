@@ -71,8 +71,8 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "movl  0(%%ebx), %%ecx\n" /* %ecx = buf */
       "movl  4(%%ebx), %%edx\n" /* %edx = n */
       "movl  $"VG_STRINGIFY(__NR_write)", %%eax\n" /* %eax = __NR_write */
-      "movl  $1, %%ebx\n"    /* %ebx = stderr */
-      "int   $0x80\n"        /* write(stderr, buf, n) */
+      "movl  $1, %%ebx\n"       /* %ebx = stderr */
+      "int   $0x80\n"           /* write(stderr, buf, n) */
       "popl  %%ebx\n"           /* reestablish &block */
       "movl  %%eax, 0(%%ebx)\n" /* block[0] = result */
       "popl  %%ebx\n"           /* restore ebx */
@@ -114,7 +114,7 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "movq  $2, %%rdi\n"       /* rdi = stderr */
       "movq  0(%%r15), %%rsi\n" /* rsi = buf */
       "movq  8(%%r15), %%rdx\n" /* rdx = n */
-      "syscall\n"          /* write(stderr, buf, n) */
+      "syscall\n"               /* write(stderr, buf, n) */
       "popq  %%r15\n"           /* reestablish &block */
       "movq  %%rax, 0(%%r15)\n" /* block[0] = result */
       "popq  %%r15\n"           /* restore r15 */
@@ -156,7 +156,7 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "li   3,2\n\t"      /* set %r3 = stderr */
       "lwz  4,0(5)\n\t"   /* set %r4 = buf */
       "lwz  5,4(5)\n\t"   /* set %r5 = n */
-      "sc\n\t"             /* write(stderr, buf, n) */
+      "sc\n\t"            /* write(stderr, buf, n) */
       "lwz  5,0(1)\n\t"
       "addi 1,1,256\n\t"
       "stw  3,0(5)\n"     /* block[0] = result */
@@ -173,7 +173,7 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
 static UInt local_sys_getpid ( void )
 {
    register UInt __res __asm__ ("r3");
-   __asm__ volatile (
+   __asm__ volatile ( 
       "li 0, %1\n\t"
       "sc"
       : "=&r" (__res)
@@ -199,7 +199,7 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "li   3,2\n\t"      /* set %r3 = stderr */
       "ld   4,0(5)\n\t"   /* set %r4 = buf */
       "ld   5,8(5)\n\t"   /* set %r5 = n */
-      "sc\n\t"             /* write(stderr, buf, n) */
+      "sc\n\t"            /* write(stderr, buf, n) */
       "ld   5,0(1)\n\t"
       "addi 1,1,256\n\t"
       "std  3,0(5)\n"     /* block[0] = result */
@@ -216,7 +216,7 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
 static UInt local_sys_getpid ( void )
 {
    register ULong __res __asm__ ("r3");
-   __asm__ volatile (
+   __asm__ volatile ( 
       "li 0, %1\n\t"
       "sc"
       : "=&r" (__res)

@@ -517,7 +517,6 @@ Int VG_(fork) ( void )
    return res.res;
 }
 
-
 /* ---------------------------------------------------------------------
    Timing stuff
    ------------------------------------------------------------------ */
@@ -547,11 +546,11 @@ UInt VG_(read_millisecond_timer) ( void )
    now  = ((ULong)sec1) * 1000000ULL;
    now += (ULong)(nsec / 1000);
 #  else
-   
+
    struct vki_timespec ts_now;
    SysRes res;
    res = VG_(do_syscall2)(__NR_clock_gettime, VKI_CLOCK_MONOTONIC,
-			  (UWord)&ts_now);
+                          (UWord)&ts_now);
    if (res.isError == 0)
    {
      now = ts_now.tv_sec * 1000000ULL + ts_now.tv_nsec / 1000;

@@ -1,7 +1,7 @@
 
 AUTOMAKE_OPTIONS = foreign 1.7 dist-bzip2
 
-include $(top_srcdir)/Makefile.all.am
+include $(top_srcdir)/Makefile.all.am 
 
 TOOLS = fjalar
 
@@ -23,7 +23,7 @@ incincdir = $(includedir)/valgrind
 nodist_incinc_HEADERS = $(VEX_PUBLIC_HDRS)
 
 BUILT_SOURCES  = default.supp valgrind.pc
-CLEANFILES     =
+CLEANFILES     = 
 DISTCLEANFILES = default.supp
 
 if VGP_X86_LINUX

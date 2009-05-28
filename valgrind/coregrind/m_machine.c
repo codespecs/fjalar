@@ -361,24 +361,24 @@ SizeT VG_(thread_get_stack_size)(ThreadId tid)
 
    x86:   initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_x86_have_mxcsr)
    -------------
    amd64: initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
    -------------
    ppc32: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc32_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc32_has_FP)
                        and VG_(machine_ppc32_has_VMX)
    -------------
    ppc64: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc64_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo)
+          then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc64_has_VMX)
 
    VG_(machine_get_hwcaps) may use signals (although it attempts to
@@ -551,7 +551,7 @@ Bool VG_(machine_get_hwcaps)( void )
      r = VG_(sigprocmask)(VKI_SIG_SETMASK, &saved_set, NULL);
      vg_assert(r == 0);
      /*
-        VG_(printf)("F %d V %d FX %d GX %d\n",
+        VG_(printf)("F %d V %d FX %d GX %d\n", 
                     (Int)have_F, (Int)have_V, (Int)have_FX, (Int)have_GX);
      */
      /* Make FP a prerequisite for VMX (bogusly so), and for FX and GX. */
@@ -644,7 +644,7 @@ Bool VG_(machine_get_hwcaps)( void )
      VG_(sigprocmask)(VKI_SIG_SETMASK, &saved_set, NULL);
      /*
      if (0)
-        VG_(printf)("F %d V %d FX %d GX %d\n",
+        VG_(printf)("F %d V %d FX %d GX %d\n", 
                     (Int)have_F, (Int)have_V, (Int)have_FX, (Int)have_GX);
      */
      /* on ppc64, if we don't even have FP, just give up. */

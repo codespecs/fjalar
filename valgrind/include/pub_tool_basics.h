@@ -122,7 +122,7 @@ typedef
    struct {
       UWord res;
       UWord err;
-   Bool  isError;
+      Bool  isError;
    }
    SysRes;
 

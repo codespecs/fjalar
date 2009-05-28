@@ -3003,7 +3003,6 @@ static Int run_CF_instruction ( /*MOD*/UnwindContext* ctx,
             VG_(printf)("  rci:run_CF_instruction:default\n");
          i = 0;
          break;
-
    }
 
    return i;   
