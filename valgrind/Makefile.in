@@ -37,21 +37,21 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-DIST_COMMON = README $(am__configure_deps) $(dist_val_DATA) \
+DIST_COMMON = README $(am__configure_deps) $(dist_noinst_DATA) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
 	$(srcdir)/config.h.in $(srcdir)/glibc-2.X.supp.in \
 	$(srcdir)/valgrind.pc.in $(srcdir)/valgrind.spec.in \
 	$(top_srcdir)/Makefile.all.am $(top_srcdir)/configure AUTHORS \
 	COPYING INSTALL NEWS compile config.guess config.sub depcomp \
 	install-sh missing mkinstalldirs
-@VGP_X86_LINUX_TRUE@am__append_1 = valt_load_address_x86_linux.lds
-@VGP_X86_LINUX_TRUE@am__append_2 = valt_load_address_x86_linux.lds
-@VGP_AMD64_LINUX_TRUE@am__append_3 = valt_load_address_amd64_linux.lds
-@VGP_AMD64_LINUX_TRUE@am__append_4 = valt_load_address_amd64_linux.lds
-@VGP_PPC32_LINUX_TRUE@am__append_5 = valt_load_address_ppc32_linux.lds
-@VGP_PPC32_LINUX_TRUE@am__append_6 = valt_load_address_ppc32_linux.lds
-@VGP_PPC64_LINUX_TRUE@am__append_7 = valt_load_address_ppc64_linux.lds
-@VGP_PPC64_LINUX_TRUE@am__append_8 = valt_load_address_ppc64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = valt_load_address_x86_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_2 = valt_load_address_x86_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_3 = valt_load_address_amd64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_4 = valt_load_address_amd64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@am__append_5 = valt_load_address_ppc32_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@am__append_6 = valt_load_address_ppc32_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@am__append_7 = valt_load_address_ppc64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@am__append_8 = valt_load_address_ppc64_linux.lds
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
@@ -76,11 +76,11 @@ am__vpath_adj = case $$p in \
     *) f=$$p;; \
   esac;
 am__strip_dir = `echo $$p | sed -e 's|^.*/||'`;
-am__installdirs = "$(DESTDIR)$(valdir)" "$(DESTDIR)$(pkgconfigdir)" \
+am__installdirs = "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(valdir)" \
 	"$(DESTDIR)$(incincdir)"
-dist_valDATA_INSTALL = $(INSTALL_DATA)
 pkgconfigDATA_INSTALL = $(INSTALL_DATA)
-DATA = $(dist_val_DATA) $(pkgconfig_DATA)
+valDATA_INSTALL = $(INSTALL_DATA)
+DATA = $(dist_noinst_DATA) $(pkgconfig_DATA) $(val_DATA)
 nodist_incincHEADERS_INSTALL = $(INSTALL_HEADER)
 HEADERS = $(nodist_incinc_HEADERS)
 ETAGS = etags
@@ -129,6 +129,7 @@ CYGPATH_W = @CYGPATH_W@
 DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
+DIFF = @DIFF@
 DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
@@ -157,6 +158,14 @@ HAVE_BOOST_1_35_FALSE = @HAVE_BOOST_1_35_FALSE@
 HAVE_BOOST_1_35_TRUE = @HAVE_BOOST_1_35_TRUE@
 HAVE_OPENMP_FALSE = @HAVE_OPENMP_FALSE@
 HAVE_OPENMP_TRUE = @HAVE_OPENMP_TRUE@
+HAVE_PTHREAD_BARRIER_FALSE = @HAVE_PTHREAD_BARRIER_FALSE@
+HAVE_PTHREAD_BARRIER_TRUE = @HAVE_PTHREAD_BARRIER_TRUE@
+HAVE_PTHREAD_CREATE_GLIBC_2_0_FALSE = @HAVE_PTHREAD_CREATE_GLIBC_2_0_FALSE@
+HAVE_PTHREAD_CREATE_GLIBC_2_0_TRUE = @HAVE_PTHREAD_CREATE_GLIBC_2_0_TRUE@
+HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE = @HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE@
+HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE = @HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE@
+HAVE_PTHREAD_SPINLOCK_FALSE = @HAVE_PTHREAD_SPINLOCK_FALSE@
+HAVE_PTHREAD_SPINLOCK_TRUE = @HAVE_PTHREAD_SPINLOCK_TRUE@
 HAVE_QTCORE_FALSE = @HAVE_QTCORE_FALSE@
 HAVE_QTCORE_TRUE = @HAVE_QTCORE_TRUE@
 INSTALL_DATA = @INSTALL_DATA@
@@ -193,30 +202,36 @@ STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
 VEX_DIR = @VEX_DIR@
-VGO_AIX5_FALSE = @VGO_AIX5_FALSE@
-VGO_AIX5_TRUE = @VGO_AIX5_TRUE@
-VGO_LINUX_FALSE = @VGO_LINUX_FALSE@
-VGO_LINUX_TRUE = @VGO_LINUX_TRUE@
-VGP_AMD64_LINUX_FALSE = @VGP_AMD64_LINUX_FALSE@
-VGP_AMD64_LINUX_TRUE = @VGP_AMD64_LINUX_TRUE@
-VGP_HAVE_SECONDARY_FALSE = @VGP_HAVE_SECONDARY_FALSE@
-VGP_HAVE_SECONDARY_TRUE = @VGP_HAVE_SECONDARY_TRUE@
-VGP_PPC32_AIX5_FALSE = @VGP_PPC32_AIX5_FALSE@
-VGP_PPC32_AIX5_TRUE = @VGP_PPC32_AIX5_TRUE@
-VGP_PPC32_LINUX_FALSE = @VGP_PPC32_LINUX_FALSE@
-VGP_PPC32_LINUX_TRUE = @VGP_PPC32_LINUX_TRUE@
-VGP_PPC64_AIX5_FALSE = @VGP_PPC64_AIX5_FALSE@
-VGP_PPC64_AIX5_TRUE = @VGP_PPC64_AIX5_TRUE@
-VGP_PPC64_LINUX_FALSE = @VGP_PPC64_LINUX_FALSE@
-VGP_PPC64_LINUX_TRUE = @VGP_PPC64_LINUX_TRUE@
-VGP_X86_LINUX_FALSE = @VGP_X86_LINUX_FALSE@
-VGP_X86_LINUX_TRUE = @VGP_X86_LINUX_TRUE@
-VG_ARCH_ALL = @VG_ARCH_ALL@
-VG_ARCH_MAX = @VG_ARCH_MAX@
-VG_ARCH_PRI = @VG_ARCH_PRI@
-VG_OS = @VG_OS@
-VG_PLATFORM_PRI = @VG_PLATFORM_PRI@
-VG_PLATFORM_SEC = @VG_PLATFORM_SEC@
+VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
+VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
+VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
+VGCONF_ARCHS_INCLUDE_PPC32_TRUE = @VGCONF_ARCHS_INCLUDE_PPC32_TRUE@
+VGCONF_ARCHS_INCLUDE_PPC64_FALSE = @VGCONF_ARCHS_INCLUDE_PPC64_FALSE@
+VGCONF_ARCHS_INCLUDE_PPC64_TRUE = @VGCONF_ARCHS_INCLUDE_PPC64_TRUE@
+VGCONF_ARCHS_INCLUDE_X86_FALSE = @VGCONF_ARCHS_INCLUDE_X86_FALSE@
+VGCONF_ARCHS_INCLUDE_X86_TRUE = @VGCONF_ARCHS_INCLUDE_X86_TRUE@
+VGCONF_ARCH_PRI = @VGCONF_ARCH_PRI@
+VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@
+VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@
+VGCONF_OS = @VGCONF_OS@
+VGCONF_OS_IS_AIX5_FALSE = @VGCONF_OS_IS_AIX5_FALSE@
+VGCONF_OS_IS_AIX5_TRUE = @VGCONF_OS_IS_AIX5_TRUE@
+VGCONF_OS_IS_LINUX_FALSE = @VGCONF_OS_IS_LINUX_FALSE@
+VGCONF_OS_IS_LINUX_TRUE = @VGCONF_OS_IS_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@
+VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
+VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
@@ -275,24 +290,39 @@ SUPP_FILES = \
 	aix5libc.supp \
 	xfree-3.supp xfree-4.supp
 
-dist_val_DATA = $(SUPP_FILES) default.supp
+DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
+
+# We include all the base .supp files in the distribution, but not
+# default.supp, as it is built from the base .supp files at compile-time.
+# The "val" in "val_DATA" ties in with $(valdir), defined in
+# Makefile.all.am.  From the automake info pages:
+#
+#   Sometimes the standard directories--even as augmented by Automake--are
+#   not enough.  In particular it is sometimes useful, for clarity, to
+#   install objects in a subdirectory of some predefined directory.  To this
+#   end, Automake allows you to extend the list of possible installation
+#   directories.  A given prefix (e.g., `zar') is valid if a variable of the
+#   same name with `dir' appended is defined (e.g., `zardir').
+#
+dist_noinst_DATA = $(SUPP_FILES)
+val_DATA = default.supp
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = valgrind.pc
 incincdir = $(includedir)/valgrind
 nodist_incinc_HEADERS = $(VEX_PUBLIC_HDRS)
 BUILT_SOURCES = default.supp valgrind.pc $(am__append_1) \
 	$(am__append_3) $(am__append_5) $(am__append_7)
-CLEANFILES = $(am__append_2) $(am__append_4) $(am__append_6) \
-	$(am__append_8)
-DISTCLEANFILES = default.supp
+CLEANFILES = default.supp $(am__append_2) $(am__append_4) \
+	$(am__append_6) $(am__append_8)
+
+# Nb: no need to include any Makefile.am files here, or files included from
+# them, as automake includes them automatically.
 EXTRA_DIST = \
 	ACKNOWLEDGEMENTS \
 	README_DEVELOPERS \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \
 	valgrind.spec.in valgrind.pc.in \
-	Makefile.all.am Makefile.tool.am Makefile.core.am \
-	Makefile.tool-inplace.am \
 	$(vex_primary_sources) \
 	vg-in-place
 
@@ -437,23 +467,6 @@ valgrind.pc: $(top_builddir)/config.status $(srcdir)/valgrind.pc.in
 glibc-2.X.supp: $(top_builddir)/config.status $(srcdir)/glibc-2.X.supp.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 uninstall-info-am:
-install-dist_valDATA: $(dist_val_DATA)
-	@$(NORMAL_INSTALL)
-	test -z "$(valdir)" || $(mkdir_p) "$(DESTDIR)$(valdir)"
-	@list='$(dist_val_DATA)'; for p in $$list; do \
-	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
-	  f=$(am__strip_dir) \
-	  echo " $(dist_valDATA_INSTALL) '$$d$$p' '$(DESTDIR)$(valdir)/$$f'"; \
-	  $(dist_valDATA_INSTALL) "$$d$$p" "$(DESTDIR)$(valdir)/$$f"; \
-	done
-
-uninstall-dist_valDATA:
-	@$(NORMAL_UNINSTALL)
-	@list='$(dist_val_DATA)'; for p in $$list; do \
-	  f=$(am__strip_dir) \
-	  echo " rm -f '$(DESTDIR)$(valdir)/$$f'"; \
-	  rm -f "$(DESTDIR)$(valdir)/$$f"; \
-	done
 install-pkgconfigDATA: $(pkgconfig_DATA)
 	@$(NORMAL_INSTALL)
 	test -z "$(pkgconfigdir)" || $(mkdir_p) "$(DESTDIR)$(pkgconfigdir)"
@@ -470,6 +483,23 @@ uninstall-pkgconfigDATA:
 	  f=$(am__strip_dir) \
 	  echo " rm -f '$(DESTDIR)$(pkgconfigdir)/$$f'"; \
 	  rm -f "$(DESTDIR)$(pkgconfigdir)/$$f"; \
+	done
+install-valDATA: $(val_DATA)
+	@$(NORMAL_INSTALL)
+	test -z "$(valdir)" || $(mkdir_p) "$(DESTDIR)$(valdir)"
+	@list='$(val_DATA)'; for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  f=$(am__strip_dir) \
+	  echo " $(valDATA_INSTALL) '$$d$$p' '$(DESTDIR)$(valdir)/$$f'"; \
+	  $(valDATA_INSTALL) "$$d$$p" "$(DESTDIR)$(valdir)/$$f"; \
+	done
+
+uninstall-valDATA:
+	@$(NORMAL_UNINSTALL)
+	@list='$(val_DATA)'; for p in $$list; do \
+	  f=$(am__strip_dir) \
+	  echo " rm -f '$(DESTDIR)$(valdir)/$$f'"; \
+	  rm -f "$(DESTDIR)$(valdir)/$$f"; \
 	done
 install-nodist_incincHEADERS: $(nodist_incinc_HEADERS)
 	@$(NORMAL_INSTALL)
@@ -769,7 +799,7 @@ check: $(BUILT_SOURCES)
 all-am: Makefile $(DATA) $(HEADERS) config.h all-local
 installdirs: installdirs-recursive
 installdirs-am:
-	for dir in "$(DESTDIR)$(valdir)" "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(incincdir)"; do \
+	for dir in "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(valdir)" "$(DESTDIR)$(incincdir)"; do \
 	  test -z "$$dir" || $(mkdir_p) "$$dir"; \
 	done
 install: $(BUILT_SOURCES)
@@ -794,7 +824,6 @@ clean-generic:
 
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
-	-test -z "$(DISTCLEANFILES)" || rm -f $(DISTCLEANFILES)
 
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
@@ -802,13 +831,12 @@ maintainer-clean-generic:
 	-test -z "$(BUILT_SOURCES)" || rm -f $(BUILT_SOURCES)
 clean: clean-recursive
 
-clean-am: clean-generic mostlyclean-am
+clean-am: clean-generic clean-local mostlyclean-am
 
 distclean: distclean-recursive
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -f Makefile
-distclean-am: clean-am distclean-generic distclean-hdr distclean-local \
-	distclean-tags
+distclean-am: clean-am distclean-generic distclean-hdr distclean-tags
 
 dvi: dvi-recursive
 
@@ -820,8 +848,8 @@ info: info-recursive
 
 info-am:
 
-install-data-am: install-dist_valDATA install-nodist_incincHEADERS \
-	install-pkgconfigDATA
+install-data-am: install-nodist_incincHEADERS install-pkgconfigDATA \
+	install-valDATA
 
 install-exec-am:
 	@$(NORMAL_INSTALL)
@@ -851,29 +879,28 @@ ps: ps-recursive
 
 ps-am:
 
-uninstall-am: uninstall-dist_valDATA uninstall-info-am \
-	uninstall-nodist_incincHEADERS uninstall-pkgconfigDATA
+uninstall-am: uninstall-info-am uninstall-nodist_incincHEADERS \
+	uninstall-pkgconfigDATA uninstall-valDATA
 
 uninstall-info: uninstall-info-recursive
 
 .PHONY: $(RECURSIVE_TARGETS) CTAGS GTAGS all all-am all-local \
-	am--refresh check check-am clean clean-generic clean-recursive \
-	ctags ctags-recursive dist dist-all dist-bzip2 dist-gzip \
-	dist-shar dist-tarZ dist-zip distcheck distclean \
-	distclean-generic distclean-hdr distclean-local \
-	distclean-recursive distclean-tags distcleancheck distdir \
-	distuninstallcheck dvi dvi-am html html-am info info-am \
-	install install-am install-data install-data-am \
-	install-dist_valDATA install-exec install-exec-am \
+	am--refresh check check-am clean clean-generic clean-local \
+	clean-recursive ctags ctags-recursive dist dist-all dist-bzip2 \
+	dist-gzip dist-shar dist-tarZ dist-zip distcheck distclean \
+	distclean-generic distclean-hdr distclean-recursive \
+	distclean-tags distcleancheck distdir distuninstallcheck dvi \
+	dvi-am html html-am info info-am install install-am \
+	install-data install-data-am install-exec install-exec-am \
 	install-exec-hook install-info install-info-am install-man \
 	install-nodist_incincHEADERS install-pkgconfigDATA \
-	install-strip installcheck installcheck-am installdirs \
-	installdirs-am maintainer-clean maintainer-clean-generic \
-	maintainer-clean-recursive mostlyclean mostlyclean-generic \
-	mostlyclean-recursive pdf pdf-am ps ps-am tags tags-recursive \
-	uninstall uninstall-am uninstall-dist_valDATA \
+	install-strip install-valDATA installcheck installcheck-am \
+	installdirs installdirs-am maintainer-clean \
+	maintainer-clean-generic maintainer-clean-recursive \
+	mostlyclean mostlyclean-generic mostlyclean-recursive pdf \
+	pdf-am ps ps-am tags tags-recursive uninstall uninstall-am \
 	uninstall-info-am uninstall-nodist_incincHEADERS \
-	uninstall-pkgconfigDATA
+	uninstall-pkgconfigDATA uninstall-valDATA
 
 
 # The kludge that passes for vex's build system can't handle parallel
@@ -885,7 +912,10 @@ uninstall-info: uninstall-info-recursive
 # AIX kernel when they are loaded.
 # Ditto
 
-default.supp: $(SUPP_FILES)
+default.supp: $(DEFAULT_SUPP_FILES)
+	echo "# This is a generated file, composed of the following suppression rules:" > default.supp
+	echo "# " $(DEFAULT_SUPP_FILES) >> default.supp
+	cat $(DEFAULT_SUPP_FILES) >> default.supp
 
 regtest: check
 	@PERL@ tests/vg_regtest $(TOOLS) $(EXP_TOOLS)
@@ -900,13 +930,12 @@ perf: check
 install-exec-hook:
 	$(mkinstalldirs) $(DESTDIR)$(valdir)
 
-all-local:
+all-local: default.supp
 	mkdir -p $(inplacedir)
-	rm -f $(addprefix $(inplacedir)/,default.supp $(SUPP_FILES))
+	rm -f $(inplacedir)/default.supp
 	ln -s ../default.supp $(inplacedir)
-	ln -s $(addprefix ../$(top_srcdir)/,$(SUPP_FILES)) $(inplacedir)
 
-distclean-local:
+clean-local:
 	rm -rf $(inplacedir)
 
 # Generate a linker script for linking the binaries.  This is the
@@ -933,28 +962,28 @@ valt_load_address_x86_linux.lds: Makefile
 	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_amd64_linux.lds: Makefile
 	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_ppc32_linux.lds: Makefile
 	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 
 valt_load_address_ppc64_linux.lds: Makefile
 	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
 	|| rm -f $@
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

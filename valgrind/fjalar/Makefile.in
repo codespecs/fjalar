@@ -14,31 +14,8 @@
 
 @SET_MAKE@
 
-# What the first for loop does: it copies a bunch of files which names
-# of the form wurble-arch-os to $prefix/lib/valgrind/arch-os/wurble.
-# There is some complexity in the sed mangling because wurble may itself
-# contain a dash, which must be ignored.  For example we want
-#    exp-omega-x86-linux
-# to be installed in 
-#    $prefix/lib/valgrind/x86-linux/exp-omega
-# and not in
-#    $prefix/lib/valgrind/omega-x86-linux/exp
-# or similarly mutant place.
-#
-# Note there is identical sed magic in Makefile.tool-inplace.am.
-
-# What the second for loop does: it copies libcoregrind.a and libvex.a
-# into the correct (target-specific) lib dirs at install time.
-# $(noinst_LIBRARIES) will look like this:
-#    libcoregrind_x86_linux.a libreplacemalloc_toolpreload_x86_linux.a
-#    libcoregrind_amd64_linux.a libreplacemalloc_toolpreload_amd64_linux.a
-# The 'if expr' filters out all but the libcoregrind_ ones.
-# pD and pU are the (arch,os) target pairs separated by a dash (pD) or
-# an underscore (pU) respectively, eg amd64-linux (pD) and amd64_linux (pU).
-# It then copies libcoregrind.a and libvex.a to the right places.
-
-# For a description of what these magic sed commands do, see comments
-# in Makefile.install.am (which has identical magic)
+# This file contains things shared by coregrind/Makefile.am and tool
+# Makefile.am files.
 
 
 srcdir = @srcdir@
@@ -65,14 +42,12 @@ build_triplet = @build@
 host_triplet = @host@
 DIST_COMMON = README $(mcinclude_HEADERS) $(noinst_HEADERS) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(top_srcdir)/Makefile.all.am $(top_srcdir)/Makefile.flags.am \
-	$(top_srcdir)/Makefile.install.am \
-	$(top_srcdir)/Makefile.tool-flags.am \
-	$(top_srcdir)/Makefile.tool-inplace.am \
-	$(top_srcdir)/Makefile.tool.am
+	$(top_srcdir)/Makefile.all.am \
+	$(top_srcdir)/Makefile.core-tool.am \
+	$(top_srcdir)/Makefile.flags.am $(top_srcdir)/Makefile.tool.am
 noinst_PROGRAMS = $(am__EXEEXT_1) $(am__EXEEXT_2)
-@VGP_X86_LINUX_TRUE@am__append_1 = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
-@VGP_AMD64_LINUX_TRUE@am__append_2 = fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_2 = fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
 subdir = fjalar
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
@@ -81,10 +56,10 @@ am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES =
-@VGP_X86_LINUX_TRUE@am__EXEEXT_1 = fjalar-x86-linux$(EXEEXT) \
-@VGP_X86_LINUX_TRUE@	vgpreload_fjalar-x86-linux.so$(EXEEXT)
-@VGP_AMD64_LINUX_TRUE@am__EXEEXT_2 = fjalar-amd64-linux$(EXEEXT) \
-@VGP_AMD64_LINUX_TRUE@	vgpreload_fjalar-amd64-linux.so$(EXEEXT)
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__EXEEXT_1 = fjalar-x86-linux$(EXEEXT) \
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@	vgpreload_fjalar-x86-linux.so$(EXEEXT)
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__EXEEXT_2 = fjalar-amd64-linux$(EXEEXT) \
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@	vgpreload_fjalar-amd64-linux.so$(EXEEXT)
 PROGRAMS = $(noinst_PROGRAMS)
 am__objects_1 = fjalar_amd64_linux-mc_leakcheck.$(OBJEXT) \
 	fjalar_amd64_linux-mc_malloc_wrappers.$(OBJEXT) \
@@ -113,8 +88,8 @@ am__objects_1 = fjalar_amd64_linux-mc_leakcheck.$(OBJEXT) \
 am_fjalar_amd64_linux_OBJECTS = $(am__objects_1)
 fjalar_amd64_linux_OBJECTS = $(am_fjalar_amd64_linux_OBJECTS)
 am__DEPENDENCIES_1 =  \
-	$(top_builddir)/coregrind/libcoregrind_amd64_linux.a \
-	@VEX_DIR@/libvex_amd64_linux.a
+	$(top_builddir)/coregrind/libcoregrind-amd64-linux.a \
+	@VEX_DIR@/libvex-amd64-linux.a
 am__DEPENDENCIES_2 =
 am__DEPENDENCIES_3 = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2)
 am__objects_2 = fjalar_x86_linux-mc_leakcheck.$(OBJEXT) \
@@ -144,8 +119,8 @@ am__objects_2 = fjalar_x86_linux-mc_leakcheck.$(OBJEXT) \
 am_fjalar_x86_linux_OBJECTS = $(am__objects_2)
 fjalar_x86_linux_OBJECTS = $(am_fjalar_x86_linux_OBJECTS)
 am__DEPENDENCIES_4 =  \
-	$(top_builddir)/coregrind/libcoregrind_x86_linux.a \
-	@VEX_DIR@/libvex_x86_linux.a
+	$(top_builddir)/coregrind/libcoregrind-x86-linux.a \
+	@VEX_DIR@/libvex-x86-linux.a
 am__DEPENDENCIES_5 = $(am__DEPENDENCIES_4) $(am__DEPENDENCIES_2)
 am__objects_3 =  \
 	vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.$(OBJEXT) \
@@ -227,6 +202,7 @@ CYGPATH_W = @CYGPATH_W@
 DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
+DIFF = @DIFF@
 DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
@@ -255,6 +231,14 @@ HAVE_BOOST_1_35_FALSE = @HAVE_BOOST_1_35_FALSE@
 HAVE_BOOST_1_35_TRUE = @HAVE_BOOST_1_35_TRUE@
 HAVE_OPENMP_FALSE = @HAVE_OPENMP_FALSE@
 HAVE_OPENMP_TRUE = @HAVE_OPENMP_TRUE@
+HAVE_PTHREAD_BARRIER_FALSE = @HAVE_PTHREAD_BARRIER_FALSE@
+HAVE_PTHREAD_BARRIER_TRUE = @HAVE_PTHREAD_BARRIER_TRUE@
+HAVE_PTHREAD_CREATE_GLIBC_2_0_FALSE = @HAVE_PTHREAD_CREATE_GLIBC_2_0_FALSE@
+HAVE_PTHREAD_CREATE_GLIBC_2_0_TRUE = @HAVE_PTHREAD_CREATE_GLIBC_2_0_TRUE@
+HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE = @HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE@
+HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE = @HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE@
+HAVE_PTHREAD_SPINLOCK_FALSE = @HAVE_PTHREAD_SPINLOCK_FALSE@
+HAVE_PTHREAD_SPINLOCK_TRUE = @HAVE_PTHREAD_SPINLOCK_TRUE@
 HAVE_QTCORE_FALSE = @HAVE_QTCORE_FALSE@
 HAVE_QTCORE_TRUE = @HAVE_QTCORE_TRUE@
 INSTALL_DATA = @INSTALL_DATA@
@@ -291,30 +275,36 @@ STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
 VEX_DIR = @VEX_DIR@
-VGO_AIX5_FALSE = @VGO_AIX5_FALSE@
-VGO_AIX5_TRUE = @VGO_AIX5_TRUE@
-VGO_LINUX_FALSE = @VGO_LINUX_FALSE@
-VGO_LINUX_TRUE = @VGO_LINUX_TRUE@
-VGP_AMD64_LINUX_FALSE = @VGP_AMD64_LINUX_FALSE@
-VGP_AMD64_LINUX_TRUE = @VGP_AMD64_LINUX_TRUE@
-VGP_HAVE_SECONDARY_FALSE = @VGP_HAVE_SECONDARY_FALSE@
-VGP_HAVE_SECONDARY_TRUE = @VGP_HAVE_SECONDARY_TRUE@
-VGP_PPC32_AIX5_FALSE = @VGP_PPC32_AIX5_FALSE@
-VGP_PPC32_AIX5_TRUE = @VGP_PPC32_AIX5_TRUE@
-VGP_PPC32_LINUX_FALSE = @VGP_PPC32_LINUX_FALSE@
-VGP_PPC32_LINUX_TRUE = @VGP_PPC32_LINUX_TRUE@
-VGP_PPC64_AIX5_FALSE = @VGP_PPC64_AIX5_FALSE@
-VGP_PPC64_AIX5_TRUE = @VGP_PPC64_AIX5_TRUE@
-VGP_PPC64_LINUX_FALSE = @VGP_PPC64_LINUX_FALSE@
-VGP_PPC64_LINUX_TRUE = @VGP_PPC64_LINUX_TRUE@
-VGP_X86_LINUX_FALSE = @VGP_X86_LINUX_FALSE@
-VGP_X86_LINUX_TRUE = @VGP_X86_LINUX_TRUE@
-VG_ARCH_ALL = @VG_ARCH_ALL@
-VG_ARCH_MAX = @VG_ARCH_MAX@
-VG_ARCH_PRI = @VG_ARCH_PRI@
-VG_OS = @VG_OS@
-VG_PLATFORM_PRI = @VG_PLATFORM_PRI@
-VG_PLATFORM_SEC = @VG_PLATFORM_SEC@
+VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
+VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
+VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
+VGCONF_ARCHS_INCLUDE_PPC32_TRUE = @VGCONF_ARCHS_INCLUDE_PPC32_TRUE@
+VGCONF_ARCHS_INCLUDE_PPC64_FALSE = @VGCONF_ARCHS_INCLUDE_PPC64_FALSE@
+VGCONF_ARCHS_INCLUDE_PPC64_TRUE = @VGCONF_ARCHS_INCLUDE_PPC64_TRUE@
+VGCONF_ARCHS_INCLUDE_X86_FALSE = @VGCONF_ARCHS_INCLUDE_X86_FALSE@
+VGCONF_ARCHS_INCLUDE_X86_TRUE = @VGCONF_ARCHS_INCLUDE_X86_TRUE@
+VGCONF_ARCH_PRI = @VGCONF_ARCH_PRI@
+VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@
+VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@
+VGCONF_OS = @VGCONF_OS@
+VGCONF_OS_IS_AIX5_FALSE = @VGCONF_OS_IS_AIX5_FALSE@
+VGCONF_OS_IS_AIX5_TRUE = @VGCONF_OS_IS_AIX5_TRUE@
+VGCONF_OS_IS_LINUX_FALSE = @VGCONF_OS_IS_LINUX_FALSE@
+VGCONF_OS_IS_LINUX_TRUE = @VGCONF_OS_IS_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE@
+VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@
+VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
+VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
@@ -364,42 +354,6 @@ target_alias = @target_alias@
 SUBDIRS = .
 valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
-add_includes_x86_linux = -I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub \
-		-DVGA_x86=1 \
-		-DVGO_linux=1 \
-		-DVGP_x86_linux=1
-
-add_includes_amd64_linux = -I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub \
-		-DVGA_amd64=1 \
-		-DVGO_linux=1 \
-		-DVGP_amd64_linux=1
-
-add_includes_ppc32_linux = -I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub \
-		-DVGA_ppc32=1 \
-		-DVGO_linux=1 \
-		-DVGP_ppc32_linux=1
-
-add_includes_ppc64_linux = -I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub \
-		-DVGA_ppc64=1 \
-		-DVGO_linux=1 \
-		-DVGP_ppc64_linux=1
-
-add_includes_ppc32_aix5 = -I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub \
-		-DVGA_ppc32=1 \
-		-DVGO_aix5=1 \
-		-DVGP_ppc32_aix5=1
-
-add_includes_ppc64_aix5 = -I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub \
-		-DVGA_ppc64=1 \
-		-DVGO_aix5=1 \
-		-DVGP_ppc64_aix5=1
-
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
@@ -407,7 +361,7 @@ add_includes_ppc64_aix5 = -I$(top_srcdir)/include \
 AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
-                 -fno-strict-aliasing 
+                 -fno-strict-aliasing
 
 
 # These flags are used for building the preload shared objects.
@@ -417,55 +371,95 @@ AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
 # -O
 AM_CFLAGS_PIC = -g -fpic -fno-omit-frame-pointer -fno-strict-aliasing
 
-# Flags for specific targets
+# Flags for specific targets.
+#
+# Nb: the AM_CPPFLAGS_* values are suitable for building tools and auxprogs.
+# For building the core, coregrind/Makefile.am files add some extra things.
+#
+# Also: in newer versions of automake (1.10 onwards?) asm files ending with
+# '.S' are considered "pre-processed" (as opposed to those ending in '.s')
+# and so the CPPFLAGS are passed to the assembler.  But this is not true for
+# older automakes (e.g. 1.8.5, 1.9.6), sigh.  So we include
+# AM_CPPFLAGS_<PLATFORM> in each AM_CCASFLAGS_<PLATFORM> variable.  This
+# means some of the flags are duplicated on systems with newer versions of
+# automake, but this does not really matter and seems hard to avoid.
+AM_CPPFLAGS_COMMON = \
+		-I$(top_srcdir) \
+		-I$(top_srcdir)/include \
+		-I@VEX_DIR@/pub
+
 AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
-AM_CPPFLAGS_X86_LINUX = $(add_includes_x86_linux)
+AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_x86=1 \
+			    -DVGO_linux=1 \
+			    -DVGP_x86_linux=1
+
 
 # PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
 
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS_X86_LINUX = $(WERROR) @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
+AM_CFLAGS_X86_LINUX = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
 	$(AM_CFLAGS_BASE) -g -O0 -fno-omit-frame-pointer -Iinclude -W \
 	-Wall
-AM_CCASFLAGS_X86_LINUX = $(add_includes_x86_linux) @FLAG_M32@ -g
+AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_AMD64_LINUX = $(add_includes_amd64_linux)
-AM_CFLAGS_AMD64_LINUX = $(WERROR) @FLAG_M64@ -fomit-frame-pointer \
+AM_CPPFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_amd64=1 \
+			    -DVGO_linux=1 \
+			    -DVGP_amd64_linux=1
+
+AM_CFLAGS_AMD64_LINUX = @FLAG_M64@ -fomit-frame-pointer \
 	@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE) -g -O0 \
 	-fno-omit-frame-pointer -Iinclude -W -Wall
-AM_CCASFLAGS_AMD64_LINUX = $(add_includes_amd64_linux) @FLAG_M64@ -g
+AM_CCASFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_AMD64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
-AM_CPPFLAGS_PPC32_LINUX = $(add_includes_ppc32_linux)
-AM_CFLAGS_PPC32_LINUX = $(WERROR) @FLAG_M32@ $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC32_LINUX = $(add_includes_ppc32_linux) -Wa,-maltivec @FLAG_M32@ -g
+AM_CPPFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_COMMON) \
+		-DVGA_ppc32=1 \
+		-DVGO_linux=1 \
+		-DVGP_ppc32_linux=1
+
+AM_CFLAGS_PPC32_LINUX = @FLAG_M32@ $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_PPC32_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux)
-AM_CFLAGS_PPC64_LINUX = $(WERROR) @FLAG_M64@ $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC64_LINUX = $(add_includes_ppc64_linux) -Wa,-maltivec @FLAG_M64@ -g
+AM_CPPFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_ppc64=1 \
+			    -DVGO_linux=1 \
+			    -DVGP_ppc64_linux=1
+
+AM_CFLAGS_PPC64_LINUX = @FLAG_M64@ $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_PPC64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
-AM_CPPFLAGS_PPC32_AIX5 = $(add_includes_ppc32_aix5)
-AM_CFLAGS_PPC32_AIX5 = $(WERROR) @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC32_AIX5 = $(add_includes_ppc32_aix5) \
-				@FLAG_MAIX32@ -mcpu=powerpc -g
+AM_CPPFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_ppc32=1 \
+			    -DVGO_aix5=1 \
+			    -DVGP_ppc32_aix5=1
+
+AM_CFLAGS_PPC32_AIX5 = @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_PPC32_AIX5) \
+			    @FLAG_MAIX32@ -mcpu=powerpc -g
 
 AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
-AM_CPPFLAGS_PPC64_AIX5 = $(add_includes_ppc64_aix5)
-AM_CFLAGS_PPC64_AIX5 = $(WERROR) @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_PPC64_AIX5 = $(add_includes_ppc64_aix5) \
-				@FLAG_MAIX64@ -mcpu=powerpc64 -g
+AM_CPPFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_ppc64=1 \
+			    -DVGO_aix5=1 \
+			    -DVGP_ppc64_aix5=1
+
+AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
+			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
 
 
 # Flags for the primary target.  These must be used to build the
 # regtests and performance tests.  In fact, these must be used to
 # build anything which is built only once on a dual-arch build.
 #
-AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VG_PLATFORM_PRI@)
-AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VG_PLATFORM_PRI@)
-AM_CFLAGS_PRI = $(AM_CFLAGS_@VG_PLATFORM_PRI@)
-AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VG_PLATFORM_PRI@)
-@VGP_HAVE_SECONDARY_FALSE@AM_FLAG_M3264_SEC = 
-@VGP_HAVE_SECONDARY_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VG_PLATFORM_SEC@)
+AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CFLAGS_PRI = $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+@VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@AM_FLAG_M3264_SEC = 
+@VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 
 # Baseline link flags for making dynamic shared objects.
 #
@@ -478,46 +472,46 @@ PRELOAD_LDFLAGS_PPC64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_PPC32_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX32@
 PRELOAD_LDFLAGS_PPC64_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX64@
 LIBREPLACEMALLOC_X86_LINUX = \
-	$(top_builddir)/coregrind/libreplacemalloc_toolpreload_x86_linux.a
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-x86-linux.a
 
 LIBREPLACEMALLOC_AMD64_LINUX = \
-	$(top_builddir)/coregrind/libreplacemalloc_toolpreload_amd64_linux.a
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-amd64-linux.a
 
 LIBREPLACEMALLOC_PPC32_LINUX = \
-	$(top_builddir)/coregrind/libreplacemalloc_toolpreload_ppc32_linux.a
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-ppc32-linux.a
 
 LIBREPLACEMALLOC_PPC64_LINUX = \
-	$(top_builddir)/coregrind/libreplacemalloc_toolpreload_ppc64_linux.a
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-ppc64-linux.a
 
 LIBREPLACEMALLOC_PPC32_AIX5 = \
-	$(top_builddir)/coregrind/libreplacemalloc_toolpreload_ppc32_aix5.a
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-ppc32-aix5.a
 
 LIBREPLACEMALLOC_PPC64_AIX5 = \
-	$(top_builddir)/coregrind/libreplacemalloc_toolpreload_ppc64_aix5.a
+	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-ppc64-aix5.a
 
 COREGRIND_LIBS_X86_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind_x86_linux.a \
-	@VEX_DIR@/libvex_x86_linux.a
+	$(top_builddir)/coregrind/libcoregrind-x86-linux.a \
+	@VEX_DIR@/libvex-x86-linux.a
 
 COREGRIND_LIBS_AMD64_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind_amd64_linux.a \
-	@VEX_DIR@/libvex_amd64_linux.a
+	$(top_builddir)/coregrind/libcoregrind-amd64-linux.a \
+	@VEX_DIR@/libvex-amd64-linux.a
 
 COREGRIND_LIBS_PPC32_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind_ppc32_linux.a \
-	@VEX_DIR@/libvex_ppc32_linux.a
+	$(top_builddir)/coregrind/libcoregrind-ppc32-linux.a \
+	@VEX_DIR@/libvex-ppc32-linux.a
 
 COREGRIND_LIBS_PPC64_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind_ppc64_linux.a \
-	@VEX_DIR@/libvex_ppc64_linux.a
+	$(top_builddir)/coregrind/libcoregrind-ppc64-linux.a \
+	@VEX_DIR@/libvex-ppc64-linux.a
 
 COREGRIND_LIBS_PPC32_AIX5 = \
-	$(top_builddir)/coregrind/libcoregrind_ppc32_aix5.a \
-	@VEX_DIR@/libvex_ppc32_aix5.a
+	$(top_builddir)/coregrind/libcoregrind-ppc32-aix5.a \
+	@VEX_DIR@/libvex-ppc32-aix5.a
 
 COREGRIND_LIBS_PPC64_AIX5 = \
-	$(top_builddir)/coregrind/libcoregrind_ppc64_aix5.a \
-	@VEX_DIR@/libvex_ppc64_aix5.a
+	$(top_builddir)/coregrind/libcoregrind-ppc64-aix5.a \
+	@VEX_DIR@/libvex-ppc64-aix5.a
 
 TOOL_LDADD_COMMON = -lgcc
 TOOL_LDFLAGS_COMMON_LINUX = -static \
@@ -650,7 +644,7 @@ all: all-recursive
 
 .SUFFIXES:
 .SUFFIXES: .c .o .obj
-$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool.am $(top_srcdir)/Makefile.all.am $(top_srcdir)/Makefile.install.am $(top_srcdir)/Makefile.tool-flags.am $(top_srcdir)/Makefile.flags.am $(top_srcdir)/Makefile.tool-inplace.am $(am__configure_deps)
+$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool.am $(top_srcdir)/Makefile.all.am $(top_srcdir)/Makefile.flags.am $(top_srcdir)/Makefile.core-tool.am $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -1793,76 +1787,71 @@ uninstall-info: uninstall-info-recursive
 # (this is equivalent to enforcing "make -j 1".
 .NOTPARALLEL:
 
-install-exec-local:
+# This is used by coregrind/Makefile.am and Makefile.tool.am for doing
+# "in-place" installs.  It copies $(noinst_PROGRAMS) into $inplacedir.
+# It needs to be depended on by an 'all-local' rule.
+inplace-noinst_PROGRAMS:
 	if [ -n "$(noinst_PROGRAMS)" ] ; then \
-	  for f in $(noinst_PROGRAMS); do \
-	    name=`echo $$f | sed -e 's/-\([^-]*-[^-.]*\)\(\..*\)\?$$/\2/'`; \
-	    plat=`echo $$f | sed -e 's/^.*-\([^-]*-[^-.]*\)\(\..*\)\?$$/\1/'`; \
-	    $(mkinstalldirs) $(DESTDIR)$(valdir)/$$plat; \
-	    $(INSTALL_PROGRAM) $$f $(DESTDIR)$(valdir)/$$plat/$$name; \
-	  done ; \
-	fi ; \
-	if [ -n "$(noinst_LIBRARIES)" ] ; then \
-	  for f in $(noinst_LIBRARIES) expr_wont_match_me; do \
-	    if expr match $$f libcoregrind_ > /dev/null ; then \
-	      pU=`echo $$f | sed -e 's/libcoregrind_//g' -e 's/\.a//g'` ; \
-	      pD=`echo $$pU | sed -e 's/_/-/g'` ; \
-	      $(INSTALL_DATA) $$f $(DESTDIR)$(valdir)/$$pD/libcoregrind.a ; \
-	      $(INSTALL_DATA) @VEX_DIR@/libvex_$$pU.a \
-				$(DESTDIR)$(valdir)/$$pD/libvex.a ; \
-	    fi ; \
+	  mkdir -p $(inplacedir); \
+	  for f in $(noinst_PROGRAMS) ; do \
+	    rm -f $(inplacedir)/$$f; \
+	    ln -f -s ../$(subdir)/$$f $(inplacedir); \
 	  done ; \
 	fi
 
-all-local:
+# This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
+# "make install".  It copies $(noinst_PROGRAMS) into $prefix/lib/valgrind/.
+# It needs to be depended on by an 'install-exec-local' rule.
+install-noinst_PROGRAMS:
 	if [ -n "$(noinst_PROGRAMS)" ] ; then \
+	  $(mkinstalldirs) $(DESTDIR)$(valdir); \
 	  for f in $(noinst_PROGRAMS); do \
-	    name=`echo $$f | sed -e 's/-\([^-]*-[^-.]*\)\(\..*\)\?$$/\2/'`; \
-	    plat=`echo $$f | sed -e 's/^.*-\([^-]*-[^-.]*\)\(\..*\)\?$$/\1/'`; \
-	    mkdir -p $(inplacedir)/$$plat; \
-	    rm -f $(inplacedir)/$$plat/$$name; \
-	    ln -f -s ../../$(subdir)/$$f $(inplacedir)/$$plat/$$name; \
+	    $(INSTALL_PROGRAM) $$f $(DESTDIR)$(valdir); \
 	  done ; \
 	fi
 
-@VEX_DIR@/libvex_x86_linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
+@VEX_DIR@/libvex-x86-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex_x86_linux.a \
+	libvex-x86-linux.a \
 	EXTRA_CFLAGS="$(AM_CFLAGS_X86_LINUX) @FLAG_WDECL_AFTER_STMT@ \
 			@FLAG_FNO_STACK_PROTECTOR@"
 
-@VEX_DIR@/libvex_amd64_linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
+@VEX_DIR@/libvex-amd64-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex_amd64_linux.a \
+	libvex-amd64-linux.a \
 	EXTRA_CFLAGS="$(AM_CFLAGS_AMD64_LINUX) @FLAG_WDECL_AFTER_STMT@ \
 			@FLAG_FNO_STACK_PROTECTOR@"
 
-@VEX_DIR@/libvex_ppc32_linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
+@VEX_DIR@/libvex-ppc32-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex_ppc32_linux.a \
+	libvex-ppc32-linux.a \
 	EXTRA_CFLAGS="$(AM_CFLAGS_PPC32_LINUX) @FLAG_WDECL_AFTER_STMT@ \
 			@FLAG_FNO_STACK_PROTECTOR@"
 
-@VEX_DIR@/libvex_ppc64_linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
+@VEX_DIR@/libvex-ppc64-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex_ppc64_linux.a \
+	libvex-ppc64-linux.a \
 	EXTRA_CFLAGS="$(AM_CFLAGS_PPC64_LINUX) @FLAG_WDECL_AFTER_STMT@ \
 			@FLAG_FNO_STACK_PROTECTOR@"
 
-@VEX_DIR@/libvex_ppc32_aix5.a: @VEX_DIR@/priv/main/vex_svnversion.h
+@VEX_DIR@/libvex-ppc32-aix5.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR) -X32" \
-	libvex_ppc32_aix5.a \
+	libvex-ppc32-aix5.a \
 	EXTRA_CFLAGS="$(AM_CFLAGS_PPC32_AIX5) @FLAG_WDECL_AFTER_STMT@ \
 			@FLAG_FNO_STACK_PROTECTOR@"
 
-@VEX_DIR@/libvex_ppc64_aix5.a: @VEX_DIR@/priv/main/vex_svnversion.h
+@VEX_DIR@/libvex-ppc64-aix5.a: @VEX_DIR@/priv/main/vex_svnversion.h
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR) -X64" \
-	libvex_ppc64_aix5.a \
+	libvex-ppc64-aix5.a \
 	EXTRA_CFLAGS="$(AM_CFLAGS_PPC64_AIX5) @FLAG_WDECL_AFTER_STMT@ \
 			@FLAG_FNO_STACK_PROTECTOR@"
 
 @VEX_DIR@/priv/main/vex_svnversion.h:
 	$(MAKE) -C @VEX_DIR@ CC="$(CC)" version
+
+all-local: inplace-noinst_PROGRAMS
+
+install-exec-local: install-noinst_PROGRAMS
 
 mc_replace_strmem.o: CFLAGS = -fno-omit-frame-pointer
 
