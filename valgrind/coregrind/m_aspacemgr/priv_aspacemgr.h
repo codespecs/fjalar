@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -43,7 +43,7 @@
 
 #include "pub_core_debuglog.h"   // VG_(debugLog)
 
-#include "pub_core_libcbase.h"   // VG_(strlen), VG_(strcmp)
+#include "pub_core_libcbase.h"   // VG_(strlen), VG_(strcmp), VG_(strncpy)
                                  // VG_IS_PAGE_ALIGNED
                                  // VG_PGROUNDDN, VG_PGROUNDUP
 
@@ -63,10 +63,12 @@
    This is important since most of the system itself depends on
    aspacem, so we have to do this to avoid a circular dependency. */
 
+__attribute__ ((noreturn))
 extern void   ML_(am_exit) ( Int status );
 extern void   ML_(am_barf) ( HChar* what );
 extern void   ML_(am_barf_toolow) ( HChar* what );
 
+__attribute__ ((noreturn))
 extern void   ML_(am_assert_fail) ( const HChar* expr,
                                     const Char* file,
                                     Int line, 
@@ -107,13 +109,17 @@ extern SysRes ML_(am_open)  ( const Char* pathname, Int flags, Int mode );
 extern void   ML_(am_close) ( Int fd );
 extern Int    ML_(am_read)  ( Int fd, void* buf, Int count);
 extern Int    ML_(am_readlink) ( HChar* path, HChar* buf, UInt bufsiz );
+extern Int    ML_(am_fcntl) ( Int fd, Int cmd, Addr arg );
 
 /* Get the dev, inode and mode info for a file descriptor, if
    possible.  Returns True on success. */
 extern
 Bool ML_(am_get_fd_d_i_m)( Int fd, 
-                                /*OUT*/ULong* dev, 
-                                /*OUT*/ULong* ino, /*OUT*/UInt* mode );
+                           /*OUT*/ULong* dev, 
+                           /*OUT*/ULong* ino, /*OUT*/UInt* mode );
+
+extern
+Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf );
 
 /* ------ Implemented seperately in aspacemgr-{linux,aix5}.c ------ */
 

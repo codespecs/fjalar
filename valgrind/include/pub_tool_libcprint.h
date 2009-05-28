@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -98,7 +98,11 @@ extern UInt VG_(message)( VgMsgKind kind, const HChar* format, ... )
 extern UInt VG_(vmessage)( VgMsgKind kind, const HChar* format, va_list vargs )
   PRINTF_CHECK(2, 0);
 
-
+// Short-cuts for VG_(message)().
+#define VG_UMSG( format, args... )  VG_(message)(Vg_UserMsg,  format, ##args)
+#define VG_DMSG( format, args... )  VG_(message)(Vg_DebugMsg, format, ##args)
+#define VG_EMSG( format, args... )  VG_(message)(Vg_DebugExtraMsg, \
+                                                              format, ##args)
 
 #endif   // __PUB_TOOL_LIBCPRINT_H
 

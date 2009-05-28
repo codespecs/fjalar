@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,6 +47,7 @@ extern SizeT VG_(malloc_usable_size)( void* p );
 
 // TODO: move somewhere else
 // Call here to bomb the system when out of memory (mmap anon fails)
+__attribute__((noreturn))
 extern void VG_(out_of_memory_NORETURN) ( HChar* who, SizeT szB );
 
 #endif   // __PUB_TOOL_MALLOCFREE_H

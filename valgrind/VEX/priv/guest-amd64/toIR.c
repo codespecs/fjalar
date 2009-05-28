@@ -6594,7 +6594,8 @@ ULong dis_MMX ( Bool* decode_ok,
       case 0x68: 
       case 0x69: 
       case 0x6A: /* PUNPCKHgg (src)mmxreg-or-mem, (dst)mmxreg */
-         if (sz != 4) 
+         if (sz != 4
+             && /*ignore redundant REX.W*/!(sz==8 && haveNo66noF2noF3(pfx))) 
             goto mmx_decode_failure;
          delta = dis_MMXop_regmem_to_reg ( vbi, pfx, delta, opc, "punpckh", True );
          break;
@@ -8813,8 +8814,14 @@ DisResult disInstr_AMD64_WRK (
    if (n > 1) 
       goto decode_failure; /* multiple seg overrides == illegal */
 
-   if (pfx & PFX_GS)
-      goto decode_failure; /* legal, but unsupported right now */
+   /* We have a %fs prefix.  Reject it if there's no evidence in 'vbi'
+      that we should accept it. */
+   if ((pfx & PFX_FS) && !vbi->guest_amd64_assume_fs_is_zero)
+      goto decode_failure;
+
+   /* Ditto for %gs prefixes. */
+   if ((pfx & PFX_GS) && !vbi->guest_amd64_assume_gs_is_0x60)
+      goto decode_failure;
 
    /* Set up sz. */
    sz = 4;
@@ -13252,7 +13259,7 @@ DisResult disInstr_AMD64_WRK (
                                      nameMMXReg(eregLO3ofRM(modrm)),
                                      nameMMXReg(gregLO3ofRM(modrm)));
       } else {
-         addr = disAMode ( &alen, vbi, pfx, delta+3, dis_buf, 0 );
+         addr = disAMode ( &alen, vbi, pfx, delta+3, dis_buf, 1 );
          assign( sV, loadLE(Ity_I64, mkexpr(addr)) );
          d64 = (Long)insn[3+alen];
          delta += 3+alen+1;
@@ -13311,7 +13318,7 @@ DisResult disInstr_AMD64_WRK (
                                     nameXMMReg(eregOfRexRM(pfx,modrm)),
                                     nameXMMReg(gregOfRexRM(pfx,modrm)));
       } else {
-         addr = disAMode ( &alen, vbi, pfx, delta+3, dis_buf, 0 );
+         addr = disAMode ( &alen, vbi, pfx, delta+3, dis_buf, 1 );
          gen_SEGV_if_not_16_aligned( addr );
          assign( sV, loadLE(Ity_V128, mkexpr(addr)) );
          d64 = (Long)insn[3+alen];

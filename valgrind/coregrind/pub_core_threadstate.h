@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -117,7 +117,9 @@ typedef
    ThreadArchState;
 
 
-/* OS-specific thread state */
+/* OS-specific thread state.  IMPORTANT: if you add fields to this,
+   you _must_ add code to os_state_clear() to initialise those
+   fields. */
 typedef
    struct {
       /* who we are */

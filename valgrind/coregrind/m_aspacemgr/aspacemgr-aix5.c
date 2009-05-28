@@ -10,7 +10,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -162,7 +162,7 @@ typedef
       Bool   fromP;     // AnonC, AnonV only: originated from PreAlloc?
       UChar* fname;     // MText, FileV only: filename
       UChar* mname;     // MText only: member name if present
-      ULong  offset;    // FileV only: file offset
+      Off64T offset;    // FileV only: file offset
    }
    AixSegment;
 

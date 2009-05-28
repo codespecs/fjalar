@@ -1,4 +1,122 @@
 
+Release 3.5.0 (???)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* A new Memcheck client request VALGRIND_COUNT_LEAK_BLOCKS has been added.
+  It is similar to VALGRIND_COUNT_LEAKS but counts blocks instead of bytes.
+  [XXX: consider adding VALGRIND_COUNT_LEAK_BYTES as a synonym and
+  deprecating VALGRIND_COUNT_LEAKS, which wasn't a good name to begin with]
+
+* Memcheck's leak checker has been improved.  
+  - The results for --leak-check=summary now match the summary results for
+    --leak-check=full.  Previously they could differ because
+    --leak-check=summary counted "indirectly lost" blocks and "suppressed"
+    blocks as "definitely lost".
+  - Blocks that are only reachable via at least one interior-pointer, but
+    are directly pointed to by a start-pointer, were previously marked as
+    "still reachable".  They are now correctly marked as "possibly lost".
+
+* The format of some (non-XML) stack trace entries has changed a little.
+  Previously there were six possible forms:
+
+    0x80483BF: really (a.c:20)
+    0x80483BF: really (in /foo/a.out)
+    0x80483BF: really
+    0x80483BF: (within /foo/a.out)
+    0x80483BF: ??? (a.c:20)
+    0x80483BF: ???
+
+  The third and fourth of these forms have been made more consistent with
+  the others.  The six possible forms are now:
+  
+    0x80483BF: really (a.c:20)
+    0x80483BF: really (in /foo/a.out)
+    0x80483BF: really (in ???)
+    0x80483BF: ??? (in /foo/a.out)
+    0x80483BF: ??? (a.c:20)
+    0x80483BF: ???
+
+  Stack traces produced when --xml=yes is specified are different and
+  unchanged.
+
+* The graphs drawn by Massif's ms_print program have changed slightly:
+  - The half-height chars '.' and ',' are no longer drawn, because they are
+    confusing.  The --y option can be used if the default y-resolution is
+    not high enough.
+  - Horizontal lines are now drawn after the top of a snapshot if there is a
+    gap until the next snapshot.  This makes it clear that the memory
+    usage has not dropped to zero between snapshots.
+
+* The location of some install files has changed.  This should not affect
+  most users.  Those who might be affected:
+  - For people who use Valgrind with MPI programs, the installed
+    libmpiwrap.so library has moved from $(INSTALL)/<platform>/libmpiwrap.so
+    to $(INSTALL)/libmpiwrap-<platform>.so.
+  - For people who distribute standalone Valgrind tools, the installed
+    libraries such as $(INSTALL)/<platform>/libcoregrind.a have moved to
+    $(INSTALL)/libcoregrind-<platform>.a.
+
+  These changes were made to simplify the build system.
+
+* Previously, all the distributed suppression (*.supp) files were installed.
+  Now, only default.supp is installed.  This should not affect users as the
+  other installed suppression files were not read.
+
+n-i-bz DRD - race conditions between pthread_barrier_wait() and
+       pthread_barrier_destroy() calls are now reported.
+n-i-bz DRD - added "first observed at" information in error
+       messages related to synchronization objects.
+n-i-bz DRD - added new client request, VG_USERREQ__DRD_CLEAN_MEMORY.
+187048 DRD - the mutex attribute PTHREAD_PROCESS_SHARED is now
+       interpreted correctly.
+188046 Removed a bashism from the configure script.
+189763 DRD - pthread_create@GLIBC_2.0() no longer triggers an assertion
+       failure.
+n-i-bz DRD - fixed assertion failure triggered by mutex reinitialization.
+
+
+
+Release 3.4.1 (28 February 2009)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3.4.1 is a bug-fix release that fixes some regressions and assertion
+failures in debug info reading in 3.4.0, most notably incorrect stack
+traces on amd64-linux on older (glibc-2.3 based) systems. Various
+other debug info problems are also fixed.  A number of bugs in the
+exp-ptrcheck tool introduced in 3.4.0 have been fixed.
+
+In view of the fact that 3.4.0 contains user-visible regressions
+relative to 3.3.x, upgrading to 3.4.1 is recommended.  Packagers are
+encouraged to ship 3.4.1 in preference to 3.4.0.
+
+The fixed bugs are as follows.  Note that "n-i-bz" stands for "not in
+bugzilla" -- that is, a bug that was reported to us but never got a
+bugzilla entry.  We encourage you to file bugs in bugzilla
+(http://bugs.kde.org/enter_valgrind_bug.cgi) rather than mailing the
+developers (or mailing lists) directly -- bugs that are not entered
+into bugzilla tend to get forgotten about or ignored.
+
+n-i-bz  Fix various bugs reading icc-11 generated debug info
+n-i-bz  Fix various bugs reading gcc-4.4 generated debug info
+n-i-bz  Preliminary support for glibc-2.10 / Fedora 11
+n-i-bz  Cachegrind and Callgrind: handle non-power-of-two cache sizes,
+        so as to support (eg) 24k Atom D1 and Core2 with 3/6/12MB L2.
+179618  exp-ptrcheck crashed / exit prematurely
+179624  helgrind: false positive races with pthread_create and
+        recv/open/close/read
+134207  pkg-config output contains @VG_PLATFORM@
+176926  floating point exception at valgrind startup with PPC 440EPX
+181594  Bogus warning for empty text segment
+173751  amd64->IR: 0x48 0xF 0x6F 0x45 (even more redundant rex prefixes)
+181707  Dwarf3 doesn't require enumerations to have name
+185038  exp-ptrcheck: "unhandled syscall: 285" (fallocate) on x86_64
+185050  exp-ptrcheck: sg_main.c:727 (add_block_to_GlobalTree):
+        Assertion '!already_present' failed.
+185359  exp-ptrcheck unhandled syscall getresuid()
+
+(3.4.1.RC1:  24 Feb 2008, vex r1884, valgrind r9253).
+(3.4.1:      28 Feb 2008, vex r1884, valgrind r9293).
+
+
+
 Release 3.4.0 (2 January 2009)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 3.4.0 is a feature release with many significant improvements and the

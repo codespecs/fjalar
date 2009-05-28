@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -232,17 +232,33 @@
    in coregrind/m_syswrap/syscall-$PLAT.S.  It has some very magic
    properties.  See comments at the top of
    VG_(fixup_guest_state_after_syscall_interrupted) below for details.
+
+   This function (these functions) are required to return zero in case
+   of success (even if the syscall itself failed), and nonzero if the
+   sigprocmask-swizzling calls failed.  We don't actually care about
+   the failure values from sigprocmask, although most of the assembly
+   implementations do attempt to return that, using the convention
+   0 for success, or 0x8000 | error-code for failure.
 */
+#if defined(VGO_linux)
 extern
 UWord ML_(do_syscall_for_client_WRK)( Word syscallno, 
                                       void* guest_state,
                                       const vki_sigset_t *syscall_mask,
                                       const vki_sigset_t *restore_mask,
-                                      Word nsigwords
-#                                     if defined(VGO_aix5)
-                                      , Word __nr_sigprocmask
-#                                     endif
-                                    );
+                                      Word sigsetSzB );
+#elif defined(VGO_aix5)
+extern
+UWord ML_(do_syscall_for_client_WRK)( Word syscallno, 
+                                      void* guest_state,
+                                      const vki_sigset_t *syscall_mask,
+                                      const vki_sigset_t *restore_mask,
+                                      Word sigsetSzB, /* unused */
+                                      Word __nr_sigprocmask );
+#else
+#  error "Unknown OS"
+#endif
+
 
 static
 void do_syscall_for_client ( Int syscallno,
@@ -250,21 +266,27 @@ void do_syscall_for_client ( Int syscallno,
                              const vki_sigset_t* syscall_mask )
 {
    vki_sigset_t saved;
-   UWord err 
-      = ML_(do_syscall_for_client_WRK)(
-           syscallno, &tst->arch.vex, 
-           syscall_mask, &saved, _VKI_NSIG_WORDS * sizeof(UWord)
-#          if defined(VGO_aix5)
-           , __NR_rt_sigprocmask
-#          endif
-        );
+   UWord err;
+#  if defined(VGO_linux)
+   err = ML_(do_syscall_for_client_WRK)(
+            syscallno, &tst->arch.vex, 
+            syscall_mask, &saved, sizeof(vki_sigset_t)
+         );
+#  elif defined(VGO_aix5)
+   err = ML_(do_syscall_for_client_WRK)(
+            syscallno, &tst->arch.vex, 
+            syscall_mask, &saved, 0/*unused:sigsetSzB*/,
+            __NR_rt_sigprocmask
+         );
+#  else
+#    error "Unknown OS"
+#  endif
    vg_assert2(
       err == 0,
       "ML_(do_syscall_for_client_WRK): sigprocmask error %d",
       (Int)(err & 0xFFF)
    );
 }
-
 
 
 /* ---------------------------------------------------------------------
@@ -288,11 +310,11 @@ Bool eq_SyscallArgs ( SyscallArgs* a1, SyscallArgs* a2 )
 static
 Bool eq_SyscallStatus ( SyscallStatus* s1, SyscallStatus* s2 )
 {
-   return s1->what == s2->what 
-          && s1->sres.res == s2->sres.res
-          && s1->sres.err == s2->sres.err;
+   /* was: return s1->what == s2->what && sr_EQ( s1->sres, s2->sres ); */
+   if (s1->what == s2->what && sr_EQ( s1->sres, s2->sres ))
+      return True;
+   return False;
 }
-
 
 /* Convert between SysRes and SyscallStatus, to the extent possible. */
 
@@ -513,72 +535,93 @@ void getSyscallStatusFromGuestState ( /*OUT*/SyscallStatus*     canonical,
 }
 
 static 
-void putSyscallStatusIntoGuestState ( /*IN*/ SyscallStatus*     canonical,
+void putSyscallStatusIntoGuestState ( /*IN*/ ThreadId tid,
+                                      /*IN*/ SyscallStatus*     canonical,
                                       /*OUT*/VexGuestArchState* gst_vanilla )
 {
 #  if defined(VGP_x86_linux)
    VexGuestX86State* gst = (VexGuestX86State*)gst_vanilla;
    vg_assert(canonical->what == SsComplete);
-   if (canonical->sres.isError) {
+   if (sr_isError(canonical->sres)) {
       /* This isn't exactly right, in that really a Failure with res
          not in the range 1 .. 4095 is unrepresentable in the
          Linux-x86 scheme.  Oh well. */
-      gst->guest_EAX = - (Int)canonical->sres.err;
+      gst->guest_EAX = - (Int)sr_Err(canonical->sres);
    } else {
-      gst->guest_EAX = canonical->sres.res;
+      gst->guest_EAX = sr_Res(canonical->sres);
    }
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_x86_EAX, sizeof(UWord) );
 
 #  elif defined(VGP_amd64_linux)
    VexGuestAMD64State* gst = (VexGuestAMD64State*)gst_vanilla;
    vg_assert(canonical->what == SsComplete);
-   if (canonical->sres.isError) {
+   if (sr_isError(canonical->sres)) {
       /* This isn't exactly right, in that really a Failure with res
          not in the range 1 .. 4095 is unrepresentable in the
          Linux-x86 scheme.  Oh well. */
-      gst->guest_RAX = - (Long)canonical->sres.err;
+      gst->guest_RAX = - (Long)sr_Err(canonical->sres);
    } else {
-      gst->guest_RAX = canonical->sres.res;
+      gst->guest_RAX = sr_Res(canonical->sres);
    }
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_amd64_RAX, sizeof(UWord) );
 
 #  elif defined(VGP_ppc32_linux)
    VexGuestPPC32State* gst = (VexGuestPPC32State*)gst_vanilla;
    UInt old_cr = LibVEX_GuestPPC32_get_CR(gst);
    vg_assert(canonical->what == SsComplete);
-   if (canonical->sres.isError) {
+   if (sr_isError(canonical->sres)) {
       /* set CR0.SO */
       LibVEX_GuestPPC32_put_CR( old_cr | (1<<28), gst );
-      gst->guest_GPR3 = canonical->sres.err;
+      gst->guest_GPR3 = sr_Err(canonical->sres);
    } else {
       /* clear CR0.SO */
       LibVEX_GuestPPC32_put_CR( old_cr & ~(1<<28), gst );
-      gst->guest_GPR3 = canonical->sres.res;
+      gst->guest_GPR3 = sr_Res(canonical->sres);
    }
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc32_GPR3, sizeof(UWord) );
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc32_CR0_0, sizeof(UChar) );
 
 #  elif defined(VGP_ppc64_linux)
    VexGuestPPC64State* gst = (VexGuestPPC64State*)gst_vanilla;
    UInt old_cr = LibVEX_GuestPPC64_get_CR(gst);
    vg_assert(canonical->what == SsComplete);
-   if (canonical->sres.isError) {
+   if (sr_isError(canonical->sres)) {
       /* set CR0.SO */
       LibVEX_GuestPPC64_put_CR( old_cr | (1<<28), gst );
-      gst->guest_GPR3 = canonical->sres.err;
+      gst->guest_GPR3 = sr_Err(canonical->sres);
    } else {
       /* clear CR0.SO */
       LibVEX_GuestPPC64_put_CR( old_cr & ~(1<<28), gst );
-      gst->guest_GPR3 = canonical->sres.res;
+      gst->guest_GPR3 = sr_Res(canonical->sres);
    }
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc64_GPR3, sizeof(UWord) );
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc64_CR0_0, sizeof(UChar) );
 
 #  elif defined(VGP_ppc32_aix5)
    VexGuestPPC32State* gst = (VexGuestPPC32State*)gst_vanilla;
    vg_assert(canonical->what == SsComplete);
    gst->guest_GPR3 = canonical->sres.res;
    gst->guest_GPR4 = canonical->sres.err;
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc32_GPR3, sizeof(UWord) );
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc32_GPR4, sizeof(UWord) );
 
 #  elif defined(VGP_ppc64_aix5)
    VexGuestPPC64State* gst = (VexGuestPPC64State*)gst_vanilla;
    vg_assert(canonical->what == SsComplete);
    gst->guest_GPR3 = canonical->sres.res;
    gst->guest_GPR4 = canonical->sres.err;
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc64_GPR3, sizeof(UWord) );
+   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, 
+             OFFSET_ppc64_GPR4, sizeof(UWord) );
 
 #  else
 #    error "putSyscallStatusIntoGuestState: unknown arch"
@@ -601,9 +644,8 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout )
    layout->o_arg4   = OFFSET_x86_ESI;
    layout->o_arg5   = OFFSET_x86_EDI;
    layout->o_arg6   = OFFSET_x86_EBP;
-   layout->o_arg7   = -1; /* impossible value */
-   layout->o_arg8   = -1; /* impossible value */
-   layout->o_retval = OFFSET_x86_EAX;
+   layout->uu_arg7  = -1; /* impossible value */
+   layout->uu_arg8  = -1; /* impossible value */
 
 #elif defined(VGP_amd64_linux)
    layout->o_sysno  = OFFSET_amd64_RAX;
@@ -613,9 +655,8 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout )
    layout->o_arg4   = OFFSET_amd64_R10;
    layout->o_arg5   = OFFSET_amd64_R8;
    layout->o_arg6   = OFFSET_amd64_R9;
-   layout->o_arg7   = -1; /* impossible value */
-   layout->o_arg8   = -1; /* impossible value */
-   layout->o_retval = OFFSET_amd64_RAX;
+   layout->uu_arg7  = -1; /* impossible value */
+   layout->uu_arg8  = -1; /* impossible value */
 
 #elif defined(VGP_ppc32_linux)
    layout->o_sysno  = OFFSET_ppc32_GPR0;
@@ -625,9 +666,8 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout )
    layout->o_arg4   = OFFSET_ppc32_GPR6;
    layout->o_arg5   = OFFSET_ppc32_GPR7;
    layout->o_arg6   = OFFSET_ppc32_GPR8;
-   layout->o_arg7   = -1; /* impossible value */
-   layout->o_arg8   = -1; /* impossible value */
-   layout->o_retval = OFFSET_ppc32_GPR3;
+   layout->uu_arg7  = -1; /* impossible value */
+   layout->uu_arg8  = -1; /* impossible value */
 
 #elif defined(VGP_ppc64_linux)
    layout->o_sysno  = OFFSET_ppc64_GPR0;
@@ -637,9 +677,8 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout )
    layout->o_arg4   = OFFSET_ppc64_GPR6;
    layout->o_arg5   = OFFSET_ppc64_GPR7;
    layout->o_arg6   = OFFSET_ppc64_GPR8;
-   layout->o_arg7   = -1; /* impossible value */
-   layout->o_arg8   = -1; /* impossible value */
-   layout->o_retval = OFFSET_ppc64_GPR3;
+   layout->uu_arg7  = -1; /* impossible value */
+   layout->uu_arg8  = -1; /* impossible value */
 
 #elif defined(VGP_ppc32_aix5)
    layout->o_sysno  = OFFSET_ppc32_GPR2;
@@ -651,7 +690,6 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout )
    layout->o_arg6   = OFFSET_ppc32_GPR8;
    layout->o_arg7   = OFFSET_ppc32_GPR9;
    layout->o_arg8   = OFFSET_ppc32_GPR10;
-   layout->o_retval = OFFSET_ppc32_GPR3;
 
 #elif defined(VGP_ppc64_aix5)
    layout->o_sysno  = OFFSET_ppc64_GPR2;
@@ -663,7 +701,6 @@ void getSyscallArgLayout ( /*OUT*/SyscallArgLayout* layout )
    layout->o_arg6   = OFFSET_ppc64_GPR8;
    layout->o_arg7   = OFFSET_ppc64_GPR9;
    layout->o_arg8   = OFFSET_ppc64_GPR10;
-   layout->o_retval = OFFSET_ppc64_GPR3;
 
 #else
 #  error "getSyscallLayout: unknown arch"
@@ -736,7 +773,7 @@ static const SyscallTableEntry* get_syscall_entry ( UInt syscallno )
 /* Add and remove signals from mask so that we end up telling the
    kernel the state we actually want rather than what the client
    wants. */
-static void sanitize_client_sigmask(ThreadId tid, vki_sigset_t *mask)
+static void sanitize_client_sigmask(vki_sigset_t *mask)
 {
    VG_(sigdelset)(mask, VKI_SIGKILL);
    VG_(sigdelset)(mask, VKI_SIGSTOP);
@@ -780,7 +817,7 @@ static void ensure_initialised ( void )
 
 void VG_(client_syscall) ( ThreadId tid )
 {
-   UWord                    sysno;
+   Word                     sysno;
    ThreadState*             tst;
    const SyscallTableEntry* ent;
    SyscallArgLayout         layout;
@@ -956,14 +993,15 @@ void VG_(client_syscall) ( ThreadId tid )
              || sci->status.what == SsComplete);
    vg_assert(sci->args.sysno == sci->orig_args.sysno);
 
-   if (sci->status.what == SsComplete && !sci->status.sres.isError) {
+   if (sci->status.what == SsComplete && !sr_isError(sci->status.sres)) {
       /* The pre-handler completed the syscall itself, declaring
          success. */
       if (sci->flags & SfNoWriteResult) {
-         PRINT(" --> [pre-success] NoWriteResult\n");
+         PRINT(" --> [pre-success] NoWriteResult");
       } else {
-         PRINT(" --> [pre-success] Success(0x%llx)\n",
-               (ULong)sci->status.sres.res );
+         PRINT(" --> [pre-success] Success(0x%llx:0x%llx)",
+               (ULong)sr_ResHI(sci->status.sres),
+               (ULong)sr_Res(sci->status.sres));
       }                                      
       /* In this case the allowable flags are to ask for a signal-poll
          and/or a yield after the call.  Changing the args isn't
@@ -974,9 +1012,9 @@ void VG_(client_syscall) ( ThreadId tid )
    }
 
    else
-   if (sci->status.what == SsComplete && sci->status.sres.isError) {
+   if (sci->status.what == SsComplete && sr_isError(sci->status.sres)) {
       /* The pre-handler decided to fail syscall itself. */
-      PRINT(" --> [pre-fail] Failure(0x%llx)\n", (ULong)sci->status.sres.err );
+      PRINT(" --> [pre-fail] Failure(0x%llx)", (ULong)sr_Err(sci->status.sres));
       /* In this case, the pre-handler is also allowed to ask for the
          post-handler to be run anyway.  Changing the args is not
          allowed. */
@@ -1013,15 +1051,19 @@ void VG_(client_syscall) ( ThreadId tid )
          PRINT(" --> [async] ... \n");
 
          mask = tst->sig_mask;
-         sanitize_client_sigmask(tid, &mask);
+         sanitize_client_sigmask(&mask);
 
          /* Gack.  More impedance matching.  Copy the possibly
             modified syscall args back into the guest state. */
          vg_assert(eq_SyscallArgs(&sci->args, &sci->orig_args));
          putSyscallArgsIntoGuestState( &sci->args, &tst->arch.vex );
 
-         /* Drop the lock */
+         /* Drop the bigLock */
          VG_(release_BigLock)(tid, VgTs_WaitSys, "VG_(client_syscall)[async]");
+         /* Urr.  We're now in a race against other threads trying to
+            acquire the bigLock.  I guess that doesn't matter provided
+            that do_syscall_for_client only touches thread-local
+            state. */
 
          /* Do the call, which operates directly on the guest state,
             not on our abstracted copies of the args/result. */
@@ -1043,11 +1085,22 @@ void VG_(client_syscall) ( ThreadId tid )
          getSyscallStatusFromGuestState( &sci->status, &tst->arch.vex );
          vg_assert(sci->status.what == SsComplete);
 
-         PRINT("SYSCALL[%d,%d](%3ld) ... [async] --> %s(0x%llx)\n",
-               VG_(getpid)(), tid, sysno, 
-               sci->status.sres.isError ? "Failure" : "Success",
-               sci->status.sres.isError ? (ULong)sci->status.sres.err
-                                        : (ULong)sci->status.sres.res );
+         /* Be decorative, if required. */
+         if (VG_(clo_trace_syscalls)) {
+            Bool failed = sr_isError(sci->status.sres);
+            Word tmp_sysno = sysno;
+            if (failed) {
+               PRINT("SYSCALL[%d,%d](%3ld) ... [async] --> Failure(0x%llx)",
+                     VG_(getpid)(), tid, tmp_sysno, 
+                     (ULong)sr_Err(sci->status.sres));
+            } else {
+               PRINT("SYSCALL[%d,%d](%3ld) ... [async] --> "
+                     "Success(0x%llx:0x%llx)",
+                     VG_(getpid)(), tid, tmp_sysno, 
+                     (ULong)sr_ResHI(sci->status.sres),
+                     (ULong)sr_Res(sci->status.sres) );
+            }
+         }
 
       } else {
 
@@ -1064,10 +1117,18 @@ void VG_(client_syscall) ( ThreadId tid )
                                      sci->args.arg7, sci->args.arg8 );
          sci->status = convert_SysRes_to_SyscallStatus(sres);
 
-         PRINT("[sync] --> %s(0x%llx)\n",
-               sci->status.sres.isError ? "Failure" : "Success",
-               sci->status.sres.isError ? (ULong)sci->status.sres.err
-                                        : (ULong)sci->status.sres.res );
+         /* Be decorative, if required. */
+         if (VG_(clo_trace_syscalls)) {
+            Bool failed = sr_isError(sci->status.sres);
+            if (failed) {
+               PRINT("[sync] --> Failure(0x%llx)",
+                     (ULong)sr_Err(sci->status.sres) );
+            } else {
+               PRINT("[sync] --> Success(0x%llx:0x%llx)",
+                     (ULong)sr_ResHI(sci->status.sres),
+                     (ULong)sr_Res(sci->status.sres) );
+            }
+         }
       }
    }
 
@@ -1078,7 +1139,7 @@ void VG_(client_syscall) ( ThreadId tid )
    /* Dump the syscall result back in the guest state.  This is
       a platform-specific action. */
    if (!(sci->flags & SfNoWriteResult))
-      putSyscallStatusIntoGuestState( &sci->status, &tst->arch.vex );
+      putSyscallStatusIntoGuestState( tid, &sci->status, &tst->arch.vex );
 
    /* Situation now:
       - the guest state is now correctly modified following the syscall
@@ -1087,7 +1148,9 @@ void VG_(client_syscall) ( ThreadId tid )
 
       Now go on to do the post-syscall actions (read on down ..)
    */
+   PRINT(" ");
    VG_(post_syscall)(tid);
+   PRINT("\n");
 }
 
 
@@ -1105,12 +1168,11 @@ void VG_(client_syscall) ( ThreadId tid )
 */
 void VG_(post_syscall) (ThreadId tid)
 {
-   SyscallArgLayout         layout;
    SyscallInfo*             sci;
    const SyscallTableEntry* ent;
    SyscallStatus            test_status;
    ThreadState*             tst;
-   UWord sysno;
+   Word sysno;
 
    /* Preliminaries */
    vg_assert(VG_(is_valid_tid)(tid));
@@ -1145,22 +1207,14 @@ void VG_(post_syscall) (ThreadId tid)
    sysno = sci->args.sysno;
    ent = get_syscall_entry(sysno);
 
-   /* We need the arg layout .. sigh */
-   getSyscallArgLayout( &layout );
-
-   /* Tell the tool that the assignment has occurred, so it can update
-      shadow regs as necessary. */
-   VG_TRACK( post_reg_write, Vg_CoreSysCall, tid, layout.o_retval, 
-                                                  sizeof(UWord) );
-
    /* pre: status == Complete (asserted above) */
    /* Consider either success or failure.  Now run the post handler if:
       - it exists, and
       - Success or (Failure and PostOnFail is set)
    */
    if (ent->after
-       && ((!sci->status.sres.isError)
-           || (sci->status.sres.isError
+       && ((!sr_isError(sci->status.sres))
+           || (sr_isError(sci->status.sres)
                && (sci->flags & SfPostOnFail) ))) {
 
       (ent->after)( tid, &sci->args, &sci->status );
@@ -1171,7 +1225,7 @@ void VG_(post_syscall) (ThreadId tid)
       failure if the kernel supplied a fd that it doesn't like), once
       again dump the syscall result back in the guest state.*/
    if (!(sci->flags & SfNoWriteResult))
-      putSyscallStatusIntoGuestState( &sci->status, &tst->arch.vex );
+      putSyscallStatusIntoGuestState( tid, &sci->status, &tst->arch.vex );
 
    /* Do any post-syscall actions required by the tool. */
    if (VG_(needs).syscall_wrapper)
@@ -1223,11 +1277,15 @@ void VG_(post_syscall) (ThreadId tid)
 /* These are addresses within ML_(do_syscall_for_client_WRK).  See
    syscall-$PLAT.S for details. 
 */
-extern const Addr ML_(blksys_setup);
-extern const Addr ML_(blksys_restart);
-extern const Addr ML_(blksys_complete);
-extern const Addr ML_(blksys_committed);
-extern const Addr ML_(blksys_finished);
+#if defined(VGO_linux) || defined(VGO_aix5)
+  extern const Addr ML_(blksys_setup);
+  extern const Addr ML_(blksys_restart);
+  extern const Addr ML_(blksys_complete);
+  extern const Addr ML_(blksys_committed);
+  extern const Addr ML_(blksys_finished);
+#else
+# error "Unknown OS"
+#endif
 
 
 /* Back up guest state to restart a system call. */
@@ -1355,31 +1413,56 @@ void ML_(fixup_guest_state_to_restart_syscall) ( ThreadArchState* arch )
 void 
 VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid, 
                                                   Addr     ip, 
-                                                  UWord    sysnum, 
                                                   SysRes   sres,
                                                   Bool     restart)
 {
-   /* Note that the sysnum arg seems to contain not-dependable-on info
-      (I think it depends on the state the real syscall was in at
-      interrupt) and so is ignored, apart from in the following
-      printf. */
+   /* Note that we don't know the syscall number here, since (1) in
+      general there's no reliable way to get hold of it short of
+      stashing it in the guest state before the syscall, and (2) in
+      any case we don't need to know it for the actions done by this
+      routine.
 
-   static const Bool debug = False;
+      Furthermore, 'sres' is only used in the case where the syscall
+      is complete, but the result has not been committed to the guest
+      state yet.  In any other situation it will be meaningless and
+      therefore ignored. */
 
    ThreadState*     tst;
    SyscallStatus    canonical;
    ThreadArchState* th_regs;
    SyscallInfo*     sci;
 
-   if (debug)
-      VG_(printf)( "interrupted_syscall %d: tid=%d, IP=0x%llx, "
-                   "restart=%s, sysret.isError=%s, sysret.val=%lld\n", 
-                   (Int)sysnum,
-                   (Int)tid,
-                   (ULong)ip, 
-                   restart ? "True" : "False", 
-                   sres.isError ? "True" : "False",
-                   (Long)(Word)(sres.isError ? sres.err : sres.res) );
+   /* Compute some Booleans indicating which range we're in. */
+   Bool outside_range, 
+        in_setup_to_restart,      // [1,2) in the .S files
+        at_restart,               // [2]   in the .S files
+        in_complete_to_committed, // [3,4) in the .S files
+        in_committed_to_finished; // [4,5) in the .S files
+
+#  if defined(VGO_linux) || defined(VGO_aix5)
+   outside_range
+      = ip < ML_(blksys_setup) || ip >= ML_(blksys_finished);
+   in_setup_to_restart
+      = ip >= ML_(blksys_setup) && ip < ML_(blksys_restart); 
+   at_restart
+      = ip == ML_(blksys_restart); 
+   in_complete_to_committed
+      = ip >= ML_(blksys_complete) && ip < ML_(blksys_committed); 
+   in_committed_to_finished
+      = ip >= ML_(blksys_committed) && ip < ML_(blksys_finished);
+#  else
+#    error "Unknown OS"
+#  endif
+
+   if (VG_(clo_trace_signals))
+      VG_(message)( Vg_DebugMsg,
+                    "interrupted_syscall: tid=%d, ip=0x%llx, "
+                    "restart=%s, sres.isErr=%s, sres.val=%lld", 
+                    (Int)tid,
+                    (ULong)ip, 
+                    restart ? "True" : "False", 
+                    sr_isError(sres) ? "True" : "False",
+                    (Long)(sr_isError(sres) ? sr_Err(sres) : sr_Res(sres)) );
 
    vg_assert(VG_(is_valid_tid)(tid));
    vg_assert(tid >= 1 && tid < VG_N_THREADS);
@@ -1391,10 +1474,10 @@ VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid,
 
    /* Figure out what the state of the syscall was by examining the
       (real) IP at the time of the signal, and act accordingly. */
-
-   if (ip < ML_(blksys_setup) || ip >= ML_(blksys_finished)) {
-      VG_(printf)("  not in syscall (%#lx - %#lx)\n",
-                  ML_(blksys_setup), ML_(blksys_finished));
+   if (outside_range) {
+      if (VG_(clo_trace_signals))
+         VG_(message)( Vg_DebugMsg,
+                       "  not in syscall at all: hmm, very suspicious" );
       /* Looks like we weren't in a syscall at all.  Hmm. */
       vg_assert(sci->status.what != SsIdle);
       return;
@@ -1405,53 +1488,62 @@ VG_(fixup_guest_state_after_syscall_interrupted)( ThreadId tid,
       Hence: */
    vg_assert(sci->status.what != SsIdle);
 
-   if (ip >= ML_(blksys_setup) && ip < ML_(blksys_restart)) {
+   /* now, do one of four fixup actions, depending on where the IP has
+      got to. */
+
+   if (in_setup_to_restart) {
       /* syscall hasn't even started; go around again */
-      if (debug)
-         VG_(printf)("  not started: restart\n");
+      if (VG_(clo_trace_signals))
+         VG_(message)( Vg_DebugMsg, "  not started: restarting");
       vg_assert(sci->status.what == SsHandToKernel);
       ML_(fixup_guest_state_to_restart_syscall)(th_regs);
    } 
 
    else 
-   if (ip == ML_(blksys_restart)) {
+   if (at_restart) {
       /* We're either about to run the syscall, or it was interrupted
          and the kernel restarted it.  Restart if asked, otherwise
          EINTR it. */
-      if (restart)
+      if (restart) {
+         if (VG_(clo_trace_signals))
+            VG_(message)( Vg_DebugMsg, "  at syscall instr: restarting");
          ML_(fixup_guest_state_to_restart_syscall)(th_regs);
-      else {
+      } else {
+         if (VG_(clo_trace_signals))
+            VG_(message)( Vg_DebugMsg, "  at syscall instr: returning EINTR");
          canonical = convert_SysRes_to_SyscallStatus( 
                         VG_(mk_SysRes_Error)( VKI_EINTR ) 
                      );
          if (!(sci->flags & SfNoWriteResult))
-            putSyscallStatusIntoGuestState( &canonical, &th_regs->vex );
+            putSyscallStatusIntoGuestState( tid, &canonical, &th_regs->vex );
          sci->status = canonical;
          VG_(post_syscall)(tid);
       }
    }
 
    else 
-   if (ip >= ML_(blksys_complete) && ip < ML_(blksys_committed)) {
+   if (in_complete_to_committed) {
       /* Syscall complete, but result hasn't been written back yet.
          Write the SysRes we were supplied with back to the guest
          state. */
-      if (debug)
-         VG_(printf)("  completed\n");
+      if (VG_(clo_trace_signals))
+         VG_(message)( Vg_DebugMsg,
+                       "  completed, but uncommitted: committing");
       canonical = convert_SysRes_to_SyscallStatus( sres );
       if (!(sci->flags & SfNoWriteResult))
-         putSyscallStatusIntoGuestState( &canonical, &th_regs->vex );
+         putSyscallStatusIntoGuestState( tid, &canonical, &th_regs->vex );
       sci->status = canonical;
       VG_(post_syscall)(tid);
    } 
 
-   else 
-   if (ip >= ML_(blksys_committed) && ip < ML_(blksys_finished)) {
+   else  
+   if (in_committed_to_finished) {
       /* Result committed, but the signal mask has not been restored;
          we expect our caller (the signal handler) will have fixed
          this up. */
-      if (debug)
-         VG_(printf)("  all done\n");
+      if (VG_(clo_trace_signals))
+         VG_(message)( Vg_DebugMsg,
+                       "  completed and committed: nothing to do");
       VG_(post_syscall)(tid);
    } 
 

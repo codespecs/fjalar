@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2008 OpenWorks LLP
+   Copyright (C) 2008-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -35,6 +35,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
 #include "pub_core_options.h"
@@ -45,6 +46,7 @@
 
 #include "priv_misc.h"
 #include "priv_d3basics.h"      /* self */
+#include "priv_storage.h"
 
 HChar* ML_(pp_DW_children) ( DW_children hashch )
 {
@@ -372,18 +374,17 @@ static Long read_leb128S( UChar **data )
    return (Long)val;
 }
 
-
 /* FIXME: duplicates logic in readdwarf.c: copy_convert_CfiExpr_tree
    and {FP,SP}_REG decls */
 static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
 {
    vg_assert(regs);
-#  if defined(VGP_amd64_linux)
-   if (regno == 6/*RBP*/) { *a = regs->fp; return True; }
-   if (regno == 7/*RSP*/) { *a = regs->sp; return True; }
-#  elif defined(VGP_x86_linux)
+#  if defined(VGP_x86_linux)
    if (regno == 5/*EBP*/) { *a = regs->fp; return True; }
    if (regno == 4/*ESP*/) { *a = regs->sp; return True; }
+#  elif defined(VGP_amd64_linux)
+   if (regno == 6/*RBP*/) { *a = regs->fp; return True; }
+   if (regno == 7/*RSP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_ppc32_linux)
    if (regno == 1/*SP*/) { *a = regs->sp; return True; }
    if (regno == 31) return False;
@@ -400,12 +401,52 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
    return False;
 }
 
+/* Convert a stated address to an actual address */
+static Bool bias_address( Addr* a, const DebugInfo* di )
+{
+   if (di->text_present
+       && di->text_size > 0
+       && *a >= di->text_debug_svma && *a < di->text_debug_svma + di->text_size) {
+      *a += di->text_debug_bias;
+   }
+   else if (di->data_present
+            && di->data_size > 0
+            && *a >= di->data_debug_svma && *a < di->data_debug_svma + di->data_size) {
+      *a += di->data_debug_bias;
+   }
+   else if (di->sdata_present
+            && di->sdata_size > 0
+            && *a >= di->sdata_debug_svma && *a < di->sdata_debug_svma + di->sdata_size) {
+      *a += di->sdata_debug_bias;
+   }
+   else if (di->rodata_present
+            && di->rodata_size > 0
+            && *a >= di->rodata_debug_svma && *a < di->rodata_debug_svma + di->rodata_size) {
+      *a += di->rodata_debug_bias;
+   }
+   else if (di->bss_present
+            && di->bss_size > 0
+            && *a >= di->bss_debug_svma && *a < di->bss_debug_svma + di->bss_size) {
+      *a += di->bss_debug_bias;
+   }
+   else if (di->sbss_present
+            && di->sbss_size > 0
+            && *a >= di->sbss_debug_svma && *a < di->sbss_debug_svma + di->sbss_size) {
+      *a += di->sbss_debug_bias;
+   }
+   else {
+      return False;
+   }
+
+   return True;
+}
+
 
 /* Evaluate a standard DWARF3 expression.  See detailed description in
    priv_d3basics.h. */
 GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB, 
                                      GExpr* fbGX, RegSummary* regs,
-                                     Addr data_bias,
+                                     const DebugInfo* di,
                                      Bool push_initial_zero )
 {
 #  define N_EXPR_STACK 20
@@ -500,22 +541,23 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
       switch (opcode) {
          case DW_OP_addr:
             /* Presumably what is given in the Dwarf3 is a SVMA (how
-               could it be otherwise?)  So we add the data bias on
-               before pushing the result.  FIXME: how can we be sure
-               the data bias is intended, not the text bias?  I don't
-               know. */
-            /* Furthermore, do we need to take into account the
-               horrible prelinking-induced complications as described
-               in "Comment_Regarding_DWARF3_Text_Biasing" in
-               readdwarf3.c?  Currently I don't know. */
-            PUSH( *(Addr*)expr + data_bias ); 
-            expr += sizeof(Addr);
+               could it be otherwise?)  So we add the appropriate bias
+               on before pushing the result. */
+            a1 = *(Addr*)expr;
+            if (bias_address(&a1, di)) {
+               PUSH( a1 ); 
+               expr += sizeof(Addr);
+            }
+            else {
+               FAIL("evaluate_Dwarf3_Expr: DW_OP_addr with address "
+                    "in unknown section");
+            }
             break;
          case DW_OP_fbreg:
             if (!fbGX)
                FAIL("evaluate_Dwarf3_Expr: DW_OP_fbreg with "
                     "no expr for fbreg present");
-            fbval = ML_(evaluate_GX)(fbGX, NULL, regs, data_bias);
+            fbval = ML_(evaluate_GX)(fbGX, NULL, regs, di);
             /* Convert fbval into something we can use.  If we got a
                Value, no problem.  However, as per D3 spec sec 3.3.5
                (Low Level Information) sec 2, we could also get a
@@ -621,7 +663,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
 /* Evaluate a so-called Guarded (DWARF3) expression.  See detailed
    description in priv_d3basics.h. */
 GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
-                           RegSummary* regs, Addr data_bias )
+                           RegSummary* regs, const DebugInfo* di )
 {
    GXResult res;
    Addr     aMin, aMax;
@@ -655,7 +697,7 @@ GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
          /* Assert this is the first guard. */
          vg_assert(nGuards == 1);
          res = ML_(evaluate_Dwarf3_Expr)(
-                  p, (UWord)nbytes, fbGX, regs, data_bias,
+                  p, (UWord)nbytes, fbGX, regs, di,
                   False/*push_initial_zero*/ );
          /* Now check there are no more guards. */
          p += (UWord)nbytes;
@@ -665,7 +707,7 @@ GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
          if (aMin <= regs->ip && regs->ip <= aMax) {
             /* found a matching range.  Evaluate the expression. */
             return ML_(evaluate_Dwarf3_Expr)(
-                      p, (UWord)nbytes, fbGX, regs, data_bias,
+                      p, (UWord)nbytes, fbGX, regs, di,
                       False/*push_initial_zero*/ );
          }
       }
@@ -688,8 +730,11 @@ GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
    * any of the subexpressions do not produce a manifest constant
    * there's more than one subexpression, all of which successfully
      evaluate to a constant, but they don't all produce the same constant.
- */
-GXResult ML_(evaluate_trivial_GX)( GExpr* gx, Addr data_bias )
+   JRS 23Jan09: the special-casing in this function is a nasty kludge.
+   Really it ought to be pulled out and turned into a general
+   constant- expression evaluator.
+*/
+GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
 {
    GXResult   res;
    Addr       aMin, aMax;
@@ -699,7 +744,7 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, Addr data_bias )
    MaybeULong *mul, *mul2;
 
    HChar*  badness = NULL;
-   UChar*  p       = &gx->payload[0];
+   UChar*  p       = &gx->payload[0]; /* must remain unsigned */
    XArray* results = VG_(newXA)( ML_(dinfo_zalloc), "di.d3basics.etG.1",
                                  ML_(dinfo_free),
                                  sizeof(MaybeULong) );
@@ -730,12 +775,41 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, Addr data_bias )
       /* Peer at this particular subexpression, to see if it's
          obviously a constant. */
       if (nbytes == 1 + sizeof(Addr) && *p == DW_OP_addr) {
-         thisResult.b  = True;
-         thisResult.ul = (ULong)(*(Addr*)(p+1)) + (ULong)data_bias;
+         /* DW_OP_addr a */
+         Addr a = *(Addr*)(p+1);
+         if (bias_address(&a, di)) {
+            thisResult.b = True;
+            thisResult.ul = (ULong)a;
+         } else {
+            if (!badness)
+               badness = "trivial GExpr denotes constant address "
+                         "in unknown section (1)";
+         }
       }
-      else if (nbytes == 2 + sizeof(Addr) 
-               && *p == DW_OP_addr
-               && *(p + 1 + sizeof(Addr)) == DW_OP_GNU_push_tls_address) {
+      else 
+      if (nbytes == 1 + sizeof(Addr) + 1 + 1
+          /* 11 byte block: 3 c0 b6 2b 0 0 0 0 0 23 4
+             (DW_OP_addr: 2bb6c0; DW_OP_plus_uconst: 4)
+             This is really a nasty kludge - only matches if the
+             trailing ULEB denotes a number in the range 0 .. 127
+             inclusive. */
+          && p[0] == DW_OP_addr
+          && p[1 + sizeof(Addr)] == DW_OP_plus_uconst 
+          && p[1 + sizeof(Addr) + 1] < 0x80 /*1-byte ULEB*/) {
+         Addr a = *(Addr*)&p[1];
+         if (bias_address(&a, di)) {
+            thisResult.b = True;
+            thisResult.ul = (ULong)a + (ULong)p[1 + sizeof(Addr) + 1];
+         } else {
+            if (!badness)
+               badness = "trivial GExpr denotes constant address "
+                         "in unknown section (2)";
+         }
+      }
+      else
+      if (nbytes == 2 + sizeof(Addr) 
+          && *p == DW_OP_addr
+          && *(p + 1 + sizeof(Addr)) == DW_OP_GNU_push_tls_address) {
          if (!badness)
             badness = "trivial GExpr is DW_OP_addr plus trailing junk";
       }

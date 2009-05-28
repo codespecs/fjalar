@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -50,12 +50,6 @@ Bool VG_(isdigit) ( Char c )
    Converting strings to numbers
    ------------------------------------------------------------------ */
 
-static Bool is_oct_digit(Char c, Long* digit)
-{
-   if (c >= '0' && c <= '7') { *digit = (Long)(c - '0'); return True; }
-   return False;
-}
-
 static Bool is_dec_digit(Char c, Long* digit)
 {
    if (c >= '0' && c <= '9') { *digit = (Long)(c - '0'); return True; }
@@ -70,40 +64,11 @@ static Bool is_hex_digit(Char c, Long* digit)
    return False;
 }
 
-static Bool is_base36_digit(Char c, Long* digit)
-{
-   if (c >= '0' && c <= '9') { *digit = (Long)(c - '0');        return True; }
-   if (c >= 'A' && c <= 'Z') { *digit = (Long)((c - 'A') + 10); return True; }
-   if (c >= 'a' && c <= 'z') { *digit = (Long)((c - 'a') + 10); return True; }
-   return False;
-}
-
-Long VG_(strtoll8) ( Char* str, Char** endptr )
-{
-   Bool neg = False;
-   Long n = 0, digit = 0;
-
-   // Skip leading whitespace.
-   while (VG_(isspace)(*str)) str++;
-
-   // Allow a leading '-' or '+'.
-   if (*str == '-') { str++; neg = True; }
-   else if (*str == '+') { str++; }
-
-   while (is_oct_digit(*str, &digit)) {
-      n = 8*n + digit;
-      str++;
-   }
-
-   if (neg) n = -n;
-   if (endptr) *endptr = str;    // Record first failing character.
-   return n;
-}
-
 Long VG_(strtoll10) ( Char* str, Char** endptr )
 {
-   Bool neg = False;
+   Bool neg = False, converted = False;
    Long n = 0, digit = 0;
+   Char* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -113,19 +78,22 @@ Long VG_(strtoll10) ( Char* str, Char** endptr )
    else if (*str == '+') { str++; }
 
    while (is_dec_digit(*str, &digit)) {
+      converted = True;          // Ok, we've actually converted a digit.
       n = 10*n + digit;
       str++;
    }
 
-   if (neg) n = -n;
+   if (!converted) str = str0;   // If nothing converted, endptr points to
+   if (neg) n = -n;              //   the start of the string.
    if (endptr) *endptr = str;    // Record first failing character.
    return n;
 }
 
 Long VG_(strtoll16) ( Char* str, Char** endptr )
 {
-   Bool neg = False;
+   Bool neg = False, converted = False;
    Long n = 0, digit = 0;
+   Char* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -143,33 +111,13 @@ Long VG_(strtoll16) ( Char* str, Char** endptr )
    }
 
    while (is_hex_digit(*str, &digit)) {
+      converted = True;          // Ok, we've actually converted a digit.
       n = 16*n + digit;
       str++;
    }
 
-   if (neg) n = -n;
-   if (endptr) *endptr = str;    // Record first failing character.
-   return n;
-}
-
-Long VG_(strtoll36) ( Char* str, Char** endptr )
-{
-   Bool neg = False;
-   Long n = 0, digit = 0;
-
-   // Skip leading whitespace.
-   while (VG_(isspace)(*str)) str++;
-
-   // Allow a leading '-' or '+'.
-   if (*str == '-') { str++; neg = True; }
-   else if (*str == '+') { str++; }
-
-   while (is_base36_digit(*str, &digit)) {
-      n = 36*n + digit;
-      str++;
-   }
-
-   if (neg) n = -n;
+   if (!converted) str = str0;   // If nothing converted, endptr points to
+   if (neg) n = -n;              //   the start of the string.
    if (endptr) *endptr = str;    // Record first failing character.
    return n;
 }
@@ -207,21 +155,6 @@ double VG_(strtod) ( Char* str, Char** endptr )
    return n;
 }
 
-Long VG_(atoll) ( Char* str )
-{
-   return VG_(strtoll10)(str, NULL);
-}
-
-Long VG_(atoll16) ( Char* str )
-{
-   return VG_(strtoll16)(str, NULL);
-}
-
-Long VG_(atoll36) ( Char* str )
-{
-   return VG_(strtoll36)(str, NULL);
-}
-
 /* ---------------------------------------------------------------------
    String functions
    ------------------------------------------------------------------ */
@@ -251,11 +184,11 @@ Char* VG_(strncat) ( Char* dest, const Char* src, SizeT n )
    return dest_orig;
 }
 
-Char* VG_(strpbrk) ( const Char* s, const Char* accept )
+Char* VG_(strpbrk) ( const Char* s, const Char* accpt )
 {
    const Char* a;
    while (*s) {
-      a = accept;
+      a = accpt;
       while (*a)
          if (*a++ == *s)
             return (Char *) s;
@@ -314,25 +247,6 @@ Int VG_(strcmp) ( const Char* s1, const Char* s2 )
    }
 }
 
-static Bool isterm ( Char c )
-{
-   return ( VG_(isspace)(c) || 0 == c );
-}
-
-Int VG_(strcmp_ws) ( const Char* s1, const Char* s2 )
-{
-   while (True) {
-      if (isterm(*s1) && isterm(*s2)) return 0;
-      if (isterm(*s1)) return -1;
-      if (isterm(*s2)) return 1;
-
-      if (*(UChar*)s1 < *(UChar*)s2) return -1;
-      if (*(UChar*)s1 > *(UChar*)s2) return 1;
-
-      s1++; s2++;
-   }
-}
-
 Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
 {
    SizeT n = 0;
@@ -341,22 +255,6 @@ Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
       if (*s1 == 0 && *s2 == 0) return 0;
       if (*s1 == 0) return -1;
       if (*s2 == 0) return 1;
-
-      if (*(UChar*)s1 < *(UChar*)s2) return -1;
-      if (*(UChar*)s1 > *(UChar*)s2) return 1;
-
-      s1++; s2++; n++;
-   }
-}
-
-Int VG_(strncmp_ws) ( const Char* s1, const Char* s2, SizeT nmax )
-{
-   Int n = 0;
-   while (True) {
-      if (n >= nmax) return 0;
-      if (isterm(*s1) && isterm(*s2)) return 0;
-      if (isterm(*s1)) return -1;
-      if (isterm(*s2)) return 1;
 
       if (*(UChar*)s1 < *(UChar*)s2) return -1;
       if (*(UChar*)s1 > *(UChar*)s2) return 1;
@@ -398,12 +296,12 @@ Char* VG_(strrchr) ( const Char* s, Char c )
    return NULL;
 }
 
-SizeT VG_(strspn) ( const Char* s, const Char* accept )
+SizeT VG_(strspn) ( const Char* s, const Char* accpt )
 {
    const Char *p, *a;
    SizeT count = 0;
    for (p = s; *p != '\0'; ++p) {
-      for (a = accept; *a != '\0'; ++a)
+      for (a = accpt; *a != '\0'; ++a)
          if (*p == *a)
             break;
       if (*a == '\0')

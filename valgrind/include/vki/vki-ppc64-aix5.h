@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -280,8 +280,7 @@ struct vki_sigaction {
 
 #define VKI_MINSIGSTKSZ 1200
 
-#define VKI_SI_TKILL 0 /* AIX doesn't have this */
-#define VKI_SI_USER  0 /* but it does have this */
+#define VKI_SI_USER  0
 
 #define VKI_SIG_BLOCK      0
 #define VKI_SIG_SETMASK    2

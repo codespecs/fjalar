@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -41,6 +41,7 @@
 
 /* Move an fd into the Valgrind-safe range */
 extern Int VG_(safe_fd) ( Int oldfd );
+extern Int VG_(fcntl)   ( Int fd, Int cmd, Addr arg );
 
 /* Convert an fd into a filename */
 extern Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf );
@@ -49,31 +50,39 @@ extern Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf );
 extern Long VG_(fsize) ( Int fd );
 
 /* Is the file a directory? */
-extern Bool VG_(is_dir) ( HChar* f );
+extern Bool VG_(is_dir) ( const HChar* f );
 
 /* Default destination port to be used in logging over a network, if
    none specified. */
 #define VG_CLO_DEFAULT_LOGPORT 1500
+
+extern Int VG_(connect_via_socket)( UChar* str );
 
 extern UInt   VG_(htonl) ( UInt x );
 extern UInt   VG_(ntohl) ( UInt x );
 extern UShort VG_(htons) ( UShort x );
 extern UShort VG_(ntohs) ( UShort x );
 
+extern Int VG_(socket) ( Int domain, Int type, Int protocol );
+
 extern Int VG_(write_socket)( Int sd, void *msg, Int count );
-extern Int VG_(connect_via_socket)( UChar* str );
 extern Int VG_(getsockname) ( Int sd, struct vki_sockaddr *name, Int *namelen );
 extern Int VG_(getpeername) ( Int sd, struct vki_sockaddr *name, Int *namelen );
-extern Int VG_(getsockopt)  ( Int sd, Int level, Int optname, void *optval,
-                              Int *optlen );
+extern Int VG_(getsockopt)  ( Int sd, Int level, Int optname, 
+                              void *optval, Int *optlen );
 
-extern Int VG_(access) ( HChar* path, Bool irusr, Bool iwusr, Bool ixusr );
+extern Int VG_(access) ( const HChar* path, Bool irusr, Bool iwusr,
+                                            Bool ixusr );
 
 /* Is the file executable?  Returns: 0 = success, non-0 is failure */
 extern Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
-                                 HChar* f, Bool allow_setuid);
+                                 const HChar* f, Bool allow_setuid);
 
-extern SysRes VG_(pread) ( Int fd, void* buf, Int count, Int offset );
+/* DDD: Note this moves (or at least, is believed to move) the file pointer
+   on Linux and AIX5 but doesn't on Darwin.  This inconsistency should
+   be fixed.  (In other words, why isn't the Linux/AIX5 version implemented in
+   terms of pread()?) */
+extern SysRes VG_(pread) ( Int fd, void* buf, Int count, OffT offset );
 
 /* Create and open (-rw------) a tmp file name incorporating said arg.
    Returns -1 on failure, else the fd of the file.  If fullname is

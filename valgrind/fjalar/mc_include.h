@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
       Modified by Philip Guo to serve as part of Fjalar, a dynamic
@@ -87,14 +87,15 @@ typedef
    }
    MC_AllocKind;
    
-/* Nb: first two fields must match core's VgHashNode. */
+/* This describes a heap block. Nb: first two fields must match core's
+ * VgHashNode. */
 typedef
    struct _MC_Chunk {
       struct _MC_Chunk* next;
-      Addr         data;            // ptr to actual block
-      SizeT        szB : (sizeof(UWord)*8)-2; // size requested; 30 or 62 bits
-      MC_AllocKind allockind : 2;   // which wrapper did the allocation
-      ExeContext*  where;           // where it was allocated
+      Addr         data;            // Address of the actual block.
+      SizeT        szB : (sizeof(SizeT)*8)-2; // Size requested; 30 or 62 bits.
+      MC_AllocKind allockind : 2;   // Which operation did the allocation.
+      ExeContext*  where;           // Where it was allocated.
    }
    MC_Chunk;
 
@@ -111,7 +112,7 @@ typedef
 
 
 void* MC_(new_block)  ( ThreadId tid,
-                        Addr p, SizeT size, SizeT align, UInt rzB,
+                        Addr p, SizeT size, SizeT align,
                         Bool is_zeroed, MC_AllocKind kind,
                         VgHashTable table);
 void MC_(handle_free) ( ThreadId tid,
@@ -153,6 +154,7 @@ void  MC_(free)                 ( ThreadId tid, void* p );
 void  MC_(__builtin_delete)     ( ThreadId tid, void* p );
 void  MC_(__builtin_vec_delete) ( ThreadId tid, void* p );
 void* MC_(realloc)              ( ThreadId tid, void* p, SizeT new_size );
+SizeT MC_(malloc_usable_size)   ( ThreadId tid, void* p );
 
 
 /*------------------------------------------------------------*/
@@ -258,18 +260,17 @@ HChar* MC_(event_ctr_name)[N_PROF_EVENTS];
 /*--- Leak checking                                        ---*/
 /*------------------------------------------------------------*/
 
-/* A block is either 
-   -- Proper-ly reached; a pointer to its start has been found
-   -- Interior-ly reached; only an interior pointer to it has been found
-   -- Unreached; so far, no pointers to any part of it have been found. 
-   -- IndirectLeak; leaked, but referred to by another leaked block
-*/
 typedef 
    enum { 
-      Unreached    =0, 
-      IndirectLeak =1,
-      Interior     =2, 
-      Proper       =3
+      // Nb: the order is important -- it dictates the order of loss records
+      // of equal sizes.
+      Reachable    =0,  // Definitely reachable from root-set.
+      Possible     =1,  // Possibly reachable from root-set;  involves at
+                        //   least one interior-pointer along the way.
+      IndirectLeak =2,  // Leaked, but reachable from another leaked block
+                        //   (be it Unreached or IndirectLeak).
+      Unreached    =3,  // Not reached, ie. leaked. 
+                        //   (At best, only reachable from itself via a cycle.)
   }
   Reachedness;
 
@@ -280,6 +281,13 @@ extern SizeT MC_(bytes_dubious);
 extern SizeT MC_(bytes_reachable);
 extern SizeT MC_(bytes_suppressed);
 
+/* For VALGRIND_COUNT_LEAK_BLOCKS client request */
+extern SizeT MC_(blocks_leaked);
+extern SizeT MC_(blocks_indirect);
+extern SizeT MC_(blocks_dubious);
+extern SizeT MC_(blocks_reachable);
+extern SizeT MC_(blocks_suppressed);
+
 typedef
    enum {
       LC_Off,
@@ -288,26 +296,30 @@ typedef
    }
    LeakCheckMode;
 
-/* A block record, used for generating err msgs. */
+/* When a LossRecord is put into an OSet, these elements represent the key. */
+typedef
+   struct _LossRecordKey {
+      Reachedness  state;        // LC_Extra.state value shared by all blocks.
+      ExeContext*  allocated_at; // Where they were allocated.
+   } 
+   LossRecordKey;
+
+/* A loss record, used for generating err msgs.  Multiple leaked blocks can be
+ * merged into a single loss record if they have the same state and similar
+ * enough allocation points (controlled by --leak-resolution). */
 typedef
    struct _LossRecord {
-      struct _LossRecord* next;
-      /* Where these lost blocks were allocated. */
-      ExeContext*  allocated_at;
-      /* Their reachability. */
-      Reachedness  loss_mode;
-      /* Number of blocks and total # bytes involved. */
-      SizeT        total_bytes;
-      SizeT        indirect_bytes;
-      UInt         num_blocks;
+      LossRecordKey key;  // Key, when used in an OSet.
+      SizeT szB;          // Sum of all MC_Chunk.szB values.
+      SizeT indirect_szB; // Sum of all LC_Extra.indirect_szB values.
+      UInt  num_blocks;   // Number of blocks represented by the record.
    }
    LossRecord;
 
-void MC_(do_detect_memory_leaks) (
-        ThreadId tid, LeakCheckMode mode,
-        Bool (*is_within_valid_secondary) ( Addr ),
-        Bool (*is_valid_aligned_word)     ( Addr )
-     );
+void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode );
+
+Bool MC_(is_valid_aligned_word)     ( Addr a );
+Bool MC_(is_within_valid_secondary) ( Addr a );
 
 void MC_(pp_LeakError)(UInt n_this_record, UInt n_total_records,
                        LossRecord* l);
@@ -353,7 +365,7 @@ void MC_(record_freemismatch_error)    ( ThreadId tid, MC_Chunk* mc );
 
 void MC_(record_overlap_error)  ( ThreadId tid, Char* function,
                                   Addr src, Addr dst, SizeT szB );
-void MC_(record_core_mem_error) ( ThreadId tid, Bool isAddrErr, Char* msg );
+void MC_(record_core_mem_error) ( ThreadId tid, Char* msg );
 void MC_(record_regparam_error) ( ThreadId tid, Char* msg, UInt otag );
 void MC_(record_memparam_error) ( ThreadId tid, Addr a, 
                                   Bool isAddrErr, Char* msg, UInt otag );

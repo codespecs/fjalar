@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -56,10 +56,9 @@ typedef
 // sim'd CPU.  Must be a function rather than macros so that va_list can
 // be used.
 
-int VALGRIND_INTERNAL_PRINTF(char *format, ...);
-__attribute__((format(__printf__, 1, 2)))
-__attribute__((weak))
-int VALGRIND_INTERNAL_PRINTF(char *format, ...)
+static int VALGRIND_INTERNAL_PRINTF(const char *format, ...)
+   __attribute__((format(__printf__, 1, 2), __unused__));
+static int VALGRIND_INTERNAL_PRINTF(const char *format, ...)
 {
    unsigned long _qzz_res = 0;
    va_list vargs;

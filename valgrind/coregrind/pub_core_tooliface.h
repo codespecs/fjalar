@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -155,6 +155,7 @@ typedef struct {
    void  (*tool___builtin_delete)    (ThreadId, void*);
    void  (*tool___builtin_vec_delete)(ThreadId, void*);
    void* (*tool_realloc)             (ThreadId, void*, SizeT);
+   SizeT (*tool_malloc_usable_size)  (ThreadId, void*);
    SizeT tool_client_redzone_szB;
 
    // VG_(needs).final_IR_tidy_pass
@@ -212,9 +213,10 @@ typedef struct {
    void (*track_pre_mem_write)      (CorePart, ThreadId, Char*, Addr, SizeT);
    void (*track_post_mem_write)     (CorePart, ThreadId, Addr, SizeT);
 
-   void (*track_pre_reg_read)  (CorePart, ThreadId, Char*, OffT, SizeT);
-   void (*track_post_reg_write)(CorePart, ThreadId,        OffT, SizeT);
-   void (*track_post_reg_write_clientcall_return)(ThreadId, OffT, SizeT, Addr);
+   void (*track_pre_reg_read)  (CorePart, ThreadId, Char*, PtrdiffT, SizeT);
+   void (*track_post_reg_write)(CorePart, ThreadId,        PtrdiffT, SizeT);
+   void (*track_post_reg_write_clientcall_return)(ThreadId, PtrdiffT, SizeT,
+                                                  Addr);
 
    void (*track_start_client_code)(ThreadId, ULong);
    void (*track_stop_client_code) (ThreadId, ULong);

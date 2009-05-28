@@ -21,7 +21,6 @@
    drd:ConflictingAccess
    obj:/lib*/ld-*.so
    obj:/lib*/ld-*.so
-   obj:/lib*/ld-*.so
 }
 {
    dl-dlsym-1
@@ -46,6 +45,11 @@
    drd:ConflictingAccess
    fun:_dl_addr
    fun:backtrace_symbols
+}
+{
+   libc-stdio
+   drd:ConflictingAccess
+   obj:/lib*/libc-*
 }
 {
    libc
@@ -310,7 +314,13 @@
    libglib-g_get_language_names
    drd:ConflictingAccess
    fun:g_slice_free_chain_with_offset
-   fun:g_get_language_names
+}
+{
+   libQtCore-deref-that-calls-QThreadData-destructor
+   drd:ConflictingAccess
+   fun:_ZN11QThreadDataD1Ev
+   fun:_ZN11QThreadData5derefEv
+   obj:/usr/lib*/libQtCore.so.4.*
 }
 {
    libQtCore-4.0/4.1-Q_GLOBAL_STATIC-connectionList
@@ -325,7 +335,6 @@
    fun:_ZN14QReadWriteLock12lockForWriteEv
    fun:_ZN14QObjectPrivate11clearGuardsEP7QObject
    fun:_ZN7QObjectD2Ev
-   fun:_ZN20QEventDispatcherGlibD0Ev
 }
 {
    libQtCore-QObjectPrivate::clearGuards(QObject*)

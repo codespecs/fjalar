@@ -1,16 +1,15 @@
 
 /*--------------------------------------------------------------------*/
-/*--- Top level for kernel interface system call numbers.          ---*/
-/*---                                         pub_tool_vkiscnums.h ---*/
+/*--- Syscall numbers and related operations. pub_tool_vkiscnums.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2009 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or

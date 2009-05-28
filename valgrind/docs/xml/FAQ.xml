@@ -142,7 +142,11 @@ collect2: ld returned 1 exit status
 <qandaentry id="faq.bugdeath">
   <question id="q-bugdeath">
     <para>My (buggy) program dies like this:</para>
-<screen>valgrind: m_mallocfree.c:442 (bszW_to_pszW): Assertion 'pszW >= 0' failed.</screen>
+<screen>valgrind: m_mallocfree.c:248 (get_bszB_as_is): Assertion 'bszB_lo == bszB_hi' failed.</screen>
+    <para>or like this:</para>
+<screen>valgrind: m_mallocfree.c:442 (mk_inuse_bszB): Assertion 'bszB != 0' failed.</screen>
+    <para>or otherwise aborts or crashes in m_mallocfree.c.</para>
+
   </question>
   <answer id="a-bugdeath">
     <para>If Memcheck (the memory checker) shows any invalid reads,
@@ -162,16 +166,20 @@ collect2: ld returned 1 exit status
 <screen>vex x86->IR: unhandled instruction bytes: 0x66 0xF 0x2E 0x5</screen>
   </question>
   <answer id="a-msgdeath">
-    <para>Older versions did not support some x86 and amd64 instructions,
-    particularly SSE/SSE2/SSE3 instructions.  Try a newer Valgrind; we now
-    support almost all instructions.  If it still breaks, file a bug
+    <para>One possibility is that your program has a bug and erroneously
+    jumps to a non-code address, in which case you'll get a SIGILL signal.
+    Memcheck may issue a warning just before this happens, but it might not
+    if the jump happens to land in addressable memory.</para>
+
+    <para>Another possibility is that Valgrind does not handle the
+    instruction.  If you are using an older Valgrind, a newer version might
+    handle the instruction.  However, all instruction sets have some
+    obscure, rarely used instructions.  Also, on amd64 there are an almost
+    limitless number of combinations of redundant instruction prefixes, many
+    of them undocumented but accepted by CPUs.  So Valgrind will still have
+    decoding failures from time to time.  If this happens, please file a bug
     report.</para>
 
-    <para>Another possibility is that your program has a bug and
-    erroneously jumps to a non-code address, in which case you'll get a
-    SIGILL signal.  Memcheck may issue a warning just before
-    this happens, but it might not if the jump happens to land in
-    addressable memory.</para>
   </answer>
 </qandaentry>
 
@@ -500,21 +508,28 @@ int main(void)
 <qandaentry id="faq.deflost">
   <question id="q-deflost">
     <para>With Memcheck's memory leak detector, what's the
-    difference between "definitely lost", "possibly lost", "still
-    reachable", and "suppressed"?</para>
+    difference between "definitely lost", "indirectly lost", "possibly
+    lost", "still reachable", and "suppressed"?</para>
   </question>
   <answer id="a-deflost">
-    <para>The details are in the Memcheck section of the user
-    manual.</para>
+    <para>The details are in the Memcheck section of the user manual.</para>
 
     <para>In short:</para>
     <itemizedlist>
       <listitem>
         <para>"definitely lost" means your program is leaking memory --
-        fix it!</para>
+        fix those leaks!</para>
       </listitem>
       <listitem>
-        <para>"possibly lost" means your program is probably leaking
+        <para>"indirectly lost" means your program is leaking memory in
+        a pointer-based structure.  (E.g. if the root node of a binary tree
+        is "definitely lost", all the children will be "indirectly lost".) 
+        If you fix the "definitely lost" leaks, the "indirectly lost" leaks
+        should go away.
+        </para>
+      </listitem>
+      <listitem>
+        <para>"possibly lost" means your program is leaking
         memory, unless you're doing funny things with pointers.</para>
       </listitem>
       <listitem>
@@ -563,6 +578,29 @@ int main(void)
     compilers pad structs to preserve alignment) and eager checking leads to
     hundreds of false positives.  Therefore Memcheck does not support eager
     checking at this time.</para>
+  </answer>
+</qandaentry>
+
+
+<qandaentry id="faq.attach">
+  <question id="q-attach">
+    <para>Is it possible to attach Valgrind to a program that is already
+    running?</para>
+  </question>
+  <answer id="a-attach">
+    <para>No.  The environment that Valgrind provides for running programs
+    is significantly different to that for normal programs, e.g. due to
+    different layout of memory.  Therefore Valgrind has to have full control
+    from the very start.</para>
+
+    <para>It is possible to achieve something like this by running your
+    program without any instrumentation (which involves a slow-down of about
+    5x, less than that of most tools), and then adding instrumentation once
+    you get to a point of interest.  Support for this must be provided by
+    the tool, however, and Callgrind is the only tool that currently has
+    such support.  See the instructions on the
+    <computeroutput>callgrind_control</computeroutput> program for details.
+    </para>
   </answer>
 </qandaentry>
 

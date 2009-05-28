@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2009 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2008 OpenWorks LLP
+   Copyright (C) 2006-2009 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -42,6 +42,12 @@
    that means the only thing to be done here is ... */
 
 #include "pub_tool_vki.h"
+
+/* Do initial consistency checks on some of the definitions to do with
+   signals (vki_sigset_t and vki_sigaction_{toK,fromK}_t).  This stuff
+   is fragile enough that it's important to check at startup that
+   the world looks like what we expect it to look like. */
+void VG_(vki_do_initial_consistency_checks)(void);
 
 #endif // __PUB_CORE_VKI_H
 

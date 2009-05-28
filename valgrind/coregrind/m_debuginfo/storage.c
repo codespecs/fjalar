@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -39,6 +39,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_options.h"      /* VG_(clo_verbosity) */
+#include "pub_core_debuginfo.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
@@ -950,7 +951,7 @@ static void canonicaliseVarInfo ( struct _DebugInfo* di )
       /* All the rest of this is for the local-scope case. */
       /* iterate over all entries in 'scope' */
       nInThisScope = 0;
-      range = rangep = NULL;
+      rangep = NULL;
       VG_(OSetGen_ResetIter)(scope);
       while (True) {
          range = VG_(OSetGen_Next)(scope);
@@ -1017,14 +1018,26 @@ static Int compare_DiSym ( void* va, void* vb )
 }
 
 
-/* Two symbols have the same address.  Which name do we prefer?
+/* Two symbols have the same address.  Which name do we prefer?  In order:
 
-   The general rule is to prefer the shorter symbol name.  If the
-   symbol contains a '@', which means it is versioned, then the length
-   up to the '@' is used for length comparison purposes (so
-   "foo@GLIBC_2.4.2" is considered shorter than "foobar"), but if two
-   symbols have the same length, the one with the version string is
-   preferred.  If all else fails, use alphabetical ordering.
+   - Prefer "PMPI_<foo>" over "MPI_<foo>".
+
+   - Else, prefer a non-NULL name over a NULL one.
+
+   - Else, prefer a non-whitespace name over an all-whitespace name.
+
+   - Else, prefer the shorter symbol name.  If the symbol contains a
+     version symbol ('@' on Linux, other platforms may differ), which means it
+     is versioned, then the length up to the version symbol is used for length
+     comparison purposes (so "foo@GLIBC_2.4.2" is considered shorter than
+     "foobar"). 
+     
+   - Else, if two symbols have the same length, prefer a versioned symbol over
+     a non-versioned symbol.
+     
+   - Else, use alphabetical ordering.
+
+   - Otherwise, they must be the same;  use the symbol with the lower address.
 
    Very occasionally this goes wrong (eg. 'memcmp' and 'bcmp' are
    aliases in glibc, we choose the 'bcmp' symbol because it's shorter,
@@ -1034,7 +1047,6 @@ static Int compare_DiSym ( void* va, void* vb )
 static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
 {
    Word cmp;
-   Word lena, lenb;		/* full length */
    Word vlena, vlenb;		/* length without version */
    const UChar *vpa, *vpb;
 
@@ -1043,11 +1055,17 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
 
    vg_assert(a->addr == b->addr);
 
-   vlena = lena = VG_(strlen)(a->name);
-   vlenb = lenb = VG_(strlen)(b->name);
+   vlena = VG_(strlen)(a->name);
+   vlenb = VG_(strlen)(b->name);
 
-   vpa = VG_(strchr)(a->name, '@');
-   vpb = VG_(strchr)(b->name, '@');
+#if defined(VGO_linux) || defined(VGO_aix5)
+#  define VERSION_CHAR '@'
+#else
+#  error Unknown OS
+#endif
+
+   vpa = VG_(strchr)(a->name, VERSION_CHAR);
+   vpb = VG_(strchr)(b->name, VERSION_CHAR);
 
    if (vpa)
       vlena = vpa - a->name;
@@ -1064,6 +1082,42 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
        && 0==VG_(strncmp)(a->name, "PMPI_", 5)
        && 0==VG_(strcmp)(b->name, 1+a->name)) {
       preferA = True; goto out;
+   }
+
+   /* Prefer non-empty name. */
+   if (vlena  &&  !vlenb) {
+      preferA = True; goto out;
+   }
+   if (vlenb  &&  !vlena) {
+      preferB = True; goto out;
+   }
+
+   /* Prefer non-whitespace name. */
+   {
+      Bool blankA = True;
+      Bool blankB = True;
+      Char *s;
+      s = a->name;
+      while (*s) {
+         if (!VG_(isspace)(*s++)) {
+            blankA = False;
+            break;
+         }
+      }
+      s = b->name;
+      while (*s) {
+         if (!VG_(isspace)(*s++)) {
+            blankB = False;
+            break;
+         }
+      }
+
+      if (!blankA  &&  blankB) {
+         preferA = True; goto out;
+      }
+      if (!blankB  &&  blankA) {
+         preferB = True; goto out;
+      }
    }
 
    /* Select the shortest unversioned name */
@@ -1091,8 +1145,9 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
    if (cmp > 0) {
       preferB = True; goto out;
    }
-   /* If we get here, they are the same (?!).  That's very odd.  In
-      this case we could choose either (arbitrarily), but might as
+   /* If we get here, they are the same name. */
+
+   /* In this case we could choose either (arbitrarily), but might as
       well choose the one with the lowest DiSym* address, so as to try
       and make the comparison mechanism more stable (a la sorting
       parlance).  Also, skip the diagnostic printing in this case. */
@@ -1508,6 +1563,31 @@ Word ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr )
    }
 }
 
+
+/* Find a FPO-table index containing the specified pointer, or -1
+   if not found.  Binary search.  */
+
+Word ML_(search_one_fpotab) ( struct _DebugInfo* di, Addr ptr )
+{
+   Addr const addr = ptr - di->rx_map_avma;
+   Addr a_mid_lo, a_mid_hi;
+   Word mid, size,
+        lo = 0,
+        hi = di->fpo_size-1;
+   while (True) {
+      /* current unsearched space is from lo to hi, inclusive. */
+      if (lo > hi) return -1; /* not found */
+      mid      = (lo + hi) / 2;
+      a_mid_lo = di->fpo[mid].ulOffStart;
+      size     = di->fpo[mid].cbProcSize;
+      a_mid_hi = a_mid_lo + size - 1;
+      vg_assert(a_mid_hi >= a_mid_lo);
+      if (addr < a_mid_lo) { hi = mid-1; continue; }
+      if (addr > a_mid_hi) { lo = mid+1; continue; }
+      vg_assert(addr >= a_mid_lo && addr <= a_mid_hi);
+      return mid;
+   }
+}
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

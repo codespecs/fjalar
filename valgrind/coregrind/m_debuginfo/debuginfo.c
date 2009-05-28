@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -50,7 +50,7 @@
 #include "pub_core_machine.h"    // VG_PLAT_USES_PPCTOC
 #include "pub_core_xarray.h"
 #include "pub_core_oset.h"
-#include "pub_core_stacktrace.h" // VG_(get_StackTrace)
+#include "pub_core_stacktrace.h" // VG_(get_StackTrace) XXX: circular dependency
 
 #include "priv_misc.h"           /* dinfo_zalloc/free */
 #include "priv_d3basics.h"       /* ML_(pp_GX) */
@@ -61,6 +61,7 @@
 #if defined(VGO_linux)
 # include "priv_readelf.h"
 # include "priv_readdwarf3.h"
+# include "priv_readpdb.h"
 #elif defined(VGO_aix5)
 # include "pub_core_debuglog.h"
 # include "pub_core_libcproc.h"
@@ -217,6 +218,7 @@ static void free_DebugInfo ( DebugInfo* di )
    if (di->loctab)     ML_(dinfo_free)(di->loctab);
    if (di->cfsi)       ML_(dinfo_free)(di->cfsi);
    if (di->cfsi_exprs) VG_(deleteXA)(di->cfsi_exprs);
+   if (di->fpo)        ML_(dinfo_free)(di->fpo);
 
    for (chunk = di->strchunks; chunk != NULL; chunk = next) {
       next = chunk->next;
@@ -643,11 +645,11 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV )
 
    /* stat dereferences symlinks, so we don't expect it to succeed and
       yet produce something that is a symlink. */
-   vg_assert(statres.isError || ! VKI_S_ISLNK(statbuf.st_mode));
+   vg_assert(sr_isError(statres) || ! VKI_S_ISLNK(statbuf.mode));
 
    /* Don't let the stat call fail silently.  Filter out some known
       sources of noise before complaining, though. */
-   if (statres.isError) {
+   if (sr_isError(statres)) {
       DebugInfo fake_di;
       Bool quiet = VG_(strstr)(filename, "/var/run/nscd/") != NULL;
       if (!quiet && VG_(clo_verbosity) > 1) {
@@ -660,7 +662,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV )
 
    /* Finally, the point of all this stattery: if it's not a regular file,
       don't try to read debug info from it. */
-   if (! VKI_S_ISREG(statbuf.st_mode))
+   if (! VKI_S_ISREG(statbuf.mode))
       return 0;
 
    /* no uses of statbuf below here. */
@@ -724,9 +726,8 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV )
    /* object file. Ignore the file if we do not have read permission. */
    VG_(memset)(buf1k, 0, sizeof(buf1k));
    fd = VG_(open)( filename, VKI_O_RDONLY, 0 );
-   if (fd.isError) {
-      if (fd.err != VKI_EACCES)
-      {
+   if (sr_isError(fd)) {
+      if (sr_Err(fd) != VKI_EACCES) {
          DebugInfo fake_di;
          VG_(memset)(&fake_di, 0, sizeof(fake_di));
          fake_di.filename = filename;
@@ -734,8 +735,8 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV )
       }
       return 0;
    }
-   nread = VG_(read)( fd.res, buf1k, sizeof(buf1k) );
-   VG_(close)( fd.res );
+   nread = VG_(read)( sr_Res(fd), buf1k, sizeof(buf1k) );
+   VG_(close)( sr_Res(fd) );
 
    if (nread == 0)
       return 0;
@@ -870,6 +871,143 @@ void VG_(di_notify_mprotect)( Addr a, SizeT len, UInt prot )
       if (anyFound)
          cfsi_cache__invalidate();
    }
+}
+
+/*--------- PDB (windows debug info) reading --------- */
+
+/* this should really return ULong, as per VG_(di_notify_mmap). */
+void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
+                                   SizeT total_size,
+                                   PtrdiffT unknown_purpose__reloc )
+{
+   Int    r, sz_exename;
+   ULong  obj_mtime, pdb_mtime;
+   Char   exename[VKI_PATH_MAX];
+   Char*  pdbname = NULL;
+   Char*  dot;
+   SysRes sres;
+   Int    fd_pdbimage;
+   SizeT  n_pdbimage;
+   struct vg_stat stat_buf;
+
+   if (VG_(clo_verbosity) > 0) {
+      VG_(message)(Vg_UserMsg, "");
+      VG_(message)(Vg_UserMsg,
+         "LOAD_PDB_DEBUGINFO(fd=%d, avma=%#lx, total_size=%lu, "
+         "uu_reloc=%#lx)", 
+         fd_obj, avma_obj, total_size, unknown_purpose__reloc
+      );
+   }
+
+   /* 'fd' refers to the .exe/.dll we're dealing with.  Get its modification
+      time into obj_mtime. */
+   r = VG_(fstat)(fd_obj, &stat_buf);
+   if (r == -1)
+      goto out; /* stat failed ?! */
+   vg_assert(r == 0);
+   obj_mtime = stat_buf.mtime;
+
+   /* and get its name into exename[]. */
+   vg_assert(VKI_PATH_MAX > 100); /* to ensure /proc/self/fd/%d is safe */
+   VG_(memset)(exename, 0, sizeof(exename));
+   VG_(sprintf)(exename, "/proc/self/fd/%d", fd_obj);
+   /* convert exename from a symlink to real name .. overwrites the
+      old contents of the buffer.  Ick. */
+   sz_exename = VG_(readlink)(exename, exename, sizeof(exename)-2 );
+   if (sz_exename == -1)
+      goto out; /* readlink failed ?! */
+   vg_assert(sz_exename >= 0 && sz_exename < sizeof(exename));
+   vg_assert(exename[sizeof(exename)-1] == 0);
+
+   if (VG_(clo_verbosity) > 0) {
+      VG_(message)(Vg_UserMsg, "LOAD_PDB_DEBUGINFO: objname: %s", exename);
+   }
+
+   /* Try to find a matching PDB file from which to read debuginfo.
+      Windows PE files have symbol tables and line number information,
+      but MSVC doesn't seem to use them. */
+   /* Why +5 ?  Because in the worst case, we could find a dot as the
+      last character of pdbname, and we'd then put "pdb" right after
+      it, hence extending it a bit. */
+   pdbname = ML_(dinfo_zalloc)("di.debuginfo.lpd1", sz_exename+5);
+   VG_(strcpy)(pdbname, exename);
+   vg_assert(pdbname[sz_exename+5-1] == 0);
+   dot = VG_(strrchr)(pdbname, '.');
+   if (!dot)
+      goto out; /* there's no dot in the exe's name ?! */
+   if (dot[1] == 0)
+      goto out; /* hmm, path ends in "." */
+
+   if ('A' <= dot[1] && dot[1] <= 'Z')
+      VG_(strcpy)(dot, ".PDB");
+   else
+      VG_(strcpy)(dot, ".pdb");
+
+   vg_assert(pdbname[sz_exename+5-1] == 0);
+
+   /* See if we can find it, and check it's in-dateness. */
+   sres = VG_(stat)(pdbname, &stat_buf);
+   if (sr_isError(sres)) {
+      VG_(message)(Vg_UserMsg, "Warning: Missing or un-stat-able %s",
+                               pdbname);
+   if (VG_(clo_verbosity) > 0)
+      VG_(message)(Vg_UserMsg, "LOAD_PDB_DEBUGINFO: missing: %s", pdbname);
+      goto out;
+   }
+   pdb_mtime = stat_buf.mtime;
+   if (pdb_mtime < obj_mtime ) {
+      /* PDB file is older than PE file - ignore it or we will either
+         (a) print wrong stack traces or more likely (b) crash. */
+      VG_(message)(Vg_UserMsg, "Warning: Ignoring %s since it is older than %s",
+                               pdbname, exename);
+      goto out;
+   }
+
+   sres = VG_(open)(pdbname, VKI_O_RDONLY, 0);
+   if (sr_isError(sres)) {
+      VG_(message)(Vg_UserMsg, "Warning: Can't open %s", pdbname);
+      goto out;
+   }
+
+   /* Looks promising; go on to try and read stuff from it. */
+   fd_pdbimage = sr_Res(sres);
+   n_pdbimage  = stat_buf.size;
+   sres = VG_(am_mmap_file_float_valgrind)( n_pdbimage, VKI_PROT_READ,
+                                            fd_pdbimage, 0 );
+   if (sr_isError(sres)) {
+      VG_(close)(fd_pdbimage);
+      goto out;
+   }
+
+   if (VG_(clo_verbosity) > 0)
+      VG_(message)(Vg_UserMsg, "LOAD_PDB_DEBUGINFO: pdbname: %s", pdbname);
+
+   /* play safe; always invalidate the CFI cache.  I don't know if
+      this is necessary, but anyway .. */
+   cfsi_cache__invalidate();
+   /* dump old info for this range, if any */
+   discard_syms_in_range( avma_obj, total_size );
+
+   { void* pdbimage = (void*)sr_Res(sres);
+     DebugInfo* di = find_or_create_DebugInfo_for(exename, NULL/*membername*/ );
+
+     /* this di must be new, since we just nuked any old stuff in the range */
+     vg_assert(di && !di->have_rx_map && !di->have_rw_map);
+     vg_assert(!di->have_dinfo);
+
+     /* don't set up any of the di-> fields; let
+        ML_(read_pdb_debug_info) do it. */
+     ML_(read_pdb_debug_info)( di, avma_obj, unknown_purpose__reloc,
+                               pdbimage, n_pdbimage, pdbname, pdb_mtime );
+     // JRS fixme: take notice of return value from read_pdb_debug_info,
+     // and handle failure
+     vg_assert(di->have_dinfo); // fails if PDB read failed
+     VG_(am_munmap_valgrind)( (Addr)pdbimage, n_pdbimage );
+     VG_(close)(fd_pdbimage);
+   }
+
+  out:
+   if (pdbname) ML_(dinfo_free)(pdbname);
 }
 
 #endif /* defined(VGO_linux) */
@@ -1036,7 +1174,17 @@ static void search_all_symtabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
                    (di->bss_present
                     && di->bss_size > 0
                     && di->bss_avma <= ptr 
-                    && ptr < di->bss_avma + di->bss_size);
+                    && ptr < di->bss_avma + di->bss_size)
+                   ||
+                   (di->sbss_present
+                    && di->sbss_size > 0
+                    && di->sbss_avma <= ptr 
+                    && ptr < di->sbss_avma + di->sbss_size)
+                   ||
+                   (di->rodata_present
+                    && di->rodata_size > 0
+                    && di->rodata_avma <= ptr 
+                    && ptr < di->rodata_avma + di->rodata_size);
       }
 
       if (!inRange) continue;
@@ -1064,6 +1212,7 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
    DebugInfo* di;
    for (di = debugInfo_list; di != NULL; di = di->next) {
       if (di->text_present
+          && di->text_size > 0
           && di->text_avma <= ptr 
           && ptr < di->text_avma + di->text_size) {
          lno = ML_(search_one_loctab) ( di, ptr );
@@ -1080,32 +1229,41 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
 
 /* The whole point of this whole big deal: map a code address to a
    plausible symbol name.  Returns False if no idea; otherwise True.
-   Caller supplies buf and nbuf.  If demangle is False, don't do
-   demangling, regardless of VG_(clo_demangle) -- probably because the
-   call has come from VG_(get_fnname_nodemangle)().  findText
+   Caller supplies buf and nbuf.  If do_cxx_demangling is False, don't do
+   C++ demangling, regardless of VG_(clo_demangle) -- probably because the
+   call has come from VG_(get_fnname_raw)().  findText
    indicates whether we're looking for a text symbol or a data symbol
    -- caller must choose one kind or the other. */
 static
-Bool get_sym_name ( Bool demangle, Addr a, Char* buf, Int nbuf,
+Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
+                    Bool do_below_main_renaming,
+                    Addr a, Char* buf, Int nbuf,
                     Bool match_anywhere_in_sym, Bool show_offset,
-                    Bool findText, /*OUT*/OffT* offsetP )
+                    Bool findText, /*OUT*/PtrdiffT* offsetP )
 {
    DebugInfo* di;
    Word       sno;
-   Int        offset;
+   PtrdiffT   offset;
 
    search_all_symtabs ( a, &di, &sno, match_anywhere_in_sym, findText );
    if (di == NULL) 
       return False;
-   if (demangle) {
-      VG_(demangle) ( True/*do C++ demangle*/,
-                      di->symtab[sno].name, buf, nbuf );
-   } else {
-      VG_(strncpy_safely) ( buf, di->symtab[sno].name, nbuf );
-   }
 
+   VG_(demangle) ( do_cxx_demangling, do_z_demangling,
+                   di->symtab[sno].name, buf, nbuf );
+
+   /* Do the below-main hack */
+   // To reduce the endless nuisance of multiple different names 
+   // for "the frame below main()" screwing up the testsuite, change all
+   // known incarnations of said into a single name, "(below main)", if
+   // --show-below-main=yes.
+   if ( do_below_main_renaming && ! VG_(clo_show_below_main) &&
+        Vg_FnNameBelowMain == VG_(get_fnname_kind)(buf) )
+   {
+      VG_(strncpy_safely)(buf, "(below main)", nbuf);
+   }
    offset = a - di->symtab[sno].addr;
-   if (offsetP) *offsetP = (OffT)offset;
+   if (offsetP) *offsetP = offset;
 
    if (show_offset && offset != 0) {
       Char     buf2[12];
@@ -1113,7 +1271,7 @@ Bool get_sym_name ( Bool demangle, Addr a, Char* buf, Int nbuf,
       Char*    end = buf + nbuf;
       Int      len;
 
-      len = VG_(sprintf)(buf2, "%c%d",
+      len = VG_(sprintf)(buf2, "%c%ld",
 			 offset < 0 ? '-' : '+',
 			 offset < 0 ? -offset : offset);
       vg_assert(len < (Int)sizeof(buf2));
@@ -1123,6 +1281,8 @@ Bool get_sym_name ( Bool demangle, Addr a, Char* buf, Int nbuf,
 	 VG_(memcpy)(symend, cp, len+1);
       }
    }
+
+   buf[nbuf-1] = 0; /* paranoia */
 
    return True;
 }
@@ -1148,7 +1308,9 @@ Addr VG_(get_tocptr) ( Addr guest_code_addr )
    match anywhere in function, but don't show offsets. */
 Bool VG_(get_fnname) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*demangle*/True, a, buf, nbuf,
+   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
+                         /*below-main-renaming*/True,
+                         a, buf, nbuf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/False,
                          /*text syms only*/True,
@@ -1159,7 +1321,9 @@ Bool VG_(get_fnname) ( Addr a, Char* buf, Int nbuf )
    match anywhere in function, and show offset if nonzero. */
 Bool VG_(get_fnname_w_offset) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*demangle*/True, a, buf, nbuf,
+   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
+                         /*below-main-renaming*/True,
+                         a, buf, nbuf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/True,
                          /*text syms only*/True,
@@ -1171,18 +1335,23 @@ Bool VG_(get_fnname_w_offset) ( Addr a, Char* buf, Int nbuf )
    and don't show offsets. */
 Bool VG_(get_fnname_if_entry) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*demangle*/True, a, buf, nbuf,
+   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
+                         /*below-main-renaming*/True,
+                         a, buf, nbuf,
                          /*match_anywhere_in_fun*/False, 
                          /*show offset?*/False,
                          /*text syms only*/True,
                          /*offsetP*/NULL );
 }
 
-/* This is only available to core... don't demangle C++ names,
-   match anywhere in function, and don't show offsets. */
-Bool VG_(get_fnname_nodemangle) ( Addr a, Char* buf, Int nbuf )
+/* This is only available to core... don't C++-demangle, don't Z-demangle,
+   don't rename below-main, match anywhere in function, and don't show
+   offsets. */
+Bool VG_(get_fnname_raw) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*demangle*/False, a, buf, nbuf,
+   return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
+                         /*below-main-renaming*/False,
+                         a, buf, nbuf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/False,
                          /*text syms only*/True,
@@ -1190,29 +1359,55 @@ Bool VG_(get_fnname_nodemangle) ( Addr a, Char* buf, Int nbuf )
 }
 
 /* This is only available to core... don't demangle C++ names, but do
-   do Z-demangling, match anywhere in function, and don't show
-   offsets. */
-Bool VG_(get_fnname_Z_demangle_only) ( Addr a, Char* buf, Int nbuf )
+   do Z-demangling and below-main-renaming, match anywhere in function, and
+   don't show offsets. */
+Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, Char* buf, Int nbuf )
 {
-#  define N_TMPBUF 4096 /* arbitrary, 4096 == ERRTXT_LEN */
-   Char tmpbuf[N_TMPBUF];
-   Bool ok;
-   vg_assert(nbuf > 0);
-   ok = get_sym_name ( /*demangle*/False, a, tmpbuf, N_TMPBUF,
-                       /*match_anywhere_in_fun*/True, 
-                       /*show offset?*/False,
-                       /*text syms only*/True,
-                       /*offsetP*/NULL );
-   tmpbuf[N_TMPBUF-1] = 0; /* paranoia */
-   if (!ok) 
-      return False;
+   return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/True,
+                         /*below-main-renaming*/True,
+                         a, buf, nbuf,
+                         /*match_anywhere_in_fun*/True, 
+                         /*show offset?*/False,
+                         /*text syms only*/True,
+                         /*offsetP*/NULL );
+}
 
-   /* We have something, at least.  Try to Z-demangle it. */
-   VG_(demangle)( False/*don't do C++ demangling*/, tmpbuf, buf, nbuf);
+Vg_FnNameKind VG_(get_fnname_kind) ( Char* name )
+{
+   if (VG_STREQ("main", name)) {
+      return Vg_FnNameMain;
 
-   buf[nbuf-1] = 0; /* paranoia */
-   return True;
-#  undef N_TMPBUF
+   } else if (
+#if defined(VGO_linux)
+       VG_STREQ("__libc_start_main",  name) ||  // glibc glibness
+       VG_STREQ("generic_start_main", name) ||  // Yellow Dog doggedness
+#elif defined(VGO_aix5)
+       VG_STREQ("__start", name)            ||  // AIX aches
+#else
+#      error Unknown OS
+#endif
+       0) {
+      return Vg_FnNameBelowMain;
+
+   } else {
+      return Vg_FnNameNormal;
+   }
+}
+
+Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip )
+{
+   // We don't need a big buffer;  all the special names are small.
+   #define BUFLEN 50
+   Char buf[50];
+
+   // We don't demangle, because it's faster not to, and the special names
+   // we're looking for won't be demangled.
+   if (VG_(get_fnname_raw) ( ip, buf, BUFLEN )) {
+      buf[BUFLEN-1] = '\0';      // paranoia
+      return VG_(get_fnname_kind)(buf);
+   } else {
+      return Vg_FnNameNormal;    // Don't know the name, treat it as normal.
+   }
 }
 
 /* Looks up data_addr in the collection of data symbols, and if found
@@ -1221,11 +1416,13 @@ Bool VG_(get_fnname_Z_demangle_only) ( Addr a, Char* buf, Int nbuf )
    from the symbol start is put into *offset. */
 Bool VG_(get_datasym_and_offset)( Addr data_addr,
                                   /*OUT*/Char* dname, Int n_dname,
-                                  /*OUT*/OffT* offset )
+                                  /*OUT*/PtrdiffT* offset )
 {
    Bool ok;
    vg_assert(n_dname > 1);
-   ok = get_sym_name ( /*demangle*/False, data_addr, dname, n_dname,
+   ok = get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
+                       /*below-main-renaming*/False,
+                       data_addr, dname, n_dname,
                        /*match_anywhere_in_sym*/True, 
                        /*show offset?*/False,
                        /*data syms only please*/False,
@@ -1250,6 +1447,7 @@ Bool VG_(get_objname) ( Addr a, Char* buf, Int nbuf )
       expect this to produce a result. */
    for (di = debugInfo_list; di != NULL; di = di->next) {
       if (di->text_present
+          && di->text_size > 0
           && di->text_avma <= a 
           && a < di->text_avma + di->text_size) {
          VG_(strncpy_safely)(buf, di->filename, nbuf);
@@ -1288,6 +1486,7 @@ DebugInfo* VG_(find_seginfo) ( Addr a )
    DebugInfo* di;
    for (di = debugInfo_list; di != NULL; di = di->next) {
       if (di->text_present
+          && di->text_size > 0
           && di->text_avma <= a 
           && a < di->text_avma + di->text_size) {
          return di;
@@ -1544,19 +1743,20 @@ Char* VG_(describe_IP)(Addr eip, Char* buf, Int n_buf)
    } else {
 
       /* Print for humans to read */
+      //
+      // Possible forms:
+      //
+      //   0x80483BF: really (a.c:20)
+      //   0x80483BF: really (in /foo/a.out)
+      //   0x80483BF: really (in ???)
+      //   0x80483BF: ??? (in /foo/a.out)
+      //   0x80483BF: ??? (a.c:20)
+      //   0x80483BF: ???
+      //
       VG_(sprintf)(ibuf,"0x%llX: ", (ULong)eip);
       APPEND(ibuf);
-      if (know_fnname) { 
+      if (know_fnname) {
          APPEND(buf_fn);
-         if (!know_srcloc && know_objname) {
-            APPEND(" (in ");
-            APPEND(buf_obj);
-            APPEND(")");
-         }
-      } else if (know_objname && !know_srcloc) {
-         APPEND("(within ");
-         APPEND(buf_obj);
-         APPEND(")");
       } else {
          APPEND("???");
       }
@@ -1566,6 +1766,14 @@ Char* VG_(describe_IP)(Addr eip, Char* buf, Int n_buf)
          APPEND(":");
          VG_(sprintf)(ibuf,"%d",lineno);
          APPEND(ibuf);
+         APPEND(")");
+      } else if (know_objname) {
+         APPEND(" (in ");
+         APPEND(buf_obj);
+         APPEND(")");
+      } else if (know_fnname) {
+         // Nb: do this in two steps because "??)" is a trigraph!
+         APPEND(" (in ???");
          APPEND(")");
       }
 
@@ -1913,6 +2121,127 @@ Bool VG_(use_CF_info) ( /*MOD*/Addr* ipP,
 
 /*--------------------------------------------------------------*/
 /*---                                                        ---*/
+/*--- TOP LEVEL: FOR UNWINDING THE STACK USING               ---*/
+/*---            MSVC FPO INFO                               ---*/
+/*---                                                        ---*/
+/*--------------------------------------------------------------*/
+
+Bool VG_(use_FPO_info) ( /*MOD*/Addr* ipP,
+                         /*MOD*/Addr* spP,
+                         /*MOD*/Addr* fpP,
+                         Addr min_accessible,
+                         Addr max_accessible )
+{
+   Word       i;
+   DebugInfo* di;
+   FPO_DATA*  fpo = NULL;
+   Addr       spHere;
+
+   static UWord n_search = 0;
+   static UWord n_steps = 0;
+   n_search++;
+
+   if (0) VG_(printf)("search FPO for %#lx\n", *ipP);
+
+   for (di = debugInfo_list; di != NULL; di = di->next) {
+      n_steps++;
+
+      /* Use the per-DebugInfo summary address ranges to skip
+         inapplicable DebugInfos quickly. */
+      if (di->fpo == NULL)
+         continue;
+      if (*ipP < di->fpo_minavma || *ipP > di->fpo_maxavma)
+         continue;
+
+      i = ML_(search_one_fpotab)( di, *ipP );
+      if (i != -1) {
+         Word j;
+         if (0) {
+            /* debug printing only */
+            VG_(printf)("look for %#lx  size %ld i %ld\n",
+                        *ipP, di->fpo_size, i);
+            for (j = 0; j < di->fpo_size; j++)
+               VG_(printf)("[%02ld] %#x %d\n", 
+                            j, di->fpo[j].ulOffStart, di->fpo[j].cbProcSize);
+         }
+         vg_assert(i >= 0 && i < di->fpo_size);
+         fpo = &di->fpo[i];
+         break;
+      }
+   }
+
+   if (fpo == NULL)
+      return False;
+
+   if (0 && ((n_search & 0x7FFFF) == 0))
+      VG_(printf)("VG_(use_FPO_info): %lu searches, "
+                  "%lu DebugInfos looked at\n",
+                  n_search, n_steps);
+
+
+   /* Start of performance-enhancing hack: once every 64 (chosen
+      hackily after profiling) successful searches, move the found
+      DebugInfo one step closer to the start of the list.  This makes
+      future searches cheaper.  For starting konqueror on amd64, this
+      in fact reduces the total amount of searching done by the above
+      find-the-right-DebugInfo loop by more than a factor of 20. */
+   if ((n_search & 0x3F) == 0) {
+      /* Move si one step closer to the start of the list. */
+      //move_DebugInfo_one_step_forward( di );
+   }
+   /* End of performance-enhancing hack. */
+
+   if (0) {
+      VG_(printf)("found fpo: ");
+      //ML_(ppFPO)(fpo);
+   }
+
+   /*
+   Stack layout is:
+   %esp->
+      4*.cbRegs  {%edi, %esi, %ebp, %ebx}
+      4*.cdwLocals
+      return_pc
+      4*.cdwParams
+   prior_%esp->
+
+   Typical code looks like:
+      sub $4*.cdwLocals,%esp
+         Alternative to above for >=4KB (and sometimes for smaller):
+            mov $size,%eax
+            call __chkstk  # WinNT performs page-by-page probe!
+               __chkstk is much like alloc(), except that on return
+               %eax= 5+ &CALL.  Thus it could be used as part of
+               Position Independent Code to locate the Global Offset Table.
+      push %ebx
+      push %ebp
+      push %esi
+         Other once-only instructions often scheduled >here<.
+      push %edi
+
+   If the pc is within the first .cbProlog bytes of the function,
+   then you must disassemble to see how many registers have been pushed,
+   because instructions in the prolog may be scheduled for performance.
+   The order of PUSH is always %ebx, %ebp, %esi, %edi, with trailing
+   registers not pushed when .cbRegs < 4.  This seems somewhat strange
+   because %ebp is the register whose usage you want to minimize,
+   yet it is in the first half of the PUSH list.
+
+   I don't know what happens when the compiler constructs an outgoing CALL.
+   %esp could move if outgoing parameters are PUSHed, and this affects
+   traceback for errors during the PUSHes. */
+ 
+   spHere = *spP;
+
+   *ipP = *(Addr *)(spHere + 4*(fpo->cbRegs + fpo->cdwLocals));
+   *spP =           spHere + 4*(fpo->cbRegs + fpo->cdwLocals + 1 + fpo->cdwParams);
+   *fpP = *(Addr *)(spHere + 4*2);
+   return True;
+}
+
+
+/*--------------------------------------------------------------*/
+/*---                                                        ---*/
 /*--- TOP LEVEL: GENERATE DESCRIPTION OF DATA ADDRESSES      ---*/
 /*---            FROM DWARF3 DEBUG INFO                      ---*/
 /*---                                                        ---*/
@@ -1923,12 +2252,12 @@ Bool VG_(use_CF_info) ( /*MOD*/Addr* ipP,
    offset of data_addr from the start of the variable.  Note that
    regs, which supplies ip,sp,fp values, will be NULL for global
    variables, and non-NULL for local variables. */
-static Bool data_address_is_in_var ( /*OUT*/UWord* offset,
+static Bool data_address_is_in_var ( /*OUT*/PtrdiffT* offset,
                                      XArray* /* TyEnt */ tyents,
                                      DiVariable*   var,
                                      RegSummary*   regs,
                                      Addr          data_addr,
-                                     Addr          data_bias )
+                                     const DebugInfo* di )
 {
    MaybeULong mul;
    SizeT      var_szB;
@@ -1965,7 +2294,7 @@ static Bool data_address_is_in_var ( /*OUT*/UWord* offset,
       return False;
    }
 
-   res = ML_(evaluate_GX)( var->gexpr, var->fbGX, regs, data_bias );
+   res = ML_(evaluate_GX)( var->gexpr, var->fbGX, regs, di );
 
    if (show) {
       VG_(printf)("VVVV: -> ");
@@ -1993,8 +2322,8 @@ static void format_message ( /*OUT*/Char* dname1,
                              Int      n_dname,
                              Addr     data_addr,
                              DiVariable* var,
-                             OffT     var_offset,
-                             OffT     residual_offset,
+                             PtrdiffT var_offset,
+                             PtrdiffT residual_offset,
                              XArray* /*UChar*/ described,
                              Int      frameNo, 
                              ThreadId tid )
@@ -2237,14 +2566,14 @@ Bool consider_vars_in_frame ( /*OUT*/Char* dname1,
                    && VG_(sizeXA)(vars) > 0) );
       for (j = 0; j < VG_(sizeXA)( vars ); j++) {
          DiVariable* var = (DiVariable*)VG_(indexXA)( vars, j );
-         SizeT       offset;
+         PtrdiffT    offset;
          if (debug)
             VG_(printf)("QQQQ:    var:name=%s %#lx-%#lx %#lx\n",
                         var->name,arange->aMin,arange->aMax,ip);
          if (data_address_is_in_var( &offset, di->admin_tyents,
                                      var, &regs,
-                                     data_addr, di->data_bias )) {
-            OffT residual_offset = 0;
+                                     data_addr, di )) {
+            PtrdiffT residual_offset = 0;
             XArray* described = ML_(describe_type)( &residual_offset,
                                                     di->admin_tyents, 
                                                     var->typeR, offset );
@@ -2331,7 +2660,7 @@ Bool VG_(get_data_description)( /*OUT*/Char* dname1,
          of any of them bracket data_addr. */
       vars = global_arange->vars;
       for (i = 0; i < VG_(sizeXA)( vars ); i++) {
-         SizeT offset;
+         PtrdiffT offset;
          DiVariable* var = (DiVariable*)VG_(indexXA)( vars, i );
          vg_assert(var->name);
          /* Note we use a NULL RegSummary* here.  It can't make any
@@ -2342,8 +2671,8 @@ Bool VG_(get_data_description)( /*OUT*/Char* dname1,
             fail. */
          if (data_address_is_in_var( &offset, di->admin_tyents, var, 
                                      NULL/* RegSummary* */, 
-                                     data_addr, di->data_bias )) {
-            OffT residual_offset = 0;
+                                     data_addr, di )) {
+            PtrdiffT residual_offset = 0;
             XArray* described = ML_(describe_type)( &residual_offset,
                                                     di->admin_tyents,
                                                     var->typeR, offset );
@@ -2467,7 +2796,7 @@ Bool VG_(get_data_description)( /*OUT*/Char* dname1,
 static 
 void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
                     XArray* /* TyEnt */ tyents,
-                    Addr ip, Addr data_bias, DiVariable* var,
+                    Addr ip, const DebugInfo* di, DiVariable* var,
                     Bool arrays_only )
 {
    GXResult   res_sp_6k, res_sp_7k, res_fp_6k, res_fp_7k;
@@ -2512,22 +2841,22 @@ void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
    regs.fp   = 0;
    regs.ip   = ip;
    regs.sp   = 6 * 1024;
-   res_sp_6k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, data_bias );
+   res_sp_6k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
 
    regs.fp   = 0;
    regs.ip   = ip;
    regs.sp   = 7 * 1024;
-   res_sp_7k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, data_bias );
+   res_sp_7k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
 
    regs.fp   = 6 * 1024;
    regs.ip   = ip;
    regs.sp   = 0;
-   res_fp_6k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, data_bias );
+   res_fp_6k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
 
    regs.fp   = 7 * 1024;
    regs.ip   = ip;
    regs.sp   = 0;
-   res_fp_7k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, data_bias );
+   res_fp_7k = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
 
    vg_assert(res_sp_6k.kind == res_sp_7k.kind);
    vg_assert(res_sp_6k.kind == res_fp_6k.kind);
@@ -2549,7 +2878,7 @@ void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
       if (sp_delta == 1024 && fp_delta == 0) {
          regs.sp = regs.fp = 0;
          regs.ip = ip;
-         res = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, data_bias );
+         res = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
          tl_assert(res.kind == GXR_Value);
          if (debug)
          VG_(printf)("   %5ld .. %5ld (sp) %s\n",
@@ -2568,7 +2897,7 @@ void analyse_deps ( /*MOD*/XArray* /* of FrameBlock */ blocks,
       if (sp_delta == 0 && fp_delta == 1024) {
          regs.sp = regs.fp = 0;
          regs.ip = ip;
-         res = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, data_bias );
+         res = ML_(evaluate_GX)( var->gexpr, var->fbGX, &regs, di );
          tl_assert(res.kind == GXR_Value);
          if (debug)
          VG_(printf)("   %5ld .. %5ld (FP) %s\n",
@@ -2698,7 +3027,7 @@ void* /* really, XArray* of StackBlock */
             VG_(printf)("QQQQ:    var:name=%s %#lx-%#lx %#lx\n", 
                         var->name,arange->aMin,arange->aMax,ip);
          analyse_deps( res, di->admin_tyents, ip,
-                       di->data_bias, var, arrays_only );
+                       di, var, arrays_only );
       }
    }
 
@@ -2781,7 +3110,7 @@ void* /* really, XArray* of GlobalBlock */
                it. */
             if (0) { VG_(printf)("EVAL: "); ML_(pp_GX)(var->gexpr);
                      VG_(printf)("\n"); }
-            res = ML_(evaluate_trivial_GX)( var->gexpr, di->data_bias );
+            res = ML_(evaluate_trivial_GX)( var->gexpr, di );
 
             /* Not a constant address => not interesting */
             if (res.kind != GXR_Value) {
@@ -2844,7 +3173,6 @@ void* /* really, XArray* of GlobalBlock */
 }
 
 
-
 /*------------------------------------------------------------*/
 /*--- DebugInfo accessor functions                         ---*/
 /*------------------------------------------------------------*/
@@ -2896,7 +3224,7 @@ const UChar* VG_(seginfo_filename)(const DebugInfo* di)
    return di->filename;
 }
 
-ULong VG_(seginfo_get_text_bias)(const DebugInfo* di)
+PtrdiffT VG_(seginfo_get_text_bias)(const DebugInfo* di)
 {
    return di->text_present ? di->text_bias : 0;
 }
@@ -2939,6 +3267,7 @@ const HChar* VG_(pp_SectKind)( VgSectKind kind )
       case Vg_SectGOT:     return "GOT";
       case Vg_SectPLT:     return "PLT";
       case Vg_SectOPD:     return "OPD";
+      case Vg_SectGOTPLT:  return "GOTPLT";
       default:             vg_assert(0);
    }
 }
@@ -2986,6 +3315,12 @@ VgSectKind VG_(seginfo_sect_kind)( /*OUT*/UChar* name, SizeT n_name,
       if (di->bss_present
           && di->bss_size > 0
           && a >= di->bss_avma && a < di->bss_avma + di->bss_size) {
+         res = Vg_SectBSS;
+         break;
+      }
+      if (di->sbss_present
+          && di->sbss_size > 0
+          && a >= di->sbss_avma && a < di->sbss_avma + di->sbss_size) {
          res = Vg_SectBSS;
          break;
       }

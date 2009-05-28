@@ -2,15 +2,17 @@
 
 #----------------------------------------------------------------------------
 # Automated build and test for Valgrind.  Compares Valgrind from 24 hours
-# ago with the current one.
-#
-#   Use: two args, first is path to top of ValgrindABT tree
-#        second is name of machine
+# ago with the current one.  See the README.txt on how to run it.
 #----------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------
-# Helper function
+# Helper functions
 #----------------------------------------------------------------------------
+
+# Returns the revision number of the source files with date $1.
+get_svn_revision() {
+  svn info -r "{$1}" "${valgrind_svn_repo}" | sed -n 's/^Revision: //p'
+}
 
 runcmd () {
    logfile=$1
@@ -25,11 +27,11 @@ runcmd () {
    echo "$*" >> $logfile.verbose
 
    # Run the command
-   (eval "$*") >> $logfile.verbose 2>&1
+   ("${ABT_EVAL}" "$*") >> $logfile.verbose 2>&1
    res=$?
 
    # Write result to the short logfile
-   if [ $res == 0 ]
+   if [ $res = 0 ]
    then
       echo "done"   >> $logfile.short
    else
@@ -42,6 +44,15 @@ runcmd () {
 #----------------------------------------------------------------------------
 # Startup
 #----------------------------------------------------------------------------
+
+valgrind_svn_repo="svn://svn.valgrind.org/valgrind/trunk"
+
+# Must have exactly two arguments
+if [ $# -ne 2 ] ; then
+    echo "usage: $0 /path/to/valgrind/nightly <tag>"
+    exit 1
+fi
+
 # Get args from command line
 ABT_TOP=$1
 ABT_MACHINE=$2
@@ -54,9 +65,17 @@ svn_new_date=`date --date=today     +%Y-%m-%dT%H:%M:%S`
 
 cd $ABT_TOP
 
-source $ABT_TOP/conf/$ABT_MACHINE.conf
+# Clean up output files produced by a previous run.
+rm -rf diffs diff.short final Inst new.short new.verbose old.short old.verbose
+rm -rf sendmail.log unchanged.log valgrind
+
+# Setup any relevant environment variables from conf/<tag>.conf.
+. conf/$ABT_MACHINE.conf
 if [ "${ABT_JOBS}" = "" ]; then
   ABT_JOBS=1
+fi
+if [ "${ABT_EVAL}" = "" ]; then
+  ABT_EVAL="eval"
 fi
 if [ "${ABT_RUN_REGTEST}" = "" ]; then
   ABT_RUN_REGTEST="cd valgrind && perl tests/vg_regtest --all"
@@ -67,12 +86,20 @@ fi
 # Check out, build, test
 #----------------------------------------------------------------------------
 
+svn_old_rev="`get_svn_revision ${svn_old_date}`"
+svn_new_rev="`get_svn_revision ${svn_new_date}`"
+if [ "${svn_old_rev}" = "${svn_new_rev}" ]; then
+  echo "Both {$svn_old_date} and {$svn_new_date} correspond to r${svn_new_rev}"\
+       "-- skipping nightly build." >unchanged.log
+  exit 0
+fi
+
 # Do everything twice -- once for the 24 hours old Valgrind, and once 
 # for the current one.
 for logfile in old new ; do
 
-   # Remove the old valgrind/ and vex/ directories
-   rm -rf valgrind vex
+   # Remove the old valgrind directory.
+   rm -rf valgrind
 
    # Remove old short and verbose log files, and start the new ones
    for ext in short verbose ; do
@@ -91,11 +118,11 @@ for logfile in old new ; do
    # Check out, build, run tests
    runcmd $logfile \
           "Checking out valgrind source tree" \
-          "svn co svn://svn.valgrind.org/valgrind/trunk -r {$svn_date} valgrind" && \
+          "svn co ${valgrind_svn_repo} -r {$svn_date} valgrind" && \
    \
    runcmd $logfile \
           "Configuring valgrind             " \
-          "cd valgrind && ./autogen.sh  && ./configure --prefix=$ABT_TOP/Inst ${ABT_CONFIGURE_OPTIONS}" && \
+          "cd valgrind && ./autogen.sh  && ./configure --prefix=`pwd`/Inst ${ABT_CONFIGURE_OPTIONS}" && \
    \
    runcmd $logfile \
           "Building valgrind                " \
@@ -136,8 +163,10 @@ changed=$?
 
 if [ $changed != 0 ] ; then
    echo "Results differ from 24 hours ago"      >> final
+   changed_str=""
 else
    echo "Results unchanged from 24 hours ago"   >> final
+   changed_str="(unchanged) "
 fi
 
 # Always show the current results.
@@ -158,7 +187,28 @@ if [ $changed != 0 ] ; then
    echo                                                     >> final
 fi
 
-# Email the results
-$ABT_TOP/conf/$ABT_MACHINE.sendmail \
-   "$ABT_START nightly build ($ABT_MACHINE, $ABT_DETAILS)" \
-   $ABT_TOP/final
+# Gather up the diffs (at most the first 100 lines for each one) into a
+# single file.
+MAX_LINES=100
+diff_files=`find . -name '*.diff*' | sort`
+if [ z"$diff_files" = z ] ; then
+   echo "Congratulations, all tests passed!" >> diffs
+else
+   for i in $diff_files ; do
+      echo "=================================================" >> diffs
+      echo $i                                                  >> diffs 
+      echo "=================================================" >> diffs
+      if [ `wc -l < $i` -le $MAX_LINES ] ; then
+         cat $i                                                >> diffs
+      else
+         head -n $MAX_LINES $i                                 >> diffs
+         echo "<truncated beyond $MAX_LINES lines>"            >> diffs
+      fi
+   done
+fi
+
+# Use the conf/<tag>.sendmail script to email the results.
+conf/$ABT_MACHINE.sendmail \
+   "$changed_str$ABT_START nightly build ($ABT_MACHINE, $ABT_DETAILS)" \
+   final \
+   diffs > sendmail.log 2>&1

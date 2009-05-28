@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
+#include "pub_core_aspacehl.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_machine.h"
@@ -64,39 +65,6 @@
 #else
 #error VG_WORDSIZE needs to ==4 or ==8
 #endif
-
-/* TODO: GIVE THIS A PROPER HOME
-   TODO: MERGE THIS WITH DUPLICATES IN m_main.c and mc_leakcheck.c
-   Extract from aspacem a vector of the current segment start
-   addresses.  The vector is dynamically allocated and should be freed
-   by the caller when done.  REQUIRES m_mallocfree to be running.
-   Writes the number of addresses required into *n_acquired. */
-
-static Addr* get_seg_starts ( /*OUT*/Int* n_acquired )
-{
-   Addr* starts;
-   Int   n_starts, r = 0;
-
-   n_starts = 1;
-   while (True) {
-      starts = VG_(malloc)( "coredump-elf.gss.1", n_starts * sizeof(Addr) );
-      if (starts == NULL)
-         break;
-      r = VG_(am_get_segment_starts)( starts, n_starts );
-      if (r >= 0)
-         break;
-      VG_(free)(starts);
-      n_starts *= 2;
-   }
-
-   if (starts == NULL) {
-     *n_acquired = 0;
-     return NULL;
-   }
-
-   *n_acquired = r;
-   return starts;
-}
 
 /* If true, then this Segment may be mentioned in the core */
 static Bool may_dump(const NSegment *seg)
@@ -332,17 +300,17 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
       sres = VG_(open)(buf, 			   
                        VKI_O_CREAT|VKI_O_WRONLY|VKI_O_EXCL|VKI_O_TRUNC, 
                        VKI_S_IRUSR|VKI_S_IWUSR);
-      if (!sres.isError) {
-         core_fd = sres.res;
+      if (!sr_isError(sres)) {
+         core_fd = sr_Res(sres);
 	 break;
       }
 
-      if (sres.isError && sres.err != VKI_EEXIST)
+      if (sr_isError(sres) && sr_Err(sres) != VKI_EEXIST)
 	 return;		/* can't create file */
    }
 
    /* Get the segments */
-   seg_starts = get_seg_starts(&n_seg_starts);
+   seg_starts = VG_(get_segment_starts)(&n_seg_starts);
 
    /* First, count how many memory segments to dump */
    num_phdrs = 1;		/* start with notes */
@@ -432,12 +400,10 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, UInt max_size)
 	 continue;
 
       if (phdrs[idx].p_filesz > 0) {
-	 Int ret;
-
 	 vg_assert(VG_(lseek)(core_fd, phdrs[idx].p_offset, VKI_SEEK_SET) == phdrs[idx].p_offset);
 	 vg_assert(seg->end - seg->start >= phdrs[idx].p_filesz);
 
-	 ret = VG_(write)(core_fd, (void *)seg->start, phdrs[idx].p_filesz);
+	 (void)VG_(write)(core_fd, (void *)seg->start, phdrs[idx].p_filesz);
       }
       idx++;
    }

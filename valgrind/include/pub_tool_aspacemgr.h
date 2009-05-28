@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -101,7 +101,7 @@ typedef
       /* Associated file (SkFile{C,V} only) */
       ULong   dev;
       ULong   ino;
-      ULong   offset;
+      Off64T  offset;
       UInt    mode;
       Int     fnIdx;    // file name table index, if name is known
       /* Permissions (SkAnon{C,V}, SkFile{C,V} only) */
