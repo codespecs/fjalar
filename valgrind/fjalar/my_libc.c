@@ -152,7 +152,7 @@ err_out:
   {
     struct vg_stat st;
     VG_(fstat)(fd,&st);
-    tmp->flags=(VKI_S_ISFIFO(st.st_mode))?FDPIPE:0;
+    tmp->flags=(VKI_S_ISFIFO(st.mode))?FDPIPE:0;
   }
   switch (mode&3) {
   case VKI_O_RDWR: tmp->flags|=CANWRITE;
@@ -174,11 +174,11 @@ FILE *fopen(const char *path, const char *mode) {
   f=__stdio_parse_mode(mode);
   f |= VKI_O_LARGEFILE;
   sr = VG_(open)(path, f, 0666);
-  if (sr.isError) {
-    errno = sr.err;
+  if (sr_isError(sr)) {
+    errno = sr_Err(sr);
     return 0;
   }
-  fd = sr.res;
+  fd = sr_Res(sr);
   return __stdio_init_file(fd,1,f);
 }
 
@@ -1302,10 +1302,10 @@ const char* strerror(int errnum)
 /* unistd.h */
 int mkfifo(const char *fn, int mode) {
   SysRes res = VG_(mknod)(fn, mode|VKI_S_IFIFO, 0);
-  if (res.isError) {
-    errno = res.err;
+  if (sr_isError(res)) {
+    errno = sr_Err(res);
     return -1;
   } else {
-    return res.res;
+    return sr_Res(res);
   }
 }
