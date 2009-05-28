@@ -21,3 +21,4 @@ config.status config.log
 inst
 valt_load_address_x86_linux.lds
 valt_load_address_amd64_linux.lds
+glibc-2.X.supp
