@@ -4604,10 +4604,6 @@ static Int mc_get_or_set_vbits_for_client (
    Bool  ok;
    UChar vbits8;
 
-  // Silence GCC warnings - RUDD
-   (void)tid;
-
-
    /* Check that arrays are addressible before doing any getting/setting. */
    for (i = 0; i < szB; i++) {
       if (VA_BITS2_NOACCESS == get_vabits2(a + i) ||
