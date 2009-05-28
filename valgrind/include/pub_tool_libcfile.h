@@ -74,7 +74,7 @@ extern Int    VG_(read)   ( Int fd, void* buf, Int count);
 extern Int    VG_(write)  ( Int fd, const void* buf, Int count);
 extern Int    VG_(pipe)   ( Int fd[2] );
 extern OffT   VG_(lseek)  ( Int fd, OffT offset, Int whence );
-extern Int    VG_(fcntl)  ( Int fd, Int cmd, Int arg );
+extern Int    VG_(fcntl)  ( Int fd, Int cmd, Addr arg );
 
 extern SysRes VG_(stat)   ( const Char* file_name, struct vg_stat* buf );
 extern Int    VG_(fstat)  ( Int   fd,        struct vg_stat* buf );
