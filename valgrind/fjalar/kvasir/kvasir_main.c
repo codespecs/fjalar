@@ -575,6 +575,28 @@ void fjalar_tool_post_clo_init(void)
   if (actually_output_separate_decls_dtrace && !dyncomp_without_dtrace) {
     openTheDtraceFile();
   }
+
+  // RUDD TEMP - There's currently an issue with separate dtrace and
+  // decls files if the decls file is 2.0. Jeff is working on a fix
+  // for this but it can be circumvented temporarily by putting the
+  // 2.0 decls header at the top of the dtrace.
+
+  if (!kvasir_old_decls_format && dtrace_fp) {
+
+      fputs("input-language C/C++\n", dtrace_fp);
+
+      //Decls version
+      fputs("decl-version 2.0\n", dtrace_fp);
+
+      if (kvasir_with_dyncomp) {
+        fputs("var-comparability implicit\n", dtrace_fp);
+      }
+      else {
+        fputs("var-comparability none\n", dtrace_fp);
+      }
+      fputs("\n", dtrace_fp);
+  }
+
 }
 
 void fjalar_tool_print_usage()
@@ -664,7 +686,7 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else if VG_YESNO_CLO(arg, "dyncomp-debug",  dyncomp_print_debug_info) {}
   else if VG_YESNO_CLO(arg, "dyncomp-trace",  dyncomp_print_trace_info) {}
   else if VG_YESNO_CLO(arg, "dyncomp-print-inc",  dyncomp_print_incremental) {}
-  else if VG_YESNO_CLO(arg, "separate-entry-exit-comp", 
+  else if VG_YESNO_CLO(arg, "separate-entry-exit-comp",
 		       dyncomp_separate_entry_exit_comp) {}
   else
     return False;   // If no options match, return False so that an error
