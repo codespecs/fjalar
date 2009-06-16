@@ -52,7 +52,7 @@ vgpreload_fjalar_amd64_linux_so_LDFLAGS      = \
 
 vgpreload_fjalar_x86_darwin_so_SOURCES      = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_x86_darwin_so_CPPFLAGS     = $(AM_CPPFLAGS_X86_DARWIN)
-vgpreload_fjalar_x86_darwin_so_CFLAGS       = $(AM_CFLAGS_X86_DARWIN) $(AM_CFLAGS_PIC) -O2
+vgpreload_fjalar_x86_darwin_so_CFLAGS       = $(AM_CFLAGS_X86_DARWIN) $(AM_CFLAGS_PIC)
 vgpreload_fjalar_x86_darwin_so_CCASFLAGS    = $(AM_CCASFLAGS_X86_DARWIN)
 vgpreload_fjalar_x86_darwin_so_DEPENDENCIES = $(LIBREPLACEMALLOC_X86_DARWIN)
 vgpreload_fjalar_x86_darwin_so_LDFLAGS      = \
@@ -61,7 +61,7 @@ vgpreload_fjalar_x86_darwin_so_LDFLAGS      = \
 
 vgpreload_fjalar_amd64_darwin_so_SOURCES      = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_amd64_darwin_so_CPPFLAGS     = $(AM_CPPFLAGS_AMD64_DARWIN)
-vgpreload_fjalar_amd64_darwin_so_CFLAGS       = $(AM_CFLAGS_AMD64_DARWIN) $(AM_CFLAGS_PIC) -O2
+vgpreload_fjalar_amd64_darwin_so_CFLAGS       = $(AM_CFLAGS_AMD64_DARWIN) $(AM_CFLAGS_PIC)
 vgpreload_fjalar_amd64_darwin_so_CCASFLAGS    = $(AM_CCASFLAGS_AMD64_DARWIN)
 vgpreload_fjalar_amd64_darwin_so_DEPENDENCIES = $(LIBREPLACEMALLOC_AMD64_DARWIN)
 vgpreload_fjalar_amd64_darwin_so_LDFLAGS      = \
@@ -97,7 +97,7 @@ FJALAR_SOURCES_COMMON = \
 
 fjalar_x86_linux_SOURCES      = $(FJALAR_SOURCES_COMMON)
 fjalar_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
-fjalar_x86_linux_CFLAGS       = $(AM_CFLAGS_X86_LINUX) -O2
+fjalar_x86_linux_CFLAGS       = $(AM_CFLAGS_X86_LINUX) 
 fjalar_x86_linux_CCASFLAGS    = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
 fjalar_x86_linux_LDADD        = $(TOOL_LDADD_X86_LINUX)
@@ -105,7 +105,7 @@ fjalar_x86_linux_LDFLAGS      = $(TOOL_LDFLAGS_X86_LINUX)
 
 fjalar_amd64_linux_SOURCES      = $(FJALAR_SOURCES_COMMON)
 fjalar_amd64_linux_CPPFLAGS     = $(AM_CPPFLAGS_AMD64_LINUX)
-fjalar_amd64_linux_CFLAGS       = $(AM_CFLAGS_AMD64_LINUX) -O2
+fjalar_amd64_linux_CFLAGS       = $(AM_CFLAGS_AMD64_LINUX)
 fjalar_amd64_linux_CCASFLAGS    = $(AM_CCASFLAGS_AMD64_LINUX)
 fjalar_amd64_linux_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_LINUX)
 fjalar_amd64_linux_LDADD        = $(TOOL_LDADD_AMD64_LINUX)
