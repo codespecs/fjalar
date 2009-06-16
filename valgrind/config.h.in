@@ -3,6 +3,9 @@
 /* Define to 1 if you're using AIX 5.1 or 5.2 or 5.3 */
 #undef AIX5_LIBC
 
+/* Define to 1 if you're using Darwin */
+#undef DARWIN_LIBC
+
 /* configured to run as an inner Valgrind */
 #undef ENABLE_INNER
 
@@ -105,8 +108,14 @@
 /* Define to 1 if you have the <mqueue.h> header file. */
 #undef HAVE_MQUEUE_H
 
+/* Define to 1 if you have the `mremap' function. */
+#undef HAVE_MREMAP
+
 /* Define to 1 if you have the `ppoll' function. */
 #undef HAVE_PPOLL
+
+/* can use /proc filesystem */
+#undef HAVE_PROC
 
 /* Define to 1 if you have the `pthread_barrier_init' function. */
 #undef HAVE_PTHREAD_BARRIER_INIT
@@ -235,6 +244,15 @@
 
 /* Define to 1 if you have the `utimensat' function. */
 #undef HAVE_UTIMENSAT
+
+/* Define to 1 if you have the file `AC_File'. */
+#undef HAVE__PROC_SELF_EXE
+
+/* Define to 1 if you have the file `AC_File'. */
+#undef HAVE__PROC_SELF_FD
+
+/* Define to 1 if you have the file `AC_File'. */
+#undef HAVE__PROC_SELF_MAPS
 
 /* Define to 1 if you're using Linux 2.4.x */
 #undef KERNEL_2_4

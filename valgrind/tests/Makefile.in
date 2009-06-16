@@ -63,7 +63,8 @@ true_SOURCES = true.c
 true_OBJECTS = true.$(OBJEXT)
 true_LDADD = $(LDADD)
 x86_amd64_features_SOURCES = x86_amd64_features.c
-x86_amd64_features_OBJECTS = x86_amd64_features.$(OBJEXT)
+x86_amd64_features_OBJECTS =  \
+	x86_amd64_features-x86_amd64_features.$(OBJEXT)
 x86_amd64_features_LDADD = $(LDADD)
 SCRIPTS = $(noinst_SCRIPTS)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
@@ -139,6 +140,8 @@ HAVE_ALTIVEC_H_FALSE = @HAVE_ALTIVEC_H_FALSE@
 HAVE_ALTIVEC_H_TRUE = @HAVE_ALTIVEC_H_TRUE@
 HAVE_BOOST_1_35_FALSE = @HAVE_BOOST_1_35_FALSE@
 HAVE_BOOST_1_35_TRUE = @HAVE_BOOST_1_35_TRUE@
+HAVE_BUILTIN_ATOMIC_FALSE = @HAVE_BUILTIN_ATOMIC_FALSE@
+HAVE_BUILTIN_ATOMIC_TRUE = @HAVE_BUILTIN_ATOMIC_TRUE@
 HAVE_OPENMP_FALSE = @HAVE_OPENMP_FALSE@
 HAVE_OPENMP_TRUE = @HAVE_OPENMP_TRUE@
 HAVE_PTHREAD_BARRIER_FALSE = @HAVE_PTHREAD_BARRIER_FALSE@
@@ -165,6 +168,8 @@ MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
 MPI_CC = @MPI_CC@
+OBJC = @OBJC@
+OBJCFLAGS = @OBJCFLAGS@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -194,13 +199,18 @@ VGCONF_ARCHS_INCLUDE_PPC64_TRUE = @VGCONF_ARCHS_INCLUDE_PPC64_TRUE@
 VGCONF_ARCHS_INCLUDE_X86_FALSE = @VGCONF_ARCHS_INCLUDE_X86_FALSE@
 VGCONF_ARCHS_INCLUDE_X86_TRUE = @VGCONF_ARCHS_INCLUDE_X86_TRUE@
 VGCONF_ARCH_PRI = @VGCONF_ARCH_PRI@
-VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@
-VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE = @VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@
+VGCONF_ARCH_SEC = @VGCONF_ARCH_SEC@
+VGCONF_HAVE_PLATFORM_SEC_FALSE = @VGCONF_HAVE_PLATFORM_SEC_FALSE@
+VGCONF_HAVE_PLATFORM_SEC_TRUE = @VGCONF_HAVE_PLATFORM_SEC_TRUE@
 VGCONF_OS = @VGCONF_OS@
 VGCONF_OS_IS_AIX5_FALSE = @VGCONF_OS_IS_AIX5_FALSE@
 VGCONF_OS_IS_AIX5_TRUE = @VGCONF_OS_IS_AIX5_TRUE@
+VGCONF_OS_IS_DARWIN_FALSE = @VGCONF_OS_IS_DARWIN_FALSE@
+VGCONF_OS_IS_DARWIN_TRUE = @VGCONF_OS_IS_DARWIN_TRUE@
 VGCONF_OS_IS_LINUX_FALSE = @VGCONF_OS_IS_LINUX_FALSE@
 VGCONF_OS_IS_LINUX_TRUE = @VGCONF_OS_IS_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE = @VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE@
+VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE = @VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@
 VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_FALSE@
 VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@
 VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE@
@@ -211,12 +221,15 @@ VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
 VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE@
 VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_FALSE@
 VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@
+VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE = @VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE@
+VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE = @VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@
 VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_FALSE@
 VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE = @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@
 VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
 VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
+ac_ct_OBJC = @ac_ct_OBJC@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
 am__fastdepCC_TRUE = @am__fastdepCC_TRUE@
 am__fastdepCXX_FALSE = @am__fastdepCXX_FALSE@
@@ -264,19 +277,18 @@ target_alias = @target_alias@
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-# RUDD TODO O2
 AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
                  -fno-strict-aliasing
 
+@VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -g -fpic -fno-omit-frame-pointer -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
 # stack traces, since users often see stack traces extending 
 # into (and through) the preloads.
-# -O
-AM_CFLAGS_PIC = -g -fpic -fno-omit-frame-pointer -fno-strict-aliasing
+@VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
 
 # Flags for specific targets.
 #
@@ -351,6 +363,27 @@ AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
 			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
 
+AM_FLAG_M3264_X86_DARWIN = -arch i386
+AM_CPPFLAGS_X86_DARWIN = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_x86=1 \
+			    -DVGO_darwin=1 \
+			    -DVGP_x86_darwin=1
+
+AM_CFLAGS_X86_DARWIN = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
+			    -mmacosx-version-min=10.5 -fno-stack-protector \
+			    -mdynamic-no-pic
+
+AM_CCASFLAGS_X86_DARWIN = $(AM_CPPFLAGS_X86_DARWIN) -arch i386 -g
+AM_FLAG_M3264_AMD64_DARWIN = -arch x86_64
+AM_CPPFLAGS_AMD64_DARWIN = $(AM_CPPFLAGS_COMMON) \
+			    -DVGA_amd64=1 \
+			    -DVGO_darwin=1 \
+			    -DVGP_amd64_darwin=1
+
+AM_CFLAGS_AMD64_DARWIN = $(WERROR) -arch x86_64 $(AM_CFLAGS_BASE) \
+			    -mmacosx-version-min=10.5 -fno-stack-protector
+
+AM_CCASFLAGS_AMD64_DARWIN = $(AM_CPPFLAGS_AMD64_DARWIN) -arch x86_64 -g
 
 # Flags for the primary target.  These must be used to build the
 # regtests and performance tests.  In fact, these must be used to
@@ -360,19 +393,22 @@ AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VGCONF_PLATFORM_PRI_CAPS@)
 AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 AM_CFLAGS_PRI = $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
-@VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE@AM_FLAG_M3264_SEC = 
-@VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
+@VGCONF_HAVE_PLATFORM_SEC_FALSE@AM_FLAG_M3264_SEC = 
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 
 # Baseline link flags for making dynamic shared objects.
 #
 PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
 PRELOAD_LDFLAGS_COMMON_AIX5 = -nodefaultlibs -shared -Wl,-G -Wl,-bnogc
+PRELOAD_LDFLAGS_COMMON_DARWIN = -dynamic -dynamiclib -all_load
 PRELOAD_LDFLAGS_X86_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
 PRELOAD_LDFLAGS_AMD64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_PPC32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
 PRELOAD_LDFLAGS_PPC64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_PPC32_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX32@
 PRELOAD_LDFLAGS_PPC64_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX64@
+PRELOAD_LDFLAGS_X86_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
+PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
 		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
 		-I@VEX_DIR@/pub \
@@ -403,6 +439,7 @@ noinst_HEADERS = \
 	sys_mman.h
 
 EXTRA_DIST = $(noinst_SCRIPTS)
+@VGCONF_OS_IS_DARWIN_TRUE@x86_amd64_features_CFLAGS = $(AM_CFLAGS) -mdynamic-no-pic
 all: all-am
 
 .SUFFIXES:
@@ -463,7 +500,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/arch_test.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/os_test.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/true.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/x86_amd64_features.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/x86_amd64_features-x86_amd64_features.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	if $(COMPILE) -MT $@ -MD -MP -MF "$(DEPDIR)/$*.Tpo" -c -o $@ $<; \
@@ -478,6 +515,20 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(COMPILE) -c `$(CYGPATH_W) '$<'`
+
+x86_amd64_features-x86_amd64_features.o: x86_amd64_features.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(x86_amd64_features_CFLAGS) $(CFLAGS) -MT x86_amd64_features-x86_amd64_features.o -MD -MP -MF "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Tpo" -c -o x86_amd64_features-x86_amd64_features.o `test -f 'x86_amd64_features.c' || echo '$(srcdir)/'`x86_amd64_features.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Tpo" "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Po"; else rm -f "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='x86_amd64_features.c' object='x86_amd64_features-x86_amd64_features.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(x86_amd64_features_CFLAGS) $(CFLAGS) -c -o x86_amd64_features-x86_amd64_features.o `test -f 'x86_amd64_features.c' || echo '$(srcdir)/'`x86_amd64_features.c
+
+x86_amd64_features-x86_amd64_features.obj: x86_amd64_features.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(x86_amd64_features_CFLAGS) $(CFLAGS) -MT x86_amd64_features-x86_amd64_features.obj -MD -MP -MF "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Tpo" -c -o x86_amd64_features-x86_amd64_features.obj `if test -f 'x86_amd64_features.c'; then $(CYGPATH_W) 'x86_amd64_features.c'; else $(CYGPATH_W) '$(srcdir)/x86_amd64_features.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Tpo" "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Po"; else rm -f "$(DEPDIR)/x86_amd64_features-x86_amd64_features.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='x86_amd64_features.c' object='x86_amd64_features-x86_amd64_features.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(x86_amd64_features_CFLAGS) $(CFLAGS) -c -o x86_amd64_features-x86_amd64_features.obj `if test -f 'x86_amd64_features.c'; then $(CYGPATH_W) 'x86_amd64_features.c'; else $(CYGPATH_W) '$(srcdir)/x86_amd64_features.c'; fi`
 uninstall-info-am:
 
 ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
@@ -556,8 +607,10 @@ distdir: $(DISTFILES)
 	    || exit 1; \
 	  fi; \
 	done
+@VGCONF_OS_IS_DARWIN_FALSE@check-local:
 check-am: all-am
 	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
+	$(MAKE) $(AM_MAKEFLAGS) check-local
 check: check-am
 all-am: Makefile $(SCRIPTS) $(HEADERS)
 installdirs:
@@ -585,9 +638,10 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
+@VGCONF_OS_IS_DARWIN_FALSE@clean-local:
 clean: clean-am
 
-clean-am: clean-checkPROGRAMS clean-generic mostlyclean-am
+clean-am: clean-checkPROGRAMS clean-generic clean-local mostlyclean-am
 
 distclean: distclean-am
 	-rm -rf ./$(DEPDIR)
@@ -634,8 +688,8 @@ ps-am:
 
 uninstall-am: uninstall-info-am
 
-.PHONY: CTAGS GTAGS all all-am check check-am clean \
-	clean-checkPROGRAMS clean-generic ctags distclean \
+.PHONY: CTAGS GTAGS all all-am check check-am check-local clean \
+	clean-checkPROGRAMS clean-generic clean-local ctags distclean \
 	distclean-compile distclean-generic distclean-tags distdir dvi \
 	dvi-am html html-am info info-am install install-am \
 	install-data install-data-am install-exec install-exec-am \
@@ -645,6 +699,26 @@ uninstall-am: uninstall-info-am
 	mostlyclean-generic pdf pdf-am ps ps-am tags uninstall \
 	uninstall-am uninstall-info-am
 
+
+# On Darwin, for a program 'p', the DWARF debug info is stored in the
+# directory 'p.dSYM'.  This must be generated after the executable is
+# created, with 'dsymutil p'.  We could redefine LINK with a script that
+# executes 'dsymutil' after linking, but that's a pain.  Instead we use this
+# hook so that every time "make check" is run, we subsequently invoke
+# 'dsymutil' on all the executables that lack a .dSYM directory, or that are
+# newer than their corresponding .dSYM directory.
+@VGCONF_OS_IS_DARWIN_TRUE@check-local:
+@VGCONF_OS_IS_DARWIN_TRUE@	for f in $(check_PROGRAMS) ; do \
+@VGCONF_OS_IS_DARWIN_TRUE@	    if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
+@VGCONF_OS_IS_DARWIN_TRUE@	        echo "dsymutil $$f"; \
+@VGCONF_OS_IS_DARWIN_TRUE@	        dsymutil $$f; \
+@VGCONF_OS_IS_DARWIN_TRUE@	    fi \
+@VGCONF_OS_IS_DARWIN_TRUE@	done
+
+@VGCONF_OS_IS_DARWIN_TRUE@clean-local:
+@VGCONF_OS_IS_DARWIN_TRUE@	for f in $(check_PROGRAMS) ; do \
+@VGCONF_OS_IS_DARWIN_TRUE@	    rm -rf $$f.dSYM; \
+@VGCONF_OS_IS_DARWIN_TRUE@	done
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:

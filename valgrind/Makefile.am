@@ -5,6 +5,17 @@ include $(top_srcdir)/Makefile.all.am
 
 TOOLS = fjalar
 
+
+# DDD: once all tools work on Darwin, TEST_TOOLS and TEST_EXP_TOOLS can be
+# replaced with TOOLS and EXP_TOOLS.
+if !VGCONF_OS_IS_DARWIN
+   TEST_TOOLS = $(TOOLS)
+   TEST_EXP_TOOLS = $(EXP_TOOLS)
+else
+   TEST_TOOLS =	
+   TEST_EXP_TOOLS =
+endif
+
 SUBDIRS = include coregrind . tests perf $(TOOLS) docs
 DIST_SUBDIRS  = $(SUBDIRS)
 
@@ -12,7 +23,9 @@ SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
 	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
 	aix5libc.supp \
-	xfree-3.supp xfree-4.supp
+	xfree-3.supp xfree-4.supp \
+	darwin9.supp
+
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
 # We include all the base .supp files in the distribution, but not
@@ -63,6 +76,9 @@ endif
 if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
 # Ditto
 endif
+if VGCONF_OS_IS_DARWIN
+# GrP untested, possibly hopeless
+endif
 
 default.supp: $(DEFAULT_SUPP_FILES)
 	echo "# This is a generated file, composed of the following suppression rules:" > default.supp
@@ -71,11 +87,11 @@ default.supp: $(DEFAULT_SUPP_FILES)
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
 regtest: check
-	@PERL@ tests/vg_regtest $(TOOLS) $(EXP_TOOLS)
+	@PERL@ tests/vg_regtest $(TEST_TOOLS) $(TEST_EXP_TOOLS)
 nonexp-regtest: check
-	@PERL@ tests/vg_regtest $(TOOLS)
+	@PERL@ tests/vg_regtest $(TEST_TOOLS)
 exp-regtest: check
-	@PERL@ tests/vg_regtest $(EXP_TOOLS)
+	@PERL@ tests/vg_regtest $(TEST_EXP_TOOLS)
 
 ## Preprend @PERL@ because tests/vg_perf isn't executable
 perf: check
@@ -84,7 +100,6 @@ perf: check
 # Nb: no need to include any Makefile.am files here, or files included from
 # them, as automake includes them automatically.
 EXTRA_DIST = \
-	ACKNOWLEDGEMENTS \
 	README_DEVELOPERS \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \

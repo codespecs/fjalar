@@ -1,6 +1,33 @@
 
 Release 3.5.0 (???)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Mac OS X is now supported.  (Note that Mac OS X is often called "Darwin"
+  because that is the name of the OS core.)  
+
+  Supported machines:
+  - x86 machines are supported fairly well.
+  - AMD64 (a.k.a. x86-64) are supported, but not as well.
+  - Older PowerPC machines are not supported.
+  - It requires Mac OS X 10.5 Leopard or later.  Porting to 10.4 is not
+    planned because it would require work and 10.4 is only becoming less common.
+
+  Things that don't work:
+  - Objective-C garbage collection
+  - --db-attach=yes
+  - Messages like the following indicate a mismatch between Valgrind's
+    memory map and the kernel. Occasional failures are expected in
+    multithreaded programs. If the failure repeats for the same address
+    range, then there may be a problem causing false errors or crashes.
+        sync check at ...: FAILED
+  - If you have Rogue Amoeba's "Instant Hijack" program installed, Valgrind
+    will fail with a SIGTRAP at start-up.  This is apparently Instant
+    Hijack's fault.  See https://bugs.kde.org/show_bug.cgi?id=193917 for
+    details and a simple work-around.
+
+  Many thanks to Greg Parker for developing this port over several years.
+
+* XXX: something about improved Wine support?
+
 * A new Memcheck client request VALGRIND_COUNT_LEAK_BLOCKS has been added.
   It is similar to VALGRIND_COUNT_LEAKS but counts blocks instead of bytes.
   [XXX: consider adding VALGRIND_COUNT_LEAK_BYTES as a synonym and
@@ -38,6 +65,8 @@ Release 3.5.0 (???)
   Stack traces produced when --xml=yes is specified are different and
   unchanged.
 
+* XXX: XML output has changed...
+
 * The graphs drawn by Massif's ms_print program have changed slightly:
   - The half-height chars '.' and ',' are no longer drawn, because they are
     confusing.  The --y option can be used if the default y-resolution is
@@ -45,6 +74,12 @@ Release 3.5.0 (???)
   - Horizontal lines are now drawn after the top of a snapshot if there is a
     gap until the next snapshot.  This makes it clear that the memory
     usage has not dropped to zero between snapshots.
+
+* exp-Omega, an experimental instantaneous leak-detecting tool, was disabled
+  in 3.4.0 due to a lack of interest and maintenance, although the source
+  code was still in the distribution.  The source code has now been removed
+  from the distribution.  For anyone interested, the removal occurred in SVN
+  revision r10247.
 
 * The location of some install files has changed.  This should not affect
   most users.  Those who might be affected:
@@ -72,7 +107,15 @@ n-i-bz DRD - added new client request, VG_USERREQ__DRD_CLEAN_MEMORY.
 189763 DRD - pthread_create@GLIBC_2.0() no longer triggers an assertion
        failure.
 n-i-bz DRD - fixed assertion failure triggered by mutex reinitialization.
-
+       Note: DRD did report the mutex reinitialization before reporting the
+       assertion failure.
+n-i-bz DRD - fixed a bug that caused incorrect messages to be printed about
+       memory allocation events with memory access tracing enabled (fixed
+       in r10191).
+n-i-bz DRD - fixed a memory leak triggered by vector clock deallocation
+       (fixed in r10228).
+195169 DRD - added support for newer versions of gcc's OpenMP runtime (libgomp)
+       (fixed in r10261).
 
 
 Release 3.4.1 (28 February 2009)

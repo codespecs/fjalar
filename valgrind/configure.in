@@ -62,6 +62,7 @@ AC_PROG_CC
 AM_PROG_CC_C_O
 AC_PROG_CPP
 AC_PROG_CXX
+AC_PROG_OBJC
 AC_PROG_RANLIB
 
 # If no AR variable was specified, look up the name of the archiver. Otherwise
@@ -219,6 +220,8 @@ fi
 AC_MSG_CHECKING([for a supported OS])
 AC_SUBST(VGCONF_OS)
 
+DEFAULT_SUPP=""
+
 case "${host_os}" in
      *linux*)
 	AC_MSG_RESULT([ok (${host_os})])
@@ -264,6 +267,34 @@ case "${host_os}" in
      *freebsd*)
         AC_MSG_RESULT([ok (${host_os})])
         VGCONF_OS="freebsd"
+        ;;
+
+     *darwin*)
+        AC_MSG_RESULT([ok (${host_os})])
+        VGCONF_OS="darwin"
+
+	AC_MSG_CHECKING([for the kernel version])
+	kernel=`uname -r`
+
+        # Nb: for Darwin we set DEFAULT_SUPP here.  That's because Darwin
+        # has only one relevant version, the OS version. The `uname` check
+        # is a good way to get that version (i.e. "Darwin 9.6.0" is Mac OS
+        # X 10.5.6, and "Darwin 10.x" would presumably be Mac OS X 10.6.x
+        # Snow Leopard and darwin10.supp), and we don't know of an macros
+        # similar to __GLIBC__ to get that info.
+        #
+        # XXX: `uname -r` won't do the right thing for cross-compiles, but
+        # that's not a problem yet.
+	case "${kernel}" in
+	     9.*)
+		  AC_MSG_RESULT([Darwin 9.x (${kernel}) / Mac OS X 10.5 Leopard])
+		  DEFAULT_SUPP="darwin9.supp ${DEFAULT_SUPP}"
+		  ;;
+     *) 
+		  AC_MSG_RESULT([unsupported (${kernel})])
+		  AC_MSG_ERROR([Valgrind works on Darwin 9.x (Mac OS X 10.5)])
+		  ;;
+	esac
         ;;
 
      *) 
@@ -312,6 +343,12 @@ fi
 # -VGP_$(VGCONF_ARCH_PRI)_$(VGCONF_OS).
 AC_SUBST(VGCONF_ARCH_PRI)
 
+# VGCONF_ARCH_SEC is the arch for the secondary build target, eg. "x86".
+# It is passed in to compilation of many C files via -VGA_$(VGCONF_ARCH_SEC)
+# and -VGP_$(VGCONF_ARCH_SEC)_$(VGCONF_OS), if there is a secondary target.
+# It is empty if there is no secondary target.
+AC_SUBST(VGCONF_ARCH_SEC)
+
 # VGCONF_PLATFORM_PRI_CAPS is the primary build target, eg. "AMD64_LINUX".
 # The entire system, including regression and performance tests, will be
 # built for this target.  The "_CAPS" indicates that the name is in capital
@@ -336,6 +373,7 @@ AC_MSG_CHECKING([for a supported CPU/OS combination])
 case "$ARCH_MAX-$VGCONF_OS" in
      x86-linux)
         VGCONF_ARCH_PRI="x86"
+        VGCONF_ARCH_SEC=""
 	VGCONF_PLATFORM_PRI_CAPS="X86_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
         valt_load_address_normal="0x38000000"
@@ -345,14 +383,17 @@ case "$ARCH_MAX-$VGCONF_OS" in
      amd64-linux)
 	if test x$vg_cv_only64bit = xyes; then
            VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="x86"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="X86_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	else
            VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC="x86"
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="X86_LINUX"
 	fi
@@ -362,6 +403,7 @@ case "$ARCH_MAX-$VGCONF_OS" in
 	;;
      ppc32-linux)
         VGCONF_ARCH_PRI="ppc32"
+        VGCONF_ARCH_SEC=""
 	VGCONF_PLATFORM_PRI_CAPS="PPC32_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
         valt_load_address_normal="0x38000000"
@@ -371,14 +413,17 @@ case "$ARCH_MAX-$VGCONF_OS" in
      ppc64-aix5)
 	if test x$vg_cv_only64bit = xyes; then
            VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_AIX5"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc32"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC32_AIX5"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	else
 	   VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC="ppc32"
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_AIX5"
 	   VGCONF_PLATFORM_SEC_CAPS="PPC32_AIX5"
 	fi
@@ -389,15 +434,17 @@ case "$ARCH_MAX-$VGCONF_OS" in
      ppc64-linux)
 	if test x$vg_cv_only64bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc32"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC32_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-	   VGCONF_ARCH_PRI="ppc32"
 	else
 	   VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC="ppc32"
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="PPC32_LINUX"
 	fi
@@ -405,8 +452,40 @@ case "$ARCH_MAX-$VGCONF_OS" in
         valt_load_address_inner="0x28000000"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
 	;;
+     x86-darwin)
+        VGCONF_ARCH_PRI="x86"
+        VGCONF_ARCH_SEC=""
+	VGCONF_PLATFORM_PRI_CAPS="X86_DARWIN"
+	VGCONF_PLATFORM_SEC_CAPS=""
+        valt_load_address_normal="0x0"
+        valt_load_address_inner="0x0"
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+	;;
+     amd64-darwin)
+	if test x$vg_cv_only64bit = xyes; then
+           VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC=""
+	   VGCONF_PLATFORM_PRI_CAPS="AMD64_DARWIN"
+	   VGCONF_PLATFORM_SEC_CAPS=""
+	elif test x$vg_cv_only32bit = xyes; then
+           VGCONF_ARCH_PRI="x86"
+           VGCONF_ARCH_SEC=""
+	   VGCONF_PLATFORM_PRI_CAPS="X86_DARWIN"
+	   VGCONF_PLATFORM_SEC_CAPS=""
+	   VGCONF_ARCH_PRI_CAPS="x86"
+	else
+           VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC="x86"
+	   VGCONF_PLATFORM_PRI_CAPS="AMD64_DARWIN"
+	   VGCONF_PLATFORM_SEC_CAPS="X86_DARWIN"
+	fi
+        valt_load_address_normal="0x0"
+        valt_load_address_inner="0x0"
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+	;;
     *)
         VGCONF_ARCH_PRI="unknown"
+        VGCONF_ARCH_SEC="unknown"
 	VGCONF_PLATFORM_PRI_CAPS="UNKNOWN"
 	VGCONF_PLATFORM_SEC_CAPS="UNKNOWN"
         AC_MSG_RESULT([no (${ARCH_MAX}-${VGCONF_OS})])
@@ -420,9 +499,12 @@ esac
 # defined.
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_X86,   
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
-                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_LINUX )
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_AMD64, 
-               test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX )
+               test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_PPC32, 
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_LINUX \ 
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_LINUX \
@@ -444,11 +526,19 @@ AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX,
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX, 
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_LINUX)
+
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5, 
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_AIX5 \ 
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_AIX5)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5, 
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_AIX5)
+
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_DARWIN,   
+               test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN, 
+               test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN)
+
 
 # Similarly, set up VGCONF_OF_IS_<os>.  Exactly one of these becomes defined.
 # Relies on the assumption that the primary and secondary targets are 
@@ -461,11 +551,14 @@ AM_CONDITIONAL(VGCONF_OS_IS_LINUX,
 AM_CONDITIONAL(VGCONF_OS_IS_AIX5,
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_AIX5 \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_AIX5)
+AM_CONDITIONAL(VGCONF_OS_IS_DARWIN,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN)
 
 
 # Sometimes, in the Makefile.am files, it's useful to know whether or not
 # there is a secondary target.
-AM_CONDITIONAL(VGCONF_HAVE_PLATFORM_SEC_CAPS,
+AM_CONDITIONAL(VGCONF_HAVE_PLATFORM_SEC,
                test x$VGCONF_PLATFORM_SEC_CAPS != x)
 
 
@@ -493,7 +586,6 @@ fi
 # Libc and suppressions
 #----------------------------------------------------------------------------
 # This variable will collect the suppression files to be used.
-DEFAULT_SUPP=""
 AC_SUBST(DEFAULT_SUPP)
 
 GLIBC_VERSION=""
@@ -596,6 +688,15 @@ AC_EGREP_CPP([AIX5_LIBC], [
 ],
 GLIBC_VERSION="aix5")
 
+# not really a version check
+AC_EGREP_CPP([DARWIN_LIBC], [
+#include <sys/cdefs.h>
+#if defined(__DARWIN_VERS_1050)
+  DARWIN_LIBC
+#endif
+],
+GLIBC_VERSION="darwin")
+
 AC_MSG_CHECKING([the GLIBC_VERSION version])
 
 case "${GLIBC_VERSION}" in
@@ -670,11 +771,17 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([AIX5_LIBC], 1, [Define to 1 if you're using AIX 5.1 or 5.2 or 5.3])
 	DEFAULT_SUPP="aix5libc.supp ${DEFAULT_SUPP}"
 	;;
+     darwin)
+	AC_MSG_RESULT(Darwin)
+	AC_DEFINE([DARWIN_LIBC], 1, [Define to 1 if you're using Darwin])
+	# DEFAULT_SUPP set by kernel version check above.
+	;;
 
      *)
 	AC_MSG_RESULT(unsupported version)
 	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.10])
 	AC_MSG_ERROR([or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION])
+	AC_MSG_ERROR([or Darwin libc])
 	;;
 esac
 
@@ -1341,6 +1448,14 @@ fi
 
 
 #----------------------------------------------------------------------------
+# Check for /proc filesystem
+#----------------------------------------------------------------------------
+AC_CHECK_FILES(/proc/self/fd /proc/self/exe /proc/self/maps, 
+    [ AC_DEFINE([HAVE_PROC], 1, [can use /proc filesystem]) ], 
+    [])
+
+
+#----------------------------------------------------------------------------
 # Checks for C header files.
 #----------------------------------------------------------------------------
 
@@ -1389,6 +1504,7 @@ AC_CHECK_FUNCS([     \
         memchr       \
         memset       \
         mkdir        \
+        mremap       \
         ppoll        \
         pthread_barrier_init       \
         pthread_condattr_setclock  \
@@ -1701,14 +1817,18 @@ AC_TRY_LINK(,
           && __sync_add_and_fetch(&variable, 1) ? 1 : 0)
 ],
 [
+  ac_have_builtin_atomic=yes
   AC_MSG_RESULT([yes])
   AC_DEFINE(HAVE_BUILTIN_ATOMIC, 1, [Define to 1 if gcc supports __sync_bool_compare_and_swap() a.o.])
 ],
 [
+  ac_have_builtin_atomic=no
   AC_MSG_RESULT([no])
 ])
 
 CFLAGS=$safe_CFLAGS
+
+AM_CONDITIONAL([HAVE_BUILTIN_ATOMIC], [test x$ac_have_builtin_atomic = xyes])
 
 
 #----------------------------------------------------------------------------
@@ -1739,6 +1859,7 @@ cat<<EOF
 
          Maximum build arch: ${ARCH_MAX}
          Primary build arch: ${VGCONF_ARCH_PRI}
+       Secondary build arch: ${VGCONF_ARCH_SEC}
                    Build OS: ${VGCONF_OS}
        Primary build target: ${VGCONF_PLATFORM_PRI_CAPS}
      Secondary build target: ${VGCONF_PLATFORM_SEC_CAPS}
