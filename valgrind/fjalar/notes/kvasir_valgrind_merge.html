@@ -1,0 +1,316 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15">
+<title>Merging newer versions of Valgrind into Fjalar</title>
+</head>
+<body>
+<h1>Merging newer versions of Valgrind into Fjalar</h1>
+
+
+<p>
+This document provides information on merging newer versions of Valgrid
+into Fjalar.  Fjalar is built as a tool on top of Valgrind, and it's support
+for newer distributions of Linux is dependent on Valgrind. In additionn to
+beingn a Valgrind tool, it also cotains sizable amount of code from another
+Valgrind tool: Memcheck</p>
+
+<p>
+It's easiest to think of this as two separate merges: (1) The merge between
+the underlying copy of Valgrind, and the newer version of Valgrind and (2)
+The merge between the memcheck code contained in Fjalar and the newer version
+of Memcheck. Unfortuately, due to very tight dependence of the memcheck code
+on Valgrind, the changes should be done simultaneously.
+</p>
+
+<p>
+The merge of the underlying copy of Valgrind should be able to be done almost
+completely automatically. Due to substantial modifications to the memcheck code,
+some portion of the merge will have to be done manually. It is for this reason
+that merges should be done on a frequent basis. Monthly, at the very least, is
+recommended.
+<p>
+
+<ul>
+  <li><a href="#Getting Started">1. Getting Started</a> </li>
+  <ul>
+    <li><a href="#1.1">1.1 Obtain a current copy of the Fjalar source</a></li>
+    <li><a href="#1.2">1.2 Obtain current copy of the Valgrind Source </a></li>
+    <li><a href="#1.3">1.3 Obtain a copy of the Valgrind Source corresponding to the Kvasir version</a></li>
+    <li><a href="#1.4">1.4 Obtain a copy of the VEX Source corresponding to the Kvasir version</a></li>
+  </ul>
+  <li><a href="#Creating the diffs">2. Creating the diffs</a> </li>
+  <ul>
+    <li><a href="#2.1">2.1 Coregrind Diff</a></li>
+    <li><a href="#2.2">2.2 Memcheck Diff</a></li>
+  </ul>
+  <li><a href="#Merging the changes">3. Merging the changes</a> </li>
+  <ul>
+    <li><a href="#3.1">3.1 Coregrind Merge</a></li>
+    <li><a href="#3.2">3.2 Coregrind Conflicts</a></li>
+    <li><a href="#3.3">3.3 Memcheck Merge</a></li>
+    <li><a href="#3.4">3.4 Memcheck Conflicts</a></li>
+    <li><a href="#3.5">3.5 Updating Fjalar/Kvasir</a></li>
+  </ul>
+  <li><a href="#Compiling">4. Compiling and Testing</a> </li>
+  <ul>
+    <li><a href="#4.1">4.1 Compiling Fjalar</a></li>
+    <li><a href="#4.2">4.2 Testing Fjalar</a></li>
+    <li><a href="#4.3">4.3 Documenting Changes/a></li>
+    <li><a href="#4.4">4.4 Comitting</a></li>
+  </ul>
+  <li><a href="#Appendix A: Valgrind modifications"> Appendix A: Valgrind modifications </a></li>
+  <li><a href="#Appendix B: Memcheck modifications"> Appendix B: Memcheck modifications </a></li>
+</ul>
+
+<hr>
+
+<a name="Getting Started">
+<h3>1. Getting Started</h3>
+
+
+<p>
+To begin you will need to pull a copy of Kvasir from CVS. for
+further directions.</p>
+
+<p>Next you will need to obtain 2 copies of Valgrind: The most recent, and the
+one the current version of Fjalar is based on. You can get up to date instructions
+on pulling Valgrind from source from:</p>
+
+<a name="1.1">
+<h3>1.1 Obtain a current copy of the Fjalar source </h3>
+hThe below steps can be omitted if you already have a copy of invariants/valgrind-3
+checked out. However it may be slightly more convenient to move your current working
+copy and follow the below directions.
+
+(From a PAG machine)
+<p><i> cvs -d $pag/projects/invariants/.CVS co invariants</i></p>
+<p><i> cd invariants</i></p>
+<p><i> cvs -d $pag/projects/invariants/.CVS co valgrind-3</i></p>
+
+
+<a name="1.2">
+<h3>1.2 Obtain current copy of the Valgrind Source </h3>
+<p><i> svn co svn://svn.valgrind.org/valgrind/trunk valgrind-new </i></p>
+
+<p>Additional information about working with the Valgrind repository can be found at: <a href="http://www.valgrind.org/downloads/repository.html">Valgrind: Code Repository</a></p>
+
+<a name="1.3">
+<h3>1.3 Obtain a copy of the Valgrind Source corresponding to the Kvasir version </h3>
+<p><i>svn co -r [REVISION] svn://svn.valgrind.org/valgrind/trunk valgrind-old </i></p>
+
+<p>The revision of Valgrind currently used by Fjalar should be in kvasir/NOTES. Please update
+this file when you're done. </p>
+
+<a name="1.4">
+<h3>1.4 Obtain a copy of the VEX Source corresponding to the Kvasir version </h3>
+From within the old Valgrind source directory run:
+<p><i>svn update -r [REVISON] svn://svn.valgrind.org/vex/trunk VEX </p></i>
+
+<p>The revision of VEX currently used by Fjalar should also be in kvasir/NOTES. Please update
+this file when you're done. </p>
+
+<p>The VEX instrumentation libraries Valgrind is built on is stored in a separate
+SVN repository. A Valgrind checkout will always check out the most recent version of the VEX
+source. This is fine for when we checked out the current Valgrind source, however,
+we'll want the same version used in the Kvasir repository for the copy that will be
+diffed.</p>
+<hr>
+
+<a name="2. Creating the diffs">
+<h3>2. Creating the diffs</h3>
+<p>Two separate diffs will be created. One for non Memcheck code and one for Memcheck.</p>
+
+<a name="2.1">
+<h3>2.1 Coregrind Diff</h3>
+<p><i> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey [<b>Valgrind-Old</b>] [<b>Valgrind</b>] > coregrind.patch</i></p>
+
+
+<a name="2.2">
+<h3>2.2 Memcheck Diff</h3>
+<p><i>diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf [<b>Memcheck-Old</b>] [<b>Memcheck</b>] > memcheck.patch</i></p>
+
+
+<a name="2.3">
+<h3>2.3 PAG Coregrind Diff</h3>
+<p> As an aid, it's reccomended to generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to  be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
+
+<p><i>  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
+</i></p>
+
+<hr>
+
+<a name="Merging the changes">
+<h3>3. Merging the changes</h3>
+
+<a name="3.1">
+<h3>3.1 Coregrind Merge</h3>
+<p>Now we can merge the changes from the created diffs. The coregrind patch should apply with very little conflicts.</p>
+
+<p> In general it's somewhat difficult to undo a patch operation, so you should first attempt a dry run. </p>
+
+<dl><dt><i>cd <b>[Fjalar Valgrind]</b></dt>
+<dt>patch -p1 < coregrind.patch --dry-run</dt></i>
+
+<p> Keep on the lookout for irrelevant directories. If there are entire directories of content absent in our version it might be
+indicative of a new Valgrind tool. It would be worthwhile to examine the folder and see if it is relevant to our version. If the
+patch fails outright it may be indicative of problems in the above diffing.</p>
+
+<p>When you are ready to apply the patch run:</p>
+<i><dt>patch -p1 < coregrind.patch</dt></i>
+
+<p> Be sure to run: </p>
+
+<i><dt>cvs add [file] </dt></i>
+
+<p> On any files created in our repository and </p>
+
+<i><dt>cvs remove [file] </dt></i>
+
+<p> for any files removed from our repository  </p>
+
+<a name="3.2">
+<h3>3.2 Coregrind Conflicts</h3>
+
+<p>You will need to handle any conflicts that occured. For every conflicted file in the patch, a .rej file will be created
+for the file. For every change in the file you will need to examine both the changed code as well as our original code and
+determine if it needs to be hand merged or if the change is not relevant. It is useful to refer to the .diff file you
+created containing our changes during this process.</p>
+
+<a name="3.3">
+<h3>3.3 Memcheck Merge</h3>
+<dl><dt><i>cd <b>[Fjalar]</b></dt>
+<dt>patch -p2 < memcheck.patch --dry-run</dt></i>
+
+<p> If the patch output looks sane, continue with the actual merge </p>
+
+<i><dt>patch -p2 < memcheck.patch </dt></i>
+
+<p> Be sure to run: </p>
+
+<i><dt>cvs add [file] </dt></i>
+
+<p> On any files created in our repository and </p>
+
+<i><dt>cvs remove [file] </dt></i>
+
+<p> for any files removed from our repository  </p>
+
+<a name="3.4">
+<h3>3.4 Memcheck Conflicts</h3>
+
+<p>As with the coregrind merge you will need to handle any conflicts that have arised. The process is the same, however
+our changes to Memcheck are much more substantial than our changes to Coregrind. Some notes on particular problem areas
+are below.</p>
+
+<p>The largest modification to the memcheck is located in mc_translate.c and special care should be made
+to ensure it is present and up to date. in MC_(instrument), the code which handles the instrumentation
+of calls for Dyncomp is present. It is primarily contained in a case-switch statement below the
+case-switch statement for Memcheck. MC_(instrument) switches off on every VEX instruction type and performs
+some operation for it. There should be an analogous for Dyncomp operation in the second
+case-switch for every memcheck operation in the first one.</p>
+
+<a name="3.5">
+<h3>3.5 Updating Fjalar/Kvasir</h3>
+
+<p>Additionally Fjalar/Kvasir need to be updated to properly handle any changes in Valgrind API/functionality.
+. For the most part Valgrind maintains a relatively  stable interface to it's tools. Any tool-visible changes
+should be noted in the change logs.</p>
+
+<p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
+changes in it need to be reflected. Most of the changes to the public VEX IR can be discovered by running the following command:</p>
+
+<dt><i>svn log -r [LAST-REVISION]:HEAD VEX/pub/libvex_ir.h</dt></i>
+
+<p>
+The files with all the VEX IR code for Dyncomp is located in dyncomp_translate.[ch]. dyncomp_translate.c
+is structured primarily into functions of the form <i>expr2tags_<EXPRESSION_TYPE>()</i>. These functions
+will  contain a switch for all VEX IR instructions corresponding to the expression type and some
+call to a dyncomp tag function. Most often VEX IR changes will be syntactical in nature and will only
+involve changing the names of the instructions.
+<hr>
+
+<a name="Compiling">
+<h3>4. Compiling and Testing</h3>
+<p>We must now ensure that the merged code compiles correctly and passes the regression test suite.</p>
+
+<a name="4.1">
+<h3>4.1 Compiling Fjalar</h3>
+<i><dt>cd valgrind-3 </dt></i>
+<i><dt>./auto-everything.sh </dt></i>
+
+<p> The auto-everything shell script should handle autogen'ing the config and Makefiles as well
+compiling Fjalar. Be sure to fix any compilation errors that pop up at this point.</p>
+
+<a name="4.2">
+<h3>4.2 Testing Fjalar</h3>
+<p>The regression suite is located in the tests/kvasir-tests directory. It can be run using the following
+commands</p>
+
+<i><dt>cd [invariants]/tests/kvasir-tests </dt></i>
+<i><dt>make nightly-summary-w-daikon</dt></i>
+
+<p>The test suite should pass without modification.</p>
+
+<a name="4.3">
+<h3>4.3 Documenting Changes</h3>
+
+<p>Any user-visible changes should be documented in [invariants]/docs/CHANGES. Additionally both this file
+(kvasir_valgrind_merge.html) and [invariants]/kvasir/REVISION should be updated with the Valgrind
+and VEX revisions that were used for this merge.</p>
+
+<a name="4.4">
+<h3> 4.4 Comitting </h4>
+
+</p>One the above is finished, if hte test suite passes with no errors and all changes are documented, changes
+should be comitted to the CVS repository.</p>
+
+<i><dt>cd [invariants] </dt></i>
+<i><dt>cvs commit -m "Valgrind merge from revision[Old-revision] to [new-revison]. VEX IR merge from [old-revision] to [new-revision]. [Any other relevant notes]</dt></i>
+
+<hr>
+<a name="Appendix A: Valgrind modifications">
+<h3>Appendix A: Valgrind modifications</h3>
+<p>In an effort to aid in determining the appropriate measures to take when merging conflicted files,
+this section will provide a list of files modified by us and a brief explanation of the changes.
+
+<!-- Should I include functions too? -->
+
+<p>The most important set of changes is the addition of extra shadow state in Coregrind and VEX.
+The shadow area is an area of memory that Valgrind provides for tools to use. Unfortunately,
+it is of a fixed size, and memcheck uses all of it. We've had to increase the size of the
+the shadow area.
+<dl><dt>
+coregrind/pub_core_threadstate.h: The declaration of the extra shadow space</dt>
+<dt>coregrind/m_scheduler/scheduler.c: An assertion that triggers based on shadow size</dt>
+<dt>VEX/priv/host-generic/reg_alloc2.c: memory calculation using the shadow size</dt></dl>
+
+<br>
+<dl><dt>Addition of primary/secondary integer return registers to the guest state:</dt>
+<dt>VEX/priv/guest-x86/ghelpers.c</dt>
+<dt>VEX/pub/libvex.h</dt>
+<dt>coregrind/m_machine.c: Tool-visible functions to access these values:</dt>
+<dt>include/pub_tool_machine.h</dt></dl>
+<br>
+
+<dl><dt>Addition of an extra libc functions.</dt>
+<dt>valgrind-3.4.0/coregrind/m_libcfile.c</dt>
+<dt>include/pub_tool_libcfile.h</dt></dl>
+<hr>
+
+<a name="Appendix B: Memcheck modifications">
+<h3>Appendix B: Memcheck modifications</h3>
+
+<p>The modifications made to memcheck are more organizational in nature. A few functions from
+mc_main.c and mc_translate.c have been made non-static. An extra header has also been created
+and filled with their signatures for use by Fjalar.</p>
+
+<dl><dt>Other modifications include:</dt>
+<dt>mc_malloc_wrappers.c: Calls to Dyncomp functions for memory operations.</dt>
+<dt>mc_main.c:  Run-time arguments and versioning information for Kvasir to replace the default memcheck ones</dt>
+<dt>mc_translate.c: A duplicate of memcheck's instrumentation block for Dyncomp.</dt></dl></p>
+
+<hr>
+<address></address>
+<!-- hhmts start -->Last modified: Tue Jun 16 10:16:04 EDT 2009 <!-- hhmts end -->
+</body> </html>
