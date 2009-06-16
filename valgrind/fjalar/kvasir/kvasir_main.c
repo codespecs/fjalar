@@ -581,7 +581,7 @@ void fjalar_tool_post_clo_init(void)
   // for this but it can be circumvented temporarily by putting the
   // 2.0 decls header at the top of the dtrace.
 
-  if (!kvasir_old_decls_format && dtrace_fp) {
+  if (!kvasir_old_decls_format && dtrace_fp && !kvasir_dtrace_append) {
 
       fputs("input-language C/C++\n", dtrace_fp);
 
