@@ -702,6 +702,9 @@ ac_ct_CXX
 CXXDEPMODE
 am__fastdepCXX_TRUE
 am__fastdepCXX_FALSE
+OBJC
+OBJCFLAGS
+ac_ct_OBJC
 RANLIB
 AR
 PERL
@@ -719,6 +722,7 @@ host_vendor
 host_os
 VGCONF_OS
 VGCONF_ARCH_PRI
+VGCONF_ARCH_SEC
 VGCONF_PLATFORM_PRI_CAPS
 VGCONF_PLATFORM_SEC_CAPS
 VGCONF_ARCHS_INCLUDE_X86_TRUE
@@ -741,12 +745,18 @@ VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE
 VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE
 VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE
 VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE
+VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE
+VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE
+VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE
+VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE
 VGCONF_OS_IS_LINUX_TRUE
 VGCONF_OS_IS_LINUX_FALSE
 VGCONF_OS_IS_AIX5_TRUE
 VGCONF_OS_IS_AIX5_FALSE
-VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE
-VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE
+VGCONF_OS_IS_DARWIN_TRUE
+VGCONF_OS_IS_DARWIN_FALSE
+VGCONF_HAVE_PLATFORM_SEC_TRUE
+VGCONF_HAVE_PLATFORM_SEC_FALSE
 VALT_LOAD_ADDRESS
 DEFAULT_SUPP
 GREP
@@ -797,6 +807,8 @@ HAVE_BOOST_1_35_TRUE
 HAVE_BOOST_1_35_FALSE
 HAVE_OPENMP_TRUE
 HAVE_OPENMP_FALSE
+HAVE_BUILTIN_ATOMIC_TRUE
+HAVE_BUILTIN_ATOMIC_FALSE
 LTLIBOBJS'
 ac_subst_files=''
       ac_precious_vars='build_alias
@@ -811,6 +823,8 @@ CPP
 CXX
 CXXFLAGS
 CCC
+OBJC
+OBJCFLAGS
 AR
 CCAS
 CCASFLAGS
@@ -1422,6 +1436,8 @@ Some influential environment variables:
   CPP         C preprocessor
   CXX         C++ compiler command
   CXXFLAGS    C++ compiler flags
+  OBJC        Objective C compiler command
+  OBJCFLAGS   Objective C compiler flags
   AR          Archiver command
   CCAS        assembler compiler command (defaults to CC)
   CCASFLAGS   assembler compiler flags (defaults to CFLAGS)
@@ -4356,6 +4372,364 @@ else
 fi
 
 
+ac_ext=m
+ac_cpp='$OBJCPP $CPPFLAGS'
+ac_compile='$OBJC -c $OBJCFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$OBJC -o conftest$ac_exeext $OBJCFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_objc_compiler_gnu
+if test -n "$ac_tool_prefix"; then
+  for ac_prog in gcc objcc objc cc CC
+  do
+    # Extract the first word of "$ac_tool_prefix$ac_prog", so it can be a program name with args.
+set dummy $ac_tool_prefix$ac_prog; ac_word=$2
+{ echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6; }
+if test "${ac_cv_prog_OBJC+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$OBJC"; then
+  ac_cv_prog_OBJC="$OBJC" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_prog_OBJC="$ac_tool_prefix$ac_prog"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+IFS=$as_save_IFS
+
+fi
+fi
+OBJC=$ac_cv_prog_OBJC
+if test -n "$OBJC"; then
+  { echo "$as_me:$LINENO: result: $OBJC" >&5
+echo "${ECHO_T}$OBJC" >&6; }
+else
+  { echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6; }
+fi
+
+
+    test -n "$OBJC" && break
+  done
+fi
+if test -z "$OBJC"; then
+  ac_ct_OBJC=$OBJC
+  for ac_prog in gcc objcc objc cc CC
+do
+  # Extract the first word of "$ac_prog", so it can be a program name with args.
+set dummy $ac_prog; ac_word=$2
+{ echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6; }
+if test "${ac_cv_prog_ac_ct_OBJC+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$ac_ct_OBJC"; then
+  ac_cv_prog_ac_ct_OBJC="$ac_ct_OBJC" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_prog_ac_ct_OBJC="$ac_prog"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+IFS=$as_save_IFS
+
+fi
+fi
+ac_ct_OBJC=$ac_cv_prog_ac_ct_OBJC
+if test -n "$ac_ct_OBJC"; then
+  { echo "$as_me:$LINENO: result: $ac_ct_OBJC" >&5
+echo "${ECHO_T}$ac_ct_OBJC" >&6; }
+else
+  { echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6; }
+fi
+
+
+  test -n "$ac_ct_OBJC" && break
+done
+
+  if test "x$ac_ct_OBJC" = x; then
+    OBJC="gcc"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ echo "$as_me:$LINENO: WARNING: In the future, Autoconf will not detect cross-tools
+whose name does not start with the host triplet.  If you think this
+configuration is useful to you, please write to autoconf@gnu.org." >&5
+echo "$as_me: WARNING: In the future, Autoconf will not detect cross-tools
+whose name does not start with the host triplet.  If you think this
+configuration is useful to you, please write to autoconf@gnu.org." >&2;}
+ac_tool_warned=yes ;;
+esac
+    OBJC=$ac_ct_OBJC
+  fi
+fi
+
+# Provide some information about the compiler.
+echo "$as_me:$LINENO: checking for Objective C compiler version" >&5
+ac_compiler=`set X $ac_compile; echo $2`
+{ (ac_try="$ac_compiler --version >&5"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compiler --version >&5") 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }
+{ (ac_try="$ac_compiler -v >&5"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compiler -v >&5") 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }
+{ (ac_try="$ac_compiler -V >&5"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compiler -V >&5") 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }
+
+{ echo "$as_me:$LINENO: checking whether we are using the GNU Objective C compiler" >&5
+echo $ECHO_N "checking whether we are using the GNU Objective C compiler... $ECHO_C" >&6; }
+if test "${ac_cv_objc_compiler_gnu+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+#ifndef __GNUC__
+       choke me
+#endif
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (ac_try="$ac_compile"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compile") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_objc_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest.$ac_objext; then
+  ac_compiler_gnu=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	ac_compiler_gnu=no
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+ac_cv_objc_compiler_gnu=$ac_compiler_gnu
+
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_objc_compiler_gnu" >&5
+echo "${ECHO_T}$ac_cv_objc_compiler_gnu" >&6; }
+GOBJC=`test $ac_compiler_gnu = yes && echo yes`
+ac_test_OBJCFLAGS=${OBJCFLAGS+set}
+ac_save_OBJCFLAGS=$OBJCFLAGS
+{ echo "$as_me:$LINENO: checking whether $OBJC accepts -g" >&5
+echo $ECHO_N "checking whether $OBJC accepts -g... $ECHO_C" >&6; }
+if test "${ac_cv_prog_objc_g+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_save_objc_werror_flag=$ac_objc_werror_flag
+   ac_objc_werror_flag=yes
+   ac_cv_prog_objc_g=no
+   OBJCFLAGS="-g"
+   cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (ac_try="$ac_compile"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compile") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_objc_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest.$ac_objext; then
+  ac_cv_prog_objc_g=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	OBJCFLAGS=""
+      cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (ac_try="$ac_compile"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compile") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_objc_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest.$ac_objext; then
+  :
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+	ac_objc_werror_flag=$ac_save_objc_werror_flag
+	 OBJCFLAGS="-g"
+	 cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (ac_try="$ac_compile"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_compile") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && {
+	 test -z "$ac_objc_werror_flag" ||
+	 test ! -s conftest.err
+       } && test -s conftest.$ac_objext; then
+  ac_cv_prog_objc_g=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+   ac_objc_werror_flag=$ac_save_objc_werror_flag
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_prog_objc_g" >&5
+echo "${ECHO_T}$ac_cv_prog_objc_g" >&6; }
+if test "$ac_test_OBJCFLAGS" = set; then
+  OBJCFLAGS=$ac_save_OBJCFLAGS
+elif test $ac_cv_prog_objc_g = yes; then
+  if test "$GOBJC" = yes; then
+    OBJCFLAGS="-g -O2"
+  else
+    OBJCFLAGS="-g"
+  fi
+else
+  if test "$GOBJC" = yes; then
+    OBJCFLAGS="-O2"
+  else
+    OBJCFLAGS=
+  fi
+fi
+ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
 if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}ranlib", so it can be a program name with args.
 set dummy ${ac_tool_prefix}ranlib; ac_word=$2
@@ -4857,6 +5231,8 @@ fi
 echo $ECHO_N "checking for a supported OS... $ECHO_C" >&6; }
 
 
+DEFAULT_SUPP=""
+
 case "${host_os}" in
      *linux*)
 	{ echo "$as_me:$LINENO: result: ok (${host_os})" >&5
@@ -4921,6 +5297,40 @@ echo "${ECHO_T}ok (${host_os})" >&6; }
         { echo "$as_me:$LINENO: result: ok (${host_os})" >&5
 echo "${ECHO_T}ok (${host_os})" >&6; }
         VGCONF_OS="freebsd"
+        ;;
+
+     *darwin*)
+        { echo "$as_me:$LINENO: result: ok (${host_os})" >&5
+echo "${ECHO_T}ok (${host_os})" >&6; }
+        VGCONF_OS="darwin"
+
+	{ echo "$as_me:$LINENO: checking for the kernel version" >&5
+echo $ECHO_N "checking for the kernel version... $ECHO_C" >&6; }
+	kernel=`uname -r`
+
+        # Nb: for Darwin we set DEFAULT_SUPP here.  That's because Darwin
+        # has only one relevant version, the OS version. The `uname` check
+        # is a good way to get that version (i.e. "Darwin 9.6.0" is Mac OS
+        # X 10.5.6, and "Darwin 10.x" would presumably be Mac OS X 10.6.x
+        # Snow Leopard and darwin10.supp), and we don't know of an macros
+        # similar to __GLIBC__ to get that info.
+        #
+        # XXX: `uname -r` won't do the right thing for cross-compiles, but
+        # that's not a problem yet.
+	case "${kernel}" in
+	     9.*)
+		  { echo "$as_me:$LINENO: result: Darwin 9.x (${kernel}) / Mac OS X 10.5 Leopard" >&5
+echo "${ECHO_T}Darwin 9.x (${kernel}) / Mac OS X 10.5 Leopard" >&6; }
+		  DEFAULT_SUPP="darwin9.supp ${DEFAULT_SUPP}"
+		  ;;
+     *)
+		  { echo "$as_me:$LINENO: result: unsupported (${kernel})" >&5
+echo "${ECHO_T}unsupported (${kernel})" >&6; }
+		  { { echo "$as_me:$LINENO: error: Valgrind works on Darwin 9.x (Mac OS X 10.5)" >&5
+echo "$as_me: error: Valgrind works on Darwin 9.x (Mac OS X 10.5)" >&2;}
+   { (exit 1); exit 1; }; }
+		  ;;
+	esac
         ;;
 
      *)
@@ -5018,6 +5428,12 @@ fi
 # -VGP_$(VGCONF_ARCH_PRI)_$(VGCONF_OS).
 
 
+# VGCONF_ARCH_SEC is the arch for the secondary build target, eg. "x86".
+# It is passed in to compilation of many C files via -VGA_$(VGCONF_ARCH_SEC)
+# and -VGP_$(VGCONF_ARCH_SEC)_$(VGCONF_OS), if there is a secondary target.
+# It is empty if there is no secondary target.
+
+
 # VGCONF_PLATFORM_PRI_CAPS is the primary build target, eg. "AMD64_LINUX".
 # The entire system, including regression and performance tests, will be
 # built for this target.  The "_CAPS" indicates that the name is in capital
@@ -5043,6 +5459,7 @@ echo $ECHO_N "checking for a supported CPU/OS combination... $ECHO_C" >&6; }
 case "$ARCH_MAX-$VGCONF_OS" in
      x86-linux)
         VGCONF_ARCH_PRI="x86"
+        VGCONF_ARCH_SEC=""
 	VGCONF_PLATFORM_PRI_CAPS="X86_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
         valt_load_address_normal="0x38000000"
@@ -5053,14 +5470,17 @@ echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
      amd64-linux)
 	if test x$vg_cv_only64bit = xyes; then
            VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="x86"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="X86_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	else
            VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC="x86"
 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="X86_LINUX"
 	fi
@@ -5071,6 +5491,7 @@ echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
 	;;
      ppc32-linux)
         VGCONF_ARCH_PRI="ppc32"
+        VGCONF_ARCH_SEC=""
 	VGCONF_PLATFORM_PRI_CAPS="PPC32_LINUX"
 	VGCONF_PLATFORM_SEC_CAPS=""
         valt_load_address_normal="0x38000000"
@@ -5081,14 +5502,17 @@ echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
      ppc64-aix5)
 	if test x$vg_cv_only64bit = xyes; then
            VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_AIX5"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc32"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC32_AIX5"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	else
 	   VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC="ppc32"
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_AIX5"
 	   VGCONF_PLATFORM_SEC_CAPS="PPC32_AIX5"
 	fi
@@ -5100,15 +5524,17 @@ echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
      ppc64-linux)
 	if test x$vg_cv_only64bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
 	elif test x$vg_cv_only32bit = xyes; then
 	   VGCONF_ARCH_PRI="ppc32"
+           VGCONF_ARCH_SEC=""
 	   VGCONF_PLATFORM_PRI_CAPS="PPC32_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
-	   VGCONF_ARCH_PRI="ppc32"
 	else
 	   VGCONF_ARCH_PRI="ppc64"
+           VGCONF_ARCH_SEC="ppc32"
 	   VGCONF_PLATFORM_PRI_CAPS="PPC64_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="PPC32_LINUX"
 	fi
@@ -5117,8 +5543,42 @@ echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
         { echo "$as_me:$LINENO: result: ok (${ARCH_MAX}-${VGCONF_OS})" >&5
 echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
 	;;
+     x86-darwin)
+        VGCONF_ARCH_PRI="x86"
+        VGCONF_ARCH_SEC=""
+	VGCONF_PLATFORM_PRI_CAPS="X86_DARWIN"
+	VGCONF_PLATFORM_SEC_CAPS=""
+        valt_load_address_normal="0x0"
+        valt_load_address_inner="0x0"
+        { echo "$as_me:$LINENO: result: ok (${ARCH_MAX}-${VGCONF_OS})" >&5
+echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
+	;;
+     amd64-darwin)
+	if test x$vg_cv_only64bit = xyes; then
+           VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC=""
+	   VGCONF_PLATFORM_PRI_CAPS="AMD64_DARWIN"
+	   VGCONF_PLATFORM_SEC_CAPS=""
+	elif test x$vg_cv_only32bit = xyes; then
+           VGCONF_ARCH_PRI="x86"
+           VGCONF_ARCH_SEC=""
+	   VGCONF_PLATFORM_PRI_CAPS="X86_DARWIN"
+	   VGCONF_PLATFORM_SEC_CAPS=""
+	   VGCONF_ARCH_PRI_CAPS="x86"
+	else
+           VGCONF_ARCH_PRI="amd64"
+           VGCONF_ARCH_SEC="x86"
+	   VGCONF_PLATFORM_PRI_CAPS="AMD64_DARWIN"
+	   VGCONF_PLATFORM_SEC_CAPS="X86_DARWIN"
+	fi
+        valt_load_address_normal="0x0"
+        valt_load_address_inner="0x0"
+        { echo "$as_me:$LINENO: result: ok (${ARCH_MAX}-${VGCONF_OS})" >&5
+echo "${ECHO_T}ok (${ARCH_MAX}-${VGCONF_OS})" >&6; }
+	;;
     *)
         VGCONF_ARCH_PRI="unknown"
+        VGCONF_ARCH_SEC="unknown"
 	VGCONF_PLATFORM_PRI_CAPS="UNKNOWN"
 	VGCONF_PLATFORM_SEC_CAPS="UNKNOWN"
         { echo "$as_me:$LINENO: result: no (${ARCH_MAX}-${VGCONF_OS})" >&5
@@ -5136,7 +5596,9 @@ esac
 
 
 if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
-                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_LINUX ; then
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN ; then
   VGCONF_ARCHS_INCLUDE_X86_TRUE=
   VGCONF_ARCHS_INCLUDE_X86_FALSE='#'
 else
@@ -5146,7 +5608,8 @@ fi
 
 
 
-if test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX ; then
+if test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN ; then
   VGCONF_ARCHS_INCLUDE_AMD64_TRUE=
   VGCONF_ARCHS_INCLUDE_AMD64_FALSE='#'
 else
@@ -5225,6 +5688,7 @@ fi
 
 
 
+
 if test x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_AIX5 \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_AIX5; then
   VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE=
@@ -5243,6 +5707,29 @@ else
   VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE='#'
   VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE=
 fi
+
+
+
+
+if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN; then
+  VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE=
+  VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE='#'
+else
+  VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE='#'
+  VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE=
+fi
+
+
+
+if test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN; then
+  VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE=
+  VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE='#'
+else
+  VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE='#'
+  VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE=
+fi
+
 
 
 # Similarly, set up VGCONF_OF_IS_<os>.  Exactly one of these becomes defined.
@@ -5274,16 +5761,27 @@ fi
 
 
 
+if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_DARWIN; then
+  VGCONF_OS_IS_DARWIN_TRUE=
+  VGCONF_OS_IS_DARWIN_FALSE='#'
+else
+  VGCONF_OS_IS_DARWIN_TRUE='#'
+  VGCONF_OS_IS_DARWIN_FALSE=
+fi
+
+
+
 # Sometimes, in the Makefile.am files, it's useful to know whether or not
 # there is a secondary target.
 
 
 if test x$VGCONF_PLATFORM_SEC_CAPS != x; then
-  VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE=
-  VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE='#'
+  VGCONF_HAVE_PLATFORM_SEC_TRUE=
+  VGCONF_HAVE_PLATFORM_SEC_FALSE='#'
 else
-  VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE='#'
-  VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE=
+  VGCONF_HAVE_PLATFORM_SEC_TRUE='#'
+  VGCONF_HAVE_PLATFORM_SEC_FALSE=
 fi
 
 
@@ -5326,7 +5824,6 @@ fi
 # Libc and suppressions
 #----------------------------------------------------------------------------
 # This variable will collect the suppression files to be used.
-DEFAULT_SUPP=""
 
 
 GLIBC_VERSION=""
@@ -5712,6 +6209,27 @@ fi
 rm -f conftest*
 
 
+# not really a version check
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+#include <sys/cdefs.h>
+#if defined(__DARWIN_VERS_1050)
+  DARWIN_LIBC
+#endif
+
+_ACEOF
+if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
+  $EGREP "DARWIN_LIBC" >/dev/null 2>&1; then
+  GLIBC_VERSION="darwin"
+fi
+rm -f conftest*
+
+
 { echo "$as_me:$LINENO: checking the GLIBC_VERSION version" >&5
 echo $ECHO_N "checking the GLIBC_VERSION version... $ECHO_C" >&6; }
 
@@ -5837,6 +6355,16 @@ _ACEOF
 
 	DEFAULT_SUPP="aix5libc.supp ${DEFAULT_SUPP}"
 	;;
+     darwin)
+	{ echo "$as_me:$LINENO: result: Darwin" >&5
+echo "${ECHO_T}Darwin" >&6; }
+
+cat >>confdefs.h <<\_ACEOF
+#define DARWIN_LIBC 1
+_ACEOF
+
+	# DEFAULT_SUPP set by kernel version check above.
+	;;
 
      *)
 	{ echo "$as_me:$LINENO: result: unsupported version" >&5
@@ -5846,6 +6374,9 @@ echo "$as_me: error: Valgrind requires glibc version 2.2 - 2.10" >&2;}
    { (exit 1); exit 1; }; }
 	{ { echo "$as_me:$LINENO: error: or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION" >&5
 echo "$as_me: error: or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION" >&2;}
+   { (exit 1); exit 1; }; }
+	{ { echo "$as_me:$LINENO: error: or Darwin libc" >&5
+echo "$as_me: error: or Darwin libc" >&2;}
    { (exit 1); exit 1; }; }
 	;;
 esac
@@ -7878,6 +8409,99 @@ fi
 
 
 #----------------------------------------------------------------------------
+# Check for /proc filesystem
+#----------------------------------------------------------------------------
+{ echo "$as_me:$LINENO: checking for /proc/self/fd" >&5
+echo $ECHO_N "checking for /proc/self/fd... $ECHO_C" >&6; }
+if test "${ac_cv_file__proc_self_fd+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  test "$cross_compiling" = yes &&
+  { { echo "$as_me:$LINENO: error: cannot check for file existence when cross compiling" >&5
+echo "$as_me: error: cannot check for file existence when cross compiling" >&2;}
+   { (exit 1); exit 1; }; }
+if test -r "/proc/self/fd"; then
+  ac_cv_file__proc_self_fd=yes
+else
+  ac_cv_file__proc_self_fd=no
+fi
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_file__proc_self_fd" >&5
+echo "${ECHO_T}$ac_cv_file__proc_self_fd" >&6; }
+if test $ac_cv_file__proc_self_fd = yes; then
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE__PROC_SELF_FD 1
+_ACEOF
+
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_PROC 1
+_ACEOF
+
+fi
+{ echo "$as_me:$LINENO: checking for /proc/self/exe" >&5
+echo $ECHO_N "checking for /proc/self/exe... $ECHO_C" >&6; }
+if test "${ac_cv_file__proc_self_exe+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  test "$cross_compiling" = yes &&
+  { { echo "$as_me:$LINENO: error: cannot check for file existence when cross compiling" >&5
+echo "$as_me: error: cannot check for file existence when cross compiling" >&2;}
+   { (exit 1); exit 1; }; }
+if test -r "/proc/self/exe"; then
+  ac_cv_file__proc_self_exe=yes
+else
+  ac_cv_file__proc_self_exe=no
+fi
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_file__proc_self_exe" >&5
+echo "${ECHO_T}$ac_cv_file__proc_self_exe" >&6; }
+if test $ac_cv_file__proc_self_exe = yes; then
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE__PROC_SELF_EXE 1
+_ACEOF
+
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_PROC 1
+_ACEOF
+
+fi
+{ echo "$as_me:$LINENO: checking for /proc/self/maps" >&5
+echo $ECHO_N "checking for /proc/self/maps... $ECHO_C" >&6; }
+if test "${ac_cv_file__proc_self_maps+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  test "$cross_compiling" = yes &&
+  { { echo "$as_me:$LINENO: error: cannot check for file existence when cross compiling" >&5
+echo "$as_me: error: cannot check for file existence when cross compiling" >&2;}
+   { (exit 1); exit 1; }; }
+if test -r "/proc/self/maps"; then
+  ac_cv_file__proc_self_maps=yes
+else
+  ac_cv_file__proc_self_maps=no
+fi
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_file__proc_self_maps" >&5
+echo "${ECHO_T}$ac_cv_file__proc_self_maps" >&6; }
+if test $ac_cv_file__proc_self_maps = yes; then
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE__PROC_SELF_MAPS 1
+_ACEOF
+
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_PROC 1
+_ACEOF
+
+fi
+
+
+
+#----------------------------------------------------------------------------
 # Checks for C header files.
 #----------------------------------------------------------------------------
 
@@ -9202,6 +9826,7 @@ fi
 
 
 
+
 for ac_func in      \
         clock_gettime\
         epoll_create \
@@ -9212,6 +9837,7 @@ for ac_func in      \
         memchr       \
         memset       \
         mkdir        \
+        mremap       \
         ppoll        \
         pthread_barrier_init       \
         pthread_condattr_setclock  \
@@ -10212,6 +10838,7 @@ eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
        } && test -s conftest$ac_exeext &&
        $as_test_x conftest$ac_exeext; then
 
+  ac_have_builtin_atomic=yes
   { echo "$as_me:$LINENO: result: yes" >&5
 echo "${ECHO_T}yes" >&6; }
 
@@ -10225,6 +10852,7 @@ else
 sed 's/^/| /' conftest.$ac_ext >&5
 
 
+  ac_have_builtin_atomic=no
   { echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6; }
 
@@ -10234,6 +10862,17 @@ rm -f core conftest.err conftest.$ac_objext conftest_ipa8_conftest.oo \
       conftest$ac_exeext conftest.$ac_ext
 
 CFLAGS=$safe_CFLAGS
+
+
+
+if test x$ac_have_builtin_atomic = xyes; then
+  HAVE_BUILTIN_ATOMIC_TRUE=
+  HAVE_BUILTIN_ATOMIC_FALSE='#'
+else
+  HAVE_BUILTIN_ATOMIC_TRUE='#'
+  HAVE_BUILTIN_ATOMIC_FALSE=
+fi
+
 
 
 #----------------------------------------------------------------------------
@@ -10436,6 +11075,20 @@ echo "$as_me: error: conditional \"VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5\" was nev
 Usually this means the macro was only invoked conditionally." >&2;}
    { (exit 1); exit 1; }; }
 fi
+if test -z "${VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE}" && test -z "${VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE}"; then
+  { { echo "$as_me:$LINENO: error: conditional \"VGCONF_PLATFORMS_INCLUDE_X86_DARWIN\" was never defined.
+Usually this means the macro was only invoked conditionally." >&5
+echo "$as_me: error: conditional \"VGCONF_PLATFORMS_INCLUDE_X86_DARWIN\" was never defined.
+Usually this means the macro was only invoked conditionally." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+if test -z "${VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE}" && test -z "${VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE}"; then
+  { { echo "$as_me:$LINENO: error: conditional \"VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN\" was never defined.
+Usually this means the macro was only invoked conditionally." >&5
+echo "$as_me: error: conditional \"VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN\" was never defined.
+Usually this means the macro was only invoked conditionally." >&2;}
+   { (exit 1); exit 1; }; }
+fi
 if test -z "${VGCONF_OS_IS_LINUX_TRUE}" && test -z "${VGCONF_OS_IS_LINUX_FALSE}"; then
   { { echo "$as_me:$LINENO: error: conditional \"VGCONF_OS_IS_LINUX\" was never defined.
 Usually this means the macro was only invoked conditionally." >&5
@@ -10450,10 +11103,17 @@ echo "$as_me: error: conditional \"VGCONF_OS_IS_AIX5\" was never defined.
 Usually this means the macro was only invoked conditionally." >&2;}
    { (exit 1); exit 1; }; }
 fi
-if test -z "${VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE}" && test -z "${VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE}"; then
-  { { echo "$as_me:$LINENO: error: conditional \"VGCONF_HAVE_PLATFORM_SEC_CAPS\" was never defined.
+if test -z "${VGCONF_OS_IS_DARWIN_TRUE}" && test -z "${VGCONF_OS_IS_DARWIN_FALSE}"; then
+  { { echo "$as_me:$LINENO: error: conditional \"VGCONF_OS_IS_DARWIN\" was never defined.
 Usually this means the macro was only invoked conditionally." >&5
-echo "$as_me: error: conditional \"VGCONF_HAVE_PLATFORM_SEC_CAPS\" was never defined.
+echo "$as_me: error: conditional \"VGCONF_OS_IS_DARWIN\" was never defined.
+Usually this means the macro was only invoked conditionally." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+if test -z "${VGCONF_HAVE_PLATFORM_SEC_TRUE}" && test -z "${VGCONF_HAVE_PLATFORM_SEC_FALSE}"; then
+  { { echo "$as_me:$LINENO: error: conditional \"VGCONF_HAVE_PLATFORM_SEC\" was never defined.
+Usually this means the macro was only invoked conditionally." >&5
+echo "$as_me: error: conditional \"VGCONF_HAVE_PLATFORM_SEC\" was never defined.
 Usually this means the macro was only invoked conditionally." >&2;}
    { (exit 1); exit 1; }; }
 fi
@@ -10545,6 +11205,13 @@ if test -z "${HAVE_OPENMP_TRUE}" && test -z "${HAVE_OPENMP_FALSE}"; then
   { { echo "$as_me:$LINENO: error: conditional \"HAVE_OPENMP\" was never defined.
 Usually this means the macro was only invoked conditionally." >&5
 echo "$as_me: error: conditional \"HAVE_OPENMP\" was never defined.
+Usually this means the macro was only invoked conditionally." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+if test -z "${HAVE_BUILTIN_ATOMIC_TRUE}" && test -z "${HAVE_BUILTIN_ATOMIC_FALSE}"; then
+  { { echo "$as_me:$LINENO: error: conditional \"HAVE_BUILTIN_ATOMIC\" was never defined.
+Usually this means the macro was only invoked conditionally." >&5
+echo "$as_me: error: conditional \"HAVE_BUILTIN_ATOMIC\" was never defined.
 Usually this means the macro was only invoked conditionally." >&2;}
    { (exit 1); exit 1; }; }
 fi
@@ -11182,6 +11849,9 @@ ac_ct_CXX!$ac_ct_CXX$ac_delim
 CXXDEPMODE!$CXXDEPMODE$ac_delim
 am__fastdepCXX_TRUE!$am__fastdepCXX_TRUE$ac_delim
 am__fastdepCXX_FALSE!$am__fastdepCXX_FALSE$ac_delim
+OBJC!$OBJC$ac_delim
+OBJCFLAGS!$OBJCFLAGS$ac_delim
+ac_ct_OBJC!$ac_ct_OBJC$ac_delim
 RANLIB!$RANLIB$ac_delim
 AR!$AR$ac_delim
 PERL!$PERL$ac_delim
@@ -11189,9 +11859,6 @@ GDB!$GDB$ac_delim
 CCAS!$CCAS$ac_delim
 CCASFLAGS!$CCASFLAGS$ac_delim
 DIFF!$DIFF$ac_delim
-build!$build$ac_delim
-build_cpu!$build_cpu$ac_delim
-build_vendor!$build_vendor$ac_delim
 _ACEOF
 
   if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 97; then
@@ -11233,6 +11900,9 @@ _ACEOF
 ac_delim='%!_!# '
 for ac_last_try in false false false false false :; do
   cat >conf$$subs.sed <<_ACEOF
+build!$build$ac_delim
+build_cpu!$build_cpu$ac_delim
+build_vendor!$build_vendor$ac_delim
 build_os!$build_os$ac_delim
 host!$host$ac_delim
 host_cpu!$host_cpu$ac_delim
@@ -11240,6 +11910,7 @@ host_vendor!$host_vendor$ac_delim
 host_os!$host_os$ac_delim
 VGCONF_OS!$VGCONF_OS$ac_delim
 VGCONF_ARCH_PRI!$VGCONF_ARCH_PRI$ac_delim
+VGCONF_ARCH_SEC!$VGCONF_ARCH_SEC$ac_delim
 VGCONF_PLATFORM_PRI_CAPS!$VGCONF_PLATFORM_PRI_CAPS$ac_delim
 VGCONF_PLATFORM_SEC_CAPS!$VGCONF_PLATFORM_SEC_CAPS$ac_delim
 VGCONF_ARCHS_INCLUDE_X86_TRUE!$VGCONF_ARCHS_INCLUDE_X86_TRUE$ac_delim
@@ -11262,12 +11933,18 @@ VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE!$VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TR
 VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE!$VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_FALSE$ac_delim
 VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE!$VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_TRUE$ac_delim
 VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE!$VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE$ac_delim
+VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE!$VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE$ac_delim
+VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE!$VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_FALSE$ac_delim
+VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE!$VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE$ac_delim
+VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE!$VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_FALSE$ac_delim
 VGCONF_OS_IS_LINUX_TRUE!$VGCONF_OS_IS_LINUX_TRUE$ac_delim
 VGCONF_OS_IS_LINUX_FALSE!$VGCONF_OS_IS_LINUX_FALSE$ac_delim
 VGCONF_OS_IS_AIX5_TRUE!$VGCONF_OS_IS_AIX5_TRUE$ac_delim
 VGCONF_OS_IS_AIX5_FALSE!$VGCONF_OS_IS_AIX5_FALSE$ac_delim
-VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE!$VGCONF_HAVE_PLATFORM_SEC_CAPS_TRUE$ac_delim
-VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE!$VGCONF_HAVE_PLATFORM_SEC_CAPS_FALSE$ac_delim
+VGCONF_OS_IS_DARWIN_TRUE!$VGCONF_OS_IS_DARWIN_TRUE$ac_delim
+VGCONF_OS_IS_DARWIN_FALSE!$VGCONF_OS_IS_DARWIN_FALSE$ac_delim
+VGCONF_HAVE_PLATFORM_SEC_TRUE!$VGCONF_HAVE_PLATFORM_SEC_TRUE$ac_delim
+VGCONF_HAVE_PLATFORM_SEC_FALSE!$VGCONF_HAVE_PLATFORM_SEC_FALSE$ac_delim
 VALT_LOAD_ADDRESS!$VALT_LOAD_ADDRESS$ac_delim
 DEFAULT_SUPP!$DEFAULT_SUPP$ac_delim
 GREP!$GREP$ac_delim
@@ -11318,10 +11995,11 @@ HAVE_BOOST_1_35_TRUE!$HAVE_BOOST_1_35_TRUE$ac_delim
 HAVE_BOOST_1_35_FALSE!$HAVE_BOOST_1_35_FALSE$ac_delim
 HAVE_OPENMP_TRUE!$HAVE_OPENMP_TRUE$ac_delim
 HAVE_OPENMP_FALSE!$HAVE_OPENMP_FALSE$ac_delim
-LTLIBOBJS!$LTLIBOBJS$ac_delim
+HAVE_BUILTIN_ATOMIC_TRUE!$HAVE_BUILTIN_ATOMIC_TRUE$ac_delim
+HAVE_BUILTIN_ATOMIC_FALSE!$HAVE_BUILTIN_ATOMIC_FALSE$ac_delim
 _ACEOF
 
-  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 86; then
+  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 97; then
     break
   elif $ac_last_try; then
     { { echo "$as_me:$LINENO: error: could not make $CONFIG_STATUS" >&5
@@ -11340,6 +12018,48 @@ fi
 
 cat >>$CONFIG_STATUS <<_ACEOF
 cat >"\$tmp/subs-2.sed" <<\CEOF$ac_eof
+/@[a-zA-Z_][a-zA-Z_0-9]*@/!b
+_ACEOF
+sed '
+s/[,\\&]/\\&/g; s/@/@|#_!!_#|/g
+s/^/s,@/; s/!/@,|#_!!_#|/
+:n
+t n
+s/'"$ac_delim"'$/,g/; t
+s/$/\\/; p
+N; s/^.*\n//; s/[,\\&]/\\&/g; s/@/@|#_!!_#|/g; b n
+' >>$CONFIG_STATUS <conf$$subs.sed
+rm -f conf$$subs.sed
+cat >>$CONFIG_STATUS <<_ACEOF
+CEOF$ac_eof
+_ACEOF
+
+
+ac_delim='%!_!# '
+for ac_last_try in false false false false false :; do
+  cat >conf$$subs.sed <<_ACEOF
+LTLIBOBJS!$LTLIBOBJS$ac_delim
+_ACEOF
+
+  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 1; then
+    break
+  elif $ac_last_try; then
+    { { echo "$as_me:$LINENO: error: could not make $CONFIG_STATUS" >&5
+echo "$as_me: error: could not make $CONFIG_STATUS" >&2;}
+   { (exit 1); exit 1; }; }
+  else
+    ac_delim="$ac_delim!$ac_delim _$ac_delim!! "
+  fi
+done
+
+ac_eof=`sed -n '/^CEOF[0-9]*$/s/CEOF/0/p' conf$$subs.sed`
+if test -n "$ac_eof"; then
+  ac_eof=`echo "$ac_eof" | sort -nru | sed 1q`
+  ac_eof=`expr $ac_eof + 1`
+fi
+
+cat >>$CONFIG_STATUS <<_ACEOF
+cat >"\$tmp/subs-3.sed" <<\CEOF$ac_eof
 /@[a-zA-Z_][a-zA-Z_0-9]*@/!b end
 _ACEOF
 sed '
@@ -11602,7 +12322,7 @@ s&@abs_builddir@&$ac_abs_builddir&;t t
 s&@abs_top_builddir@&$ac_abs_top_builddir&;t t
 s&@INSTALL@&$ac_INSTALL&;t t
 $ac_datarootdir_hack
-" $ac_file_inputs | sed -f "$tmp/subs-1.sed" | sed -f "$tmp/subs-2.sed" >$tmp/out
+" $ac_file_inputs | sed -f "$tmp/subs-1.sed" | sed -f "$tmp/subs-2.sed" | sed -f "$tmp/subs-3.sed" >$tmp/out
 
 test -z "$ac_datarootdir_hack$ac_datarootdir_seen" &&
   { ac_out=`sed -n '/\${datarootdir}/p' "$tmp/out"`; test -n "$ac_out"; } &&
@@ -11917,6 +12637,7 @@ cat<<EOF
 
          Maximum build arch: ${ARCH_MAX}
          Primary build arch: ${VGCONF_ARCH_PRI}
+       Secondary build arch: ${VGCONF_ARCH_SEC}
                    Build OS: ${VGCONF_OS}
        Primary build target: ${VGCONF_PLATFORM_PRI_CAPS}
      Secondary build target: ${VGCONF_PLATFORM_SEC_CAPS}

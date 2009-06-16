@@ -19,11 +19,13 @@ runcmd () {
    str=$2
    shift 2
 
-   # Header in short logfile
-   echo -n "   $str  ... " >> $logfile.short
+   # Header in short logfile.
+   # We use "printf" to avoid printing a newline;  "echo -n" isn't POSIX and
+   # so isn't supported on all systems.
+   printf "   $str  ... " >> $logfile.short
 
    # Header and command in verbose logfile
-   echo -n "   $str  ... " >> $logfile.verbose
+   printf "   $str  ... " >> $logfile.verbose
    echo "$*" >> $logfile.verbose
 
    # Run the command
@@ -54,23 +56,43 @@ if [ $# -ne 2 ] ; then
 fi
 
 # Get args from command line
-ABT_TOP=$1
-ABT_MACHINE=$2
+DIR=$1
+TAG=$2
 
 # Get times and date
-ABT_START=`date "+%F %H:%M:%S %Z"`
+START=`date "+%F %H:%M:%S %Z"`
 
-svn_old_date=`date --date=yesterday +%Y-%m-%dT%H:%M:%S`
-svn_new_date=`date --date=today     +%Y-%m-%dT%H:%M:%S`
+# This is one of the formats SVN accepts.  Yes, the 'T' appears in the final
+# string, it's supposed to be like that.
+svn_date_format="+%Y-%m-%dT%H:%M:%S"
 
-cd $ABT_TOP
+# The time-and-date from 24 hours ago is tricky;  Linux and Darwin have
+# different ways of getting it, so we try things until something works.
+svn_old_date=
+if [ "z" = "z${svn_old_date}" ] ; then
+    # Linux method.
+    svn_old_date=`date --date=yesterday $svn_date_format 2> /dev/null`
+fi
+if [ "z" = "z${svn_old_date}" ] ; then
+    # Darwin method.
+    svn_old_date=`date -v-24H $svn_date_format 2> /dev/null`
+fi
+if [ "z" = "z${svn_old_date}" ] ; then
+    echo "Sorry, can't work out the time and date for 24 hours ago, aborting"
+    exit 1;
+fi
+
+# The time-and-date for now is easy.
+svn_new_date=`date $svn_date_format`
+
+cd $DIR
 
 # Clean up output files produced by a previous run.
-rm -rf diffs diff.short final Inst new.short new.verbose old.short old.verbose
-rm -rf sendmail.log unchanged.log valgrind
+rm -rf diffs diff.short final new.short new.verbose old.short old.verbose
+rm -rf sendmail.log unchanged.log valgrind-old valgrind-new
 
 # Setup any relevant environment variables from conf/<tag>.conf.
-. conf/$ABT_MACHINE.conf
+. conf/$TAG.conf
 if [ "${ABT_JOBS}" = "" ]; then
   ABT_JOBS=1
 fi
@@ -78,7 +100,7 @@ if [ "${ABT_EVAL}" = "" ]; then
   ABT_EVAL="eval"
 fi
 if [ "${ABT_RUN_REGTEST}" = "" ]; then
-  ABT_RUN_REGTEST="cd valgrind && perl tests/vg_regtest --all"
+  ABT_RUN_REGTEST="make regtest"
 fi
 
 
@@ -98,9 +120,6 @@ fi
 # for the current one.
 for logfile in old new ; do
 
-   # Remove the old valgrind directory.
-   rm -rf valgrind
-
    # Remove old short and verbose log files, and start the new ones
    for ext in short verbose ; do
       echo > $logfile.$ext
@@ -118,19 +137,19 @@ for logfile in old new ; do
    # Check out, build, run tests
    runcmd $logfile \
           "Checking out valgrind source tree" \
-          "svn co ${valgrind_svn_repo} -r {$svn_date} valgrind" && \
+          "svn co ${valgrind_svn_repo} -r {$svn_date} valgrind-$logfile" && \
    \
    runcmd $logfile \
           "Configuring valgrind             " \
-          "cd valgrind && ./autogen.sh  && ./configure --prefix=`pwd`/Inst ${ABT_CONFIGURE_OPTIONS}" && \
+          "cd valgrind-$logfile && ./autogen.sh  && ./configure --prefix=`pwd`/valgrind-$logfile/Inst ${ABT_CONFIGURE_OPTIONS}" && \
    \
    runcmd $logfile \
           "Building valgrind                " \
-          "cd valgrind && make -j ${ABT_JOBS} && make -j ${ABT_JOBS} check && make install" && \
+          "cd valgrind-$logfile && make -j ${ABT_JOBS} && make -j ${ABT_JOBS} check && make install" && \
    \
    runcmd $logfile \
           "Running regression tests         " \
-          "${ABT_RUN_REGTEST}"
+          "cd valgrind-$logfile && ${ABT_RUN_REGTEST}"
 
    # Grab some indicative text for the short log file -- if the regtests
    # succeeded, show their results.  If we didn't make it that far, show the
@@ -152,10 +171,14 @@ done
 # Prepare results and send
 #----------------------------------------------------------------------------
 
+# Get times and date
+END=`date "+%F %H:%M:%S %Z"`
+
 # 'final' shows the difference between the old and new results
-echo                                                     >  final
-echo "Nightly build on" $ABT_MACHINE "(" $ABT_DETAILS ")" \
-     "started at" $ABT_START                             >> final
+echo                                               >  final
+echo "Nightly build on" $TAG "(" $ABT_DETAILS ")" >> final
+echo "Started at" $START                          >> final
+echo "Ended   at" $END                            >> final
 
 # If the results differ from 24 hours ago, print extra stuff.
 diff -C1 old.short new.short > diff.short
@@ -208,7 +231,7 @@ else
 fi
 
 # Use the conf/<tag>.sendmail script to email the results.
-conf/$ABT_MACHINE.sendmail \
-   "$changed_str$ABT_START nightly build ($ABT_MACHINE, $ABT_DETAILS)" \
+conf/$TAG.sendmail \
+   "$changed_str$START nightly build ($TAG, $ABT_DETAILS)" \
    final \
    diffs > sendmail.log 2>&1
