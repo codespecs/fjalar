@@ -171,6 +171,7 @@ int  dyncomp_gc_after_n_tags;
 Bool dyncomp_without_dtrace;
 Bool dyncomp_print_debug_info;
 Bool dyncomp_print_trace_info;
+Bool dyncomp_print_trace_all;
 Bool dyncomp_print_incremental;
 Bool dyncomp_separate_entry_exit_comp;
 Bool dyncomp_units_mode;

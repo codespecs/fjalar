@@ -176,7 +176,7 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
  
-  if (dyncomp_print_trace_info) {
+  if (dyncomp_print_trace_all) {
 
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
@@ -304,7 +304,7 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
 /* 		      tag1, tag2, leader->tag, eip, eip_info); */
       DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
 		      tag1, tag2, leader->tag, eip, eip_info);
-      VG_(get_and_pp_StackTrace) (tid, 15);
+      //      VG_(get_and_pp_StackTrace) (tid, 15);
     }
     return leader->tag;
   }
@@ -561,7 +561,7 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 /*   } */
 
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  if (dyncomp_print_trace_info) {
+  if (dyncomp_print_trace_all) {
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
     DYNCOMP_TPRINTF("Creating new tag %d at #%x (%s)\n",
