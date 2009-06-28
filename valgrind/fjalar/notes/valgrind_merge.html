@@ -38,8 +38,7 @@ recommended.
         <ul>
           <li><a href="#current_fjalar">1.1 Obtain a current copy of the Fjalar source</a></li>
           <li><a href="#current-valgrind">1.2 Obtain a current copy of the Valgrind Source</a></li>
-          <li><a href="#old-valgrind">1.3 Obtain a copy of the Valgrind Source corresponding to the Fjalar version</a></li>
-          <li><a href="#old-vex">1.4 Obtain a copy of the VEX Source corresponding to the Fjalar version</a></li>
+          <li><a href="#old-valgrind">1.3 Obtain a copy of the Valgrind and VEX source corresponding to the Fjalar version</a></li>
         </ul></li>
       <li><a href="#Creating_the_diffs">2. Creating the diffs</a>
         <ul>
@@ -81,51 +80,66 @@ one the current version of Fjalar is based on. You can get up to date instructio
 on pulling Valgrind from source from:</p>
 
 <h3 id="current_fjalar">1.1 Obtain a current copy of the Fjalar source </h3>
+
+<p>
 The below steps can be omitted if you already have a copy of invariants/valgrind-3
 checked out. If your current checkout contains any layout changes to the kvasir
 directory, it may be more convenient to move your current checkout and follow the 
 below directions.
+</p>
 
 (From a PAG machine)
 <pre>
   cvs -d $pag/projects/invariants/.CVS co invariants
   cd invariants
-  cvs -d $pag/projects/invariants/.CVS co valgrind-3</pre>
+  export $INV=`pwd`
+  cvs -d $pag/projects/invariants/.CVS co valgrind-3
+
+  <i># If these commands should show any diffs, commit them before proceeding.</i>
+  cd $INV
+  cvs -q diff
+  cd valgrind-3
+  cvs -q diff
+</pre>
 
 
 <h3 id="current-valgrind">1.2 Obtain a current copy of the Valgrind Source </h3>
 
-<pre>  svn co svn://svn.valgrind.org/valgrind/trunk valgrind-new </pre>
+<pre>
+  cd $INV
+  svn co svn://svn.valgrind.org/valgrind/trunk valgrind-new </pre>
 
 <p>Additional information about working with the Valgrind repository can be found at: <a href="http://www.valgrind.org/downloads/repository.html">Valgrind: Code Repository</a></p>
 
-<h3 id="old-valgrind">1.3 Obtain a copy of the Valgrind Source corresponding to the Fjalar version </h3>
-<pre>  svn co -r [REVISION] svn://svn.valgrind.org/valgrind/trunk valgrind-old </pre>
+<h3 id="old-valgrind">1.3 Obtain a copy of the Valgrind and VEX source corresponding to the Fjalar version </h3>
 
-<p>The revision of Valgrind currently used by Fjalar should be in [invariants]/kvasir/REVISION. </p>
+<p>(The <tt>source</tt> command assumes you use bash or sh as your shell;
+  adjust it if necessary.)</p>
 
-<h3 id="old-vex">1.4 Obtain a copy of the VEX Source corresponding to the Fjalar version </h3>
-From within the old Valgrind source directory run:
-<pre>  svn update -r [REVISION] svn://svn.valgrind.org/vex/trunk VEX </pre>
+<pre>
+  cd $INV
+  source valgrind-3/valgrind/REVISION
+  svn co -r $VALGRIND_REVISION svn://svn.valgrind.org/valgrind/trunk valgrind-old
+  cd valgrind-old
+  svn update -r $VEX_REVISION svn://svn.valgrind.org/vex/trunk VEX) </pre>
+ </pre>
 
-<p>The revision of VEX currently used by Fjalar should also be in [invariants]/kvasir/REVISION. </p>
+<p>The VEX update is necessary because the VEX instrumentation libraries Valgrind is built on is stored in a separate
+SVN repository. A Valgrind checkout will always check out the most recent
+version of the VEX source. This is fine for when we checked out the current
+Valgrind source, however, we'll want the same version used in the Fjalar
+repository for the copy that will be diffed.</p>
 
-<p>The VEX instrumentation libraries Valgrind is built on is stored in a separate
-SVN repository. A Valgrind checkout will always check out the most recent version of the VEX
-source. This is fine for when we checked out the current Valgrind source, however,
-we'll want the same version used in the Fjalar repository for the copy that will be
-diffed.</p>
 <hr>
-
 <h2 id="Creating_the_diffs">2. Creating the diffs</h2>
 <p>Two separate diffs will be created. One for non Memcheck code and one for Memcheck.</p>
 
 <h3 id="coregrind-diff">2.1 Coregrind Diff</h3>
-<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey [<b>Valgrind-Old</b>] [<b>Valgrind</b>] > coregrind.patch</pre>
+<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey <b>[Valgrind-Old]</b> <b>[Valgrind]</b> > coregrind.patch</pre>
 
 
 <h3 id="memcheck-diff">2.2 Memcheck Diff</h3>
-<pre>  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf [<b>Memcheck-Old</b>] [<b>Memcheck</b>] > memcheck.patch</pre>
+<pre>  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf <b>[Memcheck-Old]</b> <b>[Memcheck]</b> > memcheck.patch</pre>
 
 
 <h3 id="pag-coregrind-diff">2.3 PAG Coregrind Diff</h3>
@@ -213,7 +227,7 @@ should be noted in the change logs.</p>
 <p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
 changes in it need to be reflected. Most of the changes to the public VEX IR can be discovered by running the following command:</p>
 
-<pre>  svn log -r [LAST-REVISION]:HEAD VEX/pub/libvex_ir.h</pre>
+<pre>  svn log -r ${VEX_REVISION}:HEAD VEX/pub/libvex_ir.h</pre>
 
 <p>
 The files with all the VEX IR code for Dyncomp is located in dyncomp_translate.[ch]. dyncomp_translate.c
@@ -231,49 +245,56 @@ involve changing the names of the instructions.
 <h3 id="compiling_fjalar">4.1 Compiling Fjalar</h3>
 
 <pre>
-  cd valgrind-3
+  cd $INV/valgrind-3
   ./auto-everything.sh </pre>
 
-<p> The auto-everything shell script should handle autogen'ing the config and Makefiles as well
-compiling Fjalar. Be sure to fix any compilation errors that pop up at this point.</p>
+<p> The auto-everything shell script should autogen the config
+  and Makefiles and compile Fjalar.  Fix any compilation errors.</p>
 
 <h3 id="testing_fjalar">4.2 Testing Fjalar</h3>
 <p>The regression suite is located in the tests/kvasir-tests directory. It can be run using the following
 commands</p>
 
 <pre>
-  cd [invariants]/tests/kvasir-tests 
+  cd $INV/tests/kvasir-tests 
   make nightly-summary-w-daikon</pre>
 
 <p>The test suite should pass without modification.</p>
 
 <h3 id="documenting_changes">4.3 Documenting Changes</h3>
 
-<p>Any user-visible changes should be documented in [invariants]/docs/CHANGES. Additionally both this file
-(valgrind_merge.html) and [invariants]/kvasir/REVISION should be updated with the Valgrind
+<p>Any user-visible changes should be documented in $INV/docs/CHANGES. Additionally both this file
+(valgrind_merge.html) and <tt>valgrind-3/valgrind/REVISION</tt> should be updated with the Valgrind
 and VEX revisions that were used for this merge.</p>
 
-<p>The revision for Valgrind can be obtained using the follow commmands:</p>
+<p>The revision for Valgrind can be obtained by:</p>
 
 <pre>
-  cd [valgrind-new]
-  svn info</pre>
+  export VALGRIND_REVISION_NEW=`(cd $INV/valgrind-new; svn info | grep "Last Changed Rev: " | cut -d " " --fields=4)`
+  echo $VALGRIND_REVISION_NEW
+</pre>
 
 <p>The revision for VEX can be obtained by:</p>
 
 <pre>
-  cd [valgrind-new]/VEX
-  svn info</pre>
+  export VEX_REVISION_NEW=`(cd $INV/valgrind-new/VEX; svn info | grep "Last Changed Rev: " | cut -d " " --fields=4)`
+  echo _REVISION_NEW
+</pre>
 
 
 <h3 id="committing"> 4.4 Committing </h3>
 
-<p>One the above is finished, if the test suite passes with no errors and all changes are documented, changes
-should be committed to the CVS repository.</p>
+<p>
+One the above is finished, if the test suite passes with no errors and all
+changes are documented, changes should be committed to the CVS repository.
+</p>
 
 <pre>
-  cd [invariants] 
-  cvs commit -m "Valgrind merge from revision[Old-revision] to [new-revision]. VEX IR merge from [old-revision] to [new-revision]. [Any other relevant notes]</pre>
+  cd $INV
+  <i># Double-check the diffs -- standard practice before commitiing</i>
+  cvs diff
+  <i># Add any other relevant notes to the below.</i>
+  cvs commit -m "Valgrind merge from revision ${VALGRIND_REVISION} to ${VALGRIND_REVISION_NEW.  VEX IR merge from ${VEX_REVISION} to ${VEX_REVISION_NEW}.</pre>
 
 <hr>
 <h2 id="Valgrind_modifications">Appendix A: Valgrind modifications</h2>
@@ -325,7 +346,7 @@ and filled with their signatures for use by Fjalar.</p>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: June 27, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: June 28, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
