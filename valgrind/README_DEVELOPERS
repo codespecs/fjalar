@@ -11,6 +11,10 @@ Documentation and developer's notes can be found in the
 fjalar/notes/ directory.
 
 
+
+The remainder of this file consists of the README_DEVELOPERS file for 
+Valgrind, on which Fjalar is based.
+
 Building and not installing it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To run Valgrind without having to install it, run coregrind/valgrind
