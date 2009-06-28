@@ -139,13 +139,13 @@ repository for the copy that will be diffed.</p>
 
 
 <h3 id="memcheck-diff">2.2 Memcheck Diff</h3>
-<pre>  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf $INV/valgrind-old/memcheck $INV/valgrind-new/memcheck > memcheck.patch</pre>
+<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf $INV/valgrind-old/memcheck $INV/valgrind-new/memcheck > memcheck.patch</pre>
 
 
 <h3 id="pag-coregrind-diff">2.3 PAG Coregrind Diff</h3>
 <p> As an aid, it's recommended to generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to  be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
 
-<pre>  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am $INV/valgrind-old $INV/valgrind-3/valgrind/ > coregrind-PAG.diff
+<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am $INV/valgrind-old $INV/valgrind-3/valgrind/ > coregrind-PAG.diff
 </pre>
 
 <hr>
@@ -163,7 +163,7 @@ repository for the copy that will be diffed.</p>
 
 <p> Keep on the lookout for irrelevant directories. If there are entire directories of content absent in our version it might be
 indicative of a new Valgrind tool. We do not have an interest in tracking other Valgrind tools in CVS. You can determine if a created
-directory corresponds to a new tool by comparing it to the tools listed at the top of $INV/valgrind-new/Makefile.am. If the
+directory corresponds to a new tool by comparing it to the tools listed at the top of <tt>$INV/valgrind-new/Makefile.am</tt>. If the
 patch fails outright it may be indicative of problems in the above diffing.</p>
 
 <p>When you are ready to apply the patch run:</p>
@@ -221,8 +221,8 @@ case-switch for every memcheck operation in the first one.</p>
 
 <h3 id="Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</h3>
 
-<p>Additionally Fjalar/Kvasir need to be updated to properly handle any changes in Valgrind API/functionality.
-. For the most part Valgrind maintains a relatively  stable interface to it's tools. Any tool-visible changes
+<p>Additionally Fjalar/Kvasir need to be updated to properly handle any changes in Valgrind API/functionality.  
+For the most part Valgrind maintains a relatively stable interface to it's tools. Any tool-visible changes
 should be noted in the change logs.</p>
 
 <p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
@@ -264,9 +264,9 @@ commands</p>
 
 <h3 id="documenting_changes">4.3 Documenting Changes</h3>
 
-<p>Any user-visible changes should be documented in $INV/docs/CHANGES. Additionally both this file
-(valgrind_merge.html) and <tt>valgrind-3/valgrind/REVISION</tt> should be updated with the Valgrind
-and VEX revisions that were used for this merge.</p>
+<p>Any user-visible changes should be documented in <tt>$INV/docs/CHANGES</tt>. Additionally, 
+<tt>valgrind-3/valgrind/REVISION</tt> should be updated with the Valgrind and VEX revisions 
+that were used for this merge.</p>
 
 <p>The revision for Valgrind can be obtained by:</p>
 
