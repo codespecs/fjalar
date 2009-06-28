@@ -173,11 +173,17 @@ patch fails outright it may be indicative of problems in the above diffing.</p>
 
 <pre>  cvs add [file] </pre>
 
-<p> On any files created in our repository and </p>
+<p> On any files created in our repository. You can determine created files by running: </p>
+
+<pre> grep '^\-\-\-.*1969\-12\-31'  coregrind.patch | cut --fields=1 </pre>
+
+<p> Additionally, removed files need to be removed with:
 
 <pre>  cvs remove [file] </pre>
 
-<p> for any files removed from our repository  </p>
+<p> Removed files can be determined by running: </p>
+
+<pre> grep '^\+\+\+.*1969\-12\-31'  coregrind.patch | cut --fields=1 </pre>
 
 <h3 id="coregrind-conflicts">3.2 Coregrind Conflicts</h3>
 
@@ -200,11 +206,17 @@ created containing our changes during this process.</p>
 
 <pre>  cvs add [file] </pre>
 
-<p> On any files created in our repository and </p>
+<p> On any files created in our repository. You can determine created files by running: </p>
+
+<pre> grep '^\-\-\-.*1969\-12\-31'  memcheck.patch | cut --fields=1 </pre>
+
+<p> Additionally, removed files need to be removed with:
 
 <pre>  cvs remove [file] </pre>
 
-<p> for any files removed from our repository  </p>
+<p> Removed files can be determined by running: </p>
+
+<pre> grep '^\+\+\+.*1969\-12\-31'  memcheck.patch | cut --fields=1 </pre>
 
 <h3 id="memcheck-conflicts">3.4 Memcheck Conflicts</h3>
 
