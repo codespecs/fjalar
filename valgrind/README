@@ -1,8 +1,9 @@
 Fjalar, a dynamic analysis framework for C/C++ programs
 README file
 Philip Guo
+Robert Rudd
 
-Last updated: 2006-05-10
+Last updated: 2009-06-28
 
 Fjalar itself appears in the ./fjalar directory.
 Kvasir, a Daikon front end that is built upon Fjalar, appears in
