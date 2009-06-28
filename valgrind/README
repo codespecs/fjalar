@@ -4,11 +4,17 @@ Philip Guo
 
 Last updated: 2006-05-10
 
-A local copy of the Fjalar webpage appears here:
-  ./fjalar/documentation/fjalar-www/index.html
+Fjalar itself appears in the ./fjalar directory.
+Kvasir, a Daikon front end that is built upon Fjalar, appears in
+./fjalar/kvasir.
 
 Please consult the Fjalar webpage for information about the Fjalar
-framework and tools.
+framework and tools.  A local copy of the Fjalar webpage appears here:
+  ./fjalar/documentation/fjalar-www/index.html
+
+
+The remainder of this file consists of the README file for Valgrind,
+on which Fjalar is based.
 
 
 Release notes for Valgrind
