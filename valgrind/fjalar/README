@@ -83,8 +83,8 @@ dtrace-output.[ch] - Outputs runtime values to .dtrace file; consists
                      type info. provided by Fjalar
 
 
-DynComp source files(in kvasir/ sub-directory):
------------------------------------------------
+DynComp source files (in kvasir/ sub-directory):
+------------------------------------------------
 
 union_find.[ch] - Union-find data structure implementation lifted from
                   somewhere else (cited in the comments) and modified
