@@ -82,8 +82,9 @@ on pulling Valgrind from source from:</p>
 
 <h3 id="current_fjalar">1.1 Obtain a current copy of the Fjalar source </h3>
 The below steps can be omitted if you already have a copy of invariants/valgrind-3
-checked out. However it may be slightly more convenient to move your current working
-copy and follow the below directions.
+checked out. If your current checkout contains any layout changes to the kvasir
+directory, it may be more convenient to move your current checkout and follow the 
+below directions.
 
 (From a PAG machine)
 <pre>
@@ -101,15 +102,13 @@ copy and follow the below directions.
 <h3 id="old-valgrind">1.3 Obtain a copy of the Valgrind Source corresponding to the Fjalar version </h3>
 <pre>  svn co -r [REVISION] svn://svn.valgrind.org/valgrind/trunk valgrind-old </pre>
 
-<p>The revision of Valgrind currently used by Fjalar should be in kvasir/NOTES. Please update
-this file when you're done. </p>
+<p>The revision of Valgrind currently used by Fjalar should be in [invariants]/kvasir/REVISION. </p>
 
 <h3 id="old-vex">1.4 Obtain a copy of the VEX Source corresponding to the Fjalar version </h3>
 From within the old Valgrind source directory run:
 <pre>  svn update -r [REVISION] svn://svn.valgrind.org/vex/trunk VEX </pre>
 
-<p>The revision of VEX currently used by Fjalar should also be in kvasir/NOTES. Please update
-this file when you're done. </p>
+<p>The revision of VEX currently used by Fjalar should also be in [invariants]/kvasir/REVISION. </p>
 
 <p>The VEX instrumentation libraries Valgrind is built on is stored in a separate
 SVN repository. A Valgrind checkout will always check out the most recent version of the VEX
@@ -253,6 +252,19 @@ commands</p>
 <p>Any user-visible changes should be documented in [invariants]/docs/CHANGES. Additionally both this file
 (valgrind_merge.html) and [invariants]/kvasir/REVISION should be updated with the Valgrind
 and VEX revisions that were used for this merge.</p>
+
+<p>The revision for Valgrind can be obtained using the follow commmands:</p>
+
+<pre>
+  cd [valgrind-new]
+  svn info</pre>
+
+<p>The revision for VEX can be obtained by:</p>
+
+<pre>
+  cd [valgrind-new]/VEX
+  svn info</pre>
+
 
 <h3 id="committing"> 4.4 Committing </h3>
 
