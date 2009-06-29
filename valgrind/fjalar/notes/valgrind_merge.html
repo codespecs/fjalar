@@ -42,9 +42,8 @@ recommended.
         </ul></li>
       <li><a href="#Creating_the_diffs">2. Creating the diffs</a>
         <ul>
-          <li><a href="#coregrind-diff">2.1 Coregrind Diff</a></li>
-          <li><a href="#memcheck-diff">2.2 Memcheck Diff</a></li>
-          <li><a href="#pag-coregrind-diff">2.3 PAG Coregrind Diff</a></li>
+          <li><a href="#valgrind-diff">2.1 Coregrind and Memcheck Diff</a></li>
+          <li><a href="#pag-coregrind-diff">2.2 PAG Coregrind Diff</a></li>
         </ul></li>
       <li><a href="#Merging_the_changes">3. Merging the changes</a>
         <ul>
@@ -121,8 +120,7 @@ below directions.
   source valgrind-3/valgrind/REVISION
   svn co -r $VALGRIND_REVISION svn://svn.valgrind.org/valgrind/trunk valgrind-old
   cd valgrind-old
-  svn update -r $VEX_REVISION svn://svn.valgrind.org/vex/trunk VEX) </pre>
- </pre>
+  svn update -r $VEX_REVISION svn://svn.valgrind.org/vex/trunk VEX </pre>
 
 <p>The VEX update is necessary because the VEX instrumentation libraries Valgrind is built on is stored in a separate
 SVN repository. A Valgrind checkout will always check out the most recent
@@ -132,20 +130,28 @@ repository for the copy that will be diffed.</p>
 
 <hr>
 <h2 id="Creating_the_diffs">2. Creating the diffs</h2>
-<p>Two separate diffs will be created. One for non Memcheck code and one for Memcheck.</p>
 
-<h3 id="coregrind-diff">2.1 Coregrind Diff</h3>
-<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey $INV/valgrind-old $INV/valgrind-new > coregrind.patch</pre>
+<p>Create diffs showing what the Valgrind maintainers have changed since
+  the last time Valgrind code was merged into Fjalar.
+  Two separate diffs will be created:  one for Memcheck and one for
+  everything else (which we'll call "Coregrind", and which includes VEX).</p>
+
+<h3 id="valgrind-diff">2.1 Coregrind and Memcheck Diff</h3>
+<pre>
+  cd $INV
+  \rm -f coregrind.patch memcheck.patch
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey valgrind-old valgrind-new > coregrind.patch
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf valgrind-old/memcheck valgrind-new/memcheck > memcheck.patch</pre>
 
 
-<h3 id="memcheck-diff">2.2 Memcheck Diff</h3>
-<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf $INV/valgrind-old/memcheck $INV/valgrind-new/memcheck > memcheck.patch</pre>
+<h3 id="pag-coregrind-diff">2.2 PAG Coregrind Diff</h3>
 
-
-<h3 id="pag-coregrind-diff">2.3 PAG Coregrind Diff</h3>
 <p> As an aid, it's recommended to generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to  be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
 
-<pre> diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am $INV/valgrind-old $INV/valgrind-3/valgrind/ > coregrind-PAG.diff
+<pre>
+  cd $INV
+  \rm -f coregrind-PAG.diff
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
 </pre>
 
 <hr>
@@ -158,8 +164,8 @@ repository for the copy that will be diffed.</p>
 <p> In general it's somewhat difficult to undo a patch operation, so you should first attempt a dry run. </p>
 
 <pre>
-  cd $INV/kvasir
-  patch -p1 < coregrind.patch --dry-run</pre>
+  cd $INV/valgrind-3/valgrind
+  patch -p1 < $INV/coregrind.patch --dry-run</pre>
 
 <p> Keep on the lookout for irrelevant directories. If there are entire directories of content absent in our version it might be
 indicative of a new Valgrind tool. We do not have an interest in tracking other Valgrind tools in CVS. You can determine if a created
@@ -167,7 +173,9 @@ directory corresponds to a new tool by comparing it to the tools listed at the t
 patch fails outright it may be indicative of problems in the above diffing.</p>
 
 <p>When you are ready to apply the patch run:</p>
-<pre>  patch -p1 < coregrind.patch</pre>
+<pre>
+  cd $INV/valgrind-3/valgrind
+  patch -p1 < $INV/coregrind.patch</pre>
 
 <p> Be sure to run: </p>
 
@@ -175,7 +183,7 @@ patch fails outright it may be indicative of problems in the above diffing.</p>
 
 <p> On any files created in our repository. You can determine created files by running: </p>
 
-<pre> grep '^\-\-\-.*1969\-12\-31'  coregrind.patch | cut --fields=1 </pre>
+<pre> grep '^\-\-\-.*1969\-12\-31'  $INV/coregrind.patch | cut --fields=1 </pre>
 
 <p> Additionally, removed files need to be removed with:
 
@@ -183,7 +191,7 @@ patch fails outright it may be indicative of problems in the above diffing.</p>
 
 <p> Removed files can be determined by running: </p>
 
-<pre> grep '^\+\+\+.*1969\-12\-31'  coregrind.patch | cut --fields=1 </pre>
+<pre> grep '^\+\+\+.*1969\-12\-31'  $INV/coregrind.patch | cut --fields=1 </pre>
 
 <h3 id="coregrind-conflicts">3.2 Coregrind Conflicts</h3>
 
@@ -195,12 +203,12 @@ created containing our changes during this process.</p>
 <h3 id="memcheck-merge">3.3 Memcheck Merge</h3>
 
 <pre>
-  cd $INV/kvasir/fjalar
-  patch -p2 < memcheck.patch --dry-run</pre>
+  cd $INV/valgrind-3/valgrind/fjalar
+  patch -p2 < $INV/memcheck.patch --dry-run</pre>
 
 <p> If the patch output looks sane, continue with the actual merge </p>
 
-<pre>  patch -p2 < memcheck.patch </pre>
+<pre>  patch -p2 < $INV/memcheck.patch </pre>
 
 <p> Be sure to run: </p>
 
@@ -208,7 +216,7 @@ created containing our changes during this process.</p>
 
 <p> On any files created in our repository. You can determine created files by running: </p>
 
-<pre> grep '^\-\-\-.*1969\-12\-31'  memcheck.patch | cut --fields=1 </pre>
+<pre> grep '^\-\-\-.*1969\-12\-31'  $INV/memcheck.patch | cut --fields=1 </pre>
 
 <p> Additionally, removed files need to be removed with:
 
@@ -216,7 +224,7 @@ created containing our changes during this process.</p>
 
 <p> Removed files can be determined by running: </p>
 
-<pre> grep '^\+\+\+.*1969\-12\-31'  memcheck.patch | cut --fields=1 </pre>
+<pre> grep '^\+\+\+.*1969\-12\-31'  $INV/memcheck.patch | cut --fields=1 </pre>
 
 <h3 id="memcheck-conflicts">3.4 Memcheck Conflicts</h3>
 
@@ -304,7 +312,8 @@ changes are documented, changes should be committed to the CVS repository.
 
 <pre>
   cd $INV
-  <i># Double-check the diffs -- standard practice before commitiing</i>
+  \rm -f coregrind.patch memcheck.patch coregrind-PAG.diff
+  <i># Double-check the diffs -- standard practice before committing</i>
   cvs diff
   <i># Add any other relevant notes to the below.</i>
   cvs commit -m "Valgrind merge from revision ${VALGRIND_REVISION} to ${VALGRIND_REVISION_NEW.  VEX IR merge from ${VEX_REVISION} to ${VEX_REVISION_NEW}.</pre>
@@ -323,30 +332,30 @@ it is of a fixed size, and memcheck uses all of it. We've had to increase the si
 the shadow area.
 
 <dl>
-<dt>$INV/kvasir/coregrind/pub_core_threadstate.h</dt>
+<dt>$INV/valgrind-3/valgrind/coregrind/pub_core_threadstate.h</dt>
 <dd>The declaration of the extra shadow space</dd>
-<dt>$INV/kvasir/coregrind/m_scheduler/scheduler.c</dt>
+<dt>$INV/valgrind-3/valgrind/coregrind/m_scheduler/scheduler.c</dt>
 <dd>An assertion that triggers based on shadow size</dd>
-<dt>$INV/kvasir/VEX/priv/host-generic/reg_alloc2.c</dt>
+<dt>$INV/valgrind-3/valgrind/VEX/priv/host-generic/reg_alloc2.c</dt>
 <dd>memory calculation using the shadow size</dd>
 </dl>
 
 <p> Additionally, we had to modify some of the VEX architecture files to
 return information specific to the x86 platform. </p>
 
-<dl><dt>$INV/kvasir/VEX/priv/guest-x86/ghelpers.c</dt>
-<dt>$INV/kvasir/VEX/pub/libvex.h</dt>
+<dl><dt>$INV/valgrind-3/valgrind/VEX/priv/guest-x86/ghelpers.c</dt>
+<dt>$INV/valgrind-3/valgrind/VEX/pub/libvex.h</dt>
 <dd>Addition of primary/secondary integer return registers to the guest state</dd>
-<dt>$INV/kvasir/coregrind/m_machine.c</dt>
-<dt>$INV/kvasir/include/pub_tool_machine.h</dt>
+<dt>$INV/valgrind-3/valgrind/coregrind/m_machine.c</dt>
+<dt>$INV/valgrind-3/valgrind/include/pub_tool_machine.h</dt>
 <dd>Tool-visible functions to access the primary/secondary integer return registers</dd>
 </dl>
 
-<p> Finally, we had to extend Valgrind's implementation of the c library with a few extra
+<p> Finally, we had to extend Valgrind's implementation of the C library with a few extra
 functions. </p>
 
-<dl><dt>$INV/kvasir/coregrind/m_libcfile.c</dt>
-<dt>$INV/kvasir/include/pub_tool_libcfile.h</dt>
+<dl><dt>$INV/valgrind-3/valgrind/coregrind/m_libcfile.c</dt>
+<dt>$INV/valgrind-3/valgrind/include/pub_tool_libcfile.h</dt>
 <dd>Addition of extra libc functions</dd>
 </dl>
 <hr>
@@ -359,11 +368,11 @@ and filled with their signatures for use by Fjalar.</p>
 
 <p>Other modifications include:</p>
 <dl>
-<dt>$INV/kvasir/fjalar/mc_malloc_wrappers.c</dt>
+<dt>$INV/valgrind-3/valgrind/fjalar/mc_malloc_wrappers.c</dt>
 <dd>Calls to Dyncomp functions for memory operations.</dd>
-<dt>$INV/kvasir/fjalar/mc_main.c</dt>
+<dt>$INV/valgrind-3/valgrind/fjalar/mc_main.c</dt>
 <dd>Run-time arguments and versioning information for Kvasir to replace the default memcheck ones</dd>
-<dt>$INV/kvasir/fjalar/mc_translate.c</dt>
+<dt>$INV/valgrind-3/valgrind/fjalar/mc_translate.c</dt>
 <dd>A duplicate of memcheck's instrumentation block for Dyncomp.</dd></dl>
 
 <hr>
@@ -381,9 +390,9 @@ and filled with their signatures for use by Fjalar.</p>
  -->
 <!--  LocalWords:  depcomp mkinstalldirs diffing rej mc Dyncomp dyncomp ch expr
  -->
-<!--  LocalWords:  autogen'ing daikon html libc malloc versioning memcheck's
+<!--  LocalWords:  autogen'ing daikon html libc malloc versioning memcheck's rm
  -->
-<!--  LocalWords:  EDT
+<!--  LocalWords:  EDT INV pwd grep autogen
  -->
 
 <!--
