@@ -36,7 +36,8 @@ recommended.
     <ul>
       <li><a href="#Getting_Started">1. Getting Started</a>
         <ul>
-          <li><a href="#current_fjalar">1.1 Obtain a current copy of the Fjalar source</a></li>
+          <li><a href="#checkout_fjalar">1.1 Obtain a copy of the Fjalar source</a></li>
+          <li><a href="#current_fjalar">1.2 Ensure your copy of Fjalar is up to date</a></li>
           <li><a href="#current-valgrind">1.2 Obtain a current copy of the Valgrind Source</a></li>
           <li><a href="#old-valgrind">1.3 Obtain a copy of the Valgrind and VEX source corresponding to the Fjalar version</a></li>
         </ul></li>
@@ -69,23 +70,30 @@ recommended.
 
 <h2 id="Getting_Started">1. Getting Started</h2>
 
+<p>The instructions assume you use bash or sh as your shell;
+  adjust them if necessary.</p>
+
 
 <p>
-To begin you will need a checkout of Fjalar from CVS.
 </p>
 
 <p>Next you will need to obtain 2 copies of Valgrind: The most recent, and the
 one the current version of Fjalar is based on. You can get up to date instructions
 on pulling Valgrind from source from:</p>
 
-<h3 id="current_fjalar">1.1 Obtain a current copy of the Fjalar source </h3>
+<h3 id="checkout_fjalar">1.1 Obtain a copy of the Fjalar source </h3>
 
 <p>
-The below steps can be omitted if you already have a copy of invariants/valgrind-3
-checked out. If your current checkout contains any layout changes to the kvasir
-directory, it may be more convenient to move your current checkout and follow the 
-below directions.
+First, check out Daikon and Fjalar from CVS.  You may skip this
+if you already have a copy of invariants/valgrind-3
+checked out.
 </p>
+
+<!--
+ If your current checkout contains any layout changes to the kvasir
+ directory, it may be more convenient to move your current checkout and
+ follow the below directions.
+-->
 
 (From a PAG machine)
 <pre>
@@ -93,12 +101,21 @@ below directions.
   cd invariants
   export $INV=`pwd`
   cvs -d $pag/projects/invariants/.CVS co valgrind-3
+</pre>
 
-  <i># If these commands should show any diffs, commit them before proceeding.</i>
+<h3 id="current_fjalar">1.2 Ensure your copy of Fjalar is up to date </h3>
+
+<pre>
   cd $INV
-  cvs -q diff
+  cvs update
   cd valgrind-3
-  cvs -q diff
+  cvs update
+  <i># These commands should produce no output.</i>
+  <i># If there are any differences, commit them before proceeding.</i>
+  cd $INV
+  cvs -q diff --brief
+  cd valgrind-3
+  cvs -q diff --brief
 </pre>
 
 
@@ -111,9 +128,6 @@ below directions.
 <p>Additional information about working with the Valgrind repository can be found at: <a href="http://www.valgrind.org/downloads/repository.html">Valgrind: Code Repository</a></p>
 
 <h3 id="old-valgrind">1.3 Obtain a copy of the Valgrind and VEX source corresponding to the Fjalar version </h3>
-
-<p>(The <tt>source</tt> command assumes you use bash or sh as your shell;
-  adjust it if necessary.)</p>
 
 <pre>
   cd $INV
@@ -177,21 +191,20 @@ patch fails outright it may be indicative of problems in the above diffing.</p>
   cd $INV/valgrind-3/valgrind
   patch -p1 < $INV/coregrind.patch</pre>
 
-<p> Be sure to run: </p>
+<p>Add/remove files that were created/removed:</p>
 
-<pre>  cvs add [file] </pre>
-
-<p> On any files created in our repository. You can determine created files by running: </p>
-
-<pre> grep '^\-\-\-.*1969\-12\-31'  $INV/coregrind.patch | cut --fields=1 </pre>
-
-<p> Additionally, removed files need to be removed with:
-
-<pre>  cvs remove [file] </pre>
-
-<p> Removed files can be determined by running: </p>
-
-<pre> grep '^\+\+\+.*1969\-12\-31'  $INV/coregrind.patch | cut --fields=1 </pre>
+<pre>
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]
+  then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2`
+  fi
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]
+  then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2`
+  fi
+</pre>
 
 <h3 id="coregrind-conflicts">3.2 Coregrind Conflicts</h3>
 
@@ -377,7 +390,7 @@ and filled with their signatures for use by Fjalar.</p>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: June 28, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: June 29, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
@@ -392,7 +405,7 @@ and filled with their signatures for use by Fjalar.</p>
  -->
 <!--  LocalWords:  autogen'ing daikon html libc malloc versioning memcheck's rm
  -->
-<!--  LocalWords:  EDT INV pwd grep autogen
+<!--  LocalWords:  EDT INV pwd grep autogen Valgrind's
  -->
 
 <!--
