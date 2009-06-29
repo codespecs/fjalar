@@ -53,6 +53,7 @@ recommended.
           <li><a href="#memcheck-merge">3.3 Memcheck Merge</a></li>
           <li><a href="#memcheck-conflicts">3.4 Memcheck Conflicts</a></li>
           <li><a href="#Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</a></li>
+          <li><a href="#cvs-add-remove">3.6 Tell CVS about files that were added or removed</a></li>
         </ul></li>
       <li><a href="#Compiling">4. Compiling and Testing</a>
         <ul>
@@ -160,7 +161,7 @@ repository for the copy that will be diffed.</p>
 
 <h3 id="pag-coregrind-diff">2.2 PAG Coregrind Diff</h3>
 
-<p> As an aid, it's recommended to generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to  be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
+<p> Generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
 
 <pre>
   cd $INV
@@ -175,7 +176,7 @@ repository for the copy that will be diffed.</p>
 <h3 id="coregrind-merge">3.1 Coregrind Merge</h3>
 <p>Now we can merge the changes from the created diffs. The coregrind patch should apply with very little conflicts.</p>
 
-<p> In general it's somewhat difficult to undo a patch operation, so you should first attempt a dry run. </p>
+<p> It can be difficult to undo a patch operation, so you should first attempt a dry run. </p>
 
 <pre>
   cd $INV/valgrind-3/valgrind
@@ -191,27 +192,21 @@ patch fails outright it may be indicative of problems in the above diffing.</p>
   cd $INV/valgrind-3/valgrind
   patch -p1 < $INV/coregrind.patch</pre>
 
-<p>Add/remove files that were created/removed:</p>
-
-<pre>
-  grep -q '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch 
-  if [ "$?" == "0" ]
-  then
-    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2`
-  fi
-  grep -q '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch 
-  if [ "$?" == "0" ]
-  then
-    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2`
-  fi
-</pre>
-
 <h3 id="coregrind-conflicts">3.2 Coregrind Conflicts</h3>
 
-<p>You will need to handle any conflicts that occurred. For every conflicted file in the patch, a .rej file will be created
-for the file. For every change in the file you will need to examine both the changed code as well as our original code and
-determine if it needs to be hand merged or if the change is not relevant. It is useful to refer to <tt>coregrind-PAG.diff</tt>
-during this process.</p>
+<p>Handle any conflicts.  They are listed in the patch
+  output, or run this command:</p>
+
+<pre>
+  find -name '*.rej'
+</pre>
+
+<p>
+For every change in the file you will need to examine both the changed code
+as well as our original code and determine if it needs to be hand merged or
+if the change is not relevant. It is useful to refer to
+<tt>coregrind-PAG.diff</tt> during this process.</p>
+
 
 <h3 id="memcheck-merge">3.3 Memcheck Merge</h3>
 
@@ -223,27 +218,24 @@ during this process.</p>
 
 <pre>  patch -p2 < $INV/memcheck.patch </pre>
 
-<p> Be sure to run: </p>
-
-<pre>  cvs add [file] </pre>
-
-<p> On any files created in our repository. You can determine created files by running: </p>
-
-<pre> grep '^\-\-\-.*1969\-12\-31'  $INV/memcheck.patch | cut --fields=1 </pre>
-
-<p> Additionally, removed files need to be removed with:
-
-<pre>  cvs remove [file] </pre>
-
-<p> Removed files can be determined by running: </p>
-
-<pre> grep '^\+\+\+.*1969\-12\-31'  $INV/memcheck.patch | cut --fields=1 </pre>
 
 <h3 id="memcheck-conflicts">3.4 Memcheck Conflicts</h3>
 
-<p>As with the coregrind merge you will need to handle any conflicts that have arisen. The process is the same, however
-our changes to Memcheck are much more substantial than our changes to Coregrind. Some notes on particular problem areas
-are below.</p>
+<p>Handle any conflicts.  They are listed in the patch
+  output, or run this command:</p>
+
+<pre>
+  find -name '*.rej'
+</pre>
+
+<p>
+For every change in the file you will need to examine both the changed code
+as well as our original code and determine if it needs to be hand merged or
+if the change is not relevant.</p>
+
+<p>
+Our changes to Memcheck are much more substantial than our changes to
+Coregrind. Some notes on particular problem areas are below.</p>
 
 <p>The largest modification to the memcheck is located in mc_translate.c and special care should be made
 to ensure it is present and up to date. in MC_(instrument), the code which handles the instrumentation
@@ -255,7 +247,7 @@ case-switch for every memcheck operation in the first one.</p>
 <h3 id="Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</h3>
 
 <p>Additionally Fjalar/Kvasir need to be updated to properly handle any changes in Valgrind API/functionality.  
-For the most part Valgrind maintains a relatively stable interface to it's tools. Any tool-visible changes
+For the most part Valgrind maintains a relatively stable interface to its tools. Any tool-visible changes
 should be noted in the change logs.</p>
 
 <p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
@@ -270,10 +262,40 @@ will  contain a switch for all VEX IR instructions corresponding to the expressi
 call to a dyncomp tag function. Most often VEX IR changes will be syntactical in nature and will only
 involve changing the names of the instructions.
 
+
+<h3 id="cvs-add-remove">3.6 Tell CVS about files that were added or removed</h3>
+
+<p>Tell CVS about files that were created/deleted by the patch:</p>
+
+<pre>
+  cd $INV/valgrind-3
+
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]; then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
+  fi
+
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]; then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
+  fi
+
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch
+  if [ "$?" == "0" ]; then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
+  fi
+
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch
+  if [ "$?" == "0" ]; then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
+  fi
+</pre>
+
+
+
 <hr>
-
-
 <h2 id="Compiling">4. Compiling and Testing</h2>
+
 <p>We must now ensure that the merged code compiles correctly and passes the regression test suite.</p>
 
 <h3 id="compiling_fjalar">4.1 Compiling Fjalar</h3>
