@@ -304,8 +304,7 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
 		    tag1, tag2, leader->tag, eip, eip_info);
     
       //      VG_(get_and_pp_StackTrace) (tid, 15);
-  }
-    return leader->tag;
+  return leader->tag;
   }
   else {
     return 0;
