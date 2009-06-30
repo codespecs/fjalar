@@ -37,7 +37,7 @@ int isspace ( int ch )
 
 int isxdigit ( int ch )
 {
-    return (unsigned int)( ch         - '0') < 10u  || 
+    return (unsigned int)( ch         - '0') < 10u  ||
            (unsigned int)((ch | 0x20) - 'a') <  6u;
 }
 
@@ -825,12 +825,12 @@ print_out:
 	char *sign=s;
 	int todo=0;
 	int vs;
-	
+
 	if (! (width||preci) ) {
 	  A_WRITE(fn,s,sz); len+=sz;
 	  break;
 	}
-	
+
 	if (flag_in_sign) todo=1;
 	if (flag_hash>0)  todo=flag_hash;
 	if (todo) {
@@ -838,7 +838,7 @@ print_out:
 	  sz-=todo;
 	  width-=todo;
 	}
-	
+
 	if (!flag_left) {
 	  if (flag_dot) {
 	    vs=preci>sz?preci:sz;
@@ -1000,12 +1000,12 @@ num_printf:
 	      if (tmp1) VG_(strcpy)(tmp,tmp1);
 	    }
 	  }
-	  
+
 	  if ((flag_sign || flag_space) && d>=0) {
 	    *(--s)=(flag_sign)?'+':' ';
 	    ++sz;
 	  }
-	  
+
 	  sz=VG_(strlen)(s);
 	  flag_dot=0;
 	  flag_hash=0;

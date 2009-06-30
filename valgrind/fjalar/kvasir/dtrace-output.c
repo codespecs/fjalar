@@ -63,8 +63,8 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%lld",                          // D_LONG_LONG_INT,
 
   "%.9g",                          // D_FLOAT,
-  "%.17g",                         // D_DOUBLE,
-  "%.17g",                         // D_LONG_DOUBLE,
+  "%.17g",                        // D_DOUBLE,
+  "%.17g",                        // D_LONG_DOUBLE,
 
   "%d",                            // D_ENUMERATION,
   "%d - ERROR - D_STRUCT",         // D_STRUCT,  // currently unused
@@ -237,7 +237,8 @@ static int checkStringReadable(char *str) {
   for (;;) {
     int readable = addressIsInitialized((Addr)p, sizeof(char));
     if (!readable) {
-      DPRINTF("String contains unreadable byte %d (%p)\n", p - str, p);
+      //RUDD DEBUG
+      //DPRINTF("String contains unreadable byte %d (%p)\n", p - str, p);
       return 0;
     }
     else if (!*p) {
@@ -307,6 +308,9 @@ switch (decType) \
 
 #define DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE(TYPE) \
   DTRACE_PRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pCurValue)));
+
+#define DEBUG_ONE_VAR_SEQUENCE(TYPE) \
+  DPRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pCurValue)));
 
 static char printDtraceSingleBaseValue(Addr pValue,
                                        DeclaredType decType,
@@ -478,6 +482,8 @@ static char printDtraceSequence(VariableEntry* var,
 				char isHashcode,
 				DisambigOverride disambigOverride,
 				Addr* pFirstInitElt) {
+
+  DPRINTF("pValueArray: %x - pValueArrayGuest: %x\nnumElts: %d\n", pValueArray, pValueArrayGuest, numElts);
   UInt i;
   char someEltNonZero = 0;
   char someEltInit = 0;
@@ -494,6 +500,7 @@ static char printDtraceSequence(VariableEntry* var,
   // a pValueArray of 0 or numElts of 0 means nonsensical because
   // there is no content to dereference:
   if (!pValueArray || !numElts) {
+    DPRINTF("Pointer null or 0 elements\n");
     DTRACE_PRINTF("%s\n%d\n",
                   NONSENSICAL,
                   mapInitToModbit(0));
@@ -509,6 +516,7 @@ static char printDtraceSequence(VariableEntry* var,
     }
   }
   if (!someEltNonZero) {
+    DPRINTF("All elements 0\n");
     DTRACE_PRINTF("%s\n%d\n",
                   NONSENSICAL,
                   mapInitToModbit(0));
@@ -529,6 +537,7 @@ static char printDtraceSequence(VariableEntry* var,
   }
 
   if (!someEltInit) {
+    DPRINTF("All elements uninit\n");
     DTRACE_PRINTF("%s\n%d\n",
                   UNINIT,
                   mapInitToModbit(0));
@@ -541,6 +550,7 @@ static char printDtraceSequence(VariableEntry* var,
   if (isHashcode) {
       int ind;
       int limit = numElts;
+      DPRINTF("hashcode\n");
       if (fjalar_array_length_limit != -1) {
         limit = min(limit, fjalar_array_length_limit);
       }
@@ -550,7 +560,10 @@ static char printDtraceSequence(VariableEntry* var,
       for (ind = 0; ind < limit; ind++) {
         Addr pCurValue = pValueArray[ind];
         Addr pCurValueGuest = pValueArrayGuest[ind];
-
+	if(ind == 0) { // Lets print out the first element for debugging
+	  DPRINTF("First element is: %x(GUEST) ", (UInt)pCurValueGuest);
+	  DPRINTF("First element is: %x(ACTUAL) ", (UInt)(*((Addr*)pCurValue)));
+	}
         char eltInit = addressIsInitialized(pCurValue, sizeof(void*));
 
         if (eltInit) {
@@ -679,6 +692,8 @@ char printDtraceSingleBaseValue(Addr pValue,
       DTRACE_PRINTF( "\n%d\n", mapInitToModbit(1));
     }
     else {
+      // This is where the acutal printing of the variable is done. This
+      // was a bit hard to figure out.
       TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
@@ -730,6 +745,8 @@ void printDtraceBaseValueSequence(DeclaredType decType,
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
 
+  DPRINTF("printDtraceBaseVAlueSequence(), pValueArray: %x\n", pValueArray);
+
   if (fjalar_array_length_limit != -1) {
     limit = min(limit, fjalar_array_length_limit);
   }
@@ -750,6 +767,8 @@ void printDtraceBaseValueSequence(DeclaredType decType,
   for (i = 0; i < limit; i++) {
     Addr pCurValue = pValueArray[i];
 
+
+
     // Check if it's initialized based on the size of declared type (I
     // hope that everything that's initialized is also allocated):
     char eltInit = addressIsInitialized((Addr)pCurValue, DecTypeByteSizes[decType]);
@@ -765,6 +784,12 @@ void printDtraceBaseValueSequence(DeclaredType decType,
         printOneCharAsDtraceString(*((char*)pCurValue));
       }
       else {
+	if(i == 0) { // RUDD DEBUGGING: Print the first elmenet for debugging
+	  DPRINTF("First element is:\n");
+	  TYPES_SWITCH(DEBUG_ONE_VAR_SEQUENCE)
+	}
+
+
         TYPES_SWITCH(DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE)
 
         // Merge the tags of all bytes read for this element:
@@ -961,6 +986,15 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   DPRINTF("\n*********************************\n%s - %s\n*********************************\n", varName, func_name);
 
   DPRINTF("pValue: %x\n pValueGuest: %x\n pValueArray: %x\n pValueArrayGuest:%x\n", pValue, pValueGuest, pValueArray, pValueGuest);
+  DPRINTF("numelts: %d\n", numElts);
+
+  if(pValue)
+    DPRINTF("Value is %16x\n",
+	    *(Addr *)pValue);
+  if(pValueGuest)
+    DPRINTF("ValueGuest is %16x\n",
+	    *(Addr *)pValueGuest);
+
 
   // Line 1: Variable name
   if (kvasir_old_decls_format) {

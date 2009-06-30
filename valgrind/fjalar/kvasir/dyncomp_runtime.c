@@ -484,11 +484,12 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   if (leader != var_tags_v) {
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
-/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values " */
-/* 		    "%d (old) and %d (new) to %d (final round)\n", */
-/* 		    funcPtr->funcEntry.name, daikonVarIndex, */
-/* 		    var_tags_v, leader, var_tags[daikonVarIndex]); */
   }
+
+  DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values " 
+		  "%d (old) and %d (new) to %d (final round)\n", 
+		  funcPtr->funcEntry.name, daikonVarIndex, 
+		  var_tags_v, leader, var_tags[daikonVarIndex]); 
 
   /*DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
                   leader,
@@ -562,7 +563,6 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
   }
   else {  // default behavior
     tag = var_tags[daikonVarIndex];
-    VG_(printf)(" - tag %d ", tag);
     if (0 == tag) {
       comp_number = g_curCompNumber;
       g_curCompNumber++;
@@ -586,10 +586,13 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
         g_curCompNumber++;
         genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
       }
+      VG_(printf)("Getting leader of tag %du\n", tag);
+      VG_(printf)("Fjalar Func[%s] - var_tags[%d]: %d\n ", funcPtr->funcEntry.name, daikonVarIndex, leader);
+      VG_(printf)("\t comp number is: %d\n", comp_number);
     }
   }
 
-  VG_(printf)("\n");
+  //  VG_(printf)("\n");
   return comp_number;
   //  return var_tags[daikonVarIndex];
 }

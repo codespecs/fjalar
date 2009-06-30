@@ -102,6 +102,7 @@ extern FILE *stdin, *stdout, *stderr;
 
 FILE *fopen (const char *path, const char *mode);
 FILE *fdopen(int filedes, const char *mode);
+FILE *fd_open(const char *path, const char *mode, int *out_fd);
 int fflush(FILE *stream);
 int fclose(FILE *stream);
 

@@ -26,6 +26,7 @@
 #include "fjalar_select.h"
 #include "elf/dwarf2.h"
 #include "GenericHashtable.h"
+#include "fjalar_debug.h"
 #include "../coregrind/m_demangle/demangle.h"
 
 #include "fjalar_tool.h"
@@ -38,6 +39,7 @@ static void initMemberFuncs(void);
 static void initConstructorsAndDestructors(void);
 static void createNamesForUnnamedDwarfEntries(void);
 static void updateAllVarTypes(void);
+static void processFunctions(void);
 
 static void extractFormalParameterVars(FunctionEntry* f,
 				       function* dwarfFunctionEntry);
@@ -278,7 +280,7 @@ static char ignore_function_with_name(char* name) {
 // Note: DON'T IGNORE VARIABLES WITH NO NAMES
 static char ignore_variable_with_name(char* name) {
 
-  FJALAR_DPRINTF("  *name: %s\n", name);
+  FJALAR_DPRINTF("\t*name: %s\n", name);
 
   if (!name) {
     return 0;
@@ -529,10 +531,14 @@ void initializeAllFjalarData(void)
 
   updateAllVarTypes();
 
+
+  // Some post-processing on functions to work around GCC 
+  // issues
+  processFunctions();
+
   // Run this after everything else that deal with entries in
   // FunctionTable:
   initFunctionFjalarNames();
-
 
   FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
 		 data_section_size, (void *)data_section_addr,
@@ -837,6 +843,7 @@ static void repCheckOneVariable(VariableEntry* var) {
                    (IS_MEMBER_VAR(var) && var->memberVar->structParentType) ?
                    var->memberVar->structParentType->typeName : "no parent",
                    var, var->name, (void *)global_loc);
+
 
     if (global_loc) {
       if (!addressIsGlobal(global_loc) &&
@@ -1326,7 +1333,7 @@ static void initFunctionFjalarNames(void) {
       // Check if entries are the same. If they are, clean up and continue
       if(!VG_(strcmp)(bufOld, bufNew)) {
         VG_(free)(buf);
-	
+
         genfreekey(FunctionTable_by_entryPC, (void *)cur_entry->entryPC);
         genfreekey(FunctionTable, (void *)cur_entry->startPC);
 
@@ -1455,7 +1462,14 @@ void initializeFunctionTable(void)
           }
 
           cur_func_entry->startPC = dwarfFunctionPtr->start_pc;
+          cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
+	  cur_func_entry->frameBase = dwarfFunctionPtr->frame_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
+
+          FJALAR_DPRINTF("Frame base exp is:%d - %d\n", dwarfFunctionPtr->frame_base_expression, DW_OP_list);
+          cur_func_entry->locList = (dwarfFunctionPtr->frame_base_expression == DW_OP_list);
+          cur_func_entry->locListOffset = dwarfFunctionPtr->frame_base_offset;
+
 
           cur_func_entry->isExternal = dwarfFunctionPtr->is_external;
 
@@ -2117,6 +2131,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     abort();
   }
 
+
   paramPtr = (formal_parameter*)(dwarfParamEntry->entry_ptr);
   typePtr = paramPtr->type_ptr;
 
@@ -2130,6 +2145,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 	  f->name,
 	  paramPtr->name);
 
+
   varPtr = extractOneVariable(&(f->formalParameters),
 			      typePtr,
 			      paramPtr->name,
@@ -2140,9 +2156,31 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 			      0,
 			      0,0,0,0,0,0,0,1);
 
+  varPtr->validLoc = paramPtr->valid_loc;
+
+  if (paramPtr->dwarf_stack_size > 0) {
+    int i;
+    FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
+    for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
+      varPtr->dwarf_stack[i].atom = paramPtr->dwarf_stack[i].atom;
+      varPtr->dwarf_stack[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
+      FJALAR_DPRINTF("\tCopying over  %s (%d)\n", location_expression_to_string(varPtr->dwarf_stack[i].atom), varPtr->dwarf_stack[i].atom_offset);
+    }
+    varPtr->dwarf_stack_size = paramPtr->dwarf_stack_size;
+  }
+    
+
+
+
   if (paramPtr->location_type == LT_FP_OFFSET) {
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
+    varPtr->atom = paramPtr->loc_atom;
+    if(fjalar_gcc4)
+      varPtr->byteOffset += 8;
+
+
+    FJALAR_DPRINTF(" location_type: %d, byteOffset: %x\n", varPtr->locationType, varPtr->byteOffset);
   }
 }
 
@@ -2419,7 +2457,7 @@ extractOneVariable(VarList* varListPtr,
     }
   }
 
-  FJALAR_DPRINTF("About to strip modifiers for %s\n", variableName);
+  FJALAR_DPRINTF("\tAbout to strip modifiers for %s\n", variableName);
 
   // Strip off modifier, typedef, and array tags until we eventually
   // hit a base or collection type (or a null pointer meaning "void")
@@ -2459,12 +2497,14 @@ extractOneVariable(VarList* varListPtr,
 	}
     }
 
-  FJALAR_DPRINTF("Finished stripping modifiers for %s\n", variableName);
-  FJALAR_DPRINTF("varPtr is %p\n", varPtr);
-  FJALAR_DPRINTF("typePtr is %p\n", typePtr);
+  FJALAR_DPRINTF("\tFinished stripping modifiers for %s\n", variableName);
+  FJALAR_DPRINTF("\tvarPtr is %p\n", varPtr);
+  FJALAR_DPRINTF("\ttypePtr is %p\n", typePtr);
 
   varPtr->ptrLevels = ptrLevels;
   varPtr->referenceLevels = referenceLevels;
+
+  FJALAR_DPRINTF("\tptrLevels is %d\n", varPtr->ptrLevels);
 
   if (typePtr && (typePtr->tag_name == DW_TAG_structure_type)) {
     char* type_name = ((collection_type*)(typePtr->entry_ptr))->name;
@@ -2611,6 +2651,8 @@ extractOneVariable(VarList* varListPtr,
     varPtr->varType = &VoidType;
   }
 
+  FJALAR_DPRINTF("\tdecType is: %s\n", DeclaredTypeString[varPtr->varType->decType]); 
+
   return varPtr;
 }
 
@@ -2622,6 +2664,60 @@ int equivalentIDs(int ID1, int ID2) {
   return (ID1 == ID2);
 }
 
+// Run some heuristics to clean up some of the DWARF debugging data.
+
+static void processFunctions() {
+  FuncIterator* funcIt = newFuncIterator();
+  FJALAR_DPRINTF("processFunctions()\n");
+
+  while(hasNextFunc(funcIt)) {    
+    FunctionEntry* f = nextFunc(funcIt);
+    FJALAR_DPRINTF("Examining Function: %s\n", f->name);
+
+    // GCC-4 Optimization work around. GCC-4 will optimize away
+    // the location attributes for argc and argv of the 'main'
+    // function if they are unused. Since calling convention
+    // of main on x86 is well defined, we will attempt to locate
+    // the argc and argv values ourself
+
+    // We've found argc iff:
+    // 1.) f->name is main
+    // 2.) f->formalParameters.first->var->VarType->DeclaredType == D_INT
+    // argc is 0 bytes offset from the base of the frame pointer.
+    // 
+
+    // We've found argv iff:
+    // 1.) f->name is main
+    // 2.) f->formalParameters.first->var->VarType->DeclaredType == D_INT
+    // argv is 4 bytes offset from the base of the frame pointer.
+
+    if(VG_STREQ("main", f->name)) {
+      if ((f->formalParameters.numVars > 0) &&
+	  (f->formalParameters.first->var) &&
+	  !(f->formalParameters.first->var->validLoc) &&
+	  (f->formalParameters.first->var->varType->decType == D_INT)){
+	VariableEntry* var = f->formalParameters.first->var;
+	printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
+	var->byteOffset = 16;
+	var->validLoc = 1;
+      }
+
+      if ((f->formalParameters.numVars > 1) &&
+	  (f->formalParameters.first->next->var) &&
+	  !(f->formalParameters.first->next->var->validLoc) &&
+	  (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
+	VariableEntry* var = f->formalParameters.first->next->var;
+	printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
+	var->byteOffset = 20;
+	var->validLoc = 1;
+      }
+    }
+  }
+  deleteFuncIterator(funcIt);
+  }
+	    
+    
+
 // More C++ fun.  So apparently constructors and destructors are
 // printed in the DWARF debugging information as regular functions,
 // not member functions.  Thus, the only reasonable way to infer that
@@ -2629,6 +2725,7 @@ int equivalentIDs(int ID1, int ID2) {
 // names of functions to names of types in TypesTable.
 static void initConstructorsAndDestructors(void) {
   FuncIterator* funcIt = newFuncIterator();
+
 
   // Iterate through all entries in TypesTable:
   while (hasNextFunc(funcIt)) {

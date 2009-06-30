@@ -97,7 +97,7 @@ FJALAR_SOURCES_COMMON = \
 
 fjalar_x86_linux_SOURCES      = $(FJALAR_SOURCES_COMMON)
 fjalar_x86_linux_CPPFLAGS     = $(AM_CPPFLAGS_X86_LINUX)
-fjalar_x86_linux_CFLAGS       = $(AM_CFLAGS_X86_LINUX) 
+fjalar_x86_linux_CFLAGS       = $(AM_CFLAGS_X86_LINUX)
 fjalar_x86_linux_CCASFLAGS    = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
 fjalar_x86_linux_LDADD        = $(TOOL_LDADD_X86_LINUX)

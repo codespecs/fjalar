@@ -25,7 +25,7 @@ data structures that tools can use.
 // Interfaces with Valgrind core:
 #include "pub_tool_basics.h"
 #include "pub_tool_options.h"
-
+#include "fjalar_dwarf.h"
 #include "GenericHashtable.h"
 
 /*********************************************************************
@@ -290,6 +290,7 @@ typedef struct _GlobalVarInfo GlobalVarInfo;
 typedef struct _StaticArrayInfo StaticArrayInfo;
 typedef struct _MemberVarInfo MemberVarInfo;
 
+
 // VariableEntry contains information about a variable in the program:
 // Instances should be mostly IMMUTABLE after initialization (with the
 // exception of the disambigMultipleElts and
@@ -305,6 +306,16 @@ typedef struct _VariableEntry {
   char* name;
 
   LocationType locationType;
+
+  // Variables aren't always an offset from the FP
+  unsigned int atom; //Location Expression.
+
+
+  // see fjalar_dwarf.h for definition of dwarf_location
+  dwarf_location dwarf_stack[MAX_DWARF_STACK];
+  unsigned int dwarf_stack_size;
+
+
 
   // Byte offset of this variable from head of stack frame (%ebp) for
   // function parameters and local variables
@@ -365,6 +376,12 @@ typedef struct _VariableEntry {
   // to generate a .disambig file using the --smart-disambig option.
   Bool disambigMultipleElts;       // mutable
   Bool pointerHasEverBeenObserved; // mutable
+  Bool validLoc;                    // This is needed to provide access
+                                   // to variables with incomplete DWARF DIEs
+
+  Addr entryLoc;                // The location of a variable on entry
+                                    // Currently used as part of a dirty HACK 
+                                    // formal params
 
 } VariableEntry;
 
@@ -536,6 +553,12 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
+  // The instruction base of the compile unit. This is necessary because
+  // certain offsets in the debugging information (namely location lists)
+  // are relative to the base of the compilation unit.
+  Addr cuBase;
+  Addr frameBase;
+
   // The address of the instruction before which we do entry
   // instrumentation for this function. Usually a bit past startPC,
   // since we don't want to look at the parameters until the function
@@ -545,6 +568,11 @@ typedef struct _FunctionEntry {
 
   // True if globally visible, False if file-static scope
   Bool isExternal;
+
+  // True if there's a location list for this function
+  Bool locList;
+
+  unsigned long locListOffset;
 
   VarList formalParameters;        // List of formal parameter variables
 
@@ -574,6 +602,16 @@ typedef struct _FunctionEntry {
   // parameters. This amount of memory is copied so that we can see
   // the pre-states of the parameters at exit.
   int formalParamStackByteSize;
+
+  // GCC 4.0+ Complicates things as it will not use Frame offsets for
+  // all formal parameters. If we want to mimic the behavior achieved
+  // for GCC 3.3 we'll have to keep track of the mapping between
+  // our virtual stack and the original stack.
+  Addr guestStackStart;   // What Guest Address the top of our virtual Stack corresponds to
+  Addr guestStackEnd;     // What Guest Address the bottom of our virtual Stack corresponds to
+
+  Addr FP;
+
 } FunctionEntry;
 
 
@@ -1003,6 +1041,7 @@ Bool fjalar_output_struct_vars;            // --output-struct-vars
 Bool fjalar_flatten_arrays;                // --flatten-arrays
 Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
 Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
+Bool fjalar_gcc4;                          // --gcc4
 int  fjalar_array_length_limit;            // --array-length-limit
 
 UInt MAX_VISIT_STRUCT_DEPTH;               // --struct-depth

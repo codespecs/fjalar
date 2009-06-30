@@ -25,8 +25,9 @@
 #define TYPEDATA_H
 
 #include "GenericHashtable.h"
-
-// Type information data structures
+#include "elf/dwarf2.h"
+#include "fjalar_debug.h"
+#include "fjalar_dwarf.h"
 
 // Contains one entry that holds data for one of many possible types
 // depending on tag_name
@@ -41,6 +42,28 @@ typedef struct
 } dwarf_entry;
 
 // Entries for individual types
+
+// RUDD - struct representing the location list.
+// Representned as a linked list.
+typedef struct _location_list
+{
+  unsigned long offset;
+  unsigned long begin;
+  unsigned long end;
+  enum dwarf_location_atom atom; //Location Expression.
+  long long atom_offset;
+  struct _location_list *next;
+} location_list;
+
+// RUDD - struct representing a debug_frame block.
+// Represented as a linked list.
+typedef struct _debug_frame
+{
+  unsigned long begin;
+  unsigned long end;
+  struct _debug_frame *next;
+} debug_frame;
+
 
 typedef struct
 {
@@ -220,9 +243,18 @@ typedef struct
 
   */
 
+  unsigned long frame_pc;
+  unsigned long comp_pc;  /* Top of the current compilation unit */
   unsigned long start_pc; /* Location of the function in memory */
   unsigned long end_pc;   /* Location of the highest address of an
                              instruction in the function */
+
+
+  enum dwarf_location_atom frame_base_expression; /* Location of the framebase.
+						     Is likely to be a register expression
+						     or the location list */
+  long frame_base_offset; /* Offset from Frame_base_expression that correspods to the frame_base
+			   */
 
 } function;
 
@@ -248,12 +280,20 @@ typedef struct
   unsigned long type_ID;
   dwarf_entry* type_ptr;
   enum location_type location_type;
-  unsigned long location; // Offset from function base
+
+  enum dwarf_location_atom loc_atom; //Location Expression.
+
+  dwarf_location dwarf_stack[MAX_DWARF_STACK];
+  unsigned int dwarf_stack_size;
+
+  long location; // Offset from location
+
                  // This is stored as: (DW_OP_fbreg: x),
                  // where x is location offset
                  // TODO: DW_OP_fbreg: seems unreliable - gives flaky
                  //       values sometimes - look into finding a better
                  //       way to get the parameter location
+  unsigned int valid_loc;
 } formal_parameter;
 
 // compile_unit - only used to figure out filename and compilation directory
@@ -338,6 +378,7 @@ typedef struct
 
 extern dwarf_entry* dwarf_entry_array;
 extern unsigned long dwarf_entry_array_size;
+extern location_list *debug_loc_list;
 
 unsigned int hashString(char* str);
 int equivalentStrings(char* str1, char* str2);
@@ -409,7 +450,8 @@ char harvest_const_value(dwarf_entry* e, unsigned long value);
 char harvest_name(dwarf_entry* e, const char* str);
 char harvest_mangled_name(dwarf_entry* e, const char* str);
 char harvest_comp_dir(dwarf_entry* e, const char* str);
-char harvest_formal_param_location_offset(dwarf_entry* e, unsigned long value);
+char harvest_formal_param_location_offset(dwarf_entry* e, long value);
+char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value);
 char harvest_data_member_location(dwarf_entry* e, unsigned long value);
 char harvest_string(dwarf_entry* e, unsigned long attr, const char* str);
 char harvest_external_flag_value(dwarf_entry *e, unsigned long value);
@@ -423,6 +465,11 @@ char harvest_artificial_value(dwarf_entry* e, unsigned long value);
 char harvest_specification_value(dwarf_entry* e, unsigned long value);
 char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value);
 char harvest_accessibility(dwarf_entry* e, char a);
+char harvest_location_list_entry(location_list* ll, unsigned long offset);
+char harvest_debug_frame_entry(debug_frame* df);
+char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
+
+
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
 
