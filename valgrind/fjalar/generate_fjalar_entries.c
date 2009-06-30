@@ -2156,7 +2156,6 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 			      0,
 			      0,0,0,0,0,0,0,1);
 
-  varPtr->validLoc = paramPtr->valid_loc;
 
   if (paramPtr->dwarf_stack_size > 0) {
     int i;
@@ -2173,6 +2172,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 
 
   if (paramPtr->location_type == LT_FP_OFFSET) {
+    varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
     varPtr->atom = paramPtr->loc_atom;
@@ -2749,6 +2749,10 @@ static void initConstructorsAndDestructors(void) {
     if ((f->formalParameters.numVars > 0) &&
         (f->formalParameters.first->var) &&
         VG_STREQ("this", f->formalParameters.first->var->name)) {
+
+
+      // RUDD - Dirty dirty hack. Force the location of this to be valid
+      f->formalParameters.first->var->valid_loc = 1;
 
       TypeEntry* parentClass = 0;
 

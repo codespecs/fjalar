@@ -1518,7 +1518,11 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   //    so that we are not traversing its siblings
   while ((local_dist_to_end > 0) &&
 	 (cur_entry->level > collection_entry_level)) {
-
+  
+    if (tag_is_formal_parameter(cur_entry->tag_name)) {
+      ((formal_parameter*)(cur_entry))->valid_loc = 1;
+    }
+    
     if (cur_entry->level == (collection_entry_level + 1)) {
       if (isEnumType) {
         if (tag_is_enumerator(cur_entry->tag_name)) {
