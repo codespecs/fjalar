@@ -2752,7 +2752,7 @@ static void initConstructorsAndDestructors(void) {
 
 
       // RUDD - Dirty dirty hack. Force the location of this to be valid
-      f->formalParameters.first->var->valid_loc = 1;
+      f->formalParameters.first->var->validLoc = 1;
 
       TypeEntry* parentClass = 0;
 
