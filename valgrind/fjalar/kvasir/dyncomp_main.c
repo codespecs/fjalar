@@ -180,8 +180,8 @@ static __inline__ UInt grab_fresh_tag(void) {
 
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    DYNCOMP_TPRINTF("Creating fresh tag %d at 0x%08x (%s)\n",
-		    tag, eip, eip_info);
+    //    DYNCOMP_TPRINTF("Creating fresh tag %d at 0x%08x (%s)\n",
+    //	    tag, eip, eip_info);
   }
 
   return tag;
@@ -295,17 +295,16 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());	
     uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
                                  GET_UF_OBJECT_PTR(tag2));
-    print_merge = 1;
-    if (print_merge) {
-      Char eip_info[256];
-      VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-      ThreadId tid = VG_(get_running_tid)();
-      /*       VG_(printf)("Merging %d with %d to get %d at 0x%08x (%s)\n", */
-/* 		      tag1, tag2, leader->tag, eip, eip_info); */
-      DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
-		      tag1, tag2, leader->tag, eip, eip_info);
+    Char eip_info[256];
+    VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+    ThreadId tid = VG_(get_running_tid)();
+    /*       VG_(printf)("Merging %d with %d to get %d at 0x%08x (%s)\n", */
+    /* 		      tag1, tag2, leader->tag, eip, eip_info); */
+    DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
+		    tag1, tag2, leader->tag, eip, eip_info);
+    
       //      VG_(get_and_pp_StackTrace) (tid, 15);
-    }
+  }
     return leader->tag;
   }
   else {
@@ -564,8 +563,8 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
   if (dyncomp_print_trace_all) {
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    DYNCOMP_TPRINTF("Creating new tag %d at #%x (%s)\n",
-		    newTag, static_id, eip_info);
+    //    DYNCOMP_TPRINTF("Creating new tag %d at #%x (%s)\n",
+    //	    newTag, static_id, eip_info);
     //    VG_(printf)("Creating new tag %d at %xx (%s)\n",
     //	newTag, static_id, eip_info);
   }
@@ -638,14 +637,11 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
-
+  
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  if( 0 && (eip > 0x05007745 )) {
-    Char eip_info[256];
-    VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    VG_(printf)("Merging %d with %d at 0x%08x (%s)\n",
-		tag1, tag2,eip, eip_info);
-  }
+  Char eip_info[256];
+  VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+  ThreadId tid = VG_(get_running_tid)();
 
 /*   if (within_main_program) { */
 /*      DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n", */
@@ -664,9 +660,13 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   // (If both are WEAK_FRESH_TAG's, then return WEAK_FRESH_TAG,
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
+    DYNCOMP_TPRINTF("Merging %du with %du to get %du at 0x%08x (%s)\n",
+		    tag1, tag2, tag2 , eip, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
+    DYNCOMP_TPRINTF("Merging %dy with %du to get %du at 0x%08x (%s)\n",
+		    tag1, tag2, tag1 , eip, eip_info);
     return tag1;
   }
   else {

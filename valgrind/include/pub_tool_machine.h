@@ -44,18 +44,18 @@
 #  define VG_STACK_REDZONE_SZB    128
 #elif defined(VGP_ppc32_linux)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4 
+#  define VG_MAX_INSTR_SZB          4
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB      0
 #elif defined(VGP_ppc64_linux)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4 
+#  define VG_MAX_INSTR_SZB          4
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB    288  // number of addressable bytes below R1
                                        // from 64-bit PowerPC ELF ABI Supplement 1.7
 #elif defined(VGP_ppc32_aix5)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4 
+#  define VG_MAX_INSTR_SZB          4
 #  define VG_CLREQ_SZB             20
    /* The PowerOpen ABI actually says 220 bytes, but that is not an
       8-aligned number, and frequently forces Memcheck's
@@ -65,7 +65,7 @@
 #  define VG_STACK_REDZONE_SZB    224
 #elif defined(VGP_ppc64_aix5)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4 
+#  define VG_MAX_INSTR_SZB          4
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB    288 // is this right?
 #elif defined(VGP_x86_darwin)
@@ -89,7 +89,11 @@ extern Addr VG_(get_IP) ( ThreadId tid );
 extern Addr VG_(get_FP) ( ThreadId tid );
 extern Addr VG_(get_LR) ( ThreadId tid );
 extern Addr VG_(get_xAX)( ThreadId tid );
+extern Addr VG_(get_xBX)( ThreadId tid );
+extern Addr VG_(get_xCX)( ThreadId tid );
 extern Addr VG_(get_xDX)( ThreadId tid );
+extern Addr VG_(get_xSI)( ThreadId tid );
+extern Addr VG_(get_xDI)( ThreadId tid );
 
 extern void VG_(set_SP) ( ThreadId tid, Addr sp );
 extern void VG_(set_IP) ( ThreadId tid, Addr ip );
@@ -119,11 +123,11 @@ extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 // completely general way to read/modify a thread's guest register state
 // providing you know the offsets you need.
 void
-VG_(get_shadow_regs_area) ( ThreadId tid, 
+VG_(get_shadow_regs_area) ( ThreadId tid,
                             /*DST*/UChar* dst,
                             /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size );
 void
-VG_(set_shadow_regs_area) ( ThreadId tid, 
+VG_(set_shadow_regs_area) ( ThreadId tid,
                             /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src );
 
@@ -146,7 +150,7 @@ extern void VG_(apply_to_GP_regs)(void (*f)(UWord val));
 // safely change it by making calls to these functions.
 extern void VG_(thread_stack_reset_iter) ( /*OUT*/ThreadId* tid );
 extern Bool VG_(thread_stack_next)       ( /*MOD*/ThreadId* tid,
-                                           /*OUT*/Addr* stack_min, 
+                                           /*OUT*/Addr* stack_min,
                                            /*OUT*/Addr* stack_max );
 
 // Returns .client_stack_highest_word for the given thread

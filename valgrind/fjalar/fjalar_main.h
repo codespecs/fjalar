@@ -26,6 +26,7 @@
 #include "mc_translate.h"
 
 #include "fjalar_include.h"
+#include "fjalar_debug.h"
 #include "generate_fjalar_entries.h"
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
@@ -34,6 +35,9 @@
 void handle_possible_entry(MCEnv* mce, Addr64 addr);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
 
+// The master location_list. This is fully explained in
+// typedata.c
+extern struct genhashtable* loc_list_map;
 
 extern VG_REGPARM(1) void prime_function(FunctionEntry* f);
 extern VG_REGPARM(1) void enter_function(FunctionEntry* f);
@@ -112,5 +116,56 @@ char* fjalar_program_stderr_filename;
 __inline__ FunctionExecutionState* fnStackPush(void);
 __inline__ FunctionExecutionState* fnStackPop(void);
 __inline__ FunctionExecutionState* fnStackTop(void);
+
+// Mapping between Dwarf Register numbers and
+// valgrind function to return the value
+
+extern Addr (*get_reg[11])( ThreadId tid );
+
+// For debugging purposes, a mapping between 
+// DWARF location atoms and their string
+// representation
+
+extern char* dwarf_reg_string[9];
+
+
+/*
+   It is not at all clear how we should number the FP stack registers
+   for the x86 architecture.  If the version of SDB on x86/svr4 were
+   a bit less brain dead with respect to floating-point then we would
+   have a precedent to follow with respect to DWARF register numbers
+   for x86 FP registers, but the SDB on x86/svr4 is so completely
+   broken with respect to FP registers that it is hardly worth thinking
+   of it as something to strive for compatibility with.
+   The version of x86/svr4 SDB I have at the moment does (partially)
+   seem to believe that DWARF register number 11 is associated with
+   the x86 register %st(0), but that's about all.  Higher DWARF
+   register numbers don't seem to be associated with anything in
+   particular, and even for DWARF regno 11, SDB only seems to under-
+   stand that it should say that a variable lives in %st(0) (when
+   asked via an `=' command) if we said it was in DWARF regno 11,
+   but SDB still prints garbage when asked for the value of the
+   variable in question (via a `/' command).
+   (Also note that the labels SDB prints for various FP stack regs
+   when doing an `x' command are all wrong.)
+   Note that these problems generally don't affect the native SVR4
+   C compiler because it doesn't allow the use of -O with -g and
+   because when it is *not* optimizing, it allocates a memory
+   location for each floating-point variable, and the memory
+   location is what gets described in the DWARF AT_location
+   attribute for the variable in question.
+   Regardless of the severe mental illness of the x86/svr4 SDB, we
+   do something sensible here and we use the following DWARF
+   register numbers.  Note that these are all stack-top-relative
+   numbers.
+	11 for %st(0) (gcc regno = 8)
+	12 for %st(1) (gcc regno = 9)
+	13 for %st(2) (gcc regno = 10)
+	14 for %st(3) (gcc regno = 11)
+	15 for %st(4) (gcc regno = 12)
+	16 for %st(5) (gcc regno = 13)
+	17 for %st(6) (gcc regno = 14)
+	18 for %st(7) (gcc regno = 15)
+*/
 
 #endif

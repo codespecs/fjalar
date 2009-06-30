@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2009 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -44,6 +44,11 @@
 #define FRAME_PTR(regs)    ((regs).vex.VG_FRAME_PTR)
 #define INT_RET_REG(regs)  ((regs).vex.VG_INT_RET_REG)
 #define INT_RET2_REG(regs) ((regs).vex.VG_INT_RET2_REG)
+#define INT_XCX(regs)      ((regs).vex.VG_XCX)
+#define INT_XBX(regs)      ((regs).vex.VG_XBX)
+#define INT_XSI(regs)      ((regs).vex.VG_XSI)
+#define INT_XDI(regs)      ((regs).vex.VG_XDI)
+
 
 Addr VG_(get_SP) ( ThreadId tid )
 {
@@ -57,7 +62,28 @@ Addr VG_(get_IP) ( ThreadId tid )
 
 Addr VG_(get_FP) ( ThreadId tid )
 {
-   return FRAME_PTR( VG_(threads)[tid].arch );
+  return FRAME_PTR( VG_(threads)[tid].arch );
+}
+
+Addr VG_(get_xCX) ( ThreadId tid )
+{
+  return INT_XCX( VG_(threads)[tid].arch );
+}
+
+Addr VG_(get_xBX) ( ThreadId tid )
+{
+  return INT_XBX( VG_(threads)[tid].arch );
+}
+
+
+Addr VG_(get_xSI) ( ThreadId tid )
+{
+  return INT_XSI( VG_(threads)[tid].arch );
+}
+
+Addr VG_(get_xDI) ( ThreadId tid )
+{
+  return INT_XDI( VG_(threads)[tid].arch );
 }
 
 Addr VG_(get_LR) ( ThreadId tid )
@@ -185,7 +211,7 @@ void VG_(set_syscall_return_shadows) ( ThreadId tid,
 }
 
 void
-VG_(get_shadow_regs_area) ( ThreadId tid, 
+VG_(get_shadow_regs_area) ( ThreadId tid,
                             /*DST*/UChar* dst,
                             /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size )
 {
@@ -209,7 +235,7 @@ VG_(get_shadow_regs_area) ( ThreadId tid,
 }
 
 void
-VG_(set_shadow_regs_area) ( ThreadId tid, 
+VG_(set_shadow_regs_area) ( ThreadId tid,
                             /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src )
 {
@@ -322,7 +348,7 @@ void VG_(thread_stack_reset_iter)(/*OUT*/ThreadId* tid)
 }
 
 Bool VG_(thread_stack_next)(/*MOD*/ThreadId* tid,
-                            /*OUT*/Addr* stack_min, 
+                            /*OUT*/Addr* stack_min,
                             /*OUT*/Addr* stack_max)
 {
    ThreadId i;
@@ -364,24 +390,24 @@ SizeT VG_(thread_get_stack_size)(ThreadId tid)
 
    x86:   initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_x86_have_mxcsr)
    -------------
    amd64: initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
    -------------
    ppc32: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc32_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_ppc32_has_FP)
                        and VG_(machine_ppc32_has_VMX)
    -------------
    ppc64: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc64_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_ppc64_has_VMX)
 
    VG_(machine_get_hwcaps) may use signals (although it attempts to
@@ -570,7 +596,7 @@ Bool VG_(machine_get_hwcaps)( void )
      vg_assert(r == 0);
      r = VG_(sigprocmask)(VKI_SIG_SETMASK, &saved_set, NULL);
      vg_assert(r == 0);
-     VG_(debugLog)(1, "machine", "F %d V %d FX %d GX %d\n", 
+     VG_(debugLog)(1, "machine", "F %d V %d FX %d GX %d\n",
                     (Int)have_F, (Int)have_V, (Int)have_FX, (Int)have_GX);
      /* Make FP a prerequisite for VMX (bogusly so), and for FX and GX. */
      if (have_V && !have_F)
@@ -678,7 +704,7 @@ Bool VG_(machine_get_hwcaps)( void )
      VG_(sigaction)(VKI_SIGILL, &saved_sigill_act, NULL);
      VG_(sigaction)(VKI_SIGFPE, &saved_sigfpe_act, NULL);
      VG_(sigprocmask)(VKI_SIG_SETMASK, &saved_set, NULL);
-     VG_(debugLog)(1, "machine", "F %d V %d FX %d GX %d\n", 
+     VG_(debugLog)(1, "machine", "F %d V %d FX %d GX %d\n",
                     (Int)have_F, (Int)have_V, (Int)have_FX, (Int)have_GX);
      /* on ppc64, if we don't even have FP, just give up. */
      if (!have_F)

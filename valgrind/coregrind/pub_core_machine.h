@@ -80,12 +80,20 @@
 #  define VG_FRAME_PTR        guest_EBP
 #  define VG_INT_RET_REG      guest_EAX
 #  define VG_INT_RET2_REG     guest_EDX
+#  define VG_XCX              guest_ECX
+#  define VG_XBX              guest_EBX
+#  define VG_XSI              guest_ESI
+#  define VG_XDI              guest_EDI
 #elif defined(VGA_amd64)
 #  define VG_INSTR_PTR        guest_RIP
 #  define VG_STACK_PTR        guest_RSP
 #  define VG_FRAME_PTR        guest_RBP
 #  define VG_INT_RET_REG      guest_RAX
 #  define VG_INT_RET2_REG     guest_RDX
+#  define VG_XCX              AMD64 SUPPORT NOT YET IMPLEMENTED
+#  define VG_XBX              AMD64 SUPPORT NOT YET IMPLEMENTED
+#  define VG_XSI              AMD64 SUPPORT NOT YET IMPLEMENTED
+#  define VG_XDI              AMD64 SUPPORT NOT YET IMPLEMENTED
 #elif defined(VGA_ppc32)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1

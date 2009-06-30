@@ -260,6 +260,7 @@ void cleanupDecls()
 // output anything to the .decls file.
 void outputDeclsFile(char faux_decls)
 {
+
   // Punt if you are not printing declarations at all:
   if (!print_declarations) {
     return;

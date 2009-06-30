@@ -31,7 +31,11 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_basics.h"
 #include "pub_tool_libcassert.h"
-#include "pub_tool_mallocfree.h"
+#include "pub_tool_mallocfree.h"p
+
+#define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
+      VG_(printf)(__VA_ARGS__); } while (0)
+
 
 // Forward declarations so that the compiler won't warn me:
 //extern void  VG_(free)           ( void* p );
@@ -55,6 +59,19 @@ dwarf_entry* dwarf_entry_array = 0;
 
 // The size of this array
 unsigned long dwarf_entry_array_size = 0;
+
+// Global hash table containing a mapping between
+// Location list offsets and a linked list representing
+// the location list
+struct genhashtable* loc_list_map = 0;
+
+// Linked list representing debug_frame
+debug_frame* debug_frame_HEAD = 0;
+debug_frame* debug_frame_TAIL = 0;
+
+// Base of the current compilation unit
+
+unsigned int comp_unit_base = 0;
 
 
 // The addresses and sizes of the sections (.data, .bss, and .rodata)
@@ -327,7 +344,11 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_external:
       return (tag_is_function(tag) ||
 	      tag_is_variable(tag));
+    case DW_AT_frame_base:
+      FJALAR_DPRINTF("frame_base tag\n");
     case DW_AT_low_pc:
+      return (tag_is_compile_unit(tag) ||
+              tag_is_function(tag));
     case DW_AT_high_pc:
       return tag_is_function(tag);
     case DW_AT_upper_bound:
@@ -481,7 +502,7 @@ char harvest_variable_addr_value(dwarf_entry* e, unsigned long value)
 
   if (tag_is_variable(tag))
     {
-      ((variable*)e->entry_ptr)->couldBeGlobalVar = 1;
+       ((variable*)e->entry_ptr)->couldBeGlobalVar = 1;
       ((variable*)e->entry_ptr)->globalVarAddr = value;
       return 1;
     }
@@ -809,7 +830,34 @@ char harvest_local_var_offset(dwarf_entry* e, unsigned long value)
     return 0;
 }
 
-char harvest_formal_param_location_offset(dwarf_entry* e, unsigned long value)
+char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value)
+{
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+  
+  if (tag_is_formal_parameter(tag))
+    {
+      FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%d)\n", location_expression_to_string(atom), value);
+      formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
+      
+      paramPtr->loc_atom = atom;
+
+      tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_STACK);
+      paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
+      paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
+      paramPtr->dwarf_stack_size++;
+      paramPtr->valid_loc = 1;
+      
+      return 1;
+    }
+  else
+    return 0;
+}
+
+char harvest_formal_param_location_offset(dwarf_entry* e, long value)
 {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
@@ -819,9 +867,10 @@ char harvest_formal_param_location_offset(dwarf_entry* e, unsigned long value)
 
   if (tag_is_formal_parameter(tag))
     {
-      tl_assert(((formal_parameter*)e->entry_ptr)->location_type == LT_NONE);
+      FJALAR_DPRINTF("\nHARVESTING OFFSET  %ld\n", value);
       ((formal_parameter*)e->entry_ptr)->location_type = LT_FP_OFFSET;
       ((formal_parameter*)e->entry_ptr)->location = value;
+      ((formal_parameter*)e->entry_ptr)->valid_loc = 1;
       return 1;
     }
   else
@@ -894,10 +943,34 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
 
   tag = e->tag_name;
 
-  if (tag_is_function(tag) && attr == DW_AT_low_pc)
+
+
+
+
+  if (attr == DW_AT_low_pc)
     {
-      ((function*)e->entry_ptr)->start_pc = value;
-      return 1;
+      if(tag_is_function(tag)) {
+	debug_frame *cur_frame = debug_frame_HEAD;
+        ((function*)e->entry_ptr)->start_pc = value;
+        ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
+
+	FJALAR_DPRINTF("Searching debug_frame list for my top of frame\n");
+	FJALAR_DPRINTF("My lowPC is: %x\n", value);
+	while(cur_frame) {
+	  FJALAR_DPRINTF("Examining [%x...%x]\n", cur_frame->begin, cur_frame->end);
+	  if((value >= cur_frame->begin) && (value <= cur_frame->end)) {
+	    FJALAR_DPRINTF("FOUND\n");
+	    ((function*)e->entry_ptr)->comp_pc = cur_frame->begin;
+	    break;
+	  }
+	  cur_frame = cur_frame->next;
+	}
+	
+        return 1;
+      } else if(tag_is_compile_unit(tag)) {
+        comp_unit_base = value;
+      }
+
     }
   else if (tag_is_function(tag) && attr == DW_AT_high_pc)
     {
@@ -957,7 +1030,7 @@ char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* ind
   unsigned long upper = dwarf_entry_array_size - 1;
   unsigned long lower = 0;
 
-  //  printf("--target_ID: 0x%x, index_ptr: 0x%x, upper.ID: 0x%x, lower.ID: 0x%x\n",
+  //  FJALAR_DPRINTF("--target_ID: 0x%x, index_ptr: 0x%x, upper.ID: 0x%x, lower.ID: 0x%x\n",
          //         target_ID,
          //         index_ptr,
          //         dwarf_entry_array[upper].ID,
@@ -973,7 +1046,7 @@ char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* ind
       unsigned long mid = (upper + lower) / 2;
       unsigned long cur_ID = dwarf_entry_array[mid].ID;
 
-      //      printf("**lower: %d, mid: %d, upper: %d, target_ID: 0x%x, cur_ID: 0x%x\n",
+      //      FJALAR_DPRINTF("**lower: %d, mid: %d, upper: %d, target_ID: 0x%x, cur_ID: 0x%x\n",
       //             lower,
       //             mid,
       //             upper,
@@ -1604,7 +1677,7 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   cur_entry++; // Move to the next entry - safe since dist_to_end > 0 by this point
   // functions expect DW_TAG_formal_parameter as parameters
 
-  //  printf("\nlink_params: %s:\n", function_ptr->name);
+  //  FJALAR_DPRINTF("\nlink_params: %s:\n", function_ptr->name);
 
   // Make one pass from the function entry all the way to
   // to get the numbers of params and local vars
@@ -1639,7 +1712,7 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   function_ptr->num_formal_params = param_count;
   function_ptr->num_local_vars = var_count;
 
-  //  printf("param_count: %d, var_count: %d\n", param_count, var_count);
+  //  FJALAR_DPRINTF("param_count: %d, var_count: %d\n", param_count, var_count);
 
 
   // Make a second pass (actually two second passes)
@@ -1834,18 +1907,18 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
 {
   if (e == 0)
     {
-      printf("ERROR! Pointer e is null in print_dwarf_entry\n");
+      FJALAR_DPRINTF("ERROR! Pointer e is null in print_dwarf_entry\n");
       return;
     }
 
-  printf("ID:0x%lx, LVL:%d, SIB_ID:0x%lx, TAG:%s \n", e->ID, e->level, e->sibling_ID, get_TAG_name(e->tag_name));
+  FJALAR_DPRINTF("ID:0x%lx, LVL:%d, SIB_ID:0x%lx, TAG:%s \n", e->ID, e->level, e->sibling_ID, get_TAG_name(e->tag_name));
 
   switch(e->tag_name)
     {
     case DW_TAG_subprogram:
       {
         function* function_ptr = (function*)(e->entry_ptr);
-        printf("  Name: %s, Filename: %s, Return Type ID (addr): 0x%lx (0x%lx), is_ext: %d, low_pc: 0x%lx\n",
+        FJALAR_DPRINTF("  Name: %s, Filename: %s, Return Type ID (addr): 0x%lx (0x%lx), is_ext: %d, low_pc: 0x%lx\n",
                function_ptr->name,
                function_ptr->filename,
                function_ptr->return_type_ID,
@@ -1859,7 +1932,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        printf("  Name: %s, Type ID (addr): 0x%lx (0x%lx), Location: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID (addr): 0x%lx (0x%lx), Location: %ld\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                ((simplified && formal_param_ptr->type_ptr) ?
@@ -1871,7 +1944,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_member:
       {
         member* member_ptr = (member*)(e->entry_ptr);
-        printf("  Name: %s, Type ID (addr): 0x%x (0x%x), Data member location: %d, Byte size: %d, Bit offset: %d, Bit size: %d\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID (addr): 0x%x (0x%x), Data member location: %d, Byte size: %d, Bit offset: %d, Bit size: %d\n",
                member_ptr->name,
                (UInt)member_ptr->type_ID,
                ((simplified && member_ptr->type_ptr) ?
@@ -1886,7 +1959,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_enumerator:
       {
         enumerator* enumerator_ptr = (enumerator*)(e->entry_ptr);
-        printf("  Name: %s, Const value: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Const value: %ld\n",
                enumerator_ptr->name,
                enumerator_ptr->const_value);
         break;
@@ -1897,11 +1970,11 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_enumeration_type:
       {
 	collection_type* collection_ptr = (collection_type*)(e->entry_ptr);
-        printf("  Name: %s, Byte size: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Byte size: %ld\n",
                collection_ptr->name,
                collection_ptr->byte_size);
 
-/*         printf("  Name: %s, Byte size: %ld, Num. members: %ld, 1st member addr: 0x%lx\n", */
+/*         FJALAR_DPRINTF("  Name: %s, Byte size: %ld, Num. members: %ld, 1st member addr: 0x%lx\n", */
 /*                collection_ptr->name, */
 /*                collection_ptr->byte_size, */
 /* 	       collection_ptr->num_members, */
@@ -1915,38 +1988,38 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_base_type:
       {
         base_type* base_ptr = (base_type*)(e->entry_ptr);
-        printf("  Byte size: %ld, Encoding: %ld ",
+        FJALAR_DPRINTF("  Byte size: %ld, Encoding: %ld ",
                base_ptr->byte_size,
                base_ptr->encoding);
 
         // More detailed encoding information
         switch (base_ptr->encoding)
           {
-          case DW_ATE_void:             printf ("(void)"); break;
-          case DW_ATE_address:		printf ("(machine address)"); break;
-          case DW_ATE_boolean:		printf ("(boolean)"); break;
-          case DW_ATE_complex_float:	printf ("(complex float)"); break;
-          case DW_ATE_float:		printf ("(float)"); break;
-          case DW_ATE_signed:		printf ("(signed)"); break;
-          case DW_ATE_signed_char:	printf ("(signed char)"); break;
-          case DW_ATE_unsigned:		printf ("(unsigned)"); break;
-          case DW_ATE_unsigned_char:	printf ("(unsigned char)"); break;
+          case DW_ATE_void:             FJALAR_DPRINTF ("(void)"); break;
+          case DW_ATE_address:	 FJALAR_DPRINTF ("(machine address)"); break;
+          case DW_ATE_boolean:	 FJALAR_DPRINTF ("(boolean)"); break;
+          case DW_ATE_complex_float: FJALAR_DPRINTF ("(complex float)"); break;
+          case DW_ATE_float:	 FJALAR_DPRINTF ("(float)"); break;
+          case DW_ATE_signed:	 FJALAR_DPRINTF ("(signed)"); break;
+          case DW_ATE_signed_char: FJALAR_DPRINTF ("(signed char)"); break;
+          case DW_ATE_unsigned:	 FJALAR_DPRINTF ("(unsigned)"); break;
+          case DW_ATE_unsigned_char: FJALAR_DPRINTF ("(unsigned char)"); break;
             /* DWARF 2.1 value.  */
-          case DW_ATE_imaginary_float:	printf ("(imaginary float)"); break;
+          case DW_ATE_imaginary_float: FJALAR_DPRINTF ("(imaginary float)"); break;
           default:
             if (base_ptr->encoding >= DW_ATE_lo_user
                 && base_ptr->encoding <= DW_ATE_hi_user)
               {
-                printf ("(user defined type)");
+                FJALAR_DPRINTF ("(user defined type)");
               }
             else
               {
-                printf ("(unknown type)");
+                FJALAR_DPRINTF ("(unknown type)");
               }
             break;
           }
 
-        printf(", Bit size: %ld, Bit offset: %ld\n",
+        FJALAR_DPRINTF(", Bit size: %ld, Bit offset: %ld\n",
                base_ptr->bit_size,
                base_ptr->bit_offset);
 
@@ -1958,7 +2031,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_volatile_type:
       {
         modifier_type* modifier_ptr = (modifier_type*)(e->entry_ptr);
-        printf("  Target ID (addr): 0x%lx (0x%lx)\n",
+        FJALAR_DPRINTF("  Target ID (addr): 0x%lx (0x%lx)\n",
                modifier_ptr->target_ID,
                ((simplified && modifier_ptr->target_ptr) ?
                 (UInt)modifier_ptr->target_ptr - (UInt)dwarf_entry_array :
@@ -1968,7 +2041,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_array_type:
       {
         array_type* array_ptr = (array_type*)(e->entry_ptr);
-        printf("  Type ID (addr): 0x%lx (0x%lx), Num. subrange entries: %ld\n",
+        FJALAR_DPRINTF("  Type ID (addr): 0x%lx (0x%lx), Num. subrange entries: %ld\n",
                array_ptr->type_ID,
                ((simplified && array_ptr->type_ptr) ?
                 ((UInt)array_ptr->type_ptr - (UInt)dwarf_entry_array) :
@@ -1979,14 +2052,14 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_subrange_type:
       {
         array_subrange_type* array_subrange_ptr = (array_subrange_type*)(e->entry_ptr);
-        printf("  Upper bound: %lu\n",
+        FJALAR_DPRINTF("  Upper bound: %lu\n",
                array_subrange_ptr->upperBound);
         break;
       }
     case DW_TAG_typedef:
       {
         typedef_type* typedef_ptr = (typedef_type*)(e->entry_ptr);
-        printf("  Name: %s, Target type ID (addr): 0x%lx (0x%lx)\n",
+        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx)\n",
                typedef_ptr->name,
                typedef_ptr->target_type_ID,
                ((simplified && typedef_ptr->target_type_ptr) ?
@@ -1997,7 +2070,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_variable:
       {
         variable* variable_ptr = (variable*)(e->entry_ptr);
-        printf("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d\n",
+        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d\n",
                variable_ptr->name,
                variable_ptr->type_ID,
                ((simplified && variable_ptr->type_ptr) ?
@@ -2012,7 +2085,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_compile_unit:
       {
         compile_unit* compile_ptr = (compile_unit*)(e->entry_ptr);
-        printf("  Filename: %s, Compile dir: %s\n",
+        FJALAR_DPRINTF("  Filename: %s, Compile dir: %s\n",
                compile_ptr->filename,
                compile_ptr->comp_dir);
         break;
@@ -2020,11 +2093,11 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
 
     case DW_TAG_subroutine_type:
       {
-        printf(  "DW_TAG_subroutine_type not yet supported\n");
+        FJALAR_DPRINTF(  "DW_TAG_subroutine_type not yet supported\n");
         // TODO: Don't print anything out for this yet - it's still
         //       uninitialized
         //        function_type * func_type = (function_type *)(e->entry_ptr);
-        //        printf("  Return type ID (addr): 0x%lx (%p)\n",
+        //        FJALAR_DPRINTF("  Return type ID (addr): 0x%lx (%p)\n",
         //               func_type->return_type_ID,
         //               ((simplified && func_type->return_type) ?
         //                func_type->return_type - dwarf_entry_array :
@@ -2097,15 +2170,15 @@ void print_dwarf_entry_array()
 void print_dwarf_entry_array_helper(char simplified)
 {
   UInt i;
-  printf("--- BEGIN DWARF ENTRY ARRAY - size: %ld\n", dwarf_entry_array_size);
+  FJALAR_DPRINTF("--- BEGIN DWARF ENTRY ARRAY - size: %ld\n", dwarf_entry_array_size);
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
 
-      printf("array[%u] (0x%x): ", i,
+      FJALAR_DPRINTF("array[%u] (0x%x): ", i,
              (simplified ? i : ((UInt)dwarf_entry_array + (UInt)i)));
       print_dwarf_entry(&dwarf_entry_array[i], simplified);
     }
-  printf("--- END DWARF ENTRY ARRAY\n");
+  FJALAR_DPRINTF("--- END DWARF ENTRY ARRAY\n");
 }
 
 /*
@@ -2309,9 +2382,76 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
   return 0;
 }
 
+// RUDD
+char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset) {
+  FJALAR_DPRINTF("Attempting to harvest the frame_base\n");
+
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+
+  if (tag_is_function(tag))
+    {
+      FJALAR_DPRINTF("Frame_base is a location list @ offset:%x\n", offset);
+      ((function*)e->entry_ptr)->frame_base_offset = offset;
+      ((function*)e->entry_ptr)->frame_base_expression = a;
+
+      return 1;
+    }
+  return 0;
+}
+
+char harvest_debug_frame_entry(debug_frame *df){
+
+  tl_assert(df);
+  FJALAR_DPRINTF("Attaching debug_frame [%x...%x] to the debug_frame list\n", df->begin, df->end);
+
+  if(!debug_frame_TAIL) {
+    debug_frame_HEAD = df;
+    debug_frame_TAIL = df;
+    df->next = NULL;
+  } else {
+    debug_frame_TAIL->next = df;
+    debug_frame_TAIL = df;
+  }
+}
+
+
+char harvest_location_list_entry(location_list* ll, unsigned long offset){
+  tl_assert(loc_list_map && "Location list map uninitialized");
+  location_list *cur_loc = NULL;
+  ll->next = NULL;
+
+  FJALAR_DPRINTF("\tAdding the following location to the location list at offset: %x\noffset\tbegin\tend\texpr\n%8x %8x %8x\t(%d + %x)\n\n",
+                 ll->offset, ll->offset, ll->begin, ll->end, ll->atom, ll->atom_offset);
+
+  if(gencontains(loc_list_map, offset)) {
+    tl_assert((cur_loc = gengettable(loc_list_map, offset)));
+
+    while(cur_loc->next != NULL) {
+      FJALAR_DPRINTF("cur_loc: %x, cur_loc->next: %x\n", cur_loc, cur_loc->next);
+      cur_loc = cur_loc->next;
+    }
+
+    cur_loc->next = ll;
+
+  } else {
+    FJALAR_DPRINTF("Creating location list for offset %x\n", offset);
+    genputtable(loc_list_map, (void*)offset, ll);
+    cur_loc = ll;
+  }
+
+  return 1;
+}
 
 // Initialize FunctionSymbolTable and VariableSymbolTable:
 void initialize_typedata_structures() {
+
+  loc_list_map = genallocatehashtable(0, (int (*)(void *,void *)) &equivalentIDs);
+
   FunctionSymbolTable = genallocatehashtable((unsigned int (*)(void *)) & hashString,
                                              (int (*)(void *,void *)) &equivalentStrings);
   ReverseFunctionSymbolTable = genallocatehashtable(0,

@@ -74,6 +74,9 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
       // the EBP of that function and the function immediately
       // following it on the stack
       if ((cur_fn->FP >= a) && (next_fn->FP <= a)) {
+        FJALAR_DPRINTF("cur_fn->FP: %x\n", (unsigned int)cur_fn->FP);
+        FJALAR_DPRINTF("next_fn->FP: %x\n", (unsigned int)next_fn->FP);
+        FJALAR_DPRINTF("Returning functionEntry: %x\n", (unsigned int)cur_fn);
 	return cur_fn;
       }
     }
@@ -88,6 +91,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   cur_fn = fnStackTop();
 
   if ((cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
+    FJALAR_DPRINTF("Returning functionEntry: %x\n", (unsigned int)cur_fn);
     return cur_fn;
   }
 
@@ -186,6 +190,10 @@ returnArrayVariableWithAddr(VarList* varList,
         (potentialVarBaseAddr <= a) &&
         (a < (potentialVarBaseAddr + (potentialVar->staticArr->upperBounds[0] *
                                       getBytesBetweenElts(potentialVar))))) {
+
+      FJALAR_DPRINTF("returnArrayVar: frame_ptr: %x, byteOffset %d:\n", frame_ptr, potentialVar->byteOffset);
+
+      FJALAR_DPRINTF("returnArrayVar: potentialVar->staticArr->upperBounds[0]: %d\n", potentialVar->staticArr->upperBounds[0]);
       *baseAddr = potentialVarBaseAddr;
       return potentialVar;
     }
@@ -379,6 +387,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     FJALAR_DPRINTF("Found function entry %p\n", e);
 
     if (e) {
+      FJALAR_DPRINTF(" e->FP is %x\n", e->FP);
       VarList* localArrayAndStructVars = &(e->func->localArrayAndStructVars);
 
       // TODO: Try to get to the bottom of this problem of bogus
@@ -444,7 +453,11 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     Addr highestAddr;
 
     tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
+    FJALAR_DPRINTF("varLocation: %x\n", varLocation);
+
     highestAddr = baseAddr + (targetVar->staticArr->upperBounds[0] * bytesBetweenElts);
+
+    FJALAR_DPRINTF("baseAddr is: %x, highestAddr is %x\n", baseAddr, highestAddr);
 
     // NEW!: Probe backwards until you find the first address whose V-bit is SET:
     // but ONLY do this for globals and NOT for stuff on the stack because

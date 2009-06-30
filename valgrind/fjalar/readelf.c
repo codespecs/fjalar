@@ -46,7 +46,15 @@
 #include "pub_tool_basics_asm.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcbase.h"
+#include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
+
+// For debugging
+extern Bool fjalar_debug;
+
+#define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
+      VG_(printf)(__VA_ARGS__); } while (0)
+
 
 #if __GNUC__ >= 2
 /* Define BFD64 here, even if our default architecture is 32 bit ELF
@@ -124,7 +132,7 @@ int do_notes;
 int is_32bit_elf;
 
 // PG set this equal to 1 to print out results
-int print_results = 0;
+int print_results = 1;
 
 // PG declarations
 /*
@@ -347,7 +355,7 @@ static unsigned char *read_and_display_attr_value
 static unsigned char *display_block
   PARAMS ((unsigned char *, unsigned long, char));
 static void decode_location_expression
-  PARAMS ((unsigned char *, unsigned int, unsigned long, char, dwarf_entry*));
+  PARAMS ((unsigned char *, unsigned int, unsigned long, char, dwarf_entry*, location_list* ll));
 static void request_dump
   PARAMS ((unsigned int, int));
 static const char *get_elf_class
@@ -599,13 +607,13 @@ print_vma (vma, mode)
     {
       switch (mode)
 	{
-	case FULL_HEX: printf ("0x"); /* drop through */
-	case LONG_HEX: printf ("%8.8lx", (unsigned long) vma); break;
-	case PREFIX_HEX: printf ("0x"); /* drop through */
-	case HEX: printf ("%lx", (unsigned long) vma); break;
-	case DEC: printf ("%ld", (unsigned long) vma); break;
-	case DEC_5: printf ("%5ld", (long) vma); break;
-	case UNSIGNED: printf ("%lu", (unsigned long) vma); break;
+	case FULL_HEX: FJALAR_DPRINTF ("0x"); /* drop through */
+	case LONG_HEX: FJALAR_DPRINTF ("%8.8lx", (unsigned long) vma); break;
+	case PREFIX_HEX: FJALAR_DPRINTF ("0x"); /* drop through */
+	case HEX: FJALAR_DPRINTF ("%lx", (unsigned long) vma); break;
+	case DEC: FJALAR_DPRINTF ("%ld", (unsigned long) vma); break;
+	case DEC_5: FJALAR_DPRINTF ("%5ld", (long) vma); break;
+	case UNSIGNED: FJALAR_DPRINTF ("%lu", (unsigned long) vma); break;
 	}
     }
 #ifdef BFD64
@@ -614,7 +622,7 @@ print_vma (vma, mode)
       switch (mode)
 	{
 	case FULL_HEX:
-	  printf ("0x");
+	  FJALAR_DPRINTF ("0x");
 	  /* drop through */
 
 	case LONG_HEX:
@@ -622,53 +630,53 @@ print_vma (vma, mode)
 	  break;
 
 	case PREFIX_HEX:
-	  printf ("0x");
+	  FJALAR_DPRINTF ("0x");
 	  /* drop through */
 
 	case HEX:
 #if BFD_HOST_64BIT_LONG
-	  printf ("%lx", vma);
+	  FJALAR_DPRINTF ("%lx", vma);
 #else
 	  if (_bfd_int64_high (vma))
-	    printf ("%lx%8.8lx", _bfd_int64_high (vma), _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("%lx%8.8lx", _bfd_int64_high (vma), _bfd_int64_low (vma));
 	  else
-	    printf ("%lx", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("%lx", _bfd_int64_low (vma));
 #endif
 	  break;
 
 	case DEC:
 #if BFD_HOST_64BIT_LONG
-	  printf ("%ld", vma);
+	  FJALAR_DPRINTF ("%ld", vma);
 #else
 	  if (_bfd_int64_high (vma))
 	    /* ugg */
-	    printf ("++%ld", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("++%ld", _bfd_int64_low (vma));
 	  else
-	    printf ("%ld", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("%ld", _bfd_int64_low (vma));
 #endif
 	  break;
 
 	case DEC_5:
 #if BFD_HOST_64BIT_LONG
-	  printf ("%5ld", vma);
+	  FJALAR_DPRINTF ("%5ld", vma);
 #else
 	  if (_bfd_int64_high (vma))
 	    /* ugg */
-	    printf ("++%ld", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("++%ld", _bfd_int64_low (vma));
 	  else
-	    printf ("%5ld", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("%5ld", _bfd_int64_low (vma));
 #endif
 	  break;
 
 	case UNSIGNED:
 #if BFD_HOST_64BIT_LONG
-	  printf ("%lu", vma);
+	  FJALAR_DPRINTF ("%lu", vma);
 #else
 	  if (_bfd_int64_high (vma))
 	    /* ugg */
-	    printf ("++%lu", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("++%lu", _bfd_int64_low (vma));
 	  else
-	    printf ("%lu", _bfd_int64_low (vma));
+	    FJALAR_DPRINTF ("%lu", _bfd_int64_low (vma));
 #endif
 	  break;
 	}
@@ -688,11 +696,11 @@ print_symbol (width, symbol)
      const char *symbol;
 {
   if (do_wide)
-    printf ("%s", symbol);
+    FJALAR_DPRINTF ("%s", symbol);
   else if (width < 0)
-    printf ("%-*.*s", width, width, symbol);
+    FJALAR_DPRINTF ("%-*.*s", width, width, symbol);
   else
-    printf ("%-.*s", width, symbol);
+    FJALAR_DPRINTF ("%-.*s", width, symbol);
 }
 
 static bfd_vma
@@ -1054,16 +1062,16 @@ dump_relocations (file, rel_offset, rel_size, symtab, nsyms, strtab, is_rela)
       if (is_rela)
 	{
 	  if (do_wide)
-	    printf (_(" Offset     Info    Type                Sym. Value  Symbol's Name + Addend\n"));
+	    FJALAR_DPRINTF (_(" Offset     Info    Type                Sym. Value  Symbol's Name + Addend\n"));
 	  else
-	    printf (_(" Offset     Info    Type            Sym.Value  Sym. Name + Addend\n"));
+	    FJALAR_DPRINTF (_(" Offset     Info    Type            Sym.Value  Sym. Name + Addend\n"));
 	}
       else
 	{
 	  if (do_wide)
-	    printf (_(" Offset     Info    Type                Sym. Value  Symbol's Name\n"));
+	    FJALAR_DPRINTF (_(" Offset     Info    Type                Sym. Value  Symbol's Name\n"));
 	  else
-	    printf (_(" Offset     Info    Type            Sym.Value  Sym. Name\n"));
+	    FJALAR_DPRINTF (_(" Offset     Info    Type            Sym.Value  Sym. Name\n"));
 	}
     }
   else
@@ -1071,16 +1079,16 @@ dump_relocations (file, rel_offset, rel_size, symtab, nsyms, strtab, is_rela)
       if (is_rela)
 	{
 	  if (do_wide)
-	    printf (_("    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend\n"));
+	    FJALAR_DPRINTF (_("    Offset             Info             Type               Symbol's Value  Symbol's Name + Addend\n"));
 	  else
-	    printf (_("  Offset          Info           Type           Sym. Value    Sym. Name + Addend\n"));
+	    FJALAR_DPRINTF (_("  Offset          Info           Type           Sym. Value    Sym. Name + Addend\n"));
 	}
       else
 	{
 	  if (do_wide)
-	    printf (_("    Offset             Info             Type               Symbol's Value  Symbol's Name\n"));
+	    FJALAR_DPRINTF (_("    Offset             Info             Type               Symbol's Value  Symbol's Name\n"));
 	  else
-	    printf (_("  Offset          Info           Type           Sym. Value    Sym. Name\n"));
+	    FJALAR_DPRINTF (_("  Offset          Info           Type           Sym. Value    Sym. Name\n"));
 	}
     }
 
@@ -1115,15 +1123,15 @@ dump_relocations (file, rel_offset, rel_size, symtab, nsyms, strtab, is_rela)
       if (is_32bit_elf)
 	{
 #ifdef _bfd_int64_low
-	  printf ("%8.8lx  %8.8lx ", _bfd_int64_low (offset), _bfd_int64_low (info));
+	  FJALAR_DPRINTF ("%8.8lx  %8.8lx ", _bfd_int64_low (offset), _bfd_int64_low (info));
 #else
-	  printf ("%8.8lx  %8.8lx ", offset, info);
+	  FJALAR_DPRINTF ("%8.8lx  %8.8lx ", offset, info);
 #endif
 	}
       else
 	{
 #ifdef _bfd_int64_low
-	  printf (do_wide
+	  FJALAR_DPRINTF (do_wide
 		  ? "%8.8lx%8.8lx  %8.8lx%8.8lx "
 		  : "%4.4lx%8.8lx  %4.4lx%8.8lx ",
 		  _bfd_int64_high (offset),
@@ -1131,7 +1139,7 @@ dump_relocations (file, rel_offset, rel_size, symtab, nsyms, strtab, is_rela)
 		  _bfd_int64_high (info),
 		  _bfd_int64_low (info));
 #else
-	  printf (do_wide
+	  FJALAR_DPRINTF (do_wide
 		  ? "%16.16lx  %16.16lx "
 		  : "%12.12lx  %12.12lx ",
 		  offset, info);
@@ -1153,26 +1161,26 @@ dump_relocations (file, rel_offset, rel_size, symtab, nsyms, strtab, is_rela)
 
       if (rtype == NULL)
 #ifdef _bfd_int64_low
-	printf (_("unrecognized: %-7lx"), _bfd_int64_low (type));
+ FJALAR_DPRINTF (_("unrecognized: %-7lx"), _bfd_int64_low (type));
 #else
-	printf (_("unrecognized: %-7lx"), type);
+ FJALAR_DPRINTF (_("unrecognized: %-7lx"), type);
 #endif
       else
-	printf (do_wide ? "%-22.22s" : "%-17.17s", rtype);
+ FJALAR_DPRINTF (do_wide ? "%-22.22s" : "%-17.17s", rtype);
 
       if (symtab_index)
 	{
 	  if (symtab == NULL || symtab_index >= nsyms)
-	    printf (" bad symbol index: %08lx", (unsigned long) symtab_index);
+	    FJALAR_DPRINTF (" bad symbol index: %08lx", (unsigned long) symtab_index);
 	  else
 	    {
 	      Elf_Internal_Sym *psym;
 
 	      psym = symtab + symtab_index;
 
-	      printf (" ");
+	      FJALAR_DPRINTF (" ");
 	      print_vma (psym->st_value, LONG_HEX);
-	      printf (is_32bit_elf ? "   " : " ");
+	      FJALAR_DPRINTF (is_32bit_elf ? "   " : " ");
 
 	      if (psym->st_name == 0)
 		{
@@ -1205,17 +1213,17 @@ dump_relocations (file, rel_offset, rel_size, symtab, nsyms, strtab, is_rela)
 		  print_symbol (22, sec_name);
 		}
 	      else if (strtab == NULL)
-		printf (_("<string table index %3ld>"), psym->st_name);
+	 FJALAR_DPRINTF (_("<string table index %3ld>"), psym->st_name);
 	      else
 		print_symbol (22, strtab + psym->st_name);
 
 	      if (is_rela)
-		printf (" + %lx", (unsigned long) rels[i].r_addend);
+	 FJALAR_DPRINTF (" + %lx", (unsigned long) rels[i].r_addend);
 	    }
 	}
       else if (is_rela)
 	{
-	  printf ("%*c", is_32bit_elf ? (do_wide ? 34 : 28) : (do_wide ? 26 : 20), ' ');
+	  FJALAR_DPRINTF ("%*c", is_32bit_elf ? (do_wide ? 34 : 28) : (do_wide ? 26 : 20), ' ');
 	  print_vma (rels[i].r_addend, LONG_HEX);
 	}
 
@@ -1876,61 +1884,61 @@ process_file_header ()
     {
       int i;
 
-      printf (_("ELF Header:\n"));
-      printf (_("  Magic:   "));
+      FJALAR_DPRINTF (_("ELF Header:\n"));
+      FJALAR_DPRINTF (_("  Magic:   "));
       for (i = 0; i < EI_NIDENT; i++)
-	printf ("%2.2x ", elf_header.e_ident[i]);
-      printf ("\n");
-      printf (_("  Class:                             %s\n"),
+ FJALAR_DPRINTF ("%2.2x ", elf_header.e_ident[i]);
+      FJALAR_DPRINTF ("\n");
+      FJALAR_DPRINTF (_("  Class:                             %s\n"),
 	      get_elf_class (elf_header.e_ident[EI_CLASS]));
-      printf (_("  Data:                              %s\n"),
+      FJALAR_DPRINTF (_("  Data:                              %s\n"),
 	      get_data_encoding (elf_header.e_ident[EI_DATA]));
-      printf (_("  Version:                           %d %s\n"),
+      FJALAR_DPRINTF (_("  Version:                           %d %s\n"),
 	      elf_header.e_ident[EI_VERSION],
 	      (elf_header.e_ident[EI_VERSION] == EV_CURRENT
 	       ? "(current)"
 	       : (elf_header.e_ident[EI_VERSION] != EV_NONE
 		  ? "<unknown: %lx>"
 		  : "")));
-      printf (_("  OS/ABI:                            %s\n"),
+      FJALAR_DPRINTF (_("  OS/ABI:                            %s\n"),
 	      get_osabi_name (elf_header.e_ident[EI_OSABI]));
-      printf (_("  ABI Version:                       %d\n"),
+      FJALAR_DPRINTF (_("  ABI Version:                       %d\n"),
 	      elf_header.e_ident[EI_ABIVERSION]);
-      printf (_("  Type:                              %s\n"),
+      FJALAR_DPRINTF (_("  Type:                              %s\n"),
 	      get_file_type (elf_header.e_type));
-      printf (_("  Machine:                           %s\n"),
+      FJALAR_DPRINTF (_("  Machine:                           %s\n"),
 	      get_machine_name (elf_header.e_machine));
-      printf (_("  Version:                           0x%lx\n"),
+      FJALAR_DPRINTF (_("  Version:                           0x%lx\n"),
 	      (unsigned long) elf_header.e_version);
 
-      printf (_("  Entry point address:               "));
+      FJALAR_DPRINTF (_("  Entry point address:               "));
       print_vma ((bfd_vma) elf_header.e_entry, PREFIX_HEX);
-      printf (_("\n  Start of program headers:          "));
+      FJALAR_DPRINTF (_("\n  Start of program headers:          "));
       print_vma ((bfd_vma) elf_header.e_phoff, DEC);
-      printf (_(" (bytes into file)\n  Start of section headers:          "));
+      FJALAR_DPRINTF (_(" (bytes into file)\n  Start of section headers:          "));
       print_vma ((bfd_vma) elf_header.e_shoff, DEC);
-      printf (_(" (bytes into file)\n"));
+      FJALAR_DPRINTF (_(" (bytes into file)\n"));
 
-      printf (_("  Flags:                             0x%lx%s\n"),
+      FJALAR_DPRINTF (_("  Flags:                             0x%lx%s\n"),
 	      (unsigned long) elf_header.e_flags,
 	      get_machine_flags (elf_header.e_flags, elf_header.e_machine));
-      printf (_("  Size of this header:               %ld (bytes)\n"),
+      FJALAR_DPRINTF (_("  Size of this header:               %ld (bytes)\n"),
 	      (long) elf_header.e_ehsize);
-      printf (_("  Size of program headers:           %ld (bytes)\n"),
+      FJALAR_DPRINTF (_("  Size of program headers:           %ld (bytes)\n"),
 	      (long) elf_header.e_phentsize);
-      printf (_("  Number of program headers:         %ld\n"),
+      FJALAR_DPRINTF (_("  Number of program headers:         %ld\n"),
 	      (long) elf_header.e_phnum);
-      printf (_("  Size of section headers:           %ld (bytes)\n"),
+      FJALAR_DPRINTF (_("  Size of section headers:           %ld (bytes)\n"),
 	      (long) elf_header.e_shentsize);
-      printf (_("  Number of section headers:         %ld"),
+      FJALAR_DPRINTF (_("  Number of section headers:         %ld"),
 	      (long) elf_header.e_shnum);
       if (section_headers != NULL && elf_header.e_shnum == 0)
-	printf (" (%ld)", (long) section_headers[0].sh_size);
+ FJALAR_DPRINTF (" (%ld)", (long) section_headers[0].sh_size);
       putc ('\n', stdout);
-      printf (_("  Section header string table index: %ld"),
+      FJALAR_DPRINTF (_("  Section header string table index: %ld"),
 	      (long) elf_header.e_shstrndx);
       if (section_headers != NULL && elf_header.e_shstrndx == SHN_XINDEX)
-	printf (" (%ld)", (long) section_headers[0].sh_link);
+ FJALAR_DPRINTF (" (%ld)", (long) section_headers[0].sh_link);
       putc ('\n', stdout);
     }
 
@@ -2033,19 +2041,19 @@ process_program_headers (file)
   if (elf_header.e_phnum == 0)
     {
       if (do_segments)
-	printf (_("\nThere are no program headers in this file.\n"));
+ FJALAR_DPRINTF (_("\nThere are no program headers in this file.\n"));
       return 0;
     }
 
   if (do_segments && !do_header)
     {
-      printf (_("\nElf file type is %s\n"), get_file_type (elf_header.e_type));
-      printf (_("Entry point "));
+      FJALAR_DPRINTF (_("\nElf file type is %s\n"), get_file_type (elf_header.e_type));
+      FJALAR_DPRINTF (_("Entry point "));
       print_vma ((bfd_vma) elf_header.e_entry, PREFIX_HEX);
-      printf (_("\nThere are %d program headers, starting at offset "),
+      FJALAR_DPRINTF (_("\nThere are %d program headers, starting at offset "),
 	      elf_header.e_phnum);
       print_vma ((bfd_vma) elf_header.e_phoff, DEC);
-      printf ("\n");
+      FJALAR_DPRINTF ("\n");
     }
 
   program_headers = (Elf_Internal_Phdr *) VG_(malloc)
@@ -2071,21 +2079,21 @@ process_program_headers (file)
   if (do_segments)
     {
       if (elf_header.e_phnum > 1)
-	printf (_("\nProgram Headers:\n"));
+ FJALAR_DPRINTF (_("\nProgram Headers:\n"));
       else
-	printf (_("\nProgram Headers:\n"));
+ FJALAR_DPRINTF (_("\nProgram Headers:\n"));
 
       if (is_32bit_elf)
-	printf
+ FJALAR_DPRINTF
 	  (_("  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align\n"));
       else if (do_wide)
-	printf
+ FJALAR_DPRINTF
 	  (_("  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align\n"));
       else
 	{
-	  printf
+	  FJALAR_DPRINTF
 	    (_("  Type           Offset             VirtAddr           PhysAddr\n"));
-	  printf
+	  FJALAR_DPRINTF
 	    (_("                 FileSiz            MemSiz              Flags  Align\n"));
 	}
     }
@@ -2100,25 +2108,25 @@ process_program_headers (file)
     {
       if (do_segments)
 	{
-	  printf ("  %-14.14s ", get_segment_type (segment->p_type));
+	  FJALAR_DPRINTF ("  %-14.14s ", get_segment_type (segment->p_type));
 
 	  if (is_32bit_elf)
 	    {
-	      printf ("0x%6.6lx ", (unsigned long) segment->p_offset);
-	      printf ("0x%8.8lx ", (unsigned long) segment->p_vaddr);
-	      printf ("0x%8.8lx ", (unsigned long) segment->p_paddr);
-	      printf ("0x%5.5lx ", (unsigned long) segment->p_filesz);
-	      printf ("0x%5.5lx ", (unsigned long) segment->p_memsz);
-	      printf ("%c%c%c ",
+	      FJALAR_DPRINTF ("0x%6.6lx ", (unsigned long) segment->p_offset);
+	      FJALAR_DPRINTF ("0x%8.8lx ", (unsigned long) segment->p_vaddr);
+	      FJALAR_DPRINTF ("0x%8.8lx ", (unsigned long) segment->p_paddr);
+	      FJALAR_DPRINTF ("0x%5.5lx ", (unsigned long) segment->p_filesz);
+	      FJALAR_DPRINTF ("0x%5.5lx ", (unsigned long) segment->p_memsz);
+	      FJALAR_DPRINTF ("%c%c%c ",
 		      (segment->p_flags & PF_R ? 'R' : ' '),
 		      (segment->p_flags & PF_W ? 'W' : ' '),
 		      (segment->p_flags & PF_X ? 'E' : ' '));
-	      printf ("%#lx", (unsigned long) segment->p_align);
+	      FJALAR_DPRINTF ("%#lx", (unsigned long) segment->p_align);
 	    }
 	  else if (do_wide)
 	    {
 	      if ((unsigned long) segment->p_offset == segment->p_offset)
-		printf ("0x%6.6lx ", (unsigned long) segment->p_offset);
+	 FJALAR_DPRINTF ("0x%6.6lx ", (unsigned long) segment->p_offset);
 	      else
 		{
 		  print_vma (segment->p_offset, FULL_HEX);
@@ -2131,7 +2139,7 @@ process_program_headers (file)
 	      putchar (' ');
 
 	      if ((unsigned long) segment->p_filesz == segment->p_filesz)
-		printf ("0x%6.6lx ", (unsigned long) segment->p_filesz);
+	 FJALAR_DPRINTF ("0x%6.6lx ", (unsigned long) segment->p_filesz);
 	      else
 		{
 		  print_vma (segment->p_filesz, FULL_HEX);
@@ -2139,19 +2147,19 @@ process_program_headers (file)
 		}
 
 	      if ((unsigned long) segment->p_memsz == segment->p_memsz)
-		printf ("0x%6.6lx", (unsigned long) segment->p_memsz);
+	 FJALAR_DPRINTF ("0x%6.6lx", (unsigned long) segment->p_memsz);
 	      else
 		{
 		  print_vma (segment->p_offset, FULL_HEX);
 		}
 
-	      printf (" %c%c%c ",
+	      FJALAR_DPRINTF (" %c%c%c ",
 		      (segment->p_flags & PF_R ? 'R' : ' '),
 		      (segment->p_flags & PF_W ? 'W' : ' '),
 		      (segment->p_flags & PF_X ? 'E' : ' '));
 
 	      if ((unsigned long) segment->p_align == segment->p_align)
-		printf ("%#lx", (unsigned long) segment->p_align);
+	 FJALAR_DPRINTF ("%#lx", (unsigned long) segment->p_align);
 	      else
 		{
 		  print_vma (segment->p_align, PREFIX_HEX);
@@ -2164,11 +2172,11 @@ process_program_headers (file)
 	      print_vma (segment->p_vaddr, FULL_HEX);
 	      putchar (' ');
 	      print_vma (segment->p_paddr, FULL_HEX);
-	      printf ("\n                 ");
+	      FJALAR_DPRINTF ("\n                 ");
 	      print_vma (segment->p_filesz, FULL_HEX);
 	      putchar (' ');
 	      print_vma (segment->p_memsz, FULL_HEX);
-	      printf ("  %c%c%c    ",
+	      FJALAR_DPRINTF ("  %c%c%c    ",
 		      (segment->p_flags & PF_R ? 'R' : ' '),
 		      (segment->p_flags & PF_W ? 'W' : ' '),
 		      (segment->p_flags & PF_X ? 'E' : ' '));
@@ -2208,7 +2216,7 @@ process_program_headers (file)
 	      fgets(program_interpreter, 62, file);
 
 	      if (do_segments)
-		printf (_("\n      [Requesting program interpreter: %s]"),
+	 FJALAR_DPRINTF (_("\n      [Requesting program interpreter: %s]"),
 		    program_interpreter);
 	    }
 	  break;
@@ -2226,8 +2234,8 @@ process_program_headers (file)
 
   if (do_segments && section_headers != NULL)
     {
-      printf (_("\n Section to Segment mapping:\n"));
-      printf (_("  Segment Sections...\n"));
+      FJALAR_DPRINTF (_("\n Section to Segment mapping:\n"));
+      FJALAR_DPRINTF (_("  Segment Sections...\n"));
 
       tl_assert (string_table != NULL);
 
@@ -2239,7 +2247,7 @@ process_program_headers (file)
 	  segment = program_headers + i;
 	  section = section_headers;
 
-	  printf ("   %2.2d     ", i);
+	  FJALAR_DPRINTF ("   %2.2d     ", i);
 
 	  for (j = 1; j < elf_header.e_shnum; j++, section++)
 	    {
@@ -2253,7 +2261,7 @@ process_program_headers (file)
 		      : ((bfd_vma) section->sh_offset >= segment->p_offset
 			 && (section->sh_offset + section->sh_size
 			     <= segment->p_offset + segment->p_filesz))))
-		printf ("%s ", SECTION_NAME (section));
+	 FJALAR_DPRINTF ("%s ", SECTION_NAME (section));
 	    }
 
 	  putc ('\n',stdout);
@@ -2285,7 +2293,7 @@ get_32bit_section_headers (file, num)
   section_headers = ((Elf_Internal_Shdr *)
 		     VG_(malloc) ("readelf.c: get_32b_sh", num * sizeof (Elf_Internal_Shdr)));
 
-  //  printf("Just allocated section_headers at 0x%x, size = %d * %d\n",
+  //  FJALAR_DPRINTF("Just allocated section_headers at 0x%x, size = %d * %d\n",
   //         section_headers, num, sizeof (Elf_Internal_Shdr)); // PG
 
   if (section_headers == NULL)
@@ -2555,13 +2563,13 @@ process_section_headers (file)
   if (elf_header.e_shnum == 0)
     {
       if (do_sections)
-	printf (_("\nThere are no sections in this file.\n"));
+ FJALAR_DPRINTF (_("\nThere are no sections in this file.\n"));
 
       return 1;
     }
 
   if (do_sections && !do_header)
-    printf (_("There are %d section headers, starting at offset 0x%lx:\n"),
+    FJALAR_DPRINTF (_("There are %d section headers, starting at offset 0x%lx:\n"),
 	    elf_header.e_shnum, (unsigned long) elf_header.e_shoff);
 
   if (is_32bit_elf)
@@ -2595,6 +2603,8 @@ process_section_headers (file)
        i++, section++)
     {
       char *name = SECTION_NAME (section);
+
+      FJALAR_DPRINTF("At section: %d - %s\n", section, name);
 
       if (section->sh_type == SHT_DYNSYM)
 	{
@@ -2662,27 +2672,27 @@ process_section_headers (file)
     return 1;
 
   if (elf_header.e_shnum > 1)
-    printf (_("\nSection Headers:\n"));
+    FJALAR_DPRINTF (_("\nSection Headers:\n"));
   else
-    printf (_("\nSection Header:\n"));
+    FJALAR_DPRINTF (_("\nSection Header:\n"));
 
   if (is_32bit_elf)
-    printf
+    FJALAR_DPRINTF
       (_("  [Nr] Name              Type            Addr     Off    Size   ES Flg Lk Inf Al\n"));
   else if (do_wide)
-    printf
+    FJALAR_DPRINTF
       (_("  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al\n"));
   else
     {
-      printf (_("  [Nr] Name              Type             Address           Offset\n"));
-      printf (_("       Size              EntSize          Flags  Link  Info  Align\n"));
+      FJALAR_DPRINTF (_("  [Nr] Name              Type             Address           Offset\n"));
+      FJALAR_DPRINTF (_("       Size              EntSize          Flags  Link  Info  Align\n"));
     }
 
   for (i = 0, section = section_headers;
        i < elf_header.e_shnum;
        i++, section++)
     {
-      printf ("  [%2u] %-17.17s %-15.15s ",
+      FJALAR_DPRINTF ("  [%2u] %-17.17s %-15.15s ",
 	      SECTION_HEADER_NUM (i),
 	      SECTION_NAME (section),
 	      get_section_type_name (section->sh_type));
@@ -2691,14 +2701,14 @@ process_section_headers (file)
 	{
 	  print_vma (section->sh_addr, LONG_HEX);
 
-	  printf ( " %6.6lx %6.6lx %2.2lx",
+	  FJALAR_DPRINTF ( " %6.6lx %6.6lx %2.2lx",
 		   (unsigned long) section->sh_offset,
 		   (unsigned long) section->sh_size,
 		   (unsigned long) section->sh_entsize);
 
-	  printf (" %3s ", get_elf_section_flags (section->sh_flags));
+	  FJALAR_DPRINTF (" %3s ", get_elf_section_flags (section->sh_flags));
 
-	  printf ("%2ld %3lx %2ld\n",
+	  FJALAR_DPRINTF ("%2ld %3lx %2ld\n",
 		  (unsigned long) section->sh_link,
 		  (unsigned long) section->sh_info,
 		  (unsigned long) section->sh_addralign);
@@ -2708,7 +2718,7 @@ process_section_headers (file)
 	  print_vma (section->sh_addr, LONG_HEX);
 
 	  if ((long) section->sh_offset == section->sh_offset)
-	    printf (" %6.6lx", (unsigned long) section->sh_offset);
+	    FJALAR_DPRINTF (" %6.6lx", (unsigned long) section->sh_offset);
 	  else
 	    {
 	      putchar (' ');
@@ -2716,7 +2726,7 @@ process_section_headers (file)
 	    }
 
 	  if ((unsigned long) section->sh_size == section->sh_size)
-	    printf (" %6.6lx", (unsigned long) section->sh_size);
+	    FJALAR_DPRINTF (" %6.6lx", (unsigned long) section->sh_size);
 	  else
 	    {
 	      putchar (' ');
@@ -2724,21 +2734,21 @@ process_section_headers (file)
 	    }
 
 	  if ((unsigned long) section->sh_entsize == section->sh_entsize)
-	    printf (" %2.2lx", (unsigned long) section->sh_entsize);
+	    FJALAR_DPRINTF (" %2.2lx", (unsigned long) section->sh_entsize);
 	  else
 	    {
 	      putchar (' ');
 	      print_vma (section->sh_entsize, LONG_HEX);
 	    }
 
-	  printf (" %3s ", get_elf_section_flags (section->sh_flags));
+	  FJALAR_DPRINTF (" %3s ", get_elf_section_flags (section->sh_flags));
 
-	  printf ("%2ld %3lx ",
+	  FJALAR_DPRINTF ("%2ld %3lx ",
 		  (unsigned long) section->sh_link,
 		  (unsigned long) section->sh_info);
 
 	  if ((unsigned long) section->sh_addralign == section->sh_addralign)
-	    printf ("%2ld\n", (unsigned long) section->sh_addralign);
+	    FJALAR_DPRINTF ("%2ld\n", (unsigned long) section->sh_addralign);
 	  else
 	    {
 	      print_vma (section->sh_addralign, DEC);
@@ -2750,27 +2760,27 @@ process_section_headers (file)
 	  putchar (' ');
 	  print_vma (section->sh_addr, LONG_HEX);
 	  if ((long) section->sh_offset == section->sh_offset)
-	    printf ("  %8.8lx", (unsigned long) section->sh_offset);
+	    FJALAR_DPRINTF ("  %8.8lx", (unsigned long) section->sh_offset);
 	  else
 	    {
-	      printf ("  ");
+	      FJALAR_DPRINTF ("  ");
 	      print_vma (section->sh_offset, LONG_HEX);
 	    }
-	  printf ("\n       ");
+	  FJALAR_DPRINTF ("\n       ");
 	  print_vma (section->sh_size, LONG_HEX);
-	  printf ("  ");
+	  FJALAR_DPRINTF ("  ");
 	  print_vma (section->sh_entsize, LONG_HEX);
 
-	  printf (" %3s ", get_elf_section_flags (section->sh_flags));
+	  FJALAR_DPRINTF (" %3s ", get_elf_section_flags (section->sh_flags));
 
-	  printf ("     %2ld   %3lx     %ld\n",
+	  FJALAR_DPRINTF ("     %2ld   %3lx     %ld\n",
 		  (unsigned long) section->sh_link,
 		  (unsigned long) section->sh_info,
 		  (unsigned long) section->sh_addralign);
 	}
     }
 
-  printf (_("Key to Flags:\n\
+  FJALAR_DPRINTF (_("Key to Flags:\n\
   W (write), A (alloc), X (execute), M (merge), S (strings)\n\
   I (info), L (link order), G (group), x (unknown)\n\
   O (extra OS processing required) o (OS specific), p (processor specific)\n"));
@@ -2837,7 +2847,7 @@ process_relocs (file)
 
 	  if (rel_size)
 	    {
-	      printf
+	      FJALAR_DPRINTF
 		(_("\n'%s' relocation section at offset 0x%lx contains %ld bytes:\n"),
 		 name, rel_offset, rel_size);
 
@@ -2848,7 +2858,7 @@ process_relocs (file)
 	}
 
       if (! has_dynamic_reloc)
-	printf (_("\nThere are no dynamic relocations in this file.\n"));
+ FJALAR_DPRINTF (_("\nThere are no dynamic relocations in this file.\n"));
     }
   else
     {
@@ -2875,14 +2885,14 @@ process_relocs (file)
 	      int is_rela;
 	      unsigned long nsyms;
 
-	      printf (_("\nRelocation section "));
+	      FJALAR_DPRINTF (_("\nRelocation section "));
 
 	      if (string_table == NULL)
-		printf ("%d", section->sh_name);
+	 FJALAR_DPRINTF ("%d", section->sh_name);
 	      else
-		printf (_("'%s'"), SECTION_NAME (section));
+	 FJALAR_DPRINTF (_("'%s'"), SECTION_NAME (section));
 
-	      printf (_(" at offset 0x%lx contains %lu entries:\n"),
+	      FJALAR_DPRINTF (_(" at offset 0x%lx contains %lu entries:\n"),
 		 rel_offset, (unsigned long) (rel_size / section->sh_entsize));
 
 	      symtab = NULL;
@@ -2920,7 +2930,7 @@ process_relocs (file)
 	}
 
       if (! found)
-	printf (_("\nThere are no relocations in this file.\n"));
+ FJALAR_DPRINTF (_("\nThere are no relocations in this file.\n"));
     }
 
   return 1;
@@ -3181,7 +3191,7 @@ process_unwind (file)
 
   if (elf_header.e_machine != EM_IA_64)
     {
-      printf (_("\nThere are no unwind sections in this file.\n"));
+      FJALAR_DPRINTF (_("\nThere are no unwind sections in this file.\n"));
       return 1;
     }
 
@@ -3206,7 +3216,7 @@ process_unwind (file)
     }
 
   if (!unwcount)
-    printf (_("\nThere are no unwind sections in this file.\n"));
+    FJALAR_DPRINTF (_("\nThere are no unwind sections in this file.\n"));
 
   while (unwcount-- > 0)
     {
@@ -3257,12 +3267,12 @@ process_unwind (file)
 
       if (i == elf_header.e_shnum)
 	{
-	  printf (_("\nCould not find unwind info section for "));
+	  FJALAR_DPRINTF (_("\nCould not find unwind info section for "));
 
 	  if (string_table == NULL)
-	    printf ("%d", unwsec->sh_name);
+	    FJALAR_DPRINTF ("%d", unwsec->sh_name);
 	  else
-	    printf (_("'%s'"), SECTION_NAME (unwsec));
+	    FJALAR_DPRINTF (_("'%s'"), SECTION_NAME (unwsec));
 	}
       else
 	{
@@ -3271,14 +3281,14 @@ process_unwind (file)
 	  aux.info = (char *) get_data (NULL, file, sec->sh_offset,
 					aux.info_size, _("unwind info"));
 
-	  printf (_("\nUnwind section "));
+	  FJALAR_DPRINTF (_("\nUnwind section "));
 
 	  if (string_table == NULL)
-	    printf ("%d", unwsec->sh_name);
+	    FJALAR_DPRINTF ("%d", unwsec->sh_name);
 	  else
-	    printf (_("'%s'"), SECTION_NAME (unwsec));
+	    FJALAR_DPRINTF (_("'%s'"), SECTION_NAME (unwsec));
 
-	  printf (_(" at offset 0x%lx contains %lu entries:\n"),
+	  FJALAR_DPRINTF (_(" at offset 0x%lx contains %lu entries:\n"),
 		  (unsigned long) unwsec->sh_offset,
 		  (unsigned long) (unwsec->sh_size / (3 * addr_size)));
 
@@ -3311,7 +3321,7 @@ dynamic_segment_mips_val (entry)
   switch (entry->d_tag)
     {
     default:
-      printf ("%#lx\n", (long) entry->d_un.d_ptr);
+      FJALAR_DPRINTF ("%#lx\n", (long) entry->d_un.d_ptr);
     }
 }
 
@@ -3466,7 +3476,7 @@ process_dynamic_segment (file)
   if (dynamic_size == 0)
     {
       if (do_dynamic)
-	printf (_("\nThere is no dynamic segment in this file.\n"));
+ FJALAR_DPRINTF (_("\nThere is no dynamic segment in this file.\n"));
 
       return 1;
     }
@@ -3610,10 +3620,10 @@ process_dynamic_segment (file)
     }
 
   if (do_dynamic && dynamic_addr)
-    printf (_("\nDynamic segment at offset 0x%lx contains %ld entries:\n"),
+    FJALAR_DPRINTF (_("\nDynamic segment at offset 0x%lx contains %ld entries:\n"),
 	    dynamic_addr, (long) dynamic_size);
   if (do_dynamic)
-    printf (_("  Tag        Type                         Name/Value\n"));
+    FJALAR_DPRINTF (_("  Tag        Type                         Name/Value\n"));
 
   for (i = 0, entry = dynamic_segment;
        i < dynamic_size;
@@ -3626,7 +3636,7 @@ process_dynamic_segment (file)
 	  putchar (' ');
 	  print_vma (entry->d_tag, FULL_HEX);
 	  dtype = get_dynamic_type (entry->d_tag);
-	  printf (" (%s)%*s", dtype,
+	  FJALAR_DPRINTF (" (%s)%*s", dtype,
 		  ((is_32bit_elf ? 27 : 19)
 		   - (int) VG_(strlen) (dtype)),
 		  " ");
@@ -3649,31 +3659,31 @@ process_dynamic_segment (file)
 	      switch (entry->d_tag)
 		{
 		case DT_AUXILIARY:
-		  printf (_("Auxiliary library"));
+		  FJALAR_DPRINTF (_("Auxiliary library"));
 		  break;
 
 		case DT_FILTER:
-		  printf (_("Filter library"));
+		  FJALAR_DPRINTF (_("Filter library"));
 		  break;
 
 		case DT_CONFIG:
-		  printf (_("Configuration file"));
+		  FJALAR_DPRINTF (_("Configuration file"));
 		  break;
 
 		case DT_DEPAUDIT:
-		  printf (_("Dependency audit library"));
+		  FJALAR_DPRINTF (_("Dependency audit library"));
 		  break;
 
 		case DT_AUDIT:
-		  printf (_("Audit library"));
+		  FJALAR_DPRINTF (_("Audit library"));
 		  break;
 		}
 
 	      if (dynamic_strings)
-		printf (": [%s]\n", dynamic_strings + entry->d_un.d_val);
+	 FJALAR_DPRINTF (": [%s]\n", dynamic_strings + entry->d_un.d_val);
 	      else
 		{
-		  printf (": ");
+		  FJALAR_DPRINTF (": ");
 		  print_vma (entry->d_un.d_val, PREFIX_HEX);
 		  putchar ('\n');
 		}
@@ -3683,26 +3693,26 @@ process_dynamic_segment (file)
 	case DT_FEATURE:
 	  if (do_dynamic)
 	    {
-	      printf (_("Flags:"));
+	      FJALAR_DPRINTF (_("Flags:"));
 
 	      if (entry->d_un.d_val == 0)
-		printf (_(" None\n"));
+	 FJALAR_DPRINTF (_(" None\n"));
 	      else
 		{
 		  unsigned long int val = entry->d_un.d_val;
 
 		  if (val & DTF_1_PARINIT)
 		    {
-		      printf (" PARINIT");
+		      FJALAR_DPRINTF (" PARINIT");
 		      val ^= DTF_1_PARINIT;
 		    }
 		  if (val & DTF_1_CONFEXP)
 		    {
-		      printf (" CONFEXP");
+		      FJALAR_DPRINTF (" CONFEXP");
 		      val ^= DTF_1_CONFEXP;
 		    }
 		  if (val != 0)
-		    printf (" %lx", val);
+		    FJALAR_DPRINTF (" %lx", val);
 		  puts ("");
 		}
 	    }
@@ -3711,26 +3721,26 @@ process_dynamic_segment (file)
 	case DT_POSFLAG_1:
 	  if (do_dynamic)
 	    {
-	      printf (_("Flags:"));
+	      FJALAR_DPRINTF (_("Flags:"));
 
 	      if (entry->d_un.d_val == 0)
-		printf (_(" None\n"));
+	 FJALAR_DPRINTF (_(" None\n"));
 	      else
 		{
 		  unsigned long int val = entry->d_un.d_val;
 
 		  if (val & DF_P1_LAZYLOAD)
 		    {
-		      printf (" LAZYLOAD");
+		      FJALAR_DPRINTF (" LAZYLOAD");
 		      val ^= DF_P1_LAZYLOAD;
 		    }
 		  if (val & DF_P1_GROUPPERM)
 		    {
-		      printf (" GROUPPERM");
+		      FJALAR_DPRINTF (" GROUPPERM");
 		      val ^= DF_P1_GROUPPERM;
 		    }
 		  if (val != 0)
-		    printf (" %lx", val);
+		    FJALAR_DPRINTF (" %lx", val);
 		  puts ("");
 		}
 	    }
@@ -3739,85 +3749,85 @@ process_dynamic_segment (file)
 	case DT_FLAGS_1:
 	  if (do_dynamic)
 	    {
-	      printf (_("Flags:"));
+	      FJALAR_DPRINTF (_("Flags:"));
 	      if (entry->d_un.d_val == 0)
-		printf (_(" None\n"));
+	 FJALAR_DPRINTF (_(" None\n"));
 	      else
 		{
 		  unsigned long int val = entry->d_un.d_val;
 
 		  if (val & DF_1_NOW)
 		    {
-		      printf (" NOW");
+		      FJALAR_DPRINTF (" NOW");
 		      val ^= DF_1_NOW;
 		    }
 		  if (val & DF_1_GLOBAL)
 		    {
-		      printf (" GLOBAL");
+		      FJALAR_DPRINTF (" GLOBAL");
 		      val ^= DF_1_GLOBAL;
 		    }
 		  if (val & DF_1_GROUP)
 		    {
-		      printf (" GROUP");
+		      FJALAR_DPRINTF (" GROUP");
 		      val ^= DF_1_GROUP;
 		    }
 		  if (val & DF_1_NODELETE)
 		    {
-		      printf (" NODELETE");
+		      FJALAR_DPRINTF (" NODELETE");
 		      val ^= DF_1_NODELETE;
 		    }
 		  if (val & DF_1_LOADFLTR)
 		    {
-		      printf (" LOADFLTR");
+		      FJALAR_DPRINTF (" LOADFLTR");
 		      val ^= DF_1_LOADFLTR;
 		    }
 		  if (val & DF_1_INITFIRST)
 		    {
-		      printf (" INITFIRST");
+		      FJALAR_DPRINTF (" INITFIRST");
 		      val ^= DF_1_INITFIRST;
 		    }
 		  if (val & DF_1_NOOPEN)
 		    {
-		      printf (" NOOPEN");
+		      FJALAR_DPRINTF (" NOOPEN");
 		      val ^= DF_1_NOOPEN;
 		    }
 		  if (val & DF_1_ORIGIN)
 		    {
-		      printf (" ORIGIN");
+		      FJALAR_DPRINTF (" ORIGIN");
 		      val ^= DF_1_ORIGIN;
 		    }
 		  if (val & DF_1_DIRECT)
 		    {
-		      printf (" DIRECT");
+		      FJALAR_DPRINTF (" DIRECT");
 		      val ^= DF_1_DIRECT;
 		    }
 		  if (val & DF_1_TRANS)
 		    {
-		      printf (" TRANS");
+		      FJALAR_DPRINTF (" TRANS");
 		      val ^= DF_1_TRANS;
 		    }
 		  if (val & DF_1_INTERPOSE)
 		    {
-		      printf (" INTERPOSE");
+		      FJALAR_DPRINTF (" INTERPOSE");
 		      val ^= DF_1_INTERPOSE;
 		    }
 		  if (val & DF_1_NODEFLIB)
 		    {
-		      printf (" NODEFLIB");
+		      FJALAR_DPRINTF (" NODEFLIB");
 		      val ^= DF_1_NODEFLIB;
 		    }
 		  if (val & DF_1_NODUMP)
 		    {
-		      printf (" NODUMP");
+		      FJALAR_DPRINTF (" NODUMP");
 		      val ^= DF_1_NODUMP;
 		    }
 		  if (val & DF_1_CONLFAT)
 		    {
-		      printf (" CONLFAT");
+		      FJALAR_DPRINTF (" CONLFAT");
 		      val ^= DF_1_CONLFAT;
 		    }
 		  if (val != 0)
-		    printf (" %lx", val);
+		    FJALAR_DPRINTF (" %lx", val);
 		  puts ("");
 		}
 	    }
@@ -3862,22 +3872,22 @@ process_dynamic_segment (file)
 		  switch (entry->d_tag)
 		    {
 		    case DT_NEEDED:
-		      printf (_("Shared library: [%s]"), name);
+		      FJALAR_DPRINTF (_("Shared library: [%s]"), name);
 
 		      if (VG_(strcmp) (name, program_interpreter) == 0)
-			printf (_(" program interpreter"));
+		 FJALAR_DPRINTF (_(" program interpreter"));
 		      break;
 
 		    case DT_SONAME:
-		      printf (_("Library soname: [%s]"), name);
+		      FJALAR_DPRINTF (_("Library soname: [%s]"), name);
 		      break;
 
 		    case DT_RPATH:
-		      printf (_("Library rpath: [%s]"), name);
+		      FJALAR_DPRINTF (_("Library rpath: [%s]"), name);
 		      break;
 
 		    case DT_RUNPATH:
-		      printf (_("Library runpath: [%s]"), name);
+		      FJALAR_DPRINTF (_("Library runpath: [%s]"), name);
 		      break;
 
 		    default:
@@ -3910,7 +3920,7 @@ process_dynamic_segment (file)
 	  if (do_dynamic)
 	    {
 	      print_vma (entry->d_un.d_val, UNSIGNED);
-	      printf (" (bytes)\n");
+	      FJALAR_DPRINTF (" (bytes)\n");
 	    }
 	  break;
 
@@ -3941,7 +3951,7 @@ process_dynamic_segment (file)
 
 		  if (*name)
 		    {
-		      printf (_("Not needed object: [%s]\n"), name);
+		      FJALAR_DPRINTF (_("Not needed object: [%s]\n"), name);
 		      break;
 		    }
 		}
@@ -4045,13 +4055,13 @@ process_version_sections (file)
 
 	    found = 1;
 
-	    printf
+	    FJALAR_DPRINTF
 	      (_("\nVersion definition section '%s' contains %ld entries:\n"),
 	       SECTION_NAME (section), section->sh_info);
 
-	    printf (_("  Addr: 0x"));
+	    FJALAR_DPRINTF (_("  Addr: 0x"));
 	    printf_vma (section->sh_addr);
-	    printf (_("  Offset: %#08lx  Link: %lx (%s)\n"),
+	    FJALAR_DPRINTF (_("  Offset: %#08lx  Link: %lx (%s)\n"),
 		    (unsigned long) section->sh_offset, section->sh_link,
 		    SECTION_NAME (SECTION_HEADER (section->sh_link)));
 
@@ -4084,10 +4094,10 @@ process_version_sections (file)
 		ent.vd_aux     = BYTE_GET (edef->vd_aux);
 		ent.vd_next    = BYTE_GET (edef->vd_next);
 
-		printf (_("  %#06x: Rev: %d  Flags: %s"),
+	 FJALAR_DPRINTF (_("  %#06x: Rev: %d  Flags: %s"),
 			idx, ent.vd_version, get_ver_flags (ent.vd_flags));
 
-		printf (_("  Index: %d  Cnt: %d  "),
+	 FJALAR_DPRINTF (_("  Index: %d  Cnt: %d  "),
 			ent.vd_ndx, ent.vd_cnt);
 
 		vstart += ent.vd_aux;
@@ -4098,9 +4108,9 @@ process_version_sections (file)
 		aux.vda_next = BYTE_GET (eaux->vda_next);
 
 		if (dynamic_strings)
-		  printf (_("Name: %s\n"), dynamic_strings + aux.vda_name);
+		  FJALAR_DPRINTF (_("Name: %s\n"), dynamic_strings + aux.vda_name);
 		else
-		  printf (_("Name index: %ld\n"), aux.vda_name);
+		  FJALAR_DPRINTF (_("Name index: %ld\n"), aux.vda_name);
 
 		isum = idx + ent.vd_aux;
 
@@ -4115,10 +4125,10 @@ process_version_sections (file)
 		    aux.vda_next = BYTE_GET (eaux->vda_next);
 
 		    if (dynamic_strings)
-		      printf (_("  %#06x: Parent %d: %s\n"),
+		      FJALAR_DPRINTF (_("  %#06x: Parent %d: %s\n"),
 			      isum, j, dynamic_strings + aux.vda_name);
 		    else
-		      printf (_("  %#06x: Parent %d, name index: %ld\n"),
+		      FJALAR_DPRINTF (_("  %#06x: Parent %d, name index: %ld\n"),
 			      isum, j, aux.vda_name);
 		  }
 
@@ -4137,12 +4147,12 @@ process_version_sections (file)
 
 	    found = 1;
 
-	    printf (_("\nVersion needs section '%s' contains %ld entries:\n"),
+	    FJALAR_DPRINTF (_("\nVersion needs section '%s' contains %ld entries:\n"),
 		    SECTION_NAME (section), section->sh_info);
 
-	    printf (_(" Addr: 0x"));
+	    FJALAR_DPRINTF (_(" Addr: 0x"));
 	    printf_vma (section->sh_addr);
-	    printf (_("  Offset: %#08lx  Link to section: %ld (%s)\n"),
+	    FJALAR_DPRINTF (_("  Offset: %#08lx  Link to section: %ld (%s)\n"),
 		    (unsigned long) section->sh_offset, section->sh_link,
 		    SECTION_NAME (SECTION_HEADER (section->sh_link)));
 
@@ -4170,14 +4180,14 @@ process_version_sections (file)
 		ent.vn_aux     = BYTE_GET (entry->vn_aux);
 		ent.vn_next    = BYTE_GET (entry->vn_next);
 
-		printf (_("  %#06x: Version: %d"), idx, ent.vn_version);
+	 FJALAR_DPRINTF (_("  %#06x: Version: %d"), idx, ent.vn_version);
 
 		if (dynamic_strings)
-		  printf (_("  File: %s"), dynamic_strings + ent.vn_file);
+		  FJALAR_DPRINTF (_("  File: %s"), dynamic_strings + ent.vn_file);
 		else
-		  printf (_("  File: %lx"), ent.vn_file);
+		  FJALAR_DPRINTF (_("  File: %lx"), ent.vn_file);
 
-		printf (_("  Cnt: %d\n"), ent.vn_cnt);
+	 FJALAR_DPRINTF (_("  Cnt: %d\n"), ent.vn_cnt);
 
 		vstart += ent.vn_aux;
 
@@ -4195,13 +4205,13 @@ process_version_sections (file)
 		    aux.vna_next  = BYTE_GET (eaux->vna_next);
 
 		    if (dynamic_strings)
-		      printf (_("  %#06x: Name: %s"),
+		      FJALAR_DPRINTF (_("  %#06x: Name: %s"),
 			      isum, dynamic_strings + aux.vna_name);
 		    else
-		      printf (_("  %#06x: Name index: %lx"),
+		      FJALAR_DPRINTF (_("  %#06x: Name index: %lx"),
 			      isum, aux.vna_name);
 
-		    printf (_("  Flags: %s  Version: %d\n"),
+		    FJALAR_DPRINTF (_("  Flags: %s  Version: %d\n"),
 			    get_ver_flags (aux.vna_flags), aux.vna_other);
 
 		    isum   += aux.vna_next;
@@ -4241,12 +4251,12 @@ process_version_sections (file)
 	    if (!strtab)
 	      break;
 
-	    printf (_("\nVersion symbols section '%s' contains %d entries:\n"),
+	    FJALAR_DPRINTF (_("\nVersion symbols section '%s' contains %d entries:\n"),
 		    SECTION_NAME (section), total);
 
-	    printf (_(" Addr: "));
+	    FJALAR_DPRINTF (_(" Addr: "));
 	    printf_vma (section->sh_addr);
-	    printf (_("  Offset: %#08lx  Link: %lx (%s)\n"),
+	    FJALAR_DPRINTF (_("  Offset: %#08lx  Link: %lx (%s)\n"),
 		    (unsigned long) section->sh_offset, section->sh_link,
 		    SECTION_NAME (link_section));
 
@@ -4275,7 +4285,7 @@ process_version_sections (file)
 		int check_def, check_need;
 		char *name;
 
-		printf ("  %03x:", cnt);
+	 FJALAR_DPRINTF ("  %03x:", cnt);
 
 		for (j = 0; (j < 4) && (cnt + j) < total; ++j)
 		  switch (data[cnt + j])
@@ -4289,8 +4299,10 @@ process_version_sections (file)
 		      break;
 
 		    default:
-		      nn = printf ("%4x%c", data[cnt + j] & 0x7fff,
-				   data[cnt + j] & 0x8000 ? 'h' : ' ');
+		      if(fjalar_debug) {
+			nn = printf ("4%x%c", data[cnt + j] & 0x7fff,
+				     data[cnt + j] & 0x8000 ? 'h' : ' ');
+		      }
 
 		      check_def = 1;
 		      check_need = 1;
@@ -4345,10 +4357,12 @@ process_version_sections (file)
 				  ivna.vna_name = BYTE_GET (evna.vna_name);
 
 				  name = strtab + ivna.vna_name;
-				  nn += printf ("(%s%-*s",
-						name,
-						12 - (int) VG_(strlen) (name),
-						")");
+				  if(fjalar_debug) {
+				    nn += printf ("(%s%-*s",
+						  name,
+						  12 - (int) VG_(strlen) (name),
+						  ")");
+				  }
 				  check_def = 0;
 				  break;
 				}
@@ -4395,15 +4409,17 @@ process_version_sections (file)
 			      ivda.vda_name = BYTE_GET (evda.vda_name);
 
 			      name = strtab + ivda.vda_name;
-			      nn += printf ("(%s%-*s",
-					    name,
-					    12 - (int) VG_(strlen) (name),
-					    ")");
+			      if(fjalar_debug) {
+				nn += printf ("(%s%-*s",
+					      name,
+					      12 - (int) VG_(strlen) (name),
+					      ")");
+			      }
 			    }
 			}
 
 		      if (nn < 18)
-			printf ("%*c", 18 - nn, ' ');
+		 FJALAR_DPRINTF ("%*c", 18 - nn, ' ');
 		    }
 
 		putchar ('\n');
@@ -4421,7 +4437,7 @@ process_version_sections (file)
     }
 
   if (! found)
-    printf (_("\nNo version information found in this file.\n"));
+    FJALAR_DPRINTF (_("\nNo version information found in this file.\n"));
 
   return 1;
 }
@@ -4521,11 +4537,11 @@ process_symbol_table (file)
       //      int hn;
       //      int si;
 
-      //      printf (_("\nSymbol table for image:\n"));
+      //      FJALAR_DPRINTF (_("\nSymbol table for image:\n"));
       //      if (is_32bit_elf)
-      //	printf (_("  Num Buc:    Value  Size   Type   Bind Vis      Ndx Name\n"));
+      // FJALAR_DPRINTF (_("  Num Buc:    Value  Size   Type   Bind Vis      Ndx Name\n"));
       //      else
-      //	printf (_("  Num Buc:    Value          Size   Type   Bind Vis      Ndx Name\n"));
+      // FJALAR_DPRINTF (_("  Num Buc:    Value          Size   Type   Bind Vis      Ndx Name\n"));
 
       //      for (hn = 0; hn < nbuckets; hn++)
       //	{
@@ -4789,7 +4805,7 @@ process_symbol_table (file)
 /* 			      ivda.vda_name = BYTE_GET (evda.vda_name); */
 
 /* 			      if (psym->st_name != ivda.vda_name) */
-/* 				printf ((vers_data & 0x8000) */
+/* 			 FJALAR_DPRINTF ((vers_data & 0x8000) */
 /* 					? "@%s" : "@@%s", */
 /* 					strtab + ivda.vda_name); */
 /* 			    } */
@@ -4806,7 +4822,7 @@ process_symbol_table (file)
 	}
     }
   else if (do_syms)
-    printf
+    FJALAR_DPRINTF
       (_("\nDynamic symbol information is not available for displaying symbols.\n"));
 
   if (do_histogram && buckets != NULL)
@@ -4819,9 +4835,9 @@ process_symbol_table (file)
       int nzero_counts = 0;
       int nsyms = 0;
 
-      printf (_("\nHistogram for bucket list length (total of %d buckets):\n"),
+      FJALAR_DPRINTF (_("\nHistogram for bucket list length (total of %d buckets):\n"),
 	      nbuckets);
-      printf (_(" Length  Number     %% of total  Coverage\n"));
+      FJALAR_DPRINTF (_(" Length  Number     %% of total  Coverage\n"));
 
       lengths = (int *) VG_(calloc) ("readelf.c: process_symbol_table.1",nbuckets, sizeof (int));
       if (lengths == NULL)
@@ -4854,12 +4870,12 @@ process_symbol_table (file)
 
       if (nbuckets > 0)
 	{
-	  printf ("      0  %-10d (%5.1f%%)\n",
+	  FJALAR_DPRINTF ("      0  %-10d (%5.1f%%)\n",
 		  counts[0], (counts[0] * 100.0) / nbuckets);
 	  for (si = 1; si <= maxlength; ++si)
 	    {
 	      nzero_counts += counts[si] * si;
-	      printf ("%7d  %-10d (%5.1f%%)    %5.1f%%\n",
+	      FJALAR_DPRINTF ("%7d  %-10d (%5.1f%%)    %5.1f%%\n",
 		      si, counts[si], (counts[si] * 100.0) / nbuckets,
 		      (nzero_counts * 100.0) / nsyms);
 	    }
@@ -4894,15 +4910,15 @@ process_syminfo (file)
     return 0;
 
   if (dynamic_addr)
-    printf (_("\nDynamic info segment at offset 0x%lx contains %d entries:\n"),
+    FJALAR_DPRINTF (_("\nDynamic info segment at offset 0x%lx contains %d entries:\n"),
 	    dynamic_syminfo_offset, dynamic_syminfo_nent);
 
-  printf (_(" Num: Name                           BoundTo     Flags\n"));
+  FJALAR_DPRINTF (_(" Num: Name                           BoundTo     Flags\n"));
   for (i = 0; i < dynamic_syminfo_nent; ++i)
     {
       unsigned short int flags = dynamic_syminfo[i].si_flags;
 
-      printf ("%4d: ", i);
+      FJALAR_DPRINTF ("%4d: ", i);
       print_symbol (30, dynamic_strings + dynamic_symbols[i].st_name);
       putchar (' ');
 
@@ -4925,18 +4941,18 @@ process_syminfo (file)
 	      putchar (' ' );
 	    }
 	  else
-	    printf ("%-10d ", dynamic_syminfo[i].si_boundto);
+	    FJALAR_DPRINTF ("%-10d ", dynamic_syminfo[i].si_boundto);
 	  break;
 	}
 
       if (flags & SYMINFO_FLG_DIRECT)
-	printf (" DIRECT");
+ FJALAR_DPRINTF (" DIRECT");
       if (flags & SYMINFO_FLG_PASSTHRU)
-	printf (" PASSTHRU");
+ FJALAR_DPRINTF (" PASSTHRU");
       if (flags & SYMINFO_FLG_COPY)
-	printf (" COPY");
+ FJALAR_DPRINTF (" COPY");
       if (flags & SYMINFO_FLG_LAZYLOAD)
-	printf (" LAZYLOAD");
+ FJALAR_DPRINTF (" LAZYLOAD");
 
       puts ("");
     }
@@ -4950,7 +4966,7 @@ disassemble_section (section, file)
      Elf_Internal_Shdr *section;
      FILE *file;
 {
-  printf (_("\nAssembly dump of section %s\n"),
+  FJALAR_DPRINTF (_("\nAssembly dump of section %s\n"),
 	  SECTION_NAME (section));
 
   /* XXX -- to be done --- XXX */
@@ -4973,12 +4989,12 @@ dump_section (section, file)
 
   if (bytes == 0)
     {
-      printf (_("\nSection '%s' has no data to dump.\n"),
+      FJALAR_DPRINTF (_("\nSection '%s' has no data to dump.\n"),
 	      SECTION_NAME (section));
       return 0;
     }
   else
-    printf (_("\nHex dump of section '%s':\n"), SECTION_NAME (section));
+    FJALAR_DPRINTF (_("\nHex dump of section '%s':\n"), SECTION_NAME (section));
 
   addr = section->sh_addr;
 
@@ -4997,7 +5013,7 @@ dump_section (section, file)
 
       lbytes = (bytes > 16 ? 16 : bytes);
 
-      printf ("  0x%8.8lx ", (unsigned long) addr);
+      FJALAR_DPRINTF ("  0x%8.8lx ", (unsigned long) addr);
 
       switch (elf_header.e_ident[EI_DATA])
 	{
@@ -5006,12 +5022,12 @@ dump_section (section, file)
 	  for (j = 15; j >= 0; j --)
 	    {
 	      if (j < lbytes)
-		printf ("%2.2x", data[j]);
+	 FJALAR_DPRINTF ("%2.2x", data[j]);
 	      else
-		printf ("  ");
+	 FJALAR_DPRINTF ("  ");
 
 	      if (!(j & 0x3))
-		printf (" ");
+	 FJALAR_DPRINTF (" ");
 	    }
 	  break;
 
@@ -5019,12 +5035,12 @@ dump_section (section, file)
 	  for (j = 0; j < 16; j++)
 	    {
 	      if (j < lbytes)
-		printf ("%2.2x", data[j]);
+	 FJALAR_DPRINTF ("%2.2x", data[j]);
 	      else
-		printf ("  ");
+	 FJALAR_DPRINTF ("  ");
 
 	      if ((j & 3) == 3)
-		printf (" ");
+	 FJALAR_DPRINTF (" ");
 	    }
 	  break;
 	}
@@ -5033,9 +5049,9 @@ dump_section (section, file)
 	{
 	  k = data[j];
 	  if (k >= ' ' && k < 0x80)
-	    printf ("%c", k);
+	    FJALAR_DPRINTF ("%c", k);
 	  else
-	    printf (".");
+	    FJALAR_DPRINTF (".");
 	}
 
       putchar ('\n');
@@ -5163,7 +5179,7 @@ process_extended_line_op (data, is_stmt, pointer_size)
       break;
 
     default:
-      printf (_("UNKNOWN: length %d\n"), len - bytes_read);
+      FJALAR_DPRINTF (_("UNKNOWN: length %d\n"), len - bytes_read);
       break;
     }
 
@@ -5414,7 +5430,7 @@ display_debug_pubnames (section, start, file)
 
   end = start + section->sh_size;
 
-  printf (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
+  FJALAR_DPRINTF (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
 
   while (start < end)
     {
@@ -5461,16 +5477,16 @@ display_debug_pubnames (section, start, file)
 	  continue;
 	}
 
-      printf (_("  Length:                              %ld\n"),
+      FJALAR_DPRINTF (_("  Length:                              %ld\n"),
 	      pubnames.pn_length);
-      printf (_("  Version:                             %d\n"),
+      FJALAR_DPRINTF (_("  Version:                             %d\n"),
 	      pubnames.pn_version);
-      printf (_("  Offset into .debug_info section:     %ld\n"),
+      FJALAR_DPRINTF (_("  Offset into .debug_info section:     %ld\n"),
 	      pubnames.pn_offset);
-      printf (_("  Size of area in .debug_info section: %ld\n"),
+      FJALAR_DPRINTF (_("  Size of area in .debug_info section: %ld\n"),
 	      pubnames.pn_size);
 
-      printf (_("\n    Offset\tName\n"));
+      FJALAR_DPRINTF (_("\n    Offset\tName\n"));
 
       do
 	{
@@ -5479,14 +5495,14 @@ display_debug_pubnames (section, start, file)
 	  if (offset != 0)
 	    {
 	      data += offset_size;
-	      printf ("    %ld\t\t%s\n", offset, data);
+	      FJALAR_DPRINTF ("    %ld\t\t%s\n", offset, data);
 	      data += VG_(strlen) ((char *) data) + 1;
 	    }
 	}
       while (offset != 0);
     }
 
-  printf ("\n");
+  FJALAR_DPRINTF ("\n");
   return 1;
 }
 
@@ -5895,7 +5911,7 @@ display_debug_macinfo (section, start, file)
   unsigned int bytes_read;
   enum dwarf_macinfo_record_type op;
 
-  printf (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
+  FJALAR_DPRINTF (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
 
   while (curr < end)
     {
@@ -5916,12 +5932,12 @@ display_debug_macinfo (section, start, file)
 	    filenum = read_leb128 (curr, & bytes_read, 0);
 	    curr += bytes_read;
 
-	    printf (_(" DW_MACINFO_start_file - lineno: %d filenum: %d\n"), lineno, filenum);
+	    FJALAR_DPRINTF (_(" DW_MACINFO_start_file - lineno: %d filenum: %d\n"), lineno, filenum);
 	  }
 	  break;
 
 	case DW_MACINFO_end_file:
-	  printf (_(" DW_MACINFO_end_file\n"));
+	  FJALAR_DPRINTF (_(" DW_MACINFO_end_file\n"));
 	  break;
 
 	case DW_MACINFO_define:
@@ -5929,7 +5945,7 @@ display_debug_macinfo (section, start, file)
 	  curr += bytes_read;
 	  string = curr;
 	  curr += VG_(strlen) (string) + 1;
-	  printf (_(" DW_MACINFO_define - lineno : %d macro : %s\n"), lineno, string);
+	  FJALAR_DPRINTF (_(" DW_MACINFO_define - lineno : %d macro : %s\n"), lineno, string);
 	  break;
 
 	case DW_MACINFO_undef:
@@ -5937,7 +5953,7 @@ display_debug_macinfo (section, start, file)
 	  curr += bytes_read;
 	  string = curr;
 	  curr += VG_(strlen) (string) + 1;
-	  printf (_(" DW_MACINFO_undef - lineno : %d macro : %s\n"), lineno, string);
+	  FJALAR_DPRINTF (_(" DW_MACINFO_undef - lineno : %d macro : %s\n"), lineno, string);
 	  break;
 
 	case DW_MACINFO_vendor_ext:
@@ -5948,7 +5964,7 @@ display_debug_macinfo (section, start, file)
 	    curr += bytes_read;
 	    string = curr;
 	    curr += VG_(strlen) (string) + 1;
-	    printf (_(" DW_MACINFO_vendor_ext - constant : %d string : %s\n"), constant, string);
+	    FJALAR_DPRINTF (_(" DW_MACINFO_vendor_ext - constant : %d string : %s\n"), constant, string);
 	  }
 	  break;
 	}
@@ -5967,7 +5983,7 @@ display_debug_abbrev (section, start, file)
   abbrev_entry *entry;
   unsigned char *end = start + section->sh_size;
 
-  printf (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
+  FJALAR_DPRINTF (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
 
   do
     {
@@ -5976,20 +5992,20 @@ display_debug_abbrev (section, start, file)
       if (first_abbrev == NULL)
 	continue;
 
-      printf (_("  Number TAG\n"));
+      FJALAR_DPRINTF (_("  Number TAG\n"));
 
       for (entry = first_abbrev; entry; entry = entry->next)
 	{
 	  abbrev_attr *attr;
 
-	  printf (_("   %ld      %s    [%s]\n"),
+	  FJALAR_DPRINTF (_("   %ld      %s    [%s]\n"),
 		  entry->entry,
 		  get_TAG_name (entry->tag),
 		  entry->children ? _("has children") : _("no children"));
 
 	  for (attr = entry->first_attr; attr; attr = attr->next)
 	    {
-	      printf (_("    %-18s %s\n"),
+	      FJALAR_DPRINTF (_("    %-18s %s\n"),
 		      get_AT_name (attr->attribute),
 		      get_FORM_name (attr->form));
 	    }
@@ -5999,7 +6015,7 @@ display_debug_abbrev (section, start, file)
     }
   while (start);
 
-  printf ("\n");
+  FJALAR_DPRINTF ("\n");
 
   return 1;
 }
@@ -6012,26 +6028,27 @@ display_block (data, length, ok_to_harvest)
      char ok_to_harvest;
 {
   if (print_results && ok_to_harvest)
-    printf (_(" %lu byte block: "), length);
+    FJALAR_DPRINTF (_(" %lu byte block: "), length);
 
   while (length --)
     {
       unsigned long temp = (unsigned long) byte_get (data++, 1);
       if (print_results && ok_to_harvest)
-        printf ("%lx ", temp);
-      //    printf ("%lx ", (unsigned long) byte_get (data++, 1));
+        FJALAR_DPRINTF ("%lx ", temp);
+      //    FJALAR_DPRINTF ("%lx ", (unsigned long) byte_get (data++, 1));
     }
 
   return data;
 }
 
-static void
-decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
+static  void
+decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll)
      unsigned char * data;
      unsigned int pointer_size;
      unsigned long length;
      char ok_to_harvest;
      dwarf_entry* entry;
+     location_list* ll;
 {
   unsigned op;
   int bytes_read;
@@ -6042,39 +6059,50 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 
   int print_results_and_ok = print_results && ok_to_harvest;
 
+
+
   while (data < end)
     {
       op = *data++;
-
+      if(ll) {
+        ll->atom = op;
+      }
       switch (op)
 	{
+	  long const_data;
 	case DW_OP_addr:
           addr = (unsigned long) byte_get (data, pointer_size);
           if (ok_to_harvest)
             {
               if (print_results_and_ok)
                 {
-                  printf ("DW_OP_addr: %lx", addr);
+                  FJALAR_DPRINTF ("DW_OP_addr: %lx", addr);
                 }
               harvest_variable_addr_value(entry, addr);
             }
           data += pointer_size;
 	  break;
 	case DW_OP_deref:
-	  if (print_results_and_ok) {printf ("DW_OP_deref");}
+	  if (print_results_and_ok) {FJALAR_DPRINTF ("DW_OP_deref");}
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, 0);
+	  }
+	  
 	  break;
 	case DW_OP_const1u:
-	  if (print_results_and_ok) {printf ("DW_OP_const1u: %lu", (unsigned long) byte_get (data++, 1));}
+	  if (print_results_and_ok) {FJALAR_DPRINTF ("DW_OP_const1u: %lu", (unsigned long) byte_get (data++, 1));}
           else {byte_get (data++, 1);}
 	  break;
 	case DW_OP_const1s:
-	  if (print_results_and_ok) {printf ("DW_OP_const1s: %ld", (long) byte_get (data++, 1));}
+	  if (print_results_and_ok) {FJALAR_DPRINTF ("DW_OP_const1s: %ld", (long) byte_get (data++, 1));}
           else {byte_get (data++, 1);}
 	  break;
 	case DW_OP_const2u:
+
+	  const_data =  (long) byte_get (data, 2);
           if (print_results_and_ok)
             {
-              printf ("DW_OP_const2u: %lu", (unsigned long) byte_get (data, 2));
+              FJALAR_DPRINTF ("DW_OP_const2u: %lu", (unsigned long) const_data);
               data += 2;
             }
           else
@@ -6082,11 +6110,18 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               byte_get (data, 2);
               data += 2;
             }
+
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, const_data);
+	    harvest_formal_param_location_offset(entry, const_data);
+	  }
+
 	  break;
 	case DW_OP_const2s:
+	  const_data =  (long) byte_get (data, 2);
           if (print_results_and_ok)
             {
-              printf ("DW_OP_const2s: %ld", (long) byte_get (data, 2));
+              FJALAR_DPRINTF ("DW_OP_const2s: %ld", (long) const_data);
               data += 2;
             }
           else
@@ -6094,11 +6129,18 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               byte_get (data, 2);
               data += 2;
             }
+
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, const_data);
+	    harvest_formal_param_location_offset(entry, const_data);
+	  }
+
 	  break;
 	case DW_OP_const4u:
+	  const_data =  byte_get (data, 4);
           if (print_results_and_ok)
             {
-              printf ("DW_OP_const4u: %lu", (unsigned long) byte_get (data, 4));
+              FJALAR_DPRINTF ("DW_OP_const4u: %lu", (unsigned long)const_data);
               data += 4;
             }
           else
@@ -6106,11 +6148,18 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               byte_get (data, 4);
               data += 4;
             }
+
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, const_data);
+	    harvest_formal_param_location_offset(entry, const_data);
+	  }
+
 	  break;
 	case DW_OP_const4s:
+	  const_data = (long) byte_get (data, 4);
           if (print_results_and_ok)
             {
-              printf ("DW_OP_const4s: %ld", (long) byte_get (data, 4));
+              FJALAR_DPRINTF ("DW_OP_const4s: %ld", const_data);
               data += 4;
             }
           else
@@ -6118,11 +6167,17 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               byte_get (data, 4);
               data += 4;
             }
+
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, const_data);
+	    harvest_formal_param_location_offset(entry, const_data);
+	  }
+
 	  break;
 	case DW_OP_const8u:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_const8u: %lu %lu", (unsigned long) byte_get (data, 4),
+              FJALAR_DPRINTF ("DW_OP_const8u: %lu %lu", (unsigned long) byte_get (data, 4),
                       (unsigned long) byte_get (data + 4, 4));
               data += 8;
             }
@@ -6134,9 +6189,10 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_const8s:
+
           if (print_results_and_ok)
             {
-              printf ("DW_OP_const8s: %ld %ld", (long) byte_get (data, 4),
+              FJALAR_DPRINTF ("DW_OP_const8s: %ld %ld", (long) byte_get (data, 4),
                       (long) byte_get (data + 4, 4));
               data += 8;
             }
@@ -6148,9 +6204,11 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_constu:
+
+	  const_data = read_leb128 (data, &bytes_read, 0);
           if (print_results_and_ok)
             {
-              printf ("DW_OP_constu: %lu", read_leb128 (data, &bytes_read, 0));
+              FJALAR_DPRINTF ("DW_OP_constu: %lu", const_data);
               data += bytes_read;
             }
           else
@@ -6158,11 +6216,19 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               read_leb128 (data, &bytes_read, 0);
               data += bytes_read;
             }
+	  
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, const_data);
+	    harvest_formal_param_location_offset(entry, const_data);
+	  }
+
 	  break;
 	case DW_OP_consts:
+	  
+	  const_data = read_leb128 (data, &bytes_read, 1);
           if (print_results_and_ok)
             {
-              printf ("DW_OP_consts: %ld", read_leb128 (data, &bytes_read, 1));
+              FJALAR_DPRINTF ("DW_OP_consts: %ld", const_data);
               data += bytes_read;
             }
           else
@@ -6170,20 +6236,26 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               read_leb128 (data, &bytes_read, 1);
               data += bytes_read;
             }
+
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, const_data);
+	    harvest_formal_param_location_offset(entry, const_data);
+	  }
+
 	  break;
 	case DW_OP_dup:
-	  if (print_results_and_ok) printf ("DW_OP_dup");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_dup");
 	  break;
 	case DW_OP_drop:
-	  if (print_results_and_ok) printf ("DW_OP_drop");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_drop");
 	  break;
 	case DW_OP_over:
-	  if (print_results_and_ok) printf ("DW_OP_over");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_over");
 	  break;
 	case DW_OP_pick:
 	  if (print_results_and_ok)
             {
-              printf ("DW_OP_pick: %ld", (unsigned long) byte_get (data++, 1));
+              FJALAR_DPRINTF ("DW_OP_pick: %ld", (unsigned long) byte_get (data++, 1));
             }
           else
             {
@@ -6191,43 +6263,43 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_swap:
-	  if (print_results_and_ok) printf ("DW_OP_swap");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_swap");
 	  break;
 	case DW_OP_rot:
-	  if (print_results_and_ok) printf ("DW_OP_rot");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_rot");
 	  break;
 	case DW_OP_xderef:
-	  if (print_results_and_ok) printf ("DW_OP_xderef");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_xderef");
 	  break;
 	case DW_OP_abs:
-	  if (print_results_and_ok) printf ("DW_OP_abs");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_abs");
 	  break;
 	case DW_OP_and:
-	  if (print_results_and_ok) printf ("DW_OP_and");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_and");
 	  break;
 	case DW_OP_div:
-	  if (print_results_and_ok) printf ("DW_OP_div");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_div");
 	  break;
 	case DW_OP_minus:
-	  if (print_results_and_ok) printf ("DW_OP_minus");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_minus");
 	  break;
 	case DW_OP_mod:
-	  if (print_results_and_ok) printf ("DW_OP_mod");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_mod");
 	  break;
 	case DW_OP_mul:
-	  if (print_results_and_ok) printf ("DW_OP_mul");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_mul");
 	  break;
 	case DW_OP_neg:
-	  if (print_results_and_ok) printf ("DW_OP_neg");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_neg");
 	  break;
 	case DW_OP_not:
-	  if (print_results_and_ok) printf ("DW_OP_not");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_not");
 	  break;
 	case DW_OP_or:
-	  if (print_results_and_ok) printf ("DW_OP_or");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_or");
 	  break;
 	case DW_OP_plus:
-	  if (print_results_and_ok) printf ("DW_OP_plus");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_plus");
 	  break;
 	case DW_OP_plus_uconst:
 	  if (ok_to_harvest)
@@ -6236,9 +6308,15 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 
               if (print_results)
                 {
-                  printf ("DW_OP_plus_uconst: %lu",
+                  FJALAR_DPRINTF ("DW_OP_plus_uconst: %lu",
                           uconst_data);
                 }
+
+	      if (tag_is_formal_parameter(entry->tag_name)) {
+		harvest_formal_param_location_atom(entry, op, (long)uconst_data);
+		harvest_formal_param_location_offset(entry, (long)uconst_data);
+	      }
+
 
               harvest_data_member_location(entry, uconst_data);
 
@@ -6251,21 +6329,21 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_shl:
-	  if (print_results_and_ok) printf ("DW_OP_shl");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_shl");
 	  break;
 	case DW_OP_shr:
-	  if (print_results_and_ok) printf ("DW_OP_shr");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_shr");
 	  break;
 	case DW_OP_shra:
-	  if (print_results_and_ok) printf ("DW_OP_shra");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_shra");
 	  break;
 	case DW_OP_xor:
-	  if (print_results_and_ok) printf ("DW_OP_xor");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_xor");
 	  break;
 	case DW_OP_bra:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_bra: %ld", (long) byte_get (data, 2));
+              FJALAR_DPRINTF ("DW_OP_bra: %ld", (long) byte_get (data, 2));
               data += 2;
             }
           else
@@ -6275,27 +6353,27 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_eq:
-	  if (print_results_and_ok) printf ("DW_OP_eq");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_eq");
 	  break;
 	case DW_OP_ge:
-	  if (print_results_and_ok) printf ("DW_OP_ge");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_ge");
 	  break;
 	case DW_OP_gt:
-	  if (print_results_and_ok) printf ("DW_OP_gt");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_gt");
 	  break;
 	case DW_OP_le:
-	  if (print_results_and_ok) printf ("DW_OP_le");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_le");
 	  break;
 	case DW_OP_lt:
-	  if (print_results_and_ok) printf ("DW_OP_lt");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_lt");
 	  break;
 	case DW_OP_ne:
-	  if (print_results_and_ok) printf ("DW_OP_ne");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_ne");
 	  break;
 	case DW_OP_skip:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_skip: %ld", (long) byte_get (data, 2));
+              FJALAR_DPRINTF ("DW_OP_skip: %ld", (long) byte_get (data, 2));
               data += 2;
             }
           else
@@ -6337,7 +6415,10 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_lit29:
 	case DW_OP_lit30:
 	case DW_OP_lit31:
-	  if (print_results_and_ok) printf ("DW_OP_lit%d", op - DW_OP_lit0);
+	  if (tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, 0);
+	  }
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_lit%d", op - DW_OP_lit0);
 	  break;
 
 	case DW_OP_reg0:
@@ -6372,7 +6453,10 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_reg29:
 	case DW_OP_reg30:
 	case DW_OP_reg31:
-	  if (print_results_and_ok) printf ("DW_OP_reg%d", op - DW_OP_reg0);
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_reg%d", op - DW_OP_reg0);
+	  if (ok_to_harvest && entry && tag_is_formal_parameter(entry->tag_name)) {
+	    harvest_formal_param_location_atom(entry, op, 0);
+	  }
 	  break;
 
 	case DW_OP_breg0:
@@ -6410,25 +6494,32 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
           if (ok_to_harvest)
             {
               unsigned long breg_value = read_leb128 (data, &bytes_read, 1);
+              if(ll) {
+                ll->atom_offset = breg_value;
+              }
               if (print_results_and_ok)
                 {
-                  printf ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
+                  FJALAR_DPRINTF ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
                           breg_value);
                 }
 
-              if (tag_is_variable(entry->tag_name)) {
-                harvest_local_var_offset(entry, breg_value);
-              }
-              else if (tag_is_formal_parameter(entry->tag_name)) {
-                harvest_formal_param_location_offset(entry, breg_value);
-              }
+	      //RUDD DEBUG
+	      if(entry) {
+		if (tag_is_variable(entry->tag_name)) {
+		  harvest_local_var_offset(entry, breg_value);
+		}
+		else if (tag_is_formal_parameter(entry->tag_name)) {
+		  harvest_formal_param_location_atom(entry, op, breg_value);
+		  harvest_formal_param_location_offset(entry, breg_value);
+		}
+	      }
 
               data += bytes_read;
             }
           else {
             if (print_results_and_ok)
               {
-                printf ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
+                FJALAR_DPRINTF ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
                         read_leb128 (data, &bytes_read, 1));
                 data += bytes_read;
               }
@@ -6443,7 +6534,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_regx:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_regx: %lu", read_leb128 (data, &bytes_read, 0));
+              FJALAR_DPRINTF ("DW_OP_regx: %lu", read_leb128 (data, &bytes_read, 0));
               data += bytes_read;
             }
           else
@@ -6456,17 +6547,23 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
           if (ok_to_harvest)
             {
               unsigned long fbreg_value = read_leb128 (data, &bytes_read, 1);
+              if(ll) {
+                ll->atom_offset = fbreg_value;
+              }
               if (print_results_and_ok)
                 {
-                  printf ("DW_OP_fbreg: %ld", fbreg_value);
+                  FJALAR_DPRINTF ("DW_OP_fbreg: %ld", fbreg_value);
                 }
 
-              if (tag_is_variable(entry->tag_name)) {
-                harvest_local_var_offset(entry, fbreg_value);
-              }
-              else if (tag_is_formal_parameter(entry->tag_name)) {
-                harvest_formal_param_location_offset(entry, fbreg_value);
-              }
+	      if(entry) {
+		if (tag_is_variable(entry->tag_name)) {
+		  harvest_local_var_offset(entry, fbreg_value);
+		}
+		else if (tag_is_formal_parameter(entry->tag_name)) {
+		  harvest_formal_param_location_atom(entry, op, fbreg_value);
+		  harvest_formal_param_location_offset(entry, fbreg_value);
+		}
+	      }
 
               data += bytes_read;
             }
@@ -6481,7 +6578,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             {
               uvalue = read_leb128 (data, &bytes_read, 0);
               data += bytes_read;
-              printf ("DW_OP_bregx: %lu %ld", uvalue,
+              FJALAR_DPRINTF ("DW_OP_bregx: %lu %ld", uvalue,
                       read_leb128 (data, &bytes_read, 1));
               data += bytes_read;
             }
@@ -6496,7 +6593,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_piece:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_piece: %lu", read_leb128 (data, &bytes_read, 0));
+              FJALAR_DPRINTF ("DW_OP_piece: %lu", read_leb128 (data, &bytes_read, 0));
               data += bytes_read;
             }
           else
@@ -6508,7 +6605,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_deref_size:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_deref_size: %ld", (long) byte_get (data++, 1));
+              FJALAR_DPRINTF ("DW_OP_deref_size: %ld", (long) byte_get (data++, 1));
             }
           else
             {
@@ -6518,7 +6615,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_xderef_size:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_xderef_size: %ld", (long) byte_get (data++, 1));
+              FJALAR_DPRINTF ("DW_OP_xderef_size: %ld", (long) byte_get (data++, 1));
             }
           else
             {
@@ -6526,17 +6623,17 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_nop:
-	  if (print_results_and_ok) printf ("DW_OP_nop");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_nop");
 	  break;
 
 	  /* DWARF 3 extensions.  */
 	case DW_OP_push_object_address:
-	  if (print_results_and_ok) printf ("DW_OP_push_object_address");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_push_object_address");
 	  break;
 	case DW_OP_call2:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_call2: <%lx>", (long) byte_get (data, 2));
+              FJALAR_DPRINTF ("DW_OP_call2: <%lx>", (long) byte_get (data, 2));
               data += 2;
             }
           else
@@ -6548,7 +6645,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_call4:
           if (print_results_and_ok)
             {
-              printf ("DW_OP_call4: <%lx>", (long) byte_get (data, 4));
+              FJALAR_DPRINTF ("DW_OP_call4: <%lx>", (long) byte_get (data, 4));
               data += 4;
             }
           else
@@ -6558,20 +6655,20 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
             }
 	  break;
 	case DW_OP_call_ref:
-	  if (print_results_and_ok) printf ("DW_OP_call_ref");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_call_ref");
 	  break;
 
 	  /* GNU extensions.  */
 	case DW_OP_GNU_push_tls_address:
-	  if (print_results_and_ok) printf ("DW_OP_GNU_push_tls_address");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_GNU_push_tls_address");
 	  break;
 
 	default:
 	  if (op >= DW_OP_lo_user
 	      && op <= DW_OP_hi_user)
-	    printf (_("(User defined location op)"));
+	    FJALAR_DPRINTF (_("(User defined location op)"));
 	  else
-	    printf (_("(Unknown location op)"));
+	    FJALAR_DPRINTF (_("(Unknown location op)"));
 	  /* No way to tell where the next op is, so just bail.  */
 	  return;
 	}
@@ -6580,7 +6677,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
       if (data < end)
         {
           if (print_results_and_ok)
-            printf ("; ");
+            FJALAR_DPRINTF ("; ");
         }
     }
 }
@@ -6598,106 +6695,106 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
       switch (op)
 	{
 	case DW_OP_addr:
-	  if (display) printf ("DW_OP_addr: %lx",
+	  if (display) FJALAR_DPRINTF ("DW_OP_addr: %lx",
 		  (unsigned long) byte_get (data, pointer_size));
 	  data += pointer_size;
 	  break;
 	case DW_OP_deref:
-	  if (display) printf ("DW_OP_deref");
+	  if (display) FJALAR_DPRINTF ("DW_OP_deref");
 	  break;
 	case DW_OP_const1u:
-	  if (display) printf ("DW_OP_const1u: %lu", (unsigned long) byte_get (data++, 1));
+	  if (display) FJALAR_DPRINTF ("DW_OP_const1u: %lu", (unsigned long) byte_get (data++, 1));
           else data++;
 	  break;
 	case DW_OP_const1s:
-	  if (display) printf ("DW_OP_const1s: %ld", (long) byte_get (data++, 1));
+	  if (display) FJALAR_DPRINTF ("DW_OP_const1s: %ld", (long) byte_get (data++, 1));
           else data++;
 	  break;
 	case DW_OP_const2u:
-	  if (display) printf ("DW_OP_const2u: %lu", (unsigned long) byte_get (data, 2));
+	  if (display) FJALAR_DPRINTF ("DW_OP_const2u: %lu", (unsigned long) byte_get (data, 2));
 	  data += 2;
 	  break;
 	case DW_OP_const2s:
-	  if (display) printf ("DW_OP_const2s: %ld", (long) byte_get (data, 2));
+	  if (display) FJALAR_DPRINTF ("DW_OP_const2s: %ld", (long) byte_get (data, 2));
 	  data += 2;
 	  break;
 	case DW_OP_const4u:
-	  if (display) printf ("DW_OP_const4u: %lu", (unsigned long) byte_get (data, 4));
+	  if (display) FJALAR_DPRINTF ("DW_OP_const4u: %lu", (unsigned long) byte_get (data, 4));
 	  data += 4;
 	  break;
 	case DW_OP_const4s:
-	  if (display) printf ("DW_OP_const4s: %ld", (long) byte_get (data, 4));
+	  if (display) FJALAR_DPRINTF ("DW_OP_const4s: %ld", (long) byte_get (data, 4));
 	  data += 4;
 	  break;
 	case DW_OP_const8u:
-	  if (display) printf ("DW_OP_const8u: %lu %lu", (unsigned long) byte_get (data, 4),
+	  if (display) FJALAR_DPRINTF ("DW_OP_const8u: %lu %lu", (unsigned long) byte_get (data, 4),
 		  (unsigned long) byte_get (data + 4, 4));
 	  data += 8;
 	  break;
 	case DW_OP_const8s:
-	  if (display) printf ("DW_OP_const8s: %ld %ld", (long) byte_get (data, 4),
+	  if (display) FJALAR_DPRINTF ("DW_OP_const8s: %ld %ld", (long) byte_get (data, 4),
 		  (long) byte_get (data + 4, 4));
 	  data += 8;
 	  break;
 	case DW_OP_constu:
-	  if (display) printf ("DW_OP_constu: %lu", read_leb128 (data, &bytes_read, 0));
+	  if (display) FJALAR_DPRINTF ("DW_OP_constu: %lu", read_leb128 (data, &bytes_read, 0));
 	  data += bytes_read;
 	  break;
 	case DW_OP_consts:
-	  if (display) printf ("DW_OP_consts: %ld", read_leb128 (data, &bytes_read, 1));
+	  if (display) FJALAR_DPRINTF ("DW_OP_consts: %ld", read_leb128 (data, &bytes_read, 1));
 	  data += bytes_read;
 	  break;
 	case DW_OP_dup:
-	  if (display) printf ("DW_OP_dup");
+	  if (display) FJALAR_DPRINTF ("DW_OP_dup");
 	  break;
 	case DW_OP_drop:
-	  if (display) printf ("DW_OP_drop");
+	  if (display) FJALAR_DPRINTF ("DW_OP_drop");
 	  break;
 	case DW_OP_over:
-	  if (display) printf ("DW_OP_over");
+	  if (display) FJALAR_DPRINTF ("DW_OP_over");
 	  break;
 	case DW_OP_pick:
-	  if (display) printf ("DW_OP_pick: %ld", (unsigned long) byte_get (data++, 1));
+	  if (display) FJALAR_DPRINTF ("DW_OP_pick: %ld", (unsigned long) byte_get (data++, 1));
           else data++;
 	  break;
 	case DW_OP_swap:
-	  if (display) printf ("DW_OP_swap");
+	  if (display) FJALAR_DPRINTF ("DW_OP_swap");
 	  break;
 	case DW_OP_rot:
-	  if (display) printf ("DW_OP_rot");
+	  if (display) FJALAR_DPRINTF ("DW_OP_rot");
 	  break;
 	case DW_OP_xderef:
-	  if (display) printf ("DW_OP_xderef");
+	  if (display) FJALAR_DPRINTF ("DW_OP_xderef");
 	  break;
 	case DW_OP_abs:
-	  if (display) printf ("DW_OP_abs");
+	  if (display) FJALAR_DPRINTF ("DW_OP_abs");
 	  break;
 	case DW_OP_and:
-	  if (display) printf ("DW_OP_and");
+	  if (display) FJALAR_DPRINTF ("DW_OP_and");
 	  break;
 	case DW_OP_div:
-	  if (display) printf ("DW_OP_div");
+	  if (display) FJALAR_DPRINTF ("DW_OP_div");
 	  break;
 	case DW_OP_minus:
-	  if (display) printf ("DW_OP_minus");
+	  if (display) FJALAR_DPRINTF ("DW_OP_minus");
 	  break;
 	case DW_OP_mod:
-	  if (display) printf ("DW_OP_mod");
+	  if (display) FJALAR_DPRINTF ("DW_OP_mod");
 	  break;
 	case DW_OP_mul:
-	  if (display) printf ("DW_OP_mul");
+	  if (display) FJALAR_DPRINTF ("DW_OP_mul");
 	  break;
 	case DW_OP_neg:
-	  if (display) printf ("DW_OP_neg");
+	  if (display) FJALAR_DPRINTF ("DW_OP_neg");
 	  break;
 	case DW_OP_not:
-	  if (display) printf ("DW_OP_not");
+	  if (display) FJALAR_DPRINTF ("DW_OP_not");
 	  break;
 	case DW_OP_or:
-	  if (display) printf ("DW_OP_or");
+	  if (display) FJALAR_DPRINTF ("DW_OP_or");
 	  break;
 	case DW_OP_plus:
-	  if (display) printf ("DW_OP_plus");
+	  if (display) FJALAR_DPRINTF ("DW_OP_plus");
 	  break;
 	case DW_OP_plus_uconst:
 	  if (display)
@@ -6705,47 +6802,47 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               unsigned long uconst_data = read_leb128 (data, &bytes_read, 0);
               if (location_data)
                 *location_data = (long)uconst_data;
-              printf ("DW_OP_plus_uconst: %lu",
+              FJALAR_DPRINTF ("DW_OP_plus_uconst: %lu",
                       uconst_data);
             }
 	  data += bytes_read;
 	  break;
 	case DW_OP_shl:
-	  if (display) printf ("DW_OP_shl");
+	  if (display) FJALAR_DPRINTF ("DW_OP_shl");
 	  break;
 	case DW_OP_shr:
-	  if (display) printf ("DW_OP_shr");
+	  if (display) FJALAR_DPRINTF ("DW_OP_shr");
 	  break;
 	case DW_OP_shra:
-	  if (display) printf ("DW_OP_shra");
+	  if (display) FJALAR_DPRINTF ("DW_OP_shra");
 	  break;
 	case DW_OP_xor:
-	  if (display) printf ("DW_OP_xor");
+	  if (display) FJALAR_DPRINTF ("DW_OP_xor");
 	  break;
 	case DW_OP_bra:
-	  if (display) printf ("DW_OP_bra: %ld", (long) byte_get (data, 2));
+	  if (display) FJALAR_DPRINTF ("DW_OP_bra: %ld", (long) byte_get (data, 2));
 	  data += 2;
 	  break;
 	case DW_OP_eq:
-	  if (display) printf ("DW_OP_eq");
+	  if (display) FJALAR_DPRINTF ("DW_OP_eq");
 	  break;
 	case DW_OP_ge:
-	  if (display) printf ("DW_OP_ge");
+	  if (display) FJALAR_DPRINTF ("DW_OP_ge");
 	  break;
 	case DW_OP_gt:
-	  if (display) printf ("DW_OP_gt");
+	  if (display) FJALAR_DPRINTF ("DW_OP_gt");
 	  break;
 	case DW_OP_le:
-	  if (display) printf ("DW_OP_le");
+	  if (display) FJALAR_DPRINTF ("DW_OP_le");
 	  break;
 	case DW_OP_lt:
-	  if (display) printf ("DW_OP_lt");
+	  if (display) FJALAR_DPRINTF ("DW_OP_lt");
 	  break;
 	case DW_OP_ne:
-	  if (display) printf ("DW_OP_ne");
+	  if (display) FJALAR_DPRINTF ("DW_OP_ne");
 	  break;
 	case DW_OP_skip:
-	  if (display) printf ("DW_OP_skip: %ld", (long) byte_get (data, 2));
+	  if (display) FJALAR_DPRINTF ("DW_OP_skip: %ld", (long) byte_get (data, 2));
 	  data += 2;
 	  break;
 
@@ -6781,7 +6878,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_lit29:
 	case DW_OP_lit30:
 	case DW_OP_lit31:
-	  if (display) printf ("DW_OP_lit%d", op - DW_OP_lit0);
+	  if (display) FJALAR_DPRINTF ("DW_OP_lit%d", op - DW_OP_lit0);
 	  break;
 
 	case DW_OP_reg0:
@@ -6816,7 +6913,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_reg29:
 	case DW_OP_reg30:
 	case DW_OP_reg31:
-	  if (display) printf ("DW_OP_reg%d", op - DW_OP_reg0);
+	  if (display) FJALAR_DPRINTF ("DW_OP_reg%d", op - DW_OP_reg0);
 	  break;
 
 	case DW_OP_breg0:
@@ -6851,13 +6948,13 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
 	case DW_OP_breg29:
 	case DW_OP_breg30:
 	case DW_OP_breg31:
-	  if (display) printf ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
+	  if (display) FJALAR_DPRINTF ("DW_OP_breg%d: %ld", op - DW_OP_breg0,
 		  read_leb128 (data, &bytes_read, 1));
 	  data += bytes_read;
 	  break;
 
 	case DW_OP_regx:
-	  if (display) printf ("DW_OP_regx: %lu", read_leb128 (data, &bytes_read, 0));
+	  if (display) FJALAR_DPRINTF ("DW_OP_regx: %lu", read_leb128 (data, &bytes_read, 0));
 	  data += bytes_read;
 	  break;
 	case DW_OP_fbreg:
@@ -6866,63 +6963,63 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
               unsigned long fbreg_value = read_leb128 (data, &bytes_read, 1);
               if (location_data)
                 *location_data = (long)fbreg_value;
-              printf ("DW_OP_fbreg: %ld", fbreg_value);
+              FJALAR_DPRINTF ("DW_OP_fbreg: %ld", fbreg_value);
             }
 	  data += bytes_read;
 	  break;
 	case DW_OP_bregx:
 	  uvalue = read_leb128 (data, &bytes_read, 0);
 	  data += bytes_read;
-	  if (display) printf ("DW_OP_bregx: %lu %ld", uvalue,
+	  if (display) FJALAR_DPRINTF ("DW_OP_bregx: %lu %ld", uvalue,
 		  read_leb128 (data, &bytes_read, 1));
 	  data += bytes_read;
 	  break;
 	case DW_OP_piece:
-	  if (display) printf ("DW_OP_piece: %lu", read_leb128 (data, &bytes_read, 0));
+	  if (display) FJALAR_DPRINTF ("DW_OP_piece: %lu", read_leb128 (data, &bytes_read, 0));
 	  data += bytes_read;
 	  break;
 	case DW_OP_deref_size:
-	  if (display) printf ("DW_OP_deref_size: %ld", (long) byte_get (data++, 1));
+	  if (display) FJALAR_DPRINTF ("DW_OP_deref_size: %ld", (long) byte_get (data++, 1));
           else data++;
 	  break;
 	case DW_OP_xderef_size:
-	  if (display) printf ("DW_OP_xderef_size: %ld", (long) byte_get (data++, 1));
+	  if (display) FJALAR_DPRINTF ("DW_OP_xderef_size: %ld", (long) byte_get (data++, 1));
           else data++;
 	  break;
 	case DW_OP_nop:
-	  if (display) printf ("DW_OP_nop");
+	  if (display) FJALAR_DPRINTF ("DW_OP_nop");
 	  break;
 
 	  // DWARF 3 extensions.
 	case DW_OP_push_object_address:
-	  if (display) printf ("DW_OP_push_object_address");
+	  if (display) FJALAR_DPRINTF ("DW_OP_push_object_address");
 	  break;
 	case DW_OP_call2:
-	  if (display) printf ("DW_OP_call2: <%lx>", (long) byte_get (data, 2));
+	  if (display) FJALAR_DPRINTF ("DW_OP_call2: <%lx>", (long) byte_get (data, 2));
 	  data += 2;
 	  break;
 	case DW_OP_call4:
-	  if (display) printf ("DW_OP_call4: <%lx>", (long) byte_get (data, 4));
+	  if (display) FJALAR_DPRINTF ("DW_OP_call4: <%lx>", (long) byte_get (data, 4));
 	  data += 4;
 	  break;
 	case DW_OP_call_ref:
-	  if (display) printf ("DW_OP_call_ref");
+	  if (display) FJALAR_DPRINTF ("DW_OP_call_ref");
 	  break;
 
 	  // GNU extensions.
 	case DW_OP_GNU_push_tls_address:
-	  if (display) printf ("DW_OP_GNU_push_tls_address");
+	  if (display) FJALAR_DPRINTF ("DW_OP_GNU_push_tls_address");
 	  break;
 
 	default:
 	  if (op >= DW_OP_lo_user
 	      && op <= DW_OP_hi_user)
             {
-              if (display) printf (_("(User defined location op)"));
+              if (display) FJALAR_DPRINTF (_("(User defined location op)"));
             }
 	  else
             {
-              if (display) printf (_("(Unknown location op)"));
+              if (display) FJALAR_DPRINTF (_("(Unknown location op)"));
             }
 	  // No way to tell where the next op is, so just bail.
 	  return;
@@ -6931,7 +7028,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry)
       // Separate the ops.
       if (data < end)
         {
-          if (display) printf ("; ");
+          if (display) FJALAR_DPRINTF ("; ");
         }
     }
 }
@@ -6986,6 +7083,7 @@ display_debug_loc (section, start, file)
      unsigned char *start;
      FILE *file ATTRIBUTE_UNUSED;
 {
+  FJALAR_DPRINTF("In Debug-Loc\n");
   unsigned char *section_end;
   unsigned long bytes;
   unsigned char *section_begin = start;
@@ -6997,12 +7095,12 @@ display_debug_loc (section, start, file)
 
   if (bytes == 0)
     {
-      printf (_("\nThe .debug_loc section is empty.\n"));
+      FJALAR_DPRINTF (_("\nThe .debug_loc section is empty.\n"));
       return 0;
     }
 
-  printf (_("Contents of the .debug_loc section:\n\n"));
-  printf (_("\n    Offset   Begin    End      Expression\n"));
+  FJALAR_DPRINTF (_("Contents of the .debug_loc section:\n\n"));
+  FJALAR_DPRINTF (_("\n    Offset   Begin    End      Expression\n"));
 
   while (start < section_end)
     {
@@ -7021,6 +7119,8 @@ display_debug_loc (section, start, file)
 	     seperately here, we either have to store pointer sizes of all
 	     compilation units, or assume they don't change.   We assume,
 	     like the debug_line display, that it doesn't change.  */
+          location_list* ll = VG_(calloc)("readelf.c: display_debug_loc", sizeof(location_list), 1);
+
 	  begin = byte_get (start, debug_line_pointer_size);
 	  start += debug_line_pointer_size;
 	  end = byte_get (start, debug_line_pointer_size);
@@ -7039,13 +7139,19 @@ display_debug_loc (section, start, file)
 	  length = byte_get (start, 2);
 	  start += 2;
 
-	  printf ("    %8.8lx %8.8lx %8.8lx (", offset, begin, end);
-	  decode_location_expression (start, debug_line_pointer_size, length, 1, 0);
-	  printf (")\n");
+          FJALAR_DPRINTF ("    %8.8lx %8.8lx %8.8lx (", offset, begin, end);
+          ll->offset = offset;
+          ll->begin = begin;
+          ll->end = end;
+	  decode_location_expression (start, debug_line_pointer_size, length, 1, 0, ll);
 
+	  FJALAR_DPRINTF (")\n");
+
+
+          harvest_location_list_entry(ll, offset);
 	  start += length;
 	}
-      printf ("\n");
+      FJALAR_DPRINTF ("\n");
     }
   return 1;
 }
@@ -7119,11 +7225,11 @@ display_debug_str (section, start, file)
 
   if (bytes == 0)
     {
-      printf (_("\nThe .debug_str section is empty.\n"));
+      FJALAR_DPRINTF (_("\nThe .debug_str section is empty.\n"));
       return 0;
     }
 
-  printf (_("Contents of the .debug_str section:\n\n"));
+  FJALAR_DPRINTF (_("Contents of the .debug_str section:\n\n"));
 
   while (bytes)
     {
@@ -7133,26 +7239,26 @@ display_debug_str (section, start, file)
 
       lbytes = (bytes > 16 ? 16 : bytes);
 
-      printf ("  0x%8.8lx ", (unsigned long) addr);
+      FJALAR_DPRINTF ("  0x%8.8lx ", (unsigned long) addr);
 
       for (j = 0; j < 16; j++)
 	{
 	  if (j < lbytes)
-	    printf ("%2.2x", start[j]);
+	    FJALAR_DPRINTF ("%2.2x", start[j]);
 	  else
-	    printf ("  ");
+	    FJALAR_DPRINTF ("  ");
 
 	  if ((j & 3) == 3)
-	    printf (" ");
+	    FJALAR_DPRINTF (" ");
 	}
 
       for (j = 0; j < lbytes; j++)
 	{
 	  k = start[j];
 	  if (k >= ' ' && k < 0x80)
-	    printf ("%c", k);
+	    FJALAR_DPRINTF ("%c", k);
 	  else
-	    printf (".");
+	    FJALAR_DPRINTF (".");
 	}
 
       putchar ('\n');
@@ -7248,7 +7354,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_FORM_indirect:
       form = read_leb128 (data, & bytes_read, 0);
       data += bytes_read;
-      if (print_results_and_ok) {printf (" %s", get_FORM_name (form));}
+      if (print_results_and_ok) {FJALAR_DPRINTF (" %s", get_FORM_name (form));}
       return read_and_display_attr_value (attribute, form, data, cu_offset,
 					  pointer_size, offset_size,
 					  dwarf_version, entry, ok);
@@ -7257,7 +7363,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
   switch (form)
     {
     case DW_FORM_ref_addr:
-      if (print_results_and_ok) {printf (" <#%lx>", uvalue);}
+      if (print_results_and_ok) {FJALAR_DPRINTF (" <#%lx>", uvalue);}
       break;
 
       // DW_AT_type returns data in this form (REMEMBER cu_offset!):
@@ -7283,7 +7389,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
 
           if (print_results)
             {
-              printf (" <%lx>", uvalue + cu_offset);
+              FJALAR_DPRINTF (" <%lx>", uvalue + cu_offset);
             }
         }
       break;
@@ -7293,7 +7399,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
         {
           harvest_address_value(entry, attribute, uvalue);
           if (print_results)
-            printf (" %#lx", uvalue);
+            FJALAR_DPRINTF (" %#lx", uvalue);
         }
       break;
       if (print_results_and_ok)
@@ -7312,7 +7418,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
           harvest_ordinary_unsigned_value(entry, attribute, uvalue);
           if (print_results_and_ok)
             {
-              printf (" %ld", uvalue);
+              FJALAR_DPRINTF (" %ld", uvalue);
             }
         }
       break;
@@ -7320,10 +7426,11 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_FORM_ref8:
     case DW_FORM_data8:
       uvalue = byte_get (data, 4);
-      if (print_results_and_ok) {printf (" %lx", uvalue);}
+      if (print_results_and_ok) {FJALAR_DPRINTF (" %lx", uvalue);}
       if (print_results_and_ok)
         {
-          printf (" %lx", (unsigned long) byte_get (data + 4, 4));
+          uvalue |= byte_get (data +4, 4) << 32;
+                              //printf (" %lx", (unsigned long) byte_get (data + 4, 4));
         }
       else
         {
@@ -7339,7 +7446,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
           harvest_string(entry, attribute, data);
           if (print_results_and_ok)
             {
-              printf (" %s", data);
+              FJALAR_DPRINTF (" %s", data);
             }
         }
       data += VG_(strlen) ((char *) data) + 1;
@@ -7377,7 +7484,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
           harvest_string(entry, attribute, ind_str);
           if (print_results_and_ok)
             {
-              printf (_(" (indirect string, offset: 0x%lx): %s"),
+              FJALAR_DPRINTF (_(" (indirect string, offset: 0x%lx): %s"),
                       uvalue, ind_str);
             }
         }
@@ -7394,7 +7501,7 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
 
   /* For some attributes we can display futher information.  */
 
-  if (print_results_and_ok) {printf ("\t");}
+  if (print_results_and_ok) {FJALAR_DPRINTF ("\t");}
 
   switch (attribute)
     {
@@ -7402,19 +7509,19 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
       switch (uvalue)
 	{
 	case DW_INL_not_inlined:
-          if (print_results_and_ok) {printf (_("(not inlined)"));}
+          if (print_results_and_ok) {FJALAR_DPRINTF (_("(not inlined)"));}
 	  break;
 	case DW_INL_inlined:
-          if (print_results_and_ok) {printf (_("(inlined)"));}
+          if (print_results_and_ok) {FJALAR_DPRINTF (_("(inlined)"));}
 	  break;
 	case DW_INL_declared_not_inlined:
-          if (print_results_and_ok) {printf (_("(declared as inline but ignored)"));}
+          if (print_results_and_ok) {FJALAR_DPRINTF (_("(declared as inline but ignored)"));}
 	  break;
 	case DW_INL_declared_inlined:
-          if (print_results_and_ok) {printf (_("(declared as inline and inlined)"));}
+          if (print_results_and_ok) {FJALAR_DPRINTF (_("(declared as inline and inlined)"));}
 	  break;
 	default:
-          if (print_results_and_ok) {printf (_("  (Unknown inline attribute value: %lx)"), uvalue);}
+          if (print_results_and_ok) {FJALAR_DPRINTF (_("  (Unknown inline attribute value: %lx)"), uvalue);}
 	  break;
 	}
       break;
@@ -7422,26 +7529,26 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_AT_language:
       switch (uvalue)
 	{
-	case DW_LANG_C:			if (print_results_and_ok) {printf ("(non-ANSI C)");} break;
-	case DW_LANG_C89:		if (print_results_and_ok) {printf ("(ANSI C)");} break;
-	case DW_LANG_C_plus_plus:	if (print_results_and_ok) {printf ("(C++)");} break;
-	case DW_LANG_Fortran77:		if (print_results_and_ok) {printf ("(FORTRAN 77)");} break;
-	case DW_LANG_Fortran90:		if (print_results_and_ok) {printf ("(Fortran 90)");} break;
-	case DW_LANG_Modula2:		if (print_results_and_ok) {printf ("(Modula 2)");} break;
-	case DW_LANG_Pascal83:		if (print_results_and_ok) {printf ("(ANSI Pascal)");} break;
-	case DW_LANG_Ada83:		if (print_results_and_ok) {printf ("(Ada)");} break;
-	case DW_LANG_Cobol74:		if (print_results_and_ok) {printf ("(Cobol 74)");} break;
-	case DW_LANG_Cobol85:		if (print_results_and_ok) {printf ("(Cobol 85)");} break;
+	case DW_LANG_C:			if (print_results_and_ok) {FJALAR_DPRINTF ("(non-ANSI C)");} break;
+	case DW_LANG_C89:		if (print_results_and_ok) {FJALAR_DPRINTF ("(ANSI C)");} break;
+	case DW_LANG_C_plus_plus:	if (print_results_and_ok) {FJALAR_DPRINTF ("(C++)");} break;
+	case DW_LANG_Fortran77:		if (print_results_and_ok) {FJALAR_DPRINTF ("(FORTRAN 77)");} break;
+	case DW_LANG_Fortran90:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Fortran 90)");} break;
+	case DW_LANG_Modula2:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Modula 2)");} break;
+	case DW_LANG_Pascal83:		if (print_results_and_ok) {FJALAR_DPRINTF ("(ANSI Pascal)");} break;
+	case DW_LANG_Ada83:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Ada)");} break;
+	case DW_LANG_Cobol74:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Cobol 74)");} break;
+	case DW_LANG_Cobol85:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Cobol 85)");} break;
 	  /* DWARF 2.1 values.	*/
-	case DW_LANG_C99:		if (print_results_and_ok) {printf ("(ANSI C99)");} break;
-	case DW_LANG_Ada95:		if (print_results_and_ok) {printf ("(ADA 95)");} break;
-	case DW_LANG_Fortran95:		if (print_results_and_ok) {printf ("(Fortran 95)");} break;
+	case DW_LANG_C99:		if (print_results_and_ok) {FJALAR_DPRINTF ("(ANSI C99)");} break;
+	case DW_LANG_Ada95:		if (print_results_and_ok) {FJALAR_DPRINTF ("(ADA 95)");} break;
+	case DW_LANG_Fortran95:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Fortran 95)");} break;
 	  /* MIPS extension.  */
-	case DW_LANG_Mips_Assembler:	if (print_results_and_ok) {printf ("(MIPS assembler)");} break;
+	case DW_LANG_Mips_Assembler:	if (print_results_and_ok) {FJALAR_DPRINTF ("(MIPS assembler)");} break;
 	  /* UPC extension.  */
-	case DW_LANG_Upc:		if (print_results_and_ok) {printf ("(Unified Parallel C)");} break;
+	case DW_LANG_Upc:		if (print_results_and_ok) {FJALAR_DPRINTF ("(Unified Parallel C)");} break;
 	default:
-	  if (print_results_and_ok) {printf ("(Unknown: %lx)", uvalue);}
+	  if (print_results_and_ok) {FJALAR_DPRINTF ("(Unknown: %lx)", uvalue);}
 	  break;
 	}
       break;
@@ -7449,26 +7556,26 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_AT_encoding:
       switch (uvalue)
 	{
-	case DW_ATE_void:		if (print_results_and_ok) {printf ("(void)");} break;
-	case DW_ATE_address:		if (print_results_and_ok) {printf ("(machine address)");} break;
-	case DW_ATE_boolean:		if (print_results_and_ok) {printf ("(boolean)");} break;
-	case DW_ATE_complex_float:	if (print_results_and_ok) {printf ("(complex float)");} break;
-	case DW_ATE_float:		if (print_results_and_ok) {printf ("(float)");} break;
-	case DW_ATE_signed:		if (print_results_and_ok) {printf ("(signed)");} break;
-	case DW_ATE_signed_char:	if (print_results_and_ok) {printf ("(signed char)");} break;
-	case DW_ATE_unsigned:		if (print_results_and_ok) {printf ("(unsigned)");} break;
-	case DW_ATE_unsigned_char:	if (print_results_and_ok) {printf ("(unsigned char)");} break;
+	case DW_ATE_void:		if (print_results_and_ok) {FJALAR_DPRINTF ("(void)");} break;
+	case DW_ATE_address:		if (print_results_and_ok) {FJALAR_DPRINTF ("(machine address)");} break;
+	case DW_ATE_boolean:		if (print_results_and_ok) {FJALAR_DPRINTF ("(boolean)");} break;
+	case DW_ATE_complex_float:	if (print_results_and_ok) {FJALAR_DPRINTF ("(complex float)");} break;
+	case DW_ATE_float:		if (print_results_and_ok) {FJALAR_DPRINTF ("(float)");} break;
+	case DW_ATE_signed:		if (print_results_and_ok) {FJALAR_DPRINTF ("(signed)");} break;
+	case DW_ATE_signed_char:	if (print_results_and_ok) {FJALAR_DPRINTF ("(signed char)");} break;
+	case DW_ATE_unsigned:		if (print_results_and_ok) {FJALAR_DPRINTF ("(unsigned)");} break;
+	case DW_ATE_unsigned_char:	if (print_results_and_ok) {FJALAR_DPRINTF ("(unsigned char)");} break;
 	  /* DWARF 2.1 value.  */
-	case DW_ATE_imaginary_float:	if (print_results_and_ok) {printf ("(imaginary float)");} break;
+	case DW_ATE_imaginary_float:	if (print_results_and_ok) {FJALAR_DPRINTF ("(imaginary float)");} break;
 	default:
 	  if (uvalue >= DW_ATE_lo_user
 	      && uvalue <= DW_ATE_hi_user)
             {
-	    if (print_results_and_ok) {printf ("(user defined type)");}
+	    if (print_results_and_ok) {FJALAR_DPRINTF ("(user defined type)");}
             }
 	  else
             {
-	    if (print_results_and_ok) {printf ("(unknown type)");}
+	    if (print_results_and_ok) {FJALAR_DPRINTF ("(unknown type)");}
             }
 	  break;
 	}
@@ -7478,19 +7585,19 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
       switch (uvalue)
 	{
 	case DW_ACCESS_public:
-          if (print_results_and_ok) printf ("(public)");
+          if (print_results_and_ok) FJALAR_DPRINTF ("(public)");
           if (ok) harvest_accessibility(entry, DW_ACCESS_public);
           break;
 	case DW_ACCESS_protected:
-          if (print_results_and_ok) printf ("(protected)");
+          if (print_results_and_ok) FJALAR_DPRINTF ("(protected)");
           if (ok) harvest_accessibility(entry, DW_ACCESS_protected);
           break;
 	case DW_ACCESS_private:
-          if (print_results_and_ok) printf ("(private)");
+          if (print_results_and_ok) FJALAR_DPRINTF ("(private)");
           if (ok) harvest_accessibility(entry, DW_ACCESS_private);
           break;
 	default:
-	  if (print_results_and_ok) printf ("(unknown accessibility)");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("(unknown accessibility)");
 	  break;
 	}
       break;
@@ -7498,49 +7605,49 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_AT_visibility:
       switch (uvalue)
 	{
-	case DW_VIS_local:		if (print_results_and_ok) printf ("(local)"); break;
-	case DW_VIS_exported:		if (print_results_and_ok) printf ("(exported)"); break;
-	case DW_VIS_qualified:		if (print_results_and_ok) printf ("(qualified)"); break;
-	default:			if (print_results_and_ok) printf ("(unknown visibility)"); break;
+	case DW_VIS_local:		if (print_results_and_ok) FJALAR_DPRINTF ("(local)"); break;
+	case DW_VIS_exported:		if (print_results_and_ok) FJALAR_DPRINTF ("(exported)"); break;
+	case DW_VIS_qualified:		if (print_results_and_ok) FJALAR_DPRINTF ("(qualified)"); break;
+	default:			if (print_results_and_ok) FJALAR_DPRINTF ("(unknown visibility)"); break;
 	}
       break;
 
     case DW_AT_virtuality:
       switch (uvalue)
 	{
-	case DW_VIRTUALITY_none:	if (print_results_and_ok) printf ("(none)"); break;
-	case DW_VIRTUALITY_virtual:	if (print_results_and_ok) printf ("(virtual)"); break;
-	case DW_VIRTUALITY_pure_virtual:if (print_results_and_ok) printf ("(pure_virtual)"); break;
-	default:			if (print_results_and_ok) printf ("(unknown virtuality)"); break;
+	case DW_VIRTUALITY_none:	if (print_results_and_ok) FJALAR_DPRINTF ("(none)"); break;
+	case DW_VIRTUALITY_virtual:	if (print_results_and_ok) FJALAR_DPRINTF ("(virtual)"); break;
+	case DW_VIRTUALITY_pure_virtual:if (print_results_and_ok) FJALAR_DPRINTF ("(pure_virtual)"); break;
+	default:			if (print_results_and_ok) FJALAR_DPRINTF ("(unknown virtuality)"); break;
 	}
       break;
 
     case DW_AT_identifier_case:
       switch (uvalue)
 	{
-	case DW_ID_case_sensitive:	if (print_results_and_ok) printf ("(case_sensitive)"); break;
-	case DW_ID_up_case:		if (print_results_and_ok) printf ("(up_case)"); break;
-	case DW_ID_down_case:		if (print_results_and_ok) printf ("(down_case)"); break;
-	case DW_ID_case_insensitive:	if (print_results_and_ok) printf ("(case_insensitive)"); break;
-	default:			if (print_results_and_ok) printf ("(unknown case)"); break;
+	case DW_ID_case_sensitive:	if (print_results_and_ok) FJALAR_DPRINTF ("(case_sensitive)"); break;
+	case DW_ID_up_case:		if (print_results_and_ok) FJALAR_DPRINTF ("(up_case)"); break;
+	case DW_ID_down_case:		if (print_results_and_ok) FJALAR_DPRINTF ("(down_case)"); break;
+	case DW_ID_case_insensitive:	if (print_results_and_ok) FJALAR_DPRINTF ("(case_insensitive)"); break;
+	default:			if (print_results_and_ok) FJALAR_DPRINTF ("(unknown case)"); break;
 	}
       break;
 
     case DW_AT_calling_convention:
       switch (uvalue)
 	{
-	case DW_CC_normal:	if (print_results_and_ok) printf ("(normal)"); break;
-	case DW_CC_program:	if (print_results_and_ok) printf ("(program)"); break;
-	case DW_CC_nocall:	if (print_results_and_ok) printf ("(nocall)"); break;
+	case DW_CC_normal:	if (print_results_and_ok) FJALAR_DPRINTF ("(normal)"); break;
+	case DW_CC_program:	if (print_results_and_ok) FJALAR_DPRINTF ("(program)"); break;
+	case DW_CC_nocall:	if (print_results_and_ok) FJALAR_DPRINTF ("(nocall)"); break;
 	default:
 	  if (uvalue >= DW_CC_lo_user
 	      && uvalue <= DW_CC_hi_user)
             {
-              if (print_results_and_ok) printf ("(user defined)");
+              if (print_results_and_ok) FJALAR_DPRINTF ("(user defined)");
             }
 	  else
             {
-              if (print_results_and_ok) printf ("(unknown convention)");
+              if (print_results_and_ok) FJALAR_DPRINTF ("(unknown convention)");
             }
 	}
       break;
@@ -7548,9 +7655,9 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_AT_ordering:
       switch (uvalue)
 	{
-	case -1: if (print_results_and_ok) printf ("(undefined)"); break;
-	case 0:  if (print_results_and_ok) printf ("(row major)"); break;
-	case 1:  if (print_results_and_ok) printf ("(column major)"); break;
+	case -1: if (print_results_and_ok) FJALAR_DPRINTF ("(undefined)"); break;
+	case 0:  if (print_results_and_ok) FJALAR_DPRINTF ("(row major)"); break;
+	case 1:  if (print_results_and_ok) FJALAR_DPRINTF ("(column major)"); break;
 	}
       break;
 
@@ -7558,30 +7665,30 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_AT_location:
       if (block_start)
 	{
-	  if (print_results_and_ok) printf ("(");
-	  decode_location_expression (block_start, pointer_size, uvalue, ok, entry);
-	  if (print_results_and_ok) printf (")");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("(");
+	  decode_location_expression (block_start, pointer_size, uvalue, ok, entry, 0);
+	  if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       else if (form == DW_FORM_data4 || form == DW_FORM_data8)
 	{
-	  if (print_results_and_ok) printf ("(");
-	  if (print_results_and_ok) printf ("location list");
-	  if (print_results_and_ok) printf (")");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("(");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("location list");
+	  if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       break;
 
     case DW_AT_data_member_location:
       if (block_start)
 	{
-	  if (print_results_and_ok) printf ("(");
-	  decode_location_expression (block_start, pointer_size, uvalue, ok, entry);
-	  if (print_results_and_ok) printf (")");
+	  if (print_results_and_ok) FJALAR_DPRINTF ("(");
+	  decode_location_expression (block_start, pointer_size, uvalue, ok, entry, 0);
+	  if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       else if (form == DW_FORM_data4 || form == DW_FORM_data8)
 	{
-          if (print_results_and_ok) printf ("(");
-          if (print_results_and_ok) printf ("location list");
-          if (print_results_and_ok) printf (")");
+          if (print_results_and_ok) FJALAR_DPRINTF ("(");
+          if (print_results_and_ok) FJALAR_DPRINTF ("location list");
+          if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       break;
 
@@ -7595,15 +7702,17 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
     case DW_AT_lower_bound:
       if (block_start)
 	{
-          if (print_results_and_ok) printf ("(");
-	  decode_location_expression (block_start, pointer_size, uvalue, ok, entry);
-          if (print_results_and_ok) printf (")");
+          if (print_results_and_ok) FJALAR_DPRINTF ("(");
+	  decode_location_expression (block_start, pointer_size, uvalue, ok, entry, 0);
+          if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       else if (form == DW_FORM_data4 || form == DW_FORM_data8)
 	{
-          if (print_results_and_ok) printf ("(");
-          if (print_results_and_ok) printf ("location list");
-          if (print_results_and_ok) printf (")");
+          // RUDD
+          harvest_frame_base(entry, DW_OP_list, uvalue);
+          if (print_results_and_ok) FJALAR_DPRINTF ("(");
+          if (print_results_and_ok) FJALAR_DPRINTF ("location list");
+          if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       break;
 
@@ -7631,15 +7740,15 @@ read_and_display_attr (attribute, form, data, cu_offset, pointer_size,
 
   // Ok process attributes when ok_to_harvest is on and the entry is listening:
   char ok_to_process = entry_is_listening && ok_to_harvest;
-  //  printf("ENTRY LISTENING: %d\n", (int)entry_is_listening);
+  //  FJALAR_DPRINTF("ENTRY LISTENING: %d\n", (int)entry_is_listening);
   //  if (ok_to_process)
   if (print_results && ok_to_process)
-    printf ("     %-18s:", get_AT_name (attribute));
+    FJALAR_DPRINTF ("     %-18s:", get_AT_name (attribute));
   data = read_and_display_attr_value (attribute, form, data, cu_offset,
 				      pointer_size, offset_size, dwarf_version,
                                       entry, ok_to_process);
   if (ok_to_process && print_results)
-    printf ("\n");
+    FJALAR_DPRINTF ("\n");
   return data;
 }
 
@@ -7665,7 +7774,7 @@ display_debug_info (section, start, file)
   unsigned char *end_dummy = start_dummy + section_dummy->sh_size;
   unsigned char *section_begin_dummy = start_dummy;
 
-  //  printf (_("The section %s contains:\n\n"), SECTION_NAME (section_dummy));
+  //  FJALAR_DPRINTF (_("The section %s contains:\n\n"), SECTION_NAME (section_dummy));
 
   load_debug_str (file_dummy);
   load_debug_loc (file_dummy);
@@ -7781,11 +7890,11 @@ display_debug_info (section, start, file)
       cu_offset = start_dummy - section_begin_dummy;
       start_dummy += compunit.cu_length + initial_length_size;
 
-      //      printf (_("  Compilation Unit @ %lx:\n"), cu_offset);
-      //      printf (_("   Length:        %ld\n"), compunit.cu_length);
-      //      printf (_("   Version:       %d\n"), compunit.cu_version);
-      //      printf (_("   Abbrev Offset: %ld\n"), compunit.cu_abbrev_offset);
-      //      printf (_("   Pointer Size:  %d\n"), compunit.cu_pointer_size);
+      //      FJALAR_DPRINTF (_("  Compilation Unit @ %lx:\n"), cu_offset);
+      //      FJALAR_DPRINTF (_("   Length:        %ld\n"), compunit.cu_length);
+      //      FJALAR_DPRINTF (_("   Version:       %d\n"), compunit.cu_version);
+      //      FJALAR_DPRINTF (_("   Abbrev Offset: %ld\n"), compunit.cu_abbrev_offset);
+      //      FJALAR_DPRINTF (_("   Pointer Size:  %d\n"), compunit.cu_pointer_size);
 
       if (compunit.cu_version != 2 && compunit.cu_version != 3)
 	{
@@ -7887,7 +7996,7 @@ display_debug_info (section, start, file)
   free_debug_loc ();
 
 #ifdef SHOW_DEBUG
-  printf ("Number of relevant entries: %u\n\n", num_relevant_entries);
+  FJALAR_DPRINTF ("Number of relevant entries: %u\n\n", num_relevant_entries);
 #endif
   // PG - End dummy run code
 
@@ -7898,7 +8007,7 @@ display_debug_info (section, start, file)
 
   // PG - Begin real code
 #ifdef SHOW_DEBUG
-  printf (_("The section %s contains:\n\n"), SECTION_NAME (section));
+  FJALAR_DPRINTF (_("The section %s contains:\n\n"), SECTION_NAME (section));
 #endif
 
   load_debug_str (file);
@@ -8016,11 +8125,11 @@ display_debug_info (section, start, file)
       start += compunit.cu_length + initial_length_size;
 
 #ifdef SHOW_DEBUG
-      printf (_("  Compilation Unit @ %lx:\n"), cu_offset);
-      printf (_("   Length:        %ld\n"), compunit.cu_length);
-      printf (_("   Version:       %d\n"), compunit.cu_version);
-      printf (_("   Abbrev Offset: %ld\n"), compunit.cu_abbrev_offset);
-      printf (_("   Pointer Size:  %d\n"), compunit.cu_pointer_size);
+      FJALAR_DPRINTF (_("  Compilation Unit @ %lx:\n"), cu_offset);
+      FJALAR_DPRINTF (_("   Length:        %ld\n"), compunit.cu_length);
+      FJALAR_DPRINTF (_("   Version:       %d\n"), compunit.cu_version);
+      FJALAR_DPRINTF (_("   Abbrev Offset: %ld\n"), compunit.cu_abbrev_offset);
+      FJALAR_DPRINTF (_("   Pointer Size:  %d\n"), compunit.cu_pointer_size);
 #endif
 
       if (compunit.cu_version != 2 && compunit.cu_version != 3)
@@ -8114,7 +8223,7 @@ display_debug_info (section, start, file)
 
               if (print_results)
                 {
-                  printf (_(" <%d><%lx>: Abbrev Number: %lu (%s)\n"),
+                  FJALAR_DPRINTF (_(" <%d><%lx>: Abbrev Number: %lu (%s)\n"),
                           level,
                           temp_ID,
                           abbrev_number,
@@ -8131,7 +8240,7 @@ display_debug_info (section, start, file)
                                               &dwarf_entry_array[idx],
                                               1); // DO harvest
 
-              //              printf("Index=%u, ID=%x, tag_name=%s\n",
+              //              FJALAR_DPRINTF("Index=%u, ID=%x, tag_name=%s\n",
               //                     idx,
               //                     dwarf_entry_array[idx].ID,
               //                     get_TAG_name(dwarf_entry_array[idx].tag_name));
@@ -8168,7 +8277,7 @@ display_debug_info (section, start, file)
   finish_dwarf_entry_array_init();
 
   //  print_dwarf_entry_array();
-  //  printf ("\n");
+  //  FJALAR_DPRINTF ("\n");
 
   return 1;
 }
@@ -8181,7 +8290,7 @@ display_debug_aranges (section, start, file)
 {
   unsigned char *end = start + section->sh_size;
 
-  printf (_("The section %s contains:\n\n"), SECTION_NAME (section));
+  FJALAR_DPRINTF (_("The section %s contains:\n\n"), SECTION_NAME (section));
 
   while (start < end)
     {
@@ -8230,13 +8339,13 @@ display_debug_aranges (section, start, file)
 	  break;
 	}
 
-      printf (_("  Length:                   %ld\n"), arange.ar_length);
-      printf (_("  Version:                  %d\n"), arange.ar_version);
-      printf (_("  Offset into .debug_info:  %lx\n"), arange.ar_info_offset);
-      printf (_("  Pointer Size:             %d\n"), arange.ar_pointer_size);
-      printf (_("  Segment Size:             %d\n"), arange.ar_segment_size);
+      FJALAR_DPRINTF (_("  Length:                   %ld\n"), arange.ar_length);
+      FJALAR_DPRINTF (_("  Version:                  %d\n"), arange.ar_version);
+      FJALAR_DPRINTF (_("  Offset into .debug_info:  %lx\n"), arange.ar_info_offset);
+      FJALAR_DPRINTF (_("  Pointer Size:             %d\n"), arange.ar_pointer_size);
+      FJALAR_DPRINTF (_("  Segment Size:             %d\n"), arange.ar_segment_size);
 
-      printf (_("\n    Address  Length\n"));
+      FJALAR_DPRINTF (_("\n    Address  Length\n"));
 
       ranges = hdrptr;
 
@@ -8259,13 +8368,13 @@ display_debug_aranges (section, start, file)
 	  if (address == 0 && length == 0)
 	    break;
 
-	  printf ("    %8.8lx %lu\n", address, length);
+	  FJALAR_DPRINTF ("    %8.8lx %lu\n", address, length);
 	}
 
       start += arange.ar_length + initial_length_size;
     }
 
-  printf ("\n");
+  FJALAR_DPRINTF ("\n");
 
   return 1;
 }
@@ -8339,26 +8448,26 @@ frame_display_row (fc, need_col_headers, max_regs)
     {
       *need_col_headers = 0;
 
-      printf ("   LOC   CFA      ");
+      FJALAR_DPRINTF ("   LOC   CFA      ");
 
       for (r = 0; r < *max_regs; r++)
 	if (fc->col_type[r] != DW_CFA_unreferenced)
 	  {
 	    if (r == fc->ra)
-	      printf ("ra   ");
+	      FJALAR_DPRINTF ("ra   ");
 	    else
-	      printf ("r%-4d", r);
+	      FJALAR_DPRINTF ("r%-4d", r);
 	  }
 
-      printf ("\n");
+      FJALAR_DPRINTF ("\n");
     }
 
-  printf ("%08lx ", fc->pc_begin);
+  FJALAR_DPRINTF ("%08lx ", fc->pc_begin);
   if (fc->cfa_exp)
     VG_(strcpy) (tmp, "exp");
   else
     sprintf (tmp, "r%d%+d", fc->cfa_reg, fc->cfa_offset);
-  printf ("%-8s ", tmp);
+  FJALAR_DPRINTF ("%-8s ", tmp);
 
   for (r = 0; r < fc->ncols; r++)
     {
@@ -8385,10 +8494,10 @@ frame_display_row (fc, need_col_headers, max_regs)
 	      VG_(strcpy) (tmp, "n/a");
 	      break;
 	    }
-	  printf ("%-5s", tmp);
+	  FJALAR_DPRINTF ("%-5s", tmp);
 	}
     }
-  printf ("\n");
+  FJALAR_DPRINTF ("\n");
 }
 
 static int
@@ -8425,7 +8534,7 @@ display_debug_frames (section, start, file)
   int max_regs = 0;
   int addr_size = is_32bit_elf ? 4 : 8;
 
-  printf (_("The section %s contains:\n"), SECTION_NAME (section));
+  FJALAR_DPRINTF (_("The section %s contains:\n"), SECTION_NAME (section));
 
   while (start < end)
     {
@@ -8447,7 +8556,7 @@ display_debug_frames (section, start, file)
 
       if (length == 0)
 	{
-	  printf ("\n%08lx ZERO terminator\n\n",
+	  FJALAR_DPRINTF ("\n%08lx ZERO terminator\n\n",
 		    (unsigned long)(saved_start - section_start));
 	  return 1;
 	}
@@ -8513,26 +8622,26 @@ display_debug_frames (section, start, file)
 	  cie = fc;
 
 	  if (do_debug_frames_interp)
-	    printf ("\n%08lx %08lx %08lx CIE \"%s\" cf=%d df=%d ra=%d\n",
+	    FJALAR_DPRINTF ("\n%08lx %08lx %08lx CIE \"%s\" cf=%d df=%d ra=%d\n",
 		    (unsigned long)(saved_start - section_start), length, cie_id,
 		    fc->augmentation, fc->code_factor, fc->data_factor,
 		    fc->ra);
 	  else
 	    {
-	      printf ("\n%08lx %08lx %08lx CIE\n",
+	      FJALAR_DPRINTF ("\n%08lx %08lx %08lx CIE\n",
 		      (unsigned long)(saved_start - section_start), length, cie_id);
-	      printf ("  Version:               %d\n", version);
-	      printf ("  Augmentation:          \"%s\"\n", fc->augmentation);
-	      printf ("  Code alignment factor: %u\n", fc->code_factor);
-	      printf ("  Data alignment factor: %d\n", fc->data_factor);
-	      printf ("  Return address column: %d\n", fc->ra);
+	      FJALAR_DPRINTF ("  Version:               %d\n", version);
+	      FJALAR_DPRINTF ("  Augmentation:          \"%s\"\n", fc->augmentation);
+	      FJALAR_DPRINTF ("  Code alignment factor: %u\n", fc->code_factor);
+	      FJALAR_DPRINTF ("  Data alignment factor: %d\n", fc->data_factor);
+	      FJALAR_DPRINTF ("  Return address column: %d\n", fc->ra);
 
 	      if (augmentation_data_len)
 		{
 		  unsigned long i;
-		  printf ("  Augmentation data:    ");
+		  FJALAR_DPRINTF ("  Augmentation data:    ");
 		  for (i = 0; i < augmentation_data_len; ++i)
-		    printf (" %02x", augmentation_data[i]);
+		    FJALAR_DPRINTF (" %02x", augmentation_data[i]);
 		  putchar ('\n');
 		}
 	      putchar ('\n');
@@ -8623,17 +8732,28 @@ display_debug_frames (section, start, file)
 	      augmentation_data = start;
 	      start += augmentation_data_len;
 	    }
+	  FJALAR_DPRINTF (")\n");
 
-	  printf ("\n%08lx %08lx %08lx FDE cie=%08lx pc=%08lx..%08lx\n",
+
+	  // RUDD - Harvesting Debug_Frame data
+          debug_frame* df = VG_(calloc)("readelf.c: display_debug_frame", sizeof(debug_frame), 1);
+	  df->begin = fc->pc_begin;
+	  df->end = fc->pc_begin + fc->pc_range;
+	  df->next = 0;
+	  harvest_debug_frame_entry(df);
+
+
+
+	  FJALAR_DPRINTF ("\n%08lx %08lx %08lx FDE cie=%08lx pc=%08lx..%08lx\n",
 		  (unsigned long)(saved_start - section_start), length, cie_id,
 		  (unsigned long)(cie->chunk_start - section_start),
 		  fc->pc_begin, fc->pc_begin + fc->pc_range);
 	  if (! do_debug_frames_interp && augmentation_data_len)
 	    {
 	      unsigned long i;
-	      printf ("  Augmentation data:    ");
+	      FJALAR_DPRINTF ("  Augmentation data:    ");
 	      for (i = 0; i < augmentation_data_len; ++i)
-	        printf (" %02x", augmentation_data[i]);
+	        FJALAR_DPRINTF (" %02x", augmentation_data[i]);
 	      putchar ('\n');
 	      putchar ('\n');
 	    }
@@ -8782,7 +8902,7 @@ display_debug_frames (section, start, file)
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
-		printf ("  DW_CFA_advance_loc: %d to %08lx\n",
+	 FJALAR_DPRINTF ("  DW_CFA_advance_loc: %d to %08lx\n",
 			opa * fc->code_factor,
 			fc->pc_begin + opa * fc->code_factor);
 	      fc->pc_begin += opa * fc->code_factor;
@@ -8791,7 +8911,7 @@ display_debug_frames (section, start, file)
 	    case DW_CFA_offset:
 	      roffs = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_offset: r%d at cfa%+ld\n",
+	 FJALAR_DPRINTF ("  DW_CFA_offset: r%d at cfa%+ld\n",
 			opa, roffs * fc->data_factor);
 	      fc->col_type[opa] = DW_CFA_offset;
 	      fc->col_offset[opa] = roffs * fc->data_factor;
@@ -8799,7 +8919,7 @@ display_debug_frames (section, start, file)
 
 	    case DW_CFA_restore:
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_restore: r%d\n", opa);
+	 FJALAR_DPRINTF ("  DW_CFA_restore: r%d\n", opa);
 	      fc->col_type[opa] = cie->col_type[opa];
 	      fc->col_offset[opa] = cie->col_offset[opa];
 	      break;
@@ -8812,7 +8932,7 @@ display_debug_frames (section, start, file)
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
-		printf ("  DW_CFA_set_loc: %08lx\n", (unsigned long)vma);
+	 FJALAR_DPRINTF ("  DW_CFA_set_loc: %08lx\n", (unsigned long)vma);
 	      fc->pc_begin = vma;
 	      break;
 
@@ -8821,7 +8941,7 @@ display_debug_frames (section, start, file)
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
-		printf ("  DW_CFA_advance_loc1: %ld to %08lx\n",
+	 FJALAR_DPRINTF ("  DW_CFA_advance_loc1: %ld to %08lx\n",
 			ofs * fc->code_factor,
 			fc->pc_begin + ofs * fc->code_factor);
 	      fc->pc_begin += ofs * fc->code_factor;
@@ -8832,7 +8952,7 @@ display_debug_frames (section, start, file)
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
-		printf ("  DW_CFA_advance_loc2: %ld to %08lx\n",
+	 FJALAR_DPRINTF ("  DW_CFA_advance_loc2: %ld to %08lx\n",
 			ofs * fc->code_factor,
 			fc->pc_begin + ofs * fc->code_factor);
 	      fc->pc_begin += ofs * fc->code_factor;
@@ -8843,7 +8963,7 @@ display_debug_frames (section, start, file)
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
-		printf ("  DW_CFA_advance_loc4: %ld to %08lx\n",
+	 FJALAR_DPRINTF ("  DW_CFA_advance_loc4: %ld to %08lx\n",
 			ofs * fc->code_factor,
 			fc->pc_begin + ofs * fc->code_factor);
 	      fc->pc_begin += ofs * fc->code_factor;
@@ -8853,7 +8973,7 @@ display_debug_frames (section, start, file)
 	      reg = LEB ();
 	      roffs = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_offset_extended: r%ld at cfa%+ld\n",
+	 FJALAR_DPRINTF ("  DW_CFA_offset_extended: r%ld at cfa%+ld\n",
 			reg, roffs * fc->data_factor);
 	      fc->col_type[reg] = DW_CFA_offset;
 	      fc->col_offset[reg] = roffs * fc->data_factor;
@@ -8862,7 +8982,7 @@ display_debug_frames (section, start, file)
 	    case DW_CFA_restore_extended:
 	      reg = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_restore_extended: r%ld\n", reg);
+	 FJALAR_DPRINTF ("  DW_CFA_restore_extended: r%ld\n", reg);
 	      fc->col_type[reg] = cie->col_type[reg];
 	      fc->col_offset[reg] = cie->col_offset[reg];
 	      break;
@@ -8870,7 +8990,7 @@ display_debug_frames (section, start, file)
 	    case DW_CFA_undefined:
 	      reg = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_undefined: r%ld\n", reg);
+	 FJALAR_DPRINTF ("  DW_CFA_undefined: r%ld\n", reg);
 	      fc->col_type[reg] = DW_CFA_undefined;
 	      fc->col_offset[reg] = 0;
 	      break;
@@ -8878,7 +8998,7 @@ display_debug_frames (section, start, file)
 	    case DW_CFA_same_value:
 	      reg = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_same_value: r%ld\n", reg);
+	 FJALAR_DPRINTF ("  DW_CFA_same_value: r%ld\n", reg);
 	      fc->col_type[reg] = DW_CFA_same_value;
 	      fc->col_offset[reg] = 0;
 	      break;
@@ -8887,14 +9007,14 @@ display_debug_frames (section, start, file)
 	      reg = LEB ();
 	      roffs = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_register: r%ld\n", reg);
+	 FJALAR_DPRINTF ("  DW_CFA_register: r%ld\n", reg);
 	      fc->col_type[reg] = DW_CFA_register;
 	      fc->col_offset[reg] = roffs;
 	      break;
 
 	    case DW_CFA_remember_state:
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_remember_state\n");
+	 FJALAR_DPRINTF ("  DW_CFA_remember_state\n");
 	      rs = (Frame_Chunk *) xmalloc (sizeof (Frame_Chunk));
 	      rs->ncols = fc->ncols;
 	      rs->col_type = (short int *) xmalloc (rs->ncols * sizeof (short int));
@@ -8907,7 +9027,7 @@ display_debug_frames (section, start, file)
 
 	    case DW_CFA_restore_state:
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_restore_state\n");
+	 FJALAR_DPRINTF ("  DW_CFA_restore_state\n");
 	      rs = remembered_state;
 	      remembered_state = rs->next;
 	      frame_need_space (fc, rs->ncols-1);
@@ -8923,7 +9043,7 @@ display_debug_frames (section, start, file)
 	      fc->cfa_offset = LEB ();
 	      fc->cfa_exp = 0;
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_def_cfa: r%d ofs %d\n",
+	 FJALAR_DPRINTF ("  DW_CFA_def_cfa: r%d ofs %d\n",
 			fc->cfa_reg, fc->cfa_offset);
 	      break;
 
@@ -8931,27 +9051,27 @@ display_debug_frames (section, start, file)
 	      fc->cfa_reg = LEB ();
 	      fc->cfa_exp = 0;
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_def_cfa_reg: r%d\n", fc->cfa_reg);
+	 FJALAR_DPRINTF ("  DW_CFA_def_cfa_reg: r%d\n", fc->cfa_reg);
 	      break;
 
 	    case DW_CFA_def_cfa_offset:
 	      fc->cfa_offset = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_def_cfa_offset: %d\n", fc->cfa_offset);
+	 FJALAR_DPRINTF ("  DW_CFA_def_cfa_offset: %d\n", fc->cfa_offset);
 	      break;
 
 	    case DW_CFA_nop:
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_nop\n");
+	 FJALAR_DPRINTF ("  DW_CFA_nop\n");
 	      break;
 
 	    case DW_CFA_def_cfa_expression:
 	      ul = LEB ();
 	      if (! do_debug_frames_interp)
 		{
-		  printf ("  DW_CFA_def_cfa_expression (");
-		  decode_location_expression (start, addr_size, ul, 1, 0);
-		  printf (")\n");
+		  FJALAR_DPRINTF ("  DW_CFA_def_cfa_expression (");
+		  decode_location_expression (start, addr_size, ul, 1, 0, 0 );
+		  FJALAR_DPRINTF (")\n");
 		}
 	      fc->cfa_exp = 1;
 	      start += ul;
@@ -8962,9 +9082,9 @@ display_debug_frames (section, start, file)
 	      ul = LEB ();
 	      if (! do_debug_frames_interp)
 		{
-		  printf ("  DW_CFA_expression: r%ld (", reg);
-		  decode_location_expression (start, addr_size, ul, 1, 0);
-		  printf (")\n");
+		  FJALAR_DPRINTF ("  DW_CFA_expression: r%ld (", reg);
+		  decode_location_expression (start, addr_size, ul, 1, 0, 0);
+		  FJALAR_DPRINTF (")\n");
 		}
 	      fc->col_type[reg] = DW_CFA_expression;
 	      start += ul;
@@ -8975,7 +9095,7 @@ display_debug_frames (section, start, file)
 	      l = SLEB ();
 	      frame_need_space (fc, reg);
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_offset_extended_sf: r%ld at cfa%+ld\n",
+	 FJALAR_DPRINTF ("  DW_CFA_offset_extended_sf: r%ld at cfa%+ld\n",
 			reg, l * fc->data_factor);
 	      fc->col_type[reg] = DW_CFA_offset;
 	      fc->col_offset[reg] = l * fc->data_factor;
@@ -8986,14 +9106,14 @@ display_debug_frames (section, start, file)
 	      fc->cfa_offset = SLEB ();
 	      fc->cfa_exp = 0;
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_def_cfa_sf: r%d ofs %d\n",
+	 FJALAR_DPRINTF ("  DW_CFA_def_cfa_sf: r%d ofs %d\n",
 			fc->cfa_reg, fc->cfa_offset);
 	      break;
 
 	    case DW_CFA_def_cfa_offset_sf:
 	      fc->cfa_offset = SLEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_def_cfa_offset_sf: %d\n", fc->cfa_offset);
+	 FJALAR_DPRINTF ("  DW_CFA_def_cfa_offset_sf: %d\n", fc->cfa_offset);
 	      break;
 
 	    case DW_CFA_MIPS_advance_loc8:
@@ -9001,7 +9121,7 @@ display_debug_frames (section, start, file)
 	      if (do_debug_frames_interp)
 		frame_display_row (fc, &need_col_headers, &max_regs);
 	      else
-		printf ("  DW_CFA_MIPS_advance_loc8: %ld to %08lx\n",
+	 FJALAR_DPRINTF ("  DW_CFA_MIPS_advance_loc8: %ld to %08lx\n",
 			ofs * fc->code_factor,
 			fc->pc_begin + ofs * fc->code_factor);
 	      fc->pc_begin += ofs * fc->code_factor;
@@ -9009,13 +9129,13 @@ display_debug_frames (section, start, file)
 
 	    case DW_CFA_GNU_window_save:
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_GNU_window_save\n");
+	 FJALAR_DPRINTF ("  DW_CFA_GNU_window_save\n");
 	      break;
 
 	    case DW_CFA_GNU_args_size:
 	      ul = LEB ();
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_GNU_args_size: %ld\n", ul);
+	 FJALAR_DPRINTF ("  DW_CFA_GNU_args_size: %ld\n", ul);
 	      break;
 
 	    case DW_CFA_GNU_negative_offset_extended:
@@ -9023,7 +9143,7 @@ display_debug_frames (section, start, file)
 	      l = - LEB ();
 	      frame_need_space (fc, reg);
 	      if (! do_debug_frames_interp)
-		printf ("  DW_CFA_GNU_negative_offset_extended: r%ld at cfa%+ld\n",
+	 FJALAR_DPRINTF ("  DW_CFA_GNU_negative_offset_extended: r%ld at cfa%+ld\n",
 			reg, l * fc->data_factor);
 	      fc->col_type[reg] = DW_CFA_offset;
 	      fc->col_offset[reg] = l * fc->data_factor;
@@ -9041,7 +9161,7 @@ display_debug_frames (section, start, file)
       start = block_end;
     }
 
-  printf ("\n");
+  FJALAR_DPRINTF ("\n");
 
   return 1;
 }
@@ -9056,7 +9176,7 @@ display_debug_not_supported (section, start, file)
      unsigned char *start ATTRIBUTE_UNUSED;
      FILE *file ATTRIBUTE_UNUSED;
 {
-  printf (_("Displaying the debug contents of section %s is not yet supported.\n"),
+  FJALAR_DPRINTF (_("Displaying the debug contents of section %s is not yet supported.\n"),
 	    SECTION_NAME (section));
 
   return 1;
@@ -9152,7 +9272,7 @@ display_debug_section (section, file)
   length = section->sh_size;
   if (length == 0)
     {
-      printf (_("\nSection '%s' has no debugging data.\n"), name);
+      FJALAR_DPRINTF (_("\nSection '%s' has no debugging data.\n"), name);
       return 0;
     }
 
@@ -9173,7 +9293,7 @@ display_debug_section (section, file)
       }
 
   if (i == -1)
-    printf (_("Unrecognized debug section: %s\n"), name);
+    FJALAR_DPRINTF (_("Unrecognized debug section: %s\n"), name);
 
   VG_(free) (start);
 
@@ -9194,7 +9314,7 @@ process_section_contents (file)
   if (! do_dump)
     return 1;
 
-  //  printf("process_section_contents() - before 1st for loop\n");
+  //  FJALAR_DPRINTF("process_section_contents() - before 1st for loop\n");
 
   /* Pre-scan the debug sections to find some debug information not
      present in some of them.  For the .debug_line, we must find out the
@@ -9233,7 +9353,7 @@ process_section_contents (file)
 	  }
     }
 
-  //  printf("process_section_contents() - before 2nd for loop\n");
+  //  FJALAR_DPRINTF("process_section_contents() - before 2nd for loop\n");
 
   for (i = 0, section = section_headers;
        i < elf_header.e_shnum && i < num_dump_sects;
@@ -9254,7 +9374,7 @@ process_section_contents (file)
         }
     }
 
-  //  printf("process_section_contents() - after 2nd for loop\n");
+  //  FJALAR_DPRINTF("process_section_contents() - after 2nd for loop\n");
 
   if (i < num_dump_sects)
     {
@@ -9400,7 +9520,7 @@ process_note (pnote)
       nt = get_note_type (pnote->type);
     }
 
-  printf ("  %s\t\t0x%08lx\t%s\n",
+  FJALAR_DPRINTF ("  %s\t\t0x%08lx\t%s\n",
 	  pnote->namesz ? pnote->namedata : "(NONE)",
 	  pnote->descsz, nt);
   return 1;
@@ -9427,9 +9547,9 @@ process_corefile_note_segment (file, offset, length)
 
   external = pnotes;
 
-  printf (_("\nNotes at offset 0x%08lx with length 0x%08lx:\n"),
+  FJALAR_DPRINTF (_("\nNotes at offset 0x%08lx with length 0x%08lx:\n"),
 	  (unsigned long) offset, (unsigned long) length);
-  printf (_("  Owner\t\tData size\tDescription\n"));
+  FJALAR_DPRINTF (_("  Owner\t\tData size\tDescription\n"));
 
   while (external < (Elf_External_Note *)((char *) pnotes + length))
     {
@@ -9552,7 +9672,7 @@ process_corefile_contents (file)
   /* No program headers means no NOTE segment.  */
   if (elf_header.e_phnum == 0)
     {
-      printf (_("No note segments present in the core file.\n"));
+      FJALAR_DPRINTF (_("No note segments present in the core file.\n"));
       return 1;
    }
 
@@ -9703,23 +9823,23 @@ process_file (file_name)
   /* Process the file.  */
 #ifdef SHOW_DEBUG
   if (show_name)
-    printf (_("\nFile: %s\n"), file_name);
+    FJALAR_DPRINTF (_("\nFile: %s\n"), file_name);
 #endif
- 
+
   //printf("before process_file_header()\n"); // PG
 
   if (! process_file_header ())
     {
-      //  printf("failed process_file_header()\n"); // PG
+      //  FJALAR_DPRINTF("failed process_file_header()\n"); // PG
       fclose (file);
       return 1;
     }
 
-  //    printf("before process_section_headers()\n"); // PG
+  //    FJALAR_DPRINTF("before process_section_headers()\n"); // PG
 
   if (! process_section_headers (file))
     {
-      //  printf("failed process_section_headers()\n"); // PG
+      //  FJALAR_DPRINTF("failed process_section_headers()\n"); // PG
       /* Without loaded section headers we
 	 cannot process lots of things.  */
       do_unwind = do_version = do_dump = do_arch = 0;
@@ -9728,27 +9848,27 @@ process_file (file_name)
 	do_syms = do_reloc = 0;
     }
 
-  //    printf("before process_program_headers()\n"); // PG
+  //    FJALAR_DPRINTF("before process_program_headers()\n"); // PG
 
   if (process_program_headers (file))
     process_dynamic_segment (file);
-  //    printf("before process_relocs()\n"); // PG
+  //    FJALAR_DPRINTF("before process_relocs()\n"); // PG
   process_relocs (file);
-  //  printf("before process_unwind()\n"); // PG
+  //  FJALAR_DPRINTF("before process_unwind()\n"); // PG
   process_unwind (file);
-  //    printf("before process_symbol_table()\n"); // PG
+  //    FJALAR_DPRINTF("before process_symbol_table()\n"); // PG
   process_symbol_table (file);
-  //    printf("before process_syminfo()\n"); // PG
+  //    FJALAR_DPRINTF("before process_syminfo()\n"); // PG
   process_syminfo (file);
-  //   printf("before process_version_sections()\n"); // PG
+  //   FJALAR_DPRINTF("before process_version_sections()\n"); // PG
   process_version_sections (file);
-  //    printf("before process_section_contents()\n"); // PG
+  //    FJALAR_DPRINTF("before process_section_contents()\n"); // PG
   process_section_contents (file);
-  //    printf("before process_corefile_contents()\n"); // PG
+  //    FJALAR_DPRINTF("before process_corefile_contents()\n"); // PG
   process_corefile_contents (file);
-  //    printf("before process_gnu_liblist()\n"); // PG
+  //    FJALAR_DPRINTF("before process_gnu_liblist()\n"); // PG
   process_gnu_liblist (file);
-  //    printf("before process_arch_specific()\n"); // PG
+  //    FJALAR_DPRINTF("before process_arch_specific()\n"); // PG
   process_arch_specific (file);
 
   fclose (file);
@@ -9812,18 +9932,22 @@ db_task_printsym (unsigned int addr)
 
 int process_elf_binary_data(char* filename)
 {
+
   int err;
   char *cmdline_dump_sects = NULL;
-  // printf("Entry: process_elf_binary_data\n"); RUDD
+  // FJALAR_DPRINTF("Entry: process_elf_binary_data\n"); RUDD
 
   do_syms++; /* -s */
-  do_dump++; do_debug_info++; do_debug_lines++; /* --debug-dump=info,lines */
-
+  do_dump++;
+  do_debug_info++;
+  do_debug_lines++; /* --debug-dump=info,lines */
+  do_debug_loc++;
+  do_debug_frames++;
   show_name = 1;
 
   err = process_file (filename); // PG/SMcC - rather than argv[argc - 1]
 
-  //  printf("AFTER process_file(0x%x)\n", filename);
+  //  FJALAR_DPRINTF("AFTER process_file(0x%x)\n", filename);
 
   if (dump_sects != NULL) {
     VG_(free) (dump_sects);

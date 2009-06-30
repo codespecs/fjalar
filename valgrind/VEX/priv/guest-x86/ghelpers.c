@@ -2713,6 +2713,22 @@ VexGuestLayout
           .offset_xDX = offsetof(VexGuestX86State,guest_EDX),
           .sizeof_xDX = 4,
 
+          /* Describe the CX register. */
+          .offset_xCX = offsetof(VexGuestX86State,guest_ECX),
+          .sizeof_xCX = 4,
+
+          /* Describe the BX register. */
+          .offset_xBX = offsetof(VexGuestX86State,guest_EBX),
+          .sizeof_xBX = 4,
+
+          /* Describe the SI register. */
+          .offset_xSI = offsetof(VexGuestX86State,guest_ESI),
+          .sizeof_xSI = 4,
+
+
+          /* Describe the DI register. */
+          .offset_xDI = offsetof(VexGuestX86State,guest_EDI),
+          .sizeof_xDI = 4,
 
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */

@@ -351,6 +351,18 @@ typedef
       /* Whereabouts is the secondary integer return register? */
       Int offset_xDX;
       Int sizeof_xDX; /* 4 or 8 */
+      /* Whereabouts is the CX register? */
+      Int offset_xCX;
+      Int sizeof_xCX; /* 4 or 8 */
+      /* Whereabouts is the BX register? */
+      Int offset_xBX;
+      Int sizeof_xBX; /* 4 or 8 */
+      /* Whereabouts is the SI register? */
+      Int offset_xSI;
+      Int sizeof_xSI; /* 4 or 8 */
+      /* Whereabouts is the DI register? */
+      Int offset_xDI;
+      Int sizeof_xDI; /* 4 or 8 */
       /* Describe parts of the guest state regarded as 'always
          defined'. */
       Int n_alwaysDefd;
