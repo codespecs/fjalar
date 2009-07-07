@@ -111,22 +111,6 @@ fjalar_amd64_linux_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_LINUX)
 fjalar_amd64_linux_LDADD        = $(TOOL_LDADD_AMD64_LINUX)
 fjalar_amd64_linux_LDFLAGS      = $(TOOL_LDFLAGS_AMD64_LINUX)
 
-memcheck_x86_darwin_SOURCES      = $(MEMCHECK_SOURCES_COMMON)
-memcheck_x86_darwin_CPPFLAGS     = $(AM_CPPFLAGS_X86_DARWIN)
-memcheck_x86_darwin_CFLAGS       = $(AM_CFLAGS_X86_DARWIN) -O2
-memcheck_x86_darwin_CCASFLAGS    = $(AM_CCASFLAGS_X86_DARWIN)
-memcheck_x86_darwin_DEPENDENCIES = $(COREGRIND_LIBS_X86_DARWIN)
-memcheck_x86_darwin_LDADD        = $(TOOL_LDADD_X86_DARWIN)
-memcheck_x86_darwin_LDFLAGS      = $(TOOL_LDFLAGS_X86_DARWIN)
-
-memcheck_amd64_darwin_SOURCES      = $(MEMCHECK_SOURCES_COMMON)
-memcheck_amd64_darwin_CPPFLAGS     = $(AM_CPPFLAGS_AMD64_DARWIN)
-memcheck_amd64_darwin_CFLAGS       = $(AM_CFLAGS_AMD64_DARWIN) -O2
-memcheck_amd64_darwin_CCASFLAGS    = $(AM_CCASFLAGS_AMD64_DARWIN)
-memcheck_amd64_darwin_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_DARWIN)
-memcheck_amd64_darwin_LDADD        = $(TOOL_LDADD_AMD64_DARWIN)
-memcheck_amd64_darwin_LDFLAGS      = $(TOOL_LDFLAGS_AMD64_DARWIN)
-
 mcincludedir = $(includedir)/valgrind
 
 mcinclude_HEADERS = \

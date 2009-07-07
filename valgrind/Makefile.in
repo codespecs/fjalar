@@ -41,9 +41,10 @@ DIST_COMMON = README $(am__configure_deps) $(dist_noinst_DATA) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
 	$(srcdir)/config.h.in $(srcdir)/glibc-2.X.supp.in \
 	$(srcdir)/valgrind.pc.in $(srcdir)/valgrind.spec.in \
-	$(top_srcdir)/Makefile.all.am $(top_srcdir)/configure AUTHORS \
-	COPYING INSTALL NEWS compile config.guess config.sub depcomp \
-	install-sh missing mkinstalldirs
+	$(top_srcdir)/Makefile.all.am $(top_srcdir)/configure \
+	$(top_srcdir)/drd/scripts/download-and-build-splash2.in \
+	AUTHORS COPYING INSTALL NEWS compile config.guess config.sub \
+	depcomp install-sh missing mkinstalldirs
 @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = valt_load_address_x86_linux.lds
 @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_2 = valt_load_address_x86_linux.lds
 @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_3 = valt_load_address_amd64_linux.lds
@@ -61,7 +62,8 @@ am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno configure.status.lineno
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = config.h
-CONFIG_CLEAN_FILES = valgrind.spec valgrind.pc glibc-2.X.supp
+CONFIG_CLEAN_FILES = valgrind.spec valgrind.pc glibc-2.X.supp \
+	drd/scripts/download-and-build-splash2
 SOURCES =
 DIST_SOURCES =
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
@@ -293,21 +295,43 @@ target_alias = @target_alias@
 AUTOMAKE_OPTIONS = foreign 1.7 dist-bzip2
 valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
-TOOLS = fjalar
+TOOLS = memcheck \
+		cachegrind \
+		callgrind \
+		massif \
+		lackey \
+		none \
+		helgrind \
+		drd \
+		fjalar
+
+EXP_TOOLS = exp-ptrcheck
 
 # DDD: once all tools work on Darwin, TEST_TOOLS and TEST_EXP_TOOLS can be
 # replaced with TOOLS and EXP_TOOLS.
 @VGCONF_OS_IS_DARWIN_FALSE@TEST_TOOLS = $(TOOLS)
-@VGCONF_OS_IS_DARWIN_TRUE@TEST_TOOLS = 
+@VGCONF_OS_IS_DARWIN_TRUE@TEST_TOOLS = memcheck \
+@VGCONF_OS_IS_DARWIN_TRUE@		cachegrind \
+@VGCONF_OS_IS_DARWIN_TRUE@		callgrind \
+@VGCONF_OS_IS_DARWIN_TRUE@		massif \
+@VGCONF_OS_IS_DARWIN_TRUE@		lackey \
+@VGCONF_OS_IS_DARWIN_TRUE@		none
+
 @VGCONF_OS_IS_DARWIN_FALSE@TEST_EXP_TOOLS = $(EXP_TOOLS)
 @VGCONF_OS_IS_DARWIN_TRUE@TEST_EXP_TOOLS = 
-SUBDIRS = include coregrind . tests perf $(TOOLS) docs
+
+# Put docs last because building the HTML is slow and we want to get
+# everything else working before we try it.
+SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) $(EXP_TOOLS) docs
 DIST_SUBDIRS = $(SUBDIRS)
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
 	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
-	aix5libc.supp \
-	xfree-3.supp xfree-4.supp \
+	aix5libc.supp xfree-3.supp xfree-4.supp \
+	glibc-2.34567-NPTL-helgrind.supp \
+	glibc-2.2-LinuxThreads-helgrind.supp \
+	glibc-2.X-drd.supp \
+	exp-ptrcheck.supp \
 	darwin9.supp
 
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
@@ -369,6 +393,7 @@ vex_primary_sources = \
 	VEX/LICENSE.README \
 	VEX/LICENSE.GPL \
 	VEX/Makefile \
+	VEX/auxprogs/genoffsets.c \
 	VEX/pub/libvex_guest_amd64.h \
 	VEX/pub/libvex_ir.h \
 	VEX/pub/libvex_guest_ppc32.h \
@@ -484,6 +509,8 @@ valgrind.spec: $(top_builddir)/config.status $(srcdir)/valgrind.spec.in
 valgrind.pc: $(top_builddir)/config.status $(srcdir)/valgrind.pc.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 glibc-2.X.supp: $(top_builddir)/config.status $(srcdir)/glibc-2.X.supp.in
+	cd $(top_builddir) && $(SHELL) ./config.status $@
+drd/scripts/download-and-build-splash2: $(top_builddir)/config.status $(top_srcdir)/drd/scripts/download-and-build-splash2.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 uninstall-info-am:
 install-pkgconfigDATA: $(pkgconfig_DATA)
@@ -673,7 +700,7 @@ distclean-tags:
 distdir: $(DISTFILES)
 	$(am__remove_distdir)
 	mkdir $(distdir)
-	$(mkdir_p) $(distdir)/. $(distdir)/VEX $(distdir)/VEX/priv/guest-amd64 $(distdir)/VEX/priv/guest-arm $(distdir)/VEX/priv/guest-generic $(distdir)/VEX/priv/guest-ppc $(distdir)/VEX/priv/guest-x86 $(distdir)/VEX/priv/host-amd64 $(distdir)/VEX/priv/host-arm $(distdir)/VEX/priv/host-generic $(distdir)/VEX/priv/host-ppc $(distdir)/VEX/priv/host-x86 $(distdir)/VEX/priv/ir $(distdir)/VEX/priv/main $(distdir)/VEX/pub $(distdir)/perf $(distdir)/tests
+	$(mkdir_p) $(distdir)/. $(distdir)/VEX $(distdir)/VEX/auxprogs $(distdir)/VEX/priv/guest-amd64 $(distdir)/VEX/priv/guest-arm $(distdir)/VEX/priv/guest-generic $(distdir)/VEX/priv/guest-ppc $(distdir)/VEX/priv/guest-x86 $(distdir)/VEX/priv/host-amd64 $(distdir)/VEX/priv/host-arm $(distdir)/VEX/priv/host-generic $(distdir)/VEX/priv/host-ppc $(distdir)/VEX/priv/host-x86 $(distdir)/VEX/priv/ir $(distdir)/VEX/priv/main $(distdir)/VEX/pub $(distdir)/cachegrind $(distdir)/callgrind $(distdir)/drd/scripts $(distdir)/massif $(distdir)/perf $(distdir)/tests
 	@srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`; \
 	topsrcdirstrip=`echo "$(top_srcdir)" | sed 's|.|.|g'`; \
 	list='$(DISTFILES)'; for file in $$list; do \

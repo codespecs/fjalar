@@ -155,7 +155,7 @@ repository for the copy that will be diffed.</p>
 <pre>
   cd $INV
   \rm -f coregrind.patch memcheck.patch
-  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey valgrind-old valgrind-new > coregrind.patch
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS valgrind-old valgrind-new > coregrind.patch
   diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf valgrind-old/memcheck valgrind-new/memcheck > memcheck.patch</pre>
 
 
@@ -166,7 +166,7 @@ repository for the copy that will be diffed.</p>
 <pre>
   cd $INV
   \rm -f coregrind-PAG.diff
-  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x fjalar valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
 </pre>
 
 <hr>
@@ -412,7 +412,7 @@ and filled with their signatures for use by Fjalar.</p>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: June 29, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: July 7, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG

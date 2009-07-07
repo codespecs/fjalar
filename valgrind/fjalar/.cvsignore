@@ -2,3 +2,4 @@ Makefile
 .deps
 fjalar-x86-linux
 fjalar-amd64-linux
+*.so
