@@ -397,24 +397,24 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
-SUBDIRS = .
+SUBDIRS = . tests docs
 valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
+AM_CFLAGS_BASE = -O2 -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
                  -fno-strict-aliasing
 
-@VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -g -fpic -fno-omit-frame-pointer -fno-strict-aliasing
+@VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -fpic -O -g -fno-omit-frame-pointer -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
 # stack traces, since users often see stack traces extending 
 # into (and through) the preloads.
-@VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
+@VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
 
 # Flags for specific targets.
 #
@@ -706,7 +706,7 @@ vgpreload_fjalar_amd64_linux_so_LDFLAGS = \
 
 vgpreload_fjalar_x86_darwin_so_SOURCES = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_x86_darwin_so_CPPFLAGS = $(AM_CPPFLAGS_X86_DARWIN)
-vgpreload_fjalar_x86_darwin_so_CFLAGS = $(AM_CFLAGS_X86_DARWIN) $(AM_CFLAGS_PIC) -O2
+vgpreload_fjalar_x86_darwin_so_CFLAGS = $(AM_CFLAGS_X86_DARWIN) $(AM_CFLAGS_PIC)
 vgpreload_fjalar_x86_darwin_so_CCASFLAGS = $(AM_CCASFLAGS_X86_DARWIN)
 vgpreload_fjalar_x86_darwin_so_DEPENDENCIES = $(LIBREPLACEMALLOC_X86_DARWIN)
 vgpreload_fjalar_x86_darwin_so_LDFLAGS = \
@@ -715,7 +715,7 @@ vgpreload_fjalar_x86_darwin_so_LDFLAGS = \
 
 vgpreload_fjalar_amd64_darwin_so_SOURCES = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_amd64_darwin_so_CPPFLAGS = $(AM_CPPFLAGS_AMD64_DARWIN)
-vgpreload_fjalar_amd64_darwin_so_CFLAGS = $(AM_CFLAGS_AMD64_DARWIN) $(AM_CFLAGS_PIC) -O2
+vgpreload_fjalar_amd64_darwin_so_CFLAGS = $(AM_CFLAGS_AMD64_DARWIN) $(AM_CFLAGS_PIC)
 vgpreload_fjalar_amd64_darwin_so_CCASFLAGS = $(AM_CCASFLAGS_AMD64_DARWIN)
 vgpreload_fjalar_amd64_darwin_so_DEPENDENCIES = $(LIBREPLACEMALLOC_AMD64_DARWIN)
 vgpreload_fjalar_amd64_darwin_so_LDFLAGS = \
@@ -750,32 +750,18 @@ FJALAR_SOURCES_COMMON = \
 
 fjalar_x86_linux_SOURCES = $(FJALAR_SOURCES_COMMON)
 fjalar_x86_linux_CPPFLAGS = $(AM_CPPFLAGS_X86_LINUX)
-fjalar_x86_linux_CFLAGS = $(AM_CFLAGS_X86_LINUX) -O2
+fjalar_x86_linux_CFLAGS = $(AM_CFLAGS_X86_LINUX)
 fjalar_x86_linux_CCASFLAGS = $(AM_CCASFLAGS_X86_LINUX)
 fjalar_x86_linux_DEPENDENCIES = $(COREGRIND_LIBS_X86_LINUX)
 fjalar_x86_linux_LDADD = $(TOOL_LDADD_X86_LINUX)
 fjalar_x86_linux_LDFLAGS = $(TOOL_LDFLAGS_X86_LINUX)
 fjalar_amd64_linux_SOURCES = $(FJALAR_SOURCES_COMMON)
 fjalar_amd64_linux_CPPFLAGS = $(AM_CPPFLAGS_AMD64_LINUX)
-fjalar_amd64_linux_CFLAGS = $(AM_CFLAGS_AMD64_LINUX) -O2
+fjalar_amd64_linux_CFLAGS = $(AM_CFLAGS_AMD64_LINUX)
 fjalar_amd64_linux_CCASFLAGS = $(AM_CCASFLAGS_AMD64_LINUX)
 fjalar_amd64_linux_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_LINUX)
 fjalar_amd64_linux_LDADD = $(TOOL_LDADD_AMD64_LINUX)
 fjalar_amd64_linux_LDFLAGS = $(TOOL_LDFLAGS_AMD64_LINUX)
-memcheck_x86_darwin_SOURCES = $(MEMCHECK_SOURCES_COMMON)
-memcheck_x86_darwin_CPPFLAGS = $(AM_CPPFLAGS_X86_DARWIN)
-memcheck_x86_darwin_CFLAGS = $(AM_CFLAGS_X86_DARWIN) -O2
-memcheck_x86_darwin_CCASFLAGS = $(AM_CCASFLAGS_X86_DARWIN)
-memcheck_x86_darwin_DEPENDENCIES = $(COREGRIND_LIBS_X86_DARWIN)
-memcheck_x86_darwin_LDADD = $(TOOL_LDADD_X86_DARWIN)
-memcheck_x86_darwin_LDFLAGS = $(TOOL_LDFLAGS_X86_DARWIN)
-memcheck_amd64_darwin_SOURCES = $(MEMCHECK_SOURCES_COMMON)
-memcheck_amd64_darwin_CPPFLAGS = $(AM_CPPFLAGS_AMD64_DARWIN)
-memcheck_amd64_darwin_CFLAGS = $(AM_CFLAGS_AMD64_DARWIN) -O2
-memcheck_amd64_darwin_CCASFLAGS = $(AM_CCASFLAGS_AMD64_DARWIN)
-memcheck_amd64_darwin_DEPENDENCIES = $(COREGRIND_LIBS_AMD64_DARWIN)
-memcheck_amd64_darwin_LDADD = $(TOOL_LDADD_AMD64_DARWIN)
-memcheck_amd64_darwin_LDFLAGS = $(TOOL_LDFLAGS_AMD64_DARWIN)
 mcincludedir = $(includedir)/valgrind
 mcinclude_HEADERS = \
 	memcheck.h

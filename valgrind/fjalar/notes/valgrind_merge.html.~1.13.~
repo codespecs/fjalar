@@ -1,0 +1,440 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15">
+<title>Merging newer versions of Valgrind into Fjalar</title>
+</head>
+<body>
+<h1>Merging newer versions of Valgrind into Fjalar</h1>
+
+
+<p>
+This document provides information on merging newer versions of Valgrind
+into Fjalar.  Fjalar is built as a tool on top of Valgrind, and it it also
+contains a sizable amount of code from Memcheck, another Valgrind tool,
+When new versions of Valgrind and Memcheck are released, Fjalar should be
+updated.</p>
+
+<p>
+Conceptually this is two separate merges: (1) The merge between
+the underlying copy of Valgrind, and the newer version of Valgrind and (2)
+The merge between the memcheck code contained in Fjalar and the newer version
+of Memcheck.  Due to very tight dependence of the memcheck code
+on Valgrind, the changes should be done simultaneously.
+</p>
+
+<p>
+The merge of the underlying copy of Valgrind should be able to be done almost
+completely automatically. Due to substantial modifications to the memcheck code,
+some portion of the merge will have to be done manually.  The more frequent
+the merges are, the easier they will be to do.  Monthly, at the very least, is
+recommended.
+<p>
+
+<p>Contents:</p>
+<!-- start toc.  do not edit; run html-update-toc instead -->
+    <ul>
+      <li><a href="#Getting_Started">1. Getting Started</a>
+        <ul>
+          <li><a href="#checkout_fjalar">1.1 Obtain a copy of the Fjalar source</a></li>
+          <li><a href="#current_fjalar">1.2 Ensure your copy of Fjalar is up to date</a></li>
+          <li><a href="#current-valgrind">1.2 Obtain a current copy of the Valgrind Source</a></li>
+          <li><a href="#old-valgrind">1.3 Obtain a copy of the Valgrind and VEX source corresponding to the Fjalar version</a></li>
+        </ul></li>
+      <li><a href="#Creating_the_diffs">2. Creating the diffs</a>
+        <ul>
+          <li><a href="#valgrind-diff">2.1 Coregrind and Memcheck Diff</a></li>
+          <li><a href="#pag-coregrind-diff">2.2 PAG Coregrind Diff</a></li>
+        </ul></li>
+      <li><a href="#Merging_the_changes">3. Merging the changes</a>
+        <ul>
+          <li><a href="#coregrind-merge">3.1 Coregrind Merge</a></li>
+          <li><a href="#coregrind-conflicts">3.2 Coregrind Conflicts</a></li>
+          <li><a href="#memcheck-merge">3.3 Memcheck Merge</a></li>
+          <li><a href="#memcheck-conflicts">3.4 Memcheck Conflicts</a></li>
+          <li><a href="#Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</a></li>
+          <li><a href="#cvs-add-remove">3.6 Tell CVS about files that were added or removed</a></li>
+        </ul></li>
+      <li><a href="#Compiling">4. Compiling and Testing</a>
+        <ul>
+          <li><a href="#compiling_fjalar">4.1 Compiling Fjalar</a></li>
+          <li><a href="#testing_fjalar">4.2 Testing Fjalar</a></li>
+          <li><a href="#documenting_changes">4.3 Documenting Changes</a></li>
+          <li><a href="#committing">4.4 Committing</a></li>
+        </ul></li>
+      <li><a href="#Valgrind_modifications">Appendix A: Valgrind modifications</a></li>
+      <li><a href="#Memcheck_modifications">Appendix B: Memcheck modifications</a></li>
+    </ul>
+<!-- end toc -->
+
+<hr>
+
+<h2 id="Getting_Started">1. Getting Started</h2>
+
+<p>The instructions assume you use bash or sh as your shell;
+  adjust them if necessary.</p>
+
+
+<p>
+</p>
+
+<p>Next you will need to obtain 2 copies of Valgrind: The most recent, and the
+one the current version of Fjalar is based on. You can get up to date instructions
+on pulling Valgrind from source from:</p>
+
+<h3 id="checkout_fjalar">1.1 Obtain a copy of the Fjalar source </h3>
+
+<p>
+First, check out Daikon and Fjalar from CVS.  You may skip this
+if you already have a copy of invariants/valgrind-3
+checked out.
+</p>
+
+<!--
+ If your current checkout contains any layout changes to the kvasir
+ directory, it may be more convenient to move your current checkout and
+ follow the below directions.
+-->
+
+(From a PAG machine)
+<pre>
+  cvs -d $pag/projects/invariants/.CVS co invariants
+  cd invariants
+  export $INV=`pwd`
+  cvs -d $pag/projects/invariants/.CVS co valgrind-3
+</pre>
+
+<h3 id="current_fjalar">1.2 Ensure your copy of Fjalar is up to date </h3>
+
+<pre>
+  cd $INV
+  cvs update
+  cd valgrind-3
+  cvs update
+  <i># These commands should produce no output.</i>
+  <i># If there are any differences, commit them before proceeding.</i>
+  cd $INV
+  cvs -q diff --brief
+  cd valgrind-3
+  cvs -q diff --brief
+</pre>
+
+
+<h3 id="current-valgrind">1.2 Obtain a current copy of the Valgrind Source </h3>
+
+<pre>
+  cd $INV
+  svn co svn://svn.valgrind.org/valgrind/trunk valgrind-new </pre>
+
+<p>Additional information about working with the Valgrind repository can be found at: <a href="http://www.valgrind.org/downloads/repository.html">Valgrind: Code Repository</a></p>
+
+<h3 id="old-valgrind">1.3 Obtain a copy of the Valgrind and VEX source corresponding to the Fjalar version </h3>
+
+<pre>
+  cd $INV
+  source valgrind-3/valgrind/REVISION
+  svn co -r $VALGRIND_REVISION svn://svn.valgrind.org/valgrind/trunk valgrind-old
+  cd valgrind-old
+  svn update -r $VEX_REVISION VEX </pre>
+
+<p>The VEX update is necessary because the VEX instrumentation libraries Valgrind is built on is stored in a separate
+SVN repository. A Valgrind checkout will always check out the most recent
+version of the VEX source. This is fine for when we checked out the current
+Valgrind source, however, we'll want the same version used in the Fjalar
+repository for the copy that will be diffed.</p>
+
+<hr>
+<h2 id="Creating_the_diffs">2. Creating the diffs</h2>
+
+<p>Create diffs showing what the Valgrind maintainers have changed since
+  the last time Valgrind code was merged into Fjalar.
+  Two separate diffs will be created:  one for Memcheck and one for
+  everything else (which we'll call "Coregrind", and which includes VEX).</p>
+
+<h3 id="valgrind-diff">2.1 Coregrind and Memcheck Diff</h3>
+<pre>
+  cd $INV
+  \rm -f coregrind.patch memcheck.patch
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x lackey valgrind-old valgrind-new > coregrind.patch
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf valgrind-old/memcheck valgrind-new/memcheck > memcheck.patch</pre>
+
+
+<h3 id="pag-coregrind-diff">2.2 PAG Coregrind Diff</h3>
+
+<p> Generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
+
+<pre>
+  cd $INV
+  \rm -f coregrind-PAG.diff
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x memcheck -x auxprogs -x cachegrind -x callgrind -x drd -x exp-omega -x exp-ptrcheck -x helgrind -x massif -x none -x fjalar -x lackey -x aclocal.m4 -x compile -x config.sub -x config.guess -x config.h.in -x configure -x depcomp -x install-sh -x *.supp -x mkinstalldirs -x missing -x Makefile.install.am valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
+</pre>
+
+<hr>
+
+<h2 id="Merging_the_changes">3. Merging the changes</h2>
+
+<h3 id="coregrind-merge">3.1 Coregrind Merge</h3>
+<p>Now we can merge the changes from the created diffs. The coregrind patch should apply with very little conflicts.</p>
+
+<p> It can be difficult to undo a patch operation, so you should first attempt a dry run. </p>
+
+<pre>
+  cd $INV/valgrind-3/valgrind
+  patch -p1 < $INV/coregrind.patch --dry-run</pre>
+
+<p> Keep on the lookout for irrelevant directories. If there are entire directories of content absent in our version it might be
+indicative of a new Valgrind tool. We do not have an interest in tracking other Valgrind tools in CVS. You can determine if a created
+directory corresponds to a new tool by comparing it to the tools listed at the top of <tt>$INV/valgrind-new/Makefile.am</tt>. If the
+patch fails outright it may be indicative of problems in the above diffing.</p>
+
+<p>When you are ready to apply the patch run:</p>
+<pre>
+  cd $INV/valgrind-3/valgrind
+  patch -p1 < $INV/coregrind.patch</pre>
+
+<h3 id="coregrind-conflicts">3.2 Coregrind Conflicts</h3>
+
+<p>Handle any conflicts.  They are listed in the patch
+  output, or run this command:</p>
+
+<pre>
+  find -name '*.rej'
+</pre>
+
+<p>
+For every change in the file you will need to examine both the changed code
+as well as our original code and determine if it needs to be hand merged or
+if the change is not relevant. It is useful to refer to
+<tt>coregrind-PAG.diff</tt> during this process.</p>
+
+
+<h3 id="memcheck-merge">3.3 Memcheck Merge</h3>
+
+<pre>
+  cd $INV/valgrind-3/valgrind/fjalar
+  patch -p2 < $INV/memcheck.patch --dry-run</pre>
+
+<p> If the patch output looks sane, continue with the actual merge </p>
+
+<pre>  patch -p2 < $INV/memcheck.patch </pre>
+
+
+<h3 id="memcheck-conflicts">3.4 Memcheck Conflicts</h3>
+
+<p>Handle any conflicts.  They are listed in the patch
+  output, or run this command:</p>
+
+<pre>
+  find -name '*.rej'
+</pre>
+
+<p>
+For every change in the file you will need to examine both the changed code
+as well as our original code and determine if it needs to be hand merged or
+if the change is not relevant.</p>
+
+<p>
+Our changes to Memcheck are much more substantial than our changes to
+Coregrind. Some notes on particular problem areas are below.</p>
+
+<p>The largest modification to the memcheck is located in mc_translate.c and special care should be made
+to ensure it is present and up to date. in MC_(instrument), the code which handles the instrumentation
+of calls for Dyncomp is present. It is primarily contained in a case-switch statement below the
+case-switch statement for Memcheck. MC_(instrument) switches off on every VEX instruction type and performs
+some operation for it. There should be an analogous for Dyncomp operation in the second
+case-switch for every memcheck operation in the first one.</p>
+
+<h3 id="Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</h3>
+
+<p>Additionally Fjalar/Kvasir need to be updated to properly handle any changes in Valgrind API/functionality.  
+For the most part Valgrind maintains a relatively stable interface to its tools. Any tool-visible changes
+should be noted in the change logs.</p>
+
+<p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
+changes in it need to be reflected. Most of the changes to the public VEX IR can be discovered by running the following command:</p>
+
+<pre>  svn log -r ${VEX_REVISION}:HEAD VEX/pub/libvex_ir.h</pre>
+
+<p>
+The files with all the VEX IR code for Dyncomp is located in dyncomp_translate.[ch]. dyncomp_translate.c
+is structured primarily into functions of the form <i>expr2tags_[EXPRESSION_TYPE]()</i>. These functions
+will  contain a switch for all VEX IR instructions corresponding to the expression type and some
+call to a dyncomp tag function. Most often VEX IR changes will be syntactical in nature and will only
+involve changing the names of the instructions.
+
+
+<h3 id="cvs-add-remove">3.6 Tell CVS about files that were added or removed</h3>
+
+<p>Tell CVS about files that were created/deleted by the patch:</p>
+
+<pre>
+  cd $INV/valgrind-3
+
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]; then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
+  fi
+
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]; then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
+  fi
+
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch
+  if [ "$?" == "0" ]; then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
+  fi
+
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch
+  if [ "$?" == "0" ]; then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
+  fi
+</pre>
+
+
+
+<hr>
+<h2 id="Compiling">4. Compiling and Testing</h2>
+
+<p>We must now ensure that the merged code compiles correctly and passes the regression test suite.</p>
+
+<h3 id="compiling_fjalar">4.1 Compiling Fjalar</h3>
+
+<pre>
+  cd $INV/valgrind-3
+  ./auto-everything.sh </pre>
+
+<p> The auto-everything shell script should autogen the config
+  and Makefiles and compile Fjalar.  Fix any compilation errors.</p>
+
+<h3 id="testing_fjalar">4.2 Testing Fjalar</h3>
+<p>The regression suite is located in the tests/kvasir-tests directory. It can be run using the following
+commands</p>
+
+<pre>
+  cd $INV/tests/kvasir-tests 
+  make nightly-summary-w-daikon</pre>
+
+<p>The test suite should pass without modification.</p>
+
+<h3 id="documenting_changes">4.3 Documenting Changes</h3>
+
+<p>Any user-visible changes should be documented in <tt>$INV/docs/CHANGES</tt>. Additionally, 
+<tt>valgrind-3/valgrind/REVISION</tt> should be updated with the Valgrind and VEX revisions 
+that were used for this merge.</p>
+
+<p>The revision for Valgrind can be obtained by:</p>
+
+<pre>
+  export VALGRIND_REVISION_NEW=`(cd $INV/valgrind-new; svn info | grep "Last Changed Rev: " | cut -d " " --fields=4)`
+  echo $VALGRIND_REVISION_NEW
+</pre>
+
+<p>The revision for VEX can be obtained by:</p>
+
+<pre>
+  export VEX_REVISION_NEW=`(cd $INV/valgrind-new/VEX; svn info | grep "Last Changed Rev: " | cut -d " " --fields=4)`
+  echo _REVISION_NEW
+</pre>
+
+
+<h3 id="committing"> 4.4 Committing </h3>
+
+<p>
+Once the above is finished, if the test suite passes with no errors and all
+changes are documented, changes should be committed to the CVS repository.
+</p>
+
+<pre>
+  cd $INV
+  \rm -f coregrind.patch memcheck.patch coregrind-PAG.diff
+  <i># Double-check the diffs -- standard practice before committing</i>
+  cvs diff
+  <i># Add any other relevant notes to the below.</i>
+  cvs commit -m "Valgrind merge from revision ${VALGRIND_REVISION} to ${VALGRIND_REVISION_NEW.  VEX IR merge from ${VEX_REVISION} to ${VEX_REVISION_NEW}.</pre>
+
+<hr>
+<h2 id="Valgrind_modifications">Appendix A: Valgrind modifications</h2>
+
+<p>In an effort to aid in determining the appropriate measures to take when merging conflicted files,
+this section will provide a list of files modified by us and a brief explanation of the changes.
+
+<!-- Should I include functions too? -->
+
+<p>The most important set of changes is the addition of extra shadow state in Coregrind and VEX.
+The shadow area is an area of memory that Valgrind provides for tools to use. Unfortunately,
+it is of a fixed size, and memcheck uses all of it. We've had to increase the size of the
+the shadow area.
+
+<dl>
+<dt>$INV/valgrind-3/valgrind/coregrind/pub_core_threadstate.h</dt>
+<dd>The declaration of the extra shadow space</dd>
+<dt>$INV/valgrind-3/valgrind/coregrind/m_scheduler/scheduler.c</dt>
+<dd>An assertion that triggers based on shadow size</dd>
+<dt>$INV/valgrind-3/valgrind/VEX/priv/host-generic/reg_alloc2.c</dt>
+<dd>memory calculation using the shadow size</dd>
+</dl>
+
+<p> Additionally, we had to modify some of the VEX architecture files to
+return information specific to the x86 platform. </p>
+
+<dl><dt>$INV/valgrind-3/valgrind/VEX/priv/guest-x86/ghelpers.c</dt>
+<dt>$INV/valgrind-3/valgrind/VEX/pub/libvex.h</dt>
+<dd>Addition of primary/secondary integer return registers to the guest state</dd>
+<dt>$INV/valgrind-3/valgrind/coregrind/m_machine.c</dt>
+<dt>$INV/valgrind-3/valgrind/include/pub_tool_machine.h</dt>
+<dd>Tool-visible functions to access the primary/secondary integer return registers</dd>
+</dl>
+
+<p> Finally, we had to extend Valgrind's implementation of the C library with a few extra
+functions. </p>
+
+<dl><dt>$INV/valgrind-3/valgrind/coregrind/m_libcfile.c</dt>
+<dt>$INV/valgrind-3/valgrind/include/pub_tool_libcfile.h</dt>
+<dd>Addition of extra libc functions</dd>
+</dl>
+<hr>
+
+<h2 id="Memcheck_modifications">Appendix B: Memcheck modifications</h2>
+
+<p>The modifications made to memcheck are more organizational in nature. A few functions from
+mc_main.c and mc_translate.c have been made non-static. An extra header has also been created
+and filled with their signatures for use by Fjalar.</p>
+
+<p>Other modifications include:</p>
+<dl>
+<dt>$INV/valgrind-3/valgrind/fjalar/mc_malloc_wrappers.c</dt>
+<dd>Calls to Dyncomp functions for memory operations.</dd>
+<dt>$INV/valgrind-3/valgrind/fjalar/mc_main.c</dt>
+<dd>Run-time arguments and versioning information for Kvasir to replace the default memcheck ones</dd>
+<dt>$INV/valgrind-3/valgrind/fjalar/mc_translate.c</dt>
+<dd>A duplicate of memcheck's instrumentation block for Dyncomp.</dd></dl>
+
+<hr>
+<address></address>
+<!-- hhmts start -->Last modified: June 29, 2009<!-- hhmts end -->
+</body> </html>
+
+<!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
+ -->
+<!--  LocalWords:  cvs pag co cd svn kvasir diffed diff ur cvsignore inst drd
+ -->
+<!--  LocalWords:  auxprogs cachegrind callgrind exp ptrcheck helgrind massif
+ -->
+<!--  LocalWords:  coregrind perf automake autoconf fjalar aclocal config supp
+ -->
+<!--  LocalWords:  depcomp mkinstalldirs diffing rej mc Dyncomp dyncomp ch expr
+ -->
+<!--  LocalWords:  autogen'ing daikon html libc malloc versioning memcheck's rm
+ -->
+<!--  LocalWords:  EDT INV pwd grep autogen Valgrind's
+ -->
+
+<!--
+Local Variables:
+time-stamp-start: "^.![-]- hhmts start [-]-.Last modified: "
+time-stamp-end: "<.[-]- hhmts end [-]-.$"
+time-stamp-format: "%:b %:d, %:y"
+time-stamp-line-limit: -50
+End:
+-->

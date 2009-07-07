@@ -300,14 +300,13 @@ Int VG_(strncasecmp) ( const Char* s1, const Char* s2, SizeT nmax )
       if (c1 == 0 && c2 == 0) return 0;
       if (c1 == 0) return -1;
       if (c2 == 0) return 1;
-      
+
       if (c1 < c2) return -1;
       if (c1 > c2) return 1;
-      
+
       s1++; s2++; n++;
    }
 }
- 
 
 Char* VG_(strstr) ( const Char* haystack, const Char* needle )
 {

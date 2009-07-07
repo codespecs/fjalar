@@ -10879,7 +10879,7 @@ fi
 # Ok.  We're done checking.
 #----------------------------------------------------------------------------
 
-ac_config_files="$ac_config_files Makefile valgrind.spec valgrind.pc glibc-2.X.supp docs/Makefile docs/lib/Makefile docs/images/Makefile docs/internals/Makefile docs/xml/Makefile tests/Makefile tests/vg_regtest perf/Makefile perf/vg_perf include/Makefile include/vki/Makefile coregrind/Makefile fjalar/Makefile"
+ac_config_files="$ac_config_files Makefile valgrind.spec valgrind.pc glibc-2.X.supp docs/Makefile docs/lib/Makefile docs/images/Makefile docs/internals/Makefile docs/xml/Makefile tests/Makefile tests/vg_regtest perf/Makefile perf/vg_perf include/Makefile include/vki/Makefile auxprogs/Makefile coregrind/Makefile memcheck/Makefile memcheck/tests/Makefile memcheck/tests/amd64/Makefile memcheck/tests/x86/Makefile memcheck/tests/linux/Makefile memcheck/tests/darwin/Makefile memcheck/tests/x86-linux/Makefile memcheck/perf/Makefile memcheck/docs/Makefile cachegrind/Makefile cachegrind/tests/Makefile cachegrind/tests/x86/Makefile cachegrind/docs/Makefile cachegrind/cg_annotate callgrind/Makefile callgrind/callgrind_annotate callgrind/callgrind_control callgrind/tests/Makefile callgrind/docs/Makefile helgrind/Makefile helgrind/tests/Makefile helgrind/docs/Makefile massif/Makefile massif/tests/Makefile massif/perf/Makefile massif/docs/Makefile massif/ms_print lackey/Makefile lackey/tests/Makefile lackey/docs/Makefile none/Makefile none/tests/Makefile none/tests/amd64/Makefile none/tests/ppc32/Makefile none/tests/ppc64/Makefile none/tests/x86/Makefile none/tests/linux/Makefile none/tests/darwin/Makefile none/tests/x86-linux/Makefile none/docs/Makefile exp-ptrcheck/Makefile exp-ptrcheck/tests/Makefile exp-ptrcheck/docs/Makefile drd/Makefile drd/docs/Makefile drd/scripts/download-and-build-splash2 drd/tests/Makefile fjalar/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -11698,7 +11698,55 @@ do
     "perf/vg_perf") CONFIG_FILES="$CONFIG_FILES perf/vg_perf" ;;
     "include/Makefile") CONFIG_FILES="$CONFIG_FILES include/Makefile" ;;
     "include/vki/Makefile") CONFIG_FILES="$CONFIG_FILES include/vki/Makefile" ;;
+    "auxprogs/Makefile") CONFIG_FILES="$CONFIG_FILES auxprogs/Makefile" ;;
     "coregrind/Makefile") CONFIG_FILES="$CONFIG_FILES coregrind/Makefile" ;;
+    "memcheck/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/Makefile" ;;
+    "memcheck/tests/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/tests/Makefile" ;;
+    "memcheck/tests/amd64/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/tests/amd64/Makefile" ;;
+    "memcheck/tests/x86/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/tests/x86/Makefile" ;;
+    "memcheck/tests/linux/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/tests/linux/Makefile" ;;
+    "memcheck/tests/darwin/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/tests/darwin/Makefile" ;;
+    "memcheck/tests/x86-linux/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/tests/x86-linux/Makefile" ;;
+    "memcheck/perf/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/perf/Makefile" ;;
+    "memcheck/docs/Makefile") CONFIG_FILES="$CONFIG_FILES memcheck/docs/Makefile" ;;
+    "cachegrind/Makefile") CONFIG_FILES="$CONFIG_FILES cachegrind/Makefile" ;;
+    "cachegrind/tests/Makefile") CONFIG_FILES="$CONFIG_FILES cachegrind/tests/Makefile" ;;
+    "cachegrind/tests/x86/Makefile") CONFIG_FILES="$CONFIG_FILES cachegrind/tests/x86/Makefile" ;;
+    "cachegrind/docs/Makefile") CONFIG_FILES="$CONFIG_FILES cachegrind/docs/Makefile" ;;
+    "cachegrind/cg_annotate") CONFIG_FILES="$CONFIG_FILES cachegrind/cg_annotate" ;;
+    "callgrind/Makefile") CONFIG_FILES="$CONFIG_FILES callgrind/Makefile" ;;
+    "callgrind/callgrind_annotate") CONFIG_FILES="$CONFIG_FILES callgrind/callgrind_annotate" ;;
+    "callgrind/callgrind_control") CONFIG_FILES="$CONFIG_FILES callgrind/callgrind_control" ;;
+    "callgrind/tests/Makefile") CONFIG_FILES="$CONFIG_FILES callgrind/tests/Makefile" ;;
+    "callgrind/docs/Makefile") CONFIG_FILES="$CONFIG_FILES callgrind/docs/Makefile" ;;
+    "helgrind/Makefile") CONFIG_FILES="$CONFIG_FILES helgrind/Makefile" ;;
+    "helgrind/tests/Makefile") CONFIG_FILES="$CONFIG_FILES helgrind/tests/Makefile" ;;
+    "helgrind/docs/Makefile") CONFIG_FILES="$CONFIG_FILES helgrind/docs/Makefile" ;;
+    "massif/Makefile") CONFIG_FILES="$CONFIG_FILES massif/Makefile" ;;
+    "massif/tests/Makefile") CONFIG_FILES="$CONFIG_FILES massif/tests/Makefile" ;;
+    "massif/perf/Makefile") CONFIG_FILES="$CONFIG_FILES massif/perf/Makefile" ;;
+    "massif/docs/Makefile") CONFIG_FILES="$CONFIG_FILES massif/docs/Makefile" ;;
+    "massif/ms_print") CONFIG_FILES="$CONFIG_FILES massif/ms_print" ;;
+    "lackey/Makefile") CONFIG_FILES="$CONFIG_FILES lackey/Makefile" ;;
+    "lackey/tests/Makefile") CONFIG_FILES="$CONFIG_FILES lackey/tests/Makefile" ;;
+    "lackey/docs/Makefile") CONFIG_FILES="$CONFIG_FILES lackey/docs/Makefile" ;;
+    "none/Makefile") CONFIG_FILES="$CONFIG_FILES none/Makefile" ;;
+    "none/tests/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/Makefile" ;;
+    "none/tests/amd64/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/amd64/Makefile" ;;
+    "none/tests/ppc32/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/ppc32/Makefile" ;;
+    "none/tests/ppc64/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/ppc64/Makefile" ;;
+    "none/tests/x86/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/x86/Makefile" ;;
+    "none/tests/linux/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/linux/Makefile" ;;
+    "none/tests/darwin/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/darwin/Makefile" ;;
+    "none/tests/x86-linux/Makefile") CONFIG_FILES="$CONFIG_FILES none/tests/x86-linux/Makefile" ;;
+    "none/docs/Makefile") CONFIG_FILES="$CONFIG_FILES none/docs/Makefile" ;;
+    "exp-ptrcheck/Makefile") CONFIG_FILES="$CONFIG_FILES exp-ptrcheck/Makefile" ;;
+    "exp-ptrcheck/tests/Makefile") CONFIG_FILES="$CONFIG_FILES exp-ptrcheck/tests/Makefile" ;;
+    "exp-ptrcheck/docs/Makefile") CONFIG_FILES="$CONFIG_FILES exp-ptrcheck/docs/Makefile" ;;
+    "drd/Makefile") CONFIG_FILES="$CONFIG_FILES drd/Makefile" ;;
+    "drd/docs/Makefile") CONFIG_FILES="$CONFIG_FILES drd/docs/Makefile" ;;
+    "drd/scripts/download-and-build-splash2") CONFIG_FILES="$CONFIG_FILES drd/scripts/download-and-build-splash2" ;;
+    "drd/tests/Makefile") CONFIG_FILES="$CONFIG_FILES drd/tests/Makefile" ;;
     "fjalar/Makefile") CONFIG_FILES="$CONFIG_FILES fjalar/Makefile" ;;
 
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5

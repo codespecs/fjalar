@@ -3,29 +3,49 @@ AUTOMAKE_OPTIONS = foreign 1.7 dist-bzip2
 
 include $(top_srcdir)/Makefile.all.am 
 
-TOOLS = fjalar
+TOOLS =		memcheck \
+		cachegrind \
+		callgrind \
+		massif \
+		lackey \
+		none \
+		helgrind \
+		drd \
+		fjalar
 
+
+EXP_TOOLS = 	exp-ptrcheck
 
 # DDD: once all tools work on Darwin, TEST_TOOLS and TEST_EXP_TOOLS can be
 # replaced with TOOLS and EXP_TOOLS.
 if !VGCONF_OS_IS_DARWIN
-   TEST_TOOLS = $(TOOLS)
-   TEST_EXP_TOOLS = $(EXP_TOOLS)
+  TEST_TOOLS = $(TOOLS)
+  TEST_EXP_TOOLS = $(EXP_TOOLS)
 else
-   TEST_TOOLS =	
-   TEST_EXP_TOOLS =
+  TEST_TOOLS =	memcheck \
+		cachegrind \
+		callgrind \
+		massif \
+		lackey \
+		none
+
+  TEST_EXP_TOOLS =
 endif
 
-SUBDIRS = include coregrind . tests perf $(TOOLS) docs
+# Put docs last because building the HTML is slow and we want to get
+# everything else working before we try it.
+SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) $(EXP_TOOLS) docs
 DIST_SUBDIRS  = $(SUBDIRS)
 
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
 	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
-	aix5libc.supp \
-	xfree-3.supp xfree-4.supp \
+	aix5libc.supp xfree-3.supp xfree-4.supp \
+	glibc-2.34567-NPTL-helgrind.supp \
+	glibc-2.2-LinuxThreads-helgrind.supp \
+	glibc-2.X-drd.supp \
+	exp-ptrcheck.supp \
 	darwin9.supp
-
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
 # We include all the base .supp files in the distribution, but not
@@ -142,6 +162,7 @@ vex_primary_sources = \
 	VEX/LICENSE.README \
 	VEX/LICENSE.GPL \
 	VEX/Makefile \
+	VEX/auxprogs/genoffsets.c \
 	VEX/pub/libvex_guest_amd64.h \
 	VEX/pub/libvex_ir.h \
 	VEX/pub/libvex_guest_ppc32.h \
