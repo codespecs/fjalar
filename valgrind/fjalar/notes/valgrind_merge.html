@@ -102,17 +102,39 @@ checked out.
 
 <h3 id="current_fjalar">1.2 Ensure your copy of Fjalar is up to date </h3>
 
+<p>
+First, update your checkout.
+</p>
+
 <pre>
   cd $INV
-  cvs update
+  cvs -q update
   cd valgrind-3
-  cvs update
-  <i># These commands should produce no output.</i>
-  <i># If there are any differences, commit them before proceeding.</i>
+  cvs -q update
+</pre>
+
+<p>
+These diff commands should produce no output.
+If there are any differences, commit them before proceeding.
+</p>
+
+<pre>
   cd $INV
   cvs -q diff --brief
   cd valgrind-3
   cvs -q diff --brief
+</pre>
+
+<p>
+The tests should pass.
+If any tests fail, fix them, then start over from the beginning.
+</p>
+
+<pre>
+  cd $INV/valgrind-3
+  ./auto-everything.sh
+  cd $INV/tests/kvasir-tests 
+  make nightly-summary-w-daikon
 </pre>
 
 
@@ -313,8 +335,8 @@ involve changing the names of the instructions.
   and Makefiles and compile Fjalar.  Fix any compilation errors.</p>
 
 <h3 id="testing_fjalar">4.2 Testing Fjalar</h3>
-<p>The regression suite is located in the tests/kvasir-tests directory. It can be run using the following
-commands</p>
+<p>The regression suite is located in the tests/kvasir-tests directory.
+It can be run using the following commands, which take about 20 minutes:</p>
 
 <pre>
   cd $INV/tests/kvasir-tests 
