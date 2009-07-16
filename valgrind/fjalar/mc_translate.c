@@ -3576,67 +3576,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       /* Generate instrumentation code for each stmt ... */
 
-      switch (st->tag) {
-
-         case Ist_WrTmp:
-            assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
-                               expr2vbits( &mce, st->Ist.WrTmp.data) );
-            break;
-
-         case Ist_Put:
-            do_shadow_PUT( &mce, 
-                           st->Ist.Put.offset,
-                           st->Ist.Put.data,
-                           NULL /* shadow atom */ );
-            break;
-
-         case Ist_PutI:
-            do_shadow_PUTI( &mce, 
-                            st->Ist.PutI.descr,
-                            st->Ist.PutI.ix,
-                            st->Ist.PutI.bias,
-                            st->Ist.PutI.data );
-            break;
-
-         case Ist_Store:
-            do_shadow_Store( &mce, st->Ist.Store.end,
-                                   st->Ist.Store.addr, 0/* addr bias */,
-                                   st->Ist.Store.data,
-                                   NULL /* shadow data */ );
-            break;
-
-         case Ist_Exit:
-            handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
-	   //complainIfUndefined( &mce, st->Ist.Exit.guard ); // pgbovine
-            break;
-
-         case Ist_IMark:
-	   handle_possible_entry( &mce, st->Ist.IMark.addr ); // pgbovine
-            break;
-
-         case Ist_NoOp:
-         case Ist_MBE:
-            break;
-
-         case Ist_Dirty:
-            do_shadow_Dirty( &mce, st->Ist.Dirty.details );
-            break;
-
-         case Ist_AbiHint:
-            do_AbiHint( &mce, st->Ist.AbiHint.base,
-                              st->Ist.AbiHint.len,
-                              st->Ist.AbiHint.nia );
-            break;
-
-         default:
-            VG_(printf)("\n");
-            ppIRStmt(st);
-            VG_(printf)("\n");
-            VG_(tool_panic)("memcheck: unhandled IRStmt");
-
-      } /* switch (st->tag) */
-
-      // PG - pgbovine - dyncomp - duplicated instrumentation code for DynComp
       if (kvasir_with_dyncomp) {
          if (!dce.bogusLiterals) {
             dce.bogusLiterals = checkForBogusLiterals(st);
@@ -3646,22 +3585,38 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                VG_(printf)("\n");
             }
          }
- 
-         switch (st->tag) {
+      } 
+
+      switch (st->tag) {
+
          case Ist_WrTmp:
-	    assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
-                    expr2tags_DC( &dce, st->Ist.WrTmp.data) );
+            assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
+                               expr2vbits( &mce, st->Ist.WrTmp.data) );
+            if (kvasir_with_dyncomp)
+               assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
+                               expr2tags_DC( &dce, st->Ist.WrTmp.data) );
             break;
 
          case Ist_Put:
-            do_shadow_PUT_DC( &dce,
+            do_shadow_PUT( &mce, 
+                           st->Ist.Put.offset,
+                           st->Ist.Put.data,
+                           NULL /* shadow atom */ );
+            if (kvasir_with_dyncomp)
+               do_shadow_PUT_DC( &dce,
                               st->Ist.Put.offset,
                               st->Ist.Put.data,
                               NULL /* shadow atom */ );
             break;
 
          case Ist_PutI:
-            do_shadow_PUTI_DC( &dce,
+            do_shadow_PUTI( &mce, 
+                            st->Ist.PutI.descr,
+                            st->Ist.PutI.ix,
+                            st->Ist.PutI.bias,
+                            st->Ist.PutI.data );
+            if (kvasir_with_dyncomp)
+               do_shadow_PUTI_DC( &dce,
                                st->Ist.PutI.descr,
                                st->Ist.PutI.ix,
                                st->Ist.PutI.bias,
@@ -3669,27 +3624,43 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_Store:
-            do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
+            do_shadow_Store( &mce, st->Ist.Store.end,
+                                   st->Ist.Store.addr, 0/* addr bias */,
+                                   st->Ist.Store.data,
+                                   NULL /* shadow data */ );
+            if (kvasir_with_dyncomp)
+               do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
             break;
 
          case Ist_Exit:
-            do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
+            handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
+	   //complainIfUndefined( &mce, st->Ist.Exit.guard ); // pgbovine
+            if (kvasir_with_dyncomp)
+               do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
             break;
 
          case Ist_IMark:
-	    dce.origAddr = st->Ist.IMark.addr;
-	    break;
+	   handle_possible_entry( &mce, st->Ist.IMark.addr ); // pgbovine
+            if (kvasir_with_dyncomp)
+              	    dce.origAddr = st->Ist.IMark.addr;
+            break;
 
          case Ist_NoOp:
          case Ist_MBE:
             break;
 
          case Ist_Dirty:
-            do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
+            do_shadow_Dirty( &mce, st->Ist.Dirty.details );
+            if (kvasir_with_dyncomp)
+               do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
             break;
 
          case Ist_AbiHint:
             do_AbiHint( &mce, st->Ist.AbiHint.base,
+                              st->Ist.AbiHint.len,
+                              st->Ist.AbiHint.nia );
+            if (kvasir_with_dyncomp)
+               do_AbiHint( &mce, st->Ist.AbiHint.base,
                               st->Ist.AbiHint.len,
                               st->Ist.AbiHint.nia );
             break;
@@ -3698,11 +3669,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             VG_(printf)("\n");
             ppIRStmt(st);
             VG_(printf)("\n");
-            VG_(tool_panic)("dyncomp: unhandled IRStmt");
+            VG_(tool_panic)("memcheck/dyncomp: unhandled IRStmt");
 
-         } /* switch (st->tag) */
+      } /* switch (st->tag) */
 
-      
       if (0 && verboze) {
          for (j = first_stmt; j < bb->stmts_used; j++) {
             VG_(printf)("   ");
