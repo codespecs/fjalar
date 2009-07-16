@@ -75,12 +75,8 @@ recommended.
   adjust them if necessary.</p>
 
 
-<p>
-</p>
-
-<p>Next you will need to obtain 2 copies of Valgrind: The most recent, and the
-one the current version of Fjalar is based on. You can get up to date instructions
-on pulling Valgrind from source from:</p>
+<p>You need to obtain 2 copies of Valgrind: the most recent, and the
+one the current version of Fjalar is based on.</p>
 
 <h3 id="checkout_fjalar">1.1 Obtain a copy of the Fjalar source </h3>
 
@@ -165,8 +161,9 @@ repository for the copy that will be diffed.</p>
 
 <pre>
   cd $INV
-  \rm -f coregrind-PAG.diff
+  \rm -f coregrind-PAG.diff memcheck-PAG.diff
   diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x fjalar valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf valgrind-old/memcheck valgrind-3/valgrind/memcheck > memcheck-PAG.diff
 </pre>
 
 <hr>
@@ -182,10 +179,8 @@ repository for the copy that will be diffed.</p>
   cd $INV/valgrind-3/valgrind
   patch -p1 < $INV/coregrind.patch --dry-run</pre>
 
-<p> Keep on the lookout for irrelevant directories. If there are entire directories of content absent in our version it might be
-indicative of a new Valgrind tool. We do not have an interest in tracking other Valgrind tools in CVS. You can determine if a created
-directory corresponds to a new tool by comparing it to the tools listed at the top of <tt>$INV/valgrind-new/Makefile.am</tt>. If the
-patch fails outright it may be indicative of problems in the above diffing.</p>
+<p>If the
+patch fails, it might be indicative of problems in the above diffing.</p>
 
 <p>When you are ready to apply the patch run:</p>
 <pre>
@@ -205,7 +200,10 @@ patch fails outright it may be indicative of problems in the above diffing.</p>
 For every change in the file you will need to examine both the changed code
 as well as our original code and determine if it needs to be hand merged or
 if the change is not relevant. It is useful to refer to
-<tt>coregrind-PAG.diff</tt> during this process.</p>
+<tt>coregrind-PAG.diff</tt> during this process.
+Remove the <tt>.rej</tt> and <tt>.orig</tt> files as you go, so that
+finally the <tt>find</tt> command produces no output.
+</p>
 
 
 <h3 id="memcheck-merge">3.3 Memcheck Merge</h3>
@@ -216,7 +214,9 @@ if the change is not relevant. It is useful to refer to
 
 <p> If the patch output looks sane, continue with the actual merge </p>
 
-<pre>  patch -p2 < $INV/memcheck.patch </pre>
+<pre>
+  cd $INV/valgrind-3/valgrind/fjalar
+  patch -p2 < $INV/memcheck.patch </pre>
 
 
 <h3 id="memcheck-conflicts">3.4 Memcheck Conflicts</h3>
@@ -235,14 +235,18 @@ if the change is not relevant.</p>
 
 <p>
 Our changes to Memcheck are much more substantial than our changes to
-Coregrind. Some notes on particular problem areas are below.</p>
+Coregrind.</p>
 
-<p>The largest modification to the memcheck is located in mc_translate.c and special care should be made
-to ensure it is present and up to date. in MC_(instrument), the code which handles the instrumentation
-of calls for Dyncomp is present. It is primarily contained in a case-switch statement below the
-case-switch statement for Memcheck. MC_(instrument) switches off on every VEX instruction type and performs
-some operation for it. There should be an analogous for Dyncomp operation in the second
-case-switch for every memcheck operation in the first one.</p>
+<p>
+The largest modification to memcheck is in mc_translate.c and special care
+should be made to ensure it is present and up to date.  MC_(instrument)
+handles the instrumentation of calls for Dyncomp. It is primarily contained
+in a case-switch statement below the case-switch statement for
+Memcheck. MC_(instrument) switches off on every VEX instruction type and
+performs some operation for it.  For every memcheck operation in the first
+one, there should be an analogous operation for Dyncomp in the second
+case-switch.</p>
+
 
 <h3 id="Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</h3>
 
@@ -412,7 +416,7 @@ and filled with their signatures for use by Fjalar.</p>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: July 7, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: July 15, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
