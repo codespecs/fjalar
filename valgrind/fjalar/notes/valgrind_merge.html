@@ -241,11 +241,12 @@ Coregrind.</p>
 The largest modification to memcheck is in mc_translate.c and special care
 should be made to ensure it is present and up to date.  MC_(instrument)
 handles the instrumentation of calls for Dyncomp. It is primarily contained
-in a case-switch statement below the case-switch statement for
-Memcheck. MC_(instrument) switches off on every VEX instruction type and
-performs some operation for it.  For every memcheck operation in the first
-one, there should be an analogous operation for Dyncomp in the second
-case-switch.</p>
+in a switch statement; each case handles one VEX instruction type, and the
+body contains both the original code for memcheck and also the code for
+dyncomp.  After the update, you should double-check that each clause
+contains corresponding code:  any changes to the memcheck versions are
+reflected in the dyncomp versions, and any new clause has a dyncomp version.
+</p>
 
 
 <h3 id="Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</h3>
@@ -416,7 +417,7 @@ and filled with their signatures for use by Fjalar.</p>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: July 15, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: July 16, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
@@ -431,7 +432,7 @@ and filled with their signatures for use by Fjalar.</p>
  -->
 <!--  LocalWords:  autogen'ing daikon html libc malloc versioning memcheck's rm
  -->
-<!--  LocalWords:  EDT INV pwd grep autogen Valgrind's
+<!--  LocalWords:  EDT INV pwd grep autogen Valgrind's perl fi Makefiles
  -->
 
 <!--
