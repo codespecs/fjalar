@@ -3681,8 +3681,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          }
          VG_(printf)("\n");
       }
-
-      }
       /* ... and finally copy the stmt itself to the output. */
       stmt('C', &mce, st);
 
