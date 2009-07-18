@@ -53,14 +53,17 @@ recommended.
           <li><a href="#memcheck-merge">3.3 Memcheck Merge</a></li>
           <li><a href="#memcheck-conflicts">3.4 Memcheck Conflicts</a></li>
           <li><a href="#Updating_Fjalar_Kvasir">3.5 Updating Fjalar/Kvasir</a></li>
-          <li><a href="#cvs-add-remove">3.6 Tell CVS about files that were added or removed</a></li>
         </ul></li>
       <li><a href="#Compiling">4. Compiling and Testing</a>
         <ul>
           <li><a href="#compiling_fjalar">4.1 Compiling Fjalar</a></li>
           <li><a href="#testing_fjalar">4.2 Testing Fjalar</a></li>
           <li><a href="#documenting_changes">4.3 Documenting Changes</a></li>
-          <li><a href="#committing">4.4 Committing</a></li>
+        </ul></li>
+      <li><a href="#Committing">5. Committing</a>
+        <ul>
+          <li><a href="#cvs-add-remove">5.1 Tell CVS about files that were added or removed</a></li>
+          <li><a href="#committing">5.2 Committing</a></li>
         </ul></li>
       <li><a href="#Valgrind_modifications">Appendix A: Valgrind modifications</a></li>
       <li><a href="#Memcheck_modifications">Appendix B: Memcheck modifications</a></li>
@@ -114,8 +117,7 @@ First, update your checkout.
 </pre>
 
 <p>
-These diff commands should produce no output.
-If there are any differences, commit them before proceeding.
+Ensure there are no local changes.
 </p>
 
 <pre>
@@ -126,8 +128,12 @@ If there are any differences, commit them before proceeding.
 </pre>
 
 <p>
-The tests should pass.
-If any tests fail, fix them, then start over from the beginning.
+The diff commands should produce no output.
+If there are any differences, commit them, then start over from the beginning.
+</p>
+
+<p>
+Run the tests.
 </p>
 
 <pre>
@@ -136,6 +142,11 @@ If any tests fail, fix them, then start over from the beginning.
   cd $INV/tests/kvasir-tests 
   make nightly-summary-w-daikon
 </pre>
+
+<p>
+The tests should pass.
+If any tests fail, fix them, then start over from the beginning.
+</p>
 
 
 <h3 id="current-valgrind">1.2 Obtain a current copy of the Valgrind Source </h3>
@@ -280,7 +291,9 @@ should be noted in the change logs.</p>
 <p>A somewhat more problematic area are changes in the VEX IR. Dyncomp makes heavy use of the VEX IR, so any
 changes in it need to be reflected. Most of the changes to the public VEX IR can be discovered by running the following command:</p>
 
-<pre>  svn log -r ${VEX_REVISION}:HEAD VEX/pub/libvex_ir.h</pre>
+<pre>
+  cd $inv/valgrind-new
+  svn log -r ${VEX_REVISION}:HEAD VEX/pub/libvex_ir.h</pre>
 
 <p>
 The files with all the VEX IR code for Dyncomp is located in dyncomp_translate.[ch]. dyncomp_translate.c
@@ -288,36 +301,6 @@ is structured primarily into functions of the form <i>expr2tags_[EXPRESSION_TYPE
 will  contain a switch for all VEX IR instructions corresponding to the expression type and some
 call to a dyncomp tag function. Most often VEX IR changes will be syntactical in nature and will only
 involve changing the names of the instructions.
-
-
-<h3 id="cvs-add-remove">3.6 Tell CVS about files that were added or removed</h3>
-
-<p>Tell CVS about files that were created/deleted by the patch:</p>
-
-<pre>
-  cd $INV/valgrind-3
-
-  grep -q '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch 
-  if [ "$?" == "0" ]; then
-    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
-  fi
-
-  grep -q '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch 
-  if [ "$?" == "0" ]; then
-    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
-  fi
-
-  grep -q '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch
-  if [ "$?" == "0" ]; then
-    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
-  fi
-
-  grep -q '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch
-  if [ "$?" == "0" ]; then
-    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
-  fi
-</pre>
-
 
 
 <hr>
@@ -365,12 +348,45 @@ that were used for this merge.</p>
 </pre>
 
 
-<h3 id="committing"> 4.4 Committing </h3>
+<hr>
+<h2 id="Committing">5. Committing</h2>
 
 <p>
-Once the above is finished, if the test suite passes with no errors and all
+If the test suite passes with no errors and all
 changes are documented, changes should be committed to the CVS repository.
 </p>
+
+
+<h3 id="cvs-add-remove">5.1 Tell CVS about files that were added or removed</h3>
+
+<p>Tell CVS about files that were created/deleted by the patch:</p>
+
+<pre>
+  cd $INV/valgrind-3
+
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]; then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
+  fi
+
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch 
+  if [ "$?" == "0" ]; then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
+  fi
+
+  grep -q '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch
+  if [ "$?" == "0" ]; then
+    cvs add `grep '^\-\-\-.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`
+  fi
+
+  grep -q '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch
+  if [ "$?" == "0" ]; then
+    cvs remove `grep '^\+\+\+.*1969\-12\-31' $INV/memcheck.patch| cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`
+  fi
+</pre>
+
+
+<h3 id="committing"> 5.2 Committing </h3>
 
 <pre>
   cd $INV
@@ -435,11 +451,11 @@ and filled with their signatures for use by Fjalar.</p>
 <dt>$INV/valgrind-3/valgrind/fjalar/mc_main.c</dt>
 <dd>Run-time arguments and versioning information for Kvasir to replace the default memcheck ones</dd>
 <dt>$INV/valgrind-3/valgrind/fjalar/mc_translate.c</dt>
-<dd>A duplicate of memcheck's instrumentation block for Dyncomp.</dd></dl>
+<dd>In memcheck's instrumentation block, duplicate each case for Dyncomp.</dd></dl>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: July 16, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: July 17, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
