@@ -196,7 +196,7 @@ repository for the copy that will be diffed.</p>
   cd $INV
   \rm -f coregrind-PAG.diff memcheck-PAG.diff
   diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x inst -x '.svn' -x CVS -x fjalar valgrind-old valgrind-3/valgrind/ > coregrind-PAG.diff
-  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf valgrind-old/memcheck valgrind-3/valgrind/memcheck > memcheck-PAG.diff
+  diff -ur --unidirectional-new-file -x 'Makefile.in' -x '.cvsignore' -x '.svn' -x CVS -x docs -x tests -x perf valgrind-old/memcheck valgrind-3/valgrind/fjalar > memcheck-PAG.diff
 </pre>
 
 <hr>
@@ -455,7 +455,7 @@ and filled with their signatures for use by Fjalar.</p>
 
 <hr>
 <address></address>
-<!-- hhmts start -->Last modified: July 17, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: July 28, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
