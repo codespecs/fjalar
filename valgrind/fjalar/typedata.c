@@ -839,12 +839,12 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
     return 0;
 
   tag = e->tag_name;
-  
+
   if (tag_is_formal_parameter(tag))
     {
       FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%d)\n", location_expression_to_string(atom), value);
       formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
-      
+
       paramPtr->loc_atom = atom;
 
       tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_STACK);
@@ -852,7 +852,7 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
       paramPtr->dwarf_stack_size++;
       paramPtr->valid_loc = 1;
-      
+
       return 1;
     }
   else
@@ -956,20 +956,21 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
         ((function*)e->entry_ptr)->start_pc = value;
         ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
 
-	FJALAR_DPRINTF("Searching debug_frame list for my top of frame\n");
-	FJALAR_DPRINTF("My lowPC is: %x\n", value);
-	while(cur_frame) {
-	  FJALAR_DPRINTF("Examining [%x...%x]\n", cur_frame->begin, cur_frame->end);
-	  if((value >= cur_frame->begin) && (value <= cur_frame->end)) {
-	    FJALAR_DPRINTF("FOUND\n");
-	    ((function*)e->entry_ptr)->comp_pc = cur_frame->begin;
-	    break;
-	  }
-	  cur_frame = cur_frame->next;
-	}
-	
+/* 	FJALAR_DPRINTF("Searching debug_frame list for my top of frame\n"); */
+/* 	FJALAR_DPRINTF("My lowPC is: %x\n", value); */
+/* 	while(cur_frame) { */
+/* 	  FJALAR_DPRINTF("Examining [%x...%x]\n", cur_frame->begin, cur_frame->end); */
+/* 	  if((value >= cur_frame->begin) && (value <= cur_frame->end)) { */
+/* 	    FJALAR_DPRINTF("FOUND\n"); */
+/* 	    ((function*)e->entry_ptr)->comp_pc = cur_frame->begin; */
+/* 	    break; */
+/* 	  } */
+/* 	  cur_frame = cur_frame->next; */
+/* 	} */
+
         return 1;
       } else if(tag_is_compile_unit(tag)) {
+        FJALAR_DPRINTF("\t\tcuBase is %x\n", value);
         comp_unit_base = value;
       }
 
@@ -1520,11 +1521,11 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   //    so that we are not traversing its siblings
   while ((local_dist_to_end > 0) &&
 	 (cur_entry->level > collection_entry_level)) {
-  
+
     if (tag_is_formal_parameter(cur_entry->tag_name)) {
       ((formal_parameter*)(cur_entry))->valid_loc = 1;
     }
-    
+
     if (cur_entry->level == (collection_entry_level + 1)) {
       if (isEnumType) {
         if (tag_is_enumerator(cur_entry->tag_name)) {
