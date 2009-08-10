@@ -46,6 +46,11 @@ struct genhashtable* FunctionTable;
 // instrumentation.
 struct genhashtable* FunctionTable_by_entryPC;
 
+// Like the above 2, except it is indexed by the end of the first
+// basic block of a function. This is needed for the main
+// special case. See "HANDLING MAIN" in fjalar_main.c:handle_possible_entry()
+struct genhashtable* FunctionTable_by_endOfBb;
+
 // WARNING: The only entries in TypesTable are for types that are
 // actually associated with variables used in the program.  If no
 // variable in your program uses a certain type, then it does not have
