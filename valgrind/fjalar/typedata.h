@@ -101,7 +101,7 @@ typedef struct
 
 
 // collection_type corresponds to the following DWARF2 types:
-//   {DW_TAG_structure_type, _union_type, _enumeration_type}
+// DW_TAG{_structure_type, _union_type, _enumeration_type, _class_type}
 typedef struct
 {
   char* name;          // For unnamed structs/unions/enums, we should just munge the

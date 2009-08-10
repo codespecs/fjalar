@@ -1413,6 +1413,10 @@ void initializeFunctionTable(void)
     genallocatehashtable(0,
                          (int (*)(void *,void *)) &equivalentIDs);
 
+  FunctionTable_by_endOfBb =
+    genallocatehashtable(0,
+                         (int (*)(void *,void *)) &equivalentIDs);
+
   FunctionTable_by_entryPC =
     genallocatehashtable(0,
                          (int (*)(void *,void *)) &equivalentIDs);
@@ -1677,7 +1681,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   VarNode* memberNodePtr = 0;
 
   tl_assert((e->tag_name == DW_TAG_structure_type) ||
-            (e->tag_name == DW_TAG_union_type));
+            (e->tag_name == DW_TAG_union_type) || 
+	    (e->tag_name == DW_TAG_class_type));
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
@@ -1824,7 +1829,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
                       curSuper->class);
 
           tl_assert((super_type_entry->tag_name == DW_TAG_structure_type) ||
-                    (super_type_entry->tag_name == DW_TAG_union_type));
+                    (super_type_entry->tag_name == DW_TAG_union_type) ||
+		    (super_type_entry->tag_name == DW_TAG_class_type));
 
           FJALAR_DPRINTF("  Doesn't exist ... trying to add class %s\n", curSuper->className);
           extractStructUnionType(curSuper->class, super_type_entry);
@@ -2233,7 +2239,8 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   // by the sweep of the global variables
   if (!(tag_is_array_type(typePtr->tag_name) ||
 	(DW_TAG_structure_type == typePtr->tag_name) ||
-	(DW_TAG_union_type == typePtr->tag_name)) ||
+	(DW_TAG_union_type == typePtr->tag_name) ||
+	(DW_TAG_class_type == typePtr->tag_name)) ||
       variablePtr->couldBeGlobalVar) {
     return;
   }
@@ -2506,7 +2513,8 @@ extractOneVariable(VarList* varListPtr,
 
   FJALAR_DPRINTF("\tptrLevels is %d\n", varPtr->ptrLevels);
 
-  if (typePtr && (typePtr->tag_name == DW_TAG_structure_type)) {
+  if (typePtr && ((typePtr->tag_name == DW_TAG_structure_type) ||
+		  (typePtr->tag_name == DW_TAG_class_type))) {
     char* type_name = ((collection_type*)(typePtr->entry_ptr))->name;
     // We want to ignore POINTERS to certain types (don't ignore
     // the actual values of that type because it may screw up alignments).
@@ -2619,7 +2627,8 @@ extractOneVariable(VarList* varListPtr,
         }
         // Struct or union type (where most of the action takes place)
         else if  ((typePtr->tag_name == DW_TAG_structure_type) ||
-                  (typePtr->tag_name == DW_TAG_union_type)) {
+                  (typePtr->tag_name == DW_TAG_union_type) ||
+		  (typePtr->tag_name == DW_TAG_class_type)) {
           extractStructUnionType(varPtr->varType, typePtr);
         }
       }

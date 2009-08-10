@@ -122,6 +122,7 @@ char tag_is_relevant_entry(unsigned long tag)
     case DW_TAG_member:
     case DW_TAG_pointer_type:
     case DW_TAG_reference_type:
+    case DW_TAG_class_type:
     case DW_TAG_structure_type:
     case DW_TAG_union_type:
     case DW_TAG_base_type:
@@ -180,6 +181,7 @@ char tag_is_collection_type(unsigned long tag)
     {
     case DW_TAG_enumeration_type:
     case DW_TAG_structure_type:
+    case DW_TAG_class_type:
     case DW_TAG_union_type:
       return 1;
     default:
@@ -1970,6 +1972,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
       }
 
     case DW_TAG_structure_type:
+    case DW_TAG_class_type:
     case DW_TAG_union_type:
     case DW_TAG_enumeration_type:
       {

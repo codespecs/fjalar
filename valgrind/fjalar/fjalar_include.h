@@ -382,6 +382,7 @@ typedef struct _VariableEntry {
   Addr entryLoc;                // The location of a variable on entry
                                     // Currently used as part of a dirty HACK 
                                     // formal params
+  Addr entryLocGuest;
 
 } VariableEntry;
 
@@ -553,6 +554,9 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
+  // The actual instruction Fjalar chose to begin instrumentation at
+  Addr entryIP;
+
   // The instruction base of the compile unit. This is necessary because
   // certain offsets in the debugging information (namely location lists)
   // are relative to the base of the compilation unit.
@@ -565,6 +569,9 @@ typedef struct _FunctionEntry {
   // prolog has had a chance to copy them into the appropriate
   // locations.
   Addr entryPC;
+
+  Addr lowestVirtSP;
+  Addr lowestSP;
 
   // True if globally visible, False if file-static scope
   Bool isExternal;
@@ -1041,6 +1048,7 @@ Bool fjalar_output_struct_vars;            // --output-struct-vars
 Bool fjalar_flatten_arrays;                // --flatten-arrays
 Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
 Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
+Bool fjalar_gcc3;                          // --gcc3
 Bool fjalar_gcc4;                          // --gcc4
 int  fjalar_array_length_limit;            // --array-length-limit
 

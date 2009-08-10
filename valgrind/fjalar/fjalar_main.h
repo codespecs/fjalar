@@ -32,9 +32,9 @@
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       VG_(printf)(__VA_ARGS__); } while (0)
 
-void handle_possible_entry(MCEnv* mce, Addr64 addr);
+void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
-
+  
 // The master location_list. This is fully explained in
 // typedata.c
 extern struct genhashtable* loc_list_map;

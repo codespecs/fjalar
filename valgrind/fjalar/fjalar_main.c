@@ -173,8 +173,19 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 				       char *func_name,
 				       entry_func func) {
   IRDirty  *di;
-  FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
+  FunctionEntry *entry;
+  if(fjalar_gcc3) {
+    entry = gengettable(table, (void *)(Addr)addr);
+  } else {
+    entry = gengettable(FunctionTable_by_endOfBb, (void *)(Addr)addr); // Main special case takes priority
+  }
 
+  if(!entry) {
+      FJALAR_DPRINTF("Attempted Entry at %x but failed\n", addr);
+    /* if(entry && (VG_(strstr)(entry->fjalar_name, "..main(") != 0)) { */
+
+      return;
+  }
 
   // If fjalar_trace_prog_pts_filename is on (we are using a ppt list
   // file), then DO NOT generate IR code to call helper functions for
@@ -186,9 +197,13 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
 			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
+    entry->entryIP = addr;
+
     // For function entry, we are interested in observing the stack
     // and frame pointers so make sure that they're updated by setting
     // the proper annotations:
+
+    FJALAR_DPRINTF("Found a valid entry point at %x for\n", addr);
 
     // We need essentially all registers.
     di->nFxState = 6;
@@ -224,6 +239,60 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 // come with the Ist_Exit IR instruction:
 static Addr currentAddr = 0;
 
+static struct  genhashtable *funcs_handled = NULL;
+
+static void handle_main_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEntry *f) {
+  int i;
+
+  if(!funcs_handled) {
+    funcs_handled= genallocatehashtable(0,(int (*)(void *,void *)) &equivalentIDs);
+  }
+
+  if(gencontains(funcs_handled, f)) 
+    return;
+
+  // HANDLING MAIN
+  // main is a funny function in that essentially all the debugging
+  // information is useless until after the prolog. This is due to
+  // a stack alignment operation causing the stack frame at entry
+  // to be different from the stack frame the function uses during
+  // it's body. This precludes us from entering main at startPC
+
+  // An alternative is to enter main at entryPC - the instruction
+  // corresponding to hte first line of code. This, unfortunately,
+  // causes us to fail to handle a main whose body consists solely
+  // of a loop.
+
+  // So we are left with a third option: We use the following heuristic
+  // to decide the apropriate instruction to enter main. 
+
+  // if the first basic block of the function ends before entryPC,
+  // we will use the last instruction of the first basic block as
+  // our entry point, else we use hte standard entryPC.
+
+  FJALAR_DPRINTF("[handle_main_entry] Searching for main entry IP for %s\n", f->fjalar_name);
+  Addr entry_pt = 0;
+  for(i=0 ; i <  bb_orig->stmts_used; i++) {
+    IRStmt *st = bb_orig->stmts[i];
+    if(st->tag == Ist_IMark) {
+      FJALAR_DPRINTF("\tEncountered IMark for address %x\n", st->Ist.IMark.addr);
+      if(st->Ist.IMark.addr <= f->entryPC) {
+	entry_pt = st->Ist.IMark.addr;
+      }
+    }
+  }
+  tl_assert( entry_pt );
+
+  FJALAR_DPRINTF("[handle_main_entry] %x chosen for entry\n", entry_pt);
+
+  genputtable(funcs_handled, f, 1);
+
+  genputtable(FunctionTable_by_endOfBb, 
+	      entry_pt,
+	      f);
+
+}
+
 // This is called whenever we encounter an IMark statement.  From the
 // IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
 //
@@ -236,7 +305,9 @@ static Addr currentAddr = 0;
 
 // We will utilize this information to pause the target program at
 // function entrances.  This is called from mc_translate.c.
-void handle_possible_entry(MCEnv* mce, Addr64 addr) {
+
+// TODO: In-depth explanation of the main issue
+void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
   // Right now, for x86, we only care about 32-bit instructions
 
   // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
@@ -244,19 +315,52 @@ void handle_possible_entry(MCEnv* mce, Addr64 addr) {
   // properly:
   currentAddr = (Addr)addr;
 
-  /* If this is the very first instruction in the function, add a call
-     to the prime_function helper. */
-  handle_possible_entry_func(mce, addr, FunctionTable,
-			     "prime_function",
-			     &prime_function);
+  if(!fjalar_gcc3) {
+    FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
+    if(entry) {
+      handle_main_entry(mce, addr, bb_orig, entry);
+    }
+    /* FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr); */
+    /* if(entry && VG_(strstr)(entry->fjalar_name, "..main(") != 0) { */
+    /*   handle_main_entry(mce, addr, bb_orig, entry); */
+    /* } */
+  }
+    
 
-  /* If this is the first instruction in the function after the prolog
-     (not exclusive with the condition above), add a call to the
-     enter_function helper. */
-  handle_possible_entry_func(mce, addr, FunctionTable_by_entryPC,
-			     "enter_function",
-			     &enter_function);
+
+  // We're not splitting entry handling based on GCC version.
+  // for GCC 3.x we're going to enter at the instruction
+  // corresponding to the first line of code in a function
+  // (f->entryPC in Fjalar's terms)
+
+  // For GCC 4.x we're going to enter at the first instruction
+  // in the function (f->startPC). This is to handle some
+  // nasty cases where a function's body consists only of
+  // a loop causing Fjalar to detect no/multiple entries
+  // to a function that gets called once.
+
+  if(fjalar_gcc3) {
+
+    /* If this is the very first instruction in the function, add a call
+       to the prime_function helper. */
+    handle_possible_entry_func(mce, addr, FunctionTable,
+			       "prime_function",
+			       &prime_function);
+    
+    /* If this is the first instruction in the function after the prolog
+       (not exclusive with the condition above), add a call to the
+       enter_function helper. */
+    handle_possible_entry_func(mce, addr, FunctionTable_by_entryPC,
+			       "enter_function",
+			       &enter_function);
+  } else {
+    handle_possible_entry_func(mce, addr, FunctionTable,
+			       "enter_function",
+			       &enter_function);
+  }
+
 }
+
 
 // Handle a function exit statement, which contains a jump kind of
 // 'Ret'.  It seems pretty accurate to cue off of currentAddr, a value
@@ -266,7 +370,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
   if (Ijk_Ret == jk) {
     IRDirty  *di;
 
-    FunctionEntry* curFuncPtr = getFunctionEntryFromAddr(currentAddr);
+    FunctionEntry* curFuncPtr = getFunctionEntryFromAddr(currentAddr);    
 
     if (curFuncPtr &&
 	// Also, if fjalar_trace_prog_pts_filename is on (we are
@@ -277,6 +381,8 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
 	// translation-time, not at run-time
 	(!fjalar_trace_prog_pts_filename ||
 	 prog_pts_tree_entry_found(curFuncPtr))) {
+
+      FJALAR_DPRINTF("Exiting function %s @ %x\n", curFuncPtr->fjalar_name, currentAddr);
 
       // The only argument to exit_function() is a pointer to the
       // FunctionEntry for the function that we are exiting
@@ -357,7 +463,6 @@ void enter_function(FunctionEntry* f)
   Addr frame_ptr = 0; /* E.g., %ebp */
   int offset, size;
 
-
   // RUDD - Splitting paths here. If we have location lists
   // we've solved frame pointer invalidity problems
   FJALAR_DPRINTF("loc_list is:%d\n", f->locList);
@@ -365,10 +470,11 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("startPC is: %x\n, entryPC is: %x\ncu_base: %x\n",  f->startPC, f->entryPC, f->cuBase);
 
   if(f->locList) {
-    Addr eip = VG_(get_IP)(tid);
-    location_list *ll;
+    Addr eip = f->entryIP;
     FJALAR_DPRINTF("Current EIP is: %x\n", eip);
-    eip =  f->entryPC - f->cuBase;
+
+    location_list *ll;
+    eip =  eip - f->cuBase;
     
     FJALAR_DPRINTF("Location list based function(offset from base: %x). offset is %lu\n",eip, f->locListOffset);
     if (gencontains(loc_list_map, f->locListOffset)) {
@@ -423,6 +529,7 @@ void enter_function(FunctionEntry* f)
 
   newEntry->func = f;
   newEntry->func->FP = frame_ptr;
+  newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
@@ -434,7 +541,7 @@ void enter_function(FunctionEntry* f)
   offset = frame_ptr - stack_ptr + VG_STACK_REDZONE_SZB; /* in our frame */
   tl_assert(offset >= 0);
   FJALAR_DPRINTF("frame_ptr: %x, stack_ptr: %x, VG_STACK_REDZONE: %d\n", frame_ptr, stack_ptr, VG_STACK_REDZONE_SZB);
-  size = offset + f->formalParamStackByteSize;/* plus stuff in caller's*/
+  size = offset + f->formalParamStackByteSize + 16;/* plus stuff in caller's*/ 
   tl_assert(size >= 0);
   if (size != 0) {
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",  size, sizeof(char));
@@ -451,13 +558,14 @@ void enter_function(FunctionEntry* f)
     // VG_(calloc)ed address, which is a bit weird. It would be more
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
-    FJALAR_DPRINTF("Copying over stack, located at %x - size %d\n", newEntry->virtualStack, size);
+    FJALAR_DPRINTF("Copying over stack [%x] -> [%x] %d bytes\n",stack_ptr - VG_STACK_REDZONE_SZB,  newEntry->virtualStack, size);
     mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
 				(Addr)(newEntry->virtualStack), size);
 
 
     newEntry->func->guestStackStart = stack_ptr - VG_STACK_REDZONE_SZB;
     newEntry->func->guestStackEnd = newEntry->func->guestStackStart + size;
+    newEntry->func->lowestVirtSP = newEntry->virtualStack;
 
   }
   else {
@@ -683,6 +791,12 @@ void fjalar_post_clo_init()
   char* DISAMBIG = ".disambig";
   int DISAMBIG_LEN = VG_(strlen)(DISAMBIG);
 
+  // We need to turn off some VEX IR optimizations (primarily the one which
+  // causes separate basic blocks to be stitched together) for the purpose of
+  // detecting entry in main. see "HANDLING MAIN" in handle_possible_entry()
+  VG_(clo_vex_control).iropt_unroll_thresh = 0;
+  VG_(clo_vex_control).guest_chase_thresh = 0;
+  
   executable_filename = VG_(args_the_exename);
 
   if (fjalar_with_gdb) {
@@ -799,6 +913,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}
   else if VG_YESNO_CLO(arg, "all-static-vars", fjalar_all_static_vars) {}
+  else if VG_YESNO_CLO(arg, "gcc3", fjalar_gcc3) {}
   else if VG_YESNO_CLO(arg, "disambig", fjalar_default_disambig) {}
   else if VG_YESNO_CLO(arg, "smart-disambig", fjalar_smart_disambig) {}
   else if VG_YESNO_CLO(arg, "output-struct-vars", fjalar_output_struct_vars) {}

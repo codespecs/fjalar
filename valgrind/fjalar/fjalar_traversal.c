@@ -939,8 +939,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	    VG_STREQ("argv", var->name))) {
 	  FJALAR_DPRINTF("int main(argc/argv) DETECTED, using entry locations isntead of recalcing\n");
 	  basePtrValue = var->entryLoc;
-	  basePtrValueGuest = var->entryLoc;
-	}else {
+	  basePtrValueGuest = var->entryLocGuest;
+	}
+	else {
 	  for(i = 0; i < var->dwarf_stack_size; i++ ) {
 	    dwarf_location *loc  = &(var->dwarf_stack[i]);
 	    unsigned int  op = loc->atom;
@@ -987,17 +988,21 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %x\n",location_expression_to_string(op), var_loc);
 	    FJALAR_DPRINTF("\tDo I have the actual value? - %d\n", actual_value);
 	  } 
-	  if( (var_loc >= funcPtr->guestStackStart) &&
+	  if((var_loc >= funcPtr->guestStackStart) &&
 	      (var_loc <= funcPtr->guestStackEnd)) {
 	    
-	    int virt_offset = var_loc - (VG_STACK_REDZONE_SZB + funcPtr->FP);
+	    //int virt_offset = var_loc - (VG_STACK_REDZONE_SZB + funcPtr->FP);
+	    int virt_offset = var_loc - funcPtr->lowestSP;
 	    
 	    FJALAR_DPRINTF("\tstackBaseAddr: %x\n\tREDZONE: %d,\n\tFP: %x\n\tvar_loc %x\n\tOffset(virt): %d\n",
-			   stackBaseAddr, VG_STACK_REDZONE_SZB, funcPtr->FP, var_loc, virt_offset);
+			   funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, funcPtr->FP, var_loc, virt_offset);
 	    FJALAR_DPRINTF("\tOld would've given me: %x\n", stackBaseAddr + var->byteOffset);
 	    
-	    basePtrValue = stackBaseAddr + virt_offset;;
+	    //basePtrValue = stackBaseAddr + virt_offset;;
+	    basePtrValue = funcPtr->lowestVirtSP + virt_offset;
 	    FJALAR_DPRINTF("\tNew gave me: %x\n", basePtrValue);
+	    var->entryLoc = basePtrValue;
+	    var->entryLocGuest = var_loc;
 	    basePtrValueGuest = var_loc; }
 	  else {
 	    if(actual_value) {

@@ -3640,7 +3640,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_IMark:
-	   handle_possible_entry( &mce, st->Ist.IMark.addr ); // pgbovine
+	   handle_possible_entry( &mce, st->Ist.IMark.addr, bb_in); // pgbovine
             if (kvasir_with_dyncomp)
               	    dce.origAddr = st->Ist.IMark.addr;
             break;
