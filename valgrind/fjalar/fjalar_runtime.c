@@ -387,8 +387,8 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     FJALAR_DPRINTF("Found function entry %p\n", e);
 
     if (e) {
-      FJALAR_DPRINTF(" e->FP is %x\n", e->FP);
       VarList* localArrayAndStructVars = &(e->func->localArrayAndStructVars);
+      FJALAR_DPRINTF(" e->FP is %x\n", e->FP);
 
       // TODO: Try to get to the bottom of this problem of bogus
       // localArrayAndStructVars pointers, but for now, let's just mask it

@@ -431,7 +431,7 @@ static int openDtraceFile(const char *fname) {
 	VG_(close)(fd);
       }
 
-      VG_(execv)("/bin/gzip", argv);
+      VG_(execv)("/bin/gzip", (void *)argv);
       VG_(exit)(127);
     }
 

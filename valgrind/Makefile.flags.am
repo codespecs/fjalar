@@ -1,14 +1,14 @@
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-AM_CFLAGS_BASE = -O2 -g -Wmissing-prototypes -Wall -Wshadow \
+AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
                  -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
-# stack traces, since users often see stack traces extending 
+# stack traces, since users often see stack traces extending
 # into (and through) the preloads.
 if VGCONF_OS_IS_DARWIN
 AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
@@ -118,7 +118,7 @@ AM_CCASFLAGS_PRI  = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 if VGCONF_HAVE_PLATFORM_SEC
  AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 else
- AM_FLAG_M3264_SEC = 
+ AM_FLAG_M3264_SEC =
 endif
 
 

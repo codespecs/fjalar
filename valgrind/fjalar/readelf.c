@@ -7083,7 +7083,6 @@ display_debug_loc (section, start, file)
      unsigned char *start;
      FILE *file ATTRIBUTE_UNUSED;
 {
-  FJALAR_DPRINTF("In Debug-Loc\n");
   unsigned char *section_end;
   unsigned long bytes;
   unsigned char *section_begin = start;
@@ -8674,6 +8673,7 @@ display_debug_frames (section, start, file)
 	}
       else
 	{
+          debug_frame* df;
 	  unsigned char *look_for;
 	  static Frame_Chunk fde_fc;
 
@@ -8736,7 +8736,7 @@ display_debug_frames (section, start, file)
 
 
 	  // RUDD - Harvesting Debug_Frame data
-          debug_frame* df = VG_(calloc)("readelf.c: display_debug_frame", sizeof(debug_frame), 1);
+          df = VG_(calloc)("readelf.c: display_debug_frame", sizeof(debug_frame), 1);
 	  df->begin = fc->pc_begin;
 	  df->end = fc->pc_begin + fc->pc_range;
 	  df->next = 0;

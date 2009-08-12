@@ -10879,7 +10879,7 @@ fi
 # Ok.  We're done checking.
 #----------------------------------------------------------------------------
 
-ac_config_files="$ac_config_files Makefile valgrind.spec valgrind.pc glibc-2.X.supp docs/Makefile docs/lib/Makefile docs/images/Makefile docs/internals/Makefile docs/xml/Makefile tests/Makefile tests/vg_regtest perf/Makefile perf/vg_perf include/Makefile include/vki/Makefile auxprogs/Makefile coregrind/Makefile memcheck/Makefile memcheck/tests/Makefile memcheck/tests/amd64/Makefile memcheck/tests/x86/Makefile memcheck/tests/linux/Makefile memcheck/tests/darwin/Makefile memcheck/tests/x86-linux/Makefile memcheck/perf/Makefile memcheck/docs/Makefile cachegrind/Makefile cachegrind/tests/Makefile cachegrind/tests/x86/Makefile cachegrind/docs/Makefile cachegrind/cg_annotate callgrind/Makefile callgrind/callgrind_annotate callgrind/callgrind_control callgrind/tests/Makefile callgrind/docs/Makefile helgrind/Makefile helgrind/tests/Makefile helgrind/docs/Makefile massif/Makefile massif/tests/Makefile massif/perf/Makefile massif/docs/Makefile massif/ms_print lackey/Makefile lackey/tests/Makefile lackey/docs/Makefile none/Makefile none/tests/Makefile none/tests/amd64/Makefile none/tests/ppc32/Makefile none/tests/ppc64/Makefile none/tests/x86/Makefile none/tests/linux/Makefile none/tests/darwin/Makefile none/tests/x86-linux/Makefile none/docs/Makefile exp-ptrcheck/Makefile exp-ptrcheck/tests/Makefile exp-ptrcheck/docs/Makefile drd/Makefile drd/docs/Makefile drd/scripts/download-and-build-splash2 drd/tests/Makefile fjalar/Makefile"
+ac_config_files="$ac_config_files Makefile valgrind.spec valgrind.pc glibc-2.X.supp fjalar/Makefile docs/Makefile docs/lib/Makefile docs/images/Makefile docs/internals/Makefile docs/xml/Makefile tests/Makefile tests/vg_regtest perf/Makefile perf/vg_perf include/Makefile include/vki/Makefile auxprogs/Makefile coregrind/Makefile memcheck/Makefile memcheck/tests/Makefile memcheck/tests/amd64/Makefile memcheck/tests/x86/Makefile memcheck/tests/linux/Makefile memcheck/tests/darwin/Makefile memcheck/tests/x86-linux/Makefile memcheck/perf/Makefile memcheck/docs/Makefile cachegrind/Makefile cachegrind/tests/Makefile cachegrind/tests/x86/Makefile cachegrind/docs/Makefile cachegrind/cg_annotate callgrind/Makefile callgrind/callgrind_annotate callgrind/callgrind_control callgrind/tests/Makefile callgrind/docs/Makefile helgrind/Makefile helgrind/tests/Makefile helgrind/docs/Makefile massif/Makefile massif/tests/Makefile massif/perf/Makefile massif/docs/Makefile massif/ms_print lackey/Makefile lackey/tests/Makefile lackey/docs/Makefile none/Makefile none/tests/Makefile none/tests/amd64/Makefile none/tests/ppc32/Makefile none/tests/ppc64/Makefile none/tests/x86/Makefile none/tests/linux/Makefile none/tests/darwin/Makefile none/tests/x86-linux/Makefile none/docs/Makefile exp-ptrcheck/Makefile exp-ptrcheck/tests/Makefile exp-ptrcheck/docs/Makefile drd/Makefile drd/docs/Makefile drd/scripts/download-and-build-splash2 drd/tests/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -11687,6 +11687,7 @@ do
     "valgrind.spec") CONFIG_FILES="$CONFIG_FILES valgrind.spec" ;;
     "valgrind.pc") CONFIG_FILES="$CONFIG_FILES valgrind.pc" ;;
     "glibc-2.X.supp") CONFIG_FILES="$CONFIG_FILES glibc-2.X.supp" ;;
+    "fjalar/Makefile") CONFIG_FILES="$CONFIG_FILES fjalar/Makefile" ;;
     "docs/Makefile") CONFIG_FILES="$CONFIG_FILES docs/Makefile" ;;
     "docs/lib/Makefile") CONFIG_FILES="$CONFIG_FILES docs/lib/Makefile" ;;
     "docs/images/Makefile") CONFIG_FILES="$CONFIG_FILES docs/images/Makefile" ;;
@@ -11747,7 +11748,6 @@ do
     "drd/docs/Makefile") CONFIG_FILES="$CONFIG_FILES drd/docs/Makefile" ;;
     "drd/scripts/download-and-build-splash2") CONFIG_FILES="$CONFIG_FILES drd/scripts/download-and-build-splash2" ;;
     "drd/tests/Makefile") CONFIG_FILES="$CONFIG_FILES drd/tests/Makefile" ;;
-    "fjalar/Makefile") CONFIG_FILES="$CONFIG_FILES fjalar/Makefile" ;;
 
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5
 echo "$as_me: error: invalid argument: $ac_config_target" >&2;}

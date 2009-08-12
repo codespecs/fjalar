@@ -181,7 +181,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
   }
 
   if(!entry) {
-      FJALAR_DPRINTF("Attempted Entry at %x but failed\n", addr);
+      FJALAR_DPRINTF("Attempted Entry at %x but failed\n", (UInt)addr);
     /* if(entry && (VG_(strstr)(entry->fjalar_name, "..main(") != 0)) { */
 
       return;
@@ -203,7 +203,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     // and frame pointers so make sure that they're updated by setting
     // the proper annotations:
 
-    FJALAR_DPRINTF("Found a valid entry point at %x for\n", addr);
+    FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
     // We need essentially all registers.
     di->nFxState = 6;
@@ -243,6 +243,11 @@ static struct  genhashtable *funcs_handled = NULL;
 
 static void handle_main_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEntry *f) {
   int i;
+  Addr entry_pt = 0;
+  // Silence warnings
+  (void)mce; (void)addr;
+  
+
 
   if(!funcs_handled) {
     funcs_handled= genallocatehashtable(0,(int (*)(void *,void *)) &equivalentIDs);
@@ -271,11 +276,10 @@ static void handle_main_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEn
   // our entry point, else we use hte standard entryPC.
 
   FJALAR_DPRINTF("[handle_main_entry] Searching for main entry IP for %s\n", f->fjalar_name);
-  Addr entry_pt = 0;
   for(i=0 ; i <  bb_orig->stmts_used; i++) {
     IRStmt *st = bb_orig->stmts[i];
     if(st->tag == Ist_IMark) {
-      FJALAR_DPRINTF("\tEncountered IMark for address %x\n", st->Ist.IMark.addr);
+      FJALAR_DPRINTF("\tEncountered IMark for address %x\n", (UInt)st->Ist.IMark.addr);
       if(st->Ist.IMark.addr <= f->entryPC) {
 	entry_pt = st->Ist.IMark.addr;
       }
@@ -283,13 +287,13 @@ static void handle_main_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEn
   }
   tl_assert( entry_pt );
 
-  FJALAR_DPRINTF("[handle_main_entry] %x chosen for entry\n", entry_pt);
+  FJALAR_DPRINTF("[handle_main_entry] %x chosen for entry\n", (UInt)entry_pt);
 
-  genputtable(funcs_handled, f, 1);
+  genputtable(funcs_handled, (void *)f, (void *)1);
 
   genputtable(FunctionTable_by_endOfBb, 
-	      entry_pt,
-	      f);
+	      (void *)entry_pt,
+	      (void *)f);
 
 }
 
@@ -382,7 +386,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
 	(!fjalar_trace_prog_pts_filename ||
 	 prog_pts_tree_entry_found(curFuncPtr))) {
 
-      FJALAR_DPRINTF("Exiting function %s @ %x\n", curFuncPtr->fjalar_name, currentAddr);
+      FJALAR_DPRINTF("Exiting function %s @ %x\n", curFuncPtr->fjalar_name, (UInt)currentAddr);
 
       // The only argument to exit_function() is a pointer to the
       // FunctionEntry for the function that we are exiting
@@ -465,27 +469,27 @@ void enter_function(FunctionEntry* f)
 
   // RUDD - Splitting paths here. If we have location lists
   // we've solved frame pointer invalidity problems
-  FJALAR_DPRINTF("loc_list is:%d\n", f->locList);
-  FJALAR_DPRINTF("ebp: %x\n, esp: %x\n", VG_(get_FP)(tid), VG_(get_SP)(tid));
-  FJALAR_DPRINTF("startPC is: %x\n, entryPC is: %x\ncu_base: %x\n",  f->startPC, f->entryPC, f->cuBase);
+  FJALAR_DPRINTF("loc_list is:%d\n", (UInt)f->locList);
+  FJALAR_DPRINTF("ebp: %x\n, esp: %x\n", (UInt)VG_(get_FP)(tid), (UInt)VG_(get_SP)(tid));
+  FJALAR_DPRINTF("startPC is: %x\n, entryPC is: %x\ncu_base: %x\n",  (UInt)f->startPC, (UInt)f->entryPC, f->cuBase);
 
   if(f->locList) {
     Addr eip = f->entryIP;
-    FJALAR_DPRINTF("Current EIP is: %x\n", eip);
-
     location_list *ll;
+    FJALAR_DPRINTF("Current EIP is: %x\n", (UInt)eip);
+
     eip =  eip - f->cuBase;
     
-    FJALAR_DPRINTF("Location list based function(offset from base: %x). offset is %lu\n",eip, f->locListOffset);
-    if (gencontains(loc_list_map, f->locListOffset)) {
-      ll = gengettable(loc_list_map, f->locListOffset);
+    FJALAR_DPRINTF("Location list based function(offset from base: %x). offset is %lu\n",(UInt)eip, f->locListOffset);
+    if (gencontains(loc_list_map, (void *)f->locListOffset)) {
+      ll = gengettable(loc_list_map, (void *)f->locListOffset);
 
       // MASSIVE HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
       // relative to the compilation unit, g++ uses the actual address.
       while(ll && 
 	    !(((ll->begin <= eip) && (ll->end >= eip)) ||
 	      ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
-        FJALAR_DPRINTF("Examining loc list entry: %x - %x - %x\n", ll->offset, ll->begin, ll->end);
+        FJALAR_DPRINTF("Examining loc list entry: %x - %x - %x\n", (UInt)ll->offset, (UInt)ll->begin, (UInt)ll->end);
         ll = ll->next;
       }
 
@@ -519,7 +523,7 @@ void enter_function(FunctionEntry* f)
   }
 
   // RUDD TEMP
-  FJALAR_DPRINTF("Is loc_list_map valid? %x\n", loc_list_map);
+  FJALAR_DPRINTF("Is loc_list_map valid? %x\n", (UInt)loc_list_map);
 
   FJALAR_DPRINTF("Enter function: %s - StartPC: %p, EntryPC: %p, frame_ptr: %p\n",
 		 f->fjalar_name, (void*)f->startPC, (void*)f->entryPC, frame_ptr);
@@ -565,7 +569,7 @@ void enter_function(FunctionEntry* f)
 
     newEntry->func->guestStackStart = stack_ptr - VG_STACK_REDZONE_SZB;
     newEntry->func->guestStackEnd = newEntry->func->guestStackStart + size;
-    newEntry->func->lowestVirtSP = newEntry->virtualStack;
+    newEntry->func->lowestVirtSP = (Addr)newEntry->virtualStack;
 
   }
   else {
@@ -592,8 +596,14 @@ void exit_function(FunctionEntry* f)
   FunctionExecutionState* top = fnStackTop();
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
-
   ThreadId currentTID = VG_(get_running_tid)();
+
+  // Ok, in Valgrind 2.X, we needed to directly code some assembly to
+  // grab the top of the floating-point stack, but Valgrind 3.0
+  // provides a virtual FPU stack, so we can just grab that.  Plus, we
+  // now have shadow V-bits for the FPU stack.
+  double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
+
 
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
@@ -603,13 +613,6 @@ void exit_function(FunctionEntry* f)
   // long int return value is stored here upon function exit)
   Addr xDX = VG_(get_xDX)(currentTID);
 
-  FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
-
-  // Ok, in Valgrind 2.X, we needed to directly code some assembly to
-  // grab the top of the floating-point stack, but Valgrind 3.0
-  // provides a virtual FPU stack, so we can just grab that.  Plus, we
-  // now have shadow V-bits for the FPU stack.
-  double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
 
   // 64 bits
   // Use SHADOW values of Valgrind simulated registers to get V-bits
@@ -617,6 +620,7 @@ void exit_function(FunctionEntry* f)
   UWord xDXshadow = VG_(get_shadow_xDX)(currentTID);
   ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
+  FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   // s is null if an "unwind" is popped off the stack (WHAT?)

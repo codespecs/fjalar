@@ -168,8 +168,8 @@ void printDaikonExternalVarName(VariableEntry* var, char* fjalarName, FILE* fp) 
   int len = VG_(strlen)(fjalarName);
   int i;
   char* working_name;
-  (void) var;
   Bool alreadyPrintedBrackets = False; // Only print out one set of "[..]" max.
+  (void) var;
 
   tl_assert(!kvasir_old_decls_format);
 
@@ -933,7 +933,6 @@ printDeclsEntryAction(VariableEntry* var,
       // that the program has already finished execution so that all
       // of the comparability information would be already updated:
       if (kvasir_with_dyncomp) {
-	VG_(printf)("Getting comp number for varaible %s\n", varName);
         // Remember that comp_number is a SIGNED INTEGER but the
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
@@ -941,6 +940,8 @@ printDeclsEntryAction(VariableEntry* var,
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
+	VG_(printf)("Getting comp number for varaible %s\n", varName);
+
         fputs("    comparability ", decls_fp);
         fprintf(decls_fp, "%d", comp_number);
         fputs("\n", decls_fp);
@@ -1067,7 +1068,6 @@ printDeclsEntryAction(VariableEntry* var,
       // that the program has already finished execution so that all
       // of the comparability information would be already updated:
       if (kvasir_with_dyncomp) {
-	VG_(printf)("Getting comp number for varaible %s ", varName);
         DaikonFunctionEntry *entry = (DaikonFunctionEntry *)varFuncInfo;
         // Remember that comp_number is a SIGNED INTEGER but the
         // tags are UNSIGNED INTEGERS so be careful of overflows
@@ -1076,6 +1076,8 @@ printDeclsEntryAction(VariableEntry* var,
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
+
+	VG_(printf)("Getting comp number for varaible %s ", varName);
         DYNCOMP_TPRINTF("%s[%d](%s) value tag is %d\n",
                         entry->funcEntry.name, g_variableIndex, varName,
                         entry->ppt_exit_var_tags[g_variableIndex]);
@@ -1411,13 +1413,14 @@ printDeclsEntryAction(VariableEntry* var,
   // Print out all function declarations in Daikon .decls format
   static void printAllFunctionDecls(char faux_decls)
   {
-   if(!funcNameTable) {
-       funcNameTable  =
-         genallocatehashtable((unsigned int (*)(void *)) &hashString,
-                              (int (*)(void *,void *)) &equivalentStrings);
-   }
-
     FuncIterator* funcIt = newFuncIterator();
+
+    if(!funcNameTable) {
+      funcNameTable  =
+        genallocatehashtable((unsigned int (*)(void *)) &hashString,
+                             (int (*)(void *,void *)) &equivalentStrings);
+    }
+
 
     while (hasNextFunc(funcIt)) {
       FunctionEntry* cur_entry = nextFunc(funcIt);
@@ -1456,20 +1459,22 @@ printDeclsEntryAction(VariableEntry* var,
   // information for OBJECT program points.  We may support this in the
   // future if necessary.
   static void printAllObjectPPTDecls(void) {
-
-    // Object records aren't needed in new decls format unless parent relations are used
-    if (!kvasir_parent_records && !kvasir_old_decls_format)
-      return;
-
     TypeIterator* typeIt = newTypeIterator();
-
     Bool hacked_dyncomp_switch = False;
+
 
     extern void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
     extern char* stringStackPop(char** stringStack, int* pStringStackSize);
 
     extern char* fullNameStack[];
     extern int fullNameStackSize;
+
+
+    // Object records aren't needed in new decls format unless parent relations are used
+    if (!kvasir_parent_records && !kvasir_old_decls_format)
+      return;
+
+
 
 
     // HACK ALERT: We need to temporarily pretend that we are not using
@@ -1650,6 +1655,7 @@ printDeclsEntryAction(VariableEntry* var,
  void getUsedObjects(VariableEntry* ent, struct genhashtable* ht)
  {
    AggregateType* agg = 0;
+   VarList* members = 0;
    //nestedTraversalTable should be allocated for us
    tl_assert(nestedTraversalTable);
 
@@ -1660,8 +1666,8 @@ printDeclsEntryAction(VariableEntry* var,
    else
      return;
 
+   members = agg->memberVarList;
    //Member variables
-   VarList* members = agg->memberVarList;
    if(members)
      {
        VarNode* n;
@@ -1707,9 +1713,9 @@ printDeclsEntryAction(VariableEntry* var,
        if (IS_AGGREGATE_TYPE(s->class)) {
          tl_assert(s->class->typeName);
          if (!gencontains(ht, s->class->typeName)) {
+           AggregateType* subAgg = s->class->aggType;
            DPRINTF("Adding %s to referenced objects list\n", s->class->typeName);
            genputtable(ht, s->class->typeName, (void *)1);
-           AggregateType* subAgg = s->class->aggType;
            if(subAgg)
              {
                traverseNestedClasses(subAgg,ht);
@@ -1795,9 +1801,10 @@ printDeclsEntryAction(VariableEntry* var,
  // CALLER IS RESPONSIBLE FOR FREEING RETURNED STRING
  char* removeSuperElements(char** stringArr, VariableEntry* var)
  {
-   // RUDD Beautificatn. Next Release.
-   //   int len = fullNameStackSize-2*var->isSuperMember-1;
    int len = fullNameStackSize;
    char*  name = stringArrayFlatten(stringArr, 0, len);
+   (void)var;
+   // RUDD Beautificatn. Next Release.
+   //   int len = fullNameStackSize-2*var->isSuperMember-1;
    return name;
  }

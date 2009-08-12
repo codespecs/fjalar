@@ -22,6 +22,7 @@
 #include "pub_tool_basics.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
+#include "pub_tool_libcprint.h"
 #include "include/elf/dwarf2.h"
 
 // A conversion between DWARF location atoms and a string representation
@@ -328,7 +329,7 @@ location_expression_to_string(enum dwarf_location_atom op) {
   case DW_OP_call_ref:
     return "DW_OP_call_ref";
   default:
-    printf("Invalid enum  sent to location_expression_to_string: %d", op);
+    VG_(printf)("Invalid enum  sent to location_expression_to_string: %d", op);
     tl_assert(0);
   }
 }

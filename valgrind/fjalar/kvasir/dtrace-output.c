@@ -482,14 +482,15 @@ static char printDtraceSequence(VariableEntry* var,
 				char isHashcode,
 				DisambigOverride disambigOverride,
 				Addr* pFirstInitElt) {
-
-  DPRINTF("pValueArray: %x - pValueArrayGuest: %x\nnumElts: %d\n", pValueArray, pValueArrayGuest, numElts);
   UInt i;
+
   char someEltNonZero = 0;
   char someEltInit = 0;
 
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
+
+  DPRINTF("pValueArray: %x - pValueArrayGuest: %x\nnumElts: %d\n", pValueArray, pValueArrayGuest, numElts);
 
   if (pFirstInitElt) {
     *pFirstInitElt = 0;
@@ -560,11 +561,12 @@ static char printDtraceSequence(VariableEntry* var,
       for (ind = 0; ind < limit; ind++) {
         Addr pCurValue = pValueArray[ind];
         Addr pCurValueGuest = pValueArrayGuest[ind];
+        char eltInit = addressIsInitialized(pCurValue, sizeof(void*));
 	if(ind == 0) { // Lets print out the first element for debugging
 	  DPRINTF("First element is: %x(GUEST) ", (UInt)pCurValueGuest);
 	  DPRINTF("First element is: %x(ACTUAL) ", (UInt)(*((Addr*)pCurValue)));
 	}
-        char eltInit = addressIsInitialized(pCurValue, sizeof(void*));
+
 
         if (eltInit) {
           if (!firstInitEltFound) {
@@ -1035,10 +1037,10 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
   // DynComp post-processing after observing a variable:
   if (kvasir_with_dyncomp && variableHasBeenObserved) {
-    DPRINTF("printDtraceEntryAction %s\n", varName);
     Addr a = 0;
     Addr ptrInQuestion = 0;
     char ptrAllocAndInit = 0;
+    DPRINTF("printDtraceEntryAction %s\n", varName);
 
     // Pick the first initialized element from the sequence
     if (isSequence) {

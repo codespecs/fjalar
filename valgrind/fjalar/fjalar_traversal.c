@@ -15,6 +15,7 @@
    Functions for traversing through data structures at run time
 */
 
+
 #include "my_libc.h"
 
 #include "fjalar_traversal.h"
@@ -23,6 +24,8 @@
 #include "generate_fjalar_entries.h"
 #include "disambig.h"
 #include "mc_include.h"
+
+#include "pub_tool_threadstate.h"
 
 // This increments every time a call to visitSingleVar() or
 // visitSequence() is made.  It is up to the caller to reset this
@@ -930,7 +933,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       if(var->dwarf_stack_size) {
 	Bool actual_value = 0;
         Addr var_loc = 0, last_ptr = 0;
-	int i = 0;
+	unsigned int i = 0;
 
 	// HACK, some WACKY things happen with regards to main on exit.
 	// We will use the entry location for this case
@@ -962,9 +965,9 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	      // Add DWARF supplied constant to value on DWARF stack
 	      var_loc += loc->atom_offset;
 	    } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
+	      int reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
 	      // Value in architectural register
 	      actual_value = 1;
-	      int reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
 	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_reg0], reg_val);
 	      var_loc = reg_val;
 	    } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
@@ -1007,8 +1010,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	  else {
 	    if(actual_value) {
 	      overrideIsInit = 1;
-	      basePtrValue = &var_loc;
-	      var->entryLoc = &var_loc;
+	      basePtrValue = (Addr)&var_loc;
+	      var->entryLoc = (Addr)&var_loc;
 	    } else {
 	      basePtrValue = var_loc;
 	      var->entryLoc = var_loc;
@@ -1171,8 +1174,8 @@ void visitReturnValue(FunctionExecutionState* e,
   /* XXX shouldn't do this for 64-bit long long on AMD64 */
   else if ((cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
-    FJALAR_DPRINTF("long long int type\n");
     unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
+    FJALAR_DPRINTF("long long int type\n");
 
     // Remember to copy A and V-bits over:
     mc_copy_address_range_state((Addr)(&(e->xAX)),
@@ -1655,9 +1658,10 @@ void visitSingleVar(VariableEntry* var,
         }
         // Dynamic array:
         else {
-	  FJALAR_DPRINTF("Dynamic Array\n");
           char derivedIsAllocated = 0;
           Addr pNewStartValue = 0;
+
+	  FJALAR_DPRINTF("Dynamic Array\n");
 
 	  if (overrideIsInit)
 	    derivedIsAllocated = 1;

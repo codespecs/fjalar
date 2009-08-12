@@ -2164,7 +2164,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 
 
   if (paramPtr->dwarf_stack_size > 0) {
-    int i;
+    unsigned int i;
     FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
     for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
       varPtr->dwarf_stack[i].atom = paramPtr->dwarf_stack[i].atom;
@@ -2758,12 +2758,12 @@ static void initConstructorsAndDestructors(void) {
     if ((f->formalParameters.numVars > 0) &&
         (f->formalParameters.first->var) &&
         VG_STREQ("this", f->formalParameters.first->var->name)) {
+      TypeEntry* parentClass = 0;
 
 
       // RUDD - Dirty dirty hack. Force the location of this to be valid
       f->formalParameters.first->var->validLoc = 1;
 
-      TypeEntry* parentClass = 0;
 
       // Use the regular (not mangled or demangled) name for matching
       tl_assert(f->name);

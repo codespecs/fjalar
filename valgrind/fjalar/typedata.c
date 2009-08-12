@@ -31,7 +31,7 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_basics.h"
 #include "pub_tool_libcassert.h"
-#include "pub_tool_mallocfree.h"p
+#include "pub_tool_mallocfree.h"
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
       VG_(printf)(__VA_ARGS__); } while (0)
@@ -842,8 +842,8 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
 
   if (tag_is_formal_parameter(tag))
     {
-      FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%d)\n", location_expression_to_string(atom), value);
       formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
+      FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%d)\n", location_expression_to_string(atom), value);
 
       paramPtr->loc_atom = atom;
 
@@ -945,16 +945,19 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
 
   tag = e->tag_name;
 
-
-
-
-
   if (attr == DW_AT_low_pc)
     {
       if(tag_is_function(tag)) {
-	debug_frame *cur_frame = debug_frame_HEAD;
         ((function*)e->entry_ptr)->start_pc = value;
         ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
+
+        // The below code allows for finding the top of the frame
+        // from the debug information. I later found out this wasn't needed
+        // I still don't have complete understanding of the DWARF format
+        // So i'm going to keep it around until at least after the
+        // AMD64 changes - rudd
+
+        // debug_frame *cur_frame = debug_frame_HEAD;
 
 /* 	FJALAR_DPRINTF("Searching debug_frame list for my top of frame\n"); */
 /* 	FJALAR_DPRINTF("My lowPC is: %x\n", value); */
@@ -972,6 +975,7 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
       } else if(tag_is_compile_unit(tag)) {
         FJALAR_DPRINTF("\t\tcuBase is %x\n", value);
         comp_unit_base = value;
+        return 1;
       }
 
     }
@@ -982,6 +986,8 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
     }
   else
     return 0;
+
+  return 0;
 }
 
 
@@ -2392,9 +2398,9 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
 
 // RUDD
 char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset) {
+  unsigned long tag;
   FJALAR_DPRINTF("Attempting to harvest the frame_base\n");
 
-  unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
     return 0;
 
@@ -2425,19 +2431,20 @@ char harvest_debug_frame_entry(debug_frame *df){
     debug_frame_TAIL->next = df;
     debug_frame_TAIL = df;
   }
+  return 1;
 }
 
 
 char harvest_location_list_entry(location_list* ll, unsigned long offset){
-  tl_assert(loc_list_map && "Location list map uninitialized");
   location_list *cur_loc = NULL;
+  tl_assert(loc_list_map && "Location list map uninitialized");
   ll->next = NULL;
 
   FJALAR_DPRINTF("\tAdding the following location to the location list at offset: %x\noffset\tbegin\tend\texpr\n%8x %8x %8x\t(%d + %x)\n\n",
                  ll->offset, ll->offset, ll->begin, ll->end, ll->atom, ll->atom_offset);
 
-  if(gencontains(loc_list_map, offset)) {
-    tl_assert((cur_loc = gengettable(loc_list_map, offset)));
+  if(gencontains(loc_list_map, (void *)offset)) {
+    tl_assert((cur_loc = gengettable(loc_list_map, (void *)offset)));
 
     while(cur_loc->next != NULL) {
       FJALAR_DPRINTF("cur_loc: %x, cur_loc->next: %x\n", cur_loc, cur_loc->next);

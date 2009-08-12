@@ -5,13 +5,14 @@ include $(top_srcdir)/Makefile.tool.am
 ## Build Fjalar at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall 
-AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall 
+#AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
+AM_CFLAGS_X86_LINUX   := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
+AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
 SUBDIRS +=
 
-noinst_PROGRAMS = 
-noinst_DSYMS = 
+noinst_PROGRAMS =
+noinst_DSYMS =
 if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
 noinst_PROGRAMS += fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 endif
@@ -25,7 +26,7 @@ if VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN
 noinst_PROGRAMS += fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
 noinst_DSYMS    +=                       vgpreload_fjalar-amd64-darwin.so
 endif
-  
+
 endif
 # PG - no PPC
 
