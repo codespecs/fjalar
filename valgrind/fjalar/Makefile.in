@@ -403,7 +403,7 @@ inplacedir = $(top_builddir)/.in_place
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-AM_CFLAGS_BASE = -O2 -g -Wmissing-prototypes -Wall -Wshadow \
+AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
                  -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
 		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
                  -fno-strict-aliasing
@@ -412,7 +412,7 @@ AM_CFLAGS_BASE = -O2 -g -Wmissing-prototypes -Wall -Wshadow \
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
-# stack traces, since users often see stack traces extending 
+# stack traces, since users often see stack traces extending
 # into (and through) the preloads.
 @VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
 
@@ -444,9 +444,8 @@ AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
 
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-AM_CFLAGS_X86_LINUX = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
-	$(AM_CFLAGS_BASE) -g -O0 -fno-omit-frame-pointer -Iinclude -W \
-	-Wall
+#AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
+AM_CFLAGS_X86_LINUX := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
 AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
 AM_CPPFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_COMMON) \

@@ -149,6 +149,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
 // for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag(void) {
   UInt tag;
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
 
   // Let's try garbage collecting here.  Remember to assign
   // tag = nextTag AFTER garbage collection (if it occurs) because
@@ -174,7 +175,6 @@ static __inline__ UInt grab_fresh_tag(void) {
   }
 
   totalNumTagsAssigned++;
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
  
   if (dyncomp_print_trace_all) {
 
@@ -286,7 +286,7 @@ void val_uf_make_set_for_tag(UInt tag) {
 
 // Merge the sets of tag1 and tag2 and return the leader
 static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  //  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
 /*   if(( eip >  0x05007745)) { */
 /*     VG_(printf)("tag1: %d, tag2:%d\n", tag1, tag2); */
 /*   } */
@@ -296,8 +296,9 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
                                  GET_UF_OBJECT_PTR(tag2));
     Char eip_info[256];
+    //    ThreadId tid = VG_(get_running_tid)();
+
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    ThreadId tid = VG_(get_running_tid)();
     /*       VG_(printf)("Merging %d with %d to get %d at 0x%08x (%s)\n", */
     /* 		      tag1, tag2, leader->tag, eip, eip_info); */
     DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
@@ -551,14 +552,17 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 // garbage-collected.
 VG_REGPARM(1)
 UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
+
   UInt newTag = grab_fresh_tag();
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+
+  (void)static_id;
 
 /*   if (within_main_program) { */
 /*     DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n", */
 /*                     newTag, nextTag); */
 /*   } */
 
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
   if (dyncomp_print_trace_all) {
     Char eip_info[256];
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
@@ -633,14 +637,14 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 // of the merged set
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
+  Char eip_info[256];
+  VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
   
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  Char eip_info[256];
-  VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-  ThreadId tid = VG_(get_running_tid)();
 
 /*   if (within_main_program) { */
 /*      DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n", */

@@ -3418,6 +3418,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    DCEnv   dce; // PG - pgbovine - dyncomp
    IRSB*   bb;
 
+   // Silence GCC warnings - rudd
+   (void) closure; (void) vge;
+
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
       VG_(tool_panic)("host/guest word size mismatch");
