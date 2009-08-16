@@ -329,7 +329,7 @@ location_expression_to_string(enum dwarf_location_atom op) {
   case DW_OP_call_ref:
     return "DW_OP_call_ref";
   default:
-    VG_(printf)("Invalid enum  sent to location_expression_to_string: %d", op);
+    VG_(printf)("Invalid location_atom sent to location_expression_to_string: %d", op);
     tl_assert(0);
   }
 }
