@@ -532,7 +532,7 @@ void initializeAllFjalarData(void)
   updateAllVarTypes();
 
 
-  // Some post-processing on functions to work around GCC 
+  // Some post-processing on functions to work around GCC
   // issues
   processFunctions();
 
@@ -1681,7 +1681,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   VarNode* memberNodePtr = 0;
 
   tl_assert((e->tag_name == DW_TAG_structure_type) ||
-            (e->tag_name == DW_TAG_union_type) || 
+            (e->tag_name == DW_TAG_union_type) ||
 	    (e->tag_name == DW_TAG_class_type));
 
   collectionPtr = (collection_type*)(e->entry_ptr);
@@ -2173,7 +2173,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     }
     varPtr->dwarf_stack_size = paramPtr->dwarf_stack_size;
   }
-    
+
 
 
 
@@ -2181,7 +2181,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->validLoc = paramPtr->valid_loc;
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
-    varPtr->atom = paramPtr->loc_atom;
+    //    varPtr->atom = paramPtr->loc_atom;
     if(fjalar_gcc4)
       varPtr->byteOffset += 8;
 
@@ -2660,7 +2660,7 @@ extractOneVariable(VarList* varListPtr,
     varPtr->varType = &VoidType;
   }
 
-  FJALAR_DPRINTF("\tdecType is: %s\n", DeclaredTypeString[varPtr->varType->decType]); 
+  FJALAR_DPRINTF("\tdecType is: %s\n", DeclaredTypeString[varPtr->varType->decType]);
 
   return varPtr;
 }
@@ -2679,7 +2679,7 @@ static void processFunctions() {
   FuncIterator* funcIt = newFuncIterator();
   FJALAR_DPRINTF("processFunctions()\n");
 
-  while(hasNextFunc(funcIt)) {    
+  while(hasNextFunc(funcIt)) {
     FunctionEntry* f = nextFunc(funcIt);
     FJALAR_DPRINTF("Examining Function: %s\n", f->name);
 
@@ -2693,7 +2693,7 @@ static void processFunctions() {
     // 1.) f->name is main
     // 2.) f->formalParameters.first->var->VarType->DeclaredType == D_INT
     // argc is 0 bytes offset from the base of the frame pointer.
-    // 
+    //
 
     // We've found argv iff:
     // 1.) f->name is main
@@ -2724,8 +2724,8 @@ static void processFunctions() {
   }
   deleteFuncIterator(funcIt);
   }
-	    
-    
+
+
 
 // More C++ fun.  So apparently constructors and destructors are
 // printed in the DWARF debugging information as regular functions,

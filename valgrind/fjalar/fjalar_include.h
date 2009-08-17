@@ -307,10 +307,6 @@ typedef struct _VariableEntry {
 
   LocationType locationType;
 
-  // Variables aren't always an offset from the FP
-  unsigned int atom; //Location Expression.
-
-
   // see fjalar_dwarf.h for definition of dwarf_location
   dwarf_location dwarf_stack[MAX_DWARF_STACK];
   unsigned int dwarf_stack_size;
@@ -377,11 +373,10 @@ typedef struct _VariableEntry {
   Bool disambigMultipleElts;       // mutable
   Bool pointerHasEverBeenObserved; // mutable
   Bool validLoc;                    // This is needed to provide access
-                                   // to variables with incomplete DWARF DIEs
+                                    // to variables with incomplete DWARF DIEs
 
   Addr entryLoc;                // The location of a variable on entry
-                                    // Currently used as part of a dirty HACK 
-                                    // formal params
+
   Addr entryLocGuest;
 
 } VariableEntry;
