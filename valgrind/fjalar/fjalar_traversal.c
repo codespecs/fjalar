@@ -773,16 +773,12 @@ void visitClassMemberVariables(TypeEntry* class,
       // superclass:
       stringStackPush(fullNameStack, &fullNameStackSize, curSuper->className);
 
-      // RUDD 2.0  Trying to make use of EnclosingVar stack for Nested Classes and Structs.
+      // RUDD - 2.0  Trying to make use of EnclosingVar stack for Nested Classes and Structs.
       // Push fullFjalarName onto enclosingVarNamesStack:
       fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
       if (fullFjalarName) {
         stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
       }
-
-      // RUDD COMMENTED CODE
-      /*      if(fullFjalarName)
-              printf("This is my fullname,%s\n", fullFjalarName);*/
 
 
       stringStackPush(fullNameStack, &fullNameStackSize, DOT);
@@ -976,7 +972,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	      // Get value located in architectural register
 	      reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
 	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_reg0], reg_val);
-	      var_loc = &reg_val;
+	      var_loc = (Addr)&reg_val;
 
 	    } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
 	      // Get value pointed to by architectural register
@@ -1368,9 +1364,9 @@ void visitSingleVar(VariableEntry* var,
   int layersBeforeBase;
 
   // Initialize these in a group later
-  char disambigOverrideArrayAsPointer = 0;
-  char derefSingleElement = 0;
-  char needToDerefCppRef = 0;
+  Bool disambigOverrideArrayAsPointer = 0;
+  Bool derefSingleElement = 0;
+  Bool needToDerefCppRef = 0;
   TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
