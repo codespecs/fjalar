@@ -1,4 +1,4 @@
 all:
 install:
 clean:
-dist-clean:
+distclean:

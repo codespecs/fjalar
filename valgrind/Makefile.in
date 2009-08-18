@@ -322,7 +322,7 @@ EXP_TOOLS = exp-ptrcheck
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
-SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) $(EXP_TOOLS) docs
+SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) $(EXP_TOOLS)
 DIST_SUBDIRS = $(SUBDIRS)
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
