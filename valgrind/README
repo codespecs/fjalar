@@ -5,14 +5,15 @@ Robert Rudd
 
 Last updated: 2009-06-28
 
-Fjalar itself appears in the ./fjalar directory.
-Kvasir, a Daikon front end that is built upon Fjalar, appears in
-./fjalar/kvasir.
-
+Fjalar appears in the ./fjalar directory.
 Please consult the Fjalar webpage for information about the Fjalar
 framework and tools.  A local copy of the Fjalar webpage appears here:
   ./fjalar/documentation/fjalar-www/index.html
 
+Kvasir, a Daikon front end that is built upon Fjalar, appears in
+./fjalar/kvasir.
+Kvasir's user documentation appears in the Daikon user manual:
+http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html#Kvasir
 
 The remainder of this file consists of the README file for Valgrind,
 on which Fjalar is based.
