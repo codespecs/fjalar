@@ -1,5 +1,5 @@
 
-SUBDIRS = . tests docs
+SUBDIRS = .
 
 include $(top_srcdir)/Makefile.all.am
 include $(top_srcdir)/Makefile.flags.am
@@ -210,4 +210,3 @@ all-local: inplace-noinst_PROGRAMS inplace-noinst_DSYMS
 clean-local: clean-noinst_DSYMS
 
 install-exec-local: install-noinst_PROGRAMS install-noinst_DSYMS
-

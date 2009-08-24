@@ -49,10 +49,10 @@ noinst_PROGRAMS = $(am__EXEEXT_1) $(am__EXEEXT_2) $(am__EXEEXT_3) \
 	$(am__EXEEXT_4)
 @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_2 = fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__append_3 = fjalar-x86-darwin vgpreload_fjalar-x86-darwin.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__append_4 = vgpreload_fjalar-x86-darwin.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_5 = fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_6 = vgpreload_fjalar-amd64-darwin.so
+@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__append_3 = fjalar-x86-darwin vgpreload_fjalar-x86-darwin.so
+@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__append_4 = vgpreload_fjalar-x86-darwin.so
+@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@am__append_5 = fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
+@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@am__append_6 = vgpreload_fjalar-amd64-darwin.so
 subdir = fjalar
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
@@ -65,10 +65,10 @@ CONFIG_CLEAN_FILES =
 @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@	vgpreload_fjalar-x86-linux.so$(EXEEXT)
 @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__EXEEXT_2 = fjalar-amd64-linux$(EXEEXT) \
 @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@	vgpreload_fjalar-amd64-linux.so$(EXEEXT)
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__EXEEXT_3 = fjalar-x86-darwin$(EXEEXT) \
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@	vgpreload_fjalar-x86-darwin.so$(EXEEXT)
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__EXEEXT_4 = fjalar-amd64-darwin$(EXEEXT) \
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@	vgpreload_fjalar-amd64-darwin.so$(EXEEXT)
+@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__EXEEXT_3 = fjalar-x86-darwin$(EXEEXT) \
+@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@	vgpreload_fjalar-x86-darwin.so$(EXEEXT)
+@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@am__EXEEXT_4 = fjalar-amd64-darwin$(EXEEXT) \
+@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@	vgpreload_fjalar-amd64-darwin.so$(EXEEXT)
 PROGRAMS = $(noinst_PROGRAMS)
 fjalar_amd64_darwin_SOURCES = fjalar-amd64-darwin.c
 fjalar_amd64_darwin_OBJECTS = fjalar-amd64-darwin.$(OBJEXT)
@@ -397,7 +397,7 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
-SUBDIRS = . tests docs
+SUBDIRS = .
 valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
 
@@ -682,7 +682,6 @@ LIBREPLACEMALLOC_LDFLAGS_AMD64_DARWIN = \
 	$(LIBREPLACEMALLOC_AMD64_DARWIN)
 
 noinst_DSYMS = $(am__append_4) $(am__append_6)
-
 # PG - no PPC
 VGPRELOAD_FJALAR_SOURCES_COMMON = mc_replace_strmem.c kvasir/dyncomp_wrappers.c
 vgpreload_fjalar_x86_linux_so_SOURCES = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
