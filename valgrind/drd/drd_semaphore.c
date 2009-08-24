@@ -49,7 +49,7 @@ static ULong s_semaphore_segment_creation_count;
 /* Function definitions. */
 
 /** Push a segment at the end of the queue 'p->last_sem_post_seg'. */
-static void DRD_(segment_push)(struct semaphore_info* p, Segment* sg)
+static void drd_segment_push(struct semaphore_info* p, Segment* sg)
 {
    Word n;
 
@@ -63,7 +63,7 @@ static void DRD_(segment_push)(struct semaphore_info* p, Segment* sg)
 }
 
 /** Pop a segment from the beginning of the queue 'p->last_sem_post_seg'. */
-static Segment* DRD_(segment_pop)(struct semaphore_info* p)
+static Segment* drd_segment_pop(struct semaphore_info* p)
 {
    Word sz;
    Segment* sg;
@@ -94,8 +94,8 @@ void DRD_(semaphore_set_trace)(const Bool trace_semaphore)
  * client semaphore at client addres 'semaphore'.
  */
 static
-void DRD_(semaphore_initialize)(struct semaphore_info* const p,
-                                const Addr semaphore)
+void drd_semaphore_initialize(struct semaphore_info* const p,
+                              const Addr semaphore)
 {
    tl_assert(semaphore != 0);
    tl_assert(p->a1 == semaphore);
@@ -129,7 +129,7 @@ static void semaphore_cleanup(struct semaphore_info* p)
                               " upon",
                               &sei);
    }
-   while ((sg = DRD_(segment_pop)(p)))
+   while ((sg = drd_segment_pop(p)))
       DRD_(sg_put)(sg);
    VG_(deleteXA)(p->last_sem_post_seg);
 }
@@ -141,7 +141,7 @@ static void semaphore_cleanup(struct semaphore_info* p)
  */
 static
 struct semaphore_info*
-DRD_(semaphore_get_or_allocate)(const Addr semaphore)
+drd_semaphore_get_or_allocate(const Addr semaphore)
 {
    struct semaphore_info *p;
 
@@ -151,7 +151,7 @@ DRD_(semaphore_get_or_allocate)(const Addr semaphore)
    {
       tl_assert(offsetof(DrdClientobj, semaphore) == 0);
       p = &(DRD_(clientobj_add)(semaphore, ClientSemaphore)->semaphore);
-      DRD_(semaphore_initialize)(p, semaphore);
+      drd_semaphore_initialize(p, semaphore);
    }
    return p;
 }
@@ -177,8 +177,7 @@ struct semaphore_info* DRD_(semaphore_init)(const Addr semaphore,
    if (s_trace_semaphore)
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] semaphore_init      0x%lx value %u",
-                   VG_(get_running_tid)(),
+                   "[%d] sem_init      0x%lx value %u\n",
                    DRD_(thread_get_running_tid)(),
                    semaphore,
                    value);
@@ -194,14 +193,25 @@ struct semaphore_info* DRD_(semaphore_init)(const Addr semaphore,
                               "Semaphore reinitialization",
                               &SEI);
       // Remove all segments from the segment stack.
-      while ((sg = DRD_(segment_pop)(p)))
+      while ((sg = drd_segment_pop(p)))
       {
          DRD_(sg_put)(sg);
       }
    }
    else
    {
-      p = DRD_(semaphore_get_or_allocate)(semaphore);
+#if defined(VGO_darwin)
+      const ThreadId vg_tid = VG_(get_running_tid)();
+      GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+      VG_(maybe_record_error)(vg_tid,
+			      GenericErr,
+			      VG_(get_IP)(vg_tid),
+			      "sem_init() is not yet supported on Darwin",
+			      &GEI);
+      return NULL;
+#else
+      p = drd_semaphore_get_or_allocate(semaphore);
+#endif
    }
    tl_assert(p);
    p->waits_to_skip = value;
@@ -219,8 +229,84 @@ void DRD_(semaphore_destroy)(const Addr semaphore)
    if (s_trace_semaphore)
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] semaphore_destroy   0x%lx value %u",
-                   VG_(get_running_tid)(),
+                   "[%d] sem_destroy   0x%lx value %u\n",
+                   DRD_(thread_get_running_tid)(),
+                   semaphore,
+                   p ? p->value : 0);
+   }
+
+   if (p == 0)
+   {
+      GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+      VG_(maybe_record_error)(VG_(get_running_tid)(),
+                              GenericErr,
+                              VG_(get_IP)(VG_(get_running_tid)()),
+                              "Not a semaphore",
+                              &GEI);
+      return;
+   }
+
+   DRD_(clientobj_remove)(semaphore, ClientSemaphore);
+}
+
+/** Called after sem_open(). */
+struct semaphore_info* DRD_(semaphore_open)(const Addr semaphore,
+                                            const Char* name, const Word oflag,
+                                            const Word mode, const UInt value)
+{
+   struct semaphore_info* p;
+   Segment* sg;
+
+   if (s_trace_semaphore)
+   {
+      VG_(message)(Vg_UserMsg,
+                   "[%d] sem_open      0x%lx name %s"
+                   " oflag %#lx mode %#lo value %u\n",
+                   DRD_(thread_get_running_tid)(),
+                   semaphore, name, oflag, mode, value);
+   }
+
+   /* Return if the sem_open() call failed. */
+   if (! semaphore)
+      return NULL;
+
+   p = semaphore_get(semaphore);
+   if (p)
+   {
+      const ThreadId vg_tid = VG_(get_running_tid)();
+      SemaphoreErrInfo SEI = { DRD_(thread_get_running_tid)(), semaphore };
+      VG_(maybe_record_error)(vg_tid,
+                              SemaphoreErr,
+                              VG_(get_IP)(vg_tid),
+                              "Semaphore reinitialization",
+                              &SEI);
+      // Remove all segments from the segment stack.
+      while ((sg = drd_segment_pop(p)))
+      {
+         DRD_(sg_put)(sg);
+      }
+   }
+   else
+   {
+      p = drd_semaphore_get_or_allocate(semaphore);
+   }
+   tl_assert(p);
+   p->waits_to_skip = value;
+   p->value         = value;
+   return p;
+}
+
+/** Called before sem_close(). */
+void DRD_(semaphore_close)(const Addr semaphore)
+{
+   struct semaphore_info* p;
+
+   p = semaphore_get(semaphore);
+
+   if (s_trace_semaphore)
+   {
+      VG_(message)(Vg_UserMsg,
+                   "[%d] sem_close     0x%lx value %u\n",
                    DRD_(thread_get_running_tid)(),
                    semaphore,
                    p ? p->value : 0);
@@ -245,11 +331,11 @@ void DRD_(semaphore_pre_wait)(const Addr semaphore)
 {
    struct semaphore_info* p;
 
-   p = DRD_(semaphore_get_or_allocate)(semaphore);
+   p = drd_semaphore_get_or_allocate(semaphore);
    tl_assert(p);
    p->waiters++;
 
-   if ((int)p->waiters <= 0)
+   if ((Word)(p->waiters) <= 0)
    {
       SemaphoreErrInfo sei = { DRD_(thread_get_running_tid)(), semaphore };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
@@ -275,8 +361,7 @@ void DRD_(semaphore_post_wait)(const DrdThreadId tid, const Addr semaphore,
    if (s_trace_semaphore)
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] semaphore_wait      0x%lx value %u -> %u",
-                   VG_(get_running_tid)(),
+                   "[%d] sem_wait      0x%lx value %u -> %u\n",
                    DRD_(thread_get_running_tid)(),
                    semaphore,
                    p ? p->value : 0,
@@ -292,11 +377,11 @@ void DRD_(semaphore_post_wait)(const DrdThreadId tid, const Addr semaphore,
    /*
     * Note: if another thread destroyed and reinitialized a semaphore while
     * the current thread was waiting in sem_wait, p->waiters may have been
-    * set to zero by DRD_(semaphore_initialize)() after
+    * set to zero by drd_semaphore_initialize() after
     * DRD_(semaphore_pre_wait)() has finished before
     * DRD_(semaphore_post_wait)() has been called.
     */
-   if (p == NULL || (int)p->value < 0 || (int)p->waiters < 0)
+   if (p == NULL || (Int)(p->value) < 0 || (Word)(p->waiters) < 0)
    {
       SemaphoreErrInfo sei = { DRD_(thread_get_running_tid)(), semaphore };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
@@ -311,18 +396,18 @@ void DRD_(semaphore_post_wait)(const DrdThreadId tid, const Addr semaphore,
       p->waits_to_skip--;
    else
    {
-      sg = DRD_(segment_pop)(p);
+      sg = drd_segment_pop(p);
       tl_assert(sg);
       if (sg)
       {
-         DRD_(thread_new_segment)(tid);
-         s_semaphore_segment_creation_count++;
-
          if (p->last_sem_post_tid != tid
              && p->last_sem_post_tid != DRD_INVALID_THREADID)
          {
-            DRD_(thread_combine_vc_sync)(tid, sg);
+            DRD_(thread_new_segment_and_combine_vc)(tid, sg);
          }
+         else
+            DRD_(thread_new_segment)(tid);
+         s_semaphore_segment_creation_count++;
          DRD_(sg_put)(sg);
       }
    }
@@ -334,14 +419,13 @@ void DRD_(semaphore_pre_post)(const DrdThreadId tid, const Addr semaphore)
    struct semaphore_info* p;
    Segment* sg;
 
-   p = DRD_(semaphore_get_or_allocate)(semaphore);
+   p = drd_semaphore_get_or_allocate(semaphore);
    p->value++;
 
    if (s_trace_semaphore)
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] semaphore_post      0x%lx value %u -> %u",
-                   VG_(get_running_tid)(),
+                   "[%d] sem_post      0x%lx value %u -> %u\n",
                    DRD_(thread_get_running_tid)(),
                    semaphore,
                    p->value - 1, p->value);
@@ -351,7 +435,7 @@ void DRD_(semaphore_pre_post)(const DrdThreadId tid, const Addr semaphore)
    sg = 0;
    DRD_(thread_get_latest_segment)(&sg, tid);
    tl_assert(sg);
-   DRD_(segment_push)(p, sg);
+   drd_segment_push(p, sg);
    DRD_(thread_new_segment)(tid);
    s_semaphore_segment_creation_count++;
 }

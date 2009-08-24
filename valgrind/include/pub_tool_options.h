@@ -97,7 +97,7 @@
       /* Check bounds. */ \
       if ((qq_var) < (qq_lo) || (qq_var) > (qq_hi)) { \
          VG_(message)(Vg_UserMsg, \
-                      "'%s' argument must be between %lld and %lld", \
+                      "'%s' argument must be between %lld and %lld\n", \
                       (qq_option), (Long)(qq_lo), (Long)(qq_hi)); \
          VG_(err_bad_option)(qq_arg); \
       } \
@@ -141,6 +141,9 @@
 
 /* Verbosity level: 0 = silent, 1 (default), > 1 = more verbose. */
 extern Int  VG_(clo_verbosity);
+
+/* Show tool and core statistics */
+extern Bool VG_(clo_stats);
 
 /* Emit all messages as XML? default: NO */
 /* If clo_xml is set, various other options are set in a non-default

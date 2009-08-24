@@ -34,6 +34,8 @@
    without prior written permission.
 */
 
+#if defined(VGO_linux) || defined(VGO_darwin)
+
 /* REFERENCE (without which this code will not make much sense):
 
    DWARF Debugging Information Format, Version 3, 
@@ -1320,8 +1322,8 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
       get_Initial_Length( &is_dw64, &c,
            "read_filename_table: invalid initial-length field" );
    version = get_UShort( &c );
-   if (version != 2)
-     cc->barf("read_filename_table: Only DWARF version 2 line info "
+   if (version != 2 && version != 3)
+     cc->barf("read_filename_table: Only DWARF version 2 and 3 line info "
               "is currently supported.");
    /*header_length              = (ULong)*/ get_Dwarfish_UWord( &c, is_dw64 );
    /*minimum_instruction_length = */ get_UChar( &c );
@@ -1673,7 +1675,7 @@ static void parse_var_DIE (
                if (0 && VG_(clo_verbosity) >= 0) {
                   VG_(message)(Vg_DebugMsg, 
                      "warning: parse_var_DIE: non-external variable "
-                     "outside DW_TAG_subprogram");
+                     "outside DW_TAG_subprogram\n");
                }
                /* goto bad_DIE; */
                /* This seems to happen a lot.  Just ignore it -- if,
@@ -2305,6 +2307,14 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          if (typeE.Te.TyStOrUn.name == NULL)
             goto bad_DIE;
          typeE.Te.TyStOrUn.complete = False;
+         /* JRS 2009 Aug 10: <possible kludge>? */
+         /* Push this tyent on the stack, even though it's incomplete.
+            It appears that gcc-4.4 on Fedora 11 will sometimes create
+            DW_TAG_member entries for it, and so we need to have a
+            plausible parent present in order for that to work.  See
+            #200029 comments 8 and 9. */
+         typestack_push( cc, parser, td3, &typeE, level );
+         /* </possible kludge> */
          goto acquire_Type;
       }
       if ((!is_decl) /* && (!is_spec) */) {
@@ -2375,23 +2385,28 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       vg_assert(fieldE.Te.Field.name);
       if (fieldE.Te.Field.typeR == D3_INVALID_CUOFF)
          goto bad_DIE;
-      if (parent_is_struct && (!fieldE.Te.Field.loc))
-         goto bad_DIE;
-      if ((!parent_is_struct) && fieldE.Te.Field.loc) {
-         /* If this is a union type, pretend we haven't seen the data
-            member location expression, as it is by definition
-            redundant (it must be zero). */
-         ML_(dinfo_free)(fieldE.Te.Field.loc);
-         fieldE.Te.Field.loc  = NULL;
-         fieldE.Te.Field.nLoc = 0;
+      if (fieldE.Te.Field.loc) {
+         if (!parent_is_struct) {
+            /* If this is a union type, pretend we haven't seen the data
+               member location expression, as it is by definition
+               redundant (it must be zero). */
+            ML_(dinfo_free)(fieldE.Te.Field.loc);
+            fieldE.Te.Field.loc  = NULL;
+            fieldE.Te.Field.nLoc = 0;
+         }
+         /* Record this child in the parent */
+         fieldE.Te.Field.isStruct = parent_is_struct;
+         vg_assert(parser->qparentE[parser->sp].Te.TyStOrUn.fieldRs);
+         VG_(addToXA)( parser->qparentE[parser->sp].Te.TyStOrUn.fieldRs,
+                       &posn );
+         /* And record the child itself */
+         goto acquire_Field;
+      } else {
+         /* Member with no location - this can happen with static
+            const members in C++ code which are compile time constants
+            that do no exist in the class. They're not of any interest
+            to us so we ignore them. */
       }
-      /* Record this child in the parent */
-      fieldE.Te.Field.isStruct = parent_is_struct;
-      vg_assert(parser->qparentE[parser->sp].Te.TyStOrUn.fieldRs);
-      VG_(addToXA)( parser->qparentE[parser->sp].Te.TyStOrUn.fieldRs,
-                    &posn );
-      /* And record the child itself */
-      goto acquire_Field;
    }
 
    if (dtag == DW_TAG_array_type) {
@@ -2474,11 +2489,23 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          boundE.Te.Bound.knownU = True;
          boundE.Te.Bound.boundL = lower;
          boundE.Te.Bound.boundU = upper;
-      } 
+      }
       else if (have_lower && (!have_upper) && (!have_count)) {
          boundE.Te.Bound.knownL = True;
          boundE.Te.Bound.knownU = False;
          boundE.Te.Bound.boundL = lower;
+         boundE.Te.Bound.boundU = 0;
+      }
+      else if ((!have_lower) && have_upper && (!have_count)) {
+         boundE.Te.Bound.knownL = False;
+         boundE.Te.Bound.knownU = True;
+         boundE.Te.Bound.boundL = 0;
+         boundE.Te.Bound.boundU = upper;
+      }
+      else if ((!have_lower) && (!have_upper) && (!have_count)) {
+         boundE.Te.Bound.knownL = False;
+         boundE.Te.Bound.knownU = False;
+         boundE.Te.Bound.boundL = 0;
          boundE.Te.Bound.boundU = 0;
       } else {
          /* FIXME: handle more cases */
@@ -3904,7 +3931,8 @@ ML_(new_dwarf3_reader) (
    TRACE_SYMTAB("\n");
 #endif
 
+#endif // defined(VGO_linux) || defined(VGO_darwin)
 
 /*--------------------------------------------------------------------*/
-/*--- end                                             readdwarf3.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

@@ -75,7 +75,8 @@ static Bool check_code(obj_node* obj,
 		if (len == 0) break;
 
 		CLG_ASSERT(len >2);
-                CLG_DEBUG(1, " found chunk %d at %#lx, checking %d bytes of [%x %x %x...]\n",
+                CLG_DEBUG(1, " found chunk %d at %#lx, checking %d bytes "
+                             "of [%x %x %x...]\n",
                           chunk-1, addr - obj->start, len,
 			  code[start], code[start+1], code[start+2]);
 
@@ -89,7 +90,8 @@ static Bool check_code(obj_node* obj,
             if (found) {
 		CLG_DEBUG(1, "found at offset %#lx.\n", addr - obj->start);
 		if (VG_(clo_verbosity) > 1)
-		    VG_(message)(Vg_DebugMsg, "Found runtime_resolve (%s): %s +%#lx=%#lx, length %d",
+		    VG_(message)(Vg_DebugMsg, "Found runtime_resolve (%s): "
+                                              "%s +%#lx=%#lx, length %d\n",
 				 pat->name, obj->name + obj->last_slash_pos,
 				 addr - obj->start, addr, pat->len);
 		    
@@ -230,8 +232,9 @@ obj_node* new_obj_node(DebugInfo* di, obj_node* next)
    obj_node* obj;
 
    obj = (obj_node*) CLG_MALLOC("cl.fn.non.1", sizeof(obj_node));
-   obj->name  = di ? VG_(strdup)( "cl.fn.non.2",VG_(seginfo_filename)(di) )
-                     : anonymous_obj;
+   obj->name  = di ? VG_(strdup)( "cl.fn.non.2",
+                                  VG_(DebugInfo_get_filename)(di) )
+                   : anonymous_obj;
    for (i = 0; i < N_FILE_ENTRIES; i++) {
       obj->files[i] = NULL;
    }
@@ -240,9 +243,9 @@ obj_node* new_obj_node(DebugInfo* di, obj_node* next)
    /* JRS 2008 Feb 19: maybe rename .start/.size/.offset to
       .text_avma/.text_size/.test_bias to make it clearer what these
       fields really mean */
-   obj->start   = di ? VG_(seginfo_get_text_avma)(di) : 0;
-   obj->size    = di ? VG_(seginfo_get_text_size)(di) : 0;
-   obj->offset  = di ? VG_(seginfo_get_text_bias)(di) : 0;
+   obj->start   = di ? VG_(DebugInfo_get_text_avma)(di) : 0;
+   obj->size    = di ? VG_(DebugInfo_get_text_size)(di) : 0;
+   obj->offset  = di ? VG_(DebugInfo_get_text_bias)(di) : 0;
    obj->next    = next;
 
    // not only used for debug output (see static.c)
@@ -264,7 +267,7 @@ obj_node* CLG_(get_obj_node)(DebugInfo* di)
     UInt         objname_hash;
     const UChar* obj_name;
     
-    obj_name = di ? (Char*) VG_(seginfo_filename)(di) : anonymous_obj;
+    obj_name = di ? (Char*) VG_(DebugInfo_get_filename)(di) : anonymous_obj;
 
     /* lookup in obj hash */
     objname_hash = str_hash(obj_name, N_OBJ_ENTRIES);
@@ -423,7 +426,7 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
   CLG_DEBUG(6, "  + get_debug_info(%#lx)\n", instr_addr);
 
   if (pDebugInfo) {
-      *pDebugInfo = VG_(find_seginfo)(instr_addr);
+      *pDebugInfo = VG_(find_DebugInfo)(instr_addr);
 
       // for generated code in anonymous space, pSegInfo is 0
    }
@@ -469,7 +472,7 @@ Bool CLG_(get_debug_info)(Addr instr_addr,
    CLG_DEBUG(6, "  - get_debug_info(%#lx): seg '%s', fn %s\n",
 	    instr_addr,
 	    !pDebugInfo   ? (const UChar*)"-" :
-	    (*pDebugInfo) ? VG_(seginfo_filename)(*pDebugInfo) :
+	    (*pDebugInfo) ? VG_(DebugInfo_get_filename)(*pDebugInfo) :
 	    (const UChar*)"(None)",
 	    fn_name);
 
@@ -566,7 +569,8 @@ fn_node* CLG_(get_fn_node)(BB* bb)
 	  fn->pop_on_jump = True;
 
 	  if (VG_(clo_verbosity) > 1)
-	      VG_(message)(Vg_DebugMsg, "Symbol match: found runtime_resolve: %s +%#lx=%#lx",
+	      VG_(message)(Vg_DebugMsg, "Symbol match: found runtime_resolve:"
+                                        " %s +%#lx=%#lx\n",
 		      bb->obj->name + bb->obj->last_slash_pos,
 		      bb->offset, bb_addr(bb));
       }

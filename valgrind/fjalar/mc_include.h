@@ -130,7 +130,10 @@ Bool MC_(mempool_exists)  ( Addr pool );
 
 MC_Chunk* MC_(get_freed_list_head)( void );
 
-/* For tracking malloc'd blocks */
+/* For tracking malloc'd blocks.  Nb: it's quite important that it's a
+   VgHashTable, because VgHashTable allows duplicate keys without complaint.
+   This can occur if a user marks a malloc() block as also a custom block with
+   MALLOCLIKE_BLOCK. */
 extern VgHashTable MC_(malloc_list);
 
 /* For tracking memory pools. */
@@ -337,18 +340,20 @@ extern Bool MC_(any_value_errors);
 
 /* Standard functions for error and suppressions as required by the
    core/tool iface */
-Bool MC_(eq_Error) ( VgRes res, Error* e1, Error* e2 );
-void MC_(pp_Error) ( Error* err );
-UInt MC_(update_Error_extra)( Error* err );
+Bool MC_(eq_Error)           ( VgRes res, Error* e1, Error* e2 );
+void MC_(before_pp_Error)    ( Error* err );
+void MC_(pp_Error)           ( Error* err );
+UInt MC_(update_Error_extra) ( Error* err );
 
 Bool MC_(is_recognised_suppression) ( Char* name, Supp* su );
 
-Bool MC_(read_extra_suppression_info) ( Int fd, Char* buf,
-                                        Int nBuf, Supp *su );
+Bool MC_(read_extra_suppression_info) ( Int fd, Char** buf,
+                                        SizeT* nBuf, Supp *su );
 
 Bool MC_(error_matches_suppression) ( Error* err, Supp* su );
 
-void MC_(print_extra_suppression_info) ( Error* err );
+Bool MC_(get_extra_suppression_info) ( Error* err,
+                                       /*OUT*/Char* buf, Int nBuf );
 
 Char* MC_(get_error_name) ( Error* err );
 
@@ -376,7 +381,8 @@ Bool MC_(record_leak_error)     ( ThreadId tid,
                                   UInt n_this_record,
                                   UInt n_total_records,
                                   LossRecord* lossRecord,
-                                  Bool print_record );
+                                  Bool print_record,
+                                  Bool count_error );
 
 /* Is this address in a user-specified "ignored range" ? */
 Bool MC_(in_ignored_range) ( Addr a );

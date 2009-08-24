@@ -90,6 +90,8 @@ typedef struct
    Bool      is_recording_loads;
    /** Wether recording of memory load accesses is currently enabled. */
    Bool      is_recording_stores;
+   /** pthread_create() nesting level. */
+   Int       pthread_create_nesting_level;
    /** Nesting level of synchronization functions called by the client. */
    Int       synchr_nesting;
 } ThreadInfo;
@@ -143,6 +145,8 @@ SizeT DRD_(thread_get_stack_size)(const DrdThreadId tid);
 void DRD_(thread_set_pthreadid)(const DrdThreadId tid, const PThreadId ptid);
 Bool DRD_(thread_get_joinable)(const DrdThreadId tid);
 void DRD_(thread_set_joinable)(const DrdThreadId tid, const Bool joinable);
+void DRD_(thread_entering_pthread_create)(const DrdThreadId tid);
+void DRD_(thread_left_pthread_create)(const DrdThreadId tid);
 const char* DRD_(thread_get_name)(const DrdThreadId tid);
 void DRD_(thread_set_name)(const DrdThreadId tid, const char* const name);
 void DRD_(thread_set_vg_running_tid)(const ThreadId vg_tid);
@@ -156,7 +160,8 @@ VectorClock* DRD_(thread_get_vc)(const DrdThreadId tid);
 void DRD_(thread_get_latest_segment)(Segment** sg, const DrdThreadId tid);
 void DRD_(thread_combine_vc_join)(const DrdThreadId joiner,
                                   const DrdThreadId joinee);
-void DRD_(thread_combine_vc_sync)(const DrdThreadId tid, const Segment* sg);
+void DRD_(thread_new_segment_and_combine_vc)(DrdThreadId tid,
+                                             const Segment* sg);
 void DRD_(thread_update_conflict_set)(const DrdThreadId tid,
                                       const VectorClock* const old_vc);
 
@@ -175,7 +180,11 @@ void DRD_(thread_report_conflicting_segments)(const DrdThreadId tid,
 ULong DRD_(thread_get_context_switch_count)(void);
 ULong DRD_(thread_get_report_races_count)(void);
 ULong DRD_(thread_get_discard_ordered_segments_count)(void);
-ULong DRD_(thread_get_update_conflict_set_count)(ULong* dsnsc, ULong* dscvc);
+ULong DRD_(thread_get_compute_conflict_set_count)(void);
+ULong DRD_(thread_get_update_conflict_set_count)(void);
+ULong DRD_(thread_get_update_conflict_set_new_sg_count)(void);
+ULong DRD_(thread_get_update_conflict_set_sync_count)(void);
+ULong DRD_(thread_get_update_conflict_set_join_count)(void);
 ULong DRD_(thread_get_conflict_set_bitmap_creation_count)(void);
 ULong DRD_(thread_get_conflict_set_bitmap2_creation_count)(void);
 
@@ -204,7 +213,9 @@ Bool DRD_(IsValidDrdThreadId)(const DrdThreadId tid)
 static __inline__
 DrdThreadId DRD_(thread_get_running_tid)(void)
 {
+#ifdef ENABLE_DRD_CONSISTENCY_CHECKS
    tl_assert(DRD_(g_drd_running_tid) != DRD_INVALID_THREADID);
+#endif
    return DRD_(g_drd_running_tid);
 }
 
@@ -216,8 +227,19 @@ struct bitmap* DRD_(thread_get_conflict_set)(void)
 }
 
 /**
- * Reports whether or not memory access recording is enabled for the 
- * currently running thread.
+ * Reports whether or not the currently running client thread is executing code
+ * inside the pthread_create() function.
+ */
+static __inline__
+Bool DRD_(running_thread_inside_pthread_create)(void)
+{
+   return (DRD_(g_threadinfo)[DRD_(g_drd_running_tid)]
+           .pthread_create_nesting_level > 0);
+}
+
+/**
+ * Reports whether or not recording of memory loads is enabled for the 
+ * currently running client thread.
  */
 static __inline__
 Bool DRD_(running_thread_is_recording_loads)(void)
@@ -231,6 +253,10 @@ Bool DRD_(running_thread_is_recording_loads)(void)
            && DRD_(g_threadinfo)[DRD_(g_drd_running_tid)].is_recording_loads);
 }
 
+/**
+ * Reports whether or not recording memory stores is enabled for the 
+ * currently running client thread.
+ */
 static __inline__
 Bool DRD_(running_thread_is_recording_stores)(void)
 {

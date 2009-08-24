@@ -16,6 +16,13 @@
 
 # This file is used for tool tests, and also in perf/Makefile.am.
 
+# This file should be included (directly or indirectly) by every
+# Makefile.am that builds programs.  And also the top-level Makefile.am.
+
+#----------------------------------------------------------------------------
+# Global stuff
+#----------------------------------------------------------------------------
+
 
 srcdir = @srcdir@
 top_srcdir = @top_srcdir@
@@ -39,8 +46,9 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-DIST_COMMON = $(noinst_HEADERS) $(srcdir)/Makefile.am \
-	$(srcdir)/Makefile.in $(top_srcdir)/Makefile.flags.am \
+DIST_COMMON = $(dist_noinst_SCRIPTS) $(noinst_HEADERS) \
+	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
+	$(top_srcdir)/Makefile.all.am \
 	$(top_srcdir)/Makefile.tool-tests.am
 
 # Arch-specific tests.
@@ -53,20 +61,21 @@ DIST_COMMON = $(noinst_HEADERS) $(srcdir)/Makefile.am \
 
 # Platform-specific tests
 @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_5 = x86-linux
-check_PROGRAMS = addressable$(EXEEXT) badaddrvalue$(EXEEXT) \
-	badfree$(EXEEXT) badjump$(EXEEXT) badjump2$(EXEEXT) \
-	badloop$(EXEEXT) badpoll$(EXEEXT) badrw$(EXEEXT) brk2$(EXEEXT) \
-	buflen_check$(EXEEXT) clientperm$(EXEEXT) \
-	custom_alloc$(EXEEXT) deep_templates$(EXEEXT) \
-	describe-block$(EXEEXT) doublefree$(EXEEXT) \
-	error_counts$(EXEEXT) errs1$(EXEEXT) exitprog$(EXEEXT) \
-	execve$(EXEEXT) execve2$(EXEEXT) erringfds$(EXEEXT) \
-	file_locking$(EXEEXT) fprw$(EXEEXT) fwrite$(EXEEXT) \
-	inits$(EXEEXT) inline$(EXEEXT) leak-0$(EXEEXT) \
+check_PROGRAMS = addressable$(EXEEXT) atomic_incs$(EXEEXT) \
+	badaddrvalue$(EXEEXT) badfree$(EXEEXT) badjump$(EXEEXT) \
+	badjump2$(EXEEXT) badloop$(EXEEXT) badpoll$(EXEEXT) \
+	badrw$(EXEEXT) brk2$(EXEEXT) buflen_check$(EXEEXT) \
+	calloc-overflow$(EXEEXT) clientperm$(EXEEXT) \
+	custom_alloc$(EXEEXT) custom-overlap$(EXEEXT) \
+	deep_templates$(EXEEXT) describe-block$(EXEEXT) \
+	doublefree$(EXEEXT) error_counts$(EXEEXT) errs1$(EXEEXT) \
+	exitprog$(EXEEXT) execve$(EXEEXT) execve2$(EXEEXT) \
+	erringfds$(EXEEXT) file_locking$(EXEEXT) fprw$(EXEEXT) \
+	fwrite$(EXEEXT) inits$(EXEEXT) inline$(EXEEXT) leak-0$(EXEEXT) \
 	leak-cases$(EXEEXT) leak-cycle$(EXEEXT) leak-pool$(EXEEXT) \
 	leak-tree$(EXEEXT) linux-syslog-syscall$(EXEEXT) \
 	linux-syscalls-2007$(EXEEXT) long_namespace_xml$(EXEEXT) \
-	lsframe1$(EXEEXT) lsframe2$(EXEEXT) mallinfo$(EXEEXT) \
+	long-supps$(EXEEXT) mallinfo$(EXEEXT) \
 	malloc_free_fill$(EXEEXT) malloc_usable$(EXEEXT) \
 	malloc1$(EXEEXT) malloc2$(EXEEXT) malloc3$(EXEEXT) \
 	manuel1$(EXEEXT) manuel2$(EXEEXT) manuel3$(EXEEXT) \
@@ -83,15 +92,15 @@ check_PROGRAMS = addressable$(EXEEXT) badaddrvalue$(EXEEXT) \
 	pointer-trace$(EXEEXT) post-syscall$(EXEEXT) realloc1$(EXEEXT) \
 	realloc2$(EXEEXT) realloc3$(EXEEXT) sh-mem$(EXEEXT) \
 	sh-mem-random$(EXEEXT) sigaltstack$(EXEEXT) signal2$(EXEEXT) \
-	sigprocmask$(EXEEXT) sigkill$(EXEEXT) stack_changes$(EXEEXT) \
-	strchr$(EXEEXT) str_tester$(EXEEXT) supp_unknown$(EXEEXT) \
-	supp1$(EXEEXT) supp2$(EXEEXT) suppfree$(EXEEXT) \
-	trivialleak$(EXEEXT) unit_libcbase$(EXEEXT) unit_oset$(EXEEXT) \
-	varinfo1$(EXEEXT) varinfo2$(EXEEXT) varinfo3$(EXEEXT) \
-	varinfo4$(EXEEXT) varinfo5$(EXEEXT) varinfo5so.so$(EXEEXT) \
-	varinfo6$(EXEEXT) vcpu_fbench$(EXEEXT) vcpu_fnfns$(EXEEXT) \
-	xml1$(EXEEXT) wrap1$(EXEEXT) wrap2$(EXEEXT) wrap3$(EXEEXT) \
-	wrap4$(EXEEXT) wrap5$(EXEEXT) wrap6$(EXEEXT) wrap7$(EXEEXT) \
+	sigprocmask$(EXEEXT) sigkill$(EXEEXT) strchr$(EXEEXT) \
+	str_tester$(EXEEXT) supp_unknown$(EXEEXT) supp1$(EXEEXT) \
+	supp2$(EXEEXT) suppfree$(EXEEXT) trivialleak$(EXEEXT) \
+	unit_libcbase$(EXEEXT) unit_oset$(EXEEXT) varinfo1$(EXEEXT) \
+	varinfo2$(EXEEXT) varinfo3$(EXEEXT) varinfo4$(EXEEXT) \
+	varinfo5$(EXEEXT) varinfo5so.so$(EXEEXT) varinfo6$(EXEEXT) \
+	vcpu_fbench$(EXEEXT) vcpu_fnfns$(EXEEXT) xml1$(EXEEXT) \
+	wrap1$(EXEEXT) wrap2$(EXEEXT) wrap3$(EXEEXT) wrap4$(EXEEXT) \
+	wrap5$(EXEEXT) wrap6$(EXEEXT) wrap7$(EXEEXT) \
 	wrap7so.so$(EXEEXT) wrap8$(EXEEXT) writev$(EXEEXT)
 subdir = memcheck/tests
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -104,6 +113,9 @@ CONFIG_CLEAN_FILES =
 addressable_SOURCES = addressable.c
 addressable_OBJECTS = addressable.$(OBJEXT)
 addressable_LDADD = $(LDADD)
+atomic_incs_SOURCES = atomic_incs.c
+atomic_incs_OBJECTS = atomic_incs-atomic_incs.$(OBJEXT)
+atomic_incs_LDADD = $(LDADD)
 badaddrvalue_SOURCES = badaddrvalue.c
 badaddrvalue_OBJECTS = badaddrvalue.$(OBJEXT)
 badaddrvalue_LDADD = $(LDADD)
@@ -131,9 +143,15 @@ brk2_LDADD = $(LDADD)
 buflen_check_SOURCES = buflen_check.c
 buflen_check_OBJECTS = buflen_check.$(OBJEXT)
 buflen_check_LDADD = $(LDADD)
+calloc_overflow_SOURCES = calloc-overflow.c
+calloc_overflow_OBJECTS = calloc-overflow.$(OBJEXT)
+calloc_overflow_LDADD = $(LDADD)
 clientperm_SOURCES = clientperm.c
 clientperm_OBJECTS = clientperm.$(OBJEXT)
 clientperm_LDADD = $(LDADD)
+custom_overlap_SOURCES = custom-overlap.c
+custom_overlap_OBJECTS = custom-overlap.$(OBJEXT)
+custom_overlap_LDADD = $(LDADD)
 custom_alloc_SOURCES = custom_alloc.c
 custom_alloc_OBJECTS = custom_alloc.$(OBJEXT)
 custom_alloc_LDADD = $(LDADD)
@@ -150,7 +168,7 @@ erringfds_SOURCES = erringfds.c
 erringfds_OBJECTS = erringfds.$(OBJEXT)
 erringfds_LDADD = $(LDADD)
 error_counts_SOURCES = error_counts.c
-error_counts_OBJECTS = error_counts.$(OBJEXT)
+error_counts_OBJECTS = error_counts-error_counts.$(OBJEXT)
 error_counts_LDADD = $(LDADD)
 errs1_SOURCES = errs1.c
 errs1_OBJECTS = errs1.$(OBJEXT)
@@ -174,7 +192,7 @@ fwrite_SOURCES = fwrite.c
 fwrite_OBJECTS = fwrite.$(OBJEXT)
 fwrite_LDADD = $(LDADD)
 inits_SOURCES = inits.c
-inits_OBJECTS = inits.$(OBJEXT)
+inits_OBJECTS = inits-inits.$(OBJEXT)
 inits_LDADD = $(LDADD)
 inline_SOURCES = inline.c
 inline_OBJECTS = inline.$(OBJEXT)
@@ -200,15 +218,12 @@ linux_syscalls_2007_LDADD = $(LDADD)
 linux_syslog_syscall_SOURCES = linux-syslog-syscall.c
 linux_syslog_syscall_OBJECTS = linux-syslog-syscall.$(OBJEXT)
 linux_syslog_syscall_LDADD = $(LDADD)
+long_supps_SOURCES = long-supps.c
+long_supps_OBJECTS = long-supps.$(OBJEXT)
+long_supps_LDADD = $(LDADD)
 am_long_namespace_xml_OBJECTS = long_namespace_xml.$(OBJEXT)
 long_namespace_xml_OBJECTS = $(am_long_namespace_xml_OBJECTS)
 long_namespace_xml_LDADD = $(LDADD)
-lsframe1_SOURCES = lsframe1.c
-lsframe1_OBJECTS = lsframe1.$(OBJEXT)
-lsframe1_LDADD = $(LDADD)
-lsframe2_SOURCES = lsframe2.c
-lsframe2_OBJECTS = lsframe2.$(OBJEXT)
-lsframe2_LDADD = $(LDADD)
 mallinfo_SOURCES = mallinfo.c
 mallinfo_OBJECTS = mallinfo.$(OBJEXT)
 mallinfo_LDADD = $(LDADD)
@@ -228,7 +243,7 @@ malloc_usable_SOURCES = malloc_usable.c
 malloc_usable_OBJECTS = malloc_usable.$(OBJEXT)
 malloc_usable_LDADD = $(LDADD)
 manuel1_SOURCES = manuel1.c
-manuel1_OBJECTS = manuel1.$(OBJEXT)
+manuel1_OBJECTS = manuel1-manuel1.$(OBJEXT)
 manuel1_LDADD = $(LDADD)
 manuel2_SOURCES = manuel2.c
 manuel2_OBJECTS = manuel2.$(OBJEXT)
@@ -282,10 +297,11 @@ origin1_yes_SOURCES = origin1-yes.c
 origin1_yes_OBJECTS = origin1-yes.$(OBJEXT)
 origin1_yes_LDADD = $(LDADD)
 origin2_not_quite_SOURCES = origin2-not-quite.c
-origin2_not_quite_OBJECTS = origin2-not-quite.$(OBJEXT)
+origin2_not_quite_OBJECTS =  \
+	origin2_not_quite-origin2-not-quite.$(OBJEXT)
 origin2_not_quite_LDADD = $(LDADD)
 origin3_no_SOURCES = origin3-no.c
-origin3_no_OBJECTS = origin3-no.$(OBJEXT)
+origin3_no_OBJECTS = origin3_no-origin3-no.$(OBJEXT)
 origin3_no_LDADD = $(LDADD)
 origin4_many_SOURCES = origin4-many.c
 origin4_many_OBJECTS = origin4_many-origin4-many.$(OBJEXT)
@@ -347,9 +363,6 @@ signal2_LDADD = $(LDADD)
 sigprocmask_SOURCES = sigprocmask.c
 sigprocmask_OBJECTS = sigprocmask.$(OBJEXT)
 sigprocmask_LDADD = $(LDADD)
-stack_changes_SOURCES = stack_changes.c
-stack_changes_OBJECTS = stack_changes.$(OBJEXT)
-stack_changes_LDADD = $(LDADD)
 str_tester_SOURCES = str_tester.c
 str_tester_OBJECTS = str_tester-str_tester.$(OBJEXT)
 str_tester_LDADD = $(LDADD)
@@ -439,7 +452,7 @@ writev_LDADD = $(LDADD)
 xml1_SOURCES = xml1.c
 xml1_OBJECTS = xml1.$(OBJEXT)
 xml1_LDADD = $(LDADD)
-SCRIPTS = $(noinst_SCRIPTS)
+SCRIPTS = $(dist_noinst_SCRIPTS)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -452,14 +465,15 @@ CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 CXXLD = $(CXX)
 CXXLINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
 	-o $@
-SOURCES = addressable.c badaddrvalue.c badfree.c badjump.c badjump2.c \
-	badloop.c badpoll.c badrw.c brk2.c buflen_check.c clientperm.c \
+SOURCES = addressable.c atomic_incs.c badaddrvalue.c badfree.c \
+	badjump.c badjump2.c badloop.c badpoll.c badrw.c brk2.c \
+	buflen_check.c calloc-overflow.c clientperm.c custom-overlap.c \
 	custom_alloc.c $(deep_templates_SOURCES) describe-block.c \
 	doublefree.c erringfds.c error_counts.c errs1.c execve.c \
 	execve2.c exitprog.c file_locking.c fprw.c fwrite.c inits.c \
 	inline.c leak-0.c leak-cases.c leak-cycle.c leak-pool.c \
 	leak-tree.c linux-syscalls-2007.c linux-syslog-syscall.c \
-	$(long_namespace_xml_SOURCES) lsframe1.c lsframe2.c mallinfo.c \
+	long-supps.c $(long_namespace_xml_SOURCES) mallinfo.c \
 	malloc1.c malloc2.c malloc3.c malloc_free_fill.c \
 	malloc_usable.c manuel1.c manuel2.c manuel3.c match-overrun.c \
 	memalign2.c memalign_test.c memcmptest.c mempool.c metadata.c \
@@ -470,41 +484,42 @@ SOURCES = addressable.c badaddrvalue.c badfree.c badjump.c badjump2.c \
 	partial_load.c partiallydefinedeq.c pdb-realloc.c \
 	pdb-realloc2.c pipe.c pointer-trace.c post-syscall.c \
 	realloc1.c realloc2.c realloc3.c sh-mem.c sh-mem-random.c \
-	sigaltstack.c sigkill.c signal2.c sigprocmask.c \
-	stack_changes.c str_tester.c strchr.c $(supp1_SOURCES) \
-	$(supp2_SOURCES) $(supp_unknown_SOURCES) suppfree.c \
-	trivialleak.c unit_libcbase.c unit_oset.c varinfo1.c \
-	varinfo2.c varinfo3.c varinfo4.c $(varinfo5_SOURCES) \
-	$(varinfo5so_so_SOURCES) varinfo6.c vcpu_fbench.c vcpu_fnfns.c \
-	wrap1.c wrap2.c wrap3.c wrap4.c wrap5.c wrap6.c \
-	$(wrap7_SOURCES) $(wrap7so_so_SOURCES) wrap8.c writev.c xml1.c
-DIST_SOURCES = addressable.c badaddrvalue.c badfree.c badjump.c \
-	badjump2.c badloop.c badpoll.c badrw.c brk2.c buflen_check.c \
-	clientperm.c custom_alloc.c $(deep_templates_SOURCES) \
-	describe-block.c doublefree.c erringfds.c error_counts.c \
-	errs1.c execve.c execve2.c exitprog.c file_locking.c fprw.c \
-	fwrite.c inits.c inline.c leak-0.c leak-cases.c leak-cycle.c \
-	leak-pool.c leak-tree.c linux-syscalls-2007.c \
-	linux-syslog-syscall.c $(long_namespace_xml_SOURCES) \
-	lsframe1.c lsframe2.c mallinfo.c malloc1.c malloc2.c malloc3.c \
-	malloc_free_fill.c malloc_usable.c manuel1.c manuel2.c \
-	manuel3.c match-overrun.c memalign2.c memalign_test.c \
-	memcmptest.c mempool.c metadata.c $(mismatches_SOURCES) \
-	mmaptest.c nanoleak2.c nanoleak_supp.c $(new_nothrow_SOURCES) \
-	$(new_override_SOURCES) noisy_child.c null_socket.c \
-	origin1-yes.c origin2-not-quite.c origin3-no.c origin4-many.c \
-	origin5-bz2.c origin6-fp.c overlap.c partial_load.c \
-	partiallydefinedeq.c pdb-realloc.c pdb-realloc2.c pipe.c \
-	pointer-trace.c post-syscall.c realloc1.c realloc2.c \
-	realloc3.c sh-mem.c sh-mem-random.c sigaltstack.c sigkill.c \
-	signal2.c sigprocmask.c stack_changes.c str_tester.c strchr.c \
-	$(supp1_SOURCES) $(supp2_SOURCES) $(supp_unknown_SOURCES) \
-	suppfree.c trivialleak.c unit_libcbase.c unit_oset.c \
-	varinfo1.c varinfo2.c varinfo3.c varinfo4.c \
-	$(varinfo5_SOURCES) $(am__varinfo5so_so_SOURCES_DIST) \
+	sigaltstack.c sigkill.c signal2.c sigprocmask.c str_tester.c \
+	strchr.c $(supp1_SOURCES) $(supp2_SOURCES) \
+	$(supp_unknown_SOURCES) suppfree.c trivialleak.c \
+	unit_libcbase.c unit_oset.c varinfo1.c varinfo2.c varinfo3.c \
+	varinfo4.c $(varinfo5_SOURCES) $(varinfo5so_so_SOURCES) \
 	varinfo6.c vcpu_fbench.c vcpu_fnfns.c wrap1.c wrap2.c wrap3.c \
-	wrap4.c wrap5.c wrap6.c $(am__wrap7_SOURCES_DIST) \
-	$(am__wrap7so_so_SOURCES_DIST) wrap8.c writev.c xml1.c
+	wrap4.c wrap5.c wrap6.c $(wrap7_SOURCES) $(wrap7so_so_SOURCES) \
+	wrap8.c writev.c xml1.c
+DIST_SOURCES = addressable.c atomic_incs.c badaddrvalue.c badfree.c \
+	badjump.c badjump2.c badloop.c badpoll.c badrw.c brk2.c \
+	buflen_check.c calloc-overflow.c clientperm.c custom-overlap.c \
+	custom_alloc.c $(deep_templates_SOURCES) describe-block.c \
+	doublefree.c erringfds.c error_counts.c errs1.c execve.c \
+	execve2.c exitprog.c file_locking.c fprw.c fwrite.c inits.c \
+	inline.c leak-0.c leak-cases.c leak-cycle.c leak-pool.c \
+	leak-tree.c linux-syscalls-2007.c linux-syslog-syscall.c \
+	long-supps.c $(long_namespace_xml_SOURCES) mallinfo.c \
+	malloc1.c malloc2.c malloc3.c malloc_free_fill.c \
+	malloc_usable.c manuel1.c manuel2.c manuel3.c match-overrun.c \
+	memalign2.c memalign_test.c memcmptest.c mempool.c metadata.c \
+	$(mismatches_SOURCES) mmaptest.c nanoleak2.c nanoleak_supp.c \
+	$(new_nothrow_SOURCES) $(new_override_SOURCES) noisy_child.c \
+	null_socket.c origin1-yes.c origin2-not-quite.c origin3-no.c \
+	origin4-many.c origin5-bz2.c origin6-fp.c overlap.c \
+	partial_load.c partiallydefinedeq.c pdb-realloc.c \
+	pdb-realloc2.c pipe.c pointer-trace.c post-syscall.c \
+	realloc1.c realloc2.c realloc3.c sh-mem.c sh-mem-random.c \
+	sigaltstack.c sigkill.c signal2.c sigprocmask.c str_tester.c \
+	strchr.c $(supp1_SOURCES) $(supp2_SOURCES) \
+	$(supp_unknown_SOURCES) suppfree.c trivialleak.c \
+	unit_libcbase.c unit_oset.c varinfo1.c varinfo2.c varinfo3.c \
+	varinfo4.c $(varinfo5_SOURCES) \
+	$(am__varinfo5so_so_SOURCES_DIST) varinfo6.c vcpu_fbench.c \
+	vcpu_fnfns.c wrap1.c wrap2.c wrap3.c wrap4.c wrap5.c wrap6.c \
+	$(am__wrap7_SOURCES_DIST) $(am__wrap7so_so_SOURCES_DIST) \
+	wrap8.c writev.c xml1.c
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
 	html-recursive info-recursive install-data-recursive \
 	install-exec-recursive install-info-recursive \
@@ -549,7 +564,6 @@ DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DIFF = @DIFF@
-DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
@@ -565,7 +579,9 @@ FLAG_MSSE = @FLAG_MSSE@
 FLAG_UNLIMITED_INLINE_UNIT_GROWTH = @FLAG_UNLIMITED_INLINE_UNIT_GROWTH@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
 FLAG_W_EXTRA = @FLAG_W_EXTRA@
+FLAG_W_NO_EMPTY_BODY = @FLAG_W_NO_EMPTY_BODY@
 FLAG_W_NO_FORMAT_ZERO_LENGTH = @FLAG_W_NO_FORMAT_ZERO_LENGTH@
+FLAG_W_NO_UNINITIALIZED = @FLAG_W_NO_UNINITIALIZED@
 GDB = @GDB@
 GLIBC_VERSION = @GLIBC_VERSION@
 GREP = @GREP@
@@ -603,8 +619,6 @@ MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
 MPI_CC = @MPI_CC@
-OBJC = @OBJC@
-OBJCFLAGS = @OBJCFLAGS@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -624,7 +638,6 @@ SHELL = @SHELL@
 STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
-VEX_DIR = @VEX_DIR@
 VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
 VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
 VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
@@ -664,7 +677,6 @@ VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
 VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
-ac_ct_OBJC = @ac_ct_OBJC@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
 am__fastdepCC_TRUE = @am__fastdepCC_TRUE@
 am__fastdepCXX_FALSE = @am__fastdepCXX_FALSE@
@@ -709,19 +721,30 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
+inplacedir = $(top_builddir)/.in_place
+
+#----------------------------------------------------------------------------
+# Flags
+#----------------------------------------------------------------------------
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
-                 -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
-		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
-                 -fno-strict-aliasing
+AM_CFLAGS_BASE = \
+	-O2 -g \
+	-Wall \
+	-Wmissing-prototypes \
+	-Wshadow \
+	-Wpointer-arith \
+	-Wstrict-prototypes \
+	-Wmissing-declarations \
+	@FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
+	-fno-strict-aliasing
 
 @VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -fpic -O -g -fno-omit-frame-pointer -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
-# stack traces, since users often see stack traces extending
+# stack traces, since users often see stack traces extending 
 # into (and through) the preloads.
 @VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
 
@@ -737,84 +760,55 @@ AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
 # AM_CPPFLAGS_<PLATFORM> in each AM_CCASFLAGS_<PLATFORM> variable.  This
 # means some of the flags are duplicated on systems with newer versions of
 # automake, but this does not really matter and seems hard to avoid.
-AM_CPPFLAGS_COMMON = \
-		-I$(top_srcdir) \
-		-I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub
+AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
+ 	-I$(top_srcdir) \
+ 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/VEX/pub \
+	-DVGA_@VGCONF_ARCH_PRI@=1 \
+	-DVGO_@VGCONF_OS@=1 \
+	-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1
+
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ = \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir) \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir)/include \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-I$(top_srcdir)/VEX/pub \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGA_@VGCONF_ARCH_SEC@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGO_@VGCONF_OS@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGP_@VGCONF_ARCH_SEC@_@VGCONF_OS@=1
 
 AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
-AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_x86=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_x86_linux=1
-
 AM_CFLAGS_X86_LINUX = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
 			 	$(AM_CFLAGS_BASE)
 
 AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_amd64=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_amd64_linux=1
-
 AM_CFLAGS_AMD64_LINUX = @FLAG_M64@ -fomit-frame-pointer \
 				@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
 
 AM_CCASFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_AMD64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
-AM_CPPFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_COMMON) \
-		-DVGA_ppc32=1 \
-		-DVGO_linux=1 \
-		-DVGP_ppc32_linux=1
-
 AM_CFLAGS_PPC32_LINUX = @FLAG_M32@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_PPC32_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc64=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_ppc64_linux=1
-
 AM_CFLAGS_PPC64_LINUX = @FLAG_M64@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_PPC64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
-AM_CPPFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc32=1 \
-			    -DVGO_aix5=1 \
-			    -DVGP_ppc32_aix5=1
-
 AM_CFLAGS_PPC32_AIX5 = @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_PPC32_AIX5) \
 			    @FLAG_MAIX32@ -mcpu=powerpc -g
 
 AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
-AM_CPPFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc64=1 \
-			    -DVGO_aix5=1 \
-			    -DVGP_ppc64_aix5=1
-
 AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
 			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
 
 AM_FLAG_M3264_X86_DARWIN = -arch i386
-AM_CPPFLAGS_X86_DARWIN = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_x86=1 \
-			    -DVGO_darwin=1 \
-			    -DVGP_x86_darwin=1
-
 AM_CFLAGS_X86_DARWIN = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
 			    -mmacosx-version-min=10.5 -fno-stack-protector \
 			    -mdynamic-no-pic
 
 AM_CCASFLAGS_X86_DARWIN = $(AM_CPPFLAGS_X86_DARWIN) -arch i386 -g
 AM_FLAG_M3264_AMD64_DARWIN = -arch x86_64
-AM_CPPFLAGS_AMD64_DARWIN = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_amd64=1 \
-			    -DVGO_darwin=1 \
-			    -DVGP_amd64_darwin=1
-
 AM_CFLAGS_AMD64_DARWIN = $(WERROR) -arch x86_64 $(AM_CFLAGS_BASE) \
 			    -mmacosx-version-min=10.5 -fno-stack-protector
 
@@ -831,7 +825,7 @@ AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 @VGCONF_HAVE_PLATFORM_SEC_FALSE@AM_FLAG_M3264_SEC = 
 @VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 
-# Baseline link flags for making dynamic shared objects.
+# Baseline link flags for making vgpreload shared objects.
 #
 PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
 PRELOAD_LDFLAGS_COMMON_AIX5 = -nodefaultlibs -shared -Wl,-G -Wl,-bnogc
@@ -846,7 +840,7 @@ PRELOAD_LDFLAGS_X86_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
 PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
 		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
-		-I@VEX_DIR@/pub \
+		-I$(top_srcdir)/VEX/pub \
 		-DVGA_$(VGCONF_ARCH_PRI)=1 \
 		-DVGO_$(VGCONF_OS)=1 \
 		-DVGP_$(VGCONF_ARCH_PRI)_$(VGCONF_OS)=1
@@ -856,20 +850,23 @@ AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
 AM_CFLAGS = -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS = -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
 # Include AM_CPPFLAGS in AM_CCASFLAGS to allow for older versions of
-# automake;  see comments in Makefile.flags.am for more detail.
+# automake;  see comments in Makefile.all.am for more detail.
 AM_CCASFLAGS = $(AM_CPPFLAGS)
+@VGCONF_OS_IS_DARWIN_TRUE@noinst_DSYMS = $(check_PROGRAMS)
 SUBDIRS = . $(am__append_1) $(am__append_2) $(am__append_3) \
 	$(am__append_4) $(am__append_5)
 DIST_SUBDIRS = x86 amd64 linux darwin x86-linux .
-noinst_SCRIPTS = \
+dist_noinst_SCRIPTS = \
 	filter_addressable \
 	filter_allocs \
 	filter_stderr filter_xml \
 	filter_varinfo3
 
 noinst_HEADERS = leak.h
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
 	addressable.stderr.exp addressable.stdout.exp addressable.vgtest \
+	atomic_incs.stderr.exp atomic_incs.vgtest \
+	atomic_incs.stdout.exp-32bit atomic_incs.stdout.exp-64bit \
 	badaddrvalue.stderr.exp \
 	badaddrvalue.stdout.exp badaddrvalue.vgtest \
 	badfree-2trace.stderr.exp badfree-2trace.vgtest \
@@ -881,15 +878,17 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	badrw.stderr.exp badrw.vgtest \
 	brk2.stderr.exp brk2.vgtest \
 	buflen_check.stderr.exp buflen_check.vgtest \
+	calloc-overflow.stderr.exp calloc-overflow.vgtest\
 	clientperm.stderr.exp \
 	clientperm.stdout.exp clientperm.vgtest \
 	custom_alloc.stderr.exp custom_alloc.vgtest \
+	custom-overlap.stderr.exp custom-overlap.vgtest \
 	deep_templates.vgtest \
 	deep_templates.stdout.exp deep_templates.stderr.exp \
 	describe-block.stderr.exp describe-block.vgtest \
 	doublefree.stderr.exp doublefree.vgtest \
 	erringfds.stderr.exp erringfds.stdout.exp erringfds.vgtest \
-	error_counts.stderr.exp error_counts.stdout.exp error_counts.vgtest \
+	error_counts.stderr.exp error_counts.vgtest \
 	errs1.stderr.exp errs1.vgtest \
 	exitprog.stderr.exp exitprog.vgtest \
 	execve.stderr.exp execve.vgtest \
@@ -914,8 +913,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	linux-syscalls-2007 linux-syscalls-2007.stderr.exp \
 	long_namespace_xml.vgtest long_namespace_xml.stdout.exp \
 	long_namespace_xml.stderr.exp \
-	lsframe1.vgtest lsframe1.stdout.exp lsframe1.stderr.exp \
-	lsframe2.vgtest lsframe2.stdout.exp lsframe2.stderr.exp \
+	long-supps.vgtest long-supps.stderr.exp long-supps.supp \
 	mallinfo.stderr.exp mallinfo.vgtest \
 	malloc_free_fill.vgtest \
 	malloc_free_fill.stderr.exp \
@@ -941,8 +939,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	new_override.stderr.exp new_override.stdout.exp new_override.vgtest \
 	noisy_child.vgtest noisy_child.stderr.exp noisy_child.stdout.exp \
 	null_socket.stderr.exp null_socket.vgtest \
-	origin1-yes.vgtest origin1-yes.stdout.exp \
-	    origin1-yes.stderr.exp origin1-yes.stderr.exp-darwin \
+	origin1-yes.vgtest origin1-yes.stdout.exp origin1-yes.stderr.exp \
 	origin2-not-quite.vgtest origin2-not-quite.stdout.exp \
 	origin2-not-quite.stderr.exp \
 	origin3-no.vgtest origin3-no.stdout.exp \
@@ -978,11 +975,10 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	sigkill.stderr.exp sigkill.stderr.exp-darwin sigkill.vgtest \
 	signal2.stderr.exp signal2.stdout.exp signal2.vgtest \
 	sigprocmask.stderr.exp sigprocmask.stderr.exp2 sigprocmask.vgtest \
-	stack_changes.stderr.exp stack_changes.stdout.exp \
-	stack_changes.stdout.exp2 stack_changes.vgtest \
 	strchr.stderr.exp strchr.stderr.exp2 strchr.stderr.exp-darwin \
 	    strchr.vgtest \
 	str_tester.stderr.exp str_tester.vgtest \
+	supp-dir.vgtest supp-dir.stderr.exp \
 	supp_unknown.stderr.exp supp_unknown.vgtest supp_unknown.supp \
 	supp1.stderr.exp supp1.vgtest \
 	supp2.stderr.exp supp2.vgtest \
@@ -1000,7 +996,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	vcpu_bz2.stdout.exp vcpu_bz2.stderr.exp vcpu_bz2.vgtest \
 	vcpu_fbench.stdout.exp vcpu_fbench.stderr.exp vcpu_fbench.vgtest \
 	vcpu_fnfns.stdout.exp vcpu_fnfns.stdout.exp-glibc28-amd64 \
-	vcpu_fnfns.stderr.exp vcpu_fnfns.vgtest \
+	vcpu_fnfns.stdout.exp-darwin vcpu_fnfns.stderr.exp vcpu_fnfns.vgtest \
 	wrap1.vgtest wrap1.stdout.exp wrap1.stderr.exp \
 	wrap2.vgtest wrap2.stdout.exp wrap2.stderr.exp \
 	wrap3.vgtest wrap3.stdout.exp wrap3.stderr.exp \
@@ -1011,16 +1007,22 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	wrap8.vgtest wrap8.stdout.exp wrap8.stderr.exp \
 	wrap8.stdout.exp2 wrap8.stderr.exp2 \
 	writev.stderr.exp writev.vgtest \
-	xml1.stderr.exp32 xml1.stderr.exp64 xml1.stdout.exp \
-	xml1.vgtest
+	xml1.stderr.exp xml1.stdout.exp xml1.vgtest
 
+@VGCONF_OS_IS_DARWIN_FALSE@atomic_incs_CFLAGS = $(AM_CFLAGS)
+@VGCONF_OS_IS_DARWIN_TRUE@atomic_incs_CFLAGS = $(AM_CFLAGS) -mdynamic-no-pic
 deep_templates_SOURCES = deep_templates.cpp
 deep_templates_CXXFLAGS = $(AM_CFLAGS) -O -gstabs
+error_counts_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
+inits_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 long_namespace_xml_SOURCES = long_namespace_xml.cpp
+manuel1_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 memcmptest_CFLAGS = $(AM_CFLAGS) -fno-builtin-memcmp
 mismatches_SOURCES = mismatches.cpp
 new_nothrow_SOURCES = new_nothrow.cpp
 new_override_SOURCES = new_override.cpp
+origin2_not_quite_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
+origin3_no_CFLAGS = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 
 # This requires optimisation in order to get just one resulting error.
 origin4_many_CFLAGS = $(AM_CFLAGS) -O
@@ -1108,7 +1110,7 @@ all: all-recursive
 
 .SUFFIXES:
 .SUFFIXES: .c .cpp .o .obj
-$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool-tests.am $(top_srcdir)/Makefile.flags.am $(am__configure_deps)
+$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool-tests.am $(top_srcdir)/Makefile.all.am $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -1143,6 +1145,9 @@ clean-checkPROGRAMS:
 addressable$(EXEEXT): $(addressable_OBJECTS) $(addressable_DEPENDENCIES) 
 	@rm -f addressable$(EXEEXT)
 	$(LINK) $(addressable_LDFLAGS) $(addressable_OBJECTS) $(addressable_LDADD) $(LIBS)
+atomic_incs$(EXEEXT): $(atomic_incs_OBJECTS) $(atomic_incs_DEPENDENCIES) 
+	@rm -f atomic_incs$(EXEEXT)
+	$(LINK) $(atomic_incs_LDFLAGS) $(atomic_incs_OBJECTS) $(atomic_incs_LDADD) $(LIBS)
 badaddrvalue$(EXEEXT): $(badaddrvalue_OBJECTS) $(badaddrvalue_DEPENDENCIES) 
 	@rm -f badaddrvalue$(EXEEXT)
 	$(LINK) $(badaddrvalue_LDFLAGS) $(badaddrvalue_OBJECTS) $(badaddrvalue_LDADD) $(LIBS)
@@ -1170,9 +1175,15 @@ brk2$(EXEEXT): $(brk2_OBJECTS) $(brk2_DEPENDENCIES)
 buflen_check$(EXEEXT): $(buflen_check_OBJECTS) $(buflen_check_DEPENDENCIES) 
 	@rm -f buflen_check$(EXEEXT)
 	$(LINK) $(buflen_check_LDFLAGS) $(buflen_check_OBJECTS) $(buflen_check_LDADD) $(LIBS)
+calloc-overflow$(EXEEXT): $(calloc_overflow_OBJECTS) $(calloc_overflow_DEPENDENCIES) 
+	@rm -f calloc-overflow$(EXEEXT)
+	$(LINK) $(calloc_overflow_LDFLAGS) $(calloc_overflow_OBJECTS) $(calloc_overflow_LDADD) $(LIBS)
 clientperm$(EXEEXT): $(clientperm_OBJECTS) $(clientperm_DEPENDENCIES) 
 	@rm -f clientperm$(EXEEXT)
 	$(LINK) $(clientperm_LDFLAGS) $(clientperm_OBJECTS) $(clientperm_LDADD) $(LIBS)
+custom-overlap$(EXEEXT): $(custom_overlap_OBJECTS) $(custom_overlap_DEPENDENCIES) 
+	@rm -f custom-overlap$(EXEEXT)
+	$(LINK) $(custom_overlap_LDFLAGS) $(custom_overlap_OBJECTS) $(custom_overlap_LDADD) $(LIBS)
 custom_alloc$(EXEEXT): $(custom_alloc_OBJECTS) $(custom_alloc_DEPENDENCIES) 
 	@rm -f custom_alloc$(EXEEXT)
 	$(LINK) $(custom_alloc_LDFLAGS) $(custom_alloc_OBJECTS) $(custom_alloc_LDADD) $(LIBS)
@@ -1239,15 +1250,12 @@ linux-syscalls-2007$(EXEEXT): $(linux_syscalls_2007_OBJECTS) $(linux_syscalls_20
 linux-syslog-syscall$(EXEEXT): $(linux_syslog_syscall_OBJECTS) $(linux_syslog_syscall_DEPENDENCIES) 
 	@rm -f linux-syslog-syscall$(EXEEXT)
 	$(LINK) $(linux_syslog_syscall_LDFLAGS) $(linux_syslog_syscall_OBJECTS) $(linux_syslog_syscall_LDADD) $(LIBS)
+long-supps$(EXEEXT): $(long_supps_OBJECTS) $(long_supps_DEPENDENCIES) 
+	@rm -f long-supps$(EXEEXT)
+	$(LINK) $(long_supps_LDFLAGS) $(long_supps_OBJECTS) $(long_supps_LDADD) $(LIBS)
 long_namespace_xml$(EXEEXT): $(long_namespace_xml_OBJECTS) $(long_namespace_xml_DEPENDENCIES) 
 	@rm -f long_namespace_xml$(EXEEXT)
 	$(CXXLINK) $(long_namespace_xml_LDFLAGS) $(long_namespace_xml_OBJECTS) $(long_namespace_xml_LDADD) $(LIBS)
-lsframe1$(EXEEXT): $(lsframe1_OBJECTS) $(lsframe1_DEPENDENCIES) 
-	@rm -f lsframe1$(EXEEXT)
-	$(LINK) $(lsframe1_LDFLAGS) $(lsframe1_OBJECTS) $(lsframe1_LDADD) $(LIBS)
-lsframe2$(EXEEXT): $(lsframe2_OBJECTS) $(lsframe2_DEPENDENCIES) 
-	@rm -f lsframe2$(EXEEXT)
-	$(LINK) $(lsframe2_LDFLAGS) $(lsframe2_OBJECTS) $(lsframe2_LDADD) $(LIBS)
 mallinfo$(EXEEXT): $(mallinfo_OBJECTS) $(mallinfo_DEPENDENCIES) 
 	@rm -f mallinfo$(EXEEXT)
 	$(LINK) $(mallinfo_LDFLAGS) $(mallinfo_OBJECTS) $(mallinfo_LDADD) $(LIBS)
@@ -1386,9 +1394,6 @@ signal2$(EXEEXT): $(signal2_OBJECTS) $(signal2_DEPENDENCIES)
 sigprocmask$(EXEEXT): $(sigprocmask_OBJECTS) $(sigprocmask_DEPENDENCIES) 
 	@rm -f sigprocmask$(EXEEXT)
 	$(LINK) $(sigprocmask_LDFLAGS) $(sigprocmask_OBJECTS) $(sigprocmask_LDADD) $(LIBS)
-stack_changes$(EXEEXT): $(stack_changes_OBJECTS) $(stack_changes_DEPENDENCIES) 
-	@rm -f stack_changes$(EXEEXT)
-	$(LINK) $(stack_changes_LDFLAGS) $(stack_changes_OBJECTS) $(stack_changes_LDADD) $(LIBS)
 str_tester$(EXEEXT): $(str_tester_OBJECTS) $(str_tester_DEPENDENCIES) 
 	@rm -f str_tester$(EXEEXT)
 	$(LINK) $(str_tester_LDFLAGS) $(str_tester_OBJECTS) $(str_tester_LDADD) $(LIBS)
@@ -1484,6 +1489,7 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/addressable.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/atomic_incs-atomic_incs.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/badaddrvalue.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/badfree.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/badjump.Po@am__quote@
@@ -1493,13 +1499,15 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/badrw.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/brk2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/buflen_check.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/calloc-overflow.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/clientperm.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/custom-overlap.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/custom_alloc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/deep_templates-deep_templates.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/describe-block.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/doublefree.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/erringfds.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/error_counts.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/error_counts-error_counts.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/errs1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/execve.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/execve2.Po@am__quote@
@@ -1507,7 +1515,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/file_locking.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fprw.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fwrite.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/inits.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/inits-inits.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/inline.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/leak-0.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/leak-cases.Po@am__quote@
@@ -1516,16 +1524,15 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/leak-tree.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/linux-syscalls-2007.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/linux-syslog-syscall.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/long-supps.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/long_namespace_xml.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lsframe1.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lsframe2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mallinfo.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/malloc1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/malloc2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/malloc3.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/malloc_free_fill.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/malloc_usable.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/manuel1.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/manuel1-manuel1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/manuel2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/manuel3.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/match-overrun.Po@am__quote@
@@ -1543,8 +1550,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/noisy_child.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/null_socket.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin1-yes.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin2-not-quite.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin3-no.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin2_not_quite-origin2-not-quite.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin3_no-origin3-no.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin4_many-origin4-many.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin5_bz2-origin5-bz2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/origin6_fp-origin6-fp.Po@am__quote@
@@ -1565,7 +1572,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sigkill.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/signal2.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sigprocmask.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stack_changes.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/str_tester-str_tester.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/strchr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/supp.Po@am__quote@
@@ -1608,6 +1614,62 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(COMPILE) -c `$(CYGPATH_W) '$<'`
 
+atomic_incs-atomic_incs.o: atomic_incs.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atomic_incs_CFLAGS) $(CFLAGS) -MT atomic_incs-atomic_incs.o -MD -MP -MF "$(DEPDIR)/atomic_incs-atomic_incs.Tpo" -c -o atomic_incs-atomic_incs.o `test -f 'atomic_incs.c' || echo '$(srcdir)/'`atomic_incs.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/atomic_incs-atomic_incs.Tpo" "$(DEPDIR)/atomic_incs-atomic_incs.Po"; else rm -f "$(DEPDIR)/atomic_incs-atomic_incs.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atomic_incs.c' object='atomic_incs-atomic_incs.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atomic_incs_CFLAGS) $(CFLAGS) -c -o atomic_incs-atomic_incs.o `test -f 'atomic_incs.c' || echo '$(srcdir)/'`atomic_incs.c
+
+atomic_incs-atomic_incs.obj: atomic_incs.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atomic_incs_CFLAGS) $(CFLAGS) -MT atomic_incs-atomic_incs.obj -MD -MP -MF "$(DEPDIR)/atomic_incs-atomic_incs.Tpo" -c -o atomic_incs-atomic_incs.obj `if test -f 'atomic_incs.c'; then $(CYGPATH_W) 'atomic_incs.c'; else $(CYGPATH_W) '$(srcdir)/atomic_incs.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/atomic_incs-atomic_incs.Tpo" "$(DEPDIR)/atomic_incs-atomic_incs.Po"; else rm -f "$(DEPDIR)/atomic_incs-atomic_incs.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='atomic_incs.c' object='atomic_incs-atomic_incs.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(atomic_incs_CFLAGS) $(CFLAGS) -c -o atomic_incs-atomic_incs.obj `if test -f 'atomic_incs.c'; then $(CYGPATH_W) 'atomic_incs.c'; else $(CYGPATH_W) '$(srcdir)/atomic_incs.c'; fi`
+
+error_counts-error_counts.o: error_counts.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(error_counts_CFLAGS) $(CFLAGS) -MT error_counts-error_counts.o -MD -MP -MF "$(DEPDIR)/error_counts-error_counts.Tpo" -c -o error_counts-error_counts.o `test -f 'error_counts.c' || echo '$(srcdir)/'`error_counts.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/error_counts-error_counts.Tpo" "$(DEPDIR)/error_counts-error_counts.Po"; else rm -f "$(DEPDIR)/error_counts-error_counts.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='error_counts.c' object='error_counts-error_counts.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(error_counts_CFLAGS) $(CFLAGS) -c -o error_counts-error_counts.o `test -f 'error_counts.c' || echo '$(srcdir)/'`error_counts.c
+
+error_counts-error_counts.obj: error_counts.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(error_counts_CFLAGS) $(CFLAGS) -MT error_counts-error_counts.obj -MD -MP -MF "$(DEPDIR)/error_counts-error_counts.Tpo" -c -o error_counts-error_counts.obj `if test -f 'error_counts.c'; then $(CYGPATH_W) 'error_counts.c'; else $(CYGPATH_W) '$(srcdir)/error_counts.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/error_counts-error_counts.Tpo" "$(DEPDIR)/error_counts-error_counts.Po"; else rm -f "$(DEPDIR)/error_counts-error_counts.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='error_counts.c' object='error_counts-error_counts.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(error_counts_CFLAGS) $(CFLAGS) -c -o error_counts-error_counts.obj `if test -f 'error_counts.c'; then $(CYGPATH_W) 'error_counts.c'; else $(CYGPATH_W) '$(srcdir)/error_counts.c'; fi`
+
+inits-inits.o: inits.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(inits_CFLAGS) $(CFLAGS) -MT inits-inits.o -MD -MP -MF "$(DEPDIR)/inits-inits.Tpo" -c -o inits-inits.o `test -f 'inits.c' || echo '$(srcdir)/'`inits.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/inits-inits.Tpo" "$(DEPDIR)/inits-inits.Po"; else rm -f "$(DEPDIR)/inits-inits.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inits.c' object='inits-inits.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(inits_CFLAGS) $(CFLAGS) -c -o inits-inits.o `test -f 'inits.c' || echo '$(srcdir)/'`inits.c
+
+inits-inits.obj: inits.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(inits_CFLAGS) $(CFLAGS) -MT inits-inits.obj -MD -MP -MF "$(DEPDIR)/inits-inits.Tpo" -c -o inits-inits.obj `if test -f 'inits.c'; then $(CYGPATH_W) 'inits.c'; else $(CYGPATH_W) '$(srcdir)/inits.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/inits-inits.Tpo" "$(DEPDIR)/inits-inits.Po"; else rm -f "$(DEPDIR)/inits-inits.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='inits.c' object='inits-inits.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(inits_CFLAGS) $(CFLAGS) -c -o inits-inits.obj `if test -f 'inits.c'; then $(CYGPATH_W) 'inits.c'; else $(CYGPATH_W) '$(srcdir)/inits.c'; fi`
+
+manuel1-manuel1.o: manuel1.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(manuel1_CFLAGS) $(CFLAGS) -MT manuel1-manuel1.o -MD -MP -MF "$(DEPDIR)/manuel1-manuel1.Tpo" -c -o manuel1-manuel1.o `test -f 'manuel1.c' || echo '$(srcdir)/'`manuel1.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/manuel1-manuel1.Tpo" "$(DEPDIR)/manuel1-manuel1.Po"; else rm -f "$(DEPDIR)/manuel1-manuel1.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='manuel1.c' object='manuel1-manuel1.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(manuel1_CFLAGS) $(CFLAGS) -c -o manuel1-manuel1.o `test -f 'manuel1.c' || echo '$(srcdir)/'`manuel1.c
+
+manuel1-manuel1.obj: manuel1.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(manuel1_CFLAGS) $(CFLAGS) -MT manuel1-manuel1.obj -MD -MP -MF "$(DEPDIR)/manuel1-manuel1.Tpo" -c -o manuel1-manuel1.obj `if test -f 'manuel1.c'; then $(CYGPATH_W) 'manuel1.c'; else $(CYGPATH_W) '$(srcdir)/manuel1.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/manuel1-manuel1.Tpo" "$(DEPDIR)/manuel1-manuel1.Po"; else rm -f "$(DEPDIR)/manuel1-manuel1.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='manuel1.c' object='manuel1-manuel1.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(manuel1_CFLAGS) $(CFLAGS) -c -o manuel1-manuel1.obj `if test -f 'manuel1.c'; then $(CYGPATH_W) 'manuel1.c'; else $(CYGPATH_W) '$(srcdir)/manuel1.c'; fi`
+
 memcmptest-memcmptest.o: memcmptest.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcmptest_CFLAGS) $(CFLAGS) -MT memcmptest-memcmptest.o -MD -MP -MF "$(DEPDIR)/memcmptest-memcmptest.Tpo" -c -o memcmptest-memcmptest.o `test -f 'memcmptest.c' || echo '$(srcdir)/'`memcmptest.c; \
 @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/memcmptest-memcmptest.Tpo" "$(DEPDIR)/memcmptest-memcmptest.Po"; else rm -f "$(DEPDIR)/memcmptest-memcmptest.Tpo"; exit 1; fi
@@ -1621,6 +1683,34 @@ memcmptest-memcmptest.obj: memcmptest.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='memcmptest.c' object='memcmptest-memcmptest.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(memcmptest_CFLAGS) $(CFLAGS) -c -o memcmptest-memcmptest.obj `if test -f 'memcmptest.c'; then $(CYGPATH_W) 'memcmptest.c'; else $(CYGPATH_W) '$(srcdir)/memcmptest.c'; fi`
+
+origin2_not_quite-origin2-not-quite.o: origin2-not-quite.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin2_not_quite_CFLAGS) $(CFLAGS) -MT origin2_not_quite-origin2-not-quite.o -MD -MP -MF "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Tpo" -c -o origin2_not_quite-origin2-not-quite.o `test -f 'origin2-not-quite.c' || echo '$(srcdir)/'`origin2-not-quite.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Tpo" "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Po"; else rm -f "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='origin2-not-quite.c' object='origin2_not_quite-origin2-not-quite.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin2_not_quite_CFLAGS) $(CFLAGS) -c -o origin2_not_quite-origin2-not-quite.o `test -f 'origin2-not-quite.c' || echo '$(srcdir)/'`origin2-not-quite.c
+
+origin2_not_quite-origin2-not-quite.obj: origin2-not-quite.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin2_not_quite_CFLAGS) $(CFLAGS) -MT origin2_not_quite-origin2-not-quite.obj -MD -MP -MF "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Tpo" -c -o origin2_not_quite-origin2-not-quite.obj `if test -f 'origin2-not-quite.c'; then $(CYGPATH_W) 'origin2-not-quite.c'; else $(CYGPATH_W) '$(srcdir)/origin2-not-quite.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Tpo" "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Po"; else rm -f "$(DEPDIR)/origin2_not_quite-origin2-not-quite.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='origin2-not-quite.c' object='origin2_not_quite-origin2-not-quite.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin2_not_quite_CFLAGS) $(CFLAGS) -c -o origin2_not_quite-origin2-not-quite.obj `if test -f 'origin2-not-quite.c'; then $(CYGPATH_W) 'origin2-not-quite.c'; else $(CYGPATH_W) '$(srcdir)/origin2-not-quite.c'; fi`
+
+origin3_no-origin3-no.o: origin3-no.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin3_no_CFLAGS) $(CFLAGS) -MT origin3_no-origin3-no.o -MD -MP -MF "$(DEPDIR)/origin3_no-origin3-no.Tpo" -c -o origin3_no-origin3-no.o `test -f 'origin3-no.c' || echo '$(srcdir)/'`origin3-no.c; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/origin3_no-origin3-no.Tpo" "$(DEPDIR)/origin3_no-origin3-no.Po"; else rm -f "$(DEPDIR)/origin3_no-origin3-no.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='origin3-no.c' object='origin3_no-origin3-no.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin3_no_CFLAGS) $(CFLAGS) -c -o origin3_no-origin3-no.o `test -f 'origin3-no.c' || echo '$(srcdir)/'`origin3-no.c
+
+origin3_no-origin3-no.obj: origin3-no.c
+@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin3_no_CFLAGS) $(CFLAGS) -MT origin3_no-origin3-no.obj -MD -MP -MF "$(DEPDIR)/origin3_no-origin3-no.Tpo" -c -o origin3_no-origin3-no.obj `if test -f 'origin3-no.c'; then $(CYGPATH_W) 'origin3-no.c'; else $(CYGPATH_W) '$(srcdir)/origin3-no.c'; fi`; \
+@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/origin3_no-origin3-no.Tpo" "$(DEPDIR)/origin3_no-origin3-no.Po"; else rm -f "$(DEPDIR)/origin3_no-origin3-no.Tpo"; exit 1; fi
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='origin3-no.c' object='origin3_no-origin3-no.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin3_no_CFLAGS) $(CFLAGS) -c -o origin3_no-origin3-no.obj `if test -f 'origin3-no.c'; then $(CYGPATH_W) 'origin3-no.c'; else $(CYGPATH_W) '$(srcdir)/origin3-no.c'; fi`
 
 origin4_many-origin4-many.o: origin4-many.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(origin4_many_CFLAGS) $(CFLAGS) -MT origin4_many-origin4-many.o -MD -MP -MF "$(DEPDIR)/origin4_many-origin4-many.Tpo" -c -o origin4_many-origin4-many.o `test -f 'origin4-many.c' || echo '$(srcdir)/'`origin4-many.c; \
@@ -2050,7 +2140,6 @@ distdir: $(DISTFILES)
 	      || exit 1; \
 	  fi; \
 	done
-@VGCONF_OS_IS_DARWIN_FALSE@check-local:
 check-am: all-am
 	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
 	$(MAKE) $(AM_MAKEFLAGS) check-local
@@ -2082,7 +2171,6 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@VGCONF_OS_IS_DARWIN_FALSE@clean-local:
 clean: clean-recursive
 
 clean-am: clean-checkPROGRAMS clean-generic clean-local mostlyclean-am
@@ -2148,6 +2236,13 @@ uninstall-info: uninstall-info-recursive
 	tags tags-recursive uninstall uninstall-am uninstall-info-am
 
 
+# This used to be required when Vex had a handwritten Makefile.  It
+# shouldn't be needed any more, though.
+
+#----------------------------------------------------------------------------
+# noinst_PROGRAMS and noinst_DSYMS targets
+#----------------------------------------------------------------------------
+
 # On Darwin, for a program 'p', the DWARF debug info is stored in the
 # directory 'p.dSYM'.  This must be generated after the executable is
 # created, with 'dsymutil p'.  We could redefine LINK with a script that
@@ -2155,18 +2250,60 @@ uninstall-info: uninstall-info-recursive
 # hook so that every time "make check" is run, we subsequently invoke
 # 'dsymutil' on all the executables that lack a .dSYM directory, or that are
 # newer than their corresponding .dSYM directory.
-@VGCONF_OS_IS_DARWIN_TRUE@check-local:
-@VGCONF_OS_IS_DARWIN_TRUE@	for f in $(check_PROGRAMS) ; do \
-@VGCONF_OS_IS_DARWIN_TRUE@	    if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
-@VGCONF_OS_IS_DARWIN_TRUE@	        echo "dsymutil $$f"; \
-@VGCONF_OS_IS_DARWIN_TRUE@	        dsymutil $$f; \
-@VGCONF_OS_IS_DARWIN_TRUE@	    fi \
-@VGCONF_OS_IS_DARWIN_TRUE@	done
+build-noinst_DSYMS: $(noinst_DSYMS)
+	for f in $(noinst_DSYMS); do \
+	  if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
+	      echo "dsymutil $$f"; \
+	      dsymutil $$f; \
+	  fi; \
+	done
 
-@VGCONF_OS_IS_DARWIN_TRUE@clean-local:
-@VGCONF_OS_IS_DARWIN_TRUE@	for f in $(check_PROGRAMS) ; do \
-@VGCONF_OS_IS_DARWIN_TRUE@	    rm -rf $$f.dSYM; \
-@VGCONF_OS_IS_DARWIN_TRUE@	done
+# This is used by coregrind/Makefile.am and Makefile.tool.am for doing
+# "in-place" installs.  It copies $(noinst_PROGRAMS) into $inplacedir.
+# It needs to be depended on by an 'all-local' rule.
+inplace-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_PROGRAMS) ; do \
+	  rm -f $(inplacedir)/$$f; \
+	  ln -f -s ../$(subdir)/$$f $(inplacedir); \
+	done
+
+# Similar to inplace-noinst_PROGRAMS
+inplace-noinst_DSYMS: build-noinst_DSYMS
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_DSYMS); do \
+	  rm -f $(inplacedir)/$$f.dSYM; \
+	  ln -f -s ../$(subdir)/$$f.dSYM $(inplacedir); \
+	done
+
+# This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
+# "make install".  It copies $(noinst_PROGRAMS) into $prefix/lib/valgrind/.
+# It needs to be depended on by an 'install-exec-local' rule.
+install-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_PROGRAMS); do \
+	  $(INSTALL_PROGRAM) $$f $(DESTDIR)$(pkglibdir); \
+	done
+
+# Similar to install-noinst_PROGRAMS.
+# Nb: we don't use $(INSTALL_PROGRAM) here because it doesn't work with
+# directories.  XXX: not sure whether the resulting permissions will be
+# correct when using 'cp -R'...
+install-noinst_DSYMS: build-noinst_DSYMS
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_DSYMS); do \
+	  cp -R $$f.dSYM $(DESTDIR)$(pkglibdir); \
+	done
+
+# This needs to be depended on by a 'clean-local' rule.
+clean-noinst_DSYMS:
+	for f in $(noinst_DSYMS); do \
+	  rm -rf $$f.dSYM; \
+	done
+
+check-local: build-noinst_DSYMS
+
+clean-local: clean-noinst_DSYMS
 
 @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE@@VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE@ # persuade the AIX linker not to junk apparently unused
 @VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5_TRUE@@VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5_FALSE@ # function descriptors.  Unfortunately -Wl,-G -Wl,-bnogc

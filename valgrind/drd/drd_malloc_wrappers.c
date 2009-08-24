@@ -228,7 +228,8 @@ static void* drd_realloc(ThreadId tid, void* p_old, SizeT new_size)
          
          /* Free old memory. */
          VG_(cli_free)(p_old);
-         s_stop_using_mem_callback(mc->data, mc->size);
+         if (mc->size > 0)
+            s_stop_using_mem_callback(mc->data, mc->size);
          VG_(HT_remove)(s_malloc_list, (UWord)p_old);
 
          /* Update state information. */
@@ -360,14 +361,14 @@ void DRD_(print_malloc_stats)(void)
    }
 
    VG_(message)(Vg_DebugMsg, 
-                "malloc/free: in use at exit: %lu bytes in %lu blocks.",
+                "malloc/free: in use at exit: %lu bytes in %lu blocks.\n",
                 nbytes, nblocks);
    VG_(message)(Vg_DebugMsg, 
-                "malloc/free: %lu allocs, %lu frees, %lu bytes allocated.",
+                "malloc/free: %lu allocs, %lu frees, %lu bytes allocated.\n",
                 s_cmalloc_n_mallocs,
                 s_cmalloc_n_frees, s_cmalloc_bs_mallocd);
    if (VG_(clo_verbosity) > 1)
-      VG_(message)(Vg_DebugMsg, " ");
+      VG_(message)(Vg_DebugMsg, " \n");
 }
 
 /*--------------------------------------------------------------------*/

@@ -14,6 +14,13 @@
 
 @SET_MAKE@
 
+# This file should be included (directly or indirectly) by every
+# Makefile.am that builds programs.  And also the top-level Makefile.am.
+
+#----------------------------------------------------------------------------
+# Global stuff
+#----------------------------------------------------------------------------
+
 
 srcdir = @srcdir@
 top_srcdir = @top_srcdir@
@@ -38,21 +45,14 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 DIST_COMMON = README $(am__configure_deps) $(dist_noinst_DATA) \
-	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(srcdir)/config.h.in $(srcdir)/glibc-2.X.supp.in \
-	$(srcdir)/valgrind.pc.in $(srcdir)/valgrind.spec.in \
-	$(top_srcdir)/Makefile.all.am $(top_srcdir)/configure \
+	$(dist_noinst_SCRIPTS) $(srcdir)/Makefile.am \
+	$(srcdir)/Makefile.in $(srcdir)/config.h.in \
+	$(srcdir)/glibc-2.X.supp.in $(srcdir)/valgrind.pc.in \
+	$(srcdir)/valgrind.spec.in $(top_srcdir)/Makefile.all.am \
+	$(top_srcdir)/configure \
 	$(top_srcdir)/drd/scripts/download-and-build-splash2.in \
 	AUTHORS COPYING INSTALL NEWS compile config.guess config.sub \
 	depcomp install-sh missing mkinstalldirs
-@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = valt_load_address_x86_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_2 = valt_load_address_x86_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_3 = valt_load_address_amd64_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_4 = valt_load_address_amd64_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@am__append_5 = valt_load_address_ppc32_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@am__append_6 = valt_load_address_ppc32_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@am__append_7 = valt_load_address_ppc64_linux.lds
-@VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@am__append_8 = valt_load_address_ppc64_linux.lds
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
@@ -64,6 +64,7 @@ mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = config.h
 CONFIG_CLEAN_FILES = valgrind.spec valgrind.pc glibc-2.X.supp \
 	drd/scripts/download-and-build-splash2
+SCRIPTS = $(dist_noinst_SCRIPTS)
 SOURCES =
 DIST_SOURCES =
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
@@ -78,13 +79,10 @@ am__vpath_adj = case $$p in \
     *) f=$$p;; \
   esac;
 am__strip_dir = `echo $$p | sed -e 's|^.*/||'`;
-am__installdirs = "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(valdir)" \
-	"$(DESTDIR)$(incincdir)"
+am__installdirs = "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(pkglibdir)"
 pkgconfigDATA_INSTALL = $(INSTALL_DATA)
-valDATA_INSTALL = $(INSTALL_DATA)
-DATA = $(dist_noinst_DATA) $(pkgconfig_DATA) $(val_DATA)
-nodist_incincHEADERS_INSTALL = $(INSTALL_HEADER)
-HEADERS = $(nodist_incinc_HEADERS)
+pkglibDATA_INSTALL = $(INSTALL_DATA)
+DATA = $(dist_noinst_DATA) $(pkgconfig_DATA) $(pkglib_DATA)
 ETAGS = etags
 CTAGS = ctags
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
@@ -132,7 +130,6 @@ DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DIFF = @DIFF@
-DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
@@ -148,7 +145,9 @@ FLAG_MSSE = @FLAG_MSSE@
 FLAG_UNLIMITED_INLINE_UNIT_GROWTH = @FLAG_UNLIMITED_INLINE_UNIT_GROWTH@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
 FLAG_W_EXTRA = @FLAG_W_EXTRA@
+FLAG_W_NO_EMPTY_BODY = @FLAG_W_NO_EMPTY_BODY@
 FLAG_W_NO_FORMAT_ZERO_LENGTH = @FLAG_W_NO_FORMAT_ZERO_LENGTH@
+FLAG_W_NO_UNINITIALIZED = @FLAG_W_NO_UNINITIALIZED@
 GDB = @GDB@
 GLIBC_VERSION = @GLIBC_VERSION@
 GREP = @GREP@
@@ -186,8 +185,6 @@ MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
 MPI_CC = @MPI_CC@
-OBJC = @OBJC@
-OBJCFLAGS = @OBJCFLAGS@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -207,7 +204,6 @@ SHELL = @SHELL@
 STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
-VEX_DIR = @VEX_DIR@
 VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
 VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
 VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
@@ -247,7 +243,6 @@ VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
 VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
-ac_ct_OBJC = @ac_ct_OBJC@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
 am__fastdepCC_TRUE = @am__fastdepCC_TRUE@
 am__fastdepCXX_FALSE = @am__fastdepCXX_FALSE@
@@ -293,8 +288,123 @@ sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
 AUTOMAKE_OPTIONS = foreign 1.7 dist-bzip2
-valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
+
+#----------------------------------------------------------------------------
+# Flags
+#----------------------------------------------------------------------------
+
+# Baseline flags for all compilations.  Aim here is to maximise
+# performance and get whatever useful warnings we can out of gcc.
+AM_CFLAGS_BASE = \
+	-O2 -g \
+	-Wall \
+	-Wmissing-prototypes \
+	-Wshadow \
+	-Wpointer-arith \
+	-Wstrict-prototypes \
+	-Wmissing-declarations \
+	@FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
+	-fno-strict-aliasing
+
+@VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -fpic -O -g -fno-omit-frame-pointer -fno-strict-aliasing
+
+# These flags are used for building the preload shared objects.
+# The aim is to give reasonable performance but also to have good
+# stack traces, since users often see stack traces extending 
+# into (and through) the preloads.
+@VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
+
+# Flags for specific targets.
+#
+# Nb: the AM_CPPFLAGS_* values are suitable for building tools and auxprogs.
+# For building the core, coregrind/Makefile.am files add some extra things.
+#
+# Also: in newer versions of automake (1.10 onwards?) asm files ending with
+# '.S' are considered "pre-processed" (as opposed to those ending in '.s')
+# and so the CPPFLAGS are passed to the assembler.  But this is not true for
+# older automakes (e.g. 1.8.5, 1.9.6), sigh.  So we include
+# AM_CPPFLAGS_<PLATFORM> in each AM_CCASFLAGS_<PLATFORM> variable.  This
+# means some of the flags are duplicated on systems with newer versions of
+# automake, but this does not really matter and seems hard to avoid.
+AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
+ 	-I$(top_srcdir) \
+ 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/VEX/pub \
+	-DVGA_@VGCONF_ARCH_PRI@=1 \
+	-DVGO_@VGCONF_OS@=1 \
+	-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1
+
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ = \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir) \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir)/include \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-I$(top_srcdir)/VEX/pub \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGA_@VGCONF_ARCH_SEC@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGO_@VGCONF_OS@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGP_@VGCONF_ARCH_SEC@_@VGCONF_OS@=1
+
+AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
+AM_CFLAGS_X86_LINUX = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
+			 	$(AM_CFLAGS_BASE)
+
+AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
+AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
+AM_CFLAGS_AMD64_LINUX = @FLAG_M64@ -fomit-frame-pointer \
+				@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
+
+AM_CCASFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_AMD64_LINUX) @FLAG_M64@ -g
+AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
+AM_CFLAGS_PPC32_LINUX = @FLAG_M32@ $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_PPC32_LINUX) @FLAG_M32@ -g
+AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
+AM_CFLAGS_PPC64_LINUX = @FLAG_M64@ $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_PPC64_LINUX) @FLAG_M64@ -g
+AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
+AM_CFLAGS_PPC32_AIX5 = @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_PPC32_AIX5) \
+			    @FLAG_MAIX32@ -mcpu=powerpc -g
+
+AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
+AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
+AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
+			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
+
+AM_FLAG_M3264_X86_DARWIN = -arch i386
+AM_CFLAGS_X86_DARWIN = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
+			    -mmacosx-version-min=10.5 -fno-stack-protector \
+			    -mdynamic-no-pic
+
+AM_CCASFLAGS_X86_DARWIN = $(AM_CPPFLAGS_X86_DARWIN) -arch i386 -g
+AM_FLAG_M3264_AMD64_DARWIN = -arch x86_64
+AM_CFLAGS_AMD64_DARWIN = $(WERROR) -arch x86_64 $(AM_CFLAGS_BASE) \
+			    -mmacosx-version-min=10.5 -fno-stack-protector
+
+AM_CCASFLAGS_AMD64_DARWIN = $(AM_CPPFLAGS_AMD64_DARWIN) -arch x86_64 -g
+
+# Flags for the primary target.  These must be used to build the
+# regtests and performance tests.  In fact, these must be used to
+# build anything which is built only once on a dual-arch build.
+#
+AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CFLAGS_PRI = $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+@VGCONF_HAVE_PLATFORM_SEC_FALSE@AM_FLAG_M3264_SEC = 
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
+
+# Baseline link flags for making vgpreload shared objects.
+#
+PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
+PRELOAD_LDFLAGS_COMMON_AIX5 = -nodefaultlibs -shared -Wl,-G -Wl,-bnogc
+PRELOAD_LDFLAGS_COMMON_DARWIN = -dynamic -dynamiclib -all_load
+PRELOAD_LDFLAGS_X86_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
+PRELOAD_LDFLAGS_AMD64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
+PRELOAD_LDFLAGS_PPC32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
+PRELOAD_LDFLAGS_PPC64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
+PRELOAD_LDFLAGS_PPC32_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX32@
+PRELOAD_LDFLAGS_PPC64_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX64@
+PRELOAD_LDFLAGS_X86_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
+PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
 TOOLS = memcheck \
 		cachegrind \
 		callgrind \
@@ -305,24 +415,30 @@ TOOLS = memcheck \
 		drd \
 		fjalar
 
-EXP_TOOLS = exp-ptrcheck
+EXP_TOOLS = exp-ptrcheck \
+		exp-bbv
+
 
 # DDD: once all tools work on Darwin, TEST_TOOLS and TEST_EXP_TOOLS can be
 # replaced with TOOLS and EXP_TOOLS.
-@VGCONF_OS_IS_DARWIN_FALSE@TEST_TOOLS = $(TOOLS)
-@VGCONF_OS_IS_DARWIN_TRUE@TEST_TOOLS = memcheck \
-@VGCONF_OS_IS_DARWIN_TRUE@		cachegrind \
-@VGCONF_OS_IS_DARWIN_TRUE@		callgrind \
-@VGCONF_OS_IS_DARWIN_TRUE@		massif \
-@VGCONF_OS_IS_DARWIN_TRUE@		lackey \
-@VGCONF_OS_IS_DARWIN_TRUE@		none
-
+TEST_TOOLS = $(TOOLS)
 @VGCONF_OS_IS_DARWIN_FALSE@TEST_EXP_TOOLS = $(EXP_TOOLS)
-@VGCONF_OS_IS_DARWIN_TRUE@TEST_EXP_TOOLS = 
+@VGCONF_OS_IS_DARWIN_TRUE@TEST_EXP_TOOLS = exp-bbv
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
-SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) $(EXP_TOOLS)
+SUBDIRS = \
+	include \
+	VEX \
+	coregrind \
+	. \
+	$(TOOLS) \
+	$(EXP_TOOLS) \
+	tests \
+	perf \
+	auxprogs \
+	mpi
+
 DIST_SUBDIRS = $(SUBDIRS)
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
@@ -332,123 +448,35 @@ SUPP_FILES = \
 	glibc-2.2-LinuxThreads-helgrind.supp \
 	glibc-2.X-drd.supp \
 	exp-ptrcheck.supp \
-	darwin9.supp
+	darwin9.supp darwin9-drd.supp
 
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
 # We include all the base .supp files in the distribution, but not
 # default.supp, as it is built from the base .supp files at compile-time.
-# The "val" in "val_DATA" ties in with $(valdir), defined in
-# Makefile.all.am.  From the automake info pages:
-#
-#   Sometimes the standard directories--even as augmented by Automake--are
-#   not enough.  In particular it is sometimes useful, for clarity, to
-#   install objects in a subdirectory of some predefined directory.  To this
-#   end, Automake allows you to extend the list of possible installation
-#   directories.  A given prefix (e.g., `zar') is valid if a variable of the
-#   same name with `dir' appended is defined (e.g., `zardir').
-#
 dist_noinst_DATA = $(SUPP_FILES)
-val_DATA = default.supp
+pkglib_DATA = default.supp
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = valgrind.pc
-incincdir = $(includedir)/valgrind
-nodist_incinc_HEADERS = $(VEX_PUBLIC_HDRS)
-BUILT_SOURCES = default.supp valgrind.pc $(am__append_1) \
-	$(am__append_3) $(am__append_5) $(am__append_7)
-CLEANFILES = default.supp $(am__append_2) $(am__append_4) \
-	$(am__append_6) $(am__append_8)
+BUILT_SOURCES = default.supp valgrind.pc
+CLEANFILES = default.supp
 
 # Nb: no need to include any Makefile.am files here, or files included from
-# them, as automake includes them automatically.
+# them, as automake includes them automatically.  Also not COPYING, README
+# or NEWS.
+# We include valgrind.spec as well as valgrind.spec.in to save packagers
+# from having to run configure (bug 188560).
 EXTRA_DIST = \
+	COPYING.DOCS \
 	README_DEVELOPERS \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \
-	valgrind.spec.in valgrind.pc.in \
-	$(vex_primary_sources) \
+	valgrind.pc.in \
+	valgrind.spec.in \
+	valgrind.spec
+
+dist_noinst_SCRIPTS = \
 	vg-in-place
-
-
-# These list the bits of vex we need to install
-VEX_PUBLIC_HDRS = \
-	@VEX_DIR@/pub/libvex_guest_amd64.h \
-	@VEX_DIR@/pub/libvex_ir.h \
-	@VEX_DIR@/pub/libvex_guest_ppc32.h \
-	@VEX_DIR@/pub/libvex_guest_ppc64.h \
-	@VEX_DIR@/pub/libvex_basictypes.h \
-	@VEX_DIR@/pub/libvex_guest_offsets.h \
-	@VEX_DIR@/pub/libvex_emwarn.h \
-	@VEX_DIR@/pub/libvex.h \
-	@VEX_DIR@/pub/libvex_trc_values.h \
-	@VEX_DIR@/pub/libvex_guest_arm.h \
-	@VEX_DIR@/pub/libvex_guest_x86.h
-
-
-# These list the bits of vex we need to copy into the tarball
-vex_primary_sources = \
-	VEX/quote.txt \
-	VEX/newline.txt \
-	VEX/HACKING.README \
-	VEX/LICENSE.README \
-	VEX/LICENSE.GPL \
-	VEX/Makefile \
-	VEX/auxprogs/genoffsets.c \
-	VEX/pub/libvex_guest_amd64.h \
-	VEX/pub/libvex_ir.h \
-	VEX/pub/libvex_guest_ppc32.h \
-	VEX/pub/libvex_guest_ppc64.h \
-	VEX/pub/libvex_basictypes.h \
-	VEX/pub/libvex_guest_offsets.h \
-	VEX/pub/libvex_emwarn.h \
-	VEX/pub/libvex.h \
-	VEX/pub/libvex_trc_values.h \
-	VEX/pub/libvex_guest_arm.h \
-	VEX/pub/libvex_guest_x86.h \
-	VEX/priv/ir/irmatch.c \
-	VEX/priv/ir/irmatch.h \
-	VEX/priv/ir/irdefs.c \
-	VEX/priv/ir/iropt.c \
-	VEX/priv/ir/iropt.h \
-	VEX/priv/host-ppc/isel.c \
-	VEX/priv/host-ppc/hdefs.c \
-	VEX/priv/host-ppc/hdefs.h \
-	VEX/priv/main/vex_svnversion.h \
-	VEX/priv/main/vex_globals.c \
-	VEX/priv/main/vex_globals.h \
-	VEX/priv/main/vex_main.c \
-	VEX/priv/main/vex_util.c \
-	VEX/priv/main/vex_util.h \
-	VEX/priv/guest-arm/ghelpers.c \
-	VEX/priv/guest-arm/gdefs.h \
-	VEX/priv/guest-arm/toIR.c \
-	VEX/priv/guest-x86/ghelpers.c \
-	VEX/priv/guest-x86/gdefs.h \
-	VEX/priv/guest-x86/toIR.c \
-	VEX/priv/guest-generic/g_generic_x87.c \
-	VEX/priv/guest-generic/g_generic_x87.h \
-	VEX/priv/guest-generic/bb_to_IR.c \
-	VEX/priv/guest-generic/bb_to_IR.h \
-	VEX/priv/host-arm/isel.c \
-	VEX/priv/host-arm/hdefs.c \
-	VEX/priv/host-arm/hdefs.h \
-	VEX/priv/host-x86/isel.c \
-	VEX/priv/host-x86/hdefs.c \
-	VEX/priv/host-x86/hdefs.h \
-	VEX/priv/guest-amd64/ghelpers.c \
-	VEX/priv/guest-amd64/gdefs.h \
-	VEX/priv/guest-amd64/toIR.c \
-	VEX/priv/guest-ppc/ghelpers.c \
-	VEX/priv/guest-ppc/gdefs.h \
-	VEX/priv/guest-ppc/toIR.c \
-	VEX/priv/host-generic/reg_alloc2.c \
-	VEX/priv/host-generic/h_generic_regs.c \
-	VEX/priv/host-generic/h_generic_regs.h \
-	VEX/priv/host-generic/h_generic_simd64.c \
-	VEX/priv/host-generic/h_generic_simd64.h \
-	VEX/priv/host-amd64/isel.c \
-	VEX/priv/host-amd64/hdefs.c \
-	VEX/priv/host-amd64/hdefs.h
 
 all: $(BUILT_SOURCES) config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
@@ -530,39 +558,22 @@ uninstall-pkgconfigDATA:
 	  echo " rm -f '$(DESTDIR)$(pkgconfigdir)/$$f'"; \
 	  rm -f "$(DESTDIR)$(pkgconfigdir)/$$f"; \
 	done
-install-valDATA: $(val_DATA)
+install-pkglibDATA: $(pkglib_DATA)
 	@$(NORMAL_INSTALL)
-	test -z "$(valdir)" || $(mkdir_p) "$(DESTDIR)$(valdir)"
-	@list='$(val_DATA)'; for p in $$list; do \
+	test -z "$(pkglibdir)" || $(mkdir_p) "$(DESTDIR)$(pkglibdir)"
+	@list='$(pkglib_DATA)'; for p in $$list; do \
 	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
 	  f=$(am__strip_dir) \
-	  echo " $(valDATA_INSTALL) '$$d$$p' '$(DESTDIR)$(valdir)/$$f'"; \
-	  $(valDATA_INSTALL) "$$d$$p" "$(DESTDIR)$(valdir)/$$f"; \
+	  echo " $(pkglibDATA_INSTALL) '$$d$$p' '$(DESTDIR)$(pkglibdir)/$$f'"; \
+	  $(pkglibDATA_INSTALL) "$$d$$p" "$(DESTDIR)$(pkglibdir)/$$f"; \
 	done
 
-uninstall-valDATA:
+uninstall-pkglibDATA:
 	@$(NORMAL_UNINSTALL)
-	@list='$(val_DATA)'; for p in $$list; do \
+	@list='$(pkglib_DATA)'; for p in $$list; do \
 	  f=$(am__strip_dir) \
-	  echo " rm -f '$(DESTDIR)$(valdir)/$$f'"; \
-	  rm -f "$(DESTDIR)$(valdir)/$$f"; \
-	done
-install-nodist_incincHEADERS: $(nodist_incinc_HEADERS)
-	@$(NORMAL_INSTALL)
-	test -z "$(incincdir)" || $(mkdir_p) "$(DESTDIR)$(incincdir)"
-	@list='$(nodist_incinc_HEADERS)'; for p in $$list; do \
-	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
-	  f=$(am__strip_dir) \
-	  echo " $(nodist_incincHEADERS_INSTALL) '$$d$$p' '$(DESTDIR)$(incincdir)/$$f'"; \
-	  $(nodist_incincHEADERS_INSTALL) "$$d$$p" "$(DESTDIR)$(incincdir)/$$f"; \
-	done
-
-uninstall-nodist_incincHEADERS:
-	@$(NORMAL_UNINSTALL)
-	@list='$(nodist_incinc_HEADERS)'; for p in $$list; do \
-	  f=$(am__strip_dir) \
-	  echo " rm -f '$(DESTDIR)$(incincdir)/$$f'"; \
-	  rm -f "$(DESTDIR)$(incincdir)/$$f"; \
+	  echo " rm -f '$(DESTDIR)$(pkglibdir)/$$f'"; \
+	  rm -f "$(DESTDIR)$(pkglibdir)/$$f"; \
 	done
 
 # This directory's subdirectories are mostly independent; you can cd
@@ -700,7 +711,7 @@ distclean-tags:
 distdir: $(DISTFILES)
 	$(am__remove_distdir)
 	mkdir $(distdir)
-	$(mkdir_p) $(distdir)/. $(distdir)/VEX $(distdir)/VEX/auxprogs $(distdir)/VEX/priv/guest-amd64 $(distdir)/VEX/priv/guest-arm $(distdir)/VEX/priv/guest-generic $(distdir)/VEX/priv/guest-ppc $(distdir)/VEX/priv/guest-x86 $(distdir)/VEX/priv/host-amd64 $(distdir)/VEX/priv/host-arm $(distdir)/VEX/priv/host-generic $(distdir)/VEX/priv/host-ppc $(distdir)/VEX/priv/host-x86 $(distdir)/VEX/priv/ir $(distdir)/VEX/priv/main $(distdir)/VEX/pub $(distdir)/cachegrind $(distdir)/callgrind $(distdir)/drd/scripts $(distdir)/massif $(distdir)/perf $(distdir)/tests
+	$(mkdir_p) $(distdir)/. $(distdir)/cachegrind $(distdir)/callgrind $(distdir)/drd/scripts $(distdir)/massif $(distdir)/perf $(distdir)/tests
 	@srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`; \
 	topsrcdirstrip=`echo "$(top_srcdir)" | sed 's|.|.|g'`; \
 	list='$(DISTFILES)'; for file in $$list; do \
@@ -842,10 +853,10 @@ distcleancheck: distclean
 check-am: all-am
 check: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) check-recursive
-all-am: Makefile $(DATA) $(HEADERS) config.h all-local
+all-am: Makefile $(SCRIPTS) $(DATA) config.h all-local
 installdirs: installdirs-recursive
 installdirs-am:
-	for dir in "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(valdir)" "$(DESTDIR)$(incincdir)"; do \
+	for dir in "$(DESTDIR)$(pkgconfigdir)" "$(DESTDIR)$(pkglibdir)"; do \
 	  test -z "$$dir" || $(mkdir_p) "$$dir"; \
 	done
 install: $(BUILT_SOURCES)
@@ -894,12 +905,9 @@ info: info-recursive
 
 info-am:
 
-install-data-am: install-nodist_incincHEADERS install-pkgconfigDATA \
-	install-valDATA
+install-data-am: install-pkgconfigDATA
 
-install-exec-am:
-	@$(NORMAL_INSTALL)
-	$(MAKE) $(AM_MAKEFLAGS) install-exec-hook
+install-exec-am: install-pkglibDATA
 
 install-info: install-info-recursive
 
@@ -925,8 +933,8 @@ ps: ps-recursive
 
 ps-am:
 
-uninstall-am: uninstall-info-am uninstall-nodist_incincHEADERS \
-	uninstall-pkgconfigDATA uninstall-valDATA
+uninstall-am: uninstall-info-am uninstall-pkgconfigDATA \
+	uninstall-pkglibDATA
 
 uninstall-info: uninstall-info-recursive
 
@@ -938,26 +946,79 @@ uninstall-info: uninstall-info-recursive
 	distclean-tags distcleancheck distdir distuninstallcheck dvi \
 	dvi-am html html-am info info-am install install-am \
 	install-data install-data-am install-exec install-exec-am \
-	install-exec-hook install-info install-info-am install-man \
-	install-nodist_incincHEADERS install-pkgconfigDATA \
-	install-strip install-valDATA installcheck installcheck-am \
+	install-info install-info-am install-man install-pkgconfigDATA \
+	install-pkglibDATA install-strip installcheck installcheck-am \
 	installdirs installdirs-am maintainer-clean \
 	maintainer-clean-generic maintainer-clean-recursive \
 	mostlyclean mostlyclean-generic mostlyclean-recursive pdf \
 	pdf-am ps ps-am tags tags-recursive uninstall uninstall-am \
-	uninstall-info-am uninstall-nodist_incincHEADERS \
-	uninstall-pkgconfigDATA uninstall-valDATA
+	uninstall-info-am uninstall-pkgconfigDATA uninstall-pkglibDATA
 
 
-# The kludge that passes for vex's build system can't handle parallel
-# builds.  So, for the time being, serialise all Valgrind building.
-# (this is equivalent to enforcing "make -j 1".
-.NOTPARALLEL:
-# No need to generate valt_load_address*.lds; the final executables
-# can be linked to be at any address.  They will be relocated by
-# AIX kernel when they are loaded.
-# Ditto
-# GrP untested, possibly hopeless
+# This used to be required when Vex had a handwritten Makefile.  It
+# shouldn't be needed any more, though.
+
+#----------------------------------------------------------------------------
+# noinst_PROGRAMS and noinst_DSYMS targets
+#----------------------------------------------------------------------------
+
+# On Darwin, for a program 'p', the DWARF debug info is stored in the
+# directory 'p.dSYM'.  This must be generated after the executable is
+# created, with 'dsymutil p'.  We could redefine LINK with a script that
+# executes 'dsymutil' after linking, but that's a pain.  Instead we use this
+# hook so that every time "make check" is run, we subsequently invoke
+# 'dsymutil' on all the executables that lack a .dSYM directory, or that are
+# newer than their corresponding .dSYM directory.
+build-noinst_DSYMS: $(noinst_DSYMS)
+	for f in $(noinst_DSYMS); do \
+	  if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
+	      echo "dsymutil $$f"; \
+	      dsymutil $$f; \
+	  fi; \
+	done
+
+# This is used by coregrind/Makefile.am and Makefile.tool.am for doing
+# "in-place" installs.  It copies $(noinst_PROGRAMS) into $inplacedir.
+# It needs to be depended on by an 'all-local' rule.
+inplace-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_PROGRAMS) ; do \
+	  rm -f $(inplacedir)/$$f; \
+	  ln -f -s ../$(subdir)/$$f $(inplacedir); \
+	done
+
+# Similar to inplace-noinst_PROGRAMS
+inplace-noinst_DSYMS: build-noinst_DSYMS
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_DSYMS); do \
+	  rm -f $(inplacedir)/$$f.dSYM; \
+	  ln -f -s ../$(subdir)/$$f.dSYM $(inplacedir); \
+	done
+
+# This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
+# "make install".  It copies $(noinst_PROGRAMS) into $prefix/lib/valgrind/.
+# It needs to be depended on by an 'install-exec-local' rule.
+install-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_PROGRAMS); do \
+	  $(INSTALL_PROGRAM) $$f $(DESTDIR)$(pkglibdir); \
+	done
+
+# Similar to install-noinst_PROGRAMS.
+# Nb: we don't use $(INSTALL_PROGRAM) here because it doesn't work with
+# directories.  XXX: not sure whether the resulting permissions will be
+# correct when using 'cp -R'...
+install-noinst_DSYMS: build-noinst_DSYMS
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_DSYMS); do \
+	  cp -R $$f.dSYM $(DESTDIR)$(pkglibdir); \
+	done
+
+# This needs to be depended on by a 'clean-local' rule.
+clean-noinst_DSYMS:
+	for f in $(noinst_DSYMS); do \
+	  rm -rf $$f.dSYM; \
+	done
 
 default.supp: $(DEFAULT_SUPP_FILES)
 	echo "# This is a generated file, composed of the following suppression rules:" > default.supp
@@ -974,9 +1035,6 @@ exp-regtest: check
 perf: check
 	@PERL@ perf/vg_perf perf
 
-install-exec-hook:
-	$(mkinstalldirs) $(DESTDIR)$(valdir)
-
 all-local: default.supp
 	mkdir -p $(inplacedir)
 	rm -f $(inplacedir)/default.supp
@@ -984,54 +1042,6 @@ all-local: default.supp
 
 clean-local:
 	rm -rf $(inplacedir)
-
-# Generate a linker script for linking the binaries.  This is the
-# standard gcc linker script, except hacked so that an alternative
-# load address can be specified by (1) asking gcc to use this script
-# (-Wl,-T,valt_load_address.lds) and (2) setting the symbol
-# valt_load_address to the required value
-# (-Wl,-defsym,valt_load_address=0x70000000).
-#
-# Extract ld's default linker script and hack it to our needs.
-# First we cut everything above and below the "=====..." lines at the top
-# and bottom.
-# Then we have to replace the load address with "valt_load_address".
-# The line to replace in has one of the following two forms:
-#
-#   . = 0x08048000 + SIZEOF_HEADERS;
-#
-# or
-#   PROVIDE (__executable_start = 0x08048000); . = 0x08048000 + SIZEOF_HEADERS;
-#
-# So we search for the line with a hex value "+ SIZEOF_HEADERS", and replace
-# all the hex values in that line with "valt_load_address".
-valt_load_address_x86_linux.lds: Makefile
-	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
-		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
-	|| rm -f $@
-
-valt_load_address_amd64_linux.lds: Makefile
-	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
-		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
-	|| rm -f $@
-
-valt_load_address_ppc32_linux.lds: Makefile
-	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
-		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
-	|| rm -f $@
-
-valt_load_address_ppc64_linux.lds: Makefile
-	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
-		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/,/.\*/d' \
-		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
-	|| rm -f $@
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:

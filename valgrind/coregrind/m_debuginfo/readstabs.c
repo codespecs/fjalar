@@ -27,6 +27,9 @@
 
    The GNU General Public License is contained in the file COPYING.
 */
+
+#if defined(VGO_linux) || defined(VGO_darwin)
+
 /*
    Stabs reader greatly improved by Nick Nethercote, Apr 02.
    This module was also extensively hacked on by Jeremy Fitzhardinge
@@ -255,7 +258,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
                VG_(message)(Vg_UserMsg, 
                             "Warning: file %s is very big (> 65535 lines) "
                             "Line numbers and annotation for this file might "
-                            "be wrong.  Sorry",
+                            "be wrong.  Sorry.\n",
                             file.name);
             /* FALLTHROUGH */
 
@@ -301,7 +304,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
 
             if (line.prev > line.no + OVERFLOW_DIFFERENCE && file.same) {
                VG_(message)(Vg_DebugMsg, 
-                  "Line number overflow detected (%d --> %d) in %s", 
+                  "Line number overflow detected (%d --> %d) in %s\n", 
                   line.prev, line.no, file.name);
                line.ovf++;
             }
@@ -385,6 +388,8 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
       }
    }
 }
+
+#endif // defined(VGO_linux) || defined(VGO_darwin)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

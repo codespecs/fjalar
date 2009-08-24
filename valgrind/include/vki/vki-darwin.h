@@ -71,6 +71,7 @@
 #define vki_clock_t clock_t
 #define vki_u_int32_t u_int32_t
 #define vki_u_int16_t u_int16_t
+#define vki_pthread_t pthread_t
 
 
 // valgrind special
@@ -727,6 +728,8 @@ typedef
 #define	VKI_W_OK	W_OK
 #define	VKI_R_OK	R_OK
 
+#define vki_accessx_descriptor         accessx_descriptor
+#define VKI_ACCESSX_MAX_DESCRIPTORS    ACCESSX_MAX_DESCRIPTORS
 
 #include <sys/sysctl.h>
 
@@ -1019,5 +1022,17 @@ struct ByteRangeLockPB2
 #define	VKI_A_GETKAUDIT	A_GETKAUDIT	
 #define	VKI_A_SETKAUDIT	A_SETKAUDIT	
 
+
+#include <sys/aio.h>
+
+#define vki_aiocb aiocb
+
+
+// XXX: for some reason when I #include <sys/kernel_types.h> I get a syntax
+// error.  Hmm.  So just define things ourselves.
+//#include <sys/kernel_types.h>
+
+//#define vki_errno_t
+typedef int vki_errno_t;
 
 #endif

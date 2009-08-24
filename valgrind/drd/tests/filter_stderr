@@ -9,9 +9,12 @@ $dir/../../tests/filter_stderr_basic |
 # Remove libpthread's version number.
 # Remove line numbers from stack traces.
 sed \
--e "/^drd, a thread error detector\.$/d" \
+-e "/^drd, a thread error detector$/d" \
 -e "s/^Allocation context: stack of thread \([0-9]*\), offset -[0-9]*$/Allocation context: stack of thread \1, offset .../" \
 -e "/^warning: evaluate_Dwarf3_Expr: unhandled DW_OP_.*/d" \
+-e '/^warning: addVar:.*/d' \
+-e 's/^Allocation context: Data section of ..tsan_unittest/Allocation context: BSS section of tsan_unittest/' \
+-e '/^run: \/usr\/bin\/dsymutil.*/d' \
 -e "s/, in frame #[0-9]* of thread /, in frame #? of thread /" \
 -e "s/(tc20_verifywrap.c:261)/(tc20_verifywrap.c:262)/" \
 -e "/^Copyright (C) 2006-200., and GNU GPL'd, by Bart Van Assche.$/d" \
@@ -22,9 +25,18 @@ sed \
 -e "s/was held during [0-9][0-9]*/was held during .../" \
 -e "s: BSS section of .*/: BSS section of :g" \
 -e "s: vc \[[ ,:0-9]*\]: vc ...:g" \
+-e "s/[@\$*]* (drd_pthread_intercepts.c:/ (drd_pthread_intercepts.c:/" \
 -e "s/ (\([a-zA-Z_]*\.c\):[0-9]*)/ (\1:?)/" \
 -e "s/ (\([a-zA-Z_]*\.h\):[0-9]*)/ (\1:?)/" \
--e "s/ (\([a-zA-Z_]*\.cpp\):[0-9]*)/ (\1:?)/" |
+-e "s/ (\([a-zA-Z_]*\.cpp\):[0-9]*)/ (\1:?)/" \
+-e "/^For counts of detected and suppressed errors, rerun with: -v$/d" |
+
+# Remove the message that more than hundred errors have been detected
+# (consists of two lines) and also the empty line above it.
+awk 'BEGIN{begin=1} {if ($0 == "More than 100 errors detected.  Subsequent errors") { getline; getline; } else { if (begin) begin = 0; else print last_line; }; last_line = $0; } END { if (! begin) print last_line; }' |
+
+# Remove the message about experimental support for Darwin.
+awk 'BEGIN{begin=1} { if ($0 == "WARNING: DRD support for Darwin is still considered as experimental.") { getline; getline; } else { if (begin) begin = 0; else print last_line; }; last_line = $0; } END { if (! begin) print last_line; }' |
 
 # Anonymise addresses
 $dir/../../tests/filter_addresses

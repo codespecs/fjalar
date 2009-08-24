@@ -1,17 +1,23 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-noinst_SCRIPTS = filter_stderr
+dist_noinst_SCRIPTS = filter_stderr
 
 noinst_HEADERS = scalar.h
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
+	aio.stderr.exp aio.vgtest \
+	env.stderr.exp env.vgtest \
+	pth-supp.stderr.exp pth-supp.vgtest \
 	scalar.stderr.exp scalar.vgtest \
 	scalar_fork.stderr.exp scalar_fork.vgtest \
 	scalar_nocancel.stderr.exp scalar_nocancel.vgtest \
 	scalar_vfork.stderr.exp scalar_vfork.vgtest
 
 check_PROGRAMS = \
+	aio \
+	env \
+	pth-supp \
 	scalar \
 	scalar_fork \
 	scalar_nocancel \

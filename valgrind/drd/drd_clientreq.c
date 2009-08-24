@@ -47,7 +47,6 @@
 /* Local function declarations. */
 
 static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret);
-static Addr highest_used_stack_address(const ThreadId vg_tid);
 
 
 /* Function definitions. */
@@ -84,11 +83,11 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       if (arg[1] && ! DRD_(freelike_block)(vg_tid, arg[1]/*addr*/))
       {
          GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
-	 VG_(maybe_record_error)(vg_tid,
-				 GenericErr,
-				 VG_(get_IP)(vg_tid),
-				 "Invalid VG_USERREQ__FREELIKE_BLOCK request",
-				 &GEI);
+         VG_(maybe_record_error)(vg_tid,
+                                 GenericErr,
+                                 VG_(get_IP)(vg_tid),
+                                 "Invalid VG_USERREQ__FREELIKE_BLOCK request",
+                                 &GEI);
       }
       break;
 
@@ -137,67 +136,56 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       }
       break;
 
-   case VG_USERREQ__DRD_ANNOTATE_RWLOCK:
+   case VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE:
+      if (arg[1])
       {
          struct mutex_info* const mutex_p = DRD_(mutex_get)(arg[1]);
          if (mutex_p && mutex_p->mutex_type == mutex_type_spinlock)
             break;
       }
-      switch (arg[2])
+      DRD_(rwlock_pre_init)(arg[1], user_rwlock);
+      break;
+
+   case VG_USERREQ__DRD_ANNOTATE_RWLOCK_DESTROY:
+      if (arg[1])
       {
-      case 0:
-         DRD_(rwlock_pre_init)(arg[1], user_rwlock);
-         break;
-      case 1:
-         DRD_(rwlock_post_destroy)(arg[1], user_rwlock);
-         break;
-      case 2:
-         tl_assert(arg[3] == !! arg[3]);
-         if (arg[3])
-         {
-            DRD_(rwlock_pre_wrlock)(arg[1], user_rwlock);
-            DRD_(rwlock_post_wrlock)(arg[1], user_rwlock, True);
-         }
-         else
-         {
-            DRD_(rwlock_pre_rdlock)(arg[1], user_rwlock);
-            DRD_(rwlock_post_rdlock)(arg[1], user_rwlock, True);
-         }
-         break;
-      case 3:
-         tl_assert(arg[3] == !! arg[3]);
-         DRD_(rwlock_pre_unlock)(arg[1], user_rwlock);
-         break;
-      default:
-         tl_assert(False);
+         struct mutex_info* const mutex_p = DRD_(mutex_get)(arg[1]);
+         if (mutex_p && mutex_p->mutex_type == mutex_type_spinlock)
+            break;
+      }
+      DRD_(rwlock_post_destroy)(arg[1], user_rwlock);
+      break;
+
+   case VG_USERREQ__DRD_ANNOTATE_RWLOCK_ACQUIRED:
+      if (arg[1])
+      {
+         struct mutex_info* const mutex_p = DRD_(mutex_get)(arg[1]);
+         if (mutex_p && mutex_p->mutex_type == mutex_type_spinlock)
+            break;
+      }
+      tl_assert(arg[2] == !! arg[2]);
+      if (arg[2])
+      {
+         DRD_(rwlock_pre_wrlock)(arg[1], user_rwlock);
+         DRD_(rwlock_post_wrlock)(arg[1], user_rwlock, True);
+      }
+      else
+      {
+         DRD_(rwlock_pre_rdlock)(arg[1], user_rwlock);
+         DRD_(rwlock_post_rdlock)(arg[1], user_rwlock, True);
       }
       break;
 
-   case VG_USERREQ__DRD_SUPPRESS_CURRENT_STACK:
+   case VG_USERREQ__DRD_ANNOTATE_RWLOCK_RELEASED:
+      if (arg[1])
       {
-         const Addr topmost_sp = highest_used_stack_address(vg_tid);
-#if 0
-         UInt nframes;
-         const UInt n_ips = 20;
-         Addr ips[n_ips], sps[n_ips], fps[n_ips];
-         Char desc[128];
-         unsigned i;
-
-         nframes = VG_(get_StackTrace)(vg_tid, ips, n_ips, sps, fps, 0);
-
-         VG_(message)(Vg_DebugMsg, "thread %d/%d", vg_tid, drd_tid);
-         for (i = 0; i < nframes; i++)
-         {
-            VG_(describe_IP)(ips[i], desc, sizeof(desc));
-            VG_(message)(Vg_DebugMsg, "[%2d] sp 0x%09lx fp 0x%09lx ip %s",
-                         i, sps[i], fps[i], desc);
-         }
-#endif
-         DRD_(thread_set_stack_startup)(drd_tid, VG_(get_SP)(vg_tid));
-         DRD_(start_suppression)(topmost_sp, VG_(thread_get_stack_max)(vg_tid),
-                                 "stack top");
-         break;
+         struct mutex_info* const mutex_p = DRD_(mutex_get)(arg[1]);
+         if (mutex_p && mutex_p->mutex_type == mutex_type_spinlock)
+            break;
       }
+      tl_assert(arg[2] == !! arg[2]);
+      DRD_(rwlock_pre_unlock)(arg[1], user_rwlock);
+      break;
 
    case VG_USERREQ__DRD_START_NEW_SEGMENT:
       DRD_(thread_new_segment)(DRD_(PtThreadIdToDrdThreadId)(arg[1]));
@@ -230,18 +218,53 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
                                 (Bool)arg[2]);
       break;
 
-   case VG_USERREQ__POST_THREAD_JOIN:
-      tl_assert(arg[1]);
-      DRD_(thread_post_join)(drd_tid, DRD_(PtThreadIdToDrdThreadId)(arg[1]));
+   case VG_USERREQ__ENTERING_PTHREAD_CREATE:
+      DRD_(thread_entering_pthread_create)(drd_tid);
       break;
+
+   case VG_USERREQ__LEFT_PTHREAD_CREATE:
+      DRD_(thread_left_pthread_create)(drd_tid);
+      break;
+
+   case VG_USERREQ__POST_THREAD_JOIN:
+   {
+      const DrdThreadId thread_to_join = DRD_(PtThreadIdToDrdThreadId)(arg[1]);
+      if (thread_to_join == DRD_INVALID_THREADID)
+      {
+         InvalidThreadIdInfo ITI = { DRD_(thread_get_running_tid)(), arg[1] };
+         VG_(maybe_record_error)(vg_tid,
+                                 InvalidThreadId,
+                                 VG_(get_IP)(vg_tid),
+                                 "pthread_join(): invalid thread ID",
+                                 &ITI);
+      }
+      else
+      {
+         DRD_(thread_post_join)(drd_tid, thread_to_join);
+      }
+      break;
+   }
 
    case VG_USERREQ__PRE_THREAD_CANCEL:
-      tl_assert(arg[1]);
-      DRD_(thread_pre_cancel)(drd_tid);
+   {
+      const DrdThreadId thread_to_cancel =DRD_(PtThreadIdToDrdThreadId)(arg[1]);
+      if (thread_to_cancel == DRD_INVALID_THREADID)
+      {
+         InvalidThreadIdInfo ITI = { DRD_(thread_get_running_tid)(), arg[1] };
+         VG_(maybe_record_error)(vg_tid,
+                                 InvalidThreadId,
+                                 VG_(get_IP)(vg_tid),
+                                 "pthread_cancel(): invalid thread ID",
+                                 &ITI);
+      }
+      else
+      {
+         DRD_(thread_pre_cancel)(thread_to_cancel);
+      }
       break;
+   }
 
    case VG_USERREQ__POST_THREAD_CANCEL:
-      tl_assert(arg[1]);
       break;
 
    case VG_USERREQ__PRE_MUTEX_INIT:
@@ -366,6 +389,24 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
          DRD_(semaphore_destroy)(arg[1]);
       break;
 
+   case VG_USERREQ__PRE_SEM_OPEN:
+      DRD_(thread_enter_synchr)(drd_tid);
+      break;
+
+   case VG_USERREQ__POST_SEM_OPEN:
+      if (DRD_(thread_leave_synchr)(drd_tid) == 0)
+         DRD_(semaphore_open)(arg[1], (Char*)arg[2], arg[3], arg[4], arg[5]);
+      break;
+
+   case VG_USERREQ__PRE_SEM_CLOSE:
+      if (DRD_(thread_enter_synchr)(drd_tid) == 0)
+         DRD_(semaphore_close)(arg[1]);
+      break;
+
+   case VG_USERREQ__POST_SEM_CLOSE:
+      DRD_(thread_leave_synchr)(drd_tid);
+      break;
+
    case VG_USERREQ__PRE_SEM_WAIT:
       if (DRD_(thread_enter_synchr)(drd_tid) == 0)
          DRD_(semaphore_pre_wait)(arg[1]);
@@ -456,6 +497,21 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
          DRD_(clean_memory)(arg[1], arg[2]);
       break;
 
+   case VG_USERREQ__DRD_ANNOTATION_UNIMP:
+      {
+         /* Note: it is assumed below that the text arg[1] points to is never
+          * freed, e.g. because it points to static data.
+          */
+         UnimpClReqInfo UICR =
+            { DRD_(thread_get_running_tid)(), (Char*)arg[1] };
+         VG_(maybe_record_error)(vg_tid,
+                                 UnimpClReq,
+                                 VG_(get_IP)(vg_tid),
+                                 "",
+                                 &UICR);
+      }
+      break;
+
    default:
 #if 0
       VG_(message)(Vg_DebugMsg, "Unrecognized client request 0x%lx 0x%lx",
@@ -467,48 +523,4 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
 
    *ret = result;
    return True;
-}
-
-/**
- * Walk the stack up to the highest stack frame, and return the stack pointer
- * of the highest stack frame. It is assumed that there are no more than
- * ten stack frames above the current frame. This should be no problem
- * since this function is either called indirectly from the _init() function
- * in vgpreload_drd-*.so or from the thread wrapper for a newly created
- * thread. See also drd_pthread_intercepts.c.
- */
-static Addr highest_used_stack_address(const ThreadId vg_tid)
-{
-   UInt nframes;
-   const UInt n_ips = 10;
-   UInt i;
-   Addr ips[n_ips], sps[n_ips];
-   Addr husa;
-
-   nframes = VG_(get_StackTrace)(vg_tid, ips, n_ips, sps, 0, 0);
-   tl_assert(1 <= nframes && nframes <= n_ips);
-
-   /* A hack to work around VG_(get_StackTrace)()'s behavior that sometimes */
-   /* the topmost stackframes it returns are bogus (this occurs sometimes   */
-   /* at least on amd64, ppc32 and ppc64).                                  */
-
-   husa = sps[0];
-
-   tl_assert(VG_(thread_get_stack_max)(vg_tid)
-             - VG_(thread_get_stack_size)(vg_tid) <= husa
-             && husa < VG_(thread_get_stack_max)(vg_tid));
-
-   for (i = 1; i < nframes; i++)
-   {
-      if (sps[i] == 0)
-         break;
-      if (husa < sps[i] && sps[i] < VG_(thread_get_stack_max)(vg_tid))
-         husa = sps[i];
-   }
-
-   tl_assert(VG_(thread_get_stack_max)(vg_tid)
-             - VG_(thread_get_stack_size)(vg_tid) <= husa
-             && husa < VG_(thread_get_stack_max)(vg_tid));
-
-   return husa;
 }

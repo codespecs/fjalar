@@ -1,8 +1,3 @@
-#include "pub_core_basics.h"
-#include "pub_core_mach.h"
-
-#if defined(VGO_darwin) 
-
 /* 
  * Mach Operating System
  * Copyright (c) 1991,1990,1989 Carnegie Mellon University
@@ -31,6 +26,9 @@
 /*
  * HISTORY
  * $Log$
+ * Revision 1.2  2009-08-24 17:04:21  rudd
+ * Valgrind merge from revision 10343 to 10837.  VEX IR merge from 1900 to 1913.
+ *
  * Revision 1.1  2009-06-16 12:24:23  rudd
  * Adding a couple missing files from the above merge
  *
@@ -44,6 +42,11 @@
  * [92/01/15            rpd]
  * 
  */
+
+#if defined(VGO_darwin) 
+
+#include "pub_core_basics.h"
+#include "pub_core_mach.h"
 
 #include <mach/port.h>
 #include <mach/message.h>
@@ -106,4 +109,8 @@ mach_msg(msg, option, send_size, rcv_size, rcv_name, timeout, notify)
     return mr;
 }
 
-#endif
+#endif // defined(VGO_darwin) 
+
+/*--------------------------------------------------------------------*/
+/*--- end                                                          ---*/
+/*--------------------------------------------------------------------*/

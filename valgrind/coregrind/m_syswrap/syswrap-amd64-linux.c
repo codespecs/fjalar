@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGP_amd64_linux)
+
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
@@ -265,7 +267,8 @@ static SysRes do_clone ( ThreadId ptid,
 	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
 		     ctid, seg->start, VG_PGROUNDUP(rsp));
    } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with RSP(%#lx) unmapped\n",
+      VG_(message)(Vg_UserMsg,
+                   "!? New thread %d starts with RSP(%#lx) unmapped\n",
 		   ctid, rsp);
       ctst->client_stack_szB  = 0;
    }
@@ -438,11 +441,16 @@ PRE(sys_clone)
 
    default:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG1);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
+      VG_(message)(Vg_UserMsg,
+                   "Unsupported clone() flags: 0x%lx\n", ARG1);
+      VG_(message)(Vg_UserMsg,
+                   "\n");
+      VG_(message)(Vg_UserMsg,
+                   "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg,
+                   " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg,
+                   " - via the implementation of fork or vfork\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -1047,7 +1055,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    GENX_(__NR_mremap,            sys_mremap),         // 25 
    GENX_(__NR_msync,             sys_msync),          // 26 
-   //   (__NR_mincore,           sys_mincore),        // 27 
+   GENX_(__NR_mincore,           sys_mincore),        // 27 
    GENX_(__NR_madvise,           sys_madvise),        // 28 
    PLAX_(__NR_shmget,            sys_shmget),         // 29 
 
@@ -1357,14 +1365,14 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 283
    LINX_(__NR_eventfd,           sys_eventfd),          // 284
 
-//   LINX_(__NR_fallocate,        sys_ni_syscall),        // 285
+   LINX_(__NR_fallocate,         sys_fallocate),        // 285
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 286
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 287
    //   (__NR_paccept,           sys_ni_syscall)        // 288
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 289
 
    LINX_(__NR_eventfd2,          sys_eventfd2),         // 290
-   //   (__NR_epoll_create1,     sys_ni_syscall)        // 291
+   LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 291
    //   (__NR_dup3,              sys_ni_syscall)        // 292
    LINXY(__NR_pipe2,             sys_pipe2)             // 293
    //   (__NR_inotify_init1,     sys_ni_syscall)        // 294
@@ -1372,6 +1380,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
 const UInt ML_(syscall_table_size) = 
             sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+
+#endif // defined(VGP_amd64_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

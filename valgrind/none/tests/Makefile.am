@@ -32,13 +32,18 @@ endif
 
 DIST_SUBDIRS = x86 amd64 ppc32 ppc64 linux darwin x86-linux .
 
-noinst_SCRIPTS = \
-	filter_cmdline0 filter_linenos \
-	filter_fdleak filter_none_discards filter_stderr
+dist_noinst_SCRIPTS = \
+	filter_cmdline0 \
+	filter_cmdline1 \
+	filter_fdleak \
+	filter_linenos \
+	filter_none_discards \
+	filter_stderr \
+	filter_timestamp
 
 noinst_HEADERS = fdleak.h
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
 	ansi.stderr.exp ansi.vgtest \
 	args.stderr.exp args.stdout.exp args.vgtest \
 	async-sigs.stderr.exp async-sigs.vgtest \
@@ -52,6 +57,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	cmdline4.stderr.exp cmdline4.vgtest \
 	cmdline5.stderr.exp cmdline5.vgtest \
 	cmdline6.stderr.exp cmdline6.vgtest \
+	cmd-with-special.stderr.exp cmd-with-special.vgtest \
 	coolo_sigaction.stderr.exp \
 	coolo_sigaction.stdout.exp coolo_sigaction.vgtest \
 	coolo_strlen.stderr.exp coolo_strlen.vgtest \
@@ -125,13 +131,15 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	stackgrowth.stdout.exp stackgrowth.stderr.exp stackgrowth.vgtest \
 	syscall-restart1.vgtest syscall-restart1.stdout.exp syscall-restart1.stderr.exp \
 	syscall-restart2.vgtest syscall-restart2.stdout.exp syscall-restart2.stderr.exp \
+	syslog.vgtest syslog.stderr.exp \
 	system.stderr.exp system.vgtest \
 	thread-exits.stderr.exp thread-exits.stdout.exp thread-exits.vgtest \
 	threaded-fork.stderr.exp threaded-fork.stdout.exp threaded-fork.vgtest \
 	threadederrno.stderr.exp threadederrno.stdout.exp \
 	threadederrno.vgtest \
+	timestamp.stderr.exp timestamp.vgtest \
 	tls.vgtest tls.stderr.exp tls.stdout.exp  \
-	vgprintf.stderr.exp vgprintf.stdout.exp vgprintf.vgtest
+	vgprintf.stderr.exp vgprintf.vgtest
 
 check_PROGRAMS = \
 	ansi args \
@@ -153,10 +161,18 @@ check_PROGRAMS = \
 	rcrl readline1 res_search resolv \
 	rlimit_nofile selfrun sem semlimit sha1_test \
 	shortpush shorts stackgrowth sigstackgrowth \
-	syscall-restart1 syscall-restart2 system \
-	threaded-fork threadederrno \
-	tls tls.so tls2.so vgprintf \
-	coolo_sigaction gxx304
+	syscall-restart1 syscall-restart2 \
+	syslog \
+	system \
+	threaded-fork \
+	threadederrno \
+	timestamp \
+	tls \
+	tls.so \
+	tls2.so \
+	vgprintf \
+	coolo_sigaction \
+	gxx304
 
 # DDD:
 # - manythreads and thread-exits have lots of this:

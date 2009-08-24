@@ -68,20 +68,20 @@ void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
    if (serious) {
 
       VG_(message)(Vg_DebugMsg, "WARNING: Serious error when "
-                                "reading debug info");
+                                "reading debug info\n");
       if (True || VG_(clo_verbosity) < 2) {
          /* Need to show what the file name is, at verbosity levels 2
             or below, since that won't already have been shown */
          VG_(message)(Vg_DebugMsg, 
-                      "When reading debug info from %s:",
+                      "When reading debug info from %s:\n",
                       (di && di->filename) ? di->filename : (UChar*)"???");
       }
-      VG_(message)(Vg_DebugMsg, "%s", msg);
+      VG_(message)(Vg_DebugMsg, "%s\n", msg);
 
    } else { /* !serious */
 
       if (VG_(clo_verbosity) >= 2)
-         VG_(message)(Vg_DebugMsg, "%s", msg);
+         VG_(message)(Vg_DebugMsg, "%s\n", msg);
 
    }
 }
@@ -90,11 +90,11 @@ void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
 /* Print a symbol. */
 void ML_(ppSym) ( Int idx, DiSym* sym )
 {
-  VG_(printf)( "%5d:  %#8lx .. %#8lx (%d)      %s\n",
-               idx,
-               sym->addr, 
-               sym->addr + sym->size - 1, sym->size,
-	       sym->name );
+   VG_(printf)( "%5d:  %#8lx .. %#8lx (%d)      %s\n",
+                idx,
+                sym->addr, 
+                sym->addr + sym->size - 1, sym->size,
+	        sym->name );
 }
 
 /* Print a call-frame-info summary. */
@@ -329,7 +329,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
        if (VG_(clo_verbosity) > 2) {
            VG_(message)(Vg_DebugMsg, 
                         "warning: line info addresses out of order "
-                        "at entry %d: 0x%lx 0x%lx", entry, this, next);
+                        "at entry %d: 0x%lx 0x%lx\n", entry, this, next);
        }
        size = 1;
    }
@@ -338,7 +338,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
        if (0)
        VG_(message)(Vg_DebugMsg, 
                     "warning: line info address range too large "
-                    "at entry %d: %d", entry, size);
+                    "at entry %d: %d\n", entry, size);
        size = 1;
    }
 
@@ -351,7 +351,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
        if (0)
           VG_(message)(Vg_DebugMsg, 
                        "warning: ignoring line info entry falling "
-                       "outside current DebugInfo: %#lx %#lx %#lx %#lx",
+                       "outside current DebugInfo: %#lx %#lx %#lx %#lx\n",
                        di->text_avma, 
                        di->text_avma + di->text_size, 
                        this, next-1);
@@ -365,12 +365,12 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
          complained = True;
          VG_(message)(Vg_UserMsg, 
                       "warning: ignoring line info entry with "
-                      "huge line number (%d)", lineno);
+                      "huge line number (%d)\n", lineno);
          VG_(message)(Vg_UserMsg, 
                       "         Can't handle line numbers "
-                      "greater than %d, sorry", MAX_LINENO);
+                      "greater than %d, sorry\n", MAX_LINENO);
          VG_(message)(Vg_UserMsg, 
-                      "(Nb: this message is only shown once)");
+                      "(Nb: this message is only shown once)\n");
       }
       return;
    }
@@ -382,7 +382,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    loc.dirname   = dirname;
 
    if (0) VG_(message)(Vg_DebugMsg, 
-		       "addLoc: addr %#lx, size %d, line %d, file %s",
+		       "addLoc: addr %#lx, size %d, line %d, file %s\n",
 		       this,size,lineno,filename);
 
    addLoc ( di, &loc );
@@ -433,7 +433,7 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi_orig )
          if (VG_(clo_verbosity) > 1) {
             VG_(message)(
                Vg_DebugMsg,
-               "warning: DiCfSI %#lx .. %#lx outside segment %#lx .. %#lx",
+               "warning: DiCfSI %#lx .. %#lx outside segment %#lx .. %#lx\n",
                cfsi.base, 
                cfsi.base + cfsi.len - 1,
                di->text_avma,
@@ -871,7 +871,7 @@ void ML_(addVar)( struct _DebugInfo* di,
       if (VG_(clo_verbosity) >= 0) {
          VG_(message)(Vg_DebugMsg, 
             "warning: addVar: in range %#lx .. %#lx outside "
-            "segment %#lx .. %#lx (%s)",
+            "segment %#lx .. %#lx (%s)\n",
             aMin, aMax,
             di->text_avma, di->text_avma + di->text_size -1,
             name
@@ -898,7 +898,7 @@ void ML_(addVar)( struct _DebugInfo* di,
    if (badness) {
       static Int complaints = 10;
       if (VG_(clo_verbosity) >= 2 && complaints > 0) {
-         VG_(message)(Vg_DebugMsg, "warning: addVar: %s (%s)",
+         VG_(message)(Vg_DebugMsg, "warning: addVar: %s (%s)\n",
                                    badness, name );
          complaints--;
       }
@@ -1212,7 +1212,9 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
 static void canonicaliseSymtab ( struct _DebugInfo* di )
 {
    Word  i, j, n_merged, n_truncated;
-   Addr  s1, s2, e1, e2;
+   Addr  s1, s2, e1, e2, p1, p2;
+   UChar *n1, *n2;
+   Bool t1, t2;
 
 #  define SWAP(ty,aa,bb) \
       do { ty tt = (aa); (aa) = (bb); (bb) = tt; } while (0)
@@ -1272,15 +1274,22 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
 
       /* Truncate one or the other. */
       s1 = di->symtab[i].addr;
-      s2 = di->symtab[i+1].addr;
       e1 = s1 + di->symtab[i].size - 1;
+      p1 = di->symtab[i].tocptr;
+      n1 = di->symtab[i].name;
+      t1 = di->symtab[i].isText;
+      s2 = di->symtab[i+1].addr;
       e2 = s2 + di->symtab[i+1].size - 1;
+      p2 = di->symtab[i+1].tocptr;
+      n2 = di->symtab[i+1].name;
+      t2 = di->symtab[i+1].isText;
       if (s1 < s2) {
          e1 = s2-1;
       } else {
          vg_assert(s1 == s2);
          if (e1 > e2) { 
-            s1 = e2+1; SWAP(Addr,s1,s2); SWAP(Addr,e1,e2); 
+            s1 = e2+1; SWAP(Addr,s1,s2); SWAP(Addr,e1,e2); SWAP(Addr,p1,p2);
+                       SWAP(UChar *,n1,n2); SWAP(Bool,t1,t2);
          } else 
          if (e1 < e2) {
             s2 = e1+1;
@@ -1290,9 +1299,15 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
 	 }
       }
       di->symtab[i].addr   = s1;
-      di->symtab[i+1].addr = s2;
       di->symtab[i].size   = e1 - s1 + 1;
-      di->symtab[i+1].size = e2 - s2 + 1;
+      di->symtab[i].tocptr = p1;
+      di->symtab[i].name   = n1;
+      di->symtab[i].isText = t1;
+      di->symtab[i+1].addr   = s2;
+      di->symtab[i+1].size   = e2 - s2 + 1;
+      di->symtab[i+1].tocptr = p2;
+      di->symtab[i+1].name   = n2;
+      di->symtab[i+1].isText = t2;
       vg_assert(s1 <= s2);
       vg_assert(di->symtab[i].size > 0);
       vg_assert(di->symtab[i+1].size > 0);

@@ -3,309 +3,68 @@
           "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd">
 
 
-<chapter id="mc-manual" xreflabel="Memcheck: a heavyweight memory checker">
-<title>Memcheck: a heavyweight memory checker</title>
+<chapter id="mc-manual" xreflabel="Memcheck: a memory error detector">
+<title>Memcheck: a memory error detector</title>
 
 <para>To use this tool, you may specify <option>--tool=memcheck</option>
 on the Valgrind command line.  You don't have to, though, since Memcheck
 is the default tool.</para>
 
 
-<sect1 id="mc-manual.bugs" 
-       xreflabel="Kinds of bugs that Memcheck can find">
-<title>Kinds of bugs that Memcheck can find</title>
+<sect1 id="mc-manual.overview" xreflabel="Overview">
+<title>Overview</title>
 
-<para>Memcheck is Valgrind's heavyweight memory checking tool.  All
-reads and writes of memory are checked, and calls to
-malloc/new/free/delete are intercepted. As a result, Memcheck can detect
-the following problems:</para>
+<para>Memcheck is a memory error detector.  It can detect the following
+problems that are common in C and C++ programs.</para>
 
 <itemizedlist>
   <listitem>
-    <para>Use of uninitialised memory</para>
+    <para>Accessing memory you shouldn't, e.g. overrunning and underrunning
+    heap blocks, overrunning the top of the stack, and accessing memory after
+    it has been freed.</para>
   </listitem>
+
   <listitem>
-    <para>Reading/writing memory after it has been free'd</para>
+    <para>Using undefined values, i.e. values that have not been initialised,
+    or that have been derived from other undefined values.</para>
   </listitem>
+
   <listitem>
-    <para>Reading/writing off the end of malloc'd blocks</para>
+    <para>Incorrect freeing of heap memory, such as double-freeing heap
+    blocks, or mismatched use of
+    <function>malloc</function>/<computeroutput>new</computeroutput>/<computeroutput>new[]</computeroutput>
+    versus
+    <function>free</function>/<computeroutput>delete</computeroutput>/<computeroutput>delete[]</computeroutput></para>
   </listitem>
-  <listitem>
-    <para>Reading/writing inappropriate areas on the stack</para>
-  </listitem>
-  <listitem>
-    <para>Memory leaks - where pointers to malloc'd blocks are
-   lost forever</para>
-  </listitem>
-  <listitem>
-    <para>Mismatched use of malloc/new/new [] vs
-    free/delete/delete []</para>
-  </listitem>
+
   <listitem>
     <para>Overlapping <computeroutput>src</computeroutput> and
     <computeroutput>dst</computeroutput> pointers in
-    <function>memcpy()</function> and related
-    functions</para>
+    <computeroutput>memcpy</computeroutput> and related
+    functions.</para>
+  </listitem>
+
+  <listitem>
+    <para>Memory leaks.</para>
   </listitem>
 </itemizedlist>
 
-</sect1>
-
-
-
-<sect1 id="mc-manual.flags" 
-       xreflabel="Command-line flags specific to Memcheck">
-<title>Command-line flags specific to Memcheck</title>
-
-<!-- start of xi:include in the manpage -->
-<variablelist id="mc.opts.list">
-
-  <varlistentry id="opt.undef-value-errors" xreflabel="--undef-value-errors">
-    <term>
-      <option><![CDATA[--undef-value-errors=<yes|no> [default: yes] ]]></option>
-    </term>
-    <listitem>
-      <para>Controls whether Memcheck reports
-      uses of undefined value errors.  Set this to
-      <varname>no</varname> if you don't want to see undefined value
-      errors.  It also has the side effect of speeding up
-      memcheck somewhat.
-      </para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.track-origins" xreflabel="--track-origins">
-    <term>
-      <option><![CDATA[--track-origins=<yes|no> [default: no] ]]></option>
-    </term>
-      <listitem>
-        <para>Controls whether Memcheck tracks
-        the origin of uninitialised values.  By default, it does not,
-        which means that although it can tell you that an
-        uninitialised value is being used in a dangerous way, it
-        cannot tell you where the uninitialised value came from.  This
-        often makes it difficult to track down the root problem.
-        </para>
-        <para>When set
-        to <varname>yes</varname>, Memcheck keeps
-        track of the origins of all uninitialised values.  Then, when
-        an uninitialised value error is
-        reported, Memcheck will try to show the
-        origin of the value.  An origin can be one of the following
-        four places: a heap block, a stack allocation, a client
-        request, or miscellaneous other sources (eg, a call
-        to <varname>brk</varname>).
-        </para>
-        <para>For uninitialised values originating from a heap
-        block, Memcheck shows where the block was
-        allocated.  For uninitialised values originating from a stack
-        allocation, Memcheck can tell you which
-        function allocated the value, but no more than that -- typically
-        it shows you the source location of the opening brace of the
-        function.  So you should carefully check that all of the
-        function's local variables are initialised properly.
-        </para>
-        <para>Performance overhead: origin tracking is expensive.  It
-        halves Memcheck's speed and increases
-        memory use by a minimum of 100MB, and possibly more.
-        Nevertheless it can drastically reduce the effort required to
-        identify the root cause of uninitialised value errors, and so
-        is often a programmer productivity win, despite running
-        more slowly.
-        </para>
-        <para>Accuracy: Memcheck tracks origins
-        quite accurately.  To avoid very large space and time
-        overheads, some approximations are made.  It is possible,
-        although unlikely, that Memcheck will report an incorrect origin, or
-        not be able to identify any origin.
-        </para>
-        <para>Note that the combination
-        <option>--track-origins=yes</option>
-        and <option>--undef-value-errors=no</option> is
-        nonsensical.  Memcheck checks for and
-        rejects this combination at startup.
-        </para>
-        <para>Origin tracking is a new feature, introduced in Valgrind
-        version 3.4.0.
-        </para>
-      </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.leak-check" xreflabel="--leak-check">
-    <term>
-      <option><![CDATA[--leak-check=<no|summary|yes|full> [default: summary] ]]></option>
-    </term>
-    <listitem>
-      <para>When enabled, search for memory leaks when the client
-      program finishes.  If set to <varname>summary</varname>, it says how
-      many leaks occurred.  If set to <varname>full</varname> or
-      <varname>yes</varname>, it also gives details of each individual
-      leak.</para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.show-reachable" xreflabel="--show-reachable">
-    <term>
-      <option><![CDATA[--show-reachable=<yes|no> [default: no] ]]></option>
-    </term>
-    <listitem>
-      <para>When disabled, the memory leak detector only shows "definitely
-      lost" and "possibly lost" blocks.  When enabled, the leak detector also
-      shows "reachable" and "indirectly lost" blocks.  (In other words, it
-      shows all blocks, except suppressed ones, so
-      <computeroutput>--show-all</computeroutput> would be a better name for
-      it.)</para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.leak-resolution" xreflabel="--leak-resolution">
-    <term>
-      <option><![CDATA[--leak-resolution=<low|med|high> [default: low] ]]></option>
-    </term>
-    <listitem>
-      <para>When doing leak checking, determines how willing
-      Memcheck is to consider different backtraces to
-      be the same.  When set to <varname>low</varname>, only the first
-      two entries need match.  When <varname>med</varname>, four entries
-      have to match.  When <varname>high</varname>, all entries need to
-      match.</para>
-
-      <para>For hardcore leak debugging, you probably want to use
-      <option>--leak-resolution=high</option> together with
-      <option>--num-callers=40</option> or some such large number.  Note
-      however that this can give an overwhelming amount of information,
-      which is why the defaults give less information.
-      </para>
-
-      <para>Note that the <option>--leak-resolution=</option> setting
-      does not affect Memcheck's ability to find
-      leaks.  It only changes how the results are presented.</para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.freelist-vol" xreflabel="--freelist-vol">
-    <term>
-      <option><![CDATA[--freelist-vol=<number> [default: 10000000] ]]></option>
-    </term>
-    <listitem>
-      <para>When the client program releases memory using
-      <function>free</function> (in <literal>C</literal>) or delete
-      (<literal>C++</literal>), that memory is not immediately made
-      available for re-allocation.  Instead, it is marked inaccessible
-      and placed in a queue of freed blocks.  The purpose is to defer as
-      long as possible the point at which freed-up memory comes back
-      into circulation.  This increases the chance that
-      Memcheck will be able to detect invalid
-      accesses to blocks for some significant period of time after they
-      have been freed.</para>
-
-      <para>This flag specifies the maximum total size, in bytes, of the
-      blocks in the queue.  The default value is ten million bytes.
-      Increasing this increases the total amount of memory used by
-      Memcheck but may detect invalid uses of freed
-      blocks which would otherwise go undetected.</para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.workaround-gcc296-bugs" xreflabel="--workaround-gcc296-bugs">
-    <term>
-      <option><![CDATA[--workaround-gcc296-bugs=<yes|no> [default: no] ]]></option>
-    </term>
-    <listitem>
-      <para>When enabled, assume that reads and writes some small
-      distance below the stack pointer are due to bugs in gcc 2.96, and
-      does not report them.  The "small distance" is 256 bytes by
-      default.  Note that gcc 2.96 is the default compiler on some ancient
-      Linux distributions (RedHat 7.X) and so you may need to use this
-      flag.  Do not use it if you do not have to, as it can cause real
-      errors to be overlooked.  A better alternative is to use a more
-      recent gcc/g++ in which this bug is fixed.</para>
-
-      <para>You may also need to use this flag when working with
-      gcc/g++ 3.X or 4.X on 32-bit PowerPC Linux.  This is because
-      gcc/g++ generates code which occasionally accesses below the
-      stack pointer, particularly for floating-point to/from integer
-      conversions.  This is in violation of the 32-bit PowerPC ELF
-      specification, which makes no provision for locations below the
-      stack pointer to be accessible.</para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.partial-loads-ok" xreflabel="--partial-loads-ok">
-    <term>
-      <option><![CDATA[--partial-loads-ok=<yes|no> [default: no] ]]></option>
-    </term>
-    <listitem>
-      <para>Controls how Memcheck handles word-sized,
-      word-aligned loads from addresses for which some bytes are
-      addressable and others are not.  When <varname>yes</varname>, such
-      loads do not produce an address error.  Instead, loaded bytes
-      originating from illegal addresses are marked as uninitialised, and
-      those corresponding to legal addresses are handled in the normal
-      way.</para>
-
-      <para>When <varname>no</varname>, loads from partially invalid
-      addresses are treated the same as loads from completely invalid
-      addresses: an illegal-address error is issued, and the resulting
-      bytes are marked as initialised.</para>
-
-      <para>Note that code that behaves in this way is in violation of
-      the the ISO C/C++ standards, and should be considered broken.  If
-      at all possible, such code should be fixed.  This flag should be
-      used only as a last resort.</para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.malloc-fill" xreflabel="--malloc-fill">
-    <term>
-      <option><![CDATA[--malloc-fill=<hexnumber> ]]></option>
-    </term>
-    <listitem>
-      <para>Fills blocks allocated
-      by <computeroutput>malloc</computeroutput>,
-         <computeroutput>new</computeroutput>, etc, but not
-      by <computeroutput>calloc</computeroutput>, with the specified
-      byte.  This can be useful when trying to shake out obscure
-      memory corruption problems.  The allocated area is still
-      regarded by Memcheck as undefined -- this flag only affects its
-      contents.
-      </para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.free-fill" xreflabel="--free-fill">
-    <term>
-      <option><![CDATA[--free-fill=<hexnumber> ]]></option>
-    </term>
-    <listitem>
-      <para>Fills blocks freed
-      by <computeroutput>free</computeroutput>,
-         <computeroutput>delete</computeroutput>, etc, with the
-      specified byte.  This can be useful when trying to shake out
-      obscure memory corruption problems.  The freed area is still
-      regarded by Memcheck as not valid for access -- this flag only
-      affects its contents.
-      </para>
-    </listitem>
-  </varlistentry>
-
-</variablelist>
-<!-- end of xi:include in the manpage -->
+<para>Problems like these can be difficult to find by other means,
+often remaining undetected for long periods, then causing occasional,
+difficult-to-diagnose crashes.</para>
 
 </sect1>
+
 
 
 <sect1 id="mc-manual.errormsgs"
        xreflabel="Explanation of error messages from Memcheck">
 <title>Explanation of error messages from Memcheck</title>
 
-<para>Despite considerable sophistication under the hood, Memcheck can
-only really detect two kinds of errors: use of illegal addresses, and
-use of undefined values.  Nevertheless, this is enough to help you
-discover all sorts of memory-management problems in your code.  This
-section presents a quick summary of what error messages mean.  The
-precise behaviour of the error-checking machinery is described in 
-<xref linkend="mc-manual.machine"/>.</para>
+<para>Memcheck issues a range of error messages.  This section presents a
+quick summary of what error messages mean.  The precise behaviour of the
+error-checking machinery is described in <xref
+linkend="mc-manual.machine"/>.</para>
 
 
 <sect2 id="mc-manual.badrw" 
@@ -332,16 +91,18 @@ and so on.</para>
 <para>Memcheck tries to establish what the illegal address might relate
 to, since that's often useful.  So, if it points into a block of memory
 which has already been freed, you'll be informed of this, and also where
-the block was free'd at.  Likewise, if it should turn out to be just off
-the end of a malloc'd block, a common result of off-by-one-errors in
+the block was freed.  Likewise, if it should turn out to be just off
+the end of a heap block, a common result of off-by-one-errors in
 array subscripting, you'll be informed of this fact, and also where the
-block was malloc'd.</para>
+block was allocated.  If you use the <option><xref
+linkend="opt.read-var-info"/></option> option Memcheck will run more slowly
+but may give a more detailed description of any illegal address.</para>
 
 <para>In this example, Memcheck can't identify the address.  Actually
 the address is on the stack, but, for some reason, this is not a valid
 stack address -- it is below the stack pointer and that isn't allowed.
-In this particular case it's probably caused by gcc generating invalid
-code, a known bug in some ancient versions of gcc.</para>
+In this particular case it's probably caused by GCC generating invalid
+code, a known bug in some ancient versions of GCC.</para>
 
 <para>Note that Memcheck only tells you that your program is about to
 access memory at an illegal address.  It can't stop the access from
@@ -370,8 +131,8 @@ Conditional jump or move depends on uninitialised value(s)
 <para>An uninitialised-value use error is reported when your program
 uses a value which hasn't been initialised -- in other words, is
 undefined.  Here, the undefined value is used somewhere inside the
-printf() machinery of the C library.  This error was reported when
-running the following small program:</para>
+<function>printf</function> machinery of the C library.  This error was
+reported when running the following small program:</para>
 <programlisting><![CDATA[
 int main()
 {
@@ -383,13 +144,13 @@ int main()
 junk (uninitialised) data as much as it likes.  Memcheck observes this
 and keeps track of the data, but does not complain.  A complaint is
 issued only when your program attempts to make use of uninitialised
-data.  In this example, x is uninitialised.  Memcheck observes the value
-being passed to <literal>_IO_printf</literal> and thence to
-<literal>_IO_vfprintf</literal>, but makes no comment.  However,
-<literal>_IO_vfprintf</literal> has to examine the value of 
-x so it can turn it into the
-corresponding ASCII string, and it is at this point that Memcheck
-complains.</para>
+data in a way that might affect your program's externally-visible behaviour.
+In this example, <varname>x</varname> is uninitialised.  Memcheck observes
+the value being passed to <function>_IO_printf</function> and thence to
+<function>_IO_vfprintf</function>, but makes no comment.  However,
+<function>_IO_vfprintf</function> has to examine the value of
+<varname>x</varname> so it can turn it into the corresponding ASCII string,
+and it is at this point that Memcheck complains.</para>
 
 <para>Sources of uninitialised data tend to be:</para>
 <itemizedlist>
@@ -398,20 +159,88 @@ complains.</para>
     as in the example above.</para>
   </listitem>
   <listitem>
-    <para>The contents of malloc'd blocks, before you write something
-    there.  In C++, the new operator is a wrapper round malloc, so if
-    you create an object with new, its fields will be uninitialised
-    until you (or the constructor) fill them in.</para>
+    <para>The contents of heap blocks (allocated with
+    <function>malloc</function>, <function>new</function>, or a similar
+    function) before you (or a constructor) write something there.
+    </para>
   </listitem>
 </itemizedlist>
 
 <para>To see information on the sources of uninitialised data in your
-program, use the <option>--track-origins=yes</option> flag.  This
+program, use the <option>--track-origins=yes</option> option.  This
 makes Memcheck run more slowly, but can make it much easier to track down
 the root causes of uninitialised value errors.</para>
 
 </sect2>
 
+
+
+<sect2 id="mc-manual.bad-syscall-args" 
+       xreflabel="Use of uninitialised or unaddressable values in system
+       calls">
+<title>Use of uninitialised or unaddressable values in system
+       calls</title>
+
+<para>Memcheck checks all parameters to system calls:
+<itemizedlist>
+  <listitem>
+    <para>It checks all the direct parameters themselves, whether they are
+    initialised.</para>
+  </listitem> 
+  <listitem>
+    <para>Also, if a system call needs to read from a buffer provided by
+    your program, Memcheck checks that the entire buffer is addressable
+    and its contents are initialised.</para>
+  </listitem>
+  <listitem>
+    <para>Also, if the system call needs to write to a user-supplied
+    buffer, Memcheck checks that the buffer is addressable.</para>
+  </listitem>
+</itemizedlist>
+</para>
+
+<para>After the system call, Memcheck updates its tracked information to
+precisely reflect any changes in memory state caused by the system
+call.</para>
+
+<para>Here's an example of two system calls with invalid parameters:</para>
+<programlisting><![CDATA[
+  #include <stdlib.h>
+  #include <unistd.h>
+  int main( void )
+  {
+    char* arr  = malloc(10);
+    int*  arr2 = malloc(sizeof(int));
+    write( 1 /* stdout */, arr, 10 );
+    exit(arr2[0]);
+  }
+]]></programlisting>
+
+<para>You get these complaints ...</para>
+<programlisting><![CDATA[
+  Syscall param write(buf) points to uninitialised byte(s)
+     at 0x25A48723: __write_nocancel (in /lib/tls/libc-2.3.3.so)
+     by 0x259AFAD3: __libc_start_main (in /lib/tls/libc-2.3.3.so)
+     by 0x8048348: (within /auto/homes/njn25/grind/head4/a.out)
+   Address 0x25AB8028 is 0 bytes inside a block of size 10 alloc'd
+     at 0x259852B0: malloc (vg_replace_malloc.c:130)
+     by 0x80483F1: main (a.c:5)
+
+  Syscall param exit(error_code) contains uninitialised byte(s)
+     at 0x25A21B44: __GI__exit (in /lib/tls/libc-2.3.3.so)
+     by 0x8048426: main (a.c:8)
+]]></programlisting>
+
+<para>... because the program has (a) written uninitialised junk
+from the heap block to the standard output, and (b) passed an
+uninitialised value to <function>exit</function>.  Note that the first
+error refers to the memory pointed to by
+<computeroutput>buf</computeroutput> (not
+<computeroutput>buf</computeroutput> itself), but the second error
+refers directly to <computeroutput>exit</computeroutput>'s argument
+<computeroutput>arr2[0]</computeroutput>.</para>
+
+</sect2>
 
 
 <sect2 id="mc-manual.badfrees" xreflabel="Illegal frees">
@@ -427,21 +256,25 @@ Invalid free()
    by 0x80484C7: main (tests/doublefree.c:10)
 ]]></programlisting>
 
-<para>Memcheck keeps track of the blocks allocated by your program with
-malloc/new, so it can know exactly whether or not the argument to
-free/delete is legitimate or not.  Here, this test program has freed the
-same block twice.  As with the illegal read/write errors, Memcheck
-attempts to make sense of the address free'd.  If, as here, the address
-is one which has previously been freed, you wil be told that -- making
-duplicate frees of the same block easy to spot.</para>
+<para>Memcheck keeps track of the blocks allocated by your program
+with <function>malloc</function>/<computeroutput>new</computeroutput>,
+so it can know exactly whether or not the argument to
+<function>free</function>/<computeroutput>delete</computeroutput> is
+legitimate or not.  Here, this test program has freed the same block
+twice.  As with the illegal read/write errors, Memcheck attempts to
+make sense of the address freed.  If, as here, the address is one
+which has previously been freed, you wil be told that -- making
+duplicate frees of the same block easy to spot.  You will also get this
+message if you try to free a pointer that doesn't point to the start of a
+heap block.</para>
 
 </sect2>
 
 
 <sect2 id="mc-manual.rudefn" 
-       xreflabel="When a block is freed with an inappropriate deallocation
+       xreflabel="When a heap block is freed with an inappropriate deallocation
 function">
-<title>When a block is freed with an inappropriate deallocation
+<title>When a heap block is freed with an inappropriate deallocation
 function</title>
 
 <para>In the following example, a block allocated with
@@ -473,12 +306,12 @@ way compatible with how it was allocated.  The deal is:</para>
     deallocate with <function>free</function>.</para>
   </listitem>
   <listitem>
-    <para>If allocated with <function>new[]</function>, you must
-    deallocate with <function>delete[]</function>.</para>
-  </listitem>
-  <listitem>
    <para>If allocated with <function>new</function>, you must deallocate
    with <function>delete</function>.</para>
+  </listitem>
+  <listitem>
+    <para>If allocated with <function>new[]</function>, you must
+    deallocate with <function>delete[]</function>.</para>
   </listitem>
 </itemizedlist>
 
@@ -493,78 +326,11 @@ implementations, <function>delete[]</function> must be used for
 objects allocated by <function>new[]</function> because the compiler
 stores the size of the array and the pointer-to-member to the
 destructor of the array's content just before the pointer actually
-returned.  This implies a variable-sized overhead in what's returned
-by <function>new</function> or <function>new[]</function>.</para>
+returned.  <function>delete</function> doesn't account for this and will get
+confused, possibly corrupting the heap.</para>
 
 </sect2>
 
-
-
-<sect2 id="mc-manual.badperm" 
-       xreflabel="Passing system call parameters with 
-       inadequate read/write permissions">
-<title>Passing system call parameters with inadequate read/write
-permissions</title>
-
-<para>Memcheck checks all parameters to system calls:
-<itemizedlist>
-  <listitem>
-    <para>It checks all the direct parameters themselves.</para>
-  </listitem> 
-  <listitem>
-    <para>Also, if a system call needs to read from a buffer provided by
-    your program, Memcheck checks that the entire buffer is addressable
-    and has valid data, ie, it is readable.</para>
-  </listitem>
-  <listitem>
-    <para>Also, if the system call needs to write to a user-supplied
-    buffer, Memcheck checks that the buffer is addressable.</para>
-  </listitem>
-</itemizedlist>
-</para>
-
-<para>After the system call, Memcheck updates its tracked information to
-precisely reflect any changes in memory permissions caused by the system
-call.</para>
-
-<para>Here's an example of two system calls with invalid parameters:</para>
-<programlisting><![CDATA[
-  #include <stdlib.h>
-  #include <unistd.h>
-  int main( void )
-  {
-    char* arr  = malloc(10);
-    int*  arr2 = malloc(sizeof(int));
-    write( 1 /* stdout */, arr, 10 );
-    exit(arr2[0]);
-  }
-]]></programlisting>
-
-<para>You get these complaints ...</para>
-<programlisting><![CDATA[
-  Syscall param write(buf) points to uninitialised byte(s)
-     at 0x25A48723: __write_nocancel (in /lib/tls/libc-2.3.3.so)
-     by 0x259AFAD3: __libc_start_main (in /lib/tls/libc-2.3.3.so)
-     by 0x8048348: (within /auto/homes/njn25/grind/head4/a.out)
-   Address 0x25AB8028 is 0 bytes inside a block of size 10 alloc'd
-     at 0x259852B0: malloc (vg_replace_malloc.c:130)
-     by 0x80483F1: main (a.c:5)
-
-  Syscall param exit(error_code) contains uninitialised byte(s)
-     at 0x25A21B44: __GI__exit (in /lib/tls/libc-2.3.3.so)
-     by 0x8048426: main (a.c:8)
-]]></programlisting>
-
-<para>... because the program has (a) tried to write uninitialised junk
-from the malloc'd block to the standard output, and (b) passed an
-uninitialised value to <function>exit</function>.  Note that the first
-error refers to the memory pointed to by
-<computeroutput>buf</computeroutput> (not
-<computeroutput>buf</computeroutput> itself), but the second error
-refers directly to <computeroutput>exit</computeroutput>'s argument
-<computeroutput>arr2[0]</computeroutput>.</para>
-
-</sect2>
 
 
 <sect2 id="mc-manual.overlap" 
@@ -573,14 +339,17 @@ refers directly to <computeroutput>exit</computeroutput>'s argument
 
 <para>The following C library functions copy some data from one
 memory block to another (or something similar):
-<function>memcpy()</function>,
-<function>strcpy()</function>,
-<function>strncpy()</function>,
-<function>strcat()</function>,
-<function>strncat()</function>. 
+<function>memcpy</function>,
+<function>strcpy</function>,
+<function>strncpy</function>,
+<function>strcat</function>,
+<function>strncat</function>. 
 The blocks pointed to by their <computeroutput>src</computeroutput> and
 <computeroutput>dst</computeroutput> pointers aren't allowed to overlap.
-Memcheck checks for this.</para>
+The POSIX standards have wording along the lines "If copying takes place
+between objects that overlap, the behavior is undefined." Therefore,
+Memcheck checks for this.
+</para>
 
 <para>For example:</para>
 <programlisting><![CDATA[
@@ -595,17 +364,12 @@ get partially overwritten by the copying.</para>
 <para>You might think that Memcheck is being overly pedantic reporting
 this in the case where <computeroutput>dst</computeroutput> is less than
 <computeroutput>src</computeroutput>.  For example, the obvious way to
-implement <function>memcpy()</function> is by copying from the first
+implement <function>memcpy</function> is by copying from the first
 byte to the last.  However, the optimisation guides of some
 architectures recommend copying from the last byte down to the first.
-Also, some implementations of <function>memcpy()</function> zero
+Also, some implementations of <function>memcpy</function> zero
 <computeroutput>dst</computeroutput> before copying, because zeroing the
 destination's cache line(s) can improve performance.</para>
-
-<para>In addition, for many of these functions, the POSIX standards
-have wording along the lines "If copying takes place between objects
-that overlap, the behavior is undefined."  Hence overlapping copies
-violate the standard.</para>
 
 <para>The moral of the story is: if you want to write truly portable
 code, don't make any assumptions about the language
@@ -617,9 +381,10 @@ implementation.</para>
 <sect2 id="mc-manual.leaks" xreflabel="Memory leak detection">
 <title>Memory leak detection</title>
 
-<para>Memcheck keeps track of all memory blocks issued in response to
-calls to malloc/calloc/realloc/new.  So when the program exits, it knows
-which blocks have not been freed.
+<para>Memcheck keeps track of all heap blocks issued in response to
+calls to
+<function>malloc</function>/<function>new</function> et al.
+So when the program exits, it knows which blocks have not been freed.
 </para>
 
 <para>If <option>--leak-check</option> is set appropriately, for each
@@ -629,12 +394,31 @@ of all threads, and (b) initialised, aligned, pointer-sized data words in
 accessible client memory, including stacks.</para>
 
 <para>There are two ways a block can be reached.  The first is with a
-"start-pointer", i.e. a pointer to the start of the block.  The second is
-with an "interior-pointer", i.e. a pointer to the middle of the block.  The
-pointer might have originally been a start-pointer and have been moved
-along, or it might be entirely unrelated, just a coincidence.  It's unclear
-whether such a pointer should be considered as genuinely pointing to the
-block.</para>
+"start-pointer", i.e. a pointer to the start of the block.  The second is with
+an "interior-pointer", i.e. a pointer to the middle of the block.  There are
+three ways we know of that an interior-pointer can occur:</para>
+
+<itemizedlist>
+  <listitem>
+    <para>The pointer might have originally been a start-pointer and have been
+    moved along deliberately (or not deliberately) by the program.</para>
+  </listitem>
+    
+  <listitem>
+    <para>It might be a random junk value in memory, entirely unrelated, just
+    a coincidence.</para>
+  </listitem>
+    
+  <listitem>
+    <para>It might be a pointer to an array of C++ objects (which possess
+    destructors) allocated with <computeroutput>new[]</computeroutput>.  In
+    this case, some compilers store a "magic cookie" containing the array
+    length at the start of the allocated block, and return a pointer to just
+    past that magic cookie, i.e. an interior-pointer.
+    See <ulink url="http://theory.uwinnipeg.ca/gnu/gcc/gxxint_14.html">this
+    page</ulink> for more information.</para>
+  </listitem>
+</itemizedlist>
 
 <para>With that in mind, consider the nine possible cases described by the
 following figure.</para>
@@ -737,12 +521,12 @@ LEAK SUMMARY:
         suppressed: 0 bytes in 0 blocks.
 ]]></programlisting>
 
-<para>If <computeroutput>--leak-check=full</computeroutput> is specified,
+<para>If <option>--leak-check=full</option> is specified,
 Memcheck will give details for each definitely lost or possibly lost block,
 including where it was allocated.  (Actually, it merges results for all
 blocks that have the same category and sufficiently similar stack traces
 into a single "loss record".  The
-<computeroutput>--leak-resolution</computeroutput> lets you control the
+<option>--leak-resolution</option> lets you control the
 meaning of "sufficiently similar".)  It cannot tell you when or how or why
 the pointer to a leaked block was lost; you have to work that out for
 yourself.  In general, you should attempt to ensure your programs do not
@@ -768,7 +552,7 @@ bytes in other blocks are indirectly lost because of this lost block.
 The loss records are not presented in any notable order, so the loss record
 numbers aren't particularly meaningful.</para>
 
-<para>If you specify <computeroutput>--show-reachable=yes</computeroutput>,
+<para>If you specify <option>--show-reachable=yes</option>,
 reachable and indirectly lost blocks will also be shown, as the following
 two examples show.</para>
 
@@ -784,10 +568,286 @@ two examples show.</para>
    by 0x........: main (leak-cases.c:80)
 ]]></programlisting>
 
+<para>Because there are different kinds of leaks with different severities, an
+interesting question is this: which leaks should be counted as true "errors"
+and which should not?  The answer to this question affects the numbers printed
+in the <computeroutput>ERROR SUMMARY</computeroutput> line, and also the effect
+of the <option>--error-exitcode</option> option.  Memcheck uses the following
+criteria:</para>
+
+<itemizedlist>
+  <listitem>
+    <para>First, a leak is only counted as a true "error" if
+    <option>--leak-check=full</option> is specified.  In other words, an
+    unprinted leak is not considered a true "error".  If this were not the
+    case, it would be possible to get a high error count but not have any
+    errors printed, which would be confusing.</para>
+  </listitem>
+
+  <listitem>
+    <para>After that, definitely lost and possibly lost blocks are counted as
+    true "errors".  Indirectly lost and still reachable blocks are not counted
+    as true "errors", even if <option>--show-reachable=yes</option> is
+    specified and they are printed;  this is because such blocks don't need
+    direct fixing by the programmer.
+    </para>
+  </listitem>
+</itemizedlist>
+
 </sect2>
 
 </sect1>
 
+
+
+<sect1 id="mc-manual.options" 
+       xreflabel="Memcheck Command-Line Options">
+<title>Memcheck Command-Line Options</title>
+
+<!-- start of xi:include in the manpage -->
+<variablelist id="mc.opts.list">
+
+  <varlistentry id="opt.leak-check" xreflabel="--leak-check">
+    <term>
+      <option><![CDATA[--leak-check=<no|summary|yes|full> [default: summary] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled, search for memory leaks when the client
+      program finishes.  If set to <varname>summary</varname>, it says how
+      many leaks occurred.  If set to <varname>full</varname> or
+      <varname>yes</varname>, it also gives details of each individual
+      leak.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.leak-resolution" xreflabel="--leak-resolution">
+    <term>
+      <option><![CDATA[--leak-resolution=<low|med|high> [default: high] ]]></option>
+    </term>
+    <listitem>
+      <para>When doing leak checking, determines how willing
+      Memcheck is to consider different backtraces to
+      be the same for the purposes of merging multiple leaks into a single
+      leak report.  When set to <varname>low</varname>, only the first
+      two entries need match.  When <varname>med</varname>, four entries
+      have to match.  When <varname>high</varname>, all entries need to
+      match.</para>
+
+      <para>For hardcore leak debugging, you probably want to use
+      <option>--leak-resolution=high</option> together with
+      <option>--num-callers=40</option> or some such large number.
+      </para>
+
+      <para>Note that the <option>--leak-resolution</option> setting
+      does not affect Memcheck's ability to find
+      leaks.  It only changes how the results are presented.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.show-reachable" xreflabel="--show-reachable">
+    <term>
+      <option><![CDATA[--show-reachable=<yes|no> [default: no] ]]></option>
+    </term>
+    <listitem>
+      <para>When disabled, the memory leak detector only shows "definitely
+      lost" and "possibly lost" blocks.  When enabled, the leak detector also
+      shows "reachable" and "indirectly lost" blocks.  (In other words, it
+      shows all blocks, except suppressed ones, so
+      <option>--show-all</option> would be a better name for
+      it.)</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.undef-value-errors" xreflabel="--undef-value-errors">
+    <term>
+      <option><![CDATA[--undef-value-errors=<yes|no> [default: yes] ]]></option>
+    </term>
+    <listitem>
+      <para>Controls whether Memcheck reports
+      uses of undefined value errors.  Set this to
+      <varname>no</varname> if you don't want to see undefined value
+      errors.  It also has the side effect of speeding up
+      Memcheck somewhat.
+      </para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.track-origins" xreflabel="--track-origins">
+    <term>
+      <option><![CDATA[--track-origins=<yes|no> [default: no] ]]></option>
+    </term>
+      <listitem>
+        <para>Controls whether Memcheck tracks
+        the origin of uninitialised values.  By default, it does not,
+        which means that although it can tell you that an
+        uninitialised value is being used in a dangerous way, it
+        cannot tell you where the uninitialised value came from.  This
+        often makes it difficult to track down the root problem.
+        </para>
+        <para>When set
+        to <varname>yes</varname>, Memcheck keeps
+        track of the origins of all uninitialised values.  Then, when
+        an uninitialised value error is
+        reported, Memcheck will try to show the
+        origin of the value.  An origin can be one of the following
+        four places: a heap block, a stack allocation, a client
+        request, or miscellaneous other sources (eg, a call
+        to <varname>brk</varname>).
+        </para>
+        <para>For uninitialised values originating from a heap
+        block, Memcheck shows where the block was
+        allocated.  For uninitialised values originating from a stack
+        allocation, Memcheck can tell you which
+        function allocated the value, but no more than that -- typically
+        it shows you the source location of the opening brace of the
+        function.  So you should carefully check that all of the
+        function's local variables are initialised properly.
+        </para>
+        <para>Performance overhead: origin tracking is expensive.  It
+        halves Memcheck's speed and increases
+        memory use by a minimum of 100MB, and possibly more.
+        Nevertheless it can drastically reduce the effort required to
+        identify the root cause of uninitialised value errors, and so
+        is often a programmer productivity win, despite running
+        more slowly.
+        </para>
+        <para>Accuracy: Memcheck tracks origins
+        quite accurately.  To avoid very large space and time
+        overheads, some approximations are made.  It is possible,
+        although unlikely, that Memcheck will report an incorrect origin, or
+        not be able to identify any origin.
+        </para>
+        <para>Note that the combination
+        <option>--track-origins=yes</option>
+        and <option>--undef-value-errors=no</option> is
+        nonsensical.  Memcheck checks for and
+        rejects this combination at startup.
+        </para>
+      </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.partial-loads-ok" xreflabel="--partial-loads-ok">
+    <term>
+      <option><![CDATA[--partial-loads-ok=<yes|no> [default: no] ]]></option>
+    </term>
+    <listitem>
+      <para>Controls how Memcheck handles word-sized,
+      word-aligned loads from addresses for which some bytes are
+      addressable and others are not.  When <varname>yes</varname>, such
+      loads do not produce an address error.  Instead, loaded bytes
+      originating from illegal addresses are marked as uninitialised, and
+      those corresponding to legal addresses are handled in the normal
+      way.</para>
+
+      <para>When <varname>no</varname>, loads from partially invalid
+      addresses are treated the same as loads from completely invalid
+      addresses: an illegal-address error is issued, and the resulting
+      bytes are marked as initialised.</para>
+
+      <para>Note that code that behaves in this way is in violation of
+      the the ISO C/C++ standards, and should be considered broken.  If
+      at all possible, such code should be fixed.  This option should be
+      used only as a last resort.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.freelist-vol" xreflabel="--freelist-vol">
+    <term>
+      <option><![CDATA[--freelist-vol=<number> [default: 10000000] ]]></option>
+    </term>
+    <listitem>
+      <para>When the client program releases memory using
+      <function>free</function> (in <literal>C</literal>) or
+      <computeroutput>delete</computeroutput>
+      (<literal>C++</literal>), that memory is not immediately made
+      available for re-allocation.  Instead, it is marked inaccessible
+      and placed in a queue of freed blocks.  The purpose is to defer as
+      long as possible the point at which freed-up memory comes back
+      into circulation.  This increases the chance that
+      Memcheck will be able to detect invalid
+      accesses to blocks for some significant period of time after they
+      have been freed.</para>
+
+      <para>This option specifies the maximum total size, in bytes, of the
+      blocks in the queue.  The default value is ten million bytes.
+      Increasing this increases the total amount of memory used by
+      Memcheck but may detect invalid uses of freed
+      blocks which would otherwise go undetected.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.workaround-gcc296-bugs" xreflabel="--workaround-gcc296-bugs">
+    <term>
+      <option><![CDATA[--workaround-gcc296-bugs=<yes|no> [default: no] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled, assume that reads and writes some small
+      distance below the stack pointer are due to bugs in GCC 2.96, and
+      does not report them.  The "small distance" is 256 bytes by
+      default.  Note that GCC 2.96 is the default compiler on some ancient
+      Linux distributions (RedHat 7.X) and so you may need to use this
+      option.  Do not use it if you do not have to, as it can cause real
+      errors to be overlooked.  A better alternative is to use a more
+      recent GCC in which this bug is fixed.</para>
+
+      <para>You may also need to use this option when working with
+      GCC 3.X or 4.X on 32-bit PowerPC Linux.  This is because
+      GCC generates code which occasionally accesses below the
+      stack pointer, particularly for floating-point to/from integer
+      conversions.  This is in violation of the 32-bit PowerPC ELF
+      specification, which makes no provision for locations below the
+      stack pointer to be accessible.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.ignore-ranges" xreflabel="--ignore-ranges">
+    <term>
+      <option><![CDATA[--ignore-ranges=0xPP-0xQQ[,0xRR-0xSS] ]]></option>
+    </term>
+    <listitem>
+    <para>Any ranges listed in this option (and multiple ranges can be
+    specified, separated by commas) will be ignored by Memcheck's
+    addressability checking.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.malloc-fill" xreflabel="--malloc-fill">
+    <term>
+      <option><![CDATA[--malloc-fill=<hexnumber> ]]></option>
+    </term>
+    <listitem>
+      <para>Fills blocks allocated
+      by <computeroutput>malloc</computeroutput>,
+         <computeroutput>new</computeroutput>, etc, but not
+      by <computeroutput>calloc</computeroutput>, with the specified
+      byte.  This can be useful when trying to shake out obscure
+      memory corruption problems.  The allocated area is still
+      regarded by Memcheck as undefined -- this option only affects its
+      contents.
+      </para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.free-fill" xreflabel="--free-fill">
+    <term>
+      <option><![CDATA[--free-fill=<hexnumber> ]]></option>
+    </term>
+    <listitem>
+      <para>Fills blocks freed
+      by <computeroutput>free</computeroutput>,
+         <computeroutput>delete</computeroutput>, etc, with the
+      specified byte value.  This can be useful when trying to shake out
+      obscure memory corruption problems.  The freed area is still
+      regarded by Memcheck as not valid for access -- this option only
+      affects its contents.
+      </para>
+    </listitem>
+  </varlistentry>
+
+</variablelist>
+<!-- end of xi:include in the manpage -->
+
+</sect1>
 
 
 <sect1 id="mc-manual.suppfiles" xreflabel="Writing suppression files">
@@ -848,7 +908,7 @@ Memcheck:suppression_type]]></programlisting>
     <para><varname>Overlap</varname>, meaning a
     <computeroutput>src</computeroutput> /
     <computeroutput>dst</computeroutput> overlap in
-    <function>memcpy()</function> or a similar function.</para>
+    <function>memcpy</function> or a similar function.</para>
   </listitem>
 
   <listitem>
@@ -863,15 +923,16 @@ information line at this point, which is the name of the offending
 system call parameter.  No other error kinds have this extra
 line.</para>
 
-<para>The first line of the calling context: for Value and Addr errors,
-it is either the name of the function in which the error occurred, or,
-failing that, the full path of the .so file or executable containing the
-error location.  For Free errors, is the name of the function doing the
-freeing (eg, <function>free</function>,
-<function>__builtin_vec_delete</function>, etc).  For Overlap errors, is
-the name of the function with the overlapping arguments (eg.
-<function>memcpy()</function>, <function>strcpy()</function>,
-etc).</para>
+<para>The first line of the calling context: for <varname>ValueN</varname>
+and <varname>AddrN</varname> errors, it is either the name of the function
+in which the error occurred, or, failing that, the full path of the
+<filename>.so</filename> file
+or executable containing the error location.  For <varname>Free</varname> errors, is the name
+of the function doing the freeing (eg, <function>free</function>,
+<function>__builtin_vec_delete</function>, etc).  For
+<varname>Overlap</varname> errors, is the name of the function with the
+overlapping arguments (eg.  <function>memcpy</function>,
+<function>strcpy</function>, etc).</para>
 
 <para>Lastly, there's the rest of the calling context.</para>
 
@@ -906,16 +967,17 @@ If the CPU should later write the whole or some part of that value to
 memory at a different address, the relevant V bits will be stored back
 in the V-bit bitmap.</para>
 
-<para>In short, each bit in the system has an associated V bit, which
-follows it around everywhere, even inside the CPU.  Yes, all the CPU's
-registers (integer, floating point, vector and condition registers) have
-their own V bit vectors.</para>
+<para>In short, each bit in the system has (conceptually) an associated V
+bit, which follows it around everywhere, even inside the CPU.  Yes, all the
+CPU's registers (integer, floating point, vector and condition registers)
+have their own V bit vectors.  For this to work, Memcheck uses a great deal
+of compression to represent the V bits compactly.</para>
 
 <para>Copying values around does not cause Memcheck to check for, or
 report on, errors.  However, when a value is used in a way which might
-conceivably affect the outcome of your program's computation, the
-associated V bits are immediately checked.  If any of these indicate
-that the value is undefined, an error is reported.</para>
+conceivably affect your program's externally-visible behaviour,
+the associated V bits are immediately checked.  If any of these indicate
+that the value is undefined (even partially), an error is reported.</para>
 
 <para>Here's an (admittedly nonsensical) example:</para>
 <programlisting><![CDATA[
@@ -988,12 +1050,12 @@ to generate truly appalling code for accessing arrays of
 <varname>struct S</varname>'s on some architectures.</para>
 
 <para>So <varname>s1</varname> occupies 8 bytes, yet only 5 of them will
-be initialised.  For the assignment <varname>s2 = s1</varname>, gcc
+be initialised.  For the assignment <varname>s2 = s1</varname>, GCC
 generates code to copy all 8 bytes wholesale into <varname>s2</varname>
 without regard for their meaning.  If Memcheck simply checked values as
 they came out of memory, it would yelp every time a structure assignment
 like this happened.  So the more complicated behaviour described above
-is necessary.  This allows <literal>gcc</literal> to copy
+is necessary.  This allows GCC to copy
 <varname>s1</varname> into <varname>s2</varname> any way it likes, and a
 warning will only be emitted if the uninitialised values are later
 used.</para>
@@ -1031,10 +1093,11 @@ themselves do not change the A bits, only consult them.</para>
   </listitem>
 
   <listitem>
-    <para>When the program does malloc/new, the A bits for exactly the
-    area allocated, and not a byte more, are marked as accessible.  Upon
-    freeing the area the A bits are changed to indicate
-    inaccessibility.</para>
+    <para>When the program does
+    <function>malloc</function>/<computeroutput>new</computeroutput>,
+    the A bits for exactly the area allocated, and not a byte more,
+    are marked as accessible.  Upon freeing the area the A bits are
+    changed to indicate inaccessibility.</para>
   </listitem>
 
   <listitem>
@@ -1080,7 +1143,8 @@ follows:</para>
     <para>Each byte in memory has 8 associated V (valid-value) bits,
     saying whether or not the byte has a defined value, and a single A
     (valid-address) bit, saying whether or not the program currently has
-    the right to read/write that address.</para>
+    the right to read/write that address.  (But, as mentioned above, heavy
+    use of compression means the overhead is typically less than 25%.)</para>
   </listitem>
 
   <listitem>
@@ -1135,50 +1199,56 @@ follows:</para>
 
     <para>There is a hazy boundary case to do with multi-byte loads from
     addresses which are partially valid and partially invalid.  See
-    details of the flag <option>--partial-loads-ok</option> for details.
+    details of the option <option>--partial-loads-ok</option> for details.
     </para>
   </listitem>
 
 </itemizedlist>
 
 
-<para>Memcheck intercepts calls to malloc, calloc, realloc, valloc,
-memalign, free, new, new[], delete and delete[].  The behaviour you get
+<para>Memcheck intercepts calls to <function>malloc</function>,
+<function>calloc</function>, <function>realloc</function>,
+<function>valloc</function>, <function>memalign</function>,
+<function>free</function>, <computeroutput>new</computeroutput>,
+<computeroutput>new[]</computeroutput>,
+<computeroutput>delete</computeroutput> and
+<computeroutput>delete[]</computeroutput>.  The behaviour you get
 is:</para>
 
 <itemizedlist>
 
   <listitem>
-    <para>malloc/new/new[]: the returned memory is marked as addressable
-    but not having valid values.  This means you have to write to it
-    before you can read it.</para>
+    <para><function>malloc</function>/<function>new</function>/<computeroutput>new[]</computeroutput>:
+    the returned memory is marked as addressable but not having valid
+    values.  This means you have to write to it before you can read
+    it.</para>
   </listitem>
 
   <listitem>
-    <para>calloc: returned memory is marked both addressable and valid,
-    since calloc clears the area to zero.</para>
+    <para><function>calloc</function>: returned memory is marked both
+    addressable and valid, since <function>calloc</function> clears
+    the area to zero.</para>
   </listitem>
 
   <listitem>
-    <para>realloc: if the new size is larger than the old, the new
-    section is addressable but invalid, as with malloc.</para>
+    <para><function>realloc</function>: if the new size is larger than
+    the old, the new section is addressable but invalid, as with
+    <function>malloc</function>.  If the new size is smaller, the
+    dropped-off section is marked as unaddressable.  You may only pass to
+    <function>realloc</function> a pointer previously issued to you by
+    <function>malloc</function>/<function>calloc</function>/<function>realloc</function>.</para>
   </listitem>
 
   <listitem>
-    <para>If the new size is smaller, the dropped-off section is marked
-    as unaddressable.  You may only pass to realloc a pointer previously
-    issued to you by malloc/calloc/realloc.</para>
-  </listitem>
-
-  <listitem>
-    <para>free/delete/delete[]: you may only pass to these functions a
-    pointer previously issued to you by the corresponding allocation
-    function.  Otherwise, Memcheck complains.  If the pointer is indeed
-    valid, Memcheck marks the entire area it points at as unaddressable,
-    and places the block in the freed-blocks-queue.  The aim is to defer
-    as long as possible reallocation of this block.  Until that happens,
-    all attempts to access it will elicit an invalid-address error, as
-    you would hope.</para>
+    <para><function>free</function>/<computeroutput>delete</computeroutput>/<computeroutput>delete[]</computeroutput>:
+    you may only pass to these functions a pointer previously issued
+    to you by the corresponding allocation function.  Otherwise,
+    Memcheck complains.  If the pointer is indeed valid, Memcheck
+    marks the entire area it points at as unaddressable, and places
+    the block in the freed-blocks-queue.  The aim is to defer as long
+    as possible reallocation of this block.  Until that happens, all
+    attempts to access it will elicit an invalid-address error, as you
+    would hope.</para>
   </listitem>
 
 </itemizedlist>
@@ -1251,7 +1321,7 @@ arguments.</para>
 
   <listitem>
     <para><varname>VALGRIND_DO_LEAK_CHECK</varname>: does a full memory leak
-    check (like <computeroutput>--leak-check=full</computeroutput> right now.
+    check (like <option>--leak-check=full</option>) right now.
     This is useful for incrementally checking for leaks between arbitrary
     places in the program's execution.  It has no return value.</para>
   </listitem>
@@ -1259,7 +1329,7 @@ arguments.</para>
   <listitem>
     <para><varname>VALGRIND_DO_QUICK_LEAK_CHECK</varname>: like
     <varname>VALGRIND_DO_LEAK_CHECK</varname>, except it produces only a leak
-    summary (like <computeroutput>--leak-check=summary</computeroutput>).
+    summary (like <option>--leak-check=summary</option>).
     It has no return value.</para>
   </listitem>
 
@@ -1267,7 +1337,7 @@ arguments.</para>
     <para><varname>VALGRIND_COUNT_LEAKS</varname>: fills in the four
     arguments with the number of bytes of memory found by the previous
     leak check to be leaked (i.e. the sum of direct leaks and indirect leaks),
-    dubious, reachable and suppressed.  Again, useful in test harness code,
+    dubious, reachable and suppressed.  This is useful in test harness code,
     after calling <varname>VALGRIND_DO_LEAK_CHECK</varname> or
     <varname>VALGRIND_DO_QUICK_LEAK_CHECK</varname>.</para>
   </listitem>
@@ -1295,15 +1365,16 @@ arguments.</para>
 
 
 
-<sect1 id="mc-manual.mempools" xreflabel="Memory pools">
+<sect1 id="mc-manual.mempools" xreflabel="Memory Pools">
 <title>Memory Pools: describing and working with custom allocators</title>
 
 <para>Some programs use custom memory allocators, often for performance
-reasons.  Left to itself, Memcheck is unable to "understand" the
-behaviour of custom allocation schemes and so may miss errors and
-leaks in your program.  What this section describes is a way to give
-Memcheck enough of a description of your custom allocator that it can
-make at least some sense of what is happening.</para>
+reasons.  Left to itself, Memcheck is unable to understand the
+behaviour of custom allocation schemes as well as it understands the
+standard allocators, and so may miss errors and leaks in your program.  What
+this section describes is a way to give Memcheck enough of a description of
+your custom allocator that it can make at least some sense of what is
+happening.</para>
 
 <para>There are many different sorts of custom allocator, so Memcheck
 attempts to reason about them using a loose, abstract model.  We
@@ -1326,7 +1397,9 @@ systems:</para>
   </listitem>
   <listitem>
     <para>Typically the pool's chunks are drawn from a contiguous
-    "superblock" acquired through the system malloc() or mmap().</para>
+    "superblock" acquired through the system
+    <function>malloc</function> or
+    <function>mmap</function>.</para>
   </listitem>
 
 </itemizedlist>
@@ -1387,12 +1460,12 @@ inform Memcheck about changes to the state of a mempool:</para>
   <listitem>
     <para>
     <varname>VALGRIND_CREATE_MEMPOOL(pool, rzB, is_zeroed)</varname>:
-    This request registers the address "pool" as the anchor address 
-    for a memory pool. It also provides a size "rzB", specifying how 
-    large the redzones placed around chunks allocated from the pool 
-    should be. Finally, it provides an "is_zeroed" flag that specifies 
-    whether the pool's chunks are zeroed (more precisely: defined) 
-    when allocated.
+    This request registers the address <varname>pool</varname> as the anchor
+    address for a memory pool. It also provides a size
+    <varname>rzB</varname>, specifying how large the redzones placed around
+    chunks allocated from the pool should be. Finally, it provides an
+    <varname>is_zeroed</varname> argument that specifies whether the pool's
+    chunks are zeroed (more precisely: defined) when allocated.
     </para>
     <para>
     Upon completion of this request, no chunks are associated with the
@@ -1413,44 +1486,47 @@ inform Memcheck about changes to the state of a mempool:</para>
 
   <listitem>
     <para><varname>VALGRIND_MEMPOOL_ALLOC(pool, addr, size)</varname>:
-    This request informs Memcheck that a "size"-byte chunk has been
-    allocated at "addr", and associates the chunk with the specified
-    "pool". If the pool was created with nonzero "rzB" redzones, Memcheck
-    will mark the "rzB" bytes before and after the chunk as NOACCESS. If
-    the pool was created with the "is_zeroed" flag set, Memcheck will mark
-    the chunk as DEFINED, otherwise Memcheck will mark the chunk as
-    UNDEFINED.
+    This request informs Memcheck that a <varname>size</varname>-byte chunk
+    has been allocated at <varname>addr</varname>, and associates the chunk with the
+    specified
+    <varname>pool</varname>. If the pool was created with nonzero
+    <varname>rzB</varname> redzones, Memcheck will mark the
+    <varname>rzB</varname> bytes before and after the chunk as NOACCESS. If
+    the pool was created with the <varname>is_zeroed</varname> argument set,
+    Memcheck will mark the chunk as DEFINED, otherwise Memcheck will mark
+    the chunk as UNDEFINED.
     </para>
   </listitem>
 
   <listitem>
     <para><varname>VALGRIND_MEMPOOL_FREE(pool, addr)</varname>:
-    This request informs Memcheck that the chunk at "addr" should no
-    longer be considered allocated. Memcheck will mark the chunk
-    associated with "addr" as NOACCESS, and delete its record of the
-    chunk's existence.
+    This request informs Memcheck that the chunk at <varname>addr</varname>
+    should no longer be considered allocated. Memcheck will mark the chunk
+    associated with <varname>addr</varname> as NOACCESS, and delete its
+    record of the chunk's existence.
     </para>
   </listitem>
 
   <listitem>
     <para><varname>VALGRIND_MEMPOOL_TRIM(pool, addr, size)</varname>:
-    This request "trims" the chunks associated with "pool". The request
-    only operates on chunks associated with "pool". Trimming is formally
-    defined as:</para>
+    This request trims the chunks associated with <varname>pool</varname>.
+    The request only operates on chunks associated with
+    <varname>pool</varname>. Trimming is formally defined as:</para>
     <itemizedlist>
       <listitem>
-        <para> All chunks entirely inside the range [addr,addr+size) are
-        preserved.</para>
+        <para> All chunks entirely inside the range
+        <varname>addr..(addr+size-1)</varname> are preserved.</para>
       </listitem>
       <listitem>
-        <para>All chunks entirely outside the range [addr,addr+size) are
-        discarded, as though <varname>VALGRIND_MEMPOOL_FREE</varname>
-        was called on them. </para>
+        <para>All chunks entirely outside the range
+        <varname>addr..(addr+size-1)</varname> are discarded, as though
+        <varname>VALGRIND_MEMPOOL_FREE</varname> was called on them. </para>
       </listitem>
       <listitem>
         <para>All other chunks must intersect with the range 
-        [addr,addr+size); areas outside the intersection are marked as 
-        NOACCESS, as though they had been independently freed with 
+        <varname>addr..(addr+size-1)</varname>; areas outside the
+        intersection are marked as NOACCESS, as though they had been
+        independently freed with
         <varname>VALGRIND_MEMPOOL_FREE</varname>.</para>
       </listitem>
     </itemizedlist>
@@ -1460,22 +1536,24 @@ inform Memcheck about changes to the state of a mempool:</para>
   </listitem>
 
   <listitem>
-    <para><varname>VALGRIND_MOVE_MEMPOOL(poolA, poolB)</varname>:
-    This request informs Memcheck that the pool previously anchored at
-    address "poolA" has moved to anchor address "poolB". This is a rare
-    request, typically only needed if you realloc() the header of 
-    a mempool.</para>
+    <para><varname>VALGRIND_MOVE_MEMPOOL(poolA, poolB)</varname>: This
+    request informs Memcheck that the pool previously anchored at
+    address <varname>poolA</varname> has moved to anchor address
+    <varname>poolB</varname>.  This is a rare request, typically only needed
+    if you <function>realloc</function> the header of a mempool.</para>
     <para>No memory-status bits are altered by this request.</para>
   </listitem>
 
   <listitem>
     <para>
-    <varname>VALGRIND_MEMPOOL_CHANGE(pool, addrA, addrB, size)</varname>:
-    This request informs Memcheck that the chunk previously allocated at
-    address "addrA" within "pool" has been moved and/or resized, and should
-    be changed to cover the region [addrB,addrB+size). This is a rare
-    request, typically only needed if you realloc() a superblock or wish
-    to extend a chunk without changing its memory-status bits.
+    <varname>VALGRIND_MEMPOOL_CHANGE(pool, addrA, addrB,
+    size)</varname>: This request informs Memcheck that the chunk
+    previously allocated at address <varname>addrA</varname> within
+    <varname>pool</varname> has been moved and/or resized, and should be
+    changed to cover the region <varname>addrB..(addrB+size-1)</varname>. This
+    is a rare request, typically only needed if you
+    <function>realloc</function> a superblock or wish to extend a chunk
+    without changing its memory-status bits.
     </para>
     <para>No memory-status bits are altered by this request.
     </para>
@@ -1484,10 +1562,10 @@ inform Memcheck about changes to the state of a mempool:</para>
   <listitem>
     <para><varname>VALGRIND_MEMPOOL_EXISTS(pool)</varname>:
     This request informs the caller whether or not Memcheck is currently 
-    tracking a mempool at anchor address "pool". It evaluates to 1 when 
-    there is a mempool associated with that address, 0 otherwise. This is a 
-    rare request, only useful in circumstances when client code might have 
-    lost track of the set of active mempools.
+    tracking a mempool at anchor address <varname>pool</varname>. It
+    evaluates to 1 when there is a mempool associated with that address, 0
+    otherwise. This is a rare request, only useful in circumstances when
+    client code might have lost track of the set of active mempools.
     </para>
   </listitem>
 
@@ -1504,7 +1582,7 @@ inform Memcheck about changes to the state of a mempool:</para>
 <sect1 id="mc-manual.mpiwrap" xreflabel="MPI Wrappers">
 <title>Debugging MPI Parallel Programs with Valgrind</title>
 
-<para> Valgrind supports debugging of distributed-memory applications
+<para>Memcheck supports debugging of distributed-memory applications
 which use the MPI message passing standard.  This support consists of a
 library of wrapper functions for the
 <computeroutput>PMPI_*</computeroutput> interface.  When incorporated
@@ -1512,7 +1590,7 @@ into the application's address space, either by direct linking or by
 <computeroutput>LD_PRELOAD</computeroutput>, the wrappers intercept
 calls to <computeroutput>PMPI_Send</computeroutput>,
 <computeroutput>PMPI_Recv</computeroutput>, etc.  They then
-use client requests to inform Valgrind of memory state changes caused
+use client requests to inform Memcheck of memory state changes caused
 by the function being wrapped.  This reduces the number of false
 positives that Memcheck otherwise typically reports for MPI
 applications.</para>
@@ -1525,7 +1603,7 @@ buffer which is too small.</para>
 
 <para>Unlike most of the rest of Valgrind, the wrapper library is subject to a
 BSD-style license, so you can link it into any code base you like.
-See the top of <computeroutput>auxprogs/libmpiwrap.c</computeroutput>
+See the top of <computeroutput>mpi/libmpiwrap.c</computeroutput>
 for license details.</para>
 
 
@@ -1538,12 +1616,11 @@ Valgrind's configure script will look for a suitable
 the same <computeroutput>mpicc</computeroutput> you use to build the
 MPI application you want to debug.  By default, Valgrind tries
 <computeroutput>mpicc</computeroutput>, but you can specify a
-different one by using the configure-time flag
-<computeroutput>--with-mpicc=</computeroutput>.  Currently the
+different one by using the configure-time option
+<option>--with-mpicc</option>.  Currently the
 wrappers are only buildable with
 <computeroutput>mpicc</computeroutput>s which are based on GNU
-<computeroutput>gcc</computeroutput> or Intel's
-<computeroutput>icc</computeroutput>.</para>
+GCC or Intel's C++ Compiler.</para>
 
 <para>Check that the configure script prints a line like this:</para>
 
@@ -1558,7 +1635,7 @@ a test MPI2 program.</para>
 <para>If the configure test succeeds, continue in the usual way with
 <computeroutput>make</computeroutput> and <computeroutput>make
 install</computeroutput>.  The final install tree should then contain
-<computeroutput>libmpiwrap.so</computeroutput>.
+<computeroutput>libmpiwrap-&lt;platform&gt;.so</computeroutput>.
 </para>
 
 <para>Compile up a test MPI program (eg, MPI hello-world) and try
@@ -1663,7 +1740,7 @@ valgrind MPI wrappers 16386: Try MPIWRAP_DEBUG=help for possible options
 </itemizedlist>
 
 <para> If you want to use Valgrind's XML output facility
-(<computeroutput>--xml=yes</computeroutput>), you should pass
+(<option>--xml=yes</option>), you should pass
 <computeroutput>quiet</computeroutput> in
 <computeroutput>MPIWRAP_DEBUG</computeroutput> so as to get rid of any
 extraneous printing from the wrappers.</para>
@@ -1671,12 +1748,8 @@ extraneous printing from the wrappers.</para>
 </sect2>
 
 
-<sect2 id="mc-manual.mpiwrap.limitations" 
-       xreflabel="Abilities and Limitations of MPI Wrappers">
-<title>Abilities and limitations</title>
-
-<sect3 id="mc-manual.mpiwrap.limitations.functions" 
-       xreflabel="Functions">
+<sect2 id="mc-manual.mpiwrap.limitations.functions" 
+       xreflabel="Functions: Abilities and Limitations">
 <title>Functions</title>
 
 <para>All MPI2 functions except
@@ -1684,9 +1757,9 @@ extraneous printing from the wrappers.</para>
 <computeroutput>MPI_Wtime</computeroutput> and
 <computeroutput>MPI_Pcontrol</computeroutput> have wrappers.  The
 first two are not wrapped because they return a 
-<computeroutput>double</computeroutput>, and Valgrind's
-function-wrap mechanism cannot handle that (it could easily enough be
-extended to).  <computeroutput>MPI_Pcontrol</computeroutput> cannot be
+<computeroutput>double</computeroutput>, which Valgrind's
+function-wrap mechanism cannot handle (but it could easily be
+extended to do so).  <computeroutput>MPI_Pcontrol</computeroutput> cannot be
 wrapped as it has variable arity: 
 <computeroutput>int MPI_Pcontrol(const int level, ...)</computeroutput></para>
 
@@ -1739,10 +1812,10 @@ complex types.  The most common functions called are
 <computeroutput>PMPI_Type_get_envelope</computeroutput>,
 <computeroutput>PMPI_Type_get_contents</computeroutput>, and
 <computeroutput>PMPI_Type_free</computeroutput>.  </para>
-</sect3>
+</sect2>
 
-<sect3 id="mc-manual.mpiwrap.limitations.types" 
-       xreflabel="Types">
+<sect2 id="mc-manual.mpiwrap.limitations.types" 
+       xreflabel="Types: Abilities and Limitations">
 <title>Types</title>
 
 <para> MPI-1.1 structured types are supported, and walked exactly.
@@ -1794,8 +1867,6 @@ double) == 8</computeroutput>).  For arrays of all other types, the
 wrappers handle each element individually and so there can be a very
 large performance cost.</para>
 
-</sect3>
-
 </sect2>
 
 
@@ -1830,7 +1901,7 @@ to make the library thread-safe.</para>
 checks.</para>
 
 <para>Writing new wrappers should be fairly easy.  The source file is
-<computeroutput>auxprogs/libmpiwrap.c</computeroutput>.  If possible,
+<computeroutput>mpi/libmpiwrap.c</computeroutput>.  If possible,
 find an existing wrapper for a function of similar behaviour to the
 one you want to wrap, and use it as a starting point.  The wrappers
 are organised in sections in the same order as the MPI 1.1 spec, to

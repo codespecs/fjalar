@@ -14,26 +14,56 @@
 /*------------------------------------------------------------*/
 /*--- Memcheck running state, and tmp management.          ---*/
 /*------------------------------------------------------------*/
+ /* Carries info about a particular tmp.  The tmp's number is not
+    recorded, as this is implied by (equal to) its index in the tmpMap
+    in MCEnv.  The tmp's type is also not recorded, as this is present
+    in MCEnv.sb->tyenv.
+
+    When .kind is Orig, .shadowV and .shadowB may give the identities
+    of the temps currently holding the associated definedness (shadowV)
+    and origin (shadowB) values, or these may be IRTemp_INVALID if code
+    to compute such values has not yet been emitted.
+
+    When .kind is VSh or BSh then the tmp is holds a V- or B- value,
+    and so .shadowV and .shadowB must be IRTemp_INVALID, since it is
+    illogical for a shadow tmp itself to be shadowed.
+ */
+ typedef
+    enum { Orig=1, VSh=2, BSh=3, DC=4 }
+    TempKind;
+
+ typedef
+    struct {
+       TempKind kind;
+       IRTemp   shadowV;
+       IRTemp   shadowB;
+    }
+    TempMapEnt;
+
 
 /* Carries around state during memcheck instrumentation. */
 typedef
 struct _MCEnv {
       /* MODIFIED: the superblock being constructed.  IRStmts are
          added. */
-      IRSB* bb;
+      IRSB* sb;
       Bool  trace;
 
-      /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
-         original temps to their current their current shadow temp.
-         Initially all entries are IRTemp_INVALID.  Entries are added
-         lazily since many original temps are not used due to
-         optimisation prior to instrumentation.  Note that floating
-         point original tmps are shadowed by integer tmps of the same
-         size, and Bit-typed original tmps are shadowed by the type
-         Ity_I8.  See comment below. */
-      IRTemp* tmpMapV;        /* V-bit tmp shadows */
-      IRTemp* tmpMapB; /* origin tracking tmp shadows */
-      Int     n_originalTmps; /* for range checking */
+      /* MODIFIED: a table [0 .. #temps_in_sb-1] which gives the
+         current kind and possibly shadow temps for each temp in the
+         IRSB being constructed.  Note that it does not contain the
+         type of each tmp.  If you want to know the type, look at the
+         relevant entry in sb->tyenv.  It follows that at all times
+         during the instrumentation process, the valid indices for
+         tmpMap and sb->tyenv are identical, being 0 .. N-1 where N is
+         total number of Orig, V- and B- temps allocated so far.
+
+         The reason for this strange split (types in one place, all
+         other info in another) is that we need the types to be
+         attached to sb so as to make it possible to do
+         "typeOfIRExpr(mce->bb->tyenv, ...)" at various places in the
+         instrumentation process. */
+      XArray* /* of TempMapEnt */ tmpMap;
 
       /* MODIFIED: indicates whether "bogus" literals have so far been
          found.  Starts off False, and may change to True. */
@@ -81,6 +111,8 @@ typedef
          Ity_I32 or Ity_I64 only. */
       IRType hWordTy;
 
+      MCEnv* mce;
+
       /* MODIFIED: Original address of guest instruction whose IR
 	 we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
@@ -97,7 +129,7 @@ inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) ;
 
 
 /* assign value to tmp */
-inline 
+inline
 void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr );
 
 // RUDD - pgbovine
@@ -123,6 +155,8 @@ inline void assign_DC ( HChar cat, DCEnv* mce, IRTemp tmp, IRExpr* expr );
    temporary. */
 
 typedef  IRExpr  IRAtom;
+
+IRTemp newTemp ( MCEnv* mce, IRType ty, TempKind kind );
 
 Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 );
 IRType  shadowTypeV ( IRType ty );

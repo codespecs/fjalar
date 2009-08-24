@@ -16,6 +16,13 @@
 
 # This file is used for tool tests, and also in perf/Makefile.am.
 
+# This file should be included (directly or indirectly) by every
+# Makefile.am that builds programs.  And also the top-level Makefile.am.
+
+#----------------------------------------------------------------------------
+# Global stuff
+#----------------------------------------------------------------------------
+
 
 srcdir = @srcdir@
 top_srcdir = @top_srcdir@
@@ -39,9 +46,9 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-DIST_COMMON = $(noinst_HEADERS) $(srcdir)/Makefile.am \
-	$(srcdir)/Makefile.in $(srcdir)/vg_regtest.in \
-	$(top_srcdir)/Makefile.flags.am \
+DIST_COMMON = $(dist_noinst_SCRIPTS) $(noinst_HEADERS) \
+	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
+	$(srcdir)/vg_regtest.in $(top_srcdir)/Makefile.all.am \
 	$(top_srcdir)/Makefile.tool-tests.am
 check_PROGRAMS = arch_test$(EXEEXT) os_test$(EXEEXT) true$(EXEEXT) \
 	x86_amd64_features$(EXEEXT)
@@ -66,7 +73,7 @@ x86_amd64_features_SOURCES = x86_amd64_features.c
 x86_amd64_features_OBJECTS =  \
 	x86_amd64_features-x86_amd64_features.$(OBJEXT)
 x86_amd64_features_LDADD = $(LDADD)
-SCRIPTS = $(noinst_SCRIPTS)
+SCRIPTS = $(dist_noinst_SCRIPTS)
 DEFAULT_INCLUDES = -I. -I$(srcdir) -I$(top_builddir)
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -114,7 +121,6 @@ DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DIFF = @DIFF@
-DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
@@ -130,7 +136,9 @@ FLAG_MSSE = @FLAG_MSSE@
 FLAG_UNLIMITED_INLINE_UNIT_GROWTH = @FLAG_UNLIMITED_INLINE_UNIT_GROWTH@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
 FLAG_W_EXTRA = @FLAG_W_EXTRA@
+FLAG_W_NO_EMPTY_BODY = @FLAG_W_NO_EMPTY_BODY@
 FLAG_W_NO_FORMAT_ZERO_LENGTH = @FLAG_W_NO_FORMAT_ZERO_LENGTH@
+FLAG_W_NO_UNINITIALIZED = @FLAG_W_NO_UNINITIALIZED@
 GDB = @GDB@
 GLIBC_VERSION = @GLIBC_VERSION@
 GREP = @GREP@
@@ -168,8 +176,6 @@ MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
 MPI_CC = @MPI_CC@
-OBJC = @OBJC@
-OBJCFLAGS = @OBJCFLAGS@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -189,7 +195,6 @@ SHELL = @SHELL@
 STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
-VEX_DIR = @VEX_DIR@
 VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
 VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
 VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
@@ -229,7 +234,6 @@ VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
 VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
-ac_ct_OBJC = @ac_ct_OBJC@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
 am__fastdepCC_TRUE = @am__fastdepCC_TRUE@
 am__fastdepCXX_FALSE = @am__fastdepCXX_FALSE@
@@ -274,19 +278,30 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
+inplacedir = $(top_builddir)/.in_place
+
+#----------------------------------------------------------------------------
+# Flags
+#----------------------------------------------------------------------------
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
-                 -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
-		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
-                 -fno-strict-aliasing
+AM_CFLAGS_BASE = \
+	-O2 -g \
+	-Wall \
+	-Wmissing-prototypes \
+	-Wshadow \
+	-Wpointer-arith \
+	-Wstrict-prototypes \
+	-Wmissing-declarations \
+	@FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
+	-fno-strict-aliasing
 
 @VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -fpic -O -g -fno-omit-frame-pointer -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
-# stack traces, since users often see stack traces extending
+# stack traces, since users often see stack traces extending 
 # into (and through) the preloads.
 @VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
 
@@ -302,84 +317,55 @@ AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
 # AM_CPPFLAGS_<PLATFORM> in each AM_CCASFLAGS_<PLATFORM> variable.  This
 # means some of the flags are duplicated on systems with newer versions of
 # automake, but this does not really matter and seems hard to avoid.
-AM_CPPFLAGS_COMMON = \
-		-I$(top_srcdir) \
-		-I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub
+AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
+ 	-I$(top_srcdir) \
+ 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/VEX/pub \
+	-DVGA_@VGCONF_ARCH_PRI@=1 \
+	-DVGO_@VGCONF_OS@=1 \
+	-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1
+
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ = \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir) \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir)/include \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-I$(top_srcdir)/VEX/pub \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGA_@VGCONF_ARCH_SEC@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGO_@VGCONF_OS@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGP_@VGCONF_ARCH_SEC@_@VGCONF_OS@=1
 
 AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
-AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_x86=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_x86_linux=1
-
 AM_CFLAGS_X86_LINUX = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
 			 	$(AM_CFLAGS_BASE)
 
 AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_amd64=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_amd64_linux=1
-
 AM_CFLAGS_AMD64_LINUX = @FLAG_M64@ -fomit-frame-pointer \
 				@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE)
 
 AM_CCASFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_AMD64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
-AM_CPPFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_COMMON) \
-		-DVGA_ppc32=1 \
-		-DVGO_linux=1 \
-		-DVGP_ppc32_linux=1
-
 AM_CFLAGS_PPC32_LINUX = @FLAG_M32@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_PPC32_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc64=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_ppc64_linux=1
-
 AM_CFLAGS_PPC64_LINUX = @FLAG_M64@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_PPC64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
-AM_CPPFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc32=1 \
-			    -DVGO_aix5=1 \
-			    -DVGP_ppc32_aix5=1
-
 AM_CFLAGS_PPC32_AIX5 = @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_PPC32_AIX5) \
 			    @FLAG_MAIX32@ -mcpu=powerpc -g
 
 AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
-AM_CPPFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc64=1 \
-			    -DVGO_aix5=1 \
-			    -DVGP_ppc64_aix5=1
-
 AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
 			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
 
 AM_FLAG_M3264_X86_DARWIN = -arch i386
-AM_CPPFLAGS_X86_DARWIN = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_x86=1 \
-			    -DVGO_darwin=1 \
-			    -DVGP_x86_darwin=1
-
 AM_CFLAGS_X86_DARWIN = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
 			    -mmacosx-version-min=10.5 -fno-stack-protector \
 			    -mdynamic-no-pic
 
 AM_CCASFLAGS_X86_DARWIN = $(AM_CPPFLAGS_X86_DARWIN) -arch i386 -g
 AM_FLAG_M3264_AMD64_DARWIN = -arch x86_64
-AM_CPPFLAGS_AMD64_DARWIN = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_amd64=1 \
-			    -DVGO_darwin=1 \
-			    -DVGP_amd64_darwin=1
-
 AM_CFLAGS_AMD64_DARWIN = $(WERROR) -arch x86_64 $(AM_CFLAGS_BASE) \
 			    -mmacosx-version-min=10.5 -fno-stack-protector
 
@@ -396,7 +382,7 @@ AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 @VGCONF_HAVE_PLATFORM_SEC_FALSE@AM_FLAG_M3264_SEC = 
 @VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 
-# Baseline link flags for making dynamic shared objects.
+# Baseline link flags for making vgpreload shared objects.
 #
 PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
 PRELOAD_LDFLAGS_COMMON_AIX5 = -nodefaultlibs -shared -Wl,-G -Wl,-bnogc
@@ -411,7 +397,7 @@ PRELOAD_LDFLAGS_X86_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
 PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
 		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
-		-I@VEX_DIR@/pub \
+		-I$(top_srcdir)/VEX/pub \
 		-DVGA_$(VGCONF_ARCH_PRI)=1 \
 		-DVGO_$(VGCONF_OS)=1 \
 		-DVGP_$(VGCONF_ARCH_PRI)_$(VGCONF_OS)=1
@@ -421,9 +407,10 @@ AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
 AM_CFLAGS = -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS = -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
 # Include AM_CPPFLAGS in AM_CCASFLAGS to allow for older versions of
-# automake;  see comments in Makefile.flags.am for more detail.
+# automake;  see comments in Makefile.all.am for more detail.
 AM_CCASFLAGS = $(AM_CPPFLAGS)
-noinst_SCRIPTS = \
+@VGCONF_OS_IS_DARWIN_TRUE@noinst_DSYMS = $(check_PROGRAMS)
+dist_noinst_SCRIPTS = \
 	filter_addresses \
 	filter_discards \
 	filter_libc \
@@ -438,13 +425,13 @@ noinst_HEADERS = \
 	malloc.h \
 	sys_mman.h
 
-EXTRA_DIST = $(noinst_SCRIPTS)
+@VGCONF_OS_IS_DARWIN_FALSE@x86_amd64_features_CFLAGS = $(AM_CFLAGS)
 @VGCONF_OS_IS_DARWIN_TRUE@x86_amd64_features_CFLAGS = $(AM_CFLAGS) -mdynamic-no-pic
 all: all-am
 
 .SUFFIXES:
 .SUFFIXES: .c .o .obj
-$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool-tests.am $(top_srcdir)/Makefile.flags.am $(am__configure_deps)
+$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool-tests.am $(top_srcdir)/Makefile.all.am $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -607,7 +594,6 @@ distdir: $(DISTFILES)
 	    || exit 1; \
 	  fi; \
 	done
-@VGCONF_OS_IS_DARWIN_FALSE@check-local:
 check-am: all-am
 	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
 	$(MAKE) $(AM_MAKEFLAGS) check-local
@@ -638,7 +624,6 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
-@VGCONF_OS_IS_DARWIN_FALSE@clean-local:
 clean: clean-am
 
 clean-am: clean-checkPROGRAMS clean-generic clean-local mostlyclean-am
@@ -700,6 +685,13 @@ uninstall-am: uninstall-info-am
 	uninstall-am uninstall-info-am
 
 
+# This used to be required when Vex had a handwritten Makefile.  It
+# shouldn't be needed any more, though.
+
+#----------------------------------------------------------------------------
+# noinst_PROGRAMS and noinst_DSYMS targets
+#----------------------------------------------------------------------------
+
 # On Darwin, for a program 'p', the DWARF debug info is stored in the
 # directory 'p.dSYM'.  This must be generated after the executable is
 # created, with 'dsymutil p'.  We could redefine LINK with a script that
@@ -707,18 +699,60 @@ uninstall-am: uninstall-info-am
 # hook so that every time "make check" is run, we subsequently invoke
 # 'dsymutil' on all the executables that lack a .dSYM directory, or that are
 # newer than their corresponding .dSYM directory.
-@VGCONF_OS_IS_DARWIN_TRUE@check-local:
-@VGCONF_OS_IS_DARWIN_TRUE@	for f in $(check_PROGRAMS) ; do \
-@VGCONF_OS_IS_DARWIN_TRUE@	    if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
-@VGCONF_OS_IS_DARWIN_TRUE@	        echo "dsymutil $$f"; \
-@VGCONF_OS_IS_DARWIN_TRUE@	        dsymutil $$f; \
-@VGCONF_OS_IS_DARWIN_TRUE@	    fi \
-@VGCONF_OS_IS_DARWIN_TRUE@	done
+build-noinst_DSYMS: $(noinst_DSYMS)
+	for f in $(noinst_DSYMS); do \
+	  if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
+	      echo "dsymutil $$f"; \
+	      dsymutil $$f; \
+	  fi; \
+	done
 
-@VGCONF_OS_IS_DARWIN_TRUE@clean-local:
-@VGCONF_OS_IS_DARWIN_TRUE@	for f in $(check_PROGRAMS) ; do \
-@VGCONF_OS_IS_DARWIN_TRUE@	    rm -rf $$f.dSYM; \
-@VGCONF_OS_IS_DARWIN_TRUE@	done
+# This is used by coregrind/Makefile.am and Makefile.tool.am for doing
+# "in-place" installs.  It copies $(noinst_PROGRAMS) into $inplacedir.
+# It needs to be depended on by an 'all-local' rule.
+inplace-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_PROGRAMS) ; do \
+	  rm -f $(inplacedir)/$$f; \
+	  ln -f -s ../$(subdir)/$$f $(inplacedir); \
+	done
+
+# Similar to inplace-noinst_PROGRAMS
+inplace-noinst_DSYMS: build-noinst_DSYMS
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_DSYMS); do \
+	  rm -f $(inplacedir)/$$f.dSYM; \
+	  ln -f -s ../$(subdir)/$$f.dSYM $(inplacedir); \
+	done
+
+# This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
+# "make install".  It copies $(noinst_PROGRAMS) into $prefix/lib/valgrind/.
+# It needs to be depended on by an 'install-exec-local' rule.
+install-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_PROGRAMS); do \
+	  $(INSTALL_PROGRAM) $$f $(DESTDIR)$(pkglibdir); \
+	done
+
+# Similar to install-noinst_PROGRAMS.
+# Nb: we don't use $(INSTALL_PROGRAM) here because it doesn't work with
+# directories.  XXX: not sure whether the resulting permissions will be
+# correct when using 'cp -R'...
+install-noinst_DSYMS: build-noinst_DSYMS
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_DSYMS); do \
+	  cp -R $$f.dSYM $(DESTDIR)$(pkglibdir); \
+	done
+
+# This needs to be depended on by a 'clean-local' rule.
+clean-noinst_DSYMS:
+	for f in $(noinst_DSYMS); do \
+	  rm -rf $$f.dSYM; \
+	done
+
+check-local: build-noinst_DSYMS
+
+clean-local: clean-noinst_DSYMS
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:

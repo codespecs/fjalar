@@ -832,7 +832,8 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
     if (bb->jmp[jmp].instr == instr) {
 	jcc_count=0;
 	for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from)
-	    if ((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0))
+	    if (((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+		(!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 	      jcc_count++;
 
 	if (jcc_count>0) {    
@@ -845,7 +846,8 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
 	    fprint_apos(fd, &(currCost->p), last, bbcc->cxt->fn[0]->file);
 	    something_written = True;
 	    for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from) {
-		if ((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0))
+		if (((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+		    (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 		    fprint_jcc(fd, jcc, &(currCost->p), last, ecounter);
 	    }
 	}
@@ -1265,7 +1267,7 @@ static
 void file_err(void)
 {
    VG_(message)(Vg_UserMsg,
-                "Error: can not open cache simulation output file `%s'",
+                "Error: can not open cache simulation output file `%s'\n",
                 filename );
    VG_(exit)(1);
 }
@@ -1467,7 +1469,7 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
    my_fwrite(fd, "\n\n",2);
 
    if (VG_(clo_verbosity) > 1)
-       VG_(message)(Vg_DebugMsg, "Dump to %s", filename);
+       VG_(message)(Vg_DebugMsg, "Dump to %s\n", filename);
 
    return fd;
 }
@@ -1489,7 +1491,7 @@ static void close_dumpfile(int fd)
     if (filename[0] == '.') {
 	if (-1 == VG_(rename) (filename, filename+1)) {
 	    /* Can not rename to correct file name: give out warning */
-	    VG_(message)(Vg_DebugMsg, "Warning: Can not rename .%s to %s",
+	    VG_(message)(Vg_DebugMsg, "Warning: Can not rename .%s to %s\n",
 			 filename, filename);
        }
    }
@@ -1619,7 +1621,7 @@ void CLG_(dump_profile)(Char* trigger, Bool only_current_thread)
    CLG_(init_dumps)();
 
    if (VG_(clo_verbosity) > 1)
-       VG_(message)(Vg_DebugMsg, "Start dumping at BB %llu (%s)...",
+       VG_(message)(Vg_DebugMsg, "Start dumping at BB %llu (%s)...\n",
 		    CLG_(stat).bb_executions,
 		    trigger ? trigger : (Char*)"Prg.Term.");
 
@@ -1630,7 +1632,7 @@ void CLG_(dump_profile)(Char* trigger, Bool only_current_thread)
    bbs_done = CLG_(stat).bb_executions++;
 
    if (VG_(clo_verbosity) > 1)
-     VG_(message)(Vg_DebugMsg, "Dumping done.");
+     VG_(message)(Vg_DebugMsg, "Dumping done.\n");
 }
 
 /* copy command to cmd buffer (could change) */

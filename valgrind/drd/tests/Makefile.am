@@ -1,31 +1,45 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-SUBDIRS = .
-
-DIST_SUBDIRS = .
-
-noinst_SCRIPTS =		    \
+dist_noinst_SCRIPTS =		    \
+	compare_error_count_with    \
 	filter_error_summary	    \
 	filter_stderr               \
 	filter_stderr_and_thread_no \
 	run_openmp_test             \
-	supported_libpthread
+	supported_libpthread	    \
+	supported_sem_init
+
+noinst_HEADERS =                                    \
+	tsan_thread_wrappers_pthread.h
 
 EXTRA_DIST =                                        \
-	$(noinst_SCRIPTS)                           \
+	annotate_hbefore.stderr.exp		    \
+	annotate_hbefore.vgtest			    \
 	annotate_order_1.stderr.exp		    \
 	annotate_order_1.vgtest			    \
 	annotate_order_2.stderr.exp		    \
 	annotate_order_2.vgtest			    \
 	annotate_order_3.stderr.exp		    \
 	annotate_order_3.vgtest			    \
+	annotate_publish_hg.stderr.exp		    \
+	annotate_publish_hg.vgtest		    \
 	annotate_spinlock.stderr.exp		    \
 	annotate_spinlock.vgtest		    \
 	annotate_rwlock.stderr.exp		    \
 	annotate_rwlock.vgtest			    \
+	annotate_rwlock_hg.stderr.exp		    \
+	annotate_rwlock_hg.vgtest		    \
 	annotate_ignore_read.stderr.exp		    \
 	annotate_ignore_read.vgtest		    \
+	annotate_ignore_rw.stderr.exp		    \
+	annotate_ignore_rw.vgtest		    \
+	annotate_ignore_rw2.stderr.exp		    \
+	annotate_ignore_rw2.vgtest		    \
+	annotate_ignore_write.stderr.exp	    \
+	annotate_ignore_write.vgtest		    \
+	annotate_ignore_write2.stderr.exp	    \
+	annotate_ignore_write2.vgtest		    \
 	annotate_trace_memory.stderr.exp	    \
 	annotate_trace_memory.vgtest		    \
 	atomic_var.stderr.exp			    \
@@ -99,7 +113,10 @@ EXTRA_DIST =                                        \
 	pth_broadcast.stderr.exp                    \
 	pth_broadcast.vgtest                        \
 	pth_cancel_locked.stderr.exp		    \
+	pth_cancel_locked.stderr.exp-darwin	    \
 	pth_cancel_locked.vgtest		    \
+	pth_cleanup_handler.stderr.exp		    \
+	pth_cleanup_handler.vgtest		    \
 	pth_cond_race.stderr.exp                    \
 	pth_cond_race.vgtest                        \
 	pth_cond_race2.stderr.exp                   \
@@ -124,6 +141,8 @@ EXTRA_DIST =                                        \
 	pth_inconsistent_cond_wait.vgtest           \
 	pth_mutex_reinit.stderr.exp		    \
 	pth_mutex_reinit.vgtest			    \
+	pth_once.stderr.exp			    \
+	pth_once.vgtest				    \
 	pth_process_shared_mutex.stderr.exp         \
 	pth_process_shared_mutex.vgtest             \
 	pth_spinlock.stderr.exp                     \
@@ -134,20 +153,30 @@ EXTRA_DIST =                                        \
 	qt4_rwlock.vgtest                           \
 	qt4_semaphore.stderr.exp                    \
 	qt4_semaphore.vgtest                        \
-	recursive_mutex.stderr.exp	            \
-	recursive_mutex.stdout.exp	            \
+	recursive_mutex.stderr.exp-linux            \
+	recursive_mutex.stderr.exp-darwin           \
 	recursive_mutex.vgtest                      \
 	rwlock_race.stderr.exp	                    \
 	rwlock_race.stderr.exp2	                    \
 	rwlock_race.vgtest                          \
 	rwlock_test.stderr.exp	                    \
 	rwlock_test.vgtest                          \
+	rwlock_type_checking.stderr.exp	            \
+	rwlock_type_checking.vgtest                 \
 	sem_as_mutex.stderr.exp                     \
 	sem_as_mutex.vgtest                         \
 	sem_as_mutex2.stderr.exp                    \
 	sem_as_mutex2.vgtest                        \
 	sem_as_mutex3.stderr.exp                    \
 	sem_as_mutex3.vgtest                        \
+	sem_open.stderr.exp                         \
+	sem_open.vgtest                             \
+	sem_open2.stderr.exp                        \
+	sem_open2.vgtest                            \
+	sem_open3.stderr.exp                        \
+	sem_open3.vgtest                            \
+	sem_open_traced.stderr.exp                  \
+	sem_open_traced.vgtest                      \
 	sigalrm.stderr.exp                          \
 	sigalrm.vgtest                              \
 	tc01_simple_race.stderr.exp                 \
@@ -190,24 +219,15 @@ EXTRA_DIST =                                        \
 	tc19_shadowmem.stderr.exp-32bit             \
 	tc19_shadowmem.stderr.exp-64bit             \
 	tc19_shadowmem.vgtest                       \
-	tc20_verifywrap.stderr.exp-glibc2.3         \
-	tc20_verifywrap.stderr.exp-glibc2.5         \
-	tc20_verifywrap.stderr.exp-glibc2.5-ppc     \
-	tc20_verifywrap.stderr.exp-glibc2.8         \
-	tc20_verifywrap.vgtest                      \
-	tc20_verifywrap2.stderr.exp-glibc2.3        \
-	tc20_verifywrap2.stderr.exp-glibc2.3-b      \
-	tc20_verifywrap2.stderr.exp-glibc2.5        \
-	tc20_verifywrap2.stderr.exp-glibc2.5-ppc    \
-	tc20_verifywrap2.stderr.exp-glibc2.8        \
-	tc20_verifywrap2.vgtest                     \
 	tc21_pthonce.stderr.exp                     \
 	tc21_pthonce.stdout.exp                     \
 	tc21_pthonce.vgtest                         \
 	tc22_exit_w_lock.stderr.exp-32bit	    \
 	tc22_exit_w_lock.stderr.exp-64bit           \
 	tc22_exit_w_lock.vgtest                     \
-	tc23_bogus_condwait.stderr.exp              \
+	tc23_bogus_condwait.stderr.exp-linux-x86    \
+	tc23_bogus_condwait.stderr.exp-linux-ppc    \
+	tc23_bogus_condwait.stderr.exp-darwin       \
 	tc23_bogus_condwait.vgtest                  \
 	tc24_nonzero_sem.stderr.exp                 \
 	tc24_nonzero_sem.vgtest                     \
@@ -222,6 +242,10 @@ EXTRA_DIST =                                        \
 
 
 check_PROGRAMS =      \
+  annotate_ignore_rw  \
+  annotate_ignore_write \
+  annotate_publish_hg \
+  custom_alloc        \
   fp_race             \
   hold_lock           \
   linuxthreads_det    \
@@ -230,6 +254,7 @@ check_PROGRAMS =      \
   new_delete          \
   pth_broadcast       \
   pth_cancel_locked   \
+  pth_cleanup_handler \
   pth_cond_race       \
   pth_create_chain    \
   pth_detached        \
@@ -240,7 +265,9 @@ check_PROGRAMS =      \
   recursive_mutex     \
   rwlock_race         \
   rwlock_test         \
+  rwlock_type_checking \
   sem_as_mutex        \
+  sem_open            \
   sigalrm             \
   thread_name         \
   trylock             \
@@ -253,9 +280,7 @@ endif
 
 if HAVE_BUILTIN_ATOMIC
 check_PROGRAMS += annotate_rwlock atomic_var circular_buffer
-if ! VGCONF_OS_IS_DARWIN
 check_PROGRAMS += tsan_unittest
-endif
 endif
 
 if HAVE_OPENMP
@@ -287,6 +312,8 @@ LDADD = -lpthread
 
 monitor_example_SOURCES     = monitor_example.cpp
 new_delete_SOURCES          = new_delete.cpp
+
+pth_cleanup_handler_CFLAGS  = $(AM_CFLAGS) @FLAG_W_NO_EMPTY_BODY@
 
 tsan_unittest_SOURCES       = tsan_unittest.cpp
 tsan_unittest_CXXFLAGS      = $(AM_CXXFLAGS) \

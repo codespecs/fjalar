@@ -43,8 +43,10 @@ struct rwlock_thread_info
    UWord    tid;                 // DrdThreadId.
    UInt     reader_nesting_count;
    UInt     writer_nesting_count;
-   Segment* last_unlock_segment; // Segment of last unlock call by this thread.
-   Bool     last_lock_was_writer_lock;
+   // Segment of last unlock call by this thread that unlocked a writer lock.
+   Segment* latest_wrlocked_segment;
+   // Segment of last unlock call by this thread that unlocked a reader lock.
+   Segment* latest_rdlocked_segment;
 };
 
 
@@ -151,8 +153,8 @@ DRD_(lookup_or_insert_node)(OSet* oset, const UWord tid)
       q->tid                       = tid;
       q->reader_nesting_count      = 0;
       q->writer_nesting_count      = 0;
-      q->last_unlock_segment       = 0;
-      q->last_lock_was_writer_lock = False;
+      q->latest_wrlocked_segment   = 0;
+      q->latest_rdlocked_segment   = 0;
       VG_(OSetGen_Insert)(oset, q);
    }
    tl_assert(q);
@@ -174,19 +176,58 @@ static void DRD_(rwlock_combine_other_vc)(struct rwlock_info* const p,
    VG_(OSetGen_ResetIter)(p->thread_info);
    for ( ; (q = VG_(OSetGen_Next)(p->thread_info)) != 0; )
    {
-      if (q->tid != tid && (readers_too || q->last_lock_was_writer_lock))
+      if (q->tid != tid)
       {
-         DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc,
-                          &q->last_unlock_segment->vc);
+         if (q->latest_wrlocked_segment)
+         {
+            DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc,
+                             &q->latest_wrlocked_segment->vc);
+         }
+         if (readers_too && q->latest_rdlocked_segment)
+         {
+            DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc,
+                             &q->latest_rdlocked_segment->vc);
+         }
       }
    }
    DRD_(thread_update_conflict_set)(tid, &old_vc);
    DRD_(vc_cleanup)(&old_vc);
 }
 
+/**
+ * Compare the type of the rwlock specified at initialization time with
+ * the type passed as an argument, and complain if these two types do not
+ * match.
+ */
+static Bool drd_rwlock_check_type(struct rwlock_info* const p,
+                                  const RwLockT rwlock_type)
+{
+   tl_assert(p);
+   /* The code below has to be updated if additional rwlock types are added. */
+   tl_assert(rwlock_type == pthread_rwlock || rwlock_type == user_rwlock);
+   tl_assert(p->rwlock_type == pthread_rwlock || p->rwlock_type == user_rwlock);
+
+   if (p->rwlock_type == rwlock_type)
+      return True;
+
+   {
+      RwlockErrInfo REI = { DRD_(thread_get_running_tid)(), p->a1 };
+      VG_(maybe_record_error)
+         (VG_(get_running_tid)(),
+          RwlockErr,
+          VG_(get_IP)(VG_(get_running_tid)()),
+          rwlock_type == pthread_rwlock
+          ? "Attempt to use a user-defined rwlock as a POSIX rwlock"
+          : "Attempt to use a POSIX rwlock as a user-defined rwlock",
+          &REI);
+   }
+   return False;
+}
+
 /** Initialize the rwlock_info data structure *p. */
 static
-void DRD_(rwlock_initialize)(struct rwlock_info* const p, const Addr rwlock)
+void DRD_(rwlock_initialize)(struct rwlock_info* const p, const Addr rwlock,
+                             const RwLockT rwlock_type)
 {
    tl_assert(rwlock != 0);
    tl_assert(p->a1 == rwlock);
@@ -195,6 +236,7 @@ void DRD_(rwlock_initialize)(struct rwlock_info* const p, const Addr rwlock)
    p->cleanup         = (void(*)(DrdClientobj*))rwlock_cleanup;
    p->delete_thread
       = (void(*)(DrdClientobj*, DrdThreadId))rwlock_delete_thread;
+   p->rwlock_type     = rwlock_type;
    p->thread_info     = VG_(OSetGen_Create)(
       0, 0, VG_(malloc), "drd.rwlock.ri.1", VG_(free));
    p->acquiry_time_ms = 0;
@@ -211,8 +253,7 @@ static void rwlock_cleanup(struct rwlock_info* p)
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] rwlock_destroy     0x%lx",
-                   VG_(get_running_tid)(),
+                   "[%d] rwlock_destroy     0x%lx\n",
                    DRD_(thread_get_running_tid)(),
                    p->a1);
    }
@@ -230,14 +271,16 @@ static void rwlock_cleanup(struct rwlock_info* p)
    VG_(OSetGen_ResetIter)(p->thread_info);
    for ( ; (q = VG_(OSetGen_Next)(p->thread_info)) != 0; )
    {
-      DRD_(sg_put)(q->last_unlock_segment);
+      DRD_(sg_put)(q->latest_wrlocked_segment);
+      DRD_(sg_put)(q->latest_rdlocked_segment);
    }
+
    VG_(OSetGen_Destroy)(p->thread_info);
 }
 
 static
 struct rwlock_info*
-DRD_(rwlock_get_or_allocate)(const Addr rwlock)
+DRD_(rwlock_get_or_allocate)(const Addr rwlock, const RwLockT rwlock_type)
 {
    struct rwlock_info* p;
 
@@ -245,6 +288,7 @@ DRD_(rwlock_get_or_allocate)(const Addr rwlock)
    p = &(DRD_(clientobj_get)(rwlock, ClientRwlock)->rwlock);
    if (p)
    {
+      drd_rwlock_check_type(p, rwlock_type);
       return p;
    }
 
@@ -260,7 +304,7 @@ DRD_(rwlock_get_or_allocate)(const Addr rwlock)
    }
 
    p = &(DRD_(clientobj_add)(rwlock, ClientRwlock)->rwlock);
-   DRD_(rwlock_initialize)(p, rwlock);
+   DRD_(rwlock_initialize)(p, rwlock, rwlock_type);
    return p;
 }
 
@@ -279,13 +323,15 @@ struct rwlock_info* DRD_(rwlock_pre_init)(const Addr rwlock,
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] rwlock_init        0x%lx",
-                   VG_(get_running_tid)(),
+                   "[%d] rwlock_init        0x%lx\n",
                    DRD_(thread_get_running_tid)(),
                    rwlock);
    }
 
    p = DRD_(rwlock_get)(rwlock);
+
+   if (p)
+	drd_rwlock_check_type(p, rwlock_type);
 
    if (p)
    {
@@ -299,7 +345,7 @@ struct rwlock_info* DRD_(rwlock_pre_init)(const Addr rwlock,
       return p;
    }
 
-   p = DRD_(rwlock_get_or_allocate)(rwlock);
+   p = DRD_(rwlock_get_or_allocate)(rwlock, rwlock_type);
 
    return p;
 }
@@ -321,6 +367,8 @@ void DRD_(rwlock_post_destroy)(const Addr rwlock, const RwLockT rwlock_type)
       return;
    }
 
+   drd_rwlock_check_type(p, rwlock_type);
+
    DRD_(clientobj_remove)(rwlock, ClientRwlock);
 }
 
@@ -337,20 +385,19 @@ void DRD_(rwlock_pre_rdlock)(const Addr rwlock, const RwLockT rwlock_type)
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] pre_rwlock_rdlock  0x%lx",
-                   VG_(get_running_tid)(),
+                   "[%d] pre_rwlock_rdlock  0x%lx\n",
                    DRD_(thread_get_running_tid)(),
                    rwlock);
    }
 
-   p = DRD_(rwlock_get_or_allocate)(rwlock);
+   p = DRD_(rwlock_get_or_allocate)(rwlock, rwlock_type);
    tl_assert(p);
 
    if (DRD_(rwlock_is_wrlocked_by)(p, DRD_(thread_get_running_tid)()))
    {
       VG_(message)(Vg_UserMsg,
                    "reader-writer lock 0x%lx is already locked for"
-                   " writing by calling thread",
+                   " writing by calling thread\n",
                    p->a1);
    }
 }
@@ -370,8 +417,7 @@ void DRD_(rwlock_post_rdlock)(const Addr rwlock, const RwLockT rwlock_type,
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] post_rwlock_rdlock 0x%lx",
-                   VG_(get_running_tid)(),
+                   "[%d] post_rwlock_rdlock 0x%lx\n",
                    drd_tid,
                    rwlock);
    }
@@ -386,7 +432,6 @@ void DRD_(rwlock_post_rdlock)(const Addr rwlock, const RwLockT rwlock_type,
    q = DRD_(lookup_or_insert_node)(p->thread_info, drd_tid);
    if (++q->reader_nesting_count == 1)
    {
-      q->last_lock_was_writer_lock = False;
       DRD_(thread_new_segment)(drd_tid);
       DRD_(s_rwlock_segment_creation_count)++;
       DRD_(rwlock_combine_other_vc)(p, drd_tid, False);
@@ -411,16 +456,13 @@ void DRD_(rwlock_pre_wrlock)(const Addr rwlock, const RwLockT rwlock_type)
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] pre_rwlock_wrlock  0x%lx",
-                   VG_(get_running_tid)(),
+                   "[%d] pre_rwlock_wrlock  0x%lx\n",
                    DRD_(thread_get_running_tid)(),
                    rwlock);
    }
 
    if (p == 0)
-   {
-      p = DRD_(rwlock_get_or_allocate)(rwlock);
-   }
+      p = DRD_(rwlock_get_or_allocate)(rwlock, rwlock_type);
 
    tl_assert(p);
 
@@ -452,8 +494,7 @@ void DRD_(rwlock_post_wrlock)(const Addr rwlock, const RwLockT rwlock_type,
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] post_rwlock_wrlock 0x%lx",
-                   VG_(get_running_tid)(),
+                   "[%d] post_rwlock_wrlock 0x%lx\n",
                    drd_tid,
                    rwlock);
    }
@@ -465,7 +506,6 @@ void DRD_(rwlock_post_wrlock)(const Addr rwlock, const RwLockT rwlock_type,
                                    DRD_(thread_get_running_tid)());
    tl_assert(q->writer_nesting_count == 0);
    q->writer_nesting_count++;
-   q->last_lock_was_writer_lock = True;
    tl_assert(q->writer_nesting_count == 1);
    DRD_(thread_new_segment)(drd_tid);
    DRD_(s_rwlock_segment_creation_count)++;
@@ -494,8 +534,7 @@ void DRD_(rwlock_pre_unlock)(const Addr rwlock, const RwLockT rwlock_type)
    if (DRD_(s_trace_rwlock))
    {
       VG_(message)(Vg_UserMsg,
-                   "[%d/%d] rwlock_unlock      0x%lx",
-                   vg_tid,
+                   "[%d] rwlock_unlock      0x%lx\n",
                    drd_tid,
                    rwlock);
    }
@@ -511,6 +550,9 @@ void DRD_(rwlock_pre_unlock)(const Addr rwlock, const RwLockT rwlock_type)
                               &GEI);
       return;
    }
+
+   drd_rwlock_check_type(p, rwlock_type);
+
    if (! DRD_(rwlock_is_locked_by)(p, drd_tid))
    {
       RwlockErrInfo REI = { DRD_(thread_get_running_tid)(), p->a1 };
@@ -541,6 +583,17 @@ void DRD_(rwlock_pre_unlock)(const Addr rwlock, const RwLockT rwlock_type)
                                     &HEI);
          }
       }
+      if (q->reader_nesting_count == 0 && q->writer_nesting_count == 0)
+      {
+         /*
+          * This pthread_rwlock_unlock() call really unlocks the rwlock. Save
+          * the current vector clock of the thread such that it is available
+          * when this rwlock is locked again.
+          */
+         DRD_(thread_get_latest_segment)(&q->latest_rdlocked_segment, drd_tid);
+         DRD_(thread_new_segment)(drd_tid);
+         DRD_(s_rwlock_segment_creation_count)++;
+      }
    }
    else if (q->writer_nesting_count > 0)
    {
@@ -561,32 +614,30 @@ void DRD_(rwlock_pre_unlock)(const Addr rwlock, const RwLockT rwlock_type)
                                     &HEI);
          }
       }
+      if (q->reader_nesting_count == 0 && q->writer_nesting_count == 0)
+      {
+         /*
+          * This pthread_rwlock_unlock() call really unlocks the rwlock. Save
+          * the current vector clock of the thread such that it is available
+          * when this rwlock is locked again.
+          */
+         DRD_(thread_get_latest_segment)(&q->latest_wrlocked_segment, drd_tid);
+         DRD_(thread_new_segment)(drd_tid);
+         DRD_(s_rwlock_segment_creation_count)++;
+      }
    }
    else
    {
       tl_assert(False);
    }
-
-   if (q->reader_nesting_count == 0 && q->writer_nesting_count == 0)
-   {
-      /* This pthread_rwlock_unlock() call really unlocks the rwlock. Save */
-      /* the current vector clock of the thread such that it is available  */
-      /* when this rwlock is locked again.                                 */
-
-      DRD_(thread_get_latest_segment)(&q->last_unlock_segment, drd_tid);
-      DRD_(thread_new_segment)(drd_tid);
-      DRD_(s_rwlock_segment_creation_count)++;
-   }
 }
 
-/**
- * Call this function when thread tid stops to exist, such that the
- * "last owner" field can be cleared if it still refers to that thread.
- */
+/** Called when thread tid stops to exist. */
 static void rwlock_delete_thread(struct rwlock_info* const p,
                                  const DrdThreadId tid)
 {
    struct rwlock_thread_info* q;
+
    if (DRD_(rwlock_is_locked_by)(p, tid))
    {
       RwlockErrInfo REI = { DRD_(thread_get_running_tid)(), p->a1 };

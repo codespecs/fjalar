@@ -1,14 +1,13 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-noinst_SCRIPTS = filter_stderr
+dist_noinst_SCRIPTS = filter_stderr
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
 	blockfault.stderr.exp blockfault.vgtest \
 	mremap.stderr.exp mremap.stderr.exp-glibc27 mremap.stdout.exp \
 	    mremap.vgtest \
-	mremap2.stderr.exp mremap2.stdout.exp mremap2.stdout.exp2 \
-	    mremap2.stdout.exp-glibc28-amd64 mremap2.vgtest
+	mremap2.stderr.exp mremap2.stdout.exp mremap2.vgtest
 
 check_PROGRAMS = \
 	blockfault \

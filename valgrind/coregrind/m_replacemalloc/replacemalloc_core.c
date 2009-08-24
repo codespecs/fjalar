@@ -60,7 +60,9 @@ Bool VG_(replacement_malloc_process_cmd_line_option)(Char* arg)
       {
          VG_(message)(Vg_UserMsg, 
             "Invalid --alignment= setting.  "
-            "Should be a power of 2, >= %d, <= 4096.", VG_MIN_MALLOC_SZB);
+            "Should be a power of 2, >= %d, <= 4096.\n",
+            VG_MIN_MALLOC_SZB
+         );
          VG_(err_bad_option)("--alignment");
       }
    }
@@ -70,21 +72,6 @@ Bool VG_(replacement_malloc_process_cmd_line_option)(Char* arg)
       return False;
 
    return True;
-}
-
-void VG_(replacement_malloc_print_usage)(void)
-{
-   VG_(printf)(
-"    --alignment=<number>      set minimum alignment of allocations [%d]\n",
-   VG_MIN_MALLOC_SZB
-   );
-}
-
-void VG_(replacement_malloc_print_debug_usage)(void)
-{
-   VG_(printf)(
-"    --trace-malloc=no|yes     show client malloc details? [no]\n"
-   );
 }
 
 /*------------------------------------------------------------*/

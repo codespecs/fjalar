@@ -8,49 +8,12 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT(Valgrind, 3.5.0.SVN, valgrind-users@lists.sourceforge.net)
+AC_INIT(Valgrind, 3.5.0-TEST1, valgrind-users@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([foreign])
 
 AM_MAINTAINER_MODE
-
-#----------------------------------------------------------------------------
-# Where is VEX ?
-#----------------------------------------------------------------------------
-# Nb: For the 2nd arg, the help string, AS_HELP_STRING is the proper way, but
-#     older autoconfs don't support it... here's what it would say:
-#
-#    AS_HELP_STRING([--with-vex], [Vex directory]),
-#
-AC_ARG_WITH(vex, 
-    [  --with-vex=/path/to/vex/dir    Vex directory],
-[
-    AC_CHECK_FILE($withval/pub/libvex.h,
-        [VEX_DIR=$withval],
-        [AC_MSG_ERROR([Directory '$withval' does not exist, or does not contain Vex])])
-],
-[
-    VEX_DIR='$(top_srcdir)/VEX'
-])
-AC_SUBST(VEX_DIR)
-
-# "make distcheck" first builds a tarball, then extracts it.
-# Then it creates a build directory different from the extracted sources
-# (called _build), and issues
-#
-#   ../configure $(DISTCHECK_CONFIGURE_FLAGS)
-#
-# and then builds, runs "make check", installs using DESTDIR, runs make
-# installcheck, uninstalls, checks whether the installed base is empty
-# again, then does yet another "make dist" and compares the resulting
-# tarball with the one it started off with for identical content.  Then it
-# tests "make distclean" for no leftover files.  
-#
-# So this line means:  when doing "make dist", use the same --with-vex value
-# that you used when running configure to configure this tree in the first
-# place.
-AC_SUBST([DISTCHECK_CONFIGURE_FLAGS], [--with-vex=$VEX_DIR])
 
 #----------------------------------------------------------------------------
 # Checks for various programs.
@@ -62,7 +25,19 @@ AC_PROG_CC
 AM_PROG_CC_C_O
 AC_PROG_CPP
 AC_PROG_CXX
-AC_PROG_OBJC
+# AC_PROG_OBJC apparently causes problems on older Linux distros (eg. with
+# autoconf 2.59).  If we ever have any Objective-C code in the Valgrind code
+# base (eg. most likely as Darwin-specific tests) we'll need one of the
+# following:
+# - put AC_PROG_OBJC in a Darwin-specific part of this file
+# - Use AC_PROG_OBJC here and up the minimum autoconf version
+# - Use the following, which is apparently equivalent:
+#     m4_ifdef([AC_PROG_OBJC],
+#        [AC_PROG_OBJC],
+#        [AC_CHECK_TOOL([OBJC], [gcc])
+#         AC_SUBST([OBJC])
+#         AC_SUBST([OBJCFLAGS])
+#        ])
 AC_PROG_RANLIB
 
 # If no AR variable was specified, look up the name of the archiver. Otherwise
@@ -289,6 +264,7 @@ case "${host_os}" in
 	     9.*)
 		  AC_MSG_RESULT([Darwin 9.x (${kernel}) / Mac OS X 10.5 Leopard])
 		  DEFAULT_SUPP="darwin9.supp ${DEFAULT_SUPP}"
+		  DEFAULT_SUPP="darwin9-drd.supp ${DEFAULT_SUPP}"
 		  ;;
      *) 
 		  AC_MSG_RESULT([unsupported (${kernel})])
@@ -1233,6 +1209,29 @@ if test x$declaration_after_statement = xyes; then
 fi
 
 
+# does this compiler support -Wno-empty-body ?
+
+AC_MSG_CHECKING([if gcc accepts -Wno-empty-body])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-Wno-empty-body"
+
+AC_TRY_COMPILE(
+[ ],
+[
+  return 0;
+],
+[
+AC_SUBST([FLAG_W_NO_EMPTY_BODY], [-Wno-empty-body])
+AC_MSG_RESULT([yes])
+],
+[
+AC_SUBST([FLAG_W_NO_EMPTY_BODY], [])
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+
 # does this compiler support -Wno-format-zero-length ?
 
 AC_MSG_CHECKING([if gcc accepts -Wno-format-zero-length])
@@ -1251,6 +1250,29 @@ AC_MSG_RESULT([yes])
 ],
 [
 AC_SUBST([FLAG_W_NO_FORMAT_ZERO_LENGTH], [])
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+
+# does this compiler support -Wno-uninitialized ?
+
+AC_MSG_CHECKING([if gcc accepts -Wno-uninitialized])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-Wno-uninitialized"
+
+AC_TRY_COMPILE(
+[ ],
+[
+  return 0;
+],
+[
+AC_SUBST([FLAG_W_NO_UNINITIALIZED], [-Wno-uninitialized])
+AC_MSG_RESULT([yes])
+],
+[
+AC_SUBST([FLAG_W_NO_UNINITIALIZED], [])
 AC_MSG_RESULT([no])
 ])
 CFLAGS=$safe_CFLAGS
@@ -1835,12 +1857,15 @@ AM_CONDITIONAL([HAVE_BUILTIN_ATOMIC], [test x$ac_have_builtin_atomic = xyes])
 # Ok.  We're done checking.
 #----------------------------------------------------------------------------
 
-AC_OUTPUT(
+# Nb: VEX/Makefile is generated from Makefile.vex.in.
+AC_CONFIG_FILES([
    Makefile 
+   VEX/Makefile:Makefile.vex.in
    valgrind.spec
    valgrind.pc
    glibc-2.X.supp
    fjalar/Makefile
+   docs/Makefile 
    tests/Makefile 
    tests/vg_regtest 
    perf/Makefile 
@@ -1848,6 +1873,7 @@ AC_OUTPUT(
    include/Makefile 
    include/vki/Makefile 
    auxprogs/Makefile
+   mpi/Makefile
    coregrind/Makefile 
    memcheck/Makefile
    memcheck/tests/Makefile
@@ -1857,28 +1883,22 @@ AC_OUTPUT(
    memcheck/tests/darwin/Makefile
    memcheck/tests/x86-linux/Makefile
    memcheck/perf/Makefile
-   memcheck/docs/Makefile
    cachegrind/Makefile
    cachegrind/tests/Makefile
    cachegrind/tests/x86/Makefile
-   cachegrind/docs/Makefile
    cachegrind/cg_annotate
    callgrind/Makefile
    callgrind/callgrind_annotate
    callgrind/callgrind_control
    callgrind/tests/Makefile
-   callgrind/docs/Makefile
    helgrind/Makefile
    helgrind/tests/Makefile
-   helgrind/docs/Makefile
    massif/Makefile
    massif/tests/Makefile
    massif/perf/Makefile
-   massif/docs/Makefile
    massif/ms_print
    lackey/Makefile
    lackey/tests/Makefile
-   lackey/docs/Makefile
    none/Makefile
    none/tests/Makefile
    none/tests/amd64/Makefile
@@ -1888,15 +1908,19 @@ AC_OUTPUT(
    none/tests/linux/Makefile
    none/tests/darwin/Makefile
    none/tests/x86-linux/Makefile
-   none/docs/Makefile
    exp-ptrcheck/Makefile
    exp-ptrcheck/tests/Makefile
-   exp-ptrcheck/docs/Makefile
    drd/Makefile
-   drd/docs/Makefile
    drd/scripts/download-and-build-splash2
    drd/tests/Makefile
-)
+   exp-bbv/Makefile
+   exp-bbv/tests/Makefile
+   exp-bbv/tests/x86/Makefile
+   exp-bbv/tests/x86-linux/Makefile
+   exp-bbv/tests/amd64-linux/Makefile
+   exp-bbv/tests/ppc32-linux/Makefile
+])
+AC_OUTPUT
 
 cat<<EOF
 

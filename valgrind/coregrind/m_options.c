@@ -51,13 +51,14 @@ Char*  VG_(clo_db_command)     = GDB_PATH " -nw %f %p";
 Int    VG_(clo_gen_suppressions) = 0;
 Int    VG_(clo_sanity_level)   = 1;
 Int    VG_(clo_verbosity)      = 1;
+Bool   VG_(clo_stats)          = False;
 Bool   VG_(clo_xml)            = False;
 HChar* VG_(clo_xml_user_comment) = NULL;
 Bool   VG_(clo_demangle)       = True;
 Bool   VG_(clo_trace_children) = False;
 Bool   VG_(clo_child_silent_after_fork) = False;
-Int    VG_(clo_log_fd)         = 2; /* must be signed, as -1 is possible. */
-Char*  VG_(clo_log_name)       = NULL;
+Char*  VG_(clo_log_fname_expanded) = NULL;
+Char*  VG_(clo_xml_fname_expanded) = NULL;
 Bool   VG_(clo_time_stamp)     = False;
 Int    VG_(clo_input_fd)       = 0; /* stdin */
 Int    VG_(clo_n_suppressions) = 0;
@@ -90,7 +91,7 @@ Word   VG_(clo_main_stacksize) = 0; /* use client's rlimit.stack */
 Bool   VG_(clo_wait_for_gdb)   = False;
 VgSmc  VG_(clo_smc_check)      = Vg_SmcStack;
 HChar* VG_(clo_kernel_variant) = NULL;
-Bool   VG_(clo_auto_run_dsymutil) = False;
+Bool   VG_(clo_dsymutil)       = False;
 
 
 /*====================================================================*/
@@ -99,8 +100,8 @@ Bool   VG_(clo_auto_run_dsymutil) = False;
 
 static void revert_to_stderr ( void )
 {
-   vg_assert( !VG_(logging_to_socket) );
-   VG_(clo_log_fd) = 2; /* stderr */
+   VG_(log_output_sink).fd = 2; /* stderr */
+   VG_(log_output_sink).is_socket = False;
 }
 
 __attribute__((noreturn))
@@ -143,7 +144,7 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
 
    if (VG_STREQ(format, "")) {
       // Empty name, bad.
-      VG_UMSG("%s: filename is empty", option_name);
+      VG_(umsg)("%s: filename is empty", option_name);
       goto bad;
    }
    
@@ -152,10 +153,11 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
    // that we don't allow a legitimate filename beginning with '~' but that
    // seems very unlikely.
    if (format[0] == '~') {
-      VG_UMSG("%s: filename begins with '~'", option_name);
-      VG_UMSG("You probably expected the shell to expand the '~', but it");
-      VG_UMSG("didn't.  The rules for '~'-expansion vary from shell to shell.");
-      VG_UMSG("You might have more luck using $HOME instead.");
+      VG_(umsg)("%s: filename begins with '~'\n", option_name);
+      VG_(umsg)("You probably expected the shell to expand the '~', but it\n");
+      VG_(umsg)("didn't.  The rules for '~'-expansion "
+                "vary from shell to shell.\n");
+      VG_(umsg)("You might have more luck using $HOME instead.\n");
       goto bad;
    }
 
@@ -209,7 +211,7 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
                qualname = &format[i];
                while (True) {
                   if (0 == format[i]) {
-                     VG_(message)(Vg_UserMsg, "%s: malformed %%q specifier",
+                     VG_(message)(Vg_UserMsg, "%s: malformed %%q specifier\n",
                         option_name);
                      goto bad;
                   } else if ('}' == format[i]) {
@@ -219,7 +221,7 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
                      qual = VG_(getenv)(qualname);
                      if (NULL == qual) {
                         VG_(message)(Vg_UserMsg,
-                           "%s: environment variable %s is not set",
+                           "%s: environment variable %s is not set\n",
                            option_name, qualname);
                         format[i] = '}';  // Put the '}' back.
                         goto bad;
@@ -234,14 +236,14 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
                j += VG_(sprintf)(&out[j], "%s", qual);
             } else {
                VG_(message)(Vg_UserMsg,
-                  "%s: expected '{' after '%%q'", option_name);
+                  "%s: expected '{' after '%%q'\n", option_name);
                goto bad;
             }
          } 
          else {
             // Something else, abort.
             VG_(message)(Vg_UserMsg,
-               "%s: expected 'p' or 'q' or '%%' after '%%'", option_name);
+               "%s: expected 'p' or 'q' or '%%' after '%%'\n", option_name);
             goto bad;
          }
       }

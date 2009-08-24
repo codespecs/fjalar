@@ -431,7 +431,6 @@ void getSyscallArgsFromGuestState ( /*OUT*/SyscallArgs*       canonical,
    canonical->arg7  = 0;
    canonical->arg8  = 0;
 
-
 #elif defined(VGP_ppc32_linux)
    VexGuestPPC32State* gst = (VexGuestPPC32State*)gst_vanilla;
    canonical->sysno = gst->guest_GPR0;
@@ -444,7 +443,6 @@ void getSyscallArgsFromGuestState ( /*OUT*/SyscallArgs*       canonical,
    canonical->arg7  = 0;
    canonical->arg8  = 0;
 
-
 #elif defined(VGP_ppc64_linux)
    VexGuestPPC64State* gst = (VexGuestPPC64State*)gst_vanilla;
    canonical->sysno = gst->guest_GPR0;
@@ -456,7 +454,6 @@ void getSyscallArgsFromGuestState ( /*OUT*/SyscallArgs*       canonical,
    canonical->arg6  = gst->guest_GPR8;
    canonical->arg7  = 0;
    canonical->arg8  = 0;
-
 
 #elif defined(VGP_ppc32_aix5)
    VexGuestPPC32State* gst = (VexGuestPPC32State*)gst_vanilla;
@@ -1099,15 +1096,15 @@ void bad_before ( ThreadId              tid,
                   /*OUT*/SyscallStatus* status,
                   /*OUT*/UWord*         flags )
 {
-   VG_DMSG("WARNING: unhandled syscall: %s",
+   VG_(dmsg)("WARNING: unhandled syscall: %s\n",
       VG_SYSNUM_STRING_EXTRA(args->sysno));
    if (VG_(clo_verbosity) > 1) {
       VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
    }
-   VG_DMSG("You may be able to write your own handler.");
-   VG_DMSG("Read the file README_MISSING_SYSCALL_OR_IOCTL.");
-   VG_DMSG("Nevertheless we consider this a bug.  Please report");
-   VG_DMSG("it at http://valgrind.org/support/bug_reports.html.");
+   VG_(dmsg)("You may be able to write your own handler.\n");
+   VG_(dmsg)("Read the file README_MISSING_SYSCALL_OR_IOCTL.\n");
+   VG_(dmsg)("Nevertheless we consider this a bug.  Please report\n");
+   VG_(dmsg)("it at http://valgrind.org/support/bug_reports.html.\n");
 
    SET_STATUS_Failure(VKI_ENOSYS);
 }
@@ -1377,7 +1374,17 @@ void VG_(client_syscall) ( ThreadId tid, UInt trc )
 
    /* Do any pre-syscall actions */
    if (VG_(needs).syscall_wrapper) {
-      VG_TDICT_CALL(tool_pre_syscall, tid, sysno);
+      UWord tmpv[8];
+      tmpv[0] = sci->orig_args.arg1;
+      tmpv[1] = sci->orig_args.arg2;
+      tmpv[2] = sci->orig_args.arg3;
+      tmpv[3] = sci->orig_args.arg4;
+      tmpv[4] = sci->orig_args.arg5;
+      tmpv[5] = sci->orig_args.arg6;
+      tmpv[6] = sci->orig_args.arg7;
+      tmpv[7] = sci->orig_args.arg8;
+      VG_TDICT_CALL(tool_pre_syscall, tid, sysno,
+                    &tmpv[0], sizeof(tmpv)/sizeof(tmpv[0]));
    }
 
    vg_assert(ent);
@@ -1655,8 +1662,21 @@ void VG_(post_syscall) (ThreadId tid)
       putSyscallStatusIntoGuestState( tid, &sci->status, &tst->arch.vex );
 
    /* Do any post-syscall actions required by the tool. */
-   if (VG_(needs).syscall_wrapper)
-      VG_TDICT_CALL(tool_post_syscall, tid, sysno, sci->status.sres);
+   if (VG_(needs).syscall_wrapper) {
+      UWord tmpv[8];
+      tmpv[0] = sci->orig_args.arg1;
+      tmpv[1] = sci->orig_args.arg2;
+      tmpv[2] = sci->orig_args.arg3;
+      tmpv[3] = sci->orig_args.arg4;
+      tmpv[4] = sci->orig_args.arg5;
+      tmpv[5] = sci->orig_args.arg6;
+      tmpv[6] = sci->orig_args.arg7;
+      tmpv[7] = sci->orig_args.arg8;
+      VG_TDICT_CALL(tool_post_syscall, tid, 
+                    sysno,
+                    &tmpv[0], sizeof(tmpv)/sizeof(tmpv[0]),
+                    sci->status.sres);
+   }
 
    /* The syscall is done. */
    vg_assert(sci->status.what == SsComplete);

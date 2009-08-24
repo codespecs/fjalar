@@ -13,10 +13,62 @@ BUILD_ALL_DOCS=yes
 ## END OF HACK
 ##-------------------------------------------------------------
 
-
-SUBDIRS = xml lib images internals
-
-EXTRA_DIST = README
+EXTRA_DIST = \
+	README \
+	images/home.png \
+	images/next.png \
+	images/prev.png \
+	images/up.png \
+	internals/3_0_BUGSTATUS.txt \
+	internals/3_1_BUGSTATUS.txt \
+	internals/3_2_BUGSTATUS.txt \
+	internals/3_3_BUGSTATUS.txt \
+	internals/3_4_BUGSTATUS.txt \
+	internals/BIG_APP_NOTES.txt \
+	internals/Darwin-notes.txt \
+	internals/directory-structure.txt \
+	internals/howto_BUILD_KDE42.txt \
+	internals/howto_oprofile.txt \
+	internals/m_replacemalloc.txt \
+	internals/m_syswrap.txt \
+	internals/module-structure.txt \
+	internals/notes.txt \
+	internals/porting-HOWTO.txt \
+	internals/mpi2entries.txt \
+	internals/porting-to-ARM.txt \
+	internals/register-uses.txt \
+	internals/release-HOWTO.txt \
+	internals/segments-seginfos.txt \
+	internals/threads-syscalls-signals.txt \
+	internals/tm-mutexstates.dot \
+	internals/tm-threadstates.dot \
+	internals/tracking-fn-entry-exit.txt \
+	internals/why-no-libc.txt \
+	internals/xml-output.txt \
+	internals/xml-output-protocol4.txt \
+	lib/line-wrap.xsl \
+	lib/vg_basic.css \
+	lib/vg-fo.xsl \
+	lib/vg-faq2txt.xsl \
+	lib/vg-html-chunk.xsl \
+	lib/vg-html-website.xsl \
+	lib/vg-html-common.xsl \
+	xml/FAQ.xml \
+	xml/dist-docs.xml \
+	xml/index.xml \
+	xml/licenses.xml \
+	xml/manpages-index.xml \
+	xml/manual.xml \
+	xml/manual-intro.xml \
+	xml/manual-core.xml \
+	xml/manual-core-adv.xml \
+	xml/manual-writing-tools.xml \
+	xml/design-impl.xml \
+	xml/quick-start-guide.xml \
+	xml/tech-docs.xml \
+	xml/valgrind-manpage.xml \
+	xml/vg-entities.xml \
+	xml/xml_help.txt
 
 
 ##-------------------------------------------------------------------
@@ -55,9 +107,11 @@ XSL_HTML_CHUNK_STYLE  = $(mylibdir)/vg-html-chunk.xsl
 XSL_FO_STYLE          = $(mylibdir)/vg-fo.xsl
 XSL_TEXT_STYLE        = $(mylibdir)/vg-faq2txt.xsl
 XSL_WEBSITE_STYLE     = $(mylibdir)/vg-html-website.xsl
-XSL_MAN_STYLE = /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl
+XSL_MAN_STYLES = \
+    /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl \
+    /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
 
-all-docs: FAQ.txt man-page html-docs print-docs
+all-docs: FAQ.txt man-pages html-docs print-docs
 
 valid:
 	$(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/index.xml
@@ -68,16 +122,21 @@ FAQ.txt:
 	export XML_CATALOG_FILES=$(XML_CATALOG_FILES) && \
 	$(XSLTPROC) $(XSLTPROC_FLAGS) -o ./FAQ.txt $(XSL_TEXT_STYLE) $(myxmldir)/FAQ.xml
 
-# the valgrind manpage
-man-page:
-	if test ! -f $(XSL_MAN_STYLE); then \
-	    echo "Error: I can't find the file '$(XSL_MAN_STYLE)'";     \
-	    echo "Please check where it lives on your system, and"      \
-	         "amend the line 'XSL_MAN_STYLE = ' in this Makefile."; \
-		  exit 1; \
-	fi;
-	export XML_CATALOG_FILES=$(XML_CATALOG_FILES) && \
-	$(XSLTPROC) $(XSLTPROC_FLAGS) -o ./ $(XSL_MAN_STYLE) $(myxmldir)/valgrind-manpage.xml
+# the valgrind manpages
+man-pages:
+	for x in $(XSL_MAN_STYLES) ; do \
+	    if test -f $$x; then \
+		echo "Using manpage stylesheet: $$x"; \
+		export XML_CATALOG_FILES=$(XML_CATALOG_FILES) && \
+		$(XSLTPROC) $(XSLTPROC_FLAGS) -o ./ $$x $(myxmldir)/manpages-index.xml; \
+		exit 0; \
+	    fi; \
+	done; \
+	echo ""; \
+	echo "Error: I can't find the XSL_MAN_STYLE file";     \
+	echo "Please check where it lives on your system, and"      \
+	     "amend the line 'XSL_MAN_STYLES = ' in this Makefile."; \
+	exit 1;
 
 # chunked html, on a chapter-by-chapter basis
 html-docs:
@@ -97,7 +156,6 @@ print-docs:
 	export XML_CATALOG_FILES=$(XML_CATALOG_FILES) && \
 	mkdir -p $(myprintdir) && \
 	mkdir -p $(myprintdir)/images && \
-	cp $(myimgdir)/massif-graph-sm.png $(myprintdir)/images && \
 	$(XSLTPROC) $(XSLTPROC_FLAGS) -o $(myprintdir)/index.fo $(XSL_FO_STYLE) $(myxmldir)/index.xml && \
 	(cd $(myprintdir) && \
          ( pdfxmltex index.fo && \
@@ -121,6 +179,12 @@ install-data-hook:
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
 		cp -r html $(DESTDIR)$(datadir)/doc/valgrind; \
 	fi
+	for f in *.1 ; do \
+		if test -r $$f ; then \
+			mkdir -p $(DESTDIR)$(mandir)/man1; \
+			cp $$f $(DESTDIR)$(mandir)/man1; \
+		fi \
+	done
  ifeq ($(BUILD_ALL_DOCS),yes)
 	if test -r index.pdf ; then \
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
@@ -130,31 +194,28 @@ install-data-hook:
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
 		cp index.ps $(DESTDIR)$(datadir)/doc/valgrind/valgrind_manual.ps; \
 	fi
-	if test -r valgrind.1 ; then \
-		mkdir -p $(DESTDIR)$(mandir)/man1; \
-		cp valgrind.1 $(DESTDIR)$(mandir)/man1/valgrind.1; \
-	fi
  endif
 
 # This is done at 'make dist' time.  It builds the html docs, print
-# docs and man page and copies them into the docs/ directory in the
+# docs and man pages and copies them into the docs/ directory in the
 # tarball.
  ifeq ($(BUILD_ALL_DOCS),yes)
-dist-hook: FAQ.txt html-docs print-docs man-page
+dist-hook: FAQ.txt html-docs man-pages print-docs
 	cp -r html $(distdir)
 	cp FAQ.txt $(distdir)/..
-	cp valgrind.1 $(distdir)
+	cp *.1 $(distdir)
 	cp print/index.pdf $(distdir)
 	cp print/index.ps $(distdir)
  else
-dist-hook: FAQ.txt html-docs man-page
-	cp FAQ.txt $(distdir)/..
+dist-hook: FAQ.txt html-docs man-pages
 	cp -r html $(distdir)
+	cp FAQ.txt $(distdir)/..
+	cp *.1 $(distdir)
  endif
 
 distclean-local:
 	rm -rf html print
-	rm -f $(top_builddir)/FAQ.txt
+	rm -f $(top_builddir)/FAQ.txt $(top_builddir)/docs/*.1
 
 
 
@@ -204,7 +265,6 @@ download-docs:
 	@echo "Generating valgrind_manual.pdf ..."
 	mkdir -p $(vgdir)/print
 	mkdir -p $(vgdir)/print/images
-	cp $(myimgdir)/massif-graph-sm.png $(vgdir)/print/images/
 	$(XSLTPROC) $(XSLTPROC_FLAGS) -o $(vgdir)/print/manual.fo $(XSL_FO_STYLE) $(myxmldir)/index.xml
 	(cd $(vgdir)/print/ && \
 		( pdfxmltex manual.fo && \

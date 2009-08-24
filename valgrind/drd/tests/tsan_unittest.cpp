@@ -70,6 +70,12 @@
 #endif
 //
 
+// A function that allows to suppress gcc's warnings about
+// unused return values in a portable way.
+template <typename T>
+static inline void IGNORE_RETURN_VALUE(T v)
+{ }
+
 #include <vector>
 #include <string>
 #include <map>
@@ -87,7 +93,7 @@
 #include <stdlib.h>
 #include <dirent.h>
 
-#ifndef _APPLE_
+#ifndef __APPLE__
 #include <malloc.h>
 #endif
 
@@ -3530,8 +3536,19 @@ int     GLOB = 0;
 const int N_iter = 2;
 const int Nlog  = 16;
 const int N     = 1 << Nlog;
-static int64_t ARR1[N];
-static int ARR2[N];
+union uint64_union {
+  uint64_t u64[1];
+  uint32_t u32[2];
+  uint16_t u16[4];
+  uint8_t  u8 [8];
+};
+static uint64_union ARR1[N];
+union uint32_union {
+  uint32_t u32[1];
+  uint16_t u16[2];
+  uint8_t  u8 [4];
+};
+static uint32_union ARR2[N];
 Barrier *barriers[N_iter];
 Mutex   MU; 
 
@@ -3552,15 +3569,15 @@ void Worker() {
         if (i & (1 << n)) {
           for (int off = 0; off < (1 << x); off++) {
             switch(x) {
-              case 0: CHECK(          ARR1  [i * (1<<x) + off] == 0); break;
-              case 1: CHECK(((int*)  (ARR1))[i * (1<<x) + off] == 0); break;
-              case 2: CHECK(((short*)(ARR1))[i * (1<<x) + off] == 0); break;
-              case 3: CHECK(((char*) (ARR1))[i * (1<<x) + off] == 0); break;
+              case 0: CHECK(ARR1[i].u64[off] == 0); break;
+              case 1: CHECK(ARR1[i].u32[off] == 0); break;
+              case 2: CHECK(ARR1[i].u16[off] == 0); break;
+              case 3: CHECK(ARR1[i].u8 [off] == 0); break;
             }
             switch(x) {
-              case 1: CHECK(((int*)  (ARR2))[i * (1<<x) + off] == 0); break;
-              case 2: CHECK(((short*)(ARR2))[i * (1<<x) + off] == 0); break;
-              case 3: CHECK(((char*) (ARR2))[i * (1<<x) + off] == 0); break;
+              case 1: CHECK(ARR2[i].u32[off] == 0); break;
+              case 2: CHECK(ARR2[i].u16[off] == 0); break;
+              case 3: CHECK(ARR2[i].u8 [off] == 0); break;
             }
           }
         }
@@ -4750,7 +4767,7 @@ void Writer() {
   usleep(1000);
   GLOB = 1;
   const char *str = "Hey there!\n";
-  write(fd_out, str, strlen(str) + 1);
+  IGNORE_RETURN_VALUE(write(fd_out, str, strlen(str) + 1));
 }
 
 void Reader() {
@@ -4767,10 +4784,15 @@ void Run() {
   char out_name[100];
   // we open two files, on for reading and one for writing, 
   // but the files are actually the same (symlinked).
-  sprintf(in_name,  "/tmp/racecheck_unittest_in.%d", getpid());
   sprintf(out_name, "/tmp/racecheck_unittest_out.%d", getpid());
   fd_out = creat(out_name, O_WRONLY | S_IRWXU);
-  symlink(out_name, in_name);
+#ifdef __APPLE__
+  // symlink() is not supported on Darwin. Copy the output file name.
+  strcpy(in_name, out_name);
+#else
+  sprintf(in_name,  "/tmp/racecheck_unittest_in.%d", getpid());
+  IGNORE_RETURN_VALUE(symlink(out_name, in_name));
+#endif
   fd_in  = open(in_name, 0, O_RDONLY);
   CHECK(fd_out >= 0);
   CHECK(fd_in  >= 0);
@@ -5197,7 +5219,7 @@ int       *REALLOC;
 int       *VALLOC;
 int       *PVALLOC;
 int       *MEMALIGN;
-int       *POSIX_MEMALIGN;
+union pi_pv_union { int* pi; void* pv; } POSIX_MEMALIGN;
 int       *MMAP;
 
 int       *NEW;
@@ -5215,7 +5237,7 @@ void Worker() {
   (*VALLOC)++;
   (*PVALLOC)++;
   (*MEMALIGN)++;
-  (*POSIX_MEMALIGN)++;
+  (*(POSIX_MEMALIGN.pi))++;
   (*MMAP)++;
 
   (*NEW)++;
@@ -5231,7 +5253,7 @@ void Run() {
   VALLOC = (int*)valloc(sizeof(int));
   PVALLOC = (int*)valloc(sizeof(int));  // TODO: pvalloc breaks helgrind.
   MEMALIGN = (int*)memalign(64, sizeof(int));
-  CHECK(0 == posix_memalign((void**)&POSIX_MEMALIGN, 64, sizeof(int)));
+  CHECK(0 == posix_memalign(&POSIX_MEMALIGN.pv, 64, sizeof(int)));
   MMAP = (int*)mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANON, -1, 0);
 
@@ -5257,8 +5279,8 @@ void Run() {
   ANNOTATE_EXPECT_RACE(PVALLOC, "real race on a pvalloc-ed object");
   FAST_MODE_INIT(MEMALIGN);
   ANNOTATE_EXPECT_RACE(MEMALIGN, "real race on a memalign-ed object");
-  FAST_MODE_INIT(POSIX_MEMALIGN);
-  ANNOTATE_EXPECT_RACE(POSIX_MEMALIGN, "real race on a posix_memalign-ed object");
+  FAST_MODE_INIT(POSIX_MEMALIGN.pi);
+  ANNOTATE_EXPECT_RACE(POSIX_MEMALIGN.pi, "real race on a posix_memalign-ed object");
   FAST_MODE_INIT(MMAP);
   ANNOTATE_EXPECT_RACE(MMAP, "real race on a mmap-ed object");
 
@@ -5281,7 +5303,7 @@ void Run() {
   free(VALLOC);
   free(PVALLOC);
   free(MEMALIGN);
-  free(POSIX_MEMALIGN);
+  free(POSIX_MEMALIGN.pv);
   munmap(MMAP, sizeof(int));
   delete NEW;
   delete [] NEW_ARR;
@@ -5769,67 +5791,53 @@ REGISTER_TEST(Run, 122)
 // test123 TP: accesses of different sizes. {{{1
 namespace test123 {
 
-uint64_t MEM[8];
+union uint_union {
+  uint64_t u64[1];
+  uint32_t u32[2];
+  uint16_t u16[4];
+  uint8_t  u8[8];
+};
 
-#define GenericWrite(p,size,off) { \
-  if (size == 64) {\
-    CHECK(off == 0);\
-    (p)[off] = 1;\
-  } else if (size == 32) {\
-    CHECK(off <= 2);\
-    uint32_t *x = (uint32_t*)(p);\
-    x[off] = 1;\
-  } else if (size == 16) {\
-    CHECK(off <= 4);\
-    uint16_t *x = (uint16_t*)(p);\
-    x[off] = 1;\
-  } else if (size == 8) {\
-    CHECK(off <= 8);\
-    uint8_t *x = (uint8_t*)(p);\
-    x[off] = 1;\
-  } else {\
-    CHECK(0);\
-  }\
-}\
+uint_union MEM[8];
 
 // Q. Hey dude, why so many functions? 
 // A. I need different stack traces for different accesses.
 
-void Wr64_0() { GenericWrite(&MEM[0], 64, 0); } 
-void Wr64_1() { GenericWrite(&MEM[1], 64, 0); } 
-void Wr64_2() { GenericWrite(&MEM[2], 64, 0); } 
-void Wr64_3() { GenericWrite(&MEM[3], 64, 0); } 
-void Wr64_4() { GenericWrite(&MEM[4], 64, 0); } 
-void Wr64_5() { GenericWrite(&MEM[5], 64, 0); } 
-void Wr64_6() { GenericWrite(&MEM[6], 64, 0); } 
-void Wr64_7() { GenericWrite(&MEM[7], 64, 0); } 
+void Wr64_0() { MEM[0].u64[0] = 1; } 
+void Wr64_1() { MEM[1].u64[0] = 1; } 
+void Wr64_2() { MEM[2].u64[0] = 1; } 
+void Wr64_3() { MEM[3].u64[0] = 1; } 
+void Wr64_4() { MEM[4].u64[0] = 1; } 
+void Wr64_5() { MEM[5].u64[0] = 1; } 
+void Wr64_6() { MEM[6].u64[0] = 1; } 
+void Wr64_7() { MEM[7].u64[0] = 1; } 
 
-void Wr32_0() { GenericWrite(&MEM[0], 32, 0); } 
-void Wr32_1() { GenericWrite(&MEM[1], 32, 1); } 
-void Wr32_2() { GenericWrite(&MEM[2], 32, 0); } 
-void Wr32_3() { GenericWrite(&MEM[3], 32, 1); } 
-void Wr32_4() { GenericWrite(&MEM[4], 32, 0); } 
-void Wr32_5() { GenericWrite(&MEM[5], 32, 1); } 
-void Wr32_6() { GenericWrite(&MEM[6], 32, 0); } 
-void Wr32_7() { GenericWrite(&MEM[7], 32, 1); } 
+void Wr32_0() { MEM[0].u32[0] = 1; } 
+void Wr32_1() { MEM[1].u32[1] = 1; } 
+void Wr32_2() { MEM[2].u32[0] = 1; } 
+void Wr32_3() { MEM[3].u32[1] = 1; } 
+void Wr32_4() { MEM[4].u32[0] = 1; } 
+void Wr32_5() { MEM[5].u32[1] = 1; } 
+void Wr32_6() { MEM[6].u32[0] = 1; } 
+void Wr32_7() { MEM[7].u32[1] = 1; } 
 
-void Wr16_0() { GenericWrite(&MEM[0], 16, 0); } 
-void Wr16_1() { GenericWrite(&MEM[1], 16, 1); } 
-void Wr16_2() { GenericWrite(&MEM[2], 16, 2); } 
-void Wr16_3() { GenericWrite(&MEM[3], 16, 3); } 
-void Wr16_4() { GenericWrite(&MEM[4], 16, 0); } 
-void Wr16_5() { GenericWrite(&MEM[5], 16, 1); } 
-void Wr16_6() { GenericWrite(&MEM[6], 16, 2); } 
-void Wr16_7() { GenericWrite(&MEM[7], 16, 3); } 
+void Wr16_0() { MEM[0].u16[0] = 1; } 
+void Wr16_1() { MEM[1].u16[1] = 1; } 
+void Wr16_2() { MEM[2].u16[2] = 1; } 
+void Wr16_3() { MEM[3].u16[3] = 1; } 
+void Wr16_4() { MEM[4].u16[0] = 1; } 
+void Wr16_5() { MEM[5].u16[1] = 1; } 
+void Wr16_6() { MEM[6].u16[2] = 1; } 
+void Wr16_7() { MEM[7].u16[3] = 1; } 
 
-void Wr8_0() { GenericWrite(&MEM[0], 8, 0); } 
-void Wr8_1() { GenericWrite(&MEM[1], 8, 1); } 
-void Wr8_2() { GenericWrite(&MEM[2], 8, 2); } 
-void Wr8_3() { GenericWrite(&MEM[3], 8, 3); } 
-void Wr8_4() { GenericWrite(&MEM[4], 8, 4); } 
-void Wr8_5() { GenericWrite(&MEM[5], 8, 5); } 
-void Wr8_6() { GenericWrite(&MEM[6], 8, 6); } 
-void Wr8_7() { GenericWrite(&MEM[7], 8, 7); } 
+void Wr8_0() { MEM[0].u8[0] = 1; } 
+void Wr8_1() { MEM[1].u8[1] = 1; } 
+void Wr8_2() { MEM[2].u8[2] = 1; } 
+void Wr8_3() { MEM[3].u8[3] = 1; } 
+void Wr8_4() { MEM[4].u8[4] = 1; } 
+void Wr8_5() { MEM[5].u8[5] = 1; } 
+void Wr8_6() { MEM[6].u8[6] = 1; } 
+void Wr8_7() { MEM[7].u8[7] = 1; } 
 
 void WriteAll64() {
   Wr64_0();
@@ -5895,14 +5903,14 @@ typedef void (*F)(void);
 
 void TestTwoSizes(F f1, F f2) {
   // first f1, then f2
-  ANNOTATE_NEW_MEMORY(MEM, sizeof(MEM));
-  memset(MEM, 0, sizeof(MEM));
+  ANNOTATE_NEW_MEMORY(&MEM, sizeof(MEM));
+  memset(&MEM, 0, sizeof(MEM));
   MyThreadArray t1(f1, f2);
   t1.Start();
   t1.Join();
   // reverse order
-  ANNOTATE_NEW_MEMORY(MEM, sizeof(MEM));
-  memset(MEM, 0, sizeof(MEM));
+  ANNOTATE_NEW_MEMORY(&MEM, sizeof(MEM));
+  memset(&MEM, 0, sizeof(MEM));
   MyThreadArray t2(f2, f1);
   t2.Start();
   t2.Join();
@@ -6532,7 +6540,7 @@ void Run() {
   printf("test141: FP. unlink/fopen, rmdir/opendir.\n");
 
   dir_name = strdup("/tmp/tsan-XXXXXX");
-  mkdtemp(dir_name);
+  IGNORE_RETURN_VALUE(mkdtemp(dir_name));
 
   filename = strdup((std::string() + dir_name + "/XXXXXX").c_str());
   const int fd = mkstemp(filename);

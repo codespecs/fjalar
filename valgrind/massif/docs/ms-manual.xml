@@ -7,21 +7,16 @@
 <chapter id="ms-manual" xreflabel="Massif: a heap profiler">
   <title>Massif: a heap profiler</title>
 
-<emphasis>Please note that this documentation describes Massif version 3.3.0
-and later.  Massif was significantly overhauled for 3.3.0;  versions 3.2.3
-and earlier presented the profiling information an a quite different manner,
-and so this documentation only pertains to the later versions.</emphasis>
-
 <para>To use this tool, you must specify
-<computeroutput>--tool=massif</computeroutput> on the Valgrind
+<option>--tool=massif</option> on the Valgrind
 command line.</para>
 
-<sect1 id="ms-manual.spaceprof" xreflabel="Heap profiling">
-<title>Heap profiling</title>
+<sect1 id="ms-manual.overview" xreflabel="Overview">
+<title>Overview</title>
 
 <para>Massif is a heap profiler.  It measures how much heap memory your
 program uses.  This includes both the useful space, and the extra bytes
-allocated for book-keeping purposes and alignment purposes.  It can also
+allocated for book-keeping and alignment purposes.  It can also
 measure the size of your program's stack(s), although it does not do so by
 default.</para>
 
@@ -54,40 +49,19 @@ which parts of your program are responsible for allocating the heap memory.
 </sect1>
 
 
-<sect1 id="ms-manual.using" xreflabel="Using Massif">
-<title>Using Massif</title>
-
+<sect1 id="ms-manual.using" xreflabel="Using Massif and ms_print">
+<title>Using Massif and ms_print</title>
 
 <para>First off, as for the other Valgrind tools, you should compile with
-debugging info (the <computeroutput>-g</computeroutput> flag).  It shouldn't
+debugging info (the <option>-g</option> option).  It shouldn't
 matter much what optimisation level you compile your program with, as this
 is unlikely to affect the heap memory usage.</para>
 
-<para>Then, to gather heap profiling information about the program
-<computeroutput>prog</computeroutput>, type:</para>
-<screen><![CDATA[
-% valgrind --tool=massif prog
-]]></screen>
+<para>Then, you need to run Massif itself to gather the profiling
+information, and then run ms_print to present it in a readable way.</para>
 
-<para>The program will execute (slowly).  Upon completion, no summary
-statistics are printed to Valgrind's commentary;  all of Massif's profiling
-data is written to a file.  By default, this file is called
-<filename>massif.out.&lt;pid&gt;</filename>, where
-<filename>&lt;pid&gt;</filename> is the process ID.</para>
 
-<para>To see the information gathered by Massif in an easy-to-read form, use
-the ms_print script.  If the output file's name is
-<filename>massif.out.12345</filename>, type:</para>
-<screen><![CDATA[
-% ms_print massif.out.12345]]></screen>
 
-<para>ms_print will produce (a) a graph showing the memory consumption over
-the program's execution, and (b) detailed information about the responsible
-allocation sites at various points in the program, including the point of
-peak memory allocation.  The use of a separate script for presenting the
-results is deliberate:  it separates the data gathering from its
-presentation, and means that new methods of presenting the data can be added in
-the future.</para>
 
 <sect2 id="ms-manual.anexample" xreflabel="An Example">
 <title>An Example Program</title>
@@ -130,6 +104,45 @@ on the heap.</para>
 31         return 0;
 32      }
 ]]></screen>
+
+</sect2>
+
+
+<sect2 id="ms-manual.running-massif" xreflabel="Running Massif">
+<title>Running Massif</title>
+
+<para>To gather heap profiling information about the program
+<computeroutput>prog</computeroutput>, type:</para>
+<screen><![CDATA[
+valgrind --tool=massif prog
+]]></screen>
+
+<para>The program will execute (slowly).  Upon completion, no summary
+statistics are printed to Valgrind's commentary;  all of Massif's profiling
+data is written to a file.  By default, this file is called
+<filename>massif.out.&lt;pid&gt;</filename>, where
+<filename>&lt;pid&gt;</filename> is the process ID, although this filename
+can be changed with the <option>--massif-out-file</option> option.</para>
+
+</sect2>
+
+
+<sect2 id="ms-manual.running-ms_print" xreflabel="Running ms_print">
+<title>Running ms_print</title>
+
+<para>To see the information gathered by Massif in an easy-to-read form, use
+ms_print.  If the output file's name is
+<filename>massif.out.12345</filename>, type:</para>
+<screen><![CDATA[
+ms_print massif.out.12345]]></screen>
+
+<para>ms_print will produce (a) a graph showing the memory consumption over
+the program's execution, and (b) detailed information about the responsible
+allocation sites at various points in the program, including the point of
+peak memory allocation.  The use of a separate script for presenting the
+results is deliberate:  it separates the data gathering from its
+presentation, and means that new methods of presenting the data can be added in
+the future.</para>
 
 </sect2>
 
@@ -193,7 +206,7 @@ For very short-run programs such as the example, most of the executed
 instructions involve the loading and dynamic linking of the program.  The
 execution of <computeroutput>main</computeroutput> (and thus the heap
 allocations) only occur at the very end.  For a short-running program like
-this, we can use the <computeroutput>--time-unit=B</computeroutput> option
+this, we can use the <option>--time-unit=B</option> option
 to specify that we want the time unit to instead be the number of bytes
 allocated/deallocated on the heap and stack(s).</para>
 
@@ -227,17 +240,19 @@ Number of snapshots: 25
  Detailed snapshots: [9, 14 (peak), 24]
 ]]></screen>
 
-<para>Each vertical bar represents a snapshot, i.e. a measurement of the
-memory usage at a certain point in time.  If the next snapshot is more than
-one column away, a horizontal line of characters is drawn from the top of
-the snapshot to just before the next snapshot column.  The text at the
-bottom show that 25 snapshots were taken for this program, which is one per
-heap allocation/deallocation, plus a couple of extras.  Massif starts by
-taking snapshots for every heap allocation/deallocation, but as a program
-runs for longer, it takes snapshots less frequently.  It also discards older
+<para>The size of the graph can be changed with ms_print's
+<option>--x</option> and <option>--y</option> options.  Each vertical bar
+represents a snapshot, i.e. a measurement of the memory usage at a certain
+point in time.  If the next snapshot is more than one column away, a
+horizontal line of characters is drawn from the top of the snapshot to just
+before the next snapshot column.  The text at the bottom show that 25
+snapshots were taken for this program, which is one per heap
+allocation/deallocation, plus a couple of extras.  Massif starts by taking
+snapshots for every heap allocation/deallocation, but as a program runs for
+longer, it takes snapshots less frequently.  It also discards older
 snapshots as the program goes on;  when it reaches the maximum number of
 snapshots (100 by default, although changeable with the
-<computeroutput>--max-snapshots</computeroutput> option) half of them are
+<option>--max-snapshots</option> option) half of them are
 deleted.  This means that a reasonable number of snapshots are always
 maintained.</para>
 
@@ -251,22 +266,35 @@ shortly.  Detailed snapshots are represented in the graph by bars consisting
 of '@' characters.  The text at the bottom show that 3 detailed
 snapshots were taken for this program (snapshots 9, 14 and 24).  By default,
 every 10th snapshot is detailed, although this can be changed via the
-<computeroutput>--detailed-freq</computeroutput> option.</para>
+<option>--detailed-freq</option> option.</para>
 
 <para>Finally, there is at most one <emphasis>peak</emphasis> snapshot.  The
 peak snapshot is a detailed snapshot, and records the point where memory
 consumption was greatest.  The peak snapshot is represented in the graph by
 a bar consisting of '#' characters.  The text at the bottom shows
-that snapshot 14 was the peak.  Note that for tiny programs that never
-deallocate heap memory, Massif will not record a peak snapshot.</para>
+that snapshot 14 was the peak.</para>
 
-<para>Some more details about the peak:  the peak is determined by looking
-at every allocation, i.e. it is <emphasis>not</emphasis> just the peak among
-the regular snapshots.  However, recording the true peak is expensive, and
-so by default Massif records a peak whose size is within 1% of the size of
-the true peak.  See the description of the
-<computeroutput>--peak-inaccuracy</computeroutput> option below for more
-details.</para>
+<para>Massif's determination of when the peak occurred can be wrong, for
+two reasons.</para>
+
+<itemizedlist>
+  <listitem><para>Peak snapshots are only ever taken after a deallocation
+  happens.  This avoids lots of unnecessary peak snapshot recordings
+  (imagine what happens if your program allocates a lot of heap blocks in
+  succession, hitting a new peak every time).  But it means that if your
+  program never deallocates any blocks, no peak will be recorded.  It also
+  means that if your program does deallocate blocks but later allocates to a
+  higher peak without subsequently deallocating, the reported peak will be
+  too low.
+  </para>
+  </listitem>
+
+  <listitem><para>Even with this behaviour, recording the peak accurately
+  is slow.  So by default Massif records a peak whose size is within 1% of
+  the size of the true peak.  This inaccuracy in the peak measurement can be
+  changed with the <option>--peak-inaccuracy</option> option.</para>
+  </listitem>
+</itemizedlist>
 
 <para>The following graph is from an execution of Konqueror, the KDE web
 browser.  It shows what graphs for larger programs look like.</para>
@@ -336,7 +364,7 @@ a small amount of information is recorded for each one:</para>
 
   <listitem><para>The time it was taken. In this case, the time unit is
   bytes, due to the use of
-  <computeroutput>--time-unit=B</computeroutput>.</para></listitem>
+  <option>--time-unit=B</option>.</para></listitem>
 
   <listitem><para>The total memory consumption at that point.</para></listitem>
 
@@ -352,19 +380,21 @@ a small amount of information is recorded for each one:</para>
   The exact number of administrative bytes depends on the details of the
   allocator.  By default Massif assumes 8 bytes per block, as can be seen
   from the example, but this number can be changed via the
-  <computeroutput>--heap-admin</computeroutput> option.</para>
+  <option>--heap-admin</option> option.</para>
 
   <para>Second, allocators often round up the number of bytes asked for to a
-  larger number.  By default, if N bytes are asked for, Massif rounds N up
-  to the nearest multiple of 8 that is equal to or greater than N.  This is
-  typical behaviour for allocators, and is required to ensure that elements
-  within the block are suitably aligned.  The rounding size can be changed
-  with the <computeroutput>--alignment</computeroutput> option, although it
-  cannot be less than 8, and must be a power of two.</para></listitem>
+  larger number, usually 8 or 16.  This is required to ensure that elements
+  within the block are suitably aligned.  If N bytes are asked for, Massif
+  rounds N up to the nearest multiple of the value specified by the
+  <option><xref linkend="opt.alignment"/></option> option.
+  </para></listitem>
 
   <listitem><para>The size of the stack(s).  By default, stack profiling is
   off as it slows Massif down greatly.  Therefore, the stack column is zero
-  in the example.</para></listitem>
+  in the example.  Stack profiling can be turned on with the
+  <option>--stacks=yes</option> option.  
+  
+  </para></listitem>
 </itemizedlist>
 
 <para>The next snapshot is detailed.  As well as the basic counts, it gives
@@ -382,9 +412,9 @@ indicates all heap allocation functions such as <function>malloc</function>
 and C++ <function>new</function>.  All heap allocations go through these
 functions, and so all 9,000 useful bytes (which is 99.21% of all allocated
 bytes) go through them.  But how were <function>malloc</function> and new
-called?  At this point, every allocation so far has been due to line 21
+called?  At this point, every allocation so far has been due to line 20
 inside <function>main</function>, hence the second line in the tree.  The
-<computeroutput>-></computeroutput> indicates that main (line 20) called
+<option>-></option> indicates that main (line 20) called
 <function>malloc</function>.</para>
 
 <para>Let's see what the subsequent output shows happened next:</para>
@@ -412,9 +442,9 @@ inside <function>main</function>, hence the second line in the tree.  The
 ]]></screen>
 
 <para>The first four snapshots are similar to the previous ones.  But then
-the global allocation peak is reached, and a detailed snapshot is taken.
-Its allocation tree shows that 20,000B of useful heap memory has been
-allocated, and the lines and arrows indicate that this is from three
+the global allocation peak is reached, and a detailed snapshot (number 14)
+is taken.  Its allocation tree shows that 20,000B of useful heap memory has
+been allocated, and the lines and arrows indicate that this is from three
 different code locations: line 20, which is responsible for 10,000B
 (49.74%);  line 5, which is responsible for 8,000B (39.79%); and line 10,
 which is responsible for 2,000B (9.95%).</para>
@@ -496,10 +526,11 @@ only prints the details for code locations responsible for more than 1%.
 The entries that do not meet this threshold are aggregated.  This avoids
 filling up the output with large numbers of unimportant entries.  The
 thresholds can be changed with the
-<computeroutput>--threshold</computeroutput> option that both Massif and
+<option>--threshold</option> option that both Massif and
 ms_print support.</para>
 
 </sect2>
+
 
 <sect2 id="ms-manual.forkingprograms" xreflabel="Forking Programs">
 <title>Forking Programs</title>
@@ -512,13 +543,73 @@ the outputs from the parent and child will be intermingled in a single output
 file, which will almost certainly make it unreadable by ms_print.</para>
 </sect2>
 
+
+<sect2 id="ms-manual.not-measured"
+       xreflabel="Memory Allocations Not Measured by Massif">
+<title>Memory Allocations Not Measured by Massif</title>
+<para>
+It is worth emphasising that Massif measures only heap memory, i.e. memory
+allocated with
+<function>malloc</function>,
+<function>calloc</function>,
+<function>realloc</function>,
+<function>memalign</function>,
+<function>new</function>,
+<function>new[]</function>,
+and a few other, similar functions.  (And it can optionally measure stack
+memory, of course.)  This means it does <emphasis>not</emphasis> directly
+measure memory allocated with lower-level system calls such as
+<function>mmap</function>,
+<function>mremap</function>, and
+<function>brk</function>.  
+</para>
+
+<para>
+Heap allocation functions such as <function>malloc</function> are built on
+top of these system calls.  For example, when needed, an allocator will
+typically call <function>mmap</function> to allocate a large chunk of
+memory, and then hand over pieces of that memory chunk to the client program
+in response to calls to <function>malloc</function> et al.  Massif directly
+measures only these higher-level <function>malloc</function> et al calls,
+not the lower-level system calls.
+</para>
+
+<para>
+Furthermore, a client program may use these lower-level system calls
+directly to allocate memory.  Massif does not measure these.  Nor does it
+measure the size of code, data and BSS segments.  Therefore, the numbers
+reported by Massif may be significantly smaller than those reported by tools
+such as <filename>top</filename> that measure a program's total size in
+memory.
+</para>
+
+</sect2>
+
+
+<sect2 id="ms-manual.acting" xreflabel="Action on Massif's Information">
+<title>Acting on Massif's Information</title>
+<para>Massif's information is generally fairly easy to act upon.  The
+obvious place to start looking is the peak snapshot.</para>
+
+<para>It can also be useful to look at the overall shape of the graph, to
+see if memory usage climbs and falls as you expect;  spikes in the graph
+might be worth investigating.</para>
+
+<para>The detailed snapshots can get quite large.  It is worth viewing them
+in a very wide window.   It's also a good idea to view them with a text
+editor.  That makes it easy to scroll up and down while keeping the cursor
+in a particular column, which makes following the allocation chains easier.
+</para>
+
+</sect2>
+
 </sect1>
 
 
-<sect1 id="ms-manual.options" xreflabel="Massif Options">
-<title>Massif Options</title>
+<sect1 id="ms-manual.options" xreflabel="Massif Command-line Options">
+<title>Massif Command-line Options</title>
 
-<para>Massif-specific options are:</para>
+<para>Massif-specific command-line options are:</para>
 
 <!-- start of xi:include in the manpage -->
 <variablelist id="ms.opts.list">
@@ -534,16 +625,16 @@ file, which will almost certainly make it unreadable by ms_print.</para>
 
   <varlistentry id="opt.heap-admin" xreflabel="--heap-admin">
     <term>
-      <option><![CDATA[--heap-admin=<number> [default: 8] ]]></option>
+      <option><![CDATA[--heap-admin=<size> [default: 8] ]]></option>
     </term>
     <listitem>
       <para>If heap profiling is enabled, gives the number of administrative
       bytes per block to use.  This should be an estimate of the average,
       since it may vary.  For example, the allocator used by
-      <computeroutput>glibc</computeroutput> requires somewhere between 4 to
-      15 bytes per block, depending on various factors.  It also requires
-      admin space for freed blocks, although Massif does not account
-      for this.</para>
+      glibc on Linux requires somewhere between 4 to
+      15 bytes per block, depending on various factors.  That allocator also
+      requires admin space for freed blocks, but Massif cannot
+      account for this.</para>
     </listitem>
   </varlistentry>
 
@@ -555,9 +646,9 @@ file, which will almost certainly make it unreadable by ms_print.</para>
       <para>Specifies whether stack profiling should be done.  This option
       slows Massif down greatly, and so is off by default.  Note that Massif
       assumes that the main stack has size zero at start-up.  This is not
-      true, but measuring the actual stack size is not easy, and it reflects
-      the size of the part of the main stack that a user program actually
-      has control over.</para>
+      true, but doing otherwise accurately is difficult.  Furthermore,
+      starting at zero better indicates the size of the part of the main
+      stack that a user program actually has control over.</para>
     </listitem>
   </varlistentry>
 
@@ -584,34 +675,27 @@ file, which will almost certainly make it unreadable by ms_print.</para>
       which can fill up the allocation trees with uninteresting information.
       This option can be specified multiple times on the command line, to
       name multiple functions.</para>
-      
-      <para>Note that overloaded C++ names must be written in full.  Single
-      quotes may be necessary to prevent the shell from breaking them up.
-      For example:
+
+      <para>Note that the named function will only be treated this way if it is
+      the top entry in a stack trace, or just below another function treated
+      this way.  For example, if you have a function
+      <function>malloc1</function> that wraps <function>malloc</function>,
+      and <function>malloc2</function> that wraps
+      <function>malloc1</function>, just specifying
+      <option>--alloc-fn=malloc2</option> will have no effect.  You need to
+      specify <option>--alloc-fn=malloc1</option> as well.  This is a little
+      inconvenient, but the reason is that checking for allocation functions
+      is slow, and it saves a lot of time if Massif can stop looking through
+      the stack trace entries as soon as it finds one that doesn't match
+      rather than having to continue through all the entries.</para>
+
+      <para>Note that C++ names are demangled.  Note also that overloaded
+      C++ names must be written in full.  Single quotes may be necessary to
+      prevent the shell from breaking them up.  For example:
 <screen><![CDATA[
---alloc-fn='operator new(unsigned, std::nothrow_t const&amp;)'
+--alloc-fn='operator new(unsigned, std::nothrow_t const&)'
 ]]></screen>
       </para>
-
-      <para>
-      The full list of functions and operators that are by default
-      considered allocation functions is as follows.</para>
-<screen><![CDATA[
-malloc
-calloc
-realloc
-memalign
-__builtin_new
-__builtin_vec_new
-operator new(unsigned)
-operator new(unsigned long)
-operator new[](unsigned)
-operator new[](unsigned long)
-operator new(unsigned, std::nothrow_t const&)
-operator new[](unsigned, std::nothrow_t const&)
-operator new(unsigned long, std::nothrow_t const&)
-operator new[](unsigned long, std::nothrow_t const&)
-]]></screen>
       </listitem>
   </varlistentry>
 
@@ -622,7 +706,7 @@ operator new[](unsigned long, std::nothrow_t const&)
     <listitem>
       <para>Any direct heap allocation (i.e. a call to
       <function>malloc</function>, <function>new</function>, etc, or a call
-      to a function name in a <computeroutput>--alloc-fn</computeroutput>
+      to a function named by an <option>--alloc-fn</option>
       option) that occurs in a function specified by this option will be
       ignored.  This is mostly useful for testing purposes.  This option can
       be specified multiple times on the command line, to name multiple
@@ -636,8 +720,8 @@ operator new[](unsigned long, std::nothrow_t const&)
       <function>realloc</function>.
       </para>
       
-      <para>Note that overloaded C++ names must be written in full, as for
-      <computeroutput>--alloc-fn</computeroutput> above.
+      <para>The rules for writing C++ function names are the same as
+      for <option>--alloc-fn</option> above.
       </para>
       </listitem>
   </varlistentry>
@@ -648,9 +732,9 @@ operator new[](unsigned long, std::nothrow_t const&)
     </term>
     <listitem>
       <para>The significance threshold for heap allocations, as a
-      percentage.  Allocation tree entries that account for less than this
-      will be aggregated.  Note that this should be specified in tandem with
-      ms_print's option of the same name.</para>
+      percentage of total memory size.  Allocation tree entries that account
+      for less than this will be aggregated.  Note that this should be
+      specified in tandem with ms_print's option of the same name.</para>
     </listitem>
   </varlistentry>
 
@@ -672,7 +756,7 @@ operator new[](unsigned long, std::nothrow_t const&)
 
   <varlistentry id="opt.time-unit" xreflabel="--time-unit">
     <term>
-      <option><![CDATA[--time-unit=i|ms|B [default: i] ]]></option>
+      <option><![CDATA[--time-unit=<i|ms|B> [default: i] ]]></option>
     </term>
     <listitem>
       <para>The time unit used for the profiling.  There are three
@@ -690,7 +774,7 @@ operator new[](unsigned long, std::nothrow_t const&)
     </term>
     <listitem>
       <para>Frequency of detailed snapshots.  With
-      <computeroutput>--detailed-freq=1</computeroutput>, every snapshot is
+      <option>--detailed-freq=1</option>, every snapshot is
       detailed.</para>
     </listitem>
   </varlistentry>
@@ -717,18 +801,8 @@ operator new[](unsigned long, std::nothrow_t const&)
       <option>%p</option> and <option>%q</option> format specifiers can be
       used to embed the process ID and/or the contents of an environment
       variable in the name, as is the case for the core option
-      <option>--log-file</option>.  See <xref
-      linkend="manual-core.basicopts"/> for details.
+      <option><xref linkend="opt.log-file"/></option>.
       </para>
-    </listitem>
-  </varlistentry>
-
-  <varlistentry id="opt.alignment" xreflabel="--alignment">
-    <term>
-      <option><![CDATA[--alignment=<n> [default: 1.0] ]]></option>
-    </term>
-    <listitem>
-      <para>The minimum alignment (and thus size) of heap blocks.</para>
     </listitem>
   </varlistentry>
 
@@ -738,47 +812,85 @@ operator new[](unsigned long, std::nothrow_t const&)
 </sect1>
 
 
-<sect1 id="ms-manual.ms_print-options" xreflabel="ms_print Options">
-<title>ms_print Options</title>
+<sect1 id="ms-manual.clientreqs" xreflabel="Client requests">
+<title>Massif Client Requests</title>
+
+<para>Massif does not have a <filename>massif.h</filename> file, but it does
+implement two of the core client requests:
+<function>VALGRIND_MALLOCLIKE_BLOCK</function> and
+<function>VALGRIND_FREELIKE_BLOCK</function>;  they are described in 
+<xref linkend="manual-core-adv.clientreq"/>.
+</para>
+
+</sect1>
+
+
+<sect1 id="ms-manual.ms_print-options" xreflabel="ms_print Command-line Options">
+<title>ms_print Command-line Options</title>
 
 <para>ms_print's options are:</para>
 
-<itemizedlist>
+<!-- start of xi:include in the manpage -->
+<variablelist id="ms_print.opts.list">
 
-  <listitem>
-    <para><computeroutput>-h, --help</computeroutput></para>
-    <para><computeroutput>-v, --version</computeroutput></para>
-    <para>Help and version, as usual.</para>
-  </listitem>
+  <varlistentry>
+    <term>
+      <option><![CDATA[-h --help ]]></option>
+    </term>
+    <listitem>
+      <para>Show the help message.</para>
+    </listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option><![CDATA[--threshold=<m.n>]]></option> [default: 1.0]</para>
-    <para>Same as Massif's <computeroutput>--threshold</computeroutput>, but
-    applied after profiling rather than during.</para>
-  </listitem>
+  <varlistentry>
+    <term>
+      <option><![CDATA[--version ]]></option>
+    </term>
+    <listitem>
+      <para>Show the version number.</para>
+    </listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option><![CDATA[--x=<m.n>]]></option> [default: 72]</para>
-    <para>Width of the graph, in columns.</para>
-  </listitem>
+  <varlistentry>
+    <term>
+      <option><![CDATA[--threshold=<m.n> [default: 1.0] ]]></option>
+    </term>
+    <listitem>
+      <para>Same as Massif's <option>--threshold</option> option, but
+      applied after profiling rather than during.</para>
+    </listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option><![CDATA[--y=<n>]]></option> [default: 20]</para>
-    <para>Height of the graph, in rows.</para>
-  </listitem>
+  <varlistentry>
+    <term>
+      <option><![CDATA[--x=<4..1000> [default: 72]]]></option>
+    </term>
+    <listitem>
+      <para>Width of the graph, in columns.</para>
+    </listitem>
+  </varlistentry>
 
-</itemizedlist>
+  <varlistentry>
+    <term>
+      <option><![CDATA[--y=<4..1000> [default: 20] ]]></option>
+    </term>
+    <listitem>
+      <para>Height of the graph, in rows.</para>
+    </listitem>
+  </varlistentry>
+
+</variablelist>
 
 </sect1>
 
 <sect1 id="ms-manual.fileformat" xreflabel="fileformat">
-<title>Massif's output file format</title>
+<title>Massif's Output File Format</title>
 <para>Massif's file format is plain text (i.e. not binary) and deliberately
 easy to read for both humans and machines.  Nonetheless, the exact format
 is not described here.  This is because the format is currently very
-Massif-specific.  We plan to make the format more general, and thus suitable
-for possible use with other tools.  Once this has been done, the format will
-be documented here.</para>
+Massif-specific.  In the future we hope to make the format more general, and
+thus suitable for possible use with other tools.  Once this has been done,
+the format will be documented here.</para>
 
 </sect1>
 

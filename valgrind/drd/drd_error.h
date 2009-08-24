@@ -59,6 +59,10 @@ typedef enum {
    HoldtimeErr    = 10,
 #define STR_GenericErr   "GenericErr"
    GenericErr     = 11,
+#define STR_InvalidThreadId "InvalidThreadId"
+   InvalidThreadId = 12,
+#define STR_UnimpClReq "UnimpClReq"
+   UnimpClReq      = 13,
 } DrdErrorKind;
 
 /* The classification of a faulting address. */
@@ -161,6 +165,15 @@ typedef struct {
    DrdThreadId tid;
 } GenericErrInfo;
 
+typedef struct {
+   DrdThreadId tid;
+   ULong       ptid;
+} InvalidThreadIdInfo;
+
+typedef struct {
+   DrdThreadId tid;
+   Char*       descr;
+} UnimpClReqInfo;
 
 void DRD_(set_show_conflicting_segments)(const Bool scs);
 void DRD_(register_error_handlers)(void);

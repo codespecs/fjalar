@@ -87,13 +87,13 @@ static void print_all_stats ( void )
 
    // Memory stats
    if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_DebugMsg, "");
+      VG_(message)(Vg_DebugMsg, "\n");
       VG_(message)(Vg_DebugMsg, 
-         "------ Valgrind's internal memory use stats follow ------" );
+         "------ Valgrind's internal memory use stats follow ------\n" );
       VG_(sanity_check_malloc_all)();
-      VG_(message)(Vg_DebugMsg, "------" );
+      VG_(message)(Vg_DebugMsg, "------\n" );
       VG_(print_all_arena_stats)();
-      VG_(message)(Vg_DebugMsg, "");
+      VG_(message)(Vg_DebugMsg, "\n");
    }
 }
 
@@ -111,37 +111,29 @@ static void usage_NORETURN ( Bool debug_help )
    Char* usage1 = 
 "usage: valgrind [options] prog-and-args\n"
 "\n"
-"  common user options for all Valgrind tools, with defaults in [ ]:\n"
+"  tool-selection option, with default in [ ]:\n"
 "    --tool=<name>             use the Valgrind tool named <name> [memcheck]\n"
+"\n"
+"  basic user options for all Valgrind tools, with defaults in [ ]:\n"
 "    -h --help                 show this message\n"
 "    --help-debug              show this message, plus debugging options\n"
 "    --version                 show version\n"
 "    -q --quiet                run silently; only print error msgs\n"
-"    -v --verbose              be more verbose, incl counts of errors\n"
+"    -v --verbose              be more verbose -- show misc extra info\n"
 "    --trace-children=no|yes   Valgrind-ise child processes (follow execve)? [no]\n"
-"    --child-silent-after-fork=no|yes  omit child output between fork & exec? [no]\n"
+"    --child-silent-after-fork=no|yes omit child output between fork & exec? [no]\n"
 "    --track-fds=no|yes        track open file descriptors? [no]\n"
 "    --time-stamp=no|yes       add timestamps to log messages? [no]\n"
 "    --log-fd=<number>         log messages to file descriptor [2=stderr]\n"
 "    --log-file=<file>         log messages to <file>\n"
 "    --log-socket=ipaddr:port  log messages to socket ipaddr:port\n"
 "\n"
-"  uncommon user options for all Valgrind tools:\n"
-"    --run-libc-freeres=no|yes free up glibc memory at exit? [yes]\n"
-"    --sim-hints=hint1,hint2,...  known hints:\n"
-"                                 lax-ioctls, enable-outer [none]\n"
-"    --show-emwarns=no|yes     show warnings about emulation limits? [no]\n"
-"    --smc-check=none|stack|all  checks for self-modifying code: none,\n"
-"                              only for code found in stacks, or all [stack]\n"
-"    --kernel-variant=variant1,variant2,...  known variants: bproc [none]\n"
-"                              handle non-standard kernel variants\n"
-"    --read-var-info=yes|no    read debug info on stack and global variables\n"
-"                              and use it to print better error messages in\n"
-"                              tools that make use of it (Memcheck, Helgrind)\n"
-"\n"
 "  user options for Valgrind tools that report errors:\n"
-"    --xml=yes                 all output is in XML (some tools only)\n"
-"    --xml-user-comment=STR    copy STR verbatim to XML output\n"
+"    --xml=yes                 emit error output in XML (some tools only)\n"
+"    --xml-fd=<number>         XML output to file descriptor\n"
+"    --xml-file=<file>         XML output to <file>\n"
+"    --xml-socket=ipaddr:port  XML output to socket ipaddr:port\n"
+"    --xml-user-comment=STR    copy STR verbatim into XML output\n"
 "    --demangle=no|yes         automatically demangle C++ names? [yes]\n"
 "    --num-callers=<number>    show <number> callers in stack traces [12]\n"
 "    --error-limit=no|yes      stop showing new errors if too many? [yes]\n"
@@ -152,15 +144,35 @@ static void usage_NORETURN ( Bool debug_help )
 "    --db-attach=no|yes        start debugger when errors detected? [no]\n"
 "    --db-command=<command>    command to start debugger [%s -nw %%f %%p]\n"
 "    --input-fd=<number>       file descriptor for input [0=stdin]\n"
+"    --dsymutil=no|yes         run dsymutil on Mac OS X when helpful? [no]\n"
 "    --max-stackframe=<number> assume stack switch for SP changes larger\n"
 "                              than <number> bytes [2000000]\n"
 "    --main-stacksize=<number> set size of main thread's stack (in bytes)\n"
 "                              [use current 'ulimit' value]\n"
+"\n"
+"  user options for Valgrind tools that replace malloc:\n"
+"    --alignment=<number>      set minimum alignment of heap allocations [%ld]\n"
+"\n"
+"  uncommon user options for all Valgrind tools:\n"
+"    --smc-check=none|stack|all  checks for self-modifying code: none,\n"
+"                              only for code found in stacks, or all [stack]\n"
+"    --read-var-info=yes|no    read debug info on stack and global variables\n"
+"                              and use it to print better error messages in\n"
+"                              tools that make use of it (Memcheck, Helgrind,\n"
+"                              DRD)\n"
+"    --run-libc-freeres=no|yes free up glibc memory at exit on Linux? [yes]\n"
+"    --sim-hints=hint1,hint2,...  known hints:\n"
+"                                 lax-ioctls, enable-outer [none]\n"
+"    --kernel-variant=variant1,variant2,...  known variants: bproc [none]\n"
+"                              handle non-standard kernel variants\n"
+"    --show-emwarns=no|yes     show warnings about emulation limits? [no]\n"
 "\n";
 
    Char* usage2 = 
 "\n"
 "  debugging options for all Valgrind tools:\n"
+"    --stats=no|yes            show tool and core statistics [no]\n"
+"    -d                        show verbose debugging output\n"
 "    --sanity-level=<number>   level of sanity checking to do [1]\n"
 "    --trace-flags=<XXXXXXXX>   show generated code? (X = 0|1) [00000000]\n"
 "    --profile-flags=<XXXXXXXX> ditto, but for profiling (X = 0|1) [00000000]\n"
@@ -180,13 +192,13 @@ static void usage_NORETURN ( Bool debug_help )
 "    --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]\n"
 "    --command-line-only=no|yes  only use command line options [no]\n"
 "\n"
-"    --vex-iropt-verbosity             0 .. 9 [0]\n"
-"    --vex-iropt-level                 0 .. 2 [2]\n"
-"    --vex-iropt-precise-memory-exns   [no]\n"
-"    --vex-iropt-unroll-thresh         0 .. 400 [120]\n"
-"    --vex-guest-max-insns             1 .. 100 [50]\n"
-"    --vex-guest-chase-thresh          0 .. 99  [10]\n"
-"\n"
+"  Vex options for all Valgrind tools:\n"
+"    --vex-iropt-verbosity=<0..9>           [0]\n"
+"    --vex-iropt-level=<0..2>               [2]\n"
+"    --vex-iropt-precise-memory-exns=no|yes [no]\n"
+"    --vex-iropt-unroll-thresh=<0..400>     [120]\n"
+"    --vex-guest-max-insns=<1..100>         [50]\n"
+"    --vex-guest-chase-thresh=<0..99>       [10]\n"
 "    --trace-flags and --profile-flags values (omit the middle space):\n"
 "       1000 0000   show conversion into IR\n"
 "       0100 0000   show after initial opt\n"
@@ -201,28 +213,30 @@ static void usage_NORETURN ( Bool debug_help )
 "  debugging options for Valgrind tools that report errors\n"
 "    --dump-error=<number>     show translation for basic block associated\n"
 "                              with <number>'th error context [0=show none]\n"
+"\n"
+"  debugging options for Valgrind tools that replace malloc:\n"
+"    --trace-malloc=no|yes     show client malloc details? [no]\n"
 "\n";
 
    Char* usage3 =
 "\n"
 "  Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc\n"
 "\n"
-"  Valgrind is Copyright (C) 2000-2009 Julian Seward et al.\n"
-"  and licensed under the GNU General Public License, version 2.\n"
-"  Bug reports, feedback, admiration, abuse, etc, to: %s.\n"
+"  %s is %s\n"
+"  Valgrind is Copyright (C) 2000-2009, and GNU GPL'd, by Julian Seward et al.\n"
+"  LibVEX is Copyright (C) 2004-2009, and GNU GPL'd, by OpenWorks LLP.\n"
 "\n"
-"  Tools are copyright and licensed by their authors.  See each\n"
-"  tool's start-up message for more information.\n"
+"  Bug reports, feedback, admiration, abuse, etc, to: %s.\n"
 "\n";
 
    Char* gdb_path = GDB_PATH;
 
    // Ensure the message goes to stdout
-   VG_(clo_log_fd) = 1;
-   vg_assert( !VG_(logging_to_socket) );
+   VG_(log_output_sink).fd = 1;
+   VG_(log_output_sink).is_socket = False;
 
-   /* 'usage1' expects one char* argument */
-   VG_(printf)(usage1, gdb_path);
+   /* 'usage1' expects one char* argument and one SizeT argument. */
+   VG_(printf)(usage1, gdb_path, VG_MIN_MALLOC_SZB);
    if (VG_(details).name) {
       VG_(printf)("  user options for %s:\n", VG_(details).name);
       if (VG_(needs).command_line_options)
@@ -242,7 +256,8 @@ static void usage_NORETURN ( Bool debug_help )
             VG_(printf)("    (none)\n");
       }
    }
-   VG_(printf)(usage3, VG_BUGS_TO);
+   VG_(printf)(usage3, VG_(details).name, VG_(details).copyright_author,
+               VG_BUGS_TO);
    VG_(exit)(0);
 }
 
@@ -276,7 +291,8 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
       vg_assert(str);
 
       // Nb: the version string goes to stdout.
-      if VG_XACT_CLO(str, "--version", VG_(clo_log_fd), 1) {
+      if VG_XACT_CLO(str, "--version", VG_(log_output_sink).fd, 1) {
+         VG_(log_output_sink).is_socket = False;
          VG_(printf)("valgrind-" VERSION "\n");
          VG_(exit)(0);
       }
@@ -298,32 +314,67 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
 }
 
 /* The main processing for command line options.  See comments above
-   on early_process_cmd_line_options. 
+   on early_process_cmd_line_options.
+
+   Comments on how the logging options are handled:
+
+   User can specify:
+      --log-fd=      for a fd to write to (default setting, fd = 2)
+      --log-file=    for a file name to write to
+      --log-socket=  for a socket to write to
+
+   As a result of examining these and doing relevant socket/file
+   opening, a final fd is established.  This is stored in
+   VG_(log_output_sink) in m_libcprint.  Also, if --log-file=STR was
+   specified, then STR, after expansion of %p and %q templates within
+   it, is stored in VG_(clo_log_fname_expanded), in m_options, just in
+   case anybody wants to know what it is.
+
+   When printing, VG_(log_output_sink) is consulted to find the
+   fd to send output to.
+
+   Exactly analogous actions are undertaken for the XML output
+   channel, with the one difference that the default fd is -1, meaning
+   the channel is disabled by default.
 */
-static Bool main_process_cmd_line_options( const HChar* toolname )
+static
+void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
+                                     /*OUT*/Char** xml_fname_unexpanded,
+                                     const HChar* toolname )
 {
    // VG_(clo_log_fd) is used by all the messaging.  It starts as 2 (stderr)
    // and we cannot change it until we know what we are changing it to is
    // ok.  So we have tmp_log_fd to hold the tmp fd prior to that point.
    SysRes sres;
-   Int    i, tmp_log_fd;
+   Int    i, tmp_log_fd, tmp_xml_fd;
    Int    toolname_len = VG_(strlen)(toolname);
    Char*  tmp_str;         // Used in a couple of places.
    enum {
       VgLogTo_Fd,
       VgLogTo_File,
       VgLogTo_Socket
-   } log_to = VgLogTo_Fd;   // Where is logging output to be sent?
+   } log_to = VgLogTo_Fd,   // Where is logging output to be sent?
+     xml_to = VgLogTo_Fd;   // Where is XML output to be sent?
 
-   /* log to stderr by default, but usage message goes to stdout */
+   /* Temporarily holds the string STR specified with
+      --{log,xml}-{name,socket}=STR.  'fs' stands for
+      file-or-socket. */
+   Char* log_fsname_unexpanded = NULL;
+   Char* xml_fsname_unexpanded = NULL;
+
+   /* Log to stderr by default, but usage message goes to stdout.  XML
+      output is initially disabled. */
    tmp_log_fd = 2; 
-
+   tmp_xml_fd = -1;
+ 
    /* Check for sane path in ./configure --prefix=... */
    if (VG_LIBDIR[0] != '/') 
       VG_(err_config_error)("Please use absolute paths in "
                             "./configure --prefix=... or --libdir=...");
 
    vg_assert( VG_(args_for_valgrind) );
+
+   /* BEGIN command-line processing loop */
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_valgrind) ); i++) {
 
@@ -387,6 +438,7 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
                VG_STREQ(arg, "--quiet"))
          VG_(clo_verbosity)--;
 
+      else if VG_BOOL_CLO(arg, "--stats",          VG_(clo_stats)) {}
       else if VG_BOOL_CLO(arg, "--xml",            VG_(clo_xml)) {}
       else if VG_BOOL_CLO(arg, "--db-attach",      VG_(clo_db_attach)) {}
       else if VG_BOOL_CLO(arg, "--demangle",       VG_(clo_demangle)) {}
@@ -434,10 +486,9 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
       else if VG_XACT_CLO(arg, "--smc-check=all",   VG_(clo_smc_check),
                                                     Vg_SmcAll);
 
-      else if VG_STR_CLO (arg, "--kernel-variant",   VG_(clo_kernel_variant)) {}
+      else if VG_STR_CLO (arg, "--kernel-variant",  VG_(clo_kernel_variant)) {}
 
-      else if VG_BOOL_CLO(arg, "--auto-run-dsymutil",
-                               VG_(clo_auto_run_dsymutil)) {}
+      else if VG_BOOL_CLO(arg, "--dsymutil",        VG_(clo_dsymutil)) {}
 
       else if VG_BINT_CLO(arg, "--vex-iropt-verbosity",
                        VG_(clo_vex_control).iropt_verbosity, 0, 10) {}
@@ -454,15 +505,25 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
 
       else if VG_INT_CLO(arg, "--log-fd", tmp_log_fd) {
          log_to = VgLogTo_Fd;
-         VG_(clo_log_name) = NULL;
+         log_fsname_unexpanded = NULL;
+      }
+      else if VG_INT_CLO(arg, "--xml-fd", tmp_xml_fd) {
+         xml_to = VgLogTo_Fd;
+         xml_fsname_unexpanded = NULL;
       }
 
-      else if VG_STR_CLO(arg, "--log-file", VG_(clo_log_name)) {
+      else if VG_STR_CLO(arg, "--log-file", log_fsname_unexpanded) {
          log_to = VgLogTo_File;
       }
-
-      else if VG_STR_CLO(arg, "--log-socket", VG_(clo_log_name)) {
+      else if VG_STR_CLO(arg, "--xml-file", xml_fsname_unexpanded) {
+         xml_to = VgLogTo_File;
+      }
+ 
+      else if VG_STR_CLO(arg, "--log-socket", log_fsname_unexpanded) {
          log_to = VgLogTo_Socket;
+      }
+      else if VG_STR_CLO(arg, "--xml-socket", xml_fsname_unexpanded) {
+         xml_to = VgLogTo_Socket;
       }
 
       else if VG_STR_CLO(arg, "--xml-user-comment",
@@ -470,9 +531,9 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
 
       else if VG_STR_CLO(arg, "--suppressions", tmp_str) {
          if (VG_(clo_n_suppressions) >= VG_CLO_MAX_SFILES) {
-            VG_(message)(Vg_UserMsg, "Too many suppression files specified.");
+            VG_(message)(Vg_UserMsg, "Too many suppression files specified.\n");
             VG_(message)(Vg_UserMsg, 
-                         "Increase VG_CLO_MAX_SFILES and recompile.");
+                         "Increase VG_CLO_MAX_SFILES and recompile.\n");
             VG_(err_bad_option)(arg);
          }
          VG_(clo_suppressions)[VG_(clo_n_suppressions)] = tmp_str;
@@ -485,7 +546,7 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
    
          if (8 != VG_(strlen)(tmp_str)) {
             VG_(message)(Vg_UserMsg, 
-                         "--trace-flags argument must have 8 digits");
+                         "--trace-flags argument must have 8 digits\n");
             VG_(err_bad_option)(arg);
          }
          for (j = 0; j < 8; j++) {
@@ -493,7 +554,7 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
             else if ('1' == tmp_str[j]) VG_(clo_trace_flags) |= (1 << (7-j));
             else {
                VG_(message)(Vg_UserMsg, "--trace-flags argument can only "
-                                        "contain 0s and 1s");
+                                        "contain 0s and 1s\n");
                VG_(err_bad_option)(arg);
             }
          }
@@ -505,7 +566,7 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
    
          if (8 != VG_(strlen)(tmp_str)) {
             VG_(message)(Vg_UserMsg, 
-                         "--profile-flags argument must have 8 digits");
+                         "--profile-flags argument must have 8 digits\n");
             VG_(err_bad_option)(arg);
          }
          for (j = 0; j < 8; j++) {
@@ -513,7 +574,7 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
             else if ('1' == tmp_str[j]) VG_(clo_profile_flags) |= (1 << (7-j));
             else {
                VG_(message)(Vg_UserMsg, "--profile-flags argument can only "
-                                        "contain 0s and 1s");
+                                        "contain 0s and 1s\n");
                VG_(err_bad_option)(arg);
             }
          }
@@ -534,6 +595,8 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
       }
    }
 
+   /* END command-line processing loop */
+
    /* Make VEX control parameters sane */
 
    if (VG_(clo_vex_control).guest_chase_thresh
@@ -552,34 +615,72 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
    if (VG_(clo_gen_suppressions) > 0 && 
        !VG_(needs).core_errors && !VG_(needs).tool_errors) {
       VG_(message)(Vg_UserMsg, 
-                   "Can't use --gen-suppressions= with this tool,");
+                   "Can't use --gen-suppressions= with this tool,\n");
       VG_(message)(Vg_UserMsg, 
-                   "as it doesn't generate errors.");
+                   "as it doesn't generate errors.\n");
       VG_(err_bad_option)("--gen-suppressions=");
    }
 
+   /* If XML output is requested, check that the tool actually
+      supports it. */
+   if (VG_(clo_xml) && !VG_(needs).xml_output) {
+      VG_(clo_xml) = False;
+      VG_(message)(Vg_UserMsg, 
+         "%s does not support XML output.\n", VG_(details).name); 
+      VG_(err_bad_option)("--xml=yes");
+      /*NOTREACHED*/
+   }
+
+   vg_assert( VG_(clo_gen_suppressions) >= 0 );
+   vg_assert( VG_(clo_gen_suppressions) <= 2 );
+
    /* If we've been asked to emit XML, mash around various other
       options so as to constrain the output somewhat, and to remove
-      any need for user input during the run. */
+      any need for user input during the run. 
+   */
    if (VG_(clo_xml)) {
-      /* Disable suppression generation (requires user input) */
-      VG_(clo_gen_suppressions) = 0;
-      /* Disable attaching to GDB (requires user input) */
-      VG_(clo_db_attach) = False;
-      /* Set a known verbosity level */
-      VG_(clo_verbosity) = 1;
+
+      /* We can't allow --gen-suppressions=yes, since that requires us
+         to print the error and then ask the user if she wants a
+         suppression for it, but in XML mode we won't print it until
+         we know whether we also need to print a suppression.  Hence a
+         circular dependency.  So disallow this.
+         (--gen-suppressions=all is still OK since we don't need any
+         user interaction in this case.) */
+      if (VG_(clo_gen_suppressions) == 1) {
+         VG_(umsg)(
+            "When --xml=yes is specified, only --gen-suppressions=no\n"
+            "or --gen-suppressions=all are allowed, but not "
+            "--gen-suppressions=yes.\n");
+         /* FIXME: this is really a misuse of VG_(err_bad_option). */
+         VG_(err_bad_option)(
+            "--xml=yes together with --gen-suppressions=yes");
+      }
+
+      /* We can't allow DB attaching (or we maybe could, but results
+         could be chaotic ..) since it requires user input.  Hence
+         disallow. */
+      if (VG_(clo_db_attach)) {
+         VG_(umsg)("--db-attach=yes is not allowed in XML mode,\n"
+                  "as it would require user input.\n");
+         /* FIXME: this is really a misuse of VG_(err_bad_option). */
+         VG_(err_bad_option)(
+            "--xml=yes together with --db-attach=yes");
+      }
+
+      /* Disallow dump_error in XML mode; sounds like a recipe for
+         chaos.  No big deal; dump_error is a flag for debugging V
+         itself. */
+      if (VG_(clo_dump_error) > 0) {
+         /* FIXME: this is really a misuse of VG_(err_bad_option). */
+         VG_(err_bad_option)(
+            "--xml=yes together with --dump-error=");
+      }
+
       /* Disable error limits (this might be a bad idea!) */
       VG_(clo_error_limit) = False;
       /* Disable emulation warnings */
-      VG_(clo_show_emwarns) = False;
-      /* Disable waiting for GDB to debug Valgrind */
-      VG_(clo_wait_for_gdb) = False;
-      /* No file-descriptor leak checking yet */
-      VG_(clo_track_fds) = False;
-      /* Disable timestamped output */
-      VG_(clo_time_stamp) = False;
-      /* Disable heap profiling, since that prints lots of stuff. */
-      VG_(clo_profile_heap) = False;
+
       /* Also, we want to set options for the leak checker, but that
          will have to be done in Memcheck's flag-handling code, not
          here. */
@@ -592,102 +693,219 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
       the terminal any problems to do with processing command line
       opts.)
    
-      So set up logging now.  After this is done, VG_(clo_log_fd)
-      should be connected to whatever sink has been selected, and we
-      indiscriminately chuck stuff into it without worrying what the
-      nature of it is.  Oh the wonder of Unix streams. */
+      So set up logging now.  After this is done, VG_(log_output_sink)
+      and (if relevant) VG_(xml_output_sink) should be connected to
+      whatever sink has been selected, and we indiscriminately chuck
+      stuff into it without worrying what the nature of it is.  Oh the
+      wonder of Unix streams. */
 
-   vg_assert(VG_(clo_log_fd) == 2 /* stderr */);
-   vg_assert(VG_(logging_to_socket) == False);
+   vg_assert(VG_(log_output_sink).fd == 2 /* stderr */);
+   vg_assert(VG_(log_output_sink).is_socket == False);
+   vg_assert(VG_(clo_log_fname_expanded) == NULL);
+
+   vg_assert(VG_(xml_output_sink).fd == -1 /* disabled */);
+   vg_assert(VG_(xml_output_sink).is_socket == False);
+   vg_assert(VG_(clo_xml_fname_expanded) == NULL);
+
+   /* --- set up the normal text output channel --- */
 
    switch (log_to) {
 
       case VgLogTo_Fd: 
-         vg_assert(VG_(clo_log_name) == NULL);
+         vg_assert(log_fsname_unexpanded == NULL);
          break;
 
       case VgLogTo_File: {
          Char* logfilename;
 
-         vg_assert(VG_(clo_log_name) != NULL);
-         vg_assert(VG_(strlen)(VG_(clo_log_name)) <= 900); /* paranoia */
+         vg_assert(log_fsname_unexpanded != NULL);
+         vg_assert(VG_(strlen)(log_fsname_unexpanded) <= 900); /* paranoia */
 
          // Nb: we overwrite an existing file of this name without asking
          // any questions.
-         logfilename = VG_(expand_file_name)("--log-file", VG_(clo_log_name));
+         logfilename = VG_(expand_file_name)("--log-file",
+                                             log_fsname_unexpanded);
          sres = VG_(open)(logfilename, 
                           VKI_O_CREAT|VKI_O_WRONLY|VKI_O_TRUNC, 
                           VKI_S_IRUSR|VKI_S_IWUSR);
          if (!sr_isError(sres)) {
             tmp_log_fd = sr_Res(sres);
+            VG_(clo_log_fname_expanded) = logfilename;
          } else {
             VG_(message)(Vg_UserMsg, 
-                         "Can't create log file '%s' (%s); giving up!", 
+                         "Can't create log file '%s' (%s); giving up!\n", 
                          logfilename, VG_(strerror)(sr_Err(sres)));
             VG_(err_bad_option)(
                "--log-file=<file> (didn't work out for some reason.)");
             /*NOTREACHED*/
          }
-         break; /* switch (VG_(clo_log_to)) */
+         break;
       }
 
       case VgLogTo_Socket: {
-         vg_assert(VG_(clo_log_name) != NULL);
-         vg_assert(VG_(strlen)(VG_(clo_log_name)) <= 900); /* paranoia */
-         tmp_log_fd = VG_(connect_via_socket)( VG_(clo_log_name) );
+         vg_assert(log_fsname_unexpanded != NULL);
+         vg_assert(VG_(strlen)(log_fsname_unexpanded) <= 900); /* paranoia */
+         tmp_log_fd = VG_(connect_via_socket)( log_fsname_unexpanded );
          if (tmp_log_fd == -1) {
             VG_(message)(Vg_UserMsg, 
-               "Invalid --log-socket=ipaddr or --log-socket=ipaddr:port spec"); 
+               "Invalid --log-socket=ipaddr or "
+               "--log-socket=ipaddr:port spec\n"); 
             VG_(message)(Vg_UserMsg, 
-               "of '%s'; giving up!", VG_(clo_log_name) );
+               "of '%s'; giving up!\n", log_fsname_unexpanded );
             VG_(err_bad_option)(
                "--log-socket=");
             /*NOTREACHED*/
 	 }
          if (tmp_log_fd == -2) {
             VG_(message)(Vg_UserMsg, 
-               "valgrind: failed to connect to logging server '%s'.",
-               VG_(clo_log_name) ); 
+               "valgrind: failed to connect to logging server '%s'.\n",
+               log_fsname_unexpanded ); 
             VG_(message)(Vg_UserMsg, 
-                "Log messages will sent to stderr instead." );
+                "Log messages will sent to stderr instead.\n" );
             VG_(message)(Vg_UserMsg, 
-                "" );
+                "\n" );
             /* We don't change anything here. */
-            vg_assert(VG_(clo_log_fd) == 2);
+            vg_assert(VG_(log_output_sink).fd == 2);
             tmp_log_fd = 2;
 	 } else {
             vg_assert(tmp_log_fd > 0);
-            VG_(logging_to_socket) = True;
+            VG_(log_output_sink).is_socket = True;
          }
          break;
       }
    }
 
+   /* --- set up the XML output channel --- */
 
-   /* Check that the requested tool actually supports XML output. */
-   if (VG_(clo_xml) && !VG_(needs).xml_output) {
-      VG_(clo_xml) = False;
-      VG_(message)(Vg_UserMsg, 
-         "%s does not support XML output.", VG_(details).name); 
-      VG_(err_bad_option)("--xml=yes");
-      /*NOTREACHED*/
+   switch (xml_to) {
+
+      case VgLogTo_Fd: 
+         vg_assert(xml_fsname_unexpanded == NULL);
+         break;
+
+      case VgLogTo_File: {
+         Char* xmlfilename;
+
+         vg_assert(xml_fsname_unexpanded != NULL);
+         vg_assert(VG_(strlen)(xml_fsname_unexpanded) <= 900); /* paranoia */
+
+         // Nb: we overwrite an existing file of this name without asking
+         // any questions.
+         xmlfilename = VG_(expand_file_name)("--xml-file",
+                                             xml_fsname_unexpanded);
+         sres = VG_(open)(xmlfilename, 
+                          VKI_O_CREAT|VKI_O_WRONLY|VKI_O_TRUNC, 
+                          VKI_S_IRUSR|VKI_S_IWUSR);
+         if (!sr_isError(sres)) {
+            tmp_xml_fd = sr_Res(sres);
+            VG_(clo_xml_fname_expanded) = xmlfilename;
+            /* strdup here is probably paranoid overkill, but ... */
+            *xml_fname_unexpanded = VG_(strdup)( "main.mpclo.2",
+                                                 xml_fsname_unexpanded );
+         } else {
+            VG_(message)(Vg_UserMsg, 
+                         "Can't create XML file '%s' (%s); giving up!\n", 
+                         xmlfilename, VG_(strerror)(sr_Err(sres)));
+            VG_(err_bad_option)(
+               "--xml-file=<file> (didn't work out for some reason.)");
+            /*NOTREACHED*/
+         }
+         break;
+      }
+
+      case VgLogTo_Socket: {
+         vg_assert(xml_fsname_unexpanded != NULL);
+         vg_assert(VG_(strlen)(xml_fsname_unexpanded) <= 900); /* paranoia */
+         tmp_xml_fd = VG_(connect_via_socket)( xml_fsname_unexpanded );
+         if (tmp_xml_fd == -1) {
+            VG_(message)(Vg_UserMsg, 
+               "Invalid --xml-socket=ipaddr or "
+               "--xml-socket=ipaddr:port spec\n"); 
+            VG_(message)(Vg_UserMsg, 
+               "of '%s'; giving up!\n", xml_fsname_unexpanded );
+            VG_(err_bad_option)(
+               "--xml-socket=");
+            /*NOTREACHED*/
+	 }
+         if (tmp_xml_fd == -2) {
+            VG_(message)(Vg_UserMsg, 
+               "valgrind: failed to connect to XML logging server '%s'.\n",
+               xml_fsname_unexpanded ); 
+            VG_(message)(Vg_UserMsg, 
+                "XML output will sent to stderr instead.\n" );
+            VG_(message)(Vg_UserMsg, 
+                "\n" );
+            /* We don't change anything here. */
+            vg_assert(VG_(xml_output_sink).fd == 2);
+            tmp_xml_fd = 2;
+	 } else {
+            vg_assert(tmp_xml_fd > 0);
+            VG_(xml_output_sink).is_socket = True;
+         }
+         break;
+      }
    }
 
+   /* If we've got this far, and XML mode was requested, but no XML
+      output channel appears to have been specified, just stop.  We
+      could continue, and XML output will simply vanish into nowhere,
+      but that is likely to confuse the hell out of users, which is
+      distinctly Ungood. */
+   if (VG_(clo_xml) && tmp_xml_fd == -1) {
+      VG_(umsg)(
+          "--xml=yes has been specified, but there is no XML output\n"
+          "destination.  You must specify an XML output destination\n"
+          "using --xml-fd=, --xml-file= or --xml=socket=.\n" );
+      /* FIXME: this is really a misuse of VG_(err_bad_option). */
+      VG_(err_bad_option)(
+         "--xml=yes, but no XML destination specified");
+   }
+
+   // Finalise the output fds: the log fd ..
+
    if (tmp_log_fd >= 0) {
-      // Move log_fd into the safe range, so it doesn't conflict with any app fds.
+      // Move log_fd into the safe range, so it doesn't conflict with
+      // any app fds.
       tmp_log_fd = VG_(fcntl)(tmp_log_fd, VKI_F_DUPFD, VG_(fd_hard_limit));
       if (tmp_log_fd < 0) {
-         VG_(message)(Vg_UserMsg, "valgrind: failed to move logfile fd into safe range, using stderr");
-         VG_(clo_log_fd) = 2;   // stderr
+         VG_(message)(Vg_UserMsg, "valgrind: failed to move logfile fd "
+                                  "into safe range, using stderr\n");
+         VG_(log_output_sink).fd = 2;   // stderr
+         VG_(log_output_sink).is_socket = False;
       } else {
-         VG_(clo_log_fd) = tmp_log_fd;
-         VG_(fcntl)(VG_(clo_log_fd), VKI_F_SETFD, VKI_FD_CLOEXEC);
+         VG_(log_output_sink).fd = tmp_log_fd;
+         VG_(fcntl)(VG_(log_output_sink).fd, VKI_F_SETFD, VKI_FD_CLOEXEC);
       }
    } else {
       // If they said --log-fd=-1, don't print anything.  Plausible for use in
       // regression testing suites that use client requests to count errors.
-      VG_(clo_log_fd) = tmp_log_fd;
+      VG_(log_output_sink).fd = -1;
+      VG_(log_output_sink).is_socket = False;
    }
+
+   // Finalise the output fds: and the XML fd ..
+
+   if (tmp_xml_fd >= 0) {
+      // Move xml_fd into the safe range, so it doesn't conflict with
+      // any app fds.
+      tmp_xml_fd = VG_(fcntl)(tmp_xml_fd, VKI_F_DUPFD, VG_(fd_hard_limit));
+      if (tmp_xml_fd < 0) {
+         VG_(message)(Vg_UserMsg, "valgrind: failed to move XML file fd "
+                                  "into safe range, using stderr\n");
+         VG_(xml_output_sink).fd = 2;   // stderr
+         VG_(xml_output_sink).is_socket = False;
+      } else {
+         VG_(xml_output_sink).fd = tmp_xml_fd;
+         VG_(fcntl)(VG_(xml_output_sink).fd, VKI_F_SETFD, VKI_FD_CLOEXEC);
+      }
+   } else {
+      // If they said --xml-fd=-1, don't print anything.  Plausible for use in
+      // regression testing suites that use client requests to count errors.
+      VG_(xml_output_sink).fd = -1;
+      VG_(xml_output_sink).is_socket = False;
+   }
+
+   // Suppressions related stuff
 
    if (VG_(clo_n_suppressions) < VG_CLO_MAX_SFILES-1 &&
        (VG_(needs).core_errors || VG_(needs).tool_errors)) {
@@ -695,13 +913,13 @@ static Bool main_process_cmd_line_options( const HChar* toolname )
          the default one. */
       static const Char default_supp[] = "default.supp";
       Int len = VG_(strlen)(VG_(libdir)) + 1 + sizeof(default_supp);
-      Char *buf = VG_(arena_malloc)(VG_AR_CORE, "main.mpclo.2", len);
+      Char *buf = VG_(arena_malloc)(VG_AR_CORE, "main.mpclo.3", len);
       VG_(sprintf)(buf, "%s/%s", VG_(libdir), default_supp);
       VG_(clo_suppressions)[VG_(clo_n_suppressions)] = buf;
       VG_(clo_n_suppressions)++;
    }
 
-   return (log_to == VgLogTo_Fd);
+   *logging_to_fd = log_to == VgLogTo_Fd || log_to == VgLogTo_Socket;
 }
 
 // Write the name and value of log file qualifiers to the xml file.
@@ -732,10 +950,11 @@ static void print_file_vars(Char* format)
                   i++;
                }
 
-	       VG_(message_no_f_c)(Vg_UserMsg,
-                                   "<logfilequalifier> <var>%t</var> "
-                                   "<value>%t</value> </logfilequalifier>",
-                                   qualname,qual);
+               VG_(printf_xml_no_f_c)(
+                  "<logfilequalifier> <var>%t</var> "
+                  "<value>%t</value> </logfilequalifier>\n",
+                  qualname,qual
+               );
 	       format[i] = '}';
 	       i++;
 	    }
@@ -751,164 +970,172 @@ static void print_file_vars(Char* format)
 /*=== Printing the preamble                                        ===*/
 /*====================================================================*/
 
+// Print the command, escaping any chars that require it.
+static void umsg_or_xml_arg(Char* arg,
+                            UInt (*umsg_or_xml)( const HChar*, ... ) )
+{
+   SizeT len = VG_(strlen)(arg);
+   Char* special = " \\<>";
+   Int i;
+   for (i = 0; i < len; i++) {
+      if (VG_(strchr)(special, arg[i])) {
+         umsg_or_xml("\\");   // escape with a backslash if necessary
+      }
+      umsg_or_xml("%c", arg[i]);
+   }
+}
+
 /* Ok, the logging sink is running now.  Print a suitable preamble.
    If logging to file or a socket, write details of parent PID and
    command line args, to help people trying to interpret the
    results of a run which encompasses multiple processes. */
-static void print_preamble(Bool logging_to_fd, const char* toolname)
+static void print_preamble ( Bool logging_to_fd, 
+                             Char* xml_fname_unexpanded,
+                             const HChar* toolname )
 {
+   Int    i;
    HChar* xpre  = VG_(clo_xml) ? "  <line>" : "";
    HChar* xpost = VG_(clo_xml) ? "</line>" : "";
-   Int    i;
+   UInt (*umsg_or_xml)( const HChar*, ... )
+      = VG_(clo_xml) ? VG_(printf_xml) : VG_(umsg);
 
    vg_assert( VG_(args_for_client) );
    vg_assert( VG_(args_for_valgrind) );
    vg_assert( toolname );
 
    if (VG_(clo_xml)) {
-      VG_(message)(Vg_UserMsg, "<?xml version=\"1.0\"?>");
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "<valgrindoutput>");
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "<protocolversion>3</protocolversion>");
-      VG_(message)(Vg_UserMsg, "");
+      VG_(printf_xml)("<?xml version=\"1.0\"?>\n");
+      VG_(printf_xml)("\n");
+      VG_(printf_xml)("<valgrindoutput>\n");
+      VG_(printf_xml)("\n");
+      VG_(printf_xml)("<protocolversion>4</protocolversion>\n");
+      VG_(printf_xml)("<protocoltool>%s</protocoltool>\n", toolname);
+      VG_(printf_xml)("\n");
    }
 
-   if (VG_(clo_verbosity > 0)) {
+   if (VG_(clo_xml) || VG_(clo_verbosity > 0)) {
 
       if (VG_(clo_xml))
-         VG_(message)(Vg_UserMsg, "<preamble>");
+         VG_(printf_xml)("<preamble>\n");
 
       /* Tool details */
-      VG_(message)(Vg_UserMsg, "%s%s%s%s, %s.%s",
+      umsg_or_xml( "%s%s%s%s, %s%s\n",
                    xpre,
                    VG_(details).name, 
                    NULL == VG_(details).version ? "" : "-",
                    NULL == VG_(details).version 
                       ? (Char*)"" : VG_(details).version,
                    VG_(details).description,
-                   xpost);
+                   xpost );
 
-      if (VG_(strlen)(toolname) >= 4 
-          && 0 == VG_(strncmp)(toolname, "exp-", 4)) {
-         VG_(message)(
-            Vg_UserMsg,
-            "%sNOTE: This is an Experimental-Class Valgrind Tool.%s",
+      if (VG_(strlen)(toolname) >= 4 && VG_STREQN(4, toolname, "exp-")) {
+         umsg_or_xml(
+            "%sNOTE: This is an Experimental-Class Valgrind Tool%s\n",
             xpre, xpost
          );
       }
 
-      VG_(message)(Vg_UserMsg, "%s%s%s", 
-                               xpre, VG_(details).copyright_author, xpost);
+      umsg_or_xml("%s%s%s\n", xpre, VG_(details).copyright_author, xpost);
 
       /* Core details */
-      VG_(message)(Vg_UserMsg,
-         "%sUsing LibVEX rev %s, a library for dynamic binary translation.%s",
-         xpre, LibVEX_Version(), xpost );
-      VG_(message)(Vg_UserMsg, 
-         "%sCopyright (C) 2004-2009, and GNU GPL'd, by OpenWorks LLP.%s",
-         xpre, xpost );
-      VG_(message)(Vg_UserMsg,
-         "%sUsing valgrind-%s, a dynamic binary instrumentation framework.%s",
-         xpre, VERSION, xpost);
-      VG_(message)(Vg_UserMsg, 
-         "%sCopyright (C) 2000-2009, and GNU GPL'd, by Julian Seward et al.%s",
-         xpre, xpost );
+      umsg_or_xml(
+         "%sUsing Valgrind-%s and LibVEX; rerun with -h for copyright info%s\n",
+         xpre, VERSION, xpost
+      );
 
-      if (VG_(clo_verbosity) == 1 && !VG_(clo_xml))
-         VG_(message)(Vg_UserMsg, "For more details, rerun with: -v");
+      // Print the command line.  At one point we wrapped at 80 chars and
+      // printed a '\' as a line joiner, but that makes it hard to cut and
+      // paste the command line (because of the "==pid==" prefixes), so we now
+      // favour utility and simplicity over aesthetics.
+      umsg_or_xml("%sCommand: ", xpre);
+      if (VG_(args_the_exename))
+         umsg_or_xml_arg(VG_(args_the_exename), umsg_or_xml);
+      for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
+         HChar* s = *(HChar**)VG_(indexXA)( VG_(args_for_client), i );
+         umsg_or_xml(" ");
+         umsg_or_xml_arg(s, umsg_or_xml);
+      }
+      umsg_or_xml("%s\n", xpost);
 
       if (VG_(clo_xml))
-         VG_(message)(Vg_UserMsg, "</preamble>");
+         VG_(printf_xml)("</preamble>\n");
    }
 
+   // Print the parent PID, and other stuff, if necessary.
    if (!VG_(clo_xml) && VG_(clo_verbosity) > 0 && !logging_to_fd) {
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, 
-         "My PID = %d, parent PID = %d.  Prog and args are:",
-         VG_(getpid)(), VG_(getppid)() );
-      if (VG_(args_the_exename))
-         VG_(message)(Vg_UserMsg, "   %s", VG_(args_the_exename));
-      for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) 
-	VG_(message)(Vg_UserMsg, 
-                     "   %s", 
-                     * (HChar**) VG_(indexXA)( VG_(args_for_client), i ));
+      VG_(umsg)("Parent PID: %d\n", VG_(getppid)());
    }
    else
    if (VG_(clo_xml)) {
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "<pid>%d</pid>", VG_(getpid)());
-      VG_(message)(Vg_UserMsg, "<ppid>%d</ppid>", VG_(getppid)());
-      VG_(message_no_f_c)(Vg_UserMsg, "<tool>%t</tool>", toolname);
-      if (VG_(clo_log_name))
-         print_file_vars(VG_(clo_log_name));
+      VG_(printf_xml)("\n");
+      VG_(printf_xml)("<pid>%d</pid>\n", VG_(getpid)());
+      VG_(printf_xml)("<ppid>%d</ppid>\n", VG_(getppid)());
+      VG_(printf_xml_no_f_c)("<tool>%t</tool>\n", toolname);
+      if (xml_fname_unexpanded)
+         print_file_vars(xml_fname_unexpanded);
       if (VG_(clo_xml_user_comment)) {
          /* Note: the user comment itself is XML and is therefore to
             be passed through verbatim (%s) rather than escaped
             (%t). */
-         VG_(message)(Vg_UserMsg, "<usercomment>%s</usercomment>",
-                                  VG_(clo_xml_user_comment));
+         VG_(printf_xml)("<usercomment>%s</usercomment>\n",
+                         VG_(clo_xml_user_comment));
       }
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "<args>");
+      VG_(printf_xml)("\n");
+      VG_(printf_xml)("<args>\n");
 
-      VG_(message)(Vg_UserMsg, "  <vargv>");
+      VG_(printf_xml)("  <vargv>\n");
       if (VG_(name_of_launcher))
-         VG_(message_no_f_c)(Vg_UserMsg, "    <exe>%t</exe>",
-                             VG_(name_of_launcher));
+         VG_(printf_xml_no_f_c)("    <exe>%t</exe>\n",
+                                VG_(name_of_launcher));
       else
-         VG_(message_no_f_c)(Vg_UserMsg, "    <exe>%t</exe>",
-                             "(launcher name unknown)");
+         VG_(printf_xml_no_f_c)(Vg_UserMsg, "    <exe>%t</exe>\n",
+                                            "(launcher name unknown)");
       for (i = 0; i < VG_(sizeXA)( VG_(args_for_valgrind) ); i++) {
-         VG_(message_no_f_c)(Vg_UserMsg,
-                             "    <arg>%t</arg>",
-                             * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i ));
+         VG_(printf_xml_no_f_c)(
+            "    <arg>%t</arg>\n",
+            * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i )
+         );
       }
-      VG_(message)(Vg_UserMsg, "  </vargv>");
+      VG_(printf_xml)("  </vargv>\n");
 
-      VG_(message)(Vg_UserMsg, "  <argv>");
+      VG_(printf_xml)("  <argv>\n");
       if (VG_(args_the_exename))
-         VG_(message_no_f_c)(Vg_UserMsg, "    <exe>%t</exe>",
-                             VG_(args_the_exename));
+         VG_(printf_xml_no_f_c)("    <exe>%t</exe>\n",
+                                VG_(args_the_exename));
       for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
-         VG_(message_no_f_c)(Vg_UserMsg,
-                             "    <arg>%t</arg>",
-                             * (HChar**) VG_(indexXA)( VG_(args_for_client), i ));
+         VG_(printf_xml_no_f_c)(
+            "    <arg>%t</arg>\n",
+            * (HChar**) VG_(indexXA)( VG_(args_for_client), i )
+         );
       }
-      VG_(message)(Vg_UserMsg, "  </argv>");
+      VG_(printf_xml)("  </argv>\n");
 
-      VG_(message)(Vg_UserMsg, "</args>");
+      VG_(printf_xml)("</args>\n");
    }
 
-   // Empty line after the preamble
-   if (VG_(clo_verbosity) > 0)
-      VG_(message)(Vg_UserMsg, "");
+   // Last thing in the preamble is a blank line.
+   if (VG_(clo_xml))
+      VG_(printf_xml)("\n");
+   else if (VG_(clo_verbosity) > 0)
+      VG_(umsg)("\n");
 
    if (VG_(clo_verbosity) > 1) {
       SysRes fd;
       VexArch vex_arch;
       VexArchInfo vex_archinfo;
       if (!logging_to_fd)
-         VG_(message)(Vg_DebugMsg, "");
-      VG_(message)(Vg_DebugMsg, "Command line");
-      if (VG_(args_the_exename))
-         VG_(message)(Vg_DebugMsg, "   %s", VG_(args_the_exename));
-      for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++)
-         VG_(message)(Vg_DebugMsg, 
-                     "   %s", 
-                     * (HChar**) VG_(indexXA)( VG_(args_for_client), i ));
-
-      VG_(message)(Vg_DebugMsg, "Startup, with flags:");
+         VG_(message)(Vg_DebugMsg, "\n");
+      VG_(message)(Vg_DebugMsg, "Valgrind options:\n");
       for (i = 0; i < VG_(sizeXA)( VG_(args_for_valgrind) ); i++) {
          VG_(message)(Vg_DebugMsg, 
-                     "   %s", 
+                     "   %s\n", 
                      * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i ));
       }
 
-      VG_(message)(Vg_DebugMsg, "Contents of /proc/version:");
+      VG_(message)(Vg_DebugMsg, "Contents of /proc/version:\n");
       fd = VG_(open) ( "/proc/version", VKI_O_RDONLY, 0 );
       if (sr_isError(fd)) {
-         VG_(message)(Vg_DebugMsg, "  can't open /proc/version");
+         VG_(message)(Vg_DebugMsg, "  can't open /proc/version\n");
       } else {
 #        define BUF_LEN    256
          Char version_buf[BUF_LEN];
@@ -916,9 +1143,9 @@ static void print_preamble(Bool logging_to_fd, const char* toolname)
          vg_assert(n <= BUF_LEN);
          if (n > 0) {
             version_buf[n-1] = '\0';
-            VG_(message)(Vg_DebugMsg, "  %s", version_buf);
+            VG_(message)(Vg_DebugMsg, "  %s\n", version_buf);
          } else {
-            VG_(message)(Vg_DebugMsg, "  (empty?)");
+            VG_(message)(Vg_DebugMsg, "  (empty?)\n");
          }
          VG_(close)(sr_Res(fd));
 #        undef BUF_LEN
@@ -927,16 +1154,17 @@ static void print_preamble(Bool logging_to_fd, const char* toolname)
       VG_(machine_get_VexArchInfo)( &vex_arch, &vex_archinfo );
       VG_(message)(
          Vg_DebugMsg, 
-         "Arch and hwcaps: %s, %s",
+         "Arch and hwcaps: %s, %s\n",
          LibVEX_ppVexArch   ( vex_arch ),
          LibVEX_ppVexHwCaps ( vex_arch, vex_archinfo.hwcaps )
       );
       VG_(message)(
          Vg_DebugMsg, 
-         "Page sizes: currently %d, max supported %d", 
+         "Page sizes: currently %d, max supported %d\n", 
          (Int)VKI_PAGE_SIZE, (Int)VKI_MAX_PAGE_SIZE
       );
-      VG_(message)(Vg_DebugMsg, "Valgrind library directory: %s", VG_(libdir));
+      VG_(message)(Vg_DebugMsg,
+                   "Valgrind library directory: %s\n", VG_(libdir));
    }
 }
 
@@ -1145,8 +1373,9 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    HChar*  toolname           = "memcheck";    // default to Memcheck
    Int     need_help          = 0; // 0 = no, 1 = --help, 2 = --help-debug
    ThreadId tid_main          = VG_INVALID_THREADID;
+   Bool    logging_to_fd      = False;
+   Char* xml_fname_unexpanded = NULL;
    Int     loglevel, i;
-   Bool    logging_to_fd;
    struct vki_rlimit zero = { 0, 0 };
    XArray* addr2dihandle = NULL;
 
@@ -1253,6 +1482,29 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    // (oversized pagezero or stack)
    //   p: none
    //--------------------------------------------------------------
+   // DDD:  comments from Greg Parker why these address-space-filling segments
+   // are necessary:
+   //
+   //   The memory maps are there to make sure that Valgrind's copies of libc
+   //   and dyld load in a non-default location, so that the inferior's own
+   //   libc and dyld do load in the default locations. (The kernel performs
+   //   the work of loading several things as described by the executable's
+   //   load commands, including the executable itself, dyld, the main
+   //   thread's stack, and the page-zero segment.) There might be a way to
+   //   fine-tune it so the maps are smaller but still do the job.
+   //
+   //   The post-launch mmap behavior can be cleaned up - looks like we don't
+   //   unmap as much as we should - which would improve post-launch
+   //   performance.
+   //
+   //   Hmm, there might be an extra-clever way to give Valgrind a custom
+   //   MH_DYLINKER that performs the "bootloader" work of loading dyld in an
+   //   acceptable place and then unloading itself. Then no mmaps would be
+   //   needed. I'll have to think about that one.
+   //
+   // [I can't work out where the address-space-filling segments are
+   // created in the first place. --njn]
+   //
 #if defined(VGO_darwin)
 # if VG_WORDSIZE == 4
    VG_(do_syscall2)(__NR_munmap, 0x00000000, 0xf0000000);
@@ -1345,6 +1597,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    { HChar *cp = VG_(getenv)(VALGRIND_LIB);
      if (cp != NULL)
         VG_(libdir) = cp;
+     VG_(debugLog)(1, "main", "VG_(libdir) = %s\n", VG_(libdir));
    }
 
    //--------------------------------------------------------------
@@ -1619,7 +1872,8 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    VG_(debugLog)(1, "main",
                     "(main_) Process Valgrind's command line options, "
                     "setup logging\n");
-   logging_to_fd = main_process_cmd_line_options(toolname);
+   main_process_cmd_line_options ( &logging_to_fd, &xml_fname_unexpanded,
+                                   toolname );
 
    //--------------------------------------------------------------
    // Zeroise the millisecond counter by doing a first read of it.
@@ -1630,12 +1884,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    // Print the preamble
    //   p: tl_pre_clo_init            [for 'VG_(details).name' and friends]
-   //   p: main_process_cmd_line_options() [for VG_(clo_verbosity),
-   //                                       VG_(clo_xml),
-   //                                       logging_to_fd]
+   //   p: main_process_cmd_line_options()
+   //         [for VG_(clo_verbosity), VG_(clo_xml),
+   //          logging_to_fd, xml_fname_unexpanded]
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Print the preamble...\n");
-   print_preamble(logging_to_fd, toolname);
+   print_preamble(logging_to_fd, xml_fname_unexpanded, toolname);
    VG_(debugLog)(1, "main", "...finished the preamble\n");
 
    //--------------------------------------------------------------
@@ -2041,13 +2295,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    if (VG_(clo_xml)) {
       HChar buf[50];
       VG_(elapsed_wallclock_time)(buf);
-      VG_(message_no_f_c)(Vg_UserMsg,
-                          "<status>\n"
-                          "  <state>RUNNING</state>\n"
-                          "  <time>%t</time>\n"
-                          "</status>",
-                          buf);
-      VG_(message)(Vg_UserMsg, "");
+      VG_(printf_xml_no_f_c)( "<status>\n"
+                              "  <state>RUNNING</state>\n"
+                              "  <time>%t</time>\n"
+                              "</status>\n",
+                              buf );
+      VG_(printf_xml_no_f_c)( "\n" );
    }
 
    VG_(debugLog)(1, "main", "Running thread 1\n");
@@ -2140,46 +2393,54 @@ void shutdown_actions_NORETURN( ThreadId tid,
 
    VG_(threads)[tid].status = VgTs_Empty;
    //--------------------------------------------------------------
-   // Finalisation: cleanup, messages, etc.  Order no so important, only
+   // Finalisation: cleanup, messages, etc.  Order not so important, only
    // affects what order the messages come.
    //--------------------------------------------------------------
-   if (VG_(clo_verbosity) > 0)
-      VG_(message)(Vg_UserMsg, "");
+   // First thing in the post-amble is a blank line.
+   if (VG_(clo_xml))
+      VG_(printf_xml)("\n");
+   else if (VG_(clo_verbosity) > 0)
+      VG_(message)(Vg_UserMsg, "\n");
 
    if (VG_(clo_xml)) {
       HChar buf[50];
-      if (VG_(needs).core_errors || VG_(needs).tool_errors) {
-         VG_(show_error_counts_as_XML)();
-         VG_(message)(Vg_UserMsg, "");
-      }
       VG_(elapsed_wallclock_time)(buf);
-      VG_(message_no_f_c)(Vg_UserMsg,
-                          "<status>\n"
-                          "  <state>FINISHED</state>\n"
-                          "  <time>%t</time>\n"
-                          "</status>",
-                          buf);
-      VG_(message)(Vg_UserMsg, "");
+      VG_(printf_xml_no_f_c)( "<status>\n"
+                              "  <state>FINISHED</state>\n"
+                              "  <time>%t</time>\n"
+                              "</status>\n"
+                              "\n",
+                              buf);
    }
 
    /* Print out file descriptor summary and stats. */
    if (VG_(clo_track_fds))
       VG_(show_open_fds)();
 
+   /* Call the tool's finalisation function.  This makes Memcheck's
+      leak checker run, and possibly chuck a bunch of leak errors into
+      the error management machinery. */
+   VG_TDICT_CALL(tool_fini, 0/*exitcode*/);
+
+   /* Show the error counts. */
+   if (VG_(clo_xml)
+       && (VG_(needs).core_errors || VG_(needs).tool_errors)) {
+      VG_(show_error_counts_as_XML)();
+   }
+
+   /* In XML mode, this merely prints the used suppressions. */
    if (VG_(needs).core_errors || VG_(needs).tool_errors)
       VG_(show_all_errors)();
 
-   VG_TDICT_CALL(tool_fini, 0/*exitcode*/);
-
    if (VG_(clo_xml)) {
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "</valgrindoutput>");
-      VG_(message)(Vg_UserMsg, "");
+      VG_(printf_xml)("\n");
+      VG_(printf_xml)("</valgrindoutput>\n");
+      VG_(printf_xml)("\n");
    }
 
    VG_(sanity_check_general)( True /*include expensive checks*/ );
 
-   if (VG_(clo_verbosity) > 1)
+   if (VG_(clo_stats))
       print_all_stats();
 
    /* Show a profile of the heap(s) at shutdown.  Optionally, first
@@ -2200,6 +2461,9 @@ void shutdown_actions_NORETURN( ThreadId tid,
    /* Print Vex storage stats */
    if (0)
        LibVEX_ShowAllocStats();
+
+   /* Flush any output cached by previous calls to VG_(message). */
+   VG_(message_flush)();
 
    /* Ok, finally exit in the os-specific way, according to the scheduler's
       return code.  In short, if the (last) thread exited by calling
@@ -2273,9 +2537,9 @@ static void final_tidyup(ThreadId tid)
    r2 = VG_(get_tocptr)( __libc_freeres_wrapper );
    if (r2 == 0) {
       VG_(message)(Vg_UserMsg, 
-                   "Caught __NR_exit, but can't run __libc_freeres()");
+                   "Caught __NR_exit, but can't run __libc_freeres()\n");
       VG_(message)(Vg_UserMsg, 
-                   "   since cannot establish TOC pointer for it.");
+                   "   since cannot establish TOC pointer for it.\n");
       return;
    }
 #  endif
@@ -2284,7 +2548,7 @@ static void final_tidyup(ThreadId tid)
        VG_(clo_trace_syscalls) ||
        VG_(clo_trace_sched))
       VG_(message)(Vg_DebugMsg, 
-		   "Caught __NR_exit; running __libc_freeres()");
+		   "Caught __NR_exit; running __libc_freeres()\n");
       
    /* set thread context to point to libc_freeres_wrapper */
    /* ppc64-linux note: __libc_freeres_wrapper gives us the real

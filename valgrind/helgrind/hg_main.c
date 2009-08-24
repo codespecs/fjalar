@@ -48,8 +48,10 @@
 #include "pub_tool_options.h"
 #include "pub_tool_xarray.h"
 #include "pub_tool_stacktrace.h"
-#include "pub_tool_debuginfo.h"  /* VG_(get_data_description) */
 #include "pub_tool_wordfm.h"
+#include "pub_tool_debuginfo.h" // VG_(find_seginfo), VG_(seginfo_soname)
+#include "pub_tool_redir.h"     // sonames for the dynamic linkers
+#include "pub_tool_vki.h"       // VKI_PAGE_SIZE
 
 #include "hg_basics.h"
 #include "hg_wordset.h"
@@ -1047,34 +1049,39 @@ static void laog__handle_one_lock_deletion ( Lock* lk ); /* fwds */
 
 
 /* Block-copy states (needed for implementing realloc()). */
-static void shadow_mem_copy_range ( Addr src, Addr dst, SizeT len )
-{
-   libhb_copy_shadow_state( src, dst, len );
-}
-
-static void shadow_mem_read_range ( Thread* thr, Addr a, SizeT len )
+/* FIXME this copies shadow memory; it doesn't apply the MSM to it.
+   Is that a problem? (hence 'scopy' rather than 'ccopy') */
+static void shadow_mem_scopy_range ( Thread* thr,
+                                     Addr src, Addr dst, SizeT len )
 {
    Thr*     hbthr = thr->hbthr;
    tl_assert(hbthr);
-   LIBHB_READ_N(hbthr, a, len);
+   libhb_copy_shadow_state( hbthr, src, dst, len );
 }
 
-static void shadow_mem_write_range ( Thread* thr, Addr a, SizeT len ) {
+static void shadow_mem_cread_range ( Thread* thr, Addr a, SizeT len )
+{
    Thr*     hbthr = thr->hbthr;
    tl_assert(hbthr);
-   LIBHB_WRITE_N(hbthr, a, len);
+   LIBHB_CREAD_N(hbthr, a, len);
+}
+
+static void shadow_mem_cwrite_range ( Thread* thr, Addr a, SizeT len ) {
+   Thr*     hbthr = thr->hbthr;
+   tl_assert(hbthr);
+   LIBHB_CWRITE_N(hbthr, a, len);
 }
 
 static void shadow_mem_make_New ( Thread* thr, Addr a, SizeT len )
 {
-   libhb_range_new( thr->hbthr, a, len );
+   libhb_srange_new( thr->hbthr, a, len );
 }
 
 static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
 {
    if (0 && len > 500)
       VG_(printf)("make NoAccess ( %#lx, %ld )\n", aIN, len );
-   libhb_range_noaccess( thr->hbthr, aIN, len );
+   libhb_srange_noaccess( thr->hbthr, aIN, len );
 }
 
 
@@ -1437,13 +1444,18 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
    - for all other uses, use get_current_Thread.
 */
 
-static Thread* current_Thread = NULL;
+static Thread *current_Thread      = NULL,
+              *current_Thread_prev = NULL;
 
 static void evh__start_client_code ( ThreadId tid, ULong nDisp ) {
    if (0) VG_(printf)("start %d %llu\n", (Int)tid, nDisp);
    tl_assert(current_Thread == NULL);
    current_Thread = map_threads_lookup( tid );
    tl_assert(current_Thread != NULL);
+   if (current_Thread != current_Thread_prev) {
+      libhb_Thr_resumes( current_Thread->hbthr );
+      current_Thread_prev = current_Thread;
+   }
 }
 static void evh__stop_client_code ( ThreadId tid, ULong nDisp ) {
    if (0) VG_(printf)(" stop %d %llu\n", (Int)tid, nDisp);
@@ -1524,6 +1536,15 @@ void evh__die_mem ( Addr a, SizeT len ) {
    shadow_mem_make_NoAccess( get_current_Thread(), a, len );
    if (len >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__die_mem-post");
+}
+
+static
+void evh__copy_mem ( Addr src, Addr dst, SizeT len ) {
+   if (SHOW_EVENTS >= 2)
+      VG_(printf)("evh__copy_mem(%p, %p, %lu)\n", (void*)src, (void*)dst, len );
+   shadow_mem_scopy_range( get_current_Thread(), src, dst, len );
+   if (len >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
+      all__sanity_check("evh__copy_mem-post");
 }
 
 static
@@ -1626,8 +1647,12 @@ void evh__pre_thread_ll_exit ( ThreadId quit_tid )
       HG_(record_error_Misc)( thr_q, buf );
    }
 
-   /* About the only thing we do need to do is clear the map_threads
-      entry, in order that the Valgrind core can re-use it. */
+   /* Not much to do here:
+      - tell libhb the thread is gone
+      - clear the map_threads entry, in order that the Valgrind core
+        can re-use it. */
+   tl_assert(thr_q->hbthr);
+   libhb_async_exit(thr_q->hbthr);
    tl_assert(thr_q->coretid == quit_tid);
    thr_q->coretid = VG_INVALID_THREADID;
    map_threads_delete( quit_tid );
@@ -1670,6 +1695,9 @@ void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
       stayer. */
    so = libhb_so_alloc();
    tl_assert(so);
+   /* Send last arg of _so_send as False, since the sending thread
+      doesn't actually exist any more, so we don't want _so_send to
+      try taking stack snapshots of it. */
    libhb_so_send(hbthr_q, so, True/*strong_send*/);
    libhb_so_recv(hbthr_s, so, True/*strong_recv*/);
    libhb_so_dealloc(so);
@@ -1697,7 +1725,7 @@ void evh__pre_mem_read ( CorePart part, ThreadId tid, Char* s,
        || (SHOW_EVENTS >= 1 && size != 1))
       VG_(printf)("evh__pre_mem_read(ctid=%d, \"%s\", %p, %lu)\n", 
                   (Int)tid, s, (void*)a, size );
-   shadow_mem_read_range( map_threads_lookup(tid), a, size);
+   shadow_mem_cread_range( map_threads_lookup(tid), a, size);
    if (size >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__pre_mem_read-post");
 }
@@ -1711,7 +1739,7 @@ void evh__pre_mem_read_asciiz ( CorePart part, ThreadId tid,
                   (Int)tid, s, (void*)a );
    // FIXME: think of a less ugly hack
    len = VG_(strlen)( (Char*) a );
-   shadow_mem_read_range( map_threads_lookup(tid), a, len+1 );
+   shadow_mem_cread_range( map_threads_lookup(tid), a, len+1 );
    if (len >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__pre_mem_read_asciiz-post");
 }
@@ -1722,7 +1750,7 @@ void evh__pre_mem_write ( CorePart part, ThreadId tid, Char* s,
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__pre_mem_write(ctid=%d, \"%s\", %p, %lu)\n", 
                   (Int)tid, s, (void*)a, size );
-   shadow_mem_write_range( map_threads_lookup(tid), a, size);
+   shadow_mem_cwrite_range( map_threads_lookup(tid), a, size);
    if (size >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__pre_mem_write-post");
 }
@@ -1751,90 +1779,78 @@ void evh__die_mem_heap ( Addr a, SizeT len ) {
       all__sanity_check("evh__pre_mem_read-post");
 }
 
+/* --- Event handlers called from generated code --- */
+
 static VG_REGPARM(1)
-void evh__mem_help_read_1(Addr a) {
+void evh__mem_help_cread_1(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_READ_1(hbthr, a);
+   LIBHB_CREAD_1(hbthr, a);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_read_2(Addr a) {
+void evh__mem_help_cread_2(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_READ_2(hbthr, a);
+   LIBHB_CREAD_2(hbthr, a);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_read_4(Addr a) {
+void evh__mem_help_cread_4(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_READ_4(hbthr, a);
+   LIBHB_CREAD_4(hbthr, a);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_read_8(Addr a) {
+void evh__mem_help_cread_8(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_READ_8(hbthr, a);
+   LIBHB_CREAD_8(hbthr, a);
 }
 
 static VG_REGPARM(2)
-void evh__mem_help_read_N(Addr a, SizeT size) {
+void evh__mem_help_cread_N(Addr a, SizeT size) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_READ_N(hbthr, a, size);
+   LIBHB_CREAD_N(hbthr, a, size);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_write_1(Addr a) {
+void evh__mem_help_cwrite_1(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_WRITE_1(hbthr, a);
+   LIBHB_CWRITE_1(hbthr, a);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_write_2(Addr a) {
+void evh__mem_help_cwrite_2(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_WRITE_2(hbthr, a);
+   LIBHB_CWRITE_2(hbthr, a);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_write_4(Addr a) {
+void evh__mem_help_cwrite_4(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_WRITE_4(hbthr, a);
+   LIBHB_CWRITE_4(hbthr, a);
 }
 
 static VG_REGPARM(1)
-void evh__mem_help_write_8(Addr a) {
+void evh__mem_help_cwrite_8(Addr a) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_WRITE_8(hbthr, a);
+   LIBHB_CWRITE_8(hbthr, a);
 }
 
 static VG_REGPARM(2)
-void evh__mem_help_write_N(Addr a, SizeT size) {
+void evh__mem_help_cwrite_N(Addr a, SizeT size) {
    Thread*  thr = get_current_Thread_in_C_C();
    Thr*     hbthr = thr->hbthr;
-   LIBHB_WRITE_N(hbthr, a, size);
+   LIBHB_CWRITE_N(hbthr, a, size);
 }
 
-//static void evh__bus_lock(void) {
-//   Thread* thr;
-//   if (0) VG_(printf)("evh__bus_lock()\n");
-//   thr = get_current_Thread();
-//   tl_assert(thr); /* cannot fail - Thread* must already exist */
-//   evhH__post_thread_w_acquires_lock( thr, LK_nonRec, (Addr)&__bus_lock );
-//}
-//static void evh__bus_unlock(void) {
-//   Thread* thr;
-//   if (0) VG_(printf)("evh__bus_unlock()\n");
-//   thr = get_current_Thread();
-//   tl_assert(thr); /* cannot fail - Thread* must already exist */
-//   evhH__pre_thread_releases_lock( thr, (Addr)&__bus_lock, False/*!isRDWR*/ );
-//}
 
 /* ------------------------------------------------------- */
 /* -------------- events to do with mutexes -------------- */
@@ -1987,48 +2003,146 @@ static void evh__HG_PTHREAD_MUTEX_UNLOCK_POST ( ThreadId tid, void* mutex )
 }
 
 
+/* ------------------------------------------------------- */
+/* -------------- events to do with mutexes -------------- */
+/* ------------------------------------------------------- */
+
+/* All a bit of a kludge.  Pretend we're really dealing with ordinary
+   pthread_mutex_t's instead, for the most part. */
+
+static void evh__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_PRE( ThreadId tid, 
+                                                     void* slock )
+{
+   Thread* thr;
+   Lock*   lk;
+   /* In glibc's kludgey world, we're either initialising or unlocking
+      it.  Since this is the pre-routine, if it is locked, unlock it
+      and take a dependence edge.  Otherwise, do nothing. */
+
+   if (SHOW_EVENTS >= 1)
+      VG_(printf)("evh__hg_PTHREAD_SPIN_INIT_OR_UNLOCK_PRE"
+                  "(ctid=%d, slock=%p)\n", 
+                  (Int)tid, (void*)slock );
+
+   thr = map_threads_maybe_lookup( tid );
+   /* cannot fail - Thread* must already exist */;
+   tl_assert( HG_(is_sane_Thread)(thr) );
+
+   lk = map_locks_maybe_lookup( (Addr)slock );
+   if (lk && lk->heldBy) {
+      /* it's held.  So do the normal pre-unlock actions, as copied
+         from evh__HG_PTHREAD_MUTEX_UNLOCK_PRE.  This stupidly
+         duplicates the map_locks_maybe_lookup. */
+      evhH__pre_thread_releases_lock( thr, (Addr)slock,
+                                           False/*!isRDWR*/ );
+   }
+}
+
+static void evh__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_POST( ThreadId tid, 
+                                                      void* slock )
+{
+   Lock* lk;
+   /* More kludgery.  If the lock has never been seen before, do
+      actions as per evh__HG_PTHREAD_MUTEX_INIT_POST.  Else do
+      nothing. */
+
+   if (SHOW_EVENTS >= 1)
+      VG_(printf)("evh__hg_PTHREAD_SPIN_INIT_OR_UNLOCK_POST"
+                  "(ctid=%d, slock=%p)\n", 
+                  (Int)tid, (void*)slock );
+
+   lk = map_locks_maybe_lookup( (Addr)slock );
+   if (!lk) {
+      map_locks_lookup_or_create( LK_nonRec, (Addr)slock, tid );
+   }
+}
+
+static void evh__HG_PTHREAD_SPIN_LOCK_PRE( ThreadId tid, 
+                                           void* slock, Word isTryLock )
+{
+   evh__HG_PTHREAD_MUTEX_LOCK_PRE( tid, slock, isTryLock );
+}
+
+static void evh__HG_PTHREAD_SPIN_LOCK_POST( ThreadId tid, 
+                                            void* slock )
+{
+   evh__HG_PTHREAD_MUTEX_LOCK_POST( tid, slock );
+}
+
+static void evh__HG_PTHREAD_SPIN_DESTROY_PRE( ThreadId tid, 
+                                              void* slock )
+{
+   evh__HG_PTHREAD_MUTEX_DESTROY_PRE( tid, slock );
+}
+
+
 /* ----------------------------------------------------- */
 /* --------------- events to do with CVs --------------- */
 /* ----------------------------------------------------- */
 
-/* A mapping from CV to the SO associated with it.  When the CV is
+/* A mapping from CV to (the SO associated with it, plus some
+   auxiliary data for error checking).  When the CV is
    signalled/broadcasted upon, we do a 'send' into the SO, and when a
    wait on it completes, we do a 'recv' from the SO.  This is believed
    to give the correct happens-before events arising from CV
    signallings/broadcasts.
 */
 
-/* pthread_mutex_cond* -> SO* */
-static WordFM* map_cond_to_SO = NULL;
+/* .so is the SO for this CV.
+   .mx_ga is the associated mutex, when .nWaiters > 0
 
-static void map_cond_to_SO_INIT ( void ) {
-   if (UNLIKELY(map_cond_to_SO == NULL)) {
-      map_cond_to_SO = VG_(newFM)( HG_(zalloc),
-                                   "hg.mctSI.1", HG_(free), NULL );
-      tl_assert(map_cond_to_SO != NULL);
+   POSIX says effectively that the first pthread_cond_{timed}wait call
+   causes a dynamic binding between the CV and the mutex, and that
+   lasts until such time as the waiter count falls to zero.  Hence
+   need to keep track of the number of waiters in order to do
+   consistency tracking. */
+typedef
+   struct { 
+      SO*   so;       /* libhb-allocated SO */
+      void* mx_ga;    /* addr of associated mutex, if any */
+      UWord nWaiters; /* # threads waiting on the CV */
+   }
+   CVInfo;
+
+
+/* pthread_cond_t* -> CVInfo* */
+static WordFM* map_cond_to_CVInfo = NULL;
+
+static void map_cond_to_CVInfo_INIT ( void ) {
+   if (UNLIKELY(map_cond_to_CVInfo == NULL)) {
+      map_cond_to_CVInfo = VG_(newFM)( HG_(zalloc),
+                                       "hg.mctCI.1", HG_(free), NULL );
+      tl_assert(map_cond_to_CVInfo != NULL);
    }
 }
 
-static SO* map_cond_to_SO_lookup_or_alloc ( void* cond ) {
+static CVInfo* map_cond_to_CVInfo_lookup_or_alloc ( void* cond ) {
    UWord key, val;
-   map_cond_to_SO_INIT();
-   if (VG_(lookupFM)( map_cond_to_SO, &key, &val, (UWord)cond )) {
+   map_cond_to_CVInfo_INIT();
+   if (VG_(lookupFM)( map_cond_to_CVInfo, &key, &val, (UWord)cond )) {
       tl_assert(key == (UWord)cond);
-      return (SO*)val;
+      return (CVInfo*)val;
    } else {
-      SO* so = libhb_so_alloc();
-      VG_(addToFM)( map_cond_to_SO, (UWord)cond, (UWord)so );
-      return so;
+      SO*     so  = libhb_so_alloc();
+      CVInfo* cvi = HG_(zalloc)("hg.mctCloa.1", sizeof(CVInfo));
+      cvi->so     = so;
+      cvi->mx_ga  = 0;
+      VG_(addToFM)( map_cond_to_CVInfo, (UWord)cond, (UWord)cvi );
+      return cvi;
    }
 }
 
-static void map_cond_to_SO_delete ( void* cond ) {
+static void map_cond_to_CVInfo_delete ( void* cond ) {
    UWord keyW, valW;
-   map_cond_to_SO_INIT();
-   if (VG_(delFromFM)( map_cond_to_SO, &keyW, &valW, (UWord)cond )) {
-      SO* so = (SO*)valW;
+   map_cond_to_CVInfo_INIT();
+   if (VG_(delFromFM)( map_cond_to_CVInfo, &keyW, &valW, (UWord)cond )) {
+      CVInfo* cvi = (CVInfo*)valW;
       tl_assert(keyW == (UWord)cond);
-      libhb_so_dealloc(so);
+      tl_assert(cvi);
+      tl_assert(cvi->so);
+      libhb_so_dealloc(cvi->so);
+      cvi->mx_ga = 0;
+      HG_(free)(cvi);
    }
 }
 
@@ -2041,7 +2155,8 @@ static void evh__HG_PTHREAD_COND_SIGNAL_PRE ( ThreadId tid, void* cond )
       from the SO, thereby acquiring a dependency on this signalling
       event. */
    Thread*   thr;
-   SO*       so;
+   CVInfo*   cvi;
+   //Lock*     lk;
 
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__HG_PTHREAD_COND_SIGNAL_PRE(ctid=%d, cond=%p)\n", 
@@ -2050,13 +2165,43 @@ static void evh__HG_PTHREAD_COND_SIGNAL_PRE ( ThreadId tid, void* cond )
    thr = map_threads_maybe_lookup( tid );
    tl_assert(thr); /* cannot fail - Thread* must already exist */
 
+   cvi = map_cond_to_CVInfo_lookup_or_alloc( cond );
+   tl_assert(cvi);
+   tl_assert(cvi->so);
+
    // error-if: mutex is bogus
    // error-if: mutex is not locked
+   // Hmm.  POSIX doesn't actually say that it's an error to call 
+   // pthread_cond_signal with the associated mutex being unlocked.
+   // Although it does say that it should be "if consistent scheduling
+   // is desired."
+   //
+   // For the moment, disable these checks.
+   //lk = map_locks_maybe_lookup(cvi->mx_ga);
+   //if (lk == NULL || cvi->mx_ga == 0) {
+   //   HG_(record_error_Misc)( thr, 
+   //      "pthread_cond_{signal,broadcast}: "
+   //      "no or invalid mutex associated with cond");
+   //}
+   ///* note: lk could be NULL.  Be careful. */
+   //if (lk) {
+   //   if (lk->kind == LK_rdwr) {
+   //      HG_(record_error_Misc)(thr,
+   //         "pthread_cond_{signal,broadcast}: associated lock is a rwlock");
+   //   }
+   //   if (lk->heldBy == NULL) {
+   //      HG_(record_error_Misc)(thr,
+   //         "pthread_cond_{signal,broadcast}: "
+   //         "associated lock is not held by any thread");
+   //   }
+   //   if (lk->heldBy != NULL && 0 == VG_(elemBag)(lk->heldBy, (Word)thr)) {
+   //      HG_(record_error_Misc)(thr,
+   //         "pthread_cond_{signal,broadcast}: "
+   //         "associated lock is not held by calling thread");
+   //   }
+   //}
 
-   so = map_cond_to_SO_lookup_or_alloc( cond );
-   tl_assert(so);
-
-   libhb_so_send( thr->hbthr, so, True/*strong_send*/ );
+   libhb_so_send( thr->hbthr, cvi->so, True/*strong_send*/ );
 }
 
 /* returns True if it reckons 'mutex' is valid and held by this
@@ -2067,6 +2212,7 @@ static Bool evh__HG_PTHREAD_COND_WAIT_PRE ( ThreadId tid,
    Thread* thr;
    Lock*   lk;
    Bool    lk_valid = True;
+   CVInfo* cvi;
 
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__hg_PTHREAD_COND_WAIT_PRE"
@@ -2109,6 +2255,20 @@ static Bool evh__HG_PTHREAD_COND_WAIT_PRE ( ThreadId tid,
    }
 
    // error-if: cond is also associated with a different mutex
+   cvi = map_cond_to_CVInfo_lookup_or_alloc(cond);
+   tl_assert(cvi);
+   tl_assert(cvi->so);
+   if (cvi->nWaiters == 0) {
+      /* form initial (CV,MX) binding */
+      cvi->mx_ga = mutex;
+   }
+   else /* check existing (CV,MX) binding */
+   if (cvi->mx_ga != mutex) {
+      HG_(record_error_Misc)(
+         thr, "pthread_cond_{timed}wait: cond is associated "
+              "with a different mutex");
+   }
+   cvi->nWaiters++;
 
    return lk_valid;
 }
@@ -2120,7 +2280,7 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
       the SO for this cond, and 'recv' from it so as to acquire a
       dependency edge back to the signaller/broadcaster. */
    Thread* thr;
-   SO*     so;
+   CVInfo* cvi;
 
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__HG_PTHREAD_COND_WAIT_POST"
@@ -2132,10 +2292,12 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
 
    // error-if: cond is also associated with a different mutex
 
-   so = map_cond_to_SO_lookup_or_alloc( cond );
-   tl_assert(so);
+   cvi = map_cond_to_CVInfo_lookup_or_alloc( cond );
+   tl_assert(cvi);
+   tl_assert(cvi->so);
+   tl_assert(cvi->nWaiters > 0);
 
-   if (!libhb_so_everSent(so)) {
+   if (!libhb_so_everSent(cvi->so)) {
       /* Hmm.  How can a wait on 'cond' succeed if nobody signalled
          it?  If this happened it would surely be a bug in the threads
          library.  Or one of those fabled "spurious wakeups". */
@@ -2145,7 +2307,9 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
    }
 
    /* anyway, acquire a dependency on it. */
-   libhb_so_recv( thr->hbthr, so, True/*strong_recv*/ );
+   libhb_so_recv( thr->hbthr, cvi->so, True/*strong_recv*/ );
+
+   cvi->nWaiters--;
 }
 
 static void evh__HG_PTHREAD_COND_DESTROY_PRE ( ThreadId tid,
@@ -2159,7 +2323,7 @@ static void evh__HG_PTHREAD_COND_DESTROY_PRE ( ThreadId tid,
                   "(ctid=%d, cond=%p)\n", 
                   (Int)tid, (void*)cond );
 
-   map_cond_to_SO_delete( cond );
+   map_cond_to_CVInfo_delete( cond );
 }
 
 
@@ -2799,6 +2963,107 @@ static void evh__HG_PTHREAD_BARRIER_WAIT_PRE ( ThreadId tid,
    /* and we don't need this any more.  Perhaps a stack-allocated
       SO would be better? */
    libhb_so_dealloc(so);
+}
+
+
+/* ----------------------------------------------------- */
+/* ----- events to do with user-specified HB edges ----- */
+/* ----------------------------------------------------- */
+
+/* A mapping from arbitrary UWord tag to the SO associated with it.
+   The UWord tags are meaningless to us, interpreted only by the
+   user. */
+
+
+
+/* UWord -> SO* */
+static WordFM* map_usertag_to_SO = NULL;
+
+static void map_usertag_to_SO_INIT ( void ) {
+   if (UNLIKELY(map_usertag_to_SO == NULL)) {
+      map_usertag_to_SO = VG_(newFM)( HG_(zalloc),
+                                      "hg.mutS.1", HG_(free), NULL );
+      tl_assert(map_usertag_to_SO != NULL);
+   }
+}
+
+static SO* map_usertag_to_SO_lookup_or_alloc ( UWord usertag ) {
+   UWord key, val;
+   map_usertag_to_SO_INIT();
+   if (VG_(lookupFM)( map_usertag_to_SO, &key, &val, usertag )) {
+      tl_assert(key == (UWord)usertag);
+      return (SO*)val;
+   } else {
+      SO* so = libhb_so_alloc();
+      VG_(addToFM)( map_usertag_to_SO, usertag, (UWord)so );
+      return so;
+   }
+}
+
+// If it's ever needed (XXX check before use)
+//static void map_usertag_to_SO_delete ( UWord usertag ) {
+//   UWord keyW, valW;
+//   map_usertag_to_SO_INIT();
+//   if (VG_(delFromFM)( map_usertag_to_SO, &keyW, &valW, usertag )) {
+//      SO* so = (SO*)valW;
+//      tl_assert(keyW == usertag);
+//      tl_assert(so);
+//      libhb_so_dealloc(so);
+//   }
+//}
+
+
+static
+void evh__HG_USERSO_SEND_PRE ( ThreadId tid, UWord usertag )
+{
+   /* TID is just about to notionally sent a message on a notional
+      abstract synchronisation object whose identity is given by
+      USERTAG.  Bind USERTAG to a real SO if it is not already so
+      bound, and do a 'strong send' on the SO.  This is later used by
+      other thread(s) which successfully 'receive' from the SO,
+      thereby acquiring a dependency on this signalling event. */
+   Thread* thr;
+   SO*     so;
+
+   if (SHOW_EVENTS >= 1)
+      VG_(printf)("evh__HG_USERSO_SEND_PRE(ctid=%d, usertag=%#lx)\n", 
+                  (Int)tid, usertag );
+
+   thr = map_threads_maybe_lookup( tid );
+   tl_assert(thr); /* cannot fail - Thread* must already exist */
+
+   so = map_usertag_to_SO_lookup_or_alloc( usertag );
+   tl_assert(so);
+
+   libhb_so_send( thr->hbthr, so, True/*strong_send*/ );
+}
+
+static
+void evh__HG_USERSO_RECV_POST ( ThreadId tid, UWord usertag )
+{
+   /* TID has just notionally received a message from a notional
+      abstract synchronisation object whose identity is given by
+      USERTAG.  Bind USERTAG to a real SO if it is not already so
+      bound.  If the SO has at some point in the past been 'sent' on,
+      to a 'strong receive' on it, thereby acquiring a dependency on
+      the sender. */
+   Thread* thr;
+   SO*     so;
+
+   if (SHOW_EVENTS >= 1)
+      VG_(printf)("evh__HG_USERSO_RECV_POST(ctid=%d, usertag=%#lx)\n", 
+                  (Int)tid, usertag );
+
+   thr = map_threads_maybe_lookup( tid );
+   tl_assert(thr); /* cannot fail - Thread* must already exist */
+
+   so = map_usertag_to_SO_lookup_or_alloc( usertag );
+   tl_assert(so);
+
+   /* Acquire a dependency on it.  If the SO has never so far been
+      sent on, then libhb_so_recv will do nothing.  So we're safe
+      regardless of SO's history. */
+   libhb_so_recv( thr->hbthr, so, True/*strong_recv*/ );
 }
 
 
@@ -3455,7 +3720,7 @@ static void* hg_cli__realloc ( ThreadId tid, void* payloadV, SizeT new_size )
       /* First half kept and copied, second half new */
       // FIXME: shouldn't we use a copier which implements the
       // memory state machine?
-      shadow_mem_copy_range( payload, p_new, md->szB );
+      evh__copy_mem( payload, p_new, md->szB );
       evh__new_mem_heap ( p_new + md->szB, new_size - md->szB,
                           /*inited*/False );
       /* FIXME: can anything funny happen here?  specifically, if the
@@ -3533,60 +3798,60 @@ static void instrument_mem_access ( IRSB*   bbOut,
    if (isStore) {
       switch (szB) {
          case 1:
-            hName = "evh__mem_help_write_1";
-            hAddr = &evh__mem_help_write_1;
+            hName = "evh__mem_help_cwrite_1";
+            hAddr = &evh__mem_help_cwrite_1;
             argv = mkIRExprVec_1( addr );
             break;
          case 2:
-            hName = "evh__mem_help_write_2";
-            hAddr = &evh__mem_help_write_2;
+            hName = "evh__mem_help_cwrite_2";
+            hAddr = &evh__mem_help_cwrite_2;
             argv = mkIRExprVec_1( addr );
             break;
          case 4:
-            hName = "evh__mem_help_write_4";
-            hAddr = &evh__mem_help_write_4;
+            hName = "evh__mem_help_cwrite_4";
+            hAddr = &evh__mem_help_cwrite_4;
             argv = mkIRExprVec_1( addr );
             break;
          case 8:
-            hName = "evh__mem_help_write_8";
-            hAddr = &evh__mem_help_write_8;
+            hName = "evh__mem_help_cwrite_8";
+            hAddr = &evh__mem_help_cwrite_8;
             argv = mkIRExprVec_1( addr );
             break;
          default:
             tl_assert(szB > 8 && szB <= 512); /* stay sane */
             regparms = 2;
-            hName = "evh__mem_help_write_N";
-            hAddr = &evh__mem_help_write_N;
+            hName = "evh__mem_help_cwrite_N";
+            hAddr = &evh__mem_help_cwrite_N;
             argv = mkIRExprVec_2( addr, mkIRExpr_HWord( szB ));
             break;
       }
    } else {
       switch (szB) {
          case 1:
-            hName = "evh__mem_help_read_1";
-            hAddr = &evh__mem_help_read_1;
+            hName = "evh__mem_help_cread_1";
+            hAddr = &evh__mem_help_cread_1;
             argv = mkIRExprVec_1( addr );
             break;
          case 2:
-            hName = "evh__mem_help_read_2";
-            hAddr = &evh__mem_help_read_2;
+            hName = "evh__mem_help_cread_2";
+            hAddr = &evh__mem_help_cread_2;
             argv = mkIRExprVec_1( addr );
             break;
          case 4:
-            hName = "evh__mem_help_read_4";
-            hAddr = &evh__mem_help_read_4;
+            hName = "evh__mem_help_cread_4";
+            hAddr = &evh__mem_help_cread_4;
             argv = mkIRExprVec_1( addr );
             break;
          case 8:
-            hName = "evh__mem_help_read_8";
-            hAddr = &evh__mem_help_read_8;
+            hName = "evh__mem_help_cread_8";
+            hAddr = &evh__mem_help_cread_8;
             argv = mkIRExprVec_1( addr );
             break;
          default: 
             tl_assert(szB > 8 && szB <= 512); /* stay sane */
             regparms = 2;
-            hName = "evh__mem_help_read_N";
-            hAddr = &evh__mem_help_read_N;
+            hName = "evh__mem_help_cread_N";
+            hAddr = &evh__mem_help_cread_N;
             argv = mkIRExprVec_2( addr, mkIRExpr_HWord( szB ));
             break;
       }
@@ -3603,39 +3868,34 @@ static void instrument_mem_access ( IRSB*   bbOut,
 }
 
 
-//static void instrument_memory_bus_event ( IRSB* bbOut, IRMBusEvent event )
-//{
-//   switch (event) {
-//      case Imbe_SnoopedStoreBegin:
-//      case Imbe_SnoopedStoreEnd:
-//         /* These arise from ppc stwcx. insns.  They should perhaps be
-//            handled better. */
-//         break;
-//      case Imbe_Fence:
-//         break; /* not interesting */
-//      case Imbe_BusLock:
-//      case Imbe_BusUnlock:
-//         addStmtToIRSB(
-//            bbOut,
-//            IRStmt_Dirty(
-//               unsafeIRDirty_0_N( 
-//                  0/*regparms*/, 
-//                  event == Imbe_BusLock ? "evh__bus_lock"
-//                                        : "evh__bus_unlock",
-//                  VG_(fnptr_to_fnentry)(
-//                     event == Imbe_BusLock ? &evh__bus_lock 
-//                                           : &evh__bus_unlock 
-//                  ),
-//                  mkIRExprVec_0() 
-//               )
-//            )
-//         );
-//         break;
-//      default:
-//         tl_assert(0);
-//   }
-//}
+/* Figure out if GA is a guest code address in the dynamic linker, and
+   if so return True.  Otherwise (and in case of any doubt) return
+   False.  (sidedly safe w/ False as the safe value) */
+static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
+{
+   DebugInfo* dinfo;
+   const UChar* soname;
+   if (0) return False;
 
+   dinfo = VG_(find_DebugInfo)( (Addr)ga );
+   if (!dinfo) return False;
+
+   soname = VG_(DebugInfo_get_soname)(dinfo);
+   tl_assert(soname);
+   if (0) VG_(printf)("%s\n", soname);
+
+#  if defined(VGO_linux)
+   if (VG_STREQ(soname, VG_U_LD_LINUX_SO_2))        return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_X86_64_SO_2)) return True;
+   if (VG_STREQ(soname, VG_U_LD64_SO_1))            return True;
+   if (VG_STREQ(soname, VG_U_LD_SO_1))              return True;
+#  elif defined(VGO_darwin)
+   if (VG_STREQ(soname, VG_U_DYLD)) return True;
+#  else
+#    error "Unsupported OS"
+#  endif
+   return False;
+}
 
 static
 IRSB* hg_instrument ( VgCallbackClosure* closure,
@@ -3644,14 +3904,20 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                       VexGuestExtents* vge,
                       IRType gWordTy, IRType hWordTy )
 {
-   Int   i;
-   IRSB* bbOut;
-   Bool  x86busLocked   = False;
-   Bool  isSnoopedStore = False;
+   Int     i;
+   IRSB*   bbOut;
+   Addr64  cia; /* address of current insn */
+   IRStmt* st;
+   Bool    inLDSO = False;
+   Addr64  inLDSOmask4K = 1; /* mismatches on first check */
 
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
       VG_(tool_panic)("host/guest word size mismatch");
+   }
+
+   if (VKI_PAGE_SIZE < 4096 || VG_(log2)(VKI_PAGE_SIZE) == -1) {
+      VG_(tool_panic)("implausible or too-small VKI_PAGE_SIZE");
    }
 
    /* Set up BB */
@@ -3667,8 +3933,16 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
       i++;
    }
 
+   // Get the first statement, and initial cia from it
+   tl_assert(bbIn->stmts_used > 0);
+   tl_assert(i < bbIn->stmts_used);
+   st = bbIn->stmts[i];
+   tl_assert(Ist_IMark == st->tag);
+   cia = st->Ist.IMark.addr;
+   st = NULL;
+
    for (/*use current i*/; i < bbIn->stmts_used; i++) {
-      IRStmt* st = bbIn->stmts[i];
+      st = bbIn->stmts[i];
       tl_assert(st);
       tl_assert(isFlatIRStmt(st));
       switch (st->tag) {
@@ -3676,62 +3950,94 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
          case Ist_AbiHint:
          case Ist_Put:
          case Ist_PutI:
-         case Ist_IMark:
          case Ist_Exit:
             /* None of these can contain any memory references. */
             break;
 
+         case Ist_IMark:
+            /* no mem refs, but note the insn address. */
+            cia = st->Ist.IMark.addr;
+            /* Don't instrument the dynamic linker.  It generates a
+               lot of races which we just expensively suppress, so
+               it's pointless.
+
+               Avoid flooding is_in_dynamic_linker_shared_object with
+               requests by only checking at transitions between 4K
+               pages. */
+            if ((cia & ~(Addr64)0xFFF) != inLDSOmask4K) {
+               if (0) VG_(printf)("NEW %#lx\n", (Addr)cia);
+               inLDSOmask4K = cia & ~(Addr64)0xFFF;
+               inLDSO = is_in_dynamic_linker_shared_object(cia);
+            } else {
+               if (0) VG_(printf)("old %#lx\n", (Addr)cia);
+            }
+            break;
+
          case Ist_MBE:
-            //instrument_memory_bus_event( bbOut, st->Ist.MBE.event );
             switch (st->Ist.MBE.event) {
                case Imbe_Fence:
                   break; /* not interesting */
-               /* Imbe_Bus{Lock,Unlock} arise from x86/amd64 LOCK
-                  prefixed instructions. */
-               case Imbe_BusLock:
-                  tl_assert(x86busLocked == False);
-                  x86busLocked = True;
-                  break;
-               case Imbe_BusUnlock:
-                  tl_assert(x86busLocked == True);
-                  x86busLocked = False;
-                  break;
-                  /* Imbe_SnoopedStore{Begin,End} arise from ppc
-                     stwcx. instructions. */
-               case Imbe_SnoopedStoreBegin:
-                  tl_assert(isSnoopedStore == False);
-                  isSnoopedStore = True;
-                  break;
-               case Imbe_SnoopedStoreEnd:
-                  tl_assert(isSnoopedStore == True);
-                  isSnoopedStore = False;
-                  break;
                default:
                   goto unhandled;
             }
             break;
 
-         case Ist_Store:
-            if (!x86busLocked && !isSnoopedStore)
-               instrument_mem_access( 
-                  bbOut, 
-                  st->Ist.Store.addr, 
-                  sizeofIRType(typeOfIRExpr(bbIn->tyenv, st->Ist.Store.data)),
-                  True/*isStore*/,
-                  sizeofIRType(hWordTy)
-               );
-            break;
-
-         case Ist_WrTmp: {
-            IRExpr* data = st->Ist.WrTmp.data;
-            if (data->tag == Iex_Load) {
+         case Ist_CAS: {
+            /* Atomic read-modify-write cycle.  Just pretend it's a
+               read. */
+            IRCAS* cas    = st->Ist.CAS.details;
+            Bool   isDCAS = cas->oldHi != IRTemp_INVALID;
+            if (isDCAS) {
+               tl_assert(cas->expdHi);
+               tl_assert(cas->dataHi);
+            } else {
+               tl_assert(!cas->expdHi);
+               tl_assert(!cas->dataHi);
+            }
+            /* Just be boring about it. */
+            if (!inLDSO) {
                instrument_mem_access(
                   bbOut,
-                  data->Iex.Load.addr,
-                  sizeofIRType(data->Iex.Load.ty),
+                  cas->addr,
+                  (isDCAS ? 2 : 1)
+                     * sizeofIRType(typeOfIRExpr(bbIn->tyenv, cas->dataLo)),
                   False/*!isStore*/,
                   sizeofIRType(hWordTy)
                );
+            }
+            break;
+         }
+
+         case Ist_Store:
+            /* It seems we pretend that store-conditionals don't
+               exist, viz, just ignore them ... */
+            if (st->Ist.Store.resSC == IRTemp_INVALID) {
+               if (!inLDSO) {
+                  instrument_mem_access( 
+                     bbOut, 
+                     st->Ist.Store.addr, 
+                     sizeofIRType(typeOfIRExpr(bbIn->tyenv, st->Ist.Store.data)),
+                     True/*isStore*/,
+                     sizeofIRType(hWordTy)
+                  );
+               }
+            }
+            break;
+
+         case Ist_WrTmp: {
+            /* ... whereas here we don't care whether a load is a
+               vanilla one or a load-linked. */
+            IRExpr* data = st->Ist.WrTmp.data;
+            if (data->tag == Iex_Load) {
+               if (!inLDSO) {
+                  instrument_mem_access(
+                     bbOut,
+                     data->Iex.Load.addr,
+                     sizeofIRType(data->Iex.Load.ty),
+                     False/*!isStore*/,
+                     sizeofIRType(hWordTy)
+                  );
+               }
             }
             break;
          }
@@ -3746,21 +4052,20 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                tl_assert(d->mSize != 0);
                dataSize = d->mSize;
                if (d->mFx == Ifx_Read || d->mFx == Ifx_Modify) {
-                  instrument_mem_access( 
-                     bbOut, d->mAddr, dataSize, False/*!isStore*/,
-                     sizeofIRType(hWordTy)
-                  );
+                  if (!inLDSO) {
+                     instrument_mem_access( 
+                        bbOut, d->mAddr, dataSize, False/*!isStore*/,
+                        sizeofIRType(hWordTy)
+                     );
+                  }
                }
-               /* This isn't really correct.  Really the
-                  instrumentation should be only added when
-                  (!x86busLocked && !isSnoopedStore), just like with
-                  Ist_Store.  Still, I don't think this is
-                  particularly important. */
                if (d->mFx == Ifx_Write || d->mFx == Ifx_Modify) {
-                  instrument_mem_access( 
-                     bbOut, d->mAddr, dataSize, True/*isStore*/,
-                     sizeofIRType(hWordTy)
-                  );
+                  if (!inLDSO) {
+                     instrument_mem_access( 
+                        bbOut, d->mAddr, dataSize, True/*isStore*/,
+                        sizeofIRType(hWordTy)
+                     );
+                  }
                }
             } else {
                tl_assert(d->mAddr == NULL);
@@ -4013,6 +4318,55 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          evh__HG_PTHREAD_BARRIER_DESTROY_PRE( tid, (void*)args[1] );
          break;
 
+      case _VG_USERREQ__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_PRE:
+         /* pth_spinlock_t* */
+         evh__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_PRE( tid, (void*)args[1] );
+         break;
+
+      case _VG_USERREQ__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_POST:
+         /* pth_spinlock_t* */
+         evh__HG_PTHREAD_SPIN_INIT_OR_UNLOCK_POST( tid, (void*)args[1] );
+         break;
+
+      case _VG_USERREQ__HG_PTHREAD_SPIN_LOCK_PRE:
+         /* pth_spinlock_t*, Word */
+         evh__HG_PTHREAD_SPIN_LOCK_PRE( tid, (void*)args[1], args[2] );
+         break;
+
+      case _VG_USERREQ__HG_PTHREAD_SPIN_LOCK_POST:
+         /* pth_spinlock_t* */
+         evh__HG_PTHREAD_SPIN_LOCK_POST( tid, (void*)args[1] );
+         break;
+
+      case _VG_USERREQ__HG_PTHREAD_SPIN_DESTROY_PRE:
+         /* pth_spinlock_t* */
+         evh__HG_PTHREAD_SPIN_DESTROY_PRE( tid, (void*)args[1] );
+         break;
+
+      case _VG_USERREQ__HG_CLIENTREQ_UNIMP: {
+         /* char* who */
+         HChar*  who = (HChar*)args[1];
+         HChar   buf[50 + 50];
+         Thread* thr = map_threads_maybe_lookup( tid );
+         tl_assert( thr ); /* I must be mapped */
+         tl_assert( who );
+         tl_assert( VG_(strlen)(who) <= 50 );
+         VG_(sprintf)(buf, "Unimplemented client request macro \"%s\"", who );
+         /* record_error_Misc strdup's buf, so this is safe: */
+         HG_(record_error_Misc)( thr, buf );
+         break;
+      }
+
+      case _VG_USERREQ__HG_USERSO_SEND_PRE:
+         /* UWord arbitrary-SO-tag */
+         evh__HG_USERSO_SEND_PRE( tid, args[1] );
+         break;
+
+      case _VG_USERREQ__HG_USERSO_RECV_POST:
+         /* UWord arbitrary-SO-tag */
+         evh__HG_USERSO_RECV_POST( tid, args[1] );
+         break;
+
       default:
          /* Unhandled Helgrind client request! */
          tl_assert2(0, "unhandled Helgrind client request 0x%lx",
@@ -4035,13 +4389,18 @@ static Bool hg_process_cmd_line_option ( Char* arg )
                             HG_(clo_track_lockorders)) {}
    else if VG_BOOL_CLO(arg, "--cmp-race-err-addrs",
                             HG_(clo_cmp_race_err_addrs)) {}
-   else if VG_BOOL_CLO(arg, "--show-conflicts",
-                            HG_(clo_show_conflicts)) {}
 
-   /* If you change the 10k/10mill limits, remember to also change
+   else if VG_XACT_CLO(arg, "--history-level=none",
+                            HG_(clo_history_level), 0);
+   else if VG_XACT_CLO(arg, "--history-level=approx",
+                            HG_(clo_history_level), 1);
+   else if VG_XACT_CLO(arg, "--history-level=full",
+                            HG_(clo_history_level), 2);
+
+   /* If you change the 10k/30mill limits, remember to also change
       them in assertions at the top of event_map_maybe_GC. */
    else if VG_BINT_CLO(arg, "--conflict-cache-size",
-                       HG_(clo_conflict_cache_size), 10*1000, 10*1000*1000) {}
+                       HG_(clo_conflict_cache_size), 10*1000, 30*1000*1000) {}
 
    /* "stuvwx" --> stuvwx (binary) */
    else if VG_STR_CLO(arg, "--hg-sanity-flags", tmp_str) {
@@ -4049,7 +4408,7 @@ static Bool hg_process_cmd_line_option ( Char* arg )
    
       if (6 != VG_(strlen)(tmp_str)) {
          VG_(message)(Vg_UserMsg, 
-                      "--hg-sanity-flags argument must have 6 digits");
+                      "--hg-sanity-flags argument must have 6 digits\n");
          return False;
       }
       for (j = 0; j < 6; j++) {
@@ -4057,7 +4416,7 @@ static Bool hg_process_cmd_line_option ( Char* arg )
          else if ('1' == tmp_str[j]) HG_(clo_sanity_flags) |= (1 << (6-1-j));
          else {
             VG_(message)(Vg_UserMsg, "--hg-sanity-flags argument can "
-                                     "only contain 0s and 1s");
+                                     "only contain 0s and 1s\n");
             return False;
          }
       }
@@ -4074,15 +4433,16 @@ static void hg_print_usage ( void )
 {
    VG_(printf)(
 "    --track-lockorders=no|yes show lock ordering errors? [yes]\n"
-"    --show-conflicts=no|yes   show both stack traces in a race? [yes]\n"
-"    --conflict-cache-size=N   size of conflict history cache [1000000]\n"
+"    --history-level=none|approx|full [full]\n"
+"       full:   show both stack traces for a data race (can be very slow)\n"
+"       approx: full trace for one thread, approx for the other (faster)\n"
+"       none:   only show trace for one thread in a race (fastest)\n"
+"    --conflict-cache-size=N   size of 'full' history cache [1000000]\n"
    );
-   VG_(replacement_malloc_print_usage)();
 }
 
 static void hg_print_debug_usage ( void )
 {
-   VG_(replacement_malloc_print_debug_usage)();
    VG_(printf)("    --cmp-race-err-addrs=no|yes  are data addresses in "
                "race errors significant? [no]\n");
    VG_(printf)("    --hg-sanity-flags=<XXXXXX>   sanity check "
@@ -4103,12 +4463,26 @@ static void hg_post_clo_init ( void )
 
 static void hg_fini ( Int exitcode )
 {
+   if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
+      VG_(message)(Vg_UserMsg, 
+                   "For counts of detected and suppressed errors, "
+                   "rerun with: -v\n");
+   }
+
+   if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)
+       && HG_(clo_history_level) >= 2) {
+      VG_(umsg)( 
+         "Use --history-level=approx or =none to gain increased speed, at\n" );
+      VG_(umsg)(
+         "the cost of reduced accuracy of conflicting-access information\n");
+   }
+
    if (SHOW_DATA_STRUCTURES)
       pp_everything( PP_ALL, "SK_(fini)" );
    if (HG_(clo_sanity_flags))
       all__sanity_check("SK_(fini)");
 
-   if (VG_(clo_verbosity) >= 2) {
+   if (VG_(clo_stats)) {
 
       if (1) {
          VG_(printf)("\n");
@@ -4186,7 +4560,7 @@ void for_libhb__get_stacktrace ( Thr* hbt, Addr* frames, UWord nRequest )
 }
 
 static
-ExeContext*  for_libhb__get_EC ( Thr* hbt )
+ExeContext* for_libhb__get_EC ( Thr* hbt )
 {
    Thread*     thr;
    ThreadId    tid;
@@ -4195,6 +4569,7 @@ ExeContext*  for_libhb__get_EC ( Thr* hbt )
    thr = libhb_get_Thr_opaque( hbt );
    tl_assert(thr);
    tid = map_threads_maybe_reverse_lookup_SLOW(thr);
+   /* this will assert if tid is invalid */
    ec = VG_(record_ExeContext)( tid, 0 );
    return ec;
 }
@@ -4218,6 +4593,7 @@ static void hg_pre_clo_init ( void )
 
    VG_(needs_core_errors)         ();
    VG_(needs_tool_errors)         (HG_(eq_Error),
+                                   HG_(before_pp_Error),
                                    HG_(pp_Error),
                                    False,/*show TIDs for errors*/
                                    HG_(update_extra),
@@ -4225,7 +4601,9 @@ static void hg_pre_clo_init ( void )
                                    HG_(read_extra_suppression_info),
                                    HG_(error_matches_suppression),
                                    HG_(get_error_name),
-                                   HG_(print_extra_suppression_info));
+                                   HG_(get_extra_suppression_info));
+
+   VG_(needs_xml_output)          ();
 
    VG_(needs_command_line_options)(hg_process_cmd_line_option,
                                    hg_print_usage,
@@ -4261,7 +4639,7 @@ static void hg_pre_clo_init ( void )
    VG_(track_new_mem_stack)       ( evh__new_mem );
 
    // FIXME: surely this isn't thread-aware
-   VG_(track_copy_mem_remap)      ( shadow_mem_copy_range );
+   VG_(track_copy_mem_remap)      ( evh__copy_mem );
 
    VG_(track_change_mem_mprotect) ( evh__set_perms );
 
