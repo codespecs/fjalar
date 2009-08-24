@@ -462,7 +462,7 @@ sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
-SUBDIRS = . tests docs
+SUBDIRS = .
 valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
 

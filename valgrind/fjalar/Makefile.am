@@ -18,16 +18,15 @@ noinst_PROGRAMS += fjalar-x86-linux vgpreload_fjalar-x86-linux.so
 endif
 if VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX
 noinst_PROGRAMS += fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
-if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
-noinst_PROGRAMS += fjalar-x86-darwin vgpreload_fjalar-x86-darwin.so
-noinst_DSYMS    +=                   vgpreload_fjalar-x86-darwin.so
 endif
-if VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN
-noinst_PROGRAMS += fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
-noinst_DSYMS    +=                       vgpreload_fjalar-amd64-darwin.so
-endif
-
-endif
+# if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
+# noinst_PROGRAMS += fjalar-x86-darwin vgpreload_fjalar-x86-darwin.so
+# noinst_DSYMS    +=                   vgpreload_fjalar-x86-darwin.so
+# endif
+# if VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN
+# noinst_PROGRAMS += fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
+# noinst_DSYMS    +=                     vgpreload_fjalar-amd64-darwin.so
+# endif
 # PG - no PPC
 
 
