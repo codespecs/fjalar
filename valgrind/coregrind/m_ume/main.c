@@ -46,21 +46,20 @@
 
 
 typedef struct {
-   const HChar *name;
    Bool (*match_fn)(Char *hdr, Int len);
    Int  (*load_fn)(Int fd, const HChar *name, ExeInfo *info);
 } ExeHandler;
 
 static ExeHandler exe_handlers[] = {
-#  if defined(HAVE_ELF)
-   { "ELF",    VG_(match_ELF),    VG_(load_ELF) },
-#  endif
-#  if defined(HAVE_SCRIPT)
-   { "script", VG_(match_script), VG_(load_script) },
-#  endif
-#  if defined(HAVE_MACHO)
-   { "Mach-O", VG_(match_macho),  VG_(load_macho) },
-#  endif
+   // Nb: AIX5 doesn't use m_ume, which is why it's not represented here.
+#if defined(VGO_linux)
+   { VG_(match_ELF),    VG_(load_ELF) },
+#elif defined(VGO_darwin)
+   { VG_(match_macho),  VG_(load_macho) },
+#else
+#  error "unknown OS"
+#endif
+   { VG_(match_script), VG_(load_script) },
 };
 #define EXE_HANDLER_COUNT (sizeof(exe_handlers)/sizeof(exe_handlers[0]))
 
@@ -87,13 +86,13 @@ VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd, Bool allow_setuid)
    if (0 != ret) {
       VG_(close)(fd);
       if (is_setuid && !VG_(clo_xml)) {
-         VG_(message)(Vg_UserMsg, "");
+         VG_(message)(Vg_UserMsg, "\n");
          VG_(message)(Vg_UserMsg,
-                      "Warning: Can't execute setuid/setgid executable: %s",
+                      "Warning: Can't execute setuid/setgid executable: %s\n",
                       exe_name);
          VG_(message)(Vg_UserMsg, "Possible workaround: remove "
-                      "--trace-children=yes, if in effect");
-         VG_(message)(Vg_UserMsg, "");
+                      "--trace-children=yes, if in effect\n");
+         VG_(message)(Vg_UserMsg, "\n");
       }
       return VG_(mk_SysRes_Error)(ret);
    }

@@ -1150,7 +1150,7 @@ struct  vki_seminfo {
 #define VKI_MREMAP_FIXED	2
 
 //----------------------------------------------------------------------
-// From linux-2.6.10-rc3-mm1/include/linux/futex.h
+// From linux-2.6.31-rc4/include/linux/futex.h
 //----------------------------------------------------------------------
 
 #define VKI_FUTEX_WAIT (0)
@@ -1158,7 +1158,16 @@ struct  vki_seminfo {
 #define VKI_FUTEX_FD (2)
 #define VKI_FUTEX_REQUEUE (3)
 #define VKI_FUTEX_CMP_REQUEUE (4)
+#define VKI_FUTEX_WAKE_OP (5)
+#define VKI_FUTEX_LOCK_PI (6)
+#define VKI_FUTEX_UNLOCK_PI (7)
+#define VKI_FUTEX_TRYLOCK_PI (8)
+#define VKI_FUTEX_WAIT_BITSET (9)
+#define VKI_FUTEX_WAKE_BITSET (10)
+#define VKI_FUTEX_WAIT_REQUEUE_PI (11)
+#define VKI_FUTEX_CMP_REQUEUE_PI (12)
 #define VKI_FUTEX_PRIVATE_FLAG (128)
+#define VKI_FUTEX_CLOCK_REALTIME (256)
 
 struct vki_robust_list {
 	struct vki_robust_list __user *next;
@@ -2134,8 +2143,10 @@ enum {
 	VKI_SNDRV_PCM_IOCTL_START = _VKI_IO('A', 0x42),
 	VKI_SNDRV_PCM_IOCTL_DROP = _VKI_IO('A', 0x43),
 	VKI_SNDRV_PCM_IOCTL_DRAIN = _VKI_IO('A', 0x44),
+	VKI_SNDRV_PCM_IOCTL_PAUSE = _VKI_IOW('A', 0x45, int),
 	VKI_SNDRV_PCM_IOCTL_RESUME = _VKI_IO('A', 0x47),
 	VKI_SNDRV_PCM_IOCTL_XRUN = _VKI_IO('A', 0x48),
+	VKI_SNDRV_PCM_IOCTL_LINK = _VKI_IOW('A', 0x60, int),
 	VKI_SNDRV_PCM_IOCTL_UNLINK = _VKI_IO('A', 0x61),
 };
 

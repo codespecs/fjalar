@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGP_ppc32_linux)
+
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
@@ -311,7 +313,8 @@ static SysRes do_clone ( ThreadId ptid,
 	 VG_(printf)("\ntid %d: guessed client stack range %#lx-%#lx\n",
 		     ctid, seg->start, VG_PGROUNDUP(sp));
    } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with R1(%#lx) unmapped\n",
+      VG_(message)(Vg_UserMsg,
+                   "!? New thread %d starts with R1(%#lx) unmapped\n",
 		   ctid, sp);
       ctst->client_stack_szB  = 0;
    }
@@ -551,7 +554,7 @@ PRE(sys_socketcall)
    }
 
    default:
-     VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx",ARG1);
+     VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx\n",ARG1);
      SET_STATUS_Failure( VKI_EINVAL );
      break;
    }
@@ -654,7 +657,7 @@ POST(sys_socketcall)
     break;
 
   default:
-    VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx",ARG1);
+    VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx\n",ARG1);
     VG_(core_panic)("... bye!\n");
     break; /*NOTREACHED*/
   }
@@ -841,7 +844,7 @@ PRE(sys_ipc)
       ML_(generic_PRE_sys_shmctl)( tid, ARG2, ARG3, ARG5 );
       break;
     default:
-      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld", ARG1 );
+      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld\n", ARG1 );
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
     }
@@ -906,7 +909,7 @@ POST(sys_ipc)
     break;
   default:
     VG_(message)(Vg_DebugMsg,
-		 "FATAL: unhandled syscall(ipc) %ld",
+		 "FATAL: unhandled syscall(ipc) %ld\n",
 		 ARG1 );
     VG_(core_panic)("... bye!\n");
     break; /*NOTREACHED*/
@@ -1013,11 +1016,11 @@ PRE(sys_clone)
 
    default:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG1);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
+      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG1);
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -1855,13 +1858,13 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_timerfd_create,    sys_timerfd_create),    // 306
    LINX_(__NR_eventfd,           sys_eventfd),           // 307
 //   LINX_(__NR_sync_file_range2,   sys_ni_syscall),       // 308
-//   LINX_(__NR_fallocate,        sys_ni_syscall),         // 309
+//   LINX_(__NR_fallocate,         sys_fallocate),         // 309
 //   LINXY(__NR_subpage_prot,       sys_ni_syscall),       // 310
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 311
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 312
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 313
    LINX_(__NR_eventfd2,          sys_eventfd2),         // 314
-   //   (__NR_epoll_create1,     sys_ni_syscall)        // 315
+   LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 315
    //   (__NR_dup3,              sys_ni_syscall)        // 316
    LINXY(__NR_pipe2,             sys_pipe2)             // 317
    //   (__NR_inotify_init1,     sys_ni_syscall)        // 318
@@ -1869,6 +1872,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
 const UInt ML_(syscall_table_size) = 
             sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+
+#endif // defined(VGP_ppc32_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

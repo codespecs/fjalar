@@ -276,13 +276,24 @@ extern void VG_(needs_core_errors) ( void );
 
 /* Want to report errors from tool?  This implies use of suppressions, too. */
 extern void VG_(needs_tool_errors) (
-   // Identify if two errors are equal, or equal enough.  `res' indicates how
-   // close is "close enough".  `res' should be passed on as necessary, eg. if
-   // the Error's `extra' part contains an ExeContext, `res' should be
+   // Identify if two errors are equal, or close enough.  This function is
+   // only called if e1 and e2 will have the same error kind.  `res' indicates
+   // how close is "close enough".  `res' should be passed on as necessary,
+   // eg. if the Error's `extra' part contains an ExeContext, `res' should be
    // passed to VG_(eq_ExeContext)() if the ExeContexts are considered.  Other
    // than that, probably don't worry about it unless you have lots of very
    // similar errors occurring.
    Bool (*eq_Error)(VgRes res, Error* e1, Error* e2),
+
+   // We give tools a chance to have a look at errors
+   // just before they are printed.  That is, before_pp_Error is 
+   // called just before pp_Error itself.  This gives the tool a
+   // chance to look at the just-about-to-be-printed error, so as to 
+   // emit any arbitrary output if wants to, before the error itself
+   // is printed.  This functionality was added to allow Helgrind to
+   // print thread-announcement messages immediately before the 
+   // errors that refer to them.
+   void (*before_pp_Error)(Error* err),
 
    // Print error context.
    void (*pp_Error)(Error* err),
@@ -306,8 +317,10 @@ extern void VG_(needs_tool_errors) (
    // Read any extra info for this suppression kind.  Most likely for filling
    // in the `extra' and `string' parts (with VG_(set_supp_{extra, string})())
    // of a suppression if necessary.  Should return False if a syntax error
-   // occurred, True otherwise.
-   Bool (*read_extra_suppression_info)(Int fd, Char* buf, Int nBuf, Supp* su),
+   // occurred, True otherwise.  bufpp and nBufp are the same as for
+   // VG_(get_line).
+   Bool (*read_extra_suppression_info)(Int fd, Char** bufpp, SizeT* nBufp,
+                                       Supp* su),
 
    // This should just check the kinds match and maybe some stuff in the
    // `string' and `extra' field if appropriate (using VG_(get_supp_*)() to
@@ -319,10 +332,17 @@ extern void VG_(needs_tool_errors) (
    // VG_(tdict).tool_recognised_suppression().
    Char* (*get_error_name)(Error* err),
 
-   // This should print any extra info for the error, for --gen-suppressions,
-   // including the newline.  This is the inverse of
+   // This should print into buf[0..nBuf-1] any extra info for the
+   // error, for --gen-suppressions, but not including any leading
+   // spaces nor a trailing newline.  When called, buf[0 .. nBuf-1]
+   // will be zero filled, and it is expected and checked that the
+   // last element is still zero after the call.  In other words the
+   // tool may not overrun the buffer, and this is checked for.  If
+   // there is any info printed in the buffer, return True, otherwise
+   // do nothing, and return False.  This function is the inverse of
    // VG_(tdict).tool_read_extra_suppression_info().
-   void (*print_extra_suppression_info)(Error* err)
+   Bool (*print_extra_suppression_info)(Error* err,
+                                        /*OUT*/Char* buf, Int nBuf)
 );
 
 /* Is information kept by the tool about specific instructions or
@@ -386,9 +406,19 @@ extern void VG_(needs_client_requests) (
 /* Tool does stuff before and/or after system calls? */
 // Nb: If either of the pre_ functions malloc() something to return, the
 // corresponding post_ function had better free() it!
+// Also, the args are the 'original args' -- that is, it may be
+// that the syscall pre-wrapper will modify the args before the
+// syscall happens.  So these args are the original, un-modified
+// args.  Finally, nArgs merely indicates the length of args[..],
+// it does not indicate how many of those values are actually
+// relevant to the syscall.  args[0 .. nArgs-1] is guaranteed
+// to be defined and to contain all the args for this syscall,
+// possibly including some trailing zeroes.
 extern void VG_(needs_syscall_wrapper) (
-   void (* pre_syscall)(ThreadId tid, UInt syscallno),
-   void (*post_syscall)(ThreadId tid, UInt syscallno, SysRes res)
+               void (* pre_syscall)(ThreadId tid, UInt syscallno,
+                                    UWord* args, UInt nArgs),
+               void (*post_syscall)(ThreadId tid, UInt syscallno,
+                                    UWord* args, UInt nArgs, SysRes res)
 );
 
 /* Are tool-state sanity checks performed? */
@@ -424,7 +454,7 @@ extern void VG_(needs_malloc_replacement)(
 /* Can the tool do XML output?  This is a slight misnomer, because the tool
  * is not requesting the core to do anything, rather saying "I can handle
  * it". */
-extern void VG_(needs_xml_output)( void );
+extern void VG_(needs_xml_output) ( void );
 
 /* Does the tool want to have one final pass over the IR after tree
    building but before instruction selection?  If so specify the

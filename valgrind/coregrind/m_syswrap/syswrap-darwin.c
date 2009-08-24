@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGO_darwin)
+
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
@@ -47,6 +49,7 @@
 #include "pub_core_machine.h"      // VG_(get_SP)
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
+#include "pub_core_oset.h"
 #include "pub_core_scheduler.h"
 #include "pub_core_sigframe.h"      // For VG_(sigframe_destroy)()
 #include "pub_core_signals.h"
@@ -590,20 +593,35 @@ void VG_(show_open_ports)(void)
    sync_mappings
    ------------------------------------------------------------------ */
 
-static void sync_mappings(const HChar *when, const HChar *where, Int num)
+void ML_(sync_mappings)(const HChar *when, const HChar *where, Int num)
 {
    // Usually the number of segments added/removed in a single calls is very
-   // small e.g. 1.  But the limit was 20 at one point, and that wasn't enough
-   // for at least one invocation of Firefox.  If we need to go much bigger,
-   // should probably make VG_(get_changed_segments) fail if the size isn't
-   // big enough, and repeatedly redo it with progressively bigger dynamically
-   // allocated buffers until it succeeds.
-   #define CSS_SIZE     100
-   ChangedSeg css[CSS_SIZE];
-   Int        css_used;
-   Int        i;
+   // small e.g. 1.  But it sometimes gets up to at least 100 or so (eg. for
+   // Quicktime).  So we use a repeat-with-bigger-buffers-until-success model,
+   // because we can't do dynamic allocation within VG_(get_changed_segments),
+   // because it's in m_aspacemgr.
+   ChangedSeg* css = NULL;
+   Int         css_size;
+   Int         css_used;
+   Int         i;
+   Bool        ok;
 
-   VG_(get_changed_segments)(when, where, css, CSS_SIZE, &css_used);
+   if (VG_(clo_trace_syscalls)) {
+       VG_(debugLog)(0, "syswrap-darwin",
+                     "sync_mappings(\"%s\", \"%s\", %d)\n", 
+                     when, where, num);
+   }
+
+   // 16 is enough for most cases, but small enough that overflow happens
+   // occasionally and thus the overflow path gets some test coverage.
+   css_size = 16;
+   ok = False;
+   while (!ok) {
+      VG_(free)(css);   // css is NULL on first iteration;  that's ok.
+      css = VG_(malloc)("sys_wrap.sync_mappings", css_size*sizeof(ChangedSeg));
+      ok = VG_(get_changed_segments)(when, where, css, css_size, &css_used);
+      css_size *= 2;
+   } 
 
    // Now add/remove them.
    for (i = 0; i < css_used; i++) {
@@ -622,11 +640,13 @@ static void sync_mappings(const HChar *when, const HChar *where, Int num)
          action = "removed";
       }
       if (VG_(clo_trace_syscalls)) {
-          VG_(debugLog)(0, "aspacem",
-                        "\n%s region 0x%010lx..0x%010lx at %s (%s)\n", 
+          VG_(debugLog)(0, "syswrap-darwin",
+                        "  %s region 0x%010lx..0x%010lx at %s (%s)\n", 
                         action, cs->start, cs->end + 1, where, when);
       }
    }
+
+   VG_(free)(css);
 }
 
 /* ---------------------------------------------------------------------
@@ -1550,6 +1570,13 @@ POST(sigaction)
 }
 
 
+PRE(__pthread_kill)
+{
+   PRINT("__pthread_kill ( %ld, %ld )", ARG1, ARG2);
+   PRE_REG_READ2(long, "__pthread_kill", vki_pthread_t*, thread, int, sig);
+}
+
+
 PRE(__pthread_sigmask)
 {
    // GrP fixme
@@ -1862,7 +1889,6 @@ PRE(stat_extended)
    if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
       PRE_MEM_WRITE("stat_extended(fsacl)",      ARG3, *(vki_size_t *)ARG4 );
    PRE_MEM_READ(    "stat_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
-   PRE_MEM_WRITE(   "stat_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
 }
 POST(stat_extended)
 {
@@ -1884,9 +1910,28 @@ PRE(lstat_extended)
    if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
       PRE_MEM_WRITE("lstat_extended(fsacl)",      ARG3, *(vki_size_t *)ARG4 );
    PRE_MEM_READ(    "lstat_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
-   PRE_MEM_WRITE(   "lstat_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
 }
 POST(lstat_extended)
+{
+   POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
+   if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
+      POST_MEM_WRITE( ARG3, *(vki_size_t *)ARG4 );
+   POST_MEM_WRITE( ARG4, sizeof(vki_size_t) );
+}
+
+
+PRE(fstat_extended)
+{
+   PRINT("fstat_extended( %ld, %#lx, %#lx, %#lx )",
+      ARG1, ARG2, ARG3, ARG4);
+   PRE_REG_READ4(int, "fstat_extended", int, fd, struct stat *, buf, 
+                 void *, fsacl, vki_size_t *, fsacl_size);
+   PRE_MEM_WRITE(   "fstat_extended(buf)",        ARG2, sizeof(struct vki_stat) );
+   if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
+      PRE_MEM_WRITE("fstat_extended(fsacl)",      ARG3, *(vki_size_t *)ARG4 );
+   PRE_MEM_READ(    "fstat_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
+}
+POST(fstat_extended)
 {
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
    if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
@@ -1906,7 +1951,6 @@ PRE(stat64_extended)
    if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
       PRE_MEM_WRITE("stat64_extended(fsacl)",      ARG3, *(vki_size_t *)ARG4 );
    PRE_MEM_READ(    "stat64_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
-   PRE_MEM_WRITE(   "stat64_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
 }
 POST(stat64_extended)
 {
@@ -1928,9 +1972,28 @@ PRE(lstat64_extended)
    if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
       PRE_MEM_WRITE(   "lstat64_extended(fsacl)",   ARG3, *(vki_size_t *)ARG4 );
    PRE_MEM_READ(    "lstat64_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
-   PRE_MEM_WRITE(   "lstat64_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
 }
 POST(lstat64_extended)
+{
+   POST_MEM_WRITE( ARG2, sizeof(struct vki_stat64) );
+   if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
+      POST_MEM_WRITE( ARG3, *(vki_size_t *)ARG4 );
+   POST_MEM_WRITE( ARG4, sizeof(vki_size_t) );
+}
+
+
+PRE(fstat64_extended)
+{
+   PRINT("fstat64_extended( %ld, %#lx, %#lx, %#lx )",
+      ARG1, ARG2, ARG3, ARG4);
+   PRE_REG_READ4(int, "fstat64_extended", int, fd, struct stat64 *, buf, 
+                 void *, fsacl, vki_size_t *, fsacl_size);
+   PRE_MEM_WRITE(   "fstat64_extended(buf)",        ARG2, sizeof(struct vki_stat64) );
+   if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
+      PRE_MEM_WRITE("fstat64_extended(fsacl)",      ARG3, *(vki_size_t *)ARG4 );
+   PRE_MEM_READ(    "fstat64_extended(fsacl_size)", ARG4, sizeof(vki_size_t) );
+}
+POST(fstat64_extended)
 {
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat64) );
    if (ML_(safe_to_deref)( (void*)ARG4, sizeof(vki_size_t) ))
@@ -1952,7 +2015,8 @@ PRE(fchmod_extended)
                  vki_mode_t, mode,
                  void* /*really,user_addr_t*/, xsecurity);
    /* DDD: relative to the xnu sources (kauth_copyinfilesec), this
-      is just way wrong. */
+      is just way wrong.  [The trouble is with the size, which depends on a
+      non-trival kernel computation] */
    PRE_MEM_READ( "fchmod_extended(xsecurity)", ARG5, 
                  sizeof(struct kauth_filesec) );
 }
@@ -1971,9 +2035,94 @@ PRE(chmod_extended)
                  void* /*really,user_addr_t*/, xsecurity);
    PRE_MEM_RASCIIZ("chmod_extended(path)", ARG1);
    /* DDD: relative to the xnu sources (kauth_copyinfilesec), this
-      is just way wrong. */
+      is just way wrong.  [The trouble is with the size, which depends on a
+      non-trival kernel computation] */
    PRE_MEM_READ( "chmod_extended(xsecurity)", ARG5, 
                  sizeof(struct kauth_filesec) );
+}
+
+
+// This is a ridiculous syscall.  Specifically, the 'entries' argument points
+// to a buffer that contains one or more 'accessx_descriptor' structs followed
+// by one or more strings.  Each accessx_descriptor contains a field,
+// 'ad_name_offset', which points to one of the strings (or it can contain
+// zero which means "reuse the string from the previous accessx_descriptor").
+//
+// What's really ridiculous is that we are only given the size of the overall
+// buffer, not the number of accessx_descriptors, nor the number of strings.
+// The kernel determines the number of accessx_descriptors by walking through
+// them one by one, checking that the ad_name_offset points within the buffer,
+// past the current point (or that it's a zero, unless its the first
+// descriptor);  if so, we assume that this really is an accessx_descriptor,
+// if not, we assume we've hit the strings section.  Gah.
+//
+// This affects us here because number of entries in the 'results' buffer is
+// determined by the number of accessx_descriptors.  So we have to know that
+// number in order to do PRE_MEM_WRITE/POST_MEM_WRITE of 'results'.  In
+// practice, we skip the PRE_MEM_WRITE step because it's easier to do the
+// computation after the syscall has succeeded, because the kernel will have
+// checked for all the zillion different ways this syscall can fail, and we'll
+// know we have a well-formed 'entries' buffer.  This means we might miss some
+// uses of unaddressable memory but oh well.
+//
+PRE(access_extended)
+{
+   PRINT("access_extended( %#lx(%s), %lu, %#lx, %lu )",
+      ARG1, (char *)ARG1, ARG2, ARG3, ARG4);
+   // XXX: the accessx_descriptor struct contains padding, so this can cause
+   // unnecessary undefined value errors.  But you arguably shouldn't be
+   // passing undefined values to the kernel anyway...
+   PRE_REG_READ4(int, "access_extended", void *, entries, vki_size_t, size, 
+                 vki_errno_t *, results, vki_uid_t *, uid);
+   PRE_MEM_READ("access_extended(entries)", ARG1, ARG2 );
+
+   // XXX: as mentioned above, this check is too hard to do before the
+   // syscall.
+   //PRE_MEM_WRITE("access_extended(results)", ARG3, ??? );
+}
+POST(access_extended)
+{
+   // 'n_descs' is the number of descriptors we think are in the buffer.  We
+   // start with the maximum possible value, which occurs if we have the
+   // shortest possible string section.  The shortest string section allowed
+   // consists of a single one-char string (plus the NUL char).  Hence the
+   // '2'.
+   struct vki_accessx_descriptor* entries = (struct vki_accessx_descriptor*)ARG1;
+   SizeT size = ARG2;
+   Int n_descs = (size - 2) / sizeof(struct accessx_descriptor);
+   Int i;         // Current position in the descriptors section array.
+   Int u;         // Upper bound on the length of the descriptors array
+                  //   (recomputed each time around the loop)
+   vg_assert(n_descs > 0);
+
+   // Step through the descriptors, lowering 'n_descs' until we know we've
+   // reached the string section.
+   for (i = 0; True; i++) {
+      // If we're past our estimate, we must be one past the end of the
+      // descriptors section (ie. at the start of the string section).  Stop.
+      if (i >= n_descs)
+         break;
+
+      // Get the array index for the string, but pretend momentarily that it
+      // is actually another accessx_descriptor.  That gives us an upper bound
+      // on the length of the descriptors section.  (Unless the index is zero,
+      // in which case we have no new info.)
+      u = entries[i].ad_name_offset / sizeof(struct vki_accessx_descriptor);
+      if (u == 0) {
+         vg_assert(i != 0);
+         continue;
+      }
+
+      // If the upper bound is below our current estimate, revise that
+      // estimate downwards.
+      if (u < n_descs)
+         n_descs = u;
+   }
+
+   // Sanity check.
+   vg_assert(n_descs <= VKI_ACCESSX_MAX_DESCRIPTORS);
+
+   POST_MEM_WRITE( ARG3, n_descs * sizeof(vki_errno_t) );
 }
 
 
@@ -2036,16 +2185,48 @@ PRE(getfsstat)
                  struct vki_statfs *, buf, int, bufsize, int, flags);
    if (ARG1) {
       // ARG2 is a BYTE SIZE
-      PRE_MEM_WRITE("getfsstat", ARG1, ARG2);
+      PRE_MEM_WRITE("getfsstat(buf)", ARG1, ARG2);
    }
 }
-
 POST(getfsstat)
 {
    if (ARG1) {
       // RES is a STRUCT COUNT
       POST_MEM_WRITE(ARG1, RES * sizeof(struct vki_statfs));
    }
+}
+
+PRE(getfsstat64)
+{
+   PRINT("getfsstat64(%#lx, %ld, %ld)", ARG1, ARG2, ARG3);
+   PRE_REG_READ3(int, "getfsstat64",
+                 struct vki_statfs64 *, buf, int, bufsize, int, flags);
+   if (ARG1) {
+      // ARG2 is a BYTE SIZE
+      PRE_MEM_WRITE("getfsstat64(buf)", ARG1, ARG2);
+   }
+}
+POST(getfsstat64)
+{
+   if (ARG1) {
+      // RES is a STRUCT COUNT
+      POST_MEM_WRITE(ARG1, RES * sizeof(struct vki_statfs64));
+   }
+}
+
+PRE(mount)
+{
+   // Nb: depending on 'flags', the 'type' and 'data' args may be ignored.
+   // We are conservative and check everything, except the memory pointed to
+   // by 'data'.
+   *flags |= SfMayBlock;
+   PRINT("sys_mount( %#lx(%s), %#lx(%s), %#lx, %#lx )",
+         ARG1,(Char*)ARG1, ARG2,(Char*)ARG2, ARG3, ARG4);
+   PRE_REG_READ4(long, "mount",
+                 const char *, type, const char *, dir,
+                 int, flags, void *, data);
+   PRE_MEM_RASCIIZ( "mount(type)", ARG1);
+   PRE_MEM_RASCIIZ( "mount(dir)", ARG2);
 }
 
 
@@ -3028,7 +3209,7 @@ PRE(csops)
                  vki_pid_t, pid, uint32_t, ops,
                  void *, useraddr, vki_size_t, usersize);
 
-   PRE_MEM_WRITE( "csops(addr)", ARG3, ARG4 );
+   PRE_MEM_WRITE( "csops(useraddr)", ARG3, ARG4 );
 
    // If the pid is ours, don't mark the program as KILL or HARD
    // Maybe we should keep track of this for later calls to STATUS
@@ -3041,7 +3222,6 @@ PRE(csops)
       }
    }
 }
-
 POST(csops)
 {
    POST_MEM_WRITE( ARG3, ARG4 );
@@ -3352,6 +3532,123 @@ PRE(sigsuspend)
    PRE_REG_READ1(int, "sigsuspend", int, sigmask);
 }
 
+/* ---------------------------------------------------------------------
+   aio_*
+   ------------------------------------------------------------------ */
+
+// We must record the aiocbp for each aio_read() in a table so that when
+// aio_return() is called we can mark the memory written asynchronously by
+// aio_read() as having been written.  We don't have to do this for
+// aio_write().  See bug 197227 for more details.
+static OSet* aiocbp_table = NULL;
+static Bool aio_init_done = False;
+
+static void aio_init(void)
+{
+   aiocbp_table = VG_(OSetWord_Create)(VG_(malloc), "syswrap.aio", VG_(free));
+   aio_init_done = True;
+}
+
+static Bool was_a_successful_aio_read = False;
+
+PRE(aio_return)
+{
+   struct vki_aiocb* aiocbp = (struct vki_aiocb*)ARG1;
+   // This assumes that the kernel looks at the struct pointer, but not the
+   // contents of the struct.
+   PRINT( "aio_return ( %#lx )", ARG1 );
+   PRE_REG_READ1(long, "aio_return", struct vki_aiocb*, aiocbp);
+
+   if (!aio_init_done) aio_init();
+   was_a_successful_aio_read = VG_(OSetWord_Remove)(aiocbp_table, (UWord)aiocbp);
+}
+POST(aio_return)
+{
+   // If we found the aiocbp in our own table it must have been an aio_read(),
+   // so mark the buffer as written.  If we didn't find it, it must have been
+   // an aio_write() or a bogus aio_return() (eg. a second one on the same
+   // aiocbp).  Either way, the buffer won't have been written so we don't
+   // have to mark the buffer as written.
+   if (was_a_successful_aio_read) {
+      struct vki_aiocb* aiocbp = (struct vki_aiocb*)ARG1;
+      POST_MEM_WRITE((Addr)aiocbp->aio_buf, aiocbp->aio_nbytes);
+      was_a_successful_aio_read = False;
+   }
+}
+
+PRE(aio_suspend)
+{
+   // This assumes that the kernel looks at the struct pointers in the list,
+   // but not the contents of the structs.
+   PRINT( "aio_suspend ( %#lx )", ARG1 );
+   PRE_REG_READ3(long, "aio_suspend",
+                 const struct vki_aiocb *, aiocbp, int, nent,
+                 const struct vki_timespec *, timeout);
+   if (ARG2 > 0)
+      PRE_MEM_READ("aio_suspend(list)", ARG1, ARG2 * sizeof(struct vki_aiocb *));
+   if (ARG3)
+      PRE_MEM_READ ("aio_suspend(timeout)", ARG3, sizeof(struct vki_timespec));
+}
+
+PRE(aio_error)
+{
+   // This assumes that the kernel looks at the struct pointer, but not the
+   // contents of the struct.
+   PRINT( "aio_error ( %#lx )", ARG1 );
+   PRE_REG_READ1(long, "aio_error", struct vki_aiocb*, aiocbp);
+}
+
+PRE(aio_read)
+{
+   struct vki_aiocb* aiocbp = (struct vki_aiocb*)ARG1;
+
+   PRINT( "aio_read ( %#lx )", ARG1 );
+   PRE_REG_READ1(long, "aio_read", struct vki_aiocb*, aiocbp);
+   PRE_MEM_READ( "aio_read(aiocbp)", ARG1, sizeof(struct vki_aiocb));
+
+   if (ML_(safe_to_deref)(aiocbp, sizeof(struct vki_aiocb))) {
+      if (ML_(fd_allowed)(aiocbp->aio_fildes, "aio_read", tid, /*isNewFd*/False)) {
+         PRE_MEM_WRITE("aio_read(aiocbp->aio_buf)",
+                       (Addr)aiocbp->aio_buf, aiocbp->aio_nbytes);
+      } else {
+         SET_STATUS_Failure( VKI_EBADF );
+      }
+   } else {
+      SET_STATUS_Failure( VKI_EINVAL );
+   }
+}
+POST(aio_read)
+{
+   // We have to record the fact that there is an asynchronous read request
+   // pending.  When a successful aio_return() occurs for this aiocb, then we
+   // will mark the memory as having been defined.
+   struct vki_aiocb* aiocbp = (struct vki_aiocb*)ARG1;
+   if (!aio_init_done) aio_init();
+   // aiocbp shouldn't already be in the table -- if it was a dup, the kernel
+   // should have caused the aio_read() to fail and we shouldn't have reached
+   // here.
+   VG_(OSetWord_Insert)(aiocbp_table, (UWord)aiocbp);
+}
+
+PRE(aio_write)
+{
+   struct vki_aiocb* aiocbp = (struct vki_aiocb*)ARG1;
+
+   PRINT( "aio_write ( %#lx )", ARG1 );
+   PRE_REG_READ1(long, "aio_write", struct vki_aiocb*, aiocbp);
+   PRE_MEM_READ( "aio_write(aiocbp)", ARG1, sizeof(struct vki_aiocb));
+
+   if (ML_(safe_to_deref)(aiocbp, sizeof(struct vki_aiocb))) {
+      if (ML_(fd_allowed)(aiocbp->aio_fildes, "aio_write", tid, /*isNewFd*/False)) {
+         PRE_MEM_READ("aio_write(aiocbp->aio_buf)",
+                      (Addr)aiocbp->aio_buf, aiocbp->aio_nbytes);
+      } else {
+         SET_STATUS_Failure( VKI_EBADF );
+      }
+   } else {
+      SET_STATUS_Failure( VKI_EINVAL );
+   }
+}
 
 /* ---------------------------------------------------------------------
    mach_msg: formatted messages
@@ -3404,7 +3701,7 @@ static void import_complex_message(ThreadId tid, mach_msg_header_t *mh)
          // single port
          record_unnamed_port(tid, desc->port.name, -1);
          record_port_insert_rights(desc->port.name, desc->port.disposition);
-         PRINT("got port %s; ", name_for_port(desc->port.name));
+         PRINT("got port %s;\n", name_for_port(desc->port.name));
          break;
 
       case MACH_MSG_OOL_DESCRIPTOR:
@@ -3418,7 +3715,7 @@ static void import_complex_message(ThreadId tid, mach_msg_header_t *mh)
             Addr start = VG_PGROUNDDN((Addr)desc->out_of_line.address);
             Addr end = VG_PGROUNDUP((Addr)desc->out_of_line.address + 
                                     (Addr)desc->out_of_line.size);
-            PRINT("got ool mem %p..%#lx; ", desc->out_of_line.address, 
+            PRINT("got ool mem %p..%#lx;\n", desc->out_of_line.address, 
                   (Addr)desc->out_of_line.address+desc->out_of_line.size);
 
             ML_(notify_core_and_tool_of_mmap)(
@@ -3449,7 +3746,7 @@ static void import_complex_message(ThreadId tid, mach_msg_header_t *mh)
                PRINT(" %s", name_for_port(ports[i]));
             }
          }
-         PRINT(";");
+         PRINT(";\n");
          break;
 
       default:
@@ -6052,7 +6349,7 @@ POST(mach_msg_receive)
    // PRINT("UNHANDLED reply %d", mh->msgh_id);
 
    // Assume the call may have mapped or unmapped memory
-   sync_mappings("after", "mach_msg_receive", 0);
+   ML_(sync_mappings)("after", "mach_msg_receive", 0);
 }
 
 PRE(mach_msg_receive)
@@ -6463,7 +6760,7 @@ POST(mach_msg)
 
 POST(mach_msg_unhandled)
 {
-   sync_mappings("after", "mach_msg_unhandled", 0);
+   ML_(sync_mappings)("after", "mach_msg_unhandled", 0);
 }
 
 
@@ -6762,7 +7059,7 @@ PRE(iokit_user_client_trap)
 
 POST(iokit_user_client_trap)
 {
-   sync_mappings("after", "iokit_user_client_trap", ARG2);
+   ML_(sync_mappings)("after", "iokit_user_client_trap", ARG2);
 }
 
 
@@ -7062,11 +7359,11 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENX_(__NR_madvise,     sys_madvise), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(76)),    // old vhangup
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(77)),    // old vlimit
-// _____(__NR_mincore), 
+   GENXY(__NR_mincore,     sys_mincore), 
    GENXY(__NR_getgroups,   sys_getgroups), 
 // _____(__NR_setgroups),   // 80
    GENX_(__NR_getpgrp,     sys_getpgrp), 
-// _____(__NR_setpgid), 
+   GENX_(__NR_setpgid,     sys_setpgid), 
    GENXY(__NR_setitimer,   sys_setitimer), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(84)),    // old wait
 // _____(__NR_swapon), 
@@ -7151,7 +7448,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(164)),   // ???
 // _____(__NR_quotactl), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(166)),   // old exportfs
-// _____(__NR_mount), 
+   MACX_(__NR_mount,       mount), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(168)),   // old ustat
    MACXY(__NR_csops,       csops),                 // code-signing ops
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(170)),   // old table
@@ -7265,10 +7562,10 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 // _____(__NR_umask_extended), 
    MACXY(__NR_stat_extended,  stat_extended), 
    MACXY(__NR_lstat_extended, lstat_extended),   // 280
-// _____(__NR_fstat_extended), 
-   MACX_(__NR_chmod_extended,    chmod_extended), 
-   MACX_(__NR_fchmod_extended,   fchmod_extended), 
-// _____(__NR_access_extended), 
+   MACXY(__NR_fstat_extended, fstat_extended), 
+   MACX_(__NR_chmod_extended, chmod_extended), 
+   MACX_(__NR_fchmod_extended,fchmod_extended), 
+   MACXY(__NR_access_extended,access_extended), 
    MACX_(__NR_settid,         settid), 
 // _____(__NR_gettid), 
 // _____(__NR_setsgroups), 
@@ -7298,12 +7595,12 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 // _____(__NR_settid_with_pid), 
 // _____(__NR___pthread_cond_timedwait), 
 // _____(__NR_aio_fsync), 
-// _____(__NR_aio_return), 
-// _____(__NR_aio_suspend), 
+   MACXY(__NR_aio_return,     aio_return), 
+   MACX_(__NR_aio_suspend,    aio_suspend), 
 // _____(__NR_aio_cancel), 
-// _____(__NR_aio_error), 
-// _____(__NR_aio_read), 
-// _____(__NR_aio_write), 
+   MACX_(__NR_aio_error,      aio_error), 
+   MACXY(__NR_aio_read,       aio_read), 
+   MACX_(__NR_aio_write,      aio_write), 
 // _____(__NR_lio_listio),   // 320
 // _____(__NR___pthread_cond_wait), 
 // _____(__NR_iopolicysys), 
@@ -7312,7 +7609,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 // _____(__NR_munlockall), 
    _____(VG_DARWIN_SYSCALL_CONSTRUCT_UNIX(326)),   // ???
    MACX_(__NR_issetugid,               issetugid), 
-// _____(__NR___pthread_kill), 
+   MACX_(__NR___pthread_kill,          __pthread_kill),
    MACX_(__NR___pthread_sigmask,       __pthread_sigmask), 
 // _____(__NR___sigwait), 
    MACX_(__NR___disable_threadsignal,  __disable_threadsignal), 
@@ -7327,11 +7624,11 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    MACXY(__NR_lstat64,     lstat64),    // 340
    MACXY(__NR_stat64_extended,  stat64_extended), 
    MACXY(__NR_lstat64_extended, lstat64_extended), 
-// _____(__NR_fstat64_extended), 
+   MACXY(__NR_fstat64_extended, fstat64_extended),
    MACXY(__NR_getdirentries64, getdirentries64), 
    MACXY(__NR_statfs64,    statfs64), 
    MACXY(__NR_fstatfs64,   fstatfs64), 
-// _____(__NR_getfsstat64), 
+   MACXY(__NR_getfsstat64, getfsstat64), 
 // _____(__NR___pthread_chdir), 
 // _____(__NR___pthread_fchdir), 
 // _____(__NR_audit), 
@@ -7565,7 +7862,8 @@ const UInt ML_(mach_trap_table_size) =
 const UInt ML_(mdep_trap_table_size) = 
             sizeof(ML_(mdep_trap_table)) / sizeof(ML_(mdep_trap_table)[0]);
 
+#endif // defined(VGO_darwin)
 
 /*--------------------------------------------------------------------*/
-/*--- end                                         syswrap-darwin.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

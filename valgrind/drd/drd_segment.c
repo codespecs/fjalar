@@ -27,7 +27,6 @@
 #include "drd_segment.h"
 #include "drd_thread.h"
 #include "pub_tool_basics.h"      // Addr, SizeT
-#include "pub_tool_errormgr.h"    // VG_(unique_error)()
 #include "pub_tool_libcassert.h"  // tl_assert()
 #include "pub_tool_libcbase.h"    // VG_(strlen)()
 #include "pub_tool_libcprint.h"   // VG_(printf)()
@@ -92,10 +91,7 @@ static void sg_init(Segment* const sg,
       char* vc;
 
       vc = DRD_(vc_aprint)(&sg->vc);
-      VG_(message)(Vg_DebugMsg, "New segment for thread %d/%d with vc %s",
-                   created != VG_INVALID_THREADID
-                   ? DRD_(DrdThreadIdToVgThreadId)(created)
-                   : DRD_INVALID_THREADID,
+      VG_(message)(Vg_DebugMsg, "New segment for thread %d with vc %s",
                    created, vc);
       VG_(free)(vc);
    }

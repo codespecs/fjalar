@@ -1,16 +1,10 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-#SUBDIRS = .
-#if VGCONF_ARCHS_INCLUDE_X86
-#SUBDIRS += x86
-
-#DIST_SUBDIRS = x86 .
-
-noinst_SCRIPTS = filter_stderr filter_add filter_suppgen \
+dist_noinst_SCRIPTS = filter_stderr filter_add filter_suppgen \
 	sh_script
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
 	add.vgtest-disabled add.stderr.exp \
 	and.vgtest-disabled and.stderr.exp \
 	arith.vgtest-disabled arith.stderr.exp \
@@ -29,6 +23,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	hackedbz2.stderr.exp-glibc28-amd64 \
 	hp_bounds.vgtest hp_bounds.stderr.exp \
 	hp_dangle.vgtest hp_dangle.stderr.exp \
+	hsg.vgtest hsg.stdout.exp hsg.stderr.exp \
 	idiv.vgtest-disabled idiv.stderr.exp \
 	imul.vgtest-disabled imul.stderr.exp \
 	justify.vgtest justify.stderr.exp \
@@ -67,7 +62,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 check_PROGRAMS = \
 	add and arith bad_percentify base cmp fp \
 	globalerr hackedbz2 \
-	hp_bounds hp_dangle idiv imul \
+	hp_bounds hp_dangle hsg idiv imul \
 	justify mm not neg or partial \
 	preen_invars preen_invars_so.so \
 	pth_create pth_specific realloc \
@@ -117,6 +112,7 @@ endif
 endif
 endif
 
+preen_invars_so_so_SOURCES      = preen_invars_so.c	# For automake-1.7.
 preen_invars_so_so_CFLAGS       = $(AM_CFLAGS) -fpic
 if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
  preen_invars_so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared

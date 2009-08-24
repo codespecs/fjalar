@@ -1,9 +1,13 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-noinst_SCRIPTS = filter_stderr
+dist_noinst_SCRIPTS = filter_stderr
 
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
+	annotate_hbefore.vgtest annotate_hbefore.stdout.exp \
+		annotate_hbefore.stderr.exp \
+	annotate_rwlock.vgtest annotate_rwlock.stdout.exp \
+		annotate_rwlock.stderr.exp \
 	bar_bad.vgtest bar_bad.stdout.exp bar_bad.stderr.exp \
 	bar_trivial.vgtest bar_trivial.stdout.exp bar_trivial.stderr.exp \
 	hg01_all_ok.vgtest hg01_all_ok.stdout.exp hg01_all_ok.stderr.exp \
@@ -12,10 +16,11 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	hg04_race.vgtest hg04_race.stdout.exp hg04_race.stderr.exp \
 	hg05_race2.vgtest hg05_race2.stdout.exp hg05_race2.stderr.exp \
 	hg06_readshared.vgtest hg06_readshared.stdout.exp \
-	    hg06_readshared.stderr.exp \
+		hg06_readshared.stderr.exp \
 	pth_barrier1.vgtest pth_barrier1.stdout.exp pth_barrier1.stderr.exp \
 	pth_barrier2.vgtest pth_barrier2.stdout.exp pth_barrier2.stderr.exp \
 	pth_barrier3.vgtest pth_barrier3.stdout.exp pth_barrier3.stderr.exp \
+	pth_spinlock.vgtest pth_spinlock.stdout.exp pth_spinlock.stderr.exp \
 	rwlock_race.vgtest rwlock_race.stdout.exp rwlock_race.stderr.exp \
 	rwlock_test.vgtest rwlock_test.stdout.exp rwlock_test.stderr.exp \
 	tc01_simple_race.vgtest tc01_simple_race.stdout.exp \
@@ -30,6 +35,8 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 		tc05_simple_race.stderr.exp \
 	tc06_two_races.vgtest tc06_two_races.stdout.exp \
 		tc06_two_races.stderr.exp \
+	tc06_two_races_xml.vgtest tc06_two_races_xml.stdout.exp \
+		tc06_two_races_xml.stderr.exp \
 	tc07_hbl1.vgtest tc07_hbl1.stdout.exp tc07_hbl1.stderr.exp \
 	tc08_hbl2.vgtest tc08_hbl2.stdout.exp tc08_hbl2.stderr.exp \
 	tc09_bad_unlock.vgtest tc09_bad_unlock.stdout.exp \
@@ -40,6 +47,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	tc11_XCHG.vgtest tc11_XCHG.stdout.exp tc11_XCHG.stderr.exp \
 	tc12_rwl_trivial.vgtest tc12_rwl_trivial.stdout.exp \
 		tc12_rwl_trivial.stderr.exp \
+		tc12_rwl_trivial.stderr.exp-darwin970 \
 	tc13_laog1.vgtest tc13_laog1.stdout.exp tc13_laog1.stderr.exp \
 	tc14_laog_dinphils.vgtest tc14_laog_dinphils.stdout.exp \
 		tc14_laog_dinphils.stderr.exp \
@@ -65,7 +73,10 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	tc24_nonzero_sem.vgtest tc24_nonzero_sem.stdout.exp \
 		tc24_nonzero_sem.stderr.exp
 
+# XXX: tc18_semabuse uses operations that are unsupported on Darwin.  It
+# should be conditionally compiled like tc20_verifywrap is.
 check_PROGRAMS = \
+	annotate_hbefore \
 	hg01_all_ok \
 	hg02_deadlock \
 	hg03_inherit \
@@ -96,6 +107,23 @@ check_PROGRAMS = \
 	tc24_nonzero_sem
 
 # DDD: it seg faults, and then the Valgrind exit path hangs
+# JRS 29 July 09: it craps out in the stack unwinder, in
+#==13480==    at 0xF00B81FF: ??? f00b8180 VG_(get_StackTrace_wrk)
+#==13480==    by 0xF00B83F8: ??? f00b8340 VG_(get_StackTrace)
+#==13480==    by 0xF009FE19: ??? f009fd70 record_ExeContext_wrk
+#==13480==    by 0xF009D92E: ??? f009d8c0 construct_error
+#==13480==    by 0xF009F001: ??? f009eef0 VG_(maybe_record_error)
+#==13480==    by 0xF0081F80: ??? f0081f00 HG_(record_error_misc)
+#==13480==    by 0xF0089C00: ??? f0089b80 evh__pre_thread_ll_exit
+#==13480==    by 0xF01111D1: ??? f0111070 run_a_thread_NORETURN
+#==13480==    by 0xF0111512: ??? f0111500 start_thread_NORETURN
+# when the thread being unwound is at __bsdthread_terminate+0
+#
+# Like Tom says, the stack unwinder protection is bollocks.
+# We should junk all previous schemes and simply get the 
+# stack unwinder to consult aspacem at each frame (cache-accelerated,
+# of course) to check each page it visits is accessible.
+#
 if ! VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
    check_PROGRAMS += \
 	tc22_exit_w_lock
@@ -109,8 +137,19 @@ if HAVE_PTHREAD_MUTEX_TIMEDLOCK
 check_PROGRAMS += tc20_verifywrap
 endif
 
+if HAVE_BUILTIN_ATOMIC
+check_PROGRAMS += annotate_rwlock
+endif
+
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
 LDADD = -lpthread
+
+if VGCONF_OS_IS_DARWIN
+annotate_hbefore_CFLAGS = $(AM_CFLAGS) -mdynamic-no-pic
+else
+annotate_hbefore_CFLAGS = $(AM_CFLAGS)
+endif
+
 

@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGA_ppc32)
+
 #include "pub_tool_basics.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
@@ -54,10 +56,12 @@ void VG_(configure_caches)(cache_t* I1c, cache_t* D1c, cache_t* L2c,
    // cachegrind/tests/filter_stderr!
    //
    if (!all_caches_clo_defined) {
-      VG_DMSG("Warning: Cannot auto-detect cache config on PPC32, using one "
-              "or more defaults ");
+      VG_(dmsg)("Warning: Cannot auto-detect cache config on PPC32, using one "
+                "or more defaults \n");
    }
 }
+
+#endif // defined(VGA_ppc32)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

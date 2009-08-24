@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGP_x86_darwin)
+
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_threadstate.h"
@@ -330,7 +332,7 @@ void pthread_hijack(Addr self, Addr kport, Addr func, Addr func_arg,
       // client allocated stack
       find_stack_segment(tst->tid, sp);
    }
-   VG_(am_do_sync_check)("after", "pthread_hijack", 0);
+   ML_(sync_mappings)("after", "pthread_hijack", 0);
 
    // DDD: should this be here rather than in POST(sys_bsdthread_create)?
    // But we don't have ptid here...
@@ -476,7 +478,7 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
             stack-VKI_PAGE_SIZE, VKI_PAGE_SIZE, 
             0, VKI_MAP_PRIVATE, -1, 0);
 
-      VG_(am_do_sync_check)("after", "wqthread_hijack", 0);
+      ML_(sync_mappings)("after", "wqthread_hijack", 0);
 
       // Go!
       /* Same comments as the 'release' in the then-clause.
@@ -497,6 +499,8 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
    vg_assert(0);
 }
 
+#endif // defined(VGP_x86_darwin)
+
 /*--------------------------------------------------------------------*/
-/*--- end                                     syswrap-x86-darwin.c ---*/
+/*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/

@@ -1,106 +1,415 @@
 
-Release 3.5.0 (???)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-* Mac OS X is now supported.  (Note that Mac OS X is often called "Darwin"
-  because that is the name of the OS core.)  
+Release 3.5.0 (XXX August 2009)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  Supported machines:
-  - x86 machines are supported fairly well.
-  - AMD64 (a.k.a. x86-64) are supported, but not as well.
-  - Older PowerPC machines are not supported.
-  - It requires Mac OS X 10.5 Leopard or later.  Porting to 10.4 is not
-    planned because it would require work and 10.4 is only becoming less common.
+3.5.0 is a feature release with many significant improvements and the
+usual collection of bug fixes.  The main improvement is that Valgrind
+now works on Mac OS X.
+
+This release supports X86/Linux, AMD64/Linux, PPC32/Linux, PPC64/Linux
+and X86/Darwin.  Support for recent distros and toolchain components
+(glibc 2.10, gcc 4.5) has been added.
+
+                    -------------------------
+
+Here is a short summary of the changes.  Details are shown further
+down:
+
+* Support for Mac OS X (10.5.x).
+
+* Improvements and simplifications to Memcheck's leak checker.
+
+* Clarification and simplifications in various aspects of Valgrind's
+  text output.
+
+* XML output for Helgrind and Ptrcheck.
+
+* Performance and stability improvements for Helgrind and DRD.
+
+* Genuinely atomic support for x86/amd64/ppc atomic instructions.
+
+* A new experimental tool, BBV, useful for computer architecture
+  research.
+
+* Improved Wine support, including ability to read Windows PDB
+  debuginfo.
+
+                    -------------------------
+
+Here are details of the above changes, plus descriptions of many other
+minor changes.
+
+
+* Valgrind now runs on Mac OS X.  (Note that Mac OS X is sometimes
+  called "Darwin" because that is the name of the OS core, which is the
+  level that Valgrind works at.)
+
+  Supported systems:
+
+  - It requires OS 10.5.x (Leopard).  Porting to 10.4.x is not planned
+    because it would require work and 10.4 is only becoming less common.
+
+  - 32-bit programs on x86 and AMD64 (a.k.a x86-64) machines are supported
+    fairly well.  For 10.5.x, 32-bit programs are the default even on
+    64-bit machines, so it handles most current programs.
+    
+  - 64-bit programs on x86 and AMD64 (a.k.a x86-64) machines are not
+    officially supported, but simple programs at least will probably work.
+    However, start-up is slow.
+
+  - PowerPC machines are not supported.
 
   Things that don't work:
-  - Objective-C garbage collection
-  - --db-attach=yes
-  - Messages like the following indicate a mismatch between Valgrind's
-    memory map and the kernel. Occasional failures are expected in
-    multithreaded programs. If the failure repeats for the same address
-    range, then there may be a problem causing false errors or crashes.
-        sync check at ...: FAILED
-  - If you have Rogue Amoeba's "Instant Hijack" program installed, Valgrind
-    will fail with a SIGTRAP at start-up.  This is apparently Instant
-    Hijack's fault.  See https://bugs.kde.org/show_bug.cgi?id=193917 for
-    details and a simple work-around.
+
+  - The Ptrcheck tool.
+
+  - Objective-C garbage collection.
+
+  - --db-attach=yes.
+
+  - If you have Rogue Amoeba's "Instant Hijack" program installed,
+    Valgrind will fail with a SIGTRAP at start-up.  See
+    https://bugs.kde.org/show_bug.cgi?id=193917 for details and a
+    simple work-around.
+
+  Usage notes:
+
+  - You will likely find --dsymutil=yes a useful option, as error
+    messages may be imprecise without it.
+
+  - Mac OS X support is new and therefore will be less robust than the
+    Linux support.  Please report any bugs you find.
+
+  - Threaded programs may run more slowly than on Linux.
 
   Many thanks to Greg Parker for developing this port over several years.
 
-* XXX: something about improved Wine support?
-
-* A new Memcheck client request VALGRIND_COUNT_LEAK_BLOCKS has been added.
-  It is similar to VALGRIND_COUNT_LEAKS but counts blocks instead of bytes.
-  [XXX: consider adding VALGRIND_COUNT_LEAK_BYTES as a synonym and
-  deprecating VALGRIND_COUNT_LEAKS, which wasn't a good name to begin with]
 
 * Memcheck's leak checker has been improved.  
-  - The results for --leak-check=summary now match the summary results for
-    --leak-check=full.  Previously they could differ because
-    --leak-check=summary counted "indirectly lost" blocks and "suppressed"
-    blocks as "definitely lost".
-  - Blocks that are only reachable via at least one interior-pointer, but
-    are directly pointed to by a start-pointer, were previously marked as
-    "still reachable".  They are now correctly marked as "possibly lost".
 
-* The format of some (non-XML) stack trace entries has changed a little.
-  Previously there were six possible forms:
+  - The results for --leak-check=summary now match the summary results
+    for --leak-check=full.  Previously they could differ because
+    --leak-check=summary counted "indirectly lost" blocks and
+    "suppressed" blocks as "definitely lost".
 
-    0x80483BF: really (a.c:20)
-    0x80483BF: really (in /foo/a.out)
-    0x80483BF: really
-    0x80483BF: (within /foo/a.out)
-    0x80483BF: ??? (a.c:20)
-    0x80483BF: ???
+  - Blocks that are only reachable via at least one interior-pointer,
+    but are directly pointed to by a start-pointer, were previously
+    marked as "still reachable".  They are now correctly marked as
+    "possibly lost".
 
-  The third and fourth of these forms have been made more consistent with
-  the others.  The six possible forms are now:
+  - The default value for the --leak-resolution option has been
+    changed from "low" to "high".  In general, this means that more
+    leak reports will be produced, but each leak report will describe
+    fewer leaked blocks.
+
+  - With --leak-check=full, "definitely lost" and "possibly lost"
+    leaks are now considered as proper errors, ie. they are counted
+    for the "ERROR SUMMARY" and affect the behaviour of
+    --error-exitcode.  These leaks are not counted as errors if
+    --leak-check=summary is specified, however.
+
+  - Documentation for the leak checker has been improved.
+
+
+* Various aspects of Valgrind's text output have changed.
+
+  - Valgrind's start-up message has changed.  It is shorter but also
+    includes the command being run, which makes it easier to use
+    --trace-children=yes.  An example:
+
+  - Valgrind's shut-down messages have also changed.  This is most
+    noticeable with Memcheck, where the leak summary now occurs before
+    the error summary.  This change was necessary to allow leaks to be
+    counted as proper errors (see the description of the leak checker
+    changes above for more details).  This was also necessary to fix a
+    longstanding bug in which uses of suppressions against leaks were
+    not "counted", leading to difficulties in maintaining suppression
+    files (XXXX bug number).
+
+  - Behavior of -v has changed.  In previous versions, -v printed out
+    a mixture of marginally-user-useful information, and tool/core
+    statistics.  The statistics printing has now been moved to its own
+    flag, --stats=yes.  This means -v is less verbose and more likely
+    to convey useful end-user information.
+
+  - The format of some (non-XML) stack trace entries has changed a
+    little.  Previously there were six possible forms:
+
+      0x80483BF: really (a.c:20)
+      0x80483BF: really (in /foo/a.out)
+      0x80483BF: really
+      0x80483BF: (within /foo/a.out)
+      0x80483BF: ??? (a.c:20)
+      0x80483BF: ???
+
+    The third and fourth of these forms have been made more consistent
+    with the others.  The six possible forms are now:
   
-    0x80483BF: really (a.c:20)
-    0x80483BF: really (in /foo/a.out)
-    0x80483BF: really (in ???)
-    0x80483BF: ??? (in /foo/a.out)
-    0x80483BF: ??? (a.c:20)
-    0x80483BF: ???
+      0x80483BF: really (a.c:20)
+      0x80483BF: really (in /foo/a.out)
+      0x80483BF: really (in ???)
+      0x80483BF: ??? (in /foo/a.out)
+      0x80483BF: ??? (a.c:20)
+      0x80483BF: ???
 
-  Stack traces produced when --xml=yes is specified are different and
-  unchanged.
+    Stack traces produced when --xml=yes is specified are different
+    and unchanged.
 
-* XXX: XML output has changed...
+
+* Helgrind and Ptrcheck now support XML output, so they can be used
+  from GUI tools.  Also, the XML output mechanism has been
+  overhauled.
+
+  - The XML format has been overhauled and generalised, so it is more
+    suitable for error reporting tools in general.  The Memcheck
+    specific aspects of it have been removed.  The new format, which
+    is an evolution of the old format, is described in
+    docs/internals/xml-output-protocol4.txt.
+
+  - Memcheck has been updated to use the new format.
+
+  - Helgrind and Ptrcheck are now able to emit output in this format.
+
+  - The XML output mechanism has been overhauled.  XML is now output
+    to its own file descriptor, which means that:
+
+    * Valgrind can output text and XML independently.
+
+    * The longstanding problem of XML output being corrupted by 
+      unexpected un-tagged text messages  is solved.
+
+    As before, the destination for text output is specified using
+    --log-file=, --log-fd= or --log-socket=.
+
+    As before, XML output for a tool is enabled using --xml=yes.
+
+    Because there's a new XML output channel, the XML output
+    destination is now specified by --xml-file=, --xml-fd= or
+    --xml-socket=.
+
+    Initial feedback has shown this causes some confusion.  To
+    clarify, the two envisaged usage scenarios are:
+
+    (1) Normal text output.  In this case, do not specify --xml=yes
+        nor any of --xml-file=, --xml-fd= or --xml-socket=.
+
+    (2) XML output.  In this case, specify --xml=yes, and one of
+        --xml-file=, --xml-fd= or --xml-socket= to select the XML
+        destination, one of --log-file=, --log-fd= or --log-socket=
+        to select the destination for any remaining text messages,
+        and, importantly, -q.
+
+        -q makes Valgrind completely silent on the text channel,
+        except in the case of critical failures, such as Valgrind
+        itself segfaulting, or failing to read debugging information.
+        Hence, in this scenario, it suffices to check whether or not
+        any output appeared on the text channel.  If yes, then it is
+        likely to be a critical error which should be brought to the
+        attention of the user.  If no (the text channel produced no
+        output) then it can be assumed that the run was successful.
+
+        This allows GUIs to make the critical distinction they need to
+        make (did the run fail or not?) without having to search or
+        filter the text output channel in any way.
+
+    It is also recommended to use --child-silent-after-fork=yes in
+    scenario (2).
+
+
+* Improvements and changes in Helgrind:
+
+  - XML output, as described above
+
+  - Checks for consistent association between pthread condition
+    variables and their associated mutexes are now performed.
+
+  - pthread_spinlock functions are supported.
+
+  - Modest performance improvements.
+
+  - Initial (skeletal) support for describing the behaviour of
+    non-POSIX synchronisation objects through ThreadSanitizer
+    compatible ANNOTATE_* macros.
+
+  - More controllable tradeoffs between performance and the level of
+    detail of "previous" accesses in a race.  There are now three
+    settings:
+
+    * --history-level=full.  This is the default, and was also the
+      default in 3.4.x.  It shows both stacks involved in a race, but
+      requires a lot of memory and can be very slow in programs that
+      do many inter-thread synchronisation events.
+
+    * --history-level=none.  This only shows the later stack involved
+      in a race.  This can be much faster than --history-level=full,
+      but makes it much more difficult to find the other access
+      involved in the race.
+
+    The new intermediate setting is
+
+    * --history-level=approx
+
+      For the earlier (other) access, two stacks are presented.  The
+      earlier access is guaranteed to be somewhere in between the two
+      program points denoted by those stacks.  This is not as useful
+      as showing the exact stack for the previous access (as per
+      --history-level=full), but it is better than nothing, and it's
+      almost as fast as --history-level=none.
+
+
+* New features and improvements in DRD:
+
+  - The error messages printed by DRD are now easier to interpret.
+    Instead of using two different numbers to identify each thread
+    (Valgrind thread ID and DRD thread ID), DRD does now identify
+    threads via a single number (the DRD thread ID).  Furthermore
+    "first observed at" information is now printed for all error
+    messages related to synchronization objects.
+
+  - Added support for named semaphores (sem_open() and sem_close()).
+
+  - Race conditions between pthread_barrier_wait() and
+    pthread_barrier_destroy() calls are now reported.
+
+  - Added support for custom allocators through the macros
+    VALGRIND_MALLOCLIKE_BLOCK() VALGRIND_FREELIKE_BLOCK() (defined in
+    in <valgrind/valgrind.h>). An alternative for these two macros is
+    the new client request VG_USERREQ__DRD_CLEAN_MEMORY (defined in
+    <valgrind/drd.h>).
+
+  - Added support for annotating non-POSIX synchronization objects
+    through several new ANNOTATE_*() macros.
+
+  - OpenMP: added support for the OpenMP runtime (libgomp) included
+    with gcc versions 4.3.0 and 4.4.0.
+
+  - Faster operation.
+
+  - Added two new command-line options (--first-race-only and
+    --segment-merging-interval).
+
+
+* Genuinely atomic support for x86/amd64/ppc atomic instructions
+
+  Valgrind will now preserve (memory-access) atomicity of LOCK-
+  prefixed x86/amd64 instructions, and any others implying a global
+  bus lock.  Ditto for PowerPC l{w,d}arx/st{w,d}cx. instructions.
+
+  This means that Valgrinded processes will "play nicely" in
+  situations where communication with other processes, or the kernel,
+  is done through shared memory and coordinated with such atomic
+  instructions.  Prior to this change, such arrangements usually
+  resulted in hangs, races or other synchronisation failures, because
+  Valgrind did not honour atomicity of such instructions.
+
+
+* A new experimental tool, BBV, has been added.  BBV generates basic
+  block vectors for use with the SimPoint analysis tool, which allows
+  a program's overall behaviour to be approximated by running only a
+  fraction of it.  This is useful for computer architecture
+  researchers.  You can run BBV by specifying --tool=exp-bbv (the
+  "exp-" prefix is short for "experimental").  BBV was written by
+  Vince Weaver.
+
+
+* Modestly improved support for running Windows applications under
+  Wine.  In particular, initial support for reading Windows .PDB debug
+  information has been added.
+
+
+* A new Memcheck client request VALGRIND_COUNT_LEAK_BLOCKS has been
+  added.  It is similar to VALGRIND_COUNT_LEAKS but counts blocks
+  instead of bytes.
+
+
+* The Valgrind client requests VALGRIND_PRINTF and
+  VALGRIND_PRINTF_BACKTRACE have been changed slightly.  Previously,
+  the string was always printed immediately on its own line.  Now, the
+  string will be added to a buffer but not printed until a newline is
+  encountered, or other Valgrind output is printed (note that for
+  VALGRIND_PRINTF_BACKTRACE, the back-trace itself is considered
+  "other Valgrind output").  This allows you to use multiple
+  VALGRIND_PRINTF calls to build up a single output line, and also to
+  print multiple output lines with a single request (by embedding
+  multiple newlines in the string).
+
 
 * The graphs drawn by Massif's ms_print program have changed slightly:
-  - The half-height chars '.' and ',' are no longer drawn, because they are
-    confusing.  The --y option can be used if the default y-resolution is
-    not high enough.
-  - Horizontal lines are now drawn after the top of a snapshot if there is a
-    gap until the next snapshot.  This makes it clear that the memory
-    usage has not dropped to zero between snapshots.
 
-* exp-Omega, an experimental instantaneous leak-detecting tool, was disabled
-  in 3.4.0 due to a lack of interest and maintenance, although the source
-  code was still in the distribution.  The source code has now been removed
-  from the distribution.  For anyone interested, the removal occurred in SVN
-  revision r10247.
+  - The half-height chars '.' and ',' are no longer drawn, because
+    they are confusing.  The --y option can be used if the default
+    y-resolution is not high enough.
 
-* The location of some install files has changed.  This should not affect
-  most users.  Those who might be affected:
-  - For people who use Valgrind with MPI programs, the installed
-    libmpiwrap.so library has moved from $(INSTALL)/<platform>/libmpiwrap.so
-    to $(INSTALL)/libmpiwrap-<platform>.so.
-  - For people who distribute standalone Valgrind tools, the installed
-    libraries such as $(INSTALL)/<platform>/libcoregrind.a have moved to
-    $(INSTALL)/libcoregrind-<platform>.a.
+  - Horizontal lines are now drawn after the top of a snapshot if
+    there is a gap until the next snapshot.  This makes it clear that
+    the memory usage has not dropped to zero between snapshots.
 
-  These changes were made to simplify the build system.
 
-* Previously, all the distributed suppression (*.supp) files were installed.
-  Now, only default.supp is installed.  This should not affect users as the
-  other installed suppression files were not read.
+* Something that happened in 3.4.0, but wasn't clearly announced: the
+  option --read-var-info=yes can be used by some tools (Memcheck,
+  Helgrind and DRD).  When enabled, it causes Valgrind to read DWARF3
+  variable type and location information.  This makes those tools
+  start up more slowly and increases memory consumption, but
+  descriptions of data addresses in error messages become more
+  detailed.
 
-n-i-bz DRD - race conditions between pthread_barrier_wait() and
-       pthread_barrier_destroy() calls are now reported.
-n-i-bz DRD - added "first observed at" information in error
-       messages related to synchronization objects.
-n-i-bz DRD - added new client request, VG_USERREQ__DRD_CLEAN_MEMORY.
+
+* exp-Omega, an experimental instantaneous leak-detecting tool, was
+  disabled in 3.4.0 due to a lack of interest and maintenance,
+  although the source code was still in the distribution.  The source
+  code has now been removed from the distribution.  For anyone
+  interested, the removal occurred in SVN revision r10247.
+
+
+* Some changes have been made to the build system.
+
+  - VEX/ is now integrated properly into the build system.  This means
+    that dependency tracking within VEX/ now works properly, "make
+    install" will work without requiring "make" before it, and
+    parallel builds (ie. 'make -j') now work (previously a
+    .NOTPARALLEL directive was used to serialize builds, ie. 'make -j'
+    was effectively ignored).
+
+  - The --with-vex configure option has been removed.  It was of
+    little use and removing it simplified the build system.
+
+  - The location of some install files has changed.  This should not
+    affect most users.  Those who might be affected:
+
+    * For people who use Valgrind with MPI programs, the installed
+      libmpiwrap.so library has moved from
+      $(INSTALL)/<platform>/libmpiwrap.so to
+      $(INSTALL)/libmpiwrap-<platform>.so.
+
+    * For people who distribute standalone Valgrind tools, the
+      installed libraries such as $(INSTALL)/<platform>/libcoregrind.a
+      have moved to $(INSTALL)/libcoregrind-<platform>.a.
+
+    These changes simplify the build system.
+
+  - Previously, all the distributed suppression (*.supp) files were
+    installed.  Now, only default.supp is installed.  This should not
+    affect users as the other installed suppression files were not
+    read; the fact that they were installed was a mistake.
+
+
+* KNOWN LIMITATIONS:
+
+  - Memcheck is unusable with the Intel compiler suite version 11.1,
+    when it generates code for SSE2-and-above capable targets.  This
+    is because of icc's use of highly optimised inlined strlen
+    implementations.  It causes Memcheck to report huge numbers of
+    false errors even in simple programs.  Helgrind and DRD may also
+    have problems.
+
+    Versions 11.0 and earlier may be OK, but this has not been
+    properly tested.
+
+
+
+XXX a number of bugs in Callgrind / KCachegrind have been fixed. (?)
+
+
 187048 DRD - the mutex attribute PTHREAD_PROCESS_SHARED is now
        interpreted correctly.
 188046 Removed a bashism from the configure script.
@@ -116,6 +425,13 @@ n-i-bz DRD - fixed a memory leak triggered by vector clock deallocation
        (fixed in r10228).
 195169 DRD - added support for newer versions of gcc's OpenMP runtime (libgomp)
        (fixed in r10261).
+
+XXX: more bugs listed...
+
+XXX: dates and versions of RCs and final release
+(3.5.0.RC1:  XX Aug 2009, vex rXXXX, valgrind rXXXX).
+(3.5.0:      XX Aug 2009, vex rXXXX, valgrind rXXXX).
+
 
 
 Release 3.4.1 (28 February 2009)
@@ -521,7 +837,7 @@ Omega and DRD.  There are many other smaller improvements.  In detail:
 - Memcheck has new flags --malloc-fill=<hexnum> and
   --free-fill=<hexnum> which free malloc'd / free'd areas with the
   specified byte.  This can help shake out obscure memory corruption
-  problems.  The definedness and addressibility of these areas is
+  problems.  The definedness and addressability of these areas is
   unchanged -- only the contents are affected.
 
 - The behaviour of Memcheck's client requests VALGRIND_GET_VBITS and

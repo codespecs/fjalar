@@ -205,7 +205,7 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
     // We need essentially all registers.
-    di->nFxState = 6;
+    di->nFxState = 2;
     di->fxState[0].fx     = Ifx_Read;
     di->fxState[0].offset = mce->layout->offset_SP;
     di->fxState[0].size   = mce->layout->sizeof_SP;
@@ -330,6 +330,26 @@ static void find_entry_pt(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEntry 
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
   // Right now, for x86, we only care about 32-bit instructions
 
+/*   IRDirty  *di; */
+/*   UWord entry_w = (UWord)0; */
+/*   // RUDD DEBUG Dump Vex State at every IMark */
+/*   di = unsafeIRDirty_0_N(0/\*regparms*\/, "Dump state", VG_(dump_state), */
+/*                          mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w)))); */
+
+/*     // We need essentially all registers. */
+/*     di->nFxState = 3; */
+/*     di->fxState[0].fx     = Ifx_Read; */
+/*     di->fxState[0].offset = mce->layout->offset_SP; */
+/*     di->fxState[0].size   = mce->layout->sizeof_SP; */
+/*     di->fxState[1].fx     = Ifx_Read; */
+/*     di->fxState[1].offset = mce->layout->offset_FP; */
+/*     di->fxState[1].size   = mce->layout->sizeof_FP; */
+/*     di->fxState[2].fx     = Ifx_Read; */
+/*     di->fxState[2].offset = mce->layout->offset_IP; */
+/*     di->fxState[2].size   = mce->layout->sizeof_IP; */
+
+/*     stmt('V',  mce, IRStmt_Dirty(di) ); */
+
   // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
   // truly a function entry so that handle_possible_exit() can work
   // properly:
@@ -412,7 +432,7 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // For completeness let's also state the intention to observe
       // xBX and xCX since they can always be referenced by the
       // DWARF information - rudd
-      di->nFxState = 7;
+      di->nFxState = 1;
       di->fxState[0].fx     = Ifx_Read;
       di->fxState[0].offset = mce->layout->offset_SP;
       di->fxState[0].size   = mce->layout->sizeof_SP;

@@ -1,8 +1,9 @@
 
-##----------------------------------------------------------------------##
-#
 # Suppressions for Darwin 9.x / Mac OS X 10.5 Leopard
-#
+
+##----------------------------------------------------------------------##
+# Memcheck
+##----------------------------------------------------------------------##
 
 {
    mach_msg_trap-1
@@ -90,12 +91,36 @@
 }
 
 {
-   futimes-1
+   macos-Cond-6
+   Memcheck:Cond
+   fun:pthread_rwlock_init$UNIX2003
+   fun:main
+}
+
+# afaict this is legit.  Might be caused by setenv("VAR=")
+# where the value string is empty (not sure)
+{
+   macos-Cond-7
+   Memcheck:Cond
+   fun:__setenv
+   fun:putenv
+}
+
+{
+   macos-futimes-1
    Memcheck:Param
    futimes(tvp[1])
    fun:futimes
    obj:/usr/lib/libSystem*
    obj:/usr/lib/libSystem*
+}
+
+{
+   macos-vsyslog-hole
+   Memcheck:Param
+   socketcall.sendto(msg)
+   fun:sendto$NOCANCEL$UNIX2003
+   fun:vsyslog
 }
 
 # Still-reachable memory.
@@ -136,10 +161,28 @@
    fun:puts
 }
 
+# Genuine leaks.
+# See https://bugs.kde.org/show_bug.cgi?id=188572 about this;  it's
+# unavoidable due to BSD setenv() semantics.
+{
+   macos-__setenv-leak-see-our-bug-188572
+   Memcheck:Leak
+   fun:malloc_zone_malloc
+   fun:__setenv
+   fun:setenv$UNIX2003
+}
+{
+   macos-localeconv-leak
+   Memcheck:Leak
+   fun:malloc
+   fun:localeconv_l
+   fun:__vfprintf
+   fun:vsnprintf
+}
 
 ##----------------------------------------------------------------------##
-#
-# Suppressions for Helgrind.
+# Helgrind
+##----------------------------------------------------------------------##
 
 # These ones were necessary to give no errors on a tiny non-threaded
 # program.  I don't know if they're real problems or false positives (njn).
@@ -174,33 +217,57 @@
 # These ones were necessary to give no errors on a tiny threaded program.
 # I don't know if they're real problems or false positives (njn).
 
+#{
+#   helgrind-darwinlibc-nuke-everything-in-dyld
+#   Helgrind:Race
+#   obj:/usr/lib/dyld
+#}
+
 {
-   crude1
-   Helgrind:Race
-   obj:/usr/lib/dyld
-}
-{
-   crude2
+   helgrind-darwinlibc-nuke-everything-in-libSystem.B.dylib
    Helgrind:Race
    obj:/usr/lib/libSystem.B.dylib
 }
+
 # This would be better as "fun:\?\?\?" but string matching doesn't seem to
 # allow escaping meta-chars.
+#
+# This is very bad .. not only will it hide races in any
+# un-identified piece of code, the ??? also matches any 3-char
+# function name.
 {
-   crude3
+   helgrind-darwinlibc-nuke-everything-in-???-(unknown-code)
    Helgrind:Race
    fun:???
 }
+
 {
-   crude4
+   helgrind-darwinlibc--mythread_wrapper-*thread*start*
    Helgrind:Race
    fun:mythread_wrapper
+   fun:*thread*start*
 }
+
 {
-   crude5
+   helgrind-darwinlibc--pthread_create_WRK-pthread_create
    Helgrind:Race
-   ...
    fun:pthread_create_WRK
    fun:pthread_create
 }
 
+
+# Thread #9: Bug in libpthread: recursive write lock granted on 
+#            mutex/wrlock which does not support recursion
+#  at 0x18696: pthread_cond_wait* (hg_intercepts.c:655)
+#  by 0x2300B8: pthread_rwlock_wrlock$UNIX2003 (in /usr/lib/libSystem.B.dylib)
+#  by 0x18F41: pthread_rwlock_wrlock* (hg_intercepts.c:1177)
+#
+# no idea what this is about
+#
+{
+   helgrind-darwin9--pthread-rwlock-kludgery
+   Helgrind:Misc
+   fun:pthread_cond_wait*
+   fun:pthread_rwlock_*lock*
+   fun:pthread_rwlock_*lock*
+}

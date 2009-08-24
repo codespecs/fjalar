@@ -132,7 +132,7 @@
 //   want to analyse locality of memory accesses -- but is not good if
 //   absolute addresses are important.
 //
-// Despite all these warnings, Dullard's results should be good enough for a
+// Despite all these warnings, Lackey's results should be good enough for a
 // wide range of purposes.  For example, Cachegrind shares all the above
 // shortcomings and it is still useful.
 //
@@ -192,7 +192,7 @@ static Bool clo_trace_sbs       = False;
 /* The name of the function of which the number of calls (under
  * --basic-counts=yes) is to be counted, with default. Override with command
  * line option --fnname. */
-static Char* clo_fnname = "_dl_runtime_resolve";
+static Char* clo_fnname = "main";
 
 static Bool lk_process_cmd_line_option(Char* arg)
 {
@@ -212,12 +212,12 @@ static Bool lk_process_cmd_line_option(Char* arg)
 static void lk_print_usage(void)
 {  
    VG_(printf)(
-"    --basic-counts=no|yes     count instructions, jumps, etc. [no]\n"
+"    --basic-counts=no|yes     count instructions, jumps, etc. [yes]\n"
 "    --detailed-counts=no|yes  count loads, stores and alu ops [no]\n"
 "    --trace-mem=no|yes        trace all loads and stores [no]\n"
 "    --trace-superblocks=no|yes  trace all superblock entries [no]\n"
 "    --fnname=<name>           count calls to <name> (only used if\n"
-"                              --basic-count=yes)  [_dl_runtime_resolve]\n"
+"                              --basic-count=yes)  [main]\n"
    );
 }
 
@@ -368,14 +368,14 @@ static void instrument_detail(IRSB* sb, Op op, IRType type)
 static void print_details ( void )
 {
    Int typeIx;
-   VG_UMSG("   Type        Loads       Stores       AluOps");
-   VG_UMSG("   -------------------------------------------");
+   VG_(umsg)("   Type        Loads       Stores       AluOps\n");
+   VG_(umsg)("   -------------------------------------------\n");
    for (typeIx = 0; typeIx < N_TYPES; typeIx++) {
-      VG_UMSG("   %4s %'12llu %'12llu %'12llu",
-              nameOfTypeIndex( typeIx ),
-              detailCounts[OpLoad ][typeIx],
-              detailCounts[OpStore][typeIx],
-              detailCounts[OpAlu  ][typeIx]
+      VG_(umsg)("   %4s %'12llu %'12llu %'12llu\n",
+                nameOfTypeIndex( typeIx ),
+                detailCounts[OpLoad ][typeIx],
+                detailCounts[OpStore][typeIx],
+                detailCounts[OpAlu  ][typeIx]
       );
    }
 }
@@ -784,6 +784,27 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
             break;
          }
 
+         case Ist_CAS: {
+            /* We treat it as a read and a write of the location.  I
+               think that is the same behaviour as it was before IRCAS
+               was introduced, since prior to that point, the Vex
+               front ends would translate a lock-prefixed instruction
+               into a (normal) read followed by a (normal) write. */
+            if (clo_trace_mem) {
+               Int    dataSize;
+               IRCAS* cas = st->Ist.CAS.details;
+               tl_assert(cas->addr != NULL);
+               tl_assert(cas->dataLo != NULL);
+               dataSize = sizeofIRType(typeOfIRExpr(tyenv, cas->dataLo));
+               if (cas->dataHi != NULL)
+                  dataSize *= 2; /* since it's a doubleword-CAS */
+               addEvent_Dr( sbOut, cas->addr, dataSize );
+               addEvent_Dw( sbOut, cas->addr, dataSize );
+            }
+            addStmtToIRSB( sbOut, st );
+            break;
+         }
+
          case Ist_Exit:
             if (clo_basic_counts) {
                // The condition of a branch was inverted by VEX if a taken
@@ -862,44 +883,45 @@ static void lk_fini(Int exitcode)
       ULong total_Jccs = n_Jccs + n_IJccs;
       ULong taken_Jccs = (n_Jccs - n_Jccs_untaken) + n_IJccs_untaken;
 
-      VG_UMSG("Counted %'llu calls to %s()", n_func_calls, clo_fnname);
+      VG_(umsg)("Counted %'llu call%s to %s()\n",
+                n_func_calls, ( n_func_calls==1 ? "" : "s" ), clo_fnname);
 
-      VG_UMSG("");
-      VG_UMSG("Jccs:");
-      VG_UMSG("  total:         %'llu", total_Jccs);
+      VG_(umsg)("\n");
+      VG_(umsg)("Jccs:\n");
+      VG_(umsg)("  total:         %'llu\n", total_Jccs);
       VG_(percentify)(taken_Jccs, (total_Jccs ? total_Jccs : 1),
          percentify_decs, percentify_size, percentify_buf);
-      VG_UMSG("  taken:         %'llu (%s)",
+      VG_(umsg)("  taken:         %'llu (%s)\n",
          taken_Jccs, percentify_buf);
       
-      VG_UMSG("");
-      VG_UMSG("Executed:");
-      VG_UMSG("  SBs entered:   %'llu", n_SBs_entered);
-      VG_UMSG("  SBs completed: %'llu", n_SBs_completed);
-      VG_UMSG("  guest instrs:  %'llu", n_guest_instrs);
-      VG_UMSG("  IRStmts:       %'llu", n_IRStmts);
+      VG_(umsg)("\n");
+      VG_(umsg)("Executed:\n");
+      VG_(umsg)("  SBs entered:   %'llu\n", n_SBs_entered);
+      VG_(umsg)("  SBs completed: %'llu\n", n_SBs_completed);
+      VG_(umsg)("  guest instrs:  %'llu\n", n_guest_instrs);
+      VG_(umsg)("  IRStmts:       %'llu\n", n_IRStmts);
       
-      VG_UMSG("");
-      VG_UMSG("Ratios:");
+      VG_(umsg)("\n");
+      VG_(umsg)("Ratios:\n");
       tl_assert(n_SBs_entered); // Paranoia time.
-      VG_UMSG("  guest instrs : SB entered  = %'llu : 10",
+      VG_(umsg)("  guest instrs : SB entered  = %'llu : 10\n",
          10 * n_guest_instrs / n_SBs_entered);
-      VG_UMSG("       IRStmts : SB entered  = %'llu : 10",
+      VG_(umsg)("       IRStmts : SB entered  = %'llu : 10\n",
          10 * n_IRStmts / n_SBs_entered);
       tl_assert(n_guest_instrs); // Paranoia time.
-      VG_UMSG("       IRStmts : guest instr = %'llu : 10",
+      VG_(umsg)("       IRStmts : guest instr = %'llu : 10\n",
          10 * n_IRStmts / n_guest_instrs);
    }
 
    if (clo_detailed_counts) {
-      VG_UMSG("");
-      VG_UMSG("IR-level counts by type:");
+      VG_(umsg)("\n");
+      VG_(umsg)("IR-level counts by type:\n");
       print_details();
    }
 
    if (clo_basic_counts) {
-      VG_UMSG("");
-      VG_UMSG("Exit code:       %d", exitcode);
+      VG_(umsg)("\n");
+      VG_(umsg)("Exit code:       %d\n", exitcode);
    }
 }
 

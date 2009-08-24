@@ -2,11 +2,10 @@
 
 <valgrindoutput>
 
-<protocolversion>3</protocolversion>
+<protocolversion>4</protocolversion>
+<protocoltool>memcheck</protocoltool>
 
 <preamble>
-  <line>...</line>
-  <line>...</line>
   <line>...</line>
   <line>...</line>
   <line>...</line>
@@ -81,17 +80,18 @@
   </stack>
 </error>
 
+
+<status>
+  <state>FINISHED</state>
+  <time>...</time>
+</status>
+
 <errorcounts>
   <pair>
     <count>...</count>
     <unique>0x........</unique>
   </pair>
 </errorcounts>
-
-<status>
-  <state>FINISHED</state>
-  <time>...</time>
-</status>
 
 <suppcounts>...</suppcounts>
 

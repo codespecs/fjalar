@@ -75,7 +75,8 @@ int main(void)
 
    GO_UNIMP(17, "old break");
 
-   // __NR_getfsstat 18
+   GO(__NR_getfsstat, 18, "3s 1m");
+   SY(__NR_getfsstat, x0+1, x0+1, x0); SUCC; // This should fail...
 
    GO_UNIMP(19, "old lseek");
 
@@ -160,11 +161,16 @@ int main(void)
 
    GO_UNIMP(77, "old vlimit");
 
-   // __NR_mincore 78
+   GO(__NR_mincore, 78, "3s 1m");
+   SY(__NR_mincore, x0, x0+40960, x0); FAIL;
+
    // __NR_getgroups 79
    // __NR_setgroups 80
    // __NR_getpgrp 81
-   // __NR_setpgid 82
+
+   GO(__NR_setpgid, 82, "2s 0m");
+   SY(__NR_setpgid, x0-1, x0-1); FAIL;
+
    // __NR_setitimer 83
 
    GO_UNIMP(78, "old wait");
@@ -309,7 +315,8 @@ int main(void)
 
    GO_UNIMP(166, "old exportfs");
 
-   // __NR_mount 167
+   GO(__NR_mount, 167, "4s 2m");
+   SY(__NR_mount, x0, x0, x0, x0); FAIL;
 
    GO_UNIMP(168, "old ustat");
 
@@ -493,12 +500,22 @@ int main(void)
       // Go again to get a complaint about where the 3rd arg points;  it
       // requires the 4th arg to point to a valid value.
       SY(__NR_lstat_extended, 0, 0, 0, &one); FAIL;
+
+      GO(__NR_fstat_extended, 280, "4s 3m");
+      SY(__NR_fstat_extended, x0, x0, x0, x0); FAIL;
+      // Go again to get a complaint about where the 3rd arg points;  it
+      // requires the 4th arg to point to a valid value.
+      SY(__NR_fstat_extended, 0, 0, 0, &one); FAIL;
    }
 
-   // __NR_fstat_extended 281
    // __NR_chmod_extended 282
    // __NR_fchmod_extended 283
-   // __NR_access_extended 284
+
+   // XXX: we don't check the 'results' (too hard, see the wrapper code).  If
+   // we did, it would be 2m.
+   GO(__NR_access_extended, 284, "4s 1m");
+   SY(__NR_access_extended, x0, x0+1, x0, x0); FAIL;
+
    // __NR_settid 285
    // __NR_gettid 286
    // __NR_setsgroups 287
@@ -534,12 +551,24 @@ int main(void)
    // __NR_settid_with_pid 311
    // __NR___pthread_cond_timedwait 312
    // __NR_aio_fsync 313
-   // __NR_aio_return 314
-   // __NR_aio_suspend 315
+
+   GO(__NR_aio_return, 314, "1s 0m");
+   SY(__NR_aio_return, x0); FAIL;
+
+   GO(__NR_aio_suspend, 315, "1s 0m");
+   SY(__NR_aio_suspend, x0, x0+1, x0); FAIL;
+
    // __NR_aio_cancel 316
-   // __NR_aio_error 317
-   // __NR_aio_read 318
-   // __NR_aio_write 319
+
+   GO(__NR_aio_error, 317, "1s 0m");
+   SY(__NR_aio_error, x0); FAIL;
+
+   GO(__NR_aio_read, 318, "1s 1m");
+   SY(__NR_aio_read, x0); FAIL;
+
+   GO(__NR_aio_write, 319, "1s 1m");
+   SY(__NR_aio_write, x0); FAIL;
+
    // __NR_lio_listio 320
    // __NR___pthread_cond_wait 321
    // __NR_iopolicysys 322
@@ -552,7 +581,10 @@ int main(void)
    GO_UNIMP(326, "unused");
 
    // __NR_issetugid 327
-   // __NR___pthread_kill 328
+
+   GO(__NR___pthread_kill, 328, "2s 0m");
+   SY(__NR___pthread_kill, x0, x0); FAIL;
+
    // __NR___pthread_sigmask 329
    // __NR___sigwait 330
    // __NR_sigwait 330) // GrP fixme hack
@@ -582,13 +614,22 @@ int main(void)
       // Go again to get a complaint about where the 3rd arg points;  it
       // requires the 4th arg to point to a valid value.
       SY(__NR_lstat64_extended, 0, 0, 0, &one); FAIL;
+
+      GO(__NR_fstat64_extended, 342, "4s 3m");
+      SY(__NR_fstat64_extended, x0, x0, x0, x0); FAIL;
+      // Go again to get a complaint about where the 3rd arg points;  it
+      // requires the 4th arg to point to a valid value.
+      SY(__NR_fstat64_extended, 0, 0, 0, &one); FAIL;
    }
 
    // __NR_fstat64_extended 343
    // __NR_getdirentries64 344
    // __NR_statfs64 345
    // __NR_fstatfs64 346
-   // __NR_getfsstat64 347
+
+   GO(__NR_getfsstat64, 347, "3s 1m");
+   SY(__NR_getfsstat64, x0+1, x0+1, x0); SUCC; // This should fail...
+
    // __NR___pthread_chdir 348
    // __NR___pthread_fchdir 349
    // __NR_audit 350
@@ -697,7 +738,7 @@ int main(void)
  //SY(__NR_stime); // (Not yet handled by Valgrind) FAIL;
 
    // __NR_ptrace 26
-   // XXX: memory pointed to be arg3 goes unchecked... otherwise would be 2m
+   // XXX: memory pointed to by arg3 goes unchecked... otherwise would be 2m
    GO(__NR_ptrace, "4s 1m");
    SY(__NR_ptrace, x0+PTRACE_GETREGS, x0, x0, x0); FAIL;
 

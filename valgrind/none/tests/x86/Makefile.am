@@ -1,7 +1,7 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-noinst_SCRIPTS = filter_cpuid filter_stderr gen_insn_test.pl
+dist_noinst_SCRIPTS = filter_cpuid filter_stderr gen_insn_test.pl
 
 CLEANFILES = $(addsuffix .c,$(INSN_TESTS))
 
@@ -17,7 +17,7 @@ endif
 # Explicitly include insn_sse3 even if ! BUILD_SSE3_TESTS, 
 # to avoid packaging screwups if 'make dist' is run on a machine
 # which failed the BUILD_SSE3_TESTS test in configure.in.
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
 	badseg.stderr.exp badseg.stdout.exp badseg.vgtest \
 	bt_everything.stderr.exp bt_everything.stdout.exp bt_everything.vgtest \
 	bt_literal.stderr.exp bt_literal.stdout.exp bt_literal.vgtest \
@@ -52,6 +52,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	smc1.stderr.exp smc1.stdout.exp smc1.vgtest \
 	ssse3_misaligned.stderr.exp ssse3_misaligned.stdout.exp \
 	ssse3_misaligned.vgtest ssse3_misaligned.c \
+	x86locked.vgtest x86locked.stdout.exp x86locked.stderr.exp \
 	yield.stderr.exp yield.stdout.exp yield.disabled
 
 check_PROGRAMS = \
@@ -82,6 +83,7 @@ check_PROGRAMS = \
 	pushpopseg \
 	sbbmisc \
 	smc1 \
+	x86locked \
 	yield
 if BUILD_SSSE3_TESTS
    check_PROGRAMS += ssse3_misaligned
@@ -123,6 +125,7 @@ insn_sse3_SOURCES	= insn_sse3.def
 insn_sse3_LDADD		= -lm
 insn_ssse3_SOURCES	= insn_ssse3.def
 insn_ssse3_LDADD	= -lm
+x86locked_CFLAGS	= $(AM_CFLAGS) -O
 yield_LDADD		= -lpthread
 
 .def.c: $(srcdir)/gen_insn_test.pl

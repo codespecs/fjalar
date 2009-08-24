@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGO_linux)
+
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
@@ -339,11 +341,15 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
 
       /* If --child-silent-after-fork=yes was specified, set the
-         logging file descriptor to an 'impossible' value.  This is
+         output file descriptors to 'impossible' values.  This is
          noticed by send_bytes_to_logging_sink in m_libcprint.c, which
-         duly stops writing any further logging output. */
-      if (!VG_(logging_to_socket) && VG_(clo_child_silent_after_fork))
-         VG_(clo_log_fd) = -1;
+         duly stops writing any further output. */
+      if (VG_(clo_child_silent_after_fork)) {
+         if (!VG_(log_output_sink).is_socket)
+            VG_(log_output_sink).fd = -1;
+         if (!VG_(xml_output_sink).is_socket)
+            VG_(xml_output_sink).fd = -1;
+      }
    } 
    else 
    if (!sr_isError(res) && sr_Res(res) > 0) {
@@ -385,7 +391,8 @@ PRE(sys_mount)
    // We are conservative and check everything, except the memory pointed to
    // by 'data'.
    *flags |= SfMayBlock;
-   PRINT( "sys_mount( %#lx, %#lx, %#lx, %#lx, %#lx )" ,ARG1,ARG2,ARG3,ARG4,ARG5);
+   PRINT("sys_mount( %#lx(%s), %#lx(%s), %#lx(%s), %#lx, %#lx )",
+         ARG1,(Char*)ARG1, ARG2,(Char*)ARG2, ARG3,(Char*)ARG3, ARG4, ARG5);
    PRE_REG_READ5(long, "mount",
                  char *, source, char *, target, char *, type,
                  unsigned long, flags, void *, data);
@@ -858,31 +865,43 @@ PRE(sys_futex)
       ARG6 - int val3				CMP_REQUEUE
     */
    PRINT("sys_futex ( %#lx, %ld, %ld, %#lx, %#lx )", ARG1,ARG2,ARG3,ARG4,ARG5);
-   switch(ARG2) {
+   switch(ARG2 & ~(VKI_FUTEX_PRIVATE_FLAG|VKI_FUTEX_CLOCK_REALTIME)) {
    case VKI_FUTEX_CMP_REQUEUE:
-   case VKI_FUTEX_CMP_REQUEUE | VKI_FUTEX_PRIVATE_FLAG:
+   case VKI_FUTEX_WAKE_OP:
+   case VKI_FUTEX_CMP_REQUEUE_PI:
       PRE_REG_READ6(long, "futex", 
                     vki_u32 *, futex, int, op, int, val,
                     struct timespec *, utime, vki_u32 *, uaddr2, int, val3);
       break;
    case VKI_FUTEX_REQUEUE:
-   case VKI_FUTEX_REQUEUE | VKI_FUTEX_PRIVATE_FLAG:
+   case VKI_FUTEX_WAIT_REQUEUE_PI:
       PRE_REG_READ5(long, "futex", 
                     vki_u32 *, futex, int, op, int, val,
                     struct timespec *, utime, vki_u32 *, uaddr2);
       break;
+   case VKI_FUTEX_WAIT_BITSET:
+      PRE_REG_READ6(long, "futex", 
+                    vki_u32 *, futex, int, op, int, val,
+                    struct timespec *, utime, int, dummy, int, val3);
+      break;
+   case VKI_FUTEX_WAKE_BITSET:
+      PRE_REG_READ6(long, "futex", 
+                    vki_u32 *, futex, int, op, int, val,
+                    int, dummy, int, dummy2, int, val3);
+      break;
    case VKI_FUTEX_WAIT:
-   case VKI_FUTEX_WAIT | VKI_FUTEX_PRIVATE_FLAG:
+   case VKI_FUTEX_LOCK_PI:
       PRE_REG_READ4(long, "futex", 
                     vki_u32 *, futex, int, op, int, val,
                     struct timespec *, utime);
       break;
    case VKI_FUTEX_WAKE:
-   case VKI_FUTEX_WAKE | VKI_FUTEX_PRIVATE_FLAG:
    case VKI_FUTEX_FD:
+   case VKI_FUTEX_TRYLOCK_PI:
       PRE_REG_READ3(long, "futex", 
                     vki_u32 *, futex, int, op, int, val);
       break;
+   case VKI_FUTEX_UNLOCK_PI:
    default:
       PRE_REG_READ2(long, "futex", vki_u32 *, futex, int, op);
       break;
@@ -892,23 +911,27 @@ PRE(sys_futex)
 
    *flags |= SfMayBlock;
 
-   switch(ARG2) {
+   switch(ARG2 & ~(VKI_FUTEX_PRIVATE_FLAG|VKI_FUTEX_CLOCK_REALTIME)) {
    case VKI_FUTEX_WAIT:
-   case VKI_FUTEX_WAIT | VKI_FUTEX_PRIVATE_FLAG:
+   case VKI_FUTEX_LOCK_PI:
+   case VKI_FUTEX_WAIT_BITSET:
+   case VKI_FUTEX_WAIT_REQUEUE_PI:
       if (ARG4 != 0)
 	 PRE_MEM_READ( "futex(timeout)", ARG4, sizeof(struct vki_timespec) );
       break;
 
    case VKI_FUTEX_REQUEUE:
-   case VKI_FUTEX_REQUEUE | VKI_FUTEX_PRIVATE_FLAG:
    case VKI_FUTEX_CMP_REQUEUE:
-   case VKI_FUTEX_CMP_REQUEUE | VKI_FUTEX_PRIVATE_FLAG:
+   case VKI_FUTEX_CMP_REQUEUE_PI:
+   case VKI_FUTEX_WAKE_OP:
       PRE_MEM_READ( "futex(futex2)", ARG5, sizeof(Int) );
       break;
 
    case VKI_FUTEX_WAKE:
-   case VKI_FUTEX_WAKE | VKI_FUTEX_PRIVATE_FLAG:
    case VKI_FUTEX_FD:
+   case VKI_FUTEX_WAKE_BITSET:
+   case VKI_FUTEX_TRYLOCK_PI:
+   case VKI_FUTEX_UNLOCK_PI:
       /* no additional pointers */
       break;
 
@@ -1045,6 +1068,23 @@ POST(sys_epoll_create)
    }
 }
 
+PRE(sys_epoll_create1)
+{
+   PRINT("sys_epoll_create1 ( %ld )", ARG1);
+   PRE_REG_READ1(long, "epoll_create1", int, flags);
+}
+POST(sys_epoll_create1)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "epoll_create1", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless) (tid, RES);
+   }
+}
+
 PRE(sys_epoll_ctl)
 {
    static const HChar* epoll_ctl_s[3] = {
@@ -1127,6 +1167,18 @@ POST(sys_eventfd2)
    }
 }
 
+// 64-bit version.
+PRE(sys_fallocate)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_fallocate ( %ld, %ld, %lld, %lld )",
+         ARG1, ARG2, (Long)ARG3, (Long)ARG4);
+   PRE_REG_READ4(long, "fallocate",
+                 int, fd, int, mode, vki_loff_t, offset, vki_loff_t, len);
+   if (!ML_(fd_allowed)(ARG1, "fallocate", tid, False))
+      SET_STATUS_Failure( VKI_EBADF );
+}
+
 /* ---------------------------------------------------------------------
    tid-related wrappers
    ------------------------------------------------------------------ */
@@ -1156,7 +1208,7 @@ PRE(sys_tkill)
    *flags |= SfPollAfter;
 
    if (VG_(clo_trace_signals))
-      VG_(message)(Vg_DebugMsg, "tkill: sending signal %ld to pid %ld",
+      VG_(message)(Vg_DebugMsg, "tkill: sending signal %ld to pid %ld\n",
 		   ARG2, ARG1);
 
    /* If we're sending SIGKILL, check to see if the target is one of
@@ -1180,7 +1232,7 @@ PRE(sys_tkill)
 POST(sys_tkill)
 {
    if (VG_(clo_trace_signals))
-      VG_(message)(Vg_DebugMsg, "tkill: sent signal %ld to pid %ld",
+      VG_(message)(Vg_DebugMsg, "tkill: sent signal %ld to pid %ld\n",
                    ARG2, ARG1);
 }
 
@@ -1197,7 +1249,8 @@ PRE(sys_tgkill)
    *flags |= SfPollAfter;
 
    if (VG_(clo_trace_signals))
-      VG_(message)(Vg_DebugMsg, "tgkill: sending signal %ld to pid %ld/%ld",
+      VG_(message)(Vg_DebugMsg,
+                   "tgkill: sending signal %ld to pid %ld/%ld\n",
 		   ARG3, ARG1, ARG2);
 
    /* If we're sending SIGKILL, check to see if the target is one of
@@ -1221,7 +1274,8 @@ PRE(sys_tgkill)
 POST(sys_tgkill)
 {
    if (VG_(clo_trace_signals))
-      VG_(message)(Vg_DebugMsg, "tgkill: sent signal %ld to pid %ld/%ld",
+      VG_(message)(Vg_DebugMsg,
+                   "tgkill: sent signal %ld to pid %ld/%ld\n",
                    ARG3, ARG1, ARG2);
 }
 
@@ -3304,6 +3358,40 @@ PRE(sys_ioctl)
    PRE_REG_READ3(long, "ioctl",
                  unsigned int, fd, unsigned int, request, unsigned long, arg);
 
+   // We first handle the ones that don't use ARG3 (even as a
+   // scalar/non-pointer argument).
+   switch (ARG2 /* request */) {
+
+      /* linux/soundcard interface (ALSA) */
+   case VKI_SNDRV_PCM_IOCTL_HW_FREE:
+   case VKI_SNDRV_PCM_IOCTL_HWSYNC:
+   case VKI_SNDRV_PCM_IOCTL_PREPARE:
+   case VKI_SNDRV_PCM_IOCTL_RESET:
+   case VKI_SNDRV_PCM_IOCTL_START:
+   case VKI_SNDRV_PCM_IOCTL_DROP:
+   case VKI_SNDRV_PCM_IOCTL_DRAIN:
+   case VKI_SNDRV_PCM_IOCTL_RESUME:
+   case VKI_SNDRV_PCM_IOCTL_XRUN:
+   case VKI_SNDRV_PCM_IOCTL_UNLINK:
+   case VKI_SNDRV_TIMER_IOCTL_START:
+   case VKI_SNDRV_TIMER_IOCTL_STOP:
+   case VKI_SNDRV_TIMER_IOCTL_CONTINUE:
+   case VKI_SNDRV_TIMER_IOCTL_PAUSE:
+      PRINT("sys_ioctl ( %ld, 0x%lx )",ARG1,ARG2);
+      PRE_REG_READ2(long, "ioctl",
+                    unsigned int, fd, unsigned int, request);
+      return;
+
+   default:
+      PRINT("sys_ioctl ( %ld, 0x%lx, 0x%lx )",ARG1,ARG2,ARG3);
+      PRE_REG_READ3(long, "ioctl",
+                    unsigned int, fd, unsigned int, request, unsigned long, arg);
+      break;
+   }
+
+   // We now handle those that do look at ARG3 (and unknown ones fall into
+   // this category).  Nb: some of these may well belong in the
+   // doesn't-use-ARG3 switch above.
    switch (ARG2 /* request */) {
    case VKI_TCSETS:
    case VKI_TCSETSW:
@@ -3699,20 +3787,9 @@ PRE(sys_ioctl)
       break;
 
       /* linux/soundcard interface (ALSA) */
-   case VKI_SNDRV_PCM_IOCTL_HW_FREE:
-   case VKI_SNDRV_PCM_IOCTL_HWSYNC:
-   case VKI_SNDRV_PCM_IOCTL_PREPARE:
-   case VKI_SNDRV_PCM_IOCTL_RESET:
-   case VKI_SNDRV_PCM_IOCTL_START:
-   case VKI_SNDRV_PCM_IOCTL_DROP:
-   case VKI_SNDRV_PCM_IOCTL_DRAIN:
-   case VKI_SNDRV_PCM_IOCTL_RESUME:
-   case VKI_SNDRV_PCM_IOCTL_XRUN:
-   case VKI_SNDRV_PCM_IOCTL_UNLINK:
-   case VKI_SNDRV_TIMER_IOCTL_START:
-   case VKI_SNDRV_TIMER_IOCTL_STOP:
-   case VKI_SNDRV_TIMER_IOCTL_CONTINUE:
-   case VKI_SNDRV_TIMER_IOCTL_PAUSE:
+   case VKI_SNDRV_PCM_IOCTL_PAUSE:
+   case VKI_SNDRV_PCM_IOCTL_LINK:
+      /* these just take an int by value */
       break;
 
       /* Real Time Clock (/dev/rtc) ioctls */
@@ -4160,7 +4237,6 @@ PRE(sys_ioctl)
       PRE_MEM_READ( "ioctl(VT_SETMODE)", ARG3, sizeof(struct vki_vt_mode) );
       break;
    case VKI_VT_GETSTATE:
-      PRE_MEM_READ( "ioctl(VT_GETSTATE)", ARG3, sizeof(struct vki_vt_stat) );
       PRE_MEM_WRITE( "ioctl(VT_GETSTATE).v_active",
                      (Addr) &(((struct vki_vt_stat*) ARG3)->v_active),
                      sizeof(((struct vki_vt_stat*) ARG3)->v_active));
@@ -5243,7 +5319,8 @@ ML_(linux_POST_sys_getsockopt) ( ThreadId tid,
             else if (a->sa_family == VKI_AF_INET6)
                sl = sizeof(struct vki_sockaddr_in6);
             else {
-               VG_(message)(Vg_UserMsg, "Warning: getsockopt: unhandled address type %d", a->sa_family);
+               VG_(message)(Vg_UserMsg, "Warning: getsockopt: unhandled "
+                                        "address type %d\n", a->sa_family);
             }
             a = (struct vki_sockaddr*)((char*)a + sl);
          }
@@ -5252,12 +5329,11 @@ ML_(linux_POST_sys_getsockopt) ( ThreadId tid,
    }
 }
 
-
 #undef PRE
 #undef POST
+
+#endif // defined(VGO_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/
-
-

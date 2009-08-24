@@ -78,16 +78,22 @@
 /** Tell DRD not to complain about data races for the specified variable. */
 #define DRD_IGNORE_VAR(x) DRDCL_(ignore_range)(&(x), sizeof(x))
 
+/** Tell DRD to no longer ignore data races for the specified variable. */
+#define DRD_STOP_IGNORING_VAR(x) DRDCL_(ignore_range)(&(x), sizeof(x))
+
 /**
  * Tell DRD to trace all memory accesses on the specified variable. 
  * until the memory that was allocated for the variable is freed.
  */
 #define DRD_TRACE_VAR(x) DRDCL_(trace_range)(&(x), sizeof(x))
 
-/* !! APIWARNING !! APIWARNING !! APIWARNING !! APIWARNING !!
-   The semantics and the names of the macro's defined below are still
-   under discussion and subject to change without notice.
-*/
+/**
+ * @defgroup RaceDetectionAnnotations Data race detection annotations.
+ *
+ * @see See also the source file <a href="http://code.google.com/p/google-perftools/source/browse/trunk/src/base/dynamic_annotations.h">dynamic_annotations.h</a>
+ * in the ThreadSanitizer project.
+ */
+/*@{*/
 
 /**
  * Tell DRD to insert a mark. addr is the address of an object that is not a
@@ -152,11 +158,11 @@
 
 /** Tell DRD that a reader-writer lock object has been initialized. */
 #define ANNOTATE_RWLOCK_CREATE(rwlock) \
-   DRDCL_(annotate_rwlock)(rwlock, 0, 0)
+   DRDCL_(annotate_rwlock_create)(rwlock)
 
 /** Tell DRD that a reader-writer lock object has been destroyed. */
 #define ANNOTATE_RWLOCK_DESTROY(rwlock) \
-   DRDCL_(annotate_rwlock)(rwlock, 1, 0)
+   DRDCL_(annotate_rwlock_destroy)(rwlock)
 
 /**
  * Tell DRD that a reader-writer lock has been acquired. is_w == 1 means that
@@ -164,7 +170,19 @@
  * obtained.
  */
 #define ANNOTATE_RWLOCK_ACQUIRED(rwlock, is_w) \
-   DRDCL_(annotate_rwlock)(rwlock, 2, is_w)
+   DRDCL_(annotate_rwlock_acquired)(rwlock, is_w)
+
+/**
+ * Tell DRD that a reader lock has been acquired on a reader-writer
+ * synchronization object.
+ */
+#define ANNOTATE_READERLOCK_ACQUIRED(rwlock) ANNOTATE_RWLOCK_ACQUIRED(rwlock, 0)
+
+/**
+ * Tell DRD that a writer lock has been acquired on a reader-writer
+ * synchronization object.
+ */
+#define ANNOTATE_WRITERLOCK_ACQUIRED(rwlock) ANNOTATE_RWLOCK_ACQUIRED(rwlock, 1)
 
 /**
  * Tell DRD that a reader-writer lock is about to be released. is_w == 1 means
@@ -172,7 +190,17 @@
  * is about to be released.
  */
 #define ANNOTATE_RWLOCK_RELEASED(rwlock, is_w) \
-   DRDCL_(annotate_rwlock)(rwlock, 3, is_w)
+   DRDCL_(annotate_rwlock_released)(rwlock, is_w)
+
+/**
+ * Tell DRD that a reader lock is about to be released.
+ */
+#define ANNOTATE_READERLOCK_RELEASED(rwlock) ANNOTATE_RWLOCK_RELEASED(rwlock, 0)
+
+/**
+ * Tell DRD that a writer lock is about to be released.
+ */
+#define ANNOTATE_WRITERLOCK_RELEASED(rwlock) ANNOTATE_RWLOCK_RELEASED(rwlock, 1)
 
 /**
  * Tell DRD that a FIFO queue has been created. The abbreviation PCQ stands for
@@ -219,14 +247,14 @@
 
 /** Tell DRD to ignore all memory accesses performed by the current thread. */
 #define ANNOTATE_IGNORE_READS_AND_WRITES_BEGIN() \
-   do { DRDCL_(set_record_loads)(0); DRD_(set_record_stores)(0); } while(0)
+   do { DRDCL_(set_record_loads)(0); DRDCL_(set_record_stores)(0); } while(0)
 
 /**
  * Tell DRD to no longer ignore the memory accesses performed by the current
  * thread.
  */
 #define ANNOTATE_IGNORE_READS_AND_WRITES_END() \
-   do { DRDCL_(set_record_loads)(1); DRD_(set_record_stores)(1); } while(0)
+   do { DRDCL_(set_record_loads)(1); DRDCL_(set_record_stores)(1); } while(0)
 
 /**
  * Tell DRD that size bytes starting at addr has been allocated by a custom
@@ -243,10 +271,7 @@
  */
 #define ANNOTATE_THREAD_NAME(name) DRDCL_(set_thread_name)(name)
 
-/* !! APIWARNING !! APIWARNING !! APIWARNING !! APIWARNING !!
-   The semantics and the names of the macro's defined above are still
-   under discussion and subject to change without notice.
-*/
+/*@}*/
 
 
 /* !! ABIWARNING !! ABIWARNING !! ABIWARNING !! ABIWARNING !!
@@ -295,17 +320,41 @@ enum {
    VG_USERREQ__DRD_SET_THREAD_NAME,
    /* args: null-terminated character string. */
 
+   /* Tell DRD that a user-defined reader-writer synchronization object
+    * has been created. */
+   VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 14,
+   /* args: Addr. */
+   /* Tell DRD that a user-defined reader-writer synchronization object
+    * is about to be destroyed. */
+   VG_USERREQ__DRD_ANNOTATE_RWLOCK_DESTROY
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 15,
+   /* args: Addr. */
+   /* Tell DRD that a lock on a user-defined reader-writer synchronization
+    * object has been acquired. */
+   VG_USERREQ__DRD_ANNOTATE_RWLOCK_ACQUIRED
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 17,
+   /* args: Addr, Int is_rw. */
+   /* Tell DRD that a lock on a user-defined reader-writer synchronization
+    * object is about to be released. */
+   VG_USERREQ__DRD_ANNOTATE_RWLOCK_RELEASED
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 18,
+   /* args: Addr, Int is_rw. */
+
+   /* Tell DRD that an annotation has not yet been implemented. */
+   VG_USERREQ__DRD_ANNOTATION_UNIMP
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 32,
+   /* args: Char*. */
+
    /* Tell DRD to insert a happens before annotation. */
-   VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE,
+   VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 33,
    /* args: Addr. */
    /* Tell DRD to insert a happens after annotation. */
-   VG_USERREQ__DRD_ANNOTATE_HAPPENS_AFTER,
+   VG_USERREQ__DRD_ANNOTATE_HAPPENS_AFTER
+      = VG_USERREQ_TOOL_BASE('H','G') + 256 + 34,
    /* args: Addr. */
 
-   /* Tell DRD about an operation performed on a user-defined reader-writer
-    * synchronization object. */
-   VG_USERREQ__DRD_ANNOTATE_RWLOCK,
-   /* args: Addr, Int operation_type, Int is_rw. */
 };
 
 
@@ -346,6 +395,14 @@ void DRDCL_(ignore_range)(const void* const addr, const int size)
 {
    int res;
    VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_START_SUPPRESSION,
+                              addr, size, 0, 0, 0);
+}
+
+static __inline__
+void DRDCL_(stop_ignoring_range)(const void* const addr, const int size)
+{
+   int res;
+   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_FINISH_SUPPRESSION,
                               addr, size, 0, 0, 0);
 }
 
@@ -398,13 +455,39 @@ void DRDCL_(annotate_happens_after)(const void* const addr)
 }
 
 static __inline__
-void DRDCL_(annotate_rwlock)(const void* const rwlock, const int op,
-                             const int is_w)
+void DRDCL_(annotate_rwlock_create)(const void* const rwlock)
 {
    int res;
    VALGRIND_DO_CLIENT_REQUEST(res, 0,
-                              VG_USERREQ__DRD_ANNOTATE_RWLOCK,
-                              rwlock, op, is_w, 0, 0);
+                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE,
+                              rwlock, 0, 0, 0, 0);
+}
+
+static __inline__
+void DRDCL_(annotate_rwlock_destroy)(const void* const rwlock)
+{
+   int res;
+   VALGRIND_DO_CLIENT_REQUEST(res, 0,
+                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_DESTROY,
+                              rwlock, 0, 0, 0, 0);
+}
+
+static __inline__
+void DRDCL_(annotate_rwlock_acquired)(const void* const rwlock, const int is_w)
+{
+   int res;
+   VALGRIND_DO_CLIENT_REQUEST(res, 0,
+                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_ACQUIRED,
+                              rwlock, is_w, 0, 0, 0);
+}
+
+static __inline__
+void DRDCL_(annotate_rwlock_released)(const void* const rwlock, const int is_w)
+{
+   int res;
+   VALGRIND_DO_CLIENT_REQUEST(res, 0,
+                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_RELEASED,
+                              rwlock, is_w, 0, 0, 0);
 }
 
 #endif /* __VALGRIND_DRD_H */

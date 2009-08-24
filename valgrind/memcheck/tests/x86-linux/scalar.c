@@ -550,9 +550,8 @@ int main(void)
 #ifndef CLONE_PARENT_SETTID
 #define CLONE_PARENT_SETTID	0x00100000
 #endif
-   // XXX: should really be "4s 2m"?  Not sure... (see PRE(sys_clone))
-   GO(__NR_clone, "4s 0m");
-   SY(__NR_clone, x0|CLONE_PARENT_SETTID|SIGCHLD, x0, x0, x0); FAIL;
+   GO(__NR_clone, "5s 3m");
+   SY(__NR_clone, x0|CLONE_PARENT_SETTID|CLONE_SETTLS|CLONE_CHILD_SETTID|SIGCHLD, x0, x0, x0, x0); FAIL;
    if (0 == res) {
       SY(__NR_exit, 0); FAIL;
    }
@@ -1251,6 +1250,10 @@ int main(void)
    // __NR_sys_kexec_load 283
    GO(__NR_sys_kexec_load, "ni");
    SY(__NR_sys_kexec_load); FAIL;
+
+   // __NR_epoll_create1 329
+   GO(__NR_epoll_create1, "1s 0m");
+   SY(__NR_epoll_create1, x0); SUCC_OR_FAIL;
 
    // no such syscall...
    GO(9999, "1e");

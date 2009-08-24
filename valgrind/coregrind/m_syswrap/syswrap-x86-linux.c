@@ -28,6 +28,8 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#if defined(VGP_x86_linux)
+
 /* TODO/FIXME jrs 20050207: assignments to the syscall return result
    in interrupted_syscall() need to be reviewed.  They don't seem
    to assign the shadow state.
@@ -276,7 +278,8 @@ static SysRes do_clone ( ThreadId ptid,
 	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
 		     ctid, seg->start, VG_PGROUNDUP(esp));
    } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with ESP(%#lx) unmapped\n",
+      VG_(message)(Vg_UserMsg,
+                   "!? New thread %d starts with ESP(%#lx) unmapped\n",
 		   ctid, esp);
       ctst->client_stack_szB  = 0;
    }
@@ -832,38 +835,47 @@ PRE(old_select)
 PRE(sys_clone)
 {
    UInt cloneflags;
+   Bool badarg = False;
 
    PRINT("sys_clone ( %lx, %#lx, %#lx, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
-   PRE_REG_READ5(int, "clone",
+   PRE_REG_READ2(int, "clone",
                  unsigned long, flags,
-                 void *, child_stack,
-                 int *, parent_tidptr,
-                 vki_modify_ldt_t *, tlsinfo,
-                 int *, child_tidptr);
+                 void *, child_stack);
 
    if (ARG1 & VKI_CLONE_PARENT_SETTID) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA3("clone", int *, parent_tidptr);
+      }
       PRE_MEM_WRITE("clone(parent_tidptr)", ARG3, sizeof(Int));
       if (!VG_(am_is_valid_for_client)(ARG3, sizeof(Int), 
                                              VKI_PROT_WRITE)) {
-         SET_STATUS_Failure( VKI_EFAULT );
-         return;
-      }
-   }
-   if (ARG1 & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID)) {
-      PRE_MEM_WRITE("clone(child_tidptr)", ARG5, sizeof(Int));
-      if (!VG_(am_is_valid_for_client)(ARG5, sizeof(Int), 
-                                             VKI_PROT_WRITE)) {
-         SET_STATUS_Failure( VKI_EFAULT );
-         return;
+         badarg = True;
       }
    }
    if (ARG1 & VKI_CLONE_SETTLS) {
-      PRE_MEM_READ("clone(tls_user_desc)", ARG4, sizeof(vki_modify_ldt_t));
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA4("clone", vki_modify_ldt_t *, tlsinfo);
+      }
+      PRE_MEM_READ("clone(tlsinfo)", ARG4, sizeof(vki_modify_ldt_t));
       if (!VG_(am_is_valid_for_client)(ARG4, sizeof(vki_modify_ldt_t), 
                                              VKI_PROT_READ)) {
-         SET_STATUS_Failure( VKI_EFAULT );
-         return;
+         badarg = True;
       }
+   }
+   if (ARG1 & (VKI_CLONE_CHILD_SETTID | VKI_CLONE_CHILD_CLEARTID)) {
+      if (VG_(tdict).track_pre_reg_read) {
+         PRA5("clone", int *, child_tidptr);
+      }
+      PRE_MEM_WRITE("clone(child_tidptr)", ARG5, sizeof(Int));
+      if (!VG_(am_is_valid_for_client)(ARG5, sizeof(Int), 
+                                             VKI_PROT_WRITE)) {
+         badarg = True;
+      }
+   }
+
+   if (badarg) {
+      SET_STATUS_Failure( VKI_EFAULT );
+      return;
    }
 
    cloneflags = ARG1;
@@ -928,13 +940,13 @@ PRE(sys_clone)
    default:
    reject:
       /* should we just ENOSYS? */
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx", ARG1);
-      VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:");
-      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)");
-      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork");
-      VG_(message)(Vg_UserMsg, " - for the Quadrics Elan3 user-space driver");
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "Unsupported clone() flags: 0x%lx\n", ARG1);
+      VG_(message)(Vg_UserMsg, "\n");
+      VG_(message)(Vg_UserMsg, "The only supported clone() uses are:\n");
+      VG_(message)(Vg_UserMsg, " - via a threads library (LinuxThreads or NPTL)\n");
+      VG_(message)(Vg_UserMsg, " - via the implementation of fork or vfork\n");
+      VG_(message)(Vg_UserMsg, " - for the Quadrics Elan3 user-space driver\n");
       VG_(unimplemented)
          ("Valgrind does not support general clone().");
    }
@@ -1233,7 +1245,7 @@ PRE(sys_ipc)
       ML_(generic_PRE_sys_shmctl)( tid, ARG2, ARG3, ARG5 );
       break;
    default:
-      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld", ARG1 );
+      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld\n", ARG1 );
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
    }   
@@ -1298,7 +1310,7 @@ POST(sys_ipc)
       break;
    default:
       VG_(message)(Vg_DebugMsg,
-		   "FATAL: unhandled syscall(ipc) %ld",
+		   "FATAL: unhandled syscall(ipc) %ld\n",
 		   ARG1 );
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
@@ -1560,7 +1572,7 @@ PRE(sys_socketcall)
    }
 
    default:
-      VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx",ARG1);
+      VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx\n",ARG1);
       SET_STATUS_Failure( VKI_EINVAL );
       break;
    }
@@ -1663,7 +1675,7 @@ POST(sys_socketcall)
      break;
 
    default:
-      VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx",ARG1);
+      VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx\n",ARG1);
       VG_(core_panic)("... bye!\n");
       break; /*NOTREACHED*/
    }
@@ -2232,13 +2244,13 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_signalfd,          sys_signalfd),         // 321
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 322
    LINX_(__NR_eventfd,           sys_eventfd),          // 323
-//   LINX_(__NR_fallocate,        sys_ni_syscall),        // 324
+   //LINX_(__NR_fallocate,         sys_fallocate),        // 324
 
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 325
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 326
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 327
    LINX_(__NR_eventfd2,          sys_eventfd2),         // 328
-   //   (__NR_epoll_create1,     sys_ni_syscall)        // 329
+   LINXY(__NR_epoll_create1,     sys_epoll_create1),     // 329
 
    //   (__NR_dup3,              sys_ni_syscall)        // 330
    LINXY(__NR_pipe2,             sys_pipe2)             // 331
@@ -2247,6 +2259,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
 const UInt ML_(syscall_table_size) = 
             sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+
+#endif // defined(VGP_x86_linux)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

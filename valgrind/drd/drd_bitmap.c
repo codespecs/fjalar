@@ -64,8 +64,6 @@ struct bitmap* DRD_(bm_new)()
    bm = VG_(malloc)("drd.bitmap.bn.1", sizeof(*bm));
    DRD_(bm_init)(bm);
 
-   s_bitmap_creation_count++;
-
    return bm;
 }
 
@@ -83,7 +81,8 @@ void DRD_(bm_init)(struct bitmap* const bm)
    unsigned i;
 
    tl_assert(bm);
-   /* Cache initialization. a1 is initialized with a value that never can
+   /*
+    * Cache initialization. a1 is initialized with a value that never can
     * match any valid address: the upper (ADDR_LSB_BITS + ADDR_IGNORED_BITS)
     * bits of a1 are always zero for a valid cache entry.
     */
@@ -92,8 +91,10 @@ void DRD_(bm_init)(struct bitmap* const bm)
       bm->cache[i].a1  = ~(UWord)1;
       bm->cache[i].bm2 = 0;
    }
-   bm->oset = VG_(OSetGen_Create)(0, 0, VG_(malloc), "drd.bitmap.bn.2",
-                                  VG_(free));
+   bm->oset = VG_(OSetGen_Create)(0, 0, DRD_(bm2_alloc_node),
+                                  "drd.bitmap.bn.2", DRD_(bm2_free_node));
+
+   s_bitmap_creation_count++;
 }
 
 /** Free the memory allocated by DRD_(bm_init)(). */
@@ -1225,13 +1226,6 @@ ULong DRD_(bm_get_bitmap2_creation_count)(void)
 ULong DRD_(bm_get_bitmap2_merge_count)(void)
 {
    return s_bitmap2_merge_count;
-}
-
-/** Clear the bitmap contents. */
-static void bm2_clear(struct bitmap2* const bm2)
-{
-   tl_assert(bm2);
-   VG_(memset)(&bm2->bm1, 0, sizeof(bm2->bm1));
 }
 
 /** Compute *bm2l |= *bm2r. */

@@ -45,12 +45,8 @@
  * source files.
  */
 enum {
-   /* Ask drd to suppress data race reports on all currently allocated stack */
-   /* data of the current thread.                                            */
-   VG_USERREQ__DRD_SUPPRESS_CURRENT_STACK = VG_USERREQ_TOOL_BASE('D', 'r'),
-   /* args: none */
    /* To ask the drd tool to start a new segment in the specified thread. */
-   VG_USERREQ__DRD_START_NEW_SEGMENT,
+   VG_USERREQ__DRD_START_NEW_SEGMENT = VG_USERREQ_TOOL_BASE('D', 'r'),
    /* args: POSIX thread ID. */
 
    /* Tell drd the pthread_t of the running thread. */
@@ -61,6 +57,13 @@ enum {
    /* VG_USERREQ__POST_THREAD_JOIN is performed. */
    VG_USERREQ__SET_JOINABLE,
    /* args: pthread_t, Bool */
+
+   /* Tell DRD that the calling thread is about to enter pthread_create(). */
+   VG_USERREQ__ENTERING_PTHREAD_CREATE,
+   /* args: (none) */
+   /* Tell DRD that the calling thread has left pthread_create(). */
+   VG_USERREQ__LEFT_PTHREAD_CREATE,
+   /* args: (none) */
 
    /* To notify drd that a thread finished because */
    /* pthread_thread_join() was called on it. */
@@ -142,6 +145,18 @@ enum {
    /* args: Addr sem */
    /* To notify the drd tool of a sem_destroy call. */
    VG_USERREQ__POST_SEM_DESTROY,
+   /* args: Addr sem */
+   /* To notify the drd tool of a sem_open call. */
+   VG_USERREQ__PRE_SEM_OPEN,
+   /* args: Addr name, Word oflag, Word mode, Word value */
+   /* To notify the drd tool of a sem_open call. */
+   VG_USERREQ__POST_SEM_OPEN,
+   /* args: Addr sem, Word oflag, Word mode, Word value */
+   /* To notify the drd tool of a sem_close call. */
+   VG_USERREQ__PRE_SEM_CLOSE,
+   /* args: Addr sem */
+   /* To notify the drd tool of a sem_close call. */
+   VG_USERREQ__POST_SEM_CLOSE,
    /* args: Addr sem */
    /* To notify the drd tool of a sem_wait call. */
    VG_USERREQ__PRE_SEM_WAIT,

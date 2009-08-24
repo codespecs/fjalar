@@ -138,7 +138,7 @@ static Bool DRD_(process_cmd_line_option)(Char* arg)
    }
    if (segment_merging != -1)
       DRD_(thread_set_segment_merging)(segment_merging);
-   if (segment_merge_interval != 1)
+   if (segment_merge_interval != -1)
       DRD_(thread_set_segment_merge_interval)(segment_merge_interval);
    if (show_confl_seg != -1)
       DRD_(set_show_conflicting_segments)(show_confl_seg);
@@ -199,11 +199,6 @@ static void DRD_(print_usage)(void)
 "        is held longer than the specified time (in milliseconds).\n"
 "    --show-confl-seg=yes|no   Show conflicting segments in race reports [yes].\n"
 "    --show-stack-usage=yes|no Print stack usage at thread exit time [no].\n"
-"    --var-info=yes|no         Display the names of global, static and\n"
-"        stack variables when a race is reported on such a variable. This\n"
-"        information is by default not displayed since for big programs\n"
-"        reading in all debug information at once may cause an out of\n"
-"        memory error [no].\n"
 "\n"
 "  drd options for monitoring process behavior:\n"
 "    --trace-addr=<address>    Trace all load and store activity for the.\n"
@@ -216,7 +211,6 @@ static void DRD_(print_usage)(void)
 "    --trace-semaphore=yes|no  Trace all semaphore activity [no].\n",
 DRD_(thread_get_segment_merge_interval)()
 );
-   VG_(replacement_malloc_print_usage)();
 }
 
 static void DRD_(print_debug_usage)(void)
@@ -232,7 +226,6 @@ static void DRD_(print_debug_usage)(void)
 "    --trace-segment=yes|no    Trace segment actions [no].\n"
 "    --trace-suppr=yes|no      Trace all address suppression actions [no].\n"
 );
-   VG_(replacement_malloc_print_debug_usage)();
 }
 
 
@@ -295,6 +288,11 @@ void drd_start_using_mem(const Addr a1, const SizeT len)
    if (UNLIKELY(DRD_(any_address_is_traced)()))
    {
       DRD_(trace_mem_access)(a1, len, eStart);
+   }
+   
+   if (UNLIKELY(DRD_(running_thread_inside_pthread_create)()))
+   {
+      DRD_(start_suppression)(a1, a1 + len, "pthread_create()");
    }
 }
 
@@ -367,32 +365,32 @@ static void DRD_(suppress_relocation_conflicts)(const Addr a, const SizeT len)
    VG_(printf)("Evaluating range @ 0x%lx size %ld\n", a, len);
 #endif
 
-   for (di = VG_(next_seginfo)(0); di; di = VG_(next_seginfo)(di))
+   for (di = VG_(next_DebugInfo)(0); di; di = VG_(next_DebugInfo)(di))
    {
       Addr  avma;
       SizeT size;
 
-      avma = VG_(seginfo_get_plt_avma)(di);
-      size = VG_(seginfo_get_plt_size)(di);
+      avma = VG_(DebugInfo_get_plt_avma)(di);
+      size = VG_(DebugInfo_get_plt_size)(di);
       tl_assert((avma && size) || (avma == 0 && size == 0));
       if (size > 0)
       {
 #if 0
          VG_(printf)("Suppressing .plt @ 0x%lx size %ld\n", avma, size);
 #endif
-         tl_assert(VG_(seginfo_sect_kind)(NULL, 0, avma) == Vg_SectPLT);
+         tl_assert(VG_(DebugInfo_sect_kind)(NULL, 0, avma) == Vg_SectPLT);
          DRD_(start_suppression)(avma, avma + size, ".plt");
       }
 
-      avma = VG_(seginfo_get_gotplt_avma)(di);
-      size = VG_(seginfo_get_gotplt_size)(di);
+      avma = VG_(DebugInfo_get_gotplt_avma)(di);
+      size = VG_(DebugInfo_get_gotplt_size)(di);
       tl_assert((avma && size) || (avma == 0 && size == 0));
       if (size > 0)
       {
 #if 0
          VG_(printf)("Suppressing .got.plt @ 0x%lx size %ld\n", avma, size);
 #endif
-         tl_assert(VG_(seginfo_sect_kind)(NULL, 0, avma) == Vg_SectGOTPLT);
+         tl_assert(VG_(DebugInfo_sect_kind)(NULL, 0, avma) == Vg_SectGOTPLT);
          DRD_(start_suppression)(avma, avma + size, ".gotplt");
       }
    }
@@ -468,8 +466,8 @@ void drd_pre_thread_create(const ThreadId creator, const ThreadId created)
    if (DRD_(thread_get_trace_fork_join)())
    {
       VG_(message)(Vg_DebugMsg,
-                   "drd_pre_thread_create creator = %d/%d, created = %d",
-                   creator, drd_creator, created);
+                   "drd_pre_thread_create creator = %d, created = %d\n",
+                   drd_creator, created);
    }
 }
 
@@ -487,8 +485,8 @@ void drd_post_thread_create(const ThreadId vg_created)
    if (DRD_(thread_get_trace_fork_join)())
    {
       VG_(message)(Vg_DebugMsg,
-                   "drd_post_thread_create created = %d/%d",
-                   vg_created, drd_created);
+                   "drd_post_thread_create created = %d\n",
+                   drd_created);
    }
    if (! DRD_(get_check_stack_accesses)())
    {
@@ -510,8 +508,7 @@ static void drd_thread_finished(ThreadId vg_tid)
    if (DRD_(thread_get_trace_fork_join)())
    {
       VG_(message)(Vg_DebugMsg,
-                   "drd_thread_finished tid = %d/%d%s",
-                   vg_tid,
+                   "drd_thread_finished tid = %d%s\n",
                    drd_tid,
                    DRD_(thread_get_joinable)(drd_tid)
                    ? ""
@@ -524,9 +521,8 @@ static void drd_thread_finished(ThreadId vg_tid)
          = (DRD_(thread_get_stack_max)(drd_tid)
             - DRD_(thread_get_stack_min_min)(drd_tid));
       VG_(message)(Vg_UserMsg,
-                   "thread %d/%d%s finished and used %ld bytes out of %ld"
-                   " on its stack. Margin: %ld bytes.",
-                   vg_tid,
+                   "thread %d%s finished and used %ld bytes out of %ld"
+                   " on its stack. Margin: %ld bytes.\n",
                    drd_tid,
                    DRD_(thread_get_joinable)(drd_tid)
                    ? ""
@@ -551,11 +547,10 @@ static void drd_thread_finished(ThreadId vg_tid)
 
 static void DRD_(post_clo_init)(void)
 {
-#  if defined(VGP_x86_linux) || defined(VGP_amd64_linux)        \
-   || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#if defined(VGO_linux) || defined(VGO_darwin)
    /* fine */
-#  else
-   VG_(printf)("\nWARNING: DRD has only been tested on Linux.\n\n");
+#else
+   VG_(printf)("\nWARNING: DRD has not yet been tested on this operating system.\n\n");
 #  endif
 
    if (DRD_(s_var_info))
@@ -573,48 +568,61 @@ static void drd_start_client_code(const ThreadId tid, const ULong bbs_done)
 static void DRD_(fini)(Int exitcode)
 {
    // thread_print_all();
-   if (VG_(clo_verbosity) > 1 || DRD_(s_print_stats))
+   if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
+      VG_(message)(Vg_UserMsg, 
+                   "For counts of detected and suppressed errors, "
+                   "rerun with: -v\n");
+   }
+
+   if (VG_(clo_stats) || DRD_(s_print_stats))
    {
-      ULong update_conflict_set_count;
-      ULong dsnsc;
-      ULong dscvc;
-
-      update_conflict_set_count
-         = DRD_(thread_get_update_conflict_set_count)(&dsnsc, &dscvc);
+      ULong pu = DRD_(thread_get_update_conflict_set_count)();
+      ULong pu_seg_cr = DRD_(thread_get_update_conflict_set_new_sg_count)();
+      ULong pu_mtx_cv = DRD_(thread_get_update_conflict_set_sync_count)();
+      ULong pu_join   = DRD_(thread_get_update_conflict_set_join_count)();
 
       VG_(message)(Vg_UserMsg,
-                   "   thread: %lld context switches"
-                   " / %lld updates of the conflict set",
-                   DRD_(thread_get_context_switch_count)(),
-                   update_conflict_set_count);
+                   "   thread: %lld context switches.\n",
+                   DRD_(thread_get_context_switch_count)());
       VG_(message)(Vg_UserMsg,
-                   "           (%lld new sg + %lld combine vc + %lld csw).",
-                   dsnsc,
-                   dscvc,
-                   update_conflict_set_count - dsnsc - dscvc);
+                   "confl set: %lld full updates and %lld partial updates;\n",
+		   DRD_(thread_get_compute_conflict_set_count)(),
+		   pu);
       VG_(message)(Vg_UserMsg,
-                   " segments: created %lld segments, max %lld alive,"
-                   " %lld discard points.",
+                   "           %lld partial updates during segment creation,\n",
+		   pu_seg_cr);
+      VG_(message)(Vg_UserMsg,
+                   "           %lld because of mutex/sema/cond.var. operations,\n",
+		   pu_mtx_cv);
+      VG_(message)(Vg_UserMsg,
+                   "           %lld because of barrier/rwlock operations and\n",
+		   pu - pu_seg_cr - pu_mtx_cv - pu_join);
+      VG_(message)(Vg_UserMsg,
+                   "           %lld partial updates because of thread join"
+		   " operations.\n",
+		   pu_join);
+      VG_(message)(Vg_UserMsg,
+                   " segments: created %lld segments, max %lld alive,\n",
                    DRD_(sg_get_segments_created_count)(),
-                   DRD_(sg_get_max_segments_alive_count)(),
-                   DRD_(thread_get_discard_ordered_segments_count)());
+                   DRD_(sg_get_max_segments_alive_count)());
       VG_(message)(Vg_UserMsg,
-                   "           %lld merges",
+                   "           %lld discard points and %lld merges.\n",
+                   DRD_(thread_get_discard_ordered_segments_count)(),
                    DRD_(sg_get_segment_merge_count)());
       VG_(message)(Vg_UserMsg,
-                   "           (%lld mutex, %lld rwlock, %lld semaphore,"
-                   " %lld barrier).",
+                   "segmnt cr: %lld mutex, %lld rwlock, %lld semaphore and"
+                   " %lld barrier.\n",
                    DRD_(get_mutex_segment_creation_count)(),
                    DRD_(get_rwlock_segment_creation_count)(),
                    DRD_(get_semaphore_segment_creation_count)(),
                    DRD_(get_barrier_segment_creation_count)());
       VG_(message)(Vg_UserMsg,
-                   "  bitmaps: %lld level 1"
-                   " and %lld level 2 bitmaps were allocated.",
+                   "  bitmaps: %lld level one"
+                   " and %lld level two bitmaps were allocated.\n",
                    DRD_(bm_get_bitmap_creation_count)(),
                    DRD_(bm_get_bitmap2_creation_count)());
       VG_(message)(Vg_UserMsg,
-                   "    mutex: %lld non-recursive lock/unlock events.",
+                   "    mutex: %lld non-recursive lock/unlock events.\n",
                    DRD_(get_mutex_lock_count)());
       DRD_(print_malloc_stats)();
    }
@@ -623,12 +631,6 @@ static void DRD_(fini)(Int exitcode)
 static
 void drd_pre_clo_init(void)
 {
-#if defined(VGO_darwin)
-   // This makes the (all-failing) regtests run much faster.
-   VG_(printf)("DRD doesn't work on Darwin yet, sorry.\n");
-   VG_(exit)(1);
-#endif
-
    // Basic tool stuff.
    VG_(details_name)            ("drd");
    VG_(details_version)         (NULL);
@@ -676,6 +678,12 @@ void drd_pre_clo_init(void)
    DRD_(suppression_init)();
 
    DRD_(clientobj_init)();
+
+   {
+      Char* const smi = VG_(getenv)("DRD_SEGMENT_MERGING_INTERVAL");
+      if (smi)
+         DRD_(thread_set_segment_merge_interval)(VG_(strtoll10)(smi, NULL));
+   }
 }
 
 

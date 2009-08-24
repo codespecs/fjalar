@@ -50,6 +50,8 @@ extern const UInt ML_(mdep_trap_table_size);
 
 void VG_(show_open_ports)(void);
 
+void ML_(sync_mappings)(const HChar *when, const HChar *where, Int num);
+
 // Unix syscalls.  
 // GEN = it uses the generic wrapper
 // NYI = wrapper not yet implemented in Valgrind
@@ -221,7 +223,7 @@ DECL_TEMPLATE(darwin, gethostuuid);             // 142
 // 164
 // NYI quotactl 165
 // old exportfs
-// NYI mount 167
+DECL_TEMPLATE(darwin, mount);                   // 167
 // old ustat
 DECL_TEMPLATE(darwin, csops);                   // 169
 // old table
@@ -336,10 +338,10 @@ DECL_TEMPLATE(darwin, sem_destroy);             // 276
 // NYI umask_extended 278
 DECL_TEMPLATE(darwin, stat_extended);           // 279
 DECL_TEMPLATE(darwin, lstat_extended);          // 280
-// NYI fstat_extended 281
+DECL_TEMPLATE(darwin, fstat_extended);          // 281
 DECL_TEMPLATE(darwin, chmod_extended);          // 282
 DECL_TEMPLATE(darwin, fchmod_extended);         // 283
-// NYI access_extended 284
+DECL_TEMPLATE(darwin, access_extended);         // 284
 DECL_TEMPLATE(darwin, settid);                  // 285
 // NYI gettid 286
 // NYI setsgroups 287
@@ -369,12 +371,12 @@ DECL_TEMPLATE(darwin, settid);                  // 285
 // NYI settid_with_pid 311
 // NYI __pthread_cond_timedwait 312
 // NYI aio_fsync 313
-// NYI aio_return 314
-// NYI aio_suspend 315
+DECL_TEMPLATE(darwin, aio_return);             // 314
+DECL_TEMPLATE(darwin, aio_suspend);            // 315
 // NYI aio_cancel 316
-// NYI aio_error 317
-// NYI aio_read 318
-// NYI aio_write 319
+DECL_TEMPLATE(darwin, aio_error);              // 317
+DECL_TEMPLATE(darwin, aio_read);               // 318
+DECL_TEMPLATE(darwin, aio_write);              // 319
 // NYI lio_listio 320
 // NYI __pthread_cond_wait 321
 // NYI iopolicysys 322
@@ -383,7 +385,7 @@ DECL_TEMPLATE(darwin, settid);                  // 285
 // NYI munlockall 325
 // 326
 DECL_TEMPLATE(darwin, issetugid);               // 327
-// NYI __pthread_kill 328
+DECL_TEMPLATE(darwin, __pthread_kill);          // 328
 DECL_TEMPLATE(darwin, __pthread_sigmask);       // 329
 // NYI __sigwait 330
 DECL_TEMPLATE(darwin, __disable_threadsignal);  // 331
@@ -398,11 +400,11 @@ DECL_TEMPLATE(darwin, fstat64);                 // 339
 DECL_TEMPLATE(darwin, lstat64);                 // 340
 DECL_TEMPLATE(darwin, stat64_extended);         // 341
 DECL_TEMPLATE(darwin, lstat64_extended);        // 342
-// NYI fstat64_extended 343
+DECL_TEMPLATE(darwin, fstat64_extended);        // 343
 DECL_TEMPLATE(darwin, getdirentries64);         // 344
 DECL_TEMPLATE(darwin, statfs64);                // 345
 DECL_TEMPLATE(darwin, fstatfs64);               // 346
-// NYI getfsstat64 347
+DECL_TEMPLATE(darwin, getfsstat64);             // 347
 // NYI __pthread_chdir 348
 // NYI __pthread_fchdir 349
 // NYI audit 350

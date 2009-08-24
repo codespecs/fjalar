@@ -47,15 +47,17 @@ void h_record_arith_error( Seg* seg1, Seg* seg2, HChar* opname );
 void h_record_sysparam_error( ThreadId tid, CorePart part, Char* s,
                               Addr lo, Addr hi, Seg* seglo, Seg* seghi );
 
-Bool pc_eq_Error ( VgRes res, Error* e1, Error* e2 );
-void pc_pp_Error ( Error* err );
+Bool pc_eq_Error           ( VgRes res, Error* e1, Error* e2 );
+void pc_before_pp_Error    ( Error* err );
+void pc_pp_Error           ( Error* err );
 UInt pc_update_Error_extra ( Error* err );
 Bool pc_is_recognised_suppression ( Char* name, Supp *su );
-Bool pc_read_extra_suppression_info ( Int fd, Char* buf, 
-                                      Int nBuf, Supp* su );
+Bool pc_read_extra_suppression_info ( Int fd, Char** bufpp, 
+                                      SizeT* nBufp, Supp* su );
 Bool pc_error_matches_suppression (Error* err, Supp* su);
 Char* pc_get_error_name ( Error* err );
-void pc_print_extra_suppression_info ( Error* err );
+Bool pc_get_extra_suppression_info ( Error* err,
+                                     /*OUT*/Char* buf, Int nBuf );
 
 extern Bool h_clo_partial_loads_ok;
 /* extern Bool h_clo_lossage_check; */

@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <unistd.h>        /* usleep() */
 #include "../../config.h"
 #include "../../drd/drd.h"
 
@@ -59,15 +60,20 @@ static void rwlock_rdlock(rwlock_t* p)
       ;
     if (p->writer_count == 0)
       break;
+#ifdef __APPLE__
+    /* Darwin doesn't have an implementation of pthread_yield(). */
+    usleep(100 * 1000);
+#else
     pthread_yield();
-    __sync_fetch_and_sub(&p->locked, 1);
+#endif
+    (void) __sync_fetch_and_sub(&p->locked, 1);
   }
   p->reader_count++;
   assert(p->reader_count >= 0);
   assert(p->writer_count >= 0);
   assert(p->reader_count == 0 || p->writer_count == 0);
-  __sync_fetch_and_sub(&p->locked, 1);
-  ANNOTATE_RWLOCK_ACQUIRED(p, 0);
+  (void) __sync_fetch_and_sub(&p->locked, 1);
+  ANNOTATE_READERLOCK_ACQUIRED(p);
 }
 
 static void rwlock_wrlock(rwlock_t* p)
@@ -78,15 +84,20 @@ static void rwlock_wrlock(rwlock_t* p)
       ;
     if (p->reader_count == 0)
       break;
+#ifdef __APPLE__
+    /* Darwin doesn't have an implementation of pthread_yield(). */
+    usleep(100 * 1000);
+#else
     pthread_yield();
-    __sync_fetch_and_sub(&p->locked, 1);
+#endif
+    (void) __sync_fetch_and_sub(&p->locked, 1);
   }
   p->writer_count++;
   assert(p->reader_count >= 0);
   assert(p->writer_count >= 0);
   assert(p->reader_count == 0 || p->writer_count == 0);
-  __sync_fetch_and_sub(&p->locked, 1);
-  ANNOTATE_RWLOCK_ACQUIRED(p, 1);
+  (void) __sync_fetch_and_sub(&p->locked, 1);
+  ANNOTATE_WRITERLOCK_ACQUIRED(p);
 }
 
 static void rwlock_unlock(rwlock_t* p)
@@ -96,17 +107,17 @@ static void rwlock_unlock(rwlock_t* p)
   if (p->reader_count > 0)
   {
     p->reader_count--;
-    ANNOTATE_RWLOCK_RELEASED(p, 0);
+    ANNOTATE_READERLOCK_RELEASED(p);
   }
   else
   {
     p->writer_count--;
-    ANNOTATE_RWLOCK_RELEASED(p, 1);
+    ANNOTATE_WRITERLOCK_RELEASED(p);
   }
   assert(p->reader_count >= 0);
   assert(p->writer_count >= 0);
   assert(p->reader_count == 0 || p->writer_count == 0);
-  __sync_fetch_and_sub(&p->locked, 1);
+  (void) __sync_fetch_and_sub(&p->locked, 1);
 }
 
 static void* thread_func(void* arg)

@@ -10,7 +10,7 @@
    This file is part of LibVEX, a library for dynamic binary
    instrumentation and translation.
 
-   Copyright (C) 2004-2008 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
 
    This library is made available under a dual licensing scheme.
 
@@ -66,6 +66,8 @@
                                       continuing */
 #define VEX_TRC_JMP_SIGSEGV    87  /* deliver segv (SIGSEGV) before
                                       continuing */
+#define VEX_TRC_JMP_SIGBUS     93  /* deliver SIGBUS before continuing */
+
 #define VEX_TRC_JMP_EMWARN     63  /* deliver emulation warning before
                                       continuing */
 #define VEX_TRC_JMP_EMFAIL     83  /* emulation fatal error; abort system */

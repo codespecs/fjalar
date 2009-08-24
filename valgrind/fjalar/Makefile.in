@@ -14,8 +14,12 @@
 
 @SET_MAKE@
 
-# This file contains things shared by coregrind/Makefile.am and tool
-# Makefile.am files.  Also auxprogs/Makefile.am.
+# This file should be included (directly or indirectly) by every
+# Makefile.am that builds programs.  And also the top-level Makefile.am.
+
+#----------------------------------------------------------------------------
+# Global stuff
+#----------------------------------------------------------------------------
 
 
 srcdir = @srcdir@
@@ -42,17 +46,18 @@ build_triplet = @build@
 host_triplet = @host@
 DIST_COMMON = README $(mcinclude_HEADERS) $(noinst_HEADERS) \
 	$(srcdir)/Makefile.am $(srcdir)/Makefile.in \
-	$(top_srcdir)/Makefile.all.am \
-	$(top_srcdir)/Makefile.core-tool.am \
-	$(top_srcdir)/Makefile.flags.am $(top_srcdir)/Makefile.tool.am
-noinst_PROGRAMS = $(am__EXEEXT_1) $(am__EXEEXT_2) $(am__EXEEXT_3) \
-	$(am__EXEEXT_4)
-@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_2 = fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
-@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__append_3 = fjalar-x86-darwin vgpreload_fjalar-x86-darwin.so
-@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__append_4 = vgpreload_fjalar-x86-darwin.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@am__append_5 = fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@am__append_6 = vgpreload_fjalar-amd64-darwin.so
+	$(top_srcdir)/Makefile.all.am $(top_srcdir)/Makefile.tool.am
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_1 = $(top_builddir)/valt_load_address_x86_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_2 = $(top_builddir)/valt_load_address_x86_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_3 = $(top_builddir)/valt_load_address_amd64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_4 = $(top_builddir)/valt_load_address_amd64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@am__append_5 = $(top_builddir)/valt_load_address_ppc32_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX_TRUE@am__append_6 = $(top_builddir)/valt_load_address_ppc32_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@am__append_7 = $(top_builddir)/valt_load_address_ppc64_linux.lds
+@VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX_TRUE@am__append_8 = $(top_builddir)/valt_load_address_ppc64_linux.lds
+noinst_PROGRAMS = $(am__EXEEXT_1) $(am__EXEEXT_2)
+@VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@am__append_9 = fjalar-x86-linux vgpreload_fjalar-x86-linux.so
+@VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__append_10 = fjalar-amd64-linux vgpreload_fjalar-amd64-linux.so
 subdir = fjalar
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
@@ -65,14 +70,7 @@ CONFIG_CLEAN_FILES =
 @VGCONF_PLATFORMS_INCLUDE_X86_LINUX_TRUE@	vgpreload_fjalar-x86-linux.so$(EXEEXT)
 @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@am__EXEEXT_2 = fjalar-amd64-linux$(EXEEXT) \
 @VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX_TRUE@	vgpreload_fjalar-amd64-linux.so$(EXEEXT)
-@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@am__EXEEXT_3 = fjalar-x86-darwin$(EXEEXT) \
-@VGCONF_PLATFORMS_INCLUDE_X86_DARWIN_TRUE@	vgpreload_fjalar-x86-darwin.so$(EXEEXT)
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@am__EXEEXT_4 = fjalar-amd64-darwin$(EXEEXT) \
-@VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN_TRUE@	vgpreload_fjalar-amd64-darwin.so$(EXEEXT)
 PROGRAMS = $(noinst_PROGRAMS)
-fjalar_amd64_darwin_SOURCES = fjalar-amd64-darwin.c
-fjalar_amd64_darwin_OBJECTS = fjalar-amd64-darwin.$(OBJEXT)
-fjalar_amd64_darwin_LDADD = $(LDADD)
 am__objects_1 = fjalar_amd64_linux-mc_leakcheck.$(OBJEXT) \
 	fjalar_amd64_linux-mc_malloc_wrappers.$(OBJEXT) \
 	fjalar_amd64_linux-mc_main.$(OBJEXT) \
@@ -99,14 +97,6 @@ am__objects_1 = fjalar_amd64_linux-mc_leakcheck.$(OBJEXT) \
 	fjalar_amd64_linux-dyncomp_translate.$(OBJEXT)
 am_fjalar_amd64_linux_OBJECTS = $(am__objects_1)
 fjalar_amd64_linux_OBJECTS = $(am_fjalar_amd64_linux_OBJECTS)
-am__DEPENDENCIES_1 =  \
-	$(top_builddir)/coregrind/libcoregrind-amd64-linux.a \
-	@VEX_DIR@/libvex-amd64-linux.a
-am__DEPENDENCIES_2 =
-am__DEPENDENCIES_3 = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2)
-fjalar_x86_darwin_SOURCES = fjalar-x86-darwin.c
-fjalar_x86_darwin_OBJECTS = fjalar-x86-darwin.$(OBJEXT)
-fjalar_x86_darwin_LDADD = $(LDADD)
 am__objects_2 = fjalar_x86_linux-mc_leakcheck.$(OBJEXT) \
 	fjalar_x86_linux-mc_malloc_wrappers.$(OBJEXT) \
 	fjalar_x86_linux-mc_main.$(OBJEXT) \
@@ -133,35 +123,17 @@ am__objects_2 = fjalar_x86_linux-mc_leakcheck.$(OBJEXT) \
 	fjalar_x86_linux-dyncomp_translate.$(OBJEXT)
 am_fjalar_x86_linux_OBJECTS = $(am__objects_2)
 fjalar_x86_linux_OBJECTS = $(am_fjalar_x86_linux_OBJECTS)
-am__DEPENDENCIES_4 =  \
-	$(top_builddir)/coregrind/libcoregrind-x86-linux.a \
-	@VEX_DIR@/libvex-x86-linux.a
-am__DEPENDENCIES_5 = $(am__DEPENDENCIES_4) $(am__DEPENDENCIES_2)
 am__objects_3 =  \
-	vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.$(OBJEXT) \
-	vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.$(OBJEXT)
-am_vgpreload_fjalar_amd64_darwin_so_OBJECTS = $(am__objects_3)
-vgpreload_fjalar_amd64_darwin_so_OBJECTS =  \
-	$(am_vgpreload_fjalar_amd64_darwin_so_OBJECTS)
-vgpreload_fjalar_amd64_darwin_so_LDADD = $(LDADD)
-am__objects_4 =  \
 	vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.$(OBJEXT) \
 	vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.$(OBJEXT)
-am_vgpreload_fjalar_amd64_linux_so_OBJECTS = $(am__objects_4)
+am_vgpreload_fjalar_amd64_linux_so_OBJECTS = $(am__objects_3)
 vgpreload_fjalar_amd64_linux_so_OBJECTS =  \
 	$(am_vgpreload_fjalar_amd64_linux_so_OBJECTS)
 vgpreload_fjalar_amd64_linux_so_LDADD = $(LDADD)
-am__objects_5 =  \
-	vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.$(OBJEXT) \
-	vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.$(OBJEXT)
-am_vgpreload_fjalar_x86_darwin_so_OBJECTS = $(am__objects_5)
-vgpreload_fjalar_x86_darwin_so_OBJECTS =  \
-	$(am_vgpreload_fjalar_x86_darwin_so_OBJECTS)
-vgpreload_fjalar_x86_darwin_so_LDADD = $(LDADD)
-am__objects_6 =  \
+am__objects_4 =  \
 	vgpreload_fjalar_x86_linux_so-mc_replace_strmem.$(OBJEXT) \
 	vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.$(OBJEXT)
-am_vgpreload_fjalar_x86_linux_so_OBJECTS = $(am__objects_6)
+am_vgpreload_fjalar_x86_linux_so_OBJECTS = $(am__objects_4)
 vgpreload_fjalar_x86_linux_so_OBJECTS =  \
 	$(am_vgpreload_fjalar_x86_linux_so_OBJECTS)
 vgpreload_fjalar_x86_linux_so_LDADD = $(LDADD)
@@ -172,17 +144,12 @@ COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
-SOURCES = fjalar-amd64-darwin.c $(fjalar_amd64_linux_SOURCES) \
-	fjalar-x86-darwin.c $(fjalar_x86_linux_SOURCES) \
-	$(vgpreload_fjalar_amd64_darwin_so_SOURCES) \
+SOURCES = $(fjalar_amd64_linux_SOURCES) $(fjalar_x86_linux_SOURCES) \
 	$(vgpreload_fjalar_amd64_linux_so_SOURCES) \
-	$(vgpreload_fjalar_x86_darwin_so_SOURCES) \
 	$(vgpreload_fjalar_x86_linux_so_SOURCES)
-DIST_SOURCES = fjalar-amd64-darwin.c $(fjalar_amd64_linux_SOURCES) \
-	fjalar-x86-darwin.c $(fjalar_x86_linux_SOURCES) \
-	$(vgpreload_fjalar_amd64_darwin_so_SOURCES) \
+DIST_SOURCES = $(fjalar_amd64_linux_SOURCES) \
+	$(fjalar_x86_linux_SOURCES) \
 	$(vgpreload_fjalar_amd64_linux_so_SOURCES) \
-	$(vgpreload_fjalar_x86_darwin_so_SOURCES) \
 	$(vgpreload_fjalar_x86_linux_so_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
 	html-recursive info-recursive install-data-recursive \
@@ -237,7 +204,6 @@ DEFAULT_SUPP = @DEFAULT_SUPP@
 DEFS = @DEFS@
 DEPDIR = @DEPDIR@
 DIFF = @DIFF@
-DISTCHECK_CONFIGURE_FLAGS = @DISTCHECK_CONFIGURE_FLAGS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
@@ -253,7 +219,9 @@ FLAG_MSSE = @FLAG_MSSE@
 FLAG_UNLIMITED_INLINE_UNIT_GROWTH = @FLAG_UNLIMITED_INLINE_UNIT_GROWTH@
 FLAG_WDECL_AFTER_STMT = @FLAG_WDECL_AFTER_STMT@
 FLAG_W_EXTRA = @FLAG_W_EXTRA@
+FLAG_W_NO_EMPTY_BODY = @FLAG_W_NO_EMPTY_BODY@
 FLAG_W_NO_FORMAT_ZERO_LENGTH = @FLAG_W_NO_FORMAT_ZERO_LENGTH@
+FLAG_W_NO_UNINITIALIZED = @FLAG_W_NO_UNINITIALIZED@
 GDB = @GDB@
 GLIBC_VERSION = @GLIBC_VERSION@
 GREP = @GREP@
@@ -291,8 +259,6 @@ MAINTAINER_MODE_FALSE = @MAINTAINER_MODE_FALSE@
 MAINTAINER_MODE_TRUE = @MAINTAINER_MODE_TRUE@
 MAKEINFO = @MAKEINFO@
 MPI_CC = @MPI_CC@
-OBJC = @OBJC@
-OBJCFLAGS = @OBJCFLAGS@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -312,7 +278,6 @@ SHELL = @SHELL@
 STRIP = @STRIP@
 VALT_LOAD_ADDRESS = @VALT_LOAD_ADDRESS@
 VERSION = @VERSION@
-VEX_DIR = @VEX_DIR@
 VGCONF_ARCHS_INCLUDE_AMD64_FALSE = @VGCONF_ARCHS_INCLUDE_AMD64_FALSE@
 VGCONF_ARCHS_INCLUDE_AMD64_TRUE = @VGCONF_ARCHS_INCLUDE_AMD64_TRUE@
 VGCONF_ARCHS_INCLUDE_PPC32_FALSE = @VGCONF_ARCHS_INCLUDE_PPC32_FALSE@
@@ -352,7 +317,6 @@ VGCONF_PLATFORM_PRI_CAPS = @VGCONF_PLATFORM_PRI_CAPS@
 VGCONF_PLATFORM_SEC_CAPS = @VGCONF_PLATFORM_SEC_CAPS@
 ac_ct_CC = @ac_ct_CC@
 ac_ct_CXX = @ac_ct_CXX@
-ac_ct_OBJC = @ac_ct_OBJC@
 am__fastdepCC_FALSE = @am__fastdepCC_FALSE@
 am__fastdepCC_TRUE = @am__fastdepCC_TRUE@
 am__fastdepCXX_FALSE = @am__fastdepCXX_FALSE@
@@ -398,21 +362,30 @@ sharedstatedir = @sharedstatedir@
 sysconfdir = @sysconfdir@
 target_alias = @target_alias@
 SUBDIRS = .
-valdir = $(libdir)/valgrind
 inplacedir = $(top_builddir)/.in_place
+
+#----------------------------------------------------------------------------
+# Flags
+#----------------------------------------------------------------------------
 
 # Baseline flags for all compilations.  Aim here is to maximise
 # performance and get whatever useful warnings we can out of gcc.
-AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
-                 -Wpointer-arith -Wstrict-prototypes -Wmissing-declarations \
-		 @FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
-                 -fno-strict-aliasing
+AM_CFLAGS_BASE = \
+	-O2 -g \
+	-Wall \
+	-Wmissing-prototypes \
+	-Wshadow \
+	-Wpointer-arith \
+	-Wstrict-prototypes \
+	-Wmissing-declarations \
+	@FLAG_W_NO_FORMAT_ZERO_LENGTH@ \
+	-fno-strict-aliasing
 
 @VGCONF_OS_IS_DARWIN_FALSE@AM_CFLAGS_PIC = -fpic -O -g -fno-omit-frame-pointer -fno-strict-aliasing
 
 # These flags are used for building the preload shared objects.
 # The aim is to give reasonable performance but also to have good
-# stack traces, since users often see stack traces extending
+# stack traces, since users often see stack traces extending 
 # into (and through) the preloads.
 @VGCONF_OS_IS_DARWIN_TRUE@AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing -mno-dynamic-no-pic
 
@@ -428,17 +401,23 @@ AM_CFLAGS_BASE = -g -Wmissing-prototypes -Wall -Wshadow \
 # AM_CPPFLAGS_<PLATFORM> in each AM_CCASFLAGS_<PLATFORM> variable.  This
 # means some of the flags are duplicated on systems with newer versions of
 # automake, but this does not really matter and seems hard to avoid.
-AM_CPPFLAGS_COMMON = \
-		-I$(top_srcdir) \
-		-I$(top_srcdir)/include \
-		-I@VEX_DIR@/pub
+AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
+ 	-I$(top_srcdir) \
+ 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/VEX/pub \
+	-DVGA_@VGCONF_ARCH_PRI@=1 \
+	-DVGO_@VGCONF_OS@=1 \
+	-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1
+
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ = \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir) \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@ 	-I$(top_srcdir)/include \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-I$(top_srcdir)/VEX/pub \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGA_@VGCONF_ARCH_SEC@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGO_@VGCONF_OS@=1 \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	-DVGP_@VGCONF_ARCH_SEC@_@VGCONF_OS@=1
 
 AM_FLAG_M3264_X86_LINUX = @FLAG_M32@
-AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_x86=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_x86_linux=1
-
 
 # PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
 
@@ -448,68 +427,33 @@ AM_CPPFLAGS_X86_LINUX = $(AM_CPPFLAGS_COMMON) \
 AM_CFLAGS_X86_LINUX := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
 AM_CCASFLAGS_X86_LINUX = $(AM_CPPFLAGS_X86_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_AMD64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_amd64=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_amd64_linux=1
-
 AM_CFLAGS_AMD64_LINUX = @FLAG_M64@ -fomit-frame-pointer \
 	@PREFERRED_STACK_BOUNDARY@ $(AM_CFLAGS_BASE) -g -O0 \
 	-fno-omit-frame-pointer -Iinclude -W -Wall
 AM_CCASFLAGS_AMD64_LINUX = $(AM_CPPFLAGS_AMD64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
-AM_CPPFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_COMMON) \
-		-DVGA_ppc32=1 \
-		-DVGO_linux=1 \
-		-DVGP_ppc32_linux=1
-
 AM_CFLAGS_PPC32_LINUX = @FLAG_M32@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_LINUX = $(AM_CPPFLAGS_PPC32_LINUX) @FLAG_M32@ -g
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
-AM_CPPFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc64=1 \
-			    -DVGO_linux=1 \
-			    -DVGP_ppc64_linux=1
-
 AM_CFLAGS_PPC64_LINUX = @FLAG_M64@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_LINUX = $(AM_CPPFLAGS_PPC64_LINUX) @FLAG_M64@ -g
 AM_FLAG_M3264_PPC32_AIX5 = @FLAG_MAIX32@
-AM_CPPFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc32=1 \
-			    -DVGO_aix5=1 \
-			    -DVGP_ppc32_aix5=1
-
 AM_CFLAGS_PPC32_AIX5 = @FLAG_MAIX32@ -mcpu=powerpc $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_AIX5 = $(AM_CPPFLAGS_PPC32_AIX5) \
 			    @FLAG_MAIX32@ -mcpu=powerpc -g
 
 AM_FLAG_M3264_PPC64_AIX5 = @FLAG_MAIX64@
-AM_CPPFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_ppc64=1 \
-			    -DVGO_aix5=1 \
-			    -DVGP_ppc64_aix5=1
-
 AM_CFLAGS_PPC64_AIX5 = @FLAG_MAIX64@ -mcpu=powerpc64 $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_AIX5 = $(AM_CPPFLAGS_PPC64_AIX5) \
 			    @FLAG_MAIX64@ -mcpu=powerpc64 -g
 
 AM_FLAG_M3264_X86_DARWIN = -arch i386
-AM_CPPFLAGS_X86_DARWIN = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_x86=1 \
-			    -DVGO_darwin=1 \
-			    -DVGP_x86_darwin=1
-
 AM_CFLAGS_X86_DARWIN = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
 			    -mmacosx-version-min=10.5 -fno-stack-protector \
 			    -mdynamic-no-pic
 
 AM_CCASFLAGS_X86_DARWIN = $(AM_CPPFLAGS_X86_DARWIN) -arch i386 -g
 AM_FLAG_M3264_AMD64_DARWIN = -arch x86_64
-AM_CPPFLAGS_AMD64_DARWIN = $(AM_CPPFLAGS_COMMON) \
-			    -DVGA_amd64=1 \
-			    -DVGO_darwin=1 \
-			    -DVGP_amd64_darwin=1
-
 AM_CFLAGS_AMD64_DARWIN = $(WERROR) -arch x86_64 $(AM_CFLAGS_BASE) \
 			    -mmacosx-version-min=10.5 -fno-stack-protector
 
@@ -526,7 +470,7 @@ AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 @VGCONF_HAVE_PLATFORM_SEC_FALSE@AM_FLAG_M3264_SEC = 
 @VGCONF_HAVE_PLATFORM_SEC_TRUE@AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_@VGCONF_PLATFORM_SEC_CAPS@)
 
-# Baseline link flags for making dynamic shared objects.
+# Baseline link flags for making vgpreload shared objects.
 #
 PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
 PRELOAD_LDFLAGS_COMMON_AIX5 = -nodefaultlibs -shared -Wl,-G -Wl,-bnogc
@@ -539,6 +483,78 @@ PRELOAD_LDFLAGS_PPC32_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX32@
 PRELOAD_LDFLAGS_PPC64_AIX5 = $(PRELOAD_LDFLAGS_COMMON_AIX5)  @FLAG_MAIX64@
 PRELOAD_LDFLAGS_X86_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
 PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
+
+#----------------------------------------------------------------------------
+# <tool>-<platform> stuff
+#----------------------------------------------------------------------------
+TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@ = \
+	$(top_builddir)/coregrind/libcoregrind-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a \
+	$(top_builddir)/VEX/libvex-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a
+
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@ = \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	$(top_builddir)/coregrind/libcoregrind-@VGCONF_ARCH_SEC@-@VGCONF_OS@.a \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	$(top_builddir)/VEX/libvex-@VGCONF_ARCH_SEC@-@VGCONF_OS@.a
+
+TOOL_LDADD_COMMON = -lgcc
+TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@ = \
+	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@) $(TOOL_LDADD_COMMON)
+
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@ = \
+@VGCONF_HAVE_PLATFORM_SEC_TRUE@	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@) $(TOOL_LDADD_COMMON)
+
+TOOL_LDFLAGS_COMMON_LINUX = -static \
+	-Wl,-defsym,valt_load_address=@VALT_LOAD_ADDRESS@ \
+	-nodefaultlibs -nostartfiles -u _start
+
+TOOL_LDFLAGS_COMMON_AIX5 = -static -Wl,-e_start_valgrind
+TOOL_LDFLAGS_COMMON_DARWIN = -nodefaultlibs -nostartfiles \
+	-Wl,-u,__start -Wl,-e,__start -Wl,-bind_at_load /usr/lib/dyld
+
+TOOL_LDFLAGS_X86_LINUX = \
+	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M32@ \
+	-Wl,-T,$(top_builddir)/valt_load_address_x86_linux.lds
+
+TOOL_LDFLAGS_AMD64_LINUX = \
+	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M64@ \
+	-Wl,-T,$(top_builddir)/valt_load_address_amd64_linux.lds
+
+TOOL_LDFLAGS_PPC32_LINUX = \
+	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M32@ \
+	-Wl,-T,$(top_builddir)/valt_load_address_ppc32_linux.lds
+
+TOOL_LDFLAGS_PPC64_LINUX = \
+	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M64@ \
+	-Wl,-T,$(top_builddir)/valt_load_address_ppc64_linux.lds
+
+TOOL_LDFLAGS_PPC32_AIX5 = \
+	$(TOOL_LDFLAGS_COMMON_AIX5) @FLAG_MAIX32@
+
+TOOL_LDFLAGS_PPC64_AIX5 = \
+	$(TOOL_LDFLAGS_COMMON_AIX5) @FLAG_MAIX64@ -Wl,-bbigtoc
+
+TOOL_LDFLAGS_X86_DARWIN = \
+	$(TOOL_LDFLAGS_COMMON_DARWIN) -arch i386 \
+	-Wl,-seg1addr,0xf0080000 \
+	-Wl,-stack_addr,0xf0080000 -Wl,-stack_size,0x80000 \
+	-Wl,-pagezero_size,0xf0000000
+
+
+# pagezero can't be unmapped and remapped. Use stack instead.
+# GrP fixme no stack guard
+TOOL_LDFLAGS_AMD64_DARWIN = \
+	$(TOOL_LDFLAGS_COMMON_DARWIN) -arch x86_64 \
+	-Wl,-seg1addr,0x7fff55000000 \
+	-Wl,-stack_addr,0x7fff50080000 -Wl,-stack_size,0x7ffe50080000 \
+	-Wl,-pagezero_size,0x100000000
+
+BUILT_SOURCES = $(am__append_1) $(am__append_3) $(am__append_5) \
+	$(am__append_7)
+CLEANFILES = $(am__append_2) $(am__append_4) $(am__append_6) \
+	$(am__append_8)
+
+#----------------------------------------------------------------------------
+# vgpreload_<tool>-<platform>.a stuff
+#----------------------------------------------------------------------------
 LIBREPLACEMALLOC_X86_LINUX = \
 	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-x86-linux.a
 
@@ -562,92 +578,6 @@ LIBREPLACEMALLOC_X86_DARWIN = \
 
 LIBREPLACEMALLOC_AMD64_DARWIN = \
 	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-amd64-darwin.a
-
-COREGRIND_LIBS_X86_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind-x86-linux.a \
-	@VEX_DIR@/libvex-x86-linux.a
-
-COREGRIND_LIBS_AMD64_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind-amd64-linux.a \
-	@VEX_DIR@/libvex-amd64-linux.a
-
-COREGRIND_LIBS_PPC32_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind-ppc32-linux.a \
-	@VEX_DIR@/libvex-ppc32-linux.a
-
-COREGRIND_LIBS_PPC64_LINUX = \
-	$(top_builddir)/coregrind/libcoregrind-ppc64-linux.a \
-	@VEX_DIR@/libvex-ppc64-linux.a
-
-COREGRIND_LIBS_PPC32_AIX5 = \
-	$(top_builddir)/coregrind/libcoregrind-ppc32-aix5.a \
-	@VEX_DIR@/libvex-ppc32-aix5.a
-
-COREGRIND_LIBS_PPC64_AIX5 = \
-	$(top_builddir)/coregrind/libcoregrind-ppc64-aix5.a \
-	@VEX_DIR@/libvex-ppc64-aix5.a
-
-COREGRIND_LIBS_X86_DARWIN = \
-	$(top_builddir)/coregrind/libcoregrind-x86-darwin.a \
-	@VEX_DIR@/libvex-x86-darwin.a
-
-COREGRIND_LIBS_AMD64_DARWIN = \
-	$(top_builddir)/coregrind/libcoregrind-amd64-darwin.a \
-	@VEX_DIR@/libvex-amd64-darwin.a
-
-TOOL_LDADD_COMMON = -lgcc
-TOOL_LDFLAGS_COMMON_LINUX = -static \
-	-Wl,-defsym,valt_load_address=@VALT_LOAD_ADDRESS@ \
-	-nodefaultlibs -nostartfiles -u _start
-
-TOOL_LDFLAGS_COMMON_AIX5 = -static -Wl,-e_start_valgrind
-TOOL_LDFLAGS_COMMON_DARWIN = -nodefaultlibs -nostartfiles \
-	-Wl,-u,__start -Wl,-e,__start -Wl,-bind_at_load /usr/lib/dyld
-
-TOOL_LDADD_X86_LINUX = $(COREGRIND_LIBS_X86_LINUX) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_X86_LINUX = \
-	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M32@ \
-	-Wl,-T,$(top_builddir)/valt_load_address_x86_linux.lds
-
-TOOL_LDADD_AMD64_LINUX = $(COREGRIND_LIBS_AMD64_LINUX) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_AMD64_LINUX = \
-	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M64@ \
-	-Wl,-T,$(top_builddir)/valt_load_address_amd64_linux.lds
-
-TOOL_LDADD_PPC32_LINUX = $(COREGRIND_LIBS_PPC32_LINUX) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_PPC32_LINUX = \
-	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M32@ \
-	-Wl,-T,$(top_builddir)/valt_load_address_ppc32_linux.lds
-
-TOOL_LDADD_PPC64_LINUX = $(COREGRIND_LIBS_PPC64_LINUX) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_PPC64_LINUX = \
-	$(TOOL_LDFLAGS_COMMON_LINUX) @FLAG_M64@ \
-	-Wl,-T,$(top_builddir)/valt_load_address_ppc64_linux.lds
-
-TOOL_LDADD_PPC32_AIX5 = $(COREGRIND_LIBS_PPC32_AIX5) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_PPC32_AIX5 = \
-	$(TOOL_LDFLAGS_COMMON_AIX5) @FLAG_MAIX32@
-
-TOOL_LDADD_PPC64_AIX5 = $(COREGRIND_LIBS_PPC64_AIX5) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_PPC64_AIX5 = \
-	$(TOOL_LDFLAGS_COMMON_AIX5) @FLAG_MAIX64@ -Wl,-bbigtoc
-
-TOOL_LDADD_X86_DARWIN = $(COREGRIND_LIBS_X86_DARWIN) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_X86_DARWIN = \
-	$(TOOL_LDFLAGS_COMMON_DARWIN) -arch i386 \
-	-Wl,-seg1addr,0xf0080000 \
-	-Wl,-stack_addr,0xf0080000 -Wl,-stack_size,0x80000 \
-	-Wl,-pagezero_size,0xf0000000
-
-
-# pagezero can't be unmapped and remapped. Use stack instead.
-# GrP fixme no stack guard
-TOOL_LDADD_AMD64_DARWIN = $(COREGRIND_LIBS_AMD64_DARWIN) $(TOOL_LDADD_COMMON)
-TOOL_LDFLAGS_AMD64_DARWIN = \
-	$(TOOL_LDFLAGS_COMMON_DARWIN) -arch x86_64 \
-	-Wl,-seg1addr,0x7fff55000000 \
-	-Wl,-stack_addr,0x7fff50080000 -Wl,-stack_size,0x7ffe50080000 \
-	-Wl,-pagezero_size,0x100000000
 
 LIBREPLACEMALLOC_LDFLAGS_X86_LINUX = \
 	-Wl,--whole-archive \
@@ -681,7 +611,15 @@ LIBREPLACEMALLOC_LDFLAGS_X86_DARWIN = \
 LIBREPLACEMALLOC_LDFLAGS_AMD64_DARWIN = \
 	$(LIBREPLACEMALLOC_AMD64_DARWIN)
 
-noinst_DSYMS = $(am__append_4) $(am__append_6)
+noinst_DSYMS = 
+# if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
+# noinst_PROGRAMS += fjalar-x86-darwin vgpreload_fjalar-x86-darwin.so
+# noinst_DSYMS    +=                   vgpreload_fjalar-x86-darwin.so
+# endif
+# if VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN
+# noinst_PROGRAMS += fjalar-amd64-darwin vgpreload_fjalar-amd64-darwin.so
+# noinst_DSYMS    +=                     vgpreload_fjalar-amd64-darwin.so
+# endif
 # PG - no PPC
 VGPRELOAD_FJALAR_SOURCES_COMMON = mc_replace_strmem.c kvasir/dyncomp_wrappers.c
 vgpreload_fjalar_x86_linux_so_SOURCES = $(VGPRELOAD_FJALAR_SOURCES_COMMON)
@@ -767,11 +705,12 @@ mcinclude_HEADERS = \
 noinst_HEADERS = \
 	mc_include.h
 
-all: all-recursive
+all: $(BUILT_SOURCES)
+	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 
 .SUFFIXES:
 .SUFFIXES: .c .o .obj
-$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool.am $(top_srcdir)/Makefile.all.am $(top_srcdir)/Makefile.flags.am $(top_srcdir)/Makefile.core-tool.am $(am__configure_deps)
+$(srcdir)/Makefile.in: @MAINTAINER_MODE_TRUE@ $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool.am $(top_srcdir)/Makefile.all.am $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -803,27 +742,15 @@ $(ACLOCAL_M4): @MAINTAINER_MODE_TRUE@ $(am__aclocal_m4_deps)
 
 clean-noinstPROGRAMS:
 	-test -z "$(noinst_PROGRAMS)" || rm -f $(noinst_PROGRAMS)
-fjalar-amd64-darwin$(EXEEXT): $(fjalar_amd64_darwin_OBJECTS) $(fjalar_amd64_darwin_DEPENDENCIES) 
-	@rm -f fjalar-amd64-darwin$(EXEEXT)
-	$(LINK) $(fjalar_amd64_darwin_LDFLAGS) $(fjalar_amd64_darwin_OBJECTS) $(fjalar_amd64_darwin_LDADD) $(LIBS)
 fjalar-amd64-linux$(EXEEXT): $(fjalar_amd64_linux_OBJECTS) $(fjalar_amd64_linux_DEPENDENCIES) 
 	@rm -f fjalar-amd64-linux$(EXEEXT)
 	$(LINK) $(fjalar_amd64_linux_LDFLAGS) $(fjalar_amd64_linux_OBJECTS) $(fjalar_amd64_linux_LDADD) $(LIBS)
-fjalar-x86-darwin$(EXEEXT): $(fjalar_x86_darwin_OBJECTS) $(fjalar_x86_darwin_DEPENDENCIES) 
-	@rm -f fjalar-x86-darwin$(EXEEXT)
-	$(LINK) $(fjalar_x86_darwin_LDFLAGS) $(fjalar_x86_darwin_OBJECTS) $(fjalar_x86_darwin_LDADD) $(LIBS)
 fjalar-x86-linux$(EXEEXT): $(fjalar_x86_linux_OBJECTS) $(fjalar_x86_linux_DEPENDENCIES) 
 	@rm -f fjalar-x86-linux$(EXEEXT)
 	$(LINK) $(fjalar_x86_linux_LDFLAGS) $(fjalar_x86_linux_OBJECTS) $(fjalar_x86_linux_LDADD) $(LIBS)
-vgpreload_fjalar-amd64-darwin.so$(EXEEXT): $(vgpreload_fjalar_amd64_darwin_so_OBJECTS) $(vgpreload_fjalar_amd64_darwin_so_DEPENDENCIES) 
-	@rm -f vgpreload_fjalar-amd64-darwin.so$(EXEEXT)
-	$(LINK) $(vgpreload_fjalar_amd64_darwin_so_LDFLAGS) $(vgpreload_fjalar_amd64_darwin_so_OBJECTS) $(vgpreload_fjalar_amd64_darwin_so_LDADD) $(LIBS)
 vgpreload_fjalar-amd64-linux.so$(EXEEXT): $(vgpreload_fjalar_amd64_linux_so_OBJECTS) $(vgpreload_fjalar_amd64_linux_so_DEPENDENCIES) 
 	@rm -f vgpreload_fjalar-amd64-linux.so$(EXEEXT)
 	$(LINK) $(vgpreload_fjalar_amd64_linux_so_LDFLAGS) $(vgpreload_fjalar_amd64_linux_so_OBJECTS) $(vgpreload_fjalar_amd64_linux_so_LDADD) $(LIBS)
-vgpreload_fjalar-x86-darwin.so$(EXEEXT): $(vgpreload_fjalar_x86_darwin_so_OBJECTS) $(vgpreload_fjalar_x86_darwin_so_DEPENDENCIES) 
-	@rm -f vgpreload_fjalar-x86-darwin.so$(EXEEXT)
-	$(LINK) $(vgpreload_fjalar_x86_darwin_so_LDFLAGS) $(vgpreload_fjalar_x86_darwin_so_OBJECTS) $(vgpreload_fjalar_x86_darwin_so_LDADD) $(LIBS)
 vgpreload_fjalar-x86-linux.so$(EXEEXT): $(vgpreload_fjalar_x86_linux_so_OBJECTS) $(vgpreload_fjalar_x86_linux_so_DEPENDENCIES) 
 	@rm -f vgpreload_fjalar-x86-linux.so$(EXEEXT)
 	$(LINK) $(vgpreload_fjalar_x86_linux_so_LDFLAGS) $(vgpreload_fjalar_x86_linux_so_OBJECTS) $(vgpreload_fjalar_x86_linux_so_LDADD) $(LIBS)
@@ -834,8 +761,6 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar-amd64-darwin.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar-x86-darwin.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-GenericHashtable.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-decls-output.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_amd64_linux-disambig.Po@am__quote@
@@ -884,12 +809,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-tsearch.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-typedata.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/fjalar_x86_linux-union_find.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-dyncomp_wrappers.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Po@am__quote@
 
@@ -1579,34 +1500,6 @@ fjalar_x86_linux-dyncomp_translate.obj: kvasir/dyncomp_translate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(fjalar_x86_linux_CPPFLAGS) $(CPPFLAGS) $(fjalar_x86_linux_CFLAGS) $(CFLAGS) -c -o fjalar_x86_linux-dyncomp_translate.obj `if test -f 'kvasir/dyncomp_translate.c'; then $(CYGPATH_W) 'kvasir/dyncomp_translate.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_translate.c'; fi`
 
-vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.o: mc_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c
-
-vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.obj: mc_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_darwin_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`
-
-vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.o: kvasir/dyncomp_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Tpo" -c -o vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c
-
-vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.obj: kvasir/dyncomp_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Tpo" -c -o vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_darwin_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`
-
 vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o: mc_replace_strmem.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c; \
 @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_amd64_linux_so-mc_replace_strmem.Tpo"; exit 1; fi
@@ -1634,34 +1527,6 @@ vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.obj: kvasir/dyncomp_wrappers.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_amd64_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_amd64_linux_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_amd64_linux_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`
-
-vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.o: mc_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c
-
-vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.obj: mc_replace_strmem.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='mc_replace_strmem.c' object='vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_darwin_so-mc_replace_strmem.obj `if test -f 'mc_replace_strmem.c'; then $(CYGPATH_W) 'mc_replace_strmem.c'; else $(CYGPATH_W) '$(srcdir)/mc_replace_strmem.c'; fi`
-
-vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.o: kvasir/dyncomp_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Tpo" -c -o vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.o `test -f 'kvasir/dyncomp_wrappers.c' || echo '$(srcdir)/'`kvasir/dyncomp_wrappers.c
-
-vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.obj: kvasir/dyncomp_wrappers.c
-@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.obj -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Tpo" -c -o vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`; \
-@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Tpo" "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Po"; else rm -f "$(DEPDIR)/vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.Tpo"; exit 1; fi
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='kvasir/dyncomp_wrappers.c' object='vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_darwin_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_darwin_so_CFLAGS) $(CFLAGS) -c -o vgpreload_fjalar_x86_darwin_so-dyncomp_wrappers.obj `if test -f 'kvasir/dyncomp_wrappers.c'; then $(CYGPATH_W) 'kvasir/dyncomp_wrappers.c'; else $(CYGPATH_W) '$(srcdir)/kvasir/dyncomp_wrappers.c'; fi`
 
 vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o: mc_replace_strmem.c
 @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(vgpreload_fjalar_x86_linux_so_CPPFLAGS) $(CPPFLAGS) $(vgpreload_fjalar_x86_linux_so_CFLAGS) $(CFLAGS) -MT vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o -MD -MP -MF "$(DEPDIR)/vgpreload_fjalar_x86_linux_so-mc_replace_strmem.Tpo" -c -o vgpreload_fjalar_x86_linux_so-mc_replace_strmem.o `test -f 'mc_replace_strmem.c' || echo '$(srcdir)/'`mc_replace_strmem.c; \
@@ -1885,14 +1750,16 @@ distdir: $(DISTFILES)
 	  fi; \
 	done
 check-am: all-am
-check: check-recursive
+check: $(BUILT_SOURCES)
+	$(MAKE) $(AM_MAKEFLAGS) check-recursive
 all-am: Makefile $(PROGRAMS) $(HEADERS) all-local
 installdirs: installdirs-recursive
 installdirs-am:
 	for dir in "$(DESTDIR)$(mcincludedir)"; do \
 	  test -z "$$dir" || $(mkdir_p) "$$dir"; \
 	done
-install: install-recursive
+install: $(BUILT_SOURCES)
+	$(MAKE) $(AM_MAKEFLAGS) install-recursive
 install-exec: install-exec-recursive
 install-data: install-data-recursive
 uninstall: uninstall-recursive
@@ -1909,6 +1776,7 @@ install-strip:
 mostlyclean-generic:
 
 clean-generic:
+	-test -z "$(CLEANFILES)" || rm -f $(CLEANFILES)
 
 distclean-generic:
 	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
@@ -1916,6 +1784,7 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
+	-test -z "$(BUILT_SOURCES)" || rm -f $(BUILT_SOURCES)
 clean: clean-recursive
 
 clean-am: clean-generic clean-local clean-noinstPROGRAMS \
@@ -1984,13 +1853,21 @@ uninstall-info: uninstall-info-recursive
 	uninstall-mcincludeHEADERS
 
 
-# The kludge that passes for vex's build system can't handle parallel
-# builds.  So, for the time being, serialise all Valgrind building.
-# (this is equivalent to enforcing "make -j 1".
-.NOTPARALLEL:
+# This used to be required when Vex had a handwritten Makefile.  It
+# shouldn't be needed any more, though.
 
-# See Makefile.tool-tests.am for an explanation of dSYMs.
-build-noinst_DSYMS:
+#----------------------------------------------------------------------------
+# noinst_PROGRAMS and noinst_DSYMS targets
+#----------------------------------------------------------------------------
+
+# On Darwin, for a program 'p', the DWARF debug info is stored in the
+# directory 'p.dSYM'.  This must be generated after the executable is
+# created, with 'dsymutil p'.  We could redefine LINK with a script that
+# executes 'dsymutil' after linking, but that's a pain.  Instead we use this
+# hook so that every time "make check" is run, we subsequently invoke
+# 'dsymutil' on all the executables that lack a .dSYM directory, or that are
+# newer than their corresponding .dSYM directory.
+build-noinst_DSYMS: $(noinst_DSYMS)
 	for f in $(noinst_DSYMS); do \
 	  if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
 	      echo "dsymutil $$f"; \
@@ -2001,104 +1878,102 @@ build-noinst_DSYMS:
 # This is used by coregrind/Makefile.am and Makefile.tool.am for doing
 # "in-place" installs.  It copies $(noinst_PROGRAMS) into $inplacedir.
 # It needs to be depended on by an 'all-local' rule.
-inplace-noinst_PROGRAMS:
-	if [ -n "$(noinst_PROGRAMS)" ] ; then \
-	  mkdir -p $(inplacedir); \
-	  for f in $(noinst_PROGRAMS) ; do \
-	    rm -f $(inplacedir)/$$f; \
-	    ln -f -s ../$(subdir)/$$f $(inplacedir); \
-	  done ; \
-	fi
+inplace-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_PROGRAMS) ; do \
+	  rm -f $(inplacedir)/$$f; \
+	  ln -f -s ../$(subdir)/$$f $(inplacedir); \
+	done
 
 # Similar to inplace-noinst_PROGRAMS
 inplace-noinst_DSYMS: build-noinst_DSYMS
-	if [ -n "$(noinst_DSYMS)" ] ; then \
-	  mkdir -p $(inplacedir); \
-	  for f in $(noinst_DSYMS); do \
-	    rm -f $(inplacedir)/$$f.dSYM; \
-	    ln -f -s ../$(subdir)/$$f.dSYM $(inplacedir); \
-	  done ; \
-	fi
+	mkdir -p $(inplacedir); \
+	for f in $(noinst_DSYMS); do \
+	  rm -f $(inplacedir)/$$f.dSYM; \
+	  ln -f -s ../$(subdir)/$$f.dSYM $(inplacedir); \
+	done
 
 # This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
 # "make install".  It copies $(noinst_PROGRAMS) into $prefix/lib/valgrind/.
 # It needs to be depended on by an 'install-exec-local' rule.
-install-noinst_PROGRAMS:
-	if [ -n "$(noinst_PROGRAMS)" ] ; then \
-	  $(mkinstalldirs) $(DESTDIR)$(valdir); \
-	  for f in $(noinst_PROGRAMS); do \
-	    $(INSTALL_PROGRAM) $$f $(DESTDIR)$(valdir); \
-	  done ; \
-	fi
+install-noinst_PROGRAMS: $(noinst_PROGRAMS)
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_PROGRAMS); do \
+	  $(INSTALL_PROGRAM) $$f $(DESTDIR)$(pkglibdir); \
+	done
 
 # Similar to install-noinst_PROGRAMS.
 # Nb: we don't use $(INSTALL_PROGRAM) here because it doesn't work with
 # directories.  XXX: not sure whether the resulting permissions will be
 # correct when using 'cp -R'...
 install-noinst_DSYMS: build-noinst_DSYMS
-	if [ -n "$(noinst_DSYMS)" ] ; then \
-	  $(mkinstalldirs) $(DESTDIR)$(valdir); \
-	  for f in $(noinst_DSYMS); do \
-	    cp -R $$f.dSYM $(DESTDIR)$(valdir); \
-	  done ; \
-	fi
+	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
+	for f in $(noinst_DSYMS); do \
+	  cp -R $$f.dSYM $(DESTDIR)$(pkglibdir); \
+	done
 
 # This needs to be depended on by a 'clean-local' rule.
 clean-noinst_DSYMS:
 	for f in $(noinst_DSYMS); do \
 	  rm -rf $$f.dSYM; \
 	done
+# No need to generate $(top_builddir)/valt_load_address*.lds; the final
+# executables can be linked to be at any address.  They will be relocated by
+# AIX kernel when they are loaded.
+# Ditto
+# GrP untested, possibly hopeless
 
-@VEX_DIR@/libvex-x86-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex-x86-linux.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_X86_LINUX) @FLAG_WDECL_AFTER_STMT@ \
-			@FLAG_FNO_STACK_PROTECTOR@"
+# Generate a linker script for linking the binaries.  This is the
+# standard gcc linker script, except hacked so that an alternative
+# load address can be specified by (1) asking gcc to use this script
+# (-Wl,-T,valt_load_address.lds) and (2) setting the symbol
+# valt_load_address to the required value
+# (-Wl,-defsym,valt_load_address=0x70000000).
+#
+# Extract ld's default linker script and hack it to our needs.
+# First we cut everything above and below the "=====..." lines at the top
+# and bottom.
+# Then we have to replace the load address with "valt_load_address".
+# The line to replace in has one of the following two forms:
+#
+#   . = 0x08048000 + SIZEOF_HEADERS;
+#
+# or
+#   PROVIDE (__executable_start = 0x08048000); . = 0x08048000 + SIZEOF_HEADERS;
+#
+# So we search for the line with a hex value "+ SIZEOF_HEADERS", and replace
+# all the hex values in that line with "valt_load_address".
+$(top_builddir)/valt_load_address_x86_linux.lds: Makefile
+	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
+		-e '1,/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+	|| rm -f $@
 
-@VEX_DIR@/libvex-amd64-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex-amd64-linux.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_AMD64_LINUX) @FLAG_WDECL_AFTER_STMT@ \
-			@FLAG_FNO_STACK_PROTECTOR@"
+$(top_builddir)/valt_load_address_amd64_linux.lds: Makefile
+	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
+		-e '1,/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+	|| rm -f $@
 
-@VEX_DIR@/libvex-ppc32-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex-ppc32-linux.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_PPC32_LINUX) @FLAG_WDECL_AFTER_STMT@ \
-			@FLAG_FNO_STACK_PROTECTOR@"
+$(top_builddir)/valt_load_address_ppc32_linux.lds: Makefile
+	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
+		-e '1,/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+	|| rm -f $@
 
-@VEX_DIR@/libvex-ppc64-linux.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex-ppc64-linux.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_PPC64_LINUX) @FLAG_WDECL_AFTER_STMT@ \
-			@FLAG_FNO_STACK_PROTECTOR@"
+$(top_builddir)/valt_load_address_ppc64_linux.lds: Makefile
+	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
+		-e '1,/^=====\+$$/d' \
+		-e '/^=====\+$$/,/.\*/d' \
+		-e '/\. = \(0x[0-9A-Fa-f]\+\|SEGMENT_START("[^"]\+", 0x[0-9A-Fa-f]\+)\) + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
+	|| rm -f $@
 
-@VEX_DIR@/libvex-ppc32-aix5.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR) -X32" \
-	libvex-ppc32-aix5.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_PPC32_AIX5) @FLAG_WDECL_AFTER_STMT@ \
-			@FLAG_FNO_STACK_PROTECTOR@"
-
-@VEX_DIR@/libvex-ppc64-aix5.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR) -X64" \
-	libvex-ppc64-aix5.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_PPC64_AIX5) @FLAG_WDECL_AFTER_STMT@ \
-			@FLAG_FNO_STACK_PROTECTOR@"
-
-@VEX_DIR@/libvex-x86-darwin.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex-x86-darwin.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_X86_DARWIN) @FLAG_WDECL_AFTER_STMT@ \
-		@FLAG_FNO_STACK_PROTECTOR@"
-
-@VEX_DIR@/libvex-amd64-darwin.a: @VEX_DIR@/priv/main/vex_svnversion.h
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" AR="$(AR)" \
-	libvex-amd64-darwin.a \
-	EXTRA_CFLAGS="$(AM_CFLAGS_AMD64_DARWIN) @FLAG_WDECL_AFTER_STMT@ \
-		@FLAG_FNO_STACK_PROTECTOR@"
-
-@VEX_DIR@/priv/main/vex_svnversion.h:
-	$(MAKE) -C @VEX_DIR@ CC="$(CC)" version
+#----------------------------------------------------------------------------
+# General stuff
+#----------------------------------------------------------------------------
 
 all-local: inplace-noinst_PROGRAMS inplace-noinst_DSYMS
 

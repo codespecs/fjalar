@@ -11,7 +11,7 @@
   <releaseinfo>&rel-type; &rel-version; &rel-date;</releaseinfo>
   <copyright>
     <year>&vg-lifespan;</year>
-    <holder><ulink url="&vg-developers;">Valgrind Developers</ulink></holder>
+    <holder><ulink url="&vg-devs-url;">Valgrind Developers</ulink></holder>
    </copyright>
    <legalnotice>
      <para>Email: <ulink url="mailto:&vg-vemail;">&vg-vemail;</ulink></para>
@@ -38,11 +38,11 @@
       xmlns:xi="http://www.w3.org/2001/XInclude" />
   <xi:include href="../../exp-ptrcheck/docs/pc-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
-  <xi:include href="../../none/docs/nl-manual.xml" parse="xml"  
-      xmlns:xi="http://www.w3.org/2001/XInclude" />
+  <xi:include href="../../exp-bbv/docs/bbv-manual.xml" parse="xml"  
+      xmlns:xi="http://www.w3.org/2001/XInclude" />      
   <xi:include href="../../lackey/docs/lk-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
-  <xi:include href="manual-writing-tools.xml" parse="xml"  
+  <xi:include href="../../none/docs/nl-manual.xml" parse="xml"  
       xmlns:xi="http://www.w3.org/2001/XInclude" />
 
 </book>

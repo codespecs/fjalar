@@ -104,7 +104,7 @@ __inline__ UInt get_tag ( Addr a )
   if(a > 0x05007745) {
     //VG_(printf)("Get tag %x - Attemppting    ", a);
   }
-  
+
   if (IS_SECONDARY_TAG_MAP_NULL(a))
     return 0; // 0 means NO tag for that byte
   else {
@@ -118,6 +118,7 @@ __inline__ UInt get_tag ( Addr a )
 
 __inline__ void set_tag ( Addr a, UInt tag )
 {
+
 
   if(a > 0x05007745) {
     //VG_(printf)("Set tag %x : %u\n", a, tag);
@@ -142,6 +143,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
     //      check_whether_to_garbage_collect();
     //    }
   }
+  //  VG_(printf)("Writing to %x and %x\n",&primary_tag_map[PM_IDX(a)], &primary_tag_map[PM_IDX(a)][SM_OFF(a)]);
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
@@ -175,7 +177,7 @@ static __inline__ UInt grab_fresh_tag(void) {
   }
 
   totalNumTagsAssigned++;
- 
+
   if (dyncomp_print_trace_all) {
 
     Char eip_info[256];
@@ -243,7 +245,7 @@ uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
 UInt n_primary_val_uf_object_map_init_entries = 0;
 
 void val_uf_make_set_for_tag(UInt tag) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());	
+  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
   if(( eip >  0x05007745)) {
     //VG_(printf)("val_uf_make_set_for_tag(%u);\n", tag);
   }
@@ -292,7 +294,7 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
 /*   } */
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
-    Addr eip = VG_(get_IP)(VG_(get_running_tid)());	
+    Addr eip = VG_(get_IP)(VG_(get_running_tid)());
     uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
                                  GET_UF_OBJECT_PTR(tag2));
     Char eip_info[256];
@@ -303,7 +305,7 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     /* 		      tag1, tag2, leader->tag, eip, eip_info); */
     DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
 		    tag1, tag2, leader->tag, eip, eip_info);
-    
+
       //      VG_(get_and_pp_StackTrace) (tid, 15);
   return leader->tag;
   }
@@ -394,6 +396,7 @@ VG_REGPARM(2)
 void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
   UInt tagToWrite;
 
+
   if (WEAK_FRESH_TAG == tag) {
     tagToWrite = grab_fresh_tag();
   }
@@ -402,6 +405,8 @@ void MC_(helperc_STORE_TAG_4) ( Addr a, UInt tag ) {
   }
 
   set_tag_for_range(a, 4, tagToWrite);
+  ThreadId tid = VG_(get_running_tid)();
+  Addr ebp= VG_(get_FP)(tid);
 }
 
 VG_REGPARM(2)
@@ -451,7 +456,7 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   UInt tag2 = get_tag(a2);
   print_merge = 0;
   //  VG_(printf)("val_uf_union_tags_at_addr(0x%x, 0x%x) canonicalTag\n",
-  //              a1, a2); 
+  //              a1, a2);
   if ((0 == tag1) ||
       (0 == tag2) ||
       (tag1 == tag2)) {
@@ -465,7 +470,7 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   set_tag(a2, canonicalTag);
   //(printf)("val_uf_union_tags_at_addr(0x%x, 0x%x) canonicalTag=%u\n",
   //              a1, a2, canonicalTag);
-  
+
   print_merge = 1;
   DYNCOMP_DPRINTF("val_uf_union_tags_at_addr(0x%x, 0x%x) canonicalTag=%u\n",
                   a1, a2, canonicalTag);
@@ -644,7 +649,7 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
-  
+
 
 /*   if (within_main_program) { */
 /*      DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n", */

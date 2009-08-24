@@ -514,7 +514,7 @@ UInt VG_(get_StackTrace) ( ThreadId tid,
                                        stack_highest_word);
 }
 
-static void printIpDesc(UInt n, Addr ip)
+static void printIpDesc(UInt n, Addr ip, void* uu_opaque)
 {
    #define BUF_LEN   4096
    
@@ -523,9 +523,9 @@ static void printIpDesc(UInt n, Addr ip)
    VG_(describe_IP)(ip, buf, BUF_LEN);
 
    if (VG_(clo_xml)) {
-      VG_(message)(Vg_UserMsg, "    %s", buf);
+      VG_(printf_xml)("    %s\n", buf);
    } else {
-      VG_(message)(Vg_UserMsg, "   %s %s", ( n == 0 ? "at" : "by" ), buf);
+      VG_(message)(Vg_UserMsg, "   %s %s\n", ( n == 0 ? "at" : "by" ), buf);
    }
 }
 
@@ -535,12 +535,12 @@ void VG_(pp_StackTrace) ( StackTrace ips, UInt n_ips )
    vg_assert( n_ips > 0 );
 
    if (VG_(clo_xml))
-      VG_(message)(Vg_UserMsg, "  <stack>");
+      VG_(printf_xml)("  <stack>\n");
 
-   VG_(apply_StackTrace)( printIpDesc, ips, n_ips );
+   VG_(apply_StackTrace)( printIpDesc, NULL, ips, n_ips );
 
    if (VG_(clo_xml))
-      VG_(message)(Vg_UserMsg, "  </stack>");
+      VG_(printf_xml)("  </stack>\n");
 }
 
 /* Get and immediately print a StackTrace. */
@@ -555,8 +555,11 @@ void VG_(get_and_pp_StackTrace) ( ThreadId tid, UInt max_n_ips )
    VG_(pp_StackTrace)(ips, n_ips);
 }
 
-void VG_(apply_StackTrace)( void(*action)(UInt n, Addr ip),
-                            StackTrace ips, UInt n_ips )
+void VG_(apply_StackTrace)(
+        void(*action)(UInt n, Addr ip, void* opaque),
+        void* opaque,
+        StackTrace ips, UInt n_ips
+     )
 {
    Bool main_done = False;
    Int i = 0;
@@ -576,7 +579,7 @@ void VG_(apply_StackTrace)( void(*action)(UInt n, Addr ip),
       }
 
       // Act on the ip
-      action(i, ip);
+      action(i, ip, opaque);
 
       i++;
    } while (i < n_ips && !main_done);

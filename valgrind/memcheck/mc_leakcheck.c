@@ -113,6 +113,7 @@
 // ----
 //
 // Also, why are two blank lines printed between each loss record?
+// [bug 197930]
 //
 // ----
 //
@@ -237,7 +238,6 @@
 #define VG_DEBUG_LEAKCHECK 0
 #define VG_DEBUG_CLIQUE    0
  
-#define UMSG(args...)    VG_(message)(Vg_UserMsg, ##args)
 
 /*------------------------------------------------------------*/
 /*--- Getting the initial chunks, and searching them.      ---*/
@@ -828,7 +828,7 @@ static void print_results(ThreadId tid, Bool is_full_check)
 
    // Print the loss records (in size order) and collect summary stats.
    for (i = 0; i < n_lossrecords; i++) {
-      Bool print_record;
+      Bool count_as_error, print_record;
       // Rules for printing:
       // - We don't show suppressed loss records ever (and that's controlled
       //   within the error manager).
@@ -843,11 +843,21 @@ static void print_results(ThreadId tid, Bool is_full_check)
       //
       lr = lr_array[i];
       print_record = is_full_check &&
-                     ( MC_(clo_show_reachable) || 
+                     ( MC_(clo_show_reachable) ||
                        Unreached == lr->key.state || 
                        Possible  == lr->key.state );
+      // We don't count a leaks as errors with --leak-check=summary.
+      // Otherwise you can get high error counts with few or no error
+      // messages, which can be confusing.  Also, you could argue that
+      // indirect leaks should be counted as errors, but it seems better to
+      // make the counting criteria similar to the printing criteria.  So we
+      // don't count them.
+      count_as_error = is_full_check && 
+                       ( Unreached == lr->key.state || 
+                         Possible  == lr->key.state );
       is_suppressed = 
-         MC_(record_leak_error) ( tid, i+1, n_lossrecords, lr, print_record );
+         MC_(record_leak_error) ( tid, i+1, n_lossrecords, lr, print_record,
+                                  count_as_error );
 
       if (is_suppressed) {
          MC_(blocks_suppressed) += lr->num_blocks;
@@ -875,29 +885,32 @@ static void print_results(ThreadId tid, Bool is_full_check)
    }
 
    if (VG_(clo_verbosity) > 0 && !VG_(clo_xml)) {
-      UMSG("");
-      UMSG("LEAK SUMMARY:");
-      UMSG("   definitely lost: %'lu bytes in %'lu blocks.",
-                               MC_(bytes_leaked), MC_(blocks_leaked) );
-      UMSG("   indirectly lost: %'lu bytes in %'lu blocks.",
-                              MC_(bytes_indirect), MC_(blocks_indirect) );
-      UMSG("     possibly lost: %'lu bytes in %'lu blocks.",
-                              MC_(bytes_dubious), MC_(blocks_dubious) );
-      UMSG("   still reachable: %'lu bytes in %'lu blocks.",
-                              MC_(bytes_reachable), MC_(blocks_reachable) );
-      UMSG("        suppressed: %'lu bytes in %'lu blocks.",
-                              MC_(bytes_suppressed), MC_(blocks_suppressed) );
+      VG_(umsg)("LEAK SUMMARY:\n");
+      VG_(umsg)("   definitely lost: %'lu bytes in %'lu blocks\n",
+                MC_(bytes_leaked), MC_(blocks_leaked) );
+      VG_(umsg)("   indirectly lost: %'lu bytes in %'lu blocks\n",
+                MC_(bytes_indirect), MC_(blocks_indirect) );
+      VG_(umsg)("     possibly lost: %'lu bytes in %'lu blocks\n",
+                MC_(bytes_dubious), MC_(blocks_dubious) );
+      VG_(umsg)("   still reachable: %'lu bytes in %'lu blocks\n",
+                MC_(bytes_reachable), MC_(blocks_reachable) );
+      VG_(umsg)("        suppressed: %'lu bytes in %'lu blocks\n",
+                MC_(bytes_suppressed), MC_(blocks_suppressed) );
       if (!is_full_check &&
           (MC_(blocks_leaked) + MC_(blocks_indirect) +
            MC_(blocks_dubious) + MC_(blocks_reachable)) > 0) {
-         UMSG("Rerun with --leak-check=full to see details of leaked memory.");
+         VG_(umsg)("Rerun with --leak-check=full to see details "
+                   "of leaked memory\n");
       }
       if (is_full_check &&
           MC_(blocks_reachable) > 0 && !MC_(clo_show_reachable))
       {
-         UMSG("Reachable blocks (those to which a pointer was found) are not shown.");
-         UMSG("To see them, rerun with: --leak-check=full --show-reachable=yes");
+         VG_(umsg)("Reachable blocks (those to which a pointer "
+                   "was found) are not shown.\n");
+         VG_(umsg)("To see them, rerun with: --leak-check=full "
+                   "--show-reachable=yes\n");
       }
+      VG_(umsg)("\n");
    }
 }
 
@@ -907,7 +920,7 @@ static void print_results(ThreadId tid, Bool is_full_check)
 
 void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode )
 {
-   Int i;
+   Int i, j;
    
    tl_assert(mode != LC_Off);
 
@@ -916,7 +929,8 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode )
    if (lc_n_chunks == 0) {
       tl_assert(lc_chunks == NULL);
       if (VG_(clo_verbosity) >= 1 && !VG_(clo_xml)) {
-         UMSG("All heap blocks were freed -- no leaks are possible.");
+         VG_(umsg)("All heap blocks were freed -- no leaks are possible\n");
+         VG_(umsg)("\n");
       }
       return;
    }
@@ -929,27 +943,63 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode )
       tl_assert( lc_chunks[i]->data <= lc_chunks[i+1]->data);
    }
 
-   // Sanity check -- make sure they don't overlap.  But do allow exact
-   // duplicates.  If this assertion fails, it may mean that the application
+   // Sanity check -- make sure they don't overlap.  The one exception is that
+   // we allow a MALLOCLIKE block to sit entirely within a malloc() block.
+   // This is for bug 100628.  If this occurs, we ignore the malloc() block
+   // for leak-checking purposes.  This is a hack and probably should be done
+   // better, but at least it's consistent with mempools (which are treated
+   // like this in find_active_chunks).  Mempools have a separate VgHashTable
+   // for mempool chunks, but if custom-allocated blocks are put in a separate
+   // table from normal heap blocks it makes free-mismatch checking more
+   // difficult.
+   //
+   // If this check fails, it probably means that the application
    // has done something stupid with VALGRIND_MALLOCLIKE_BLOCK client
-   // requests, specifically, has made overlapping requests (which are
-   // nonsensical).  Another way to screw up is to use
-   // VALGRIND_MALLOCLIKE_BLOCK for stack locations; again nonsensical.
+   // requests, eg. has made overlapping requests (which are
+   // nonsensical), or used VALGRIND_MALLOCLIKE_BLOCK for stack locations;
+   // again nonsensical.
+   //
    for (i = 0; i < lc_n_chunks-1; i++) {
       MC_Chunk* ch1 = lc_chunks[i];
       MC_Chunk* ch2 = lc_chunks[i+1];
-      Bool nonsense_overlap = ! (
-            // Normal case - no overlap.
-            (ch1->data + ch1->szB <= ch2->data) ||
-            // Degenerate case: exact duplicates.
-            (ch1->data == ch2->data && ch1->szB  == ch2->szB)
-         );
-      if (nonsense_overlap) {
-         UMSG("Block [0x%lx, 0x%lx) overlaps with block [0x%lx, 0x%lx)",
-            ch1->data, (ch1->data + ch1->szB),
-            ch2->data, (ch2->data + ch2->szB));
+
+      Addr start1    = ch1->data;
+      Addr start2    = ch2->data;
+      Addr end1      = ch1->data + ch1->szB - 1;
+      Addr end2      = ch2->data + ch2->szB - 1;
+      Bool isCustom1 = ch1->allockind == MC_AllocCustom;
+      Bool isCustom2 = ch2->allockind == MC_AllocCustom;
+
+      if (end1 < start2) {
+         // Normal case - no overlap.
+
+      // We used to allow exact duplicates, I'm not sure why.  --njn
+      //} else if (start1 == start2 && end1 == end2) {
+         // Degenerate case: exact duplicates.
+
+      } else if (start1 >= start2 && end1 <= end2 && isCustom1 && !isCustom2) {
+         // Block i is MALLOCLIKE and entirely within block i+1.
+         // Remove block i+1.
+         for (j = i+1; j < lc_n_chunks-1; j++) {
+            lc_chunks[j] = lc_chunks[j+1];
+         }
+         lc_n_chunks--;
+
+      } else if (start2 >= start1 && end2 <= end1 && isCustom2 && !isCustom1) {
+         // Block i+1 is MALLOCLIKE and entirely within block i.
+         // Remove block i.
+         for (j = i; j < lc_n_chunks-1; j++) {
+            lc_chunks[j] = lc_chunks[j+1];
+         }
+         lc_n_chunks--;
+
+      } else {
+         VG_(umsg)("Block 0x%lx..0x%lx overlaps with block 0x%lx..0x%lx",
+                   start1, end1, start1, end2);
+         VG_(umsg)("This is usually caused by using VALGRIND_MALLOCLIKE_BLOCK");
+         VG_(umsg)("in an inappropriate way.");
+         tl_assert (0);
       }
-      tl_assert (!nonsense_overlap);
    }
 
    // Initialise lc_extras.
@@ -967,8 +1017,10 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode )
    lc_markstack_top = -1;
 
    // Verbosity.
-   if (VG_(clo_verbosity) > 0 && !VG_(clo_xml))
-      UMSG( "searching for pointers to %'d not-freed blocks.", lc_n_chunks );
+   if (VG_(clo_verbosity) > 1 && !VG_(clo_xml)) {
+      VG_(umsg)( "Searching for pointers to %'d not-freed blocks\n",
+                 lc_n_chunks );
+   }
 
    // Scan the memory root-set, pushing onto the mark stack any blocks
    // pointed to.
@@ -1012,7 +1064,7 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode )
          seg_size = seg->end - seg->start + 1;
          if (VG_(clo_verbosity) > 2) {
             VG_(message)(Vg_DebugMsg,
-                         "  Scanning root segment: %#lx..%#lx (%lu)",
+                         "  Scanning root segment: %#lx..%#lx (%lu)\n",
                          seg->start, seg->end, seg_size);
          }
          lc_scan_memory(seg->start, seg_size, /*is_prior_definite*/True, -1);
@@ -1026,8 +1078,10 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode )
    // from the root-set has been traced.
    lc_process_markstack(/*clique*/-1);
 
-   if (VG_(clo_verbosity) > 0 && !VG_(clo_xml))
-      UMSG("checked %'lu bytes.", lc_scanned_szB);
+   if (VG_(clo_verbosity) > 1 && !VG_(clo_xml)) {
+      VG_(umsg)("Checked %'lu bytes\n", lc_scanned_szB);
+      VG_(umsg)( "\n" );
+   }
 
    // Trace all the leaked blocks to determine which are directly leaked and
    // which are indirectly leaked.  For each Unreached block, push it onto

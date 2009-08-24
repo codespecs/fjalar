@@ -223,9 +223,9 @@ typedef
       HChar* from_fnpatt;  /* from fnname pattern  */
       Addr   to_addr;      /* where redirecting to */
       Bool   isWrap;       /* wrap or replacement? */
-      const HChar* mandatory; /* non-NULL ==> abort V and print the
-                              string if from_sopatt is loaded but
-                              from_fnpatt cannot be found */
+      const HChar** mandatory; /* non-NULL ==> abort V and print the
+                                  strings if from_sopatt is loaded but
+                                  from_fnpatt cannot be found */
       /* VARIABLE PARTS -- used transiently whilst processing redirections */
       Bool   mark; /* set if spec requires further processing */
       Bool   done; /* set if spec was successfully matched */
@@ -336,7 +336,7 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
 #  endif
 
    vg_assert(newsi);
-   newsi_soname = VG_(seginfo_soname)(newsi);
+   newsi_soname = VG_(DebugInfo_get_soname)(newsi);
    vg_assert(newsi_soname != NULL);
 
    /* stay sane: we don't already have this. */
@@ -348,10 +348,10 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
 
    specList = NULL; /* the spec list we're building up */
 
-   nsyms = VG_(seginfo_syms_howmany)( newsi );
+   nsyms = VG_(DebugInfo_syms_howmany)( newsi );
    for (i = 0; i < nsyms; i++) {
-      VG_(seginfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc, 
-                                          NULL, &sym_name, &isText );
+      VG_(DebugInfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc, 
+                                            NULL, &sym_name, &isText );
       ok = VG_(maybe_Z_demangle)( sym_name, demangled_sopatt, N_DEMANGLED,
                                   demangled_fnpatt, N_DEMANGLED, &isWrap );
       /* ignore data symbols */
@@ -388,8 +388,8 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
 
    if (check_ppcTOCs) {
       for (i = 0; i < nsyms; i++) {
-         VG_(seginfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc, 
-                                             NULL, &sym_name, &isText );
+         VG_(DebugInfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc, 
+                                               NULL, &sym_name, &isText );
          ok = isText
               && VG_(maybe_Z_demangle)( 
                     sym_name, demangled_sopatt, N_DEMANGLED,
@@ -412,7 +412,7 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
 
          /* Complain */
          VG_(message)(Vg_DebugMsg,
-                      "WARNING: no TOC ptr for redir/wrap to %s %s",
+                      "WARNING: no TOC ptr for redir/wrap to %s %s\n",
                       demangled_sopatt, demangled_fnpatt);
       }
    }
@@ -500,7 +500,7 @@ void generate_and_add_actives (
    for (sp = specs; sp; sp = sp->next) {
       sp->done = False;
       sp->mark = VG_(string_match)( sp->from_sopatt, 
-                                    VG_(seginfo_soname)(di) );
+                                    VG_(DebugInfo_get_soname)(di) );
       anyMark = anyMark || sp->mark;
    }
 
@@ -510,10 +510,10 @@ void generate_and_add_actives (
 
    /* Iterate outermost over the symbols in the seginfo, in the hope
       of trashing the caches less. */
-   nsyms = VG_(seginfo_syms_howmany)( di );
+   nsyms = VG_(DebugInfo_syms_howmany)( di );
    for (i = 0; i < nsyms; i++) {
-      VG_(seginfo_syms_getidx)( di, i,
-                                &sym_addr, NULL, NULL, &sym_name, &isText );
+      VG_(DebugInfo_syms_getidx)( di, i, &sym_addr, NULL, NULL,
+                                         &sym_name, &isText );
 
       /* ignore data symbols */
       if (!isText)
@@ -555,6 +555,7 @@ void generate_and_add_actives (
          break;
    }
    if (sp) {
+      const HChar** strp;
       HChar* v = "valgrind:  ";
       vg_assert(sp->mark);
       vg_assert(!sp->done);
@@ -577,11 +578,15 @@ void generate_and_add_actives (
       VG_(printf)(
       "%swas not found whilst processing\n", v);
       VG_(printf)(
-      "%ssymbols from the object with soname: %s\n", v, VG_(seginfo_soname)(di));
+      "%ssymbols from the object with soname: %s\n",
+      v, VG_(DebugInfo_get_soname)(di));
       VG_(printf)(
       "%s\n", v);
-      VG_(printf)(
-      "%s%s\n", v, sp->mandatory);
+
+      for (strp = sp->mandatory; *strp; strp++)
+         VG_(printf)(
+         "%s%s\n", v, *strp);
+
       VG_(printf)(
       "%s\n", v);
       VG_(printf)(
@@ -653,7 +658,7 @@ static void maybe_add_active ( Active act )
   bad:
    vg_assert(what);
    if (VG_(clo_verbosity) > 1) {
-      VG_(message)(Vg_UserMsg, "WARNING: %s", what);
+      VG_(message)(Vg_UserMsg, "WARNING: %s\n", what);
       show_active(             "    new: ", &act);
    }
 }
@@ -808,7 +813,7 @@ static void add_hardwired_active ( Addr from, Addr to )
 __attribute__((unused)) /* not used on all platforms */
 static void add_hardwired_spec ( HChar* sopatt, HChar* fnpatt, 
                                  Addr   to_addr,
-                                 const HChar* const mandatory )
+                                 const HChar** mandatory )
 {
    Spec* spec = dinfo_zalloc("redir.ahs.1", sizeof(Spec));
    vg_assert(spec);
@@ -837,6 +842,18 @@ static void add_hardwired_spec ( HChar* sopatt, HChar* fnpatt,
 }
 
 
+__attribute__((unused)) /* not used on all platforms */
+static const HChar* complain_about_stripped_glibc_ldso[]
+= { "Possible fixes: (1, short term): install glibc's debuginfo",
+    "package on this machine.  (2, longer term): ask the packagers",
+    "for your Linux distribution to please in future ship a non-",
+    "stripped ld.so (or whatever the dynamic linker .so is called)",
+    "that exports the above-named function using the standard",
+    "calling conventions for this platform.",
+    NULL
+  };
+
+
 /* Initialise the redir system, and create the initial Spec list and
    for amd64-linux a couple of permanent active mappings.  The initial
    Specs are not converted into Actives yet, on the (checked)
@@ -846,7 +863,7 @@ static void add_hardwired_spec ( HChar* sopatt, HChar* fnpatt,
 void VG_(redir_initialise) ( void )
 {
    // Assert that there are no DebugInfos so far
-   vg_assert( VG_(next_seginfo)(NULL) == NULL );
+   vg_assert( VG_(next_DebugInfo)(NULL) == NULL );
 
    // Initialise active mapping.
    activeSet = VG_(OSetGen_Create)(offsetof(Active, from_addr),
@@ -879,11 +896,26 @@ void VG_(redir_initialise) ( void )
       (Addr)&VG_(amd64_linux_REDIR_FOR_vtime) 
    );
 
-#  elif defined(VGP_ppc32_linux)
-   {
-   static const HChar croakage[]
-     = "Possible fix: install glibc's debuginfo package on this machine.";
+   /* If we're using memcheck, use these intercepts right from
+      the start, otherwise ld.so makes a lot of noise. */
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
 
+      add_hardwired_spec(
+         "ld-linux-x86-64.so.2", "strlen",
+         (Addr)&VG_(amd64_linux_REDIR_FOR_strlen),
+#        if defined(GLIBC_2_2) || defined(GLIBC_2_3) || defined(GLIBC_2_4) \
+            || defined(GLIBC_2_5) || defined(GLIBC_2_6) || defined(GLIBC_2_7) \
+            || defined(GLIBC_2_8) || defined(GLIBC_2_9)
+         NULL
+#        else
+         /* for glibc-2.10 and later, this is mandatory - can't sanely
+            continue without it */
+         complain_about_stripped_glibc_ldso
+#        endif
+      );   
+   }
+
+#  elif defined(VGP_ppc32_linux)
    /* If we're using memcheck, use these intercepts right from
       the start, otherwise ld.so makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
@@ -892,7 +924,7 @@ void VG_(redir_initialise) ( void )
       add_hardwired_spec(
          "ld.so.1", "strlen",
          (Addr)&VG_(ppc32_linux_REDIR_FOR_strlen),
-         croakage
+         complain_about_stripped_glibc_ldso
       );   
       add_hardwired_spec(
          "ld.so.1", "strcmp",
@@ -907,13 +939,8 @@ void VG_(redir_initialise) ( void )
          /* glibc-2.6.1 (openSUSE 10.3, ppc32) seems fine without it */
       );
    }
-   }
 
 #  elif defined(VGP_ppc64_linux)
-   {
-   static const HChar croakage[]
-     = "Possible fix: install glibc's debuginfo package on this machine.";
-
    /* If we're using memcheck, use these intercepts right from
       the start, otherwise ld.so makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
@@ -922,7 +949,7 @@ void VG_(redir_initialise) ( void )
       add_hardwired_spec(
          "ld64.so.1", "strlen",
          (Addr)VG_(fnptr_to_fnentry)( &VG_(ppc64_linux_REDIR_FOR_strlen) ),
-         croakage
+         complain_about_stripped_glibc_ldso
       );
 
       add_hardwired_spec(
@@ -931,7 +958,6 @@ void VG_(redir_initialise) ( void )
          NULL /* not mandatory - so why bother at all? */
          /* glibc-2.5 (FC6, ppc64) seems fine without it */
       );
-   }
    }
 
 #  elif defined(VGP_ppc32_aix5)
@@ -954,11 +980,11 @@ void VG_(redir_initialise) ( void )
                          (Addr)&VG_(darwin_REDIR_FOR_strcpy), NULL);
       add_hardwired_spec("dyld", "strlcat",
                          (Addr)&VG_(darwin_REDIR_FOR_strlcat), NULL);
-#if defined(VGP_amd64_darwin)
+#     if defined(VGP_amd64_darwin)
       // DDD: #warning fixme rdar://6166275
       add_hardwired_spec("dyld", "arc4random",
                          (Addr)&VG_(darwin_REDIR_FOR_arc4random), NULL);
-#endif
+#     endif
    }
 
 #  else
@@ -1081,12 +1107,12 @@ void handle_maybe_load_notifier( const UChar* soname,
 
 static void show_spec ( HChar* left, Spec* spec )
 {
-   VG_(message)(Vg_DebugMsg, 
-                  "%s%25s %30s %s-> 0x%08llx",
-                  left,
-                  spec->from_sopatt, spec->from_fnpatt,
-                  spec->isWrap ? "W" : "R",
-                  (ULong)spec->to_addr );
+   VG_(message)( Vg_DebugMsg, 
+                 "%s%25s %30s %s-> 0x%08llx\n",
+                 left,
+                 spec->from_sopatt, spec->from_fnpatt,
+                 spec->isWrap ? "W" : "R",
+                 (ULong)spec->to_addr );
 }
 
 static void show_active ( HChar* left, Active* act )
@@ -1100,7 +1126,7 @@ static void show_active ( HChar* left, Active* act )
    ok = VG_(get_fnname_w_offset)(act->to_addr, name2, 64);
    if (!ok) VG_(strcpy)(name2, "???");
 
-   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%20s) %s-> 0x%08llx %s", 
+   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%20s) %s-> 0x%08llx %s\n", 
                              left, 
                              (ULong)act->from_addr, name1,
                              act->isWrap ? "W" : "R",
@@ -1112,23 +1138,24 @@ static void show_redir_state ( HChar* who )
    TopSpec* ts;
    Spec*    sp;
    Active*  act;
-   VG_(message)(Vg_DebugMsg, "<<");
-   VG_(message)(Vg_DebugMsg, "   ------ REDIR STATE %s ------", who);
+   VG_(message)(Vg_DebugMsg, "<<\n");
+   VG_(message)(Vg_DebugMsg, "   ------ REDIR STATE %s ------\n", who);
    for (ts = topSpecs; ts; ts = ts->next) {
       VG_(message)(Vg_DebugMsg, 
-                   "   TOPSPECS of soname %s",
-                   ts->seginfo ? (HChar*)VG_(seginfo_soname)(ts->seginfo)
-                               : "(hardwired)" );
+                   "   TOPSPECS of soname %s\n",
+                   ts->seginfo
+                      ? (HChar*)VG_(DebugInfo_get_soname)(ts->seginfo)
+                      : "(hardwired)" );
       for (sp = ts->specs; sp; sp = sp->next)
          show_spec("     ", sp);
    }
-   VG_(message)(Vg_DebugMsg, "   ------ ACTIVE ------");
+   VG_(message)(Vg_DebugMsg, "   ------ ACTIVE ------\n");
    VG_(OSetGen_ResetIter)( activeSet );
    while ( (act = VG_(OSetGen_Next)(activeSet)) ) {
       show_active("    ", act);
    }
 
-   VG_(message)(Vg_DebugMsg, ">>");
+   VG_(message)(Vg_DebugMsg, ">>\n");
 }
 
 /*--------------------------------------------------------------------*/

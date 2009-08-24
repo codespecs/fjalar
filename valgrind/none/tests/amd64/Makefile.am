@@ -1,7 +1,7 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-noinst_SCRIPTS = filter_cpuid filter_stderr filter_int gen_insn_test.pl
+dist_noinst_SCRIPTS = filter_cpuid filter_stderr filter_int gen_insn_test.pl
 
 CLEANFILES = $(addsuffix .c,$(INSN_TESTS))
 
@@ -16,7 +16,8 @@ endif
 # Explicitly include insn_sse3 even if ! BUILD_SSE3_TESTS, 
 # to avoid packaging screwups if 'make dist' is run on a machine
 # which failed the BUILD_SSE3_TESTS test in configure.in.
-EXTRA_DIST = $(noinst_SCRIPTS) \
+EXTRA_DIST = \
+	amd64locked.vgtest amd64locked.stdout.exp amd64locked.stderr.exp \
 	bug127521-64.vgtest bug127521-64.stdout.exp bug127521-64.stderr.exp \
 	bug132813-amd64.vgtest bug132813-amd64.stdout.exp \
 	bug132813-amd64.stderr.exp \
@@ -50,6 +51,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	slahf-amd64.vgtest
 
 check_PROGRAMS = \
+	amd64locked \
 	bug127521-64 bug132813-amd64 bug132918 \
 	clc \
 	$(INSN_TESTS) \
@@ -80,6 +82,7 @@ AM_CXXFLAGS  += @FLAG_M64@
 AM_CCASFLAGS += @FLAG_M64@
 
 # generic C ones
+amd64locked_CFLAGS	= $(AM_CFLAGS) -O
 bug132918_LDADD		= -lm
 insn_basic_SOURCES	= insn_basic.def
 insn_basic_LDADD	= -lm

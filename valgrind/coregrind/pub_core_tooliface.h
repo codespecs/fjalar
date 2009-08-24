@@ -117,14 +117,15 @@ typedef struct {
    
    // VG_(needs).tool_errors
    Bool  (*tool_eq_Error)                    (VgRes, Error*, Error*);
+   void  (*tool_before_pp_Error)             (Error*);
    void  (*tool_pp_Error)                    (Error*);
    Bool  tool_show_ThreadIDs_for_errors;
    UInt  (*tool_update_extra)                (Error*);
    Bool  (*tool_recognised_suppression)      (Char*, Supp*);
-   Bool  (*tool_read_extra_suppression_info) (Int, Char*, Int, Supp*);
+   Bool  (*tool_read_extra_suppression_info) (Int, Char**, SizeT*, Supp*);
    Bool  (*tool_error_matches_suppression)   (Error*, Supp*);
    Char* (*tool_get_error_name)              (Error*);
-   void  (*tool_print_extra_suppression_info)(Error*);
+   Bool  (*tool_get_extra_suppression_info)  (Error*,/*OUT*/Char*,Int);
 
    // VG_(needs).superblock_discards
    void (*tool_discard_superblock_info)(Addr64, VexGuestExtents);
@@ -138,8 +139,8 @@ typedef struct {
    Bool (*tool_handle_client_request)(ThreadId, UWord*, UWord*);
 
    // VG_(needs).syscall_wrapper
-   void (*tool_pre_syscall) (ThreadId, UInt);
-   void (*tool_post_syscall)(ThreadId, UInt, SysRes);
+   void (*tool_pre_syscall) (ThreadId, UInt, UWord*, UInt);
+   void (*tool_post_syscall)(ThreadId, UInt, UWord*, UInt, SysRes);
 
    // VG_(needs).sanity_checks
    Bool (*tool_cheap_sanity_check)(void);
@@ -160,6 +161,9 @@ typedef struct {
 
    // VG_(needs).final_IR_tidy_pass
    IRSB* (*tool_final_IR_tidy_pass)  (IRSB*);
+
+   // VG_(needs).xml_output
+   // (none)
 
    // -- Event tracking functions ------------------------------------
    void (*track_new_mem_startup)     (Addr, SizeT, Bool, Bool, Bool, ULong);
