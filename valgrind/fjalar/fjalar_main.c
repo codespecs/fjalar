@@ -499,7 +499,7 @@ void enter_function(FunctionEntry* f)
   ThreadId tid = VG_(get_running_tid)();
   Addr stack_ptr= VG_(get_SP)(tid);
   Addr frame_ptr = 0; /* E.g., %ebp */
-  int offset, size;
+  int local_stack, size;
 
   FJALAR_DPRINTF("[enter_function] startPC is: %x\n, entryPC is: %x\ncu_base: %x\n",  (UInt)f->startPC, (UInt)f->entryPC, f->cuBase);
 
@@ -573,20 +573,28 @@ void enter_function(FunctionEntry* f)
 
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
-  offset = frame_ptr - stack_ptr + VG_STACK_REDZONE_SZB; /* in our frame */
-  tl_assert(offset >= 0);
+  local_stack = frame_ptr - stack_ptr + VG_STACK_REDZONE_SZB; /* in our frame */
+  tl_assert(local_stack >= 0);
   FJALAR_DPRINTF("frame_ptr: %x, stack_ptr: %x, VG_STACK_REDZONE: %d\n", frame_ptr, stack_ptr, VG_STACK_REDZONE_SZB);
 
+  // The virtual stack consists of:
+  // (1) local_stack: the entirety of the function's local stack (the
+  // memory between the frame pointer and the stack pointer (including the extra
+  // redzone)
+  // (2) The return pointer, which is sizeof(Addr) bytes
+  // (3) The saved base pointer, which is sizeof(Addr) bytes
+  // (4) All formal parameters passed on the stack, which is
+  //     f->formalParamStackByteSize bytes
+ 
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
-  // stack alignment operations in main, we may need  as much as 16 bytes over
-  // (offset + formal args size + 8)
-  size = offset + f->formalParamStackByteSize + 24;/* plus stuff in caller's*/
+  // stack alignment operations in main, we may need  as much as 16 bytes over the above.
+  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 16;/* plus stuff in caller's*/
 
   tl_assert(size >= 0);
   if (size != 0) {
     newEntry->virtualStack = VG_(calloc)("fjalar_main.c: enter_func",  size, sizeof(char));
     newEntry->virtualStackByteSize = size;
-    newEntry->virtualStackFPOffset = offset;
+    newEntry->virtualStackFPOffset = local_stack;
 
     VG_(memcpy)(newEntry->virtualStack,
 		(char*)stack_ptr - VG_STACK_REDZONE_SZB, size);
