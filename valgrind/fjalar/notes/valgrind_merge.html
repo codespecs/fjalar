@@ -67,6 +67,7 @@ recommended.
         </ul></li>
       <li><a href="#Valgrind_modifications">Appendix A: Valgrind modifications</a></li>
       <li><a href="#Memcheck_modifications">Appendix B: Memcheck modifications</a></li>
+      <li><a href="#New_IR">Appendix C: Supporting new VEX IR Instruction</a></li>
     </ul>
 <!-- end toc -->
 
@@ -112,7 +113,7 @@ First, update your checkout.
 <pre>
   cd $INV
   cvs -q update
-  cd valgrind-3
+   cd valgrind-3
   cvs -q update
 </pre>
 
@@ -300,7 +301,9 @@ The files with all the VEX IR code for Dyncomp is located in dyncomp_translate.[
 is structured primarily into functions of the form <i>expr2tags_[EXPRESSION_TYPE]()</i>. These functions
 will  contain a switch for all VEX IR instructions corresponding to the expression type and some
 call to a dyncomp tag function. Most often VEX IR changes will be syntactical in nature and will only
-involve changing the names of the instructions.
+involve changing the names of the instructions. If the log indicates that new VEX IR instructions have been
+added, they will need to be explicitly supported by Dyncomp. Please see <a href="#New_IR">Appendix C</a> for
+guidelines on supporting new VEX instructions.
 
 
 <hr>
@@ -454,8 +457,75 @@ and filled with their signatures for use by Fjalar.</p>
 <dd>In memcheck's instrumentation block, duplicate each case for Dyncomp.</dd></dl>
 
 <hr>
+
+<h2 id="New_IR">Appendix C: Supporting new VEX IR Instruction</h2>
+
+<p>It is recommended that you acquaint yourself with the VEX IR by reading through:
+
+<dl>
+<dt>$INV/valgrind-3/valgrind/VEX/pub/libvex.h</dt>
+<dt>$INV/valgrind-3/valgrind/VEX/pub/libvex_ir.h</dt>
+</dl>
+
+<p>In addition to being the primary headers for the VEX library, the above 2 files represent the majority of
+the public documentation on VEX. <!-- Is it possible for us to make the VEX .pdf to PAG members? -->Valgrind's translation pipeline consists of the following:
+
+<pre>  Native assembly -> Pre-instrumented VEX IR -> Post-Instrumented VEX IR -> Final assembly</pre>
+
+<p>Valgrind begins by translating the entirety of an assembly basic block into VEX IR. Valgrind then allows tools
+to instrument examine the translated basic block and insert their own instrumentation. Valgrind finishes by translated
+the instrumented IR back into the machine's native assembly.
+
+<p>In order to keep track of comparabilities, Dyncomp instruments almost every VEX IR instruction type.
+Any added instructions will likely need to be supported by Dyncomp. In general Dyncomp's functionality parallels Memcheck's,
+so the best starting point for implementing support for a new instruction would be to mirror Memcheck's implementation.
+Dyncomp's layout is very similar to Memcheck's, so mirroring functionality should be fairly straightforward.
+It is, however, very unlikely that a new instruction type will be added as the VEX IR is a relatively mature
+instruction set and has been in use for almost 9 years at the time of this writing.
+
+<p>Another type of addition that will need to be supported are added "IR Expressions." Most VEX IR instructions are implemented as
+a set of IR Expressions - Take the following IR instructions for example:
+
+<dl>
+<pre>
+<dt>t5 = Add32(t12,0x8:I32)</dt>
+<dt>t10 = CmpLE32S(t2,0x21:I32)</dt>
+</pre>
+</dl>
+
+The above 2 IR Instructions are of the type PUT and they store the result of an IR Expression into a temporary. These instructions consist of
+the destination temporary, an IR Expression, which conceptually is the operation to be formed, and the arguments to the expression. Most IR
+Instructions will have a similar format. Dyncomp is particularly interested in analyzing all possible IRExpressions.
+<pre>$INV/valgrind-3/valgrind/kvasir/fjalar/kvasir/dyncomp_translate.c</pre> contains the following set of functions for processing IRExpressions.
+
+<dl>
+<dt><b>IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )</b></dt>
+<dd> The main expression handling function. Contains a switch which is responsible for
+delegating expression handling to one of hte other functions</dd>
+<dt><b>IRExpr* expr2tags_Qop_DC(...)</b> </dt>
+<dd> Responsible for the handling of expressions which take 4 arguments. </dd>
+<dt><b>IRExpr* expr2tags_Triop_DC(...)</b> </dt>
+<dd> Responsible for the handling of expressions which take 3 arguments. </dd>
+<dt><b>IRExpr* expr2tags_Binop_DC(...)</b> </dt>
+<dd> Responsible for the handling of expressions which take 2 arguments. </dd>
+<dt><b>IRExpr* expr2tags_Unop_DC(...)</b> </dt>
+<dd> Responsible for the handling of expressions which take 1 argument. </dd>
+<dt><b>IRExpr* expr2tags_Ldle_DC(...)</b> </dt>
+<dd> Responsible for the handling of load expressions</dd>
+<dt><b>IRExpr* expr2tags_CCall_DC(...)</b> </dt>
+<dd> Responsible for the handling of calls to pure functions.</dd>
+<dt><b>IRExpr* expr2tags_Mux0X_DC(...)</b> </dt>
+<dd> Responsible for the handling of multiplexing expressions</dd>
+</dl>
+
+
+If a new IR Expressions is added, it will need to be handled by one of the above functions. The easiest way to implement it will be to base it on
+the implementation of an existing instruction. Alternatively, it should be straightforward to mimic Memcheck's handling of the expression.
+
+<hr>
+
 <address></address>
-<!-- hhmts start -->Last modified: July 28, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: September 2, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
