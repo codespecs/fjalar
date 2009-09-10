@@ -3,6 +3,7 @@
    programs.
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -61,9 +62,9 @@ Bool fjalar_disambig_ptrs = False;
 int  fjalar_array_length_limit = -1;
 
 // adjustable via the --struct-depth=N option:
-UInt MAX_VISIT_STRUCT_DEPTH = 4;
+UInt fjalar_max_visit_struct_depth = 4;
 // adjustable via the --nesting-depth=N option:
-UInt MAX_VISIT_NESTING_DEPTH = 2;
+UInt fjalar_max_visit_nesting_depth = 2;
 
 // These are used as both strings and boolean flags -
 // They are initialized to 0 upon initiation so if they are
@@ -132,16 +133,22 @@ char* dwarf_reg_string[9] = {
 };
 
 
+/*------------------------------------------------------------*/
+/*--- Entry and Exit Handling                              ---*/
+/*------------------------------------------------------------*/
+
 // TODO: We cannot sub-class FunctionExecutionState unless we make
 // this into an array of pointers.
 // Also, from the fact that this is a single global, you can see
 // we only support single-threaded execution.
 FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
+
 // The first free slot in FunctionExecutionStateStack
 // right above the top element:
 int fn_stack_first_free_index;
 // The top element of the stack is:
-//   FunctionExecutionStateStack[fn_stack_first_free_index]
+// FunctionExecutionStateStack[fn_stack_first_free_index - 1]
+
 
 // "Pushes" a new entry onto the stack by returning a pointer to it
 // and incrementing fn_stack_first_free_index (Notice that this has
@@ -167,20 +174,20 @@ __inline__ FunctionExecutionState* fnStackTop(void) {
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 
+// This inserts an IR Statement responsible for calling func
+// code before the instruction at addr is executed. This is primarily
+// used for inserting the call to enter_function on function entry.
+// It is also used for handling of 'function priming' for GCC 3 (see
+// comment above prime_function). The result of looking up addr in
+// table will be passed to func as it's only argument. This function
+// does nothing if it is unable to successfully look up addr in the
+// provided table.
 static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 				       struct genhashtable *table,
 				       char *func_name,
 				       entry_func func) {
   IRDirty  *di;
-  FunctionEntry *entry;
-
-  // For GCC 3.x we'll continue using the old entry heuristics, otherwise
-  // we use the entry in the endOfBb table.
-  if(fjalar_gcc3) {
-    entry = gengettable(table, (void *)(Addr)addr);
-  } else {
-    entry = gengettable(FunctionTable_by_endOfBb, (void *)(Addr)addr); // Main special case takes priority
-  }
+  FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
 
   if(!entry) {
       return;
@@ -196,16 +203,16 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di = unsafeIRDirty_0_N(1/*regparms*/, func_name, func,
 			 mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w))));
 
-    entry->entryIP = addr;
-
     // For function entry, we are interested in observing the stack
     // and frame pointers so make sure that they're updated by setting
     // the proper annotations:
 
+    entry->entryPC = addr;
+
     FJALAR_DPRINTF("Found a valid entry point at %x for\n", (UInt)addr);
 
-    // We need essentially all registers.
-    di->nFxState = 2;
+    // We need all general purpose registers.
+    di->nFxState = 9;
     di->fxState[0].fx     = Ifx_Read;
     di->fxState[0].offset = mce->layout->offset_SP;
     di->fxState[0].size   = mce->layout->sizeof_SP;
@@ -216,18 +223,25 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di->fxState[2].offset = mce->layout->offset_IP;
     di->fxState[2].size   = mce->layout->sizeof_IP;
 
-    di->fxState[2].fx     = Ifx_Read;
-    di->fxState[2].offset = mce->layout->offset_xAX;
-    di->fxState[2].size   = mce->layout->sizeof_xAX;
     di->fxState[3].fx     = Ifx_Read;
-    di->fxState[3].offset = mce->layout->offset_xBX;
-    di->fxState[3].size   = mce->layout->sizeof_xBX;
+    di->fxState[3].offset = mce->layout->offset_xAX;
+    di->fxState[3].size   = mce->layout->sizeof_xAX;
     di->fxState[4].fx     = Ifx_Read;
-    di->fxState[4].offset = mce->layout->offset_xCX;
-    di->fxState[4].size   = mce->layout->sizeof_xCX;
+    di->fxState[4].offset = mce->layout->offset_xBX;
+    di->fxState[4].size   = mce->layout->sizeof_xBX;
     di->fxState[5].fx     = Ifx_Read;
-    di->fxState[5].offset = mce->layout->offset_xDX;
-    di->fxState[5].size   = mce->layout->sizeof_xDX;
+    di->fxState[5].offset = mce->layout->offset_xCX;
+    di->fxState[5].size   = mce->layout->sizeof_xCX;
+    di->fxState[6].fx     = Ifx_Read;
+    di->fxState[6].offset = mce->layout->offset_xDX;
+    di->fxState[6].size   = mce->layout->sizeof_xDX;
+
+    di->fxState[7].fx     = Ifx_Read;
+    di->fxState[7].offset = mce->layout->offset_xSI;
+    di->fxState[7].size   = mce->layout->sizeof_xSI;
+    di->fxState[8].fx     = Ifx_Read;
+    di->fxState[8].offset = mce->layout->offset_xDI;
+    di->fxState[8].size   = mce->layout->sizeof_xDI;
 
     stmt('V',  mce, IRStmt_Dirty(di) );
   }
@@ -245,48 +259,109 @@ static Addr currentAddr = 0;
 // once at the first instruction of the function.
 static struct  genhashtable *funcs_handled = NULL;
 
-  // HANDLING FUNCTION ENTRY
-  // For most functions the debugging information is essentially
-  // useless before the prolog. This was mitigated in earlier versions
-  // by entering functions at the instruction corresponding to the
-  // first line in the source code (entryPC in Fjalar terms). This
-  // causes a problem in some cases when the body of a function
-  // consists only of a loop and the compiler decides to be off
-  // about presenting line information. For Example:
+static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f);
 
-  // (pseduo x86 assembly)
-  // jmp Test
-  // Body:
-  // add
-  // ... Body of loop
-  // Test:
-  // cmp eax ecx
-  // jne Test
+// This is called whenever we encounter an IMark statement.  From the
+// IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
+//
+// IMark(literal guest address, length)
+//
+// Semantically a no-op.  However, indicates that the IR statements
+// which follow it originally came from a guest instruction of the
+// stated length at the stated guest address.  This information is
+// needed by some kinds of profiling tools.
 
-  // The issue occurs because some versions of GCC will choose to
-  // correlate the first line of the function with the first instruction
-  // after "jmp test". This makes it impossible for Fjalar to detect
-  // function entry for functions whose loop body is never executed.
-  // It also causes problems relating to detecting entry to a function
-  // multiple times, though this has already been mitigated - see comment
-  // above prime_functoin
+// This function is provided with a super block (one entry, multiple
+// exit) of IR instructions.
 
-  // This causes a problem as we can't enter at the first instruction due
-  // to invalid debugging information, nor can we enter at the entryPC
-  // due to loops (and possibly any function that begins with a conditional)
+// We will utilize this information to pause the target program at
+// function entrances. For further information on how Fjalar
+// determines the address for function entrances please see the
+// "HANDLING FUNCTION ENTRY" comment below. This is called from
+// mc_translate.c.
+void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
+  // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
+  // truly a function entry so that handle_possible_exit() can work
+  // properly:
+  currentAddr = (Addr)addr;
 
-  // We solve this by applying the following heuristic to determine
-  // the entry point to a function:
+  if(!fjalar_gcc3) {
+    FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
+    if(entry) {
+      find_entry_pt(bb_orig, entry);
+    }
+  }
 
-  // If the first basic block of a function ends before entryPC, use
-  // the last instruction of that basic block as our entrypoint. Otherwise
-  // use entryPC
+  // We're not splitting entry handling based on GCC version.
+  // for GCC 3.x we're going to enter at the instruction
+  // corresponding to the first line of code in a function
+  // (f->entryPC in Fjalar's terms)
 
-static void find_entry_pt(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEntry *f) {
+  // For GCC 4.x we're going to use a special heuristic for
+  // determining the instruction to enter at. See comment
+  // "HANDLING FUNCTION ENTRY" above find_entry_pt()
+  if(fjalar_gcc3) {
+
+    /* If this is the very first instruction in the function, add a call
+       to the prime_function helper. */
+    handle_possible_entry_func(mce, addr, FunctionTable,
+			       "prime_function",
+			       &prime_function);
+
+    /* If this is the first instruction in the function after the prolog
+       (not exclusive with the condition above), add a call to the
+       enter_function helper. */
+    handle_possible_entry_func(mce, addr, FunctionTable_by_entryPC,
+			       "enter_function",
+			       &enter_function);
+  } else {
+    handle_possible_entry_func(mce, addr, FunctionTable_by_endOfBb,
+			       "enter_function",
+			       &enter_function);
+  }
+
+}
+
+
+// HANDLING FUNCTION ENTRY
+// For most functions the debugging information is essentially
+// useless before the prolog. This was mitigated in earlier versions
+// by entering functions at the instruction corresponding to the
+// first line in the source code (entryPC in Fjalar terms). This
+// causes a problem in some cases when the body of a function
+// consists only of a loop and the compiler decides to be off
+// about presenting line information. For Example:
+
+// (pseduo x86 assembly)
+// jmp Test
+// Body:
+// add
+// ... Body of loop
+// Test:
+// cmp eax ecx
+// jne Test
+
+// The issue occurs because some versions of GCC will choose to
+// correlate the first line of the function with the first instruction
+// after "jmp test". This makes it impossible for Fjalar to detect
+// function entry for functions whose loop body is never executed.
+// It also causes problems relating to detecting entry to a function
+// multiple times, though this has already been mitigated - see comment
+// above prime_functoin
+
+// This causes a problem as we can't enter at the first instruction due
+// to invalid debugging information, nor can we enter at the entryPC
+// due to loops (and possibly any function that begins with a conditional)
+
+// We solve this by applying the following heuristic to determine
+// the entry point to a function:
+
+// If the first basic block of a function ends before entryPC, use
+// the last instruction of that basic block as our entrypoint. Otherwise
+// use entryPC
+static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f) {
   int i;
   Addr entry_pt = 0;
-  // Silence warnings
-  (void)mce; (void)addr;
 
   if(gencontains(funcs_handled, f))
     return;
@@ -310,88 +385,6 @@ static void find_entry_pt(MCEnv* mce, Addr64 addr, IRSB* bb_orig, FunctionEntry 
   genputtable(FunctionTable_by_endOfBb,
 	      (void *)entry_pt,
 	      (void *)f);
-
-}
-
-// This is called whenever we encounter an IMark statement.  From the
-// IR documentation (Copyright (c) 2004-2005 OpenWorks LLP):
-//
-// IMark(literal guest address, length)
-//
-// Semantically a no-op.  However, indicates that the IR statements
-// which follow it originally came from a guest instruction of the
-// stated length at the stated guest address.  This information is
-// needed by some kinds of profiling tools.
-
-// We will utilize this information to pause the target program at
-// function entrances.  This is called from mc_translate.c.
-
-// TODO: In-depth explanation of the main issue
-void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* bb_orig) {
-  // Right now, for x86, we only care about 32-bit instructions
-
-/*   IRDirty  *di; */
-/*   UWord entry_w = (UWord)0; */
-/*   // RUDD DEBUG Dump Vex State at every IMark */
-/*   di = unsafeIRDirty_0_N(0/\*regparms*\/, "Dump state", VG_(dump_state), */
-/*                          mkIRExprVec_1(IRExpr_Const(IRConst_UWord(entry_w)))); */
-
-/*     // We need essentially all registers. */
-/*     di->nFxState = 3; */
-/*     di->fxState[0].fx     = Ifx_Read; */
-/*     di->fxState[0].offset = mce->layout->offset_SP; */
-/*     di->fxState[0].size   = mce->layout->sizeof_SP; */
-/*     di->fxState[1].fx     = Ifx_Read; */
-/*     di->fxState[1].offset = mce->layout->offset_FP; */
-/*     di->fxState[1].size   = mce->layout->sizeof_FP; */
-/*     di->fxState[2].fx     = Ifx_Read; */
-/*     di->fxState[2].offset = mce->layout->offset_IP; */
-/*     di->fxState[2].size   = mce->layout->sizeof_IP; */
-
-/*     stmt('V',  mce, IRStmt_Dirty(di) ); */
-
-  // REMEMBER TO ALWAYS UPDATE THIS regardless of whether this is
-  // truly a function entry so that handle_possible_exit() can work
-  // properly:
-  currentAddr = (Addr)addr;
-
-  if(!fjalar_gcc3) {
-    FunctionEntry *entry = gengettable(FunctionTable, (void *)(Addr)addr);
-    if(entry) {
-      find_entry_pt(mce, addr, bb_orig, entry);
-    }
-  }
-
-
-
-  // We're not splitting entry handling based on GCC version.
-  // for GCC 3.x we're going to enter at the instruction
-  // corresponding to the first line of code in a function
-  // (f->entryPC in Fjalar's terms)
-
-  // For GCC 4.x we're going to use a special heuristic for
-  // determining the instruction to enter at. See comment
-  // "HANDLING FUNCTION ENTRY" above find_entry_pt()
-
-  if(fjalar_gcc3) {
-
-    /* If this is the very first instruction in the function, add a call
-       to the prime_function helper. */
-    handle_possible_entry_func(mce, addr, FunctionTable,
-			       "prime_function",
-			       &prime_function);
-
-    /* If this is the first instruction in the function after the prolog
-       (not exclusive with the condition above), add a call to the
-       enter_function helper. */
-    handle_possible_entry_func(mce, addr, FunctionTable_by_entryPC,
-			       "enter_function",
-			       &enter_function);
-  } else {
-    handle_possible_entry_func(mce, addr, FunctionTable,
-			       "enter_function",
-			       &enter_function);
-  }
 
 }
 
@@ -425,41 +418,49 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
 			     &exit_function,
 			     mkIRExprVec_1(IRExpr_Const(IRConst_UWord((Addr)curFuncPtr))));
 
-      // For function exit, we are interested in observing the ESP,
-      // xAX, xDX, FTOP, and FPREG[], so make sure that they are
+      // For function exit, we are interested in observing  all general purpose
+      // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
+      di->nFxState = 11;
 
-      // For completeness let's also state the intention to observe
-      // xBX and xCX since they can always be referenced by the
-      // DWARF information - rudd
-      di->nFxState = 1;
+      di->nFxState = 9;
       di->fxState[0].fx     = Ifx_Read;
       di->fxState[0].offset = mce->layout->offset_SP;
       di->fxState[0].size   = mce->layout->sizeof_SP;
-
       di->fxState[1].fx     = Ifx_Read;
-      di->fxState[1].offset = mce->layout->offset_xAX;
-      di->fxState[1].size   = mce->layout->sizeof_xAX;
-
+      di->fxState[1].offset = mce->layout->offset_FP;
+      di->fxState[1].size   = mce->layout->sizeof_FP;
       di->fxState[2].fx     = Ifx_Read;
-      di->fxState[2].offset = mce->layout->offset_xDX;
-      di->fxState[2].size   = mce->layout->sizeof_xDX;
+      di->fxState[2].offset = mce->layout->offset_IP;
+      di->fxState[2].size   = mce->layout->sizeof_IP;
 
       di->fxState[3].fx     = Ifx_Read;
-      di->fxState[3].offset = mce->layout->offset_xBX;
-      di->fxState[3].size   = mce->layout->sizeof_xBX;
-
+      di->fxState[3].offset = mce->layout->offset_xAX;
+      di->fxState[3].size   = mce->layout->sizeof_xAX;
       di->fxState[4].fx     = Ifx_Read;
-      di->fxState[4].offset = mce->layout->offset_xCX;
-      di->fxState[4].size   = mce->layout->sizeof_xCX;
-
+      di->fxState[4].offset = mce->layout->offset_xBX;
+      di->fxState[4].size   = mce->layout->sizeof_xBX;
       di->fxState[5].fx     = Ifx_Read;
-      di->fxState[5].offset = offsetof(VexGuestArchState, guest_FTOP);
-      di->fxState[5].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
-
+      di->fxState[5].offset = mce->layout->offset_xCX;
+      di->fxState[5].size   = mce->layout->sizeof_xCX;
       di->fxState[6].fx     = Ifx_Read;
-      di->fxState[6].offset = offsetof(VexGuestArchState, guest_FPREG);
-      di->fxState[6].size   = 8 * sizeof(ULong);
+      di->fxState[6].offset = mce->layout->offset_xDX;
+      di->fxState[6].size   = mce->layout->sizeof_xDX;
+
+      di->fxState[7].fx     = Ifx_Read;
+      di->fxState[7].offset = mce->layout->offset_xSI;
+      di->fxState[7].size   = mce->layout->sizeof_xSI;
+      di->fxState[8].fx     = Ifx_Read;
+      di->fxState[8].offset = mce->layout->offset_xDI;
+      di->fxState[8].size   = mce->layout->sizeof_xDI;
+
+      di->fxState[9].fx     = Ifx_Read;
+      di->fxState[9].offset = offsetof(VexGuestArchState, guest_FTOP);
+      di->fxState[9].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
+
+      di->fxState[10].fx     = Ifx_Read;
+      di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
+      di->fxState[10].size   = 8 * sizeof(ULong);
 
       stmt('V',  mce, IRStmt_Dirty(di) );
     }
@@ -503,8 +504,15 @@ void enter_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("[enter_function] startPC is: %x\n, entryPC is: %x\ncu_base: %x\n",  (UInt)f->startPC, (UInt)f->entryPC, f->cuBase);
 
+  // Determine the frame pointer for this function using DWARF
+  // location lists. This is a "virtual frame pointer" in that it is
+  // used by the DWARF debugging information in providing the address
+  // of formal parameters and local variables, but it may or may not
+  // correspond to an actual frame pointer in the architecture. For
+  // example: This will not always return %xbp on x86{-64} platforms
+  // and *SHOULD*(untested) work with the -fomit-frame-pointer flag in GCC
   if(f->locList) {
-    Addr eip = f->entryIP;
+    Addr eip = f->entryPC;
     location_list *ll;
     eip =  eip - f->cuBase;
 
@@ -538,10 +546,9 @@ void enter_function(FunctionEntry* f)
   }
 
 
-  // This is the old code to determine the frame this. Fallback to it if we don't
+  // This is the old code to determine the frame. Fallback to it if we don't
   // have a frame_base from the location_list path. This should keep GCC 3 working
   // fine.
-
   if(frame_ptr == 0) {
     if (f != primed_function)
         return;
@@ -571,6 +578,13 @@ void enter_function(FunctionEntry* f)
   newEntry->xDX = 0;
   newEntry->FPU = 0;
 
+  // FJALAR VIRTUAL STACK
+  // Fjalar maintains a virtual stack for invocation a function. This
+  // allows Fjalar to provide tools with unaltered values of formal
+  // parameters at both function entry and exit, regardless of whether
+  // or not the compiler chooses to use the original formal parameter
+  // locations as storage for local values.
+
   // Initialize virtual stack and copy parts of the Valgrind stack
   // into that virtual stack
   local_stack = frame_ptr - stack_ptr + VG_STACK_REDZONE_SZB; /* in our frame */
@@ -585,10 +599,10 @@ void enter_function(FunctionEntry* f)
   // (3) The saved base pointer, which is sizeof(Addr) bytes
   // (4) All formal parameters passed on the stack, which is
   //     f->formalParamStackByteSize bytes
- 
+
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
-  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 16;/* plus stuff in caller's*/
+  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 16;
 
   tl_assert(size >= 0);
   if (size != 0) {
@@ -617,9 +631,8 @@ void enter_function(FunctionEntry* f)
 
   }
   else {
-    // Watch out for null pointer segfaults here:
-    newEntry->virtualStack = 0;
-    newEntry->virtualStackByteSize = 0;
+    VG_(printf)("Obtained a stack size of 0 for Function: %s. Aborting\n", f->fjalar_name);
+    tl_assert(0);
   }
 
 
@@ -667,7 +680,6 @@ void exit_function(FunctionEntry* f)
   FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
-  // s is null if an "unwind" is popped off the stack (WHAT?)
   // Only do something if top->func matches func
   if (!top->func) {
     VG_(printf)("More exit_function()s than entry_function()s!\n");
@@ -717,10 +729,19 @@ void exit_function(FunctionEntry* f)
   }
 
   // Pop at the VERY end after the tool is done handling the exit.
-  // This is subtle but important:
+  // This is subtle but important - this must be done AFTER the tool
+  // runs all of it's function exit code, as functions in fjalar_traversal
+  // and fjalar_runtime may make use of the function stack. If we fail to
+  // pop the function, however, the stack will be left in an inconsistant
+  // state and the "!top->func == f" check will fail causing no more
+  // program points to be printed.
   fnStackPop();
 }
 
+
+/*------------------------------------------------------------*/
+/*--- Command line processing                              ---*/
+/*------------------------------------------------------------*/
 
 // Opens the appropriate files and loads data to handle selective
 // program point tracing, selective variable tracing, and pointer type
@@ -856,8 +877,8 @@ void fjalar_post_clo_init()
   funcs_handled= genallocatehashtable(0,(int (*)(void *,void *)) &equivalentIDs);
 
   // Handle variables set by command-line options:
-
-  FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%x] (Assumes that filename is first argument in client_argv)\n\n",
+  // Assumes that filename is first argument in client_argv
+  FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%x]\n\n",
 	  executable_filename, (unsigned int)executable_filename);
 
   // --disambig results in the disambig filename being ${executable_filename}.disambig
@@ -974,10 +995,10 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else if VG_BINT_CLO(arg, "--array-length-limit", fjalar_array_length_limit,
 		      -1, 0x7fffffff) {}
 
-  /* else if VG_BINT_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH, 0, 100)  {} // [0 to 100]
-     else if VG_BINT_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH, 0, 100) {} // [0 to 100] */
-  else if VG_INT_CLO(arg, "--struct-depth",  MAX_VISIT_STRUCT_DEPTH) {}
-  else if VG_INT_CLO(arg, "--nesting-depth", MAX_VISIT_NESTING_DEPTH) {}
+  /* else if VG_BINT_CLO(arg, "--struct-depth",  fjalar_max_visit_struct_depth, 0, 100)  {} // [0 to 100]
+     else if VG_BINT_CLO(arg, "--nesting-depth", fjalar_max_visit_nesting_depth, 0, 100) {} // [0 to 100] */
+  else if VG_INT_CLO(arg, "--struct-depth",  fjalar_max_visit_struct_depth) {}
+  else if VG_INT_CLO(arg, "--nesting-depth", fjalar_max_visit_nesting_depth) {}
 
   else if VG_STR_CLO(arg, "--dump-ppt-file",
 		     fjalar_dump_prog_pt_names_filename) {}

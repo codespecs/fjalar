@@ -3,6 +3,7 @@
    C and C++ programs.
 
    Copyright (C) 2004-2006 Philip Guo <pgbovine (@) alum (.) mit (.) edu>,
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -33,7 +34,7 @@ Supporting data structures and enums
 **********************************************************************/
 
 typedef enum _DeclaredType {
-  D_NO_TYPE, // Create padding
+  D_NO_TYPE,
 
   D_UNSIGNED_CHAR,
   D_CHAR,
@@ -122,7 +123,7 @@ only create and destroy instances using the 'constructor' and
 'destructor' functions listed in fjalar_tool.h and not directly use
 VG_(malloc) and VG_(free).
 
-Each tool can make at most one subclass of each of these classes by
+Each tool can make one subclass of each of these classes by
 creating a struct with an instance of one of these classes inlined as
 the first field (structural inheritance) and then specifying for the
 constructor and destructor to allocate and deallocate memory regions
@@ -308,10 +309,11 @@ typedef struct _VariableEntry {
   LocationType locationType;
 
   // see fjalar_dwarf.h for definition of dwarf_location
-  dwarf_location dwarf_stack[MAX_DWARF_STACK];
-  unsigned int dwarf_stack_size;
-
-
+  // Locations in the DWARF debugging information are represented
+  // by "location expressions" which are a sequence of DWARF
+  // operations to be performed in order.
+  dwarf_location location_expression[MAX_DWARF_OPS];
+  unsigned int location_expression_size;
 
   // Byte offset of this variable from head of stack frame (%ebp) for
   // function parameters and local variables
@@ -354,11 +356,6 @@ typedef struct _VariableEntry {
   // (ptrLevels == 1)
   UInt referenceLevels;
 
-  Bool isString; // Does this variable look like a C-style string (or
-		 // a pointer to a string, or a pointer to a pointer
-		 // to a string, etc)?  True iff (varType == &CharType)
-		 // and (ptrLevels > 0)
-
   // For .disambig option: 0 for no disambig info, 'A' for array, 'P'
   // for pointer, 'C' for char, 'I' for integer, 'S' for string
   // (Automatically set a 'P' disambig for the C++ 'this' parameter
@@ -372,11 +369,20 @@ typedef struct _VariableEntry {
   // to generate a .disambig file using the --smart-disambig option.
   Bool disambigMultipleElts;       // mutable
   Bool pointerHasEverBeenObserved; // mutable
-  Bool validLoc;                    // This is needed to provide access
-                                    // to variables with incomplete DWARF DIEs
 
-  Addr entryLoc;                // The location of a variable on entry
+  // Occasionally the DWARF information will name a variable but not
+  // provide a location for it. This means there is no way to obtain
+  // a value for this variable. Variables which do not have valid
+  // location information will have validLoc = False
+  Bool validLoc;
 
+  // In some situations (The primary one being dealing with the
+  // formal parameters to main - see the MAIN STACK LAYOUT comment
+  // in fjalar_traversal.c for more information) the location of
+  // a variable will be impossible to calculate on return, so we
+  // store the location at entry in entryLoc{Guest} for use in these
+  // cases.
+  Addr entryLoc;
   Addr entryLocGuest;
 
 } VariableEntry;
@@ -447,6 +453,7 @@ struct _StaticArrayInfo {
 #define IS_GLOBAL_VAR(v) ((v->globalVar) != 0)
 #define IS_STATIC_ARRAY_VAR(v) ((v->staticArr) != 0)
 #define IS_MEMBER_VAR(v) ((v->memberVar) != 0)
+#define IS_STRING(v) (v->varType && (v->varType->decType == D_CHAR) && (v->ptrLevels > 0))
 
 
 // A more sophisticated linked list for VariableEntry objects.  It is
@@ -521,7 +528,8 @@ typedef struct _FunctionEntry {
   // i.e., for a C++ function "sum(int, int)", its C name is "sum"
   char* name;
 
-  // The mangled name (C++ only) - based on some standard mangling scheme
+  // The mangled name (C++ only) - This is the mangled name provided
+  // by the debugging information.
   char* mangled_name;
 
   // The de-mangled name (C++ only)
@@ -549,14 +557,10 @@ typedef struct _FunctionEntry {
   Addr startPC;
   Addr endPC;
 
-  // The actual instruction Fjalar chose to begin instrumentation at
-  Addr entryIP;
-
   // The instruction base of the compile unit. This is necessary because
   // certain offsets in the debugging information (namely location lists)
   // are relative to the base of the compilation unit.
   Addr cuBase;
-  Addr frameBase;
 
   // The address of the instruction before which we do entry
   // instrumentation for this function. Usually a bit past startPC,
@@ -565,7 +569,14 @@ typedef struct _FunctionEntry {
   // locations.
   Addr entryPC;
 
+  // Fjalar maintains a virtual stack for invocation a function. This
+  // allows Fjalar to provide tools with unaltered values of formal
+  // parameters at both function entry and exit, regardless of whether
+  // or not the compiler chooses to use the original formal parameter
+  // locations as storage for local values.
   Addr lowestVirtSP;
+
+  // The lowest valid stack address for this invocation of the function
   Addr lowestSP;
 
   // True if globally visible, False if file-static scope
@@ -612,6 +623,8 @@ typedef struct _FunctionEntry {
   Addr guestStackStart;   // What Guest Address the top of our virtual Stack corresponds to
   Addr guestStackEnd;     // What Guest Address the bottom of our virtual Stack corresponds to
 
+  // The frame pointer for this invocation of the function. This is primarily
+  // used in calculating the address of variables from  DWARF location expressions
   Addr FP;
 
 } FunctionEntry;
@@ -891,11 +904,11 @@ void visitVariable(VariableEntry* var,
                    Addr pValue,
 		   // If pValue points to a copy of the guest
 		   // program's state, this is the pointer to the
-		   // original. If the value wass in a register, this is 0.
+		   // original. If the value was in a register, this is 0.
 		   // Otherwise, same as pValue.
                    Addr pValueGuest,
                    // We only use overrideIsInit when we pass in
-                   // things (e.g. return values) that cannot be
+                   // things (e.g. some return values) that cannot be
                    // checked by the Memcheck A and V bits. Never have
                    // overrideIsInit when you derive variables (make
                    // recursive calls) because their addresses are
@@ -923,43 +936,6 @@ void visitVariable(VariableEntry* var,
 void visitClassMembersNoValues(TypeEntry* class,
 			       TraversalAction *performAction);
 
-// Takes a TypeEntry* and (optionally, a pointer to its current value
-// in memory), and traverses through all of the members of the
-// specified class.  This should also traverse inside of the class's
-// superclasses and visit variables within them (as well as derived
-// variables):
-void visitClassMemberVariables(TypeEntry* class,
-                               // Pointer to the current value of an
-                               // instance of 'class' (only valid if
-                               // isSequence is 0)
-                               Addr pValue,
-			       Addr pValueGuest,
-                               Bool isSequence,
-                               // An array of pointers to instances of
-                               // 'class' (only valid if isSequence is
-                               // non-zero):
-                               Addr* pValueArray,
-                               Addr* pValueArrayGuest,
-                               UInt numElts, // Size of pValueArray
-                               // This function performs an action for
-                               // each variable visited:
-			       TraversalAction *performAction,
-                               VariableOrigin varOrigin,
-                               // A (possibly null) GNU binary tree of
-                               // variables to trace:
-                               char* trace_vars_tree,
-                               // The number of structs we have
-                               // dereferenced for a particular call
-                               // of visitVariable(); Starts at 0 and
-                               // increments every time we hit a
-                               // variable which is a base struct type
-                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
-                               UInt numStructsDereferenced,
-                               FunctionEntry* varFuncInfo,
-                               Bool isEnter,
-                               TraversalResult tResult);
-
-
 // Misc. symbols that are useful for printing variable names during
 // the traversal process:
 char* DEREFERENCE; // "[]"
@@ -982,13 +958,13 @@ Bool addressIsGlobal(Addr addr);
 // Returns the start address of a function with a particular name.
 // Accepts regular name for C and mangled name for C++.
 // [Fast hashtable lookup in FunctionSymbolTable]
-
 Addr getFunctionStartAddr(char* name);
+
 // Returns the regular name for C and mangled name for C++, given a
 // function's start address.
 // [Fast hashtable lookup in ReverseFunctionSymbolTable]
-
 char* getFunctionName(Addr startAddr);
+
 // Returns the address of a global variable, given its regular name
 // for C and its mangled name for C++.
 // [Fast hashtable lookup in VariableSymbolTable]
@@ -1047,8 +1023,8 @@ Bool fjalar_gcc3;                          // --gcc3
 Bool fjalar_gcc4;                          // --gcc4
 int  fjalar_array_length_limit;            // --array-length-limit
 
-UInt MAX_VISIT_STRUCT_DEPTH;               // --struct-depth
-UInt MAX_VISIT_NESTING_DEPTH;              // --nesting-depth
+UInt fjalar_max_visit_struct_depth;               // --struct-depth
+UInt fjalar_max_visit_nesting_depth;              // --nesting-depth
 
 // The following are used both as strings and as boolean flags - They
 // are initialized to 0 so if they are never filled with values by the
@@ -1082,12 +1058,18 @@ unsigned int hashString(char* str);
 // fjalar_trace_prog_pts_filename is non-null)
 Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 
+#define MAX_STRING_STACK_SIZE 100
+
+typedef struct StringStack_ {
+  char* stack[MAX_STRING_STACK_SIZE];
+  int size;
+} StringStack;
+
 // This stack keeps the FULL names of all variables above the current
 // one in the stack (that is, all of the current variable's
 // ancestors).  For example, for a variable "foo->bar[]", this stack
 // may contain something like: {"foo", "foo->bar"}.
-char** enclosingVarNamesStack;
-int enclosingVarNamesStackSize;
+StringStack enclosingVarNamesStack;
 
 // This stack keeps track of all components of the full name of the
 // variable that's currently being visited.  E.g., for a variable
@@ -1095,7 +1077,6 @@ int enclosingVarNamesStackSize;
 //   {"foo", "->", "bar", "[]"}.
 // Doing stringStackStrdup() on this stack will result in a full
 // variable name.
-char** fullNameStackPtr;
-int fullNameStackSize;
+StringStack fullNameStack;
 
 #endif

@@ -3,6 +3,7 @@
    dynamic invariant detector built upon the Fjalar framework
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -275,7 +276,7 @@ void outputDeclsFile(char faux_decls)
   } else {
     fputs("\n", decls_fp);
   }
-    
+
 
   initDecls();
   printAllFunctionDecls(faux_decls);
@@ -419,7 +420,7 @@ printDeclsEntryAction(VariableEntry* var,
 		      FunctionEntry* varFuncInfo,
 		      Bool isEnter) {
   DeclaredType dType = var->varType->decType;
-  DaikonRepType rType = decTypeToDaikonRepType(dType, var->isString);
+  DaikonRepType rType = decTypeToDaikonRepType(dType, IS_STRING(var));
   UInt layers;
   int i;
   char printingFirstAnnotation = 1;
@@ -432,16 +433,16 @@ printDeclsEntryAction(VariableEntry* var,
   (void)pValueGuest; (void)pValueArrayGuest;
 
   DPRINTF("*********************************\n%s\n*********************************\n", varName);
-  if(fullNameStackSize > 0)
-    for(i=0; i< fullNameStackSize; i++)
+  if(fullNameStack.size > 0)
+    for(i=0; i< fullNameStack.size; i++)
       {
-        DPRINTF("fullNameStack[%d] = %s\n", i,  fullNameStackPtr[i]);
+        DPRINTF("fullNameStack[%d] = %s\n", i,  fullNameStack.stack[i]);
       }
 
-  if(enclosingVarNamesStackSize > 0)
-    for(i=0; i< enclosingVarNamesStackSize; i++)
+  if(enclosingVarNamesStack.size > 0)
+    for(i=0; i< enclosingVarNamesStack.size; i++)
       {
-        DPRINTF("enclosingVarNamesStack[%d] = %s\n", i, enclosingVarNamesStack[i]);
+        DPRINTF("enclosingVarNamesStack[%d] = %s\n", i, enclosingVarNamesStack.stack[i]);
       }
   DPRINTF("Address %8x \n", pValue);
 
@@ -500,10 +501,10 @@ printDeclsEntryAction(VariableEntry* var,
     //if(var->isSuperMember && !kvasir_unambiguous_fields)
     if(0) {
       shortSuper = 1; //Flag to denote this is a shortened name
-      shortName = removeSuperElements(fullNameStackPtr, var);
+      shortName = removeSuperElements(fullNameStack.stack, var);
       printDaikonExternalVarName(var, shortName, decls_fp);
       VG_(free)(shortName);
-      printDaikonExternalVarName(var, fullNameStackPtr[fullNameStackSize-1], decls_fp);
+      printDaikonExternalVarName(var, fullNameStack.stack[fullNameStack.size-1], decls_fp);
     }
     else {
       shortName = varName;
@@ -547,7 +548,7 @@ printDeclsEntryAction(VariableEntry* var,
     // ****** Enclosing variable (optional) ******
 
     // There is an enclosing variable if enclosingVarNamesStackSize > 0
-    if (enclosingVarNamesStackSize > 0) {
+    if (enclosingVarNamesStack.size > 0) {
 
        int enclosing_len;
 
@@ -568,9 +569,9 @@ printDeclsEntryAction(VariableEntry* var,
           }
          */
         }
-        else if (gencontains(varsDeclaredTable, enclosingVarNamesStack[enclosingVarNamesStackSize - 1])) {
+        else if (gencontains(varsDeclaredTable, enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1])) {
           fputs("    enclosing-var ", decls_fp);
-          enclosing_len = VG_(strlen)(enclosingVarNamesStack[enclosingVarNamesStackSize - 1]);
+          enclosing_len = VG_(strlen)(enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1]);
 
           // Ugly check. As a way to improve readability, Fjalar simplifies varnames in the form
           // var[0].field to var->field. Unfortunately it still passes var[0] as the enclosing
@@ -579,16 +580,16 @@ printDeclsEntryAction(VariableEntry* var,
           // if we both have an enclosing variable and it ends in [0]. If this is the case, simply
           // print var as the enclosing variable.
           if( (enclosing_len > 3) && !special_zeroth_elt_var &&
-              (enclosingVarNamesStack[enclosingVarNamesStackSize - 1][enclosing_len - 3] == '[') &&
-              (enclosingVarNamesStack[enclosingVarNamesStackSize - 1][enclosing_len - 2] == '0') &&
-              (enclosingVarNamesStack[enclosingVarNamesStackSize - 1][enclosing_len - 1] == ']'))
+              (enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1][enclosing_len - 3] == '[') &&
+              (enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1][enclosing_len - 2] == '0') &&
+              (enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1][enclosing_len - 1] == ']'))
             {
-              printDaikonExternalVarName(var, enclosingVarNamesStack[enclosingVarNamesStackSize - 2],
+              printDaikonExternalVarName(var, enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 2],
                                          decls_fp);
             }
           else
             {
-              printDaikonExternalVarName(var, enclosingVarNamesStack[enclosingVarNamesStackSize - 1],
+              printDaikonExternalVarName(var, enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1],
                                          decls_fp);
             }
           fputs("\n", decls_fp);
@@ -634,7 +635,7 @@ printDeclsEntryAction(VariableEntry* var,
         else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
           fputs(DaikonRepTypeString[R_INT], decls_fp);
         }
-        else if ((var->isString) ||
+        else if ((IS_STRING(var)) ||
                  (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
           // TODO: Change this permanently from "java.lang.String" to
           // "string" in DaikonRepTypeString[] when we're done with the
@@ -677,7 +678,7 @@ printDeclsEntryAction(VariableEntry* var,
         printDeclaredType(DeclaredTypeString[dType], decls_fp);
         // If we have a string, print it as char* because the dType of
         // string is "char" so we need to append a "*" to it
-        if (var->isString) {
+        if (IS_STRING(var)) {
           fputs(STAR, decls_fp);
         }
       }
@@ -784,7 +785,7 @@ printDeclsEntryAction(VariableEntry* var,
           && !(IS_GLOBAL_VAR(var))
           // RUDD - Not dealing with return variables for now. Though we can
           && (varOrigin != FUNCTION_RETURN_VAR)
-          && VG_(strcmp)("return", enclosingVarNamesStack[0])) {
+          && VG_(strcmp)("return", enclosingVarNamesStack.stack[0])) {
 
         // Make sure that the type matches up with the type of
         // this->field ...  A hack is to check whether printAsSequence
@@ -888,10 +889,10 @@ printDeclsEntryAction(VariableEntry* var,
              // RUDD Beautification
              //if(var->isSuperMember && !kvasir_unambiguous_fields) {
              if (0) {
-               field_name = fullNameStackPtr[fullNameStackSize-1];
+               field_name = fullNameStack.stack[fullNameStack.size-1];
              }
              else {
-               str_arr = field_name = stringArrayFlatten(fullNameStackPtr, 2, fullNameStackSize);
+               str_arr = field_name = stringArrayFlatten(fullNameStack.stack, 2, fullNameStack.size);
              }
 
              fputs(" this->", decls_fp);
@@ -903,7 +904,7 @@ printDeclsEntryAction(VariableEntry* var,
            }
            // We have to punt if it's a non 'this' variable that is a sequence
            // RUDD - sequence variables are a bit hairy
-           else if(!isSequence && gengettable(nameToType,enclosingVarNamesStack[0])) {
+           else if(!isSequence && gengettable(nameToType,enclosingVarNamesStack.stack[0])) {
              fputs("    parent ", decls_fp);
 
 
@@ -916,7 +917,7 @@ printDeclsEntryAction(VariableEntry* var,
 
              fputs(ppt_par_id, decls_fp);
              fputs(" this->", decls_fp);
-             fputs(fullNameStackPtr[fullNameStackSize-1], decls_fp);
+             fputs(fullNameStack.stack[fullNameStack.size-1], decls_fp);
              if(special_zeroth_elt_var)
                fputs("[0]", decls_fp);
              fputs("\n", decls_fp);
@@ -969,7 +970,7 @@ printDeclsEntryAction(VariableEntry* var,
         fputs(DeclaredTypeString[dType], decls_fp);
         // If we have a string, print it as char* because the dType of
         // string is "char" so we need to append a "*" to it
-        if (var->isString) {
+        if (IS_STRING(var)) {
           fputs(STAR, decls_fp);
         }
       }
@@ -1043,7 +1044,7 @@ printDeclsEntryAction(VariableEntry* var,
         else if (OVERRIDE_STRING_AS_ONE_INT == disambigOverride) {
           fputs(DaikonRepTypeString[R_INT], decls_fp);
         }
-        else if ((var->isString) ||
+        else if ((IS_STRING(var)) ||
                  (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
           fputs(DaikonRepTypeString[R_STRING], decls_fp);
         }
@@ -1463,11 +1464,10 @@ printDeclsEntryAction(VariableEntry* var,
     Bool hacked_dyncomp_switch = False;
 
 
-    extern void stringStackPush(char** stringStack, int* pStringStackSize, char* str);
-    extern char* stringStackPop(char** stringStack, int* pStringStackSize);
+    extern void stringStackPush(StringStack *stack, char* str);
+    extern char* stringStackPop(StringStack *stack);
 
-    extern char* fullNameStack[];
-    extern int fullNameStackSize;
+    extern StringStack fullNameStack;
 
 
     // Object records aren't needed in new decls format unless parent relations are used
@@ -1597,8 +1597,8 @@ printDeclsEntryAction(VariableEntry* var,
             fputs("\n", decls_fp);
           }
 
-          stringStackPush(fullNameStack, &fullNameStackSize, "this");
-          stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
+          stringStackPush(&fullNameStack, "this");
+          stringStackPush(&fullNameStack, ARROW);
 
           // Print out regular member vars.
           cur_type_for_printing_object_ppt = cur_type;
@@ -1613,8 +1613,8 @@ printDeclsEntryAction(VariableEntry* var,
 
           genfreehashtable(varsDeclaredTable);
 
-          stringStackPop(fullNameStack, &fullNameStackSize);
-          stringStackPop(fullNameStack, &fullNameStackSize);
+          stringStackPop(&fullNameStack);
+          stringStackPop(&fullNameStack);
 
           fputs("\n", decls_fp);
 
@@ -1801,7 +1801,7 @@ printDeclsEntryAction(VariableEntry* var,
  // CALLER IS RESPONSIBLE FOR FREEING RETURNED STRING
  char* removeSuperElements(char** stringArr, VariableEntry* var)
  {
-   int len = fullNameStackSize;
+   int len = fullNameStack.size;
    char*  name = stringArrayFlatten(stringArr, 0, len);
    (void)var;
    // RUDD Beautificatn. Next Release.

@@ -3,6 +3,7 @@
    dynamic invariant detector built upon the Fjalar framework
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -388,7 +389,7 @@ static char printDtraceSingleVar(VariableEntry* var,
   // From this point onwards we know that pValue is safe to
   // dereference because it has been both allocated and initialized
 
-  // Pointer (put this check first before the var->isString check so
+  // Pointer (put this check first before the IS_STRING(var) check so
   // that it will work even for pointers to strings):
   if (isHashcode) {
     // Be careful of what to print depending on whether the
@@ -410,7 +411,7 @@ static char printDtraceSingleVar(VariableEntry* var,
     }
   }
   // String (not pointer to string)
-  else if (var->isString) {
+  else if (IS_STRING(var)) {
     char stringReadable = 0;
 
     // Depends on whether the variable is a static array or not:
@@ -546,7 +547,7 @@ static char printDtraceSequence(VariableEntry* var,
   }
 
 
-  // Pointer (put this check first before the var->isString check so
+  // Pointer (put this check first before the IS_STRING(var) check so
   // that it will work even for pointers to strings):
   if (isHashcode) {
       int ind;
@@ -603,7 +604,7 @@ static char printDtraceSequence(VariableEntry* var,
                      mapInitToModbit(1));
   }
   // String (not pointer to string)
-  else if (var->isString) {
+  else if (IS_STRING(var)) {
     printDtraceStringSequence(var,
                               pValueArray,
                               numElts,
@@ -1080,7 +1081,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
       // the string.  (Be careful about statically-declared strings,
       // in which case the address of the first element is the address
       // of the pointer variable)
-      if (var->isString &&
+      if (IS_STRING(var) &&
           (0 == layersBeforeBase)) {
         if (ptrInQuestion) {
           ptrAllocAndInit =
