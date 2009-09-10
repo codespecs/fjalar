@@ -3,6 +3,7 @@
    programs.
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -26,7 +27,6 @@
 #include "mc_translate.h"
 
 #include "fjalar_include.h"
-#include "fjalar_debug.h"
 #include "generate_fjalar_entries.h"
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
@@ -34,7 +34,7 @@
 
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);
-  
+
 // The master location_list. This is fully explained in
 // typedata.c
 extern struct genhashtable* loc_list_map;
@@ -122,7 +122,7 @@ __inline__ FunctionExecutionState* fnStackTop(void);
 
 extern Addr (*get_reg[11])( ThreadId tid );
 
-// For debugging purposes, a mapping between 
+// For debugging purposes, a mapping between
 // DWARF location atoms and their string
 // representation
 

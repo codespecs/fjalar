@@ -36,44 +36,80 @@ int g_variableIndex = 0;
 // and by the same function that handles struct parsing, I need to
 // differentiate whether or not the current variable belongs to a super
 // class.
-
 static int traversing_super = 0;
-
 
 extern FunctionTree* globalFunctionTree;
 
+// Contains all the arguments needed for one of the visit functions.
+// All of the visit functions are recursive. For example for
+// the variable:
+
+// struct A {
+//   struct B {
+//     int c;
+//   } b[5]
+// } a
+
+// The callgraph would look like:
+// visitSingleVar(a) -> visitSequence(b) -> visitSequence(c)
+
+typedef struct _VisitArgs {
+  TypeEntry* class; // Only relevant for C++ objects
+  VariableEntry* var;
+  Bool isSequence;
+  UInt numDereferences;
+
+  // Pointer to the location of the variable's
+  // current value in memory:
+  Addr pValue;
+  // Address of value in client program's memory.
+  Addr pValueGuest;
+
+  // pValueArray only valid if isSequence is true.
+  // contains an array of pointers to values.
+  Addr* pValueArray;
+  // Address of array in client program's memory.
+  Addr* pValueArrayGuest;
+  UInt numElts;
+
+  // We only use overrideIsInit when we pass in
+  // things (e.g. return values) that cannot be
+  // checked by the Memcheck A and V bits. Never have
+  // overrideIsInit when you derive variables (make
+  // recursive calls) because their addresses are
+  // different from the original's
+  Bool overrideIsInit;
+
+  // only relevant for C++ reference parameters
+  Bool alreadyDerefedCppRef;
+
+  // This function performs an action for each variable visited:
+  TraversalAction *performAction;
+
+  VariableOrigin varOrigin;
+  char* trace_vars_tree;
+  DisambigOverride disambigOverride;
+
+  // The number of structs we have dereferenced for
+  // a particular call of visitVariable(); Starts at
+  // 0 and increments every time we hit a variable
+  // which is a base struct type
+  // Range: [0, fjalar_max_visit_nesting_depth]
+  UInt numStructsDereferenced;
+  // These uniquely identify the program point
+  FunctionEntry* varFuncInfo;
+  Bool isEnter;
+  TraversalResult tResult;
+} VisitArgs;
 
 
 static
-void visitSingleVar(VariableEntry* var,
-                    UInt numDereferences,
-                    Addr pValue,
-                    Addr pValueGuest,
-                    Bool overrideIsInit,
-                    Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
-                    // This function performs an action for each variable visited:
-                    TraversalAction *performAction,
-                    VariableOrigin varOrigin,
-                    char* trace_vars_tree,
-                    DisambigOverride disambigOverride,
-                    UInt numStructsDereferenced,
-                    FunctionEntry* varFuncInfo,
-                    Bool isEnter);
+void visitSingleVar(VisitArgs* visit_args);
 
 static
-void visitSequence(VariableEntry* var,
-                   UInt numDereferences,
-                   Addr* pValueArray,
-                   Addr* pValueArrayGuest,
-                   UInt numElts,
-                   // This function performs an action for each variable visited:
-		   TraversalAction *performAction,
-                   VariableOrigin varOrigin,
-                   char* trace_vars_tree,
-                   DisambigOverride disambigOverride,
-                   UInt numStructsDereferenced,
-                   FunctionEntry* varFuncInfo,
-                   Bool isEnter);
+void visitSequence(VisitArgs* visit_args);
+
+void visitClassMemberVariables(VisitArgs* args);
 
 // This is an example of a function that's valid to be passed in as
 // the performAction parameter to visitVariable:
@@ -110,98 +146,92 @@ char* STAR = "*";
 // This stack represents the full name of the variable that we
 // currently want to output (Only puts REFERENCES to strings in
 // fullNameStack; does not do any allocations)
-#define MAX_STRING_STACK_SIZE 100
 
 // This stack keeps track of all components of the full name of the
 // variable that's currently being visited.  E.g., for a variable
 // "foo->bar[]", this stack may contain something like:
 //   {"foo", "->", "bar", "[]"}.
+
 // Doing stringStackStrdup() on this stack will result in a full
 // variable name.
-char* fullNameStack[MAX_STRING_STACK_SIZE];
-char** fullNameStackPtr = fullNameStack;
-int fullNameStackSize = 0;
+
+StringStack fullNameStack = { {0,}, 0};
 
 // This stack keeps the FULL names of all variables above the current
 // one in the stack (that is, all of the current variable's
 // ancestors).  For example, for a variable "foo->bar[]", this stack
 // may contain something like: {"foo", "foo->bar"}.
-char* enclosingVarNamesStackArray[MAX_STRING_STACK_SIZE];
-char **enclosingVarNamesStack = enclosingVarNamesStackArray;
-int enclosingVarNamesStackSize = 0;
+StringStack enclosingVarNamesStack = { {0,}, 0};
 
-void stringStackPush(char** stringStack, int* pStringStackSize, char* str)
+void stringStackPush(StringStack *stack, char* str)
 {
-  tl_assert(str && *pStringStackSize < MAX_STRING_STACK_SIZE);
+  tl_assert(str && stack->size < MAX_STRING_STACK_SIZE);
 
   //Don't allow null strings at all:
   if (!str) {
     VG_(printf)( "Null string passed to push!\n");
-    /* abort(); */
+    abort();
     str = "<null>";
   }
 
-  stringStack[*pStringStackSize] = str;
-  (*pStringStackSize)++;
+  stack->stack[stack->size] = str;
+  stack->size++;
 }
 
-char* stringStackPop(char** stringStack, int* pStringStackSize)
+char* stringStackPop(StringStack *stack)
 {
   char* temp;
-  if(*pStringStackSize <= 0){
-    tl_assert(0);
-    }
-  tl_assert(*pStringStackSize > 0);
+  tl_assert(stack->size > 0);
 
-  temp = stringStack[*pStringStackSize - 1];
-  (*pStringStackSize)--;
+  temp = stack->stack[stack->size - 1];
+  stack->size--;
 
   return temp;
 }
 
-char* stringStackTop(char** stringStack, int stringStackSize)
+char* stringStackTop(StringStack *stack)
 {
-  return stringStack[stringStackSize - 1];
+  return stack->stack[stack->size - 1];
 }
 
-void stringStackClear(int* pStringStackSize)
+void stringStackClear(StringStack *stack)
 {
-  (*pStringStackSize) = 0;
+  (stack->size) = 0;
 }
 
 // Returns: Total length of all strings on stringStack
-int stringStackStrLen(char** stringStack, int stringStackSize)
+int stringStackStrLen(StringStack *stack)
 {
   int i;
   int total = 0;
-  for (i = stringStackSize - 1; i >=0; i--)
+  for (i = stack->size - 1; i >=0; i--)
     {
-      total+=VG_(strlen)(stringStack[i]);
+      total+=VG_(strlen)(stack->stack[i]);
     }
   return total;
 }
 
-void stringStackPrint(char** stringStack, int stringStackSize)
+void stringStackPrint(StringStack *stack)
 {
   int i;
-  for (i = stringStackSize - 1; i >= 0; i--)
+  for (i = stack->size - 1; i >= 0; i--)
     {
-      printf("stringStack[%d] = %s\n", i, stringStack[i]);
+      printf("stringStack[%d] = %s\n", i, stack->stack[i]);
     }
 }
 
 // Takes all of the strings on stringStack, copies them into a newly
 // calloc'ed string (in a queue-like FIFO order), and returns a
 // pointer to that string.
-char* stringStackStrdup(char** stringStack, int stringStackSize)
+char* stringStackStrdup(StringStack *stack)
 {
   // Extra 1 for trailing '\0'
-  int totalStrLen = stringStackStrLen(stringStack, stringStackSize) + 1;
+  int totalStrLen = stringStackStrLen(stack) + 1;
   char* fullName = (char*)VG_(calloc)("fjalar_traversal.c: sSSd" ,totalStrLen, sizeof(char));
   int i;
 
-  for (i = 0; i < stringStackSize; i++) {
-    VG_(strcat)(fullName, stringStack[i]);
+  for (i = 0; i < stack->size; i++) {
+    VG_(strcat)(fullName, stack->stack[i]);
   }
   return fullName;
 }
@@ -214,11 +244,12 @@ char* stringStackStrdup(char** stringStack, int stringStackSize)
 void visitClassMembersNoValues(TypeEntry* class,
 			       TraversalAction *performAction) {
 
+  VisitArgs new_args;
   char *fullFjalarName = NULL, *top = NULL;
 
   if (VisitedStructsTable) {
     genfreehashtable(VisitedStructsTable);
-    VisitedStructsTable = 0;
+    VisitedStructsTable = NULL;
   }
 
   // Use a small hashtable to save time and space:
@@ -228,46 +259,48 @@ void visitClassMembersNoValues(TypeEntry* class,
   // RUDD 2.0 Making use of EnclosingVarStack to keep track of
   // struct/class members.
   // TODO: Make this less string based
-  top = stringStackTop(fullNameStack, fullNameStackSize);
+  top = stringStackTop(&fullNameStack);
 
     //Need a proper enclosing variable name
   if (!top ||
       (top && VG_STREQ(top, DOT)) ||
       (top && VG_STREQ(top, ZEROTH_ELT)) ||
       (top && VG_STREQ(top, ARROW))) {
-    stringStackPop(fullNameStack, &fullNameStackSize);
-    fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    stringStackPop(&fullNameStack);
+    fullFjalarName = stringStackStrdup(&fullNameStack);
     if (fullFjalarName) {
-      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      stringStackPush(&enclosingVarNamesStack, fullFjalarName);
     }
-    stringStackPush(fullNameStack, &fullNameStackSize, top);
+    stringStackPush(&fullNameStack, top);
   }
   else {
-    fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    fullFjalarName = stringStackStrdup(&fullNameStack);
     if (fullFjalarName) {
-      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      stringStackPush(&enclosingVarNamesStack, fullFjalarName);
     }
   }
 
 
+  new_args.class                  = class;
+  new_args.pValue                 = (Addr) NULL;
+  new_args.pValueGuest            = (Addr) NULL;
+  new_args.isSequence             = False;
+  new_args.pValueArray            = NULL;
+  new_args.pValueArrayGuest       = NULL;
+  new_args.numElts                = 0;
+  new_args.performAction          = performAction;
+  // This is ignored since there's nothing being printed
+  // let's give the value something sane regardless.
+  new_args.varOrigin              = GLOBAL_VAR;
+  new_args.trace_vars_tree        = NULL;
+  new_args.numStructsDereferenced = 0;
+  new_args.isEnter                = False;
+  new_args.tResult                = INVALID_RESULT;
 
-  visitClassMemberVariables(class,
-                            0,
-			    0,
-                            0,
-                            0,
-                            0,
-			    0,
-                            performAction,
-                            GLOBAL_VAR, // doesn't matter, I don't think
-                            0,
-                            0,
-                            0,
-                            0,
-                            INVALID_RESULT);
+  visitClassMemberVariables(&new_args);
 
   if (fullFjalarName) {
-    stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+    stringStackPop(&enclosingVarNamesStack);
   }
 }
 
@@ -277,29 +310,23 @@ void visitClassMembersNoValues(TypeEntry* class,
 // specified class (or struct/union).  This should also traverse
 // inside of the class's superclasses and visit variables in them as
 // well.  Pre: class->decType == {D_STRUCT_CLASS, D_UNION}
-void visitClassMemberVariables(TypeEntry* class,
-                               Addr pValue,
-                               Addr pValueGuest,
-                               Bool isSequence,
-                               // An array of pointers to values (only
-                               // valid if isSequence non-null):
-                               Addr* pValueArray,
-                               Addr* pValueArrayGuest,
-                               UInt numElts, // Size of pValueArray
-                               // This function performs an action for each variable visited:
-			       TraversalAction *performAction,
-                               VariableOrigin varOrigin,
-                               char* trace_vars_tree,
-                               // The number of structs we have dereferenced for
-                               // a particular call of visitVariable(); Starts at
-                               // 0 and increments every time we hit a variable
-                               // which is a base struct type
-                               // Range: [0, MAX_VISIT_NESTING_DEPTH]
-                               UInt numStructsDereferenced,
-                               // These uniquely identify the program point
-                               FunctionEntry* varFuncInfo,
-                               Bool isEnter,
-                               TraversalResult tResult) {
+void visitClassMemberVariables(VisitArgs* args) {
+  TypeEntry* class               = args->class;
+  UInt numStructsDereferenced    = args->numStructsDereferenced;
+  Bool isSequence                = args->isSequence;
+  VariableOrigin varOrigin       = args->varOrigin;
+  Addr* pValueArray              = args->pValueArray;
+  TraversalResult tResult        = args->tResult;
+  UInt numElts                   = args->numElts;
+  Addr* pValueArrayGuest         = args->pValueArrayGuest;
+  Addr pValue                    = args->pValue;
+  Addr pValueGuest               = args->pValueGuest;
+  TraversalAction *performAction = args->performAction;
+  char* trace_vars_tree          = args->trace_vars_tree;
+  FunctionEntry* varFuncInfo     = args->varFuncInfo;
+  Bool isEnter                   = args->isEnter;
+
+  VisitArgs new_args;
 
   char* fullFjalarName = NULL;
 
@@ -308,16 +335,16 @@ void visitClassMemberVariables(TypeEntry* class,
 
 
   // Check to see if the VisitedStructsTable contains more than
-  // MAX_VISIT_STRUCT_DEPTH of the current struct type
+  // fjalar_max_visit_struct_depth of the current struct type
   if (gencontains(VisitedStructsTable, (void*)class)) {
     UWord count = (UWord)(gengettable(VisitedStructsTable, (void*)class));
 
-    if (count <= MAX_VISIT_STRUCT_DEPTH) {
+    if (count <= fjalar_max_visit_struct_depth) {
       count++;
       genputtable(VisitedStructsTable, (void*)class, (void*)count);
     }
     // PUNT because this struct has appeared more than
-    // MAX_VISIT_STRUCT_DEPTH times during one call to visitVariable()
+    // fjalar_max_visit_struct_depth times during one call to visitVariable()
     else {
       return;
     }
@@ -327,9 +354,9 @@ void visitClassMemberVariables(TypeEntry* class,
     genputtable(VisitedStructsTable, (void*)class, (void*)1);
   }
 
-  // If we have dereferenced more than MAX_VISIT_NESTING_DEPTH
+  // If we have dereferenced more than fjalar_max_visit_nesting_depth
   // structs, then simply PUNT and stop deriving variables from it.
-  if (numStructsDereferenced > MAX_VISIT_NESTING_DEPTH) {
+  if (numStructsDereferenced > fjalar_max_visit_nesting_depth) {
     return;
   }
 
@@ -342,16 +369,16 @@ void visitClassMemberVariables(TypeEntry* class,
          i = i->next) {
       VariableEntry* curVar = i->var;
 
-      char* top = 0;
+      char* top = NULL;
       char numEltsPushedOnStack = 0;
 
       // Address of the value of the current member variable (only
       // valid if !isSequence):
-      Addr pCurVarValue = 0;
-      Addr pCurVarValueGuest = 0;
+      Addr pCurVarValue = (Addr) NULL;
+      Addr pCurVarValueGuest = (Addr) NULL;
       // Only used if isSequence:
-      Addr* pCurVarValueArray = 0;
-      Addr* pCurVarValueArrayGuest = 0;
+      Addr* pCurVarValueArray = NULL;
+      Addr* pCurVarValueArrayGuest = NULL;
 
       if (!curVar->name) {
 	VG_(printf)( "  Warning! Weird null member variable name!\n");
@@ -370,12 +397,12 @@ void visitClassMemberVariables(TypeEntry* class,
           (DERIVED_FLATTENED_ARRAY_VAR != varOrigin) &&
           (curVar->staticArr->upperBounds[0] < MAXIMUM_ARRAY_SIZE_TO_EXPAND) &&
           // Ignore arrays of characters (strings) inside of the struct:
-          !(curVar->isString && (curVar->ptrLevels == 1))) {
+          !(IS_STRING(curVar) && (curVar->ptrLevels == 1))) {
         // Only look at the first dimension:
         UInt arrayIndex;
         for (arrayIndex = 0; arrayIndex <= curVar->staticArr->upperBounds[0]; arrayIndex++) {
           char indexStr[5];
-          top = stringStackTop(fullNameStack, fullNameStackSize);
+          top = stringStackTop(&fullNameStack);
 
           sprintf(indexStr, "%d", arrayIndex);
 
@@ -482,58 +509,54 @@ void visitClassMemberVariables(TypeEntry* class,
           // '->'.  If last element is '->', then we're fine and
           // don't do anything else.  Otherwise, push a '.'
           else if (top && top[0] == '*') {
-            stringStackPop(fullNameStack, &fullNameStackSize);
-            stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
+            stringStackPop(&fullNameStack);
+            stringStackPush(&fullNameStack, ARROW);
             numEltsPushedOnStack = 0;
           }
           else if (VG_STREQ(top, ARROW)) {
             numEltsPushedOnStack = 0;
           }
           else {
-            stringStackPush(fullNameStack, &fullNameStackSize, DOT);
+            stringStackPush(&fullNameStack, DOT);
             numEltsPushedOnStack = 1;
           }
 
-          stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
-          stringStackPush(fullNameStack, &fullNameStackSize, "[");
-          stringStackPush(fullNameStack, &fullNameStackSize, indexStr);
-          stringStackPush(fullNameStack, &fullNameStackSize, "]");
+          stringStackPush(&fullNameStack, curVar->name);
+          stringStackPush(&fullNameStack, "[");
+          stringStackPush(&fullNameStack, indexStr);
+          stringStackPush(&fullNameStack, "]");
 
           numEltsPushedOnStack += 4;
 
+          new_args.var                    = curVar;
+          new_args.numDereferences         = 0;
+          new_args.performAction          = performAction;
+          new_args.varOrigin              = DERIVED_FLATTENED_ARRAY_VAR;
+          new_args.trace_vars_tree        = trace_vars_tree;
+          new_args.disambigOverride       = OVERRIDE_NONE;
+          new_args.numStructsDereferenced = numStructsDereferenced + 1; // Notice the +1 here
+          new_args.varFuncInfo            = varFuncInfo;
+          new_args.isEnter                = isEnter;
+
           if (isSequence) {
-            visitSequence(curVar,
-                          0,
-                          pCurVarValueArray,
-                          pCurVarValueArrayGuest,
-                          numElts,
-                          performAction,
-                          DERIVED_FLATTENED_ARRAY_VAR,
-                          trace_vars_tree,
-                          OVERRIDE_NONE,
-                          numStructsDereferenced + 1, // Notice the +1 here
-                          varFuncInfo,
-                          isEnter);
+            new_args.pValueArray      = pCurVarValueArray;
+            new_args.pValueArrayGuest = pCurVarValueArrayGuest;
+            new_args.numElts          = numElts;
+
+            visitSequence(&new_args);
           }
           else {
-            visitSingleVar(curVar,
-                           0,
-                           pCurVarValue,
-                           pCurVarValueGuest,
-                           0,
-                           0,
-                           performAction,
-                           DERIVED_FLATTENED_ARRAY_VAR,
-                           trace_vars_tree,
-                           OVERRIDE_NONE, // Start over again and read new .disambig entry
-                           numStructsDereferenced + 1, // Notice the +1 here
-                           varFuncInfo,
-                           isEnter);
+            new_args.pValue               = pCurVarValue;
+            new_args.pValueGuest          = pCurVarValueGuest;
+            new_args.overrideIsInit       = False;
+            new_args.alreadyDerefedCppRef = False;
+
+            visitSingleVar(&new_args);
           }
 
           // POP all the stuff we pushed on there before
           while ((numEltsPushedOnStack--) > 0) {
-            stringStackPop(fullNameStack, &fullNameStackSize);
+            stringStackPop(&fullNameStack);
           }
 
           // HACK: Add the count back on at the end
@@ -546,9 +569,9 @@ void visitClassMemberVariables(TypeEntry* class,
           // Only free if necessary
           if (pCurVarValueArray) {
             VG_(free)(pCurVarValueArray);
-            pCurVarValueArray = 0;
+            pCurVarValueArray = NULL;
             VG_(free)(pCurVarValueArrayGuest);
-            pCurVarValueArrayGuest = 0;
+            pCurVarValueArrayGuest = NULL;
           }
         }
       }
@@ -571,27 +594,14 @@ void visitClassMemberVariables(TypeEntry* class,
             for (ind = 0; ind < numElts; ind++) {
               // The starting address for the member variable is the
               // struct's starting address plus the location of the
-              // variable within the struct TODO: Are we sure that
-              // arithmetic on void* basePtrValue adds by 1?
-              // Otherwise, we'd have mis-alignment issues.  (I tried
-              // it in gdb and it seems to work, though.)
+              // variable within the struct
               if (pValueArray[ind]) {
                 Addr curVal =
 		  pValueArray[ind] + curVar->memberVar->data_member_location;
                 Addr curValGuest = pValueArrayGuest[ind] +
 		  curVar->memberVar->data_member_location;
 
-                // Override for D_DOUBLE types: For some reason, the
-                // DWARF2 info.  botches the locations of double
-                // variables within structs, setting their
-                // data_member_location fields to give them only 4
-                // bytes of padding instead of 8 against the next
-                // member variable.  If curVar is a double and there
-                // exists a next member variable such that the
-                // difference in data_member_location of this double
-                // and the next member variable is exactly 4, then
-                // decrement the double's location by 4 in order to
-                // give it a padding of 8:
+                // See "Override for D_DOUBLE types" comment above.
                 if ((D_DOUBLE == curVar->varType->decType) &&
                     (i->next) &&
                     ((i->next->var->memberVar->data_member_location -
@@ -626,16 +636,7 @@ void visitClassMemberVariables(TypeEntry* class,
             pCurVarValueGuest =
 	      pValueGuest + curVar->memberVar->data_member_location;
 
-            // Override for D_DOUBLE types: For some reason, the
-            // DWARF2 info.  botches the locations of double variables
-            // within structs, setting their data_member_location
-            // fields to give them only 4 bytes of padding instead of
-            // 8 against the next member variable.  If curVar is a
-            // double and there exists a next member variable such
-            // that the difference in data_member_location of this
-            // double and the next member variable is exactly 4, then
-            // decrement the double's location by 4 in order to give
-            // it a padding of 8:
+            // See "Override for D_DOUBLE types" comment above.
             if ((D_DOUBLE == curVar->varType->decType) &&
                 (i->next) &&
                 ((i->next->var->memberVar->data_member_location -
@@ -646,7 +647,7 @@ void visitClassMemberVariables(TypeEntry* class,
           }
         }
 
-        top = stringStackTop(fullNameStack, fullNameStackSize);
+        top = stringStackTop(&fullNameStack);
 
         // If the top element is already a dot (from a superclass name
         // perhaps) or there is NO top element (e.g., printing
@@ -661,54 +662,53 @@ void visitClassMemberVariables(TypeEntry* class,
         // fine and don't do anything else.  Otherwise, push a '.'
         else if (top &&
                  ((top[0] == '*') || (VG_STREQ(top, ZEROTH_ELT)))) {
-          stringStackPop(fullNameStack, &fullNameStackSize);
-          stringStackPush(fullNameStack, &fullNameStackSize, ARROW);
+          stringStackPop(&fullNameStack);
+          stringStackPush(&fullNameStack, ARROW);
           numEltsPushedOnStack = 0;
         }
         else if (VG_STREQ(top, ARROW)) {
           numEltsPushedOnStack = 0;
         }
         else {
-          stringStackPush(fullNameStack, &fullNameStackSize, DOT);
+          stringStackPush(&fullNameStack, DOT);
           numEltsPushedOnStack = 1;
         }
 
-        stringStackPush(fullNameStack, &fullNameStackSize, curVar->name);
+        stringStackPush(&fullNameStack, curVar->name);
         numEltsPushedOnStack++;
 
+        new_args.var                    = curVar;
+        new_args.numDereferences         = 0;
+        new_args.performAction          = performAction;
+        new_args.varOrigin              = (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ?
+                                          varOrigin : DERIVED_VAR;
+        new_args.trace_vars_tree        = trace_vars_tree;
+        new_args.disambigOverride       = OVERRIDE_NONE;
+        // Notice the +1 here indicating that this next variable is one deeper in
+        // this nested structure.
+        new_args.numStructsDereferenced = numStructsDereferenced + 1;
+        new_args.varFuncInfo            = varFuncInfo;
+        new_args.isEnter                = isEnter;
+
         if (isSequence) {
-          visitSequence(curVar,
-                        0,
-                        pCurVarValueArray,
-                        pCurVarValueArrayGuest,
-                        numElts,
-                        performAction,
-                        (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
-                        trace_vars_tree,
-                        OVERRIDE_NONE,
-                        numStructsDereferenced + 1, // Notice the +1 here
-                        varFuncInfo,
-                        isEnter);
+          new_args.pValueArray      = pCurVarValueArray;
+          new_args.pValueArrayGuest = pCurVarValueArrayGuest;
+          new_args.numElts          = numElts;
+
+          visitSequence(&new_args);
         }
         else {
-          visitSingleVar(curVar,
-                         0,
-                         pCurVarValue,
-                         pCurVarValueGuest,
-                         0,
-                         0,
-                         performAction,
-                         (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
-                         trace_vars_tree,
-                         OVERRIDE_NONE, // Start over again and read new .disambig entry
-                         numStructsDereferenced + 1, // Notice the +1 here
-                         varFuncInfo,
-                         isEnter);
+          new_args.pValue               = pCurVarValue;
+          new_args.pValueGuest          = pCurVarValueGuest;
+          new_args.overrideIsInit       = False;
+          new_args.alreadyDerefedCppRef = False;
+
+          visitSingleVar(&new_args);
         }
 
         // POP everything we've just pushed on
         while ((numEltsPushedOnStack--) > 0) {
-          stringStackPop(fullNameStack, &fullNameStackSize);
+          stringStackPop(&fullNameStack);
         }
 
         // Only free if necessary
@@ -729,16 +729,16 @@ void visitClassMemberVariables(TypeEntry* class,
     for (n = class->aggType->superclassList->first;
          n != NULL;
          n = n->next) {
-      Addr* superclassOffsetPtrValues = 0;
-      Addr* superclassOffsetPtrValuesGuest = 0;
+      Addr* superclassOffsetPtrValues = NULL;
+      Addr* superclassOffsetPtrValuesGuest = NULL;
 
-      char* top = 0;
+      char* top = NULL;
       char numEltsPushedOnStack = 0;
 
       Superclass* curSuper = (Superclass*)(n->elt);
       tl_assert(curSuper && curSuper->class);
 
-      top = stringStackTop(fullNameStack, fullNameStackSize);
+      top = stringStackTop(&fullNameStack);
 
       // If this superclass's member variables are at a non-zero
       // offset from the beginning of this class and isSequence, then
@@ -765,67 +765,63 @@ void visitClassMemberVariables(TypeEntry* class,
 
       // Push an extra dot before superclass name if necessary
       if (!VG_STREQ(DOT, top) && !VG_STREQ(ARROW,top)) {
-        stringStackPush(fullNameStack, &fullNameStackSize, DOT);
+        stringStackPush(&fullNameStack, DOT);
         numEltsPushedOnStack += 1;
       }
 
       // Push a name prefix to denote that we are traversing into a
       // superclass:
-      stringStackPush(fullNameStack, &fullNameStackSize, curSuper->className);
+      stringStackPush(&fullNameStack, curSuper->className);
 
       // RUDD - 2.0  Trying to make use of EnclosingVar stack for Nested Classes and Structs.
       // Push fullFjalarName onto enclosingVarNamesStack:
-      fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+      fullFjalarName = stringStackStrdup(&fullNameStack);
       if (fullFjalarName) {
-        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+        stringStackPush(&enclosingVarNamesStack, fullFjalarName);
       }
 
 
-      stringStackPush(fullNameStack, &fullNameStackSize, DOT);
+      stringStackPush(&fullNameStack, DOT);
       numEltsPushedOnStack += 2;
 
       traversing_super++;
+
+      new_args.class                  = curSuper->class;
+      new_args.pValue                 = (isSequence ?
+                                         0 : pValue + curSuper->member_var_offset);
+      new_args.pValueGuest            = (isSequence ?
+                                         0 : pValueGuest+curSuper->member_var_offset);
+      new_args.isSequence             = isSequence;
+      new_args.pValueArray            = (superclassOffsetPtrValues ?
+                                         superclassOffsetPtrValues : pValueArray);
+      new_args.pValueArrayGuest       = (superclassOffsetPtrValuesGuest ?
+                                         superclassOffsetPtrValuesGuest
+                                         : pValueArrayGuest);
+      new_args.numElts                = numElts;
+      new_args.performAction          = performAction;
+      new_args.varOrigin              = varOrigin;
+      new_args.trace_vars_tree        = trace_vars_tree;
+      new_args.numStructsDereferenced = numStructsDereferenced;
+      new_args.varFuncInfo            = varFuncInfo;
+      new_args.isEnter                = isEnter;
+      new_args.tResult                = tResult;
+
 
       // This recursive call will handle multiple levels of
       // inheritance (e.g., if A extends B, B extends C, and C extends
       // D, then A will get all of its members visited, then visit the
       // members of B, then C, then D):
-      visitClassMemberVariables(curSuper->class,
-                                // IMPORTANT to add this offset, even
-                                // though most of the time, it will be
-                                // 0 except when you have multiple
-                                // inheritance:
-                                (isSequence ?
-                                 0 : pValue + curSuper->member_var_offset),
-                                (isSequence ?
-                                 0 : pValueGuest+curSuper->member_var_offset),
-                                isSequence,
-                                // Use the offset one if available,
-                                // otherwise use the regular one if
-                                // member_var_offset is 0:
-                                (superclassOffsetPtrValues ?
-                                 superclassOffsetPtrValues : pValueArray),
-                                (superclassOffsetPtrValuesGuest ?
-                                 superclassOffsetPtrValuesGuest
-				 : pValueArrayGuest),
-                                numElts,
-                                performAction,
-                                varOrigin,
-                                trace_vars_tree,
-                                numStructsDereferenced,
-                                varFuncInfo,
-                                isEnter,
-                                tResult);
+      visitClassMemberVariables(&new_args);
 
       traversing_super = 0;
 
       if (fullFjalarName) {
-        stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+        stringStackPop(&enclosingVarNamesStack);
       }
 
       // POP all the stuff we pushed on there before
       while ((numEltsPushedOnStack--) > 0) {
-        stringStackPop(fullNameStack, &fullNameStackSize);
+        stringStackPop(&fullNameStack);
       }
 
       if (superclassOffsetPtrValues) {
@@ -854,8 +850,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         // This function performs an action for each
                         // variable visited:
 			TraversalAction *performAction) {
-  VarList* varListPtr = 0;
-  VarIterator* varIt = 0;
+  VarList* varListPtr = NULL;
+  VarIterator* varIt = NULL;
   Bool overrideIsInit = 0;
 
   // If funcPtr is null, then you better be GLOBAL_VAR
@@ -888,7 +884,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
     break;
   }
 
-  stringStackClear(&fullNameStackSize);
+  stringStackClear(&fullNameStack);
 
   tl_assert(varListPtr);
 
@@ -896,8 +892,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
   while (hasNextVar(varIt)) {
     VariableEntry* var = nextVar(varIt);
-    Addr basePtrValue = 0;
-    Addr basePtrValueGuest = 0;
+    Addr basePtrValue = (Addr) NULL;
+    Addr basePtrValueGuest = (Addr) NULL;
 
 
 
@@ -921,15 +917,52 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
       FJALAR_DPRINTF("\tbaseAddr: %x, baseAddrGuest: %x var->byteOffset: %x(%d)\n", stackBaseAddr, stackBaseAddrGuest, var->byteOffset, var->byteOffset);
       FJALAR_DPRINTF("\tState of Guest Stack [%x - %x] \n", funcPtr->guestStackStart, funcPtr->guestStackEnd);
-      FJALAR_DPRINTF("\tSize of DWARF location stack: %d\n", var->dwarf_stack_size);
+      FJALAR_DPRINTF("\tSize of DWARF location stack: %d\n", var->location_expression_size);
 
-      if(var->dwarf_stack_size) {
+      if(var->location_expression_size) {
 	Bool actual_value = 0;
-        Addr var_loc = 0;
+        Addr var_loc = (Addr) NULL;
 	unsigned int i = 0;
 
-	// HACK - Due to the weird stack layout in main, locations for variables are calculated
-        // in very indirect ways (usually some calculation based on a pointer in one of the
+        // MAIN STACK LAYOUT
+	// HACK - Main has a very strange stack layout. The stack
+	// layout for a standard function is as follows:
+
+        // |                   |
+        // |    arguments      |
+        // |-------------------|
+        // |                   |
+        // |  return address   |
+        // |-------------------|
+        // |                   |
+        // |     old ebp       |
+        // |-------------------| <------ Top of stack frame.
+        // |                   |         ebp points to this if available.
+        // |      locals       |
+        // |-------------------|
+
+        // The stack layout of main is follows:
+
+        // |                   |
+        // |    arguments      |
+        // |-------------------|
+        // |                   |
+        // |  return address   |
+        // |-------------------|
+        // |                   |
+        // |     old ebp       |
+        // |-------------------| <------ Top of unaligned stack frame.
+        // |                   |
+        // |     Padding       |
+        // |-------------------|
+        // |                   |
+        // | unaligned frame   |
+        // |-------------------| <------ Top of aligned stack frame. This is
+        // |                   |         16-byte aligned. ebp points to this
+        // |     locals        |         if available
+
+        // A problem arises due to the fact GCC accesses the arguments using
+        // very indirect calculations (usually a pointer in one of the
         // architectural registers. ) Unfortunately, the calculation tended to produce incorrect
         // results for main if attempted at the 'ret' instruction. A hacky way to get around this
         // is to just use the same location as your caculated at entry. This would fail if GCC
@@ -945,8 +978,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	else {
 
           // Dwarf Locations are implemented as a sequence of operations to be performed.
-	  for(i = 0; i < var->dwarf_stack_size; i++ ) {
-	    dwarf_location *loc  = &(var->dwarf_stack[i]);
+	  for(i = 0; i < var->location_expression_size; i++ ) {
+	    dwarf_location *loc  = &(var->location_expression[i]);
 	    unsigned int  op = loc->atom;
             int reg_val;
 
@@ -1048,7 +1081,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       }
     }
 
-    stringStackPush(fullNameStack, &fullNameStackSize, var->name);
+    stringStackPush(&fullNameStack, var->name);
 
     visitVariable(var,
 		  basePtrValue,
@@ -1060,7 +1093,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 		  funcPtr,
 		  isEnter);
 
-    stringStackPop(fullNameStack, &fullNameStackSize);
+    stringStackPop(&fullNameStack);
   }
 
   deleteVarIterator(varIt);
@@ -1085,7 +1118,7 @@ void visitReturnValue(FunctionExecutionState* e,
   FJALAR_DPRINTF("visitReturnValue\n");
 
   // We need to push the return value name onto the string stack!
-  stringStackClear(&fullNameStackSize);
+  stringStackClear(&fullNameStack);
 
   cur_node = funcPtr->returnValue.first;
 
@@ -1098,7 +1131,7 @@ void visitReturnValue(FunctionExecutionState* e,
   tl_assert(cur_node->var->name);
   tl_assert(cur_node->var->varType);
 
-  stringStackPush(fullNameStack, &fullNameStackSize, cur_node->var->name);
+  stringStackPush(&fullNameStack, cur_node->var->name);
 
   // Struct/union type - use xAX but remember that xAX holds
   // a POINTER to the struct/union so we must dereference appropriately
@@ -1213,7 +1246,7 @@ void visitReturnValue(FunctionExecutionState* e,
                   0);
   }
 
-  stringStackPop(fullNameStack, &fullNameStackSize);
+  stringStackPop(&fullNameStack);
 }
 
 
@@ -1275,7 +1308,12 @@ void visitVariable(VariableEntry* var,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter) {
 
-  char* trace_vars_tree = 0;
+  // TODO: This function should be changed to take in a VisitArgs*
+  // instead of this list of arguments. This would require a change
+  // in the Fjalar API however.
+  VisitArgs new_args;
+
+  char* trace_vars_tree = NULL;
 
   tl_assert(varOrigin != DERIVED_VAR);
   tl_assert(varOrigin != DERIVED_FLATTENED_ARRAY_VAR);
@@ -1292,7 +1330,7 @@ void visitVariable(VariableEntry* var,
 
     if (VisitedStructsTable) {
       genfreehashtable(VisitedStructsTable);
-      VisitedStructsTable = 0;
+      VisitedStructsTable = NULL;
     }
 
     // Use a small hashtable to save time and space:
@@ -1311,19 +1349,21 @@ void visitVariable(VariableEntry* var,
   }
 
   // Delegate:
-  visitSingleVar(var,
-                 0,
-                 pValue,
-		 pValueGuest,
-                 overrideIsInit,
-                 0,
-                 performAction,
-                 varOrigin,
-                 trace_vars_tree,
-                 OVERRIDE_NONE,
-                 numStructsDereferenced,
-                 varFuncInfo,
-                 isEnter);
+  new_args.var                    = var;
+  new_args.numDereferences        = 0;
+  new_args.pValue                 = pValue;
+  new_args.pValueGuest            = pValueGuest;
+  new_args.overrideIsInit         = overrideIsInit;
+  new_args.alreadyDerefedCppRef   = False;
+  new_args.performAction          = performAction;
+  new_args.varOrigin              = varOrigin;
+  new_args.trace_vars_tree        = trace_vars_tree;
+  new_args.disambigOverride       = OVERRIDE_NONE;
+  new_args.numStructsDereferenced = numStructsDereferenced;
+  new_args.varFuncInfo            = varFuncInfo;
+  new_args.isEnter                = isEnter;
+
+  visitSingleVar(&new_args);
 }
 
 
@@ -1332,41 +1372,31 @@ void visitVariable(VariableEntry* var,
 // dereferencing pointers or by visiting struct members
 // This function calls visitSingleVar() or visitSequence()
 static
-void visitSingleVar(VariableEntry* var,
-                    UInt numDereferences,
-                    // Pointer to the variable's current value
-                    Addr pValue,
-                    Addr pValueGuest,
-                    // We only use overrideIsInit when we pass in
-                    // things (e.g. return values) that cannot be
-                    // checked by the Memcheck A and V bits. Never have
-                    // overrideIsInit when you derive variables (make
-                    // recursive calls) because their addresses are
-                    // different from the original's
-                    Bool overrideIsInit,
-                    Bool alreadyDerefedCppRef, // only relevant for C++ reference parameters
-                    // This function performs an action for each
-                    // variable visited:
-		    TraversalAction *performAction,
-                    VariableOrigin varOrigin,
-                    char* trace_vars_tree,
-                    DisambigOverride disambigOverride,
-                    // The number of structs we have dereferenced for
-                    // a particular call of visitVariable(); Starts at
-                    // 0 and increments every time we hit a variable
-                    // which is a base struct type
-                    // Range: [0, MAX_VISIT_NESTING_DEPTH]
-                    UInt numStructsDereferenced,
-                    // These uniquely identify the program point
-                    FunctionEntry* varFuncInfo,
-                    Bool isEnter) {
-  char* fullFjalarName = 0;
+void visitSingleVar(VisitArgs* args) {
+  VariableEntry*  var               = args->var;
+  UInt numDereferences              = args->numDereferences;
+  DisambigOverride disambigOverride = args->disambigOverride;
+  UInt numStructsDereferenced       = args->numStructsDereferenced;
+  VariableOrigin varOrigin          = args->varOrigin;
+  Addr pValue                       = args->pValue;
+  Addr pValueGuest                  = args->pValueGuest;
+  Bool overrideIsInit               = args->overrideIsInit;
+  Bool alreadyDerefedCppRef         = args->alreadyDerefedCppRef;
+  TraversalAction *performAction    = args->performAction;
+  char* trace_vars_tree             = args->trace_vars_tree;
+  FunctionEntry* varFuncInfo        = args->varFuncInfo;
+  Bool isEnter                      = args->isEnter;
+
+  VisitArgs new_args;
+
+  char* fullFjalarName = NULL;
   int layersBeforeBase;
 
   // Initialize these in a group later
-  Bool disambigOverrideArrayAsPointer = 0;
-  Bool derefSingleElement = 0;
-  Bool needToDerefCppRef = 0;
+  Bool disambigOverrideArrayAsPointer;
+  Bool derefSingleElement;
+  Bool needToDerefCppRef;
+
   TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
@@ -1381,7 +1411,7 @@ void visitSingleVar(VariableEntry* var,
   layersBeforeBase = var->ptrLevels - numDereferences;
 
   // Special hack for strings:
-  if (var->isString && (layersBeforeBase > 0)) {
+  if (IS_STRING(var) && (layersBeforeBase > 0)) {
     layersBeforeBase--;
     //    VG_(printf)("var: %s is string - layersBeforeBase: %d\n",
     //                var->name, layersBeforeBase);
@@ -1433,8 +1463,8 @@ void visitSingleVar(VariableEntry* var,
        (!((layersBeforeBase == 0) && IS_AGGREGATE_TYPE(var->varType))))) {
 
     // (Notice that this uses strdup to allocate on the heap)
-    tl_assert(fullNameStackSize > 0);
-    fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    tl_assert(fullNameStack.size > 0);
+    fullFjalarName = stringStackStrdup(&fullNameStack);
 
     // If we are not interested in visiting this variable or its
     // children, then PUNT:
@@ -1556,44 +1586,46 @@ void visitSingleVar(VariableEntry* var,
 
       // Push 1 symbol on stack to represent single elt. dereference:
       if (!needToDerefCppRef) {
-        stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
+        stringStackPush(&fullNameStack, ZEROTH_ELT);
       }
 
       // Push fullFjalarName onto enclosingVarNamesStack:
       if (fullFjalarName) {
-        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+        stringStackPush(&enclosingVarNamesStack, fullFjalarName);
       }
 
-      visitSingleVar(var,
-                     numDereferences + 1,
-                     pNewValue,
-		     pNewValue,
-                     overrideIsInit,
-                     needToDerefCppRef,
-                     performAction,
-                     newVarOrigin,
-                     trace_vars_tree,
-                     disambigOverride,
-                     numStructsDereferenced,
-                     varFuncInfo,
-                     isEnter);
+      new_args.var                    = var;
+      new_args.numDereferences        = numDereferences + 1;
+      new_args.pValue                 = pNewValue;
+      new_args.pValueGuest            = pNewValue;
+      new_args.overrideIsInit         = overrideIsInit;
+      new_args.alreadyDerefedCppRef   = needToDerefCppRef;
+      new_args.performAction          = performAction;
+      new_args.varOrigin              = newVarOrigin;
+      new_args.trace_vars_tree        = trace_vars_tree;
+      new_args.disambigOverride       = disambigOverride;
+      new_args.numStructsDereferenced = numStructsDereferenced;
+      new_args.varFuncInfo            = varFuncInfo;
+      new_args.isEnter                = isEnter;
+
+      visitSingleVar(&new_args);
 
       // Pop fullFjalarName from stack
       if (fullFjalarName) {
-        stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+        stringStackPop(&enclosingVarNamesStack);
       }
 
       // Pop 1 symbol off
       if (!((var->referenceLevels > 0) && (numDereferences == 0))) {
-        stringStackPop(fullNameStack, &fullNameStackSize);
+        stringStackPop(&fullNameStack);
       }
     }
     // 2.) Sequence dereference (can either be static or dynamic
     // array).  We need to initialize pValueArray and numElts
     // appropriately and call visitSequence()
     else {
-      Addr* pValueArray = 0;
-      Addr* pValueArrayGuest = 0;
+      Addr* pValueArray = NULL;
+      Addr* pValueArrayGuest = NULL;
       UInt numElts = 0;
       UInt bytesBetweenElts = getBytesBetweenElts(var);
       UInt i;
@@ -1635,7 +1667,7 @@ void visitSingleVar(VariableEntry* var,
         // Dynamic array:
         else {
           char derivedIsAllocated = 0;
-          Addr pNewStartValue = 0;
+          Addr pNewStartValue = (Addr) NULL;
 
 	  FJALAR_DPRINTF("Dynamic Array\n");
 
@@ -1672,48 +1704,51 @@ void visitSingleVar(VariableEntry* var,
       }
 
       // Push 1 symbol on stack to represent sequence dereference:
-      stringStackPush(fullNameStack, &fullNameStackSize, DEREFERENCE);
+      stringStackPush(&fullNameStack, DEREFERENCE);
 
       // Push fullFjalarName onto enclosingVarNamesStack:
       if (fullFjalarName) {
-        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+        stringStackPush(&enclosingVarNamesStack, fullFjalarName);
       }
 
       FJALAR_DPRINTF("Callback for Sequence variable %s\n",
 		     fullFjalarName);
 
-      visitSequence(var,
-                    numDereferences + 1,
-                    pValueArray,
-		    pValueArrayGuest,
-                    numElts,
-                    performAction,
-                    (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
-                    trace_vars_tree,
-                    disambigOverride,
-                    numStructsDereferenced,
-                    varFuncInfo,
-                    isEnter);
+      new_args.var                    = var;
+      new_args.numDereferences        = numDereferences + 1;
+      new_args.pValueArray            = pValueArray;
+      new_args.pValueArrayGuest       = pValueArrayGuest;
+      new_args.numElts                = numElts;
+      new_args.performAction          = performAction;
+      new_args.varOrigin              = (varOrigin == DERIVED_FLATTENED_ARRAY_VAR)
+                                        ? varOrigin : DERIVED_VAR;
+      new_args.trace_vars_tree        = trace_vars_tree;
+      new_args.disambigOverride       = disambigOverride;
+      new_args.numStructsDereferenced = numStructsDereferenced;
+      new_args.varFuncInfo            = varFuncInfo;
+      new_args.isEnter                = isEnter;
+
+      visitSequence(&new_args);
 
       // Pop fullFjalarName from stack
       if (fullFjalarName) {
-        stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+        stringStackPop(&enclosingVarNamesStack);
       }
 
       // Pop 1 symbol off
-      stringStackPop(fullNameStack, &fullNameStackSize);
+      stringStackPop(&fullNameStack);
 
       // Only free if necessary
       if (pValueArray) {
         VG_(free)(pValueArray);
-        pValueArray = 0;
+        pValueArray = NULL;
         VG_(free)(pValueArrayGuest);
-        pValueArrayGuest = 0;
+        pValueArrayGuest = NULL;
       }
     }
   }
   // If this is the base type of a struct/union variable after all
-  // dereferences have been done (layersBeforeBase == 0), then visit
+  // dereferences have been done (layersBeforeBase == 0), thenSvisit
   // all derived member variables:
   else if (IS_AGGREGATE_TYPE(var->varType)) {
     char* top = NULL;
@@ -1723,44 +1758,47 @@ void visitSingleVar(VariableEntry* var,
 
     // RUDD 2.0 Trying to make use of EnclosingVar stack for Nested Classes and Structs.
     // Push fullFjalarName onto enclosingVarNamesStack:
-    top = stringStackTop(fullNameStack, fullNameStackSize);
+    top = stringStackTop(&fullNameStack);
 
     //Need a proper enclosing variable name
     if (!top ||
         (top && VG_STREQ(top, DOT)) ||
         (top && VG_STREQ(top, ZEROTH_ELT)) ||
         (top && VG_STREQ(top, ARROW))) {
-      stringStackPop(fullNameStack, &fullNameStackSize);
-      fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+      stringStackPop(&fullNameStack);
+      fullFjalarName = stringStackStrdup(&fullNameStack);
 
       if (fullFjalarName) {
-        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+        stringStackPush(&enclosingVarNamesStack, fullFjalarName);
       }
-      stringStackPush(fullNameStack, &fullNameStackSize, top);
+      stringStackPush(&fullNameStack, top);
     }
     else {
-      fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+      fullFjalarName = stringStackStrdup(&fullNameStack);
       if (fullFjalarName) {
-        stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+        stringStackPush(&enclosingVarNamesStack, fullFjalarName);
       }
     }
 
-    visitClassMemberVariables(var->varType,
-                              pValue,
-                              pValueGuest,
-                              0,
-			      0,
-                              0,
-                              0,
-                              performAction,
-                              varOrigin,
-                              trace_vars_tree,
-                              numStructsDereferenced,
-                              varFuncInfo,
-                              isEnter,
-                              tResult);
+    new_args.class = var->varType;
+    new_args.pValue = pValue;
+    new_args.pValueGuest = pValueGuest;
+    new_args.isSequence = False;
+    new_args.pValueArray = NULL;
+    new_args.pValueArrayGuest = NULL;
+    new_args.numElts = 0;
+    new_args.performAction = performAction;
+    new_args.varOrigin = varOrigin;
+    new_args.trace_vars_tree = trace_vars_tree;
+    new_args.numStructsDereferenced = numStructsDereferenced;
+    new_args.varFuncInfo = varFuncInfo;
+    new_args.isEnter = isEnter;
+    new_args.tResult = tResult;
+
+    visitClassMemberVariables(&new_args);
+
   if (fullFjalarName) {
-    stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+    stringStackPop(&enclosingVarNamesStack);
   }
 
 
@@ -1778,28 +1816,23 @@ void visitSingleVar(VariableEntry* var,
 // numElts because Fjalar currently only supports one level of sequences.
 // Pre: varOrigin == {DERIVED_VAR, DERIVED_FLATTENED_ARRAY_VAR}
 static
-void visitSequence(VariableEntry* var,
-                   UInt numDereferences,
-                   // Array of pointers to the current variable's values
-                   Addr* pValueArray,
-                   Addr* pValueArrayGuest,
-                   UInt numElts, // Size of pValueArray
-                   // This function performs an action for each variable visited:
-		   TraversalAction *performAction,
-                   VariableOrigin varOrigin,
-                   char* trace_vars_tree,
-                   DisambigOverride disambigOverride,
-                   // The number of structs we have dereferenced for
-                   // a particular call of visitVariable(); Starts at
-                   // 0 and increments every time we hit a variable
-                   // which is a base struct type
-                   // Range: [0, MAX_VISIT_NESTING_DEPTH]
-                   UInt numStructsDereferenced,
-                   // These uniquely identify the program point
-                   FunctionEntry* varFuncInfo,
-                   Bool isEnter) {
+void visitSequence(VisitArgs* args) {
+  VariableEntry*  var               = args->var;
+  UInt numDereferences              = args->numDereferences;
+  DisambigOverride disambigOverride = args->disambigOverride;
+  UInt numStructsDereferenced       = args->numStructsDereferenced;
+  VariableOrigin varOrigin          = args->varOrigin;
+  Addr* pValueArray                 = args->pValueArray;
+  UInt numElts                      = args->numElts;
+  Addr* pValueArrayGuest            = args->pValueArrayGuest;
+  TraversalAction *performAction    = args->performAction;
+  char* trace_vars_tree             = args->trace_vars_tree;
+  FunctionEntry* varFuncInfo        = args->varFuncInfo;
+  Bool isEnter                      = args->isEnter;
 
-  char* fullFjalarName = 0;
+  VisitArgs new_args;
+
+  char* fullFjalarName = NULL;
   int layersBeforeBase;
 
   TraversalResult tResult = INVALID_RESULT;
@@ -1808,7 +1841,7 @@ void visitSequence(VariableEntry* var,
   layersBeforeBase = var->ptrLevels - numDereferences;
 
   // Special hack for strings:
-  if (var->isString && (layersBeforeBase > 0)) {
+  if (IS_STRING(var) && (layersBeforeBase > 0)) {
     layersBeforeBase--;
     //    VG_(printf)("var: %s is string - layersBeforeBase: %d\n",
     //                var->name, layersBeforeBase);
@@ -1838,8 +1871,8 @@ void visitSequence(VariableEntry* var,
       (!((layersBeforeBase == 0) && IS_AGGREGATE_TYPE(var->varType)))) {
 
     // (Notice that this uses strdup to allocate on the heap)
-    tl_assert(fullNameStackSize > 0);
-    fullFjalarName = stringStackStrdup(fullNameStack, fullNameStackSize);
+    tl_assert(fullNameStack.size > 0);
+    fullFjalarName = stringStackStrdup(&fullNameStack);
 
     // If we are not interested in visiting this variable or its
     // children, then PUNT:
@@ -1991,33 +2024,36 @@ void visitSequence(VariableEntry* var,
 
     // Push 1 symbol on stack to represent single elt. dereference:
 
-    stringStackPush(fullNameStack, &fullNameStackSize, ZEROTH_ELT);
+    stringStackPush(&fullNameStack, ZEROTH_ELT);
 
     // Push fullFjalarName onto enclosingVarNamesStack:
     if (fullFjalarName) {
-      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      stringStackPush(&enclosingVarNamesStack, fullFjalarName);
     }
 
-    visitSequence(var,
-                  numDereferences + 1,
-                  pValueArray,
-                  pValueArrayGuest,
-                  numElts,
-                  performAction,
-                  (varOrigin == DERIVED_FLATTENED_ARRAY_VAR) ? varOrigin : DERIVED_VAR,
-                  trace_vars_tree,
-                  disambigOverride,
-                  numStructsDereferenced,
-                  varFuncInfo,
-                  isEnter);
+    new_args.var                    = var;
+    new_args.numDereferences        = numDereferences + 1;
+    new_args.pValueArray            = pValueArray;
+    new_args.pValueArrayGuest       = pValueArrayGuest;
+    new_args.numElts                = numElts;
+    new_args.performAction          = performAction;
+    new_args.varOrigin              = (varOrigin == DERIVED_FLATTENED_ARRAY_VAR)
+                                      ? varOrigin : DERIVED_VAR;
+    new_args.trace_vars_tree        = trace_vars_tree;
+    new_args.disambigOverride       = disambigOverride;
+    new_args.numStructsDereferenced = numStructsDereferenced;
+    new_args.varFuncInfo            = varFuncInfo;
+    new_args.isEnter                = isEnter;
+
+    visitSequence(&new_args);
 
     // Pop fullFjalarName from stack
     if (fullFjalarName) {
-      stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+      stringStackPop(&enclosingVarNamesStack);
     }
 
     // Pop 1 symbol off
-    stringStackPop(fullNameStack, &fullNameStackSize);
+    stringStackPop(&fullNameStack);
   }
   // If this is the base type of a struct/union variable after all
   // dereferences have been done (layersBeforeBase == 0), then visit
@@ -2027,27 +2063,29 @@ void visitSequence(VariableEntry* var,
 
     // Push fullFjalarName onto enclosingVarNamesStack:
     if (fullFjalarName) {
-      stringStackPush(enclosingVarNamesStack, &enclosingVarNamesStackSize, fullFjalarName);
+      stringStackPush(&enclosingVarNamesStack, fullFjalarName);
     }
 
-    visitClassMemberVariables(var->varType,
-                              0,
-			      0,
-                              1,
-                              pValueArray,
-                              pValueArrayGuest,
-                              numElts,
-                              performAction,
-                              varOrigin,
-                              trace_vars_tree,
-                              numStructsDereferenced,
-                              varFuncInfo,
-                              isEnter,
-                              tResult);
+    new_args.class = var->varType;
+    new_args.pValue = (Addr) NULL;
+    new_args.pValueGuest = (Addr) NULL;
+    new_args.isSequence = True;
+    new_args.pValueArray = pValueArray;
+    new_args.pValueArrayGuest = pValueArrayGuest;
+    new_args.numElts = numElts;
+    new_args.performAction = performAction;
+    new_args.varOrigin = varOrigin;
+    new_args.trace_vars_tree = trace_vars_tree;
+    new_args.numStructsDereferenced = numStructsDereferenced;
+    new_args.varFuncInfo = varFuncInfo;
+    new_args.isEnter = isEnter;
+    new_args.tResult = tResult;
+
+    visitClassMemberVariables(&new_args);
 
     // Pop fullFjalarName from stack
     if (fullFjalarName) {
-      stringStackPop(enclosingVarNamesStack, &enclosingVarNamesStackSize);
+      stringStackPop(&enclosingVarNamesStack);
     }
 
   }

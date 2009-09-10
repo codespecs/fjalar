@@ -1,36 +1,90 @@
 Fjalar, a dynamic analysis framework for C/C++ programs
 README file
 Philip Guo
+Robert Rudd
 
-Last updated: 2006-04-12
+Last updated: 2009-09-08
 
 A local copy of the Fjalar webpage appears here:
   ./documentation/fjalar-www/index.html
 
+Introduction
+-------------
+This file contains information relevant for those who are interested
+in customizing or extending Fjalar.
 
-Here is a summary of the contents of interesting source files:
+It is recommended for Fjalar developers to become acquainted with
+Valgrind and Memcheck. Valgrind is a instrumentation framework for
+building dynamic analysis tools. Memcheck is a tool build on Valgrind
+which is used for detecting memory errors.
+
+More information can be found at
+http://valgrind.org/docs/manual/manual.html. Of particular interest
+are the following sections:
+
+"2. Using and understanding the Valgrind Core" - A general overview of
+how Valgrind works
+
+"4. Memcheck: a memory error detector" - Covers basic usage and
+concepts behind memcheck. Of particular interest is section 4.5 on the
+details of Memcheck's implementation, including an overview of
+Valid-value (V) bits and Valid-address (A) bits, which are used
+sporadically throughout Fjalar. 
+
+Additional information on [A,V] bits can be found in the comments in 
+mc_main.c
+
+Understanding Memcheck's error checking machinery is important for
+making non-trivial changes to Fjalar as Fjalar essentially piggybacks
+on top of Memcheck. Fjalar instrumentation is inserted after
+Memcheck's and Fjalar makes use of Memcheck's A/V-bits to provide
+information on C/C++ in a safe way. 
+
+What follows is a summary of the contents of interesting source files:
 
 Fjalar source files:
 --------------------
+disambig.[ch] - Implements pointer-type disambiguation
 
-fjalar_tool.h - Contains prototypes for all functions that Fjalar
-                tools must implement in order to compile properly
+fjalar_dwarf.h - Contains definitions used for dealing with DWARF
+		 information. This is separated out from the primary
+		 includes below due to wanting to keep the separation
+   		 between the DWARF parsing code and the main Fjalar code
+		 this is the only set of definitions shared between the DWARF
+		 parsing code (typedata.[ch]) the main Fjalar logic, and
+		 Fjalar tools.
 
 fjalar_include.h - This is the API that Fjalar provides to its tool.
                    Contains relevant data structures and functions.
+		   This file is the defacto Developer Documentation for
+	  	   Fjalar and Fjalar tools.
 
 fjalar_main.[ch] - Most of the code that interacts with the Valgrind
                    core.  Hooks into Valgrind to perform function
                    entrance and exit tracking, start-up and tear-down
                    code, command-line option processing.
 
-typedata.[ch] - Hooks into the Readelf debugging info. parser to
-                construct very low-level but organized data structures
-                containing the information present in the DWARF2
-                debug. info.  Essentially, Readelf was meant to only
-                output text, but I hacked it to make calls into
-                typedata.c so that it can populate the data structures
-                defined in typedata.h.
+fjalar_runtime.[ch] - Contains functions that interact with the
+                      Valgrind core after initialization and performs
+                      run time functionality that is useful for tools,
+                      such as finding out sizes of
+                      dynamically-allocated arrays and finding what
+                      variable corresponds to a given memory address
+
+fjalar_select.[ch] - Implements selective program point and variable
+                     tracking
+
+fjalar_tool.h - Contains prototypes for all functions that Fjalar
+                tools must implement in order to compile properly
+
+fjalar_traversal.[ch] - Contains functions that perform traversals
+                        through data structures at run time.  Each of
+                        these functions takes in a callback function
+                        pointer parameter, which can be used to
+                        perform a specific action during each step of
+                        the traversal.  This forms the core of
+                        Fjalar's ability to recurse into data
+                        structures during execution.
 
 generate_fjalar_entries.[ch] - Reads the low-level DWARF info. data
                                structures produced by typedata.c and
@@ -42,35 +96,17 @@ generate_fjalar_entries.[ch] - Reads the low-level DWARF info. data
                                functions to produce XML output of
                                those data structures.
 
-fjalar_runtime.[ch] - Contains functions that interact with the
-                      Valgrind core after initialization and performs
-                      run time functionality that is useful for tools,
-                      such as finding out sizes of
-                      dynamically-allocated arrays and finding what
-                      variable corresponds to a given memory address
-
-fjalar_traversal.[ch] - Contains functions that perform traversals
-                        through data structures at run time.  Each of
-                        these functions takes in a callback function
-                        pointer parameter, which can be used to
-                        perform a specific action during each step of
-                        the traversal.  This forms the core of
-                        Fjalar's ability to recurse into data
-                        structures during execution.
-
-fjalar_select.[ch] - Implements selective program point and variable
-                     tracking
-
-disambig.[ch] - Implements pointer-type disambiguation
+typedata.[ch] - Hooks into the Readelf debugging info. parser to
+                construct very low-level but organized data structures
+                containing the information present in the DWARF2
+                debug. info.  Essentially, Readelf was meant to only
+                output text, but I hacked it to make calls into
+                typedata.c so that it can populate the data structures
+                defined in typedata.h.
 
 
 Kvasir source files (in kvasir/ sub-directory):
 -----------------------------------------------
-
-kvasir_main.[ch] - Command-line option processing, opening various
-                   files, and hooks for what to do at entrances and
-                   exits of functions
-
 decls-output.[ch] - Outputs declarations to .decls file; mainly
                     consists of one callback action function to pass
                     into Fjalar
@@ -82,13 +118,13 @@ dtrace-output.[ch] - Outputs runtime values to .dtrace file; consists
                      based on raw memory contents and compile-time
                      type info. provided by Fjalar
 
+kvasir_main.[ch] - Command-line option processing, opening various
+                   files, and hooks for what to do at entrances and
+                   exits of functions
+
 
 DynComp source files (in kvasir/ sub-directory):
 ------------------------------------------------
-
-union_find.[ch] - Union-find data structure implementation lifted from
-                  somewhere else (cited in the comments) and modified
-
 dyncomp_main.[ch] - Lots of helper functions to manage tags by
                     allocating, copying, and freeing them, etc...
 
@@ -104,3 +140,6 @@ dyncomp_translate.[ch] - Emulates mc_translate.[ch] by performing
                          memory operations; the code is quite dense
                          and lots of it is copied from
                          mc_translate.[ch] and modified
+
+union_find.[ch] - Union-find data structure implementation lifted from
+                  somewhere else (cited in the comments) and modified

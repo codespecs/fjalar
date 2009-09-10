@@ -1,10 +1,11 @@
 /*
   This file is part of DynComp, a dynamic comparability analysis tool
   for C/C++ based upon the Valgrind binary instrumentation framework
-  and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
+  and the Valgrind MemCheck tool (Copyright (C) 2000-2009 Julian
   Seward, jseward@acm.org)
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
   This program is free software; you can redistribute it and/or

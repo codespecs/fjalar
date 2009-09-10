@@ -151,7 +151,7 @@ printDisambigAction(VariableEntry* var,
     fputs("P", disambig_fp);
   }
   // Normal string, not pointer to string
-  else if (var->isString &&
+  else if (IS_STRING(var) &&
            (1 == var->ptrLevels)) {
     fputs("S", disambig_fp);
   }
@@ -293,10 +293,10 @@ DisambigOverride returnDisambigOverride(VariableEntry* var) {
     char disambig_letter = disambig_letter = var->disambig;
 
     if (disambig_letter) {
-      if ((!var->isString && (var->ptrLevels == 0)) ||
-	  (var->isString && (var->ptrLevels == 1))) {
+      if ((!IS_STRING(var) && (var->ptrLevels == 0)) ||
+	  (IS_STRING(var) && (var->ptrLevels == 1))) {
 	// 'C' denotes to print out as a one-character string
-	if (var->isString) { // pointer to "char" or "unsigned char"
+	if (IS_STRING(var)) { // pointer to "char" or "unsigned char"
 	  if ('C' == disambig_letter) {
 	    FJALAR_DPRINTF("String C - %s\n\n", var->name);
 	    override = OVERRIDE_STRING_AS_ONE_CHAR_STRING;

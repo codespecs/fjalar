@@ -5,10 +5,11 @@
 /*
   This file is part of DynComp, a dynamic comparability analysis tool
   for C/C++ based upon the Valgrind binary instrumentation framework
-  and the Valgrind MemCheck tool (Copyright (C) 2000-2005 Julian
+  and the Valgrind MemCheck tool (Copyright (C) 2000-2009 Julian
   Seward, jseward@acm.org)
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
   This program is free software; you can redistribute it and/or
@@ -256,8 +257,8 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     }
 
     leader_obj = uf_union(uf_obj1, uf_obj2);
-    DYNCOMP_TPRINTF("Merging %d with %d to get %d at (%s - %s)\n", 
-		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name ); 
+    DYNCOMP_TPRINTF("Merging %d with %d to get %d at (%s - %s)\n",
+		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name );
     return leader_obj->tag;
   }
 }
@@ -486,10 +487,10 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
                                                 leader, var_tags_v);
   }
 
-  DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values " 
-		  "%d (old) and %d (new) to %d (final round)\n", 
-		  funcPtr->funcEntry.name, daikonVarIndex, 
-		  var_tags_v, leader, var_tags[daikonVarIndex]); 
+  DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values "
+		  "%d (old) and %d (new) to %d (final round)\n",
+		  funcPtr->funcEntry.name, daikonVarIndex,
+		  var_tags_v, leader, var_tags[daikonVarIndex]);
 
   /*DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
                   leader,
@@ -575,7 +576,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       // numbers because the leaders represent the distinctive sets.
       UInt leader = var_uf_map_find_leader(var_uf_map, tag);
 
-      
+
 
       var_tags[daikonVarIndex] = leader;
       if (gencontains(g_compNumberMap, (void*)leader)) {

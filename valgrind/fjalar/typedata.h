@@ -3,6 +3,7 @@
    programs.
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -26,7 +27,6 @@
 
 #include "GenericHashtable.h"
 #include "elf/dwarf2.h"
-#include "fjalar_debug.h"
 #include "fjalar_dwarf.h"
 
 // Contains one entry that holds data for one of many possible types
@@ -283,7 +283,7 @@ typedef struct
 
   enum dwarf_location_atom loc_atom; //Location Expression.
 
-  dwarf_location dwarf_stack[MAX_DWARF_STACK];
+  dwarf_location dwarf_stack[MAX_DWARF_OPS];
   unsigned int dwarf_stack_size;
 
   long location; // Offset from location

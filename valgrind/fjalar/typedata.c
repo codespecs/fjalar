@@ -3,6 +3,7 @@
    programs.
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -847,7 +848,7 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
 
       paramPtr->loc_atom = atom;
 
-      tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_STACK);
+      tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom = atom;
       paramPtr->dwarf_stack[paramPtr->dwarf_stack_size].atom_offset = value;
       paramPtr->dwarf_stack_size++;

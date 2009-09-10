@@ -3,6 +3,7 @@
    programs.
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -87,5 +88,4 @@ FILE* xml_output_fp;
 void outputAllXMLDeclarations(void);
 
 char* getRawCppFunctionName(char* cppFnName);
-
 #endif

@@ -3,6 +3,7 @@
    programs.
 
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
 
    This program is free software; you can redistribute it and/or
@@ -26,7 +27,6 @@
 #include "fjalar_select.h"
 #include "elf/dwarf2.h"
 #include "GenericHashtable.h"
-#include "fjalar_debug.h"
 #include "../coregrind/m_demangle/demangle.h"
 
 #include "fjalar_tool.h"
@@ -883,7 +883,7 @@ static void repCheckOneVariable(VariableEntry* var) {
     tl_assert(var->staticArr->upperBounds);
   }
 
-  if (var->isString) {
+  if (IS_STRING(var)) {
     tl_assert(D_CHAR == var->varType->decType);
     tl_assert(var->ptrLevels > 0);
   }
@@ -1467,7 +1467,6 @@ void initializeFunctionTable(void)
 
           cur_func_entry->startPC = dwarfFunctionPtr->start_pc;
           cur_func_entry->cuBase = dwarfFunctionPtr->comp_pc;
-	  cur_func_entry->frameBase = dwarfFunctionPtr->frame_pc;
           cur_func_entry->endPC = dwarfFunctionPtr->end_pc;
 
           FJALAR_DPRINTF("Frame base exp is:%d - %d\n", dwarfFunctionPtr->frame_base_expression, DW_OP_list);
@@ -2167,11 +2166,11 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     unsigned int i;
     FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
     for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
-      varPtr->dwarf_stack[i].atom = paramPtr->dwarf_stack[i].atom;
-      varPtr->dwarf_stack[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
-      FJALAR_DPRINTF("\tCopying over  %s (%d)\n", location_expression_to_string(varPtr->dwarf_stack[i].atom), varPtr->dwarf_stack[i].atom_offset);
+      varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
+      varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
+      FJALAR_DPRINTF("\tCopying over  %s (%d)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
     }
-    varPtr->dwarf_stack_size = paramPtr->dwarf_stack_size;
+    varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
 
 
@@ -2633,13 +2632,6 @@ extractOneVariable(VarList* varListPtr,
         }
       }
     }
-  }
-
-  // Set isString to true if the variable is a pointer to a char (or a
-  // pointer to a pointer to a char, etc...)
-  if ((varPtr->varType->decType == D_CHAR) &&
-      (varPtr->ptrLevels > 0)) {
-    varPtr->isString = 1;
   }
 
   // TODO: What about arrays of pointers?  int* [10] currently turns
@@ -3366,7 +3358,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
     if (var->referenceLevels > 0) {
       XML_PRINTF(" reference-levels=\"%d\"", var->referenceLevels);
     }
-    if (var->isString) {
+    if (IS_STRING(var)) {
       XML_PRINTF(" is-string=\"true\"");
     }
 
