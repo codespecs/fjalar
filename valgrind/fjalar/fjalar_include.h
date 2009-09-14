@@ -1020,7 +1020,6 @@ Bool fjalar_flatten_arrays;                // --flatten-arrays
 Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
 Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
 Bool fjalar_gcc3;                          // --gcc3
-Bool fjalar_gcc4;                          // --gcc4
 int  fjalar_array_length_limit;            // --array-length-limit
 
 UInt fjalar_max_visit_struct_depth;               // --struct-depth

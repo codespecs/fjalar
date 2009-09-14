@@ -2181,9 +2181,6 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     varPtr->locationType = FP_OFFSET_LOCATION;
     varPtr->byteOffset = paramPtr->location;
     //    varPtr->atom = paramPtr->loc_atom;
-    if(fjalar_gcc4)
-      varPtr->byteOffset += 8;
-
 
     FJALAR_DPRINTF(" location_type: %d, byteOffset: %x\n", varPtr->locationType, varPtr->byteOffset);
   }
