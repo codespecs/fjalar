@@ -1043,54 +1043,39 @@ m4trace:configure.in:1449: -1- _m4_warn([cross], [AC_RUN_IFELSE called without d
 ../../lib/autoconf/general.m4:1911: AC_CACHE_CHECK is expanded from...
 configure.in:1449: the top level])
 m4trace:configure.in:1468: -1- m4_pattern_allow([^HAVE_TLS$])
-m4trace:configure.in:1475: -1- _m4_warn([cross], [cannot check for file existence when cross compiling], [../../lib/autoconf/general.m4:2491: AC_CHECK_FILE is expanded from...
-../../lib/autoconf/general.m4:2510: AC_CHECK_FILES is expanded from...
-configure.in:1475: the top level])
-m4trace:configure.in:1475: -1- m4_pattern_allow([^HAVE__PROC_SELF_FD$])
-m4trace:configure.in:1475: -1- m4_pattern_allow([^HAVE_PROC$])
-m4trace:configure.in:1475: -1- _m4_warn([cross], [cannot check for file existence when cross compiling], [../../lib/autoconf/general.m4:2491: AC_CHECK_FILE is expanded from...
-../../lib/autoconf/general.m4:2510: AC_CHECK_FILES is expanded from...
-configure.in:1475: the top level])
-m4trace:configure.in:1475: -1- m4_pattern_allow([^HAVE__PROC_SELF_EXE$])
-m4trace:configure.in:1475: -1- m4_pattern_allow([^HAVE_PROC$])
-m4trace:configure.in:1475: -1- _m4_warn([cross], [cannot check for file existence when cross compiling], [../../lib/autoconf/general.m4:2491: AC_CHECK_FILE is expanded from...
-../../lib/autoconf/general.m4:2510: AC_CHECK_FILES is expanded from...
-configure.in:1475: the top level])
-m4trace:configure.in:1475: -1- m4_pattern_allow([^HAVE__PROC_SELF_MAPS$])
-m4trace:configure.in:1475: -1- m4_pattern_allow([^HAVE_PROC$])
-m4trace:configure.in:1484: -1- m4_pattern_allow([^STDC_HEADERS$])
-m4trace:configure.in:1504: -1- m4_pattern_allow([^uid_t$])
-m4trace:configure.in:1504: -1- m4_pattern_allow([^gid_t$])
-m4trace:configure.in:1505: -1- m4_pattern_allow([^off_t$])
-m4trace:configure.in:1506: -1- m4_pattern_allow([^size_t$])
-m4trace:configure.in:1507: -1- m4_pattern_allow([^TIME_WITH_SYS_TIME$])
-m4trace:configure.in:1513: -1- m4_pattern_allow([^LIB@&t@OBJS$])
-m4trace:configure.in:1514: -1- m4_pattern_allow([^HAVE_MMAP$])
-m4trace:configure.in:1515: -1- m4_pattern_allow([^RETSIGTYPE$])
-m4trace:configure.in:1517: -1- m4_pattern_allow([^HAVE_LIBRT$])
-m4trace:configure.in:1555: -1- AM_CONDITIONAL([HAVE_PTHREAD_BARRIER], [test x$ac_cv_func_pthread_barrier_init = xyes])
-m4trace:configure.in:1555: -1- m4_pattern_allow([^HAVE_PTHREAD_BARRIER_TRUE$])
-m4trace:configure.in:1555: -1- m4_pattern_allow([^HAVE_PTHREAD_BARRIER_FALSE$])
-m4trace:configure.in:1557: -1- AM_CONDITIONAL([HAVE_PTHREAD_MUTEX_TIMEDLOCK], [test x$ac_cv_func_pthread_mutex_timedlock = xyes])
-m4trace:configure.in:1557: -1- m4_pattern_allow([^HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE$])
-m4trace:configure.in:1557: -1- m4_pattern_allow([^HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE$])
-m4trace:configure.in:1559: -1- AM_CONDITIONAL([HAVE_PTHREAD_SPINLOCK], [test x$ac_cv_func_pthread_spin_lock = xyes])
-m4trace:configure.in:1559: -1- m4_pattern_allow([^HAVE_PTHREAD_SPINLOCK_TRUE$])
-m4trace:configure.in:1559: -1- m4_pattern_allow([^HAVE_PTHREAD_SPINLOCK_FALSE$])
-m4trace:configure.in:1604: -1- m4_pattern_allow([^MPI_CC$])
-m4trace:configure.in:1613: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
+m4trace:configure.in:1476: -1- m4_pattern_allow([^STDC_HEADERS$])
+m4trace:configure.in:1496: -1- m4_pattern_allow([^uid_t$])
+m4trace:configure.in:1496: -1- m4_pattern_allow([^gid_t$])
+m4trace:configure.in:1497: -1- m4_pattern_allow([^off_t$])
+m4trace:configure.in:1498: -1- m4_pattern_allow([^size_t$])
+m4trace:configure.in:1499: -1- m4_pattern_allow([^TIME_WITH_SYS_TIME$])
+m4trace:configure.in:1505: -1- m4_pattern_allow([^LIB@&t@OBJS$])
+m4trace:configure.in:1506: -1- m4_pattern_allow([^HAVE_MMAP$])
+m4trace:configure.in:1507: -1- m4_pattern_allow([^RETSIGTYPE$])
+m4trace:configure.in:1509: -1- m4_pattern_allow([^HAVE_LIBRT$])
+m4trace:configure.in:1548: -1- AM_CONDITIONAL([HAVE_PTHREAD_BARRIER], [test x$ac_cv_func_pthread_barrier_init = xyes])
+m4trace:configure.in:1548: -1- m4_pattern_allow([^HAVE_PTHREAD_BARRIER_TRUE$])
+m4trace:configure.in:1548: -1- m4_pattern_allow([^HAVE_PTHREAD_BARRIER_FALSE$])
+m4trace:configure.in:1550: -1- AM_CONDITIONAL([HAVE_PTHREAD_MUTEX_TIMEDLOCK], [test x$ac_cv_func_pthread_mutex_timedlock = xyes])
+m4trace:configure.in:1550: -1- m4_pattern_allow([^HAVE_PTHREAD_MUTEX_TIMEDLOCK_TRUE$])
+m4trace:configure.in:1550: -1- m4_pattern_allow([^HAVE_PTHREAD_MUTEX_TIMEDLOCK_FALSE$])
+m4trace:configure.in:1552: -1- AM_CONDITIONAL([HAVE_PTHREAD_SPINLOCK], [test x$ac_cv_func_pthread_spin_lock = xyes])
+m4trace:configure.in:1552: -1- m4_pattern_allow([^HAVE_PTHREAD_SPINLOCK_TRUE$])
+m4trace:configure.in:1552: -1- m4_pattern_allow([^HAVE_PTHREAD_SPINLOCK_FALSE$])
+m4trace:configure.in:1597: -1- m4_pattern_allow([^MPI_CC$])
+m4trace:configure.in:1606: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:2414: AC_TRY_LINK is expanded from...
-configure.in:1613: the top level])
-m4trace:configure.in:1629: -1- AM_CONDITIONAL([BUILD_MPIWRAP_PRI], [test x$ac_have_mpi2_pri = xyes])
-m4trace:configure.in:1629: -1- m4_pattern_allow([^BUILD_MPIWRAP_PRI_TRUE$])
-m4trace:configure.in:1629: -1- m4_pattern_allow([^BUILD_MPIWRAP_PRI_FALSE$])
-m4trace:configure.in:1645: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
+configure.in:1606: the top level])
+m4trace:configure.in:1622: -1- AM_CONDITIONAL([BUILD_MPIWRAP_PRI], [test x$ac_have_mpi2_pri = xyes])
+m4trace:configure.in:1622: -1- m4_pattern_allow([^BUILD_MPIWRAP_PRI_TRUE$])
+m4trace:configure.in:1622: -1- m4_pattern_allow([^BUILD_MPIWRAP_PRI_FALSE$])
+m4trace:configure.in:1638: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:2414: AC_TRY_LINK is expanded from...
-configure.in:1645: the top level])
-m4trace:configure.in:1661: -1- AM_CONDITIONAL([BUILD_MPIWRAP_SEC], [test x$ac_have_mpi2_sec = xyes])
-m4trace:configure.in:1661: -1- m4_pattern_allow([^BUILD_MPIWRAP_SEC_TRUE$])
-m4trace:configure.in:1661: -1- m4_pattern_allow([^BUILD_MPIWRAP_SEC_FALSE$])
-m4trace:configure.in:1700: -1- PKG_CHECK_EXISTS([QtCore], [
+configure.in:1638: the top level])
+m4trace:configure.in:1654: -1- AM_CONDITIONAL([BUILD_MPIWRAP_SEC], [test x$ac_have_mpi2_sec = xyes])
+m4trace:configure.in:1654: -1- m4_pattern_allow([^BUILD_MPIWRAP_SEC_TRUE$])
+m4trace:configure.in:1654: -1- m4_pattern_allow([^BUILD_MPIWRAP_SEC_FALSE$])
+m4trace:configure.in:1693: -1- PKG_CHECK_EXISTS([QtCore], [
       PKG_CHECK_MODULES([QTCORE], [QtCore])
       # Paranoia: don't trust the result reported by pkg-config, but when
       # pkg-config reports that QtCore has been found, verify whether linking
@@ -1112,44 +1097,44 @@ m4trace:configure.in:1700: -1- PKG_CHECK_EXISTS([QtCore], [
       ac_have_qtcore=no
     
     ])
-m4trace:configure.in:1700: -1- PKG_PROG_PKG_CONFIG
-m4trace:configure.in:1700: -1- m4_pattern_forbid([^_?PKG_[A-Z_]+$])
-m4trace:configure.in:1700: -1- m4_pattern_allow([^PKG_CONFIG(_PATH)?$])
-m4trace:configure.in:1700: -1- m4_pattern_allow([^PKG_CONFIG$])
-m4trace:configure.in:1700: -1- m4_pattern_allow([^PKG_CONFIG$])
-m4trace:configure.in:1700: -1- PKG_CHECK_MODULES([QTCORE], [QtCore])
-m4trace:configure.in:1700: -1- m4_pattern_allow([^QTCORE_CFLAGS$])
-m4trace:configure.in:1700: -1- m4_pattern_allow([^QTCORE_LIBS$])
-m4trace:configure.in:1700: -1- PKG_CHECK_EXISTS([QtCore], [pkg_cv_[]QTCORE_CFLAGS=`$PKG_CONFIG --[]cflags "QtCore" 2>/dev/null`], [pkg_failed=yes])
-m4trace:configure.in:1700: -1- PKG_CHECK_EXISTS([QtCore], [pkg_cv_[]QTCORE_LIBS=`$PKG_CONFIG --[]libs "QtCore" 2>/dev/null`], [pkg_failed=yes])
-m4trace:configure.in:1700: -1- _PKG_SHORT_ERRORS_SUPPORTED
-m4trace:configure.in:1700: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
+m4trace:configure.in:1693: -1- PKG_PROG_PKG_CONFIG
+m4trace:configure.in:1693: -1- m4_pattern_forbid([^_?PKG_[A-Z_]+$])
+m4trace:configure.in:1693: -1- m4_pattern_allow([^PKG_CONFIG(_PATH)?$])
+m4trace:configure.in:1693: -1- m4_pattern_allow([^PKG_CONFIG$])
+m4trace:configure.in:1693: -1- m4_pattern_allow([^PKG_CONFIG$])
+m4trace:configure.in:1693: -1- PKG_CHECK_MODULES([QTCORE], [QtCore])
+m4trace:configure.in:1693: -1- m4_pattern_allow([^QTCORE_CFLAGS$])
+m4trace:configure.in:1693: -1- m4_pattern_allow([^QTCORE_LIBS$])
+m4trace:configure.in:1693: -1- PKG_CHECK_EXISTS([QtCore], [pkg_cv_[]QTCORE_CFLAGS=`$PKG_CONFIG --[]cflags "QtCore" 2>/dev/null`], [pkg_failed=yes])
+m4trace:configure.in:1693: -1- PKG_CHECK_EXISTS([QtCore], [pkg_cv_[]QTCORE_LIBS=`$PKG_CONFIG --[]libs "QtCore" 2>/dev/null`], [pkg_failed=yes])
+m4trace:configure.in:1693: -1- _PKG_SHORT_ERRORS_SUPPORTED
+m4trace:configure.in:1693: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:2414: AC_TRY_LINK is expanded from...
 /usr/share/aclocal/pkg.m4:56: PKG_CHECK_EXISTS is expanded from...
-configure.in:1700: the top level])
-m4trace:configure.in:1733: -1- AM_CONDITIONAL([HAVE_QTCORE], [test x$ac_have_qtcore = xyes])
-m4trace:configure.in:1733: -1- m4_pattern_allow([^HAVE_QTCORE_TRUE$])
-m4trace:configure.in:1733: -1- m4_pattern_allow([^HAVE_QTCORE_FALSE$])
-m4trace:configure.in:1743: -1- _m4_warn([obsolete], [The macro `AC_TRY_COMPILE' is obsolete.
+configure.in:1693: the top level])
+m4trace:configure.in:1726: -1- AM_CONDITIONAL([HAVE_QTCORE], [test x$ac_have_qtcore = xyes])
+m4trace:configure.in:1726: -1- m4_pattern_allow([^HAVE_QTCORE_TRUE$])
+m4trace:configure.in:1726: -1- m4_pattern_allow([^HAVE_QTCORE_FALSE$])
+m4trace:configure.in:1736: -1- _m4_warn([obsolete], [The macro `AC_TRY_COMPILE' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:2367: AC_TRY_COMPILE is expanded from...
-configure.in:1743: the top level])
-m4trace:configure.in:1743: -1- m4_pattern_allow([^HAVE_QTCORE_QMUTEX_TRYLOCK_INT$])
-m4trace:configure.in:1773: -1- m4_pattern_allow([^BOOST_CFLAGS$])
-m4trace:configure.in:1773: -1- m4_pattern_allow([^BOOST_LIBS$])
-m4trace:configure.in:1797: -1- AM_CONDITIONAL([HAVE_BOOST_1_35], [test x$ac_have_boost_1_35 = xyes])
-m4trace:configure.in:1797: -1- m4_pattern_allow([^HAVE_BOOST_1_35_TRUE$])
-m4trace:configure.in:1797: -1- m4_pattern_allow([^HAVE_BOOST_1_35_FALSE$])
-m4trace:configure.in:1826: -1- AM_CONDITIONAL([HAVE_OPENMP], [test x$ac_have_openmp = xyes])
-m4trace:configure.in:1826: -1- m4_pattern_allow([^HAVE_OPENMP_TRUE$])
-m4trace:configure.in:1826: -1- m4_pattern_allow([^HAVE_OPENMP_FALSE$])
-m4trace:configure.in:1835: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
+configure.in:1736: the top level])
+m4trace:configure.in:1736: -1- m4_pattern_allow([^HAVE_QTCORE_QMUTEX_TRYLOCK_INT$])
+m4trace:configure.in:1766: -1- m4_pattern_allow([^BOOST_CFLAGS$])
+m4trace:configure.in:1766: -1- m4_pattern_allow([^BOOST_LIBS$])
+m4trace:configure.in:1790: -1- AM_CONDITIONAL([HAVE_BOOST_1_35], [test x$ac_have_boost_1_35 = xyes])
+m4trace:configure.in:1790: -1- m4_pattern_allow([^HAVE_BOOST_1_35_TRUE$])
+m4trace:configure.in:1790: -1- m4_pattern_allow([^HAVE_BOOST_1_35_FALSE$])
+m4trace:configure.in:1819: -1- AM_CONDITIONAL([HAVE_OPENMP], [test x$ac_have_openmp = xyes])
+m4trace:configure.in:1819: -1- m4_pattern_allow([^HAVE_OPENMP_TRUE$])
+m4trace:configure.in:1819: -1- m4_pattern_allow([^HAVE_OPENMP_FALSE$])
+m4trace:configure.in:1828: -1- _m4_warn([obsolete], [The macro `AC_TRY_LINK' is obsolete.
 You should run autoupdate.], [../../lib/autoconf/general.m4:2414: AC_TRY_LINK is expanded from...
-configure.in:1835: the top level])
-m4trace:configure.in:1835: -1- m4_pattern_allow([^HAVE_BUILTIN_ATOMIC$])
-m4trace:configure.in:1853: -1- AM_CONDITIONAL([HAVE_BUILTIN_ATOMIC], [test x$ac_have_builtin_atomic = xyes])
-m4trace:configure.in:1853: -1- m4_pattern_allow([^HAVE_BUILTIN_ATOMIC_TRUE$])
-m4trace:configure.in:1853: -1- m4_pattern_allow([^HAVE_BUILTIN_ATOMIC_FALSE$])
-m4trace:configure.in:1923: -1- m4_pattern_allow([^LIB@&t@OBJS$])
-m4trace:configure.in:1923: -1- m4_pattern_allow([^LTLIBOBJS$])
-m4trace:configure.in:1923: -1- _AC_AM_CONFIG_HEADER_HOOK([$ac_file])
-m4trace:configure.in:1923: -1- _AM_OUTPUT_DEPENDENCY_COMMANDS
+configure.in:1828: the top level])
+m4trace:configure.in:1828: -1- m4_pattern_allow([^HAVE_BUILTIN_ATOMIC$])
+m4trace:configure.in:1846: -1- AM_CONDITIONAL([HAVE_BUILTIN_ATOMIC], [test x$ac_have_builtin_atomic = xyes])
+m4trace:configure.in:1846: -1- m4_pattern_allow([^HAVE_BUILTIN_ATOMIC_TRUE$])
+m4trace:configure.in:1846: -1- m4_pattern_allow([^HAVE_BUILTIN_ATOMIC_FALSE$])
+m4trace:configure.in:1916: -1- m4_pattern_allow([^LIB@&t@OBJS$])
+m4trace:configure.in:1916: -1- m4_pattern_allow([^LTLIBOBJS$])
+m4trace:configure.in:1916: -1- _AC_AM_CONFIG_HEADER_HOOK([$ac_file])
+m4trace:configure.in:1916: -1- _AM_OUTPUT_DEPENDENCY_COMMANDS

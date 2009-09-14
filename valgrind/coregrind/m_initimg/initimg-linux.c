@@ -250,9 +250,17 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 #define AT_UCACHEBSIZE		21
 #endif /* AT_UCACHEBSIZE */
 
+#ifndef AT_BASE_PLATFORM
+#define AT_BASE_PLATFORM	24
+#endif /* AT_BASE_PLATFORM */
+
 #ifndef AT_RANDOM
 #define AT_RANDOM		25
 #endif /* AT_RANDOM */
+
+#ifndef AT_EXECFN
+#define AT_EXECFN		31
+#endif /* AT_EXECFN */
 
 #ifndef AT_SYSINFO
 #define AT_SYSINFO		32
@@ -430,10 +438,13 @@ Addr setup_client_stack( void*  init_sp,
    /* now, how big is the auxv? */
    auxsize = sizeof(*auxv);	/* there's always at least one entry: AT_NULL */
    for (cauxv = orig_auxv; cauxv->a_type != AT_NULL; cauxv++) {
-      if (cauxv->a_type == AT_PLATFORM)
+      if (cauxv->a_type == AT_PLATFORM ||
+          cauxv->a_type == AT_BASE_PLATFORM)
 	 stringsize += VG_(strlen)(cauxv->u.a_ptr) + 1;
       else if (cauxv->a_type == AT_RANDOM)
 	 stringsize += 16;
+      else if (cauxv->a_type == AT_EXECFN)
+	 stringsize += VG_(strlen)(VG_(args_the_exename)) + 1;
       auxsize += sizeof(*cauxv);
    }
 
@@ -597,6 +608,7 @@ Addr setup_client_stack( void*  init_sp,
 #  endif
 
    for (; orig_auxv->a_type != AT_NULL; auxv++, orig_auxv++) {
+      const NSegment *ehdrseg;
 
       /* copy the entry... */
       *auxv = *orig_auxv;
@@ -638,6 +650,7 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
          case AT_PLATFORM:
+         case AT_BASE_PLATFORM:
             /* points to a platform description string */
             auxv->u.a_ptr = copy_str(&strtab, orig_auxv->u.a_ptr);
             break;
@@ -687,12 +700,19 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
          case AT_SYSINFO:
-#        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64_linux)
-         case AT_SYSINFO_EHDR:
-#        endif
             /* Trash this, because we don't reproduce it */
             auxv->a_type = AT_IGNORE;
             break;
+
+#        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64_linux)
+         case AT_SYSINFO_EHDR:
+            /* Trash this, because we don't reproduce it */
+            ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
+            vg_assert(ehdrseg);
+            VG_(am_munmap_valgrind)(ehdrseg->start, ehdrseg->end - ehdrseg->start);
+            auxv->a_type = AT_IGNORE;
+            break;
+#        endif
 
          case AT_RANDOM:
             /* points to 16 random bytes - we need to ensure this is
@@ -701,6 +721,11 @@ Addr setup_client_stack( void*  init_sp,
             auxv->u.a_ptr = strtab;
             VG_(memcpy)(strtab, orig_auxv->u.a_ptr, 16);
             strtab += 16;
+            break;
+
+         case AT_EXECFN:
+            /* points to the executable filename */
+            auxv->u.a_ptr = copy_str(&strtab, VG_(args_the_exename));
             break;
 
          default:

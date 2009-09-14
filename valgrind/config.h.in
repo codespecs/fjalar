@@ -114,9 +114,6 @@
 /* Define to 1 if you have the `ppoll' function. */
 #undef HAVE_PPOLL
 
-/* can use /proc filesystem */
-#undef HAVE_PROC
-
 /* Define to 1 if you have the `pthread_barrier_init' function. */
 #undef HAVE_PTHREAD_BARRIER_INIT
 
@@ -160,6 +157,9 @@
 /* Define to 1 if the installed version of Qt4 provides QMutex::tryLock(int).
    */
 #undef HAVE_QTCORE_QMUTEX_TRYLOCK_INT
+
+/* Define to 1 if you have the `readlinkat' function. */
+#undef HAVE_READLINKAT
 
 /* Define to 1 if you have the `semtimedop' function. */
 #undef HAVE_SEMTIMEDOP
@@ -244,15 +244,6 @@
 
 /* Define to 1 if you have the `utimensat' function. */
 #undef HAVE_UTIMENSAT
-
-/* Define to 1 if you have the file `AC_File'. */
-#undef HAVE__PROC_SELF_EXE
-
-/* Define to 1 if you have the file `AC_File'. */
-#undef HAVE__PROC_SELF_FD
-
-/* Define to 1 if you have the file `AC_File'. */
-#undef HAVE__PROC_SELF_MAPS
 
 /* Define to 1 if you're using Linux 2.4.x */
 #undef KERNEL_2_4
