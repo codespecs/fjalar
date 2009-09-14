@@ -8,11 +8,18 @@ Last updated: 2009-09-08
 A local copy of the Fjalar webpage appears here:
   ./documentation/fjalar-www/index.html
 
-Introduction
--------------
 This file contains information relevant for those who are interested
 in customizing or extending Fjalar.
 
+A list of improvements and extensions we'd like to see can be located 
+in the TODO file in the same directory of this README.
+
+Additionally development notes, including instructions on how to merge 
+in new versions of valgrind, can be found in the notes directory.
+
+
+Introduction
+-------------
 It is recommended for Fjalar developers to become acquainted with
 Valgrind and Memcheck. Valgrind is a instrumentation framework for
 building dynamic analysis tools. Memcheck is a tool build on Valgrind
