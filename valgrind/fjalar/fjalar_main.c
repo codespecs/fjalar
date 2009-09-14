@@ -980,7 +980,6 @@ Bool fjalar_process_cmd_line_option(Char* arg)
 {
 
   if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}
-  else if VG_YESNO_CLO(arg, "gcc4", fjalar_gcc4) {}
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}
