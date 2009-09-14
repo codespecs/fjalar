@@ -73,7 +73,8 @@ check_PROGRAMS = ansi$(EXEEXT) args$(EXEEXT) async-sigs$(EXEEXT) \
 	fdleak_socketpair$(EXEEXT) floored$(EXEEXT) fork$(EXEEXT) \
 	fucomip$(EXEEXT) munmap_exe$(EXEEXT) map_unaligned$(EXEEXT) \
 	map_unmap$(EXEEXT) mq$(EXEEXT) nestedfns$(EXEEXT) \
-	pending$(EXEEXT) pth_atfork1$(EXEEXT) pth_blockedsig$(EXEEXT) \
+	pending$(EXEEXT) procfs-cmdline-exe$(EXEEXT) \
+	pth_atfork1$(EXEEXT) pth_blockedsig$(EXEEXT) \
 	pth_cancel1$(EXEEXT) pth_cancel2$(EXEEXT) \
 	pth_cvsimple$(EXEEXT) pth_empty$(EXEEXT) pth_exit$(EXEEXT) \
 	pth_exit2$(EXEEXT) pth_mutexspeed$(EXEEXT) pth_once$(EXEEXT) \
@@ -211,6 +212,9 @@ nestedfns_LDADD = $(LDADD)
 pending_SOURCES = pending.c
 pending_OBJECTS = pending.$(OBJEXT)
 pending_LDADD = $(LDADD)
+procfs_cmdline_exe_SOURCES = procfs-cmdline-exe.c
+procfs_cmdline_exe_OBJECTS = procfs-cmdline-exe.$(OBJEXT)
+procfs_cmdline_exe_LDADD = $(LDADD)
 pth_atfork1_SOURCES = pth_atfork1.c
 pth_atfork1_OBJECTS = pth_atfork1.$(OBJEXT)
 pth_atfork1_DEPENDENCIES =
@@ -340,16 +344,16 @@ SOURCES = ansi.c args.c async-sigs.c bitfield1.c bug129866.c \
 	fdleak_fcntl.c fdleak_ipv4.c fdleak_open.c fdleak_pipe.c \
 	fdleak_socketpair.c floored.c fork.c fucomip.c \
 	$(gxx304_SOURCES) manythreads.c map_unaligned.c map_unmap.c \
-	mq.c munmap_exe.c nestedfns.c pending.c pth_atfork1.c \
-	pth_blockedsig.c pth_cancel1.c pth_cancel2.c pth_cvsimple.c \
-	pth_empty.c pth_exit.c pth_exit2.c pth_mutexspeed.c pth_once.c \
-	pth_rwlock.c pth_stackalign.c rcrl.c readline1.c res_search.c \
-	resolv.c rlimit_nofile.c selfrun.c sem.c semlimit.c \
-	sha1_test.c shortpush.c shorts.c sigstackgrowth.c \
-	stackgrowth.c syscall-restart1.c syscall-restart2.c syslog.c \
-	system.c thread-exits.c threaded-fork.c threadederrno.c \
-	timestamp.c $(tls_SOURCES) $(tls_so_SOURCES) \
-	$(tls2_so_SOURCES) vgprintf.c
+	mq.c munmap_exe.c nestedfns.c pending.c procfs-cmdline-exe.c \
+	pth_atfork1.c pth_blockedsig.c pth_cancel1.c pth_cancel2.c \
+	pth_cvsimple.c pth_empty.c pth_exit.c pth_exit2.c \
+	pth_mutexspeed.c pth_once.c pth_rwlock.c pth_stackalign.c \
+	rcrl.c readline1.c res_search.c resolv.c rlimit_nofile.c \
+	selfrun.c sem.c semlimit.c sha1_test.c shortpush.c shorts.c \
+	sigstackgrowth.c stackgrowth.c syscall-restart1.c \
+	syscall-restart2.c syslog.c system.c thread-exits.c \
+	threaded-fork.c threadederrno.c timestamp.c $(tls_SOURCES) \
+	$(tls_so_SOURCES) $(tls2_so_SOURCES) vgprintf.c
 DIST_SOURCES = ansi.c args.c async-sigs.c bitfield1.c bug129866.c \
 	closeall.c $(coolo_sigaction_SOURCES) coolo_strlen.c discard.c \
 	exec-sigmask.c execve.c faultstatus.c fcntl_setown.c \
@@ -357,16 +361,16 @@ DIST_SOURCES = ansi.c args.c async-sigs.c bitfield1.c bug129866.c \
 	fdleak_fcntl.c fdleak_ipv4.c fdleak_open.c fdleak_pipe.c \
 	fdleak_socketpair.c floored.c fork.c fucomip.c \
 	$(gxx304_SOURCES) manythreads.c map_unaligned.c map_unmap.c \
-	mq.c munmap_exe.c nestedfns.c pending.c pth_atfork1.c \
-	pth_blockedsig.c pth_cancel1.c pth_cancel2.c pth_cvsimple.c \
-	pth_empty.c pth_exit.c pth_exit2.c pth_mutexspeed.c pth_once.c \
-	pth_rwlock.c pth_stackalign.c rcrl.c readline1.c res_search.c \
-	resolv.c rlimit_nofile.c selfrun.c sem.c semlimit.c \
-	sha1_test.c shortpush.c shorts.c sigstackgrowth.c \
-	stackgrowth.c syscall-restart1.c syscall-restart2.c syslog.c \
-	system.c thread-exits.c threaded-fork.c threadederrno.c \
-	timestamp.c $(tls_SOURCES) $(tls_so_SOURCES) \
-	$(tls2_so_SOURCES) vgprintf.c
+	mq.c munmap_exe.c nestedfns.c pending.c procfs-cmdline-exe.c \
+	pth_atfork1.c pth_blockedsig.c pth_cancel1.c pth_cancel2.c \
+	pth_cvsimple.c pth_empty.c pth_exit.c pth_exit2.c \
+	pth_mutexspeed.c pth_once.c pth_rwlock.c pth_stackalign.c \
+	rcrl.c readline1.c res_search.c resolv.c rlimit_nofile.c \
+	selfrun.c sem.c semlimit.c sha1_test.c shortpush.c shorts.c \
+	sigstackgrowth.c stackgrowth.c syscall-restart1.c \
+	syscall-restart2.c syslog.c system.c thread-exits.c \
+	threaded-fork.c threadederrno.c timestamp.c $(tls_SOURCES) \
+	$(tls_so_SOURCES) $(tls2_so_SOURCES) vgprintf.c
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
 	html-recursive info-recursive install-data-recursive \
 	install-exec-recursive install-info-recursive \
@@ -759,6 +763,10 @@ EXTRA_DIST = \
 	munmap_exe.stderr.exp munmap_exe.vgtest \
 	nestedfns.stderr.exp nestedfns.stdout.exp nestedfns.vgtest \
 	pending.stdout.exp pending.stderr.exp pending.vgtest \
+	procfs-linux.stderr.exp-with-readlinkat \
+	procfs-linux.stderr.exp-without-readlinkat \
+	procfs-linux.vgtest \
+	procfs-non-linux.stderr.exp procfs-non-linux.vgtest \
 	pth_atfork1.stderr.exp pth_atfork1.stdout.exp pth_atfork1.vgtest \
 	pth_blockedsig.stderr.exp \
 	pth_blockedsig.stdout.exp pth_blockedsig.vgtest \
@@ -996,6 +1004,9 @@ nestedfns$(EXEEXT): $(nestedfns_OBJECTS) $(nestedfns_DEPENDENCIES)
 pending$(EXEEXT): $(pending_OBJECTS) $(pending_DEPENDENCIES) 
 	@rm -f pending$(EXEEXT)
 	$(LINK) $(pending_LDFLAGS) $(pending_OBJECTS) $(pending_LDADD) $(LIBS)
+procfs-cmdline-exe$(EXEEXT): $(procfs_cmdline_exe_OBJECTS) $(procfs_cmdline_exe_DEPENDENCIES) 
+	@rm -f procfs-cmdline-exe$(EXEEXT)
+	$(LINK) $(procfs_cmdline_exe_LDFLAGS) $(procfs_cmdline_exe_OBJECTS) $(procfs_cmdline_exe_LDADD) $(LIBS)
 pth_atfork1$(EXEEXT): $(pth_atfork1_OBJECTS) $(pth_atfork1_DEPENDENCIES) 
 	@rm -f pth_atfork1$(EXEEXT)
 	$(LINK) $(pth_atfork1_LDFLAGS) $(pth_atfork1_OBJECTS) $(pth_atfork1_LDADD) $(LIBS)
@@ -1147,6 +1158,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/munmap_exe.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/nestedfns-nestedfns.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pending.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/procfs-cmdline-exe.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pth_atfork1.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pth_blockedsig.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pth_cancel1-pth_cancel1.Po@am__quote@
