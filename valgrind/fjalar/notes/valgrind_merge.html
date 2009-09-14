@@ -393,17 +393,21 @@ changes are documented, changes should be committed to the CVS repository.
 
 <pre>
   cd $INV
-  \rm -f coregrind.patch memcheck.patch coregrind-PAG.diff memcheck-PAG.diff
-  <i># Double-check the diffs -- standard practice before committing</i>
-  cvs diff
+  <i># Double-check the list of changed file and optionally the diffs -- standard practice before committing</i>
+  cvs -q diff -b --brief -N | grep "^Index: "
+  <i># Optional:  cvs diff
   <i># Add any other relevant notes to the below.</i>
-  cvs commit -m "Valgrind merge from revision ${VALGRIND_REVISION} to ${VALGRIND_REVISION_NEW.  VEX IR merge from ${VEX_REVISION} to ${VEX_REVISION_NEW}.</pre>
+  cvs commit -m "Valgrind merge from revision ${VALGRIND_REVISION} to ${VALGRIND_REVISION_NEW}.  VEX IR merge from ${VEX_REVISION} to ${VEX_REVISION_NEW}."
+  \rm -f coregrind.patch memcheck.patch coregrind-PAG.diff memcheck-PAG.diff
+</pre>
 
 <hr>
 <h2 id="Valgrind_modifications">Appendix A: Valgrind modifications</h2>
 
-<p>In an effort to aid in determining the appropriate measures to take when merging conflicted files,
-this section will provide a list of files modified by us and a brief explanation of the changes.
+<p>
+This section lists files modified by us and a brief explanation of the changes.
+The explanations may help you in resolving conflicted files.
+</p>
 
 <!-- Should I include functions too? -->
 
@@ -525,7 +529,7 @@ the implementation of an existing instruction. Alternatively, it should be strai
 <hr>
 
 <address></address>
-<!-- hhmts start -->Last modified: September 2, 2009<!-- hhmts end -->
+<!-- hhmts start -->Last modified: September 14, 2009<!-- hhmts end -->
 </body> </html>
 
 <!--  LocalWords:  Memcheck memcheck Kvasir diffs Coregrind Diff valgrind PAG
