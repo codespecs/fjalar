@@ -9,27 +9,30 @@
 
 
 <p>
-This document provides information on merging newer versions of Valgrind
-into Fjalar.  Fjalar is built as a tool on top of Valgrind, and it it also
-contains a sizable amount of code from Memcheck, another Valgrind tool,
+Fjalar is built as a tool on top of Valgrind, and it it also
+contains a sizable amount of code from Memcheck, another Valgrind tool.
 When new versions of Valgrind and Memcheck are released, Fjalar should be
-updated.</p>
+updated to incorporate the Valgrind/Memcheck changes.
+This document tells you how to do so.
+</p>
 
 <p>
-Conceptually this is two separate merges: (1) The merge between
-the underlying copy of Valgrind, and the newer version of Valgrind and (2)
-The merge between the memcheck code contained in Fjalar and the newer version
+Conceptually, this is two separate updates: (1) Updating 
+the underlying copy of Valgrind to the newer version of Valgrind, and (2)
+Updating the memcheck code contained in Fjalar to the newer version
 of Memcheck.  Due to very tight dependence of the memcheck code
 on Valgrind, the changes should be done simultaneously.
 </p>
 
 <p>
-The merge of the underlying copy of Valgrind should be able to be done almost
-completely automatically. Due to substantial modifications to the memcheck code,
-some portion of the merge will have to be done manually.  The more frequent
+The update of the underlying copy of Valgrind can usually be done almost
+automatically.
+Updating the memcheck code often involves manual work, due to substantial
+modifications to the memcheck code that is incorporated in Fjalar.
+The more frequent
 the merges are, the easier they will be to do.  Monthly, at the very least, is
 recommended.
-<p>
+</p>
 
 <p>Contents:</p>
 <!-- start toc.  do not edit; run html-update-toc instead -->
@@ -63,7 +66,7 @@ recommended.
       <li><a href="#Committing">5. Committing</a>
         <ul>
           <li><a href="#cvs-add-remove">5.1 Tell CVS about files that were added or removed</a></li>
-          <li><a href="#committing">5.2 Committing</a></li>
+          <li><a href="#commit-commands">5.2 Commit commands</a></li>
         </ul></li>
       <li><a href="#Valgrind_modifications">Appendix A: Valgrind modifications</a></li>
       <li><a href="#Memcheck_modifications">Appendix B: Memcheck modifications</a></li>
@@ -75,12 +78,19 @@ recommended.
 
 <h2 id="Getting_Started">1. Getting Started</h2>
 
-<p>The instructions assume you use bash or sh as your shell;
-  adjust them if necessary.</p>
-
+<p>The instructions assume you use bash or sh as your shell.
+If you use a different shell, adjust the instructions as necessary.</p>
 
 <p>You need to obtain 2 copies of Valgrind: the most recent, and the
 one the current version of Fjalar is based on.</p>
+
+
+<p>
+<b>Note:</b>
+As of 9/13/2009, the tests do run on a PAG machine (Debian), but do not run
+on a CSE machine (Fedora) nor on Ubuntu 9.04.
+</p>
+
 
 <h3 id="checkout_fjalar">1.1 Obtain a copy of the Fjalar source </h3>
 
@@ -96,6 +106,7 @@ checked out.
  follow the below directions.
 -->
 
+<p>
 (From a PAG machine)
 <pre>
   cvs -d $pag/projects/invariants/.CVS co invariants
@@ -134,7 +145,7 @@ If there are any differences, commit them, then start over from the beginning.
 </p>
 
 <p>
-Run the tests.
+Re-compile Fjalar, then run the tests.  (The tests take about 20 minutes.)
 </p>
 
 <pre>
@@ -192,6 +203,7 @@ repository for the copy that will be diffed.</p>
 <h3 id="pag-coregrind-diff">2.2 PAG Coregrind Diff</h3>
 
 <p> Generate a diff containing PAG changes to coregrind. This will not be used for any automated patching, so we will be excluding a lot more irrelevant files. Also the PAG repository contains many of the automake/autoconf generated files to simplify things for the end users, these also need to be omitted for a cleaner diff. The below command should create a diff containing the relevant PAG changes to the Valgrind source code.
+</p>
 
 <pre>
   cd $INV
@@ -304,6 +316,7 @@ call to a dyncomp tag function. Most often VEX IR changes will be syntactical in
 involve changing the names of the instructions. If the log indicates that new VEX IR instructions have been
 added, they will need to be explicitly supported by Dyncomp. Please see <a href="#New_IR">Appendix C</a> for
 guidelines on supporting new VEX instructions.
+</p>
 
 
 <hr>
@@ -389,13 +402,13 @@ changes are documented, changes should be committed to the CVS repository.
 </pre>
 
 
-<h3 id="committing"> 5.2 Committing </h3>
+<h3 id="commit-commands"> 5.2 Commit commands </h3>
 
 <pre>
   cd $INV
-  <i># Double-check the list of changed file and optionally the diffs -- standard practice before committing</i>
-  cvs -q diff -b --brief -N | grep "^Index: "
-  <i># Optional:  cvs diff
+  <i># Double-check the diffs &mdash; standard practice before committing</i>
+  cvs -q diff -b --brief -N
+  <i># If necessary: cvs diff</i>
   <i># Add any other relevant notes to the below.</i>
   cvs commit -m "Valgrind merge from revision ${VALGRIND_REVISION} to ${VALGRIND_REVISION_NEW}.  VEX IR merge from ${VEX_REVISION} to ${VEX_REVISION_NEW}."
   \rm -f coregrind.patch memcheck.patch coregrind-PAG.diff memcheck-PAG.diff
@@ -404,9 +417,8 @@ changes are documented, changes should be committed to the CVS repository.
 <hr>
 <h2 id="Valgrind_modifications">Appendix A: Valgrind modifications</h2>
 
-<p>
-This section lists files modified by us and a brief explanation of the changes.
-The explanations may help you in resolving conflicted files.
+<p>In an effort to aid in determining the appropriate measures to take when merging conflicted files,
+this section will provide a list of files modified by us and a brief explanation of the changes.
 </p>
 
 <!-- Should I include functions too? -->
@@ -415,6 +427,7 @@ The explanations may help you in resolving conflicted files.
 The shadow area is an area of memory that Valgrind provides for tools to use. Unfortunately,
 it is of a fixed size, and memcheck uses all of it. We've had to increase the size of the
 the shadow area.
+</p>
 
 <dl>
 <dt>$INV/valgrind-3/valgrind/coregrind/pub_core_threadstate.h</dt>
@@ -465,6 +478,7 @@ and filled with their signatures for use by Fjalar.</p>
 <h2 id="New_IR">Appendix C: Supporting new VEX IR Instruction</h2>
 
 <p>It is recommended that you acquaint yourself with the VEX IR by reading through:
+</p>
 
 <dl>
 <dt>$INV/valgrind-3/valgrind/VEX/pub/libvex.h</dt>
@@ -473,12 +487,14 @@ and filled with their signatures for use by Fjalar.</p>
 
 <p>In addition to being the primary headers for the VEX library, the above 2 files represent the majority of
 the public documentation on VEX. <!-- Is it possible for us to make the VEX .pdf to PAG members? -->Valgrind's translation pipeline consists of the following:
+</p>
 
 <pre>  Native assembly -> Pre-instrumented VEX IR -> Post-Instrumented VEX IR -> Final assembly</pre>
 
 <p>Valgrind begins by translating the entirety of an assembly basic block into VEX IR. Valgrind then allows tools
 to instrument examine the translated basic block and insert their own instrumentation. Valgrind finishes by translated
 the instrumented IR back into the machine's native assembly.
+</p>
 
 <p>In order to keep track of comparabilities, Dyncomp instruments almost every VEX IR instruction type.
 Any added instructions will likely need to be supported by Dyncomp. In general Dyncomp's functionality parallels Memcheck's,
@@ -486,21 +502,26 @@ so the best starting point for implementing support for a new instruction would 
 Dyncomp's layout is very similar to Memcheck's, so mirroring functionality should be fairly straightforward.
 It is, however, very unlikely that a new instruction type will be added as the VEX IR is a relatively mature
 instruction set and has been in use for almost 9 years at the time of this writing.
+</p>
 
 <p>Another type of addition that will need to be supported are added "IR Expressions." Most VEX IR instructions are implemented as
 a set of IR Expressions - Take the following IR instructions for example:
+</p>
 
-<dl>
 <pre>
-<dt>t5 = Add32(t12,0x8:I32)</dt>
-<dt>t10 = CmpLE32S(t2,0x21:I32)</dt>
+t5 = Add32(t12,0x8:I32)
+t10 = CmpLE32S(t2,0x21:I32)
 </pre>
-</dl>
 
+<p>
 The above 2 IR Instructions are of the type PUT and they store the result of an IR Expression into a temporary. These instructions consist of
 the destination temporary, an IR Expression, which conceptually is the operation to be formed, and the arguments to the expression. Most IR
-Instructions will have a similar format. Dyncomp is particularly interested in analyzing all possible IRExpressions.
-<pre>$INV/valgrind-3/valgrind/kvasir/fjalar/kvasir/dyncomp_translate.c</pre> contains the following set of functions for processing IRExpressions.
+Instructions will have a similar format. Dyncomp is particularly interested
+in analyzing all possible IRExpressions.
+</p>
+<pre>$INV/valgrind-3/valgrind/kvasir/fjalar/kvasir/dyncomp_translate.c</pre>
+<p>contains the following set of functions for processing IRExpressions.
+</p>
 
 <dl>
 <dt><b>IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )</b></dt>
@@ -523,8 +544,10 @@ delegating expression handling to one of hte other functions</dd>
 </dl>
 
 
+<p>
 If a new IR Expressions is added, it will need to be handled by one of the above functions. The easiest way to implement it will be to base it on
 the implementation of an existing instruction. Alternatively, it should be straightforward to mimic Memcheck's handling of the expression.
+</p>
 
 <hr>
 
