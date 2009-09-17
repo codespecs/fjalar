@@ -1505,7 +1505,7 @@ void initializeFunctionTable(void)
             //extern char* cplus_demangle_v3 (const char* mangled, int options);
             demangled_name = cplus_demangle_v3(cur_func_entry->mangled_name, DMGL_PARAMS | DMGL_ANSI);
 	    if (demangled_name) {
-	      VG_(printf)("demangling: %s\n", demangled_name);
+	      FJALAR_DPRINTF("demangling: %s\n", demangled_name);
 	      // Set the demangled_name of the function to be the
 	      // demangled name:
 	      cur_func_entry->demangled_name = demangled_name;

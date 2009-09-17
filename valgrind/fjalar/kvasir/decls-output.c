@@ -941,7 +941,6 @@ printDeclsEntryAction(VariableEntry* var,
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
-	VG_(printf)("Getting comp number for varaible %s\n", varName);
 
         fputs("    comparability ", decls_fp);
         fprintf(decls_fp, "%d", comp_number);
@@ -1078,7 +1077,6 @@ printDeclsEntryAction(VariableEntry* var,
                                                      isEnter,
                                                    g_variableIndex);
 
-	VG_(printf)("Getting comp number for varaible %s ", varName);
         DYNCOMP_TPRINTF("%s[%d](%s) value tag is %d\n",
                         entry->funcEntry.name, g_variableIndex, varName,
                         entry->ppt_exit_var_tags[g_variableIndex]);

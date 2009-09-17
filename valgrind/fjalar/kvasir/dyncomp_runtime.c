@@ -587,15 +587,16 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
         g_curCompNumber++;
         genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
       }
-      VG_(printf)("Getting leader of tag %du\n", tag);
-      VG_(printf)("Fjalar Func[%s] - var_tags[%d]: %d\n ", funcPtr->funcEntry.name, daikonVarIndex, leader);
-      VG_(printf)("\t comp number is: %d\n", comp_number);
+      DPRINTF("Getting leader of tag %du\n", tag);
+      DPRINTF("Fjalar Func[%s] - var_tags[%d]: %d (comparability: %d)\n ", 
+		  funcPtr->funcEntry.name, 
+		  daikonVarIndex, 
+		  leader,
+		  comp_number);
     }
   }
 
-  //  VG_(printf)("\n");
   return comp_number;
-  //  return var_tags[daikonVarIndex];
 }
 
 static TraversalResult dyncompExtraPropAction(VariableEntry* var,
