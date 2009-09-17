@@ -1099,8 +1099,6 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
       else {
         a = (Addr)ptrInQuestion;
       }
-      if(print_info)
-	VG_(printf)("%s - ", varName);
       DC_post_process_for_variable((DaikonFunctionEntry*)varFuncInfo,
                                    isEnter,
                                    g_variableIndex,
