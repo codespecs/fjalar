@@ -86,6 +86,7 @@ FJALAR_SOURCES_COMMON = \
 	typedata.c \
 	disambig.c \
 	my_libc.c \
+	my_libc_float.c \
 	tsearch.c \
 	kvasir/kvasir_main.c \
 	kvasir/decls-output.c \

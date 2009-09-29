@@ -15,6 +15,8 @@
 
 #include <limits.h>
 
+extern char* fptostr (double x, int width, int preci, char mode, char* buf, int maxlen);
+
 /* ctype.h */
 
 int isalnum(int ch) {
@@ -974,37 +976,39 @@ num_printf:
 	  if (!flag_dot) preci=6;
 	  if (flag_sign || d < +0.0) flag_in_sign=1;
 
-	  sz=__dtostr(d,s,sizeof(buf)-1,width,preci,g);
+	  sz= fptostr(d, width, preci, 'g', s, sizeof(buf)-1);
 
-	  if (flag_dot) {
-	    char *tmp;
-	    if ((tmp=VG_(strchr)(s,'.'))) {
-	      if (preci || flag_hash) ++tmp;
-	      while (preci>0 && *++tmp) --preci;
-	      *tmp=0;
-	    } else if (flag_hash) {
-	      s[sz]='.';
-	      s[++sz]='\0';
-	    }
-	  }
+/* 	  sz=__dtostr(d,s,sizeof(buf)-1,width,preci,g); */
 
-	  if (g) {
-	    char *tmp,*tmp1;	/* boy, is _this_ ugly! */
-	    if ((tmp=VG_(strchr)(s,'.'))) {
-	      tmp1=VG_(strchr)(tmp,'e');
-	      while (*tmp) ++tmp;
-	      if (tmp1) tmp=tmp1;
-	      while (*--tmp=='0') ;
-	      if (*tmp!='.') ++tmp;
-	      *tmp=0;
-	      if (tmp1) VG_(strcpy)(tmp,tmp1);
-	    }
-	  }
+/* 	  if (flag_dot) { */
+/* 	    char *tmp; */
+/* 	    if ((tmp=VG_(strchr)(s,'.'))) { */
+/* 	      if (preci || flag_hash) ++tmp; */
+/* 	      while (preci>0 && *++tmp) --preci; */
+/* 	      *tmp=0; */
+/* 	    } else if (flag_hash) { */
+/* 	      s[sz]='.'; */
+/* 	      s[++sz]='\0'; */
+/* 	    } */
+/* 	  } */
 
-	  if ((flag_sign || flag_space) && d>=0) {
-	    *(--s)=(flag_sign)?'+':' ';
-	    ++sz;
-	  }
+/* 	  if (g) { */
+/* 	    char *tmp,*tmp1;	/\* boy, is _this_ ugly! *\/ */
+/* 	    if ((tmp=VG_(strchr)(s,'.'))) { */
+/* 	      tmp1=VG_(strchr)(tmp,'e'); */
+/* 	      while (*tmp) ++tmp; */
+/* 	      if (tmp1) tmp=tmp1; */
+/* 	      while (*--tmp=='0') ; */
+/* 	      if (*tmp!='.') ++tmp; */
+/* 	      *tmp=0; */
+/* 	      if (tmp1) VG_(strcpy)(tmp,tmp1); */
+/* 	    } */
+/* 	  } */
+
+/* 	  if ((flag_sign || flag_space) && d>=0) { */
+/* 	    *(--s)=(flag_sign)?'+':' '; */
+/* 	    ++sz; */
+/* 	  } */
 
 	  sz=VG_(strlen)(s);
 	  flag_dot=0;
