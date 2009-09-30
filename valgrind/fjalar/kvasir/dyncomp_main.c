@@ -151,7 +151,6 @@ __inline__ void set_tag ( Addr a, UInt tag )
 // for the uf_object associated with that tag
 static __inline__ UInt grab_fresh_tag(void) {
   UInt tag;
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
 
   // Let's try garbage collecting here.  Remember to assign
   // tag = nextTag AFTER garbage collection (if it occurs) because
@@ -177,16 +176,16 @@ static __inline__ UInt grab_fresh_tag(void) {
   }
 
   totalNumTagsAssigned++;
-
   if (dyncomp_print_trace_all) {
-
+    Addr tid = VG_(get_IP)(VG_(get_running_tid)());
+    dyncomp_print_trace_info = True;
     Char eip_info[256];
-    VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    //    DYNCOMP_TPRINTF("Creating fresh tag %d at 0x%08x (%s)\n",
-    //	    tag, eip, eip_info);
+    VG_(describe_IP)(tid, eip_info, sizeof(eip_info));
+    DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %08x (%s)\n",
+		    tag, 0, eip_info);
   }
-
   return tag;
+
 }
 
 // Allocate a new unique tag for all bytes in range [a, a + len)
@@ -301,9 +300,7 @@ static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     //    ThreadId tid = VG_(get_running_tid)();
 
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    /*       VG_(printf)("Merging %d with %d to get %d at 0x%08x (%s)\n", */
-    /* 		      tag1, tag2, leader->tag, eip, eip_info); */
-    DYNCOMP_TPRINTF("Merging %d with %d to get %d at 0x%08x (%s)\n",
+    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at 0x%08x (%s)\n",
 		    tag1, tag2, leader->tag, eip, eip_info);
 
       //      VG_(get_and_pp_StackTrace) (tid, 15);
@@ -668,12 +665,12 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   // (If both are WEAK_FRESH_TAG's, then return WEAK_FRESH_TAG,
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
-    DYNCOMP_TPRINTF("Merging %du with %du to get %du at 0x%08x (%s)\n",
+    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at 0x%08x (%s)\n",
 		    tag1, tag2, tag2 , eip, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
-    DYNCOMP_TPRINTF("Merging %dy with %du to get %du at 0x%08x (%s)\n",
+    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at 0x%08x (%s)\n",
 		    tag1, tag2, tag1 , eip, eip_info);
     return tag1;
   }

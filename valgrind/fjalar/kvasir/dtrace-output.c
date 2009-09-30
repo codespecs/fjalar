@@ -38,9 +38,13 @@
 
 
 #define DTRACE_PRINTF(...) do { if (!dyncomp_without_dtrace) \
-      fprintf(dtrace_fp, __VA_ARGS__); } while (0)
+       fprintf(dtrace_fp, __VA_ARGS__); } while (0)
 
-int print_info = 0;
+// Global variable storing the current variable name.
+// currently used for debugging comparability values 
+// as Dyncomp isn't passed much in the way of 
+// the variable information.
+char* cur_var_name = NULL;
 
 // Daikon officially supports only "nonsensical", not "uninit".
 // Having two strings in this code makes the reason clearer, though.
@@ -135,19 +139,19 @@ static void printOneDtraceString(char* str)
     {
       switch (*str) {
       case '\n':
-        DTRACE_PRINTF( "\\n");
-        break;
+	DTRACE_PRINTF( "\\n");
+	break;
       case '\r':
-        DTRACE_PRINTF( "\\r");
-        break;
+	DTRACE_PRINTF( "\\r");
+	break;
       case '\"':
-        DTRACE_PRINTF( "\\\"");
-        break;
+	DTRACE_PRINTF( "\\\"");
+	break;
       case '\\':
-        DTRACE_PRINTF( "\\\\");
-        break;
+	DTRACE_PRINTF( "\\\\");
+	break;
       default:
-        DTRACE_PRINTF( "%c", *str);
+	DTRACE_PRINTF( "%c", *str);
       }
 
       str++;
@@ -156,8 +160,8 @@ static void printOneDtraceString(char* str)
       readable = addressIsInitialized((Addr)str, sizeof(char));
 
       if (!readable) {
-        VG_(printf)("  Error!  Ran into unreadable character!\n");
-        break;
+	VG_(printf)("  Error!  Ran into unreadable character!\n");
+	break;
       }
     }
   DTRACE_PRINTF("\"");
@@ -166,7 +170,7 @@ static void printOneDtraceString(char* str)
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
     DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (string)\n",
-                    (Addr)strHead, len);
+		    (Addr)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
 }
@@ -215,8 +219,8 @@ static void printOneDtraceStringAsIntArray(char* str) {
 
       readable = addressIsInitialized((Addr)str, sizeof(char));
       if (!readable) {
-        VG_(printf)("  Error!  Ran into unreadable character!\n");
-        break;
+	VG_(printf)("  Error!  Ran into unreadable character!\n");
+	break;
       }
     }
   DTRACE_PRINTF("]");
@@ -225,7 +229,7 @@ static void printOneDtraceStringAsIntArray(char* str) {
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
     DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (string as int)\n",
-                    (Addr)strHead, len);
+		    (Addr)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
 }
@@ -238,8 +242,7 @@ static int checkStringReadable(char *str) {
   for (;;) {
     int readable = addressIsInitialized((Addr)p, sizeof(char));
     if (!readable) {
-      //RUDD DEBUG
-      //DPRINTF("String contains unreadable byte %d (%p)\n", p - str, p);
+      DPRINTF("String contains unreadable byte %d (%p)\n", p - str, p);
       return 0;
     }
     else if (!*p) {
@@ -314,25 +317,25 @@ switch (decType) \
   DPRINTF( TYPE_FORMAT_STRINGS[decType], *((TYPE*)(pCurValue)));
 
 static char printDtraceSingleBaseValue(Addr pValue,
-                                       DeclaredType decType,
-                                       char overrideIsInit,
-                                       DisambigOverride disambigOverride);
+				       DeclaredType decType,
+				       char overrideIsInit,
+				       DisambigOverride disambigOverride);
 
 static void printDtraceBaseValueSequence(DeclaredType decType,
-                                         Addr* pValueArray,
-                                         UInt numElts,
-                                         DisambigOverride disambigOverride,
-                                         Addr* pFirstInitElt);
+					 Addr* pValueArray,
+					 UInt numElts,
+					 DisambigOverride disambigOverride,
+					 Addr* pFirstInitElt);
 
 static void printDtraceSingleString(char* actualString,
-                                    DisambigOverride disambigOverride);
+				    DisambigOverride disambigOverride);
 
 
 static void printDtraceStringSequence(VariableEntry* var,
-                                      Addr* pValueArray,
-                                      UInt numElts,
-                                      DisambigOverride disambigOverride,
-                                      Addr* pFirstInitElt);
+				      Addr* pValueArray,
+				      UInt numElts,
+				      DisambigOverride disambigOverride,
+				      Addr* pFirstInitElt);
 
 
 // Prints a .dtrace entry for a single variable value denoted by
@@ -350,39 +353,39 @@ static char printDtraceSingleVar(VariableEntry* var,
 
   tl_assert(var);
 
-  DPRINTF("  printDtraceSingleVar(): %p(guest %p)\n", pValue, pValueGuest);
+  DPRINTF("  printDtraceSingleVar(): %p(guest %p) overrideisInit: %d\n", pValue, pValueGuest, overrideIsInit);
 
   // a pValue of 0 means nonsensical because there is no content to
   // dereference:
   if (!pValue) {
     DPRINTF("no address\n");
     DTRACE_PRINTF("%s\n%d\n",
-                  NONSENSICAL,
-                  mapInitToModbit(0));
+		  NONSENSICAL,
+		  mapInitToModbit(0));
     return 0;
   }
 
   // At minimum, check whether the first byte is allocated and/or
   // initialized
   allocated = (overrideIsInit ? 1 :
-               addressIsAllocated((Addr)pValue, sizeof(char)));
+	       addressIsAllocated((Addr)pValue, sizeof(char)));
 
   if (!allocated) {
     DPRINTF("unallocated\n");
     DTRACE_PRINTF("%s\n%d\n",
-                  NONSENSICAL,
-                  mapInitToModbit(0));
+		  NONSENSICAL,
+		  mapInitToModbit(0));
     return 0;
   }
 
   initialized = (overrideIsInit ? 1 :
-                 addressIsInitialized((Addr)pValue, sizeof(char)));
+		 addressIsInitialized((Addr)pValue, sizeof(char)));
 
   if (!initialized) {
     DPRINTF("uninit\n");
     DTRACE_PRINTF("%s\n%d\n",
-                  UNINIT,
-                  mapInitToModbit(0));
+		  UNINIT,
+		  mapInitToModbit(0));
     return 0;
   }
 
@@ -398,15 +401,15 @@ static char printDtraceSingleVar(VariableEntry* var,
     //       var->isStaticArray says that the base variable is a
     //       static array after all dereferences are done.
     DTRACE_PRINTF("%u\n%d\n",
-                  IS_STATIC_ARRAY_VAR(var) ? (UInt)pValueGuest
+		  IS_STATIC_ARRAY_VAR(var) ? (UInt)pValueGuest
 		  : (UInt)(*((Addr*)pValue)),
-                  mapInitToModbit(1));
+		  mapInitToModbit(1));
 
     // Since we observed all of these bytes as one value, we will
     // merge all of their tags in memory
     if (kvasir_with_dyncomp) {
       DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (pointer)\n",
-                      pValue, sizeof(void*));
+		      pValue, sizeof(void*));
       val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
     }
   }
@@ -426,12 +429,12 @@ static char printDtraceSingleVar(VariableEntry* var,
 
     if (stringReadable) {
       printDtraceSingleString(actualString,
-                              disambigOverride);
+			      disambigOverride);
     }
     else {
       DTRACE_PRINTF("%s\n%d\n",
-                    UNINIT,
-                    mapInitToModbit(0));
+		    UNINIT,
+		    mapInitToModbit(0));
       return 0;
     }
   }
@@ -439,8 +442,8 @@ static char printDtraceSingleVar(VariableEntry* var,
   // Simply print out its hashcode location
   else if (IS_AGGREGATE_TYPE(var->varType)) {
     DTRACE_PRINTF("%u\n%d\n",
-                  ((UInt)pValue),
-                  mapInitToModbit(1));
+		  ((UInt)pValue),
+		  mapInitToModbit(1));
   }
   // Base type
   else {
@@ -456,9 +459,9 @@ static char printDtraceSingleVar(VariableEntry* var,
     }
 
     return printDtraceSingleBaseValue(pValue,
-                                      decType,
-                                      overrideIsInit,
-                                      disambigOverride);
+				      decType,
+				      overrideIsInit,
+				      disambigOverride);
   }
 
   // Default return value:
@@ -504,8 +507,8 @@ static char printDtraceSequence(VariableEntry* var,
   if (!pValueArray || !numElts) {
     DPRINTF("Pointer null or 0 elements\n");
     DTRACE_PRINTF("%s\n%d\n",
-                  NONSENSICAL,
-                  mapInitToModbit(0));
+		  NONSENSICAL,
+		  mapInitToModbit(0));
     return 0;
   }
 
@@ -520,23 +523,23 @@ static char printDtraceSequence(VariableEntry* var,
   if (!someEltNonZero) {
     DPRINTF("All elements 0\n");
     DTRACE_PRINTF("%s\n%d\n",
-                  NONSENSICAL,
-                  mapInitToModbit(0));
+		  NONSENSICAL,
+		  mapInitToModbit(0));
     return 0;
   }
 
 
-  // If all elements in pValueArray are uninit, then print out UNINIT
-  // and return 0. (be conservative and only check the first byte so that
-  // we don't mistakenly mark an array of shorts as uninitialized)
-  for (i = 0; i < numElts; i++) {
-    Addr pCurValue = pValueArray[i];
-    char eltInit = addressIsInitialized(pCurValue, sizeof(char));
-    if (eltInit) {
-      someEltInit = 1;
-      break;
-    }
-  }
+   // If all elements in pValueArray are uninit, then print out UNINIT
+   // and return 0. (be conservative and only check the first byte so that
+   // we don't mistakenly mark an array of shorts as uninitialized)
+   for (i = 0; i < numElts; i++) {
+     Addr pCurValue = pValueArray[i];
+     char eltInit = addressIsInitialized(pCurValue, sizeof(char));
+     if (eltInit) {
+       someEltInit = 1;
+       break;
+     }
+   }
 
   if (!someEltInit) {
     DPRINTF("All elements uninit\n");
@@ -880,6 +883,8 @@ void printDtraceStringSequence(VariableEntry* var,
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
 
+  DPRINTF("printDtraceStringSequence: %s - pValueArray: %p\n", var->name, pValueArray);
+
   if (fjalar_array_length_limit != -1) {
     limit = min(limit, fjalar_array_length_limit);
   }
@@ -888,7 +893,7 @@ void printDtraceStringSequence(VariableEntry* var,
 
   for (i = 0; i < limit; i++) {
     char* pCurValue = (char*)pValueArray[i];
-    char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char*));
+    char eltInit = addressIsInitialized((Addr)pCurValue, sizeof(char));
 
     if (eltInit) {
       if (!firstInitEltFound) {
@@ -935,6 +940,7 @@ void printDtraceStringSequence(VariableEntry* var,
       }
     }
     else {
+      DPRINTF("Not initialized\n");
       if (!kvasir_repair_format) {
         DTRACE_PRINTF(NONSENSICAL);
         DTRACE_PRINTF(" ");
@@ -988,15 +994,14 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   (void)numDereferences; /* silence unused variable warning */
   DPRINTF("\n*********************************\n%s - %s\n*********************************\n", varName, func_name);
 
+  cur_var_name = varName;
+
   DPRINTF("pValue: %x\n pValueGuest: %x\n pValueArray: %x\n pValueArrayGuest:%x\n", pValue, pValueGuest, pValueArray, pValueGuest);
   DPRINTF("numelts: %d\n", numElts);
 
   if(pValue)
     DPRINTF("Value is %16x\n",
 	    *(Addr *)pValue);
-  if(pValueGuest)
-    DPRINTF("ValueGuest is %16x\n",
-	    *(Addr *)pValueGuest);
 
 
   // Line 1: Variable name
@@ -1127,11 +1132,11 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   tl_assert(funcPtr);
 
   DPRINTF("* %s %s at FP=0x%x, lowestSP=0x%x, startPC=%p\n",
-	      (isEnter ? "ENTER" : "EXIT "),
-	      f_state->func->fjalar_name,
+          (isEnter ? "ENTER" : "EXIT "),
+          f_state->func->fjalar_name,
 	  f_state->FP,
-	      f_state->lowestSP,
-                            (void*)f_state->func->startPC);
+          f_state->lowestSP,
+          (void*)f_state->func->startPC);
 
   // Reset this properly!
   g_variableIndex = 0;
@@ -1142,9 +1147,9 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
     printDtraceFunctionHeader(funcPtr, isEnter);
   }
 
-  if( (VG_(strstr)(f_state->func->fjalar_name, "main") != 0) ) {
-    print_info = 1;
-  }
+  /* if( (VG_(strstr)(f_state->func->fjalar_name, "main") != 0) ) { */
+  /*   print_info = 1; */
+  /* } */
 
   if(isEnter)
     is_enter = 1;

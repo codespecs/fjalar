@@ -2460,6 +2460,70 @@ VexGuestLayout
           .offset_IP = offsetof(VexGuestAMD64State,guest_RIP),
           .sizeof_IP = 8,
 
+          /* Describe the primary integer return register. */
+          .offset_xAX = offsetof(VexGuestAMD64State,guest_RAX),
+          .sizeof_xAX = 8,
+
+          /* Describe the secondary integer return register. */
+          .offset_xDX = offsetof(VexGuestAMD64State,guest_RDX),
+          .sizeof_xDX = 8,
+
+          /* Describe the xCX register. */
+          .offset_xCX = offsetof(VexGuestAMD64State,guest_RCX),
+          .sizeof_xCX = 8,
+
+          /* Describe the xBX register. */
+          .offset_xBX = offsetof(VexGuestAMD64State,guest_RBX),
+          .sizeof_xBX = 8,
+
+          /* Describe the xSI register. */
+          .offset_xSI = offsetof(VexGuestAMD64State,guest_RSI),
+          .sizeof_xSI = 8,
+
+          /* Describe the xDI register. */
+          .offset_xDI = offsetof(VexGuestAMD64State,guest_RDI),
+          .sizeof_xDI = 8,
+
+          /* Describe the first SSE register. */
+          .offset_XMM0 = offsetof(VexGuestAMD64State,guest_XMM0),
+          .sizeof_XMM0 = 16,
+
+          /* Describe the second SSE register. */
+          .offset_XMM1 = offsetof(VexGuestAMD64State,guest_XMM1),
+          .sizeof_XMM1 = 16,
+
+          /* Describe the R8 register. */
+          .offset_R8 = offsetof(VexGuestAMD64State,guest_R8),
+          .sizeof_R8 = 8,
+
+          /* Describe the R9 register. */
+          .offset_R9 = offsetof(VexGuestAMD64State,guest_R9),
+          .sizeof_R9 = 8,
+
+          /* Describe the R10 register. */
+          .offset_R10 = offsetof(VexGuestAMD64State,guest_R10),
+          .sizeof_R10 = 8,
+
+          /* Describe the R11 register. */
+          .offset_R11 = offsetof(VexGuestAMD64State,guest_R11),
+          .sizeof_R11 = 8,
+
+          /* Describe the R12 register. */
+          .offset_R12 = offsetof(VexGuestAMD64State,guest_R12),
+          .sizeof_R12 = 8,
+
+          /* Describe the R13 register. */
+          .offset_R13 = offsetof(VexGuestAMD64State,guest_R13),
+          .sizeof_R13 = 8,
+
+          /* Describe the R14 register. */
+          .offset_R14 = offsetof(VexGuestAMD64State,guest_R14),
+          .sizeof_R14 = 8,
+
+          /* Describe the R15 register. */
+          .offset_R15 = offsetof(VexGuestAMD64State,guest_R15),
+          .sizeof_R15 = 8,
+
           /* Describe any sections to be regarded by Memcheck as
              'always-defined'. */
           .n_alwaysDefd = 16,

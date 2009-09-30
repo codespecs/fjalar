@@ -90,10 +90,10 @@
 #  define VG_FRAME_PTR        guest_RBP
 #  define VG_INT_RET_REG      guest_RAX
 #  define VG_INT_RET2_REG     guest_RDX
-#  define VG_XCX              AMD64 SUPPORT NOT YET IMPLEMENTED
-#  define VG_XBX              AMD64 SUPPORT NOT YET IMPLEMENTED
-#  define VG_XSI              AMD64 SUPPORT NOT YET IMPLEMENTED
-#  define VG_XDI              AMD64 SUPPORT NOT YET IMPLEMENTED
+#  define VG_XCX              guest_RCX
+#  define VG_XBX              guest_RBX
+#  define VG_XSI              guest_RSI
+#  define VG_XDI              guest_RDI
 #elif defined(VGA_ppc32)
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
@@ -127,24 +127,24 @@
 
    x86:   initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_x86_have_mxcsr)
    -------------
    amd64: initially:  call VG_(machine_get_hwcaps)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
    -------------
    ppc32: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc32_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_ppc32_has_FP)
                        and VG_(machine_ppc32_has_VMX)
    -------------
    ppc64: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc64_set_clszB)
 
-          then safe to use VG_(machine_get_VexArchInfo) 
+          then safe to use VG_(machine_get_VexArchInfo)
                        and VG_(machine_ppc64_has_VMX)
 
    VG_(machine_get_hwcaps) may use signals (although it attempts to

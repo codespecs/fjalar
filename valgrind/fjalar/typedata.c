@@ -1172,21 +1172,40 @@ static void link_entries_to_type_entries(void)
             {
               variable_ptr->type_ptr=&dwarf_entry_array[target_index];
             }
+	  
         }
       if (tag_is_modifier_type(tag))
         {
           char success = 0;
           unsigned long target_index = 0;
           modifier_type* modifier_ptr = (modifier_type*)(cur_entry->entry_ptr);
+	  dwarf_entry* cur_target = NULL;
           unsigned long target_ID = modifier_ptr->target_ID;
 
           // Use a binary search to try to find the index of the entry in the
           // array with the corresponding target_ID
           success = binary_search_dwarf_entry_array(target_ID, &target_index);
+	  FJALAR_DPRINTF("Searching for all modifiers of %d\n", cur_entry->ID);
+	  print_dwarf_entry(cur_entry, 0);
           if (success)
             {
-              modifier_ptr->target_ptr=&dwarf_entry_array[target_index];
+	      cur_target = &dwarf_entry_array[target_index];
+	      print_dwarf_entry(cur_target, 0);
+              modifier_ptr->target_ptr= cur_target;
             }
+
+
+	  /* while (tag_is_modifier_type(cur_target->tag_name)) { */
+	  /*   modifier_type* cur_modifier = (modifier_type*)(cur_target->entry_ptr);	     */
+	  /*   if(cur_modifier->target_ID) { */
+	  /*     success = binary_search_dwarf_entry_array(cur_modifier->target_ID, &target_index); */
+	  /*     if(success) { */
+	  /* 	cur_target = &dwarf_entry_array[target_index]; */
+	  /* 	modifier_ptr->target_ptr= cur_target;		 */
+	  /* 	print_dwarf_entry(cur_target, 0); */
+	  /*     } */
+	  /*   } */
+	  /* } */
         }
       else if (tag_is_function(tag))
         {

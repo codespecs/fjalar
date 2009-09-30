@@ -60,11 +60,11 @@
 /*--- Architectures, variants, and other arch info    ---*/
 /*-------------------------------------------------------*/
 
-typedef 
-   enum { 
+typedef
+   enum {
       VexArch_INVALID,
-      VexArchX86, 
-      VexArchAMD64, 
+      VexArchX86,
+      VexArchAMD64,
       VexArchARM,
       VexArchPPC32,
       VexArchPPC64
@@ -126,7 +126,7 @@ typedef
    VexArchInfo;
 
 /* Write default settings info *vai. */
-extern 
+extern
 void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
 
 
@@ -188,7 +188,7 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai );
 
 typedef
    struct {
-      /* PPC and AMD64 GUESTS only: how many bytes below the 
+      /* PPC and AMD64 GUESTS only: how many bytes below the
          stack pointer are validly addressible? */
       Int guest_stack_redzone_size;
 
@@ -230,7 +230,7 @@ typedef
    VexAbiInfo;
 
 /* Write default settings info *vbi. */
-extern 
+extern
 void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi );
 
 
@@ -271,7 +271,7 @@ typedef
 
 /* Write the default settings into *vcon. */
 
-extern 
+extern
 void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon );
 
 
@@ -345,7 +345,7 @@ typedef
       /* Whereabouts is the secondary integer return register? */
       Int offset_xDX;
       Int sizeof_xDX; /* 4 or 8 */
-      /* Whereabouts is the CX register? */
+       /* Whereabouts is the CX register? */
       Int offset_xCX;
       Int sizeof_xCX; /* 4 or 8 */
       /* Whereabouts is the BX register? */
@@ -356,7 +356,38 @@ typedef
       Int sizeof_xSI; /* 4 or 8 */
       /* Whereabouts is the DI register? */
       Int offset_xDI;
-      Int sizeof_xDI; /* 4 or 8 */
+      Int sizeof_xDI; /* 4 or 8 */ 
+      /* Whereabouts is the first SSE register? */
+      Int offset_XMM0;     
+      Int sizeof_XMM0;
+      /* Whereabouts is the first SSE register? */
+      Int offset_XMM1;     
+      Int sizeof_XMM1;
+      /* Whereabouts is the R8 register? */
+      Int offset_R8;
+      Int sizeof_R8; /* 8 */
+      /* Whereabouts is the R9 register? */
+      Int offset_R9;
+      Int sizeof_R9; /* 8 */
+      /* Whereabouts is the R10 register? */
+      Int offset_R10;
+      Int sizeof_R10; /* 8 */
+      /* Whereabouts is the R11 register? */
+      Int offset_R11;
+      Int sizeof_R11; /* 8 */
+      /* Whereabouts is the R12 register? */
+      Int offset_R12;
+      Int sizeof_R12; /* 8 */
+      /* Whereabouts is the R13 register? */
+      Int offset_R13;
+      Int sizeof_R13; /* 8 */
+      /* Whereabouts is the R14 register? */
+      Int offset_R14;
+      Int sizeof_R14; /* 8 */
+      /* Whereabouts is the R15 register? */
+      Int offset_R15;
+      Int sizeof_R15; /* 8 */
+
       /* Describe parts of the guest state regarded as 'always
          defined'. */
       Int n_alwaysDefd;
@@ -414,10 +445,10 @@ extern void LibVEX_Init (
 
 /* Describes the outcome of a translation attempt. */
 typedef
-   enum { 
-      VexTransOK, 
-      VexTransAccessFail, 
-      VexTransOutputFull 
+   enum {
+      VexTransOK,
+      VexTransAccessFail,
+      VexTransOutputFull
    }
    VexTranslateResult;
 
@@ -480,14 +511,14 @@ typedef
 
       /* IN: optionally, two instrumentation functions.  May be
 	 NULL. */
-      IRSB*   (*instrument1) ( /*callback_opaque*/void*, 
-                               IRSB*, 
-                               VexGuestLayout*, 
+      IRSB*   (*instrument1) ( /*callback_opaque*/void*,
+                               IRSB*,
+                               VexGuestLayout*,
                                VexGuestExtents*,
                                IRType gWordTy, IRType hWordTy );
-      IRSB*   (*instrument2) ( /*callback_opaque*/void*, 
-                               IRSB*, 
-                               VexGuestLayout*, 
+      IRSB*   (*instrument2) ( /*callback_opaque*/void*,
+                               IRSB*,
+                               VexGuestLayout*,
                                VexGuestExtents*,
                                IRType gWordTy, IRType hWordTy );
 
@@ -542,7 +573,7 @@ typedef
    VexTranslateArgs;
 
 
-extern 
+extern
 VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
 
 /* A subtlety re interaction between self-checking translations and

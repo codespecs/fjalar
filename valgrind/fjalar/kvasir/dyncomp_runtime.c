@@ -43,6 +43,7 @@
 
 extern int print_info, is_enter;
 extern char* func_name;
+extern char* cur_var_name;
 
 
 
@@ -257,8 +258,8 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     }
 
     leader_obj = uf_union(uf_obj1, uf_obj2);
-    DYNCOMP_TPRINTF("Merging %d with %d to get %d at (%s - %s)\n",
-		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name );
+    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at (%s - %s) - VARIABLE\n", 
+		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name ); 
     return leader_obj->tag;
   }
 }
@@ -365,6 +366,7 @@ holding tags that belong in the same set (have the same leader).
   //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
   //  }
   var_tags_v = var_tags[daikonVarIndex];
+
   //  VG_(printf)("Tag for this var is %u\n", var_tags_v);
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
@@ -389,10 +391,7 @@ holding tags that belong in the same set (have the same leader).
   //    var_uf_map.insert(new_leader, make_set(new uf_object));
   //  }
   new_tags_v = get_tag(a);
-  if(print_info) {
-    DYNCOMP_TPRINTF("tag is %u\n", new_tags_v);
-    //  VG_(printf)("New tag is %u\n", new_tags_v);
-  }
+
   new_leader = val_uf_find_leader(new_tags_v);
   if (new_leader && // Add a constraint that leader has to be non-zero
       !gengettable(var_uf_map, (void*)new_leader)) {
@@ -430,6 +429,11 @@ holding tags that belong in the same set (have the same leader).
 /*                   var_tags[daikonVarIndex], */
 /* 	  a); */
 /*   * */
+
+  DYNCOMP_TPRINTF("\n[Dyncomp] Variable %s - Tag %u @ (%s - %s)\n",
+		  cur_var_name,  var_tags[daikonVarIndex],
+		  isEnter?"Entering":"Exiting", func_name ); 
+
   DYNCOMP_TPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
                   new_tags_v,
@@ -587,12 +591,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
         g_curCompNumber++;
         genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
       }
-      DPRINTF("Getting leader of tag %du\n", tag);
-      DPRINTF("Fjalar Func[%s] - var_tags[%d]: %d (comparability: %d)\n ", 
-		  funcPtr->funcEntry.name, 
-		  daikonVarIndex, 
-		  leader,
-		  comp_number);
+      DYNCOMP_TPRINTF("[Dyncomp] Final tag for Function %s Variable %s - %u\n", funcPtr->funcEntry.name, cur_var_name, leader);
     }
   }
 
