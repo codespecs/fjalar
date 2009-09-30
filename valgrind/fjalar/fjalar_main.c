@@ -34,7 +34,6 @@
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_oset.h"
 #include "pub_tool_replacemalloc.h"
-#include "pub_tool_threadstate.h"
 #include "pub_tool_clientstate.h"
 
 #include "generate_fjalar_entries.h"
@@ -162,14 +161,16 @@ char* dwarf_reg_string[9] = {
 /*------------------------------------------------------------*/
 
 // TODO: We cannot sub-class FunctionExecutionState unless we make
-// this into an array of pointers.
-// Also, from the fact that this is a single global, you can see
-// we only support single-threaded execution.
-FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
+// this into an array of pointers. Have one stack for
+// each thread. We'll be wasteful and just have the maximum number
+// of threads.
+FunctionExecutionState FunctionExecutionStateStack[VG_N_THREADS][FN_STACK_SIZE];
+
 
 // The first free slot in FunctionExecutionStateStack
 // right above the top element:
-int fn_stack_first_free_index;
+int fn_stack_first_free_index[VG_N_THREADS];
+
 // The top element of the stack is:
 // FunctionExecutionStateStack[fn_stack_first_free_index - 1]
 
@@ -177,23 +178,26 @@ int fn_stack_first_free_index;
 // "Pushes" a new entry onto the stack by returning a pointer to it
 // and incrementing fn_stack_first_free_index (Notice that this has
 // slightly has different semantics than a normal stack push)
-__inline__ FunctionExecutionState* fnStackPush(void) {
-  tl_assert(fn_stack_first_free_index < FN_STACK_SIZE);
-  fn_stack_first_free_index++;
-  return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
+__inline__ FunctionExecutionState* fnStackPush(ThreadId tid) {
+  tl_assert(tid != VG_INVALID_THREADID);
+  tl_assert(fn_stack_first_free_index[tid] < FN_STACK_SIZE);
+  fn_stack_first_free_index[tid]++;
+  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
 }
 
 // Returns the top element of the stack and pops it off
-__inline__ FunctionExecutionState* fnStackPop(void) {
-  tl_assert(fn_stack_first_free_index > 0);
-  fn_stack_first_free_index--;
-  return &(FunctionExecutionStateStack[fn_stack_first_free_index]);
+__inline__ FunctionExecutionState* fnStackPop(ThreadId tid) {
+  tl_assert(tid != VG_INVALID_THREADID);
+  tl_assert(fn_stack_first_free_index[tid] > 0);
+  fn_stack_first_free_index[tid]--;
+  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid]]);
 }
 
 // Returns the top element of the stack
-__inline__ FunctionExecutionState* fnStackTop(void) {
-  tl_assert(fn_stack_first_free_index >= 0);
-  return &(FunctionExecutionStateStack[fn_stack_first_free_index - 1]);
+__inline__ FunctionExecutionState* fnStackTop(ThreadId tid) {
+  tl_assert(tid != VG_INVALID_THREADID);
+  tl_assert(fn_stack_first_free_index[tid] >= 0);
+  return &(FunctionExecutionStateStack[tid][fn_stack_first_free_index[tid] - 1]);
 }
 
 typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
@@ -282,6 +286,7 @@ static Addr currentAddr = 0;
 // in the original program. We should only calculate the entry point
 // once at the first instruction of the function.
 static struct  genhashtable *funcs_handled = NULL;
+
 
 static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f);
 
@@ -509,6 +514,8 @@ VG_REGPARM(1) void prime_function(FunctionEntry *f)
   return;
 }
 
+
+static UInt cur_nonce = 0;
 /*
 This is the hook into Valgrind that is called whenever the target
 program enters a function.  Pushes an entry onto the top of
@@ -574,8 +581,10 @@ void enter_function(FunctionEntry* f)
   // have a frame_base from the location_list path. This should keep GCC 3 working
   // fine.
   if(frame_ptr == 0) {
-    if (f != primed_function)
-        return;
+    if (f != primed_function) {
+      VG_(printf)("No location list or frame pointer giving up(Mangled name: %s)\n", f->mangled_name);
+      return;
+    }
     primed_function = 0;
 
     if (f->entryPC != f->startPC) {
@@ -592,7 +601,7 @@ void enter_function(FunctionEntry* f)
   FJALAR_DPRINTF("\tEnter function: %s - StartPC: %p, EntryPC: %p, frame_ptr: %p\n",
 		 f->fjalar_name, (void*)f->startPC, (void*)f->entryPC, frame_ptr);
 
-  newEntry  = fnStackPush();
+  newEntry  = fnStackPush(tid);
   newEntry->func = f;
   newEntry->func->FP = frame_ptr;
   newEntry->func->lowestSP = stack_ptr;
@@ -602,6 +611,9 @@ void enter_function(FunctionEntry* f)
   newEntry->xAX = 0;
   newEntry->xDX = 0;
   newEntry->FPU = 0;
+  newEntry->invocation_nonce = cur_nonce++;
+  newEntry->func->nonce = newEntry->invocation_nonce;
+
 
   // FJALAR VIRTUAL STACK
   // Fjalar maintains a virtual stack for invocation a function. This
@@ -675,10 +687,10 @@ then calls out to a handler function implemented by the Fjalar tool.
 VG_REGPARM(1)
 void exit_function(FunctionEntry* f)
 {
-  FunctionExecutionState* top = fnStackTop();
+  ThreadId currentTID = VG_(get_running_tid)();
+  FunctionExecutionState* top = fnStackTop(currentTID);
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
-  ThreadId currentTID = VG_(get_running_tid)();
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -735,15 +747,64 @@ void exit_function(FunctionEntry* f)
 
   FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
 
+  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
+
   // Only do something if top->func matches func
   if (!top->func) {
     VG_(printf)("More exit_function()s than entry_function()s!\n");
+    // RUDD EXCEPTION
+    VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
   } else if (!(top->func->fjalar_name) || (top->func != f)) {
-    VG_(printf)("MISMATCHED on exit_function! %s != f: %s\n",
+    // There are a couple reasons why the function at the top
+    // of the Function Execution State Stack would not be the
+    // function we expected. All of them are related to a non-
+    // local exit of the function. Situations where this might
+    // come up include:
+
+    // (1) C++ Exceptions
+    // (2) setjmp/longjmp
+
+    // For Fjalar to resume normal operation, we need to pop
+    // off functions off the Function Execution State Stack
+    // (these would be all the functions that had non-local
+    // exits) until we encounter the Function Execution State
+    // Stack corresponding to our function.
+    Bool foundFunc = False;
+    VG_(printf)("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %x - AssumedEntryIP: %x\nDetctedExitIP: %x - AssumedExitIp: %x\n",
+                f->fjalar_name,
 		top->func->fjalar_name,
-		f->fjalar_name);
-    return;
+                top->func->entryPC,
+                f->entryPC,
+                top->func->endPC,
+                f->endPC);
+
+
+    // This is probably being overconservative. However let's revert
+    // to Fjalar's old behavior (do nothing) if we can't find an
+    // instance of our function in the function stack.
+    for(i = fn_stack_first_free_index[currentTID] - 1; i >= 0; i-- ) {
+      FunctionExecutionState* curFuncExecPtr = &FunctionExecutionStateStack[currentTID][i];
+      if(curFuncExecPtr->func == f) {
+        foundFunc = True;
+        break;
+      }
+    }
+
+    if(!foundFunc) {
+      VG_(get_and_pp_StackTrace) (currentTID, 15);
+      return;
+    }
+
+    while(top->func) {
+      top = fnStackTop(currentTID);
+      if(top->func == f) {
+        break;
+      }
+      fnStackPop(currentTID);
+    }
+
+    tl_assert(top->func == f);
   }
 
   top->xAX = xAX;
@@ -768,6 +829,8 @@ void exit_function(FunctionEntry* f)
   }
 
   curFunctionExecutionStatePtr = top;
+  top->func->nonce = top->invocation_nonce;
+
   fjalar_tool_handle_function_exit(top);
 
   // Destroy the memory allocated by virtualStack
@@ -789,7 +852,8 @@ void exit_function(FunctionEntry* f)
   // pop the function, however, the stack will be left in an inconsistant
   // state and the "!top->func == f" check will fail causing no more
   // program points to be printed.
-  fnStackPop();
+  fnStackPop(currentTID);
+
 }
 
 
@@ -897,8 +961,8 @@ static void outputAuxiliaryFilesAndExit(void) {
 void fjalar_pre_clo_init()
 {
   // Clear FunctionExecutionStateStack
-  VG_(memset)(FunctionExecutionStateStack, 0,
-	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack));
+/*   VG_(memset)(FunctionExecutionStateStack, 0, */
+/* 	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack)); */
 
   // TODO: Do we need to clear all global variables before processing
   // command-line options?  We don't need to as long as this function
@@ -1021,7 +1085,6 @@ void fjalar_print_usage()
 "    --with-gdb               Hang during init. so that GDB can attach to it\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
    );
-
    // Make sure to execute this last!
    fjalar_tool_print_usage();
    printf("Testing 10e-200\n");

@@ -49,7 +49,7 @@ int errno;
 
 /* stdio.h */
 
-#define BUFSIZE 2048
+#define BUFSIZE 4194304
 
 struct __stdio_file {
   int fd;
@@ -703,7 +703,7 @@ static int __v_printf(struct arg_printf* fn, const char *format,
       format+=sz;
     }
     if (*format=='%') {
-      char buf[128];
+      char buf[1024];
       union { char*s; } u_str;
 #define s u_str.s
 

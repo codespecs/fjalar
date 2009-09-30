@@ -517,19 +517,19 @@ void initializeAllFjalarData(void)
   // find references to global variables from pointer parameters:
   initializeGlobalVarsList();
 
-  // Initialize member functions last after TypesTable and
-  // FunctionTable have already been initialized:
-  initMemberFuncs();
-
   // Run after initializeFunctionTable() so that function demangled
   // names are available if necessary:
   updateAllGlobalVariableNames();
 
+
+  updateAllVarTypes();
+  // Initialize member functions last after TypesTable and
+  // FunctionTable have already been initialized:
+  initMemberFuncs();
+
   // Initialize all constructors and destructors by using a heuristic
   // to pattern match names to type names:
   initConstructorsAndDestructors();
-
-  updateAllVarTypes();
 
 
   // Some post-processing on functions to work around GCC
@@ -540,10 +540,11 @@ void initializeAllFjalarData(void)
   // FunctionTable:
   initFunctionFjalarNames();
 
-  FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n",
+  FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n.data.rel.ro: 0x%x bytes starting at %p\n",
 		 data_section_size, (void *)data_section_addr,
 		 bss_section_size, (void *)bss_section_addr,
-		 rodata_section_size, (void *)rodata_section_addr);
+		 rodata_section_size, (void *)rodata_section_addr,
+		 relrodata_section_size, (void *)relrodata_section_addr);
 
   // Should only be called here:
   FJALAR_DPRINTF("\nChecking the representation of internal data structures ...\n");
@@ -559,7 +560,8 @@ void initializeAllFjalarData(void)
 Bool addressIsGlobal(Addr addr) {
   return (((addr >= data_section_addr) && (addr < data_section_addr + data_section_size)) ||
           ((addr >= bss_section_addr) && (addr < bss_section_addr + bss_section_size)) ||
-          ((addr >= rodata_section_addr) && (addr < rodata_section_addr + rodata_section_size)));
+          ((addr >= rodata_section_addr) && (addr < rodata_section_addr + rodata_section_size)) ||
+	  ((addr >= relrodata_section_addr) && (addr < relrodata_section_addr + relrodata_section_size)));
 }
 
 // Performs a scan over all VariableEntry, TypeEntry, and
@@ -605,6 +607,11 @@ void repCheckAllEntries(void) {
   FJALAR_DPRINTF("  Rep. checking function entries ...");
   while (hasNextFunc(funcIt)) {
     FunctionEntry* f = nextFunc(funcIt);
+
+    FJALAR_DPRINTF("  Checking %s\n",f->name);
+    if(f->mangled_name) {
+      FJALAR_DPRINTF("  mang;ed: %s\n",f->mangled_name);
+    }
 
     VarNode* n;
 
@@ -714,7 +721,7 @@ void repCheckAllEntries(void) {
 
       tl_assert(t->typeName);
 
-      FJALAR_DPRINTF("  typeName: %s\n", t->typeName);
+      FJALAR_DPRINTF("  typeName: %s (%p)\n", t->typeName, t);
 
       tl_assert((D_STRUCT_CLASS == t->decType) ||
 		(D_UNION == t->decType));
@@ -790,8 +797,24 @@ void repCheckAllEntries(void) {
         for (memberFunctionNode = t->aggType->memberFunctionList->first;
              memberFunctionNode != NULL;
              memberFunctionNode = memberFunctionNode->next) {
-          // Make sure that all of their parentClass fields point to t:
-          tl_assert(((FunctionEntry*)(memberFunctionNode->elt))->parentClass == t);
+
+
+/* 	  if(((FunctionEntry*)(memberFunctionNode->elt))->name) { */
+/* 	    FJALAR_DPRINTF("\n checking member Function %s\n", */
+/* 			   ((FunctionEntry*)(memberFunctionNode->elt))->name); */
+/* 	  } */
+
+	  FJALAR_DPRINTF(" parent class is %x\n",
+                         ((FunctionEntry*)(memberFunctionNode->elt))->parentClass);
+
+          if(((FunctionEntry*)(memberFunctionNode->elt))->parentClass) {
+            FJALAR_DPRINTF(" type is %s\n", ((FunctionEntry*)(memberFunctionNode->elt))->parentClass->typeName);
+          }
+
+	  // Make sure that all of their parentClass fields point to t:
+
+          //RUDD TEMP
+	  //          tl_assert(((FunctionEntry*)(memberFunctionNode->elt))->parentClass == t);
           numMemberFunctions++;
         }
         tl_assert(numMemberFunctions == t->aggType->memberFunctionList->numElts);
@@ -862,7 +885,10 @@ static void repCheckOneVariable(VariableEntry* var) {
 	VG_(printf)("ROData section is 0x%08x to 0x%08x\n",
 		    rodata_section_addr,
 		    rodata_section_addr + rodata_section_size);
-	tl_assert(0);
+	VG_(printf)("Relocated ROData section is 0x%08x to 0x%08x\n",
+		    relrodata_section_addr,
+		    relrodata_section_addr + relrodata_section_size);
+        tl_assert(0);
       }
     }
 
@@ -1445,6 +1471,7 @@ void initializeFunctionTable(void)
           // constructFunctionEntry(), in order to properly support
           // sub-classing:
           cur_func_entry = constructFunctionEntry();
+	  FJALAR_DPRINTF("Function at %x\n", cur_func_entry);
 
 	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
 
@@ -1703,6 +1730,10 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   }
 
   t->typeName = collectionPtr->name;
+  
+  if(e->ID == 2386909) {
+    FJALAR_DPRINTF("Hi\n");
+  }
 
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
@@ -1810,8 +1841,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         // TypesTable or created if it doesn't yet exist:
         existing_entry = getTypeEntry(curSuper->className);
 
-        FJALAR_DPRINTF("  [superclass] Try to find existing entry %p in TypesTable with name %s\n",
-                       existing_entry, curSuper->className);
+        FJALAR_DPRINTF("  [superclass] Try to find existing entry %p in TypesTable with name %s(%p)\n",
+                       existing_entry, curSuper->className, curSuper->className);
 
         if (existing_entry) {
           curSuper->class = existing_entry;
@@ -2413,7 +2444,8 @@ extractOneVariable(VarList* varListPtr,
 
   char* demangled_name = 0;
 
-  FJALAR_DPRINTF("Entering extractOneVariable for %s\n", variableName);
+  //RUDD EXCEPTION
+  FJALAR_DPRINTF("Entering extractOneVariable for %s(varListPtr: %x)\n", variableName, varListPtr);
 
   // Don't extract the variable if it has a bogus name:
   if (!variableName || ignore_variable_with_name(variableName))
@@ -2824,6 +2856,8 @@ static void initMemberFuncs(void) {
   // Iterate through all entries in TypesTable:
   while (hasNextType(typeIt)) {
     TypeEntry* t = nextType(typeIt);
+    
+    FJALAR_DPRINTF("Examining %s it has dec_type %d\n", t->typeName, t->decType);
 
     // Only do this for struct/union types:
     if ((t->decType == D_STRUCT_CLASS) ||
@@ -2837,21 +2871,23 @@ static void initMemberFuncs(void) {
       // use getFunctionEntryFromStartAddr() to try to fill them in
       // with actual FunctionEntry instances:
       SimpleNode* n;
+      FJALAR_DPRINTF("Searching for member funcs for %s\n", t->typeName);
 
       if (t->aggType->memberFunctionList) {
         for (n = t->aggType->memberFunctionList->first;
-             n != NULL;
+            n != NULL;
              n = n->next) {
           unsigned int start_PC = (unsigned int)(n->elt);
           tl_assert(start_PC);
 
           FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", (void *)start_PC, t->typeName);
-
+	  //          FJALAR_DPRINTF(" n->elt - name: %s = %x\n", ((FunctionEntry*)(n->elt))->name, (void *)n->elt);;
           // Hopefully this will always be non-null
           n->elt = getFunctionEntryFromStartAddr(start_PC);
           tl_assert(n->elt);
-        // Very important!  Signify that it's a member function
+	  // Very important!  Signify that it's a member function
           ((FunctionEntry*)(n->elt))->parentClass = t;
+	  
         }
       }
     }
@@ -3165,7 +3201,7 @@ static void XMLprintTypesTable() {
 
       if (cur_entry->aggType->memberVarList &&
           (cur_entry->aggType->memberVarList->numVars > 0)) {
-        XML_PRINTF("<member-variables>\n");
+	XML_PRINTF("<member-variables>\n");
         XMLprintVariablesInList(cur_entry->aggType->memberVarList);
         XML_PRINTF("</member-variables>\n");
       }

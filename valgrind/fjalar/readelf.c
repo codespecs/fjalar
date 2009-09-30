@@ -4581,7 +4581,7 @@ process_symbol_table (file)
 	  Elf_Internal_Sym *symtab;
 	  Elf_Internal_Sym *psym;
 
-          //          VG_(printf) (_("'%s'\n"), SECTION_NAME (section));
+	  //	  VG_(printf) (_("'%s'\n"), SECTION_NAME (section));
 
           // PG - harvest address and size information for the .data,
           // .bss, and .rodata sections:
@@ -4596,8 +4596,14 @@ process_symbol_table (file)
           else if (0 == VG_(strcmp)(SECTION_NAME (section), ".rodata")) {
             rodata_section_addr = section->sh_addr;
             rodata_section_size = section->sh_size;
-          }
-
+          } else if (0 == VG_(strcmp)(SECTION_NAME (section), ".data.rel.ro")) {
+	    // Rudd - There's another section known as .data.del.ro
+	    // It's similar in semantics to the .data section, but is used for 
+	    // globals that need to appear constant at runtime but have to be
+	    // relocated first.
+	    relrodata_section_addr = section->sh_addr;
+            relrodata_section_size = section->sh_size;
+	  }
           // PG - only look for symbols in the regular symbol table
           // (.symtab), NOT the dynamic symbols (.dynsym), because
           // they seem to contain lots of library junk:
@@ -8239,10 +8245,11 @@ display_debug_info (section, start, file)
                                               &dwarf_entry_array[idx],
                                               1); // DO harvest
 
-              //              FJALAR_DPRINTF("Index=%u, ID=%x, tag_name=%s\n",
-              //                     idx,
-              //                     dwarf_entry_array[idx].ID,
-              //                     get_TAG_name(dwarf_entry_array[idx].tag_name));
+	      FJALAR_DPRINTF("Index=%u, ID=%x, tag_name=%s, level=%d\n",
+			     idx,
+			     dwarf_entry_array[idx].ID,
+			     get_TAG_name(dwarf_entry_array[idx].tag_name),
+			     dwarf_entry_array[idx].level);
 
               if (entry->children)
                 ++level;

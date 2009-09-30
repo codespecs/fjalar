@@ -226,6 +226,7 @@ void genfreehashtableandvalues(struct genhashtable * ht) {
     if (ht->bins[i]!=NULL) {
       struct genpointerlist *genptr=ht->bins[i];
       while(genptr!=NULL) {
+
 	struct genpointerlist *tmpptr=genptr->next;
         VG_(free)(genptr->object); // Also free the object in the hash table
 	VG_(free)(genptr);

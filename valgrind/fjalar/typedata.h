@@ -114,6 +114,9 @@ typedef struct
                        // an empty declaration with no real members,
                        // so we should ignore it
 
+  unsigned long specification_ID; // Relevant for C++: See comment on Specification ID 
+                                  // in the function str
+
   unsigned long byte_size;
 
   // Make these small and smash them together to save space:
@@ -294,6 +297,10 @@ typedef struct
                  //       values sometimes - look into finding a better
                  //       way to get the parameter location
   unsigned int valid_loc;
+
+  unsigned long abstract_origin_ID; // See comment in the function struct definition
+                                    // for the uses of this.
+
 } formal_parameter;
 
 // compile_unit - only used to figure out filename and compilation directory
@@ -412,7 +419,7 @@ __inline__ void insertIntoVariableSymbolTable(char* name, void* addr);
 // information to skip function prologues.
 struct genhashtable *next_line_addr;
 
-// The addresses and sizes of the sections (.data, .bss, .rodata) that
+// The addresses and sizes of the sections (.data, .bss, .rodata, and .data.rel.ro) that
 // hold global variables (initialized in readelf.c):
 unsigned int data_section_addr;
 unsigned int data_section_size;
@@ -420,6 +427,8 @@ unsigned int bss_section_addr;
 unsigned int bss_section_size;
 unsigned int rodata_section_addr;
 unsigned int rodata_section_size;
+unsigned int relrodata_section_addr;
+unsigned int relrodata_section_size;
 
 // Function declarations
 
