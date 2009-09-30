@@ -855,7 +855,8 @@ void set_vbyte( Addr a, UWord vbyte )
 
 void set_abit_and_vbyte (Addr a, UWord abit, UWord vbyte )
 {
-  //VG_(printf)("abit: %x, vbit: %x\n", abit, vbyte);
+   //RUDD DEBUG
+   //  VG_(printf)("abit: %x, vbit: %x\n", abit, vbyte);
   UChar vabits2 = VA_BITS2_UNDEFINED;
 
   if(abit == VGM_BIT_VALID) {

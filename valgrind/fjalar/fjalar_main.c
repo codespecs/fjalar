@@ -103,6 +103,29 @@ char* executable_filename = 0;
 	10 for %trapno (no gcc equivalent)
 
 */
+
+#if defined(VGA_amd64)
+// AMD64 Dwarf to Architecture mapping is (thankfully) specified
+// in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
+Addr (*get_reg[16])( ThreadId tid ) = {
+  VG_(get_xAX),
+  VG_(get_xDX),
+  VG_(get_xCX),
+  VG_(get_xBX),
+  VG_(get_xSI),
+  VG_(get_xDI),
+  VG_(get_FP),
+  VG_(get_SP),
+  VG_(get_R8),
+  VG_(get_R9),
+  VG_(get_R10),
+  VG_(get_R11),
+  VG_(get_R12),
+  VG_(get_R13),
+  VG_(get_R14),
+  VG_(get_R15),
+};
+#else
 Addr (*get_reg[11])( ThreadId tid ) = {
   VG_(get_xAX),
   VG_(get_xCX),
@@ -116,6 +139,7 @@ Addr (*get_reg[11])( ThreadId tid ) = {
   NULL,
   NULL
 };
+#endif
 
 // For debugging purposes, a mapping between
 // DWARF location atoms and their string
@@ -573,6 +597,7 @@ void enter_function(FunctionEntry* f)
   newEntry->func->FP = frame_ptr;
   newEntry->func->lowestSP = stack_ptr;
   newEntry->FP = frame_ptr;
+  newEntry->lowSP = stack_ptr;
   newEntry->lowestSP = stack_ptr;
   newEntry->xAX = 0;
   newEntry->xDX = 0;
@@ -602,7 +627,7 @@ void enter_function(FunctionEntry* f)
 
   // Let's be conservative in how much we copy over to the Virtual stack. Due to the
   // stack alignment operations in main, we may need  as much as 16 bytes over the above.
-  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 16;
+  size = local_stack + f->formalParamStackByteSize + sizeof(Addr)*2 + 32;/* plus stuff in caller's*/
 
   tl_assert(size >= 0);
   if (size != 0) {
@@ -655,13 +680,45 @@ void exit_function(FunctionEntry* f)
   int i;
   ThreadId currentTID = VG_(get_running_tid)();
 
+  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
+
+
+  top->func->guestStackStart = top->lowSP - VG_STACK_REDZONE_SZB;
+  top->func->guestStackEnd = top->func->guestStackStart + top->virtualStackByteSize;
+  top->func->lowestVirtSP = (Addr)top->virtualStack;
+  top->func->FP  = top->FP;
+  top->func->lowestSP  = top->func->guestStackStart;
+
+  FJALAR_DPRINTF("\tState of Guest Stack [%x - %x] \n", top->lowestSP, top->lowestSP + top->virtualStackByteSize);
+
   // Ok, in Valgrind 2.X, we needed to directly code some assembly to
   // grab the top of the floating-point stack, but Valgrind 3.0
   // provides a virtual FPU stack, so we can just grab that.  Plus, we
   // now have shadow V-bits for the FPU stack.
+
+#if defined(VGA_amd64)
+  // XMM registers are represented as a 128-bit integer 
+  // (Actually an array of 4 32-bit integers), so reinterpret
+  // cast it as a double.
+  ULong FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
+  UInt* testing = VG_(get_shadow_XMM_N)(currentTID, 0);
+  double fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
+  UInt* test = VG_(get_XMM_N)(currentTID, 0);
+  //RUDD DEBUG
+  /* for(i=0 ; i < 4; i++) { */
+  /*   VG_(printf)("Testing %d\n", test[i]); */
+  /*   printf("shadow: %x\n", testing[i]); */
+  /* }    */
+
+#else
   double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
+  ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
+#endif
+  
 
-
+  //RUDD DEBUG
+  /* printf("%.16g\n", fpuReturnVal); */
+  /* printf("shadow: %x\n", FPUshadow); */
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
   Addr xAX = VG_(get_xAX)(currentTID);
@@ -675,10 +732,8 @@ void exit_function(FunctionEntry* f)
   // Use SHADOW values of Valgrind simulated registers to get V-bits
   UWord xAXshadow = VG_(get_shadow_xAX)(currentTID);
   UWord xDXshadow = VG_(get_shadow_xDX)(currentTID);
-  ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
-  FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
   // Only do something if top->func matches func
   if (!top->func) {
@@ -698,8 +753,7 @@ void exit_function(FunctionEntry* f)
   // Very important!  Set the A and V bits of the appropriate
   // FunctionExecutionState object and the tags from the (x86) guest
   // state as well:
-  /* XXX word size */
-  for (i = 0; i < 4; i++) {
+  for (i = 0; i < sizeof(Addr); i++) {
     set_abit_and_vbyte((Addr)(&top->xAX) + (Addr)i, VGM_BIT_VALID,
                       (xAXshadow & 0xff) << (i * 8));
     set_abit_and_vbyte((Addr)(&top->xDX) + (Addr)i, VGM_BIT_VALID,
@@ -708,7 +762,7 @@ void exit_function(FunctionEntry* f)
                       (FPUshadow & 0xff) << (i * 8));
   }
 
-  for (i = 4; i < 8; i++) {
+  for (i = 0; i < 8; i++) {
     set_abit_and_vbyte((Addr)(&top->FPU) + (Addr)i, VGM_BIT_VALID,
                        (FPUshadow & 0xff) << (i * 8));
   }
@@ -970,6 +1024,8 @@ void fjalar_print_usage()
 
    // Make sure to execute this last!
    fjalar_tool_print_usage();
+   printf("Testing 10e-200\n");
+   printf("%.17g\n", 10e-18);
 }
 
 

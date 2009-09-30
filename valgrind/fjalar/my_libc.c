@@ -612,11 +612,13 @@ static int __dtostr(double d,char *buf,int maxlen,
     /* the number is greater than 1. Iterate through digits before the
      * decimal point until we reach the decimal point or maxlen is
      * reached (in which case we switch to scientific notation). */
+    int j = 0;
     while (tmp>0.9) {
       char digit;
       double fraction=d/tmp;
 	digit=(int)(fraction);		/* floor() */
       if (!first || digit) {
+	j++;
 	first=0;
 	*buf=digit+'0'; ++buf;
 	if (!maxlen) {

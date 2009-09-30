@@ -917,6 +917,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
       FJALAR_DPRINTF("\tbaseAddr: %x, baseAddrGuest: %x var->byteOffset: %x(%d)\n", stackBaseAddr, stackBaseAddrGuest, var->byteOffset, var->byteOffset);
       FJALAR_DPRINTF("\tState of Guest Stack [%x - %x] \n", funcPtr->guestStackStart, funcPtr->guestStackEnd);
+      FJALAR_DPRINTF("\tState of Virtual Stack [%x - %x] \n", funcPtr->lowestVirtSP, funcPtr->lowestVirtSP + (funcPtr->guestStackEnd - funcPtr->guestStackStart));
+      FJALAR_DPRINTF("\tState of Frame Pointer: %p\n", stackBaseAddrGuest);
       FJALAR_DPRINTF("\tSize of DWARF location stack: %d\n", var->location_expression_size);
 
       if(var->location_expression_size) {
@@ -1028,14 +1030,26 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	    }
 	    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %x\n",location_expression_to_string(op), var_loc);
 	  }
+
 	  if((var_loc >= funcPtr->guestStackStart) &&
 	      (var_loc <= funcPtr->guestStackEnd)) {
-	    int virt_offset = var_loc - funcPtr->lowestSP;
 
-            //	    FJALAR_DPRINTF("\tstackBaseAddr: %x\n\tREDZONE: %d,\n\tFP: %x\n\tvar_loc %x\n\tOffset(virt): %d\n",
-            //	   funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, funcPtr->FP, var_loc, virt_offset);
+#if defined(VGA_amd64)
+          if(!isEnter) {
+            //            overrideIsInit = 1;
+          }
+#endif
 
-	    basePtrValue = funcPtr->lowestVirtSP + virt_offset;
+
+	  //int virt_offset = var_loc - funcPtr->lowestSP;
+	  int virt_offset = var_loc - funcPtr->guestStackStart;
+
+            FJALAR_DPRINTF("\tstackBaseAddr: %x\n\tREDZONE: %d,\n\tFP: %x\n\tvar_loc %x\n\tOffset(virt): %d\n",
+                           funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, funcPtr->FP, var_loc, virt_offset);
+
+	    var->byteOffset = var_loc - funcPtr->FP;
+	    // + VG_STACK_REDZONE_SZB;
+	    basePtrValue = funcPtr->lowestVirtSP + virt_offset; 
 	    var->entryLoc = basePtrValue;
 	    var->entryLocGuest = var_loc;
 	    basePtrValueGuest = var_loc; }
@@ -1142,10 +1156,52 @@ void visitReturnValue(FunctionExecutionState* e,
   // RUDD - Need an extra indirection level for references.
   if ((cur_node->var->ptrLevels == 0) &&
       (IS_AGGREGATE_TYPE(cur_node->var->varType)) && !cur_node->var->referenceLevels) {
+
+
+    // AMD64 special case: If the size of the the struct is <= the size
+    // of 2 architectural registers, it is passed via RAX and RDX.
+    // We're going to express this by creating a 16 byte buffer and
+    // copying the contents of RAX and EDX to it and passing a pointer
+    // to it.
+#if defined(VGA_amd64)
+    if(cur_node->var->varType->byteSize <= 16) {
+      char returnBuffer[16];
+      memcpy(returnBuffer                       ,  &e->xAX, 8);
+      memcpy(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
+
+
+      unsigned long long int uLong = (e->xAX);
+      FJALAR_DPRINTF("tiny struct\n");
+
+      // Copy A and V bits over:
+      mc_copy_address_range_state((Addr)(&(e->xAX)),
+				  (Addr)(&returnBuffer),
+				  sizeof(e->xAX));
+      
+      mc_copy_address_range_state((Addr)(&(e->xDX)),
+				  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
+				  sizeof(e->xDX));
+
+      // Remember to copy A and V-bits over:
+      mc_copy_address_range_state((Addr)(&(e->xAX)),
+                                  (Addr)(&uLong),
+                                  sizeof(e->xAX));
+
+      visitVariable(cur_node->var,
+                    (Addr) returnBuffer,
+                    0,
+                    1, // e->xAXvalid,
+                    0,
+                    performAction,
+                    FUNCTION_RETURN_VAR,
+                    funcPtr,
+                    0);
+    } else
+#endif
+
     // e->xAX is the contents of the virtual xAX, which should be the
     // address of the struct/union, so pass that along ...  NO extra
     // level of indirection needed
-    FJALAR_DPRINTF("struct union type\n");
     visitVariable(cur_node->var,
                   (Addr)e->xAX,
 		  0, /* register, no guest location*/
@@ -1158,6 +1214,8 @@ void visitReturnValue(FunctionExecutionState* e,
                   FUNCTION_RETURN_VAR,
                   funcPtr,
                   0);
+
+
   }
   // Floating-point type - use FPU
   else if ((cur_node->var->ptrLevels == 0) &&
@@ -1181,7 +1239,7 @@ void visitReturnValue(FunctionExecutionState* e,
   // and xDX as the high 4 bytes
   // long long ints - create a long long int and pass its address
   /* XXX shouldn't do this for 64-bit long long on AMD64 */
-  else if ((cur_node->var->ptrLevels == 0) &&
+  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_UNSIGNED_LONG_LONG_INT)) {
     unsigned long long int uLong = (e->xAX) | (((unsigned long long int)(e->xDX)) << 32);
     FJALAR_DPRINTF("long long int type\n");
@@ -1205,7 +1263,7 @@ void visitReturnValue(FunctionExecutionState* e,
                   funcPtr,
                   0);
   }
-  else if ((cur_node->var->ptrLevels == 0) &&
+  else if ((sizeof(UWord) == 4) && (cur_node->var->ptrLevels == 0) &&
            (cur_node->var->varType->decType == D_LONG_LONG_INT)) {
     long long int signedLong = (e->xAX) | (((long long int)(e->xDX)) << 32);
 
@@ -1693,6 +1751,7 @@ void visitSingleVar(VisitArgs* args) {
             numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
             pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.3", numElts * sizeof(Addr));
             pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.4" ,numElts * sizeof(Addr));
+	    //	    VG_(printf)("numElts is %d\n", numElts);
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {

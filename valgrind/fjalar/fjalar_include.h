@@ -579,6 +579,7 @@ typedef struct _FunctionEntry {
   // The lowest valid stack address for this invocation of the function
   Addr lowestSP;
 
+
   // True if globally visible, False if file-static scope
   Bool isExternal;
 
@@ -719,6 +720,8 @@ typedef struct {
   int virtualStackByteSize; // Number of 1-byte entries in virtualStack
   int virtualStackFPOffset; // Where in the stack the frame pointer was
 
+
+  Addr lowSP;
 } FunctionExecutionState;
 
 

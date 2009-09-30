@@ -776,9 +776,13 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
 
     xAXtag = VG_(get_xAX_tag)(currentTID);
     xDXtag = VG_(get_xDX_tag)(currentTID);
+#if defined(VGA_amd64)
+    FPUtag = VG_(get_XMM_N_tag)(currentTID, 0);
+#else
     FPUtag = VG_(get_FPU_stack_top_tag)(currentTID);
+#endif   
 
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < sizeof(UWord); i++) {
       set_tag((Addr)(&(f_state->xAX)) + (Addr)i, xAXtag);
       set_tag((Addr)(&(f_state->xDX)) + (Addr)i, xDXtag);
       set_tag((Addr)(&(f_state->FPU)) + (Addr)i, FPUtag);

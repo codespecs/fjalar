@@ -120,7 +120,13 @@ __inline__ FunctionExecutionState* fnStackTop(void);
 // Mapping between Dwarf Register numbers and
 // valgrind function to return the value
 
+#if defined(VGA_amd64)
+// AMD64 Dwarf to Architecture mapping is (thankfully) specified
+// in the AMD64 ABI (http://x86-64.org/documentation/abi.pdf)
+extern Addr (*get_reg[16])( ThreadId tid );
+#else
 extern Addr (*get_reg[11])( ThreadId tid );
+#endif
 
 // For debugging purposes, a mapping between
 // DWARF location atoms and their string

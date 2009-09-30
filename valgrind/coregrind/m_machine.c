@@ -48,6 +48,8 @@
 #define INT_XBX(regs)      ((regs).vex.VG_XBX)
 #define INT_XSI(regs)      ((regs).vex.VG_XSI)
 #define INT_XDI(regs)      ((regs).vex.VG_XDI)
+#define CASE_XMM(regs, N)       case N: return (regs).vex.guest_XMM##N; break;
+#define CASE_SHADOW_XMM(regs, N)       case N: return (regs).vex_shadow1.guest_XMM##N; break;
 
 Addr VG_(get_SP) ( ThreadId tid )
 {
@@ -74,7 +76,6 @@ Addr VG_(get_xBX) ( ThreadId tid )
   return INT_XBX( VG_(threads)[tid].arch );
 }
 
-
 Addr VG_(get_xSI) ( ThreadId tid )
 {
   return INT_XSI( VG_(threads)[tid].arch );
@@ -84,6 +85,28 @@ Addr VG_(get_xDI) ( ThreadId tid )
 {
   return INT_XDI( VG_(threads)[tid].arch );
 }
+
+
+UInt* VG_(get_XMM_N)( ThreadId tid, UInt num )  
+{
+  switch(num) {
+    CASE_XMM(VG_(threads)[tid].arch, 0);
+    CASE_XMM(VG_(threads)[tid].arch, 1);
+  default:
+    tl_assert(0 && "xmm2-15 not yet implemented");   
+  }
+}
+
+#if defined(VGA_amd64)
+Addr VG_(get_R8) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R8;}
+Addr VG_(get_R9) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R9;}
+Addr VG_(get_R10) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R10;}
+Addr VG_(get_R11) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R11;}
+Addr VG_(get_R12) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R12;}
+Addr VG_(get_R13) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R13;}
+Addr VG_(get_R14) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R14;}
+Addr VG_(get_R15) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R15;}
+#endif
 
 Addr VG_(get_LR) ( ThreadId tid )
 {
@@ -143,6 +166,21 @@ ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
       vex_shadow1.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
 }
 
+UInt* VG_(get_shadow_XMM_N)( ThreadId tid, UInt num )  
+{
+  
+  /* VG_(printf)("Location of xmm0 %x - index %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0, (UWord)(VG_(threads)[tid].arch.vex_shadow1.guest_XMM0) - (UWord)(&VG_(threads)[tid].arch.vex.guest_RAX)); */
+
+  /* VG_(printf)("Shadow? %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0[0]); */
+  /* VG_(printf)("Shadow? %x\n", VG_(threads)[tid].arch.vex_shadow1.guest_XMM0[1]); */
+  switch(num) {
+    CASE_SHADOW_XMM(VG_(threads)[tid].arch, 0);
+    CASE_SHADOW_XMM(VG_(threads)[tid].arch, 1);
+  default:
+    tl_assert(0 && "xmm2-15 not yet implemented");   
+  }
+}
+
 // Ok, if the stuff before were hacks, then these are SUPER HACKS
 // because it relies on our ad-hoc (4 * offset) reference into
 // VexGuestX86State vex_extra_shadow[4] within TheadArchState:
@@ -156,6 +194,13 @@ UWord VG_(get_xDX_tag) ( ThreadId tid )
 {
    return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
 							    VG_INT_RET2_REG)));
+}
+
+UWord VG_(get_XMM_N_tag)( ThreadId tid, UInt num )  
+{
+
+   return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
+							    guest_XMM0)));
 }
 
 UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid )

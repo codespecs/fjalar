@@ -53,7 +53,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   FunctionExecutionState* next_fn = 0;
 
   FJALAR_DPRINTF("Looking for function corresponding "
-	  "to stack variable 0x%x\n", (unsigned int)a);
+	  "to stack variable 0x%p\n", a);
 
   // Traverse the function stack from the function with
   // the highest ESP to the one with the lowest ESP
@@ -70,14 +70,15 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
 	  abort();
 	}
 
+      FJALAR_DPRINTF("cur_fn->FP: %p\n", cur_fn->FP);
+      FJALAR_DPRINTF("next_fn->FP: %p\n", next_fn->FP);
+
       // If it is not the most recent function pushed on the stack,
       // then the stack frame of this function lies in between
       // the EBP of that function and the function immediately
       // following it on the stack
       if ((cur_fn->FP >= a) && (next_fn->FP <= a)) {
-        FJALAR_DPRINTF("cur_fn->FP: %x\n", (unsigned int)cur_fn->FP);
-        FJALAR_DPRINTF("next_fn->FP: %x\n", (unsigned int)next_fn->FP);
-        FJALAR_DPRINTF("Returning functionEntry: %x\n", (unsigned int)cur_fn);
+        FJALAR_DPRINTF("Returning functionEntry: %p\n", cur_fn);
 	return cur_fn;
       }
     }
@@ -122,8 +123,11 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
     VariableEntry* potentialVar;
     Addr potentialVarBaseAddr;
 
+
     potentialVar = v->var;
     tl_assert(IS_MEMBER_VAR(potentialVar));
+    FJALAR_DPRINTF("examining: %s\n", potentialVar->name);
+
     potentialVarBaseAddr = structVarBaseAddr + potentialVar->memberVar->data_member_location;
 
     if (IS_STATIC_ARRAY_VAR(potentialVar) &&
@@ -132,6 +136,7 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
                        (potentialVar->staticArr->upperBounds[0] *
                         getBytesBetweenElts(potentialVar))))) {
       *baseAddr = potentialVarBaseAddr;
+      FJALAR_DPRINTF("Wins: %s\n", potentialVar->name);
       return potentialVar;
     }
     // Recursive step (be careful to avoid infinite recursion)
@@ -142,6 +147,7 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
                                    targetAddr, baseAddr);
 
       if (targetVar) {
+	FJALAR_DPRINTF("wins: %s\n", potentialVar->name);
         return targetVar;
       }
     }
@@ -178,13 +184,75 @@ returnArrayVariableWithAddr(VarList* varList,
     if (!potentialVar)
       continue;
 
+    FJALAR_DPRINTF("Examining potential var: %s\n", potentialVar->name);
+
     if (isGlobal) {
       tl_assert(IS_GLOBAL_VAR(potentialVar));
+      //RUDD EXCEPTION
+      FJALAR_DPRINTF("Examining potential var address:\n", potentialVarBaseAddr);
       potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
     }
     else {
       potentialVarBaseAddr = frame_ptr + potentialVar->byteOffset;
     }
+      FJALAR_DPRINTF("returnArrayVar: frame_ptr: %x, byteOffset %d:\n", frame_ptr, potentialVar->byteOffset);
+      ThreadId tid = VG_(get_running_tid)();
+	Bool actual_value = 0;
+        Addr var_loc = 0;
+	if(potentialVar->location_expression_size) {
+	unsigned int i = 0;
+	  for(i = 0; i < potentialVar->location_expression_size; i++ ) {
+	    dwarf_location *loc  = &(potentialVar->location_expression[i]);
+	    unsigned int  op = loc->atom;
+            int reg_val;
+
+	    if(op == DW_OP_addr) {
+	      // DWARF supplied address
+	      actual_value = 0;
+	      var_loc = loc->atom_offset;
+
+	    } else if(op == DW_OP_deref) {
+	      // Dereference result of last DWARF operation
+	      tl_assert(var_loc);
+	      var_loc = *(Addr *)var_loc;
+
+	    } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+	      // DWARF supplied constant
+	      var_loc = loc->atom_offset;
+
+	    } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
+	      // Add DWARF supplied constant to value to result of last DWARF operation
+	      var_loc += loc->atom_offset;
+
+	    } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
+	      // Get value located in architectural register
+	      reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
+	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_reg0], reg_val);
+	      var_loc = (Addr)&reg_val;
+
+	    } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
+	      // Get value pointed to by architectural register
+	      reg_val = (*get_reg[loc->atom - DW_OP_breg0])(tid);
+	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_breg0], reg_val);
+	      var_loc = reg_val + loc->atom_offset;
+	      FJALAR_DPRINTF("\tAdding %lld to the register value for %x\n", loc->atom_offset, var_loc);
+	      tl_assert(var_loc);
+
+	    } else if(op == DW_OP_fbreg) {
+	      // Get value located at an offset from the FRAME_BASE.
+	      FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", loc->atom_offset, potentialVar->byteOffset);
+	      var_loc = frame_ptr + loc->atom_offset;
+
+	    } else {
+              // There's a fair number of DWARF operations still unsupported. There is a full list
+              // in fjalar_debug.h
+	      FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
+	      tl_assert(0);
+	    }
+	    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %x\n",location_expression_to_string(op), var_loc);
+	  }
+      }
+      FJALAR_DPRINTF("var_loc %x\n", potentialVarBaseAddr);
 
     // array
     if (IS_STATIC_ARRAY_VAR(potentialVar) &&
@@ -193,7 +261,6 @@ returnArrayVariableWithAddr(VarList* varList,
                                       getBytesBetweenElts(potentialVar))))) {
 
       FJALAR_DPRINTF("returnArrayVar: frame_ptr: %x, byteOffset %d:\n", frame_ptr, potentialVar->byteOffset);
-
       FJALAR_DPRINTF("returnArrayVar: potentialVar->staticArr->upperBounds[0]: %d\n", potentialVar->staticArr->upperBounds[0]);
       *baseAddr = potentialVarBaseAddr;
       return potentialVar;
@@ -389,7 +456,8 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 
     if (e) {
       VarList* localArrayAndStructVars = &(e->func->localArrayAndStructVars);
-      FJALAR_DPRINTF(" e->FP is %x\n", e->FP);
+      FJALAR_DPRINTF(" e->FP is %p\n", e->FP);
+      FJALAR_DPRINTF(" localArrayAndSTructVars: %p, numVars: %d\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
 
       // TODO: Try to get to the bottom of this problem of bogus
       // localArrayAndStructVars pointers, but for now, let's just mask it
@@ -417,12 +485,15 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 
     tl_assert(curFunctionExecutionStatePtr);
 
+    FJALAR_DPRINTF("Checking if the variable is on the stack:\n");
+    FJALAR_DPRINTF("\tCurrent Stackframe: [%p - %p]\n", (void*)curFunctionExecutionStatePtr->FP, (void*)curFunctionExecutionStatePtr->lowestSP);
+
     // Make sure the address is not in the stack or global region
     // before probing so that we don't accidentally make a mistake
     // where we erroneously conclude that the array size is HUGE
     // since all areas on the stack and global regions are ALLOCATED
     // so probing won't do us much good
-    if ((varLocation < curFunctionExecutionStatePtr->FP) &&
+    if ((varLocation < curFunctionExecutionStatePtr->lowestSP) &&
         !addressIsGlobal(varLocation)) {
       Word size;
       FJALAR_DPRINTF("Location looks reasonable, probing at %p\n",
@@ -456,7 +527,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
     FJALAR_DPRINTF("varLocation: %x\n", varLocation);
 
-    highestAddr = baseAddr + (targetVar->staticArr->upperBounds[0] * bytesBetweenElts);
+    highestAddr = baseAddr + ((targetVar->staticArr->upperBounds[0]) * bytesBetweenElts);
 
     FJALAR_DPRINTF("baseAddr is: %x, highestAddr is %x\n", baseAddr, highestAddr);
 
@@ -477,20 +548,26 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     // This is IMPORTANT that we subtract from varLocation RATHER than baseAddr
     // because of the fact that varLocation can point to the MIDDLE of an array
     targetVarSize = (highestAddr - varLocation) / bytesBetweenElts;
+    FJALAR_DPRINTF("targetVar->varType->byteSize %d, var->varType->byteSize is %d, targetVarSize is %d\n", targetVar->varType->byteSize, var->varType->byteSize, targetVarSize);
 
-    // Now translate based on relative sizes of var->varType and
-    // targetVar->varType, making sure to only do INTEGER operations:
+
+    FJALAR_DPRINTF(" Target : [%s - %d] Source : [%s - %d]\n", targetVar->varType->typeName, targetVar->varType->byteSize,
+		   var->varType->typeName, var->varType->byteSize);
+    //    return targetVarSize;
+    /* if (targetVar->varType->byteSize < var->varType->byteSize) { */
+    /*   return (targetVarSize * targetVar->varType->byteSize) / var->varType->byteSize; */
+    /* } */
+    
     if (targetVar->varType->byteSize == var->varType->byteSize) {
       return targetVarSize;
-    }
-    // FLAKY!  Assumes that the ratios always divide evenly ...
-    // I think we're okay though because byteSize = {1, 2, 4, 8}
-    else if (targetVar->varType->byteSize > var->varType->byteSize) {
-      return (targetVarSize * var->varType->byteSize) / targetVar->varType->byteSize;
-    }
+    } 
+    /* else if (targetVar->varType->byteSize > var->varType->byteSize) { */
+    /*   return (targetVarSize * var->varType->byteSize) / targetVar->varType->byteSize; */
+    /* }  */
     else {
       return (targetVarSize * targetVar->varType->byteSize) / var->varType->byteSize;
     }
+    
   }
 
   return 0;
@@ -525,7 +602,7 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
   int wraparound = ((addressInQuestion + numBytes) < addressInQuestion);
   if ((curFunctionExecutionStatePtr && !wraparound &&
        ((addressInQuestion + numBytes) <= curFunctionExecutionStatePtr->FP) &&
-       (addressInQuestion >= curFunctionExecutionStatePtr->lowestSP)))
+       (addressInQuestion >= (curFunctionExecutionStatePtr->lowestSP - VG_STACK_REDZONE_SZB))))
     {
       tl_assert(addressInQuestion != 0xffffffff);
       return 1;

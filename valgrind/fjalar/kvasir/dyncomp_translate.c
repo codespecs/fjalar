@@ -31,7 +31,6 @@
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
 #include "kvasir_main.h"
-#include "libvex_guest_offsets.h"
 #include "vex_common.h"
 
 #include "my_libc.h"
@@ -80,7 +79,7 @@ static Bool isShadowAtom_DC ( DCEnv* dce, IRAtom* a1 )
 }
 
 static IRAtom* assignNew_DC ( DCEnv* dce, IRType ty, IRExpr* e ) {
-   IRTemp t = newTemp(dce->mce, ty, DC);
+   IRTemp t = newTemp(dce->mce, Ity_Word, DC);
    assign_DC('V', dce, t, e);
    return mkexpr(t);
 }
@@ -102,10 +101,7 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
 }
 
 
-// Handling for CAS instructions. Nick'd from memcheck.
-// NOTE: This is copied and modified from mc_translate.c:
-// do_shadow_CAS()
-void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas ) {
+static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
    IRAtom *vdataLo = NULL, *bdataLo = NULL;
    IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
    IRAtom *voldLo  = NULL, *boldLo  = NULL;
@@ -113,7 +109,6 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas ) {
    IROp   opCasCmpEQ;
    Int    elemSzB;
    IRType elemTy;
-   Bool   otrak = MC_(clo_mc_level) >= 3; /* a shorthand */
    IRType ty;
 
    /* single CAS */
@@ -134,10 +129,10 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas ) {
    /* 1. fetch data# (the proposed new value) */
    tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
 
-   vdataLo
-      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataLo));
-
    ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
+
+   vdataLo
+      = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->dataLo));
 
    tl_assert(isShadowAtom_DC(dce, vdataLo));
 
@@ -145,7 +140,7 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas ) {
    tl_assert(isOriginalAtom_DC(dce, cas->expdLo));
 
    vexpdLo
-      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdLo));
+      = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->expdLo));
 
    tl_assert(isShadowAtom_DC(dce, vexpdLo));
 
@@ -236,6 +231,210 @@ void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas ) {
    stmt_DC('V',  dce, IRStmt_Dirty(di) );
 
 }
+
+static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
+{
+   IRAtom *vdataHi = NULL, *bdataHi = NULL;
+   IRAtom *vdataLo = NULL, *bdataLo = NULL;
+   IRAtom *vexpdHi = NULL, *bexpdHi = NULL;
+   IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
+   IRAtom *voldHi  = NULL, *boldHi  = NULL;
+   IRAtom *voldLo  = NULL, *boldLo  = NULL;
+   IRAtom *xHi = NULL, *xLo = NULL, *xHL = NULL;
+   IRAtom *expd_eq_old = NULL, *zero = NULL;
+   IROp   opCasCmpEQ, opOr, opXor;
+   Int    elemSzB, memOffsLo, memOffsHi;
+   IRType elemTy;
+   IRType ty;
+
+
+   /* double CAS */
+   tl_assert(cas->oldHi != IRTemp_INVALID);
+   tl_assert(cas->expdHi != NULL);
+   tl_assert(cas->dataHi != NULL);
+
+   elemTy = typeOfIRExpr(dce->bb->tyenv, cas->expdLo);
+   switch (elemTy) {
+      case Ity_I8:
+         opCasCmpEQ = Iop_CasCmpEQ8; opOr = Iop_Or8; opXor = Iop_Xor8;
+         elemSzB = 1; zero = mkU8(0);
+         break;
+      case Ity_I16:
+         opCasCmpEQ = Iop_CasCmpEQ16; opOr = Iop_Or16; opXor = Iop_Xor16;
+         elemSzB = 2; zero = mkU16(0);
+         break;
+      case Ity_I32:
+         opCasCmpEQ = Iop_CasCmpEQ32; opOr = Iop_Or32; opXor = Iop_Xor32;
+         elemSzB = 4; zero = mkU32(0);
+         break;
+      case Ity_I64:
+         opCasCmpEQ = Iop_CasCmpEQ64; opOr = Iop_Or64; opXor = Iop_Xor64;
+         elemSzB = 8; zero = mkU64(0);
+         break;
+      default:
+         tl_assert(0); /* IR defn disallows any other types */
+   }
+
+   /* 1. fetch data# (the proposed new value) */
+   tl_assert(isOriginalAtom_DC(dce, cas->dataHi));
+   tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
+
+   vdataHi
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataHi));
+   vdataLo
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataLo));
+
+   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
+
+
+   tl_assert(isShadowAtom_DC(dce, vdataHi));
+   tl_assert(isShadowAtom_DC(dce, vdataLo));
+
+   /* 2. fetch expected# (what we expect to see at the address) */
+   tl_assert(isOriginalAtom_DC(dce, cas->expdHi));
+   tl_assert(isOriginalAtom_DC(dce, cas->expdLo));
+
+   vexpdHi
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdHi));
+   vexpdLo
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdLo));
+   tl_assert(isShadowAtom_DC(dce, vexpdHi));
+   tl_assert(isShadowAtom_DC(dce, vexpdLo));
+
+   /* 3. check definedness of address */
+   /* 4. fetch old# from shadow memory; this also checks
+         addressibility of the address */
+   if (cas->end == Iend_LE) {
+      memOffsLo = 0;
+      memOffsHi = elemSzB;
+   } else {
+      tl_assert(cas->end == Iend_BE);
+      memOffsLo = elemSzB;
+      memOffsHi = 0;
+   }
+   voldHi
+      = assignNew_DC(
+           dce, elemTy,
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/ ));
+   voldLo
+      = assignNew_DC(
+           dce, elemTy,
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/));
+
+   IRAtom *origLo = mkexpr(cas->oldLo);
+   IRAtom *origHi = mkexpr(cas->oldHi);
+
+
+   switch(origLo->tag) {
+      case Iex_Const:
+         tl_assert(voldLo->tag == Iex_Const);
+         break;
+      case Iex_RdTmp:
+         tl_assert(voldLo->tag == Iex_RdTmp);
+         assign_DC('V', dce, findShadowTmp_DC(dce, origLo->Iex.RdTmp.tmp),
+                   voldLo);
+         assign_DC('V', dce, findShadowTmp_DC(dce, origHi->Iex.RdTmp.tmp),
+                   voldHi);
+
+         break;
+      default:
+         tl_assert(0);
+   }
+
+
+   /* 5. the CAS itself */
+   /* 6. compute "expected == old" */
+   /* See COMMENT_ON_CasCmpEQ in this file background/rationale. */
+   /* Note that 'C' is kinda faking it; it is indeed a non-shadow
+      tree, but it's not copied from the input block. */
+   /*
+      xHi = oldHi ^ expdHi;
+      xLo = oldLo ^ expdLo;
+      xHL = xHi | xLo;
+      expd_eq_old = xHL == 0;
+   */
+/*    xHi = assignNew('C', mce, elemTy, */
+/*                    binop(opXor, cas->expdHi, mkexpr(cas->oldHi))); */
+/*    xLo = assignNew('C', mce, elemTy, */
+/*                    binop(opXor, cas->expdLo, mkexpr(cas->oldLo))); */
+/*    xHL = assignNew('C', mce, elemTy, */
+/*                    binop(opOr, xHi, xLo)); */
+/*    expd_eq_old */
+/*       = assignNew('C', mce, Ity_I1, */
+/*                   binop(opCasCmpEQ, xHL, zero)); */
+
+   /* 7. if "expected == old"
+            store data# to shadow memory */
+
+   IRDirty  *di;
+   void*    helper = NULL;
+   Char*    hname = NULL;
+
+   switch (ty) {
+      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
+                    hname = "MC_(helperc_STORE_TAG_8)";
+                    break;
+      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
+                    hname = "MC_(helperc_STORE_TAG_4)";
+                    break;
+      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
+                    hname = "MC_(helperc_STORE_TAG_2)";
+                    break;
+      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
+                    hname = "MC_(helperc_STORE_TAG_1)";
+                    break;
+      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
+   }
+
+   if (ty == Ity_I64) {
+     /* We can't do this with regparm 2 on 32-bit platforms, since
+        the back ends aren't clever enough to handle 64-bit
+        regparm args.  Therefore be different. */
+     di = unsafeIRDirty_0_N(
+                            1/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsLo, vdataLo ));
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+
+     di = unsafeIRDirty_0_N(
+                            1/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsHi, vdataHi ));
+
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+   } else {
+     di = unsafeIRDirty_0_N(
+                            2/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsLo, vdataLo ));
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+
+     di = unsafeIRDirty_0_N(
+                            2/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsHi, vdataHi ));
+
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+   }
+
+
+}
+
+
+// Handling for CAS instructions. Nick'd from memcheck.
+// NOTE: This is copied and modified from mc_translate.c:
+// do_shadow_CAS()
+void do_shadow_CAS_DC( DCEnv* dce, IRCAS* cas) {
+
+  if (cas->oldHi == IRTemp_INVALID) {
+    do_shadow_CAS_single_DC( dce, cas );
+  } else {
+    do_shadow_CAS_double_DC( dce, cas );
+  }
+
+}
+
+
 
 
 // A PUT stores a value into the guest state
@@ -1611,7 +1810,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
                                 1/*regparms*/, hname, helper,
                                 mkIRExprVec_2( addr, vdata ));
       } else {
-             DYNCOMP_TPRINTF("Addr: %x - vdata %d\n", addr, vdata);
          di = unsafeIRDirty_0_N(
                                 2/*regparms*/, hname, helper,
                                 mkIRExprVec_2( addr, vdata ));

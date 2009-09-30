@@ -1685,12 +1685,15 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
-  //  VG_(printf)("%s (dec: %u) (ID: %u)\n",
-  //              collectionPtr->name,
-  //              collectionPtr->is_declaration,
-  //              e->ID);
+  VG_(printf)("ARRRG %s (dec: %u) (ID: %u) (size: %d)\n",
+              collectionPtr->name,
+              collectionPtr->is_declaration,
+              e->ID,
+              collectionPtr->byte_size);
+
 
   t->aggType = VG_(calloc)("generate_fjalar_entries.c: extractStructUnionType.1", 1, sizeof(*t->aggType));
+
 
   if (e->tag_name == DW_TAG_union_type) {
     t->decType = D_UNION;
@@ -1946,7 +1949,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   // data_member_location of the last member and add its byte size
   // (if member is actually a struct type, then its byte size should already
   //  have been computed by the recursive version of this call to that struct)
-  // - Round struct size up to the nearest word (multiple of 4)
   if (t->aggType->memberVarList) {
     memberNodePtr = t->aggType->memberVarList->last;
     if (memberNodePtr) {
@@ -1955,8 +1957,21 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       structByteSize =
         memberVarPtr->memberVar->data_member_location + determineVariableByteSize(memberVarPtr);
 
-      // Round struct size up to the nearest word (multiple of 4)
-      t->byteSize = ((structByteSize + 3) >> 2) << 2;
+      // Round struct size up to the nearest word (dependent on architecture)
+      if(sizeof(UWord)==4) {
+        t->byteSize = ((structByteSize + 3) >> 2) << 2;
+      } else if (sizeof(UWord)==8){
+        t->byteSize = ((structByteSize + 7) >> 3) << 3;
+      } else {
+        // This portion of the check may be silly, but oh well.
+        FJALAR_DPRINTF("Unsupported word size: %d\n", sizeof(UWord));
+        tl_assert(0);
+      }
+
+      if(collectionPtr->byte_size) {
+        t->byteSize = collectionPtr->byte_size;
+
+      }
 
       FJALAR_DPRINTF("collection name: %s, byteSize: %d\n", t->typeName, t->byteSize);
     }

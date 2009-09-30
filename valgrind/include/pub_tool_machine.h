@@ -94,7 +94,20 @@ extern Addr VG_(get_xCX)( ThreadId tid );
 extern Addr VG_(get_xDX)( ThreadId tid );
 extern Addr VG_(get_xSI)( ThreadId tid );
 extern Addr VG_(get_xDI)( ThreadId tid );
+extern UInt* VG_(get_XMM_N) (ThreadId tid, UInt num);
 extern Addr VG_(dump_state)(ThreadId tid);
+
+#if defined(VGA_amd64)
+extern Addr VG_(get_R8) ( ThreadId tid );
+extern Addr VG_(get_R9) ( ThreadId tid );
+extern Addr VG_(get_R10) ( ThreadId tid );
+extern Addr VG_(get_R11) ( ThreadId tid );
+extern Addr VG_(get_R12) ( ThreadId tid );
+extern Addr VG_(get_R13) ( ThreadId tid );
+extern Addr VG_(get_R14) ( ThreadId tid );
+extern Addr VG_(get_R15) ( ThreadId tid );
+#endif
+
 
 extern void VG_(set_SP) ( ThreadId tid, Addr sp );
 extern void VG_(set_IP) ( ThreadId tid, Addr ip );
@@ -112,6 +125,7 @@ extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 extern UWord VG_(get_xAX_tag) ( ThreadId tid );
 extern UWord VG_(get_xDX_tag) ( ThreadId tid );
 extern UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid );
+extern UInt* VG_(get_shadow_XMM_N) (ThreadId tid, UInt num);
 // Super-duper hack!!!
 extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 
