@@ -1685,7 +1685,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
-  VG_(printf)("ARRRG %s (dec: %u) (ID: %u) (size: %d)\n",
+  FJALAR_DPRINTF("name %s (dec: %u) (ID: %u) (size: %d)\n",
               collectionPtr->name,
               collectionPtr->is_declaration,
               e->ID,
