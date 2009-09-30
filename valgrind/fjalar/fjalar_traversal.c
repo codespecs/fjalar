@@ -296,11 +296,13 @@ void visitClassMembersNoValues(TypeEntry* class,
   new_args.numStructsDereferenced = 0;
   new_args.isEnter                = False;
   new_args.tResult                = INVALID_RESULT;
+  new_args.varFuncInfo            = 0;
 
   visitClassMemberVariables(&new_args);
 
   if (fullFjalarName) {
     stringStackPop(&enclosingVarNamesStack);
+    VG_(free)(fullFjalarName);
   }
 }
 
@@ -831,6 +833,10 @@ void visitClassMemberVariables(VisitArgs* args) {
     }
   }
 
+  if (fullFjalarName) {
+    VG_(free)(fullFjalarName);
+  }
+
   // TODO: Visit static member variables (remember that they have
   // global addresses):
 }
@@ -887,6 +893,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
   stringStackClear(&fullNameStack);
 
   tl_assert(varListPtr);
+  //RUDD EXCEPTION
+  FJALAR_DPRINTF("VarListPtr %x\n", varListPtr);
 
   varIt = newVarIterator(varListPtr);
 
@@ -1861,9 +1869,9 @@ void visitSingleVar(VisitArgs* args) {
   }
 
 
+  }
   if (fullFjalarName)
     VG_(free)(fullFjalarName);
-  }
 }
 
 
@@ -2148,5 +2156,6 @@ void visitSequence(VisitArgs* args) {
     }
 
   }
-  VG_(free)(fullFjalarName);
+  if (fullFjalarName)
+    VG_(free)(fullFjalarName);
 }

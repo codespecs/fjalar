@@ -49,6 +49,8 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
 {
   Int i;
 
+  ThreadId tid = VG_(get_running_tid)();
+
   FunctionExecutionState* cur_fn = 0;
   FunctionExecutionState* next_fn = 0;
 
@@ -59,10 +61,10 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   // the highest ESP to the one with the lowest ESP
   // but DON'T LOOK at the function that's the most
   // recent one on the stack yet - hence 0 <= i <= (fn_stack_first_free_index - 2)
-  for (i = 0; i <= fn_stack_first_free_index - 2; i++)
+  for (i = 0; i <= fn_stack_first_free_index[tid] - 2; i++)
     {
-      cur_fn = &FunctionExecutionStateStack[i];
-      next_fn = &FunctionExecutionStateStack[i + 1];
+      cur_fn = &FunctionExecutionStateStack[tid][i];
+      next_fn = &FunctionExecutionStateStack[tid][i + 1];
 
       if (!cur_fn || !next_fn)
 	{
@@ -90,7 +92,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   // in between its FP and lowestSP
   // (this isn't exactly accurate because there are issues
   //  with lowestSP, but at least it'll give us some info.)
-  cur_fn = fnStackTop();
+  cur_fn = fnStackTop(tid);
 
   if ((cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
     FJALAR_DPRINTF("Returning functionEntry: %x\n", (unsigned int)cur_fn);
@@ -346,9 +348,10 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
 	}
       /* Cut off the search if we can already see it's really big:
          no need to look further than we're going to print. */
-      if (fjalar_array_length_limit != -1 &&
-          arraySize > fjalar_array_length_limit)
-        break;
+      // RUDD TEMP
+/*       if (fjalar_array_length_limit != -1 && */
+/*           arraySize > fjalar_array_length_limit) */
+/*         break; */
 
       arraySize++;
       startAddr+=typeSize;
@@ -560,16 +563,11 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     
     if (targetVar->varType->byteSize == var->varType->byteSize) {
       return targetVarSize;
-    } 
-    /* else if (targetVar->varType->byteSize > var->varType->byteSize) { */
-    /*   return (targetVarSize * var->varType->byteSize) / targetVar->varType->byteSize; */
-    /* }  */
-    else {
+    } else {
       return (targetVarSize * targetVar->varType->byteSize) / var->varType->byteSize;
     }
     
   }
-
   return 0;
 }
 

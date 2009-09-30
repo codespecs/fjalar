@@ -23,7 +23,6 @@
 #include "dtrace-output.h"
 #include "decls-output.h"
 #include "kvasir_main.h"
-
 #include "../fjalar_include.h"
 
 #include "dyncomp_main.h"
@@ -32,6 +31,7 @@
 #include "../my_libc.h"
 
 #include "mc_include.h"
+#include "pub_tool_threadstate.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) < (b) ? (a) : (b))
@@ -52,6 +52,9 @@ char* UNINIT = "nonsensical";
 char* NONSENSICAL = "nonsensical";
 char* func_name = 0;
 int is_enter = 0;
+
+UWord nonce[300];
+
 
 // The indices to this array must match the DeclaredType enum
 // declared in generate_fjalar_entries.h:
@@ -90,6 +93,7 @@ extern const int DecTypeByteSizes[];
 // to the .dtrace file:
 static void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
 {
+  ThreadId tid = VG_(get_running_tid)();
   DPRINTF("Printing dtrace header for %s\n", funcPtr->fjalar_name);
   DPRINTF("dtrace_fp is %p\n", dtrace_fp);
   tl_assert(dtrace_fp);
@@ -100,11 +104,17 @@ static void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
   if (isEnter) {
     fputs(ENTER_PPT, dtrace_fp);
     fputs("\n", dtrace_fp);
+    fputs("this_invocation_nonce\n", dtrace_fp);
+    DTRACE_PRINTF("%d\n", funcPtr->nonce);
+
   }
   else {
     fputs(EXIT_PPT, dtrace_fp);
     fputs("\n", dtrace_fp);
+    fputs("this_invocation_nonce\n", dtrace_fp);
+    DTRACE_PRINTF("%d\n", funcPtr->nonce);
   }
+
 
   DPRINTF("Done printing header for %s\n", funcPtr->fjalar_name);
 }
@@ -495,6 +505,10 @@ static char printDtraceSequence(VariableEntry* var,
   Addr firstInitElt = 0;
 
   DPRINTF("pValueArray: %x - pValueArrayGuest: %x\nnumElts: %d\n", pValueArray, pValueArrayGuest, numElts);
+
+/*   if(numElts > 10) { */
+/*     VG_(printf)("%s - numElts: %d\n", var->name, numElts); */
+/*   } */
 
   if (pFirstInitElt) {
     *pFirstInitElt = 0;
@@ -999,6 +1013,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   DPRINTF("pValue: %x\n pValueGuest: %x\n pValueArray: %x\n pValueArrayGuest:%x\n", pValue, pValueGuest, pValueArray, pValueGuest);
   DPRINTF("numelts: %d\n", numElts);
 
+
   if(pValue)
     DPRINTF("Value is %16x\n",
 	    *(Addr *)pValue);
@@ -1112,7 +1127,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   }
   DPRINTF("\n*********************************\n%s\n*********************************\n\n", varName);
   if (variableHasBeenObserved) {
-    return DEREF_MORE_POINTERS;
+    return DEREF_MORE_POINTERS; 
   }
   else {
     return DO_NOT_DEREF_MORE_POINTERS;

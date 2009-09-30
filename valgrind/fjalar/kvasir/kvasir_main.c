@@ -664,6 +664,7 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   if VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename) {}
   else if VG_STR_CLO(arg, "--dtrace-file", kvasir_dtrace_filename) {}
   else if VG_YESNO_CLO(arg, "dtrace-append",    kvasir_dtrace_append) {}
+  else if VG_YESNO_CLO(arg, "object-ppts",      kvasir_object_ppts) {}
   else if VG_YESNO_CLO(arg, "dtrace-no-decs",   kvasir_dtrace_no_decs) {}
   else if VG_YESNO_CLO(arg, "dtrace-gzip",      kvasir_dtrace_gzip) {}
   else if VG_YESNO_CLO(arg, "output-fifo",      kvasir_output_fifo) {}

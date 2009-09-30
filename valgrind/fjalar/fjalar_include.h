@@ -628,6 +628,8 @@ typedef struct _FunctionEntry {
   // used in calculating the address of variables from  DWARF location expressions
   Addr FP;
 
+  UInt nonce;
+
 } FunctionEntry;
 
 
@@ -702,6 +704,11 @@ typedef struct {
   Word xAX;     // primary integer return value (%eax, %rax)
   Word xDX;     // secondary integer return value (%edx, %rdx)
   double FPU;   // floating-point return value (x86 %st(0))
+
+  // Unique nonce corresponding to this invocation of the function.
+  // Used to differentiate between different calls to the same
+  // function.
+  UInt invocation_nonce;
 
   // This is a copy of the portion of the function's stack frame that
   // is in use after the function prolog has executed, including the

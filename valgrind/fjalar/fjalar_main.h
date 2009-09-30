@@ -23,6 +23,7 @@
 #include "pub_tool_basics.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_mallocfree.h"
+#include "pub_tool_threadstate.h"
 
 #include "mc_translate.h"
 
@@ -55,10 +56,10 @@ void printFunctionEntryStack(void);
 // The stack should never grow this deep!
 #define FN_STACK_SIZE 1000
 
-FunctionExecutionState FunctionExecutionStateStack[FN_STACK_SIZE];
-int fn_stack_first_free_index;
+FunctionExecutionState FunctionExecutionStateStack[VG_N_THREADS][FN_STACK_SIZE];
+int fn_stack_first_free_index[VG_N_THREADS];
 
-__inline__ FunctionExecutionState* fnStackTop(void);
+__inline__ FunctionExecutionState* fnStackTop(ThreadId tid);
 
 
 /*
@@ -91,7 +92,8 @@ This is called from hooks within mac_shared.h
 // (Remember that this code will be inserted in mc_main.c so it needs to have
 //  the proper extern variables declared.)
 #define CHECK_SP(currentSP)                                           \
-  FunctionExecutionState* curFunc = fnStackTop();			\
+  ThreadId tid = VG_(get_running_tid)();                                \
+  FunctionExecutionState* curFunc = fnStackTop(tid);			\
   if (curFunc &&							\
       (currentSP < curFunc->lowestSP)) {				\
     curFunc->lowestSP = currentSP;					\
@@ -99,7 +101,8 @@ This is called from hooks within mac_shared.h
 
 // Slower because we need to explicitly get the ESP
 #define CHECK_SP_SLOW()                                                \
-  FunctionExecutionState* curFunc = fnStackTop();			\
+  ThreadId tid = VG_(get_running_tid)();                                \
+  FunctionExecutionState* curFunc = fnStackTop(tid);			\
   if (curFunc) {							\
     Addr currentSP = VG_(get_SP)(VG_(get_running_tid)());		\
     if (currentSP < curFunc->lowestSP) {				\
@@ -113,9 +116,9 @@ This is called from hooks within mac_shared.h
 char* fjalar_program_stdout_filename;
 char* fjalar_program_stderr_filename;
 
-__inline__ FunctionExecutionState* fnStackPush(void);
-__inline__ FunctionExecutionState* fnStackPop(void);
-__inline__ FunctionExecutionState* fnStackTop(void);
+__inline__ FunctionExecutionState* fnStackPush(ThreadId);
+__inline__ FunctionExecutionState* fnStackPop(ThreadId);
+__inline__ FunctionExecutionState* fnStackTop(ThreadId);
 
 // Mapping between Dwarf Register numbers and
 // valgrind function to return the value
