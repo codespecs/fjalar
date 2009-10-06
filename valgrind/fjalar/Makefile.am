@@ -10,7 +10,7 @@ include $(top_srcdir)/Makefile.tool.am
 # AM_CFLAGS_X86_LINUX   := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
 # AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
-EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -D_NO_DYNCOMP=1
+EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include
 
 #----------------------------------------------------------------------------
 # Headers
