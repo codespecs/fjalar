@@ -894,7 +894,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
   tl_assert(varListPtr);
   //RUDD EXCEPTION
-  FJALAR_DPRINTF("VarListPtr %x\n", varListPtr);
+  FJALAR_DPRINTF("VarListPtr %p\n", (void *)varListPtr);
 
   varIt = newVarIterator(varListPtr);
 
@@ -923,10 +923,10 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	continue;
       }
 
-      FJALAR_DPRINTF("\tbaseAddr: %x, baseAddrGuest: %x var->byteOffset: %x(%d)\n", stackBaseAddr, stackBaseAddrGuest, var->byteOffset, var->byteOffset);
-      FJALAR_DPRINTF("\tState of Guest Stack [%x - %x] \n", funcPtr->guestStackStart, funcPtr->guestStackEnd);
-      FJALAR_DPRINTF("\tState of Virtual Stack [%x - %x] \n", funcPtr->lowestVirtSP, funcPtr->lowestVirtSP + (funcPtr->guestStackEnd - funcPtr->guestStackStart));
-      FJALAR_DPRINTF("\tState of Frame Pointer: %p\n", stackBaseAddrGuest);
+      FJALAR_DPRINTF("\tbaseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, var->byteOffset, var->byteOffset);
+      FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)funcPtr->guestStackStart, (void *)funcPtr->guestStackEnd);
+      FJALAR_DPRINTF("\tState of Virtual Stack [%p - %p] \n", (void *)funcPtr->lowestVirtSP, (void *)(funcPtr->lowestVirtSP + (funcPtr->guestStackEnd - funcPtr->guestStackStart)));
+      FJALAR_DPRINTF("\tState of Frame Pointer: %p\n", (void *)stackBaseAddrGuest);
       FJALAR_DPRINTF("\tSize of DWARF location stack: %d\n", var->location_expression_size);
 
       if(var->location_expression_size) {
@@ -1022,7 +1022,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	      reg_val = (*get_reg[loc->atom - DW_OP_breg0])(tid);
 	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_breg0], reg_val);
 	      var_loc = reg_val + loc->atom_offset;
-	      FJALAR_DPRINTF("\tAdding %lld to the register value for %x\n", loc->atom_offset, var_loc);
+	      FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", loc->atom_offset, (void *)var_loc);
 	      tl_assert(var_loc);
 
 	    } else if(op == DW_OP_fbreg) {
@@ -1036,7 +1036,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	      FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
 	      tl_assert(0);
 	    }
-	    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %x\n",location_expression_to_string(op), var_loc);
+	    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
 	  }
 
 	  if((var_loc >= funcPtr->guestStackStart) &&
@@ -1052,12 +1052,12 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	  //int virt_offset = var_loc - funcPtr->lowestSP;
 	  int virt_offset = var_loc - funcPtr->guestStackStart;
 
-            FJALAR_DPRINTF("\tstackBaseAddr: %x\n\tREDZONE: %d,\n\tFP: %x\n\tvar_loc %x\n\tOffset(virt): %d\n",
-                           funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, funcPtr->FP, var_loc, virt_offset);
+            FJALAR_DPRINTF("\tstackBaseAddr: %p\n\tREDZONE: %d,\n\tFP: %p\n\tvar_loc %p\n\tOffset(virt): %d\n",
+                           (void *)funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, (void *)funcPtr->FP, (void *)var_loc, virt_offset);
 
 	    var->byteOffset = var_loc - funcPtr->FP;
 	    // + VG_STACK_REDZONE_SZB;
-	    basePtrValue = funcPtr->lowestVirtSP + virt_offset; 
+	    basePtrValue = funcPtr->lowestVirtSP + virt_offset;
 	    var->entryLoc = basePtrValue;
 	    var->entryLocGuest = var_loc;
 	    basePtrValueGuest = var_loc; }
@@ -1185,7 +1185,7 @@ void visitReturnValue(FunctionExecutionState* e,
       mc_copy_address_range_state((Addr)(&(e->xAX)),
 				  (Addr)(&returnBuffer),
 				  sizeof(e->xAX));
-      
+
       mc_copy_address_range_state((Addr)(&(e->xDX)),
 				  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
 				  sizeof(e->xDX));
@@ -1558,7 +1558,7 @@ void visitSingleVar(VisitArgs* args) {
 
     FJALAR_DPRINTF("overideisInit? %d\n", overrideIsInit);
 
-    FJALAR_DPRINTF("pValue: %d\n", pValue);
+    FJALAR_DPRINTF("pValue: %p\n", (void *)pValue);
 
     //RUDD TEMP
     //    if(pValue)
