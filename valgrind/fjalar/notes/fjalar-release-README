@@ -13,7 +13,33 @@ Please refer to the Fjalar web site for the most updated
 documentation: http://pag.csail.mit.edu/fjalar/
 
 A local copy of the Fjalar webpage appears here:
-  fjalar-source/documentation/fjalar-www/index.html
+  ./docs/fjalar-www/index.html
+
+Installing
+__________
+
+Fjalar can be installed by running "make" in this directory. 
+Fjalar and Valgrind binaries will be placed in the inst
+directory.
+
+Running
+_______
+
+Fjalar can be run with the command:
+`pwd`/inst/bin/valgrind --tool=fjalar
+
+Version History
+_______________
+
+Version 1.4 - Released October 2009
+
+Updated Fjalar to work with GCC 4.x. Improved Fjalar's support for 
+handling C++, including better support for classes and exceptions. 
+AMD64 support is now on par with x86 support. Added support for
+multi-threaded programs. Fixed various  memory leaks. Provided a new
+implementation of float printing for Fjalar's libc.
+
+-----------
 
 Version 1.3 - Released August 30, 2007
 

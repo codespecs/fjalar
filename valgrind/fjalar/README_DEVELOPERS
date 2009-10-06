@@ -6,7 +6,7 @@ Robert Rudd
 Last updated: 2009-09-14
 
 A local copy of the Fjalar webpage appears here:
-  ./documentation/fjalar-www/index.html
+  ./docs/fjalar-www/index.html
 
 This file contains information relevant for those who are interested
 in customizing or extending Fjalar.
@@ -46,6 +46,10 @@ making non-trivial changes to Fjalar as Fjalar essentially piggybacks
 on top of Memcheck. Fjalar instrumentation is inserted after
 Memcheck's and Fjalar makes use of Memcheck's A/V-bits to provide
 information on C/C++ in a safe way. 
+
+Making a Release
+----------------
+Information on making a release can be found in notes/fjalar-release-notes.txt 
 
 What follows is a summary of the contents of interesting source files:
 
