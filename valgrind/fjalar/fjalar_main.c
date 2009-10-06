@@ -34,6 +34,7 @@
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_oset.h"
 #include "pub_tool_replacemalloc.h"
+#include "pub_tool_stacktrace.h"
 #include "pub_tool_clientstate.h"
 
 #include "generate_fjalar_entries.h"
@@ -533,7 +534,7 @@ void enter_function(FunctionEntry* f)
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
 
-  FJALAR_DPRINTF("[enter_function] startPC is: %x\n, entryPC is: %x\ncu_base: %x\n",  (UInt)f->startPC, (UInt)f->entryPC, f->cuBase);
+  FJALAR_DPRINTF("[enter_function] startPC is: %x\n, entryPC is: %x\ncu_base: %p\n",  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
 
   // Determine the frame pointer for this function using DWARF
   // location lists. This is a "virtual frame pointer" in that it is
@@ -566,7 +567,7 @@ void enter_function(FunctionEntry* f)
       }
 
       if(ll) {
-        FJALAR_DPRINTF("\tFound location list entry, finding register corresponding to dwarf #: %d with offset: %lu\n", ll->atom, ll->atom_offset);
+        FJALAR_DPRINTF("\tFound location list entry, finding register corresponding to dwarf #: %d with offset: %lld\n", ll->atom, ll->atom_offset);
 
         if(get_reg[ll->atom - DW_OP_breg0]) {
           frame_ptr = (*get_reg[ll->atom - DW_OP_breg0])(tid) + ll->atom_offset;
@@ -599,7 +600,7 @@ void enter_function(FunctionEntry* f)
   }
 
   FJALAR_DPRINTF("\tEnter function: %s - StartPC: %p, EntryPC: %p, frame_ptr: %p\n",
-		 f->fjalar_name, (void*)f->startPC, (void*)f->entryPC, frame_ptr);
+		 f->fjalar_name, (void *)f->startPC, (void *)f->entryPC, (void *)frame_ptr);
 
   newEntry  = fnStackPush(tid);
   newEntry->func = f;
@@ -626,7 +627,7 @@ void enter_function(FunctionEntry* f)
   // into that virtual stack
   local_stack = frame_ptr - stack_ptr + VG_STACK_REDZONE_SZB; /* in our frame */
   tl_assert(local_stack >= 0);
-  FJALAR_DPRINTF("frame_ptr: %x, stack_ptr: %x, VG_STACK_REDZONE: %d\n", frame_ptr, stack_ptr, VG_STACK_REDZONE_SZB);
+  FJALAR_DPRINTF("frame_ptr: %p, stack_ptr: %p, VG_STACK_REDZONE: %d\n", (void *)frame_ptr, (void *)stack_ptr, VG_STACK_REDZONE_SZB);
 
   // The virtual stack consists of:
   // (1) local_stack: the entirety of the function's local stack (the
@@ -657,7 +658,7 @@ void enter_function(FunctionEntry* f)
     // VG_(calloc)ed address, which is a bit weird. It would be more
     // elegant to copy the metadata to an inaccessible place, but that
     // would be more work.
-    FJALAR_DPRINTF("Copying over stack [%x] -> [%x] %d bytes\n",stack_ptr - VG_STACK_REDZONE_SZB,  newEntry->virtualStack, size);
+    FJALAR_DPRINTF("Copying over stack [%p] -> [%p] %d bytes\n",(void *)(stack_ptr - VG_STACK_REDZONE_SZB),  (void *)newEntry->virtualStack, size);
     mc_copy_address_range_state(stack_ptr - VG_STACK_REDZONE_SZB,
 				(Addr)(newEntry->virtualStack), size);
 
@@ -691,6 +692,10 @@ void exit_function(FunctionEntry* f)
   FunctionExecutionState* top = fnStackTop(currentTID);
   extern FunctionExecutionState* curFunctionExecutionStatePtr;
   int i;
+  ULong FPUshadow;
+  double fpuReturnVal;
+  Addr xAX, xDX, xAXshadow, xDXshadow;
+  Bool foundFunc;
 
   FJALAR_DPRINTF("Exit function: %s\n", f->fjalar_name);
 
@@ -701,7 +706,7 @@ void exit_function(FunctionEntry* f)
   top->func->FP  = top->FP;
   top->func->lowestSP  = top->func->guestStackStart;
 
-  FJALAR_DPRINTF("\tState of Guest Stack [%x - %x] \n", top->lowestSP, top->lowestSP + top->virtualStackByteSize);
+  FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)top->lowestSP, (void *)(top->lowestSP + top->virtualStackByteSize));
 
   // Ok, in Valgrind 2.X, we needed to directly code some assembly to
   // grab the top of the floating-point stack, but Valgrind 3.0
@@ -709,13 +714,11 @@ void exit_function(FunctionEntry* f)
   // now have shadow V-bits for the FPU stack.
 
 #if defined(VGA_amd64)
-  // XMM registers are represented as a 128-bit integer 
+  // XMM registers are represented as a 128-bit integer
   // (Actually an array of 4 32-bit integers), so reinterpret
   // cast it as a double.
-  ULong FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
-  UInt* testing = VG_(get_shadow_XMM_N)(currentTID, 0);
-  double fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
-  UInt* test = VG_(get_XMM_N)(currentTID, 0);
+  FPUshadow = (VG_(get_shadow_XMM_N)(currentTID, 0))[0];
+  fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
   /* for(i=0 ; i < 4; i++) { */
   /*   VG_(printf)("Testing %d\n", test[i]); */
@@ -723,27 +726,27 @@ void exit_function(FunctionEntry* f)
   /* }    */
 
 #else
-  double fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
-  ULong FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
+  fpuReturnVal = VG_(get_FPU_stack_top)(currentTID);
+  FPUshadow = VG_(get_shadow_FPU_stack_top)(currentTID);
 #endif
-  
+
 
   //RUDD DEBUG
   /* printf("%.16g\n", fpuReturnVal); */
   /* printf("shadow: %x\n", FPUshadow); */
   // Get the value at the simulated %EAX (integer and pointer return
   // values are stored here upon function exit)
-  Addr xAX = VG_(get_xAX)(currentTID);
+  xAX = VG_(get_xAX)(currentTID);
 
   // Get the value of the simulated %EDX (the high 32-bits of the long
   // long int return value is stored here upon function exit)
-  Addr xDX = VG_(get_xDX)(currentTID);
+  xDX = VG_(get_xDX)(currentTID);
 
 
   // 64 bits
   // Use SHADOW values of Valgrind simulated registers to get V-bits
-  UWord xAXshadow = VG_(get_shadow_xAX)(currentTID);
-  UWord xDXshadow = VG_(get_shadow_xDX)(currentTID);
+  xAXshadow = VG_(get_shadow_xAX)(currentTID);
+  xDXshadow = VG_(get_shadow_xDX)(currentTID);
 
   FJALAR_DPRINTF("Value of eax: %d, edx: %d\n",(int)xAX, (int)xDX);
 
@@ -770,14 +773,13 @@ void exit_function(FunctionEntry* f)
     // (these would be all the functions that had non-local
     // exits) until we encounter the Function Execution State
     // Stack corresponding to our function.
-    Bool foundFunc = False;
-    VG_(printf)("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %x - AssumedEntryIP: %x\nDetctedExitIP: %x - AssumedExitIp: %x\n",
+    VG_(printf)("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
 		top->func->fjalar_name,
-                top->func->entryPC,
-                f->entryPC,
-                top->func->endPC,
-                f->endPC);
+                (void *)top->func->entryPC,
+                (void *)f->entryPC,
+                (void *)top->func->endPC,
+                (void *)f->endPC);
 
 
     // This is probably being overconservative. However let's revert
@@ -996,8 +998,8 @@ void fjalar_post_clo_init()
 
   // Handle variables set by command-line options:
   // Assumes that filename is first argument in client_argv
-  FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%x]\n\n",
-	  executable_filename, (unsigned int)executable_filename);
+  FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%p]\n\n",
+	  executable_filename, (void *)executable_filename);
 
   // --disambig results in the disambig filename being ${executable_filename}.disambig
   // (overrides --disambig-file option)

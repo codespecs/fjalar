@@ -607,14 +607,7 @@ void repCheckAllEntries(void) {
   FJALAR_DPRINTF("  Rep. checking function entries ...");
   while (hasNextFunc(funcIt)) {
     FunctionEntry* f = nextFunc(funcIt);
-
-    FJALAR_DPRINTF("  Checking %s\n",f->name);
-    if(f->mangled_name) {
-      FJALAR_DPRINTF("  mang;ed: %s\n",f->mangled_name);
-    }
-
     VarNode* n;
-
     unsigned int numFormalParams = 0;
     unsigned int numLocalArrayVars = 0;
     unsigned int numReturnVars = 0;
@@ -804,7 +797,7 @@ void repCheckAllEntries(void) {
 /* 			   ((FunctionEntry*)(memberFunctionNode->elt))->name); */
 /* 	  } */
 
-	  FJALAR_DPRINTF(" parent class is %x\n",
+	  FJALAR_DPRINTF(" parent class is %p\n",
                          ((FunctionEntry*)(memberFunctionNode->elt))->parentClass);
 
           if(((FunctionEntry*)(memberFunctionNode->elt))->parentClass) {
@@ -1471,7 +1464,7 @@ void initializeFunctionTable(void)
           // constructFunctionEntry(), in order to properly support
           // sub-classing:
           cur_func_entry = constructFunctionEntry();
-	  FJALAR_DPRINTF("Function at %x\n", cur_func_entry);
+	  FJALAR_DPRINTF("Function at %p\n", cur_func_entry);
 
 	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
 
@@ -1712,7 +1705,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
-  FJALAR_DPRINTF("name %s (dec: %u) (ID: %u) (size: %d)\n",
+  FJALAR_DPRINTF("name %s (dec: %u) (ID: %lu) (size: %ld)\n",
               collectionPtr->name,
               collectionPtr->is_declaration,
               e->ID,
@@ -1730,7 +1723,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   }
 
   t->typeName = collectionPtr->name;
-  
+
   if(e->ID == 2386909) {
     FJALAR_DPRINTF("Hi\n");
   }
@@ -2214,7 +2207,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     for(i = 0; i < paramPtr->dwarf_stack_size; i++) {
       varPtr->location_expression[i].atom = paramPtr->dwarf_stack[i].atom;
       varPtr->location_expression[i].atom_offset = paramPtr->dwarf_stack[i].atom_offset;
-      FJALAR_DPRINTF("\tCopying over  %s (%d)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
+      FJALAR_DPRINTF("\tCopying over  %s (%lld)\n", location_expression_to_string(varPtr->location_expression[i].atom), varPtr->location_expression[i].atom_offset);
     }
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
@@ -2445,7 +2438,7 @@ extractOneVariable(VarList* varListPtr,
   char* demangled_name = 0;
 
   //RUDD EXCEPTION
-  FJALAR_DPRINTF("Entering extractOneVariable for %s(varListPtr: %x)\n", variableName, varListPtr);
+  FJALAR_DPRINTF("Entering extractOneVariable for %s(varListPtr: %p)\n", variableName, varListPtr);
 
   // Don't extract the variable if it has a bogus name:
   if (!variableName || ignore_variable_with_name(variableName))
@@ -2856,7 +2849,7 @@ static void initMemberFuncs(void) {
   // Iterate through all entries in TypesTable:
   while (hasNextType(typeIt)) {
     TypeEntry* t = nextType(typeIt);
-    
+
     FJALAR_DPRINTF("Examining %s it has dec_type %d\n", t->typeName, t->decType);
 
     // Only do this for struct/union types:
@@ -2887,7 +2880,7 @@ static void initMemberFuncs(void) {
           tl_assert(n->elt);
 	  // Very important!  Signify that it's a member function
           ((FunctionEntry*)(n->elt))->parentClass = t;
-	  
+
         }
       }
     }

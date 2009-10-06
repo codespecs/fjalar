@@ -599,7 +599,7 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value) {
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->specification_ID = value;
 
-    FJALAR_DPRINTF("Harvesting specification %x\n", value);
+    FJALAR_DPRINTF("Harvesting specification %lx\n", value);
     return 1;
   }
   else if (value && (tag_is_variable(tag))) {
@@ -868,9 +868,9 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
   if (tag_is_formal_parameter(tag))
     {
       formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
-      FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%d)\n", location_expression_to_string(atom), value);
+      FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%ld)\n", location_expression_to_string(atom), value);
       // RUDD EXCEPTION
-      FJALAR_DPRINTF("\nHarvesting formal parameter: %s(%x)\n", paramPtr->name, e);
+      FJALAR_DPRINTF("\nHarvesting formal parameter: %s(%p)\n", paramPtr->name, e);
 
       paramPtr->loc_atom = atom;
 
@@ -1001,7 +1001,7 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
 
         return 1;
       } else if(tag_is_compile_unit(tag)) {
-        FJALAR_DPRINTF("\t\tcuBase is %x\n", value);
+        FJALAR_DPRINTF("\t\tcuBase is %lx\n", value);
         comp_unit_base = value;
         return 1;
       }
@@ -1199,7 +1199,7 @@ static void link_entries_to_type_entries(void)
             {
               variable_ptr->type_ptr=&dwarf_entry_array[target_index];
             }
-	  
+
         }
       if (tag_is_modifier_type(tag))
         {
@@ -1212,7 +1212,7 @@ static void link_entries_to_type_entries(void)
           // Use a binary search to try to find the index of the entry in the
           // array with the corresponding target_ID
           success = binary_search_dwarf_entry_array(target_ID, &target_index);
-	  FJALAR_DPRINTF("Searching for all modifiers of %d\n", cur_entry->ID);
+	  FJALAR_DPRINTF("Searching for all modifiers of %lud\n", cur_entry->ID);
 	  print_dwarf_entry(cur_entry, 0);
           if (success)
             {
@@ -1433,34 +1433,34 @@ static void init_specification_and_abstract_stuff(void) {
     } else if(tag_is_formal_parameter(cur_entry->tag_name)) {
       formal_parameter* cur_param = (formal_parameter*) (cur_entry->entry_ptr);
       //RUDD EXCEPTION
-      FJALAR_DPRINTF("Examining cur_param: %s(%x)\n", cur_param->name, cur_entry);
-      
+      FJALAR_DPRINTF("Examining cur_param: %s(%p)\n", cur_param->name, cur_entry);
+
       if (cur_param->abstract_origin_ID) {
-	FJALAR_DPRINTF("\tHas an origin ID of %d\n", cur_param->abstract_origin_ID);
 	unsigned long aliased_index = 0;
-	
+	FJALAR_DPRINTF("\tHas an origin ID of %lud\n", cur_param->abstract_origin_ID);
+
 	if (binary_search_dwarf_entry_array(cur_param->abstract_origin_ID,
 					    &aliased_index)) {
 	  dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
 	  formal_parameter* aliased_formal_param = NULL;
-	  
+
 	  tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
-	  
+
 	  aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
-	  
+
 
 	  aliased_formal_param->location_type = cur_param->location_type;
 	  aliased_formal_param->loc_atom = cur_param->loc_atom;
 	  aliased_formal_param->valid_loc = cur_param->valid_loc;
-	  aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;	  
+	  aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
 
-	  memcpy(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack, sizeof(dwarf_location)*cur_param->dwarf_stack_size);
+	  VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack, sizeof(dwarf_location)*cur_param->dwarf_stack_size);
 
 	  cur_param->name = aliased_formal_param->name;
 	  cur_param->type_ID = aliased_formal_param->type_ID;
 	  //cur_param->type_ptr = aliased_formal_param->type_ptr;
 
-	  
+
 	}
       }
     }
@@ -1476,9 +1476,8 @@ static void init_specification_and_abstract_stuff(void) {
       function* cur_func = (function*)(cur_entry->entry_ptr);
 
       if (cur_func->specification_ID) {
-
-	FJALAR_DPRINTF("Trying to find %x's specification: %x\n", cur_func->name, cur_func->specification_ID);
         unsigned long aliased_index = 0;
+	FJALAR_DPRINTF("Trying to find %p's specification: %lx\n", cur_func->name, cur_func->specification_ID);
 
         if (binary_search_dwarf_entry_array(cur_func->specification_ID,
                                             &aliased_index)) {
@@ -1490,8 +1489,8 @@ static void init_specification_and_abstract_stuff(void) {
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
 	  FJALAR_DPRINTF("   Found %s\n", aliased_func_ptr->name);
-	  
-	  
+
+
           cur_func->name = aliased_func_ptr->name;
           cur_func->mangled_name = aliased_func_ptr->mangled_name;
           cur_func->return_type_ID = aliased_func_ptr->return_type_ID;
@@ -1502,9 +1501,8 @@ static void init_specification_and_abstract_stuff(void) {
       collection_type* cur_coll = (collection_type*)(cur_entry->entry_ptr);
 
       if (cur_coll->specification_ID) {
-
-	FJALAR_DPRINTF("Trying to find %s's specification: %x\n", cur_coll->name, cur_coll->specification_ID);
         unsigned long aliased_index = 0;
+	FJALAR_DPRINTF("Trying to find %s's specification: %lx\n", cur_coll->name, cur_coll->specification_ID);
 
         if (binary_search_dwarf_entry_array(cur_coll->specification_ID,
                                             &aliased_index)) {
@@ -1517,9 +1515,9 @@ static void init_specification_and_abstract_stuff(void) {
 
 	  FJALAR_DPRINTF("   Found %s\n", aliased_coll_ptr->name);
 
-	  FJALAR_DPRINTF("Linking %x and %x\n", aliased_coll_ptr, cur_coll);
-	  
-	  
+	  FJALAR_DPRINTF("Linking %p and %p\n", aliased_coll_ptr, cur_coll);
+
+
           cur_coll->name = aliased_coll_ptr->name;
 
 	  aliased_coll_ptr->byte_size = cur_coll->byte_size;
@@ -1649,7 +1647,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   cur_entry++; // Move to the next entry - safe since dist_to_end > 0 by this point
   FJALAR_DPRINTF("Jerk jerk jerk\n");
   print_dwarf_entry(test, 0);
-  
+
 
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
@@ -1688,7 +1686,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
           static_member_var_count++;
         }
         else if (tag_is_function(cur_entry->tag_name)) {
-	  
+
           member_func_count++;
           // Set the is_member_func flag here:
           ((function*)(cur_entry->entry_ptr))->is_member_func = 1;
@@ -1855,7 +1853,7 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
 	 (cur_entry->level > function_entry_level)) {
 
     print_dwarf_entry(cur_entry, 0);
-    
+
     if (cur_entry->level == (function_entry_level + 1)) {
       if (tag_is_formal_parameter(cur_entry->tag_name)) {
 	param_count++;
@@ -2052,7 +2050,7 @@ static void link_array_entries_to_members(void)
 	    }
 	  }
 	}
-	
+
       }
     }
 }
@@ -2576,7 +2574,7 @@ char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset)
 
   if (tag_is_function(tag))
     {
-      FJALAR_DPRINTF("Frame_base is a location list @ offset:%x\n", offset);
+      FJALAR_DPRINTF("Frame_base is a location list @ offset:%lx\n", offset);
       ((function*)e->entry_ptr)->frame_base_offset = offset;
       ((function*)e->entry_ptr)->frame_base_expression = a;
 
@@ -2588,7 +2586,7 @@ char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset)
 char harvest_debug_frame_entry(debug_frame *df){
 
   tl_assert(df);
-  FJALAR_DPRINTF("Attaching debug_frame [%x...%x] to the debug_frame list\n", df->begin, df->end);
+  FJALAR_DPRINTF("Attaching debug_frame [%lx...%lx] to the debug_frame list\n", df->begin, df->end);
 
   if(!debug_frame_TAIL) {
     debug_frame_HEAD = df;
@@ -2607,21 +2605,21 @@ char harvest_location_list_entry(location_list* ll, unsigned long offset){
   tl_assert(loc_list_map && "Location list map uninitialized");
   ll->next = NULL;
 
-  FJALAR_DPRINTF("\tAdding the following location to the location list at offset: %x\noffset\tbegin\tend\texpr\n%8x %8x %8x\t(%d + %x)\n\n",
+  FJALAR_DPRINTF("\tAdding the following location to the location list at offset: %lx\noffset\tbegin\tend\texpr\n%lx %lx %lx\t(%d + %llx)\n\n",
                  ll->offset, ll->offset, ll->begin, ll->end, ll->atom, ll->atom_offset);
 
   if(gencontains(loc_list_map, (void *)offset)) {
     tl_assert((cur_loc = gengettable(loc_list_map, (void *)offset)));
 
     while(cur_loc->next != NULL) {
-      FJALAR_DPRINTF("cur_loc: %x, cur_loc->next: %x\n", cur_loc, cur_loc->next);
+      FJALAR_DPRINTF("cur_loc: %p, cur_loc->next: %p\n", cur_loc, cur_loc->next);
       cur_loc = cur_loc->next;
     }
 
     cur_loc->next = ll;
 
   } else {
-    FJALAR_DPRINTF("Creating location list for offset %x\n", offset);
+    FJALAR_DPRINTF("Creating location list for offset %lx\n", offset);
     genputtable(loc_list_map, (void*)offset, ll);
     cur_loc = ll;
   }

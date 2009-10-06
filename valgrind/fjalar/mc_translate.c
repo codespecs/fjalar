@@ -4143,9 +4143,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
          case Ist_WrTmp:
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp),
                                expr2vbits( &mce, st->Ist.WrTmp.data) );
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                assign_DC( 'V', &dce, findShadowTmp_DC(&dce, st->Ist.WrTmp.tmp),
                                expr2tags_DC( &dce, st->Ist.WrTmp.data) );
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_Put:
@@ -4153,11 +4155,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                            st->Ist.Put.offset,
                            st->Ist.Put.data,
                            NULL /* shadow atom */ );
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                do_shadow_PUT_DC( &dce,
                               st->Ist.Put.offset,
                               st->Ist.Put.data,
                               NULL /* shadow atom */ );
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_PutI:
@@ -4166,12 +4170,14 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                             st->Ist.PutI.ix,
                             st->Ist.PutI.bias,
                             st->Ist.PutI.data );
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                do_shadow_PUTI_DC( &dce,
                                st->Ist.PutI.descr,
                                st->Ist.PutI.ix,
                                st->Ist.PutI.bias,
                                st->Ist.PutI.data );
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_Store:
@@ -4206,21 +4212,27 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                            st->Ist.Store.resSC)
                       )));
              }
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_Exit:
             handle_possible_exit( &mce, st->Ist.Exit.jk ); // pgbovine
 	   //complainIfUndefined( &mce, st->Ist.Exit.guard ); // pgbovine
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                do_shadow_cond_exit_DC( &dce, st->Ist.Exit.guard );
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_IMark:
 	   handle_possible_entry( &mce, st->Ist.IMark.addr, sb_in); // pgbovine
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
               	    dce.origAddr = st->Ist.IMark.addr;
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_NoOp:
@@ -4229,8 +4241,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
          case Ist_Dirty:
             do_shadow_Dirty( &mce, st->Ist.Dirty.details );
+#ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                do_shadow_Dirty_DC( &dce, st->Ist.Dirty.details );
+#endif /* _NO_DYNCOMP */
             break;
 
          case Ist_AbiHint:
@@ -4251,9 +4265,10 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                skip the origin-tracking stuff (call to schemeS) above,
                since that's all tangled up with it too; do_shadow_CAS
                does it all. */
-
+#ifndef _NO_DYNCOMP
             if(kvasir_with_dyncomp)
               do_shadow_CAS_DC( &dce, st->Ist.CAS.details);
+#endif /* _NO_DYNCOMP */
             break;
 
          default:

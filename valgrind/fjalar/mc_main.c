@@ -1679,9 +1679,11 @@ void MC_(make_mem_noaccess) ( Addr a, SizeT len )
    // PG - pgbovine - dyncomp - Anytime you make a whole range of
    // addresses invalid, clear all tags associated with those
    // addresses:
+#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       clear_all_tags_in_range(a, len);
    }
+#endif /* _NO_DYNCOMP */
 
    if (UNLIKELY( MC_(clo_mc_level) == 3 ))
       ocache_sarp_Clear_Origins ( a, len );
@@ -1736,9 +1738,11 @@ void MC_(make_mem_defined) ( Addr a, SizeT len )
    // tags to each byte within the chunk (Without language-level
    // information about which bytes correspond to which variables, we
    // have no choice but to give each byte a unique tag):
+#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       allocate_new_unique_tags(a, len);
    }
+#endif /* _NO_DYNCOMP */
 
    if (UNLIKELY( MC_(clo_mc_level) == 3 ))
       ocache_sarp_Clear_Origins ( a, len );
@@ -1852,10 +1856,11 @@ void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len )
 
    // PG - pgbovine - dyncomp - If you're copying over V-bits, you
    // might as well copy over the tags of the relevant bytes:
+#ifndef _NO_DYNCOMP
    if (kvasir_with_dyncomp) {
       copy_tags(src, dst, orig_size);
    }
-
+#endif /* _NO_DYNCOMP */
 }
 
 
@@ -2573,9 +2578,11 @@ void make_aligned_word32_noaccess ( Addr a )
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
       // the other branch calls mc_make_noaccess()):
+#ifndef _NO_DYNCOMP
       if (kvasir_with_dyncomp) {
 	 clear_all_tags_in_range(a, 4);
       }
+#endif /* _NO_DYNCOMP */
       //// END inlined, specialised version of MC_(helperc_b_store4)
    }
 #endif
@@ -2665,9 +2672,11 @@ void make_aligned_word64_noaccess ( Addr a )
       // PG - pgbovine - dyncomp - When you make stuff noaccess, destroy
       // those tags (only put it in this branch of the #ifdef because
       // the other branch calls mc_make_noaccess()):
+#ifndef _NO_DYNCOMP
       if (kvasir_with_dyncomp) {
          clear_all_tags_in_range(a, 8);
       }
+#endif /* _NO_DYNCOMP */
       //// END inlined, specialised version of MC_(helperc_b_store8)
    }
 #endif

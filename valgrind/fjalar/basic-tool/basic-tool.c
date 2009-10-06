@@ -83,7 +83,7 @@ void fjalar_tool_handle_function_entrance(FunctionExecutionState* f_state) {
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      f_state->func,
                      1,
-		     (Addr)f_state->virtualStack 
+		     (Addr)f_state->virtualStack
 		       + f_state->virtualStackFPOffset,
                      f_state->FP,
                      &basicAction);
@@ -105,7 +105,7 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
   visitVariableGroup(FUNCTION_FORMAL_PARAM,
                      f_state->func,
                      0,
-		     (Addr)f_state->virtualStack 
+		     (Addr)f_state->virtualStack
 		       + f_state->virtualStackFPOffset,
                      f_state->FP,
                      &basicAction);
@@ -122,15 +122,15 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
 // 'default' constructor/destructor by calling VG_(calloc) and
 // VG_(free), respectively
 VariableEntry* constructVariableEntry() {
-  return (VariableEntry*)(VG_(calloc)(1, sizeof(VariableEntry)));
+  return (VariableEntry*)(VG_(calloc)("basic-tool.cVE", 1, sizeof(VariableEntry)));
 }
 
 TypeEntry* constructTypeEntry() {
-  return (TypeEntry*)(VG_(calloc)(1, sizeof(TypeEntry)));
+  return (TypeEntry*)(VG_(calloc)("basic-tool.cTE", 1, sizeof(TypeEntry)));
 }
 
 FunctionEntry* constructFunctionEntry() {
-  return (FunctionEntry*)(VG_(calloc)(1, sizeof(FunctionEntry)));
+  return (FunctionEntry*)(VG_(calloc)("basic-tool.cFE", 1, sizeof(FunctionEntry)));
 }
 
 void destroyVariableEntry(VariableEntry* v) {

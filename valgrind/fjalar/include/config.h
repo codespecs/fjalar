@@ -140,11 +140,8 @@
 /* Define if you have the <values.h> header file.  */
 #define HAVE_VALUES_H 1
 
-/* Name of package */
-#define PACKAGE "binutils"
-
 /* Version number of package */
-#define VERSION "2.14"
+//#define VERSION "2.14"
 
 /* Define if you have the stpcpy function */
 #define HAVE_STPCPY 1

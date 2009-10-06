@@ -10,6 +10,8 @@ include $(top_srcdir)/Makefile.tool.am
 # AM_CFLAGS_X86_LINUX   := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
 # AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
+EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -D_NO_DYNCOMP=1
+
 #----------------------------------------------------------------------------
 # Headers
 #----------------------------------------------------------------------------
@@ -60,7 +62,7 @@ fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = $(FJALAR_SOURCES_COMMON)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) -Iinclude -I../VEX/pub -I../include
+	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
@@ -72,7 +74,7 @@ fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = $(FJALAR_SOURCES_COMMON)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) -Iinclude -I../VEX/pub -I../include
+	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_DEPENDENCIES = \
 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
@@ -105,7 +107,7 @@ vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(AM_CFLAGS_PIC: -O2=-O0) -Iinclude -I../VEX/pub -I../include
+	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(AM_CFLAGS_PIC: -O2=-O0) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
@@ -115,9 +117,9 @@ if VGCONF_HAVE_PLATFORM_SEC
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
 	$(VGPRELOAD_FJALAR_SOURCES_COMMON)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \
-	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) -I../VEX/pub
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(AM_CFLAGS_PIC: -O2=-O0) -I../VEX/pub
+	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(AM_CFLAGS_PIC: -O2=-O0) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \

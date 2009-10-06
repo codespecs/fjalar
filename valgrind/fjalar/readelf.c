@@ -43,7 +43,6 @@
 #include "my_libc.h"
 
 #include "pub_tool_basics.h"
-#include "pub_tool_basics_asm.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
@@ -2604,7 +2603,7 @@ process_section_headers (file)
     {
       char *name = SECTION_NAME (section);
 
-      FJALAR_DPRINTF("At section: %d - %s\n", section, name);
+      FJALAR_DPRINTF("At section: %p - %p\n", section, name);
 
       if (section->sh_type == SHT_DYNSYM)
 	{
@@ -4281,11 +4280,11 @@ process_version_sections (file)
 
 	    for (cnt = 0; cnt < total; cnt += 4)
 	      {
-		int j, nn;
+		int j, nn = 0;
 		int check_def, check_need;
 		char *name;
 
-	 FJALAR_DPRINTF ("  %03x:", cnt);
+                FJALAR_DPRINTF ("  %03x:", cnt);
 
 		for (j = 0; (j < 4) && (cnt + j) < total; ++j)
 		  switch (data[cnt + j])
@@ -4598,7 +4597,7 @@ process_symbol_table (file)
             rodata_section_size = section->sh_size;
           } else if (0 == VG_(strcmp)(SECTION_NAME (section), ".data.rel.ro")) {
 	    // Rudd - There's another section known as .data.del.ro
-	    // It's similar in semantics to the .data section, but is used for 
+	    // It's similar in semantics to the .data section, but is used for
 	    // globals that need to appear constant at runtime but have to be
 	    // relocated first.
 	    relrodata_section_addr = section->sh_addr;
@@ -6093,7 +6092,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
 	  if (tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, 0);
 	  }
-	  
+
 	  break;
 	case DW_OP_const1u:
 	  if (print_results_and_ok) {FJALAR_DPRINTF ("DW_OP_const1u: %lu", (unsigned long) byte_get (data++, 1));}
@@ -6222,7 +6221,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               read_leb128 (data, &bytes_read, 0);
               data += bytes_read;
             }
-	  
+
 	  if (tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
@@ -6230,7 +6229,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
 
 	  break;
 	case DW_OP_consts:
-	  
+
 	  const_data = read_leb128 (data, &bytes_read, 1);
           if (print_results_and_ok)
             {
@@ -8245,7 +8244,7 @@ display_debug_info (section, start, file)
                                               &dwarf_entry_array[idx],
                                               1); // DO harvest
 
-	      FJALAR_DPRINTF("Index=%u, ID=%x, tag_name=%s, level=%d\n",
+	      FJALAR_DPRINTF("Index=%lu, ID=%lx, tag_name=%s, level=%d\n",
 			     idx,
 			     dwarf_entry_array[idx].ID,
 			     get_TAG_name(dwarf_entry_array[idx].tag_name),
