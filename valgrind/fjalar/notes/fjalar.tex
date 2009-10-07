@@ -1,6 +1,7 @@
 %% Fjalar design document
-\documentclass[11pt]{article}
-\usepackage[pdftex]{graphicx} 
+\documentclass[11pt]{report}
+\usepackage{fullpage}
+% \usepackage[pdftex]{graphicx} 
 
 \begin{document}
 \chapter{Implementation of Fjalar}
@@ -151,8 +152,9 @@ of VEX IR before it performs the final translation back. For every
 basic block Fjalar performs the following algorithm to find VEX
 instructions which correspond to a function entry:
 
+\begin{verbatim}
 For every Function f:
-  f.entryPC = f.firstline in DWARF[f};
+  f.entryPC = f.firstline in DWARF[f];
 
 iMax = 0
 For every IMark instruction i:
@@ -172,6 +174,7 @@ For every Exit instruction i:
   For every function f:
      if f.startPC < i and f.endPC > i:
         insert exit\_function(f) before i
+\end{verbatim}
 
 \subsubsection{Non-local exits}
 Non-local exits are particularly troublesome for Fjalar due to the
@@ -212,7 +215,6 @@ specially as Valgrind keeps an in-memory structure of the target
 program's register state. This memory address is returned to the
 client tool
 
-\sub
 
 
 
