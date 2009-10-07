@@ -1089,8 +1089,6 @@ void fjalar_print_usage()
    );
    // Make sure to execute this last!
    fjalar_tool_print_usage();
-   printf("Testing 10e-200\n");
-   printf("%.17g\n", 10e-18);
 }
 
 
