@@ -1,7 +1,7 @@
 /**
-   Replacement implementation for float/double to decimal string
-   conversion. This has been borrowed from uClibc, by Manuel Novoa III
-   <mjn3@codepoet.org>, and is licensed under the LGPL
+   Implementation for float/double to decimal string
+   conversion. This has been borrowed from uClibc 0.9.27, by Manuel
+   Novoa III <mjn3@codepoet.org>, and is licensed under the LGPL
 */
 
 #include "pub_tool_basics.h"
