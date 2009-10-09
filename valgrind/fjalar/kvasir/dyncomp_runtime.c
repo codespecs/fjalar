@@ -93,9 +93,6 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
       if (bitarray_size > 0) {
         funcPtr->ppt_entry_bitmatrix = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.1", bitarray_size,
                                                    sizeof(*(funcPtr->ppt_entry_bitmatrix)));
-
-        //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
-        //                    numDaikonVars, bitarray_size);
       }
 
       if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
@@ -124,9 +121,6 @@ void allocate_ppt_structures(DaikonFunctionEntry* funcPtr,
       if (bitarray_size > 0) {
         funcPtr->ppt_exit_bitmatrix = VG_(calloc)("dyncomp_runtime.c: allocate_ppt_structures.4", bitarray_size,
                                                   sizeof(*(funcPtr->ppt_exit_bitmatrix)));
-
-        //        VG_(printf)("numDaikonVars: %u, bitarray_size: %u\n",
-        //                    numDaikonVars, bitarray_size);
       }
 
       if (numDaikonVars > 0) { // calloc'ing 0-length array doesn't work
@@ -258,8 +252,8 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     }
 
     leader_obj = uf_union(uf_obj1, uf_obj2);
-    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at (%s - %s) - VARIABLE\n", 
-		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name ); 
+    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at (%s - %s) - VARIABLE\n",
+		    tag1, tag2, leader_obj->tag,(is_enter == 1)?"Entering":"Exiting", func_name );
     return leader_obj->tag;
   }
 }
@@ -318,7 +312,7 @@ holding tags that belong in the same set (have the same leader).
   UInt* new_tag_leaders;
   UChar* bitmatrix;
 
-  DPRINTF("DC_post_process_for_variable - %x\n", a);
+  DYNCOMP_DPRINTF("DC_post_process_for_variable - %x\n", a);
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -340,7 +334,6 @@ holding tags that belong in the same set (have the same leader).
     // DC_detailed_mode_process_ppt_execution() after we are done
     // collecting the leader tags for all variables:
     if (a) {
-
       new_tag_leaders[daikonVarIndex] = val_uf_find_leader(get_tag(a));
     }
     else {
@@ -349,92 +342,48 @@ holding tags that belong in the same set (have the same leader).
       new_tag_leaders[daikonVarIndex] = 0;
     }
   }
-  else { // default algorithm
-    // Do not bother processing if there is no address!
-    if (!a) {
+  else {// default algorithm
+    if (!a) {// Do not bother processing if there is no address!
       return;
     }
 
   // Update from any val_uf merges that have occurred for variables on
   // previous executions of this program point.
 
-  // Make sure that the degenerate behavior of this line is that it
+  // Make sure that the degenerate behavior of this step is that it
   // returns 0 so we don't do anything when there's no previous info.
-  // to update
-  //  tag leader = val_uf.find(var_tags[v]);
-  //  if (leader != var_tags[v]) {
-  //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
-  //  }
   var_tags_v = var_tags[daikonVarIndex];
 
-  //  VG_(printf)("Tag for this var is %u\n", var_tags_v);
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
     var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                                 leader, var_tags_v);
-/*     DPRINTF("Variable processing in %s[%d]: propagating value " */
-/* 		    "merge of %d (old) and %d (new) to %d\n", */
-/* 		    funcPtr->funcEntry.name, daikonVarIndex, var_tags_v, */
-/* 		    leader, var_tags[daikonVarIndex]); */
-/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: propagating value " */
-/* 		    "merge of %d (old) and %d (new) to %d\n", */
-/* 		    funcPtr->funcEntry.name, daikonVarIndex, var_tags_v, */
-/* 		    leader, var_tags[daikonVarIndex]); */
     var_tags_v = var_tags[daikonVarIndex];
   }
 
   // Make sure that an entry is created in var_uf_map for the tag
   // associated with the new value that we observe from the
   // memory-level layer
-  //  tag new_leader = val_uf.find(new_tags[v]);
-  //  if (!var_uf_map.exists(new_leader)) {
-  //    var_uf_map.insert(new_leader, make_set(new uf_object));
-  //  }
   new_tags_v = get_tag(a);
 
   new_leader = val_uf_find_leader(new_tags_v);
-  if (new_leader && // Add a constraint that leader has to be non-zero
+  if (new_leader && // We don't want to insert 0 tags into the union find structure
       !gengettable(var_uf_map, (void*)new_leader)) {
     var_uf_map_insert_and_make_set(var_uf_map, new_leader);
-/*     DPRINTF("Variable processing in %s[%d]: making new set for %d\n", */
-/* 		    funcPtr->funcEntry.name, daikonVarIndex, new_leader); */
-/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: making new set for %d\n", */
-/* 		    funcPtr->funcEntry.name, daikonVarIndex, new_leader); */
   }
 
   // Merge the sets of all values that were observed before for this
   // variable at this program point with the new value that we just
   // observed
-  //  var_tags[v] = var_uf_map.union(var_tags[v], new_leader);
   var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
                                               var_tags_v, new_leader);
-  if (var_tags_v != new_leader) {
-/*     DPRINTF("Variable processing in %s[%d]: merging distinct values " */
-/* 	    "%d (old) and %d (new) to %d\n", */
-/* 	    funcPtr->funcEntry.name, daikonVarIndex, */
-/* 	    var_tags_v, new_leader, var_tags[daikonVarIndex]); */
-/*     DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values " */
-/* 		    "%d (old) and %d (new) to %d\n", */
-/* 		    funcPtr->funcEntry.name, daikonVarIndex, */
-/* 		    var_tags_v, new_leader, var_tags[daikonVarIndex]); */
-  }
 
-/*   DPRINTF(" new_tags[%d]: %u, var_uf_map_union(old_leader: %u new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n", */
-/*                   daikonVarIndex, */
-/*                   new_tags_v, */
-/* 	  leader, */
-/*                   new_leader, */
-/*                   var_tags_v, */
-/*                   daikonVarIndex, */
-/*                   var_tags[daikonVarIndex], */
-/* 	  a); */
-/*   * */
 
   DYNCOMP_TPRINTF("\n[Dyncomp] Variable %s - Tag %u @ (%s - %s)\n",
 		  cur_var_name,  var_tags[daikonVarIndex],
-		  isEnter?"Entering":"Exiting", func_name ); 
+		  isEnter?"Entering":"Exiting", func_name );
 
-  DYNCOMP_TPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
+  DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
                   daikonVarIndex,
                   new_tags_v,
                   new_leader,
@@ -444,7 +393,7 @@ holding tags that belong in the same set (have the same leader).
                   a);
 
   }
-}
+ }
 
 // This runs once for every Daikon variable at the END of the target
 // program's execution
@@ -480,10 +429,6 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
   // Make sure that the degenerate behavior of this line is that it
   // returns 0 so we don't do anything when there's no previous info.
   // to update
-  //  tag leader = val_uf.find(var_tags[v]);
-  //  if (leader != var_tags[v]) {
-  //    var_tags[v] = var_uf_map.union(leader, var_tags[v]);
-  //  }
   var_tags_v = var_tags[daikonVarIndex];
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
@@ -495,13 +440,6 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
 		  "%d (old) and %d (new) to %d (final round)\n",
 		  funcPtr->funcEntry.name, daikonVarIndex,
 		  var_tags_v, leader, var_tags[daikonVarIndex]);
-
-  /*DYNCOMP_DPRINTF(" var_uf_map_union(leader: %u, var_tags_v: %u) ==> var_tags[%d]: %u (final)\n",
-                  leader,
-                  var_tags_v,
-                  daikonVarIndex,
-                  var_tags[daikonVarIndex]);*/
-
 }
 
 
@@ -579,8 +517,6 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       // map the LEADERS (not individual tags) to comparability
       // numbers because the leaders represent the distinctive sets.
       UInt leader = var_uf_map_find_leader(var_uf_map, tag);
-
-
 
       var_tags[daikonVarIndex] = leader;
       if (gencontains(g_compNumberMap, (void*)leader)) {
@@ -824,9 +760,6 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 
   offsetof(VexGuestX86State, guest_TISTART),
   offsetof(VexGuestX86State, guest_TILEN)
-
-  //  offsetof(VexGuestX86State, guest_NRADDR)
-  //  offsetof(VexGuestX86State, padding)
 };
 
 
