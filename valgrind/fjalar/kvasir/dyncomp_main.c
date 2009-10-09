@@ -101,29 +101,15 @@ UInt n_primary_tag_map_init_entries = 0;
 
 __inline__ UInt get_tag ( Addr a )
 {
-  if(a > 0x05007745) {
-    //VG_(printf)("Get tag %x - Attemppting    ", a);
-  }
-
-  if (IS_SECONDARY_TAG_MAP_NULL(a))
+  if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     return 0; // 0 means NO tag for that byte
-  else {
-    if(a > 0x05007745) {
-      //VG_(printf)("Get tag %x : %u\n", a, primary_tag_map[PM_IDX(a)][SM_OFF(a)]);
-    }
-
-    return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
   }
+
+  return primary_tag_map[PM_IDX(a)][SM_OFF(a)];
 }
 
 __inline__ void set_tag ( Addr a, UInt tag )
 {
-
-
-  if(a > 0x05007745) {
-    //VG_(printf)("Set tag %x : %u\n", a, tag);
-  }
-
   if (IS_SECONDARY_TAG_MAP_NULL(a)) {
     UInt* new_tag_array;
 
@@ -138,12 +124,7 @@ __inline__ void set_tag ( Addr a, UInt tag )
     VG_(memset)(new_tag_array, 0, (SECONDARY_SIZE * sizeof(*new_tag_array)));
     primary_tag_map[PM_IDX(a)] = new_tag_array;
     n_primary_tag_map_init_entries++;
-
-    //    if (!dyncomp_no_gc) {
-    //      check_whether_to_garbage_collect();
-    //    }
   }
-  //  VG_(printf)("Writing to %x and %x\n",&primary_tag_map[PM_IDX(a)], &primary_tag_map[PM_IDX(a)][SM_OFF(a)]);
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
@@ -192,17 +173,9 @@ static __inline__ UInt grab_fresh_tag(void) {
 __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
   Addr curAddr;
   UInt newTag;
-
-/*   if (within_main_program) { */
-/*     DYNCOMP_DPRINTF("allocate_new_unique_tags (a=0x%x, len=%d)\n", */
-/*                     a, len); */
-/*   } */
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     newTag = grab_fresh_tag();
     set_tag(curAddr, newTag);
-    if(0 &&  ( eip >  0x05007745))
-      DYNCOMP_TPRINTF("New tag for 0x%08x is %d\n", curAddr, newTag);
   }
 }
 
@@ -211,8 +184,6 @@ __inline__ void allocate_new_unique_tags ( Addr a, SizeT len ) {
 // respective leaders for every byte
 void copy_tags(  Addr src, Addr dst, SizeT len ) {
   SizeT i;
-  //  VG_(printf)("Performing a copy_tag from %x to %x - %d bytes\n", src, dst, len);
-
   for (i = 0; i < len; i++) {
     UInt leader = val_uf_find_leader(get_tag(src + i));
     set_tag (src + i, leader);
@@ -244,11 +215,6 @@ uf_object* primary_val_uf_object_map[PRIMARY_SIZE];
 UInt n_primary_val_uf_object_map_init_entries = 0;
 
 void val_uf_make_set_for_tag(UInt tag) {
-  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  if(( eip >  0x05007745)) {
-    //VG_(printf)("val_uf_make_set_for_tag(%u);\n", tag);
-  }
-
   if (IS_ZERO_TAG(tag))
     return;
 
@@ -273,13 +239,7 @@ void val_uf_make_set_for_tag(UInt tag) {
     primary_val_uf_object_map[PM_IDX(tag)] = new_uf_obj_array;
     n_primary_val_uf_object_map_init_entries++;
 
-    //    if (!dyncomp_no_gc) {
-      //      check_whether_to_garbage_collect();
-      //    }
   }
-  //  else {
-  //    uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
-  //  }
 
   // Do this unconditionally now:
   uf_make_set(GET_UF_OBJECT_PTR(tag), tag);
@@ -287,23 +247,16 @@ void val_uf_make_set_for_tag(UInt tag) {
 
 // Merge the sets of tag1 and tag2 and return the leader
 static __inline__ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
-  //  Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-/*   if(( eip >  0x05007745)) { */
-/*     VG_(printf)("tag1: %d, tag2:%d\n", tag1, tag2); */
-/*   } */
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());
     uf_object* leader = uf_union(GET_UF_OBJECT_PTR(tag1),
                                  GET_UF_OBJECT_PTR(tag2));
     Char eip_info[256];
-    //    ThreadId tid = VG_(get_running_tid)();
-
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
     DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at 0x%08x (%s)\n",
 		    tag1, tag2, leader->tag, eip, eip_info);
 
-      //      VG_(get_and_pp_StackTrace) (tid, 15);
   return leader->tag;
   }
   else {
@@ -557,23 +510,7 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 
   UInt newTag = grab_fresh_tag();
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-
   (void)static_id;
-
-/*   if (within_main_program) { */
-/*     DYNCOMP_DPRINTF("helperc_CREATE_TAG() = %u [nextTag=%u]\n", */
-/*                     newTag, nextTag); */
-/*   } */
-
-  if (dyncomp_print_trace_all) {
-    Char eip_info[256];
-    VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
-    //    DYNCOMP_TPRINTF("Creating new tag %d at #%x (%s)\n",
-    //	    newTag, static_id, eip_info);
-    //    VG_(printf)("Creating new tag %d at %xx (%s)\n",
-    //	newTag, static_id, eip_info);
-  }
-
   return newTag;
 }
 
@@ -612,8 +549,6 @@ UInt mergeTagsReturn0Count = 0;
 
 VG_REGPARM(2)
 UInt tag1_is_new ( UInt tag1, UInt tag2 ) {
-  //  VG_(printf)("tag1 is new!!!\n");
-
   if IS_ZERO_TAG(tag2) {
     return tag1;
   }
@@ -624,8 +559,6 @@ UInt tag1_is_new ( UInt tag1, UInt tag2 ) {
 
 VG_REGPARM(2)
 UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
-  //  VG_(printf)("tag2 is new!!!\n");
-
   if IS_ZERO_TAG(tag1) {
     return tag2;
   }
@@ -646,12 +579,6 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   if (dyncomp_profile_tags) {
     mergeTagsCount++;
   }
-
-
-/*   if (within_main_program) { */
-/*      DYNCOMP_DPRINTF("helperc_MERGE_TAGS(%u, %u)\n", */
-/*                      tag1, tag2); */
-/*   } */
 
   // Important special case - if one of the tags is 0, then
   // simply return the OTHER tag and don't do any merging.
@@ -729,11 +656,6 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
 __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
   Addr curAddr;
 
-/*   if (within_main_program) { */
-/*     DYNCOMP_DPRINTF("clear_all_tags_in_range(a=0x%x, len=%d)\n", */
-/*                     a, len); */
-/*   } */
-
   for (curAddr = a; curAddr < (a+len); curAddr++) {
     // Set the tag to 0
     set_tag(curAddr, 0);
@@ -751,8 +673,6 @@ __inline__ void clear_all_tags_in_range( Addr a, SizeT len ) {
 // Pre: (tag != 0)
 void enqueue_tag(TagList* listPtr, UInt tag) {
   tl_assert(tag);
-
-  //  VG_(printf)("enqueue_tag ... numElts = %u\n", listPtr->numElts);
 
   // Special case for no elements
   if (listPtr->numElts == 0) {
@@ -799,8 +719,6 @@ char is_tag_in_list(TagList* listPtr, UInt tag, UInt n) {
   UInt count = 0;
 
   tl_assert(tag);
-
-  //  VG_(printf)("is_tag_in_list ... numElts = %u\n", listPtr->numElts);
 
   if (listPtr->numElts == 0) {
     return 0;

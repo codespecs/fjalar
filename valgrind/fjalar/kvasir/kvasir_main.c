@@ -514,6 +514,12 @@ void fjalar_tool_post_clo_init(void)
   if(kvasir_transitioning)
     fjalar_output_struct_vars = True;
 
+  // If we're printing trace info, we want
+  // all debugging info also.
+  if(dyncomp_print_trace_all) {
+    dyncomp_print_debug_info = True;
+  }
+
   // Special-case .dtrace handling if kvasir_dtrace_filename ends in ".gz"
   if (kvasir_dtrace_filename) {
     int filename_len = VG_(strlen)(kvasir_dtrace_filename);
@@ -731,7 +737,6 @@ void fjalar_tool_finish() {
     // Do one extra propagation of variable comparability at the end
     // of execution once all of the value comparability sets have
     // been properly updated:
-
     DC_extra_propagate_val_to_var_sets();
 
     // Now print out the .decls file at the very end of execution:
@@ -781,7 +786,7 @@ void fjalar_tool_handle_function_exit(FunctionExecutionState* f_state) {
     FPUtag = VG_(get_XMM_N_tag)(currentTID, 0);
 #else
     FPUtag = VG_(get_FPU_stack_top_tag)(currentTID);
-#endif   
+#endif
 
     for (i = 0; i < sizeof(UWord); i++) {
       set_tag((Addr)(&(f_state->xAX)) + (Addr)i, xAXtag);
