@@ -605,6 +605,7 @@ static int __dtostr(double d,char *buf,int maxlen,
 /*  printf("e=%d e10=%d prec=%d\n",e,e10,prec); */
   if (e10>0) {
     int first=1;	/* are we about to write the first digit? */
+    int j = 0;
     tmp = 10.0;
     i=e10;
     while (i>10) { tmp=tmp*1e10; i-=10; }
@@ -612,7 +613,6 @@ static int __dtostr(double d,char *buf,int maxlen,
     /* the number is greater than 1. Iterate through digits before the
      * decimal point until we reach the decimal point or maxlen is
      * reached (in which case we switch to scientific notation). */
-    int j = 0;
     while (tmp>0.9) {
       char digit;
       double fraction=d/tmp;
@@ -971,14 +971,12 @@ num_printf:
       case 'f':
       case 'g':
 	{
-	  int g=(ch=='g');
 	  double d=va_arg(arg_ptr,double);
 	  s=buf+1;
 	  if (width==0) width=1;
 	  if (!flag_dot) preci=6;
 	  if (flag_sign || d < +0.0) flag_in_sign=1;
 
-	  sz= fptostr(d, width, preci, 'g', s, sizeof(buf)-1);
 
 /* 	  sz=__dtostr(d,s,sizeof(buf)-1,width,preci,g); */
 

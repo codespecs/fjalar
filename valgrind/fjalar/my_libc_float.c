@@ -204,6 +204,8 @@ extern __fpmax_t __wcstofpmax_l(const wchar_t *wcs, wchar_t **endptr,
 #endif /* __UCLIBC_HAS_WCHAR__ */
 #endif /* _LIBC */
 
+int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxlen);
+
 /* The following checks in an __fpmax_t is either 0 or +/- infinity.
  *
  * WARNING!!!   WARNING!!!   WARNING!!!   WARNING!!!   WARNING!!!   WARNING!!!

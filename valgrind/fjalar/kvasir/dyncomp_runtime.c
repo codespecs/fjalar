@@ -312,7 +312,7 @@ holding tags that belong in the same set (have the same leader).
   UInt* new_tag_leaders;
   UChar* bitmatrix;
 
-  DYNCOMP_DPRINTF("DC_post_process_for_variable - %x\n", a);
+  DYNCOMP_DPRINTF("DC_post_process_for_variable - %p\n", (void *)a);
   // Remember to use only the EXIT structures unless
   // isEnter and --separate-entry-exit-comp are both True
   if (dyncomp_separate_entry_exit_comp && isEnter) {
@@ -356,8 +356,9 @@ holding tags that belong in the same set (have the same leader).
 
   leader = val_uf_find_leader(var_tags_v);
   if (leader != var_tags_v) {
-    var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
-                                                leader, var_tags_v);
+    UInt old_leader = var_uf_map_union(var_uf_map, leader, var_tags_v);
+
+    var_tags[daikonVarIndex] = (dyncomp_no_var_leader)?var_tags_v:old_leader;
     var_tags_v = var_tags[daikonVarIndex];
   }
 
@@ -375,22 +376,22 @@ holding tags that belong in the same set (have the same leader).
   // Merge the sets of all values that were observed before for this
   // variable at this program point with the new value that we just
   // observed
-  var_tags[daikonVarIndex] = var_uf_map_union(var_uf_map,
-                                              var_tags_v, new_leader);
+  new_leader = var_uf_map_union(var_uf_map, var_tags_v, new_leader);
+  var_tags[daikonVarIndex] = new_leader;
 
 
   DYNCOMP_TPRINTF("\n[Dyncomp] Variable %s - Tag %u @ (%s - %s)\n",
-		  cur_var_name,  var_tags[daikonVarIndex],
+		  cur_var_name,  new_tags_v,
 		  isEnter?"Entering":"Exiting", func_name );
 
-  DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: 0x%x)\n",
+  DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
                   daikonVarIndex,
                   new_tags_v,
                   new_leader,
                   var_tags_v,
                   daikonVarIndex,
                   var_tags[daikonVarIndex],
-                  a);
+                  (void *)a);
 
   }
  }
@@ -516,7 +517,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       // smaller comparability sets, which is inaccurate.  We should
       // map the LEADERS (not individual tags) to comparability
       // numbers because the leaders represent the distinctive sets.
-      UInt leader = var_uf_map_find_leader(var_uf_map, tag);
+      UInt leader = val_uf_find_leader(var_uf_map_find_leader(var_uf_map, tag));
 
       var_tags[daikonVarIndex] = leader;
       if (gencontains(g_compNumberMap, (void*)leader)) {
@@ -671,7 +672,7 @@ void debugPrintTagsInRange(Addr low, Addr high) {
   for (a = high; a >= low; a--) {
     tag = get_tag(a);
     if (tag) {
-      DYNCOMP_DPRINTF("  0x%x: %u\n", a, tag);
+      DYNCOMP_DPRINTF("  %p: %u\n", (void *)a, tag);
       already_print_ellipses = 0;
     }
 

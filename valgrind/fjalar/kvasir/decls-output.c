@@ -224,7 +224,7 @@ static void printAllFunctionDecls(char faux_decls);
 static void printAllObjectPPTDecls(void);
 
 // Initializes all the data structures needed to perform decls
-void initDecls()
+void initDecls(void)
 {
   //Initialize needed hash tables.
   if(!nameToType) {
@@ -251,7 +251,7 @@ void initDecls()
     }
 }
 
-void cleanupDecls()
+void cleanupDecls(void)
 {
   // Clean-up tables.
   if(nameToType) {
@@ -266,7 +266,7 @@ void cleanupDecls()
 
 }
 
-static void  harvestAllFunctionObjects();
+static void  harvestAllFunctionObjects(void);
 
 // This has different behavior depending on if faux_decls is on.  If
 // faux_decls is on, then we do all the processing but don't actually
@@ -467,7 +467,7 @@ printDeclsEntryAction(VariableEntry* var,
       {
         DPRINTF("enclosingVarNamesStack[%d] = %s\n", i, enclosingVarNamesStack.stack[i]);
       }
-  DPRINTF("Address %8x \n", pValue);
+  DPRINTF("Address %p \n", (void *)pValue);
 
   if (!kvasir_old_decls_format) {
     int len = VG_(strlen)(varName);
@@ -836,32 +836,33 @@ printDeclsEntryAction(VariableEntry* var,
         // the object
 	struct genhashtable *objTable = NULL;
 	unsigned int cur_par_id = 0;
-	
-	objTable = gengettable(funcObjectTable, varFuncInfo);	      
+        int format = 0;
+
+	objTable = gengettable(funcObjectTable, varFuncInfo);
 	tl_assert(objTable);
 
-	int format = 0;
+
 	DPRINTF(" Class variable\n");
 	if (((char *)(VG_(strstr)(varName, "this->")) == varName)) {
 	  format = 1;
 	} else if ((char *)(VG_(strstr)(varName, "this[0].")) == varName) {
 	  DPRINTF(" Weird 0th element pointer\n");
 	  format = 2;
-	} 
-	
-	if(format && !special_zeroth_elt_var) {  
+	}
+
+	if(format && !special_zeroth_elt_var) {
 	  fputs("    parent ", decls_fp);
 	  tl_assert(varFuncInfo && varFuncInfo->parentClass);
 
 	  if(var->memberVar->structParentType) {
 	    tl_assert(cur_par_id = (unsigned int)gengettable(objTable, var->memberVar->structParentType));
-	    tl_assert(var->memberVar->structParentType->aggType->memberVarList 
+	    tl_assert(var->memberVar->structParentType->aggType->memberVarList
 		      && (var->memberVar->structParentType->aggType->memberVarList->numVars > 0));
 	    printDaikonExternalVarName(var, var->memberVar->structParentType->typeName, decls_fp);
 	    //	    fputs(var, var->memberVar->structParentType->typeName, decls_fp);
 	  } else {
 	    tl_assert(cur_par_id = (unsigned int)gengettable(objTable, varFuncInfo->parentClass));
-	    tl_assert(varFuncInfo->parentClass->aggType && 
+	    tl_assert(varFuncInfo->parentClass->aggType &&
 		      varFuncInfo->parentClass->aggType->memberVarList &&
 		      (varFuncInfo->parentClass->aggType->memberVarList->numVars > 0 ));
 	    printDaikonExternalVarName(var, varFuncInfo->parentClass->typeName, decls_fp);
@@ -870,20 +871,20 @@ printDeclsEntryAction(VariableEntry* var,
 
 	  fputs(OBJECT_PPT, decls_fp);
 	  fprintf(decls_fp, " %d ", cur_par_id);
-	  
+
 
 	  if(format == 2) {
-	    fputs(" this->", decls_fp); 
+	    fputs(" this->", decls_fp);
 	    printDaikonExternalVarName(var, var->name, decls_fp);
 	    //fputs(var->name, decls_fp);
 	  } else {
 	    printDaikonExternalVarName(var, varName, decls_fp);
 	    //fputs(varName, decls_fp);
 	    }
-	  fputs("\n", decls_fp);	
-	}       
+	  fputs("\n", decls_fp);
+	}
 
-	
+
 	if(!format && !isSequence && gengettable(nameToType,enclosingVarNamesStack.stack[0])) {
 	  fputs("    parent ", decls_fp);
 	  tl_assert(var->memberVar->structParentType);
@@ -891,8 +892,8 @@ printDeclsEntryAction(VariableEntry* var,
 	  //fputs(var->memberVar->structParentType->typeName, decls_fp);
 	  fputs(OBJECT_PPT, decls_fp);
 	  tl_assert(cur_par_id = (unsigned int)gengettable(objTable, var->memberVar->structParentType));
-	  tl_assert(var->memberVar->structParentType->aggType && 
-		    var->memberVar->structParentType->aggType->memberVarList && 
+	  tl_assert(var->memberVar->structParentType->aggType &&
+		    var->memberVar->structParentType->aggType->memberVarList &&
 		    (var->memberVar->structParentType->aggType->memberVarList > 0));
 	  if(!cur_par_id) {
 	    DPRINTF(" Having troubles @ %s\n", varName);
@@ -900,18 +901,18 @@ printDeclsEntryAction(VariableEntry* var,
 	    DPRINTF(" parent: %s\n", var->memberVar->structParentType->typeName);
 	  }
 	  fprintf(decls_fp, " %d ", cur_par_id);
-	  fputs(" this->", decls_fp); 
+	  fputs(" this->", decls_fp);
 	  printDaikonExternalVarName(var, var->name, decls_fp);
 	  //	  fputs(var->name, decls_fp);
 	  if(special_zeroth_elt_var) {
 	    fputs("[0]", decls_fp);
 	  }
-	  fputs("\n", decls_fp);	      
+	  fputs("\n", decls_fp);
 	}
-			  
+
       }
-        
-	
+
+
       // ****** Comparability ****** (optional)
 
       // If we are outputting a REAL .decls with DynComp, that means
@@ -922,10 +923,10 @@ printDeclsEntryAction(VariableEntry* var,
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
         // since Daikon ignores them.
-	cur_var_name = varName;
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
+	cur_var_name = varName;
 
         fputs("    comparability ", decls_fp);
         fprintf(decls_fp, "%d", comp_number);
@@ -1213,7 +1214,7 @@ printDeclsEntryAction(VariableEntry* var,
 	  //          fputs(funcPtr->parentClass->typeName, decls_fp);
           fputs(OBJECT_PPT, decls_fp);
           fputs(" ", decls_fp);
-	  fprintf(decls_fp, "%d", gengettable(usedObjTable, funcPtr->parentClass));
+	  fprintf(decls_fp, "%d", (int)gengettable(usedObjTable, funcPtr->parentClass));
 	  //          fputs(ppt_par_id, decls_fp);
           fputs("\n", decls_fp);
         }
@@ -1237,32 +1238,32 @@ printDeclsEntryAction(VariableEntry* var,
 
 	  usedObjTable = gengettable(funcObjectTable, funcPtr);
 	  tl_assert(usedObjTable);
-	  
+
 	  usedObjIt = gengetiterator(usedObjTable);
 
 	  while(!usedObjIt->finished) {
 	    TypeEntry *type = gennext(usedObjIt);
 	    DPRINTF("Considering adding %s(%p) to parent user of program point %s\n", type->typeName, type , funcPtr->name);
-	    
+
 	    if(gencontains(typeNameStrTable, type->typeName) || !type->aggType->memberVarList || (type->aggType->memberVarList->numVars <= 0)) {
 	      continue;
 	    }
-	    
+
 	    DPRINTF("Adding %s(%p) to parent user of program point %s\n", type->typeName, type, funcPtr->name);
-	    
+
 
 	    fputs("  parent user ", decls_fp);
 	    printDaikonExternalVarName(NULL, type->typeName, decls_fp);
 	    //	    fputs(type->typeName, decls_fp);
 	    fputs(OBJECT_PPT, decls_fp);
 	    fputs(" ", decls_fp);
-	    fprintf(decls_fp, "%d", gengettable(usedObjTable, type));
+	    fprintf(decls_fp, "%d", (int)gengettable(usedObjTable, type));
 	    fputs("\n", decls_fp);
 	    genputtable(typeNameStrTable, type->typeName, (void *)1);
 	  }
-	  
-	  
-	  
+
+
+
 
 /*           struct geniterator* typeNameStrIt = 0; */
 
@@ -1505,9 +1506,9 @@ printDeclsEntryAction(VariableEntry* var,
 
     // Object records aren't needed in new decls format unless parent relations are used
     //    if (!kvasir_parent_records && !kvasir_old_decls_format)
-    if (!kvasir_object_ppts && !kvasir_old_decls_format)      
+    if (!kvasir_object_ppts && !kvasir_old_decls_format)
       return;
-   
+
 
     // HACK ALERT: We need to temporarily pretend that we are not using
     // kvasir_with_dyncomp in order to print out the OBJECT program
@@ -1518,7 +1519,7 @@ printDeclsEntryAction(VariableEntry* var,
       hacked_dyncomp_switch = True;
     }
 
-    
+
 
     while (hasNextType(typeIt)) {
       TypeEntry* cur_type = nextType(typeIt);
@@ -1806,7 +1807,8 @@ printDeclsEntryAction(VariableEntry* var,
 
  // Utility function for getting the (string) length of
  // some portion of a string array
- int stringArrayLen(char** stringArr,int start, int end)
+
+int stringArrayLen(char** stringArr,int start, int end)
   {
    int i, len = 0;
    for(i=start; i < end; i++) {
@@ -1872,13 +1874,13 @@ harvestObject(VariableEntry* var,
   (void)layersBeforeBase; (void)overrideIsInit; (void)disambigOverride;
   (void)isSequence; (void)pValue; (void)pValueArray; (void)numElts;
   (void)varFuncInfo; (void)isEnter; (void)pValueGuest; (void)pValueArrayGuest;
-  
+
   DPRINTF("Examining %s(%p)\n", varName, var);
 
   // We're not interested in values yet, so we only need one of
   // {function entry, function exit}. We'll choose function exit
   // to get information on the return variable
-  if(1) { 
+  if(1) {
     tl_assert(cur_object_table);
     if(IS_AGGREGATE_TYPE(var->varType)) {
       DPRINTF("Harvest object %s (%s)\n", varName, var->varType->typeName);
@@ -1888,7 +1890,7 @@ harvestObject(VariableEntry* var,
 	cur_par_id++;
       }
     }
-      
+
     if (IS_MEMBER_VAR(var)) {
       unsigned int i = 0;
       SimpleList* superList = NULL;
@@ -1900,7 +1902,7 @@ harvestObject(VariableEntry* var,
 	genputtable(cur_object_table, var->memberVar->structParentType, (void *)cur_par_id);
 	cur_par_id++;
       }
-      
+
       // We can't be the member of a type that isn't an aggregate.
       tl_assert(var->memberVar->structParentType->aggType);
       superList = var->memberVar->structParentType->aggType->superclassList;
@@ -1912,24 +1914,24 @@ harvestObject(VariableEntry* var,
 
       while(curNode && (i < superList->numElts)) {
 	Superclass* curClass = curNode->elt;
-	
+
 	if(!gencontains(cur_object_table, curClass->class)) {
 	  genputtable(cur_object_table, curClass->class, (void *)cur_par_id);
 	  cur_par_id++;
 	}
 	DPRINTF("Harvest object %s - %d\n", curClass->class->typeName, cur_par_id);
-	
+
 	curNode = curNode->next;
 	i++;
-      }     
-      
+      }
+
     }
   }
-  
+
   return DISREGARD_PTR_DEREFS;
 }
 
- 
+
 
 static void harvestOneFunctionObject(FunctionEntry* func, struct genhashtable* object_set) {
   DPRINTF("Harvesting objects for %s (%p)\n", func->name, func);
@@ -1943,7 +1945,7 @@ static void harvestOneFunctionObject(FunctionEntry* func, struct genhashtable* o
   }
 
   visitVariableGroup(GLOBAL_VAR,
-                     func, 
+                     func,
                      False,
                      0,
                      0,
@@ -1960,8 +1962,7 @@ static void harvestOneFunctionObject(FunctionEntry* func, struct genhashtable* o
 }
 
 
-
-static void harvestAllFunctionObjects() {
+static void harvestAllFunctionObjects(void) {
   FuncIterator* funcIt = newFuncIterator();
   tl_assert(funcObjectTable);
 

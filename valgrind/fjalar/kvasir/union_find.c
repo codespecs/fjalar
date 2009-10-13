@@ -18,8 +18,7 @@
 // Based on http://www.cs.rutgers.edu/~chvatal/notes/uf.html
 
 #include "union_find.h"
-//#include "tool.h"
-
+#include "kvasir_main.h"
 #include "../my_libc.h"
 
 uf_name uf_find(uf_object *object) {
@@ -29,8 +28,10 @@ uf_name uf_find(uf_object *object) {
   for(root=object; root->parent!=root; root=root->parent);
 
   // Path-compression:
-  for(next=object->parent; next!=root; object=next, next=object->parent) {
-    object->parent=root;
+  if(!dyncomp_no_path_compression) {
+    for(next=object->parent; next!=root; object=next, next=object->parent) {
+      object->parent=root;
+    }
   }
 
   return root;

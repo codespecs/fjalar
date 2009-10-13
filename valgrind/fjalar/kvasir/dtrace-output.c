@@ -41,8 +41,8 @@
        fprintf(dtrace_fp, __VA_ARGS__); } while (0)
 
 // Global variable storing the current variable name.
-// currently used for debugging comparability values 
-// as Dyncomp isn't passed much in the way of 
+// currently used for debugging comparability values
+// as Dyncomp isn't passed much in the way of
 // the variable information.
 char* cur_var_name = NULL;
 
@@ -93,7 +93,6 @@ extern const int DecTypeByteSizes[];
 // to the .dtrace file:
 static void printDtraceFunctionHeader(FunctionEntry* funcPtr, char isEnter)
 {
-  ThreadId tid = VG_(get_running_tid)();
   DPRINTF("Printing dtrace header for %s\n", funcPtr->fjalar_name);
   DPRINTF("dtrace_fp is %p\n", dtrace_fp);
   tl_assert(dtrace_fp);
@@ -179,8 +178,8 @@ static void printOneDtraceString(char* str)
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
-    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (string)\n",
-		    (Addr)strHead, len);
+    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (string)\n",
+		    (void *)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
 }
@@ -238,8 +237,8 @@ static void printOneDtraceStringAsIntArray(char* str) {
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
-    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (string as int)\n",
-		    (Addr)strHead, len);
+    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (string as int)\n",
+		    (void *)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
 }
@@ -363,7 +362,7 @@ static char printDtraceSingleVar(VariableEntry* var,
 
   tl_assert(var);
 
-  DPRINTF("  printDtraceSingleVar(): %p(guest %p) overrideisInit: %d\n", pValue, pValueGuest, overrideIsInit);
+  DPRINTF("  printDtraceSingleVar(): %p(guest %p) overrideisInit: %d\n", (void *)pValue, (void *)pValueGuest, overrideIsInit);
 
   // a pValue of 0 means nonsensical because there is no content to
   // dereference:
@@ -418,8 +417,8 @@ static char printDtraceSingleVar(VariableEntry* var,
     // Since we observed all of these bytes as one value, we will
     // merge all of their tags in memory
     if (kvasir_with_dyncomp) {
-      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (pointer)\n",
-		      pValue, sizeof(void*));
+      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (pointer)\n",
+		      (void *)pValue, sizeof(void*));
       val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
     }
   }
@@ -504,7 +503,7 @@ static char printDtraceSequence(VariableEntry* var,
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
 
-  DPRINTF("pValueArray: %x - pValueArrayGuest: %x\nnumElts: %d\n", pValueArray, pValueArrayGuest, numElts);
+  DPRINTF("pValueArray: %p - pValueArrayGuest: %p\nnumElts: %d\n", (void *)pValueArray, (void *)pValueArrayGuest, numElts);
 
 /*   if(numElts > 10) { */
 /*     VG_(printf)("%s - numElts: %d\n", var->name, numElts); */
@@ -717,8 +716,8 @@ char printDtraceSingleBaseValue(Addr pValue,
       TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
-        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(0x%x, %d) (single base)\n",
-                        (Addr)pValue, DecTypeByteSizes[decType]);
+        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (single base)\n",
+                        (void *)pValue, DecTypeByteSizes[decType]);
         val_uf_union_tags_in_range((Addr)pValue, DecTypeByteSizes[decType]);
       }
 
@@ -765,7 +764,7 @@ void printDtraceBaseValueSequence(DeclaredType decType,
   char firstInitEltFound = 0;
   Addr firstInitElt = 0;
 
-  DPRINTF("printDtraceBaseVAlueSequence(), pValueArray: %x\n", pValueArray);
+  DPRINTF("printDtraceBaseVAlueSequence(), pValueArray: %p\n", (void *)pValueArray);
 
   if (fjalar_array_length_limit != -1) {
     limit = min(limit, fjalar_array_length_limit);
@@ -1010,13 +1009,13 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
   cur_var_name = varName;
 
-  DPRINTF("pValue: %x\n pValueGuest: %x\n pValueArray: %x\n pValueArrayGuest:%x\n", pValue, pValueGuest, pValueArray, pValueGuest);
+  DPRINTF("pValue: %p\n pValueGuest: %p\n pValueArray: %p\n pValueArrayGuest:%p\n", (void *)pValue, (void *)pValueGuest, (void *)pValueArray, (void *)pValueGuest);
   DPRINTF("numelts: %d\n", numElts);
 
 
   if(pValue)
-    DPRINTF("Value is %16x\n",
-	    *(Addr *)pValue);
+    DPRINTF("Value is %p\n",
+	    (void*)(*(Addr *)pValue));
 
 
   // Line 1: Variable name
@@ -1127,7 +1126,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
   }
   DPRINTF("\n*********************************\n%s\n*********************************\n\n", varName);
   if (variableHasBeenObserved) {
-    return DEREF_MORE_POINTERS; 
+    return DEREF_MORE_POINTERS;
   }
   else {
     return DO_NOT_DEREF_MORE_POINTERS;
@@ -1146,11 +1145,11 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   funcPtr = f_state->func;
   tl_assert(funcPtr);
 
-  DPRINTF("* %s %s at FP=0x%x, lowestSP=0x%x, startPC=%p\n",
+  DPRINTF("* %s %s at FP=%p, lowestSP=%p, startPC=%p\n",
           (isEnter ? "ENTER" : "EXIT "),
           f_state->func->fjalar_name,
-	  f_state->FP,
-          f_state->lowestSP,
+	  (void*)f_state->FP,
+          (void*)f_state->lowestSP,
           (void*)f_state->func->startPC);
 
   // Reset this properly!
