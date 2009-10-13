@@ -37,6 +37,8 @@ const char* ENTER_PPT;
 const char* EXIT_PPT;
 const char* SIMPLE_EXIT_PPT;
 
+void initDecls(void);
+void cleanupDecls(void);
 void outputDeclsFile(char faux_decls);
 void DC_outputDeclsAtEnd(void);
 
@@ -55,5 +57,8 @@ void getUsedObjects(VariableEntry* ent, struct genhashtable* ht);
 char* getParentId(char* typeName);
 void traverseNestedClasses(AggregateType* agg, struct genhashtable *ht);
 char* stringArrayFlatten(char** stringStack, int start, int end);
+
+//Utility functions
+int stringArrayLen(char** stringArr,int start, int end);
 
 #endif

@@ -180,6 +180,12 @@ Bool dyncomp_units_mode;
 Bool dyncomp_dataflow_only_mode;
 Bool dyncomp_dataflow_comparisons_mode;
 
+// These turn off a few of Dyncomp's optimizations to help preserve merge
+// information when producing traces.
+Bool dyncomp_no_var_leader;
+Bool dyncomp_no_val_leader;
+Bool dyncomp_no_path_compression;
+
 #define DPRINTF(...) do { if (kvasir_print_debug_info) \
       VG_(printf)(__VA_ARGS__); } while (0)
 

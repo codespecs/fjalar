@@ -106,10 +106,20 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
    IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
    IRAtom *voldLo  = NULL, *boldLo  = NULL;
    IRAtom *expd_eq_old = NULL;
+   IRAtom *orig;
    IROp   opCasCmpEQ;
    Int    elemSzB;
    IRType elemTy;
    IRType ty;
+   /* Variables for the instrumented dirty call */
+   IRDirty  *di;
+   void*    helper = NULL;
+   Char*    hname = NULL;
+
+   /* Silence unused variables. (These are kept around as opposed to
+      being removed to keep dyncomp_translate.c analogues of
+      mc_translate.c functions as similar as possible */
+   (void)expd_eq_old; (void)boldLo; (void)bdataLo; (void)bexpdLo;
 
    /* single CAS */
    tl_assert(cas->oldHi == IRTemp_INVALID);
@@ -153,7 +163,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
      = assignNew_DC(dce, elemTy,
                     expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/));
 
-   IRAtom *orig = mkexpr(cas->oldLo);
+   orig = mkexpr(cas->oldLo);
 
    tl_assert(isOriginalAtom_DC(dce, orig));
    tl_assert(isShadowAtom_DC(dce, voldLo));
@@ -193,10 +203,6 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
    /* 7. if "expected == old"
             store data# to shadow memory */
    //   do_shadow_STle_DC( dce, cas->addr,  vdataLo/*vdata*/);
-
-   IRDirty  *di;
-   void*    helper = NULL;
-   Char*    hname = NULL;
 
    switch (ty) {
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
@@ -242,10 +248,23 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
    IRAtom *voldLo  = NULL, *boldLo  = NULL;
    IRAtom *xHi = NULL, *xLo = NULL, *xHL = NULL;
    IRAtom *expd_eq_old = NULL, *zero = NULL;
+   IRAtom *origLo;
+   IRAtom *origHi;
    IROp   opCasCmpEQ, opOr, opXor;
    Int    elemSzB, memOffsLo, memOffsHi;
    IRType elemTy;
    IRType ty;
+   IRDirty  *di;
+   /* Variables for the instrumented dirty call */
+   void*    helper = NULL;
+   Char*    hname = NULL;
+
+   /* Silence unused variables. (These are kept around as opposed to
+      being removed to keep dyncomp_translate.c analogues of
+      mc_translate.c functions as similar as possible */
+   (void)expd_eq_old;(void)boldLo;(void)boldHi;
+   (void)bexpdLo;(void)bexpdHi;(void)bdataLo;(void)bdataHi;
+   (void)xHL;(void)xHi;(void)xLo;
 
 
    /* double CAS */
@@ -321,8 +340,8 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
            dce, elemTy,
            expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/));
 
-   IRAtom *origLo = mkexpr(cas->oldLo);
-   IRAtom *origHi = mkexpr(cas->oldHi);
+   origLo = mkexpr(cas->oldLo);
+   origHi = mkexpr(cas->oldHi);
 
 
    switch(origLo->tag) {
@@ -366,9 +385,6 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
    /* 7. if "expected == old"
             store data# to shadow memory */
 
-   IRDirty  *di;
-   void*    helper = NULL;
-   Char*    hname = NULL;
 
    switch (ty) {
       case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);

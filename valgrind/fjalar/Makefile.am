@@ -38,6 +38,7 @@ FJALAR_SOURCES_COMMON = \
 	mc_translate.c \
 	mc_machine.c \
 	mc_errors.c \
+	fjalar_dwarf.c \
 	fjalar_main.c \
 	fjalar_runtime.c \
 	fjalar_select.c \

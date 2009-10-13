@@ -660,7 +660,9 @@ void fjalar_tool_print_usage()
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
 "                             of every program point (for debug only)\n"
 "    --old-decls-format       Use the old(1.0) decls format\n\n"
-
+"    --no-path-compression    Turns off path compression in Dyncomp's union-find structures\n"
+"    --no-var-leader          Turns off variable tag leader optimizations\n"
+"    --no-val-leader          Turns off value tag leader optimizatoins\n"
    );
 }
 
@@ -699,6 +701,9 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else if VG_YESNO_CLO(arg, "dyncomp-print-inc",  dyncomp_print_incremental) {}
   else if VG_YESNO_CLO(arg, "separate-entry-exit-comp",
 		       dyncomp_separate_entry_exit_comp) {}
+  else if VG_YESNO_CLO(arg, "no-path-compression", dyncomp_no_path_compression) {}
+  else if VG_YESNO_CLO(arg, "no-var-leader", dyncomp_no_var_leader) {}
+  else if VG_YESNO_CLO(arg, "no-val-leader", dyncomp_no_val_leader) {}
   else
     return False;   // If no options match, return False so that an error
                     // message can be reported by the Valgrind core.
