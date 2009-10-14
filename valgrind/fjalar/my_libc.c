@@ -977,6 +977,7 @@ num_printf:
 	  if (!flag_dot) preci=6;
 	  if (flag_sign || d < +0.0) flag_in_sign=1;
 
+	  fptostr(d, width, preci, 'g', s, sizeof(buf)-1);
 
 /* 	  sz=__dtostr(d,s,sizeof(buf)-1,width,preci,g); */
 
