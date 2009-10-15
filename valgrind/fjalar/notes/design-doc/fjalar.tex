@@ -3,6 +3,7 @@
 \usepackage[pdftex]{graphicx} 
 \usepackage{listings}
 \usepackage{program}
+\usepackage{wrapfig}
 \title{Implementation of Fjalar}
 \date{}
 \author{}
@@ -18,7 +19,12 @@ exits of a target program, and the variable traverser, which
 collects information about program variables. A diagram of these 3
 modules, including their inputs is provided below.
 
-
+\begin{figure}
+\noindent
+\centering
+\includegraphics[width=150mm]{fjalar-arch-initial.png}
+\caption{Fjalar architecture}
+\end{figure}
 
 This chapter is organized into the following sections: 
 
@@ -38,14 +44,14 @@ high-level constructs present in the source code. This mapping is
 designed to allow debuggers to present higher level and more useful
 information to a programmer than it could otherwise.
 
-DWARF is a standardized format for debugging information. There are currently
-3 versions of the DWARF format. DWARF version 1 was developed and
-released in the mid 1980s, but never achieved widespread use due to
-inefficiencies. DWARF version 2 was released in 1990 and is currently
-the standard debugging format used by Linux binaries. Fjalar is
-only designed to work with DWARF version 2. DWARF version 3 was
-released in 2006 and has yet to gain wide-use, though it is backwards
-compatible with DWARF version 2.
+DWARF is a standardized format for debugging information
+\cite{silverstein1993dwarf}. There are currently 3 versions of the
+DWARF format. DWARF version 1 was developed and released in the mid
+1980s, but never achieved widespread use due to inefficiencies. DWARF
+version 2 was released in 1990 and is currently the standard debugging
+format used by Linux binaries. Fjalar is only designed to work with
+DWARF version 2. DWARF version 3 was released in 2006 and has yet to
+gain wide-use, though it is backwards compatible with DWARF version 2.
 
 Fjalar leverages the information available in the DWARF format to
 provide an interface for tools to read and modify data in a target
@@ -55,71 +61,71 @@ program using source-level constructs.
 
 \subsection{Readelf hooks}
 Due to the complex nature of both the DWARF debugging information and
-the ELF binary format (the standard file format for binaries on Linux),
-We make use of readelf, an existing tool for displaying information in
-ELF binaries. readelf is a part of GNU binutils and is able to display
-the information in a human readable form. Fjalar contains a modified
-version of readelf in which all the functions for display DWARF
-information are modified with calls into Fjalar code. typedata.c is
+the ELF binary format (the standard object file format on Linux),
+Fjalar makes use of readelf, a component of GNU Binutils designed to
+display information on ELF object files. Fjalar contains a modified
+version of readelf in which all the functions for displaying DWARF
+information contain callbacks into Fjalar. \texttt{typedata.c} is
 responsible for constructing a very low-level, but organized version
-of the DWARF information. This low-level information closely mimics
-the tree structure of the original DWARF information.
+of the DWARF information. This low-level representation closely mimics
+the internal structure of the DWARF information, but is not an
+appropriate representation for the work Fjalar must do.
 
 \subsection{Translating DWARF information into Fjalar data structures}
 The majority of Fjalar's compile-time information is represented by
 three data structures: (1) FunctionEntry, (2) VariableEntry, and (3)
-TypeEntry. There declarations can be located in fjalar\_include.h
+TypeEntry. Their declarations can be located in \texttt{fjalar\_include.h}
 
 \subsubsection{FunctionEntry}
-The FunctionEntry struct contains information about a particular
-function. It contains the name, the name of the file which  
-contains the function, the start and end address of the function's 
+The FunctionEntry structure contains information about a particular
+function. It contains the function's name, the name of the file in which  
+the function is defined, the start and end address of the function's 
 instructions, whether or not the function is declared as file-static,
 and lists of the function's formal parameters and local variables. 
 
-When dealing with C++ programs, a function's FunctionEntry will  
+When dealing with C++ programs, a function's FunctionEntry will also  
 contain the mangled and demangled name of the function and, if it's a
-member function, a pointer to the TypeEntry for its enclosing class.
+member function, a pointer to the TypeEntry of its enclosing class.
 
 \subsubsection{VariableEntry}
-The VariableEntry struct contains information about a particular
+The VariableEntry structure contains information about a particular
 variable in the program. It contains the name of the variable, whether
 it is a global, local, formal parameter, or return variable, the
-location of the variable as well as it's declared type. Additionally,
-if it is a member variable of a class or struct it contains a
-TypeEntry pointer for its enclosing class.
-
+location of the variable and itss declared type. Additionally,
+if it is a member variable it contains a pointer to its enclosing
+class, struct, or union.
 
 \subsubsection{TypeEntry}
-The TypeEntry struct contains information about a paritcular type used
+The TypeEntry structure contains information about a particular type used
 by the program. There are premade type entries for all the primitive
-types defined in C(char, int, long, etc). the TypeEntry contains the
+types defined in C and C++, such as char, int, long, etc.A TypeEntry
+contains  the
 declared type of the variable, the name of the type, and the size of
 the type in bytes.
 
-If the type corresponds to a struct, class, or union (this is called
-an aggregate type throughout the Fjalar source), it contains a pointer
-to an AggregateType struct which contains additional information
+If the type corresponds to a struct, class, or union (this is referred to
+as an aggregate type throughout the Fjalar codebase), it contains a pointer
+to an AggregateType structure which contains additional information
 including a list of all member variables and, in the case of C++
-classes, A list of constructors, destructors, and superclasses.
+classes, a list of constructors, destructors, and superclasses.
 
 \subsubsection{Translation}
-generate\_fjalar\_entries.c is responsible for translating the low-level
-information provided by typedata.c and translating it into the above
-Fjalar data structures. It accomplishes this by taking the tree of
-DWARF data and making 2 passes across it. First it makes a pass
-for functions. It creates a FunctionEntry for every function contained
-in the debugging information and it creates 2 hashtables for accessing
-them. One is indexed by the address of the function's starting
+\texttt{generate\_fjalar\_entries.c} is responsible for translating the low-level
+representation provided by \texttt{typedata.c} and translating it into the above
+Fjalar data structures. It accomplishes this by taking the representation of
+the DWARF data and making 2 passes across it. First it makes a pass
+for functions. During this pass Fjalar creates a FunctionEntry for every function contained
+in the debugging information and creates 2 hash tables for accessing
+them. One hash table is indexed by the address of the function's starting
 address (referred to as the startPC), the second is indexed by the
 address of the instruction corresponding to the first line of code
-(referred to as the endPC). 
+(referred to as the entryPC). 
 
-It then makes a second pass over the the tree and creates a 
+It then makes a second pass over the representation, creating  a 
 VariableEntry and, if necessary, a TypeEntry for every Variable. It is
 at this point that it associates formal parameters and local variables
-with their local functions, as well as creating a list of all the
-global varaibles in the program.
+with their containing functions, as well as creating a list of all the
+global variables in the program.
 
 Finally the function table is iterated over once to make sure that
 member functions and constructors/destructors are correctly referenced
@@ -128,15 +134,9 @@ by their enclosing class's TypeEntry.
 This entire process takes linear time proportional to the size of the
 debugging information. This process finishes fairly fast for most
 programs, even particularly large C programs. Large C++ programs,
-however, are known to contain large amounts of debugging information
-%% FIND A CITATION FOR THIS
-
-
-%and as such slowdown Fjalar's DWARF processing considerable. On one
-%large C++ program Fjalar took XXXXX %% time ABB code and find out the
-%% amount of dwarf information it has
-
-
+particularly those which make use of templates, are known to contain
+large amounts of debugging information \cite{rotithor1999measurement}
+and as such will take longer to process.
 
 \section{Function entry and exit handling}
 Fjalar instruments the entry and exit of every function in the target
@@ -423,6 +423,8 @@ the memory location of all variables
 
 %% italicize?
 %% http://dwarfstd.org/Debugging%20using%20DWARF.pdf
+\bibliographystyle{plain}
+\bibliography{fjalar}
 \end{document}
 
 
