@@ -110,22 +110,23 @@ including a list of all member variables and, in the case of C++
 classes, a list of constructors, destructors, and superclasses.
 
 \subsubsection{Translation}
-\texttt{generate\_fjalar\_entries.c} is responsible for translating the low-level
-representation provided by \texttt{typedata.c} and translating it into the above
-Fjalar data structures. It accomplishes this by taking the representation of
-the DWARF data and making 2 passes across it. First it makes a pass
-for functions. During this pass Fjalar creates a FunctionEntry for every function contained
+\texttt{generate\_fjalar\_entries.c} is responsible for translating
+the low-level representation provided by \texttt{typedata.c} and
+translating it into the data structures defined in section 1.3. It
+accomplishes this by taking the representation of the DWARF data and
+making 2 passes across it. First it makes a pass for functions. During
+this pass Fjalar creates a FunctionEntry for every function contained
 in the debugging information and creates 2 hash tables for accessing
-them. One hash table is indexed by the address of the function's starting
-address (referred to as the startPC), the second is indexed by the
-address of the instruction corresponding to the first line of code
-(referred to as the entryPC). 
+them. One hash table is indexed by the address of the function's
+starting address (referred to as the startPC), the second is indexed
+by the address of the instruction corresponding to the first line of
+code (referred to as the entryPC).
 
-It then makes a second pass over the representation, creating  a 
-VariableEntry and, if necessary, a TypeEntry for every Variable. It is
-at this point that it associates formal parameters and local variables
-with their containing functions, as well as creating a list of all the
-global variables in the program.
+Fjalar then makes a second pass over the initial representation,
+creating a VariableEntry and, if necessary, a TypeEntry for every
+Variable. It is at this point that it associates formal parameters and
+local variables with their containing functions, as well as creating a
+list of all the global variables in the program.
 
 Finally the function table is iterated over once to make sure that
 member functions and constructors/destructors are correctly referenced
@@ -140,16 +141,38 @@ and as such will take longer to process.
 
 \section{Function entry and exit handling}
 Fjalar instruments the entry and exit of every function in the target
-program. This instrumentation is to allow Fjalar to collect any
-information necessary to perform a variable traversal of the function
-(detailed in the following section) and to run any code requested by
-the client tool.
+program with a callback into Fjalar. This callback is to allow Fjalar
+to collect any information necessary to perform a variable traversal
+of the function, which is detailed in section 1.4.2, and to run any
+code requested by the client tool.
 
+To perform this instrumentation, Fjalar is built on top of Valgrind, a
+framework for dynamic binary instrumentation
+\cite{nethercote2007valgrind}. Valgrind was chosen as the basis for
+Fjalar's instrumentation functionality due to it's ability to work
+with unmodified program binaries. Fjalar was designed to be run
+on unmodified program binaries with debugging symbols to avoid any
+disadvantages of source-based instrumentation or customized
+compilation toolchains. This design decision was motivated by
+limitations in previous source-based tools encountered when trying to
+build a Daikon front-end \cite{Guo2006} (The construction of Kvasir, 
+a Daikon front-end built on top of Fjalar is detailed in the following 
+chapter).
+
+Valgrind makes use of dynamic binary re-compilation: Valgrind loads a
+target program into the same process as itself and then recompiles the
+target program's machine code, one small code block at a
+time. Valgrind recompiles the machine code block into an intermediate
+representation (IR) known as VEX. Valgrind then provides a client tool
+with the VEX IR and the ability to instrument the IR with its own VEX
+instructions. Valgrind will then translate this instrumented IR block
+back into machine code and execute it. This process is covered in much
+greater detail in Nethercote \cite{nethercote2007valgrind}.
 
 \subsection{Determining entries and exits}
-The DWARF information provides the first instruction and last
-instructions of a function. Unfortunately, this
-is insufficient for detecting entries and exits for a few reasons:
+The DWARF information provides the first and last instructions of a
+function, however, this is insufficient for detecting entries and
+exits for a few reasons:
 
 For entries, we would prefer to enter after the prologue of the
 function has run, as the variable information provided by the DWARF
@@ -157,139 +180,135 @@ information tends to be valid for a function with a valid stack frame.
 Fjalar
 
 For exits, the last instruction only corresponds to one possible
-exit. However, for functions with multiple exit points, the compiler
+exit. For functions with multiple exit points, the compiler
 may choose to have multiple instructions which exit the function, so
-going by the last instruction is not enough. Luckily, Valgrind
-translates all exits out of a function into a special IR which makes
-Fjalar's job easier
+going by the last instruction is not enough. 
 
-Valgrind allows any tool built upon it to instrument every basic block
-of VEX IR before it performs the final translation back. For every
-basic block Fjalar performs the following algorithm to find VEX
-instructions which correspond to a function entry:
+To deal with the above issues Fjalar makes use of the available DWARF
+information and the VEX IR. To determine function entry, Fjalar takes the
+startPC, the entryPC (section 1.3.4), and the VEX basic block which
+contains the startPC. Fjalar will then examine every instruction
+starting from the beginning, asserting it has found an apropriate
+entry point if: (1) the current instruction is at entryPC, or (2) if
+the current instruction is at the end of the basic block. This
+choice of entry point is motivated by the assumption that the prologue
+will always be completed by the end of the first basic block of the
+function. Pseudocode for this algorithm is provided below.
 
 \begin{program}
-For every Function f:
-  f.entryPC = f.firstline in DWARF[f];
+\PROC |insert\_entry|(basic\_block) \BODY
+  \IF \NOT |contains|(|functionEntryByStartPC|, |basic\_block[0]|) \THEN \EXIT \FI;
 
-iMax = 0
-For every IMark instruction i:
-  Look up i in FunctionEntryByStartPC 
-  if functionEntry f is found:
-    iMax = i
-    For the remaining instructions j in i's basic block
-      if j <= f.entryPC: 
-        iMax = j
-if iMax != 0:
-  Insert enter\_function(f) before iMax
+   |function| := |get|(functionEntryByStartPC, basic\_block[0]);
+   |entryPoint| := |addressOf|(|basic\_block[0]|);
 
-Determining exits is easier due to the VEX Instruction type
-Ist\_Exit. To determine exits:
-o
-For every Exit instruction i:
-  For every function f:
-     if f.startPC < i and f.endPC > i:
-        insert exit\_function(f) before i
-\end{program}
+   \FOR |instr| \in |basic\_block| \DO
+     \IF |addressOf|(|instr|) \leq f.entryPC \THEN \DO
+       |entryPoint| := |addressOf|(|instr|);
+
+   |insert\_call|(|entryPoint|, |FjalarEntryCallBack|)
+   \ENDPROC
+ \end{program}
+
+Determining function exits are much simpler due to the Valgrind
+representing all functions exits with the VEX IR Statement EXIT. To
+instrument function exits, Fjalar just needs to insert callbacks
+before every EXIT in the VEX IR.
 
 \subsubsection{Non-local exits}
 Non-local exits are particularly troublesome for Fjalar due to the
-fact that they do will not show up as a normal function exit in the
-assembly, and accordingly do not show up in the VEX IR as EXIT
-instructions. Because of this Fjalar will currently not execute exit
+fact that they do not show up as a normal function exit in the
+assembly and accordingly do not show up in the VEX IR as EXIT
+statements. Because of this Fjalar will currently not execute exit
 instrumentation for any functions that were non-locally exited.
 
 \section{Variable Traversal}
+Fjalar provides information about all non-local variables in a
+program. This information includes its type, its name, levels of
+pointer indirection, and the location of the variable at that point in
+the program's execution. Fjalar is able to provide the exact location 
+in memory due to Valgrind running its client tools in the same memory
+space as the target program.
+
 Due to the memory-unsafe nature of C/C++ safely exploring the
 variables in a target C/C++ program is a difficult
 proposition. Accordingly, the handling of variable traversal is the
 complex aspect of Fjalar. Variables can be broken into 2 groups:
-normal variables % This is a terrible name, think of a better name % 
-and pointers and arrays
+non-pointer variables and pointers.
 
 For both cases the DWARF information provides us with enough
-information to locate the beginning of the variable.
+information to determine the variable's location at run-time.
 
-\subsection{Translating DWARF locations}
-Locations in the DWARF information are provided as a sequence of
-DWARF expressions. Each DWARF expression is itself made up of a DWARF
-operator and one or more DWARF atoms. All DWARF expressions work. In
-addition to the DWARF atoms the DWARF operations may also perform
-operations on an implicit stack. The DWARF location information can be
-thought of as an instruction set for a very simple stack machine.
+\subsection{Translating DWARF location information}
+Locations in the DWARF information are provided as a sequence of DWARF
+expressions. Each DWARF expression is itself made up of a DWARF
+operator and one or more DWARF atoms. In addition to the DWARF atoms
+the DWARF operations may also perform operations on an implicit
+stack. The DWARF location information can be thought of as an
+instruction set for a very simple stack machine.
 
 Fjalar currently implements a subset of this instruction set. Fjalar's
-interpreter can be found in fjalar\_traversal.c and complete
-information about the set of DWARF operations can be find in
-include/elf/dwarf2.h and the DWARF website %link
+DWARF expression interpreter can be found
+in\texttt{fjalar\_traversal.c} and completeinformation about the set
+of DWARF operations can be found in Silverstein
+\cite{silverstein1993dwarf}.
 
-\subsection{Normal Variables} % change name
-For these variables, Fjalar simply executes the sequence of DWARF
+\subsection{Non-pointer variables}
+For these variables, Fjalar simply interprets the sequence of DWARF
 expressions in the DWARF information to determine the variable's
 address in memory. Variables contained in registers do not need to be treated
 specially as Valgrind keeps an in-memory structure of the target
-program's register state. This memory address is returned to the
-client tool
+program's register state, and a pointer into this register state is
+used as the location of the variable.
 
 \subsection{Pointers and Arrays}
 Pointer and array variables give Fjalar the most trouble. The C
 language standard does not require that pointers point to a valid
 location at all points in the program. Instead it leaves the behavior
 of dereferencing pointers which point to invalid locations, such as
-NULL or a location that was recently free()'d among others, as
+NULL or a location that was recently free()'d, as
 undefined. This makes Fjalar's job of performing variable traversal
 hard. Due to the duality of pointers and arrays in C/C++, the above
 also applies to arrays.
-
-Fjalar aims to provide a way to access all non-local variables 
-in scope at a given function entry or exit. For all in-scope variable
-Fjalar provides information about the variables such as its type,
-its name, levels of pointer indirection, and the address of the
-variable in memory. Fjalar is able to provide the exact location in
-memory due to running in the same memory space as the target
-program. The VALGRIND PAPER %TODO find and reference% 
-describes in detail the subtleties involved in achieving this
-robustly.
-
-%% The below needs to be restructured. As with C Fjalar doesn't really
-%% handle arrays and pointers in a separate manner. Pointers are just
-%% consider to point to many possible elements, if it points > 1
-%% elements it's a ``sequence'' (fjalar's term for arrays)
 
 \subsubsection{Pointers}
 In addition to the variable information mentioned in the previous
 section, Fjalar would like to recursively provide the
 address in memory of any pointed to variables. For example In the
-following code segment:
+following C snippet:
 
+\lstset{language=C, frame=single,}
+\begin{lstlisting}
 int *ptr1;
 int **ptr2;
+\end{lstlisting}
 
 Fjalar would like to provide the address of *ptr1, ptr1, **ptr2,
 *ptr2, and ptr2. The ptr1 case is relatively trivial because if ptr1
-was a propelry declared variable, The compiler will have allocated
+was a properly declared variable, the compiler will have allocated
 space somewhere in the program's memory/register space for the
 variable (This assumption does not hold in the case of optimized
 programs, which Fjalar does not currently support). So in the case of
-ptr1 it's simply an issue of providing the address of *ptr, and the
+ptr1 it's simply an issue of providing the address of ptr1, and the
 value at that address.
 
-ptr2, however, is much more problematic. **ptr2 and *ptr2 are easy for
-the same reasons mentioned above. Providing the address of ptr2,
-however, requires Fjalar to examine a memory location provided by the
-easier. It's worthwhile to ensure the subtle differnce between the
-difficulty in these 2 cases.The address of **ptr2 is most likely safe
-to dereference as it's an automatic variable and has been propelrly
+ptr2, however, is much more problematic. ptr2 and *ptr2 are easy for
+the same reasons mentioned above. Providing the address of **ptr2,
+however, requires Fjalar to examine a memory location provided the
+value at the address for *ptr2. It's worthwhile to examine the
+difference in complexity of determining the address of *ptr2 and
+**ptr2. The address of ptr2 is safe
+to dereference as it's an automatic variable and has been properly
 allocated by the compiler, thus finding the address of *ptr2 is easy,
-it just requires reading the value at the address of **ptr2. the value
-in **ptr2 may be garbage or program, however we do not need to actually
+it just requires reading the value at the address of ptr2. the value
+in ptr2 may be garbage or program, however we do not need to actually
 dereference this value to provide the address of *ptr2.
 
-Providing the address of ptr2, however, does require to dereference
-this value. This is a very unsafe operation, and could cause both
-Fjalar and the target program to crash if the address we use is
-invalid. This is obviously unacceptable. To counteract this Fjalar
-makes use of Memcheck to ensure this operation is safe. Fjalar queries
+Providing the address of **ptr2, however, does require a dereference
+of the value at ptr2. This is an unsafe operation and could cause both
+Fjalar and the target program to crash if the value at ptr2 is an
+invalid memory location. To counteract this Fjalar makes use of
+Memcheck, a Valgrind tool designed to detect memory errors \cite{nethercote-shadow}. Fjalar queries
 Memcheck before accessing any memory location in the target
 program, If Memcheck reports the address as either unallocated or
 uninitialized Fjalar will not due the dereference and simply mark the
@@ -307,8 +326,6 @@ support passing an array by value, so when passed to a function,
 arrays are decayed into a pointer. To determine whether or not a
 pointer argument is an array Fjalar employs the following algorithm to
 determine the length of the array.
-
-
 
 1. Determine If the address points to the global address space, if so
    try and find a global variable in the DWARF information that could
@@ -378,7 +395,7 @@ was discussed in detail in section %TODO x.1.3.1
 
 Consider the code fragment below:
 
-\lstset{language=C, frame=single}
+\lstset{language=C, frame=single,}
 \begin{lstlisting}
 int main(int argc, char **argv) {
   int b = 5;
@@ -393,6 +410,7 @@ instruction of the 'return 5'. An example of the pre and post
 instrumented  VEX IR is included below
 
 %%TODO INCLUDE EXAMPLE
+
 
 \subsection{Variable Inspection}
 
@@ -416,6 +434,7 @@ provided by a functionExecutionState.
 
 Below is an example client  which makes use of the Fjalar API to print
 the memory location of all variables
+
 
 \bibliographystyle{plain}
 \bibliography{fjalar}
