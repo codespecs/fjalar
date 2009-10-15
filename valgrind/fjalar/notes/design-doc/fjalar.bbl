@@ -1,0 +1,16 @@
+\newcommand{\noopsort}[1]{} \newcommand{\printfirst}[2]{#1}
+  \newcommand{\singleletter}[1]{#1} \newcommand{\switchargs}[2]{#2#1}
+\begin{thebibliography}{1}
+
+\bibitem{rotithor1999measurement}
+H.~Rotithor, K.~Harris, and M.~Davis.
+\newblock {Measurement and Analysis of C and C++ Performance}.
+\newblock {\em Digital Technical Journal}, 10(1):32--47, 1999.
+
+\bibitem{silverstein1993dwarf}
+J.~Silverstein.
+\newblock {DWARF Debugging Information Format}.
+\newblock {\em Proposed Standard, UNIX International Programming Languages
+  Special Interest Group}, 1993.
+
+\end{thebibliography}
