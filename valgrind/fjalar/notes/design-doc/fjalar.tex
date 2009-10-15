@@ -378,7 +378,7 @@ was discussed in detail in section %TODO x.1.3.1
 
 Consider the code fragment below:
 
-\lstset{language=C, frame=single,}
+\lstset{language=C, frame=single}
 \begin{lstlisting}
 int main(int argc, char **argv) {
   int b = 5;
@@ -393,7 +393,6 @@ instruction of the 'return 5'. An example of the pre and post
 instrumented  VEX IR is included below
 
 %%TODO INCLUDE EXAMPLE
-
 
 \subsection{Variable Inspection}
 
@@ -418,11 +417,6 @@ provided by a functionExecutionState.
 Below is an example client  which makes use of the Fjalar API to print
 the memory location of all variables
 
-
-
-
-%% italicize?
-%% http://dwarfstd.org/Debugging%20using%20DWARF.pdf
 \bibliographystyle{plain}
 \bibliography{fjalar}
 \end{document}
