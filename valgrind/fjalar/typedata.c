@@ -2555,8 +2555,9 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
       cur_entry = &dwarf_entry_array[idx];
 
       if ((tag_is_function(cur_entry->tag_name)) &&
-	  (cur_entry->level < e->level))
+	  (cur_entry->level < e->level)) {
         return ((function*)cur_entry->entry_ptr)->start_pc;
+      }
     }
   return 0;
 }

@@ -6135,7 +6135,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               data += 2;
             }
 
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
 	  }
@@ -6154,7 +6154,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               data += 4;
             }
 
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
 	  }
@@ -6173,7 +6173,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               data += 4;
             }
 
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
 	  }
@@ -6222,7 +6222,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               data += bytes_read;
             }
 
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
 	  }
@@ -6242,7 +6242,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               data += bytes_read;
             }
 
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
 	  }
@@ -6317,7 +6317,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
                           uconst_data);
                 }
 
-	      if (tag_is_formal_parameter(entry->tag_name)) {
+	      if (entry && tag_is_formal_parameter(entry->tag_name)) {
 		harvest_formal_param_location_atom(entry, op, (long)uconst_data);
 		harvest_formal_param_location_offset(entry, (long)uconst_data);
 	      }
@@ -6420,7 +6420,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
 	case DW_OP_lit29:
 	case DW_OP_lit30:
 	case DW_OP_lit31:
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && (tag_is_formal_parameter(entry->tag_name))) {
 	    harvest_formal_param_location_atom(entry, op, 0);
 	  }
 	  if (print_results_and_ok) FJALAR_DPRINTF ("DW_OP_lit%d", op - DW_OP_lit0);
