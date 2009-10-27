@@ -348,7 +348,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return tag_is_compile_unit(tag);
     case DW_AT_external:
       return (tag_is_function(tag) ||
-	      tag_is_variable(tag));
+	      tag_is_variable(tag) ||
+	      tag_is_member(tag));
     case DW_AT_frame_base:
       FJALAR_DPRINTF("frame_base tag\n");
     case DW_AT_low_pc:
@@ -958,6 +959,11 @@ char harvest_external_flag_value(dwarf_entry *e, unsigned long value) {
   else if (tag_is_variable(tag))
     {
       ((variable*)e->entry_ptr)->is_external = value;
+      return 1;
+    }
+  else if (tag_is_member(tag)) 
+    {
+      ((member*)e->entry_ptr)->is_external = value;
       return 1;
     }
   else
@@ -1652,6 +1658,8 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
   // structs/classes expect DW_TAG_variable as static member variables,
+  // (GCC 4.4.x+ denote static member variables via DW_TAG_member + 
+  // (DW_AT_external - rudd)
   // DW_TAG_subprogram as member functions, and DW_TAG_inheritance as
   // superclass identifiers
 
@@ -1680,7 +1688,11 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
       }
       else {
 	if (tag_is_member(cur_entry->tag_name)) {
-          member_var_count++;
+	  if(((member*)cur_entry->entry_ptr)->is_external) {
+	    static_member_var_count++;
+	  } else {
+	    member_var_count++;
+	  }
         }
         else if (tag_is_variable(cur_entry->tag_name)) {
           static_member_var_count++;
@@ -1729,7 +1741,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
           }
         }
         else {
-          if (tag_is_member(cur_entry->tag_name)) {
+          if (tag_is_member(cur_entry->tag_name) && !((member*)cur_entry->entry_ptr)->is_external) {
             collection_ptr->member_vars[member_var_index] = cur_entry;
             member_var_index++;
           }
@@ -1755,7 +1767,10 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
         if (tag_is_variable(cur_entry->tag_name)) {
           collection_ptr->static_member_vars[static_member_var_index] = cur_entry;
           static_member_var_index++;
-        }
+        } else if (tag_is_member(cur_entry->tag_name) && ((member*)cur_entry->entry_ptr)->is_external) {
+            collection_ptr->static_member_vars[static_member_var_index] = cur_entry;
+            static_member_var_index++;
+	}
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
