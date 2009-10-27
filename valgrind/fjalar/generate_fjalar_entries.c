@@ -959,6 +959,7 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 
   FJALAR_DPRINTF("ENTER extractOneGlobalVariable(%p)\n", e);
 
+
   if (e == NULL || !tag_is_variable(e->tag_name)) {
     VG_(printf)( "Error, global variable information struct is null or belongs to the incorrect type\n");
     abort();
@@ -1088,19 +1089,8 @@ static void initializeGlobalVarsList(void)
 	// either the namespace or function name along with the
 	// filename in front of the variable name:
 	if (cur_entry->level > 1) {
-	  // TODO: Support different namespaces in the future, but for
-	  // now, simply ignore the namespace_name if a namespace is
-	  // found and don't bother finding an enclosing function:
-	  namespace_type* enclosing_namespace = findNamespaceForVariableEntry(cur_entry);
-	  unsigned long startPC =
-	    enclosing_namespace ? 0 : findFunctionStartPCForVariableEntry(cur_entry);
-
-/* 	  if (enclosing_namespace) { */
-/* 	    VG_(printf)("%s [%s]\n", */
-/* 			((variable*)(cur_entry->entry_ptr))->name, */
-/* 			enclosing_namespace->namespace_name); */
-/* 	  } */
-
+          // TODO: Support for different namespaces in the future.
+	  unsigned long startPC = findFunctionStartPCForVariableEntry(cur_entry);
 	  extractOneGlobalVariable(cur_entry,
 				   startPC);
 	}
@@ -1169,6 +1159,7 @@ static void updateAllGlobalVariableNames(void) {
 
     curVar = curNode->var;
     tl_assert(IS_GLOBAL_VAR(curVar));
+
 
     // Do not bother to make unique names for C++ static member
     // variables that are in the globalVars list because they should
@@ -2541,6 +2532,7 @@ extractOneVariable(VarList* varListPtr,
     }
 
   FJALAR_DPRINTF("\tFinished stripping modifiers for %s\n", variableName);
+  FJALAR_DPRINTF("\tfunctionStartPC is %x\n", functionStartPC);
   FJALAR_DPRINTF("\tvarPtr is %p\n", varPtr);
   FJALAR_DPRINTF("\ttypePtr is %p\n", typePtr);
 
