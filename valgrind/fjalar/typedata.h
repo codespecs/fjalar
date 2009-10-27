@@ -157,6 +157,7 @@ typedef struct
                              // where x is the location relative to struct head
 
   unsigned long accessibility;  // accessibility of this member variable (public, protected, or private)
+  char is_external;         // is_external when applied to a member variable implies it's static
 
   // TODO: support for bit fields not yet implemented
   //  char is_bit_field; // 1 = bit field

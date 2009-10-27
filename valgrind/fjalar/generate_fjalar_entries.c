@@ -1899,42 +1899,59 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       (VarList*)VG_(calloc)("generate_fjalar_entries.c: extractSTructUnionType.6", 1, sizeof(*(t->aggType->staticMemberVarList)));
 
     for (ind = 0; ind < collectionPtr->num_static_member_vars; ind++) {
-      variable* staticMemberPtr =
-	(variable*)((collectionPtr->static_member_vars[ind])->entry_ptr);
+
+      char *mangled_name = NULL, *name;
+      char is_external;
+      unsigned long globalVarAddr = 0, accessibility;
+      dwarf_entry* type_ptr;
+
+      // Commonalities between these really need to be extracted
+      // into a struct which variable and member "inherit" from
+      // for now, let's use Macros
+
+      tl_assert(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name) ||
+		tag_is_member(collectionPtr->static_member_vars[ind]->tag_name));
+#define EXTRACT_STATIC_INFO(dwarf_type, dwarf_ptr) \
+      dwarf_type *staticMemberPtr = (dwarf_type*)dwarf_ptr;	\
+      is_external = staticMemberPtr->is_external; \
+      accessibility = staticMemberPtr->accessibility; \
+      type_ptr = staticMemberPtr->type_ptr
+
+      if(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name)) {
+	EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
+	mangled_name = staticMemberPtr->mangled_name; 
+	globalVarAddr = staticMemberPtr->globalVarAddr;
+      } else if(tag_is_member(collectionPtr->static_member_vars[ind]->tag_name)) {
+	EXTRACT_STATIC_INFO(member, collectionPtr->static_member_vars[ind]->entry_ptr);
+      } 
+	
 
       // Try to find a global address in VariableSymbolTable if it
       // doesn't exist yet:
-      if (!staticMemberPtr->globalVarAddr) {
+      if (!globalVarAddr) {
         // Try the C++ mangled name:
-        if (staticMemberPtr->mangled_name) {
-          staticMemberPtr->globalVarAddr = (Addr)gengettable(VariableSymbolTable,
-                                                             (void*)staticMemberPtr->mangled_name);
+        if (mangled_name) {
+          globalVarAddr = (Addr)gengettable(VariableSymbolTable, (void*)mangled_name);
         }
       }
 
-      FJALAR_DPRINTF("Trying to extractOneVariable on static member var: %s at %p\n",
-                     staticMemberPtr->mangled_name,
-                     (void *)staticMemberPtr->globalVarAddr);
-
       extractOneVariable(t->aggType->staticMemberVarList,
-			 staticMemberPtr->type_ptr,
+			 type_ptr,
                          // If a mangled name exists, pass it in so
                          // that it can be de-mangled:
-			 (staticMemberPtr->mangled_name ?
-			  staticMemberPtr->mangled_name :
-			  staticMemberPtr->name),
+			 (mangled_name ?
+			  mangled_name :
+			  name),
 			 0,
 			 1,
-			 staticMemberPtr->is_external,
-			 staticMemberPtr->globalVarAddr,
+			 is_external,
+			 globalVarAddr,
 			 0,
 			 1, 0, 0, 0, 0,
 			 t,
-                         staticMemberPtr->accessibility,
+                         accessibility,
 			 0);
 
-      FJALAR_DPRINTF("Finished Trying to extractOneVariable on member var: %s\n",
-		     staticMemberPtr->mangled_name);
     }
 
     // This is a very important step.  We want to iterate over
