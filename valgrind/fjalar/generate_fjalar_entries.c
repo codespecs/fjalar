@@ -884,12 +884,6 @@ static void repCheckOneVariable(VariableEntry* var) {
         tl_assert(0);
       }
     }
-
-    // These properties should hold for file-static variables declared
-    // within a function body:
-    if (var->globalVar->functionStartPC) {
-      tl_assert(!var->globalVar->isExternal);
-    }
   }
 
   // These properties hold for all variables:
