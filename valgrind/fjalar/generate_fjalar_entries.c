@@ -1084,7 +1084,9 @@ static void initializeGlobalVarsList(void)
 	// filename in front of the variable name:
 	if (cur_entry->level > 1) {
           // TODO: Support for different namespaces in the future.
-	  unsigned long startPC = findFunctionStartPCForVariableEntry(cur_entry);
+	  namespace_type* enclosing_namespace = findNamespaceForVariableEntry(cur_entry);
+	  unsigned long startPC =
+	    enclosing_namespace ? 0 : findFunctionStartPCForVariableEntry(cur_entry);
 	  extractOneGlobalVariable(cur_entry,
 				   startPC);
 	}
@@ -1913,12 +1915,12 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
       if(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name)) {
 	EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
-	mangled_name = staticMemberPtr->mangled_name; 
+	mangled_name = staticMemberPtr->mangled_name;
 	globalVarAddr = staticMemberPtr->globalVarAddr;
       } else if(tag_is_member(collectionPtr->static_member_vars[ind]->tag_name)) {
 	EXTRACT_STATIC_INFO(member, collectionPtr->static_member_vars[ind]->entry_ptr);
-      } 
-	
+      }
+
 
       // Try to find a global address in VariableSymbolTable if it
       // doesn't exist yet:

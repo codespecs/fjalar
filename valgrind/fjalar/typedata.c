@@ -961,7 +961,7 @@ char harvest_external_flag_value(dwarf_entry *e, unsigned long value) {
       ((variable*)e->entry_ptr)->is_external = value;
       return 1;
     }
-  else if (tag_is_member(tag)) 
+  else if (tag_is_member(tag))
     {
       ((member*)e->entry_ptr)->is_external = value;
       return 1;
@@ -1658,7 +1658,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
   // structs/classes expect DW_TAG_variable as static member variables,
-  // (GCC 4.4.x+ denote static member variables via DW_TAG_member + 
+  // (GCC 4.4.x+ denote static member variables via DW_TAG_member +
   // (DW_AT_external - rudd)
   // DW_TAG_subprogram as member functions, and DW_TAG_inheritance as
   // superclass identifiers
@@ -2542,9 +2542,13 @@ namespace_type* findNamespaceForVariableEntry(dwarf_entry* e) {
     {
       cur_entry = &dwarf_entry_array[idx];
 
-      if ((tag_is_namespace(cur_entry->tag_name)) &&
-	  (cur_entry->level < e->level))
-        return (namespace_type*)(cur_entry->entry_ptr);
+      if(cur_entry->level < e->level) {
+        if (tag_is_namespace(cur_entry->tag_name)) {
+          return (namespace_type*)(cur_entry->entry_ptr);
+        } else {
+          return 0;
+        }
+      }
     }
   return 0;
 }
