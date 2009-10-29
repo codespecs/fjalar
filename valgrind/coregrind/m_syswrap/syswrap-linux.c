@@ -1399,10 +1399,35 @@ POST(sys_io_getevents)
             if (vev->result > 0)
                POST_MEM_WRITE( cb->aio_buf, vev->result );
             break;
-            
+
          case VKI_IOCB_CMD_PWRITE:
             break;
-           
+
+         case VKI_IOCB_CMD_FSYNC:
+            break;
+
+         case VKI_IOCB_CMD_FDSYNC:
+            break;
+
+         case VKI_IOCB_CMD_PREADV:
+	     if (vev->result > 0) {
+                  struct vki_iovec * vec = (struct vki_iovec *)(Addr)cb->aio_buf;
+                  Int remains = vev->result;
+                  Int j;
+
+                  for (j = 0; j < cb->aio_nbytes; j++) {
+                       Int nReadThisBuf = vec[j].iov_len;
+                       if (nReadThisBuf > remains) nReadThisBuf = remains;
+                       POST_MEM_WRITE( (Addr)vec[j].iov_base, nReadThisBuf );
+                       remains -= nReadThisBuf;
+                       if (remains < 0) VG_(core_panic)("io_getevents(PREADV): remains < 0");
+                  }
+	     }
+             break;
+
+         case VKI_IOCB_CMD_PWRITEV:
+             break;
+
          default:
             VG_(message)(Vg_DebugMsg,
                         "Warning: unhandled io_getevents opcode: %u\n",
@@ -1415,7 +1440,7 @@ POST(sys_io_getevents)
 
 PRE(sys_io_submit)
 {
-   Int i;
+   Int i, j;
 
    PRINT("sys_io_submit ( %llu, %ld, %#lx )", (ULong)ARG1,ARG2,ARG3);
    PRE_REG_READ3(long, "io_submit",
@@ -1425,6 +1450,8 @@ PRE(sys_io_submit)
    if (ARG3 != 0) {
       for (i = 0; i < ARG2; i++) {
          struct vki_iocb *cb = ((struct vki_iocb **)ARG3)[i];
+         struct vki_iovec *iov;
+
          PRE_MEM_READ( "io_submit(iocb)", (Addr)cb, sizeof(struct vki_iocb) );
          switch (cb->aio_lio_opcode) {
          case VKI_IOCB_CMD_PREAD:
@@ -1434,7 +1461,27 @@ PRE(sys_io_submit)
          case VKI_IOCB_CMD_PWRITE:
             PRE_MEM_READ( "io_submit(PWRITE)", cb->aio_buf, cb->aio_nbytes );
             break;
-           
+
+         case VKI_IOCB_CMD_FSYNC:
+            break;
+
+         case VKI_IOCB_CMD_FDSYNC:
+            break;
+
+         case VKI_IOCB_CMD_PREADV:
+            iov = (struct vki_iovec *)(Addr)cb->aio_buf;
+            PRE_MEM_READ( "io_submit(PREADV)", cb->aio_buf, cb->aio_nbytes * sizeof(struct vki_iovec) );
+            for (j = 0; j < cb->aio_nbytes; j++)
+                PRE_MEM_WRITE( "io_submit(PREADV(iov[i]))", (Addr)iov[j].iov_base, iov[j].iov_len );
+            break;
+
+         case VKI_IOCB_CMD_PWRITEV:
+            iov = (struct vki_iovec *)(Addr)cb->aio_buf;
+            PRE_MEM_READ( "io_submit(PWRITEV)", cb->aio_buf, cb->aio_nbytes * sizeof(struct vki_iovec) );
+            for (j = 0; j < cb->aio_nbytes; j++)
+                PRE_MEM_READ( "io_submit(PWRITEV(iov[i]))", (Addr)iov[j].iov_base, iov[j].iov_len );
+            break;
+
          default:
             VG_(message)(Vg_DebugMsg,"Warning: unhandled io_submit opcode: %u\n",
                          cb->aio_lio_opcode);
@@ -1515,6 +1562,24 @@ PRE(sys_inotify_init)
    PRE_REG_READ0(long, "inotify_init");
 }
 POST(sys_inotify_init)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "inotify_init", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless) (tid, RES);
+   }
+}
+
+PRE(sys_inotify_init1)
+{
+   PRINT("sys_inotify_init ( %ld )", ARG1);
+   PRE_REG_READ1(long, "inotify_init", int, flag);
+}
+
+POST(sys_inotify_init1)
 {
    vg_assert(SUCCESS);
    if (!ML_(fd_allowed)(RES, "inotify_init", tid, True)) {
@@ -2392,6 +2457,30 @@ PRE(sys_stime)
    PRE_MEM_READ( "stime(t)", ARG1, sizeof(vki_time_t) );
 }
 
+PRE(sys_perf_counter_open)
+{
+   PRINT("sys_perf_counter_open ( %#lx, %ld, %ld, %ld, %ld )",
+         ARG1,ARG2,ARG3,ARG4,ARG5);
+   PRE_REG_READ5(long, "perf_counter_open",
+                 struct vki_perf_counter_attr *, attr,
+                 vki_pid_t, pid, int, cpu, int, group_fd,
+                 unsigned long, flags);
+   PRE_MEM_READ( "perf_counter_open(attr)",
+                 ARG1, sizeof(struct vki_perf_counter_attr) );
+}
+
+POST(sys_perf_counter_open)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "perf_counter_open", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless)(tid, RES);
+   }
+}
+
 /* ---------------------------------------------------------------------
    utime wrapper
    ------------------------------------------------------------------ */
@@ -2634,7 +2723,7 @@ PRE(sys_rt_sigqueueinfo)
    PRE_REG_READ3(long, "rt_sigqueueinfo", 
                  int, pid, int, sig, vki_siginfo_t *, uinfo);
    if (ARG2 != 0)
-      PRE_MEM_READ( "rt_sigqueueinfo(uinfo)", ARG3, sizeof(vki_siginfo_t) );
+      PRE_MEM_READ( "rt_sigqueueinfo(uinfo)", ARG3, VKI_SI_MAX_SIZE );
 }
 POST(sys_rt_sigqueueinfo)
 {
@@ -2960,6 +3049,97 @@ PRE(sys_faccessat)
    PRE_REG_READ3(long, "faccessat",
                  int, dfd, const char *, pathname, int, mode);
    PRE_MEM_RASCIIZ( "faccessat(pathname)", ARG2 );
+}
+
+/* ---------------------------------------------------------------------
+   p{read,write}v wrappers
+   ------------------------------------------------------------------ */
+
+PRE(sys_preadv)
+{
+   Int i;
+   struct vki_iovec * vec;
+   *flags |= SfMayBlock;
+#if VG_WORDSIZE == 4
+   PRINT("sys_preadv ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,LOHI64(ARG4,ARG5));
+   PRE_REG_READ5(ssize_t, "preadv",
+                 unsigned long, fd, const struct iovec *, vector,
+                 unsigned long, count, vki_u32, offset_low32,
+                 vki_u32, offset_high32);
+#elif VG_WORDSIZE == 8
+   PRINT("sys_preadv ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,(Long)ARG4);
+   PRE_REG_READ4(ssize_t, "preadv",
+                 unsigned long, fd, const struct iovec *, vector,
+                 unsigned long, count, Word, offset);
+#else
+#  error Unexpected word size
+#endif
+   if (!ML_(fd_allowed)(ARG1, "preadv", tid, False)) {
+      SET_STATUS_Failure( VKI_EBADF );
+   } else {
+      PRE_MEM_READ( "preadv(vector)", ARG2, ARG3 * sizeof(struct vki_iovec) );
+
+      if (ARG2 != 0) {
+         /* ToDo: don't do any of the following if the vector is invalid */
+         vec = (struct vki_iovec *)ARG2;
+         for (i = 0; i < (Int)ARG3; i++)
+            PRE_MEM_WRITE( "preadv(vector[...])",
+                           (Addr)vec[i].iov_base, vec[i].iov_len );
+      }
+   }
+}
+
+POST(sys_preadv)
+{
+   vg_assert(SUCCESS);
+   if (RES > 0) {
+      Int i;
+      struct vki_iovec * vec = (struct vki_iovec *)ARG2;
+      Int remains = RES;
+
+      /* RES holds the number of bytes read. */
+      for (i = 0; i < (Int)ARG3; i++) {
+	 Int nReadThisBuf = vec[i].iov_len;
+	 if (nReadThisBuf > remains) nReadThisBuf = remains;
+	 POST_MEM_WRITE( (Addr)vec[i].iov_base, nReadThisBuf );
+	 remains -= nReadThisBuf;
+	 if (remains < 0) VG_(core_panic)("preadv: remains < 0");
+      }
+   }
+}
+
+PRE(sys_pwritev)
+{
+   Int i;
+   struct vki_iovec * vec;
+   *flags |= SfMayBlock;
+#if VG_WORDSIZE == 4
+   PRINT("sys_pwritev ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,LOHI64(ARG4,ARG5));
+   PRE_REG_READ5(ssize_t, "pwritev",
+                 unsigned long, fd, const struct iovec *, vector,
+                 unsigned long, count, vki_u32, offset_low32,
+                 vki_u32, offset_high32);
+#elif VG_WORDSIZE == 8
+   PRINT("sys_pwritev ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,(Long)ARG4);
+   PRE_REG_READ4(ssize_t, "pwritev",
+                 unsigned long, fd, const struct iovec *, vector,
+                 unsigned long, count, Word, offset);
+#else
+#  error Unexpected word size
+#endif
+   if (!ML_(fd_allowed)(ARG1, "pwritev", tid, False)) {
+      SET_STATUS_Failure( VKI_EBADF );
+   } else {
+      PRE_MEM_READ( "pwritev(vector)", 
+		     ARG2, ARG3 * sizeof(struct vki_iovec) );
+      if (ARG2 != 0) {
+         /* ToDo: don't do any of the following if the vector is invalid */
+         vec = (struct vki_iovec *)ARG2;
+         for (i = 0; i < (Int)ARG3; i++)
+            PRE_MEM_READ( "pwritev(vector[...])",
+                           (Addr)vec[i].iov_base, vec[i].iov_len );
+      }
+   }
 }
 
 /* ---------------------------------------------------------------------
