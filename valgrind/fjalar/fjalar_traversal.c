@@ -902,15 +902,18 @@ void visitVariableGroup(VariableOrigin varOrigin,
     VariableEntry* var = nextVar(varIt);
     Addr basePtrValue = (Addr) NULL;
     Addr basePtrValueGuest = (Addr) NULL;
-
-
-
+    
     if (!var->name) {
       VG_(printf)( "  Warning! Weird null variable name!\n");
       continue;
     }
 
     FJALAR_DPRINTF("[visitVariableGroup] Preparing [%s] to be visited\n", var->name);
+
+    if(fjalar_ignore_constants && var->isConstant) {
+      FJALAR_DPRINTF("\t[visitVariableGroup] Punting constant\n");
+      continue;
+    }
 
     if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
       ThreadId tid = VG_(get_running_tid)();
@@ -919,15 +922,15 @@ void visitVariableGroup(VariableOrigin varOrigin,
       // the DWARF tables, while still providing tools with the variables
       // if they care. return is an exception as we figure it out ourself.
       if(!var->validLoc && !VG_STREQ("return", var->name)) {
-	FJALAR_DPRINTF("\tinvalid loc, punting\n");
+	FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
 	continue;
       }
 
-      FJALAR_DPRINTF("\tbaseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, var->byteOffset, var->byteOffset);
-      FJALAR_DPRINTF("\tState of Guest Stack [%p - %p] \n", (void *)funcPtr->guestStackStart, (void *)funcPtr->guestStackEnd);
-      FJALAR_DPRINTF("\tState of Virtual Stack [%p - %p] \n", (void *)funcPtr->lowestVirtSP, (void *)(funcPtr->lowestVirtSP + (funcPtr->guestStackEnd - funcPtr->guestStackStart)));
-      FJALAR_DPRINTF("\tState of Frame Pointer: %p\n", (void *)stackBaseAddrGuest);
-      FJALAR_DPRINTF("\tSize of DWARF location stack: %d\n", var->location_expression_size);
+      FJALAR_DPRINTF("\t[visitVariableGroup] baseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, var->byteOffset, var->byteOffset);
+      FJALAR_DPRINTF("\t[visitVariableGroup] State of Guest Stack [%p - %p] \n", (void *)funcPtr->guestStackStart, (void *)funcPtr->guestStackEnd);
+      FJALAR_DPRINTF("\t[visitVariableGroup] State of Virtual Stack [%p - %p] \n", (void *)funcPtr->lowestVirtSP, (void *)(funcPtr->lowestVirtSP + (funcPtr->guestStackEnd - funcPtr->guestStackStart)));
+      FJALAR_DPRINTF("\t[visitVariableGroup] State of Frame Pointer: %p\n", (void *)stackBaseAddrGuest);
+      FJALAR_DPRINTF("\t[visitVariableGroup] Size of DWARF location stack: %d\n", var->location_expression_size);
 
       if(var->location_expression_size) {
 	Bool actual_value = 0;
@@ -981,7 +984,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	if(!isEnter && VG_STREQ("main", funcPtr->name) &&
 	   (VG_STREQ("argc", var->name) ||
 	    VG_STREQ("argv", var->name))) {
-	  FJALAR_DPRINTF("\tint main(argc/argv) DETECTED, using entry locations isntead of recalcing\n");
+	  FJALAR_DPRINTF("\t[visitVariableGroup] int main(argc/argv) DETECTED, using entry locations isntead of recalculating\n");
 	  basePtrValue = var->entryLoc;
 	  basePtrValueGuest = var->entryLocGuest;
 	}
@@ -1052,7 +1055,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 	  //int virt_offset = var_loc - funcPtr->lowestSP;
 	  int virt_offset = var_loc - funcPtr->guestStackStart;
 
-            FJALAR_DPRINTF("\tstackBaseAddr: %p\n\tREDZONE: %d,\n\tFP: %p\n\tvar_loc %p\n\tOffset(virt): %d\n",
+            FJALAR_DPRINTF("\t[visitVariableGroup] stackBaseAddr: %p\n\tREDZONE: %d,\n\tFP: %p\n\tvar_loc %p\n\tOffset(virt): %d\n",
                            (void *)funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, (void *)funcPtr->FP, (void *)var_loc, virt_offset);
 
 	    var->byteOffset = var_loc - funcPtr->FP;
@@ -1077,6 +1080,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
     else if (varOrigin == GLOBAL_VAR) {
       tl_assert(IS_GLOBAL_VAR(var));
       basePtrValue = basePtrValueGuest = var->globalVar->globalLocation;
+
+      if(!basePtrValue && var->isConstant) {
+        FJALAR_DPRINTF("[visitVariableGroup] Invalid globalLocation, but has a constant value (%lu). Overriding address.\n", 
+                       var->constValue);
+        basePtrValue = &var->constValue;
+        overrideIsInit = True;
+      }
 
       // if "--ignore-static-vars" option was selected, do not visit
       // file-static global variables:

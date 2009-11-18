@@ -331,7 +331,9 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return (tag_is_base_type(tag) ||
               tag_is_member(tag));
     case DW_AT_const_value:
-      return tag_is_enumerator(tag);
+      return (tag_is_enumerator(tag) ||
+              tag_is_variable(tag) ||
+              tag_is_member(tag));
     case DW_AT_type:
       return (tag_is_modifier_type(tag) ||
               tag_is_member(tag) ||
@@ -710,6 +712,12 @@ char harvest_bit_offset_value(dwarf_entry* e, unsigned long value)
     return 0;
 }
 
+#define SET_AND_CHECK(ptr, type, member, value)       \
+  if (tag_is_type(tag))  \
+    { \
+      ((type*)ptr->entry_ptr)->member = value; \
+    }
+
 char harvest_const_value(dwarf_entry* e, unsigned long value)
 {
   unsigned long tag;
@@ -718,9 +726,24 @@ char harvest_const_value(dwarf_entry* e, unsigned long value)
 
   tag = e->tag_name;
 
+  FJALAR_DPRINTF("Harvesting const for %lx\n", e->ID);
+
   if (tag_is_enumerator(tag))
     {
+      ((enumerator*)e->entry_ptr)->is_const = 1;
       ((enumerator*)e->entry_ptr)->const_value = value;
+      return 1;
+    } 
+  else if (tag_is_variable(tag))
+    {
+      ((variable*)e->entry_ptr)->is_const = 1;
+      ((variable*)e->entry_ptr)->const_value = value;
+      return 1;
+    } 
+  else if (tag_is_member(tag))
+    {
+      ((member*)e->entry_ptr)->is_const = 1;
+      ((member*)e->entry_ptr)->const_value = value;
       return 1;
     }
   else
@@ -1535,7 +1558,46 @@ static void init_specification_and_abstract_stuff(void) {
 	  aliased_coll_ptr->superclasses = cur_coll->superclasses;
         }
       }
+
+    } else if(tag_is_variable(cur_entry->tag_name)) {
+
+      // This is kind of bad. Usually Fjalar discards all declarations
+      // as they're just 'shells' of variables with no interesting 
+      // features. Unfortunately, in the case of variables declared
+      // const in C++, all we get is the specification entry (which Fjalar ignores) 
+      // and the declaration. So we need to choose one of these to print.
+      // This clears the declaration flag of a variable ptr if it has at least
+      // one 'real' (non declaration or artificial) variable pointed to it.
+      // This is definitely just a heuristic and we need to be careful that
+      // this doesn't let unwanted variables through (i.e. unused stuff from the 
+      // standard libraries)
+
+      unsigned long aliased_index = 0;
+
+      variable* cur_var = (variable*)(cur_entry->entry_ptr);
+
+      if(cur_var->is_declaration_or_artificial) {
+        continue;
+      }
+
+      if(binary_search_dwarf_entry_array(cur_var->specification_ID,
+                                         &aliased_index)) {
+        dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
+        variable* aliased_var_ptr = NULL;
+        
+        tl_assert(tag_is_variable(aliased_entry->tag_name));
+
+        aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);
+
+        FJALAR_DPRINTF("[init_specification_and_abstract_stuff] Linking %lx and %lx\n", 
+                       aliased_entry->ID,
+                       cur_entry->ID);
+
+        aliased_var_ptr->is_declaration_or_artificial = 0;
+                       
+      }
     }
+
   }
 }
 
@@ -1651,9 +1713,6 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // First pick off the member variables, static variables, and functions
 
   cur_entry++; // Move to the next entry - safe since dist_to_end > 0 by this point
-  FJALAR_DPRINTF("Jerk jerk jerk\n");
-  print_dwarf_entry(test, 0);
-
 
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
@@ -1671,10 +1730,6 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   //    so that we are not traversing its siblings
   while ((local_dist_to_end > 0) &&
 	 (cur_entry->level > collection_entry_level)) {
-
-    FJALAR_DPRINTF("col entry level %d\n", collection_entry_level);
-    print_dwarf_entry(cur_entry, 0);
-    FJALAR_DPRINTF("\n");
 
     if (tag_is_formal_parameter(cur_entry->tag_name)) {
       ((formal_parameter*)(cur_entry->entry_ptr))->valid_loc = 1;
@@ -1850,8 +1905,6 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   cur_entry++; // Move to the next entry - safe since dist_to_end > 0 by this point
   // functions expect DW_TAG_formal_parameter as parameters
 
-  FJALAR_DPRINTF("\nlink_params: %s:\n", function_ptr->name);
-
   // Make one pass from the function entry all the way to
   // to get the numbers of params and local vars
   // Iteration conditions:
@@ -1866,8 +1919,6 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   //     led to some bugs)
   while ((local_dist_to_end > 0) &&
 	 (cur_entry->level > function_entry_level)) {
-
-    print_dwarf_entry(cur_entry, 0);
 
     if (cur_entry->level == (function_entry_level + 1)) {
       if (tag_is_formal_parameter(cur_entry->tag_name)) {
@@ -2264,7 +2315,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_variable:
       {
         variable* variable_ptr = (variable*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d\n",
+        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d isConst: %p\n",
                variable_ptr->name,
                variable_ptr->type_ID,
                ((simplified && variable_ptr->type_ptr) ?
@@ -2273,7 +2324,8 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
 	       variable_ptr->is_external,
                variable_ptr->couldBeGlobalVar,
                variable_ptr->globalVarAddr,
-               variable_ptr->offset);
+               variable_ptr->offset,
+               variable_ptr->is_const);
         break;
       }
     case DW_TAG_compile_unit:

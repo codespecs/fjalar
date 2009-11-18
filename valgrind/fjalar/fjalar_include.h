@@ -385,6 +385,14 @@ typedef struct _VariableEntry {
   Addr entryLoc;
   Addr entryLocGuest;
 
+  // g++ will not emit a memory location for (all?) constant primitives
+  // even on O0, so we will have to make a special case for constants
+  // without valid memory locations. It is always preferable to use the 
+  // location provided by the debugging information over this, thus 
+  // this should only be used when validLoc == false.
+  Bool isConstant;
+  long constValue;
+
 } VariableEntry;
 
 
@@ -1020,6 +1028,7 @@ Manual (documentation/fjalar-www/fjalar_manual.htm) for details.
 // Boolean flags
 Bool fjalar_debug;                         // --fjalar-debug
 Bool fjalar_with_gdb;                      // --with-gdb
+Bool fjalar_ignore_constants;              // --ignore-constants
 Bool fjalar_ignore_globals;                // --ignore-globals
 Bool fjalar_ignore_static_vars;            // --ignore-static-vars
 Bool fjalar_all_static_vars;               // --all-static-vars
@@ -1030,10 +1039,11 @@ Bool fjalar_flatten_arrays;                // --flatten-arrays
 Bool fjalar_func_disambig_ptrs;            // --func-disambig-ptrs
 Bool fjalar_disambig_ptrs;                 // --disambig-ptrs
 Bool fjalar_gcc3;                          // --gcc3
+
 int  fjalar_array_length_limit;            // --array-length-limit
 
-UInt fjalar_max_visit_struct_depth;               // --struct-depth
-UInt fjalar_max_visit_nesting_depth;              // --nesting-depth
+UInt fjalar_max_visit_struct_depth;        // --struct-depth
+UInt fjalar_max_visit_nesting_depth;       // --nesting-depth
 
 // The following are used both as strings and as boolean flags - They
 // are initialized to 0 so if they are never filled with values by the

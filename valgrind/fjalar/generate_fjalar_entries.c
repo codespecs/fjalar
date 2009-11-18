@@ -60,6 +60,8 @@ extractOneVariable(VarList* varListPtr,
 		   char* fileName,
 		   char isGlobal,
 		   char isExternal,
+                   char isConstant,
+                   long constantValue,
 		   unsigned long globalLocation,
 		   unsigned long functionStartPC,
 		   char isStructUnionMember,
@@ -961,6 +963,7 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 
   variablePtr = (variable*)(e->entry_ptr);
   typePtr = variablePtr->type_ptr;
+  
 
   extractOneVariable(&globalVars,
                      typePtr,
@@ -968,6 +971,8 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 		     findFilenameForEntry(e),
                      variablePtr->couldBeGlobalVar,
 		     variablePtr->is_external,
+                     variablePtr->is_const,
+                     variablePtr->const_value,
                      variablePtr->globalVarAddr,
 		     functionStartPC,
 		     0,0,0,0,0,0,0,0);
@@ -997,7 +1002,7 @@ static void initializeGlobalVarsList(void)
     genallocatehashtable(0,
 			 (int (*)(void *,void *)) &equivalentIDs);
 
-  FJALAR_DPRINTF("ENTER initializeGlobalVarsList() - %d\n",
+  FJALAR_DPRINTF("[initializeGlobalVarsList] - %d dwarf entries\n",
 		 (int)dwarf_entry_array_size);
 
   for (i = 0; i < dwarf_entry_array_size; i++) {
@@ -1005,28 +1010,32 @@ static void initializeGlobalVarsList(void)
     if (tag_is_variable(cur_entry->tag_name)) {
       variable* variable_ptr = (variable*)(cur_entry->entry_ptr);
 
-      FJALAR_DPRINTF("Var (%d): %s 0x%x static: %d, dec: %d\n",
+      FJALAR_DPRINTF("\t[initializeGlobalVarsList] Var (%d - ID: %lx): %s 0x%x static: %d, dec: %d, const: %d\n",
 		     cur_entry->level,
+                     cur_entry->ID,
 		     variable_ptr->name,
 		     (unsigned int)variable_ptr->globalVarAddr,
 		     (unsigned int)variable_ptr->isStaticMemberVar,
-		     variable_ptr->is_declaration_or_artificial);
+		     variable_ptr->is_declaration_or_artificial,
+                     variable_ptr->is_const);
 
       // IGNORE variables with is_declaration_or_artificial or
       // specification_ID active because these are empty shells!
-      if (variable_ptr->couldBeGlobalVar &&
+      if ((variable_ptr->couldBeGlobalVar &&
 	  variable_ptr->globalVarAddr &&
           (!variable_ptr->isStaticMemberVar) && // DON'T DEAL WITH C++ static member vars here;
                                                 // We deal with them in extractStructUnionType()
           (!variable_ptr->specification_ID) &&
-          (!variable_ptr->is_declaration_or_artificial)) {
+           (!variable_ptr->is_declaration_or_artificial)) ||
+          (variable_ptr->is_const && !variable_ptr->is_declaration_or_artificial)) {
 	char* existingName;
 
-	FJALAR_DPRINTF("dwarf_entry_array[%d] is a global named %s at addr: %p\n",
-		       i, variable_ptr->name, (void *)variable_ptr->globalVarAddr);
+        if(variable_ptr->is_const) {
+          variable_ptr->couldBeGlobalVar = True;
+        }
 
 	if (!variable_ptr->name) {
-	  VG_(printf)( "Skipping weird unnamed global variable ID#%x - addr: %x\n",
+	  FJALAR_DPRINTF("\t[initializeGlobalVarsList] Skipping weird unnamed global variable ID#%x - addr: %x\n",
 		       (unsigned int)cur_entry->ID, (unsigned int)variable_ptr->globalVarAddr);
 	  continue;
 	}
@@ -1043,7 +1052,7 @@ static void initializeGlobalVarsList(void)
 	  point to old, pre-2.1 libio structures, assuming that this
 	  is a very old program compiled against old glibc, so that
 	  all stdio routines will work correctly. */
-	  FJALAR_DPRINTF("Skipping silly glibc feature - %s\n",
+	  FJALAR_DPRINTF("\t[initializeGlobalVarsList] Skipping silly glibc feature - %s\n",
 			 variable_ptr->name);
 	  continue;
 	}
@@ -1062,7 +1071,7 @@ static void initializeGlobalVarsList(void)
 	    ((existingName =
 	      gengettable(GlobalVarsTable, (void*)variable_ptr->globalVarAddr)))) {
 	  if VG_STREQ(variable_ptr->name, existingName) {
-	    FJALAR_DPRINTF("DUPLICATE! - %s\n", variable_ptr->name);
+	    FJALAR_DPRINTF("\t[initializeGlobalVarsList] DUPLICATE! - %s\n", variable_ptr->name);
 	    continue;
 	  }
 	}
@@ -1087,6 +1096,14 @@ static void initializeGlobalVarsList(void)
 	  namespace_type* enclosing_namespace = findNamespaceForVariableEntry(cur_entry);
 	  unsigned long startPC =
 	    enclosing_namespace ? 0 : findFunctionStartPCForVariableEntry(cur_entry);
+
+          // Constant local variables would satisfy the above conditions, let's ignore
+          // them.
+          if((startPC != 0) && (variable_ptr->is_const)) {
+            FJALAR_DPRINTF("\t[initializeGlobalVarsList] Constant variable with an enclosing function - NOT a global\n");
+            continue;
+          }
+          
 	  extractOneGlobalVariable(cur_entry,
 				   startPC);
 	}
@@ -1711,10 +1728,6 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   t->typeName = collectionPtr->name;
 
-  if(e->ID == 2386909) {
-    FJALAR_DPRINTF("Hi\n");
-  }
-
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
   // t->memberFunctionList with the start PC of the function, then
@@ -1868,6 +1881,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
                          0,
                          0,
                          0,
+                         memberPtr->is_const,
+                         memberPtr->const_value,
                          0,
                          0,
                          1,
@@ -1896,10 +1911,12 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
     for (ind = 0; ind < collectionPtr->num_static_member_vars; ind++) {
 
-      char *mangled_name = NULL, *name;
-      char is_external;
-      unsigned long globalVarAddr = 0, accessibility;
-      dwarf_entry* type_ptr;
+      char *mangled_name = NULL, *name = NULL;
+      char is_external = 0;
+      char is_const = 0;
+      long const_value = 0;
+      unsigned long globalVarAddr = 0, accessibility = 0;
+      dwarf_entry* type_ptr = NULL;
 
       // Commonalities between these really need to be extracted
       // into a struct which variable and member "inherit" from
@@ -1907,11 +1924,15 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
       tl_assert(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name) ||
 		tag_is_member(collectionPtr->static_member_vars[ind]->tag_name));
+
+
 #define EXTRACT_STATIC_INFO(dwarf_type, dwarf_ptr) \
       dwarf_type *staticMemberPtr = (dwarf_type*)dwarf_ptr;	\
       is_external = staticMemberPtr->is_external; \
       accessibility = staticMemberPtr->accessibility; \
-      type_ptr = staticMemberPtr->type_ptr
+      type_ptr = staticMemberPtr->type_ptr;           \
+      is_const = staticMemberPtr->is_const;           \
+      const_value = staticMemberPtr->const_value
 
       if(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name)) {
 	EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
@@ -1941,6 +1962,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 			 0,
 			 1,
 			 is_external,
+                         is_const,
+                         const_value,
 			 globalVarAddr,
 			 0,
 			 1, 0, 0, 0, 0,
@@ -2198,8 +2221,10 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 			      typePtr,
 			      paramPtr->name,
 			      0,
+                              0,
 			      0,
 			      0,
+                              0,
 			      0,
 			      0,
 			      0,0,0,0,0,0,0,1);
@@ -2301,7 +2326,9 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
 			      variablePtr->name,
 			      0,
 			      0,
+                              0,
 			      0,
+                              0,
 			      0,
 			      0,
 			      0,0,0,0,0,0,0,0);
@@ -2335,6 +2362,8 @@ static void extractReturnVar(FunctionEntry* f,
 		     0,
                      0,
 		     0,
+                     0,
+                     0,
 		     0,
 		     0,
 		     0,0,0,0,0,0,0,0);
@@ -2420,6 +2449,8 @@ extractOneVariable(VarList* varListPtr,
 		   char* fileName,
 		   char isGlobal,
 		   char isExternal,
+                   char isConstant,
+                   long constantValue,
 		   unsigned long globalLocation,
 		   unsigned long functionStartPC,
 		   char isStructUnionMember,
@@ -2473,6 +2504,11 @@ extractOneVariable(VarList* varListPtr,
   if (VG_STREQ("this", variableName)) {
     varPtr->disambig = 'P';
   }
+
+  // Propogate information about constants
+  varPtr->isConstant = isConstant;
+  varPtr->constValue = constantValue;
+    
 
   if (isGlobal) {
     varPtr->globalVar = VG_(calloc)("generate_fjalar_entries.c: extractOneVariable.1",1, sizeof(*varPtr->globalVar));
@@ -2545,9 +2581,13 @@ extractOneVariable(VarList* varListPtr,
     }
 
   FJALAR_DPRINTF("\tFinished stripping modifiers for %s\n", variableName);
-  FJALAR_DPRINTF("\tfunctionStartPC is %x\n", functionStartPC);
+  FJALAR_DPRINTF("\tfunctionStartPC is %lx\n", functionStartPC);
   FJALAR_DPRINTF("\tvarPtr is %p\n", varPtr);
-  FJALAR_DPRINTF("\ttypePtr is %p\n", typePtr);
+  FJALAR_DPRINTF("\tTESTtypePtr is %p (ID: %lx)\n", typePtr, typePtr->ID);
+  FJALAR_DPRINTF("\tConstant: %s\n", varPtr->isConstant?"Yes":"No");
+  if(varPtr->isConstant) {
+    FJALAR_DPRINTF("\t\tValue: %ld\n", varPtr->constValue);
+  }
 
   varPtr->ptrLevels = ptrLevels;
   varPtr->referenceLevels = referenceLevels;
