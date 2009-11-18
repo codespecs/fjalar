@@ -8244,11 +8244,11 @@ display_debug_info (section, start, file)
                                               &dwarf_entry_array[idx],
                                               1); // DO harvest
 
-	      FJALAR_DPRINTF("Index=%lu, ID=%lx, tag_name=%s, level=%d\n",
-			     idx,
-			     dwarf_entry_array[idx].ID,
-			     get_TAG_name(dwarf_entry_array[idx].tag_name),
-			     dwarf_entry_array[idx].level);
+	      /* FJALAR_DPRINTF("Index=%lu, ID=%lx, tag_name=%s, level=%d\n", */
+	      /*   	     idx, */
+	      /*   	     dwarf_entry_array[idx].ID, */
+	      /*   	     get_TAG_name(dwarf_entry_array[idx].tag_name), */
+	      /*   	     dwarf_entry_array[idx].level); */
 
               if (entry->children)
                 ++level;

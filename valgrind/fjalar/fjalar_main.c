@@ -50,6 +50,7 @@
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
 Bool fjalar_with_gdb = False;
+Bool fjalar_ignore_constants = False;
 Bool fjalar_ignore_globals = False;
 Bool fjalar_ignore_static_vars = False;
 Bool fjalar_all_static_vars = False;
@@ -1061,6 +1062,7 @@ void fjalar_print_usage()
 "    --dump-var-file=<string> Outputs all variable names to a file\n"
 "    --ignore-globals         Ignores all global variables [--no-ignore-globals]\n"
 "    --ignore-static-vars     Ignores all static variables [--no-ignore-static-vars]\n"
+"    --ignore-constants       Ignores all constant variables [--no-ignore-constants]\n"
 "    --all-static-vars        Output all static vars [--no-all-static-vars]\n"
 
 "\n  Pointer type disambiguation:\n"
@@ -1101,6 +1103,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
+  else if VG_YESNO_CLO(arg, "ignore-constants", fjalar_ignore_constants) {}
   else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}
   else if VG_YESNO_CLO(arg, "all-static-vars", fjalar_all_static_vars) {}
   else if VG_YESNO_CLO(arg, "gcc3", fjalar_gcc3) {}

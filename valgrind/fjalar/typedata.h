@@ -165,14 +165,20 @@ typedef struct
   unsigned long internal_byte_size;
   unsigned long internal_bit_offset;
   unsigned long internal_bit_size;
+
+
+  // The value of this variable (if it's constant)
+  char is_const;
+  long const_value; 
 } member;
 
 // enumeration member
 typedef struct
 {
   char* name;
+  char is_const;
   long const_value; // Enumeration value
-                    // (SIGNED!) Negative enum values are possible
+  // (SIGNED!) Negative enum values are possible
 } enumerator;
 
 // function
@@ -380,6 +386,10 @@ typedef struct
   // accessibility of this variable (public, protected, or private)
   // (only relevant if isStaticMemberVar)
   unsigned long accessibility;
+
+  // The value of this variable (if it's constant)
+  char is_const;
+  long const_value; 
 } variable;
 
 // Globals
