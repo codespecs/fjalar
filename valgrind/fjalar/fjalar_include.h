@@ -393,6 +393,10 @@ typedef struct _VariableEntry {
   Bool isConstant;
   long constValue;
 
+  // The full path including name of the file this variable was
+  // declared in.
+  char* declaredIn;
+
 } VariableEntry;
 
 
@@ -1029,6 +1033,7 @@ Manual (documentation/fjalar-www/fjalar_manual.htm) for details.
 Bool fjalar_debug;                         // --fjalar-debug
 Bool fjalar_with_gdb;                      // --with-gdb
 Bool fjalar_ignore_constants;              // --ignore-constants
+Bool fjalar_merge_constants;               // --merge-constants
 Bool fjalar_ignore_globals;                // --ignore-globals
 Bool fjalar_ignore_static_vars;            // --ignore-static-vars
 Bool fjalar_all_static_vars;               // --all-static-vars

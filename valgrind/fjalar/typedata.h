@@ -28,6 +28,21 @@
 #include "GenericHashtable.h"
 #include "elf/dwarf2.h"
 #include "fjalar_dwarf.h"
+#include "pub_tool_xarray.h"
+
+// compile_unit - used to figure out filename and compilation directory
+// We assume that every function belongs to the file specified
+// by the nearest compile_unit entry (to its left) in dwarf_entry_array
+// as well as the file variables were declared in.
+typedef struct
+{
+  char* filename;
+  char* comp_dir;
+  XArray* file_name_table;
+  unsigned long stmt_list; // Loction of the compile unit's
+                           // line information as an offset
+                           // from the start of .debug_line
+} compile_unit;
 
 // Contains one entry that holds data for one of many possible types
 // depending on tag_name
@@ -37,6 +52,9 @@ typedef struct
   unsigned long tag_name; // DW_TAG_____ for the type of this entry
   int level; // The level of this entry (useful for nested structs and function local vars.)
   unsigned long sibling_ID; // for DW_AT_sibling
+  compile_unit* comp_unit; // The compilation unit this entry belongs.
+                           // compile_unit entries belong to themselves
+                           // this entry_ptr == comp_unit for comp_units
   void* entry_ptr; // Cast this pointer depending on value of tag_name, which specifies
                    // the "type" of this dwarf_entry
 } dwarf_entry;
@@ -170,6 +188,9 @@ typedef struct
   // The value of this variable (if it's constant)
   char is_const;
   long const_value; 
+
+  // The file this variable is declared in
+  unsigned long decl_file;
 } member;
 
 // enumeration member
@@ -310,15 +331,6 @@ typedef struct
 
 } formal_parameter;
 
-// compile_unit - only used to figure out filename and compilation directory
-// We assume that every function belongs to the file specified
-// by the nearest compile_unit entry (to its left) in dwarf_entry_array
-typedef struct
-{
-  char* filename;
-  char* comp_dir;
-} compile_unit;
-
 // array type - each one has an array_subrange_type entry denoting
 //              the size of each dimension in the array
 typedef struct
@@ -390,11 +402,15 @@ typedef struct
   // The value of this variable (if it's constant)
   char is_const;
   long const_value; 
+
+  // The file this variable is declared in
+  unsigned long decl_file;
 } variable;
 
 // Globals
 
 extern dwarf_entry* dwarf_entry_array;
+extern compile_unit** comp_unit_info;
 extern unsigned long dwarf_entry_array_size;
 extern location_list *debug_loc_list;
 
@@ -488,7 +504,10 @@ char harvest_accessibility(dwarf_entry* e, char a);
 char harvest_location_list_entry(location_list* ll, unsigned long offset);
 char harvest_debug_frame_entry(debug_frame* df);
 char harvest_frame_base(dwarf_entry* e, enum dwarf_location_atom a, long offset);
+char harvest_decl_file(dwarf_entry* e, unsigned long value);
+char harvest_stmt_list(dwarf_entry* e, unsigned long value);
 
+char harvest_file_name_table(unsigned long debug_line_offset, XArray* table);
 
 
 char binary_search_dwarf_entry_array(unsigned long target_ID, unsigned long* index_ptr);
@@ -499,12 +518,15 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
 void print_dwarf_entry(dwarf_entry* e, char simplified);
 
 void initialize_dwarf_entry_array(unsigned long num_entries);
+void initialize_compile_unit_array(unsigned long num_entries);
 void destroy_dwarf_entry_array(void);
 void simple_print_dwarf_entry_array(void);
 void print_dwarf_entry_array(void);
 void print_dwarf_entry_array_helper(char simplified);
 void initialize_dwarf_entry_ptr(dwarf_entry* e);
 void finish_dwarf_entry_array_init(void);
+
+void add_comp_unit(compile_unit* unit);
 
 char tag_is_modifier_type(unsigned long tag);
 char tag_is_collection_type(unsigned long tag);
