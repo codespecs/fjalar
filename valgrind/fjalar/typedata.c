@@ -56,7 +56,12 @@
 //    to their members (NO LONGER TRUE - There can be nesting now)
 // 6. All entries in the array belong to the file specified by the first
 //    compile_unit entry to its left (lower indices) in the array
-dwarf_entry* dwarf_entry_array = 0;
+dwarf_entry* dwarf_entry_array = NULL;
+
+// Global array of all compilation units. It simply contains
+// their dwarf entry.
+compile_unit** comp_unit_info = NULL;
+static unsigned long comp_unit_info_idx = 0;
 
 // The size of this array
 unsigned long dwarf_entry_array_size = 0;
@@ -285,6 +290,7 @@ static char tag_is_namespace(unsigned long tag) {
 // DW_AT_artificial: variable
 // DW_AT_accessibility: function, inheritance, member, variable
 // DW_AT_abstract_origin: function, variable
+// DW_AT_decl_file: variable, member
 
 // Returns: 1 if the entry has a type that is listening for the
 // given attribute (attr), 0 otherwise
@@ -382,6 +388,11 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_abstract_origin:
       return (tag_is_function(tag) ||
 	      tag_is_formal_parameter(tag));;
+    case DW_AT_stmt_list:
+      return tag_is_compile_unit(tag);
+    case DW_AT_decl_file:
+      return (tag_is_variable(tag) ||
+              tag_is_member(tag));
     default:
       return 0;
     }
@@ -477,6 +488,37 @@ char harvest_byte_size_value(dwarf_entry* e, unsigned long value)
     }
   else
     return 0;
+}
+
+char harvest_decl_file(dwarf_entry* e, unsigned long value)
+{
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  //  FJALAR_DPRINTF("Harvesting decl_file value %lu for %p (ID: %lu)\n", value, e, e->ID);
+
+  if (tag_is_variable(e->tag_name))
+    {
+      ((variable*)e->entry_ptr)->decl_file = value;
+    }
+  else if (tag_is_member(e->tag_name))
+    {
+      ((member*)e->entry_ptr)->decl_file = value;
+    }
+  
+  return 1;
+}
+
+char harvest_file_name_table(unsigned long debug_line_offset, XArray* table) 
+{ 
+  int i;
+  for(i = 0; i < comp_unit_info_idx; i++) {
+    if (comp_unit_info[i]->stmt_list == debug_line_offset) {
+      comp_unit_info[i]->file_name_table = table;
+      return 1;
+    }
+  }
+  return 0;
 }
 
 char harvest_sibling(dwarf_entry* e, unsigned long value)
@@ -862,6 +904,24 @@ char harvest_comp_dir(dwarf_entry* e, const char* str)
     return 0;
 }
 
+char harvest_stmt_list(dwarf_entry* e, unsigned long value)
+{
+  unsigned long tag;
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
+
+  tag = e->tag_name;
+
+  if (tag_is_compile_unit(tag))
+    {
+      //VG_(printf)("Harvest stmt list: %lx for %lx (%p)\n", value, e->ID, e->entry_ptr);
+      ((compile_unit*)e->entry_ptr)->stmt_list = value;
+      return 1;
+    }
+  else
+    return 0;
+}  
+
 // The strange thing is that variable offsets should be NEGATIVE
 // but DW_OP_fbreg and DW_OP_breg5 return unsigned values
 char harvest_local_var_offset(dwarf_entry* e, unsigned long value)
@@ -1242,11 +1302,9 @@ static void link_entries_to_type_entries(void)
           // array with the corresponding target_ID
           success = binary_search_dwarf_entry_array(target_ID, &target_index);
 	  FJALAR_DPRINTF("Searching for all modifiers of %lud\n", cur_entry->ID);
-	  print_dwarf_entry(cur_entry, 0);
           if (success)
             {
 	      cur_target = &dwarf_entry_array[target_index];
-	      print_dwarf_entry(cur_target, 0);
               modifier_ptr->target_ptr= cur_target;
             }
 
@@ -1593,6 +1651,8 @@ static void init_specification_and_abstract_stuff(void) {
                        aliased_entry->ID,
                        cur_entry->ID);
 
+        //        cur_var->is_declaration_or_artificial = 1;
+
         aliased_var_ptr->is_declaration_or_artificial = 0;
                        
       }
@@ -1704,7 +1764,6 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 
   // If it's not an enumeration type, then it's a struct/class/union type
   char isEnumType = (DW_TAG_enumeration_type == e->tag_name);
-  print_dwarf_entry(e, 0);
 
   // If you are at the end of the array, you're screwed anyways
   if(dist_to_end == 0)
@@ -2146,6 +2205,10 @@ static void initialize_typedef_names_map(void) {
   }
 }
 
+void add_comp_unit(compile_unit* unit) {
+  comp_unit_info[comp_unit_info_idx++] = unit;
+}
+
 // Prints the contents of the entry depending on its type
 void print_dwarf_entry(dwarf_entry* e, char simplified)
 {
@@ -2315,7 +2378,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_variable:
       {
         variable* variable_ptr = (variable*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d isConst: %p\n",
+        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d isConst: %d\n",
                variable_ptr->name,
                variable_ptr->type_ID,
                ((simplified && variable_ptr->type_ptr) ?
@@ -2371,6 +2434,18 @@ void initialize_dwarf_entry_array(unsigned long num_entries)
   typedef_names_map = genallocatehashtable(0,
                                            (int (*)(void *,void *)) &equivalentIDs);
 }
+
+/*
+Requires:
+Modifies: compile_unit_info (initialized and blanks all entries to zero)
+Return:
+Effects: Initializes and sets up an array of the dwarf entries for all compile units
+*/
+void initialize_compile_unit_array(unsigned long num_entries)
+{
+  comp_unit_info = VG_(calloc)("typedata.c: initialize_compile_unit_info", num_entries, sizeof *comp_unit_info);
+} 
+
 
 /*
 Requires: dwarf_entry_array is initialized

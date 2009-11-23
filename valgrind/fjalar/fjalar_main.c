@@ -51,6 +51,7 @@
 Bool fjalar_debug = False;
 Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_constants = False;
+Bool fjalar_merge_constants = False;
 Bool fjalar_ignore_globals = False;
 Bool fjalar_ignore_static_vars = False;
 Bool fjalar_all_static_vars = False;
@@ -1104,6 +1105,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-constants", fjalar_ignore_constants) {}
+  else if VG_YESNO_CLO(arg, "merge-constants", fjalar_merge_constants) {}
   else if VG_YESNO_CLO(arg, "ignore-static-vars", fjalar_ignore_static_vars) {}
   else if VG_YESNO_CLO(arg, "all-static-vars", fjalar_all_static_vars) {}
   else if VG_YESNO_CLO(arg, "gcc3", fjalar_gcc3) {}

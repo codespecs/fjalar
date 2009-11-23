@@ -52,6 +52,7 @@ static void extractReturnVar(FunctionEntry* f,
 
 static int determineVariableByteSize(VariableEntry* var);
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace);
+static char* getDeclaredFile(compile_unit* comp_unit, unsigned long offset);
 
 static VariableEntry*
 extractOneVariable(VarList* varListPtr,
@@ -71,7 +72,8 @@ extractOneVariable(VarList* varListPtr,
 		   int internalBitSize,
 		   TypeEntry* structParentType,
 		   unsigned long dwarf_accessibility,
-		   char isFormalParam);
+		   char isFormalParam,
+                   char* declared_in);
 
 static void repCheckOneVariable(VariableEntry* var);
 
@@ -502,8 +504,6 @@ void initializeAllFjalarData(void)
   // really trying to be robust
 
   VisitedStructsTable = 0;
-
-  FJALAR_DPRINTF("About to allocate hash table\n");
 
   // Initialize TypesTable
   TypesTable =
@@ -975,7 +975,8 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
                      variablePtr->const_value,
                      variablePtr->globalVarAddr,
 		     functionStartPC,
-		     0,0,0,0,0,0,0,0);
+		     0,0,0,0,0,0,0,0,
+                     getDeclaredFile(e->comp_unit, variablePtr->decl_file));
 
   FJALAR_DPRINTF("EXIT extractOneGlobalVariable(%p)\n", e);
 }
@@ -1018,6 +1019,8 @@ static void initializeGlobalVarsList(void)
 		     (unsigned int)variable_ptr->isStaticMemberVar,
 		     variable_ptr->is_declaration_or_artificial,
                      variable_ptr->is_const);
+
+      FJALAR_DPRINTF("\t[initializeGlobalVarsList] compile_unit: %p\n", cur_entry->comp_unit);
 
       // IGNORE variables with is_declaration_or_artificial or
       // specification_ID active because these are empty shells!
@@ -1067,19 +1070,21 @@ static void initializeGlobalVarsList(void)
 	// is not yet in GlobalVarsTable, then we add it to the table
 	// and proceed with adding it to the globalVars list.
 	existingName = 0;
-	if ((0 != variable_ptr->globalVarAddr) &&
-	    ((existingName =
-	      gengettable(GlobalVarsTable, (void*)variable_ptr->globalVarAddr)))) {
-	  if VG_STREQ(variable_ptr->name, existingName) {
-	    FJALAR_DPRINTF("\t[initializeGlobalVarsList] DUPLICATE! - %s\n", variable_ptr->name);
-	    continue;
-	  }
-	}
-	else {
-	  genputtable(GlobalVarsTable,
-		      (void*)variable_ptr->globalVarAddr, // key    (unsigned long)
-		      (void*)variable_ptr->name);         // value  (char*)
-	}
+        if(!variable_ptr->is_const) {
+          if ((0 != variable_ptr->globalVarAddr) &&
+              ((existingName =
+                gengettable(GlobalVarsTable, (void*)variable_ptr->globalVarAddr)))) {
+            if VG_STREQ(variable_ptr->name, existingName) {
+                FJALAR_DPRINTF("\t[initializeGlobalVarsList] DUPLICATE! - %s\n", variable_ptr->name);
+                continue;
+              }
+          }
+          else {
+            genputtable(GlobalVarsTable,
+                        (void*)variable_ptr->globalVarAddr, // key    (unsigned long)
+                        (void*)variable_ptr->name);         // value  (char*)
+          }
+        }
 
 	// If a variable is a global variable in C or in C++ without
 	// an enclosing namespace (older g++ versions do not put
@@ -1149,6 +1154,14 @@ static void createNamesForUnnamedDwarfEntries(void)
   }
 }
 
+static int hashGlobalConstant(VariableEntry* varPtr) { 
+  return  hashString(varPtr->declaredIn) + hashString(varPtr->name);
+}
+  
+
+static int equivalentGlobalConstants(VariableEntry* varPtr1, VariableEntry* varPtr2) {
+  return VG_STREQ(varPtr1->declaredIn, varPtr2->declaredIn) && VG_STREQ(varPtr1->name, varPtr2->name);
+}
 
 // Pre: initializeFunctionTable() and initializeGlobalVarsList() MUST
 // BE RUN before running this function.
@@ -1163,6 +1176,51 @@ static void updateAllGlobalVariableNames(void) {
 
   VarNode* curNode;
   VariableEntry* curVar;
+  
+  struct genhashtable* constGlobalHash = genallocatehashtable((unsigned int (*)(void *)) &hashGlobalConstant,
+                                                              (int (*)(void *,void *)) &equivalentGlobalConstants);
+
+  // We'll go through the entire globals list, and remove any global constant
+  // VariableEntries that are a duplicate of one we've seen earlier (where duplicate
+  // is defined as being declared in the same file and having the same name) and change
+  // the first instance's file name to be the file it was declared in. This could
+  // be extended to merge all constant variables with the same name and value
+  // or even all constant variables with the same value relatively easily, but I'm
+  // not sure how useful that would be - rudd
+  if(fjalar_merge_constants) {
+    VarNode* lastNode = NULL;
+    for (curNode = globalVars.first;
+         curNode != NULL;
+         curNode = curNode->next) {
+      curVar = curNode->var;      
+
+      tl_assert(IS_GLOBAL_VAR(curVar));      
+      if(curVar->isConstant && curVar->declaredIn) {
+
+        if(gencontains(constGlobalHash, curVar)) {
+          FJALAR_DPRINTF("[updateAllGlobalVariableNames] Ignoring duplicate variable entry %s (%p)\n",
+                         curVar->name, curVar);
+          lastNode->next = curNode->next;
+
+          if(curNode->next) {
+            curNode->next->prev = lastNode;
+          }
+
+          VG_(free)(curNode);
+          curNode = lastNode;
+          destroyVariableEntry(curVar);
+          globalVars.numVars--;
+          continue;
+        } else {
+          genputtable(constGlobalHash, curVar, curVar);
+          if(curVar->declaredIn) {
+            curVar->globalVar->fileName = curVar->declaredIn;
+          }
+        }      
+      }
+      lastNode = curNode;          
+    }
+  }
 
   for (curNode = globalVars.first;
        curNode != NULL;
@@ -1171,8 +1229,7 @@ static void updateAllGlobalVariableNames(void) {
     char* name_to_use = 0;
 
     curVar = curNode->var;
-    tl_assert(IS_GLOBAL_VAR(curVar));
-
+    tl_assert(IS_GLOBAL_VAR(curVar));      
 
     // Do not bother to make unique names for C++ static member
     // variables that are in the globalVars list because they should
@@ -1892,7 +1949,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
                          memberPtr->internal_bit_size,
                          t,
                          memberPtr->accessibility,
-                         0);
+                         0,
+                         getDeclaredFile((collectionPtr->member_vars[i])->comp_unit, memberPtr->decl_file));
     }
   }
 
@@ -1917,6 +1975,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       long const_value = 0;
       unsigned long globalVarAddr = 0, accessibility = 0;
       dwarf_entry* type_ptr = NULL;
+      char* decl_file = NULL;
 
       // Commonalities between these really need to be extracted
       // into a struct which variable and member "inherit" from
@@ -1938,8 +1997,11 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 	EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
 	mangled_name = staticMemberPtr->mangled_name;
 	globalVarAddr = staticMemberPtr->globalVarAddr;
+        decl_file = getDeclaredFile(collectionPtr->static_member_vars[ind]->comp_unit, staticMemberPtr->decl_file);
+        
       } else if(tag_is_member(collectionPtr->static_member_vars[ind]->tag_name)) {
 	EXTRACT_STATIC_INFO(member, collectionPtr->static_member_vars[ind]->entry_ptr);
+        decl_file = getDeclaredFile(collectionPtr->static_member_vars[ind]->comp_unit, staticMemberPtr->decl_file);
       }
 
 
@@ -1969,8 +2031,9 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 			 1, 0, 0, 0, 0,
 			 t,
                          accessibility,
-			 0);
-
+			 0,
+                         decl_file);
+      
     }
 
     // This is a very important step.  We want to iterate over
@@ -2015,7 +2078,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         t->byteSize = ((structByteSize + 7) >> 3) << 3;
       } else {
         // This portion of the check may be silly, but oh well.
-        FJALAR_DPRINTF("Unsupported word size: %d\n", sizeof(UWord));
+        FJALAR_DPRINTF("Unsupported word size: %lu\n", sizeof(UWord));
         tl_assert(0);
       }
 
@@ -2227,7 +2290,8 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
                               0,
 			      0,
 			      0,
-			      0,0,0,0,0,0,0,1);
+			      0,0,0,0,0,0,0,1,
+                              0);
 
 
   if (paramPtr->dwarf_stack_size > 0) {
@@ -2331,7 +2395,8 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
                               0,
 			      0,
 			      0,
-			      0,0,0,0,0,0,0,0);
+			      0,0,0,0,0,0,0,0,
+                              getDeclaredFile(dwarfVariableEntry->comp_unit, variablePtr->decl_file));
 
   varPtr->locationType = FP_OFFSET_LOCATION;
   varPtr->byteOffset = variablePtr->offset;
@@ -2366,7 +2431,7 @@ static void extractReturnVar(FunctionEntry* f,
                      0,
 		     0,
 		     0,
-		     0,0,0,0,0,0,0,0);
+		     0,0,0,0,0,0,0,0,0);
 }
 
 
@@ -2460,7 +2525,8 @@ extractOneVariable(VarList* varListPtr,
 		   int internalBitSize,
 		   TypeEntry* structParentType,
 		   unsigned long dwarf_accessibility,
-		   char isFormalParam) // All static arrays which are
+		   char isFormalParam,
+                   char* declared_in) // All static arrays which are
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
 {
@@ -2540,6 +2606,8 @@ extractOneVariable(VarList* varListPtr,
     }
   }
 
+  varPtr->declaredIn = declared_in;
+
   FJALAR_DPRINTF("\tAbout to strip modifiers for %s\n", variableName);
 
   // Strip off modifier, typedef, and array tags until we eventually
@@ -2583,11 +2651,13 @@ extractOneVariable(VarList* varListPtr,
   FJALAR_DPRINTF("\tFinished stripping modifiers for %s\n", variableName);
   FJALAR_DPRINTF("\tfunctionStartPC is %lx\n", functionStartPC);
   FJALAR_DPRINTF("\tvarPtr is %p\n", varPtr);
-  FJALAR_DPRINTF("\tTESTtypePtr is %p (ID: %lx)\n", typePtr, typePtr->ID);
+  FJALAR_DPRINTF("\ttypePtr is %p (ID: %lx)\n", typePtr, typePtr->ID);
   FJALAR_DPRINTF("\tConstant: %s\n", varPtr->isConstant?"Yes":"No");
   if(varPtr->isConstant) {
     FJALAR_DPRINTF("\t\tValue: %ld\n", varPtr->constValue);
   }
+  
+  FJALAR_DPRINTF("\tDeclared in: %s\n", (varPtr->declaredIn)?varPtr->declaredIn:"UNKNOWN");
 
   varPtr->ptrLevels = ptrLevels;
   varPtr->referenceLevels = referenceLevels;
@@ -3087,6 +3157,12 @@ void deleteFuncIterator(FuncIterator* funcIt) {
   VG_(free)(funcIt);
 }
 
+char* getDeclaredFile(compile_unit* comp_unit, unsigned long file_idx) {
+  if (comp_unit && (file_idx > 0) && (file_idx <= VG_(sizeXA))) {
+    return *(char**)VG_(indexXA)(comp_unit->file_name_table, file_idx - 1);
+  } 
+  return NULL;
+}
 
 
 #define XML_PRINTF(...) fprintf(xml_output_fp, __VA_ARGS__)

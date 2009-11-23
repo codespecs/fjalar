@@ -5210,9 +5210,20 @@ display_debug_lines (section, start, file)
   unsigned char *end_of_sequence;
   int offset_size;
   int initial_length_size;
+  int dir_table_index;
+  unsigned int cur_line_offset = 0;
+  XArray* dir_table  = NULL;
+  XArray* file_table = NULL;
+  
 
   while (data < end)
     {
+      cur_line_offset = data - start;
+      
+      dir_table = VG_(newXA) (VG_(malloc), "display_debug_lines.0", VG_(free), sizeof(char *));
+      dir_table_index = 0;
+      file_table = VG_(newXA) (VG_(malloc), "display_debug_lines.1", VG_(free), sizeof(char *));
+
       hdrptr = data;
 
       /* Check the length of the block.  */
@@ -5275,12 +5286,14 @@ display_debug_lines (section, start, file)
 
       /* Display the contents of the Directory table.  */
       data = standard_opcodes + info.li_opcode_base - 1;
-
+      
       if (*data != 0)
 	{
 	  while (*data != 0)
 	    {
+              VG_(addToXA)(dir_table, &data);
 	      data += VG_(strlen) ((char *) data) + 1;
+              dir_table_index++;
 	    }
 	}
 
@@ -5292,22 +5305,52 @@ display_debug_lines (section, start, file)
 	{
 	  while (*data != 0)
 	    {
-	      unsigned char *name;
 	      int bytes_read;
-
+              unsigned long dir_index = 0;
+              char* full_name = NULL;
+	      char* file_name = NULL;
+              char* dir_name  = NULL;
+              unsigned int dir_name_len = 0;
+              unsigned int full_name_len = 0;              
+              
 	      ++state_machine_regs.last_file_entry;
-	      name = data;
-
+	      file_name = data;
 	      data += VG_(strlen) ((char *) data) + 1;
 
-	      read_leb128(data, &bytes_read, 0);
+	      dir_index = read_leb128(data, &bytes_read, 0);
 	      data += bytes_read;
+
+              // dir_index == 0 implies
+              // base directory
+              if(dir_index > 0) {
+                dir_name = *(char **)VG_(indexXA)(dir_table, dir_index - 1);
+                dir_name_len = VG_(strlen)(dir_name);
+              }
+
+              full_name_len =  VG_(strlen)(file_name) + dir_name_len + 1 + 1;
+              full_name = VG_(calloc)("debug_display_lines.2", 1, full_name_len);
+              VG_(strncpy)(full_name, "", full_name_len);
+
+              if(dir_name) {
+                VG_(strcat)(full_name, dir_name);
+                VG_(strcat)(full_name, "/");
+              }
+
+              VG_(strcat)(full_name, file_name);
+              
+              //              VG_(printf)("Full_name: %s\n", full_name);
+              VG_(addToXA)(file_table, &full_name);
+              
+              // Don't care about modification date
+              // and time
 	      read_leb128(data, & bytes_read, 0);
 	      data += bytes_read;
 	      read_leb128(data, & bytes_read, 0);
 	      data += bytes_read;
 	    }
 	}
+
+      harvest_file_name_table(cur_line_offset, file_table);
 
       /* Skip the NUL at the end of the table.  */
       data++;
@@ -5419,8 +5462,12 @@ display_debug_lines (section, start, file)
 	      break;
 	    }
 	}
-    }
 
+      // We're not leaking the previous iteration's file_table. It's being passed to typedata.c
+      // who will be in charge of it's deletion.
+      VG_(deleteXA)(dir_table);
+    }
+  
   return 1;
 }
 
@@ -7719,7 +7766,12 @@ read_and_display_attr_value (attribute, form, data, cu_offset, pointer_size,
           if (print_results_and_ok) FJALAR_DPRINTF (")");
 	}
       break;
-
+    case DW_AT_stmt_list:
+      harvest_stmt_list(entry, uvalue);
+      break;
+    case DW_AT_decl_file:
+      harvest_decl_file(entry, uvalue);
+      break;
     default:
       break;
     }
@@ -7777,6 +7829,9 @@ display_debug_info (section, start, file)
 
   unsigned char *end_dummy = start_dummy + section_dummy->sh_size;
   unsigned char *section_begin_dummy = start_dummy;
+
+  // We're going to need to keep an array of compile units
+  unsigned long num_compile_units = 0;
 
   //  FJALAR_DPRINTF (_("The section %s contains:\n\n"), SECTION_NAME (section_dummy));
 
@@ -7893,7 +7948,8 @@ display_debug_info (section, start, file)
       tags = hdrptr;
       cu_offset = start_dummy - section_begin_dummy;
       start_dummy += compunit.cu_length + initial_length_size;
-
+      
+      num_compile_units++;
       //      FJALAR_DPRINTF (_("  Compilation Unit @ %lx:\n"), cu_offset);
       //      FJALAR_DPRINTF (_("   Length:        %ld\n"), compunit.cu_length);
       //      FJALAR_DPRINTF (_("   Version:       %d\n"), compunit.cu_version);
@@ -8008,6 +8064,7 @@ display_debug_info (section, start, file)
   // Question - when do we destroy it???
   dwarf_entry_array_size = num_relevant_entries;
   initialize_dwarf_entry_array(num_relevant_entries);
+  initialize_compile_unit_array(num_compile_units);
 
   // PG - Begin real code
 #ifdef SHOW_DEBUG
@@ -8029,6 +8086,7 @@ display_debug_info (section, start, file)
       unsigned long cu_offset;
       int offset_size;
       int initial_length_size;
+      compile_unit* cur_comp_unit = NULL; //rudd
 
       hdrptr = start;
 
@@ -8215,6 +8273,7 @@ display_debug_info (section, start, file)
               unsigned long temp_ID = (unsigned long) (tags - section_begin - bytes_read);
               unsigned long temp_tag_name = entry->tag;
 
+
               // Fill the ID and tag_name fields:
               dwarf_entry_array[idx].ID = temp_ID;
               dwarf_entry_array[idx].tag_name = temp_tag_name;
@@ -8224,6 +8283,13 @@ display_debug_info (section, start, file)
 
               // Initialize the entry_ptr based on tag_name
               initialize_dwarf_entry_ptr(&dwarf_entry_array[idx]);
+
+              if(tag_is_compile_unit(temp_tag_name)) {
+                cur_comp_unit = dwarf_entry_array[idx].entry_ptr;
+                add_comp_unit(cur_comp_unit);
+              }
+              dwarf_entry_array[idx].comp_unit = cur_comp_unit;
+              FJALAR_DPRINTF("dwarf_entry_array[%d].comp_unit = %p\n", idx, dwarf_entry_array[idx].comp_unit);
 
               if (print_results)
                 {
