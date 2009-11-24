@@ -1643,21 +1643,25 @@ static void init_specification_and_abstract_stuff(void) {
         dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
         variable* aliased_var_ptr = NULL;
         
-
-	// Temporary fix: Apparently some versions of g++ will
-	// have specification IDs that refer to a dwarf entry
-	// of another type.
-	if(!tag_is_variable(aliased_entry->tag_name)) {
-	  continue;
-	}
-
-        //tl_assert(tag_is_variable(aliased_entry->tag_name));
-
-        aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);
-
         FJALAR_DPRINTF("[init_specification_and_abstract_stuff] Linking %lx and %lx\n", 
                        aliased_entry->ID,
                        cur_entry->ID);
+	
+
+	// g++ Can have variable's whose specification ID points to
+	// a member dwarf entry. We really need to consolidate some
+	// of these dwarf entry structs, this is kind of a pain..
+
+        tl_assert(tag_is_variable(aliased_entry->tag_name) ||
+		  tag_is_member(aliased_entry->tag_name));
+
+	if(tag_is_variable(aliased_entry->tag_name)) {
+	  aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);  
+	} else {
+	  aliased_var_ptr = (member*)(aliased_entry->entry_ptr);  
+	}
+
+	
 
         //        cur_var->is_declaration_or_artificial = 1;
 	
