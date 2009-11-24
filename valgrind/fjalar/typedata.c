@@ -1643,7 +1643,15 @@ static void init_specification_and_abstract_stuff(void) {
         dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
         variable* aliased_var_ptr = NULL;
         
-        tl_assert(tag_is_variable(aliased_entry->tag_name));
+
+	// Temporary fix: Apparently some versions of g++ will
+	// have specification IDs that refer to a dwarf entry
+	// of another type.
+	if(!tag_is_variable(aliased_entry->tag_name)) {
+	  continue;
+	}
+
+        //tl_assert(tag_is_variable(aliased_entry->tag_name));
 
         aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);
 
@@ -1652,7 +1660,7 @@ static void init_specification_and_abstract_stuff(void) {
                        cur_entry->ID);
 
         //        cur_var->is_declaration_or_artificial = 1;
-
+	
         aliased_var_ptr->is_declaration_or_artificial = 0;
                        
       }
