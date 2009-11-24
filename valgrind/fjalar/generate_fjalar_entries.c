@@ -2572,7 +2572,11 @@ extractOneVariable(VarList* varListPtr,
   }
 
   // Propogate information about constants
-  varPtr->isConstant = isConstant;
+  if(typePtr && (typePtr->tag_name == DW_TAG_const_type)) {
+    varPtr->isConstant = True;
+  }
+
+  varPtr->isConstant |= isConstant;
   varPtr->constValue = constantValue;
     
 
@@ -2634,7 +2638,7 @@ extractOneVariable(VarList* varListPtr,
 
           // If the parameter is a "const" or "volatile" type, just strip
           // off the "const" or "volatile" and process it again
-          typePtr = extractModifierType(modifierPtr);
+	  typePtr = extractModifierType(modifierPtr);
 	}
       else if (tag_is_array_type(typePtr->tag_name))
 	{
@@ -2651,7 +2655,7 @@ extractOneVariable(VarList* varListPtr,
   FJALAR_DPRINTF("\tFinished stripping modifiers for %s\n", variableName);
   FJALAR_DPRINTF("\tfunctionStartPC is %lx\n", functionStartPC);
   FJALAR_DPRINTF("\tvarPtr is %p\n", varPtr);
-  FJALAR_DPRINTF("\ttypePtr is %p (ID: %lx)\n", typePtr, typePtr->ID);
+  FJALAR_DPRINTF("\ttypePtr is %p\n", typePtr);
   FJALAR_DPRINTF("\tConstant: %s\n", varPtr->isConstant?"Yes":"No");
   if(varPtr->isConstant) {
     FJALAR_DPRINTF("\t\tValue: %ld\n", varPtr->constValue);
