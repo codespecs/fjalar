@@ -2078,7 +2078,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
         t->byteSize = ((structByteSize + 7) >> 3) << 3;
       } else {
         // This portion of the check may be silly, but oh well.
-        FJALAR_DPRINTF("Unsupported word size: %lu\n", sizeof(UWord));
+        FJALAR_DPRINTF("Unsupported word size: %lu\n", (unsigned long) sizeof(UWord));
         tl_assert(0);
       }
 
@@ -3162,7 +3162,7 @@ void deleteFuncIterator(FuncIterator* funcIt) {
 }
 
 char* getDeclaredFile(compile_unit* comp_unit, unsigned long file_idx) {
-  if (comp_unit && (file_idx > 0) && (file_idx <= VG_(sizeXA))) {
+  if (comp_unit && (file_idx > 0) && (file_idx <= VG_(sizeXA)(comp_unit->file_name_table))) {
     return *(char**)VG_(indexXA)(comp_unit->file_name_table, file_idx - 1);
   } 
   return NULL;

@@ -35,6 +35,7 @@ const char* OBJECT_PPT = ":::OBJECT";
 
 extern const char* DeclaredTypeString[];
 extern char* cur_var_name;
+extern char* func_name;
 
 // Hack alert: Necessary for printing out object program points
 // properly ...
@@ -923,10 +924,10 @@ printDeclsEntryAction(VariableEntry* var,
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
         // since Daikon ignores them.
+	cur_var_name = varName;
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
-	cur_var_name = varName;
 
         fputs("    comparability ", decls_fp);
         fprintf(decls_fp, "%d", comp_number);

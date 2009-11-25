@@ -1641,7 +1641,6 @@ static void init_specification_and_abstract_stuff(void) {
       if(binary_search_dwarf_entry_array(cur_var->specification_ID,
                                          &aliased_index)) {
         dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
-        variable* aliased_var_ptr = NULL;
         
         FJALAR_DPRINTF("[init_specification_and_abstract_stuff] Linking %lx and %lx\n", 
                        aliased_entry->ID,
@@ -1656,16 +1655,11 @@ static void init_specification_and_abstract_stuff(void) {
 		  tag_is_member(aliased_entry->tag_name));
 
 	if(tag_is_variable(aliased_entry->tag_name)) {
-	  aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);  
-	} else {
-	  aliased_var_ptr = (member*)(aliased_entry->entry_ptr);  
-	}
-
-	
-
+	  ((variable*)(aliased_entry->entry_ptr))->is_declaration_or_artificial = 1;  
+	} 
+       
         //        cur_var->is_declaration_or_artificial = 1;
-	
-        aliased_var_ptr->is_declaration_or_artificial = 0;
+       
                        
       }
     }

@@ -50,7 +50,7 @@ void uf_make_set(uf_object *new_object, unsigned int t) {
 uf_name uf_union(uf_object *obj1, uf_object *obj2) {
   uf_name class1 = uf_find(obj1);
   uf_name class2 = uf_find(obj2);
-
+  
   // Union-by-rank:
 
   // If class1 == class2, then obj1 and obj2 are already

@@ -126,6 +126,9 @@ typedef struct {
   UInt num_entry_daikon_vars; // Inactive unless --separate-entry-exit-comp is on
   UInt num_exit_daikon_vars;
 
+  // The number of invocations of this function
+  UInt num_invocations;
+
 } DaikonFunctionEntry;
 
 // Kvasir/DynComp-specific global variables that are set by

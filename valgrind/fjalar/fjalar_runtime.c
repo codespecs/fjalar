@@ -55,7 +55,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   FunctionExecutionState* next_fn = 0;
 
   FJALAR_DPRINTF("Looking for function corresponding "
-	  "to stack variable 0x%p\n", (void *)a);
+                 "to stack variable 0x%p\n", (void *)a);
 
   // Traverse the function stack from the function with
   // the highest ESP to the one with the lowest ESP
@@ -179,6 +179,7 @@ returnArrayVariableWithAddr(VarList* varList,
   ThreadId tid = VG_(get_running_tid)();
   Bool actual_value = 0;
   Addr var_loc = 0;
+  FJALAR_DPRINTF("[returnArrayVariableWithAddr] varList: %p, Addr: %p, %s\n", varList, (void *)a, (isGlobal)?"Global":"NonGlobal");
   for (cur_node = varList->first;
        cur_node != 0;
        cur_node = cur_node->next) {
@@ -504,6 +505,8 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
       size =
         probeAheadDiscoverHeapArraySize(varLocation,
                                         getBytesBetweenElts(var));
+
+      FJALAR_DPRINTF("Size is %d\n", size);
 
       // We want an upper-bound on the array, not the actual size
       if (size > 0)
