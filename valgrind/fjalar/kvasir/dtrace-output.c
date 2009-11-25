@@ -1145,6 +1145,8 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   funcPtr = f_state->func;
   tl_assert(funcPtr);
 
+  ((DaikonFunctionEntry*)funcPtr)->num_invocations++;  
+
   DPRINTF("* %s %s at FP=%p, lowestSP=%p, startPC=%p\n",
           (isEnter ? "ENTER" : "EXIT "),
           f_state->func->fjalar_name,
@@ -1155,6 +1157,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   // Reset this properly!
   g_variableIndex = 0;
 
+  func_name = f_state->func->fjalar_name;
 
   // Print out function header
   if (!dyncomp_without_dtrace) {
@@ -1168,7 +1171,6 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   if(isEnter)
     is_enter = 1;
 
-  func_name = f_state->func->fjalar_name;
 
   // Print out globals:
   visitVariableGroup(GLOBAL_VAR,

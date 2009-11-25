@@ -367,6 +367,10 @@ holding tags that belong in the same set (have the same leader).
   // memory-level layer
   new_tags_v = get_tag(a);
 
+  DYNCOMP_TPRINTF("\n[Dyncomp] OBSERVATION POINT: %s - %u (%s - %s invocation %u)\n",
+                  cur_var_name,  new_tags_v, isEnter?"ENTRY":"EXIT", func_name, funcPtr->num_invocations);
+
+
   new_leader = val_uf_find_leader(new_tags_v);
   if (new_leader && // We don't want to insert 0 tags into the union find structure
       !gengettable(var_uf_map, (void*)new_leader)) {
@@ -380,11 +384,10 @@ holding tags that belong in the same set (have the same leader).
   var_tags[daikonVarIndex] = new_leader;
 
 
-  DYNCOMP_TPRINTF("\n[Dyncomp] Variable %s - Tag %u @ (%s - %s)\n",
-		  cur_var_name,  new_tags_v,
-		  isEnter?"Entering":"Exiting", func_name );
 
-  DYNCOMP_DPRINTF(" new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
+
+  DYNCOMP_DPRINTF("[Dyncomp] %s new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
+                  cur_var_name,
                   daikonVarIndex,
                   new_tags_v,
                   new_leader,

@@ -8289,7 +8289,7 @@ display_debug_info (section, start, file)
                 add_comp_unit(cur_comp_unit);
               }
               dwarf_entry_array[idx].comp_unit = cur_comp_unit;
-              FJALAR_DPRINTF("dwarf_entry_array[%d].comp_unit = %p\n", idx, dwarf_entry_array[idx].comp_unit);
+              FJALAR_DPRINTF("dwarf_entry_array[%lu].comp_unit = %p\n", idx, dwarf_entry_array[idx].comp_unit);
 
               if (print_results)
                 {

@@ -1084,7 +1084,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       if(!basePtrValue && var->isConstant) {
         FJALAR_DPRINTF("[visitVariableGroup] Invalid globalLocation, but has a constant value (%lu). Overriding address.\n", 
                        var->constValue);
-        basePtrValue = &var->constValue;
+        basePtrValue = (Addr)&var->constValue;
         overrideIsInit = True;
       }
 

@@ -158,8 +158,10 @@ static __inline__ UInt grab_fresh_tag(void) {
 
   totalNumTagsAssigned++;
   if (dyncomp_print_trace_all) {
+    uf_object* tag_obj;
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
     Char eip_info[256];
+    tag_obj = GET_UF_OBJECT_PTR(tag);
     dyncomp_print_trace_info = True;
     VG_(describe_IP)(tid, eip_info, sizeof(eip_info));
     DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %08x (%s)\n",
@@ -257,17 +259,12 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     tag2_obj = GET_UF_OBJECT_PTR(tag2);
     leader = uf_union(tag1_obj, tag2_obj);
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
+
     DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at %p (%s)\n",
 		    tag1, tag2, leader->tag, (void *)eip, eip_info);
 
-    if(dyncomp_no_val_leader) {
-      if(leader == tag1_obj) {
-        return tag2_obj->tag;
-      } else if(leader == tag2_obj) {
-        return tag1_obj->tag;
-      } else { //Doesn't really matter at this point
-        return tag1;
-      }
+    if(dyncomp_no_val_leader){
+      return tag1;
     }
 
     return leader->tag;
@@ -499,7 +496,8 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
       }
     }
     // Find out the canonical tag
-    canonicalTag = val_uf_find_leader(tagToMerge);
+    canonicalTag = (dyncomp_no_val_leader)?tagToMerge:val_uf_find_leader(tagToMerge);
+    //canonicalTag = val_uf_find_leader(tagToMerge);
 
     // Set all the tags in this range to the canonical tag
     for (curAddr = a; curAddr < (a + len); curAddr++) {
