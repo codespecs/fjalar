@@ -349,6 +349,7 @@ DECL_TEMPLATE(amd64_linux, sys_setsockopt);
 DECL_TEMPLATE(amd64_linux, sys_getsockopt);
 DECL_TEMPLATE(amd64_linux, sys_connect);
 DECL_TEMPLATE(amd64_linux, sys_accept);
+DECL_TEMPLATE(amd64_linux, sys_accept4);
 DECL_TEMPLATE(amd64_linux, sys_sendto);
 DECL_TEMPLATE(amd64_linux, sys_recvfrom);
 DECL_TEMPLATE(amd64_linux, sys_sendmsg);
@@ -676,6 +677,23 @@ PRE(sys_accept)
    ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
 }
 POST(sys_accept)
+{
+   SysRes r;
+   vg_assert(SUCCESS);
+   r = ML_(generic_POST_sys_accept)(tid, VG_(mk_SysRes_Success)(RES),
+                                         ARG1,ARG2,ARG3);
+   SET_STATUS_from_SysRes(r);
+}
+
+PRE(sys_accept4)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_accept4 ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "accept4",
+                 int, s, struct sockaddr *, addr, int, *addrlen, int, flags);
+   ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
+}
+POST(sys_accept4)
 {
    SysRes r;
    vg_assert(SUCCESS);
@@ -1200,20 +1218,20 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_sched_getscheduler,      sys_sched_getscheduler),      // 145 
    LINX_(__NR_sched_get_priority_max,  sys_sched_get_priority_max),  // 146 
    LINX_(__NR_sched_get_priority_min,  sys_sched_get_priority_min),  // 147 
-   //LINX?(__NR_sched_rr_get_interval,   sys_sched_rr_get_interval),   // 148 
+   LINXY(__NR_sched_rr_get_interval,   sys_sched_rr_get_interval),   // 148 
    GENX_(__NR_mlock,                   sys_mlock),                   // 149 
 
    GENX_(__NR_munlock,           sys_munlock),        // 150 
    GENX_(__NR_mlockall,          sys_mlockall),       // 151 
    LINX_(__NR_munlockall,        sys_munlockall),     // 152 
-   //   (__NR_vhangup,           sys_vhangup),        // 153 
+   LINX_(__NR_vhangup,           sys_vhangup),        // 153 
    //   (__NR_modify_ldt,        sys_modify_ldt),     // 154 
 
    //   (__NR_pivot_root,        sys_pivot_root),     // 155 
    LINXY(__NR__sysctl,           sys_sysctl),         // 156 
    LINXY(__NR_prctl,             sys_prctl),          // 157 
    PLAX_(__NR_arch_prctl,	 sys_arch_prctl),     // 158 
-   //   (__NR_adjtimex,          sys_adjtimex),       // 159 
+   LINXY(__NR_adjtimex,          sys_adjtimex),       // 159 
 
    GENX_(__NR_setrlimit,         sys_setrlimit),      // 160 
    GENX_(__NR_chroot,            sys_chroot),         // 161 
@@ -1368,18 +1386,18 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_fallocate,         sys_fallocate),        // 285
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 286
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 287
-   //   (__NR_paccept,           sys_ni_syscall)        // 288
+   PLAXY(__NR_accept4,           sys_accept4),          // 288
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 289
 
    LINX_(__NR_eventfd2,          sys_eventfd2),         // 290
    LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 291
-   //   (__NR_dup3,              sys_ni_syscall)        // 292
+   LINXY(__NR_dup3,              sys_dup3),             // 292
    LINXY(__NR_pipe2,             sys_pipe2),            // 293
    LINXY(__NR_inotify_init1,     sys_inotify_init1),    // 294
 
    LINXY(__NR_preadv,            sys_preadv),           // 295
    LINX_(__NR_pwritev,           sys_pwritev),          // 296
-   //   (__NR_rt_tgsigqueueinfo, sys_ni_syscall)        // 297
+   LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),// 297
    LINXY(__NR_perf_counter_open, sys_perf_counter_open) // 298
 };
 

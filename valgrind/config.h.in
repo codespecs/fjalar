@@ -15,6 +15,9 @@
 /* Define to 1 if you're using glibc 2.10.x */
 #undef GLIBC_2_10
 
+/* Define to 1 if you're using glibc 2.11.x */
+#undef GLIBC_2_11
+
 /* Define to 1 if you're using glibc 2.2.x */
 #undef GLIBC_2_2
 
@@ -153,6 +156,9 @@
 
 /* Define to 1 if you have the `pthread_spin_lock' function. */
 #undef HAVE_PTHREAD_SPIN_LOCK
+
+/* Define to 1 if the installed version of Qt4 provides QAtomicInt. */
+#undef HAVE_QTCORE_QATOMICINT
 
 /* Define to 1 if the installed version of Qt4 provides QMutex::tryLock(int).
    */

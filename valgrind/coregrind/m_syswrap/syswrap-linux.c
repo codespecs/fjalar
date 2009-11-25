@@ -378,8 +378,18 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
 #define PRE(name)       DEFN_PRE_TEMPLATE(linux, name)
 #define POST(name)      DEFN_POST_TEMPLATE(linux, name)
 
-// Combine two 32-bit values into a 64-bit value
-#define LOHI64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
+// Macros to support 64-bit syscall args split into two 32 bit values
+#if defined(VG_LITTLEENDIAN)
+#define MERGE64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
+#define MERGE64_FIRST(name) name##_low
+#define MERGE64_SECOND(name) name##_high
+#elif defined(VG_BIGENDIAN)
+#define MERGE64(hi,lo)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
+#define MERGE64_FIRST(name) name##_high
+#define MERGE64_SECOND(name) name##_low
+#else
+#error Unknown endianness
+#endif
 
 /* ---------------------------------------------------------------------
    *mount wrappers
@@ -605,34 +615,34 @@ POST(sys_llseek)
       POST_MEM_WRITE( ARG4, sizeof(vki_loff_t) );
 }
 
-//zz PRE(sys_adjtimex, 0)
-//zz {
-//zz    struct vki_timex *tx = (struct vki_timex *)ARG1;
-//zz    PRINT("sys_adjtimex ( %p )", ARG1);
-//zz    PRE_REG_READ1(long, "adjtimex", struct timex *, buf);
-//zz    PRE_MEM_READ( "adjtimex(timex->modes)", ARG1, sizeof(tx->modes));
-//zz 
-#if 0 //zz  (avoiding warnings about multi-line comments)
-zz #define ADJX(bit,field) 				\
-zz    if (tx->modes & bit)					\
-zz       PRE_MEM_READ( "adjtimex(timex->"#field")",	\
-zz 		    (Addr)&tx->field, sizeof(tx->field))
-#endif
-//zz    ADJX(ADJ_FREQUENCY, freq);
-//zz    ADJX(ADJ_MAXERROR, maxerror);
-//zz    ADJX(ADJ_ESTERROR, esterror);
-//zz    ADJX(ADJ_STATUS, status);
-//zz    ADJX(ADJ_TIMECONST, constant);
-//zz    ADJX(ADJ_TICK, tick);
-//zz #undef ADJX
-//zz    
-//zz    PRE_MEM_WRITE( "adjtimex(timex)", ARG1, sizeof(struct vki_timex));
-//zz }
-//zz 
-//zz POST(sys_adjtimex)
-//zz {
-//zz    POST_MEM_WRITE( ARG1, sizeof(struct vki_timex) );
-//zz }
+PRE(sys_adjtimex)
+{
+   struct vki_timex *tx = (struct vki_timex *)ARG1;
+   PRINT("sys_adjtimex ( %#lx )", ARG1);
+   PRE_REG_READ1(long, "adjtimex", struct timex *, buf);
+   PRE_MEM_READ( "adjtimex(timex->modes)", ARG1, sizeof(tx->modes));
+
+#define ADJX(bit,field) 				\
+   if (tx->modes & bit)					\
+      PRE_MEM_READ( "adjtimex(timex->"#field")",	\
+		    (Addr)&tx->field, sizeof(tx->field))
+
+   ADJX(VKI_ADJ_OFFSET, offset);
+   ADJX(VKI_ADJ_FREQUENCY, freq);
+   ADJX(VKI_ADJ_MAXERROR, maxerror);
+   ADJX(VKI_ADJ_ESTERROR, esterror);
+   ADJX(VKI_ADJ_STATUS, status);
+   ADJX(VKI_ADJ_TIMECONST, constant);
+   ADJX(VKI_ADJ_TICK, tick);
+#undef ADJX
+
+   PRE_MEM_WRITE( "adjtimex(timex)", ARG1, sizeof(struct vki_timex));
+}
+
+POST(sys_adjtimex)
+{
+   POST_MEM_WRITE( ARG1, sizeof(struct vki_timex) );
+}
 
 PRE(sys_ioperm)
 {
@@ -1167,14 +1177,24 @@ POST(sys_eventfd2)
    }
 }
 
-// 64-bit version.
 PRE(sys_fallocate)
 {
    *flags |= SfMayBlock;
+#if VG_WORDSIZE == 4
+   PRINT("sys_fallocate ( %ld, %ld, %lld, %lld )",
+         ARG1, ARG2, MERGE64(ARG3,ARG4), MERGE64(ARG5,ARG6));
+   PRE_REG_READ6(long, "fallocate",
+                 int, fd, int, mode,
+                 unsigned, MERGE64_FIRST(offset), unsigned, MERGE64_SECOND(offset),
+                 unsigned, MERGE64_FIRST(len), unsigned, MERGE64_SECOND(len));
+#elif VG_WORDSIZE == 8
    PRINT("sys_fallocate ( %ld, %ld, %lld, %lld )",
          ARG1, ARG2, (Long)ARG3, (Long)ARG4);
    PRE_REG_READ4(long, "fallocate",
                  int, fd, int, mode, vki_loff_t, offset, vki_loff_t, len);
+#else
+#  error Unexpected word size
+#endif
    if (!ML_(fd_allowed)(ARG1, "fallocate", tid, False))
       SET_STATUS_Failure( VKI_EBADF );
 }
@@ -1286,19 +1306,19 @@ POST(sys_tgkill)
 PRE(sys_fadvise64)
 {
    PRINT("sys_fadvise64 ( %ld, %lld, %lu, %ld )",
-         ARG1, LOHI64(ARG2,ARG3), ARG4, ARG5);
+         ARG1, MERGE64(ARG2,ARG3), ARG4, ARG5);
    PRE_REG_READ5(long, "fadvise64",
-                 int, fd, vki_u32, offset_low, vki_u32, offset_high,
+                 int, fd, vki_u32, MERGE64_FIRST(offset), vki_u32, MERGE64_SECOND(offset),
                  vki_size_t, len, int, advice);
 }
 
 PRE(sys_fadvise64_64)
 {
    PRINT("sys_fadvise64_64 ( %ld, %lld, %lld, %ld )",
-         ARG1, LOHI64(ARG2,ARG3), LOHI64(ARG4,ARG5), ARG6);
+         ARG1, MERGE64(ARG2,ARG3), MERGE64(ARG4,ARG5), ARG6);
    PRE_REG_READ6(long, "fadvise64_64",
-                 int, fd, vki_u32, offset_low, vki_u32, offset_high,
-                 vki_u32, len_low, vki_u32, len_high, int, advice);
+                 int, fd, vki_u32, MERGE64_FIRST(offset), vki_u32, MERGE64_SECOND(offset),
+                 vki_u32, MERGE64_FIRST(len), vki_u32, MERGE64_SECOND(len), int, advice);
 }
 
 /* ---------------------------------------------------------------------
@@ -2318,6 +2338,21 @@ PRE(sys_sched_get_priority_min)
    PRE_REG_READ1(long, "sched_get_priority_min", int, policy);
 }
 
+PRE(sys_sched_rr_get_interval)
+{
+   PRINT("sys_sched_rr_get_interval ( %ld, %#lx )", ARG1, ARG2);
+   PRE_REG_READ2(int, "sched_rr_get_interval",
+                 vki_pid_t, pid,
+                 struct vki_timespec *, tp);
+   PRE_MEM_WRITE("sched_rr_get_interval(timespec)",
+                 ARG2, sizeof(struct vki_timespec));
+}
+
+POST(sys_sched_rr_get_interval)
+{
+   POST_MEM_WRITE(ARG2, sizeof(struct vki_timespec));
+}
+
 PRE(sys_sched_setaffinity)
 {
    PRINT("sched_setaffinity ( %ld, %ld, %#lx )", ARG1, ARG2, ARG3);
@@ -2411,6 +2446,21 @@ POST(sys_pipe2)
    }
 }
 
+PRE(sys_dup3)
+{
+   PRINT("sys_dup3 ( %ld, %ld, %ld )", ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "dup3", unsigned int, oldfd, unsigned int, newfd, int, flags);
+   if (!ML_(fd_allowed)(ARG2, "dup3", tid, True))
+      SET_STATUS_Failure( VKI_EBADF );
+}
+
+POST(sys_dup3)
+{
+   vg_assert(SUCCESS);
+   if (VG_(clo_track_fds))
+      ML_(record_fd_open_named)(tid, RES);
+}
+
 PRE(sys_quotactl)
 {
    PRINT("sys_quotactl (0x%lx, %#lx, 0x%lx, 0x%lx )", ARG1,ARG2,ARG3, ARG4);
@@ -2441,12 +2491,47 @@ POST(sys_waitid)
 PRE(sys_sync_file_range)
 {
    *flags |= SfMayBlock;
-   PRINT("sys_sync_file_range ( %ld, %ld, %ld, %ld )",
-         ARG1,ARG2,ARG3,ARG4);
+#if VG_WORDSIZE == 4
+   PRINT("sys_sync_file_range ( %ld, %lld, %lld, %ld )",
+         ARG1,MERGE64(ARG2,ARG3),MERGE64(ARG4,ARG5),ARG6);
+   PRE_REG_READ6(long, "sync_file_range",
+                 int, fd,
+                 unsigned, MERGE64_FIRST(offset), unsigned, MERGE64_SECOND(offset),
+                 unsigned, MERGE64_FIRST(nbytes), unsigned, MERGE64_SECOND(nbytes),
+                 unsigned int, flags);
+#elif VG_WORDSIZE == 8
+   PRINT("sys_sync_file_range ( %ld, %lld, %lld, %ld )",
+         ARG1,(Long)ARG2,(Long)ARG3,ARG4);
    PRE_REG_READ4(long, "sync_file_range",
                  int, fd, vki_loff_t, offset, vki_loff_t, nbytes,
                  unsigned int, flags);
+#else
+#  error Unexpected word size
+#endif
    if (!ML_(fd_allowed)(ARG1, "sync_file_range", tid, False))
+      SET_STATUS_Failure( VKI_EBADF );
+}
+
+PRE(sys_sync_file_range2)
+{
+   *flags |= SfMayBlock;
+#if VG_WORDSIZE == 4
+   PRINT("sys_sync_file_range2 ( %ld, %ld, %lld, %lld )",
+         ARG1,ARG2,MERGE64(ARG3,ARG4),MERGE64(ARG5,ARG6));
+   PRE_REG_READ6(long, "sync_file_range2",
+                 int, fd, unsigned int, flags,
+                 unsigned, MERGE64_FIRST(offset), unsigned, MERGE64_SECOND(offset),
+                 unsigned, MERGE64_FIRST(nbytes), unsigned, MERGE64_SECOND(nbytes));
+#elif VG_WORDSIZE == 8
+   PRINT("sys_sync_file_range2 ( %ld, %ld, %lld, %lld )",
+         ARG1,ARG2,(Long)ARG3,(Long)ARG4);
+   PRE_REG_READ4(long, "sync_file_range2",
+                 int, fd, unsigned int, flags,
+                 vki_loff_t, offset, vki_loff_t, nbytes);
+#else
+#  error Unexpected word size
+#endif
+   if (!ML_(fd_allowed)(ARG1, "sync_file_range2", tid, False))
       SET_STATUS_Failure( VKI_EBADF );
 }
 
@@ -2728,6 +2813,21 @@ PRE(sys_rt_sigqueueinfo)
 POST(sys_rt_sigqueueinfo)
 {
    if (!ML_(client_signal_OK)(ARG2))
+      SET_STATUS_Failure( VKI_EINVAL );
+}
+
+PRE(sys_rt_tgsigqueueinfo)
+{
+   PRINT("sys_rt_tgsigqueueinfo(%ld, %ld, %ld, %#lx)", ARG1, ARG2, ARG3, ARG4);
+   PRE_REG_READ4(long, "rt_tgsigqueueinfo",
+                 int, tgid, int, pid, int, sig, vki_siginfo_t *, uinfo);
+   if (ARG3 != 0)
+      PRE_MEM_READ( "rt_tgsigqueueinfo(uinfo)", ARG4, VKI_SI_MAX_SIZE );
+}
+
+POST(sys_rt_tgsigqueueinfo)
+{
+   if (!ML_(client_signal_OK)(ARG3))
       SET_STATUS_Failure( VKI_EINVAL );
 }
 
@@ -3061,11 +3161,11 @@ PRE(sys_preadv)
    struct vki_iovec * vec;
    *flags |= SfMayBlock;
 #if VG_WORDSIZE == 4
-   PRINT("sys_preadv ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,LOHI64(ARG4,ARG5));
+   PRINT("sys_preadv ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,MERGE64(ARG4,ARG5));
    PRE_REG_READ5(ssize_t, "preadv",
                  unsigned long, fd, const struct iovec *, vector,
-                 unsigned long, count, vki_u32, offset_low32,
-                 vki_u32, offset_high32);
+                 unsigned long, count, vki_u32, MERGE64_FIRST(offset),
+                 vki_u32, MERGE64_SECOND(offset));
 #elif VG_WORDSIZE == 8
    PRINT("sys_preadv ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,(Long)ARG4);
    PRE_REG_READ4(ssize_t, "preadv",
@@ -3114,11 +3214,11 @@ PRE(sys_pwritev)
    struct vki_iovec * vec;
    *flags |= SfMayBlock;
 #if VG_WORDSIZE == 4
-   PRINT("sys_pwritev ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,LOHI64(ARG4,ARG5));
+   PRINT("sys_pwritev ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,MERGE64(ARG4,ARG5));
    PRE_REG_READ5(ssize_t, "pwritev",
                  unsigned long, fd, const struct iovec *, vector,
-                 unsigned long, count, vki_u32, offset_low32,
-                 vki_u32, offset_high32);
+                 unsigned long, count, vki_u32, MERGE64_FIRST(offset),
+                 vki_u32, MERGE64_SECOND(offset));
 #elif VG_WORDSIZE == 8
    PRINT("sys_pwritev ( %ld, %#lx, %llu, %lld )",ARG1,ARG2,(ULong)ARG3,(Long)ARG4);
    PRE_REG_READ4(ssize_t, "pwritev",
@@ -3355,9 +3455,9 @@ PRE(sys_delete_module)
 PRE(sys_lookup_dcookie)
 {
    PRINT("sys_lookup_dcookie (0x%llx, %#lx, %ld)",
-         LOHI64(ARG1,ARG2), ARG3, ARG4);
+         MERGE64(ARG1,ARG2), ARG3, ARG4);
    PRE_REG_READ4(long, "lookup_dcookie",
-                 vki_u32, cookie_low32, vki_u32, cookie_high32,
+                 vki_u32, MERGE64_FIRST(cookie), vki_u32, MERGE64_SECOND(cookie),
                  char *, buf, vki_size_t, len);
    PRE_MEM_WRITE( "lookup_dcookie(buf)", ARG3, ARG4);
 }

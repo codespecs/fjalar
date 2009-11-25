@@ -50,6 +50,7 @@ DECL_TEMPLATE(linux, sys_umount);
 DECL_TEMPLATE(linux, sys_perf_counter_open);
 DECL_TEMPLATE(linux, sys_preadv);
 DECL_TEMPLATE(linux, sys_pwritev);
+DECL_TEMPLATE(linux, sys_dup3);
 
 // POSIX, but various sub-cases differ between Linux and Darwin.
 DECL_TEMPLATE(linux, sys_fcntl);
@@ -213,7 +214,7 @@ DECL_TEMPLATE(linux, sys_sched_getscheduler);
 DECL_TEMPLATE(linux, sys_sched_yield);
 DECL_TEMPLATE(linux, sys_sched_get_priority_max);
 DECL_TEMPLATE(linux, sys_sched_get_priority_min);
-//DECL_TEMPLATE(linux, sys_sched_rr_get_interval);    // not yet encountered
+DECL_TEMPLATE(linux, sys_sched_rr_get_interval);
 DECL_TEMPLATE(linux, sys_sched_setaffinity);
 DECL_TEMPLATE(linux, sys_sched_getaffinity);
 
@@ -241,10 +242,12 @@ DECL_TEMPLATE(linux, sys_rt_sigprocmask);
 DECL_TEMPLATE(linux, sys_rt_sigpending);
 DECL_TEMPLATE(linux, sys_rt_sigtimedwait);
 DECL_TEMPLATE(linux, sys_rt_sigqueueinfo);
+DECL_TEMPLATE(linux, sys_rt_tgsigqueueinfo);
 DECL_TEMPLATE(linux, sys_rt_sigsuspend);
 
 // Linux-specific?
 DECL_TEMPLATE(linux, sys_sync_file_range);
+DECL_TEMPLATE(linux, sys_sync_file_range2);
 DECL_TEMPLATE(linux, sys_stime);  /* maybe generic?  I'm not sure */
 
 // Linux specific (kernel modules)
