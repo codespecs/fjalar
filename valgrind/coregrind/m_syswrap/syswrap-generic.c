@@ -2091,11 +2091,17 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
 #define PRE(name)      DEFN_PRE_TEMPLATE(generic, name)
 #define POST(name)     DEFN_POST_TEMPLATE(generic, name)
 
-#if VG_WORDSIZE == 4
-// Combine two 32-bit values into a 64-bit value
-// Always use with low-numbered arg first (e.g. LOHI64(ARG1,ARG2) )
-// GrP fixme correct for ppc-linux?
-#define LOHI64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
+// Macros to support 64-bit syscall args split into two 32 bit values
+#if defined(VG_LITTLEENDIAN)
+#define MERGE64(lo,hi)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
+#define MERGE64_FIRST(name) name##_low
+#define MERGE64_SECOND(name) name##_high
+#elif defined(VG_BIGENDIAN)
+#define MERGE64(hi,lo)   ( ((ULong)(lo)) | (((ULong)(hi)) << 32) )
+#define MERGE64_FIRST(name) name##_high
+#define MERGE64_SECOND(name) name##_low
+#else
+#error Unknown endianness
 #endif
 
 PRE(sys_exit)
@@ -2346,10 +2352,10 @@ PRE(sys_pwrite64)
    *flags |= SfMayBlock;
 #if VG_WORDSIZE == 4
    PRINT("sys_pwrite64 ( %ld, %#lx, %llu, %lld )",
-         ARG1, ARG2, (ULong)ARG3, LOHI64(ARG4,ARG5));
+         ARG1, ARG2, (ULong)ARG3, MERGE64(ARG4,ARG5));
    PRE_REG_READ5(ssize_t, "pwrite64",
                  unsigned int, fd, const char *, buf, vki_size_t, count,
-                 vki_u32, offset_low32, vki_u32, offset_high32);
+                 vki_u32, MERGE64_FIRST(offset), vki_u32, MERGE64_SECOND(offset));
 #elif VG_WORDSIZE == 8
    PRINT("sys_pwrite64 ( %ld, %#lx, %llu, %lld )",
          ARG1, ARG2, (ULong)ARG3, (Long)ARG4);
@@ -2405,10 +2411,10 @@ PRE(sys_pread64)
    *flags |= SfMayBlock;
 #if VG_WORDSIZE == 4
    PRINT("sys_pread64 ( %ld, %#lx, %llu, %lld )",
-         ARG1, ARG2, (ULong)ARG3, LOHI64(ARG4,ARG5));
+         ARG1, ARG2, (ULong)ARG3, MERGE64(ARG4,ARG5));
    PRE_REG_READ5(ssize_t, "pread64",
                  unsigned int, fd, char *, buf, vki_size_t, count,
-                 vki_u32, offset_low32, vki_u32, offset_high32);
+                 vki_u32, MERGE64_FIRST(offset), vki_u32, MERGE64_SECOND(offset));
 #elif VG_WORDSIZE == 8
    PRINT("sys_pread64 ( %ld, %#lx, %llu, %lld )",
          ARG1, ARG2, (ULong)ARG3, (Long)ARG4);
@@ -2488,7 +2494,7 @@ PRE(sys_execve)
    ThreadState* tst;
    Int          i, j, tot_args;
    SysRes       res;
-   Bool         setuid_allowed;
+   Bool         setuid_allowed, trace_this_child;
 
    PRINT("sys_execve ( %#lx(%s), %#lx, %#lx )", ARG1, (char*)ARG1, ARG2, ARG3);
    PRE_REG_READ3(vki_off_t, "execve",
@@ -2510,15 +2516,19 @@ PRE(sys_execve)
       doing it. */
 
    /* Check that the name at least begins in client-accessible storage. */
-   if (!VG_(am_is_valid_for_client)( ARG1, 1, VKI_PROT_READ )) {
+   if (ARG1 == 0 /* obviously bogus */
+       || !VG_(am_is_valid_for_client)( ARG1, 1, VKI_PROT_READ )) {
       SET_STATUS_Failure( VKI_EFAULT );
       return;
    }
 
+   // Decide whether or not we want to follow along
+   trace_this_child = VG_(should_we_trace_this_child)( (HChar*)ARG1 );
+
    // Do the important checks:  it is a file, is executable, permissions are
    // ok, etc.  We allow setuid executables to run only in the case when
    // we are not simulating them, that is, they to be run natively.
-   setuid_allowed = VG_(clo_trace_children)  ? False  : True;
+   setuid_allowed = trace_this_child  ? False  : True;
    res = VG_(pre_exec_check)((const Char*)ARG1, NULL, setuid_allowed);
    if (sr_isError(res)) {
       SET_STATUS_Failure( sr_Err(res) );
@@ -2528,7 +2538,7 @@ PRE(sys_execve)
    /* If we're tracing the child, and the launcher name looks bogus
       (possibly because launcher.c couldn't figure it out, see
       comments therein) then we have no option but to fail. */
-   if (VG_(clo_trace_children) 
+   if (trace_this_child 
        && (VG_(name_of_launcher) == NULL
            || VG_(name_of_launcher)[0] != '/')) {
       SET_STATUS_Failure( VKI_ECHILD ); /* "No child processes" */
@@ -2546,7 +2556,7 @@ PRE(sys_execve)
 
    // Set up the child's exe path.
    //
-   if (VG_(clo_trace_children)) {
+   if (trace_this_child) {
 
       // We want to exec the launcher.  Get its pre-remembered path.
       path = VG_(name_of_launcher);
@@ -2584,7 +2594,7 @@ PRE(sys_execve)
       VG_(env_remove_valgrind_env_stuff)( envp );
    }
 
-   if (VG_(clo_trace_children)) {
+   if (trace_this_child) {
       // Set VALGRIND_LIB in ARG3 (the environment)
       VG_(env_setenv)( &envp, VALGRIND_LIB, VG_(libdir));
    }
@@ -2597,7 +2607,7 @@ PRE(sys_execve)
    // except that the first VG_(args_for_valgrind_noexecpass) args
    // are omitted.
    //
-   if (!VG_(clo_trace_children)) {
+   if (!trace_this_child) {
       argv = (Char**)ARG2;
    } else {
       vg_assert( VG_(args_for_valgrind) );
@@ -2966,10 +2976,10 @@ PRE(sys_ftruncate64)
 {
    *flags |= SfMayBlock;
 #if VG_WORDSIZE == 4
-   PRINT("sys_ftruncate64 ( %ld, %lld )", ARG1, LOHI64(ARG2,ARG3));
+   PRINT("sys_ftruncate64 ( %ld, %lld )", ARG1, MERGE64(ARG2,ARG3));
    PRE_REG_READ3(long, "ftruncate64",
                  unsigned int, fd,
-                 UWord, length_low32, UWord, length_high32);
+                 UWord, MERGE64_FIRST(length), UWord, MERGE64_SECOND(length));
 #else
    PRINT("sys_ftruncate64 ( %ld, %lld )", ARG1, (Long)ARG2);
    PRE_REG_READ2(long, "ftruncate64",
@@ -2981,10 +2991,10 @@ PRE(sys_truncate64)
 {
    *flags |= SfMayBlock;
 #if VG_WORDSIZE == 4
-   PRINT("sys_truncate64 ( %#lx, %lld )", ARG1, (Long)LOHI64(ARG2, ARG3));
+   PRINT("sys_truncate64 ( %#lx, %lld )", ARG1, (Long)MERGE64(ARG2, ARG3));
    PRE_REG_READ3(long, "truncate64",
                  const char *, path,
-                 UWord, length_low32, UWord, length_high32);
+                 UWord, MERGE64_FIRST(length), UWord, MERGE64_SECOND(length));
 #else
    PRINT("sys_truncate64 ( %#lx, %lld )", ARG1, (Long)ARG2);
    PRE_REG_READ2(long, "truncate64",

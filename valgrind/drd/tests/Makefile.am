@@ -147,6 +147,8 @@ EXTRA_DIST =                                        \
 	pth_process_shared_mutex.vgtest             \
 	pth_spinlock.stderr.exp                     \
 	pth_spinlock.vgtest                         \
+	qt4_atomic.stderr.exp                       \
+	qt4_atomic.vgtest                           \
 	qt4_mutex.stderr.exp                        \
 	qt4_mutex.vgtest                            \
 	qt4_rwlock.stderr.exp                       \
@@ -303,6 +305,10 @@ if HAVE_QTCORE
 check_PROGRAMS += qt4_mutex qt4_rwlock qt4_semaphore
 endif
 
+if HAVE_QTCORE_QATOMICINT
+check_PROGRAMS += qt4_atomic
+endif
+
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI) @FLAG_W_EXTRA@ -Wno-inline -Wno-unused-parameter
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI) @FLAG_W_EXTRA@ -Wno-inline -Wno-unused-parameter
@@ -363,4 +369,10 @@ qt4_rwlock_LDADD            = $(LDADD) $(QTCORE_LIBS)
 qt4_semaphore_SOURCES       = qt4_semaphore.cpp
 qt4_semaphore_CXXFLAGS      = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
 qt4_semaphore_LDADD         = $(LDADD) $(QTCORE_LIBS)
+endif
+
+if HAVE_QTCORE_QATOMICINT
+qt4_atomic_SOURCES          = qt4_atomic.cpp
+qt4_atomic_CXXFLAGS         = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_atomic_LDADD            = $(LDADD) $(QTCORE_LIBS)
 endif

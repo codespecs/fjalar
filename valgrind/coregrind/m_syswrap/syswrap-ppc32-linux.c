@@ -457,6 +457,13 @@ PRE(sys_socketcall)
       break;
    }
 
+   case VKI_SYS_ACCEPT4: {
+     /* int accept(int s, struct sockaddr *addr, int *addrlen, int args); */
+      PRE_MEM_READ( "socketcall.accept4(args)", ARG2, 4*sizeof(Addr) );
+      ML_(generic_PRE_sys_accept)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+   }
+
    case VKI_SYS_SENDTO:
      /* int sendto(int s, const void *msg, int len,
                     unsigned int flags,
@@ -602,6 +609,7 @@ POST(sys_socketcall)
     break;
 
   case VKI_SYS_ACCEPT:
+  case VKI_SYS_ACCEPT4:
     /* int accept(int s, struct sockaddr *addr, int *addrlen); */
     r = ML_(generic_POST_sys_accept)( tid, VG_(mk_SysRes_Success)(RES),
 				      ARG2_0, ARG2_1, ARG2_2 );
@@ -1629,7 +1637,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 //..    //   (__NR_olduname,          sys_uname),             // 109 -- obsolete
 //.. 
 //..    GENX_(__NR_iopl,              sys_iopl),              // 110
-//..    LINX_(__NR_vhangup,           sys_vhangup),           // 111
+   LINX_(__NR_vhangup,           sys_vhangup),           // 111
 //..    GENX_(__NR_idle,              sys_ni_syscall),        // 112
 //..    //   (__NR_vm86old,           sys_vm86old),           // 113 x86/Linux-only
    GENXY(__NR_wait4,             sys_wait4),             // 114
@@ -1644,8 +1652,8 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 //..    //   (__NR_setdomainname,     sys_setdomainname),     // 121 */*(?)
    GENXY(__NR_uname,             sys_newuname),          // 122
 //..    PLAX_(__NR_modify_ldt,        sys_modify_ldt),        // 123
-//..    LINXY(__NR_adjtimex,          sys_adjtimex),          // 124
-//.. 
+   LINXY(__NR_adjtimex,          sys_adjtimex),          // 124
+
    GENXY(__NR_mprotect,          sys_mprotect),          // 125
    LINXY(__NR_sigprocmask,       sys_sigprocmask),       // 126
    GENX_(__NR_create_module,     sys_ni_syscall),        // 127
@@ -1690,7 +1698,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_sched_get_priority_max, sys_sched_get_priority_max),// 159
 
    LINX_(__NR_sched_get_priority_min, sys_sched_get_priority_min),// 160
-//..    //LINX?(__NR_sched_rr_get_interval,  sys_sched_rr_get_interval), // 161 */*
+   LINXY(__NR_sched_rr_get_interval,  sys_sched_rr_get_interval), // 161
    GENXY(__NR_nanosleep,         sys_nanosleep),         // 162
    GENX_(__NR_mremap,            sys_mremap),            // 163
    LINX_(__NR_setresuid,         sys_setresuid),         // 164
@@ -1857,21 +1865,21 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINXY(__NR_signalfd,          sys_signalfd),          // 305
    LINXY(__NR_timerfd_create,    sys_timerfd_create),    // 306
    LINX_(__NR_eventfd,           sys_eventfd),           // 307
-//   LINX_(__NR_sync_file_range2,   sys_ni_syscall),       // 308
-//   LINX_(__NR_fallocate,         sys_fallocate),         // 309
+   LINX_(__NR_sync_file_range2,  sys_sync_file_range2),  // 308
+   LINX_(__NR_fallocate,         sys_fallocate),         // 309
 //   LINXY(__NR_subpage_prot,       sys_ni_syscall),       // 310
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 311
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 312
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 313
    LINX_(__NR_eventfd2,          sys_eventfd2),         // 314
    LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 315
-   //   (__NR_dup3,              sys_ni_syscall)        // 316
+   LINXY(__NR_dup3,              sys_dup3),             // 316
    LINXY(__NR_pipe2,             sys_pipe2),            // 317
    LINXY(__NR_inotify_init1,     sys_inotify_init1),    // 318
    LINXY(__NR_perf_counter_open, sys_perf_counter_open),// 319
    LINXY(__NR_preadv,            sys_preadv),           // 320
    LINX_(__NR_pwritev,           sys_pwritev),          // 321
-   //   (__NR_rt_tgsigqueueinfo, sys_ni_syscall)        // 322
+   LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo) // 322
 };
 
 const UInt ML_(syscall_table_size) = 
