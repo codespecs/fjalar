@@ -32,11 +32,10 @@
 #include "union_find.h"
 
 //RUDD-MERGE, no longer in memcheck
-#define SECONDARY_SIZE 65536               /* DO NOT CHANGE */
-#define SECONDARY_MASK (SECONDARY_SIZE-1)  /* DO NOT CHANGE */
 
 #if VG_WORDSIZE == 4
 #define SECONDARY_SHIFT	16
+#define SECONDARY_SIZE 65536               /* DO NOT CHANGE */
 #define PRIMARY_SIZE	(1 << (32 - SECONDARY_SHIFT))
 #else
 /* This supports address space sizes up to 2**40 = 1TB, which happens to
@@ -46,8 +45,11 @@
    would require a redesign of the table structure to have more levels
    or a different kind of top level (like Memcheck). */
 #define SECONDARY_SHIFT	20
+#define SECORDARY_SIZE 1048576
 #define PRIMARY_SIZE	(1 << (40 - SECONDARY_SHIFT))
 #endif
+
+#define SECONDARY_MASK (SECONDARY_SIZE-1)  /* DO NOT CHANGE */
 
 #define SM_OFF(addr)	((addr) & SECONDARY_MASK)
 #define PM_IDX(addr)	((addr) >> SECONDARY_SHIFT)
