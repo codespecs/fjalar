@@ -1011,14 +1011,15 @@ static void initializeGlobalVarsList(void)
     if (tag_is_variable(cur_entry->tag_name)) {
       variable* variable_ptr = (variable*)(cur_entry->entry_ptr);
 
-      FJALAR_DPRINTF("\t[initializeGlobalVarsList] Var (%d - ID: %lx): %s 0x%x static: %d, dec: %d, const: %d\n",
+      FJALAR_DPRINTF("\t[initializeGlobalVarsList] Var (%d - ID: %lx): %s 0x%x static: %d, dec: %d, const: %d global: %d\n",
 		     cur_entry->level,
                      cur_entry->ID,
 		     variable_ptr->name,
 		     (unsigned int)variable_ptr->globalVarAddr,
 		     (unsigned int)variable_ptr->isStaticMemberVar,
 		     variable_ptr->is_declaration_or_artificial,
-                     variable_ptr->is_const);
+                     variable_ptr->is_const,
+                     variable_ptr->couldBeGlobalVar);
 
       FJALAR_DPRINTF("\t[initializeGlobalVarsList] compile_unit: %p\n", cur_entry->comp_unit);
 

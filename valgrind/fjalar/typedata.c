@@ -1641,26 +1641,26 @@ static void init_specification_and_abstract_stuff(void) {
       if(binary_search_dwarf_entry_array(cur_var->specification_ID,
                                          &aliased_index)) {
         dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
-        
+
         FJALAR_DPRINTF("[init_specification_and_abstract_stuff] Linking %lx and %lx\n", 
                        aliased_entry->ID,
-                       cur_entry->ID);
-	
+                       cur_entry->ID);	
 
 	// g++ Can have variable's whose specification ID points to
 	// a member dwarf entry. We really need to consolidate some
 	// of these dwarf entry structs, this is kind of a pain..
-
         tl_assert(tag_is_variable(aliased_entry->tag_name) ||
 		  tag_is_member(aliased_entry->tag_name));
 
-	if(tag_is_variable(aliased_entry->tag_name)) {
-	  ((variable*)(aliased_entry->entry_ptr))->is_declaration_or_artificial = 1;  
-	} 
+	/* if(tag_is_variable(aliased_entry->tag_name)) { */
+	/*   ((variable*)(aliased_entry->entry_ptr))->is_declaration_or_artificial = 1;   */
+	/* }  */
+
+        if(!cur_var->name) {
+          cur_var->name = ((variable*)(aliased_entry->entry_ptr))->name;
+        }
        
         //        cur_var->is_declaration_or_artificial = 1;
-       
-                       
       }
     }
 
@@ -2155,11 +2155,11 @@ static void link_array_entries_to_members(void)
 		aliased_var_ptr->couldBeGlobalVar = 1;
 		aliased_var_ptr->isStaticMemberVar = 0;
 	      }
-
-              //              VG_(printf)("mangled_name: %s - ID: %x - globalVarAddr: 0x%x\n",
-              //                          aliased_var_ptr->mangled_name,
-              //                          aliased_entry->ID,
-              //                          aliased_var_ptr->globalVarAddr);
+              
+              /* FJALAR_DPRINTF("mangled_name: %s - ID: %x - globalVarAddr: 0x%x\n", */
+              /*             aliased_var_ptr->mangled_name, */
+              /*             aliased_entry->ID, */
+              /*             aliased_var_ptr->globalVarAddr); */
             }
           }
         }
