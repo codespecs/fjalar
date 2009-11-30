@@ -875,6 +875,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
   case GLOBAL_VAR:
     // Punt if we are ignoring globals!
     if (fjalar_ignore_globals) {
+      FJALAR_DPRINTF("[visitVariableGroup] Ignoring request for global variables\n");
       return;
     }
     varListPtr = &globalVars;
