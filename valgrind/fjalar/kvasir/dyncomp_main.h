@@ -45,7 +45,7 @@
    would require a redesign of the table structure to have more levels
    or a different kind of top level (like Memcheck). */
 #define SECONDARY_SHIFT	20
-#define SECORDARY_SIZE 1048576
+#define SECONDARY_SIZE 1048576
 #define PRIMARY_SIZE	(1 << (40 - SECONDARY_SHIFT))
 #endif
 
