@@ -3,7 +3,7 @@ README file
 Philip Guo
 Robert Rudd
 
-Last updated: 2009-09-14
+Last updated: 2009-12-28
 
 A local copy of the Fjalar webpage appears here:
   ./docs/fjalar-www/index.html
@@ -60,6 +60,10 @@ Making a Release
 Information on making a release can be found in notes/fjalar-release-notes.txt 
 
 What follows is a summary of the contents of interesting source files:
+
+Debugging Dyncomp Errors
+~~~~~~~~~~~~~~~~~~~~~~~~
+A tool for aiding in debugging Dyncomp comparability errors can be found in ./tools
 
 Fjalar source files:
 --------------------
