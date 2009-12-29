@@ -6,7 +6,7 @@ Last updated: 2009-12-29
 Introduction
 ~~~~~~~~~~~~
 This directory contains a set of python scripts to assist in
-understanding why Dyncomp's produced abstract type groups;
+understanding Dyncomp's produced abstract type groups;
 specifically, these scripts will allow you to see the set of
 interactions that caused two variables to be inferred as the same
 abstract type.
@@ -38,9 +38,9 @@ There are three steps for producing these interactions:
 
 1. Run Kvasir with Dyncomp on a target C/C++ program with tracing
 turned on to produce a trace file.
-2. Run merge_tracker on the produced trace file to create a
+2. Run merge_tracker.py on the produced trace file to create a
 interaction database.
-3. Run merge_explorer with the two variables as input to see all
+3. Run merge_explorer.py with the two variables as input to see all
 relevant interactions between them.
 
 
@@ -71,6 +71,7 @@ Example run
 names. Global variables will be prefixed with a '/' and formal
 parameters will be suffixed with '.-' followed by the name of their
 function.
+
        python $DAIKONDIR/kvasir/fjalar/tools/merge_explorer.py -f wordplay.db  --dump-var-names
 
 
@@ -88,12 +89,11 @@ The output should be:
        5019154 -> 4924555 - [0x401907 (0x401907: main (wordplay.c:540)]
  
 
-Indicating that lines 540 and 1112 of wordplay.c may have played a
-role in the merging of these two variables. In this case, the more
-relevant of the two lines is 540, which has a comparison between a
+Indicating that line 540 of wordplay.c may have played a role in the
+merging of these two variables. Line 540 has a comparison between a
 local variable j and ncount. On the next line we see j being used to
-index into the words2 array, which is one possible cause of the
-merging of these two variables' abstract type groups.
+index into the words2 array, these 2 lines are one possible cause of
+the merging of these two variables' abstract type groups.
 
 Unfortunately, due to the nature of the inference algorithm, this tool
 will rarely be able to exactly point out all relevant interactions,
