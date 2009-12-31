@@ -14,7 +14,7 @@ abstract type.
 Requirements
 ~~~~~~~~~~~~
 This document assumes you have both Daikon and Kvasir correctly
-installed, please see
+installed, please see:
 
 http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html 
 
@@ -23,7 +23,7 @@ this document assumes that a $DAIKONDIR environmental variable exists
 and points to Daikon's parent directory.
 
 Additionally this document assumes you have an understanding of
-how to run Kvasir/Dyncomp on C/C++ programs, as well as a basic
+how to run Kvasir/Dyncomp on C/C++ programs, and a basic
 understanding of Dyncomp's abstract type inference algorithms. Please
 see the above document for more information on these topics.
 
@@ -38,7 +38,7 @@ There are three steps for producing these interactions:
 
 1. Run Kvasir with Dyncomp on a target C/C++ program with tracing
 turned on to produce a trace file.
-2. Run merge_tracker.py on the produced trace file to create a
+2. Run merge_tracker.py on the produced trace file to create an
 interaction database.
 3. Run merge_explorer.py with the two variables as input to see all
 relevant interactions between them.
@@ -62,7 +62,7 @@ Example run
        kvasir-dtrace --with-dyncomp --dyncomp-trace ./wordplay -f words.txt 'daikon dynamic invariant detector' > wordplay.trace 2>&1
 
 
-4. Run merge_tracker the produced trace file     
+4. Run merge_tracker on the produced trace file     
 
        python $DAIKONDIR/kvasir/fjalar/tools/merge_tracker.py wordplay.trace wordplay.db
 
@@ -75,8 +75,8 @@ function.
        python $DAIKONDIR/kvasir/fjalar/tools/merge_explorer.py -f wordplay.db  --dump-var-names
 
 
-6. Run merge_explorer with -S source_variable and -T target_variable
-to see the interactions between the two variables. 
+6. Run merge_explorer with -S <VARIABLE_ONE> and -T <VARIABLE_TWO>
+to see the interactions between the VARIABLE_ONE and VARIABLE_TWO.
 
        python $DAIKONDIR/kvasir/fjalar/tools/merge_explorer.py -f wordplay.db  -S '/words2' -T '/ncount'
 
@@ -91,9 +91,13 @@ The output should be:
 
 Indicating that line 540 of wordplay.c may have played a role in the
 merging of these two variables. Line 540 has a comparison between a
-local variable j and ncount. On the next line we see j being used to
-index into the words2 array, these 2 lines are one possible cause of
-the merging of these two variables' abstract type groups.
+local variable j and ncount, causing Dyncomp to infer j and ncount are
+of the same abstract type. On the next line we see j being used to
+index into the words2 array, causing Dyncomp to infer j and words2 are
+of the same abstract type. As abstract type groups are transitive,
+words2 and ncount are now ocnsidered of the same abstract type. these 2
+lines are one possible cause of the merging of these two variables'
+abstract type groups.
 
 Unfortunately, due to the nature of the inference algorithm, this tool
 will rarely be able to exactly point out all relevant interactions,
