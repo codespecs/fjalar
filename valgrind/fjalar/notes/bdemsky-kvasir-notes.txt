@@ -342,7 +342,6 @@ How Brian got CTAS to run:
 export PATH=/root/research/invariants/scripts:$PATH
 export DAIKONDIR=/root/research/invariants
 export JDKDIR=/usr/local/jdk1.5.0_01/
-export JDK5DIR=/usr/local/jdk1.5.0_01/
 export INV=/root/research/invariants
 source /root/research/invariants/scripts/daikon.bashrc
 export
