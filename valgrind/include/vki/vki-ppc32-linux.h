@@ -516,11 +516,11 @@ struct vki_termios {
          ((size) << _VKI_IOC_SIZESHIFT))
 
 /* provoke compile error for invalid uses of size argument */
-extern unsigned int __VKI_invalid_size_argument_for_IOC;
 #define _VKI_IOC_TYPECHECK(t) \
-        ((sizeof(t) == sizeof(t[1]) && \
-          sizeof(t) < (1 << _VKI_IOC_SIZEBITS)) ? \
-          sizeof(t) : __VKI_invalid_size_argument_for_IOC)
+	((sizeof(t) == sizeof(t[1]) && \
+	  sizeof(t) < (1 << _VKI_IOC_SIZEBITS)) \
+	 ? sizeof(t) \
+	 : /*cause gcc to complain about division by zero*/(1/0) )
 
 /* used to create numbers */
 #define _VKI_IO(type,nr)			_VKI_IOC(_VKI_IOC_NONE,(type),(nr),0)

@@ -114,6 +114,8 @@ Addr VG_(get_LR) ( ThreadId tid )
    return VG_(threads)[tid].arch.vex.guest_LR;
 #  elif defined(VGA_x86) || defined(VGA_amd64)
    return 0;
+#  elif defined(VGA_arm)
+   return VG_(threads)[tid].arch.vex.guest_R14;
 #  else
 #    error "Unknown arch"
 #  endif
@@ -227,6 +229,45 @@ UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset )
 
 // END - pgbovine
 
+
+void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
+                                ThreadId tid )
+{
+#  if defined(VGA_x86)
+   regs->r_pc = (ULong)VG_(threads)[tid].arch.vex.guest_EIP;
+   regs->r_sp = (ULong)VG_(threads)[tid].arch.vex.guest_ESP;
+   regs->misc.X86.r_ebp
+      = VG_(threads)[tid].arch.vex.guest_EBP;
+#  elif defined(VGA_amd64)
+   regs->r_pc = VG_(threads)[tid].arch.vex.guest_RIP;
+   regs->r_sp = VG_(threads)[tid].arch.vex.guest_RSP;
+   regs->misc.AMD64.r_rbp
+      = VG_(threads)[tid].arch.vex.guest_RBP;
+#  elif defined(VGA_ppc32)
+   regs->r_pc = (ULong)VG_(threads)[tid].arch.vex.guest_CIA;
+   regs->r_sp = (ULong)VG_(threads)[tid].arch.vex.guest_GPR1;
+   regs->misc.PPC32.r_lr
+      = VG_(threads)[tid].arch.vex.guest_LR;
+#  elif defined(VGA_ppc64)
+   regs->r_pc = VG_(threads)[tid].arch.vex.guest_CIA;
+   regs->r_sp = VG_(threads)[tid].arch.vex.guest_GPR1;
+   regs->misc.PPC64.r_lr
+      = VG_(threads)[tid].arch.vex.guest_LR;
+#  elif defined(VGA_arm)
+   regs->r_pc = (ULong)VG_(threads)[tid].arch.vex.guest_R15;
+   regs->r_sp = (ULong)VG_(threads)[tid].arch.vex.guest_R13;
+   regs->misc.ARM.r14
+      = VG_(threads)[tid].arch.vex.guest_R14;
+   regs->misc.ARM.r12
+      = VG_(threads)[tid].arch.vex.guest_R12;
+   regs->misc.ARM.r11
+      = VG_(threads)[tid].arch.vex.guest_R11;
+#  else
+#    error "Unknown arch"
+#  endif
+}
+
+
 void VG_(set_syscall_return_shadows) ( ThreadId tid,
                                        /* shadow vals for the result */
                                        UWord s1res, UWord s2res,
@@ -242,6 +283,9 @@ void VG_(set_syscall_return_shadows) ( ThreadId tid,
 #  elif defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
    VG_(threads)[tid].arch.vex_shadow1.guest_GPR3 = s1res;
    VG_(threads)[tid].arch.vex_shadow2.guest_GPR3 = s2res;
+#  elif defined(VGP_arm_linux)
+   VG_(threads)[tid].arch.vex_shadow1.guest_R0 = s1res;
+   VG_(threads)[tid].arch.vex_shadow2.guest_R0 = s2res;
 #  elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
    VG_(threads)[tid].arch.vex_shadow1.guest_GPR3 = s1res;
    VG_(threads)[tid].arch.vex_shadow2.guest_GPR3 = s2res;
@@ -332,7 +376,6 @@ static void apply_to_GPs_of_tid(VexGuestArchState* vex, void (*f)(Addr))
    (*f)(vex->guest_R14);
    (*f)(vex->guest_R15);
 #elif defined(VGA_ppc32) || defined(VGA_ppc64)
-   /* XXX ask tool about validity? */
    (*f)(vex->guest_GPR0);
    (*f)(vex->guest_GPR1);
    (*f)(vex->guest_GPR2);
@@ -367,7 +410,21 @@ static void apply_to_GPs_of_tid(VexGuestArchState* vex, void (*f)(Addr))
    (*f)(vex->guest_GPR31);
    (*f)(vex->guest_CTR);
    (*f)(vex->guest_LR);
-
+#elif defined(VGA_arm)
+   (*f)(vex->guest_R0);
+   (*f)(vex->guest_R1);
+   (*f)(vex->guest_R2);
+   (*f)(vex->guest_R3);
+   (*f)(vex->guest_R4);
+   (*f)(vex->guest_R5);
+   (*f)(vex->guest_R6);
+   (*f)(vex->guest_R8);
+   (*f)(vex->guest_R9);
+   (*f)(vex->guest_R10);
+   (*f)(vex->guest_R11);
+   (*f)(vex->guest_R12);
+   (*f)(vex->guest_R13);
+   (*f)(vex->guest_R14);
 #else
 #  error Unknown arch
 #endif
@@ -460,7 +517,7 @@ SizeT VG_(thread_get_stack_size)(ThreadId tid)
 */
 
 /* --------- State --------- */
-static Bool        hwcaps_done = False;
+static Bool hwcaps_done = False;
 
 /* --- all archs --- */
 static VexArch     va;
@@ -804,6 +861,13 @@ Bool VG_(machine_get_hwcaps)( void )
      return True;
    }
 
+#elif defined(VGA_arm)
+   {
+     va = VexArchARM;
+     vai.hwcaps = 0;
+     return True;
+   }
+
 #else
 #  error "Unknown arch"
 #endif
@@ -859,8 +923,9 @@ void VG_(machine_get_VexArchInfo)( /*OUT*/VexArch* pVa,
 // produce a pointer to the actual entry point for the function.
 void* VG_(fnptr_to_fnentry)( void* f )
 {
-#if defined(VGP_x86_linux)   || defined(VGP_amd64_linux) || \
-    defined(VGP_ppc32_linux) || defined(VGO_darwin)
+#if defined(VGP_x86_linux) || defined(VGP_amd64_linux)  \
+    || defined(VGP_arm_linux)                           \
+    || defined(VGP_ppc32_linux) || defined(VGO_darwin)
    return f;
 #elif defined(VGP_ppc64_linux) || defined(VGP_ppc32_aix5) \
                                || defined(VGP_ppc64_aix5)

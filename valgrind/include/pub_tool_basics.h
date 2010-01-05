@@ -49,9 +49,6 @@
 // For varargs types
 #include <stdarg.h>
 
-/* For HAVE_BUILTIN_EXPECT */
-#include "config.h"
-
 
 /* ---------------------------------------------------------------------
    symbol prefixing
@@ -193,15 +190,18 @@ typedef
    SysRes;
 #elif defined(VGO_darwin)
 typedef
+   enum { 
+      SysRes_MACH=40,  // MACH, result is _wLO
+      SysRes_MDEP,     // MDEP, result is _wLO
+      SysRes_UNIX_OK,  // UNIX, success, result is _wHI:_wLO
+      SysRes_UNIX_ERR  // UNIX, error,   error  is _wHI:_wLO
+   }
+   SysResMode;
+typedef
    struct {
       UWord _wLO;
       UWord _wHI;
-      enum { 
-         SysRes_MACH=40,  // MACH, result is _wLO
-         SysRes_MDEP,     // MDEP, result is _wLO
-         SysRes_UNIX_OK,  // UNIX, success, result is _wHI:_wLO
-         SysRes_UNIX_ERR  // UNIX, error,   error  is _wHI:_wLO
-      } _mode;
+      SysResMode _mode;
    }
    SysRes;
 #else
@@ -290,7 +290,7 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #undef VG_BIGENDIAN
 #undef VG_LITTLEENDIAN
 
-#if defined(VGA_x86) || defined(VGA_amd64)
+#if defined(VGA_x86) || defined(VGA_amd64) || defined (VGA_arm)
 #  define VG_LITTLEENDIAN 1
 #elif defined(VGA_ppc32) || defined(VGA_ppc64)
 #  define VG_BIGENDIAN 1
@@ -301,7 +301,8 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 /* Regparmness */
 #if defined(VGA_x86)
 #  define VG_REGPARM(n)            __attribute__((regparm(n)))
-#elif defined(VGA_amd64) || defined(VGA_ppc32) || defined(VGA_ppc64)
+#elif defined(VGA_amd64) || defined(VGA_ppc32) \
+      || defined(VGA_ppc64) || defined(VGA_arm)
 #  define VG_REGPARM(n)            /* */
 #else
 #  error Unknown arch
@@ -315,7 +316,7 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #define VG_BUGS_TO "www.valgrind.org"
 
 /* Branch prediction hints. */
-#if HAVE_BUILTIN_EXPECT
+#if 1 /*HAVE_BUILTIN_EXPECT*/
 #  define LIKELY(x)   __builtin_expect(!!(x), 1)
 #  define UNLIKELY(x) __builtin_expect((x), 0)
 #else

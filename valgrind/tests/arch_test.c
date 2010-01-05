@@ -27,6 +27,7 @@ char* all_archs[] = {
    "amd64",
    "ppc32",
    "ppc64",
+   "arm",
    NULL
 };
 
@@ -54,6 +55,9 @@ static Bool go(char* arch)
    } else {
       if ( 0 == strcmp( arch, "ppc32" ) ) return True;
    }
+
+#elif defined(VGP_arm_linux)
+   if ( 0 == strcmp( arch, "arm" ) ) return True;
 
 #else
 #  error Unknown platform

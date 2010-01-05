@@ -1244,11 +1244,15 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          Rounding is required whenever the destination type cannot
          represent exactly all values of the source type.
       */
-   case Iop_F64toI16:  /* IRRoundingMode(I32) x F64 -> I16 */
-   case Iop_F64toI32:  /* IRRoundingMode(I32) x F64 -> I32 */
-   case Iop_F64toI64:  /* IRRoundingMode(I32) x F64 -> I64 */
-   case Iop_I64toF64:  /* IRRoundingMode(I32) x I64 -> F64 */
-   case Iop_F64toF32:  /* IRRoundingMode(I32) x F64 -> F32 */
+   case Iop_F64toI16S:  /* IRRoundingMode(I32) x F64 -> I16 */
+   case Iop_F64toI32U:  /* IRRoundingMode(I32) x F64 -> I32 */
+   case Iop_F64toI32S:  /* IRRoundingMode(I32) x F64 -> I32 */
+   case Iop_F64toI64S:  /* IRRoundingMode(I32) x F64 -> I64 */
+   case Iop_I64StoF64:  /* IRRoundingMode(I32) x I64 -> F64 */
+   case Iop_F64toF32:   /* IRRoundingMode(I32) x F64 -> F32 */
+
+
+     
 
    case Iop_RoundF64toInt:
    case Iop_RoundF64toF32:

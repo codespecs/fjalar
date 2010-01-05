@@ -816,7 +816,7 @@ Int VG_(socket) ( Int domain, Int type, Int protocol )
    res = VG_(do_syscall2)(__NR_socketcall, VKI_SYS_SOCKET, (UWord)&args);
    return sr_isError(res) ? -1 : sr_Res(res);
 
-#  elif defined(VGP_amd64_linux)
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux)
    SysRes res;
    res = VG_(do_syscall3)(__NR_socket, domain, type, protocol );
    return sr_isError(res) ? -1 : sr_Res(res);
@@ -857,7 +857,7 @@ Int my_connect ( Int sockfd, struct vki_sockaddr_in* serv_addr, Int addrlen )
    res = VG_(do_syscall2)(__NR_socketcall, VKI_SYS_CONNECT, (UWord)&args);
    return sr_isError(res) ? -1 : sr_Res(res);
 
-#  elif defined(VGP_amd64_linux)
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux)
    SysRes res;
    res = VG_(do_syscall3)(__NR_connect, sockfd, (UWord)serv_addr, addrlen);
    return sr_isError(res) ? -1 : sr_Res(res);
@@ -898,7 +898,7 @@ Int VG_(write_socket)( Int sd, void *msg, Int count )
    res = VG_(do_syscall2)(__NR_socketcall, VKI_SYS_SEND, (UWord)&args);
    return sr_isError(res) ? -1 : sr_Res(res);
 
-#  elif defined(VGP_amd64_linux)
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux)
    SysRes res;
    res = VG_(do_syscall6)(__NR_sendto, sd, (UWord)msg, 
                                        count, VKI_MSG_NOSIGNAL, 0,0);
@@ -929,7 +929,7 @@ Int VG_(getsockname) ( Int sd, struct vki_sockaddr *name, Int *namelen)
    res = VG_(do_syscall2)(__NR_socketcall, VKI_SYS_GETSOCKNAME, (UWord)&args);
    return sr_isError(res) ? -1 : sr_Res(res);
 
-#  elif defined(VGP_amd64_linux)
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux)
    SysRes res;
    res = VG_(do_syscall3)( __NR_getsockname,
                            (UWord)sd, (UWord)name, (UWord)namelen );
@@ -961,7 +961,7 @@ Int VG_(getpeername) ( Int sd, struct vki_sockaddr *name, Int *namelen)
    res = VG_(do_syscall2)(__NR_socketcall, VKI_SYS_GETPEERNAME, (UWord)&args);
    return sr_isError(res) ? -1 : sr_Res(res);
 
-#  elif defined(VGP_amd64_linux)
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux)
    SysRes res;
    res = VG_(do_syscall3)( __NR_getpeername,
                            (UWord)sd, (UWord)name, (UWord)namelen );
@@ -996,7 +996,7 @@ Int VG_(getsockopt) ( Int sd, Int level, Int optname, void *optval,
    res = VG_(do_syscall2)(__NR_socketcall, VKI_SYS_GETSOCKOPT, (UWord)&args);
    return sr_isError(res) ? -1 : sr_Res(res);
 
-#  elif defined(VGP_amd64_linux)
+#  elif defined(VGP_amd64_linux) || defined(VGP_arm_linux)
    SysRes res;
    res = VG_(do_syscall5)( __NR_getsockopt,
                            (UWord)sd, (UWord)level, (UWord)optname, 

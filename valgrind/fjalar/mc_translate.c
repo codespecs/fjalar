@@ -1341,10 +1341,22 @@ IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty,
    /* I32 x I64 x I64 -> I32 */
    if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64
        && finalVty == Ity_I32) {
-      if (0) VG_(printf)("mkLazy3: I32 x I64 x I64 -> I64\n");
+      if (0) VG_(printf)("mkLazy3: I32 x I64 x I64 -> I32\n");
       at = mkPCastTo(mce, Ity_I64, va1);
       at = mkUifU(mce, Ity_I64, at, va2);
       at = mkUifU(mce, Ity_I64, at, va3);
+      at = mkPCastTo(mce, Ity_I32, at);
+      return at;
+   }
+
+   /* I32 x I32 x I32 -> I32 */
+   /* 32-bit FP idiom, as (eg) happens on ARM */
+   if (t1 == Ity_I32 && t2 == Ity_I32 && t3 == Ity_I32 
+       && finalVty == Ity_I32) {
+      if (0) VG_(printf)("mkLazy3: I32 x I32 x I32 -> I32\n");
+      at = va1;
+      at = mkUifU(mce, Ity_I32, at, va2);
+      at = mkUifU(mce, Ity_I32, at, va3);
       at = mkPCastTo(mce, Ity_I32, at);
       return at;
    }
@@ -2008,6 +2020,12 @@ IRAtom* expr2vbits_Triop ( MCEnv* mce,
       case Iop_PRem1C3210F64:
          /* I32(rm) x F64 x F64 -> I32 */
          return mkLazy3(mce, Ity_I32, vatom1, vatom2, vatom3);
+      case Iop_AddF32:
+      case Iop_SubF32:
+      case Iop_MulF32:
+      case Iop_DivF32:
+         /* I32(rm) x F32 x F32 -> I32 */
+         return mkLazy3(mce, Ity_I32, vatom1, vatom2, vatom3);
       default:
          ppIROp(op);
          VG_(tool_panic)("memcheck:expr2vbits_Triop");
@@ -2347,8 +2365,8 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       case Iop_RoundF64toInt:
       case Iop_RoundF64toF32:
-      case Iop_F64toI64:
-      case Iop_I64toF64:
+      case Iop_F64toI64S:
+      case Iop_I64StoF64:
       case Iop_SinF64:
       case Iop_CosF64:
       case Iop_TanF64:
@@ -2357,12 +2375,17 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
          /* I32(rm) x I64/F64 -> I64/F64 */
          return mkLazy2(mce, Ity_I64, vatom1, vatom2);
 
-      case Iop_F64toI32:
+      case Iop_SqrtF32:
+         /* I32(rm) x I32/F32 -> I32/F32 */
+         return mkLazy2(mce, Ity_I32, vatom1, vatom2);
+
+      case Iop_F64toI32U:
+      case Iop_F64toI32S:
       case Iop_F64toF32:
          /* First arg is I32 (rounding mode), second is F64 (data). */
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
 
-      case Iop_F64toI16:
+      case Iop_F64toI16S:
          /* First arg is I32 (rounding mode), second is F64 (data). */
          return mkLazy2(mce, Ity_I16, vatom1, vatom2);
 
@@ -2615,7 +2638,8 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
          return assignNew('V', mce, Ity_V128, unop(op, vatom));
 
       case Iop_F32toF64:
-      case Iop_I32toF64:
+      case Iop_I32StoF64:
+      case Iop_I32UtoF64:
       case Iop_NegF64:
       case Iop_AbsF64:
       case Iop_Est5FRSqrt:
@@ -2630,6 +2654,8 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_Clz32:
       case Iop_Ctz32:
       case Iop_TruncF64asF32:
+      case Iop_NegF32:
+      case Iop_AbsF32:
          return mkPCastTo(mce, Ity_I32, vatom);
 
       case Iop_1Uto64:
@@ -2679,6 +2705,7 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_ReinterpF64asI64:
       case Iop_ReinterpI64asF64:
       case Iop_ReinterpI32asF32:
+      case Iop_ReinterpF32asI32:
       case Iop_NotV128:
       case Iop_Not64:
       case Iop_Not32:
@@ -3811,6 +3838,68 @@ static void do_shadow_CAS_double ( MCEnv* mce, IRCAS* cas )
 }
 
 
+/* ------ Dealing with LL/SC (not difficult) ------ */
+
+static void do_shadow_LLSC ( MCEnv*    mce,
+                             IREndness stEnd,
+                             IRTemp    stResult,
+                             IRExpr*   stAddr,
+                             IRExpr*   stStoredata )
+{
+   /* In short: treat a load-linked like a normal load followed by an
+      assignment of the loaded (shadow) data to the result temporary.
+      Treat a store-conditional like a normal store, and mark the
+      result temporary as defined. */
+   IRType resTy  = typeOfIRTemp(mce->sb->tyenv, stResult);
+   IRTemp resTmp = findShadowTmpV(mce, stResult);
+
+   tl_assert(isIRAtom(stAddr));
+   if (stStoredata)
+      tl_assert(isIRAtom(stStoredata));
+
+   if (stStoredata == NULL) {
+      /* Load Linked */
+      /* Just treat this as a normal load, followed by an assignment of
+         the value to .result. */
+      /* Stay sane */
+      tl_assert(resTy == Ity_I64 || resTy == Ity_I32
+                || resTy == Ity_I16 || resTy == Ity_I8);
+      assign( 'V', mce, resTmp,
+                   expr2vbits_Load(
+                      mce, stEnd, resTy, stAddr, 0/*addr bias*/));
+   } else {
+      /* Store Conditional */
+      /* Stay sane */
+      IRType dataTy = typeOfIRExpr(mce->sb->tyenv,
+                                   stStoredata);
+      tl_assert(dataTy == Ity_I64 || dataTy == Ity_I32
+                || dataTy == Ity_I16 || dataTy == Ity_I8);
+      do_shadow_Store( mce, stEnd,
+                            stAddr, 0/* addr bias */,
+                            stStoredata,
+                            NULL /* shadow data */,
+                            NULL/*guard*/ );
+      /* This is a store conditional, so it writes to .result a value
+         indicating whether or not the store succeeded.  Just claim
+         this value is always defined.  In the PowerPC interpretation
+         of store-conditional, definedness of the success indication
+         depends on whether the address of the store matches the
+         reservation address.  But we can't tell that here (and
+         anyway, we're not being PowerPC-specific).  At least we are
+         guaranteed that the definedness of the store address, and its
+         addressibility, will be checked as per normal.  So it seems
+         pretty safe to just say that the success indication is always
+         defined.
+
+         In schemeS, for origin tracking, we must correspondingly set
+         a no-origin value for the origin shadow of .result.
+      */
+      tl_assert(resTy == Ity_I1);
+      assign( 'V', mce, resTmp, definedOfType(resTy) );
+   }
+}
+
+
 /*------------------------------------------------------------*/
 /*--- Memcheck main                                        ---*/
 /*------------------------------------------------------------*/
@@ -3928,6 +4017,11 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
                 || isBogusAtom(cas->expdLo)
                 || (cas->dataHi ? isBogusAtom(cas->dataHi) : False)
                 || isBogusAtom(cas->dataLo);
+      case Ist_LLSC:
+         return isBogusAtom(st->Ist.LLSC.addr)
+                || (st->Ist.LLSC.storedata
+                       ? isBogusAtom(st->Ist.LLSC.storedata)
+                       : False);
       default:
       unhandled:
          ppIRStmt(st);
@@ -4186,32 +4280,6 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                                    st->Ist.Store.data,
                                    NULL /* shadow data */,
                                    NULL);
-             /* If this is a store conditional, it writes to .resSC a
-                value indicating whether or not the store succeeded.
-                Just claim this value is always defined.  In the
-                PowerPC interpretation of store-conditional,
-                definedness of the success indication depends on
-                whether the address of the store matches the
-                reservation address.  But we can't tell that here (and
-                anyway, we're not being PowerPC-specific).  At least we
-                are guarantted that the definedness of the store
-                address, and its addressibility, will be checked as per
-                normal.  So it seems pretty safe to just say that the
-                success indication is always defined.
-
-                In schemeS, for origin tracking, we must
-                correspondingly set a no-origin value for the origin
-                shadow of resSC.
-             */
-             if (st->Ist.Store.resSC != IRTemp_INVALID) {
-                assign( 'V', &mce,
-                        findShadowTmpV(&mce, st->Ist.Store.resSC),
-                        definedOfType(
-                           shadowTypeV(
-                              typeOfIRTemp(mce.sb->tyenv,
-                                           st->Ist.Store.resSC)
-                      )));
-             }
 #ifndef _NO_DYNCOMP
             if (kvasir_with_dyncomp)
                do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
@@ -4269,6 +4337,14 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             if(kvasir_with_dyncomp)
               do_shadow_CAS_DC( &dce, st->Ist.CAS.details);
 #endif /* _NO_DYNCOMP */
+            break;
+
+         case Ist_LLSC:
+            do_shadow_LLSC( &mce,
+                            st->Ist.LLSC.end,
+                            st->Ist.LLSC.result,
+                            st->Ist.LLSC.addr,
+                            st->Ist.LLSC.storedata );
             break;
 
          default:
@@ -4638,6 +4714,7 @@ static IRAtom* zWidenFrom32 ( MCEnv* mce, IRType dstTy, IRAtom* e ) {
    tl_assert(0);
 }
 
+
 static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
 {
    tl_assert(MC_(clo_mc_level) == 3);
@@ -4772,6 +4849,7 @@ static IRAtom* schemeE ( MCEnv* mce, IRExpr* e )
          VG_(tool_panic)("memcheck:schemeE");
    }
 }
+
 
 static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
 {
@@ -4929,6 +5007,26 @@ static void do_origins_Dirty ( MCEnv* mce, IRDirty* d )
    }
 }
 
+
+static void do_origins_Store ( MCEnv* mce,
+                               IREndness stEnd,
+                               IRExpr* stAddr,
+                               IRExpr* stData )
+{
+   Int     dszB;
+   IRAtom* dataB;
+   /* assert that the B value for the address is already available
+      (somewhere), since the call to schemeE will want to see it.
+      XXXX how does this actually ensure that?? */
+   tl_assert(isIRAtom(stAddr));
+   tl_assert(isIRAtom(stData));
+   dszB  = sizeofIRType( typeOfIRExpr(mce->sb->tyenv, stData ) );
+   dataB = schemeE( mce, stData );
+   gen_store_b( mce, dszB, stAddr, 0/*offset*/, dataB,
+                     NULL/*guard*/ );
+}
+
+
 static void schemeS ( MCEnv* mce, IRStmt* st )
 {
    tl_assert(MC_(clo_mc_level) == 3);
@@ -4969,30 +5067,47 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
                                       st->Ist.PutI.bias, t4 ));
          break;
       }
+
       case Ist_Dirty:
          do_origins_Dirty( mce, st->Ist.Dirty.details );
          break;
-      case Ist_Store: {
-         Int     dszB;
-         IRAtom* dataB;
-         /* assert that the B value for the address is already
-            available (somewhere) */
-         tl_assert(isIRAtom(st->Ist.Store.addr));
-         dszB = sizeofIRType(
-                   typeOfIRExpr(mce->sb->tyenv, st->Ist.Store.data ));
-         dataB = schemeE( mce, st->Ist.Store.data );
-         gen_store_b( mce, dszB, st->Ist.Store.addr, 0/*offset*/, dataB,
-                      NULL/*guard*/ );
-         /* For the rationale behind this, see comments at the place
-            where the V-shadow for .resSC is constructed, in the main
-            loop in MC_(instrument).  In short, wee regard .resSc as
-            always-defined. */
-         if (st->Ist.Store.resSC != IRTemp_INVALID) {
-            assign( 'B', mce, findShadowTmpB(mce, st->Ist.Store.resSC),
-                    mkU32(0) );
+
+      case Ist_Store:
+         do_origins_Store( mce, st->Ist.Store.end,
+                                st->Ist.Store.addr,
+                                st->Ist.Store.data );
+         break;
+
+      case Ist_LLSC: {
+         /* In short: treat a load-linked like a normal load followed
+            by an assignment of the loaded (shadow) data the result
+            temporary.  Treat a store-conditional like a normal store,
+            and mark the result temporary as defined. */
+         if (st->Ist.LLSC.storedata == NULL) {
+            /* Load Linked */
+            IRType resTy 
+               = typeOfIRTemp(mce->sb->tyenv, st->Ist.LLSC.result);
+            IRExpr* vanillaLoad
+               = IRExpr_Load(st->Ist.LLSC.end, resTy, st->Ist.LLSC.addr);
+            tl_assert(resTy == Ity_I64 || resTy == Ity_I32
+                      || resTy == Ity_I16 || resTy == Ity_I8);
+            assign( 'B', mce, findShadowTmpB(mce, st->Ist.LLSC.result),
+                              schemeE(mce, vanillaLoad));
+         } else {
+            /* Store conditional */
+            do_origins_Store( mce, st->Ist.LLSC.end,
+                                   st->Ist.LLSC.addr,
+                                   st->Ist.LLSC.storedata );
+            /* For the rationale behind this, see comments at the
+               place where the V-shadow for .result is constructed, in
+               do_shadow_LLSC.  In short, we regard .result as
+               always-defined. */
+            assign( 'B', mce, findShadowTmpB(mce, st->Ist.LLSC.result),
+                              mkU32(0) );
          }
          break;
       }
+
       case Ist_Put: {
          Int b_offset
             = MC_(get_otrack_shadow_offset)(
@@ -5006,15 +5121,18 @@ static void schemeS ( MCEnv* mce, IRStmt* st )
          }
          break;
       }
+
       case Ist_WrTmp:
          assign( 'B', mce, findShadowTmpB(mce, st->Ist.WrTmp.tmp),
                            schemeE(mce, st->Ist.WrTmp.data) );
          break;
+
       case Ist_MBE:
       case Ist_NoOp:
       case Ist_Exit:
       case Ist_IMark:
          break;
+
       default:
          VG_(printf)("mc_translate.c: schemeS: unhandled: ");
          ppIRStmt(st);
