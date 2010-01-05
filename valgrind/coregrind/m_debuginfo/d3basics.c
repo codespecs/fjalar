@@ -389,6 +389,9 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
    if (regno == 1/*SP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_ppc64_linux)
    if (regno == 1/*SP*/) { *a = regs->sp; return True; }
+#  elif defined(VGP_arm_linux)
+   if (regno == 13) { *a = regs->sp; return True; }
+   if (regno == 11) { *a = regs->fp; return True; } 
 #  elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
    vg_assert(0); /* this function should never be called */
 #  else
@@ -830,13 +833,16 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             break;
          case DW_OP_call_frame_cfa:
             if (!regs)
-               FAIL("evaluate_Dwarf3_Expr: DW_OP_call_frame_cfa but no reg info");
+               FAIL("evaluate_Dwarf3_Expr: "
+                    "DW_OP_call_frame_cfa but no reg info");
 #if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
-            /* Valgrind on ppc32/ppc64 currently doesn't use unwind info.  */
+            /* Valgrind on ppc32/ppc64 currently doesn't use unwind info. */
             uw1 = *(Addr *)(regs->sp);
 #else
             uw1 = ML_(get_CFA)(regs->ip, regs->sp, regs->fp, 0, ~(UWord) 0);
 #endif
+            /* we expect this to fail on arm-linux, since ML_(get_CFA)
+               always returns zero at present. */
             if (!uw1)
                FAIL("evaluate_Dwarf3_Expr: Could not resolve "
                     "DW_OP_call_frame_cfa");

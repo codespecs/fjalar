@@ -117,19 +117,54 @@ UWord do_acasW ( UWord* addr, UWord expected, UWord nyu )
 {
    UWord block[4] = { (UWord)addr, expected, nyu, 2 };
    __asm__ __volatile__(
+      "pushl %%ebx"                   "\n\t"
       "movl 0(%%esi),  %%edi"         "\n\t" // addr
       "movl 4(%%esi),  %%eax"         "\n\t" // expected
       "movl 8(%%esi),  %%ebx"         "\n\t" // nyu
       "xorl %%ecx,%%ecx"              "\n\t"
       "lock; cmpxchgl %%ebx,(%%edi)"  "\n\t"
       "setz %%cl"                     "\n\t"
-      "movl %%ecx, 12(%%esi)"         "\n"
+      "movl %%ecx, 12(%%esi)"         "\n\t"
+      "popl %%ebx"                    "\n"
       : /*out*/ 
       : /*in*/ "S"(&block[0])
-      : /*trash*/"memory","cc","edi","eax","ebx","ecx"
+      : /*trash*/"memory","cc","edi","eax","ecx"
    );
    assert(block[3] == 0 || block[3] == 1);
    return block[3] & 1;
+}
+
+#elif defined(VGA_arm)
+
+// arm
+/* return 1 if success, 0 if failure */
+UWord do_acasW ( UWord* addr, UWord expected, UWord nyu )
+{
+  UWord old, success;
+  UWord block[2] = { (UWord)addr, nyu };
+
+  /* Fetch the old value, and set the reservation */
+  __asm__ __volatile__ (
+     "ldrex  %0, [%1]"    "\n"
+      : /*out*/   "=r"(old)
+      : /*in*/    "r"(addr)
+   );
+
+   /* If the old value isn't as expected, we've had it */
+   if (old != expected) return 0;
+
+   /* otherwise try to stuff the new value in */
+   __asm__ __volatile__(
+      "ldr    r4, [%1, #0]"      "\n\t"
+      "ldr    r5, [%1, #4]"      "\n\t"
+      "strex  r6, r5, [r4, #0]"  "\n\t"
+      "eor    %0, r6, #1"        "\n\t"
+      : /*out*/ "=r"(success)
+      : /*in*/ "r"(&block[0])
+      : /*trash*/ "r4","r5","r6","memory"
+   );
+   assert(success == 0 || success == 1);
+   return success;
 }
 
 #endif

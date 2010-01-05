@@ -334,8 +334,7 @@ static IRExpr* flatten_Expr ( IRSB* bb, IRExpr* ex )
       case Iex_Load:
          t1 = newIRTemp(bb->tyenv, ty);
          addStmtToIRSB(bb, IRStmt_WrTmp(t1,
-            IRExpr_Load(ex->Iex.Load.isLL,
-                        ex->Iex.Load.end,
+            IRExpr_Load(ex->Iex.Load.end,
                         ex->Iex.Load.ty, 
                         flatten_Expr(bb, ex->Iex.Load.addr))));
          return IRExpr_RdTmp(t1);
@@ -426,8 +425,7 @@ static void flatten_Stmt ( IRSB* bb, IRStmt* st )
       case Ist_Store:
          e1 = flatten_Expr(bb, st->Ist.Store.addr);
          e2 = flatten_Expr(bb, st->Ist.Store.data);
-         addStmtToIRSB(bb, IRStmt_Store(st->Ist.Store.end,
-                                        st->Ist.Store.resSC, e1,e2));
+         addStmtToIRSB(bb, IRStmt_Store(st->Ist.Store.end, e1,e2));
          break;
       case Ist_CAS:
          cas  = st->Ist.CAS.details;
@@ -439,6 +437,14 @@ static void flatten_Stmt ( IRSB* bb, IRStmt* st )
          cas2 = mkIRCAS( cas->oldHi, cas->oldLo, cas->end,
                          e1, e2, e3, e4, e5 );
          addStmtToIRSB(bb, IRStmt_CAS(cas2));
+         break;
+      case Ist_LLSC:
+         e1 = flatten_Expr(bb, st->Ist.LLSC.addr);
+         e2 = st->Ist.LLSC.storedata
+                 ? flatten_Expr(bb, st->Ist.LLSC.storedata)
+                 : NULL;
+         addStmtToIRSB(bb, IRStmt_LLSC(st->Ist.LLSC.end,
+                                       st->Ist.LLSC.result, e1, e2));
          break;
       case Ist_Dirty:
          d = st->Ist.Dirty.details;
@@ -724,7 +730,7 @@ static void handle_gets_Stmt (
          enough do a lot better if needed. */
       /* Probably also overly-conservative, but also dump everything
          if we hit a memory bus event (fence, lock, unlock).  Ditto
-         AbiHints and CASs. */
+         AbiHints, CASs, LLs and SCs. */
       case Ist_AbiHint:
          vassert(isIRAtom(st->Ist.AbiHint.base));
          vassert(isIRAtom(st->Ist.AbiHint.nia));
@@ -732,6 +738,7 @@ static void handle_gets_Stmt (
       case Ist_MBE:
       case Ist_Dirty:
       case Ist_CAS:
+      case Ist_LLSC:
          for (j = 0; j < env->used; j++)
             env->inuse[j] = False;
          break;
@@ -895,6 +902,30 @@ static Bool sameIRTemps ( IRExpr* e1, IRExpr* e2 )
    return toBool( e1->tag == Iex_RdTmp
                   && e2->tag == Iex_RdTmp
                   && e1->Iex.RdTmp.tmp == e2->Iex.RdTmp.tmp );
+}
+
+static Bool sameIcoU32s ( IRExpr* e1, IRExpr* e2 )
+{
+   return toBool( e1->tag == Iex_Const
+                  && e2->tag == Iex_Const
+                  && e1->Iex.Const.con->tag == Ico_U32
+                  && e2->Iex.Const.con->tag == Ico_U32
+                  && e1->Iex.Const.con->Ico.U32
+                     == e2->Iex.Const.con->Ico.U32 );
+}
+
+/* Are both expressions either the same IRTemp or IRConst-U32s ?  If
+   in doubt, say No. */
+static Bool sameIRTempsOrIcoU32s ( IRExpr* e1, IRExpr* e2 )
+{
+   switch (e1->tag) {
+      case Iex_RdTmp:
+         return sameIRTemps(e1, e2);
+      case Iex_Const:
+         return sameIcoU32s(e1, e2);
+      default:
+         return False;
+   }
 }
 
 static Bool notBool ( Bool b )
@@ -1571,14 +1602,22 @@ static IRExpr* fold_Expr ( IRExpr* e )
    }
 
    /* Mux0X */
-   if (e->tag == Iex_Mux0X
-       && e->Iex.Mux0X.cond->tag == Iex_Const) {
-      Bool zero;
-      /* assured us by the IR type rules */
-      vassert(e->Iex.Mux0X.cond->Iex.Const.con->tag == Ico_U8);
-      zero = toBool(0 == (0xFF & e->Iex.Mux0X.cond
-                                  ->Iex.Const.con->Ico.U8));
-      e2 = zero ? e->Iex.Mux0X.expr0 : e->Iex.Mux0X.exprX;
+   if (e->tag == Iex_Mux0X) {
+      /* is the discriminant is a constant? */
+      if (e->Iex.Mux0X.cond->tag == Iex_Const) {
+         Bool zero;
+         /* assured us by the IR type rules */
+         vassert(e->Iex.Mux0X.cond->Iex.Const.con->tag == Ico_U8);
+         zero = toBool(0 == (0xFF & e->Iex.Mux0X.cond
+                                     ->Iex.Const.con->Ico.U8));
+         e2 = zero ? e->Iex.Mux0X.expr0 : e->Iex.Mux0X.exprX;
+      }
+      else
+      /* are the arms identical? (pretty weedy test) */
+      if (sameIRTempsOrIcoU32s(e->Iex.Mux0X.expr0,
+                               e->Iex.Mux0X.exprX)) {
+         e2 = e->Iex.Mux0X.expr0;
+      }
    }
 
    if (DEBUG_IROPT && e2 != e) {
@@ -1674,7 +1713,6 @@ static IRExpr* subst_Expr ( IRExpr** env, IRExpr* ex )
       case Iex_Load:
          vassert(isIRAtom(ex->Iex.Load.addr));
          return IRExpr_Load(
-                   ex->Iex.Load.isLL,
                    ex->Iex.Load.end,
                    ex->Iex.Load.ty,
                    subst_Expr(env, ex->Iex.Load.addr)
@@ -1763,7 +1801,6 @@ static IRStmt* subst_and_fold_Stmt ( IRExpr** env, IRStmt* st )
          vassert(isIRAtom(st->Ist.Store.data));
          return IRStmt_Store(
                    st->Ist.Store.end,
-                   st->Ist.Store.resSC,
                    fold_Expr(subst_Expr(env, st->Ist.Store.addr)),
                    fold_Expr(subst_Expr(env, st->Ist.Store.data))
                 );
@@ -1786,6 +1823,19 @@ static IRStmt* subst_and_fold_Stmt ( IRExpr** env, IRStmt* st )
                 );
          return IRStmt_CAS(cas2);
       }
+
+      case Ist_LLSC:
+         vassert(isIRAtom(st->Ist.LLSC.addr));
+         if (st->Ist.LLSC.storedata)
+            vassert(isIRAtom(st->Ist.LLSC.storedata));
+         return IRStmt_LLSC(
+                   st->Ist.LLSC.end,
+                   st->Ist.LLSC.result,
+                   fold_Expr(subst_Expr(env, st->Ist.LLSC.addr)),
+                   st->Ist.LLSC.storedata
+                      ? fold_Expr(subst_Expr(env, st->Ist.LLSC.storedata))
+                      : NULL
+                );
 
       case Ist_Dirty: {
          Int     i;
@@ -2021,6 +2071,11 @@ static void addUses_Stmt ( Bool* set, IRStmt* st )
          if (cas->dataHi)
             addUses_Expr(set, cas->dataHi);
          addUses_Expr(set, cas->dataLo);
+         return;
+      case Ist_LLSC:
+         addUses_Expr(set, st->Ist.LLSC.addr);
+         if (st->Ist.LLSC.storedata)
+            addUses_Expr(set, st->Ist.LLSC.storedata);
          return;
       case Ist_Dirty:
          d = st->Ist.Dirty.details;
@@ -2608,7 +2663,8 @@ static Bool do_cse_BB ( IRSB* bb )
          to do the no-overlap assessments needed for Put/PutI.
       */
       switch (st->tag) {
-         case Ist_Dirty: case Ist_Store: case Ist_MBE: case Ist_CAS:
+         case Ist_Dirty: case Ist_Store: case Ist_MBE:
+         case Ist_CAS: case Ist_LLSC:
             paranoia = 2; break;
          case Ist_Put: case Ist_PutI: 
             paranoia = 1; break;
@@ -3299,8 +3355,6 @@ static void deltaIRStmt ( IRStmt* st, Int delta )
          deltaIRExpr(st->Ist.Exit.guard, delta);
          break;
       case Ist_Store:
-         if (st->Ist.Store.resSC != IRTemp_INVALID)
-            st->Ist.Store.resSC += delta;
          deltaIRExpr(st->Ist.Store.addr, delta);
          deltaIRExpr(st->Ist.Store.data, delta);
          break;
@@ -3315,6 +3369,12 @@ static void deltaIRStmt ( IRStmt* st, Int delta )
          if (st->Ist.CAS.details->dataHi)
             deltaIRExpr(st->Ist.CAS.details->dataHi, delta);
          deltaIRExpr(st->Ist.CAS.details->dataLo, delta);
+         break;
+      case Ist_LLSC:
+         st->Ist.LLSC.result += delta;
+         deltaIRExpr(st->Ist.LLSC.addr, delta);
+         if (st->Ist.LLSC.storedata)
+            deltaIRExpr(st->Ist.LLSC.storedata, delta);
          break;
       case Ist_Dirty:
          d = st->Ist.Dirty.details;
@@ -3780,6 +3840,11 @@ static void aoccCount_Stmt ( UShort* uses, IRStmt* st )
             aoccCount_Expr(uses, cas->dataHi);
          aoccCount_Expr(uses, cas->dataLo);
          return;
+      case Ist_LLSC:
+         aoccCount_Expr(uses, st->Ist.LLSC.addr);
+         if (st->Ist.LLSC.storedata)
+            aoccCount_Expr(uses, st->Ist.LLSC.storedata);
+         return;
       case Ist_Dirty:
          d = st->Ist.Dirty.details;
          if (d->mFx != Ifx_None)
@@ -3905,6 +3970,20 @@ static IRExpr* fold_IRExpr_Unop ( IROp op, IRExpr* aa )
       if (is_Unop(aa, Iop_CmpwNEZ64))
          return IRExpr_Unop( Iop_CmpNEZ64, aa->Iex.Unop.arg );
       break;
+
+   case Iop_1Sto32:
+      /* 1Sto32( CmpNEZ8( 32to8( 1Uto32( CmpNEZ32( x ))))) -> CmpwNEZ32(x) */
+      if (is_Unop(aa, Iop_CmpNEZ8)
+          && is_Unop(aa->Iex.Unop.arg, Iop_32to8)
+          && is_Unop(aa->Iex.Unop.arg->Iex.Unop.arg, Iop_1Uto32)
+          && is_Unop(aa->Iex.Unop.arg->Iex.Unop.arg->Iex.Unop.arg,
+                     Iop_CmpNEZ32)) {
+         return IRExpr_Unop( Iop_CmpwNEZ32,
+                             aa->Iex.Unop.arg->Iex.Unop.arg
+                               ->Iex.Unop.arg->Iex.Unop.arg);
+      }
+      break;
+
    default:
       break;
    }
@@ -3966,7 +4045,6 @@ static IRExpr* atbSubst_Expr ( ATmpInfo* env, IRExpr* e )
                 );
       case Iex_Load:
          return IRExpr_Load(
-                   e->Iex.Load.isLL,
                    e->Iex.Load.end,
                    e->Iex.Load.ty,
                    atbSubst_Expr(env, e->Iex.Load.addr)
@@ -4003,7 +4081,6 @@ static IRStmt* atbSubst_Stmt ( ATmpInfo* env, IRStmt* st )
       case Ist_Store:
          return IRStmt_Store(
                    st->Ist.Store.end,
-                   st->Ist.Store.resSC,
                    atbSubst_Expr(env, st->Ist.Store.addr),
                    atbSubst_Expr(env, st->Ist.Store.data)
                 );
@@ -4048,6 +4125,14 @@ static IRStmt* atbSubst_Stmt ( ATmpInfo* env, IRStmt* st )
                    atbSubst_Expr(env, cas->dataLo)
                 );
          return IRStmt_CAS(cas2);
+      case Ist_LLSC:
+         return IRStmt_LLSC(
+                   st->Ist.LLSC.end,
+                   st->Ist.LLSC.result,
+                   atbSubst_Expr(env, st->Ist.LLSC.addr),
+                   st->Ist.LLSC.storedata
+                      ? atbSubst_Expr(env, st->Ist.LLSC.storedata) : NULL
+                );
       case Ist_Dirty:
          d  = st->Ist.Dirty.details;
          d2 = emptyIRDirty();
@@ -4189,15 +4274,13 @@ static IRStmt* atbSubst_Stmt ( ATmpInfo* env, IRStmt* st )
 
       /* be True if this stmt writes memory or might do (==> we don't
          want to reorder other loads or stores relative to it).  Also,
-         a load-linked falls under this classification, since we
+         both LL and SC fall under this classification, since we
          really ought to be conservative and not reorder any other
-         memory transactions relative to it. */
+         memory transactions relative to them. */
       stmtStores
          = toBool( st->tag == Ist_Store
-                   || (st->tag == Ist_WrTmp
-                       && st->Ist.WrTmp.data->tag == Iex_Load
-                       && st->Ist.WrTmp.data->Iex.Load.isLL)
-                   || st->tag == Ist_Dirty );
+                   || st->tag == Ist_Dirty
+                   || st->tag == Ist_LLSC );
 
       for (k = A_NENV-1; k >= 0; k--) {
          if (env[k].bindee == NULL)
@@ -4388,6 +4471,11 @@ static void considerExpensives ( /*OUT*/Bool* hasGetIorPutI,
             vassert(cas->dataHi == NULL || isIRAtom(cas->dataHi));
             vassert(isIRAtom(cas->dataLo));
             break;
+         case Ist_LLSC:
+            vassert(isIRAtom(st->Ist.LLSC.addr));
+            if (st->Ist.LLSC.storedata)
+               vassert(isIRAtom(st->Ist.LLSC.storedata));
+            break;
          case Ist_Dirty:
             d = st->Ist.Dirty.details;
             vassert(isIRAtom(d->guard));
@@ -4406,7 +4494,7 @@ static void considerExpensives ( /*OUT*/Bool* hasGetIorPutI,
          default: 
          bad:
             ppIRStmt(st);
-            vpanic("hasGetIorPutI");
+            vpanic("considerExpensives");
       }
    }
 }

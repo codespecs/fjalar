@@ -51,9 +51,6 @@
 /* Define to 1 if gcc supports __sync_bool_compare_and_swap() a.o. */
 #undef HAVE_BUILTIN_ATOMIC
 
-/* Define to 1 if gcc supports __builtin_expect. */
-#undef HAVE_BUILTIN_EXPECT
-
 /* Define to 1 if you have the `clock_gettime' function. */
 #undef HAVE_CLOCK_GETTIME
 

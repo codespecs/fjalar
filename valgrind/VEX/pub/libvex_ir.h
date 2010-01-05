@@ -531,6 +531,9 @@ typedef
       /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */
       Iop_AddF64, Iop_SubF64, Iop_MulF64, Iop_DivF64,
 
+      /* :: IRRoundingMode(I32) x F32 x F32 -> F32 */ 
+      Iop_AddF32, Iop_SubF32, Iop_MulF32, Iop_DivF32,
+
       /* Variants of the above which produce a 64-bit result but which
          round their result to a IEEE float range first. */
       /* :: IRRoundingMode(I32) x F64 x F64 -> F64 */
@@ -540,9 +543,15 @@ typedef
       /* :: F64 -> F64 */
       Iop_NegF64, Iop_AbsF64,
 
+      /* :: F32 -> F32 */
+      Iop_NegF32, Iop_AbsF32,
+
       /* Unary operations, with rounding. */
       /* :: IRRoundingMode(I32) x F64 -> F64 */
       Iop_SqrtF64, Iop_SqrtF64r32,
+
+      /* :: IRRoundingMode(I32) x F32 -> F32 */
+      Iop_SqrtF32,
 
       /* Comparison, yielding GT/LT/EQ/UN(ordered), as per the following:
             0x45 Unordered
@@ -552,13 +561,15 @@ typedef
          This just happens to be the Intel encoding.  The values
          are recorded in the type IRCmpF64Result.
       */
+      /* :: F64 x F64 -> IRCmpF64Result(I32) */
       Iop_CmpF64,
 
       /* --- Int to/from FP conversions. --- */
 
-      /* For the most part, these take a first argument :: Ity_I32
-         (as IRRoundingMode) which is an indication of the rounding
-         mode to use, as per the following encoding:
+      /* For the most part, these take a first argument :: Ity_I32 (as
+         IRRoundingMode) which is an indication of the rounding mode
+         to use, as per the following encoding ("the standard
+         encoding"):
             00b  to nearest (the default)
             01b  to -infinity
             10b  to +infinity
@@ -570,25 +581,43 @@ typedef
             10b  to +infinity
             11b  to -infinity
          Any PPC -> IR front end will have to translate these PPC
-         encodings to the standard encodings.
+         encodings, as encoded in the guest state, to the standard
+         encodings, to pass to the primops.
+         For reference only, the ARM VFP encoding is:
+            00b  to nearest
+            01b  to +infinity
+            10b  to -infinity
+            11b  to zero
+         Again, this will have to be converted to the standard encoding
+         to pass to primops.
 
          If one of these conversions gets an out-of-range condition,
          or a NaN, as an argument, the result is host-defined.  On x86
-         the "integer indefinite" value 0x80..00 is produced.
-         On PPC it is either 0x80..00 or 0x7F..FF depending on the sign
-         of the argument.
+         the "integer indefinite" value 0x80..00 is produced.  On PPC
+         it is either 0x80..00 or 0x7F..FF depending on the sign of
+         the argument.
+
+         On ARMvfp, when converting to a signed integer result, the
+         overflow result is 0x80..00 for negative args and 0x7F..FF
+         for positive args.  For unsigned integer results it is
+         0x00..00 and 0xFF..FF respectively.
 
          Rounding is required whenever the destination type cannot
          represent exactly all values of the source type.
       */
-      Iop_F64toI16,  /* IRRoundingMode(I32) x F64 -> I16 */
-      Iop_F64toI32,  /* IRRoundingMode(I32) x F64 -> I32 */
-      Iop_F64toI64,  /* IRRoundingMode(I32) x F64 -> I64 */
+      Iop_F64toI16S, /* IRRoundingMode(I32) x F64 -> signed I16 */
+      Iop_F64toI32S, /* IRRoundingMode(I32) x F64 -> signed I32 */
+      Iop_F64toI64S, /* IRRoundingMode(I32) x F64 -> signed I64 */
 
-      Iop_I16toF64,  /*                       I16 -> F64 */
-      Iop_I32toF64,  /*                       I32 -> F64 */
-      Iop_I64toF64,  /* IRRoundingMode(I32) x I64 -> F64 */
+      Iop_F64toI32U, /* IRRoundingMode(I32) x F64 -> unsigned I32 */
 
+      Iop_I16StoF64, /*                       signed I16 -> F64 */
+      Iop_I32StoF64, /*                       signed I32 -> F64 */
+      Iop_I64StoF64, /* IRRoundingMode(I32) x signed I64 -> F64 */
+
+      Iop_I32UtoF64, /*                       unsigned I32 -> F64 */
+
+      /* Conversion between floating point formats */
       Iop_F32toF64,  /*                       F32 -> F64 */
       Iop_F64toF32,  /* IRRoundingMode(I32) x F64 -> F32 */
 
@@ -1044,20 +1073,13 @@ struct _IRExpr {
          IRExpr* arg;      /* operand */
       } Unop;
 
-      /* A load from memory.  If .isLL is True then this load also
-         lodges a reservation (ppc-style lwarx/ldarx operation).  If
-         .isLL is True, then also, the address must be naturally
-         aligned - any misaligned addresses should be caught by a
-         dominating IR check and side exit.  This alignment
-         restriction exists because on at least some LL/SC platforms
-         (ppc), lwarx etc will trap w/ SIGBUS on misaligned addresses,
-         and we have to actually generate lwarx on the host, and we
-         don't want it trapping on the host.
-
+      /* A load from memory -- a normal load, not a load-linked.
+         Load-Linkeds (and Store-Conditionals) are instead represented
+         by IRStmt.LLSC since Load-Linkeds have side effects and so
+         are not semantically valid IRExpr's.
          ppIRExpr output: LD<end>:<ty>(<addr>), eg. LDle:I32(t1)
       */
       struct {
-         Bool      isLL;   /* True iff load makes a reservation */
          IREndness end;    /* Endian-ness of the load */
          IRType    ty;     /* Type of the loaded value */
          IRExpr*   addr;   /* Address being loaded from */
@@ -1141,8 +1163,7 @@ extern IRExpr* IRExpr_Triop  ( IROp op, IRExpr* arg1,
                                         IRExpr* arg2, IRExpr* arg3 );
 extern IRExpr* IRExpr_Binop  ( IROp op, IRExpr* arg1, IRExpr* arg2 );
 extern IRExpr* IRExpr_Unop   ( IROp op, IRExpr* arg );
-extern IRExpr* IRExpr_Load   ( Bool isLL, IREndness end,
-                               IRType ty, IRExpr* addr );
+extern IRExpr* IRExpr_Load   ( IREndness end, IRType ty, IRExpr* addr );
 extern IRExpr* IRExpr_Const  ( IRConst* con );
 extern IRExpr* IRExpr_CCall  ( IRCallee* cee, IRType retty, IRExpr** args );
 extern IRExpr* IRExpr_Mux0X  ( IRExpr* cond, IRExpr* expr0, IRExpr* exprX );
@@ -1241,7 +1262,7 @@ typedef
       Ijk_SigBUS,         /* current instruction synths SIGBUS */
       /* Unfortunately, various guest-dependent syscall kinds.  They
 	 all mean: do a syscall before continuing. */
-      Ijk_Sys_syscall,    /* amd64 'syscall', ppc 'sc' */
+      Ijk_Sys_syscall,    /* amd64 'syscall', ppc 'sc', arm 'svc #0' */
       Ijk_Sys_int32,      /* amd64/x86 'int $0x20' */
       Ijk_Sys_int128,     /* amd64/x86 'int $0x80' */
       Ijk_Sys_int129,     /* amd64/x86 'int $0x81' */
@@ -1485,6 +1506,7 @@ typedef
       Ist_WrTmp,
       Ist_Store,
       Ist_CAS,
+      Ist_LLSC,
       Ist_Dirty,
       Ist_MBE,       /* META (maybe) */
       Ist_Exit
@@ -1580,28 +1602,13 @@ typedef
             IRExpr* data;  /* Expression (RHS of assignment) */
          } WrTmp;
 
-         /* Write a value to memory.  Normally scRes is
-            IRTemp_INVALID, denoting a normal store.  If scRes is not
-            IRTemp_INVALID, then this is a store-conditional, which
-            may fail or succeed depending on the outcome of a
-            previously lodged reservation on this address.  scRes is
-            written 1 if the store succeeds and 0 if it fails, and
-            must have type Ity_I1.
-
-            If scRes is not IRTemp_INVALID, then also, the address
-            must be naturally aligned - any misaligned addresses
-            should be caught by a dominating IR check and side exit.
-            This alignment restriction exists because on at least some
-            LL/SC platforms (ppc), stwcx. etc will trap w/ SIGBUS on
-            misaligned addresses, and we have to actually generate
-            stwcx. on the host, and we don't want it trapping on the
-            host.
-
+         /* Write a value to memory.  This is a normal store, not a
+            Store-Conditional.  To represent a Store-Conditional,
+            instead use IRStmt.LLSC.
             ppIRStmt output: ST<end>(<addr>) = <data>, eg. STle(t1) = t2
          */
          struct {
             IREndness end;    /* Endianness of the store */
-            IRTemp    resSC;  /* result of SC goes here (1 == success) */
             IRExpr*   addr;   /* store address */
             IRExpr*   data;   /* value to write */
          } Store;
@@ -1623,6 +1630,57 @@ typedef
          struct {
             IRCAS* details;
          } CAS;
+
+         /* Either Load-Linked or Store-Conditional, depending on
+            STOREDATA.
+
+            If STOREDATA is NULL then this is a Load-Linked, meaning
+            that data is loaded from memory as normal, but a
+            'reservation' for the address is also lodged in the
+            hardware.
+
+               result = Load-Linked(addr, end)
+
+            The data transfer type is the type of RESULT (I32, I64,
+            etc).  ppIRStmt output:
+
+               result = LD<end>-Linked(<addr>), eg. LDbe-Linked(t1)
+
+            If STOREDATA is not NULL then this is a Store-Conditional,
+            hence:
+
+               result = Store-Conditional(addr, storedata, end)
+
+            The data transfer type is the type of STOREDATA and RESULT
+            has type Ity_I1. The store may fail or succeed depending
+            on the state of a previously lodged reservation on this
+            address.  RESULT is written 1 if the store succeeds and 0
+            if it fails.  eg ppIRStmt output:
+
+               result = ( ST<end>-Cond(<addr>) = <storedata> )
+               eg t3 = ( STbe-Cond(t1, t2) )
+
+            In all cases, the address must be naturally aligned for
+            the transfer type -- any misaligned addresses should be
+            caught by a dominating IR check and side exit.  This
+            alignment restriction exists because on at least some
+            LL/SC platforms (ppc), stwcx. etc will trap w/ SIGBUS on
+            misaligned addresses, and we have to actually generate
+            stwcx. on the host, and we don't want it trapping on the
+            host.
+
+            Summary of rules for transfer type:
+              STOREDATA == NULL (LL):
+                transfer type = type of RESULT
+              STOREDATA != NULL (SC):
+                transfer type = type of STOREDATA, and RESULT :: Ity_I1
+         */
+         struct {
+            IREndness end;
+            IRTemp    result;
+            IRExpr*   addr;
+            IRExpr*   storedata; /* NULL => LL, non-NULL => SC */
+         } LLSC;
 
          /* Call (possibly conditionally) a C function that has side
             effects (ie. is "dirty").  See the comments above the
@@ -1670,9 +1728,10 @@ extern IRStmt* IRStmt_Put     ( Int off, IRExpr* data );
 extern IRStmt* IRStmt_PutI    ( IRRegArray* descr, IRExpr* ix, Int bias,
                                 IRExpr* data );
 extern IRStmt* IRStmt_WrTmp   ( IRTemp tmp, IRExpr* data );
-extern IRStmt* IRStmt_Store   ( IREndness end,
-                                IRTemp resSC, IRExpr* addr, IRExpr* data );
+extern IRStmt* IRStmt_Store   ( IREndness end, IRExpr* addr, IRExpr* data );
 extern IRStmt* IRStmt_CAS     ( IRCAS* details );
+extern IRStmt* IRStmt_LLSC    ( IREndness end, IRTemp result,
+                                IRExpr* addr, IRExpr* storedata );
 extern IRStmt* IRStmt_Dirty   ( IRDirty* details );
 extern IRStmt* IRStmt_MBE     ( IRMBusEvent event );
 extern IRStmt* IRStmt_Exit    ( IRExpr* guard, IRJumpKind jk, IRConst* dst );
