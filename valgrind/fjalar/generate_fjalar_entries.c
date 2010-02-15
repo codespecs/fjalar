@@ -1418,6 +1418,11 @@ static void initFunctionFjalarNames(void) {
         genfreekey(FunctionTable_by_entryPC, (void *)cur_entry->entryPC);
         genfreekey(FunctionTable, (void *)cur_entry->startPC);
 
+	VG_(free)(bufOld);
+	bufOld=NULL;
+	VG_(free)(bufNew);
+	bufNew = NULL;
+
         continue;
       }
 
@@ -1425,6 +1430,8 @@ static void initFunctionFjalarNames(void) {
 
       VG_(free)(buf);
       buf = bufNew;
+      VG_(free)(bufOld);
+      bufOld=NULL;
 
     }
     else {
