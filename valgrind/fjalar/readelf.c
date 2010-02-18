@@ -37,7 +37,7 @@
    This file interprets the DWARF2 debugging information within
    the ELF binary and then calls functions in typedata.c
 
-   My changes are denoted by // PG marks
+   Fjalar changes are denoted by // PG or RUDD marks
 */
 
 #include "my_libc.h"
@@ -6130,13 +6130,15 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
                 {
                   FJALAR_DPRINTF ("DW_OP_addr: %lx", addr);
                 }
-              harvest_variable_addr_value(entry, addr);
+	      if (entry) {
+		harvest_variable_addr_value(entry, addr);
+	      }
             }
           data += pointer_size;
 	  break;
 	case DW_OP_deref:
 	  if (print_results_and_ok) {FJALAR_DPRINTF ("DW_OP_deref");}
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, 0);
 	  }
 
@@ -6163,7 +6165,7 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
               data += 2;
             }
 
-	  if (tag_is_formal_parameter(entry->tag_name)) {
+	  if (entry && tag_is_formal_parameter(entry->tag_name)) {
 	    harvest_formal_param_location_atom(entry, op, const_data);
 	    harvest_formal_param_location_offset(entry, const_data);
 	  }
@@ -6364,13 +6366,15 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
                           uconst_data);
                 }
 
-	      if (entry && tag_is_formal_parameter(entry->tag_name)) {
-		harvest_formal_param_location_atom(entry, op, (long)uconst_data);
-		harvest_formal_param_location_offset(entry, (long)uconst_data);
+	      if (entry) {
+		if(tag_is_formal_parameter(entry->tag_name)) {
+		  harvest_formal_param_location_atom(entry, op, (long)uconst_data);
+		  harvest_formal_param_location_offset(entry, (long)uconst_data);
+		}
+              harvest_data_member_location(entry, uconst_data);
 	      }
 
 
-              harvest_data_member_location(entry, uconst_data);
 
               data += bytes_read;
             }
@@ -6555,7 +6559,6 @@ decode_location_expression (data, pointer_size, length, ok_to_harvest, entry, ll
                           breg_value);
                 }
 
-	      //RUDD DEBUG
 	      if(entry) {
 		if (tag_is_variable(entry->tag_name)) {
 		  harvest_local_var_offset(entry, breg_value);
@@ -9142,7 +9145,7 @@ display_debug_frames (section, start, file)
 	      if (! do_debug_frames_interp)
 		{
 		  FJALAR_DPRINTF ("  DW_CFA_def_cfa_expression (");
-		  decode_location_expression (start, addr_size, ul, 1, 0, 0 );
+		  decode_locatio_expression (start, addr_size, ul, 1, 0, 0 );
 		  FJALAR_DPRINTF (")\n");
 		}
 	      fc->cfa_exp = 1;
