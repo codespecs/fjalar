@@ -9145,7 +9145,7 @@ display_debug_frames (section, start, file)
 	      if (! do_debug_frames_interp)
 		{
 		  FJALAR_DPRINTF ("  DW_CFA_def_cfa_expression (");
-		  decode_locatio_expression (start, addr_size, ul, 1, 0, 0 );
+		  decode_location_expression (start, addr_size, ul, 1, 0, 0 );
 		  FJALAR_DPRINTF (")\n");
 		}
 	      fc->cfa_exp = 1;
