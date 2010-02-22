@@ -1391,7 +1391,7 @@ void visitVariable(VariableEntry* var,
   VisitArgs new_args;
 
   char* trace_vars_tree = NULL;
-
+  
   tl_assert(varOrigin != DERIVED_VAR);
   tl_assert(varOrigin != DERIVED_FLATTENED_ARRAY_VAR);
 
@@ -1418,8 +1418,17 @@ void visitVariable(VariableEntry* var,
   // Also initialize trace_vars_tree based on varOrigin and
   // varFuncInfo:
   if (varOrigin == GLOBAL_VAR) {
-    trace_vars_tree = (globalFunctionTree ?
-                globalFunctionTree->function_variables_tree : 0);
+    
+    if (varFuncInfo == 0 || varFuncInfo->trace_global_vars_tree == 0){
+      trace_vars_tree = (globalFunctionTree ?
+			 globalFunctionTree->function_variables_tree : 0);
+    }else{
+      //Use the user-specified globals list if possible
+      //trace_global_vars_tree holds all the global variables specified in the globals
+      //section as well as those specified in the functions section of vars-file
+
+      trace_vars_tree = varFuncInfo->trace_global_vars_tree;
+    }
   }
   else {
     trace_vars_tree = varFuncInfo->trace_vars_tree;
