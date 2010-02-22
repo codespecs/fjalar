@@ -20,7 +20,6 @@
 */
 
 #include "my_libc.h"
-
 #include "fjalar_main.h"
 #include "generate_fjalar_entries.h"
 #include "fjalar_include.h"
@@ -1323,7 +1322,6 @@ static char* PrependClass(char* class, char* func, int func_name_len) {
   return buf;
 }
 
-
 // Initializes all the fully-unique Fjalar names and trace_vars_tree
 // for all functions in FunctionTable:
 // Pre: If we are using the --var-list-file= option, the var-list file
@@ -1474,11 +1472,72 @@ static void initFunctionFjalarNames(void) {
       }
     }
 
+
     // No matter what, we've ran it once for this function so
     // trace_vars_tree has been initialized
     cur_entry->trace_vars_tree_already_initialized = 1;
-  }
 
+    // Now that we have fjalar_trace_vars, we can identiy the globals to
+    // track for the function. We just walk the trace_vars_tree to extract
+    // the globals. We union this list with the globalFunctionTree list
+
+    // At somepoint we may want to consider not copying the globalFunctionTree
+    // for function that has additional globals to track. In practice I don't
+    // think this will be an issue because the number of interesting globals
+    // for any particular function is small compared to the total number of
+    // globals.
+
+    cur_entry->trace_global_vars_tree = 0;
+
+    if (fjalar_trace_vars_filename &&
+	(!cur_entry->trace_global_vars_tree_already_initialized)){
+      extern FunctionTree * globalFunctionTree;
+
+      if (cur_entry->trace_vars_tree != 0){
+	struct tree_iter_t *it = titer((void *) cur_entry->trace_vars_tree);
+	while (titer_hasnext(it)){
+	  char *var = (char *) titer_next(it);
+	  
+	  if (var[0] == '/'){ //it's a global variable
+	    char *newString = VG_(strdup)("generate_fjalar_entries.c", var);
+	    tsearch((void *) newString,
+		    (void **) &(cur_entry->trace_global_vars_tree),
+		    compareStrings);
+	  }	
+	}
+	titer_destroy(it);
+      }
+     
+      // Only copy the globalFunctionTree if there were additions from trace_vars_tree
+      // If there weren't additions, we'll just use globalFunctionTree during traversal
+      if (globalFunctionTree != 0 && cur_entry->trace_global_vars_tree){
+	struct tree_iter_t *it = titer((void *) globalFunctionTree->function_variables_tree);
+	while (titer_hasnext(it)){
+	  char *var = (char *) titer_next(it);
+	  char *newString = VG_(strdup)("generate_fjalar_entries.c", var);
+	  tsearch((void *) newString,
+		  (void **) &(cur_entry->trace_global_vars_tree),
+		  compareStrings);
+	}
+	titer_destroy(it);
+      }
+      	 
+      //We also remove all globals from the normal trace_vars_tree to save time
+      //when checking formal parameters against it later
+      if (cur_entry->trace_global_vars_tree && cur_entry->trace_vars_tree){
+	struct tree_iter_t *it = titer((void *) cur_entry->trace_global_vars_tree);
+	while (titer_hasnext(it)){
+	  char *var = (char *) titer_next(it);
+	  tdelete(var,
+		  (void **) &(cur_entry->trace_vars_tree),
+		  compareStrings);
+	}
+	titer_destroy(it);
+      }
+    }
+    
+    cur_entry->trace_global_vars_tree_already_initialized = 1;
+  }      
   deleteFuncIterator(funcIt);
 }
 

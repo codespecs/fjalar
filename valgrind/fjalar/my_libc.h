@@ -29,6 +29,7 @@ extern int errno;
 
 /* search.h */
 
+struct tree_iter_t;
 typedef int (*__compar_fn_t) (const void *, const void *);
 
 typedef enum
@@ -55,6 +56,18 @@ void *tdelete (const void *__restrict __key,
 	       void **__restrict __rootp,
 	       __compar_fn_t __compar);
 
+/* Retrieve an pre-order traversal tree iterator for tree pointed to by *VROOT */
+struct tree_iter_t *titer(const void *__vroot);
+
+/* Are there any more nodes left in the tree? */
+int titer_hasnext(struct tree_iter_t *__it);
+
+/* Retrieve the key of the next element in the tree */
+void *titer_next(struct tree_iter_t *__it);
+
+/* Free the tree iterator */
+void titer_destroy(struct tree_iter_t *__it);
+
 typedef void (*__action_fn_t) (const void *__nodep, VISIT __value,
                                int __level);
 
@@ -62,9 +75,11 @@ typedef void (*__action_fn_t) (const void *__nodep, VISIT __value,
    or leaf.  */
 extern void twalk (const void *__root, __action_fn_t __action);
 
+
 /* Callback type for function to free a tree node.  If the keys are atomic
    data this function should do nothing.  */
 typedef void (*__free_fn_t) (void *__nodep);
+
 
 /* Destroy the whole tree, call FREEFCT for each node or leaf.  */
 extern void tdestroy (void *__root, __free_fn_t __freefct);

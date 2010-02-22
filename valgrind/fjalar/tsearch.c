@@ -102,6 +102,24 @@ typedef const struct node_t *const_node;
 
 #define CHECK_TREE(a)
 
+/* The stack needed for the pre-order tree iterator. Implemented as a 
+   singly linked list */
+struct node_stack_t
+{
+  const_node payload; 
+  struct node_stack_t  *next; //the next element in the stack
+};
+
+/*The struct for the tree iterator. We keep track of a "fringe" the set 
+  of nodes that need to be explored next. If we use a stack for the fringe,
+  the iterator will perform a pre-order transveral.
+  See https://inst.eecs.berkeley.edu/~cs61b/sp06/labs/t9-3-1. */
+struct tree_iter_t
+{
+  struct node_stack_t *fringe;
+};
+
+
 /* Possibly "split" a node with two red successors, and/or fix up two red
    edges in a row.  ROOTP is a pointer to the lowest node we visited, PARENTP
    and GPARENTP pointers to its parent/grandparent.  P_R and GP_R contain the
@@ -233,8 +251,8 @@ tsearch (const void *key, void **vrootp, __compar_fn_t compar)
       gp_r = p_r;
       p_r = r;
     }
-
   q = (struct node_t *) VG_(malloc) ("tsearch.c: tsearch", sizeof (struct node_t));
+  
   if (q != NULL)
     {
       *nextp = q;			/* link new node to old */
@@ -563,7 +581,6 @@ trecurse (const void *vroot, __action_fn_t action, int level)
     }
 }
 
-
 /* Walk the nodes of a tree.
    ROOT is the root of the tree to be walked, ACTION the function to be
    called at each node.  */
@@ -578,6 +595,103 @@ twalk (const void *vroot, __action_fn_t action)
     trecurse (root, action, 0);
 }
 
+/* Create a pre-order tree iterator for the tree with root *VROOT.
+   Returns NULL if passed a NULL-pointer to a tree. */
+struct tree_iter_t * 
+titer(const void *vroot){
+  if (vroot == NULL){
+    return NULL;
+  }
+  
+  const_node root = (const_node) vroot; 
+
+  struct node_stack_t *s = (struct node_stack_t *) 
+    VG_(malloc) ("tsearch.c: titer", sizeof (struct node_stack_t));
+  s->payload = root;
+  s->next = NULL;
+
+  struct tree_iter_t *it = (struct tree_iter_t *)
+    VG_(malloc) ("tsearch.c: titer", sizeof (struct tree_iter_t));
+
+  it->fringe = s;
+  return it;
+}
+
+/* Check to see if there are any more nodes to explore in the tree */
+int 
+titer_hasnext(struct tree_iter_t *it){
+  return it->fringe != NULL;
+}
+
+/* Assuming there are more nodes to explore, get the key for the next
+   node in the tree. */
+void * 
+titer_next(struct tree_iter_t *it){
+  struct node_stack_t *r = NULL,*l = NULL;
+  
+  struct node_stack_t *cur = it->fringe;
+  const_node next = it->fringe->payload;
+  
+  if (next->right != NULL){
+    r = (struct node_stack_t *) 
+      VG_(malloc) ("tsearch.c: hasnext", sizeof (struct node_stack_t));
+    r->payload = next->right;
+  }
+  if (next->left != NULL){
+    l = (struct node_stack_t *) 
+      VG_(malloc) ("tsearch.c: hasnext", sizeof (struct node_stack_t));
+    l->payload = next->left;
+  }
+
+  if (r == NULL && l == NULL){
+    /* We are exploring a leaf, so we'll explore top element in the fringe next */
+    it->fringe = it->fringe->next;
+  }else if(l == NULL){
+    /* The node only has a right child, so we'll explore the left subtree next */
+    r->next = it->fringe->next;
+    it->fringe = r;
+  }else if(r == NULL){
+    /* The node only has a left child, so we'll explore the right subtree next */
+    l->next = it->fringe->next;
+    it->fringe = l;
+  }else{
+    /* Explore the left subtree and then the right subtree */
+    r->next = it->fringe->next;
+    l->next = r;
+    it->fringe = l;
+  }
+
+  VG_(free)(cur);
+  return (void *) next->key;
+}
+
+/* Recursively destroy the stack of nodes */
+static void
+titer_destroy_recurse(struct node_stack_t *s){
+  if (s == NULL){
+    return;
+  }else{
+    if (s->next != NULL){
+      titer_destroy_recurse(s->next);
+      VG_(free)(s->next);
+    }
+  }
+}
+
+/* Recursively destroy the fringe then free the memory
+   used by the iterator itself */
+void 
+titer_destroy(struct tree_iter_t *it){
+  if (it == NULL){
+    return;
+  }else{
+    if (it->fringe != NULL){
+      titer_destroy_recurse(it->fringe);
+      VG_(free)(it->fringe);
+    }
+  }
+  VG_(free)(it);
+}
 
 
 /* The standardized functions miss an important functionality: the

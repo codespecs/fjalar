@@ -624,6 +624,15 @@ typedef struct _FunctionEntry {
   // Has trace_vars_tree been initialized?
   Bool trace_vars_tree_already_initialized;
 
+  // GNU Binary tree of global variables to trace within this function.
+  // This is only non-null when Fjalar is run with the --var-list-file
+  // command-line option.
+  // This is initialized in initializeFunctionTable().
+  char* trace_global_vars_tree;
+  //Has trace_global_vars_tree been initialized?
+  Bool trace_global_vars_tree_already_initialized;
+
+
   // Estimate of the amount of stack space used by the function's formal
   // parameters. This amount of memory is copied so that we can see
   // the pre-states of the parameters at exit.
