@@ -359,7 +359,6 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
 	      tag_is_variable(tag) ||
 	      tag_is_member(tag));
     case DW_AT_frame_base:
-      FJALAR_DPRINTF("frame_base tag\n");
     case DW_AT_low_pc:
       return (tag_is_compile_unit(tag) ||
               tag_is_function(tag));
@@ -644,7 +643,6 @@ char harvest_specification_value(dwarf_entry* e, unsigned long value) {
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->specification_ID = value;
 
-    FJALAR_DPRINTF("Harvesting specification %lx\n", value);
     return 1;
   }
   else if (value && (tag_is_variable(tag))) {
@@ -669,8 +667,6 @@ char harvest_abstract_origin_value(dwarf_entry* e, unsigned long value) {
     ((function*)e->entry_ptr)->abstract_origin_ID = value;
     return 1;
   } else if (tag_is_formal_parameter(tag)) {
-    // RUDD EXCEPTION
-    FJALAR_DPRINTF("Adding abstract origin id for formal parameter %s\n", ((formal_parameter*)e->entry_ptr)->name);
     ((formal_parameter*)e->entry_ptr)->abstract_origin_ID = value;
     return 1;
   }
@@ -768,8 +764,6 @@ char harvest_const_value(dwarf_entry* e, unsigned long value)
 
   tag = e->tag_name;
 
-  FJALAR_DPRINTF("Harvesting const for %lx\n", e->ID);
-
   if (tag_is_enumerator(tag))
     {
       ((enumerator*)e->entry_ptr)->is_const = 1;
@@ -825,7 +819,6 @@ char harvest_name(dwarf_entry* e, const char* str)
       ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str);
 
       if(e->ID == 0x4ce) {
-	FJALAR_DPRINTF("GRRRRR %s - %d\n", ((function*)e->entry_ptr)->name, e->level);
 	test = e;
       }
 
@@ -875,7 +868,6 @@ char harvest_mangled_name(dwarf_entry* e, const char* str)
     {
 
       ((function*)e->entry_ptr)->mangled_name = VG_(strdup)("typedata.c: harv_mangled_name.1",str);
-      FJALAR_DPRINTF("%s - Stealing\n", str);
       return 1;
     }
   else if (tag_is_variable(tag))
@@ -952,10 +944,6 @@ char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom
   if (tag_is_formal_parameter(tag))
     {
       formal_parameter *paramPtr = ((formal_parameter*)e->entry_ptr);
-      FJALAR_DPRINTF("\nHARVESTING LOC ATOM %s (%ld)\n", location_expression_to_string(atom), value);
-      // RUDD EXCEPTION
-      FJALAR_DPRINTF("\nHarvesting formal parameter: %s(%p)\n", paramPtr->name, e);
-
       paramPtr->loc_atom = atom;
 
       tl_assert(paramPtr->dwarf_stack_size < MAX_DWARF_OPS);
@@ -980,7 +968,6 @@ char harvest_formal_param_location_offset(dwarf_entry* e, long value)
 
   if (tag_is_formal_parameter(tag))
     {
-      FJALAR_DPRINTF("\nHARVESTING OFFSET  %ld\n", value);
       ((formal_parameter*)e->entry_ptr)->location_type = LT_FP_OFFSET;
       ((formal_parameter*)e->entry_ptr)->location = value;
       ((formal_parameter*)e->entry_ptr)->valid_loc = 1;
@@ -1090,7 +1077,6 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
 
         return 1;
       } else if(tag_is_compile_unit(tag)) {
-        FJALAR_DPRINTF("\t\tcuBase is %lx\n", value);
         comp_unit_base = value;
         return 1;
       }
@@ -1500,9 +1486,6 @@ static void init_specification_and_abstract_stuff(void) {
 	    aliased_func_ptr->frame_base_offset = cur_func->frame_base_offset;
 	    aliased_func_ptr->frame_base_expression = cur_func->frame_base_expression;
 
-	    FJALAR_DPRINTF("aliased params %d - cur params %d\n", aliased_func_ptr->num_formal_params,
-			   cur_func->num_formal_params);
-
 	    aliased_func_ptr->num_formal_params = cur_func->num_formal_params;
 	    aliased_func_ptr->params = cur_func->params;
 
@@ -1519,12 +1502,9 @@ static void init_specification_and_abstract_stuff(void) {
       }
     } else if(tag_is_formal_parameter(cur_entry->tag_name)) {
       formal_parameter* cur_param = (formal_parameter*) (cur_entry->entry_ptr);
-      //RUDD EXCEPTION
-      FJALAR_DPRINTF("Examining cur_param: %s(%p)\n", cur_param->name, cur_entry);
 
       if (cur_param->abstract_origin_ID) {
 	unsigned long aliased_index = 0;
-	FJALAR_DPRINTF("\tHas an origin ID of %lud\n", cur_param->abstract_origin_ID);
 
 	if (binary_search_dwarf_entry_array(cur_param->abstract_origin_ID,
 					    &aliased_index)) {
@@ -1822,7 +1802,6 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
           member_func_count++;
           // Set the is_member_func flag here:
           ((function*)(cur_entry->entry_ptr))->is_member_func = 1;
-	  FJALAR_DPRINTF("%s is a member func\n", ((function*)(cur_entry->entry_ptr))->name);
         }
         else if (tag_is_inheritance(cur_entry->tag_name)) {
           superclass_count++;
@@ -2000,9 +1979,6 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
 
   function_ptr->num_formal_params = param_count;
   function_ptr->num_local_vars = var_count;
-
-   FJALAR_DPRINTF("param_count: %d, var_count: %d\n", param_count, var_count);
-
 
   // Make a second pass (actually two second passes)
   // to actually populate the newly-created arrays with entries
@@ -2727,7 +2703,6 @@ char harvest_frame_base(dwarf_entry *e, enum dwarf_location_atom a, long offset)
 
   if (tag_is_function(tag))
     {
-      FJALAR_DPRINTF("Frame_base is a location list @ offset:%lx\n", offset);
       ((function*)e->entry_ptr)->frame_base_offset = offset;
       ((function*)e->entry_ptr)->frame_base_expression = a;
 
@@ -2758,21 +2733,20 @@ char harvest_location_list_entry(location_list* ll, unsigned long offset){
   tl_assert(loc_list_map && "Location list map uninitialized");
   ll->next = NULL;
 
-  FJALAR_DPRINTF("\tAdding the following location to the location list at offset: %lx\noffset\tbegin\tend\texpr\n%lx %lx %lx\t(%d + %llx)\n\n",
+  FJALAR_DPRINTF("Adding the following location to the location list at offset: %lx\noffset\tbegin\tend\texpr\n%lx %lx %lx\t(%d + %llx)\n\n",
                  ll->offset, ll->offset, ll->begin, ll->end, ll->atom, ll->atom_offset);
 
   if(gencontains(loc_list_map, (void *)offset)) {
     tl_assert((cur_loc = gengettable(loc_list_map, (void *)offset)));
 
     while(cur_loc->next != NULL) {
-      FJALAR_DPRINTF("cur_loc: %p, cur_loc->next: %p\n", cur_loc, cur_loc->next);
       cur_loc = cur_loc->next;
     }
 
     cur_loc->next = ll;
 
   } else {
-    FJALAR_DPRINTF("Creating location list for offset %lx\n", offset);
+    FJALAR_DPRINTF("\nCreating location list for offset %lx\n", offset);
     genputtable(loc_list_map, (void*)offset, ll);
     cur_loc = ll;
   }

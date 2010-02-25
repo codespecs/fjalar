@@ -2603,8 +2603,6 @@ process_section_headers (file)
     {
       char *name = SECTION_NAME (section);
 
-      FJALAR_DPRINTF("At section: %p - %p\n", section, name);
-
       if (section->sh_type == SHT_DYNSYM)
 	{
 	  if (dynamic_symbols != NULL)
@@ -3635,10 +3633,6 @@ process_dynamic_segment (file)
 	  putchar (' ');
 	  print_vma (entry->d_tag, FULL_HEX);
 	  dtype = get_dynamic_type (entry->d_tag);
-	  FJALAR_DPRINTF (" (%s)%*s", dtype,
-		  ((is_32bit_elf ? 27 : 19)
-		   - (int) VG_(strlen) (dtype)),
-		  " ");
 	}
 
       switch (entry->d_tag)
@@ -7193,7 +7187,6 @@ display_debug_loc (section, start, file)
 	  length = byte_get (start, 2);
 	  start += 2;
 
-          FJALAR_DPRINTF ("    %8.8lx %8.8lx %8.8lx (", offset, begin, end);
           ll->offset = offset;
           ll->begin = begin;
           ll->end = end;
@@ -8292,8 +8285,6 @@ display_debug_info (section, start, file)
                 add_comp_unit(cur_comp_unit);
               }
               dwarf_entry_array[idx].comp_unit = cur_comp_unit;
-              FJALAR_DPRINTF("dwarf_entry_array[%lu].comp_unit = %p\n", idx, dwarf_entry_array[idx].comp_unit);
-
               if (print_results)
                 {
                   FJALAR_DPRINTF (_(" <%d><%lx>: Abbrev Number: %lu (%s)\n"),
