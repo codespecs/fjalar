@@ -47,7 +47,6 @@ Bool kvasir_dtrace_no_decs = False;
 Bool kvasir_dtrace_gzip = False;
 Bool kvasir_output_fifo = False;
 Bool kvasir_decls_only = False;
-Bool kvasir_repair_format = False;
 Bool kvasir_print_debug_info = False;
 Bool actually_output_separate_decls_dtrace = 0;
 Bool print_declarations = 1;
@@ -677,7 +676,6 @@ Bool fjalar_tool_process_cmd_line_option(Char* arg)
   else if VG_YESNO_CLO(arg, "dtrace-gzip",      kvasir_dtrace_gzip) {}
   else if VG_YESNO_CLO(arg, "output-fifo",      kvasir_output_fifo) {}
   else if VG_YESNO_CLO(arg, "decls-only",       kvasir_decls_only) {}
-  else if VG_YESNO_CLO(arg, "repair-format",    kvasir_repair_format) {}
   else if VG_YESNO_CLO(arg, "old-decls-format", kvasir_old_decls_format) {}
   else if VG_YESNO_CLO(arg, "parent-records",   kvasir_parent_records) {}
   else if VG_YESNO_CLO(arg, "kvasir-debug",     kvasir_print_debug_info) {}
