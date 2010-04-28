@@ -609,10 +609,8 @@ static char printDtraceSequence(VariableEntry* var,
         else {
           // Daikon currently only supports 'nonsensical' values
           // inside of sequences, not 'uninit' value.
-          if (!kvasir_repair_format) {
-            DTRACE_PRINTF(NONSENSICAL);
-            DTRACE_PRINTF(" ");
-          }
+          DTRACE_PRINTF(NONSENSICAL);
+          DTRACE_PRINTF(" ");
         }
       }
 
@@ -829,10 +827,8 @@ void printDtraceBaseValueSequence(DeclaredType decType,
       // Daikon currently only supports 'nonsensical' values
       // inside of sequences, not 'uninit' value.
 
-      if (!kvasir_repair_format) {
-        DTRACE_PRINTF(NONSENSICAL);
-        DTRACE_PRINTF(" ");
-      }
+      DTRACE_PRINTF(NONSENSICAL);
+      DTRACE_PRINTF(" ");
     }
   }
 
@@ -946,18 +942,14 @@ void printDtraceStringSequence(VariableEntry* var,
       else {
         // Daikon currently only supports 'nonsensical' values
         // inside of sequences, not 'uninit' value.
-        if (!kvasir_repair_format) {
-          DTRACE_PRINTF(NONSENSICAL);
-          DTRACE_PRINTF(" ");
-        }
+        DTRACE_PRINTF(NONSENSICAL);
+        DTRACE_PRINTF(" ");
       }
     }
     else {
       DPRINTF("Not initialized\n");
-      if (!kvasir_repair_format) {
-        DTRACE_PRINTF(NONSENSICAL);
-        DTRACE_PRINTF(" ");
-      }
+      DTRACE_PRINTF(NONSENSICAL);
+      DTRACE_PRINTF(" ");
     }
   }
 
