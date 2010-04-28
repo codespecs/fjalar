@@ -142,7 +142,6 @@ Bool kvasir_dtrace_no_decs;
 Bool kvasir_dtrace_gzip;
 Bool kvasir_output_fifo;
 Bool kvasir_decls_only;
-Bool kvasir_repair_format;
 Bool kvasir_print_debug_info;
 Bool actually_output_separate_decls_dtrace;
 Bool print_declarations;
