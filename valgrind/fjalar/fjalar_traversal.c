@@ -1338,9 +1338,11 @@ void visitReturnValue(FunctionExecutionState* e,
 static char interestedInVar(char* fullFjalarName, char* trace_vars_tree) {
   if (fjalar_trace_vars_filename) {
     if (trace_vars_tree) {
-      if (!tfind((void*)fullFjalarName, (void**)&trace_vars_tree, compareStrings)) {
+      //      VG_(printf)("Checking if %s is in var list\n", fullFjalarName);
+      if (!tfind((void*)fullFjalarName, (void**)&trace_vars_tree, compareStrings)) {	
         return 0;
       }
+      //      VG_(printf)("Found it\n", fullFjalarName);
     }
     // If trace_vars_tree is kept at 0 on purpose but
     // fjalar_trace_vars_filename is valid, then still punt because we
@@ -1552,13 +1554,6 @@ void visitSingleVar(VisitArgs* args) {
     tl_assert(fullNameStack.size > 0);
     fullFjalarName = stringStackStrdup(&fullNameStack);
 
-    // If we are not interested in visiting this variable or its
-    // children, then PUNT:
-    if (!interestedInVar(fullFjalarName, trace_vars_tree)) {
-      VG_(free)(fullFjalarName);
-      return;
-    }
-
     // For disambig: While observing the runtime values, set
     // pointerHasEverBeenObserved to 1 if the contents of a pointer
     // variable is initialized (very conservative - only check whether
@@ -1575,41 +1570,45 @@ void visitSingleVar(VisitArgs* args) {
 
     FJALAR_DPRINTF("Callback for single variable %s\n",
 		   fullFjalarName);
-
     FJALAR_DPRINTF("overideisInit? %d\n", overrideIsInit);
-
     FJALAR_DPRINTF("pValue: %p\n", (void *)pValue);
 
-    //RUDD TEMP
-    //    if(pValue)
-    //      FJALAR_DPRINTF("Value is %16x\n",
-    //	     *(Addr *)pValue);
+    // rudd: PARTIAL_STRUCT_TRAVERSAL
+    // We used to return upon seeing an "uninteresting" 
+    // variable (one that is not in the variable); this is
+    // problematic as members or members of members may be
+    // interesting. Now we will not return, but simply not
+    // pass uninteresting variables to the tool.
+    
+    if (interestedInVar(fullFjalarName, trace_vars_tree)) {
 
-    // Perform the action action for this particular variable:
-    tResult = (*performAction)(var,
-                               fullFjalarName,
-                               varOrigin,
-                               numDereferences,
-                               layersBeforeBase,
-                               overrideIsInit,
-                               disambigOverride,
-                               0,
-                               pValue,
-			       pValueGuest,
-                               0,
-                               0,
-			       0,
-                               varFuncInfo,
-                               isEnter);
+      // Perform the action action for this particular variable:
+      tResult = (*performAction)(var,
+				 fullFjalarName,
+				 varOrigin,
+				 numDereferences,
+				 layersBeforeBase,
+				 overrideIsInit,
+				 disambigOverride,
+				 0,
+				 pValue,
+				 pValueGuest,
+				 0,
+				 0,
+				 0,
+				 varFuncInfo,
+				 isEnter);
 
-    tl_assert(tResult != INVALID_RESULT);
+      tl_assert(tResult != INVALID_RESULT);
 
-    // Punt!
-    if (tResult == STOP_TRAVERSAL) {
-      VG_(free)(fullFjalarName);
-      return;
+      // Punt!
+      if (tResult == STOP_TRAVERSAL) {
+	VG_(free)(fullFjalarName);
+	return;
+      }
     }
   }
+
 
   // This is an ugly hack that's required to properly not visit base
   // struct variables but still make sure that derived variables are
@@ -1961,13 +1960,6 @@ void visitSequence(VisitArgs* args) {
     tl_assert(fullNameStack.size > 0);
     fullFjalarName = stringStackStrdup(&fullNameStack);
 
-    // If we are not interested in visiting this variable or its
-    // children, then PUNT:
-    if (!interestedInVar(fullFjalarName, trace_vars_tree)) {
-      VG_(free)(fullFjalarName);
-      return;
-    }
-
     // For disambig: While observing the runtime values, set
     // var->disambigMultipleElts and var->pointerHasEverBeenObserved
     // depending on whether upperBound == 0 (1 element) or not and
@@ -2018,29 +2010,33 @@ void visitSequence(VisitArgs* args) {
     FJALAR_DPRINTF("Callback for sequence variable %s\n",
 		   fullFjalarName);
 
-    // Perform the action action for this particular variable:
-    tResult = (*performAction)(var,
-                               fullFjalarName,
-                               varOrigin,
-                               numDereferences,
-                               layersBeforeBase,
-                               0, // Do not overrideIsInit
-                               disambigOverride,
-                               1, // YES isSequence
-                               0,
-			       0,
-                               pValueArray,
-                               pValueArrayGuest,
-                               numElts,
-                               varFuncInfo,
-                               isEnter);
+    // See: PARTIAL_STRUCT_TRAVERSAL
+    if (interestedInVar(fullFjalarName, trace_vars_tree)) {
 
-    tl_assert(tResult != INVALID_RESULT);
+      // Perform the action action for this particular variable:
+      tResult = (*performAction)(var,
+				 fullFjalarName,
+				 varOrigin,
+				 numDereferences,
+				 layersBeforeBase,
+				 0, // Do not overrideIsInit
+				 disambigOverride,
+				 1, // YES isSequence
+				 0,
+				 0,
+				 pValueArray,
+				 pValueArrayGuest,
+				 numElts,
+				 varFuncInfo,
+				 isEnter);
 
-    // Punt!
-    if (tResult == STOP_TRAVERSAL) {
-      VG_(free)(fullFjalarName);
-      return;
+      tl_assert(tResult != INVALID_RESULT);
+
+      // Punt!
+      if (tResult == STOP_TRAVERSAL) {
+	VG_(free)(fullFjalarName);
+	return;
+      }
     }
   }
 
