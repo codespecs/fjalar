@@ -3,13 +3,35 @@ README file
 Philip Guo
 Robert Rudd
 
-Last updated: 2009-09-08
+Last updated: 2009-12-15sh
 
 Fjalar developer documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Documentation and developer's notes can be found in fjalar/README 
 and the fjalar/notes/ directory.
 
+Repository structure
+--------------------- 
+./                    Contains the source code for Valgrind.
+
+./fjalar	      Contains the source for the Fjalar framework.
+
+./fjalar/basic-tool   Contains the source for a simple tool built upon
+                      Fjalar. Is included with the distribution on the
+		      Fjalar webpage.
+
+./fjalar/docs	      Contains a local copy of the Fjalar webpage
+.
+./fjalar/kvasir       Contains the source for Kvasir and Dyncomp.
+
+./fjalar/notes        Contains various developmental notes on Fjalar
+		      including notes kept by Philip Guo, the Fjalar
+		      design document, and the webpage containing
+		      instructions for merging new versions of
+		      Valgrind into Fjalar.
+
+./fjalar/tools	      Contains a tool for debugging Dyncomp
+		      comparability errors
 
 
 The remainder of this file consists of the README_DEVELOPERS file for 
