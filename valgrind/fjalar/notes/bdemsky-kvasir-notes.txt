@@ -358,7 +358,7 @@ export CLASSPATH=$CLASSPATH:/root/research/invariants/java/
 make
 
 4. Run daikon
-java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.unary.scalar.OneOfScalar.size=9  --config_option daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option daikon.inv.ternary.threeScalar.FunctionBinary.enabled=false  --config_option daikon.PptSplitter.split_bi_implications=true --config_option daikon.PrintInvariants.repair_debug=true --format=repair cm.dtrace ../splitnothing.spinfo
+java -Xmx768m -XX:MaxPermSize=300m daikon.Daikon --config_option daikon.Daikon.disable_derived_variables=true --config_option daikon.inv.unary.scalar.OneOfScalar.size=9  --config_option daikon.inv.ternary.threeScalar.LinearTernary.enabled=false --config_option daikon.inv.ternary.threeScalar.FunctionBinary.enabled=false  --config_option daikon.split.PptSplitter.split_bi_implications=true --config_option daikon.PrintInvariants.repair_debug=true --format=repair cm.dtrace ../splitnothing.spinfo
 
 --------------------------------------------
 
