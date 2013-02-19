@@ -7,7 +7,7 @@ Last updated: 2009-12-15
 
 Fjalar developer documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Documentation and developer's notes can be found in fjalar/README 
+Documentation and developer's notes can be found in fjalar/README_DEVELOPERS
 and the fjalar/notes/ directory.
 
 Repository structure
@@ -36,6 +36,8 @@ Repository structure
 
 The remainder of this file consists of the README_DEVELOPERS file for 
 Valgrind, on which Fjalar is based.
+
+===========================================================================
 
 Building and not installing it
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
