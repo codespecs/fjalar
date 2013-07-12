@@ -20,6 +20,36 @@ int main(int argc, char **argv)
       exit(1);
    }
 
+   newrlim.rlim_cur = oldrlim.rlim_max+1;
+   newrlim.rlim_max = oldrlim.rlim_max;
+   if (setrlimit(RLIMIT_NOFILE, &newrlim) == -1)
+   {
+      if (errno != EINVAL) {
+         fprintf(stderr, "setrlimit exceeding hardlimit must set errno=EINVAL\n");
+         exit(1);
+      }
+   }
+   else
+   {
+        fprintf(stderr, "setrlimit exceeding hardlimit must return -1\n");
+        exit(1);
+   }
+
+   newrlim.rlim_cur = oldrlim.rlim_max;
+   newrlim.rlim_max = oldrlim.rlim_max+1;
+   if (setrlimit(RLIMIT_NOFILE, &newrlim) == -1)
+   {
+      if (errno != EPERM) {
+         fprintf(stderr, "setrlimit changing hardlimit must set errno=EPERM\n");
+         exit(1);
+      }
+   }
+   else
+   {
+        fprintf(stderr, "setrlimit changing hardlimit must return -1\n");
+        exit(1);
+   }
+
    newrlim.rlim_cur = oldrlim.rlim_cur / 2;
    newrlim.rlim_max = oldrlim.rlim_max;
      
