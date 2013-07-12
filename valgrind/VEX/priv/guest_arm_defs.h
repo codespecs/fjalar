@@ -1,42 +1,30 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (guest_arm_defs.h) is                         ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                  guest_arm_defs.h ---*/
 /*---------------------------------------------------------------*/
-
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 */
 
 /* Only to be used within the guest-arm directory. */
@@ -53,8 +41,8 @@
    bb_to_IR.h. */
 extern
 DisResult disInstr_ARM ( IRSB*        irbb,
-                         Bool         put_IP,
                          Bool         (*resteerOkFn) ( void*, Addr64 ),
+                         Bool         resteerCisOk,
                          void*        callback_opaque,
                          UChar*       guest_code,
                          Long         delta,
@@ -67,7 +55,9 @@ DisResult disInstr_ARM ( IRSB*        irbb,
 /* Used by the optimiser to specialise calls to helpers. */
 extern
 IRExpr* guest_arm_spechelper ( HChar* function_name,
-                               IRExpr** args );
+                               IRExpr** args,
+                               IRStmt** precedingStmts,
+                               Int      n_precedingStmts );
 
 /* Describes to the optimser which part of the guest state require
    precise memory exceptions.  This is logically part of the guest
@@ -111,6 +101,12 @@ UInt armg_calculate_condition ( UInt cond_n_op /* ARMCondcode << 4 | cc_op */,
                                 UInt cc_dep1,
                                 UInt cc_dep2, UInt cc_dep3 );
 
+/* Calculate the QC flag from the thunk components, in the lowest bit
+   of the word (bit 0). */
+extern 
+UInt armg_calculate_flag_qc ( UInt resL1, UInt resL2,
+                              UInt resR1, UInt resR2 );
+
 
 /*---------------------------------------------------------*/
 /*--- Condition code stuff                              ---*/
@@ -121,14 +117,16 @@ UInt armg_calculate_condition ( UInt cond_n_op /* ARMCondcode << 4 | cc_op */,
 #define ARMG_CC_SHIFT_Z  30
 #define ARMG_CC_SHIFT_C  29
 #define ARMG_CC_SHIFT_V  28
+#define ARMG_CC_SHIFT_Q  27
 
 #define ARMG_CC_MASK_N    (1 << ARMG_CC_SHIFT_N)
 #define ARMG_CC_MASK_Z    (1 << ARMG_CC_SHIFT_Z)
 #define ARMG_CC_MASK_C    (1 << ARMG_CC_SHIFT_C)
 #define ARMG_CC_MASK_V    (1 << ARMG_CC_SHIFT_V)
+#define ARMG_CC_MASK_Q    (1 << ARMG_CC_SHIFT_Q)
 
 /* Flag thunk descriptors.  A four-word thunk is used to record
-   details of the most recent flag-setting operation, so the flags can
+   details of the most recent flag-setting operation, so NZCV can
    be computed later if needed.
 
    The four words are:
@@ -149,19 +147,23 @@ UInt armg_calculate_condition ( UInt cond_n_op /* ARMCondcode << 4 | cc_op */,
    that the definedness of the stored flags always depends on
    all 3 DEP values.
 
+   Fields carrying only 1 or 2 bits of useful information (old_C,
+   shifter_co, old_V, oldC:oldV) must have their top 31 or 30 bits
+   (respectively) zero.  The text "31x0:" or "30x0:" denotes this.
+
    A summary of the field usages is:
 
    OP                DEP1              DEP2              DEP3
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   OP_COPY           current NZCV      unused            unused
+   OP_COPY           curr_NZCV:28x0    unused            unused
    OP_ADD            argL              argR              unused
    OP_SUB            argL              argR              unused
-   OP_ADC            argL              argR              old_C
-   OP_SBB            argL              argR              old_C
-   OP_LOGIC          result            shifter_co        old_V
-   OP_MUL            result            unused            old_C:old_V
-   OP_MULL           resLO32           resHI32           old_C:old_V
+   OP_ADC            argL              argR              31x0:old_C
+   OP_SBB            argL              argR              31x0:old_C
+   OP_LOGIC          result            31x0:shifter_co   31x0:old_V
+   OP_MUL            result            unused            30x0:old_C:old_V
+   OP_MULL           resLO32           resHI32           30x0:old_C:old_V
 */
 
 enum {

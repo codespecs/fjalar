@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (host_generic_simd64.c) is                    ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                             host_generic_simd64.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -150,6 +139,16 @@ static inline UChar index8x8 ( ULong w64, UChar ix ) {
 
 /* Scalar helpers. */
 
+static inline Int qadd32S ( Int xx, Int yy ) 
+{
+   Long t = ((Long)xx) + ((Long)yy);
+   const Long loLim = -0x80000000LL;
+   const Long hiLim =  0x7FFFFFFFLL;
+   if (t < loLim) t = loLim;
+   if (t > hiLim) t = hiLim;
+   return (Int)t;
+}
+
 static inline Short qadd16S ( Short xx, Short yy ) 
 {
    Int t = ((Int)xx) + ((Int)yy);
@@ -178,6 +177,16 @@ static inline UChar qadd8U ( UChar xx, UChar yy )
    UInt t = ((UInt)xx) + ((UInt)yy);
    if (t > 0xFF) t = 0xFF;
    return (UChar)t;
+}
+
+static inline Int qsub32S ( Int xx, Int yy ) 
+{
+   Long t = ((Long)xx) - ((Long)yy);
+   const Long loLim = -0x80000000LL;
+   const Long hiLim =  0x7FFFFFFFLL;
+   if (t < loLim) t = loLim;
+   if (t > hiLim) t = hiLim;
+   return (Int)t;
 }
 
 static inline Short qsub16S ( Short xx, Short yy )
@@ -283,7 +292,7 @@ static inline UChar cmpnez8 ( UChar xx )
    return toUChar(xx==0 ? 0 : 0xFF);
 }
 
-static inline Short qnarrow32Sto16 ( UInt xx0 )
+static inline Short qnarrow32Sto16S ( UInt xx0 )
 {
    Int xx = (Int)xx0;
    if (xx < -32768) xx = -32768;
@@ -291,7 +300,7 @@ static inline Short qnarrow32Sto16 ( UInt xx0 )
    return (Short)xx;
 }
 
-static inline Char qnarrow16Sto8 ( UShort xx0 )
+static inline Char qnarrow16Sto8S ( UShort xx0 )
 {
    Short xx = (Short)xx0;
    if (xx < -128) xx = -128;
@@ -299,11 +308,21 @@ static inline Char qnarrow16Sto8 ( UShort xx0 )
    return (Char)xx;
 }
 
-static inline UChar qnarrow16Uto8 ( UShort xx0 )
+static inline UChar qnarrow16Sto8U ( UShort xx0 )
 {
    Short xx = (Short)xx0;
    if (xx < 0)   xx = 0;
    if (xx > 255) xx = 255;
+   return (UChar)xx;
+}
+
+static inline UShort narrow32to16 ( UInt xx )
+{
+   return (UShort)xx;
+}
+
+static inline UChar narrow16to8 ( UShort xx )
+{
    return (UChar)xx;
 }
 
@@ -384,6 +403,77 @@ static inline Short min16S ( Short xx, Short yy )
 static inline UChar min8U ( UChar xx, UChar yy )
 {
    return toUChar((xx < yy) ? xx : yy);
+}
+
+static inline UShort hadd16U ( UShort xx, UShort yy )
+{
+   UInt xxi = (UInt)xx;
+   UInt yyi = (UInt)yy;
+   UInt r   = (xxi + yyi) >> 1;
+   return (UShort)r;
+}
+
+static inline Short hadd16S ( Short xx, Short yy )
+{
+   Int xxi = (Int)xx;
+   Int yyi = (Int)yy;
+   Int r   = (xxi + yyi) >> 1;
+   return (Short)r;
+}
+
+static inline UShort hsub16U ( UShort xx, UShort yy )
+{
+   UInt xxi = (UInt)xx;
+   UInt yyi = (UInt)yy;
+   UInt r   = (xxi - yyi) >> 1;
+   return (UShort)r;
+}
+
+static inline Short hsub16S ( Short xx, Short yy )
+{
+   Int xxi = (Int)xx;
+   Int yyi = (Int)yy;
+   Int r   = (xxi - yyi) >> 1;
+   return (Short)r;
+}
+
+static inline UChar hadd8U ( UChar xx, UChar yy )
+{
+   UInt xxi = (UInt)xx;
+   UInt yyi = (UInt)yy;
+   UInt r   = (xxi + yyi) >> 1;
+   return (UChar)r;
+}
+
+static inline Char hadd8S ( Char xx, Char yy )
+{
+   Int xxi = (Int)xx;
+   Int yyi = (Int)yy;
+   Int r   = (xxi + yyi) >> 1;
+   return (Char)r;
+}
+
+static inline UChar hsub8U ( UChar xx, UChar yy )
+{
+   UInt xxi = (UInt)xx;
+   UInt yyi = (UInt)yy;
+   UInt r   = (xxi - yyi) >> 1;
+   return (UChar)r;
+}
+
+static inline Char hsub8S ( Char xx, Char yy )
+{
+   Int xxi = (Int)xx;
+   Int yyi = (Int)yy;
+   Int r   = (xxi - yyi) >> 1;
+   return (Char)r;
+}
+
+static inline UInt absdiff8U ( UChar xx, UChar yy )
+{
+   UInt xxu = (UChar)xx;
+   UInt yyu = (UChar)yy;
+   return xxu >= yyu  ? xxu - yyu  : yyu - xxu;
 }
 
 /* ----------------------------------------------------- */
@@ -699,21 +789,21 @@ ULong h_generic_calc_CmpNEZ8x8 ( ULong xx )
 
 /* ------------ Saturating narrowing ------------ */
 
-ULong h_generic_calc_QNarrow32Sx2 ( ULong aa, ULong bb )
+ULong h_generic_calc_QNarrowBin32Sto16Sx4 ( ULong aa, ULong bb )
 {
    UInt d = sel32x2_1(aa);
    UInt c = sel32x2_0(aa);
    UInt b = sel32x2_1(bb);
    UInt a = sel32x2_0(bb);
    return mk16x4( 
-             qnarrow32Sto16(d),
-             qnarrow32Sto16(c),
-             qnarrow32Sto16(b),
-             qnarrow32Sto16(a)
+             qnarrow32Sto16S(d),
+             qnarrow32Sto16S(c),
+             qnarrow32Sto16S(b),
+             qnarrow32Sto16S(a)
           );
 }
 
-ULong h_generic_calc_QNarrow16Sx4 ( ULong aa, ULong bb )
+ULong h_generic_calc_QNarrowBin16Sto8Sx8 ( ULong aa, ULong bb )
 {
    UShort h = sel16x4_3(aa);
    UShort g = sel16x4_2(aa);
@@ -724,18 +814,18 @@ ULong h_generic_calc_QNarrow16Sx4 ( ULong aa, ULong bb )
    UShort b = sel16x4_1(bb);
    UShort a = sel16x4_0(bb);
    return mk8x8( 
-             qnarrow16Sto8(h),
-             qnarrow16Sto8(g),
-             qnarrow16Sto8(f),
-             qnarrow16Sto8(e),
-             qnarrow16Sto8(d),
-             qnarrow16Sto8(c),
-             qnarrow16Sto8(b),
-             qnarrow16Sto8(a)
+             qnarrow16Sto8S(h),
+             qnarrow16Sto8S(g),
+             qnarrow16Sto8S(f),
+             qnarrow16Sto8S(e),
+             qnarrow16Sto8S(d),
+             qnarrow16Sto8S(c),
+             qnarrow16Sto8S(b),
+             qnarrow16Sto8S(a)
           );
 }
 
-ULong h_generic_calc_QNarrow16Ux4 ( ULong aa, ULong bb )
+ULong h_generic_calc_QNarrowBin16Sto8Ux8 ( ULong aa, ULong bb )
 {
    UShort h = sel16x4_3(aa);
    UShort g = sel16x4_2(aa);
@@ -746,14 +836,52 @@ ULong h_generic_calc_QNarrow16Ux4 ( ULong aa, ULong bb )
    UShort b = sel16x4_1(bb);
    UShort a = sel16x4_0(bb);
    return mk8x8( 
-             qnarrow16Uto8(h),
-             qnarrow16Uto8(g),
-             qnarrow16Uto8(f),
-             qnarrow16Uto8(e),
-             qnarrow16Uto8(d),
-             qnarrow16Uto8(c),
-             qnarrow16Uto8(b),
-             qnarrow16Uto8(a)
+             qnarrow16Sto8U(h),
+             qnarrow16Sto8U(g),
+             qnarrow16Sto8U(f),
+             qnarrow16Sto8U(e),
+             qnarrow16Sto8U(d),
+             qnarrow16Sto8U(c),
+             qnarrow16Sto8U(b),
+             qnarrow16Sto8U(a)
+          );
+}
+
+/* ------------ Truncating narrowing ------------ */
+
+ULong h_generic_calc_NarrowBin32to16x4 ( ULong aa, ULong bb )
+{
+   UInt d = sel32x2_1(aa);
+   UInt c = sel32x2_0(aa);
+   UInt b = sel32x2_1(bb);
+   UInt a = sel32x2_0(bb);
+   return mk16x4( 
+             narrow32to16(d),
+             narrow32to16(c),
+             narrow32to16(b),
+             narrow32to16(a)
+          );
+}
+
+ULong h_generic_calc_NarrowBin16to8x8 ( ULong aa, ULong bb )
+{
+   UShort h = sel16x4_3(aa);
+   UShort g = sel16x4_2(aa);
+   UShort f = sel16x4_1(aa);
+   UShort e = sel16x4_0(aa);
+   UShort d = sel16x4_3(bb);
+   UShort c = sel16x4_2(bb);
+   UShort b = sel16x4_1(bb);
+   UShort a = sel16x4_0(bb);
+   return mk8x8( 
+             narrow16to8(h),
+             narrow16to8(g),
+             narrow16to8(f),
+             narrow16to8(e),
+             narrow16to8(d),
+             narrow16to8(c),
+             narrow16to8(b),
+             narrow16to8(a)
           );
 }
 
@@ -1041,7 +1169,373 @@ ULong h_generic_calc_Min8Ux8 ( ULong xx, ULong yy )
           );
 }
 
+/* ------------ SOME 32-bit SIMD HELPERS TOO ------------ */
+
+/* Tuple/select functions for 16x2 vectors. */
+static inline UInt mk16x2 ( UShort w1, UShort w2 ) {
+   return (((UInt)w1) << 16) | ((UInt)w2);
+}
+
+static inline UShort sel16x2_1 ( UInt w32 ) {
+   return 0xFFFF & (UShort)(w32 >> 16);
+}
+static inline UShort sel16x2_0 ( UInt w32 ) {
+   return 0xFFFF & (UShort)(w32);
+}
+
+static inline UInt mk8x4 ( UChar w3, UChar w2,
+                           UChar w1, UChar w0 ) {
+   UInt w32 =   (((UInt)w3) << 24) | (((UInt)w2) << 16)
+              | (((UInt)w1) << 8)  | (((UInt)w0) << 0);
+   return w32;
+}
+
+static inline UChar sel8x4_3 ( UInt w32 ) {
+   return toUChar(0xFF & (w32 >> 24));
+}
+static inline UChar sel8x4_2 ( UInt w32 ) {
+   return toUChar(0xFF & (w32 >> 16));
+}
+static inline UChar sel8x4_1 ( UInt w32 ) {
+   return toUChar(0xFF & (w32 >> 8));
+}
+static inline UChar sel8x4_0 ( UInt w32 ) {
+   return toUChar(0xFF & (w32 >> 0));
+}
+
+
+/* ----------------------------------------------------- */
+/* More externally visible functions.  These simply
+   implement the corresponding IR primops. */
+/* ----------------------------------------------------- */
+
+/* ------ 16x2 ------ */
+
+UInt h_generic_calc_Add16x2 ( UInt xx, UInt yy )
+{
+   return mk16x2( sel16x2_1(xx) + sel16x2_1(yy),
+                  sel16x2_0(xx) + sel16x2_0(yy) );
+}
+
+UInt h_generic_calc_Sub16x2 ( UInt xx, UInt yy )
+{
+   return mk16x2( sel16x2_1(xx) - sel16x2_1(yy),
+                  sel16x2_0(xx) - sel16x2_0(yy) );
+}
+
+UInt h_generic_calc_HAdd16Ux2 ( UInt xx, UInt yy )
+{
+   return mk16x2( hadd16U( sel16x2_1(xx), sel16x2_1(yy) ),
+                  hadd16U( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_HAdd16Sx2 ( UInt xx, UInt yy )
+{
+   return mk16x2( hadd16S( sel16x2_1(xx), sel16x2_1(yy) ),
+                  hadd16S( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_HSub16Ux2 ( UInt xx, UInt yy )
+{
+   return mk16x2( hsub16U( sel16x2_1(xx), sel16x2_1(yy) ),
+                  hsub16U( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_HSub16Sx2 ( UInt xx, UInt yy )
+{
+   return mk16x2( hsub16S( sel16x2_1(xx), sel16x2_1(yy) ),
+                  hsub16S( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_QAdd16Ux2 ( UInt xx, UInt yy )
+{
+   return mk16x2( qadd16U( sel16x2_1(xx), sel16x2_1(yy) ),
+                  qadd16U( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_QAdd16Sx2 ( UInt xx, UInt yy )
+{
+   return mk16x2( qadd16S( sel16x2_1(xx), sel16x2_1(yy) ),
+                  qadd16S( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_QSub16Ux2 ( UInt xx, UInt yy )
+{
+   return mk16x2( qsub16U( sel16x2_1(xx), sel16x2_1(yy) ),
+                  qsub16U( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+UInt h_generic_calc_QSub16Sx2 ( UInt xx, UInt yy )
+{
+   return mk16x2( qsub16S( sel16x2_1(xx), sel16x2_1(yy) ),
+                  qsub16S( sel16x2_0(xx), sel16x2_0(yy) ) );
+}
+
+/* ------ 8x4 ------ */
+
+UInt h_generic_calc_Add8x4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             sel8x4_3(xx) + sel8x4_3(yy),
+             sel8x4_2(xx) + sel8x4_2(yy),
+             sel8x4_1(xx) + sel8x4_1(yy),
+             sel8x4_0(xx) + sel8x4_0(yy)
+          );
+}
+
+UInt h_generic_calc_Sub8x4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             sel8x4_3(xx) - sel8x4_3(yy),
+             sel8x4_2(xx) - sel8x4_2(yy),
+             sel8x4_1(xx) - sel8x4_1(yy),
+             sel8x4_0(xx) - sel8x4_0(yy)
+          );
+}
+
+UInt h_generic_calc_HAdd8Ux4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             hadd8U( sel8x4_3(xx), sel8x4_3(yy) ),
+             hadd8U( sel8x4_2(xx), sel8x4_2(yy) ),
+             hadd8U( sel8x4_1(xx), sel8x4_1(yy) ),
+             hadd8U( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_HAdd8Sx4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             hadd8S( sel8x4_3(xx), sel8x4_3(yy) ),
+             hadd8S( sel8x4_2(xx), sel8x4_2(yy) ),
+             hadd8S( sel8x4_1(xx), sel8x4_1(yy) ),
+             hadd8S( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_HSub8Ux4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             hsub8U( sel8x4_3(xx), sel8x4_3(yy) ),
+             hsub8U( sel8x4_2(xx), sel8x4_2(yy) ),
+             hsub8U( sel8x4_1(xx), sel8x4_1(yy) ),
+             hsub8U( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_HSub8Sx4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             hsub8S( sel8x4_3(xx), sel8x4_3(yy) ),
+             hsub8S( sel8x4_2(xx), sel8x4_2(yy) ),
+             hsub8S( sel8x4_1(xx), sel8x4_1(yy) ),
+             hsub8S( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_QAdd8Ux4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             qadd8U( sel8x4_3(xx), sel8x4_3(yy) ),
+             qadd8U( sel8x4_2(xx), sel8x4_2(yy) ),
+             qadd8U( sel8x4_1(xx), sel8x4_1(yy) ),
+             qadd8U( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_QAdd8Sx4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             qadd8S( sel8x4_3(xx), sel8x4_3(yy) ),
+             qadd8S( sel8x4_2(xx), sel8x4_2(yy) ),
+             qadd8S( sel8x4_1(xx), sel8x4_1(yy) ),
+             qadd8S( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_QSub8Ux4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             qsub8U( sel8x4_3(xx), sel8x4_3(yy) ),
+             qsub8U( sel8x4_2(xx), sel8x4_2(yy) ),
+             qsub8U( sel8x4_1(xx), sel8x4_1(yy) ),
+             qsub8U( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_QSub8Sx4 ( UInt xx, UInt yy )
+{
+   return mk8x4(
+             qsub8S( sel8x4_3(xx), sel8x4_3(yy) ),
+             qsub8S( sel8x4_2(xx), sel8x4_2(yy) ),
+             qsub8S( sel8x4_1(xx), sel8x4_1(yy) ),
+             qsub8S( sel8x4_0(xx), sel8x4_0(yy) )
+          );
+}
+
+UInt h_generic_calc_CmpNEZ16x2 ( UInt xx )
+{
+   return mk16x2(
+             cmpnez16( sel16x2_1(xx) ),
+             cmpnez16( sel16x2_0(xx) )
+          );
+}
+
+UInt h_generic_calc_CmpNEZ8x4 ( UInt xx )
+{
+   return mk8x4(
+             cmpnez8( sel8x4_3(xx) ),
+             cmpnez8( sel8x4_2(xx) ),
+             cmpnez8( sel8x4_1(xx) ),
+             cmpnez8( sel8x4_0(xx) )
+          );
+}
+
+UInt h_generic_calc_Sad8Ux4 ( UInt xx, UInt yy )
+{
+   return absdiff8U( sel8x4_3(xx), sel8x4_3(yy) )
+          + absdiff8U( sel8x4_2(xx), sel8x4_2(yy) )
+          + absdiff8U( sel8x4_1(xx), sel8x4_1(yy) )
+          + absdiff8U( sel8x4_0(xx), sel8x4_0(yy) );
+}
+
+UInt h_generic_calc_QAdd32S ( UInt xx, UInt yy )
+{
+   return qadd32S( xx, yy );
+}
+
+UInt h_generic_calc_QSub32S ( UInt xx, UInt yy )
+{
+   return qsub32S( xx, yy );
+}
+
+
+/*------------------------------------------------------------------*/
+/* Decimal Floating Point (DFP) externally visible helper functions */
+/* that implement Iop_BCDtoDPB and Iop_DPBtoBCD                     */
+/*------------------------------------------------------------------*/
+
+#define NOT( x )    ( ( ( x ) == 0) ? 1 : 0)
+#define GET( x, y ) ( ( ( x ) & ( 0x1UL << ( y ) ) ) >> ( y ) )
+#define PUT( x, y ) ( ( x )<< ( y ) )
+
+ULong dpb_to_bcd( ULong chunk )
+{
+   Short a, b, c, d, e, f, g, h, i, j, k, m;
+   Short p, q, r, s, t, u, v, w, x, y;
+   ULong value;
+
+   /* convert 10 bit densely packed BCD to BCD */
+   p = GET( chunk, 9 );
+   q = GET( chunk, 8 );
+   r = GET( chunk, 7 );
+   s = GET( chunk, 6 );
+   t = GET( chunk, 5 );
+   u = GET( chunk, 4 );
+   v = GET( chunk, 3 );
+   w = GET( chunk, 2 );
+   x = GET( chunk, 1 );
+   y = GET( chunk, 0 );
+
+   /* The BCD bit values are given by the following boolean equations.*/
+   a = ( NOT(s) & v & w ) | ( t & v & w & s ) | ( v & w & NOT(x) );
+   b = ( p & s & x & NOT(t) ) | ( p & NOT(w) ) | ( p & NOT(v) );
+   c = ( q & s & x & NOT(t) ) | ( q & NOT(w) ) | ( q & NOT(v) );
+   d = r;
+   e = ( v & NOT(w) & x ) | ( s & v & w & x ) | ( NOT(t) & v & x & w );
+   f = ( p & t & v & w & x & NOT(s) ) | ( s & NOT(x) & v ) | ( s & NOT(v) );
+   g = ( q & t & w & v & x & NOT(s) ) | ( t & NOT(x) & v ) | ( t & NOT(v) );
+   h = u;
+   i = ( t & v & w & x ) | ( s & v & w & x ) | ( v & NOT(w) & NOT(x) );
+   j = ( p & NOT(s) & NOT(t) & w & v ) | ( s & v & NOT(w) & x )
+            | ( p & w & NOT(x) & v ) | ( w & NOT(v) );
+   k = ( q & NOT(s) & NOT(t) & v & w ) | ( t & v & NOT(w) & x )
+            | ( q & v & w & NOT(x) ) | ( x & NOT(v) );
+   m = y;
+
+   value = PUT(a, 11) | PUT(b, 10) | PUT(c, 9) | PUT(d, 8) | PUT(e, 7)
+            | PUT(f, 6) | PUT(g, 5) | PUT(h, 4) | PUT(i, 3) | PUT(j, 2)
+            | PUT(k, 1) | PUT(m, 0);
+   return value;
+}
+
+ULong bcd_to_dpb( ULong chunk )
+{
+   Short a, b, c, d, e, f, g, h, i, j, k, m;
+   Short p, q, r, s, t, u, v, w, x, y;
+   ULong value;
+   /* Convert a 3 digit BCD value to a 10 bit Densely Packed Binary (DPD) value
+    The boolean equations to calculate the value of each of the DPD bit
+    is given in Appendix B  of Book 1: Power ISA User Instruction set.  The
+    bits for the DPD number are [abcdefghijkm].  The bits for the BCD value
+    are [pqrstuvwxy].  The boolean logic equations in psuedo C code are:
+    */
+   a = GET( chunk, 11 );
+   b = GET( chunk, 10 );
+   c = GET( chunk, 9 );
+   d = GET( chunk, 8 );
+   e = GET( chunk, 7 );
+   f = GET( chunk, 6 );
+   g = GET( chunk, 5 );
+   h = GET( chunk, 4 );
+   i = GET( chunk, 3 );
+   j = GET( chunk, 2 );
+   k = GET( chunk, 1 );
+   m = GET( chunk, 0 );
+
+   p = ( f & a & i & NOT(e) ) | ( j & a & NOT(i) ) | ( b & NOT(a) );
+   q = ( g & a & i & NOT(e) ) | ( k & a & NOT(i) ) | ( c & NOT(a) );
+   r = d;
+   s = ( j & NOT(a) & e & NOT(i) ) | ( f & NOT(i) & NOT(e) )
+            | ( f & NOT(a) & NOT(e) ) | ( e & i );
+   t = ( k & NOT(a) & e & NOT(i) ) | ( g & NOT(i) & NOT(e) )
+            | ( g & NOT(a) & NOT(e) ) | ( a & i );
+   u = h;
+   v = a | e | i;
+   w = ( NOT(e) & j & NOT(i) ) | ( e & i ) | a;
+   x = ( NOT(a) & k & NOT(i) ) | ( a & i ) | e;
+   y = m;
+
+   value = PUT(p, 9) | PUT(q, 8) | PUT(r, 7) | PUT(s, 6) | PUT(t, 5) 
+            | PUT(u, 4) | PUT(v, 3) | PUT(w, 2) | PUT(x, 1) | y;
+
+   return value;
+}
+
+ULong h_DPBtoBCD( ULong dpb )
+{
+   ULong result, chunk;
+   Int i;
+
+   result = 0;
+
+   for (i = 0; i < 5; i++) {
+      chunk = dpb >> ( 4 - i ) * 10;
+      result = result << 12;
+      result |= dpb_to_bcd( chunk & 0x3FF );
+   }
+   return result;
+}
+
+ULong h_BCDtoDPB( ULong bcd )
+{
+   ULong result, chunk;
+   Int i;
+
+   result = 0;
+
+   for (i = 0; i < 5; i++) {
+      chunk = bcd >> ( 4 - i ) * 12;
+      result = result << 10;
+      result |= bcd_to_dpb( chunk & 0xFFF );
+   }
+   return result;
+}
+#undef NOT
+#undef GET
+#undef PUT
 
 /*---------------------------------------------------------------*/
 /*--- end                               host_generic_simd64.c ---*/
 /*---------------------------------------------------------------*/
+
