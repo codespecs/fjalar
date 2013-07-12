@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -151,6 +151,17 @@ extern Addr VG_(am_get_advisory)
 extern Addr VG_(am_get_advisory_client_simple) 
    ( Addr start, SizeT len, /*OUT*/Bool* ok );
 
+/* Returns True if [start, start + len - 1] is covered by a single
+   free segment, otherwise returns False.
+   This allows to check the following case:
+   VG_(am_get_advisory_client_simple) (first arg == 0, meaning
+   this-or-nothing) is too lenient, and may allow us to trash
+   the next segment along.  So make very sure that the proposed
+   new area really is free.  This is perhaps overly
+   conservative, but it fixes #129866. */
+extern Bool VG_(am_covered_by_single_free_segment)
+   ( Addr start, SizeT len);
+
 /* Notifies aspacem that the client completed an mmap successfully.
    The segment array is updated accordingly.  If the returned Bool is
    True, the caller should immediately discard translations from the
@@ -190,51 +201,6 @@ extern Bool VG_(am_notify_munmap)( Addr start, SizeT len );
    aspacem.  In short, DO NOT USE THIS FUNCTION. */
 extern SysRes VG_(am_do_mmap_NO_NOTIFY)
    ( Addr start, SizeT length, UInt prot, UInt flags, Int fd, Off64T offset);
-
-
-//--------------------------------------------------------------
-// Functions pertaining to AIX5-specific notifications.
-
-/* Describes followup actions that need to be done following a call to
-   VG_(am_aix5_reread_procmap).  When acquire==True, the specified
-   code and data segments have been mapped into the process, and so
-   m_debuginfo needs to read info for it; also m_redir needs to know,
-   and the tool needs to be told.  When acquire==False, the specified
-   segments have been unloaded and m_debuginfo, m_redir and the tool
-   (and m_transtab?) need to notified appropriately. */
-typedef
-   struct {
-      Addr   code_start;
-      Word   code_len;
-      Addr   data_start;
-      Word   data_len;
-      UChar* file_name;
-      UChar* mem_name;
-      Bool   is_mainexe;
-      Bool   acquire;
-   }
-   AixCodeSegChange;
-
-/* Tell aspacem that /proc/<pid>/map may have changed (eg following
-   __loadx) and so it should be re-read, and the code/data segment
-   list updated accordingly.  The resulting array of AixCodeChangeSeg
-   directives are written to 'directives', and the number of entries
-   to *ndirectives. */
-extern void VG_(am_aix5_reread_procmap)
-   ( /*OUT*/AixCodeSegChange* directives, /*OUT*/Int* ndirectives );
-
-/* Find out the size of the AixCodeSegChange that must be
-   presented to VG_(am_aix5_reread_procmap). */
-extern Int VG_(am_aix5_reread_procmap_howmany_directives)(void);
-
-/* Tell aspacem where the initial client stack is, so that it
-   can later produce a faked-up NSegment in response to
-   VG_(am_find_nsegment) for athat address, if asked. */
-extern void VG_(am_aix5_set_initial_client_sp)( Addr );
-
-/* The AIX5 aspacem implementation needs to be told when it is and
-   isn't allowed to use sbrk to allocate memory.  Hence: */
-extern Bool VG_(am_aix5_sbrk_allowed);
 
 
 //--------------------------------------------------------------
@@ -283,10 +249,16 @@ extern SysRes VG_(am_mmap_anon_float_valgrind)( SizeT cszB );
 extern SysRes VG_(am_sbrk_anon_float_valgrind)( SizeT cszB );
 
 
-/* Map a file at an unconstrained address for V, and update the
+/* Map privately a file at an unconstrained address for V, and update the
    segment array accordingly.  This is used by V for transiently
    mapping in object files to read their debug info.  */
 extern SysRes VG_(am_mmap_file_float_valgrind)
+   ( SizeT length, UInt prot, Int fd, Off64T offset );
+
+/* Map shared a file at an unconstrained address for V, and update the
+   segment array accordingly.  This is used by V for communicating
+   with vgdb.  */
+extern SysRes VG_(am_shared_mmap_file_float_valgrind)
    ( SizeT length, UInt prot, Int fd, Off64T offset );
 
 /* Unmap the given address range and update the segment array
@@ -371,12 +343,13 @@ extern Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 // stacks.  The address space manager provides and suitably
 // protects such stacks.
 
-#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
+    || defined(VGP_mips32_linux)
 # define VG_STACK_GUARD_SZB  65536  // 1 or 16 pages
-# define VG_STACK_ACTIVE_SZB 131072 // 2 or 32 pages
+# define VG_STACK_ACTIVE_SZB (4096 * 256) // 1Mb
 #else
 # define VG_STACK_GUARD_SZB  8192   // 2 pages
-# define VG_STACK_ACTIVE_SZB 65536  // 16 pages
+# define VG_STACK_ACTIVE_SZB (4096 * 256) // 1Mb
 #endif
 
 typedef
@@ -396,10 +369,10 @@ typedef
 
 extern VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp );
 
-/* Figure out how many bytes of the stack's active area have not
-   been used.  Used for estimating if we are close to overflowing it. */
-
-extern Int VG_(am_get_VgStack_unused_szB)( VgStack* stack ); 
+/* Figure out how many bytes of the stack's active area have not been
+   used.  Used for estimating if we are close to overflowing it.  If
+   the free area is larger than 'limit', just return 'limit'. */
+extern SizeT VG_(am_get_VgStack_unused_szB)( VgStack* stack, SizeT limit ); 
 
 // DDD: this is ugly
 #if defined(VGO_darwin)

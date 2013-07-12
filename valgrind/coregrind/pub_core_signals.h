@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -39,6 +39,9 @@
 
 /* Highest signal the kernel will let us use */
 extern Int VG_(max_signal);
+
+/* Returns the name of the vki signal sigNo */
+extern const Char *VG_(signame)(Int sigNo);
 
 /* Use high signals because native pthreads wants to use low */
 #define VG_SIGVGKILL       (VG_(max_signal)-0)

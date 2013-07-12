@@ -3,7 +3,7 @@
 * Author:      Marcus Geelnard
 * Description: Huffman coder/decoder implementation.
 * Reentrant:   Yes
-* $Id$
+* $Id: huffman.c,v 1.6 2004/12/14 18:59:40 marcus256 Exp $
 *
 * This is a very straight forward implementation of a Huffman coder and
 * decoder.
@@ -32,7 +32,7 @@
 *  - Allow for a few different predefined Huffman trees, which could
 *    reduce the size of a block even further.
 *-------------------------------------------------------------------------
-* Copyright (c) 2003-2004 Marcus Geelnard
+* Copyright (c) 2003-2011 Marcus Geelnard
 *
 * This software is provided 'as-is', without any express or implied
 * warranty. In no event will the authors be held liable for any damages

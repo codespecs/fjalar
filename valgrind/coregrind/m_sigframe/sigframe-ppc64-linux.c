@@ -8,9 +8,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Nicholas Nethercote
+   Copyright (C) 2000-2012 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2009 Paul Mackerras
+   Copyright (C) 2004-2012 Paul Mackerras
       paulus@samba.org
 
    This program is free software; you can redistribute it and/or
@@ -36,6 +36,7 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
+#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -189,7 +190,7 @@ void VG_(sigframe_create)( ThreadId tid,
    Addr sp;
    ThreadState* tst;
    Int sigNo = siginfo->si_signo;
-   Addr faultaddr;
+   /* Addr faultaddr; */ /* UNUSED */
    struct rt_sigframe* frame;
 
    /* Stack must be 16-byte aligned */
@@ -225,9 +226,11 @@ void VG_(sigframe_create)( ThreadId tid,
    VG_TRACK( post_mem_write, Vg_CoreSignal, tid, 
              sp, sizeof(UWord) );
 
+   /* UNUSED:
    faultaddr = (Addr)siginfo->_sifields._sigfault._addr;
    if (sigNo == VKI_SIGILL && siginfo->si_code > 0)
       faultaddr = tst->arch.vex.guest_CIA;
+   */
 
    VG_(memcpy)(&frame->info, siginfo, sizeof(*siginfo));
    VG_TRACK( post_mem_write, Vg_CoreSignal, tid,

@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -29,8 +29,8 @@
 #include "config.h"
 #include "global.h"
 
-#include <pub_tool_threadstate.h>
-#include <pub_tool_libcfile.h>
+#include "pub_tool_threadstate.h"
+#include "pub_tool_libcfile.h"
 
 
 /* Dump Part Counter */
@@ -55,7 +55,7 @@ EventMapping* CLG_(dumpmap) = 0;
  *  print_fn_pos, fprint_apos, fprint_fcost, fprint_jcc,
  *  fprint_fcc_ln, dump_run_info, dump_state_info
  */
-static Char outbuf[FILENAME_LEN + FN_NAME_LEN + OBJ_NAME_LEN];
+static Char outbuf[FILENAME_LEN + FN_NAME_LEN + OBJ_NAME_LEN + COSTS_LEN];
 
 Int CLG_(get_dump_counter)(void)
 {
@@ -336,6 +336,8 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 {
     Bool res = False;
 
+    CLG_ASSERT(bbcc && bbcc->cxt);
+
     CLG_DEBUGIF(3) {
 	CLG_DEBUG(2, "+ print_fn_pos: ");
 	CLG_(print_cxt)(16, bbcc->cxt, bbcc->rec_index);
@@ -351,9 +353,9 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 	}
 	
 	if (last->cxt != bbcc->cxt) {
-	    fn_node* last_from = (last->cxt && last->cxt->size>1) ?
+	    fn_node* last_from = (last->cxt && last->cxt->size >1) ?
 				 last->cxt->fn[1] : 0;
-	    fn_node* curr_from = (bbcc->cxt && bbcc->cxt->size>1) ?
+	    fn_node* curr_from = (bbcc->cxt->size >1) ?
 				 bbcc->cxt->fn[1] : 0;
 	    if (curr_from == 0) {
 		if (last_from != 0) {
@@ -659,13 +661,15 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
       CLG_(print_jcc)(-10, jcc);
     }
 
+    CLG_ASSERT(jcc->to !=0);
+    CLG_ASSERT(jcc->from !=0);
+    
     if (!get_debug_pos(jcc->to, bb_addr(jcc->to->bb), &target)) {
 	/* if we don't have debug info, don't switch to file "???" */
 	target.file = last->file;
     }
 
-    if (jcc->from &&
-	(jcc->jmpkind == JmpCond || jcc->jmpkind == Ijk_Boring)) {
+    if ((jcc->jmpkind == jk_CondJump) || (jcc->jmpkind == jk_Jump)) {
 	    
       /* this is a JCC for a followed conditional or boring jump. */
       CLG_ASSERT(CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost));
@@ -699,7 +703,7 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 		print_fn(fd, outbuf, "jfn", jcc->to->cxt->fn[0]);
 	}
 	    
-	if (jcc->jmpkind == JmpCond) {
+	if (jcc->jmpkind == jk_CondJump) {
 	    /* format: jcnd=<followed>/<executions> <target> */
 	    VG_(sprintf)(outbuf, "jcnd=%llu/%llu ",
 			 jcc->call_counter, ecounter);
@@ -720,8 +724,6 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 	return;
     }
 
-    CLG_ASSERT(jcc->to !=0);
-    
     file = jcc->to->cxt->fn[0]->file;
     obj  = jcc->to->bb->obj;
     
@@ -832,7 +834,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
     if (bb->jmp[jmp].instr == instr) {
 	jcc_count=0;
 	for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from)
-	    if (((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+	    if (((jcc->jmpkind != jk_Call) && (jcc->call_counter >0)) ||
 		(!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 	      jcc_count++;
 
@@ -846,7 +848,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
 	    fprint_apos(fd, &(currCost->p), last, bbcc->cxt->fn[0]->file);
 	    something_written = True;
 	    for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from) {
-		if (((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+		if (((jcc->jmpkind != jk_Call) && (jcc->call_counter >0)) ||
 		    (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 		    fprint_jcc(fd, jcc, &(currCost->p), last, ecounter);
 	    }
@@ -865,7 +867,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
   jcc_count = 0;
   for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from) {
       /* yes, if JCC only counts jmp arcs or cost >0 */
-      if ( ((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+      if ( ((jcc->jmpkind != jk_Call) && (jcc->call_counter >0)) ||
 	   (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 	  jcc_count++;
   }
@@ -899,7 +901,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
     if (jcc_count > 0)
 	for(jcc=bbcc->jmp[jmp].jcc_list; jcc; jcc=jcc->next_from) {
 	    CLG_ASSERT(jcc->jmp == jmp);
-	    if ( ((jcc->jmpkind != Ijk_Call) && (jcc->call_counter >0)) ||
+	    if ( ((jcc->jmpkind != jk_Call) && (jcc->call_counter >0)) ||
 		 (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost )))
 	  
 		fprint_jcc(fd, jcc, &(currCost->p), last, ecounter);
@@ -1635,15 +1637,19 @@ void CLG_(dump_profile)(Char* trigger, Bool only_current_thread)
      VG_(message)(Vg_DebugMsg, "Dumping done.\n");
 }
 
-/* copy command to cmd buffer (could change) */
+/* Copy command to cmd buffer. We want to original command line
+ * (can change at runtime)
+ */
 static
 void init_cmdbuf(void)
 {
   Int i,j,size = 0;
   HChar* argv;
 
-  if (VG_(args_the_exename))
+  if (VG_(args_the_exename)) {
+      CLG_ASSERT( VG_(strlen)( VG_(args_the_exename) ) < BUF_LEN-1);
       size = VG_(sprintf)(cmdbuf, " %s", VG_(args_the_exename));
+  }
 
   for(i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       argv = * (HChar**) VG_(indexXA)( VG_(args_for_client), i );
@@ -1653,7 +1659,7 @@ void init_cmdbuf(void)
 	  if (size < BUF_LEN) cmdbuf[size++] = argv[j];
   }
 
-  if (size == BUF_LEN) size--;
+  if (size >= BUF_LEN) size = BUF_LEN-1;
   cmdbuf[size] = 0;
 }
 

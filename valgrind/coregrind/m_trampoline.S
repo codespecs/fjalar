@@ -7,9 +7,9 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2009 Julian Seward 
+  Copyright (C) 2000-2012 Julian Seward 
      jseward@acm.org
-  Copyright (C) 2006-2009 OpenWorks LLP
+  Copyright (C) 2006-2012 OpenWorks LLP
      info@open-works.co.uk
 	
   This program is free software; you can redistribute it and/or
@@ -112,6 +112,27 @@ VG_(x86_linux_REDIR_FOR_index):
         ret
 .size VG_(x86_linux_REDIR_FOR_index), .-VG_(x86_linux_REDIR_FOR_index)
 
+/* There's no particular reason that this needs to be handwritten
+   assembly, but since that's what this file contains, here's a
+   simple strlen implementation (written in C and compiled by gcc.)
+*/
+.global VG_(x86_linux_REDIR_FOR_strlen)
+.type   VG_(x86_linux_REDIR_FOR_strlen), @function
+VG_(x86_linux_REDIR_FOR_strlen):
+        pushl   %ebp
+        movl    %esp, %ebp
+        movl    8(%ebp), %edx
+        movl    %edx, %eax
+        jmp     2f
+1:      incl    %eax
+2:      cmpb    $0, (%eax)
+        jne     1b
+        subl    %edx, %eax
+        popl    %ebp
+        ret
+.size VG_(x86_linux_REDIR_FOR_strlen), .-VG_(x86_linux_REDIR_FOR_strlen)
+
+
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
 
@@ -168,6 +189,16 @@ VG_(amd64_linux_REDIR_FOR_vtime):
 .LfnE3:
 .size VG_(amd64_linux_REDIR_FOR_vtime), .-.LfnB3
 
+.global VG_(amd64_linux_REDIR_FOR_vgetcpu)
+.type   VG_(amd64_linux_REDIR_FOR_vgetcpu), @function
+VG_(amd64_linux_REDIR_FOR_vgetcpu):
+.LfnB4:
+        movq    $__NR_getcpu, %rax
+        syscall
+        ret
+.LfnE4:
+.size VG_(amd64_linux_REDIR_FOR_vgetcpu), .-.LfnB4
+
 /* There's no particular reason that this needs to be handwritten
    assembly, but since that's what this file contains, here's a
    simple strlen implementation (written in C and compiled by gcc.)
@@ -175,7 +206,7 @@ VG_(amd64_linux_REDIR_FOR_vtime):
 .global VG_(amd64_linux_REDIR_FOR_strlen)
 .type   VG_(amd64_linux_REDIR_FOR_strlen), @function
 VG_(amd64_linux_REDIR_FOR_strlen):
-.LfnB4:
+.LfnB5:
 	xorl	%eax, %eax
 	cmpb	$0, (%rdi)
 	movq	%rdi, %rdx
@@ -186,11 +217,11 @@ VG_(amd64_linux_REDIR_FOR_strlen):
 	movq	%rdx, %rax
 	subq	%rdi, %rax
 .L41:	ret
-.LfnE4:
+.LfnE5:
 .size VG_(amd64_linux_REDIR_FOR_strlen), .-VG_(amd64_linux_REDIR_FOR_strlen)
 
 
-/* A CIE for the above three functions, followed by their FDEs */
+/* A CIE for the above four functions, followed by their FDEs */
 	.section .eh_frame,"a",@progbits
 .Lframe1:
         .long   .LEcie1-.LScie1
@@ -237,6 +268,15 @@ VG_(amd64_linux_REDIR_FOR_strlen):
         .uleb128 0x0
         .align 8
 .LEfde4:
+.LSfde5:
+        .long   .LEfde5-.LASfde5
+.LASfde5:
+        .long   .LASfde5-.Lframe1
+        .long   .LfnB5
+        .long   .LfnE5-.LfnB5
+        .uleb128 0x0
+        .align 8
+.LEfde5:
 	.previous
 
 .global VG_(trampoline_stuff_end)
@@ -496,6 +536,22 @@ VG_(trampoline_stuff_end):
 .global VG_(trampoline_stuff_start)
 VG_(trampoline_stuff_start):
 
+.global VG_(arm_linux_SUBST_FOR_sigreturn)
+.type   VG_(arm_linux_SUBST_FOR_sigreturn),#function
+VG_(arm_linux_SUBST_FOR_sigreturn):
+	mov r7, # __NR_sigreturn
+        svc #0
+        .long 0xFFFFFFFF /*illegal insn*/
+.size VG_(arm_linux_SUBST_FOR_sigreturn), .-VG_(arm_linux_SUBST_FOR_sigreturn)
+
+.global VG_(arm_linux_SUBST_FOR_rt_sigreturn)
+.type   VG_(arm_linux_SUBST_FOR_rt_sigreturn),#function
+VG_(arm_linux_SUBST_FOR_rt_sigreturn):
+	mov r7, # __NR_rt_sigreturn
+        svc #0
+        .long 0xFFFFFFFF /*illegal insn*/
+.size VG_(arm_linux_SUBST_FOR_rt_sigreturn), .-VG_(arm_linux_SUBST_FOR_rt_sigreturn)
+	
 .global VG_(arm_linux_REDIR_FOR_strlen)
 VG_(arm_linux_REDIR_FOR_strlen):
 	mov	r2, r0
@@ -624,288 +680,6 @@ VG_(trampoline_stuff_end):
 #	undef UD2_1024
 #	undef UD2_PAGE
         
-/*---------------- ppc32-aix5 ----------------*/
-#else
-#if defined(VGP_ppc32_aix5)
-
-#	define UD2_16     trap ; trap ; trap; trap
-#	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
-#	define UD2_256    UD2_64   ; UD2_64   ; UD2_64   ; UD2_64
-#	define UD2_1024   UD2_256  ; UD2_256  ; UD2_256  ; UD2_256
-#	define UD2_PAGE   UD2_1024 ; UD2_1024 ; UD2_1024 ; UD2_1024  
-
-	.csect .text[PR]
-
-	/* a leading page of unexecutable code */
-	UD2_PAGE
-
-.globl VG_(trampoline_stuff_start)
-VG_(trampoline_stuff_start):
-
-/* See pub_core_trampoline.h for an explaination of this.  Also
-   see pub_core_initimg.h, struct AIX5PreloadPage.  On entry, r3
-   points to an AIX5PreloadPage structure.  Note we can only 
-   use r2-r10 as scratch registers here since those are the
-   only ones restored from the preload page when finally
-   starting the client. */
-.globl VG_(ppc32_aix5_do_preloads_then_start_client)
-VG_(ppc32_aix5_do_preloads_then_start_client):
-	stwu	1,-1024(1)
-	stw	3,512(1)	/* stash r3 512 bytes up stack */
-
-	/* Try to load .../vgpreload_core.so */
-	lwz	2,0(3)		/* r2 = __NR___loadx */
-	lwz	5,20(3)		/* r5 = off_preloadcorename */
-	add	6,3,5		/* r6 = preloadcorename */
-	addis	1,1,-4
-	bl	do___loadx
-	addis	1,1,4
-	cmpwi	0,3,0
-	beq	.Lfailed
-
-	/* Try to load .../vgpreload_tool.so, if it exists */
-	lwz	3,512(1)	/* restore r3 */
-	lwz	2,0(3)		/* r2 = __NR___loadx */
-	lwz	5,24(3)		/* r5 = off_preloadtoolname */
-	cmpwi	0,5,0		/* skip tool preload if */
-	beq	.Ltry_preload	/* name not present */
-	add	6,3,5		/* r6 = preloadtoolname */
-	addis	1,1,-4
-	bl	do___loadx
-	addis	1,1,4
-	cmpwi	0,3,0
-	beq	.Lfailed
-
-.Ltry_preload:
-	/* Try to load the LD_PRELOAD= file, if it exists */
-	lwz	3,512(1)	/* restore r3 */
-	lwz	2,0(3)		/* r2 = __NR___loadx */
-	lwz	5,28(3)		/* r5 = off_ld_preloadname */
-	cmpwi	0,5,0		/* skip ld_preload if */
-	beq	.Lstart_client	/* name not present */
-	add	6,3,5		/* r6 = ld_preloadname */
-	addis	1,1,-4
-	bl	do___loadx
-	addis	1,1,4
-	cmpwi	0,3,0
-	beq	.Lfailed
-	
-.Lstart_client:
-	/* Success.  Restore r2-r10 from preloadpage-> and start
-	the client. */
-	lwz	3,512(1)	/* restore r3 */
-	addi	1,1,1024
-	lwz	2,32+4(3)	/* preloadpage->client_start */
-	mtctr	2
-	lwz	2,40+4(3)	/* preloadpage->r2 */
-	lwz	4,56+4(3)	/* preloadpage->r4 */
-	lwz	5,64+4(3)	/* preloadpage->r5 */
-	lwz	6,72+4(3)	/* preloadpage->r6 */
-	lwz	7,80+4(3)	/* preloadpage->r7 */
-	lwz	8,88+4(3)	/* preloadpage->r8 */
-	lwz	9,96+4(3)	/* preloadpage->r9 */
-	lwz	10,104+4(3)	/* preloadpage->r10 */
-	lwz	3,48+4(3)	/* preloadpage->r3 */
-	bctr
-	/*NOTREACHED*/
-	trap
-
-.Lfailed:
-	/* __loadx barfed for some reason.  Print the error
-	message and get out. */
-	/* First the error msg */
-	lwz	3,512(1)	/* restore r3 */
-	lwz	2,4(3)		/* r2 = __NR_kwrite */
-	lwz	4,12(3)		/* r4 = offset of err msg */
-	add	4,4,3		/* r4 = err msg */
-	lwz	5,16(3)		/* r5 = length err msg */
-	li	3,2		/* r3 = stderr */
-	bl	do_syscall
-	/* now call the diagnosis fn */
-	lwz	3,512(1)	/* restore r3 */
-	lwz	4,112(3)	/* preloadpage->p_diagnose_load_failure */
-	lwz	2,4(4)		/* get its TOC ptr */
-	lwz	4,0(4)		/* get its entry point */
-	mtlr	4
-	blrl
-	/* Now do _exit(1) */
-	lwz	3,512(1)	/* restore r3 */
-	lwz	2,8(3)		/* r2 = __NR_exit */
-	li	3,1		/* doing _exit(1) */
-	addi	1,1,1024	/* fix stack pointer */
-	bl	do_syscall
-	/*NOTREACHED*/
-	trap
-	
-do___loadx:
-	/* On entry: r2 = __NR___loadx,	r6 = name of module */
-	li	3,1
-	slwi	3,3,24	/* r3 = 0x1000000 = VKI_DL_LOAD */
-	mr	4,1
-	lis	5,3
-	li	7,0
-	li	8,0
-	li	9,0
-	li	10,0
-do_syscall:
-	crorc	6,6,6
-	sc
-	trap
-	/* sc continues at 'lr', hence this 
-	constitutes an automatic return */
-
-
-	/* See comment in pub_core_trampoline.h for what this is for */
-.globl VG_(ppctoc_magic_redirect_return_stub)
-VG_(ppctoc_magic_redirect_return_stub):
-	trap
-	
-.globl VG_(trampoline_stuff_end)
-VG_(trampoline_stuff_end):
-
-	/* and a trailing page of unexecutable code */
-	UD2_PAGE
-
-#	undef UD2_16
-#	undef UD2_64
-#	undef UD2_256
-#	undef UD2_1024
-#	undef UD2_PAGE
-
-/*---------------- ppc64-aix5 ----------------*/
-#else
-#if defined(VGP_ppc64_aix5)
-
-#	define UD2_16     trap ; trap ; trap; trap
-#	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
-#	define UD2_256    UD2_64   ; UD2_64   ; UD2_64   ; UD2_64
-#	define UD2_1024   UD2_256  ; UD2_256  ; UD2_256  ; UD2_256
-#	define UD2_PAGE   UD2_1024 ; UD2_1024 ; UD2_1024 ; UD2_1024  
-
-.globl VG_(trampoline_stuff_start)
-VG_(trampoline_stuff_start):
-/* See pub_core_trampoline.h for an explaination of this.  Also
-   see pub_core_initimg.h, struct AIX5PreloadPage.  On entry, r3
-   points to an AIX5PreloadPage structure.  Note we can only 
-   use r2-r10 as scratch registers here since those are the
-   only ones restored from the preload page when finally
-   starting the client. */
-.globl VG_(ppc64_aix5_do_preloads_then_start_client)
-VG_(ppc64_aix5_do_preloads_then_start_client):
-	stdu	1,-1024(1)
-	std	3,512(1)	/* stash r3 512 bytes up stack */
-
-	/* Try to load .../vgpreload_core.so */
-	lwz	2,0(3)		/* r2 = __NR_kload */
-	lwz	5,20(3)		/* r5 = off_preloadcorename */
-	add	3,3,5		/* r6 = preloadcorename */
-	bl	do_kload
-	cmpdi	0,3,0
-	beq	.Lfailed
-
-	/* Try to load .../vgpreload_tool.so, if it exists */
-	ld	3,512(1)	/* restore r3 */
-	lwz	2,0(3)		/* r2 = __NR_kload */
-	lwz	5,24(3)		/* r5 = off_preloadtoolname */
-	cmpwi	0,5,0		/* skip tool preload if */
-	beq	.Ltry_preload	/* name not present */
-	add	3,3,5		/* r6 = preloadtoolname */
-	bl	do_kload
-	cmpdi	0,3,0
-	beq	.Lfailed
-
-.Ltry_preload:
-	/* Try to load the LD_PRELOAD= file, if it exists */
-	ld	3,512(1)	/* restore r3 */
-	lwz	2,0(3)		/* r2 = __NR_kload */
-	lwz	5,28(3)		/* r5 = off_ld_preloadname */
-	cmpwi	0,5,0		/* skip ld_preload if */
-	beq	.Lstart_client	/* name not present */
-	add	3,3,5		/* r6 = ld_preloadname */
-	bl	do_kload
-	cmpdi	0,3,0
-	beq	.Lfailed
-	
-.Lstart_client:
-	/* Success.  Restore r2-r10 from preloadpage-> and start
-	the client. */
-	ld	3,512(1)	/* restore r3 */
-	addi	1,1,1024
-	ld	2,32+0(3)	/* preloadpage->client_start */
-	mtctr	2
-	ld	2,40+0(3)	/* preloadpage->r2 */
-	ld	4,56+0(3)	/* preloadpage->r4 */
-	ld	5,64+0(3)	/* preloadpage->r5 */
-	ld	6,72+0(3)	/* preloadpage->r6 */
-	ld	7,80+0(3)	/* preloadpage->r7 */
-	ld	8,88+0(3)	/* preloadpage->r8 */
-	ld	9,96+0(3)	/* preloadpage->r9 */
-	ld	10,104+0(3)	/* preloadpage->r10 */
-	ld	3,48+0(3)	/* preloadpage->r3 */
-	bctr
-	/*NOTREACHED*/
-	trap
-
-.Lfailed:
-	/* __loadx barfed for some reason.  Print the error
-	message and get out. */
-	/* First the error msg */
-	ld	3,512(1)	/* restore r3 */
-	lwz	2,4(3)		/* r2 = __NR_kwrite */
-	lwz	4,12(3)		/* r4 = offset of err msg */
-	add	4,4,3		/* r4 = err msg */
-	lwz	5,16(3)		/* r5 = length err msg */
-	li	3,2		/* r3 = stderr */
-	bl	do_syscall
-	/* now call the diagnosis fn */
-	ld	3,512(1)	/* restore r3 */
-	ld	4,112(3)	/* preloadpage->p_diagnose_load_failure */
-	ld	11,16(4)
-	ld	2,8(4)		/* get its TOC ptr */
-	ld	4,0(4)		/* get its entry point */
-	mtlr	4
-	blrl
-	/* Now do _exit(1) */
-	lwz	3,512(1)	/* restore r3 */
-	lwz	2,8(3)		/* r2 = __NR_exit */
-	li	3,1		/* doing _exit(1) */
-	addi	1,1,1024	/* fix stack pointer */
-	bl	do_syscall
-	/*NOTREACHED*/
-	trap
-	
-do_kload:
-	/* On entry: r2 = __NR_kload,	r3 = name of module */
-	li	4,0
-	li	5,0
-	li	6,0
-	li	7,0
-	li	8,0
-	li	9,0
-	li	10,0
-do_syscall:
-	crorc	6,6,6
-	sc
-	/* sc continues at 'lr', hence this 
-	constitutes an automatic return */
-
-	/* See comment in pub_core_trampoline.h for what this is for */
-.globl VG_(ppctoc_magic_redirect_return_stub)
-VG_(ppctoc_magic_redirect_return_stub):
-	trap
-	
-.globl VG_(trampoline_stuff_end)
-VG_(trampoline_stuff_end):
-
-	/* and a trailing page of unexecutable code */
-	UD2_PAGE
-
-#	undef UD2_16
-#	undef UD2_64
-#	undef UD2_256
-#	undef UD2_1024
-#	undef UD2_PAGE
-
 /*---------------- x86-darwin ----------------*/
 #else
 #if defined(VGP_x86_darwin)
@@ -924,8 +698,8 @@ VG_(x86_darwin_SUBST_FOR_sigreturn):
         int     $0x80
         ud2
 
-.globl VG_(darwin_REDIR_FOR_strlen)
-VG_(darwin_REDIR_FOR_strlen):
+.globl VG_(x86_darwin_REDIR_FOR_strlen)
+VG_(x86_darwin_REDIR_FOR_strlen):
         movl    4(%esp), %edx
         movl    %edx, %eax
         jmp     1f
@@ -937,8 +711,8 @@ VG_(darwin_REDIR_FOR_strlen):
         subl    %edx, %eax
         ret
 
-.globl VG_(darwin_REDIR_FOR_strcat)
-VG_(darwin_REDIR_FOR_strcat):
+.globl VG_(x86_darwin_REDIR_FOR_strcat)
+VG_(x86_darwin_REDIR_FOR_strcat):
         pushl   %esi
         movl    8(%esp), %esi
         movl    12(%esp), %ecx
@@ -961,8 +735,8 @@ VG_(darwin_REDIR_FOR_strcat):
         ret
 
 
-.globl VG_(darwin_REDIR_FOR_strcmp)
-VG_(darwin_REDIR_FOR_strcmp):
+.globl VG_(x86_darwin_REDIR_FOR_strcmp)
+VG_(x86_darwin_REDIR_FOR_strcmp):
         movl    4(%esp), %edx
         movl    8(%esp), %ecx
         jmp     1f
@@ -982,8 +756,8 @@ VG_(darwin_REDIR_FOR_strcmp):
         ret
 
 
-.globl VG_(darwin_REDIR_FOR_strcpy)
-VG_(darwin_REDIR_FOR_strcpy):
+.globl VG_(x86_darwin_REDIR_FOR_strcpy)
+VG_(x86_darwin_REDIR_FOR_strcpy):
 	pushl	%ebp
 	movl	%esp, %ebp
 	pushl	%esi
@@ -1004,8 +778,8 @@ VG_(darwin_REDIR_FOR_strcpy):
 	leave
 	ret
 
-.globl VG_(darwin_REDIR_FOR_strlcat)
-VG_(darwin_REDIR_FOR_strlcat):
+.globl VG_(x86_darwin_REDIR_FOR_strlcat)
+VG_(x86_darwin_REDIR_FOR_strlcat):
 	pushl	%ebp
 	movl	%esp, %ebp
 	pushl	%edi
@@ -1034,7 +808,7 @@ VG_(darwin_REDIR_FOR_strlcat):
 3:
 	movl	12(%ebp), %eax
 	movl	%eax, (%esp)
-	call	VG_(darwin_REDIR_FOR_strlen)
+	call	VG_(x86_darwin_REDIR_FOR_strlen)
 	jmp	7f
 4:
 	cmpl	$1, %esi
@@ -1076,8 +850,16 @@ VG_(trampoline_stuff_end):
 .globl VG_(trampoline_stuff_start)
 VG_(trampoline_stuff_start):
 
-.globl VG_(darwin_REDIR_FOR_strlen)
-VG_(darwin_REDIR_FOR_strlen):
+.globl VG_(amd64_darwin_SUBST_FOR_sigreturn)
+VG_(amd64_darwin_SUBST_FOR_sigreturn):
+        /* XXX does this need to have any special form? (cf x86-linux
+	version) */
+        movq    $ __NR_DARWIN_FAKE_SIGRETURN, %rax
+        syscall
+        ud2
+
+.globl VG_(amd64_darwin_REDIR_FOR_strlen)
+VG_(amd64_darwin_REDIR_FOR_strlen):
         movq    %rdi, %rax
         jmp     1f
 0:
@@ -1088,8 +870,8 @@ VG_(darwin_REDIR_FOR_strlen):
         subq    %rdi, %rax
         ret
 
-.globl VG_(darwin_REDIR_FOR_strcat)
-VG_(darwin_REDIR_FOR_strcat):
+.globl VG_(amd64_darwin_REDIR_FOR_strcat)
+VG_(amd64_darwin_REDIR_FOR_strcat):
 	movq	%rdi, %rdx
 	jmp	1f
 0:
@@ -1108,8 +890,8 @@ VG_(darwin_REDIR_FOR_strcat):
 	ret
 
 
-.globl VG_(darwin_REDIR_FOR_strcmp)
-VG_(darwin_REDIR_FOR_strcmp):
+.globl VG_(amd64_darwin_REDIR_FOR_strcmp)
+VG_(amd64_darwin_REDIR_FOR_strcmp):
 	jmp	1f
 0:
 	incq	%rdi
@@ -1126,8 +908,8 @@ VG_(darwin_REDIR_FOR_strcmp):
 	subl	%edx, %eax
 	ret
 
-.globl VG_(darwin_REDIR_FOR_strcpy)
-VG_(darwin_REDIR_FOR_strcpy):
+.globl VG_(amd64_darwin_REDIR_FOR_strcpy)
+VG_(amd64_darwin_REDIR_FOR_strcpy):
 	pushq	%rbp
 	movq	%rdi, %rdx
 	movq	%rsp, %rbp
@@ -1144,8 +926,8 @@ VG_(darwin_REDIR_FOR_strcpy):
 	movq	%rdi, %rax
 	ret
 	
-.globl VG_(darwin_REDIR_FOR_strlcat)
-VG_(darwin_REDIR_FOR_strlcat):
+.globl VG_(amd64_darwin_REDIR_FOR_strlcat)
+VG_(amd64_darwin_REDIR_FOR_strlcat):
 	pushq	%rbp
 	leaq	(%rdx,%rdi), %rax
 	movq	%rdi, %rcx
@@ -1170,7 +952,7 @@ VG_(darwin_REDIR_FOR_strlcat):
 	jmp	6f
 3:
 	movq	%rsi, %rdi
-	call	VG_(darwin_REDIR_FOR_strlen)
+	call	VG_(amd64_darwin_REDIR_FOR_strlen)
 	jmp	7f
 4:
 	cmpq	$1, %rdi
@@ -1193,8 +975,8 @@ VG_(darwin_REDIR_FOR_strlcat):
 	leave
 	ret
 
-.globl VG_(darwin_REDIR_FOR_arc4random)
-VG_(darwin_REDIR_FOR_arc4random):
+.globl VG_(amd64_darwin_REDIR_FOR_arc4random)
+VG_(amd64_darwin_REDIR_FOR_arc4random):
 	/* not very random, hope dyld won't mind */
 	movq	$0x76616c6772696e64, %rax
 	ret
@@ -1205,6 +987,97 @@ VG_(trampoline_stuff_end):
         /* a trailing page of unexecutable code */
 .fill 2048, 2, 0x0b0f /* `ud2` */
 
+
+/*---------------- s390x-linux ----------------*/
+#else
+#if defined(VGP_s390x_linux)
+
+        /* a leading page of unexecutable code */
+	.fill 2048, 2, 0x0000
+
+.global VG_(trampoline_stuff_start)
+VG_(trampoline_stuff_start):
+
+.global VG_(s390x_linux_SUBST_FOR_sigreturn)
+VG_(s390x_linux_SUBST_FOR_sigreturn):
+        svc __NR_sigreturn
+	.short 0
+
+.global VG_(s390x_linux_SUBST_FOR_rt_sigreturn)
+VG_(s390x_linux_SUBST_FOR_rt_sigreturn):
+        /* Old gcc unwinding code checks for a sig(_rt)_return svc and then
+           for ra = cfa to decide if it is a sig_rt_frame or not. Since we
+           set ra to this trampoline, but the cfa is still in the stack,
+           the unwinder thinks, that this is a non-rt frame  and causes a
+           crash in the gcc unwinder - which is used by the thread library
+           and others. Therefore we add a lr 1,1 nop, to let the gcc
+           unwinder bail out gracefully. This might also affect unwinding
+           across the signal frame - tough luck. fixs390 */
+        lr 1,1
+        svc __NR_rt_sigreturn
+	.short 0
+
+.globl VG_(trampoline_stuff_end)
+VG_(trampoline_stuff_end):
+	.fill 2048, 2, 0x0000
+
+/*---------------------- mips32-linux ----------------------*/
+#else
+#if defined(VGP_mips32_linux)
+
+#	define UD2_16     trap ; trap ; trap; trap
+#	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
+#	define UD2_256    UD2_64   ; UD2_64   ; UD2_64   ; UD2_64
+#	define UD2_1024   UD2_256  ; UD2_256  ; UD2_256  ; UD2_256
+#	define UD2_PAGE   UD2_1024 ; UD2_1024 ; UD2_1024 ; UD2_1024  
+
+
+.global VG_(trampoline_stuff_start)
+VG_(trampoline_stuff_start):
+
+.global VG_(mips32_linux_SUBST_FOR_sigreturn)
+VG_(mips32_linux_SUBST_FOR_sigreturn):
+        li $v0,__NR_sigreturn
+        syscall
+        nop
+        .long 0	/*illegal insn*/
+
+.global VG_(mips32_linux_SUBST_FOR_rt_sigreturn)
+VG_(mips32_linux_SUBST_FOR_rt_sigreturn):
+	li $v0,__NR_rt_sigreturn
+        syscall
+        nop
+        .long 0	/*illegal insn*/
+	
+/* There's no particular reason that this needs to be handwritten
+   assembly, but since that's what this file contains, here's a
+   simple strlen implementation (written in C and compiled by gcc.)
+*/
+.global VG_(mips32_linux_REDIR_FOR_strlen)
+.type   VG_(mips32_linux_REDIR_FOR_strlen), @function
+VG_(mips32_linux_REDIR_FOR_strlen):
+      li $v0, 0
+      //la $a0, string
+      j strlen_cond
+   strlen_loop:
+      addi $v0, $v0, 1
+      addi $a0, $a0, 1
+   strlen_cond:
+      lbu $t0, ($a0)
+      bne $t0, $zero, strlen_loop
+    jr $ra
+
+.size VG_(mips32_linux_REDIR_FOR_strlen), .-VG_(mips32_linux_REDIR_FOR_strlen)
+
+.global VG_(trampoline_stuff_end)
+VG_(trampoline_stuff_end):
+
+
+#	undef UD2_16
+#	undef UD2_64
+#	undef UD2_256
+#	undef UD2_1024
+#	undef UD2_PAGE
 
 /*---------------- unknown ----------------*/
 #else

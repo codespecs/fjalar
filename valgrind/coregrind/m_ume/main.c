@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -51,14 +51,13 @@ typedef struct {
 } ExeHandler;
 
 static ExeHandler exe_handlers[] = {
-   // Nb: AIX5 doesn't use m_ume, which is why it's not represented here.
-#if defined(VGO_linux)
+#  if defined(VGO_linux)
    { VG_(match_ELF),    VG_(load_ELF) },
-#elif defined(VGO_darwin)
+#  elif defined(VGO_darwin)
    { VG_(match_macho),  VG_(load_macho) },
-#else
+#  else
 #  error "unknown OS"
-#endif
+#  endif
    { VG_(match_script), VG_(load_script) },
 };
 #define EXE_HANDLER_COUNT (sizeof(exe_handlers)/sizeof(exe_handlers[0]))
@@ -189,7 +188,7 @@ static Bool is_binary_file(Char* f)
       // Something went wrong.  This will only happen if we earlier
       // succeeded in opening the file but fail here (eg. the file was
       // deleted between then and now).
-      VG_(printf)("valgrind: %s: unknown error\n", f);
+      VG_(fmsg)("%s: unknown error\n", f);
       VG_(exit)(126);      // 126 == NOEXEC
    }
 }
@@ -200,7 +199,12 @@ static Bool is_binary_file(Char* f)
 // will refuse to (eg. scripts lacking a "#!" prefix).
 static Int do_exec_shell_followup(Int ret, HChar* exe_name, ExeInfo* info)
 {
+#  if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
+   Char*  default_interp_name = "/system/bin/sh";
+#  else
    Char*  default_interp_name = "/bin/sh";
+#  endif
+
    SysRes res;
    struct vg_stat st;
 
@@ -210,7 +214,7 @@ static Int do_exec_shell_followup(Int ret, HChar* exe_name, ExeInfo* info)
 
       // Is it a binary file?  
       if (is_binary_file(exe_name)) {
-         VG_(printf)("valgrind: %s: cannot execute binary file\n", exe_name);
+         VG_(fmsg)("%s: cannot execute binary file\n", exe_name);
          VG_(exit)(126);      // 126 == NOEXEC
       }
 
@@ -226,7 +230,7 @@ static Int do_exec_shell_followup(Int ret, HChar* exe_name, ExeInfo* info)
 
       if (0 != ret) {
          // Something went wrong with executing the default interpreter
-         VG_(printf)("valgrind: %s: bad interpreter (%s): %s\n",
+         VG_(fmsg)("%s: bad interpreter (%s): %s\n",
                      exe_name, info->interp_name, VG_(strerror)(ret));
          VG_(exit)(126);      // 126 == NOEXEC
       }
@@ -238,21 +242,20 @@ static Int do_exec_shell_followup(Int ret, HChar* exe_name, ExeInfo* info)
       // Was it a directory?
       res = VG_(stat)(exe_name, &st);
       if (!sr_isError(res) && VKI_S_ISDIR(st.mode)) {
-         VG_(printf)("valgrind: %s: is a directory\n", exe_name);
+         VG_(fmsg)("%s: is a directory\n", exe_name);
       
       // Was it not executable?
       } else if (0 != VG_(check_executable)(NULL, exe_name, 
                                             False/*allow_setuid*/)) {
-         VG_(printf)("valgrind: %s: %s\n", exe_name, VG_(strerror)(ret));
+         VG_(fmsg)("%s: %s\n", exe_name, VG_(strerror)(ret));
 
       // Did it start with "#!"?  If so, it must have been a bad interpreter.
       } else if (is_hash_bang_file(exe_name)) {
-         VG_(printf)("valgrind: %s: bad interpreter: %s\n",
-                     exe_name, VG_(strerror)(ret));
+         VG_(fmsg)("%s: bad interpreter: %s\n", exe_name, VG_(strerror)(ret));
 
       // Otherwise it was something else.
       } else {
-         VG_(printf)("valgrind: %s: %s\n", exe_name, VG_(strerror)(ret));
+         VG_(fmsg)("%s: %s\n", exe_name, VG_(strerror)(ret));
       }
       // 126 means NOEXEC;  I think this is Posix, and that in some cases we
       // should be returning 127, meaning NOTFOUND.  Oh well.

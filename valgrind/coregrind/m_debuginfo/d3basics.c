@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2009 OpenWorks LLP
+   Copyright (C) 2008-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -53,8 +53,8 @@ HChar* ML_(pp_DW_children) ( DW_children hashch )
    switch (hashch) {
       case DW_children_no:  return "no children";
       case DW_children_yes: return "has children";
-      default:              return "DW_children_???";
    }
+   return "DW_children_???";
 }
 
 HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
@@ -124,6 +124,10 @@ HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
       case DW_TAG_imported_unit:      return "DW_TAG_imported_unit";
       case DW_TAG_condition:          return "DW_TAG_condition";
       case DW_TAG_shared_type:        return "DW_TAG_shared_type";
+      /* DWARF 4.  */
+      case DW_TAG_type_unit:          return "DW_TAG_type_unit";
+      case DW_TAG_rvalue_reference_type: return "DW_TAG_rvalue_reference_type";
+      case DW_TAG_template_alias:     return "DW_TAG_template_alias";
       /* SGI/MIPS Extensions.  */
       case DW_TAG_MIPS_loop:          return "DW_TAG_MIPS_loop";
       /* HP extensions.  See:
@@ -144,8 +148,8 @@ HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
       case DW_TAG_PGI_kanji_type:     return "DW_TAG_PGI_kanji_type";
       case DW_TAG_PGI_interface_block:
          return "DW_TAG_PGI_interface_block";
-      default:                        return "DW_TAG_???";
    }
+   return "DW_TAG_???";
 }
 
 HChar* ML_(pp_DW_FORM) ( DW_FORM form )
@@ -172,8 +176,14 @@ HChar* ML_(pp_DW_FORM) ( DW_FORM form )
       case DW_FORM_ref8:      return "DW_FORM_ref8";
       case DW_FORM_ref_udata: return "DW_FORM_ref_udata";
       case DW_FORM_indirect:  return "DW_FORM_indirect";
-      default:                return "DW_FORM_???";
+      case DW_FORM_sec_offset:return "DW_FORM_sec_offset";
+      case DW_FORM_exprloc:   return "DW_FORM_exprloc";
+      case DW_FORM_flag_present:return "DW_FORM_flag_present";
+      case DW_FORM_ref_sig8:  return "DW_FORM_ref_sig8";
+      case DW_FORM_GNU_ref_alt:return "DW_FORM_GNU_ref_alt";
+      case DW_FORM_GNU_strp_alt:return "DW_FORM_GNU_strp_alt";
    }
+   return "DW_FORM_???";
 }
 
 HChar* ML_(pp_DW_AT) ( DW_AT attr )
@@ -269,6 +279,13 @@ HChar* ML_(pp_DW_AT) ( DW_AT attr )
       case DW_AT_elemental: return "DW_AT_elemental";
       case DW_AT_pure: return "DW_AT_pure";
       case DW_AT_recursive: return "DW_AT_recursive";
+      /* DWARF 4 values.  */
+      case DW_AT_signature: return "DW_AT_signature";
+      case DW_AT_main_subprogram: return "DW_AT_main_subprogram";
+      case DW_AT_data_bit_offset: return "DW_AT_data_bit_offset";
+      case DW_AT_const_expr: return "DW_AT_const_expr";
+      case DW_AT_enum_class: return "DW_AT_enum_class";
+      case DW_AT_linkage_name: return "DW_AT_linkage_name";
       /* SGI/MIPS extensions.  */
       /* case DW_AT_MIPS_fde: return "DW_AT_MIPS_fde"; */
       /* DW_AT_MIPS_fde == DW_AT_HP_unmodifiable */
@@ -313,8 +330,8 @@ HChar* ML_(pp_DW_AT) ( DW_AT attr )
       case DW_AT_PGI_lbase: return "DW_AT_PGI_lbase";
       case DW_AT_PGI_soffset: return "DW_AT_PGI_soffset";
       case DW_AT_PGI_lstride: return "DW_AT_PGI_lstride";
-      default: return "DW_AT_???";
    }
+   return "DW_AT_???";
 }
 
 
@@ -392,8 +409,12 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
 #  elif defined(VGP_arm_linux)
    if (regno == 13) { *a = regs->sp; return True; }
    if (regno == 11) { *a = regs->fp; return True; } 
-#  elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
-   vg_assert(0); /* this function should never be called */
+#  elif defined(VGP_s390x_linux)
+   if (regno == 15) { *a = regs->sp; return True; }
+   if (regno == 11) { *a = regs->fp; return True; }
+#  elif defined(VGP_mips32_linux)
+   if (regno == 29) { *a = regs->sp; return True; }
+   if (regno == 30) { *a = regs->fp; return True; }
 #  else
 #    error "Unknown platform"
 #  endif
@@ -542,7 +563,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             /* Presumably what is given in the Dwarf3 is a SVMA (how
                could it be otherwise?)  So we add the appropriate bias
                on before pushing the result. */
-            a1 = *(Addr*)expr;
+            a1 = ML_(read_Addr)(expr);
             if (bias_address(&a1, di)) {
                PUSH( a1 ); 
                expr += sizeof(Addr);
@@ -644,7 +665,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             POP(uw1);
             if (VG_(am_is_valid_for_client)( (Addr)uw1, sizeof(Addr),
                                              VKI_PROT_READ )) {
-               uw1 = *(UWord*)uw1;
+               uw1 = ML_(read_UWord)((void *)uw1);
                PUSH(uw1);
             } else {
                FAIL("warning: evaluate_Dwarf3_Expr: DW_OP_deref: "
@@ -657,10 +678,10 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             if (VG_(am_is_valid_for_client)( (Addr)uw1, uw2,
                                              VKI_PROT_READ )) {
                switch (uw2) {
-                 case 1: uw1 = *(UChar*)uw1; break;
-                 case 2: uw1 = *(UShort*)uw1; break;
-                 case 4: uw1 = *(UInt*)uw1; break;
-                 case 8: uw1 = *(ULong*)uw1; break;
+                 case 1: uw1 = ML_(read_UChar)((void*)uw1); break;
+                 case 2: uw1 = ML_(read_UShort)((void*)uw1); break;
+                 case 4: uw1 = ML_(read_UInt)((void*)uw1); break;
+                 case 8: uw1 = ML_(read_ULong)((void*)uw1); break;
                  default:
                     FAIL("warning: evaluate_Dwarf3_Expr: unhandled "
                          "DW_OP_deref_size size");
@@ -679,17 +700,17 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
 	    PUSH(uw1);
             break;
          case DW_OP_const2u:
-	    uw1 = *(UShort *)expr;
+	    uw1 = ML_(read_UShort)(expr);
 	    expr += 2;
 	    PUSH(uw1);
 	    break;
          case DW_OP_const4u:
-	    uw1 = *(UInt *)expr;
+	    uw1 = ML_(read_UInt)(expr);
 	    expr += 4;
 	    PUSH(uw1);
 	    break;
          case DW_OP_const8u:
-	    uw1 = *(ULong *)expr;
+	    uw1 = ML_(read_ULong)(expr);
 	    expr += 8;
 	    PUSH(uw1);
 	    break;
@@ -703,17 +724,17 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
 	    PUSH(uw1);
             break;
          case DW_OP_const2s:
-	    uw1 = *(Short *)expr;
+	    uw1 = ML_(read_Short)(expr);
 	    expr += 2;
 	    PUSH(uw1);
 	    break;
          case DW_OP_const4s:
-	    uw1 = *(Int *)expr;
+	    uw1 = ML_(read_Int)(expr);
 	    expr += 4;
 	    PUSH(uw1);
 	    break;
          case DW_OP_const8s:
-	    uw1 = *(Long *)expr;
+	    uw1 = ML_(read_Long)(expr);
 	    expr += 8;
 	    PUSH(uw1);
 	    break;
@@ -770,12 +791,12 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             PUSH(sw1);
             break;
          case DW_OP_mod:
-            POP(sw2);
-            if (sw2 == 0)
+            POP(uw2);
+            if (uw2 == 0)
                FAIL("evaluate_Dwarf3_Expr: division by zero");
-            POP(sw1);
-            sw1 %= sw2;
-            PUSH(sw1);
+            POP(uw1);
+            uw1 %= uw2;
+            PUSH(uw1);
             break;
 #define BINARY(name, op, s) \
          case DW_OP_##name:		\
@@ -810,7 +831,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
 #undef UNARY
 #undef BINARY
          case DW_OP_skip:
-            sw1 = *(Short *)expr;
+            sw1 = ML_(read_Short)(expr);
             expr += 2;
             if (expr + sw1 < limit - exprszB)
                FAIL("evaluate_Dwarf3_Expr: DW_OP_skip before start of expr");
@@ -819,7 +840,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             expr += sw1;
             break;
          case DW_OP_bra:
-            sw1 = *(Short *)expr;
+            sw1 = ML_(read_Short)(expr);
             expr += 2;
             if (expr + sw1 < limit - exprszB)
                FAIL("evaluate_Dwarf3_Expr: DW_OP_bra before start of expr");
@@ -837,7 +858,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
                     "DW_OP_call_frame_cfa but no reg info");
 #if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
             /* Valgrind on ppc32/ppc64 currently doesn't use unwind info. */
-            uw1 = *(Addr *)(regs->sp);
+            uw1 = ML_(read_Addr)((UChar*)regs->sp);
 #else
             uw1 = ML_(get_CFA)(regs->ip, regs->sp, regs->fp, 0, ~(UWord) 0);
 #endif
@@ -853,19 +874,19 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             uw1 = 0;
             switch (sw1) {
                case 1:
-                  uw1 = *(UChar *)expr;
+                  uw1 = ML_(read_UChar)(expr);
                   expr += 1;
                   break;
                case 2:
-                  uw1 = *(UShort *)expr;
+                  uw1 = ML_(read_UShort)(expr);
                   expr += 2;
                   break;
                case 4:
-                  uw1 = *(UInt *)expr;
+                  uw1 = ML_(read_UInt)(expr);
                   expr += 4;
                   break;
                case 8:
-                  uw1 = *(ULong *)expr;
+                  uw1 = ML_(read_ULong)(expr);
                   expr += 8;
                   break;
                default:
@@ -934,9 +955,9 @@ GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
          return res;
       }
       vg_assert(uc == 0);
-      aMin   = * (Addr*)p;   p += sizeof(Addr);
-      aMax   = * (Addr*)p;   p += sizeof(Addr);
-      nbytes = * (UShort*)p; p += sizeof(UShort);
+      aMin   = ML_(read_Addr)(p);   p += sizeof(Addr);
+      aMax   = ML_(read_Addr)(p);   p += sizeof(Addr);
+      nbytes = ML_(read_UShort)(p); p += sizeof(UShort);
       nGuards++;
       if (0) VG_(printf)("           guard %d: %#lx %#lx\n",
                          (Int)nGuards, aMin,aMax);
@@ -1011,9 +1032,9 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
       if (uc == 1) /*isEnd*/
          break;
       vg_assert(uc == 0);
-      aMin   = * (Addr*)p;   p += sizeof(Addr);
-      aMax   = * (Addr*)p;   p += sizeof(Addr);
-      nbytes = * (UShort*)p; p += sizeof(UShort);
+      aMin   = ML_(read_Addr)(p);   p += sizeof(Addr);
+      aMax   = ML_(read_Addr)(p);   p += sizeof(Addr);
+      nbytes = ML_(read_UShort)(p); p += sizeof(UShort);
       nGuards++;
       if (0) VG_(printf)("           guard %ld: %#lx %#lx\n", 
                          nGuards, aMin,aMax);
@@ -1025,7 +1046,7 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
          obviously a constant. */
       if (nbytes == 1 + sizeof(Addr) && *p == DW_OP_addr) {
          /* DW_OP_addr a */
-         Addr a = *(Addr*)(p+1);
+         Addr a = ML_(read_Addr)((p+1));
          if (bias_address(&a, di)) {
             thisResult.b = True;
             thisResult.ul = (ULong)a;
@@ -1045,7 +1066,7 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
           && p[0] == DW_OP_addr
           && p[1 + sizeof(Addr)] == DW_OP_plus_uconst 
           && p[1 + sizeof(Addr) + 1] < 0x80 /*1-byte ULEB*/) {
-         Addr a = *(Addr*)&p[1];
+         Addr a = ML_(read_Addr)(&p[1]);
          if (bias_address(&a, di)) {
             thisResult.b = True;
             thisResult.ul = (ULong)a + (ULong)p[1 + sizeof(Addr) + 1];
@@ -1173,9 +1194,9 @@ void ML_(pp_GX) ( GExpr* gx ) {
       if (uc == 1)
          break; /*isEnd*/
       vg_assert(uc == 0);
-      aMin   = * (Addr*)p;  p += sizeof(Addr);
-      aMax   = * (Addr*)p;  p += sizeof(Addr);
-      nbytes = * (UShort*)p; p += sizeof(UShort);
+      aMin   = ML_(read_Addr)(p);  p += sizeof(Addr);
+      aMax   = ML_(read_Addr)(p);  p += sizeof(Addr);
+      nbytes = ML_(read_UShort)(p); p += sizeof(UShort);
       VG_(printf)("[%#lx,%#lx]=", aMin, aMax);
       while (nbytes > 0) {
          VG_(printf)("%02x", (UInt)*p++);

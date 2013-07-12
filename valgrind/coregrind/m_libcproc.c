@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_machine.h"    // For VG_(machine_get_VexArchInfo)
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
 #include "pub_core_libcbase.h"
@@ -64,6 +65,15 @@ Char** VG_(client_envp) = NULL;
 /* Path to library directory */
 const Char *VG_(libdir) = VG_LIBDIR;
 
+const Char *VG_(LD_PRELOAD_var_name) =
+#if defined(VGO_linux)
+   "LD_PRELOAD";
+#elif defined(VGO_darwin)
+   "DYLD_INSERT_LIBRARIES";
+#else
+#  error Unknown OS
+#endif
+
 /* We do getenv without libc's help by snooping around in
    VG_(client_envp) as determined at startup time. */
 Char *VG_(getenv)(Char *varname)
@@ -82,8 +92,10 @@ Char *VG_(getenv)(Char *varname)
 
 void  VG_(env_unsetenv) ( Char **env, const Char *varname )
 {
-   Char **from;
-   Char **to = NULL;
+   Char **from, **to;
+   vg_assert(env);
+   vg_assert(varname);
+   to = NULL;
    Int len = VG_(strlen)(varname);
 
    for (from = to = env; from && *from; from++) {
@@ -182,8 +194,12 @@ static void mash_colon_env(Char *varp, const Char *remove_pattern)
 	    entry_start = output+1;	/* entry starts after ':' */
       }
 
+      if (*varp)
       *output++ = *varp++;
    }
+
+   /* make sure last entry is nul terminated */
+   *output = '\0';
 
    /* match against the last entry */
    if (VG_(string_match)(remove_pattern, entry_start)) {
@@ -225,15 +241,21 @@ void VG_(env_remove_valgrind_env_stuff)(Char** envp)
    // - LD_PRELOAD is on Linux, not on Darwin, not sure about AIX
    // - DYLD_INSERT_LIBRARIES and DYLD_SHARED_REGION are Darwin-only
    for (i = 0; envp[i] != NULL; i++) {
-      if (VG_(strncmp)(envp[i], "LD_PRELOAD=", 11) == 0)
+      if (VG_(strncmp)(envp[i], "LD_PRELOAD=", 11) == 0) {
+         envp[i] = VG_(arena_strdup)(VG_AR_CORE, "libcproc.erves.1", envp[i]);
          ld_preload_str = &envp[i][11];
-      if (VG_(strncmp)(envp[i], "LD_LIBRARY_PATH=", 16) == 0)
+      }
+      if (VG_(strncmp)(envp[i], "LD_LIBRARY_PATH=", 16) == 0) {
+         envp[i] = VG_(arena_strdup)(VG_AR_CORE, "libcproc.erves.2", envp[i]);
          ld_library_path_str = &envp[i][16];
-      if (VG_(strncmp)(envp[i], "DYLD_INSERT_LIBRARIES=", 22) == 0)
+      }
+      if (VG_(strncmp)(envp[i], "DYLD_INSERT_LIBRARIES=", 22) == 0) {
+         envp[i] = VG_(arena_strdup)(VG_AR_CORE, "libcproc.erves.3", envp[i]);
          dyld_insert_libraries_str = &envp[i][22];
    }
+   }
 
-   buf = VG_(arena_malloc)(VG_AR_CORE, "libcproc.erves.1",
+   buf = VG_(arena_malloc)(VG_AR_CORE, "libcproc.erves.4",
                            VG_(strlen)(VG_(libdir)) + 20);
 
    // Remove Valgrind-specific entries from LD_*.
@@ -268,14 +290,6 @@ Int VG_(waitpid)(Int pid, Int *status, Int options)
    SysRes res = VG_(do_syscall4)(__NR_wait4_nocancel,
                                  pid, (UWord)status, options, 0);
    return sr_isError(res) ? -1 : sr_Res(res);
-#  elif defined(VGO_aix5)
-   /* magic number 4 obtained by truss-ing a C program doing
-      'waitpid'.  Note status and pid args opposite way round from
-      POSIX. */
-   SysRes res = VG_(do_syscall5)(__NR_AIX5_kwaitpid, 
-                                 (UWord)status, pid, 4 | options,0,0);
-   if (0) VG_(printf)("waitpid: got 0x%lx 0x%lx\n", sr_Res(res), res.err);
-   return sr_isError(res) ? -1 : sr_Res(res);
 #  else
 #    error Unknown OS
 #  endif
@@ -289,6 +303,7 @@ Char **VG_(env_clone) ( Char **oldenv )
    Char **newenv;
    Int  envlen;
 
+   vg_assert(oldenv);
    for (oldenvp = oldenv; oldenvp && *oldenvp; oldenvp++);
 
    envlen = oldenvp - oldenv + 1;
@@ -402,6 +417,21 @@ Int VG_(setrlimit) (Int resource, const struct vki_rlimit *rlim)
    return sr_isError(res) ? -1 : sr_Res(res);
 }
 
+/* Support for prctl. */
+Int VG_(prctl) (Int option, 
+                ULong arg2, ULong arg3, ULong arg4, ULong arg5)
+{
+   SysRes res = VG_(mk_SysRes_Error)(VKI_ENOSYS);
+#  if defined(VGO_linux)
+   /* res = prctl( option, arg2, arg3, arg4, arg5 ); */
+   res = VG_(do_syscall5)(__NR_prctl, (UWord) option,
+                          (UWord) arg2, (UWord) arg3, (UWord) arg4,
+                          (UWord) arg5);
+#  endif
+
+   return sr_isError(res) ? -1 : sr_Res(res);
+}
+
 /* ---------------------------------------------------------------------
    pids, etc
    ------------------------------------------------------------------ */
@@ -443,14 +473,6 @@ Int VG_(gettid)(void)
 
    return sr_Res(res);
 
-#  elif defined(VGO_aix5)
-   SysRes res;
-   Int    r;
-   vg_assert(__NR_AIX5__thread_self != __NR_AIX5_UNKNOWN);
-   res = VG_(do_syscall0)(__NR_AIX5__thread_self);
-   r = sr_Res(res);
-   return r;
-
 #  elif defined(VGO_darwin)
    // Darwin's gettid syscall is something else.
    // Use Mach thread ports for lwpid instead.
@@ -483,9 +505,7 @@ Int VG_(getppid) ( void )
 Int VG_(geteuid) ( void )
 {
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
-#  if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
-   return sr_Res( VG_(do_syscall1)(__NR_AIX5_getuidx, 1) );
-#  elif defined(__NR_geteuid32)
+#  if defined(__NR_geteuid32)
    // We use the 32-bit version if it's supported.  Otherwise, IDs greater
    // than 65536 cause problems, as bug #151209 showed.
    return sr_Res( VG_(do_syscall0)(__NR_geteuid32) );
@@ -497,9 +517,7 @@ Int VG_(geteuid) ( void )
 Int VG_(getegid) ( void )
 {
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
-#  if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
-   return sr_Res( VG_(do_syscall1)(__NR_AIX5_getgidx, 1) );
-#  elif defined(__NR_getegid32)
+#  if defined(__NR_getegid32)
    // We use the 32-bit version if it's supported.  Otherwise, IDs greater
    // than 65536 cause problems, as bug #151209 showed.
    return sr_Res( VG_(do_syscall0)(__NR_getegid32) );
@@ -531,8 +549,8 @@ Int VG_(getgroups)( Int size, UInt* list )
 
 #  elif defined(VGP_amd64_linux) || defined(VGP_ppc64_linux)  \
         || defined(VGP_arm_linux)                             \
-        || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5) \
-        || defined(VGO_darwin)
+        || defined(VGO_darwin) || defined(VGP_s390x_linux)    \
+        || defined(VGP_mips32_linux)
    SysRes sres;
    sres = VG_(do_syscall2)(__NR_getgroups, size, (Addr)list);
    if (sr_isError(sres))
@@ -563,7 +581,7 @@ Int VG_(ptrace) ( Int request, Int pid, void *addr, void *data )
 
 Int VG_(fork) ( void )
 {
-#  if defined(VGO_linux) || defined(VGO_aix5)
+#  if defined(VGO_linux)
    SysRes res;
    res = VG_(do_syscall0)(__NR_fork);
    if (sr_isError(res))
@@ -610,25 +628,6 @@ UInt VG_(read_millisecond_timer) ( void )
        now = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
      }
    }
-
-#  elif defined(VGO_aix5)
-   /* AIX requires a totally different implementation since
-      sys_gettimeofday doesn't exist.  We use the POWER real-time
-      register facility.  This will SIGILL on PowerPC 970 on AIX,
-      since PowerPC doesn't support these instructions. */
-   UWord nsec, sec1, sec2;
-   while (1) {
-      __asm__ __volatile__ ("\n"
-         "\tmfspr %0,4\n" /* 4==RTCU */
-         "\tmfspr %1,5\n" /* 5==RTCL */
-         "\tmfspr %2,4\n" /* 4==RTCU */
-         : "=b" (sec1), "=b" (nsec), "=b" (sec2)
-      );
-      if (sec1 == sec2) break;
-   }
-   vg_assert(nsec < 1000*1000*1000);
-   now  = ((ULong)sec1) * 1000000ULL;
-   now += (ULong)(nsec / 1000);
 
 #  elif defined(VGO_darwin)
    // Weird: it seems that gettimeofday() doesn't fill in the timeval, but
@@ -716,6 +715,64 @@ void VG_(do_atfork_child)(ThreadId tid)
    for (i = 0; i < n_atfork; i++)
       if (atforks[i].child != NULL)
          (*atforks[i].child)(tid);
+}
+
+
+/* ---------------------------------------------------------------------
+   icache invalidation
+   ------------------------------------------------------------------ */
+
+void VG_(invalidate_icache) ( void *ptr, SizeT nbytes )
+{
+#  if defined(VGA_ppc32) || defined(VGA_ppc64)
+   Addr startaddr = (Addr) ptr;
+   Addr endaddr   = startaddr + nbytes;
+   Addr cls;
+   Addr addr;
+   VexArchInfo vai;
+
+   if (nbytes == 0) return;
+   vg_assert(nbytes > 0);
+
+   VG_(machine_get_VexArchInfo)( NULL, &vai );
+   cls = vai.ppc_cache_line_szB;
+
+   /* Stay sane .. */
+   vg_assert(cls == 32 || cls == 64 || cls == 128);
+
+   startaddr &= ~(cls - 1);
+   for (addr = startaddr; addr < endaddr; addr += cls) {
+      __asm__ __volatile__("dcbst 0,%0" : : "r" (addr));
+   }
+   __asm__ __volatile__("sync");
+   for (addr = startaddr; addr < endaddr; addr += cls) {
+      __asm__ __volatile__("icbi 0,%0" : : "r" (addr));
+   }
+   __asm__ __volatile__("sync; isync");
+
+#  elif defined(VGA_x86)
+   /* no need to do anything, hardware provides coherence */
+
+#  elif defined(VGA_amd64)
+   /* no need to do anything, hardware provides coherence */
+
+#  elif defined(VGA_s390x)
+   /* no need to do anything, hardware provides coherence */
+
+#  elif defined(VGP_arm_linux)
+   /* ARM cache flushes are privileged, so we must defer to the kernel. */
+   Addr startaddr = (Addr) ptr;
+   Addr endaddr   = startaddr + nbytes;
+   VG_(do_syscall2)(__NR_ARM_cacheflush, startaddr, endaddr);
+
+#  elif defined(VGA_mips32)
+   SysRes sres = VG_(do_syscall3)(__NR_cacheflush, (UWord) ptr,
+                                 (UWord) nbytes, (UWord) 3);
+   vg_assert( sres._isError == 0 );
+
+#  else
+#    error "Unknown ARCH"
+#  endif
 }
 
 
