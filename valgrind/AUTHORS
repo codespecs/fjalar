@@ -1,7 +1,8 @@
 
-Julian Seward was the original founder, designer and author of Valgrind,
-created the dynamic translation frameworks, wrote Memcheck and 3.3.X
-Helgrind, and did lots of other things.
+Julian Seward was the original founder, designer and author of
+Valgrind, created the dynamic translation frameworks, wrote Memcheck,
+the 3.X versions of Helgrind, SGCheck, DHAT, and did lots of other
+things.
 
 Nicholas Nethercote did the core/tool generalisation, wrote
 Cachegrind and Massif, and tons of other stuff.
@@ -33,8 +34,12 @@ other tweakage.
 
 Bart Van Assche wrote and maintains DRD.
 
-Cerion Armour-Brown worked on PowerPC instruction set support in
-the Vex dynamic-translation framework.
+Cerion Armour-Brown worked on PowerPC instruction set support in the
+Vex dynamic-translation framework.  Maynard Johnson improved the
+Power6 support.
+
+Kirill Batuzov and Dmitry Zhurikhin did the NEON instruction set
+support for ARM.  Donna Robinson did the v6 media instruction support.
 
 Donna Robinson created and maintains the very excellent
 http://www.valgrind.org.
@@ -51,6 +56,25 @@ use in Valgrind.
 
 David Woodhouse has helped out with test and build machines over the course
 of many releases.
+
+Florian Krohm and Christian Borntraeger wrote and maintain the
+S390X/Linux port.  Florian improved and ruggedised the regression test
+system during 2011.
+
+Philippe Waroquiers wrote and maintains the embedded GDB server.  He
+also made a bunch of performance and memory-reduction fixes across
+diverse parts of the system.
+
+Carl Love and Maynard Johnson contributed IBM Power6 and Power7
+support, and generally deal with ppc{32,64}-linux issues.
+
+Petar Jovanovic and Dejan Jevtic wrote and maintain the mips32-linux
+port.
+
+Dragos Tatulea modified the arm-android port so it also works on
+x86-android.
+
+Jakub Jelinek helped out with the AVX support.
 
 Many, many people sent bug reports, patches, and helpful feedback.
 
