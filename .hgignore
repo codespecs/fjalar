@@ -510,6 +510,9 @@ tests/x86_amd64_features
 # Ignore generated and installed valgrind tools
 valgrind/inst
 
+# Ignore files generate by Doxygen
+valgrind/fjalar/html
+
 # 
 # # Documentation
 # doc/developer.aux
