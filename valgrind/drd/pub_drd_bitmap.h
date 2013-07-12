@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -76,6 +75,8 @@ struct bitmap
 
 /* Function declarations. */
 
+void DRD_(bm_module_init)(void);
+void DRD_(bm_module_cleanup)(void);
 struct bitmap* DRD_(bm_new)(void);
 void DRD_(bm_delete)(struct bitmap* const bm);
 void DRD_(bm_init)(struct bitmap* const bm);
@@ -98,6 +99,7 @@ void DRD_(bm_access_store_8)(struct bitmap* const bm, const Addr a1);
 Bool DRD_(bm_has)(struct bitmap* const bm,
                   const Addr a1, const Addr a2,
                   const BmAccessTypeT access_type);
+Bool DRD_(bm_has_any_load_g)(struct bitmap* const bm);
 Bool DRD_(bm_has_any_load)(struct bitmap* const bm,
                            const Addr a1, const Addr a2);
 Bool DRD_(bm_has_any_store)(struct bitmap* const bm,
@@ -147,8 +149,5 @@ void DRD_(bm_print)(struct bitmap* bm);
 ULong DRD_(bm_get_bitmap_creation_count)(void);
 ULong DRD_(bm_get_bitmap2_creation_count)(void);
 ULong DRD_(bm_get_bitmap2_merge_count)(void);
-
-void* DRD_(bm2_alloc_node)(HChar* const ec, const SizeT szB);
-void  DRD_(bm2_free_node)(void* const bm2);
 
 #endif /* __PUB_DRD_BITMAP_H */

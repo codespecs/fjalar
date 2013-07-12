@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -60,7 +60,7 @@ extern Int VG_(args_for_valgrind_noexecpass);
 
 /* The name of the client executable, as specified on the command
    line. */
-extern HChar* VG_(args_the_exename);
+extern const HChar* VG_(args_the_exename);
 
 
 #endif   // __PUB_TOOL_CLIENTSTATE_H

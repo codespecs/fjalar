@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -27,6 +26,7 @@
 #include "drd_clientreq.h"
 #include "drd_cond.h"
 #include "drd_error.h"
+#include "drd_hb.h"
 #include "drd_load_store.h"
 #include "drd_malloc_wrappers.h"
 #include "drd_mutex.h"
@@ -42,6 +42,11 @@
 #include "pub_tool_machine.h"     // VG_(get_SP)()
 #include "pub_tool_threadstate.h"
 #include "pub_tool_tooliface.h"   // VG_(needs_...)()
+
+
+/* Global variables. */
+
+Bool DRD_(g_free_is_write);
 
 
 /* Local function declarations. */
@@ -64,6 +69,12 @@ void DRD_(clientreq_init)(void)
  * DRD's handler for Valgrind client requests. The code below handles both
  * DRD's public and tool-internal client requests.
  */
+#if defined(VGP_mips32_linux)
+ /* There is a cse related issue in gcc for MIPS. Optimization level
+    has to be lowered, so cse related optimizations are not
+    included. */
+ __attribute__((optimize("O1")))
+#endif
 static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
 {
    UWord result = 0;
@@ -75,14 +86,45 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
    switch (arg[0])
    {
    case VG_USERREQ__MALLOCLIKE_BLOCK:
+      if (DRD_(g_free_is_write)) {
+         GenericErrInfo GEI = {
+            .tid = DRD_(thread_get_running_tid)(),
+            .addr = 0,
+         };
+         VG_(maybe_record_error)(vg_tid,
+                                 GenericErr,
+                                 VG_(get_IP)(vg_tid),
+                                 "--free-is-write=yes is incompatible with"
+                                 " custom memory allocator client requests",
+                                 &GEI);
+      }
       if (arg[1])
          DRD_(malloclike_block)(vg_tid, arg[1]/*addr*/, arg[2]/*size*/);
       break;
 
-   case VG_USERREQ__FREELIKE_BLOCK:
-      if (arg[1] && ! DRD_(freelike_block)(vg_tid, arg[1]/*addr*/))
+   case VG_USERREQ__RESIZEINPLACE_BLOCK:
+      if (!DRD_(freelike_block)(vg_tid, arg[1]/*addr*/, False))
       {
-         GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+         GenericErrInfo GEI = {
+            .tid = DRD_(thread_get_running_tid)(),
+            .addr = 0,
+         };
+         VG_(maybe_record_error)(vg_tid,
+                                 GenericErr,
+                                 VG_(get_IP)(vg_tid),
+                                 "Invalid VG_USERREQ__RESIZEINPLACE_BLOCK request",
+                                 &GEI);
+      }
+      DRD_(malloclike_block)(vg_tid, arg[1]/*addr*/, arg[3]/*newSize*/);
+      break;
+
+   case VG_USERREQ__FREELIKE_BLOCK:
+      if (arg[1] && ! DRD_(freelike_block)(vg_tid, arg[1]/*addr*/, False))
+      {
+         GenericErrInfo GEI = {
+	    .tid = DRD_(thread_get_running_tid)(),
+	    .addr = 0,
+	 };
          VG_(maybe_record_error)(vg_tid,
                                  GenericErr,
                                  VG_(get_IP)(vg_tid),
@@ -104,36 +146,23 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       break;
 
    case VG_USERREQ__DRD_START_SUPPRESSION:
+      /*_VG_USERREQ__HG_ARANGE_MAKE_UNTRACKED*/
+   case VG_USERREQ_TOOL_BASE('H','G') + 256 + 39:
       DRD_(start_suppression)(arg[1], arg[1] + arg[2], "client");
       break;
 
    case VG_USERREQ__DRD_FINISH_SUPPRESSION:
+      /*_VG_USERREQ__HG_ARANGE_MAKE_TRACKED*/
+   case VG_USERREQ_TOOL_BASE('H','G') + 256 + 40:
       DRD_(finish_suppression)(arg[1], arg[1] + arg[2]);
       break;
 
    case VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE:
-      {
-         struct cond_info* const cond_p = DRD_(cond_get)(arg[1]);
-         if (! cond_p)
-         {
-            DRD_(mutex_init)(arg[1], mutex_type_order_annotation);
-            DRD_(mutex_pre_lock)(arg[1], mutex_type_order_annotation, False);
-            DRD_(mutex_post_lock)(arg[1], mutex_type_order_annotation, False);
-            DRD_(mutex_unlock)(arg[1], mutex_type_order_annotation);
-         }
-      }
+      DRD_(hb_happens_before)(drd_tid, arg[1]);
       break;
 
    case VG_USERREQ__DRD_ANNOTATE_HAPPENS_AFTER:
-      {
-         struct cond_info* const cond_p = DRD_(cond_get)(arg[1]);
-         if (! cond_p)
-         {
-            DRD_(mutex_pre_lock)(arg[1], mutex_type_order_annotation, False);
-            DRD_(mutex_post_lock)(arg[1], mutex_type_order_annotation, False);
-            DRD_(mutex_unlock)(arg[1], mutex_type_order_annotation);
-         }
-      }
+      DRD_(hb_happens_after)(drd_tid, arg[1]);
       break;
 
    case VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE:
@@ -187,12 +216,17 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       DRD_(rwlock_pre_unlock)(arg[1], user_rwlock);
       break;
 
+   case VG_USERREQ__SET_PTHREAD_COND_INITIALIZER:
+      DRD_(pthread_cond_initializer) = (Addr)arg[1];
+      DRD_(pthread_cond_initializer_size) = arg[2];
+      break;
+
    case VG_USERREQ__DRD_START_NEW_SEGMENT:
       DRD_(thread_new_segment)(DRD_(PtThreadIdToDrdThreadId)(arg[1]));
       break;
 
    case VG_USERREQ__DRD_START_TRACE_ADDR:
-      DRD_(start_tracing_address_range)(arg[1], arg[1] + arg[2]);
+      DRD_(start_tracing_address_range)(arg[1], arg[1] + arg[2], False);
       break;
 
    case VG_USERREQ__DRD_STOP_TRACE_ADDR:
@@ -214,9 +248,20 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       break;
 
    case VG_USERREQ__SET_JOINABLE:
-      DRD_(thread_set_joinable)(DRD_(PtThreadIdToDrdThreadId)(arg[1]),
-                                (Bool)arg[2]);
+   {
+      const DrdThreadId drd_joinable = DRD_(PtThreadIdToDrdThreadId)(arg[1]);
+      if (drd_joinable != DRD_INVALID_THREADID)
+         DRD_(thread_set_joinable)(drd_joinable, (Bool)arg[2]);
+      else {
+         InvalidThreadIdInfo ITI = { DRD_(thread_get_running_tid)(), arg[1] };
+         VG_(maybe_record_error)(vg_tid,
+                                 InvalidThreadId,
+                                 VG_(get_IP)(vg_tid),
+                                 "pthread_detach(): invalid thread ID",
+                                 &ITI);
+      }
       break;
+   }
 
    case VG_USERREQ__ENTERING_PTHREAD_CREATE:
       DRD_(thread_entering_pthread_create)(drd_tid);
@@ -497,6 +542,21 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
          DRD_(clean_memory)(arg[1], arg[2]);
       break;
 
+   case VG_USERREQ__HELGRIND_ANNOTATION_UNIMP:
+      {
+         /* Note: it is assumed below that the text arg[1] points to is never
+          * freed, e.g. because it points to static data.
+          */
+         UnimpClReqInfo UICR =
+            { DRD_(thread_get_running_tid)(), (Char*)arg[1] };
+         VG_(maybe_record_error)(vg_tid,
+                                 UnimpHgClReq,
+                                 VG_(get_IP)(vg_tid),
+                                 "",
+                                 &UICR);
+      }
+      break;
+
    case VG_USERREQ__DRD_ANNOTATION_UNIMP:
       {
          /* Note: it is assumed below that the text arg[1] points to is never
@@ -505,7 +565,7 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
          UnimpClReqInfo UICR =
             { DRD_(thread_get_running_tid)(), (Char*)arg[1] };
          VG_(maybe_record_error)(vg_tid,
-                                 UnimpClReq,
+                                 UnimpDrdClReq,
                                  VG_(get_IP)(vg_tid),
                                  "",
                                  &UICR);

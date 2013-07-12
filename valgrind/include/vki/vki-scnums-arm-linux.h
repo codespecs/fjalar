@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2009 Evan Geller
+   Copyright (C) 2008-2012 Evan Geller
       gaze@bea.ms
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@
 #ifndef __VKI_SCNUMS_ARM_LINUX_H
 #define __VKI_SCNUMS_ARM_LINUX_H
 
-// From linux-2.6.26.2/include/asm-arm/unistd.h
+// From linux-2.6/arch/arm/include/asm/unistd.h
 
 #define __NR_restart_syscall		  0
 #define __NR_exit			  1
@@ -370,8 +370,8 @@
 #define __NR_readlinkat			332
 #define __NR_fchmodat			333
 #define __NR_faccessat			334
-					/* 335 for pselect6 */
-					/* 336 for ppoll */
+#define __NR_pselect6			335 /* JRS 20100812: is this correct? */
+#define __NR_ppoll	       		336
 #define __NR_unshare			337
 #define __NR_set_robust_list		338
 #define __NR_get_robust_list		339
@@ -382,7 +382,7 @@
 #define __NR_vmsplice			343
 #define __NR_move_pages			344
 #define __NR_getcpu			345
-					/* 346 for epoll_pwait */
+#define __NR_epoll_pwait		346
 #define __NR_kexec_load			347
 #define __NR_utimensat			348
 #define __NR_signalfd			349
@@ -397,6 +397,23 @@
 #define __NR_dup3                       358
 #define __NR_pipe2                      359
 #define __NR_inotify_init1              360
+#define __NR_preadv			361
+#define __NR_pwritev			362
+#define __NR_rt_tgsigqueueinfo		363
+#define __NR_perf_event_open		364
+#define __NR_recvmmsg			365
+#define __NR_accept4			366
+#define __NR_fanotify_init		367
+#define __NR_fanotify_mark		368
+#define __NR_prlimit64			369
+#define __NR_name_to_handle_at		370
+#define __NR_open_by_handle_at		371
+#define __NR_clock_adjtime		372
+#define __NR_syncfs			373
+#define __NR_sendmmsg			374
+#define __NR_setns			375
+#define __NR_process_vm_readv		376
+#define __NR_process_vm_writev		377
 
 
 

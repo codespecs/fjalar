@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -67,8 +66,8 @@ typedef UWord PThreadId;
 /** Per-thread information managed by DRD. */
 typedef struct
 {
-   Segment*  first;         /**< Pointer to first segment. */
-   Segment*  last;          /**< Pointer to last segment. */
+   struct segment* sg_first;/**< Segment list. */
+   struct segment* sg_last;
    ThreadId  vg_threadid;   /**< Valgrind thread ID. */
    PThreadId pt_threadid;   /**< POSIX thread ID. */
    Addr      stack_min_min; /**< Lowest value stack pointer ever had. */
@@ -77,6 +76,9 @@ typedef struct
    Addr      stack_max;     /**< Top of stack. */
    SizeT     stack_size;    /**< Maximum size of stack. */
    char      name[64];      /**< User-assigned thread name. */
+   Bool      on_alt_stack;
+   /** Whether this structure contains valid information. */
+   Bool      valid;
    /** Indicates whether the Valgrind core knows about this thread. */
    Bool      vg_thread_exists;
    /** Indicates whether there is an associated POSIX thread ID. */
@@ -94,6 +96,8 @@ typedef struct
    Int       pthread_create_nesting_level;
    /** Nesting level of synchronization functions called by the client. */
    Int       synchr_nesting;
+   /** Delayed thread deletion sequence number. */
+   unsigned  deletion_seq;
 } ThreadInfo;
 
 
@@ -124,7 +128,9 @@ void DRD_(thread_set_trace_fork_join)(const Bool t);
 void DRD_(thread_set_segment_merging)(const Bool m);
 int DRD_(thread_get_segment_merge_interval)(void);
 void DRD_(thread_set_segment_merge_interval)(const int i);
+void DRD_(thread_set_join_list_vol)(const int jlv);
 
+void DRD_(thread_init)(void);
 DrdThreadId DRD_(VgThreadIdToDrdThreadId)(const ThreadId tid);
 DrdThreadId DRD_(NewVgThreadIdToDrdThreadId)(const ThreadId tid);
 DrdThreadId DRD_(PtThreadIdToDrdThreadId)(const PThreadId tid);
@@ -133,8 +139,9 @@ DrdThreadId DRD_(thread_pre_create)(const DrdThreadId creator,
                                     const ThreadId vg_created);
 DrdThreadId DRD_(thread_post_create)(const ThreadId vg_created);
 void DRD_(thread_post_join)(DrdThreadId drd_joiner, DrdThreadId drd_joinee);
-void DRD_(thread_delete)(const DrdThreadId tid);
+void DRD_(thread_delete)(const DrdThreadId tid, Bool detached);
 void DRD_(thread_finished)(const DrdThreadId tid);
+void DRD_(drd_thread_atfork_child)(const DrdThreadId tid);
 void DRD_(thread_pre_cancel)(const DrdThreadId tid);
 void DRD_(thread_set_stack_startup)(const DrdThreadId tid,
                                     const Addr stack_startup);
@@ -142,6 +149,10 @@ Addr DRD_(thread_get_stack_min)(const DrdThreadId tid);
 Addr DRD_(thread_get_stack_min_min)(const DrdThreadId tid);
 Addr DRD_(thread_get_stack_max)(const DrdThreadId tid);
 SizeT DRD_(thread_get_stack_size)(const DrdThreadId tid);
+Bool DRD_(thread_get_on_alt_stack)(const DrdThreadId tid);
+void DRD_(thread_set_on_alt_stack)(const DrdThreadId tid,
+                                   const Bool on_alt_stack);
+Int DRD_(thread_get_threads_on_alt_stack)(void);
 void DRD_(thread_set_pthreadid)(const DrdThreadId tid, const PThreadId ptid);
 Bool DRD_(thread_get_joinable)(const DrdThreadId tid);
 void DRD_(thread_set_joinable)(const DrdThreadId tid, const Bool joinable);
@@ -204,9 +215,7 @@ static __inline__
 Bool DRD_(IsValidDrdThreadId)(const DrdThreadId tid)
 {
    return (0 <= (int)tid && tid < DRD_N_THREADS && tid != DRD_INVALID_THREADID
-           && ! (DRD_(g_threadinfo)[tid].vg_thread_exists == False
-                 && DRD_(g_threadinfo)[tid].posix_thread_exists == False
-                 && DRD_(g_threadinfo)[tid].detached_posix_thread == False));
+           && (DRD_(g_threadinfo)[tid].valid));
 }
 
 /** Returns the DRD thread ID of the currently running thread. */
@@ -334,9 +343,9 @@ Segment* DRD_(thread_get_segment)(const DrdThreadId tid)
 #ifdef ENABLE_DRD_CONSISTENCY_CHECKS
    tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
              && tid != DRD_INVALID_THREADID);
-   tl_assert(DRD_(g_threadinfo)[tid].last);
+   tl_assert(DRD_(g_threadinfo)[tid].sg_last);
 #endif
-   return DRD_(g_threadinfo)[tid].last;
+   return DRD_(g_threadinfo)[tid].sg_last;
 }
 
 /** Return a pointer to the latest segment for the running thread. */

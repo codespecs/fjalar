@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -28,13 +27,13 @@
 #include "drd_error.h"
 #include "drd_mutex.h"
 #include "pub_tool_vki.h"
-#include "pub_tool_errormgr.h"    // VG_(maybe_record_error)()
-#include "pub_tool_libcassert.h"  // tl_assert()
-#include "pub_tool_libcbase.h"    // VG_(strlen)
-#include "pub_tool_libcprint.h"   // VG_(message)()
-#include "pub_tool_libcproc.h"    // VG_(read_millisecond_timer)()
-#include "pub_tool_machine.h"     // VG_(get_IP)()
-#include "pub_tool_threadstate.h" // VG_(get_running_tid)()
+#include "pub_tool_errormgr.h"    /* VG_(maybe_record_error)()     */
+#include "pub_tool_libcassert.h"  /* tl_assert()                   */
+#include "pub_tool_libcbase.h"    /* VG_(strlen)                   */
+#include "pub_tool_libcprint.h"   /* VG_(message)()                */
+#include "pub_tool_libcproc.h"    /* VG_(read_millisecond_timer)() */
+#include "pub_tool_machine.h"     /* VG_(get_IP)()                 */
+#include "pub_tool_threadstate.h" /* VG_(get_running_tid)()        */
 
 
 /* Local functions. */
@@ -49,7 +48,7 @@ static void mutex_delete_thread(struct mutex_info* p, const DrdThreadId tid);
 static Bool s_trace_mutex;
 static ULong s_mutex_lock_count;
 static ULong s_mutex_segment_creation_count;
-static UInt s_mutex_lock_threshold_ms = 1000 * 1000;
+static UInt s_mutex_lock_threshold_ms;
 
 
 /* Function definitions. */
@@ -89,15 +88,11 @@ static void mutex_cleanup(struct mutex_info* p)
    tl_assert(p);
 
    if (s_trace_mutex)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] mutex_destroy   %s 0x%lx rc %d owner %d\n",
+      DRD_(trace_msg)("[%d] mutex_destroy   %s 0x%lx rc %d owner %d",
                    DRD_(thread_get_running_tid)(),
-                   DRD_(mutex_get_typename)(p),
-                   p->a1,
+                      DRD_(mutex_get_typename)(p), p->a1,
                    p ? p->recursion_count : -1,
                    p ? p->owner : DRD_INVALID_THREADID);
-   }
 
    if (mutex_is_locked(p))
    {
@@ -114,7 +109,7 @@ static void mutex_cleanup(struct mutex_info* p)
    p->last_locked_segment = 0;
 }
 
-/** Let Valgrind report that there is no mutex object at address 'mutex'. */
+/** Report that address 'mutex' is not the address of a mutex object. */
 void DRD_(not_a_mutex)(const Addr mutex)
 {
    MutexErrInfo MEI = { DRD_(thread_get_running_tid)(),
@@ -123,6 +118,21 @@ void DRD_(not_a_mutex)(const Addr mutex)
                            MutexErr,
                            VG_(get_IP)(VG_(get_running_tid)()),
                            "Not a mutex",
+                           &MEI);
+}
+
+/**
+ * Report that address 'mutex' is not the address of a mutex object of the
+ * expected type.
+ */
+static void wrong_mutex_type(const Addr mutex)
+{
+   MutexErrInfo MEI = { DRD_(thread_get_running_tid)(),
+                        mutex, -1, DRD_INVALID_THREADID };
+   VG_(maybe_record_error)(VG_(get_running_tid)(),
+                           MutexErr,
+                           VG_(get_IP)(VG_(get_running_tid)()),
+                           "Mutex type mismatch",
                            &MEI);
 }
 
@@ -136,7 +146,13 @@ DRD_(mutex_get_or_allocate)(const Addr mutex, const MutexT mutex_type)
    p = &(DRD_(clientobj_get)(mutex, ClientMutex)->mutex);
    if (p)
    {
+      if (mutex_type == mutex_type_unknown || p->mutex_type == mutex_type)
       return p;
+      else
+      {
+	 wrong_mutex_type(mutex);
+	 return 0;
+      }
    }
 
    if (DRD_(clientobj_present)(mutex, mutex + 1))
@@ -163,13 +179,10 @@ DRD_(mutex_init)(const Addr mutex, const MutexT mutex_type)
    struct mutex_info* p;
 
    if (s_trace_mutex)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] mutex_init      %s 0x%lx\n",
+      DRD_(trace_msg)("[%d] mutex_init      %s 0x%lx",
                    DRD_(thread_get_running_tid)(),
                    DRD_(mutex_type_name)(mutex_type),
                    mutex);
-   }
 
    if (mutex_type == mutex_type_invalid_mutex)
    {
@@ -211,10 +224,11 @@ void DRD_(mutex_post_destroy)(const Addr mutex)
    DRD_(clientobj_remove)(mutex, ClientMutex);
 }
 
-/** Called before pthread_mutex_lock() is invoked. If a data structure for
- *  the client-side object was not yet created, do this now. Also check whether
- *  an attempt is made to lock recursively a synchronization object that must
- *  not be locked recursively.
+/**
+ * Called before pthread_mutex_lock() is invoked. If a data structure for the
+ * client-side object was not yet created, do this now. Also check whether an
+ * attempt is made to lock recursively a synchronization object that must not
+ * be locked recursively.
  */
 void DRD_(mutex_pre_lock)(const Addr mutex, MutexT mutex_type,
                           const Bool trylock)
@@ -222,20 +236,16 @@ void DRD_(mutex_pre_lock)(const Addr mutex, MutexT mutex_type,
    struct mutex_info* p;
 
    p = DRD_(mutex_get_or_allocate)(mutex, mutex_type);
-   if (mutex_type == mutex_type_unknown)
+   if (p && mutex_type == mutex_type_unknown)
       mutex_type = p->mutex_type;
 
    if (s_trace_mutex)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] %s %s 0x%lx rc %d owner %d\n",
+      DRD_(trace_msg)("[%d] %s %s 0x%lx rc %d owner %d",
                    DRD_(thread_get_running_tid)(),
                    trylock ? "pre_mutex_lock " : "mutex_trylock  ",
                    p ? DRD_(mutex_get_typename)(p) : "(?)",
-                   mutex,
-                   p ? p->recursion_count : -1,
+                      mutex, p ? p->recursion_count : -1,
                    p ? p->owner : DRD_INVALID_THREADID);
-   }
 
    if (p == 0)
    {
@@ -280,23 +290,18 @@ void DRD_(mutex_post_lock)(const Addr mutex, const Bool took_lock,
    p = DRD_(mutex_get)(mutex);
 
    if (s_trace_mutex)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] %s %s 0x%lx rc %d owner %d%s\n",
+      DRD_(trace_msg)("[%d] %s %s 0x%lx rc %d owner %d%s",
                    drd_tid,
                    post_cond_wait ? "cond_post_wait " : "post_mutex_lock",
                    p ? DRD_(mutex_get_typename)(p) : "(?)",
-                   mutex,
-                   p ? p->recursion_count : 0,
+                      mutex, p ? p->recursion_count : 0,
                    p ? p->owner : VG_INVALID_THREADID,
                    took_lock ? "" : " (locking failed)");
-   }
 
    if (! p || ! took_lock)
       return;
 
-   if (p->recursion_count == 0)
-   {
+   if (p->recursion_count == 0) {
       if (p->owner != drd_tid && p->owner != DRD_INVALID_THREADID)
       {
          tl_assert(p->last_locked_segment);
@@ -313,14 +318,16 @@ void DRD_(mutex_post_lock)(const Addr mutex, const Bool took_lock,
       p->acquiry_time_ms = VG_(read_millisecond_timer)();
       p->acquired_at     = VG_(record_ExeContext)(VG_(get_running_tid)(), 0);
       s_mutex_lock_count++;
-   }
-   else if (p->owner != drd_tid)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "The impossible happened: mutex 0x%lx is locked"
-                   " simultaneously by two threads (recursion count %d,"
-                   " owners %d and %d) !\n",
-                   p->a1, p->recursion_count, p->owner, drd_tid);
+   } else if (p->owner != drd_tid) {
+      const ThreadId vg_tid = VG_(get_running_tid)();
+      MutexErrInfo MEI = { DRD_(thread_get_running_tid)(),
+                           p->a1, p->recursion_count, p->owner };
+      VG_(maybe_record_error)(vg_tid,
+                              MutexErr,
+                              VG_(get_IP)(vg_tid),
+                              "The impossible happened: mutex is locked"
+                              " simultaneously by two threads",
+                              &MEI);
       p->owner = drd_tid;
    }
    p->recursion_count++;
@@ -347,14 +354,10 @@ void DRD_(mutex_unlock)(const Addr mutex, MutexT mutex_type)
    if (p && mutex_type == mutex_type_unknown)
       mutex_type = p->mutex_type;
 
-   if (s_trace_mutex)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] mutex_unlock    %s 0x%lx rc %d\n",
-                   drd_tid,
-                   p ? DRD_(mutex_get_typename)(p) : "(?)",
-                   mutex,
-                   p ? p->recursion_count : 0);
+   if (s_trace_mutex) {
+      DRD_(trace_msg)("[%d] mutex_unlock    %s 0x%lx rc %d",
+                      drd_tid, p ? DRD_(mutex_get_typename)(p) : "(?)",
+                      mutex, p ? p->recursion_count : 0);
    }
 
    if (p == 0 || mutex_type == mutex_type_invalid_mutex)
@@ -376,10 +379,11 @@ void DRD_(mutex_unlock)(const Addr mutex, MutexT mutex_type)
    }
 
    tl_assert(p);
-   if (p->mutex_type != mutex_type)
-   {
-      VG_(message)(Vg_UserMsg, "??? mutex 0x%lx: type changed from %d into %d\n",
-                   p->a1, p->mutex_type, mutex_type);
+   if (p->mutex_type != mutex_type) {
+      MutexErrInfo MEI = { DRD_(thread_get_running_tid)(),
+                           p->a1, p->recursion_count, p->owner };
+      VG_(maybe_record_error)(vg_tid, MutexErr, VG_(get_IP)(vg_tid),
+                              "Mutex type changed", &MEI);
    }
    tl_assert(p->mutex_type == mutex_type);
    tl_assert(p->owner != DRD_INVALID_THREADID);
@@ -464,11 +468,8 @@ const char* DRD_(mutex_type_name)(const MutexT mt)
       return "mutex";
    case mutex_type_spinlock:
       return "spinlock";
-   case mutex_type_order_annotation:
-      return "order annotation mutex";
-   default:
-      tl_assert(0);
    }
+   tl_assert(0);
    return "?";
 }
 

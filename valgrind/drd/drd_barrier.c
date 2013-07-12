@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -43,12 +42,11 @@ struct barrier_thread_info
 {
    UWord       tid;           // A DrdThreadId declared as UWord because
    // this member variable is the key of an OSet.
-   Word        iteration;     // iteration of last pthread_barrier_wait()
-   // call thread tid participated in.
-   Segment*    sg[2];         // Segments of the last two
-   // pthread_barrier() calls by thread tid.
-   ExeContext* wait_call_ctxt;// call stack for *_barrier_wait() call.
+   Segment*    sg;            // Segment of the last pthread_barrier() call
+                              // by thread tid.
    Segment*    post_wait_sg;  // Segment created after *_barrier_wait() finished
+   ExeContext* wait_call_ctxt;// call stack for *_barrier_wait() call.
+   Bool       thread_finished;// Whether thread 'tid' has finished.
 };
 
 
@@ -83,15 +81,13 @@ void DRD_(barrier_set_trace)(const Bool trace_barrier)
  */
 static
 void DRD_(barrier_thread_initialize)(struct barrier_thread_info* const p,
-                                     const DrdThreadId tid,
-                                     const Word iteration)
+                                     const DrdThreadId tid)
 {
    p->tid            = tid;
-   p->iteration      = iteration;
-   p->sg[0]          = 0;
-   p->sg[1]          = 0;
-   p->wait_call_ctxt = 0;
+   p->sg              = NULL;
    p->post_wait_sg   = 0;
+   p->wait_call_ctxt  = 0;
+   p->thread_finished = False;
 }
 
 /**
@@ -101,8 +97,7 @@ void DRD_(barrier_thread_initialize)(struct barrier_thread_info* const p,
 static void DRD_(barrier_thread_destroy)(struct barrier_thread_info* const p)
 {
    tl_assert(p);
-   DRD_(sg_put)(p->sg[0]);
-   DRD_(sg_put)(p->sg[1]);
+   DRD_(sg_put)(p->sg);
    DRD_(sg_put)(p->post_wait_sg);
 }
 
@@ -116,6 +111,8 @@ void DRD_(barrier_initialize)(struct barrier_info* const p,
                               const BarrierT barrier_type,
                               const Word count)
 {
+   int i;
+
    tl_assert(barrier != 0);
    tl_assert(barrier_type == pthread_barrier || barrier_type == gomp_barrier);
    tl_assert(p->a1 == barrier);
@@ -133,8 +130,10 @@ void DRD_(barrier_initialize)(struct barrier_info* const p,
    tl_assert(sizeof(((struct barrier_thread_info*)0)->tid) == sizeof(Word));
    tl_assert(sizeof(((struct barrier_thread_info*)0)->tid)
              >= sizeof(DrdThreadId));
-   p->oset = VG_(OSetGen_Create)(0, 0, VG_(malloc), "drd.barrier.bi.1",
+   for (i = 0; i < 2; i++) {
+      p->oset[i] = VG_(OSetGen_Create)(0, 0, VG_(malloc), "drd.barrier.bi.1",
                                  VG_(free));
+   }
 }
 
 /**
@@ -147,11 +146,15 @@ static void barrier_cleanup(struct barrier_info* p)
 {
    struct barrier_thread_info* q;
    Segment* latest_sg = 0;
+   OSet* oset;
+   int i;
 
    tl_assert(p);
 
-   if (p->pre_waiters_left != p->count)
-   {
+   DRD_(thread_get_latest_segment)(&latest_sg, DRD_(thread_get_running_tid)());
+   tl_assert(latest_sg);
+
+   if (p->pre_waiters_left != p->count) {
       BarrierErrInfo bei = { DRD_(thread_get_running_tid)(), p->a1, 0, 0 };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               BarrierErr,
@@ -159,23 +162,23 @@ static void barrier_cleanup(struct barrier_info* p)
                               "Destruction of barrier that is being waited"
                               " upon",
                               &bei);
-   }
-
-   DRD_(thread_get_latest_segment)(&latest_sg, DRD_(thread_get_running_tid)());
-   tl_assert(latest_sg);
-
-   VG_(OSetGen_ResetIter)(p->oset);
-   for ( ; (q = VG_(OSetGen_Next)(p->oset)) != 0; )
-   {
-      if (q->post_wait_sg
-          && ! DRD_(vc_lte)(&q->post_wait_sg->vc, &latest_sg->vc))
+   } else {
+      oset = p->oset[1 - (p->pre_iteration & 1)];
+      VG_(OSetGen_ResetIter)(oset);
+      for ( ; (q = VG_(OSetGen_Next)(oset)) != 0; ) {
+         if (q->post_wait_sg && !DRD_(vc_lte)(&q->post_wait_sg->vc,
+                                              &latest_sg->vc))
       {
          barrier_report_wait_delete_race(p, q);
       }
-
       DRD_(barrier_thread_destroy)(q);
    }
-   VG_(OSetGen_Destroy)(p->oset);
+   }
+
+   for (i = 0; i < 2; i++) {
+      VG_(OSetGen_Destroy)(p->oset[i]);
+      p->oset[i] = NULL;
+   }
 
    DRD_(sg_put)(latest_sg);
 }
@@ -204,8 +207,8 @@ DRD_(barrier_get_or_allocate)(const Addr barrier,
 }
 
 /**
- * Look up the address of the information associated with the client-side
- * barrier object.
+ * Look up the address of the struct barrier_info associated with the
+ * client-side barrier object.
  */
 static struct barrier_info* DRD_(barrier_get)(const Addr barrier)
 {
@@ -214,8 +217,9 @@ static struct barrier_info* DRD_(barrier_get)(const Addr barrier)
 }
 
 /**
- * Initialize a barrier with client address barrier, client size size, and
- * where count threads participate in each barrier.
+ * Initialize a barrier with given client address, barrier type and number of
+ * participants. The 'reinitialization' argument indicates whether a barrier
+ * object is being initialized or reinitialized.
  *
  * Called before pthread_barrier_init().
  */
@@ -250,29 +254,20 @@ void DRD_(barrier_init)(const Addr barrier,
                                  &bei);
       }
    }
+
    p = DRD_(barrier_get_or_allocate)(barrier, barrier_type, count);
 
-   if (s_trace_barrier)
-   {
+   if (s_trace_barrier) {
       if (reinitialization)
-      {
-         VG_(message)(Vg_UserMsg,
-                      "[%d] barrier_reinit    %s 0x%lx count %ld -> %ld\n",
+         DRD_(trace_msg)("[%d] barrier_reinit    %s 0x%lx count %ld -> %ld",
                       DRD_(thread_get_running_tid)(),
-                      barrier_get_typename(p),
-                      barrier,
-                      p->count,
-                      count);
-      }
+                         barrier_get_typename(p), barrier, p->count, count);
       else
-      {
-         VG_(message)(Vg_UserMsg,
-                      "[%d] barrier_init      %s 0x%lx\n",
+         DRD_(trace_msg)("[%d] barrier_init      %s 0x%lx",
                       DRD_(thread_get_running_tid)(),
                       barrier_get_typename(p),
                       barrier);
       }
-   }
 
    if (reinitialization && p->count != count)
    {
@@ -298,17 +293,16 @@ void DRD_(barrier_destroy)(const Addr barrier, const BarrierT barrier_type)
    p = DRD_(barrier_get)(barrier);
 
    if (s_trace_barrier)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] barrier_destroy   %s 0x%lx\n",
+      DRD_(trace_msg)("[%d] barrier_destroy   %s 0x%lx",
                    DRD_(thread_get_running_tid)(),
-                   barrier_get_typename(p),
-                   barrier);
-   }
+                      barrier_get_typename(p), barrier);
 
    if (p == 0)
    {
-      GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+      GenericErrInfo GEI = {
+	 .tid = DRD_(thread_get_running_tid)(),
+	 .addr = barrier,
+      };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               GenericErr,
                               VG_(get_IP)(VG_(get_running_tid)()),
@@ -337,43 +331,51 @@ void DRD_(barrier_pre_wait)(const DrdThreadId tid, const Addr barrier,
    struct barrier_info* p;
    struct barrier_thread_info* q;
    const UWord word_tid = tid;
+   OSet* oset;
 
    p = DRD_(barrier_get)(barrier);
-   if (p == 0 && barrier_type == gomp_barrier)
-   {
+   if (p == 0 && barrier_type == gomp_barrier) {
       /*
        * gomp_barrier_wait() call has been intercepted but gomp_barrier_init()
        * not. The only cause I know of that can trigger this is that libgomp.so
        * has been compiled with --enable-linux-futex.
        */
-      VG_(message)(Vg_UserMsg, "\n");
-      VG_(message)(Vg_UserMsg,
+      BarrierErrInfo bei = { DRD_(thread_get_running_tid)(), 0, 0, 0 };
+      VG_(maybe_record_error)(VG_(get_running_tid)(),
+                              BarrierErr,
+                              VG_(get_IP)(VG_(get_running_tid)()),
                    "Please verify whether gcc has been configured"
-                   " with option --disable-linux-futex.\n");
-      VG_(message)(Vg_UserMsg,
-                   "See also the section about OpenMP in the DRD manual.\n");
-      VG_(message)(Vg_UserMsg, "\n");
+                              " with option --disable-linux-futex. See also"
+                              " the section about OpenMP in the DRD manual.",
+                              &bei);
    }
    tl_assert(p);
 
    if (s_trace_barrier)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] barrier_pre_wait  %s 0x%lx iteration %ld\n",
+      DRD_(trace_msg)("[%d] barrier_pre_wait  %s 0x%lx iteration %ld",
                    DRD_(thread_get_running_tid)(),
-                   barrier_get_typename(p),
-                   barrier,
-                   p->pre_iteration);
-   }
+                      barrier_get_typename(p), barrier, p->pre_iteration);
 
+   /* Clean up nodes associated with finished threads. */
+   oset = p->oset[p->pre_iteration & 1];
+   tl_assert(oset);
+   VG_(OSetGen_ResetIter)(oset);
+   for ( ; (q = VG_(OSetGen_Next)(oset)) != 0; ) {
+      if (q->thread_finished) {
+         void* r = VG_(OSetGen_Remove)(oset, &q->tid);
+         tl_assert(r == q);
+         DRD_(barrier_thread_destroy)(q);
+         VG_(OSetGen_FreeNode)(oset, q);
+         VG_(OSetGen_ResetIterAt)(oset, &word_tid);
+      }
+   }
    /* Allocate the per-thread data structure if necessary. */
-   q = VG_(OSetGen_Lookup)(p->oset, &word_tid);
-   if (q == 0)
-   {
-      q = VG_(OSetGen_AllocNode)(p->oset, sizeof(*q));
-      DRD_(barrier_thread_initialize)(q, tid, p->pre_iteration);
-      VG_(OSetGen_Insert)(p->oset, q);
-      tl_assert(VG_(OSetGen_Lookup)(p->oset, &word_tid) == q);
+   q = VG_(OSetGen_Lookup)(oset, &word_tid);
+   if (q == NULL) {
+      q = VG_(OSetGen_AllocNode)(oset, sizeof(*q));
+      DRD_(barrier_thread_initialize)(q, tid);
+      VG_(OSetGen_Insert)(oset, q);
+      tl_assert(VG_(OSetGen_Lookup)(oset, &word_tid) == q);
    }
 
    /* Record *_barrier_wait() call context. */
@@ -383,7 +385,7 @@ void DRD_(barrier_pre_wait)(const DrdThreadId tid, const Addr barrier,
     * Store a pointer to the latest segment of the current thread in the
     * per-thread data structure.
     */
-   DRD_(thread_get_latest_segment)(&q->sg[p->pre_iteration], tid);
+   DRD_(thread_get_latest_segment)(&q->sg, tid);
 
    /*
     * If the same number of threads as the barrier count indicates have
@@ -392,7 +394,7 @@ void DRD_(barrier_pre_wait)(const DrdThreadId tid, const Addr barrier,
     */
    if (--p->pre_waiters_left <= 0)
    {
-      p->pre_iteration    = 1 - p->pre_iteration;
+      p->pre_iteration++;
       p->pre_waiters_left = p->count;
    }
 }
@@ -406,19 +408,15 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
    const UWord word_tid = tid;
    struct barrier_thread_info* q;
    struct barrier_thread_info* r;
+   OSet* oset;
 
    p = DRD_(barrier_get)(barrier);
 
    if (s_trace_barrier)
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] barrier_post_wait %s 0x%lx iteration %ld%s\n",
-                   tid,
-                   p ? barrier_get_typename(p) : "(?)",
-                   barrier,
-                   p ? p->post_iteration : -1,
+      DRD_(trace_msg)("[%d] barrier_post_wait %s 0x%lx iteration %ld%s",
+                      tid, p ? barrier_get_typename(p) : "(?)",
+                      barrier, p ? p->post_iteration : -1,
                    serializing ? " (serializing)" : "");
-   }
 
    /*
     * If p == 0, this means that the barrier has been destroyed after
@@ -433,9 +431,17 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
    if (! waited)
       return;
 
-   q = VG_(OSetGen_Lookup)(p->oset, &word_tid);
-   if (q == 0)
-   {
+   oset = p->oset[p->post_iteration & 1];
+   q = VG_(OSetGen_Lookup)(oset, &word_tid);
+   if (p->pre_iteration - p->post_iteration > 1) {
+      BarrierErrInfo bei = { DRD_(thread_get_running_tid)(), p->a1, 0, 0 };
+      VG_(maybe_record_error)(VG_(get_running_tid)(),
+                              BarrierErr,
+                              VG_(get_IP)(VG_(get_running_tid)()),
+                              "Number of concurrent pthread_barrier_wait()"
+                              " calls exceeds the barrier count",
+                              &bei);
+   } else if (q == NULL) {
       BarrierErrInfo bei = { DRD_(thread_get_running_tid)(), p->a1, 0, 0 };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               BarrierErr,
@@ -445,11 +451,13 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
                               " barrier_destroy() and finished after"
                               " barrier_destroy()",
                               &bei);
-
-      q = VG_(OSetGen_AllocNode)(p->oset, sizeof(*q));
-      DRD_(barrier_thread_initialize)(q, tid, p->pre_iteration);
-      VG_(OSetGen_Insert)(p->oset, q);
-      tl_assert(VG_(OSetGen_Lookup)(p->oset, &word_tid) == q);
+   }
+   if (q == NULL) {
+      q = VG_(OSetGen_AllocNode)(oset, sizeof(*q));
+      DRD_(barrier_thread_initialize)(q, tid);
+      VG_(OSetGen_Insert)(oset, q);
+      tl_assert(VG_(OSetGen_Lookup)(oset, &word_tid) == q);
+      DRD_(thread_get_latest_segment)(&q->sg, tid);
    }
 
    /* Create a new segment and store a pointer to that segment. */
@@ -464,15 +472,14 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
    {
       VectorClock old_vc;
 
-      DRD_(vc_copy)(&old_vc, &DRD_(g_threadinfo)[tid].last->vc);
-      VG_(OSetGen_ResetIter)(p->oset);
-      for ( ; (r = VG_(OSetGen_Next)(p->oset)) != 0; )
+      DRD_(vc_copy)(&old_vc, DRD_(thread_get_vc)(tid));
+      VG_(OSetGen_ResetIter)(oset);
+      for ( ; (r = VG_(OSetGen_Next)(oset)) != 0; )
       {
          if (r != q)
          {
-            tl_assert(r->sg[p->post_iteration]);
-            DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc,
-                             &r->sg[p->post_iteration]->vc);
+            tl_assert(r->sg);
+            DRD_(vc_combine)(DRD_(thread_get_vc)(tid), &r->sg->vc);
          }
       }
       DRD_(thread_update_conflict_set)(tid, &old_vc);
@@ -486,7 +493,7 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
     */
    if (--p->post_waiters_left <= 0)
    {
-      p->post_iteration    = 1 - p->post_iteration;
+      p->post_iteration++;
       p->post_waiters_left = p->count;
    }
 }
@@ -497,17 +504,12 @@ static void barrier_delete_thread(struct barrier_info* const p,
 {
    struct barrier_thread_info* q;
    const UWord word_tid = tid;
+   int i;
 
-   q = VG_(OSetGen_Remove)(p->oset, &word_tid);
-
-   /*
-    * q is only non-zero if the barrier object has been used by thread tid
-    * after the barrier_init() call and before the thread finished.
-    */
+   for (i = 0; i < 2; i++) {
+      q = VG_(OSetGen_Lookup)(p->oset[i], &word_tid);
    if (q)
-   {
-      DRD_(barrier_thread_destroy)(q);
-      VG_(OSetGen_FreeNode)(p->oset, q);
+         q->thread_finished = True;
    }
 }
 
