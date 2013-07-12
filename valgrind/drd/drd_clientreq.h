@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -45,8 +44,14 @@
  * source files.
  */
 enum {
+   /* Declare the address and size of a variable with value
+    * PTHREAD_COND_INITIALIZER.
+    */
+   VG_USERREQ__SET_PTHREAD_COND_INITIALIZER = VG_USERREQ_TOOL_BASE('D', 'r'),
+   /* args: address, size. */
+
    /* To ask the drd tool to start a new segment in the specified thread. */
-   VG_USERREQ__DRD_START_NEW_SEGMENT = VG_USERREQ_TOOL_BASE('D', 'r'),
+   VG_USERREQ__DRD_START_NEW_SEGMENT,
    /* args: POSIX thread ID. */
 
    /* Tell drd the pthread_t of the running thread. */
@@ -229,7 +234,6 @@ typedef enum {
    mutex_type_errorcheck_mutex = 2,
    mutex_type_default_mutex    = 3,
    mutex_type_spinlock         = 4,
-   mutex_type_order_annotation = 5,
 } MutexT;
 
 /**
@@ -252,6 +256,8 @@ typedef enum {
    gomp_barrier    = 2,
 } BarrierT;
 
+
+extern Bool DRD_(g_free_is_write);
 
 void DRD_(clientreq_init)(void);
 

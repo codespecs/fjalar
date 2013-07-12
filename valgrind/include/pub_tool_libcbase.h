@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -63,6 +63,8 @@ extern Char VG_(tolower) ( Char c );
 // If you really want that behaviour, you can use "VG_(strtoll10)(str, NULL)".
 extern Long  VG_(strtoll10) ( Char* str, Char** endptr );
 extern Long  VG_(strtoll16) ( Char* str, Char** endptr );
+extern ULong  VG_(strtoull10) ( Char* str, Char** endptr );
+extern ULong  VG_(strtoull16) ( Char* str, Char** endptr );
 
 // Convert a string to a double.  After leading whitespace is ignored, a
 // '+' or '-' is allowed, and then it accepts a non-empty sequence of
@@ -97,6 +99,16 @@ extern Char* VG_(strrchr)        ( const Char* s, Char c );
 extern SizeT VG_(strspn)         ( const Char* s, const Char* accpt );
 extern SizeT VG_(strcspn)        ( const Char* s, const char* reject );
 
+/* strtok* functions and some parsing utilities. */
+extern Char* VG_(strtok_r)       (Char* s, const Char* delim, Char** saveptr);
+extern Char* VG_(strtok)         (Char* s, const Char* delim);
+
+/* Parse a 32- or 64-bit hex number, including leading 0x, from string
+   starting at *ppc, putting result in *result, and return True.  Or
+   fail, in which case *ppc and *result are undefined, and return
+   False. */
+extern Bool VG_(parse_Addr) ( UChar** ppc, Addr* result );
+
 /* Like strncpy(), but if 'src' is longer than 'ndest' inserts a '\0' as the
    last character. */
 extern void  VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest );
@@ -109,6 +121,36 @@ extern void* VG_(memcpy) ( void *d, const void *s, SizeT sz );
 extern void* VG_(memmove)( void *d, const void *s, SizeT sz );
 extern void* VG_(memset) ( void *s, Int c, SizeT sz );
 extern Int   VG_(memcmp) ( const void* s1, const void* s2, SizeT n );
+
+/* Zero out up to 8 words quickly in-line.  Do not use this for blocks
+   of size which are unknown at compile time, since the whole point is
+   for it to be inlined, and then for gcc to remove all code except
+   for the relevant 'sz' case. */
+inline __attribute__((always_inline))
+static void VG_(bzero_inline) ( void* s, SizeT sz )
+{
+   if (LIKELY(0 == (((Addr)sz) & (Addr)(sizeof(UWord)-1)))
+       && LIKELY(0 == (((Addr)s) & (Addr)(sizeof(UWord)-1)))) {
+      UWord* p = (UWord*)s;
+      switch (sz / (SizeT)sizeof(UWord)) {
+          case 8: p[0] = p[1] = p[2] = p[3]
+                  = p[4] = p[5] = p[6] = p[7] = 0UL; return;
+          case 7: p[0] = p[1] = p[2] = p[3]
+                  = p[4] = p[5] = p[6] = 0UL; return;
+          case 6: p[0] = p[1] = p[2] = p[3]
+                  = p[4] = p[5] = 0UL; return;
+          case 5: p[0] = p[1] = p[2] = p[3] = p[4] = 0UL; return;
+          case 4: p[0] = p[1] = p[2] = p[3] = 0UL; return;
+          case 3: p[0] = p[1] = p[2] = 0UL; return;
+          case 2: p[0] = p[1] = 0UL; return;
+          case 1: p[0] = 0UL; return;
+          case 0: return;
+          default: break;
+      }
+   }
+   VG_(memset)(s, 0, sz);
+}
+
 
 /* ---------------------------------------------------------------------
    Address computation helpers
@@ -139,9 +181,12 @@ extern Int   VG_(memcmp) ( const void* s1, const void* s2, SizeT n );
 extern void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
                         Int (*compar)(void*, void*) );
 
-/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power
-   of two.  Nb: VG_(log2)(1) == 0.  */
+/* Returns the base-2 logarithm of a 32 bit unsigned number.  Returns
+ -1 if it is not a power of two.  Nb: VG_(log2)(1) == 0. */
 extern Int VG_(log2) ( UInt x );
+
+/* Ditto for 64 bit unsigned numbers. */
+extern Int VG_(log2_64)( ULong x );
 
 // A pseudo-random number generator returning a random UInt.  If pSeed
 // is NULL, it uses its own seed, which starts at zero.  If pSeed is

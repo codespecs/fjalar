@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -76,6 +75,9 @@ static Bool     s_trace_fork_join = False;
 static Bool     s_segment_merging = True;
 static Bool     s_new_segments_since_last_merge;
 static int      s_segment_merge_interval = 10;
+static unsigned s_join_list_vol = 10;
+static unsigned s_deletion_head;
+static unsigned s_deletion_tail;
 
 
 /* Function definitions. */
@@ -133,6 +135,15 @@ void DRD_(thread_set_segment_merge_interval)(const int i)
    s_segment_merge_interval = i;
 }
 
+void DRD_(thread_set_join_list_vol)(const int jlv)
+{
+   s_join_list_vol = jlv;
+}
+
+void DRD_(thread_init)(void)
+{
+}
+
 /**
  * Convert Valgrind's ThreadId into a DrdThreadId.
  *
@@ -167,12 +178,11 @@ static DrdThreadId DRD_(VgThreadIdToNewDrdThreadId)(const ThreadId tid)
 
    for (i = 1; i < DRD_N_THREADS; i++)
    {
-      if (DRD_(g_threadinfo)[i].vg_thread_exists == False
-          && DRD_(g_threadinfo)[i].posix_thread_exists == False
-          && DRD_(g_threadinfo)[i].detached_posix_thread == False)
+      if (!DRD_(g_threadinfo)[i].valid)
       {
          tl_assert(! DRD_(IsValidDrdThreadId)(i));
 
+         DRD_(g_threadinfo)[i].valid         = True;
          DRD_(g_threadinfo)[i].vg_thread_exists = True;
          DRD_(g_threadinfo)[i].vg_threadid   = tid;
          DRD_(g_threadinfo)[i].pt_threadid   = INVALID_POSIX_THREADID;
@@ -181,12 +191,14 @@ static DrdThreadId DRD_(VgThreadIdToNewDrdThreadId)(const ThreadId tid)
          DRD_(g_threadinfo)[i].stack_startup = 0;
          DRD_(g_threadinfo)[i].stack_max     = 0;
          DRD_(thread_set_name)(i, "");
+         DRD_(g_threadinfo)[i].on_alt_stack        = False;
          DRD_(g_threadinfo)[i].is_recording_loads  = True;
          DRD_(g_threadinfo)[i].is_recording_stores = True;
          DRD_(g_threadinfo)[i].pthread_create_nesting_level = 0;
          DRD_(g_threadinfo)[i].synchr_nesting = 0;
-         tl_assert(DRD_(g_threadinfo)[i].first == 0);
-         tl_assert(DRD_(g_threadinfo)[i].last == 0);
+         DRD_(g_threadinfo)[i].deletion_seq = s_deletion_tail - 1;
+         tl_assert(DRD_(g_threadinfo)[i].sg_first == NULL);
+         tl_assert(DRD_(g_threadinfo)[i].sg_last == NULL);
 
          tl_assert(DRD_(IsValidDrdThreadId)(i));
 
@@ -282,8 +294,8 @@ DrdThreadId DRD_(thread_pre_create)(const DrdThreadId creator,
    tl_assert(0 <= (int)created && created < DRD_N_THREADS
              && created != DRD_INVALID_THREADID);
 
-   tl_assert(DRD_(g_threadinfo)[created].first == 0);
-   tl_assert(DRD_(g_threadinfo)[created].last == 0);
+   tl_assert(DRD_(g_threadinfo)[created].sg_first == NULL);
+   tl_assert(DRD_(g_threadinfo)[created].sg_last == NULL);
    /* Create an initial segment for the newly created thread. */
    thread_append_segment(created, DRD_(sg_new)(creator, created));
 
@@ -322,6 +334,32 @@ DrdThreadId DRD_(thread_post_create)(const ThreadId vg_created)
    return created;
 }
 
+static void DRD_(thread_delayed_delete)(const DrdThreadId tid)
+{
+   int j;
+
+   DRD_(g_threadinfo)[tid].vg_thread_exists = False;
+   DRD_(g_threadinfo)[tid].posix_thread_exists = False;
+   DRD_(g_threadinfo)[tid].deletion_seq = s_deletion_head++;
+#if 0
+   VG_(message)(Vg_DebugMsg, "Adding thread %d to the deletion list\n", tid);
+#endif
+   if (s_deletion_head - s_deletion_tail >= s_join_list_vol) {
+      for (j = 0; j < DRD_N_THREADS; ++j) {
+         if (DRD_(IsValidDrdThreadId)(j)
+             && DRD_(g_threadinfo)[j].deletion_seq == s_deletion_tail)
+         {
+            s_deletion_tail++;
+#if 0
+            VG_(message)(Vg_DebugMsg, "Delayed delete of thread %d\n", j);
+#endif
+            DRD_(thread_delete)(j, False);
+            break;
+         }
+      }
+   }
+}
+
 /**
  * Process VG_USERREQ__POST_THREAD_JOIN. This client request is invoked just
  * after thread drd_joiner joined thread drd_joinee.
@@ -355,7 +393,7 @@ void DRD_(thread_post_join)(DrdThreadId drd_joiner, DrdThreadId drd_joinee)
                        ", new vc: %s", vc);
          VG_(free)(vc);
       }
-      VG_(message)(Vg_DebugMsg, "%s\n", msg);
+      DRD_(trace_msg)("%pS", msg);
       VG_(free)(msg);
    }
 
@@ -366,7 +404,7 @@ void DRD_(thread_post_join)(DrdThreadId drd_joiner, DrdThreadId drd_joinee)
                                DRD_(thread_get_stack_max)(drd_joinee));
    }
    DRD_(clientobj_delete_thread)(drd_joinee);
-   DRD_(thread_delete)(drd_joinee);
+   DRD_(thread_delayed_delete)(drd_joinee);
 }
 
 /**
@@ -420,11 +458,35 @@ SizeT DRD_(thread_get_stack_size)(const DrdThreadId tid)
    return DRD_(g_threadinfo)[tid].stack_size;
 }
 
+Bool DRD_(thread_get_on_alt_stack)(const DrdThreadId tid)
+{
+   tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
+             && tid != DRD_INVALID_THREADID);
+   return DRD_(g_threadinfo)[tid].on_alt_stack;
+}
+
+void DRD_(thread_set_on_alt_stack)(const DrdThreadId tid,
+                                   const Bool on_alt_stack)
+{
+   tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
+             && tid != DRD_INVALID_THREADID);
+   tl_assert(on_alt_stack == !!on_alt_stack);
+   DRD_(g_threadinfo)[tid].on_alt_stack = on_alt_stack;
+}
+
+Int DRD_(thread_get_threads_on_alt_stack)(void)
+{
+   int i, n = 0;
+
+   for (i = 1; i < DRD_N_THREADS; i++)
+      n += DRD_(g_threadinfo)[i].on_alt_stack;
+   return n;
+}
+
 /**
- * Clean up thread-specific data structures. Call this just after 
- * pthread_join().
+ * Clean up thread-specific data structures.
  */
-void DRD_(thread_delete)(const DrdThreadId tid)
+void DRD_(thread_delete)(const DrdThreadId tid, const Bool detached)
 {
    Segment* sg;
    Segment* sg_prev;
@@ -432,20 +494,23 @@ void DRD_(thread_delete)(const DrdThreadId tid)
    tl_assert(DRD_(IsValidDrdThreadId)(tid));
 
    tl_assert(DRD_(g_threadinfo)[tid].synchr_nesting >= 0);
-   for (sg = DRD_(g_threadinfo)[tid].last; sg; sg = sg_prev)
-   {
-      sg_prev = sg->prev;
-      sg->prev = 0;
-      sg->next = 0;
+   for (sg = DRD_(g_threadinfo)[tid].sg_last; sg; sg = sg_prev) {
+      sg_prev = sg->thr_prev;
+      sg->thr_next = NULL;
+      sg->thr_prev = NULL;
       DRD_(sg_put)(sg);
    }
+   DRD_(g_threadinfo)[tid].valid = False;
    DRD_(g_threadinfo)[tid].vg_thread_exists = False;
    DRD_(g_threadinfo)[tid].posix_thread_exists = False;
-   tl_assert(DRD_(g_threadinfo)[tid].detached_posix_thread == False);
-   DRD_(g_threadinfo)[tid].first = 0;
-   DRD_(g_threadinfo)[tid].last = 0;
+   if (detached)
+      DRD_(g_threadinfo)[tid].detached_posix_thread = False;
+   else
+      tl_assert(!DRD_(g_threadinfo)[tid].detached_posix_thread);
+   DRD_(g_threadinfo)[tid].sg_first = NULL;
+   DRD_(g_threadinfo)[tid].sg_last = NULL;
 
-   tl_assert(! DRD_(IsValidDrdThreadId)(tid));
+   tl_assert(!DRD_(IsValidDrdThreadId)(tid));
 }
 
 /**
@@ -478,6 +543,21 @@ void DRD_(thread_finished)(const DrdThreadId tid)
    }
 }
 
+/** Called just after fork() in the child process. */
+void DRD_(drd_thread_atfork_child)(const DrdThreadId tid)
+{
+   unsigned i;
+
+   for (i = 1; i < DRD_N_THREADS; i++)
+   {
+      if (i == tid)
+	 continue;
+      if (DRD_(IsValidDrdThreadId(i)))
+	 DRD_(thread_delete)(i, True);
+      tl_assert(!DRD_(IsValidDrdThreadId(i)));
+   }
+}
+
 /** Called just before pthread_cancel(). */
 void DRD_(thread_pre_cancel)(const DrdThreadId tid)
 {
@@ -485,7 +565,9 @@ void DRD_(thread_pre_cancel)(const DrdThreadId tid)
              && tid != DRD_INVALID_THREADID);
    tl_assert(DRD_(g_threadinfo)[tid].pt_threadid != INVALID_POSIX_THREADID);
 
-   DRD_(g_threadinfo)[tid].synchr_nesting = 0;
+   if (DRD_(thread_get_trace_fork_join)())
+      DRD_(trace_msg)("[%d] drd_thread_pre_cancel %d",
+                      DRD_(g_drd_running_tid), tid);
 }
 
 /**
@@ -515,6 +597,12 @@ Bool DRD_(thread_get_joinable)(const DrdThreadId tid)
 }
 
 /** Store the thread mode: joinable or detached. */
+#if defined(VGP_mips32_linux)
+ /* There is a cse related issue in gcc for MIPS. Optimization level
+    has to be lowered, so cse related optimizations are not
+    included.*/
+ __attribute__((optimize("O1")))
+#endif
 void DRD_(thread_set_joinable)(const DrdThreadId tid, const Bool joinable)
 {
    tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
@@ -663,13 +751,14 @@ void thread_append_segment(const DrdThreadId tid, Segment* const sg)
    tl_assert(DRD_(sane_ThreadInfo)(&DRD_(g_threadinfo)[tid]));
 #endif
 
-   sg->prev = DRD_(g_threadinfo)[tid].last;
-   sg->next = 0;
-   if (DRD_(g_threadinfo)[tid].last)
-      DRD_(g_threadinfo)[tid].last->next = sg;
-   DRD_(g_threadinfo)[tid].last = sg;
-   if (DRD_(g_threadinfo)[tid].first == 0)
-      DRD_(g_threadinfo)[tid].first = sg;
+   // add at tail
+   sg->thr_prev = DRD_(g_threadinfo)[tid].sg_last;
+   sg->thr_next = NULL;
+   if (DRD_(g_threadinfo)[tid].sg_last)
+      DRD_(g_threadinfo)[tid].sg_last->thr_next = sg;
+   DRD_(g_threadinfo)[tid].sg_last = sg;
+   if (DRD_(g_threadinfo)[tid].sg_first == NULL)
+      DRD_(g_threadinfo)[tid].sg_first = sg;
 
 #ifdef ENABLE_DRD_CONSISTENCY_CHECKS
    tl_assert(DRD_(sane_ThreadInfo)(&DRD_(g_threadinfo)[tid]));
@@ -690,14 +779,14 @@ void thread_discard_segment(const DrdThreadId tid, Segment* const sg)
    tl_assert(DRD_(sane_ThreadInfo)(&DRD_(g_threadinfo)[tid]));
 #endif
 
-   if (sg->prev)
-      sg->prev->next = sg->next;
-   if (sg->next)
-      sg->next->prev = sg->prev;
-   if (sg == DRD_(g_threadinfo)[tid].first)
-      DRD_(g_threadinfo)[tid].first = sg->next;
-   if (sg == DRD_(g_threadinfo)[tid].last)
-      DRD_(g_threadinfo)[tid].last = sg->prev;
+   if (sg->thr_prev)
+      sg->thr_prev->thr_next = sg->thr_next;
+   if (sg->thr_next)
+      sg->thr_next->thr_prev = sg->thr_prev;
+   if (sg == DRD_(g_threadinfo)[tid].sg_first)
+      DRD_(g_threadinfo)[tid].sg_first = sg->thr_next;
+   if (sg == DRD_(g_threadinfo)[tid].sg_last)
+      DRD_(g_threadinfo)[tid].sg_last = sg->thr_prev;
    DRD_(sg_put)(sg);
 
 #ifdef ENABLE_DRD_CONSISTENCY_CHECKS
@@ -711,10 +800,13 @@ void thread_discard_segment(const DrdThreadId tid, Segment* const sg)
  */
 VectorClock* DRD_(thread_get_vc)(const DrdThreadId tid)
 {
+   Segment* latest_sg;
+
    tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
              && tid != DRD_INVALID_THREADID);
-   tl_assert(DRD_(g_threadinfo)[tid].last);
-   return &DRD_(g_threadinfo)[tid].last->vc;
+   latest_sg = DRD_(g_threadinfo)[tid].sg_last;
+   tl_assert(latest_sg);
+   return &latest_sg->vc;
 }
 
 /**
@@ -722,13 +814,16 @@ VectorClock* DRD_(thread_get_vc)(const DrdThreadId tid)
  */
 void DRD_(thread_get_latest_segment)(Segment** sg, const DrdThreadId tid)
 {
+   Segment* latest_sg;
+
    tl_assert(sg);
    tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
              && tid != DRD_INVALID_THREADID);
-   tl_assert(DRD_(g_threadinfo)[tid].last);
+   latest_sg = DRD_(g_threadinfo)[tid].sg_last;
+   tl_assert(latest_sg);
 
    DRD_(sg_put)(*sg);
-   *sg = DRD_(sg_get)(DRD_(g_threadinfo)[tid].last);
+   *sg = DRD_(sg_get)(latest_sg);
 }
 
 /**
@@ -746,9 +841,8 @@ static void DRD_(thread_compute_minimum_vc)(VectorClock* vc)
    first = True;
    for (i = 0; i < DRD_N_THREADS; i++)
    {
-      latest_sg = DRD_(g_threadinfo)[i].last;
-      if (latest_sg)
-      {
+      latest_sg = DRD_(g_threadinfo)[i].sg_last;
+      if (latest_sg) {
          if (first)
             DRD_(vc_assign)(vc, &latest_sg->vc);
          else
@@ -772,9 +866,8 @@ static void DRD_(thread_compute_maximum_vc)(VectorClock* vc)
    first = True;
    for (i = 0; i < DRD_N_THREADS; i++)
    {
-      latest_sg = DRD_(g_threadinfo)[i].last;
-      if (latest_sg)
-      {
+      latest_sg = DRD_(g_threadinfo)[i].sg_last;
+      if (latest_sg) {
          if (first)
             DRD_(vc_assign)(vc, &latest_sg->vc);
          else
@@ -815,12 +908,13 @@ static void thread_discard_ordered_segments(void)
       DRD_(vc_cleanup)(&thread_vc_max);
    }
 
-   for (i = 0; i < DRD_N_THREADS; i++)
-   {
+   for (i = 0; i < DRD_N_THREADS; i++) {
       Segment* sg;
       Segment* sg_next;
-      for (sg = DRD_(g_threadinfo)[i].first;
-           sg && (sg_next = sg->next) && DRD_(vc_lte)(&sg->vc, &thread_vc_min);
+
+      for (sg = DRD_(g_threadinfo)[i].sg_first;
+           sg && (sg_next = sg->thr_next)
+              && DRD_(vc_lte)(&sg->vc, &thread_vc_min);
            sg = sg_next)
       {
          thread_discard_segment(i, sg);
@@ -864,29 +958,25 @@ static Bool thread_consistent_segment_ordering(const DrdThreadId tid,
 {
    unsigned i;
 
-   tl_assert(sg1->next);
-   tl_assert(sg2->next);
-   tl_assert(sg1->next == sg2);
+   tl_assert(sg1->thr_next);
+   tl_assert(sg2->thr_next);
+   tl_assert(sg1->thr_next == sg2);
    tl_assert(DRD_(vc_lte)(&sg1->vc, &sg2->vc));
 
    for (i = 0; i < DRD_N_THREADS; i++)
    {
       Segment* sg;
 
-      for (sg = DRD_(g_threadinfo)[i].first; sg; sg = sg->next)
-      {
-         if (! sg->next || DRD_(sg_get_refcnt)(sg) > 1)
-         {
+      for (sg = DRD_(g_threadinfo)[i].sg_first; sg; sg = sg->thr_next) {
+         if (!sg->thr_next || DRD_(sg_get_refcnt)(sg) > 1) {
             if (DRD_(vc_lte)(&sg2->vc, &sg->vc))
                break;
             if (DRD_(vc_lte)(&sg1->vc, &sg->vc))
                return False;
          }
       }
-      for (sg = DRD_(g_threadinfo)[i].last; sg; sg = sg->prev)
-      {
-         if (! sg->next || DRD_(sg_get_refcnt)(sg) > 1)
-         {
+      for (sg = DRD_(g_threadinfo)[i].sg_last; sg; sg = sg->thr_prev) {
+         if (!sg->thr_next || DRD_(sg_get_refcnt)(sg) > 1) {
             if (DRD_(vc_lte)(&sg->vc, &sg1->vc))
                break;
             if (DRD_(vc_lte)(&sg->vc, &sg2->vc))
@@ -930,17 +1020,17 @@ static void thread_merge_segments(void)
       tl_assert(DRD_(sane_ThreadInfo)(&DRD_(g_threadinfo)[i]));
 #endif
 
-      for (sg = DRD_(g_threadinfo)[i].first; sg; sg = sg->next)
-      {
-         if (DRD_(sg_get_refcnt)(sg) == 1
-             && sg->next
-             && DRD_(sg_get_refcnt)(sg->next) == 1
-             && sg->next->next
-             && thread_consistent_segment_ordering(i, sg, sg->next))
-         {
-            /* Merge sg and sg->next into sg. */
-            DRD_(sg_merge)(sg, sg->next);
-            thread_discard_segment(i, sg->next);
+      for (sg = DRD_(g_threadinfo)[i].sg_first; sg; sg = sg->thr_next) {
+         if (DRD_(sg_get_refcnt)(sg) == 1 && sg->thr_next) {
+            Segment* const sg_next = sg->thr_next;
+            if (DRD_(sg_get_refcnt)(sg_next) == 1
+                && sg_next->thr_next
+                && thread_consistent_segment_ordering(i, sg, sg_next))
+            {
+               /* Merge sg and sg_next into sg. */
+               DRD_(sg_merge)(sg, sg_next);
+               thread_discard_segment(i, sg_next);
+            }
          }
       }
 
@@ -963,7 +1053,7 @@ void DRD_(thread_new_segment)(const DrdThreadId tid)
              && tid != DRD_INVALID_THREADID);
    tl_assert(thread_conflict_set_up_to_date(DRD_(g_drd_running_tid)));
 
-   last_sg = DRD_(g_threadinfo)[tid].last;
+   last_sg = DRD_(g_threadinfo)[tid].sg_last;
    new_sg = DRD_(sg_new)(tid, tid);
    thread_append_segment(tid, new_sg);
    if (tid == DRD_(g_drd_running_tid) && last_sg)
@@ -990,42 +1080,41 @@ void DRD_(thread_combine_vc_join)(DrdThreadId joiner, DrdThreadId joinee)
              && joiner != DRD_INVALID_THREADID);
    tl_assert(0 <= (int)joinee && joinee < DRD_N_THREADS
              && joinee != DRD_INVALID_THREADID);
-   tl_assert(DRD_(g_threadinfo)[joiner].last);
-   tl_assert(DRD_(g_threadinfo)[joinee].last);
+   tl_assert(DRD_(g_threadinfo)[joiner].sg_first);
+   tl_assert(DRD_(g_threadinfo)[joiner].sg_last);
+   tl_assert(DRD_(g_threadinfo)[joinee].sg_first);
+   tl_assert(DRD_(g_threadinfo)[joinee].sg_last);
 
    if (DRD_(sg_get_trace)())
    {
       char *str1, *str2;
-      str1 = DRD_(vc_aprint)(&DRD_(g_threadinfo)[joiner].last->vc);
-      str2 = DRD_(vc_aprint)(&DRD_(g_threadinfo)[joinee].last->vc);
+      str1 = DRD_(vc_aprint)(DRD_(thread_get_vc)(joiner));
+      str2 = DRD_(vc_aprint)(DRD_(thread_get_vc)(joinee));
       VG_(message)(Vg_DebugMsg, "Before join: joiner %s, joinee %s\n",
                    str1, str2);
       VG_(free)(str1);
       VG_(free)(str2);
    }
-   if (joiner == DRD_(g_drd_running_tid))
-   {
+   if (joiner == DRD_(g_drd_running_tid)) {
       VectorClock old_vc;
 
-      DRD_(vc_copy)(&old_vc, &DRD_(g_threadinfo)[joiner].last->vc);
-      DRD_(vc_combine)(&DRD_(g_threadinfo)[joiner].last->vc,
-                       &DRD_(g_threadinfo)[joinee].last->vc);
+      DRD_(vc_copy)(&old_vc, DRD_(thread_get_vc)(joiner));
+      DRD_(vc_combine)(DRD_(thread_get_vc)(joiner),
+                       DRD_(thread_get_vc)(joinee));
       DRD_(thread_update_conflict_set)(joiner, &old_vc);
       s_update_conflict_set_join_count++;
       DRD_(vc_cleanup)(&old_vc);
-   }
-   else
-   {
-      DRD_(vc_combine)(&DRD_(g_threadinfo)[joiner].last->vc,
-                       &DRD_(g_threadinfo)[joinee].last->vc);
+   } else {
+      DRD_(vc_combine)(DRD_(thread_get_vc)(joiner),
+                       DRD_(thread_get_vc)(joinee));
    }
 
    thread_discard_ordered_segments();
 
-   if (DRD_(sg_get_trace)())
-   {
+   if (DRD_(sg_get_trace)()) {
       char* str;
-      str = DRD_(vc_aprint)(&DRD_(g_threadinfo)[joiner].last->vc);
+
+      str = DRD_(vc_aprint)(DRD_(thread_get_vc)(joiner));
       VG_(message)(Vg_DebugMsg, "After join: %s\n", str);
       VG_(free)(str);
    }
@@ -1041,21 +1130,20 @@ static void thread_combine_vc_sync(DrdThreadId tid, const Segment* sg)
 
    tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
              && tid != DRD_INVALID_THREADID);
-   tl_assert(DRD_(g_threadinfo)[tid].last);
+   tl_assert(DRD_(g_threadinfo)[tid].sg_first);
+   tl_assert(DRD_(g_threadinfo)[tid].sg_last);
    tl_assert(sg);
    tl_assert(vc);
 
-   if (tid != sg->tid)
-   {
+   if (tid != sg->tid) {
       VectorClock old_vc;
 
-      DRD_(vc_copy)(&old_vc, &DRD_(g_threadinfo)[tid].last->vc);
-      DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc, vc);
-      if (DRD_(sg_get_trace)())
-      {
+      DRD_(vc_copy)(&old_vc, DRD_(thread_get_vc)(tid));
+      DRD_(vc_combine)(DRD_(thread_get_vc)(tid), vc);
+      if (DRD_(sg_get_trace)()) {
          char *str1, *str2;
          str1 = DRD_(vc_aprint)(&old_vc);
-         str2 = DRD_(vc_aprint)(&DRD_(g_threadinfo)[tid].last->vc);
+         str2 = DRD_(vc_aprint)(DRD_(thread_get_vc)(tid));
          VG_(message)(Vg_DebugMsg, "thread %d: vc %s -> %s\n", tid, str1, str2);
          VG_(free)(str1);
          VG_(free)(str2);
@@ -1067,10 +1155,8 @@ static void thread_combine_vc_sync(DrdThreadId tid, const Segment* sg)
       s_update_conflict_set_sync_count++;
 
       DRD_(vc_cleanup)(&old_vc);
-   }
-   else
-   {
-      tl_assert(DRD_(vc_lte)(vc, &DRD_(g_threadinfo)[tid].last->vc));
+   } else {
+      tl_assert(DRD_(vc_lte)(vc, DRD_(thread_get_vc)(tid)));
    }
 }
 
@@ -1106,39 +1192,12 @@ void DRD_(thread_new_segment_and_combine_vc)(DrdThreadId tid, const Segment* sg)
  */
 void DRD_(thread_stop_using_mem)(const Addr a1, const Addr a2)
 {
-   DrdThreadId other_user;
-   unsigned i;
-
-   /* For all threads, mark the range [ a1, a2 [ as no longer in use. */
-   other_user = DRD_INVALID_THREADID;
-   for (i = 0; i < DRD_N_THREADS; i++)
-   {
       Segment* p;
-      for (p = DRD_(g_threadinfo)[i].first; p; p = p->next)
-      {
-         if (other_user == DRD_INVALID_THREADID
-             && i != DRD_(g_drd_running_tid))
-         {
-            if (UNLIKELY(DRD_(bm_test_and_clear)(DRD_(sg_bm)(p), a1, a2)))
-            {
-               other_user = i;
-            }
-            continue;
-         }
-         DRD_(bm_clear)(DRD_(sg_bm)(p), a1, a2);
-      }
-   }
 
-   /*
-    * If any other thread had accessed memory in [ a1, a2 [, update the
-    * conflict set.
-    */
-   if (other_user != DRD_INVALID_THREADID
-       && DRD_(bm_has_any_access)(DRD_(g_conflict_set), a1, a2))
-   {
-      thread_compute_conflict_set(&DRD_(g_conflict_set),
-                                  DRD_(thread_get_running_tid)());
-   }
+   for (p = DRD_(g_sg_list); p; p = p->g_next)
+         DRD_(bm_clear)(DRD_(sg_bm)(p), a1, a2);
+
+   DRD_(bm_clear)(DRD_(g_conflict_set), a1, a2);
 }
 
 /** Specify whether memory loads should be recorded. */
@@ -1173,47 +1232,36 @@ void DRD_(thread_print_all)(void)
 
    for (i = 0; i < DRD_N_THREADS; i++)
    {
-      if (DRD_(g_threadinfo)[i].first)
-      {
+      p = DRD_(g_threadinfo)[i].sg_first;
+      if (p) {
          VG_(printf)("**************\n"
-                     "* thread %3d (%d/%d/%d/0x%lx/%d) *\n"
+                     "* thread %3d (%d/%d/%d/%d/0x%lx/%d) *\n"
                      "**************\n",
                      i,
+                     DRD_(g_threadinfo)[i].valid,
                      DRD_(g_threadinfo)[i].vg_thread_exists,
                      DRD_(g_threadinfo)[i].vg_threadid,
                      DRD_(g_threadinfo)[i].posix_thread_exists,
                      DRD_(g_threadinfo)[i].pt_threadid,
                      DRD_(g_threadinfo)[i].detached_posix_thread);
-         for (p = DRD_(g_threadinfo)[i].first; p; p = p->next)
-         {
+         for ( ; p; p = p->thr_next)
             DRD_(sg_print)(p);
          }
       }
-   }
 }
 
 /** Show a call stack involved in a data race. */
-static void show_call_stack(const DrdThreadId tid,
-                            const Char* const msg,
-                            ExeContext* const callstack)
+static void show_call_stack(const DrdThreadId tid, ExeContext* const callstack)
 {
    const ThreadId vg_tid = DRD_(DrdThreadIdToVgThreadId)(tid);
 
-   VG_(message)(Vg_UserMsg, "%s (thread %d)\n", msg, tid);
-
-   if (vg_tid != VG_INVALID_THREADID)
-   {
+   if (vg_tid != VG_INVALID_THREADID) {
       if (callstack)
-      {
          VG_(pp_ExeContext)(callstack);
-      }
       else
-      {
          VG_(get_and_pp_StackTrace)(vg_tid, VG_(clo_backtrace_size));
-      }
-   }
-   else
-   {
+   } else {
+      if (!VG_(clo_xml))
       VG_(message)(Vg_UserMsg,
                    "   (thread finished, call stack no longer available)\n");
    }
@@ -1233,13 +1281,11 @@ thread_report_conflicting_segments_segment(const DrdThreadId tid,
              && tid != DRD_INVALID_THREADID);
    tl_assert(p);
 
-   for (i = 0; i < DRD_N_THREADS; i++)
-   {
-      if (i != tid)
-      {
+   for (i = 0; i < DRD_N_THREADS; i++) {
+      if (i != tid) {
          Segment* q;
-         for (q = DRD_(g_threadinfo)[i].last; q; q = q->prev)
-         {
+
+         for (q = DRD_(g_threadinfo)[i].sg_last; q; q = q->thr_prev) {
             /*
              * Since q iterates over the segments of thread i in order of 
              * decreasing vector clocks, if q->vc <= p->vc, then 
@@ -1248,16 +1294,28 @@ thread_report_conflicting_segments_segment(const DrdThreadId tid,
              */
             if (DRD_(vc_lte)(&q->vc, &p->vc))
                break;
-            if (! DRD_(vc_lte)(&p->vc, &q->vc))
-            {
+            if (!DRD_(vc_lte)(&p->vc, &q->vc)) {
                if (DRD_(bm_has_conflict_with)(DRD_(sg_bm)(q), addr, addr + size,
-                                              access_type))
-               {
+                                              access_type)) {
+                  Segment* q_next;
+
                   tl_assert(q->stacktrace);
-                  show_call_stack(i,        "Other segment start",
-                                  q->stacktrace);
-                  show_call_stack(i,        "Other segment end",
-                                  q->next ? q->next->stacktrace : 0);
+                  if (VG_(clo_xml))
+                     VG_(printf_xml)("  <other_segment_start>\n");
+                  else
+                     VG_(message)(Vg_UserMsg,
+                                  "Other segment start (thread %d)\n", i);
+                  show_call_stack(i, q->stacktrace);
+                  if (VG_(clo_xml))
+                     VG_(printf_xml)("  </other_segment_start>\n"
+                                     "  <other_segment_end>\n");
+                  else
+                     VG_(message)(Vg_UserMsg,
+                                  "Other segment end (thread %d)\n", i);
+                  q_next = q->thr_next;
+                  show_call_stack(i, q_next ? q_next->stacktrace : 0);
+                  if (VG_(clo_xml))
+                     VG_(printf_xml)("  </other_segment_end>\n");
                }
             }
          }
@@ -1276,14 +1334,11 @@ void DRD_(thread_report_conflicting_segments)(const DrdThreadId tid,
    tl_assert(0 <= (int)tid && tid < DRD_N_THREADS
              && tid != DRD_INVALID_THREADID);
 
-   for (p = DRD_(g_threadinfo)[tid].first; p; p = p->next)
-   {
+   for (p = DRD_(g_threadinfo)[tid].sg_first; p; p = p->thr_next) {
       if (DRD_(bm_has)(DRD_(sg_bm)(p), addr, addr + size, access_type))
-      {
          thread_report_conflicting_segments_segment(tid, addr, size,
                                                     access_type, p);
       }
-   }
 }
 
 /**
@@ -1337,33 +1392,28 @@ static void thread_compute_conflict_set(struct bitmap** conflict_set,
    s_conflict_set_bitmap2_creation_count
       -= DRD_(bm_get_bitmap2_creation_count)();
 
-   if (*conflict_set)
-   {
+   if (*conflict_set) {
       DRD_(bm_cleanup)(*conflict_set);
       DRD_(bm_init)(*conflict_set);
-   }
-   else
-   {
+   } else {
       *conflict_set = DRD_(bm_new)();
    }
 
-   if (s_trace_conflict_set)
-   {
+   if (s_trace_conflict_set) {
       char* str;
 
-      str = DRD_(vc_aprint)(&DRD_(g_threadinfo)[tid].last->vc);
+      str = DRD_(vc_aprint)(DRD_(thread_get_vc)(tid));
       VG_(message)(Vg_DebugMsg,
                    "computing conflict set for thread %d with vc %s\n",
                    tid, str);
       VG_(free)(str);
    }
 
-   p = DRD_(g_threadinfo)[tid].last;
+   p = DRD_(g_threadinfo)[tid].sg_last;
    {
       unsigned j;
 
-      if (s_trace_conflict_set)
-      {
+      if (s_trace_conflict_set) {
          char* vc;
 
          vc = DRD_(vc_aprint)(&p->vc);
@@ -1372,18 +1422,14 @@ static void thread_compute_conflict_set(struct bitmap** conflict_set,
          VG_(free)(vc);
       }
 
-      for (j = 0; j < DRD_N_THREADS; j++)
-      {
-         if (j != tid && DRD_(IsValidDrdThreadId)(j))
-         {
+      for (j = 0; j < DRD_N_THREADS; j++) {
+         if (j != tid && DRD_(IsValidDrdThreadId)(j)) {
             Segment* q;
-            for (q = DRD_(g_threadinfo)[j].last; q; q = q->prev)
-            {
-               if (! DRD_(vc_lte)(&q->vc, &p->vc)
-                   && ! DRD_(vc_lte)(&p->vc, &q->vc))
-               {
-                  if (s_trace_conflict_set)
-                  {
+
+            for (q = DRD_(g_threadinfo)[j].sg_last; q; q = q->thr_prev) {
+               if (!DRD_(vc_lte)(&q->vc, &p->vc)
+                   && !DRD_(vc_lte)(&p->vc, &q->vc)) {
+                  if (s_trace_conflict_set) {
                      char* str;
 
                      str = DRD_(vc_aprint)(&q->vc);
@@ -1393,11 +1439,8 @@ static void thread_compute_conflict_set(struct bitmap** conflict_set,
                      VG_(free)(str);
                   }
                   DRD_(bm_merge2)(*conflict_set, DRD_(sg_bm)(q));
-               }
-               else
-               {
-                  if (s_trace_conflict_set)
-                  {
+               } else {
+                  if (s_trace_conflict_set) {
                      char* str;
 
                      str = DRD_(vc_aprint)(&q->vc);
@@ -1417,8 +1460,7 @@ static void thread_compute_conflict_set(struct bitmap** conflict_set,
    s_conflict_set_bitmap2_creation_count
       += DRD_(bm_get_bitmap2_creation_count)();
 
-   if (s_trace_conflict_set_bm)
-   {
+   if (s_trace_conflict_set_bm) {
       VG_(message)(Vg_DebugMsg, "[%d] new conflict set:\n", tid);
       DRD_(bm_print)(*conflict_set);
       VG_(message)(Vg_DebugMsg, "[%d] end of new conflict set.\n", tid);
@@ -1443,18 +1485,18 @@ void DRD_(thread_update_conflict_set)(const DrdThreadId tid,
    tl_assert(tid == DRD_(g_drd_running_tid));
    tl_assert(DRD_(g_conflict_set));
 
-   if (s_trace_conflict_set)
-   {
+   if (s_trace_conflict_set) {
       char* str;
 
-      str = DRD_(vc_aprint)(&DRD_(g_threadinfo)[tid].last->vc);
+      str = DRD_(vc_aprint)(DRD_(thread_get_vc)(tid));
       VG_(message)(Vg_DebugMsg,
                    "updating conflict set for thread %d with vc %s\n",
                    tid, str);
       VG_(free)(str);
    }
 
-   new_vc = &DRD_(g_threadinfo)[tid].last->vc;
+   new_vc = DRD_(thread_get_vc)(tid);
+   tl_assert(DRD_(vc_lte)(old_vc, new_vc));
 
    DRD_(bm_unmark)(DRD_(g_conflict_set));
 
@@ -1465,62 +1507,66 @@ void DRD_(thread_update_conflict_set)(const DrdThreadId tid,
       if (j == tid || ! DRD_(IsValidDrdThreadId)(j))
          continue;
 
-      for (q = DRD_(g_threadinfo)[j].last; q; q = q->prev)
-      {
-         const int included_in_old_conflict_set
-            = ! DRD_(vc_lte)(&q->vc, old_vc)
-            && ! DRD_(vc_lte)(old_vc, &q->vc);
-         const int included_in_new_conflict_set
-            = ! DRD_(vc_lte)(&q->vc, new_vc)
-            && ! DRD_(vc_lte)(new_vc, &q->vc);
-         if (included_in_old_conflict_set != included_in_new_conflict_set)
-         {
-            if (s_trace_conflict_set)
-            {
+      for (q = DRD_(g_threadinfo)[j].sg_last;
+           q && !DRD_(vc_lte)(&q->vc, new_vc);
+           q = q->thr_prev) {
+         const Bool included_in_old_conflict_set
+            = !DRD_(vc_lte)(old_vc, &q->vc);
+         const Bool included_in_new_conflict_set
+            = !DRD_(vc_lte)(new_vc, &q->vc);
+
+         if (UNLIKELY(s_trace_conflict_set)) {
                char* str;
 
                str = DRD_(vc_aprint)(&q->vc);
                VG_(message)(Vg_DebugMsg,
-                            "conflict set: [%d] merging segment %s\n", j, str);
+                         "conflict set: [%d] %s segment %s\n", j,
+                         included_in_old_conflict_set
+                         != included_in_new_conflict_set
+                         ? "merging" : "ignoring", str);
                VG_(free)(str);
             }
+         if (included_in_old_conflict_set != included_in_new_conflict_set)
             DRD_(bm_mark)(DRD_(g_conflict_set), DRD_(sg_bm)(q));
          }
-         else
-         {
-            if (s_trace_conflict_set)
-            {
+
+      for ( ; q && !DRD_(vc_lte)(&q->vc, old_vc); q = q->thr_prev) {
+         const Bool included_in_old_conflict_set
+            = !DRD_(vc_lte)(old_vc, &q->vc);
+         const Bool included_in_new_conflict_set
+            = !DRD_(vc_lte)(&q->vc, new_vc)
+            && !DRD_(vc_lte)(new_vc, &q->vc);
+
+         if (UNLIKELY(s_trace_conflict_set)) {
                char* str;
 
                str = DRD_(vc_aprint)(&q->vc);
                VG_(message)(Vg_DebugMsg,
-                            "conflict set: [%d] ignoring segment %s\n", j, str);
+                         "conflict set: [%d] %s segment %s\n", j,
+                         included_in_old_conflict_set
+                         != included_in_new_conflict_set
+                         ? "merging" : "ignoring", str);
                VG_(free)(str);
             }
-         }
+         if (included_in_old_conflict_set != included_in_new_conflict_set)
+            DRD_(bm_mark)(DRD_(g_conflict_set), DRD_(sg_bm)(q));
       }
    }
 
    DRD_(bm_clear_marked)(DRD_(g_conflict_set));
 
-   p = DRD_(g_threadinfo)[tid].last;
-   {
-      for (j = 0; j < DRD_N_THREADS; j++)
-      {
-         if (j != tid && DRD_(IsValidDrdThreadId)(j))
-         {
+   p = DRD_(g_threadinfo)[tid].sg_last;
+   for (j = 0; j < DRD_N_THREADS; j++) {
+      if (j != tid && DRD_(IsValidDrdThreadId)(j)) {
             Segment* q;
-            for (q = DRD_(g_threadinfo)[j].last; q; q = q->prev)
-            {
-               if (! DRD_(vc_lte)(&q->vc, &p->vc)
-                   && ! DRD_(vc_lte)(&p->vc, &q->vc))
-               {
+         for (q = DRD_(g_threadinfo)[j].sg_last;
+              q && !DRD_(vc_lte)(&q->vc, &p->vc);
+              q = q->thr_prev) {
+            if (!DRD_(vc_lte)(&p->vc, &q->vc))
                   DRD_(bm_merge2_marked)(DRD_(g_conflict_set), DRD_(sg_bm)(q));
                }
             }
          }
-      }
-   }
 
    DRD_(bm_remove_cleared_marked)(DRD_(g_conflict_set));
 

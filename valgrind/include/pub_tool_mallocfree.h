@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -46,6 +46,14 @@ extern Char* VG_(strdup)         ( HChar* cc, const Char* s );
 // Returns the usable size of a heap-block.  It's the asked-for size plus
 // possibly some more due to rounding up.
 extern SizeT VG_(malloc_usable_size)( void* p );
+
+// If tool is replacing malloc for the client, the below returns
+// the effective client redzone as derived from the default
+// provided by the tool, VG_(clo_redzone_size) and the minimum
+// redzone required by m_mallocfree.c.
+// It is an error to call this before VG_(needs_malloc_replacement) has
+// been called.
+extern SizeT VG_(malloc_effective_client_redzone_size)(void);
 
 // TODO: move somewhere else
 // Call here to bomb the system when out of memory (mmap anon fails)

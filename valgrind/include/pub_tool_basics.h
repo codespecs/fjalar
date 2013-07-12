@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -109,9 +109,9 @@ typedef  Word                 PtrdiffT;   // 32             64
 // - off_t is "used for file sizes".
 // At one point we were using it for memory offsets, but PtrdiffT should be
 // used in those cases.
-// Nb: on Linux and AIX, off_t is a signed word-sized int.  On Darwin it's
+// Nb: on Linux, off_t is a signed word-sized int.  On Darwin it's
 // always a signed 64-bit int.  So we defined our own Off64T as well.
-#if defined(VGO_linux) || defined(VGO_aix5)
+#if defined(VGO_linux)
 typedef Word                   OffT;      // 32             64
 #elif defined(VGO_darwin)
 typedef Long                   OffT;      // 64             64
@@ -145,20 +145,6 @@ typedef UInt ThreadId;
       When _isError == True,  
          _err holds the error code.
 
-   AIX:
-      _res is the POSIX result of the syscall.
-      _err is the corresponding errno value.
-      _isError === _err==0
-
-      Unlike on Linux, it is possible for _err to be nonzero (thus an
-      error has occurred), nevertheless _res is also nonzero.  AIX
-      userspace does not appear to consistently inspect _err to
-      determine whether or not an error has occurred.  For example,
-      sys_open() will return -1 for _val if a file cannot be opened,
-      as well as the relevant errno value in _err, but AIX userspace
-      then consults _val to figure out if the syscall failed, rather
-      than looking at _err.  Hence we need to represent them both.
-
    Darwin:
       Interpretation depends on _mode:
       MACH, MDEP:
@@ -177,14 +163,7 @@ typedef UInt ThreadId;
 typedef
    struct {
       UWord _val;
-      Bool  _isError;
-   }
-   SysRes;
-#elif defined(VGO_aix5)
-typedef
-   struct {
-      UWord _res;
-      UWord _err;
+      UWord _valEx;   // only used on mips-linux
       Bool  _isError;
    }
    SysRes;
@@ -219,6 +198,9 @@ static inline Bool sr_isError ( SysRes sr ) {
 static inline UWord sr_Res ( SysRes sr ) {
    return sr._isError ? 0 : sr._val;
 }
+static inline UWord sr_ResEx ( SysRes sr ) {
+   return sr._isError ? 0 : sr._valEx;
+}
 static inline UWord sr_ResHI ( SysRes sr ) {
    return 0;
 }
@@ -230,10 +212,6 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
           && ((sr1._isError && sr2._isError) 
               || (!sr1._isError && !sr2._isError));
 }
-
-#elif defined(VGO_aix5)
-#  error "need to define SysRes accessors on AIX5 (copy from 3.4.1 sources)"
-
 
 #elif defined(VGO_darwin)
 
@@ -290,9 +268,11 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #undef VG_BIGENDIAN
 #undef VG_LITTLEENDIAN
 
-#if defined(VGA_x86) || defined(VGA_amd64) || defined (VGA_arm)
+#if defined(VGA_x86) || defined(VGA_amd64) || defined (VGA_arm) \
+    || (defined(VGA_mips32) && defined (_MIPSEL))
 #  define VG_LITTLEENDIAN 1
-#elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#elif defined(VGA_ppc32) || defined(VGA_ppc64) || defined(VGA_s390x) \
+      || (defined(VGA_mips32) && defined (_MIPSEB))
 #  define VG_BIGENDIAN 1
 #else
 #  error Unknown arch
@@ -302,7 +282,8 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #if defined(VGA_x86)
 #  define VG_REGPARM(n)            __attribute__((regparm(n)))
 #elif defined(VGA_amd64) || defined(VGA_ppc32) \
-      || defined(VGA_ppc64) || defined(VGA_arm)
+      || defined(VGA_ppc64) || defined(VGA_arm) || defined(VGA_s390x) \
+      || defined(VGA_mips32)
 #  define VG_REGPARM(n)            /* */
 #else
 #  error Unknown arch
@@ -316,9 +297,9 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #define VG_BUGS_TO "www.valgrind.org"
 
 /* Branch prediction hints. */
-#if 1 /*HAVE_BUILTIN_EXPECT*/
+#if defined(__GNUC__)
 #  define LIKELY(x)   __builtin_expect(!!(x), 1)
-#  define UNLIKELY(x) __builtin_expect((x), 0)
+#  define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #else
 #  define LIKELY(x)   (x)
 #  define UNLIKELY(x) (x)

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,6 +62,12 @@ typedef unsigned int vki_u32;
 #define VKI_PAGE_SIZE	(1UL << VKI_PAGE_SHIFT)
 #define VKI_MAX_PAGE_SHIFT	VKI_PAGE_SHIFT
 #define VKI_MAX_PAGE_SIZE	VKI_PAGE_SIZE
+
+//----------------------------------------------------------------------
+// From linux-2.6.35.4/arch/x86/include/asm/shmparam.h
+//----------------------------------------------------------------------
+
+#define VKI_SHMLBA  VKI_PAGE_SIZE
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-i386/signal.h
@@ -302,6 +308,18 @@ struct vki_sigcontext {
 #define VKI_F_SETLK64		13
 #define VKI_F_SETLKW64		14
 
+#define VKI_F_SETOWN_EX		15
+#define VKI_F_GETOWN_EX		16
+
+#define VKI_F_OWNER_TID		0
+#define VKI_F_OWNER_PID		1
+#define VKI_F_OWNER_PGRP	2
+
+struct vki_f_owner_ex {
+	int	type;
+	__vki_kernel_pid_t	pid;
+};
+
 /* for F_[GET|SET]FL */
 #define VKI_FD_CLOEXEC	1	/* actually anything with low bit set goes */
 
@@ -478,13 +496,6 @@ struct vki_termios {
 	 ((type) << _VKI_IOC_TYPESHIFT) | \
 	 ((nr)   << _VKI_IOC_NRSHIFT) | \
 	 ((size) << _VKI_IOC_SIZESHIFT))
-
-/* provoke compile error for invalid uses of size argument */
-#define _VKI_IOC_TYPECHECK(t) \
-	((sizeof(t) == sizeof(t[1]) && \
-	  sizeof(t) < (1 << _VKI_IOC_SIZEBITS)) \
-	 ? sizeof(t) \
-	 : /*cause gcc to complain about division by zero*/(1/0) )
 
 /* used to create numbers */
 #define _VKI_IO(type,nr)	_VKI_IOC(_VKI_IOC_NONE,(type),(nr),0)

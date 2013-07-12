@@ -6,7 +6,7 @@
 
 # Comment out the next line to skip building print docs.  The default
 # is not to skip building print docs.  Note, after changing it
-# you of course need to re-run configure to make it take effect.
+# you need to re-run autogen.sh and configure to make it take effect.
 BUILD_ALL_DOCS=yes
 
 ##-------------------------------------------------------------
@@ -25,21 +25,29 @@ EXTRA_DIST = \
 	internals/3_3_BUGSTATUS.txt \
 	internals/3_4_BUGSTATUS.txt \
 	internals/3_5_BUGSTATUS.txt \
+	internals/3_7_BUGSTATUS.txt \
+	internals/3_8_BUGSTATUS.txt \
+	internals/arm_thumb_notes_gdbserver.txt \
+	internals/avx-notes.txt \
 	internals/BIG_APP_NOTES.txt \
 	internals/Darwin-notes.txt \
+	internals/SPEC-notes.txt \
 	internals/directory-structure.txt \
 	internals/howto_BUILD_KDE42.txt \
 	internals/howto_oprofile.txt \
 	internals/m_replacemalloc.txt \
 	internals/m_syswrap.txt \
 	internals/module-structure.txt \
+	internals/multiple-architectures.txt \
 	internals/notes.txt \
+	internals/performance.txt \
 	internals/porting-HOWTO.txt \
 	internals/mpi2entries.txt \
 	internals/porting-to-ARM.txt \
 	internals/register-uses.txt \
 	internals/release-HOWTO.txt \
 	internals/segments-seginfos.txt \
+	internals/t-chaining-notes.txt \
 	internals/threads-syscalls-signals.txt \
 	internals/tm-mutexstates.dot \
 	internals/tm-threadstates.dot \
@@ -109,6 +117,7 @@ XSL_FO_STYLE          = $(mylibdir)/vg-fo.xsl
 XSL_TEXT_STYLE        = $(mylibdir)/vg-faq2txt.xsl
 XSL_WEBSITE_STYLE     = $(mylibdir)/vg-html-website.xsl
 XSL_MAN_STYLES = \
+    /usr/share/sgml/docbook/xsl-stylesheets/manpages/docbook.xsl \
     /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl \
     /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
 
@@ -125,6 +134,7 @@ FAQ.txt:
 
 # the valgrind manpages
 man-pages:
+	set -e; \
 	for x in $(XSL_MAN_STYLES) ; do \
 	    if test -f $$x; then \
 		echo "Using manpage stylesheet: $$x"; \
@@ -176,6 +186,7 @@ print-docs:
 # be the one to handle the else/endif parts, not GNU make
 # as we intend.
 install-data-hook:
+	set -e; \
 	if test -r html ; then \
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
 		cp -r html $(DESTDIR)$(datadir)/doc/valgrind; \
@@ -187,10 +198,12 @@ install-data-hook:
 		fi \
 	done
  ifeq ($(BUILD_ALL_DOCS),yes)
+	set -e; \
 	if test -r index.pdf ; then \
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
 		cp index.pdf $(DESTDIR)$(datadir)/doc/valgrind/valgrind_manual.pdf; \
 	fi
+	set -e; \
 	if test -r index.ps ; then \
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
 		cp index.ps $(DESTDIR)$(datadir)/doc/valgrind/valgrind_manual.ps; \

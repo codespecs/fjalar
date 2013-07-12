@@ -2,6 +2,8 @@
 
 dir=`dirname $0`
 
+sed -e "s:_pthread_start (in /usr/lib/libSystem.B.dylib):(within libpthread-?.?.so):" |
+
 $dir/../../tests/filter_stderr_basic |
 
 # Remove "drd, ..." line and the following copyright line.
@@ -13,22 +15,24 @@ sed \
 -e "s/^Allocation context: stack of thread \([0-9]*\), offset -[0-9]*$/Allocation context: stack of thread \1, offset .../" \
 -e "/^warning: evaluate_Dwarf3_Expr: unhandled DW_OP_.*/d" \
 -e '/^warning: addVar:.*/d' \
--e 's/^Allocation context: Data section of ..tsan_unittest/Allocation context: BSS section of tsan_unittest/' \
+-e 's/^Allocation context: Data section of .\//Allocation context: BSS section of /' \
 -e '/^run: \/usr\/bin\/dsymutil.*/d' \
 -e "s/, in frame #[0-9]* of thread /, in frame #? of thread /" \
 -e "s/(tc20_verifywrap.c:261)/(tc20_verifywrap.c:262)/" \
--e "/^Copyright (C) 2006-200., and GNU GPL'd, by Bart Van Assche.$/d" \
+-e "/^Copyright (C) 2006-201., and GNU GPL'd, by Bart Van Assche.$/d" \
 -e "s/\([A-Za-z_]*\) (clone.S:[0-9]*)/\1 (in \/...libc...)/" \
 -e "s/[A-Za-z_]* (pthread_create.c:[0-9]*)/(within libpthread-?.?.so)/" \
 -e "s/[A-Za-z_]* (in [^ ]*libpthread-[0-9.]*\.so)/(within libpthread-?.?.so)/" \
 -e "s:(within /lib[0-9]*/ld-[0-9.]*\.so):(within ld-?.?.so):" \
 -e "s/was held during [0-9][0-9]*/was held during .../" \
--e "s: BSS section of .*/: BSS section of :g" \
+-e "s: BSS section of [^<]*/: BSS section of :g" \
 -e "s: vc \[[ ,:0-9]*\]: vc ...:g" \
 -e "s/[@\$*]* (drd_pthread_intercepts.c:/ (drd_pthread_intercepts.c:/" \
 -e "s/ (\([a-zA-Z_]*\.c\):[0-9]*)/ (\1:?)/" \
 -e "s/ (\([a-zA-Z_]*\.h\):[0-9]*)/ (\1:?)/" \
 -e "s/ (\([a-zA-Z_]*\.cpp\):[0-9]*)/ (\1:?)/" \
+-e "s/\( name [^ ]*\)-[0-9]*\( oflag \)/\1\2/" \
+-e '/^   by 0x[0-9a-fA-F]*: process_dl_debug (in \/lib[0-9]*\/ld-[0-9.]*\.so)$/d' \
 -e "/^For counts of detected and suppressed errors, rerun with: -v$/d" |
 
 # Remove the message that more than hundred errors have been detected
