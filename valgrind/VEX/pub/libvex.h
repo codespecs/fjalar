@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (libvex.h) is                                 ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                          libvex.h ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -67,7 +56,9 @@ typedef
       VexArchAMD64,
       VexArchARM,
       VexArchPPC32,
-      VexArchPPC64
+      VexArchPPC64,
+      VexArchS390X,
+      VexArchMIPS32
    }
    VexArch;
 
@@ -83,28 +74,107 @@ typedef
 #define VEX_HWCAPS_X86_SSE1   (1<<1)  /* SSE1 support (Pentium III) */
 #define VEX_HWCAPS_X86_SSE2   (1<<2)  /* SSE2 support (Pentium 4) */
 #define VEX_HWCAPS_X86_SSE3   (1<<3)  /* SSE3 support (>= Prescott) */
+#define VEX_HWCAPS_X86_LZCNT   (1<<4)  /* SSE4a LZCNT insn */
 
 /* amd64: baseline capability is SSE2, with cmpxchg8b but not
    cmpxchg16b. */
-#define VEX_HWCAPS_AMD64_SSE3 (1<<4)  /* SSE3 support */
-#define VEX_HWCAPS_AMD64_CX16 (1<<5)  /* cmpxchg16b support */
+#define VEX_HWCAPS_AMD64_SSE3  (1<<5)  /* SSE3 support */
+#define VEX_HWCAPS_AMD64_CX16  (1<<6)  /* cmpxchg16b support */
+#define VEX_HWCAPS_AMD64_LZCNT (1<<7)  /* SSE4a LZCNT insn */
+#define VEX_HWCAPS_AMD64_AVX   (1<<8)  /* AVX instructions */
 
 /* ppc32: baseline capability is integer only */
-#define VEX_HWCAPS_PPC32_F    (1<<6)  /* basic (non-optional) FP */
-#define VEX_HWCAPS_PPC32_V    (1<<7)  /* Altivec (VMX) */
-#define VEX_HWCAPS_PPC32_FX   (1<<8)  /* FP extns (fsqrt, fsqrts) */
-#define VEX_HWCAPS_PPC32_GX   (1<<9)  /* Graphics extns
+#define VEX_HWCAPS_PPC32_F     (1<<8)  /* basic (non-optional) FP */
+#define VEX_HWCAPS_PPC32_V     (1<<9)  /* Altivec (VMX) */
+#define VEX_HWCAPS_PPC32_FX    (1<<10) /* FP extns (fsqrt, fsqrts) */
+#define VEX_HWCAPS_PPC32_GX    (1<<11) /* Graphics extns
                                          (fres,frsqrte,fsel,stfiwx) */
+#define VEX_HWCAPS_PPC32_VX    (1<<12) /* Vector-scalar floating-point (VSX); implies ISA 2.06 or higher  */
+#define VEX_HWCAPS_PPC32_DFP   (1<<17) /* Decimal Floating Point (DFP) -- e.g., dadd */
 
 /* ppc64: baseline capability is integer and basic FP insns */
-#define VEX_HWCAPS_PPC64_V    (1<<10) /* Altivec (VMX) */
-#define VEX_HWCAPS_PPC64_FX   (1<<11) /* FP extns (fsqrt, fsqrts) */
-#define VEX_HWCAPS_PPC64_GX   (1<<12) /* Graphics extns
+#define VEX_HWCAPS_PPC64_V     (1<<13) /* Altivec (VMX) */
+#define VEX_HWCAPS_PPC64_FX    (1<<14) /* FP extns (fsqrt, fsqrts) */
+#define VEX_HWCAPS_PPC64_GX    (1<<15) /* Graphics extns
                                          (fres,frsqrte,fsel,stfiwx) */
+#define VEX_HWCAPS_PPC64_VX    (1<<16) /* Vector-scalar floating-point (VSX); implies ISA 2.06 or higher  */
+#define VEX_HWCAPS_PPC64_DFP   (1<<18) /* Decimal Floating Point (DFP) -- e.g., dadd */
+
+/* s390x: Hardware capability encoding
+
+   Bits [26:31] encode the machine model (see VEX_S390X_MODEL... below)
+   Bits [0:20]  encode specific hardware capabilities
+                (see VEX_HWAPS_S390X_... below)
+*/
+
+/* Model numbers must be assigned in chronological order.
+   They are used as array index. */
+#define VEX_S390X_MODEL_Z900     0
+#define VEX_S390X_MODEL_Z800     1
+#define VEX_S390X_MODEL_Z990     2
+#define VEX_S390X_MODEL_Z890     3
+#define VEX_S390X_MODEL_Z9_EC    4
+#define VEX_S390X_MODEL_Z9_BC    5
+#define VEX_S390X_MODEL_Z10_EC   6
+#define VEX_S390X_MODEL_Z10_BC   7
+#define VEX_S390X_MODEL_Z196     8
+#define VEX_S390X_MODEL_Z114     9
+#define VEX_S390X_MODEL_ZEC12    10
+#define VEX_S390X_MODEL_UNKNOWN  11     /* always last in list */
+#define VEX_S390X_MODEL_MASK     0x3F
+
+#define VEX_HWCAPS_S390X_LDISP (1<<6)   /* Long-displacement facility */
+#define VEX_HWCAPS_S390X_EIMM  (1<<7)   /* Extended-immediate facility */
+#define VEX_HWCAPS_S390X_GIE   (1<<8)   /* General-instruction-extension facility */
+#define VEX_HWCAPS_S390X_DFP   (1<<9)   /* Decimal floating point facility */
+#define VEX_HWCAPS_S390X_FGX   (1<<10)  /* FPR-GR transfer facility */
+#define VEX_HWCAPS_S390X_ETF2  (1<<11)  /* ETF2-enhancement facility */
+#define VEX_HWCAPS_S390X_STFLE (1<<12)  /* STFLE facility */
+#define VEX_HWCAPS_S390X_ETF3  (1<<13)  /* ETF3-enhancement facility */
+#define VEX_HWCAPS_S390X_STCKF (1<<14)  /* STCKF facility */
+#define VEX_HWCAPS_S390X_FPEXT (1<<15)  /* Floating point extension facility */
+
+/* Special value representing all available s390x hwcaps */
+#define VEX_HWCAPS_S390X_ALL   (VEX_HWCAPS_S390X_LDISP | \
+                                VEX_HWCAPS_S390X_EIMM  | \
+                                VEX_HWCAPS_S390X_GIE   | \
+                                VEX_HWCAPS_S390X_DFP   | \
+                                VEX_HWCAPS_S390X_FGX   | \
+                                VEX_HWCAPS_S390X_STFLE | \
+                                VEX_HWCAPS_S390X_STCKF | \
+                                VEX_HWCAPS_S390X_FPEXT | \
+                                VEX_HWCAPS_S390X_ETF3  | \
+                                VEX_HWCAPS_S390X_ETF2)
+
+#define VEX_HWCAPS_S390X(x)  ((x) & ~VEX_S390X_MODEL_MASK)
+#define VEX_S390X_MODEL(x)   ((x) &  VEX_S390X_MODEL_MASK)
 
 /* arm: baseline capability is ARMv4 */
-/* No extra capabilities */
+/* Bits 5:0 - architecture level (e.g. 5 for v5, 6 for v6 etc) */
+#define VEX_HWCAPS_ARM_VFP    (1<<6)  /* VFP extension */
+#define VEX_HWCAPS_ARM_VFP2   (1<<7)  /* VFPv2 */
+#define VEX_HWCAPS_ARM_VFP3   (1<<8)  /* VFPv3 */
+/* Bits 15:10 reserved for (possible) future VFP revisions */
+#define VEX_HWCAPS_ARM_NEON   (1<<16) /* Advanced SIMD also known as NEON */
 
+/* Get an ARM architecure level from HWCAPS */
+#define VEX_ARM_ARCHLEVEL(x) ((x) & 0x3f)
+
+/* MIPS baseline capability */
+/* Assigned Company values for bits 23:16 of the PRId Register
+   (CP0 register 15, select 0).  As of the MIPS32 and MIPS64 specs from
+   MTI, the PRId register is defined in this (backwards compatible)
+   way:
+
+  +----------------+----------------+----------------+----------------+
+  | Company Options| Company ID     | Processor ID   | Revision       |
+  +----------------+----------------+----------------+----------------+
+   31            24 23            16 15             8 7
+
+*/
+
+#define VEX_PRID_COMP_MIPS      0x00010000
+#define VEX_PRID_COMP_BROADCOM  0x00020000
 
 /* These return statically allocated strings. */
 
@@ -122,6 +192,10 @@ typedef
       UInt hwcaps;
       /* PPC32/PPC64 only: size of cache line */
       Int ppc_cache_line_szB;
+      /* PPC32/PPC64 only: sizes zeroed by the dcbz/dcbzl instructions
+       * (bug#135264) */
+      UInt ppc_dcbz_szB;
+      UInt ppc_dcbzl_szB; /* 0 means unsupported (SIGILL) */
    }
    VexArchInfo;
 
@@ -238,6 +312,28 @@ void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi );
 /*--- Control of Vex's optimiser (iropt).             ---*/
 /*-------------------------------------------------------*/
 
+
+/* VexRegisterUpdates specifies when to ensure that the guest state is
+   up to date.
+
+   VexRegUpdSpAtMemAccess : all registers are updated at superblock
+   exits, SP is up to date at memory exception points. The SP is described
+   by the arch specific functions guest_<arch>_state_requires_precise_mem_exns.
+
+   VexRegUpdUnwindregsAtMemAccess : registers needed to make a stack trace are
+   up to date at memory exception points.  Typically, these are PC/SP/FP. The
+   minimal registers are described by the arch specific functions
+   guest_<arch>_state_requires_precise_mem_exns.
+
+   VexRegUpdAllregsAtMemAccess : all registers up to date at memory exception
+   points.
+
+   VexRegUpdAllregsAtEachInsn : all registers up to date at each instruction. */
+typedef enum { VexRegUpdSpAtMemAccess,
+               VexRegUpdUnwindregsAtMemAccess,
+               VexRegUpdAllregsAtMemAccess,
+               VexRegUpdAllregsAtEachInsn } VexRegisterUpdates;
+
 /* Control of Vex's optimiser. */
 
 typedef
@@ -247,10 +343,8 @@ typedef
       /* Control aggressiveness of iropt.  0 = no opt, 1 = simple
          opts, 2 (default) = max optimisation. */
       Int iropt_level;
-      /* Ensure all integer registers are up to date at potential
-         memory exception points?  True(default)=yes, False=no, only
-         the guest's stack pointer. */
-      Bool iropt_precise_memory_exns;
+      /* Controls when registers are updated in guest state. */
+      VexRegisterUpdates iropt_register_updates;
       /* How aggressive should iropt be in unrolling loops?  Higher
          numbers make it more enthusiastic about loop unrolling.
          Default=120.  A setting of zero disables unrolling.  */
@@ -265,6 +359,9 @@ typedef
          far, the front end(s) will attempt to chase into its
          successor. A setting of zero disables chasing.  */
       Int guest_chase_thresh;
+      /* EXPERIMENTAL: chase across conditional branches?  Not all
+         front ends honour this.  Default: NO. */
+      Bool guest_chase_cond;
    }
    VexControl;
 
@@ -292,6 +389,24 @@ extern void   private_LibVEX_alloc_OOM(void) __attribute__((noreturn));
 
 static inline void* LibVEX_Alloc ( Int nbytes )
 {
+   struct align {
+      char c;
+      union {
+         char c;
+         short s;
+         int i;
+         long l;
+         long long ll;
+         float f;
+         double d;
+         /* long double is currently not used and would increase alignment
+            unnecessarily. */
+         /* long double ld; */
+         void *pto;
+         void (*ptf)(void);
+      } x;
+   };
+
 #if 0
   /* Nasty debugging hack, do not use. */
   return malloc(nbytes);
@@ -299,7 +414,7 @@ static inline void* LibVEX_Alloc ( Int nbytes )
    HChar* curr;
    HChar* next;
    Int    ALIGN;
-   ALIGN  = sizeof(void*)-1;
+   ALIGN  = offsetof(struct align,x) - 1;
    nbytes = (nbytes + ALIGN) & ~ALIGN;
    curr   = private_LibVEX_alloc_curr;
    next   = curr + nbytes;
@@ -425,15 +540,25 @@ typedef
 /* Initialise the library.  You must call this first. */
 
 extern void LibVEX_Init (
+
    /* failure exit function */
+#  if __cplusplus == 1 && __GNUC__ && __GNUC__ <= 3
+   /* g++ 3.x doesn't understand attributes on function parameters.
+      See #265762. */
+#  else
    __attribute__ ((noreturn))
+#  endif
    void (*failure_exit) ( void ),
+
    /* logging output function */
    void (*log_bytes) ( HChar*, Int nbytes ),
+
    /* debug paranoia level */
    Int debuglevel,
+
    /* Are we supporting valgrind checking? */
    Bool valgrind_support,
+
    /* Control ... */
    /*READONLY*/VexControl* vcon
 );
@@ -445,10 +570,18 @@ extern void LibVEX_Init (
 
 /* Describes the outcome of a translation attempt. */
 typedef
-   enum {
-      VexTransOK,
-      VexTransAccessFail,
-      VexTransOutputFull
+   struct {
+      /* overall status */
+      enum { VexTransOK,
+             VexTransAccessFail, VexTransOutputFull } status;
+      /* The number of extents that have a self-check (0 to 3) */
+      UInt n_sc_extents;
+      /* Offset in generated code of the profile inc, or -1 if
+         none.  Needed for later patching. */
+      Int offs_profInc;
+      /* Stats only: the number of guest insns included in the
+         translation.  It may be zero (!). */
+      UInt n_guest_instrs;
    }
    VexTranslateResult;
 
@@ -524,8 +657,13 @@ typedef
 
       IRSB* (*finaltidy) ( IRSB* );
 
-      /* IN: should this translation be self-checking?  default: False */
-      Bool    do_self_check;
+      /* IN: a callback used to ask the caller which of the extents,
+         if any, a self check is required for.  Must not be NULL.
+         The returned value is a bitmask with a 1 in position i indicating
+         that the i'th extent needs a check.  Since there can be at most
+         3 extents, the returned values must be between 0 and 7. */
+      UInt (*needs_self_check)( /*callback_opaque*/void*,
+                                VexGuestExtents* );
 
       /* IN: optionally, a callback which allows the caller to add its
          own IR preamble following the self-check and any other
@@ -541,8 +679,12 @@ typedef
       /* IN: debug: trace vex activity at various points */
       Int     traceflags;
 
-      /* IN: address of the dispatcher entry point.  Describes the
-         place where generated code should jump to at the end of each
+      /* IN: profiling: add a 64 bit profiler counter increment to the
+         translation? */
+      Bool    addProfInc;
+
+      /* IN: address of the dispatcher entry points.  Describes the
+         places where generated code should jump to at the end of each
          bb.
 
          At the end of each translation, the next guest address is
@@ -556,19 +698,30 @@ typedef
          control; caller supplies this) in the following way:
 
          - On host archs which lack a link register (x86, amd64), by a
-           jump to the host address specified in 'dispatcher', which
-           must be non-NULL.
+           jump to the host address specified in
+           'dispatcher_assisted', if the guest state pointer has been
+           changed so as to request some action before the next block
+           is run, or 'dispatcher_unassisted' (the fast path), in
+           which it is assumed that the guest state pointer is
+           unchanged and we wish to continue directly with the next
+           translation.  Both of these must be non-NULL.
 
          - On host archs which have a link register (ppc32, ppc64), by
            a branch to the link register (which is guaranteed to be
            unchanged from whatever it was at entry to the
-           translation).  'dispatch' must be NULL.
+           translation).  'dispatch_assisted' and
+           'dispatch_unassisted' must be NULL.
 
          The aim is to get back and forth between translations and the
          dispatcher without creating memory traffic to store return
          addresses.
+
+         FIXME: update this comment
       */
-      void* dispatch;
+      void* disp_cp_chain_me_to_slowEP;
+      void* disp_cp_chain_me_to_fastEP;
+      void* disp_cp_xindir;
+      void* disp_cp_xassisted;
    }
    VexTranslateArgs;
 
@@ -586,7 +739,60 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
    would not be the result.  Therefore chase_into_ok should disallow
    following into #2.  That will force the caller to eventually
    request a new translation starting at #2, at which point Vex will
-   correctly observe the make-a-self-check flag.  */
+   correctly observe the make-a-self-check flag.
+
+   FIXME: is this still up to date? */
+
+
+/*-------------------------------------------------------*/
+/*--- Patch existing translations                     ---*/
+/*-------------------------------------------------------*/
+
+/* Indicates a host address range for which callers to the functions
+   below must request I-D cache syncing after the call.  ::len == 0 is
+   ambiguous -- it could mean either zero bytes or the entire address
+   space, so we mean the former. */
+typedef
+   struct {
+      HWord start;
+      HWord len;
+   }
+   VexInvalRange;
+
+/* Chain an XDirect jump located at place_to_chain so it jumps to
+   place_to_jump_to.  It is expected (and checked) that this site
+   currently contains a call to the dispatcher specified by
+   disp_cp_chain_me_EXPECTED. */
+extern
+VexInvalRange LibVEX_Chain ( VexArch arch_host,
+                             void*   place_to_chain,
+                             void*   disp_cp_chain_me_EXPECTED,
+                             void*   place_to_jump_to );
+
+/* Undo an XDirect jump located at place_to_unchain, so it is
+   converted back into a call to disp_cp_chain_me.  It is expected
+   (and checked) that this site currently contains a jump directly to
+   the address specified by place_to_jump_to_EXPECTED. */
+extern
+VexInvalRange LibVEX_UnChain ( VexArch arch_host,
+                               void*   place_to_unchain,
+                               void*   place_to_jump_to_EXPECTED,
+                               void*   disp_cp_chain_me );
+
+/* Returns a constant -- the size of the event check that is put at
+   the start of every translation.  This makes it possible to
+   calculate the fast entry point address if the slow entry point
+   address is known (the usual case), or vice versa. */
+extern
+Int LibVEX_evCheckSzB ( VexArch arch_host );
+
+
+/* Patch the counter location into an existing ProfInc point.  The
+   specified point is checked to make sure it is plausible. */
+extern
+VexInvalRange LibVEX_PatchProfInc ( VexArch arch_host,
+                                    void*   place_to_patch,
+                                    ULong*  location_of_counter );
 
 
 /*-------------------------------------------------------*/
@@ -595,6 +801,34 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
 
 extern void LibVEX_ShowStats ( void );
 
+/*-------------------------------------------------------*/
+/*-- IR injection                                      --*/
+/*-------------------------------------------------------*/
+
+/* IR Injection Control Block */
+
+#define NO_ROUNDING_MODE (~0u)
+
+typedef 
+   struct {
+      IROp  op;        // the operation to perform
+      HWord result;    // address of the result
+      HWord opnd1;     // address of 1st operand
+      HWord opnd2;     // address of 2nd operand
+      HWord opnd3;     // address of 3rd operand
+      HWord opnd4;     // address of 4th operand
+      IRType t_result; // type of result
+      IRType t_opnd1;  // type of 1st operand
+      IRType t_opnd2;  // type of 2nd operand
+      IRType t_opnd3;  // type of 3rd operand
+      IRType t_opnd4;  // type of 4th operand
+      UInt  rounding_mode;
+      UInt  num_operands; // excluding rounding mode, if any
+      Bool  shift_amount_is_immediate;
+   }
+   IRICB;
+
+extern void LibVEX_InitIRI ( const IRICB * );
 
 /*-------------------------------------------------------*/
 /*--- Notes                                           ---*/

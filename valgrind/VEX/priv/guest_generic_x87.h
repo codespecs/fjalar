@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (guest_generic_x87.h) is                      ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                               guest_generic_x87.h ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -100,15 +89,51 @@ typedef
 #define FP_ENV_TAG    4
 #define FP_ENV_IP     6 /* and 7 */
 #define FP_ENV_CS     8
+#define FP_ENV_LSTOP  9
 #define FP_ENV_OPOFF  10 /* and 11 */
 #define FP_ENV_OPSEL  12
 #define FP_REG(ii)    (10*(7-(ii)))
 
 
-/* Do the computations for x86/amd64 FXTRACT */
+/* Layout of the 16-bit FNSAVE x87 state. */
+typedef
+   struct {
+      UShort env[7];
+      UChar  reg[80];
+   }
+   Fpu_State_16;
+
+/* Offsets, in 16-bit ints, into the FPU environment (env) area. */
+#define FPS_ENV_CTRL   0
+#define FPS_ENV_STAT   1
+#define FPS_ENV_TAG    2
+#define FPS_ENV_IP     3
+#define FPS_ENV_CS     4
+#define FPS_ENV_OPOFF  5
+#define FPS_ENV_OPSEL  6
+
+
+/* Do the computations for x86/amd64 FXTRACT.  Called directly from
+   generated code.  CLEAN HELPER. */
 extern ULong x86amd64g_calculate_FXTRACT ( ULong arg, HWord getExp );
 
+/* Compute result and new OSZACP flags for all 8-bit PCMP{E,I}STR{I,M}
+   variants.  See bigger comment on implementation of this function
+   for details on call/return conventions. */
+extern Bool compute_PCMPxSTRx ( /*OUT*/V128* resV,
+                                /*OUT*/UInt* resOSZACP,
+                                V128* argLV,  V128* argRV,
+                                UInt zmaskL, UInt zmaskR,
+                                UInt imm8,   Bool isxSTRM );
 
+/* Compute result and new OSZACP flags for all 16-bit PCMP{E,I}STR{I,M}
+   variants.  See bigger comment on implementation of this function
+   for details on call/return conventions. */
+extern Bool compute_PCMPxSTRx_wide ( /*OUT*/V128* resV,
+                                     /*OUT*/UInt* resOSZACP,
+                                     V128* argLV,  V128* argRV,
+                                     UInt zmaskL, UInt zmaskR,
+                                     UInt imm8,   Bool isxSTRM );
 
 #endif /* ndef __VEX_GUEST_GENERIC_X87_H */
 

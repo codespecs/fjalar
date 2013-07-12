@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (libvex_guest_amd64.h) is                     ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                              libvex_guest_amd64.h ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -48,7 +37,7 @@
 #define __LIBVEX_PUB_GUEST_AMD64_H
 
 #include "libvex_basictypes.h"
-#include "libvex_emwarn.h"
+#include "libvex_emnote.h"
 
 
 /*---------------------------------------------------------------*/
@@ -63,76 +52,85 @@
 
 typedef
    struct {
-      /*   0 */ ULong  guest_RAX;
-      /*   8 */ ULong  guest_RCX;
-      /*  16 */ ULong  guest_RDX;
-      /*  24 */ ULong  guest_RBX;
-      /*  32 */ ULong  guest_RSP;
-      /*  40 */ ULong  guest_RBP;
-      /*  48 */ ULong  guest_RSI;
-      /*  56 */ ULong  guest_RDI;
-      /*  64 */ ULong  guest_R8;
-      /*  72 */ ULong  guest_R9;
-      /*  80 */ ULong  guest_R10;
-      /*  88 */ ULong  guest_R11;
-      /*  96 */ ULong  guest_R12;
-      /* 104 */ ULong  guest_R13;
-      /* 112 */ ULong  guest_R14;
-      /* 120 */ ULong  guest_R15;
+      /* Event check fail addr, counter, and padding to make RAX 16
+         aligned. */
+      /*   0 */ ULong  host_EvC_FAILADDR;
+      /*   8 */ UInt   host_EvC_COUNTER;
+      /*  12 */ UInt   pad0;
+      /*  16 */ ULong  guest_RAX;
+      /*  24 */ ULong  guest_RCX;
+      /*  32 */ ULong  guest_RDX;
+      /*  40 */ ULong  guest_RBX;
+      /*  48 */ ULong  guest_RSP;
+      /*  56 */ ULong  guest_RBP;
+      /*  64 */ ULong  guest_RSI;
+      /*  72 */ ULong  guest_RDI;
+      /*  80 */ ULong  guest_R8;
+      /*  88 */ ULong  guest_R9;
+      /*  96 */ ULong  guest_R10;
+      /* 104 */ ULong  guest_R11;
+      /* 112 */ ULong  guest_R12;
+      /* 120 */ ULong  guest_R13;
+      /* 128 */ ULong  guest_R14;
+      /* 136 */ ULong  guest_R15;
       /* 4-word thunk used to calculate O S Z A C P flags. */
-      /* 128 */ ULong  guest_CC_OP;
-      /* 136 */ ULong  guest_CC_DEP1;
-      /* 144 */ ULong  guest_CC_DEP2;
-      /* 152 */ ULong  guest_CC_NDEP;
+      /* 144 */ ULong  guest_CC_OP;
+      /* 152 */ ULong  guest_CC_DEP1;
+      /* 160 */ ULong  guest_CC_DEP2;
+      /* 168 */ ULong  guest_CC_NDEP;
       /* The D flag is stored here, encoded as either -1 or +1 */
-      /* 160 */ ULong  guest_DFLAG;
-      /* 168 */ ULong  guest_RIP;
+      /* 176 */ ULong  guest_DFLAG;
+      /* 184 */ ULong  guest_RIP;
+      /* Bit 18 (AC) of eflags stored here, as either 0 or 1. */
+      /* ... */ ULong  guest_ACFLAG;
+      /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
+      /* 192 */ ULong guest_IDFLAG;
       /* Probably a lot more stuff too. 
          D,ID flags
          16  128-bit SSE registers
          all the old x87 FPU gunk
-         segment registers
-      */
-
-      /* Bit 21 (ID) of eflags stored here, as either 0 or 1. */
-      /* 176 */ ULong guest_IDFLAG;
+         segment registers */
 
       /* HACK to make tls on amd64-linux work.  %fs only ever seems to
          hold zero, and so guest_FS_ZERO holds the 64-bit offset
          associated with a %fs value of zero. */
-      /* 184 */ ULong guest_FS_ZERO;
+      /* 200 */ ULong guest_FS_ZERO;
 
-      /* XMM registers */
-      /* 192 */ULong guest_SSEROUND;
-      /* 200 */U128  guest_XMM0;
-      U128  guest_XMM1;
-      U128  guest_XMM2;
-      U128  guest_XMM3;
-      U128  guest_XMM4;
-      U128  guest_XMM5;
-      U128  guest_XMM6;
-      U128  guest_XMM7;
-      U128  guest_XMM8;
-      U128  guest_XMM9;
-      U128  guest_XMM10;
-      U128  guest_XMM11;
-      U128  guest_XMM12;
-      U128  guest_XMM13;
-      U128  guest_XMM14;
-      U128  guest_XMM15;
+      /* YMM registers.  Note that these must be allocated
+         consecutively in order that the SSE4.2 PCMP{E,I}STR{I,M}
+         helpers can treat them as an array.  YMM16 is a fake reg used
+         as an intermediary in handling aforementioned insns. */
+      /* 208 */ULong guest_SSEROUND;
+      /* 216 */U256  guest_YMM0;
+      U256  guest_YMM1;
+      U256  guest_YMM2;
+      U256  guest_YMM3;
+      U256  guest_YMM4;
+      U256  guest_YMM5;
+      U256  guest_YMM6;
+      U256  guest_YMM7;
+      U256  guest_YMM8;
+      U256  guest_YMM9;
+      U256  guest_YMM10;
+      U256  guest_YMM11;
+      U256  guest_YMM12;
+      U256  guest_YMM13;
+      U256  guest_YMM14;
+      U256  guest_YMM15;
+      U256  guest_YMM16;
 
       /* FPU */
       /* Note.  Setting guest_FTOP to be ULong messes up the
          delicately-balanced PutI/GetI optimisation machinery.
          Therefore best to leave it as a UInt. */
-      /* 456 */UInt  guest_FTOP;
+      UInt  guest_FTOP;
       ULong guest_FPREG[8];
-      /* 528 */ UChar guest_FPTAG[8];
-      /* 536 */ ULong guest_FPROUND;
-      /* 544 */ ULong guest_FC3210;
+      UChar guest_FPTAG[8];
+      ULong guest_FPROUND;
+      ULong guest_FC3210;
 
-      /* Emulation warnings */
-      /* 552 */ UInt  guest_EMWARN;
+      /* Emulation notes */
+      UInt  guest_EMNOTE;
 
       /* Translation-invalidation area description.  Not used on amd64
          (there is no invalidate-icache insn), but needed so as to
@@ -168,7 +166,7 @@ typedef
       ULong guest_IP_AT_SYSCALL;
 
       /* Padding to make it have an 16-aligned size */
-      /* ULong padding; */
+      ULong pad1;
    }
    VexGuestAMD64State;
 

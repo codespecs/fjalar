@@ -1,42 +1,31 @@
 
 /*--------------------------------------------------------------------*/
-/*---                                                              ---*/
-/*--- This file (guest_generic_bb_to_IR.h) is                      ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.           ---*/
-/*---                                                              ---*/
+/*--- begin                               guest_generic_bb_to_IR.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -79,9 +68,20 @@ typedef
       /* What happens next?
          Dis_StopHere:  this insn terminates the BB; we must stop.
          Dis_Continue:  we can optionally continue into the next insn
-         Dis_Resteer:   followed a branch; continue at the spec'd addr
+         Dis_ResteerU:  followed an unconditional branch; continue at 
+                        'continueAt'
+         Dis_ResteerC:  (speculatively, of course) followed a
+                        conditional branch; continue at 'continueAt'
       */
-      enum { Dis_StopHere, Dis_Continue, Dis_Resteer } whatNext;
+      enum { Dis_StopHere, Dis_Continue, 
+             Dis_ResteerU, Dis_ResteerC } whatNext;
+
+      /* For Dis_StopHere, we need to end the block and create a
+         transfer to whatever the NIA is.  That will have presumably
+         been set by the IR generated for this insn.  So we need to
+         know the jump kind to use.  Should Ijk_INVALID in other Dis_
+         cases. */
+      IRJumpKind jk_StopHere;
 
       /* For Dis_Resteer, this is the guest address we should continue
          at.  Otherwise ignored (should be zero). */
@@ -119,12 +119,15 @@ typedef
       /* This is the IRSB to which the resulting IR is to be appended. */
       /*OUT*/ IRSB*        irbb,
 
-      /* Do we need to generate IR to set the guest IP for this insn,
-         or not? */
-      /*IN*/  Bool         put_IP,
-
-      /* Return True iff resteering to the given addr is allowed */
+      /* Return True iff resteering to the given addr is allowed (for
+         branches/calls to destinations that are known at JIT-time) */
       /*IN*/  Bool         (*resteerOkFn) ( /*opaque*/void*, Addr64 ),
+
+      /* Should we speculatively resteer across conditional branches?
+         (Experimental and not enabled by default).  The strategy is
+         to assume that backward branches are taken and forward
+         branches are not taken. */
+      /*IN*/  Bool         resteerCisOk,
 
       /* Vex-opaque data passed to all caller (valgrind) supplied
          callbacks. */
@@ -158,8 +161,11 @@ typedef
 
 /* See detailed comment in bb_to_IR.c. */
 extern
-IRSB* bb_to_IR ( /*OUT*/VexGuestExtents* vge,
-                 /*IN*/ void*            closure_opaque,
+IRSB* bb_to_IR ( 
+         /*OUT*/VexGuestExtents* vge,
+         /*OUT*/UInt*            n_sc_extents,
+         /*OUT*/UInt*            n_guest_instrs, /* stats only */
+         /*IN*/ void*            callback_opaque,
                  /*IN*/ DisOneInstrFn    dis_instr_fn,
                  /*IN*/ UChar*           guest_code,
                  /*IN*/ Addr64           guest_IP_bbstart,
@@ -169,10 +175,13 @@ IRSB* bb_to_IR ( /*OUT*/VexGuestExtents* vge,
                  /*IN*/ VexArchInfo*     archinfo_guest,
                  /*IN*/ VexAbiInfo*      abiinfo_both,
                  /*IN*/ IRType           guest_word_type,
-                 /*IN*/ Bool             do_self_check,
+         /*IN*/ UInt             (*needs_self_check)(void*,VexGuestExtents*),
                  /*IN*/ Bool             (*preamble_function)(void*,IRSB*),
-                 /*IN*/ Int              offB_TISTART,
-                 /*IN*/ Int              offB_TILEN );
+         /*IN*/ Int              offB_GUEST_TISTART,
+         /*IN*/ Int              offB_GUEST_TILEN,
+         /*IN*/ Int              offB_GUEST_IP,
+         /*IN*/ Int              szB_GUEST_IP
+      );
 
 
 #endif /* ndef __VEX_GUEST_GENERIC_BB_TO_IR_H */
