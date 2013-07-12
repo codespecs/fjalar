@@ -5,7 +5,7 @@
  *  timerfd-test2 by Davide Libenzi (test app for timerfd)
  *  Copyright (C) 2007  Davide Libenzi <davidel@xmailserver.org>
  *  Modified for inclusion in Valgrind.
- *  Copyright (C) 2008  Bart Van Assche <bart.vanassche@gmail.com>
+ *  Copyright (C) 2008  Bart Van Assche <bvanassche@acm.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -61,6 +61,8 @@
 #define __NR_timerfd_create  322
 #elif defined(__powerpc__)
 #define __NR_timerfd_create  306
+#elif defined(__s390x__)
+#define __NR_timerfd_create  319
 #else
 #error Cannot detect your architecture!
 #endif
@@ -76,6 +78,9 @@
 #elif defined(__powerpc__)
 #define __NR_timerfd_settime 311
 #define __NR_timerfd_gettime 312
+#elif defined(__s390x__)
+#define __NR_timerfd_settime 320
+#define __NR_timerfd_gettime 321
 #else
 #error Cannot detect your architecture!
 #endif
@@ -153,7 +158,7 @@ long waittmr(int tfd, int timeo)
   }
   if ((pfd.revents & POLLIN) == 0)
   {
-    fprintf(stdout, "no ticks happened\n");
+    fprintf(stderr, "no ticks happened\n");
     return -1;
   }
   if (read(tfd, &ticks, sizeof(ticks)) != sizeof(ticks))
@@ -182,11 +187,11 @@ int main(int ac, char **av)
 
   for (i = 0; i < sizeof(clks) / sizeof(clks[0]); i++)
   {
-    fprintf(stdout, "\n\n---------------------------------------\n");
-    fprintf(stdout, "| testing %s\n", clks[i].name);
-    fprintf(stdout, "---------------------------------------\n\n");
+    fprintf(stderr, "\n\n---------------------------------------\n");
+    fprintf(stderr, "| testing %s\n", clks[i].name);
+    fprintf(stderr, "---------------------------------------\n\n");
 
-    fprintf(stdout, "relative timer test (at 500 ms) ...\n");
+    fprintf(stderr, "relative timer test (at 500 ms) ...\n");
     set_timespec(&tmr.it_value, 500 * 1000);
     set_timespec(&tmr.it_interval, 0);
     tnow = getustime(clks[i].id);
@@ -202,17 +207,17 @@ int main(int ac, char **av)
       return 1;
     }
 
-    fprintf(stdout, "wating timer ...\n");
+    fprintf(stderr, "waiting timer ...\n");
     ticks = waittmr(tfd, -1);
     ttmr = getustime(clks[i].id);
     if (ticks <= 0)
-      fprintf(stdout, "whooops! no timer showed up!\n");
+      fprintf(stderr, "whooops! no timer showed up!\n");
     else
-      fprintf(stdout, "got timer ticks (%ld) after %.1f s\n",
+      fprintf(stderr, "got timer ticks (%ld) after %.1f s\n",
               ticks, (ttmr - tnow) * 1e-6);
 
 
-    fprintf(stdout, "absolute timer test (at 500 ms) ...\n");
+    fprintf(stderr, "absolute timer test (at 500 ms) ...\n");
     tnow = getustime(clks[i].id);
     set_timespec(&tmr.it_value, tnow + 500 * 1000);
     set_timespec(&tmr.it_interval, 0);
@@ -222,16 +227,16 @@ int main(int ac, char **av)
       return 1;
     }
 
-    fprintf(stdout, "wating timer ...\n");
+    fprintf(stderr, "waiting timer ...\n");
     ticks = waittmr(tfd, -1);
     ttmr = getustime(clks[i].id);
     if (ticks <= 0)
-      fprintf(stdout, "whooops! no timer showed up!\n");
+      fprintf(stderr, "whooops! no timer showed up!\n");
     else
-      fprintf(stdout, "got timer ticks (%ld) after %.1f s\n",
+      fprintf(stderr, "got timer ticks (%ld) after %.1f s\n",
               ticks, (ttmr - tnow) * 1e-6);
 
-    fprintf(stdout, "sequential timer test (100 ms clock) ...\n");
+    fprintf(stderr, "sequential timer test (100 ms clock) ...\n");
     tnow = getustime(clks[i].id);
     set_timespec(&tmr.it_value, tnow + 100 * 1000);
     set_timespec(&tmr.it_interval, 100 * 1000);
@@ -241,31 +246,36 @@ int main(int ac, char **av)
       return 1;
     }
 
-    fprintf(stdout, "sleeping one second ...\n");
+    fprintf(stderr, "sleeping one second ...\n");
     sleep(1);
     if (timerfd_gettime(tfd, &tmr))
     {
       perror("timerfd_gettime");
       return 1;
     }
-    fprintf(stdout, "timerfd_gettime returned:\n"
+    fprintf(stderr, "timerfd_gettime returned:\n"
             "\tit_value = %.1f it_interval = %.1f\n",
             tmr.it_value.tv_sec + 1e-9 * tmr.it_value.tv_nsec,
             tmr.it_interval.tv_sec + 1e-9 * tmr.it_interval.tv_nsec);
-    fprintf(stdout, "sleeping 1 second ...\n");
+    fprintf(stderr, "sleeping 1 second ...\n");
     sleep(1);
 
-    fprintf(stdout, "wating timer ...\n");
+    fprintf(stderr, "waiting timer ...\n");
     ticks = waittmr(tfd, -1);
     ttmr = getustime(clks[i].id);
     if (ticks <= 0)
-      fprintf(stdout, "whooops! no timer showed up!\n");
+      fprintf(stderr, "whooops! no timer showed up!\n");
     else
-      fprintf(stdout, "got timer ticks (%ld) after %.1f s\n",
-              ticks, (ttmr - tnow) * 1e-6);
+    {
+      const double delta = (ttmr - tnow) * 1e-6;
+      if (19 <= ticks && ticks <= 55 && 1.9 < delta && delta < 5.5)
+        fprintf(stderr, "got about 20 timer ticks after about 2s\n");
+      else
+        fprintf(stderr, "got timer ticks (%ld) after %.2f s\n", ticks, delta);
+    }
 
 
-    fprintf(stdout, "O_NONBLOCK test ...\n");
+    fprintf(stderr, "O_NONBLOCK test ...\n");
     tnow = getustime(clks[i].id);
     set_timespec(&tmr.it_value, 100 * 1000);
     set_timespec(&tmr.it_interval, 0);
@@ -275,27 +285,27 @@ int main(int ac, char **av)
       return 1;
     }
 #if 0
-    fprintf(stdout, "timerfd = %d\n", tfd);
+    fprintf(stderr, "timerfd = %d\n", tfd);
 #endif
 
-    fprintf(stdout, "wating timer (flush the single tick) ...\n");
+    fprintf(stderr, "waiting timer (flush the single tick) ...\n");
     ticks = waittmr(tfd, -1);
     ttmr = getustime(clks[i].id);
     if (ticks <= 0)
-      fprintf(stdout, "whooops! no timer showed up!\n");
+      fprintf(stderr, "whooops! no timer showed up!\n");
     else
-      fprintf(stdout, "got timer ticks (%ld) after %.1f s\n",
+      fprintf(stderr, "got timer ticks (%ld) after %.1f s\n",
               ticks, (ttmr - tnow) * 1e-6);
 
     fcntl(tfd, F_SETFL, fcntl(tfd, F_GETFL, 0) | O_NONBLOCK);
 
     if (read(tfd, &uticks, sizeof(uticks)) > 0)
-      fprintf(stdout, "whooops! timer ticks not zero when should have been\n");
+      fprintf(stderr, "whooops! timer ticks not zero when should have been\n");
     else if (errno != EAGAIN)
-      fprintf(stdout, "whooops! bad errno value (%d = '%s')!\n",
+      fprintf(stderr, "whooops! bad errno value (%d = '%s')!\n",
               errno, strerror(errno));
     else
-      fprintf(stdout, "success\n");
+      fprintf(stderr, "success\n");
 
     fcntl(tfd, F_SETFL, fcntl(tfd, F_GETFL, 0) & ~O_NONBLOCK);
 

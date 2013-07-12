@@ -17,13 +17,16 @@ EXTRA_DIST = \
 pkginclude_HEADERS = \
 	pub/libvex.h \
 	pub/libvex_basictypes.h \
-	pub/libvex_emwarn.h \
+	pub/libvex_emnote.h \
 	pub/libvex_guest_offsets.h \
 	pub/libvex_guest_x86.h \
 	pub/libvex_guest_amd64.h \
 	pub/libvex_guest_ppc32.h \
 	pub/libvex_guest_ppc64.h \
 	pub/libvex_guest_arm.h \
+	pub/libvex_guest_s390x.h \
+	pub/libvex_guest_mips32.h \
+	pub/libvex_s390x_common.h \
 	pub/libvex_ir.h \
 	pub/libvex_trc_values.h
 
@@ -38,12 +41,18 @@ noinst_HEADERS = \
 	priv/guest_amd64_defs.h \
 	priv/guest_ppc_defs.h \
 	priv/guest_arm_defs.h \
+	priv/guest_s390_defs.h \
+	priv/guest_mips_defs.h \
 	priv/host_generic_regs.h \
 	priv/host_generic_simd64.h \
+	priv/host_generic_simd128.h \
 	priv/host_x86_defs.h \
 	priv/host_amd64_defs.h \
 	priv/host_ppc_defs.h \
-	priv/host_arm_defs.h
+	priv/host_arm_defs.h \
+	priv/host_s390_defs.h \
+	priv/host_s390_disasm.h \
+	priv/host_mips_defs.h
 
 BUILT_SOURCES = pub/libvex_guest_offsets.h
 CLEANFILES    = pub/libvex_guest_offsets.h
@@ -51,11 +60,22 @@ CLEANFILES    = pub/libvex_guest_offsets.h
 # This is very uggerly.  Need to sed out both "xyzzyN" and
 # "xyzzy$N" since gcc on different targets emits the constants
 # differently -- with a leading $ on x86/amd64 but none on ppc32/64.
-pub/libvex_guest_offsets.h:
+pub/libvex_guest_offsets.h: auxprogs/genoffsets.c \
+			    pub/libvex_basictypes.h \
+			    pub/libvex_guest_x86.h \
+			    pub/libvex_guest_amd64.h \
+			    pub/libvex_guest_ppc32.h \
+			    pub/libvex_guest_ppc64.h \
+			    pub/libvex_guest_arm.h \
+			    pub/libvex_guest_s390x.h \
+			    pub/libvex_guest_mips32.h
 	rm -f auxprogs/genoffsets.s
-	$(CC) $(LIBVEX_CFLAGS) -O -S -o auxprogs/genoffsets.s \
+	$(CC) $(CFLAGS) \
+	      $(LIBVEX_CFLAGS) \
+	      $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) \
+				-O -S -o auxprogs/genoffsets.s \
 					auxprogs/genoffsets.c
-	grep xyzzy auxprogs/genoffsets.s | grep define \
+	grep xyzzy auxprogs/genoffsets.s | grep "^#define" \
 	   | sed "s/xyzzy\\$$//g" \
 	   | sed "s/xyzzy#//g" \
 	   | sed "s/xyzzy//g" \
@@ -76,6 +96,7 @@ LIBVEX_SOURCES_COMMON = \
 	priv/main_main.c \
 	priv/main_util.c \
 	priv/ir_defs.c \
+	priv/ir_inject.c \
 	priv/ir_match.c \
 	priv/ir_opt.c \
 	priv/guest_generic_bb_to_IR.c \
@@ -88,8 +109,13 @@ LIBVEX_SOURCES_COMMON = \
 	priv/guest_ppc_toIR.c \
 	priv/guest_arm_helpers.c \
 	priv/guest_arm_toIR.c \
+	priv/guest_s390_helpers.c \
+	priv/guest_s390_toIR.c \
+	priv/guest_mips_helpers.c \
+	priv/guest_mips_toIR.c \
 	priv/host_generic_regs.c \
 	priv/host_generic_simd64.c \
+	priv/host_generic_simd128.c \
 	priv/host_generic_reg_alloc2.c \
 	priv/host_x86_defs.c \
 	priv/host_x86_isel.c \
@@ -98,7 +124,12 @@ LIBVEX_SOURCES_COMMON = \
 	priv/host_ppc_defs.c \
 	priv/host_ppc_isel.c \
 	priv/host_arm_defs.c \
-	priv/host_arm_isel.c
+	priv/host_arm_isel.c \
+	priv/host_s390_defs.c \
+	priv/host_s390_isel.c \
+	priv/host_s390_disasm.c \
+	priv/host_mips_defs.c \
+	priv/host_mips_isel.c
 
 LIBVEX_CFLAGS = \
 	-Wbad-function-cast \
