@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,6 +45,10 @@
 extern Addr  VG_(clstk_base);	 // client stack range
 extern Addr  VG_(clstk_end);
 extern UWord VG_(clstk_id);      // client stack id
+
+/* linux only: where is the client auxv ? */
+/* This is setup as part of setup_client_stack in initimg-linux.c. */
+extern UWord* VG_(client_auxv);
 
 extern Addr  VG_(brk_base);	 // start of brk
 extern Addr  VG_(brk_limit);	 // current brk

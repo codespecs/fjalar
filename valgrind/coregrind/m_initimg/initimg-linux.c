@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -48,6 +48,7 @@
 #include "pub_core_options.h"
 #include "pub_core_syscall.h"
 #include "pub_core_tooliface.h"       /* VG_TRACK */
+#include "pub_core_libcsetjmp.h"      // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"     /* ThreadArchState */
 #include "priv_initimg_pathscan.h"
 #include "pub_core_initimg.h"         /* self */
@@ -132,6 +133,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    Int    v_launcher_len  = VG_(strlen)( v_launcher );
    Bool   ld_preload_done = False;
    Int    vglib_len       = VG_(strlen)(VG_(libdir));
+   Bool   debug           = False;
 
    HChar** cpp;
    HChar** ret;
@@ -172,9 +174,12 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    VG_(debugLog)(2, "initimg", "  \"%s\"\n", preload_string);
 
    /* Count the original size of the env */
+   if (debug) VG_(printf)("\n\n");
    envc = 0;
-   for (cpp = origenv; cpp && *cpp; cpp++)
+   for (cpp = origenv; cpp && *cpp; cpp++) {
       envc++;
+      if (debug) VG_(printf)("XXXXXXXXX: BEFORE %s\n", *cpp);
+   }
 
    /* Allocate a new space */
    ret = VG_(malloc) ("initimg-linux.sce.3",
@@ -182,8 +187,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    vg_assert(ret);
 
    /* copy it over */
-   for (cpp = ret; *origenv; )
+   for (cpp = ret; *origenv; ) {
+      if (debug) VG_(printf)("XXXXXXXXX: COPY   %s\n", *origenv);
       *cpp++ = *origenv++;
+   }
    *cpp = NULL;
    
    vg_assert(envc == (cpp - ret));
@@ -202,6 +209,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 
          ld_preload_done = True;
       }
+      if (debug) VG_(printf)("XXXXXXXXX: MASH   %s\n", *cpp);
    }
 
    /* Add the missing bits */
@@ -213,6 +221,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       VG_(snprintf)(cp, len, "%s%s", ld_preload, preload_string);
 
       ret[envc++] = cp;
+      if (debug) VG_(printf)("XXXXXXXXX: ADD    %s\n", cp);
    }
 
    /* ret[0 .. envc-1] is live now. */
@@ -229,6 +238,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 
    VG_(free)(preload_string);
    ret[envc] = NULL;
+
+   for (i = 0; i < envc; i++) {
+      if (debug) VG_(printf)("XXXXXXXXX: FINAL  %s\n", ret[i]);
+   }
 
    return ret;
 }
@@ -443,7 +456,7 @@ Addr setup_client_stack( void*  init_sp,
 	 stringsize += VG_(strlen)(cauxv->u.a_ptr) + 1;
       else if (cauxv->a_type == AT_RANDOM)
 	 stringsize += 16;
-      else if (cauxv->a_type == AT_EXECFN)
+      else if (cauxv->a_type == AT_EXECFN && have_exename)
 	 stringsize += VG_(strlen)(VG_(args_the_exename)) + 1;
       auxsize += sizeof(*cauxv);
    }
@@ -598,6 +611,11 @@ Addr setup_client_stack( void*  init_sp,
    /* --- auxv --- */
    auxv = (struct auxv *)ptr;
    *client_auxv = (UInt *)auxv;
+   VG_(client_auxv) = (UWord *)*client_auxv;
+   // ??? According to 'man proc', auxv is a array of unsigned long
+   // terminated by two zeros. Why is valgrind working with UInt ?
+   // We do not take ULong* (as ULong 8 bytes on a 32 bits),
+   // => we take UWord*
 
 #  if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
    auxv[0].a_type  = AT_IGNOREPPC;
@@ -608,7 +626,6 @@ Addr setup_client_stack( void*  init_sp,
 #  endif
 
    for (; orig_auxv->a_type != AT_NULL; auxv++, orig_auxv++) {
-      const NSegment *ehdrseg;
 
       /* copy the entry... */
       *auxv = *orig_auxv;
@@ -626,7 +643,9 @@ Addr setup_client_stack( void*  init_sp,
          case AT_GID:
          case AT_EGID:
          case AT_CLKTCK:
-         case AT_FPUCW:
+#        if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
+         case AT_FPUCW: /* missing on android */
+#        endif
             /* All these are pointerless, so we don't need to do
                anything about them. */
             break;
@@ -646,6 +665,16 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
          case AT_BASE:
+            /* When gdbserver sends the auxv to gdb, the AT_BASE has
+               to be ignored, as otherwise gdb adds this offset
+               to loaded shared libs, causing wrong address
+               relocation e.g. when inserting breaks.
+               However, ignoring AT_BASE makes V crash on Android 4.1.
+               So, keep the AT_BASE on android for now.
+               ??? Need to dig in depth about AT_BASE/GDB interaction */
+#           if !defined(VGPV_arm_linux_android)
+            auxv->a_type = AT_IGNORE;
+#           endif
             auxv->u.a_val = info->interp_base;
             break;
 
@@ -660,6 +689,23 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
          case AT_HWCAP:
+#           if defined(VGP_arm_linux)
+            { Bool has_neon = (auxv->u.a_val & VKI_HWCAP_NEON) > 0;
+              VG_(debugLog)(2, "initimg",
+                               "ARM has-neon from-auxv: %s\n",
+                               has_neon ? "YES" : "NO");
+              VG_(machine_arm_set_has_NEON)( has_neon );
+              #define VKI_HWCAP_TLS 32768
+              Bool has_tls = (auxv->u.a_val & VKI_HWCAP_TLS) > 0;
+              VG_(debugLog)(2, "initimg",
+                               "ARM has-tls from-auxv: %s\n",
+                               has_tls ? "YES" : "NO");
+              /* If real hw sets properly HWCAP_TLS, we might
+                 use this info to decide to really execute set_tls syscall
+                 in syswrap-arm-linux.c rather than to base this on
+                 conditional compilation. */
+            }
+#           endif
             break;
 
          case AT_DCACHEBSIZE:
@@ -705,13 +751,14 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
 #        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64_linux)
-         case AT_SYSINFO_EHDR:
+         case AT_SYSINFO_EHDR: {
             /* Trash this, because we don't reproduce it */
-            ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
+            const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
             vg_assert(ehdrseg);
             VG_(am_munmap_valgrind)(ehdrseg->start, ehdrseg->end - ehdrseg->start);
             auxv->a_type = AT_IGNORE;
             break;
+         }
 #        endif
 
          case AT_RANDOM:
@@ -953,10 +1000,11 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_EIP = iifii.initial_client_IP;
 
    /* initialise %cs, %ds and %ss to point at the operating systems
-      default code, data and stack segments */
+      default code, data and stack segments.  Also %es (see #291253). */
    asm volatile("movw %%cs, %0" : : "m" (arch->vex.guest_CS));
    asm volatile("movw %%ds, %0" : : "m" (arch->vex.guest_DS));
    asm volatile("movw %%ss, %0" : : "m" (arch->vex.guest_SS));
+   asm volatile("movw %%es, %0" : : "m" (arch->vex.guest_ES));
 
 #  elif defined(VGP_amd64_linux)
    vg_assert(0 == sizeof(VexGuestAMD64State) % 16);
@@ -1014,11 +1062,52 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestARMState));
 
    arch->vex.guest_R13 = iifii.initial_client_SP;
-   arch->vex.guest_R15 = iifii.initial_client_IP;
+   arch->vex.guest_R15T = iifii.initial_client_IP;
 
    /* This is just EABI stuff. */
    // FIXME jrs: what's this for?
    arch->vex.guest_R1 =  iifii.initial_client_SP;
+
+#  elif defined(VGP_s390x_linux)
+   vg_assert(0 == sizeof(VexGuestS390XState) % 16);
+
+   /* Zero out the initial state. This also sets the guest_fpc to 0, which
+      is also done by the kernel for the fpc during execve. */
+   LibVEX_GuestS390X_initialise(&arch->vex);
+
+   /* Mark all registers as undefined ... */
+   VG_(memset)(&arch->vex_shadow1, 0xFF, sizeof(VexGuestS390XState));
+   VG_(memset)(&arch->vex_shadow2, 0x00, sizeof(VexGuestS390XState));
+   /* ... except SP, FPC, and IA */
+   VG_(memset)((UChar *)&arch->vex_shadow1 + VG_O_STACK_PTR, 0x00, 8);
+   VG_(memset)((UChar *)&arch->vex_shadow1 + VG_O_FPC_REG,   0x00, 4);
+   VG_(memset)((UChar *)&arch->vex_shadow1 + VG_O_INSTR_PTR, 0x00, 8);
+
+   /* Put essential stuff into the new state. */
+   arch->vex.guest_SP = iifii.initial_client_SP;
+   arch->vex.guest_IA = iifii.initial_client_IP;
+   /* See sys_execve in <linux>/arch/s390/kernel/process.c */
+   arch->vex.guest_fpc = 0;
+
+   /* Tell the tool about the registers we just wrote */
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_STACK_PTR, 8);
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_FPC_REG,   4);
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_INSTR_PTR, 8);
+   return;
+
+#  elif defined(VGP_mips32_linux)
+   vg_assert(0 == sizeof(VexGuestMIPS32State) % 16);
+   /* Zero out the initial state, and set up the simulated FPU in a
+      sane way. */
+   LibVEX_GuestMIPS32_initialise(&arch->vex);
+
+   /* Zero out the shadow areas. */
+   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestMIPS32State));
+   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestMIPS32State));
+
+   arch->vex.guest_r29 = iifii.initial_client_SP;
+   arch->vex.guest_PC = iifii.initial_client_IP;
+   arch->vex.guest_r31 = iifii.initial_client_SP;
 
 #  else
 #    error Unknown platform

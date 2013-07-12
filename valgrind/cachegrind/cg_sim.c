@@ -7,7 +7,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2009 Nicholas Nethercote
+   Copyright (C) 2002-2012 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -96,7 +96,7 @@ static void cachesim_##L##_initcache(cache_t config)                        \
 /* bigger than its usual limit.  Inlining gains around 5--10% speedup. */   \
 __attribute__((always_inline))                                              \
 static __inline__                                                           \
-void cachesim_##L##_doref(Addr a, UChar size, ULong* m1, ULong *m2)         \
+void cachesim_##L##_doref(Addr a, UChar size, ULong* m1, ULong *mL)         \
 {                                                                           \
    UInt  set1 = ( a         >> L.line_size_bits) & (L.sets_min_1);          \
    UInt  set2 = ((a+size-1) >> L.line_size_bits) & (L.sets_min_1);          \
@@ -139,7 +139,7 @@ void cachesim_##L##_doref(Addr a, UChar size, ULong* m1, ULong *m2)         \
                                                                             \
    /* Second case: word straddles two lines. */                             \
    /* Nb: this is a fast way of doing ((set1+1) % L.sets) */                \
-   } else if (((set1 + 1) & (L.sets-1)) == set2) {                          \
+   } else if (((set1 + 1) & (L.sets_min_1)) == set2) {                      \
       set = &(L.tags[set1 * L.assoc]);                                      \
       if (tag == set[0]) {                                                  \
          goto block2;                                                       \
@@ -188,9 +188,9 @@ miss_treatment:                                                             \
    return;                                                                  \
 }
 
-CACHESIM(L2, (*m2)++ );
-CACHESIM(I1, { (*m1)++; cachesim_L2_doref(a, size, m1, m2); } );
-CACHESIM(D1, { (*m1)++; cachesim_L2_doref(a, size, m1, m2); } );
+CACHESIM(LL, (*mL)++ );
+CACHESIM(I1, { (*m1)++; cachesim_LL_doref(a, size, m1, mL); } );
+CACHESIM(D1, { (*m1)++; cachesim_LL_doref(a, size, m1, mL); } );
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                 cg_sim.c ---*/

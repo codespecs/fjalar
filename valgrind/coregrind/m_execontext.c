@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,6 +37,7 @@
 #include "pub_core_stacktrace.h"
 #include "pub_core_machine.h"       // VG_(get_IP)
 #include "pub_core_vki.h"           // To keep pub_core_threadstate.h happy
+#include "pub_core_libcsetjmp.h"    // Ditto
 #include "pub_core_threadstate.h"   // VG_(is_valid_tid)
 #include "pub_core_execontext.h"    // self
 
@@ -296,7 +297,7 @@ static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips ); /*fwds*/
 static ExeContext* record_ExeContext_wrk ( ThreadId tid, Word first_ip_delta,
                                            Bool first_ip_only )
 {
-   Addr ips[VG_DEEPEST_BACKTRACE];
+   Addr ips[VG_(clo_backtrace_size)];
    UInt n_ips;
 
    init_ExeContext_storage();
@@ -306,12 +307,9 @@ static ExeContext* record_ExeContext_wrk ( ThreadId tid, Word first_ip_delta,
 
    vg_assert(VG_(is_valid_tid)(tid));
 
-   vg_assert(VG_(clo_backtrace_size) >= 1 &&
-             VG_(clo_backtrace_size) <= VG_DEEPEST_BACKTRACE);
-
    if (first_ip_only) {
       n_ips = 1;
-      ips[0] = VG_(get_IP)(tid);
+      ips[0] = VG_(get_IP)(tid) + first_ip_delta;
    } else {
       n_ips = VG_(get_StackTrace)( tid, ips, VG_(clo_backtrace_size),
                                    NULL/*array to dump SP values in*/,
@@ -430,8 +428,9 @@ ExeContext* VG_(record_ExeContext)( ThreadId tid, Word first_ip_delta ) {
                                       False/*!first_ip_only*/ );
 }
 
-ExeContext* VG_(record_depth_1_ExeContext)( ThreadId tid ) {
-   return record_ExeContext_wrk( tid, 0/*first_ip_delta*/,
+ExeContext* VG_(record_depth_1_ExeContext)( ThreadId tid, Word first_ip_delta )
+{
+   return record_ExeContext_wrk( tid, first_ip_delta,
                                       True/*first_ip_only*/ );
 }
 

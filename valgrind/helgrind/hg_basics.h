@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2009 OpenWorks Ltd
+   Copyright (C) 2007-2012 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -103,6 +103,28 @@ extern UWord HG_(clo_conflict_cache_size);
    SCE_{THREADS,LOCKS,BIGRANGE,ACCESS,LAOG}. */
 extern Word HG_(clo_sanity_flags);
 
+/* Treat heap frees as if the memory was written immediately prior to
+   the free.  This shakes out races in which memory is referenced by
+   one thread, and freed by another, and there's no observable
+   synchronisation event to guarantee that the reference happens
+   before the free. */
+extern Bool HG_(clo_free_is_write);
+
+/* Controls the application of VTS pruning.  There are three levels:
+
+   0: "never": VTS pruning is never done
+
+   1: "auto": (the default): VTS pruning is sometimes done after VTS
+      GCs, just frequently enough to keep space use under control, as
+      determined by heuristics in libhb_core.c.
+
+   2: "always": VTS pruning is done after every VTS GC.  This is
+      mostly a big time waster, but minimises space use. */
+extern UWord HG_(clo_vts_pruning);
+
+/* When False, race checking ignores memory references which are to
+   the stack, which speeds things up a bit.  Default: True. */
+extern Bool HG_(clo_check_stack_refs); 
 
 #endif /* ! __HG_BASICS_H */
 

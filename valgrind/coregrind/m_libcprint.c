@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_debuglog.h"
+#include "pub_core_gdbserver.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcfile.h"   // VG_(write)(), VG_(write_socket)()
@@ -47,7 +48,10 @@
 /* The destination sinks for normal and XML output.  These have their
    initial values here; they are set to final values by
    m_main.main_process_cmd_line_options().  See comment at the top of
-   that function for the associated logic. */
+   that function for the associated logic. 
+   After startup, the gdbserver monitor command might temporarily
+   set the fd of log_output_sink to -2 to indicate that output is
+   to be given to gdb rather than output to the startup fd */
 OutputSink VG_(log_output_sink) = {  2, False }; /* 2 = stderr */
 OutputSink VG_(xml_output_sink) = { -1, False }; /* disabled */
  
@@ -70,6 +74,8 @@ void send_bytes_to_logging_sink ( OutputSink* sink, Char* msg, Int nbytes )
          any more output. */
       if (sink->fd >= 0)
          VG_(write)( sink->fd, msg, nbytes );
+      else if (sink->fd == -2)
+         VG_(gdb_printf)("%s", msg);
    }
 }
 
@@ -107,7 +113,7 @@ static UInt vprintf_to_buf ( printf_buf_t* b,
                              const HChar *format, va_list vargs )
 {
    UInt ret = 0;
-   if (b->sink->fd >= 0) {
+   if (b->sink->fd >= 0 || b->sink->fd == -2) {
       ret = VG_(debugLog_vprintf) 
                ( add_to__printf_buf, b, format, vargs );
    }
@@ -151,17 +157,6 @@ UInt VG_(vprintf_xml) ( const HChar *format, va_list vargs )
 }
 
 UInt VG_(printf_xml) ( const HChar *format, ... )
-{
-   UInt ret;
-   va_list vargs;
-   va_start(vargs, format);
-   ret = VG_(vprintf_xml)(format, vargs);
-   va_end(vargs);
-   return ret;
-}
-
-/* An exact clone of VG_(printf_xml), unfortunately. */
-UInt VG_(printf_xml_no_f_c) ( const HChar *format, ... )
 {
    UInt ret;
    va_list vargs;
@@ -233,13 +228,12 @@ static void add_to__snprintf_buf ( HChar c, void* p )
 
 UInt VG_(vsnprintf) ( Char* buf, Int size, const HChar *format, va_list vargs )
 {
-   Int ret;
    snprintf_buf_t b;
    b.buf      = buf;
    b.buf_size = size < 0 ? 0 : size;
    b.buf_used = 0;
 
-   ret = VG_(debugLog_vprintf) 
+   (void) VG_(debugLog_vprintf) 
             ( add_to__snprintf_buf, &b, format, vargs );
 
    return b.buf_used;
@@ -374,15 +368,13 @@ typedef
                        leftmost column? */
       /* Current message kind - changes from call to call */
       VgMsgKind kind;
-      /* PID; acquired just once and stays constant */
-      Int my_pid;
       /* destination */
       OutputSink* sink;
    } 
    vmessage_buf_t;
 
 static vmessage_buf_t vmessage_buf
-   = { "", 0, True, Vg_UserMsg, -1, &VG_(log_output_sink) };
+   = { "", 0, True, Vg_UserMsg, &VG_(log_output_sink) };
 
 
 // Adds a single char to the buffer.  We aim to have at least 128
@@ -402,22 +394,39 @@ static void add_to__vmessage_buf ( HChar c, void *p )
       HChar ch;
       Int   i, depth;
 
-      switch (b->kind) {
-         case Vg_UserMsg:       ch = '='; break;
-         case Vg_DebugMsg:      ch = '-'; break;
-         case Vg_DebugExtraMsg: ch = '+'; break;
-         case Vg_ClientMsg:     ch = '*'; break;
-         default:               ch = '?'; break;
-      }
-
       // Print one '>' in front of the messages for each level of
       // self-hosting being performed.
+      // Do not print such '>' if sim hint "no-inner-prefix" given
+      // (useful to run regression tests in an outer/inner setup
+      // and avoid the diff failing due to these unexpected '>').
       depth = RUNNING_ON_VALGRIND;
+      if (depth > 0 && !VG_(strstr)(VG_(clo_sim_hints), "no-inner-prefix")) {
       if (depth > 10)
          depth = 10; // ?!?!
       for (i = 0; i < depth; i++) {
          b->buf[b->buf_used++] = '>';
       }
+      }
+
+      if (Vg_FailMsg == b->kind) {
+         // "valgrind: " prefix.
+         b->buf[b->buf_used++] = 'v';
+         b->buf[b->buf_used++] = 'a';
+         b->buf[b->buf_used++] = 'l';
+         b->buf[b->buf_used++] = 'g';
+         b->buf[b->buf_used++] = 'r';
+         b->buf[b->buf_used++] = 'i';
+         b->buf[b->buf_used++] = 'n';
+         b->buf[b->buf_used++] = 'd';
+         b->buf[b->buf_used++] = ':';
+         b->buf[b->buf_used++] = ' ';
+      } else {
+         switch (b->kind) {
+            case Vg_UserMsg:       ch = '='; break;
+            case Vg_DebugMsg:      ch = '-'; break;
+            case Vg_ClientMsg:     ch = '*'; break;
+            default:               ch = '?'; break;
+         }
 
       b->buf[b->buf_used++] = ch;
       b->buf[b->buf_used++] = ch;
@@ -430,7 +439,7 @@ static void add_to__vmessage_buf ( HChar c, void *p )
             b->buf[b->buf_used++] = tmp[i];
       }
 
-      VG_(sprintf)(tmp, "%d", b->my_pid);
+         VG_(sprintf)(tmp, "%d", VG_(getpid)());
       tmp[sizeof(tmp)-1] = 0;
       for (i = 0; tmp[i]; i++)
          b->buf[b->buf_used++] = tmp[i];
@@ -438,6 +447,7 @@ static void add_to__vmessage_buf ( HChar c, void *p )
       b->buf[b->buf_used++] = ch;
       b->buf[b->buf_used++] = ch;
       b->buf[b->buf_used++] = ' ';
+      }
 
       /* We can't possibly have stuffed 96 chars in merely as a result
          of making the preamble (can we?) */
@@ -468,15 +478,6 @@ UInt VG_(vmessage) ( VgMsgKind kind, const HChar* format, va_list vargs )
       of preamble is emitted at each \n. */
    b->kind = kind;
 
-   /* Cache the results of getpid just once, so we don't have to call
-      getpid once for each line of text output. */
-   b->my_pid = -1; /* LATER: cacheing is confusing in presence of fork(),
-                      disable for now. */
-   if (UNLIKELY(b->my_pid == -1)) {
-      b->my_pid = VG_(getpid)();
-      vg_assert(b->my_pid >= 0);
-   }
-
    ret = VG_(debugLog_vprintf) ( add_to__vmessage_buf,
                                  b, format, vargs );
 
@@ -492,17 +493,6 @@ UInt VG_(vmessage) ( VgMsgKind kind, const HChar* format, va_list vargs )
    return ret;
 }
 
-/* Send a simple single-part XML message. */
-UInt VG_(message_no_f_c) ( VgMsgKind kind, const HChar* format, ... )
-{
-   UInt count;
-   va_list vargs;
-   va_start(vargs,format);
-   count = VG_(vmessage) ( kind, format, vargs );
-   va_end(vargs);
-   return count;
-}
-
 /* Send a simple single-part message. */
 UInt VG_(message) ( VgMsgKind kind, const HChar* format, ... )
 {
@@ -514,7 +504,36 @@ UInt VG_(message) ( VgMsgKind kind, const HChar* format, ... )
    return count;
 }
 
+static void revert_to_stderr ( void )
+{
+   VG_(log_output_sink).fd = 2; /* stderr */
+   VG_(log_output_sink).is_socket = False;
+}
+
 /* VG_(message) variants with hardwired first argument. */
+
+UInt VG_(fmsg) ( const HChar* format, ... )
+{
+   UInt count;
+   va_list vargs;
+   va_start(vargs,format);
+   count = VG_(vmessage) ( Vg_FailMsg, format, vargs );
+   va_end(vargs);
+   return count;
+}
+
+void VG_(fmsg_bad_option) ( HChar* opt, const HChar* format, ... )
+{
+   va_list vargs;
+   va_start(vargs,format);
+   revert_to_stderr();
+   VG_(message) (Vg_FailMsg, "Bad option: %s\n", opt);
+   VG_(vmessage)(Vg_FailMsg, format, vargs );
+   VG_(message) (Vg_FailMsg, "Use --help for more information or consult the user manual.\n");
+   VG_(exit)(1);
+   va_end(vargs);
+}
+
 UInt VG_(umsg) ( const HChar* format, ... )
 {
    UInt count;
@@ -535,16 +554,6 @@ UInt VG_(dmsg) ( const HChar* format, ... )
    return count;
 }
 
-UInt VG_(emsg) ( const HChar* format, ... )
-{
-   UInt count;
-   va_list vargs;
-   va_start(vargs,format);
-   count = VG_(vmessage) ( Vg_DebugExtraMsg, format, vargs );
-   va_end(vargs);
-   return count;
-}
-
 /* Flush any output that has accumulated in vmessage_buf as a 
    result of previous calls to VG_(message) et al. */
 void VG_(message_flush) ( void )
@@ -552,6 +561,28 @@ void VG_(message_flush) ( void )
    vmessage_buf_t* b = &vmessage_buf;
    send_bytes_to_logging_sink( b->sink, b->buf, b->buf_used );
    b->buf_used = 0;
+}
+
+__attribute__((noreturn))
+void VG_(err_missing_prog) ( void  )
+{
+   revert_to_stderr();
+   VG_(fmsg)("no program specified\n");
+   VG_(fmsg)("Use --help for more information.\n");
+   VG_(exit)(1);
+}
+
+__attribute__((noreturn))
+void VG_(err_config_error) ( Char* format, ... )
+{
+   va_list vargs;
+   va_start(vargs,format);
+   revert_to_stderr();
+   VG_(message) (Vg_FailMsg, "Startup or configuration error:\n   ");
+   VG_(vmessage)(Vg_FailMsg, format, vargs );
+   VG_(message) (Vg_FailMsg, "Unable to start up properly.  Giving up.\n");
+   VG_(exit)(1);
+   va_end(vargs);
 }
 
 

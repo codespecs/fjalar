@@ -23,7 +23,8 @@ endif
 
 EXTRA_DIST = \
 	m_debuginfo/UNUSED_STABS.txt \
-	m_debuginfo/README.txt
+	m_debuginfo/README.txt \
+	m_gdbserver/README_DEVELOPERS
 
 #----------------------------------------------------------------------------
 # The launcher.  Built for the primary target only.
@@ -31,18 +32,12 @@ EXTRA_DIST = \
 
 bin_PROGRAMS = \
 	valgrind \
-	no_op_client_for_valgrind
+	vgdb
 
 if VGCONF_OS_IS_LINUX
 valgrind_SOURCES = \
 	launcher-linux.c \
 	m_debuglog.c
-endif
-if VGCONF_OS_IS_AIX5
-valgrind_SOURCES = \
-	launcher-aix5.c \
-	m_debuglog.c \
-	m_vkiscnums.c
 endif
 if VGCONF_OS_IS_DARWIN
 valgrind_SOURCES = \
@@ -54,12 +49,29 @@ valgrind_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
 valgrind_CFLAGS    = $(AM_CFLAGS_PRI)
 valgrind_CCASFLAGS = $(AM_CCASFLAGS_PRI)
 valgrind_LDFLAGS   = $(AM_CFLAGS_PRI)
+if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
+valgrind_LDFLAGS   += -Wl,-read_only_relocs -Wl,suppress
+endif
+# On Android we must ask for non-executable stack, not sure why.
+if VGCONF_PLATVARIANT_IS_ANDROID
+valgrind_CFLAGS += -static
+valgrind_LDFLAGS   += -Wl,-z,noexecstack
+endif
 
-no_op_client_for_valgrind_SOURCES = no_op_client_for_valgrind.c
-no_op_client_for_valgrind_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
-no_op_client_for_valgrind_CFLAGS    = $(AM_CFLAGS_PRI)
-no_op_client_for_valgrind_CCASFLAGS = $(AM_CCASFLAGS_PRI)
-no_op_client_for_valgrind_LDFLAGS   = $(AM_CFLAGS_PRI)
+vgdb_SOURCES = vgdb.c
+vgdb_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
+vgdb_CFLAGS    = $(AM_CFLAGS_PRI)
+vgdb_CCASFLAGS = $(AM_CCASFLAGS_PRI)
+vgdb_LDFLAGS   = $(AM_CFLAGS_PRI)
+if VGCONF_PLATVARIANT_IS_ANDROID
+vgdb_CFLAGS    += -static
+endif
+if !VGCONF_PLATVARIANT_IS_ANDROID
+vgdb_LDADD     = -lpthread
+endif
+if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
+vgdb_LDFLAGS   += -Wl,-read_only_relocs -Wl,suppress
+endif
 
 #----------------------------------------------------------------------------
 # Darwin Mach stuff
@@ -109,11 +121,13 @@ mach_defs += \
         /usr/include/mach/vm_map.defs
 endif
 
-# Be careful w.r.t. parellel builds.  See section 27.9 of the automake info
+# Be careful w.r.t. parallel builds.  See section 27.9 of the automake info
 # page, "Handling Tools that Produce many Outputs".
-$(mach_user_srcs): $(mach_defs)
+$(abs_builddir)/m_mach: 
+	mkdir -p $@
+$(mach_user_srcs): $(mach_defs) $(abs_builddir)/m_mach
 	(cd m_mach && mig $(mach_defs))
-$(mach_hdrs): $(mach_defs) $(mach_user_srcs)
+$(mach_hdrs): $(mach_defs) $(mach_user_srcs) $(abs_builddir)/m_mach
 	(cd m_mach && mig $(mach_defs))
 
 #----------------------------------------------------------------------------
@@ -121,7 +135,6 @@ $(mach_hdrs): $(mach_defs) $(mach_user_srcs)
 #----------------------------------------------------------------------------
 
 noinst_HEADERS = \
-	launcher-aix5-bootblock.h \
 	pub_core_aspacehl.h	\
 	pub_core_aspacemgr.h	\
 	pub_core_basics.h	\
@@ -139,6 +152,7 @@ noinst_HEADERS = \
 	pub_core_dispatch_asm.h	\
 	pub_core_errormgr.h	\
 	pub_core_execontext.h	\
+	pub_core_gdbserver.h	\
 	pub_core_hashtable.h	\
 	pub_core_initimg.h	\
 	pub_core_libcbase.h	\
@@ -146,6 +160,7 @@ noinst_HEADERS = \
 	pub_core_libcfile.h	\
 	pub_core_libcprint.h	\
 	pub_core_libcproc.h	\
+	pub_core_libcsetjmp.h	\
 	pub_core_libcsignal.h	\
 	pub_core_mach.h		\
 	pub_core_machine.h	\
@@ -186,23 +201,30 @@ noinst_HEADERS = \
 	m_debuginfo/priv_readdwarf3.h	\
 	m_debuginfo/priv_readelf.h	\
 	m_debuginfo/priv_readmacho.h	\
-	m_debuginfo/priv_readxcoff.h	\
 	m_demangle/ansidecl.h	\
 	m_demangle/cp-demangle.h \
 	m_demangle/dyn-string.h	\
 	m_demangle/demangle.h	\
 	m_demangle/safe-ctype.h \
 	m_demangle/vg_libciface.h \
+	m_gdbserver/regcache.h \
+	m_gdbserver/regdef.h \
+	m_gdbserver/server.h \
+	m_gdbserver/target.h \
+	m_gdbserver/valgrind_low.h \
+	m_gdbserver/gdb/signals.h \
 	m_initimg/priv_initimg_pathscan.h \
 	m_initimg/simple_huffman.c \
 	m_scheduler/priv_sema.h \
+	m_scheduler/priv_sched-lock.h \
+	m_scheduler/priv_sched-lock-impl.h \
 	m_syswrap/priv_types_n_macros.h \
 	m_syswrap/priv_syswrap-generic.h \
 	m_syswrap/priv_syswrap-linux.h \
 	m_syswrap/priv_syswrap-linux-variants.h \
-	m_syswrap/priv_syswrap-aix5.h \
 	m_syswrap/priv_syswrap-darwin.h \
 	m_syswrap/priv_syswrap-main.h \
+       m_syswrap/priv_syswrap-xen.h \
 	m_ume/priv_ume.h
 
 #----------------------------------------------------------------------------
@@ -225,12 +247,14 @@ COREGRIND_SOURCES_COMMON = \
 	m_debuglog.c \
 	m_errormgr.c \
 	m_execontext.c \
+	m_poolalloc.c \
 	m_hashtable.c \
 	m_libcbase.c \
 	m_libcassert.c \
 	m_libcfile.c \
 	m_libcprint.c \
 	m_libcproc.c \
+	m_libcsetjmp.c \
 	m_libcsignal.c \
 	m_machine.c \
 	m_main.c \
@@ -256,10 +280,8 @@ COREGRIND_SOURCES_COMMON = \
 	m_aspacehl.c \
 	m_aspacemgr/aspacemgr-common.c \
 	m_aspacemgr/aspacemgr-linux.c \
-	m_aspacemgr/aspacemgr-aix5.c \
 	m_coredump/coredump-elf.c \
 	m_coredump/coredump-macho.c \
-	m_coredump/coredump-xcoff.c \
 	m_debuginfo/misc.c \
 	m_debuginfo/d3basics.c \
 	m_debuginfo/debuginfo.c \
@@ -269,7 +291,6 @@ COREGRIND_SOURCES_COMMON = \
 	m_debuginfo/readmacho.c \
 	m_debuginfo/readpdb.c \
 	m_debuginfo/readstabs.c \
-	m_debuginfo/readxcoff.c \
 	m_debuginfo/storage.c \
 	m_debuginfo/tytypes.c \
 	m_demangle/cp-demangle.c \
@@ -282,12 +303,27 @@ COREGRIND_SOURCES_COMMON = \
 	m_dispatch/dispatch-ppc32-linux.S \
 	m_dispatch/dispatch-ppc64-linux.S \
 	m_dispatch/dispatch-arm-linux.S \
-	m_dispatch/dispatch-ppc32-aix5.S \
-	m_dispatch/dispatch-ppc64-aix5.S \
+	m_dispatch/dispatch-s390x-linux.S \
+	m_dispatch/dispatch-mips32-linux.S \
 	m_dispatch/dispatch-x86-darwin.S \
 	m_dispatch/dispatch-amd64-darwin.S \
+	m_gdbserver/inferiors.c \
+	m_gdbserver/m_gdbserver.c \
+	m_gdbserver/regcache.c \
+	m_gdbserver/remote-utils.c \
+	m_gdbserver/server.c \
+	m_gdbserver/signals.c \
+	m_gdbserver/target.c \
+	m_gdbserver/utils.c \
+	m_gdbserver/valgrind-low-x86.c \
+	m_gdbserver/valgrind-low-amd64.c \
+	m_gdbserver/valgrind-low-arm.c \
+	m_gdbserver/valgrind-low-ppc32.c \
+	m_gdbserver/valgrind-low-ppc64.c \
+	m_gdbserver/valgrind-low-s390x.c \
+	m_gdbserver/valgrind-low-mips32.c \
+	m_gdbserver/version.c \
 	m_initimg/initimg-linux.c \
-	m_initimg/initimg-aix5.c \
 	m_initimg/initimg-darwin.c \
 	m_initimg/initimg-pathscan.c \
 	m_mach/mach_basics.c \
@@ -297,45 +333,49 @@ COREGRIND_SOURCES_COMMON = \
 	m_replacemalloc/replacemalloc_core.c \
 	m_scheduler/scheduler.c \
 	m_scheduler/sema.c \
+	m_scheduler/sched-lock.c \
+	m_scheduler/sched-lock-generic.c \
 	m_sigframe/sigframe-x86-linux.c \
 	m_sigframe/sigframe-amd64-linux.c \
 	m_sigframe/sigframe-ppc32-linux.c \
 	m_sigframe/sigframe-ppc64-linux.c \
 	m_sigframe/sigframe-arm-linux.c \
-	m_sigframe/sigframe-ppc32-aix5.c \
-	m_sigframe/sigframe-ppc64-aix5.c \
+	m_sigframe/sigframe-s390x-linux.c \
+	m_sigframe/sigframe-mips32-linux.c \
 	m_sigframe/sigframe-x86-darwin.c \
 	m_sigframe/sigframe-amd64-darwin.c \
-	m_start-x86-darwin.S \
-	m_start-amd64-darwin.S \
 	m_syswrap/syscall-x86-linux.S \
 	m_syswrap/syscall-amd64-linux.S \
 	m_syswrap/syscall-ppc32-linux.S \
 	m_syswrap/syscall-ppc64-linux.S \
 	m_syswrap/syscall-arm-linux.S \
-	m_syswrap/syscall-ppc32-aix5.S \
-	m_syswrap/syscall-ppc64-aix5.S \
+	m_syswrap/syscall-s390x-linux.S \
+	m_syswrap/syscall-mips32-linux.S \
 	m_syswrap/syscall-x86-darwin.S \
 	m_syswrap/syscall-amd64-darwin.S \
 	m_syswrap/syswrap-main.c \
 	m_syswrap/syswrap-generic.c \
 	m_syswrap/syswrap-linux.c \
 	m_syswrap/syswrap-linux-variants.c \
-	m_syswrap/syswrap-aix5.c \
 	m_syswrap/syswrap-darwin.c \
 	m_syswrap/syswrap-x86-linux.c \
 	m_syswrap/syswrap-amd64-linux.c \
 	m_syswrap/syswrap-ppc32-linux.c \
 	m_syswrap/syswrap-ppc64-linux.c \
 	m_syswrap/syswrap-arm-linux.c \
-	m_syswrap/syswrap-ppc32-aix5.c \
-	m_syswrap/syswrap-ppc64-aix5.c \
+	m_syswrap/syswrap-s390x-linux.c \
+	m_syswrap/syswrap-mips32-linux.c \
 	m_syswrap/syswrap-x86-darwin.c \
 	m_syswrap/syswrap-amd64-darwin.c \
 	m_ume/elf.c \
 	m_ume/macho.c \
 	m_ume/main.c \
 	m_ume/script.c
+
+if ENABLE_XEN
+COREGRIND_SOURCES_COMMON += m_syswrap/syswrap-xen.c
+CFLAGS += @XEN_CFLAGS@
+endif
 
 libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_SOURCES = \
     $(COREGRIND_SOURCES_COMMON)
@@ -344,9 +384,16 @@ nodist_libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_SOURCES = \
 libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_CPPFLAGS = \
     $(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_CFLAGS = \
-    $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+    $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) @XEN_CFLAGS@
 libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_CCASFLAGS = \
     $(AM_CCASFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+if ENABLE_LINUX_TICKET_LOCK_PRIMARY
+libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_SOURCES += \
+    m_scheduler/ticket-lock-linux.c
+libcoregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_CFLAGS += \
+    -DENABLE_LINUX_TICKET_LOCK
+endif
+
 if VGCONF_HAVE_PLATFORM_SEC
 libcoregrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_SOURCES = \
     $(COREGRIND_SOURCES_COMMON)
@@ -358,10 +405,13 @@ libcoregrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CFLAGS = \
     $(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 libcoregrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CCASFLAGS = \
     $(AM_CCASFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+if ENABLE_LINUX_TICKET_LOCK_SECONDARY
+libcoregrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_SOURCES += \
+    m_scheduler/ticket-lock-linux.c
+libcoregrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CFLAGS += \
+    -DENABLE_LINUX_TICKET_LOCK
 endif
-
-libcoregrind_ppc32_aix5_a_AR = $(AR) -X32 cru
-libcoregrind_ppc64_aix5_a_AR = $(AR) -X64 cru
+endif
 
 #----------------------------------------------------------------------------
 # libreplacemalloc_toolpreload-<platform>.a
@@ -386,10 +436,6 @@ libreplacemalloc_toolpreload_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CPPFLAGS = \
 libreplacemalloc_toolpreload_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CFLAGS = \
 	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) $(AM_CFLAGS_PIC)
 endif
-
-# Special AR for AIX.
-libreplacemalloc_toolpreload_ppc32_aix5_a_AR = $(AR) -X32 cru
-libreplacemalloc_toolpreload_ppc64_aix5_a_AR = $(AR) -X64 cru
 
 #----------------------------------------------------------------------------
 # vgpreload_core-<platform>.a
@@ -422,12 +468,129 @@ vgpreload_core_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS = \
 endif
 
 #----------------------------------------------------------------------------
+# gdbserver xml target descriptions
+#----------------------------------------------------------------------------
+
+GDBSERVER_XML_FILES = \
+	m_gdbserver/32bit-core-valgrind-s1.xml \
+	m_gdbserver/32bit-core-valgrind-s2.xml \
+	m_gdbserver/32bit-core.xml \
+	m_gdbserver/32bit-linux-valgrind-s1.xml \
+	m_gdbserver/32bit-linux-valgrind-s2.xml \
+	m_gdbserver/32bit-linux.xml \
+	m_gdbserver/32bit-sse-valgrind-s1.xml \
+	m_gdbserver/32bit-sse-valgrind-s2.xml \
+	m_gdbserver/32bit-sse.xml \
+	m_gdbserver/64bit-avx-valgrind-s2.xml \
+	m_gdbserver/64bit-avx-valgrind-s1.xml \
+	m_gdbserver/64bit-avx.xml \
+	m_gdbserver/64bit-core-valgrind-s1.xml \
+	m_gdbserver/64bit-core-valgrind-s2.xml \
+	m_gdbserver/64bit-core.xml \
+	m_gdbserver/64bit-linux-valgrind-s1.xml \
+	m_gdbserver/64bit-linux-valgrind-s2.xml \
+	m_gdbserver/64bit-linux.xml \
+	m_gdbserver/64bit-sse-valgrind-s1.xml \
+	m_gdbserver/64bit-sse-valgrind-s2.xml \
+	m_gdbserver/64bit-sse.xml \
+	m_gdbserver/amd64-avx-coresse-valgrind.xml \
+	m_gdbserver/amd64-avx-coresse.xml \
+	m_gdbserver/amd64-avx-linux-valgrind.xml \
+	m_gdbserver/amd64-avx-linux.xml \
+	m_gdbserver/amd64-coresse-valgrind.xml \
+	m_gdbserver/amd64-linux-valgrind.xml \
+	m_gdbserver/arm-core-valgrind-s1.xml \
+	m_gdbserver/arm-core-valgrind-s2.xml \
+	m_gdbserver/arm-core.xml \
+	m_gdbserver/arm-vfpv3-valgrind-s1.xml \
+	m_gdbserver/arm-vfpv3-valgrind-s2.xml \
+	m_gdbserver/arm-vfpv3.xml \
+	m_gdbserver/arm-with-vfpv3-valgrind.xml \
+	m_gdbserver/arm-with-vfpv3.xml \
+	m_gdbserver/i386-coresse-valgrind.xml \
+	m_gdbserver/i386-linux-valgrind.xml \
+	m_gdbserver/power64-core-valgrind-s1.xml \
+	m_gdbserver/power64-core-valgrind-s2.xml \
+	m_gdbserver/power64-core.xml \
+	m_gdbserver/power64-linux-valgrind-s1.xml \
+	m_gdbserver/power64-linux-valgrind-s2.xml \
+	m_gdbserver/power64-linux.xml \
+	m_gdbserver/power-altivec-valgrind-s1.xml \
+	m_gdbserver/power-altivec-valgrind-s2.xml \
+	m_gdbserver/power-altivec.xml \
+	m_gdbserver/power-core-valgrind-s1.xml \
+	m_gdbserver/power-core-valgrind-s2.xml \
+	m_gdbserver/power-core.xml \
+	m_gdbserver/power-fpu-valgrind-s1.xml \
+	m_gdbserver/power-fpu-valgrind-s2.xml \
+	m_gdbserver/power-fpu.xml \
+	m_gdbserver/power-linux-valgrind-s1.xml \
+	m_gdbserver/power-linux-valgrind-s2.xml \
+	m_gdbserver/power-linux.xml \
+	m_gdbserver/powerpc-altivec32l-valgrind.xml \
+	m_gdbserver/powerpc-altivec32l.xml \
+	m_gdbserver/powerpc-altivec64l-valgrind.xml \
+	m_gdbserver/powerpc-altivec64l.xml \
+	m_gdbserver/s390-acr-valgrind-s1.xml \
+	m_gdbserver/s390-acr-valgrind-s2.xml \
+	m_gdbserver/s390-acr.xml \
+	m_gdbserver/s390-fpr-valgrind-s1.xml \
+	m_gdbserver/s390-fpr-valgrind-s2.xml \
+	m_gdbserver/s390-fpr.xml \
+	m_gdbserver/s390x-core64-valgrind-s1.xml \
+	m_gdbserver/s390x-core64-valgrind-s2.xml \
+	m_gdbserver/s390x-core64.xml \
+	m_gdbserver/s390x-generic-valgrind.xml \
+	m_gdbserver/s390x-generic.xml \
+	m_gdbserver/s390x-linux64-valgrind-s1.xml \
+	m_gdbserver/s390x-linux64-valgrind-s2.xml \
+	m_gdbserver/s390x-linux64.xml \
+	m_gdbserver/mips-cp0-valgrind-s1.xml \
+	m_gdbserver/mips-cp0-valgrind-s2.xml \
+	m_gdbserver/mips-cp0.xml \
+	m_gdbserver/mips-cpu-valgrind-s1.xml \
+	m_gdbserver/mips-cpu-valgrind-s2.xml \
+	m_gdbserver/mips-cpu.xml \
+	m_gdbserver/mips-linux.xml \
+	m_gdbserver/mips-linux-valgrind.xml \
+	m_gdbserver/mips-fpu-valgrind-s1.xml \
+	m_gdbserver/mips-fpu-valgrind-s2.xml \
+	m_gdbserver/mips-fpu.xml
+
+# so as to make sure these get copied into the install tree
+vglibdir = $(pkglibdir)
+vglib_DATA  = $(GDBSERVER_XML_FILES)
+
+# so as to make sure these get copied into the tarball
+EXTRA_DIST  += $(GDBSERVER_XML_FILES)
+
+#----------------------------------------------------------------------------
 # General stuff
 #----------------------------------------------------------------------------
 
 all-local: inplace-noinst_PROGRAMS inplace-noinst_DSYMS
+	mkdir -p $(inplacedir); \
+	for f in $(vglib_DATA); do \
+	  rm -f $(inplacedir)/$$f; \
+	  ln -f -s ../$(subdir)/$$f $(inplacedir); \
+	done
 
 clean-local: clean-noinst_DSYMS
 
 install-exec-local: install-noinst_PROGRAMS install-noinst_DSYMS
 
+#----------------------------------------------------------------------------
+# Darwin linker kludges
+#----------------------------------------------------------------------------
+
+if VGCONF_OS_IS_DARWIN
+
+BUILT_SOURCES += fixup_macho_loadcmds
+fixup_macho_loadcmds: fixup_macho_loadcmds.c
+	$(CC) -g -Wall -o fixup_macho_loadcmds fixup_macho_loadcmds.c
+
+CLEANFILES += fixup_macho_loadcmds
+
+endif
+
+EXTRA_DIST += fixup_macho_loadcmds.c

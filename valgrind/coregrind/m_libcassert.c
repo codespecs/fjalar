@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
+#include "pub_core_libcsetjmp.h"    // to keep threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
@@ -76,7 +77,7 @@
         (srP)->r_sp = rsp;                                \
         (srP)->misc.AMD64.r_rbp = rbp;                    \
       }
-#elif defined(VGP_ppc32_linux) || defined(VGP_ppc32_aix5)
+#elif defined(VGP_ppc32_linux)
 #  define GET_STARTREGS(srP)                              \
       { UInt cia, r1, lr;                                 \
         __asm__ __volatile__(                             \
@@ -95,7 +96,7 @@
         (srP)->r_sp = (ULong)r1;                          \
         (srP)->misc.PPC32.r_lr = lr;                      \
       }
-#elif defined(VGP_ppc64_linux) || defined(VGP_ppc64_aix5)
+#elif defined(VGP_ppc64_linux)
 #  define GET_STARTREGS(srP)                              \
       { ULong cia, r1, lr;                                \
         __asm__ __volatile__(                             \
@@ -116,13 +117,14 @@
       }
 #elif defined(VGP_arm_linux)
 #  define GET_STARTREGS(srP)                              \
-      { UInt block[5];                                    \
+      { UInt block[6];                                    \
         __asm__ __volatile__(                             \
            "str r15, [%0, #+0];"                          \
            "str r14, [%0, #+4];"                          \
            "str r13, [%0, #+8];"                          \
            "str r12, [%0, #+12];"                         \
            "str r11, [%0, #+16];"                         \
+           "str r7,  [%0, #+20];"                         \
            : /* out */                                    \
            : /* in */ "r"(&block[0])                      \
            : /* trash */ "memory"                         \
@@ -132,6 +134,48 @@
         (srP)->misc.ARM.r14 = block[2];                   \
         (srP)->misc.ARM.r12 = block[3];                   \
         (srP)->misc.ARM.r11 = block[4];                   \
+        (srP)->misc.ARM.r7  = block[5];                   \
+      }
+#elif defined(VGP_s390x_linux)
+#  define GET_STARTREGS(srP)                              \
+      { ULong ia, sp, fp, lr;                             \
+        __asm__ __volatile__(                             \
+           "bras %0,0f;"                                  \
+           "0: lgr %1,15;"                                \
+           "lgr %2,11;"                                   \
+           "lgr %3,14;"                                   \
+           : "=r" (ia), "=r" (sp),"=r" (fp),"=r" (lr)     \
+           /* no read & clobber */                        \
+        );                                                \
+        (srP)->r_pc = ia;                                 \
+        (srP)->r_sp = sp;                                 \
+        (srP)->misc.S390X.r_fp = fp;                      \
+        (srP)->misc.S390X.r_lr = lr;                      \
+      }
+#elif defined(VGP_mips32_linux)
+#  define GET_STARTREGS(srP)                              \
+      { UInt pc, sp, fp, ra, gp;                          \
+      asm("move $8, $31;"             /* t0 = ra */       \
+          "bal m_libcassert_get_ip;"  /* ra = pc */       \
+          "m_libcassert_get_ip:\n"                        \
+          "move %0, $31;"                                 \
+          "move $31, $8;"             /* restore lr */    \
+          "move %1, $29;"                                 \
+          "move %2, $30;"                                 \
+          "move %3, $31;"                                 \
+          "move %4, $28;"                                 \
+          : "=r" (pc),                                    \
+            "=r" (sp),                                    \
+            "=r" (fp),                                    \
+            "=r" (ra),                                    \
+            "=r" (gp)                                     \
+          : /* reads none */                              \
+          : "$8" /* trashed */ );                         \
+        (srP)->r_pc = (ULong)pc - 8;                      \
+        (srP)->r_sp = (ULong)sp;                          \
+        (srP)->misc.MIPS32.r30 = (ULong)fp;               \
+        (srP)->misc.MIPS32.r31 = (ULong)ra;               \
+        (srP)->misc.MIPS32.r28 = (ULong)gp;               \
       }
 #else
 #  error Unknown platform
@@ -144,7 +188,7 @@ void VG_(exit)( Int status )
 {
 #if defined(VGO_linux)
    (void)VG_(do_syscall1)(__NR_exit_group, status );
-#elif defined(VGO_aix5) || defined(VGO_darwin)
+#elif defined(VGO_darwin)
    (void)VG_(do_syscall1)(__NR_exit, status );
 #else
 #  error Unknown OS

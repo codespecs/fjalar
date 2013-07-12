@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,24 +32,25 @@
    and so it doesn't have to conform to Valgrind's arcane rules on
    no-glibc-usage etc. */
 
-#include <assert.h>
-#include <ctype.h>
-#include <elf.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/user.h>
-#include <unistd.h>
+/* Include valgrind headers before system headers to avoid problems
+   with the system headers #defining things which are used as names
+   of structure members in vki headers. */
 
 #include "pub_core_debuglog.h"
 #include "pub_core_vki.h"       // Avoids warnings from
                                 // pub_core_libcfile.h
 #include "pub_core_libcproc.h"  // For VALGRIND_LIB, VALGRIND_LAUNCHER
 #include "pub_core_ume.h"
+
+#include <assert.h>
+#include <ctype.h>
+#include <elf.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 
 
@@ -178,12 +179,24 @@ static const char *select_platform(const char *clientname)
                  ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "arm-linux";
             }
+            else
+            if (ehdr->e_machine == EM_MIPS &&
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "mips32-linux";
+            }
          }
          else if (header[EI_DATA] == ELFDATA2MSB) {
             if (ehdr->e_machine == EM_PPC &&
                 (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
                  ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "ppc32-linux";
+            }
+            else 
+            if (ehdr->e_machine == EM_MIPS &&
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "mips32-linux";
             }
          }
 
@@ -197,11 +210,19 @@ static const char *select_platform(const char *clientname)
                platform = "amd64-linux";
             }
          } else if (header[EI_DATA] == ELFDATA2MSB) {
+#           if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
             if (ehdr->e_machine == EM_PPC64 &&
                 (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
                  ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "ppc64-linux";
             }
+            else 
+            if (ehdr->e_machine == EM_S390 &&
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "s390x-linux";
+            }
+#           endif
          }
       }
    }
@@ -274,7 +295,9 @@ int main(int argc, char** argv, char** envp)
        (0==strcmp(VG_PLATFORM,"amd64-linux")) ||
        (0==strcmp(VG_PLATFORM,"ppc32-linux")) ||
        (0==strcmp(VG_PLATFORM,"ppc64-linux")) ||
-       (0==strcmp(VG_PLATFORM,"arm-linux")))
+       (0==strcmp(VG_PLATFORM,"arm-linux"))   ||
+       (0==strcmp(VG_PLATFORM,"s390x-linux")) ||
+       (0==strcmp(VG_PLATFORM,"mips32-linux")))
       default_platform = VG_PLATFORM;
    else
       barf("Unknown VG_PLATFORM '%s'", VG_PLATFORM);

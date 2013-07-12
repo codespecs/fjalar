@@ -1,6 +1,6 @@
 
 /*--------------------------------------------------------------------*/
-/*--- Read DWARF3 ".debug_info" sections (DIE trees).              ---*/
+/*--- Read DWARF3/4 ".debug_info" sections (DIE trees).            ---*/
 /*---                                                 readdwarf3.c ---*/
 /*--------------------------------------------------------------------*/
 
@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2009 OpenWorks LLP
+   Copyright (C) 2008-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -71,7 +71,7 @@
    ML_(sizeOfType): differentiate between zero sized types and types
    for which the size is unknown.  Is this important?  I don't know.
 
-   DW_AT_array_types: deal with explicit sizes (currently we compute
+   DW_TAG_array_types: deal with explicit sizes (currently we compute
    the size from the bounds and the element size, although that's
    fragile, if the bounds incompletely specified, or completely
    absent)
@@ -85,7 +85,7 @@
    expressions correctly, by failing to evaluate them and hence
    effectively ignoring the variable with which they are associated.
 
-   Deal with DW_AT_array_types which have element size != stride
+   Deal with DW_TAG_array_types which have element size != stride
 
    In some cases, the info for a variable is split between two
    different DIEs (generally a declarer and a definer).  We punt on
@@ -139,6 +139,8 @@
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_libcsetjmp.h"   // setjmp facilities
+#include "pub_core_hashtable.h"
 #include "pub_core_options.h"
 #include "pub_core_tooliface.h"    /* VG_(needs) */
 #include "pub_core_xarray.h"
@@ -220,15 +222,6 @@ static UChar* get_address_of_Cursor ( Cursor* c ) {
    return &c->region_start_img[ c->region_next ];
 }
 
-__attribute__((noreturn)) 
-static void failWith ( Cursor* c, HChar* str ) {
-   vg_assert(c);
-   vg_assert(c->barf);
-   c->barf(str);
-   /*NOTREACHED*/
-   vg_assert(0);
-}
-
 /* FIXME: document assumptions on endianness for
    get_UShort/UInt/ULong. */
 static inline UChar get_UChar ( Cursor* c ) {
@@ -251,7 +244,7 @@ static UShort get_UShort ( Cursor* c ) {
       /*NOTREACHED*/
       vg_assert(0);
    }
-   r = * (UShort*) &c->region_start_img[ c->region_next ];
+   r = ML_(read_UShort)(&c->region_start_img[ c->region_next ]);
    c->region_next += sizeof(UShort);
    return r;
 }
@@ -263,7 +256,7 @@ static UInt get_UInt ( Cursor* c ) {
       /*NOTREACHED*/
       vg_assert(0);
    }
-   r = * (UInt*) &c->region_start_img[ c->region_next ];
+   r = ML_(read_UInt)(&c->region_start_img[ c->region_next ]);
    c->region_next += sizeof(UInt);
    return r;
 }
@@ -275,7 +268,7 @@ static ULong get_ULong ( Cursor* c ) {
       /*NOTREACHED*/
       vg_assert(0);
    }
-   r = * (ULong*) &c->region_start_img[ c->region_next ];
+   r = ML_(read_ULong)(&c->region_start_img[ c->region_next ]);
    c->region_next += sizeof(ULong);
    return r;
 }
@@ -387,7 +380,7 @@ typedef
       void (*barf)( HChar* ) __attribute__((noreturn));
       /* Is this 64-bit DWARF ? */
       Bool   is_dw64;
-      /* Which DWARF version ?  (2 or 3) */
+      /* Which DWARF version ?  (2, 3 or 4) */
       UShort version;
       /* Length of this Compilation Unit, as stated in the
          .unit_length :: InitialLength field of the CU Header.
@@ -423,6 +416,19 @@ typedef
       /* Where is .debug_info? */
       UChar* debug_info_img;
       UWord  debug_info_sz;
+      /* Where is .debug_types? */
+      UChar* debug_types_img;
+      UWord  debug_types_sz;
+      /* Where is alternate .debug_info? */
+      UChar* debug_info_alt_img;
+      UWord  debug_info_alt_sz;
+      /* Where is alternate .debug_str ? */
+      UChar* debug_str_alt_img;
+      UWord  debug_str_alt_sz;
+      /* How much to add to .debug_types resp. alternate .debug_info offsets
+         in cook_die*.  */
+      UWord  types_cuOff_bias;
+      UWord  alt_cuOff_bias;
       /* --- Needed so we can add stuff to the string table. --- */
       struct _DebugInfo* di;
       /* --- a cache for set_abbv_Cursor --- */
@@ -430,9 +436,74 @@ typedef
       struct { ULong abbv_code; UWord posn; } saC_cache[N_ABBV_CACHE];
       UWord saC_cache_queries;
       UWord saC_cache_misses;
+
+      /* True if this came from .debug_types; otherwise it came from
+         .debug_info.  */
+      Bool is_type_unit;
+      /* For a unit coming from .debug_types, these hold the TU's type
+         signature and the uncooked DIE offset of the TU's signatured
+         type.  For a unit coming from .debug_info, these are unused.  */
+      ULong type_signature;
+      ULong type_offset;
+
+      /* Signatured type hash; computed once and then shared by all
+         CUs.  */
+      VgHashTable signature_types;
+
+      /* True if this came from alternate .debug_info; otherwise
+         it came from normal .debug_info or .debug_types.  */
+      Bool is_alt_info;
    }
    CUConst;
 
+
+/* Return the cooked value of DIE depending on whether CC represents a
+   .debug_types unit.  To cook a DIE, we pretend that the .debug_info,
+   .debug_types and optional alternate .debug_info sections form
+   a contiguous whole, so that DIEs coming from .debug_types are numbered
+   starting at the end of .debug_info and DIEs coming from alternate
+   .debug_info are numbered starting at the end of .debug_types.  */
+static UWord cook_die( CUConst* cc, UWord die )
+{
+   if (cc->is_type_unit)
+      die += cc->types_cuOff_bias;
+   else if (cc->is_alt_info)
+      die += cc->alt_cuOff_bias;
+   return die;
+}
+
+/* Like cook_die, but understand that DIEs coming from a
+   DW_FORM_ref_sig8 reference are already cooked.  Also, handle
+   DW_FORM_GNU_ref_alt from within primary .debug_info or .debug_types
+   as reference to alternate .debug_info.  */
+static UWord cook_die_using_form( CUConst *cc, UWord die, DW_FORM form)
+{
+   if (form == DW_FORM_ref_sig8)
+      return die;
+   if (form == DW_FORM_GNU_ref_alt)
+      return die + cc->alt_cuOff_bias;
+   return cook_die( cc, die );
+}
+
+/* Return the uncooked offset of DIE and set *TYPE_FLAG to true if the DIE
+   came from the .debug_types section and *ALT_FLAG to true if the DIE
+   came from alternate .debug_info section.  */
+static UWord uncook_die( CUConst *cc, UWord die, /*OUT*/Bool *type_flag,
+                         Bool *alt_flag )
+{
+   *alt_flag = False;
+   *type_flag = False;
+   if (die >= cc->debug_info_sz) {
+      if (die >= cc->debug_info_sz + cc->debug_types_sz) {
+         *alt_flag = True;
+         die -= cc->debug_info_sz + cc->debug_types_sz;
+      } else {
+         *type_flag = True;
+         die -= cc->debug_info_sz;
+      }
+   }
+   return die;
+}
 
 /*------------------------------------------------------------*/
 /*---                                                      ---*/
@@ -480,8 +551,8 @@ typedef
 static void bias_GX ( /*MOD*/GExpr* gx, struct _DebugInfo* di )
 {
    UShort nbytes;
-   Addr*  pA;
    UChar* p = &gx->payload[0];
+   UChar* pA;
    UChar  uc;
    uc = *p++; /*biasMe*/
    if (uc == 0)
@@ -494,15 +565,15 @@ static void bias_GX ( /*MOD*/GExpr* gx, struct _DebugInfo* di )
          break; /*isEnd*/
       vg_assert(uc == 0);
       /* t-bias aMin */
-      pA = (Addr*)p;
-      *pA += di->text_debug_bias;
+      pA = (UChar*)p;
+      ML_(write_Addr)(pA, ML_(read_Addr)(pA) + di->text_debug_bias);
       p += sizeof(Addr);
       /* t-bias aMax */
-      pA = (Addr*)p;
-      *pA += di->text_debug_bias;
+      pA = (UChar*)p;
+      ML_(write_Addr)(pA, ML_(read_Addr)(pA) + di->text_debug_bias);
       p += sizeof(Addr);
       /* nbytes, and actual expression */
-      nbytes = * (UShort*)p; p += sizeof(UShort);
+      nbytes = ML_(read_UShort)(p); p += sizeof(UShort);
       p += nbytes;
    }
 }
@@ -528,13 +599,13 @@ static GExpr* make_singleton_GX ( UChar* block, UWord nbytes )
 
    p = pstart = &gx->payload[0];
 
-   * ((UChar*)p)  = 0;          /*biasMe*/ p += sizeof(UChar);
-   * ((UChar*)p)  = 0;          /*!isEnd*/ p += sizeof(UChar);
-   * ((Addr*)p)   = 0;          /*aMin*/   p += sizeof(Addr);
-   * ((Addr*)p)   = ~((Addr)0); /*aMax */  p += sizeof(Addr);
-   * ((UShort*)p) = (UShort)nbytes; /*nbytes*/ p += sizeof(UShort);
+   p = ML_(write_UChar)(p, 0);        /*biasMe*/
+   p = ML_(write_UChar)(p, 0);        /*!isEnd*/
+   p = ML_(write_Addr)(p, 0);         /*aMin*/
+   p = ML_(write_Addr)(p, ~0);        /*aMax*/
+   p = ML_(write_UShort)(p, nbytes);  /*nbytes*/
    VG_(memcpy)(p, block, nbytes); p += nbytes;
-   * ((UChar*)p)  = 1;          /*isEnd*/  p += sizeof(UChar);
+   p = ML_(write_UChar)(p, 1);        /*isEnd*/
 
    vg_assert( (SizeT)(p - pstart) == bytesReqd);
    vg_assert( &gx->payload[bytesReqd] 
@@ -786,7 +857,9 @@ static __attribute__((noinline))
 void parse_CU_Header ( /*OUT*/CUConst* cc,
                        Bool td3,
                        Cursor* c, 
-                       UChar* debug_abbv_img, UWord debug_abbv_sz )
+                       UChar* debug_abbv_img, UWord debug_abbv_sz,
+		       Bool type_unit,
+                       Bool alt_info )
 {
    UChar  address_size;
    UWord  debug_abbrev_offset;
@@ -805,8 +878,8 @@ void parse_CU_Header ( /*OUT*/CUConst* cc,
 
    /* version */
    cc->version = get_UShort( c );
-   if (cc->version != 2 && cc->version != 3)
-      cc->barf( "parse_CU_Header: is neither DWARF2 nor DWARF3" );
+   if (cc->version != 2 && cc->version != 3 && cc->version != 4)
+      cc->barf( "parse_CU_Header: is neither DWARF2 nor DWARF3 nor DWARF4" );
    TRACE_D3("   Version:       %d\n", (Int)cc->version );
 
    /* debug_abbrev_offset */
@@ -823,6 +896,14 @@ void parse_CU_Header ( /*OUT*/CUConst* cc,
    if (address_size != sizeof(void*))
       cc->barf( "parse_CU_Header: invalid address_size" );
    TRACE_D3("   Pointer Size:  %d\n", (Int)address_size );
+
+   cc->is_type_unit = type_unit;
+   cc->is_alt_info = alt_info;
+
+   if (type_unit) {
+      cc->type_signature = get_ULong( c );
+      cc->type_offset = get_Dwarfish_UWord( c, cc->is_dw64 );
+   }
 
    /* Set up so that cc->debug_abbv points to the relevant table for
       this CU.  Set the szB so that at least we can't read off the end
@@ -934,6 +1015,50 @@ void set_abbv_Cursor ( /*OUT*/Cursor* c, Bool td3,
    cc->saC_cache[N_ABBV_CACHE/2].posn = get_position_of_Cursor(c);
 }
 
+/* This represents a single signatured type.  It maps a type signature
+   (a ULong) to a cooked DIE offset.  Objects of this type are stored
+   in the type signature hash table.  */
+typedef
+   struct D3SignatureType {
+      struct D3SignatureType *next;
+      UWord data;
+      ULong type_signature;
+      UWord die;
+   }
+   D3SignatureType;
+
+/* Record a signatured type in the hash table.  */
+static void record_signatured_type ( VgHashTable tab,
+                                     ULong type_signature,
+                                     UWord die )
+{
+   D3SignatureType *dstype = ML_(dinfo_zalloc) ( "di.readdwarf3.sigtype",
+                                                 sizeof(D3SignatureType) );
+   dstype->data = (UWord) type_signature;
+   dstype->type_signature = type_signature;
+   dstype->die = die;
+   VG_(HT_add_node) ( tab, dstype );
+}
+
+/* Given a type signature hash table and a type signature, return the
+   cooked DIE offset of the type.  If the type cannot be found, call
+   BARF.  */
+static UWord lookup_signatured_type ( VgHashTable tab,
+                                      ULong type_signature,
+                                      void (*barf)( HChar* ) __attribute__((noreturn)) )
+{
+   D3SignatureType *dstype = VG_(HT_lookup) ( tab, (UWord) type_signature );
+   /* This may be unwarranted chumminess with the hash table
+      implementation.  */
+   while ( dstype != NULL && dstype->type_signature != type_signature)
+      dstype = dstype->next;
+   if (dstype == NULL) {
+      barf("lookup_signatured_type: could not find signatured type");
+      /*NOTREACHED*/
+      vg_assert(0);
+   }
+   return dstype->die;
+}
 
 /* From 'c', get the Form data into the lowest 1/2/4/8 bytes of *cts.
 
@@ -984,10 +1109,20 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsSzB = 8;
          TRACE_D3("%llu", *cts);
          break;
+      case DW_FORM_sec_offset:
+         *cts = (ULong)get_Dwarfish_UWord( c, cc->is_dw64 );
+         *ctsSzB = cc->is_dw64 ? 8 : 4;
+         TRACE_D3("%llu", *cts);
+         break;
       case DW_FORM_sdata:
          *cts = (ULong)(Long)get_SLEB128(c);
          *ctsSzB = 8;
          TRACE_D3("%lld", (Long)*cts);
+         break;
+      case DW_FORM_udata:
+         *cts = (ULong)(Long)get_ULEB128(c);
+         *ctsSzB = 8;
+         TRACE_D3("%llu", (Long)*cts);
          break;
       case DW_FORM_addr:
          /* note, this is a hack.  DW_FORM_addr is defined as getting
@@ -1016,9 +1151,17 @@ void get_Form_contents ( /*OUT*/ULong* cts,
             So for the moment we merely range-check, to see that they
             actually do specify a plausible offset within this
             object's .debug_info, and return the value unchanged.
+
+            In DWARF 2, DW_FORM_ref_addr is address-sized, but in
+            DWARF 3 and later, it is offset-sized.
          */
+         if (cc->version == 2) {
          *cts = (ULong)(UWord)get_UWord(c);
          *ctsSzB = sizeof(UWord);
+         } else {
+            *cts = get_Dwarfish_UWord(c, cc->is_dw64);
+            *ctsSzB = cc->is_dw64 ? sizeof(ULong) : sizeof(UInt);
+         }
          TRACE_D3("0x%lx", (UWord)*cts);
          if (0) VG_(printf)("DW_FORM_ref_addr 0x%lx\n", (UWord)*cts);
          if (/* the following 2 are surely impossible, but ... */
@@ -1055,9 +1198,41 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsMemSzB = 1 + (ULong)VG_(strlen)(str);
          break;
       }
+      case DW_FORM_ref1: {
+         UChar  u8 = get_UChar(c);
+         UWord res = cc->cu_start_offset + (UWord)u8;
+         *cts = (ULong)res;
+         *ctsSzB = sizeof(UWord);
+         TRACE_D3("<%lx>", res);
+         break;
+      }
+      case DW_FORM_ref2: {
+         UShort  u16 = get_UShort(c);
+         UWord res = cc->cu_start_offset + (UWord)u16;
+         *cts = (ULong)res;
+         *ctsSzB = sizeof(UWord);
+         TRACE_D3("<%lx>", res);
+         break;
+      }
       case DW_FORM_ref4: {
          UInt  u32 = get_UInt(c);
          UWord res = cc->cu_start_offset + (UWord)u32;
+         *cts = (ULong)res;
+         *ctsSzB = sizeof(UWord);
+         TRACE_D3("<%lx>", res);
+         break;
+      }
+      case DW_FORM_ref8: {
+         ULong  u64 = get_ULong(c);
+         UWord res = cc->cu_start_offset + (UWord)u64;
+         *cts = (ULong)res;
+         *ctsSzB = sizeof(UWord);
+         TRACE_D3("<%lx>", res);
+         break;
+      }
+      case DW_FORM_ref_udata: {
+         ULong  u64 = get_ULEB128(c);
+         UWord res = cc->cu_start_offset + (UWord)u64;
          *cts = (ULong)res;
          *ctsSzB = sizeof(UWord);
          TRACE_D3("<%lx>", res);
@@ -1070,6 +1245,11 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsSzB = 1;
          break;
       }
+      case DW_FORM_flag_present:
+         TRACE_D3("1");
+         *cts = 1;
+         *ctsSzB = 1;
+         break;
       case DW_FORM_block1: {
          ULong  u64b;
          ULong  u64 = (ULong)get_UChar(c);
@@ -1096,6 +1276,87 @@ void get_Form_contents ( /*OUT*/ULong* cts,
          *ctsMemSzB = (UWord)u64;
          break;
       }
+      case DW_FORM_block4: {
+         ULong  u64b;
+         ULong  u64 = (ULong)get_UInt(c);
+         UChar* block = get_address_of_Cursor(c);
+         TRACE_D3("%llu byte block: ", u64);
+         for (u64b = u64; u64b > 0; u64b--) {
+            UChar u8 = get_UChar(c);
+            TRACE_D3("%x ", (UInt)u8);
+         }
+         *cts = (ULong)(UWord)block;
+         *ctsMemSzB = (UWord)u64;
+         break;
+      }
+      case DW_FORM_exprloc:
+      case DW_FORM_block: {
+         ULong  u64b;
+         ULong  u64 = (ULong)get_ULEB128(c);
+         UChar* block = get_address_of_Cursor(c);
+         TRACE_D3("%llu byte block: ", u64);
+         for (u64b = u64; u64b > 0; u64b--) {
+            UChar u8 = get_UChar(c);
+            TRACE_D3("%x ", (UInt)u8);
+         }
+         *cts = (ULong)(UWord)block;
+         *ctsMemSzB = (UWord)u64;
+         break;
+      }
+      case DW_FORM_ref_sig8: {
+         ULong  u64b;
+         ULong  signature = get_ULong (c);
+         ULong  work = signature;
+         TRACE_D3("8 byte signature: ");
+         for (u64b = 8; u64b > 0; u64b--) {
+            UChar u8 = work & 0xff;
+            TRACE_D3("%x ", (UInt)u8);
+            work >>= 8;
+         }
+         /* Due to the way that the hash table is constructed, the
+            resulting DIE offset here is already "cooked".  See
+            cook_die_using_form.  */
+         *cts = lookup_signatured_type (cc->signature_types, signature,
+                                        c->barf);
+         *ctsSzB = sizeof(UWord);
+         break;
+      }
+      case DW_FORM_indirect:
+         get_Form_contents (cts, ctsSzB, ctsMemSzB, cc, c, td3,
+                            (DW_FORM)get_ULEB128(c));
+         return;
+
+      case DW_FORM_GNU_ref_alt:
+         *cts = get_Dwarfish_UWord(c, cc->is_dw64);
+         *ctsSzB = cc->is_dw64 ? sizeof(ULong) : sizeof(UInt);
+         TRACE_D3("0x%lx", (UWord)*cts);
+         if (0) VG_(printf)("DW_FORM_GNU_ref_alt 0x%lx\n", (UWord)*cts);
+         if (/* the following 2 are surely impossible, but ... */
+             cc->debug_info_alt_img == NULL || cc->debug_info_alt_sz == 0
+             || *cts >= (ULong)cc->debug_info_alt_sz) {
+            /* Hmm.  Offset is nonsensical for this object's .debug_info
+               section.  Be safe and reject it. */
+            cc->barf("get_Form_contents: DW_FORM_ref_addr points "
+                     "outside alternate .debug_info");
+         }
+         break;
+
+      case DW_FORM_GNU_strp_alt: {
+         /* this is an offset into alternate .debug_str */
+         UChar* str;
+         UWord uw = (UWord)get_Dwarfish_UWord( c, cc->is_dw64 );
+         if (cc->debug_str_alt_img == NULL || uw >= cc->debug_str_alt_sz)
+            cc->barf("get_Form_contents: DW_FORM_GNU_strp_alt "
+                     "points outside alternate .debug_str");
+         /* FIXME: check the entire string lies inside debug_str,
+            not just the first byte of it. */
+         str = (UChar*)cc->debug_str_alt_img + uw;
+         TRACE_D3("(indirect alt string, offset: 0x%lx): %s", uw, str);
+         *cts = (ULong)(UWord)str;
+         *ctsMemSzB = 1 + (ULong)VG_(strlen)(str);
+         break;
+      }
+
       default:
          VG_(printf)(
             "get_Form_contents: unhandled %d (%s) at <%lx>\n",
@@ -1322,11 +1583,13 @@ void read_filename_table( /*MOD*/D3VarParser* parser,
       get_Initial_Length( &is_dw64, &c,
            "read_filename_table: invalid initial-length field" );
    version = get_UShort( &c );
-   if (version != 2 && version != 3)
-     cc->barf("read_filename_table: Only DWARF version 2 and 3 line info "
+   if (version != 2 && version != 3 && version != 4)
+     cc->barf("read_filename_table: Only DWARF version 2, 3 and 4 line info "
               "is currently supported.");
    /*header_length              = (ULong)*/ get_Dwarfish_UWord( &c, is_dw64 );
    /*minimum_instruction_length = */ get_UChar( &c );
+   if (version >= 4)
+      /*maximum_operations_per_insn = */ get_UChar( &c );
    /*default_is_stmt            = */ get_UChar( &c );
    /*line_base                  = (Char)*/ get_UChar( &c );
    /*line_range                 = */ get_UChar( &c );
@@ -1383,12 +1646,17 @@ static void parse_var_DIE (
 
    UWord saved_die_c_offset  = get_position_of_Cursor( c_die );
    UWord saved_abbv_c_offset = get_position_of_Cursor( c_abbv );
+   Bool  debug_types_flag;
+   Bool  alt_flag;
 
    varstack_preen( parser, td3, level-1 );
 
-   if (dtag == DW_TAG_compile_unit) {
+   if (dtag == DW_TAG_compile_unit
+       || dtag == DW_TAG_type_unit
+       || dtag == DW_TAG_partial_unit) {
       Bool have_lo    = False;
       Bool have_hi1   = False;
+      Bool hiIsRelative = False;
       Bool have_range = False;
       Addr ip_lo    = 0;
       Addr ip_hi1   = 0;
@@ -1406,6 +1674,8 @@ static void parse_var_DIE (
          if (attr == DW_AT_high_pc && ctsSzB > 0) {
             ip_hi1   = cts;
             have_hi1 = True;
+            if (form != DW_FORM_addr)
+               hiIsRelative = True;
          }
          if (attr == DW_AT_ranges && ctsSzB > 0) {
             rangeoff = cts;
@@ -1415,6 +1685,8 @@ static void parse_var_DIE (
             read_filename_table( parser, cc, (UWord)cts, td3 );
          }
       }
+      if (have_lo && have_hi1 && hiIsRelative)
+         ip_hi1 += ip_lo;
       /* Now, does this give us an opportunity to find this
          CU's svma? */
 #if 0
@@ -1495,6 +1767,7 @@ static void parse_var_DIE (
       Bool   have_lo    = False;
       Bool   have_hi1   = False;
       Bool   have_range = False;
+      Bool   hiIsRelative = False;
       Addr   ip_lo      = 0;
       Addr   ip_hi1     = 0;
       Addr   rangeoff   = 0;
@@ -1513,6 +1786,8 @@ static void parse_var_DIE (
          if (attr == DW_AT_high_pc && ctsSzB > 0) {
             ip_hi1   = cts;
             have_hi1 = True;
+            if (form != DW_FORM_addr)
+               hiIsRelative = True;
          }
          if (attr == DW_AT_ranges && ctsSzB > 0) {
             rangeoff = cts;
@@ -1527,6 +1802,8 @@ static void parse_var_DIE (
             VG_(addToXA)(gexprs, &fbGX);
          }
       }
+      if (have_lo && have_hi1 && hiIsRelative)
+         ip_hi1 += ip_lo;
       /* Do we have something that looks sane? */
       if (dtag == DW_TAG_subprogram 
           && (!have_lo) && (!have_hi1) && (!have_range)) {
@@ -1600,7 +1877,7 @@ static void parse_var_DIE (
             VG_(addToXA)(gexprs, &gexpr);
          }
          if (attr == DW_AT_type && ctsSzB > 0) {
-            typeR = (UWord)cts;
+            typeR = cook_die_using_form( cc, (UWord)cts, form );
          }
          if (attr == DW_AT_external && ctsSzB > 0 && cts > 0) {
             external = True;
@@ -1832,7 +2109,15 @@ static void parse_var_DIE (
    set_position_of_Cursor( c_die,  saved_die_c_offset );
    set_position_of_Cursor( c_abbv, saved_abbv_c_offset );
    VG_(printf)("\nparse_var_DIE: confused by:\n");
-   VG_(printf)(" <%d><%lx>: %s\n", level, posn, ML_(pp_DW_TAG)( dtag ) );
+   posn = uncook_die( cc, posn, &debug_types_flag, &alt_flag );
+   VG_(printf)(" <%d><%lx>: %s", level, posn, ML_(pp_DW_TAG)( dtag ) );
+   if (debug_types_flag) {
+      VG_(printf)(" (in .debug_types)");
+   }
+   else if (alt_flag) {
+      VG_(printf)(" (in alternate .debug_info)");
+   }
+   VG_(printf)("\n");
    while (True) {
       DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
       DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
@@ -1859,7 +2144,10 @@ static void parse_var_DIE (
 
 typedef
    struct {
-      /* What source language?  'C'=C/C++, 'F'=Fortran, '?'=other
+      /* What source language?  'A'=Ada83/95,
+                                'C'=C/C++, 
+                                'F'=Fortran,
+                                '?'=other
          Established once per compilation unit. */
       UChar language;
       /* A stack of types which are currently under construction */
@@ -1947,6 +2235,22 @@ static void typestack_push ( CUConst* cc,
       typestack_show( parser, "after push" );
 }
 
+/* True if the subrange type being parsed gives the bounds of an array. */
+static Bool subrange_type_denotes_array_bounds ( D3TypeParser* parser,
+                                                 DW_TAG dtag ) {
+   vg_assert(dtag == DW_TAG_subrange_type);
+   /* For most languages, a subrange_type dtag always gives the 
+      bounds of an array.
+      For Ada, there are additional conditions as a subrange_type
+      is also used for other purposes. */
+   if (parser->language != 'A')
+      /* not Ada, so it definitely denotes an array bound. */
+      return True;
+   else
+      /* Extra constraints for Ada: it only denotes an array bound if .. */
+      return (! typestack_is_empty(parser)
+              && parser->qparentE[parser->sp].tag == Te_TyArray);
+}
 
 /* Parse a type-related DIE.  'parser' holds the current parser state.
    'admin' is where the completed types are dumped.  'dtag' is the tag
@@ -1993,6 +2297,8 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
    TyEnt atomE;
    TyEnt fieldE;
    TyEnt boundE;
+   Bool  debug_types_flag;
+   Bool  alt_flag;
 
    UWord saved_die_c_offset  = get_position_of_Cursor( c_die );
    UWord saved_abbv_c_offset = get_position_of_Cursor( c_abbv );
@@ -2007,7 +2313,9 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       its children. */
    typestack_preen( parser, td3, level-1 );
 
-   if (dtag == DW_TAG_compile_unit) {
+   if (dtag == DW_TAG_compile_unit
+       || dtag == DW_TAG_type_unit
+       || dtag == DW_TAG_partial_unit) {
       /* See if we can find DW_AT_language, since it is important for
          establishing array bounds (see DW_TAG_subrange_type below in
          this fn) */
@@ -2025,16 +2333,18 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             case DW_LANG_C89: case DW_LANG_C:
             case DW_LANG_C_plus_plus: case DW_LANG_ObjC:
             case DW_LANG_ObjC_plus_plus: case DW_LANG_UPC:
-            case DW_LANG_Upc:
+            case DW_LANG_Upc: case DW_LANG_C99:
                parser->language = 'C'; break;
             case DW_LANG_Fortran77: case DW_LANG_Fortran90:
             case DW_LANG_Fortran95:
                parser->language = 'F'; break;
-            case DW_LANG_Ada83: case DW_LANG_Cobol74:
+            case DW_LANG_Ada83: case DW_LANG_Ada95: 
+               parser->language = 'A'; break;
+            case DW_LANG_Cobol74:
             case DW_LANG_Cobol85: case DW_LANG_Pascal83:
             case DW_LANG_Modula2: case DW_LANG_Java:
-            case DW_LANG_C99: case DW_LANG_Ada95:
-            case DW_LANG_PLI: case DW_LANG_D:
+            case DW_LANG_PLI:
+            case DW_LANG_D: case DW_LANG_Python:
             case DW_LANG_Mips_Assembler:
                parser->language = '?'; break;
             default:
@@ -2065,9 +2375,12 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          if (attr == DW_AT_encoding && ctsSzB > 0) {
             switch (cts) {
                case DW_ATE_unsigned: case DW_ATE_unsigned_char:
+               case DW_ATE_UTF: /* since DWARF4, e.g. char16_t from C++ */
                case DW_ATE_boolean:/* FIXME - is this correct? */
+               case DW_ATE_unsigned_fixed:
                   typeE.Te.TyBase.enc = 'U'; break;
                case DW_ATE_signed: case DW_ATE_signed_char:
+               case DW_ATE_signed_fixed:
                   typeE.Te.TyBase.enc = 'S'; break;
                case DW_ATE_float:
                   typeE.Te.TyBase.enc = 'F'; break;
@@ -2114,19 +2427,41 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       goto acquire_Type;
    }
 
+   /*
+    * An example of DW_TAG_rvalue_reference_type:
+    *
+    * $ readelf --debug-dump /usr/lib/debug/usr/lib/libstdc++.so.6.0.16.debug
+    *  <1><1014>: Abbrev Number: 55 (DW_TAG_rvalue_reference_type)
+    *     <1015>   DW_AT_byte_size   : 4
+    *     <1016>   DW_AT_type        : <0xe52>
+    */
    if (dtag == DW_TAG_pointer_type || dtag == DW_TAG_reference_type
-       || dtag == DW_TAG_ptr_to_member_type) {
+       || dtag == DW_TAG_ptr_to_member_type
+       || dtag == DW_TAG_rvalue_reference_type) {
       /* This seems legit for _pointer_type and _reference_type.  I
          don't know if rolling _ptr_to_member_type in here really is
          legit, but it's better than not handling it at all. */
       VG_(memset)(&typeE, 0, sizeof(typeE));
       typeE.cuOff = D3_INVALID_CUOFF;
-      typeE.tag   = Te_TyPorR;
+      switch (dtag) {
+      case DW_TAG_pointer_type:
+         typeE.tag = Te_TyPtr;
+         break;
+      case DW_TAG_reference_type:
+         typeE.tag = Te_TyRef;
+         break;
+      case DW_TAG_ptr_to_member_type:
+         typeE.tag = Te_TyPtrMbr;
+         break;
+      case DW_TAG_rvalue_reference_type:
+         typeE.tag = Te_TyRvalRef;
+         break;
+      default:
+         vg_assert(False);
+      }
       /* target type defaults to void */
       typeE.Te.TyPorR.typeR = D3_FAKEVOID_CUOFF;
-      typeE.Te.TyPorR.isPtr = dtag == DW_TAG_pointer_type
-                              || dtag == DW_TAG_ptr_to_member_type;
-      /* These three type kinds don't *have* to specify their size, in
+      /* These four type kinds don't *have* to specify their size, in
          which case we assume it's a machine word.  But if they do
          specify it, it must be a machine word :-)  This probably
          assumes that the word size of the Dwarf3 we're reading is the
@@ -2143,7 +2478,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             typeE.Te.TyPorR.szB = cts;
          }
          if (attr == DW_AT_type && ctsSzB > 0) {
-            typeE.Te.TyPorR.typeR = (UWord)cts;
+            typeE.Te.TyPorR.typeR = cook_die_using_form( cc, (UWord)cts, form );
          }
       }
       /* Do we have something that looks sane? */
@@ -2184,8 +2519,27 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
                                  "<anon_enum_type>" );
 
       /* Do we have something that looks sane? */
-      if (typeE.Te.TyEnum.szB == 0 /* we must know the size */)
+      if (typeE.Te.TyEnum.szB == 0 
+          /* we must know the size */
+          /* but not for Ada, which uses such dummy
+             enumerations as helper for gdb ada mode. */
+          && parser->language != 'A') {
+         /* GCC has been seen to put an odd DIE like this into
+            .debug_types:
+
+            <1><cb72>: DW_TAG_enumeration_type (in .debug_types)
+            DW_AT_name        : (indirect string, offset: 0x3374a): exec_direction_kind
+            DW_AT_declaration : 1	
+
+            It isn't clear what this means, but we accept it and
+            assume that the enum is int-sized.  */
+         if (cc->is_type_unit) {
+            typeE.Te.TyEnum.szB = sizeof(int);
+         } else {
          goto bad_DIE;
+         }
+      }
+
       /* On't stack! */
       typestack_push( cc, parser, td3, &typeE, level );
       goto acquire_Type;
@@ -2304,8 +2658,14 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       if (is_decl && (!is_spec)) {
          /* It's a DW_AT_declaration.  We require the name but
             nothing else. */
+         /* JRS 2012-06-28: following discussion w/ tromey, if the the
+            type doesn't have name, just make one up, and accept it.
+            It might be referred to by other DIEs, so ignoring it
+            doesn't seem like a safe option. */
          if (typeE.Te.TyStOrUn.name == NULL)
-            goto bad_DIE;
+            typeE.Te.TyStOrUn.name
+               = ML_(dinfo_strdup)( "di.readdwarf3.ptD.struct_type.3",
+                                    "<anon_struct_type>" );
          typeE.Te.TyStOrUn.complete = False;
          /* JRS 2009 Aug 10: <possible kludge>? */
          /* Push this tyent on the stack, even though it's incomplete.
@@ -2354,7 +2714,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
                                     (UChar*)(UWord)cts );
          }
          if (attr == DW_AT_type && ctsSzB > 0) {
-            fieldE.Te.Field.typeR = (UWord)cts;
+            fieldE.Te.Field.typeR = cook_die_using_form( cc, (UWord)cts, form );
          }
          /* There are 2 different cases for DW_AT_data_member_location.
             If it is a constant class attribute, it contains byte offset
@@ -2414,6 +2774,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
             const members in C++ code which are compile time constants
             that do no exist in the class. They're not of any interest
             to us so we ignore them. */
+         ML_(TyEnt__make_EMPTY)(&fieldE);
       }
    }
 
@@ -2433,7 +2794,8 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          get_Form_contents( &cts, &ctsSzB, &ctsMemSzB,
                             cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_type && ctsSzB > 0) {
-            typeE.Te.TyArray.typeR = (UWord)cts;
+            typeE.Te.TyArray.typeR = cook_die_using_form( cc, (UWord)cts,
+                                                          form );
          }
       }
       if (typeE.Te.TyArray.typeR == D3_INVALID_CUOFF)
@@ -2443,7 +2805,9 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       goto acquire_Type;
    }
 
-   if (dtag == DW_TAG_subrange_type) {
+   /* this is a subrange type defining the bounds of an array. */
+   if (dtag == DW_TAG_subrange_type 
+       && subrange_type_denotes_array_bounds(parser, dtag)) {
       Bool have_lower = False;
       Bool have_upper = False;
       Bool have_count = False;
@@ -2454,6 +2818,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          case 'C': have_lower = True;  lower = 0; break;
          case 'F': have_lower = True;  lower = 1; break;
          case '?': have_lower = False; break;
+         case 'A': have_lower = False; break;
          default:  vg_assert(0); /* assured us by handling of
                                     DW_TAG_compile_unit in this fn */
       }
@@ -2524,13 +2889,18 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
       boundE.cuOff = posn;
       vg_assert(parser->qparentE[parser->sp].Te.TyArray.boundRs);
       VG_(addToXA)( parser->qparentE[parser->sp].Te.TyArray.boundRs,
-                    &boundE );
+                    &boundE.cuOff );
       /* And record the child itself */
       goto acquire_Bound;
    }
 
-   if (dtag == DW_TAG_typedef) {
-      /* We can pick up a new typedef any time. */
+   /* typedef or subrange_type other than array bounds. */
+   if (dtag == DW_TAG_typedef 
+       || (dtag == DW_TAG_subrange_type 
+           && !subrange_type_denotes_array_bounds(parser, dtag))) {
+      /* subrange_type other than array bound is only for Ada. */
+      vg_assert (dtag == DW_TAG_typedef || parser->language == 'A');
+      /* We can pick up a new typedef/subrange_type any time. */
       VG_(memset)(&typeE, 0, sizeof(typeE));
       typeE.cuOff = D3_INVALID_CUOFF;
       typeE.tag   = Te_TyTyDef;
@@ -2548,12 +2918,19 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
                                     (UChar*)(UWord)cts );
          }
          if (attr == DW_AT_type && ctsSzB > 0) {
-            typeE.Te.TyTyDef.typeR = (UWord)cts;
+            typeE.Te.TyTyDef.typeR = cook_die_using_form( cc, (UWord)cts,
+                                                          form );
          }
       }
       /* Do we have something that looks sane? */
       if (/* must have a name */
           typeE.Te.TyTyDef.name == NULL
+          /* However gcc gnat Ada generates minimal typedef
+             such as the below => accept no name for Ada.
+             <6><91cc>: DW_TAG_typedef
+                DW_AT_abstract_ori: <9066>
+          */
+          && parser->language != 'A'
           /* but the referred-to type can be absent */)
          goto bad_DIE;
       else
@@ -2585,7 +2962,7 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          get_Form_contents( &cts, &ctsSzB, &ctsMemSzB,
                             cc, c_die, False/*td3*/, form );
          if (attr == DW_AT_type && ctsSzB > 0) {
-            typeE.Te.TyQual.typeR = (UWord)cts;
+            typeE.Te.TyQual.typeR = cook_die_using_form( cc, (UWord)cts, form );
             have_ty++;
          }
       }
@@ -2596,6 +2973,21 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
          goto acquire_Type;
       else
          goto bad_DIE;
+   }
+
+   /*
+    * Treat DW_TAG_unspecified_type as type void. An example of DW_TAG_unspecified_type:
+    *
+    * $ readelf --debug-dump /usr/lib/debug/usr/lib/libstdc++.so.6.0.16.debug
+    *  <1><10d4>: Abbrev Number: 53 (DW_TAG_unspecified_type)
+    *     <10d5>   DW_AT_name        : (indirect string, offset: 0xdb7): decltype(nullptr)
+    */
+   if (dtag == DW_TAG_unspecified_type) {
+      VG_(memset)(&typeE, 0, sizeof(typeE));
+      typeE.cuOff           = D3_INVALID_CUOFF;
+      typeE.tag             = Te_TyQual;
+      typeE.Te.TyQual.typeR = D3_FAKEVOID_CUOFF;
+      goto acquire_Type;
    }
 
    /* else ignore this DIE */
@@ -2650,7 +3042,14 @@ static void parse_type_DIE ( /*MOD*/XArray* /* of TyEnt */ tyents,
    set_position_of_Cursor( c_die,  saved_die_c_offset );
    set_position_of_Cursor( c_abbv, saved_abbv_c_offset );
    VG_(printf)("\nparse_type_DIE: confused by:\n");
-   VG_(printf)(" <%d><%lx>: %s\n", level, posn, ML_(pp_DW_TAG)( dtag ) );
+   posn = uncook_die( cc, posn, &debug_types_flag, &alt_flag );
+   VG_(printf)(" <%d><%lx>: %s", level, posn, ML_(pp_DW_TAG)( dtag ) );
+   if (debug_types_flag) {
+      VG_(printf)(" (in .debug_types)");
+   } else if (alt_flag) {
+      VG_(printf)(" (in alternate .debug_info)");
+   }
+   VG_(printf)("\n");
    while (True) {
       DW_AT   attr = (DW_AT)  get_ULEB128( c_abbv );
       DW_FORM form = (DW_FORM)get_ULEB128( c_abbv );
@@ -2742,7 +3141,10 @@ static Bool TyEnt__subst_R_fields ( XArray* /* of TyEnt */ ents,
          break;
       case Te_TyBase:
          break;
-      case Te_TyPorR:
+      case Te_TyPtr:
+      case Te_TyRef:
+      case Te_TyPtrMbr:
+      case Te_TyRvalRef:
          te->Te.TyPorR.typeR
             = chase_cuOff( &b, ents, ents_cache, te->Te.TyPorR.typeR );
          if (b) changed = True;
@@ -3020,7 +3422,7 @@ static void read_DIE (
    UWord  after_die_c_offset, after_abbv_c_offset;
 
    /* --- Deal with this DIE --- */
-   posn      = get_position_of_Cursor( c );
+   posn      = cook_die( cc, get_position_of_Cursor( c ) );
    abbv_code = get_ULEB128( c );
    set_abbv_Cursor( &abbv, td3, cc, abbv_code );
    atag      = get_ULEB128( &abbv );
@@ -3118,11 +3520,16 @@ void new_dwarf3_reader_wrk (
    struct _DebugInfo* di,
    __attribute__((noreturn)) void (*barf)( HChar* ),
    UChar* debug_info_img,   SizeT debug_info_sz,
+   UChar* debug_types_img,  SizeT debug_types_sz,
    UChar* debug_abbv_img,   SizeT debug_abbv_sz,
    UChar* debug_line_img,   SizeT debug_line_sz,
    UChar* debug_str_img,    SizeT debug_str_sz,
    UChar* debug_ranges_img, SizeT debug_ranges_sz,
-   UChar* debug_loc_img,    SizeT debug_loc_sz
+   UChar* debug_loc_img,    SizeT debug_loc_sz,
+   UChar* debug_info_alt_img, SizeT debug_info_alt_sz,
+   UChar* debug_abbv_alt_img, SizeT debug_abbv_alt_sz,
+   UChar* debug_line_alt_img, SizeT debug_line_alt_sz,
+   UChar* debug_str_alt_img,  SizeT debug_str_alt_sz
 )
 {
    XArray* /* of TyEnt */     tyents;
@@ -3144,6 +3551,8 @@ void new_dwarf3_reader_wrk (
    Word  i, j, n;
    Bool td3 = di->trace_symtab;
    XArray* /* of TempVar* */ dioff_lookup_tab;
+   Int pass;
+   VgHashTable signature_types;
 #if 0
    /* This doesn't work properly because it assumes all entries are
       packed end to end, with no holes.  But that doesn't always
@@ -3277,13 +3686,6 @@ void new_dwarf3_reader_wrk (
    }
    TRACE_SYMTAB("\n");
 
-   /* Now loop over the Compilation Units listed in the .debug_info
-      section (see D3SPEC sec 7.5) paras 1 and 2.  Each compilation
-      unit contains a Compilation Unit Header followed by precisely
-      one DW_TAG_compile_unit or DW_TAG_partial_unit DIE. */
-   init_Cursor( &info, debug_info_img, debug_info_sz, 0, barf,
-                "Overrun whilst reading .debug_info section" );
-
    /* We'll park the harvested type information in here.  Also create
       a fake "void" entry with offset D3_FAKEVOID_CUOFF, so we always
       have at least one type entry to refer to.  D3_FAKEVOID_CUOFF is
@@ -3345,7 +3747,91 @@ void new_dwarf3_reader_wrk (
    VG_(memset)( &varparser, 0, sizeof(varparser) );
    varparser.sp = -1;
 
+   signature_types = VG_(HT_construct) ("signature_types");
+   
+   /* Do an initial pass to scan the .debug_types section, if any, and
+      fill in the signatured types hash table.  This lets us handle
+      mapping from a type signature to a (cooked) DIE offset directly
+      in get_Form_contents.  */
+   if (debug_types_img != NULL) {
+      init_Cursor( &info, debug_types_img, debug_types_sz, 0, barf,
+                   "Overrun whilst reading .debug_types section" );
+      TRACE_D3("\n------ Collecting signatures from .debug_types section ------\n");
+
+      while (True) {
+         UWord   cu_start_offset, cu_offset_now;
+         CUConst cc;
+
+         cu_start_offset = get_position_of_Cursor( &info );
+         TRACE_D3("\n");
+         TRACE_D3("  Compilation Unit @ offset 0x%lx:\n", cu_start_offset);
+         /* parse_CU_header initialises the CU's set_abbv_Cursor cache
+            (saC_cache) */
+         parse_CU_Header( &cc, td3, &info,
+                          (UChar*)debug_abbv_img, debug_abbv_sz,
+                          True, False );
+
+         /* Needed by cook_die.  */
+         cc.types_cuOff_bias = debug_info_sz;
+
+         record_signatured_type( signature_types, cc.type_signature,
+                                 cook_die( &cc, cc.type_offset ));
+
+         /* Until proven otherwise we assume we don't need the icc9
+            workaround in this case; see the DIE-reading loop below
+            for details.  */
+         cu_offset_now = (cu_start_offset + cc.unit_length
+                          + (cc.is_dw64 ? 12 : 4));
+
+         if (cu_offset_now == debug_types_sz)
+            break;
+
+         set_position_of_Cursor ( &info, cu_offset_now );
+      }
+   }
+
+   /* Perform three DIE-reading passes.  The first pass reads DIEs from
+      alternate .debug_info (if any), the second pass reads DIEs from
+      .debug_info, and the third pass reads DIEs from .debug_types.
+      Moving the body of this loop into a separate function would
+      require a large number of arguments to be passed in, so it is
+      kept inline instead.  */
+   for (pass = 0; pass < 3; ++pass) {
+      UWord section_size;
+
+      if (pass == 0) {
+         if (debug_info_alt_img == NULL)
+	    continue;
+         /* Now loop over the Compilation Units listed in the alternate
+            .debug_info section (see D3SPEC sec 7.5) paras 1 and 2.
+            Each compilation unit contains a Compilation Unit Header
+            followed by precisely one DW_TAG_compile_unit or
+            DW_TAG_partial_unit DIE. */
+         init_Cursor( &info, debug_info_alt_img, debug_info_alt_sz, 0, barf,
+                      "Overrun whilst reading alternate .debug_info section" );
+         section_size = debug_info_alt_sz;
+
+         TRACE_D3("\n------ Parsing alternate .debug_info section ------\n");
+      } else if (pass == 1) {
+         /* Now loop over the Compilation Units listed in the .debug_info
+            section (see D3SPEC sec 7.5) paras 1 and 2.  Each compilation
+            unit contains a Compilation Unit Header followed by precisely
+            one DW_TAG_compile_unit or DW_TAG_partial_unit DIE. */
+         init_Cursor( &info, debug_info_img, debug_info_sz, 0, barf,
+                      "Overrun whilst reading .debug_info section" );
+         section_size = debug_info_sz;
+
    TRACE_D3("\n------ Parsing .debug_info section ------\n");
+      } else {
+         if (debug_types_img == NULL)
+            continue;
+         init_Cursor( &info, debug_types_img, debug_types_sz, 0, barf,
+                      "Overrun whilst reading .debug_types section" );
+         section_size = debug_types_sz;
+
+         TRACE_D3("\n------ Parsing .debug_types section ------\n");
+      }
+
    while (True) {
       UWord   cu_start_offset, cu_offset_now;
       CUConst cc;
@@ -3398,18 +3884,32 @@ void new_dwarf3_reader_wrk (
       TRACE_D3("  Compilation Unit @ offset 0x%lx:\n", cu_start_offset);
       /* parse_CU_header initialises the CU's set_abbv_Cursor cache
          (saC_cache) */
+         if (pass == 0)
       parse_CU_Header( &cc, td3, &info,
-                       (UChar*)debug_abbv_img, debug_abbv_sz );
-      cc.debug_str_img    = debug_str_img;
-      cc.debug_str_sz     = debug_str_sz;
+                             (UChar*)debug_abbv_alt_img, debug_abbv_alt_sz,
+                             False, True );
+         else
+            parse_CU_Header( &cc, td3, &info,
+                             (UChar*)debug_abbv_img, debug_abbv_sz,
+                             pass == 2, False );
+         cc.debug_str_img    = pass == 0 ? debug_str_alt_img : debug_str_img;
+         cc.debug_str_sz     = pass == 0 ? debug_str_alt_sz : debug_str_sz;
       cc.debug_ranges_img = debug_ranges_img;
       cc.debug_ranges_sz  = debug_ranges_sz;
       cc.debug_loc_img    = debug_loc_img;
       cc.debug_loc_sz     = debug_loc_sz;
-      cc.debug_line_img   = debug_line_img;
-      cc.debug_line_sz    = debug_line_sz;
-      cc.debug_info_img   = debug_info_img;
-      cc.debug_info_sz    = debug_info_sz;
+         cc.debug_line_img   = pass == 0 ? debug_line_alt_img : debug_line_img;
+         cc.debug_line_sz    = pass == 0 ? debug_line_alt_sz : debug_line_sz;
+         cc.debug_info_img   = pass == 0 ? debug_info_alt_img : debug_info_img;
+         cc.debug_info_sz    = pass == 0 ? debug_info_alt_sz : debug_info_sz;
+         cc.debug_types_img  = debug_types_img;
+         cc.debug_types_sz   = debug_types_sz;
+         cc.debug_info_alt_img = debug_info_alt_img;
+         cc.debug_info_alt_sz = debug_info_alt_sz;
+         cc.debug_str_alt_img = debug_str_alt_img;
+         cc.debug_str_alt_sz = debug_str_alt_sz;
+         cc.types_cuOff_bias = debug_info_sz;
+         cc.alt_cuOff_bias   = debug_info_sz + debug_types_sz;
       cc.cu_start_offset  = cu_start_offset;
       cc.di = di;
       /* The CU's svma can be deduced by looking at the AT_low_pc
@@ -3419,6 +3919,8 @@ void new_dwarf3_reader_wrk (
          it. */
       cc.cu_svma_known = False;
       cc.cu_svma       = 0;
+
+         cc.signature_types = signature_types;
 
       /* Create a fake outermost-level range covering the entire
          address range.  So we always have *something* to catch all
@@ -3459,8 +3961,8 @@ void new_dwarf3_reader_wrk (
       cu_amount_used = cu_offset_now - cc.cu_start_offset;
 
       if (1) TRACE_D3("offset now %ld, d-i-size %ld\n",
-                      cu_offset_now, debug_info_sz);
-      if (cu_offset_now > debug_info_sz)
+                         cu_offset_now, section_size);
+         if (cu_offset_now > section_size)
          barf("toplevel DIEs beyond end of CU");
 
       /* If the CU is bigger than it claims to be, we've got a serious
@@ -3478,9 +3980,6 @@ void new_dwarf3_reader_wrk (
          cu_amount_used = cu_offset_now - cc.cu_start_offset;
       }
 
-      if (cu_offset_now == debug_info_sz)
-         break;
-
       /* Preen to level -2.  DIEs have level >= 0 so -2 cannot occur
          anywhere else at all.  Our fake the-entire-address-space
          range is at level -1, so preening to -2 should completely
@@ -3489,7 +3988,6 @@ void new_dwarf3_reader_wrk (
       varstack_preen( &varparser, td3, -2 );
       /* Similarly, empty the type stack out. */
       typestack_preen( &typarser, td3, -2 );
-      /* else keep going */
 
       TRACE_D3("set_abbv_Cursor cache: %lu queries, %lu misses\n",
                cc.saC_cache_queries, cc.saC_cache_misses);
@@ -3497,6 +3995,11 @@ void new_dwarf3_reader_wrk (
       vg_assert(varparser.filenameTable );
       VG_(deleteXA)( varparser.filenameTable );
       varparser.filenameTable = NULL;
+
+         if (cu_offset_now == section_size)
+            break;
+         /* else keep going */
+      }
    }
 
    /* From here on we're post-processing the stuff we got
@@ -3589,10 +4092,19 @@ void new_dwarf3_reader_wrk (
    vg_assert(dioff_lookup_tab);
 
    n = VG_(sizeXA)( tempvars );
+   Word first_primary_var;
+   for (first_primary_var = 0;
+        debug_info_alt_sz && first_primary_var < n;
+        first_primary_var++) {
+      varp = *(TempVar**)VG_(indexXA)( tempvars, first_primary_var );
+      if (varp->dioff < debug_info_sz + debug_types_sz)
+         break;
+   }
    for (i = 0; i < n; i++) {
-      varp = *(TempVar**)VG_(indexXA)( tempvars, i );
-      if (i > 0) {
-         varp2 = *(TempVar**)VG_(indexXA)( tempvars, i-1 );
+      varp = *(TempVar**)VG_(indexXA)( tempvars, (i + first_primary_var) % n );
+      if (i > first_primary_var) {
+         varp2 = *(TempVar**)VG_(indexXA)( tempvars,
+                                           (i + first_primary_var - 1) % n );
          /* why should this hold?  Only, I think, because we've
             constructed the array by reading .debug_info sequentially,
             and so the array .dioff fields should reflect that, and be
@@ -3666,8 +4178,11 @@ void new_dwarf3_reader_wrk (
          key.dioff = varp->absOri; /* this is what we want to find */
          found = VG_(lookupXA)( dioff_lookup_tab, &keyp,
                                 &ixFirst, &ixLast );
-         if (!found)
-            barf("DW_AT_abstract_origin can't be resolved");
+         if (!found) {
+            /* barf("DW_AT_abstract_origin can't be resolved"); */
+            TRACE_D3("  SKIP (DW_AT_abstract_origin can't be resolved)\n\n");
+            continue;
+         }
          /* If the following fails, there is more than one entry with
             the same dioff.  Which can't happen. */
          vg_assert(ixFirst == ixLast);
@@ -3804,14 +4319,10 @@ void new_dwarf3_reader_wrk (
    ML_(dinfo_free)( tyents_to_keep_cache );
    tyents_to_keep_cache = NULL;
 
-   /* and the file name table (just the array, not the entries
-      themselves).  (Apparently, 2008-Oct-23, varparser.filenameTable
-      can be NULL here, for icc9 generated Dwarf3.  Not sure what that
-      signifies (a deeper problem with the reader?)) */
-   if (varparser.filenameTable) {
-      VG_(deleteXA)( varparser.filenameTable );
-      varparser.filenameTable = NULL;
-   }
+   vg_assert( varparser.filenameTable == NULL );
+
+   /* And the signatured type hash.  */
+   VG_(HT_destruct) ( signature_types, ML_(dinfo_free) );
 
    /* record the GExprs in di so they can be freed later */
    vg_assert(!di->admin_gexprs);
@@ -3825,18 +4336,14 @@ void new_dwarf3_reader_wrk (
 /*---                                                      ---*/
 /*------------------------------------------------------------*/
 
-/* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
-#include <setjmp.h>   /* For jmp_buf */
-/* --- !!! --- EXTERNAL HEADERS end --- !!! --- */
-
 static Bool    d3rd_jmpbuf_valid  = False;
 static HChar*  d3rd_jmpbuf_reason = NULL;
-static jmp_buf d3rd_jmpbuf;
+static VG_MINIMAL_JMP_BUF(d3rd_jmpbuf);
 
 static __attribute__((noreturn)) void barf ( HChar* reason ) {
    vg_assert(d3rd_jmpbuf_valid);
    d3rd_jmpbuf_reason = reason;
-   __builtin_longjmp(&d3rd_jmpbuf, 1);
+   VG_MINIMAL_LONGJMP(d3rd_jmpbuf);
    /*NOTREACHED*/
    vg_assert(0);
 }
@@ -3846,11 +4353,16 @@ void
 ML_(new_dwarf3_reader) (
    struct _DebugInfo* di,
    UChar* debug_info_img,   SizeT debug_info_sz,
+   UChar* debug_types_img,  SizeT debug_types_sz,
    UChar* debug_abbv_img,   SizeT debug_abbv_sz,
    UChar* debug_line_img,   SizeT debug_line_sz,
    UChar* debug_str_img,    SizeT debug_str_sz,
    UChar* debug_ranges_img, SizeT debug_ranges_sz,
-   UChar* debug_loc_img,    SizeT debug_loc_sz
+   UChar* debug_loc_img,    SizeT debug_loc_sz,
+   UChar* debug_info_alt_img, SizeT debug_info_alt_sz,
+   UChar* debug_abbv_alt_img, SizeT debug_abbv_alt_sz,
+   UChar* debug_line_alt_img, SizeT debug_line_alt_sz,
+   UChar* debug_str_alt_img,  SizeT debug_str_alt_sz
 )
 {
    volatile Int  jumped;
@@ -3864,16 +4376,21 @@ ML_(new_dwarf3_reader) (
    vg_assert(d3rd_jmpbuf_reason == NULL);
 
    d3rd_jmpbuf_valid = True;
-   jumped = __builtin_setjmp(&d3rd_jmpbuf);
+   jumped = VG_MINIMAL_SETJMP(d3rd_jmpbuf);
    if (jumped == 0) {
       /* try this ... */
       new_dwarf3_reader_wrk( di, barf,
                              debug_info_img,   debug_info_sz,
+                             debug_types_img,  debug_types_sz,
                              debug_abbv_img,   debug_abbv_sz,
                              debug_line_img,   debug_line_sz,
                              debug_str_img,    debug_str_sz,
                              debug_ranges_img, debug_ranges_sz,
-                             debug_loc_img,    debug_loc_sz );
+                             debug_loc_img,    debug_loc_sz,
+                             debug_info_alt_img, debug_info_alt_sz,
+                             debug_abbv_alt_img, debug_abbv_alt_sz,
+                             debug_line_alt_img, debug_line_alt_sz,
+                             debug_str_alt_img,  debug_str_alt_sz);
       d3rd_jmpbuf_valid = False;
       TRACE_D3("\n------ .debug_info reading was successful ------\n");
    } else {

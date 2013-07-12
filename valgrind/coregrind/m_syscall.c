@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,6 +62,7 @@
 
 SysRes VG_(mk_SysRes_x86_linux) ( Int val ) {
    SysRes res;
+   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (UInt)(-val);
@@ -74,6 +75,7 @@ SysRes VG_(mk_SysRes_x86_linux) ( Int val ) {
 /* Similarly .. */
 SysRes VG_(mk_SysRes_amd64_linux) ( Long val ) {
    SysRes res;
+   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (ULong)(-val);
@@ -87,6 +89,7 @@ SysRes VG_(mk_SysRes_amd64_linux) ( Long val ) {
 /* Note this must be in the bottom bit of the second arg */
 SysRes VG_(mk_SysRes_ppc32_linux) ( UInt val, UInt cr0so ) {
    SysRes res;
+   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = (cr0so & 1) != 0;
    res._val     = val;
    return res;
@@ -95,13 +98,27 @@ SysRes VG_(mk_SysRes_ppc32_linux) ( UInt val, UInt cr0so ) {
 /* As per ppc32 version, cr0.so must be in l.s.b. of 2nd arg */
 SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so ) {
    SysRes res;
+   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = (cr0so & 1) != 0;
    res._val     = val;
    return res;
 }
 
+SysRes VG_(mk_SysRes_s390x_linux) ( Long val ) {
+   SysRes res;
+   res._valEx   = 0; /* unused except on mips-linux */
+   res._isError = val >= -4095 && val <= -1;
+   if (res._isError) {
+      res._val = -val;
+   } else {
+      res._val = val;
+   }
+   return res;
+}
+
 SysRes VG_(mk_SysRes_arm_linux) ( Int val ) {
    SysRes res;
+   res._valEx   = 0; /* unused except on mips-linux */
    res._isError = val >= -4095 && val <= -1;
    if (res._isError) {
       res._val = (UInt)(-val);
@@ -111,9 +128,19 @@ SysRes VG_(mk_SysRes_arm_linux) ( Int val ) {
    return res;
 }
 
+/* MIPS uses a3 != 0 to flag an error */
+SysRes VG_(mk_SysRes_mips32_linux) ( UWord v0, UWord v1, UWord a3 ) {
+   SysRes res;
+   res._isError = (a3 != (UWord)0);
+   res._val     = v0;
+   res._valEx   = v1;
+   return res;
+}
+
 /* Generic constructors. */
 SysRes VG_(mk_SysRes_Error) ( UWord err ) {
    SysRes r;
+   r._valEx   = 0; /* unused except on mips-linux */
    r._isError = True;
    r._val     = err;
    return r;
@@ -121,48 +148,9 @@ SysRes VG_(mk_SysRes_Error) ( UWord err ) {
 
 SysRes VG_(mk_SysRes_Success) ( UWord res ) {
    SysRes r;
+   r._valEx   = 0; /* unused except on mips-linux */
    r._isError = False;
    r._val     = res;
-   return r;
-}
-
-
-#elif defined(VGO_aix5)
-
-/* AIX scheme: we have to record both 'res' (r3) and 'err' (r4).  If
-   'err' is nonzero then the call has failed, but it could still be
-   that AIX userspace will ignore 'err' and instead consult 'res' to
-   determine if the call failed.  So we have to record both. */
-SysRes VG_(mk_SysRes_ppc32_aix5) ( UInt res, UInt err ) {
-   SysRes r;
-   r.res     = res;
-   r.err     = err;
-   r.isError = r.err != 0;
-   return r;
-}
-
-SysRes VG_(mk_SysRes_ppc64_aix5) ( ULong res, ULong err ) {
-   SysRes r;
-   r.res     = res;
-   r.err     = err;
-   r.isError = r.err != 0;
-   return r;
-}
-
-/* Generic constructors. */
-SysRes VG_(mk_SysRes_Error) ( UWord err ) {
-   SysRes r;
-   r._res     = 0;
-   r._err     = err;
-   r._isError = True;
-   return r;
-}
-
-SysRes VG_(mk_SysRes_Success) ( UWord res ) {
-   SysRes r;
-   r._res     = res;
-   r._err     = 0;
-   r._isError = False;
    return r;
 }
 
@@ -284,6 +272,7 @@ extern UWord do_syscall_WRK (
        );
 asm(
 ".text\n"
+".globl do_syscall_WRK\n"
 "do_syscall_WRK:\n"
 "	push	%esi\n"
 "	push	%edi\n"
@@ -325,6 +314,7 @@ extern UWord do_syscall_WRK (
        );
 asm(
 ".text\n"
+".globl do_syscall_WRK\n"
 "do_syscall_WRK:\n"
         /* Convert function calling convention --> syscall calling
            convention */
@@ -359,6 +349,7 @@ extern ULong do_syscall_WRK (
        );
 asm(
 ".text\n"
+".globl do_syscall_WRK\n"
 "do_syscall_WRK:\n"
 "        mr      0,3\n"
 "        mr      3,4\n"
@@ -425,6 +416,7 @@ extern UWord do_syscall_WRK (
        );
 asm(
 ".text\n"
+".globl do_syscall_WRK\n"
 "do_syscall_WRK:\n"
 "         push    {r4, r5, r7}\n"
 "         ldr     r4, [sp, #12]\n"
@@ -435,157 +427,6 @@ asm(
 "         bx      lr\n"
 ".previous\n"
 );
-
-#elif defined(VGP_ppc32_aix5)
-static void do_syscall_WRK ( UWord* res_r3, UWord* res_r4,
-                             UWord sysno, 
-                             UWord a1, UWord a2, UWord a3,
-                             UWord a4, UWord a5, UWord a6,
-                             UWord a7, UWord a8 )
-{
-   /* Syscalls on AIX are very similar to function calls:
-      - up to 8 args in r3-r10
-      - syscall number in r2
-      - kernel resumes at 'lr', so must set it appropriately beforehand
-      - r3 holds the result and r4 any applicable error code
-      See http://www.cs.utexas.edu/users/cart/publications/tr00-04.ps
-      and also 'man truss'.
-   */
-   /* For some reason gcc-3.3.2 doesn't preserve r31 across the asm
-      even though we state it to be trashed.  So use r27 instead. */
-   UWord args[9];
-   args[0] = sysno;
-   args[1] = a1; args[2] = a2;
-   args[3] = a3; args[4] = a4;
-   args[5] = a5; args[6] = a6;
-   args[7] = a7; args[8] = a8;
-
-   __asm__ __volatile__(
-
-      // establish base ptr
-      "mr   28,%0\n\t"
-
-      // save r2, lr
-      "mr   27,2\n\t" // save r2 in r27
-      "mflr 30\n\t"   // save lr in r30
-
-      // set syscall number and args
-      "lwz   2,  0(28)\n\t"
-      "lwz   3,  4(28)\n\t"
-      "lwz   4,  8(28)\n\t"
-      "lwz   5, 12(28)\n\t"
-      "lwz   6, 16(28)\n\t"
-      "lwz   7, 20(28)\n\t"
-      "lwz   8, 24(28)\n\t"
-      "lwz   9, 28(28)\n\t"
-      "lwz  10, 32(28)\n\t"
-
-      // set bit 3 of CR1 otherwise AIX 5.1 returns to the
-      // wrong address after the sc instruction
-      "crorc 6,6,6\n\t"
-
-      // set up LR to point just after the sc insn
-      ".long 0x48000005\n\t" // "bl here+4" -- lr := & next insn
-      "mflr 29\n\t"
-      "addi 29,29,16\n\t"
-      "mtlr 29\n\t"
-
-      // do it!
-      "sc\n\t"
-
-      // result is now in r3; save it in args[0]
-      "stw  3,0(28)\n\t"
-      // error code in r4; save it in args[1]
-      "stw  4,4(28)\n\t"
-
-      // restore
-      "mr   2,27\n\t"
-      "mtlr 30\n\t"
-
-      : /*out*/
-      : /*in*/  "b" (&args[0])
-      : /*trash*/
-           /*temps*/    "r31","r30","r29","r28","r27",
-           /*args*/     "r3","r4","r5","r6","r7","r8","r9","r10",
-           /*paranoia*/ "memory","cc","r0","r1","r11","r12","r13",
-                        "xer","ctr","cr0","cr1","cr2","cr3",
-                        "cr4","cr5","cr6","cr7"
-   );
-
-   *res_r3 = args[0];
-   *res_r4 = args[1];
-}
-
-#elif defined(VGP_ppc64_aix5)
-static void do_syscall_WRK ( UWord* res_r3, UWord* res_r4,
-                             UWord sysno, 
-                             UWord a1, UWord a2, UWord a3,
-                             UWord a4, UWord a5, UWord a6,
-                             UWord a7, UWord a8 )
-{
-   /* Same scheme as ppc32-aix5. */
-   UWord args[9];
-   args[0] = sysno;
-   args[1] = a1; args[2] = a2;
-   args[3] = a3; args[4] = a4;
-   args[5] = a5; args[6] = a6;
-   args[7] = a7; args[8] = a8;
-
-   __asm__ __volatile__(
-
-      // establish base ptr
-      "mr   28,%0\n\t"
-
-      // save r2, lr
-      "mr   27,2\n\t" // save r2 in r27
-      "mflr 30\n\t"   // save lr in r30
-
-      // set syscall number and args
-      "ld    2,  0(28)\n\t"
-      "ld    3,  8(28)\n\t"
-      "ld    4, 16(28)\n\t"
-      "ld    5, 24(28)\n\t"
-      "ld    6, 32(28)\n\t"
-      "ld    7, 40(28)\n\t"
-      "ld    8, 48(28)\n\t"
-      "ld    9, 56(28)\n\t"
-      "ld   10, 64(28)\n\t"
-
-      // set bit 3 of CR1 otherwise AIX 5.1 returns to the
-      // wrong address after the sc instruction
-      "crorc 6,6,6\n\t"
-
-      // set up LR to point just after the sc insn
-      ".long 0x48000005\n\t" // "bl here+4" -- lr := & next insn
-      "mflr 29\n\t"
-      "addi 29,29,16\n\t"
-      "mtlr 29\n\t"
-
-      // do it!
-      "sc\n\t"
-
-      // result is now in r3; save it in args[0]
-      "std  3,0(28)\n\t"
-      // error code in r4; save it in args[1]
-      "std  4,8(28)\n\t"
-
-      // restore
-      "mr   2,27\n\t"
-      "mtlr 30\n\t"
-
-      : /*out*/
-      : /*in*/  "b" (&args[0])
-      : /*trash*/
-           /*temps*/    "r31","r30","r29","r28","r27",
-           /*args*/     "r3","r4","r5","r6","r7","r8","r9","r10",
-           /*paranoia*/ "memory","cc","r0","r1","r11","r12","r13",
-                        "xer","ctr","cr0","cr1","cr2","cr3",
-                        "cr4","cr5","cr6","cr7"
-   );
-
-   *res_r3 = args[0];
-   *res_r4 = args[1];
-}
 
 #elif defined(VGP_x86_darwin)
 
@@ -719,6 +560,72 @@ asm(".private_extern _do_syscall_mach_WRK\n"
     "        retq                     \n"
     );
 
+#elif defined(VGP_s390x_linux)
+
+static UWord do_syscall_WRK (
+   UWord syscall_no,
+   UWord arg1, UWord arg2, UWord arg3,
+   UWord arg4, UWord arg5, UWord arg6
+   )
+{
+   register UWord __arg1 asm("2") = arg1;
+   register UWord __arg2 asm("3") = arg2;
+   register UWord __arg3 asm("4") = arg3;
+   register UWord __arg4 asm("5") = arg4;
+   register UWord __arg5 asm("6") = arg5;
+   register UWord __arg6 asm("7") = arg6;
+   register ULong __svcres asm("2");
+
+   __asm__ __volatile__ (
+                 "lgr %%r1,%1\n\t"
+                 "svc 0\n\t"
+		: "=d" (__svcres)
+		: "a" (syscall_no),
+		  "0" (__arg1),
+		  "d" (__arg2),
+		  "d" (__arg3),
+		  "d" (__arg4),
+		  "d" (__arg5),
+		  "d" (__arg6)
+		: "1", "cc", "memory");
+
+   return (UWord) (__svcres);
+}
+
+#elif defined(VGP_mips32_linux)
+/* Incoming args (syscall number + up to 6 args) come in a0 - a3 and stack.
+
+   The syscall number goes in v0.  The args are passed to the syscall in
+   the regs a0 - a3 and stack, i.e. the kernel's syscall calling convention.
+
+   (a3 != 0) flags an error.
+   We return the syscall return value in v0.
+   MIPS version
+*/
+extern int do_syscall_WRK (
+          int a1, int a2, int a3,
+          int a4, int a5, int a6, int syscall_no, UWord *err,
+          UWord *valHi, UWord* valLo
+       );
+asm(
+".globl do_syscall_WRK\n"
+".ent do_syscall_WRK\n"
+".text\n"
+"do_syscall_WRK:\n"   
+"   lw $2, 24($29)\n"    
+"   syscall\n"
+"   lw $8, 28($29)\n" 
+"   sw $7, ($8)\n"
+"   lw $8, 32($29)\n" 
+"   sw $3, ($8)\n"   // store valHi
+"   lw $8, 36($29)\n" 
+"   sw $2, ($8)\n"   // store valLo
+"   jr $31\n"
+"   nop\n"
+".previous\n"
+".end do_syscall_WRK\n"
+);
+
 #else
 #  error Unknown platform
 #endif
@@ -760,44 +667,6 @@ SysRes VG_(do_syscall) ( UWord sysno, UWord a1, UWord a2, UWord a3,
 #  elif defined(VGP_arm_linux)
    UWord val = do_syscall_WRK(a1,a2,a3,a4,a5,a6,sysno);
    return VG_(mk_SysRes_arm_linux)( val );
-
-#  elif defined(VGP_ppc32_aix5)
-   UWord res;
-   UWord err;
-   do_syscall_WRK( &res, &err, 
-		   sysno, a1, a2, a3, a4, a5, a6, a7, a8);
-   /* Try to set the error number to zero if the syscall hasn't
-      really failed. */
-   if (sysno == __NR_AIX5_kread
-       || sysno == __NR_AIX5_kwrite) {
-      if (res != (UWord)-1L)
-         err = 0;
-   }
-   else if (sysno == __NR_AIX5_sigprocmask
-            || sysno == __NR_AIX5__sigpending) {
-      if (res == 0)
-         err = 0;
-   }
-   return VG_(mk_SysRes_ppc32_aix5)( res, err );
-
-#  elif defined(VGP_ppc64_aix5)
-   UWord res;
-   UWord err;
-   do_syscall_WRK( &res, &err, 
-		   sysno, a1, a2, a3, a4, a5, a6, a7, a8);
-   /* Try to set the error number to zero if the syscall hasn't
-      really failed. */
-   if (sysno == __NR_AIX5_kread
-       || sysno == __NR_AIX5_kwrite) {
-      if (res != (UWord)-1L)
-         err = 0;
-   }
-   else if (sysno == __NR_AIX5_sigprocmask
-            || sysno == __NR_AIX5__sigpending) {
-      if (res == 0)
-         err = 0;
-   }
-   return VG_(mk_SysRes_ppc64_aix5)( res, err );
 
 #  elif defined(VGP_x86_darwin)
    UInt  wLO = 0, wHI = 0, err = 0;
@@ -846,6 +715,31 @@ SysRes VG_(do_syscall) ( UWord sysno, UWord a1, UWord a2, UWord a3,
    }
    return VG_(mk_SysRes_amd64_darwin)( scclass, err ? True : False, wHI, wLO );
   
+#elif defined(VGP_s390x_linux)
+   UWord val;
+
+   if (sysno == __NR_mmap) {
+     ULong argbuf[6];
+
+     argbuf[0] = a1;
+     argbuf[1] = a2;
+     argbuf[2] = a3;
+     argbuf[3] = a4;
+     argbuf[4] = a5;
+     argbuf[5] = a6;
+     val = do_syscall_WRK(sysno,(UWord)&argbuf[0],0,0,0,0,0);
+   } else {
+     val = do_syscall_WRK(sysno,a1,a2,a3,a4,a5,a6);
+   }
+
+   return VG_(mk_SysRes_s390x_linux)( val );
+
+#elif defined(VGP_mips32_linux)
+   UWord err   = 0;
+   UWord valHi = 0;
+   UWord valLo = 0;
+   (void) do_syscall_WRK(a1,a2,a3,a4,a5,a6, sysno,&err,&valHi,&valLo);
+   return VG_(mk_SysRes_mips32_linux)( valLo, valHi, (ULong)err );
 #else
 #  error Unknown platform
 #endif
@@ -867,14 +761,37 @@ const HChar* VG_(strerror) ( UWord errnum )
       case VKI_ENOENT:      return "No such file or directory";
       case VKI_ESRCH:       return "No such process";
       case VKI_EINTR:       return "Interrupted system call";
-      case VKI_EBADF:       return "Bad file number";
-      case VKI_EAGAIN:      return "Try again";
-      case VKI_ENOMEM:      return "Out of memory";
+   case VKI_EIO:         return "Input/output error";
+   case VKI_ENXIO:       return "No such device or address";
+   case VKI_E2BIG:       return "Argument list too long";
+   case VKI_ENOEXEC:     return "Exec format error";
+   case VKI_EBADF:       return "Bad file descriptor";
+   case VKI_ECHILD:      return "No child processes";
+   case VKI_EAGAIN:      return "Resource temporarily unavailable";
+   case VKI_ENOMEM:      return "Cannot allocate memory";
       case VKI_EACCES:      return "Permission denied";
       case VKI_EFAULT:      return "Bad address";
+   case VKI_ENOTBLK:     return "Block device required";
+   case VKI_EBUSY:       return "Device or resource busy";
       case VKI_EEXIST:      return "File exists";
+   case VKI_EXDEV:       return "Invalid cross-device link";
+   case VKI_ENODEV:      return "No such device";
+   case VKI_ENOTDIR:     return "Not a directory";
+   case VKI_EISDIR:      return "Is a directory";
       case VKI_EINVAL:      return "Invalid argument";
+   case VKI_ENFILE:      return "Too many open files in system";
       case VKI_EMFILE:      return "Too many open files";
+   case VKI_ENOTTY:      return "Inappropriate ioctl for device";
+   case VKI_ETXTBSY:     return "Text file busy";
+   case VKI_EFBIG:       return "File too large";
+   case VKI_ENOSPC:      return "No space left on device";
+   case VKI_ESPIPE:      return "Illegal seek";
+   case VKI_EROFS:       return "Read-only file system";
+   case VKI_EMLINK:      return "Too many links";
+   case VKI_EPIPE:       return "Broken pipe";
+   case VKI_EDOM:        return "Numerical argument out of domain";
+   case VKI_ERANGE:      return "Numerical result out of range";
+
       case VKI_ENOSYS:      return "Function not implemented";
       case VKI_EOVERFLOW:   return "Value too large for defined data type";
 #     if defined(VKI_ERESTARTSYS)
