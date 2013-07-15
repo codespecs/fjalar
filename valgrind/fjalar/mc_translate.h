@@ -69,6 +69,12 @@ struct _MCEnv {
          found.  Starts off False, and may change to True. */
       Bool    bogusLiterals;
 
+      /* READONLY: indicates whether we should use expensive
+         interpretations of integer adds, since unfortunately LLVM
+         uses them to do ORs in some circumstances.  Defaulted to True
+         on MacOS and False everywhere else. */
+      Bool    useLLVMworkarounds;
+
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
       VexGuestLayout* layout;
@@ -114,7 +120,7 @@ typedef
       MCEnv* mce;
 
       /* MODIFIED: Original address of guest instruction whose IR
-	 we're now processing, as taken from the last IMark we saw. */
+         we're now processing, as taken from the last IMark we saw. */
       Addr origAddr;
    }
    DCEnv;
@@ -127,10 +133,8 @@ typedef
 /* add stmt to a bb */
 inline void stmt ( HChar cat, MCEnv* mce, IRStmt* st ) ;
 
-
 /* assign value to tmp */
-inline
-void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr );
+inline void assign ( HChar cat, MCEnv* mce, IRTemp tmp, IRExpr* expr );
 
 // RUDD - pgbovine
 // DC functions

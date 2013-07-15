@@ -47,12 +47,12 @@ void handleDisambigFile() {
     FJALAR_DPRINTF("\n\nREADING %s\n", fjalar_disambig_filename);
     disambig_writing = False;
 
-    VG_(printf)( "\nBegin processing disambiguation file \"%s\" ...\n",
+    printf( "\nBegin processing disambiguation file \"%s\" ...\n",
                  fjalar_disambig_filename);
 
     processDisambigFile();
 
-    VG_(printf)( "Done processing disambiguation file \"%s\"\n",
+    printf( "Done processing disambiguation file \"%s\"\n",
                  fjalar_disambig_filename);
   }
   else if ((disambig_fp = fopen(fjalar_disambig_filename, "wx"))) {
@@ -69,7 +69,7 @@ void handleDisambigFile() {
     // information (see fjalar_finish()):
     if (!fjalar_smart_disambig) {
       generateDisambigFile();
-      VG_(printf)("\nDone generating .disambig file %s\n",
+      printf("\nDone generating .disambig file %s\n",
                   fjalar_disambig_filename);
       fclose(disambig_fp);
       disambig_fp = 0;
@@ -349,7 +349,7 @@ static void processDisambigFile() {
   int VarListArraySize = 0;
 
   if (!disambig_fp || disambig_writing) {
-    VG_(printf)( "Error in processDisambigFile(). Either there is no disambig_file or it is being written.");
+    printf( "Error in processDisambigFile(). Either there is no disambig_file or it is being written.");
     return;
   }
 
@@ -397,7 +397,7 @@ static void processDisambigFile() {
 	  type = FUNCTION;
 	  // Strip off the prefix by moving forward that many spots in the buffer:
 	  entryName = VG_(strdup)("disambig.c: processDisambigFile.0.1", &line[VG_(strlen)(FUNCTION_PREFIX)]);
-          //          VG_(printf)("Function! %s\n", entryName);
+          //          printf("Function! %s\n", entryName);
 
 	  VarListArraySize = 1;
 	  VarListArray = (VarList**)VG_(calloc)("disambig.c: processDisambigFile.1",  VarListArraySize, sizeof(*VarListArray));
@@ -513,20 +513,20 @@ static void processDisambigFile() {
         firstToken = strtok(disambigLine, " ");
         secondToken = strtok(NULL, " ");
 
-        //        VG_(printf)(" first_token: %s| second_token: %s|\n",
+        //        printf(" first_token: %s| second_token: %s|\n",
         //                    firstToken, secondToken);
 
         // The first token should always be the disambig letter
         tl_assert(VG_(strlen)(firstToken) == 1);
 	disambig_letter = *firstToken;
 
-        //        VG_(printf)(" var_name: %s\n", varName);
-        //        VG_(printf)("  disambig_letter: %c\n", disambig_letter);
+        //        printf(" var_name: %s\n", varName);
+        //        printf("  disambig_letter: %c\n", disambig_letter);
 
         // If the second token is non-empty, then it is the coercion type
         if (secondToken) {
           coercion_type = secondToken;
-          //          VG_(printf)("  coercion_type: %s\n", coercion_type);
+          //          printf("  coercion_type: %s\n", coercion_type);
         }
 
 	if (VarListArraySize > 0) {
@@ -557,7 +557,7 @@ static void processDisambigFile() {
                   TypeEntry* new_type = getTypeEntry(coercion_type);
                   if (new_type) {
                     target->varType = new_type;
-                    VG_(printf)("  .disambig: Coerced variable %s into type '%s'\n",
+                    printf("  .disambig: Coerced variable %s into type '%s'\n",
                                 varName, coercion_type);
                   }
                 }

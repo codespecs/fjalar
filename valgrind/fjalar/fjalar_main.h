@@ -17,6 +17,15 @@
    the Memcheck code (most notably, mc_main.c).
 */
 
+// The following comment is to set up the main page of the
+// Doxygen generated html doucmentation files for Fjalar.
+
+/*! \mainpage Fjalar/Kvasir Documentation
+ *
+ *  Click on "Data Structures" or "Files" above to get started
+ *  browsing the documention.
+ */
+
 #ifndef FJALAR_MAIN_H
 #define FJALAR_MAIN_H
 
@@ -31,7 +40,35 @@
 #include "generate_fjalar_entries.h"
 
 #define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
-      VG_(printf)(__VA_ARGS__); } while (0)
+      printf(__VA_ARGS__); } while (0)
+
+#define SECTION_NAME(X) ((X) == NULL ? "<none>" : \
+                         ((X)->sh_name >= string_table_length \
+                         ? "<corrupt>" : string_table + (X)->sh_name))
+
+// Given st_shndx I, map to section_headers index
+#define SECTION_HEADER_INDEX(I) \
+  ((I) < SHN_LORESERVE          \
+   ? (I)                        \
+   : ((I) <= SHN_HIRESERVE      \
+      ? 0                       \
+      : (I) - (SHN_HIRESERVE + 1 - SHN_LORESERVE)))
+
+// Reverse of the above
+#define SECTION_HEADER_NUM(N)   \
+  ((N) < SHN_LORESERVE          \
+   ? (N)                        \
+   : (N) + (SHN_HIRESERVE + 1 - SHN_LORESERVE))
+
+#define SECTION_HEADER(I) (section_headers + SECTION_HEADER_INDEX (I))
+
+extern int is_32bit_elf;
+
+#define GET_ELF_SYMBOLS(file, section)                  \
+  (is_32bit_elf ? get_32bit_elf_symbols (file, section) \
+   : get_64bit_elf_symbols (file, section))
+
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
 
 void handle_possible_entry(MCEnv* mce, Addr64 addr, IRSB* sb_orig);
 void handle_possible_exit(MCEnv* mce, IRJumpKind jk);

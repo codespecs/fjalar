@@ -169,8 +169,8 @@ void stringStackPush(StringStack *stack, char* str)
 
   //Don't allow null strings at all:
   if (!str) {
-    VG_(printf)( "Null string passed to push!\n");
-    abort();
+    printf( "Null string passed to push!\n");
+    my_abort();
     str = "<null>";
   }
 
@@ -383,7 +383,7 @@ void visitClassMemberVariables(VisitArgs* args) {
       Addr* pCurVarValueArrayGuest = NULL;
 
       if (!curVar->name) {
-	VG_(printf)( "  Warning! Weird null member variable name!\n");
+	printf( "  Warning! Weird null member variable name!\n");
 	continue;
       }
 
@@ -412,7 +412,7 @@ void visitClassMemberVariables(VisitArgs* args) {
           // type of curVar just because we are looping through and
           // expanding the array
           if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
-            Word count = (Word)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            UWord count = (UWord)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
             count--;
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
@@ -563,7 +563,7 @@ void visitClassMemberVariables(VisitArgs* args) {
 
           // HACK: Add the count back on at the end
           if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
-            Word count = (Word)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
+            UWord count = (UWord)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
             count++;
             genputtable(VisitedStructsTable, (void*)(curVar->varType), (void*)count);
           }
@@ -905,7 +905,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
     Addr basePtrValueGuest = (Addr) NULL;
     
     if (!var->name) {
-      VG_(printf)( "  Warning! Weird null variable name!\n");
+      printf( "  Warning! Weird null variable name!\n");
       continue;
     }
 
@@ -934,7 +934,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
       FJALAR_DPRINTF("\t[visitVariableGroup] Size of DWARF location stack: %d\n", var->location_expression_size);
 
       if(var->location_expression_size) {
-	Bool actual_value = 0;
         Addr var_loc = (Addr) NULL;
 	unsigned int i = 0;
 
@@ -999,7 +998,6 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
 	    if(op == DW_OP_addr) {
 	      // DWARF supplied address
-	      actual_value = 0;
 	      var_loc = loc->atom_offset;
 
 	    } else if(op == DW_OP_deref) {
@@ -1185,9 +1183,9 @@ void visitReturnValue(FunctionExecutionState* e,
 #if defined(VGA_amd64)
     if(cur_node->var->varType->byteSize <= 16) {
       char returnBuffer[16];
-      memcpy(returnBuffer                       ,  &e->xAX, 8);
-      memcpy(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
 
+      VG_(memcpy)(returnBuffer                       ,  &e->xAX, 8);
+      VG_(memcpy)(returnBuffer + (Addr)sizeof(e->xAX),  &e->xDX, 8);
 
       unsigned long long int uLong = (e->xAX);
       FJALAR_DPRINTF("tiny struct\n");
@@ -1338,11 +1336,11 @@ void visitReturnValue(FunctionExecutionState* e,
 static char interestedInVar(char* fullFjalarName, char* trace_vars_tree) {
   if (fjalar_trace_vars_filename) {
     if (trace_vars_tree) {
-      //      VG_(printf)("Checking if %s is in var list\n", fullFjalarName);
+      //      printf("Checking if %s is in var list\n", fullFjalarName);
       if (!tfind((void*)fullFjalarName, (void**)&trace_vars_tree, compareStrings)) {	
         return 0;
       }
-      //      VG_(printf)("Found it\n", fullFjalarName);
+      //      printf("Found it\n", fullFjalarName);
     }
     // If trace_vars_tree is kept at 0 on purpose but
     // fjalar_trace_vars_filename is valid, then still punt because we
@@ -1501,7 +1499,7 @@ void visitSingleVar(VisitArgs* args) {
   // Special hack for strings:
   if (IS_STRING(var) && (layersBeforeBase > 0)) {
     layersBeforeBase--;
-    //    VG_(printf)("var: %s is string - layersBeforeBase: %d\n",
+    //    printf("var: %s is string - layersBeforeBase: %d\n",
     //                var->name, layersBeforeBase);
   }
 
@@ -1637,7 +1635,6 @@ void visitSingleVar(VisitArgs* args) {
     // because we are dereferencing a single element:
     if (derefSingleElement) {
       char derivedIsAllocated = 0;
-      char derivedIsInitialized = 0;
 
       Addr pNewValue = 0;
       // The default is DERIVED_VAR.  Tweak later if necessary.
@@ -1650,8 +1647,6 @@ void visitSingleVar(VisitArgs* args) {
         derivedIsAllocated = (overrideIsInit ? 1 :
                               addressIsAllocated((Addr)pValue, sizeof(void*)));
         if (derivedIsAllocated) {
-          derivedIsInitialized = (overrideIsInit ? 1 :
-                                  addressIsInitialized((Addr)pValue, sizeof(void*)));
           // Make a single dereference unless the variable is a static
           // array, in which case we shouldn't make a dereference at
           // all:
@@ -1739,7 +1734,7 @@ void visitSingleVar(VisitArgs* args) {
           pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.1" , numElts * sizeof(Addr));
           pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.2", numElts * sizeof(Addr));
 
-          //          VG_(printf)("Static array - dims: %u, numElts: %u\n",
+          //          printf("Static array - dims: %u, numElts: %u\n",
           //                      var->numDimensions, numElts);
 
           // Build up pValueArray with pointers to the elements of the
@@ -1778,7 +1773,7 @@ void visitSingleVar(VisitArgs* args) {
             numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
             pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.3", numElts * sizeof(Addr));
             pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.4" ,numElts * sizeof(Addr));
-	    //	    VG_(printf)("numElts is %d\n", numElts);
+	    //	    printf("numElts is %d\n", numElts);
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {
@@ -1929,7 +1924,7 @@ void visitSequence(VisitArgs* args) {
   // Special hack for strings:
   if (IS_STRING(var) && (layersBeforeBase > 0)) {
     layersBeforeBase--;
-    //    VG_(printf)("var: %s is string - layersBeforeBase: %d\n",
+    //    printf("var: %s is string - layersBeforeBase: %d\n",
     //                var->name, layersBeforeBase);
   }
 

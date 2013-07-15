@@ -26,8 +26,8 @@
 #define TYPEDATA_H
 
 #include "GenericHashtable.h"
-#include "elf/dwarf2.h"
 #include "fjalar_dwarf.h"
+#include "pub_tool_basics.h"
 #include "pub_tool_xarray.h"
 
 // compile_unit - used to figure out filename and compilation directory
@@ -383,7 +383,7 @@ typedef struct
   // Set this to 1 if you encounter a DW_AT_artificial attribute
   // for a DWARF variable entry as well as a DW_AT_declaration attribute
 
-  char isStaticMemberVar; // only for C++ static member variables (I dunno if we still use this)
+  char isStaticMemberVar; // only for C++ static member variables 
 
   unsigned long specification_ID; // Relevant for C++:
   // DO NOT add an entry with specification_ID non-null to any variable
@@ -460,7 +460,7 @@ unsigned int relrodata_section_size;
 // Function declarations
 
 // From readelf.c
-char *get_TAG_name(unsigned long tag);
+const char *get_TAG_name(unsigned long tag);
 int process_elf_binary_data(char* filename);
 
 // From typedata.c
@@ -528,13 +528,6 @@ void finish_dwarf_entry_array_init(void);
 
 void add_comp_unit(compile_unit* unit);
 
-char tag_is_modifier_type(unsigned long tag);
-char tag_is_collection_type(unsigned long tag);
-char tag_is_base_type(unsigned long tag);
-char tag_is_member(unsigned long tag);
-char tag_is_enumerator(unsigned long tag);
-char tag_is_function(unsigned long tag);
-char tag_is_formal_parameter(unsigned long tag);
 char tag_is_array_type(unsigned long tag);
 char tag_is_array_subrange_type(unsigned long tag);
 char tag_is_typedef(unsigned long tag);
