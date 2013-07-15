@@ -510,8 +510,13 @@ tests/x86_amd64_features
 # Ignore generated and installed valgrind tools
 valgrind/inst
 
-# Ignore files generate by Doxygen
+# Ignore Doxygen input/output files
+valgrind/fjalar/doxy.config
 valgrind/fjalar/html
+valgrind/fjalar/rundoxy
+
+# Ignore files shell scripts for compiler fjalar
+valgrind/fjalar/*.sh
 
 # 
 # # Documentation
