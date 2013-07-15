@@ -24,11 +24,13 @@
 #include "generate_fjalar_entries.h"
 #include "fjalar_include.h"
 #include "fjalar_select.h"
-#include "elf/dwarf2.h"
 #include "GenericHashtable.h"
 #include "../coregrind/m_demangle/demangle.h"
 
 #include "fjalar_tool.h"
+
+// Cast an intger to a void pointer in a architecture independent way. (markro)
+#define VoidPtr(arg)  (void*)(ptrdiff_t)(arg)
 
 static void initializeFunctionTable(void);
 static void initializeGlobalVarsList(void);
@@ -94,6 +96,8 @@ const int DecTypeByteSizes[] = {
   sizeof(short),                  // D_SHORT,
   sizeof(unsigned int),           // D_UNSIGNED_INT,
   sizeof(int),                    // D_INT,
+  sizeof(unsigned long),          // D_UNSIGNED_LONG,
+  sizeof(long),                   // D_INT,
   sizeof(unsigned long long int), // D_UNSIGNED_LONG_LONG_INT,
   sizeof(long long int),          // D_LONG_LONG_INT,
 
@@ -120,6 +124,8 @@ TypeEntry UnsignedShortType = {D_UNSIGNED_SHORT, 0, sizeof(unsigned short), 0};
 TypeEntry ShortType = {D_SHORT, 0, sizeof(short), 0};
 TypeEntry UnsignedIntType = {D_UNSIGNED_INT, 0, sizeof(unsigned int), 0};
 TypeEntry IntType = {D_INT, 0, sizeof(int), 0};
+TypeEntry UnsignedLongType = {D_UNSIGNED_LONG, 0, sizeof(unsigned long), 0};
+TypeEntry LongType = {D_LONG, 0, sizeof(long), 0};
 TypeEntry UnsignedLongLongIntType = {D_UNSIGNED_LONG_LONG_INT, 0, sizeof(unsigned long long int), 0};
 TypeEntry LongLongIntType = {D_LONG_LONG_INT, 0, sizeof(long long int), 0};
 TypeEntry FloatType = {D_FLOAT, 0, sizeof(float), 0};
@@ -140,6 +146,8 @@ TypeEntry* BasicTypesArray[] = {
   &ShortType,               //  D_SHORT,
   &UnsignedIntType,         //  D_UNSIGNED_INT,
   &IntType,                 //  D_INT,
+  &UnsignedLongType,        //  D_UNSIGNED_LONG,
+  &LongType,                //  D_LONG,
   &UnsignedLongLongIntType, //  D_UNSIGNED_LONG_LONG_INT,
   &LongLongIntType,         //  D_LONG_LONG_INT,
 
@@ -167,6 +175,8 @@ const char* DeclaredTypeString[] = {
   "short",                  // D_SHORT,
   "unsigned int",           // D_UNSIGNED_INT,
   "int",                    // D_INT,
+  "unsigned long",          // D_UNSIGNED_LONG,
+  "long",                   // D_LONG,
   "unsigned long long int", // D_UNSIGNED_LONG_LONG_INT,
   "long long int",          // D_LONG_LONG_INT,
 
@@ -227,8 +237,10 @@ char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_SHORT",
                              "D_UNSIGNED_INT",
                              "D_INT",
-                             "D_UNSIGNED_LONG_LONG_INT",
-                             "D_LONG_LONG_INT",
+                             "D_UNSIGNED_LONG",           // not used if 32 bit
+                             "D_LONG",                    // not used if 32 bit
+                             "D_UNSIGNED_LONG_LONG_INT",  // not used if 64 bit
+                             "D_LONG_LONG_INT",           // not used if 64 bit
                              "D_UNSIGNED_FLOAT", // currently unused
                              "D_FLOAT",
                              "D_UNSIGNED_DOUBLE", // currently unused
@@ -402,7 +414,7 @@ void* SimpleListPop(SimpleList* lst) {
   }
   else {
     tl_assert(lst->numElts == 0);
-    VG_(printf)(" Warning - SimpleListPop() attempting to pop an empty list\n");
+    printf(" Warning - SimpleListPop() attempting to pop an empty list\n");
     return 0;
   }
 }
@@ -542,10 +554,10 @@ void initializeAllFjalarData(void)
   initFunctionFjalarNames();
 
   FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n.data.rel.ro: 0x%x bytes starting at %p\n",
-		 data_section_size, (void *)data_section_addr,
-		 bss_section_size, (void *)bss_section_addr,
-		 rodata_section_size, (void *)rodata_section_addr,
-		 relrodata_section_size, (void *)relrodata_section_addr);
+		 data_section_size, VoidPtr(data_section_addr),
+		 bss_section_size, VoidPtr(bss_section_addr),
+		 rodata_section_size, VoidPtr(rodata_section_addr),
+		 relrodata_section_size, VoidPtr(relrodata_section_addr));
 
   // Should only be called here:
   FJALAR_DPRINTF("\nChecking the representation of internal data structures ...\n");
@@ -580,7 +592,7 @@ void repCheckAllEntries(void) {
 
   // Rep. check all variables in globalVars:
 
-  FJALAR_DPRINTF("  Rep. checking global variables list ...");
+  FJALAR_DPRINTF("Rep. checking global variables list ...\n");
 
   for (curNode = globalVars.first;
        curNode != 0;
@@ -600,12 +612,12 @@ void repCheckAllEntries(void) {
   tl_assert(numGlobalVars == globalVars.numVars);
 
 
-  FJALAR_DPRINTF(" DONE\n");
+  FJALAR_DPRINTF("DONE\n");
 
   // Rep. check all entries in FunctionTable
   funcIt = newFuncIterator();
 
-  FJALAR_DPRINTF("  Rep. checking function entries ...");
+  FJALAR_DPRINTF("Rep. checking function entries ...\n");
   while (hasNextFunc(funcIt)) {
     FunctionEntry* f = nextFunc(funcIt);
     VarNode* n;
@@ -613,7 +625,7 @@ void repCheckAllEntries(void) {
     unsigned int numLocalArrayVars = 0;
     unsigned int numReturnVars = 0;
 
-    int prevByteOffset = 0;
+    // int prevByteOffset = 0;
 
     // Properties that should hold true for all FunctionEntry
     // instances:
@@ -636,7 +648,7 @@ void repCheckAllEntries(void) {
       // information, some of which may be copies in the function's private
       // data area.
       // tl_assert(v->byteOffset > prevByteOffset);
-      prevByteOffset = v->byteOffset;
+      // prevByteOffset = v->byteOffset;
 
       repCheckOneVariable(v);
       numFormalParams++;
@@ -678,9 +690,9 @@ void repCheckAllEntries(void) {
 
   deleteFuncIterator(funcIt);
 
-  FJALAR_DPRINTF(" DONE\n");
+  FJALAR_DPRINTF("DONE\n");
 
-  FJALAR_DPRINTF("  Rep. checking type entries ...");
+  FJALAR_DPRINTF("Rep. checking type entries ...\n");
 
   // Rep. check all entries in TypesTable
   typeIt = newTypeIterator();
@@ -836,7 +848,7 @@ void repCheckAllEntries(void) {
 
   deleteTypeIterator(typeIt);
 
-  FJALAR_DPRINTF(" DONE\n");
+  FJALAR_DPRINTF("DONE\n");
 }
 
 // Checks rep. invariants for a VariableEntry (only performs general
@@ -870,16 +882,16 @@ static void repCheckOneVariable(VariableEntry* var) {
 	   with a debugging libc, it will contain some weird variables
 	   whose location is in other sections. The extra numeric
 	   comparison is a fallback hack for that case. */
-	VG_(printf)("Address 0x%08x doesn't look like a global\n",
+	printf("Address 0x%08x doesn't look like a global\n",
 		    (unsigned int)var->globalVar->globalLocation);
-	VG_(printf)("Data section is 0x%08x to 0x%08x\n",
+	printf("Data section is 0x%08x to 0x%08x\n",
 		    data_section_addr, data_section_addr + data_section_size);
-	VG_(printf)("BSS section is 0x%08x to 0x%08x\n",
+	printf("BSS section is 0x%08x to 0x%08x\n",
 		    bss_section_addr, bss_section_addr + bss_section_size);
-	VG_(printf)("ROData section is 0x%08x to 0x%08x\n",
+	printf("ROData section is 0x%08x to 0x%08x\n",
 		    rodata_section_addr,
 		    rodata_section_addr + rodata_section_size);
-	VG_(printf)("Relocated ROData section is 0x%08x to 0x%08x\n",
+	printf("Relocated ROData section is 0x%08x to 0x%08x\n",
 		    relrodata_section_addr,
 		    relrodata_section_addr + relrodata_section_size);
         tl_assert(0);
@@ -903,7 +915,8 @@ static void repCheckOneVariable(VariableEntry* var) {
   }
 
   if(IS_MEMBER_VAR(var)) {
-    tl_assert(var->memberVar->structParentType);
+// UNDONE markro
+//    tl_assert(var->memberVar->structParentType);
   }
 
   // C++ reference vars should never have more than 1 level of
@@ -914,9 +927,9 @@ static void repCheckOneVariable(VariableEntry* var) {
   FJALAR_DPRINTF(" --- DONE checking var (t: %s) (%p): %s, globalLoc: %p\n",
                  IS_MEMBER_VAR(var) && var->memberVar->structParentType ?
                  var->memberVar->structParentType->typeName : "no parent",
-                 (void *)var,
+                 VoidPtr(var),
                  var->name,
-                 (void *)(IS_GLOBAL_VAR(var) && var->globalVar->globalLocation));
+                 VoidPtr(IS_GLOBAL_VAR(var) && var->globalVar->globalLocation));
 }
 
 
@@ -956,8 +969,8 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
 
 
   if (e == NULL || !tag_is_variable(e->tag_name)) {
-    VG_(printf)( "Error, global variable information struct is null or belongs to the incorrect type\n");
-    abort();
+    printf( "Error, global variable information struct is null or belongs to the incorrect type\n");
+    my_abort();
   }
 
   variablePtr = (variable*)(e->entry_ptr);
@@ -967,14 +980,15 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
   extractOneVariable(&globalVars,
                      typePtr,
                      variablePtr->name,
-		     findFilenameForEntry(e),
+                     findFilenameForEntry(e),
                      variablePtr->couldBeGlobalVar,
-		     variablePtr->is_external,
+                     variablePtr->is_external,
                      variablePtr->is_const,
                      variablePtr->const_value,
                      variablePtr->globalVarAddr,
-		     functionStartPC,
-		     0,0,0,0,0,0,0,0,
+                     functionStartPC,
+                     variablePtr->isStaticMemberVar,
+                     0,0,0,0,0,0,0,
                      getDeclaredFile(e->comp_unit, variablePtr->decl_file));
 
   FJALAR_DPRINTF("EXIT extractOneGlobalVariable(%p)\n", e);
@@ -1026,9 +1040,10 @@ static void initializeGlobalVarsList(void)
       // specification_ID active because these are empty shells!
       if ((variable_ptr->couldBeGlobalVar &&
 	  variable_ptr->globalVarAddr &&
-          (!variable_ptr->isStaticMemberVar) && // DON'T DEAL WITH C++ static member vars here;
+// UNDONE markro
+          //(!variable_ptr->isStaticMemberVar) && // DON'T DEAL WITH C++ static member vars here;
                                                 // We deal with them in extractStructUnionType()
-          (!variable_ptr->specification_ID) &&
+          //(!variable_ptr->specification_ID) &&
            (!variable_ptr->is_declaration_or_artificial)) ||
           (variable_ptr->is_const && !variable_ptr->is_declaration_or_artificial)) {
 	char* existingName;
@@ -1141,7 +1156,7 @@ static void createNamesForUnnamedDwarfEntries(void)
       collection_type* collectionPtr = (collection_type*)(cur_entry->entry_ptr);
       if (!collectionPtr->is_declaration &&
           !collectionPtr->name) {
-        //        VG_(printf)("%s (%u)\n", collectionPtr->name, cur_entry->ID);
+        //        printf("%s (%u)\n", collectionPtr->name, cur_entry->ID);
 
         // The maximum size is 10 + 8 + 1 = 19 10 for "unnamed_0x", 8
         // for maximum size for cur_entry->ID, and 1 for
@@ -1574,7 +1589,7 @@ void initializeFunctionTable(void)
 
   for (i = 0; i < dwarf_entry_array_size; i++)
     {
-      //      FJALAR_DPRINTF("i: %d\n", i);
+      // FJALAR_DPRINTF("i: %lu\n", i);
       cur_entry = &dwarf_entry_array[i];
       // Ignore invalid functions and DUPLICATE function entries
       // with the same start_pc (only test if there is start_pc)
@@ -1628,6 +1643,8 @@ void initializeFunctionTable(void)
                          (void *)cur_func_entry->startPC,
                          cur_func_entry->name,
                          cur_func_entry->mangled_name);
+          FJALAR_DPRINTF("cur_func_entry->cuBase: %p\n",
+                         (void *)cur_func_entry->cuBase);
 
           // This seems to happen with class constructors.  If there
           // is NO C++ mangled name but there is a startPC, then
@@ -1674,6 +1691,8 @@ void initializeFunctionTable(void)
                       (void*)cur_func_entry->startPC, // key    (unsigned long)
 		      (void*)cur_func_entry);         // value  (FunctionEntry*)
 
+	  // FJALAR_DPRINTF("  call gencontains %p %p\n", next_line_addr, (void*)cur_func_entry->startPC);
+
 	  if (gencontains(next_line_addr, (void*)cur_func_entry->startPC)) {
 	    cur_func_entry->entryPC = (Addr)
 	      gengettable(next_line_addr, (void*)cur_func_entry->startPC);
@@ -1691,6 +1710,8 @@ void initializeFunctionTable(void)
 	    // prolog, and so can't rely on the DWARF information to
 	    // have the correct parameter locations.
 	    cur_func_entry->entryPC = cur_func_entry->startPC;
+	    FJALAR_DPRINTF("Entering %s at 0x%08x \n",
+			   cur_func_entry->name, (unsigned int)cur_func_entry->entryPC);
 	    verifyStackParamWordAlignment(cur_func_entry, 1);
 	  }
           genputtable(FunctionTable_by_entryPC,
@@ -1705,9 +1726,9 @@ void initializeFunctionTable(void)
     }
 
   if (!num_functions_added) {
-    VG_(printf)( "\nError - No functions were found, probably due to a lack of debugging information.\n");
-    VG_(printf)( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
-    abort();
+    printf( "\nError - No functions were found, probably due to a lack of debugging information.\n");
+    printf( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
+    my_abort();
   }
 }
 
@@ -1776,6 +1797,11 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(int)) {
       var->varType = BasicTypesArray[D_INT];
     }
+    // not used on 32 bit as sizeof(int) == sizeof(long)
+    else if (basePtr->byte_size == sizeof(long)) {
+      var->varType = BasicTypesArray[D_LONG];
+    }
+    // not used on 64 bit as sizeof(long) == sizeof(long long)
     else if (basePtr->byte_size == sizeof(long long int)) {
       var->varType = BasicTypesArray[D_LONG_LONG_INT];
     }
@@ -1792,6 +1818,11 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
     else if (basePtr->byte_size == sizeof(unsigned int)) {
       var->varType = BasicTypesArray[D_UNSIGNED_INT];
     }
+    // not used on 32 bit as sizeof(unsigned int) == sizeof(unsigned long)
+    else if (basePtr->byte_size == sizeof(long)) {
+      var->varType = BasicTypesArray[D_UNSIGNED_LONG];
+    }
+    // not used on 64 bit as sizeof(unsigned long) == sizeof(unsigned long long)
     else if (basePtr->byte_size == sizeof(unsigned long long int)) {
       var->varType = BasicTypesArray[D_UNSIGNED_LONG_LONG_INT];
     }
@@ -2064,10 +2095,19 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 	EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
 	mangled_name = staticMemberPtr->mangled_name;
 	globalVarAddr = staticMemberPtr->globalVarAddr;
+  if (staticMemberPtr->name)
+      FJALAR_DPRINTF("??? Static member var - var name: %s\n", staticMemberPtr->name);
+  if (staticMemberPtr->mangled_name)
+      FJALAR_DPRINTF("??? Static member var - var mangled: %s\n", staticMemberPtr->mangled_name);
         decl_file = getDeclaredFile(collectionPtr->static_member_vars[ind]->comp_unit, staticMemberPtr->decl_file);
         
       } else if(tag_is_member(collectionPtr->static_member_vars[ind]->tag_name)) {
 	EXTRACT_STATIC_INFO(member, collectionPtr->static_member_vars[ind]->entry_ptr);
+
+	//UNDONE markro
+    // we want to ignore this case?
+  FJALAR_DPRINTF("??? Static member var - member: %s\n", staticMemberPtr->name);
+    //name = staticMemberPtr->name;
         decl_file = getDeclaredFile(collectionPtr->static_member_vars[ind]->comp_unit, staticMemberPtr->decl_file);
       }
 
@@ -2328,8 +2368,8 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
   VariableEntry *varPtr;
 
   if (dwarfParamEntry == NULL || !tag_is_formal_parameter(dwarfParamEntry->tag_name)) {
-    VG_(printf)( "Error, formal parameter information struct is null or belongs to the incorrect type\n");
-    abort();
+    printf( "Error, formal parameter information struct is null or belongs to the incorrect type\n");
+    my_abort();
   }
 
 
@@ -2337,7 +2377,7 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
   typePtr = paramPtr->type_ptr;
 
   if (!paramPtr->name) {
-    VG_(printf)( "Unexpected unnamed parameter in %s\n",
+    printf( "Unexpected unnamed parameter in %s\n",
             f->name);
     return;
   }
@@ -2414,15 +2454,15 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   VariableEntry *varPtr;
 
   if (dwarfVariableEntry == NULL || !tag_is_variable(dwarfVariableEntry->tag_name)) {
-    VG_(printf)( "Error, local variable information struct is null or belongs to the incorrect type\n");
-    abort();
+    printf( "Error, local variable information struct is null or belongs to the incorrect type\n");
+    my_abort();
   }
 
   variablePtr = (variable*)(dwarfVariableEntry->entry_ptr);
   typePtr = variablePtr->type_ptr;
 
   if (!typePtr) {
-    VG_(printf)( "Unexpected typed local variable %s in %s\n",
+    printf( "Unexpected typed local variable %s in %s\n",
 		 variablePtr->name, f->name);
     return;
   }
@@ -2441,7 +2481,7 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   }
 
   if (!variablePtr->name) {
-    VG_(printf)( "Unexpected unnamed local variable in %s\n",
+    printf( "Unexpected unnamed local variable in %s\n",
             f->name);
     return;
   }
@@ -2662,6 +2702,8 @@ extractOneVariable(VarList* varListPtr,
     varPtr->memberVar->internalBitOffset = internalBitOffset;
     varPtr->memberVar->internalBitSize = internalBitSize;
     varPtr->memberVar->structParentType = structParentType;
+    FJALAR_DPRINTF("StructUnionMember: %s member of %s\n", varPtr->name,
+                   structParentType ? structParentType->typeName : 0);
 
     // Figure out varPtr->visibility:
     switch (dwarf_accessibility) {
@@ -2743,7 +2785,7 @@ extractOneVariable(VarList* varListPtr,
     // Instead, we want to convert these into generic void pointers.
     if ((varPtr->ptrLevels > 0) &&
         ignore_type_with_name(type_name)) {
-      //      VG_(printf)("IGNORED --- %s\n", type_name);
+      //      printf("IGNORED --- %s\n", type_name);
       varPtr->varType = &VoidType;
       return varPtr; // punt at this point
     }
@@ -3056,11 +3098,14 @@ static void initMemberFuncs(void) {
         for (n = t->aggType->memberFunctionList->first;
             n != NULL;
              n = n->next) {
-          unsigned int start_PC = (unsigned int)(n->elt);
+          // UNDONE: Is this right on 64bit address machine (markro)
+          unsigned int start_PC = (unsigned int)(ptrdiff_t)(n->elt);
           tl_assert(start_PC);
 
-          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n", (void *)start_PC, t->typeName);
-	  //          FJALAR_DPRINTF(" n->elt - name: %s = %x\n", ((FunctionEntry*)(n->elt))->name, (void *)n->elt);;
+          FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n",
+                         VoidPtr(start_PC), t->typeName);
+// UNDONE: This print seg faults (markro)
+//	      FJALAR_DPRINTF(" n->elt - name: %s = %p\n", ((FunctionEntry*)(n->elt))->name, (void *)n->elt);;
           // Hopefully this will always be non-null
           n->elt = getFunctionEntryFromStartAddr(start_PC);
           tl_assert(n->elt);
