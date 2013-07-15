@@ -25,22 +25,20 @@
 #include "typedata.h"
 #include "generate_fjalar_entries.h"
 
-#include "elf/dwarf2.h"
+#include "fjalar_main.h"
+#include "fjalar_dwarf.h"
 
-//#include "tool_asm.h" //#include "vg_constants_skin.h"
-//#include "tool.h"
-#include "pub_tool_libcbase.h"
 #include "pub_tool_basics.h"
 #include "pub_tool_libcassert.h"
+#include "pub_tool_libcbase.h"
+#include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 
-#define FJALAR_DPRINTF(...) do { if (fjalar_debug) \
-      VG_(printf)(__VA_ARGS__); } while (0)
+// for name demangling
+#include "../coregrind/m_demangle/demangle.h"
+extern char * cplus_demangle_v3 (const char *, int);
+#include "../coregrind/pub_core_mallocfree.h"
 
-
-// Forward declarations so that the compiler won't warn me:
-//extern void  VG_(free)           ( void* p );
-//extern void* VG_(calloc)         ( int n, int nbytes );
 
 // Global array of all dwarf entries, sorted (hopefully) by dwarf_entry.ID
 // so that binary search is possible
@@ -116,7 +114,7 @@ Returns: 1 if tag = {DW_TAG_base_type, _const_type, _enumerator,
                      _union_type, _enumeration_type, _member, _subroutine_type
                      _structure_type, _volatile_type, _compile_unit,
                      _array_type, _subrange_type, _typedef, _variable, _inheritance,
-		     _namespace},
+                     _namespace},
                      0 otherwise
 Effects: Used to determine which entries to record into a dwarf_entry structure;
          All relevant entries should be included here
@@ -683,7 +681,7 @@ char harvest_accessibility(dwarf_entry* e, char a) {
 
   if (tag_is_function(tag)) {
     ((function*)e->entry_ptr)->accessibility = a;
-    //    VG_(printf)("harvest_accessibility %d\n", a);
+    //    printf("harvest_accessibility %d\n", a);
     return 1;
   }
   else if (tag_is_inheritance(tag))
@@ -906,7 +904,7 @@ char harvest_stmt_list(dwarf_entry* e, unsigned long value)
 
   if (tag_is_compile_unit(tag))
     {
-      //VG_(printf)("Harvest stmt list: %lx for %lx (%p)\n", value, e->ID, e->entry_ptr);
+      //printf("Harvest stmt list: %lx for %lx (%p)\n", value, e->ID, e->entry_ptr);
       ((compile_unit*)e->entry_ptr)->stmt_list = value;
       return 1;
     }
@@ -1053,34 +1051,18 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
       if(tag_is_function(tag)) {
         ((function*)e->entry_ptr)->start_pc = value;
         ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
-
-
-        // The below code allows for finding the top of the frame
-        // from the debug information. I later found out this wasn't needed
-        // I still don't have complete understanding of the DWARF format
-        // So i'm going to keep it around until at least after the
-        // AMD64 changes - rudd
-
-        // debug_frame *cur_frame = debug_frame_HEAD;
-
-/* 	FJALAR_DPRINTF("Searching debug_frame list for my top of frame\n"); */
-/* 	FJALAR_DPRINTF("My lowPC is: %x\n", value); */
-/* 	while(cur_frame) { */
-/* 	  FJALAR_DPRINTF("Examining [%x...%x]\n", cur_frame->begin, cur_frame->end); */
-/* 	  if((value >= cur_frame->begin) && (value <= cur_frame->end)) { */
-/* 	    FJALAR_DPRINTF("FOUND\n"); */
-/* 	    ((function*)e->entry_ptr)->comp_pc = cur_frame->begin; */
-/* 	    break; */
-/* 	  } */
-/* 	  cur_frame = cur_frame->next; */
-/* 	} */
-
+#if 0
+          FJALAR_DPRINTF("Harvest: start_pc: %lx  comp_pc: %lx  name: %s %s\n",
+                         ((function*)e->entry_ptr)->start_pc,
+                         ((function*)e->entry_ptr)->comp_pc,
+                         ((function*)e->entry_ptr)->name,
+                         ((function*)e->entry_ptr)->mangled_name);
+#endif
         return 1;
       } else if(tag_is_compile_unit(tag)) {
         comp_unit_base = value;
         return 1;
       }
-
     }
   else if (tag_is_function(tag) && attr == DW_AT_high_pc)
     {
@@ -1445,6 +1427,47 @@ entry, but we really want to steal its name fields
      DW_AT_declaration : 1
 */
 
+/*
+
+There are a couple of cases to consider for variables as well.  If a variable
+declared in a namespace is defined outside the body of the namespace declaration,
+that variable has a DW_AT_specification attribute whose value is a reference to
+the debugging information entry representing the declaration of the variable.
+We need to copy the name property from the declaration to the definition.
+
+ <2><5e6>: Abbrev Number: 35 (DW_TAG_variable)
+    <5e7>   DW_AT_name        : (indirect string, offset: 0x575): __ioinit	
+    <5eb>   DW_AT_decl_file   : 2	
+    <5ec>   DW_AT_decl_line   : 75	
+    <5ed>   DW_AT_type        : <0x51f>	
+    <5f1>   DW_AT_declaration : 1	
+
+ <1><1308>: Abbrev Number: 58 (DW_TAG_variable)
+    <1309>   DW_AT_specification: <0x5e6>	
+    <130d>   DW_AT_location    : 9 byte block: 3 f4 e 60 0 0 0 0 0 	(DW_OP_addr: 600ef4)
+
+If the variable entry represents the defining declaration for a C++ static data
+member of a struction, class or union (can also occur with template classes), the entry
+has a DW_AT_specification attribute whose value is a reference to the debugging
+information entry representing the declaration of this data member.  In this
+case the referenced entry has the tag DW_TAG_member and will be the child of
+some class, structure or union.  We need to copy both the name property and
+the type property from the declaration to the definition.
+
+ <3><dfd>: Abbrev Number: 43 (DW_TAG_member)
+    <dfe>   DW_AT_name        : (indirect string, offset: 0x28): __min	
+    <e02>   DW_AT_decl_file   : 16	
+    <e03>   DW_AT_decl_line   : 58	
+    <e04>   DW_AT_type        : <0x134>	
+    <e08>   DW_AT_external    : 1	
+    <e09>   DW_AT_declaration : 1	
+
+ <1><1317>: Abbrev Number: 59 (DW_TAG_variable)
+    <1318>   DW_AT_specification: <0xdfd>	
+    <131c>   DW_AT_MIPS_linkage_name: _ZN9__gnu_cxx24__numeric_traits_integerIiE5__minE	
+    <1320>   DW_AT_const_value : -2147483648	
+*/
+
 //  For every function entry e with a non-null specification_ID, attempt to
 //  look up the entry X with the ID given by specification_ID and copy the
 //  start_pc from e to X while copying (aliasing) the name,
@@ -1480,6 +1503,10 @@ static void init_specification_and_abstract_stuff(void) {
 	       (e.g., statically linked libc) the assertion failed, so
 	       let's just keep going. -SMcC */
 
+        // C++ constructors and destructors appear to be a bit different.
+        // We need to copy the compilation unit code base (comp_pc)
+        // over to the aliased function as well. (markro)
+	    aliased_func_ptr->comp_pc = cur_func->comp_pc;
 	    aliased_func_ptr->start_pc = cur_func->start_pc;
 	    aliased_func_ptr->end_pc = cur_func->end_pc;
 
@@ -1528,7 +1555,7 @@ static void init_specification_and_abstract_stuff(void) {
 	  //cur_param->type_ptr = aliased_formal_param->type_ptr;
 
 
-	}
+	  }
       }
     }
 
@@ -1544,7 +1571,7 @@ static void init_specification_and_abstract_stuff(void) {
 
       if (cur_func->specification_ID) {
         unsigned long aliased_index = 0;
-	FJALAR_DPRINTF("Trying to find %p's specification: %lx\n", cur_func->name, cur_func->specification_ID);
+        FJALAR_DPRINTF("Trying to find %s's specification: %lx\n", cur_func->name, cur_func->specification_ID);
 
         if (binary_search_dwarf_entry_array(cur_func->specification_ID,
                                             &aliased_index)) {
@@ -1555,7 +1582,7 @@ static void init_specification_and_abstract_stuff(void) {
 
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
-	  FJALAR_DPRINTF("   Found %s\n", aliased_func_ptr->name);
+          FJALAR_DPRINTF("   Found %s\n", aliased_func_ptr->name);
 
 
           cur_func->name = aliased_func_ptr->name;
@@ -1569,7 +1596,7 @@ static void init_specification_and_abstract_stuff(void) {
 
       if (cur_coll->specification_ID) {
         unsigned long aliased_index = 0;
-	FJALAR_DPRINTF("Trying to find %s's specification: %lx\n", cur_coll->name, cur_coll->specification_ID);
+        FJALAR_DPRINTF("Trying to find %s's specification: %lx\n", cur_coll->name, cur_coll->specification_ID);
 
         if (binary_search_dwarf_entry_array(cur_coll->specification_ID,
                                             &aliased_index)) {
@@ -1580,20 +1607,20 @@ static void init_specification_and_abstract_stuff(void) {
 
           aliased_coll_ptr = (collection_type*)(aliased_entry->entry_ptr);
 
-	  FJALAR_DPRINTF("   Found %s\n", aliased_coll_ptr->name);
+          FJALAR_DPRINTF("   Found %s\n", aliased_coll_ptr->name);
 
-	  FJALAR_DPRINTF("Linking %p and %p\n", aliased_coll_ptr, cur_coll);
+          FJALAR_DPRINTF("Linking %p and %p\n", aliased_coll_ptr, cur_coll);
 
 
           cur_coll->name = aliased_coll_ptr->name;
 
-	  aliased_coll_ptr->byte_size = cur_coll->byte_size;
-	  aliased_coll_ptr->num_member_vars = cur_coll->num_member_vars;
-	  aliased_coll_ptr->num_static_member_vars = cur_coll->num_static_member_vars;
-	  aliased_coll_ptr->member_vars = cur_coll->member_vars;
-	  aliased_coll_ptr->member_funcs = cur_coll->member_funcs;
-	  aliased_coll_ptr->static_member_vars = cur_coll->static_member_vars;
-	  aliased_coll_ptr->superclasses = cur_coll->superclasses;
+          aliased_coll_ptr->byte_size = cur_coll->byte_size;
+          aliased_coll_ptr->num_member_vars = cur_coll->num_member_vars;
+          aliased_coll_ptr->num_static_member_vars = cur_coll->num_static_member_vars;
+          aliased_coll_ptr->member_vars = cur_coll->member_vars;
+          aliased_coll_ptr->member_funcs = cur_coll->member_funcs;
+          aliased_coll_ptr->static_member_vars = cur_coll->static_member_vars;
+          aliased_coll_ptr->superclasses = cur_coll->superclasses;
         }
       }
 
@@ -1603,47 +1630,79 @@ static void init_specification_and_abstract_stuff(void) {
       // as they're just 'shells' of variables with no interesting 
       // features. Unfortunately, in the case of variables declared
       // const in C++, all we get is the specification entry (which Fjalar ignores) 
-      // and the declaration. So we need to choose one of these to print.
-      // This clears the declaration flag of a variable ptr if it has at least
-      // one 'real' (non declaration or artificial) variable pointed to it.
+      // and the declaration. So we need to propagate information from the
+      // declaration entry to the definition entry.
       // This is definitely just a heuristic and we need to be careful that
       // this doesn't let unwanted variables through (i.e. unused stuff from the 
       // standard libraries)
 
       unsigned long aliased_index = 0;
-
       variable* cur_var = (variable*)(cur_entry->entry_ptr);
 
       if(cur_var->is_declaration_or_artificial) {
         continue;
       }
 
-      if(binary_search_dwarf_entry_array(cur_var->specification_ID,
-                                         &aliased_index)) {
+      if (binary_search_dwarf_entry_array(cur_var->specification_ID, &aliased_index)) {
         dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
 
         FJALAR_DPRINTF("[init_specification_and_abstract_stuff] Linking %lx and %lx\n", 
                        aliased_entry->ID,
-                       cur_entry->ID);	
+                       cur_entry->ID);
 
-	// g++ Can have variable's whose specification ID points to
-	// a member dwarf entry. We really need to consolidate some
-	// of these dwarf entry structs, this is kind of a pain..
+        // g++ Can have variable's whose specification ID points to
+        // a member dwarf entry. We really need to consolidate some
+        // of these dwarf entry structs, this is kind of a pain..
+
         tl_assert(tag_is_variable(aliased_entry->tag_name) ||
-		  tag_is_member(aliased_entry->tag_name));
+                  tag_is_member(aliased_entry->tag_name));
 
-	/* if(tag_is_variable(aliased_entry->tag_name)) { */
-	/*   ((variable*)(aliased_entry->entry_ptr))->is_declaration_or_artificial = 1;   */
-	/* }  */
-
-        if(!cur_var->name) {
-          cur_var->name = ((variable*)(aliased_entry->entry_ptr))->name;
+        if (tag_is_variable(aliased_entry->tag_name)) {
+            if(!cur_var->name) {
+                cur_var->name = ((variable*)(aliased_entry->entry_ptr))->name;
+            }
+            continue;
         }
-       
-        //        cur_var->is_declaration_or_artificial = 1;
+
+        // alias entry must be a member
+        // see if it needs a name
+        if(!cur_var->name) {
+            // This is non-null only if we find a valid demangled name
+            char* demangled_name = 0;
+
+            if(cur_var->mangled_name) {
+                // If there is a C++ mangled name, then call Valgrind core to try to
+                // demangle the name (remember the demangled name is malloc'ed)
+                demangled_name = cplus_demangle_v3(cur_var->mangled_name, DMGL_PARAMS | DMGL_ANSI);
+
+                // if we got a good demangled name, lets see if we can simplfy it a bit
+                // by removing the "__gnu_cxx::" prefix that shows up alot.
+                if (demangled_name) {
+                    int offset = 0;
+                    if (VG_(strncmp) (demangled_name, "__gnu_cxx::", 11) == 0) {
+                        offset = 11;
+                    }
+                    // We do the strdup no matter what because the mangled name has been allocated
+                    // in Valgrind's private memory pools.  We should copy it into ours to be nice.
+                    char *temp = VG_(strdup) ("typedata.c: init_specification...", demangled_name + offset);
+                    VG_(arena_free) (VG_AR_DEMANGLE, demangled_name);
+                    demangled_name = temp;
+                }    
+            }    
+
+            if (demangled_name) {
+                cur_var->name = demangled_name;
+            } else {
+                cur_var->name = ((member*)(aliased_entry->entry_ptr))->name;
+            }
+        }
+
+        // see if it needs a type
+        if(!cur_var->type_ID) {
+          cur_var->type_ID = ((member*)(aliased_entry->entry_ptr))->type_ID;
+        }
       }
     }
-
   }
 }
 
@@ -1762,8 +1821,11 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
   // structs/classes expect DW_TAG_variable as static member variables,
-  // (GCC 4.4.x+ denote static member variables via DW_TAG_member +
-  // (DW_AT_external - rudd)
+  // GCC 4.4.x+ denote static member variables via DW_TAG_member + DW_AT_external (rudd)
+  // This has changed again. GCC 4.7.x (perhaps earlier?) now represents a 
+  // static member variable with a DW_TAG_member at the declation and a 
+  // DW_TAG_variable at the definition.  This entry has a DW_AT_specification
+  // that points back to the DW_TAG_member.                        (markro)
   // DW_TAG_subprogram as member functions, and DW_TAG_inheritance as
   // superclass identifiers
 
@@ -2076,13 +2138,13 @@ static void link_array_entries_to_members(void)
 
       if (tag_is_collection_type(cur_entry->tag_name))
       {
-	// Also, if the collection is named through a typedef,
-	// the typedef name takes precedence over any original names
-	// it may have so we will use the typedef name:
-	collection_type* collectionPtr = (collection_type*)cur_entry->entry_ptr;
+        // Also, if the collection is named through a typedef,
+        // the typedef name takes precedence over any original names
+        // it may have so we will use the typedef name:
+        collection_type* collectionPtr = (collection_type*)cur_entry->entry_ptr;
 
-	if (!collectionPtr->name)
-	  {
+        if (!collectionPtr->name)
+        {
             // Now we can reap the benefits of the typedef names
             // optimization by simply doing a hashtable look-up to
             // find out the name of the typedef entry whose
@@ -2090,13 +2152,12 @@ static void link_array_entries_to_members(void)
             collectionPtr->name = (char*)
               gengettable(typedef_names_map,
                           (void*)cur_entry->ID);
-	  }
+        }
         link_collection_to_members(cur_entry, dwarf_entry_array_size - idx - 1);
-
       }
 
       if (tag_is_array_type(cur_entry->tag_name))
-	link_array_type_to_members(cur_entry, dwarf_entry_array_size - idx - 1);
+        link_array_type_to_members(cur_entry, dwarf_entry_array_size - idx - 1);
       else if (tag_is_function(cur_entry->tag_name))
         link_function_to_params_and_local_vars(cur_entry, dwarf_entry_array_size - idx - 1);
 
@@ -2107,57 +2168,56 @@ static void link_array_entries_to_members(void)
         variable* variablePtr = (variable*)cur_entry->entry_ptr;
         if (variablePtr->specification_ID && variablePtr->globalVarAddr) {
           unsigned long aliased_index= 0;
-          char success = 0;
-          success =
-            binary_search_dwarf_entry_array(variablePtr->specification_ID, &aliased_index);
-          if (success) {
+          if (binary_search_dwarf_entry_array(variablePtr->specification_ID, &aliased_index)) {
             dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
             if (tag_is_variable(aliased_entry->tag_name)) {
               variable* aliased_var_ptr = (variable*)(aliased_entry->entry_ptr);
               aliased_var_ptr->globalVarAddr = variablePtr->globalVarAddr;
               aliased_var_ptr->is_declaration_or_artificial = 0;
 
-	      // We distinguish between true global variables and C++
-	      // static member variables by whether there is a
-	      // non-null mangled_name.  This is just a heuristic, but
-	      // it seems to work in practice.  Static member
-	      // variables have mangled names, but global variables
-	      // don't:
-	      if (aliased_var_ptr->mangled_name) {
-		aliased_var_ptr->couldBeGlobalVar = 0;
-		aliased_var_ptr->isStaticMemberVar = 1;
-	      }
-	      else {
-		aliased_var_ptr->couldBeGlobalVar = 1;
-		aliased_var_ptr->isStaticMemberVar = 0;
-	      }
+              // We distinguish between true global variables and C++
+              // static member variables by whether there is a
+              // non-null mangled_name.  This is just a heuristic, but
+              // it seems to work in practice.  Static member
+              // variables have mangled names, but global variables
+              // don't:
+              if (aliased_var_ptr->mangled_name) {
+                aliased_var_ptr->couldBeGlobalVar = 0;
+                aliased_var_ptr->isStaticMemberVar = 1;
+              } else {
+                aliased_var_ptr->couldBeGlobalVar = 1;
+                aliased_var_ptr->isStaticMemberVar = 0;
+              }
               
               /* FJALAR_DPRINTF("mangled_name: %s - ID: %x - globalVarAddr: 0x%x\n", */
               /*             aliased_var_ptr->mangled_name, */
               /*             aliased_entry->ID, */
               /*             aliased_var_ptr->globalVarAddr); */
             }
+            else
+            // In newer versions of gcc (at least 4.7.x, maybe sooner), static member
+            // variables are indicated by the definition TAG_variable pointing back to
+            // the declaration which is a TAG_member.  We will ignore the member and
+            // only process the variable.  (need to set member field? markro)
+            if (tag_is_member(aliased_entry->tag_name)) {
+                variablePtr->isStaticMemberVar = 1;
+            }
           }
         }
       } else if (tag_is_collection_type(cur_entry->tag_name)) {
-	collection_type* variablePtr = (collection_type*)cur_entry->entry_ptr;
+        collection_type* variablePtr = (collection_type*)cur_entry->entry_ptr;
         if (variablePtr->specification_ID) {
           unsigned long aliased_index= 0;
-          char success = 0;
-          success =
-            binary_search_dwarf_entry_array(variablePtr->specification_ID, &aliased_index);
-          if (success) {
+          if (binary_search_dwarf_entry_array(variablePtr->specification_ID, &aliased_index)) {
             dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
             if (tag_is_collection_type(aliased_entry->tag_name)) {
 
-	      // Let's get the name out of this specification
+              // Let's get the name out of this specification
               collection_type* aliased_coll = (collection_type*)(aliased_entry->entry_ptr);
-	      variablePtr->name = aliased_coll->name;
-
-	    }
-	  }
-	}
-
+              variablePtr->name = aliased_coll->name;
+            }
+          }
+        }
       }
     }
 }
@@ -2212,7 +2272,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                function_ptr->filename,
                function_ptr->return_type_ID,
                ((simplified && function_ptr->return_type) ?
-                (UInt)function_ptr->return_type - (UInt)dwarf_entry_array :
+                (UInt)(ptrdiff_t)function_ptr->return_type - (UInt)(ptrdiff_t)dwarf_entry_array :
                 (unsigned long)(function_ptr->return_type)),
 	       function_ptr->is_external,
 	       function_ptr->start_pc);
@@ -2225,7 +2285,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
                ((simplified && formal_param_ptr->type_ptr) ?
-                (UInt)formal_param_ptr->type_ptr - (UInt)dwarf_entry_array :
+                (UInt)(ptrdiff_t)formal_param_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array :
                 (unsigned long)(formal_param_ptr->type_ptr)),
                formal_param_ptr->location);
         break;
@@ -2237,8 +2297,8 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                member_ptr->name,
                (UInt)member_ptr->type_ID,
                ((simplified && member_ptr->type_ptr) ?
-                (UInt)member_ptr->type_ptr - (UInt)dwarf_entry_array :
-                (UInt)(member_ptr->type_ptr)),
+                (UInt)(ptrdiff_t)member_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array :
+                (UInt)(ptrdiff_t)(member_ptr->type_ptr)),
                (UInt)member_ptr->data_member_location,
                (UInt)member_ptr->internal_byte_size,
                (UInt)member_ptr->internal_bit_offset,
@@ -2324,7 +2384,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
         FJALAR_DPRINTF("  Target ID (addr): 0x%lx (0x%lx)\n",
                modifier_ptr->target_ID,
                ((simplified && modifier_ptr->target_ptr) ?
-                (UInt)modifier_ptr->target_ptr - (UInt)dwarf_entry_array :
+                (UInt)(ptrdiff_t)modifier_ptr->target_ptr - (UInt)(ptrdiff_t)dwarf_entry_array :
                 (unsigned long)(modifier_ptr->target_ptr)));
         break;
       }
@@ -2334,7 +2394,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
         FJALAR_DPRINTF("  Type ID (addr): 0x%lx (0x%lx), Num. subrange entries: %ld\n",
                array_ptr->type_ID,
                ((simplified && array_ptr->type_ptr) ?
-                ((UInt)array_ptr->type_ptr - (UInt)dwarf_entry_array) :
+                ((UInt)(ptrdiff_t)array_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array) :
                 (unsigned long)(array_ptr->type_ptr)),
                array_ptr->num_subrange_entries);
         break;
@@ -2353,7 +2413,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                typedef_ptr->name,
                typedef_ptr->target_type_ID,
                ((simplified && typedef_ptr->target_type_ptr) ?
-                ((UInt)typedef_ptr->target_type_ptr - (UInt)dwarf_entry_array) :
+                ((UInt)(ptrdiff_t)typedef_ptr->target_type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array) :
                 (unsigned long)(typedef_ptr->target_type_ptr)));
         break;
       }
@@ -2364,7 +2424,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
                variable_ptr->name,
                variable_ptr->type_ID,
                ((simplified && variable_ptr->type_ptr) ?
-                ((UInt)variable_ptr->type_ptr - (UInt)dwarf_entry_array) :
+                ((UInt)(ptrdiff_t)variable_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array) :
                 (unsigned long)(variable_ptr->type_ptr)),
 	       variable_ptr->is_external,
                variable_ptr->couldBeGlobalVar,
@@ -2478,7 +2538,7 @@ void print_dwarf_entry_array_helper(char simplified)
     {
 
       FJALAR_DPRINTF("array[%u] (0x%x): ", i,
-             (simplified ? i : ((UInt)dwarf_entry_array + (UInt)i)));
+             (simplified ? i : ((UInt)(ptrdiff_t)dwarf_entry_array + (UInt)i)));
       print_dwarf_entry(&dwarf_entry_array[i], simplified);
     }
   FJALAR_DPRINTF("--- END DWARF ENTRY ARRAY\n");
@@ -2771,7 +2831,7 @@ void initialize_typedata_structures() {
 }
 
 __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
-  //  VG_(printf)("FunctionSymbolTable insert: %p  %s\n", addr, name);
+  //  printf("FunctionSymbolTable insert: %p  %s\n", addr, name);
   // Insert into both the regular and reverse tables:
 
   genputtable(FunctionSymbolTable,
@@ -2784,7 +2844,7 @@ __inline__ void insertIntoFunctionSymbolTable(char* name, void* addr) {
 }
 
 __inline__ void insertIntoVariableSymbolTable(char* name, void* addr) {
-  //  VG_(printf)("VariableSymbolTable insert: %p  %s\n", addr, name);
+  //  printf("VariableSymbolTable insert: %p  %s\n", addr, name);
   genputtable(VariableSymbolTable,
               (void*)name,
               (void*)addr);
