@@ -8,12 +8,13 @@
 /*
   This file is part of DynComp, a dynamic comparability analysis tool
   for C/C++ based upon the Valgrind binary instrumentation framework
-  and the Valgrind MemCheck tool (Copyright (C) 2000-2009 Julian
-  Seward, jseward@acm.org)
+  and the Valgrind MemCheck tool.
 
-   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
-   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
-   MIT CSAIL Program Analysis Group
+  Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+  Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
+  Copyright (C) 2000-2009 Julian Seward (jseward@acm.org),
+  Copyright (C) 2010-2013 PLSE group at University of Washington
+  (Programming Languages and Software Engineering)
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -26,14 +27,14 @@
   General Public License for more details.
 */
 
+#include "my_libc.h"
+
 #include "mc_include.h"
 #include "dyncomp_translate.h"
 #include "dyncomp_main.h"
 #include "../fjalar_include.h"
 #include "kvasir_main.h"
 #include "vex_common.h"
-
-#include "my_libc.h"
 
 extern char dyncomp_profile_tags;
 static
@@ -95,9 +96,13 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[0].fx     = Ifx_Read;
    di->fxState[0].offset = dce->layout->offset_SP;
    di->fxState[0].size   = dce->layout->sizeof_SP;
+   di->fxState[0].nRepeats  = 0;
+   di->fxState[0].repeatLen = 0;
    di->fxState[1].fx     = Ifx_Read;
    di->fxState[1].offset = dce->layout->offset_IP;
    di->fxState[1].size   = dce->layout->sizeof_IP;
+   di->fxState[1].nRepeats  = 0;
+   di->fxState[1].repeatLen = 0;
 }
 
 
@@ -120,6 +125,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
       being removed to keep dyncomp_translate.c analogues of
       mc_translate.c functions as similar as possible */
    (void)expd_eq_old; (void)boldLo; (void)bdataLo; (void)bexpdLo;
+   (void)opCasCmpEQ; (void)elemSzB;
 
    /* single CAS */
    tl_assert(cas->oldHi == IRTemp_INVALID);
@@ -184,7 +190,7 @@ static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
 
 
    //tl_assert(orig < dce->n_originalTmps);
-   // if (dce->tmpMap[orig] == IRTemp_INVALID) {
+   // if (dce->tmpMap[orig] == IRTemp_INVALID) 
 
    // bind_shadow_tmp_to_orig('V', mce, mkexpr(cas->oldLo), voldLo);
 
@@ -265,6 +271,7 @@ static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
    (void)expd_eq_old;(void)boldLo;(void)boldHi;
    (void)bexpdLo;(void)bexpdHi;(void)bdataLo;(void)bdataHi;
    (void)xHL;(void)xHi;(void)xLo;
+   (void)zero;(void)opCasCmpEQ;(void)opOr;(void)opXor;
 
 
    /* double CAS */
@@ -486,12 +493,15 @@ void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
 
 // A PUTI stores a value (dynamically indexed) into the guest state
 // (for x86, this seems to be only used for floating point values)
-void do_shadow_PUTI_DC ( DCEnv* dce,
-                      IRRegArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
+void do_shadow_PUTI_DC ( DCEnv* dce, IRPutI *puti)
 {
    IRAtom* vatom;
    IRType  ty;
    IRRegArray *new_descr;
+   IRRegArray* descr = puti->descr;
+   IRAtom*     ix    = puti->ix;
+   Int         bias  = puti->bias;
+   IRAtom*     atom  = puti->data;
 
    tl_assert(isOriginalAtom_DC(dce,atom));
    vatom = expr2tags_DC( dce, atom );
@@ -507,7 +517,7 @@ void do_shadow_PUTI_DC ( DCEnv* dce,
       = mkIRRegArray( (4 * descr->base) + (3 * dce->layout->total_sizeB),
                    Ity_Word, descr->nElems); // Tags are word-sized
 
-   stmt_DC( 'V', dce, IRStmt_PutI( new_descr, ix, bias, vatom ));
+   stmt_DC( 'V', dce, IRStmt_PutI(mkIRPutI(new_descr, ix, bias, vatom)));
 }
 
 static
@@ -598,7 +608,7 @@ IRAtom* handleCCall_DC ( DCEnv* dce,
          if (cee->mcx_mask & (1<<i)) {
             /* the arg is to be excluded from definedness checking.  Do
                nothing. (I guess we do nothing also just like mkLazyN) */
-            if (0) VG_(printf)("excluding %s(%d)\n", cee->name, i);
+            if (0) printf("excluding %s(%d)\n", cee->name, i);
          } else {
             /* merge the tags of first and current arguments */
             cur = expr2tags_DC(dce, exprvec[i]);
@@ -683,14 +693,17 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
       case Iop_MAddF64r32:
       case Iop_MSubF64:
       case Iop_MSubF64r32:
+      case Iop_MAddF32:
+      case Iop_MSubF32:
 
          // from libvex_ir.h:
       /* :: IRRoundingMode(I32) x F64 x F64 x F64 -> F64
+         or IRRoundingMode(I32) x F32 x F32 x F32 -> F32
             (computes arg2 * arg3 +/- arg4) */
-
 
          // If we are running in units mode, then we should merge the
          // tags of the 3rd and 4th operands:
+// UNDONE: I think maybe we should just return tags of 4th operand. (markro)
          if (dyncomp_units_mode) {
             return mkIRExprCCall (Ity_Word,
                                   2 /*Int regparms*/,
@@ -707,6 +720,10 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
                                   &MC_(helperc_MERGE_3_TAGS),
                                   mkIRExprVec_3( vatom2, vatom3, vatom4 ));
          }
+         break;
+
+      // Doesn't look like any interactions  (markro)
+      case Iop_64x4toV256:
          break;
 
       default:
@@ -756,12 +773,21 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       // The first arg. is the rounding mode, and the second and third
       // args. actually participate in the operation, so merge the
       // tags of the second and third args. as appropriate:
-      /* I32(rm) x F64 x F64 -> F64 */
+      // I32(rm) x F64 x F64 -> F64 
+      // (Other types as implied by opcodes.)
 
+      case Iop_AddF32:
+      case Iop_SubF32:
       case Iop_AddF64:
       case Iop_AddF64r32:
       case Iop_SubF64:
       case Iop_SubF64r32:
+      case Iop_AddD64:
+      case Iop_SubD64:
+      case Iop_AddF128:
+      case Iop_SubF128:
+      case Iop_AddD128:
+      case Iop_SubD128:
 
          return mkIRExprCCall (Ity_Word,
                                2 /*Int regparms*/,
@@ -774,10 +800,18 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
                                /* I32(rm) x F64 x F64 -> F64 */
                                mkIRExprVec_2( vatom2, vatom3 ));
 
+      case Iop_MulF32:
+      case Iop_DivF32:
       case Iop_MulF64:
       case Iop_MulF64r32:
       case Iop_DivF64:
       case Iop_DivF64r32:
+      case Iop_MulD64:
+      case Iop_DivD64:
+      case Iop_MulF128:
+      case Iop_DivF128:
+      case Iop_MulD128:
+      case Iop_DivD128:
 
          if (!dyncomp_units_mode) {
             return mkIRExprCCall (Ity_Word,
@@ -794,6 +828,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
          // Else fall through ...
          break;
 
+      // UNDONE: need to add ExtractV64 and V128
+
       // pgbovine - Hmmm, these don't look like interactions:
       case Iop_ScaleF64:
       case Iop_Yl2xF64:
@@ -803,6 +839,13 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_PRem1F64:
       case Iop_PRemC3210F64:
       case Iop_PRem1C3210F64:
+      case Iop_QuantizeD64:
+      case Iop_QuantizeD128:
+      case Iop_SetElem8x8:
+      case Iop_SetElem16x4:
+      case Iop_SetElem32x2:
+      case Iop_SignificanceRoundD64:
+      case Iop_SignificanceRoundD128:
          break;
 
       default:
@@ -884,10 +927,17 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       /* TODO: clarify semantics wrt rounding, negative values, whatever */
    case Iop_DivU32:   // :: I32,I32 -> I32 (simple div, no mod)
    case Iop_DivS32:   // ditto, signed
+   case Iop_DivU32E:
+   case Iop_DivS32E:
+   case Iop_DivU64:
+   case Iop_DivS64:
+   case Iop_DivU64E:
+   case Iop_DivS64E:
 
    case Iop_DivModU64to32: // :: I64,I32 -> I64
       // of which lo half is div and hi half is mod
    case Iop_DivModS64to32: // ditto, signed
+   case Iop_DivModS64to64:
 
    case Iop_DivModU128to64: // :: V128,I64 -> V128
       // of which lo half is div and hi half is mod
@@ -899,57 +949,37 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       }
       break;
 
-      /* ------ Floating point.  We try and be IEEE754 compliant. ------ */
-
-      /* Binary operations mandated by IEEE754. */
-   case Iop_AddF64: case Iop_SubF64:
-
-      if (!dyncomp_dataflow_comparisons_mode) {
-         helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
-      }
-      break;
-
-   case Iop_MulF64: case Iop_DivF64: /* Iop_RemF64, */
-
-      /* Binary ops supported by IA32 but not mandated by 754. */
-   case Iop_AtanF64:       /* FPATAN,  arctan(arg1/arg2)       */
-   case Iop_Yl2xF64:       /* FYL2X,   arg1 * log2(arg2)       */
-   case Iop_Yl2xp1F64:     /* FYL2XP1, arg1 * log2(arg2+1.0)   */
-   case Iop_PRemF64:       /* FPREM,   non-IEEE remainder(arg1/arg2)    */
-   case Iop_PRem1F64:      /* FPREM1,  IEEE remainder(arg1/arg2)    */
-   case Iop_ScaleF64:      /* FSCALE,  arg1 * (2^RoundTowardsZero(arg2)) */
-      /* Note that on x86 guest, PRem1{C3210} has the same behaviour
-         as the IEEE mandated RemF64, except it is limited in the
-         range of its operand.  Hence the partialness. */
-
-      if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
-         helper = &MC_(helperc_MERGE_TAGS);
-         hname = "MC_(helperc_MERGE_TAGS)";
-      }
-      break;
-
       /* ------------------ 64-bit SIMD Integer. ------------------ */
 
       /* ADDITION (normal / unsigned sat / signed sat) */
-   case Iop_Add8x8:   case Iop_Add16x4:   case Iop_Add32x2:
+   case Iop_Add8x8:   case Iop_Add16x4:   case Iop_Add32x2:   case Iop_Add32Fx2:
+   case Iop_Add8x4:   case Iop_Add16x2:
+   case Iop_HAdd8Ux4: case Iop_HAdd16Ux2:
+   case Iop_HAdd8Sx4: case Iop_HAdd16Sx2:
    case Iop_QAdd8Ux8: case Iop_QAdd16Ux4:
    case Iop_QAdd8Sx8: case Iop_QAdd16Sx4:
+   case Iop_QAdd8Ux4: case Iop_QAdd16Ux2: case Iop_QAdd32Ux2: case Iop_QAdd64Ux1:
+   case Iop_QAdd8Sx4: case Iop_QAdd16Sx2: case Iop_QAdd32Sx2: case Iop_QAdd64Sx1:
 
       /* SUBTRACTION (normal / unsigned sat / signed sat) */
-   case Iop_Sub8x8:   case Iop_Sub16x4:   case Iop_Sub32x2:
+   case Iop_Sub8x8:   case Iop_Sub16x4:   case Iop_Sub32x2:   case Iop_Sub32Fx2:
+   case Iop_Sub8x4:   case Iop_Sub16x2:
+   case Iop_HSub8Ux4: case Iop_HSub16Ux2:
+   case Iop_HSub8Sx4: case Iop_HSub16Sx2:
    case Iop_QSub8Ux8: case Iop_QSub16Ux4:
    case Iop_QSub8Sx8: case Iop_QSub16Sx4:
+   case Iop_QSub8Ux4: case Iop_QSub16Ux2: case Iop_QSub32Ux2: case Iop_QSub64Ux1:
+   case Iop_QSub8Sx4: case Iop_QSub16Sx2: case Iop_QSub32Sx2: case Iop_QSub64Sx1:
 
       /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
    case Iop_Avg8Ux8:
    case Iop_Avg16Ux4:
 
       /* MIN/MAX */
-   case Iop_Max16Sx4:
-   case Iop_Max8Ux8:
-   case Iop_Min16Sx4:
-   case Iop_Min8Ux8:
+   case Iop_Max8Sx8:  case Iop_Max16Sx4:  case Iop_Max32Sx2:  case Iop_Max32Fx2:
+   case Iop_Max8Ux8:  case Iop_Max16Ux4:  case Iop_Max32Ux2:
+   case Iop_Min8Sx8:  case Iop_Min16Sx4:  case Iop_Min32Sx2:  case Iop_Min32Fx2:
+   case Iop_Min8Ux8:  case Iop_Min16Ux4:  case Iop_Min32Ux2:
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -958,9 +988,16 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       break;
 
       /* MULTIPLICATION (normal / high half of signed/unsigned) */
-   case Iop_Mul16x4:
-   case Iop_MulHi16Ux4:
-   case Iop_MulHi16Sx4:
+   case Iop_Mul8x8:   case Iop_Mul16x4:   case Iop_Mul32x2:   case Iop_Mul32Fx2:
+   case Iop_Mull8Ux8: case Iop_Mull16Ux4: case Iop_Mull32Ux2:
+   case Iop_Mull8Sx8: case Iop_Mull16Sx4: case Iop_Mull32Sx2:
+   case Iop_MullEven8Sx16:    case Iop_MullEven8Ux16:
+   case Iop_MullEven16Sx8:    case Iop_MullEven16Ux8:
+   case Iop_MulHi16Ux4:        case Iop_MulHi16Sx4:
+   case Iop_QDMulHi16Sx4:      case Iop_QDMulHi32Sx2:
+   case Iop_QRDMulHi16Sx4:     case Iop_QRDMulHi32Sx2:
+   case Iop_QDMulLong16Sx4:    case Iop_QDMulLong32Sx2:
+   case Iop_PolynomialMul8x8:  case Iop_PolynomialMull8x8:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -976,6 +1013,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Add32Fx4: case Iop_Sub32Fx4:
    case Iop_Max32Fx4: case Iop_Min32Fx4:
 
+   case Iop_Add32Fx8: case Iop_Sub32Fx8:
+   case Iop_Max32Fx8: case Iop_Min32Fx8:
+
       /* --- 32x4 lowest-lane-only scalar FP --- */
 
    case Iop_Add32F0x4: case Iop_Sub32F0x4:
@@ -985,6 +1025,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
    case Iop_Add64Fx2: case Iop_Sub64Fx2:
    case Iop_Max64Fx2: case Iop_Min64Fx2:
+
+   case Iop_Add64Fx4: case Iop_Sub64Fx4:
+   case Iop_Max64Fx4: case Iop_Min64Fx4:
 
       /* --- 64x2 lowest-lane-only scalar FP --- */
 
@@ -998,13 +1041,20 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       break;
 
       /* --- 32x4 vector FP --- */
-   case Iop_Mul32Fx4: case Iop_Div32Fx4:
+   case Iop_Mul32Fx4:
+   case Iop_Div32Fx4:
       /* --- 32x4 lowest-lane-only scalar FP --- */
-   case Iop_Mul32F0x4: case Iop_Div32F0x4:
+   case Iop_Mul32F0x4:
+   case Iop_Div32F0x4:
       /* --- 64x2 vector FP --- */
-   case Iop_Mul64Fx2: case Iop_Div64Fx2:
+   case Iop_Mul64Fx2:
+   case Iop_Div64Fx2:
       /* --- 64x2 lowest-lane-only scalar FP --- */
-   case Iop_Mul64F0x2: case Iop_Div64F0x2:
+   case Iop_Mul64F0x2:
+   case Iop_Div64F0x2:
+
+   case Iop_Mul64Fx4:
+   case Iop_Div32Fx8:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -1016,24 +1066,42 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       /* ------------------ 128-bit SIMD Integer. ------------------ */
 
       /* ADDITION (normal / unsigned sat / signed sat) */
-   case Iop_Add8x16:   case Iop_Add16x8:   case Iop_Add32x4:  case Iop_Add64x2:
+   case Iop_Add8x16:   case Iop_Add16x8:  
+   case Iop_Add32x4:   case Iop_Add64x2:
    case Iop_QAdd8Ux16: case Iop_QAdd16Ux8:
+   case Iop_QAdd32Ux4: case Iop_QAdd64Ux2:
    case Iop_QAdd8Sx16: case Iop_QAdd16Sx8:
+   case Iop_QAdd32Sx4: case Iop_QAdd64Sx2:
 
       /* SUBTRACTION (normal / unsigned sat / signed sat) */
-   case Iop_Sub8x16:   case Iop_Sub16x8:   case Iop_Sub32x4:  case Iop_Sub64x2:
+   case Iop_Sub8x16:   case Iop_Sub16x8:  
+   case Iop_Sub32x4:   case Iop_Sub64x2:
    case Iop_QSub8Ux16: case Iop_QSub16Ux8:
+   case Iop_QSub32Ux4: case Iop_QSub64Ux2:
    case Iop_QSub8Sx16: case Iop_QSub16Sx8:
+   case Iop_QSub32Sx4: case Iop_QSub64Sx2:
 
       /* MIN/MAX */
-   case Iop_Max16Sx8:
+   case Iop_Max8Sx16:
    case Iop_Max8Ux16:
-   case Iop_Min16Sx8:
+   case Iop_Max16Sx8:
+   case Iop_Max16Ux8:
+   case Iop_Max32Sx4:
+   case Iop_Max32Ux4:
+   case Iop_Min8Sx16:
    case Iop_Min8Ux16:
+   case Iop_Min16Sx8:
+   case Iop_Min16Ux8:
+   case Iop_Min32Sx4:
+   case Iop_Min32Ux4:
 
       /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
+   case Iop_Avg8Sx16:
    case Iop_Avg8Ux16:
+   case Iop_Avg16Sx8:
    case Iop_Avg16Ux8:
+   case Iop_Avg32Sx4:
+   case Iop_Avg32Ux4:
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -1043,11 +1111,18 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       /* BITWISE OPS */
    case Iop_AndV128: case Iop_OrV128: case Iop_XorV128:
+   case Iop_AndV256: case Iop_OrV256: case Iop_XorV256:
 
       /* MULTIPLICATION (normal / high half of signed/unsigned) */
    case Iop_Mul16x8:
-   case Iop_MulHi16Ux8:
+   case Iop_Mul8x16:
    case Iop_MulHi16Sx8:
+   case Iop_MulHi16Ux8:
+   case Iop_PolynomialMul8x16:
+   case Iop_QDMulHi16Sx8:
+   case Iop_QDMulHi32Sx4:
+   case Iop_QRDMulHi16Sx8:
+   case Iop_QRDMulHi32Sx4:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -1073,30 +1148,64 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // Weird 64-bit SIMD narrowing and interleave seem like interactions,
       // although this is a bit shadiy
       /* NARROWING -- narrow 2xI64 into 1xI64, hi half from left arg */
-   case Iop_QNarrow16Ux4:
-   case Iop_QNarrow16Sx4:
-   case Iop_QNarrow32Sx2:
+   case Iop_QNarrowBin16Sto8Ux8:    
+   case Iop_QNarrowBin16Sto8Ux16:
+   case Iop_QNarrowBin16Sto8Sx8:    
+   case Iop_QNarrowBin16Sto8Sx16:
+   case Iop_QNarrowBin16Uto8Ux16:
+   case Iop_QNarrowBin32Sto16Sx4:   
+   case Iop_QNarrowBin32Sto16Sx8:
+   case Iop_QNarrowBin32Sto16Ux8:   
+   case Iop_QNarrowBin32Uto16Ux8:
 
       /* INTERLEAVING -- interleave lanes from low or high halves of
          operands.  Most-significant result lane is from the left
          arg. */
-   case Iop_InterleaveHI8x8: case Iop_InterleaveHI16x4: case Iop_InterleaveHI32x2:
-   case Iop_InterleaveLO8x8: case Iop_InterleaveLO16x4: case Iop_InterleaveLO32x2:
+   case Iop_CatEvenLanes8x8:        
+   case Iop_CatEvenLanes16x4:       
+   case Iop_CatOddLanes8x8:         
+   case Iop_CatOddLanes16x4:        
+   case Iop_InterleaveEvenLanes8x8: 
+   case Iop_InterleaveEvenLanes16x4:
+   case Iop_InterleaveHI8x8:
+   case Iop_InterleaveHI16x4:
+   case Iop_InterleaveHI32x2:
+   case Iop_InterleaveLO8x8:
+   case Iop_InterleaveLO16x4:
+   case Iop_InterleaveLO32x2:
+   case Iop_InterleaveOddLanes8x8:  
+   case Iop_InterleaveOddLanes16x4: 
 
       // Ditto for 128-bit SIMD integer narrowing and interleaving
 
+   case Iop_CatEvenLanes8x16:
+   case Iop_CatEvenLanes16x8:
+   case Iop_CatEvenLanes32x4:
+   case Iop_CatOddLanes8x16:
+   case Iop_CatOddLanes16x8:
+   case Iop_CatOddLanes32x4:
+   case Iop_InterleaveEvenLanes8x16:
+   case Iop_InterleaveEvenLanes16x8:
+   case Iop_InterleaveEvenLanes32x4:
+   case Iop_InterleaveOddLanes8x16:
+   case Iop_InterleaveOddLanes16x8:
+   case Iop_InterleaveOddLanes32x4:
+
       /* NARROWING -- narrow 2xV128 into 1xV128, hi half from left arg */
-   case Iop_QNarrow16Ux8:
-   case Iop_QNarrow16Sx8:
-   case Iop_QNarrow32Sx4:
+   case Iop_NarrowBin16to8x16:
+   case Iop_NarrowBin32to16x8:
 
       /* INTERLEAVING -- interleave lanes from low or high halves of
          operands.  Most-significant result lane is from the left
          arg. */
-   case Iop_InterleaveHI8x16: case Iop_InterleaveHI16x8:
-   case Iop_InterleaveHI32x4: case Iop_InterleaveHI64x2:
-   case Iop_InterleaveLO8x16: case Iop_InterleaveLO16x8:
-   case Iop_InterleaveLO32x4: case Iop_InterleaveLO64x2:
+   case Iop_InterleaveHI8x16:
+   case Iop_InterleaveHI16x8:
+   case Iop_InterleaveHI32x4:
+   case Iop_InterleaveHI64x2:
+   case Iop_InterleaveLO8x16:
+   case Iop_InterleaveLO16x8:
+   case Iop_InterleaveLO32x4:
+   case Iop_InterleaveLO64x2:
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -1121,12 +1230,16 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // comparison is a 0 or 1 which really can't be compared with other stuff.
 
       /* Integer comparisons. */
-   case Iop_CmpEQ8:  case Iop_CmpEQ16:  case Iop_CmpEQ32:  case Iop_CmpEQ64:
-   case Iop_CmpNE8:  case Iop_CmpNE16:  case Iop_CmpNE32:  case Iop_CmpNE64:
-   case Iop_CmpLT32S:  case Iop_CmpLT64S:
+   case Iop_CmpEQ8:    case Iop_CmpEQ16: 
+   case Iop_CmpEQ32:   case Iop_CmpEQ64:
    case Iop_CmpLE32S:  case Iop_CmpLE64S:
-   case Iop_CmpLT32U:  case Iop_CmpLT64U:
    case Iop_CmpLE32U:  case Iop_CmpLE64U:
+   case Iop_CmpLT32S:  case Iop_CmpLT64S:
+   case Iop_CmpLT32U:  case Iop_CmpLT64U:
+   case Iop_CmpNE8:    case Iop_CmpNE16: 
+   case Iop_CmpNE32:   case Iop_CmpNE64:
+   case Iop_CmpORD32S: case Iop_CmpORD64S:
+   case Iop_CmpORD32U: case Iop_CmpORD64U:
 
      // New CAS operations. They're semantically identical to normal comparisons
      // They're used by memcheck to differentiate the compares done by a CAS and
@@ -1137,30 +1250,48 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CasCmpEQ64: case Iop_CasCmpNE64:
 
       // Floating-point comparison
+   case Iop_CmpD64:
+   case Iop_CmpD128:
+   case Iop_CmpF32:
    case Iop_CmpF64:
+   case Iop_CmpF128:
 
       // 64-bit SIMD integer comparisons
       /* MISC (vector integer cmp != 0) */
-   case Iop_CmpNEZ8x8: case Iop_CmpNEZ16x4: case Iop_CmpNEZ32x2:
 
       /* COMPARISON */
-   case Iop_CmpEQ8x8:  case Iop_CmpEQ16x4:  case Iop_CmpEQ32x2:
-   case Iop_CmpGT8Sx8: case Iop_CmpGT16Sx4: case Iop_CmpGT32Sx2:
+   case Iop_CmpEQ8x8:   case Iop_CmpEQ16x4: 
+   case Iop_CmpEQ32x2:  case Iop_CmpEQ32Fx2:
+   case Iop_CmpGT8Sx8:  case Iop_CmpGT16Sx4:
+   case Iop_CmpGT32Sx2: case Iop_CmpGT32Fx2:
+   case Iop_CmpGT8Ux8:  case Iop_CmpGT16Ux4:
+   case Iop_CmpGT32Ux2: case Iop_CmpGE32Fx2:
 
       // 128-bit SIMD FP
-   case Iop_CmpEQ32Fx4: case Iop_CmpLT32Fx4: case Iop_CmpLE32Fx4: case Iop_CmpUN32Fx4:
-   case Iop_CmpEQ32F0x4: case Iop_CmpLT32F0x4: case Iop_CmpLE32F0x4: case Iop_CmpUN32F0x4:
-   case Iop_CmpEQ64Fx2: case Iop_CmpLT64Fx2: case Iop_CmpLE64Fx2: case Iop_CmpUN64Fx2:
-   case Iop_CmpEQ64F0x2: case Iop_CmpLT64F0x2: case Iop_CmpLE64F0x2: case Iop_CmpUN64F0x2:
+   case Iop_CmpEQ32Fx4:
+   case Iop_CmpGE32Fx4:
+   case Iop_CmpGT32Fx4:
+   case Iop_CmpLE32Fx4:
+   case Iop_CmpLT32Fx4:
+   case Iop_CmpUN32Fx4:
+   case Iop_CmpEQ64x2:
+   case Iop_CmpGT64Sx2:
+
+   case Iop_CmpEQ32F0x4: case Iop_CmpLT32F0x4:
+   case Iop_CmpLE32F0x4: case Iop_CmpUN32F0x4:
+   case Iop_CmpEQ64Fx2:  case Iop_CmpLT64Fx2:
+   case Iop_CmpLE64Fx2:  case Iop_CmpUN64Fx2:
+   case Iop_CmpEQ64F0x2: case Iop_CmpLT64F0x2:
+   case Iop_CmpLE64F0x2: case Iop_CmpUN64F0x2:
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
 
       /* MISC (vector integer cmp != 0) */
-   case Iop_CmpNEZ8x16: case Iop_CmpNEZ16x8: case Iop_CmpNEZ32x4: case Iop_CmpNEZ64x2:
 
       /* COMPARISON */
    case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
    case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
+   case Iop_CmpGT8Ux16: case Iop_CmpGT16Ux8: case Iop_CmpGT32Ux4:
 
       helper = &MC_(helperc_MERGE_TAGS_RETURN_0);
       hname = "MC_(helperc_MERGE_TAGS_RETURN_0)";
@@ -1186,21 +1317,54 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // 64-bit SIMD integer shifts:
 
       /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
-   case Iop_ShlN16x4: case Iop_ShlN32x2:
-   case Iop_ShrN16x4: case Iop_ShrN32x2:
-   case Iop_SarN16x4: case Iop_SarN32x2:
+   case Iop_Sal8x8:   case Iop_Sal16x4:  case Iop_Sal32x2:  case Iop_Sal64x1:
+   case Iop_Sar8x8:   case Iop_Sar16x4:  case Iop_Sar32x2:
+   case Iop_Shl8x8:   case Iop_Shl16x4:  case Iop_Shl32x2:
+   case Iop_Shr8x8:   case Iop_Shr16x4:  case Iop_Shr32x2:
+   case Iop_SarN8x8:  case Iop_SarN16x4: case Iop_SarN32x2:
+   case Iop_ShlN8x8:  case Iop_ShlN16x4: case Iop_ShlN32x2:
+   case Iop_ShrN8x8:  case Iop_ShrN16x4: case Iop_ShrN32x2:
+
+   case Iop_QShlN8x8:   case Iop_QShlN16x4:
+   case Iop_QShlN32x2:  case Iop_QShlN64x1:
+   case Iop_QShlN8Sx8:  case Iop_QShlN16Sx4:
+   case Iop_QShlN32Sx2: case Iop_QShlN64Sx1:
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
 
       /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
-   case Iop_ShlN16x8: case Iop_ShlN32x4: case Iop_ShlN64x2:
-   case Iop_ShrN16x8: case Iop_ShrN32x4: case Iop_ShrN64x2:
-   case Iop_SarN16x8: case Iop_SarN32x4:
+   case Iop_Rol8x16:  case Iop_Rol16x8:  case Iop_Rol32x4:
+   case Iop_Sal8x16:  case Iop_Sal16x8:  case Iop_Sal32x4:  case Iop_Sal64x2:
+   case Iop_Sar8x16:  case Iop_Sar16x8:  case Iop_Sar32x4:  case Iop_Sar64x2:
+   case Iop_Shl8x16:  case Iop_Shl16x8:  case Iop_Shl32x4:  case Iop_Shl64x2:
+   case Iop_Shr8x16:  case Iop_Shr16x8:  case Iop_Shr32x4:  case Iop_Shr64x2:
+   case Iop_SarN8x16: case Iop_SarN16x8: case Iop_SarN32x4: case Iop_SarN64x2:
+   case Iop_ShlN8x16: case Iop_ShlN16x8: case Iop_ShlN32x4: case Iop_ShlN64x2:
+   case Iop_ShrN8x16: case Iop_ShrN16x8: case Iop_ShrN32x4: case Iop_ShrN64x2:
+
+   case Iop_ShrD64:
+   case Iop_ShlD64:
+   case Iop_ShrD128:
+   case Iop_ShlD128:
+   case Iop_ShrV128:
+   case Iop_ShlV128:
+
+   case Iop_QSal8x16:   case Iop_QSal16x8:
+   case Iop_QSal32x4:   case Iop_QSal64x2:
+   case Iop_QShl8x16:   case Iop_QShl16x8:
+   case Iop_QShl32x4:   case Iop_QShl64x2:
+
+   case Iop_QShlN8x16:  case Iop_QShlN16x8:
+   case Iop_QShlN32x4:  case Iop_QShlN64x2:
+   case Iop_QShlN8Sx16: case Iop_QShlN16Sx8:
+   case Iop_QShlN32Sx4: case Iop_QShlN64Sx2:
 
       // From the looks of the spec., we want to return the tag
       // of the first argument
    case Iop_SetV128lo32:  // :: (V128,I32) -> V128
+   case Iop_SetV128lo64:
 
+      // UNDONE: shouldn't this test dyncomp_dataflow_only_mode?  (markro)
       if (!dyncomp_dataflow_comparisons_mode) {
          return vatom1;
       }
@@ -1244,23 +1408,35 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          Rounding is required whenever the destination type cannot
          represent exactly all values of the source type.
       */
-   case Iop_F64toI16S:  /* IRRoundingMode(I32) x F64 -> I16 */
-   case Iop_F64toI32U:  /* IRRoundingMode(I32) x F64 -> I32 */
-   case Iop_F64toI32S:  /* IRRoundingMode(I32) x F64 -> I32 */
-   case Iop_F64toI64S:  /* IRRoundingMode(I32) x F64 -> I64 */
-   case Iop_I64StoF64:  /* IRRoundingMode(I32) x I64 -> F64 */
+   case Iop_F32toI32S:  /* IRRoundingMode(I32) x F32 -> I32 */
+   case Iop_F32toI32U:  /* IRRoundingMode(I32) x F32 -> I32 */
+   case Iop_F32toI64S:  /* IRRoundingMode(I32) x F32 -> I64 */
+   case Iop_F32toI64U:  /* IRRoundingMode(I32) x F32 -> I64 */
    case Iop_F64toF32:   /* IRRoundingMode(I32) x F64 -> F32 */
+   case Iop_F64toI16S:  /* IRRoundingMode(I32) x F64 -> I16 */
+   case Iop_F64toI32S:  /* IRRoundingMode(I32) x F64 -> I32 */
+   case Iop_F64toI32U:  /* IRRoundingMode(I32) x F64 -> I32 */
+   case Iop_F64toI64S:  /* IRRoundingMode(I32) x F64 -> I64 */
+   case Iop_F64toI64U:  /* IRRoundingMode(I32) x F64 -> I64 */
+   case Iop_I32StoF32:  /* IRRoundingMode(I32) x I32 -> F32 */
+   case Iop_I32UtoF32:  /* IRRoundingMode(I32) x I32 -> F32 */
+   case Iop_I64StoF64:  /* IRRoundingMode(I32) x I64 -> F64 */
+   case Iop_I64UtoF64:  /* IRRoundingMode(I32) x I64 -> F64 */
+   case Iop_I64StoF32:  /* IRRoundingMode(I32) x I64 -> F32 */
+   case Iop_I64UtoF32:  /* IRRoundingMode(I32) x I64 -> F32 */
 
-
-     
-
+   case Iop_RoundF32toInt:
+   case Iop_RoundD64toInt:
+   case Iop_RoundD128toInt:
    case Iop_RoundF64toInt:
    case Iop_RoundF64toF32:
    case Iop_SinF64:
    case Iop_CosF64:
    case Iop_TanF64:
    case Iop_2xm1F64:
+   case Iop_SqrtF32:
    case Iop_SqrtF64:
+   case Iop_SqrtF128:
 
       /* F64 -> F64, also takes an I32 first argument encoding the
          rounding mode. */
@@ -1270,19 +1446,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
          return vatom2;
       }
       break;
-
-
-      // ------------------------
-      // Return a fresh tag of 0:
-      // ------------------------
-
-      // Random bogus stuff do not qualify as interactions
-
-   case Iop_PRemC3210F64:  /* C3210 flags resulting from FPREM, :: I32 */
-   case Iop_PRem1C3210F64: /* C3210 flags resulting from FPREM1, :: I32 */
-
-      break;
-
 
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
@@ -1597,7 +1760,7 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
 {
    //   ppIRExpr(e);
-   //   VG_(printf)("\n");
+   //   printf("\n");
 
    switch (e->tag) {
 
@@ -1622,7 +1785,7 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
          else {
 	    static Int static_fresh_count = 0;
 
-            //            VG_(printf)("******PREV CONST******\n");
+            //            printf("******PREV CONST******\n");
 
             // Create one new tag for each dynamic instance of a program
             // literal - this provides perfect context sensitivity, but
@@ -1664,16 +1827,20 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
       case Iex_Qop:
          return expr2tags_Qop_DC(
                    dce,
-                   e->Iex.Qop.op,
-                   e->Iex.Qop.arg1, e->Iex.Qop.arg2,
-		   e->Iex.Qop.arg3, e->Iex.Qop.arg4
+                   e->Iex.Qop.details->op,
+                   e->Iex.Qop.details->arg1,
+                   e->Iex.Qop.details->arg2,
+                   e->Iex.Qop.details->arg3,
+                   e->Iex.Qop.details->arg4
                 );
 
       case Iex_Triop:
          return expr2tags_Triop_DC(
                    dce,
-                   e->Iex.Triop.op,
-                   e->Iex.Triop.arg1, e->Iex.Triop.arg2, e->Iex.Triop.arg3
+                   e->Iex.Triop.details->op,
+                   e->Iex.Triop.details->arg1,
+                   e->Iex.Triop.details->arg2,
+                   e->Iex.Triop.details->arg3
                 );
 
       case Iex_Binop:
@@ -1700,9 +1867,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                                     e->Iex.Mux0X.exprX);
 
       default:
-         VG_(printf)("\n");
+         printf("\n");
          ppIRExpr(e);
-         VG_(printf)("\n");
+         printf("\n");
          VG_(tool_panic)("dyncomp: expr2tags_DC");
    }
 }
@@ -1719,7 +1886,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
    IRDirty  *di, *diLo64, *diHi64, *diAddr;
    IRAtom   *addrHi64;
    IRAtom   *vdata;
-   IRAtom   *vdataLo64, *vdataHi64;
    IRAtom   *vaddr;
    IRTemp   addrTag;
    void*    helper = NULL;
@@ -1732,7 +1898,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
    di = diLo64 = diHi64 = NULL;
    addrHi64 = NULL;
-   vdataLo64 = vdataHi64 = NULL;
 
    tl_assert(data);
    //   tl_assert(isOriginalAtom_DC(dce, data));
