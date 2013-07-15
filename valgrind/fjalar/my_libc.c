@@ -8,6 +8,7 @@
 #include "my_libc.h"
 
 #include "pub_tool_basics.h"
+#include "pub_tool_vki.h"  // needed by pub_tool_libcfile.h
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcfile.h"
@@ -16,6 +17,7 @@
 #include <limits.h>
 
 extern char* fptostr (double x, int width, int preci, char mode, char* buf, int maxlen);
+void setNOBUF(FILE *stream);
 
 /* ctype.h */
 
@@ -49,7 +51,7 @@ int errno;
 
 /* stdio.h */
 
-#define BUFSIZE 4194304
+#define BUFSIZE 4194304  // 0x400000
 
 struct __stdio_file {
   int fd;
@@ -120,6 +122,9 @@ static FILE __stderr = {
 
 FILE *stderr=&__stderr;
 
+void setNOBUF(FILE *stream) {
+    stream->flags |= NOBUF;
+}    
 
 static int __stdio_parse_mode(const char *mode) {
   int f=0;
@@ -197,7 +202,7 @@ int fflush(FILE *stream) {
   if (stream->flags&BUFINPUT) {
     register int tmp;
     if ((tmp=stream->bm-stream->bs)) {
-	VG_(lseek)(stream->fd,tmp,VKI_SEEK_CUR);
+    VG_(lseek)(stream->fd,tmp,VKI_SEEK_CUR);
     }
     stream->bs=stream->bm=0;
   } else if (stream->bm) {
@@ -527,6 +532,9 @@ static int __ltostr(char *s, unsigned int size, unsigned long i,
   return j;
 }
 
+// no longer referenced (markro)
+#if 0
+
 static int copystring(char* buf,int maxlen, const char* s) {
   int i;
   for (i=0; i<3&&i<maxlen; ++i)
@@ -687,6 +695,7 @@ fini:
   return buf-oldbuf;
 }
 
+#endif
 
 static int __v_printf(struct arg_printf* fn, const char *format,
 		      va_list arg_ptr)
@@ -810,7 +819,7 @@ inn_printf:
       /* print an error message */
       case 'm':
 	s=strerror(_errno);
-	sz=strlen(s);
+	sz=VG_(strlen)(s);
 	A_WRITE(fn,s,sz); len+=sz;
 	break;
 #endif
@@ -1036,7 +1045,7 @@ int vfprintf(FILE *stream, const char *format, va_list arg_ptr)
   return __v_printf(&ap,format,arg_ptr);
 }
 
-int fprintf(FILE *f,const char *format,...) {
+int fprintf(FILE *f, const char *format, ...) {
   int n;
   va_list arg_ptr;
   va_start(arg_ptr,format);
@@ -1051,7 +1060,7 @@ int vprintf(const char *format, va_list ap)
   return __v_printf(&_ap,format,ap);
 }
 
-int printf(const char *format,...)
+int printf(const char *format, ...)
 {
   int n;
   va_list arg_ptr;
@@ -1081,30 +1090,40 @@ static int swrite(void*ptr, size_t nmemb, struct str_data* sd) {
   return nmemb;
 }
 
-static int my_vsnprintf(char* str, size_t size, const char *format,
-			va_list arg_ptr) {
+int vsnprintf(char* dest, size_t size, const char *format, va_list arg_ptr)
+{
   int n;
-  struct str_data sd = { str, 0, size?size-1:0 };
+  struct str_data sd = { dest, 0, size?size-1:0 };
   struct arg_printf ap = { &sd, (int(*)(void*,size_t,void*)) swrite };
   n=__v_printf(&ap,format,arg_ptr);
-  if (str && size && n>=0) {
-    if (size!=(size_t)-1 && ((size_t)n>=size)) str[size-1]=0;
-    else str[n]=0;
+  if (dest && size && n>=0) {
+    if (size!=(size_t)-1 && ((size_t)n>=size)) dest[size-1]=0;
+    else dest[n]=0;
   }
   return n;
 }
 
-static int my_vsprintf(char *dest,const char *format, va_list arg_ptr)
-{
-  return my_vsnprintf(dest,(size_t)-1,format,arg_ptr);
-}
-
-int sprintf(char *dest,const char *format,...)
+int snprintf(char *dest, size_t size, const char *format, ...)
 {
   int n;
   va_list arg_ptr;
   va_start(arg_ptr, format);
-  n=my_vsprintf(dest,format,arg_ptr);
+  n=vsnprintf(dest,size,format,arg_ptr);
+  va_end(arg_ptr);
+  return n;
+}
+
+int vsprintf(char *dest, const char *format, va_list arg_ptr)
+{
+  return vsnprintf(dest,(size_t)-1,format,arg_ptr);
+}
+
+int sprintf(char *dest, const char *format, ...)
+{
+  int n;
+  va_list arg_ptr;
+  va_start(arg_ptr, format);
+  n=vsprintf(dest,format,arg_ptr);
   va_end (arg_ptr);
   return n;
 }
@@ -1127,7 +1146,8 @@ long ftell(FILE *stream) {
 
 /* stdlib.h */
 
-void abort(void) {
+// rename from abort to avoid conflict with coregrind::abort (markro)
+void my_abort(void) {
     tl_assert(0);
 }
 
@@ -1305,7 +1325,7 @@ const char* strerror(int errnum)
 }
 
 /* unistd.h */
-int mkfifo(const char *fn, int mode) {
+int mkfifo(const char *fn, __mode_t mode) {
   SysRes res = VG_(mknod)(fn, mode|VKI_S_IFIFO, 0);
   if (sr_isError(res)) {
     errno = sr_Err(res);

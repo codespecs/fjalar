@@ -42,6 +42,8 @@ typedef enum _DeclaredType {
   D_SHORT,
   D_UNSIGNED_INT,
   D_INT,
+  D_UNSIGNED_LONG,
+  D_LONG,
   D_UNSIGNED_LONG_LONG_INT,
   D_LONG_LONG_INT,
 
@@ -246,6 +248,8 @@ TypeEntry UnsignedShortType;
 TypeEntry ShortType;
 TypeEntry UnsignedIntType;
 TypeEntry IntType;
+TypeEntry UnsignedLongType;
+TypeEntry LongType;
 TypeEntry UnsignedLongLongIntType;
 TypeEntry LongLongIntType;
 TypeEntry FloatType;
@@ -1040,6 +1044,7 @@ Manual (documentation/fjalar-www/fjalar_manual.htm) for details.
 
 // Boolean flags
 Bool fjalar_debug;                         // --fjalar-debug
+Bool fjalar_debug_dump;                    // --fjalar-debug-dump
 Bool fjalar_with_gdb;                      // --with-gdb
 Bool fjalar_ignore_constants;              // --ignore-constants
 Bool fjalar_merge_constants;               // --merge-constants

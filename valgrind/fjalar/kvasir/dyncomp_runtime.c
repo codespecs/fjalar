@@ -5,9 +5,9 @@
 /*
   This file is part of DynComp, a dynamic comparability analysis tool
   for C/C++ based upon the Valgrind binary instrumentation framework
-  and the Valgrind MemCheck tool (Copyright (C) 2000-2009 Julian
-  Seward, jseward@acm.org)
-
+  and the Valgrind MemCheck tool.
+  
+   Copyright (C) 2000-2012 Julian Seward (jseward@acm.org),
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
    Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group
@@ -23,6 +23,8 @@
   General Public License for more details.
 */
 
+#include "../my_libc.h"
+
 #include "pub_tool_basics.h"
 #include "pub_tool_libcprint.h"
 #include "pub_tool_machine.h"
@@ -35,8 +37,6 @@
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
 
-#include "../my_libc.h"
-
 #include "../fjalar_include.h"
 
 #include "libvex_guest_x86.h"
@@ -45,6 +45,8 @@ extern int print_info, is_enter;
 extern char* func_name;
 extern char* cur_var_name;
 
+// Cast an intger to a void pointer in a architecture independent way. (markro)
+#define VoidPtr(arg)  (void*)(ptrdiff_t)(arg)
 
 
 // Maps tags to comparability numbers, which are assigned sequentially
@@ -188,7 +190,7 @@ static UInt var_uf_map_find_leader(struct genhashtable* var_uf_map, UInt tag) {
     return 0;
   }
   else {
-    uf_object* uf_obj = (uf_object*)gengettable(var_uf_map, (void*)tag);
+    uf_object* uf_obj = (uf_object*)gengettable(var_uf_map, VoidPtr(tag));
     if (uf_obj) {
       return (uf_find(uf_obj))->tag;
     }
@@ -213,7 +215,7 @@ static uf_object* var_uf_map_insert_and_make_set(struct genhashtable* var_uf_map
 
   new_obj = VG_(malloc)("dyncomp_runtime.c: var_uf_mims", sizeof(*new_obj));
   uf_make_set(new_obj, tag);
-  genputtable(var_uf_map, (void*)tag, (void*)new_obj);
+  genputtable(var_uf_map, VoidPtr(tag), (void*)new_obj);
   return new_obj;
 }
 
@@ -237,8 +239,8 @@ static UInt var_uf_map_union(struct genhashtable* var_uf_map,
     return tag2;
   }
   else { // Good.  Both are valid.
-    uf_object* uf_obj1 = (uf_object*)gengettable(var_uf_map, (void*)tag1);
-    uf_object* uf_obj2 = (uf_object*)gengettable(var_uf_map, (void*)tag2);
+    uf_object* uf_obj1 = (uf_object*)gengettable(var_uf_map, VoidPtr(tag1));
+    uf_object* uf_obj2 = (uf_object*)gengettable(var_uf_map, VoidPtr(tag2));
     uf_object* leader_obj = 0;
 
     // If one of the tags is NOT in var_uf_map, then
@@ -310,7 +312,6 @@ holding tags that belong in the same set (have the same leader).
   struct genhashtable* var_uf_map;
   UInt* var_tags;
   UInt* new_tag_leaders;
-  UChar* bitmatrix;
 
   DYNCOMP_DPRINTF("DC_post_process_for_variable - %p\n", (void *)a);
   // Remember to use only the EXIT structures unless
@@ -318,13 +319,11 @@ holding tags that belong in the same set (have the same leader).
   if (dyncomp_separate_entry_exit_comp && isEnter) {
     var_uf_map = funcPtr->ppt_entry_var_uf_map;
     var_tags = funcPtr->ppt_entry_var_tags;
-    bitmatrix = funcPtr->ppt_entry_bitmatrix;
     new_tag_leaders = funcPtr->ppt_entry_new_tag_leaders;
   }
   else {
     var_uf_map = funcPtr->ppt_exit_var_uf_map;
     var_tags = funcPtr->ppt_exit_var_tags;
-    bitmatrix = funcPtr->ppt_exit_bitmatrix;
     new_tag_leaders = funcPtr->ppt_exit_new_tag_leaders;
   }
 
@@ -373,7 +372,7 @@ holding tags that belong in the same set (have the same leader).
 
   new_leader = val_uf_find_leader(new_tags_v);
   if (new_leader && // We don't want to insert 0 tags into the union find structure
-      !gengettable(var_uf_map, (void*)new_leader)) {
+      !gengettable(var_uf_map, VoidPtr(new_leader))) {
     var_uf_map_insert_and_make_set(var_uf_map, new_leader);
   }
 
@@ -386,7 +385,7 @@ holding tags that belong in the same set (have the same leader).
 
 
 
-  DYNCOMP_DPRINTF("[Dyncomp] %s new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
+  DYNCOMP_TPRINTF("[Dyncomp] %s new_tags[%d]: %u, var_uf_map_union(new_leader: %u, var_tags_v (old): %u) ==> var_tags[%d]: %u (a: %p)\n",
                   cur_var_name,
                   daikonVarIndex,
                   new_tags_v,
@@ -440,7 +439,7 @@ void DC_extra_propagation_post_process(DaikonFunctionEntry* funcPtr,
                                                 leader, var_tags_v);
   }
 
-  DYNCOMP_TPRINTF("Variable processing in %s[%d]: merging distinct values "
+  DYNCOMP_TPRINTF("[Dyncomp] Variable processing in %s[%d]: merging distinct values "
 		  "%d (old) and %d (new) to %d (final round)\n",
 		  funcPtr->funcEntry.name, daikonVarIndex,
 		  var_tags_v, leader, var_tags[daikonVarIndex]);
@@ -499,13 +498,13 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
     // to have it map to g_curCompNumber to produce the correct
     // comparability numbers:
     UInt leader = var_tags[daikonVarIndex];
-    if (gencontains(g_compNumberMap, (void*)leader)) {
-      comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
+    if (gencontains(g_compNumberMap, VoidPtr(leader))) {
+      comp_number = (ptrdiff_t)gengettable(g_compNumberMap, VoidPtr(leader));
     }
     else {
       comp_number = g_curCompNumber;
       g_curCompNumber++;
-      genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
+      genputtable(g_compNumberMap, VoidPtr(leader), VoidPtr(comp_number));
     }
   }
   else {  // default behavior
@@ -523,13 +522,13 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
       UInt leader = val_uf_find_leader(var_uf_map_find_leader(var_uf_map, tag));
 
       var_tags[daikonVarIndex] = leader;
-      if (gencontains(g_compNumberMap, (void*)leader)) {
-        comp_number = (int)gengettable(g_compNumberMap, (void*)leader);
+      if (gencontains(g_compNumberMap, VoidPtr(leader))) {
+        comp_number = (ptrdiff_t)gengettable(g_compNumberMap, VoidPtr(leader));
       }
       else {
         comp_number = g_curCompNumber;
         g_curCompNumber++;
-        genputtable(g_compNumberMap, (void*)leader, (void*)comp_number);
+        genputtable(g_compNumberMap, VoidPtr(leader), VoidPtr(comp_number));
       }
       DYNCOMP_TPRINTF("[Dyncomp] Final tag for Function %s Variable %s - %u\n", funcPtr->funcEntry.name, cur_var_name, leader);
     }
@@ -760,7 +759,7 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
   offsetof(VexGuestX86State, guest_LDT),
   offsetof(VexGuestX86State, guest_GDT),
 
-  offsetof(VexGuestX86State, guest_EMWARN),
+  offsetof(VexGuestX86State, guest_EMNOTE),
 
   offsetof(VexGuestX86State, guest_TISTART),
   offsetof(VexGuestX86State, guest_TILEN)
@@ -813,7 +812,7 @@ void garbage_collect_tags() {
   }
   g_oldToNewMap = VG_(calloc)("dyncomp_runtime.c: garbage_collect_tags.1 ", (nextTag + 1), sizeof(*g_oldToNewMap));
 
-  VG_(printf)("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
+  printf("  Start garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
 
   // This algorithm goes through all places where tags are kept, finds
@@ -950,7 +949,7 @@ void garbage_collect_tags() {
         for (ind = 0; ind < cur_entry->num_entry_daikon_vars; ind++) {
           UInt leader_tag = cur_entry->ppt_entry_var_tags[ind];
           if (leader_tag &&
-              !gencontains(cur_entry->ppt_entry_var_uf_map, (void*)leader_tag)) {
+              !gencontains(cur_entry->ppt_entry_var_uf_map,VoidPtr(leader_tag))) {
             var_uf_map_insert_and_make_set(cur_entry->ppt_entry_var_uf_map, leader_tag);
           }
         }
@@ -993,7 +992,7 @@ void garbage_collect_tags() {
       for (ind = 0; ind < cur_entry->num_exit_daikon_vars; ind++) {
         UInt leader_tag = cur_entry->ppt_exit_var_tags[ind];
         if (leader_tag &&
-            !gencontains(cur_entry->ppt_exit_var_uf_map, (void*)leader_tag)) {
+            !gencontains(cur_entry->ppt_exit_var_uf_map, VoidPtr(leader_tag))) {
           var_uf_map_insert_and_make_set(cur_entry->ppt_exit_var_uf_map, leader_tag);
         }
       }
@@ -1048,7 +1047,7 @@ void garbage_collect_tags() {
   nextTag = newTagNumber;
 
 
-  VG_(printf)("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
+  printf("   Done garbage collecting (next tag = %u, total assigned = %u)\n",
               nextTag, totalNumTagsAssigned);
 
 }
@@ -1325,7 +1324,8 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
     uf_make_set(new_obj, var_index);
     // Overload var_tags to hold uf_object* instead of UInt* for now ...
     // shady!
-    var_tags[var_index] = (UInt)(new_obj);
+    // UNDONE: This doesn't look right for a 64bit address machine (markro)
+    var_tags[var_index] = (UInt)(ptrdiff_t)(new_obj);
   }
 
   // Now iterate through all pairs of variables i and j and merge
@@ -1333,7 +1333,8 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
   for (i = 0; i < num_daikon_vars; i++) {
     for (j = i + 1; j < num_daikon_vars; j++) {
       if (isMarked(bitmatrix, num_daikon_vars, i, j)) {
-        uf_union((uf_object*)var_tags[i], (uf_object*)var_tags[j]);
+    // UNDONE: This doesn't look right for a 64bit address machine (markro)
+        uf_union((uf_object*)(Addr)var_tags[i], (uf_object*)(Addr)var_tags[j]);
       }
     }
   }
@@ -1342,7 +1343,8 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
   // leaders' tag in var_tags[], thereby completing the conversion
   // process:
   for (var_index = 0; var_index < num_daikon_vars; var_index++) {
-    uf_object* cur_obj = (uf_object*)(var_tags[var_index]);
+    // UNDONE: This doesn't look right for a 64bit address machine (markro)
+    uf_object* cur_obj = (uf_object*)(Addr)(var_tags[var_index]);
     uf_object* leader = uf_find(cur_obj);
     var_tags[var_index] = leader->tag;
   }

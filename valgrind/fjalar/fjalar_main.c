@@ -49,6 +49,7 @@
 
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
+Bool fjalar_debug_dump = False;
 Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_constants = False;
 Bool fjalar_merge_constants = False;
@@ -158,6 +159,8 @@ char* dwarf_reg_string[9] = {
   "xIP"
 };
 
+// located in VEX/priv/main_util.c  (markro)
+extern void vex_bzero ( void* s, UInt n );
 
 /*------------------------------------------------------------*/
 /*--- Entry and Exit Handling                              ---*/
@@ -244,6 +247,8 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 
     // We need all general purpose registers.
     di->nFxState = 9;
+    vex_bzero(&di->fxState, sizeof(di->fxState));
+
     di->fxState[0].fx     = Ifx_Read;
     di->fxState[0].offset = mce->layout->offset_SP;
     di->fxState[0].size   = mce->layout->sizeof_SP;
@@ -263,10 +268,10 @@ static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
     di->fxState[5].fx     = Ifx_Read;
     di->fxState[5].offset = mce->layout->offset_xCX;
     di->fxState[5].size   = mce->layout->sizeof_xCX;
+
     di->fxState[6].fx     = Ifx_Read;
     di->fxState[6].offset = mce->layout->offset_xDX;
     di->fxState[6].size   = mce->layout->sizeof_xDX;
-
     di->fxState[7].fx     = Ifx_Read;
     di->fxState[7].offset = mce->layout->offset_xSI;
     di->fxState[7].size   = mce->layout->sizeof_xSI;
@@ -454,8 +459,8 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       // integer registers,  FTOP, and FPREG[], so make sure that they are
       // updated by setting the proper annotations.
       di->nFxState = 11;
+      vex_bzero(&di->fxState, sizeof(di->fxState));
 
-      di->nFxState = 9;
       di->fxState[0].fx     = Ifx_Read;
       di->fxState[0].offset = mce->layout->offset_SP;
       di->fxState[0].size   = mce->layout->sizeof_SP;
@@ -475,10 +480,10 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[5].fx     = Ifx_Read;
       di->fxState[5].offset = mce->layout->offset_xCX;
       di->fxState[5].size   = mce->layout->sizeof_xCX;
+
       di->fxState[6].fx     = Ifx_Read;
       di->fxState[6].offset = mce->layout->offset_xDX;
       di->fxState[6].size   = mce->layout->sizeof_xDX;
-
       di->fxState[7].fx     = Ifx_Read;
       di->fxState[7].offset = mce->layout->offset_xSI;
       di->fxState[7].size   = mce->layout->sizeof_xSI;
@@ -489,7 +494,6 @@ void handle_possible_exit(MCEnv* mce, IRJumpKind jk) {
       di->fxState[9].fx     = Ifx_Read;
       di->fxState[9].offset = offsetof(VexGuestArchState, guest_FTOP);
       di->fxState[9].size   = sizeof(UInt); /* FTOP is 4 bytes even on x64 */
-
       di->fxState[10].fx     = Ifx_Read;
       di->fxState[10].offset = offsetof(VexGuestArchState, guest_FPREG);
       di->fxState[10].size   = 8 * sizeof(ULong);
@@ -585,7 +589,7 @@ void enter_function(FunctionEntry* f)
   // fine.
   if(frame_ptr == 0) {
     if (f != primed_function) {
-      VG_(printf)("No location list or frame pointer giving up(Mangled name: %s)\n", f->mangled_name);
+      printf("No location list or frame pointer giving up(Mangled name: %s)\n", f->mangled_name);
       return;
     }
     primed_function = 0;
@@ -671,7 +675,7 @@ void enter_function(FunctionEntry* f)
 
   }
   else {
-    VG_(printf)("Obtained a stack size of 0 for Function: %s. Aborting\n", f->fjalar_name);
+    printf("Obtained a stack size of 0 for Function: %s. Aborting\n", f->fjalar_name);
     tl_assert(0);
   }
 
@@ -723,7 +727,7 @@ void exit_function(FunctionEntry* f)
   fpuReturnVal = *(double *)VG_(get_XMM_N)(currentTID, 0);
   //RUDD DEBUG
   /* for(i=0 ; i < 4; i++) { */
-  /*   VG_(printf)("Testing %d\n", test[i]); */
+  /*   printf("Testing %d\n", test[i]); */
   /*   printf("shadow: %x\n", testing[i]); */
   /* }    */
 
@@ -756,7 +760,7 @@ void exit_function(FunctionEntry* f)
 
   // Only do something if top->func matches func
   if (!top->func) {
-    VG_(printf)("More exit_function()s than entry_function()s!\n");
+    printf("More exit_function()s than entry_function()s!\n");
     // RUDD EXCEPTION
     VG_(get_and_pp_StackTrace) (currentTID, 15);
     return;
@@ -775,7 +779,7 @@ void exit_function(FunctionEntry* f)
     // (these would be all the functions that had non-local
     // exits) until we encounter the Function Execution State
     // Stack corresponding to our function.
-    VG_(printf)("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
+    printf("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
 		top->func->fjalar_name,
                 (void *)top->func->entryPC,
@@ -877,14 +881,14 @@ static void loadAuxiliaryFileData(void) {
   if (fjalar_trace_prog_pts_filename) {
     if ((trace_prog_pts_input_fp =
 	 fopen(fjalar_trace_prog_pts_filename, "r"))) {
-      VG_(printf)( "\nBegin processing program point list file \"%s\" ...\n",
+      printf( "\nBegin processing program point list file \"%s\" ...\n",
 		   fjalar_trace_prog_pts_filename);
       initializeProgramPointsTree();
-      VG_(printf)( "Done processing program point list file \"%s\"\n",
+      printf( "Done processing program point list file \"%s\"\n",
 		   fjalar_trace_prog_pts_filename);
     }
     else {
-      VG_(printf)( "\nError: \"%s\" is an invalid filename for the program point list file specified by the --ppt-list-file option.\n\nExiting.\n\n",
+      printf( "\nError: \"%s\" is an invalid filename for the program point list file specified by the --ppt-list-file option.\n\nExiting.\n\n",
 		   fjalar_trace_prog_pts_filename);
 
       VG_(exit)(1);
@@ -894,14 +898,14 @@ static void loadAuxiliaryFileData(void) {
   if (fjalar_trace_vars_filename) {
     if ((trace_vars_input_fp
 	 = fopen(fjalar_trace_vars_filename, "r"))) {
-      VG_(printf)( "\nBegin processing variable list file \"%s\" ...\n",
+      printf( "\nBegin processing variable list file \"%s\" ...\n",
 		   fjalar_trace_vars_filename);
       initializeVarsTree();
-      VG_(printf)( "Done processing variable list file \"%s\"\n",
+      printf( "Done processing variable list file \"%s\"\n",
 		   fjalar_trace_vars_filename);
     }
     else {
-      VG_(printf)( "\nError: \"%s\" is an invalid filename for the variable list file specified by the --var-list-file option.\n\nExiting.\n\n",
+      printf( "\nError: \"%s\" is an invalid filename for the variable list file specified by the --var-list-file option.\n\nExiting.\n\n",
 		   fjalar_trace_vars_filename);
 
       VG_(exit)(1);
@@ -930,7 +934,7 @@ static void outputAuxiliaryFilesAndExit(void) {
       prog_pt_dump_fp = fopen(fjalar_dump_prog_pt_names_filename, "w");
       tl_assert(prog_pt_dump_fp);
       outputProgramPointsToFile();
-      VG_(printf)("\nDone generating program point list (ppt-list) file %s\n",
+      printf("\nDone generating program point list (ppt-list) file %s\n",
                   fjalar_dump_prog_pt_names_filename);
       fclose(prog_pt_dump_fp);
       prog_pt_dump_fp = 0;
@@ -940,7 +944,7 @@ static void outputAuxiliaryFilesAndExit(void) {
       var_dump_fp = fopen(fjalar_dump_var_names_filename, "w");
       tl_assert(var_dump_fp);
       outputVariableNamesToFile();
-      VG_(printf)("\nDone generating variable list (var-list) file %s\n",
+      printf("\nDone generating variable list (var-list) file %s\n",
                   fjalar_dump_var_names_filename);
       fclose(var_dump_fp);
       var_dump_fp = 0;
@@ -950,7 +954,7 @@ static void outputAuxiliaryFilesAndExit(void) {
     if (fjalar_xml_output_filename) {
       xml_output_fp = fopen(fjalar_xml_output_filename, "w");
       outputAllXMLDeclarations();
-      VG_(printf)("\nDone generating XML file %s\n",
+      printf("\nDone generating XML file %s\n",
                   fjalar_xml_output_filename);
       fclose(xml_output_fp);
       xml_output_fp = 0;
@@ -988,7 +992,7 @@ void fjalar_post_clo_init()
   VG_(clo_vex_control).iropt_unroll_thresh = 0;
   VG_(clo_vex_control).guest_chase_thresh = 0;
 
-  executable_filename = VG_(args_the_exename);
+  executable_filename = (char*)VG_(args_the_exename);
 
   if (fjalar_with_gdb) {
     int x = 0;
@@ -1053,9 +1057,9 @@ void fjalar_post_clo_init()
 // Prints the help message when Fjalar is invoked with the --help option
 void fjalar_print_usage()
 {
-   VG_(printf)("\n  User options for Fjalar framework:\n");
+   printf("\n  User options for Fjalar framework:\n");
 
-   VG_(printf)(
+   printf(
 "\n  Selective program point and variable tracing:\n"
 "    --ppt-list-file=<string> Trace only the program points listed in this file\n"
 "    --var-list-file=<string> Trace only the variables listed in this file\n"
@@ -1089,6 +1093,7 @@ void fjalar_print_usage()
 "    --xml-output-file=<string>  Output declarations in XML format to a file\n"
 "    --with-gdb               Hang during init. so that GDB can attach to it\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
+"    --fjalar-debug-dump      Mimic /usr/bin/readelf --debug_dump\n"
    );
    // Make sure to execute this last!
    fjalar_tool_print_usage();
@@ -1102,6 +1107,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
 {
 
   if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}
+  else if VG_YESNO_CLO(arg, "fjalar-debug-dump", fjalar_debug_dump) {}
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-constants", fjalar_ignore_constants) {}
@@ -1147,7 +1153,7 @@ void fjalar_finish(void) {
   // one element or multiple elements throughout this particular execution
   if (disambig_writing && fjalar_smart_disambig) {
     generateDisambigFile();
-    VG_(printf)("\nDone generating .disambig file %s\n",
+    printf("\nDone generating .disambig file %s\n",
                 fjalar_disambig_filename);
     fclose(disambig_fp);
     disambig_fp = 0;

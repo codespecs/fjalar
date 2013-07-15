@@ -17,9 +17,10 @@
 // with union-by-rank and path-compression
 // Based on http://www.cs.rutgers.edu/~chvatal/notes/uf.html
 
+#include "../my_libc.h"
+
 #include "union_find.h"
 #include "kvasir_main.h"
-#include "../my_libc.h"
 
 uf_name uf_find(uf_object *object) {
   uf_object *root, *next;
