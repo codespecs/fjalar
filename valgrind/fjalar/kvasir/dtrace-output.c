@@ -465,16 +465,14 @@ static char printDtraceSingleVar(VariableEntry* var,
   // Base type
   else {
     DeclaredType decType = var->varType->decType;
-
+#if defined(VGA_x86)
     // override float as double when printing
     // out function return variables because
     // return variables stored in registers are always doubles
-    char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
-
-    if (overrideFloatAsDouble && (decType == D_FLOAT)) {
+    if ((varOrigin == FUNCTION_RETURN_VAR) && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
     }
-
+#endif
     return printDtraceSingleBaseValue(pValue,
 				      decType,
 				      overrideIsInit,
@@ -601,7 +599,7 @@ static char printDtraceSequence(VariableEntry* var,
 
           DTRACE_PRINTF("%p ", IS_STATIC_ARRAY_VAR(var) ?
                         (void *)pCurValueGuest :
-		                (void *)(*(Addr *)pCurValue);
+		                (void *)(*(Addr *)pCurValue));
 
           // Merge the tags of the 4-bytes of the observed pointer as
           // well as the tags of the first initialized address and the
@@ -657,16 +655,14 @@ static char printDtraceSequence(VariableEntry* var,
   // Base type
   else {
     DeclaredType decType = var->varType->decType;
-
+#if defined(VGA_x86)
     // override float as double when printing
     // out function return variables because
     // return variables stored in registers are always doubles
-    char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
-
-    if (overrideFloatAsDouble && (decType == D_FLOAT)) {
+    if ((varOrigin == FUNCTION_RETURN_VAR) && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
     }
-
+#endif
     printDtraceBaseValueSequence(decType,
                                  pValueArray,
                                  numElts,
