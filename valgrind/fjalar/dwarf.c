@@ -2754,6 +2754,7 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 
 	  if (op_code >= linfo.li_opcode_base)
 	    {
+        // It is a so-called special opcode.    
 	      op_code -= linfo.li_opcode_base;
 	      uladv = (op_code / linfo.li_line_range);
 	      if (linfo.li_max_ops_per_insn == 1)
@@ -2795,7 +2796,7 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
               printf (_(" and Line by %s to %d\n"),
 		      dwarf_vmatoa ("d", adv), state_machine_regs.line);
 		  // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-			  // dwarf_vmatoa ("x", uladv),
+		      // dwarf_vmatoa ("x", uladv),
 			  // dwarf_vmatoa ("x", state_machine_regs.address));
 	    }
 	  else switch (op_code)
@@ -2814,9 +2815,9 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 	      genputtable(next_line_addr,
               (void *)(ptrdiff_t)state_machine_regs.last_address,
 			  (void *)(ptrdiff_t)state_machine_regs.address);
-		  // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-			  // dwarf_vmatoa ("x", state_machine_regs.last_address),
-			  // dwarf_vmatoa ("x", state_machine_regs.address));
+		   // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
+			   // dwarf_vmatoa ("x", state_machine_regs.address));
 	      state_machine_regs.last_address = state_machine_regs.address;
 	      break;
 
@@ -2851,9 +2852,9 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 	      genputtable(next_line_addr,
               (void *)(ptrdiff_t)state_machine_regs.last_address,
 			  (void *)(ptrdiff_t)state_machine_regs.address);
-		  // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-			  // dwarf_vmatoa ("x", state_machine_regs.last_address),
-			  // dwarf_vmatoa ("x", state_machine_regs.address));
+		   // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
+			   // dwarf_vmatoa ("x", state_machine_regs.address));
 	      state_machine_regs.last_address = state_machine_regs.address;
           break;
 
@@ -2926,13 +2927,21 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 			  dwarf_vmatoa ("x", state_machine_regs.address),
 			  state_machine_regs.op_index);
 		}
+
+#if 0        
+// It turns out that more often that not DW_LNS_const_add_pc advances to an
+// illegal instruction address.  It is a single byte opcode (designed to save
+// space) that advances the pc by a fixed amount (17 bytes on x86-64). I believe
+// it is always followed by special opcode that sets the pc correctly.  (markro)
+// Hence, we set the current address (above), but do nothing else.
 	      genputtable(next_line_addr,
 			  (void *)(ptrdiff_t)state_machine_regs.last_address,
 			  (void *)(ptrdiff_t)state_machine_regs.address);
-		  // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-			  // dwarf_vmatoa ("x", state_machine_regs.last_address),
-			  // dwarf_vmatoa ("x", state_machine_regs.address));
+		   // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
+			   // dwarf_vmatoa ("x", state_machine_regs.address));
 	      state_machine_regs.last_address = state_machine_regs.address;
+#endif
           break;
 
 	    case DW_LNS_fixed_advance_pc:
@@ -2947,9 +2956,9 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 	      genputtable(next_line_addr,
 			  (void *)(ptrdiff_t)state_machine_regs.last_address,
 			  (void *)(ptrdiff_t)state_machine_regs.address);
-		  // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-			  // dwarf_vmatoa ("x", state_machine_regs.last_address),
-			  // dwarf_vmatoa ("x", state_machine_regs.address));
+		   // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
+			   // dwarf_vmatoa ("x", state_machine_regs.address));
 	      state_machine_regs.last_address = state_machine_regs.address;
           break;
 
