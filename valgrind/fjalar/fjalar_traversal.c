@@ -335,6 +335,7 @@ void visitClassMemberVariables(VisitArgs* args) {
   tl_assert(((class->decType == D_STRUCT_CLASS) || (class->decType == D_UNION)) &&
             IS_AGGREGATE_TYPE(class));
 
+  FJALAR_DPRINTF("Enter visitClassMemberVariables\n");
 
   // Check to see if the VisitedStructsTable contains more than
   // fjalar_max_visit_struct_depth of the current struct type
@@ -871,11 +872,13 @@ void visitVariableGroup(VariableOrigin varOrigin,
     tl_assert(varOrigin == FUNCTION_FORMAL_PARAM);
   }
 
+  FJALAR_DPRINTF("Enter visitVariableGroup\n");
+
   switch (varOrigin) {
   case GLOBAL_VAR:
     // Punt if we are ignoring globals!
     if (fjalar_ignore_globals) {
-      FJALAR_DPRINTF("[visitVariableGroup] Ignoring request for global variables\n");
+      FJALAR_DPRINTF("\t[visitVariableGroup] Ignoring request for global variables\n");
       return;
     }
     varListPtr = &globalVars;
@@ -1146,17 +1149,18 @@ void visitReturnValue(FunctionExecutionState* e,
 
   funcPtr = e->func;
   tl_assert(funcPtr);
-  FJALAR_DPRINTF("visitReturnValue\n");
-
-  // We need to push the return value name onto the string stack!
-  stringStackClear(&fullNameStack);
-
   cur_node = funcPtr->returnValue.first;
 
   // This happens when there is a void function with no return value:
   if (!cur_node) {
+    FJALAR_DPRINTF("Enter visitReturnValue - void return\n");
     return;
   }
+
+  FJALAR_DPRINTF("Enter visitReturnValue - var: %s\n", cur_node->var->name);
+
+  // We need to push the return value name onto the string stack!
+  stringStackClear(&fullNameStack);
 
   tl_assert(cur_node->var);
   tl_assert(cur_node->var->name);
@@ -1389,11 +1393,12 @@ void visitVariable(VariableEntry* var,
   // instead of this list of arguments. This would require a change
   // in the Fjalar API however.
   VisitArgs new_args;
-
   char* trace_vars_tree = NULL;
   
   tl_assert(varOrigin != DERIVED_VAR);
   tl_assert(varOrigin != DERIVED_FLATTENED_ARRAY_VAR);
+
+  FJALAR_DPRINTF("Enter visitVariable - var: %s\n", var->name);
 
   // In preparation for a new round of variable visits, initialize a
   // new VisitedStructsTable, freeing an old one if necessary
@@ -1484,8 +1489,9 @@ void visitSingleVar(VisitArgs* args) {
   Bool needToDerefCppRef;
 
   TraversalResult tResult = INVALID_RESULT;
-
   tl_assert(var);
+  
+  FJALAR_DPRINTF("Enter visitSingleVar - var: %s\n", var->name);
 
   needToDerefCppRef = ((var->referenceLevels > 0) && (numDereferences == 0));
 
@@ -1734,8 +1740,7 @@ void visitSingleVar(VisitArgs* args) {
           pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.1" , numElts * sizeof(Addr));
           pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.2", numElts * sizeof(Addr));
 
-          //          printf("Static array - dims: %u, numElts: %u\n",
-          //                      var->numDimensions, numElts);
+          FJALAR_DPRINTF("Static array - dims: %u, numElts: %u\n", var->staticArr->numDimensions, numElts);
 
           // Build up pValueArray with pointers to the elements of the
           // static array starting at pValue
@@ -1773,7 +1778,8 @@ void visitSingleVar(VisitArgs* args) {
             numElts = 1 + returnArrayUpperBoundFromPtr(var, (Addr)pNewStartValue);
             pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.3", numElts * sizeof(Addr));
             pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.4" ,numElts * sizeof(Addr));
-	    //	    printf("numElts is %d\n", numElts);
+
+	        FJALAR_DPRINTF("numElts is %d\n", numElts);
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {
@@ -1919,6 +1925,9 @@ void visitSequence(VisitArgs* args) {
   TraversalResult tResult = INVALID_RESULT;
 
   tl_assert(var);
+
+  FJALAR_DPRINTF("Enter visitSequence - var: %s\n", var->name);
+
   layersBeforeBase = var->ptrLevels - numDereferences;
 
   // Special hack for strings:
