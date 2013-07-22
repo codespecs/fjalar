@@ -50,6 +50,7 @@
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
 Bool fjalar_debug_dump = False;
+Bool fjalar_print_dwarf = False;
 Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_constants = False;
 Bool fjalar_merge_constants = False;
@@ -1094,6 +1095,7 @@ void fjalar_print_usage()
 "    --with-gdb               Hang during init. so that GDB can attach to it\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
 "    --fjalar-debug-dump      Mimic /usr/bin/readelf --debug_dump\n"
+"    --fjalar-print-dwarf     Print internal dwarf entry table (reguires --fjalar-debug)\n"
    );
    // Make sure to execute this last!
    fjalar_tool_print_usage();
@@ -1108,6 +1110,7 @@ Bool fjalar_process_cmd_line_option(Char* arg)
 
   if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}
   else if VG_YESNO_CLO(arg, "fjalar-debug-dump", fjalar_debug_dump) {}
+  else if VG_YESNO_CLO(arg, "fjalar-print-dwarf", fjalar_print_dwarf) {}
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-constants", fjalar_ignore_constants) {}

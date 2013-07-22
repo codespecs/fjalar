@@ -69,7 +69,7 @@ static debug_info *debug_information = NULL;
 #define DEBUG_INFO_UNAVAILABLE  (unsigned int) -1
 
 // Symbolic constants for the display attribute routines (markro)
-//   Second pass through attributes in process_debug_info?
+//   Second pass through attributes in process_debug_info
 #define PASS_1            0
 #define PASS_2            1
 //   OK for typedata to harvest this data?
@@ -2100,7 +2100,6 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
       
       num_units++;
 
-      // UNDONE: some places check 3, some check 4.     (markro)
       if (compunit.cu_version != 2 && compunit.cu_version != 3)
 	{
 	  warn (_("Only version 2 and 3 DWARF debug information is currently supported.\n"));
@@ -2508,7 +2507,8 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
   finish_dwarf_entry_array_init();
 
   // Print contents of array for help debugging
-  // print_dwarf_entry_array();
+  if (fjalar_print_dwarf)
+      print_dwarf_entry_array();
 
   if (fjalar_debug_dump)
       printf ("\n");

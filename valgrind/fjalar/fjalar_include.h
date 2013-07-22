@@ -1045,6 +1045,7 @@ Manual (documentation/fjalar-www/fjalar_manual.htm) for details.
 // Boolean flags
 Bool fjalar_debug;                         // --fjalar-debug
 Bool fjalar_debug_dump;                    // --fjalar-debug-dump
+Bool fjalar_print_dwarf;                   // --fjalar-print-dwarf
 Bool fjalar_with_gdb;                      // --with-gdb
 Bool fjalar_ignore_constants;              // --ignore-constants
 Bool fjalar_merge_constants;               // --merge-constants

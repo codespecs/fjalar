@@ -520,6 +520,8 @@ char harvest_file_name_table(unsigned long debug_line_offset, XArray* table)
 
 char harvest_sibling(dwarf_entry* e, unsigned long value)
 {
+  if ((e == 0) || (e->entry_ptr == 0))
+    return 0;
   e->sibling_ID = value;
   return 1;
 }
