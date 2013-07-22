@@ -269,8 +269,7 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 #define VA_BITS16_UNDEFINED   0x5555   // 01_01_01_01b x 2
 #define VA_BITS16_DEFINED     0xaaaa   // 10_10_10_10b x 2
 
-// UNDONE (markro)
-// These definitons conflict with the ones in kvasir/dyncomp_main.h.
+// These definitons conflict with the ones in kvasir/dyncomp_main.h. (markro)
 #undef  SM_OFF
 #undef  SM_OFF_16
 

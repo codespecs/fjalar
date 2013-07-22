@@ -927,14 +927,13 @@ printDeclsEntryAction(VariableEntry* var,
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
         // since Daikon ignores them.
-	cur_var_name = varName;
+        cur_var_name = varName;
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
 
-        fputs("    comparability ", decls_fp);
-        fprintf(decls_fp, "%d", comp_number);
-        fputs("\n", decls_fp);
+        fprintf(decls_fp, "    comparability %d\n", comp_number);
+        DPRINTF("    comparability %d\n", comp_number);
       }
     }
     else {
