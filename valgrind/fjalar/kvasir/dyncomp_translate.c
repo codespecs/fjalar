@@ -703,7 +703,7 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
 
          // If we are running in units mode, then we should merge the
          // tags of the 3rd and 4th operands:
-// UNDONE: I think maybe we should just return tags of 4th operand. (markro)
+// QUESTION: Should we just return tags of 4th operand? (markro)
          if (dyncomp_units_mode) {
             return mkIRExprCCall (Ity_Word,
                                   2 /*Int regparms*/,
@@ -857,8 +857,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
 }
 
 
-// pgbovine TODO: Update with new opcodes for Valgrind 3.1.0
-//                Look at expr2vbits_Binop() from ../mc_translate.c:
+// TODO: Look at expr2vbits_Binop() from ../mc_translate.c
+// and make sure we've covered all possible cases.
 static
 IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
@@ -1364,7 +1364,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_SetV128lo32:  // :: (V128,I32) -> V128
    case Iop_SetV128lo64:
 
-      // UNDONE: shouldn't this test dyncomp_dataflow_only_mode?  (markro)
       if (!dyncomp_dataflow_comparisons_mode) {
          return vatom1;
       }
@@ -1449,8 +1448,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
-      // pgbovine TODO: Look at expr2vbits_Binop() from ../mc_translate.c
-      //                and make sure we've covered all possible cases.
+      // TODO: Look at expr2vbits_Binop() from ../mc_translate.c
+      // and make sure we've covered all possible cases.
    default:
       ppIROp(op);
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
