@@ -69,7 +69,7 @@ static debug_info *debug_information = NULL;
 #define DEBUG_INFO_UNAVAILABLE  (unsigned int) -1
 
 // Symbolic constants for the display attribute routines (markro)
-//   Second pass through attributes in process_debug_info
+//   Second pass through attributes in process_debug_info?
 #define PASS_1            0
 #define PASS_2            1
 //   OK for typedata to harvest this data?
@@ -1964,8 +1964,8 @@ read_and_display_attr (unsigned long attribute,
 static int
 process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file)
 {
-  unsigned char *end = start + section->sh_size;
   unsigned char *section_begin = start;
+  unsigned char *section_end = section_begin + section->sh_size;
   unsigned int unit;
   unsigned int num_units = 0;
 
@@ -1975,19 +1975,14 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 
   // PG - Do one dummy run to see how many entries need to be put in the dwarf_entry array
   // The sole purpose of this run is to get a number into num_relevant_entries
-  Elf_Internal_Shdr *section_dummy = section;
-  unsigned char *start_dummy = start;
-  FILE *file_dummy = file;
+  unsigned char *section_ptr = section_begin;
 
-  unsigned char *end_dummy = start_dummy + section_dummy->sh_size;
-  unsigned char *section_begin_dummy = start_dummy;
+  //  printf (_("The section %s contains:\n\n"), SECTION_NAME (section));
 
-  //  printf (_("The section %s contains:\n\n"), SECTION_NAME (section_dummy));
+  load_debug_str (file);
+  //load_debug_loc (file);
 
-  load_debug_str (file_dummy);
-  //load_debug_loc (file_dummy);
-
-  while (start_dummy < end_dummy)
+  while (section_ptr < section_end)
     {
       DWARF2_Internal_CompUnit compunit;
       Elf_Internal_Shdr *relsec;
@@ -2000,7 +1995,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
       int offset_size;
       int initial_length_size;
 
-      hdrptr = start_dummy;
+      hdrptr = section_ptr;
 
       compunit.cu_length = byte_get (hdrptr, 4);
       hdrptr += 4;
@@ -2033,25 +2028,25 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 	  Elf_Internal_Sym *sym;
 
 	  if (relsec->sh_type != SHT_RELA
-	      || SECTION_HEADER (relsec->sh_info) != section_dummy
+	      || SECTION_HEADER (relsec->sh_info) != section
 	      || relsec->sh_size == 0)
 	    continue;
 
-	  if (!slurp_rela_relocs (file_dummy, relsec->sh_offset, relsec->sh_size,
+	  if (!slurp_rela_relocs (file, relsec->sh_offset, relsec->sh_size,
 				  & rela, & nrelas))
 	    return 0;
 
 	  symsec = SECTION_HEADER (relsec->sh_link);
-	  symtab = GET_ELF_SYMBOLS (file_dummy, symsec);
+	  symtab = GET_ELF_SYMBOLS (file, symsec);
 
 	  for (rp = rela; rp < rela + nrelas; ++rp)
 	    {
 	      unsigned char *loc;
 
-	      if (rp->r_offset >= (bfd_vma) (hdrptr - section_begin_dummy)
-		  && section_dummy->sh_size > (bfd_vma) offset_size
-		  && rp->r_offset <= section_dummy->sh_size - offset_size)
-		loc = section_begin_dummy + rp->r_offset;
+	      if (rp->r_offset >= (bfd_vma) (hdrptr - section_begin)
+		  && section->sh_size > (bfd_vma) offset_size
+		  && rp->r_offset <= section->sh_size - offset_size)
+		loc = section_begin + rp->r_offset;
 	      else
 		continue;
 
@@ -2095,8 +2090,8 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
       hdrptr += 1;
 
       tags = hdrptr;
-      cu_offset = start_dummy - section_begin_dummy;
-      start_dummy += compunit.cu_length + initial_length_size;
+      cu_offset = section_ptr - section_begin;
+      section_ptr += compunit.cu_length + initial_length_size;
       
       num_units++;
 
@@ -2127,7 +2122,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 	  }
 
 	begin = ((unsigned char *)
-		 get_data (NULL, file_dummy, sec->sh_offset, sec->sh_size,
+		 get_data (NULL, file, sec->sh_offset, sec->sh_size,
 			   _("debug_abbrev section data")));
 	if (!begin)
 	  return 0;
@@ -2139,7 +2134,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
       }
 
       level = 0;
-      while (tags < start_dummy)
+      while (tags < section_ptr)
 	{
 	  int bytes_read;
 	  unsigned long abbrev_number;
@@ -2225,7 +2220,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
   //load_debug_loc (file);
 
   unit = 0;
-  while (start < end)
+  while (start < section_end)
     {
       DWARF2_Internal_CompUnit compunit;
       Elf_Internal_Shdr *relsec;
@@ -4145,8 +4140,10 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	      if (op & 0xc0)
 		op &= 0xc0;
 
-	      /* Warning: if you add any more cases to this switch, be
-	         sure to add them to the corresponding switch below.  */
+	    /* Warning: if you add any more cases to this switch, be
+	       sure to add them to the corresponding switch below.  */
+        // This is not true in standalone dwarf.c (markro)   
+
 	      switch (op)
 		{
 		case DW_CFA_advance_loc:
@@ -4268,6 +4265,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 
 	  /* Warning: if you add any more cases to this switch, be
 	     sure to add them to the corresponding switch above.  */
+      // This is not true in standalone dwarf.c (markro)   
 	  switch (op)
 	    {
 	    case DW_CFA_advance_loc:

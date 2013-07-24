@@ -26,11 +26,6 @@
 
 #include "libvex.h"              // for all Vex stuff
 
-//#include "tool.h"
-
-// WARNING! Some comments may be bogus because I've copied-and-pasted
-// from MemCheck
-
 IRTemp findShadowTmp_DC ( DCEnv* dce, IRTemp orig );
 IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e );
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,

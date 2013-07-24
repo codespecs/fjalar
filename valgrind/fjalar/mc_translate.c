@@ -5568,14 +5568,22 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                             st->Ist.LLSC.storedata );
             
 #ifndef _NO_DYNCOMP
-            /* MarkRo TODO:
+            /* WARNING/UNDONE:
                In changeset 638 Ist_LLSC was added (was part of Ist_Store).
                The corresponding change was not made to the DYNCOMP code.
-               I have just copied the code from Ist_Store to here, I have
-               no idea if it is the right thing to do or not.
+               I have made a partial guess as to what should be done here,
+               but its not finished.  Doesn't really matter as instruction
+               is on PPC, MIPS and ARM - none of which we support. (markro)
             */
-            if (kvasir_with_dyncomp)
-               do_shadow_STle_DC( &dce, st->Ist.Store.addr, st->Ist.Store.data);
+            if (kvasir_with_dyncomp) {
+                if (st->Ist.LLSC.storedata) {
+                    // it's a Store-Conditional
+                    do_shadow_STle_DC( &dce, st->Ist.LLSC.addr, st->Ist.LLSC.storedata);
+                } else {
+                    // it's a Load-Linked
+                    // UNDONE!
+                }
+            }
 #endif /* _NO_DYNCOMP */
             break;
 
