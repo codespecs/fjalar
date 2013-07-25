@@ -17,9 +17,12 @@ coregrind/link_tool_exe_linux
 valgrind/aclocal.m4
 valgrind/autom4te.cache
 valgrind/configure
+valgrind/config.guess
 valgrind/config.h
+valgrind/config.h.in
 valgrind/config.log
 valgrind/config.status
+valgrind/config.sub
 valgrind/default.supp
 valgrind/glibc-2.X.supp
 valgrind/stamp-h1

@@ -50,8 +50,10 @@
 #define INT_XBX(regs)      ((regs).vex.VG_XBX)
 #define INT_XSI(regs)      ((regs).vex.VG_XSI)
 #define INT_XDI(regs)      ((regs).vex.VG_XDI)
+#if defined(VGA_amd64)
 #define CASE_XMM(regs, N)        case N: return (regs).vex.guest_YMM##N; break;
 #define CASE_SHADOW_XMM(regs, N) case N: return (regs).vex_shadow1.guest_YMM##N; break;
+#endif
 
 Addr VG_(get_SP) ( ThreadId tid )
 {
@@ -88,7 +90,7 @@ Addr VG_(get_xDI) ( ThreadId tid )
   return INT_XDI( VG_(threads)[tid].arch );
 }
 
-
+#if defined(VGA_amd64)
 UInt* VG_(get_XMM_N)( ThreadId tid, UInt num )  
 {
   switch(num) {
@@ -99,7 +101,6 @@ UInt* VG_(get_XMM_N)( ThreadId tid, UInt num )
   }
 }
 
-#if defined(VGA_amd64)
 Addr VG_(get_R8)  ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R8;}
 Addr VG_(get_R9)  ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R9;}
 Addr VG_(get_R10) ( ThreadId tid ){ return VG_(threads)[tid].arch.vex.guest_R10;}
@@ -147,12 +148,15 @@ void VG_(set_IP) ( ThreadId tid, Addr ip )
 
 // PG begin - Hacked to provide useful return value information for
 // Kvasir (we really need a more elegant solution)
+
+#if defined(VGA_x86)
 double VG_(get_FPU_stack_top) ( ThreadId tid ) // 64-bit read
 {
    // Remember to re-interpret cast this as a double instead of a ULong
    return *((double*)(&(VG_(threads)[tid].arch.vex.guest_FPREG
                         [VG_(threads)[tid].arch.vex.guest_FTOP & 7])));
 }
+#endif
 
 UWord VG_(get_shadow_xAX) ( ThreadId tid )
 {
@@ -164,12 +168,7 @@ UWord VG_(get_shadow_xDX) ( ThreadId tid )
    return VG_(threads)[tid].arch.vex_shadow1.VG_INT_RET2_REG;
 }
 
-ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
-{
-   return VG_(threads)[tid].arch.
-      vex_shadow1.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
-}
-
+#if defined(VGA_amd64)
 UInt* VG_(get_shadow_XMM_N)( ThreadId tid, UInt num )  
 {
   
@@ -184,6 +183,13 @@ UInt* VG_(get_shadow_XMM_N)( ThreadId tid, UInt num )
     tl_assert(0 && "xmm2-15 not yet implemented");   
   }
 }
+#else
+ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ) // 64-bit read
+{
+   return VG_(threads)[tid].arch.
+      vex_shadow1.guest_FPREG[VG_(threads)[tid].arch.vex.guest_FTOP & 7];
+}
+#endif
 
 // Ok, if the stuff before were hacks, then these are SUPER HACKS
 // because it relies on our ad-hoc (4 * offset) reference into
@@ -200,13 +206,14 @@ UWord VG_(get_xDX_tag) ( ThreadId tid )
                                               VG_INT_RET2_REG)));
 }
 
+#if defined(VGA_amd64)
 UWord VG_(get_XMM_N_tag)( ThreadId tid, UInt num )  
 {
 
    return *(VG_(get_tag_ptr_for_guest_offset)(tid, offsetof(VexGuestArchState,
                                               guest_YMM0)));
 }
-
+#else
 UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid )
 {
    int FPUoffset = VG_(threads)[tid].arch.vex.guest_FTOP & 7;
@@ -217,6 +224,7 @@ UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid )
 
    return *(VG_(get_tag_ptr_for_guest_offset)(tid, offset));
 }
+#endif
 
 // This is a generalization of all the other tag getter functions,
 // which takes in an offset from the guest state (as denoted by
