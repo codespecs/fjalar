@@ -268,55 +268,27 @@ print_vma (bfd_vma vma, print_mode mode)
 	  printf_vma (vma);
 	  break;
 
+    case DEC_5:
+      if (vma <= 99999) {
+          FJALAR_DPRINTF ("%5" BFD_VMA_FMT "d", vma);
+	      break;
+      }
+      /* drop through */
+
 	case PREFIX_HEX:
 	  FJALAR_DPRINTF ("0x");
 	  /* drop through */
 
 	case HEX:
-#if BFD_HOST_64BIT_LONG
-	  FJALAR_DPRINTF ("%lx", vma);
-#else
-	  if (_bfd_int64_high (vma))
-	    FJALAR_DPRINTF ("%lx%8.8lx", _bfd_int64_high (vma), _bfd_int64_low (vma));
-	  else
-	    FJALAR_DPRINTF ("%lx", _bfd_int64_low (vma));
-#endif
+      FJALAR_DPRINTF ("%" BFD_VMA_FMT "x", vma);
 	  break;
 
 	case DEC:
-#if BFD_HOST_64BIT_LONG
-	  FJALAR_DPRINTF ("%ld", vma);
-#else
-	  if (_bfd_int64_high (vma))
-	    /* ugg */
-	    FJALAR_DPRINTF ("++%ld", _bfd_int64_low (vma));
-	  else
-	    FJALAR_DPRINTF ("%ld", _bfd_int64_low (vma));
-#endif
-	  break;
-
-	case DEC_5:
-#if BFD_HOST_64BIT_LONG
-	  FJALAR_DPRINTF ("%5ld", vma);
-#else
-	  if (_bfd_int64_high (vma))
-	    /* ugg */
-	    FJALAR_DPRINTF ("++%ld", _bfd_int64_low (vma));
-	  else
-	    FJALAR_DPRINTF ("%5ld", _bfd_int64_low (vma));
-#endif
+      FJALAR_DPRINTF ("%" BFD_VMA_FMT "d", vma);
 	  break;
 
 	case UNSIGNED:
-#if BFD_HOST_64BIT_LONG
-	  FJALAR_DPRINTF ("%lu", vma);
-#else
-	  if (_bfd_int64_high (vma))
-	    /* ugg */
-	    FJALAR_DPRINTF ("++%lu", _bfd_int64_low (vma));
-	  else
-	    FJALAR_DPRINTF ("%lu", _bfd_int64_low (vma));
-#endif
+      FJALAR_DPRINTF ("%" BFD_VMA_FMT "u", vma);
 	  break;
 	}
     }
@@ -727,28 +699,14 @@ dump_relocations (FILE * file, unsigned long rel_offset, unsigned long rel_size,
 
       if (is_32bit_elf)
 	{
-#ifdef _bfd_int64_low
-	  FJALAR_DPRINTF ("%8.8lx  %8.8lx ", _bfd_int64_low (offset), _bfd_int64_low (info));
-#else
 	  FJALAR_DPRINTF ("%8.8lx  %8.8lx ", offset, info);
-#endif
 	}
       else
 	{
-#ifdef _bfd_int64_low
-	  FJALAR_DPRINTF (do_wide
-		  ? "%8.8lx%8.8lx  %8.8lx%8.8lx "
-		  : "%4.4lx%8.8lx  %4.4lx%8.8lx ",
-		  _bfd_int64_high (offset),
-		  _bfd_int64_low (offset),
-		  _bfd_int64_high (info),
-		  _bfd_int64_low (info));
-#else
 	  FJALAR_DPRINTF (do_wide
 		  ? "%16.16lx  %16.16lx "
 		  : "%12.12lx  %12.12lx ",
 		  offset, info);
-#endif
 	}
 
       switch (elf_header.e_machine)
@@ -768,11 +726,7 @@ dump_relocations (FILE * file, unsigned long rel_offset, unsigned long rel_size,
 	}
 
       if (rtype == NULL)
-#ifdef _bfd_int64_low
- FJALAR_DPRINTF (_("unrecognized: %-7lx"), _bfd_int64_low (type));
-#else
  FJALAR_DPRINTF (_("unrecognized: %-7lx"), type);
-#endif
       else
  FJALAR_DPRINTF (do_wide ? "%-22.22s" : "%-17.17s", rtype);
 
