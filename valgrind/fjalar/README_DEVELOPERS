@@ -14,8 +14,8 @@ in customizing or extending Fjalar.
 A list of improvements and extensions we'd like to see can be located 
 in the TODO file in the same directory of this README.
 
-The notes directory contains development notes, including instructions on
-how to merge in new versions of valgrind.
+The notes/ directory contains development notes, including instructions on
+how to merge in new versions of valgrind (notes/valgrind_merge.html).
 
 
 Introduction
