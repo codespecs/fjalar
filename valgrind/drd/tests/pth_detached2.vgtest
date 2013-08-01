@@ -1,0 +1,4 @@
+prereq: ./supported_libpthread
+vgopts: --read-var-info=yes
+prog: pth_detached
+args: 10 10

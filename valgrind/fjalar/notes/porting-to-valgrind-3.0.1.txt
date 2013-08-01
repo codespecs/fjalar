@@ -1,0 +1,167 @@
+Notes for porting Kvasir project from Valgrind 3 development branch to
+Valgrind 3.0.1
+
+by Philip Guo 2005-10-06
+
+Valgrind 3.0.1 has the following directory structure
+
+valgrind-3.0.1
+  - VEX
+  - coregrind
+  - memcheck
+  - ... other tools ...
+
+Our current version has the following structure
+
+top-level
+  - valgrind
+  - vex
+
+So we need to move vex as a sub-directory of valgrind
+
+
+Here is a change deep in the VEX hierarchy:
+vex/priv/host-generic/reg_alloc2.c:   // PG - changed from 2 to 6 to account for vex_extra_shadow in ThreadArchState
+
+From now on, I am going to mark all of my changes with 'pgbovine' for
+easy grepping (much easier than 'PG' grep)
+
+Changes:
+
+VEX stuff
+---------
+
+VEX/priv/host-generic/reg_alloc2.c
+Line 749
+
+
+VEX/priv/host-x86/isel.c
+Doesn't look like I need to change anything
+
+
+VEX/priv/ir/iropt.c
+Doesn't look like I need to change anything
+
+
+VEX/pub/libvex_ir.h
+Doesn't look like I need to change anything
+
+
+Valgrind top-level stuff:
+-------------------------
+
+Modify configure.in to tell it to generate Makefile for kvasir
+sub-directory
+
+
+Valgrind core stuff:
+--------------------
+
+coregrind/x86/core_arch.h now appears to be
+coregrind/pub_core_threadstate.h
+
+but there is also mention of it in:
+coregrind/m_sigframe/sigframe-x86-linux.c
+(I have a hunch that this vg_sigframe stuff may cause us trouble
+ later because it sort of reflects the structure of ThreadArchState)
+
+Modified pub_core_threadstate.h to include
+an extra 4 entries of VexGuestX86State for
+DynComp's shadowing
+
+
+coregrind/vg_scheduler.c now appears to be
+coregrind/m_scheduler/scheduler.c
+
+Changed an assert condition from 2 to 6
+
+
+The changes I need to make in
+coregrind/vg_main.c now appears to be in
+coregrind/m_machine.c.  Made lots of additions here
+to allow the core to give tools access to more data
+
+
+/include stuff:
+---------------
+
+It seems that tool.h has been split up into a bunch of .h files
+
+Accessors in tool.h like VG_(get_EAX_tag) now belong in
+pub_tool_machine.h
+
+
+
+
+Memcheck stuff:
+---------------
+
+Ok, what files do we need to change?
+
+mac_shared.h
+added CHECK_ESP and CHECK_ESP_SLOW calls
+
+mac_leakcheck.c
+(doesn't seem to have any of my changes)
+
+
+mc_main.c
+
+set_abit() is now set_abit_and_vbyte() so there is an interface change
+
+made numerous other changes according to 'PG' comments
+
+Added init. calls to kvasir_pre_clo_init() and kvasir_post_clo_init()
+
+Remove leak checking at the end
+
+
+mc_translate.c
+
+Lots of hairy changes, such as:
+ * comment out complainIfUndefined because we don't want to check if memory accesses are invalid (since Memcheck sets them to valid to avoid propagating tons of errors)
+ * move some stuff inot mc_translate.h, which doesn't exist in 3.0.1 distro
+
+
+mc_asm.h has been eliminated altogether
+
+
+Lots of nit-picky little name changes.
+
+
+
+Kvasir/DynComp stuff:
+---------------------
+
+Changed statements of #include "tool.h" to include lots of stuff from the
+include/ sub-directory.
+
+Changed VGA_REGPARM to VG_REGPARM
+
+Removed the use of MC_( ) macros
+
+
+
+Ok, now that it compiles and all ...
+
+It seems to get array sizes wrong - hmmm, maybe it doesn't allocate
+redzones on the heap anymore?  Because in
+probeAheadDiscoverHeapArraySize() when I try probing ahead on a
+trivial heap array of size 5, it returns 34408, but only during the
+backwards propagation does it bounce back to give me 6, which is
+almost right.
+
+However, inspection of mc_ files show that redzones still seem to be
+in effect.
+
+
+
+
+
+Hmmm, check this out ... the v-byte and a-bit stuff is now a UWord
+instead of a UChar, probably to add native support for 64-bit stuff -
+so we must be careful now
+
+Ok, it seems like we now always return array sizes that are 1 bigger
+than before.  Perhaps now we have a 1-element redzone that's init???
+I don't know.
