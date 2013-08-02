@@ -1,0 +1,5 @@
+Makefile
+.deps
+exp-ptrcheck-x86-linux
+exp-ptrcheck-amd64-linux
+*.so

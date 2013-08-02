@@ -1,0 +1,126 @@
+
+Bugs reported after the release of 3.8.0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This file lists bugs that were reported after 3.8.0 was released, both
+in 3.8.0 and trunk, and that have not been closed.  Bugs that have
+been closed as "fixed" are listed in the top level NEWS file instead.
+In other words they get listed here first and moved to NEWS if they
+get fixed.
+
+This file also tracks commits & fixes that should be pushed to the 3.8
+branch.
+
+-- PUSH TO 3_8_BRANCH
+
+(B38=2500)  2469   Fix a mixup ..
+(B38=12930) 12873  n-i-bz: Use -s USR1 instead of -10 to send SIGUSR1 signal
+(B38=12931) 12874  n-i-bz: shmat of a segment > 4Gb does not work
+(B38=12933) 12878  n-i-bz: On Darwin, use __NR_poll_nocancel rather than __NR_poll
+(B38=12934) 12879 + 12882 + 12883 (301281, OSX hang on "system")
+(B38=12936) 12881  ptrace mips stuff
+(B38=12938) 12885  (Iop_DPBtoBCD and Iop_BCDtoDPB fix)
+(B38=2502)  2475   (289584: Handle a reg-reg encoding of MOVAPS)
+(B38=2503)  2476   (305042: Implement 0F 7F encoding of movq reg-reg)
+(B38=12940) 12887  (n-i-bz: libmpiwrap.c fixes)
+(B38=2504)  2477   (305321: Re-enable 'prefetch m8' and 'prefetchw m8')
+(B38=2505)  2478   (295808: Fix LZCNT and TZCNT properly)
+(B38=2506)  2479   (305199: Implement QDADD and QDSUB)
+(B38=2507)  2480   (304867: Implement MOVBE in 32 bit mode)
+(B38=12941) 12891  (304980: Fix up range checking in ML_(addLineInfo))
+(B38=12942) 12892  (305513: Fix skipping of block forms)
+(B38=12943) 12893  (298281: Implement a wrapper for wcslen on Linux)
+(B38=12944) 12894  (n-i-bz, exp-sgcheck memcpy)
+(B38=12945) 12897/8 (305690: Handle non-zero sem_*wait() return values correctly)
+(B38=2508)  2499   (305926: Invalid alignment checks for some AVX instructions)
+(B38=12946) 12923  (304980: Guard against negative symbol sizes)
+(B38=12948) 12947  (n-i-bz: volatile in stack check, re clang)
+(B38=12984) 12964  (306310  3.8.0 release tarball missing some files)
+(B38=2534)  2517/8 (n-i-bz: fix a couple of union tag-vs-field mixups)
+(B38=2535)  2531   (306297: ARM: STM<c>.W <Rn>{!}, <registers> too strict)
+(B38=2536)  2532   (306664: AMD64: Fix PCMPxSTRx variant $0x46)
+(B38=12985) 12982  (306612: Intercept __GI_memmove)
+(B38=2537,12986)
+            2533,12980
+                   (304035: ARM: uqsub16 shadd16 uhsub8 uhsub16)
+
+-------- Bugs brought forward from 3_7_BUGSTATUS.txt --------
+
+291310  FXSAVE instruction marks memory as undefined on amd64
+  x86 vs amd64 inconsistency?
+  **is fixed in 3.8.0, but was not marked as such
+  ** no it's not; v38BRANCH shows error, vTRUNK doesn't -- investigate
+
+303536  ioctl for SIOCETHTOOL (ethtool(8)) isn't wrapped (w/ patch)
+  we should fix this
+
+-------- Unfixed in 3.8.0
+
+303741  sockaddr* parameter of recvfrom not handled correctly
+        (corruption not detected later on)
+  QUERIED -- need test case, looks easy to fix
+
+303877  valgrind doesn't support compressed debuginfo sections.
+
+304259  support Darwin 12 (Mac OS 10.8, Mountain Lion)
+  Canonical OSX 10.8
+
+304321  m_signals.c:2314 (sync_signalhandler_from_kernel): Assertion 'tid != 0' failed
+  Probably invalid (way too old)
+
+304450  time logging tools ?
+  wishlist
+
+304675  make install-strip fails when cross-compiling
+  w/ patch; but needs checking (should be more general?  assumes auto*
+  version?)
+
+304676  regtest hangs on mac OS X (mchelp, coolo_sigaction, system)
+  probably related to 301281 et al
+  QUERIED
+
+304832  ppc32: build failure
+  probably invalid
+
+305170  linux: add FIOCLEX and FIONCLEX ioctls
+  w/ patch, looks pretty harmless
+
+305431  Use find_buildid shdr fallback for separate .debug files
+
+n-i-bz  exp-sgcheck asserts on gcc-4.6.2 generated Dwarf3
+
+305728  Add support for AVX2 instructions
+
+305957  m_debuginfo/d3basics.c:965 (vgModuleLocal_evaluate_GX):
+        Assertion 'aMin == (Addr)0' failed.
+        QUERIED -- no info so far
+
+306004  Wishlist: port valgrind to sparc
+
+306035  s390x: Fix IR generation for LAAG and friends
+
+306098  s390x: alternate opcode form for convert to/from fixed
+
+-- Sat 1 Sept 2012 10pm
+
+306171  Boost.Context appears to cause Valgrind to crash
+
+306235  unhandled syscall: 429 (freebsd)
+
+306299  Internal error when running a winelib application
+
+306310  3.8.0 release tarball missing some files
+
+306340  parse_var_DIE confused by DWARF from clang-3.1
+
+306535  massif: force dump result every X minutes
+
+306587  data cache line size is 128 and instruction cache line size is 32
+
+306590  not support e500v2 spe 0x216 command
+
+   286864 strlen function redirection error
+
+306783  Mips unhandled syscall :  4025  /  4079  / 4182
+
+-- Mon 17 Sept 2012, 10 am

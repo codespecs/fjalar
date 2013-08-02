@@ -1,0 +1,5 @@
+Makefile
+.deps
+mpi-x86-linux
+mpi-amd64-linux
+*.so

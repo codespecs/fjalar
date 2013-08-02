@@ -1,0 +1,102 @@
+/* Taken from CSS style sheet for 6.170 (Spring 2006), courtesy of C. Scott Ananian */
+
+html { background-color: white; }
+body { background-color: white; color: #000; }
+/* sans-serif fonts look better on screen. */
+@media screen { body { font-family: Verdana, Helvetica, Arial, sans-serif; } }
+/* serif fonts look better on paper. */
+@media print { body { font-family: serif; } }
+
+#header {
+ border-bottom: 2px solid black; padding: .5em; margin: 0 1em 0;
+}
+#header .course {
+ text-align: center; font-weight: 900; margin: 0 1em 0; text-indent: 0;
+}
+#header, #header h1, #header h2 { font-size: large; font-weight: normal; }
+#header h1, #header h2 {
+  padding: 0; margin: .1em; border: 0; background-color: inherit; color: inherit; text-indent: 0;
+}
+#header .due, #header .title { display: block; margin-left: 9em; }
+#header .head {
+ font-style: normal; font-weight: 700;
+ min-width: 9em; float: left;
+}
+#header .title { font-style: italic; font-weight: bold; }
+
+h2 {
+ border-top: 2px solid black;
+ margin-top: 1em;
+ margin-bottom: 1em;
+ padding: .3em .5em .2em 1.5em; /* top, right, bottom, left */
+ text-indent: -1em;
+ }
+#footer {
+ border-top: 2px solid black; text-align: center; font-size: 75%;
+ margin-top: 1em;
+}
+#footer p { margin: .1em 0 0; }
+
+dt { font-weight: 900; margin-top: .6em; }
+ol { list-style-type: lower-alpha; }
+ol ol { list-style-type: decimal; }
+ol ol ol { list-style-type: lower-roman; }
+ol li { margin-bottom: .5em; }
+dl.commands { border: 1px solid black; padding: .3em; }
+
+.nobr { white-space: nowrap; }
+
+.example ul { list-style-type: none; }
+
+pre { padding: .4em; }
+pre, tt, code, .api { font-family: "Andale Mono", Monaco, Courier, monospace; }
+pre b, tt b, code b { font-weight: 900; /* weird, but Andale is odd. */ }
+a.api { text-decoration: none; }
+.api { font-weight: bold; }
+
+/* weird work-around: i don't know where text-decoration is being unset */
+/*a tt { text-decoration: underline; }*/
+
+table.stepbystep { border-collapse: collapse; border: 2px solid black; }
+table.stepbystep td { border: 1px solid black; padding: .3em; }
+
+table.staff { border-collapse: collapse; border: 2px solid black; }
+table.staff td { border: 1px solid black; padding: .3em; }
+table.staff { margin-left: auto; margin-right: auto; }
+
+.firered { font-weight: 900; }
+
+/* color!  not for printing, just for screen use. */
+@media screen { /* mit red: #933, grey: #666 */
+a[href]:link { color: #933; }
+a[href]:visited { color: #933; }
+a[href]:hover { color: #933; background: #ccc; text-decoration: overline underline; }
+a[href]:active { color: red; background-color: yellow; }
+/* this is a workaround for weird behavior of tt inside a: */
+a[href]:hover tt { color: #933; background: #ccc; text-decoration: overline underline; }
+
+/* These colors are hard to read, and the highlighting is quite
+   confusing as well.  So I commented it out -MDE
+  a:target { font-weight: 900; background-color: #933; } */
+#header { background: #933; color: #fff; border: 2px solid #666; }
+#header .head { color: #aaa; }
+#header .course { color: #000; border-bottom: 1px dotted #666; margin-bottom: .3em; }
+
+h2 { color: #fff; background-color: #666; }
+#footer { border-color: #666; color: #666; background-color: #fff; }
+
+table.stepbystep { border-color: #933; background: #ffe; }
+dl.commands { border-color: #666; }
+
+/* from ps0 */
+.firered { color: #f33; }
+/* from ps1: */
+pre { background-color: #ffe; }
+a.src { background-color: #eff; }
+
+pre { border: 1px dotted #933; }
+.example { border: 1px dotted #933; background: #eee; margin-right: 2em; }
+.example tt { background: #eee; font-weight: 900; }
+}
+
+@media print { h3 { margin-left: 1em; } h2 { padding-left: 1em; } }
