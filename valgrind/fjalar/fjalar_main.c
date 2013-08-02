@@ -567,20 +567,30 @@ void enter_function(FunctionEntry* f)
       // the function's entry point. This might break if there's every a case
       // where the compilation unit offset is a valid address in the program
       while(ll &&
-	    !(((ll->begin <= eip) && (ll->end >= eip)) ||
-	      ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
+            !(((ll->begin <= eip) && (ll->end >= eip)) ||
+              ((ll->begin <= f->entryPC) && (ll->end >= f->entryPC)))) {
         FJALAR_DPRINTF("\tExamining loc list entry: %x - %x - %x\n", (UInt)ll->offset, (UInt)ll->begin, (UInt)ll->end);
         ll = ll->next;
       }
 
       if(ll) {
-        FJALAR_DPRINTF("\tFound location list entry, finding register corresponding to dwarf #: %d with offset: %lld\n", ll->atom, ll->atom_offset);
+        FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %d with offset: %lld\n", ll->atom, ll->atom_offset);
 
+        // It turns out it might not be just the contents of a register.  Some
+        // 32bit x86 code does some tricky stack alignment and has to save a
+        // pointer to the orginal stack frame.  This means we get passed a 
+        // DW_OP_deref instead of a DW_OP_breg.  The tricky bit is we don't
+        // want to go back to that address because it probably won't be equal
+        // to the local frame pointer due to the stack alignment.  So the HACK
+        // is to just assume the frame pointer is at EBP+8 like normal.  (markro)
+        if (ll->atom == DW_OP_deref) {
+            ll->atom = DW_OP_breg5;
+            ll->atom_offset = 8;
+        }    
         if(get_reg[ll->atom - DW_OP_breg0]) {
           frame_ptr = (*get_reg[ll->atom - DW_OP_breg0])(tid) + ll->atom_offset;
         }
       }
-
     }
   }
 
