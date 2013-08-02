@@ -19,14 +19,14 @@
 
 */
 
+#include "../my_libc.h"
+
 #include "decls-output.h"
 #include "kvasir_main.h"
 #include "dyncomp_runtime.h"
 
 #include "pub_tool_libcbase.h" // For VG_STREQ
 #include "pub_tool_libcprint.h"
-
-#include "../my_libc.h"
 
 const char* ENTER_PPT = ":::ENTER";
 const char* EXIT_PPT = ":::EXIT0";
@@ -229,6 +229,7 @@ void initDecls(void)
 {
   //Initialize needed hash tables.
   if(!nameToType) {
+    DPRINTF("*** initDecls ***\n");
      nameToType =
         genallocatehashtable((unsigned int (*)(void *)) &hashString,
                              (int (*)(void *,void *)) &equivalentStrings);
@@ -256,6 +257,7 @@ void cleanupDecls(void)
 {
   // Clean-up tables.
   if(nameToType) {
+    DPRINTF("*** cleanupDecls ***\n");
     genfreehashtable(nameToType);
     nameToType = 0;
   }
@@ -290,7 +292,6 @@ void outputDeclsFile(char faux_decls)
     fputs("\n", decls_fp);
   }
 
-
   initDecls();
 
   if(kvasir_object_ppts) {
@@ -313,8 +314,8 @@ void outputDeclsFile(char faux_decls)
       fclose(decls_fp);
       decls_fp = 0;
     }
+    cleanupDecls();
   }
-  cleanupDecls();
 }
 
 // Print .decls at the end of program execution and then close it
@@ -322,7 +323,7 @@ void outputDeclsFile(char faux_decls)
 void DC_outputDeclsAtEnd() {
   // TODO: Function is almost identical to outputDeclsFile, may as well refactor them
   // into one function.
-  //  VG_(printf)("DC_outputDeclsAtEnd()\n");
+  //  printf("DC_outputDeclsAtEnd()\n");
   printDeclsHeader();
   initDecls();
   if(kvasir_object_ppts) {
@@ -352,6 +353,8 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
   case D_SHORT:
   case D_UNSIGNED_INT:
   case D_INT:
+  case D_UNSIGNED_LONG:
+  case D_LONG:
   case D_UNSIGNED_LONG_LONG_INT:
   case D_LONG_LONG_INT:
   case D_ENUMERATION:
@@ -449,7 +452,7 @@ printDeclsEntryAction(VariableEntry* var,
   char printingFirstAnnotation = 1;
   char alreadyPutDerefOnLine3;
   char printAsSequence = isSequence;
-  Bool shortSuper = 0;
+//Bool shortSuper = 0;
 
   /* silence unused variable warnings */
   (void)overrideIsInit; (void)pValue; (void)pValueArray; (void)numElts;
@@ -524,7 +527,7 @@ printDeclsEntryAction(VariableEntry* var,
     // RUDD Beautification. Not for release
     //if(var->isSuperMember && !kvasir_unambiguous_fields)
     if(0) {
-      shortSuper = 1; //Flag to denote this is a shortened name
+//    shortSuper = 1; //Flag to denote this is a shortened name
       shortName = removeSuperElements(fullNameStack.stack, var);
       printDaikonExternalVarName(var, shortName, decls_fp);
       VG_(free)(shortName);
@@ -856,13 +859,13 @@ printDeclsEntryAction(VariableEntry* var,
 	  tl_assert(varFuncInfo && varFuncInfo->parentClass);
 
 	  if(var->memberVar->structParentType) {
-	    tl_assert(cur_par_id = (unsigned int)gengettable(objTable, var->memberVar->structParentType));
+	    tl_assert(cur_par_id = (unsigned int)(ptrdiff_t)gengettable(objTable, var->memberVar->structParentType));
 	    tl_assert(var->memberVar->structParentType->aggType->memberVarList
 		      && (var->memberVar->structParentType->aggType->memberVarList->numVars > 0));
 	    printDaikonExternalVarName(var, var->memberVar->structParentType->typeName, decls_fp);
 	    //	    fputs(var, var->memberVar->structParentType->typeName, decls_fp);
 	  } else {
-	    tl_assert(cur_par_id = (unsigned int)gengettable(objTable, varFuncInfo->parentClass));
+	    tl_assert(cur_par_id = (unsigned int)(ptrdiff_t)gengettable(objTable, varFuncInfo->parentClass));
 	    tl_assert(varFuncInfo->parentClass->aggType &&
 		      varFuncInfo->parentClass->aggType->memberVarList &&
 		      (varFuncInfo->parentClass->aggType->memberVarList->numVars > 0 ));
@@ -892,7 +895,7 @@ printDeclsEntryAction(VariableEntry* var,
 	  printDaikonExternalVarName(NULL, var->memberVar->structParentType->typeName, decls_fp);
 	  //fputs(var->memberVar->structParentType->typeName, decls_fp);
 	  fputs(OBJECT_PPT, decls_fp);
-	  tl_assert(cur_par_id = (unsigned int)gengettable(objTable, var->memberVar->structParentType));
+	  tl_assert(cur_par_id = (unsigned int)(ptrdiff_t)gengettable(objTable, var->memberVar->structParentType));
 	  tl_assert(var->memberVar->structParentType->aggType &&
 		    var->memberVar->structParentType->aggType->memberVarList &&
 		    (var->memberVar->structParentType->aggType->memberVarList > 0));
@@ -924,14 +927,13 @@ printDeclsEntryAction(VariableEntry* var,
         // tags are UNSIGNED INTEGERS so be careful of overflows
         // which result in negative numbers, which are useless
         // since Daikon ignores them.
-	cur_var_name = varName;
+        cur_var_name = varName;
         int comp_number = DC_get_comp_number_for_var((DaikonFunctionEntry*)varFuncInfo,
                                                      isEnter,
                                                    g_variableIndex);
 
-        fputs("    comparability ", decls_fp);
-        fprintf(decls_fp, "%d", comp_number);
-        fputs("\n", decls_fp);
+        fprintf(decls_fp, "    comparability %d\n", comp_number);
+        DPRINTF("    comparability %d\n", comp_number);
       }
     }
     else {
@@ -1064,7 +1066,7 @@ printDeclsEntryAction(VariableEntry* var,
                                                      isEnter,
                                                    g_variableIndex);
 
-        DYNCOMP_TPRINTF("%s[%d](%s) value tag is %d\n",
+        DYNCOMP_TPRINTF("[Dyncomp] %s[%d](%s) value tag is %d\n",
                         entry->funcEntry.name, g_variableIndex, varName,
                         entry->ppt_exit_var_tags[g_variableIndex]);
         fprintf(decls_fp, "%d", comp_number);
@@ -1215,7 +1217,7 @@ printDeclsEntryAction(VariableEntry* var,
 	  //          fputs(funcPtr->parentClass->typeName, decls_fp);
           fputs(OBJECT_PPT, decls_fp);
           fputs(" ", decls_fp);
-	  fprintf(decls_fp, "%d", (int)gengettable(usedObjTable, funcPtr->parentClass));
+	  fprintf(decls_fp, "%d", (int)(ptrdiff_t)gengettable(usedObjTable, funcPtr->parentClass));
 	  //          fputs(ppt_par_id, decls_fp);
           fputs("\n", decls_fp);
         }
@@ -1258,7 +1260,7 @@ printDeclsEntryAction(VariableEntry* var,
 	    //	    fputs(type->typeName, decls_fp);
 	    fputs(OBJECT_PPT, decls_fp);
 	    fputs(" ", decls_fp);
-	    fprintf(decls_fp, "%d", (int)gengettable(usedObjTable, type));
+	    fprintf(decls_fp, "%d", (int)(ptrdiff_t)gengettable(usedObjTable, type));
 	    fputs("\n", decls_fp);
 	    genputtable(typeNameStrTable, type->typeName, (void *)1);
 	  }
@@ -1887,7 +1889,7 @@ harvestObject(VariableEntry* var,
       DPRINTF("Harvest object %s (%s)\n", varName, var->varType->typeName);
 
       if(!gencontains(cur_object_table, var->varType)) {
-	genputtable(cur_object_table, var->varType, (void *)cur_par_id);
+	genputtable(cur_object_table, var->varType, (void *)(ptrdiff_t)cur_par_id);
 	cur_par_id++;
       }
     }
@@ -1896,11 +1898,16 @@ harvestObject(VariableEntry* var,
       unsigned int i = 0;
       SimpleList* superList = NULL;
       SimpleNode* curNode = NULL;
+
+      // UNDONE markro
+      if (!var->memberVar->structParentType) 
+	      return DISREGARD_PTR_DEREFS;
+
       tl_assert(var->memberVar && var->memberVar->structParentType);
       DPRINTF("Harvest object %s\n", var->memberVar->structParentType->typeName);
 
       if(!gencontains(cur_object_table, var->memberVar->structParentType)) {
-	genputtable(cur_object_table, var->memberVar->structParentType, (void *)cur_par_id);
+	genputtable(cur_object_table, var->memberVar->structParentType, (void *)(ptrdiff_t)cur_par_id);
 	cur_par_id++;
       }
 
@@ -1917,7 +1924,7 @@ harvestObject(VariableEntry* var,
 	Superclass* curClass = curNode->elt;
 
 	if(!gencontains(cur_object_table, curClass->class)) {
-	  genputtable(cur_object_table, curClass->class, (void *)cur_par_id);
+	  genputtable(cur_object_table, curClass->class, (void *)(ptrdiff_t)cur_par_id);
 	  cur_par_id++;
 	}
 	DPRINTF("Harvest object %s - %d\n", curClass->class->typeName, cur_par_id);
@@ -1941,7 +1948,7 @@ static void harvestOneFunctionObject(FunctionEntry* func, struct genhashtable* o
   cur_par_id = 1;
 
   if(func->parentClass && !gencontains(cur_object_table, func->parentClass)) {
-      genputtable(cur_object_table, func->parentClass, (void *)cur_par_id);
+      genputtable(cur_object_table, func->parentClass, (void *)(ptrdiff_t)cur_par_id);
       cur_par_id++;
   }
 

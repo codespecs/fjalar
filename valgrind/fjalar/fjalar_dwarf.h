@@ -19,15 +19,21 @@
 
 #ifndef FJALAR_DWARF_H
 #define FJALAR_DWARF_H
-#include "pub_tool_basics.h"
-#include "pub_tool_libcbase.h"
-#include "pub_tool_libcassert.h"
-#include "pub_tool_libcprint.h"
-#include "include/elf/dwarf2.h"
+
+#if __STDC_VERSION__ >= 199901L || (defined(__GNUC__) && __GNUC__ >= 2)
+#define HOST_WIDEST_INT	long long
+#else
+#define HOST_WIDEST_INT long
+#endif
+
+#include "dwarf.h"
+#include "dwarf2.h"
+
+// Vendor specific extensions to the DWARF spec
+#define DW_OP_list (DW_OP_lo_user+1)
 
 // Type information data structures
 #define MAX_DWARF_OPS  10
-
 
 typedef struct _dwarf_location {
   unsigned int atom;
@@ -36,4 +42,5 @@ typedef struct _dwarf_location {
 
 // A conversion between DWARF location atoms and a string representation
 const char* location_expression_to_string(enum dwarf_location_atom op);
+
 #endif /* FJALAR_DWARF_H */

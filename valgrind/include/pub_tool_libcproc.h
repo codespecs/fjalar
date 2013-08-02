@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -44,6 +44,10 @@ extern Char* VG_(getenv) ( Char* name );
 /* Path to all our library/aux files */
 extern const Char *VG_(libdir);
 
+// The name of the LD_PRELOAD-equivalent variable.  It varies across
+// platforms.
+extern const Char* VG_(LD_PRELOAD_var_name);
+
 /* ---------------------------------------------------------------------
    Important syscalls
    ------------------------------------------------------------------ */
@@ -55,11 +59,13 @@ extern void VG_(exit)   ( Int status ); /* Equivalent to libc's _exit() */
 extern void VG_(execv)  ( Char* filename, Char** argv );
 
 /* ---------------------------------------------------------------------
-   Resource limits
+   Resource limits and capabilities
    ------------------------------------------------------------------ */
 
 extern Int VG_(getrlimit) ( Int resource, struct vki_rlimit *rlim );
 extern Int VG_(setrlimit) ( Int resource, const struct vki_rlimit *rlim );
+extern Int VG_(prctl) (Int option, 
+                       ULong arg2, ULong arg3, ULong arg4, ULong arg5);
 
 /* ---------------------------------------------------------------------
    pids, etc

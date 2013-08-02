@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,7 +29,11 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#include "my_libc.h"
+
 #include "pub_tool_basics.h"
+#include "pub_tool_gdbserver.h"
+#include "pub_tool_poolalloc.h"     // For mc_include.h
 #include "pub_tool_hashtable.h"     // For mc_include.h
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
@@ -348,7 +352,7 @@ static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
 
       case Addr_DataSym:
          emiN( "%sAddress 0x%llx is %llu bytes "
-               "inside data symbol \"%t\"%s\n",
+               "inside data symbol \"%pS\"%s\n",
                xpre,
                (ULong)a,
                (ULong)ai->Addr.DataSym.offset,
@@ -371,7 +375,7 @@ static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
          break;
 
       case Addr_SectKind:
-         emiN( "%sAddress 0x%llx is in the %t segment of %t%s\n",
+         emiN( "%sAddress 0x%llx is in the %pS segment of %pS%s\n",
                xpre,
                (ULong)a,
                VG_(pp_SectKind)(ai->Addr.SectKind.kind),
@@ -431,6 +435,109 @@ static void mc_pp_origin ( ExeContext* ec, UInt okind )
    }
 }
 
+char * MC_(snprintf_delta) (char * buf, Int size, 
+                            SizeT current_val, SizeT old_val, 
+                            LeakCheckDeltaMode delta_mode)
+{
+   if (delta_mode == LCD_Any)
+      buf[0] = '\0';
+   else if (current_val >= old_val)
+      VG_(snprintf) (buf, size, " (+%'lu)", current_val - old_val);
+   else
+      VG_(snprintf) (buf, size, " (-%'lu)", old_val - current_val);
+
+   return buf;
+}
+
+static void pp_LossRecord(UInt n_this_record, UInt n_total_records,
+                          LossRecord* lr, Bool xml)
+{
+   // char arrays to produce the indication of increase/decrease in case
+   // of delta_mode != LCD_Any
+   char        d_bytes[20];
+   char        d_direct_bytes[20];
+   char        d_indirect_bytes[20];
+   char        d_num_blocks[20];
+
+   MC_(snprintf_delta) (d_bytes, 20, 
+                        lr->szB + lr->indirect_szB, 
+                        lr->old_szB + lr->old_indirect_szB,
+                        MC_(detect_memory_leaks_last_delta_mode));
+   MC_(snprintf_delta) (d_direct_bytes, 20,
+                        lr->szB,
+                        lr->old_szB,
+                        MC_(detect_memory_leaks_last_delta_mode));
+   MC_(snprintf_delta) (d_indirect_bytes, 20,
+                        lr->indirect_szB,
+                        lr->old_indirect_szB,
+                        MC_(detect_memory_leaks_last_delta_mode));
+   MC_(snprintf_delta) (d_num_blocks, 20,
+                        (SizeT) lr->num_blocks,
+                        (SizeT) lr->old_num_blocks,
+                        MC_(detect_memory_leaks_last_delta_mode));
+
+   if (xml) {
+      emit("  <kind>%s</kind>\n", xml_leak_kind(lr->key.state));
+      if (lr->indirect_szB > 0) {
+         emit( "  <xwhat>\n" );
+         emit( "    <text>%'lu%s (%'lu%s direct, %'lu%s indirect) bytes "
+               "in %'u%s blocks"
+               " are %s in loss record %'u of %'u</text>\n",
+               lr->szB + lr->indirect_szB, d_bytes,
+               lr->szB, d_direct_bytes,
+               lr->indirect_szB, d_indirect_bytes,
+               lr->num_blocks, d_num_blocks,
+               str_leak_lossmode(lr->key.state),
+               n_this_record, n_total_records );
+         // Nb: don't put commas in these XML numbers 
+         emit( "    <leakedbytes>%lu</leakedbytes>\n",
+               lr->szB + lr->indirect_szB );
+         emit( "    <leakedblocks>%u</leakedblocks>\n", lr->num_blocks );
+         emit( "  </xwhat>\n" );
+      } else {
+         emit( "  <xwhat>\n" );
+         emit( "    <text>%'lu%s bytes in %'u%s blocks"
+               " are %s in loss record %'u of %'u</text>\n",
+               lr->szB, d_direct_bytes,
+               lr->num_blocks, d_num_blocks,
+               str_leak_lossmode(lr->key.state), 
+               n_this_record, n_total_records );
+         emit( "    <leakedbytes>%ld</leakedbytes>\n", lr->szB);
+         emit( "    <leakedblocks>%d</leakedblocks>\n", lr->num_blocks);
+         emit( "  </xwhat>\n" );
+      }
+      VG_(pp_ExeContext)(lr->key.allocated_at);
+   } else { /* ! if (xml) */
+      if (lr->indirect_szB > 0) {
+         emit(
+            "%'lu%s (%'lu%s direct, %'lu%s indirect) bytes in %'u%s blocks"
+            " are %s in loss record %'u of %'u\n",
+            lr->szB + lr->indirect_szB, d_bytes,
+            lr->szB, d_direct_bytes,
+            lr->indirect_szB, d_indirect_bytes,
+            lr->num_blocks, d_num_blocks,
+            str_leak_lossmode(lr->key.state),
+            n_this_record, n_total_records
+         );
+      } else {
+         emit(
+            "%'lu%s bytes in %'u%s blocks are %s in loss record %'u of %'u\n",
+            lr->szB, d_direct_bytes,
+            lr->num_blocks, d_num_blocks,
+            str_leak_lossmode(lr->key.state),
+            n_this_record, n_total_records
+         );
+      }
+      VG_(pp_ExeContext)(lr->key.allocated_at);
+   } /* if (xml) */
+}
+
+void MC_(pp_LossRecord)(UInt n_this_record, UInt n_total_records,
+                        LossRecord* l)
+{
+   pp_LossRecord (n_this_record, n_total_records, l, /* xml */ False);
+}
+
 void MC_(pp_Error) ( Error* err )
 {
    const Bool xml  = VG_(clo_xml); /* a shorthand */
@@ -445,7 +552,7 @@ void MC_(pp_Error) ( Error* err )
          // the following code is untested.  Bad.
          if (xml) {
             emit( "  <kind>CoreMemError</kind>\n" );
-            emiN( "  <what>%t contains unaddressable byte(s)</what>\n",
+            emiN( "  <what>%pS contains unaddressable byte(s)</what>\n",
                   VG_(get_error_string)(err));
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          } else {
@@ -503,7 +610,7 @@ void MC_(pp_Error) ( Error* err )
          MC_(any_value_errors) = True;
          if (xml) {
             emit( "  <kind>SyscallParam</kind>\n" );
-            emiN( "  <what>Syscall param %t contains "
+            emiN( "  <what>Syscall param %pS contains "
                   "uninitialised byte(s)</what>\n",
                   VG_(get_error_string)(err) );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
@@ -525,7 +632,7 @@ void MC_(pp_Error) ( Error* err )
             MC_(any_value_errors) = True;
          if (xml) {
             emit( "  <kind>SyscallParam</kind>\n" );
-            emiN( "  <what>Syscall param %t points to %s byte(s)</what>\n",
+            emiN( "  <what>Syscall param %pS points to %s byte(s)</what>\n",
                   VG_(get_error_string)(err),
                   extra->Err.MemParam.isAddrErr 
                      ? "unaddressable" : "uninitialised" );
@@ -582,12 +689,13 @@ void MC_(pp_Error) ( Error* err )
       case Err_Free:
          if (xml) {
             emit( "  <kind>InvalidFree</kind>\n" );
-            emit( "  <what>Invalid free() / delete / delete[]</what>\n" );
+            emit( "  <what>Invalid free() / delete / delete[]"
+                  " / realloc()</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             mc_pp_AddrInfo( VG_(get_error_address)(err),
                             &extra->Err.Free.ai, False );
          } else {
-            emit( "Invalid free() / delete / delete[]\n" );
+            emit( "Invalid free() / delete / delete[] / realloc()\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
             mc_pp_AddrInfo( VG_(get_error_address)(err),
                             &extra->Err.Free.ai, False );
@@ -653,7 +761,7 @@ void MC_(pp_Error) ( Error* err )
             emit( "  <kind>Overlap</kind>\n" );
             if (extra->Err.Overlap.szB == 0) {
                emiN( "  <what>Source and destination overlap "
-                     "in %t(%#lx, %#lx)\n</what>\n",
+                     "in %pS(%#lx, %#lx)\n</what>\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src );
             } else {
@@ -666,7 +774,7 @@ void MC_(pp_Error) ( Error* err )
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          } else {
             if (extra->Err.Overlap.szB == 0) {
-               emiN( "Source and destination overlap in %t(%#lx, %#lx)\n",
+               emiN( "Source and destination overlap in %pS(%#lx, %#lx)\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src );
             } else {
@@ -700,57 +808,12 @@ void MC_(pp_Error) ( Error* err )
          UInt        n_this_record   = extra->Err.Leak.n_this_record;
          UInt        n_total_records = extra->Err.Leak.n_total_records;
          LossRecord* lr              = extra->Err.Leak.lr;
-         if (xml) {
-            emit("  <kind>%s</kind>\n", xml_leak_kind(lr->key.state));
-            if (lr->indirect_szB > 0) {
-               emit( "  <xwhat>\n" );
-               emit( "    <text>%'lu (%'lu direct, %'lu indirect) bytes "
-                     "in %'u blocks"
-                     " are %s in loss record %'u of %'u</text>\n",
-                     lr->szB + lr->indirect_szB, lr->szB, lr->indirect_szB,
-                     lr->num_blocks,
-                     str_leak_lossmode(lr->key.state),
-                     n_this_record, n_total_records );
-               // Nb: don't put commas in these XML numbers 
-               emit( "    <leakedbytes>%lu</leakedbytes>\n",
-                     lr->szB + lr->indirect_szB );
-               emit( "    <leakedblocks>%u</leakedblocks>\n", lr->num_blocks );
-               emit( "  </xwhat>\n" );
-            } else {
-               emit( "  <xwhat>\n" );
-               emit( "    <text>%'lu bytes in %'u blocks"
-                     " are %s in loss record %'u of %'u</text>\n",
-                     lr->szB, lr->num_blocks,
-                     str_leak_lossmode(lr->key.state), 
-                     n_this_record, n_total_records );
-               emit( "    <leakedbytes>%ld</leakedbytes>\n", lr->szB);
-               emit( "    <leakedblocks>%d</leakedblocks>\n", lr->num_blocks);
-               emit( "  </xwhat>\n" );
-            }
-            VG_(pp_ExeContext)(lr->key.allocated_at);
-         } else { /* ! if (xml) */
-            if (lr->indirect_szB > 0) {
-               emit(
-                  "%'lu (%'lu direct, %'lu indirect) bytes in %'u blocks"
-                  " are %s in loss record %'u of %'u\n",
-                  lr->szB + lr->indirect_szB, lr->szB, lr->indirect_szB,
-                  lr->num_blocks, str_leak_lossmode(lr->key.state),
-                  n_this_record, n_total_records
-               );
-            } else {
-               emit(
-                  "%'lu bytes in %'u blocks are %s in loss record %'u of %'u\n",
-                  lr->szB, lr->num_blocks, str_leak_lossmode(lr->key.state),
-                  n_this_record, n_total_records
-               );
-            }
-            VG_(pp_ExeContext)(lr->key.allocated_at);
-         } /* if (xml) */
+         pp_LossRecord (n_this_record, n_total_records, lr, xml);
          break;
       }
 
       default: 
-         VG_(printf)("Error:\n  unknown Memcheck error code %d\n",
+         printf("Error:\n  unknown Memcheck error code %d\n",
                      VG_(get_error_kind)(err));
          VG_(tool_panic)("unknown error code in mc_pp_Error)");
    }
@@ -768,6 +831,7 @@ void MC_(pp_Error) ( Error* err )
    for the --workaround-gcc296-bugs kludge. */
 static Bool is_just_below_ESP( Addr esp, Addr aa )
 {
+   esp -= VG_STACK_REDZONE_SZB;
    if (esp > aa && (esp - aa) <= VG_GCC296_BUG_STACK_SLOP)
       return True;
    else
@@ -785,34 +849,8 @@ void MC_(record_address_error) ( ThreadId tid, Addr a, Int szB,
    if (MC_(in_ignored_range)(a)) 
       return;
 
-#  if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
-   /* AIX zero-page handling.  On AIX, reads from page zero are,
-      bizarrely enough, legitimate.  Writes to page zero aren't,
-      though.  Since memcheck can't distinguish reads from writes, the
-      best we can do is to 'act normal' and mark the A bits in the
-      normal way as noaccess, but then hide any reads from that page
-      that get reported here. */
-   if ((!isWrite) && a >= 0 && a < 4096 && a+szB <= 4096) 
+   if (VG_(is_watched)( (isWrite ? write_watchpoint : read_watchpoint), a, szB))
       return;
-
-   /* Appalling AIX hack.  It suppresses reads done by glink
-      fragments.  Getting rid of this would require figuring out
-      somehow where the referenced data areas are (and their
-      sizes). */
-   if ((!isWrite) && szB == sizeof(Word)) { 
-      UInt i1, i2;
-      UInt* pc = (UInt*)VG_(get_IP)(tid);
-      if (sizeof(Word) == 4) {
-         i1 = 0x800c0000; /* lwz r0,0(r12) */
-         i2 = 0x804c0004; /* lwz r2,4(r12) */
-      } else {
-         i1 = 0xe80c0000; /* ld  r0,0(r12) */
-         i2 = 0xe84c0008; /* ld  r2,8(r12) */
-      }
-      if (pc[0] == i1 && pc[1] == i2) return;
-      if (pc[0] == i2 && pc[-1] == i1) return;
-   }
-#  endif
 
    just_below_esp = is_just_below_ESP( VG_(get_SP)(tid), a );
 
@@ -1035,27 +1073,29 @@ Bool MC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
                          "since it's handled with VG_(unique_error)()!");
 
       default: 
-         VG_(printf)("Error:\n  unknown error code %d\n",
+         printf("Error:\n  unknown error code %d\n",
                      VG_(get_error_kind)(e1));
          VG_(tool_panic)("unknown error code in mc_eq_Error");
    }
 }
 
-/* Function used when searching MC_Chunk lists */
-static Bool addr_is_in_MC_Chunk(MC_Chunk* mc, Addr a)
+/* Functions used when searching MC_Chunk lists */
+static
+Bool addr_is_in_MC_Chunk_default_REDZONE_SZB(MC_Chunk* mc, Addr a)
 {
-   // Nb: this is not quite right!  It assumes that the heap block has
-   // a redzone of size MC_MALLOC_REDZONE_SZB.  That's true for malloc'd
-   // blocks, but not necessarily true for custom-alloc'd blocks.  So
-   // in some cases this could result in an incorrect description (eg.
-   // saying "12 bytes after block A" when really it's within block B.
-   // Fixing would require adding redzone size to MC_Chunks, though.
    return VG_(addr_is_in_block)( a, mc->data, mc->szB,
-                                 MC_MALLOC_REDZONE_SZB );
+                                 MC_(Malloc_Redzone_SzB) );
+}
+static
+Bool addr_is_in_MC_Chunk_with_REDZONE_SZB(MC_Chunk* mc, Addr a, SizeT rzB)
+{
+   return VG_(addr_is_in_block)( a, mc->data, mc->szB,
+                                 rzB );
 }
 
-// Forward declaration
+// Forward declarations
 static Bool client_block_maybe_describe( Addr a, AddrInfo* ai );
+static Bool mempool_block_maybe_describe( Addr a, AddrInfo* ai );
 
 
 /* Describe an address as best you can, for error messages,
@@ -1069,30 +1109,31 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
 
    tl_assert(Addr_Undescribed == ai->tag);
 
-   /* -- Perhaps it's a user-def'd block? -- */
+   /* -- Perhaps it's a user-named block? -- */
    if (client_block_maybe_describe( a, ai )) {
       return;
    }
-   /* -- Search for a recently freed block which might bracket it. -- */
-   mc = MC_(get_freed_list_head)();
-   while (mc) {
-      if (addr_is_in_MC_Chunk(mc, a)) {
-         ai->tag = Addr_Block;
-         ai->Addr.Block.block_kind = Block_Freed;
-         ai->Addr.Block.block_desc = "block";
-         ai->Addr.Block.block_szB  = mc->szB;
-         ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
-         ai->Addr.Block.lastchange = mc->where;
-         return;
-      }
-      mc = mc->next; 
+   /* -- Perhaps it's in mempool block? -- */
+   if (mempool_block_maybe_describe( a, ai )) {
+      return;
    }
+   /* Blocks allocated by memcheck malloc functions are either
+      on the recently freed list or on the malloc-ed list.
+      Custom blocks can be on both : a recently freed block might
+      have been just re-allocated.
+      So, first search the malloc-ed block, as the most recent
+      block is the probable cause of error.
+      We however detect and report that this is a recently re-allocated
+      block. */
    /* -- Search for a currently malloc'd block which might bracket it. -- */
    VG_(HT_ResetIter)(MC_(malloc_list));
    while ( (mc = VG_(HT_Next)(MC_(malloc_list))) ) {
-      if (addr_is_in_MC_Chunk(mc, a)) {
+      if (addr_is_in_MC_Chunk_default_REDZONE_SZB(mc, a)) {
          ai->tag = Addr_Block;
          ai->Addr.Block.block_kind = Block_Mallocd;
+         if (MC_(get_freed_block_bracketting)( a ))
+            ai->Addr.Block.block_desc = "recently re-allocated block";
+         else
          ai->Addr.Block.block_desc = "block";
          ai->Addr.Block.block_szB  = mc->szB;
          ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
@@ -1100,6 +1141,17 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
          return;
       }
    }
+   /* -- Search for a recently freed block which might bracket it. -- */
+   mc = MC_(get_freed_block_bracketting)( a );
+   if (mc) {
+         ai->tag = Addr_Block;
+      ai->Addr.Block.block_kind = Block_Freed;
+         ai->Addr.Block.block_desc = "block";
+         ai->Addr.Block.block_szB  = mc->szB;
+         ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
+         ai->Addr.Block.lastchange = mc->where;
+         return;
+      }
    /* -- Perhaps the variable type/location data describes it? -- */
    ai->Addr.Variable.descr1
       = VG_(newXA)( VG_(malloc), "mc.da.descr1",
@@ -1172,6 +1224,15 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
    /* -- Clueless ... -- */
    ai->tag = Addr_Unknown;
    return;
+}
+
+void MC_(pp_describe_addr) ( Addr a )
+{
+   AddrInfo ai;
+
+   ai.tag = Addr_Undescribed;
+   describe_addr (a, &ai);
+   mc_pp_AddrInfo (a, &ai, /* maybe_gcc */ False);
 }
 
 /* Fill in *origin_ec as specified by otag, or NULL it out if otag
@@ -1266,8 +1327,7 @@ UInt MC_(update_Error_extra)( Error* err )
    }
 }
 
-// FIXME: does this perhaps want to live somewhere else
-// in this file?
+
 static Bool client_block_maybe_describe( Addr a,
                                          /*OUT*/AddrInfo* ai )
 {
@@ -1285,15 +1345,32 @@ static Bool client_block_maybe_describe( Addr a,
          continue;
       // Use zero as the redzone for client blocks.
       if (VG_(addr_is_in_block)(a, cgbs[i].start, cgbs[i].size, 0)) {
-         /* OK - maybe it's a mempool, too? */
-         MC_Mempool* mp = VG_(HT_lookup)(MC_(mempool_list),
-                                          (UWord)cgbs[i].start);
-         if (mp != NULL) {
+         ai->tag = Addr_Block;
+         ai->Addr.Block.block_kind = Block_UserG;
+         ai->Addr.Block.block_desc = cgbs[i].desc;
+         ai->Addr.Block.block_szB  = cgbs[i].size;
+         ai->Addr.Block.rwoffset   = (Word)(a) - (Word)(cgbs[i].start);
+         ai->Addr.Block.lastchange = cgbs[i].where;
+         return True;
+      }
+   }
+   return False;
+}
+
+
+static Bool mempool_block_maybe_describe( Addr a,
+                                          /*OUT*/AddrInfo* ai )
+{
+   MC_Mempool* mp;
+   tl_assert( MC_(mempool_list) );
+
+   VG_(HT_ResetIter)( MC_(mempool_list) );
+   while ( (mp = VG_(HT_Next)(MC_(mempool_list))) ) {
             if (mp->chunks != NULL) {
                MC_Chunk* mc;
                VG_(HT_ResetIter)(mp->chunks);
                while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
-                  if (addr_is_in_MC_Chunk(mc, a)) {
+            if (addr_is_in_MC_Chunk_with_REDZONE_SZB(mc, a, mp->rzB)) {
                      ai->tag = Addr_Block;
                      ai->Addr.Block.block_kind = Block_MempoolChunk;
                      ai->Addr.Block.block_desc = "block";
@@ -1304,22 +1381,6 @@ static Bool client_block_maybe_describe( Addr a,
                   }
                }
             }
-            ai->tag = Addr_Block;
-            ai->Addr.Block.block_kind = Block_Mempool;
-            ai->Addr.Block.block_desc = "mempool";
-            ai->Addr.Block.block_szB  = cgbs[i].size;
-            ai->Addr.Block.rwoffset   = (Word)(a) - (Word)(cgbs[i].start);
-            ai->Addr.Block.lastchange = cgbs[i].where;
-            return True;
-         }
-         ai->tag = Addr_Block;
-         ai->Addr.Block.block_kind = Block_UserG;
-         ai->Addr.Block.block_desc = cgbs[i].desc;
-         ai->Addr.Block.block_szB  = cgbs[i].size;
-         ai->Addr.Block.rwoffset   = (Word)(a) - (Word)(cgbs[i].start);
-         ai->Addr.Block.lastchange = cgbs[i].where;
-         return True;
-      }
    }
    return False;
 }
@@ -1451,7 +1512,7 @@ Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
          return (ekind == Err_IllegalMempool);
 
       default:
-         VG_(printf)("Error:\n"
+         printf("Error:\n"
                      "  unknown suppression type %d\n",
                      VG_(get_supp_kind)(su));
          VG_(tool_panic)("unknown suppression type in "

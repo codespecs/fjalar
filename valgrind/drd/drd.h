@@ -1,5 +1,3 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
-
 /*
   ----------------------------------------------------------------
 
@@ -14,7 +12,7 @@
   This file is part of DRD, a Valgrind tool for verification of
   multithreaded programs.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -65,52 +63,102 @@
 #include "valgrind.h"
 
 
-/** Prefix for the (inline) functions defined in this header file. */
-#define DRDCL_(str) vgDrdCl_##str
-
-
 /** Obtain the thread ID assigned by Valgrind's core. */
-#define DRD_GET_VALGRIND_THREADID (DRDCL_(get_valgrind_threadid)())
+#define DRD_GET_VALGRIND_THREADID                                          \
+    (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                           \
+                                   VG_USERREQ__DRD_GET_VALGRIND_THREAD_ID, \
+                                   0, 0, 0, 0, 0)
 
 /** Obtain the thread ID assigned by DRD. */
-#define DRD_GET_DRD_THREADID (DRDCL_(get_drd_threadid)())
+#define DRD_GET_DRD_THREADID                                            \
+    (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                        \
+                                   VG_USERREQ__DRD_GET_DRD_THREAD_ID,   \
+                                   0, 0, 0, 0, 0)
+
 
 /** Tell DRD not to complain about data races for the specified variable. */
-#define DRD_IGNORE_VAR(x) DRDCL_(ignore_range)(&(x), sizeof(x))
+#define DRD_IGNORE_VAR(x) ANNOTATE_BENIGN_RACE_SIZED(&(x), sizeof(x), "")
 
 /** Tell DRD to no longer ignore data races for the specified variable. */
-#define DRD_STOP_IGNORING_VAR(x) DRDCL_(ignore_range)(&(x), sizeof(x))
+#define DRD_STOP_IGNORING_VAR(x)                                       \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_FINISH_SUPPRESSION, \
+                                   &(x), sizeof(x), 0, 0, 0)
 
 /**
- * Tell DRD to trace all memory accesses on the specified variable. 
+ * Tell DRD to trace all memory accesses for the specified variable
  * until the memory that was allocated for the variable is freed.
  */
-#define DRD_TRACE_VAR(x) DRDCL_(trace_range)(&(x), sizeof(x))
+#define DRD_TRACE_VAR(x)                                             \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_START_TRACE_ADDR, \
+                                   &(x), sizeof(x), 0, 0, 0)
+
+/**
+ * Tell DRD to stop tracing memory accesses for the specified variable.
+ */
+#define DRD_STOP_TRACING_VAR(x)                                       \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_STOP_TRACE_ADDR, \
+                                   &(x), sizeof(x), 0, 0, 0)
 
 /**
  * @defgroup RaceDetectionAnnotations Data race detection annotations.
  *
- * @see See also the source file <a href="http://code.google.com/p/google-perftools/source/browse/trunk/src/base/dynamic_annotations.h">dynamic_annotations.h</a>
+ * @see See also the source file <a href="http://code.google.com/p/data-race-test/source/browse/trunk/dynamic_annotations/dynamic_annotations.h</a>
+
  * in the ThreadSanitizer project.
  */
 /*@{*/
 
-/**
- * Tell DRD to insert a mark. addr is the address of an object that is not a
- * pthread synchronization object. Inserting two 'happens before' annotations
- * while no thread has passed by a 'happens after' annotation is an error.
- */
-#define ANNOTATE_HAPPENS_BEFORE(addr) DRDCL_(annotate_happens_before)(addr)
+#ifndef __HELGRIND_H
 
 /**
- * Tell DRD that the memory accesses executed after this annotation will happen
- * after the memory accesses performed before the most recent
+ * Tell DRD to insert a happens-before mark. addr is the address of an object
+ * that is not a pthread synchronization object.
+ */
+#define ANNOTATE_HAPPENS_BEFORE(addr)                                       \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE, \
+                                   addr, 0, 0, 0, 0)
+
+/**
+ * Tell DRD that the memory accesses executed after this annotation will
+ * happen after all memory accesses performed before all preceding
  * ANNOTATE_HAPPENS_BEFORE(addr). addr is the address of an object that is not
- * a pthread synchronization object. Inserting a 'happens after' annotation
- * before any other thread has passed by a 'happens before' annotation for the
+ * a pthread synchronization object. Inserting a happens-after annotation
+ * before any other thread has passed by a happens-before annotation for the
  * same address is an error.
  */
-#define ANNOTATE_HAPPENS_AFTER(addr) DRDCL_(annotate_happens_after)(addr)
+#define ANNOTATE_HAPPENS_AFTER(addr)                                       \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_HAPPENS_AFTER, \
+                                   addr, 0, 0, 0, 0)
+
+#else /* __HELGRIND_H */
+
+#undef ANNOTATE_CONDVAR_LOCK_WAIT
+#undef ANNOTATE_CONDVAR_WAIT
+#undef ANNOTATE_CONDVAR_SIGNAL
+#undef ANNOTATE_CONDVAR_SIGNAL_ALL
+#undef ANNOTATE_PURE_HAPPENS_BEFORE_MUTEX
+#undef ANNOTATE_PUBLISH_MEMORY_RANGE
+#undef ANNOTATE_BARRIER_INIT
+#undef ANNOTATE_BARRIER_WAIT_BEFORE
+#undef ANNOTATE_BARRIER_WAIT_AFTER
+#undef ANNOTATE_BARRIER_DESTROY
+#undef ANNOTATE_PCQ_CREATE
+#undef ANNOTATE_PCQ_DESTROY
+#undef ANNOTATE_PCQ_PUT
+#undef ANNOTATE_PCQ_GET
+#undef ANNOTATE_BENIGN_RACE
+#undef ANNOTATE_BENIGN_RACE_SIZED
+#undef ANNOTATE_IGNORE_READS_BEGIN
+#undef ANNOTATE_IGNORE_READS_END
+#undef ANNOTATE_IGNORE_WRITES_BEGIN
+#undef ANNOTATE_IGNORE_WRITES_END
+#undef ANNOTATE_IGNORE_READS_AND_WRITES_BEGIN
+#undef ANNOTATE_IGNORE_READS_AND_WRITES_END
+#undef ANNOTATE_NEW_MEMORY
+#undef ANNOTATE_TRACE_MEMORY
+#undef ANNOTATE_THREAD_NAME
+
+#endif /* __HELGRIND_H */
 
 /**
  * Tell DRD that waiting on the condition variable at address cv has succeeded
@@ -128,6 +176,11 @@
 #define ANNOTATE_CONDVAR_SIGNAL(cv) do { } while(0)
 
 /**
+ * Tell DRD that the condition variable at address cv is about to be signaled.
+ */
+#define ANNOTATE_CONDVAR_SIGNAL_ALL(cv) do { } while(0)
+
+/**
  * Tell DRD that waiting on condition variable at address cv succeeded and that
  * the memory operations performed after this annotation should be considered
  * to happen after the matching ANNOTATE_CONDVAR_SIGNAL(cv). Since this is the
@@ -142,6 +195,9 @@
  * ordered. This is how DRD always behaves, so this macro has been defined
  * such that it has no effect.
  */
+#define ANNOTATE_PURE_HAPPENS_BEFORE_MUTEX(mtx) do { } while(0)
+
+/** Deprecated -- don't use this annotation. */
 #define ANNOTATE_MUTEX_IS_USED_AS_CONDVAR(mtx) do { } while(0)
 
 /**
@@ -151,18 +207,23 @@
  */
 #define ANNOTATE_PUBLISH_MEMORY_RANGE(addr, size) do { } while(0)
 
-/**
- * Tell DRD to undo the effect of ANNOTATE_PUBLISH_MEMORY_RANGE().
- */
+/** Deprecated -- don't use this annotation. */
 #define ANNOTATE_UNPUBLISH_MEMORY_RANGE(addr, size) do { } while(0)
+
+/** Deprecated -- don't use this annotation. */
+#define ANNOTATE_SWAP_MEMORY_RANGE(addr, size) do { } while(0)
+
+#ifndef __HELGRIND_H
 
 /** Tell DRD that a reader-writer lock object has been initialized. */
 #define ANNOTATE_RWLOCK_CREATE(rwlock) \
-   DRDCL_(annotate_rwlock_create)(rwlock)
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE, \
+                                   rwlock, 0, 0, 0, 0);
 
 /** Tell DRD that a reader-writer lock object has been destroyed. */
 #define ANNOTATE_RWLOCK_DESTROY(rwlock) \
-   DRDCL_(annotate_rwlock_destroy)(rwlock)
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_DESTROY, \
+                                   rwlock, 0, 0, 0, 0);
 
 /**
  * Tell DRD that a reader-writer lock has been acquired. is_w == 1 means that
@@ -170,7 +231,10 @@
  * obtained.
  */
 #define ANNOTATE_RWLOCK_ACQUIRED(rwlock, is_w) \
-   DRDCL_(annotate_rwlock_acquired)(rwlock, is_w)
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_ACQUIRED, \
+                                   rwlock, is_w, 0, 0, 0)
+
+#endif /* __HELGRIND_H */
 
 /**
  * Tell DRD that a reader lock has been acquired on a reader-writer
@@ -184,13 +248,18 @@
  */
 #define ANNOTATE_WRITERLOCK_ACQUIRED(rwlock) ANNOTATE_RWLOCK_ACQUIRED(rwlock, 1)
 
+#ifndef __HELGRIND_H
+
 /**
  * Tell DRD that a reader-writer lock is about to be released. is_w == 1 means
  * that a write lock is about to be released, is_w == 0 means that a read lock
  * is about to be released.
  */
 #define ANNOTATE_RWLOCK_RELEASED(rwlock, is_w) \
-   DRDCL_(annotate_rwlock_released)(rwlock, is_w)
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_RELEASED, \
+                                   rwlock, is_w, 0, 0, 0);
+
+#endif /* __HELGRIND_H */
 
 /**
  * Tell DRD that a reader lock is about to be released.
@@ -201,6 +270,35 @@
  * Tell DRD that a writer lock is about to be released.
  */
 #define ANNOTATE_WRITERLOCK_RELEASED(rwlock) ANNOTATE_RWLOCK_RELEASED(rwlock, 1)
+
+/*
+ * Report that a barrier has been initialized with a given barrier count.  The
+ * third argument specifies whether or not reinitialization is allowed, that
+ * is, whether or not it is allowed to call barrier_init() several times
+ * without calling barrier_destroy().
+ */
+#define ANNOTATE_BARRIER_INIT(barrier, count, reinitialization_allowed) \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATION_UNIMP,    \
+                                   "ANNOTATE_BARRIER_INIT", barrier,    \
+                                   count, reinitialization_allowed, 0)
+
+/* Report that a barrier has been destroyed. */
+#define ANNOTATE_BARRIER_DESTROY(barrier)                               \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATION_UNIMP,    \
+                                   "ANNOTATE_BARRIER_DESTROY",          \
+                                   barrier, 0, 0, 0)
+
+/* Report that the calling thread is about to start waiting for a barrier. */
+#define ANNOTATE_BARRIER_WAIT_BEFORE(barrier)                           \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATION_UNIMP,    \
+                                   "ANNOTATE_BARRIER_WAIT_BEFORE",      \
+                                   barrier, 0, 0, 0)
+
+/* Report that the calling thread has just finished waiting for a barrier. */
+#define ANNOTATE_BARRIER_WAIT_AFTER(barrier)                            \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATION_UNIMP,    \
+                                   "ANNOTATE_BARRIER_WAIT_AFTER",       \
+                                   barrier, 0, 0, 0)
 
 /**
  * Tell DRD that a FIFO queue has been created. The abbreviation PCQ stands for
@@ -228,48 +326,68 @@
 #define ANNOTATE_PCQ_GET(pcq) do { } while(0)
 
 /**
- * Tell DRD that data races in the specified address range are expected and
- * must not be reported.
+ * Tell DRD that data races at the specified address are expected and must not
+ * be reported.
  */
-#define ANNOTATE_BENIGN_RACE(addr, descr) DRDCL_(ignore_range)(addr, 4)
+#define ANNOTATE_BENIGN_RACE(addr, descr) \
+   ANNOTATE_BENIGN_RACE_SIZED(addr, sizeof(*addr), descr)
+
+/* Same as ANNOTATE_BENIGN_RACE(addr, descr), but applies to
+   the memory range [addr, addr + size). */
+#define ANNOTATE_BENIGN_RACE_SIZED(addr, size, descr)                   \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_START_SUPPRESSION,   \
+                                   addr, size, 0, 0, 0)
 
 /** Tell DRD to ignore all reads performed by the current thread. */
-#define ANNOTATE_IGNORE_READS_BEGIN() DRDCL_(set_record_loads)(0)
+#define ANNOTATE_IGNORE_READS_BEGIN()                                \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_RECORD_LOADS,     \
+                                   0, 0, 0, 0, 0);
+
 
 /** Tell DRD to no longer ignore the reads performed by the current thread. */
-#define ANNOTATE_IGNORE_READS_END() DRDCL_(set_record_loads)(1)
+#define ANNOTATE_IGNORE_READS_END()                                  \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_RECORD_LOADS,     \
+                                   1, 0, 0, 0, 0);
 
 /** Tell DRD to ignore all writes performed by the current thread. */
-#define ANNOTATE_IGNORE_WRITES_BEGIN() DRDCL_(set_record_stores)(0)
+#define ANNOTATE_IGNORE_WRITES_BEGIN()                                \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_RECORD_STORES,     \
+                                   0, 0, 0, 0, 0)
 
 /** Tell DRD to no longer ignore the writes performed by the current thread. */
-#define ANNOTATE_IGNORE_WRITES_END() DRDCL_(set_record_stores)(1)
+#define ANNOTATE_IGNORE_WRITES_END()                                  \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_RECORD_STORES,     \
+                                   1, 0, 0, 0, 0)
 
 /** Tell DRD to ignore all memory accesses performed by the current thread. */
 #define ANNOTATE_IGNORE_READS_AND_WRITES_BEGIN() \
-   do { DRDCL_(set_record_loads)(0); DRDCL_(set_record_stores)(0); } while(0)
+   do { ANNOTATE_IGNORE_READS_BEGIN(); ANNOTATE_IGNORE_WRITES_BEGIN(); } while(0)
 
 /**
  * Tell DRD to no longer ignore the memory accesses performed by the current
  * thread.
  */
 #define ANNOTATE_IGNORE_READS_AND_WRITES_END() \
-   do { DRDCL_(set_record_loads)(1); DRDCL_(set_record_stores)(1); } while(0)
+   do { ANNOTATE_IGNORE_READS_END(); ANNOTATE_IGNORE_WRITES_END(); } while(0)
 
 /**
  * Tell DRD that size bytes starting at addr has been allocated by a custom
  * memory allocator.
  */
-#define ANNOTATE_NEW_MEMORY(addr, size) DRDCL_(clean_memory)(addr, size)
+#define ANNOTATE_NEW_MEMORY(addr, size)                           \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_CLEAN_MEMORY,  \
+                                   addr, size, 0, 0, 0)
 
-/** Ask DRD to report every access to the specified address range. */
-#define ANNOTATE_TRACE_MEMORY(addr) DRDCL_(trace_range)(addr, 1)
+/** Ask DRD to report every access to the specified address. */
+#define ANNOTATE_TRACE_MEMORY(addr) DRD_TRACE_VAR(*(char*)(addr))
 
 /**
  * Tell DRD to assign the specified name to the current thread. This name will
  * be used in error messages printed by DRD.
  */
-#define ANNOTATE_THREAD_NAME(name) DRDCL_(set_thread_name)(name)
+#define ANNOTATE_THREAD_NAME(name)                                      \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_SET_THREAD_NAME,     \
+                                   name, 0, 0, 0, 0)
 
 /*@}*/
 
@@ -320,6 +438,10 @@ enum {
    VG_USERREQ__DRD_SET_THREAD_NAME,
    /* args: null-terminated character string. */
 
+   /* Tell DRD that a DRD annotation has not yet been implemented. */
+   VG_USERREQ__DRD_ANNOTATION_UNIMP,
+   /* args: Char*. */
+
    /* Tell DRD that a user-defined reader-writer synchronization object
     * has been created. */
    VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE
@@ -341,16 +463,16 @@ enum {
       = VG_USERREQ_TOOL_BASE('H','G') + 256 + 18,
    /* args: Addr, Int is_rw. */
 
-   /* Tell DRD that an annotation has not yet been implemented. */
-   VG_USERREQ__DRD_ANNOTATION_UNIMP
+   /* Tell DRD that a Helgrind annotation has not yet been implemented. */
+   VG_USERREQ__HELGRIND_ANNOTATION_UNIMP
       = VG_USERREQ_TOOL_BASE('H','G') + 256 + 32,
    /* args: Char*. */
 
-   /* Tell DRD to insert a happens before annotation. */
+   /* Tell DRD to insert a happens-before annotation. */
    VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE
       = VG_USERREQ_TOOL_BASE('H','G') + 256 + 33,
    /* args: Addr. */
-   /* Tell DRD to insert a happens after annotation. */
+   /* Tell DRD to insert a happens-after annotation. */
    VG_USERREQ__DRD_ANNOTATE_HAPPENS_AFTER
       = VG_USERREQ_TOOL_BASE('H','G') + 256 + 34,
    /* args: Addr. */
@@ -358,136 +480,42 @@ enum {
 };
 
 
-/*
- * Do not call the inline functions below directly but use the macro's defined
- * above. The names of these inline functions may change from one release to
- * another.
+/**
+ * @addtogroup RaceDetectionAnnotations
  */
+/*@{*/
 
-static __inline__
-void DRDCL_(clean_memory)(const void* const addr, const int size)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_CLEAN_MEMORY,
-                              addr, size, 0, 0, 0);
-}
+#ifdef __cplusplus
+/* ANNOTATE_UNPROTECTED_READ is the preferred way to annotate racy reads.
 
-static __inline__
-int DRDCL_(get_valgrind_threadid)(void)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_GET_VALGRIND_THREAD_ID,
-                              0, 0, 0, 0, 0);
-   return res;
+   Instead of doing
+   ANNOTATE_IGNORE_READS_BEGIN();
+   ... = x;
+   ANNOTATE_IGNORE_READS_END();
+   one can use
+   ... = ANNOTATE_UNPROTECTED_READ(x); */
+template <typename T>
+inline T ANNOTATE_UNPROTECTED_READ(const volatile T& x) {
+   ANNOTATE_IGNORE_READS_BEGIN();
+   const T result = x;
+   ANNOTATE_IGNORE_READS_END();
+   return result;
 }
+/* Apply ANNOTATE_BENIGN_RACE_SIZED to a static variable. */
+#define ANNOTATE_BENIGN_RACE_STATIC(static_var, description)		\
+   namespace {								\
+      static class static_var##_annotator				\
+      {									\
+      public:								\
+	 static_var##_annotator()					\
+	 {								\
+	    ANNOTATE_BENIGN_RACE_SIZED(&static_var, sizeof(static_var),	\
+				       #static_var ": " description);	\
+	 }								\
+      } the_##static_var##_annotator;					\
+   }
+#endif
 
-static __inline__
-int DRDCL_(get_drd_threadid)(void)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_GET_DRD_THREAD_ID,
-                              0, 0, 0, 0, 0);
-   return res;
-}
-
-static __inline__
-void DRDCL_(ignore_range)(const void* const addr, const int size)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_START_SUPPRESSION,
-                              addr, size, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(stop_ignoring_range)(const void* const addr, const int size)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_FINISH_SUPPRESSION,
-                              addr, size, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(trace_range)(const void* const addr, const int size)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_START_TRACE_ADDR,
-                              addr, size, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(set_record_loads)(const int enabled)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_RECORD_LOADS,
-                              enabled, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(set_record_stores)(const int enabled)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_RECORD_STORES,
-                              enabled, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(set_thread_name)(const char* const name)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_SET_THREAD_NAME,
-                              name, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(annotate_happens_before)(const void* const addr)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE,
-                              addr, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(annotate_happens_after)(const void* const addr)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_ANNOTATE_HAPPENS_AFTER,
-                              addr, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(annotate_rwlock_create)(const void* const rwlock)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0,
-                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE,
-                              rwlock, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(annotate_rwlock_destroy)(const void* const rwlock)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0,
-                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_DESTROY,
-                              rwlock, 0, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(annotate_rwlock_acquired)(const void* const rwlock, const int is_w)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0,
-                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_ACQUIRED,
-                              rwlock, is_w, 0, 0, 0);
-}
-
-static __inline__
-void DRDCL_(annotate_rwlock_released)(const void* const rwlock, const int is_w)
-{
-   int res;
-   VALGRIND_DO_CLIENT_REQUEST(res, 0,
-                              VG_USERREQ__DRD_ANNOTATE_RWLOCK_RELEASED,
-                              rwlock, is_w, 0, 0, 0);
-}
+/*@}*/
 
 #endif /* __VALGRIND_DRD_H */

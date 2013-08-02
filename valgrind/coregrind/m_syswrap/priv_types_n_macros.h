@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -89,7 +89,7 @@ typedef
       Int o_sysno;
 #     if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
          || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-         || defined(VGP_arm_linux)
+         || defined(VGP_arm_linux) || defined(VGP_s390x_linux)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;
@@ -98,15 +98,15 @@ typedef
       Int o_arg6;
       Int uu_arg7;
       Int uu_arg8;
-#     elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+#     elif defined(VGP_mips32_linux)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;
       Int o_arg4;
-      Int o_arg5;
-      Int o_arg6;
-      Int o_arg7;
-      Int o_arg8;
+      Int s_arg5;
+      Int s_arg6;
+      Int uu_arg7;
+      Int uu_arg8;
 #     elif defined(VGP_x86_darwin)
       Int s_arg1;
       Int s_arg2;
@@ -176,20 +176,19 @@ typedef
    fixed sized table exposed to the caller, but that's too inflexible;
    hence now use a function which can do arbitrary messing around to
    find the required entry. */
+#if defined(VGP_mips32_linux)
+   /* Up to 6 parameters, 4 in registers 2 on stack. */
+#  define PRA1(s,t,a) PRRAn(1,s,t,a)
+#  define PRA2(s,t,a) PRRAn(2,s,t,a)
+#  define PRA3(s,t,a) PRRAn(3,s,t,a)
+#  define PRA4(s,t,a) PRRAn(4,s,t,a)
+#  define PRA5(s,t,a) PSRAn(5,s,t,a)
+#  define PRA6(s,t,a) PSRAn(6,s,t,a)
+
+#endif
 #if defined(VGO_linux)
 extern
 SyscallTableEntry* ML_(get_linux_syscall_entry)( UInt sysno );
-
-#elif defined(VGP_ppc32_aix5)
-/* Same scheme on AIX5.  This is more complex than the simple fixed
-   table lookup typical for Linux, since the syscalls don't have fixed
-   numbers. */
-extern
-SyscallTableEntry* ML_(get_ppc32_aix5_syscall_entry) ( UInt sysno );
-
-#elif defined(VGP_ppc64_aix5)
-extern
-SyscallTableEntry* ML_(get_ppc64_aix5_syscall_entry) ( UInt sysno );
 
 #elif defined(VGO_darwin)
 /* XXX: Darwin still uses the old scheme of exposing the table
@@ -277,7 +276,7 @@ extern const UInt ML_(syscall_table_size);
     vgSysWrap_##auxstr##_##name##_after
 
 /* Add a generic wrapper to a syscall table. */
-#if defined(VGO_linux) || defined(VGO_aix5)
+#if defined(VGO_linux)
 #  define GENX_(sysno, name)  WRAPPER_ENTRY_X_(generic, sysno, name)
 #  define GENXY(sysno, name)  WRAPPER_ENTRY_XY(generic, sysno, name)
 #elif defined(VGO_darwin)
@@ -291,18 +290,6 @@ extern const UInt ML_(syscall_table_size);
    table. */
 #define LINX_(sysno, name)    WRAPPER_ENTRY_X_(linux, sysno, name) 
 #define LINXY(sysno, name)    WRAPPER_ENTRY_XY(linux, sysno, name)
-
-/* Add an AIX5-specific, arch-independent wrapper to a syscall
-   table. */
-#define AIXXY(sysno, name)                     \
-   { & sysno,                                  \
-     { & WRAPPER_PRE_NAME(aix5, name),         \
-       & WRAPPER_POST_NAME(aix5, name) }} 
-
-#define AIXX_(sysno, name)                     \
-   { & sysno,                                  \
-     { & WRAPPER_PRE_NAME(aix5, name),         \
-       NULL }} 
 
 
 /* ---------------------------------------------------------------------
@@ -377,6 +364,9 @@ static inline UWord getERR ( SyscallStatus* st ) {
    if (VG_(clo_trace_syscalls))                      \
       VG_(printf)(format, ## args)
 
+#define FUSE_COMPATIBLE_MAY_BLOCK()                       \
+   if (VG_(strstr)(VG_(clo_sim_hints),"fuse-compatible")) \
+      *flags |= SfMayBlock
 
 
 /* Macros used to tell tools about uses of scalar arguments.  Note,
@@ -388,7 +378,16 @@ static inline UWord getERR ( SyscallStatus* st ) {
    PRAn  == "pre-read-argument"
 */
 
-#if defined(VGO_linux)
+#if defined(VGP_mips32_linux)
+   /* Up to 6 parameters, 4 in registers 2 on stack. */
+#  define PRA1(s,t,a) PRRAn(1,s,t,a)
+#  define PRA2(s,t,a) PRRAn(2,s,t,a)
+#  define PRA3(s,t,a) PRRAn(3,s,t,a)
+#  define PRA4(s,t,a) PRRAn(4,s,t,a)
+#  define PRA5(s,t,a) PSRAn(5,s,t,a)
+#  define PRA6(s,t,a) PSRAn(6,s,t,a)
+
+#elif defined(VGO_linux) && !defined(VGP_mips32_linux)
    /* Up to 6 parameters, all in registers. */
 #  define PRA1(s,t,a) PRRAn(1,s,t,a)
 #  define PRA2(s,t,a) PRRAn(2,s,t,a)
@@ -396,9 +395,6 @@ static inline UWord getERR ( SyscallStatus* st ) {
 #  define PRA4(s,t,a) PRRAn(4,s,t,a)
 #  define PRA5(s,t,a) PRRAn(5,s,t,a)
 #  define PRA6(s,t,a) PRRAn(6,s,t,a)
-
-#elif defined(VGO_aix5)
-#  error Need to fill this in for AIX5
 
 #elif defined(VGP_x86_darwin)
    /* Up to 8 parameters, all on the stack. */
@@ -512,6 +508,18 @@ static inline UWord getERR ( SyscallStatus* st ) {
    since the least significant parts of the guest register are stored
    in memory at the highest address.
 */
+#if (defined(VGP_mips32_linux) && defined (_MIPSEB))
+ #define PSRAn_BE(n,s,t,a)                                        \
+    do {                                                          \
+      Addr next = layout->s_arg##n + sizeof(UWord) +              \
+                  VG_(get_SP)(tid);                               \
+      vg_assert(sizeof(t) <= sizeof(UWord));                      \
+      VG_(tdict).track_pre_mem_read(                              \
+         Vg_CoreSysCallArgInMem, tid, s"("#a")",                  \
+         next-sizeof(t), sizeof(t)                                \
+      );                                                          \
+   } while (0)
+#else
 #define PSRAn_BE(n,s,t,a)                                         \
    do {                                                           \
       Addr next = layout->o_arg##n + sizeof(UWord) +              \
@@ -522,6 +530,7 @@ static inline UWord getERR ( SyscallStatus* st ) {
          next-sizeof(t), sizeof(t)                                \
       );                                                          \
    } while (0)
+#endif
 
 #if defined(VG_BIGENDIAN)
 #  define PSRAn(n,s,t,a) PSRAn_BE(n,s,t,a)

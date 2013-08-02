@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -46,12 +45,28 @@ static void bm2_print(const struct bitmap2* const bm2);
 
 /* Local variables. */
 
+static OSet* s_bm2_set_template;
 static ULong s_bitmap_creation_count;
 static ULong s_bitmap_merge_count;
 static ULong s_bitmap2_merge_count;
 
 
 /* Function definitions. */
+
+void DRD_(bm_module_init)(void)
+{
+   tl_assert(!s_bm2_set_template);
+   s_bm2_set_template
+      = VG_(OSetGen_Create_With_Pool)(0, 0, VG_(malloc), "drd.bitmap.bn.2",
+                                      VG_(free), 512, sizeof(struct bitmap2));
+}
+
+void DRD_(bm_module_cleanup)(void)
+{
+   tl_assert(s_bm2_set_template);
+   VG_(OSetGen_Destroy)(s_bm2_set_template);
+   s_bm2_set_template = NULL;
+}
 
 struct bitmap* DRD_(bm_new)()
 {
@@ -91,8 +106,7 @@ void DRD_(bm_init)(struct bitmap* const bm)
       bm->cache[i].a1  = ~(UWord)1;
       bm->cache[i].bm2 = 0;
    }
-   bm->oset = VG_(OSetGen_Create)(0, 0, DRD_(bm2_alloc_node),
-                                  "drd.bitmap.bn.2", DRD_(bm2_free_node));
+   bm->oset = VG_(OSetGen_EmptyClone)(s_bm2_set_template);
 
    s_bitmap_creation_count++;
 }
@@ -129,7 +143,7 @@ void DRD_(bm_access_range_load)(struct bitmap* const bm, Addr a1, Addr a2)
    Addr b, b_next;
 
    tl_assert(bm);
-   tl_assert(a1 < a2);
+   tl_assert(a1 <= a2);
    tl_assert(a2 < first_address_with_higher_msb(a2));
    tl_assert(a1 == first_address_with_same_lsb(a1));
    tl_assert(a2 == first_address_with_same_lsb(a2));
@@ -226,7 +240,7 @@ void DRD_(bm_access_range_store)(struct bitmap* const bm,
    Addr b, b_next;
 
    tl_assert(bm);
-   tl_assert(a1 < a2);
+   tl_assert(a1 <= a2);
    tl_assert(a2 < first_address_with_higher_msb(a2));
    tl_assert(a1 == first_address_with_same_lsb(a1));
    tl_assert(a2 == first_address_with_same_lsb(a2));
@@ -326,6 +340,29 @@ Bool DRD_(bm_has)(struct bitmap* const bm, const Addr a1, const Addr a2,
       return DRD_(bm_has_any_load)(bm, a1, a2);
    else
       return DRD_(bm_has_any_store)(bm, a1, a2);
+}
+
+Bool DRD_(bm_has_any_load_g)(struct bitmap* const bm)
+{
+   struct bitmap2* bm2;
+
+   tl_assert(bm);
+
+   VG_(OSetGen_ResetIter)(bm->oset);
+   for ( ; (bm2 = VG_(OSetGen_Next)(bm->oset)) != NULL; ) {
+      Addr b_start;
+      Addr b_end;
+      UWord b0;
+      const struct bitmap1* const p1 = &bm2->bm1;
+
+      b_start = make_address(bm2->addr, 0);
+      b_end = make_address(bm2->addr + 1, 0);
+
+      for (b0 = address_lsb(b_start); b0 <= address_lsb(b_end - 1); b0++)
+         if (bm0_is_set(p1->bm0_r, b0))
+            return True;
+   }
+   return False;
 }
 
 Bool
@@ -1051,13 +1088,9 @@ void DRD_(bm_mark)(struct bitmap* bml, struct bitmap* bmr)
         (bm2r = VG_(OSetGen_Next)(bmr->oset)) != 0;
         )
    {
-      /*if (DRD_(bm_has_any_access(bmr, make_address(bm2r->addr, 0),
-        make_address(bm2r->addr + 1, 0))))*/
-      {
          bm2l = bm2_lookup_or_insert(bml, bm2r->addr);
          bm2l->recalc = True;
       }
-   }
 }
 
 /** Clear all second-level bitmaps for which bitmap2::recalc == True. */
@@ -1079,8 +1112,6 @@ void DRD_(bm_merge2_marked)(struct bitmap* const lhs, struct bitmap* const rhs)
 {
    struct bitmap2* bm2l;
    struct bitmap2* bm2r;
-
-   tl_assert(lhs != rhs);
 
    /*
     * It's not possible to have two independent iterators over the same OSet,

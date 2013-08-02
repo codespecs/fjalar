@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 #ifndef __PUB_TOOL_REDIR_H
 #define __PUB_TOOL_REDIR_H
 
+#include "config.h"           /* DARWIN_VERS */
+
 /* The following macros facilitate function replacement and wrapping.
 
    Function wrapping and function replacement are similar but not
@@ -51,6 +53,33 @@
    sure you use the VG_REPLACE_FN_ macros and not the VG_WRAP_FN_
    macros.
 
+   Finally there is the concept of prioritised behavioural equivalence
+   tags.  A tag is a 5-digit decimal number (00000 to 99999) encoded
+   in the name.  The top 4 digits are the equivalence class number,
+   and the last digit is a priority.
+
+   When processing redirections at library load time, if the set of
+   available specifications yields more than one replacement or
+   wrapper function for a given address, the system will try to
+   resolve the situation by examining the tags on the
+   replacements/wrappers.
+
+   If two replacement/wrapper functions have the same tag and
+   priority, then the redirection machinery will assume they have
+   identical behaviour and can choose between them arbitrarily.  If
+   they have the same tag but different priorities, then the one with
+   higher priority will be chosen.  If neither case holds, then the
+   redirection is ambiguous and the system will ignore one of them
+   arbitrarily, but print a warning when running at -v or above.
+
+   The tag is mandatory and must comprise 5 decimal digits.  The tag
+   00000 is special and means "does not have behaviour identical to any
+   other replacement/wrapper function".  Hence if you wish to write a
+   wrap/replacement function that is not subject to the above
+   resolution rules, use 00000 for the tag.  Tags 00001 through 00009
+   may not be used for any purpose.
+
+
    Replacement
    ~~~~~~~~~~~
    To write a replacement function, do this:
@@ -61,12 +90,16 @@
          ... body ...
       }
 
-   zEncodedSoname should be a Z-encoded soname (see below for Z-encoding
-   details) and fnname should be an unencoded fn name.  The resulting name is
+   zEncodedSoname should be a Z-encoded soname (see below for
+   Z-encoding details) and fnname should be an unencoded fn name.  A
+   default-safe equivalence tag of 00000 is assumed (see comments
+   above).  The resulting name is
 
-      _vgrZU_zEncodedSoname_fnname
+      _vgr00000ZU_zEncodedSoname_fnname
 
-   The "_vgrZU_" is a prefix that gets discarded upon decoding.
+   The "_vgr00000ZU_" is a prefix that gets discarded upon decoding.
+   It identifies this function as a replacement and specifies its
+   equivalence tag.
 
    It is also possible to write
 
@@ -80,7 +113,7 @@
    Z-encoded.  This can sometimes be necessary.  In this case the
    resulting function name is
 
-      _vgrZZ_zEncodedSoname_zEncodedFnname
+      _vgr00000ZZ_zEncodedSoname_zEncodedFnname
 
    When it sees this either such name, the core's symbol-table reading
    machinery and redirection machinery first Z-decode the soname and 
@@ -112,6 +145,16 @@
    underscores, since the intercept-handlers in m_redir.c detect the
    end of the soname by looking for the first trailing underscore.
 
+   To write function names which explicitly state the equivalence class
+   tag, use
+     VG_REPLACE_FUNCTION_EZU(5-digit-tag,zEncodedSoname,fnname)
+   or
+     VG_REPLACE_FUNCTION_EZZ(5-digit-tag,zEncodedSoname,zEncodedFnname)
+
+   As per comments above, the tag must be a 5 digit decimal number,
+   padded with leading zeroes, in the range 00010 to 99999 inclusive.
+
+
    Wrapping
    ~~~~~~~~
    This is identical to replacement, except that you should use the
@@ -119,6 +162,8 @@
 
       VG_WRAP_FUNCTION_ZU
       VG_WRAP_FUNCTION_ZZ
+      VG_WRAP_FUNCTION_EZU
+      VG_WRAP_FUNCTION_EZZ
 
    instead.
 
@@ -153,11 +198,34 @@
    args are fully macro-expanded before pasting them together. */
 #define VG_CONCAT4(_aa,_bb,_cc,_dd) _aa##_bb##_cc##_dd
 
-#define VG_REPLACE_FUNCTION_ZU(soname,fnname) VG_CONCAT4(_vgrZU_,soname,_,fnname)
-#define VG_REPLACE_FUNCTION_ZZ(soname,fnname) VG_CONCAT4(_vgrZZ_,soname,_,fnname)
+#define VG_CONCAT6(_aa,_bb,_cc,_dd,_ee,_ff) _aa##_bb##_cc##_dd##_ee##_ff
 
-#define VG_WRAP_FUNCTION_ZU(soname,fnname) VG_CONCAT4(_vgwZU_,soname,_,fnname)
-#define VG_WRAP_FUNCTION_ZZ(soname,fnname) VG_CONCAT4(_vgwZZ_,soname,_,fnname)
+/* The 4 basic macros. */
+#define VG_REPLACE_FUNCTION_EZU(_eclasstag,_soname,_fnname) \
+   VG_CONCAT6(_vgr,_eclasstag,ZU_,_soname,_,_fnname)
+
+#define VG_REPLACE_FUNCTION_EZZ(_eclasstag,_soname,_fnname) \
+   VG_CONCAT6(_vgr,_eclasstag,ZZ_,_soname,_,_fnname)
+
+#define VG_WRAP_FUNCTION_EZU(_eclasstag,_soname,_fnname) \
+   VG_CONCAT6(_vgw,_eclasstag,ZU_,_soname,_,_fnname)
+
+#define VG_WRAP_FUNCTION_EZZ(_eclasstag,_soname,_fnname) \
+   VG_CONCAT6(_vgw,_eclasstag,ZZ_,_soname,_,_fnname)
+
+/* Convenience macros defined in terms of the above 4. */
+#define VG_REPLACE_FUNCTION_ZU(_soname,_fnname) \
+   VG_CONCAT6(_vgr,00000,ZU_,_soname,_,_fnname)
+
+#define VG_REPLACE_FUNCTION_ZZ(_soname,_fnname) \
+   VG_CONCAT6(_vgr,00000,ZZ_,_soname,_,_fnname)
+
+#define VG_WRAP_FUNCTION_ZU(_soname,_fnname) \
+   VG_CONCAT6(_vgw,00000,ZU_,_soname,_,_fnname)
+
+#define VG_WRAP_FUNCTION_ZZ(_soname,_fnname) \
+   VG_CONCAT6(_vgw,00000,ZZ_,_soname,_,_fnname)
+
 
 /* --------- Some handy Z-encoded names. --------- */
 
@@ -174,15 +242,16 @@
 
 #if defined(VGO_linux)
 #  define  VG_Z_LIBC_SONAME  libcZdsoZa              // libc.so*
-#elif defined(VGP_ppc32_aix5)
-   /* AIX has both /usr/lib/libc.a and /usr/lib/libc_r.a. */
-#  define  VG_Z_LIBC_SONAME  libcZaZdaZLshrZdoZR     // libc*.a(shr.o)
-#elif defined(VGP_ppc64_aix5)
-#  define  VG_Z_LIBC_SONAME  libcZaZdaZLshrZu64ZdoZR // libc*.a(shr_64.o)
-#elif defined(VGO_darwin)
+
+#elif defined(VGO_darwin) && (DARWIN_VERS <= DARWIN_10_6)
 #  define  VG_Z_LIBC_SONAME  libSystemZdZaZddylib    // libSystem.*.dylib
+
+#elif defined(VGO_darwin) && (DARWIN_VERS >= DARWIN_10_7)
+#  define  VG_Z_LIBC_SONAME  libsystemZucZaZddylib   // libsystem_c*.dylib
+
 #else
 #  error "Unknown platform"
+
 #endif
 
 /* --- Soname of the GNU C++ library. --- */
@@ -190,20 +259,9 @@
 // Valid on all platforms(?)
 #define  VG_Z_LIBSTDCXX_SONAME  libstdcZpZpZa           // libstdc++*
 
-/* --- Soname of XLC's C++ library. --- */
-
-/* AIX: xlC's C++ runtime library is called libC.a, and the
-   interesting symbols appear to be in ansicore_32.o or ansicore_64.o
-   respectively. */
-#if defined(VGP_ppc32_aix5)
-#  define  VG_Z_LIBC_DOT_A   libCZdaZLansicoreZu32ZdoZR // libC.a(ansicore_32.o)
-#elif defined(VGP_ppc64_aix5)
-#  define  VG_Z_LIBC_DOT_A   libCZdaZLansicoreZu64ZdoZR // libC.a(ansicore_64.o)
-#endif
-
 /* --- Soname of the pthreads library. --- */
 
-#if defined(VGO_linux) || defined(VGO_aix5)
+#if defined(VGO_linux)
 #  define  VG_Z_LIBPTHREAD_SONAME  libpthreadZdsoZd0     // libpthread.so.0
 #elif defined(VGO_darwin)
 #  define  VG_Z_LIBPTHREAD_SONAME  libSystemZdZaZddylib  // libSystem.*.dylib
@@ -214,6 +272,9 @@
 /* --- Sonames for Linux ELF linkers, plus unencoded versions. --- */
 
 #if defined(VGO_linux)
+
+#define  VG_Z_LD_LINUX_SO_3         ldZhlinuxZdsoZd3           // ld-linux.so.3
+#define  VG_U_LD_LINUX_SO_3         "ld-linux.so.3"
 
 #define  VG_Z_LD_LINUX_SO_2         ldZhlinuxZdsoZd2           // ld-linux.so.2
 #define  VG_U_LD_LINUX_SO_2         "ld-linux.so.2"
@@ -238,6 +299,11 @@
 
 #endif
 
+
+// Prefix for synonym soname synonym handling
+#define VG_SO_SYN(name)       VgSoSyn##name
+#define VG_SO_SYN_PREFIX     "VgSoSyn"
+#define VG_SO_SYN_PREFIX_LEN 7
 
 #endif   // __PUB_TOOL_REDIR_H
 

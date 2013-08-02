@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2009 OpenWorks Ltd
+   Copyright (C) 2007-2012 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -45,17 +45,22 @@
 #define LockP_MAGIC    0x755b5456 /* persistent (copied) locks */
 
 
-/* These are handles for Word sets.  CONSTRAINTS: must be (very) small
-   ints numbered from zero, since < 30-bit versions of them are used to
-   encode thread-sets and lock-sets in 32-bit shadow words. */
+/* These are handles for Word sets.  CONSTRAINTS: must be small ints
+   numbered from zero, since 32-bit versions of them are used to
+   encode lock-sets in libhb's history records (Thr_n_RCEC). */
 typedef  WordSet  WordSetID;
 
 
 /* Synchronisation Objects, exported abstractly by libhb. */
 typedef  struct _SO  SO;
 
-/* Thr, libhb's private thread record, exported abstractly */
+/* Thr, libhb's private thread record, exported abstractly.  Thr's are
+   allocated and never deallocated (simply leaked).  Also ThrID, which
+   is a small integer which uniquely identifies a Thr and which is
+   used in ScalarTS because it is smaller than a Thr*.  There is a 1-1
+   mapping between Thr's and ThrIDs. */
 typedef  struct _Thr  Thr;
+typedef  UInt         ThrID;
 
 
 /* Stores information about a thread.  Addresses of these also serve
@@ -78,8 +83,8 @@ typedef
       /* ADMIN */
       struct _Thread* admin;
       UInt            magic;
-      Thr*            hbthr;
-      ThreadId        coretid;
+      Thr*            hbthr; /* which in turn points back here .. */
+      ThreadId        coretid;  /* .. via its hgthread field */
       /* USEFUL */
       WordSetID locksetA; /* WordSet of Lock* currently held by thread */
       WordSetID locksetW; /* subset of locksetA held in w-mode */
@@ -92,6 +97,8 @@ typedef
    }
    Thread;
 
+/* Get hg's admin_threads value, so libhb can visit all of them. */
+Thread* get_admin_threads ( void );
 
 /* Stores information about a lock's current state.  These are
    allocated and later freed (when the containing memory becomes
@@ -114,7 +121,8 @@ typedef
 typedef
    struct _Lock {
       /* ADMIN */
-      struct _Lock* admin;
+      struct _Lock* admin_next; /* fields for a double linked */
+      struct _Lock* admin_prev; /* list of these locks */
       ULong         unique; /* used for persistence-hashing */
       UInt          magic;  /* LockN_MAGIC or LockP_MAGIC */
       /* EXPOSITION */
@@ -147,6 +155,8 @@ typedef
          for LK_rdwr, w-holdings may only have sizeTotal(heldBy) == 1 */
    }
    Lock;
+
+#define Lock_INVALID  ((Lock*)1UL)
 
 /*----------------------------------------------------------------*/
 /*--- Sanity checking                                          ---*/

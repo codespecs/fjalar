@@ -39,74 +39,74 @@
 {
    dl-hack3-cond-1
    Memcheck:Cond
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
 }
 {
    dl-hack3-cond-2
    Memcheck:Cond
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/libc-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/libc-@GLIBC_VERSION@*.so*
 }
 {
    dl-hack3-cond-3
    Memcheck:Cond
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/libc-@GLIBC_VERSION@*.so*
-   obj:/lib*/libc-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/libc-@GLIBC_VERSION@*.so*
+   obj:*/lib*/libc-@GLIBC_VERSION@*.so*
 }
 {
    dl-hack3-cond-4
    Memcheck:Cond
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/libdl-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/libdl-@GLIBC_VERSION@*.so*
 }
 
 {
    dl-hack4-64bit-addr-1
    Memcheck:Addr8
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
 }
 {
    dl-hack4-64bit-addr-2
    Memcheck:Addr8
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/libc-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/libc-@GLIBC_VERSION@*.so*
 }
 {
    dl-hack4-64bit-addr-3
    Memcheck:Addr8
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so*
-   obj:/lib*/libdl-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so*
+   obj:*/lib*/libdl-@GLIBC_VERSION@*.so*
 }
 
 {
    dl-hack5-32bit-addr-1
    Memcheck:Addr4
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
 }
 {
    dl-hack5-32bit-addr-3
    Memcheck:Addr4
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
-   obj:/lib*/libdl-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/libdl-@GLIBC_VERSION@*.so*
 }
 {
    dl-hack5-32bit-addr-4
    Memcheck:Addr4
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
-   obj:/lib*/libdl-@GLIBC_VERSION@*.so*
-   obj:/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
+   obj:*/lib*/libdl-@GLIBC_VERSION@*.so*
+   obj:*/lib*/ld-@GLIBC_VERSION@*.so
 }
 
 
@@ -149,9 +149,9 @@
 {
    glibc-@GLIBC_VERSION@-on-SUSE-10.3-(x86)
    Memcheck:Addr4
-   obj:/lib/ld-@GLIBC_VERSION@*.so
-   obj:/lib/ld-@GLIBC_VERSION@*.so
-   obj:/lib/ld-@GLIBC_VERSION@*.so
+   obj:*/lib/ld-@GLIBC_VERSION@*.so
+   obj:*/lib/ld-@GLIBC_VERSION@*.so
+   obj:*/lib/ld-@GLIBC_VERSION@*.so
 }
 
 {
@@ -168,9 +168,9 @@
    Memcheck:Param
    socketcall.sendto(msg)
    fun:__sendto_nocancel
-   obj:/*libc-@GLIBC_VERSION@.so
-   obj:/*libc-@GLIBC_VERSION@.so
-   obj:/*libc-@GLIBC_VERSION@.so
+   obj:/*libc-@GLIBC_VERSION@*.so
+   obj:/*libc-@GLIBC_VERSION@*.so
+   obj:/*libc-@GLIBC_VERSION@*.so
 }
 {
    glibc24-64bit-padding-1c
@@ -180,7 +180,7 @@
    fun:__nscd_get_map_ref
    fun:nscd_get*_r
    fun:*nscd*
-   obj:/*libc-@GLIBC_VERSION@.so
+   obj:/*libc-@GLIBC_VERSION@*.so
 }
 
 
@@ -199,18 +199,18 @@
    Memcheck:Param
    socketcall.sendto(msg)
    fun:send
-   obj:/*libc-@GLIBC_VERSION@.so
-   obj:/*libc-@GLIBC_VERSION@.so
-   obj:/*libc-@GLIBC_VERSION@.so
+   obj:/*libc-@GLIBC_VERSION@*.so
+   obj:/*libc-@GLIBC_VERSION@*.so
+   obj:/*libc-@GLIBC_VERSION@*.so
 }
 {
    X11-64bit-padding-4b
    Memcheck:Param
    socketcall.send(msg)
    fun:send
-   obj:/*libc-@GLIBC_VERSION@.so
-   obj:/*libc-@GLIBC_VERSION@.so
-   obj:/*libc-@GLIBC_VERSION@.so
+   obj:/*libc-@GLIBC_VERSION@*.so
+   obj:/*libc-@GLIBC_VERSION@*.so
+   obj:/*libc-@GLIBC_VERSION@*.so
 }
 
 ##----------------------------------------------------------------------##
@@ -225,6 +225,14 @@
    MVL-401-linuxthreads-pthread_create
    Memcheck:Param
    write(buf)
-   obj:/lib/libpthread-0.10.so
+   obj:*/lib/libpthread-0.10.so
    fun:pthread_create
+}
+
+##----------------------------------------------------------------------##
+# Ubuntu 10.04 on ARM (Thumb).  Not sure why this is necessary.
+{
+   U1004-ARM-_dl_relocate_object
+   Memcheck:Cond
+   fun:_dl_relocate_object
 }

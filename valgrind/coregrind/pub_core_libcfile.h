@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -78,10 +78,10 @@ extern Int VG_(access) ( const HChar* path, Bool irusr, Bool iwusr,
 extern Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
                                  const HChar* f, Bool allow_setuid);
 
-/* DDD: Note this moves (or at least, is believed to move) the file pointer
-   on Linux and AIX5 but doesn't on Darwin.  This inconsistency should
-   be fixed.  (In other words, why isn't the Linux/AIX5 version implemented in
-   terms of pread()?) */
+/* DDD: Note this moves (or at least, is believed to move) the file
+   pointer on Linux but doesn't on Darwin.  This inconsistency should
+   be fixed.  (In other words, why isn't the Linux version implemented
+   in terms of pread()?) */
 extern SysRes VG_(pread) ( Int fd, void* buf, Int count, OffT offset );
 
 /* Create and open (-rw------) a tmp file name incorporating said arg.

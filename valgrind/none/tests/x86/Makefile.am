@@ -17,7 +17,11 @@ endif
 # Explicitly include insn_sse3 even if ! BUILD_SSE3_TESTS, 
 # to avoid packaging screwups if 'make dist' is run on a machine
 # which failed the BUILD_SSE3_TESTS test in configure.in.
+
+## FIXME: move lzcnt32 to SSE4 conditionalisation, when that happens.
+
 EXTRA_DIST = \
+	aad_aam.stdout.exp aad_aam.stderr.exp aad_aam.vgtest \
 	badseg.stderr.exp badseg.stdout.exp badseg.vgtest \
 	bt_everything.stderr.exp bt_everything.stdout.exp bt_everything.vgtest \
 	bt_literal.stderr.exp bt_literal.stdout.exp bt_literal.vgtest \
@@ -35,6 +39,7 @@ EXTRA_DIST = \
 	fpu_lazy_eflags.stderr.exp fpu_lazy_eflags.stdout.exp \
 	fpu_lazy_eflags.vgtest \
 	fxtract.stdout.exp fxtract.stderr.exp fxtract.vgtest \
+	fxtract.stdout.exp-older-glibc \
 	getseg.stdout.exp getseg.stderr.exp getseg.vgtest \
 	incdec_alt.stdout.exp incdec_alt.stderr.exp incdec_alt.vgtest \
 	int.stderr.exp int.stdout.exp int.disabled \
@@ -46,16 +51,22 @@ EXTRA_DIST = \
 	jcxz.stdout.exp jcxz.stderr.exp jcxz.vgtest \
 	lahf.stdout.exp lahf.stderr.exp lahf.vgtest \
 	looper.stderr.exp looper.stdout.exp looper.vgtest \
+	lzcnt32.stderr.exp lzcnt32.stdout.exp lzcnt32.vgtest \
 	movx.stderr.exp movx.stdout.exp movx.vgtest \
+	movbe.stderr.exp movbe.stdout.exp movbe.vgtest \
 	pushpopseg.stderr.exp pushpopseg.stdout.exp pushpopseg.vgtest \
 	sbbmisc.stderr.exp sbbmisc.stdout.exp sbbmisc.vgtest \
+	shift_ndep.stderr.exp shift_ndep.stdout.exp shift_ndep.vgtest \
 	smc1.stderr.exp smc1.stdout.exp smc1.vgtest \
 	ssse3_misaligned.stderr.exp ssse3_misaligned.stdout.exp \
 	ssse3_misaligned.vgtest ssse3_misaligned.c \
 	x86locked.vgtest x86locked.stdout.exp x86locked.stderr.exp \
-	yield.stderr.exp yield.stdout.exp yield.disabled
+	yield.stderr.exp yield.stdout.exp yield.disabled \
+	xadd.stdout.exp xadd.stderr.exp xadd.vgtest
 
 check_PROGRAMS = \
+	aad_aam \
+	allexec \
 	badseg \
 	bt_everything \
 	bt_literal \
@@ -67,8 +78,6 @@ check_PROGRAMS = \
 	bug152818-x86 \
 	cmpxchg8b \
 	cpuid \
-	cse_fail \
-	faultstatus \
 	fcmovnu \
 	fpu_lazy_eflags \
 	fxtract \
@@ -82,17 +91,30 @@ check_PROGRAMS = \
 	movx \
 	pushpopseg \
 	sbbmisc \
+	shift_ndep \
 	smc1 \
 	x86locked \
-	yield
+	yield \
+	xadd
 if BUILD_SSSE3_TESTS
    check_PROGRAMS += ssse3_misaligned
+endif
+if BUILD_LZCNT_TESTS
+ check_PROGRAMS += lzcnt32
+endif
+if !VGCONF_OS_IS_DARWIN
+ check_PROGRAMS += cse_fail faultstatus
+endif
+if BUILD_MOVBE_TESTS
+ check_PROGRAMS += movbe
 endif
 
 
 AM_CFLAGS    += @FLAG_M32@ $(FLAG_MMMX) $(FLAG_MSSE)
 AM_CXXFLAGS  += @FLAG_M32@ $(FLAG_MMMX) $(FLAG_MSSE)
 AM_CCASFLAGS += @FLAG_M32@
+
+allexec_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_NONNULL@
 
 if VGCONF_OS_IS_DARWIN
 # Some of the tests (bug125959_x86, bug152818_x86, insn_*) need
@@ -106,6 +128,7 @@ endif
 cpuid_SOURCES 		= cpuid_c.c cpuid_s.S
 # fpu_lazy_eflags must use these flags -- the bug only occurred with them.
 fpu_lazy_eflags_CFLAGS	= $(AM_CFLAGS) -O2 -march=pentiumpro
+fxtract_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_OVERFLOW@
 fxtract_LDADD		= -lm
 insn_basic_SOURCES	= insn_basic.def
 insn_basic_LDADD	= -lm

@@ -1,0 +1,48 @@
+
+Requirements
+------------
+- You need GCC 3.4 or later to compile the s390 port.
+- A working combination of autotools is required.
+- To run valgrind a z900 machine or any later model is needed.
+
+
+Limitations
+-----------
+- 31-bit client programs are not supported.
+- Hexadecimal floating point is not supported.
+- Decimal floating point is not supported yet.
+- Currently, only memcheck, massif, lackey, and none are supported
+- helgrind and drd seem to work on SLES10,11 and RHEL5,6 on z9,z10 and z196
+  but might fail on other hardware/software combinations.
+- exp-sgcheck, cachegrind, and callgrind are currently not supported.
+- Some gcc versions use mvc to copy 4/8 byte values. This will affect some
+  debug messages. Valgrind will complain about 4 or 8 one-byte reads/writes
+  instead of just 1 read/write.
+
+
+Hardware facilities
+-------------------
+Valgrind does not require that the host machine has the same hardware
+facilities as the machine for which the client program was compiled.
+This is convenient. The JIT compiler will translate the client instructions
+according to the facilities available on the host.
+This means, though, that probing for hardware facilities by issuing
+instructions from that facility and observing whether SIGILL is thrown
+may not work. As a consequence, programs that attempt to do so may
+behave differently. It is believed that this is a rare use case.
+
+
+Recommendations
+---------------
+Applications should be compiled with -fno-builtin to avoid
+false positives due to builtin string operations when running memcheck.
+
+
+Reading Material
+----------------
+(1) Linux for zSeries ELF ABI Supplement
+    http://refspecs.linuxfoundation.org/ELF/zSeries/index.html
+(2) z/Architecture Principles of Operation
+    http://publibfi.boulder.ibm.com/epubs/pdf/dz9zr008.pdf
+(3) z/Architecture Reference Summary
+    http://publibfi.boulder.ibm.com/epubs/pdf/dz9zs006.pdf

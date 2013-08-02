@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -61,8 +60,10 @@ typedef enum {
    GenericErr     = 11,
 #define STR_InvalidThreadId "InvalidThreadId"
    InvalidThreadId = 12,
-#define STR_UnimpClReq "UnimpClReq"
-   UnimpClReq      = 13,
+#define STR_UnimpHgClReq  "UnimpHgClReq"
+   UnimpHgClReq   = 13,
+#define STR_UnimpDrdClReq "UnimpDrdClReq"
+   UnimpDrdClReq  = 14,
 } DrdErrorKind;
 
 /* The classification of a faulting address. */
@@ -163,6 +164,7 @@ typedef struct {
 
 typedef struct {
    DrdThreadId tid;
+   Addr        addr;
 } GenericErrInfo;
 
 typedef struct {
@@ -177,6 +179,8 @@ typedef struct {
 
 void DRD_(set_show_conflicting_segments)(const Bool scs);
 void DRD_(register_error_handlers)(void);
+void DRD_(trace_msg)(const char* format, ...) PRINTF_CHECK(1, 2);
+void DRD_(trace_msg_w_bt)(const char* format, ...) PRINTF_CHECK(1, 2);
 
 
 #endif /* __DRD_ERROR_H */

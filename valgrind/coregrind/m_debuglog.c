@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -56,6 +56,13 @@
 #include "pub_core_debuglog.h"   /* our own iface */
 #include "valgrind.h"            /* for RUNNING_ON_VALGRIND */
 
+static Bool clo_xml;
+
+void VG_(debugLog_setXml)(Bool xml)
+{
+   clo_xml = xml;
+}
+
 /*------------------------------------------------------------*/
 /*--- Stuff to make us completely independent.             ---*/
 /*------------------------------------------------------------*/
@@ -66,28 +73,20 @@
 
 static UInt local_sys_write_stderr ( HChar* buf, Int n )
 {
-   volatile Int block[2];
-   block[0] = (Int)buf;
-   block[1] = n;
+   Int result;
+
    __asm__ volatile (
-      "pushl %%ebx\n"           /* ebx is callee-save */
-      "movl  %0, %%ebx\n"       /* ebx = &block */
-      "pushl %%ebx\n"           /* save &block */
-      "movl  0(%%ebx), %%ecx\n" /* %ecx = buf */
-      "movl  4(%%ebx), %%edx\n" /* %edx = n */
+      "pushl %%ebx\n"
       "movl  $"VG_STRINGIFY(__NR_write)", %%eax\n" /* %eax = __NR_write */
       "movl  $2, %%ebx\n"       /* %ebx = stderr */
       "int   $0x80\n"           /* write(stderr, buf, n) */
-      "popl  %%ebx\n"           /* reestablish &block */
-      "movl  %%eax, 0(%%ebx)\n" /* block[0] = result */
-      "popl  %%ebx\n"           /* restore ebx */
-      : /*wr*/
-      : /*rd*/    "g" (block)
-      : /*trash*/ "eax", "edi", "ecx", "edx", "memory", "cc"
+      "popl %%ebx\n"
+      : /*wr*/    "=a" (result)
+      : /*rd*/    "c" (buf), "d" (n)
+      : /*trash*/ "edi", "memory", "cc"
    );
-   if (block[0] < 0) 
-      block[0] = -1;
-   return block[0];
+
+   return result >= 0 ? result : -1;
 }
 
 static UInt local_sys_getpid ( void )
@@ -125,7 +124,7 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
       "popq  %%r15\n"           /* restore r15 */
       "addq  $256, %%rsp\n"     /* restore stack ptr */
       : /*wr*/
-      : /*rd*/    "g" (block)
+      : /*rd*/    "r" (block)
       : /*trash*/ "rax", "rdi", "rsi", "rdx", "memory", "cc"
    );
    if (block[0] < 0) 
@@ -240,9 +239,9 @@ static UInt local_sys_write_stderr ( HChar* buf, Int n )
    block[0] = (Int)buf;
    block[1] = n;
    __asm__ volatile (
-      "mov  r0, #1\n\t"
-      "ldr  r1, [%0]\n\t"
-      "ldr  r2, [%0, #4]\n\t"
+      "mov  r0, #2\n\t"        /* stderr */
+      "ldr  r1, [%0]\n\t"      /* buf */
+      "ldr  r2, [%0, #4]\n\t"  /* n */
       "mov  r7, #"VG_STRINGIFY(__NR_write)"\n\t"
       "svc  0x0\n"          /* write() */
       "str  r0, [%0]\n\t"
@@ -266,172 +265,6 @@ static UInt local_sys_getpid ( void )
       :
       : "r0", "r7" );
    return __res;
-}
-
-#elif defined(VGP_ppc32_aix5)
-
-static UInt local_sys_write_stderr ( HChar* buf, Int n )
-{
-   /* For some reason gcc-3.3.2 doesn't preserve r31 across the asm
-      even though we state it to be trashed.  So use r27 instead. */
-   volatile UInt block[3];
-   block[0] = (UInt)buf;
-   block[1] = n;
-   block[2] = __NR_write;
-   __asm__ __volatile__ (
-      "mr    28,%0\n\t"      /* establish base ptr */
-      "mr    27,2\n\t"       /* save r2 in r27 */
-      "mflr  30\n\t"         /* save lr in r30 */
-
-      "lwz 2,8(28)\n\t"      /* set %r2 = __NR_write */
-      "li  3,2\n\t"          /* set %r3 = stderr */
-      "lwz 4,0(28)\n\t"      /* set %r4 = buf */
-      "lwz 5,4(28)\n\t"      /* set %r5 = n */
-
-      "crorc 6,6,6\n\t"
-      ".long 0x48000005\n\t" /* bl .+4 */
-      "mflr  29\n\t"
-      "addi  29,29,16\n\t"
-      "mtlr  29\n\t"
-      "sc\n\t"               /* write() */
-
-      "stw 3,0(28)\n\t"      /* result */
-      "stw 4,4(28)\n\t"      /* error? */
-
-      "mr   2,27\n\t"        /* restore r2 */
-      "mtlr 30"              /* restore lr */
-
-      : /*out*/
-      : /*in*/  "b" (&block[0])
-      : /*trash*/
-           /*temps*/    "r31","r30","r29","r28","r27",
-           /*args*/     "r3","r4","r5","r6","r7","r8","r9","r10",
-           /*paranoia*/ "memory","cc","r0","r1","r11","r12","r13",
-                        "xer","ctr","cr0","cr1","cr2","cr3",
-                        "cr4","cr5","cr6","cr7"
-   );
-   if (block[1] != 0)
-      return -1;
-   else
-      return block[0];
-}
-
-static UInt local_sys_getpid ( void )
-{
-   /* For some reason gcc-3.3.2 doesn't preserve r31 across the asm
-      even though we state it to be trashed.  So use r27 instead. */
-   volatile UInt block[1];
-   block[0] = __NR_getpid;
-   __asm__ __volatile__ (
-      "mr    28,%0\n\t"      /* establish base ptr */
-      "mr    27,2\n\t"       /* save r2 in r27 */
-      "mflr  30\n\t"         /* save lr in r30 */
-
-      "lwz   2,0(28)\n\t"    /* set %r2 = __NR_getpid */
-
-      "crorc 6,6,6\n\t"
-      ".long 0x48000005\n\t" /* bl .+4 */
-      "mflr  29\n\t"
-      "addi  29,29,16\n\t"
-      "mtlr  29\n\t"
-      "sc\n\t"               /* getpid() */
-
-      "stw   3,0(28)\n\t"    /* result -> block[0] */
-
-      "mr   2,27\n\t"        /* restore r2 */
-      "mtlr 30"              /* restore lr */
-
-      : /*out*/
-      : /*in*/  "b" (&block[0])
-      : /*trash*/
-           /*temps*/    "r31","r30","r29","r28","r27",
-           /*args*/     "r3","r4","r5","r6","r7","r8","r9","r10",
-           /*paranoia*/ "memory","cc","r0","r1","r11","r12","r13",
-                        "xer","ctr","cr0","cr1","cr2","cr3",
-                        "cr4","cr5","cr6","cr7"
-   );
-   return block[0];
-}
-
-#elif defined(VGP_ppc64_aix5)
-
-static UInt local_sys_write_stderr ( HChar* buf, Int n )
-{
-   volatile ULong block[3];
-   block[0] = (ULong)buf;
-   block[1] = n;
-   block[2] = (ULong)__NR_write;
-   __asm__ __volatile__ (
-      "mr    28,%0\n\t"      /* establish base ptr */
-      "mr    27,2\n\t"       /* save r2 in r27 */
-      "mflr  30\n\t"         /* save lr in r30 */
-
-      "ld  2,16(28)\n\t"     /* set %r2 = __NR_write */
-      "li  3,2\n\t"          /* set %r3 = stderr */
-      "ld  4,0(28)\n\t"      /* set %r4 = buf */
-      "ld  5,8(28)\n\t"      /* set %r5 = n */
-
-      "crorc 6,6,6\n\t"
-      ".long 0x48000005\n\t" /* bl .+4 */
-      "mflr  29\n\t"
-      "addi  29,29,16\n\t"
-      "mtlr  29\n\t"
-      "sc\n\t"               /* write() */
-
-      "std 3,0(28)\n\t"      /* result */
-      "std 4,8(28)\n\t"      /* error? */
-
-      "mr   2,27\n\t"        /* restore r2 */
-      "mtlr 30"              /* restore lr */
-
-      : /*out*/
-      : /*in*/  "b" (&block[0])
-      : /*trash*/
-           /*temps*/    "r31","r30","r29","r28","r27",
-           /*args*/     "r3","r4","r5","r6","r7","r8","r9","r10",
-           /*paranoia*/ "memory","cc","r0","r1","r11","r12","r13",
-                        "xer","ctr","cr0","cr1","cr2","cr3",
-                        "cr4","cr5","cr6","cr7"
-   );
-   if (block[1] != 0)
-      return (UInt)-1;
-   else
-      return (UInt)block[0];
-}
-
-static UInt local_sys_getpid ( void )
-{
-   volatile ULong block[1];
-   block[0] = __NR_getpid;
-   __asm__ __volatile__ (
-      "mr    28,%0\n\t"      /* establish base ptr */
-      "mr    27,2\n\t"       /* save r2 in r27 */
-      "mflr  30\n\t"         /* save lr in r30 */
-
-      "ld    2,0(28)\n\t"    /* set %r2 = __NR_getpid */
-
-      "crorc 6,6,6\n\t"
-      ".long 0x48000005\n\t" /* bl .+4 */
-      "mflr  29\n\t"
-      "addi  29,29,16\n\t"
-      "mtlr  29\n\t"
-      "sc\n\t"               /* getpid() */
-
-      "std  3,0(28)\n\t"     /* result -> block[0] */
-
-      "mr   2,27\n\t"        /* restore r2 */
-      "mtlr 30"              /* restore lr */
-
-      : /*out*/
-      : /*in*/  "b" (&block[0])
-      : /*trash*/
-           /*temps*/    "r31","r30","r29","r28","r27",
-           /*args*/     "r3","r4","r5","r6","r7","r8","r9","r10",
-           /*paranoia*/ "memory","cc","r0","r1","r11","r12","r13",
-                        "xer","ctr","cr0","cr1","cr2","cr3",
-                        "cr4","cr5","cr6","cr7"
-   );
-   return (UInt)block[0];
 }
 
 #elif defined(VGP_x86_darwin)
@@ -515,6 +348,85 @@ static UInt local_sys_getpid ( void )
       : "rax", "rcx", "cc" );
    return __res;
 }
+
+#elif defined(VGP_s390x_linux)
+static UInt local_sys_write_stderr ( HChar* buf, Int n )
+{
+   register Int    r2     asm("2") = 2;      /* file descriptor STDERR */
+   register HChar* r3     asm("3") = buf;
+   register ULong  r4     asm("4") = n;
+   register ULong  r2_res asm("2");
+   ULong __res;
+
+   __asm__ __volatile__ (
+      "svc %b1\n"
+      : "=d" (r2_res)
+      : "i" (__NR_write),
+        "0" (r2),
+        "d" (r3),
+        "d" (r4)
+      : "cc", "memory");
+   __res = r2_res;
+
+   if (__res >= (ULong)(-125))
+      __res = -1;
+   return (UInt)(__res);
+}
+
+static UInt local_sys_getpid ( void )
+{
+   register ULong r2 asm("2");
+   ULong __res;
+
+   __asm__ __volatile__ (
+      "svc %b1\n"
+      : "=d" (r2)
+      : "i" (__NR_getpid)
+      : "cc", "memory");
+   __res = r2;
+
+   if (__res >= (ULong)(-125))
+      __res = -1;
+   return (UInt)(__res);
+}
+
+#elif defined(VGP_mips32_linux)
+static UInt local_sys_write_stderr ( HChar* buf, Int n )
+{
+   volatile Int block[2];
+   block[0] = (Int)buf;
+   block[1] = n;
+   __asm__ volatile (
+      "li   $4, 2\n\t"        /* stderr */
+      "lw   $5, 0(%0)\n\t"    /* buf */
+      "lw   $6, 4(%0)\n\t"    /* n */
+      "move $7, $0\n\t"
+      "li   $2, %1\n\t"       /* set v0 = __NR_write */
+      "syscall\n\t"           /* write() */
+      "nop\n\t"
+      :
+      : "r" (block), "n" (__NR_write)
+      : "2", "4", "5", "6", "7"
+   );
+   if (block[0] < 0)
+      block[0] = -1;
+   return (UInt)block[0];
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt __res;
+   __asm__ volatile (
+      "li   $2, %1\n\t"       /* set v0 = __NR_getpid */
+      "syscall\n\t"      /* getpid() */
+      "nop\n\t"
+      "move  %0, $2\n"
+      : "=r" (__res)
+      : "n" (__NR_getpid)
+      : "$2" );
+   return __res;
+}
+
 
 #else
 # error Unknown platform
@@ -845,12 +757,34 @@ VG_(debugLog_vprintf) (
                ret += myvprintf_int64(send, send_arg2, flags, 10, width, False,
                                       (ULong)(va_arg (vargs, UInt)));
             break;
-         case 'p': /* %p */
+         case 'p':
+            if (format[i+1] == 'S') {
+               i++;
+               /* %pS, like %s but escaping chars for XML safety */
+               /* Note: simplistic; ignores field width and flags */
+               char *str = va_arg (vargs, char *);
+               if (str == (char*) 0)
+                  str = "(null)";
+               ret += myvprintf_str_XML_simplistic(send, send_arg2, str);
+            } else if (format[i+1] == 's') {
+               i++;
+               /* %ps, synonym for %s with --xml=no / %pS with --xml=yes */
+               char *str = va_arg (vargs, char *);
+               if (str == (char*) 0)
+                  str = "(null)";
+               if (clo_xml)
+                  ret += myvprintf_str_XML_simplistic(send, send_arg2, str);
+               else
+                  ret += myvprintf_str(send, send_arg2, flags, width, str,
+                                       False);
+            } else {
+               /* %p */
             ret += 2;
             send('0',send_arg2);
             send('x',send_arg2);
             ret += myvprintf_int64(send, send_arg2, flags, 16, width, True,
                                    (ULong)((UWord)va_arg (vargs, void *)));
+            }
             break;
          case 'x': /* %x */
          case 'X': /* %X */
@@ -876,13 +810,6 @@ VG_(debugLog_vprintf) (
             if (str == (char*) 0) str = "(null)";
             ret += myvprintf_str(send, send_arg2, 
                                  flags, width, str, format[i]=='S');
-            break;
-         }
-         case 't': { /* %t, like %s but escaping chars for XML safety */
-            /* Note: simplistic; ignores field width and flags */
-            char *str = va_arg (vargs, char *);
-            if (str == (char*) 0) str = "(null)";
-            ret += myvprintf_str_XML_simplistic(send, send_arg2, str);
             break;
          }
 
@@ -971,7 +898,7 @@ static void add_to_buf ( HChar c, void* p )
 void VG_(debugLog) ( Int level, const HChar* modulename,
                                 const HChar* format, ... )
 {
-   UInt ret, pid;
+   UInt pid;
    Int indent, depth, i;
    va_list vargs;
    printf_buf buf;
@@ -1003,7 +930,7 @@ void VG_(debugLog) ( Int level, const HChar* modulename,
 
    va_start(vargs,format);
    
-   ret = VG_(debugLog_vprintf) ( add_to_buf, &buf, format, vargs );
+   (void) VG_(debugLog_vprintf) ( add_to_buf, &buf, format, vargs );
 
    if (buf.n > 0) {
       emit( buf.buf, local_strlen(buf.buf) );

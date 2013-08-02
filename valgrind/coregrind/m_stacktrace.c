@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
+#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_debuginfo.h"     // XXX: circular dependency
 #include "pub_core_aspacemgr.h"     // For VG_(is_addressable)()
@@ -264,7 +265,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    // On Darwin, this kicks in for pthread-related stack traces, so they're
    // only 1 entry long which is wrong.
 #  if !defined(VGO_darwin)
-   if (fp_min + 512 >= fp_max) {
+   if (fp_min + 256 >= fp_max) {
       /* If the stack limits look bogus, don't poke around ... but
          don't bomb out either. */
       if (sps) sps[0] = uregs.xsp;
@@ -385,8 +386,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
 /* -----------------------ppc32/64 ---------------------- */
 
-#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-    || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
 
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
@@ -411,9 +411,9 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    Addr ip = (Addr)startRegs->r_pc;
    Addr sp = (Addr)startRegs->r_sp;
    Addr fp = sp;
-#  if defined(VGP_ppc32_linux) || defined(VGP_ppc32_aix5)
+#  if defined(VGP_ppc32_linux)
    Addr lr = startRegs->misc.PPC32.r_lr;
-#  elif defined(VGP_ppc64_linux) || defined(VGP_ppc64_aix5)
+#  elif defined(VGP_ppc64_linux)
    Addr lr = startRegs->misc.PPC64.r_lr;
 #  endif
    Addr fp_min = sp;
@@ -449,11 +449,8 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    /* fp is %r1.  ip is %cia.  Note, ppc uses r1 as both the stack and
       frame pointers. */
 
-#  if defined(VGP_ppc64_linux) || defined(VGP_ppc64_aix5)
+#  if defined(VGP_ppc64_linux)
    redir_stack_size = VEX_GUEST_PPC64_REDIR_STACK_SIZE;
-   redirs_used      = 0;
-#  elif defined(VGP_ppc32_aix5)
-   redir_stack_size = VEX_GUEST_PPC32_REDIR_STACK_SIZE;
    redirs_used      = 0;
 #  endif
 
@@ -505,7 +502,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
       while (True) {
 
-        /* On ppc64-linux (ppc64-elf, really), and on AIX, the lr save
+        /* On ppc64-linux (ppc64-elf, really), the lr save
            slot is 2 words back from sp, whereas on ppc32-elf(?) it's
            only one word back. */
 #        if defined(VG_PLAT_USES_PPCTOC)
@@ -529,15 +526,15 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
 #           if defined(VG_PLAT_USES_PPCTOC)
             /* Nasty hack to do with function replacement/wrapping on
-               ppc64-linux/ppc64-aix/ppc32-aix.  If LR points to our
-               magic return stub, then we are in a wrapped or
-               intercepted function, in which LR has been messed with.
-               The original LR will have been pushed onto the thread's
-               hidden REDIR stack one down from the top (top element
-               is the saved R2) and so we should restore the value
-               from there instead.  Since nested redirections can and
-               do happen, we keep track of the number of nested LRs
-               used by the unwinding so far with 'redirs_used'. */
+               ppc64-linux.  If LR points to our magic return stub,
+               then we are in a wrapped or intercepted function, in
+               which LR has been messed with.  The original LR will
+               have been pushed onto the thread's hidden REDIR stack
+               one down from the top (top element is the saved R2) and
+               so we should restore the value from there instead.
+               Since nested redirections can and do happen, we keep
+               track of the number of nested LRs used by the unwinding
+               so far with 'redirs_used'. */
             if (ip == (Addr)&VG_(ppctoc_magic_redirect_return_stub)
                 && VG_(is_valid_tid)(tid_if_known)) {
                Word hsp = VG_(threads)[tid_if_known]
@@ -578,6 +575,87 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 
 #if defined(VGP_arm_linux)
 
+static Bool in_same_fn ( Addr a1, Addr a2 )
+{
+#  define M_VG_ERRTXT 500
+   UChar buf_a1[M_VG_ERRTXT], buf_a2[M_VG_ERRTXT];
+   /* The following conditional looks grossly inefficient and
+      surely could be majorly improved, with not much effort. */
+   if (VG_(get_fnname_raw) (a1, buf_a1, M_VG_ERRTXT))
+      if (VG_(get_fnname_raw) (a2, buf_a2, M_VG_ERRTXT))
+         if (VG_(strncmp)(buf_a1, buf_a2, M_VG_ERRTXT))
+            return True;
+#  undef M_VG_ERRTXT
+   return False;
+}
+
+static Bool in_same_page ( Addr a1, Addr a2 ) {
+   return (a1 & ~0xFFF) == (a2 & ~0xFFF);
+}
+
+static Addr abs_diff ( Addr a1, Addr a2 ) {
+   return (Addr)(a1 > a2 ? a1 - a2 : a2 - a1);
+}
+
+static Bool has_XT_perms ( Addr a )
+{
+   NSegment const* seg = VG_(am_find_nsegment)(a);
+   return seg && seg->hasX && seg->hasT;
+}
+
+static Bool looks_like_Thumb_call32 ( UShort w0, UShort w1 )
+{
+   if (0)
+      VG_(printf)("isT32call %04x %04x\n", (UInt)w0, (UInt)w1);
+   // BL  simm26 
+   if ((w0 & 0xF800) == 0xF000 && (w1 & 0xC000) == 0xC000) return True;
+   // BLX simm26
+   if ((w0 & 0xF800) == 0xF000 && (w1 & 0xC000) == 0xC000) return True;
+   return False;
+}
+
+static Bool looks_like_Thumb_call16 ( UShort w0 )
+{
+   return False;
+}
+
+static Bool looks_like_ARM_call ( UInt a0 )
+{
+   if (0)
+      VG_(printf)("isA32call %08x\n", a0);
+   // Leading E forces unconditional only -- fix
+   if ((a0 & 0xFF000000) == 0xEB000000) return True;
+   return False;
+}
+
+static Bool looks_like_RA ( Addr ra )
+{
+   /* 'ra' is a plausible return address if it points to
+       an instruction after a call insn. */
+   Bool isT = (ra & 1);
+   if (isT) {
+      // returning to Thumb code
+      ra &= ~1;
+      ra -= 4;
+      if (has_XT_perms(ra)) {
+         UShort w0 = *(UShort*)ra;
+         UShort w1 = in_same_page(ra, ra+2) ? *(UShort*)(ra+2) : 0;
+         if (looks_like_Thumb_call16(w1) || looks_like_Thumb_call32(w0,w1))
+            return True;
+      }
+   } else {
+      // ARM
+      ra &= ~3;
+      ra -= 4;
+      if (has_XT_perms(ra)) {
+         UInt a0 = *(UInt*)ra;
+         if (looks_like_ARM_call(a0))
+            return True;
+      }
+   }
+   return False;
+}
+
 UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
                                /*OUT*/Addr* ips, UInt max_n_ips,
                                /*OUT*/Addr* sps, /*OUT*/Addr* fps,
@@ -593,11 +671,12 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    vg_assert(sizeof(Addr) == sizeof(void*));
 
    D3UnwindRegs uregs;
-   uregs.r15 = startRegs->r_pc;
+   uregs.r15 = startRegs->r_pc & 0xFFFFFFFE;
    uregs.r14 = startRegs->misc.ARM.r14;
    uregs.r13 = startRegs->r_sp;
    uregs.r12 = startRegs->misc.ARM.r12;
    uregs.r11 = startRegs->misc.ARM.r11;
+   uregs.r7  = startRegs->misc.ARM.r7;
    Addr fp_min = uregs.r13;
 
    /* Snaffle IPs from the client's stack into ips[0 .. max_n_ips-1],
@@ -612,7 +691,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
       fp_max -= sizeof(Addr);
 
    if (debug)
-      VG_(printf)("max_n_ips=%d fp_min=0x%lx fp_max_orig=0x%lx, "
+      VG_(printf)("\nmax_n_ips=%d fp_min=0x%lx fp_max_orig=0x%lx, "
                   "fp_max=0x%lx r15=0x%lx r13=0x%lx\n",
                   max_n_ips, fp_min, fp_max_orig, fp_max,
                   uregs.r15, uregs.r13);
@@ -639,6 +718,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
    i = 1;
 
    /* Loop unwinding the stack. */
+   Bool do_stack_scan = False;
 
    while (True) {
       if (debug) {
@@ -652,11 +732,282 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
       if (VG_(use_CF_info)( &uregs, fp_min, fp_max )) {
          if (sps) sps[i] = uregs.r13;
          if (fps) fps[i] = 0;
-         ips[i++] = uregs.r15 -1;
+         ips[i++] = (uregs.r15 & 0xFFFFFFFE) - 1;
          if (debug)
             VG_(printf)("USING CFI: r15: 0x%lx, r13: 0x%lx\n",
                         uregs.r15, uregs.r13);
-         uregs.r15 = uregs.r15 - 1;
+         uregs.r15 = (uregs.r15 & 0xFFFFFFFE) - 1;
+         continue;
+      }
+      /* No luck.  We have to give up. */
+      do_stack_scan = True;
+      break;
+   }
+
+   if (0/*DISABLED BY DEFAULT*/ && do_stack_scan && i < max_n_ips && i <= 2) {
+      Int  nByStackScan = 0;
+      Addr lr = uregs.r14;
+      Addr sp = uregs.r13 & ~3;
+      Addr pc = uregs.r15;
+      // First see if LR contains
+      // something that could be a valid return address.
+      if (!in_same_fn(lr, pc) && looks_like_RA(lr)) {
+         // take it only if 'cand' isn't obviously a duplicate
+         // of the last found IP value
+         Addr cand = (lr & 0xFFFFFFFE) - 1;
+         if (abs_diff(cand, ips[i-1]) > 1) {
+            if (sps) sps[i] = 0;
+            if (fps) fps[i] = 0;
+            ips[i++] = cand;
+            nByStackScan++;
+         }
+      }
+      while (in_same_page(sp, uregs.r13)) {
+         if (i >= max_n_ips)
+            break;
+         // we're in the same page; fairly safe to keep going
+         UWord w = *(UWord*)(sp & ~0x3);
+         if (looks_like_RA(w)) {
+            Addr cand = (w & 0xFFFFFFFE) - 1;
+            // take it only if 'cand' isn't obviously a duplicate
+            // of the last found IP value
+            if (abs_diff(cand, ips[i-1]) > 1) {
+               if (sps) sps[i] = 0;
+               if (fps) fps[i] = 0;
+               ips[i++] = cand;
+               if (++nByStackScan >= 5) break;
+            }
+         }
+         sp += 4;
+      }
+   }
+
+   n_found = i;
+   return n_found;
+}
+
+#endif
+
+/* ------------------------ s390x ------------------------- */
+
+#if defined(VGP_s390x_linux)
+
+UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
+                               /*OUT*/Addr* ips, UInt max_n_ips,
+                               /*OUT*/Addr* sps, /*OUT*/Addr* fps,
+                               UnwindStartRegs* startRegs,
+                               Addr fp_max_orig )
+{
+   Bool  debug = False;
+   Int   i;
+   Addr  fp_max;
+   UInt  n_found = 0;
+
+   vg_assert(sizeof(Addr) == sizeof(UWord));
+   vg_assert(sizeof(Addr) == sizeof(void*));
+
+   D3UnwindRegs uregs;
+   uregs.ia = startRegs->r_pc;
+   uregs.sp = startRegs->r_sp;
+   Addr fp_min = uregs.sp;
+   uregs.fp = startRegs->misc.S390X.r_fp;
+   uregs.lr = startRegs->misc.S390X.r_lr;
+
+   fp_max = VG_PGROUNDUP(fp_max_orig);
+   if (fp_max >= sizeof(Addr))
+      fp_max -= sizeof(Addr);
+
+   if (debug)
+      VG_(printf)("max_n_ips=%d fp_min=0x%lx fp_max_orig=0x%lx, "
+                  "fp_max=0x%lx IA=0x%lx SP=0x%lx FP=0x%lx\n",
+                  max_n_ips, fp_min, fp_max_orig, fp_max,
+                  uregs.ia, uregs.sp,uregs.fp);
+
+   /* The first frame is pretty obvious */
+   ips[0] = uregs.ia;
+   if (sps) sps[0] = uregs.sp;
+   if (fps) fps[0] = uregs.fp;
+   i = 1;
+
+   /* for everything else we have to rely on the eh_frame. gcc defaults to
+      not create a backchain and all the other  tools (like gdb) also have
+      to use the CFI. */
+   while (True) {
+      if (i >= max_n_ips)
+         break;
+
+      if (VG_(use_CF_info)( &uregs, fp_min, fp_max )) {
+         if (sps) sps[i] = uregs.sp;
+         if (fps) fps[i] = uregs.fp;
+         ips[i++] = uregs.ia - 1;
+         uregs.ia = uregs.ia - 1;
+         continue;
+      }
+      /* A problem on the first frame? Lets assume it was a bad jump.
+         We will use the link register and the current stack and frame
+         pointers and see if we can use the CFI in the next round. */
+      if (i == 1) {
+         if (sps) {
+            sps[i] = sps[0];
+            uregs.sp = sps[0];
+         }
+         if (fps) {
+            fps[i] = fps[0];
+            uregs.fp = fps[0];
+         }
+         uregs.ia = uregs.lr - 1;
+         ips[i++] = uregs.lr - 1;
+         continue;
+      }
+
+      /* No luck.  We have to give up. */
+      break;
+   }
+
+   n_found = i;
+   return n_found;
+}
+
+#endif
+
+/* ------------------------ mips 32------------------------- */
+
+#if defined(VGP_mips32_linux)
+
+UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
+                               /*OUT*/Addr* ips, UInt max_n_ips,
+                               /*OUT*/Addr* sps, /*OUT*/Addr* fps,
+                               UnwindStartRegs* startRegs,
+                               Addr fp_max_orig )
+{
+   Bool  debug = False;
+   Int   i;
+   Addr  fp_max;
+   UInt  n_found = 0;
+
+   vg_assert(sizeof(Addr) == sizeof(UWord));
+   vg_assert(sizeof(Addr) == sizeof(void*));
+
+   D3UnwindRegs uregs;
+   uregs.pc = startRegs->r_pc;
+   uregs.sp = startRegs->r_sp;
+   Addr fp_min = uregs.sp;
+
+   uregs.fp = startRegs->misc.MIPS32.r30;
+   uregs.ra = startRegs->misc.MIPS32.r31;
+
+   /* Snaffle IPs from the client's stack into ips[0 .. max_n_ips-1],
+      stopping when the trail goes cold, which we guess to be
+      when FP is not a reasonable stack location. */
+
+   fp_max = VG_PGROUNDUP(fp_max_orig);
+   if (fp_max >= sizeof(Addr))
+      fp_max -= sizeof(Addr);
+
+   if (debug)
+      VG_(printf)("max_n_ips=%d fp_min=0x%lx fp_max_orig=0x%lx, "
+                  "fp_max=0x%lx pc=0x%lx sp=0x%lx fp=0x%lx\n",
+                  max_n_ips, fp_min, fp_max_orig, fp_max,
+                  uregs.pc, uregs.sp, uregs.fp);
+
+   if (sps) sps[0] = uregs.sp;
+   if (fps) fps[0] = uregs.fp;
+   ips[0] = uregs.pc;
+   i = 1;
+
+   /* Loop unwinding the stack. */
+
+   while (True) {
+      if (debug) {
+         VG_(printf)("i: %d, pc: 0x%lx, sp: 0x%lx, ra: 0x%lx\n",
+                     i, uregs.pc, uregs.sp, uregs.ra);
+      }
+      if (i >= max_n_ips)
+         break;
+
+      D3UnwindRegs uregs_copy = uregs;
+      if (VG_(use_CF_info)( &uregs, fp_min, fp_max )) {
+         if (debug)
+            VG_(printf)("USING CFI: pc: 0x%lx, sp: 0x%lx, ra: 0x%lx\n",
+                        uregs.pc, uregs.sp, uregs.ra);
+         if (0 != uregs.pc && 1 != uregs.pc) {
+            if (sps) sps[i] = uregs.sp;
+            if (fps) fps[i] = uregs.fp;
+            ips[i++] = uregs.pc - 4;
+            uregs.pc = uregs.pc - 4;
+            continue;
+         } else
+            uregs = uregs_copy;
+      }
+
+      int seen_sp_adjust = 0;
+      long frame_offset = 0;
+      PtrdiffT offset;
+      if (VG_(get_inst_offset_in_function)(uregs.pc, &offset)) {
+         Addr start_pc = uregs.pc - offset;
+         Addr limit_pc = uregs.pc;
+         Addr cur_pc;
+         for (cur_pc = start_pc; cur_pc < limit_pc; cur_pc += 4) {
+            unsigned long inst, high_word, low_word;
+            unsigned long * cur_inst;
+            int reg;
+            /* Fetch the instruction.   */
+            cur_inst = (unsigned long *)cur_pc;
+            inst = *((UInt *) cur_inst);
+            if(debug)
+               VG_(printf)("cur_pc: 0x%lx, inst: 0x%lx\n", cur_pc, inst);
+
+            /* Save some code by pre-extracting some useful fields.  */
+            high_word = (inst >> 16) & 0xffff;
+            low_word = inst & 0xffff;
+            reg = high_word & 0x1f;
+
+            if (high_word == 0x27bd        /* addiu $sp,$sp,-i */
+                || high_word == 0x23bd     /* addi $sp,$sp,-i */
+                || high_word == 0x67bd) {  /* daddiu $sp,$sp,-i */
+               if (low_word & 0x8000)	/* negative stack adjustment? */
+                  frame_offset += 0x10000 - low_word;
+               else
+                  /* Exit loop if a positive stack adjustment is found, which
+                     usually means that the stack cleanup code in the function
+                     epilogue is reached.  */
+               break;
+            seen_sp_adjust = 1;
+            }
+         }
+         if(debug)
+            VG_(printf)("offset: 0x%lx\n", frame_offset);
+      }
+      if (seen_sp_adjust) {
+         if (0 == uregs.pc || 1 == uregs.pc) break;
+         if (uregs.pc == uregs.ra - 8) break;
+         if (sps) {
+            sps[i] = uregs.sp + frame_offset;
+         }
+         uregs.sp = uregs.sp + frame_offset;
+         
+         if (fps) {
+            fps[i] = fps[0];
+            uregs.fp = fps[0];
+         }
+         if (0 == uregs.ra || 1 == uregs.ra) break;
+         uregs.pc = uregs.ra - 8;
+         ips[i++] = uregs.ra - 8;
+         continue;
+      }
+
+      if (i == 1) {
+         if (sps) {
+            sps[i] = sps[0];
+            uregs.sp = sps[0];
+         }
+         if (fps) {
+            fps[i] = fps[0];
+            uregs.fp = fps[0];
+         }
+         if (0 == uregs.ra || 1 == uregs.ra) break;
+         uregs.pc = uregs.ra - 8;
+         ips[i++] = uregs.ra - 8;
          continue;
       }
       /* No luck.  We have to give up. */
@@ -668,6 +1019,7 @@ UInt VG_(get_StackTrace_wrk) ( ThreadId tid_if_known,
 }
 
 #endif
+
 
 /*------------------------------------------------------------*/
 /*---                                                      ---*/

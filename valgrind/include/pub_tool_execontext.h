@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -67,7 +67,7 @@ ExeContext* VG_(record_ExeContext) ( ThreadId tid, Word first_ip_delta );
 // might cause a segfault.  In this case we can at least safely
 // produce a one-element stack trace, which is better than nothing.
 extern
-ExeContext* VG_(record_depth_1_ExeContext)( ThreadId tid );
+ExeContext* VG_(record_depth_1_ExeContext)(ThreadId tid, Word first_ip_delta);
 
 // Apply a function to every element in the ExeContext.  The parameter 'n'
 // gives the index of the passed ip.  Doesn't go below main() unless

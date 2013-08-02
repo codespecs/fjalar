@@ -27,7 +27,6 @@ tools.
 #include "fjalar_runtime.h"
 #include "fjalar_select.h"
 #include "generate_fjalar_entries.h"
-#include "elf/dwarf2.h"
 #include "mc_include.h"
 
 // I don't want to use macros, but this is a useful one for finding
@@ -68,8 +67,8 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
 
       if (!cur_fn || !next_fn)
 	{
-	  VG_(printf)( "Error in returnFunctionExecutionStateWithAddress()");
-	  abort();
+	  printf( "Error in returnFunctionExecutionStateWithAddress()");
+	  my_abort();
 	}
 
       FJALAR_DPRINTF("cur_fn->FP: %p\n", (void *)cur_fn->FP);
@@ -95,7 +94,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
   cur_fn = fnStackTop(tid);
 
   if ((cur_fn->FP >= a) && (cur_fn->lowestSP <= a)) {
-    FJALAR_DPRINTF("Returning functionEntry: %x\n", (unsigned int)cur_fn);
+    FJALAR_DPRINTF("Returning functionEntry: %zx\n", (ptrdiff_t)cur_fn);
     return cur_fn;
   }
 
@@ -177,7 +176,6 @@ returnArrayVariableWithAddr(VarList* varList,
                             Addr* baseAddr) {
   VarNode* cur_node = 0;
   ThreadId tid = VG_(get_running_tid)();
-  Bool actual_value = 0;
   Addr var_loc = 0;
   FJALAR_DPRINTF("[returnArrayVariableWithAddr] varList: %p, Addr: %p, %s\n", varList, (void *)a, (isGlobal)?"Global":"NonGlobal");
   for (cur_node = varList->first;
@@ -210,7 +208,6 @@ returnArrayVariableWithAddr(VarList* varList,
 
         if(op == DW_OP_addr) {
           // DWARF supplied address
-          actual_value = 0;
           var_loc = loc->atom_offset;
 
         } else if(op == DW_OP_deref) {
@@ -340,12 +337,9 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
     return 0;
   while (mc_check_writable( startAddr, typeSize, 0))
     {
-      if (fjalar_debug)
-	{
 	  if (arraySize % 1000 == 0)
-	    VG_(printf)( "Made it to %d elements at 0x%x\n", arraySize,
+	    FJALAR_DPRINTF ( "Made it to %d elements at 0x%x\n", arraySize,
 			 (unsigned int)startAddr);
-	}
       /* Cut off the search if we can already see it's really big:
          no need to look further than we're going to print. */
       // RUDD TEMP
@@ -395,7 +389,7 @@ int getBytesBetweenElts(VariableEntry* var)
 
   if (var->ptrLevels > 1)
     {
-      FJALAR_DPRINTF("getBytesBetweenElts returning sizeof(void*) (%d)\n",
+      FJALAR_DPRINTF("getBytesBetweenElts returning sizeof(void*) (%zu)\n",
               sizeof(void*));
       return sizeof(void*);
     }
@@ -498,9 +492,9 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
     // so probing won't do us much good
     if ((varLocation < curFunctionExecutionStatePtr->lowestSP) &&
         !addressIsGlobal(varLocation)) {
-      Word size;
+      int size;
       FJALAR_DPRINTF("Location looks reasonable, probing at %p\n",
-		     (void *)varLocation);
+             (void *)varLocation);
 
       size =
         probeAheadDiscoverHeapArraySize(varLocation,
@@ -520,19 +514,20 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
   // This leniency allows an int* to reference a char[] and so forth ...
   // see below for translation
   //  else if (baseAddr &&
-	   //           (targetVar->varType->repType == var->varType->repType)) {
+  //           (targetVar->varType->repType == var->varType->repType)) {
 
   // TODO: Hmmmm, what are we gonna do without repTypes???  I need to
   // investigate this 'if' condition more carefully later:
   else if (baseAddr) {
-    Word targetVarSize = 0;
-    Word bytesBetweenElts = getBytesBetweenElts(targetVar);
+    int targetVarSize = 0;
+    int targetVarBytesBetweenElts = getBytesBetweenElts(targetVar);
+    int varBytesBetweenElts = getBytesBetweenElts(var);
     Addr highestAddr;
 
     tl_assert(IS_STATIC_ARRAY_VAR(targetVar));
     FJALAR_DPRINTF("varLocation: %p\n", (void *)varLocation);
 
-    highestAddr = baseAddr + ((targetVar->staticArr->upperBounds[0]) * bytesBetweenElts);
+    highestAddr = baseAddr + ((targetVar->staticArr->upperBounds[0]) * targetVarBytesBetweenElts);
 
     FJALAR_DPRINTF("baseAddr is: %p, highestAddr is %p\n", (void *)baseAddr, (void *)highestAddr);
 
@@ -543,30 +538,26 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
 
     if (foundGlobalArrayVariable) {
       while ((highestAddr > varLocation) &&
-             //             (fjalar_use_bit_level_precision ?
-             //              (!MC_(are_some_bytes_initialized)(highestAddr, bytesBetweenElts, 0)) :
-              (MC_Ok != mc_check_readable(highestAddr, bytesBetweenElts, 0))) {
-        highestAddr -= bytesBetweenElts;
+              (MC_Ok != mc_check_readable(highestAddr, targetVarBytesBetweenElts, 0))) {
+        highestAddr -= targetVarBytesBetweenElts;
       }
     }
 
     // This is IMPORTANT that we subtract from varLocation RATHER than baseAddr
     // because of the fact that varLocation can point to the MIDDLE of an array
-    targetVarSize = (highestAddr - varLocation) / bytesBetweenElts;
-    FJALAR_DPRINTF("targetVar->varType->byteSize %d, var->varType->byteSize is %d, targetVarSize is %d\n", targetVar->varType->byteSize, var->varType->byteSize, (Int)targetVarSize);
+    targetVarSize = (highestAddr - varLocation) / targetVarBytesBetweenElts;
+    FJALAR_DPRINTF("targetVarBytesBetweenElts is %d, varBytesBetweenElts is %d, targetVarSize is %d\n",
+                    targetVarBytesBetweenElts, varBytesBetweenElts, targetVarSize);
 
 
-    FJALAR_DPRINTF(" Target : [%s - %d] Source : [%s - %d]\n", targetVar->varType->typeName, targetVar->varType->byteSize,
-		   var->varType->typeName, var->varType->byteSize);
-    //    return targetVarSize;
-    /* if (targetVar->varType->byteSize < var->varType->byteSize) { */
-    /*   return (targetVarSize * targetVar->varType->byteSize) / var->varType->byteSize; */
-    /* } */
+    FJALAR_DPRINTF("Target : [%s - %d] Source : [%s - %d]\n",
+                    targetVar->varType->typeName, targetVarBytesBetweenElts,
+                    var->varType->typeName, varBytesBetweenElts);
 
-    if (targetVar->varType->byteSize == var->varType->byteSize) {
+    if (targetVarBytesBetweenElts == varBytesBetweenElts) {
       return targetVarSize;
     } else {
-      return (targetVarSize * targetVar->varType->byteSize) / var->varType->byteSize;
+      return (targetVarSize * targetVarBytesBetweenElts) / varBytesBetweenElts;
     }
 
   }

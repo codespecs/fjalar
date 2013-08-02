@@ -51,9 +51,6 @@
 /*------------------------------------------------------------*/
 
 #define DEFAULT_OUTFORMAT   "callgrind.out.%p"
-#define DEFAULT_COMMANDNAME "callgrind.cmd"
-#define DEFAULT_RESULTNAME  "callgrind.res"
-#define DEFAULT_INFONAME    "/tmp/callgrind.info"
 
 typedef struct _CommandLineOptions CommandLineOptions;
 struct _CommandLineOptions {
@@ -87,9 +84,12 @@ struct _CommandLineOptions {
   Bool collect_alloc;    /* Collect size of allocated memory */
   Bool collect_systime;  /* Collect time for system calls */
 
+  Bool collect_bus;      /* Collect global bus events */
+
   /* Instrument options */
   Bool instrument_atstart;  /* Instrument at start? */
   Bool simulate_cache;      /* Call into cache simulator ? */
+  Bool simulate_branch;     /* Call into branch prediction simulator ? */
 
   /* Call graph generation */
   Bool pop_on_jump;       /* Handle a jump between functions as ret+call */
@@ -112,12 +112,13 @@ struct _CommandLineOptions {
 #define MIN_LINE_SIZE   16
 
 /* Size of various buffers used for storing strings */
-#define FILENAME_LEN                    256
+#define FILENAME_LEN                    VKI_PATH_MAX
 #define FN_NAME_LEN                    4096 /* for C++ code :-) */
 #define OBJ_NAME_LEN                    256
+#define COSTS_LEN                       512 /* at least 17x 64bit values */
 #define BUF_LEN                         512
 #define COMMIFY_BUF_LEN                 128
-#define RESULTS_BUF_LEN                 128
+#define RESULTS_BUF_LEN                 256
 #define LINE_BUF_LEN                     64
 
 
@@ -228,6 +229,18 @@ typedef ULong* UserCost;
 typedef ULong* FullCost; /* Simulator + User */
 
 
+/* The types of control flow changes that can happen between
+ * execution of two BBs in a thread.
+ */
+typedef enum {
+  jk_None = 0,   /* no explicit change by a guest instruction */
+  jk_Jump,       /* regular jump */
+  jk_Call,
+  jk_Return,
+  jk_CondJump    /* conditional jump taken (only used as jCC type) */
+} ClgJumpKind;
+
+
 /* JmpCall cost center
  * for subroutine call (from->bb->jmp_addr => to->bb->addr)
  *
@@ -247,11 +260,9 @@ typedef ULong* FullCost; /* Simulator + User */
  * After updating, <last> is set to current event counters. Thus,
  * events are not counted twice for recursive calls (TODO: True?)
  */
-#define JmpNone (Ijk_Boring+30)
-#define JmpCond (Ijk_Boring+31)
 
 struct _jCC {
-  Int  jmpkind;     /* JmpCall, JmpBoring, JmpCond */
+  ClgJumpKind jmpkind; /* jk_Call, jk_Jump, jk_CondJump */
   jCC* next_hash;   /* for hash entry chain */
   jCC* next_from;   /* next JCC from a BBCC */
   BBCC *from, *to;  /* call arc from/to this BBCC */
@@ -275,13 +286,14 @@ struct _InstrInfo {
 };
 
 
+
 /*
- * Info for a conditional jump in a basic block
+ * Info for a side exit in a BB
  */
 typedef struct _CJmpInfo CJmpInfo;
 struct _CJmpInfo {
-    UInt instr; /* instruction index in this basic block */
-    Bool skip;   /* Cond.Jumps to next instruction should be ignored */
+  UInt instr;          /* instruction index for BB.instr array */
+  ClgJumpKind jmpkind; /* jump kind when leaving BB at this side exit */
 };
 
 
@@ -318,11 +330,10 @@ struct _BB {
   BBCC*      last_bbcc;  /* Temporary: Cached for faster access (LRU) */
 
   /* filled by CLG_(instrument) if not seen before */
-  UInt       cjmp_count;  /* number of conditional exits */
+  UInt       cjmp_count;  /* number of side exits */
   CJmpInfo*  jmp;         /* array of info for condition jumps,
 			   * allocated directly after this struct */
-  Int        jmpkind;    /* remember jump kind of final exit */
-  Bool       cjmp_inverted; /* condition of last cond.jump can be inverted by VEX */
+  Bool       cjmp_inverted; /* is last side exit actually fall through? */
 
   UInt       instr_len;
   UInt       cost_count;
@@ -356,12 +367,12 @@ struct _Context {
 
 
 /*
- * Info for a conditional jump in a basic block
+ * Cost info for a side exits from a BB
  */
 typedef struct _JmpData JmpData;
 struct _JmpData {
     ULong ecounter; /* number of times the BB was left at this exit */
-    jCC*  jcc_list;  /* JCCs for Cond.Jumps from this exit */
+    jCC*  jcc_list; /* JCCs used for this exit */
 };
 
 
@@ -650,9 +661,8 @@ struct cachesim_if
     void (*post_clo_init)(void);
     void (*clear)(void);
     void (*getdesc)(Char* buf);
-    void (*printstat)(void);  
+    void (*printstat)(Int,Int,Int);
     void (*add_icost)(SimCost, BBCC*, InstrInfo*, ULong);
-    void (*after_bbsetup)(void);
     void (*finish)(void);
     
     void (*log_1I0D)(InstrInfo*) VG_REGPARM(1);
@@ -671,6 +681,28 @@ struct cachesim_if
     Char *log_0I1Dr_name, *log_0I1Dw_name;
 };
 
+// set by setup_bbcc at start of every BB, and needed by log_* helpers
+extern Addr   CLG_(bb_base);
+extern ULong* CLG_(cost_base);
+
+// Event groups
+#define EG_USE   0
+#define EG_IR    1
+#define EG_DR    2
+#define EG_DW    3
+#define EG_BC    4
+#define EG_BI    5
+#define EG_BUS   6
+#define EG_ALLOC 7
+#define EG_SYS   8
+
+struct event_sets {
+    EventSet *base, *full;
+};
+extern struct event_sets CLG_(sets);
+
+#define fullOffset(group) (CLG_(sets).full->offset[group])
+
 
 /*------------------------------------------------------------*/
 /*--- Functions                                            ---*/
@@ -685,20 +717,8 @@ void CLG_(print_usage)(void);
 void CLG_(print_debug_usage)(void);
 
 /* from sim.c */
-struct event_sets {
-  EventSet *Use, *Ir, *Dr, *Dw;
-  EventSet *UIr, *UIrDr, *UIrDrDw, *UIrDw, *UIrDwDr;
-  EventSet *full;
-
-  /* offsets into eventsets */  
-  Int off_full_Ir, off_full_Dr, off_full_Dw;
-  Int off_full_alloc, off_full_systime;
-};
-
-extern struct event_sets CLG_(sets);
 extern struct cachesim_if CLG_(cachesim);
-
-void CLG_(init_eventsets)(Int user);
+void CLG_(init_eventsets)(void);
 
 /* from main.c */
 Bool CLG_(get_debug_info)(Addr, Char filename[FILENAME_LEN],
@@ -709,11 +729,6 @@ void CLG_(dump_profile)(Char* trigger,Bool only_current_thread);
 void CLG_(zero_all_cost)(Bool only_current_thread);
 Int CLG_(get_dump_counter)(void);
 void CLG_(fini)(Int exitcode);
-
-/* from command.c */
-void CLG_(init_command)(void);
-void CLG_(check_command)(void);
-void CLG_(finish_command)(void);
 
 /* from bb.c */
 void CLG_(init_bb_hash)(void);
@@ -766,7 +781,7 @@ call_entry* CLG_(get_call_entry)(Int n);
 
 void CLG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp, Bool skip);
 void CLG_(pop_call_stack)(void);
-void CLG_(unwind_call_stack)(Addr sp, Int);
+Int CLG_(unwind_call_stack)(Addr sp, Int);
 
 /* from context.c */
 void CLG_(init_fn_stack)(fn_stack*);
@@ -812,6 +827,8 @@ extern EventMapping* CLG_(dumpmap);
 /* Function active counter array, indexed by function number */
 extern UInt* CLG_(fn_active_array);
 extern Bool CLG_(instrument_state);
+ /* min of L1 and LL cache line sizes */
+extern Int CLG_(min_line_size);
 
 extern call_stack CLG_(current_call_stack);
 extern fn_stack   CLG_(current_fn_stack);
@@ -826,8 +843,8 @@ extern ThreadId   CLG_(current_tid);
 #if CLG_ENABLE_DEBUG
 
 #define CLG_DEBUGIF(x) \
-  if ( (CLG_(clo).verbose >x) && \
-       (CLG_(stat).bb_executions >= CLG_(clo).verbose_start))
+  if (UNLIKELY( (CLG_(clo).verbose >x) && \
+                (CLG_(stat).bb_executions >= CLG_(clo).verbose_start)))
 
 #define CLG_DEBUG(x,format,args...)   \
     CLG_DEBUGIF(x) {                  \
@@ -836,7 +853,7 @@ extern ThreadId   CLG_(current_tid);
     }
 
 #define CLG_ASSERT(cond)              \
-    if (!(cond)) {                    \
+    if (UNLIKELY(!(cond))) {          \
       CLG_(print_context)();          \
       CLG_(print_bbno)();	      \
       tl_assert(cond);                \

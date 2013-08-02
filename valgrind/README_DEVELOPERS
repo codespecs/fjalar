@@ -57,6 +57,23 @@ output spewed out during compilation, letting you actually see any errors,
 warnings, etc.
 
 
+Building a distribution tarball
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To build a distribution tarball from the valgrind sources:
+
+  make dist
+
+In addition to compiling, linking and packaging everything up, the command
+will also build the documentation. Even if all required tools for building the
+documentation are installed, this step may not succeed because of hidden
+dependencies. E.g. on Ubuntu you must have "docbook-xsl" installed.
+Additionally, specific tool versions maybe needed.
+
+If you only want to test whether the generated tarball is complete and runs
+regression tests successfully, building documentation is not needed.
+Edit docs/Makefile.am, search for BUILD_ALL_DOCS and follow instructions there.
+
+
 Running the regression tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To build and run all the regression tests, run "make [--quiet] regtest".
@@ -134,45 +151,161 @@ without too much problem by following these steps:
 
     (gdb) b vgPlain_do_exec
 
-(5) Run the tool with required options:
+(5) Run the tool with required options (the --tool option is required
+    for correct setup), e.g.
 
-    (gdb) run pwd
+    (gdb) run --tool=lackey pwd
 
 Steps (1)--(3) can be put in a .gdbinit file, but any directory names must
 be fully expanded (ie. not an environment variable).
 
+A different and possibly easier way is as follows:
+
+(1) Run Valgrind as normal, but add the flag --wait-for-gdb=yes.  This
+    puts the tool executable into a wait loop soon after it gains
+    control.  This delays startup for a few seconds.
+
+(2) In a different shell, do "gdb /proc/<pid>/exe <pid>", where
+    <pid> you read from the output printed by (1).  This attaches
+    GDB to the tool executable, which should be in the abovementioned
+    wait loop.
+
+(3) Do "cont" to continue.  After the loop finishes spinning, startup
+    will continue as normal.  Note that comment (3) above re passing
+    signals applies here too.
+
 
 Self-hosting
 ~~~~~~~~~~~~
-To run Valgrind under Valgrind:
+This section explains :
+  (A) How to configure Valgrind to run under Valgrind.
+      Such a setup is called self hosting, or outer/inner setup.
+  (B) How to run Valgrind regression tests in a 'self-hosting' mode,
+      e.g. to verify Valgrind has no bugs such as memory leaks.
+  (C) How to run Valgrind performance tests in a 'self-hosting' mode,
+      to analyse and optimise the performance of Valgrind and its tools.
+
+(A) How to configure Valgrind to run under Valgrind:
 
 (1) Check out 2 trees, "Inner" and "Outer".  Inner runs the app
     directly.  Outer runs Inner.
 
-(2) Configure inner with --enable-inner and build/install as
-    usual.
+(2) Configure inner with --enable-inner and build/install as usual.
 
 (3) Configure Outer normally and build/install as usual.
 
 (4) Choose a very simple program (date) and try
 
     outer/.../bin/valgrind --sim-hints=enable-outer --trace-children=yes  \
-       --tool=cachegrind -v inner/.../bin/valgrind --tool=none -v prog
+       --smc-check=all-non-file \
+       --run-libc-freeres=no --tool=cachegrind -v \
+       inner/.../bin/valgrind --vgdb-prefix=./inner --tool=none -v prog
 
 If you omit the --trace-children=yes, you'll only monitor Inner's launcher
-program, not its stage2.
+program, not its stage2. Outer needs --run-libc-freeres=no, as otherwise
+it will try to find and run __libc_freeres in the inner, while libc is not
+used by the inner. Inner needs --vgdb-prefix=./inner to avoid inner
+gdbserver colliding with outer gdbserver.
+Currently, inner does *not* use the client request 
+VALGRIND_DISCARD_TRANSLATIONS for the JITted code or the code patched for
+translation chaining. So the outer needs --smc-check=all-non-file to
+detect the modified code.
+
+Debugging the whole thing might imply to use up to 3 GDB:
+  * a GDB attached to the Outer valgrind, allowing
+    to examine the state of Outer.
+  * a GDB using Outer gdbserver, allowing to
+    examine the state of Inner.
+  * a GDB using Inner gdbserver, allowing to
+    examine the state of prog.
 
 The whole thing is fragile, confusing and slow, but it does work well enough
 for you to get some useful performance data.  Inner has most of
 its output (ie. those lines beginning with "==<pid>==") prefixed with a '>',
-which helps a lot.
+which helps a lot. However, when running regression tests in an Outer/Inner
+setup, this prefix causes the reg test diff to fail. Give 
+--sim-hints=no-inner-prefix to the Inner to disable the production
+of the prefix in the stdout/stderr output of Inner.
 
-At the time of writing the allocator is not annotated with client requests
-so Memcheck is not as useful as it could be.  It also has not been tested
-much, so don't be surprised if you hit problems.
+The allocator (coregrind/m_mallocfree.c) is annotated with client requests
+so Memcheck can be used to find leaks and use after free in an Inner
+Valgrind.
+
+The Valgrind "big lock" is annotated with helgrind client requests
+so helgrind and drd can be used to find race conditions in an Inner
+Valgrind.
+
+All this has not been tested much, so don't be surprised if you hit problems.
 
 When using self-hosting with an outer Callgrind tool, use '--pop-on-jump'
 (on the outer). Otherwise, Callgrind has much higher memory requirements. 
+
+(B) Regression tests in an outer/inner setup:
+
+ To run all the regression tests with an outer memcheck, do :
+   perl tests/vg_regtest --outer-valgrind=../outer/.../bin/valgrind \
+                         --all
+
+ To run a specific regression tests with an outer memcheck, do:
+   perl tests/vg_regtest --outer-valgrind=../outer/.../bin/valgrind \
+                         none/tests/args.vgtest
+
+ To run regression tests with another outer tool:
+   perl tests/vg_regtest --outer-valgrind=../outer/.../bin/valgrind \
+                         --outer-tool=helgrind --all
+
+ --outer-args allows to give specific arguments to the outer tool,
+ replacing the default one provided by vg_regtest.
+
+When an outer valgrind runs an inner valgrind, a regression test
+produces one additional file <testname>.outer.log which contains the
+errors detected by the outer valgrind.  E.g. for an outer memcheck, it
+contains the leaks found in the inner, for an outer helgrind or drd,
+it contains the detected race conditions.
+
+The file tests/outer_inner.supp contains suppressions for 
+the irrelevant or benign errors found in the inner.
+
+(C) Performance tests in an outer/inner setup:
+
+ To run all the performance tests with an outer cachegrind, do :
+    perl perf/vg_perf --outer-valgrind=../outer/.../bin/valgrind perf
+
+ To run a specific perf test (e.g. bz2) in this setup, do :
+    perl perf/vg_perf --outer-valgrind=../outer/.../bin/valgrind perf/bz2
+
+ To run all the performance tests with an outer callgrind, do :
+    perl perf/vg_perf --outer-valgrind=../outer/.../bin/valgrind \
+                      --outer-tool=callgrind perf
+
+ To compare the performance of multiple Valgrind versions, do :
+    perl perf/vg_perf --outer-valgrind=../outer/.../bin/valgrind \
+      --vg=../inner_xxxx --vg=../inner_yyyy perf
+  (where inner_xxxx and inner_yyyy are the versions to compare).
+  Cachegrind and cg_diff are particularly handy to obtain a delta
+  between the two versions.
+
+When the outer tool is callgrind or cachegrind, the following
+output files will be created for each test:
+   <outertoolname>.out.<inner_valgrind_dir>.<tt>.<perftestname>.<pid>
+   <outertoolname>.outer.log.<inner_valgrind_dir>.<tt>.<perftestname>.<pid>
+ (where tt is the two letters abbreviation for the inner tool(s) run).
+
+For example, the command
+    perl perf/vg_perf \
+      --outer-valgrind=../outer_trunk/install/bin/valgrind \
+      --outer-tool=callgrind \
+      --vg=../inner_tchain --vg=../inner_trunk perf/many-loss-records
+
+produces the files
+    callgrind.out.inner_tchain.no.many-loss-records.18465
+    callgrind.outer.log.inner_tchain.no.many-loss-records.18465
+    callgrind.out.inner_tchain.me.many-loss-records.21899
+    callgrind.outer.log.inner_tchain.me.many-loss-records.21899
+    callgrind.out.inner_trunk.no.many-loss-records.21224
+    callgrind.outer.log.inner_trunk.no.many-loss-records.21224
+    callgrind.out.inner_trunk.me.many-loss-records.22916
+    callgrind.outer.log.inner_trunk.me.many-loss-records.22916
 
 
 Printing out problematic blocks

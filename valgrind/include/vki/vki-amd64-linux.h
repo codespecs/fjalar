@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -61,6 +61,12 @@ typedef unsigned int vki_u32;
 #define VKI_PAGE_SIZE	(1UL << VKI_PAGE_SHIFT)
 #define VKI_MAX_PAGE_SHIFT	VKI_PAGE_SHIFT
 #define VKI_MAX_PAGE_SIZE	VKI_PAGE_SIZE
+
+//----------------------------------------------------------------------
+// From linux-2.6.35.4/arch/x86/include/asm/shmparam.h
+//----------------------------------------------------------------------
+
+#define VKI_SHMLBA  VKI_PAGE_SIZE
 
 //----------------------------------------------------------------------
 // From linux-2.6.9/include/asm-x86_64/signal.h
@@ -261,6 +267,18 @@ struct vki_sigcontext {
 #define VKI_F_GETOWN		9	/*  for sockets. */
 #define VKI_F_SETSIG		10	/*  for sockets. */
 #define VKI_F_GETSIG		11	/*  for sockets. */
+
+#define VKI_F_SETOWN_EX		15
+#define VKI_F_GETOWN_EX		16
+
+#define VKI_F_OWNER_TID		0
+#define VKI_F_OWNER_PID		1
+#define VKI_F_OWNER_PGRP	2
+
+struct vki_f_owner_ex {
+	int	type;
+	__vki_kernel_pid_t	pid;
+};
 
 #define VKI_FD_CLOEXEC	1	/* actually anything with low bit set goes */
 
@@ -540,11 +558,13 @@ struct vki_ucontext {
 // type for x86 (the final 'lm' field is added);  I'm not sure about the
 // significance of that... --njn
 
-#if 0
 /* [[Nb: This is the structure passed to the modify_ldt syscall.  Just so as
    to confuse and annoy everyone, this is _not_ the same as an
    VgLdtEntry and has to be translated into such.  The logic for doing
    so, in vg_ldt.c, is copied from the kernel sources.]] */
+/* Note also that a comment in ldt.h indicates that the below
+   contains several fields ignored on 64bit, and that modify_ldt
+   is rather for 32bit. */
 struct vki_user_desc {
 	unsigned int  entry_number;
 	unsigned long base_addr;
@@ -560,9 +580,6 @@ struct vki_user_desc {
 
 // [[Nb: for our convenience within Valgrind, use a more specific name]]
 typedef struct vki_user_desc vki_modify_ldt_t;
-#endif
-
-typedef void vki_modify_ldt_t;
 
 //----------------------------------------------------------------------
 // From linux-2.6.11.2/include/asm-x86_64/ipcbuf.h

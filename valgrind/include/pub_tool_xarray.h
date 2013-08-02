@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2009 OpenWorks LLP
+   Copyright (C) 2007-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -79,8 +79,8 @@ extern void VG_(sortXA) ( XArray* );
 /* Lookup (by binary search) 'key' in the array.  Set *first to be the
    index of the first, and *last to be the index of the last matching
    value found.  If any values are found, return True, else return
-   False, and don't change *first or *last.  Bomb if the array is not
-   sorted. */
+   False, and don't change *first or *last.  first and/or last may be
+   NULL.  Bomb if the array is not sorted. */
 extern Bool VG_(lookupXA) ( XArray*, void* key, 
                             /*OUT*/Word* first, /*OUT*/Word* last );
 
@@ -117,6 +117,12 @@ extern void VG_(dropTailXA) ( XArray*, Word );
    is the number of elements remaining in the XArray. */
 extern void VG_(dropHeadXA) ( XArray*, Word );
 
+/* Remove the specified element of an XArray, and slide all elements
+   beyond it back one place.  This is an O(N) operation, where N is
+   the number of elements after the specified element, in the
+   array. */
+extern void VG_(removeIndexXA)( XArray*, Word );
+
 /* Make a new, completely independent copy of the given XArray, using
    the existing allocation function to allocate the new space.
    Returns NULL if the allocation function didn't manage to allocate
@@ -125,17 +131,22 @@ extern void VG_(dropHeadXA) ( XArray*, Word );
    is NULL, in which case the parent's cost-center is used. */
 extern XArray* VG_(cloneXA)( HChar* cc, XArray* xa );
 
+/* Get the raw array and size so callers can index it really fast.
+   This is dangerous in the sense that there's no range or
+   anything-else checking.  It's also dangerous in that if
+   VG_(addToXA) is used, the contents may be re-located without
+   warning, hence making the contents address returned here
+   invalid. */
+extern void VG_(getContentsXA_UNSAFE)( XArray* sr,
+                                       /*OUT*/void** ctsP,
+                                       /*OUT*/Word*  usedP );
+
 /* Convenience function: printf into an XArray of HChar, adding stuff
    at the end.  This is very convenient for concocting arbitrary
    length printf output in an XArray.  Note that the resulting string
-   is NOT zero-terminated.  Versions are provided with and without a
-   format check, the latter so the unknown (to gcc) "%t" can be used
-   without gcc complaining. */
+   is NOT zero-terminated. */
 extern void VG_(xaprintf)( XArray* dst, const HChar* format, ... )
                          PRINTF_CHECK(2, 3);
-
-extern void VG_(xaprintf_no_f_c)
-                         ( XArray* dst, const HChar* format, ... );
 
 #endif   // __PUB_TOOL_XARRAY_H
 

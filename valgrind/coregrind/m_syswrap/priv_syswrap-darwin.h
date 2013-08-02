@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2009 Apple Inc.
+   Copyright (C) 2005-2012 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -295,8 +295,8 @@ DECL_TEMPLATE(darwin, getxattr);                // 234
 DECL_TEMPLATE(darwin, fgetxattr);               // 235
 DECL_TEMPLATE(darwin, setxattr);                // 236
 DECL_TEMPLATE(darwin, fsetxattr);               // 237
-// NYI removexattr 238
-// NYI fremovexattr 239
+DECL_TEMPLATE(darwin, removexattr);             // 238
+DECL_TEMPLATE(darwin, fremovexattr);            // 239
 DECL_TEMPLATE(darwin, listxattr);               // 240
 DECL_TEMPLATE(darwin, flistxattr);              // 241
 DECL_TEMPLATE(darwin, fsctl);                   // 242
@@ -324,7 +324,7 @@ DECL_TEMPLATE(darwin, shmctl);                  // 263
 DECL_TEMPLATE(darwin, shmdt);                   // 264
 DECL_TEMPLATE(darwin, shmget);                  // 265
 DECL_TEMPLATE(darwin, shm_open);                // 266
-// NYI shm_unlink 267
+DECL_TEMPLATE(darwin, shm_unlink);              // 267
 DECL_TEMPLATE(darwin, sem_open);                // 268
 DECL_TEMPLATE(darwin, sem_close);               // 269
 DECL_TEMPLATE(darwin, sem_unlink);              // 270
@@ -334,7 +334,7 @@ DECL_TEMPLATE(darwin, sem_post);                // 273
 // NYI sem_getvalue 274
 DECL_TEMPLATE(darwin, sem_init);                // 275
 DECL_TEMPLATE(darwin, sem_destroy);             // 276
-// NYI open_extended 277
+DECL_TEMPLATE(darwin, open_extended)            // 277
 // NYI umask_extended 278
 DECL_TEMPLATE(darwin, stat_extended);           // 279
 DECL_TEMPLATE(darwin, lstat_extended);          // 280
@@ -358,18 +358,18 @@ DECL_TEMPLATE(darwin, settid);                  // 285
 // old new_system_shared_regions
 // old shared_region_map_file_np
 // old shared_region_make_private_np
-// NYI __pthread_mutex_destroy 301
-// NYI __pthread_mutex_init 302
-// NYI __pthread_mutex_lock 303
-// NYI __pthread_mutex_trylock 304
-// NYI __pthread_mutex_unlock 305
-// NYI __pthread_cond_init 306
-// NYI __pthread_cond_destroy 307
-// NYI __pthread_cond_broadcast 308
+DECL_TEMPLATE(darwin, psynch_mutexwait);       // 301 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_mutexdrop);       // 302 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_cvbroad);         // 303 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_cvsignal);        // 304 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_cvwait);          // 305 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_rw_rdlock);       // 306 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_rw_wrlock);       // 307 // new in 10.7 ?
+DECL_TEMPLATE(darwin, psynch_rw_unlock);       // 308 // new in 10.7 ?
 // NYI __pthread_cond_signal 309
 // NYI getsid 310
 // NYI settid_with_pid 311
-// NYI __pthread_cond_timedwait 312
+DECL_TEMPLATE(darwin, psynch_cvclrprepost);    // 312 // new in 10.7 ?
 // NYI aio_fsync 313
 DECL_TEMPLATE(darwin, aio_return);             // 314
 DECL_TEMPLATE(darwin, aio_suspend);            // 315
@@ -393,7 +393,9 @@ DECL_TEMPLATE(darwin, __pthread_markcancel);    // 332
 DECL_TEMPLATE(darwin, __pthread_canceled);      // 333
 DECL_TEMPLATE(darwin, __semwait_signal);        // 334
 // old utrace
-// NYI proc_info 336
+#if DARWIN_VERS >= DARWIN_10_6
+DECL_TEMPLATE(darwin, proc_info);               // 336
+#endif
 DECL_TEMPLATE(darwin, sendfile);                // 337
 DECL_TEMPLATE(darwin, stat64);                  // 338
 DECL_TEMPLATE(darwin, fstat64);                 // 339
@@ -414,7 +416,9 @@ DECL_TEMPLATE(darwin, auditon);                 // 351
 // NYI setauid 354
 // NYI getaudit 355
 // NYI setaudit 356
-// NYI getaudit_addr 357
+#if DARWIN_VERS >= DARWIN_10_7
+DECL_TEMPLATE(darwin, getaudit_addr)            // 357
+#endif
 // NYI setaudit_addr 358
 // NYI auditctl 359
 DECL_TEMPLATE(darwin, bsdthread_create);        // 360
@@ -429,7 +433,7 @@ DECL_TEMPLATE(darwin, workq_ops);               // 368
 // 369
 // 370
 // 371
-// 372
+DECL_TEMPLATE(darwin, __thread_selfid);         // 372
 // 373
 // 374
 // 375
@@ -484,8 +488,12 @@ DECL_TEMPLATE(darwin, __mac_syscall);           // 381
 // NYI __mac_mount 424
 // NYI __mac_get_mount 425
 // NYI __mac_getfsstat 426
+DECL_TEMPLATE(darwin, fsgetpath);                // 427
+DECL_TEMPLATE(darwin, audit_session_self);       // 428
+// NYI audit_session_join 429
 
 // Mach message helpers
+DECL_TEMPLATE(darwin, mach_port_set_context);
 DECL_TEMPLATE(darwin, host_info);
 DECL_TEMPLATE(darwin, host_page_size);
 DECL_TEMPLATE(darwin, host_get_io_master);
@@ -498,13 +506,16 @@ DECL_TEMPLATE(darwin, mach_port_deallocate);
 DECL_TEMPLATE(darwin, mach_port_get_refs);
 DECL_TEMPLATE(darwin, mach_port_mod_refs);
 DECL_TEMPLATE(darwin, mach_port_get_set_status);
+DECL_TEMPLATE(darwin, mach_port_move_member);
 DECL_TEMPLATE(darwin, mach_port_destroy);
 DECL_TEMPLATE(darwin, mach_port_request_notification);
 DECL_TEMPLATE(darwin, mach_port_insert_right);
+DECL_TEMPLATE(darwin, mach_port_extract_right);
 DECL_TEMPLATE(darwin, mach_port_get_attributes);
 DECL_TEMPLATE(darwin, mach_port_set_attributes);
 DECL_TEMPLATE(darwin, mach_port_insert_member);
 DECL_TEMPLATE(darwin, task_get_special_port);
+DECL_TEMPLATE(darwin, task_get_exception_ports);
 DECL_TEMPLATE(darwin, semaphore_create);
 DECL_TEMPLATE(darwin, semaphore_destroy);
 DECL_TEMPLATE(darwin, mach_ports_lookup);
@@ -537,6 +548,7 @@ DECL_TEMPLATE(darwin, thread_create_running);
 DECL_TEMPLATE(darwin, thread_suspend);
 DECL_TEMPLATE(darwin, thread_get_state);
 DECL_TEMPLATE(darwin, thread_policy);
+DECL_TEMPLATE(darwin, thread_policy_set);
 DECL_TEMPLATE(darwin, thread_info);
 DECL_TEMPLATE(darwin, bootstrap_register);
 DECL_TEMPLATE(darwin, bootstrap_look_up);
@@ -547,6 +559,16 @@ DECL_TEMPLATE(darwin, mach_msg_task);
 DECL_TEMPLATE(darwin, mach_msg_thread);
 
 // Mach traps
+#if DARWIN_VERS == DARWIN_10_8
+DECL_TEMPLATE(darwin, mach__10);
+DECL_TEMPLATE(darwin, mach__12);
+DECL_TEMPLATE(darwin, mach__14);
+DECL_TEMPLATE(darwin, mach__16);
+DECL_TEMPLATE(darwin, mach__18);
+DECL_TEMPLATE(darwin, mach__19);
+DECL_TEMPLATE(darwin, mach__20);
+DECL_TEMPLATE(darwin, mach__21);
+#endif /* DARWIN_VERS == DARWIN_10_8 */
 DECL_TEMPLATE(darwin, mach_msg_unhandled);
 DECL_TEMPLATE(darwin, mach_msg);
 DECL_TEMPLATE(darwin, mach_reply_port);

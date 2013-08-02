@@ -19,9 +19,12 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE /* FOR O_LARGEFILE */
 
+#include "../my_libc.h"
+
 #include "../fjalar_tool.h"
 #include "../fjalar_include.h"
 
+#include "pub_tool_vki.h"  // needed by pub_tool_libcfile.h, pub_tool_libcproc.h
 #include "pub_tool_libcfile.h"
 #include "pub_tool_libcproc.h"
 #include "pub_tool_threadstate.h"
@@ -31,11 +34,10 @@
 #include "decls-output.h"
 #include "dtrace-output.h"
 
-#include "../my_libc.h"
-
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
 
+extern void setNOBUF(FILE *stream);
 
 // Global variables that are set by command-line options
 char* kvasir_decls_filename = 0;
@@ -129,7 +131,7 @@ static char createDeclsAndDtraceFiles(char* appname)
 
   if (!splitDirectoryAndFilename(appname, &dirname, &filename))
     {
-      VG_(printf)( "Failed to parse path: %s\n", appname);
+      printf( "Failed to parse path: %s\n", appname);
       return 0;
     }
 
@@ -184,7 +186,7 @@ static char createDeclsAndDtraceFiles(char* appname)
   // Step 2: Make the daikon-output/ directory
   res = VG_(mkdir)(decls_folder, 0777); // more abbreviated UNIX form
   if (sr_isError(res) && sr_Err(res) != VKI_EEXIST)
-    VG_(printf)( "Couldn't create %s: %s\n", decls_folder,
+    printf( "Couldn't create %s: %s\n", decls_folder,
 		 strerror(sr_Err(res)));
 
   // ASSUME mkdir succeeded! (or that the directory already exists)
@@ -193,13 +195,13 @@ static char createDeclsAndDtraceFiles(char* appname)
   if (kvasir_output_fifo) {
     if (actually_output_separate_decls_dtrace) {
       if (!createFIFO(newpath_decls))
-	VG_(printf)( "Trying as a regular file instead.\n");
+	printf( "Trying as a regular file instead.\n");
       if (!createFIFO(newpath_dtrace))
-	VG_(printf)( "Trying as a regular file instead.\n");
+	printf( "Trying as a regular file instead.\n");
     }
     else {
       if (!createFIFO(newpath_dtrace))
-	VG_(printf)( "Trying as a regular file instead.\n");
+	printf( "Trying as a regular file instead.\n");
     }
   }
 
@@ -210,7 +212,7 @@ static char createDeclsAndDtraceFiles(char* appname)
     success = (decls_fp = fopen(newpath_decls, "w")) != 0;
 
     if (!success)
-      VG_(printf)( "Failed to open %s for declarations: %s\n",
+      printf( "Failed to open %s for declarations: %s\n",
 		   newpath_decls, strerror(errno));
   }
   else { // Default
@@ -314,13 +316,13 @@ static int createFIFO(const char *filename) {
   int ret;
   ret = VG_(unlink)((char *)filename);
   if (ret == -1) {
-    VG_(printf)( "Couldn't replace old file %s: %s\n", filename,
+    printf( "Couldn't replace old file %s: %s\n", filename,
 		 strerror(ret));
     return 0;
   }
   ret = mkfifo(filename, 0666);
   if (ret == -1) {
-    VG_(printf)( "Couldn't make %s as a FIFO: %s\n", filename,
+    printf( "Couldn't make %s as a FIFO: %s\n", filename,
 		 strerror(errno));
     return 0;
   }
@@ -337,7 +339,7 @@ static int openRedirectFile(const char *fname) {
   if (fname[0] == '&') {
     sr = VG_(dup)(atoi(fname + 1));
     if (sr_isError(sr)) {
-      VG_(printf)( "Couldn't duplicate FD `%s': %s\n",
+      printf( "Couldn't duplicate FD `%s': %s\n",
 		   fname+1, strerror(sr_Err(sr)));
       return -1;
     }
@@ -346,7 +348,7 @@ static int openRedirectFile(const char *fname) {
     sr = VG_(open)(fname, VKI_O_WRONLY|VKI_O_CREAT|VKI_O_LARGEFILE|VKI_O_TRUNC,
 		  0666);
     if (sr_isError(sr)) {
-      VG_(printf)( "Couldn't open %s for writing: %s\n",
+      printf( "Couldn't open %s for writing: %s\n",
 		   fname, strerror(sr_Err(sr)));
       return -1;
     }
@@ -385,7 +387,10 @@ static int openDtraceFile(const char *fname) {
   // If we're sending trace data to stdout, we definitely don't want the
   // program's output going to the same place.
   if (VG_STREQ(fname, "-") && !stdout_redir) {
-    stdout_redir = "/dev/tty";
+      // But if we're debugging - we probably do.  (markro)
+      if (!kvasir_print_debug_info) {
+          stdout_redir = "/dev/tty";
+      }    
   }
 
   if (kvasir_dtrace_gzip || VG_(getenv)("DTRACEGZIP")) {
@@ -423,7 +428,7 @@ static int openDtraceFile(const char *fname) {
 	  (*mode_str == 'a' ? VKI_O_APPEND : VKI_O_WRONLY);
 	sr = VG_(open)(new_fname, mode, 0666);
 	if (sr_isError(sr)) {
-	  VG_(printf)( "Couldn't open %s for writing\n", fname);
+	  printf( "Couldn't open %s for writing\n", fname);
 	}
 	fd = sr_Res(sr);
 	VG_(close)(1);
@@ -446,6 +451,10 @@ static int openDtraceFile(const char *fname) {
     if (!dtrace_fp) {
       return 0;
     }
+    // If we're debugging, turn off buffering to get coimmingled output.  (markro)
+    if (kvasir_print_debug_info) {
+      setNOBUF(dtrace_fp);
+    }    
   } else {
     dtrace_fp = fopen(fname, mode_str);
     if (!dtrace_fp) {
@@ -607,9 +616,9 @@ void fjalar_tool_post_clo_init(void)
 
 void fjalar_tool_print_usage()
 {
-   VG_(printf)("\n  User options for Kvasir and DynComp:\n");
+   printf("\n  User options for Kvasir and DynComp:\n");
 
-   VG_(printf)(
+   printf(
 "\n  Output file format:\n"
 "    --decls-file=<string>    The output .decls file location\n"
 "                             (forces generation of separate .decls file)\n"
@@ -647,8 +656,6 @@ void fjalar_tool_print_usage()
 "    --dyncomp-dataflow-only  Tracks no interactions, just dataflow\n"
 "    --dyncomp-dataflow-comp  Only counts comparison operations as interactions\n"
 "\n  Debugging:\n"
-"    --asserts-aborts         Turn on safety asserts and aborts (OFF BY DEFAULT)\n"
-"                             [--no-asserts-aborts]\n"
 "    --kvasir-debug           Print Kvasir-internal debug messages [--no-debug]\n"
 "    --dyncomp-debug          Print DynComp debug messages (--with-dyncomp must also be on)\n"
 "                             [--no-dyncomp-debug]\n"
@@ -656,8 +663,8 @@ void fjalar_tool_print_usage()
 "                             [--no-dyncomp-trace-merge]\n"
 "    --dyncomp-trace          Similar, but very detailed\n"
 "                             [--no-dyncomp-trace]\n"
-"    --dyncomp-print-inc      Print DynComp comp. numbers at the execution\n"
-"                             of every program point (for debug only)\n"
+"    --dyncomp-print-inc      Print DynComp comp. numbers at the execution of every program\n"
+"                             point - requires separate dtrace file (for debug only)\n"
 "    --old-decls-format       Use the old(1.0) decls format\n\n"
 "    --no-path-compression    Turns off path compression in Dyncomp's union-find structures\n"
 "    --no-var-leader          Turns off variable tag leader optimizations\n"
@@ -746,12 +753,12 @@ void fjalar_tool_finish() {
     DC_outputDeclsAtEnd();
 
     if (dyncomp_profile_tags) {
-      VG_(printf)("num. static consts in bin/tri/quad ops = %u\n", numConsts);
-      VG_(printf)("MERGE_TAGS calls = %u\n", mergeTagsCount);
-      VG_(printf)("MERGE_3_TAGS calls = %u\n", merge3TagsCount);
-      VG_(printf)("MERGE_4_TAGS calls = %u\n", merge4TagsCount);
-      VG_(printf)("MERGE_TAGS_RETURN_0 calls = %u\n", mergeTagsReturn0Count);
-      VG_(printf)("total num. tags = %u\n", totalNumTagsAssigned);
+      printf("num. static consts in bin/tri/quad ops = %u\n", numConsts);
+      printf("MERGE_TAGS calls = %u\n", mergeTagsCount);
+      printf("MERGE_3_TAGS calls = %u\n", merge3TagsCount);
+      printf("MERGE_4_TAGS calls = %u\n", merge4TagsCount);
+      printf("MERGE_TAGS_RETURN_0 calls = %u\n", mergeTagsReturn0Count);
+      printf("total num. tags = %u\n", totalNumTagsAssigned);
     }
 
   }

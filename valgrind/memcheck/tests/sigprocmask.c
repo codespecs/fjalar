@@ -1,9 +1,7 @@
 
 #include <signal.h>
 #include <stdio.h>
-#if !defined(_AIX)
-# include <sys/syscall.h>
-#endif
+#include <sys/syscall.h>
 #include <unistd.h>
 
 // Reg test for bug #93328: we were using too-big sigset types, and thus
@@ -13,7 +11,7 @@ int main(void)
 {
 #if defined(__NR_sigprocmask)        \
     && !defined(__powerpc64__)       \
-    && !defined(_AIX)                \
+    && !defined(__s390x__)           \
     && !defined(__arm__)
 
    // arm-linux uses rt_sigprocmask, so no sigset mangling takes place

@@ -1,5 +1,3 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
-
 /*--------------------------------------------------------------------*/
 /*--- Client-space code for drd.           drd_qtcore_intercepts.c ---*/
 /*--------------------------------------------------------------------*/
@@ -7,7 +5,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -90,13 +88,12 @@ QT4CORE_FUNC(void, _ZN6QMutexC1ENS_13RecursionModeE,
              qt_mutex_mode mode)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__PRE_MUTEX_INIT,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__PRE_MUTEX_INIT,
                               mutex, qt_to_drd_mutex_type(mode), 0, 0, 0);
    CALL_FN_W_WW(ret, fn, mutex, mode);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__POST_MUTEX_INIT,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_INIT,
                               mutex, 0, 0, 0, 0);
 }
 
@@ -106,13 +103,12 @@ QT4CORE_FUNC(void, _ZN6QMutexC2ENS_13RecursionModeE,
              qt_mutex_mode mode)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__PRE_MUTEX_INIT,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__PRE_MUTEX_INIT,
                               mutex, qt_to_drd_mutex_type(mode), 0, 0, 0);
    CALL_FN_W_WW(ret, fn, mutex, mode);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__POST_MUTEX_INIT,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_INIT,
                               mutex, 0, 0, 0, 0);
 }
 
@@ -121,13 +117,12 @@ QT4CORE_FUNC(void, _ZN6QMutexD1Ev,
              void* mutex)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__PRE_MUTEX_DESTROY,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__PRE_MUTEX_DESTROY,
                               mutex, 0, 0, 0, 0);
    CALL_FN_W_W(ret, fn, mutex);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__POST_MUTEX_DESTROY,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_DESTROY,
                               mutex, mutex_type(mutex), 0, 0, 0);
 }
 
@@ -136,13 +131,12 @@ QT4CORE_FUNC(void, _ZN6QMutexD2Ev,
              void** mutex)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__PRE_MUTEX_DESTROY,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__PRE_MUTEX_DESTROY,
                               mutex, 0, 0, 0, 0);
    CALL_FN_W_W(ret, fn, mutex);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__POST_MUTEX_DESTROY,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_DESTROY,
                               mutex, mutex_type(mutex), 0, 0, 0);
 }
 
@@ -151,13 +145,12 @@ QT4CORE_FUNC(void, _ZN6QMutex4lockEv,
              void* mutex)
 {
    int   ret;
-   int   res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__PRE_MUTEX_LOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(0, VG_USERREQ__PRE_MUTEX_LOCK,
                               mutex, mutex_type(mutex), 0, 0, 0);
    CALL_FN_W_W(ret, fn, mutex);
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__POST_MUTEX_LOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(0, VG_USERREQ__POST_MUTEX_LOCK,
                               mutex, 1, 0, 0, 0);
 }
 
@@ -166,13 +159,12 @@ QT4CORE_FUNC(int, _ZN6QMutex7tryLockEv,
              void* mutex)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__PRE_MUTEX_LOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(0, VG_USERREQ__PRE_MUTEX_LOCK,
                               mutex, mutex_type(mutex), 1, 0, 0);
    CALL_FN_W_W(ret, fn, mutex);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__POST_MUTEX_LOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_LOCK,
                               mutex, ret, 0, 0, 0);
    return ret;
 }
@@ -183,13 +175,12 @@ QT4CORE_FUNC(int, _ZN6QMutex7tryLockEi,
              int timeout_ms)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__PRE_MUTEX_LOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(0, VG_USERREQ__PRE_MUTEX_LOCK,
                               mutex, mutex_type(mutex), 1, 0, 0);
    CALL_FN_W_WW(ret, fn, mutex, timeout_ms);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__POST_MUTEX_LOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_LOCK,
                               mutex, ret, 0, 0, 0);
    return ret;
 }
@@ -199,14 +190,11 @@ QT4CORE_FUNC(void, _ZN6QMutex6unlockEv,
              void* mutex)
 {
    int    ret;
-   int    res;
    OrigFn fn;
    VALGRIND_GET_ORIG_FN(fn);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1,
-                              VG_USERREQ__PRE_MUTEX_UNLOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__PRE_MUTEX_UNLOCK,
                               mutex, mutex_type(mutex), 0, 0, 0);
    CALL_FN_W_W(ret, fn, mutex);
-   VALGRIND_DO_CLIENT_REQUEST(res, -1,
-                              VG_USERREQ__POST_MUTEX_UNLOCK,
+   VALGRIND_DO_CLIENT_REQUEST_EXPR(-1, VG_USERREQ__POST_MUTEX_UNLOCK,
                               mutex, 0, 0, 0, 0);
 }

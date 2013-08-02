@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
       Modified by Philip Guo to serve as part of Fjalar, a dynamic
@@ -42,6 +42,7 @@
 #include "pub_tool_hashtable.h"
 #include "pub_tool_errormgr.h"
 #include "pub_tool_tooliface.h"
+#include "pub_tool_poolalloc.h"
 
 #include "libvex.h"              // for all Vex stuff
 
@@ -74,8 +75,12 @@ MC_ReadResult mc_check_readable ( Addr a, SizeT len, Addr* bad_addr );
 /*--- Tracking the heap                                    ---*/
 /*------------------------------------------------------------*/
 
-/* We want at least a 16B redzone on client heap blocks for Memcheck */
-#define MC_MALLOC_REDZONE_SZB    16
+/* By default, we want at least a 16B redzone on client heap blocks
+   for Memcheck.
+   The default can be modified by --redzone-size. */
+#define MC_MALLOC_DEFAULT_REDZONE_SZB    16
+// effective redzone, as (possibly) modified by --redzone-size:
+extern SizeT MC_(Malloc_Redzone_SzB);
 
 /* For malloc()/new/new[] vs. free()/delete/delete[] mismatch checking. */
 typedef
@@ -128,7 +133,13 @@ void MC_(move_mempool)    ( Addr poolA, Addr poolB );
 void MC_(mempool_change)  ( Addr pool, Addr addrA, Addr addrB, SizeT size );
 Bool MC_(mempool_exists)  ( Addr pool );
 
-MC_Chunk* MC_(get_freed_list_head)( void );
+/* Searches for a recently freed block which might bracket Addr a.
+   Return the MC_Chunk* for this block or NULL if no bracketting block
+   is found. */
+MC_Chunk* MC_(get_freed_block_bracketting)( Addr a );
+
+/* For efficient pooled alloc/free of the MC_Chunk. */
+extern PoolAlloc* MC_(chunk_poolalloc);
 
 /* For tracking malloc'd blocks.  Nb: it's quite important that it's a
    VgHashTable, because VgHashTable allows duplicate keys without complaint.
@@ -147,6 +158,8 @@ void MC_(make_mem_defined)         ( Addr a, SizeT len );
 void MC_(copy_address_range_state) ( Addr src, Addr dst, SizeT len );
 
 void MC_(print_malloc_stats) ( void );
+/* nr of free operations done */
+SizeT MC_(get_cmalloc_n_frees) ( void );
 
 void* MC_(malloc)               ( ThreadId tid, SizeT n );
 void* MC_(__builtin_new)        ( ThreadId tid, SizeT n );
@@ -158,6 +171,9 @@ void  MC_(__builtin_delete)     ( ThreadId tid, void* p );
 void  MC_(__builtin_vec_delete) ( ThreadId tid, void* p );
 void* MC_(realloc)              ( ThreadId tid, void* p, SizeT new_size );
 SizeT MC_(malloc_usable_size)   ( ThreadId tid, void* p );
+
+void MC_(handle_resizeInPlace)(ThreadId tid, Addr p,
+                               SizeT oldSizeB, SizeT newSizeB, SizeT rzB);
 
 
 /*------------------------------------------------------------*/
@@ -277,6 +293,7 @@ typedef
   }
   Reachedness;
 
+
 /* For VALGRIND_COUNT_LEAKS client request */
 extern SizeT MC_(bytes_leaked);
 extern SizeT MC_(bytes_indirect);
@@ -299,6 +316,15 @@ typedef
    }
    LeakCheckMode;
 
+typedef
+   enum {
+      LCD_Any,       // output all loss records, whatever the delta
+      LCD_Increased, // output loss records with an increase in size or blocks
+      LCD_Changed,   // output loss records with an increase or 
+                     //decrease in size or blocks
+   }
+   LeakCheckDeltaMode;
+
 /* When a LossRecord is put into an OSet, these elements represent the key. */
 typedef
    struct _LossRecordKey {
@@ -316,15 +342,49 @@ typedef
       SizeT szB;          // Sum of all MC_Chunk.szB values.
       SizeT indirect_szB; // Sum of all LC_Extra.indirect_szB values.
       UInt  num_blocks;   // Number of blocks represented by the record.
+      SizeT old_szB;          // old_* values are the values found during the 
+      SizeT old_indirect_szB; // previous leak search. old_* values are used to
+      UInt  old_num_blocks;   // output only the changed/new loss records
    }
    LossRecord;
 
-void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckMode mode );
+typedef
+   struct _LeakCheckParams {
+      LeakCheckMode mode;
+      Bool show_reachable;
+      Bool show_possibly_lost;
+      LeakCheckDeltaMode deltamode;
+      UInt max_loss_records_output;       // limit on the nr of loss records output.
+      Bool requested_by_monitor_command; // True when requested by gdb/vgdb.
+   }
+   LeakCheckParams;
+
+void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams * lcp);
+
+// maintains the lcp.deltamode given in the last call to detect_memory_leaks
+extern LeakCheckDeltaMode MC_(detect_memory_leaks_last_delta_mode);
+
+// prints the list of blocks corresponding to the given loss_record_nr.
+// Returns True if loss_record_nr identifies a correct loss record from last leak search.
+// Returns False otherwise.
+Bool MC_(print_block_list) ( UInt loss_record_nr);
+
+// Prints the addresses/registers/... at which a pointer to
+// the given range [address, address+szB[ is found.
+void MC_(who_points_at) ( Addr address, SizeT szB);
+
+// if delta_mode == LCD_Any, prints in buf an empty string
+// otherwise prints a delta in the layout  " (+%'lu)" or " (-%'lu)" 
+extern char * MC_(snprintf_delta) (char * buf, Int size, 
+                                   SizeT current_val, SizeT old_val, 
+                                   LeakCheckDeltaMode delta_mode);
+
 
 Bool MC_(is_valid_aligned_word)     ( Addr a );
 Bool MC_(is_within_valid_secondary) ( Addr a );
 
-void MC_(pp_LeakError)(UInt n_this_record, UInt n_total_records,
+// Prints as user msg a description of the given loss record.
+void MC_(pp_LossRecord)(UInt n_this_record, UInt n_total_records,
                        LossRecord* l);
                           
 
@@ -384,6 +444,9 @@ Bool MC_(record_leak_error)     ( ThreadId tid,
                                   Bool print_record,
                                   Bool count_error );
 
+/* prints a description of address a */
+void MC_(pp_describe_addr) (Addr a);
+
 /* Is this address in a user-specified "ignored range" ? */
 Bool MC_(in_ignored_range) ( Addr a );
 
@@ -418,6 +481,10 @@ extern Bool MC_(clo_partial_loads_ok);
 /* Max volume of the freed blocks queue. */
 extern Long MC_(clo_freelist_vol);
 
+/* Blocks with a size >= MC_(clo_freelist_big_blocks) will be put
+   in the "big block" freed blocks queue. */
+extern Long MC_(clo_freelist_big_blocks);
+
 /* Do leak check at exit?  default: NO */
 extern LeakCheckMode MC_(clo_leak_check);
 
@@ -426,6 +493,9 @@ extern VgRes MC_(clo_leak_resolution);
 
 /* In leak check, show reachable-but-not-freed blocks?  default: NO */
 extern Bool MC_(clo_show_reachable);
+
+/* In leak check, show possibly-lost blocks?  default: YES */
+extern Bool MC_(clo_show_possibly_lost);
 
 /* Assume accesses immediately below %esp are due to gcc-2.96 bugs.
  * default: NO */
@@ -516,11 +586,13 @@ VG_REGPARM(2) void  MC_(helperc_b_store2) ( Addr a, UWord d32 );
 VG_REGPARM(2) void  MC_(helperc_b_store4) ( Addr a, UWord d32 );
 VG_REGPARM(2) void  MC_(helperc_b_store8) ( Addr a, UWord d32 );
 VG_REGPARM(2) void  MC_(helperc_b_store16)( Addr a, UWord d32 );
+VG_REGPARM(2) void  MC_(helperc_b_store32)( Addr a, UWord d32 );
 VG_REGPARM(1) UWord MC_(helperc_b_load1) ( Addr a );
 VG_REGPARM(1) UWord MC_(helperc_b_load2) ( Addr a );
 VG_REGPARM(1) UWord MC_(helperc_b_load4) ( Addr a );
 VG_REGPARM(1) UWord MC_(helperc_b_load8) ( Addr a );
 VG_REGPARM(1) UWord MC_(helperc_b_load16)( Addr a );
+VG_REGPARM(1) UWord MC_(helperc_b_load32)( Addr a );
 
 /* Functions defined in mc_translate.c */
 IRSB* MC_(instrument) ( VgCallbackClosure* closure,

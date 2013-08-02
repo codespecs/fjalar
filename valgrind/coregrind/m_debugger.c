@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
+#include "pub_core_libcsetjmp.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
@@ -223,21 +224,125 @@ static Int ptrace_setregs(Int pid, VexGuestArchState* vex)
    uregs.ARM_ip   = vex->guest_R12; 
    uregs.ARM_sp   = vex->guest_R13; 
    uregs.ARM_lr   = vex->guest_R14; 
-   uregs.ARM_pc   = vex->guest_R15; 
+   // Remove the T bit from the bottom of R15T.  It will get shipped
+   // over in CPSR.T instead, since LibVEX_GuestARM_get_cpsr copies
+   // it from R15T[0].
+   uregs.ARM_pc   = vex->guest_R15T & 0xFFFFFFFE;
    uregs.ARM_cpsr = LibVEX_GuestARM_get_cpsr(vex);
    return VG_(ptrace)(VKI_PTRACE_SETREGS, pid, NULL, &uregs);
-
-#elif defined(VGP_ppc32_aix5)
-   I_die_here;
-
-#elif defined(VGP_ppc64_aix5)
-   I_die_here;
 
 #elif defined(VGP_x86_darwin)
    I_die_here;
 
 #elif defined(VGP_amd64_darwin)
    I_die_here;
+
+#elif defined(VGP_s390x_linux)
+   struct vki_user_regs_struct regs;
+   vki_ptrace_area pa;
+
+   /* We don't set the psw mask and start at offset 8 */
+   pa.vki_len = (unsigned long) &regs.per_info - (unsigned long) &regs.psw.addr;
+   pa.vki_process_addr = (unsigned long) &regs.psw.addr;
+   pa.vki_kernel_addr = 8;
+
+   VG_(memset)(&regs, 0, sizeof(regs));
+   regs.psw.addr = vex->guest_IA;
+
+   /* We don't set the mask */
+   regs.gprs[0] = vex->guest_r0;
+   regs.gprs[1] = vex->guest_r1;
+   regs.gprs[2] = vex->guest_r2;
+   regs.gprs[3] = vex->guest_r3;
+   regs.gprs[4] = vex->guest_r4;
+   regs.gprs[5] = vex->guest_r5;
+   regs.gprs[6] = vex->guest_r6;
+   regs.gprs[7] = vex->guest_r7;
+   regs.gprs[8] = vex->guest_r8;
+   regs.gprs[9] = vex->guest_r9;
+   regs.gprs[10] = vex->guest_r10;
+   regs.gprs[11] = vex->guest_r11;
+   regs.gprs[12] = vex->guest_r12;
+   regs.gprs[13] = vex->guest_r13;
+   regs.gprs[14] = vex->guest_r14;
+   regs.gprs[15] = vex->guest_r15;
+
+   regs.acrs[0] = vex->guest_a0;
+   regs.acrs[1] = vex->guest_a1;
+   regs.acrs[2] = vex->guest_a2;
+   regs.acrs[3] = vex->guest_a3;
+   regs.acrs[4] = vex->guest_a4;
+   regs.acrs[5] = vex->guest_a5;
+   regs.acrs[6] = vex->guest_a6;
+   regs.acrs[7] = vex->guest_a7;
+   regs.acrs[8] = vex->guest_a8;
+   regs.acrs[9] = vex->guest_a9;
+   regs.acrs[10] = vex->guest_a10;
+   regs.acrs[11] = vex->guest_a11;
+   regs.acrs[12] = vex->guest_a12;
+   regs.acrs[13] = vex->guest_a13;
+   regs.acrs[14] = vex->guest_a14;
+   regs.acrs[15] = vex->guest_a15;
+
+   /* only used for system call restart and friends, just use r2 */
+   regs.orig_gpr2 = vex->guest_r2;
+
+   regs.fp_regs.fprs[0].ui = vex->guest_f0;
+   regs.fp_regs.fprs[1].ui = vex->guest_f1;
+   regs.fp_regs.fprs[2].ui = vex->guest_f2;
+   regs.fp_regs.fprs[3].ui = vex->guest_f3;
+   regs.fp_regs.fprs[4].ui = vex->guest_f4;
+   regs.fp_regs.fprs[5].ui = vex->guest_f5;
+   regs.fp_regs.fprs[6].ui = vex->guest_f6;
+   regs.fp_regs.fprs[7].ui = vex->guest_f7;
+   regs.fp_regs.fprs[8].ui = vex->guest_f8;
+   regs.fp_regs.fprs[9].ui = vex->guest_f9;
+   regs.fp_regs.fprs[10].ui = vex->guest_f10;
+   regs.fp_regs.fprs[11].ui = vex->guest_f11;
+   regs.fp_regs.fprs[12].ui = vex->guest_f12;
+   regs.fp_regs.fprs[13].ui = vex->guest_f13;
+   regs.fp_regs.fprs[14].ui = vex->guest_f14;
+   regs.fp_regs.fprs[15].ui = vex->guest_f15;
+   regs.fp_regs.fpc = vex->guest_fpc;
+
+   return VG_(ptrace)(VKI_PTRACE_POKEUSR_AREA, pid,  &pa, NULL);
+
+#elif defined(VGP_mips32_linux)
+   struct vki_user_regs_struct regs;
+   VG_(memset)(&regs, 0, sizeof(regs));
+   regs.MIPS_r0     = vex->guest_r0;
+   regs.MIPS_r1     = vex->guest_r1;
+   regs.MIPS_r2     = vex->guest_r2;
+   regs.MIPS_r3     = vex->guest_r3;
+   regs.MIPS_r4     = vex->guest_r4;
+   regs.MIPS_r5     = vex->guest_r5;
+   regs.MIPS_r6     = vex->guest_r6;
+   regs.MIPS_r7     = vex->guest_r7;
+   regs.MIPS_r8     = vex->guest_r8;
+   regs.MIPS_r9     = vex->guest_r9;
+   regs.MIPS_r10     = vex->guest_r10;
+   regs.MIPS_r11     = vex->guest_r11;
+   regs.MIPS_r12     = vex->guest_r12;
+   regs.MIPS_r13     = vex->guest_r13;
+   regs.MIPS_r14     = vex->guest_r14;
+   regs.MIPS_r15     = vex->guest_r15;
+   regs.MIPS_r16     = vex->guest_r16;
+   regs.MIPS_r17     = vex->guest_r17;
+   regs.MIPS_r18     = vex->guest_r18;
+   regs.MIPS_r19     = vex->guest_r19;
+   regs.MIPS_r20     = vex->guest_r20;
+   regs.MIPS_r21     = vex->guest_r21;
+   regs.MIPS_r22     = vex->guest_r22;
+   regs.MIPS_r23     = vex->guest_r23;
+   regs.MIPS_r24     = vex->guest_r24;
+   regs.MIPS_r25     = vex->guest_r25;
+   regs.MIPS_r26     = vex->guest_r26;
+   regs.MIPS_r27     = vex->guest_r27;
+   regs.MIPS_r28     = vex->guest_r28;
+   regs.MIPS_r29     = vex->guest_r29;
+   regs.MIPS_r30     = vex->guest_r30;
+   regs.MIPS_r31     = vex->guest_r31;
+   return VG_(ptrace)(VKI_PTRACE_SETREGS, pid, NULL, &regs);
 
 #else
 #  error Unknown arch

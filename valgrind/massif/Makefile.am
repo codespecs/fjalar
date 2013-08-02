@@ -1,7 +1,5 @@
 include $(top_srcdir)/Makefile.tool.am
 
-SUBDIRS += perf
-
 EXTRA_DIST = \
 	docs/ms-manual.xml \
 	docs/ms_print-manpage.xml
@@ -23,7 +21,8 @@ endif
 
 MASSIF_SOURCES_COMMON = ms_main.c
 
-massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = $(MASSIF_SOURCES_COMMON)
+massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
+	$(MASSIF_SOURCES_COMMON)
 massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = \
@@ -34,8 +33,16 @@ massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
 massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_PRI@ \
+	$(LINK) \
+	$(massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS) \
+	$(massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS)
+
 if VGCONF_HAVE_PLATFORM_SEC
-massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = $(MASSIF_SOURCES_COMMON)
+massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = \
+	$(MASSIF_SOURCES_COMMON)
 massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = \
@@ -46,6 +53,12 @@ massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
 massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_SEC@ \
+	$(LINK) \
+	$(massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
+	$(massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
 endif
 
 #----------------------------------------------------------------------------
@@ -71,6 +84,7 @@ vgpreload_massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 vgpreload_massif_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
 	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) \
 	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+
 if VGCONF_HAVE_PLATFORM_SEC
 vgpreload_massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = 
 vgpreload_massif_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \

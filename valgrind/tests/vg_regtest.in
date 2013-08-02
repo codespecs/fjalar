@@ -37,6 +37,13 @@
 #   --valgrind-lib: valgrind libraries to use.  Default is $tests_dir/.in_place.
 #               (This option should probably only be used in conjunction with
 #               --valgrind.)
+#   --keep-unfiltered: keep a copy of the unfiltered output/error output
+#     of each test by adding an extension .unfiltered.out
+#
+#   --outer-valgrind: run this valgrind under the given outer valgrind.
+#     This valgrind must be configured with --enable-inner.
+#   --outer-tool: tool to use by the outer valgrind (default memcheck).
+#   --outer-args: use this as outer tool args.
 #
 # The easiest way is to run all tests in valgrind/ with (assuming you installed
 # in $PREFIX):
@@ -55,12 +62,25 @@
 #                                                    multiple are allowed)
 #   - stdout_filter: <filter to run stdout through> (default: none)
 #   - stderr_filter: <filter to run stderr through> (default: ./filter_stderr)
+#   - stdout_filter_args: <args for stdout_filter>  (default: basename of .vgtest file)
+#   - stderr_filter_args: <args for stderr_filter>  (default: basename of .vgtest file)
+#
+#   - progB:  <prog to run in parallel with prog>   (default: none)
+#   - argsB:  <args for progB>                      (default: none)
+#   - stdinB: <input file for progB>                (default: none)
+#   - stdoutB_filter: <filter progB stdout through> (default: none)
+#   - stderrB_filter: <filter progB stderr through> (default: ./filter_stderr)
+#   - stdoutB_filter_args: <args for stdout_filterB> (default: basename of .vgtest file)
+#   - stderrB_filter_args: <args for stderr_filterB>  (default: basename of .vgtest file)
+#
 #   - prereq: <prerequisite command>                (default: none)
 #   - post: <post-test check command>               (default: none)
 #   - cleanup: <post-test cleanup cmd>              (default: none)
 #
+# If prog or probB is a relative path, it will be prefix with the test directory.
 # Note that filters are necessary for stderr results to filter out things that
 # always change, eg. process id numbers.
+# Note that if a progB is specified, it is started in background (before prog).
 #
 # Expected stdout (filtered) is kept in <test>.stdout.exp* (can be more
 # than one expected output).  It can be missing if it would be empty.  Expected
@@ -68,8 +88,13 @@
 # one stderr.exp* file.  Any .exp* file that ends in '~' or '#' is ignored;
 # this is because Emacs creates temporary files of these names.
 #
+# Expected output for progB is handled similarly, except that
+# expected stdout and stderr for progB are in  <test>.stdoutB.exp*
+# and <test>.stderrB.exp*.
+#
 # If results don't match, the output can be found in <test>.std<strm>.out,
 # and the diff between expected and actual in <test>.std<strm>.diff*.
+# (for progB, in <test>.std<strm>2.out and <test>.std<strm>2.diff*).
 #
 # The prerequisite command, if present, works like this:
 # - if it returns 0 the test is run
@@ -100,7 +125,8 @@ use strict;
 #----------------------------------------------------------------------------
 my $usage="\n"
           . "Usage:\n"
-          . "   vg_regtest [--all, --valgrind, --valgrind-lib]\n"
+     . "   vg_regtest [--all, --valgrind, --valgrind-lib, --keep-unfiltered\n"
+     . "                 --outer-valgrind, --outer-tool, --outer-args]\n"
           . "   Use EXTRA_REGTEST_OPTS to supply extra args for all tests\n"
           . "\n";
 
@@ -112,6 +138,15 @@ my $prog;               # test prog
 my $args;               # test prog args
 my $stdout_filter;      # filter program to run stdout results file through
 my $stderr_filter;      # filter program to run stderr results file through
+my $stdout_filter_args; # arguments passed to stdout_filter
+my $stderr_filter_args; # arguments passed to stderr_filter
+my $progB;              # Same but for progB
+my $argsB;              # 
+my $stdoutB_filter;     # 
+my $stderrB_filter;     # 
+my $stdoutB_filter_args;# arguments passed to stdout_filterB
+my $stderrB_filter_args;# arguments passed to stderr_filterB
+my $stdinB;             # Input file for progB
 my $prereq;             # prerequisite test to satisfy before running test
 my $post;               # check command after running test
 my $cleanup;            # cleanup command to run
@@ -119,14 +154,22 @@ my $cleanup;            # cleanup command to run
 my @failures;           # List of failed tests
 
 my $num_tests_done      = 0;
-my %num_failures        = (stderr => 0, stdout => 0, post => 0);
+my %num_failures        = (stderr => 0, stdout => 0, 
+                           stderrB => 0, stdoutB => 0,
+                           post => 0);
 
 # Default valgrind to use is this build tree's (uninstalled) one
 my $valgrind = "./coregrind/valgrind";
 
 chomp(my $tests_dir = `pwd`);
 
+# Outer valgrind to use, and args to use for it.
+my $outer_valgrind;
+my $outer_tool = "memcheck";
+my $outer_args;
+
 my $valgrind_lib = "$tests_dir/.in_place";
+my $keepunfiltered = 0;
 
 # default filter is the one named "filter_stderr" in the test's directory
 my $default_stderr_filter = "filter_stderr";
@@ -173,8 +216,16 @@ sub process_command_line()
                 $alldirs = 1;
             } elsif ($arg =~ /^--valgrind=(.*)$/) {
                 $valgrind = $1;
+            } elsif ($arg =~ /^--outer-valgrind=(.*)$/) {
+                $outer_valgrind = $1;
+            } elsif ($arg =~ /^--outer-tool=(.*)$/) {
+                $outer_tool = $1;
+            } elsif ($arg =~ /^--outer-args=(.*)$/) {
+                $outer_args = $1;
             } elsif ($arg =~ /^--valgrind-lib=(.*)$/) {
                 $valgrind_lib = $1;
+            } elsif ($arg =~ /^--keep-unfiltered$/) {
+                $keepunfiltered = 1;
             } else {
                 die $usage;
             }
@@ -183,6 +234,21 @@ sub process_command_line()
         }
     }
     $valgrind = validate_program($tests_dir, $valgrind, 1, 0);
+
+    if (defined $outer_valgrind) {
+      $outer_valgrind = validate_program($tests_dir, $outer_valgrind, 1, 1);
+      if (not defined $outer_args) {
+          $outer_args = 
+                " --command-line-only=yes"
+              . " --run-libc-freeres=no --sim-hints=enable-outer"
+              . " --smc-check=all-non-file"
+              . " --vgdb=no --trace-children=yes --read-var-info=no"
+              . " --suppressions=" 
+              . validate_program($tests_dir,"./tests/outer_inner.supp",1,0)
+              . " --memcheck:leak-check=full --memcheck:show-reachable=no"
+              . " ";
+      }
+    }
 
     if ($alldirs) {
         @fs = ();
@@ -206,10 +272,16 @@ sub read_vgtest_file($)
     # Defaults.
     ($vgopts, $prog, $args)          = ("", undef, "");
     ($stdout_filter, $stderr_filter) = (undef, undef);
+    ($progB, $argsB, $stdinB)          = (undef, "", undef);
+    ($stdoutB_filter, $stderrB_filter) = (undef, undef);
     ($prereq, $post, $cleanup)       = (undef, undef, undef);
+    ($stdout_filter_args, $stderr_filter_args)   = (undef, undef);
+    ($stdoutB_filter_args, $stderrB_filter_args) = (undef, undef);
 
     # Every test directory must have a "filter_stderr"
     $stderr_filter = validate_program(".", $default_stderr_filter, 1, 1);
+    $stderrB_filter = validate_program(".", $default_stderr_filter, 1, 1);
+    
 
     open(INPUTFILE, "< $f") || die "File $f not openable\n";
 
@@ -217,7 +289,9 @@ sub read_vgtest_file($)
         if      ($line =~ /^\s*#/ || $line =~ /^\s*$/) {
 	    next;
 	} elsif ($line =~ /^\s*vgopts:\s*(.*)$/) {
-            $vgopts = $vgopts . " " . $1;   # Nb: Make sure there's a space!
+            my $addvgopts = $1;
+            $addvgopts =~ s/\${PWD}/$ENV{PWD}/g;
+            $vgopts = $vgopts . " " . $addvgopts;   # Nb: Make sure there's a space!
         } elsif ($line =~ /^\s*prog:\s*(.*)$/) {
             $prog = validate_program(".", $1, 0, 0);
         } elsif ($line =~ /^\s*args:\s*(.*)$/) {
@@ -226,6 +300,24 @@ sub read_vgtest_file($)
             $stdout_filter = validate_program(".", $1, 1, 1);
         } elsif ($line =~ /^\s*stderr_filter:\s*(.*)$/) {
             $stderr_filter = validate_program(".", $1, 1, 1);
+        } elsif ($line =~ /^\s*stdout_filter_args:\s*(.*)$/) {
+            $stdout_filter_args = $1;
+        } elsif ($line =~ /^\s*stderr_filter_args:\s*(.*)$/) {
+            $stderr_filter_args = $1;
+        } elsif ($line =~ /^\s*progB:\s*(.*)$/) {
+            $progB = validate_program(".", $1, 0, 0);
+        } elsif ($line =~ /^\s*argsB:\s*(.*)$/) {
+            $argsB = $1;
+        } elsif ($line =~ /^\s*stdinB:\s*(.*)$/) {
+            $stdinB = $1;
+        } elsif ($line =~ /^\s*stdoutB_filter:\s*(.*)$/) {
+            $stdoutB_filter = validate_program(".", $1, 1, 1);
+        } elsif ($line =~ /^\s*stderrB_filter:\s*(.*)$/) {
+            $stderrB_filter = validate_program(".", $1, 1, 1);
+        } elsif ($line =~ /^\s*stdoutB_filter_args:\s*(.*)$/) {
+            $stdoutB_filter_args = $1;
+        } elsif ($line =~ /^\s*stderrB_filter_args:\s*(.*)$/) {
+            $stderrB_filter_args = $1;
         } elsif ($line =~ /^\s*prereq:\s*(.*)$/) {
             $prereq = $1;
         } elsif ($line =~ /^\s*post:\s*(.*)$/) {
@@ -254,6 +346,17 @@ sub mysystem($)
     ($exit_code == 2) and exit 1;      # 2 is SIGINT
     return $exit_code;
 }
+
+# if $keepunfiltered, copies $1 to $1.unfiltered.out
+# renames $0 tp $1
+sub filtered_rename($$) 
+{
+    if ($keepunfiltered == 1) {
+        mysystem("cp  $_[1] $_[1].unfiltered.out");
+    }
+    rename ($_[0], $_[1]);
+}
+
 
 # from a directory name like "/foo/cachesim/tests/" determine the tool name
 sub determine_tool()
@@ -331,22 +434,55 @@ sub do_one_test($$)
         }
     }
 
+
+    if (defined $progB) {
+        # If there is a progB, let's start it in background:
+        printf("%-16s valgrind $extraopts $vgopts $prog $args (progB: $progB $argsB)\n",
+               "$name:");
+        # progB.done used to detect child has finished. See below.
+        # Note: redirection of stdout and stderr is before $progB to allow argsB
+        # to e.g. redirect stdoutB to stderrB
+        if (defined $stdinB) {
+            mysystem("(rm -f progB.done;"
+                     . " < $stdinB > $name.stdoutB.out 2> $name.stderrB.out $progB $argsB;"
+                     . "touch progB.done) &");
+        } else {
+            mysystem("(rm -f progB.done;"
+                     . " > $name.stdoutB.out 2> $name.stderrB.out $progB $argsB;"
+                     . "touch progB.done)  &");
+        }
+    } else {
     printf("%-16s valgrind $extraopts $vgopts $prog $args\n", "$name:");
+    }
 
     # Pass the appropriate --tool option for the directory (can be overridden
-    # by an "args:" line, though).  Set both VALGRIND_LIB and
-    # VALGRIND_LIB_INNER in case this Valgrind was configured with
-    # --enable-inner.
+    # by an "args:" line, though).
     my $tool=determine_tool();
-    mysystem("VALGRIND_LIB=$valgrind_lib VALGRIND_LIB_INNER=$valgrind_lib "
+    if (defined $outer_valgrind ) {
+        # in an outer-inner setup, only set VALGRIND_LIB_INNER
+        mysystem(   "VALGRIND_LIB_INNER=$valgrind_lib "
+                  . "$outer_valgrind "
+                  . "--tool=" . $outer_tool . " "
+                  . "$outer_args "
+                  . "--log-file=" . "$name.outer.log "
+                  . "$valgrind --command-line-only=yes --memcheck:leak-check=no "
+                  . "--sim-hints=no-inner-prefix "
+                  . "--tool=$tool $extraopts $vgopts "
+                  . "$prog $args > $name.stdout.out 2> $name.stderr.out");
+    } else {
+        # Set both VALGRIND_LIB and VALGRIND_LIB_INNER in case this Valgrind
+        # was configured with --enable-inner.
+        mysystem(   "VALGRIND_LIB=$valgrind_lib VALGRIND_LIB_INNER=$valgrind_lib "
            . "$valgrind --command-line-only=yes --memcheck:leak-check=no "
            . "--tool=$tool $extraopts $vgopts "
            . "$prog $args > $name.stdout.out 2> $name.stderr.out");
+    }
 
     # Filter stdout
     if (defined $stdout_filter) {
-        mysystem("$stdout_filter < $name.stdout.out > $tmp");
-        rename($tmp, "$name.stdout.out");
+        $stdout_filter_args = $name if (! defined $stdout_filter_args);
+        mysystem("$stdout_filter $stdout_filter_args < $name.stdout.out > $tmp");
+        filtered_rename($tmp, "$name.stdout.out");
     }
     # Find all the .stdout.exp files.  If none, use /dev/null.
     my @stdout_exps = <$name.stdout.exp*>;
@@ -354,12 +490,47 @@ sub do_one_test($$)
     do_diffs($fullname, $name, "stdout", \@stdout_exps); 
 
     # Filter stderr
-    mysystem("$stderr_filter < $name.stderr.out > $tmp");
-    rename($tmp, "$name.stderr.out");
+    $stderr_filter_args = $name if (! defined $stderr_filter_args);
+    mysystem("$stderr_filter $stderr_filter_args < $name.stderr.out > $tmp");
+    filtered_rename($tmp, "$name.stderr.out");
     # Find all the .stderr.exp files.  At least one must exist.
     my @stderr_exps = <$name.stderr.exp*>;
     (0 != scalar @stderr_exps) or die "Could not find `$name.stderr.exp*'\n";
     do_diffs($fullname, $name, "stderr", \@stderr_exps); 
+
+    if (defined $progB) {
+        # wait for the child to be finished
+        # tried things such as:
+        #   wait;
+        #   $SIG{CHLD} = sub { wait };
+        # but nothing worked:
+        # e.g. running mssnapshot.vgtest in a loop failed from time to time
+        # due to some missing output (not yet written?).
+        # So, we search progB.done during max 100 times 100 millisecond.
+        my $count;
+        for ($count = 1; $count <= 100; $count++) {
+            (-f "progB.done") or select(undef, undef, undef, 0.100);
+        }
+        # Filter stdout
+        if (defined $stdoutB_filter) {
+            $stdoutB_filter_args = $name if (! defined $stdoutB_filter_args);
+            mysystem("$stdoutB_filter $stdoutB_filter_args < $name.stdoutB.out > $tmp");
+            filtered_rename($tmp, "$name.stdoutB.out");
+        }
+        # Find all the .stdoutB.exp files.  If none, use /dev/null.
+        my @stdoutB_exps = <$name.stdoutB.exp*>;
+        @stdoutB_exps = ( "/dev/null" ) if (0 == scalar @stdoutB_exps);
+        do_diffs($fullname, $name, "stdoutB", \@stdoutB_exps); 
+        
+        # Filter stderr
+        $stderrB_filter_args = $name if (! defined $stderrB_filter_args);
+        mysystem("$stderrB_filter $stderrB_filter_args < $name.stderrB.out > $tmp");
+        filtered_rename($tmp, "$name.stderrB.out");
+        # Find all the .stderrB.exp files.  At least one must exist.
+        my @stderrB_exps = <$name.stderrB.exp*>;
+        (0 != scalar @stderrB_exps) or die "Could not find `$name.stderrB.exp*'\n";
+        do_diffs($fullname, $name, "stderrB", \@stderrB_exps); 
+    }
 
     # Maybe do post-test check
     if (defined $post) {
@@ -447,10 +618,13 @@ sub summarise_results
     my $x = ( $num_tests_done == 1 ? "test" : "tests" );
     
     printf("\n== %d test%s, %d stderr failure%s, %d stdout failure%s, "
+                         . "%d stderrB failure%s, %d stdoutB failure%s, "
                          . "%d post failure%s ==\n", 
            $num_tests_done, plural($num_tests_done),
            $num_failures{"stderr"},   plural($num_failures{"stderr"}),
            $num_failures{"stdout"},   plural($num_failures{"stdout"}),
+           $num_failures{"stderrB"},  plural($num_failures{"stderrB"}),
+           $num_failures{"stdoutB"},  plural($num_failures{"stdoutB"}),
            $num_failures{"post"},     plural($num_failures{"post"}));
 
     foreach my $failure (@failures) {
@@ -506,6 +680,8 @@ if ($ENV{"EXTRA_REGTEST_OPTS"}) {
 
 if (0 == $num_failures{"stdout"} &&
     0 == $num_failures{"stderr"} &&
+    0 == $num_failures{"stdoutB"} &&
+    0 == $num_failures{"stderrB"} &&
     0 == $num_failures{"post"}) {
     exit 0;
 } else {
