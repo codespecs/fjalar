@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2009 OpenWorks LLP
+   Copyright (C) 2006-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -140,8 +140,8 @@ UInt ML_(am_sprintf) ( HChar* buf, const HChar *format, ... )
 
 //--------------------------------------------------------------
 // Direct access to a handful of syscalls.  This avoids dependence on
-// m_libc*.  THESE DO NOT UPDATE THE ANY aspacem-internal DATA
-// STRUCTURES (SEGMENT LISTS).  DO NOT USE THEM UNLESS YOU KNOW WHAT
+// m_libc*.  THESE DO NOT UPDATE THE aspacem-internal DATA
+// STRUCTURES (SEGMENT ARRAY).  DO NOT USE THEM UNLESS YOU KNOW WHAT
 // YOU ARE DOING.
 
 /* --- Pertaining to mappings --- */
@@ -159,7 +159,7 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
                           prot, flags, fd, offset / 4096);
 #  elif defined(VGP_amd64_linux) || defined(VGP_ppc64_linux) \
-        || defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
+        || defined(VGP_s390x_linux) || defined(VGP_mips32_linux)
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
 #  elif defined(VGP_x86_darwin)
@@ -210,10 +210,6 @@ SysRes ML_(am_do_extend_mapping_NO_NOTIFY)(
              0/*flags, meaning: must be at old_addr, else FAIL */,
              0/*new_addr, is ignored*/
           );
-#  elif defined(VGO_aix5)
-   ML_(am_barf)("ML_(am_do_extend_mapping_NO_NOTIFY) on AIX5");
-   /* NOTREACHED, but gcc doesn't understand that */
-   return VG_(mk_SysRes_Error)(0);
 #  else
 #    error Unknown OS
 #  endif
@@ -235,10 +231,6 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
              VKI_MREMAP_MAYMOVE|VKI_MREMAP_FIXED/*move-or-fail*/,
              new_addr
           );
-#  elif defined(VGO_aix5)
-   ML_(am_barf)("ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY) on AIX5");
-   /* NOTREACHED, but gcc doesn't understand that */
-   return VG_(mk_SysRes_Error)(0);
 #  else
 #    error Unknown OS
 #  endif
@@ -274,7 +266,7 @@ Int ML_(am_readlink)(HChar* path, HChar* buf, UInt bufsiz)
 
 Int ML_(am_fcntl) ( Int fd, Int cmd, Addr arg )
 {
-#  if defined(VGO_linux) || defined(VGO_aix5)
+#  if defined(VGO_linux)
    SysRes res = VG_(do_syscall3)(__NR_fcntl, fd, cmd, arg);
 #  elif defined(VGO_darwin)
    SysRes res = VG_(do_syscall3)(__NR_fcntl_nocancel, fd, cmd, arg);
@@ -326,10 +318,6 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
       return True;
    else
       return False;
-
-#elif defined(VGO_aix5)
-   I_die_here; /* maybe just return False? */
-   return False;
 
 #elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
@@ -432,15 +420,18 @@ VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp )
 /* Figure out how many bytes of the stack's active area have not
    been used.  Used for estimating if we are close to overflowing it. */
 
-Int VG_(am_get_VgStack_unused_szB)( VgStack* stack )
+SizeT VG_(am_get_VgStack_unused_szB)( VgStack* stack, SizeT limit )
 {
-   Int i;
+   SizeT i;
    UInt* p;
 
    p = (UInt*)&stack->bytes[VG_STACK_GUARD_SZB];
-   for (i = 0; i < VG_STACK_ACTIVE_SZB/sizeof(UInt); i++)
+   for (i = 0; i < VG_STACK_ACTIVE_SZB/sizeof(UInt); i++) {
       if (p[i] != 0xDEADBEEF)
          break;
+      if (i * sizeof(UInt) >= limit)
+         break;
+   }
 
    return i * sizeof(UInt);
 }

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2009 Apple Inc.
+   Copyright (C) 2005-2012 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -30,8 +30,10 @@
 
 #if defined(VGP_amd64_darwin)
 
+#include "config.h"                // DARWIN_VERS
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
+#include "pub_core_libcsetjmp.h"   // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_xarray.h"
@@ -95,8 +97,23 @@ static void x86_float_state64_from_vex(x86_float_state64_t *mach,
                                        VexGuestAMD64State *vex)
 {
    // DDD: #warning GrP fixme fp state
-
-   VG_(memcpy)(&mach->__fpu_xmm0, &vex->guest_XMM0, 16 * sizeof(mach->__fpu_xmm0));
+   // JRS: what about the YMMHI bits?  Are they important?
+   VG_(memcpy)(&mach->__fpu_xmm0,  &vex->guest_YMM0,   sizeof(mach->__fpu_xmm0));
+   VG_(memcpy)(&mach->__fpu_xmm1,  &vex->guest_YMM1,   sizeof(mach->__fpu_xmm1));
+   VG_(memcpy)(&mach->__fpu_xmm2,  &vex->guest_YMM2,   sizeof(mach->__fpu_xmm2));
+   VG_(memcpy)(&mach->__fpu_xmm3,  &vex->guest_YMM3,   sizeof(mach->__fpu_xmm3));
+   VG_(memcpy)(&mach->__fpu_xmm4,  &vex->guest_YMM4,   sizeof(mach->__fpu_xmm4));
+   VG_(memcpy)(&mach->__fpu_xmm5,  &vex->guest_YMM5,   sizeof(mach->__fpu_xmm5));
+   VG_(memcpy)(&mach->__fpu_xmm6,  &vex->guest_YMM6,   sizeof(mach->__fpu_xmm6));
+   VG_(memcpy)(&mach->__fpu_xmm7,  &vex->guest_YMM7,   sizeof(mach->__fpu_xmm7));
+   VG_(memcpy)(&mach->__fpu_xmm8,  &vex->guest_YMM8,   sizeof(mach->__fpu_xmm8));
+   VG_(memcpy)(&mach->__fpu_xmm9,  &vex->guest_YMM9,   sizeof(mach->__fpu_xmm9));
+   VG_(memcpy)(&mach->__fpu_xmm10, &vex->guest_YMM10,  sizeof(mach->__fpu_xmm10));
+   VG_(memcpy)(&mach->__fpu_xmm11, &vex->guest_YMM11,  sizeof(mach->__fpu_xmm11));
+   VG_(memcpy)(&mach->__fpu_xmm12, &vex->guest_YMM12,  sizeof(mach->__fpu_xmm12));
+   VG_(memcpy)(&mach->__fpu_xmm13, &vex->guest_YMM13,  sizeof(mach->__fpu_xmm13));
+   VG_(memcpy)(&mach->__fpu_xmm14, &vex->guest_YMM14,  sizeof(mach->__fpu_xmm14));
+   VG_(memcpy)(&mach->__fpu_xmm15, &vex->guest_YMM15,  sizeof(mach->__fpu_xmm15));
 }
 
 
@@ -157,8 +174,23 @@ static void x86_float_state64_to_vex(const x86_float_state64_t *mach,
                                      VexGuestAMD64State *vex)
 {
    // DDD: #warning GrP fixme fp state
-
-   VG_(memcpy)(&vex->guest_XMM0, &mach->__fpu_xmm0, 16 * sizeof(mach->__fpu_xmm0));
+   // JRS: what about the YMMHI bits?  Are they important?
+   VG_(memcpy)(&vex->guest_YMM0,  &mach->__fpu_xmm0,  sizeof(mach->__fpu_xmm0));
+   VG_(memcpy)(&vex->guest_YMM1,  &mach->__fpu_xmm1,  sizeof(mach->__fpu_xmm1));
+   VG_(memcpy)(&vex->guest_YMM2,  &mach->__fpu_xmm2,  sizeof(mach->__fpu_xmm2));
+   VG_(memcpy)(&vex->guest_YMM3,  &mach->__fpu_xmm3,  sizeof(mach->__fpu_xmm3));
+   VG_(memcpy)(&vex->guest_YMM4,  &mach->__fpu_xmm4,  sizeof(mach->__fpu_xmm4));
+   VG_(memcpy)(&vex->guest_YMM5,  &mach->__fpu_xmm5,  sizeof(mach->__fpu_xmm5));
+   VG_(memcpy)(&vex->guest_YMM6,  &mach->__fpu_xmm6,  sizeof(mach->__fpu_xmm6));
+   VG_(memcpy)(&vex->guest_YMM7,  &mach->__fpu_xmm7,  sizeof(mach->__fpu_xmm7));
+   VG_(memcpy)(&vex->guest_YMM8,  &mach->__fpu_xmm8,  sizeof(mach->__fpu_xmm8));
+   VG_(memcpy)(&vex->guest_YMM9,  &mach->__fpu_xmm9,  sizeof(mach->__fpu_xmm9));
+   VG_(memcpy)(&vex->guest_YMM10, &mach->__fpu_xmm10, sizeof(mach->__fpu_xmm10));
+   VG_(memcpy)(&vex->guest_YMM11, &mach->__fpu_xmm11, sizeof(mach->__fpu_xmm11));
+   VG_(memcpy)(&vex->guest_YMM12, &mach->__fpu_xmm12, sizeof(mach->__fpu_xmm12));
+   VG_(memcpy)(&vex->guest_YMM13, &mach->__fpu_xmm13, sizeof(mach->__fpu_xmm13));
+   VG_(memcpy)(&vex->guest_YMM14, &mach->__fpu_xmm14, sizeof(mach->__fpu_xmm14));
+   VG_(memcpy)(&vex->guest_YMM15, &mach->__fpu_xmm15, sizeof(mach->__fpu_xmm15));
 }
 
 
@@ -281,13 +313,14 @@ asm(
                   // other values stay where they are in registers
 "   push $0\n"    // fake return address
 "   jmp _pthread_hijack\n"
-    );
+);
 
 
 
 void pthread_hijack(Addr self, Addr kport, Addr func, Addr func_arg, 
                     Addr stacksize, Addr flags, Addr sp)
 {
+   vki_sigset_t blockall;
    ThreadState *tst = (ThreadState *)func_arg;
    VexGuestAMD64State *vex = &tst->arch.vex;
 
@@ -296,6 +329,11 @@ void pthread_hijack(Addr self, Addr kport, Addr func, Addr func_arg,
    // Wait for parent thread's permission.
    // The parent thread holds V's lock on our behalf.
    semaphore_wait(tst->os_state.child_go);
+
+   /* Start the thread with all signals blocked.  VG_(scheduler) will
+      set the mask correctly when we finally get there. */
+   VG_(sigfillset)(&blockall);
+   VG_(sigprocmask)(VKI_SIG_SETMASK, &blockall, NULL);
 
    // Set thread's registers
    // Do this FIRST because some code below tries to collect a backtrace, 
@@ -331,12 +369,17 @@ void pthread_hijack(Addr self, Addr kport, Addr func, Addr func_arg,
             VKI_PROT_READ|VKI_PROT_WRITE, VKI_MAP_PRIVATE, -1, 0);
       // guard page
       ML_(notify_core_and_tool_of_mmap)(
-            stack-VKI_PAGE_SIZE, VKI_PAGE_SIZE, 0, VKI_MAP_PRIVATE, -1, 0);
+            stack-VKI_PAGE_SIZE, VKI_PAGE_SIZE,
+            0, VKI_MAP_PRIVATE, -1, 0);
    } else {
       // client allocated stack
       find_stack_segment(tst->tid, sp);
    }
-   VG_(am_do_sync_check)("after", "pthread_hijack", 0);
+   ML_(sync_mappings)("after", "pthread_hijack", 0);
+
+   // DDD: should this be here rather than in POST(sys_bsdthread_create)?
+   // But we don't have ptid here...
+   //VG_TRACK ( pre_thread_ll_create, ptid, tst->tid );
 
    // Tell parent thread's POST(sys_bsdthread_create) that we're done 
    // initializing registers and mapping memory.
@@ -360,11 +403,10 @@ asm(
                       // other values stay where they are in registers
 "   push $0\n"        // fake return address
 "   jmp _wqthread_hijack\n"
-    );
+);
 
 
-/*
-  wqthread note: The kernel may create or destroy pthreads in the 
+/*  wqthread note: The kernel may create or destroy pthreads in the 
     wqthread pool at any time with no userspace interaction, 
     and wqthread_start may be entered at any time with no userspace 
     interaction.
@@ -378,8 +420,38 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
    VexGuestAMD64State *vex;
    Addr stack;
    SizeT stacksize;
+   vki_sigset_t blockall;
+
+   /* When we enter here we hold no lock (!), so we better acquire it
+      pronto.  Why do we hold no lock?  Because (presumably) the only
+      way to get here is as a result of a SfMayBlock syscall
+      "workq_ops(WQOPS_THREAD_RETURN)", which will have dropped the
+      lock.  At least that's clear for the 'reuse' case.  The
+      non-reuse case?  Dunno, perhaps it's a new thread the kernel
+      pulled out of a hat.  In any case we still need to take a
+      lock. */
+   VG_(acquire_BigLock_LL)("wqthread_hijack");
+
+   if (0) VG_(printf)("wqthread_hijack: self %#lx, kport %#lx, "
+                      "stackaddr %#lx, workitem %#lx, reuse %d, sp %#lx\n", 
+                      self, kport, stackaddr, workitem, reuse, sp);
+
+   /* Start the thread with all signals blocked.  VG_(scheduler) will
+      set the mask correctly when we finally get there. */
+   VG_(sigfillset)(&blockall);
+   VG_(sigprocmask)(VKI_SIG_SETMASK, &blockall, NULL);
 
    if (reuse) {
+
+     /* For whatever reason, tst->os_state.pthread appear to have a
+        constant offset of 96 on 10.7, but zero on 10.6 and 10.5.  No
+        idea why. */
+#      if DARWIN_VERS <= DARWIN_10_6
+       UWord magic_delta = 0;
+#      elif DARWIN_VERS >= DARWIN_10_7
+       UWord magic_delta = 0x60;
+#      endif
+
        // This thread already exists; we're merely re-entering 
        // after leaving via workq_ops(WQOPS_THREAD_RETURN). 
        // Don't allocate any V thread resources.
@@ -389,8 +461,14 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
        vg_assert(mach_thread_self() == kport);
 
        tst = VG_(get_ThreadState)(tid);
+
+       if (0) VG_(printf)("wqthread_hijack reuse %s: tid %d, tst %p, "
+                          "tst->os_state.pthread %#lx\n",
+                          tst->os_state.pthread == self ? "SAME" : "DIFF",
+                          tid, tst, tst->os_state.pthread);
+
        vex = &tst->arch.vex;
-       vg_assert(tst->os_state.pthread == self);
+       vg_assert(tst->os_state.pthread - magic_delta == self);
    }
    else {
        // This is a new thread.
@@ -418,10 +496,18 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
    if (reuse) {
       // Continue V's thread back in the scheduler. 
       // The client thread is of course in another location entirely.
+
+      /* Drop the lock before going into
+         ML_(wqthread_continue_NORETURN).  The latter will immediately
+         attempt to reacquire it in non-LL mode, which is a bit
+         wasteful but I don't think is harmful.  A better solution
+         would be to not drop the lock but instead "upgrade" it from a
+         LL lock to a full lock, but that's too much like hard work
+         right now. */
+      VG_(release_BigLock_LL)("wqthread_hijack(1)");
       ML_(wqthread_continue_NORETURN)(tst->tid);
    } 
    else {
-
       // Record thread's stack and Mach port and pthread struct
       tst->os_state.pthread = self;
       tst->os_state.lwpid = kport;
@@ -445,11 +531,22 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
       // guard page
       // GrP fixme ban_mem_stack!
       ML_(notify_core_and_tool_of_mmap)(
-            stack-VKI_PAGE_SIZE, VKI_PAGE_SIZE, 0, VKI_MAP_PRIVATE, -1, 0);
+            stack-VKI_PAGE_SIZE, VKI_PAGE_SIZE,
+            0, VKI_MAP_PRIVATE, -1, 0);
 
-      VG_(am_do_sync_check)("after", "wqthread_hijack", 0);
+      ML_(sync_mappings)("after", "wqthread_hijack", 0);
 
       // Go!
+      /* Same comments as the 'release' in the then-clause.
+         start_thread_NORETURN calls run_thread_NORETURN calls
+         thread_wrapper which acquires the lock before continuing.
+         Let's hope nothing non-thread-local happens until that point.
+
+         DDD: I think this is plain wrong .. if we get to
+         thread_wrapper not holding the lock, and someone has recycled
+         this thread slot in the meantime, we're hosed.  Is that
+         possible, though? */
+      VG_(release_BigLock_LL)("wqthread_hijack(2)");
       call_on_new_stack_0_1(tst->os_state.valgrind_stack_init_SP, 0, 
                             start_thread_NORETURN, (Word)tst);
    }

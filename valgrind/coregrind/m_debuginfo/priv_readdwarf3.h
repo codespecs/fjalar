@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2009 OpenWorks LLP
+   Copyright (C) 2008-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -43,11 +43,16 @@ void
 ML_(new_dwarf3_reader) (
    struct _DebugInfo* di,
    UChar* debug_info_img,   SizeT debug_info_sz,
+   UChar* debug_types_img,  SizeT debug_types_sz,
    UChar* debug_abbv_img,   SizeT debug_abbv_sz,
    UChar* debug_line_img,   SizeT debug_line_sz,
    UChar* debug_str_img,    SizeT debug_str_sz,
    UChar* debug_ranges_img, SizeT debug_ranges_sz,
-   UChar* debug_loc_img,    SizeT debug_loc_sz
+   UChar* debug_loc_img,    SizeT debug_loc_sz,
+   UChar* debug_info_alt_img, SizeT debug_info_alt_sz,
+   UChar* debug_abbv_alt_img, SizeT debug_abbv_alt_sz,
+   UChar* debug_line_alt_img, SizeT debug_line_alt_sz,
+   UChar* debug_str_alt_img,  SizeT debug_str_alt_sz
 );
 
 #endif /* ndef __PRIV_READDWARF3_H */

@@ -6,9 +6,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#include "coregrind/m_xarray.c"
+#include "coregrind/m_poolalloc.c"
 #include "coregrind/m_oset.c"
 #include "drd/drd_bitmap.c"
-#include "drd/drd_bitmap2_node.c"
 #include "drd/pub_drd_bitmap.h"
 
 
@@ -46,6 +48,8 @@ void* VG_(memset)(void *s, Int c, SizeT sz)
 { return memset(s, c, sz); }
 void* VG_(memcpy)(void *d, const void *s, SizeT sz)
 { return memcpy(d, s, sz); }
+void* VG_(memmove)(void *d, const void *s, SizeT sz)
+{ return memmove(d, s, sz); }
 Int VG_(memcmp)(const void* s1, const void* s2, SizeT n)
 { return memcmp(s1, s2, n); }
 UInt VG_(printf)(const HChar *format, ...)
@@ -54,7 +58,13 @@ UInt VG_(message)(VgMsgKind kind, const HChar* format, ...)
 { UInt ret; va_list vargs; va_start(vargs, format); ret = vprintf(format, vargs); va_end(vargs); printf("\n"); return ret; }
 Bool DRD_(is_suppressed)(const Addr a1, const Addr a2)
 { assert(0); }
-
+void VG_(vcbprintf)(void(*char_sink)(HChar, void* opaque),
+                    void* opaque,
+                    const HChar* format, va_list vargs)
+{ assert(0); }
+void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
+                 Int (*compar)(void*, void*) )
+{ assert(0); }
 
 /* Actual unit test */
 
@@ -63,6 +73,7 @@ static int s_verbose = 1;
 static
 struct { Addr address; SizeT size; BmAccessTypeT access_type; }
   s_test1_args[] = {
+    {                           0, 0, eLoad  },
     {                           0, 1, eLoad  },
     {                         666, 4, eLoad  },
     {                         667, 2, eStore },
@@ -72,7 +83,7 @@ struct { Addr address; SizeT size; BmAccessTypeT access_type; }
     {               0x00ffffffULL, 1, eLoad  },
     { 0xffffffffULL - (((1 << ADDR_LSB_BITS) + 1) << ADDR_IGNORED_BITS),
                                    1, eStore },
-#if defined(VGP_amd64_linux) || defined(VGP_ppc64_linux) || defined(VGP_ppc64_aix5)
+#if defined(VGP_amd64_linux) || defined(VGP_ppc64_linux)
     { 0xffffffffULL - (1 << ADDR_LSB_BITS << ADDR_IGNORED_BITS),
                                    1, eStore },
     {               0xffffffffULL, 1, eStore },
@@ -334,9 +345,11 @@ int main(int argc, char** argv)
 
   fprintf(stderr, "Start of DRD BM unit test.\n");
 
+  DRD_(bm_module_init)();
   bm_test1();
   bm_test2();
   bm_test3(outer_loop_step, inner_loop_step);
+  DRD_(bm_module_cleanup)();
 
   fprintf(stderr, "End of DRD BM unit test.\n");
 

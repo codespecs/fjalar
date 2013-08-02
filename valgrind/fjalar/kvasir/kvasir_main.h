@@ -189,12 +189,12 @@ Bool dyncomp_no_val_leader;
 Bool dyncomp_no_path_compression;
 
 #define DPRINTF(...) do { if (kvasir_print_debug_info) \
-      VG_(printf)(__VA_ARGS__); } while (0)
+      printf(__VA_ARGS__); } while (0)
 
 #define DYNCOMP_DPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_debug_info) \
-      VG_(printf)(__VA_ARGS__); } while (0)
+      printf(__VA_ARGS__); } while (0)
 
 #define DYNCOMP_TPRINTF(...) do { if (kvasir_with_dyncomp && dyncomp_print_trace_info) \
-      VG_(printf)(__VA_ARGS__); } while (0)
+      printf(__VA_ARGS__); } while (0)
 
 #endif

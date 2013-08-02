@@ -2,6 +2,10 @@
 include $(top_srcdir)/Makefile.tool-tests.am
 
 dist_noinst_SCRIPTS = \
+	check_isa-2_06_cap \
+	check_makefile_consistency \
+	check_dfp_cap \
+	check_vmx_cap \
 	filter_addresses \
 	filter_discards \
 	filter_libc \
@@ -20,7 +24,8 @@ check_PROGRAMS = \
 	arch_test \
 	os_test \
 	true \
-	x86_amd64_features
+	x86_amd64_features \
+	s390x_features
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)

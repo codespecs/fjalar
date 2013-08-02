@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2009 OpenWorks Ltd
+   Copyright (C) 2007-2012 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -110,11 +110,56 @@ static Word lock_unique_cmp ( UWord lk1W, UWord lk2W )
    return 0;
 }
 
-static Lock* mk_LockP_from_LockN ( Lock* lkn )
+/* Given a normal Lock (LockN), convert it to a persistent Lock
+   (LockP).  In some cases the LockN could be invalid (if it's been
+   freed), so we enquire, in hg_main.c's admin_locks list, whether it
+   is in fact valid.  If allowed_to_be_invalid is True, then it's OK
+   for the LockN to be invalid, in which case Lock_INVALID is
+   returned.  In all other cases, we insist that the LockN is a valid
+   lock, and return its corresponding LockP.
+
+   Why can LockNs sometimes be invalid?  Because they are harvested
+   from locksets that are attached to the OldRef info for conflicting
+   threads.  By the time we detect a race, the some of the elements of
+   the lockset may have been destroyed by the client, in which case
+   the corresponding Lock structures we maintain will have been freed.
+
+   So we check that each LockN is a member of the admin_locks double
+   linked list of all Lock structures.  That stops us prodding around
+   in potentially freed-up Lock structures.  However, it's not quite a
+   proper check: if a new Lock has been reallocated at the same
+   address as one which was previously freed, we'll wind up copying
+   the new one as the basis for the LockP, which is completely bogus
+   because it is unrelated to the previous Lock that lived there.
+   Let's hope that doesn't happen too often.
+*/
+static Lock* mk_LockP_from_LockN ( Lock* lkn,
+                                   Bool allowed_to_be_invalid )
 {
    Lock* lkp = NULL;
    HG_(stats__LockN_to_P_queries)++;
+
+   /* First off, let's do some sanity checks.  If
+      allowed_to_be_invalid is False, we _must_ be able to find 'lkn'
+      in admin_locks; else we must assert.  If it is True, it's OK for
+      it not to be findable, but in that case we must return
+      Lock_INVALID right away. */
+   Lock* lock_list = HG_(get_admin_locks)();
+   while (lock_list) {
+      if (lock_list == lkn)
+         break;
+      lock_list = lock_list->admin_next;
+   }
+   if (lock_list == NULL) {
+      /* We didn't find it.  That possibility has to be OK'd by the
+         caller. */
+      tl_assert(allowed_to_be_invalid);
+      return Lock_INVALID;
+   }
+
+   /* So we must be looking at a valid LockN. */
    tl_assert( HG_(is_sane_LockN)(lkn) );
+
    if (!map_LockN_to_P) {
       map_LockN_to_P = VG_(newFM)( HG_(zalloc), "hg.mLPfLN.1",
                                    HG_(free), lock_unique_cmp );
@@ -123,7 +168,8 @@ static Lock* mk_LockP_from_LockN ( Lock* lkn )
    if (!VG_(lookupFM)( map_LockN_to_P, NULL, (Word*)&lkp, (Word)lkn)) {
       lkp = HG_(zalloc)( "hg.mLPfLN.2", sizeof(Lock) );
       *lkp = *lkn;
-      lkp->admin = NULL;
+      lkp->admin_next = NULL;
+      lkp->admin_prev = NULL;
       lkp->magic = LockP_MAGIC;
       /* Forget about the bag of lock holders - don't copy that.
          Also, acquired_at should be NULL whenever heldBy is, and vice
@@ -137,6 +183,75 @@ static Lock* mk_LockP_from_LockN ( Lock* lkn )
    tl_assert( HG_(is_sane_LockP)(lkp) );
    return lkp;
 }
+
+/* Expand a WordSet of LockN*'s into a NULL-terminated vector of
+   LockP*'s.  Any LockN's that can't be converted into a LockP
+   (because they have been freed, see comment on mk_LockP_from_LockN)
+   are converted instead into the value Lock_INVALID.  Hence the
+   returned vector is a sequence: zero or more (valid LockP* or
+   LockN_INVALID), terminated by a NULL. */
+static 
+Lock** enumerate_WordSet_into_LockP_vector( WordSetU* univ_lsets,
+                                            WordSetID lockset,
+                                            Bool allowed_to_be_invalid )
+{
+   tl_assert(univ_lsets);
+   tl_assert( HG_(plausibleWS)(univ_lsets, lockset) );
+   UWord  nLocks = HG_(cardinalityWS)(univ_lsets, lockset);
+   Lock** lockPs = HG_(zalloc)( "hg.eWSiLPa",
+                                (nLocks+1) * sizeof(Lock*) );
+   tl_assert(lockPs);
+   tl_assert(lockPs[nLocks] == NULL); /* pre-NULL terminated */
+   UWord* lockNs  = NULL;
+   UWord  nLockNs = 0;
+   if (nLocks > 0)  {
+      /* HG_(getPayloadWS) doesn't assign non-NULL to &lockNs if the
+         lockset is empty; hence the guarding "if".  Sigh. */
+      HG_(getPayloadWS)( &lockNs, &nLockNs, univ_lsets, lockset );
+      tl_assert(lockNs);
+   }
+   UWord i;
+   /* Convert to LockPs. */
+   for (i = 0; i < nLockNs; i++) {
+      lockPs[i] = mk_LockP_from_LockN( (Lock*)lockNs[i],
+                                       allowed_to_be_invalid );
+   }
+   return lockPs;
+}
+
+/* Get the number of useful elements in a vector created by
+   enumerate_WordSet_into_LockP_vector.  Returns both the total number
+   of elements (not including the terminating NULL) and the number of
+   non-Lock_INVALID elements. */
+static void count_LockP_vector ( /*OUT*/UWord* nLocks,
+                                 /*OUT*/UWord* nLocksValid,
+                                 Lock** vec )
+{
+   tl_assert(vec);
+   *nLocks = *nLocksValid = 0;
+   UWord n = 0;
+   while (vec[n]) {
+      (*nLocks)++;
+      if (vec[n] != Lock_INVALID)
+         (*nLocksValid)++;
+      n++;
+   }
+}
+
+/* Find out whether 'lk' is in 'vec'. */
+static Bool elem_LockP_vector ( Lock** vec, Lock* lk )
+{
+   tl_assert(vec);
+   tl_assert(lk);
+   UWord n = 0;
+   while (vec[n]) {
+      if (vec[n] == lk)
+         return True;
+      n++;
+   }
+   return False;
+}
+
 
 /* Errors:
 
@@ -178,8 +293,16 @@ typedef
             Int         szB;
             Bool        isWrite;
             Thread*     thr;
+            Lock**      locksHeldW;
+            /* descr1/2 provide a description of stack/global locs */
             XArray*     descr1; /* XArray* of HChar */
             XArray*     descr2; /* XArray* of HChar */
+            /* halloc/haddr/hszB describe the addr if it is a heap block. */
+            ExeContext* hctxt;
+            Addr        haddr;
+            SizeT       hszB;
+            /* h1_* and h2_* provide some description of a previously
+               observed access with which we are conflicting. */
             Thread*     h1_ct; /* non-NULL means h1 info present */
             ExeContext* h1_ct_mbsegstartEC;
             ExeContext* h1_ct_mbsegendEC;
@@ -187,6 +310,7 @@ typedef
             ExeContext* h2_ct_accEC;
             Int         h2_ct_accSzB;
             Bool        h2_ct_accIsW;
+            Lock**      h2_ct_locksHeldW;
          } Race;
          struct {
             Thread* thr;  /* doing the unlocking */
@@ -209,14 +333,25 @@ typedef
          } PthAPIerror;
          struct {
             Thread*     thr;
-            Addr        before_ga; /* always locked first in prog. history */
-            Addr        after_ga;
-            ExeContext* before_ec;
-            ExeContext* after_ec;
+            /* The first 4 fields describe the previously observed
+               (should-be) ordering. */
+            Addr        shouldbe_earlier_ga;
+            Addr        shouldbe_later_ga;
+            ExeContext* shouldbe_earlier_ec;
+            ExeContext* shouldbe_later_ec;
+            /* In principle we need to record two more stacks, from
+               this thread, when acquiring the locks in the "wrong"
+               order.  In fact the wallclock-later acquisition by this
+               thread is recorded in the main stack for this error.
+               So we only need a stack for the earlier acquisition by
+               this thread. */
+            ExeContext* actual_earlier_ec;
          } LockOrder;
          struct {
             Thread* thr;
             HChar*  errstr; /* persistent, in tool-arena */
+            HChar*      auxstr; /* optional, persistent, in tool-arena */
+            ExeContext* auxctx; /* optional */
          } Misc;
       } XE;
    }
@@ -254,6 +389,18 @@ UInt HG_(update_extra) ( Error* err )
 
    if (xe->tag == XE_Race) {
 
+      /* Note the set of locks that the thread is (w-)holding.
+         Convert the WordSetID of LockN*'s into a NULL-terminated
+         vector of LockP*'s.  We don't expect to encounter any invalid
+         LockNs in this conversion. */
+      tl_assert(xe->XE.Race.thr);
+      xe->XE.Race.locksHeldW
+         = enumerate_WordSet_into_LockP_vector(
+              HG_(get_univ_lsets)(),
+              xe->XE.Race.thr->locksetW,
+              False/*!allowed_to_be_invalid*/
+           );
+
       /* See if we can come up with a source level description of the
          raced-upon address.  This is potentially expensive, which is
          why it's only done at the update_extra point, not when the
@@ -263,8 +410,26 @@ UInt HG_(update_extra) ( Error* err )
       if (0)
          VG_(printf)("HG_(update_extra): "
                      "%d conflicting-event queries\n", xxx);
+
+      tl_assert(!xe->XE.Race.hctxt);
       tl_assert(!xe->XE.Race.descr1);
       tl_assert(!xe->XE.Race.descr2);
+
+      /* First, see if it's in any heap block.  Unfortunately this
+         means a linear search through all allocated heap blocks.  The
+         assertion says that if it's detected as a heap block, then we
+         must have an allocation context for it, since all heap blocks
+         should have an allocation context. */
+      Bool is_heapblock
+         = HG_(mm_find_containing_block)( 
+              &xe->XE.Race.hctxt, &xe->XE.Race.haddr, &xe->XE.Race.hszB,
+              xe->XE.Race.data_addr
+           );
+      tl_assert(is_heapblock == (xe->XE.Race.hctxt != NULL));
+
+      if (!xe->XE.Race.hctxt) {
+         /* It's not in any heap block.  See if we can map it to a
+            stack or global symbol. */
 
       xe->XE.Race.descr1
          = VG_(newXA)( HG_(zalloc), "hg.update_extra.Race.descr1",
@@ -291,6 +456,7 @@ UInt HG_(update_extra) ( Error* err )
          VG_(deleteXA)( xe->XE.Race.descr2 );
          xe->XE.Race.descr2 = NULL;
       }
+      }
 
       /* And poke around in the conflicting-event map, to see if we
          can rustle up a plausible-looking conflicting memory access
@@ -304,20 +470,27 @@ UInt HG_(update_extra) ( Error* err )
          Bool  acc_isW  = xe->XE.Race.isWrite;
          SizeT conf_szB = 0;
          Bool  conf_isW = False;
+         WordSetID   conf_locksHeldW = 0;
          tl_assert(!xe->XE.Race.h2_ct_accEC);
          tl_assert(!xe->XE.Race.h2_ct);
          if (libhb_event_map_lookup(
-                &wherep, &thrp, &conf_szB, &conf_isW,
+                &wherep, &thrp, &conf_szB, &conf_isW, &conf_locksHeldW,
                 acc_thr, acc_addr, acc_szB, acc_isW )) {
             Thread* threadp;
             tl_assert(wherep);
             tl_assert(thrp);
-            threadp = libhb_get_Thr_opaque( thrp );
+            threadp = libhb_get_Thr_hgthread( thrp );
             tl_assert(threadp);
             xe->XE.Race.h2_ct_accEC  = wherep;
             xe->XE.Race.h2_ct        = threadp;
             xe->XE.Race.h2_ct_accSzB = (Int)conf_szB;
             xe->XE.Race.h2_ct_accIsW = conf_isW;
+            xe->XE.Race.h2_ct_locksHeldW
+               = enumerate_WordSet_into_LockP_vector(
+                    HG_(get_univ_lsets)(),
+                    conf_locksHeldW,
+                    True/*allowed_to_be_invalid*/
+                 );
         }
       }
 
@@ -395,8 +568,10 @@ void HG_(record_error_UnlockUnlocked) ( Thread* thr, Lock* lk )
    tl_assert( HG_(is_sane_LockN)(lk) );
    init_XError(&xe);
    xe.tag = XE_UnlockUnlocked;
-   xe.XE.UnlockUnlocked.thr  = thr;
-   xe.XE.UnlockUnlocked.lock = mk_LockP_from_LockN(lk);
+   xe.XE.UnlockUnlocked.thr
+      = thr;
+   xe.XE.UnlockUnlocked.lock
+      = mk_LockP_from_LockN(lk, False/*!allowed_to_be_invalid*/);
    // FIXME: tid vs thr
    tl_assert( HG_(is_sane_ThreadId)(thr->coretid) );
    tl_assert( thr->coretid != VG_INVALID_THREADID );
@@ -415,7 +590,8 @@ void HG_(record_error_UnlockForeign) ( Thread* thr,
    xe.tag = XE_UnlockForeign;
    xe.XE.UnlockForeign.thr   = thr;
    xe.XE.UnlockForeign.owner = owner;
-   xe.XE.UnlockForeign.lock  = mk_LockP_from_LockN(lk);
+   xe.XE.UnlockForeign.lock
+      = mk_LockP_from_LockN(lk, False/*!allowed_to_be_invalid*/);
    // FIXME: tid vs thr
    tl_assert( HG_(is_sane_ThreadId)(thr->coretid) );
    tl_assert( thr->coretid != VG_INVALID_THREADID );
@@ -439,21 +615,25 @@ void HG_(record_error_UnlockBogus) ( Thread* thr, Addr lock_ga )
 }
 
 void HG_(record_error_LockOrder)(
-        Thread* thr, Addr before_ga, Addr after_ga,
-        ExeContext* before_ec, ExeContext* after_ec 
+        Thread*     thr, 
+        Addr        shouldbe_earlier_ga,
+        Addr        shouldbe_later_ga,
+        ExeContext* shouldbe_earlier_ec,
+        ExeContext* shouldbe_later_ec,
+        ExeContext* actual_earlier_ec
      )
 {
    XError xe;
    tl_assert( HG_(is_sane_Thread)(thr) );
-   if (!HG_(clo_track_lockorders))
-      return;
+   tl_assert(HG_(clo_track_lockorders));
    init_XError(&xe);
    xe.tag = XE_LockOrder;
    xe.XE.LockOrder.thr       = thr;
-   xe.XE.LockOrder.before_ga = before_ga;
-   xe.XE.LockOrder.before_ec = before_ec;
-   xe.XE.LockOrder.after_ga  = after_ga;
-   xe.XE.LockOrder.after_ec  = after_ec;
+   xe.XE.LockOrder.shouldbe_earlier_ga = shouldbe_earlier_ga;
+   xe.XE.LockOrder.shouldbe_earlier_ec = shouldbe_earlier_ec;
+   xe.XE.LockOrder.shouldbe_later_ga   = shouldbe_later_ga;
+   xe.XE.LockOrder.shouldbe_later_ec   = shouldbe_later_ec;
+   xe.XE.LockOrder.actual_earlier_ec   = actual_earlier_ec;
    // FIXME: tid vs thr
    tl_assert( HG_(is_sane_ThreadId)(thr->coretid) );
    tl_assert( thr->coretid != VG_INVALID_THREADID );
@@ -481,7 +661,8 @@ void HG_(record_error_PthAPIerror) ( Thread* thr, HChar* fnname,
                             XE_PthAPIerror, 0, NULL, &xe );
 }
 
-void HG_(record_error_Misc) ( Thread* thr, HChar* errstr )
+void HG_(record_error_Misc_w_aux) ( Thread* thr, HChar* errstr,
+                                    HChar* auxstr, ExeContext* auxctx )
 {
    XError xe;
    tl_assert( HG_(is_sane_Thread)(thr) );
@@ -490,11 +671,18 @@ void HG_(record_error_Misc) ( Thread* thr, HChar* errstr )
    xe.tag = XE_Misc;
    xe.XE.Misc.thr    = thr;
    xe.XE.Misc.errstr = string_table_strdup(errstr);
+   xe.XE.Misc.auxstr = auxstr ? string_table_strdup(auxstr) : NULL;
+   xe.XE.Misc.auxctx = auxctx;
    // FIXME: tid vs thr
    tl_assert( HG_(is_sane_ThreadId)(thr->coretid) );
    tl_assert( thr->coretid != VG_INVALID_THREADID );
    VG_(maybe_record_error)( thr->coretid,
                             XE_Misc, 0, NULL, &xe );
+}
+
+void HG_(record_error_Misc) ( Thread* thr, HChar* errstr )
+{
+   HG_(record_error_Misc_w_aux)(thr, errstr, NULL, NULL);
 }
 
 Bool HG_(eq_Error) ( VgRes not_used, Error* e1, Error* e2 )
@@ -567,13 +755,6 @@ static void emit ( HChar* format, ... )
    emit_WRK(format, vargs);
    va_end(vargs);
 }
-static void emit_no_f_c ( HChar* format, ... )
-{
-   va_list vargs;
-   va_start(vargs, format);
-   emit_WRK(format, vargs);
-   va_end(vargs);
-}
 
 
 /* Announce (that is, print the point-of-creation) of 'thr'.  Only do
@@ -603,6 +784,10 @@ static Bool announce_one_thread ( Thread* thr )
 
    } else {
 
+      VG_(umsg)("---Thread-Announcement----------"
+                "--------------------------------" "\n");
+      VG_(umsg)("\n");
+
       if (thr->errmsg_index == 1) {
          tl_assert(thr->created_at == NULL);
          VG_(message)(Vg_UserMsg, 
@@ -620,6 +805,76 @@ static Bool announce_one_thread ( Thread* thr )
 
    thr->announced = True;
    return True;
+}
+
+
+/* Announce 'lk'. */
+static void announce_LockP ( Lock* lk )
+{
+   tl_assert(lk);
+   if (lk == Lock_INVALID)
+      return; /* Can't be announced -- we know nothing about it. */
+   tl_assert(lk->magic == LockP_MAGIC);
+   if (!lk->appeared_at)
+     return; /* There's nothing we can show */
+
+   if (VG_(clo_xml)) {
+      /* fixme: add announcement */
+   } else {
+      VG_(umsg)( "Lock at %p was first observed\n",
+                 (void*)lk->guestaddr );
+      VG_(pp_ExeContext)( lk->appeared_at );
+      VG_(umsg)("\n");
+   }
+}
+
+/* Announce (that is, print point-of-first-observation) for the
+   locks in 'lockvec' and, if non-NULL, 'lockvec2'. */
+static void announce_combined_LockP_vecs ( Lock** lockvec,
+                                           Lock** lockvec2 )
+{
+   UWord i;
+   tl_assert(lockvec);
+   for (i = 0; lockvec[i]; i++) {
+      announce_LockP(lockvec[i]);
+   }
+   if (lockvec2) {
+      for (i = 0; lockvec2[i]; i++) {
+         Lock* lk = lockvec2[i];
+         if (!elem_LockP_vector(lockvec, lk))
+            announce_LockP(lk);
+      }
+   }
+}
+
+
+static void show_LockP_summary_textmode ( Lock** locks, HChar* pre )
+{
+   tl_assert(locks);
+   UWord i;
+   UWord nLocks = 0, nLocksValid = 0;
+   count_LockP_vector(&nLocks, &nLocksValid, locks);
+   tl_assert(nLocksValid <= nLocks);
+
+   if (nLocks == 0) {
+      VG_(umsg)( "%sLocks held: none", pre );
+   } else {
+      VG_(umsg)( "%sLocks held: %lu, at address%s ",
+                 pre, nLocks, nLocksValid == 1 ? "" : "es" );
+   }
+
+   if (nLocks > 0) {
+      for (i = 0; i < nLocks; i++) {
+         if (locks[i] == Lock_INVALID)
+            continue;
+         VG_(umsg)( "%p", (void*)locks[i]->guestaddr);
+         if (locks[i+1] != NULL)
+            VG_(umsg)(" ");
+      }
+      if (nLocksValid < nLocks)
+         VG_(umsg)(" (and %lu that can't be shown)", nLocks - nLocksValid);
+   }
+   VG_(umsg)("\n");
 }
 
 
@@ -671,8 +926,17 @@ void HG_(pp_Error) ( Error* err )
 {
    const Bool xml = VG_(clo_xml); /* a shorthand, that's all */
 
+   if (!xml) {
+      VG_(umsg)("--------------------------------"
+                "--------------------------------" "\n");
+      VG_(umsg)("\n");
+   }
+
    XError *xe = (XError*)VG_(get_error_extra)(err);
    tl_assert(xe);
+
+   if (xml)
+      emit( "  <kind>%s</kind>\n", HG_(get_error_name)(err));
 
    switch (VG_(get_error_kind)(err)) {
 
@@ -681,7 +945,6 @@ void HG_(pp_Error) ( Error* err )
 
       if (xml) {
 
-         emit( "  <kind>Misc</kind>\n");
          emit( "  <xwhat>\n" );
          emit( "    <text>Thread #%d: %s</text>\n",
                (Int)xe->XE.Misc.thr->errmsg_index,
@@ -690,6 +953,11 @@ void HG_(pp_Error) ( Error* err )
                (Int)xe->XE.Misc.thr->errmsg_index );
          emit( "  </xwhat>\n" );
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
+         if (xe->XE.Misc.auxstr) {
+            emit("  <auxwhat>%s</auxwhat>\n", xe->XE.Misc.auxstr);
+            if (xe->XE.Misc.auxctx)
+               VG_(pp_ExeContext)( xe->XE.Misc.auxctx );
+         }
 
       } else {
 
@@ -697,6 +965,11 @@ void HG_(pp_Error) ( Error* err )
                (Int)xe->XE.Misc.thr->errmsg_index,
                xe->XE.Misc.errstr );
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
+         if (xe->XE.Misc.auxstr) {
+            emit(" %s\n", xe->XE.Misc.auxstr);
+            if (xe->XE.Misc.auxctx)
+               VG_(pp_ExeContext)( xe->XE.Misc.auxctx );
+         }
 
       }
       break;
@@ -707,43 +980,58 @@ void HG_(pp_Error) ( Error* err )
 
       if (xml) {
 
-         emit( "  <kind>LockOrder</kind>\n");
          emit( "  <xwhat>\n" );
          emit( "    <text>Thread #%d: lock order \"%p before %p\" "
                     "violated</text>\n",
                (Int)xe->XE.LockOrder.thr->errmsg_index,
-               (void*)xe->XE.LockOrder.before_ga,
-               (void*)xe->XE.LockOrder.after_ga );
+               (void*)xe->XE.LockOrder.shouldbe_earlier_ga,
+               (void*)xe->XE.LockOrder.shouldbe_later_ga );
          emit( "    <hthreadid>%d</hthreadid>\n",
                (Int)xe->XE.LockOrder.thr->errmsg_index );
          emit( "  </xwhat>\n" );
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-         if (xe->XE.LockOrder.before_ec && xe->XE.LockOrder.after_ec) {
+         if (xe->XE.LockOrder.shouldbe_earlier_ec
+             && xe->XE.LockOrder.shouldbe_later_ec) {
             emit( "  <auxwhat>Required order was established by "
                   "acquisition of lock at %p</auxwhat>\n",
-                  (void*)xe->XE.LockOrder.before_ga );
-            VG_(pp_ExeContext)( xe->XE.LockOrder.before_ec );
+                  (void*)xe->XE.LockOrder.shouldbe_earlier_ga );
+            VG_(pp_ExeContext)( xe->XE.LockOrder.shouldbe_earlier_ec );
             emit( "  <auxwhat>followed by a later acquisition "
                   "of lock at %p</auxwhat>\n",
-                  (void*)xe->XE.LockOrder.after_ga );
-            VG_(pp_ExeContext)( xe->XE.LockOrder.after_ec );
+                  (void*)xe->XE.LockOrder.shouldbe_later_ga );
+            VG_(pp_ExeContext)( xe->XE.LockOrder.shouldbe_later_ec );
          }
 
       } else {
 
          emit( "Thread #%d: lock order \"%p before %p\" violated\n",
                (Int)xe->XE.LockOrder.thr->errmsg_index,
-               (void*)xe->XE.LockOrder.before_ga,
-               (void*)xe->XE.LockOrder.after_ga );
+               (void*)xe->XE.LockOrder.shouldbe_earlier_ga,
+               (void*)xe->XE.LockOrder.shouldbe_later_ga );
+         emit( "\n" );
+         emit( "Observed (incorrect) order is: "
+               "acquisition of lock at %p\n",
+               (void*)xe->XE.LockOrder.shouldbe_later_ga);
+         if (xe->XE.LockOrder.actual_earlier_ec) {
+             VG_(pp_ExeContext)(xe->XE.LockOrder.actual_earlier_ec);
+         } else {
+            emit("   (stack unavailable)\n");
+         }
+         emit( "\n" );
+         emit(" followed by a later acquisition of lock at %p\n",
+              (void*)xe->XE.LockOrder.shouldbe_earlier_ga);
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-         if (xe->XE.LockOrder.before_ec && xe->XE.LockOrder.after_ec) {
-            emit( "  Required order was established by "
+         if (xe->XE.LockOrder.shouldbe_earlier_ec
+             && xe->XE.LockOrder.shouldbe_later_ec) {
+            emit("\n");
+            emit( "Required order was established by "
                   "acquisition of lock at %p\n",
-                  (void*)xe->XE.LockOrder.before_ga );
-            VG_(pp_ExeContext)( xe->XE.LockOrder.before_ec );
+                  (void*)xe->XE.LockOrder.shouldbe_earlier_ga );
+            VG_(pp_ExeContext)( xe->XE.LockOrder.shouldbe_earlier_ec );
+            emit( "\n" );
             emit( "  followed by a later acquisition of lock at %p\n",
-                  (void*)xe->XE.LockOrder.after_ga );
-            VG_(pp_ExeContext)( xe->XE.LockOrder.after_ec );
+                  (void*)xe->XE.LockOrder.shouldbe_later_ga );
+            VG_(pp_ExeContext)( xe->XE.LockOrder.shouldbe_later_ec );
          }
 
       }
@@ -756,10 +1044,9 @@ void HG_(pp_Error) ( Error* err )
 
       if (xml) {
 
-         emit( "  <kind>PthAPIerror</kind>\n");
          emit( "  <xwhat>\n" );
-         emit_no_f_c(
-            "    <text>Thread #%d's call to %t failed</text>\n",
+         emit(
+            "    <text>Thread #%d's call to %pS failed</text>\n",
             (Int)xe->XE.PthAPIerror.thr->errmsg_index,
             xe->XE.PthAPIerror.fnname );
          emit( "    <hthreadid>%d</hthreadid>\n",
@@ -771,7 +1058,7 @@ void HG_(pp_Error) ( Error* err )
 
       } else {
 
-         emit_no_f_c( "Thread #%d's call to %t failed\n",
+         emit( "Thread #%d's call to %pS failed\n",
                       (Int)xe->XE.PthAPIerror.thr->errmsg_index,
                       xe->XE.PthAPIerror.fnname );
          emit( "   with error code %ld (%s)\n",
@@ -788,7 +1075,6 @@ void HG_(pp_Error) ( Error* err )
 
       if (xml) {
 
-         emit( "  <kind>UnlockBogus</kind>\n");
          emit( "  <xwhat>\n" );
          emit( "    <text>Thread #%d unlocked an invalid "
                     "lock at %p</text>\n",
@@ -818,7 +1104,6 @@ void HG_(pp_Error) ( Error* err )
 
       if (xml) {
 
-         emit( "  <kind>UnlockForeign</kind>\n");
          emit( "  <xwhat>\n" );
          emit( "    <text>Thread #%d unlocked lock at %p "
                     "currently held by thread #%d</text>\n",
@@ -863,7 +1148,6 @@ void HG_(pp_Error) ( Error* err )
 
       if (xml) {
 
-         emit( "  <kind>UnlockUnlocked</kind>\n");
          emit( "  <xwhat>\n" );
          emit( "    <text>Thread #%d unlocked a "
                     "not-locked lock at %p</text>\n",
@@ -911,11 +1195,10 @@ void HG_(pp_Error) ( Error* err )
       if (xml) {
 
          /* ------ XML ------ */
-         emit( "  <kind>Race</kind>\n" );
          emit( "  <xwhat>\n" );
          emit( "    <text>Possible data race during %s of size %d "
-                    "at %#lx by thread #%d</text>\n",
-              what, szB, err_ga, (Int)xe->XE.Race.thr->errmsg_index );
+                    "at %p by thread #%d</text>\n",
+               what, szB, (void*)err_ga, (Int)xe->XE.Race.thr->errmsg_index );
          emit( "    <hthreadid>%d</hthreadid>\n",
                (Int)xe->XE.Race.thr->errmsg_index );
          emit( "  </xwhat>\n" );
@@ -959,18 +1242,27 @@ void HG_(pp_Error) ( Error* err )
       } else {
 
          /* ------ Text ------ */
+         announce_combined_LockP_vecs( xe->XE.Race.locksHeldW,
+                                       xe->XE.Race.h2_ct_locksHeldW );
+
          emit( "Possible data race during %s of size %d "
-               "at %#lx by thread #%d\n",
-               what, szB, err_ga, (Int)xe->XE.Race.thr->errmsg_index );
+               "at %p by thread #%d\n",
+               what, szB, (void*)err_ga, (Int)xe->XE.Race.thr->errmsg_index );
+
+         tl_assert(xe->XE.Race.locksHeldW);
+         show_LockP_summary_textmode( xe->XE.Race.locksHeldW, "" );
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
 
          if (xe->XE.Race.h2_ct) {
             tl_assert(xe->XE.Race.h2_ct_accEC); // assured by update_extra
-            emit( " This conflicts with a previous %s of size %d "
+            tl_assert(xe->XE.Race.h2_ct_locksHeldW);
+            emit( "\n" );
+            emit( "This conflicts with a previous %s of size %d "
                   "by thread #%d\n",
                   xe->XE.Race.h2_ct_accIsW ? "write" : "read",
                   xe->XE.Race.h2_ct_accSzB,
                   xe->XE.Race.h2_ct->errmsg_index );
+            show_LockP_summary_textmode( xe->XE.Race.h2_ct_locksHeldW, "" );
             VG_(pp_ExeContext)( xe->XE.Race.h2_ct_accEC );
          }
 
@@ -993,16 +1285,45 @@ void HG_(pp_Error) ( Error* err )
 
       }
 
+      /* If we have a description of the address in terms of a heap
+         block, show it. */
+      if (xe->XE.Race.hctxt) {
+         SizeT delta = err_ga - xe->XE.Race.haddr;
+         if (xml) {
+            emit("  <auxwhat>Address %p is %ld bytes inside a block "
+                 "of size %ld alloc'd</auxwhat>\n", (void*)err_ga, delta, 
+                 xe->XE.Race.hszB);
+            VG_(pp_ExeContext)( xe->XE.Race.hctxt );
+         } else {
+            emit("\n");
+            emit("Address %p is %ld bytes inside a block "
+                 "of size %ld alloc'd\n", (void*)err_ga, delta, 
+                 xe->XE.Race.hszB);
+            VG_(pp_ExeContext)( xe->XE.Race.hctxt );
+         }
+      }
+
       /* If we have a better description of the address, show it.
          Note that in XML mode, it will already by nicely wrapped up
          in tags, either <auxwhat> or <xauxwhat>, so we can just emit
          it verbatim. */
+      if (xml) {
+         if (xe->XE.Race.descr1)
+            emit( "  %s\n",
+                  (HChar*)VG_(indexXA)( xe->XE.Race.descr1, 0 ) );
+         if (xe->XE.Race.descr2)
+            emit( "  %s\n",
+                  (HChar*)VG_(indexXA)( xe->XE.Race.descr2, 0 ) );
+      } else {
+         if (xe->XE.Race.descr1 || xe->XE.Race.descr2)
+            emit("\n");
       if (xe->XE.Race.descr1)
-         emit( "%s%s\n", xml ? "  " : " ",
+            emit( "%s\n",
                          (HChar*)VG_(indexXA)( xe->XE.Race.descr1, 0 ) );
       if (xe->XE.Race.descr2)
-         emit( "%s%s\n", xml ? "  " : " ",
+            emit( "%s\n",
                          (HChar*)VG_(indexXA)( xe->XE.Race.descr2, 0 ) );
+      }
 
       break; /* case XE_Race */
    } /* case XE_Race */

@@ -35,16 +35,17 @@ If you have problems, consult the FAQ to see if there are workarounds.
 
 Executive Summary
 ~~~~~~~~~~~~~~~~~
-Valgrind is an award-winning instrumentation framework for building
-dynamic analysis tools. There are Valgrind tools that can automatically
-detect many memory management and threading bugs, and profile your
-programs in detail. You can also use Valgrind to build new tools.
+Valgrind is a framework for building dynamic analysis tools. There are
+Valgrind tools that can automatically detect many memory management
+and threading bugs, and profile your programs in detail. You can also
+use Valgrind to build new tools.
 
 The Valgrind distribution currently includes six production-quality
-tools: a memory error detector, two thread error detectors, a cache and
-branch-prediction profiler, a call-graph generating cache profiler, and
-a heap profiler. It also includes two experimental tools:  a
-heap/stack/global array overrun detector, and a SimPoint basic block vector
+tools: a memory error detector, two thread error detectors, a cache
+and branch-prediction profiler, a call-graph generating cache abd
+branch-prediction profiler, and a heap profiler. It also includes
+three experimental tools: a heap/stack/global array overrun detector,
+a different kind of heap profiler, and a SimPoint basic block vector
 generator.
 
 Valgrind is closely tied to details of the CPU, operating system and to
@@ -52,19 +53,25 @@ a lesser extent, compiler and basic C libraries. This makes it difficult
 to make it portable.  Nonetheless, it is available for the following
 platforms: 
 
-- x86/Linux
+- X86/Linux
 - AMD64/Linux
 - PPC32/Linux
 - PPC64/Linux
+- ARM/Linux
 - x86/MacOSX
 - AMD64/MacOSX
+- S390X/Linux
+- MIPS32/Linux
 
-Note that AMD64 is just another name for x86-64, and Valgrind runs fine
+Note that AMD64 is just another name for x86_64, and Valgrind runs fine
 on Intel processors.  Also note that the core of MacOSX is called
 "Darwin" and this name is used sometimes.
 
 Valgrind is licensed under the GNU General Public License, version 2. 
 Read the file COPYING in the source distribution for details.
+
+However: if you contribute code, you need to make it available as GPL
+version 2 or later, and not 2-only.
 
 
 Documentation

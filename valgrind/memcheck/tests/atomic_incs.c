@@ -5,6 +5,11 @@
    atomicity of the relevant instructions in the generated code; but
    the post-DCAS-merge versions of Valgrind do behave correctly. */
 
+/* On ARM, this can be compiled into either ARM or Thumb code, so as
+   to test both A and T encodings of LDREX/STREX et al.  Also on ARM,
+   it tests doubleword atomics (LDREXD, STREXD) which I don't think it
+   does on any other platform. */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -75,7 +80,78 @@ __attribute__((noinline)) void atomic_add_8bit ( char* p, int n )
       );
    } while (success != 1);
 #elif defined(VGA_arm)
-   *p += n;
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "mov    r5, %0"         "\n\t"
+         "ldr    r9, [r5, #0]"   "\n\t" // p
+         "ldr    r10, [r5, #4]"  "\n\t" // n
+         "ldrexb r8, [r9]"       "\n\t"
+         "add    r8, r8, r10"    "\n\t"
+         "strexb r4, r8, [r9]"   "\n\t"
+         "str    r4, [r5, #8]"   "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "r5", "r8", "r9", "r10", "r4"
+      );
+   } while (block[2] != 0);
+#elif defined(VGA_s390x)
+   int dummy;
+   __asm__ __volatile__(
+      "   l	0,%0\n\t"
+      "0: st	0,%1\n\t"
+      "   icm	1,1,%1\n\t"
+      "   ar	1,%2\n\t"
+      "   stcm  1,1,%1\n\t"
+      "   l     1,%1\n\t"
+      "   cs	0,1,%0\n\t"
+      "   jl    0b\n\t"
+      : "+m" (*p), "+m" (dummy)
+      : "d" (n)
+      : "cc", "memory", "0", "1");
+#elif defined(VGA_mips32)
+#if defined (_MIPSEL)
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "move   $t0, %0"         "\n\t"
+         "lw   $t1, 0($t0)"       "\n\t" // p
+         "lw   $t2, 4($t0)"       "\n\t" // n
+         "ll   $t3, 0($t1)"       "\n\t"
+         "addu   $t3, $t3, $t2"   "\n\t"
+         "andi   $t3, $t3, 0xFF"  "\n\t"
+         "sc   $t3, 0($t1)"       "\n\t"
+         "sw $t3, 8($t0)"         "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "t0", "t1", "t2", "t3"
+      );
+   } while (block[2] != 1);
+#elif defined (_MIPSEB)
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "move   $t0, %0"               "\n\t"
+         "lw   $t1, 0($t0)"             "\n\t" // p
+         "lw   $t2, 4($t0)"             "\n\t" // n
+         "li   $t4, 0x000000FF"         "\n\t"
+         "ll   $t3, 0($t1)"             "\n\t"
+         "addu $t3, $t3, $t2"           "\n\t"
+         "and  $t3, $t3, $t4"           "\n\t"
+         "wsbh $t4, $t3"                "\n\t"
+         "rotr $t4, $t4, 16"            "\n\t"
+         "or   $t3, $t4, $t3"           "\n\t"
+         "sc   $t3, 0($t1)"             "\n\t"
+         "sw $t3, 8($t0)"               "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "t0", "t1", "t2", "t3", "t4"
+      );
+   } while (block[2] != 1);
+#endif
 #else
 # error "Unsupported arch"
 #endif
@@ -139,7 +215,73 @@ __attribute__((noinline)) void atomic_add_16bit ( short* p, int n )
       );
    } while (success != 1);
 #elif defined(VGA_arm)
-   *p += n;
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "mov    r5, %0"         "\n\t"
+         "ldr    r9, [r5, #0]"   "\n\t" // p
+         "ldr    r10, [r5, #4]"  "\n\t" // n
+         "ldrexh r8, [r9]"       "\n\t"
+         "add    r8, r8, r10"    "\n\t"
+         "strexh r4, r8, [r9]"   "\n\t"
+         "str    r4, [r5, #8]"   "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "r5", "r8", "r9", "r10", "r4"
+      );
+   } while (block[2] != 0);
+#elif defined(VGA_s390x)
+   int dummy;
+   __asm__ __volatile__(
+      "   l	0,%0\n\t"
+      "0: st	0,%1\n\t"
+      "   icm	1,3,%1\n\t"
+      "   ar	1,%2\n\t"
+      "   stcm  1,3,%1\n\t"
+      "   l     1,%1\n\t"
+      "   cs	0,1,%0\n\t"
+      "   jl    0b\n\t"
+      : "+m" (*p), "+m" (dummy)
+      : "d" (n)
+      : "cc", "memory", "0", "1");
+#elif defined(VGA_mips32)
+#if defined (_MIPSEL)
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "move   $t0, %0"         "\n\t"
+         "lw   $t1, 0($t0)"       "\n\t" // p
+         "lw   $t2, 4($t0)"       "\n\t" // n
+         "ll   $t3, 0($t1)"       "\n\t"
+         "addu   $t3, $t3, $t2"   "\n\t"
+         "andi   $t3, $t3, 0xFFFF"  "\n\t"
+         "sc   $t3, 0($t1)"       "\n\t"
+         "sw $t3, 8($t0)"         "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "t0", "t1", "t2", "t3"
+      );
+   } while (block[2] != 1);
+#elif defined (_MIPSEB)
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "move   $t0, %0"         "\n\t"
+         "lw   $t1, 0($t0)"       "\n\t" // p
+         "li   $t2, 32694"        "\n\t" // n
+         "li   $t3, 0x1"          "\n\t"
+         "sll  $t2, $t2, 16"      "\n\t"
+         "sw   $t2, 0($t1)"       "\n\t"
+         "sw $t3, 8($t0)"         "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "t0", "t1", "t2", "t3"
+      );
+   } while (block[2] != 1);
+#endif
 #else
 # error "Unsupported arch"
 #endif
@@ -200,7 +342,49 @@ __attribute__((noinline)) void atomic_add_32bit ( int* p, int n )
       );
    } while (success != 1);
 #elif defined(VGA_arm)
-   *p += n;
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "mov   r5, %0"         "\n\t"
+         "ldr   r9, [r5, #0]"   "\n\t" // p
+         "ldr   r10, [r5, #4]"  "\n\t" // n
+         "ldrex r8, [r9]"       "\n\t"
+         "add   r8, r8, r10"    "\n\t"
+         "strex r4, r8, [r9]"   "\n\t"
+         "str   r4, [r5, #8]"   "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "r5", "r8", "r9", "r10", "r4"
+      );
+   } while (block[2] != 0);
+#elif defined(VGA_s390x)
+   __asm__ __volatile__(
+      "   l	0,%0\n\t"
+      "0: lr	1,0\n\t"
+      "   ar	1,%1\n\t"
+      "   cs	0,1,%0\n\t"
+      "   jl    0b\n\t"
+      : "+m" (*p)
+      : "d" (n)
+      : "cc", "memory", "0", "1");
+#elif defined(VGA_mips32)
+   unsigned int block[3]
+      = { (unsigned int)p, (unsigned int)n, 0xFFFFFFFF };
+   do {
+      __asm__ __volatile__(
+         "move   $t0, %0"         "\n\t"
+         "lw   $t1, 0($t0)"       "\n\t" // p
+         "lw   $t2, 4($t0)"       "\n\t" // n
+         "ll   $t3, 0($t1)"       "\n\t"
+         "addu   $t3, $t3, $t2"   "\n\t"
+         "sc   $t3, 0($t1)"       "\n\t"
+         "sw $t3, 8($t0)"         "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "t0", "t1", "t2", "t3"
+      );
+   } while (block[2] != 1);
 #else
 # error "Unsupported arch"
 #endif
@@ -208,7 +392,7 @@ __attribute__((noinline)) void atomic_add_32bit ( int* p, int n )
 
 __attribute__((noinline)) void atomic_add_64bit ( long long int* p, int n ) 
 {
-#if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_arm)
+#if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_mips32)
    /* do nothing; is not supported */
 #elif defined(VGA_amd64)
    // this is a bit subtle.  It relies on the fact that, on a 64-bit platform,
@@ -237,6 +421,36 @@ __attribute__((noinline)) void atomic_add_64bit ( long long int* p, int n )
          : /*trash*/ "memory", "cc", "r15"
       );
    } while (success != 1);
+#elif defined(VGA_arm)
+   unsigned long long int block[3]
+     = { (unsigned long long int)(unsigned long)p,
+         (unsigned long long int)n, 
+         0xFFFFFFFFFFFFFFFFULL };
+   do {
+      __asm__ __volatile__(
+         "mov    r5, %0"             "\n\t"
+         "ldr    r8,     [r5, #0]"   "\n\t" // p
+         "ldrd   r2, r3, [r5, #8]"   "\n\t" // n
+         "ldrexd r0, r1, [r8]"       "\n\t"
+         "adds   r2, r2, r0"         "\n\t"
+         "adc    r3, r3, r1"         "\n\t"
+         "strexd r1, r2, r3, [r8]"   "\n\t"
+         "str    r1, [r5, #16]"      "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "r5", "r0", "r1", "r8", "r2", "r3"
+      );
+   } while (block[2] != 0xFFFFFFFF00000000ULL);
+#elif defined(VGA_s390x)
+   __asm__ __volatile__(
+      "   lg	0,%0\n\t"
+      "0: lgr	1,0\n\t"
+      "   agr	1,%1\n\t"
+      "   csg	0,1,%0\n\t"
+      "   jl    0b\n\t"
+      : "+m" (*p)
+      : "d" (n)
+      : "cc", "memory", "0", "1");
 #else
 # error "Unsupported arch"
 #endif

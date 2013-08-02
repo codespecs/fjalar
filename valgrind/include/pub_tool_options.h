@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -54,6 +54,8 @@
       Char* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
       if      VG_STREQ(val, "yes") (qq_var) = True; \
       else if VG_STREQ(val, "no")  (qq_var) = False; \
+      else VG_(fmsg_bad_option)(qq_arg, "Invalid boolean value '%s'" \
+                                " (should be 'yes' or 'no')\n", val);    \
       True; \
     }) \
    )
@@ -77,7 +79,7 @@
       Long n = VG_(strtoll10)( val, &s ); \
       (qq_var) = n; \
       /* Check for non-numeralness, or overflow. */ \
-      if ('\0' != s[0] || (qq_var) != n) VG_(err_bad_option)(qq_arg); \
+      if ('\0' != s[0] || (qq_var) != n) VG_(fmsg_bad_option)(qq_arg, ""); \
       True; \
      }) \
     )
@@ -91,15 +93,16 @@
       Char* s; \
       Long n = VG_(strtoll##qq_base)( val, &s ); \
       (qq_var) = n; \
+      /* MMM: separate the two cases, and explain the problem;  likewise */ \
+      /* for all the other macros in this file. */ \
       /* Check for non-numeralness, or overflow. */ \
       /* Nb: it will overflow if qq_var is unsigned and qq_val is negative! */ \
-      if ('\0' != s[0] || (qq_var) != n) VG_(err_bad_option)(qq_arg); \
+      if ('\0' != s[0] || (qq_var) != n) VG_(fmsg_bad_option)(qq_arg, ""); \
       /* Check bounds. */ \
       if ((qq_var) < (qq_lo) || (qq_var) > (qq_hi)) { \
-         VG_(message)(Vg_UserMsg, \
+         VG_(fmsg_bad_option)(qq_arg, \
                       "'%s' argument must be between %lld and %lld\n", \
                       (qq_option), (Long)(qq_lo), (Long)(qq_hi)); \
-         VG_(err_bad_option)(qq_arg); \
       } \
       True; \
      }) \
@@ -124,7 +127,7 @@
       double n = VG_(strtod)( val, &s ); \
       (qq_var) = n; \
       /* Check for non-numeralness */ \
-      if ('\0' != s[0]) VG_(err_bad_option)(qq_arg); \
+      if ('\0' != s[0]) VG_(fmsg_bad_option)(qq_arg, ""); \
       True; \
      }) \
     )
@@ -145,6 +148,12 @@ extern Int  VG_(clo_verbosity);
 /* Show tool and core statistics */
 extern Bool VG_(clo_stats);
 
+/* wait for vgdb/gdb after reporting that amount of error.
+   Note that this is the initial value provided from the command line.
+   The real value is maintained in VG_(dyn_vgdb_error) and
+   can be changed dynamically.*/
+extern Int VG_(clo_vgdb_error);
+
 /* Emit all messages as XML? default: NO */
 /* If clo_xml is set, various other options are set in a non-default
    way.  See vg_main.c and mc_main.c. */
@@ -164,15 +173,6 @@ extern Int   VG_(clo_backtrace_size);
 /* Continue stack traces below main()?  Default: NO */
 extern Bool VG_(clo_show_below_main);
 
-
-/* Call this if a recognised option was bad for some reason.  Note:
-   don't use it just because an option was unrecognised -- return
-   'False' from VG_(tdict).tool_process_cmd_line_option) to indicate that --
-   use it if eg. an option was given an inappropriate argument.
-   This function prints an error message, then shuts down the entire system.
-   It returns a Bool so it can be used in the _CLO_ macros. */
-__attribute__((noreturn))
-extern void VG_(err_bad_option) ( Char* opt );
 
 /* Used to expand file names.  "option_name" is the option name, eg.
    "--log-file".  'format' is what follows, eg. "cachegrind.out.%p".  In

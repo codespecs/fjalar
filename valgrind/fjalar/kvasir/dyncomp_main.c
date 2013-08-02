@@ -24,6 +24,8 @@
   General Public License for more details.
 */
 
+#include "../my_libc.h"
+
 #include "kvasir_main.h"
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
@@ -34,8 +36,6 @@
 #include "pub_tool_libcprint.h"
 #include "mc_include.h"
 #include "memcheck.h"
-
-#include "../my_libc.h"
 
 // Special reserved tags
 #define MY_UINT_MAX 0xffffffffU
@@ -114,8 +114,8 @@ __inline__ void set_tag ( Addr a, UInt tag )
     UInt* new_tag_array;
 
     if (PM_IDX(a) >= PRIMARY_SIZE) {
-      VG_(printf)("Address too large for DynComp: %p.\n", (void *)a);
-      VG_(printf)("Terminating program.\n");
+      printf("Address too large for DynComp: %p.\n", (void *)a);
+      printf("Terminating program.\n");
       VG_(exit)(1);
     }
 
@@ -149,7 +149,7 @@ static __inline__ UInt grab_fresh_tag(void) {
   val_uf_make_set_for_tag(tag);
 
   if (nextTag == LARGEST_REAL_TAG) {
-    VG_(printf)("Error! Maximum tag has been used.\n");
+    printf("Error! Maximum tag has been used.\n");
     VG_(exit)(1);
   }
   else {
@@ -158,10 +158,8 @@ static __inline__ UInt grab_fresh_tag(void) {
 
   totalNumTagsAssigned++;
   if (dyncomp_print_trace_all) {
-    uf_object* tag_obj;
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
     Char eip_info[256];
-    tag_obj = GET_UF_OBJECT_PTR(tag);
     dyncomp_print_trace_info = True;
     VG_(describe_IP)(tid, eip_info, sizeof(eip_info));
     DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %08x (%s)\n",
@@ -235,7 +233,7 @@ void val_uf_make_set_for_tag(UInt tag) {
     //         i < SECONDARY_SIZE;
     //         i++, curTag++) {
     //      uf_make_set(new_uf_obj_array + i, curTag);
-    //      //      VG_(printf)("      uf_make_set(%u, %u);\n",
+    //      //      printf("      uf_make_set(%u, %u);\n",
     //      //                  new_uf_obj_array + i, curTag);
     //    }
     primary_val_uf_object_map[PM_IDX(tag)] = new_uf_obj_array;
@@ -260,7 +258,7 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     leader = uf_union(tag1_obj, tag2_obj);
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
 
-    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at %p (%s)\n",
+    DYNCOMP_TPRINTF("[Dyncomp-v1] Merging %u with %u to get %u at %p (%s)\n",
 		    tag1, tag2, leader->tag, (void *)eip, eip_info);
 
     if(dyncomp_no_val_leader){
@@ -413,7 +411,7 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   UInt tag1 = get_tag(a1);
   UInt tag2 = get_tag(a2);
   print_merge = 0;
-  //  VG_(printf)("val_uf_union_tags_at_addr(0x%x, 0x%x) canonicalTag\n",
+  //  printf("val_uf_union_tags_at_addr(0x%x, 0x%x) canonicalTag\n",
   //              a1, a2);
   if ((0 == tag1) ||
       (0 == tag2) ||
@@ -430,7 +428,7 @@ void val_uf_union_tags_at_addr(Addr a1, Addr a2) {
   //              a1, a2, canonicalTag);
 
   print_merge = 1;
-  DYNCOMP_DPRINTF("val_uf_union_tags_at_addr(%p, %p) canonicalTag=%u\n",
+  DYNCOMP_TPRINTF("[Dyncomp] val_uf_union_tags_at_addr(%p, %p) canonicalTag=%u\n",
                   (void *)a1, (void *)a2, canonicalTag);
   }
 
@@ -462,7 +460,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 
 /*     if (allLiteralTags) { */
 /*       UInt freshTag = grab_fresh_tag(); */
-/*       //      VG_(printf)("val_uf_union_tags_in_range(%u, %u) saw WEAK_FRESH_TAG & created tag %u\n", */
+/*       //      printf("val_uf_union_tags_in_range(%u, %u) saw WEAK_FRESH_TAG & created tag %u\n", */
 /*       //                  a, len, freshTag); */
 /*       set_tag_for_range(a, len, freshTag); */
 /*       return freshTag; // Ok, we're done now */
@@ -499,6 +497,9 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
     canonicalTag = (dyncomp_no_val_leader)?tagToMerge:val_uf_find_leader(tagToMerge);
     //canonicalTag = val_uf_find_leader(tagToMerge);
 
+    DYNCOMP_TPRINTF("[Dyncomp] (above) val_uf_union_tags_in_range(%p, %p) canonicalTag=%u\n",
+                  (void *)a, (void *)(a+len), canonicalTag);
+
     // Set all the tags in this range to the canonical tag
     for (curAddr = a; curAddr < (a + len); curAddr++) {
       set_tag(curAddr, canonicalTag);
@@ -516,7 +517,6 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
 // garbage-collected.
 VG_REGPARM(1)
 UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
-
   UInt newTag = grab_fresh_tag();
   (void)static_id;
   return newTag;
@@ -525,6 +525,7 @@ UInt MC_(helperc_CREATE_TAG)(Addr static_id) {
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_8) ( Addr a ) {
+  DYNCOMP_TPRINTF("[Dyncomp] LOAD_TAG_8\n");
   return val_uf_union_tags_in_range(a, 8);
 }
 
@@ -533,11 +534,13 @@ UInt MC_(helperc_LOAD_TAG_4) ( Addr a ) {
   UInt first_tag = get_tag(a);
   if (first_tag == WEAK_FRESH_TAG)
     return grab_fresh_tag();
+  DYNCOMP_TPRINTF("[Dyncomp] LOAD_TAG_4\n");
   return val_uf_union_tags_in_range(a, 4);
 }
 
 VG_REGPARM(1)
 UInt MC_(helperc_LOAD_TAG_2) ( Addr a ) {
+  DYNCOMP_TPRINTF("[Dyncomp] LOAD_TAG_2\n");
   return val_uf_union_tags_in_range(a, 2);
 }
 
@@ -600,16 +603,17 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   // (If both are WEAK_FRESH_TAG's, then return WEAK_FRESH_TAG,
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
-    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at %p (%s)\n",
+    DYNCOMP_TPRINTF("[Dyncomp-m1] Merging %u with %u to get %u at %p (%s)\n",
 		    tag1, tag2, tag2 , (void *)eip, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
-    DYNCOMP_TPRINTF("[Dyncomp] Merging %u with %u to get %u at %p (%s)\n",
+    DYNCOMP_TPRINTF("[Dyncomp-m2] Merging %u with %u to get %u at %p (%s)\n",
 		    tag1, tag2, tag1 , (void *)eip, eip_info);
     return tag1;
   }
   else {
+    DYNCOMP_TPRINTF("[Dyncomp-m3] Calling val_uf_tag_union\n");
     return val_uf_tag_union(tag1, tag2);
   }
 }
@@ -654,6 +658,7 @@ UInt MC_(helperc_MERGE_TAGS_RETURN_0) ( UInt tag1, UInt tag2 ) {
     return 0;
   }
   else {
+    DYNCOMP_TPRINTF("[Dyncomp-m4] Calling val_uf_tag_union\n");
     val_uf_tag_union(tag1, tag2);
     return 0;
   }

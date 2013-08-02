@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,16 +45,34 @@
 
 /* --------------------- SYMBOLS --------------------- */
 
-/* A structure to hold an ELF/XCOFF symbol (very crudely). */
+/* A structure to hold an ELF/MachO symbol (very crudely).  Usually
+   the symbol only has one name, which is stored in ::pri_name, and
+   ::sec_names is NULL.  If there are other names, these are stored in
+   ::sec_names, which is a NULL terminated vector holding the names.
+   The vector is allocated in VG_AR_DINFO, the names themselves live
+   in DebugInfo::strchunks.
+
+   From the point of view of ELF, the primary vs secondary distinction
+   is artificial: they are all just names associated with the address,
+   none of which has higher precedence than any other.  However, from
+   the point of view of mapping an address to a name to display to the
+   user, we need to choose one "preferred" name, and so that might as
+   well be installed as the pri_name, whilst all others can live in
+   sec_names[].  This has the convenient side effect that, in the
+   common case where there is only one name for the address,
+   sec_names[] does not need to be allocated.
+*/
 typedef 
    struct { 
       Addr  addr;    /* lowest address of entity */
       Addr  tocptr;  /* ppc64-linux only: value that R2 should have */
-      UChar *name;   /* name */
-      // XXX: this could be shrunk (on 32-bit platforms) by using 31 bits for
-      // the size and 1 bit for the isText.  If you do this, make sure that
-      // all assignments to isText use 0 or 1 (or True or False), and that a
-      // positive number larger than 1 is never used to represent True.
+      UChar*  pri_name;  /* primary name, never NULL */
+      UChar** sec_names; /* NULL, or a NULL term'd array of other names */
+      // XXX: this could be shrunk (on 32-bit platforms) by using 30
+      // bits for the size and 1 bit each for isText and isIFunc.  If you
+      // do this, make sure that all assignments to the latter two use
+      // 0 or 1 (or True or False), and that a positive number larger
+      // than 1 is never used to represent True.
       UInt  size;    /* size in bytes */
       Bool  isText;
       Bool  isIFunc; /* symbol is an indirect function? */
@@ -130,15 +148,32 @@ typedef
               CFIC_R13REL -> r13 + cfa_off
               CFIC_R12REL -> r12 + cfa_off
               CFIC_R11REL -> r11 + cfa_off
+              CFIC_R7REL  -> r7  + cfa_off
               CFIR_EXPR   -> expr whose index is in cfa_off
 
-     old_r14/r13/r12/r11/ra
-         = case r14/r13/r12/r11/ra_how of
+     old_r14/r13/r12/r11/r7/ra
+         = case r14/r13/r12/r11/r7/ra_how of
               CFIR_UNKNOWN   -> we don't know, sorry
-              CFIR_SAME      -> same as it was before (r14/r13/r12/r11 only)
-              CFIR_CFAREL    -> cfa + r14/r13/r12/r11/ra_off
-              CFIR_MEMCFAREL -> *( cfa + r14/r13/r12/r11/ra_off )
-              CFIR_EXPR      -> expr whose index is in r14/r13/r12/r11/ra_off
+              CFIR_SAME      -> same as it was before (r14/r13/r12/r11/r7 only)
+              CFIR_CFAREL    -> cfa + r14/r13/r12/r11/r7/ra_off
+              CFIR_MEMCFAREL -> *( cfa + r14/r13/r12/r11/r7/ra_off )
+              CFIR_EXPR      -> expr whose index is in r14/r13/r12/r11/r7/ra_off
+
+   On s390x we have a similar logic as x86 or amd64. We need the stack pointer
+   (r15), the frame pointer r11 (like BP) and together with the instruction
+   address in the PSW we can calculate the previous values:
+     cfa = case cfa_how of
+              CFIC_IA_SPREL -> r15 + cfa_off
+              CFIC_IA_BPREL -> r11 + cfa_off
+              CFIR_IA_EXPR  -> expr whose index is in cfa_off
+
+     old_sp/fp/ra
+         = case sp/fp/ra_how of
+              CFIR_UNKNOWN   -> we don't know, sorry
+              CFIR_SAME      -> same as it was before (sp/fp only)
+              CFIR_CFAREL    -> cfa + sp/fp/ra_off
+              CFIR_MEMCFAREL -> *( cfa + sp/fp/ra_off )
+              CFIR_EXPR      -> expr whose index is in sp/fp/ra_off
 */
 
 #define CFIC_IA_SPREL     ((UChar)1)
@@ -147,7 +182,8 @@ typedef
 #define CFIC_ARM_R13REL   ((UChar)4)
 #define CFIC_ARM_R12REL   ((UChar)5)
 #define CFIC_ARM_R11REL   ((UChar)6)
-#define CFIC_EXPR         ((UChar)7)  /* all targets */
+#define CFIC_ARM_R7REL    ((UChar)7)
+#define CFIC_EXPR         ((UChar)8)  /* all targets */
 
 #define CFIR_UNKNOWN      ((UChar)64)
 #define CFIR_SAME         ((UChar)65)
@@ -181,12 +217,14 @@ typedef
       UChar r13_how; /* a CFIR_ value */
       UChar r12_how; /* a CFIR_ value */
       UChar r11_how; /* a CFIR_ value */
+      UChar r7_how;  /* a CFIR_ value */
       Int   cfa_off;
       Int   ra_off;
       Int   r14_off;
       Int   r13_off;
       Int   r12_off;
       Int   r11_off;
+      Int   r7_off;
    }
    DiCfSI;
 #elif defined(VGA_ppc32) || defined(VGA_ppc64)
@@ -204,6 +242,36 @@ typedef
       Int   ra_off;
    }
    DiCfSI;
+#elif defined(VGA_s390x)
+typedef
+   struct {
+      Addr  base;
+      UInt  len;
+      UChar cfa_how; /* a CFIC_ value */
+      UChar sp_how;  /* a CFIR_ value */
+      UChar ra_how;  /* a CFIR_ value */
+      UChar fp_how;  /* a CFIR_ value */
+      Int   cfa_off;
+      Int   sp_off;
+      Int   ra_off;
+      Int   fp_off;
+   }
+   DiCfSI;
+#elif defined(VGA_mips32)
+typedef
+   struct {
+      Addr  base;
+      UInt  len;
+      UChar cfa_how; /* a CFIC_ value */
+      UChar ra_how;  /* a CFIR_ value */
+      UChar sp_how;  /* a CFIR_ value */
+      UChar fp_how;  /* a CFIR_ value */
+      Int   cfa_off;
+      Int   ra_off;
+      Int   sp_off;
+      Int   fp_off;
+   }
+   DiCfSI;
 #else
 #  error "Unknown arch"
 #endif
@@ -214,7 +282,15 @@ typedef
       Cop_Add=0x321,
       Cop_Sub,
       Cop_And,
-      Cop_Mul
+      Cop_Mul,
+      Cop_Shl,
+      Cop_Shr,
+      Cop_Eq,
+      Cop_Ge,
+      Cop_Gt,
+      Cop_Le,
+      Cop_Lt,
+      Cop_Ne
    }
    CfiOp;
 
@@ -226,7 +302,9 @@ typedef
       Creg_ARM_R13,
       Creg_ARM_R12,
       Creg_ARM_R15,
-      Creg_ARM_R14
+      Creg_ARM_R14,
+      Creg_S390_R14,
+      Creg_MIPS_RA
    }
    CfiReg;
 
@@ -332,7 +410,67 @@ ML_(cmp_for_DiAddrRange_range) ( const void* keyV, const void* elemV );
    information pertaining to one mapped ELF object.  This type is
    exported only abstractly - in pub_tool_debuginfo.h. */
 
+/* First though, here's an auxiliary data structure.  It is only ever
+   used as part of a struct _DebugInfo.  We use it to record
+   observations about mappings and permission changes to the
+   associated file, so as to decide when to read debug info.  It's
+   essentially an ultra-trivial finite state machine which, when it
+   reaches an accept state, signals that we should now read debug info
+   from the object into the associated struct _DebugInfo.  The accept
+   state is arrived at when have_rx_map and have_rw_map both become
+   true.  The initial state is one in which we have no observations,
+   so have_rx_map and have_rw_map are both false.
+
+   This all started as a rather ad-hoc solution, but was further
+   expanded to handle weird object layouts, e.g. more than one rw
+   or rx mapping for one binary.
+
+   The normal sequence of events is one of
+
+   start  -->  r-x mapping  -->  rw- mapping  -->  accept
+   start  -->  rw- mapping  -->  r-x mapping  -->  accept
+
+   that is, take the first r-x and rw- mapping we see, and we're done.
+
+   On MacOSX 10.7, 32-bit, there appears to be a new variant:
+
+   start  -->  r-- mapping  -->  rw- mapping  
+          -->  upgrade r-- mapping to r-x mapping  -->  accept
+
+   where the upgrade is done by a call to vm_protect.  Hence we
+   need to also track this possibility.
+*/
+
+struct _DebugInfoMapping
+{
+   Addr  avma; /* these fields record the file offset, length */
+   SizeT size; /* and map address of each mapping             */
+   OffT  foff;
+   Bool  rx, rw, ro;  /* memory access flags for this mapping */
+};
+
+struct _DebugInfoFSM
+{
+   UChar*  filename;  /* in mallocville (VG_AR_DINFO)               */
+   XArray* maps;      /* XArray of _DebugInfoMapping structs        */
+   Bool  have_rx_map; /* did we see a r?x mapping yet for the file? */
+   Bool  have_rw_map; /* did we see a rw? mapping yet for the file? */
+   Bool  have_ro_map; /* did we see a r-- mapping yet for the file? */
+};
+
+
+/* To do with the string table in struct _DebugInfo (::strchunks) */
 #define SEGINFO_STRCHUNKSIZE (64*1024)
+
+
+/* We may encounter more than one .eh_frame section in an object --
+   unusual but apparently allowed by ELF.  See
+   http://sourceware.org/bugzilla/show_bug.cgi?id=12675
+*/
+#define N_EHFRAME_SECTS 2
+
+
+/* So, the main structure for holding debug info for one object. */
 
 struct _DebugInfo {
 
@@ -363,37 +501,27 @@ struct _DebugInfo {
    Bool ddump_line;   /* mimic /usr/bin/readelf --debug-dump=line */
    Bool ddump_frames; /* mimic /usr/bin/readelf --debug-dump=frames */
 
-   /* Fields that must be filled in before we can start reading
-      anything from the ELF file.  These fields are filled in by
-      VG_(di_notify_mmap) and its immediate helpers. */
+   /* The "decide when it is time to read debuginfo" state machine.
+      This structure must get filled in before we can start reading
+      anything from the ELF/MachO file.  This structure is filled in
+      by VG_(di_notify_mmap) and its immediate helpers. */
+   struct _DebugInfoFSM fsm;
 
-   UChar* filename; /* in mallocville (VG_AR_DINFO) */
-   UChar* memname;  /* also in VG_AR_DINFO.  AIX5 only: .a member name */
-
-   Bool  have_rx_map; /* did we see a r?x mapping yet for the file? */
-   Bool  have_rw_map; /* did we see a rw? mapping yet for the file? */
-
-   Addr  rx_map_avma; /* these fields record the file offset, length */
-   SizeT rx_map_size; /* and map address of the r?x mapping we believe */
-   OffT  rx_map_foff; /* is the .text segment mapping */
-
-   Addr  rw_map_avma; /* ditto, for the rw? mapping we believe is the */
-   SizeT rw_map_size; /* .data segment mapping */
-   OffT  rw_map_foff;
-
-   /* Once both a rw? and r?x mapping for .filename have been
-      observed, we can go on to read the symbol tables and debug info.
-      .have_dinfo flags when that has happened. */
-   /* If have_dinfo is False, then all fields except "*rx_map*" and
-      "*rw_map*" are invalid and should not be consulted. */
+   /* Once the ::fsm has reached an accept state -- typically, when
+      both a rw? and r?x mapping for .filename have been observed --
+      we can go on to read the symbol tables and debug info.
+      .have_dinfo changes from False to True when the debug info has
+      been completely read in and postprocessed (canonicalised) and is
+      now suitable for querying. */
+   /* If have_dinfo is False, then all fields below this point are
+      invalid and should not be consulted. */
    Bool  have_dinfo; /* initially False */
 
    /* All the rest of the fields in this structure are filled in once
       we have committed to reading the symbols and debug info (that
       is, at the point where .have_dinfo is set to True). */
 
-   /* The file's soname.  FIXME: ensure this is always allocated in
-      VG_AR_DINFO. */
+   /* The file's soname. */
    UChar* soname;
 
    /* Description of some important mapped segments.  The presence or
@@ -407,17 +535,17 @@ struct _DebugInfo {
 
       Comment_on_IMPORTANT_CFSI_REPRESENTATIONAL_INVARIANTS: we require that
  
-      either (rx_map_size == 0 && cfsi == NULL) (the degenerate case)
+      either (size of all rx maps == 0 && cfsi == NULL) (the degenerate case)
 
       or the normal case, which is the AND of the following:
-      (0) rx_map_size > 0
-      (1) no two DebugInfos with rx_map_size > 0 
-          have overlapping [rx_map_avma,+rx_map_size)
-      (2) [cfsi_minavma,cfsi_maxavma] does not extend 
-          beyond [rx_map_avma,+rx_map_size); that is, the former is a 
-          subrange or equal to the latter.
+      (0) size of at least one rx mapping > 0
+      (1) no two DebugInfos with some rx mapping of size > 0 
+          have overlapping rx mappings
+      (2) [cfsi_minavma,cfsi_maxavma] does not extend beyond
+          [avma,+size) of one rx mapping; that is, the former
+          is a subrange or equal to the latter.
       (3) all DiCfSI in the cfsi array all have ranges that fall within
-          [rx_map_avma,+rx_map_size).
+          [avma,+size) of that rx mapping.
       (4) all DiCfSI in the cfsi array are non-overlapping
 
       The cumulative effect of these restrictions is to ensure that
@@ -590,10 +718,11 @@ struct _DebugInfo {
    Bool   opd_present;
    Addr   opd_avma;
    SizeT  opd_size;
-   /* .ehframe -- needed on amd64-linux for stack unwinding */
-   Bool   ehframe_present;
-   Addr   ehframe_avma;
-   SizeT  ehframe_size;
+   /* .ehframe -- needed on amd64-linux for stack unwinding.  We might
+      see more than one, hence the arrays. */
+   UInt   n_ehframe;  /* 0 .. N_EHFRAME_SECTS */
+   Addr   ehframe_avma[N_EHFRAME_SECTS];
+   SizeT  ehframe_size[N_EHFRAME_SECTS];
 
    /* Sorted tables of stuff we snarfed from the file.  This is the
       eventual product of reading the debug info.  All this stuff
@@ -625,6 +754,7 @@ struct _DebugInfo {
    UWord     fpo_size;
    Addr      fpo_minavma;
    Addr      fpo_maxavma;
+   Addr      fpo_base_avma;
 
    /* Expandable arrays of characters -- the string table.  Pointers
       into this are stable (the arrays are not reallocated). */
@@ -669,13 +799,22 @@ struct _DebugInfo {
 
    /* An array of guarded DWARF3 expressions. */
    XArray* admin_gexprs;
+
+   /* Cached last rx mapping matched and returned by ML_(find_rx_mapping).
+      This helps performance a lot during ML_(addLineInfo) etc., which can
+      easily be invoked hundreds of thousands of times. */
+   struct _DebugInfoMapping* last_rx_map;
 };
 
 /* --------------------- functions --------------------- */
 
 /* ------ Adding ------ */
 
-/* Add a symbol to si's symbol table. */
+/* Add a symbol to si's symbol table.  The contents of 'sym' are
+   copied.  It is assumed (and checked) that 'sym' only contains one
+   name, so there is no auxiliary ::sec_names vector to duplicate.
+   IOW, the copy is a shallow copy, and there are assertions in place
+   to ensure that's OK. */
 extern void ML_(addSym) ( struct _DebugInfo* di, DiSym* sym );
 
 /* Add a line-number record to a DebugInfo. */
@@ -684,12 +823,6 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
                         UChar*   filename, 
                         UChar*   dirname,  /* NULL is allowable */
                         Addr this, Addr next, Int lineno, Int entry);
-
-/* Shrink completed tables to save memory. */
-extern 
-void ML_(shrinkSym) ( struct _DebugInfo *di );
-extern 
-void ML_(shrinkLineInfo) ( struct _DebugInfo *di );
 
 /* Add a CFI summary record.  The supplied DiCfSI is copied. */
 extern void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi );
@@ -738,6 +871,13 @@ extern Word ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr );
 /* Find a FPO-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 extern Word ML_(search_one_fpotab) ( struct _DebugInfo* di, Addr ptr );
+
+/* Helper function for the most often needed searching for an rx
+   mapping containing the specified address range.  The range must
+   fall entirely within the mapping to be considered to be within it.
+   Asserts if lo > hi; caller must ensure this doesn't happen. */
+extern struct _DebugInfoMapping* ML_(find_rx_mapping) ( struct _DebugInfo* di,
+                                                        Addr lo, Addr hi );
 
 /* ------ Misc ------ */
 

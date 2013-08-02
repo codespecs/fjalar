@@ -35,7 +35,6 @@ CALLGRIND_SOURCES_COMMON = \
 	bbcc.c \
 	callstack.c \
 	clo.c \
-	command.c \
 	context.c \
 	costs.c \
 	debug.c \
@@ -46,10 +45,13 @@ CALLGRIND_SOURCES_COMMON = \
 	main.c \
 	sim.c \
 	threads.c \
+	../cachegrind/cg-arch.c \
 	../cachegrind/cg-x86-amd64.c \
 	../cachegrind/cg-ppc32.c \
 	../cachegrind/cg-ppc64.c \
-	../cachegrind/cg-arm.c
+	../cachegrind/cg-arm.c   \
+	../cachegrind/cg-s390x.c \
+	../cachegrind/cg-mips32.c
 
 CALLGRIND_CFLAGS_COMMON = -I$(top_srcdir)/cachegrind
 
@@ -65,6 +67,13 @@ callgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
 callgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+callgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_PRI@ \
+	$(LINK) \
+	$(callgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS) \
+	$(callgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS)
+
 if VGCONF_HAVE_PLATFORM_SEC
 callgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = \
 	$(CALLGRIND_SOURCES_COMMON)
@@ -78,5 +87,11 @@ callgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
 callgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+callgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_SEC@ \
+	$(LINK) \
+	$(callgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
+	$(callgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
 endif
 

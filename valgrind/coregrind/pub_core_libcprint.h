@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -53,6 +53,16 @@ extern OutputSink VG_(xml_output_sink);
    millisecond timer having been set to zero by an initial read in
    m_main during startup. */
 void VG_(elapsed_wallclock_time) ( /*OUT*/HChar* buf );
+
+/* Call this if the executable is missing.  This function prints an
+   error message, then shuts down the entire system. */
+__attribute__((noreturn))
+extern void VG_(err_missing_prog) ( void );
+
+/* Similarly - complain and stop if there is some kind of config
+   error. */
+__attribute__((noreturn))
+extern void VG_(err_config_error) ( Char* format, ... );
 
 #endif   // __PUB_CORE_LIBCPRINT_H
 

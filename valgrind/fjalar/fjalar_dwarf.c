@@ -18,6 +18,9 @@
 */
 
 #include "fjalar_dwarf.h"
+#include "pub_tool_basics.h"      // for VG_ macros
+#include "pub_tool_libcprint.h"   // for VG_ printf macros
+#include "pub_tool_libcassert.h"  // for tl_assert
 
 // A conversion between DWARF location atoms and a string representation
 const char*
@@ -323,7 +326,8 @@ location_expression_to_string(enum dwarf_location_atom op) {
   case DW_OP_call_ref:
     return "DW_OP_call_ref";
   default:
-    VG_(printf)("Invalid location_atom sent to location_expression_to_string: %d", op);
+    printf("Invalid location_atom sent to location_expression_to_string: %d", op);
     tl_assert(0);
+    return(0);    // to stop compiler warning
   }
 }

@@ -8,7 +8,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2009 Nicholas Nethercote
+   Copyright (C) 2002-2012 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -70,6 +70,12 @@ static Bool  clo_branch_sim = False; /* do branch simulation? */
 static Char* clo_cachegrind_out_file = "cachegrind.out.%p";
 
 /*------------------------------------------------------------*/
+/*--- Cachesim configuration                               ---*/
+/*------------------------------------------------------------*/
+
+static Int min_line_size = 0; /* min of L1 and LL cache line sizes */
+
+/*------------------------------------------------------------*/
 /*--- Types and Data Structures                            ---*/
 /*------------------------------------------------------------*/
 
@@ -77,7 +83,7 @@ typedef
    struct {
       ULong a;  /* total # memory accesses of this kind */
       ULong m1; /* misses in the first level cache */
-      ULong m2; /* misses in the second level cache */
+      ULong mL; /* misses in the second level cache */
    }
    CacheCC;
 
@@ -268,13 +274,13 @@ static LineCC* get_lineCC(Addr origAddr)
       lineCC->loc.line = loc.line;
       lineCC->Ir.a     = 0;
       lineCC->Ir.m1    = 0;
-      lineCC->Ir.m2    = 0;
+      lineCC->Ir.mL    = 0;
       lineCC->Dr.a     = 0;
       lineCC->Dr.m1    = 0;
-      lineCC->Dr.m2    = 0;
+      lineCC->Dr.mL    = 0;
       lineCC->Dw.a     = 0;
       lineCC->Dw.m1    = 0;
-      lineCC->Dw.m2    = 0;
+      lineCC->Dw.mL    = 0;
       lineCC->Bc.b     = 0;
       lineCC->Bc.mp    = 0;
       lineCC->Bi.b     = 0;
@@ -289,13 +295,37 @@ static LineCC* get_lineCC(Addr origAddr)
 /*--- Cache simulation functions                           ---*/
 /*------------------------------------------------------------*/
 
+// Only used with --cache-sim=no.
+static VG_REGPARM(1)
+void log_1I(InstrInfo* n)
+{
+   n->parent->Ir.a++;
+}
+
+// Only used with --cache-sim=no.
+static VG_REGPARM(2)
+void log_2I(InstrInfo* n, InstrInfo* n2)
+{
+   n->parent->Ir.a++;
+   n2->parent->Ir.a++;
+}
+
+// Only used with --cache-sim=no.
+static VG_REGPARM(3)
+void log_3I(InstrInfo* n, InstrInfo* n2, InstrInfo* n3)
+{
+   n->parent->Ir.a++;
+   n2->parent->Ir.a++;
+   n3->parent->Ir.a++;
+}
+
 static VG_REGPARM(1)
 void log_1I_0D_cache_access(InstrInfo* n)
 {
    //VG_(printf)("1I_0D :  CCaddr=0x%010lx,  iaddr=0x%010lx,  isize=%lu\n",
    //             n, n->instr_addr, n->instr_len);
    cachesim_I1_doref(n->instr_addr, n->instr_len, 
-                     &n->parent->Ir.m1, &n->parent->Ir.m2);
+                     &n->parent->Ir.m1, &n->parent->Ir.mL);
    n->parent->Ir.a++;
 }
 
@@ -307,10 +337,10 @@ void log_2I_0D_cache_access(InstrInfo* n, InstrInfo* n2)
    //            n,  n->instr_addr,  n->instr_len,
    //            n2, n2->instr_addr, n2->instr_len);
    cachesim_I1_doref(n->instr_addr, n->instr_len, 
-                     &n->parent->Ir.m1, &n->parent->Ir.m2);
+                     &n->parent->Ir.m1, &n->parent->Ir.mL);
    n->parent->Ir.a++;
    cachesim_I1_doref(n2->instr_addr, n2->instr_len, 
-                     &n2->parent->Ir.m1, &n2->parent->Ir.m2);
+                     &n2->parent->Ir.m1, &n2->parent->Ir.mL);
    n2->parent->Ir.a++;
 }
 
@@ -324,13 +354,13 @@ void log_3I_0D_cache_access(InstrInfo* n, InstrInfo* n2, InstrInfo* n3)
    //            n2, n2->instr_addr, n2->instr_len,
    //            n3, n3->instr_addr, n3->instr_len);
    cachesim_I1_doref(n->instr_addr, n->instr_len, 
-                     &n->parent->Ir.m1, &n->parent->Ir.m2);
+                     &n->parent->Ir.m1, &n->parent->Ir.mL);
    n->parent->Ir.a++;
    cachesim_I1_doref(n2->instr_addr, n2->instr_len, 
-                     &n2->parent->Ir.m1, &n2->parent->Ir.m2);
+                     &n2->parent->Ir.m1, &n2->parent->Ir.mL);
    n2->parent->Ir.a++;
    cachesim_I1_doref(n3->instr_addr, n3->instr_len, 
-                     &n3->parent->Ir.m1, &n3->parent->Ir.m2);
+                     &n3->parent->Ir.m1, &n3->parent->Ir.mL);
    n3->parent->Ir.a++;
 }
 
@@ -341,11 +371,11 @@ void log_1I_1Dr_cache_access(InstrInfo* n, Addr data_addr, Word data_size)
    //            "                               daddr=0x%010lx,  dsize=%lu\n",
    //            n, n->instr_addr, n->instr_len, data_addr, data_size);
    cachesim_I1_doref(n->instr_addr, n->instr_len, 
-                     &n->parent->Ir.m1, &n->parent->Ir.m2);
+                     &n->parent->Ir.m1, &n->parent->Ir.mL);
    n->parent->Ir.a++;
 
    cachesim_D1_doref(data_addr, data_size, 
-                     &n->parent->Dr.m1, &n->parent->Dr.m2);
+                     &n->parent->Dr.m1, &n->parent->Dr.mL);
    n->parent->Dr.a++;
 }
 
@@ -356,11 +386,11 @@ void log_1I_1Dw_cache_access(InstrInfo* n, Addr data_addr, Word data_size)
    //            "                               daddr=0x%010lx,  dsize=%lu\n",
    //            n, n->instr_addr, n->instr_len, data_addr, data_size);
    cachesim_I1_doref(n->instr_addr, n->instr_len, 
-                     &n->parent->Ir.m1, &n->parent->Ir.m2);
+                     &n->parent->Ir.m1, &n->parent->Ir.mL);
    n->parent->Ir.a++;
 
    cachesim_D1_doref(data_addr, data_size, 
-                     &n->parent->Dw.m1, &n->parent->Dw.m2);
+                     &n->parent->Dw.m1, &n->parent->Dw.mL);
    n->parent->Dw.a++;
 }
 
@@ -370,7 +400,7 @@ void log_0I_1Dr_cache_access(InstrInfo* n, Addr data_addr, Word data_size)
    //VG_(printf)("0I_1Dr:  CCaddr=0x%010lx,  daddr=0x%010lx,  dsize=%lu\n",
    //            n, data_addr, data_size);
    cachesim_D1_doref(data_addr, data_size, 
-                     &n->parent->Dr.m1, &n->parent->Dr.m2);
+                     &n->parent->Dr.m1, &n->parent->Dr.mL);
    n->parent->Dr.a++;
 }
 
@@ -380,7 +410,7 @@ void log_0I_1Dw_cache_access(InstrInfo* n, Addr data_addr, Word data_size)
    //VG_(printf)("0I_1Dw:  CCaddr=0x%010lx,  daddr=0x%010lx,  dsize=%lu\n",
    //            n, data_addr, data_size);
    cachesim_D1_doref(data_addr, data_size, 
-                     &n->parent->Dw.m1, &n->parent->Dw.m2);
+                     &n->parent->Dw.m1, &n->parent->Dw.mL);
    n->parent->Dw.a++;
 }
 
@@ -708,8 +738,13 @@ static void flushEvents ( CgState* cgs )
             else
             if (ev2 && ev3 && ev2->tag == Ev_Ir && ev3->tag == Ev_Ir)
             {
+               if (clo_cache_sim) {
                helperName = "log_3I_0D_cache_access";
                helperAddr = &log_3I_0D_cache_access;
+               } else {
+                  helperName = "log_3I";
+                  helperAddr = &log_3I;
+               }
                argv = mkIRExprVec_3( i_node_expr, 
                                      mkIRExpr_HWord( (HWord)ev2->inode ), 
                                      mkIRExpr_HWord( (HWord)ev3->inode ) );
@@ -719,8 +754,13 @@ static void flushEvents ( CgState* cgs )
             /* Merge an Ir with one following Ir. */
             else
             if (ev2 && ev2->tag == Ev_Ir) {
+               if (clo_cache_sim) {
                helperName = "log_2I_0D_cache_access";
                helperAddr = &log_2I_0D_cache_access;
+               } else {
+                  helperName = "log_2I";
+                  helperAddr = &log_2I;
+               }
                argv = mkIRExprVec_2( i_node_expr,
                                      mkIRExpr_HWord( (HWord)ev2->inode ) );
                regparms = 2;
@@ -728,8 +768,13 @@ static void flushEvents ( CgState* cgs )
             }
             /* No merging possible; emit as-is. */
             else {
+               if (clo_cache_sim) {
                helperName = "log_1I_0D_cache_access";
                helperAddr = &log_1I_0D_cache_access;
+               } else {
+                  helperName = "log_1I";
+                  helperAddr = &log_1I;
+               }
                argv = mkIRExprVec_1( i_node_expr );
                regparms = 1;
                i++;
@@ -807,7 +852,7 @@ void addEvent_Dr ( CgState* cgs, InstrInfo* inode, Int datasize, IRAtom* ea )
 {
    Event* evt;
    tl_assert(isIRAtom(ea));
-   tl_assert(datasize >= 1 && datasize <= MIN_LINE_SIZE);
+   tl_assert(datasize >= 1 && datasize <= min_line_size);
    if (!clo_cache_sim)
       return;
    if (cgs->events_used == N_EVENTS)
@@ -829,7 +874,7 @@ void addEvent_Dw ( CgState* cgs, InstrInfo* inode, Int datasize, IRAtom* ea )
    Event* evt;
 
    tl_assert(isIRAtom(ea));
-   tl_assert(datasize >= 1 && datasize <= MIN_LINE_SIZE);
+   tl_assert(datasize >= 1 && datasize <= min_line_size);
 
    if (!clo_cache_sim)
       return;
@@ -1019,8 +1064,8 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
                // instructions will be done inaccurately, but they're
                // very rare and this avoids errors from hitting more
                // than two cache lines in the simulation.
-               if (dataSize > MIN_LINE_SIZE)
-                  dataSize = MIN_LINE_SIZE;
+               if (dataSize > min_line_size)
+                  dataSize = min_line_size;
                if (d->mFx == Ifx_Read || d->mFx == Ifx_Modify)
                   addEvent_Dr( &cgs, curr_inode, dataSize, d->mAddr );
                if (d->mFx == Ifx_Write || d->mFx == Ifx_Modify)
@@ -1046,8 +1091,8 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
             if (cas->dataHi != NULL)
                dataSize *= 2; /* since it's a doubleword-CAS */
             /* I don't think this can ever happen, but play safe. */
-            if (dataSize > MIN_LINE_SIZE)
-               dataSize = MIN_LINE_SIZE;
+            if (dataSize > min_line_size)
+               dataSize = min_line_size;
             addEvent_Dr( &cgs, curr_inode, dataSize, cas->addr );
             addEvent_Dw( &cgs, curr_inode, dataSize, cas->addr );
             break;
@@ -1070,6 +1115,11 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
          }
 
          case Ist_Exit: {
+            // call branch predictor only if this is a branch in guest code
+            if ( (st->Ist.Exit.jk == Ijk_Boring) ||
+                 (st->Ist.Exit.jk == Ijk_Call) ||
+                 (st->Ist.Exit.jk == Ijk_Ret) )
+            {
             /* Stuff to widen the guard expression to a host word, so
                we can pass it to the branch predictor simulation
                functions easily. */
@@ -1123,6 +1173,7 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
                ));
             /* And post the event. */
             addEvent_Bc( &cgs, curr_inode, IRExpr_RdTmp(guard) );
+            }
 
             /* We may never reach the next statement, so need to flush
                all outstanding transactions now. */
@@ -1147,7 +1198,7 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
    /* Deal with branches to unknown destinations.  Except ignore ones
       which are function returns as we assume the return stack
       predictor never mispredicts. */
-   if (sbIn->jumpkind == Ijk_Boring) {
+   if ((sbIn->jumpkind == Ijk_Boring) || (sbIn->jumpkind == Ijk_Call)) {
       if (0) { ppIRExpr( sbIn->next ); VG_(printf)("\n"); }
       switch (sbIn->next->tag) {
          case Iex_Const: 
@@ -1189,86 +1240,7 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
 
 static cache_t clo_I1_cache = UNDEFINED_CACHE;
 static cache_t clo_D1_cache = UNDEFINED_CACHE;
-static cache_t clo_L2_cache = UNDEFINED_CACHE;
-
-/* Checks cache config is ok;  makes it so if not. */
-static 
-void check_cache(cache_t* cache, Char *name)
-{
-   /* Simulator requires line size and set count to be powers of two */
-   if (( cache->size % (cache->line_size * cache->assoc) != 0) ||
-       (-1 == VG_(log2)(cache->size/cache->line_size/cache->assoc))) {
-      VG_(umsg)("error: %s set count not a power of two; aborting.\n", name);
-      VG_(exit)(1);
-   }
-
-   if (-1 == VG_(log2)(cache->line_size)) {
-      VG_(umsg)("error: %s line size of %dB not a power of two; aborting.\n",
-                name, cache->line_size);
-      VG_(exit)(1);
-   }
-
-   // Then check line size >= 16 -- any smaller and a single instruction could
-   // straddle three cache lines, which breaks a simulation assertion and is
-   // stupid anyway.
-   if (cache->line_size < MIN_LINE_SIZE) {
-      VG_(umsg)("error: %s line size of %dB too small; aborting.\n", 
-                name, cache->line_size);
-      VG_(exit)(1);
-   }
-
-   /* Then check cache size > line size (causes seg faults if not). */
-   if (cache->size <= cache->line_size) {
-      VG_(umsg)("error: %s cache size of %dB <= line size of %dB; aborting.\n",
-                name, cache->size, cache->line_size);
-      VG_(exit)(1);
-   }
-
-   /* Then check assoc <= (size / line size) (seg faults otherwise). */
-   if (cache->assoc > (cache->size / cache->line_size)) {
-      VG_(umsg)("warning: %s associativity > (size / line size); aborting.\n",
-                name);
-      VG_(exit)(1);
-   }
-}
-
-static 
-void configure_caches(cache_t* I1c, cache_t* D1c, cache_t* L2c)
-{
-#define DEFINED(L)   (-1 != L.size  || -1 != L.assoc || -1 != L.line_size)
-
-   Int n_clos = 0;
-
-   // Count how many were defined on the command line.
-   if (DEFINED(clo_I1_cache)) { n_clos++; }
-   if (DEFINED(clo_D1_cache)) { n_clos++; }
-   if (DEFINED(clo_L2_cache)) { n_clos++; }
-
-   // Set the cache config (using auto-detection, if supported by the
-   // architecture)
-   VG_(configure_caches)( I1c, D1c, L2c, (3 == n_clos) );
-
-   // Then replace with any defined on the command line.
-   if (DEFINED(clo_I1_cache)) { *I1c = clo_I1_cache; }
-   if (DEFINED(clo_D1_cache)) { *D1c = clo_D1_cache; }
-   if (DEFINED(clo_L2_cache)) { *L2c = clo_L2_cache; }
-
-   // Then check values and fix if not acceptable.
-   check_cache(I1c, "I1");
-   check_cache(D1c, "D1");
-   check_cache(L2c, "L2");
-
-   if (VG_(clo_verbosity) >= 2) {
-      VG_(umsg)("Cache configuration used:\n");
-      VG_(umsg)("  I1: %dB, %d-way, %dB lines\n",
-                I1c->size, I1c->assoc, I1c->line_size);
-      VG_(umsg)("  D1: %dB, %d-way, %dB lines\n",
-                D1c->size, D1c->assoc, D1c->line_size);
-      VG_(umsg)("  L2: %dB, %d-way, %dB lines\n",
-                L2c->size, L2c->assoc, L2c->line_size);
-   }
-#undef CMD_LINE_DEFINED
-}
+static cache_t clo_LL_cache = UNDEFINED_CACHE;
 
 /*------------------------------------------------------------*/
 /*--- cg_fini() and related function                       ---*/
@@ -1312,12 +1284,12 @@ static void fprint_CC_table_and_calc_totals(void)
       VG_(free)(cachegrind_out_file);
    }
 
-   // "desc:" lines (giving I1/D1/L2 cache configuration).  The spaces after
+   // "desc:" lines (giving I1/D1/LL cache configuration).  The spaces after
    // the 2nd colon makes cg_annotate's output look nicer.
    VG_(sprintf)(buf, "desc: I1 cache:         %s\n"
                      "desc: D1 cache:         %s\n"
-                     "desc: L2 cache:         %s\n",
-                     I1.desc_line, D1.desc_line, L2.desc_line);
+                     "desc: LL cache:         %s\n",
+                     I1.desc_line, D1.desc_line, LL.desc_line);
    VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
 
    // "cmd:" line
@@ -1337,19 +1309,20 @@ static void fprint_CC_table_and_calc_totals(void)
    }
    // "events:" line
    if (clo_cache_sim && clo_branch_sim) {
-      VG_(sprintf)(buf, "\nevents: Ir I1mr I2mr Dr D1mr D2mr Dw D1mw D2mw "
+      VG_(sprintf)(buf, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
                                   "Bc Bcm Bi Bim\n");
    }
    else if (clo_cache_sim && !clo_branch_sim) {
-      VG_(sprintf)(buf, "\nevents: Ir I1mr I2mr Dr D1mr D2mr Dw D1mw D2mw "
+      VG_(sprintf)(buf, "\nevents: Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw "
                                   "\n");
    }
    else if (!clo_cache_sim && clo_branch_sim) {
       VG_(sprintf)(buf, "\nevents: Ir "
                                   "Bc Bcm Bi Bim\n");
    }
-   else
-      tl_assert(0); /* can't happen */
+   else {
+      VG_(sprintf)(buf, "\nevents: Ir\n");
+   }
 
    VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
 
@@ -1387,9 +1360,9 @@ static void fprint_CC_table_and_calc_totals(void)
                              " %llu %llu %llu"
                              " %llu %llu %llu %llu\n",
                             lineCC->loc.line,
-                            lineCC->Ir.a, lineCC->Ir.m1, lineCC->Ir.m2, 
-                            lineCC->Dr.a, lineCC->Dr.m1, lineCC->Dr.m2,
-                            lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.m2,
+                            lineCC->Ir.a, lineCC->Ir.m1, lineCC->Ir.mL, 
+                            lineCC->Dr.a, lineCC->Dr.m1, lineCC->Dr.mL,
+                            lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.mL,
                             lineCC->Bc.b, lineCC->Bc.mp, 
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
@@ -1398,9 +1371,9 @@ static void fprint_CC_table_and_calc_totals(void)
                              " %llu %llu %llu"
                              " %llu %llu %llu\n",
                             lineCC->loc.line,
-                            lineCC->Ir.a, lineCC->Ir.m1, lineCC->Ir.m2, 
-                            lineCC->Dr.a, lineCC->Dr.m1, lineCC->Dr.m2,
-                            lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.m2);
+                            lineCC->Ir.a, lineCC->Ir.m1, lineCC->Ir.mL, 
+                            lineCC->Dr.a, lineCC->Dr.m1, lineCC->Dr.mL,
+                            lineCC->Dw.a, lineCC->Dw.m1, lineCC->Dw.mL);
       }
       else if (!clo_cache_sim && clo_branch_sim) {
          VG_(sprintf)(buf, "%u %llu"
@@ -1410,21 +1383,24 @@ static void fprint_CC_table_and_calc_totals(void)
                             lineCC->Bc.b, lineCC->Bc.mp, 
                             lineCC->Bi.b, lineCC->Bi.mp);
       }
-      else
-         tl_assert(0);
+      else {
+         VG_(sprintf)(buf, "%u %llu\n",
+                            lineCC->loc.line,
+                            lineCC->Ir.a);
+      }
 
       VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
 
       // Update summary stats
       Ir_total.a  += lineCC->Ir.a;
       Ir_total.m1 += lineCC->Ir.m1;
-      Ir_total.m2 += lineCC->Ir.m2;
+      Ir_total.mL += lineCC->Ir.mL;
       Dr_total.a  += lineCC->Dr.a;
       Dr_total.m1 += lineCC->Dr.m1;
-      Dr_total.m2 += lineCC->Dr.m2;
+      Dr_total.mL += lineCC->Dr.mL;
       Dw_total.a  += lineCC->Dw.a;
       Dw_total.m1 += lineCC->Dw.m1;
-      Dw_total.m2 += lineCC->Dw.m2;
+      Dw_total.mL += lineCC->Dw.mL;
       Bc_total.b  += lineCC->Bc.b;
       Bc_total.mp += lineCC->Bc.mp;
       Bi_total.b  += lineCC->Bi.b;
@@ -1441,9 +1417,9 @@ static void fprint_CC_table_and_calc_totals(void)
                         " %llu %llu %llu"
                         " %llu %llu %llu"
                         " %llu %llu %llu %llu\n", 
-                        Ir_total.a, Ir_total.m1, Ir_total.m2,
-                        Dr_total.a, Dr_total.m1, Dr_total.m2,
-                        Dw_total.a, Dw_total.m1, Dw_total.m2,
+                        Ir_total.a, Ir_total.m1, Ir_total.mL,
+                        Dr_total.a, Dr_total.m1, Dr_total.mL,
+                        Dw_total.a, Dw_total.m1, Dw_total.mL,
                         Bc_total.b, Bc_total.mp, 
                         Bi_total.b, Bi_total.mp);
    }
@@ -1452,9 +1428,9 @@ static void fprint_CC_table_and_calc_totals(void)
                         " %llu %llu %llu"
                         " %llu %llu %llu"
                         " %llu %llu %llu\n",
-                        Ir_total.a, Ir_total.m1, Ir_total.m2,
-                        Dr_total.a, Dr_total.m1, Dr_total.m2,
-                        Dw_total.a, Dw_total.m1, Dw_total.m2);
+                        Ir_total.a, Ir_total.m1, Ir_total.mL,
+                        Dr_total.a, Dr_total.m1, Dr_total.mL,
+                        Dw_total.a, Dw_total.m1, Dw_total.mL);
    }
    else if (!clo_cache_sim && clo_branch_sim) {
       VG_(sprintf)(buf, "summary:"
@@ -1464,8 +1440,11 @@ static void fprint_CC_table_and_calc_totals(void)
                         Bc_total.b, Bc_total.mp, 
                         Bi_total.b, Bi_total.mp);
    }
-   else
-      tl_assert(0);
+   else {
+      VG_(sprintf)(buf, "summary:"
+                        " %llu\n", 
+                        Ir_total.a);
+   }
 
    VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
    VG_(close)(fd);
@@ -1488,13 +1467,9 @@ static void cg_fini(Int exitcode)
 
    CacheCC  D_total;
    BranchCC B_total;
-   ULong L2_total_m, L2_total_mr, L2_total_mw,
-         L2_total, L2_total_r, L2_total_w;
+   ULong LL_total_m, LL_total_mr, LL_total_mw,
+         LL_total, LL_total_r, LL_total_w;
    Int l1, l2, l3;
-
-   /* Running with both cache and branch simulation disabled is not
-      allowed (checked during command line option processing). */
-   tl_assert(clo_cache_sim || clo_branch_sim);
 
    fprint_CC_table_and_calc_totals();
 
@@ -1520,21 +1495,21 @@ static void cg_fini(Int exitcode)
       miss numbers */
    if (clo_cache_sim) {
       VG_(umsg)(fmt, "I1  misses:   ", Ir_total.m1);
-      VG_(umsg)(fmt, "L2i misses:   ", Ir_total.m2);
+      VG_(umsg)(fmt, "LLi misses:   ", Ir_total.mL);
 
       if (0 == Ir_total.a) Ir_total.a = 1;
       VG_(percentify)(Ir_total.m1, Ir_total.a, 2, l1+1, buf1);
       VG_(umsg)("I1  miss rate: %s\n", buf1);
 
-      VG_(percentify)(Ir_total.m2, Ir_total.a, 2, l1+1, buf1);
-      VG_(umsg)("L2i miss rate: %s\n", buf1);
+      VG_(percentify)(Ir_total.mL, Ir_total.a, 2, l1+1, buf1);
+      VG_(umsg)("LLi miss rate: %s\n", buf1);
       VG_(umsg)("\n");
 
       /* D cache results.  Use the D_refs.rd and D_refs.wr values to
        * determine the width of columns 2 & 3. */
       D_total.a  = Dr_total.a  + Dw_total.a;
       D_total.m1 = Dr_total.m1 + Dw_total.m1;
-      D_total.m2 = Dr_total.m2 + Dw_total.m2;
+      D_total.mL = Dr_total.mL + Dw_total.mL;
 
       /* Make format string, getting width right for numbers */
       VG_(sprintf)(fmt, "%%s %%,%dllu  (%%,%dllu rd   + %%,%dllu wr)\n",
@@ -1544,8 +1519,8 @@ static void cg_fini(Int exitcode)
                      D_total.a, Dr_total.a, Dw_total.a);
       VG_(umsg)(fmt, "D1  misses:   ",
                      D_total.m1, Dr_total.m1, Dw_total.m1);
-      VG_(umsg)(fmt, "L2d misses:   ",
-                     D_total.m2, Dr_total.m2, Dw_total.m2);
+      VG_(umsg)(fmt, "LLd misses:   ",
+                     D_total.mL, Dr_total.mL, Dw_total.mL);
 
       if (0 == D_total.a)  D_total.a = 1;
       if (0 == Dr_total.a) Dr_total.a = 1;
@@ -1555,30 +1530,30 @@ static void cg_fini(Int exitcode)
       VG_(percentify)(Dw_total.m1, Dw_total.a, 1, l3+1, buf3);
       VG_(umsg)("D1  miss rate: %s (%s     + %s  )\n", buf1, buf2,buf3);
 
-      VG_(percentify)( D_total.m2,  D_total.a, 1, l1+1, buf1);
-      VG_(percentify)(Dr_total.m2, Dr_total.a, 1, l2+1, buf2);
-      VG_(percentify)(Dw_total.m2, Dw_total.a, 1, l3+1, buf3);
-      VG_(umsg)("L2d miss rate: %s (%s     + %s  )\n", buf1, buf2,buf3);
+      VG_(percentify)( D_total.mL,  D_total.a, 1, l1+1, buf1);
+      VG_(percentify)(Dr_total.mL, Dr_total.a, 1, l2+1, buf2);
+      VG_(percentify)(Dw_total.mL, Dw_total.a, 1, l3+1, buf3);
+      VG_(umsg)("LLd miss rate: %s (%s     + %s  )\n", buf1, buf2,buf3);
       VG_(umsg)("\n");
 
-      /* L2 overall results */
+      /* LL overall results */
 
-      L2_total   = Dr_total.m1 + Dw_total.m1 + Ir_total.m1;
-      L2_total_r = Dr_total.m1 + Ir_total.m1;
-      L2_total_w = Dw_total.m1;
-      VG_(umsg)(fmt, "L2 refs:      ",
-                     L2_total, L2_total_r, L2_total_w);
+      LL_total   = Dr_total.m1 + Dw_total.m1 + Ir_total.m1;
+      LL_total_r = Dr_total.m1 + Ir_total.m1;
+      LL_total_w = Dw_total.m1;
+      VG_(umsg)(fmt, "LL refs:      ",
+                     LL_total, LL_total_r, LL_total_w);
 
-      L2_total_m  = Dr_total.m2 + Dw_total.m2 + Ir_total.m2;
-      L2_total_mr = Dr_total.m2 + Ir_total.m2;
-      L2_total_mw = Dw_total.m2;
-      VG_(umsg)(fmt, "L2 misses:    ",
-                     L2_total_m, L2_total_mr, L2_total_mw);
+      LL_total_m  = Dr_total.mL + Dw_total.mL + Ir_total.mL;
+      LL_total_mr = Dr_total.mL + Ir_total.mL;
+      LL_total_mw = Dw_total.mL;
+      VG_(umsg)(fmt, "LL misses:    ",
+                     LL_total_m, LL_total_mr, LL_total_mw);
 
-      VG_(percentify)(L2_total_m,  (Ir_total.a + D_total.a),  1, l1+1, buf1);
-      VG_(percentify)(L2_total_mr, (Ir_total.a + Dr_total.a), 1, l2+1, buf2);
-      VG_(percentify)(L2_total_mw, Dw_total.a,                1, l3+1, buf3);
-      VG_(umsg)("L2 miss rate:  %s (%s     + %s  )\n", buf1, buf2,buf3);
+      VG_(percentify)(LL_total_m,  (Ir_total.a + D_total.a),  1, l1+1, buf1);
+      VG_(percentify)(LL_total_mr, (Ir_total.a + Dr_total.a), 1, l2+1, buf2);
+      VG_(percentify)(LL_total_mw, Dw_total.a,                1, l3+1, buf3);
+      VG_(umsg)("LL miss rate:  %s (%s     + %s  )\n", buf1, buf2,buf3);
    }
 
    /* If branch profiling is enabled, show branch overall results. */
@@ -1671,45 +1646,12 @@ void cg_discard_superblock_info ( Addr64 orig_addr64, VexGuestExtents vge )
 /*--- Command line processing                                      ---*/
 /*--------------------------------------------------------------------*/
 
-static void parse_cache_opt ( cache_t* cache, Char* opt )
-{
-   Long i1, i2, i3;
-   Char* endptr;
-
-   // Option argument looks like "65536,2,64".  Extract them.
-   i1 = VG_(strtoll10)(opt,      &endptr); if (*endptr != ',')  goto bad;
-   i2 = VG_(strtoll10)(endptr+1, &endptr); if (*endptr != ',')  goto bad;
-   i3 = VG_(strtoll10)(endptr+1, &endptr); if (*endptr != '\0') goto bad;
-
-   // Check for overflow.
-   cache->size      = (Int)i1;
-   cache->assoc     = (Int)i2;
-   cache->line_size = (Int)i3;
-   if (cache->size      != i1) goto overflow;
-   if (cache->assoc     != i2) goto overflow;
-   if (cache->line_size != i3) goto overflow;
-
-   return;
-
-  overflow:
-   VG_(umsg)("one of the cache parameters was too large and overflowed\n");
-  bad:
-   // XXX: this omits the "--I1/D1/L2=" part from the message, but that's
-   // not a big deal.
-   VG_(err_bad_option)(opt);
-}
-
 static Bool cg_process_cmd_line_option(Char* arg)
 {
-   Char* tmp_str;
-
-   // 5 is length of "--I1="
-   if      VG_STR_CLO(arg, "--I1", tmp_str)
-      parse_cache_opt(&clo_I1_cache, tmp_str);
-   else if VG_STR_CLO(arg, "--D1", tmp_str)
-      parse_cache_opt(&clo_D1_cache, tmp_str);
-   else if VG_STR_CLO(arg, "--L2", tmp_str)
-      parse_cache_opt(&clo_L2_cache, tmp_str);
+   if (VG_(str_clo_cache_opt)(arg,
+                              &clo_I1_cache,
+                              &clo_D1_cache,
+                              &clo_LL_cache)) {}
 
    else if VG_STR_CLO( arg, "--cachegrind-out-file", clo_cachegrind_out_file) {}
    else if VG_BOOL_CLO(arg, "--cache-sim",  clo_cache_sim)  {}
@@ -1722,10 +1664,8 @@ static Bool cg_process_cmd_line_option(Char* arg)
 
 static void cg_print_usage(void)
 {
+   VG_(print_cache_clo_opts)();
    VG_(printf)(
-"    --I1=<size>,<assoc>,<line_size>  set I1 cache manually\n"
-"    --D1=<size>,<assoc>,<line_size>  set D1 cache manually\n"
-"    --L2=<size>,<assoc>,<line_size>  set L2 cache manually\n"
 "    --cache-sim=yes|no  [yes]        collect cache stats?\n"
 "    --branch-sim=yes|no [no]         collect branch prediction stats?\n"
 "    --cachegrind-out-file=<file>     output file name [cachegrind.out.%%p]\n"
@@ -1751,10 +1691,12 @@ static void cg_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a cache and branch-prediction profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2009, and GNU GPL'd, by Nicholas Nethercote et al.");
+      "Copyright (C) 2002-2012, and GNU GPL'd, by Nicholas Nethercote et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 500 );
 
+   VG_(clo_vex_control).iropt_register_updates
+      = VexRegUpdSpAtMemAccess; // overridable by the user.
    VG_(basic_tool_funcs)          (cg_post_clo_init,
                                    cg_instrument,
                                    cg_fini);
@@ -1767,15 +1709,7 @@ static void cg_pre_clo_init(void)
 
 static void cg_post_clo_init(void)
 {
-   cache_t I1c, D1c, L2c; 
-
-   /* Can't disable both cache and branch profiling */
-   if ((!clo_cache_sim) && (!clo_branch_sim)) {
-      VG_(umsg)("ERROR: --cache-sim=no --branch-sim=no is not allowed.\n");
-      VG_(umsg)("You must select cache profiling, "
-                "or branch profiling, or both.\n");
-      VG_(exit)(2);
-   }
+   cache_t I1c, D1c, LLc; 
 
    CC_table =
       VG_(OSetGen_Create)(offsetof(LineCC, loc),
@@ -1793,11 +1727,34 @@ static void cg_post_clo_init(void)
                           VG_(malloc), "cg.main.cpci.3",
                           VG_(free));
 
-   configure_caches(&I1c, &D1c, &L2c);
+   VG_(post_clo_init_configure_caches)(&I1c, &D1c, &LLc,
+                                       &clo_I1_cache,
+                                       &clo_D1_cache,
+                                       &clo_LL_cache);
+
+   // min_line_size is used to make sure that we never feed
+   // accesses to the simulator straddling more than two
+   // cache lines at any cache level
+   min_line_size = (I1c.line_size < D1c.line_size) ? I1c.line_size : D1c.line_size;
+   min_line_size = (LLc.line_size < min_line_size) ? LLc.line_size : min_line_size;
+
+   Int largest_load_or_store_size
+      = VG_(machine_get_size_of_largest_guest_register)();
+   if (min_line_size < largest_load_or_store_size) {
+      /* We can't continue, because the cache simulation might
+         straddle more than 2 lines, and it will assert.  So let's
+         just stop before we start. */
+      VG_(umsg)("Cachegrind: cannot continue: the minimum line size (%d)\n",
+                (Int)min_line_size);
+      VG_(umsg)("  must be equal to or larger than the maximum register size (%d)\n",
+                largest_load_or_store_size );
+      VG_(umsg)("  but it is not.  Exiting now.\n");
+      VG_(exit)(1);
+   }
 
    cachesim_I1_initcache(I1c);
    cachesim_D1_initcache(D1c);
-   cachesim_L2_initcache(L2c);
+   cachesim_LL_initcache(LLc);
 }
 
 VG_DETERMINE_INTERFACE_VERSION(cg_pre_clo_init)

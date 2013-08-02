@@ -20,6 +20,8 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE /* FOR O_LARGEFILE */
 
+#include "../my_libc.h"
+
 #include "dtrace-output.h"
 #include "decls-output.h"
 #include "kvasir_main.h"
@@ -28,10 +30,9 @@
 #include "dyncomp_main.h"
 #include "dyncomp_runtime.h"
 
-#include "../my_libc.h"
-
 #include "mc_include.h"
 #include "pub_tool_threadstate.h"
+#include "pub_tool_libcprint.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) < (b) ? (a) : (b))
@@ -67,12 +68,14 @@ static const char* TYPE_FORMAT_STRINGS[] = {
   "%hd",                           // D_SHORT,
   "%u",                            // D_UNSIGNED_INT,
   "%d",                            // D_INT,
+  "%lu",                           // D_UNSIGNED_LONG,
+  "%ld",                           // D_LONG,
   "%llu",                          // D_UNSIGNED_LONG_LONG_INT,
   "%lld",                          // D_LONG_LONG_INT,
 
   "%.9g",                          // D_FLOAT,
-  "%.17g",                        // D_DOUBLE,
-  "%.17g",                        // D_LONG_DOUBLE,
+  "%.17g",                         // D_DOUBLE,
+  "%.17g",                         // D_LONG_DOUBLE,
 
   "%d",                            // D_ENUMERATION,
   "%d - ERROR - D_STRUCT",         // D_STRUCT,  // currently unused
@@ -169,7 +172,7 @@ static void printOneDtraceString(char* str)
       readable = addressIsInitialized((Addr)str, sizeof(char));
 
       if (!readable) {
-	VG_(printf)("  Error!  Ran into unreadable character!\n");
+	printf("  Error!  Ran into unreadable character!\n");
 	break;
       }
     }
@@ -178,7 +181,7 @@ static void printOneDtraceString(char* str)
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
-    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (string)\n",
+    DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (string)\n",
 		    (void *)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
@@ -228,7 +231,7 @@ static void printOneDtraceStringAsIntArray(char* str) {
 
       readable = addressIsInitialized((Addr)str, sizeof(char));
       if (!readable) {
-	VG_(printf)("  Error!  Ran into unreadable character!\n");
+	printf("  Error!  Ran into unreadable character!\n");
 	break;
       }
     }
@@ -237,7 +240,7 @@ static void printOneDtraceStringAsIntArray(char* str) {
   // We know the length of the string so merge the tags
   // for that many contiguous bytes in memory
   if (kvasir_with_dyncomp) {
-    DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (string as int)\n",
+    DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (string as int)\n",
 		    (void *)strHead, len);
     val_uf_union_tags_in_range(strHead, len);
   }
@@ -251,11 +254,11 @@ static int checkStringReadable(char *str) {
   for (;;) {
     int readable = addressIsInitialized((Addr)p, sizeof(char));
     if (!readable) {
-      DPRINTF("String contains unreadable byte %d (%p)\n", p - str, p);
+      DPRINTF("String contains unreadable byte %zd (%p)\n", p - str, p);
       return 0;
     }
     else if (!*p) {
-      DPRINTF("All %d string characters are readable (%p)\n", p - str, p);
+      DPRINTF("All %zd string characters are readable (%p)\n", p - str, p);
       return 1;
     }
     p++;
@@ -296,6 +299,12 @@ switch (decType) \
  case D_INT: \
  case D_ENUMERATION: \
    OPERATION(int) \
+   break; \
+ case D_UNSIGNED_LONG: \
+   OPERATION(unsigned long) \
+   break; \
+ case D_LONG: \
+   OPERATION(long) \
    break; \
  case D_UNSIGNED_LONG_LONG_INT: \
    OPERATION(unsigned long long int) \
@@ -409,15 +418,14 @@ static char printDtraceSingleVar(VariableEntry* var,
     // TODO: What about a pointer to a static array?
     //       var->isStaticArray says that the base variable is a
     //       static array after all dereferences are done.
-    DTRACE_PRINTF("%u\n%d\n",
-		  IS_STATIC_ARRAY_VAR(var) ? (UInt)pValueGuest
-		  : (UInt)(*((Addr*)pValue)),
+    DTRACE_PRINTF("%p\n%d\n",
+		  IS_STATIC_ARRAY_VAR(var) ? (void *)pValueGuest : (void *)(*(Addr *)pValue),
 		  mapInitToModbit(1));
 
     // Since we observed all of these bytes as one value, we will
     // merge all of their tags in memory
     if (kvasir_with_dyncomp) {
-      DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (pointer)\n",
+      DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zd) (pointer)\n",
 		      (void *)pValue, sizeof(void*));
       val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
     }
@@ -450,23 +458,21 @@ static char printDtraceSingleVar(VariableEntry* var,
   // Base (non-hashcode) struct or union type
   // Simply print out its hashcode location
   else if (IS_AGGREGATE_TYPE(var->varType)) {
-    DTRACE_PRINTF("%u\n%d\n",
-		  ((UInt)pValue),
+    DTRACE_PRINTF("%p\n%d\n",
+		  ((void *)pValue),
 		  mapInitToModbit(1));
   }
   // Base type
   else {
     DeclaredType decType = var->varType->decType;
-
+#if defined(VGA_x86)
     // override float as double when printing
     // out function return variables because
     // return variables stored in registers are always doubles
-    char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
-
-    if (overrideFloatAsDouble && (decType == D_FLOAT)) {
+    if ((varOrigin == FUNCTION_RETURN_VAR) && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
     }
-
+#endif
     return printDtraceSingleBaseValue(pValue,
 				      decType,
 				      overrideIsInit,
@@ -506,7 +512,7 @@ static char printDtraceSequence(VariableEntry* var,
   DPRINTF("pValueArray: %p - pValueArrayGuest: %p\nnumElts: %d\n", (void *)pValueArray, (void *)pValueArrayGuest, numElts);
 
 /*   if(numElts > 10) { */
-/*     VG_(printf)("%s - numElts: %d\n", var->name, numElts); */
+/*     printf("%s - numElts: %d\n", var->name, numElts); */
 /*   } */
 
   if (pFirstInitElt) {
@@ -591,9 +597,9 @@ static char printDtraceSequence(VariableEntry* var,
             firstInitEltFound = 1;
           }
 
-          DTRACE_PRINTF("%u ", IS_STATIC_ARRAY_VAR(var) ?
-                        (UInt)pCurValueGuest :
-                        (UInt)(*((Addr*)pCurValue)));
+          DTRACE_PRINTF("%p ", IS_STATIC_ARRAY_VAR(var) ?
+                        (void *)pCurValueGuest :
+		                (void *)(*(Addr *)pCurValue));
 
           // Merge the tags of the 4-bytes of the observed pointer as
           // well as the tags of the first initialized address and the
@@ -602,6 +608,8 @@ static char printDtraceSequence(VariableEntry* var,
           // TODO: This may cause unnecessarily large comparability
           // sets - watch out!
           if (kvasir_with_dyncomp && firstInitElt) {
+            DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zd) (sequence)\n",
+		            (void *)pCurValue, sizeof(void*));
             val_uf_union_tags_in_range((Addr)pCurValue, sizeof(void*));
             val_uf_union_tags_at_addr((Addr)firstInitElt, (Addr)pCurValue);
           }
@@ -638,7 +646,7 @@ static char printDtraceSequence(VariableEntry* var,
 
     for (ind = 0; ind < limit; ind++) {
       Addr pCurValueGuest = pValueArray[ind];
-      DTRACE_PRINTF("%u ", (UInt)pCurValueGuest);
+      DTRACE_PRINTF("%p ", (void *)pCurValueGuest);
     }
 
     DTRACE_PRINTF( "]\n%d\n",
@@ -647,16 +655,14 @@ static char printDtraceSequence(VariableEntry* var,
   // Base type
   else {
     DeclaredType decType = var->varType->decType;
-
+#if defined(VGA_x86)
     // override float as double when printing
     // out function return variables because
     // return variables stored in registers are always doubles
-    char overrideFloatAsDouble = (varOrigin == FUNCTION_RETURN_VAR);
-
-    if (overrideFloatAsDouble && (decType == D_FLOAT)) {
+    if ((varOrigin == FUNCTION_RETURN_VAR) && (decType == D_FLOAT)) {
       decType = D_DOUBLE;
     }
-
+#endif
     printDtraceBaseValueSequence(decType,
                                  pValueArray,
                                  numElts,
@@ -714,7 +720,7 @@ char printDtraceSingleBaseValue(Addr pValue,
       TYPES_SWITCH(DTRACE_PRINT_ONE_VAR)
 
       if (kvasir_with_dyncomp) {
-        DYNCOMP_DPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (single base)\n",
+        DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (single base)\n",
                         (void *)pValue, DecTypeByteSizes[decType]);
         val_uf_union_tags_in_range((Addr)pValue, DecTypeByteSizes[decType]);
       }
@@ -802,8 +808,9 @@ void printDtraceBaseValueSequence(DeclaredType decType,
       }
       else {
 	if(i == 0) { // RUDD DEBUGGING: Print the first elmenet for debugging
-	  DPRINTF("First element is:\n");
+	  DPRINTF("First element is: ");
 	  TYPES_SWITCH(DEBUG_ONE_VAR_SEQUENCE)
+	  DPRINTF("\n");
 	}
 
 
@@ -811,6 +818,8 @@ void printDtraceBaseValueSequence(DeclaredType decType,
 
         // Merge the tags of all bytes read for this element:
         if (kvasir_with_dyncomp) {
+          DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %d) (base sequence)\n",
+                    (void *)pCurValue, DecTypeByteSizes[decType]);
           val_uf_union_tags_in_range((Addr)pCurValue, DecTypeByteSizes[decType]);
         }
       }
@@ -1025,6 +1034,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
   // Lines 2 & 3: Value and modbit
   if (isSequence) {
+    DPRINTF("Sequence\n");
     variableHasBeenObserved =
       printDtraceSequence(var,
                           pValueArray,

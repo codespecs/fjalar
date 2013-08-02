@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,8 +30,13 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
+#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_libcassert.h"
+#include "pub_tool_inner.h"
+#if defined(ENABLE_INNER_CLIENT_REQUEST)
+#include "helgrind/helgrind.h"
+#endif
 
 /*------------------------------------------------------------*/
 /*--- Data structures.                                     ---*/
@@ -39,11 +44,26 @@
 
 ThreadId VG_(running_tid) = VG_INVALID_THREADID;
 
-ThreadState VG_(threads)[VG_N_THREADS];
+ThreadState VG_(threads)[VG_N_THREADS] __attribute__((aligned(16)));
 
 /*------------------------------------------------------------*/
 /*--- Operations.                                          ---*/
 /*------------------------------------------------------------*/
+
+void VG_(init_Threads)(void)
+{
+   ThreadId tid;
+
+   for (tid = 1; tid < VG_N_THREADS; tid++) {
+      INNER_REQUEST(
+         ANNOTATE_BENIGN_RACE_SIZED(&VG_(threads)[tid].status,
+                                    sizeof(VG_(threads)[tid].status), ""));
+      INNER_REQUEST(
+         ANNOTATE_BENIGN_RACE_SIZED(&VG_(threads)[tid].os_state.exitcode,
+                                    sizeof(VG_(threads)[tid].os_state.exitcode),
+                                    ""));
+   }
+}
 
 const HChar* VG_(name_of_ThreadStatus) ( ThreadStatus status )
 {

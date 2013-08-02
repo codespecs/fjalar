@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2009 OpenWorks LLP
+   Copyright (C) 2007-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -233,8 +233,6 @@ Bool VG_(lookupXA_UNSAFE) ( XArray* xao, void* key,
    void* midv;
    struct _XArray* xa = (struct _XArray*)xao;
    vg_assert(xa);
-   vg_assert(first);
-   vg_assert(last);
    lo = 0;
    hi = xa->usedsizeE-1;
    while (True) {
@@ -248,13 +246,20 @@ Bool VG_(lookupXA_UNSAFE) ( XArray* xao, void* key,
       /* Found it, at mid.  See how far we can expand this. */
       vg_assert(cmpFn( key, VG_(indexXA)(xa, lo) ) >= 0);
       vg_assert(cmpFn( key, VG_(indexXA)(xa, hi) ) <= 0);
-      *first = *last = mid;
+      if (first) {
+         *first = mid;
       while (*first > 0 
-             && 0 == cmpFn( key, VG_(indexXA)(xa, (*first)-1)))
+                && 0 == cmpFn( key, VG_(indexXA)(xa, (*first)-1))) {
          (*first)--;
+         }
+      }
+      if (last) {
+         *last = mid;
       while (*last < xa->usedsizeE-1
-             && 0 == cmpFn( key, VG_(indexXA)(xa, (*last)+1)))
+                && 0 == cmpFn( key, VG_(indexXA)(xa, (*last)+1))) {
          (*last)++;
+         }
+      }
       return True;
    }
 }
@@ -306,6 +311,30 @@ void VG_(dropHeadXA) ( XArray* xao, Word n )
    xa->usedsizeE -= n;
 }
 
+void VG_(removeIndexXA)( XArray* xao, Word n )
+{
+   struct _XArray* xa = (struct _XArray*)xao;
+   vg_assert(xa);
+   vg_assert(n >= 0);
+   vg_assert(n < xa->usedsizeE);
+   if (n+1 < xa->usedsizeE) {
+      VG_(memmove)( ((char*)xa->arr) + (n+0) * xa->elemSzB,
+                    ((char*)xa->arr) + (n+1) * xa->elemSzB,
+                    (xa->usedsizeE - n - 1) * xa->elemSzB );
+   }
+   xa->usedsizeE--;
+}
+
+void VG_(getContentsXA_UNSAFE)( XArray* xao,
+                                /*OUT*/void** ctsP,
+                                /*OUT*/Word* usedP )
+{
+   struct _XArray* xa = (struct _XArray*)xao;
+   vg_assert(xa);
+   *ctsP  = (void*)xa->arr;
+   *usedP = xa->usedsizeE;
+}
+
 /* --------- Printeffery --------- */
 
 static void add_char_to_XA ( HChar c, void* opaque )
@@ -315,15 +344,6 @@ static void add_char_to_XA ( HChar c, void* opaque )
 }
 
 void VG_(xaprintf)( XArray* dst, const HChar* format, ... )
-{
-   va_list vargs;
-   va_start(vargs, format);
-   VG_(vcbprintf)( add_char_to_XA, (void*)dst, format, vargs );
-   va_end(vargs);
-}
-
-/* and again .. */
-void VG_(xaprintf_no_f_c)( XArray* dst, const HChar* format, ... )
 {
    va_list vargs;
    va_start(vargs, format);

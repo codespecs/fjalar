@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,8 +29,11 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
+#include "my_libc.h"
+
 #include "pub_tool_basics.h"
 #include "pub_tool_execontext.h"
+#include "pub_tool_poolalloc.h"
 #include "pub_tool_hashtable.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
@@ -62,84 +65,143 @@ static ULong cmalloc_bs_mallocd = 0;
 /*--- Tracking malloc'd and free'd blocks                  ---*/
 /*------------------------------------------------------------*/
 
+SizeT MC_(Malloc_Redzone_SzB) = -10000000; // If used before set, should BOMB
+
 /* Record malloc'd blocks. */
 VgHashTable MC_(malloc_list) = NULL;
 
-/* Memory pools. */
+/* Memory pools: a hash table of MC_Mempools.  Search key is
+   MC_Mempool::pool. */
 VgHashTable MC_(mempool_list) = NULL;
    
+/* Pool allocator for MC_Chunk. */   
+PoolAlloc *MC_(chunk_poolalloc) = NULL;
+static
+MC_Chunk* create_MC_Chunk ( ExeContext* ec, Addr p, SizeT szB,
+                            MC_AllocKind kind);
+static inline
+void delete_MC_Chunk (MC_Chunk* mc);
+
 /* Records blocks after freeing. */
-static MC_Chunk* freed_list_start  = NULL;
-static MC_Chunk* freed_list_end    = NULL;
+/* Blocks freed by the client are queued in one of two lists of
+   freed blocks not yet physically freed:
+   "big blocks" freed list.
+   "small blocks" freed list
+   The blocks with a size >= MC_(clo_freelist_big_blocks)
+   are linked in the big blocks freed list.
+   This allows a client to allocate and free big blocks
+   (e.g. bigger than VG_(clo_freelist_vol)) without losing
+   immediately all protection against dangling pointers.
+   position [0] is for big blocks, [1] is for small blocks. */
+static MC_Chunk* freed_list_start[2]  = {NULL, NULL};
+static MC_Chunk* freed_list_end[2]    = {NULL, NULL};
 
 /* Put a shadow chunk on the freed blocks queue, possibly freeing up
    some of the oldest blocks in the queue at the same time. */
 static void add_to_freed_queue ( MC_Chunk* mc )
 {
    const Bool show = False;
+   const int l = (mc->szB >= MC_(clo_freelist_big_blocks) ? 0 : 1);
 
-   /* Put it at the end of the freed list */
-   if (freed_list_end == NULL) {
-      tl_assert(freed_list_start == NULL);
-      freed_list_end    = freed_list_start = mc;
-      VG_(free_queue_volume) = (Long)mc->szB;
+   /* Put it at the end of the freed list, unless the block
+      would be directly released any way : in this case, we
+      put it at the head of the freed list. */
+   if (freed_list_end[l] == NULL) {
+      tl_assert(freed_list_start[l] == NULL);
+      mc->next = NULL;
+      freed_list_end[l]    = freed_list_start[l] = mc;
    } else {
-      tl_assert(freed_list_end->next == NULL);
-      freed_list_end->next = mc;
-      freed_list_end       = mc;
+      tl_assert(freed_list_end[l]->next == NULL);
+      if (mc->szB >= MC_(clo_freelist_vol)) {
+         mc->next = freed_list_start[l];
+         freed_list_start[l] = mc;
+      } else {
+         mc->next = NULL;
+         freed_list_end[l]->next = mc;
+         freed_list_end[l]       = mc;
+      }
+   }
       VG_(free_queue_volume) += (Long)mc->szB;
       if (show)
-         VG_(printf)("mc_freelist: acquire: volume now %lld\n", 
+         printf("mc_freelist: acquire: volume now %lld\n", 
                      VG_(free_queue_volume));
-   }
    VG_(free_queue_length)++;
-   mc->next = NULL;
+}
 
-   /* Release enough of the oldest blocks to bring the free queue
-      volume below vg_clo_freelist_vol. */
+/* Release enough of the oldest blocks to bring the free queue
+   volume below vg_clo_freelist_vol. 
+   Start with big block list first.
+   On entry, VG_(free_queue_volume) must be > MC_(clo_freelist_vol).
+   On exit, VG_(free_queue_volume) will be <= MC_(clo_freelist_vol). */
+static void release_oldest_block(void)
+{
+   const Bool show = False;
+   int i;
+   tl_assert (VG_(free_queue_volume) > MC_(clo_freelist_vol));
+   tl_assert (freed_list_start[0] != NULL || freed_list_start[1] != NULL);
 
-   while (VG_(free_queue_volume) > MC_(clo_freelist_vol)) {
+   for (i = 0; i < 2; i++) {
+      while (VG_(free_queue_volume) > MC_(clo_freelist_vol)
+             && freed_list_start[i] != NULL) {
       MC_Chunk* mc1;
 
-      tl_assert(freed_list_start != NULL);
-      tl_assert(freed_list_end != NULL);
+         tl_assert(freed_list_end[i] != NULL);
 
-      mc1 = freed_list_start;
+         mc1 = freed_list_start[i];
       VG_(free_queue_volume) -= (Long)mc1->szB;
       VG_(free_queue_length)--;
       if (show)
-         VG_(printf)("mc_freelist: discard: volume now %lld\n", 
+         printf("mc_freelist: discard: volume now %lld\n", 
                      VG_(free_queue_volume));
       tl_assert(VG_(free_queue_volume) >= 0);
 
-      if (freed_list_start == freed_list_end) {
-         freed_list_start = freed_list_end = NULL;
+         if (freed_list_start[i] == freed_list_end[i]) {
+            freed_list_start[i] = freed_list_end[i] = NULL;
       } else {
-         freed_list_start = mc1->next;
+            freed_list_start[i] = mc1->next;
       }
       mc1->next = NULL; /* just paranoia */
 
       /* free MC_Chunk */
+         if (MC_AllocCustom != mc1->allockind)
       VG_(cli_free) ( (void*)(mc1->data) );
-      VG_(free) ( mc1 );
+         delete_MC_Chunk ( mc1 );
+      }
    }
 }
 
-MC_Chunk* MC_(get_freed_list_head)(void)
+MC_Chunk* MC_(get_freed_block_bracketting) (Addr a)
 {
-   return freed_list_start;
+   int i;
+   for (i = 0; i < 2; i++) {
+      MC_Chunk*  mc;
+      mc = freed_list_start[i];
+      while (mc) {
+         if (VG_(addr_is_in_block)( a, mc->data, mc->szB,
+                                    MC_(Malloc_Redzone_SzB) ))
+            return mc;
+         mc = mc->next;
+      }
+   }
+   return NULL;
 }
 
-/* Allocate its shadow chunk, put it on the appropriate list. */
+/* Allocate a shadow chunk, put it on the appropriate list.
+   If needed, release oldest blocks from freed list. */
 static
 MC_Chunk* create_MC_Chunk ( ExeContext* ec, Addr p, SizeT szB,
                             MC_AllocKind kind)
 {
-   MC_Chunk* mc  = VG_(malloc)("mc.cMC.1 (a MC_Chunk)", sizeof(MC_Chunk));
+   MC_Chunk* mc  = VG_(allocEltPA)(MC_(chunk_poolalloc));
    mc->data      = p;
    mc->szB       = szB;
    mc->allockind = kind;
    mc->where     = ec;
+
+   /* Each time a new MC_Chunk is created, release oldest blocks
+      if the free list volume is exceeded. */
+   if (VG_(free_queue_volume) > MC_(clo_freelist_vol))
+      release_oldest_block();
 
    /* Paranoia ... ensure the MC_Chunk is off-limits to the client, so
       the mc->data field isn't visible to the leak checker.  If memory
@@ -149,6 +211,12 @@ MC_Chunk* create_MC_Chunk ( ExeContext* ec, Addr p, SizeT szB,
       VG_(tool_panic)("create_MC_Chunk: shadow area is accessible");
    } 
    return mc;
+}
+
+static inline
+void delete_MC_Chunk (MC_Chunk* mc)
+{
+   VG_(freeEltPA) (MC_(chunk_poolalloc), mc);
 }
 
 /*------------------------------------------------------------*/
@@ -189,8 +257,6 @@ void* MC_(new_block) ( ThreadId tid,
 {
    ExeContext* ec;
 
-   cmalloc_n_mallocs ++;
-
    // Allocate and zero if necessary
    if (p) {
       tl_assert(MC_AllocCustom == kind);
@@ -209,7 +275,8 @@ void* MC_(new_block) ( ThreadId tid,
       }
    }
 
-   // Only update this stat if allocation succeeded.
+   // Only update stats if allocation succeeded.
+   cmalloc_n_mallocs ++;
    cmalloc_bs_mallocd += (ULong)szB;
 
    ec = VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
@@ -281,7 +348,9 @@ void* MC_(calloc) ( ThreadId tid, SizeT nmemb, SizeT size1 )
 static
 void die_and_free_mem ( ThreadId tid, MC_Chunk* mc, SizeT rzB )
 {
-   if (MC_(clo_free_fill) != -1) {
+   /* Note: we do not free fill the custom allocs produced
+      by MEMPOOL or by MALLOC/FREELIKE_BLOCK requests. */
+   if (MC_(clo_free_fill) != -1 && MC_AllocCustom != mc->allockind ) {
       tl_assert(MC_(clo_free_fill) >= 0x00 && MC_(clo_free_fill) <= 0xFF);
       VG_(memset)((void*)mc->data, MC_(clo_free_fill), mc->szB);
    }
@@ -290,14 +359,14 @@ void die_and_free_mem ( ThreadId tid, MC_Chunk* mc, SizeT rzB )
       accessible with a client request... */
    MC_(make_mem_noaccess)( mc->data-rzB, mc->szB + 2*rzB );
 
-   /* Put it out of harm's way for a while, if not from a client request */
-   if (MC_AllocCustom != mc->allockind) {
       /* Record where freed */
       mc->where = VG_(record_ExeContext) ( tid, 0/*first_ip_delta*/ );
+   /* Put it out of harm's way for a while */
       add_to_freed_queue ( mc );
-   } else {
-      VG_(free) ( mc );
-   }
+   /* If the free list volume is bigger than MC_(clo_freelist_vol),
+      we wait till the next block allocation to release blocks.
+      This increase the chance to discover dangling pointer usage,
+      even for big blocks being freed by the client. */
 }
 
 void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
@@ -322,19 +391,19 @@ void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
 void MC_(free) ( ThreadId tid, void* p )
 {
    MC_(handle_free)( 
-      tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocMalloc );
+      tid, (Addr)p, MC_(Malloc_Redzone_SzB), MC_AllocMalloc );
 }
 
 void MC_(__builtin_delete) ( ThreadId tid, void* p )
 {
    MC_(handle_free)(
-      tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocNew);
+      tid, (Addr)p, MC_(Malloc_Redzone_SzB), MC_AllocNew);
 }
 
 void MC_(__builtin_vec_delete) ( ThreadId tid, void* p )
 {
    MC_(handle_free)(
-      tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocNewVec);
+      tid, (Addr)p, MC_(Malloc_Redzone_SzB), MC_AllocNewVec);
 }
 
 void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
@@ -343,12 +412,12 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
    void*     p_new;
    SizeT     old_szB;
 
+   if (complain_about_silly_args(new_szB, "realloc")) 
+      return NULL;
+
    cmalloc_n_frees ++;
    cmalloc_n_mallocs ++;
    cmalloc_bs_mallocd += (ULong)new_szB;
-
-   if (complain_about_silly_args(new_szB, "realloc")) 
-      return NULL;
 
    /* Remove the old block */
    mc = VG_(HT_remove) ( MC_(malloc_list), (UWord)p_old );
@@ -389,10 +458,10 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          tl_assert(ec);
 
          /* Retained part is copied, red zones set as normal */
-         MC_(make_mem_noaccess)( a_new-MC_MALLOC_REDZONE_SZB, 
-                                 MC_MALLOC_REDZONE_SZB );
+         MC_(make_mem_noaccess)( a_new-MC_(Malloc_Redzone_SzB), 
+                                 MC_(Malloc_Redzone_SzB) );
          MC_(copy_address_range_state) ( (Addr)p_old, a_new, new_szB );
-         MC_(make_mem_noaccess)        ( a_new+new_szB, MC_MALLOC_REDZONE_SZB );
+         MC_(make_mem_noaccess)        ( a_new+new_szB, MC_(Malloc_Redzone_SzB));
 
          /* Copy from old to new */
          VG_(memcpy)((void*)a_new, p_old, new_szB);
@@ -407,7 +476,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          /* Nb: we have to allocate a new MC_Chunk for the new memory rather
             than recycling the old one, so that any erroneous accesses to the
             old memory are reported. */
-         die_and_free_mem ( tid, mc, MC_MALLOC_REDZONE_SZB );
+         die_and_free_mem ( tid, mc, MC_(Malloc_Redzone_SzB) );
 
          // Allocate a new chunk.
          mc = create_MC_Chunk( ec, a_new, new_szB, MC_AllocMalloc );
@@ -432,12 +501,12 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          tl_assert(VG_(is_plausible_ECU)(ecu));
 
          /* First half kept and copied, second half new, red zones as normal */
-         MC_(make_mem_noaccess)( a_new-MC_MALLOC_REDZONE_SZB, 
-                                 MC_MALLOC_REDZONE_SZB );
+         MC_(make_mem_noaccess)( a_new-MC_(Malloc_Redzone_SzB), 
+                                 MC_(Malloc_Redzone_SzB) );
          MC_(copy_address_range_state) ( (Addr)p_old, a_new, mc->szB );
          MC_(make_mem_undefined_w_otag)( a_new+mc->szB, new_szB-mc->szB,
                                                         ecu | MC_OKIND_HEAP );
-         MC_(make_mem_noaccess)        ( a_new+new_szB, MC_MALLOC_REDZONE_SZB );
+         MC_(make_mem_noaccess)        ( a_new+new_szB, MC_(Malloc_Redzone_SzB) );
 
          /* Possibly fill new area with specified junk */
          if (MC_(clo_malloc_fill) != -1) {
@@ -460,7 +529,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          /* Nb: we have to allocate a new MC_Chunk for the new memory rather
             than recycling the old one, so that any erroneous accesses to the
             old memory are reported. */
-         die_and_free_mem ( tid, mc, MC_MALLOC_REDZONE_SZB );
+         die_and_free_mem ( tid, mc, MC_(Malloc_Redzone_SzB) );
 
          // Allocate a new chunk.
          mc = create_MC_Chunk( ec, a_new, new_szB, MC_AllocMalloc );
@@ -488,8 +557,48 @@ SizeT MC_(malloc_usable_size) ( ThreadId tid, void* p )
    return ( mc ? mc->szB : 0 );
 }
 
+/* This handles the in place resize of a block, as performed by the
+   VALGRIND_RESIZEINPLACE_BLOCK client request.  It is unrelated to,
+   and not used for, handling of the normal libc realloc()
+   function. */
+void MC_(handle_resizeInPlace)(ThreadId tid, Addr p,
+                               SizeT oldSizeB, SizeT newSizeB, SizeT rzB)
+{
+   MC_Chunk* mc = VG_(HT_lookup) ( MC_(malloc_list), (UWord)p );
+   if (!mc || mc->szB != oldSizeB || newSizeB == 0) {
+      /* Reject if: p is not found, or oldSizeB is wrong,
+         or new block would be empty. */
+      MC_(record_free_error) ( tid, p );
+      return;
+   }
 
-/* Memory pool stuff. */
+   if (oldSizeB == newSizeB)
+      return;
+
+   mc->szB = newSizeB;
+   if (newSizeB < oldSizeB) {
+      MC_(make_mem_noaccess)( p + newSizeB, oldSizeB - newSizeB + rzB );
+   } else {
+      ExeContext* ec  = VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
+      UInt        ecu = VG_(get_ECU_from_ExeContext)(ec);
+      MC_(make_mem_undefined_w_otag)( p + oldSizeB, newSizeB - oldSizeB,
+                                      ecu | MC_OKIND_HEAP );
+      if (rzB > 0)
+         MC_(make_mem_noaccess)( p + newSizeB, rzB );
+   }
+}
+
+
+/*------------------------------------------------------------*/
+/*--- Memory pool stuff.                                   ---*/
+/*------------------------------------------------------------*/
+
+/* Set to 1 for intensive sanity checking.  Is very expensive though
+   and should not be used in production scenarios.  See #255966. */
+#define MP_DETAILED_SANITY_CHECKS 0
+
+static void check_mempool_sane(MC_Mempool* mp); /*forward*/
+
 
 void MC_(create_mempool)(Addr pool, UInt rzB, Bool is_zeroed)
 {
@@ -512,6 +621,7 @@ void MC_(create_mempool)(Addr pool, UInt rzB, Bool is_zeroed)
    mp->rzB        = rzB;
    mp->is_zeroed  = is_zeroed;
    mp->chunks     = VG_(HT_construct)( "MC_(create_mempool)" );
+   check_mempool_sane(mp);
 
    /* Paranoia ... ensure this area is off-limits to the client, so
       the mp->data field isn't visible to the leak checker.  If memory
@@ -543,6 +653,7 @@ void MC_(destroy_mempool)(Addr pool)
       MC_(record_illegal_mempool_error) ( tid, pool );
       return;
    }
+   check_mempool_sane(mp);
 
    // Clean up the chunks, one by one
    VG_(HT_ResetIter)(mp->chunks);
@@ -552,7 +663,7 @@ void MC_(destroy_mempool)(Addr pool)
       MC_(make_mem_noaccess)(mc->data-mp->rzB, mc->szB + 2*mp->rzB );
    }
    // Destroy the chunk table
-   VG_(HT_destruct)(mp->chunks);
+   VG_(HT_destruct)(mp->chunks, (void (*)(void *))delete_MC_Chunk);
 
    VG_(free)(mp);
 }
@@ -657,10 +768,18 @@ void MC_(mempool_alloc)(ThreadId tid, Addr pool, Addr addr, SizeT szB)
    if (mp == NULL) {
       MC_(record_illegal_mempool_error) ( tid, pool );
    } else {
-      check_mempool_sane(mp);
+      if (MP_DETAILED_SANITY_CHECKS) check_mempool_sane(mp);
       MC_(new_block)(tid, addr, szB, /*ignored*/0, mp->is_zeroed,
                      MC_AllocCustom, mp->chunks);
-      check_mempool_sane(mp);
+      if (mp->rzB > 0) {
+         // This is not needed if the user application has properly
+         // marked the superblock noaccess when defining the mempool.
+         // We however still mark the redzones noaccess to still catch
+         // some bugs if user forgot.
+         MC_(make_mem_noaccess) ( addr - mp->rzB, mp->rzB);
+         MC_(make_mem_noaccess) ( addr + szB, mp->rzB);
+      }
+      if (MP_DETAILED_SANITY_CHECKS) check_mempool_sane(mp);
    }
 }
 
@@ -681,7 +800,7 @@ void MC_(mempool_free)(Addr pool, Addr addr)
       VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
    }
 
-   check_mempool_sane(mp);
+   if (MP_DETAILED_SANITY_CHECKS) check_mempool_sane(mp);
    mc = VG_(HT_remove)(mp->chunks, (UWord)addr);
    if (mc == NULL) {
       MC_(record_free_error)(tid, (Addr)addr);
@@ -695,7 +814,7 @@ void MC_(mempool_free)(Addr pool, Addr addr)
    }
 
    die_and_free_mem ( tid, mc, mp->rzB );
-   check_mempool_sane(mp);
+   if (MP_DETAILED_SANITY_CHECKS) check_mempool_sane(mp);
 }
 
 
@@ -754,7 +873,7 @@ void MC_(mempool_trim)(Addr pool, Addr addr, SizeT szB)
          if (VG_(HT_remove)(mp->chunks, (UWord)mc->data) == NULL) {
             MC_(record_free_error)(tid, (Addr)mc->data);
             VG_(free)(chunks);
-            check_mempool_sane(mp);
+            if (MP_DETAILED_SANITY_CHECKS) check_mempool_sane(mp);
             return;
          }
          die_and_free_mem ( tid, mc, mp->rzB );  
@@ -769,7 +888,7 @@ void MC_(mempool_trim)(Addr pool, Addr addr, SizeT szB)
          if (VG_(HT_remove)(mp->chunks, (UWord)mc->data) == NULL) {
             MC_(record_free_error)(tid, (Addr)mc->data);
             VG_(free)(chunks);
-            check_mempool_sane(mp);
+            if (MP_DETAILED_SANITY_CHECKS) check_mempool_sane(mp);
             return;
          }
 
@@ -912,6 +1031,12 @@ void MC_(print_malloc_stats) ( void )
       cmalloc_n_frees, cmalloc_bs_mallocd
    );
 }
+
+SizeT MC_(get_cmalloc_n_frees) ( void )
+{
+   return cmalloc_n_frees;
+}
+
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

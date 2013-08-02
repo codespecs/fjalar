@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,7 +47,7 @@
 #include "pub_core_debuginfo.h"  // Needed for pub_core_redir.h
 #include "pub_core_redir.h"      // For VG_NOTIFY_ON_LOAD
 
-#if defined(VGO_linux) || defined(VGO_aix5)
+#if defined(VGO_linux)
 
 /* ---------------------------------------------------------------------
    Hook for running __libc_freeres once the program exits.
@@ -56,16 +56,15 @@
 void VG_NOTIFY_ON_LOAD(freeres)( void );
 void VG_NOTIFY_ON_LOAD(freeres)( void )
 {
-   int res;
-#if !defined(__UCLIBC__) && !defined(VGO_aix5)
+#  if !defined(__UCLIBC__) \
+   && !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
    extern void __libc_freeres(void);
    __libc_freeres();
-#endif
-   VALGRIND_DO_CLIENT_REQUEST(res, 0 /* default */,
-                              VG_USERREQ__LIBC_FREERES_DONE, 
+#  endif
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__LIBC_FREERES_DONE, 
                               0, 0, 0, 0, 0);
    /*NOTREACHED*/
-   *(int *)0 = 'x';
+   *(volatile int *)0 = 'x';
 }
 
 /* ---------------------------------------------------------------------
@@ -77,7 +76,6 @@ void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
 {
     OrigFn fn;
     Addr result = 0;
-    int res;
 
     /* Call the original indirect function and get it's result */
     VALGRIND_GET_ORIG_FN(fn);
@@ -87,8 +85,7 @@ void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
        code which runs on the emulated CPU) to update the redirection that
        led to this function. This client request eventually gives control to
        the function VG_(redir_add_ifunc_target) in m_redir.c  */
-    VALGRIND_DO_CLIENT_REQUEST(res, 0,
-                               VG_USERREQ__ADD_IFUNC_TARGET,
+    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__ADD_IFUNC_TARGET,
                                fn.nraddr, result, 0, 0, 0);
     return (void*)result;
 }
@@ -151,17 +148,18 @@ static void vg_cleanup_env(void)
    Darwin arc4random (rdar://6166275)
    ------------------------------------------------------------------ */
 
-#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 int VG_REPLACE_FUNCTION_ZU(libSystemZdZaZddylib, arc4random)(void);
 int VG_REPLACE_FUNCTION_ZU(libSystemZdZaZddylib, arc4random)(void)
 {
-    static FILE *rnd = 0;
+    static int rnd = -1;
     int result;
 
-    if (!rnd) rnd = fopen("/dev/random", "r");
+    if (rnd < 0) rnd = open("/dev/random", O_RDONLY);
     
-    fread(&result, sizeof(result), 1, rnd);
+    read(rnd, &result, sizeof(result));
     return result;
 }
 

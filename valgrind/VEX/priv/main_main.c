@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (main_main.c) is                              ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                       main_main.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -45,12 +34,14 @@
 */
 
 #include "libvex.h"
-#include "libvex_emwarn.h"
+#include "libvex_emnote.h"
 #include "libvex_guest_x86.h"
 #include "libvex_guest_amd64.h"
 #include "libvex_guest_arm.h"
 #include "libvex_guest_ppc32.h"
 #include "libvex_guest_ppc64.h"
+#include "libvex_guest_s390x.h"
+#include "libvex_guest_mips32.h"
 
 #include "main_globals.h"
 #include "main_util.h"
@@ -61,12 +52,18 @@
 #include "host_amd64_defs.h"
 #include "host_ppc_defs.h"
 #include "host_arm_defs.h"
+#include "host_s390_defs.h"
+#include "host_mips_defs.h"
 
 #include "guest_generic_bb_to_IR.h"
 #include "guest_x86_defs.h"
 #include "guest_amd64_defs.h"
 #include "guest_arm_defs.h"
 #include "guest_ppc_defs.h"
+#include "guest_s390_defs.h"
+#include "guest_mips_defs.h"
+
+#include "host_generic_simd128.h"
 
 
 /* This file contains the top level interface to the library. */
@@ -85,10 +82,11 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
 {
    vcon->iropt_verbosity            = 0;
    vcon->iropt_level                = 2;
-   vcon->iropt_precise_memory_exns  = False;
+   vcon->iropt_register_updates     = VexRegUpdUnwindregsAtMemAccess;
    vcon->iropt_unroll_thresh        = 120;
    vcon->guest_max_insns            = 60;
    vcon->guest_chase_thresh         = 10;
+   vcon->guest_chase_cond           = False;
 }
 
 
@@ -128,6 +126,8 @@ void LibVEX_Init (
    vassert(vcon->guest_max_insns <= 100);
    vassert(vcon->guest_chase_thresh >= 0);
    vassert(vcon->guest_chase_thresh < vcon->guest_max_insns);
+   vassert(vcon->guest_chase_cond == True 
+           || vcon->guest_chase_cond == False);
 
    /* Check that Vex has been built with sizes of basic types as
       stated in priv/libvex_basictypes.h.  Failure of any of these is
@@ -149,6 +149,8 @@ void LibVEX_Init (
    vassert(4 == sizeof(Addr32));
    vassert(8 == sizeof(Addr64));
    vassert(16 == sizeof(U128));
+   vassert(16 == sizeof(V128));
+   vassert(32 == sizeof(U256));
 
    vassert(sizeof(void*) == 4 || sizeof(void*) == 8);
    vassert(sizeof(void*) == sizeof(int*));
@@ -156,6 +158,17 @@ void LibVEX_Init (
 
    vassert(VEX_HOST_WORDSIZE == sizeof(void*));
    vassert(VEX_HOST_WORDSIZE == sizeof(HWord));
+
+   /* These take a lot of space, so make sure we don't have
+      any unnoticed size regressions. */
+   if (VEX_HOST_WORDSIZE == 4) {
+      vassert(sizeof(IRExpr) == 16);
+      vassert(sizeof(IRStmt) == 20 /* x86 */
+              || sizeof(IRStmt) == 24 /* arm */);
+   } else {
+      vassert(sizeof(IRExpr) == 32);
+      vassert(sizeof(IRStmt) == 32);
+   }
 
    /* Really start up .. */
    vex_debuglevel         = debuglevel;
@@ -185,10 +198,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    HInstr*      (*directReload) ( HInstr*, HReg, Short );
    void         (*ppInstr)      ( HInstr*, Bool );
    void         (*ppReg)        ( HReg );
-   HInstrArray* (*iselSB)       ( IRSB*, VexArch, VexArchInfo*, 
-                                                  VexAbiInfo* );
-   Int          (*emit)         ( UChar*, Int, HInstr*, Bool, void* );
-   IRExpr*      (*specHelper)   ( HChar*, IRExpr** );
+   HInstrArray* (*iselSB)       ( IRSB*, VexArch, VexArchInfo*, VexAbiInfo*,
+                                  Int, Int, Bool, Bool, Addr64 );
+   Int          (*emit)         ( /*MB_MOD*/Bool*,
+                                  UChar*, Int, HInstr*, Bool,
+                                  void*, void*, void*, void* );
+   IRExpr*      (*specHelper)   ( HChar*, IRExpr**, IRStmt**, Int );
    Bool         (*preciseMemExnsFn) ( Int, Int );
 
    DisOneInstrFn disInstrFn;
@@ -199,11 +214,13 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    HInstrArray*    vcode;
    HInstrArray*    rcode;
    Int             i, j, k, out_used, guest_sizeB;
-   Int             offB_TISTART, offB_TILEN;
-   UChar           insn_bytes[32];
+   Int             offB_TISTART, offB_TILEN, offB_GUEST_IP, szB_GUEST_IP;
+   Int             offB_HOST_EvC_COUNTER, offB_HOST_EvC_FAILADDR;
+   UChar           insn_bytes[64];
    IRType          guest_word_type;
    IRType          host_word_type;
-   Bool            mode64;
+   Bool            mode64, chainingAllowed;
+   Addr64          max_ga;
 
    guest_layout           = NULL;
    available_real_regs    = NULL;
@@ -225,11 +242,28 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    host_word_type         = Ity_INVALID;
    offB_TISTART           = 0;
    offB_TILEN             = 0;
+   offB_GUEST_IP          = 0;
+   szB_GUEST_IP           = 0;
+   offB_HOST_EvC_COUNTER  = 0;
+   offB_HOST_EvC_FAILADDR = 0;
    mode64                 = False;
+   chainingAllowed        = False;
 
    vex_traceflags = vta->traceflags;
 
    vassert(vex_initdone);
+   vassert(vta->needs_self_check  != NULL);
+   vassert(vta->disp_cp_xassisted != NULL);
+   /* Both the chainers and the indir are either NULL or non-NULL. */
+   if (vta->disp_cp_chain_me_to_slowEP        != NULL) {
+      vassert(vta->disp_cp_chain_me_to_fastEP != NULL);
+      vassert(vta->disp_cp_xindir             != NULL);
+      chainingAllowed = True;
+   } else {
+      vassert(vta->disp_cp_chain_me_to_fastEP == NULL);
+      vassert(vta->disp_cp_xindir             == NULL);
+   }
+
    vexSetAllocModeTEMP_and_clear();
    vexAllocSanityCheck();
 
@@ -254,11 +288,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          ppInstr      = (void(*)(HInstr*, Bool)) ppX86Instr;
          ppReg        = (void(*)(HReg)) ppHRegX86;
          iselSB       = iselSB_X86;
-         emit         = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_X86Instr;
+         emit         = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*))
+                        emit_X86Instr;
          host_is_bigendian = False;
          host_word_type    = Ity_I32;
          vassert(are_valid_hwcaps(VexArchX86, vta->archinfo_host.hwcaps));
-         vassert(vta->dispatch != NULL); /* jump-to-dispatcher scheme */
          break;
 
       case VexArchAMD64:
@@ -276,11 +311,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          ppInstr     = (void(*)(HInstr*, Bool)) ppAMD64Instr;
          ppReg       = (void(*)(HReg)) ppHRegAMD64;
          iselSB      = iselSB_AMD64;
-         emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_AMD64Instr;
+         emit        = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*))
+                       emit_AMD64Instr;
          host_is_bigendian = False;
          host_word_type    = Ity_I64;
          vassert(are_valid_hwcaps(VexArchAMD64, vta->archinfo_host.hwcaps));
-         vassert(vta->dispatch != NULL); /* jump-to-dispatcher scheme */
          break;
 
       case VexArchPPC32:
@@ -295,11 +331,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          ppInstr     = (void(*)(HInstr*,Bool)) ppPPCInstr;
          ppReg       = (void(*)(HReg)) ppHRegPPC;
          iselSB      = iselSB_PPC;
-         emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_PPCInstr;
+         emit        = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*))
+                       emit_PPCInstr;
          host_is_bigendian = True;
          host_word_type    = Ity_I32;
          vassert(are_valid_hwcaps(VexArchPPC32, vta->archinfo_host.hwcaps));
-         vassert(vta->dispatch == NULL); /* return-to-dispatcher scheme */
          break;
 
       case VexArchPPC64:
@@ -314,11 +351,31 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          ppInstr     = (void(*)(HInstr*, Bool)) ppPPCInstr;
          ppReg       = (void(*)(HReg)) ppHRegPPC;
          iselSB      = iselSB_PPC;
-         emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_PPCInstr;
+         emit        = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*))
+                       emit_PPCInstr;
          host_is_bigendian = True;
          host_word_type    = Ity_I64;
          vassert(are_valid_hwcaps(VexArchPPC64, vta->archinfo_host.hwcaps));
-         vassert(vta->dispatch == NULL); /* return-to-dispatcher scheme */
+         break;
+
+      case VexArchS390X:
+         mode64      = True;
+         getAllocableRegs_S390 ( &n_available_real_regs,
+                                 &available_real_regs, mode64 );
+         isMove      = (Bool(*)(HInstr*,HReg*,HReg*)) isMove_S390Instr;
+         getRegUsage = (void(*)(HRegUsage*,HInstr*, Bool)) getRegUsage_S390Instr;
+         mapRegs     = (void(*)(HRegRemap*,HInstr*, Bool)) mapRegs_S390Instr;
+         genSpill    = (void(*)(HInstr**,HInstr**,HReg,Int,Bool)) genSpill_S390;
+         genReload   = (void(*)(HInstr**,HInstr**,HReg,Int,Bool)) genReload_S390;
+         ppInstr     = (void(*)(HInstr*, Bool)) ppS390Instr;
+         ppReg       = (void(*)(HReg)) ppHRegS390;
+         iselSB      = iselSB_S390;
+         emit        = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*)) emit_S390Instr;
+         host_is_bigendian = True;
+         host_word_type    = Ity_I64;
+         vassert(are_valid_hwcaps(VexArchS390X, vta->archinfo_host.hwcaps));
          break;
 
       case VexArchARM:
@@ -333,11 +390,36 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          ppInstr     = (void(*)(HInstr*, Bool)) ppARMInstr;
          ppReg       = (void(*)(HReg)) ppHRegARM;
          iselSB      = iselSB_ARM;
-         emit        = (Int(*)(UChar*,Int,HInstr*,Bool,void*)) emit_ARMInstr;
+         emit        = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*))
+                       emit_ARMInstr;
          host_is_bigendian = False;
          host_word_type    = Ity_I32;
          vassert(are_valid_hwcaps(VexArchARM, vta->archinfo_host.hwcaps));
-         vassert(vta->dispatch == NULL); /* return-to-dispatcher scheme */
+         break;
+
+      case VexArchMIPS32:
+         mode64      = False;
+         getAllocableRegs_MIPS ( &n_available_real_regs,
+                                &available_real_regs, mode64 );
+         isMove      = (Bool(*)(HInstr*,HReg*,HReg*)) isMove_MIPSInstr;
+         getRegUsage = (void(*)(HRegUsage*,HInstr*, Bool)) getRegUsage_MIPSInstr;
+         mapRegs     = (void(*)(HRegRemap*,HInstr*, Bool)) mapRegs_MIPSInstr;
+         genSpill    = (void(*)(HInstr**,HInstr**,HReg,Int,Bool)) genSpill_MIPS;
+         genReload   = (void(*)(HInstr**,HInstr**,HReg,Int,Bool)) genReload_MIPS;
+         ppInstr     = (void(*)(HInstr*, Bool)) ppMIPSInstr;
+         ppReg       = (void(*)(HReg)) ppHRegMIPS;
+         iselSB      = iselSB_MIPS;
+         emit        = (Int(*)(Bool*,UChar*,Int,HInstr*,Bool,
+                               void*,void*,void*,void*))
+                       emit_MIPSInstr;
+#if defined(VKI_LITTLE_ENDIAN)
+         host_is_bigendian = False;
+#elif defined(VKI_BIG_ENDIAN)
+         host_is_bigendian = True;
+#endif
+         host_word_type    = Ity_I32;
+         vassert(are_valid_hwcaps(VexArchMIPS32, vta->archinfo_host.hwcaps));
          break;
 
       default:
@@ -356,6 +438,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          guest_layout     = &x86guest_layout;
          offB_TISTART     = offsetof(VexGuestX86State,guest_TISTART);
          offB_TILEN       = offsetof(VexGuestX86State,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestX86State,guest_EIP);
+         szB_GUEST_IP           = sizeof( ((VexGuestX86State*)0)->guest_EIP );
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestX86State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestX86State,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchX86, vta->archinfo_guest.hwcaps));
          vassert(0 == sizeof(VexGuestX86State) % 16);
          vassert(sizeof( ((VexGuestX86State*)0)->guest_TISTART) == 4);
@@ -372,6 +458,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          guest_layout     = &amd64guest_layout;
          offB_TISTART     = offsetof(VexGuestAMD64State,guest_TISTART);
          offB_TILEN       = offsetof(VexGuestAMD64State,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestAMD64State,guest_RIP);
+         szB_GUEST_IP           = sizeof( ((VexGuestAMD64State*)0)->guest_RIP );
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestAMD64State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestAMD64State,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchAMD64, vta->archinfo_guest.hwcaps));
          vassert(0 == sizeof(VexGuestAMD64State) % 16);
          vassert(sizeof( ((VexGuestAMD64State*)0)->guest_TISTART ) == 8);
@@ -388,6 +478,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          guest_layout     = &ppc32Guest_layout;
          offB_TISTART     = offsetof(VexGuestPPC32State,guest_TISTART);
          offB_TILEN       = offsetof(VexGuestPPC32State,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestPPC32State,guest_CIA);
+         szB_GUEST_IP           = sizeof( ((VexGuestPPC32State*)0)->guest_CIA );
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestPPC32State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestPPC32State,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchPPC32, vta->archinfo_guest.hwcaps));
          vassert(0 == sizeof(VexGuestPPC32State) % 16);
          vassert(sizeof( ((VexGuestPPC32State*)0)->guest_TISTART ) == 4);
@@ -404,12 +498,36 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          guest_layout     = &ppc64Guest_layout;
          offB_TISTART     = offsetof(VexGuestPPC64State,guest_TISTART);
          offB_TILEN       = offsetof(VexGuestPPC64State,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestPPC64State,guest_CIA);
+         szB_GUEST_IP           = sizeof( ((VexGuestPPC64State*)0)->guest_CIA );
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestPPC64State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestPPC64State,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchPPC64, vta->archinfo_guest.hwcaps));
          vassert(0 == sizeof(VexGuestPPC64State) % 16);
          vassert(sizeof( ((VexGuestPPC64State*)0)->guest_TISTART    ) == 8);
          vassert(sizeof( ((VexGuestPPC64State*)0)->guest_TILEN      ) == 8);
          vassert(sizeof( ((VexGuestPPC64State*)0)->guest_NRADDR     ) == 8);
          vassert(sizeof( ((VexGuestPPC64State*)0)->guest_NRADDR_GPR2) == 8);
+         break;
+
+      case VexArchS390X:
+         preciseMemExnsFn = guest_s390x_state_requires_precise_mem_exns;
+         disInstrFn       = disInstr_S390;
+         specHelper       = guest_s390x_spechelper;
+         guest_sizeB      = sizeof(VexGuestS390XState);
+         guest_word_type  = Ity_I64;
+         guest_layout     = &s390xGuest_layout;
+         offB_TISTART     = offsetof(VexGuestS390XState,guest_TISTART);
+         offB_TILEN       = offsetof(VexGuestS390XState,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestS390XState,guest_IA);
+         szB_GUEST_IP           = sizeof( ((VexGuestS390XState*)0)->guest_IA);
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestS390XState,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestS390XState,host_EvC_FAILADDR);
+         vassert(are_valid_hwcaps(VexArchS390X, vta->archinfo_guest.hwcaps));
+         vassert(0 == sizeof(VexGuestS390XState) % 16);
+         vassert(sizeof( ((VexGuestS390XState*)0)->guest_TISTART    ) == 8);
+         vassert(sizeof( ((VexGuestS390XState*)0)->guest_TILEN      ) == 8);
+         vassert(sizeof( ((VexGuestS390XState*)0)->guest_NRADDR     ) == 8);
          break;
 
       case VexArchARM:
@@ -421,6 +539,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          guest_layout     = &armGuest_layout;
          offB_TISTART     = offsetof(VexGuestARMState,guest_TISTART);
          offB_TILEN       = offsetof(VexGuestARMState,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestARMState,guest_R15T);
+         szB_GUEST_IP           = sizeof( ((VexGuestARMState*)0)->guest_R15T );
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestARMState,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestARMState,host_EvC_FAILADDR);
          vassert(are_valid_hwcaps(VexArchARM, vta->archinfo_guest.hwcaps));
          vassert(0 == sizeof(VexGuestARMState) % 16);
          vassert(sizeof( ((VexGuestARMState*)0)->guest_TISTART) == 4);
@@ -428,9 +550,36 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
          vassert(sizeof( ((VexGuestARMState*)0)->guest_NRADDR ) == 4);
          break;
 
+      case VexArchMIPS32:
+         preciseMemExnsFn       = guest_mips32_state_requires_precise_mem_exns;
+         disInstrFn             = disInstr_MIPS;
+         specHelper             = guest_mips32_spechelper;
+         guest_sizeB            = sizeof(VexGuestMIPS32State);
+         guest_word_type        = Ity_I32;
+         guest_layout           = &mips32Guest_layout;
+         offB_TISTART           = offsetof(VexGuestMIPS32State,guest_TISTART);
+         offB_TILEN             = offsetof(VexGuestMIPS32State,guest_TILEN);
+         offB_GUEST_IP          = offsetof(VexGuestMIPS32State,guest_PC);
+         szB_GUEST_IP           = sizeof( ((VexGuestMIPS32State*)0)->guest_PC );
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestMIPS32State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestMIPS32State,host_EvC_FAILADDR);
+         vassert(are_valid_hwcaps(VexArchMIPS32, vta->archinfo_guest.hwcaps));
+         vassert(0 == sizeof(VexGuestMIPS32State) % 16);
+         vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_TISTART) == 4);
+         vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_TILEN  ) == 4);
+         vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_NRADDR ) == 4);
+         break;
+
       default:
          vpanic("LibVEX_Translate: unsupported guest insn set");
    }
+
+   /* Set up result struct. */
+   VexTranslateResult res;
+   res.status         = VexTransOK;
+   res.n_sc_extents   = 0;
+   res.offs_profInc   = -1;
+   res.n_guest_instrs = 0;
 
    /* yet more sanity checks ... */
    if (vta->arch_guest == vta->arch_host) {
@@ -448,6 +597,8 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                    "------------------------\n\n");
 
    irsb = bb_to_IR ( vta->guest_extents,
+                     &res.n_sc_extents,
+                     &res.n_guest_instrs,
                      vta->callback_opaque,
                      disInstrFn,
                      vta->guest_bytes, 
@@ -458,10 +609,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                      &vta->archinfo_guest,
                      &vta->abiinfo_both,
                      guest_word_type,
-                     vta->do_self_check,
+                     vta->needs_self_check,
                      vta->preamble_function,
                      offB_TISTART,
-                     offB_TILEN );
+                     offB_TILEN,
+                     offB_GUEST_IP,
+                     szB_GUEST_IP );
 
    vexAllocSanityCheck();
 
@@ -469,7 +622,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
       /* Access failure. */
       vexSetAllocModeTEMP_and_clear();
       vex_traceflags = 0;
-      return VexTransAccessFail;
+      res.status = VexTransAccessFail; return res;
    }
 
    vassert(vta->guest_extents->n_used >= 1 && vta->guest_extents->n_used <= 3);
@@ -506,7 +659,8 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
 
    /* Clean it up, hopefully a lot. */
    irsb = do_iropt_BB ( irsb, specHelper, preciseMemExnsFn, 
-                              vta->guest_bytes_addr );
+                              vta->guest_bytes_addr,
+                              vta->arch_guest );
    sanityCheckIRSB( irsb, "after initial iropt", 
                     True/*must be flat*/, guest_word_type );
 
@@ -567,7 +721,7 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
 
    /* Turn it into virtual-registerised code.  Build trees -- this
       also throws away any dead bindings. */
-   ado_treebuild_BB( irsb );
+   max_ga = ado_treebuild_BB( irsb );
 
    if (vta->finaltidy) {
       irsb = vta->finaltidy(irsb);
@@ -584,7 +738,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    }
 
    /* HACK */
-   if (0) { *(vta->host_bytes_used) = 0; return VexTransOK; }
+   if (0) {
+      *(vta->host_bytes_used) = 0;
+      res.status = VexTransOK; return res;
+   }
    /* end HACK */
 
    if (vex_traceflags & VEX_TRACE_VCODE)
@@ -592,8 +749,19 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                    " Instruction selection "
                    "------------------------\n");
 
-   vcode = iselSB ( irsb, vta->arch_host, &vta->archinfo_host, 
-                                          &vta->abiinfo_both );
+   /* No guest has its IP field at offset zero.  If this fails it
+      means some transformation pass somewhere failed to update/copy
+      irsb->offsIP properly. */
+   vassert(irsb->offsIP >= 16);
+
+   vcode = iselSB ( irsb, vta->arch_host,
+                    &vta->archinfo_host, 
+                    &vta->abiinfo_both,
+                    offB_HOST_EvC_COUNTER,
+                    offB_HOST_EvC_FAILADDR,
+                    chainingAllowed,
+                    vta->addProfInc,
+                    max_ga );
 
    vexAllocSanityCheck();
 
@@ -632,7 +800,10 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    }
 
    /* HACK */
-   if (0) { *(vta->host_bytes_used) = 0; return VexTransOK; }
+   if (0) { 
+      *(vta->host_bytes_used) = 0;
+      res.status = VexTransOK; return res;
+   }
    /* end HACK */
 
    /* Assemble */
@@ -644,12 +815,19 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
 
    out_used = 0; /* tracks along the host_bytes array */
    for (i = 0; i < rcode->arr_used; i++) {
-      if (vex_traceflags & VEX_TRACE_ASM) {
-         ppInstr(rcode->arr[i], mode64);
+      HInstr* hi           = rcode->arr[i];
+      Bool    hi_isProfInc = False;
+      if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+         ppInstr(hi, mode64);
          vex_printf("\n");
       }
-      j = (*emit)( insn_bytes, 32, rcode->arr[i], mode64, vta->dispatch );
-      if (vex_traceflags & VEX_TRACE_ASM) {
+      j = emit( &hi_isProfInc,
+                insn_bytes, sizeof insn_bytes, hi, mode64,
+                vta->disp_cp_chain_me_to_slowEP,
+                vta->disp_cp_chain_me_to_fastEP,
+                vta->disp_cp_xindir,
+                vta->disp_cp_xassisted );
+      if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
          for (k = 0; k < j; k++)
             if (insn_bytes[k] < 16)
                vex_printf("0%x ",  (UInt)insn_bytes[k]);
@@ -657,14 +835,23 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
                vex_printf("%x ", (UInt)insn_bytes[k]);
          vex_printf("\n\n");
       }
-      if (out_used + j > vta->host_bytes_size) {
+      if (UNLIKELY(out_used + j > vta->host_bytes_size)) {
          vexSetAllocModeTEMP_and_clear();
          vex_traceflags = 0;
-         return VexTransOutputFull;
+         res.status = VexTransOutputFull;
+         return res;
       }
+      if (UNLIKELY(hi_isProfInc)) {
+         vassert(vta->addProfInc); /* else where did it come from? */
+         vassert(res.offs_profInc == -1); /* there can be only one (tm) */
+         vassert(out_used >= 0);
+         res.offs_profInc = out_used;
+      }
+      { UChar* dst = &vta->host_bytes[out_used];
       for (k = 0; k < j; k++) {
-         vta->host_bytes[out_used] = insn_bytes[k];
-         out_used++;
+           dst[k] = insn_bytes[k];
+        }
+        out_used += j;
       }
       vassert(out_used <= vta->host_bytes_size);
    }
@@ -675,16 +862,151 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* vta )
    vexSetAllocModeTEMP_and_clear();
 
    vex_traceflags = 0;
-   return VexTransOK;
+   res.status = VexTransOK;
+   return res;
+}
+
+
+/* --------- Chain/Unchain XDirects. --------- */
+
+VexInvalRange LibVEX_Chain ( VexArch arch_host,
+                             void*   place_to_chain,
+                             void*   disp_cp_chain_me_EXPECTED,
+                             void*   place_to_jump_to )
+{
+   VexInvalRange (*chainXDirect)(void*, void*, void*) = NULL;
+   switch (arch_host) {
+      case VexArchX86:
+         chainXDirect = chainXDirect_X86; break;
+      case VexArchAMD64:
+         chainXDirect = chainXDirect_AMD64; break;
+      case VexArchARM:
+         chainXDirect = chainXDirect_ARM; break;
+      case VexArchS390X:
+         chainXDirect = chainXDirect_S390; break;
+      case VexArchPPC32:
+         return chainXDirect_PPC(place_to_chain,
+                                 disp_cp_chain_me_EXPECTED,
+                                 place_to_jump_to, False/*!mode64*/);
+      case VexArchPPC64:
+         return chainXDirect_PPC(place_to_chain,
+                                 disp_cp_chain_me_EXPECTED,
+                                 place_to_jump_to, True/*mode64*/);
+      case VexArchMIPS32:
+         return chainXDirect_MIPS(place_to_chain,
+                                  disp_cp_chain_me_EXPECTED,
+                                  place_to_jump_to, False/*!mode64*/);
+      default:
+         vassert(0);
+   }
+   vassert(chainXDirect);
+   VexInvalRange vir
+      = chainXDirect(place_to_chain, disp_cp_chain_me_EXPECTED,
+                     place_to_jump_to);
+   return vir;
+}
+
+VexInvalRange LibVEX_UnChain ( VexArch arch_host,
+                               void*   place_to_unchain,
+                               void*   place_to_jump_to_EXPECTED,
+                               void*   disp_cp_chain_me )
+{
+   VexInvalRange (*unchainXDirect)(void*, void*, void*) = NULL;
+   switch (arch_host) {
+      case VexArchX86:
+         unchainXDirect = unchainXDirect_X86; break;
+      case VexArchAMD64:
+         unchainXDirect = unchainXDirect_AMD64; break;
+      case VexArchARM:
+         unchainXDirect = unchainXDirect_ARM; break;
+      case VexArchS390X:
+         unchainXDirect = unchainXDirect_S390; break;
+      case VexArchPPC32:
+         return unchainXDirect_PPC(place_to_unchain,
+                                   place_to_jump_to_EXPECTED,
+                                   disp_cp_chain_me, False/*!mode64*/);
+      case VexArchPPC64:
+         return unchainXDirect_PPC(place_to_unchain,
+                                   place_to_jump_to_EXPECTED,
+                                   disp_cp_chain_me, True/*mode64*/);
+      case VexArchMIPS32:
+         return unchainXDirect_MIPS(place_to_unchain,
+                                   place_to_jump_to_EXPECTED,
+                                   disp_cp_chain_me, False/*!mode64*/);
+      default:
+         vassert(0);
+   }
+   vassert(unchainXDirect);
+   VexInvalRange vir
+      = unchainXDirect(place_to_unchain, place_to_jump_to_EXPECTED,
+                       disp_cp_chain_me);
+   return vir;
+}
+
+Int LibVEX_evCheckSzB ( VexArch arch_host )
+{
+   static Int cached = 0; /* DO NOT MAKE NON-STATIC */
+   if (UNLIKELY(cached == 0)) {
+      switch (arch_host) {
+         case VexArchX86:
+            cached = evCheckSzB_X86(); break;
+         case VexArchAMD64:
+            cached = evCheckSzB_AMD64(); break;
+         case VexArchARM:
+            cached = evCheckSzB_ARM(); break;
+         case VexArchS390X:
+            cached = evCheckSzB_S390(); break;
+         case VexArchPPC32:
+         case VexArchPPC64:
+            cached = evCheckSzB_PPC(); break;
+         case VexArchMIPS32:
+            cached = evCheckSzB_MIPS(); break;
+         default:
+            vassert(0);
+      }
+   }
+   return cached;
+}
+
+VexInvalRange LibVEX_PatchProfInc ( VexArch arch_host,
+                                    void*   place_to_patch,
+                                    ULong*  location_of_counter )
+{
+   VexInvalRange (*patchProfInc)(void*,ULong*) = NULL;
+   switch (arch_host) {
+      case VexArchX86:
+         patchProfInc = patchProfInc_X86; break;
+      case VexArchAMD64:
+         patchProfInc = patchProfInc_AMD64; break;
+      case VexArchARM:
+         patchProfInc = patchProfInc_ARM; break;
+      case VexArchS390X:
+         patchProfInc = patchProfInc_S390; break;
+      case VexArchPPC32:
+         return patchProfInc_PPC(place_to_patch,
+                                 location_of_counter, False/*!mode64*/);
+      case VexArchPPC64:
+         return patchProfInc_PPC(place_to_patch,
+                                 location_of_counter, True/*mode64*/);
+      case VexArchMIPS32:
+         return patchProfInc_MIPS(place_to_patch,
+                                  location_of_counter, False/*!mode64*/);
+      default:
+         vassert(0);
+   }
+   vassert(patchProfInc);
+   VexInvalRange vir
+      = patchProfInc(place_to_patch, location_of_counter);
+   return vir;
 }
 
 
 /* --------- Emulation warnings. --------- */
 
-HChar* LibVEX_EmWarn_string ( VexEmWarn ew )
+HChar* LibVEX_EmNote_string ( VexEmNote ew )
 {
    switch (ew) {
-     case EmWarn_NONE: 
+     case EmNote_NONE: 
         return "none";
      case EmWarn_X86_x87exns:
         return "Unmasking x87 FP exceptions";
@@ -704,8 +1026,23 @@ HChar* LibVEX_EmWarn_string ( VexEmWarn ew )
         return "PPC64 function redirection stack overflow";
      case EmWarn_PPC64_redir_underflow:
         return "PPC64 function redirection stack underflow";
+     case EmWarn_S390X_fpext_rounding:
+        return "The specified rounding mode cannot be supported. That\n"
+               "  feature requires the floating point extension facility.\n"
+               "  which is not available on this host. Continuing using\n"
+               "  the rounding mode from FPC. Results may differ!";
+     case EmFail_S390X_stfle:
+        return "Instruction stfle is not supported on this host";
+     case EmFail_S390X_stckf:
+        return "Instruction stckf is not supported on this host";
+     case EmFail_S390X_ecag:
+        return "Instruction ecag is not supported on this host";
+     case EmFail_S390X_fpext:
+        return "Encountered an instruction that requires the floating "
+               "point extension facility.\n"
+               "  That facility is not available on this host";
      default: 
-        vpanic("LibVEX_EmWarn_string: unknown warning");
+        vpanic("LibVEX_EmNote_string: unknown warning");
    }
 }
 
@@ -720,6 +1057,8 @@ const HChar* LibVEX_ppVexArch ( VexArch arch )
       case VexArchARM:      return "ARM";
       case VexArchPPC32:    return "PPC32";
       case VexArchPPC64:    return "PPC64";
+      case VexArchS390X:    return "S390X";
+      case VexArchMIPS32:   return "MIPS32";
       default:              return "VexArch???";
    }
 }
@@ -736,6 +1075,9 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai )
 {
    vai->hwcaps             = 0;
    vai->ppc_cache_line_szB = 0;
+   vai->ppc_dcbz_szB       = 0;
+   vai->ppc_dcbzl_szB      = 0;
+
 }
 
 /* Write default settings info *vbi. */
@@ -759,32 +1101,63 @@ void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi )
 static HChar* show_hwcaps_x86 ( UInt hwcaps ) 
 {
    /* Monotonic, SSE3 > SSE2 > SSE1 > baseline. */
-   if (hwcaps == 0)
+   switch (hwcaps) {
+      case 0:
       return "x86-sse0";
-   if (hwcaps == VEX_HWCAPS_X86_SSE1)
+      case VEX_HWCAPS_X86_SSE1:
       return "x86-sse1";
-   if (hwcaps == (VEX_HWCAPS_X86_SSE1 | VEX_HWCAPS_X86_SSE2))
+      case VEX_HWCAPS_X86_SSE1 | VEX_HWCAPS_X86_SSE2:
       return "x86-sse1-sse2";
-   if (hwcaps == (VEX_HWCAPS_X86_SSE1 
-                  | VEX_HWCAPS_X86_SSE2 | VEX_HWCAPS_X86_SSE3))
+      case VEX_HWCAPS_X86_SSE1 | VEX_HWCAPS_X86_SSE2
+           | VEX_HWCAPS_X86_LZCNT:
+         return "x86-sse1-sse2-lzcnt";
+      case VEX_HWCAPS_X86_SSE1 | VEX_HWCAPS_X86_SSE2
+           | VEX_HWCAPS_X86_SSE3:
       return "x86-sse1-sse2-sse3";
-
+      case VEX_HWCAPS_X86_SSE1 | VEX_HWCAPS_X86_SSE2
+           | VEX_HWCAPS_X86_SSE3 | VEX_HWCAPS_X86_LZCNT:
+         return "x86-sse1-sse2-sse3-lzcnt";
+      default:
    return NULL;
+   }
 }
 
 static HChar* show_hwcaps_amd64 ( UInt hwcaps )
 {
    /* SSE3 and CX16 are orthogonal and > baseline, although we really
       don't expect to come across anything which can do SSE3 but can't
-      do CX16.  Still, we can handle that case. */
-   const UInt SSE3 = VEX_HWCAPS_AMD64_SSE3;
-   const UInt CX16 = VEX_HWCAPS_AMD64_CX16;
-         UInt c    = hwcaps;
-   if (c == 0)           return "amd64-sse2";
-   if (c == SSE3)        return "amd64-sse3";
-   if (c == CX16)        return "amd64-sse2-cx16";
-   if (c == (SSE3|CX16)) return "amd64-sse3-cx16";
+      do CX16.  Still, we can handle that case.  LZCNT is similarly
+      orthogonal.  AVX is technically orthogonal, but just add the
+      cases we actually come across.  (This scheme for printing is
+      very stupid.  We should add strings independently based on
+      feature bits, but then it would be hard to return a string that
+      didn't need deallocating by the caller.) */
+   /* FIXME: show_hwcaps_s390x is a much better way to do this. */
+   switch (hwcaps) {
+      case 0:
+         return "amd64-sse2";
+      case VEX_HWCAPS_AMD64_SSE3:
+         return "amd64-sse3";
+      case VEX_HWCAPS_AMD64_CX16:
+         return "amd64-sse2-cx16";
+      case VEX_HWCAPS_AMD64_SSE3 | VEX_HWCAPS_AMD64_CX16:
+         return "amd64-sse3-cx16";
+      case VEX_HWCAPS_AMD64_SSE3 | VEX_HWCAPS_AMD64_LZCNT:
+         return "amd64-sse3-lzcnt";
+      case VEX_HWCAPS_AMD64_CX16 | VEX_HWCAPS_AMD64_LZCNT:
+         return "amd64-sse2-cx16-lzcnt";
+      case VEX_HWCAPS_AMD64_SSE3 | VEX_HWCAPS_AMD64_CX16
+           | VEX_HWCAPS_AMD64_LZCNT:
+         return "amd64-sse3-cx16-lzcnt";
+      case VEX_HWCAPS_AMD64_SSE3 | VEX_HWCAPS_AMD64_CX16
+           | VEX_HWCAPS_AMD64_AVX:
+         return "amd64-sse3-cx16-avx";
+      case VEX_HWCAPS_AMD64_SSE3 | VEX_HWCAPS_AMD64_CX16
+           | VEX_HWCAPS_AMD64_LZCNT | VEX_HWCAPS_AMD64_AVX:
+         return "amd64-sse3-cx16-lzcnt-avx";
+      default:
    return NULL;
+   }
 }
 
 static HChar* show_hwcaps_ppc32 ( UInt hwcaps )
@@ -795,6 +1168,8 @@ static HChar* show_hwcaps_ppc32 ( UInt hwcaps )
    const UInt V  = VEX_HWCAPS_PPC32_V;
    const UInt FX = VEX_HWCAPS_PPC32_FX;
    const UInt GX = VEX_HWCAPS_PPC32_GX;
+   const UInt VX = VEX_HWCAPS_PPC32_VX;
+   const UInt DFP = VEX_HWCAPS_PPC32_DFP;
          UInt c  = hwcaps;
    if (c == 0)           return "ppc32-int";
    if (c == F)           return "ppc32-int-flt";
@@ -805,6 +1180,8 @@ static HChar* show_hwcaps_ppc32 ( UInt hwcaps )
    if (c == (F|V|FX))    return "ppc32-int-flt-vmx-FX";
    if (c == (F|V|GX))    return "ppc32-int-flt-vmx-GX";
    if (c == (F|V|FX|GX)) return "ppc32-int-flt-vmx-FX-GX";
+   if (c == (F|V|FX|GX|DFP))    return "ppc32-int-flt-vmx-FX-GX-DFP";
+   if (c == (F|V|FX|GX|VX|DFP)) return "ppc32-int-flt-vmx-FX-GX-VX-DFP";
    return NULL;
 }
 
@@ -815,6 +1192,8 @@ static HChar* show_hwcaps_ppc64 ( UInt hwcaps )
    const UInt V  = VEX_HWCAPS_PPC64_V;
    const UInt FX = VEX_HWCAPS_PPC64_FX;
    const UInt GX = VEX_HWCAPS_PPC64_GX;
+   const UInt VX = VEX_HWCAPS_PPC64_VX;
+   const UInt DFP = VEX_HWCAPS_PPC64_DFP;
          UInt c  = hwcaps;
    if (c == 0)         return "ppc64-int-flt";
    if (c == FX)        return "ppc64-int-flt-FX";
@@ -824,12 +1203,106 @@ static HChar* show_hwcaps_ppc64 ( UInt hwcaps )
    if (c == (V|FX))    return "ppc64-int-flt-vmx-FX";
    if (c == (V|GX))    return "ppc64-int-flt-vmx-GX";
    if (c == (V|FX|GX)) return "ppc64-int-flt-vmx-FX-GX";
+   if (c == (V|FX|GX|DFP))    return "ppc64-int-flt-vmx-FX-GX-DFP";
+   if (c == (V|FX|GX|VX|DFP)) return "ppc64-int-flt-vmx-FX-GX-VX-DFP";
    return NULL;
 }
 
 static HChar* show_hwcaps_arm ( UInt hwcaps )
 {
-   if (hwcaps == 0) return "arm-baseline";
+   Bool N = ((hwcaps & VEX_HWCAPS_ARM_NEON) != 0);
+   Bool vfp = ((hwcaps & (VEX_HWCAPS_ARM_VFP |
+               VEX_HWCAPS_ARM_VFP2 | VEX_HWCAPS_ARM_VFP3)) != 0);
+   switch (VEX_ARM_ARCHLEVEL(hwcaps)) {
+      case 5:
+         if (N)
+            return NULL;
+         if (vfp)
+            return "ARMv5-vfp";
+         else
+            return "ARMv5";
+         return NULL;
+      case 6:
+         if (N)
+            return NULL;
+         if (vfp)
+            return "ARMv6-vfp";
+         else
+            return "ARMv6";
+         return NULL;
+      case 7:
+         if (vfp) {
+            if (N)
+               return "ARMv7-vfp-neon";
+            else
+               return "ARMv7-vfp";
+         } else {
+            if (N)
+               return "ARMv7-neon";
+            else
+               return "ARMv7";
+         }
+      default:
+         return NULL;
+   }
+   return NULL;
+}
+
+static HChar* show_hwcaps_s390x ( UInt hwcaps )
+{
+   static const HChar prefix[] = "s390x";
+   static const HChar facilities[][6] = {
+     { "ldisp" },
+     { "eimm" },
+     { "gie" },
+     { "dfp" },
+     { "fgx" },
+     { "stfle" },
+     { "etf2" },
+     { "etf3" },
+     { "stckf" },
+     { "fpext" },
+   };
+   static HChar buf[sizeof facilities + sizeof prefix + 1];
+   static HChar *p;
+
+   if (buf[0] != '\0') return buf;  /* already constructed */
+
+   hwcaps = VEX_HWCAPS_S390X(hwcaps);
+
+   p = buf + vex_sprintf(buf, "%s", prefix);
+   if (hwcaps & VEX_HWCAPS_S390X_LDISP)
+     p = p + vex_sprintf(p, "-%s", facilities[0]);
+   if (hwcaps & VEX_HWCAPS_S390X_EIMM)
+     p = p + vex_sprintf(p, "-%s", facilities[1]);
+   if (hwcaps & VEX_HWCAPS_S390X_GIE)
+     p = p + vex_sprintf(p, "-%s", facilities[2]);
+   if (hwcaps & VEX_HWCAPS_S390X_DFP)
+     p = p + vex_sprintf(p, "-%s", facilities[3]);
+   if (hwcaps & VEX_HWCAPS_S390X_FGX)
+     p = p + vex_sprintf(p, "-%s", facilities[4]);
+   if (hwcaps & VEX_HWCAPS_S390X_STFLE)
+     p = p + vex_sprintf(p, "-%s", facilities[5]);
+   if (hwcaps & VEX_HWCAPS_S390X_ETF2)
+     p = p + vex_sprintf(p, "-%s", facilities[6]);
+   if (hwcaps & VEX_HWCAPS_S390X_ETF3)
+     p = p + vex_sprintf(p, "-%s", facilities[7]);
+   if (hwcaps & VEX_HWCAPS_S390X_STCKF)
+     p = p + vex_sprintf(p, "-%s", facilities[8]);
+   if (hwcaps & VEX_HWCAPS_S390X_FPEXT)
+     p = p + vex_sprintf(p, "-%s", facilities[9]);
+
+   /* If there are no facilities, add "zarch" */
+   if (hwcaps == 0)
+     vex_sprintf(p, "-%s", "zarch");
+
+   return buf;
+}
+
+static HChar* show_hwcaps_mips32 ( UInt hwcaps )
+{
+   if (hwcaps == 0x00010000) return "MIPS-baseline";
+   if (hwcaps == 0x00020000) return "Broadcom-baseline";
    return NULL;
 }
 
@@ -842,6 +1315,8 @@ static HChar* show_hwcaps ( VexArch arch, UInt hwcaps )
       case VexArchPPC32: return show_hwcaps_ppc32(hwcaps);
       case VexArchPPC64: return show_hwcaps_ppc64(hwcaps);
       case VexArchARM:   return show_hwcaps_arm(hwcaps);
+      case VexArchS390X:  return show_hwcaps_s390x(hwcaps);
+      case VexArchMIPS32: return show_hwcaps_mips32(hwcaps);
       default: return NULL;
    }
 }

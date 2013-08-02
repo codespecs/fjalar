@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,14 +47,14 @@
                      "valgrind", VG_BUGS_TO, "")
 
 #define vg_assert(expr)                                                 \
-  ((void) ((expr) ? 0 :                                                 \
+  ((void) (LIKELY(expr) ? 0 :                                           \
            (VG_(assert_fail) (/*isCore*/True, #expr,                    \
                               __FILE__, __LINE__, __PRETTY_FUNCTION__,  \
                               ""),                                      \
                               0)))
 
 #define vg_assert2(expr, format, args...)                               \
-  ((void) ((expr) ? 0 :                                                 \
+  ((void) (LIKELY(expr) ? 0 :                                           \
            (VG_(assert_fail) (/*isCore*/True, #expr,                    \
                               __FILE__, __LINE__, __PRETTY_FUNCTION__,  \
                               format, ##args),                          \

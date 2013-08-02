@@ -21,6 +21,9 @@ First of all:
   release date probably won't be known yet, updating it is in the list below
   of tasks for the official release.)
 
+- Make sure __VALGRIND_MAJOR__ and __VALGRIND_MINOR__ are correct
+  for the release.  (include/valgrind.h)
+
 - Write release notes, add to NEWS.  Include a list of fixed bugs from
   Bugzilla.  It's unclear how to do this consistently.  The approach
   taken for 3.0.0 was to go to this page in KDE's bugzilla:
@@ -36,6 +39,10 @@ First of all:
   to pertain to previous releases and are now irrelevant.  In short
   this is not a very scientific or robust way to collect up all
   bugs fixed since last time.
+
+  Suggestion for next release: when a bug is fixed, update NEWS
+  directly => less chance to forget, and NEWS always up to date
+  in SVN.
 
 - Other files that might need updating:  README, README_DEVELOPERS,
   README_PACKAGERS.
@@ -53,6 +60,7 @@ releases, bug-fix-only releases might not need one):
 - Do pre-release testing:
 
   * Check it builds and regtests on a vanilla gcc-2.96 / RedHat 7.3 distro.
+  ??? is this really still up to date ???
 
   * Check standard build and regtest on the following cpus:
        x86, sse2 (P4)
@@ -62,8 +70,12 @@ releases, bug-fix-only releases might not need one):
        ppc32, altivec
        ppc32, no altivec (eg old iMac G3s)
 
-  * Check that the regression tests work with --sanity-level=4 on all
-    platforms.
+  * Check that the regression tests work on all platforms with more self checks:
+     export EXTRA_REGTEST_OPTS="--sanity-level=4 --helgrind:hg-sanity-flags=011111"
+     make regtest
+
+  * check there are no memleaks or similar bugs by running all regtests
+    in an outer/inner setup (see README_DEVELOPERS).
 
   * Check valgrind-listener works on all archs, also connecting to it
     from all archs.
@@ -79,6 +91,11 @@ releases, bug-fix-only releases might not need one):
 
   * Run regression tests from gsl-1.6 on all platforms.  This is a good,
     thorough test of FP.  Easy, using the scripts auxprogs/gsl16test.
+
+  * s390x: Run regression tests on a z900 machine. That is the oldest
+    supported model and there is no nightly build for it.
+
+  * s390x: Ensure README.s390 is up-to-date and URLs therein are not stale.
 
 - Change release number in AC_INIT() in configure.in to "X.Y.Z-rcN", where
   'N' is the release candidate number.
@@ -127,7 +144,7 @@ For the official release:
   external for VALGRIND_X_Y_Z to VEX_X_Y_Z.
 
   If it's a X.Y.0 release, make "VALGRIND_X_Y_BRANCH" and "VEX_X_Y_BRANCH"
-  branches too.  Useful examples:
+  branches too.  Useful examples (X.Y.0 major release):
 
     cd valgrind
     svn copy trunk tags/VALGRIND_3_3_0
@@ -144,6 +161,20 @@ For the official release:
     cd branches/VALGRIND_3_3_BRANCH
     svn propset svn:externals \
        "VEX svn://svn.valgrind.org/vex/branches/VEX_3_3_BRANCH" .
+
+  (X.Y.Z minor release):
+
+    cd vex
+    svn copy branches/VEX_3_6_BRANCH tags/VEX_3_6_1
+
+    cd valgrind
+    svn copy branches/VALGRIND_3_6_BRANCH tags/VALGRIND_3_6_1
+
+    cd tags/VALGRIND_3_6_1
+    svn propset svn:externals \
+       "VEX svn://svn.valgrind.org/vex/tags/VEX_3_6_1" .
+
+
 
 - Update website: 
   - Put the tarball up.

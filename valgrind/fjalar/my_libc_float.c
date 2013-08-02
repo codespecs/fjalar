@@ -282,7 +282,6 @@ int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxle
 
 #define NUM_HEX_DIGITS      ((FPMAX_MANT_DIG + 3)/ 4)
 
-/* WARNING: Adjust _fp_out_wide() below if this changes! */
 /* With 32 bit ints, we can get 9 decimal digits per block. */
 #define DIGITS_PER_BLOCK     9
 #define HEX_DIGITS_PER_BLOCK 8
@@ -305,8 +304,6 @@ int  fptostr (__fpmax_t x, int width, int preci, char mode, char* buf, int maxle
 #define NUM_DIGIT_BLOCKS   ((DECIMAL_DIG+DIGITS_PER_BLOCK-1)/DIGITS_PER_BLOCK)
 #define NUM_HEX_DIGIT_BLOCKS \
    ((NUM_HEX_DIGITS+HEX_DIGITS_PER_BLOCK-1)/HEX_DIGITS_PER_BLOCK)
-
-/* WARNING: Adjust _fp_out_wide() below if this changes! */
 
 /* extra space for '-', '.', 'e+###', and nul */
 #define BUF_SIZE  ( 3 + NUM_DIGIT_BLOCKS * DIGITS_PER_BLOCK )

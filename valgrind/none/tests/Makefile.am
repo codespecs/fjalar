@@ -19,6 +19,12 @@ endif
 if VGCONF_ARCHS_INCLUDE_ARM
 SUBDIRS += arm
 endif
+if VGCONF_ARCHS_INCLUDE_S390X
+SUBDIRS += s390x
+endif
+if VGCONF_ARCHS_INCLUDE_MIPS32
+SUBDIRS += mips32
+endif
 
 # OS-specific tests
 if VGCONF_OS_IS_LINUX
@@ -33,7 +39,7 @@ if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
 SUBDIRS += x86-linux
 endif
 
-DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm linux darwin x86-linux .
+DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm s390x mips32 linux darwin x86-linux .
 
 dist_noinst_SCRIPTS = \
 	filter_cmdline0 \
@@ -41,15 +47,19 @@ dist_noinst_SCRIPTS = \
 	filter_fdleak \
 	filter_linenos \
 	filter_none_discards \
+	filter_shell_output \
 	filter_stderr \
-	filter_timestamp
+	filter_timestamp \
+	allexec_prepare_prereq
 
 noinst_HEADERS = fdleak.h
 
 EXTRA_DIST = \
+	allexec32.stdout.exp allexec32.stderr.exp allexec32.vgtest\
+	allexec64.stdout.exp allexec64.stderr.exp allexec64.vgtest\
 	ansi.stderr.exp ansi.vgtest \
 	args.stderr.exp args.stdout.exp args.vgtest \
-	async-sigs.stderr.exp async-sigs.vgtest \
+	async-sigs.stderr.exp async-sigs.stderr.exp-mips32 async-sigs.vgtest \
 	bitfield1.stderr.exp bitfield1.vgtest \
 	bug129866.vgtest bug129866.stderr.exp bug129866.stdout.exp \
 	closeall.stderr.exp closeall.vgtest \
@@ -66,10 +76,11 @@ EXTRA_DIST = \
 	coolo_strlen.stderr.exp coolo_strlen.vgtest \
 	discard.stderr.exp discard.stdout.exp \
 	discard.vgtest \
+	empty-exe.vgtest empty-exe.stderr.exp \
 	exec-sigmask.vgtest exec-sigmask.stdout.exp \
 	exec-sigmask.stdout.exp2 exec-sigmask.stdout.exp3 exec-sigmask.stderr.exp \
 	execve.vgtest execve.stdout.exp execve.stderr.exp \
-	faultstatus.vgtest faultstatus.stderr.exp \
+	faultstatus.vgtest faultstatus.stderr.exp faultstatus.stderr.exp-s390x \
 	fcntl_setown.vgtest fcntl_setown.stdout.exp fcntl_setown.stderr.exp \
 	fdleak_cmsg.stderr.exp fdleak_cmsg.vgtest \
 	fdleak_creat.stderr.exp fdleak_creat.vgtest \
@@ -84,12 +95,16 @@ EXTRA_DIST = \
 	fork.stderr.exp fork.stdout.exp fork.vgtest \
 	fucomip.stderr.exp fucomip.vgtest \
 	gxx304.stderr.exp gxx304.vgtest \
+	ifunc.stderr.exp ifunc.stdout.exp ifunc.vgtest \
 	manythreads.stdout.exp manythreads.stderr.exp manythreads.vgtest \
 	map_unaligned.stderr.exp map_unaligned.vgtest \
 	map_unmap.stderr.exp map_unmap.stdout.exp map_unmap.vgtest \
+	mmap_fcntl_bug.vgtest mmap_fcntl_bug.stdout.exp \
+		mmap_fcntl_bug.stderr.exp \
 	mq.stderr.exp mq.vgtest \
 	munmap_exe.stderr.exp munmap_exe.vgtest \
 	nestedfns.stderr.exp nestedfns.stdout.exp nestedfns.vgtest \
+	nodir.stderr.exp nodir.vgtest \
 	pending.stdout.exp pending.stderr.exp pending.vgtest \
 	procfs-linux.stderr.exp-with-readlinkat \
 	procfs-linux.stderr.exp-without-readlinkat \
@@ -113,14 +128,19 @@ EXTRA_DIST = \
 	rcrl.stderr.exp rcrl.stdout.exp rcrl.vgtest \
 	readline1.stderr.exp readline1.stdout.exp \
 	readline1.vgtest \
+	require-text-symbol-1.vgtest \
+		require-text-symbol-1.stderr.exp \
+	require-text-symbol-2.vgtest \
+		require-text-symbol-2.stderr.exp-libcso6 \
 	res_search.stderr.exp res_search.stdout.exp res_search.vgtest \
 	resolv.stderr.exp resolv.stdout.exp resolv.vgtest \
 	rlimit_nofile.stderr.exp rlimit_nofile.stdout.exp rlimit_nofile.vgtest \
+	rlimit64_nofile.stderr.exp rlimit64_nofile.stdout.exp rlimit64_nofile.vgtest \
 	selfrun.stderr.exp selfrun.stdout.exp selfrun.vgtest \
 	sem.stderr.exp sem.stdout.exp sem.vgtest \
 	semlimit.stderr.exp semlimit.stdout.exp semlimit.vgtest \
 	shell shell.vgtest shell.stderr.exp shell.stderr.exp-dash \
-	    shell.stdout.exp \
+	    shell.stdout.exp shell.stderr.exp-dash2 \
 	shell_badinterp shell_badinterp.vgtest shell_badinterp.stderr.exp \
 	shell_binaryfile shell_binaryfile.vgtest shell_binaryfile.stderr.exp \
 	shell_dir.vgtest shell_dir.stderr.exp \
@@ -146,7 +166,8 @@ EXTRA_DIST = \
 	threadederrno.vgtest \
 	timestamp.stderr.exp timestamp.vgtest \
 	tls.vgtest tls.stderr.exp tls.stdout.exp  \
-	vgprintf.stderr.exp vgprintf.vgtest
+	vgprintf.stderr.exp vgprintf.vgtest \
+	process_vm_readv_writev.stderr.exp process_vm_readv_writev.vgtest
 
 check_PROGRAMS = \
 	ansi args \
@@ -159,6 +180,7 @@ check_PROGRAMS = \
 	fdleak_fcntl fdleak_ipv4 fdleak_open fdleak_pipe \
 	fdleak_socketpair \
 	floored fork fucomip \
+	mmap_fcntl_bug \
 	munmap_exe map_unaligned map_unmap mq \
 	nestedfns \
 	pending \
@@ -166,7 +188,9 @@ check_PROGRAMS = \
 	pth_atfork1 pth_blockedsig pth_cancel1 pth_cancel2 pth_cvsimple \
 	pth_empty pth_exit pth_exit2 pth_mutexspeed pth_once pth_rwlock \
 	pth_stackalign \
-	rcrl readline1 res_search resolv \
+	rcrl readline1 \
+	require-text-symbol \
+	res_search resolv \
 	rlimit_nofile selfrun sem semlimit sha1_test \
 	shortpush shorts stackgrowth sigstackgrowth \
 	syscall-restart1 syscall-restart2 \
@@ -181,7 +205,8 @@ check_PROGRAMS = \
 	valgrind_cpp_test \
 	vgprintf \
 	coolo_sigaction \
-	gxx304
+	gxx304 \
+	process_vm_readv_writev
 
 # DDD:
 # - manythreads and thread-exits have lots of this:
@@ -198,13 +223,21 @@ if ! VGCONF_PLATFORMS_INCLUDE_AMD64_DARWIN
 	manythreads \
 	thread-exits
 endif
+# This doesn't appear to be compilable on Darwin.
+if ! VGCONF_OS_IS_DARWIN
+   check_PROGRAMS += rlimit64_nofile 
+endif
 
+if BUILD_IFUNC_TESTS
+   check_PROGRAMS += ifunc
+endif
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
 # Extra stuff for C tests
 ansi_CFLAGS		= $(AM_CFLAGS) -ansi
+execve_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_NONNULL@
 floored_LDADD 		= -lm
 manythreads_LDADD	= -lpthread
 if VGCONF_OS_IS_DARWIN
@@ -226,30 +259,18 @@ pth_mutexspeed_LDADD	= -lpthread
 pth_once_LDADD		= -lpthread
 pth_rwlock_LDADD	= -lpthread
 pth_stackalign_LDADD	= -lpthread
-if VGCONF_OS_IS_AIX5
- res_search_LDADD       = -lpthread
-else
- res_search_LDADD       = -lresolv -lpthread
- resolv_LDADD           = -lresolv -lpthread
-endif
+res_search_LDADD        = -lresolv -lpthread
+resolv_LDADD            = -lresolv -lpthread
 semlimit_LDADD		= -lpthread
 thread_exits_LDADD	= -lpthread
 threaded_fork_LDADD	= -lpthread
 threadederrno_LDADD	= -lpthread
 tls_SOURCES		= tls.c tls2.c
-tls_DEPENDENCIES	= tls.so
-if VGCONF_OS_IS_AIX5
- tls_LDFLAGS		= 
-else
- tls_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests
-endif
-tls_LDADD		= tls.so -lpthread
+tls_DEPENDENCIES	= tls.so tls2.so
+tls_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests
+tls_LDADD		= tls.so tls2.so -lpthread
 tls_so_SOURCES		= tls_so.c
 tls_so_DEPENDENCIES	= tls2.so
-if VGCONF_OS_IS_AIX5
- tls_so_LDFLAGS		= -shared -fPIC
- tls_so_LDADD		= `pwd`/tls2.so
-else
 if VGCONF_OS_IS_DARWIN
  tls_so_LDFLAGS		= -dynamic -dynamiclib -all_load -fpic
  tls_so_LDADD		= `pwd`/tls2.so
@@ -257,13 +278,12 @@ else
  tls_so_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests -shared -fPIC
  tls_so_LDADD		= tls2.so
 endif
-endif
 tls_so_CFLAGS		= $(AM_CFLAGS) -fPIC
 tls2_so_SOURCES		= tls2_so.c
 if VGCONF_OS_IS_DARWIN
-tls2_so_LDFLAGS		= -dynamic -dynamiclib -all_load
+ tls2_so_LDFLAGS	= -dynamic -dynamiclib -all_load
 else
-tls2_so_LDFLAGS		= -shared
+ tls2_so_LDFLAGS	= -shared
 endif
 
 valgrind_cpp_test_SOURCES = valgrind_cpp_test.cpp

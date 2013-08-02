@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (host_ppc_defs.h) is                          ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                   host_ppc_defs.h ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -173,15 +162,16 @@ typedef
       Pcf_7LT  = 28,  /* neg  | lt          */
       Pcf_7GT  = 29,  /* pos  | gt          */
       Pcf_7EQ  = 30,  /* zero | equal       */
-      Pcf_7SO  = 31   /* summary overflow   */
+      Pcf_7SO  = 31,  /* summary overflow   */
+      Pcf_NONE = 32   /* no condition; used with Pct_ALWAYS */
    }
    PPCCondFlag;
 
 typedef
    enum {   /* Maps bc bitfield BO */
-      Pct_FALSE  = 0x4,
-      Pct_TRUE   = 0xC,
-      Pct_ALWAYS = 0x14
+      Pct_FALSE  = 0x4, /* associated PPCCondFlag must not be Pcf_NONE */
+      Pct_TRUE   = 0xC, /* associated PPCCondFlag must not be Pcf_NONE */
+      Pct_ALWAYS = 0x14 /* associated PPCCondFlag must be Pcf_NONE */
    }
    PPCCondTest;
 
@@ -371,14 +361,24 @@ typedef
       /* Ternary */
       Pfp_MADDD, Pfp_MSUBD, 
       Pfp_MADDS, Pfp_MSUBS,
+      Pfp_DFPADD, Pfp_DFPADDQ,
+      Pfp_DFPSUB, Pfp_DFPSUBQ,
+      Pfp_DFPMUL, Pfp_DFPMULQ,
+      Pfp_DFPDIV, Pfp_DFPDIVQ,
+      Pfp_DQUAQ,  Pfp_DRRNDQ,
 
       /* Binary */
       Pfp_ADDD, Pfp_SUBD, Pfp_MULD, Pfp_DIVD, 
       Pfp_ADDS, Pfp_SUBS, Pfp_MULS, Pfp_DIVS, 
+      Pfp_DRSP, Pfp_DRDPQ, Pfp_DCTFIX, Pfp_DCTFIXQ, Pfp_DCFFIX, 
+      Pfp_DQUA, Pfp_RRDTR, Pfp_DIEX, Pfp_DIEXQ, 
 
       /* Unary */
       Pfp_SQRT, Pfp_ABS, Pfp_NEG, Pfp_MOV, Pfp_RES, Pfp_RSQRTE,
-      Pfp_FRIN, Pfp_FRIM, Pfp_FRIP, Pfp_FRIZ
+      Pfp_FRIN, Pfp_FRIM, Pfp_FRIP, Pfp_FRIZ, 
+      Pfp_DSCLI, Pfp_DSCRI, Pfp_DSCLIQ, Pfp_DSCRIQ, Pfp_DCTDP,
+      Pfp_DCTQPQ, Pfp_DCFFIXQ, Pfp_DXEX, Pfp_DXEXQ, 
+
    }
    PPCFpOp;
 
@@ -456,7 +456,9 @@ typedef
       Pin_MulL,       /* widening multiply */
       Pin_Div,        /* div */
       Pin_Call,       /* call to address in register */
-      Pin_Goto,       /* conditional/unconditional jmp to dst */
+      Pin_XDirect,    /* direct transfer to GA */
+      Pin_XIndir,     /* indirect transfer to GA */
+      Pin_XAssisted,  /* assisted transfer to GA */
       Pin_CMov,       /* conditional move */
       Pin_Load,       /* zero-extending load a 8|16|32|64 bit value from mem */
       Pin_LoadL,      /* load-linked (lwarx/ldarx) 32|64 bit value from mem */
@@ -472,7 +474,7 @@ typedef
       Pin_FpLdSt,     /* FP load/store */
       Pin_FpSTFIW,    /* stfiwx */
       Pin_FpRSP,      /* FP round IEEE754 double to IEEE754 single */
-      Pin_FpCftI,     /* fcfid/fctid/fctiw */
+      Pin_FpCftI,     /* fcfid[u,s,us]/fctid[u]/fctiw[u] */
       Pin_FpCMov,     /* FP floating point conditional move */
       Pin_FpLdFPSCR,  /* mtfsf */
       Pin_FpCmp,      /* FP compare, generating value into int reg */
@@ -495,7 +497,31 @@ typedef
       Pin_AvShlDbl,   /* AV shift-left double by imm */
       Pin_AvSplat,    /* One elem repeated throughout dst */
       Pin_AvLdVSCR,   /* mtvscr */
-      Pin_AvCMov      /* AV conditional move */
+      Pin_AvCMov,     /* AV conditional move */
+      Pin_Dfp64Unary,   /* DFP64  unary op */
+      Pin_Dfp128Unary,  /* DFP128 unary op */
+      Pin_DfpShift,     /* Decimal floating point shift by immediate value */
+      Pin_Dfp64Binary,  /* DFP64  binary op */
+      Pin_Dfp128Binary, /* DFP128 binary op */
+      Pin_DfpShift128,  /* 128-bit Decimal floating point shift by 
+                         * immediate value */
+      Pin_DfpD128toD64, /* DFP 128 to DFP 64 op */
+      Pin_DfpI64StoD128, /* DFP signed integer to DFP 128 */
+      Pin_DfpRound,       /* D64 round to D64 */
+      Pin_DfpRound128,    /* D128 round to D128 */
+      Pin_ExtractExpD128, /* DFP, extract 64 bit exponent */
+      Pin_InsertExpD128,  /* DFP, insert 64 bit exponent and 128 bit binary 
+                           * significand into a DFP 128-bit value*/
+      Pin_Dfp64Cmp,       /* DFP 64-bit compare, generating value into
+                           * int reg */
+      Pin_Dfp128Cmp,      /* DFP 128-bit  compare, generating value into
+                           * int reg */
+      Pin_DfpQuantize,    /* D64 quantize using register value, significance 
+                           * round */
+      Pin_DfpQuantize128, /* D128 quantize using register value, significance
+                           * round */
+      Pin_EvCheck,    /* Event check */
+      Pin_ProfInc     /* 64-bit profile counter increment */
    }
    PPCInstrTag;
 
@@ -570,6 +596,7 @@ typedef
          } MulL;
          /* ppc32 div/divu instruction. */
          struct {
+            Bool extended;
             Bool syned;
             Bool sz32;   /* mode64 has both 32 & 64bit div */
             HReg dst;
@@ -586,13 +613,30 @@ typedef
             Addr64      target;
             UInt        argiregs;
          } Call;
-         /* Pseudo-insn.  Goto dst, on given condition (which could be
-            Pct_ALWAYS). */
+         /* Update the guest CIA value, then exit requesting to chain
+            to it.  May be conditional.  Use of Addr64 in order to cope
+            with 64-bit hosts. */
          struct {
+            Addr64      dstGA;    /* next guest address */
+            PPCAMode*   amCIA;    /* amode in guest state for CIA */
+            PPCCondCode cond;     /* can be ALWAYS */
+            Bool        toFastEP; /* chain to the slow or fast point? */
+         } XDirect;
+         /* Boring transfer to a guest address not known at JIT time.
+            Not chainable.  May be conditional. */
+         struct {
+            HReg        dstGA;
+            PPCAMode*   amCIA;
+            PPCCondCode cond; /* can be ALWAYS */
+         } XIndir;
+         /* Assisted transfer to a guest address, most general case.
+            Not chainable.  May be conditional. */
+         struct {
+            HReg        dstGA;
+            PPCAMode*   amCIA;
+            PPCCondCode cond; /* can be ALWAYS */
             IRJumpKind  jk;
-            PPCCondCode cond;
-            PPCRI*      dst;
-         } Goto;
+         } XAssisted;
          /* Mov src to dst on the given condition, which may not
             be the bogus Pct_ALWAYS. */
          struct {
@@ -673,11 +717,15 @@ typedef
             HReg src;
             HReg dst;
          } FpRSP;
-         /* fcfid/fctid/fctiw.  Note there's no fcfiw so fromI==True
-            && int32==True is not allowed. */
+         /* fcfid[u,s,us]/fctid[u]/fctiw[u].  Only some combinations
+            of the various fields are allowed.  This is asserted for
+            and documented in the code for the constructor,
+            PPCInstr_FpCftI, in host_ppc_defs.c.  */
          struct {
-            Bool fromI; /* False==F->I, True==I->F */
-            Bool int32; /* True== I is 32, False==I is 64 */
+            Bool fromI; /* True== I->F,    False== F->I */
+            Bool int32; /* True== I is 32, False== I is 64 */
+            Bool syned;
+            Bool flt64; /* True== F is 64, False== F is 32 */
             HReg src;
             HReg dst;
          } FpCftI;
@@ -690,6 +738,7 @@ typedef
          /* Load FP Status & Control Register */
          struct {
             HReg src;
+            UInt dfp_rm;
          } FpLdFPSCR;
          /* Do a compare, generating result into an int register. */
          struct {
@@ -787,6 +836,124 @@ typedef
          struct {
             HReg src;
          } AvLdVSCR;
+         struct {
+            PPCFpOp op;
+            HReg dst;
+            HReg src;
+         } Dfp64Unary;
+         struct {
+            PPCFpOp op;
+            HReg dst;
+            HReg srcL;
+            HReg srcR;
+         } Dfp64Binary;
+         struct {
+            PPCFpOp op;
+            HReg   dst;
+            HReg   src;
+            PPCRI* shift;
+         } DfpShift;
+         struct {
+            PPCFpOp op;
+            HReg dst_hi;
+            HReg dst_lo;
+            HReg src_hi;
+            HReg src_lo;
+         } Dfp128Unary;
+         struct {
+            /* The dst is used to pass the left source operand in and return
+             * the result.
+             */
+            PPCFpOp op;
+            HReg dst_hi;
+            HReg dst_lo;
+            HReg srcR_hi;
+            HReg srcR_lo;
+         } Dfp128Binary;
+         struct {
+            PPCFpOp op;
+            HReg   dst_hi;
+            HReg   dst_lo;
+            HReg   src_hi;
+            HReg   src_lo;
+            PPCRI* shift;
+         } DfpShift128;
+         struct {
+            HReg dst;
+            HReg src;
+            PPCRI* r_rmc;
+         } DfpRound;
+         struct {
+            HReg dst_hi;
+            HReg dst_lo;
+            HReg src_hi;
+            HReg src_lo;
+            PPCRI* r_rmc;
+         } DfpRound128;
+         struct {
+	    PPCFpOp op;
+            HReg dst;
+            HReg srcL;
+            HReg srcR;
+            PPCRI* rmc;
+         } DfpQuantize;
+         struct {
+	    PPCFpOp op;
+            HReg dst_hi;
+            HReg dst_lo;
+            HReg src_hi;
+            HReg src_lo;
+  	    PPCRI* rmc;
+         } DfpQuantize128;
+         struct {
+            PPCFpOp op;
+            HReg dst;
+            HReg src_hi;
+            HReg src_lo;
+         } ExtractExpD128;
+         struct {
+	    PPCFpOp op;
+            HReg dst_hi;
+            HReg dst_lo;
+            HReg srcL;
+            HReg srcR_hi;
+            HReg srcR_lo;
+         } InsertExpD128;
+         struct {
+            PPCFpOp op;
+            HReg   dst;
+            HReg   src_hi;
+            HReg   src_lo;
+         } DfpD128toD64;
+         struct {
+            PPCFpOp op;
+            HReg   dst_hi;
+            HReg   dst_lo;
+            HReg   src;
+         } DfpI64StoD128;
+         struct {
+            UChar crfD;
+            HReg  dst;
+            HReg  srcL;
+            HReg  srcR;
+         } Dfp64Cmp;
+         struct {         
+            UChar crfD;   
+            HReg  dst;    
+            HReg  srcL_hi;
+            HReg  srcL_lo;
+            HReg  srcR_hi;
+            HReg  srcR_lo;
+         } Dfp128Cmp;     
+         struct {
+            PPCAMode* amCounter;
+            PPCAMode* amFailAddr;
+         } EvCheck;
+         struct {
+            /* No fields.  The address of the counter to inc is
+               installed later, post-translation, by patching it in,
+               as it is not known at translation time. */
+         } ProfInc;
        } Pin;
    }
    PPCInstr;
@@ -799,9 +966,14 @@ extern PPCInstr* PPCInstr_AddSubC    ( Bool, Bool, HReg, HReg, HReg );
 extern PPCInstr* PPCInstr_Cmp        ( Bool, Bool, UInt, HReg, PPCRH* );
 extern PPCInstr* PPCInstr_Unary      ( PPCUnaryOp op, HReg dst, HReg src );
 extern PPCInstr* PPCInstr_MulL       ( Bool syned, Bool hi32, Bool sz32, HReg, HReg, HReg );
-extern PPCInstr* PPCInstr_Div        ( Bool syned, Bool sz32, HReg dst, HReg srcL, HReg srcR );
+extern PPCInstr* PPCInstr_Div        ( Bool extended, Bool syned, Bool sz32, HReg dst, HReg srcL, HReg srcR );
 extern PPCInstr* PPCInstr_Call       ( PPCCondCode, Addr64, UInt );
-extern PPCInstr* PPCInstr_Goto       ( IRJumpKind, PPCCondCode cond, PPCRI* dst );
+extern PPCInstr* PPCInstr_XDirect    ( Addr64 dstGA, PPCAMode* amCIA,
+                                       PPCCondCode cond, Bool toFastEP );
+extern PPCInstr* PPCInstr_XIndir     ( HReg dstGA, PPCAMode* amCIA,
+                                       PPCCondCode cond );
+extern PPCInstr* PPCInstr_XAssisted  ( HReg dstGA, PPCAMode* amCIA,
+                                       PPCCondCode cond, IRJumpKind jk );
 extern PPCInstr* PPCInstr_CMov       ( PPCCondCode, HReg dst, PPCRI* src );
 extern PPCInstr* PPCInstr_Load       ( UChar sz,
                                        HReg dst, PPCAMode* src, Bool mode64 );
@@ -822,10 +994,10 @@ extern PPCInstr* PPCInstr_FpMulAcc   ( PPCFpOp op, HReg dst, HReg srcML,
 extern PPCInstr* PPCInstr_FpLdSt     ( Bool isLoad, UChar sz, HReg, PPCAMode* );
 extern PPCInstr* PPCInstr_FpSTFIW    ( HReg addr, HReg data );
 extern PPCInstr* PPCInstr_FpRSP      ( HReg dst, HReg src );
-extern PPCInstr* PPCInstr_FpCftI     ( Bool fromI, Bool int32, 
-                                       HReg dst, HReg src );
+extern PPCInstr* PPCInstr_FpCftI     ( Bool fromI, Bool int32, Bool syned,
+                                       Bool dst64, HReg dst, HReg src );
 extern PPCInstr* PPCInstr_FpCMov     ( PPCCondCode, HReg dst, HReg src );
-extern PPCInstr* PPCInstr_FpLdFPSCR  ( HReg src );
+extern PPCInstr* PPCInstr_FpLdFPSCR  ( HReg src, Bool dfp_rm );
 extern PPCInstr* PPCInstr_FpCmp      ( HReg dst, HReg srcL, HReg srcR );
 
 extern PPCInstr* PPCInstr_RdWrLR     ( Bool wrLR, HReg gpr );
@@ -836,8 +1008,8 @@ extern PPCInstr* PPCInstr_AvBinary   ( PPCAvOp op, HReg dst, HReg srcL, HReg src
 extern PPCInstr* PPCInstr_AvBin8x16  ( PPCAvOp op, HReg dst, HReg srcL, HReg srcR );
 extern PPCInstr* PPCInstr_AvBin16x8  ( PPCAvOp op, HReg dst, HReg srcL, HReg srcR );
 extern PPCInstr* PPCInstr_AvBin32x4  ( PPCAvOp op, HReg dst, HReg srcL, HReg srcR );
-extern PPCInstr* PPCInstr_AvBin32Fx4 ( PPCAvOp op, HReg dst, HReg srcL, HReg srcR );
-extern PPCInstr* PPCInstr_AvUn32Fx4  ( PPCAvOp op, HReg dst, HReg src );
+extern PPCInstr* PPCInstr_AvBin32Fx4 ( PPCAvFpOp op, HReg dst, HReg srcL, HReg srcR );
+extern PPCInstr* PPCInstr_AvUn32Fx4  ( PPCAvFpOp op, HReg dst, HReg src );
 extern PPCInstr* PPCInstr_AvPerm     ( HReg dst, HReg srcL, HReg srcR, HReg ctl );
 extern PPCInstr* PPCInstr_AvSel      ( HReg ctl, HReg dst, HReg srcL, HReg srcR );
 extern PPCInstr* PPCInstr_AvShlDbl   ( UChar shift, HReg dst, HReg srcL, HReg srcR );
@@ -845,15 +1017,58 @@ extern PPCInstr* PPCInstr_AvSplat    ( UChar sz, HReg dst, PPCVI5s* src );
 extern PPCInstr* PPCInstr_AvCMov     ( PPCCondCode, HReg dst, HReg src );
 extern PPCInstr* PPCInstr_AvLdVSCR   ( HReg src );
 
-extern void ppPPCInstr ( PPCInstr*, Bool mode64 );
+extern PPCInstr* PPCInstr_Dfp64Unary  ( PPCFpOp op, HReg dst, HReg src );
+extern PPCInstr* PPCInstr_Dfp64Binary ( PPCFpOp op, HReg dst, HReg srcL,
+                                        HReg srcR );
+extern PPCInstr* PPCInstr_DfpShift    ( PPCFpOp op, HReg dst, HReg src,
+                                        PPCRI* shift );
+extern PPCInstr* PPCInstr_Dfp128Unary  ( PPCFpOp op, HReg dst_hi, HReg dst_lo,
+                                         HReg srcR_hi, HReg srcR_lo );
+extern PPCInstr* PPCInstr_Dfp128Binary ( PPCFpOp op, HReg dst_hi, HReg dst_lo,
+                                         HReg srcR_hi, HReg srcR_lo );
+extern PPCInstr* PPCInstr_DfpShift128  ( PPCFpOp op, HReg dst_hi, HReg src_hi,
+                                         HReg dst_lo, HReg src_lo,
+                                         PPCRI* shift );
+extern PPCInstr* PPCInstr_DfpD128toD64 ( PPCFpOp op, HReg dst,
+                                         HReg dst_lo, HReg src_lo);
+extern PPCInstr* PPCInstr_DfpI64StoD128  ( PPCFpOp op, HReg dst_hi,
+                                           HReg dst_lo, HReg src);
+extern PPCInstr* PPCInstr_DfpRound       ( HReg dst, HReg src, PPCRI* r_rmc );
+extern PPCInstr* PPCInstr_DfpRound128    ( HReg dst_hi, HReg dst_lo, HReg src_hi,
+                                           HReg src_lo, PPCRI* r_rmc );
+extern PPCInstr* PPCInstr_DfpQuantize    ( PPCFpOp op, HReg dst, HReg srcL,
+                                           HReg srcR, PPCRI* rmc );
+extern PPCInstr* PPCInstr_DfpQuantize128 ( PPCFpOp op, HReg dst_hi,
+                                           HReg dst_lo,
+                                           HReg src_hi,
+                                           HReg src_lo, PPCRI* rmc );
+extern PPCInstr* PPCInstr_ExtractExpD128 ( PPCFpOp op,   HReg dst, 
+                                           HReg src_hi, HReg src_lo );
+extern PPCInstr* PPCInstr_InsertExpD128  ( PPCFpOp op,   HReg dst_hi, 
+                                           HReg dst_lo,  HReg srcL,
+                                           HReg srcR_hi, HReg srcR_lo );
+extern PPCInstr* PPCInstr_Dfp64Cmp       ( HReg dst, HReg srcL, HReg srcR );
+extern PPCInstr* PPCInstr_Dfp128Cmp      ( HReg dst, HReg srcL_hi, HReg srcL_lo,
+                                           HReg srcR_hi, HReg srcR_lo );
+extern PPCInstr* PPCInstr_EvCheck     ( PPCAMode* amCounter,
+                                        PPCAMode* amFailAddr );
+extern PPCInstr* PPCInstr_ProfInc     ( void );
+
+extern void ppPPCInstr(PPCInstr*, Bool mode64);
+
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
 extern void         getRegUsage_PPCInstr ( HRegUsage*, PPCInstr*, Bool mode64 );
 extern void         mapRegs_PPCInstr     ( HRegRemap*, PPCInstr* , Bool mode64);
 extern Bool         isMove_PPCInstr      ( PPCInstr*, HReg*, HReg* );
-extern Int          emit_PPCInstr        ( UChar* buf, Int nbuf, PPCInstr*, 
-                                           Bool mode64, void* dispatch );
+extern Int          emit_PPCInstr        ( /*MB_MOD*/Bool* is_profInc,
+                                           UChar* buf, Int nbuf, PPCInstr* i, 
+                                           Bool mode64,
+                                           void* disp_cp_chain_me_to_slowEP,
+                                           void* disp_cp_chain_me_to_fastEP,
+                                           void* disp_cp_xindir,
+                                           void* disp_cp_xassisted );
 
 extern void genSpill_PPC  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offsetB, Bool mode64 );
@@ -861,9 +1076,37 @@ extern void genReload_PPC ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offsetB, Bool mode64 );
 
 extern void         getAllocableRegs_PPC ( Int*, HReg**, Bool mode64 );
-extern HInstrArray* iselSB_PPC           ( IRSB*, VexArch,
+extern HInstrArray* iselSB_PPC           ( IRSB*, 
+                                           VexArch,
                                                   VexArchInfo*,
-                                                  VexAbiInfo* );
+                                           VexAbiInfo*,
+                                           Int offs_Host_EvC_Counter,
+                                           Int offs_Host_EvC_FailAddr,
+                                           Bool chainingAllowed,
+                                           Bool addProfInc,
+                                           Addr64 max_ga );
+
+/* How big is an event check?  This is kind of a kludge because it
+   depends on the offsets of host_EvC_FAILADDR and
+   host_EvC_COUNTER. */
+extern Int evCheckSzB_PPC ( void );
+
+/* Perform a chaining and unchaining of an XDirect jump. */
+extern VexInvalRange chainXDirect_PPC ( void* place_to_chain,
+                                        void* disp_cp_chain_me_EXPECTED,
+                                        void* place_to_jump_to,
+                                        Bool  mode64 );
+
+extern VexInvalRange unchainXDirect_PPC ( void* place_to_unchain,
+                                          void* place_to_jump_to_EXPECTED,
+                                          void* disp_cp_chain_me,
+                                          Bool  mode64 );
+
+/* Patch the counter location into an existing ProfInc point. */
+extern VexInvalRange patchProfInc_PPC ( void*  place_to_patch,
+                                        ULong* location_of_counter,
+                                        Bool   mode64 );
+
 
 #endif /* ndef __VEX_HOST_PPC_DEFS_H */
 

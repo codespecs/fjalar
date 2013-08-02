@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Do an automated test which involves building and regtesting version
 # 1.9 of the GNU Scientific Library (gsl).  This has proven to be a 
@@ -22,6 +22,11 @@
 #     name of Valgrind
 #     args for Valgrind
 
+# Results:  3.7.0   --tool=none
+#     x86   1 failure  Ubuntu 10.10
+#           FAIL: qawo(f456) elist (7.25063790881233303e-15 observed vs 7.25922435194575979e-15 expected)
+#           same failure was also present in 3.6.1
+#     s390x 0 failures  on z196 running SLES11
 
 if [ $# != 5 ]
 then 

@@ -95,7 +95,7 @@ void initializeProgramPointsTree()
       // Also skip comment lines (those beginning with COMMENT_CHAR)
       if(('\n' == input_line[0]) ||
          (COMMENT_CHAR == input_line[0])) {
-        //        VG_(printf)("skipping blank line ...\n");
+        //        printf("skipping blank line ...\n");
         continue;
       }
 
@@ -168,7 +168,7 @@ void initializeVarsTree()
       // Also skip comment lines (those beginning with COMMENT_CHAR)
       if(('\n' == input_line[0]) ||
          (COMMENT_CHAR == input_line[0])) {
-        //        VG_(printf)("skipping blank line ...\n");
+        //        printf("skipping blank line ...\n");
         continue;
       }
 
@@ -200,10 +200,10 @@ void initializeVarsTree()
               if (VG_STREQ(input_line, GLOBAL_STRING))
 		{
 		  globalFunctionTree = currentFunctionTree;
-                  //                  VG_(printf)("globalFunctionTree: %p\n", globalFunctionTree);
+                  //                  printf("globalFunctionTree: %p\n", globalFunctionTree);
 		}
               else {
-                //                VG_(printf)("Function: %s\n", currentFunctionTree->function_fjalar_name);
+                //                printf("Function: %s\n", currentFunctionTree->function_fjalar_name);
               }
 	    }
 	  // Otherwise, create a new variable and stuff it into
@@ -212,7 +212,7 @@ void initializeVarsTree()
 	    {
 	      char* newString = VG_(strdup)("fjalar_selec.c: initVT.3", input_line);
 	      tsearch((void*)newString, (void**)&(currentFunctionTree->function_variables_tree), compareStrings);
-              //              VG_(printf)("variable: %s\n", newString);
+              //              printf("variable: %s\n", newString);
 	    }
 
 	  nextLineIsFunction = 0;

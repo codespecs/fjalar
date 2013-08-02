@@ -20,6 +20,11 @@
 #     name of Valgrind
 #     args for Valgrind
 
+# Results:  3.7.0   --tool=none
+#     x86   1 failure  Ubuntu 10.10
+#           FAIL: qawo(f456) elist (7.25063790881233303e-15 observed vs 7.25922435194575979e-15 expected)
+#           same failure was also present in 3.6.1
+#     s390x 0 failures  on z900 running RHEL4
 
 if [ $# != 5 ]
 then 
@@ -87,7 +92,7 @@ runcmd "Configuring                   " \
        "(cd gsl-1.6-patched && CC=$GSL_CC CFLAGS=\"$GSL_CFLAGS\" ./configure)" && \
 \
 runcmd "Building                      " \
-       "(cd gsl-1.6-patched && make && make -k check)"
+       "(cd gsl-1.6-patched && make -j4 && make -k check)"
 
 echo -n "   Collecting reference results  "
 rm -f out-REF
@@ -95,19 +100,19 @@ rm -f out-REF
 echo "  ... done"
 
 echo -n "   Collecting valgrinded results "
-rm -f out-V
-(cd gsl-1.6-patched && for f in $ALL_TESTS ; do eval $GSL_VV -v --trace-children=yes "$GSL_VFLAGS" ./$f ; done) &> out-V
+rm -f out-VAL
+(cd gsl-1.6-patched && for f in $ALL_TESTS ; do eval $GSL_VV -v --trace-children=yes "$GSL_VFLAGS" ./$f ; done) &> out-VAL
 echo "  ... done"
 
 echo -n "   Native fails:    " && (grep FAIL: out-REF | wc -l)
 echo -n "   Native passes:   " && (grep PASS: out-REF | wc -l)
-echo -n "   Valgrind fails:  " && (grep FAIL: out-V | wc -l)
-echo -n "   Valgrind passes: " && (grep PASS: out-V | wc -l)
+echo -n "   Valgrind fails:  " && (grep FAIL: out-VAL | wc -l)
+echo -n "   Valgrind passes: " && (grep PASS: out-VAL | wc -l)
 
 (echo -n "   Native fails:    " && (grep FAIL: out-REF | wc -l)) >> summary.txt
 (echo -n "   Native passes:   " && (grep PASS: out-REF | wc -l)) >> summary.txt
-(echo -n "   Valgrind fails:  " && (grep FAIL: out-V | wc -l)) >> summary.txt
-(echo -n "   Valgrind passes: " && (grep PASS: out-V | wc -l)) >> summary.txt
+(echo -n "   Valgrind fails:  " && (grep FAIL: out-VAL | wc -l)) >> summary.txt
+(echo -n "   Valgrind passes: " && (grep PASS: out-VAL | wc -l)) >> summary.txt
 echo >> summary.txt
 
 echo

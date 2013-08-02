@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Nicholas Nethercote
+   Copyright (C) 2000-2012 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2009 Paul Mackerras
+   Copyright (C) 2004-2012 Paul Mackerras
       paulus@samba.org
-   Copyright (C) 2008-2009 Evan Geller
+   Copyright (C) 2008-2012 Evan Geller
       gaze@bea.ms
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,7 @@
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
+#include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -52,9 +53,19 @@
 #include "pub_core_transtab.h"      // VG_(discard_translations)
 
 
+/* This uses the hack of dumping the vex guest state along with both
+   shadows in the frame, and restoring it afterwards from there,
+   rather than pulling it out of the ucontext.  That means that signal
+   handlers which modify the ucontext and then return, expecting their
+   modifications to take effect, will have those modifications
+   ignored.  This could be fixed properly with an hour or so more
+   effort. */
+
+
 struct vg_sig_private {
    UInt magicPI;
    UInt sigNo_private;
+   VexGuestARMState vex;
    VexGuestARMState vex_shadow1;
    VexGuestARMState vex_shadow2;
 };
@@ -139,7 +150,7 @@ static void synth_ucontext( ThreadId tid, const vki_siginfo_t *si,
    SC2(ip,R12);
    SC2(sp,R13);
    SC2(lr,R14);
-   SC2(pc,R15);
+   SC2(pc,R15T);
 #  undef SC2
 
    sc->trap_no = trapno;
@@ -179,6 +190,7 @@ static void build_sigframe(ThreadState *tst,
 
    priv->magicPI = 0x31415927;
    priv->sigNo_private = sigNo;
+   priv->vex         = tst->arch.vex;
    priv->vex_shadow1 = tst->arch.vex_shadow1;
    priv->vex_shadow2 = tst->arch.vex_shadow2;
 
@@ -236,7 +248,7 @@ void VG_(sigframe_create)( ThreadId tid,
       tst->arch.vex.guest_R1 = (Addr)&rsf->info;
       tst->arch.vex.guest_R2 = (Addr)&rsf->sig.uc;
    }
-   else{
+   else {
       build_sigframe(tst, (struct sigframe *)sp, siginfo, siguc,
                              handler, flags, mask, restorer);
     }
@@ -246,10 +258,15 @@ void VG_(sigframe_create)( ThreadId tid,
          sizeof(Addr));
     tst->arch.vex.guest_R0  = sigNo; 
 
-    if(flags & VKI_SA_RESTORER)
-        tst->arch.vex.guest_R14 = (Addr) restorer; 
+   if (flags & VKI_SA_RESTORER)
+       tst->arch.vex.guest_R14 = (Addr)restorer; 
+   else
+       tst->arch.vex.guest_R14 
+          = (flags & VKI_SA_SIGINFO)
+            ? (Addr)&VG_(arm_linux_SUBST_FOR_rt_sigreturn)
+            : (Addr)&VG_(arm_linux_SUBST_FOR_sigreturn);
 
-   tst->arch.vex.guest_R15 = (Addr) handler; /* R15 == PC */
+   tst->arch.vex.guest_R15T = (Addr) handler; /* R15 == PC */
 }
 
 
@@ -312,8 +329,11 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    REST(ip,R12);
    REST(sp,R13);
    REST(lr,R14);
-   REST(pc,R15);
+   REST(pc,R15T);
 #  undef REST
+
+   /* Uh, the next line makes all the REST() above pointless. */
+   tst->arch.vex         = priv->vex;
 
    tst->arch.vex_shadow1 = priv->vex_shadow1;
    tst->arch.vex_shadow2 = priv->vex_shadow2;
@@ -323,8 +343,9 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
              
    if (VG_(clo_trace_signals))
       VG_(message)(Vg_DebugMsg,
-                   "vg_pop_signal_frame (thread %d): isRT=%d valid magic; PC=%#x",
-                   tid, has_siginfo, tst->arch.vex.guest_R15);
+                   "vg_pop_signal_frame (thread %d): "
+                   "isRT=%d valid magic; PC=%#x\n",
+                   tid, has_siginfo, tst->arch.vex.guest_R15T);
 
    /* tell the tools */
    VG_TRACK( post_deliver_signal, tid, sigNo );

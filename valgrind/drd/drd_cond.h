@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -36,6 +35,12 @@
 struct cond_info;
 
 
+/* Variable declarations. */
+
+extern Addr DRD_(pthread_cond_initializer);
+extern int DRD_(pthread_cond_initializer_size);
+
+
 /* Function declarations. */
 
 void DRD_(cond_set_report_signal_unlocked)(const Bool r);
@@ -43,8 +48,8 @@ void DRD_(cond_set_trace)(const Bool trace_cond);
 struct cond_info* DRD_(cond_get)(const Addr cond);
 void DRD_(cond_pre_init)(const Addr cond);
 void DRD_(cond_post_destroy)(const Addr cond);
-int DRD_(cond_pre_wait)(const Addr cond, const Addr mutex);
-int DRD_(cond_post_wait)(const Addr cond);
+void DRD_(cond_pre_wait)(const Addr cond, const Addr mutex);
+void DRD_(cond_post_wait)(const Addr cond);
 void DRD_(cond_pre_signal)(const Addr cond);
 void DRD_(cond_pre_broadcast)(const Addr cond);
 

@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (host_reg_alloc2.c) is                        ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                 host_reg_alloc2.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -218,10 +207,11 @@ Int findMostDistantlyMentionedVReg (
 /* Check that this vreg has been assigned a sane spill offset. */
 static inline void sanity_check_spill_offset ( VRegLR* vreg )
 {
-   if (vreg->reg_class == HRcVec128 || vreg->reg_class == HRcFlt64) {
-      vassert(0 == ((UShort)vreg->spill_offset % 16));
-   } else {
-      vassert(0 == ((UShort)vreg->spill_offset % 8));
+   switch (vreg->reg_class) {
+      case HRcVec128: case HRcFlt64:
+         vassert(0 == ((UShort)vreg->spill_offset % 16)); break;
+      default:
+         vassert(0 == ((UShort)vreg->spill_offset % 8)); break;
    }
 }
 
@@ -409,14 +399,14 @@ HInstrArray* doRegisterAllocation (
       not at each insn processed. */
    Bool do_sanity_check;
 
-   vassert(0 == (guest_sizeB % 16));
-   vassert(0 == (LibVEX_N_SPILL_BYTES % 16));
-   vassert(0 == (N_SPILL64S % 2));
+   vassert(0 == (guest_sizeB % 32));
+   vassert(0 == (LibVEX_N_SPILL_BYTES % 32));
+   vassert(0 == (N_SPILL64S % 4));
 
    /* The live range numbers are signed shorts, and so limiting the
-      number of insns to 10000 comfortably guards against them
+      number of insns to 15000 comfortably guards against them
       overflowing 32k. */
-   vassert(instrs_in->arr_used <= 10000);
+   vassert(instrs_in->arr_used <= 15000);
 
 #  define INVALID_INSTRNO (-2)
 
@@ -801,17 +791,23 @@ HInstrArray* doRegisterAllocation (
 
    /* Each spill slot is 8 bytes long.  For vregs which take more than
       64 bits to spill (classes Flt64 and Vec128), we have to allocate
-      two spill slots.
+      two consecutive spill slots.  For 256 bit registers (class
+      Vec256), we have to allocate four consecutive spill slots.
 
       For Vec128-class on PowerPC, the spill slot's actual address
       must be 16-byte aligned.  Since the spill slot's address is
       computed as an offset from the guest state pointer, and since
       the user of the generated code must set that pointer to a
-      16-aligned value, we have the residual obligation here of
+      32-aligned value, we have the residual obligation here of
       choosing a 16-aligned spill slot offset for Vec128-class values.
       Since each spill slot is 8 bytes long, that means for
       Vec128-class values we must allocated a spill slot number which
       is zero mod 2.
+
+      Similarly, for Vec256 calss on amd64, find a spill slot number
+      which is zero mod 4.  This guarantees it will be 32 byte
+      aligned, which isn't actually necessary on amd64 (we use movUpd
+      etc to spill), but seems like good practice.
 
       Do a rank-based allocation of vregs to spill slot numbers.  We
       put as few values as possible in spill slots, but nevertheless
@@ -832,38 +828,38 @@ HInstrArray* doRegisterAllocation (
       }
 
       /* The spill slots are 64 bits in size.  As per the comment on
-         definition of HRegClass in host_generic_regs.h, that means, to
-         spill a vreg of class Flt64 or Vec128, we'll need to find two
-         adjacent spill slots to use.  Note, this logic needs to kept
-         in sync with the size info on the definition of HRegClass. */
+         definition of HRegClass in host_generic_regs.h, that means,
+         to spill a vreg of class Flt64 or Vec128, we'll need to find
+         two adjacent spill slots to use.  For Vec256, we'll need to
+         find four adjacent slots to use.  Note, this logic needs to
+         kept in sync with the size info on the definition of
+         HRegClass. */
+      switch (vreg_lrs[j].reg_class) {
 
-      if (vreg_lrs[j].reg_class == HRcVec128
-          || vreg_lrs[j].reg_class == HRcFlt64) {
-
-         /* Find two adjacent free slots in which between them provide
-            up to 128 bits in which to spill the vreg.  Since we are
-            trying to find an even:odd pair, move along in steps of 2
-            (slots). */
-
+         case HRcVec128: case HRcFlt64:
+            /* Find two adjacent free slots in which between them
+               provide up to 128 bits in which to spill the vreg.
+               Since we are trying to find an even:odd pair, move
+               along in steps of 2 (slots). */
          for (k = 0; k < N_SPILL64S-1; k += 2)
-            if (ss_busy_until_before[k] <= vreg_lrs[j].live_after
+               if (ss_busy_until_before[k+0] <= vreg_lrs[j].live_after
                 && ss_busy_until_before[k+1] <= vreg_lrs[j].live_after)
                break;
          if (k >= N_SPILL64S-1) {
             vpanic("LibVEX_N_SPILL_BYTES is too low.  "
                    "Increase and recompile.");
          }
-         if (0) vex_printf("16-byte spill offset in spill slot %d\n", (Int)k);
+            if (0) vex_printf("16-byte spill offset in spill slot %d\n",
+                              (Int)k);
          ss_busy_until_before[k+0] = vreg_lrs[j].dead_before;
          ss_busy_until_before[k+1] = vreg_lrs[j].dead_before;
+            break;
 
-      } else {
-
+         default:
          /* The ordinary case -- just find a single spill slot. */
-
-         /* Find the lowest-numbered spill slot which is available at
-            the start point of this interval, and assign the interval
-            to it. */
+            /* Find the lowest-numbered spill slot which is available
+               at the start point of this interval, and assign the
+               interval to it. */
          for (k = 0; k < N_SPILL64S; k++)
             if (ss_busy_until_before[k] <= vreg_lrs[j].live_after)
                break;
@@ -872,8 +868,9 @@ HInstrArray* doRegisterAllocation (
                    "Increase and recompile.");
          }
          ss_busy_until_before[k] = vreg_lrs[j].dead_before;
+            break;
 
-      }
+      } /* switch (vreg_lrs[j].reg_class) { */
 
       /* This reflects LibVEX's hard-wired knowledge of the baseBlock
          layout: the guest state, then two equal sized areas following

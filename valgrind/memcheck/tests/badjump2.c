@@ -13,7 +13,7 @@ static jmp_buf myjmpbuf;
 static
 void SIGSEGV_handler(int signum)
 {
-   __builtin_longjmp(myjmpbuf, 1);
+   longjmp(myjmpbuf, 1);
 }
 
 int main(void)
@@ -24,7 +24,7 @@ int main(void)
    /* Install own SIGSEGV handler */
    sigsegv_new.sa_handler  = SIGSEGV_handler;
    sigsegv_new.sa_flags    = 0;
-#if !defined(_AIX) && !defined(__APPLE__)
+#if !defined(__APPLE__)
    sigsegv_new.sa_restorer = NULL;
 #endif
    res = sigemptyset( &sigsegv_new.sa_mask );
@@ -33,18 +33,17 @@ int main(void)
    res = sigaction( SIGSEGV, &sigsegv_new, &sigsegv_saved );
    assert(res == 0);
 
-   if (__builtin_setjmp(myjmpbuf) == 0) {
+   if (setjmp(myjmpbuf) == 0) {
       // Jump to zero; will cause seg fault
-#if defined(__powerpc64__) || defined(_AIX)
-      unsigned long int fake_fndescr[3];
-      fake_fndescr[0] = 0;
-      fake_fndescr[1] = 0;
-      fake_fndescr[2] = 0;
-      ((void(*)(void)) fake_fndescr) ();
+#if defined(__powerpc64__)
+      unsigned long int fn[3];
+      fn[0] = 0;
+      fn[1] = 0;
+      fn[2] = 0;
 #else
       void (*fn)(void) = 0;
-      fn();
 #endif
+      ((void(*)(void)) fn) ();
       fprintf(stderr, "Got here??\n");
    } else  {
       fprintf(stderr, "Signal caught, as expected\n");

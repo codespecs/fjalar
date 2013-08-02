@@ -1,14 +1,14 @@
 
 /*--------------------------------------------------------------------*/
 /*--- pthread intercepts for thread checking.                      ---*/
-/*---                                              tc_intercepts.c ---*/
+/*---                                              hg_intercepts.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2009 OpenWorks LLP
+   Copyright (C) 2007-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -70,39 +70,49 @@
    ret_ty I_WRAP_SONAME_FNNAME_ZZ(VG_Z_LIBPTHREAD_SONAME,f)(args); \
    ret_ty I_WRAP_SONAME_FNNAME_ZZ(VG_Z_LIBPTHREAD_SONAME,f)(args)
 
-// Do a client request.  This is a macro rather than a function 
-// so as to avoid having an extra function in the stack trace.
+// Do a client request.  These are macros rather than a functions so
+// as to avoid having an extra frame in stack traces.
+
+// NB: these duplicate definitions in helgrind.h.  But here, we
+// can have better typing (Word etc) and assertions, whereas
+// in helgrind.h we can't.  Obviously it's important the two
+// sets of definitions are kept in sync.
+
+// nuke the previous definitions
+#undef DO_CREQ_v_W
+#undef DO_CREQ_v_WW
+#undef DO_CREQ_W_WW
+#undef DO_CREQ_v_WWW
 
 #define DO_CREQ_v_W(_creqF, _ty1F,_arg1F)                \
    do {                                                  \
-      Word _unused_res, _arg1;                           \
+      Word _arg1;                                        \
       assert(sizeof(_ty1F) == sizeof(Word));             \
       _arg1 = (Word)(_arg1F);                            \
-      VALGRIND_DO_CLIENT_REQUEST(_unused_res, 0,         \
-                                 (_creqF),               \
+      VALGRIND_DO_CLIENT_REQUEST_STMT((_creqF),          \
                                  _arg1, 0,0,0,0);        \
    } while (0)
 
 #define DO_CREQ_v_WW(_creqF, _ty1F,_arg1F, _ty2F,_arg2F) \
    do {                                                  \
-      Word _unused_res, _arg1, _arg2;                    \
+      Word _arg1, _arg2;                                 \
       assert(sizeof(_ty1F) == sizeof(Word));             \
       assert(sizeof(_ty2F) == sizeof(Word));             \
       _arg1 = (Word)(_arg1F);                            \
       _arg2 = (Word)(_arg2F);                            \
-      VALGRIND_DO_CLIENT_REQUEST(_unused_res, 0,         \
-                                 (_creqF),               \
+      VALGRIND_DO_CLIENT_REQUEST_STMT((_creqF),          \
                                  _arg1,_arg2,0,0,0);     \
    } while (0)
 
-#define DO_CREQ_W_WW(_resF, _creqF, _ty1F,_arg1F, _ty2F,_arg2F)        \
+#define DO_CREQ_W_WW(_resF, _creqF, _ty1F,_arg1F,        \
+                     _ty2F,_arg2F)                       \
    do {                                                  \
       Word _res, _arg1, _arg2;                           \
       assert(sizeof(_ty1F) == sizeof(Word));             \
       assert(sizeof(_ty2F) == sizeof(Word));             \
       _arg1 = (Word)(_arg1F);                            \
       _arg2 = (Word)(_arg2F);                            \
-      VALGRIND_DO_CLIENT_REQUEST(_res, 2,                \
+      _res = VALGRIND_DO_CLIENT_REQUEST_EXPR(2,          \
                                  (_creqF),               \
                                  _arg1,_arg2,0,0,0);     \
       _resF = _res;                                      \
@@ -111,15 +121,14 @@
 #define DO_CREQ_v_WWW(_creqF, _ty1F,_arg1F,              \
                       _ty2F,_arg2F, _ty3F, _arg3F)       \
    do {                                                  \
-      Word _unused_res, _arg1, _arg2, _arg3;             \
+      Word _arg1, _arg2, _arg3;                          \
       assert(sizeof(_ty1F) == sizeof(Word));             \
       assert(sizeof(_ty2F) == sizeof(Word));             \
       assert(sizeof(_ty3F) == sizeof(Word));             \
       _arg1 = (Word)(_arg1F);                            \
       _arg2 = (Word)(_arg2F);                            \
       _arg3 = (Word)(_arg3F);                            \
-      VALGRIND_DO_CLIENT_REQUEST(_unused_res, 0,         \
-                                 (_creqF),               \
+      VALGRIND_DO_CLIENT_REQUEST_STMT((_creqF),          \
                                  _arg1,_arg2,_arg3,0,0); \
    } while (0)
 
@@ -182,8 +191,6 @@ static char* lame_strerror ( long err )
 /*--- pthread_create, pthread_join, pthread_exit               ---*/
 /*----------------------------------------------------------------*/
 
-/* Do not rename this function.  It contains an unavoidable race and
-   so is mentioned by name in glibc-*helgrind*.supp. */
 static void* mythread_wrapper ( void* xargsV )
 {
    volatile Word* xargs = (volatile Word*) xargsV;
@@ -196,7 +203,17 @@ static void* mythread_wrapper ( void* xargsV )
       we're ready because (1) we need to make sure it doesn't exit and
       hence deallocate xargs[] while we still need it, and (2) we
       don't want either parent nor child to proceed until the tool has
-      been notified of the child's pthread_t. */
+      been notified of the child's pthread_t.
+
+      Note that parent and child access args[] without a lock,
+      effectively using args[2] as a spinlock in order to get the
+      parent to wait until the child passes this point.  The parent
+      disables checking on xargs[] before creating the child and
+      re-enables it once the child goes past this point, so the user
+      never sees the race.  The previous approach (suppressing the
+      resulting error) was flawed, because it could leave shadow
+      memory for args[] in a state in which subsequent use of it by
+      the parent would report further races. */
    xargs[2] = 0;
    /* Now we can no longer safely use xargs[]. */
    return (void*) fn( (void*)arg );
@@ -226,6 +243,14 @@ static int pthread_create_WRK(pthread_t *thread, const pthread_attr_t *attr,
    xargs[0] = (Word)start;
    xargs[1] = (Word)arg;
    xargs[2] = 1; /* serves as a spinlock -- sigh */
+   /* Disable checking on the spinlock and the two words used to
+      convey args to the child.  Basically we need to make it appear
+      as if the child never accessed this area, since merely
+      suppressing the resulting races does not address the issue that
+      that piece of the parent's stack winds up in the "wrong" state
+      and therefore may give rise to mysterious races when the parent
+      comes to re-use this piece of stack in some other frame. */
+   VALGRIND_HG_DISABLE_CHECKING(&xargs, sizeof(xargs));
 
    CALL_FN_W_WWWW(ret, fn, thread,attr,mythread_wrapper,&xargs[0]);
 
@@ -244,6 +269,10 @@ static int pthread_create_WRK(pthread_t *thread, const pthread_attr_t *attr,
    } else { 
       DO_PthAPIerror( "pthread_create", ret );
    }
+
+   /* Reenable checking on the area previously used to communicate
+      with the child. */
+   VALGRIND_HG_ENABLE_CHECKING(&xargs, sizeof(xargs));
 
    if (TRACE_PTH_FNS) {
       fprintf(stderr, " :: pth_create -> %d >>\n", ret);
@@ -278,6 +307,7 @@ static int pthread_create_WRK(pthread_t *thread, const pthread_attr_t *attr,
 // darwin: pthread_join
 // darwin: pthread_join$NOCANCEL$UNIX2003
 // darwin  pthread_join$UNIX2003
+__attribute__((noinline))
 static int pthread_join_WRK(pthread_t thread, void** value_pointer)
 {
    int ret;
@@ -614,6 +644,7 @@ PTH_FUNC(int, pthreadZumutexZuunlock, // pthread_mutex_unlock
 // darwin: pthread_cond_wait$NOCANCEL$UNIX2003
 // darwin: pthread_cond_wait$UNIX2003
 //
+__attribute__((noinline))
 static int pthread_cond_wait_WRK(pthread_cond_t* cond,
                                  pthread_mutex_t* mutex)
 {
@@ -694,6 +725,7 @@ static int pthread_cond_wait_WRK(pthread_cond_t* cond,
 // darwin: pthread_cond_timedwait$UNIX2003
 // darwin: pthread_cond_timedwait_relative_np (trapped)
 //
+__attribute__((noinline))
 static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
                                       pthread_mutex_t* mutex, 
                                       struct timespec* abstime)
@@ -701,6 +733,7 @@ static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
    int ret;
    OrigFn fn;
    unsigned long mutex_is_valid;
+   Bool abstime_is_valid;
    VALGRIND_GET_ORIG_FN(fn);
 
    if (TRACE_PTH_FNS) {
@@ -717,16 +750,24 @@ static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
                 pthread_cond_t*,cond, pthread_mutex_t*,mutex);
    assert(mutex_is_valid == 1 || mutex_is_valid == 0);
 
+   abstime_is_valid = abstime->tv_nsec >= 0 && abstime->tv_nsec < 1000000000;
+
    /* Tell the tool we're about to drop the mutex.  This reflects the
       fact that in a cond_wait, we show up holding the mutex, and the
       call atomically drops the mutex and waits for the cv to be
       signalled. */
-   if (mutex_is_valid) {
+   if (mutex_is_valid && abstime_is_valid) {
       DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_MUTEX_UNLOCK_PRE,
                   pthread_mutex_t*,mutex);
    }
 
    CALL_FN_W_WWW(ret, fn, cond,mutex,abstime);
+
+   if (!abstime_is_valid && ret != EINVAL) {
+      DO_PthAPIerror("Bug in libpthread: pthread_cond_timedwait "
+                     "invalid abstime did not cause"
+                     " EINVAL", ret);
+   }
 
    if ((ret == 0 || ret == ETIMEDOUT) && mutex_is_valid) {
       /* and now we have the mutex again */
@@ -783,6 +824,7 @@ static int pthread_cond_timedwait_WRK(pthread_cond_t* cond,
 // darwin: pthread_cond_signal
 // darwin: pthread_cond_signal_thread_np (don't intercept this)
 //
+__attribute__((noinline))
 static int pthread_cond_signal_WRK(pthread_cond_t* cond)
 {
    int ret;
@@ -834,6 +876,7 @@ static int pthread_cond_signal_WRK(pthread_cond_t* cond)
 // point of view, with cond_signal, so the code is duplicated.
 // Maybe it should be commoned up.
 //
+__attribute__((noinline))
 static int pthread_cond_broadcast_WRK(pthread_cond_t* cond)
 {
    int ret;
@@ -881,6 +924,7 @@ static int pthread_cond_broadcast_WRK(pthread_cond_t* cond)
 // glibc:  pthread_cond_destroy@GLIBC_2.0
 // darwin: pthread_cond_destroy
 //
+__attribute__((noinline))
 static int pthread_cond_destroy_WRK(pthread_cond_t* cond)
 {
    int ret;
@@ -957,9 +1001,10 @@ PTH_FUNC(int, pthreadZubarrierZuinit, // pthread_barrier_init
       fflush(stderr);
    }
 
-   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_BARRIER_INIT_PRE,
-                pthread_barrier_t*,bar,
-                unsigned long,count);
+   DO_CREQ_v_WWW(_VG_USERREQ__HG_PTHREAD_BARRIER_INIT_PRE,
+                 pthread_barrier_t*, bar,
+                 unsigned long, count,
+                 unsigned long, 0/*!resizable*/);
 
    CALL_FN_W_WWW(ret, fn, bar,attr,count);
 
@@ -1068,6 +1113,7 @@ PTH_FUNC(int, pthreadZubarrierZudestroy, // pthread_barrier_destroy
 // glibc:  pthread_spin_init
 // glibc:  pthread_spin_unlock
 // darwin: (doesn't appear to exist)
+__attribute__((noinline))
 static int pthread_spin_init_or_unlock_WRK(pthread_spinlock_t* lock,
                                            int pshared) {
    int    ret;
@@ -1244,6 +1290,10 @@ PTH_FUNC(int, pthreadZuspinZutrylock, // pthread_spin_trylock
 /*--- pthread_rwlock_t functions                               ---*/
 /*----------------------------------------------------------------*/
 
+/* Android's pthread.h doesn't say anything about rwlocks, hence these
+   functions have to be conditionally compiled. */
+#if defined(HAVE_PTHREAD_RWLOCK_T)
+
 /* Handled:   pthread_rwlock_init pthread_rwlock_destroy
               pthread_rwlock_rdlock 
               pthread_rwlock_wrlock
@@ -1260,6 +1310,7 @@ PTH_FUNC(int, pthreadZuspinZutrylock, // pthread_spin_trylock
 // glibc:  pthread_rwlock_init
 // darwin: pthread_rwlock_init
 // darwin: pthread_rwlock_init$UNIX2003
+__attribute__((noinline))
 static int pthread_rwlock_init_WRK(pthread_rwlock_t *rwl,
                                    pthread_rwlockattr_t* attr)
 {
@@ -1306,6 +1357,7 @@ static int pthread_rwlock_init_WRK(pthread_rwlock_t *rwl,
 // darwin: pthread_rwlock_destroy
 // darwin: pthread_rwlock_destroy$UNIX2003
 //
+__attribute__((noinline))
 static int pthread_rwlock_destroy_WRK(pthread_rwlock_t* rwl)
 {
    int    ret;
@@ -1349,6 +1401,7 @@ static int pthread_rwlock_destroy_WRK(pthread_rwlock_t* rwl)
 // darwin: pthread_rwlock_wrlock
 // darwin: pthread_rwlock_wrlock$UNIX2003
 //
+__attribute__((noinline))
 static int pthread_rwlock_wrlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
@@ -1396,6 +1449,7 @@ static int pthread_rwlock_wrlock_WRK(pthread_rwlock_t* rwlock)
 // darwin: pthread_rwlock_rdlock
 // darwin: pthread_rwlock_rdlock$UNIX2003
 //
+__attribute__((noinline))
 static int pthread_rwlock_rdlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
@@ -1443,6 +1497,7 @@ static int pthread_rwlock_rdlock_WRK(pthread_rwlock_t* rwlock)
 // darwin: pthread_rwlock_trywrlock
 // darwin: pthread_rwlock_trywrlock$UNIX2003
 //
+__attribute__((noinline))
 static int pthread_rwlock_trywrlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
@@ -1496,6 +1551,7 @@ static int pthread_rwlock_trywrlock_WRK(pthread_rwlock_t* rwlock)
 // darwin: pthread_rwlock_trywrlock
 // darwin: pthread_rwlock_trywrlock$UNIX2003
 //
+__attribute__((noinline))
 static int pthread_rwlock_tryrdlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
@@ -1548,6 +1604,7 @@ static int pthread_rwlock_tryrdlock_WRK(pthread_rwlock_t* rwlock)
 // glibc:  pthread_rwlock_unlock
 // darwin: pthread_rwlock_unlock
 // darwin: pthread_rwlock_unlock$UNIX2003
+__attribute__((noinline))
 static int pthread_rwlock_unlock_WRK(pthread_rwlock_t* rwlock)
 {
    int    ret;
@@ -1588,6 +1645,8 @@ static int pthread_rwlock_unlock_WRK(pthread_rwlock_t* rwlock)
 #  error "Unsupported OS"
 #endif
 
+#endif /* defined(HAVE_PTHREAD_RWLOCK_T) */
+
 
 /*----------------------------------------------------------------*/
 /*--- POSIX semaphores                                         ---*/
@@ -1620,6 +1679,7 @@ static int pthread_rwlock_unlock_WRK(pthread_rwlock_t* rwlock)
 // glibc:  sem_init@GLIBC_2.0
 // darwin: sem_init
 //
+__attribute__((noinline))
 static int sem_init_WRK(sem_t* sem, int pshared, unsigned long value)
 {
    OrigFn fn;
@@ -1667,6 +1727,7 @@ static int sem_init_WRK(sem_t* sem, int pshared, unsigned long value)
 // glibc:  sem_destroy@@GLIBC_2.1
 // glibc:  sem_destroy@@GLIBC_2.2.5
 // darwin: sem_destroy
+__attribute__((noinline))
 static int sem_destroy_WRK(sem_t* sem)
 {
    OrigFn fn;
@@ -1717,6 +1778,7 @@ static int sem_destroy_WRK(sem_t* sem)
 // darwin: sem_wait$UNIX2003
 //
 /* wait: decrement semaphore - acquire lockage */
+__attribute__((noinline))
 static int sem_wait_WRK(sem_t* sem)
 {
    OrigFn fn;
@@ -1769,6 +1831,7 @@ static int sem_wait_WRK(sem_t* sem)
 // darwin: sem_post
 //
 /* post: increment semaphore - release lockage */
+__attribute__((noinline))
 static int sem_post_WRK(sem_t* sem)
 {
    OrigFn fn;
@@ -2123,6 +2186,10 @@ QT4_FUNC(void*, _ZN6QMutexC2ENS_13RecursionModeE,
          long  recmode)
 {
    assert(0);
+   /*NOTREACHED*/
+   /* Android's gcc behaves like it doesn't know that assert(0)
+      never returns.  Hence: */
+   return NULL;
 }
 
 
@@ -2131,6 +2198,9 @@ QT4_FUNC(void*, _ZN6QMutexC2ENS_13RecursionModeE,
 QT4_FUNC(void*, _ZN6QMutexD2Ev, void* mutex)
 {
    assert(0);
+   /* Android's gcc behaves like it doesn't know that assert(0)
+      never returns.  Hence: */
+   return NULL;
 }
 
 
@@ -2242,13 +2312,16 @@ QT4_FUNC(void*, _ZN6QMutexD2Ev, void* mutex)
    }
 
 // Apparently index() is the same thing as strchr()
-STRCHR(VG_Z_LIBC_SONAME,          strchr)
-STRCHR(VG_Z_LIBC_SONAME,          index)
 #if defined(VGO_linux)
-STRCHR(VG_Z_LD_LINUX_SO_2,        strchr)
-STRCHR(VG_Z_LD_LINUX_SO_2,        index)
-STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, strchr)
-STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
+ STRCHR(VG_Z_LIBC_SONAME,          strchr)
+ STRCHR(VG_Z_LIBC_SONAME,          index)
+ STRCHR(VG_Z_LD_LINUX_SO_2,        strchr)
+ STRCHR(VG_Z_LD_LINUX_SO_2,        index)
+ STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, strchr)
+ STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
+#elif defined(VGO_darwin)
+ STRCHR(VG_Z_LIBC_SONAME,          strchr)
+ STRCHR(VG_Z_LIBC_SONAME,          index)
 #endif
 
 
@@ -2265,10 +2338,12 @@ STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
       return i; \
    }
 
-STRLEN(VG_Z_LIBC_SONAME,          strlen)
 #if defined(VGO_linux)
-STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
-STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+ STRLEN(VG_Z_LIBC_SONAME,          strlen)
+ STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
+ STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+#elif defined(VGO_darwin)
+ STRLEN(VG_Z_LIBC_SONAME,          strlen)
 #endif
 
 
@@ -2284,7 +2359,11 @@ STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
       return (char*)dst_orig; \
    }
 
-STRCPY(VG_Z_LIBC_SONAME, strcpy)
+#if defined(VGO_linux)
+ STRCPY(VG_Z_LIBC_SONAME, strcpy)
+#elif defined(VGO_darwin)
+ STRCPY(VG_Z_LIBC_SONAME, strcpy)
+#endif
 
 
 #define STRCMP(soname, fnname) \
@@ -2307,10 +2386,12 @@ STRCPY(VG_Z_LIBC_SONAME, strcpy)
       return 0; \
    }
 
-STRCMP(VG_Z_LIBC_SONAME,          strcmp)
 #if defined(VGO_linux)
-STRCMP(VG_Z_LD_LINUX_X86_64_SO_2, strcmp)
-STRCMP(VG_Z_LD64_SO_1,            strcmp)
+ STRCMP(VG_Z_LIBC_SONAME,          strcmp)
+ STRCMP(VG_Z_LD_LINUX_X86_64_SO_2, strcmp)
+ STRCMP(VG_Z_LD64_SO_1,            strcmp)
+#elif defined(VGO_darwin)
+ STRCMP(VG_Z_LIBC_SONAME,          strcmp)
 #endif
 
 
@@ -2356,22 +2437,30 @@ STRCMP(VG_Z_LD64_SO_1,            strcmp)
       return dst; \
    }
 
-MEMCPY(VG_Z_LIBC_SONAME,    memcpy)
 #if defined(VGO_linux)
-MEMCPY(VG_Z_LD_SO_1,        memcpy) /* ld.so.1 */
-MEMCPY(VG_Z_LD64_SO_1,      memcpy) /* ld64.so.1 */
-#endif
-/* icc9 blats these around all over the place.  Not only in the main
+ MEMCPY(VG_Z_LIBC_SONAME,    memcpy)
+ MEMCPY(VG_Z_LD_SO_1,        memcpy) /* ld.so.1 */
+ MEMCPY(VG_Z_LD64_SO_1,      memcpy) /* ld64.so.1 */
+ /* icc9 blats these around all over the place.  Not only in the main
    executable but various .so's.  They are highly tuned and read
    memory beyond the source boundary (although work correctly and
-   never go across page boundaries), so give errors when run natively,
-   at least for misaligned source arg.  Just intercepting in the exe
-   only until we understand more about the problem.  See
+    never go across page boundaries), so give errors when run
+    natively, at least for misaligned source arg.  Just intercepting
+    in the exe only until we understand more about the problem.  See
    http://bugs.kde.org/show_bug.cgi?id=139776
  */
-MEMCPY(NONE, _intel_fast_memcpy)
+ MEMCPY(NONE, _intel_fast_memcpy)
+
+#elif defined(VGO_darwin)
+# if DARWIN_VERS <= DARWIN_10_6
+  MEMCPY(VG_Z_LIBC_SONAME,  memcpy)
+# endif
+ MEMCPY(VG_Z_LIBC_SONAME,  memcpyZDVARIANTZDsse3x) /* memcpy$VARIANT$sse3x */
+ MEMCPY(VG_Z_LIBC_SONAME,  memcpyZDVARIANTZDsse42) /* memcpy$VARIANT$sse42 */
+
+#endif
 
 
 /*--------------------------------------------------------------------*/
-/*--- end                                          tc_intercepts.c ---*/
+/*--- end                                          hg_intercepts.c ---*/
 /*--------------------------------------------------------------------*/

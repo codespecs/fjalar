@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -83,6 +83,10 @@ extern Int  VG_(ptrace)( Int request, Int pid, void *addr, void *data );
 extern void VG_(do_atfork_pre)    ( ThreadId tid );
 extern void VG_(do_atfork_parent) ( ThreadId tid );
 extern void VG_(do_atfork_child)  ( ThreadId tid );
+
+// icache invalidation
+extern void VG_(invalidate_icache) ( void *ptr, SizeT nbytes );
+
 
 #endif   // __PUB_CORE_LIBCPROC_H
 

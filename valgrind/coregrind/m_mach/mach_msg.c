@@ -25,13 +25,7 @@
  */
 /*
  * HISTORY
- * $Log$
- * Revision 1.2  2009-08-24 17:04:21  rudd
- * Valgrind merge from revision 10343 to 10837.  VEX IR merge from 1900 to 1913.
- *
- * Revision 1.1  2009-06-16 12:24:23  rudd
- * Adding a couple missing files from the above merge
- *
+ * $Log:mach_msg.c,v $
  * Revision 2.3  92/01/23  15:22:17  rpd
  * Fixed to not pass MACH_SEND_INTERRUPT and MACH_RCV_INTERRUPT
  * to the kernel.

@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (guest_amd64_defs.h) is                       ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                guest_amd64_defs.h ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -58,8 +47,8 @@
    bb_to_IR.h. */
 extern
 DisResult disInstr_AMD64 ( IRSB*        irbb,
-                           Bool         put_IP,
                            Bool         (*resteerOkFn) ( void*, Addr64 ),
+                           Bool         resteerCisOk,
                            void*        callback_opaque,
                            UChar*       guest_code,
                            Long         delta,
@@ -72,7 +61,9 @@ DisResult disInstr_AMD64 ( IRSB*        irbb,
 /* Used by the optimiser to specialise calls to helpers. */
 extern
 IRExpr* guest_amd64_spechelper ( HChar* function_name,
-                                 IRExpr** args );
+                                 IRExpr** args,
+                                 IRStmt** precedingStmts,
+                                 Int      n_precedingStmts );
 
 /* Describes to the optimiser which part of the guest state require
    precise memory exceptions.  This is logically part of the guest
@@ -116,6 +107,8 @@ extern ULong amd64g_calculate_RCL  (
                 ULong arg, ULong rot_amt, ULong rflags_in, Long sz 
              );
 
+extern ULong amd64g_calculate_pclmul(ULong s1, ULong s2, ULong which);
+
 extern ULong amd64g_check_fldcw ( ULong fpucw );
 
 extern ULong amd64g_create_fpucw ( ULong fpround );
@@ -124,9 +117,13 @@ extern ULong amd64g_check_ldmxcsr ( ULong mxcsr );
 
 extern ULong amd64g_create_mxcsr ( ULong sseround );
 
-extern VexEmWarn amd64g_dirtyhelper_FLDENV ( VexGuestAMD64State*, HWord );
+extern VexEmNote amd64g_dirtyhelper_FLDENV  ( VexGuestAMD64State*, HWord );
+extern VexEmNote amd64g_dirtyhelper_FRSTOR  ( VexGuestAMD64State*, HWord );
+extern VexEmNote amd64g_dirtyhelper_FRSTORS ( VexGuestAMD64State*, HWord );
 
 extern void amd64g_dirtyhelper_FSTENV ( VexGuestAMD64State*, HWord );
+extern void amd64g_dirtyhelper_FNSAVE  ( VexGuestAMD64State*, HWord );
+extern void amd64g_dirtyhelper_FNSAVES ( VexGuestAMD64State*, HWord );
 
 /* Translate a guest virtual_addr into a guest linear address by
    consulting the supplied LDT/GDT structures.  Their representation
@@ -143,6 +140,16 @@ extern ULong amd64g_calculate_mmx_psadbw   ( ULong, ULong );
 extern ULong amd64g_calculate_mmx_pmovmskb ( ULong );
 extern ULong amd64g_calculate_sse_pmovmskb ( ULong w64hi, ULong w64lo );
 
+extern ULong amd64g_calculate_sse_phminposuw ( ULong sLo, ULong sHi );
+
+extern ULong amd64g_calc_crc32b ( ULong crcIn, ULong b );
+extern ULong amd64g_calc_crc32w ( ULong crcIn, ULong w );
+extern ULong amd64g_calc_crc32l ( ULong crcIn, ULong l );
+extern ULong amd64g_calc_crc32q ( ULong crcIn, ULong q );
+
+extern ULong amd64g_calc_mpsadbw ( ULong sHi, ULong sLo,
+                                   ULong dHi, ULong dLo,
+                                   ULong imm_and_return_control_bit );
 
 /* --- DIRTY HELPERS --- */
 
@@ -152,10 +159,13 @@ extern void  amd64g_dirtyhelper_storeF80le ( ULong/*addr*/, ULong/*data*/ );
 
 extern void  amd64g_dirtyhelper_CPUID_baseline ( VexGuestAMD64State* st );
 extern void  amd64g_dirtyhelper_CPUID_sse3_and_cx16 ( VexGuestAMD64State* st );
+extern void  amd64g_dirtyhelper_CPUID_sse42_and_cx16 ( VexGuestAMD64State* st );
+extern void  amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st );
 
 extern void  amd64g_dirtyhelper_FINIT ( VexGuestAMD64State* );
 
 extern void  amd64g_dirtyhelper_FXSAVE ( VexGuestAMD64State*, HWord );
+extern VexEmNote amd64g_dirtyhelper_FXRSTOR ( VexGuestAMD64State*, HWord );
 
 extern ULong amd64g_dirtyhelper_RDTSC ( void );
 
@@ -163,18 +173,116 @@ extern ULong amd64g_dirtyhelper_IN  ( ULong portno, ULong sz/*1,2 or 4*/ );
 extern void  amd64g_dirtyhelper_OUT ( ULong portno, ULong data, 
                                       ULong sz/*1,2 or 4*/ );
 
+extern void amd64g_dirtyhelper_SxDT ( void* address,
+                                      ULong op /* 0 or 1 */ );
+
+/* Helps with PCMP{I,E}STR{I,M}.
+
+   CALLED FROM GENERATED CODE: DIRTY HELPER(s).  (But not really,
+   actually it could be a clean helper, but for the fact that we can't
+   pass by value 2 x V128 to a clean helper, nor have one returned.)
+   Reads guest state, writes to guest state for the xSTRM cases, no
+   accesses of memory, is a pure function.
+
+   opc_and_imm contains (4th byte of opcode << 8) | the-imm8-byte so
+   the callee knows which I/E and I/M variant it is dealing with and
+   what the specific operation is.  4th byte of opcode is in the range
+   0x60 to 0x63:
+       istri  66 0F 3A 63
+       istrm  66 0F 3A 62
+       estri  66 0F 3A 61
+       estrm  66 0F 3A 60
+
+   gstOffL and gstOffR are the guest state offsets for the two XMM
+   register inputs.  We never have to deal with the memory case since
+   that is handled by pre-loading the relevant value into the fake
+   XMM16 register.
+
+   For ESTRx variants, edxIN and eaxIN hold the values of those two
+   registers.
+
+   In all cases, the bottom 16 bits of the result contain the new
+   OSZACP %rflags values.  For xSTRI variants, bits[31:16] of the
+   result hold the new %ecx value.  For xSTRM variants, the helper
+   writes the result directly to the guest XMM0.
+
+   Declarable side effects: in all cases, reads guest state at
+   [gstOffL, +16) and [gstOffR, +16).  For xSTRM variants, also writes
+   guest_XMM0.
+
+   Is expected to be called with opc_and_imm combinations which have
+   actually been validated, and will assert if otherwise.  The front
+   end should ensure we're only called with verified values.
+*/
+extern ULong amd64g_dirtyhelper_PCMPxSTRx ( 
+          VexGuestAMD64State*,
+          HWord opc4_and_imm,
+          HWord gstOffL, HWord gstOffR,
+          HWord edxIN, HWord eaxIN
+       );
+
+/* Implementation of intel AES instructions as described in
+   Intel  Advanced Vector Extensions
+          Programming Reference
+          MARCH 2008
+          319433-002.
+
+   CALLED FROM GENERATED CODE: DIRTY HELPER(s).  (But not really,
+   actually it could be a clean helper, but for the fact that we can't
+   pass by value 2 x V128 to a clean helper, nor have one returned.)
+   Reads guest state, writes to guest state, no
+   accesses of memory, is a pure function.
+
+   opc4 contains the 4th byte of opcode. Front-end should only
+   give opcode corresponding to AESENC/AESENCLAST/AESDEC/AESDECLAST/AESIMC.
+   (will assert otherwise).
+
+   gstOffL and gstOffR are the guest state offsets for the two XMM
+   register inputs, gstOffD is the guest state offset for the XMM register
+   output.  We never have to deal with the memory case since that is handled
+   by pre-loading the relevant value into the fake XMM16 register.
+
+*/
+extern void amd64g_dirtyhelper_AES ( 
+          VexGuestAMD64State* gst,
+          HWord opc4, HWord gstOffD,
+          HWord gstOffL, HWord gstOffR
+       );
+
+/* Implementation of AESKEYGENASSIST. 
+
+   CALLED FROM GENERATED CODE: DIRTY HELPER(s).  (But not really,
+   actually it could be a clean helper, but for the fact that we can't
+   pass by value 1 x V128 to a clean helper, nor have one returned.)
+   Reads guest state, writes to guest state, no
+   accesses of memory, is a pure function.
+
+   imm8 is the Round Key constant.
+
+   gstOffL and gstOffR are the guest state offsets for the two XMM
+   register input and output.  We never have to deal with the memory case since
+   that is handled by pre-loading the relevant value into the fake
+   XMM16 register.
+
+*/
+extern void amd64g_dirtyhelper_AESKEYGENASSIST ( 
+          VexGuestAMD64State* gst,
+          HWord imm8,
+          HWord gstOffL, HWord gstOffR
+       );
+
 //extern void  amd64g_dirtyhelper_CPUID_sse0 ( VexGuestAMD64State* );
 //extern void  amd64g_dirtyhelper_CPUID_sse1 ( VexGuestAMD64State* );
 //extern void  amd64g_dirtyhelper_CPUID_sse2 ( VexGuestAMD64State* );
 
 //extern void  amd64g_dirtyhelper_FSAVE ( VexGuestAMD64State*, HWord );
 
-//extern VexEmWarn
+//extern VexEmNote
 //            amd64g_dirtyhelper_FRSTOR ( VexGuestAMD64State*, HWord );
 
 //extern void amd64g_dirtyhelper_FSTENV ( VexGuestAMD64State*, HWord );
 
-//extern VexEmWarn 
+//extern VexEmNote
 //            amd64g_dirtyhelper_FLDENV ( VexGuestAMD64State*, HWord );
 
 
