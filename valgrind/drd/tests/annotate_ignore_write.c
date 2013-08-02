@@ -2,13 +2,14 @@
 
 #include <assert.h>  /* assert() */
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>   /* EOF */
 #include <unistd.h>  /* getopt() */
 #include "../../drd/drd.h"
 
-static int s_a;
-static int s_b;
-static int s_c;
+static int8_t s_a;
+static int8_t s_b;
+static int8_t s_c;
 
 static void* thread_func(void* arg)
 {
@@ -22,6 +23,7 @@ static void* thread_func(void* arg)
 
 int main(int argc, char** argv)
 {
+  const struct timespec delay = { 0, 100 * 1000 * 1000 };
   int optchar;
   int ign_rw = 1;
   pthread_t tid;
@@ -39,6 +41,10 @@ int main(int argc, char** argv)
   }
 
   pthread_create(&tid, 0, thread_func, 0);
+
+  /* Let the code in the created thread run first. */
+  nanosleep(&delay, 0);
+
   if (ign_rw)
     ANNOTATE_IGNORE_WRITES_BEGIN();
   /* Read s_b and modify s_a. */
@@ -50,7 +56,7 @@ int main(int argc, char** argv)
    * Insert a delay here in order to make sure the load of s_c happens
    * after s_c has been modified.
    */
-  sleep(1);
+  nanosleep(&delay, 0);
 
   /* Read s_c and modify s_a. */
   s_a = s_c;

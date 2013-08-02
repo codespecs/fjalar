@@ -8,11 +8,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
-   Copyright (C) 2005-2009 Nicholas Nethercote
+   Copyright (C) 2005-2012 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2009 OpenWorks LLP
+   Copyright (C) 2006-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -47,10 +47,7 @@
 
 #if defined(VGO_linux)
 #  include "vki/vki-linux.h"
-#elif defined(VGP_ppc32_aix5)
-#  include "vki/vki-ppc32-aix5.h"
-#elif defined(VGP_ppc64_aix5)
-#  include "vki/vki-ppc64-aix5.h"
+#  include "vki/vki-xen.h"
 #elif defined(VGO_darwin)
 #  include "vki/vki-darwin.h"
 #else

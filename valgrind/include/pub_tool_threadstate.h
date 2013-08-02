@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@
    scheduler algorithms is surely O(N) in the number of threads, since
    that's simple, at least.  And (in practice) we hope that most
    programs do not need many threads. */
-#define VG_N_THREADS 300
+#define VG_N_THREADS 500
 
 /* Special magic value for an invalid ThreadId.  It corresponds to
    LinuxThreads using zero as the initial value for

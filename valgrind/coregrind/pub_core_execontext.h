@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -41,7 +41,7 @@
 #include "pub_tool_execontext.h"
 
 /* The maximum number of calls we're prepared to save in an ExeContext. */
-#define VG_DEEPEST_BACKTRACE 50
+#define VG_DEEPEST_BACKTRACE 500
 
 // Print stats (informational only).
 extern void VG_(print_ExeContext_stats) ( void );

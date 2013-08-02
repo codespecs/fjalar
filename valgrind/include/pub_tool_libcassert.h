@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@
 #define __PUB_TOOL_LIBCBASSERT_H
 
 #define tl_assert(expr)                                                 \
-  ((void) ((expr) ? 0 :                                                 \
+  ((void) (LIKELY(expr) ? 0 :                                           \
            (VG_(assert_fail) (/*isCore?*/False, (const Char*)#expr,     \
                               (const Char*)__FILE__, __LINE__,          \
                               (const Char*)__PRETTY_FUNCTION__,         \
@@ -40,7 +40,7 @@
                               0)))
 
 #define tl_assert2(expr, format, args...)                               \
-  ((void) ((expr) ? 0 :                                                 \
+  ((void) (LIKELY(expr) ? 0 :                                           \
            (VG_(assert_fail) (/*isCore?*/False, (const Char*)#expr,     \
                               (const Char*)__FILE__, __LINE__,          \
                               (const Char*)__PRETTY_FUNCTION__,         \

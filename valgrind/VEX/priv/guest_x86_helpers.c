@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (guest_x86_helpers.c) is                      ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                               guest_x86_helpers.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -45,12 +34,13 @@
 */
 
 #include "libvex_basictypes.h"
-#include "libvex_emwarn.h"
+#include "libvex_emnote.h"
 #include "libvex_guest_x86.h"
 #include "libvex_ir.h"
 #include "libvex.h"
 
 #include "main_util.h"
+#include "main_globals.h"
 #include "guest_generic_bb_to_IR.h"
 #include "guest_x86_defs.h"
 #include "guest_generic_x87.h"
@@ -599,7 +589,7 @@ UInt x86g_calculate_eflags_all ( UInt cc_op,
 
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
 /* Calculate just the carry flag from the supplied thunk parameters. */
-__attribute((regparm(3)))
+VEX_REGPARM(3)
 UInt x86g_calculate_eflags_c ( UInt cc_op,
                                UInt cc_dep1,
                                UInt cc_dep2,
@@ -784,7 +774,9 @@ static inline Bool isU32 ( IRExpr* e, UInt n )
 }
 
 IRExpr* guest_x86_spechelper ( HChar* function_name,
-                               IRExpr** args )
+                               IRExpr** args,
+                               IRStmt** precedingStmts,
+                               Int      n_precedingStmts )
 {
 #  define unop(_op,_a1) IRExpr_Unop((_op),(_a1))
 #  define binop(_op,_a1,_a2) IRExpr_Binop((_op),(_a1),(_a2))
@@ -1272,6 +1264,22 @@ IRExpr* guest_x86_spechelper ( HChar* function_name,
                            binop(Iop_Add32, cc_dep1, cc_dep2),
                            cc_dep1));
       }
+      // ATC, requires verification, no test case known
+      //if (isU32(cc_op, X86G_CC_OP_SMULL)) {
+      //   /* C after signed widening multiply denotes the case where
+      //      the top half of the result isn't simply the sign extension
+      //      of the bottom half (iow the result doesn't fit completely
+      //      in the bottom half).  Hence: 
+      //        C = hi-half(dep1 x dep2) != lo-half(dep1 x dep2) >>s 31 
+      //      where 'x' denotes signed widening multiply.*/
+      //   return 
+      //      unop(Iop_1Uto32,
+      //           binop(Iop_CmpNE32, 
+      //                 unop(Iop_64HIto32,
+      //                      binop(Iop_MullS32, cc_dep1, cc_dep2)),
+      //                 binop(Iop_Sar32,
+      //                       binop(Iop_Mul32, cc_dep1, cc_dep2), mkU8(31)) ));
+      //}
 #     if 0
       if (cc_op->tag == Iex_Const) {
          vex_printf("CFLAG "); ppIRExpr(cc_op); vex_printf("\n");
@@ -1465,7 +1473,7 @@ ULong x86g_check_fldcw ( UInt fpucw )
    UInt rmode = (fpucw >> 10) & 3;
 
    /* Detect any required emulation warnings. */
-   VexEmWarn ew = EmWarn_NONE;
+   VexEmNote ew = EmNote_NONE;
 
    if ((fpucw & 0x3F) != 0x3F) {
       /* unmasked exceptions! */
@@ -1502,7 +1510,7 @@ ULong x86g_check_ldmxcsr ( UInt mxcsr )
    UInt rmode = (mxcsr >> 13) & 3;
 
    /* Detect any required emulation warnings. */
-   VexEmWarn ew = EmWarn_NONE;
+   VexEmNote ew = EmNote_NONE;
 
    if ((mxcsr & 0x1F80) != 0x1F80) {
       /* unmasked exceptions! */
@@ -1553,7 +1561,7 @@ void x86g_dirtyhelper_FINIT ( VexGuestX86State* gst )
    appears to differ from the former only in that the 8 FP registers
    themselves are not transferred into the guest state. */
 static
-VexEmWarn do_put_x87 ( Bool moveRegs,
+VexEmNote do_put_x87 ( Bool moveRegs,
                        /*IN*/UChar* x87_state,
                        /*OUT*/VexGuestX86State* vex_state )
 {
@@ -1566,7 +1574,7 @@ VexEmWarn do_put_x87 ( Bool moveRegs,
    UInt       tagw    = x87->env[FP_ENV_TAG];
    UInt       fpucw   = x87->env[FP_ENV_CTRL];
    UInt       c3210   = x87->env[FP_ENV_STAT] & 0x4700;
-   VexEmWarn  ew;
+   VexEmNote  ew;
    UInt       fpround;
    ULong      pair;
 
@@ -1602,7 +1610,7 @@ VexEmWarn do_put_x87 ( Bool moveRegs,
       emulation warnings. */
    pair    = x86g_check_fldcw ( (UInt)fpucw );
    fpround = (UInt)pair;
-   ew      = (VexEmWarn)(pair >> 32);
+   ew      = (VexEmNote)(pair >> 32);
 
    vex_state->guest_FPROUND = fpround & 3;
 
@@ -1747,11 +1755,11 @@ void x86g_dirtyhelper_FXSAVE ( VexGuestX86State* gst, HWord addr )
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest state, reads guest mem) */
-VexEmWarn x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
+VexEmNote x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
 {
    Fpu_State tmp;
-   VexEmWarn warnX87 = EmWarn_NONE;
-   VexEmWarn warnXMM = EmWarn_NONE;
+   VexEmNote warnX87 = EmNote_NONE;
+   VexEmNote warnXMM = EmNote_NONE;
    UShort*   addrS   = (UShort*)addr;
    UChar*    addrC   = (UChar*)addr;
    U128*     xmm     = (U128*)(addr + 160);
@@ -1780,7 +1788,20 @@ VexEmWarn x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
 
    /* Copy the x87 registers out of the image, into a temporary
       Fpu_State struct. */
-   for (i = 0; i < 14; i++) tmp.env[i] = 0;
+
+   /* LLVM on Darwin turns the following loop into a movaps plus a
+      handful of scalar stores.  This would work fine except for the
+      fact that VEX doesn't keep the stack correctly (16-) aligned for
+      the call, so it segfaults.  Hence, split the loop into two
+      pieces (and pray LLVM doesn't merely glue them back together) so
+      it's composed only of scalar stores and so is alignment
+      insensitive.  Of course this is a kludge of the lamest kind --
+      VEX should be fixed properly. */
+   /* Code that seems to trigger the problem:
+      for (i = 0; i < 14; i++) tmp.env[i] = 0; */
+   for (i = 0; i < 7; i++) tmp.env[i+0] = 0;
+   for (i = 0; i < 7; i++) tmp.env[i+7] = 0;
+   
    for (i = 0; i < 80; i++) tmp.reg[i] = 0;
    /* fill in tmp.reg[0..7] */
    for (stno = 0; stno < 8; stno++) {
@@ -1812,13 +1833,13 @@ VexEmWarn x86g_dirtyhelper_FXRSTOR ( VexGuestX86State* gst, HWord addr )
                 | ((((UInt)addrS[13]) & 0xFFFF) << 16);
      ULong w64 = x86g_check_ldmxcsr( w32 );
 
-     warnXMM = (VexEmWarn)(w64 >> 32);
+     warnXMM = (VexEmNote)(w64 >> 32);
 
      gst->guest_SSEROUND = (UInt)w64;
    }
 
    /* Prefer an X87 emwarn over an XMM one, if both exist. */
-   if (warnX87 != EmWarn_NONE)
+   if (warnX87 != EmNote_NONE)
       return warnX87;
    else
       return warnXMM;
@@ -1834,7 +1855,7 @@ void x86g_dirtyhelper_FSAVE ( VexGuestX86State* gst, HWord addr )
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest state, reads guest mem) */
-VexEmWarn x86g_dirtyhelper_FRSTOR ( VexGuestX86State* gst, HWord addr )
+VexEmNote x86g_dirtyhelper_FRSTOR ( VexGuestX86State* gst, HWord addr )
 {
    return do_put_x87( True/*regs too*/, (UChar*)addr, gst );
 }
@@ -1854,7 +1875,7 @@ void x86g_dirtyhelper_FSTENV ( VexGuestX86State* gst, HWord addr )
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (writes guest state, reads guest mem) */
-VexEmWarn x86g_dirtyhelper_FLDENV ( VexGuestX86State* gst, HWord addr )
+VexEmNote x86g_dirtyhelper_FLDENV ( VexGuestX86State* gst, HWord addr )
 {
    return do_put_x87( False/*don't move regs*/, (UChar*)addr, gst);
 }
@@ -2091,6 +2112,51 @@ UInt x86g_calculate_daa_das_aaa_aas ( UInt flags_and_AX, UInt opcode )
       default:
          vassert(0);
    }
+   result =   ( (r_O & 1) << (16 + X86G_CC_SHIFT_O) )
+            | ( (r_S & 1) << (16 + X86G_CC_SHIFT_S) )
+            | ( (r_Z & 1) << (16 + X86G_CC_SHIFT_Z) )
+            | ( (r_A & 1) << (16 + X86G_CC_SHIFT_A) )
+            | ( (r_C & 1) << (16 + X86G_CC_SHIFT_C) )
+            | ( (r_P & 1) << (16 + X86G_CC_SHIFT_P) )
+            | ( (r_AH & 0xFF) << 8 )
+            | ( (r_AL & 0xFF) << 0 );
+   return result;
+}
+
+UInt x86g_calculate_aad_aam ( UInt flags_and_AX, UInt opcode )
+{
+   UInt r_AL = (flags_and_AX >> 0) & 0xFF;
+   UInt r_AH = (flags_and_AX >> 8) & 0xFF;
+   UInt r_O  = (flags_and_AX >> (16 + X86G_CC_SHIFT_O)) & 1;
+   UInt r_S  = (flags_and_AX >> (16 + X86G_CC_SHIFT_S)) & 1;
+   UInt r_Z  = (flags_and_AX >> (16 + X86G_CC_SHIFT_Z)) & 1;
+   UInt r_A  = (flags_and_AX >> (16 + X86G_CC_SHIFT_A)) & 1;
+   UInt r_C  = (flags_and_AX >> (16 + X86G_CC_SHIFT_C)) & 1;
+   UInt r_P  = (flags_and_AX >> (16 + X86G_CC_SHIFT_P)) & 1;
+   UInt result = 0;
+
+   switch (opcode) {
+      case 0xD4: { /* AAM */
+         r_AH = r_AL / 10;
+         r_AL = r_AL % 10;
+         break;
+      }
+      case 0xD5: { /* AAD */
+         r_AL = ((r_AH * 10) + r_AL) & 0xff;
+         r_AH = 0;
+         break;
+      }
+      default:
+         vassert(0);
+   }
+
+   r_O = 0; /* let's say (undefined) */
+   r_C = 0; /* let's say (undefined) */
+   r_A = 0; /* let's say (undefined) */
+   r_S = (r_AL & 0x80) ? 1 : 0;
+   r_Z = (r_AL == 0) ? 1 : 0;
+   r_P = calc_parity_8bit( r_AL );
+
    result =   ( (r_O & 1) << (16 + X86G_CC_SHIFT_O) )
             | ( (r_S & 1) << (16 + X86G_CC_SHIFT_S) )
             | ( (r_Z & 1) << (16 + X86G_CC_SHIFT_Z) )
@@ -2348,6 +2414,30 @@ void x86g_dirtyhelper_OUT ( UInt portno, UInt data, UInt sz/*1,2 or 4*/ )
 #  endif
 }
 
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (non-referentially-transparent) */
+/* Horrible hack.  On non-x86 platforms, do nothing. */
+/* op = 0: call the native SGDT instruction.
+   op = 1: call the native SIDT instruction.
+*/
+void x86g_dirtyhelper_SxDT ( void *address, UInt op ) {
+#  if defined(__i386__)
+   switch (op) {
+      case 0:
+         __asm__ __volatile__("sgdt (%0)" : : "r" (address) : "memory");
+         break;
+      case 1:
+         __asm__ __volatile__("sidt (%0)" : : "r" (address) : "memory");
+         break;
+      default:
+         vpanic("x86g_dirtyhelper_SxDT");
+   }
+#  else
+   /* do nothing */
+   UChar* p = (UChar*)address;
+   p[0] = p[1] = p[2] = p[3] = p[4] = p[5] = 0;
+#  endif
+}
 
 /*---------------------------------------------------------------*/
 /*--- Helpers for MMX/SSE/SSE2.                               ---*/
@@ -2581,6 +2671,9 @@ ULong x86g_use_seg_selector ( HWord ldt, HWord gdt,
 /* VISIBLE TO LIBVEX CLIENT */
 void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
 {
+   vex_state->host_EvC_FAILADDR = 0;
+   vex_state->host_EvC_COUNTER = 0;
+
    vex_state->guest_EAX = 0;
    vex_state->guest_ECX = 0;
    vex_state->guest_EDX = 0;
@@ -2627,7 +2720,7 @@ void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
    vex_state->guest_LDT = 0;
    vex_state->guest_GDT = 0;
 
-   vex_state->guest_EMWARN = EmWarn_NONE;
+   vex_state->guest_EMNOTE = EmNote_NONE;
 
    /* SSE2 has a 'clflush' cache-line-invalidator which uses these. */
    vex_state->guest_TISTART = 0;
@@ -2637,19 +2730,23 @@ void LibVEX_GuestX86_initialise ( /*OUT*/VexGuestX86State* vex_state )
    vex_state->guest_SC_CLASS = 0;
    vex_state->guest_IP_AT_SYSCALL = 0;
 
-   vex_state->padding1 = 0;
-   vex_state->padding2 = 0;
-   vex_state->padding3 = 0;
+   Int i;
+   for (i = 0; i < sizeof(vex_state->padding)
+                   / sizeof(vex_state->padding[0]); i++) {
+      vex_state->padding[i] = 0;
+   }
 }
 
 
 /* Figure out if any part of the guest state contained in minoff
    .. maxoff requires precise memory exceptions.  If in doubt return
-   True (but this is generates significantly slower code).
+   True (but this generates significantly slower code).  
 
    By default we enforce precise exns for guest %ESP, %EBP and %EIP
    only.  These are the minimum needed to extract correct stack
    backtraces from x86 code.
+
+   Only %ESP is needed in mode VexRegUpdSpAtMemAccess.   
 */
 Bool guest_x86_state_requires_precise_mem_exns ( Int minoff,
                                                  Int maxoff)
@@ -2661,14 +2758,16 @@ Bool guest_x86_state_requires_precise_mem_exns ( Int minoff,
    Int eip_min = offsetof(VexGuestX86State, guest_EIP);
    Int eip_max = eip_min + 4 - 1;
 
-   if (maxoff < ebp_min || minoff > ebp_max) {
-      /* no overlap with ebp */
+   if (maxoff < esp_min || minoff > esp_max) {
+      /* no overlap with esp */
+      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+         return False; // We only need to check stack pointer.
    } else {
       return True;
    }
 
-   if (maxoff < esp_min || minoff > esp_max) {
-      /* no overlap with esp */
+   if (maxoff < ebp_min || minoff > ebp_max) {
+      /* no overlap with ebp */
    } else {
       return True;
    }
@@ -2756,7 +2855,7 @@ VexGuestLayout
                  /* 15 */ ALWAYSDEFD(guest_SS),
                  /* 16 */ ALWAYSDEFD(guest_LDT),
                  /* 17 */ ALWAYSDEFD(guest_GDT),
-                 /* 18 */ ALWAYSDEFD(guest_EMWARN),
+                 /* 18 */ ALWAYSDEFD(guest_EMNOTE),
                  /* 19 */ ALWAYSDEFD(guest_SSEROUND),
                  /* 20 */ ALWAYSDEFD(guest_TISTART),
                  /* 21 */ ALWAYSDEFD(guest_TILEN),

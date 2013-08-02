@@ -9,11 +9,14 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-#include "pub_tool_vki.h"
+#include "config.h"
+#include "sys/types.h"
 #include <stdarg.h>
 
+#define _(String) (String)
+
 /* alloca.h */
-extern void *alloca (vki_size_t __size);
+extern void *alloca (size_t __size);
 #define alloca(size)   __builtin_alloca (size)
 
 /* ctype.h */
@@ -110,6 +113,11 @@ typedef int wchar_t;
 
 /* stdio.h */
 
+/* The possibilities for the third argument to `fseek'.
+   These values should not be changed.  */
+#define SEEK_SET	0	/* Seek from beginning of file.  */
+#define SEEK_CUR	1	/* Seek from current position.  */
+#define SEEK_END	2	/* Seek from end of file.  */
 struct __stdio_file;
 typedef struct __stdio_file FILE;
 
@@ -144,9 +152,12 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int printf(const char *format, ...) __attribute__((__format__(__printf__,1,2)));
 int fprintf(FILE *stream, const char *format, ...) __attribute__((__format__(__printf__,2,3)));
 int sprintf(char *str, const char *format, ...) __attribute__((__format__(__printf__,2,3)));
+int snprintf(char *str, size_t size, const char *format, ...) __attribute__((__format__(__printf__,3,4)));
 
 int vprintf(const char *format, va_list ap) __attribute__((__format__(__printf__,1,0)));
 int vfprintf(FILE *stream, const char *format, va_list ap) __attribute__((__format__(__printf__,2,0)));
+int vsprintf(char *str, const char *format, va_list ap) __attribute__((__format__(__printf__,2,0)));
+int vsnprintf(char *str, size_t size, const char *format, va_list ap) __attribute__((__format__(__printf__,3,0)));
 
 int fseek(FILE *stream, long offset, int whence);
 long ftell(FILE *stream);
@@ -155,7 +166,8 @@ long ftell(FILE *stream);
 
 /* stdlib.h */
 
-void abort(void);
+// rename from abort to avoid conflict with coregrind::abort (markro)
+void my_abort(void);
 
 long int strtol(const char *nptr, char **endptr, int base);
 unsigned long int strtoul(const char *nptr, char **endptr, int base);
@@ -168,6 +180,6 @@ const char* strerror(int errnum);
 
 /* unistd.h */
 
-int mkfifo(const char *fn, int mode);
+int mkfifo(const char *fn, __mode_t mode);
 
 #endif /* MY_LIBC_H */

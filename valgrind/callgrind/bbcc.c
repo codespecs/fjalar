@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2009, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -29,7 +29,7 @@
 #include "global.h"
 #include "costs.h"
 
-#include <pub_tool_threadstate.h>
+#include "pub_tool_threadstate.h"
 
 /*------------------------------------------------------------*/
 /*--- BBCC operations                                      ---*/
@@ -555,7 +555,9 @@ void CLG_(setup_bbcc)(BB* bb)
   Addr sp;
   BB* last_bb;
   ThreadId tid;
-  Int jmpkind, passed = 0, csp;
+  ClgJumpKind jmpkind;
+  Bool isConditionalJump;
+  Int passed = 0, csp;
   Bool ret_without_call = False;
   Int popcount_on_return = 1;
 
@@ -569,6 +571,11 @@ void CLG_(setup_bbcc)(BB* bb)
    */
   tid = VG_(get_running_tid)();
 #if 1
+  /* CLG_(switch_thread) is a no-op when tid is equal to CLG_(current_tid).
+   * As this is on the hot path, we only call CLG_(switch_thread)(tid)
+   * if tid differs from the CLG_(current_tid).
+   */
+  if (UNLIKELY(tid != CLG_(current_tid)))
   CLG_(switch_thread)(tid);
 #else
   CLG_ASSERT(VG_(get_running_tid)() == CLG_(current_tid));
@@ -580,16 +587,9 @@ void CLG_(setup_bbcc)(BB* bb)
 
   if (last_bb) {
       passed = CLG_(current_state).jmps_passed;
-      if (passed == last_bb->cjmp_count) {
-	  jmpkind = last_bb->jmpkind;
-
-	  /* VEX always gives a Boring jump kind also when passed trough */
-	  if ((jmpkind == Ijk_Boring) &&
-	      (last_bb->offset + last_bb->instr_len == bb->offset))
-	      jmpkind = JmpNone;
-      }
-      else
-	  jmpkind = JmpCond;
+      CLG_ASSERT(passed <= last_bb->cjmp_count);
+      jmpkind = last_bb->jmp[passed].jmpkind;
+      isConditionalJump = (passed < last_bb->cjmp_count);
 
       /* if we are in a function which is skipped in the call graph, we
        * do not increment the exe counter to produce cost (if simulation off),
@@ -600,8 +600,8 @@ void CLG_(setup_bbcc)(BB* bb)
 	  last_bbcc->jmp[passed].ecounter++;
 	  if (!CLG_(clo).simulate_cache) {
 	      /* update Ir cost */
-	      int instr_count = last_bb->jmp[passed].instr+1;
-	      CLG_(current_state).cost[CLG_(sets).off_full_Ir] += instr_count;
+              UInt instr_count = last_bb->jmp[passed].instr+1;
+              CLG_(current_state).cost[ fullOffset(EG_IR) ] += instr_count;
 	  }
       }
 
@@ -611,7 +611,8 @@ void CLG_(setup_bbcc)(BB* bb)
       }
   }
   else {
-      jmpkind = JmpNone;
+      jmpkind = jk_None;
+      isConditionalJump = False;
   }
 
   /* Manipulate JmpKind if needed, only using BB specific info */
@@ -619,7 +620,7 @@ void CLG_(setup_bbcc)(BB* bb)
   csp = CLG_(current_call_stack).sp;
 
   /* A return not matching the top call in our callstack is a jump */
-  if ( (jmpkind == Ijk_Ret) && (csp >0)) {
+  if ( (jmpkind == jk_Return) && (csp >0)) {
       Int csp_up = csp-1;      
       call_entry* top_ce = &(CLG_(current_call_stack).entry[csp_up]);
 
@@ -649,14 +650,14 @@ void CLG_(setup_bbcc)(BB* bb)
 	  }
       }
       if (popcount_on_return == 0) {
-	  jmpkind = Ijk_Boring;
+	  jmpkind = jk_Jump;
 	  ret_without_call = True;
       }
   }
 
   /* Should this jump be converted to call or pop/call ? */
-  if (( jmpkind != Ijk_Ret) &&
-      ( jmpkind != Ijk_Call) && last_bb) {
+  if (( jmpkind != jk_Return) &&
+      ( jmpkind != jk_Call) && last_bb) {
 
     /* We simulate a JMP/Cont to be a CALL if
      * - jump is in another ELF object or section kind
@@ -692,6 +693,7 @@ void CLG_(setup_bbcc)(BB* bb)
 		/* change source for delayed push */
 		CLG_(current_state).bbcc = top_ce->jcc->from;
 		sp = top_ce->sp;
+		passed = top_ce->jcc->jmp;
 		CLG_(pop_call_stack)();
 	    }
 	    else {
@@ -699,22 +701,24 @@ void CLG_(setup_bbcc)(BB* bb)
 	    }
 	}
 
-	jmpkind = Ijk_Call;
+	jmpkind = jk_Call;
 	call_emulation = True;
     }
   }
 
-  if (jmpkind == Ijk_Call)
+  if (jmpkind == jk_Call)
     skip = CLG_(get_fn_node)(bb)->skip;
 
   CLG_DEBUGIF(1) {
-      if (jmpkind == JmpCond)
-	  VG_(printf)("Conditional");
-      else if (jmpkind == JmpNone)
-	  VG_(printf)("None");
-      else
-	  ppIRJumpKind( jmpkind );
-
+    if (isConditionalJump)
+      VG_(printf)("Cond-");
+    switch(jmpkind) {
+    case jk_None:   VG_(printf)("Fall-through"); break;
+    case jk_Jump:   VG_(printf)("Jump"); break;
+    case jk_Call:   VG_(printf)("Call"); break;
+    case jk_Return: VG_(printf)("Return"); break;
+    default:        tl_assert(0);
+    }
       VG_(printf)(" %08lx -> %08lx, SP %08lx\n",
 		  last_bb ? bb_jmpaddr(last_bb) : 0,
 		  bb_addr(bb), sp);
@@ -722,7 +726,7 @@ void CLG_(setup_bbcc)(BB* bb)
 
   /* Handle CALL/RET and update context to get correct BBCC */
   
-  if (jmpkind == Ijk_Ret) {
+  if (jmpkind == jk_Return) {
     
     if ((csp == 0) || 
 	((CLG_(current_fn_stack).top > CLG_(current_fn_stack).bottom) &&
@@ -740,9 +744,13 @@ void CLG_(setup_bbcc)(BB* bb)
     }
   }
   else {
-    CLG_(unwind_call_stack)(sp, 0);
+    Int unwind_count = CLG_(unwind_call_stack)(sp, 0);
+    if (unwind_count > 0) {
+      /* if unwinding was done, this actually is a return */
+      jmpkind = jk_Return;
+    }
     
-    if (jmpkind == Ijk_Call) {
+    if (jmpkind == jk_Call) {
       delayed_push = True;
 
       csp = CLG_(current_call_stack).sp;
@@ -805,10 +813,10 @@ void CLG_(setup_bbcc)(BB* bb)
 
     if (delayed_push && !skip) {
       if (CLG_(clo).skip_direct_recursion) {
-	/* do not increment rec. level if called from
-	 * same function */
-	if (!CLG_(current_state).bbcc || 
-	    (CLG_(current_state).bbcc->cxt->fn[0] != bbcc->cxt->fn[0]))
+        /* a call was detected, which means that the source BB != 0 */
+	CLG_ASSERT(CLG_(current_state).bbcc != 0);
+	/* only increment rec. level if called from different function */ 
+	if (CLG_(current_state).bbcc->cxt->fn[0] != bbcc->cxt->fn[0])
 	  level++;
       }
       else level++;
@@ -835,13 +843,14 @@ void CLG_(setup_bbcc)(BB* bb)
     if (!skip && CLG_(current_state).nonskipped) {
       /* a call from skipped to nonskipped */
       CLG_(current_state).bbcc = CLG_(current_state).nonskipped;
+      /* FIXME: take the real passed count from shadow stack */
+      passed = CLG_(current_state).bbcc->bb->cjmp_count;
     }
     CLG_(push_call_stack)(CLG_(current_state).bbcc, passed,
 			 bbcc, sp, skip);
   }
 
-  if (CLG_(clo).collect_jumps &&
-      ((jmpkind == JmpCond) || (jmpkind == Ijk_Boring))) {
+  if (CLG_(clo).collect_jumps && (jmpkind == jk_Jump)) {
     
     /* Handle conditional jumps followed, i.e. trace arcs
      * This uses JCC structures, too */
@@ -849,21 +858,24 @@ void CLG_(setup_bbcc)(BB* bb)
     jCC* jcc = CLG_(get_jcc)(last_bbcc, passed, bbcc);
     CLG_ASSERT(jcc != 0);
     // Change from default, and check if already changed
-    if (jcc->jmpkind == Ijk_Call)
-      jcc->jmpkind = jmpkind;
+    if (jcc->jmpkind == jk_Call)
+      jcc->jmpkind = isConditionalJump ? jk_CondJump : jk_Jump;
     else {
 	// FIXME: Why can this fail?
 	// CLG_ASSERT(jcc->jmpkind == jmpkind);
     }
     
     jcc->call_counter++;
-    if (jmpkind == JmpCond)
+    if (isConditionalJump)
       CLG_(stat).jcnd_counter++;
     else
       CLG_(stat).jump_counter++;
   }
   
   CLG_(current_state).bbcc = bbcc;
+  // needed for log_* handlers called in this BB
+  CLG_(bb_base)   = bb->obj->offset + bb->offset;
+  CLG_(cost_base) = bbcc->cost;
   
   CLG_DEBUGIF(1) {
     VG_(printf)("     ");
@@ -878,7 +890,5 @@ void CLG_(setup_bbcc)(BB* bb)
     CLG_(print_cxt)(-8, CLG_(current_state).cxt, bbcc->rec_index);
   CLG_DEBUG(3,"\n");
   
-  (*CLG_(cachesim).after_bbsetup)();
-
   CLG_(stat).bb_executions++;
 }

@@ -401,7 +401,11 @@ three ways we know of that an interior-pointer can occur:</para>
 <itemizedlist>
   <listitem>
     <para>The pointer might have originally been a start-pointer and have been
-    moved along deliberately (or not deliberately) by the program.</para>
+    moved along deliberately (or not deliberately) by the program.  In
+    particular, this can happen if your program uses tagged pointers, i.e.
+    if it uses the bottom one, two or three bits of a pointer, which are
+    normally always zero due to alignment, in order to store extra
+    information.</para>
   </listitem>
     
   <listitem>
@@ -620,6 +624,16 @@ criteria:</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.show-possibly-lost" xreflabel="--show-possibly-lost">
+    <term>
+      <option><![CDATA[--show-possibly-lost=<yes|no> [default: yes] ]]></option>
+    </term>
+    <listitem>
+      <para>When disabled, the memory leak detector will not show "possibly lost" blocks.  
+      </para>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.leak-resolution" xreflabel="--leak-resolution">
     <term>
       <option><![CDATA[--leak-resolution=<low|med|high> [default: high] ]]></option>
@@ -753,7 +767,7 @@ criteria:</para>
 
   <varlistentry id="opt.freelist-vol" xreflabel="--freelist-vol">
     <term>
-      <option><![CDATA[--freelist-vol=<number> [default: 10000000] ]]></option>
+      <option><![CDATA[--freelist-vol=<number> [default: 20000000] ]]></option>
     </term>
     <listitem>
       <para>When the client program releases memory using
@@ -769,10 +783,28 @@ criteria:</para>
       have been freed.</para>
 
       <para>This option specifies the maximum total size, in bytes, of the
-      blocks in the queue.  The default value is ten million bytes.
+      blocks in the queue.  The default value is twenty million bytes.
       Increasing this increases the total amount of memory used by
       Memcheck but may detect invalid uses of freed
       blocks which would otherwise go undetected.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.freelist-big-blocks" xreflabel="--freelist-big-blocks">
+    <term>
+      <option><![CDATA[--freelist-big-blocks=<number> [default: 1000000] ]]></option>
+    </term>
+    <listitem>
+      <para>When making blocks from the queue of freed blocks available
+      for re-allocation, Memcheck will in priority re-circulate the blocks
+      with a size greater or equal to <option>--freelist-big-blocks</option>.
+      This ensures that freeing big blocks (in particular freeing blocks bigger than
+      <option>--freelist-vol</option>) does not immediately lead to a re-circulation
+      of all (or a lot of) the small blocks in the free list. In other words,
+      this option increases the likelihood to discover dangling pointers
+      for the "small" blocks, even when big blocks are freed.</para>
+      <para>Setting a value of 0 means that all the blocks are re-circulated
+      in a FIFO order. </para>
     </listitem>
   </varlistentry>
 
@@ -823,7 +855,10 @@ criteria:</para>
       byte.  This can be useful when trying to shake out obscure
       memory corruption problems.  The allocated area is still
       regarded by Memcheck as undefined -- this option only affects its
-      contents.
+      contents. Note that <option>--malloc-fill</option> does not
+      affect a block of memory when it is used as argument
+      to client requests VALGRIND_MEMPOOL_ALLOC or
+      VALGRIND_MALLOCLIKE_BLOCK.
       </para>
     </listitem>
   </varlistentry>
@@ -839,7 +874,9 @@ criteria:</para>
       specified byte value.  This can be useful when trying to shake out
       obscure memory corruption problems.  The freed area is still
       regarded by Memcheck as not valid for access -- this option only
-      affects its contents.
+      affects its contents. Note that <option>--free-fill</option> does not
+      affect a block of memory when it is used as argument to
+      client requests VALGRIND_MEMPOOL_FREE or VALGRIND_FREELIKE_BLOCK.
       </para>
     </listitem>
   </varlistentry>
@@ -1075,7 +1112,7 @@ location.  We now consider the latter question.</para>
 associated valid-value (V) bit.  In addition, all bytes in memory, but
 not in the CPU, have an associated valid-address (A) bit.  This
 indicates whether or not the program can legitimately read or write that
-location.  It does not give any indication of the validity or the data
+location.  It does not give any indication of the validity of the data
 at that location -- that's the job of the V bits -- only whether or not
 the location may be accessed.</para>
 
@@ -1143,8 +1180,8 @@ follows:</para>
     <para>Each byte in memory has 8 associated V (valid-value) bits,
     saying whether or not the byte has a defined value, and a single A
     (valid-address) bit, saying whether or not the program currently has
-    the right to read/write that address.  (But, as mentioned above, heavy
-    use of compression means the overhead is typically less than 25%.)</para>
+    the right to read/write that address.  As mentioned above, heavy
+    use of compression means the overhead is typically around 25%.</para>
   </listitem>
 
   <listitem>
@@ -1256,7 +1293,339 @@ is:</para>
 </sect2>
 </sect1>
 
+<sect1 id="mc-manual.monitor-commands" xreflabel="Memcheck Monitor Commands">
+<title>Memcheck Monitor Commands</title>
+<para>The Memcheck tool provides monitor commands handled by Valgrind's
+built-in gdbserver (see <xref linkend="manual-core-adv.gdbserver-commandhandling"/>).
+</para>
 
+<itemizedlist>
+  <listitem>
+    <para><varname>get_vbits &lt;addr&gt; [&lt;len&gt;]</varname>
+    shows the definedness (V) bits for &lt;len&gt; (default 1) bytes
+    starting at &lt;addr&gt;.  The definedness of each byte in the
+    range is given using two hexadecimal digits.  These hexadecimal
+    digits encode the validity of each bit of the corresponding byte,
+    using 0 if the bit is defined and 1 if the bit is undefined.
+    If a byte is not addressable, its validity bits are replaced
+    by <varname>__</varname> (a double underscore).
+    </para>
+    <para>
+    In the following example, <varname>string10</varname> is an array
+    of 10 characters, in which the even numbered bytes are
+    undefined. In the below example, the byte corresponding
+    to <varname>string10[5]</varname> is not addressable.
+    </para>
+<programlisting><![CDATA[
+(gdb) p &string10
+$4 = (char (*)[10]) 0x8049e28
+(gdb) monitor get_vbits 0x8049e28 10
+ff00ff00 ff__ff00 ff00
+(gdb) 
+]]></programlisting>
+
+    <para> The command get_vbits cannot be used with registers. To get
+    the validity bits of a register, you must start Valgrind with the
+    option <option>--vgdb-shadow-registers=yes</option>. The validity
+    bits of a register can be obtained by printing the 'shadow 1'
+    corresponding register.  In the below x86 example, the register
+    eax has all its bits undefined, while the register ebx is fully
+    defined.
+    </para>
+<programlisting><![CDATA[
+(gdb) p /x $eaxs1
+$9 = 0xffffffff
+(gdb) p /x $ebxs1
+$10 = 0x0
+(gdb) 
+]]></programlisting>
+
+  </listitem>
+
+  <listitem>
+    <para><varname>make_memory
+    [noaccess|undefined|defined|Definedifaddressable] &lt;addr&gt;
+    [&lt;len&gt;]</varname> marks the range of &lt;len&gt; (default 1)
+    bytes at &lt;addr&gt; as having the given status. Parameter
+    <varname>noaccess</varname> marks the range as non-accessible, so
+    Memcheck will report an error on any access to it.
+    <varname>undefined</varname> or <varname>defined</varname> mark
+    the area as accessible, but Memcheck regards the bytes in it
+    respectively as having undefined or defined values.
+    <varname>Definedifaddressable</varname> marks as defined, bytes in
+    the range which are already addressible, but makes no change to
+    the status of bytes in the range which are not addressible. Note
+    that the first letter of <varname>Definedifaddressable</varname>
+    is an uppercase D to avoid confusion with <varname>defined</varname>.
+    </para>
+
+    <para>
+    In the following example, the first byte of the
+    <varname>string10</varname> is marked as defined:
+    </para>
+<programlisting><![CDATA[
+(gdb) monitor make_memory defined 0x8049e28  1
+(gdb) monitor get_vbits 0x8049e28 10
+0000ff00 ff00ff00 ff00
+(gdb) 
+]]></programlisting>
+  </listitem>
+
+  <listitem>
+    <para><varname>check_memory [addressable|defined] &lt;addr&gt;
+    [&lt;len&gt;]</varname> checks that the range of &lt;len&gt;
+    (default 1) bytes at &lt;addr&gt; has the specified accessibility.
+    It then outputs a description of &lt;addr&gt;. In the following
+    example, a detailed description is available because the
+    option <option>--read-var-info=yes</option> was given at Valgrind
+    startup:
+    </para>
+<programlisting><![CDATA[
+(gdb) monitor check_memory defined 0x8049e28  1
+Address 0x8049E28 len 1 defined
+==14698==  Location 0x8049e28 is 0 bytes inside string10[0],
+==14698==  declared at prog.c:10, in frame #0 of thread 1
+(gdb) 
+]]></programlisting>
+  </listitem>
+
+  <listitem>
+    <para><varname>leak_check [full*|summary]
+                              [reachable|possibleleak*|definiteleak]
+                              [increased*|changed|any]
+                              [unlimited*|limited &lt;max_loss_records_output&gt;]
+          </varname>
+    performs a leak check. The <varname>*</varname> in the arguments
+    indicates the default values. </para>
+
+    <para> If the first argument is <varname>summary</varname>, only a
+    summary of the leak search is given; otherwise a full leak report
+    is produced.  A full leak report gives detailed information for
+    each leak: the stack trace where the leaked blocks were allocated,
+    the number of blocks leaked and their total size.  When a full
+    report is requested, the next two arguments further specify what
+    kind of leaks to report.  A leak's details are shown if they match
+    both the second and third argument. A full leak report might
+    output detailed information for many leaks. The nr of leaks for
+    which information is output can be controlled using
+    the <varname>limited</varname> argument followed by the maximum nr
+    of leak records to output. If this maximum is reached, the leak
+    search  outputs the records with the biggest number of bytes.
+    </para>
+
+    <para>The second argument controls what kind of blocks are shown for
+    a <varname>full</varname> leak search.  The
+    value <varname>definiteleak</varname> specifies that only
+    definitely leaked blocks should be shown.  The
+    value <varname>possibleleak</varname> will also show possibly
+    leaked blocks (those for which only an interior pointer was
+    found).  The value
+    <varname>reachable</varname> will show all block categories
+    (reachable, possibly leaked, definitely leaked).
+    </para>
+
+    <para>The third argument controls what kinds of changes are shown
+    for a <varname>full</varname> leak search. The
+    value <varname>increased</varname> specifies that only block
+    allocation stacks with an increased number of leaked bytes or
+    blocks since the previous leak check should be shown.  The
+    value <varname>changed</varname> specifies that allocation stacks
+    with any change since the previous leak check should be shown.
+    The value <varname>any</varname> specifies that all leak entries
+    should be shown, regardless of any increase or decrease.  When
+    If <varname>increased</varname> or <varname>changed</varname> are
+    specified, the leak report entries will show the delta relative to
+    the previous leak report.
+    </para>
+
+    <para>The following example shows usage of the 
+    <varname>leak_check</varname> monitor command on
+    the <varname>memcheck/tests/leak-cases.c</varname> regression
+    test. The first command outputs one entry having an increase in
+    the leaked bytes.  The second command is the same as the first
+    command, but uses the abbreviated forms accepted by GDB and the
+    Valgrind gdbserver. It only outputs the summary information, as
+    there was no increase since the previous leak search.</para>
+<programlisting><![CDATA[
+(gdb) monitor leak_check full possibleleak increased
+==19520== 16 (+16) bytes in 1 (+1) blocks are possibly lost in loss record 9 of 12
+==19520==    at 0x40070B4: malloc (vg_replace_malloc.c:263)
+==19520==    by 0x80484D5: mk (leak-cases.c:52)
+==19520==    by 0x804855F: f (leak-cases.c:81)
+==19520==    by 0x80488E0: main (leak-cases.c:107)
+==19520== 
+==19520== LEAK SUMMARY:
+==19520==    definitely lost: 32 (+0) bytes in 2 (+0) blocks
+==19520==    indirectly lost: 16 (+0) bytes in 1 (+0) blocks
+==19520==      possibly lost: 32 (+16) bytes in 2 (+1) blocks
+==19520==    still reachable: 96 (+16) bytes in 6 (+1) blocks
+==19520==         suppressed: 0 (+0) bytes in 0 (+0) blocks
+==19520== Reachable blocks (those to which a pointer was found) are not shown.
+==19520== To see them, add 'reachable any' args to leak_check
+==19520== 
+(gdb) mo l
+==19520== LEAK SUMMARY:
+==19520==    definitely lost: 32 (+0) bytes in 2 (+0) blocks
+==19520==    indirectly lost: 16 (+0) bytes in 1 (+0) blocks
+==19520==      possibly lost: 32 (+0) bytes in 2 (+0) blocks
+==19520==    still reachable: 96 (+0) bytes in 6 (+0) blocks
+==19520==         suppressed: 0 (+0) bytes in 0 (+0) blocks
+==19520== Reachable blocks (those to which a pointer was found) are not shown.
+==19520== To see them, add 'reachable any' args to leak_check
+==19520== 
+(gdb) 
+]]></programlisting>
+    <para>Note that when using Valgrind's gdbserver, it is not
+    necessary to rerun
+    with <option>--leak-check=full</option>
+    <option>--show-reachable=yes</option> to see the reachable
+    blocks. You can obtain the same information without rerunning by
+    using the GDB command <computeroutput>monitor leak_check full
+    reachable any</computeroutput> (or, using
+    abbreviation: <computeroutput>mo l f r a</computeroutput>).
+    </para>
+  </listitem>
+
+  <listitem>
+    <para><varname>block_list &lt;loss_record_nr&gt; </varname>
+    shows the list of blocks belonging to &lt;loss_record_nr&gt;.
+    </para>
+
+    <para> A leak search merges the allocated blocks in loss records :
+    a loss record re-groups all blocks having the same state (for
+    example, Definitely Lost) and the same allocation backtrace.
+    Each loss record is identified in the leak search result 
+    by a loss record number.
+    The <varname>block_list</varname> command shows the loss record information
+    followed by the addresses and sizes of the blocks which have been
+    merged in the loss record.
+    </para>
+
+    <para> If a directly lost block causes some other blocks to be indirectly
+    lost, the block_list command will also show these indirectly lost blocks.
+    The indirectly lost blocks will be indented according to the level of indirection
+    between the directly lost block and the indirectly lost block(s).
+    Each indirectly lost block is followed by the reference of its loss record.
+    </para>
+
+    <para> The block_list command can be used on the results of a leak search as long
+    as no block has been freed after this leak search: as soon as the program frees
+    a block, a new leak search is needed before block_list can be used again.
+    </para>
+
+    <para>
+    In the below example, the program leaks a tree structure by losing the pointer to 
+    the block A (top of the tree).
+    So, the block A is directly lost, causing an indirect
+    loss of blocks B to G. The first block_list command shows the loss record of A
+    (a definitely lost block with address 0x4028028, size 16). The addresses and sizes
+    of the indirectly lost blocks due to block A are shown below the block A.
+    The second command shows the details of one of the indirect loss records output
+    by the first command.
+    </para>
+<programlisting><![CDATA[
+           A
+         /   \
+        B     C
+       / \   / \ 
+      D   E F   G
+]]></programlisting>
+
+<programlisting><![CDATA[
+(gdb) bt
+#0  main () at leak-tree.c:69
+(gdb) monitor leak_check full any
+==19552== 112 (16 direct, 96 indirect) bytes in 1 blocks are definitely lost in loss record 7 of 7
+==19552==    at 0x40070B4: malloc (vg_replace_malloc.c:263)
+==19552==    by 0x80484D5: mk (leak-tree.c:28)
+==19552==    by 0x80484FC: f (leak-tree.c:41)
+==19552==    by 0x8048856: main (leak-tree.c:63)
+==19552== 
+==19552== LEAK SUMMARY:
+==19552==    definitely lost: 16 bytes in 1 blocks
+==19552==    indirectly lost: 96 bytes in 6 blocks
+==19552==      possibly lost: 0 bytes in 0 blocks
+==19552==    still reachable: 0 bytes in 0 blocks
+==19552==         suppressed: 0 bytes in 0 blocks
+==19552== 
+(gdb) monitor block_list 7
+==19552== 112 (16 direct, 96 indirect) bytes in 1 blocks are definitely lost in loss record 7 of 7
+==19552==    at 0x40070B4: malloc (vg_replace_malloc.c:263)
+==19552==    by 0x80484D5: mk (leak-tree.c:28)
+==19552==    by 0x80484FC: f (leak-tree.c:41)
+==19552==    by 0x8048856: main (leak-tree.c:63)
+==19552== 0x4028028[16]
+==19552==   0x4028068[16] indirect loss record 1
+==19552==      0x40280E8[16] indirect loss record 3
+==19552==      0x4028128[16] indirect loss record 4
+==19552==   0x40280A8[16] indirect loss record 2
+==19552==      0x4028168[16] indirect loss record 5
+==19552==      0x40281A8[16] indirect loss record 6
+(gdb) mo b 2
+==19552== 16 bytes in 1 blocks are indirectly lost in loss record 2 of 7
+==19552==    at 0x40070B4: malloc (vg_replace_malloc.c:263)
+==19552==    by 0x80484D5: mk (leak-tree.c:28)
+==19552==    by 0x8048519: f (leak-tree.c:43)
+==19552==    by 0x8048856: main (leak-tree.c:63)
+==19552== 0x40280A8[16]
+==19552==   0x4028168[16] indirect loss record 5
+==19552==   0x40281A8[16] indirect loss record 6
+(gdb) 
+
+]]></programlisting>
+
+  </listitem>
+
+  <listitem>
+    <para><varname>who_points_at &lt;addr&gt; [&lt;len&gt;]</varname> 
+    shows all the locations where a pointer to addr is found.
+    If len is equal to 1, the command only shows the locations pointing
+    exactly at addr (i.e. the "start pointers" to addr).
+    If len is &gt; 1, "interior pointers" pointing at the len first bytes
+    will also be shown.
+    </para>
+
+    <para>The locations searched for are the same as the locations
+    used in the leak search. So, <varname>who_points_at</varname> can a.o.
+    be used to show why the leak search still can reach a block, or can
+    search for dangling pointers to a freed block.
+    Each location pointing at addr (or pointing inside addr if interior pointers
+    are being searched for) will be described.
+    </para>
+
+    <para>In the below example, the pointers to the 'tree block A' (see example
+    in command <varname>block_list</varname>) is shown before the tree was leaked.
+    The descriptions are detailed as the option <option>--read-var-info=yes</option> 
+    was given at Valgrind startup. The second call shows the pointers (start and interior
+    pointers) to block G. The block G (0x40281A8) is reachable via block C (0x40280a8)
+    and register ECX of tid 1 (tid is the Valgrind thread id).
+    It is "interior reachable" via the register EBX.
+    </para>
+
+<programlisting><![CDATA[
+(gdb) monitor who_points_at 0x4028028
+==20852== Searching for pointers to 0x4028028
+==20852== *0x8049e20 points at 0x4028028
+==20852==  Location 0x8049e20 is 0 bytes inside global var "t"
+==20852==  declared at leak-tree.c:35
+(gdb) monitor who_points_at 0x40281A8 16
+==20852== Searching for pointers pointing in 16 bytes from 0x40281a8
+==20852== *0x40280ac points at 0x40281a8
+==20852==  Address 0x40280ac is 4 bytes inside a block of size 16 alloc'd
+==20852==    at 0x40070B4: malloc (vg_replace_malloc.c:263)
+==20852==    by 0x80484D5: mk (leak-tree.c:28)
+==20852==    by 0x8048519: f (leak-tree.c:43)
+==20852==    by 0x8048856: main (leak-tree.c:63)
+==20852== tid 1 register ECX points at 0x40281a8
+==20852== tid 1 register EBX interior points at 2 bytes inside 0x40281a8
+(gdb)
+]]></programlisting>
+  </listitem>
+
+
+</itemizedlist>
+
+</sect1>
 
 <sect1 id="mc-manual.clientreqs" xreflabel="Client requests">
 <title>Client Requests</title>
@@ -1274,31 +1643,13 @@ arguments.</para>
     <varname>VALGRIND_MAKE_MEM_DEFINED</varname>.
     These mark address ranges as completely inaccessible,
     accessible but containing undefined data, and accessible and
-    containing defined data, respectively.  Subsequent errors may
-    have their faulting addresses described in terms of these
-    blocks.  Returns a "block handle".  Returns zero when not run
-    on Valgrind.</para>
+    containing defined data, respectively.</para>
   </listitem>
 
   <listitem>
     <para><varname>VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE</varname>.
     This is just like <varname>VALGRIND_MAKE_MEM_DEFINED</varname> but only
     affects those bytes that are already addressable.</para>
-  </listitem>
-
-  <listitem>
-    <para><varname>VALGRIND_DISCARD</varname>: At some point you may
-    want Valgrind to stop reporting errors in terms of the blocks
-    defined by the previous three macros.  To do this, the above macros
-    return a small-integer "block handle".  You can pass this block
-    handle to <varname>VALGRIND_DISCARD</varname>.  After doing so,
-    Valgrind will no longer be able to relate addressing errors to the
-    user-defined block associated with the handle.  The permissions
-    settings associated with the handle remain in place; this just
-    affects how errors are reported, not whether they are reported.
-    Returns 1 for an invalid handle and 0 for a valid handle (although
-    passing invalid handles is harmless).  Always returns 0 when not run
-    on Valgrind.</para>
   </listitem>
 
   <listitem>
@@ -1324,6 +1675,22 @@ arguments.</para>
     check (like <option>--leak-check=full</option>) right now.
     This is useful for incrementally checking for leaks between arbitrary
     places in the program's execution.  It has no return value.</para>
+  </listitem>
+
+  <listitem>
+    <para><varname>VALGRIND_DO_ADDED_LEAK_CHECK</varname>: same as
+   <varname> VALGRIND_DO_LEAK_CHECK</varname> but only shows the
+    entries for which there was an increase in leaked bytes or leaked
+    number of blocks since the previous leak search.  It has no return
+    value.</para>
+  </listitem>
+
+  <listitem>
+    <para><varname>VALGRIND_DO_CHANGED_LEAK_CHECK</varname>: same as
+    <varname>VALGRIND_DO_LEAK_CHECK</varname> but only shows the
+    entries for which there was an increase or decrease in leaked
+    bytes or leaked number of blocks since the previous leak search. It
+    has no return value.</para>
   </listitem>
 
   <listitem>
@@ -1356,6 +1723,30 @@ arguments.</para>
     set V bits that you have got with
     <varname>VALGRIND_GET_VBITS</varname>.  Only for those who really
     know what they are doing.</para>
+  </listitem>
+
+  <listitem>
+    <para><varname>VALGRIND_CREATE_BLOCK</varname> and 
+    <varname>VALGRIND_DISCARD</varname>.  <varname>VALGRIND_CREATE_BLOCK</varname>
+    takes an address, a number of bytes and a character string.  The
+    specified address range is then associated with that string.  When
+    Memcheck reports an invalid access to an address in the range, it
+    will describe it in terms of this block rather than in terms of
+    any other block it knows about.  Note that the use of this macro
+    does not actually change the state of memory in any way -- it
+    merely gives a name for the range.
+    </para>
+
+    <para>At some point you may want Memcheck to stop reporting errors
+    in terms of the block named
+    by <varname>VALGRIND_CREATE_BLOCK</varname>.  To make this
+    possible, <varname>VALGRIND_CREATE_BLOCK</varname> returns a
+    "block handle", which is a C <varname>int</varname> value.  You
+    can pass this block handle to <varname>VALGRIND_DISCARD</varname>.
+    After doing so, Valgrind will no longer relate addressing errors
+    in the specified range to the block.  Passing invalid handles to
+    <varname>VALGRIND_DISCARD</varname> is harmless.
+   </para>
   </listitem>
 
 </itemizedlist>

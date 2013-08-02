@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2009 Nicholas Nethercote
+   Copyright (C) 2005-2012 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2009 OpenWorks LLP
+   Copyright (C) 2006-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -45,14 +45,14 @@
 #elif defined(VGP_ppc64_linux)
 #  include "vki/vki-scnums-ppc64-linux.h"
 
+#elif defined(VGP_s390x_linux)
+#  include "vki/vki-scnums-s390x-linux.h"
+
 #elif defined(VGP_arm_linux)
 #  include "vki/vki-scnums-arm-linux.h"
 
-#elif defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
-   // Nothing:  vki-scnums-aix5.h only contains stuff suitable for inclusion
-   // in C files, not asm files.  So unlike all the other
-   // vki-scnums-PLATFORM.h files, we include it in pub_tool_vkiscnums.h
-   // rather than in include/pub_tool_vkiscnums_asm.h.
+#elif defined(VGP_mips32_linux)
+#  include "vki/vki-scnums-mips32-linux.h"
 
 #elif defined(VGP_x86_darwin) || defined(VGP_amd64_darwin)
 #  include "vki/vki-scnums-darwin.h"

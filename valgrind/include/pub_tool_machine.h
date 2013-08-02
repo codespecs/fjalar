@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -46,40 +46,29 @@
 
 #elif defined(VGP_ppc32_linux)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4
+#  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB      0
 
 #elif defined(VGP_ppc64_linux)
 #  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4
+#  define VG_MAX_INSTR_SZB          4 
 #  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB    288  // number of addressable bytes below R1
                                        // from 64-bit PowerPC ELF ABI 
                                        // Supplement 1.7
 
 #elif defined(VGP_arm_linux)
-#  define VG_MIN_INSTR_SZB          4
+#  define VG_MIN_INSTR_SZB          2
 #  define VG_MAX_INSTR_SZB          4 
-#  define VG_CLREQ_SZB             28
+#  define VG_CLREQ_SZB             20
 #  define VG_STACK_REDZONE_SZB      0
 
-#elif defined(VGP_ppc32_aix5)
-#  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4
-#  define VG_CLREQ_SZB             20
-   /* The PowerOpen ABI actually says 220 bytes, but that is not an
-      8-aligned number, and frequently forces Memcheck's
-      mc_{new,die}_mem_stack_N routines into slow cases by losing
-      8-alignment of the area to be messed with.  So let's just say
-      224 instead.  Gdb has a similar kludge. */
-#  define VG_STACK_REDZONE_SZB    224
-
-#elif defined(VGP_ppc64_aix5)
-#  define VG_MIN_INSTR_SZB          4
-#  define VG_MAX_INSTR_SZB          4
-#  define VG_CLREQ_SZB             20
-#  define VG_STACK_REDZONE_SZB    288 // is this right?
+#elif defined(VGP_s390x_linux)
+#  define VG_MIN_INSTR_SZB          2
+#  define VG_MAX_INSTR_SZB          6
+#  define VG_CLREQ_SZB             10
+#  define VG_STACK_REDZONE_SZB      0  // s390 has no redzone
 
 #elif defined(VGP_x86_darwin)
 #  define VG_MIN_INSTR_SZB          1  // min length of native instruction
@@ -94,11 +83,22 @@
 #  define VG_CLREQ_SZB             19
 #  define VG_STACK_REDZONE_SZB    128
 
+#elif defined(VGP_mips32_linux)
+#  define VG_MIN_INSTR_SZB          4
+#  define VG_MAX_INSTR_SZB          4 
+#  define VG_CLREQ_SZB             20
+#  define VG_STACK_REDZONE_SZB      0
+
 #else
 #  error Unknown platform
 #endif
 
 // Guest state accessors
+// Are mostly in the core_ header.
+//  Only these two are available to tools.
+Addr VG_(get_IP) ( ThreadId tid );
+Addr VG_(get_SP) ( ThreadId tid );
+
 extern Addr VG_(get_SP) ( ThreadId tid );
 extern Addr VG_(get_IP) ( ThreadId tid );
 extern Addr VG_(get_FP) ( ThreadId tid );
@@ -109,7 +109,6 @@ extern Addr VG_(get_xCX)( ThreadId tid );
 extern Addr VG_(get_xDX)( ThreadId tid );
 extern Addr VG_(get_xSI)( ThreadId tid );
 extern Addr VG_(get_xDI)( ThreadId tid );
-extern UInt* VG_(get_XMM_N) (ThreadId tid, UInt num);
 extern Addr VG_(dump_state)(ThreadId tid);
 
 #if defined(VGA_amd64)
@@ -121,11 +120,11 @@ extern Addr VG_(get_R12) ( ThreadId tid );
 extern Addr VG_(get_R13) ( ThreadId tid );
 extern Addr VG_(get_R14) ( ThreadId tid );
 extern Addr VG_(get_R15) ( ThreadId tid );
+extern UInt* VG_(get_XMM_N) (ThreadId tid, UInt num);
 #endif
 
-
-extern void VG_(set_SP) ( ThreadId tid, Addr sp );
 extern void VG_(set_IP) ( ThreadId tid, Addr ip );
+extern void VG_(set_SP) ( ThreadId tid, Addr sp );
 
 // BEGIN - pgbovine
 
@@ -134,13 +133,20 @@ extern double VG_(get_FPU_stack_top) ( ThreadId tid ); // 64-bit read
 
 extern UWord VG_(get_shadow_xAX) ( ThreadId tid );
 extern UWord VG_(get_shadow_xDX) ( ThreadId tid );
+#if defined(VGA_amd64)
+extern UInt* VG_(get_shadow_XMM_N) ( ThreadId tid, UInt num );
+#else
 extern ULong VG_(get_shadow_FPU_stack_top) ( ThreadId tid ); // 64-bit read
+#endif
 
 // SUPER HACK!  Watch out now.
 extern UWord VG_(get_xAX_tag) ( ThreadId tid );
 extern UWord VG_(get_xDX_tag) ( ThreadId tid );
+#if defined(VGA_amd64)
+extern UWord VG_(get_XMM_N_tag) ( ThreadId tid, UInt num );
+#else
 extern UWord VG_(get_FPU_stack_top_tag) ( ThreadId tid );
-extern UInt* VG_(get_shadow_XMM_N) (ThreadId tid, UInt num);
+#endif
 // Super-duper hack!!!
 extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 
@@ -153,11 +159,11 @@ extern UInt* VG_(get_tag_ptr_for_guest_offset) ( ThreadId tid, UInt offset );
 // completely general way to read/modify a thread's guest register state
 // providing you know the offsets you need.
 void
-VG_(get_shadow_regs_area) ( ThreadId tid,
+VG_(get_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/UChar* dst,
                             /*SRC*/Int shadowNo, PtrdiffT offset, SizeT size );
 void
-VG_(set_shadow_regs_area) ( ThreadId tid,
+VG_(set_shadow_regs_area) ( ThreadId tid, 
                             /*DST*/Int shadowNo, PtrdiffT offset, SizeT size,
                             /*SRC*/const UChar* src );
 
@@ -173,27 +179,42 @@ void VG_(set_syscall_return_shadows) ( ThreadId tid,
 // current threads.
 // This is very Memcheck-specific -- it's used to find the roots when
 // doing leak checking.
-extern void VG_(apply_to_GP_regs)(void (*f)(UWord val));
+extern void VG_(apply_to_GP_regs)(void (*f)(ThreadId tid,
+                                            HChar* regname, UWord val));
 
 // This iterator lets you inspect each live thread's stack bounds.
 // Returns False at the end.  'tid' is the iterator and you can only
 // safely change it by making calls to these functions.
 extern void VG_(thread_stack_reset_iter) ( /*OUT*/ThreadId* tid );
 extern Bool VG_(thread_stack_next)       ( /*MOD*/ThreadId* tid,
-                                           /*OUT*/Addr* stack_min,
+                                           /*OUT*/Addr* stack_min, 
                                            /*OUT*/Addr* stack_max );
 
 // Returns .client_stack_highest_word for the given thread
 extern Addr VG_(thread_get_stack_max) ( ThreadId tid );
 
 // Returns how many bytes have been allocated for the stack of the given thread
-extern Addr VG_(thread_get_stack_size) ( ThreadId tid );
+extern SizeT VG_(thread_get_stack_size) ( ThreadId tid );
+
+// Returns the bottommost address of the alternate signal stack.
+// See also the man page of sigaltstack().
+extern Addr VG_(thread_get_altstack_min) ( ThreadId tid );
+
+// Returns how many bytes have been allocated for the alternate signal stack.
+// See also the man page of sigaltstack().
+extern SizeT VG_(thread_get_altstack_size) ( ThreadId tid );
 
 // Given a pointer to a function as obtained by "& functionname" in C,
 // produce a pointer to the actual entry point for the function.  For
 // most platforms it's the identity function.  Unfortunately, on
 // ppc64-linux it isn't (sigh).
 extern void* VG_(fnptr_to_fnentry)( void* );
+
+/* Returns the size of the largest guest register that we will
+   simulate in this run.  This depends on both the guest architecture
+   and on the specific capabilities we are simulating for that guest
+   (eg, AVX or non-AVX ?, for amd64). */
+extern Int VG_(machine_get_size_of_largest_guest_register) ( void );
 
 #endif   // __PUB_TOOL_MACHINE_H
 

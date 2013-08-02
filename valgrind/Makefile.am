@@ -1,5 +1,5 @@
 
-AUTOMAKE_OPTIONS = foreign 1.7 dist-bzip2
+AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2
 
 include $(top_srcdir)/Makefile.all.am
 
@@ -14,17 +14,9 @@ TOOLS =		memcheck \
 		fjalar
 
 
-EXP_TOOLS = 	exp-ptrcheck \
-		exp-bbv
-
-# DDD: once all tools work on Darwin, TEST_TOOLS and TEST_EXP_TOOLS can be
-# replaced with TOOLS and EXP_TOOLS.
-TEST_TOOLS = $(TOOLS)
-if !VGCONF_OS_IS_DARWIN
-  TEST_EXP_TOOLS = $(EXP_TOOLS)
-else
-  TEST_EXP_TOOLS = exp-bbv
-endif
+EXP_TOOLS = 	exp-sgcheck \
+		exp-bbv \
+		exp-dhat
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
@@ -37,6 +29,8 @@ SUBDIRS = \
 	$(EXP_TOOLS) \
 	tests \
 	perf \
+	gdbserver_tests \
+	memcheck/tests/vbit-test \
 	auxprogs \
 	mpi
 
@@ -45,19 +39,23 @@ DIST_SUBDIRS  = $(SUBDIRS)
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
 	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
-	aix5libc.supp xfree-3.supp xfree-4.supp \
+	xfree-3.supp xfree-4.supp \
 	glibc-2.34567-NPTL-helgrind.supp \
 	glibc-2.2-LinuxThreads-helgrind.supp \
 	glibc-2.X-drd.supp \
-	exp-ptrcheck.supp \
-	darwin9.supp darwin9-drd.supp
+	exp-sgcheck.supp \
+	darwin9.supp darwin9-drd.supp \
+	darwin10.supp darwin10-drd.supp \
+	darwin11.supp darwin12.supp \
+	bionic.supp
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
 # We include all the base .supp files in the distribution, but not
 # default.supp, as it is built from the base .supp files at compile-time.
 dist_noinst_DATA = $(SUPP_FILES)
 
-pkglib_DATA = default.supp
+vglibdir = $(pkglibdir)
+vglib_DATA = default.supp
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = valgrind.pc
@@ -71,12 +69,22 @@ default.supp: $(DEFAULT_SUPP_FILES)
 	cat $(DEFAULT_SUPP_FILES) >> default.supp
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
+## Ensure make exits with error if PERL fails or check_makefile_consistency fails.
 regtest: check
-	@PERL@ tests/vg_regtest $(TEST_TOOLS) $(TEST_EXP_TOOLS)
+	gdbserver_tests/make_local_links $(GDB)
+	if @PERL@ tests/vg_regtest gdbserver_tests $(TOOLS) $(EXP_TOOLS) ; then \
+	   tests/check_makefile_consistency gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
+	else \
+	   tests/check_makefile_consistency gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
+	   false; \
+	fi
 nonexp-regtest: check
-	@PERL@ tests/vg_regtest $(TEST_TOOLS)
+	@PERL@ tests/vg_regtest $(TOOLS)
 exp-regtest: check
-	@PERL@ tests/vg_regtest $(TEST_EXP_TOOLS)
+	@PERL@ tests/vg_regtest gdbserver_tests $(EXP_TOOLS)
+# Nb: gdbserver_tests are put in exp-regtest rather than nonexp-regtest
+# because they are tested with various valgrind tools, so might be using
+# an experimental tool.
 
 ## Preprend @PERL@ because tests/vg_perf isn't executable
 perf: check
@@ -92,9 +100,15 @@ EXTRA_DIST = \
 	README_DEVELOPERS \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \
+	README.s390 \
+	README.android \
+	README.android_emulator \
+	README.mips \
+	NEWS.old \
 	valgrind.pc.in \
 	valgrind.spec.in \
-	valgrind.spec
+	valgrind.spec \
+	autogen.sh
 
 dist_noinst_SCRIPTS = \
 	vg-in-place
@@ -106,3 +120,6 @@ all-local: default.supp
 
 clean-local:
 	rm -rf $(inplacedir)
+
+# Need config.h in the installed tree, since some files depend on it
+pkginclude_HEADERS = config.h

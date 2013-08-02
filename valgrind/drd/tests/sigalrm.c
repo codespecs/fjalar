@@ -55,15 +55,12 @@ void* thread_func(void* thread_arg)
 
 int main(int argc, char** argv)
 {
-  int vgthreadid;
   pthread_t threadid;
   struct timespec tsDelay;
 
   // Primitive argument parsing.
   if (argc > 1)
     s_debug = 1;
-
-  vgthreadid = DRD_GET_VALGRIND_THREADID;
 
   print_thread_id("main: ");
 
@@ -75,7 +72,10 @@ int main(int argc, char** argv)
     sigaction(SIGALRM, &sa, 0);
   }
 
-  pthread_create(&threadid, 0, thread_func, 0);
+  if (pthread_create(&threadid, 0, thread_func, 0) != 0) {
+    fprintf(stderr, "Thread creation failed\n");
+    return 1;
+  }
   // Wait until the thread is inside clock_nanosleep().
   tsDelay.tv_sec = 0;
   tsDelay.tv_nsec = 20 * 1000 * 1000;

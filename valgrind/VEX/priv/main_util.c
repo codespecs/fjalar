@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (main_util.c) is                              ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                                       main_util.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -62,7 +51,7 @@
    MByte/sec.  Once the size increases enough to fall out of the cache
    into memory, the rate falls by about a factor of 3. 
 */
-#define N_TEMPORARY_BYTES 4000000
+#define N_TEMPORARY_BYTES 5000000
 
 static HChar  temporary[N_TEMPORARY_BYTES] __attribute__((aligned(8)));
 static HChar* temporary_first = &temporary[0];
@@ -231,7 +220,7 @@ void vex_assert_fail ( const HChar* expr,
 }
 
 __attribute__ ((noreturn))
-void vpanic ( HChar* str )
+void vpanic ( const HChar* str )
 {
    vex_printf("\nvex: the `impossible' happened:\n   %s\n", str);
    (*vex_failure_exit)();
@@ -246,7 +235,7 @@ void vpanic ( HChar* str )
    New code for vex_util.c should go above this point. */
 #include <stdarg.h>
 
-static Int vex_strlen ( const HChar* str )
+Int vex_strlen ( const HChar* str )
 {
    Int i = 0;
    while (str[i] != 0) i++;
@@ -263,6 +252,15 @@ Bool vex_streq ( const HChar* s1, const HChar* s2 )
       s1++;
       s2++;
    }
+}
+
+void vex_bzero ( void* sV, UInt n )
+{
+   UInt i;
+   UChar* s = (UChar*)sV;
+   /* No laughing, please.  Just don't call this too often.  Thank you
+      for your attention. */
+   for (i = 0; i < n; i++) s[i] = 0;
 }
 
 
@@ -318,7 +316,7 @@ void convert_int ( /*OUT*/HChar* buf, Long n0,
    printf. */
 static
 UInt vprintf_wrk ( void(*sink)(HChar),
-                   HChar* format,
+                   const HChar* format,
                    va_list ap )
 {
 #  define PUT(_ch)  \
@@ -333,7 +331,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       do { HChar* _qq = _str; for (; *_qq; _qq++) PUT(*_qq); } \
       while (0)
 
-   HChar* saved_format;
+   const HChar* saved_format;
    Bool   longlong, ljustify;
    HChar  padchar;
    Int    fwidth, nout, len1, len2, len3;
@@ -496,7 +494,7 @@ static void add_to_myprintf_buf ( HChar c )
    }
 }
 
-UInt vex_printf ( HChar* format, ... )
+UInt vex_printf ( const HChar* format, ... )
 {
    UInt ret;
    va_list vargs;
@@ -525,7 +523,7 @@ static void add_to_vg_sprintf_buf ( HChar c )
    *vg_sprintf_ptr++ = c;
 }
 
-UInt vex_sprintf ( HChar* buf, HChar *format, ... )
+UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
 {
    Int ret;
    va_list vargs;

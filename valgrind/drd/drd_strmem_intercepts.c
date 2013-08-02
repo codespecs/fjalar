@@ -1,5 +1,3 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
-
 /*--------------------------------------------------------------------*/
 /*--- Replacements for strlen() and strnlen(), which run on the    ---*/
 /*--- simulated CPU.                                               ---*/
@@ -11,7 +9,7 @@
   from memchec/mc_replace_strmem.c, which has the following copyright
   notice:
 
-  Copyright (C) 2000-2009 Julian Seward 
+  Copyright (C) 2000-2012 Julian Seward
   jseward@acm.org
 
   This program is free software; you can redistribute it and/or
@@ -48,7 +46,11 @@
       return i;                                                         \
    }
 
-STRNLEN(VG_Z_LIBC_SONAME, strnlen)
+#if defined(VGO_linux)
+ STRNLEN(VG_Z_LIBC_SONAME, strnlen)
+#elif defined(VGO_darwin)
+ STRNLEN(VG_Z_LIBC_SONAME, strnlen)
+#endif
    
 
 // Note that this replacement often doesn't get used because gcc inlines
@@ -64,10 +66,12 @@ STRNLEN(VG_Z_LIBC_SONAME, strnlen)
       return i;                                                         \
    }
 
-STRLEN(VG_Z_LIBC_SONAME,          strlen)
 #if defined(VGO_linux)
-STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
-STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+ STRLEN(VG_Z_LIBC_SONAME,          strlen)
+ STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
+ STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+#elif defined(VGO_darwin)
+ STRLEN(VG_Z_LIBC_SONAME,          strlen)
 #endif
 
 /*--------------------------------------------------------------------*/

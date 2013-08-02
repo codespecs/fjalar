@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -188,6 +188,8 @@ Addr          VG_(DebugInfo_get_plt_avma)    ( const DebugInfo *di );
 SizeT         VG_(DebugInfo_get_plt_size)    ( const DebugInfo *di );
 Addr          VG_(DebugInfo_get_gotplt_avma) ( const DebugInfo *di );
 SizeT         VG_(DebugInfo_get_gotplt_size) ( const DebugInfo *di );
+Addr          VG_(DebugInfo_get_got_avma)    ( const DebugInfo *di );
+SizeT         VG_(DebugInfo_get_got_size)    ( const DebugInfo *di );
 const UChar*  VG_(DebugInfo_get_soname)      ( const DebugInfo *di );
 const UChar*  VG_(DebugInfo_get_filename)    ( const DebugInfo *di );
 PtrdiffT      VG_(DebugInfo_get_text_bias)   ( const DebugInfo *di );
@@ -202,16 +204,20 @@ PtrdiffT      VG_(DebugInfo_get_text_bias)   ( const DebugInfo *di );
 const DebugInfo* VG_(next_DebugInfo)    ( const DebugInfo *di );
 
 /* Functions for traversing all the symbols in a DebugInfo.  _howmany
-   tells how many there are.  _getidx retrieves the n'th, for n in 0
-   .. _howmany-1.  You may not modify the function name thereby
-   acquired; if you want to do so, first strdup it. */
+   tells how many symbol table entries there are.  _getidx retrieves
+   the n'th entry, for n in 0 .. _howmany-1.  You may not modify the
+   function names thereby acquired; if you want to do so, first strdup
+   them.  The primary name is returned in *pri_name, and *sec_names is
+   set either to NULL or to a NULL terminated vector containing
+   pointers to the secondary names. */
 Int  VG_(DebugInfo_syms_howmany) ( const DebugInfo *di );
 void VG_(DebugInfo_syms_getidx)  ( const DebugInfo *di, 
                                    Int idx,
                                    /*OUT*/Addr*   avma,
                                    /*OUT*/Addr*   tocptr,
                                    /*OUT*/UInt*   size,
-                                   /*OUT*/HChar** name,
+                                   /*OUT*/UChar**  pri_name,
+                                   /*OUT*/UChar*** sec_names,
                                    /*OUT*/Bool*   isText,
                                    /*OUT*/Bool*   isIFunc );
 
@@ -241,11 +247,6 @@ const HChar* VG_(pp_SectKind)( VgSectKind kind );
 VgSectKind VG_(DebugInfo_sect_kind)( /*OUT*/UChar* name, SizeT n_name, 
                                      Addr a);
 
-
-/* Return the starting address or size of the data, bss, got, or plt
-   section of the given segment, or 0 if there is no such section. */
-/*extern Addr VG_(seginfo_sect_start)(const SegInfo *si, VgSectKind kind);
-  extern SizeT VG_(seginfo_sect_size)(const SegInfo *si, VgSectKind kind);*/
 
 #endif   // __PUB_TOOL_DEBUGINFO_H
 

@@ -38,8 +38,8 @@ int main(int argc, char** argv)
   pthread_t thread2;
 
 #if 0
-  int res;
-  VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_TRACE_ADDR,
+
+  VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_TRACE_ADDR,
                              &s_racy, 0, 0, 0, 0);
 #endif
 

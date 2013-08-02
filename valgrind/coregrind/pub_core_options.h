@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -42,12 +42,38 @@
 /* The max number of suppression files. */
 #define VG_CLO_MAX_SFILES 100
 
+/* The max number of --require-text-symbol= specification strings. */
+#define VG_CLO_MAX_REQ_TSYMS 100
+
+/* The max number of --fullpath-after= parameters. */
+#define VG_CLO_MAX_FULLPATH_AFTER 100
+
 /* Should we stop collecting errors if too many appear?  default: YES */
 extern Bool  VG_(clo_error_limit);
 /* Alternative exit code to hand to parent if errors were found.
    default: 0 (no, return the application's exit code in the normal
    way. */
 extern Int   VG_(clo_error_exitcode);
+
+typedef 
+   enum { 
+      Vg_VgdbNo,   // Do not activate gdbserver.
+      Vg_VgdbYes,  // Activate gdbserver (default).
+      Vg_VgdbFull, // ACtivate gdbserver in full mode, allowing
+                   // a precise handling of watchpoints and single stepping
+                   // at any moment.
+   } 
+   VgVgdb;
+/* if != Vg_VgdbNo, allows valgrind to serve vgdb/gdb. */
+extern VgVgdb VG_(clo_vgdb);
+/* if > 0, checks every VG_(clo_vgdb_poll) BBS if vgdb wants to be served. */
+extern Int VG_(clo_vgdb_poll);
+/* prefix for the named pipes (FIFOs) used by vgdb/gdb to communicate with valgrind */
+extern HChar* VG_(clo_vgdb_prefix);
+/* if True, gdbserver in valgrind will expose a target description containing
+   shadow registers */
+extern Bool  VG_(clo_vgdb_shadow_registers);
+
 /* Enquire about whether to attach to a debugger at errors?   default: NO */
 extern Bool  VG_(clo_db_attach);
 /* The debugger command?  default: whatever gdb ./configure found */
@@ -60,10 +86,18 @@ extern Int   VG_(clo_sanity_level);
 /* Automatically attempt to demangle C++ names?  default: YES */
 extern Bool  VG_(clo_demangle);
 /* Simulate child processes? default: NO */
+/* Soname synonyms : a string containing a list of pairs
+   xxxxx=yyyyy separated by commas.
+   E.g. --soname-synonyms=somalloc=libtcmalloc*.so*,solibtruc=NONE */
+extern HChar* VG_(clo_soname_synonyms);
 extern Bool  VG_(clo_trace_children);
 /* String containing comma-separated patterns for executable names
    that should not be traced into even when --trace-children=yes */
 extern HChar* VG_(clo_trace_children_skip);
+/* The same as VG_(clo_trace_children), except that these patterns are
+   tested against the arguments for child processes, rather than the
+   executable name. */
+extern HChar* VG_(clo_trace_children_skip_by_arg);
 /* After a fork, the child's output can become confusingly
    intermingled with the parent's output.  This is especially
    problematic when VG_(clo_xml) is True.  Setting
@@ -82,17 +116,24 @@ extern Bool  VG_(clo_time_stamp);
 
 /* The file descriptor to read for input.  default: 0 == stdin */
 extern Int   VG_(clo_input_fd);
+
 /* The number of suppression files specified. */
 extern Int   VG_(clo_n_suppressions);
 /* The names of the suppression files. */
 extern Char* VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
 
+/* An array of strings harvested from --fullpath-after= flags. */
+extern Int   VG_(clo_n_fullpath_after);
+extern Char* VG_(clo_fullpath_after)[VG_CLO_MAX_FULLPATH_AFTER];
+
 /* DEBUG: print generated code?  default: 00000000 ( == NO ) */
 extern UChar VG_(clo_trace_flags);
 /* DEBUG: do bb profiling?  default: 00000000 ( == NO ) */
 extern UChar VG_(clo_profile_flags);
-/* DEBUG: if tracing codegen, be quiet until after this bb ( 0 ) */
+/* DEBUG: if tracing codegen, be quiet until after this bb */
 extern Int   VG_(clo_trace_notbelow);
+/* DEBUG: if tracing codegen, be quiet after this bb  */
+extern Int   VG_(clo_trace_notabove);
 /* DEBUG: print system calls?  default: NO */
 extern Bool  VG_(clo_trace_syscalls);
 /* DEBUG: print signal details?  default: NO */
@@ -111,10 +152,25 @@ extern Bool  VG_(clo_debug_dump_line);
 extern Bool  VG_(clo_debug_dump_frames);
 /* DEBUG: print redirection details?  default: NO */
 extern Bool  VG_(clo_trace_redir);
+/* Enable fair scheduling on multicore systems? default: NO */
+enum FairSchedType { disable_fair_sched, enable_fair_sched, try_fair_sched };
+extern enum FairSchedType VG_(clo_fair_sched);
 /* DEBUG: print thread scheduling events?  default: NO */
 extern Bool  VG_(clo_trace_sched);
 /* DEBUG: do heap profiling?  default: NO */
 extern Bool  VG_(clo_profile_heap);
+#define MAX_REDZONE_SZB 128
+// Maximum for the default values for core arenas and for client
+// arena given by the tool.
+// 128 is no special figure, just something not too big
+#define MAX_CLO_REDZONE_SZB 4096
+// We allow the user to increase the redzone size to 4Kb :
+// This allows "off by one" in an array of pages to be detected.
+#define CORE_REDZONE_DEFAULT_SZB 4
+extern Int VG_(clo_core_redzone_size);
+// VG_(clo_redzone_size) has default value -1, indicating to keep
+// the tool provided value.
+extern Int VG_(clo_redzone_size);
 /* DEBUG: display gory details for the k'th most popular error.
    default: Infinity. */
 extern Int   VG_(clo_dump_error);
@@ -124,6 +180,41 @@ extern Char* VG_(clo_sim_hints);
 extern Bool VG_(clo_sym_offsets);
 /* Read DWARF3 variable info even if tool doesn't ask for it? */
 extern Bool VG_(clo_read_var_info);
+/* Which prefix to strip from full source file paths, if any. */
+extern Char* VG_(clo_prefix_to_strip);
+
+/* An array of strings harvested from --require-text-symbol= 
+   flags.
+
+   Each string specifies a pair: a soname pattern and a text symbol
+   name pattern, separated by a colon.  The patterns can be written
+   using the normal "?" and "*" wildcards.  For example:
+   ":*libc.so*:foo?bar".
+
+   These flags take effect when reading debuginfo from objects.  If an
+   object is loaded and the object's soname matches the soname
+   component of one of the specified pairs, then Valgrind will examine
+   all the text symbol names in the object.  If none of them match the
+   symbol name component of that same specification, then the run is
+   aborted, with an error message.
+
+   The purpose of this is to support reliable usage of marked-up
+   libraries.  For example, suppose we have a version of GCC's
+   libgomp.so which has been marked up with annotations to support
+   Helgrind.  It is only too easy and confusing to load the 'wrong'
+   libgomp.so into the application.  So the idea is: add a text symbol
+   in the marked-up library (eg), "annotated_for_helgrind_3_6", and
+   then give the flag
+
+     --require-text-symbol=:*libgomp*so*:annotated_for_helgrind_3_6
+
+   so that when libgomp.so is loaded, we scan the symbol table, and if
+   the symbol isn't present the run is aborted, rather than continuing
+   silently with the un-marked-up library.  Note that you should put
+   the entire flag in quotes to stop shells messing up the * and ?
+   wildcards. */
+extern Int    VG_(clo_n_req_tsyms);
+extern HChar* VG_(clo_req_tsyms)[VG_CLO_MAX_REQ_TSYMS];
 
 /* Track open file descriptors? */
 extern Bool  VG_(clo_track_fds);
@@ -157,7 +248,9 @@ typedef
       Vg_SmcNone,  // never generate self-checking translations
       Vg_SmcStack, // generate s-c-t's for code found in stacks
                    // (this is the default)
-      Vg_SmcAll    // make all translations self-checking.
+      Vg_SmcAll,   // make all translations self-checking.
+      Vg_SmcAllNonFile // make all translations derived from
+                   // non-file-backed memory self checking
    } 
    VgSmc;
 
@@ -173,22 +266,14 @@ extern HChar* VG_(clo_kernel_variant);
    .dSYM directories as necessary? */
 extern Bool VG_(clo_dsymutil);
 
-/* --------- Functions --------- */
-
-/* Call this if the executable is missing.  This function prints an
-   error message, then shuts down the entire system. */
-__attribute__((noreturn))
-extern void VG_(err_missing_prog) ( void );
-
-/* Similarly - complain and stop if there is some kind of config
-   error. */
-__attribute__((noreturn))
-extern void VG_(err_config_error) ( Char* msg );
-
 /* Should we trace into this child executable (across execve etc) ?
-   This involves considering --trace-children=, --trace-children-skip=
-   and the name of the executable. */
-extern Bool VG_(should_we_trace_this_child) ( HChar* child_exe_name );
+   This involves considering --trace-children=,
+   --trace-children-skip=, --trace-children-skip-by-arg=, and the name
+   of the executable.  'child_argv' must not include the name of the
+   executable itself; iow child_argv[0] must be the first arg, if any,
+   for the child. */
+extern Bool VG_(should_we_trace_this_child) ( HChar* child_exe_name,
+                                              HChar** child_argv );
 
 #endif   // __PUB_CORE_OPTIONS_H
 

@@ -45,9 +45,9 @@ static jmp_buf escape;
 
 #define BADADDR	((int *)0x1234)
 
-#define FILESIZE	(16*1024)
+#define FILESIZE	(4*__pagesize)
 #define MAPSIZE		(2*FILESIZE)
-
+static unsigned int __pagesize;
 static char volatile *volatile mapping;
 
 static int testsig(int sig, int want)
@@ -70,7 +70,13 @@ static int testcode(int code, int want)
 
 static int testaddr(void *addr, volatile void *want)
 {
+	/* Some architectures (e.g. s390) just provide enough information to
+         resolve the page fault, but do not provide the offset within a page */
+#if defined(__s390__)
+	if (addr != (void *) ((unsigned long) want & ~0xffful)) {
+#else
 	if (addr != want) {
+#endif
 		fprintf(stderr, "  FAIL: expected si_addr==%p, not %p\n", want, addr);
 		return 0;
 	}
@@ -124,7 +130,7 @@ int main()
 	int fd, i;
 	static const int sigs[] = { SIGSEGV, SIGILL, SIGBUS, SIGFPE, SIGTRAP };
 	struct sigaction sa;
-
+	__pagesize = (unsigned int)sysconf(_SC_PAGE_SIZE);
 	sa.sa_sigaction = handler;
 	sa.sa_flags = SA_SIGINFO;
 	sigfillset(&sa.sa_mask);
@@ -132,7 +138,8 @@ int main()
 	for(i = 0; i < sizeof(sigs)/sizeof(*sigs); i++)
 		sigaction(sigs[i], &sa, NULL);
 
-	fd = open("faultstatus.tmp", O_CREAT|O_TRUNC|O_EXCL, 0600);
+	/* we need O_RDWR for the truncate below */
+	fd = open("faultstatus.tmp", O_CREAT|O_TRUNC|O_EXCL|O_RDWR, 0600);
 	if (fd == -1) {
 		perror("tmpfile");
 		exit(1);

@@ -1,8 +1,7 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -172,24 +171,18 @@ static void DRD_(rwlock_combine_other_vc)(struct rwlock_info* const p,
    struct rwlock_thread_info* q;
    VectorClock old_vc;
 
-   DRD_(vc_copy)(&old_vc, &DRD_(g_threadinfo)[tid].last->vc);
+   DRD_(vc_copy)(&old_vc, DRD_(thread_get_vc)(tid));
    VG_(OSetGen_ResetIter)(p->thread_info);
-   for ( ; (q = VG_(OSetGen_Next)(p->thread_info)) != 0; )
-   {
-      if (q->tid != tid)
-      {
+   for ( ; (q = VG_(OSetGen_Next)(p->thread_info)) != 0; ) {
+      if (q->tid != tid) {
          if (q->latest_wrlocked_segment)
-         {
-            DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc,
+            DRD_(vc_combine)(DRD_(thread_get_vc)(tid),
                              &q->latest_wrlocked_segment->vc);
-         }
          if (readers_too && q->latest_rdlocked_segment)
-         {
-            DRD_(vc_combine)(&DRD_(g_threadinfo)[tid].last->vc,
+            DRD_(vc_combine)(DRD_(thread_get_vc)(tid),
                              &q->latest_rdlocked_segment->vc);
          }
       }
-   }
    DRD_(thread_update_conflict_set)(tid, &old_vc);
    DRD_(vc_cleanup)(&old_vc);
 }
@@ -251,12 +244,8 @@ static void rwlock_cleanup(struct rwlock_info* p)
    tl_assert(p);
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] rwlock_destroy     0x%lx\n",
-                   DRD_(thread_get_running_tid)(),
-                   p->a1);
-   }
+      DRD_(trace_msg)("[%d] rwlock_destroy     0x%lx",
+                      DRD_(thread_get_running_tid)(), p->a1);
 
    if (DRD_(rwlock_is_locked)(p))
    {
@@ -294,7 +283,10 @@ DRD_(rwlock_get_or_allocate)(const Addr rwlock, const RwLockT rwlock_type)
 
    if (DRD_(clientobj_present)(rwlock, rwlock + 1))
    {
-      GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+      GenericErrInfo GEI = {
+	 .tid  = DRD_(thread_get_running_tid)(),
+	 .addr = rwlock,
+      };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               GenericErr,
                               VG_(get_IP)(VG_(get_running_tid)()),
@@ -321,12 +313,8 @@ struct rwlock_info* DRD_(rwlock_pre_init)(const Addr rwlock,
    struct rwlock_info* p;
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] rwlock_init        0x%lx\n",
-                   DRD_(thread_get_running_tid)(),
-                   rwlock);
-   }
+      DRD_(trace_msg)("[%d] rwlock_init        0x%lx",
+                      DRD_(thread_get_running_tid)(), rwlock);
 
    p = DRD_(rwlock_get)(rwlock);
 
@@ -358,7 +346,10 @@ void DRD_(rwlock_post_destroy)(const Addr rwlock, const RwLockT rwlock_type)
    p = DRD_(rwlock_get)(rwlock);
    if (p == 0)
    {
-      GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+      GenericErrInfo GEI = {
+	 .tid = DRD_(thread_get_running_tid)(),
+	 .addr = rwlock,
+      };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               GenericErr,
                               VG_(get_IP)(VG_(get_running_tid)()),
@@ -383,22 +374,19 @@ void DRD_(rwlock_pre_rdlock)(const Addr rwlock, const RwLockT rwlock_type)
    struct rwlock_info* p;
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] pre_rwlock_rdlock  0x%lx\n",
-                   DRD_(thread_get_running_tid)(),
-                   rwlock);
-   }
+      DRD_(trace_msg)("[%d] pre_rwlock_rdlock  0x%lx",
+                      DRD_(thread_get_running_tid)(), rwlock);
 
    p = DRD_(rwlock_get_or_allocate)(rwlock, rwlock_type);
    tl_assert(p);
 
-   if (DRD_(rwlock_is_wrlocked_by)(p, DRD_(thread_get_running_tid)()))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "reader-writer lock 0x%lx is already locked for"
-                   " writing by calling thread\n",
-                   p->a1);
+   if (DRD_(rwlock_is_wrlocked_by)(p, DRD_(thread_get_running_tid)())) {
+      RwlockErrInfo REI = { DRD_(thread_get_running_tid)(), p->a1 };
+      VG_(maybe_record_error)(VG_(get_running_tid)(),
+                              RwlockErr,
+                              VG_(get_IP)(VG_(get_running_tid)()),
+                              "Already locked for writing by calling thread",
+                              &REI);
    }
 }
 
@@ -415,12 +403,7 @@ void DRD_(rwlock_post_rdlock)(const Addr rwlock, const RwLockT rwlock_type,
    struct rwlock_thread_info* q;
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] post_rwlock_rdlock 0x%lx\n",
-                   drd_tid,
-                   rwlock);
-   }
+      DRD_(trace_msg)("[%d] post_rwlock_rdlock 0x%lx", drd_tid, rwlock);
 
    p = DRD_(rwlock_get)(rwlock);
 
@@ -454,12 +437,8 @@ void DRD_(rwlock_pre_wrlock)(const Addr rwlock, const RwLockT rwlock_type)
    p = DRD_(rwlock_get)(rwlock);
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] pre_rwlock_wrlock  0x%lx\n",
-                   DRD_(thread_get_running_tid)(),
-                   rwlock);
-   }
+      DRD_(trace_msg)("[%d] pre_rwlock_wrlock  0x%lx",
+                      DRD_(thread_get_running_tid)(), rwlock);
 
    if (p == 0)
       p = DRD_(rwlock_get_or_allocate)(rwlock, rwlock_type);
@@ -492,12 +471,7 @@ void DRD_(rwlock_post_wrlock)(const Addr rwlock, const RwLockT rwlock_type,
    p = DRD_(rwlock_get)(rwlock);
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] post_rwlock_wrlock 0x%lx\n",
-                   drd_tid,
-                   rwlock);
-   }
+      DRD_(trace_msg)("[%d] post_rwlock_wrlock 0x%lx", drd_tid, rwlock);
 
    if (! p || ! took_lock)
       return;
@@ -532,17 +506,15 @@ void DRD_(rwlock_pre_unlock)(const Addr rwlock, const RwLockT rwlock_type)
    struct rwlock_thread_info* q;
 
    if (DRD_(s_trace_rwlock))
-   {
-      VG_(message)(Vg_UserMsg,
-                   "[%d] rwlock_unlock      0x%lx\n",
-                   drd_tid,
-                   rwlock);
-   }
+      DRD_(trace_msg)("[%d] rwlock_unlock      0x%lx", drd_tid, rwlock);
 
    p = DRD_(rwlock_get)(rwlock);
    if (p == 0)
    {
-      GenericErrInfo GEI = { DRD_(thread_get_running_tid)() };
+      GenericErrInfo GEI = {
+	 .tid = DRD_(thread_get_running_tid)(),
+	 .addr = rwlock,
+      };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               GenericErr,
                               VG_(get_IP)(VG_(get_running_tid)()),

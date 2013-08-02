@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2009 Apple Inc.
+   Copyright (C) 2007-2012 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -706,6 +706,7 @@ typedef
 
 #define VKI_SHM_RDONLY	SHM_RDONLY
 #define VKI_SHM_RND	SHM_RND
+#define VKI_SHMLBA	SHMLBA
 
 #define vki_shmid_ds shmid_ds
 
@@ -792,6 +793,11 @@ typedef
 typedef struct eventreq vki_eventreq;
 
 
+#include <sys/acl.h>
+
+#define vki_kauth_filesec kauth_filesec
+
+
 #include <sys/ptrace.h>
 
 #define VKI_PTRACE_TRACEME   PT_TRACE_ME
@@ -826,6 +832,9 @@ struct ByteRangeLockPB2
 #define VKI_WQOPS_QUEUE_ADD      1
 #define VKI_WQOPS_QUEUE_REMOVE   2
 #define VKI_WQOPS_THREAD_RETURN  4
+#define VKI_WQOPS_THREAD_SETCONC     8
+#define VKI_WQOPS_QUEUE_NEWSPISUPP  16  /* check for newer SPI support */
+#define VKI_WQOPS_QUEUE_REQTHREADS  32  /* request number of threads of a prio */
 
 
 #include <sys/ttycom.h>
@@ -1021,6 +1030,10 @@ struct ByteRangeLockPB2
 #define	VKI_A_GETPINFO_ADDR	A_GETPINFO_ADDR	
 #define	VKI_A_GETKAUDIT	A_GETKAUDIT	
 #define	VKI_A_SETKAUDIT	A_SETKAUDIT	
+#if DARWIN_VERS >= DARWIN_10_6
+#define VKI_A_SENDTRIGGER A_SENDTRIGGER
+#define VKI_A_GETSINFO_ADDR A_GETSINFO_ADDR
+#endif
 
 
 #include <sys/aio.h>

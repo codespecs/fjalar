@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -74,7 +74,8 @@ void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
             or below, since that won't already have been shown */
          VG_(message)(Vg_DebugMsg, 
                       "When reading debug info from %s:\n",
-                      (di && di->filename) ? di->filename : (UChar*)"???");
+                      (di && di->fsm.filename) ? di->fsm.filename
+                                               : (UChar*)"???");
       }
       VG_(message)(Vg_DebugMsg, "%s\n", msg);
 
@@ -90,11 +91,24 @@ void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
 /* Print a symbol. */
 void ML_(ppSym) ( Int idx, DiSym* sym )
 {
-   VG_(printf)( "%5d:  %#8lx .. %#8lx (%d)      %s\n",
+   UChar** sec_names = sym->sec_names;
+   vg_assert(sym->pri_name);
+   if (sec_names)
+      vg_assert(sec_names);
+   VG_(printf)( "%5d:  %c%c %#8lx .. %#8lx (%d)      %s%s",
                 idx,
+                sym->isText ? 'T' : '-',
+                sym->isIFunc ? 'I' : '-',
                 sym->addr, 
                 sym->addr + sym->size - 1, sym->size,
-	        sym->name );
+                sym->pri_name, sec_names ? " " : "" );
+   if (sec_names) {
+      while (*sec_names) {
+         VG_(printf)("%s%s", *sec_names, *(sec_names+1) ? " " : "");
+         sec_names++;
+      }
+   }
+   VG_(printf)("\n");
 }
 
 /* Print a call-frame-info summary. */
@@ -141,6 +155,12 @@ void ML_(ppDiCfSI) ( XArray* /* of CfiExpr */ exprs, DiCfSI* si )
       case CFIC_ARM_R11REL: 
          VG_(printf)("let cfa=oldR11+%d", si->cfa_off); 
          break;
+      case CFIR_SAME:
+         VG_(printf)("let cfa=Same");
+         break;
+      case CFIC_ARM_R7REL: 
+         VG_(printf)("let cfa=oldR7+%d", si->cfa_off); 
+         break;
       case CFIC_EXPR: 
          VG_(printf)("let cfa={"); 
          ML_(ppCfiExpr)(exprs, si->cfa_off);
@@ -166,7 +186,14 @@ void ML_(ppDiCfSI) ( XArray* /* of CfiExpr */ exprs, DiCfSI* si )
    SHOW_HOW(si->r12_how, si->r12_off);
    VG_(printf)(" R11=");
    SHOW_HOW(si->r11_how, si->r11_off);
+   VG_(printf)(" R7=");
+   SHOW_HOW(si->r7_how, si->r7_off);
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64)
+#  elif defined(VGA_s390x) || defined(VGA_mips32)
+   VG_(printf)(" SP=");
+   SHOW_HOW(si->sp_how, si->sp_off);
+   VG_(printf)(" FP=");
+   SHOW_HOW(si->fp_how, si->fp_off);
 #  else
 #    error "Unknown arch"
 #  endif
@@ -222,12 +249,17 @@ UChar* ML_(addStr) ( struct _DebugInfo* di, UChar* str, Int len )
 }
 
 
-/* Add a symbol to the symbol table. 
+/* Add a symbol to the symbol table, by copying *sym.  'sym' may only
+   have one name, so there's no complexities to do with deep vs
+   shallow copying of the sec_name array.  This is checked.
 */
 void ML_(addSym) ( struct _DebugInfo* di, DiSym* sym )
 {
    UInt   new_sz, i;
    DiSym* new_tab;
+
+   vg_assert(sym->pri_name != NULL);
+   vg_assert(sym->sec_names == NULL);
 
    /* Ignore zero-sized syms. */
    if (sym->size == 0) return;
@@ -246,27 +278,8 @@ void ML_(addSym) ( struct _DebugInfo* di, DiSym* sym )
       di->symtab_size = new_sz;
    }
 
-   di->symtab[di->symtab_used] = *sym;
-   di->symtab_used++;
+   di->symtab[di->symtab_used++] = *sym;
    vg_assert(di->symtab_used <= di->symtab_size);
-}
-
-
-/* Resize the symbol table to save memory.
-*/
-void ML_(shrinkSym)( struct _DebugInfo* di )
-{
-   DiSym* new_tab;
-   UInt new_sz = di->symtab_used;
-   if (new_sz == di->symtab_size) return;
-
-   new_tab = ML_(dinfo_zalloc)( "di.storage.shrinkSym", 
-                                new_sz * sizeof(DiSym) );
-   VG_(memcpy)(new_tab, di->symtab, new_sz * sizeof(DiSym));
-
-   ML_(dinfo_free)(di->symtab);
-   di->symtab = new_tab;
-   di->symtab_size = new_sz;
 }
 
 
@@ -300,15 +313,18 @@ static void addLoc ( struct _DebugInfo* di, DiLoc* loc )
 }
 
 
-/* Resize the lineinfo table to save memory.
+/* Resize the LocTab (line number table) to save memory, by removing
+   (and, potentially, allowing m_mallocfree to unmap) any unused space
+   at the end of the table.
 */
-void ML_(shrinkLineInfo)( struct _DebugInfo* di )
+static void shrinkLocTab ( struct _DebugInfo* di )
 {
    DiLoc* new_tab;
-   UInt new_sz = di->loctab_used;
+   UWord new_sz = di->loctab_used;
    if (new_sz == di->loctab_size) return;
+   vg_assert(new_sz < di->loctab_size);
 
-   new_tab = ML_(dinfo_zalloc)( "di.storage.shrinkLineInfo", 
+   new_tab = ML_(dinfo_zalloc)( "di.storage.shrinkLocTab", 
                                 new_sz * sizeof(DiLoc) );
    VG_(memcpy)(new_tab, di->loctab, new_sz * sizeof(DiLoc));
 
@@ -331,7 +347,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
 {
    static const Bool debug = False;
    DiLoc loc;
-   Int size = next - this;
+   UWord size = next - this;
 
    /* Ignore zero-sized locs */
    if (this == next) return;
@@ -361,23 +377,30 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
        if (0)
        VG_(message)(Vg_DebugMsg, 
                     "warning: line info address range too large "
-                    "at entry %d: %d\n", entry, size);
+                    "at entry %d: %lu\n", entry, size);
        size = 1;
    }
+
+   /* At this point, we know that the original value for |size|, viz
+      |next - this|, will only still be used in the case where
+      |this| <u |next|, so it can't have underflowed.  Considering
+      that and the three checks that follow it, the following must
+      hold. */
+   vg_assert(size >= 1);
+   vg_assert(size <= MAX_LOC_SIZE);
 
    /* Rule out ones which are completely outside the r-x mapped area.
       See "Comment_Regarding_Text_Range_Checks" elsewhere in this file
       for background and rationale. */
-   vg_assert(di->have_rx_map && di->have_rw_map);
-   if (next-1 < di->rx_map_avma
-       || this >= di->rx_map_avma + di->rx_map_size ) {
+   vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
+   if (ML_(find_rx_mapping)(di, this, this + size - 1) == NULL) {
        if (0)
           VG_(message)(Vg_DebugMsg, 
                        "warning: ignoring line info entry falling "
                        "outside current DebugInfo: %#lx %#lx %#lx %#lx\n",
                        di->text_avma, 
                        di->text_avma + di->text_size, 
-                       this, next-1);
+                       this, this + size - 1);
        return;
    }
 
@@ -405,7 +428,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    loc.dirname   = dirname;
 
    if (0) VG_(message)(Vg_DebugMsg, 
-		       "addLoc: addr %#lx, size %d, line %d, file %s\n",
+		       "addLoc: addr %#lx, size %lu, line %d, file %s\n",
 		       this,size,lineno,filename);
 
    addLoc ( di, &loc );
@@ -420,6 +443,8 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi_orig )
    UInt    new_sz, i;
    DiCfSI* new_tab;
    SSizeT  delta;
+   struct _DebugInfoMapping* map;
+   struct _DebugInfoMapping* map2;
 
    /* copy the original, so we can mess with it */
    DiCfSI cfsi = *cfsi_orig;
@@ -439,28 +464,31 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi_orig )
       would fall within a single procedure. */
    vg_assert(cfsi.len < 5000000);
 
-   vg_assert(di->have_rx_map && di->have_rw_map);
-   /* If we have an empty r-x mapping (is that possible?) then the
-      DiCfSI can't possibly fall inside it.  In which case skip. */
-   if (di->rx_map_size == 0)
-      return;
+   vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
+   /* Find mapping where at least one end of the CFSI falls into. */
+   map  = ML_(find_rx_mapping)(di, cfsi.base, cfsi.base);
+   map2 = ML_(find_rx_mapping)(di, cfsi.base + cfsi.len - 1,
+                                   cfsi.base + cfsi.len - 1);
+   if (map == NULL)
+      map = map2;
+   else if (map2 == NULL)
+      map2 = map;
 
-   /* Rule out ones which are completely outside the r-x mapped area.
+   /* Rule out ones which are completely outside the r-x mapped area
+      (or which span across different areas).
       See "Comment_Regarding_Text_Range_Checks" elsewhere in this file
       for background and rationale. */
-   if (cfsi.base + cfsi.len - 1 < di->rx_map_avma
-       || cfsi.base >= di->rx_map_avma + di->rx_map_size) {
+   if (map == NULL || map != map2) {
       static Int complaints = 10;
       if (VG_(clo_trace_cfi) || complaints > 0) {
          complaints--;
          if (VG_(clo_verbosity) > 1) {
             VG_(message)(
                Vg_DebugMsg,
-               "warning: DiCfSI %#lx .. %#lx outside segment %#lx .. %#lx\n",
+               "warning: DiCfSI %#lx .. %#lx outside mapped rw segments (%s)\n",
                cfsi.base, 
                cfsi.base + cfsi.len - 1,
-               di->text_avma,
-               di->text_avma + di->text_size - 1 
+               di->soname
             );
          }
          if (VG_(clo_trace_cfi)) 
@@ -477,26 +505,27 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi_orig )
       will fail.  See
       "Comment_on_IMPORTANT_CFSI_REPRESENTATIONAL_INVARIANTS" in
       priv_storage.h for background. */
-   if (cfsi.base < di->rx_map_avma) {
+   if (cfsi.base < map->avma) {
       /* Lower end is outside the mapped area.  Hence upper end must
          be inside it. */
       if (0) VG_(printf)("XXX truncate lower\n");
-      vg_assert(cfsi.base + cfsi.len - 1 >= di->rx_map_avma);
-      delta = (SSizeT)(di->rx_map_avma - cfsi.base);
+      vg_assert(cfsi.base + cfsi.len - 1 >= map->avma);
+      delta = (SSizeT)(map->avma - cfsi.base);
       vg_assert(delta > 0);
       vg_assert(delta < (SSizeT)cfsi.len);
       cfsi.base += delta;
       cfsi.len -= delta;
    }
    else
-   if (cfsi.base + cfsi.len - 1 > di->rx_map_avma + di->rx_map_size - 1) {
+   if (cfsi.base + cfsi.len - 1 > map->avma + map->size - 1) {
       /* Upper end is outside the mapped area.  Hence lower end must be
          inside it. */
       if (0) VG_(printf)("XXX truncate upper\n");
-      vg_assert(cfsi.base <= di->rx_map_avma + di->rx_map_size - 1);
+      vg_assert(cfsi.base <= map->avma + map->size - 1);
       delta = (SSizeT)( (cfsi.base + cfsi.len - 1) 
-                        - (di->rx_map_avma + di->rx_map_size - 1) );
-      vg_assert(delta > 0); vg_assert(delta < (SSizeT)cfsi.len);
+                        - (map->avma + map->size - 1) );
+      vg_assert(delta > 0);
+      vg_assert(delta < (SSizeT)cfsi.len);
       cfsi.len -= delta;
    }
 
@@ -509,9 +538,9 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi_orig )
    vg_assert(cfsi.len > 0);
 
    /* Similar logic applies for the next two assertions. */
-   vg_assert(cfsi.base >= di->rx_map_avma);
+   vg_assert(cfsi.base >= map->avma);
    vg_assert(cfsi.base + cfsi.len - 1
-             <= di->rx_map_avma + di->rx_map_size - 1);
+             <= map->avma + map->size - 1);
 
    if (di->cfsi_used == di->cfsi_size) {
       new_sz = 2 * di->cfsi_size;
@@ -590,6 +619,14 @@ static void ppCfiOp ( CfiOp op )
       case Cop_Sub: VG_(printf)("-"); break;
       case Cop_And: VG_(printf)("&"); break;
       case Cop_Mul: VG_(printf)("*"); break;
+      case Cop_Shl: VG_(printf)("<<"); break;
+      case Cop_Shr: VG_(printf)(">>"); break;
+      case Cop_Eq: VG_(printf)("=="); break;
+      case Cop_Ge: VG_(printf)(">="); break;
+      case Cop_Gt: VG_(printf)(">"); break;
+      case Cop_Le: VG_(printf)("<="); break;
+      case Cop_Lt: VG_(printf)("<"); break;
+      case Cop_Ne: VG_(printf)("!="); break;
       default:      vg_assert(0);
    }
 }
@@ -604,6 +641,8 @@ static void ppCfiReg ( CfiReg reg )
       case Creg_ARM_R12: VG_(printf)("R12"); break;
       case Creg_ARM_R15: VG_(printf)("R15"); break;
       case Creg_ARM_R14: VG_(printf)("R14"); break;
+      case Creg_MIPS_RA: VG_(printf)("RA"); break;
+      case Creg_S390_R14: VG_(printf)("R14"); break;
       default: vg_assert(0);
    }
 }
@@ -891,17 +930,13 @@ void ML_(addVar)( struct _DebugInfo* di,
    /* This is assured us by top level steering logic in debuginfo.c,
       and it is re-checked at the start of
       ML_(read_elf_debug_info). */
-   vg_assert(di->have_rx_map && di->have_rw_map);
-   if (level > 0
-       && (aMax < di->rx_map_avma
-           || aMin >= di->rx_map_avma + di->rx_map_size)) {
+   vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
+   if (level > 0 && ML_(find_rx_mapping)(di, aMin, aMax) == NULL) {
       if (VG_(clo_verbosity) >= 0) {
          VG_(message)(Vg_DebugMsg, 
             "warning: addVar: in range %#lx .. %#lx outside "
-            "segment %#lx .. %#lx (%s)\n",
-            aMin, aMax,
-            di->text_avma, di->text_avma + di->text_size -1,
-            name
+            "all rx mapped areas (%s)\n",
+            aMin, aMax, name
          );
       }
       return;
@@ -1081,11 +1116,13 @@ static Int compare_DiSym ( void* va, void* vb )
 }
 
 
-/* Two symbols have the same address.  Which name do we prefer?  In order:
+/* An address is associated with more than one name.  Which do we
+   prefer as the "display" name (that we show the user in stack
+   traces)?  In order:
 
    - Prefer "PMPI_<foo>" over "MPI_<foo>".
 
-   - Else, prefer a non-NULL name over a NULL one.
+   - Else, prefer a non-empty name over an empty one.
 
    - Else, prefer a non-whitespace name over an all-whitespace name.
 
@@ -1100,14 +1137,20 @@ static Int compare_DiSym ( void* va, void* vb )
      
    - Else, use alphabetical ordering.
 
-   - Otherwise, they must be the same;  use the symbol with the lower address.
+   - Otherwise, they must be the same;  use the name with the lower address.
 
    Very occasionally this goes wrong (eg. 'memcmp' and 'bcmp' are
    aliases in glibc, we choose the 'bcmp' symbol because it's shorter,
    so we can misdescribe memcmp() as bcmp()).  This is hard to avoid.
    It's mentioned in the FAQ file.
+
+   Returned value is True if a_name is preferred, False if b_name is
+   preferred.
  */
-static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
+static
+Bool preferName ( struct _DebugInfo* di,
+                  UChar* a_name, UChar* b_name,
+                  Addr sym_avma/*exposition only*/ )
 {
    Word cmp;
    Word vlena, vlenb;		/* length without version */
@@ -1116,36 +1159,40 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
    Bool preferA = False;
    Bool preferB = False;
 
-   vg_assert(a->addr == b->addr);
+   vg_assert(a_name);
+   vg_assert(b_name);
+   vg_assert(a_name != b_name);
 
-   vlena = VG_(strlen)(a->name);
-   vlenb = VG_(strlen)(b->name);
+   vlena = VG_(strlen)(a_name);
+   vlenb = VG_(strlen)(b_name);
 
-#if defined(VGO_linux) || defined(VGO_aix5)
+#  if defined(VGO_linux)
 #  define VERSION_CHAR '@'
-#elif defined(VGO_darwin)
+#  elif defined(VGO_darwin)
 #  define VERSION_CHAR '$'
-#else
+#  else
 #  error Unknown OS
-#endif
+#  endif
 
-   vpa = VG_(strchr)(a->name, VERSION_CHAR);
-   vpb = VG_(strchr)(b->name, VERSION_CHAR);
+   vpa = VG_(strchr)(a_name, VERSION_CHAR);
+   vpb = VG_(strchr)(b_name, VERSION_CHAR);
+
+#  undef VERSION_CHAR
 
    if (vpa)
-      vlena = vpa - a->name;
+      vlena = vpa - a_name;
    if (vpb)
-      vlenb = vpb - b->name;
+      vlenb = vpb - b_name;
 
    /* MPI hack: prefer PMPI_Foo over MPI_Foo */
-   if (0==VG_(strncmp)(a->name, "MPI_", 4)
-       && 0==VG_(strncmp)(b->name, "PMPI_", 5)
-       && 0==VG_(strcmp)(a->name, 1+b->name)) {
+   if (0==VG_(strncmp)(a_name, "MPI_", 4)
+       && 0==VG_(strncmp)(b_name, "PMPI_", 5)
+       && 0==VG_(strcmp)(a_name, 1+b_name)) {
       preferB = True; goto out;
    } 
-   if (0==VG_(strncmp)(b->name, "MPI_", 4)
-       && 0==VG_(strncmp)(a->name, "PMPI_", 5)
-       && 0==VG_(strcmp)(b->name, 1+a->name)) {
+   if (0==VG_(strncmp)(b_name, "MPI_", 4)
+       && 0==VG_(strncmp)(a_name, "PMPI_", 5)
+       && 0==VG_(strcmp)(b_name, 1+a_name)) {
       preferA = True; goto out;
    }
 
@@ -1162,14 +1209,14 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
       Bool blankA = True;
       Bool blankB = True;
       Char *s;
-      s = a->name;
+      s = a_name;
       while (*s) {
          if (!VG_(isspace)(*s++)) {
             blankA = False;
             break;
          }
       }
-      s = b->name;
+      s = b_name;
       while (*s) {
          if (!VG_(isspace)(*s++)) {
             blankB = False;
@@ -1203,7 +1250,7 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
 
    /* Either both versioned or neither is versioned; select them
       alphabetically */
-   cmp = VG_(strcmp)(a->name, b->name);
+   cmp = VG_(strcmp)(a_name, b_name);
    if (cmp < 0) {
       preferA = True; goto out;
    }
@@ -1217,31 +1264,87 @@ static DiSym* prefersym ( struct _DebugInfo* di, DiSym* a, DiSym* b )
       well choose the one with the lowest DiSym* address, so as to try
       and make the comparison mechanism more stable (a la sorting
       parlance).  Also, skip the diagnostic printing in this case. */
-   return a <= b  ? a  : b;
+   return a_name <= b_name  ? True  : False;
 
    /*NOTREACHED*/
    vg_assert(0);
   out:
    if (preferA && !preferB) {
       TRACE_SYMTAB("sym at %#lx: prefer '%s' to '%s'\n",
-                   a->addr, a->name, b->name );
-      return a;
+                   sym_avma, a_name, b_name );
+      return True;
    }
    if (preferB && !preferA) {
       TRACE_SYMTAB("sym at %#lx: prefer '%s' to '%s'\n",
-                   b->addr, b->name, a->name );
-      return b;
+                   sym_avma, b_name, a_name );
+      return False;
    }
    /*NOTREACHED*/
    vg_assert(0);
 }
 
+
+/* Add the names in FROM to the names in TO. */
+static
+void add_DiSym_names_to_from ( DebugInfo* di, DiSym* to, DiSym* from )
+{
+   vg_assert(to->pri_name);
+   vg_assert(from->pri_name);
+   /* Figure out how many names there will be in the new combined
+      secondary vector. */
+   UChar** to_sec   = to->sec_names;
+   UChar** from_sec = from->sec_names;
+   Word n_new_sec = 1;
+   if (from_sec) {
+      while (*from_sec) {
+         n_new_sec++;
+         from_sec++;
+      }
+   }
+   if (to_sec) {
+      while (*to_sec) {
+         n_new_sec++;
+         to_sec++;
+      }
+   }
+   if (0)
+      TRACE_SYMTAB("merge: -> %ld\n", n_new_sec);
+   /* Create the new sec and copy stuff into it, putting the new
+      entries at the end. */
+   UChar** new_sec = ML_(dinfo_zalloc)( "di.storage.aDntf.1",
+                                        (n_new_sec+1) * sizeof(UChar*) );
+   from_sec = from->sec_names;
+   to_sec   = to->sec_names;
+   Word i = 0;
+   if (to_sec) {
+      while (*to_sec) {
+         new_sec[i++] = *to_sec;
+         to_sec++;
+      }
+   }
+   new_sec[i++] = from->pri_name;
+   if (from_sec) {
+      while (*from_sec) {
+         new_sec[i++] = *from_sec;
+         from_sec++;
+      }
+   }
+   vg_assert(i == n_new_sec);
+   vg_assert(new_sec[i] == NULL);
+   /* If we're replacing an existing secondary vector, free it. */
+   if (to->sec_names) {
+      ML_(dinfo_free)(to->sec_names);
+   }
+   to->sec_names = new_sec;
+}
+
+
 static void canonicaliseSymtab ( struct _DebugInfo* di )
 {
-   Word  i, j, n_merged, n_truncated;
-   Addr  s1, s2, e1, e2, p1, p2;
-   UChar *n1, *n2;
-   Bool t1, t2, f1, f2;
+   Word  i, j, n_truncated;
+   Addr  sta1, sta2, end1, end2, toc1, toc2;
+   UChar *pri1, *pri2, **sec1, **sec2;
+   Bool  ist1, ist2, isf1, isf2;
 
 #  define SWAP(ty,aa,bb) \
       do { ty tt = (aa); (aa) = (bb); (bb) = tt; } while (0)
@@ -1249,34 +1352,75 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
    if (di->symtab_used == 0)
       return;
 
+   /* Check initial invariants */
+   for (i = 0; i < di->symtab_used; i++) {
+      DiSym* sym = &di->symtab[i];
+      vg_assert(sym->pri_name);
+      vg_assert(!sym->sec_names);
+   }
+
+   /* Sort by address. */
    VG_(ssort)(di->symtab, di->symtab_used, 
                           sizeof(*di->symtab), compare_DiSym);
 
   cleanup_more:
  
-   /* If two symbols have identical address ranges, we pick one
-      using prefersym() (see it for details). */
-   do {
+   /* If two symbols have identical address ranges, and agree on
+      .isText and .isIFunc, merge them into a single entry, but
+      preserve both names, so we end up knowing all the names for that
+      particular address range. */
+   while (1) {
+      Word r, w, n_merged;
       n_merged = 0;
-      j = di->symtab_used;
-      di->symtab_used = 0;
-      for (i = 0; i < j; i++) {
-         if (i < j-1
-             && di->symtab[i].addr   == di->symtab[i+1].addr
-             && di->symtab[i].size   == di->symtab[i+1].size
-             ) {
-            n_merged++;
+      w = 0;
+      /* A pass merging entries together */
+      for (r = 1; r < di->symtab_used; r++) {
+         vg_assert(w < r);
+         if (   di->symtab[w].addr      == di->symtab[r].addr
+             && di->symtab[w].size      == di->symtab[r].size
+             && !!di->symtab[w].isText  == !!di->symtab[r].isText) {
             /* merge the two into one */
-	    di->symtab[di->symtab_used++] 
-               = *prefersym(di, &di->symtab[i], &di->symtab[i+1]);
-            i++;
+            n_merged++;
+            /* Add r names to w if r has secondary names 
+               or r and w primary names differ. */
+            if (di->symtab[r].sec_names 
+                || (0 != VG_(strcmp)(di->symtab[r].pri_name,
+                                     di->symtab[w].pri_name))) {
+               add_DiSym_names_to_from(di, &di->symtab[w], &di->symtab[r]);
+            }
+            /* mark w as an IFunc if either w or r are */
+            di->symtab[w].isIFunc = di->symtab[w].isIFunc || di->symtab[r].isIFunc;
+            /* and use ::pri_names to indicate this slot is no longer in use */
+            di->symtab[r].pri_name = NULL;
+            if (di->symtab[r].sec_names) {
+               ML_(dinfo_free)(di->symtab[r].sec_names);
+               di->symtab[r].sec_names = NULL;
+            }
+            /* Completely zap the entry -- paranoia to make it more
+               likely we'll notice if we inadvertantly use it
+               again. */
+            VG_(memset)(&di->symtab[r], 0, sizeof(DiSym));
          } else {
-            di->symtab[di->symtab_used++] = di->symtab[i];
+            w = r;
          }
       }
       TRACE_SYMTAB( "canonicaliseSymtab: %ld symbols merged\n", n_merged);
+      if (n_merged == 0)
+         break;
+      /* Now a pass to squeeze out any unused ones */
+      w = 0;
+      for (r = 0; r < di->symtab_used; r++) {
+         vg_assert(w <= r);
+         if (di->symtab[r].pri_name == NULL)
+            continue;
+         if (w < r) {
+            di->symtab[w] = di->symtab[r];
+         }
+         w++;
+      }
+      vg_assert(w + n_merged == di->symtab_used);
+      di->symtab_used = w;
    }
-   while (n_merged > 0);
 
    /* Detect and "fix" overlapping address ranges. */
    n_truncated = 0;
@@ -1300,46 +1444,56 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       }
 
       /* Truncate one or the other. */
-      s1 = di->symtab[i].addr;
-      e1 = s1 + di->symtab[i].size - 1;
-      p1 = di->symtab[i].tocptr;
-      n1 = di->symtab[i].name;
-      t1 = di->symtab[i].isText;
-      f1 = di->symtab[i].isIFunc;
-      s2 = di->symtab[i+1].addr;
-      e2 = s2 + di->symtab[i+1].size - 1;
-      p2 = di->symtab[i+1].tocptr;
-      n2 = di->symtab[i+1].name;
-      t2 = di->symtab[i+1].isText;
-      f2 = di->symtab[i+1].isIFunc;
-      if (s1 < s2) {
-         e1 = s2-1;
+      sta1 = di->symtab[i].addr;
+      end1 = sta1 + di->symtab[i].size - 1;
+      toc1 = di->symtab[i].tocptr;
+      pri1 = di->symtab[i].pri_name;
+      sec1 = di->symtab[i].sec_names;
+      ist1 = di->symtab[i].isText;
+      isf1 = di->symtab[i].isIFunc;
+
+      sta2 = di->symtab[i+1].addr;
+      end2 = sta2 + di->symtab[i+1].size - 1;
+      toc2 = di->symtab[i+1].tocptr;
+      pri2 = di->symtab[i+1].pri_name;
+      sec2 = di->symtab[i+1].sec_names;
+      ist2 = di->symtab[i+1].isText;
+      isf2 = di->symtab[i+1].isIFunc;
+
+      if (sta1 < sta2) {
+         end1 = sta2 - 1;
       } else {
-         vg_assert(s1 == s2);
-         if (e1 > e2) { 
-            s1 = e2+1; SWAP(Addr,s1,s2); SWAP(Addr,e1,e2); SWAP(Addr,p1,p2);
-                       SWAP(UChar *,n1,n2); SWAP(Bool,t1,t2);
+         vg_assert(sta1 == sta2);
+         if (end1 > end2) { 
+            sta1 = end2 + 1;
+            SWAP(Addr,sta1,sta2); SWAP(Addr,end1,end2); SWAP(Addr,toc1,toc2);
+            SWAP(UChar*,pri1,pri2); SWAP(UChar**,sec1,sec2);
+            SWAP(Bool,ist1,ist2); SWAP(Bool,isf1,isf2);
          } else 
-         if (e1 < e2) {
-            s2 = e1+1;
+         if (end1 < end2) {
+            sta2 = end1 + 1;
          } else {
-	   /* e1 == e2.  Identical addr ranges.  We'll eventually wind
+	   /* end1 == end2.  Identical addr ranges.  We'll eventually wind
               up back at cleanup_more, which will take care of it. */
 	 }
       }
-      di->symtab[i].addr    = s1;
-      di->symtab[i].size    = e1 - s1 + 1;
-      di->symtab[i].tocptr  = p1;
-      di->symtab[i].name    = n1;
-      di->symtab[i].isText  = t1;
-      di->symtab[i].isIFunc = f1;
-      di->symtab[i+1].addr    = s2;
-      di->symtab[i+1].size    = e2 - s2 + 1;
-      di->symtab[i+1].tocptr  = p2;
-      di->symtab[i+1].name    = n2;
-      di->symtab[i+1].isText  = t2;
-      di->symtab[i+1].isIFunc = f2;
-      vg_assert(s1 <= s2);
+      di->symtab[i].addr      = sta1;
+      di->symtab[i].size      = end1 - sta1 + 1;
+      di->symtab[i].tocptr    = toc1;
+      di->symtab[i].pri_name  = pri1;
+      di->symtab[i].sec_names = sec1;
+      di->symtab[i].isText    = ist1;
+      di->symtab[i].isIFunc   = isf1;
+
+      di->symtab[i+1].addr      = sta2;
+      di->symtab[i+1].size      = end2 - sta2 + 1;
+      di->symtab[i+1].tocptr    = toc2;
+      di->symtab[i+1].pri_name  = pri2;
+      di->symtab[i+1].sec_names = sec2;
+      di->symtab[i+1].isText    = ist2;
+      di->symtab[i+1].isIFunc   = isf2;
+
+      vg_assert(sta1 <= sta2);
       vg_assert(di->symtab[i].size > 0);
       vg_assert(di->symtab[i+1].size > 0);
       /* It may be that the i+1 entry now needs to be moved further
@@ -1364,7 +1518,62 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       /* No overlaps. */
       vg_assert(di->symtab[i].addr + di->symtab[i].size - 1
                 < di->symtab[i+1].addr);
+      /* Names are sane(ish) */
+      vg_assert(di->symtab[i].pri_name);
+      if (di->symtab[i].sec_names) {
+         vg_assert(di->symtab[i].sec_names[0]);
+      }
    }
+
+   /* For each symbol that has more than one name, use preferName to
+      select the primary name.  This is a complete kludge in that
+      doing it properly requires making a total ordering on the
+      candidate names, whilst what we have to work with is an ad-hoc
+      binary relation (preferName) that certainly doesn't have the
+      relevant transitivity etc properties that are needed to induce a
+      legitimate total order.  Doesn't matter though if it doesn't
+      always work right since this is only used to generate names to
+      show the user. */
+   for (i = 0; i < ((Word)di->symtab_used)-1; i++) {
+      DiSym*  sym = &di->symtab[i];
+      UChar** sec = sym->sec_names;
+      if (!sec)
+         continue;
+      /* Slow but simple.  Copy all the cands into a temp array,
+         choose the primary name, and copy them all back again. */
+      Word n_tmp = 1;
+      while (*sec) { n_tmp++; sec++; }
+      j = 0;
+      UChar** tmp = ML_(dinfo_zalloc)( "di.storage.cS.1",
+                                       (n_tmp+1) * sizeof(UChar*) );
+      tmp[j++] = sym->pri_name;
+      sec = sym->sec_names;
+      while (*sec) { tmp[j++] = *sec; sec++; }
+      vg_assert(j == n_tmp);
+      vg_assert(tmp[n_tmp] == NULL); /* because of zalloc */
+      /* Choose the most favoured. */
+      Word best = 0;
+      for (j = 1; j < n_tmp; j++) {
+         if (preferName(di, tmp[best], tmp[j], di->symtab[i].addr)) {
+            /* best is unchanged */
+         } else {
+            best = j;
+         }
+      }
+      vg_assert(best >= 0 && best < n_tmp);
+      /* Copy back */
+      sym->pri_name = tmp[best];
+      UChar** cursor = sym->sec_names;
+      for (j = 0; j < n_tmp; j++) {
+         if (j == best)
+            continue;
+         *cursor = tmp[j];
+         cursor++;
+      }
+      vg_assert(*cursor == NULL);
+      ML_(dinfo_free)( tmp );
+   }
+
 #  undef SWAP
 }
 
@@ -1443,6 +1652,9 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
                 < di->loctab[i+1].addr);
    }
 #  undef SWAP
+
+   /* Free up unused space at the end of the table. */
+   shrinkLocTab(di);
 }
 
 
@@ -1655,7 +1867,7 @@ Word ML_(search_one_cfitab) ( struct _DebugInfo* di, Addr ptr )
 
 Word ML_(search_one_fpotab) ( struct _DebugInfo* di, Addr ptr )
 {
-   Addr const addr = ptr - di->rx_map_avma;
+   Addr const addr = ptr - di->fpo_base_avma;
    Addr a_mid_lo, a_mid_hi;
    Word mid, size,
         lo = 0,

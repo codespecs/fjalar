@@ -7,7 +7,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2005-2009 Johan Bjork
+   Copyright (C) 2005-2012 Johan Bjork
       jbjoerk@gmail.com
 
    This program is free software; you can redistribute it and/or
@@ -37,18 +37,18 @@
 
 #include "cg_arch.h"
 
-void VG_(configure_caches)(cache_t* I1c, cache_t* D1c, cache_t* L2c,
+void VG_(configure_caches)(cache_t* I1c, cache_t* D1c, cache_t* LLc,
                            Bool all_caches_clo_defined)
 {
    // Set caches to default (for Cortex-A8 ?)
    *I1c = (cache_t) {  16384, 4, 64 };
    *D1c = (cache_t) {  16384, 4, 64 };
-   *L2c = (cache_t) { 262144, 8, 64 };
+   *LLc = (cache_t) { 262144, 8, 64 };
 
    if (!all_caches_clo_defined) {
       VG_(message)(Vg_DebugMsg, 
                    "Warning: Cannot auto-detect cache config on ARM, using one "
-                   "or more defaults ");
+                   "or more defaults\n");
    }
 }
 

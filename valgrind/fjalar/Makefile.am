@@ -1,16 +1,25 @@
 include $(top_srcdir)/Makefile.tool.am
 
+#Fjalar has no 'tests' subdir
+SUBDIRS = .
+
 # PG - Build Fjalar with Kvasir (in the kvasir sub-directory)
 
 ## Build Fjalar at a higher optimisation level
 # PG - don't do optimizations for the sake of debugging, instead add debugging info.
 # Also disable the -Wmissing-prototypes warnings to prevent extra annoyances
-#AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
-# AM_CFLAGS_X86_LINUX   := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
+#AM_CFLAGS_X86_LINUX   += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
+#AM_CFLAGS_X86_LINUX   := $(AM_CFLAGS_X86_LINUX: -O2=-O0) -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall -Wno-format -Wno-format-zero-length -Wno-pointer-sign -Wno-long-long
+
 # AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
-EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include
+# get all binutil .h files from bu-include; get config.h from .. (markro)
+EXTRA_CFLAGS =  -Ibu-include -I../VEX/pub -I../include -I..
+
+# for debugging versions
+#EXTRA_CFLAGS +=  -O0 -finstrument-functions
+EXTRA_CFLAGS +=  -O0
 
 #----------------------------------------------------------------------------
 # Headers
@@ -46,6 +55,9 @@ FJALAR_SOURCES_COMMON = \
 	GenericHashtable.c \
 	fjalar_traversal.c \
 	readelf.c \
+	dwarf.c \
+	dwarfnames.c \
+	elfcomm.c \
 	typedata.c \
 	disambig.c \
 	my_libc.c \
@@ -59,19 +71,28 @@ FJALAR_SOURCES_COMMON = \
 	kvasir/dyncomp_runtime.c \
 	kvasir/dyncomp_translate.c
 
-fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = $(FJALAR_SOURCES_COMMON)
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
+    $(FJALAR_SOURCES_COMMON)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
+	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: %-O2=%-O0) $(EXTRA_CFLAGS)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
 fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_PRI@ \
+	$(LINK) \
+	$(fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS) \
+	$(fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS)
+
 if VGCONF_HAVE_PLATFORM_SEC
-fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = $(FJALAR_SOURCES_COMMON)
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = \
+    $(FJALAR_SOURCES_COMMON)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = \
@@ -82,8 +103,17 @@ fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
 fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_SEC@ \
+	$(LINK) \
+	$(fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
+	$(fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
 endif
 
+# mc_main.c contains the helper function for fjalar that gets called
+# all the time. To maximise performance, compile with -fomit-frame-pointer
+# Primary beneficiary is x86.
 mc_main.o: CFLAGS += -fomit-frame-pointer
 
 #----------------------------------------------------------------------------
@@ -114,6 +144,7 @@ vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
 	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) \
 	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+
 if VGCONF_HAVE_PLATFORM_SEC
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
 	$(VGPRELOAD_FJALAR_SOURCES_COMMON)
@@ -128,4 +159,10 @@ vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \
 	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 endif
 
+# mc_replace_strmem.c runs on the simulated CPU, and it often appears
+# in stack traces shown to the user.  It is built with
+# -fno-omit-frame-pointer so as to guarantee robust backtraces on x86,
+# on which CFI based unwinding is not the "normal" case and so is
+# sometimes fragile.
 mc_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
+

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -33,6 +33,10 @@
 
 // arm is little-endian.
 #define VKI_LITTLE_ENDIAN  1
+
+// The various comments below indicating i386-ness should be regarded
+// with great skepticism -- they are quite possibly wrong.  But see
+// also bug 269079 comment 0.
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-i386/types.h
@@ -62,6 +66,12 @@ typedef unsigned int vki_u32;
 #define VKI_PAGE_SIZE	(1UL << VKI_PAGE_SHIFT)
 #define VKI_MAX_PAGE_SHIFT	VKI_PAGE_SHIFT
 #define VKI_MAX_PAGE_SIZE	VKI_PAGE_SIZE
+
+//----------------------------------------------------------------------
+// From linux-2.6.35.4/arch/arm/include/asm/shmparam.h
+//----------------------------------------------------------------------
+
+#define VKI_SHMLBA  (4 * VKI_PAGE_SIZE)
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-i386/signal.h
@@ -184,43 +194,6 @@ typedef struct vki_sigaltstack {
 // From linux-2.6.8.1/include/asm-i386/sigcontext.h
 //----------------------------------------------------------------------
 
-struct _vki_fpreg {
-	unsigned short significand[4];
-	unsigned short exponent;
-};
-
-struct _vki_fpxreg {
-	unsigned short significand[4];
-	unsigned short exponent;
-	unsigned short padding[3];
-};
-
-struct _vki_xmmreg {
-	unsigned long element[4];
-};
-
-struct _vki_fpstate {
-	/* Regular FPU environment */
-	unsigned long 	cw;
-	unsigned long	sw;
-	unsigned long	tag;
-	unsigned long	ipoff;
-	unsigned long	cssel;
-	unsigned long	dataoff;
-	unsigned long	datasel;
-	struct _vki_fpreg	_st[8];
-	unsigned short	status;
-	unsigned short	magic;		/* 0xffff = regular FPU data only */
-
-	/* FXSR FPU environment */
-	unsigned long	_fxsr_env[6];	/* FXSR FPU env is ignored */
-	unsigned long	mxcsr;
-	unsigned long	reserved;
-	struct _vki_fpxreg	_fxsr_st[8];	/* FXSR FPU reg data is ignored */
-	struct _vki_xmmreg	_xmm[8];
-	unsigned long	padding[56];
-};
-
 struct vki_sigcontext {
 		unsigned long trap_no;
 		unsigned long error_code;
@@ -296,6 +269,18 @@ struct vki_sigcontext {
 #define VKI_F_GETLK64		12	/*  using 'struct flock64' */
 #define VKI_F_SETLK64		13
 #define VKI_F_SETLKW64		14
+
+#define VKI_F_SETOWN_EX		15
+#define VKI_F_GETOWN_EX		16
+
+#define VKI_F_OWNER_TID		0
+#define VKI_F_OWNER_PID		1
+#define VKI_F_OWNER_PGRP	2
+
+struct vki_f_owner_ex {
+	int	type;
+	__vki_kernel_pid_t	pid;
+};
 
 /* for F_[GET|SET]FL */
 #define VKI_FD_CLOEXEC	1	/* actually anything with low bit set goes */
@@ -474,13 +459,6 @@ struct vki_termios {
 	 ((nr)   << _VKI_IOC_NRSHIFT) | \
 	 ((size) << _VKI_IOC_SIZESHIFT))
 
-/* provoke compile error for invalid uses of size argument */
-#define _VKI_IOC_TYPECHECK(t) \
-	((sizeof(t) == sizeof(t[1]) && \
-	  sizeof(t) < (1 << _VKI_IOC_SIZEBITS)) \
-	 ? sizeof(t) \
-	 : /*cause gcc to complain about division by zero*/(1/0) )
-
 /* used to create numbers */
 #define _VKI_IO(type,nr)	_VKI_IOC(_VKI_IOC_NONE,(type),(nr),0)
 #define _VKI_IOR(type,nr,size)	_VKI_IOC(_VKI_IOC_READ,(type),(nr),(_VKI_IOC_TYPECHECK(size)))
@@ -531,6 +509,12 @@ struct vki_termios {
 #define VKI_TIOCGICOUNT	0x545D	/* read serial port inline interrupt counts */
 
 //----------------------------------------------------------------------
+// From linux-2.6.39-rc2/arch/arm/include/asm/ioctls.h
+//----------------------------------------------------------------------
+
+#define VKI_FIOQSIZE 0x545E
+
+//----------------------------------------------------------------------
 // From asm-generic/poll.h
 //----------------------------------------------------------------------
 
@@ -547,32 +531,40 @@ struct vki_pollfd {
 // From linux-2.6.8.1/include/asm-i386/user.h
 //----------------------------------------------------------------------
 
-struct vki_user_i387_struct {
-	long	cwd;
-	long	swd;
-	long	twd;
-	long	fip;
-	long	fcs;
-	long	foo;
-	long	fos;
-	long	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
+struct vki_user_fp {
+	struct vki_fp_reg {
+		unsigned int sign1:1;
+		unsigned int unused:15;
+		unsigned int sign2:1;
+		unsigned int exponent:14;
+		unsigned int j:1;
+		unsigned int mantissa1:31;
+		unsigned int mantissa0:32;
+	} fpregs[8];
+	unsigned int fpsr:32;
+	unsigned int fpcr:32;
+	unsigned char ftype[8];
+	unsigned int init_flag;
 };
 
-struct vki_user_fxsr_struct {
-	unsigned short	cwd;
-	unsigned short	swd;
-	unsigned short	twd;
-	unsigned short	fop;
-	long	fip;
-	long	fcs;
-	long	foo;
-	long	fos;
-	long	mxcsr;
-	long	reserved;
-	long	st_space[32];	/* 8*16 bytes for each FP-reg = 128 bytes */
-	long	xmm_space[32];	/* 8*16 bytes for each XMM-reg = 128 bytes */
-	long	padding[56];
+struct vki_user_vfp {
+	unsigned long long fpregs[32];
+	unsigned long fpscr;
 };
+
+#define VKI_IWMMXT_SIZE 0x98
+
+struct vki_iwmmxt_struct {
+	unsigned int save[VKI_IWMMXT_SIZE / sizeof(unsigned int)];
+};
+
+struct vki_crunch_state {
+	unsigned int    mvdx[16][2];
+	unsigned int    mvax[4][3];
+	unsigned int    dspsc[2];
+};
+
+#define VKI_CRUNCH_SIZE sizeof(struct vki_crunch_state)
 
 struct vki_user_regs_struct {
     long uregs[18];
@@ -604,8 +596,7 @@ typedef unsigned long vki_elf_greg_t;
 #define VKI_ELF_NGREG (sizeof (struct vki_user_regs_struct) / sizeof(vki_elf_greg_t))
 typedef vki_elf_greg_t vki_elf_gregset_t[VKI_ELF_NGREG];
 
-typedef struct vki_user_i387_struct vki_elf_fpregset_t;
-typedef struct vki_user_fxsr_struct vki_elf_fpxregset_t;
+typedef struct vki_user_fp vki_elf_fpregset_t;
 
 #define VKI_AT_SYSINFO		32
 
@@ -738,7 +729,6 @@ struct vki_ipc_kludge {
 #define VKI_SHMGET		23
 #define VKI_SHMCTL		24
 
-
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-i386/shmbuf.h
 //----------------------------------------------------------------------
@@ -801,8 +791,16 @@ struct vki_shminfo64 {
 #define VKI_PTRACE_SETREGS            13
 #define VKI_PTRACE_GETFPREGS          14
 #define VKI_PTRACE_SETFPREGS          15
-#define VKI_PTRACE_GETFPXREGS         18
-#define VKI_PTRACE_SETFPXREGS         19
+#define VKI_PTRACE_GETWMMXREGS        18
+#define VKI_PTRACE_SETWMMXREGS        19
+#define VKI_PTRACE_GET_THREAD_AREA    22
+#define VKI_PTRACE_SET_SYSCALL        23
+#define VKI_PTRACE_GETCRUNCHREGS      25
+#define VKI_PTRACE_SETCRUNCHREGS      26
+#define VKI_PTRACE_GETVFPREGS         27
+#define VKI_PTRACE_SETVFPREGS         28
+#define VKI_PTRACE_GETHBPREGS         29
+#define VKI_PTRACE_SETHBPREGS         30
 
 //----------------------------------------------------------------------
 // From linux-2.6.15.4/include/asm-i386/vm86.h
@@ -877,6 +875,12 @@ struct vki_vm86plus_struct {
 	struct vki_revectored_struct int21_revectored;
 	struct vki_vm86plus_info_struct vm86plus;
 };
+
+//----------------------------------------------------------------------
+// From linux-2.6.35.4/arch/arm/include/asm/hwcap.h
+//----------------------------------------------------------------------
+
+#define VKI_HWCAP_NEON      4096
 
 //----------------------------------------------------------------------
 // And that's it!

@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2009 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
-   Copyright (C) 2003-2009 Jeremy Fitzhardinge
+   Copyright (C) 2003-2012 Jeremy Fitzhardinge
       jeremy@goop.org
 
    This program is free software; you can redistribute it and/or
@@ -36,6 +36,8 @@
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_vki.h"
+#include "pub_core_libcfile.h"
 #include "pub_core_seqmatch.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
@@ -49,6 +51,7 @@
 #include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"  // VG_(client___libc_freeres_wrapper)
 #include "pub_core_demangle.h"     // VG_(maybe_Z_demangle)
+#include "pub_core_libcproc.h"     // VG_(libdir)
 
 #include "config.h" /* GLIBC_2_* */
 
@@ -67,27 +70,32 @@
    platform-specific.
 
    The module is notified of redirection state changes by m_debuginfo.
-   That calls VG_(redir_notify_new_SegInfo) when a new SegInfo (shared
-   object symbol table, basically) appears.  Appearance of new symbols
-   can cause new (active) redirections to appear for two reasons: the
-   symbols in the new table may match existing redirection
-   specifications (see comments below), and because the symbols in the
-   new table may themselves supply new redirect specifications which
-   match existing symbols (or ones in the new table).
+   That calls VG_(redir_notify_new_DebugInfo) when a new DebugInfo
+   (shared object symbol table, basically) appears.  Appearance of new
+   symbols can cause new (active) redirections to appear for two
+   reasons: the symbols in the new table may match existing
+   redirection specifications (see comments below), and because the
+   symbols in the new table may themselves supply new redirect
+   specifications which match existing symbols (or ones in the new
+   table).
 
    Redirect specifications are really symbols with "funny" prefixes
-   (_vgrZU_ and _vgrZZ_).  These names tell m_redir that the
+   (_vgrNNNNZU_ and _vgrNNNNZZ_).  These names tell m_redir that the
    associated code should replace the standard entry point for some
    set of functions.  The set of functions is specified by a (soname
    pattern, function name pattern) pair which is encoded in the symbol
    name following the prefix.  The names use a Z-encoding scheme so
    that they may contain punctuation characters and wildcards (*).
    The encoding scheme is described in pub_tool_redir.h and is decoded
-   by VG_(maybe_Z_demangle).
+   by VG_(maybe_Z_demangle).  The NNNN are behavioural equivalence
+   class tags, and are used to by code in this module to resolve
+   situations where one address appears to be redirected to more than
+   one replacement/wrapper.  This is also described in
+   pub_tool_redir.h.
 
    When a shared object is unloaded, this module learns of it via a
-   call to VG_(redir_notify_delete_SegInfo).  It then removes from its
-   tables all active redirections in any way associated with that
+   call to VG_(redir_notify_delete_DebugInfo).  It then removes from
+   its tables all active redirections in any way associated with that
    object, and tidies up the translation caches accordingly.
 
    That takes care of tracking the redirection state.  When a
@@ -168,23 +176,23 @@
    ===========================================================
    Incremental implementation:
 
-   When a new SegInfo appears:
+   When a new DebugInfo appears:
    - it may be the source of new specs
    - it may be the source of new matches for existing specs
    Therefore:
 
-   - (new Specs x existing SegInfos): scan all symbols in the new 
-     SegInfo to find new specs.  Each of these needs to be compared 
-     against all symbols in all the existing SegInfos to generate 
+   - (new Specs x existing DebugInfos): scan all symbols in the new
+     DebugInfo to find new specs.  Each of these needs to be compared
+     against all symbols in all the existing DebugInfos to generate
      new actives.
      
-   - (existing Specs x new SegInfo): scan all symbols in the SegInfo,
-     trying to match them to any existing specs, also generating
-     new actives.
+   - (existing Specs x new DebugInfo): scan all symbols in the
+     DebugInfo, trying to match them to any existing specs, also
+     generating new actives.
 
-   - (new Specs x new SegInfo): scan all symbols in the new SegInfo,
-     trying to match them against the new specs, to generate new
-     actives.
+   - (new Specs x new DebugInfo): scan all symbols in the new
+     DebugInfo, trying to match them against the new specs, to
+     generate new actives.
 
    - Finally, add new new specs to the current set of specs.
 
@@ -195,7 +203,7 @@
         else add (s,d) to Actives
              and discard (s,1) and (d,1)  (maybe overly conservative)
 
-   When a SegInfo disappears:
+   When a DebugInfo disappears:
    - delete all specs acquired from the seginfo
    - delete all actives derived from the just-deleted specs
    - if each active (s,d) deleted, discard (s,1) and (d,1)
@@ -225,6 +233,12 @@ typedef
       HChar* from_fnpatt;  /* from fnname pattern  */
       Addr   to_addr;      /* where redirecting to */
       Bool   isWrap;       /* wrap or replacement? */
+      Int    becTag; /* 0 through 9999.  Behavioural equivalance class tag.
+                        If two wrappers have the same (non-zero) tag, they
+                        are promising that they behave identically. */
+      Int    becPrio; /* 0 through 9.  Behavioural equivalence class prio.
+                         Used to choose between competing wrappers with
+                         the same (non-zero) tag. */
       const HChar** mandatory; /* non-NULL ==> abort V and print the
                                   strings if from_sopatt is loaded but
                                   from_fnpatt cannot be found */
@@ -234,8 +248,8 @@ typedef
    }
    Spec;
 
-/* Top-level data structure.  It contains a pointer to a SegInfo and
-   also a list of the specs harvested from that SegInfo.  Note that
+/* Top-level data structure.  It contains a pointer to a DebugInfo and
+   also a list of the specs harvested from that DebugInfo.  Note that
    seginfo is allowed to be NULL, meaning that the specs are
    pre-loaded ones at startup and are not associated with any
    particular seginfo. */
@@ -249,7 +263,7 @@ typedef
    TopSpec;
 
 /* This is the top level list of redirections.  m_debuginfo maintains
-   a list of SegInfos, and the idea here is to maintain a list with
+   a list of DebugInfos, and the idea here is to maintain a list with
    the same number of elements (in fact, with one more element, so as
    to record abovementioned preloaded specifications.) */
 static TopSpec* topSpecs = NULL;
@@ -269,6 +283,8 @@ typedef
       Addr     to_addr;     /* where redirecting to */
       TopSpec* parent_spec; /* the TopSpec which supplied the Spec */
       TopSpec* parent_sym;  /* the TopSpec which supplied the symbol */
+      Int      becTag;      /* behavioural eclass tag for ::to_addr */
+      Int      becPrio;     /* and its priority */
       Bool     isWrap;      /* wrap or replacement? */
       Bool     isIFunc;     /* indirect function? */
    }
@@ -290,7 +306,6 @@ static void*  dinfo_zalloc(HChar* ec, SizeT);
 static void   dinfo_free(void*);
 static HChar* dinfo_strdup(HChar* ec, HChar*);
 static Bool   is_plausible_guest_addr(Addr);
-static Bool   is_aix5_glink_idiom(Addr);
 
 static void   show_redir_state ( HChar* who );
 static void   show_active ( HChar* left, Active* act );
@@ -298,6 +313,7 @@ static void   show_active ( HChar* left, Active* act );
 static void   handle_maybe_load_notifier( const UChar* soname, 
                                                 HChar* symbol, Addr addr );
 
+static void   handle_require_text_symbols ( DebugInfo* );
 
 /*------------------------------------------------------------*/
 /*--- NOTIFICATIONS                                        ---*/
@@ -313,6 +329,57 @@ void generate_and_add_actives (
         TopSpec* parent_sym 
      );
 
+
+/* Copy all the names from a given symbol into an AR_DINFO allocated,
+   NULL terminated array, for easy iteration.  Caller must pass also
+   the address of a 2-entry array which can be used in the common case
+   to avoid dynamic allocation. */
+static UChar** alloc_symname_array ( UChar* pri_name, UChar** sec_names,
+                                     UChar** twoslots )
+{
+   /* Special-case the common case: only one name.  We expect the
+      caller to supply a stack-allocated 2-entry array for this. */
+   if (sec_names == NULL) {
+      twoslots[0] = pri_name;
+      twoslots[1] = NULL;
+      return twoslots;
+   }
+   /* Else must use dynamic allocation.  Figure out size .. */
+   Word    n_req = 1;
+   UChar** pp    = sec_names;
+   while (*pp) { n_req++; pp++; }
+   /* .. allocate and copy in. */
+   UChar** arr = dinfo_zalloc( "redir.asa.1", (n_req+1) * sizeof(UChar*) );
+   Word    i   = 0;
+   arr[i++] = pri_name;
+   pp = sec_names;
+   while (*pp) { arr[i++] = *pp; pp++; }
+   tl_assert(i == n_req);
+   tl_assert(arr[n_req] == NULL);
+   return arr;
+}
+
+
+/* Free the array allocated by alloc_symname_array, if any. */
+static void free_symname_array ( UChar** names, UChar** twoslots )
+{
+   if (names != twoslots)
+      dinfo_free(names);
+}
+
+static HChar const* advance_to_equal ( HChar const* c ) {
+   while (*c && *c != '=') {
+      ++c;
+   }
+   return c;
+}
+static HChar const* advance_to_comma ( HChar const* c ) {
+   while (*c && *c != ',') {
+      ++c;
+   }
+   return c;
+}
+
 /* Notify m_redir of the arrival of a new DebugInfo.  This is fairly
    complex, but the net effect is to (1) add a new entry to the
    topspecs list, and (2) figure out what new binding are now active,
@@ -320,52 +387,138 @@ void generate_and_add_actives (
 
 #define N_DEMANGLED 256
 
-void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
+void VG_(redir_notify_new_DebugInfo)( DebugInfo* newdi )
 {
    Bool         ok, isWrap;
-   Int          i, nsyms;
+   Int          i, nsyms, becTag, becPrio;
    Spec*        specList;
    Spec*        spec;
    TopSpec*     ts;
    TopSpec*     newts;
-   HChar*       sym_name;
+   UChar*       sym_name_pri;
+   UChar**      sym_names_sec;
    Addr         sym_addr, sym_toc;
    HChar        demangled_sopatt[N_DEMANGLED];
    HChar        demangled_fnpatt[N_DEMANGLED];
    Bool         check_ppcTOCs = False;
    Bool         isText;
-   const UChar* newsi_soname;
+   const UChar* newdi_soname;
 
 #  if defined(VG_PLAT_USES_PPCTOC)
    check_ppcTOCs = True;
 #  endif
 
-   vg_assert(newsi);
-   newsi_soname = VG_(DebugInfo_get_soname)(newsi);
-   vg_assert(newsi_soname != NULL);
+   vg_assert(newdi);
+   newdi_soname = VG_(DebugInfo_get_soname)(newdi);
+   vg_assert(newdi_soname != NULL);
+
+#ifdef ENABLE_INNER
+   {
+      /* When an outer Valgrind is executing an inner Valgrind, the
+         inner "sees" in its address space the mmap-ed vgpreload files
+         of the outer.  The inner must avoid interpreting the
+         redirections given in the outer vgpreload mmap-ed files.
+         Otherwise, some tool combinations badly fail.
+
+         Example: outer memcheck tool executing an inner none tool.
+
+         If inner none interprets the outer malloc redirection, the
+         inner will redirect malloc to a memcheck function it does not
+         have (as the redirection target is from the outer).  With
+         such a failed redirection, a call to malloc inside the inner
+         will then result in a "no-operation" (and so no memory will
+         be allocated).
+
+         When running as an inner, no redirection will be done
+         for a vgpreload file if this file is not located in the
+         inner VALGRIND_LIB directory.
+
+         Recognising a vgpreload file based on a filename pattern
+         is a kludge. An alternate solution would be to change
+         the _vgr prefix according to outer/inner/client.
+      */
+      const UChar* newdi_filename = VG_(DebugInfo_get_filename)(newdi);
+      const UChar* newdi_basename = VG_(basename) (newdi_filename);
+      if (VG_(strncmp) (newdi_basename, "vgpreload_", 10) == 0) {
+         /* This looks like a vgpreload file => check if this file
+            is from the inner VALGRIND_LIB.
+            We do this check using VG_(stat) + dev/inode comparison
+            as vg-in-place defines a VALGRIND_LIB with symlinks
+            pointing to files inside the valgrind build directories. */
+         struct vg_stat newdi_stat;
+         SysRes newdi_res;
+         Char in_vglib_filename[VKI_PATH_MAX];
+         struct vg_stat in_vglib_stat;
+         SysRes in_vglib_res;
+
+         newdi_res = VG_(stat)(newdi_filename, &newdi_stat);
+         
+         VG_(strncpy) (in_vglib_filename, VG_(libdir), VKI_PATH_MAX);
+         VG_(strncat) (in_vglib_filename, "/", VKI_PATH_MAX);
+         VG_(strncat) (in_vglib_filename, newdi_basename, VKI_PATH_MAX);
+         in_vglib_res = VG_(stat)(in_vglib_filename, &in_vglib_stat);
+
+         /* If we find newdi_basename in inner VALGRIND_LIB
+            but newdi_filename is not the same file, then we do
+            not execute the redirection. */
+         if (!sr_isError(in_vglib_res)
+             && !sr_isError(newdi_res)
+             && (newdi_stat.dev != in_vglib_stat.dev 
+                 || newdi_stat.ino != in_vglib_stat.ino)) {
+            /* <inner VALGRIND_LIB>/newdi_basename is an existing file
+               and is different of newdi_filename.
+               So, we do not execute newdi_filename redirection. */
+            if ( VG_(clo_verbosity) > 1 ) {
+               VG_(message)( Vg_DebugMsg,
+                             "Skipping vgpreload redir in %s"
+                             " (not from VALGRIND_LIB_INNER)\n",
+                             newdi_filename);
+            }
+            return;
+         } else {
+            if ( VG_(clo_verbosity) > 1 ) {
+               VG_(message)( Vg_DebugMsg,
+                             "Executing vgpreload redir in %s"
+                             " (from VALGRIND_LIB_INNER)\n",
+                             newdi_filename);
+            }
+         }
+      }
+   }
+#endif
+
 
    /* stay sane: we don't already have this. */
    for (ts = topSpecs; ts; ts = ts->next)
-      vg_assert(ts->seginfo != newsi);
+      vg_assert(ts->seginfo != newdi);
 
    /* scan this DebugInfo's symbol table, pulling out and demangling
       any specs found */
 
    specList = NULL; /* the spec list we're building up */
 
-   nsyms = VG_(DebugInfo_syms_howmany)( newsi );
+   nsyms = VG_(DebugInfo_syms_howmany)( newdi );
    for (i = 0; i < nsyms; i++) {
-      VG_(DebugInfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc,
-                                  NULL, &sym_name, &isText, NULL );
-      ok = VG_(maybe_Z_demangle)( sym_name, demangled_sopatt, N_DEMANGLED,
-                                  demangled_fnpatt, N_DEMANGLED, &isWrap );
+      VG_(DebugInfo_syms_getidx)( newdi, i, &sym_addr, &sym_toc,
+                                  NULL, &sym_name_pri, &sym_names_sec,
+                                  &isText, NULL );
+      /* Set up to conveniently iterate over all names for this symbol. */
+      UChar*  twoslots[2];
+      UChar** names_init = alloc_symname_array(sym_name_pri, sym_names_sec,
+                                               &twoslots[0]);
+      UChar** names;
+      for (names = names_init; *names; names++) {
+         ok = VG_(maybe_Z_demangle)( *names,
+                                     demangled_sopatt, N_DEMANGLED,
+                                     demangled_fnpatt, N_DEMANGLED,
+                                     &isWrap, &becTag, &becPrio );
       /* ignore data symbols */
       if (!isText)
          continue;
       if (!ok) {
          /* It's not a full-scale redirect, but perhaps it is a load-notify
             fn?  Let the load-notify department see it. */
-         handle_maybe_load_notifier( newsi_soname, sym_name, sym_addr );
+            handle_maybe_load_notifier( newdi_soname, *names, sym_addr );
          continue; 
       }
       if (check_ppcTOCs && sym_toc == 0) {
@@ -375,6 +528,48 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
             the following loop, and complain at that point. */
          continue;
       }
+
+         if (0 == VG_(strncmp) (demangled_sopatt, 
+                                VG_SO_SYN_PREFIX, VG_SO_SYN_PREFIX_LEN)) {
+            /* This is a redirection for handling lib so synonyms. If we
+               have a matching lib synonym, then replace the sopatt.
+               Otherwise, just ignore this redirection spec. */
+
+            if (!VG_(clo_soname_synonyms))
+               continue; // No synonyms => skip the redir.
+
+            /* Search for a matching synonym=newname*/
+            SizeT const sopatt_syn_len 
+               = VG_(strlen)(demangled_sopatt+VG_SO_SYN_PREFIX_LEN);
+            HChar const* last = VG_(clo_soname_synonyms);
+            
+            while (*last) {
+               HChar const* first = last;
+               last = advance_to_equal(first);
+               
+               if ((last - first) == sopatt_syn_len
+                   && 0 == VG_(strncmp)(demangled_sopatt+VG_SO_SYN_PREFIX_LEN,
+                                        first,
+                                        sopatt_syn_len)) {
+                  // Found the demangle_sopatt synonym => replace it
+                  first = last + 1;
+                  last = advance_to_comma(first);
+                  VG_(strncpy)(demangled_sopatt, first, last - first);
+                  demangled_sopatt[last - first] = '\0';
+                  break;
+               }
+
+               last = advance_to_comma(last);
+               if (*last == ',')
+                  last++;
+            }
+            
+            // If we have not replaced the sopatt, then skip the redir.
+            if (0 == VG_(strncmp) (demangled_sopatt, 
+                                   VG_SO_SYN_PREFIX, VG_SO_SYN_PREFIX_LEN))
+               continue;
+         }
+
       spec = dinfo_zalloc("redir.rnnD.1", sizeof(Spec));
       vg_assert(spec);
       spec->from_sopatt = dinfo_strdup("redir.rnnD.2", demangled_sopatt);
@@ -383,6 +578,8 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
       vg_assert(spec->from_fnpatt);
       spec->to_addr = sym_addr;
       spec->isWrap = isWrap;
+         spec->becTag = becTag;
+         spec->becPrio = becPrio;
       /* check we're not adding manifestly stupid destinations */
       vg_assert(is_plausible_guest_addr(sym_addr));
       spec->next = specList;
@@ -390,15 +587,23 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
       spec->done = False; /* not significant */
       specList = spec;
    }
+      free_symname_array(names_init, &twoslots[0]);
+   }
 
    if (check_ppcTOCs) {
       for (i = 0; i < nsyms; i++) {
-         VG_(DebugInfo_syms_getidx)( newsi, i, &sym_addr, &sym_toc,
-                                     NULL, &sym_name, &isText, NULL );
+         VG_(DebugInfo_syms_getidx)( newdi, i, &sym_addr, &sym_toc,
+                                     NULL, &sym_name_pri, &sym_names_sec,
+                                     &isText, NULL );
+         UChar*  twoslots[2];
+         UChar** names_init = alloc_symname_array(sym_name_pri, sym_names_sec,
+                                                  &twoslots[0]);
+         UChar** names;
+         for (names = names_init; *names; names++) {
          ok = isText
               && VG_(maybe_Z_demangle)( 
-                    sym_name, demangled_sopatt, N_DEMANGLED,
-                    demangled_fnpatt, N_DEMANGLED, &isWrap );
+                       *names, demangled_sopatt, N_DEMANGLED,
+                       demangled_fnpatt, N_DEMANGLED, &isWrap, NULL, NULL );
          if (!ok)
             /* not a redirect.  Ignore. */
             continue;
@@ -420,6 +625,8 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
                       "WARNING: no TOC ptr for redir/wrap to %s %s\n",
                       demangled_sopatt, demangled_fnpatt);
       }
+         free_symname_array(names_init, &twoslots[0]);
+      }
    }
 
    /* Ok.  Now specList holds the list of specs from the DebugInfo. 
@@ -427,7 +634,7 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
    newts = dinfo_zalloc("redir.rnnD.4", sizeof(TopSpec));
    vg_assert(newts);
    newts->next    = NULL; /* not significant */
-   newts->seginfo = newsi;
+   newts->seginfo = newdi;
    newts->specs   = specList;
    newts->mark    = False; /* not significant */
 
@@ -437,10 +644,10 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
       (1) actives formed by matching the new specs in specList against
           all symbols currently listed in topSpecs
 
-      (2) actives formed by matching the new symbols in newsi against
+      (2) actives formed by matching the new symbols in newdi against
           all specs currently listed in topSpecs
 
-      (3) actives formed by matching the new symbols in newsi against
+      (3) actives formed by matching the new symbols in newdi against
           the new specs in specList
 
       This is necessary in order to maintain the invariant that
@@ -458,12 +665,12 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
    /* Case (2) */
    for (ts = topSpecs; ts; ts = ts->next) {
       generate_and_add_actives( ts->specs, ts, 
-                                newsi,     newts );
+                                newdi,     newts );
    }
 
    /* Case (3) */
    generate_and_add_actives( specList, newts, 
-                             newsi,    newts );
+                             newdi,    newts );
 
    /* Finally, add the new TopSpec. */
    newts->next = topSpecs;
@@ -471,6 +678,11 @@ void VG_(redir_notify_new_DebugInfo)( DebugInfo* newsi )
 
    if (VG_(clo_trace_redir))
       show_redir_state("after VG_(redir_notify_new_DebugInfo)");
+
+   /* Really finally (quite unrelated to all the above) check the
+      names in the module against any --require-text-symbol=
+      specifications we might have. */
+   handle_require_text_symbols(newdi);
 }
 
 #undef N_DEMANGLED
@@ -495,7 +707,8 @@ void VG_(redir_add_ifunc_target)( Addr old_from, Addr new_from )
 
     if (VG_(clo_trace_redir)) {
        VG_(message)( Vg_DebugMsg,
-                     "Adding redirect for indirect function 0x%llx from 0x%llx -> 0x%llx\n",
+                     "Adding redirect for indirect function "
+                     "0x%llx from 0x%llx -> 0x%llx\n",
                      (ULong)old_from, (ULong)new_from, (ULong)new.to_addr );
     }
 }
@@ -520,7 +733,8 @@ void generate_and_add_actives (
    Active act;
    Int    nsyms, i;
    Addr   sym_addr;
-   HChar* sym_name;
+   UChar*  sym_name_pri;
+   UChar** sym_names_sec;
 
    /* First figure out which of the specs match the seginfo's soname.
       Also clear the 'done' bits, so that after the main loop below
@@ -541,38 +755,39 @@ void generate_and_add_actives (
       of trashing the caches less. */
    nsyms = VG_(DebugInfo_syms_howmany)( di );
    for (i = 0; i < nsyms; i++) {
-      VG_(DebugInfo_syms_getidx)( di, i, &sym_addr, NULL, NULL,
-                                  &sym_name, &isText, &isIFunc );
+      VG_(DebugInfo_syms_getidx)( di, i, &sym_addr, NULL,
+                                  NULL, &sym_name_pri, &sym_names_sec,
+                                  &isText, &isIFunc );
+      UChar*  twoslots[2];
+      UChar** names_init = alloc_symname_array(sym_name_pri, sym_names_sec,
+                                               &twoslots[0]);
+      UChar** names;
+      for (names = names_init; *names; names++) {
 
       /* ignore data symbols */
       if (!isText)
          continue;
 
-      /* On AIX, we cannot redirect calls to a so-called glink
-         function for reasons which are not obvious - something to do
-         with saving r2 across the call.  Not a problem, as we don't
-         want to anyway; presumably it is the target of the glink we
-         need to redirect.  Hence just spot them and ignore them.
-         They are always of a very specific (more or less
-         ABI-mandated) form. */
-      if (is_aix5_glink_idiom(sym_addr))
-         continue;
-
       for (sp = specs; sp; sp = sp->next) {
          if (!sp->mark)
             continue; /* soname doesn't match */
-         if (VG_(string_match)( sp->from_fnpatt, sym_name )) {
+            if (VG_(string_match)( sp->from_fnpatt, *names )) {
             /* got a new binding.  Add to collection. */
             act.from_addr   = sym_addr;
             act.to_addr     = sp->to_addr;
             act.parent_spec = parent_spec;
             act.parent_sym  = parent_sym;
+               act.becTag      = sp->becTag;
+               act.becPrio     = sp->becPrio;
             act.isWrap      = sp->isWrap;
             act.isIFunc     = isIFunc;
             sp->done = True;
             maybe_add_active( act );
          }
       } /* for (sp = specs; sp; sp = sp->next) */
+
+      } /* iterating over names[] */
+      free_symname_array(names_init, &twoslots[0]);
    } /* for (i = 0; i < nsyms; i++)  */
 
    /* Now, finally, look for Specs which were marked to be done, but
@@ -632,7 +847,8 @@ void generate_and_add_actives (
 static void maybe_add_active ( Active act )
 {
    HChar*  what = NULL;
-   Active* old;
+   Active* old     = NULL;
+   Bool    add_act = False;
 
    /* Complain and ignore manifestly bogus 'from' addresses.
 
@@ -648,6 +864,7 @@ static void maybe_add_active ( Active act )
 #      if defined(VGP_amd64_linux)
        && act.from_addr != 0xFFFFFFFFFF600000ULL
        && act.from_addr != 0xFFFFFFFFFF600400ULL
+       && act.from_addr != 0xFFFFFFFFFF600800ULL
 #      endif
       ) {
       what = "redirection from-address is in non-executable area";
@@ -659,16 +876,72 @@ static void maybe_add_active ( Active act )
       /* Dodgy.  Conflicting binding. */
       vg_assert(old->from_addr == act.from_addr);
       if (old->to_addr != act.to_addr) {
-         /* we have to ignore it -- otherwise activeSet would contain
-            conflicting bindings. */
+         /* We've got a conflicting binding -- that is, from_addr is
+            specified to redirect to two different destinations,
+            old->to_addr and act.to_addr.  If we can prove that they
+            are behaviourally equivalent then that's no problem.  So
+            we can look at the behavioural eclass tags for both
+            functions to see if that's so.  If they are equal, and
+            nonzero, then that's fine.  But if not, we can't show they
+            are equivalent, so we have to complain, and ignore the new
+            binding. */
+         vg_assert(old->becTag  >= 0 && old->becTag  <= 9999);
+         vg_assert(old->becPrio >= 0 && old->becPrio <= 9);
+         vg_assert(act.becTag   >= 0 && act.becTag   <= 9999);
+         vg_assert(act.becPrio  >= 0 && act.becPrio  <= 9);
+         if (old->becTag == 0)
+            vg_assert(old->becPrio == 0);
+         if (act.becTag == 0)
+            vg_assert(act.becPrio == 0);
+
+         if (old->becTag == 0 || act.becTag == 0 || old->becTag != act.becTag) {
+            /* We can't show that they are equivalent.  Complain and
+               ignore. */
          what = "new redirection conflicts with existing -- ignoring it";
          goto bad;
+         }
+         /* They have the same eclass tag.  Use the priorities to
+            resolve the ambiguity. */
+         if (act.becPrio <= old->becPrio) {
+            /* The new one doesn't have a higher priority, so just
+               ignore it. */
+            if (VG_(clo_verbosity) > 2) {
+               VG_(message)(Vg_UserMsg, "Ignoring %s redirection:\n",
+                            act.becPrio < old->becPrio ? "lower priority" 
+                                                       : "duplicate");
+               show_active(             "    old: ", old);
+               show_active(             "    new: ", &act);
+            }
+         } else {
+            /* The tricky case.  The new one has a higher priority, so
+               we need to get the old one out of the OSet and install
+               this one in its place. */
+            if (VG_(clo_verbosity) > 1) {
+               VG_(message)(Vg_UserMsg, 
+                           "Preferring higher priority redirection:\n");
+               show_active(             "    old: ", old);
+               show_active(             "    new: ", &act);
+            }
+            add_act = True;
+            void* oldNd = VG_(OSetGen_Remove)( activeSet, &act.from_addr );
+            vg_assert(oldNd == old);
+            VG_(OSetGen_FreeNode)( activeSet, old );
+            old = NULL;
+         }
       } else {
          /* This appears to be a duplicate of an existing binding.
             Safe(ish) -- ignore. */
          /* XXXXXXXXXXX COMPLAIN if new and old parents differ */
       }
+
    } else {
+      /* There's no previous binding for this from_addr, so we must
+         add 'act' to the active set. */
+      add_act = True;
+   }
+
+   /* So, finally, actually add it. */
+   if (add_act) {
       Active* a = VG_(OSetGen_AllocNode)(activeSet, sizeof(Active));
       vg_assert(a);
       *a = act;
@@ -682,13 +955,21 @@ static void maybe_add_active ( Active act )
                                  "redir_new_DebugInfo(from_addr)");
       VG_(discard_translations)( (Addr64)act.to_addr, 1,
                                  "redir_new_DebugInfo(to_addr)");
+      if (VG_(clo_verbosity) > 2) {
+         VG_(message)(Vg_UserMsg, "Adding active redirection:\n");
+         show_active(             "    new: ", &act);
+      }
    }
    return;
 
   bad:
    vg_assert(what);
+   vg_assert(!add_act);
    if (VG_(clo_verbosity) > 1) {
       VG_(message)(Vg_UserMsg, "WARNING: %s\n", what);
+      if (old) {
+         show_active(             "    old: ", old);
+      }
       show_active(             "    new: ", &act);
    }
 }
@@ -833,6 +1114,8 @@ static void add_hardwired_active ( Addr from, Addr to )
    act.to_addr     = to;
    act.parent_spec = NULL;
    act.parent_sym  = NULL;
+   act.becTag      = 0; /* "not equivalent to any other fn" */
+   act.becPrio     = 0; /* mandatory when becTag == 0 */
    act.isWrap      = False;
    act.isIFunc     = False;
    maybe_add_active( act );
@@ -884,7 +1167,11 @@ static const HChar* complain_about_stripped_glibc_ldso[]
     "for your Linux distribution to please in future ship a non-",
     "stripped ld.so (or whatever the dynamic linker .so is called)",
     "that exports the above-named function using the standard",
-    "calling conventions for this platform.",
+    "calling conventions for this platform.  The package you need",
+    "to install for fix (1) is called",
+    "",
+    "  On Debian, Ubuntu:                 libc6-dbg",
+    "  On SuSE, openSuSE, Fedora, RHEL:   glibc-debuginfo",
     NULL
   };
 
@@ -913,11 +1200,23 @@ void VG_(redir_initialise) ( void )
    /* If we're using memcheck, use this intercept right from the
       start, otherwise ld.so (glibc-2.3.5) makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      const HChar** mandatory;
+#     if defined(GLIBC_2_2) || defined(GLIBC_2_3) || defined(GLIBC_2_4) \
+         || defined(GLIBC_2_5) || defined(GLIBC_2_6) || defined(GLIBC_2_7) \
+         || defined(GLIBC_2_8) || defined(GLIBC_2_9) \
+         || defined(GLIBC_2_10) || defined(GLIBC_2_11)
+      mandatory = NULL;
+#     else
+      /* for glibc-2.12 and later, this is mandatory - can't sanely
+         continue without it */
+      mandatory = complain_about_stripped_glibc_ldso;
+#     endif
       add_hardwired_spec(
          "ld-linux.so.2", "index",
-         (Addr)&VG_(x86_linux_REDIR_FOR_index),
-         NULL
-      );
+         (Addr)&VG_(x86_linux_REDIR_FOR_index), mandatory);
+      add_hardwired_spec(
+         "ld-linux.so.2", "strlen",
+         (Addr)&VG_(x86_linux_REDIR_FOR_strlen), mandatory);
    }
 
 #  elif defined(VGP_amd64_linux)
@@ -929,6 +1228,10 @@ void VG_(redir_initialise) ( void )
    add_hardwired_active( 
       0xFFFFFFFFFF600400ULL,
       (Addr)&VG_(amd64_linux_REDIR_FOR_vtime) 
+   );
+   add_hardwired_active(
+      0xFFFFFFFFFF600800ULL,
+      (Addr)&VG_(amd64_linux_REDIR_FOR_vgetcpu)
    );
 
    /* If we're using memcheck, use these intercepts right from
@@ -1002,7 +1305,7 @@ void VG_(redir_initialise) ( void )
       add_hardwired_spec(
          "ld-linux.so.3", "strlen",
          (Addr)&VG_(arm_linux_REDIR_FOR_strlen),
-         NULL 
+         complain_about_stripped_glibc_ldso
       );
       //add_hardwired_spec(
       //   "ld-linux.so.3", "index",
@@ -1012,36 +1315,58 @@ void VG_(redir_initialise) ( void )
       add_hardwired_spec(
          "ld-linux.so.3", "memcpy",
          (Addr)&VG_(arm_linux_REDIR_FOR_memcpy),
-         NULL 
+         complain_about_stripped_glibc_ldso
       );
    }
    /* nothing so far */
 
-#  elif defined(VGP_ppc32_aix5)
-   /* nothing so far */
-
-#  elif defined(VGP_ppc64_aix5)
-   /* nothing so far */
-
-#  elif defined(VGO_darwin)
+#  elif defined(VGP_x86_darwin)
    /* If we're using memcheck, use these intercepts right from
       the start, otherwise dyld makes a lot of noise. */
    if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
       add_hardwired_spec("dyld", "strcmp",
-                         (Addr)&VG_(darwin_REDIR_FOR_strcmp), NULL);
+                         (Addr)&VG_(x86_darwin_REDIR_FOR_strcmp), NULL);
       add_hardwired_spec("dyld", "strlen",
-                         (Addr)&VG_(darwin_REDIR_FOR_strlen), NULL);
+                         (Addr)&VG_(x86_darwin_REDIR_FOR_strlen), NULL);
       add_hardwired_spec("dyld", "strcat",
-                         (Addr)&VG_(darwin_REDIR_FOR_strcat), NULL);
+                         (Addr)&VG_(x86_darwin_REDIR_FOR_strcat), NULL);
       add_hardwired_spec("dyld", "strcpy",
-                         (Addr)&VG_(darwin_REDIR_FOR_strcpy), NULL);
+                         (Addr)&VG_(x86_darwin_REDIR_FOR_strcpy), NULL);
       add_hardwired_spec("dyld", "strlcat",
-                         (Addr)&VG_(darwin_REDIR_FOR_strlcat), NULL);
-#     if defined(VGP_amd64_darwin)
+                         (Addr)&VG_(x86_darwin_REDIR_FOR_strlcat), NULL);
+   }
+
+#  elif defined(VGP_amd64_darwin)
+   /* If we're using memcheck, use these intercepts right from
+      the start, otherwise dyld makes a lot of noise. */
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+      add_hardwired_spec("dyld", "strcmp",
+                         (Addr)&VG_(amd64_darwin_REDIR_FOR_strcmp), NULL);
+      add_hardwired_spec("dyld", "strlen",
+                         (Addr)&VG_(amd64_darwin_REDIR_FOR_strlen), NULL);
+      add_hardwired_spec("dyld", "strcat",
+                         (Addr)&VG_(amd64_darwin_REDIR_FOR_strcat), NULL);
+      add_hardwired_spec("dyld", "strcpy",
+                         (Addr)&VG_(amd64_darwin_REDIR_FOR_strcpy), NULL);
+      add_hardwired_spec("dyld", "strlcat",
+                         (Addr)&VG_(amd64_darwin_REDIR_FOR_strlcat), NULL);
       // DDD: #warning fixme rdar://6166275
       add_hardwired_spec("dyld", "arc4random",
-                         (Addr)&VG_(darwin_REDIR_FOR_arc4random), NULL);
-#     endif
+                         (Addr)&VG_(amd64_darwin_REDIR_FOR_arc4random), NULL);
+   }
+
+#  elif defined(VGP_s390x_linux)
+   /* nothing so far */
+
+#  elif defined(VGP_mips32_linux)
+   if (0==VG_(strcmp)("Memcheck", VG_(details).name)) {
+
+      /* this is mandatory - can't sanely continue without it */
+      add_hardwired_spec(
+         "ld.so.3", "strlen",
+         (Addr)&VG_(mips32_linux_REDIR_FOR_strlen),
+         complain_about_stripped_glibc_ldso
+      );
    }
 
 #  else
@@ -1086,42 +1411,6 @@ static Bool is_plausible_guest_addr(Addr a)
           && (seg->hasX || seg->hasR); /* crude x86-specific hack */
 }
 
-/* A function which spots AIX 'glink' functions.  A 'glink' function
-   is a stub function which has something to do with AIX-style dynamic
-   linking, and jumps to the real target (with which it typically
-   shares the same name).  See also comment where this function is
-   used (above). */
-static Bool is_aix5_glink_idiom ( Addr sym_addr )
-{
-#  if defined(VGP_ppc32_aix5)
-   UInt* w = (UInt*)sym_addr;
-   if (VG_IS_4_ALIGNED(w)
-       && is_plausible_guest_addr((Addr)(w+0))
-       && is_plausible_guest_addr((Addr)(w+6))
-       && (w[0] & 0xFFFF0000) == 0x81820000 /* lwz r12,func@toc(r2) */
-       && w[1] == 0x90410014                /* stw r2,20(r1) */
-       && w[2] == 0x800c0000                /* lwz r0,0(r12) */
-       && w[3] == 0x804c0004                /* lwz r2,4(r12) */
-       && w[4] == 0x7c0903a6                /* mtctr r0 */
-       && w[5] == 0x4e800420                /* bctr */
-       && w[6] == 0x00000000                /* illegal */)
-      return True;
-#  elif defined(VGP_ppc64_aix5)
-   UInt* w = (UInt*)sym_addr;
-   if (VG_IS_4_ALIGNED(w)
-       && is_plausible_guest_addr((Addr)(w+0))
-       && is_plausible_guest_addr((Addr)(w+6))
-       && (w[0] & 0xFFFF0000) == 0xE9820000 /* ld  r12,func@toc(r2) */
-       && w[1] == 0xF8410028                /* std r2,40(r1) */
-       && w[2] == 0xE80C0000                /* ld  r0,0(r12) */
-       && w[3] == 0xE84C0008                /* ld  r2,8(r12) */
-       && w[4] == 0x7c0903a6                /* mtctr r0 */
-       && w[5] == 0x4e800420                /* bctr */
-       && w[6] == 0x00000000                /* illegal */)
-      return True;
-#  endif
-   return False;
-}
 
 /*------------------------------------------------------------*/
 /*--- NOTIFY-ON-LOAD FUNCTIONS                             ---*/
@@ -1146,6 +1435,7 @@ void handle_maybe_load_notifier( const UChar* soname,
 
    /* Normal load-notifier handling after here.  First, ignore all
       symbols lacking the right prefix. */
+   vg_assert(symbol); // assert rather than segfault if it is NULL
    if (0 != VG_(strncmp)(symbol, VG_NOTIFY_ON_LOAD_PREFIX, 
                                  VG_NOTIFY_ON_LOAD_PREFIX_LEN))
       /* Doesn't have the right prefix */
@@ -1153,10 +1443,130 @@ void handle_maybe_load_notifier( const UChar* soname,
 
    if (VG_(strcmp)(symbol, VG_STRINGIFY(VG_NOTIFY_ON_LOAD(freeres))) == 0)
       VG_(client___libc_freeres_wrapper) = addr;
-   else if (VG_(strcmp)(symbol, VG_STRINGIFY(VG_NOTIFY_ON_LOAD(ifunc_wrapper))) == 0)
+   else
+   if (VG_(strcmp)(symbol, VG_STRINGIFY(VG_NOTIFY_ON_LOAD(ifunc_wrapper))) == 0)
       iFuncWrapper = addr;
    else
       vg_assert2(0, "unrecognised load notification function: %s", symbol);
+}
+
+
+/*------------------------------------------------------------*/
+/*--- REQUIRE-TEXT-SYMBOL HANDLING                         ---*/
+/*------------------------------------------------------------*/
+
+/* In short: check that the currently-being-loaded object has text
+   symbols that satisfy any --require-text-symbol= specifications that
+   apply to it, and abort the run with an error message if not.
+*/
+static void handle_require_text_symbols ( DebugInfo* di )
+{
+   /* First thing to do is figure out which, if any,
+      --require-text-symbol specification strings apply to this
+      object.  Most likely none do, since it is not expected to
+      frequently be used.  Work through the list of specs and
+      accumulate in fnpatts[] the fn patterns that pertain to this
+      object. */
+   HChar* fnpatts[VG_CLO_MAX_REQ_TSYMS];
+   Int    fnpatts_used = 0;
+   Int    i, j;
+   const HChar* di_soname = VG_(DebugInfo_get_soname)(di);
+   vg_assert(di_soname); // must be present
+
+   VG_(memset)(&fnpatts, 0, sizeof(fnpatts));
+
+   vg_assert(VG_(clo_n_req_tsyms) >= 0);
+   vg_assert(VG_(clo_n_req_tsyms) <= VG_CLO_MAX_REQ_TSYMS);
+   for (i = 0; i < VG_(clo_n_req_tsyms); i++) {
+      HChar* spec = VG_(clo_req_tsyms)[i];
+      vg_assert(spec && VG_(strlen)(spec) >= 4);
+      // clone the spec, so we can stick a zero at the end of the sopatt
+      spec = VG_(strdup)("m_redir.hrts.1", spec);
+      HChar sep = spec[0];
+      HChar* sopatt = &spec[1];
+      HChar* fnpatt = VG_(strchr)(sopatt, sep);
+      // the initial check at clo processing in time in m_main
+      // should ensure this.
+      vg_assert(fnpatt && *fnpatt == sep);
+      *fnpatt = 0;
+      fnpatt++;
+      if (VG_(string_match)(sopatt, di_soname))
+         fnpatts[fnpatts_used++]
+            = VG_(strdup)("m_redir.hrts.2", fnpatt);
+      VG_(free)(spec);
+   }
+
+   if (fnpatts_used == 0)
+      return;  /* no applicable spec strings */
+
+   /* So finally, fnpatts[0 .. fnpatts_used - 1] contains the set of
+      (patterns for) text symbol names that must be found in this
+      object, in order to continue.  That is, we must find at least
+      one text symbol name that matches each pattern, else we must
+      abort the run. */
+
+   if (0) VG_(printf)("for %s\n", di_soname);
+   for (i = 0; i < fnpatts_used; i++)
+      if (0) VG_(printf)("   fnpatt: %s\n", fnpatts[i]);
+
+   /* For each spec, look through the syms to find one that matches.
+      This isn't terribly efficient but it happens rarely, so no big
+      deal. */
+   for (i = 0; i < fnpatts_used; i++) {
+      Bool   found  = False;
+      HChar* fnpatt = fnpatts[i];
+      Int    nsyms  = VG_(DebugInfo_syms_howmany)(di);
+      for (j = 0; j < nsyms; j++) {
+         Bool    isText        = False;
+         UChar*  sym_name_pri  = NULL;
+         UChar** sym_names_sec = NULL;
+         VG_(DebugInfo_syms_getidx)( di, j, NULL, NULL,
+                                     NULL, &sym_name_pri, &sym_names_sec,
+                                     &isText, NULL );
+         UChar*  twoslots[2];
+         UChar** names_init = alloc_symname_array(sym_name_pri, sym_names_sec,
+                                                  &twoslots[0]);
+         UChar** names;
+         for (names = names_init; *names; names++) {
+            /* ignore data symbols */
+            if (0) VG_(printf)("QQQ %s\n", *names);
+            vg_assert(sym_name_pri);
+            if (!isText)
+               continue;
+            if (VG_(string_match)(fnpatt, *names)) {
+               found = True;
+               break;
+            }
+         }
+         free_symname_array(names_init, &twoslots[0]);
+         if (found)
+            break;
+      }
+
+      if (!found) {
+         HChar* v = "valgrind:  ";
+         VG_(printf)("\n");
+         VG_(printf)(
+         "%sFatal error at when loading library with soname\n", v);
+         VG_(printf)(
+         "%s   %s\n", v, di_soname);
+         VG_(printf)(
+         "%sCannot find any text symbol with a name "
+         "that matches the pattern\n", v);
+         VG_(printf)("%s   %s\n", v, fnpatt);
+         VG_(printf)("%sas required by a --require-text-symbol= "
+         "specification.\n", v);
+         VG_(printf)("\n");
+         VG_(printf)(
+         "%sCannot continue -- exiting now.\n", v);
+         VG_(printf)("\n");
+         VG_(exit)(1);
+      }
+   }
+
+   /* All required specs were found.  Just free memory and return. */
+   for (i = 0; i < fnpatts_used; i++)
+      VG_(free)(fnpatts[i]);
 }
 
 
@@ -1167,10 +1577,11 @@ void handle_maybe_load_notifier( const UChar* soname,
 static void show_spec ( HChar* left, Spec* spec )
 {
    VG_(message)( Vg_DebugMsg, 
-                 "%s%25s %30s %s-> 0x%08llx\n",
+                 "%s%25s %30s %s-> (%04d.%d) 0x%08llx\n",
                  left,
                  spec->from_sopatt, spec->from_fnpatt,
                  spec->isWrap ? "W" : "R",
+                 spec->becTag, spec->becPrio,
                  (ULong)spec->to_addr );
 }
 
@@ -1185,10 +1596,11 @@ static void show_active ( HChar* left, Active* act )
    ok = VG_(get_fnname_w_offset)(act->to_addr, name2, 64);
    if (!ok) VG_(strcpy)(name2, "???");
 
-   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%20s) %s-> 0x%08llx %s\n", 
+   VG_(message)(Vg_DebugMsg, "%s0x%08llx (%20s) %s-> (%04d.%d) 0x%08llx %s\n", 
                              left, 
                              (ULong)act->from_addr, name1,
                              act->isWrap ? "W" : "R",
+                             act->becTag, act->becPrio,
                              (ULong)act->to_addr, name2 );
 }
 
@@ -1200,11 +1612,15 @@ static void show_redir_state ( HChar* who )
    VG_(message)(Vg_DebugMsg, "<<\n");
    VG_(message)(Vg_DebugMsg, "   ------ REDIR STATE %s ------\n", who);
    for (ts = topSpecs; ts; ts = ts->next) {
+      if (ts->seginfo)
+         VG_(message)(Vg_DebugMsg, 
+                      "   TOPSPECS of soname %s filename %s\n",
+                      (HChar*)VG_(DebugInfo_get_soname)(ts->seginfo),
+                      (HChar*)VG_(DebugInfo_get_filename)(ts->seginfo));
+      else
       VG_(message)(Vg_DebugMsg, 
-                   "   TOPSPECS of soname %s\n",
-                   ts->seginfo
-                      ? (HChar*)VG_(DebugInfo_get_soname)(ts->seginfo)
-                      : "(hardwired)" );
+                      "   TOPSPECS of soname (hardwired)\n");
+         
       for (sp = ts->specs; sp; sp = sp->next)
          show_spec("     ", sp);
    }

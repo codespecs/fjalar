@@ -467,7 +467,7 @@ test_strchr (void)
 }
 
 // DDD: better done by testing for the function.
-#if !defined(_AIX) && !defined(__APPLE__)
+#if !defined(__APPLE__)
 static void
 test_strchrnul (void)
 {
@@ -501,10 +501,10 @@ test_strchrnul (void)
       }
    }
 }
-#endif /* !defined(_AIX) */
+#endif
 
 // DDD: better done by testing for the function.
-#if !defined(_AIX) && !defined(__APPLE__)
+#if !defined(__APPLE__)
 static void
 test_rawmemchr (void)
 {
@@ -531,7 +531,7 @@ test_rawmemchr (void)
       }
    }
 }
-#endif /* !defined(_AIX) */
+#endif
 
 static void
 test_index (void)
@@ -580,7 +580,7 @@ test_strrchr (void)
 }
 
 // DDD: better done by testing for the function.
-#if !defined(_AIX) && !defined(__APPLE__)
+#if !defined(__APPLE__)
 static void
 test_memrchr (void)
 {
@@ -626,7 +626,7 @@ test_memrchr (void)
     }
   }
 }
-#endif /* !defined(_AIX) */
+#endif
 
 static void
 test_rindex (void)
@@ -902,7 +902,7 @@ test_strsep (void)
   equal(one+4, "c", 50);
 
   {
-#   if !defined(_AIX) && !defined(__APPLE__)
+#   if !defined(__APPLE__)
     char text[] = "This,is,a,test";
     char *list = strdupa (text);
     equal (strsep (&list, ","), "This", 51);
@@ -1063,7 +1063,7 @@ test_memcpy (void)
     }
 }
 
-#if !defined(_AIX) && !defined(__APPLE__)
+#if !defined(__APPLE__)
 static void
 test_mempcpy (void)
 {
@@ -1100,7 +1100,7 @@ test_mempcpy (void)
       equal (two, "hi there", 12 + (i * 6));
     }
 }
-#endif /* !defined(_AIX) */
+#endif
 
 static void
 test_memmove (void)
@@ -1373,6 +1373,33 @@ test_strncasecmp (void)
   check(strncasecmp("ADC", "abcd", 2) > 0, 20);
 }
 
+static void
+test_strcasestr (void)
+{
+  it = "strcasestr";
+  check(strcasestr("abCd", "z") == NULL, 1);	/* Not found. */
+  check(strcasestr("AbcD", "abX") == NULL, 2);	/* Dead end. */
+  (void) strcpy(one, "abCd");
+  check(strcasestr(one, "c") == one+2, 3);	/* Basic test. */
+  check(strcasestr(one, "Bc") == one+1, 4);	/* Multichar. */
+  check(strcasestr(one, "d") == one+3, 5);	/* End of string. */
+  check(strcasestr(one, "Cd") == one+2, 6);	/* Tail of string. */
+  check(strcasestr(one, "aBc") == one, 7);	/* Beginning. */
+  check(strcasestr(one, "aBcd") == one, 8);	/* Exact match. */
+  check(strcasestr(one, "AbcDe") == NULL, 9);	/* Too long. */
+  check(strcasestr(one, "dE") == NULL, 10);	/* Past end. */
+  check(strcasestr(one, "") == one, 11);	/* Finding empty. */
+  (void) strcpy(one, "abAba");
+  check(strcasestr(one, "Ba") == one+1, 12);	/* Finding first. */
+  (void) strcpy(one, "");
+  check(strcasestr(one, "b") == NULL, 13);	/* Empty string. */
+  check(strcasestr(one, "") == one, 14);	/* Empty in empty string. */
+  (void) strcpy(one, "BcbCa");
+  check(strcasestr(one, "bCa") == one+2, 15);	/* False start. */
+  (void) strcpy(one, "bbBcaBbcA");
+  check(strcasestr(one, "bbCa") == one+1, 16);	/* With overlap. */
+}
+
 int
 main (void)
 {
@@ -1410,12 +1437,12 @@ main (void)
   /* strchr.  */
   test_strchr ();
 
-# if !defined(_AIX) && !defined(__APPLE__)
+# if !defined(__APPLE__)
   /* strchrnul.  */
   test_strchrnul ();
 # endif
 
-# if !defined(_AIX) && !defined(__APPLE__)
+# if !defined(__APPLE__)
   /* rawmemchr.  */
   test_rawmemchr ();
 # endif
@@ -1426,7 +1453,7 @@ main (void)
   /* strrchr.  */
   test_strrchr ();
 
-# if !defined(_AIX) && !defined(__APPLE__)
+# if !defined(__APPLE__)
   /* memrchr.  */
   test_memrchr ();
 # endif
@@ -1467,7 +1494,7 @@ main (void)
   /* memmove - must work on overlap.  */
   test_memmove ();
 
-# if !defined(_AIX) && !defined(__APPLE__)
+# if !defined(__APPLE__)
   /* mempcpy */
   test_mempcpy ();
 # endif
@@ -1500,6 +1527,8 @@ main (void)
 
   /* strncasecmp.  Without locale dependencies.  */
   test_strncasecmp ();
+
+  test_strcasestr ();
 
   if (errors == 0)
     {

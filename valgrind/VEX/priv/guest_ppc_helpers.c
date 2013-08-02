@@ -1,42 +1,31 @@
 
 /*---------------------------------------------------------------*/
-/*---                                                         ---*/
-/*--- This file (guest_ppc_helpers.c) is                      ---*/
-/*--- Copyright (C) OpenWorks LLP.  All rights reserved.      ---*/
-/*---                                                         ---*/
+/*--- begin                               guest_ppc_helpers.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
-   This file is part of LibVEX, a library for dynamic binary
-   instrumentation and translation.
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
 
-   Copyright (C) 2004-2009 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2004-2012 OpenWorks LLP
+      info@open-works.net
 
-   This library is made available under a dual licensing scheme.
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
 
-   If you link LibVEX against other code all of which is itself
-   licensed under the GNU General Public License, version 2 dated June
-   1991 ("GPL v2"), then you may use LibVEX under the terms of the GPL
-   v2, as appearing in the file LICENSE.GPL.  If the file LICENSE.GPL
-   is missing, you can obtain a copy of the GPL v2 from the Free
-   Software Foundation Inc., 51 Franklin St, Fifth Floor, Boston, MA
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
    02110-1301, USA.
 
-   For any other uses of LibVEX, you must first obtain a commercial
-   license from OpenWorks LLP.  Please contact info@open-works.co.uk
-   for information about commercial licensing.
-
-   This software is provided by OpenWorks LLP "as is" and any express
-   or implied warranties, including, but not limited to, the implied
-   warranties of merchantability and fitness for a particular purpose
-   are disclaimed.  In no event shall OpenWorks LLP be liable for any
-   direct, indirect, incidental, special, exemplary, or consequential
-   damages (including, but not limited to, procurement of substitute
-   goods or services; loss of use, data, or profits; or business
-   interruption) however caused and on any theory of liability,
-   whether in contract, strict liability, or tort (including
-   negligence or otherwise) arising in any way out of the use of this
-   software, even if advised of the possibility of such damage.
+   The GNU General Public License is contained in the file COPYING.
 
    Neither the names of the U.S. Department of Energy nor the
    University of California nor the names of its contributors may be
@@ -45,13 +34,14 @@
 */
 
 #include "libvex_basictypes.h"
-#include "libvex_emwarn.h"
+#include "libvex_emnote.h"
 #include "libvex_guest_ppc32.h"
 #include "libvex_guest_ppc64.h"
 #include "libvex_ir.h"
 #include "libvex.h"
 
 #include "main_util.h"
+#include "main_globals.h"
 #include "guest_generic_bb_to_IR.h"
 #include "guest_ppc_defs.h"
 
@@ -165,11 +155,17 @@ void ppc32g_dirtyhelper_LVS ( VexGuestPPC32State* gst,
 void ppc64g_dirtyhelper_LVS ( VexGuestPPC64State* gst,
                               UInt vD_off, UInt sh, UInt shift_right )
 {
-  static
-  UChar ref[32] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-                    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-                    0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F };
+  UChar ref[32];
+  ULong i;
+  /* ref[] used to be a static const array, but this doesn't work on
+     ppc64 because VEX doesn't load the TOC pointer for the call here,
+     and so we wind up picking up some totally random other data.
+     (It's a wonder we don't segfault.)  So, just to be clear, this
+     "fix" (vex r2073) is really a kludgearound for the fact that
+     VEX's 64-bit ppc code generation doesn't provide a valid TOC
+     pointer for helper function calls.  Ick.  (Bug 250038) */
+  for (i = 0; i < 32; i++) ref[i] = i;
+
   U128* pU128_src;
   U128* pU128_dst;
 
@@ -193,13 +189,17 @@ void ppc64g_dirtyhelper_LVS ( VexGuestPPC64State* gst,
 /* Helper-function specialiser. */
 
 IRExpr* guest_ppc32_spechelper ( HChar* function_name,
-                                 IRExpr** args )
+                                 IRExpr** args,
+                                 IRStmt** precedingStmts,
+                                 Int      n_precedingStmts )
 {
    return NULL;
 }
 
 IRExpr* guest_ppc64_spechelper ( HChar* function_name,
-                                 IRExpr** args )
+                                 IRExpr** args,
+                                 IRStmt** precedingStmts,
+                                 Int      n_precedingStmts )
 {
    return NULL;
 }
@@ -353,6 +353,11 @@ void LibVEX_GuestPPC64_put_XER ( UInt xer_native,
 void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
 {
    Int i;
+   vex_state->host_EvC_FAILADDR = 0;
+   vex_state->host_EvC_COUNTER  = 0;
+   vex_state->pad3 = 0;
+   vex_state->pad4 = 0;
+
    vex_state->guest_GPR0  = 0;
    vex_state->guest_GPR1  = 0;
    vex_state->guest_GPR2  = 0;
@@ -386,74 +391,73 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
    vex_state->guest_GPR30 = 0;
    vex_state->guest_GPR31 = 0;
 
-   vex_state->guest_FPR0  = 0;
-   vex_state->guest_FPR1  = 0;
-   vex_state->guest_FPR2  = 0;
-   vex_state->guest_FPR3  = 0;
-   vex_state->guest_FPR4  = 0;
-   vex_state->guest_FPR5  = 0;
-   vex_state->guest_FPR6  = 0;
-   vex_state->guest_FPR7  = 0;
-   vex_state->guest_FPR8  = 0;
-   vex_state->guest_FPR9  = 0;
-   vex_state->guest_FPR10 = 0;
-   vex_state->guest_FPR11 = 0;
-   vex_state->guest_FPR12 = 0;
-   vex_state->guest_FPR13 = 0;
-   vex_state->guest_FPR14 = 0;
-   vex_state->guest_FPR15 = 0;
-   vex_state->guest_FPR16 = 0;
-   vex_state->guest_FPR17 = 0;
-   vex_state->guest_FPR18 = 0;
-   vex_state->guest_FPR19 = 0;
-   vex_state->guest_FPR20 = 0;
-   vex_state->guest_FPR21 = 0;
-   vex_state->guest_FPR22 = 0;
-   vex_state->guest_FPR23 = 0;
-   vex_state->guest_FPR24 = 0;
-   vex_state->guest_FPR25 = 0;
-   vex_state->guest_FPR26 = 0;
-   vex_state->guest_FPR27 = 0;
-   vex_state->guest_FPR28 = 0;
-   vex_state->guest_FPR29 = 0;
-   vex_state->guest_FPR30 = 0;
-   vex_state->guest_FPR31 = 0;
-
    /* Initialise the vector state. */
 #  define VECZERO(_vr) _vr[0]=_vr[1]=_vr[2]=_vr[3] = 0;
 
-   VECZERO(vex_state->guest_VR0 );
-   VECZERO(vex_state->guest_VR1 );
-   VECZERO(vex_state->guest_VR2 );
-   VECZERO(vex_state->guest_VR3 );
-   VECZERO(vex_state->guest_VR4 );
-   VECZERO(vex_state->guest_VR5 );
-   VECZERO(vex_state->guest_VR6 );
-   VECZERO(vex_state->guest_VR7 );
-   VECZERO(vex_state->guest_VR8 );
-   VECZERO(vex_state->guest_VR9 );
-   VECZERO(vex_state->guest_VR10);
-   VECZERO(vex_state->guest_VR11);
-   VECZERO(vex_state->guest_VR12);
-   VECZERO(vex_state->guest_VR13);
-   VECZERO(vex_state->guest_VR14);
-   VECZERO(vex_state->guest_VR15);
-   VECZERO(vex_state->guest_VR16);
-   VECZERO(vex_state->guest_VR17);
-   VECZERO(vex_state->guest_VR18);
-   VECZERO(vex_state->guest_VR19);
-   VECZERO(vex_state->guest_VR20);
-   VECZERO(vex_state->guest_VR21);
-   VECZERO(vex_state->guest_VR22);
-   VECZERO(vex_state->guest_VR23);
-   VECZERO(vex_state->guest_VR24);
-   VECZERO(vex_state->guest_VR25);
-   VECZERO(vex_state->guest_VR26);
-   VECZERO(vex_state->guest_VR27);
-   VECZERO(vex_state->guest_VR28);
-   VECZERO(vex_state->guest_VR29);
-   VECZERO(vex_state->guest_VR30);
-   VECZERO(vex_state->guest_VR31);
+   VECZERO(vex_state->guest_VSR0 );
+   VECZERO(vex_state->guest_VSR1 );
+   VECZERO(vex_state->guest_VSR2 );
+   VECZERO(vex_state->guest_VSR3 );
+   VECZERO(vex_state->guest_VSR4 );
+   VECZERO(vex_state->guest_VSR5 );
+   VECZERO(vex_state->guest_VSR6 );
+   VECZERO(vex_state->guest_VSR7 );
+   VECZERO(vex_state->guest_VSR8 );
+   VECZERO(vex_state->guest_VSR9 );
+   VECZERO(vex_state->guest_VSR10);
+   VECZERO(vex_state->guest_VSR11);
+   VECZERO(vex_state->guest_VSR12);
+   VECZERO(vex_state->guest_VSR13);
+   VECZERO(vex_state->guest_VSR14);
+   VECZERO(vex_state->guest_VSR15);
+   VECZERO(vex_state->guest_VSR16);
+   VECZERO(vex_state->guest_VSR17);
+   VECZERO(vex_state->guest_VSR18);
+   VECZERO(vex_state->guest_VSR19);
+   VECZERO(vex_state->guest_VSR20);
+   VECZERO(vex_state->guest_VSR21);
+   VECZERO(vex_state->guest_VSR22);
+   VECZERO(vex_state->guest_VSR23);
+   VECZERO(vex_state->guest_VSR24);
+   VECZERO(vex_state->guest_VSR25);
+   VECZERO(vex_state->guest_VSR26);
+   VECZERO(vex_state->guest_VSR27);
+   VECZERO(vex_state->guest_VSR28);
+   VECZERO(vex_state->guest_VSR29);
+   VECZERO(vex_state->guest_VSR30);
+   VECZERO(vex_state->guest_VSR31);
+   VECZERO(vex_state->guest_VSR32);
+   VECZERO(vex_state->guest_VSR33);
+   VECZERO(vex_state->guest_VSR34);
+   VECZERO(vex_state->guest_VSR35);
+   VECZERO(vex_state->guest_VSR36);
+   VECZERO(vex_state->guest_VSR37);
+   VECZERO(vex_state->guest_VSR38);
+   VECZERO(vex_state->guest_VSR39);
+   VECZERO(vex_state->guest_VSR40);
+   VECZERO(vex_state->guest_VSR41);
+   VECZERO(vex_state->guest_VSR42);
+   VECZERO(vex_state->guest_VSR43);
+   VECZERO(vex_state->guest_VSR44);
+   VECZERO(vex_state->guest_VSR45);
+   VECZERO(vex_state->guest_VSR46);
+   VECZERO(vex_state->guest_VSR47);
+   VECZERO(vex_state->guest_VSR48);
+   VECZERO(vex_state->guest_VSR49);
+   VECZERO(vex_state->guest_VSR50);
+   VECZERO(vex_state->guest_VSR51);
+   VECZERO(vex_state->guest_VSR52);
+   VECZERO(vex_state->guest_VSR53);
+   VECZERO(vex_state->guest_VSR54);
+   VECZERO(vex_state->guest_VSR55);
+   VECZERO(vex_state->guest_VSR56);
+   VECZERO(vex_state->guest_VSR57);
+   VECZERO(vex_state->guest_VSR58);
+   VECZERO(vex_state->guest_VSR59);
+   VECZERO(vex_state->guest_VSR60);
+   VECZERO(vex_state->guest_VSR61);
+   VECZERO(vex_state->guest_VSR62);
+   VECZERO(vex_state->guest_VSR63);
 
 #  undef VECZERO
 
@@ -483,13 +487,16 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
    vex_state->guest_CR7_321 = 0;
    vex_state->guest_CR7_0   = 0;
 
-   vex_state->guest_FPROUND = (UInt)PPCrm_NEAREST;
+   vex_state->guest_FPROUND  = PPCrm_NEAREST;
+   vex_state->guest_DFPROUND = PPCrm_NEAREST;
+   vex_state->pad1 = 0;
+   vex_state->pad2 = 0;
 
    vex_state->guest_VRSAVE = 0;
 
    vex_state->guest_VSCR = 0x0;  // Non-Java mode = 0
 
-   vex_state->guest_EMWARN = EmWarn_NONE;
+   vex_state->guest_EMNOTE = EmNote_NONE;
 
    vex_state->guest_TISTART = 0;
    vex_state->guest_TILEN   = 0;
@@ -503,6 +510,8 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
 
    vex_state->guest_IP_AT_SYSCALL = 0;
    vex_state->guest_SPRG3_RO = 0;
+
+   vex_state->padding = 0;
 }
 
 
@@ -510,6 +519,9 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
 void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
 {
    Int i;
+   vex_state->host_EvC_FAILADDR = 0;
+   vex_state->host_EvC_COUNTER = 0;
+   vex_state->pad0 = 0;
    vex_state->guest_GPR0  = 0;
    vex_state->guest_GPR1  = 0;
    vex_state->guest_GPR2  = 0;
@@ -543,74 +555,73 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
    vex_state->guest_GPR30 = 0;
    vex_state->guest_GPR31 = 0;
 
-   vex_state->guest_FPR0  = 0;
-   vex_state->guest_FPR1  = 0;
-   vex_state->guest_FPR2  = 0;
-   vex_state->guest_FPR3  = 0;
-   vex_state->guest_FPR4  = 0;
-   vex_state->guest_FPR5  = 0;
-   vex_state->guest_FPR6  = 0;
-   vex_state->guest_FPR7  = 0;
-   vex_state->guest_FPR8  = 0;
-   vex_state->guest_FPR9  = 0;
-   vex_state->guest_FPR10 = 0;
-   vex_state->guest_FPR11 = 0;
-   vex_state->guest_FPR12 = 0;
-   vex_state->guest_FPR13 = 0;
-   vex_state->guest_FPR14 = 0;
-   vex_state->guest_FPR15 = 0;
-   vex_state->guest_FPR16 = 0;
-   vex_state->guest_FPR17 = 0;
-   vex_state->guest_FPR18 = 0;
-   vex_state->guest_FPR19 = 0;
-   vex_state->guest_FPR20 = 0;
-   vex_state->guest_FPR21 = 0;
-   vex_state->guest_FPR22 = 0;
-   vex_state->guest_FPR23 = 0;
-   vex_state->guest_FPR24 = 0;
-   vex_state->guest_FPR25 = 0;
-   vex_state->guest_FPR26 = 0;
-   vex_state->guest_FPR27 = 0;
-   vex_state->guest_FPR28 = 0;
-   vex_state->guest_FPR29 = 0;
-   vex_state->guest_FPR30 = 0;
-   vex_state->guest_FPR31 = 0;
-
    /* Initialise the vector state. */
 #  define VECZERO(_vr) _vr[0]=_vr[1]=_vr[2]=_vr[3] = 0;
 
-   VECZERO(vex_state->guest_VR0 );
-   VECZERO(vex_state->guest_VR1 );
-   VECZERO(vex_state->guest_VR2 );
-   VECZERO(vex_state->guest_VR3 );
-   VECZERO(vex_state->guest_VR4 );
-   VECZERO(vex_state->guest_VR5 );
-   VECZERO(vex_state->guest_VR6 );
-   VECZERO(vex_state->guest_VR7 );
-   VECZERO(vex_state->guest_VR8 );
-   VECZERO(vex_state->guest_VR9 );
-   VECZERO(vex_state->guest_VR10);
-   VECZERO(vex_state->guest_VR11);
-   VECZERO(vex_state->guest_VR12);
-   VECZERO(vex_state->guest_VR13);
-   VECZERO(vex_state->guest_VR14);
-   VECZERO(vex_state->guest_VR15);
-   VECZERO(vex_state->guest_VR16);
-   VECZERO(vex_state->guest_VR17);
-   VECZERO(vex_state->guest_VR18);
-   VECZERO(vex_state->guest_VR19);
-   VECZERO(vex_state->guest_VR20);
-   VECZERO(vex_state->guest_VR21);
-   VECZERO(vex_state->guest_VR22);
-   VECZERO(vex_state->guest_VR23);
-   VECZERO(vex_state->guest_VR24);
-   VECZERO(vex_state->guest_VR25);
-   VECZERO(vex_state->guest_VR26);
-   VECZERO(vex_state->guest_VR27);
-   VECZERO(vex_state->guest_VR28);
-   VECZERO(vex_state->guest_VR29);
-   VECZERO(vex_state->guest_VR30);
-   VECZERO(vex_state->guest_VR31);
+   VECZERO(vex_state->guest_VSR0 );
+   VECZERO(vex_state->guest_VSR1 );
+   VECZERO(vex_state->guest_VSR2 );
+   VECZERO(vex_state->guest_VSR3 );
+   VECZERO(vex_state->guest_VSR4 );
+   VECZERO(vex_state->guest_VSR5 );
+   VECZERO(vex_state->guest_VSR6 );
+   VECZERO(vex_state->guest_VSR7 );
+   VECZERO(vex_state->guest_VSR8 );
+   VECZERO(vex_state->guest_VSR9 );
+   VECZERO(vex_state->guest_VSR10);
+   VECZERO(vex_state->guest_VSR11);
+   VECZERO(vex_state->guest_VSR12);
+   VECZERO(vex_state->guest_VSR13);
+   VECZERO(vex_state->guest_VSR14);
+   VECZERO(vex_state->guest_VSR15);
+   VECZERO(vex_state->guest_VSR16);
+   VECZERO(vex_state->guest_VSR17);
+   VECZERO(vex_state->guest_VSR18);
+   VECZERO(vex_state->guest_VSR19);
+   VECZERO(vex_state->guest_VSR20);
+   VECZERO(vex_state->guest_VSR21);
+   VECZERO(vex_state->guest_VSR22);
+   VECZERO(vex_state->guest_VSR23);
+   VECZERO(vex_state->guest_VSR24);
+   VECZERO(vex_state->guest_VSR25);
+   VECZERO(vex_state->guest_VSR26);
+   VECZERO(vex_state->guest_VSR27);
+   VECZERO(vex_state->guest_VSR28);
+   VECZERO(vex_state->guest_VSR29);
+   VECZERO(vex_state->guest_VSR30);
+   VECZERO(vex_state->guest_VSR31);
+   VECZERO(vex_state->guest_VSR32);
+   VECZERO(vex_state->guest_VSR33);
+   VECZERO(vex_state->guest_VSR34);
+   VECZERO(vex_state->guest_VSR35);
+   VECZERO(vex_state->guest_VSR36);
+   VECZERO(vex_state->guest_VSR37);
+   VECZERO(vex_state->guest_VSR38);
+   VECZERO(vex_state->guest_VSR39);
+   VECZERO(vex_state->guest_VSR40);
+   VECZERO(vex_state->guest_VSR41);
+   VECZERO(vex_state->guest_VSR42);
+   VECZERO(vex_state->guest_VSR43);
+   VECZERO(vex_state->guest_VSR44);
+   VECZERO(vex_state->guest_VSR45);
+   VECZERO(vex_state->guest_VSR46);
+   VECZERO(vex_state->guest_VSR47);
+   VECZERO(vex_state->guest_VSR48);
+   VECZERO(vex_state->guest_VSR49);
+   VECZERO(vex_state->guest_VSR50);
+   VECZERO(vex_state->guest_VSR51);
+   VECZERO(vex_state->guest_VSR52);
+   VECZERO(vex_state->guest_VSR53);
+   VECZERO(vex_state->guest_VSR54);
+   VECZERO(vex_state->guest_VSR55);
+   VECZERO(vex_state->guest_VSR56);
+   VECZERO(vex_state->guest_VSR57);
+   VECZERO(vex_state->guest_VSR58);
+   VECZERO(vex_state->guest_VSR59);
+   VECZERO(vex_state->guest_VSR60);
+   VECZERO(vex_state->guest_VSR61);
+   VECZERO(vex_state->guest_VSR62);
+   VECZERO(vex_state->guest_VSR63);
 
 #  undef VECZERO
 
@@ -640,13 +651,16 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
    vex_state->guest_CR7_321 = 0;
    vex_state->guest_CR7_0   = 0;
 
-   vex_state->guest_FPROUND = (UInt)PPCrm_NEAREST;
+   vex_state->guest_FPROUND  = PPCrm_NEAREST;
+   vex_state->guest_DFPROUND = PPCrm_NEAREST;
+   vex_state->pad1 = 0;
+   vex_state->pad2 = 0;
 
    vex_state->guest_VRSAVE = 0;
 
    vex_state->guest_VSCR = 0x0;  // Non-Java mode = 0
 
-   vex_state->guest_EMWARN = EmWarn_NONE;
+   vex_state->guest_EMNOTE = EmNote_NONE;
 
    vex_state->padding = 0;
 
@@ -664,6 +678,8 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
    vex_state->guest_SPRG3_RO = 0;
 
    vex_state->padding2 = 0;
+   vex_state->padding3 = 0;
+   vex_state->padding4 = 0;
 }
 
 
@@ -681,6 +697,8 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
    minimum needed to extract correct stack backtraces from ppc
    code. [[NB: not sure if keeping LR up to date is actually
    necessary.]]
+
+   Only R1 is needed in mode VexRegUpdSpAtMemAccess.   
 */
 Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff, 
                                                    Int maxoff )
@@ -692,14 +710,16 @@ Bool guest_ppc32_state_requires_precise_mem_exns ( Int minoff,
    Int cia_min = offsetof(VexGuestPPC32State, guest_CIA);
    Int cia_max = cia_min + 4 - 1;
 
-   if (maxoff < lr_min || minoff > lr_max) {
-      /* no overlap with LR */
+   if (maxoff < r1_min || minoff > r1_max) {
+      /* no overlap with R1 */
+      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+         return False; // We only need to check stack pointer.
    } else {
       return True;
    }
 
-   if (maxoff < r1_min || minoff > r1_max) {
-      /* no overlap with R1 */
+   if (maxoff < lr_min || minoff > lr_max) {
+      /* no overlap with LR */
    } else {
       return True;
    }
@@ -729,14 +749,16 @@ Bool guest_ppc64_state_requires_precise_mem_exns ( Int minoff,
    Int cia_min = offsetof(VexGuestPPC64State, guest_CIA);
    Int cia_max = cia_min + 8 - 1;
 
-   if (maxoff < lr_min || minoff > lr_max) {
-      /* no overlap with LR */
+   if (maxoff < r1_min || minoff > r1_max) {
+      /* no overlap with R1 */
+      if (vex_control.iropt_register_updates == VexRegUpdSpAtMemAccess)
+         return False; // We only need to check stack pointer.
    } else {
       return True;
    }
 
-   if (maxoff < r1_min || minoff > r1_max) {
-      /* no overlap with R1 */
+   if (maxoff < lr_min || minoff > lr_max) {
+      /* no overlap with LR */
    } else {
       return True;
    }
@@ -785,7 +807,7 @@ VexGuestLayout
 
           .alwaysDefd 
 	  = { /*  0 */ ALWAYSDEFD32(guest_CIA),
-	      /*  1 */ ALWAYSDEFD32(guest_EMWARN),
+	      /*  1 */ ALWAYSDEFD32(guest_EMNOTE),
 	      /*  2 */ ALWAYSDEFD32(guest_TISTART),
 	      /*  3 */ ALWAYSDEFD32(guest_TILEN),
 	      /*  4 */ ALWAYSDEFD32(guest_VSCR),
@@ -826,7 +848,7 @@ VexGuestLayout
 
           .alwaysDefd 
 	  = { /*  0 */ ALWAYSDEFD64(guest_CIA),
-	      /*  1 */ ALWAYSDEFD64(guest_EMWARN),
+	      /*  1 */ ALWAYSDEFD64(guest_EMNOTE),
 	      /*  2 */ ALWAYSDEFD64(guest_TISTART),
 	      /*  3 */ ALWAYSDEFD64(guest_TILEN),
 	      /*  4 */ ALWAYSDEFD64(guest_VSCR),

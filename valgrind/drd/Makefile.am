@@ -1,6 +1,6 @@
 include $(top_srcdir)/Makefile.tool.am
 
-EXTRA_DIST = docs/drd-manual.xml
+EXTRA_DIST = docs/drd-manual.xml docs/drd-xml-output.xsd
 
 #----------------------------------------------------------------------------
 # Headers, flags
@@ -17,6 +17,7 @@ noinst_HEADERS =        \
   drd_clientreq.h       \
   drd_cond.h            \
   drd_error.h           \
+  drd_hb.h              \
   drd_load_store.h      \
   drd_malloc_wrappers.h \
   drd_mutex.h           \
@@ -40,6 +41,8 @@ DRD_CFLAGS =				\
   -Wno-inline				\
   -Wno-unused-parameter
 
+#DRD_CFLAGS += -DENABLE_DRD_CONSISTENCY_CHECKS
+
 #----------------------------------------------------------------------------
 # drd-<platform>
 #----------------------------------------------------------------------------
@@ -51,11 +54,12 @@ endif
 
 DRD_SOURCES_COMMON =    \
   drd_barrier.c         \
-  drd_bitmap2_node.c    \
   drd_clientobj.c       \
   drd_clientreq.c       \
   drd_cond.c            \
+  drd_cond_initializer.c \
   drd_error.c           \
+  drd_hb.c              \
   drd_load_store.c      \
   drd_main.c            \
   drd_malloc_wrappers.c \
@@ -64,7 +68,8 @@ DRD_SOURCES_COMMON =    \
   drd_semaphore.c       \
   drd_suppression.c
 
-drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = $(DRD_SOURCES_COMMON)
+drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
+	$(DRD_SOURCES_COMMON)
 drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = \
@@ -75,8 +80,16 @@ drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
 drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_PRI@ \
+	$(LINK) \
+	$(drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS) \
+	$(drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS)
+
 if VGCONF_HAVE_PLATFORM_SEC
-drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = $(DRD_SOURCES_COMMON)
+drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = \
+	$(DRD_SOURCES_COMMON)
 drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = \
@@ -87,6 +100,12 @@ drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
 drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
+	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+	@VALT_LOAD_ADDRESS_SEC@ \
+	$(LINK) \
+	$(drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
+	$(drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
 endif
 
 #----------------------------------------------------------------------------
@@ -107,6 +126,10 @@ VGPRELOAD_DRD_SOURCES_COMMON = \
   drd_qtcore_intercepts.c      \
   drd_strmem_intercepts.c
 
+if VGCONF_OS_IS_DARWIN
+VGPRELOAD_DRD_SOURCES_COMMON += drd_darwin_intercepts.c
+endif
+
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
 	$(VGPRELOAD_DRD_SOURCES_COMMON)
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
@@ -118,6 +141,7 @@ vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 vgpreload_drd_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
 	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) \
 	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+
 if VGCONF_HAVE_PLATFORM_SEC
 vgpreload_drd_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
 	$(VGPRELOAD_DRD_SOURCES_COMMON)

@@ -22,10 +22,10 @@ WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY OF THIS SOFTWARE OR
 ITS FITNESS FOR ANY PARTICULAR PURPOSE.
 
 David Hanson / drh@microsoft.com / http://www.research.microsoft.com/~drh/
-$Id$
+$Id: CPYRIGHT,v 1.2 1997/11/04 22:31:40 drh Exp $
 */
 
-/* $Id$ */
+/* $Id: H:/drh/idioms/book/RCS/arena.doc,v 1.10 1997/02/21 19:45:19 drh Exp $ */
 
 #ifndef _CII_ARENA_H
 #define _CII_ARENA_H
