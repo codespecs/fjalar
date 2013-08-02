@@ -110,13 +110,12 @@ static void openTheDtraceFile(void) {
 // else: --- (DEFAULT)
 //   Create a dtrace file and initialize both decls_fp and dtrace_fp
 //   to point to it
-static char createDeclsAndDtraceFiles(char* appname)
+static void createDeclsAndDtraceFiles(char* appname)
 {
   char* dirname = 0;
   char* filename = 0;
   char* newpath_decls = 0;
   char* newpath_dtrace;
-  int success = 0;
   SysRes res;
 
   // Free VisitedStructsTable if it has been allocated
@@ -132,7 +131,6 @@ static char createDeclsAndDtraceFiles(char* appname)
   if (!splitDirectoryAndFilename(appname, &dirname, &filename))
     {
       printf( "Failed to parse path: %s\n", appname);
-      return 0;
     }
 
   DPRINTF("**************\ndirname=%s, filename=%s\n***********\n",
@@ -209,11 +207,25 @@ static char createDeclsAndDtraceFiles(char* appname)
 
   // Step 4: Open the .decls file for writing
   if (actually_output_separate_decls_dtrace) {
-    success = (decls_fp = fopen(newpath_decls, "w")) != 0;
+    // add support for decls file output to stdout  (markro)  
+    if VG_STREQ(newpath_decls, "-") {
+      SysRes sr = VG_(dup)(1);
+      int decls_fd = sr_Res(sr);
+      /* Check sr.isError? */
+      decls_fp = fdopen(decls_fd, "w");
+      if (decls_fp) {
+        // If we're debugging, turn off buffering to get commingled output. 
+        if (kvasir_print_debug_info) {
+          setNOBUF(decls_fp);
+        }    
+      }
+    } else {
+      decls_fp = fopen(newpath_decls, "w");
+    }
 
-    if (!success)
-      printf( "Failed to open %s for declarations: %s\n",
-		   newpath_decls, strerror(errno));
+    if (!decls_fp)
+      printf("Failed to open %s for declarations: %s\n",
+             newpath_decls, strerror(errno));
   }
   else { // Default
     openTheDtraceFile();
@@ -243,8 +255,6 @@ static char createDeclsAndDtraceFiles(char* appname)
       VG_(free)(newpath_dtrace);
     }
   }
-
-  return success;
 }
 
 
