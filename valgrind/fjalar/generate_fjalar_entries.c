@@ -2400,7 +2400,6 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 			      0,0,0,0,0,0,0,1,
                               0);
 
-
   if (paramPtr->dwarf_stack_size > 0) {
     unsigned int i;
     FJALAR_DPRINTF("\tCopying over DWARF Location stack\n");
@@ -2505,6 +2504,7 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
 			      0,0,0,0,0,0,0,0,
                               getDeclaredFile(dwarfVariableEntry->comp_unit, variablePtr->decl_file));
 
+  FJALAR_DPRINTF("  set locationType FP_OFFSET\n");
   varPtr->locationType = FP_OFFSET_LOCATION;
   varPtr->byteOffset = variablePtr->offset;
 }

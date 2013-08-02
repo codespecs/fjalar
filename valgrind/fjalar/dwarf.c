@@ -1111,7 +1111,10 @@ decode_location_expression (unsigned char * data,
 	case DW_OP_breg30:
 	case DW_OP_breg31:
           const_data = read_sleb128 (data, &bytes_read);
-          //printf("=>DW_OP_breg: %s, %d, %p\n",dwarf_vmatoa("d",const_data),ok_to_harvest,ll);
+          if (ok_to_print) {
+              printf("=>DW_OP_breg: %s, %d, %p\n",
+                      dwarf_vmatoa("d",const_data),ok_to_harvest,ll);
+          }
           if (ok_to_harvest) {
               if(ll) {
                 ll->atom_offset = const_data;
@@ -1144,7 +1147,10 @@ decode_location_expression (unsigned char * data,
 
 	case DW_OP_fbreg:
           const_data = read_sleb128 (data, &bytes_read);
-          //printf("=>DW_OP_fbreg: %s, %d, %p\n",dwarf_vmatoa("d",const_data),ok_to_harvest,ll);
+          if (ok_to_print) {
+              printf("=>DW_OP_fbreg: %s, %d, %p\n",
+                      dwarf_vmatoa("d",const_data),ok_to_harvest,ll);
+          }
           if (ok_to_harvest) {
               if(ll) {
                 ll->atom_offset = const_data;
