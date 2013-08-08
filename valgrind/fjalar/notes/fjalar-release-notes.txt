@@ -1,7 +1,19 @@
 Instructions for releasing Fjalar stand-alone as a package
 by Philip Guo
 
-These are now made somewhat obsolete by $INV/scripts/make-fjalar-release.sh
+Note that Fjalar is distributed in two ways:
+ * together with Kvasir and DynComp, tools built on top of Fjalar.
+   This is part of the Daikon distribution.
+   This corresponds to the fjalar repostiory, which contains Fjalar,
+   Kvasir, and DynComp.
+ * without Kvasir and DynComp.
+   These instructions describe how to make the latter release.
+
+[TODO: when making a release, update fjalar_include.h.txt and 
+fjalar_tool.h.txt in this directory.]
+
+
+These are now made somewhat obsolete by daikon/scripts/make-fjalar-release.sh
 
 - Copy over the entire valgrind-3 directory and all sub-directories
 into a folder and cd there.
