@@ -1,0 +1,153 @@
+Dyncomp Merge Utilities
+Robert Rudd
+
+Last updated: 2009-12-29
+
+Introduction
+~~~~~~~~~~~~
+This directory contains a set of python scripts to assist in
+understanding Dyncomp's produced abstract type groups;
+specifically, these scripts will allow you to see the set of
+interactions that caused two variables to be inferred as the same
+abstract type.
+
+Requirements
+~~~~~~~~~~~~
+This document assumes you have both Daikon and Kvasir correctly
+installed, please see:
+
+http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html 
+
+for more information regarding Daikon's installation. Specifically,
+this document assumes that a $DAIKONDIR environmental variable exists
+and points to Daikon's parent directory.
+
+Additionally this document assumes you have an understanding of
+how to run Kvasir/Dyncomp on C/C++ programs, and a basic
+understanding of Dyncomp's abstract type inference algorithms. Please
+see the above document for more information on these topics.
+
+Detecting relevant interactions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The goal of these scripts is to produce a list of all interactions
+Dyncomp has observed which played some part in Dyncomp's inference of
+two variables being of the same abstract type. An interaction is any
+operation which involves multiple values. 
+
+There are three steps for producing these interactions:
+
+1. Run Kvasir with Dyncomp on a target C/C++ program with tracing
+turned on to produce a trace file.
+2. Run merge_tracker.py on the produced trace file to create an
+interaction database.
+3. Run merge_explorer.py with the two variables as input to see all
+relevant interactions between them.
+
+
+Example run
+~~~~~~~~~~~
+
+1. Change to the directory containing the program.
+
+       cd $DAIKONDIR/examples/c-examples/wordplay     
+
+
+2. Compile the program with DWARF-2 debugging information enabled (and all optimizations disabled).
+
+       gcc -gdwarf-2 -O0 wordplay.c -o wordplay
+     
+
+3. Run Kvasir with Dyncomp with tracing turned on
+
+       kvasir-dtrace --with-dyncomp --dyncomp-trace ./wordplay -f words.txt 'daikon dynamic invariant detector' > wordplay.trace 2>&1
+
+
+4. Run merge_tracker on the produced trace file     
+
+       python $DAIKONDIR/kvasir/fjalar/tools/merge_tracker.py wordplay.trace wordplay.db
+
+
+5. Run merge_explorer with --dump-var-names to see all the variable
+names. Global variables will be prefixed with a '/' and formal
+parameters will be suffixed with '.-' followed by the name of their
+function.
+
+       python $DAIKONDIR/kvasir/fjalar/tools/merge_explorer.py -f wordplay.db  --dump-var-names
+
+
+6. Run merge_explorer with -S <VARIABLE_ONE> and -T <VARIABLE_TWO>
+to see the interactions between the VARIABLE_ONE and VARIABLE_TWO.
+
+       python $DAIKONDIR/kvasir/fjalar/tools/merge_explorer.py -f wordplay.db  -S '/words2' -T '/ncount'
+
+The output should be:
+
+       [[MergeEdge] 5019154 -> 4924555 (Function: None, sourceInfo: 0x401907 (0x401907: main (wordplay.c:540))]
+ 
+       Path found between /words2 - 5019154 (Function - ..alphabetic() (ENTER) invocation 53) and /ncount - 4924555 (Function - ..alphabetic() (ENTER)                                    invocation 5).
+  
+       5019154 -> 4924555 - [0x401907 (0x401907: main (wordplay.c:540)]
+ 
+
+Indicating that line 540 of wordplay.c may have played a role in the
+merging of these two variables. Line 540 has a comparison between a
+local variable j and ncount, causing Dyncomp to infer j and ncount are
+of the same abstract type. On the next line we see j being used to
+index into the words2 array, causing Dyncomp to infer j and words2 are
+of the same abstract type. As abstract type groups are transitive,
+words2 and ncount are now ocnsidered of the same abstract type. these 2
+lines are one possible cause of the merging of these two variables'
+abstract type groups.
+
+Unfortunately, due to the nature of the inference algorithm, this tool
+will rarely be able to exactly point out all relevant interactions,
+thus its results are more useful as a way to find potentially
+interesting interaction sites, as opposed to something that paints a
+complete picture. In general, the smaller the abstract type group the
+two variables are in, the more likely the tools results will be relevant.
+
+Files
+~~~~~
+merge_tracker.py - Script for parsing a trace file and creating a
+		   merge database. A merge database is simply a set of
+		   pickled (pickle is the name of python's standard
+		   serialization library) python data structures.
+merge_explorer.py - Script for querying for interaction paths between
+		    variables. Also supports listing all variables
+merge_utils.py - Miscellaneous data structures used by the previous 2
+scripts.
+
+merge_tracker.py Usage
+~~~~~~~~~~~~~~~~~~~~~~
+merge_tracker input-file output-db 
+
+input-file - A Dyncomp produced trace file. If "-" is passed as the
+	     input file, merge_tracker will read from standard input.
+
+output-db -  Output merge database file, to be used by
+             merge_explorer.py
+
+merge_explorer.py Usage
+~~~~~~~~~~~~~~~~~~~~~~~
+merge_explorer.py -f db_file [options]
+
+  -h, --help
+  Show help message
+
+  -f DB_FILE, --file=DB_FILE
+  Merge database generated by merge_tracker
+
+  -S SRC_VAR, --source=SRC_VAR
+  Regular expression matching variable of interest
+
+  -T TARGET_VAR, --target=TARGET_VAR
+  Regular expression matching variables of interest
+
+  -d, --dump-var-names       
+  Dumps a list of all variables.
+
+  -D, --dump-var-info
+  Dumps a list of all variables and their associated tags. PRODUCES A
+  LOT OF TEXT.
+
+

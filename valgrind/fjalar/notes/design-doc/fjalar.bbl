@@ -1,0 +1,33 @@
+\newcommand{\noopsort}[1]{} \newcommand{\printfirst}[2]{#1}
+  \newcommand{\singleletter}[1]{#1} \newcommand{\switchargs}[2]{#2#1}
+\begin{thebibliography}{1}
+
+\bibitem{Guo2006}
+Philip~Jia Guo.
+\newblock A scalable mixed-level approach to dynamic analysis of {C} and {C++}
+  programs.
+\newblock Master's thesis, MIT Department of Electrical Engineering and
+  Computer Science, Cambridge, MA, May~5, 2006.
+
+\bibitem{nethercote-shadow}
+N.~Nethercote and J.~Seward.
+\newblock {How to shadow every byte of memory used by a program}.
+
+\bibitem{nethercote2007valgrind}
+N.~Nethercote and J.~Seward.
+\newblock {Valgrind: a framework for heavyweight dynamic binary
+  instrumentation}.
+\newblock {\em ACM SIGPLAN Notices}, 42(6):100, 2007.
+
+\bibitem{rotithor1999measurement}
+H.~Rotithor, K.~Harris, and M.~Davis.
+\newblock {Measurement and Analysis of C and C++ Performance}.
+\newblock {\em Digital Technical Journal}, 10(1):32--47, 1999.
+
+\bibitem{silverstein1993dwarf}
+J.~Silverstein.
+\newblock {DWARF Debugging Information Format}.
+\newblock {\em Proposed Standard, UNIX International Programming Languages
+  Special Interest Group}, 1993.
+
+\end{thebibliography}

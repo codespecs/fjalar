@@ -1,0 +1,16 @@
+# Release Makefile for Fjalar
+all: install
+
+install: fjalar_source/Makefile
+	$(MAKE) -C fjalar_source
+	$(MAKE) -C fjalar_source install
+
+clean: fjalar_source/Makefile
+	$(MAKE) -C fjalar_source clean
+	\rm -rf inst
+rebuild_tool: 
+	cd fjalar_source && ./configure --prefix=`pwd`/../inst
+	$(MAKE) install
+
+fjalar_source/Makefile:
+	cd fjalar_source && ./configure --prefix=`pwd`/../inst
