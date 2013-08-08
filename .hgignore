@@ -518,7 +518,7 @@ valgrind/fjalar/doxy.config
 valgrind/fjalar/html
 valgrind/fjalar/rundoxy
 
-# Ignore files shell scripts for compiler fjalar
+# Ignore shell scripts for compiling fjalar
 valgrind/fjalar/*.sh
 
 # 
