@@ -1,0 +1,116 @@
+This file contains some tasks that we have no immediate plans for
+implementing but would like to see done at some point.
+
+Last updated: 2009-09-14
+
+From Philip Guo (also listed on the Fjalar web page):
+
+* Fjalar currently only supports traversals to variables that are
+  reachable from globals and function formal parameters and return
+  values. It would not be too difficult to extend support to local
+  variables if needed.
+
+* We have done extensive testing on C programs but have not tested
+  many C++ programs. We support all of the important core C++
+  features, but bug fixes and support for additional features are
+  desirable.
+  ** Robert Rudd is currently working on testing Fjalar/Kvasir with large
+     C++ programs
+
+* We would like to design and implement a more general method for
+  precisely controlling how to traverse inside of data structures at
+  run time, perhaps implemented in the form of a query language
+
+* We would like to extend Fjalar to work on additional platforms that
+  Valgrind now supports, such as the PowerPC. 
+  ** Robert Rudd is currently working on AMD64 port.
+
+
+Code maintenance related:
+
+* DC_outputDeclsAtEnd is essentially the same function as
+   outputDeclsFile in decls-output.c. I understand that the reason for
+   their separation is most likely due to the need of Dyncomp to print
+   decls files at the end of a dtrace run as opposed to before, but
+   this code duplication seems unnecessary
+
+* Our in-tree version of readelf could use an update. readelf is a
+   binary in GNU binutils for read ELF binaries. It can be used to
+   output the contents of the DWARF debugging sections of an ELF
+   binary into a textual form. We currently hook most of text output
+   functions to harvest relevant data structure for Fjalar. Our
+   in-tree readelf is about 4 years out of sync with upstream. There's
+   not a terrible urgency to upgrade this as readelf updates are
+   usually infrequent and uninteresting, however it's always nice to
+   keep things up to date. Also, we never know when an interesting
+   DWARF feature will begin being used that is unsupported by our
+   current version of readelf (It's worth noting that has yet to occur)
+
+Features
+
+* Get Kvasir to run on optimized binaries.
+  The recent switch to location lists by GCC has provided sufficient
+  information for Fjalar/Kvasir to determine the value of variables
+  in highly optimized programs. GCC, at it's discretion, can provide
+  the location of a variable in the form of a location list, which is
+  a mapping between instructions from the program and a set of DWARF
+  operations which can be used to determine the location of the
+  variable. Location list support has been implemented for the
+  frame_base of a function (which DWARF uses to provide location
+  information for stack variables). It would be a small amount of
+  work to adapt this code in general to all variables. Additionally,
+  the frame_base calculation in fjalar_main.c assumed that the
+  location list maps instructions to an architectural registers,
+  there is no reason that the location list could not map to an
+  arbitrary DWARF expression like it does for normal variables.
+
+* Improved support for non-local exits.
+  Fjalar currently has minimal support for non-local exits such as
+  setjmp/longjmp in C or C++ Exceptions. Currently Fjalar maintains a
+  function stack as it's primary source of information on the current
+  execution state of the program. All fjalar exit handlers have an
+  associate function. When the exit handler is called it attempts to
+  find it's associated function in the function stack. When there are
+  no non-local exits, this will be the function at the top of the
+  stack. If there is a non-local exit, it will simply pop functions
+  until it finds it's function. This is, conceptually, similar to the
+  process the C or C++ runtime environments perform when handling
+  non-local exits. In the case of Kvasir, this causes no program
+  point exit to be printed for this exit. Daikon will then ignore 
+  any program point entries without an accompanying exit.
+
+  Ideally, however, we would like to print the state of the program
+  point at the time of exit. This is somewhat difficult as the
+  constructs uses to achieve non-local exits are all language-level
+  constructs and are not easily identified in the final assembly (or
+  VEX IR). Currently we only find out about a non-local exit when we
+  hit a proper local-exit for another function we've instrumented.
+
+  Stephen McCamant came up with an idea to properly detect a
+  non-local exit. Fjalar works by  instrumenting the location of the
+  ret instruction. However, there is another way to detect that a 
+  function has been exited. Function return on the x86 traditionally 
+  involves a ret instruction. this instruction pops a return address
+  off the top   of the stack into %{e,r}ip and jumps to it. The key point
+  is this removal of the return address from the stack. We can view
+  the removal of a function's return address from the position 2
+  bytes above the frame pointer(which we should have stored in the
+  FunctionExecutionState) as an exit. 
+
+  We would need to modify Memcheck's code for monitoring the stack
+  pointer and be sure to take notice of any possible return addresses
+  being popped. If we detect such a situation, we manually call into
+  Fjalar's exit handler for the function. 
+  NOTE: A LOT of implementation details have not been determined. Some
+  thought will need to be put into what structure we will keep the
+  function return address locations in and how to ensure we don't
+  detect spurious exits. Additionally, since this will be run at
+  every manipulation of the %{e,r}sp, this could has some performance
+  considerations.
+
+* Investigate Dyncomp speedups
+  Programs run under Dyncomp tend to be slower by an order of
+  magnitude over programs run under Fjalar/Memcheck. It would be nice
+  if  we could get this down. A good start would be finding any
+  hotspots in the Dyncomp code
+

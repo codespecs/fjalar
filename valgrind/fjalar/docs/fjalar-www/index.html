@@ -1,0 +1,447 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-15" />
+<title>Fjalar: A Dynamic Analysis Framework for C and C++ Programs</title>
+<link rel="StyleSheet" href="fjalar_style.css" />
+</head>
+
+<body>
+
+<h1>Fjalar: A Dynamic Analysis Framework for C and C++ Programs</h1>
+
+<p> Fjalar is a framework that facilitates the construction of dynamic
+analysis tools for programs written in C and C++.  It is often
+difficult to build robust and scalable dynamic analyses for C and C++
+programs due to the lack of memory and type safety in these languages.
+For instance, the run time system does not keep track of array sizes
+or whether values have been initialized.  Existing frameworks based on
+source-to-source transformation often suffer from scalability and
+robustness problems due to the difficulty of adding instrumentation
+source code to track memory usage and initialization.  Frameworks that
+operate purely at the binary level cannot provide rich language-level
+information about data structures that are useful for many kinds of
+analyses.  Fjalar combines aspects of both source- and binary-based
+approaches and allows tools built upon it to safely access rich
+information at both the language and machine levels during run
+time.</p>
+
+<p>Fjalar can be used to build tools that dynamically instrument
+un-modified x86/Linux executables compiled with DWARF2 debugging
+information.  The ability to operate on executables rather than source
+code places less burden on the tool's users, because there is no need
+to deal with complex configuration and Makefile options to determine
+which source files to instrument.  It also achieves greater
+scalability by not having to deal with the difficulties of parsing and
+instrumenting complex C and C++ source code constructs.  Fjalar has
+been tested to work on executables of programs on the order of 1
+million lines of code, including <tt>gcc</tt>, <tt>xemacs</tt>,
+<tt>Apache</tt>, and <tt>CTAS</tt>.  However, because Fjalar is built
+upon the <a href="http://valgrind.org/">Valgrind</a> binary
+instrumentation framework, it shares many of Valgrind's limitations.
+In particular, Fjalar can only work on x86 and x86-64 executables on
+the Linux platform, and imposes around a 100X slowdown while executing
+the instrumented program.</p>
+
+<h2 id="features">Features</h2>
+
+<p>Here are some services that Fjalar provides to tools built upon it:</p>
+
+<ul>
+
+  <li><b>Rich compile-time information about data structures,
+  variables, and functions</b>
+
+  <p>Fjalar parses the debugging symbols,
+  filters out uninteresting and redundant data, and makes information
+  available to tools in a convenient format consisting of entries for
+  types, variables, and functions.</p>
+
+  <ul>
+
+    <li>Provides access to variable names, types, addresses, sizes for
+    static arrays, and visibility (e.g., file static, private member
+    variable)<p/></li>
+
+    <li>Associates struct/class types with their member variables to
+    enable easy traversal within nested and recursively-defined data
+    structures<p/></li>
+
+    <li>Simplifies typedefs by finding their referred-to types,
+    creates names for unnamed structs/classes, and performs other
+    misc. tasks to disambiguate obscure usage of C and C++
+    syntax<p/></li>
+
+    <li>Provides access to function names (including mangled names for
+    C++), addresses, prototypes, and visibility, and associates
+	parameters and return values with their types<p/></li>
+
+    <li>Creates unique names for global variables and functions to
+	eliminate ambiguity for tools that perform whole-program
+	analysis<p/></li>
+
+    <li>Supports C++ features such as overloaded functions, reference
+	parameters, multiple class inheritance, and member functions<p/></li>
+
+      <li>Outputs compile-time program structure in XML format for
+      debugging, program understanding, and further processing.  Here
+      is a <a href="fjalar_stack.xml">sample XML file</a>
+      showing a C++ stack class and its test program.</li>
+
+  </ul>
+  </li>
+
+  <li><b>Enables analysis code to run at arbitrary points during
+  program execution</b>
+
+  <ul>
+
+      <li>The default functionality allows tools to run analysis code
+      at function entrances and exits.  If necessary, though, a tool
+      could use Valgrind's API to specify other times when its code
+      should be run.<p/></li>
+
+      <li>Allows tools or users to specify the functions at whose
+      entrance and exit points the analysis code should run.  This
+      allows analyses to focus on selected functions within a large
+      program.<p/></li>
+
+      <li>Maintains function execution states at run time, including
+      register values and a copy of the function's stack
+      frame.<p/></li>
+
+    </ul>
+    </li>
+
+    <li><b>Run-time memory initialization and array size
+    information</b>
+
+     <ul>
+
+      <li>Given an address at runtime, determines whether that address
+      refers to an initialized value.  This can help tools to ignore
+      garbage values, which never provide useful information and
+      often hinder the precision of analyses.<p/></li>
+
+      <li>Automatically determines array sizes at run time.  This
+      feature allows tools to safely traverse inside of arrays of all
+      types without risk of crashing the target program.  Given an
+      address at run time, Fjalar can determine how many elements of a
+      given type this address refers to.<p/></li>
+
+    </ul>
+  </li>
+
+    <li><b>Safe recursive traversals within data structures and
+    arrays</b>
+
+    <p>
+	Fjalar allows analyses to traverse through data structures at
+	run time and perform operations based on observed
+	values.</p>
+
+    <ul>
+
+      <li>Provides support for traversing inside of structs and
+      arrays, including performing recursive traversals of structs
+      within structs.  This service provides tools with pointers to
+      every field of a struct and every array element along with the
+      corresponding type information.  These pointers are guaranteed
+      to point to allocated and initialized memory locations.
+      Callback functions passed into the Fjalar traversal routines
+      allow tools to record, analyze, or modify values at run
+      time.<p/></li>
+
+      <li>Generates unique names for variables derived from traversing
+      inside of structures and arrays.  These names can be parsed more
+      or less as
+      valid C expressions (e.g., <tt>foo->bar.baz[1]</tt>).<p/></li>
+
+      <li>Allows tools to control how deep to traverse inside of
+      structs and whether to treat specified pointer variables as
+      pointers to a single element or to an array of elements.  Also
+      allows tools to coerce pointers to a specified type.<p/></li>
+
+      <li>Allows tools or users to specify a list of variables to
+      trace, which is useful for focusing analyses on certain data
+      structures within the target program.<p/></li>
+
+    </ul>
+  </li>
+
+  <li><b>All instrumentation functionality provided by Valgrind</b>
+  <p/> Valgrind provides an API and plug-in architecture for creating
+  a variety of dynamic analysis tools.  Fjalar allows tool builders to
+  use all of Valgrind's features in addition to its own
+  services.<p/></li>
+
+</ul>
+
+
+<h2 id="implementation">Implementation</h2>
+
+<p>
+Fjalar is implemented in C as a plug-in tool for the <a
+href="http://valgrind.org/">Valgrind</a> dynamic binary
+instrumentation framework.  It uses Valgrind to instrument the target
+program's executable with statements to pause execution at certain
+points.  It uses the Valgrind Memcheck tool to ensure memory safety
+during the analysis by providing an indication of which memory
+locations hold allocated and/or initialized values.  It obtains
+language-level information by parsing debugging information in the
+DWARF2 format using the Readelf program from the <a
+href="http://www.gnu.org/software/binutils/">GNU Binutils</a>
+collection.
+</p>
+
+<h2>Download</h2>
+
+<p>Download <a href="fjalar-1.4.tar.gz">Fjalar 1.4</a> (4.8 MB) - 
+Newest version includes improvements for handling C++ and multi-threaded
+programs. AMD64 support has also been improved. Archive contains
+source code for Valgrind, Fjalar, and a basic tool built upon
+Fjalar (Released Oct 05, 2009)</p>
+
+<p>Older versions:
+</p>
+
+<ul>
+  <li>
+<a href="fjalar-1.3.tar.gz">Fjalar 1.3</a> (2.7 MB) - (Released August 30, 2007)
+  </li>
+
+  <li>
+<a href="fjalar-1.2.tar.gz">Fjalar 1.2</a> (4.0 MB) - (Released May 26, 2006)
+  </li>
+
+  <li>
+<a href="fjalar-1.1.tar.gz">Fjalar 1.1</a> (3.9 MB) - (Released Mar. 21, 2006)
+  </li>
+
+  <li>
+<a href="fjalar-1.0.tar.gz">Fjalar 1.0</a> (3.2 MB) - (Released Dec. 16, 2005)
+  </li>
+</ul>
+
+
+<p>View the <a href="fjalar_manual.htm">Fjalar Programmer's Manual</a>
+for documentation related to implementing Fjalar tools.</p>
+
+<p>These two header files comprise the interface between Fjalar and
+its tools and also serve as documentation: <b><tt><a
+href="fjalar_include.h.txt">fjalar_include.h</a></tt></b> and <b><tt><a
+href="fjalar_tool.h.txt">fjalar_tool.h</a></tt></b>
+</p>
+
+<p>Fjalar is also distributed as part of the Kvasir and DynComp
+tools within the <a
+href="http://pag.csail.mit.edu/daikon/download/">Daikon
+distribution</a>.  This is an example of using Fjalar to build two
+moderately-sized tools.</p>
+
+<h2>Papers</h2>
+
+<ul>
+
+<li>
+
+  Philip J. Guo. <i>A Scalable Mixed-Level Approach
+  to Dynamic Analysis of C and C++
+  Programs</i>. Master of Engineering thesis,
+  Department of Electrical Engineering and Computer
+  Science, Massachusetts Institute of Technology,
+  May 2006.
+
+(<a
+href="http://groups.csail.mit.edu/pag/pubs/guo-mixedlevel-mengthesis-abstract.html">View</a>)
+
+<p/>
+</li>
+
+<li>
+Philip Guo and Stephen McCamant. <i>A Scalable Mixed-Level
+Framework for Dynamic Analysis of C/C++ Programs</i>.  MIT CSAIL Student
+Workshop, September 2005.
+
+(<a href="fjalar_csw2005.pdf">View PDF</a>)
+
+<p/>
+</li>
+
+</ul>
+
+
+<h2>Applications of Fjalar</h2>
+
+<p>
+We have used Fjalar to build two dynamic analysis tools.
+</p>
+
+<!-- <b>(TODO: Add
+a third trivial tool for Fjalar that demonstrates some small
+functionality that can be implemented in a few lines using Fjalar)</b>
+-->
+
+<h3>Kvasir Value Profiling Tool</h3>
+
+<p>Kvasir traverses through data structures at run time and outputs
+their values to a trace file.  The main role of Kvasir is to serve as
+a C/C++ front end for the Daikon dynamic invariant detector.  Kvasir
+provides Daikon with value traces, and Daikon infers likely invariants
+over the data structures observed in those traces.</p>
+
+<ul>
+
+<!--
+<li>
+MIT CSAIL Research Abstracts: 
+<a href="http://www.stanford.edu/~pgbovine/projects/pgbovinesmcc.pdf">2004</a>, <a
+href="http://publications.csail.mit.edu/abstracts/abstracts05/pgbovine/pgbovine.html">2005</a>
+</li>
+-->
+
+
+<li>
+<a href="http://pag.csail.mit.edu/daikon/download/">Download Kvasir</a>
+with the Daikon distribution
+<p/>
+</li>
+
+<li>
+<a
+href="http://pag.csail.mit.edu/daikon/download/doc/daikon.html#Kvasir">
+	  Kvasir documentation</a> within the Daikon User Manual
+<p/>
+</li>
+
+</ul>
+
+<h3>DynComp Dynamic Abstract Type Inference Tool</h3>
+
+<p>DynComp computes which variables are likely to be used in a related
+manner by the programmer.  It infers a finer set of types for
+variables called <i>abstract types</i> such that all variables that
+belong to the same abstract type have held values that interacted at
+some point during execution (i.e., via arithmetic or comparisons).
+This finer type information is useful for program understanding, bug
+finding, debugging, abstraction violation detection, and aiding other
+program analysis tools.</p>
+
+<ul>
+
+<!--
+<li>
+MIT CSAIL
+Research Abstracts:
+
+<a
+href="http://publications.csail.mit.edu/abstracts/abstracts05/smcc3/smcc3.html">2005</a>,
+<a
+href="http://publications.csail.mit.edu/abstracts/abstracts06/pgbovine2/pgbovine2.html">2006</a>,
+<a
+href="http://publications.csail.mit.edu/abstracts/abstracts07/smcc2/smcc2.html">2007</a>
+
+<p/>
+</li>
+-->
+
+<li>
+Philip Guo and Stephen McCamant.  <i>Dynamic Variable Comparability
+Analysis for C and C++ Programs</i>.  MIT CSAIL Student Workshop,
+September 2005.
+
+(<a href="dyncomp_csw2005.pdf">View PDF</a>)
+
+<p/>
+</li>
+
+<li>Philip J. Guo, Jeff H. Perkins, Stephen McCamant, and Michael
+D. Ernst.  <i>Dynamic Inference of Abstract Types</i>. In
+<i>Proceedings of the 2006 International Symposium on Software Testing
+and Analysis</i>, July 2006. 
+(<a href="http://groups.csail.mit.edu/pag/pubs/abstract-type-issta2006-abstract.html">View</a>)
+
+<p/>
+</li>
+
+<li>
+<a href="http://pag.csail.mit.edu/daikon/download/">Download DynComp</a>
+with the Daikon distribution
+<p/>
+</li>
+
+</ul>
+
+
+<h2>Ongoing and Future Work</h2>
+
+<ul>
+
+      <li>Fjalar currently only supports traversals to variables that
+      are reachable from globals and function formal parameters and
+      return values.  It would not be too difficult to extend support
+      to local variables if needed.<p/></li>
+
+      <li>We have done extensive testing on C programs but have not
+      tested many C++ programs.  We support all of the important core
+      C++ features, but bug fixes and support for additional features
+      are desirable.<p/></li>
+
+      <li>We would like to design and implement a more general method
+      for precisely controlling how to traverse inside of data
+      structures at run time, perhaps implemented in the form of a
+      query language<p/></li>
+
+      <li>We would like to extend Fjalar to work on additional
+      platforms that Valgrind now supports, such as the PowerPC.<p/></li>
+
+</ul>
+
+<h2>Related projects</h2>
+<ul>
+  <li><a href="http://valgrind.org/">Valgrind</a> - The dynamic binary
+  instrumentation framework that Fjalar is built upon</li>
+  <li><a href="http://www.pintool.org/">PIN</a> -
+  Another dynamic binary instrumentation framework</li>
+  <li><a href="http://reality.sgiweb.org/davea/dwarf.html">libdwarf</a> -
+  A library for parsing DWARF debugging information</li>
+  <li>readelf - program to display information about ELF format object files;
+  part of <a href="http://www.gnu.org/software/binutils/">GNU binutils</a></li>
+  <li><a href="http://hal.cs.berkeley.edu/cil/">CIL</a> -
+  C front-end and simplifier that many source analysis and transformation tools build
+  upon</li>
+
+</ul>
+
+<h2>People</h2>
+
+<p>
+Please send bug reports and feature requests to
+<a href="mailto:daikon-developers@lists.csail.mit.edu">daikon-developers@lists.csail.mit.edu</a>.
+</p>
+
+<ul>
+  <li><a href="http://homes.cs.washington.edu/~mernst/">Michael Ernst</a></li>
+  <li><a href="http://alum.mit.edu/www/pgbovine/">Philip Guo</a></li>
+  <li><a href="http://www.cs.berkeley.edu/~smcc/">Stephen McCamant</a></li>
+  <li>Robert Rudd</li>
+</ul>
+
+<h2>About the name</h2>
+
+<p>
+<i>Fjalar</i> is the name of a dwarf in Norse mythology.  This name
+was inspired both by the DWARF debugging information format and by the
+name of the Valgrind framework.  <i>Valgrind</i> is the name of a
+legendary gate from Norse mythology.
+</p>
+
+<hr />
+
+<a href="http://alum.mit.edu/www/pgbovine/">Philip Guo</a> &lt;pgbovine <!--boo-->(@) <!--foo-->alum <!--bar-->(.) <!--baz-->mit <!--void-->(.) <!--star-->edu&gt;
+<br/>
+<i>Last modified on October 6th, 2009</i>
+
+</body>
+</html>
