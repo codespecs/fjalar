@@ -69,6 +69,7 @@ drd/tests/annotate_ignore_write
 drd/tests/annotate_publish_hg
 drd/tests/annotate_rwlock
 drd/tests/annotate_smart_pointer
+drd/tests/annotate_smart_pointer2
 drd/tests/annotate_static
 drd/tests/annotate_trace_memory
 drd/tests/atomic_var
@@ -135,9 +136,13 @@ exp-sgcheck/tests/preen_invars
 exp-sgcheck/tests/stackerr
 gdbserver_tests/clean_after_fork
 gdbserver_tests/fork_chain
+gdbserver_tests/garbage
 gdbserver_tests/gdb*
 gdbserver_tests/main_pic
+gdbserver_tests/mcinfcall
+gdbserver_tests/mcmain
 gdbserver_tests/passsigalrm
+gdbserver_tests/progB
 gdbserver_tests/sleepers
 gdbserver_tests/t
 gdbserver_tests/vgdb*
