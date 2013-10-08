@@ -1,28 +1,3 @@
-Fjalar, a dynamic analysis framework for C/C++ programs
-README file
-Philip Guo
-Robert Rudd
-
-Last updated: 2009-06-28
-
-This directory contains two related projects, Fjalar and Kvasir.
-
-Fjalar appears in the ./fjalar directory.
-Please consult the Fjalar webpage for information about the Fjalar
-framework and tools.  A local copy of the Fjalar webpage appears here:
-  ./fjalar/docs/fjalar-www/index.html
-For developer documentation, start here:
-  ./fjalar/README_DEVELOPERS
-
-Kvasir, a Daikon front end that is built upon Fjalar, appears in
-./fjalar/kvasir.
-Kvasir's user documentation appears in the Daikon user manual:
-  http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html#Kvasir
-
-The remainder of this file consists of the README file for Valgrind,
-on which Fjalar is based.
-
-===========================================================================
 
 Release notes for Valgrind
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
