@@ -6,7 +6,7 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of MemCheck, a heavyweight Valgrind tool for
+   This file is derived from MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
    Copyright (C) 2000-2012 Julian Seward 
@@ -6568,10 +6568,10 @@ static void mc_pre_clo_init(void)
    VG_(details_name)            ("kvasir");
    /* This next line is automatically updated by the toplevel Daikon
       distribution Makefile; be careful with its formatting -SMcC */
-   VG_(details_version)         ("4.7.1");
+   VG_(details_version)         ("4.7.3");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
-      "Copyright (C) 2004-2006, Philip Guo, MIT CSAIL Program Analysis Group");
+      "Copyright (C) 2004-2013, Philip Guo, MIT CSAIL Program Analysis Group");
    VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
 
    // PG - pgbovine - customize the fields above for each Fjalar tool
