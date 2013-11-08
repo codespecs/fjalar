@@ -1,9 +1,9 @@
 Source and destination overlap in memcpy(0x........, 0x........, 21)
-   at 0x........: memcpy (mc_replace_strmem.c:...)
+   at 0x........: memcpy@@GLIBC_2.14 (mc_replace_strmem.c:...)
    by 0x........: main (overlap.c:40)
 
 Source and destination overlap in memcpy(0x........, 0x........, 21)
-   at 0x........: memcpy (mc_replace_strmem.c:...)
+   at 0x........: memcpy@@GLIBC_2.14 (mc_replace_strmem.c:...)
    by 0x........: main (overlap.c:42)
 
 Source and destination overlap in strncpy(0x........, 0x........, 21)
