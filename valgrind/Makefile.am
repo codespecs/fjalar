@@ -120,6 +120,8 @@ all-local: default.supp
 
 clean-local:
 	rm -rf $(inplacedir)
+	rm -f config.guess
+	rm -f config.sub
 
 # Need config.h in the installed tree, since some files depend on it
 pkginclude_HEADERS = config.h
