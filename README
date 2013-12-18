@@ -21,5 +21,5 @@ For developer documentation, start here:
 Kvasir, a Daikon front end that is built upon Fjalar, appears in
 the ./valgrind/fjalar/kvasir directory.
 Kvasir's user documentation appears in the Daikon user manual:
-  http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html#Kvasir
+  http://plse.cs.washington.edu/daikon/download/doc/daikon.html#Kvasir
 
