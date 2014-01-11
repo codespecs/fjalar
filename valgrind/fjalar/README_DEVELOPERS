@@ -64,7 +64,7 @@ this will be named fjalar-amd64-linux.  This will contain the rest of
 Valgrind as well as Fjalar, Kvasir and DynComp.  The latter two are tools
 built on top of the Fjalar framework used in conjunction with the Daikon
 tool - see the Daikon user manual for more information:
-  http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html#Kvasir
+  http://plse.cs.washington.edu/daikon/download/doc/daikon.html#Kvasir
 
 Making a Release
 ----------------

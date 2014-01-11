@@ -16,7 +16,7 @@ Requirements
 This document assumes you have both Daikon and Kvasir correctly
 installed, please see:
 
-http://groups.csail.mit.edu/pag/daikon/download/doc/daikon.html 
+http://plse.cs.washington.edu/daikon/download/doc/daikon.html 
 
 for more information regarding Daikon's installation. Specifically,
 this document assumes that a $DAIKONDIR environmental variable exists
