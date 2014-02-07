@@ -17,6 +17,8 @@
    relevant for fjalar.
 */
 
+#include "my_libc.h"
+
 #include "fjalar_dwarf.h"
 #include "pub_tool_basics.h"      // for VG_ macros
 #include "pub_tool_libcprint.h"   // for VG_ printf macros

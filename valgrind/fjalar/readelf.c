@@ -699,13 +699,13 @@ dump_relocations (FILE * file, unsigned long rel_offset, unsigned long rel_size,
 
       if (is_32bit_elf)
 	{
-	  FJALAR_DPRINTF ("%8.8lx  %8.8lx ", offset, info);
+	  FJALAR_DPRINTF ("%8.8" BFD_VMA_FMT "x  %8.8" BFD_VMA_FMT "x ", offset, info);
 	}
       else
 	{
 	  FJALAR_DPRINTF (do_wide
-		  ? "%16.16lx  %16.16lx "
-		  : "%12.12lx  %12.12lx ",
+		  ? "%16.16" BFD_VMA_FMT "x  %16.16" BFD_VMA_FMT "x "
+		  : "%12.12" BFD_VMA_FMT "x  %12.12" BFD_VMA_FMT "x ",
 		  offset, info);
 	}
 
@@ -726,7 +726,7 @@ dump_relocations (FILE * file, unsigned long rel_offset, unsigned long rel_size,
 	}
 
       if (rtype == NULL)
- FJALAR_DPRINTF (_("unrecognized: %-7lx"), type);
+ FJALAR_DPRINTF (_("unrecognized: %-7" BFD_VMA_FMT "x"), type);
       else
  FJALAR_DPRINTF (do_wide ? "%-22.22s" : "%-17.17s", rtype);
 
