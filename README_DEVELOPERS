@@ -1,6 +1,6 @@
 Fjalar developer documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Develop documentation is located in ./valgrind/fjalar/README_DEVELOPERS.
+Developer documentation is located in ./valgrind/fjalar/README_DEVELOPERS.
 Additional developer's notes can be found in the ./valgrind/fjalar/notes
 directory.
 
