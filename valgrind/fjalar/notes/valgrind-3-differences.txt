@@ -1,0 +1,49 @@
+My observations of Valgrind 3 differences
+Philip J. Guo
+2005-04-12
+
+Diffs of mc_main.c
+
+New comment in 3.0:
+
+   There are actually 4 distinguished secondaries.  These are used to
+   represent a memory range which is either not addressable (validity
+   doesn't matter), addressable+not valid, addressable+valid.
+
+3.0 lacks these declarations:
+
+static void mc_fpu_read_check_SLOWLY ( Addr addr, Int size );
+static void mc_fpu_write_check_SLOWLY ( Addr addr, Int size );
+
+3.0 has #defines for distinguished secondary map size instead of
+having them hard-coded.
+
+'DSM' stands for distinguished secondary map
+
+3.0 uses a lot more macros such as PM_IDX and SM_OFF instead of
+explicit shifts and bit masks
+
+3.0 has support for 8-sized V bytes in addition to 1, 2, and 4
+(probably for anticipating 64-bit support)
+
+--------------------------------------------------------------------
+vex/pub/libvex_ir.h - contains IR type definitions
+
+Check out this regparms info:
+
+      regparms=n tells the back
+      end that the callee has been declared
+      "__attribute__((regparm(n)))".  On some targets (x86) the back end
+      will need to construct a non-standard sequence to call a function
+      declared like this.
+
+-------------------------------------------------------------------
+valgrind/include/tool.h
+
+This is like the old vg_skin.h and includes the stuff which tools
+would be interested in including.
+
+This provides a generic hash table as well as a generic skip list.  We
+could consider porting our data structures from Demsky's hash table to
+the 'official' Valgrind one for better compatibility and perhaps
+performance.

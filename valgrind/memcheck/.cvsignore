@@ -1,0 +1,5 @@
+Makefile
+.deps
+memcheck-x86-linux
+memcheck-amd64-linux
+*.so
