@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -36,6 +36,9 @@
 #ifndef __VEX_HOST_X86_DEFS_H
 #define __VEX_HOST_X86_DEFS_H
 
+#include "libvex_basictypes.h"
+#include "libvex.h"                      // VexArch
+#include "host_generic_regs.h"           // HReg
 
 /* --------- Registers. --------- */
 
@@ -103,7 +106,7 @@ typedef
    }
    X86CondCode;
 
-extern HChar* showX86CondCode ( X86CondCode );
+extern const HChar* showX86CondCode ( X86CondCode );
 
 
 /* --------- Memory address expressions (amodes). --------- */
@@ -246,7 +249,7 @@ typedef
    }
    X86UnaryOp;
 
-extern HChar* showX86UnaryOp ( X86UnaryOp );
+extern const HChar* showX86UnaryOp ( X86UnaryOp );
 
 
 /* --------- */
@@ -261,7 +264,7 @@ typedef
    }
    X86AluOp;
 
-extern HChar* showX86AluOp ( X86AluOp );
+extern const HChar* showX86AluOp ( X86AluOp );
 
 
 /* --------- */
@@ -272,7 +275,7 @@ typedef
    }
    X86ShiftOp;
 
-extern HChar* showX86ShiftOp ( X86ShiftOp );
+extern const HChar* showX86ShiftOp ( X86ShiftOp );
 
 
 /* --------- */
@@ -288,7 +291,7 @@ typedef
    }
    X86FpOp;
 
-extern HChar* showX86FpOp ( X86FpOp );
+extern const HChar* showX86FpOp ( X86FpOp );
 
 
 /* --------- */
@@ -331,7 +334,7 @@ typedef
    }
    X86SseOp;
 
-extern HChar* showX86SseOp ( X86SseOp );
+extern const HChar* showX86SseOp ( X86SseOp );
 
 
 /* --------- */
@@ -357,7 +360,7 @@ typedef
       Xin_Store,     /* store 16/8 bit value in memory */
       Xin_Set32,     /* convert condition code to 32-bit value */
       Xin_Bsfr32,    /* 32-bit bsf/bsr */
-      Xin_MFence,    /* mem fence (not just sse2, but sse0 and 1 too) */
+      Xin_MFence,    /* mem fence (not just sse2, but sse0 and 1/mmxext too) */
       Xin_ACAS,      /* 8/16/32-bit lock;cmpxchg */
       Xin_DACAS,     /* lock;cmpxchg8b (doubleword ACAS, 2 x 32-bit only) */
 
@@ -447,6 +450,7 @@ typedef
             X86CondCode cond;
             Addr32      target;
             Int         regparms; /* 0 .. 3 */
+            RetLoc      rloc;     /* where the return value will be */
          } Call;
          /* Update the guest EIP value, then exit requesting to chain
             to it.  May be conditional.  Urr, use of Addr32 implicitly
@@ -504,13 +508,13 @@ typedef
             HReg src;
             HReg dst;
          } Bsfr32;
-         /* Mem fence (not just sse2, but sse0 and 1 too).  In short,
-            an insn which flushes all preceding loads and stores as
-            much as possible before continuing.  On SSE2 we emit a
-            real "mfence", on SSE1 "sfence ; lock addl $0,0(%esp)" and
-            on SSE0 "lock addl $0,0(%esp)".  This insn therefore
-            carries the host's hwcaps so the assembler knows what to
-            emit. */
+         /* Mem fence (not just sse2, but sse0 and sse1/mmxext too).
+            In short, an insn which flushes all preceding loads and
+            stores as much as possible before continuing.  On SSE2
+            we emit a real "mfence", on SSE1 or the MMXEXT subset
+            "sfence ; lock addl $0,0(%esp)" and on SSE0
+            "lock addl $0,0(%esp)".  This insn therefore carries the
+            host's hwcaps so the assembler knows what to emit. */
          struct {
             UInt hwcaps;
          } MFence;
@@ -661,7 +665,7 @@ extern X86Instr* X86Instr_MulL      ( Bool syned, X86RM* );
 extern X86Instr* X86Instr_Div       ( Bool syned, X86RM* );
 extern X86Instr* X86Instr_Sh3232    ( X86ShiftOp, UInt amt, HReg src, HReg dst );
 extern X86Instr* X86Instr_Push      ( X86RMI* );
-extern X86Instr* X86Instr_Call      ( X86CondCode, Addr32, Int );
+extern X86Instr* X86Instr_Call      ( X86CondCode, Addr32, Int, RetLoc );
 extern X86Instr* X86Instr_XDirect   ( Addr32 dstGA, X86AMode* amEIP,
                                       X86CondCode cond, Bool toFastEP );
 extern X86Instr* X86Instr_XIndir    ( HReg dstGA, X86AMode* amEIP,

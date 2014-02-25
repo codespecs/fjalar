@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -158,7 +158,7 @@ HChar* private_LibVEX_alloc_last  = &temporary[N_TEMPORARY_BYTES-1];
 __attribute__((noreturn))
 void private_LibVEX_alloc_OOM(void)
 {
-   HChar* pool = "???";
+   const HChar* pool = "???";
    if (private_LibVEX_alloc_first == &temporary[0]) pool = "TEMP";
    if (private_LibVEX_alloc_first == &permanent[0]) pool = "PERM";
    vex_printf("VEX temporary storage exhausted.\n");
@@ -328,7 +328,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
       while (0)
 
 #  define PUTSTR(_str) \
-      do { HChar* _qq = _str; for (; *_qq; _qq++) PUT(*_qq); } \
+      do { const HChar* _qq = _str; for (; *_qq; _qq++) PUT(*_qq); } \
       while (0)
 
    const HChar* saved_format;
@@ -366,9 +366,14 @@ UInt vprintf_wrk ( void(*sink)(HChar),
          format++;
          padchar = '0';
       }
+      if (*format == '*') {
+         fwidth = va_arg(ap, Int);
+         format++;
+      } else {
       while (*format >= '0' && *format <= '9') {
          fwidth = fwidth * 10 + (*format - '0');
          format++;
+      }
       }
       if (*format == 'l') {
          format++;
@@ -380,7 +385,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
 
       switch (*format) {
          case 's': {
-            HChar* str = va_arg(ap, HChar*);
+            const HChar* str = va_arg(ap, HChar*);
             if (str == NULL)
                str = "(null)";
             len1 = len3 = 0;

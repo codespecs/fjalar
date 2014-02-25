@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -61,6 +61,12 @@
 #define VEX_TRC_JMP_SIGSEGV    87  /* deliver segv (SIGSEGV) before
                                       continuing */
 #define VEX_TRC_JMP_SIGBUS     93  /* deliver SIGBUS before continuing */
+
+#define VEX_TRC_JMP_SIGFPE_INTDIV     97  /* deliver SIGFPE (integer divide
+                                             by zero) before continuing */
+
+#define VEX_TRC_JMP_SIGFPE_INTOVF     99  /* deliver SIGFPE (integer overflow)
+                                             before continuing */
 
 #define VEX_TRC_JMP_EMWARN     63  /* deliver emulation warning before
                                       continuing */

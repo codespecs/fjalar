@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -58,7 +58,8 @@ typedef
       VexArchPPC32,
       VexArchPPC64,
       VexArchS390X,
-      VexArchMIPS32
+      VexArchMIPS32,
+      VexArchMIPS64
    }
    VexArch;
 
@@ -70,11 +71,12 @@ typedef
    combinations. */
 
 /* x86: baseline capability is Pentium-1 (FPU, MMX, but no SSE), with
-   cmpxchg8b. */
-#define VEX_HWCAPS_X86_SSE1   (1<<1)  /* SSE1 support (Pentium III) */
-#define VEX_HWCAPS_X86_SSE2   (1<<2)  /* SSE2 support (Pentium 4) */
-#define VEX_HWCAPS_X86_SSE3   (1<<3)  /* SSE3 support (>= Prescott) */
-#define VEX_HWCAPS_X86_LZCNT   (1<<4)  /* SSE4a LZCNT insn */
+   cmpxchg8b. MMXEXT is a special AMD only subset of SSE1 (Integer SSE). */
+#define VEX_HWCAPS_X86_MMXEXT  (1<<1)  /* A subset of SSE1 on early AMD */
+#define VEX_HWCAPS_X86_SSE1    (1<<2)  /* SSE1 support (Pentium III) */
+#define VEX_HWCAPS_X86_SSE2    (1<<3)  /* SSE2 support (Pentium 4) */
+#define VEX_HWCAPS_X86_SSE3    (1<<4)  /* SSE3 support (>= Prescott) */
+#define VEX_HWCAPS_X86_LZCNT   (1<<5)  /* SSE4a LZCNT insn */
 
 /* amd64: baseline capability is SSE2, with cmpxchg8b but not
    cmpxchg16b. */
@@ -82,6 +84,9 @@ typedef
 #define VEX_HWCAPS_AMD64_CX16  (1<<6)  /* cmpxchg16b support */
 #define VEX_HWCAPS_AMD64_LZCNT (1<<7)  /* SSE4a LZCNT insn */
 #define VEX_HWCAPS_AMD64_AVX   (1<<8)  /* AVX instructions */
+#define VEX_HWCAPS_AMD64_RDTSCP (1<<9)  /* RDTSCP instruction */
+#define VEX_HWCAPS_AMD64_BMI    (1<<10) /* BMI1 instructions */
+#define VEX_HWCAPS_AMD64_AVX2   (1<<11) /* AVX2 instructions */
 
 /* ppc32: baseline capability is integer only */
 #define VEX_HWCAPS_PPC32_F     (1<<8)  /* basic (non-optional) FP */
@@ -91,6 +96,7 @@ typedef
                                          (fres,frsqrte,fsel,stfiwx) */
 #define VEX_HWCAPS_PPC32_VX    (1<<12) /* Vector-scalar floating-point (VSX); implies ISA 2.06 or higher  */
 #define VEX_HWCAPS_PPC32_DFP   (1<<17) /* Decimal Floating Point (DFP) -- e.g., dadd */
+#define VEX_HWCAPS_PPC32_ISA2_07   (1<<19) /* ISA 2.07 -- e.g., mtvsrd */
 
 /* ppc64: baseline capability is integer and basic FP insns */
 #define VEX_HWCAPS_PPC64_V     (1<<13) /* Altivec (VMX) */
@@ -99,6 +105,7 @@ typedef
                                          (fres,frsqrte,fsel,stfiwx) */
 #define VEX_HWCAPS_PPC64_VX    (1<<16) /* Vector-scalar floating-point (VSX); implies ISA 2.06 or higher  */
 #define VEX_HWCAPS_PPC64_DFP   (1<<18) /* Decimal Floating Point (DFP) -- e.g., dadd */
+#define VEX_HWCAPS_PPC64_ISA2_07   (1<<20) /* ISA 2.07 -- e.g., mtvsrd */
 
 /* s390x: Hardware capability encoding
 
@@ -120,7 +127,8 @@ typedef
 #define VEX_S390X_MODEL_Z196     8
 #define VEX_S390X_MODEL_Z114     9
 #define VEX_S390X_MODEL_ZEC12    10
-#define VEX_S390X_MODEL_UNKNOWN  11     /* always last in list */
+#define VEX_S390X_MODEL_ZBC12    11
+#define VEX_S390X_MODEL_UNKNOWN  12     /* always last in list */
 #define VEX_S390X_MODEL_MASK     0x3F
 
 #define VEX_HWCAPS_S390X_LDISP (1<<6)   /* Long-displacement facility */
@@ -133,6 +141,8 @@ typedef
 #define VEX_HWCAPS_S390X_ETF3  (1<<13)  /* ETF3-enhancement facility */
 #define VEX_HWCAPS_S390X_STCKF (1<<14)  /* STCKF facility */
 #define VEX_HWCAPS_S390X_FPEXT (1<<15)  /* Floating point extension facility */
+#define VEX_HWCAPS_S390X_LSC   (1<<16)  /* Conditional load/store facility */
+#define VEX_HWCAPS_S390X_PFPO  (1<<17)  /* Perform floating point ops facility */
 
 /* Special value representing all available s390x hwcaps */
 #define VEX_HWCAPS_S390X_ALL   (VEX_HWCAPS_S390X_LDISP | \
@@ -143,8 +153,10 @@ typedef
                                 VEX_HWCAPS_S390X_STFLE | \
                                 VEX_HWCAPS_S390X_STCKF | \
                                 VEX_HWCAPS_S390X_FPEXT | \
+                                VEX_HWCAPS_S390X_LSC   | \
                                 VEX_HWCAPS_S390X_ETF3  | \
-                                VEX_HWCAPS_S390X_ETF2)
+                                VEX_HWCAPS_S390X_ETF2  | \
+                                VEX_HWCAPS_S390X_PFPO)
 
 #define VEX_HWCAPS_S390X(x)  ((x) & ~VEX_S390X_MODEL_MASK)
 #define VEX_S390X_MODEL(x)   ((x) &  VEX_S390X_MODEL_MASK)
@@ -175,23 +187,84 @@ typedef
 
 #define VEX_PRID_COMP_MIPS      0x00010000
 #define VEX_PRID_COMP_BROADCOM  0x00020000
+#define VEX_PRID_COMP_NETLOGIC  0x000C0000
+#define VEX_PRID_COMP_CAVIUM    0x000D0000
+
+/*
+ * These are the PRID's for when 23:16 == PRID_COMP_MIPS
+ */
+#define VEX_PRID_IMP_34K        0x9500
+#define VEX_PRID_IMP_74K        0x9700
+
+/* Get MIPS Company ID from HWCAPS */
+#define VEX_MIPS_COMP_ID(x) ((x) & 0x00FF0000)
+/* Get MIPS Processor ID from HWCAPS */
+#define VEX_MIPS_PROC_ID(x) ((x) & 0x0000FFFF)
+/* Check if the processor supports DSP ASE Rev 2. */
+#define VEX_MIPS_PROC_DSP2(x) ((VEX_MIPS_COMP_ID(x) == VEX_PRID_COMP_MIPS) && \
+                               (VEX_MIPS_PROC_ID(x) == VEX_PRID_IMP_74K))
+/* Check if the processor supports DSP ASE Rev 1. */
+#define VEX_MIPS_PROC_DSP(x)  (VEX_MIPS_PROC_DSP2(x) || \
+                               ((VEX_MIPS_COMP_ID(x) == VEX_PRID_COMP_MIPS) && \
+                               (VEX_MIPS_PROC_ID(x) == VEX_PRID_IMP_34K)))
 
 /* These return statically allocated strings. */
 
 extern const HChar* LibVEX_ppVexArch    ( VexArch );
 extern const HChar* LibVEX_ppVexHwCaps  ( VexArch, UInt );
 
+/* The various kinds of caches */
+typedef enum {
+   DATA_CACHE,
+   INSN_CACHE,
+   UNIFIED_CACHE
+} VexCacheKind;
+
+/* Information about a particular cache */
+typedef struct {
+   VexCacheKind kind;
+   UInt level;         /* level this cache is at, e.g. 1 for L1 cache */
+   UInt sizeB;         /* size of this cache in bytes */
+   UInt line_sizeB;    /* cache line size in bytes */
+   UInt assoc;         /* set associativity */
+   Bool is_trace_cache;  /* False, except for certain Pentium 4 models */
+} VexCache;
+
+/* Convenience macro to initialise a VexCache */
+#define VEX_CACHE_INIT(_kind, _level, _size, _line_size, _assoc)         \
+         ({ (VexCache) { .kind = _kind, .level = _level, .sizeB = _size, \
+               .line_sizeB = _line_size, .assoc = _assoc, \
+               .is_trace_cache = False }; })
+
+/* Information about the cache system as a whole */
+typedef struct {
+   UInt num_levels;
+   UInt num_caches;
+   /* Unordered array of caches for this host. NULL if there are
+      no caches. The following can always be assumed:
+      (1) There is at most one cache of a given kind per cache level.
+      (2) If there exists a unified cache at a particular level then
+          no other cache exists at that level.
+      (3) The existence of a cache at level N > 1 implies the existence of
+          at least one cache at level N-1. */
+   VexCache *caches;
+   Bool icaches_maintain_coherence;
+} VexCacheInfo;
+
 
 /* This struct is a bit of a hack, but is needed to carry misc
    important bits of info about an arch.  Fields which are meaningless
-   or ignored for the platform in question should be set to zero. */
+   or ignored for the platform in question should be set to zero.
+   Nb: if you add fields to the struct make sure to update function
+   LibVEX_default_VexArchInfo. */
 
 typedef
    struct {
-      /* This is the only mandatory field. */
+      /* The following two fields are mandatory. */
       UInt hwcaps;
-      /* PPC32/PPC64 only: size of cache line */
-      Int ppc_cache_line_szB;
+      VexCacheInfo hwcache_info;
+      /* PPC32/PPC64 only: size of instruction cache line */
+      Int ppc_icache_line_szB;
       /* PPC32/PPC64 only: sizes zeroed by the dcbz/dcbzl instructions
        * (bug#135264) */
       UInt ppc_dcbz_szB;
@@ -648,11 +721,13 @@ typedef
                                IRSB*,
                                VexGuestLayout*,
                                VexGuestExtents*,
+                               VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
       IRSB*   (*instrument2) ( /*callback_opaque*/void*,
                                IRSB*,
                                VexGuestLayout*,
                                VexGuestExtents*,
+                               VexArchInfo*,
                                IRType gWordTy, IRType hWordTy );
 
       IRSB* (*finaltidy) ( IRSB* );
@@ -678,6 +753,9 @@ typedef
 
       /* IN: debug: trace vex activity at various points */
       Int     traceflags;
+
+      /* IN: debug: print diagnostics when an illegal instr is detected */
+      Bool    sigill_diag;
 
       /* IN: profiling: add a 64 bit profiler counter increment to the
          translation? */
@@ -748,14 +826,12 @@ VexTranslateResult LibVEX_Translate ( VexTranslateArgs* );
 /*--- Patch existing translations                     ---*/
 /*-------------------------------------------------------*/
 
-/* Indicates a host address range for which callers to the functions
-   below must request I-D cache syncing after the call.  ::len == 0 is
-   ambiguous -- it could mean either zero bytes or the entire address
-   space, so we mean the former. */
+/* A host address range that was modified by the functions below. 
+   Callers must request I-cache syncing after the call as appropriate. */
 typedef
    struct {
       HWord start;
-      HWord len;
+      HWord len;     /* always > 0 */
    }
    VexInvalRange;
 

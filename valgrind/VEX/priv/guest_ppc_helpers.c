@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -188,7 +188,7 @@ void ppc64g_dirtyhelper_LVS ( VexGuestPPC64State* gst,
 
 /* Helper-function specialiser. */
 
-IRExpr* guest_ppc32_spechelper ( HChar* function_name,
+IRExpr* guest_ppc32_spechelper ( const HChar* function_name,
                                  IRExpr** args,
                                  IRStmt** precedingStmts,
                                  Int      n_precedingStmts )
@@ -196,7 +196,7 @@ IRExpr* guest_ppc32_spechelper ( HChar* function_name,
    return NULL;
 }
 
-IRExpr* guest_ppc64_spechelper ( HChar* function_name,
+IRExpr* guest_ppc64_spechelper ( const HChar* function_name,
                                  IRExpr** args,
                                  IRStmt** precedingStmts,
                                  Int      n_precedingStmts )
@@ -210,7 +210,7 @@ IRExpr* guest_ppc64_spechelper ( HChar* function_name,
 /*----------------------------------------------*/
 
 /* VISIBLE TO LIBVEX CLIENT */
-UInt LibVEX_GuestPPC32_get_CR ( /*IN*/VexGuestPPC32State* vex_state )
+UInt LibVEX_GuestPPC32_get_CR ( /*IN*/const VexGuestPPC32State* vex_state )
 {
 #  define FIELD(_n)                                    \
       ( ( (UInt)                                       \
@@ -231,7 +231,7 @@ UInt LibVEX_GuestPPC32_get_CR ( /*IN*/VexGuestPPC32State* vex_state )
 
 /* VISIBLE TO LIBVEX CLIENT */
 /* Note: %CR is 32 bits even for ppc64 */
-UInt LibVEX_GuestPPC64_get_CR ( /*IN*/VexGuestPPC64State* vex_state )
+UInt LibVEX_GuestPPC64_get_CR ( /*IN*/const VexGuestPPC64State* vex_state )
 {
 #  define FIELD(_n)                                    \
       ( ( (UInt)                                       \
@@ -304,7 +304,7 @@ void LibVEX_GuestPPC64_put_CR ( UInt cr_native,
 
 
 /* VISIBLE TO LIBVEX CLIENT */
-UInt LibVEX_GuestPPC32_get_XER ( /*IN*/VexGuestPPC32State* vex_state )
+UInt LibVEX_GuestPPC32_get_XER ( /*IN*/const VexGuestPPC32State* vex_state )
 {
    UInt w = 0;
    w |= ( ((UInt)vex_state->guest_XER_BC) & 0xFF );
@@ -317,7 +317,7 @@ UInt LibVEX_GuestPPC32_get_XER ( /*IN*/VexGuestPPC32State* vex_state )
 
 /* VISIBLE TO LIBVEX CLIENT */
 /* Note: %XER is 32 bits even for ppc64 */
-UInt LibVEX_GuestPPC64_get_XER ( /*IN*/VexGuestPPC64State* vex_state )
+UInt LibVEX_GuestPPC64_get_XER ( /*IN*/const VexGuestPPC64State* vex_state )
 {
    UInt w = 0;
    w |= ( ((UInt)vex_state->guest_XER_BC) & 0xFF );
@@ -511,7 +511,8 @@ void LibVEX_GuestPPC32_initialise ( /*OUT*/VexGuestPPC32State* vex_state )
    vex_state->guest_IP_AT_SYSCALL = 0;
    vex_state->guest_SPRG3_RO = 0;
 
-   vex_state->padding = 0;
+   vex_state->padding1 = 0;
+   vex_state->padding2 = 0;
 }
 
 
@@ -676,10 +677,9 @@ void LibVEX_GuestPPC64_initialise ( /*OUT*/VexGuestPPC64State* vex_state )
 
    vex_state->guest_IP_AT_SYSCALL = 0;
    vex_state->guest_SPRG3_RO = 0;
-
-   vex_state->padding2 = 0;
-   vex_state->padding3 = 0;
-   vex_state->padding4 = 0;
+   vex_state->guest_TFHAR  = 0;
+   vex_state->guest_TFIAR  = 0;
+   vex_state->guest_TEXASR = 0;
 }
 
 

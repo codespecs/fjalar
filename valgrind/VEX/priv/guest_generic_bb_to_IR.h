@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -36,6 +36,9 @@
 #ifndef __VEX_GUEST_GENERIC_BB_TO_IR_H
 #define __VEX_GUEST_GENERIC_BB_TO_IR_H
 
+#include "libvex_basictypes.h"
+#include "libvex_ir.h"              // IRJumpKind
+#include "libvex.h"                 // VexArch
 
 /* This defines stuff needed by the guest insn disassemblers.
    It's a bit circular; is imported by
@@ -150,7 +153,10 @@ typedef
       /*IN*/  VexAbiInfo*  abiinfo,
 
       /* Is the host bigendian? */
-      /*IN*/  Bool         host_bigendian
+      /*IN*/  Bool         host_bigendian,
+
+      /* Should diagnostics be printed for illegal instructions? */
+      /*IN*/  Bool         sigill_diag
 
    );
 
@@ -171,6 +177,7 @@ IRSB* bb_to_IR (
                  /*IN*/ Addr64           guest_IP_bbstart,
                  /*IN*/ Bool             (*chase_into_ok)(void*,Addr64),
                  /*IN*/ Bool             host_bigendian,
+         /*IN*/ Bool             sigill_diag,
                  /*IN*/ VexArch          arch_guest,
                  /*IN*/ VexArchInfo*     archinfo_guest,
                  /*IN*/ VexAbiInfo*      abiinfo_both,

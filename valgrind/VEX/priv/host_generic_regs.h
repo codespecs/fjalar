@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -68,7 +68,11 @@
      int32 int64 float32 float64 simd64 simd128
 */
 
-typedef UInt HReg;
+typedef
+   struct {
+      UInt reg;
+   }
+   HReg;
 
 /* When extending this, do not use any value > 14 or < 0. */
 /* HRegClass describes host register classes which the instruction
@@ -116,29 +120,37 @@ static inline HReg mkHReg ( UInt regno, HRegClass rc, Bool virtual ) {
       occupy 24 bits. */
    if (r24 != regno)
       vpanic("mkHReg: regno exceeds 2^24");
-   return regno | (((UInt)rc) << 28) | (virtual ? (1<<24) : 0);
+   HReg r;
+   r.reg = regno | (((UInt)rc) << 28) | (virtual ? (1<<24) : 0);
+   return r;
 }
 
 static inline HRegClass hregClass ( HReg r ) {
-   UInt rc = r;
+   UInt rc = r.reg;
    rc = (rc >> 28) & 0x0F;
    vassert(rc >= HRcInt32 && rc <= HRcVec128);
    return (HRegClass)rc;
 }
 
 static inline UInt hregNumber ( HReg r ) {
-   return ((UInt)r) & 0x00FFFFFF;
+   return r.reg & 0x00FFFFFF;
 }
 
 static inline Bool hregIsVirtual ( HReg r ) {
-   return toBool(((UInt)r) & (1<<24));
+   return toBool(r.reg & (1<<24));
 }
 
+static inline Bool sameHReg ( HReg r1, HReg r2 )
+{
+   return toBool(r1.reg == r2.reg);
+}
 
+static const HReg INVALID_HREG = { 0xFFFFFFFF };
 
-
-#define INVALID_HREG ((HReg)0xFFFFFFFF)
-
+static inline Bool hregIsInvalid ( HReg r )
+{
+   return sameHReg(r, INVALID_HREG);
+}
 
 /*---------------------------------------------------------*/
 /*--- Recording register usage (for reg-alloc)          ---*/
@@ -231,6 +243,70 @@ typedef
 
 extern HInstrArray* newHInstrArray ( void );
 extern void         addHInstr ( HInstrArray*, HInstr* );
+
+
+/*---------------------------------------------------------*/
+/*--- C-Call return-location descriptions               ---*/
+/*---------------------------------------------------------*/
+
+/* This is common to all back ends.  It describes where the return
+   value from a C call is located.  This is important in the case that
+   the call is conditional, since the return locations will need to be
+   set to 0x555..555 in the case that the call does not happen. */
+
+typedef
+   enum {
+      RLPri_INVALID,   /* INVALID */
+      RLPri_None,      /* no return value (a.k.a C "void") */
+      RLPri_Int,       /* in the primary int return reg */
+      RLPri_2Int,      /* in both primary and secondary int ret regs */
+      RLPri_V128SpRel, /* 128-bit value, on the stack */
+      RLPri_V256SpRel  /* 256-bit value, on the stack */
+   }
+   RetLocPrimary;
+
+typedef
+   struct {
+      /* Primary description */
+      RetLocPrimary pri;
+      /* For .pri == RLPri_V128SpRel or RLPri_V256SpRel only, gives
+         the offset of the lowest addressed byte of the value,
+         relative to the stack pointer.  For all other .how values,
+         has no meaning and should be zero. */
+      Int spOff;
+   }
+   RetLoc;
+
+extern void ppRetLoc ( RetLoc rloc );
+
+static inline RetLoc mk_RetLoc_simple ( RetLocPrimary pri ) {
+   vassert(pri >= RLPri_INVALID && pri <= RLPri_2Int);
+   return (RetLoc){pri, 0};
+}
+
+static inline RetLoc mk_RetLoc_spRel ( RetLocPrimary pri, Int off ) {
+   vassert(pri >= RLPri_V128SpRel && pri <= RLPri_V256SpRel);
+   return (RetLoc){pri, off};
+}
+
+static inline Bool is_sane_RetLoc ( RetLoc rloc ) {
+   switch (rloc.pri) {
+      case RLPri_None: case RLPri_Int: case RLPri_2Int:
+         return rloc.spOff == 0;
+      case RLPri_V128SpRel: case RLPri_V256SpRel:
+         return True;
+      default:
+         return False;
+   }
+}
+
+static inline RetLoc mk_RetLoc_INVALID ( void ) {
+   return (RetLoc){RLPri_INVALID, 0};
+}
+
+static inline Bool is_RetLoc_INVALID ( RetLoc rl ) {
+   return rl.pri == RLPri_INVALID && rl.spOff == 0;
+}
 
 
 /*---------------------------------------------------------*/

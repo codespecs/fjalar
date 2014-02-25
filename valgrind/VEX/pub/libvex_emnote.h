@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -36,6 +36,7 @@
 #ifndef __LIBVEX_EMNOTE_H
 #define __LIBVEX_EMNOTE_H
 
+#include "libvex_basictypes.h"
 
 /* VEX can sometimes generate code which returns to the dispatcher
    with the guest state pointer set to VEX_TRC_JMP_EMWARN or 
@@ -90,6 +91,9 @@ typedef
          facility is not available on this host */
       EmWarn_S390X_fpext_rounding,
 
+      /* insn (e.g. srnmb) specifies an invalid rounding mode */
+      EmWarn_S390X_invalid_rounding,
+
       /* stfle insn is not supported on this host */
       EmFail_S390X_stfle,
 
@@ -103,13 +107,20 @@ typedef
          available on this host */
       EmFail_S390X_fpext,
 
+      /* GPR 0 contains invalid rounding mode for PFPO instruction */
+      EmFail_S390X_invalid_PFPO_rounding_mode,
+
+      /* The function code specified in GPR 0 executed by PFPO
+         instruction is invalid */
+      EmFail_S390X_invalid_PFPO_function,
+
       EmNote_NUMBER
    }
    VexEmNote;
 
 
 /* Produces a short string describing the warning. */
-extern HChar* LibVEX_EmNote_string ( VexEmNote );
+extern const HChar* LibVEX_EmNote_string ( VexEmNote );
 
 
 #endif /* ndef __LIBVEX_EMNOTE_H */

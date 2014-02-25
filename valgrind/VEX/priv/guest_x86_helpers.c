@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -436,7 +436,7 @@ static UInt n_calc_cond = 0;
 static void showCounts ( void )
 {
    Int op, co;
-   Char ch;
+   HChar ch;
    vex_printf("\nTotal calls: calc_all=%u   calc_cond=%u   calc_c=%u\n",
               n_calc_all, n_calc_cond, n_calc_c);
 
@@ -713,7 +713,7 @@ UInt x86g_calculate_condition ( UInt/*X86Condcode*/ cond,
 
 
 /* VISIBLE TO LIBVEX CLIENT */
-UInt LibVEX_GuestX86_get_eflags ( /*IN*/VexGuestX86State* vex_state )
+UInt LibVEX_GuestX86_get_eflags ( /*IN*/const VexGuestX86State* vex_state )
 {
    UInt eflags = x86g_calculate_eflags_all_WRK(
                     vex_state->guest_CC_OP,
@@ -773,7 +773,7 @@ static inline Bool isU32 ( IRExpr* e, UInt n )
               && e->Iex.Const.con->Ico.U32 == n );
 }
 
-IRExpr* guest_x86_spechelper ( HChar* function_name,
+IRExpr* guest_x86_spechelper ( const HChar* function_name,
                                IRExpr** args,
                                IRStmt** precedingStmts,
                                Int      n_precedingStmts )
@@ -2207,6 +2207,63 @@ void x86g_dirtyhelper_CPUID_sse0 ( VexGuestX86State* st )
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (modifies guest state) */
+/* Claim to be a Athlon "Classic" (Model 2, K75 "Pluto/Orion") */
+/* But without 3DNow support (weird, but we really don't support it). */
+void x86g_dirtyhelper_CPUID_mmxext ( VexGuestX86State* st )
+{
+   switch (st->guest_EAX) {
+      /* vendor ID */
+      case 0:
+         st->guest_EAX = 0x1;
+         st->guest_EBX = 0x68747541;
+         st->guest_ECX = 0x444d4163;
+         st->guest_EDX = 0x69746e65;
+         break;
+      /* feature bits */
+      case 1:
+         st->guest_EAX = 0x621;
+         st->guest_EBX = 0x0;
+         st->guest_ECX = 0x0;
+         st->guest_EDX = 0x183f9ff;
+         break;
+      /* Highest Extended Function Supported (0x80000004 brand string) */
+      case 0x80000000:
+         st->guest_EAX = 0x80000004;
+         st->guest_EBX = 0x68747541;
+         st->guest_ECX = 0x444d4163;
+         st->guest_EDX = 0x69746e65;
+         break;
+      /* Extended Processor Info and Feature Bits */
+      case 0x80000001:
+         st->guest_EAX = 0x721;
+         st->guest_EBX = 0x0;
+         st->guest_ECX = 0x0;
+         st->guest_EDX = 0x1c3f9ff; /* Note no 3DNow. */
+         break;
+      /* Processor Brand String "AMD Athlon(tm) Processor" */
+      case 0x80000002:
+         st->guest_EAX = 0x20444d41;
+         st->guest_EBX = 0x6c687441;
+         st->guest_ECX = 0x74286e6f;
+         st->guest_EDX = 0x5020296d;
+         break;
+      case 0x80000003:
+         st->guest_EAX = 0x65636f72;
+         st->guest_EBX = 0x726f7373;
+         st->guest_ECX = 0x0;
+         st->guest_EDX = 0x0;
+         break;
+      default:
+         st->guest_EAX = 0x0;
+         st->guest_EBX = 0x0;
+         st->guest_ECX = 0x0;
+         st->guest_EDX = 0x0;
+         break;
+   }
+}
+
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (modifies guest state) */
 /* Claim to be the following SSE1-capable CPU:
    vendor_id       : GenuineIntel
    cpu family      : 6
@@ -2514,21 +2571,6 @@ ULong x86g_calculate_mmx_pmaddwd ( ULong xx, ULong yy )
 }
 
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
-UInt x86g_calculate_mmx_pmovmskb ( ULong xx )
-{
-   UInt r = 0;
-   if (xx & (1ULL << (64-1))) r |= (1<<7);
-   if (xx & (1ULL << (56-1))) r |= (1<<6);
-   if (xx & (1ULL << (48-1))) r |= (1<<5);
-   if (xx & (1ULL << (40-1))) r |= (1<<4);
-   if (xx & (1ULL << (32-1))) r |= (1<<3);
-   if (xx & (1ULL << (24-1))) r |= (1<<2);
-   if (xx & (1ULL << (16-1))) r |= (1<<1);
-   if (xx & (1ULL << ( 8-1))) r |= (1<<0);
-   return r;
-}
-
-/* CALLED FROM GENERATED CODE: CLEAN HELPER */
 ULong x86g_calculate_mmx_psadbw ( ULong xx, ULong yy )
 {
    UInt t = 0;
@@ -2542,14 +2584,6 @@ ULong x86g_calculate_mmx_psadbw ( ULong xx, ULong yy )
    t += (UInt)abdU8( sel8x8_0(xx), sel8x8_0(yy) );
    t &= 0xFFFF;
    return (ULong)t;
-}
-
-/* CALLED FROM GENERATED CODE: CLEAN HELPER */
-UInt x86g_calculate_sse_pmovmskb ( ULong w64hi, ULong w64lo )
-{
-   UInt rHi8 = x86g_calculate_mmx_pmovmskb ( w64hi );
-   UInt rLo8 = x86g_calculate_mmx_pmovmskb ( w64lo );
-   return ((rHi8 & 0xFF) << 8) | (rLo8 & 0xFF);
 }
 
 

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -492,6 +492,72 @@ static inline ULong idULong ( ULong x )
    }								\
 }
 
+/*-------------------------------------------------------------*/
+
+#define ACTIONS_ANDN(DATA_BITS,DATA_UTYPE)			\
+{								\
+   PREAMBLE(DATA_BITS);						\
+   { Long cf, pf, af, zf, sf, of;				\
+     cf = 0;							\
+     pf = 0;							\
+     af = 0;							\
+     zf = ((DATA_UTYPE)CC_DEP1 == 0) << 6;			\
+     sf = lshift(CC_DEP1, 8 - DATA_BITS) & 0x80;		\
+     of = 0;							\
+     return cf | pf | af | zf | sf | of;			\
+   }								\
+}
+
+/*-------------------------------------------------------------*/
+
+#define ACTIONS_BLSI(DATA_BITS,DATA_UTYPE)			\
+{								\
+   PREAMBLE(DATA_BITS);						\
+   { Long cf, pf, af, zf, sf, of;				\
+     cf = ((DATA_UTYPE)CC_DEP2 != 0);				\
+     pf = 0;							\
+     af = 0;							\
+     zf = ((DATA_UTYPE)CC_DEP1 == 0) << 6;			\
+     sf = lshift(CC_DEP1, 8 - DATA_BITS) & 0x80;		\
+     of = 0;							\
+     return cf | pf | af | zf | sf | of;			\
+   }								\
+}
+
+/*-------------------------------------------------------------*/
+
+#define ACTIONS_BLSMSK(DATA_BITS,DATA_UTYPE)			\
+{								\
+   PREAMBLE(DATA_BITS);						\
+   { Long cf, pf, af, zf, sf, of;				\
+     cf = ((DATA_UTYPE)CC_DEP2 == 0);				\
+     pf = 0;							\
+     af = 0;							\
+     zf = 0;							\
+     sf = lshift(CC_DEP1, 8 - DATA_BITS) & 0x80;		\
+     of = 0;							\
+     return cf | pf | af | zf | sf | of;			\
+   }								\
+}
+
+/*-------------------------------------------------------------*/
+
+#define ACTIONS_BLSR(DATA_BITS,DATA_UTYPE)			\
+{								\
+   PREAMBLE(DATA_BITS);						\
+   { Long cf, pf, af, zf, sf, of;				\
+     cf = ((DATA_UTYPE)CC_DEP2 == 0);				\
+     pf = 0;							\
+     af = 0;							\
+     zf = ((DATA_UTYPE)CC_DEP1 == 0) << 6;			\
+     sf = lshift(CC_DEP1, 8 - DATA_BITS) & 0x80;		\
+     of = 0;							\
+     return cf | pf | af | zf | sf | of;			\
+   }								\
+}
+
+/*-------------------------------------------------------------*/
+
 
 #if PROFILE_RFLAGS
 
@@ -514,7 +580,7 @@ static UInt n_calc_cond = 0;
 static void showCounts ( void )
 {
    Int op, co;
-   Char ch;
+   HChar ch;
    vex_printf("\nTotal calls: calc_all=%u   calc_cond=%u   calc_c=%u\n",
               n_calc_all, n_calc_cond, n_calc_c);
 
@@ -654,6 +720,18 @@ ULong amd64g_calculate_rflags_all_WRK ( ULong cc_op,
                                                   Long,   idULong );
 
       case AMD64G_CC_OP_SMULQ:  ACTIONS_SMULQ;
+
+      case AMD64G_CC_OP_ANDN32: ACTIONS_ANDN( 32, UInt   );
+      case AMD64G_CC_OP_ANDN64: ACTIONS_ANDN( 64, ULong  );
+
+      case AMD64G_CC_OP_BLSI32: ACTIONS_BLSI( 32, UInt   );
+      case AMD64G_CC_OP_BLSI64: ACTIONS_BLSI( 64, ULong  );
+
+      case AMD64G_CC_OP_BLSMSK32: ACTIONS_BLSMSK( 32, UInt   );
+      case AMD64G_CC_OP_BLSMSK64: ACTIONS_BLSMSK( 64, ULong  );
+
+      case AMD64G_CC_OP_BLSR32: ACTIONS_BLSR( 32, UInt   );
+      case AMD64G_CC_OP_BLSR64: ACTIONS_BLSR( 64, ULong  );
 
       default:
          /* shouldn't really make these calls from generated code */
@@ -811,7 +889,7 @@ ULong amd64g_calculate_condition ( ULong/*AMD64Condcode*/ cond,
 
 
 /* VISIBLE TO LIBVEX CLIENT */
-ULong LibVEX_GuestAMD64_get_rflags ( /*IN*/VexGuestAMD64State* vex_state )
+ULong LibVEX_GuestAMD64_get_rflags ( /*IN*/const VexGuestAMD64State* vex_state )
 {
    ULong rflags = amd64g_calculate_rflags_all_WRK(
                      vex_state->guest_CC_OP,
@@ -870,7 +948,7 @@ static Bool isU64 ( IRExpr* e, ULong n )
                   && e->Iex.Const.con->Ico.U64 == n );
 }
 
-IRExpr* guest_amd64_spechelper ( HChar* function_name,
+IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                                  IRExpr** args,
                                  IRStmt** precedingStmts,
                                  Int      n_precedingStmts )
@@ -947,6 +1025,16 @@ IRExpr* guest_amd64_spechelper ( HChar* function_name,
          /* Note, args are opposite way round from the usual */
          return unop(Iop_1Uto64,
                      binop(Iop_CmpLE64U, cc_dep2, cc_dep1));
+      }
+
+      if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondNLE)) {
+         /* long sub/cmp, then NLE (signed greater than) 
+            --> test !(dst <=s src)
+            --> test (dst >s src)
+            --> test (src <s dst) */
+         return unop(Iop_1Uto64,
+                     binop(Iop_CmpLT64S, cc_dep2, cc_dep1));
+
       }
 
       if (isU64(cc_op, AMD64G_CC_OP_SUBQ) && isU64(cond, AMD64CondBE)) {
@@ -2482,7 +2570,7 @@ void amd64g_dirtyhelper_CPUID_sse42_and_cx16 ( VexGuestAMD64State* st )
 
 
 /* Claim to be the following CPU (4 x ...), which is AVX and cx16
-   capable.
+   capable.  Plus (kludge!) it "supports" HTM.
 
    vendor_id       : GenuineIntel
    cpu family      : 6
@@ -2563,7 +2651,7 @@ void amd64g_dirtyhelper_CPUID_avx_and_cx16 ( VexGuestAMD64State* st )
          SET_ABCD(0x00000077, 0x00000002, 0x00000009, 0x00000000);
          break;
       case 0x00000007:
-         SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
+         SET_ABCD(0x00000000, 0x00000800, 0x00000000, 0x00000000);
          break;
       case 0x00000008:
          SET_ABCD(0x00000000, 0x00000000, 0x00000000, 0x00000000);
@@ -2837,6 +2925,25 @@ ULong amd64g_dirtyhelper_RDTSC ( void )
 #  endif
 }
 
+/* CALLED FROM GENERATED CODE */
+/* DIRTY HELPER (non-referentially-transparent) */
+/* Horrible hack.  On non-amd64 platforms, return 1. */
+/* This uses a different calling convention from _RDTSC just above
+   only because of the difficulty of returning 96 bits from a C
+   function -- RDTSC returns 64 bits and so is simple by comparison,
+   on amd64. */
+void amd64g_dirtyhelper_RDTSCP ( VexGuestAMD64State* st )
+{
+#  if defined(__x86_64__)
+   UInt eax, ecx, edx;
+   __asm__ __volatile__("rdtscp" : "=a" (eax), "=d" (edx), "=c" (ecx));
+   st->guest_RAX = (ULong)eax;
+   st->guest_RCX = (ULong)ecx;
+   st->guest_RDX = (ULong)edx;
+#  else
+   /* Do nothing. */
+#  endif
+}
 
 /* CALLED FROM GENERATED CODE */
 /* DIRTY HELPER (non-referentially-transparent) */
@@ -2998,21 +3105,6 @@ ULong amd64g_calculate_mmx_pmaddwd ( ULong xx, ULong yy )
 }
 
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
-ULong amd64g_calculate_mmx_pmovmskb ( ULong xx )
-{
-   ULong r = 0;
-   if (xx & (1ULL << (64-1))) r |= (1<<7);
-   if (xx & (1ULL << (56-1))) r |= (1<<6);
-   if (xx & (1ULL << (48-1))) r |= (1<<5);
-   if (xx & (1ULL << (40-1))) r |= (1<<4);
-   if (xx & (1ULL << (32-1))) r |= (1<<3);
-   if (xx & (1ULL << (24-1))) r |= (1<<2);
-   if (xx & (1ULL << (16-1))) r |= (1<<1);
-   if (xx & (1ULL << ( 8-1))) r |= (1<<0);
-   return r;
-}
-
-/* CALLED FROM GENERATED CODE: CLEAN HELPER */
 ULong amd64g_calculate_mmx_psadbw ( ULong xx, ULong yy )
 {
    UInt t = 0;
@@ -3026,14 +3118,6 @@ ULong amd64g_calculate_mmx_psadbw ( ULong xx, ULong yy )
    t += (UInt)abdU8( sel8x8_0(xx), sel8x8_0(yy) );
    t &= 0xFFFF;
    return (ULong)t;
-}
-
-/* CALLED FROM GENERATED CODE: CLEAN HELPER */
-ULong amd64g_calculate_sse_pmovmskb ( ULong w64hi, ULong w64lo )
-{
-   ULong rHi8 = amd64g_calculate_mmx_pmovmskb ( w64hi );
-   ULong rLo8 = amd64g_calculate_mmx_pmovmskb ( w64lo );
-   return ((rHi8 & 0xFF) << 8) | (rLo8 & 0xFF);
 }
 
 /* CALLED FROM GENERATED CODE: CLEAN HELPER */
@@ -3141,6 +3225,36 @@ ULong amd64g_calc_mpsadbw ( ULong sHi, ULong sLo,
    ULong r3  = sad_8x4( dst >> 24, src );
    ULong res = (r3 << 48) | (r2 << 32) | (r1 << 16) | r0;
    return res;
+}
+
+/* CALLED FROM GENERATED CODE: CLEAN HELPER */
+ULong amd64g_calculate_pext ( ULong src_masked, ULong mask )
+{
+   ULong dst = 0;
+   ULong src_bit;
+   ULong dst_bit = 1;
+   for (src_bit = 1; src_bit; src_bit <<= 1) {
+      if (mask & src_bit) {
+         if (src_masked & src_bit) dst |= dst_bit;
+         dst_bit <<= 1;
+      }
+   }
+   return dst;
+}
+
+/* CALLED FROM GENERATED CODE: CLEAN HELPER */
+ULong amd64g_calculate_pdep ( ULong src, ULong mask )
+{
+   ULong dst = 0;
+   ULong dst_bit;
+   ULong src_bit = 1;
+   for (dst_bit = 1; dst_bit; dst_bit <<= 1) {
+      if (mask & dst_bit) {
+         if (src & src_bit) dst |= dst_bit;
+         src_bit <<= 1;
+      }
+   }
+   return dst;
 }
 
 /*---------------------------------------------------------------*/
