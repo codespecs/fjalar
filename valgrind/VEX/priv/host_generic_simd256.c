@@ -1,13 +1,13 @@
 
 /*---------------------------------------------------------------*/
-/*--- begin                                    main_globals.c ---*/
+/*--- begin                            host_generic_simd256.c ---*/
 /*---------------------------------------------------------------*/
 
 /*
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2012-2013 OpenWorks GbR
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -26,46 +26,32 @@
    02110-1301, USA.
 
    The GNU General Public License is contained in the file COPYING.
-
-   Neither the names of the U.S. Department of Energy nor the
-   University of California nor the names of its contributors may be
-   used to endorse or promote products derived from this software
-   without prior written permission.
 */
 
+/* Generic helper functions for doing 256-bit SIMD arithmetic in cases
+   where the instruction selectors cannot generate code in-line.
+   These are purely back-end entities and cannot be seen/referenced
+   from IR. */
+
 #include "libvex_basictypes.h"
-
-#include "main_util.h"
-#include "main_globals.h"
+#include "host_generic_simd256.h"
 
 
-/* Global settings for the VEX library.  These are the
-   only library-wide globals. */
-
-/* Are we started yet? */
-Bool vex_initdone = False;
-
-/* failure exit function */
-__attribute__ ((noreturn))
-void (*vex_failure_exit) ( void ) = NULL;
-
-/* logging output function */
-void (*vex_log_bytes) ( HChar*, Int nbytes ) = NULL;
-
-/* debug paranoia level */
-Int vex_debuglevel = 0;
-
-/* trace flags */
-Int vex_traceflags = 0;
-
-/* Are we supporting valgrind checking? */
-Bool vex_valgrind_support = False;
-
-/* Max # guest insns per bb */
-VexControl vex_control = { 0,0,False,0,0,0 };
-
+void VEX_REGPARM(3)
+     h_generic_calc_Perm32x8 ( /*OUT*/V256* res,
+                               V256* argL, V256* argR )
+{
+   res->w32[0] = argL->w32[ argR->w32[0] & 7 ];
+   res->w32[1] = argL->w32[ argR->w32[1] & 7 ];
+   res->w32[2] = argL->w32[ argR->w32[2] & 7 ];
+   res->w32[3] = argL->w32[ argR->w32[3] & 7 ];
+   res->w32[4] = argL->w32[ argR->w32[4] & 7 ];
+   res->w32[5] = argL->w32[ argR->w32[5] & 7 ];
+   res->w32[6] = argL->w32[ argR->w32[6] & 7 ];
+   res->w32[7] = argL->w32[ argR->w32[7] & 7 ];
+}
 
 
 /*---------------------------------------------------------------*/
-/*--- end                                      main_globals.c ---*/
+/*--- end                              host_generic_simd256.c ---*/
 /*---------------------------------------------------------------*/

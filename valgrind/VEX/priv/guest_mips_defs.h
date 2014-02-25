@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 RT-RK
+   Copyright (C) 2010-2013 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -33,12 +33,14 @@
 #ifndef __VEX_GUEST_MIPS_DEFS_H
 #define __VEX_GUEST_MIPS_DEFS_H
 
+#include "libvex_basictypes.h"
+#include "guest_generic_bb_to_IR.h"  /* DisResult */
+
 /*---------------------------------------------------------*/
 /*--- mips to IR conversion                             ---*/
 /*---------------------------------------------------------*/
 
-/* Convert one MIPS insn to IR.  See the type DisOneInstrFn in
-   bb_to_IR.h. */
+/* Convert one MIPS insn to IR. See the type DisOneInstrFn in bb_to_IR.h. */
 extern DisResult disInstr_MIPS ( IRSB*        irbb,
                                  Bool         (*resteerOkFn) (void *, Addr64),
                                  Bool         resteerCisOk,
@@ -49,33 +51,59 @@ extern DisResult disInstr_MIPS ( IRSB*        irbb,
                                  VexArch      guest_arch,
                                  VexArchInfo* archinfo,
                                  VexAbiInfo*  abiinfo,
-                                 Bool         host_bigendian );
+                                 Bool         host_bigendian,
+                                 Bool         sigill_diag );
 
 /* Used by the optimiser to specialise calls to helpers. */
-extern IRExpr *guest_mips32_spechelper(HChar * function_name, IRExpr ** args,
+extern IRExpr *guest_mips32_spechelper ( const HChar * function_name,
+                                         IRExpr ** args,
+                                         IRStmt ** precedingStmts,
+                                         Int n_precedingStmts );
+
+extern IRExpr *guest_mips64_spechelper ( const HChar * function_name,
+                                         IRExpr ** args,
                                        IRStmt ** precedingStmts,
                                        Int n_precedingStmts);
 
 /* Describes to the optimser which part of the guest state require
    precise memory exceptions.  This is logically part of the guest
    state description. */
-extern Bool guest_mips32_state_requires_precise_mem_exns(Int, Int);
+extern Bool guest_mips32_state_requires_precise_mem_exns ( Int, Int );
+
+extern Bool guest_mips64_state_requires_precise_mem_exns ( Int, Int );
 
 extern VexGuestLayout mips32Guest_layout;
+extern VexGuestLayout mips64Guest_layout;
 
 /*---------------------------------------------------------*/
 /*--- mips guest helpers                                 ---*/
 /*---------------------------------------------------------*/
+typedef enum {
+   CEILWS=0, CEILWD,  CEILLS,  CEILLD,
+   FLOORWS,  FLOORWD, FLOORLS, FLOORLD,
+   ROUNDWS,  ROUNDWD, ROUNDLS, ROUNDLD,
+   TRUNCWS,  TRUNCWD, TRUNCLS, TRUNCLD,
+   CVTDS,    CVTDW,   CVTSD,   CVTSW,
+   CVTWS,    CVTWD,   CVTDL,   CVTLS,
+   CVTLD,    CVTSL
+} flt_op;
 
-extern UInt mips32_dirtyhelper_mfc0(UInt rd, UInt sel);
+extern UInt mips32_dirtyhelper_mfc0 ( UInt rd, UInt sel );
 
-extern void mips32_dirtyhelper_sync(UInt sync);
+extern ULong mips64_dirtyhelper_dmfc0 ( UInt rd, UInt sel );
+
+
+#if defined(__mips__) && ((defined(__mips_isa_rev) && __mips_isa_rev >= 2))
+extern UInt mips32_dirtyhelper_rdhwr ( UInt rt, UInt rd );
+extern ULong mips64_dirtyhelper_rdhwr ( ULong rt, ULong rd );
+#endif
+
+extern UInt mips_dirtyhelper_calculate_FCSR ( void* guest_state, UInt fs,
+                                              flt_op op );
 
 /*---------------------------------------------------------*/
 /*--- Condition code stuff                              ---*/
 /*---------------------------------------------------------*/
-
-/* Defines conditions which we can ask for (MIPS MIPS 2e page A3-6) */
 
 typedef enum {
    MIPSCondEQ = 0,      /* equal                         : Z=1 */
@@ -101,10 +129,6 @@ typedef enum {
 
    MIPSCondAL = 14,  /* always (unconditional)        : 1 */
    MIPSCondNV = 15      /* never (unconditional):        : 0 */
-       /* NB: MIPS have deprecated the use of the NV condition code.
-          You are now supposed to use MOV R0,R0 as a noop rather than
-          MOVNV R0,R0 as was previously recommended.  Future processors
-          may have the NV condition code reused to do other things.  */
 } MIPSCondcode;
 
 #endif            /* __VEX_GUEST_MIPS_DEFS_H */

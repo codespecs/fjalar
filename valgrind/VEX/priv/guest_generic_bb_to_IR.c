@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -187,6 +187,7 @@ IRSB* bb_to_IR (
                  /*IN*/ Addr64           guest_IP_bbstart,
                  /*IN*/ Bool             (*chase_into_ok)(void*,Addr64),
                  /*IN*/ Bool             host_bigendian,
+         /*IN*/ Bool             sigill_diag,
                  /*IN*/ VexArch          arch_guest,
                  /*IN*/ VexArchInfo*     archinfo_guest,
                  /*IN*/ VexAbiInfo*      abiinfo_both,
@@ -361,7 +362,8 @@ IRSB* bb_to_IR (
                             arch_guest,
                             archinfo_guest,
                             abiinfo_both,
-                            host_bigendian );
+                            host_bigendian,
+                            sigill_diag );
 
       /* stay sane ... */
       vassert(dres.whatNext == Dis_StopHere
@@ -518,8 +520,8 @@ IRSB* bb_to_IR (
       IRTemp   tistart_tmp, tilen_tmp;
       HWord    VEX_REGPARM(2) (*fn_generic)(HWord, HWord);
       HWord    VEX_REGPARM(1) (*fn_spec)(HWord);
-      HChar*   nm_generic;
-      HChar*   nm_spec;
+      const HChar* nm_generic;
+      const HChar* nm_spec;
       HWord    fn_generic_entry = 0;
       HWord    fn_spec_entry = 0;
       UInt     host_word_szB = sizeof(HWord);
@@ -586,7 +588,7 @@ IRSB* bb_to_IR (
          nm_spec = NULL;
 
          if (host_word_szB == 8) {
-            HChar* nm = NULL;
+            const HChar* nm = NULL;
             ULong  VEX_REGPARM(1) (*fn)(HWord)  = NULL;
             switch (hWs_to_check) {
                case 1:  fn =  genericg_compute_checksum_8al_1;
@@ -618,7 +620,7 @@ IRSB* bb_to_IR (
             fn_spec = (VEX_REGPARM(1) HWord(*)(HWord)) fn;
             nm_spec = nm;
          } else {
-            HChar* nm = NULL;
+            const HChar* nm = NULL;
             UInt   VEX_REGPARM(1) (*fn)(HWord) = NULL;
             switch (hWs_to_check) {
                case 1:  fn =  genericg_compute_checksum_4al_1;

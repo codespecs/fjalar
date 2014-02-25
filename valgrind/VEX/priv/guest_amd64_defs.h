@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,10 @@
 #ifndef __VEX_GUEST_AMD64_DEFS_H
 #define __VEX_GUEST_AMD64_DEFS_H
 
+#include "libvex_basictypes.h"
+#include "libvex_emnote.h"              // VexEmNote
+#include "libvex_guest_amd64.h"         // VexGuestAMD64State
+#include "guest_generic_bb_to_IR.h"     // DisResult
 
 /*---------------------------------------------------------*/
 /*--- amd64 to IR conversion                            ---*/
@@ -56,11 +60,12 @@ DisResult disInstr_AMD64 ( IRSB*        irbb,
                            VexArch      guest_arch,
                            VexArchInfo* archinfo,
                            VexAbiInfo*  abiinfo,
-                           Bool         host_bigendian );
+                           Bool         host_bigendian,
+                           Bool         sigill_diag );
 
 /* Used by the optimiser to specialise calls to helpers. */
 extern
-IRExpr* guest_amd64_spechelper ( HChar* function_name,
+IRExpr* guest_amd64_spechelper ( const HChar* function_name,
                                  IRExpr** args,
                                  IRStmt** precedingStmts,
                                  Int      n_precedingStmts );
@@ -137,8 +142,6 @@ extern void amd64g_dirtyhelper_FNSAVES ( VexGuestAMD64State*, HWord );
 
 extern ULong amd64g_calculate_mmx_pmaddwd  ( ULong, ULong );
 extern ULong amd64g_calculate_mmx_psadbw   ( ULong, ULong );
-extern ULong amd64g_calculate_mmx_pmovmskb ( ULong );
-extern ULong amd64g_calculate_sse_pmovmskb ( ULong w64hi, ULong w64lo );
 
 extern ULong amd64g_calculate_sse_phminposuw ( ULong sLo, ULong sHi );
 
@@ -150,6 +153,9 @@ extern ULong amd64g_calc_crc32q ( ULong crcIn, ULong q );
 extern ULong amd64g_calc_mpsadbw ( ULong sHi, ULong sLo,
                                    ULong dHi, ULong dLo,
                                    ULong imm_and_return_control_bit );
+
+extern ULong amd64g_calculate_pext  ( ULong, ULong );
+extern ULong amd64g_calculate_pdep  ( ULong, ULong );
 
 /* --- DIRTY HELPERS --- */
 
@@ -168,6 +174,7 @@ extern void  amd64g_dirtyhelper_FXSAVE ( VexGuestAMD64State*, HWord );
 extern VexEmNote amd64g_dirtyhelper_FXRSTOR ( VexGuestAMD64State*, HWord );
 
 extern ULong amd64g_dirtyhelper_RDTSC ( void );
+extern void  amd64g_dirtyhelper_RDTSCP ( VexGuestAMD64State* st );
 
 extern ULong amd64g_dirtyhelper_IN  ( ULong portno, ULong sz/*1,2 or 4*/ );
 extern void  amd64g_dirtyhelper_OUT ( ULong portno, ULong data, 
@@ -503,6 +510,18 @@ enum {
     AMD64G_CC_OP_SMULW,   /* 50 DEP1 = argL, DEP2 = argR, NDEP = unused */
     AMD64G_CC_OP_SMULL,   /* 51 */
     AMD64G_CC_OP_SMULQ,   /* 52 */
+
+    AMD64G_CC_OP_ANDN32,  /* 53 */
+    AMD64G_CC_OP_ANDN64,  /* 54 DEP1 = res, DEP2 = 0, NDEP = unused */
+
+    AMD64G_CC_OP_BLSI32,  /* 55 */
+    AMD64G_CC_OP_BLSI64,  /* 56 DEP1 = res, DEP2 = arg, NDEP = unused */
+
+    AMD64G_CC_OP_BLSMSK32,/* 57 */
+    AMD64G_CC_OP_BLSMSK64,/* 58 DEP1 = res, DEP2 = arg, NDEP = unused */
+
+    AMD64G_CC_OP_BLSR32,  /* 59 */
+    AMD64G_CC_OP_BLSR64,  /* 60 DEP1 = res, DEP2 = arg, NDEP = unused */
 
     AMD64G_CC_OP_NUMBER
 };

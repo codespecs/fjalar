@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -154,7 +154,7 @@ static Bool instrMentionsReg (
    HRegUsage reg_usage;
    (*getRegUsage)(&reg_usage, instr, mode64);
    for (i = 0; i < reg_usage.n_used; i++)
-      if (reg_usage.hreg[i] == r)
+      if (sameHReg(reg_usage.hreg[i], r))
          return True;
    return False;
 }
@@ -621,7 +621,7 @@ HInstrArray* doRegisterAllocation (
             stack pointer register, or some other register beyond our
             control, in which case we should just ignore it. */
          for (k = 0; k < n_available_real_regs; k++)
-            if (available_real_regs[k] == rreg)
+            if (sameHReg(available_real_regs[k], rreg))
                break;
          if (k == n_available_real_regs)
             continue; /* not found -- ignore. */
@@ -729,7 +729,7 @@ HInstrArray* doRegisterAllocation (
       /* rreg is involved in a HLR.  Record this info in the array, if
          there is space. */
       for (k = 0; k < n_rregs; k++)
-         if (rreg_state[k].rreg == rreg)
+         if (sameHReg(rreg_state[k].rreg, rreg))
             break;
       vassert(k < n_rregs); /* else rreg was not found in rreg_state?! */
       rreg_state[k].has_hlrs = True;
@@ -960,7 +960,7 @@ HInstrArray* doRegisterAllocation (
 
                /* find the state entry for this rreg */
                for (k = 0; k < n_rregs; k++)
-                  if (rreg_state[k].rreg == rreg_lrs_la[j].rreg)
+                  if (sameHReg(rreg_state[k].rreg, rreg_lrs_la[j].rreg))
                      break;
 
                /* and assert that this rreg is marked as unavailable */
@@ -979,7 +979,7 @@ HInstrArray* doRegisterAllocation (
             if (rreg_state[j].disp != Unavail)
                continue;
             for (k = 0; k < rreg_lrs_used; k++)
-               if (rreg_lrs_la[k].rreg == rreg_state[j].rreg
+               if (sameHReg(rreg_lrs_la[k].rreg, rreg_state[j].rreg)
                    && rreg_lrs_la[k].live_after < ii
                    && ii < rreg_lrs_la[k].dead_before)
                   break;
@@ -1054,7 +1054,8 @@ HInstrArray* doRegisterAllocation (
 #        endif
          /* Find the state entry for vregS. */
          for (m = 0; m < n_rregs; m++)
-            if (rreg_state[m].disp == Bound && rreg_state[m].vreg == vregS)
+            if (rreg_state[m].disp == Bound
+                && sameHReg(rreg_state[m].vreg, vregS))
                break;
          if (m == n_rregs)
             /* We failed to find a binding for vregS, which means it's
@@ -1089,9 +1090,9 @@ HInstrArray* doRegisterAllocation (
       for (j = 0; j < n_rregs; j++) {
          if (rreg_state[j].disp != Bound)
             continue;
-         vreg = hregNumber(rreg_state[j].vreg);
-         vassert(IS_VALID_VREGNO(vreg));
-         if (vreg_lrs[vreg].dead_before <= ii) {
+         UInt vregno = hregNumber(rreg_state[j].vreg);
+         vassert(IS_VALID_VREGNO(vregno));
+         if (vreg_lrs[vregno].dead_before <= ii) {
             rreg_state[j].disp = Free;
             rreg_state[j].eq_spill_slot = False;
             m = hregNumber(rreg_state[j].vreg);
@@ -1144,7 +1145,7 @@ HInstrArray* doRegisterAllocation (
          vex_printf("\n\n");
 #        endif
          for (k = 0; k < n_rregs; k++)
-            if (rreg_state[k].rreg == rreg_lrs_la[rreg_lrs_la_next].rreg)
+            if (sameHReg(rreg_state[k].rreg, rreg_lrs_la[rreg_lrs_la_next].rreg))
                break;
          /* If this fails, we don't have an entry for this rreg.
             Which we should. */
@@ -1233,7 +1234,7 @@ HInstrArray* doRegisterAllocation (
                   /* ok, it is spilled.  Now, is this its last use? */
                   vassert(vreg_lrs[m].dead_before >= ii+1);
                   if (vreg_lrs[m].dead_before == ii+1
-                      && cand == INVALID_HREG) {
+                      && hregIsInvalid(cand)) {
                      spilloff = vreg_lrs[m].spill_offset;
                      cand = vreg;
                   }
@@ -1241,10 +1242,10 @@ HInstrArray* doRegisterAllocation (
             }
          }
 
-         if (nreads == 1 && cand != INVALID_HREG) {
+         if (nreads == 1 && ! hregIsInvalid(cand)) {
             HInstr* reloaded;
             if (reg_usage.n_used == 2)
-               vassert(reg_usage.hreg[0] != reg_usage.hreg[1]);
+               vassert(! sameHReg(reg_usage.hreg[0], reg_usage.hreg[1]));
 
             reloaded = directReload ( instrs_in->arr[ii], cand, spilloff );
             if (debug_direct_reload && !reloaded) {
@@ -1380,7 +1381,7 @@ HInstrArray* doRegisterAllocation (
                continue;
             rreg_state[k].is_spill_cand = True;
             for (m = 0; m < reg_usage.n_used; m++) {
-               if (rreg_state[k].vreg == reg_usage.hreg[m]) {
+               if (sameHReg(rreg_state[k].vreg, reg_usage.hreg[m])) {
                   rreg_state[k].is_spill_cand = False;
                   break;
                }
@@ -1412,7 +1413,7 @@ HInstrArray* doRegisterAllocation (
          vassert(hregClass(rreg_state[spillee].rreg) == hregClass(vreg));
          /* check we're not ejecting the vreg for which we are trying
             to free up a register. */
-         vassert(rreg_state[spillee].vreg != vreg);
+         vassert(! sameHReg(rreg_state[spillee].vreg, vreg));
 
          m = hregNumber(rreg_state[spillee].vreg);
          vassert(IS_VALID_VREGNO(m));
@@ -1510,7 +1511,7 @@ HInstrArray* doRegisterAllocation (
          /* rreg_lrs_db[[rreg_lrs_db_next].rreg is exiting a hard live
             range.  Mark it as such in the main rreg_state array. */
          for (k = 0; k < n_rregs; k++)
-            if (rreg_state[k].rreg == rreg_lrs_db[rreg_lrs_db_next].rreg)
+           if (sameHReg(rreg_state[k].rreg, rreg_lrs_db[rreg_lrs_db_next].rreg))
                break;
          /* If this vassertion fails, we don't have an entry for
             this rreg.  Which we should. */
@@ -1540,7 +1541,7 @@ HInstrArray* doRegisterAllocation (
 
    /* Paranoia */
    for (j = 0; j < n_rregs; j++)
-      vassert(rreg_state[j].rreg == available_real_regs[j]);
+      vassert(sameHReg(rreg_state[j].rreg, available_real_regs[j]));
 
    vassert(rreg_lrs_la_next == rreg_lrs_used);
    vassert(rreg_lrs_db_next == rreg_lrs_used);

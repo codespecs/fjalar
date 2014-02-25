@@ -8,8 +8,8 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2012
-   Copyright (C) 2012-2012  Florian Krohm   (britzel@acm.org)
+   Copyright IBM Corp. 2010-2013
+   Copyright (C) 2012-2013  Florian Krohm   (britzel@acm.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -40,7 +40,7 @@
 #include "main_globals.h"
 #include "host_generic_regs.h"
 #include "host_s390_defs.h"
-#include "host_s390_disasm.h"
+#include "s390_disasm.h"
 #include "guest_s390_defs.h"    /* S390X_GUEST_OFFSET */
 #include <stdarg.h>
 
@@ -212,7 +212,7 @@ s390_amode_b12(Int d, HReg b)
    am->tag = S390_AMODE_B12;
    am->d = d;
    am->b = b;
-   am->x = 0;  /* hregNumber(0) == 0 */
+   am->x = mkHReg(0, HRcInt64, False);  /* hregNumber(am->x) == 0 */
 
    return am;
 }
@@ -229,7 +229,7 @@ s390_amode_b20(Int d, HReg b)
    am->tag = S390_AMODE_B20;
    am->d = d;
    am->b = b;
-   am->x = 0;  /* hregNumber(0) == 0 */
+   am->x = mkHReg(0, HRcInt64, False);  /* hregNumber(am->x) == 0 */
 
    return am;
 }
@@ -242,8 +242,8 @@ s390_amode_bx12(Int d, HReg b, HReg x)
    s390_amode *am = LibVEX_Alloc(sizeof(s390_amode));
 
    vassert(fits_unsigned_12bit(d));
-   vassert(b != 0);
-   vassert(x != 0);
+   vassert(hregNumber(b) != 0);
+   vassert(hregNumber(x) != 0);
 
    am->tag = S390_AMODE_BX12;
    am->d = d;
@@ -261,8 +261,8 @@ s390_amode_bx20(Int d, HReg b, HReg x)
    s390_amode *am = LibVEX_Alloc(sizeof(s390_amode));
 
    vassert(fits_signed_20bit(d));
-   vassert(b != 0);
-   vassert(x != 0);
+   vassert(hregNumber(b) != 0);
+   vassert(hregNumber(x) != 0);
 
    am->tag = S390_AMODE_BX20;
    am->d = d;
@@ -552,6 +552,11 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
       addHRegUse(u, HRmWrite, insn->variant.move.dst);
       break;
 
+   case S390_INSN_MEMCPY:
+      s390_amode_get_reg_usage(u, insn->variant.memcpy.src);
+      s390_amode_get_reg_usage(u, insn->variant.memcpy.dst);
+      break;
+
    case S390_INSN_COND_MOVE:
       s390_opnd_RMI_get_reg_usage(u, insn->variant.cond_move.src);
       addHRegUse(u, HRmWrite, insn->variant.cond_move.dst);
@@ -563,14 +568,16 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
       s390_opnd_RMI_get_reg_usage(u, insn->variant.alu.op2);
       break;
 
-   case S390_INSN_MUL:
+   case S390_INSN_SMUL:
+   case S390_INSN_UMUL:
       addHRegUse(u, HRmRead,  insn->variant.mul.dst_lo);  /* op1 */
       addHRegUse(u, HRmWrite, insn->variant.mul.dst_lo);
       addHRegUse(u, HRmWrite, insn->variant.mul.dst_hi);
       s390_opnd_RMI_get_reg_usage(u, insn->variant.mul.op2);
       break;
 
-   case S390_INSN_DIV:
+   case S390_INSN_SDIV:
+   case S390_INSN_UDIV:
       addHRegUse(u, HRmRead,  insn->variant.div.op1_lo);
       addHRegUse(u, HRmRead,  insn->variant.div.op1_hi);
       addHRegUse(u, HRmWrite, insn->variant.div.op1_lo);
@@ -611,16 +618,19 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
       addHRegUse(u, HRmWrite,  insn->variant.cas.old_mem);
       break;
 
-   case S390_INSN_CDAS:
-      addHRegUse(u, HRmRead,  insn->variant.cdas.op1_high);
-      addHRegUse(u, HRmRead,  insn->variant.cdas.op1_low);
-      s390_amode_get_reg_usage(u, insn->variant.cas.op2);
-      addHRegUse(u, HRmRead,  insn->variant.cdas.op3_high);
-      addHRegUse(u, HRmRead,  insn->variant.cdas.op3_low);
-      addHRegUse(u, HRmWrite, insn->variant.cdas.old_mem_high);
-      addHRegUse(u, HRmWrite, insn->variant.cdas.old_mem_low);
-      addHRegUse(u, HRmWrite, insn->variant.cdas.scratch);
+   case S390_INSN_CDAS: {
+      s390_cdas *cdas = insn->variant.cdas.details;
+
+      addHRegUse(u, HRmRead,  cdas->op1_high);
+      addHRegUse(u, HRmRead,  cdas->op1_low);
+      s390_amode_get_reg_usage(u, cdas->op2);
+      addHRegUse(u, HRmRead,  cdas->op3_high);
+      addHRegUse(u, HRmRead,  cdas->op3_low);
+      addHRegUse(u, HRmWrite, cdas->old_mem_high);
+      addHRegUse(u, HRmWrite, cdas->old_mem_low);
+      addHRegUse(u, HRmWrite, cdas->scratch);
       break;
+   }
 
    case S390_INSN_COMPARE:
       addHRegUse(u, HRmRead, insn->variant.compare.src1);
@@ -636,8 +646,6 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
       for (i = 1; i <= 5; ++i) {
          addHRegUse(u, HRmWrite, mkHReg(i, HRcInt64, False));
       }
-      if (insn->variant.helper_call.dst != INVALID_HREG)
-         addHRegUse(u, HRmWrite, insn->variant.helper_call.dst);
 
       /* Ditto for floating point registers. f0 - f7 are volatile */
       for (i = 0; i <= 7; ++i) {
@@ -646,7 +654,7 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
 
       /* The registers that are used for passing arguments will be read.
          Not all of them may, but in general we need to assume that. */
-      for (i = 0; i < insn->variant.helper_call.num_args; ++i) {
+      for (i = 0; i < insn->variant.helper_call.details->num_args; ++i) {
          addHRegUse(u, HRmRead, mkHReg(s390_gprno_from_arg_index(i),
                                        HRcInt64, False));
       }
@@ -696,20 +704,105 @@ s390_insn_get_reg_usage(HRegUsage *u, const s390_insn *insn)
 
    case S390_INSN_BFP_CONVERT:
       addHRegUse(u, HRmWrite, insn->variant.bfp_convert.dst_hi);
-      if (insn->variant.bfp_convert.dst_lo != INVALID_HREG)
+      if (! hregIsInvalid(insn->variant.bfp_convert.dst_lo))
          addHRegUse(u, HRmWrite, insn->variant.bfp_convert.dst_lo);
       addHRegUse(u, HRmRead,  insn->variant.bfp_convert.op_hi);
-      if (insn->variant.bfp_convert.op_lo != INVALID_HREG)
+      if (! hregIsInvalid(insn->variant.bfp_convert.op_lo))
          addHRegUse(u, HRmRead, insn->variant.bfp_convert.op_lo);
       break;
 
-   case S390_INSN_MFENCE:
-   case S390_INSN_GZERO:
-   case S390_INSN_GADD:
+   case S390_INSN_DFP_BINOP: {
+      s390_dfp_binop *dfp_binop = insn->variant.dfp_binop.details;
+
+      addHRegUse(u, HRmWrite, dfp_binop->dst_hi);
+      addHRegUse(u, HRmRead,  dfp_binop->op2_hi);  /* left */
+      addHRegUse(u, HRmRead,  dfp_binop->op3_hi);  /* right */
+      if (insn->size == 16) {
+         addHRegUse(u, HRmWrite, dfp_binop->dst_lo);
+         addHRegUse(u, HRmRead,  dfp_binop->op2_lo);  /* left */
+         addHRegUse(u, HRmRead,  dfp_binop->op3_lo);  /* right */
+      }
+      break;
+   }
+
+   case S390_INSN_DFP_UNOP:
+      addHRegUse(u, HRmWrite, insn->variant.dfp_unop.dst_hi);
+      addHRegUse(u, HRmRead,  insn->variant.dfp_unop.op_hi);  /* operand */
+      if (insn->size == 16) {
+         addHRegUse(u, HRmWrite, insn->variant.dfp_unop.dst_lo);
+         addHRegUse(u, HRmRead,  insn->variant.dfp_unop.op_lo);  /* operand */
+      }
       break;
 
-   case S390_INSN_SET_FPCRM:
-      addHRegUse(u, HRmRead,  insn->variant.set_fpcrm.mode);
+   case S390_INSN_DFP_INTOP:
+      addHRegUse(u, HRmWrite, insn->variant.dfp_intop.dst_hi);
+      addHRegUse(u, HRmRead,  insn->variant.dfp_intop.op2);
+      addHRegUse(u, HRmRead,  insn->variant.dfp_intop.op3_hi);
+      if (insn->size == 16) {
+         addHRegUse(u, HRmWrite, insn->variant.dfp_intop.dst_lo);
+         addHRegUse(u, HRmRead,  insn->variant.dfp_intop.op3_lo);
+      }
+      break;
+
+   case S390_INSN_DFP_COMPARE:
+      addHRegUse(u, HRmWrite, insn->variant.dfp_compare.dst);
+      addHRegUse(u, HRmRead,  insn->variant.dfp_compare.op1_hi);  /* left */
+      addHRegUse(u, HRmRead,  insn->variant.dfp_compare.op2_hi);  /* right */
+      if (insn->size == 16) {
+         addHRegUse(u, HRmRead,  insn->variant.dfp_compare.op1_lo);  /* left */
+         addHRegUse(u, HRmRead,  insn->variant.dfp_compare.op2_lo);  /* right */
+      }
+      break;
+
+   case S390_INSN_DFP_CONVERT:
+      addHRegUse(u, HRmWrite, insn->variant.dfp_convert.dst_hi);
+      if (! hregIsInvalid(insn->variant.dfp_convert.dst_lo))
+         addHRegUse(u, HRmWrite, insn->variant.dfp_convert.dst_lo);
+      addHRegUse(u, HRmRead,  insn->variant.dfp_convert.op_hi);  /* operand */
+      if (! hregIsInvalid(insn->variant.dfp_convert.op_lo))
+         addHRegUse(u, HRmRead, insn->variant.dfp_convert.op_lo); /* operand */
+      break;
+
+   case S390_INSN_DFP_REROUND:
+      addHRegUse(u, HRmWrite, insn->variant.dfp_reround.dst_hi);
+      addHRegUse(u, HRmRead,  insn->variant.dfp_reround.op2);     /* left */
+      addHRegUse(u, HRmRead,  insn->variant.dfp_reround.op3_hi);  /* right */
+      if (insn->size == 16) {
+         addHRegUse(u, HRmWrite, insn->variant.dfp_reround.dst_lo);
+         addHRegUse(u, HRmRead,  insn->variant.dfp_reround.op3_lo); /* right */
+      }
+      break;
+
+   case S390_INSN_FP_CONVERT: {
+      s390_fp_convert *fp_convert = insn->variant.fp_convert.details;
+
+      addHRegUse(u, HRmWrite, fp_convert->dst_hi);
+      if (! hregIsInvalid(fp_convert->dst_lo))
+         addHRegUse(u, HRmWrite, fp_convert->dst_lo);
+      addHRegUse(u, HRmRead,  fp_convert->op_hi);
+      if (! hregIsInvalid(fp_convert->op_lo))
+         addHRegUse(u, HRmRead, fp_convert->op_lo);
+      addHRegUse(u, HRmWrite, fp_convert->r1);
+      break;
+   }
+
+   case S390_INSN_MIMM:
+      s390_amode_get_reg_usage(u, insn->variant.mimm.dst);
+      break;
+
+   case S390_INSN_MADD:
+      s390_amode_get_reg_usage(u, insn->variant.madd.dst);
+      break;
+
+   case S390_INSN_MFENCE:
+      break;
+
+   case S390_INSN_SET_FPC_BFPRM:
+      addHRegUse(u, HRmRead,  insn->variant.set_fpc_bfprm.mode);
+      break;
+
+   case S390_INSN_SET_FPC_DFPRM:
+      addHRegUse(u, HRmRead,  insn->variant.set_fpc_dfprm.mode);
       break;
 
    case S390_INSN_EVCHECK:
@@ -782,6 +875,11 @@ s390_insn_map_regs(HRegRemap *m, s390_insn *insn)
       insn->variant.move.src = lookupHRegRemap(m, insn->variant.move.src);
       break;
 
+   case S390_INSN_MEMCPY:
+      s390_amode_map_regs(m, insn->variant.memcpy.dst);
+      s390_amode_map_regs(m, insn->variant.memcpy.src);
+      break;
+
    case S390_INSN_COND_MOVE:
       insn->variant.cond_move.dst = lookupHRegRemap(m, insn->variant.cond_move.dst);
       s390_opnd_RMI_map_regs(m, &insn->variant.cond_move.src);
@@ -797,13 +895,15 @@ s390_insn_map_regs(HRegRemap *m, s390_insn *insn)
       s390_opnd_RMI_map_regs(m, &insn->variant.alu.op2);
       break;
 
-   case S390_INSN_MUL:
+   case S390_INSN_SMUL:
+   case S390_INSN_UMUL:
       insn->variant.mul.dst_hi = lookupHRegRemap(m, insn->variant.mul.dst_hi);
       insn->variant.mul.dst_lo = lookupHRegRemap(m, insn->variant.mul.dst_lo);
       s390_opnd_RMI_map_regs(m, &insn->variant.mul.op2);
       break;
 
-   case S390_INSN_DIV:
+   case S390_INSN_SDIV:
+   case S390_INSN_UDIV:
       insn->variant.div.op1_hi = lookupHRegRemap(m, insn->variant.div.op1_hi);
       insn->variant.div.op1_lo = lookupHRegRemap(m, insn->variant.div.op1_lo);
       s390_opnd_RMI_map_regs(m, &insn->variant.div.op2);
@@ -841,16 +941,19 @@ s390_insn_map_regs(HRegRemap *m, s390_insn *insn)
       insn->variant.cas.old_mem = lookupHRegRemap(m, insn->variant.cas.old_mem);
       break;
 
-   case S390_INSN_CDAS:
-      insn->variant.cdas.op1_high = lookupHRegRemap(m, insn->variant.cdas.op1_high);
-      insn->variant.cdas.op1_low  = lookupHRegRemap(m, insn->variant.cdas.op1_low);
-      s390_amode_map_regs(m, insn->variant.cdas.op2);
-      insn->variant.cdas.op3_high = lookupHRegRemap(m, insn->variant.cdas.op3_high);
-      insn->variant.cdas.op3_low  = lookupHRegRemap(m, insn->variant.cdas.op3_low);
-      insn->variant.cdas.old_mem_high = lookupHRegRemap(m, insn->variant.cdas.old_mem_high);
-      insn->variant.cdas.old_mem_low  = lookupHRegRemap(m, insn->variant.cdas.old_mem_low);
-      insn->variant.cdas.scratch  = lookupHRegRemap(m, insn->variant.cdas.scratch);
+   case S390_INSN_CDAS: {
+      s390_cdas *cdas = insn->variant.cdas.details;
+
+      cdas->op1_high = lookupHRegRemap(m, cdas->op1_high);
+      cdas->op1_low  = lookupHRegRemap(m, cdas->op1_low);
+      s390_amode_map_regs(m, cdas->op2);
+      cdas->op3_high = lookupHRegRemap(m, cdas->op3_high);
+      cdas->op3_low  = lookupHRegRemap(m, cdas->op3_low);
+      cdas->old_mem_high = lookupHRegRemap(m, cdas->old_mem_high);
+      cdas->old_mem_low  = lookupHRegRemap(m, cdas->old_mem_low);
+      cdas->scratch  = lookupHRegRemap(m, cdas->scratch);
       break;
+   }
 
    case S390_INSN_COMPARE:
       insn->variant.compare.src1 = lookupHRegRemap(m, insn->variant.compare.src1);
@@ -864,8 +967,6 @@ s390_insn_map_regs(HRegRemap *m, s390_insn *insn)
          As for the arguments of the helper call -- they will be loaded into
          non-virtual registers. Again, we don't need to do anything for those
          here. */
-      if (insn->variant.helper_call.dst != INVALID_HREG) 
-         insn->variant.helper_call.dst = lookupHRegRemap(m, insn->variant.helper_call.dst);
       break;
 
    case S390_INSN_BFP_TRIOP:
@@ -883,9 +984,9 @@ s390_insn_map_regs(HRegRemap *m, s390_insn *insn)
       insn->variant.bfp_binop.op2_hi =
          lookupHRegRemap(m, insn->variant.bfp_binop.op2_hi);
       if (insn->size == 16) {
-         insn->variant.bfp_unop.dst_lo =
+         insn->variant.bfp_binop.dst_lo =
             lookupHRegRemap(m, insn->variant.bfp_binop.dst_lo);
-         insn->variant.bfp_unop.op_lo  =
+         insn->variant.bfp_binop.op2_lo  =
             lookupHRegRemap(m, insn->variant.bfp_binop.op2_lo);
       }
       break;
@@ -921,24 +1022,133 @@ s390_insn_map_regs(HRegRemap *m, s390_insn *insn)
    case S390_INSN_BFP_CONVERT:
       insn->variant.bfp_convert.dst_hi =
          lookupHRegRemap(m, insn->variant.bfp_convert.dst_hi);
-      if (insn->variant.bfp_convert.dst_lo != INVALID_HREG)
+      if (! hregIsInvalid(insn->variant.bfp_convert.dst_lo))
          insn->variant.bfp_convert.dst_lo =
             lookupHRegRemap(m, insn->variant.bfp_convert.dst_lo);
       insn->variant.bfp_convert.op_hi =
          lookupHRegRemap(m, insn->variant.bfp_convert.op_hi);
-      if (insn->variant.bfp_convert.op_lo != INVALID_HREG)
+      if (! hregIsInvalid(insn->variant.bfp_convert.op_lo))
          insn->variant.bfp_convert.op_lo =
             lookupHRegRemap(m, insn->variant.bfp_convert.op_lo);
       break;
 
-   case S390_INSN_MFENCE:
-   case S390_INSN_GZERO:
-   case S390_INSN_GADD:
+   case S390_INSN_DFP_BINOP: {
+      s390_dfp_binop *dfp_binop = insn->variant.dfp_binop.details;
+
+      dfp_binop->dst_hi = lookupHRegRemap(m, dfp_binop->dst_hi);
+      dfp_binop->op2_hi = lookupHRegRemap(m, dfp_binop->op2_hi);
+      dfp_binop->op3_hi = lookupHRegRemap(m, dfp_binop->op3_hi);
+      if (insn->size == 16) {
+         dfp_binop->dst_lo = lookupHRegRemap(m, dfp_binop->dst_lo);
+         dfp_binop->op2_lo = lookupHRegRemap(m, dfp_binop->op2_lo);
+         dfp_binop->op3_lo = lookupHRegRemap(m, dfp_binop->op3_lo);
+      }
+      break;
+   }
+
+   case S390_INSN_DFP_UNOP:
+      insn->variant.dfp_unop.dst_hi =
+         lookupHRegRemap(m, insn->variant.dfp_unop.dst_hi);
+      insn->variant.dfp_unop.op_hi  =
+         lookupHRegRemap(m, insn->variant.dfp_unop.op_hi);
+      if (insn->size == 16) {
+         insn->variant.dfp_unop.dst_lo =
+            lookupHRegRemap(m, insn->variant.dfp_unop.dst_lo);
+         insn->variant.dfp_unop.op_lo  =
+            lookupHRegRemap(m, insn->variant.dfp_unop.op_lo);
+      }
       break;
 
-   case S390_INSN_SET_FPCRM:
-      insn->variant.set_fpcrm.mode =
-         lookupHRegRemap(m, insn->variant.set_fpcrm.mode);
+   case S390_INSN_DFP_INTOP:
+      insn->variant.dfp_intop.dst_hi =
+         lookupHRegRemap(m, insn->variant.dfp_intop.dst_hi);
+      insn->variant.dfp_intop.op2    =
+         lookupHRegRemap(m, insn->variant.dfp_intop.op2);
+      insn->variant.dfp_intop.op3_hi =
+         lookupHRegRemap(m, insn->variant.dfp_intop.op3_hi);
+      if (insn->size == 16) {
+         insn->variant.dfp_intop.dst_lo =
+            lookupHRegRemap(m, insn->variant.dfp_intop.dst_lo);
+         insn->variant.dfp_intop.op3_lo =
+            lookupHRegRemap(m, insn->variant.dfp_intop.op3_lo);
+      }
+      break;
+
+   case S390_INSN_DFP_COMPARE:
+      insn->variant.dfp_compare.dst =
+         lookupHRegRemap(m, insn->variant.dfp_compare.dst);
+      insn->variant.dfp_compare.op1_hi =
+         lookupHRegRemap(m, insn->variant.dfp_compare.op1_hi);
+      insn->variant.dfp_compare.op2_hi =
+         lookupHRegRemap(m, insn->variant.dfp_compare.op2_hi);
+      if (insn->size == 16) {
+         insn->variant.dfp_compare.op1_lo =
+            lookupHRegRemap(m, insn->variant.dfp_compare.op1_lo);
+         insn->variant.dfp_compare.op2_lo =
+            lookupHRegRemap(m, insn->variant.dfp_compare.op2_lo);
+      }
+      break;
+
+   case S390_INSN_DFP_CONVERT:
+      insn->variant.dfp_convert.dst_hi =
+         lookupHRegRemap(m, insn->variant.dfp_convert.dst_hi);
+      if (! hregIsInvalid(insn->variant.dfp_convert.dst_lo))
+         insn->variant.dfp_convert.dst_lo =
+            lookupHRegRemap(m, insn->variant.dfp_convert.dst_lo);
+      insn->variant.dfp_convert.op_hi =
+         lookupHRegRemap(m, insn->variant.dfp_convert.op_hi);
+      if (! hregIsInvalid(insn->variant.dfp_convert.op_lo))
+         insn->variant.dfp_convert.op_lo =
+            lookupHRegRemap(m, insn->variant.dfp_convert.op_lo);
+      break;
+
+   case S390_INSN_DFP_REROUND:
+      insn->variant.dfp_reround.dst_hi =
+         lookupHRegRemap(m, insn->variant.dfp_reround.dst_hi);
+      insn->variant.dfp_reround.op2    =
+         lookupHRegRemap(m, insn->variant.dfp_reround.op2);
+      insn->variant.dfp_reround.op3_hi =
+         lookupHRegRemap(m, insn->variant.dfp_reround.op3_hi);
+      if (insn->size == 16) {
+         insn->variant.dfp_reround.dst_lo =
+            lookupHRegRemap(m, insn->variant.dfp_reround.dst_lo);
+         insn->variant.dfp_reround.op3_lo =
+            lookupHRegRemap(m, insn->variant.dfp_reround.op3_lo);
+      }
+      break;
+
+   case S390_INSN_FP_CONVERT: {
+      s390_fp_convert *fp_convert = insn->variant.fp_convert.details;
+
+      fp_convert->dst_hi = lookupHRegRemap(m, fp_convert->dst_hi);
+      if (! hregIsInvalid(fp_convert->dst_lo))
+         fp_convert->dst_lo = lookupHRegRemap(m, fp_convert->dst_lo);
+      fp_convert->op_hi = lookupHRegRemap(m, fp_convert->op_hi);
+      if (! hregIsInvalid(fp_convert->op_lo))
+         fp_convert->op_lo = lookupHRegRemap(m, fp_convert->op_lo);
+      fp_convert->r1 = lookupHRegRemap(m, fp_convert->r1);
+      break;
+   }
+
+   case S390_INSN_MIMM:
+      s390_amode_map_regs(m, insn->variant.mimm.dst);
+      break;
+
+   case S390_INSN_MADD:
+      s390_amode_map_regs(m, insn->variant.madd.dst);
+      break;
+
+   case S390_INSN_MFENCE:
+      break;
+
+   case S390_INSN_SET_FPC_BFPRM:
+      insn->variant.set_fpc_bfprm.mode =
+         lookupHRegRemap(m, insn->variant.set_fpc_bfprm.mode);
+      break;
+
+   case S390_INSN_SET_FPC_DFPRM:
+      insn->variant.set_fpc_dfprm.mode =
+         lookupHRegRemap(m, insn->variant.set_fpc_dfprm.mode);
       break;
 
    case S390_INSN_EVCHECK:
@@ -1107,6 +1317,33 @@ emit_RRF3(UChar *p, UInt op, UChar r3, UChar r1, UChar r2)
 
 
 static UChar *
+emit_RRF4(UChar *p, UInt op, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   ULong the_insn = op;
+
+   the_insn |= ((ULong)r3) << 12;
+   the_insn |= ((ULong)m4) << 8;
+   the_insn |= ((ULong)r1) << 4;
+   the_insn |= ((ULong)r2) << 0;
+
+   return emit_4bytes(p, the_insn);
+}
+
+
+static UChar *
+emit_RRF5(UChar *p, UInt op, UChar m4, UChar r1, UChar r2)
+{
+   ULong the_insn = op;
+
+   the_insn |= ((ULong)m4) << 8;
+   the_insn |= ((ULong)r1) << 4;
+   the_insn |= ((ULong)r2) << 0;
+
+   return emit_4bytes(p, the_insn);
+}
+
+
+static UChar *
 emit_RS(UChar *p, UInt op, UChar r1, UChar r3, UChar b2, UShort d2)
 {
    ULong the_insn = op;
@@ -1150,6 +1387,21 @@ emit_RX(UChar *p, UInt op, UChar r1, UChar x2, UChar b2, UShort d2)
 
 
 static UChar *
+emit_RXF(UChar *p, ULong op, UChar r3, UChar x2, UChar b2, UShort d2, UChar r1)
+{
+   ULong the_insn = op;
+
+   the_insn |= ((ULong)r3) << 36;
+   the_insn |= ((ULong)x2) << 32;
+   the_insn |= ((ULong)b2) << 28;
+   the_insn |= ((ULong)d2) << 16;
+   the_insn |= ((ULong)r1) << 12;
+
+   return emit_6bytes(p, the_insn);
+}
+
+
+static UChar *
 emit_RXY(UChar *p, ULong op, UChar r1, UChar x2, UChar b2, UShort dl2, UChar dh2)
 {
    ULong the_insn = op;
@@ -1173,6 +1425,32 @@ emit_S(UChar *p, UInt op, UChar b2, UShort d2)
    the_insn |= ((ULong)d2) << 0;
 
    return emit_4bytes(p, the_insn);
+}
+
+
+static UChar *
+emit_SI(UChar *p, UInt op, UChar i2, UChar b1, UShort d1)
+{
+   ULong the_insn = op;
+
+   the_insn |= ((ULong)i2) << 16;
+   the_insn |= ((ULong)b1) << 12;
+   the_insn |= ((ULong)d1) << 0;
+
+   return emit_4bytes(p, the_insn);
+}
+
+
+static UChar *
+emit_SIL(UChar *p, ULong op, UChar b1, UShort d1, UShort i2)
+{
+   ULong the_insn = op;
+
+   the_insn |= ((ULong)b1) << 28;
+   the_insn |= ((ULong)d1) << 16;
+   the_insn |= ((ULong)i2) << 0;
+
+   return emit_6bytes(p, the_insn);
 }
 
 
@@ -2602,6 +2880,56 @@ s390_emit_MSGFI(UChar *p, UChar r1, UInt i2)
 
 
 static UChar *
+s390_emit_MVC(UChar *p, UInt l, UChar b1, UShort d1, UChar b2, UShort d2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, UDLB, UDXB), "mvc", d1, l, b1, d2, 0, b2);
+
+   return emit_SSa(p, 0xd20000000000ULL, l, b1, d1, b2, d2);
+}
+
+
+static UChar *
+s390_emit_MVI(UChar *p, UChar i2, UChar b1, UShort d1)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, UDXB, INT), "mvi", d1, 0, b1, i2);
+
+   return emit_SI(p, 0x92000000, i2, b1, d1);
+}
+
+
+static UChar *
+s390_emit_MVHHI(UChar *p, UChar b1, UShort d1, UShort i2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, UDXB, INT), "mvhhi", d1, 0, b1, i2);
+
+   return emit_SIL(p, 0xe54400000000ULL, b1, d1, i2);
+}
+
+
+static UChar *
+s390_emit_MVHI(UChar *p, UChar b1, UShort d1, UShort i2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, UDXB, INT), "mvhi", d1, 0, b1, i2);
+
+   return emit_SIL(p, 0xe54c00000000ULL, b1, d1, i2);
+}
+
+
+static UChar *
+s390_emit_MVGHI(UChar *p, UChar b1, UShort d1, UShort i2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, UDXB, INT), "mvghi", d1, 0, b1, i2);
+
+   return emit_SIL(p, 0xe54800000000ULL, b1, d1, i2);
+}
+
+
+static UChar *
 s390_emit_OR(UChar *p, UChar r1, UChar r2)
 {
    if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
@@ -3821,6 +4149,660 @@ s390_emit_SXBR(UChar *p, UChar r1, UChar r2)
 }
 
 
+static UChar *
+s390_emit_ADTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "adtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "adtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3d20000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_AXTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "axtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "axtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3da0000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CDTR(UChar *p, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, FPR, FPR), "cdtr", r1, r2);
+
+   return emit_RRE(p, 0xb3e40000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CXTR(UChar *p, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, FPR, FPR), "cxtr", r1, r2);
+
+   return emit_RRE(p, 0xb3ec0000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CDGTRA(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0);
+   vassert(m3 == 0 || s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m3 == 0)
+         s390_disasm(ENC3(MNM, FPR, GPR), "cdgtr", r1, r2);
+      else
+         s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cdgtra", r1, m3, r2, m4);
+   }
+
+   return emit_RRF2(p, 0xb3f10000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CXGTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0);
+   /* rounding mode m3 is not considered, as the corresponding
+      IRop (Iop_I64StoD128) does not take rounding mode. */
+   vassert(m3 == 0);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, FPR, GPR), "cxgtr", r1, r2);
+
+   return emit_RRF2(p, 0xb3f90000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CDFTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cdftr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9510000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CXFTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cxftr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9590000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CDLFTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cdlftr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9530000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CXLFTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cxlftr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb95b0000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CDLGTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cdlgtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9520000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CXLGTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, GPR, UINT), "cxlgtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb95a0000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CEDTR(UChar *p, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, FPR, FPR), "cedtr", r1, r2);
+
+   return emit_RRE(p, 0xb3f40000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CEXTR(UChar *p, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, FPR, FPR), "cextr", r1, r2);
+
+   return emit_RRE(p, 0xb3fc0000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CFDTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, GPR, UINT, FPR, UINT), "cfdtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9410000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CFXTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, GPR, UINT, FPR, UINT), "cfxtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9490000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CGDTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0);
+   vassert(s390_host_has_fpext || m3 < 1 || m3 > 7);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, GPR, UINT, FPR), "cgdtr", r1, m3, r2);
+
+   return emit_RRF2(p, 0xb3e10000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CGXTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0);
+   vassert(s390_host_has_fpext || m3 < 1 || m3 > 7);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, GPR, UINT, FPR), "cgxtr", r1, m3, r2);
+
+   return emit_RRF2(p, 0xb3e90000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CLFDTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, GPR, UINT, FPR, UINT), "clfdtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9430000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CLFXTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, GPR, UINT, FPR, UINT), "clfxtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb94b0000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CLGDTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, GPR, UINT, FPR, UINT), "clgdtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb9420000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_CLGXTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(m4 == 0);
+   vassert(s390_host_has_dfp);
+   vassert(s390_host_has_fpext);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, GPR, UINT, FPR, UINT), "clgxtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb94a0000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_DDTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "ddtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "ddtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3d10000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_DXTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "dxtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "dxtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3d90000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_EEDTR(UChar *p, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, GPR, FPR), "eedtr", r1, r2);
+
+   return emit_RRE(p, 0xb3e50000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_EEXTR(UChar *p, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, GPR, FPR), "eextr", r1, r2);
+
+   return emit_RRE(p, 0xb3ed0000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_ESDTR(UChar *p, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, GPR, FPR), "esdtr", r1, r2);
+
+   return emit_RRE(p, 0xb3e70000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_ESXTR(UChar *p, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC3(MNM, GPR, FPR), "esxtr", r1, r2);
+
+   return emit_RRE(p, 0xb3ef0000, r1, r2);
+}
+
+
+static UChar *
+s390_emit_IEDTR(UChar *p, UChar r3, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, GPR), "iedtr", r1, r3, r2);
+
+   return emit_RRF(p, 0xb3f60000, r3, r1, r2);
+}
+
+
+static UChar *
+s390_emit_IEXTR(UChar *p, UChar r3, UChar r1, UChar r2)
+{
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, GPR), "iextr", r1, r3, r2);
+
+   return emit_RRF(p, 0xb3fe0000, r3, r1, r2);
+}
+
+
+static UChar *
+s390_emit_LDETR(UChar *p, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, UINT), "ldetr", r1, r2, m4);
+
+   return emit_RRF5(p, 0xb3d40000, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_LXDTR(UChar *p, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, UINT), "lxdtr", r1, r2, m4);
+
+   return emit_RRF5(p, 0xb3dc0000, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_LEDTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0);
+   vassert(s390_host_has_fpext || m3 < 1 || m3 > 7);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, FPR, UINT), "ledtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb3d50000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_LDXTR(UChar *p, UChar m3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0);
+   vassert(s390_host_has_fpext || m3 < 1 || m3 > 7);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, UINT, FPR, UINT), "ldxtr", r1, m3, r2, m4);
+
+   return emit_RRF2(p, 0xb3dd0000, m3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_MDTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "mdtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "mdtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3d00000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_MXTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "mxtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "mxtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3d80000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+emit_E(UChar *p, UInt op)
+{
+   ULong the_insn = op;
+
+   return emit_2bytes(p, the_insn);
+}
+
+
+static UChar *
+s390_emit_PFPO(UChar *p)
+{
+   vassert(s390_host_has_pfpo);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      s390_disasm(ENC1(MNM), "pfpo");
+   }
+
+   return emit_E(p, 0x010a);
+}
+
+
+static UChar *
+s390_emit_QADTR(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "qadtr", r1, r3, r2, m4);
+
+   return emit_RRF4(p, 0xb3f50000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_QAXTR(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "qaxtr", r1, r3, r2, m4);
+
+   return emit_RRF4(p, 0xb3fd0000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_RRDTR(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, FPR, GPR, UINT), "rrdtr", r1, r3, r2, m4);
+
+   return emit_RRF4(p, 0xb3f70000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_RRXTR(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC5(MNM, FPR, FPR, GPR, UINT), "rrxtr", r1, r3, r2, m4);
+
+   return emit_RRF4(p, 0xb3ff0000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_SDTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "sdtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "sdtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3d30000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_SXTRA(UChar *p, UChar r3, UChar m4, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   vassert(m4 == 0 || s390_host_has_fpext);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM)) {
+      if (m4 == 0)
+         s390_disasm(ENC4(MNM, FPR, FPR, FPR), "sxtr", r1, r2, r3);
+      else
+         s390_disasm(ENC5(MNM, FPR, FPR, FPR, UINT), "sxtra", r1, r2, r3, m4);
+   }
+
+   return emit_RRF4(p, 0xb3db0000, r3, m4, r1, r2);
+}
+
+
+static UChar *
+s390_emit_SLDT(UChar *p, UChar r3, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, UDXB), "sldt", r1, r3, 0, 0, r2);
+
+   return emit_RXF(p, 0xED0000000040ULL, r3, 0, r2, 0, r1);
+}
+
+
+static UChar *
+s390_emit_SLXT(UChar *p, UChar r3, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, UDXB), "slxt", r1, r3, 0, 0, r2);
+
+   return emit_RXF(p, 0xED0000000048ULL, r3, 0, r2, 0, r1);
+}
+
+
+static UChar *
+s390_emit_SRDT(UChar *p, UChar r3, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, UDXB), "srdt", r1, r3, 0, 0, r2);
+
+   return emit_RXF(p, 0xED0000000041ULL, r3, 0, r2, 0, r1);
+}
+
+
+static UChar *
+s390_emit_SRXT(UChar *p, UChar r3, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_dfp);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, FPR, FPR, UDXB), "srxt", r1, r3, 0, 0, r2);
+
+   return emit_RXF(p, 0xED0000000049ULL, r3, 0, r2, 0, r1);
+}
+
+
+static UChar *
+s390_emit_LOCGR(UChar *p, UChar m3, UChar r1, UChar r2)
+{
+   vassert(s390_host_has_lsc);
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, GPR, GPR, UINT), "locgr", r1, r2, m3);
+
+   return emit_RRF3(p, 0xb9e20000, m3, r1, r2);
+}
+
+
+static UChar *
+s390_emit_LOC(UChar *p, UChar r1, UChar m3, UChar b2, UShort dl2, UChar dh2)
+{
+   vassert(s390_host_has_ldisp || dh2 == 0);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, GPR, UINT, SDXB), "loc", r1, m3, dh2, dl2, 0, b2);
+
+   return emit_RSY(p, 0xeb00000000f2ULL, r1, m3, b2, dl2, dh2);
+}
+
+
+static UChar *
+s390_emit_LOCG(UChar *p, UChar r1, UChar m3, UChar b2, UShort dl2, UChar dh2)
+{
+   vassert(s390_host_has_ldisp || dh2 == 0);
+
+   if (UNLIKELY(vex_traceflags & VEX_TRACE_ASM))
+      s390_disasm(ENC4(MNM, GPR, UINT, SDXB), "locg", r1, m3, dh2, dl2, 0, b2);
+
+   return emit_RSY(p, 0xeb00000000e2ULL, r1, m3, b2, dl2, dh2);
+}
+
+
 /* Provide a symbolic name for register "R0" */
 #define R0 0
 
@@ -3835,7 +4817,7 @@ s390_emit_SXBR(UChar *p, UChar r1, UChar r2)
 static __inline__ Bool
 uint_fits_signed_16bit(UInt val)
 {
-   int v = val & 0xFFFFu;
+   Int v = val & 0xFFFFu;
 
    /* sign extend */
    v = (v << 16) >> 16;
@@ -4411,6 +5393,27 @@ s390_insn_move(UChar size, HReg dst, HReg src)
 
 
 s390_insn *
+s390_insn_memcpy(UChar size, s390_amode *dst, s390_amode *src)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   /* This insn will be mapped to MVC which requires base register
+      plus 12-bit displacement */
+   vassert(src->tag == S390_AMODE_B12);
+   vassert(dst->tag == S390_AMODE_B12);
+
+   insn->tag  = S390_INSN_MEMCPY;
+   insn->size = size;
+   insn->variant.memcpy.src = src;
+   insn->variant.memcpy.dst = dst;
+
+   vassert(size == 1 || size == 2 || size == 4 || size == 8);
+
+   return insn;
+}
+
+
+s390_insn *
 s390_insn_cond_move(UChar size, s390_cc_t cond, HReg dst, s390_opnd_RMI src)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
@@ -4465,12 +5468,11 @@ s390_insn_mul(UChar size, HReg dst_hi, HReg dst_lo, s390_opnd_RMI op2,
    vassert(! hregIsVirtual(dst_hi));
    vassert(! hregIsVirtual(dst_lo));
 
-   insn->tag  = S390_INSN_MUL;
+   insn->tag  = signed_multiply ? S390_INSN_SMUL : S390_INSN_UMUL;
    insn->size = size;
    insn->variant.mul.dst_hi = dst_hi;
    insn->variant.mul.dst_lo = dst_lo;
    insn->variant.mul.op2 = op2;
-   insn->variant.mul.signed_multiply = signed_multiply;
 
    return insn;
 }
@@ -4486,12 +5488,11 @@ s390_insn_div(UChar size, HReg op1_hi, HReg op1_lo, s390_opnd_RMI op2,
    vassert(! hregIsVirtual(op1_hi));
    vassert(! hregIsVirtual(op1_lo));
 
-   insn->tag  = S390_INSN_DIV;
+   insn->tag  = signed_divide ? S390_INSN_SDIV : S390_INSN_UDIV;
    insn->size = size;
    insn->variant.div.op1_hi = op1_hi;
    insn->variant.div.op1_lo = op1_lo;
    insn->variant.div.op2 = op2;
-   insn->variant.div.signed_divide = signed_divide;
 
    return insn;
 }
@@ -4585,7 +5586,7 @@ s390_insn_cas(UChar size, HReg op1, s390_amode *op2, HReg op3, HReg old_mem)
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
    vassert(size == 4 || size == 8);
-   vassert(op2->x == 0);
+   vassert(hregNumber(op2->x) == 0);
 
    insn->tag  = S390_INSN_CAS;
    insn->size = size;
@@ -4604,21 +5605,24 @@ s390_insn_cdas(UChar size, HReg op1_high, HReg op1_low, s390_amode *op2,
                HReg scratch)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_cdas *cdas = LibVEX_Alloc(sizeof(s390_cdas));
 
    vassert(size == 4 || size == 8);
-   vassert(op2->x == 0);
+   vassert(hregNumber(op2->x) == 0);
    vassert(hregNumber(scratch) == 1);  /* r0,r1 used as scratch reg pair */
 
    insn->tag  = S390_INSN_CDAS;
    insn->size = size;
-   insn->variant.cdas.op1_high = op1_high;
-   insn->variant.cdas.op1_low  = op1_low;
-   insn->variant.cdas.op2 = op2;
-   insn->variant.cdas.op3_high = op3_high;
-   insn->variant.cdas.op3_low  = op3_low;
-   insn->variant.cdas.old_mem_high = old_mem_high;
-   insn->variant.cdas.old_mem_low  = old_mem_low;
-   insn->variant.cdas.scratch = scratch;
+   insn->variant.cdas.details = cdas;
+
+   cdas->op1_high = op1_high;
+   cdas->op1_low  = op1_low;
+   cdas->op2 = op2;
+   cdas->op3_high = op3_high;
+   cdas->op3_low  = op3_low;
+   cdas->old_mem_high = old_mem_high;
+   cdas->old_mem_low  = old_mem_low;
+   cdas->scratch = scratch;
 
    return insn;
 }
@@ -4644,17 +5648,22 @@ s390_insn_compare(UChar size, HReg src1, s390_opnd_RMI src2,
 
 s390_insn *
 s390_insn_helper_call(s390_cc_t cond, Addr64 target, UInt num_args,
-                      HChar *name, HReg dst)
+                      const HChar *name, RetLoc rloc)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_helper_call *helper_call = LibVEX_Alloc(sizeof(s390_helper_call));
 
    insn->tag  = S390_INSN_HELPER_CALL;
    insn->size = 0;  /* does not matter */
-   insn->variant.helper_call.cond = cond;
-   insn->variant.helper_call.target = target;
-   insn->variant.helper_call.num_args = num_args;
-   insn->variant.helper_call.name = name;
-   insn->variant.helper_call.dst = dst;
+   insn->variant.helper_call.details = helper_call;
+
+   helper_call->cond = cond;
+   helper_call->target = target;
+   helper_call->num_args = num_args;
+   helper_call->name = name;
+   helper_call->rloc = rloc;
+
+   vassert(is_sane_RetLoc(rloc));
 
    return insn;
 }
@@ -4737,8 +5746,8 @@ s390_insn_bfp_compare(UChar size, HReg dst, HReg op1, HReg op2)
 
 
 s390_insn *
-s390_insn_bfp_convert(UChar size, s390_conv_t tag, HReg dst, HReg op,
-                      s390_round_t rounding_mode)
+s390_insn_bfp_convert(UChar size, s390_bfp_conv_t tag, HReg dst, HReg op,
+                      s390_bfp_round_t rounding_mode)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
@@ -4757,11 +5766,11 @@ s390_insn_bfp_convert(UChar size, s390_conv_t tag, HReg dst, HReg op,
 }
 
 
-/* Check validity of a register pair for 128-bit BFP. Valid register
+/* Check validity of a register pair for 128-bit FP. Valid register
    pairs are (0,2), (1,3), (4, 6), (5, 7), (8, 10), (9, 11), (12, 14),
    and (13, 15). */
 static Bool
-is_valid_bfp128_regpair(HReg hi, HReg lo)
+is_valid_fp128_regpair(HReg hi, HReg lo)
 {
    UInt hi_regno = hregNumber(hi);
    UInt lo_regno = hregNumber(lo);
@@ -4779,8 +5788,8 @@ s390_insn_bfp128_binop(UChar size, s390_bfp_binop_t tag, HReg dst_hi,
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
    vassert(size == 16);
-   vassert(is_valid_bfp128_regpair(dst_hi, dst_lo));
-   vassert(is_valid_bfp128_regpair(op2_hi, op2_lo));
+   vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+   vassert(is_valid_fp128_regpair(op2_hi, op2_lo));
 
    insn->tag  = S390_INSN_BFP_BINOP;
    insn->size = size;
@@ -4801,8 +5810,8 @@ s390_insn_bfp128_unop(UChar size, s390_bfp_unop_t tag, HReg dst_hi,
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
    vassert(size == 16);
-   vassert(is_valid_bfp128_regpair(dst_hi, dst_lo));
-   vassert(is_valid_bfp128_regpair(op_hi, op_lo));
+   vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+   vassert(is_valid_fp128_regpair(op_hi, op_lo));
 
    insn->tag  = S390_INSN_BFP_UNOP;
    insn->size = size;
@@ -4823,8 +5832,8 @@ s390_insn_bfp128_compare(UChar size, HReg dst, HReg op1_hi, HReg op1_lo,
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
    vassert(size == 16);
-   vassert(is_valid_bfp128_regpair(op1_hi, op1_lo));
-   vassert(is_valid_bfp128_regpair(op2_hi, op2_lo));
+   vassert(is_valid_fp128_regpair(op1_hi, op1_lo));
+   vassert(is_valid_fp128_regpair(op2_hi, op2_lo));
 
    insn->tag  = S390_INSN_BFP_COMPARE;
    insn->size = size;
@@ -4839,20 +5848,20 @@ s390_insn_bfp128_compare(UChar size, HReg dst, HReg op1_hi, HReg op1_lo,
 
 
 static s390_insn *
-s390_insn_bfp128_convert(UChar size, s390_conv_t tag, HReg dst_hi,
+s390_insn_bfp128_convert(UChar size, s390_bfp_conv_t tag, HReg dst_hi,
                          HReg dst_lo, HReg op_hi, HReg op_lo,
-                         s390_round_t rounding_mode)
+                         s390_bfp_round_t rounding_mode)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
    if (size == 16) {
       /* From smaller size to 16 bytes */
-      vassert(is_valid_bfp128_regpair(dst_hi, dst_lo));
-      vassert(op_lo == INVALID_HREG);
+      vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+      vassert(hregIsInvalid(op_lo));
    } else {
       /* From 16 bytes to smaller size */
-      vassert(is_valid_bfp128_regpair(op_hi, op_lo));
-      vassert(dst_lo == INVALID_HREG);
+      vassert(is_valid_fp128_regpair(op_hi, op_lo));
+      vassert(hregIsInvalid(dst_lo));
    }
 
    insn->tag  = S390_INSN_BFP_CONVERT;
@@ -4869,12 +5878,12 @@ s390_insn_bfp128_convert(UChar size, s390_conv_t tag, HReg dst_hi,
 
 
 s390_insn *
-s390_insn_bfp128_convert_to(UChar size, s390_conv_t tag, HReg dst_hi,
+s390_insn_bfp128_convert_to(UChar size, s390_bfp_conv_t tag, HReg dst_hi,
                             HReg dst_lo, HReg op)
 {
    /* Conversion to bfp128 never requires a rounding mode. Provide default
       rounding mode. It will not be used when emitting insns. */
-   s390_round_t rounding_mode = S390_ROUND_NEAREST_EVEN;
+   s390_bfp_round_t rounding_mode = S390_BFP_ROUND_NEAREST_EVEN;
 
    return s390_insn_bfp128_convert(size, tag, dst_hi, dst_lo, op,
                                    INVALID_HREG, rounding_mode);
@@ -4882,12 +5891,367 @@ s390_insn_bfp128_convert_to(UChar size, s390_conv_t tag, HReg dst_hi,
 
 
 s390_insn *
-s390_insn_bfp128_convert_from(UChar size, s390_conv_t tag, HReg dst,
+s390_insn_bfp128_convert_from(UChar size, s390_bfp_conv_t tag, HReg dst,
                               HReg op_hi, HReg op_lo,
-                              s390_round_t rounding_mode)
+                              s390_bfp_round_t rounding_mode)
 {
    return s390_insn_bfp128_convert(size, tag, dst, INVALID_HREG, op_hi, op_lo,
                                    rounding_mode);
+}
+
+
+s390_insn *
+s390_insn_dfp_binop(UChar size, s390_dfp_binop_t tag, HReg dst, HReg op2,
+                    HReg op3, s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_dfp_binop *dfp_binop = LibVEX_Alloc(sizeof(s390_dfp_binop));
+
+   vassert(size == 8);
+
+   insn->tag  = S390_INSN_DFP_BINOP;
+   insn->size = size;
+   insn->variant.dfp_binop.details = dfp_binop;
+
+   dfp_binop->tag = tag;
+   dfp_binop->dst_hi = dst;
+   dfp_binop->op2_hi = op2;
+   dfp_binop->op3_hi = op3;
+   dfp_binop->dst_lo = INVALID_HREG;
+   dfp_binop->op2_lo = INVALID_HREG;
+   dfp_binop->op3_lo = INVALID_HREG;
+   dfp_binop->rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp_unop(UChar size, s390_dfp_unop_t tag, HReg dst, HReg op)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 8);
+
+   insn->tag  = S390_INSN_DFP_UNOP;
+   insn->size = size;
+   insn->variant.dfp_unop.tag = tag;
+   insn->variant.dfp_unop.dst_hi = dst;
+   insn->variant.dfp_unop.op_hi  = op;
+   insn->variant.dfp_unop.dst_lo = INVALID_HREG;
+   insn->variant.dfp_unop.op_lo  = INVALID_HREG;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp_intop(UChar size, s390_dfp_intop_t tag, HReg dst, HReg op2,
+                    HReg op3)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 8);
+
+   insn->tag  = S390_INSN_DFP_INTOP;
+   insn->size = size;
+   insn->variant.dfp_intop.tag = tag;
+   insn->variant.dfp_intop.dst_hi = dst;
+   insn->variant.dfp_intop.op2    = op2;
+   insn->variant.dfp_intop.op3_hi = op3;
+   insn->variant.dfp_intop.dst_lo = INVALID_HREG;
+   insn->variant.dfp_intop.op3_lo = INVALID_HREG;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp_compare(UChar size, s390_dfp_cmp_t tag, HReg dst,
+                      HReg op1, HReg op2)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 8);
+
+   insn->tag  = S390_INSN_DFP_COMPARE;
+   insn->size = size;
+   insn->variant.dfp_compare.tag = tag;
+   insn->variant.dfp_compare.dst = dst;
+   insn->variant.dfp_compare.op1_hi = op1;
+   insn->variant.dfp_compare.op2_hi = op2;
+   insn->variant.dfp_compare.op1_lo = INVALID_HREG;
+   insn->variant.dfp_compare.op2_lo = INVALID_HREG;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp_convert(UChar size, s390_dfp_conv_t tag, HReg dst, HReg op,
+                      s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 4 || size == 8);
+
+   insn->tag  = S390_INSN_DFP_CONVERT;
+   insn->size = size;
+   insn->variant.dfp_convert.tag = tag;
+   insn->variant.dfp_convert.dst_hi = dst;
+   insn->variant.dfp_convert.op_hi  = op;
+   insn->variant.dfp_convert.dst_lo = INVALID_HREG;
+   insn->variant.dfp_convert.op_lo  = INVALID_HREG;
+   insn->variant.dfp_convert.rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp_reround(UChar size, HReg dst, HReg op2, HReg op3,
+                      s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 8);
+
+   insn->tag  = S390_INSN_DFP_REROUND;
+   insn->size = size;
+   insn->variant.dfp_reround.dst_hi = dst;
+   insn->variant.dfp_reround.op2 = op2;
+   insn->variant.dfp_reround.op3_hi = op3;
+   insn->variant.dfp_reround.dst_lo = INVALID_HREG;
+   insn->variant.dfp_reround.op3_lo = INVALID_HREG;
+   insn->variant.dfp_reround.rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_fp_convert(UChar size, s390_fp_conv_t tag, HReg dst, HReg op,
+                     HReg r1, s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_fp_convert *fp_convert = LibVEX_Alloc(sizeof(s390_fp_convert));
+
+   vassert(size == 4 || size == 8);
+
+   insn->tag  = S390_INSN_FP_CONVERT;
+   insn->size = size;
+   insn->variant.fp_convert.details = fp_convert;
+
+   fp_convert->tag = tag;
+   fp_convert->dst_hi = dst;
+   fp_convert->op_hi  = op;
+   fp_convert->r1 = r1;
+   fp_convert->dst_lo = INVALID_HREG;
+   fp_convert->op_lo  = INVALID_HREG;
+   fp_convert->rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_fp128_convert(UChar size, s390_fp_conv_t tag, HReg dst_hi,
+                        HReg dst_lo, HReg op_hi, HReg op_lo, HReg r1,
+                        s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_fp_convert *fp_convert = LibVEX_Alloc(sizeof(s390_fp_convert));
+
+   vassert(size == 16);
+
+   insn->tag  = S390_INSN_FP_CONVERT;
+   insn->size = size;
+   insn->variant.fp_convert.details = fp_convert;
+
+   fp_convert->tag = tag;
+   fp_convert->dst_hi = dst_hi;
+   fp_convert->dst_lo = dst_lo;
+   fp_convert->op_hi  = op_hi;
+   fp_convert->r1 = r1;
+   fp_convert->op_lo  = op_lo;
+   fp_convert->rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp128_binop(UChar size, s390_dfp_binop_t tag, HReg dst_hi,
+                       HReg dst_lo, HReg op2_hi, HReg op2_lo, HReg op3_hi,
+                       HReg op3_lo, s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+   s390_dfp_binop *dfp_binop = LibVEX_Alloc(sizeof(s390_dfp_binop));
+
+   vassert(size == 16);
+   vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+   vassert(is_valid_fp128_regpair(op2_hi, op2_lo));
+   vassert(is_valid_fp128_regpair(op3_hi, op3_lo));
+
+   insn->tag  = S390_INSN_DFP_BINOP;
+   insn->size = size;
+   insn->variant.dfp_binop.details = dfp_binop;
+
+   dfp_binop->tag = tag;
+   dfp_binop->dst_hi = dst_hi;
+   dfp_binop->dst_lo = dst_lo;
+   dfp_binop->op2_hi = op2_hi;
+   dfp_binop->op2_lo = op2_lo;
+   dfp_binop->op3_hi = op3_hi;
+   dfp_binop->op3_lo = op3_lo;
+   dfp_binop->rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp128_unop(UChar size, s390_dfp_unop_t tag, HReg dst,
+                      HReg op_hi, HReg op_lo)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   /* destination is an 8 byte integer value */
+   vassert(size == 8);
+   vassert(is_valid_fp128_regpair(op_hi, op_lo));
+
+   insn->tag  = S390_INSN_DFP_UNOP;
+   insn->size = size;
+   insn->variant.dfp_unop.tag = tag;
+   insn->variant.dfp_unop.dst_hi = dst;
+   insn->variant.dfp_unop.dst_lo = INVALID_HREG;
+   insn->variant.dfp_unop.op_hi = op_hi;
+   insn->variant.dfp_unop.op_lo = op_lo;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp128_intop(UChar size, s390_dfp_intop_t tag, HReg dst_hi,
+                       HReg dst_lo, HReg op2, HReg op3_hi, HReg op3_lo)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 16);
+   vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+   vassert(is_valid_fp128_regpair(op3_hi, op3_lo));
+
+   insn->tag  = S390_INSN_DFP_INTOP;
+   insn->size = size;
+   insn->variant.dfp_intop.tag = tag;
+   insn->variant.dfp_intop.dst_hi = dst_hi;
+   insn->variant.dfp_intop.dst_lo = dst_lo;
+   insn->variant.dfp_intop.op2    = op2;
+   insn->variant.dfp_intop.op3_hi = op3_hi;
+   insn->variant.dfp_intop.op3_lo = op3_lo;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp128_compare(UChar size, s390_dfp_cmp_t tag, HReg dst, HReg op1_hi,
+                         HReg op1_lo, HReg op2_hi, HReg op2_lo)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 16);
+   vassert(is_valid_fp128_regpair(op1_hi, op1_lo));
+   vassert(is_valid_fp128_regpair(op2_hi, op2_lo));
+
+   insn->tag  = S390_INSN_DFP_COMPARE;
+   insn->size = size;
+   insn->variant.dfp_compare.tag = tag;
+   insn->variant.dfp_compare.dst = dst;
+   insn->variant.dfp_compare.op1_hi = op1_hi;
+   insn->variant.dfp_compare.op1_lo = op1_lo;
+   insn->variant.dfp_compare.op2_hi = op2_hi;
+   insn->variant.dfp_compare.op2_lo = op2_lo;
+
+   return insn;
+}
+
+
+static s390_insn *
+s390_insn_dfp128_convert(UChar size, s390_dfp_conv_t tag, HReg dst_hi,
+                         HReg dst_lo, HReg op_hi, HReg op_lo,
+                         s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   if (size == 16) {
+      /* From smaller size to 16 bytes */
+      vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+      vassert(hregIsInvalid(op_lo));
+   } else {
+      /* From 16 bytes to smaller size */
+      vassert(is_valid_fp128_regpair(op_hi, op_lo));
+      vassert(hregIsInvalid(dst_lo));
+   }
+
+   insn->tag  = S390_INSN_DFP_CONVERT;
+   insn->size = size;
+   insn->variant.dfp_convert.tag = tag;
+   insn->variant.dfp_convert.dst_hi = dst_hi;
+   insn->variant.dfp_convert.dst_lo = dst_lo;
+   insn->variant.dfp_convert.op_hi = op_hi;
+   insn->variant.dfp_convert.op_lo = op_lo;
+   insn->variant.dfp_convert.rounding_mode = rounding_mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_dfp128_convert_to(UChar size, s390_dfp_conv_t tag, HReg dst_hi,
+                            HReg dst_lo, HReg op)
+{
+   /* Conversion to dfp128 never requires a rounding mode. Provide default
+      rounding mode. It will not be used when emitting insns. */
+   s390_dfp_round_t rounding_mode = S390_DFP_ROUND_NEAREST_EVEN_4;
+
+   return s390_insn_dfp128_convert(size, tag, dst_hi, dst_lo, op,
+                                   INVALID_HREG, rounding_mode);
+}
+
+
+s390_insn *
+s390_insn_dfp128_convert_from(UChar size, s390_dfp_conv_t tag, HReg dst,
+                              HReg op_hi, HReg op_lo,
+                              s390_dfp_round_t rounding_mode)
+{
+   return s390_insn_dfp128_convert(size, tag, dst, INVALID_HREG, op_hi, op_lo,
+                                   rounding_mode);
+}
+
+
+s390_insn *
+s390_insn_dfp128_reround(UChar size, HReg dst_hi, HReg dst_lo, HReg op2,
+                         HReg op3_hi, HReg op3_lo,
+                         s390_dfp_round_t rounding_mode)
+{
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   vassert(size == 16);
+   vassert(is_valid_fp128_regpair(dst_hi, dst_lo));
+   vassert(is_valid_fp128_regpair(op3_hi, op3_lo));
+
+   insn->tag  = S390_INSN_DFP_REROUND;
+   insn->size = size;
+   insn->variant.dfp_reround.dst_hi = dst_hi;
+   insn->variant.dfp_reround.dst_lo = dst_lo;
+   insn->variant.dfp_reround.op2    = op2;
+   insn->variant.dfp_reround.op3_hi = op3_hi;
+   insn->variant.dfp_reround.op3_lo = op3_lo;
+   insn->variant.dfp_reround.rounding_mode = rounding_mode;
+
+   return insn;
 }
 
 
@@ -4904,43 +6268,69 @@ s390_insn_mfence(void)
 
 
 s390_insn *
-s390_insn_gzero(UChar size, UInt offset)
+s390_insn_mimm(UChar size, s390_amode *dst, ULong value)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
-   insn->tag  = S390_INSN_GZERO;
+   /* This insn will be mapped to insns that require base register
+      plus 12-bit displacement */
+   vassert(dst->tag == S390_AMODE_B12);
+
+   insn->tag  = S390_INSN_MIMM;
    insn->size = size;
-   insn->variant.gzero.offset = offset;
+   insn->variant.mimm.dst = dst;
+   insn->variant.mimm.value = value;
 
    return insn;
 }
 
 
 s390_insn *
-s390_insn_gadd(UChar size, UInt offset, UChar delta, ULong value)
+s390_insn_madd(UChar size, s390_amode *dst, UChar delta, ULong value)
 {
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
-   insn->tag  = S390_INSN_GADD;
+   vassert(size == 4 || size == 8);
+
+   /* This insn will be mapped to an ASI or AGSI so we can only allow base
+      register plus 12-bit / 20-bit displacement. */
+   vassert(dst->tag == S390_AMODE_B12 || dst->tag == S390_AMODE_B20);
+
+   insn->tag  = S390_INSN_MADD;
    insn->size = size;
-   insn->variant.gadd.offset = offset;
-   insn->variant.gadd.delta = delta;
-   insn->variant.gadd.value = value;
+   insn->variant.madd.dst   = dst;
+   insn->variant.madd.delta = delta;
+   insn->variant.madd.value = value;
 
    return insn;
 }
 
 
 s390_insn *
-s390_insn_set_fpcrm(UChar size, HReg mode)
+s390_insn_set_fpc_bfprm(UChar size, HReg mode)
 {
    vassert(size == 4);
 
    s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
 
-   insn->tag  = S390_INSN_SET_FPCRM;
+   insn->tag  = S390_INSN_SET_FPC_BFPRM;
    insn->size = size;
-   insn->variant.set_fpcrm.mode = mode;
+   insn->variant.set_fpc_bfprm.mode = mode;
+
+   return insn;
+}
+
+
+s390_insn *
+s390_insn_set_fpc_dfprm(UChar size, HReg mode)
+{
+   vassert(size == 4);
+
+   s390_insn *insn = LibVEX_Alloc(sizeof(s390_insn));
+
+   insn->tag  = S390_INSN_SET_FPC_DFPRM;
+   insn->size = size;
+   insn->variant.set_fpc_dfprm.mode = mode;
 
    return insn;
 }
@@ -5085,7 +6475,7 @@ s390_jump_kind_as_string(IRJumpKind kind)
 
 /* Helper function for writing out a V insn */
 static void
-s390_sprintf(HChar *buf, HChar *fmt, ...)
+s390_sprintf(HChar *buf, const HChar *fmt, ...)
 {
    HChar *p;
    ULong value;
@@ -5222,6 +6612,11 @@ s390_insn_as_string(const s390_insn *insn)
                    insn->variant.move.src);
       break;
 
+   case S390_INSN_MEMCPY:
+      s390_sprintf(buf, "%M %A,%A", "v-memcpy", insn->variant.memcpy.dst,
+                   insn->variant.memcpy.src);
+      break;
+
    case S390_INSN_COND_MOVE:
       s390_sprintf(buf, "%M if (%C) %R,%O", "v-move",
                    insn->variant.cond_move.cond, insn->variant.cond_move.dst,
@@ -5250,8 +6645,9 @@ s390_insn_as_string(const s390_insn *insn)
                    &insn->variant.alu.op2);
       break;
 
-   case S390_INSN_MUL:
-      if (insn->variant.mul.signed_multiply) {
+   case S390_INSN_SMUL:
+   case S390_INSN_UMUL:
+      if (insn->tag == S390_INSN_SMUL) {
          op = "v-muls";
       } else {
          op = "v-mulu";
@@ -5260,8 +6656,9 @@ s390_insn_as_string(const s390_insn *insn)
                    &insn->variant.mul.op2);
       break;
 
-   case S390_INSN_DIV:
-      if (insn->variant.div.signed_divide) {
+   case S390_INSN_SDIV:
+   case S390_INSN_UDIV:
+      if (insn->tag == S390_INSN_SDIV) {
          op = "v-divs";
       } else {
          op = "v-divu";
@@ -5320,13 +6717,14 @@ s390_insn_as_string(const s390_insn *insn)
                    insn->variant.cas.old_mem);
       break;
 
-   case S390_INSN_CDAS:
+   case S390_INSN_CDAS: {
+      s390_cdas *cdas = insn->variant.cdas.details;
+
       s390_sprintf(buf, "%M %R,%R,%A,%R,%R,%R,%R", "v-cdas",
-                   insn->variant.cdas.op1_high, insn->variant.cdas.op1_low,
-                   insn->variant.cdas.op2, insn->variant.cdas.op3_high,
-                   insn->variant.cdas.op3_low, insn->variant.cdas.old_mem_high,
-                   insn->variant.cdas.old_mem_low);
+                   cdas->op1_high, cdas->op1_low, cdas->op2, cdas->op3_high,
+                   cdas->op3_low, cdas->old_mem_high, cdas->old_mem_low);
       break;
+   }
 
    case S390_INSN_COMPARE:
       if (insn->variant.compare.signed_comparison) {
@@ -5339,20 +6737,12 @@ s390_insn_as_string(const s390_insn *insn)
       break;
 
    case S390_INSN_HELPER_CALL: {
-      if (insn->variant.helper_call.dst != INVALID_HREG) {
-         s390_sprintf(buf, "%M if (%C) %R = %s{%I}(%L)", "v-call",
-                      insn->variant.helper_call.cond,
-                      insn->variant.helper_call.dst,
-                      insn->variant.helper_call.name,
-                      insn->variant.helper_call.target,
-                      insn->variant.helper_call.num_args);
-      } else {
+      s390_helper_call *helper_call = insn->variant.helper_call.details;
          s390_sprintf(buf, "%M if (%C) %s{%I}(%L)", "v-call",
-                      insn->variant.helper_call.cond,
-                      insn->variant.helper_call.name,
-                      insn->variant.helper_call.target,
-                      insn->variant.helper_call.num_args);
-      }
+                   helper_call->cond,
+                   helper_call->name,
+                   helper_call->target,
+                   helper_call->num_args);
       return buf;   /* avoid printing "size = ..." which is meaningless */
    }
 
@@ -5436,23 +6826,145 @@ s390_insn_as_string(const s390_insn *insn)
                    insn->variant.bfp_convert.op_hi);
       break;
 
+   case S390_INSN_DFP_BINOP: {
+      s390_dfp_binop *dfp_binop = insn->variant.dfp_binop.details;
+
+      switch (dfp_binop->tag) {
+      case S390_DFP_ADD:  op = "v-dadd";  break;
+      case S390_DFP_SUB:  op = "v-dsub";  break;
+      case S390_DFP_MUL:  op = "v-dmul";  break;
+      case S390_DFP_DIV:  op = "v-ddiv";  break;
+      case S390_DFP_QUANTIZE:  op = "v-dqua";  break;
+      default: goto fail;
+      }
+      s390_sprintf(buf, "%M %R,%R,%R", op, dfp_binop->dst_hi,
+                   dfp_binop->op2_hi, dfp_binop->op3_hi);
+      break;
+   }
+
+   case S390_INSN_DFP_UNOP:
+      switch (insn->variant.dfp_unop.tag) {
+      case S390_DFP_EXTRACT_EXP_D64:
+      case S390_DFP_EXTRACT_EXP_D128:  op = "v-d2exp";  break;
+      case S390_DFP_EXTRACT_SIG_D64:
+      case S390_DFP_EXTRACT_SIG_D128:  op = "v-d2sig";  break;
+      default: goto fail;
+      }
+      s390_sprintf(buf, "%M %R,%R", op, insn->variant.dfp_unop.dst_hi,
+                   insn->variant.dfp_unop.op_hi);
+      break;
+
+   case S390_INSN_DFP_INTOP:
+      switch (insn->variant.dfp_intop.tag) {
+      case S390_DFP_SHIFT_LEFT:  op = "v-dshl"; break;
+      case S390_DFP_SHIFT_RIGHT: op = "v-dshr"; break;
+      case S390_DFP_INSERT_EXP:  op = "v-diexp"; break;
+      default: goto fail;
+      }
+      s390_sprintf(buf, "%M %R,%R,%R", op, insn->variant.dfp_intop.dst_hi,
+                   insn->variant.dfp_intop.op2,
+                   insn->variant.dfp_intop.op3_hi);
+      break;
+
+   case S390_INSN_DFP_COMPARE:
+      switch (insn->variant.dfp_compare.tag) {
+      case S390_DFP_COMPARE:     op = "v-dcmp"; break;
+      case S390_DFP_COMPARE_EXP: op = "v-dcmpexp"; break;
+      default: goto fail;
+      }
+      s390_sprintf(buf, "%M %R,%R,%R", op, insn->variant.dfp_compare.dst,
+                   insn->variant.dfp_compare.op1_hi,
+                   insn->variant.dfp_compare.op2_hi);
+      break;
+
+   case S390_INSN_DFP_CONVERT:
+      switch (insn->variant.dfp_convert.tag) {
+      case S390_DFP_D32_TO_D64:
+      case S390_DFP_D64_TO_D32:
+      case S390_DFP_D64_TO_D128:
+      case S390_DFP_D128_TO_D64: op = "v-d2d"; break;
+      case S390_DFP_I32_TO_D64:
+      case S390_DFP_I32_TO_D128:
+      case S390_DFP_I64_TO_D64:
+      case S390_DFP_I64_TO_D128: op = "v-i2d"; break;
+      case S390_DFP_U32_TO_D64:
+      case S390_DFP_U32_TO_D128:
+      case S390_DFP_U64_TO_D64:
+      case S390_DFP_U64_TO_D128: op = "v-u2d"; break;
+      case S390_DFP_D64_TO_I32:
+      case S390_DFP_D128_TO_I32:
+      case S390_DFP_D64_TO_I64:
+      case S390_DFP_D128_TO_I64: op = "v-d2i"; break;
+      case S390_DFP_D64_TO_U32:
+      case S390_DFP_D64_TO_U64:
+      case S390_DFP_D128_TO_U32:
+      case S390_DFP_D128_TO_U64: op = "v-d2u"; break;
+      default: goto fail;
+      }
+      s390_sprintf(buf, "%M %R,%R", op, insn->variant.dfp_convert.dst_hi,
+                   insn->variant.dfp_convert.op_hi);
+      break;
+
+   case S390_INSN_DFP_REROUND:
+      s390_sprintf(buf, "%M %R,%R,%R", "v-drrnd",
+                   insn->variant.dfp_reround.dst_hi,
+                   insn->variant.dfp_reround.op2,
+                   insn->variant.dfp_reround.op3_hi);
+      break;
+
+   case S390_INSN_FP_CONVERT: {
+      s390_fp_convert *fp_convert = insn->variant.fp_convert.details;
+
+      switch (fp_convert->tag) {
+      case S390_FP_F32_TO_D32:
+      case S390_FP_F32_TO_D64:
+      case S390_FP_F32_TO_D128:
+      case S390_FP_F64_TO_D32:
+      case S390_FP_F64_TO_D64:
+      case S390_FP_F64_TO_D128:
+      case S390_FP_F128_TO_D32:
+      case S390_FP_F128_TO_D64:
+      case S390_FP_F128_TO_D128: op = "v-f2d"; break;
+      case S390_FP_D32_TO_F32:
+      case S390_FP_D32_TO_F64:
+      case S390_FP_D32_TO_F128:
+      case S390_FP_D64_TO_F32:
+      case S390_FP_D64_TO_F64:
+      case S390_FP_D64_TO_F128:
+      case S390_FP_D128_TO_F32:
+      case S390_FP_D128_TO_F64:
+      case S390_FP_D128_TO_F128: op = "v-d2f"; break;
+      default: goto fail;
+      }
+      s390_sprintf(buf, "%M %R,%R", op, fp_convert->dst_hi,
+                   fp_convert->op_hi);
+      break;
+   }
+
    case S390_INSN_MFENCE:
       s390_sprintf(buf, "%M", "v-mfence");
       return buf;   /* avoid printing "size = ..." which is meaningless */
 
-   case S390_INSN_GZERO:
-      s390_sprintf(buf, "%M %G", "v-gzero", insn->variant.gzero.offset);
+   case S390_INSN_MIMM:
+      s390_sprintf(buf, "%M %A,%I", "v-mimm", insn->variant.mimm.dst,
+                   insn->variant.mimm.value);
       break;
 
-   case S390_INSN_GADD:
-      s390_sprintf(buf, "%M %G += %I  (= %I)", "v-gadd",
-                   insn->variant.gadd.offset,
-                   (Long)(Char)insn->variant.gadd.delta,
-                   insn->variant.gadd.value);
+   case S390_INSN_MADD:
+      s390_sprintf(buf, "%M %A += %I  (= %I)", "v-madd",
+                   insn->variant.madd.dst,
+                   (Long)(Char)insn->variant.madd.delta,
+                   insn->variant.madd.value);
       break;
 
-   case S390_INSN_SET_FPCRM:
-      s390_sprintf(buf, "%M %R", "v-set-fpcrm", insn->variant.set_fpcrm.mode);
+   case S390_INSN_SET_FPC_BFPRM:
+      s390_sprintf(buf, "%M %R", "v-set-fpc-bfprm",
+                   insn->variant.set_fpc_bfprm.mode);
+      break;
+
+   case S390_INSN_SET_FPC_DFPRM:
+      s390_sprintf(buf, "%M %R", "v-set-fpc-dfprm",
+                   insn->variant.set_fpc_dfprm.mode);
       break;
 
    case S390_INSN_EVCHECK:
@@ -5558,6 +7070,59 @@ s390_insn_as_string(const s390_insn *insn)
       default:
          goto common;
       }
+
+   case S390_INSN_DFP_CONVERT:
+      switch (insn->variant.dfp_convert.tag) {
+      case S390_DFP_D32_TO_D64:
+      case S390_DFP_I32_TO_D64:
+      case S390_DFP_I32_TO_D128:
+      case S390_DFP_U32_TO_D64:
+      case S390_DFP_U32_TO_D128: p += vex_sprintf(p, "4 -> "); goto common;
+      case S390_DFP_D64_TO_D32:
+      case S390_DFP_D64_TO_D128:
+      case S390_DFP_I64_TO_D64:
+      case S390_DFP_I64_TO_D128:
+      case S390_DFP_U64_TO_D64:
+      case S390_DFP_U64_TO_D128:
+      case S390_DFP_D64_TO_I32:
+      case S390_DFP_D64_TO_I64:
+      case S390_DFP_D64_TO_U32:
+      case S390_DFP_D64_TO_U64:  p += vex_sprintf(p, "8 -> "); goto common;
+      case S390_DFP_D128_TO_D64:
+      case S390_DFP_D128_TO_I32:
+      case S390_DFP_D128_TO_I64:
+      case S390_DFP_D128_TO_U32:
+      case S390_DFP_D128_TO_U64: p += vex_sprintf(p, "16 -> "); goto common;
+      default:
+         goto common;
+      }
+
+   case S390_INSN_FP_CONVERT: {
+      s390_fp_convert *fp_convert = insn->variant.fp_convert.details;
+
+      switch (fp_convert->tag) {
+      case S390_FP_F32_TO_D32:
+      case S390_FP_F32_TO_D64:
+      case S390_FP_F32_TO_D128:
+      case S390_FP_D32_TO_F32:
+      case S390_FP_D32_TO_F64:
+      case S390_FP_D32_TO_F128:  p += vex_sprintf(p, "4 -> "); goto common;
+      case S390_FP_F64_TO_D32:
+      case S390_FP_F64_TO_D64:
+      case S390_FP_F64_TO_D128:
+      case S390_FP_D64_TO_F32:
+      case S390_FP_D64_TO_F64:
+      case S390_FP_D64_TO_F128:  p += vex_sprintf(p, "8 -> "); goto common;
+      case S390_FP_F128_TO_D32:
+      case S390_FP_F128_TO_D64:
+      case S390_FP_F128_TO_D128:
+      case S390_FP_D128_TO_F32:
+      case S390_FP_D128_TO_F64:
+      case S390_FP_D128_TO_F128: p += vex_sprintf(p, "16 -> "); goto common;
+      default:
+         goto common;
+      }
+   }
 
    default:
       goto common;
@@ -5810,6 +7375,17 @@ s390_insn_move_emit(UChar *buf, const s390_insn *insn)
    }
 
    vpanic("s390_insn_move_emit");
+}
+
+
+static UChar *
+s390_insn_memcpy_emit(UChar *buf, const s390_insn *insn)
+{
+   s390_amode *dst = insn->variant.memcpy.dst;
+   s390_amode *src = insn->variant.memcpy.src;
+
+   return s390_emit_MVC(buf, insn->size - 1, hregNumber(dst->b), dst->d,
+                        hregNumber(src->b), src->d);
 }
 
 
@@ -6640,15 +8216,16 @@ s390_insn_cdas_emit(UChar *buf, const s390_insn *insn)
    UChar r1, r1p1, r3, /*r3p1,*/ b, old_high, old_low, scratch;
    Int d;
    s390_amode *am;
+   s390_cdas *cdas = insn->variant.cdas.details;
 
-   r1   = hregNumber(insn->variant.cdas.op1_high); /* expected value */
-   r1p1 = hregNumber(insn->variant.cdas.op1_low);  /* expected value */
-   r3   = hregNumber(insn->variant.cdas.op3_high);
-   /* r3p1 = hregNumber(insn->variant.cdas.op3_low); */ /* unused */
-   old_high = hregNumber(insn->variant.cdas.old_mem_high);
-   old_low  = hregNumber(insn->variant.cdas.old_mem_low);
-   scratch  = hregNumber(insn->variant.cdas.scratch);
-   am = insn->variant.cdas.op2;
+   r1   = hregNumber(cdas->op1_high); /* expected value */
+   r1p1 = hregNumber(cdas->op1_low);  /* expected value */
+   r3   = hregNumber(cdas->op3_high);
+   /* r3p1 = hregNumber(cdas->op3_low); */ /* unused */
+   old_high = hregNumber(cdas->old_mem_high);
+   old_low  = hregNumber(cdas->old_mem_low);
+   scratch  = hregNumber(cdas->scratch);
+   am = cdas->op2;
    b  = hregNumber(am->b);
    d  = am->d;
 
@@ -6689,7 +8266,7 @@ s390_insn_cdas_emit(UChar *buf, const s390_insn *insn)
    }
 
  fail:
-   vpanic("s390_insn_cas_emit");
+   vpanic("s390_insn_cdas_emit");
 }
 
 
@@ -6819,7 +8396,7 @@ s390_insn_mul_emit(UChar *buf, const s390_insn *insn)
    r1  = hregNumber(insn->variant.mul.dst_hi);
 
    op2 = insn->variant.mul.op2;
-   signed_multiply = insn->variant.mul.signed_multiply;
+   signed_multiply = insn->tag == S390_INSN_SMUL;
 
    switch (op2.tag) {
    case S390_OPND_REG: {
@@ -6933,7 +8510,7 @@ s390_insn_div_emit(UChar *buf, const s390_insn *insn)
 
    r1  = hregNumber(insn->variant.div.op1_hi);
    op2 = insn->variant.div.op2;
-   signed_divide = insn->variant.div.signed_divide;
+   signed_divide = insn->tag == S390_INSN_SDIV;
 
    switch (op2.tag) {
    case S390_OPND_REG: {
@@ -7140,15 +8717,29 @@ s390_insn_clz_emit(UChar *buf, const s390_insn *insn)
 }
 
 
+/* Returns a value == BUF to denote failure, != BUF to denote success. */
 static UChar *
 s390_insn_helper_call_emit(UChar *buf, const s390_insn *insn)
 {
    s390_cc_t cond;
    ULong target;
    UChar *ptmp = buf;
+   UChar *bufIN = buf;
+   s390_helper_call *helper_call = insn->variant.helper_call.details;
 
-   cond = insn->variant.helper_call.cond;
-   target = insn->variant.helper_call.target;
+   cond = helper_call->cond;
+   target = helper_call->target;
+
+   if (cond != S390_CC_ALWAYS
+       && helper_call->rloc.pri != RLPri_None) {
+      /* The call might not happen (it isn't unconditional) and it
+         returns a result.  In this case we will need to generate a
+         control flow diamond to put 0x555..555 in the return
+         register(s) in the case where the call doesn't happen.  If
+         this ever becomes necessary, maybe copy code from the ARM
+         equivalent.  Until that day, just give up. */
+      return bufIN; /* To denote failure. */
+   }
 
    if (cond != S390_CC_ALWAYS) {
       /* So we have something like this
@@ -7175,26 +8766,8 @@ s390_insn_helper_call_emit(UChar *buf, const s390_insn *insn)
    /* Stash away the client's FPC register because the helper might change it. */
    buf = s390_emit_STFPC(buf, S390_REGNO_STACK_POINTER, S390_OFFSET_SAVED_FPC_C);
 
-   /* Before we can call the helper, we need to save the link register,
-      because the BASR will overwrite it. We cannot use a register for that.
-      (a) Volatile registers will be modified by the helper.
-      (b) For saved registers the client code assumes that they have not
-          changed after the function returns. So we cannot use it to store
-          the link register.
-      In the dispatcher, before calling the client code, we have arranged for
-      a location on the stack for this purpose. See dispatch-s390x-linux.S. */
-   buf = s390_emit_STG(buf, S390_REGNO_LINK_REGISTER, 0,        // save LR
-                       S390_REGNO_STACK_POINTER, S390_OFFSET_SAVED_LR, 0);
    buf = s390_emit_BASR(buf, S390_REGNO_LINK_REGISTER, 1);      // call helper
 
-   /* Move the return value to the destination register */
-   if (insn->variant.helper_call.dst != INVALID_HREG) {
-      buf = s390_emit_LGR(buf, hregNumber(insn->variant.helper_call.dst),
-                          S390_REGNO_RETURN_VALUE);
-   }
-
-   buf = s390_emit_LG(buf, S390_REGNO_LINK_REGISTER, 0,         // restore LR
-                      S390_REGNO_STACK_POINTER, S390_OFFSET_SAVED_LR, 0);
    buf = s390_emit_LFPC(buf, S390_REGNO_STACK_POINTER,          // restore FPC
                         S390_OFFSET_SAVED_FPC_C);
 
@@ -7222,8 +8795,61 @@ s390_insn_cond_move_emit(UChar *buf, const s390_insn *insn)
    dst  = insn->variant.cond_move.dst;
    src  = insn->variant.cond_move.src;
 
+   if (cond == S390_CC_NEVER) return buf;
+
    p = buf;
 
+   if (s390_host_has_lsc) {
+      /* LOCx is not the preferred way to implement an unconditional load. */
+      if (cond != S390_CC_ALWAYS) goto use_branch_insn;
+
+      switch (src.tag) {
+      case S390_OPND_REG:
+         return s390_emit_LOCGR(p, cond, hregNumber(dst),
+                                hregNumber(src.variant.reg));
+
+      case S390_OPND_AMODE: {
+         const s390_amode *am = src.variant.am;
+
+         /* We cannot use LOCx for loads less than 4 bytes. In that case
+            load into R0 and then use LOCGR. Do the same if the amode uses
+            an index register. */
+         if (insn->size < 4 ||
+             am->tag == S390_AMODE_BX12 || am->tag == S390_AMODE_BX20) {
+            p = s390_emit_load_mem(p, insn->size, R0, am);
+            p = s390_emit_LOCGR(p, cond, hregNumber(dst), R0);
+            return p;
+         }
+
+         vassert(am->tag == S390_AMODE_B12 || am->tag == S390_AMODE_B20);
+         vassert(insn->size == 4 || insn->size == 8);
+
+         UInt b = hregNumber(am->b);
+         UInt d = am->d;
+
+         if (insn->size == 4) {
+            return s390_emit_LOC(p, hregNumber(dst), cond, b, DISP20(d));
+         }
+         return s390_emit_LOCG(p, hregNumber(dst), cond, b, DISP20(d));
+      }
+
+      case S390_OPND_IMMEDIATE: {
+         ULong value = src.variant.imm;
+
+         /* Load value into R0, then use LOCGR */
+         if (insn->size <= 4) {
+            p = s390_emit_load_32imm(p, R0, value);
+            return s390_emit_LOCGR(p, cond, hregNumber(dst), R0);
+         }
+
+         vassert(insn->size == 8);
+         p = s390_emit_load_64imm(p, R0, value);
+         return s390_emit_LOCGR(p, cond, hregNumber(dst), R0);
+      }
+      }
+   }
+
+use_branch_insn:
    /* Branch (if cond fails) over move instrs */
    if (cond != S390_CC_ALWAYS) {
       /* Don't know how many bytes to jump over yet.
@@ -7415,7 +9041,7 @@ s390_insn_bfp_convert_emit(UChar *buf, const s390_insn *insn)
 {
    UInt  r1 = hregNumber(insn->variant.bfp_convert.dst_hi);
    UInt  r2 = hregNumber(insn->variant.bfp_convert.op_hi);
-   s390_round_t m3 = insn->variant.bfp_convert.rounding_mode;
+   s390_bfp_round_t m3 = insn->variant.bfp_convert.rounding_mode;
    /* The IEEE-inexact-exception control is not modelled. So the
       m4 field is 0 (which is what GCC does, too) */
    const UInt m4 = 0;
@@ -7493,6 +9119,248 @@ s390_insn_bfp_compare_emit(UChar *buf, const s390_insn *insn)
 
 
 static UChar *
+s390_insn_dfp_binop_emit(UChar *buf, const s390_insn *insn)
+{
+   s390_dfp_binop *dfp_binop = insn->variant.dfp_binop.details;
+
+   UInt r1 = hregNumber(dfp_binop->dst_hi);
+   UInt r2 = hregNumber(dfp_binop->op2_hi);
+   UInt r3 = hregNumber(dfp_binop->op3_hi);
+   s390_dfp_round_t m4 = dfp_binop->rounding_mode;
+
+   switch (insn->size) {
+   case 8:
+      switch (dfp_binop->tag) {
+      case S390_DFP_ADD: return s390_emit_ADTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_SUB: return s390_emit_SDTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_MUL: return s390_emit_MDTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_DIV: return s390_emit_DDTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_QUANTIZE: return s390_emit_QADTR(buf, r3, m4, r1, r2);
+      default:  goto fail;
+      }
+      break;
+
+   case 16:
+      switch (dfp_binop->tag) {
+      case S390_DFP_ADD:     return s390_emit_AXTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_SUB:     return s390_emit_SXTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_MUL:     return s390_emit_MXTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_DIV:     return s390_emit_DXTRA(buf, r3, m4, r1, r2);
+      case S390_DFP_QUANTIZE: return s390_emit_QAXTR(buf, r3, m4, r1, r2);
+      default:  goto fail;
+      }
+      break;
+
+   default:  goto fail;
+   }
+
+ fail:
+   vpanic("s390_insn_dfp_binop_emit");
+}
+
+
+static UChar *
+s390_insn_dfp_reround_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt r1 = hregNumber(insn->variant.dfp_reround.dst_hi);
+   UInt r2 = hregNumber(insn->variant.dfp_reround.op2);
+   UInt r3 = hregNumber(insn->variant.dfp_reround.op3_hi);
+   s390_dfp_round_t m4 = insn->variant.dfp_reround.rounding_mode;
+
+   switch (insn->size) {
+   case 8:
+      return s390_emit_RRDTR(buf, r3, m4, r1, r2);
+
+   case 16:
+      return s390_emit_RRXTR(buf, r3, m4, r1, r2);
+
+   default: goto fail;
+   }
+ fail:
+   vpanic("s390_insn_dfp_reround_emit");
+}
+
+
+static UChar *
+s390_insn_dfp_unop_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt  r1 = hregNumber(insn->variant.dfp_unop.dst_hi);
+   UInt  r2 = hregNumber(insn->variant.dfp_unop.op_hi);
+
+   switch (insn->variant.dfp_unop.tag) {
+   case S390_DFP_EXTRACT_EXP_D64:  return s390_emit_EEDTR(buf, r1, r2); break;
+   case S390_DFP_EXTRACT_EXP_D128: return s390_emit_EEXTR(buf, r1, r2); break;
+   case S390_DFP_EXTRACT_SIG_D64:  return s390_emit_ESDTR(buf, r1, r2); break;
+   case S390_DFP_EXTRACT_SIG_D128: return s390_emit_ESXTR(buf, r1, r2); break;
+   default: goto fail;
+   }
+ fail:
+   vpanic("s390_insn_dfp_unop_emit");
+}
+
+
+static UChar *
+s390_insn_dfp_intop_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt r1 = hregNumber(insn->variant.dfp_intop.dst_hi);
+   UInt r2 = hregNumber(insn->variant.dfp_intop.op2);
+   UInt r3 = hregNumber(insn->variant.dfp_intop.op3_hi);
+
+   switch (insn->size) {
+   case 8:
+      switch (insn->variant.dfp_intop.tag) {
+      case S390_DFP_SHIFT_LEFT:  return s390_emit_SLDT(buf, r3, r1, r2);
+      case S390_DFP_SHIFT_RIGHT: return s390_emit_SRDT(buf, r3, r1, r2);
+      case S390_DFP_INSERT_EXP:  return s390_emit_IEDTR(buf, r3, r1, r2);
+      default:  goto fail;
+      }
+      break;
+
+   case 16:
+      switch (insn->variant.dfp_intop.tag) {
+      case S390_DFP_SHIFT_LEFT:  return s390_emit_SLXT(buf, r3, r1, r2);
+      case S390_DFP_SHIFT_RIGHT: return s390_emit_SRXT(buf, r3, r1, r2);
+      case S390_DFP_INSERT_EXP:  return s390_emit_IEXTR(buf, r3, r1, r2);
+      default:  goto fail;
+      }
+      break;
+
+   default: goto fail;
+   }
+
+ fail:
+   vpanic("s390_insn_dfp_intop_emit");
+}
+
+
+static UChar *
+s390_insn_dfp_compare_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt dst = hregNumber(insn->variant.dfp_compare.dst);
+   UInt r1  = hregNumber(insn->variant.dfp_compare.op1_hi);
+   UInt r2  = hregNumber(insn->variant.dfp_compare.op2_hi);
+
+   switch (insn->size) {
+   case 8:
+      switch(insn->variant.dfp_compare.tag) {
+      case S390_DFP_COMPARE:     buf = s390_emit_CDTR(buf, r1, r2); break;
+      case S390_DFP_COMPARE_EXP: buf = s390_emit_CEDTR(buf, r1, r2); break;
+      default: goto fail;
+      }
+      break;
+
+   case 16:
+      switch(insn->variant.dfp_compare.tag) {
+      case S390_DFP_COMPARE:     buf = s390_emit_CXTR(buf, r1, r2); break;
+      case S390_DFP_COMPARE_EXP: buf = s390_emit_CEXTR(buf, r1, r2); break;
+      default: goto fail;
+      }
+      break;
+
+   default:  goto fail;
+   }
+
+   return s390_emit_load_cc(buf, dst);  /* Load condition code into DST */
+
+ fail:
+   vpanic("s390_insn_dfp_compare_emit");
+}
+
+
+static UChar *
+s390_insn_dfp_convert_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt  r1 = hregNumber(insn->variant.dfp_convert.dst_hi);
+   UInt  r2 = hregNumber(insn->variant.dfp_convert.op_hi);
+   s390_dfp_round_t m3 = insn->variant.dfp_convert.rounding_mode;
+   /* The IEEE-inexact-exception control is not modelled. So the
+      m4 field is 0 (which is what GCC does, too) */
+   const UInt m4 = 0;
+
+   switch (insn->variant.dfp_convert.tag) {
+
+      /* Convert to fixed */
+   case S390_DFP_D64_TO_I32:  return s390_emit_CFDTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D128_TO_I32: return s390_emit_CFXTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D64_TO_I64:  return s390_emit_CGDTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D128_TO_I64: return s390_emit_CGXTR(buf, m3, m4, r1, r2);
+
+      /* Convert to logical */
+   case S390_DFP_D64_TO_U32:  return s390_emit_CLFDTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D128_TO_U32: return s390_emit_CLFXTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D64_TO_U64:  return s390_emit_CLGDTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D128_TO_U64: return s390_emit_CLGXTR(buf, m3, m4, r1, r2);
+
+      /* Convert from fixed */
+   case S390_DFP_I32_TO_D64:  return s390_emit_CDFTR(buf, 0, m4, r1, r2);
+   case S390_DFP_I32_TO_D128: return s390_emit_CXFTR(buf, 0, m4, r1, r2);
+   case S390_DFP_I64_TO_D64:  return s390_emit_CDGTRA(buf, m3, m4, r1, r2);
+   case S390_DFP_I64_TO_D128: return s390_emit_CXGTR(buf, 0, m4, r1, r2);
+
+      /* Convert from logical */
+   case S390_DFP_U32_TO_D64:  return s390_emit_CDLFTR(buf, m3, m4, r1, r2);
+   case S390_DFP_U64_TO_D64:  return s390_emit_CDLGTR(buf, m3, m4, r1, r2);
+   case S390_DFP_U32_TO_D128: return s390_emit_CXLFTR(buf, m3, m4, r1, r2);
+   case S390_DFP_U64_TO_D128: return s390_emit_CXLGTR(buf, m3, m4, r1, r2);
+
+      /* Load lengthened */
+   case S390_DFP_D32_TO_D64:   return s390_emit_LDETR(buf, m4, r1, r2);
+   case S390_DFP_D64_TO_D128:  return s390_emit_LXDTR(buf, m4, r1, r2);
+
+      /* Load rounded */
+   case S390_DFP_D64_TO_D32:   return s390_emit_LEDTR(buf, m3, m4, r1, r2);
+   case S390_DFP_D128_TO_D64:  return s390_emit_LDXTR(buf, m3, m4, r1, r2);
+
+   default: goto fail;
+   }
+
+ fail:
+   vpanic("s390_insn_dfp_convert_emit");
+}
+
+
+static UChar *
+s390_insn_fp_convert_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt pfpo;
+   s390_fp_convert *fp_convert = insn->variant.fp_convert.details;
+   s390_dfp_round_t rm = fp_convert->rounding_mode;
+
+   vassert(rm < 2 || rm > 7);
+
+   switch (fp_convert->tag) {
+   case S390_FP_F32_TO_D32:   pfpo = S390_PFPO_F32_TO_D32   << 8; break;
+   case S390_FP_F32_TO_D64:   pfpo = S390_PFPO_F32_TO_D64   << 8; break;
+   case S390_FP_F32_TO_D128:  pfpo = S390_PFPO_F32_TO_D128  << 8; break;
+   case S390_FP_F64_TO_D32:   pfpo = S390_PFPO_F64_TO_D32   << 8; break;
+   case S390_FP_F64_TO_D64:   pfpo = S390_PFPO_F64_TO_D64   << 8; break;
+   case S390_FP_F64_TO_D128:  pfpo = S390_PFPO_F64_TO_D128  << 8; break;
+   case S390_FP_F128_TO_D32:  pfpo = S390_PFPO_F128_TO_D32  << 8; break;
+   case S390_FP_F128_TO_D64:  pfpo = S390_PFPO_F128_TO_D64  << 8; break;
+   case S390_FP_F128_TO_D128: pfpo = S390_PFPO_F128_TO_D128 << 8; break;
+   case S390_FP_D32_TO_F32:   pfpo = S390_PFPO_D32_TO_F32   << 8; break;
+   case S390_FP_D32_TO_F64:   pfpo = S390_PFPO_D32_TO_F64   << 8; break;
+   case S390_FP_D32_TO_F128:  pfpo = S390_PFPO_D32_TO_F128  << 8; break;
+   case S390_FP_D64_TO_F32:   pfpo = S390_PFPO_D64_TO_F32   << 8; break;
+   case S390_FP_D64_TO_F64:   pfpo = S390_PFPO_D64_TO_F64   << 8; break;
+   case S390_FP_D64_TO_F128:  pfpo = S390_PFPO_D64_TO_F128  << 8; break;
+   case S390_FP_D128_TO_F32:  pfpo = S390_PFPO_D128_TO_F32  << 8; break;
+   case S390_FP_D128_TO_F64:  pfpo = S390_PFPO_D128_TO_F64  << 8; break;
+   case S390_FP_D128_TO_F128: pfpo = S390_PFPO_D128_TO_F128 << 8; break;
+   default: goto fail;
+   }
+
+   pfpo = pfpo | rm;
+   buf = s390_emit_load_32imm(buf, R0, pfpo);
+   buf = s390_emit_PFPO(buf);
+   return buf;
+
+ fail:
+   vpanic("s390_insn_fp_convert_emit");
+}
+
+
+static UChar *
 s390_insn_mfence_emit(UChar *buf, const s390_insn *insn)
 {
    return s390_emit_BCR(buf, 0xF, 0x0);
@@ -7500,33 +9368,91 @@ s390_insn_mfence_emit(UChar *buf, const s390_insn *insn)
 
 
 static UChar *
-s390_insn_gzero_emit(UChar *buf, const s390_insn *insn)
+s390_insn_mimm_emit(UChar *buf, const s390_insn *insn)
 {
-   return s390_emit_XC(buf, insn->size - 1,
-                       S390_REGNO_GUEST_STATE_POINTER, insn->variant.gzero.offset,
-                       S390_REGNO_GUEST_STATE_POINTER, insn->variant.gzero.offset);
+   s390_amode *am = insn->variant.mimm.dst;
+   UChar b = hregNumber(am->b);
+   Int   d = am->d;
+   ULong value = insn->variant.mimm.value;
+
+   if (value == 0) {
+      return s390_emit_XC(buf, insn->size - 1, b, d, b, d);
+   }
+
+   if (insn->size == 1) {
+      return s390_emit_MVI(buf, value & 0xFF, b, d);
+   }
+
+   if (s390_host_has_gie && ulong_fits_signed_16bit(value)) {
+      value &= 0xFFFF;
+      switch (insn->size) {
+      case 2: return s390_emit_MVHHI(buf, b, d, value);
+      case 4: return s390_emit_MVHI(buf,  b, d, value);
+      case 8: return s390_emit_MVGHI(buf, b, d, value);
+      }
+   } else {
+      // Load value to R0, then store.
+      switch (insn->size) {
+      case 2:
+         buf = s390_emit_LHI(buf, R0, value & 0xFFFF);
+         return s390_emit_STH(buf, R0, 0, b, d);
+      case 4:
+         buf = s390_emit_load_32imm(buf, R0, value);
+         return s390_emit_ST(buf, R0, 0, b, d);
+      case 8:
+         buf = s390_emit_load_64imm(buf, R0, value);
+         return s390_emit_STG(buf, R0, 0, b, DISP20(d));
+      }
+   }
+   
+   vpanic("s390_insn_mimm_emit");
 }
 
 
 static UChar *
-s390_insn_gadd_emit(UChar *buf, const s390_insn *insn)
+s390_insn_madd_emit(UChar *buf, const s390_insn *insn)
 {
-   return s390_emit_AGSI(buf, insn->variant.gadd.delta,
-                         S390_REGNO_GUEST_STATE_POINTER,
-                         DISP20(insn->variant.gadd.offset));
+   s390_amode *am = insn->variant.madd.dst;
+   UChar b = hregNumber(am->b);
+   Int   d = am->d;
+
+   if (insn->size == 4) {
+      return s390_emit_ASI(buf, insn->variant.madd.delta, b, DISP20(d));
+   }
+
+   return s390_emit_AGSI(buf, insn->variant.madd.delta, b, DISP20(d));
 }
 
 
 static UChar *
-s390_insn_set_fpcrm_emit(UChar *buf, const s390_insn *insn)
+s390_insn_set_fpc_bfprm_emit(UChar *buf, const s390_insn *insn)
 {
-   UInt mode = hregNumber(insn->variant.set_fpcrm.mode);
+   UInt mode = hregNumber(insn->variant.set_fpc_bfprm.mode);
 
    /* Copy FPC from guest state to R0 and OR in the new rounding mode */
    buf = s390_emit_L(buf, R0, 0, S390_REGNO_GUEST_STATE_POINTER,
                      S390X_GUEST_OFFSET(guest_fpc));   // r0 = guest_fpc
 
    buf = s390_emit_NILL(buf, R0, 0xFFF8); /* Clear out right-most 3 bits */
+   buf = s390_emit_OR(buf, R0, mode);     /* OR in the new rounding mode */
+   buf = s390_emit_SFPC(buf, R0);         /* Load FPC register from R0 */
+
+   return buf;
+}
+
+
+static UChar *
+s390_insn_set_fpc_dfprm_emit(UChar *buf, const s390_insn *insn)
+{
+   UInt mode = hregNumber(insn->variant.set_fpc_dfprm.mode);
+
+   /* Copy FPC from guest state to R0 and OR in the new rounding mode */
+   buf = s390_emit_L(buf, R0, 0, S390_REGNO_GUEST_STATE_POINTER,
+                     S390X_GUEST_OFFSET(guest_fpc));   // r0 = guest_fpc
+
+   /* DFP rounding mode is set at bit position 25:27 in FPC register */
+   buf = s390_emit_NILL(buf, R0, 0xFF8F); /* Clear out 25:27 bits */
+   buf = s390_emit_SLL(buf, mode, 0, 4);  /* bring mode to 25:27 bits */
    buf = s390_emit_OR(buf, R0, mode);     /* OR in the new rounding mode */
    buf = s390_emit_SFPC(buf, R0);         /* Load FPC register from R0 */
 
@@ -7643,7 +9569,7 @@ s390_tchain_verify_load64(const UChar *code, UChar regno, ULong value)
 }
 
 /* CODE points to the code sequence as generated by s390_tchain_load64.
-   Change the loaded value to VALUE. Return pointer to the byte following
+   Change the loaded value to IMM64. Return pointer to the byte following
    the patched code sequence. */
 static UChar *
 s390_tchain_patch_load64(UChar *code, ULong imm64)
@@ -7973,6 +9899,9 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
 {
    UChar *end;
 
+   /* Used to be 48 bytes. Make sure it stays low */
+   vassert(sizeof(s390_insn) == 32);
+
    switch (insn->tag) {
    case S390_INSN_LOAD:
       end = s390_insn_load_emit(buf, insn);
@@ -7984,6 +9913,10 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
 
    case S390_INSN_MOVE:
       end = s390_insn_move_emit(buf, insn);
+      break;
+
+   case S390_INSN_MEMCPY:
+      end = s390_insn_memcpy_emit(buf, insn);
       break;
 
    case S390_INSN_COND_MOVE:
@@ -7998,11 +9931,13 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
       end = s390_insn_alu_emit(buf, insn);
       break;
 
-   case S390_INSN_MUL:
+   case S390_INSN_SMUL:
+   case S390_INSN_UMUL:
       end = s390_insn_mul_emit(buf, insn);
       break;
 
-   case S390_INSN_DIV:
+   case S390_INSN_SDIV:
+   case S390_INSN_UDIV:
       end = s390_insn_div_emit(buf, insn);
       break;
 
@@ -8040,6 +9975,7 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
 
    case S390_INSN_HELPER_CALL:
       end = s390_insn_helper_call_emit(buf, insn);
+      if (end == buf) goto fail;
       break;
 
    case S390_INSN_BFP_TRIOP:
@@ -8062,20 +9998,52 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
       end = s390_insn_bfp_convert_emit(buf, insn);
       break;
 
+   case S390_INSN_DFP_BINOP:
+      end = s390_insn_dfp_binop_emit(buf, insn);
+      break;
+
+   case S390_INSN_DFP_UNOP:
+      end = s390_insn_dfp_unop_emit(buf, insn);
+      break;
+
+   case S390_INSN_DFP_INTOP:
+      end = s390_insn_dfp_intop_emit(buf, insn);
+      break;
+
+   case S390_INSN_DFP_COMPARE:
+      end = s390_insn_dfp_compare_emit(buf, insn);
+      break;
+
+   case S390_INSN_DFP_CONVERT:
+      end = s390_insn_dfp_convert_emit(buf, insn);
+      break;
+
+   case S390_INSN_DFP_REROUND:
+      end = s390_insn_dfp_reround_emit(buf, insn);
+      break;
+
+   case S390_INSN_FP_CONVERT:
+      end = s390_insn_fp_convert_emit(buf, insn);
+      break;
+
    case S390_INSN_MFENCE:
       end = s390_insn_mfence_emit(buf, insn);
       break;
 
-   case S390_INSN_GZERO:
-      end = s390_insn_gzero_emit(buf, insn);
+   case S390_INSN_MIMM:
+      end = s390_insn_mimm_emit(buf, insn);
       break;
 
-   case S390_INSN_GADD:
-      end = s390_insn_gadd_emit(buf, insn);
+   case S390_INSN_MADD:
+      end = s390_insn_madd_emit(buf, insn);
       break;
 
-   case S390_INSN_SET_FPCRM:
-      end = s390_insn_set_fpcrm_emit(buf, insn);
+   case S390_INSN_SET_FPC_BFPRM:
+      end = s390_insn_set_fpc_bfprm_emit(buf, insn);
+      break;
+
+   case S390_INSN_SET_FPC_DFPRM:
+      end = s390_insn_set_fpc_dfprm_emit(buf, insn);
       break;
 
    case S390_INSN_PROFINC:
@@ -8102,6 +10070,7 @@ emit_S390Instr(Bool *is_profinc, UChar *buf, Int nbuf, s390_insn *insn,
       end = s390_insn_xassisted_emit(buf, insn, disp_cp_xassisted);
       break;
 
+   fail:
    default:
       vpanic("emit_S390Instr");
    }
@@ -8130,9 +10099,11 @@ patchProfInc_S390(void *code_to_patch, ULong *location_of_counter)
 
    s390_tchain_verify_load64(code_to_patch, S390_REGNO_TCHAIN_SCRATCH, 0);
 
-   s390_tchain_patch_load64(code_to_patch, Ptr_to_ULong(location_of_counter));
+   UChar *p = s390_tchain_patch_load64(code_to_patch,
+                                       Ptr_to_ULong(location_of_counter));
 
-   VexInvalRange vir = {0, 0};
+   UInt len = p - (UChar *)code_to_patch;
+   VexInvalRange vir = { (HWord)code_to_patch, len };
    return vir;
 }
 
@@ -8216,7 +10187,8 @@ chainXDirect_S390(void *place_to_chain,
       /* There is not need to emit a BCR here, as it is already there. */
    }
 
-   VexInvalRange vir = {0, 0};
+   UInt len = p - (UChar *)place_to_chain;
+   VexInvalRange vir = { (HWord)place_to_chain, len };
    return vir;
 }
 
@@ -8286,7 +10258,8 @@ unchainXDirect_S390(void *place_to_unchain,
    if (uses_short_form)
       s390_emit_BCR(p, S390_CC_ALWAYS, S390_REGNO_TCHAIN_SCRATCH);
 
-   VexInvalRange vir = {0, 0};
+   UInt len = p - (UChar *)place_to_unchain;
+   VexInvalRange vir = { (HWord)place_to_unchain, len };
    return vir;
 }
 

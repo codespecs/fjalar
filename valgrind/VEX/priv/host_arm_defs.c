@@ -7,11 +7,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    NEON support is
-   Copyright (C) 2010-2012 Samsung Electronics
+   Copyright (C) 2010-2013 Samsung Electronics
    contributed by Dmitry Zhurikhin <zhur@ispras.ru>
               and Kirill Batuzov <batuzovk@ispras.ru>
 
@@ -191,7 +191,7 @@ void getAllocableRegs_ARM ( Int* nregs, HReg** arr )
 
 /* --------- Condition codes, ARM encoding. --------- */
 
-HChar* showARMCondCode ( ARMCondCode cond ) {
+const HChar* showARMCondCode ( ARMCondCode cond ) {
    switch (cond) {
        case ARMcc_EQ:  return "eq";
        case ARMcc_NE:  return "ne";
@@ -556,11 +556,11 @@ ULong ARMNImm_to_Imm64 ( ARMNImm* imm ) {
    ULong y, x = imm->imm8;
    switch (imm->type) {
       case 3:
-         x = x << 8;
+         x = x << 8; /* fallthrough */
       case 2:
-         x = x << 8;
+         x = x << 8; /* fallthrough */
       case 1:
-         x = x << 8;
+         x = x << 8; /* fallthrough */
       case 0:
          return (x << 32) | x;
       case 5:
@@ -569,11 +569,13 @@ ULong ARMNImm_to_Imm64 ( ARMNImm* imm ) {
             x = x << 8;
          else
             x = (x << 8) | x;
+         /* fallthrough */
       case 4:
          x = (x << 16) | x;
          return (x << 32) | x;
       case 8:
          x = (x << 8) | 0xFF;
+         /* fallthrough */
       case 7:
          x = (x << 8) | 0xFF;
          return (x << 32) | x;
@@ -674,7 +676,7 @@ void ppARMNRS(ARMNRS *p)
 
 /* --------- Instructions. --------- */
 
-HChar* showARMAluOp ( ARMAluOp op ) {
+const HChar* showARMAluOp ( ARMAluOp op ) {
    switch (op) {
       case ARMalu_ADD:  return "add";
       case ARMalu_ADDS: return "adds";
@@ -690,7 +692,7 @@ HChar* showARMAluOp ( ARMAluOp op ) {
    }
 }
 
-HChar* showARMShiftOp ( ARMShiftOp op ) {
+const HChar* showARMShiftOp ( ARMShiftOp op ) {
    switch (op) {
       case ARMsh_SHL: return "shl";
       case ARMsh_SHR: return "shr";
@@ -699,7 +701,7 @@ HChar* showARMShiftOp ( ARMShiftOp op ) {
    }
 }
 
-HChar* showARMUnaryOp ( ARMUnaryOp op ) {
+const HChar* showARMUnaryOp ( ARMUnaryOp op ) {
    switch (op) {
       case ARMun_NEG: return "neg";
       case ARMun_NOT: return "not";
@@ -708,7 +710,7 @@ HChar* showARMUnaryOp ( ARMUnaryOp op ) {
    }
 }
 
-HChar* showARMMulOp ( ARMMulOp op ) {
+const HChar* showARMMulOp ( ARMMulOp op ) {
    switch (op) {
       case ARMmul_PLAIN: return "mul";
       case ARMmul_ZX:    return "umull";
@@ -717,7 +719,7 @@ HChar* showARMMulOp ( ARMMulOp op ) {
    }
 }
 
-HChar* showARMVfpOp ( ARMVfpOp op ) {
+const HChar* showARMVfpOp ( ARMVfpOp op ) {
    switch (op) {
       case ARMvfp_ADD: return "add";
       case ARMvfp_SUB: return "sub";
@@ -727,7 +729,7 @@ HChar* showARMVfpOp ( ARMVfpOp op ) {
    }
 }
 
-HChar* showARMVfpUnaryOp ( ARMVfpUnaryOp op ) {
+const HChar* showARMVfpUnaryOp ( ARMVfpUnaryOp op ) {
    switch (op) {
       case ARMvfpu_COPY: return "cpy";
       case ARMvfpu_NEG:  return "neg";
@@ -737,7 +739,7 @@ HChar* showARMVfpUnaryOp ( ARMVfpUnaryOp op ) {
    }
 }
 
-HChar* showARMNeonBinOp ( ARMNeonBinOp op ) {
+const HChar* showARMNeonBinOp ( ARMNeonBinOp op ) {
    switch (op) {
       case ARMneon_VAND: return "vand";
       case ARMneon_VORR: return "vorr";
@@ -793,7 +795,7 @@ HChar* showARMNeonBinOp ( ARMNeonBinOp op ) {
    }
 }
 
-HChar* showARMNeonBinOpDataType ( ARMNeonBinOp op ) {
+const HChar* showARMNeonBinOpDataType ( ARMNeonBinOp op ) {
    switch (op) {
       case ARMneon_VAND:
       case ARMneon_VORR:
@@ -855,7 +857,7 @@ HChar* showARMNeonBinOpDataType ( ARMNeonBinOp op ) {
    }
 }
 
-HChar* showARMNeonUnOp ( ARMNeonUnOp op ) {
+const HChar* showARMNeonUnOp ( ARMNeonUnOp op ) {
    switch (op) {
       case ARMneon_COPY: return "vmov";
       case ARMneon_COPYLS: return "vmov";
@@ -900,7 +902,7 @@ HChar* showARMNeonUnOp ( ARMNeonUnOp op ) {
    }
 }
 
-HChar* showARMNeonUnOpDataType ( ARMNeonUnOp op ) {
+const HChar* showARMNeonUnOpDataType ( ARMNeonUnOp op ) {
    switch (op) {
       case ARMneon_COPY:
       case ARMneon_NOT:
@@ -950,7 +952,7 @@ HChar* showARMNeonUnOpDataType ( ARMNeonUnOp op ) {
    }
 }
 
-HChar* showARMNeonUnOpS ( ARMNeonUnOpS op ) {
+const HChar* showARMNeonUnOpS ( ARMNeonUnOpS op ) {
    switch (op) {
       case ARMneon_SETELEM: return "vmov";
       case ARMneon_GETELEMU: return "vmov";
@@ -961,7 +963,7 @@ HChar* showARMNeonUnOpS ( ARMNeonUnOpS op ) {
    }
 }
 
-HChar* showARMNeonUnOpSDataType ( ARMNeonUnOpS op ) {
+const HChar* showARMNeonUnOpSDataType ( ARMNeonUnOpS op ) {
    switch (op) {
       case ARMneon_SETELEM:
       case ARMneon_VDUP:
@@ -975,7 +977,7 @@ HChar* showARMNeonUnOpSDataType ( ARMNeonUnOpS op ) {
    }
 }
 
-HChar* showARMNeonShiftOp ( ARMNeonShiftOp op ) {
+const HChar* showARMNeonShiftOp ( ARMNeonShiftOp op ) {
    switch (op) {
       case ARMneon_VSHL: return "vshl";
       case ARMneon_VSAL: return "vshl";
@@ -986,7 +988,7 @@ HChar* showARMNeonShiftOp ( ARMNeonShiftOp op ) {
    }
 }
 
-HChar* showARMNeonShiftOpDataType ( ARMNeonShiftOp op ) {
+const HChar* showARMNeonShiftOpDataType ( ARMNeonShiftOp op ) {
    switch (op) {
       case ARMneon_VSHL:
       case ARMneon_VQSHL:
@@ -999,7 +1001,7 @@ HChar* showARMNeonShiftOpDataType ( ARMNeonShiftOp op ) {
    }
 }
 
-HChar* showARMNeonDualOp ( ARMNeonDualOp op ) {
+const HChar* showARMNeonDualOp ( ARMNeonDualOp op ) {
    switch (op) {
       case ARMneon_TRN: return "vtrn";
       case ARMneon_ZIP: return "vzip";
@@ -1009,7 +1011,7 @@ HChar* showARMNeonDualOp ( ARMNeonDualOp op ) {
    }
 }
 
-HChar* showARMNeonDualOpDataType ( ARMNeonDualOp op ) {
+const HChar* showARMNeonDualOpDataType ( ARMNeonDualOp op ) {
    switch (op) {
       case ARMneon_TRN:
       case ARMneon_ZIP:
@@ -1020,7 +1022,7 @@ HChar* showARMNeonDualOpDataType ( ARMNeonDualOp op ) {
    }
 }
 
-static HChar* showARMNeonDataSize_wrk ( UInt size )
+static const HChar* showARMNeonDataSize_wrk ( UInt size )
 {
    switch (size) {
       case 0: return "8";
@@ -1031,7 +1033,7 @@ static HChar* showARMNeonDataSize_wrk ( UInt size )
    }
 }
 
-static HChar* showARMNeonDataSize ( ARMInstr* i )
+static const HChar* showARMNeonDataSize ( ARMInstr* i )
 {
    switch (i->tag) {
       case ARMin_NBinary:
@@ -1144,30 +1146,48 @@ ARMInstr* ARMInstr_Imm32  ( HReg dst, UInt imm32 ) {
    i->ARMin.Imm32.imm32 = imm32;
    return i;
 }
-ARMInstr* ARMInstr_LdSt32 ( Bool isLoad, HReg rD, ARMAMode1* amode ) {
+ARMInstr* ARMInstr_LdSt32 ( ARMCondCode cc,
+                            Bool isLoad, HReg rD, ARMAMode1* amode ) {
    ARMInstr* i = LibVEX_Alloc(sizeof(ARMInstr));
    i->tag                 = ARMin_LdSt32;
+   i->ARMin.LdSt32.cc     = cc;
    i->ARMin.LdSt32.isLoad = isLoad;
    i->ARMin.LdSt32.rD     = rD;
    i->ARMin.LdSt32.amode  = amode;
+   vassert(cc != ARMcc_NV);
    return i;
 }
-ARMInstr* ARMInstr_LdSt16 ( Bool isLoad, Bool signedLoad,
+ARMInstr* ARMInstr_LdSt16 ( ARMCondCode cc,
+                            Bool isLoad, Bool signedLoad,
                             HReg rD, ARMAMode2* amode ) {
    ARMInstr* i = LibVEX_Alloc(sizeof(ARMInstr));
    i->tag                     = ARMin_LdSt16;
+   i->ARMin.LdSt16.cc         = cc;
    i->ARMin.LdSt16.isLoad     = isLoad;
    i->ARMin.LdSt16.signedLoad = signedLoad;
    i->ARMin.LdSt16.rD         = rD;
    i->ARMin.LdSt16.amode      = amode;
+   vassert(cc != ARMcc_NV);
    return i;
 }
-ARMInstr* ARMInstr_LdSt8U ( Bool isLoad, HReg rD, ARMAMode1* amode ) {
+ARMInstr* ARMInstr_LdSt8U ( ARMCondCode cc,
+                            Bool isLoad, HReg rD, ARMAMode1* amode ) {
    ARMInstr* i = LibVEX_Alloc(sizeof(ARMInstr));
    i->tag                 = ARMin_LdSt8U;
+   i->ARMin.LdSt8U.cc     = cc;
    i->ARMin.LdSt8U.isLoad = isLoad;
    i->ARMin.LdSt8U.rD     = rD;
    i->ARMin.LdSt8U.amode  = amode;
+   vassert(cc != ARMcc_NV);
+   return i;
+}
+ARMInstr* ARMInstr_Ld8S ( ARMCondCode cc, HReg rD, ARMAMode2* amode ) {
+   ARMInstr* i         = LibVEX_Alloc(sizeof(ARMInstr));
+   i->tag              = ARMin_Ld8S;
+   i->ARMin.Ld8S.cc    = cc;
+   i->ARMin.Ld8S.rD    = rD;
+   i->ARMin.Ld8S.amode = amode;
+   vassert(cc != ARMcc_NV);
    return i;
 }
 ARMInstr* ARMInstr_XDirect ( Addr32 dstGA, ARMAMode1* amR15T,
@@ -1208,12 +1228,15 @@ ARMInstr* ARMInstr_CMov ( ARMCondCode cond, HReg dst, ARMRI84* src ) {
    vassert(cond != ARMcc_AL);
    return i;
 }
-ARMInstr* ARMInstr_Call ( ARMCondCode cond, HWord target, Int nArgRegs ) {
+ARMInstr* ARMInstr_Call ( ARMCondCode cond, HWord target, Int nArgRegs,
+                          RetLoc rloc ) {
    ARMInstr* i = LibVEX_Alloc(sizeof(ARMInstr));
    i->tag                 = ARMin_Call;
    i->ARMin.Call.cond     = cond;
    i->ARMin.Call.target   = target;
    i->ARMin.Call.nArgRegs = nArgRegs;
+   i->ARMin.Call.rloc     = rloc;
+   vassert(is_sane_RetLoc(rloc));
    return i;
 }
 ARMInstr* ARMInstr_Mul ( ARMMulOp op ) {
@@ -1464,6 +1487,17 @@ ARMInstr* ARMInstr_NShift ( ARMNeonShiftOp op,
    return i;
 }
 
+ARMInstr* ARMInstr_NShl64 ( HReg dst, HReg src, UInt amt )
+{
+   ARMInstr* i = LibVEX_Alloc(sizeof(ARMInstr));
+   i->tag              = ARMin_NShl64;
+   i->ARMin.NShl64.dst = dst;
+   i->ARMin.NShl64.src = src;
+   i->ARMin.NShl64.amt = amt;
+   vassert(amt >= 1 && amt <= 63);
+   return i;
+}
+
 /* Helper copy-pasted from isel.c */
 static Bool fitsIn8x4 ( UInt* u8, UInt* u4, UInt u )
 {
@@ -1559,12 +1593,14 @@ void ppARMInstr ( ARMInstr* i ) {
          return;
       case ARMin_LdSt32:
          if (i->ARMin.LdSt32.isLoad) {
-            vex_printf("ldr   ");
+            vex_printf("ldr%s ", i->ARMin.LdSt32.cc == ARMcc_AL ? "  "
+                                    : showARMCondCode(i->ARMin.LdSt32.cc));
             ppHRegARM(i->ARMin.LdSt32.rD);
             vex_printf(", ");
             ppARMAMode1(i->ARMin.LdSt32.amode);
          } else {
-            vex_printf("str   ");
+            vex_printf("str%s ", i->ARMin.LdSt32.cc == ARMcc_AL ? "  "
+                                    : showARMCondCode(i->ARMin.LdSt32.cc));
             ppARMAMode1(i->ARMin.LdSt32.amode);
             vex_printf(", ");
             ppHRegARM(i->ARMin.LdSt32.rD);
@@ -1572,13 +1608,18 @@ void ppARMInstr ( ARMInstr* i ) {
          return;
       case ARMin_LdSt16:
          if (i->ARMin.LdSt16.isLoad) {
-            vex_printf("%s", i->ARMin.LdSt16.signedLoad 
-                                ? "ldrsh " : "ldrh  " );
+            vex_printf("%s%s%s",
+                       i->ARMin.LdSt16.signedLoad ? "ldrsh" : "ldrh",
+                       i->ARMin.LdSt16.cc == ARMcc_AL ? "  " 
+                          : showARMCondCode(i->ARMin.LdSt16.cc),
+                       i->ARMin.LdSt16.signedLoad ? " " : "  ");
             ppHRegARM(i->ARMin.LdSt16.rD);
             vex_printf(", ");
             ppARMAMode2(i->ARMin.LdSt16.amode);
          } else {
-            vex_printf("strh  ");
+            vex_printf("strh%s  ",
+                       i->ARMin.LdSt16.cc == ARMcc_AL ? "  " 
+                          : showARMCondCode(i->ARMin.LdSt16.cc));
             ppARMAMode2(i->ARMin.LdSt16.amode);
             vex_printf(", ");
             ppHRegARM(i->ARMin.LdSt16.rD);
@@ -1586,19 +1627,26 @@ void ppARMInstr ( ARMInstr* i ) {
          return;
       case ARMin_LdSt8U:
          if (i->ARMin.LdSt8U.isLoad) {
-            vex_printf("ldrb  ");
+            vex_printf("ldrb%s  ", i->ARMin.LdSt8U.cc == ARMcc_AL ? "  "
+                                      : showARMCondCode(i->ARMin.LdSt8U.cc));
             ppHRegARM(i->ARMin.LdSt8U.rD);
             vex_printf(", ");
             ppARMAMode1(i->ARMin.LdSt8U.amode);
          } else {
-            vex_printf("strb  ");
+            vex_printf("strb%s  ", i->ARMin.LdSt8U.cc == ARMcc_AL ? "  "
+                                      : showARMCondCode(i->ARMin.LdSt8U.cc));
             ppARMAMode1(i->ARMin.LdSt8U.amode);
             vex_printf(", ");
             ppHRegARM(i->ARMin.LdSt8U.rD);
          }
          return;
       case ARMin_Ld8S:
-         goto unhandled;
+         vex_printf("ldrsb%s ", i->ARMin.Ld8S.cc == ARMcc_AL ? "  "
+                                   : showARMCondCode(i->ARMin.Ld8S.cc));
+         ppARMAMode2(i->ARMin.Ld8S.amode);
+         vex_printf(", ");
+         ppHRegARM(i->ARMin.Ld8S.rD);
+         return;
       case ARMin_XDirect:
          vex_printf("(xDirect) ");
             vex_printf("if (%%cpsr.%s) { ",
@@ -1651,8 +1699,10 @@ void ppARMInstr ( ARMInstr* i ) {
          vex_printf("call%s  ",
                     i->ARMin.Call.cond==ARMcc_AL
                        ? "" : showARMCondCode(i->ARMin.Call.cond));
-         vex_printf("0x%lx [nArgRegs=%d]",
+         vex_printf("0x%lx [nArgRegs=%d, ",
                     i->ARMin.Call.target, i->ARMin.Call.nArgRegs);
+         ppRetLoc(i->ARMin.Call.rloc);
+         vex_printf("]");
          return;
       case ARMin_Mul:
          vex_printf("%-5s ", showARMMulOp(i->ARMin.Mul.op));
@@ -1663,7 +1713,7 @@ void ppARMInstr ( ARMInstr* i ) {
          }
          return;
       case ARMin_LdrEX: {
-         HChar* sz = "";
+         const HChar* sz = "";
          switch (i->ARMin.LdrEX.szB) {
             case 1: sz = "b"; break; case 2: sz = "h"; break;
             case 8: sz = "d"; break; case 4: break;
@@ -1674,7 +1724,7 @@ void ppARMInstr ( ARMInstr* i ) {
          return;
       }
       case ARMin_StrEX: {
-         HChar* sz = "";
+         const HChar* sz = "";
          switch (i->ARMin.StrEX.szB) {
             case 1: sz = "b"; break; case 2: sz = "h"; break;
             case 8: sz = "d"; break; case 4: break;
@@ -1792,7 +1842,7 @@ void ppARMInstr ( ARMInstr* i ) {
          }
          return;
       case ARMin_VCvtID: {
-         HChar* nm = "?";
+         const HChar* nm = "?";
          if (i->ARMin.VCvtID.iToD) {
             nm = i->ARMin.VCvtID.syned ? "fsitod" : "fuitod";
          } else {
@@ -1890,6 +1940,13 @@ void ppARMInstr ( ARMInstr* i ) {
          vex_printf(", ");
          ppHRegARM(i->ARMin.NShift.argR);
          return;
+      case ARMin_NShl64:
+         vex_printf("vshl.i64 ");
+         ppHRegARM(i->ARMin.NShl64.dst);
+         vex_printf(", ");
+         ppHRegARM(i->ARMin.NShl64.src);
+         vex_printf(", #%u", i->ARMin.NShl64.amt);
+         return;
       case ARMin_NDual:
          vex_printf("%s%s%s  ",
                     showARMNeonDualOp(i->ARMin.NDual.op),
@@ -1951,7 +2008,6 @@ void ppARMInstr ( ARMInstr* i ) {
                     "str r11,[r12+4]");
          return;
       default:
-      unhandled:
          vex_printf("ppARMInstr: unhandled case (tag %d)", (Int)i->tag);
          vpanic("ppARMInstr(1)");
          return;
@@ -1995,6 +2051,8 @@ void getRegUsage_ARMInstr ( HRegUsage* u, ARMInstr* i, Bool mode64 )
          addRegUsage_ARMAMode1(u, i->ARMin.LdSt32.amode);
          if (i->ARMin.LdSt32.isLoad) {
             addHRegUse(u, HRmWrite, i->ARMin.LdSt32.rD);
+            if (i->ARMin.LdSt32.cc != ARMcc_AL)
+               addHRegUse(u, HRmRead, i->ARMin.LdSt32.rD);
          } else {
             addHRegUse(u, HRmRead, i->ARMin.LdSt32.rD);
          }
@@ -2003,6 +2061,8 @@ void getRegUsage_ARMInstr ( HRegUsage* u, ARMInstr* i, Bool mode64 )
          addRegUsage_ARMAMode2(u, i->ARMin.LdSt16.amode);
          if (i->ARMin.LdSt16.isLoad) {
             addHRegUse(u, HRmWrite, i->ARMin.LdSt16.rD);
+            if (i->ARMin.LdSt16.cc != ARMcc_AL)
+               addHRegUse(u, HRmRead, i->ARMin.LdSt16.rD);
          } else {
             addHRegUse(u, HRmRead, i->ARMin.LdSt16.rD);
          }
@@ -2011,12 +2071,18 @@ void getRegUsage_ARMInstr ( HRegUsage* u, ARMInstr* i, Bool mode64 )
          addRegUsage_ARMAMode1(u, i->ARMin.LdSt8U.amode);
          if (i->ARMin.LdSt8U.isLoad) {
             addHRegUse(u, HRmWrite, i->ARMin.LdSt8U.rD);
+            if (i->ARMin.LdSt8U.cc != ARMcc_AL)
+               addHRegUse(u, HRmRead, i->ARMin.LdSt8U.rD);
          } else {
             addHRegUse(u, HRmRead, i->ARMin.LdSt8U.rD);
          }
          return;
       case ARMin_Ld8S:
-         goto unhandled;
+         addRegUsage_ARMAMode2(u, i->ARMin.Ld8S.amode);
+         addHRegUse(u, HRmWrite, i->ARMin.Ld8S.rD);
+         if (i->ARMin.Ld8S.cc != ARMcc_AL)
+            addHRegUse(u, HRmRead, i->ARMin.Ld8S.rD);
+         return;
       /* XDirect/XIndir/XAssisted are also a bit subtle.  They
          conditionally exit the block.  Hence we only need to list (1)
          the registers that they read, and (2) the registers that they
@@ -2209,6 +2275,10 @@ void getRegUsage_ARMInstr ( HRegUsage* u, ARMInstr* i, Bool mode64 )
          addHRegUse(u, HRmRead, i->ARMin.NShift.argL);
          addHRegUse(u, HRmRead, i->ARMin.NShift.argR);
          return;
+      case ARMin_NShl64:
+         addHRegUse(u, HRmWrite, i->ARMin.NShl64.dst);
+         addHRegUse(u, HRmRead, i->ARMin.NShl64.src);
+         return;
       case ARMin_NDual:
          addHRegUse(u, HRmWrite, i->ARMin.NDual.arg1);
          addHRegUse(u, HRmWrite, i->ARMin.NDual.arg2);
@@ -2246,7 +2316,6 @@ void getRegUsage_ARMInstr ( HRegUsage* u, ARMInstr* i, Bool mode64 )
          addHRegUse(u, HRmWrite, hregARM_R12());
          addHRegUse(u, HRmWrite, hregARM_R11());
          return;
-      unhandled:
       default:
          ppARMInstr(i);
          vpanic("getRegUsage_ARMInstr");
@@ -2296,7 +2365,9 @@ void mapRegs_ARMInstr ( HRegRemap* m, ARMInstr* i, Bool mode64 )
          mapRegs_ARMAMode1(m, i->ARMin.LdSt8U.amode);
          return;
       case ARMin_Ld8S:
-         goto unhandled;
+         i->ARMin.Ld8S.rD = lookupHRegRemap(m, i->ARMin.Ld8S.rD);
+         mapRegs_ARMAMode2(m, i->ARMin.Ld8S.amode);
+         return;
       case ARMin_XDirect:
          mapRegs_ARMAMode1(m, i->ARMin.XDirect.amR15T);
          return;
@@ -2407,6 +2478,10 @@ void mapRegs_ARMInstr ( HRegRemap* m, ARMInstr* i, Bool mode64 )
          i->ARMin.NShift.argL = lookupHRegRemap(m, i->ARMin.NShift.argL);
          i->ARMin.NShift.argR = lookupHRegRemap(m, i->ARMin.NShift.argR);
          return;
+      case ARMin_NShl64:
+         i->ARMin.NShl64.dst = lookupHRegRemap(m, i->ARMin.NShl64.dst);
+         i->ARMin.NShl64.src = lookupHRegRemap(m, i->ARMin.NShl64.src);
+         return;
       case ARMin_NDual:
          i->ARMin.NDual.arg1 = lookupHRegRemap(m, i->ARMin.NDual.arg1);
          i->ARMin.NDual.arg2 = lookupHRegRemap(m, i->ARMin.NDual.arg2);
@@ -2437,7 +2512,6 @@ void mapRegs_ARMInstr ( HRegRemap* m, ARMInstr* i, Bool mode64 )
       case ARMin_ProfInc:
          /* hardwires r11 and r12 -- nothing to modify. */
          return;
-      unhandled:
       default:
          ppARMInstr(i);
          vpanic("mapRegs_ARMInstr");
@@ -2504,7 +2578,7 @@ void genSpill_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
    switch (rclass) {
       case HRcInt32:
          vassert(offsetB <= 4095);
-         *i1 = ARMInstr_LdSt32( False/*!isLoad*/, 
+         *i1 = ARMInstr_LdSt32( ARMcc_AL, False/*!isLoad*/, 
                                 rreg, 
                                 ARMAMode1_RI(hregARM_R8(), offsetB) );
          return;
@@ -2559,7 +2633,7 @@ void genReload_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
    switch (rclass) {
       case HRcInt32:
          vassert(offsetB <= 4095);
-         *i1 = ARMInstr_LdSt32( True/*isLoad*/, 
+         *i1 = ARMInstr_LdSt32( ARMcc_AL, True/*isLoad*/, 
                                 rreg, 
                                 ARMAMode1_RI(hregARM_R8(), offsetB) );
          return;
@@ -2938,8 +3012,8 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
       }
       case ARMin_Shift: {
          UInt    instr, subopc;
-         HReg    rD   = iregNo(i->ARMin.Shift.dst);
-         HReg    rM   = iregNo(i->ARMin.Shift.argL);
+         UInt    rD   = iregNo(i->ARMin.Shift.dst);
+         UInt    rM   = iregNo(i->ARMin.Shift.argL);
          ARMRI5* argR = i->ARMin.Shift.argR;
          switch (i->ARMin.Shift.op) {
             case ARMsh_SHL: subopc = X0000; break;
@@ -2955,8 +3029,8 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
       }
       case ARMin_Unary: {
          UInt instr;
-         HReg rDst = iregNo(i->ARMin.Unary.dst);
-         HReg rSrc = iregNo(i->ARMin.Unary.src);
+         UInt rDst = iregNo(i->ARMin.Unary.dst);
+         UInt rSrc = iregNo(i->ARMin.Unary.src);
          switch (i->ARMin.Unary.op) {
             case ARMun_CLZ:
                instr = XXXXXXXX(X1110,X0001,X0110,X1111,
@@ -2986,7 +3060,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt SBZ    = 0;
          instr |= XXXXX___(X1110, (1 & (subopc >> 3)),
                            ((subopc << 1) & 0xF) | 1,
-                           i->ARMin.CmpOrTst.argL, SBZ );
+                           iregNo(i->ARMin.CmpOrTst.argL), SBZ );
          *p++ = instr;
          goto done;
       }
@@ -2995,7 +3069,8 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt subopc = X1101; /* MOV */
          UInt SBZ    = 0;
          instr |= XXXXX___(X1110, (1 & (subopc >> 3)),
-                           (subopc << 1) & 0xF, SBZ, i->ARMin.Mov.dst);
+                           (subopc << 1) & 0xF, SBZ,
+                           iregNo(i->ARMin.Mov.dst));
          *p++ = instr;
          goto done;
       }
@@ -3009,17 +3084,21 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt       bL, bB;
          HReg       rD;
          ARMAMode1* am;
+         ARMCondCode cc;
          if (i->tag == ARMin_LdSt32) {
             bB = 0;
             bL = i->ARMin.LdSt32.isLoad ? 1 : 0;
             am = i->ARMin.LdSt32.amode;
             rD = i->ARMin.LdSt32.rD;
+            cc = i->ARMin.LdSt32.cc;
          } else {
             bB = 1;
             bL = i->ARMin.LdSt8U.isLoad ? 1 : 0;
             am = i->ARMin.LdSt8U.amode;
             rD = i->ARMin.LdSt8U.rD;
+            cc = i->ARMin.LdSt8U.cc;
          }
+         vassert(cc != ARMcc_NV);
          if (am->tag == ARMam1_RI) {
             Int  simm12;
             UInt instr, bP;
@@ -3031,7 +3110,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
                simm12 = am->ARMam1.RI.simm13;
             }
             vassert(simm12 >= 0 && simm12 <= 4095);
-            instr = XXXXX___(X1110,X0101,BITS4(bP,bB,0,bL),
+            instr = XXXXX___(cc,X0101,BITS4(bP,bB,0,bL),
                              iregNo(am->ARMam1.RI.reg),
                              iregNo(rD));
             instr |= simm12;
@@ -3047,6 +3126,8 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt       bS = i->ARMin.LdSt16.signedLoad ? 1 : 0;
          UInt       bL = i->ARMin.LdSt16.isLoad ? 1 : 0;
          ARMAMode2* am = i->ARMin.LdSt16.amode;
+         ARMCondCode cc = i->ARMin.LdSt16.cc;
+         vassert(cc != ARMcc_NV);
          if (am->tag == ARMam2_RI) {
             HReg rN = am->ARMam2.RI.reg;
             Int  simm8;
@@ -3064,20 +3145,24 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             vassert(!(bL == 0 && bS == 1)); // "! signed store"
             /**/ if (bL == 0 && bS == 0) {
                // strh
-               instr = XXXXXXXX(X1110,X0001, BITS4(bP,1,0,0), iregNo(rN),
+               instr = XXXXXXXX(cc,X0001, BITS4(bP,1,0,0), iregNo(rN),
                                 iregNo(rD), imm8hi, X1011, imm8lo);
                *p++ = instr;
                goto done;
             }
             else if (bL == 1 && bS == 0) {
                // ldrh
-               instr = XXXXXXXX(X1110,X0001, BITS4(bP,1,0,1), iregNo(rN),
+               instr = XXXXXXXX(cc,X0001, BITS4(bP,1,0,1), iregNo(rN),
                                 iregNo(rD), imm8hi, X1011, imm8lo);
                *p++ = instr;
                goto done;
             }
             else if (bL == 1 && bS == 1) {
-               goto bad;
+               // ldrsh
+               instr = XXXXXXXX(cc,X0001, BITS4(bP,1,0,1), iregNo(rN),
+                                iregNo(rD), imm8hi, X1111, imm8lo);
+               *p++ = instr;
+               goto done;
             }
             else vassert(0); // ill-constructed insn
          } else {
@@ -3085,8 +3170,35 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             goto bad;
          }
       }
-      case ARMin_Ld8S:
+      case ARMin_Ld8S: {
+         HReg        rD = i->ARMin.Ld8S.rD;
+         ARMAMode2*  am = i->ARMin.Ld8S.amode;
+         ARMCondCode cc = i->ARMin.Ld8S.cc;
+         vassert(cc != ARMcc_NV);
+         if (am->tag == ARMam2_RI) {
+            HReg rN = am->ARMam2.RI.reg;
+            Int  simm8;
+            UInt bP, imm8hi, imm8lo, instr;
+            if (am->ARMam2.RI.simm9 < 0) {
+               bP = 0;
+               simm8 = -am->ARMam2.RI.simm9;
+            } else {
+               bP = 1;
+               simm8 = am->ARMam2.RI.simm9;
+            }
+            vassert(simm8 >= 0 && simm8 <= 255);
+            imm8hi = (simm8 >> 4) & 0xF;
+            imm8lo = simm8 & 0xF;
+            // ldrsb
+            instr = XXXXXXXX(cc,X0001, BITS4(bP,1,0,1), iregNo(rN),
+                             iregNo(rD), imm8hi, X1101, imm8lo);
+            *p++ = instr;
+            goto done;
+         } else {
+            // RR case
          goto bad;
+         }
+      }
 
       case ARMin_XDirect: {
          /* NB: what goes on here has to be very closely coordinated
@@ -3218,7 +3330,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             case Ijk_ClientReq:   trcval = VEX_TRC_JMP_CLIENTREQ;   break;
             case Ijk_Sys_syscall: trcval = VEX_TRC_JMP_SYS_SYSCALL; break;
             //case Ijk_Sys_int128:  trcval = VEX_TRC_JMP_SYS_INT128;  break;
-            //case Ijk_Yield:       trcval = VEX_TRC_JMP_YIELD;       break;
+            case Ijk_Yield:       trcval = VEX_TRC_JMP_YIELD;       break;
             //case Ijk_EmWarn:      trcval = VEX_TRC_JMP_EMWARN;      break;
             //case Ijk_MapFail:     trcval = VEX_TRC_JMP_MAPFAIL;     break;
             case Ijk_NoDecode:    trcval = VEX_TRC_JMP_NODECODE;    break;
@@ -3263,10 +3375,12 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt subopc = X1101; /* MOV */
          UInt SBZ    = 0;
          instr |= XXXXX___(i->ARMin.CMov.cond, (1 & (subopc >> 3)),
-                           (subopc << 1) & 0xF, SBZ, i->ARMin.CMov.dst);
+                           (subopc << 1) & 0xF, SBZ,
+                           iregNo(i->ARMin.CMov.dst));
          *p++ = instr;
          goto done;
       }
+
       case ARMin_Call: {
          UInt instr;
          /* Decide on a scratch reg used to hold to the call address.
@@ -3280,6 +3394,11 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             case 4:  scratchNo = 11; break;
             default: vassert(0);
          }
+         /* If we don't need to do any fixup actions in the case that
+            the call doesn't happen, just do the simple thing and emit
+            straight-line code.  We hope this is the common case. */
+         if (i->ARMin.Call.cond == ARMcc_AL/*call always happens*/
+             || i->ARMin.Call.rloc.pri == RLPri_None/*no fixup action*/) {
          // r"scratchNo" = &target
          p = imm32_to_iregNo( (UInt*)p,
                               scratchNo, (UInt)i->ARMin.Call.target );
@@ -3288,8 +3407,73 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
                           X0011, scratchNo);
          instr |= 0xFFF << 8; // stick in the SBOnes
          *p++ = instr;
+         } else {
+            Int delta;
+            /* Complex case.  We have to generate an if-then-else
+               diamond. */
+            // before:
+            //   b{!cond} else:
+            //   r"scratchNo" = &target
+            //   blx{AL} r"scratchNo"
+            // preElse:
+            //   b after:
+            // else:
+            //   mov r0, #0x55555555  // possibly
+            //   mov r1, r0           // possibly
+            // after:
+
+            // before:
+            UInt* pBefore = p;
+
+            //   b{!cond} else:  // ptmp1 points here
+            *p++ = 0; // filled in later
+
+            //   r"scratchNo" = &target
+            p = imm32_to_iregNo( (UInt*)p,
+                                 scratchNo, (UInt)i->ARMin.Call.target );
+
+            //   blx{AL} r"scratchNo"
+            instr = XXX___XX(ARMcc_AL, X0001, X0010, /*___*/
+                             X0011, scratchNo);
+            instr |= 0xFFF << 8; // stick in the SBOnes
+            *p++ = instr;
+
+            // preElse:
+            UInt* pPreElse = p;
+
+            //   b after:
+            *p++ = 0; // filled in later
+
+            // else:
+            delta = (UChar*)p - (UChar*)pBefore;
+            delta = (delta >> 2) - 2;
+            *pBefore
+               = XX______(1 ^ i->ARMin.Call.cond, X1010) | (delta & 0xFFFFFF);
+
+            /* Do the 'else' actions */
+            switch (i->ARMin.Call.rloc.pri) {
+               case RLPri_Int:
+                  p = imm32_to_iregNo_EXACTLY2(p, /*r*/0, 0x55555555);
+                  break;
+               case RLPri_2Int:
+                  vassert(0); //ATC
+                  p = imm32_to_iregNo_EXACTLY2(p, /*r*/0, 0x55555555);
+                  /* mov r1, r0 */
+                  *p++ = 0xE1A01000;
+                  break;
+               case RLPri_None: case RLPri_INVALID: default:
+                  vassert(0);
+            }
+
+            // after:
+            delta = (UChar*)p - (UChar*)pPreElse;
+            delta = (delta >> 2) - 2;
+            *pPreElse = XX______(ARMcc_AL, X1010) | (delta & 0xFFFFFF);
+         }
+
          goto done;
       }
+
       case ARMin_Mul: {
          /* E0000392   mul     r0, r2, r3
             E0810392   umull   r0(LO), r1(HI), r2, r3
@@ -3514,7 +3698,6 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             *p++ = insn;
             goto done;
          }
-         goto bad;
       }
       case ARMin_VXferD: {
          UInt dD  = dregNo(i->ARMin.VXferD.dD);
@@ -3595,7 +3778,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
       }
       case ARMin_FPSCR: {
          Bool toFPSCR = i->ARMin.FPSCR.toFPSCR;
-         HReg iReg    = iregNo(i->ARMin.FPSCR.iReg);
+         UInt iReg    = iregNo(i->ARMin.FPSCR.iReg);
          if (toFPSCR) {
             /* fmxr fpscr, iReg is EEE1 iReg A10 */
             *p++ = 0xEEE10A10 | ((iReg & 0xF) << 12);
@@ -4335,6 +4518,26 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             default:
                goto bad;
          }
+         *p++ = insn;
+         goto done;
+      }
+      case ARMin_NShl64: {
+         HReg regDreg = i->ARMin.NShl64.dst;
+         HReg regMreg = i->ARMin.NShl64.src;
+         UInt amt     = i->ARMin.NShl64.amt;
+         vassert(amt >= 1 && amt <= 63);
+         vassert(hregClass(regDreg) == HRcFlt64);
+         vassert(hregClass(regMreg) == HRcFlt64);
+         UInt regD = dregNo(regDreg);
+         UInt regM = dregNo(regMreg);
+         UInt D    = (regD >> 4) & 1;
+         UInt Vd   = regD & 0xF;
+         UInt L    = 1;
+         UInt Q    = 0; /* always 64-bit */
+         UInt M    = (regM >> 4) & 1;
+         UInt Vm   = regM & 0xF;
+         UInt insn = XXXXXXXX(X1111,X0010, BITS4(1,D,(amt>>5)&1,(amt>>4)&1),
+                              amt & 0xF, Vd, X0101, BITS4(L,Q,M,1), Vm);
          *p++ = insn;
          goto done;
       }

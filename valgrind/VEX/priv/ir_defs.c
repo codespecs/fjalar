@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -118,7 +118,7 @@ void ppIRTemp ( IRTemp tmp )
 
 void ppIROp ( IROp op )
 {
-   HChar* str = NULL; 
+   const HChar* str = NULL; 
    IROp   base;
    switch (op) {
       case Iop_Add8 ... Iop_Add64:
@@ -147,6 +147,8 @@ void ppIROp ( IROp op )
          str = "CasCmpEQ"; base = Iop_CasCmpEQ8; break;
       case Iop_CasCmpNE8 ... Iop_CasCmpNE64:
          str = "CasCmpNE"; base = Iop_CasCmpNE8; break;
+      case Iop_ExpCmpNE8 ... Iop_ExpCmpNE64:
+         str = "ExpCmpNE"; base = Iop_ExpCmpNE8; break;
       case Iop_Not8 ... Iop_Not64:
          str = "Not"; base = Iop_Not8; break;
       /* other cases must explicitly "return;" */
@@ -524,8 +526,11 @@ void ppIROp ( IROp op )
       case Iop_QNarrowBin16Sto8Ux8: vex_printf("QNarrowBin16Sto8Ux8"); return;
       case Iop_QNarrowBin16Sto8Sx8: vex_printf("QNarrowBin16Sto8Sx8"); return;
       case Iop_QNarrowBin32Sto16Sx4: vex_printf("QNarrowBin32Sto16Sx4"); return;
+      case Iop_QNarrowBin64Sto32Sx4: vex_printf("QNarrowBin64Sto32Sx4"); return;
+      case Iop_QNarrowBin64Uto32Ux4: vex_printf("QNarrowBin64Uto32Ux4"); return;
       case Iop_NarrowBin16to8x8: vex_printf("NarrowBin16to8x8"); return;
       case Iop_NarrowBin32to16x4: vex_printf("NarrowBin32to16x4"); return;
+      case Iop_NarrowBin64to32x4: vex_printf("NarrowBin64to32x4"); return;
       case Iop_InterleaveHI8x8: vex_printf("InterleaveHI8x8"); return;
       case Iop_InterleaveHI16x4: vex_printf("InterleaveHI16x4"); return;
       case Iop_InterleaveHI32x2: vex_printf("InterleaveHI32x2"); return;
@@ -581,6 +586,8 @@ void ppIROp ( IROp op )
       case Iop_Reverse64_16x4: vex_printf("Reverse64_16x4"); return;
       case Iop_Reverse64_32x2: vex_printf("Reverse64_32x2"); return;
       case Iop_Abs32Fx2: vex_printf("Abs32Fx2"); return;
+      case Iop_GetMSBs8x8: vex_printf("GetMSBs8x8"); return;
+      case Iop_GetMSBs8x16: vex_printf("GetMSBs8x16"); return;
 
       case Iop_CmpNEZ32x2: vex_printf("CmpNEZ32x2"); return;
       case Iop_CmpNEZ16x4: vex_printf("CmpNEZ16x4"); return;
@@ -770,8 +777,19 @@ void ppIROp ( IROp op )
 
       case Iop_MullEven8Ux16: vex_printf("MullEven8Ux16"); return;
       case Iop_MullEven16Ux8: vex_printf("MullEven16Ux8"); return;
+      case Iop_MullEven32Ux4: vex_printf("MullEven32Ux4"); return;
       case Iop_MullEven8Sx16: vex_printf("MullEven8Sx16"); return;
       case Iop_MullEven16Sx8: vex_printf("MullEven16Sx8"); return;
+      case Iop_MullEven32Sx4: vex_printf("MullEven32Sx4"); return;
+
+      case Iop_PolynomialMulAdd8x16:
+         vex_printf("PolynomialMulAdd8x16"); return;
+      case Iop_PolynomialMulAdd16x8:
+         vex_printf("PolynomialMulAdd16x8"); return;
+      case Iop_PolynomialMulAdd32x4:
+         vex_printf("PolynomialMulAdd32x4"); return;
+      case Iop_PolynomialMulAdd64x2:
+         vex_printf("PolynomialMulAdd64x2"); return;
 
       case Iop_Avg8Ux16: vex_printf("Avg8Ux16"); return;
       case Iop_Avg16Ux8: vex_printf("Avg16Ux8"); return;
@@ -783,16 +801,20 @@ void ppIROp ( IROp op )
       case Iop_Max8Sx16: vex_printf("Max8Sx16"); return;
       case Iop_Max16Sx8: vex_printf("Max16Sx8"); return;
       case Iop_Max32Sx4: vex_printf("Max32Sx4"); return;
+      case Iop_Max64Sx2: vex_printf("Max64Sx2"); return;
       case Iop_Max8Ux16: vex_printf("Max8Ux16"); return;
       case Iop_Max16Ux8: vex_printf("Max16Ux8"); return;
       case Iop_Max32Ux4: vex_printf("Max32Ux4"); return;
+      case Iop_Max64Ux2: vex_printf("Max64Ux2"); return;
 
       case Iop_Min8Sx16: vex_printf("Min8Sx16"); return;
       case Iop_Min16Sx8: vex_printf("Min16Sx8"); return;
       case Iop_Min32Sx4: vex_printf("Min32Sx4"); return;
+      case Iop_Min64Sx2: vex_printf("Min64Sx2"); return;
       case Iop_Min8Ux16: vex_printf("Min8Ux16"); return;
       case Iop_Min16Ux8: vex_printf("Min16Ux8"); return;
       case Iop_Min32Ux4: vex_printf("Min32Ux4"); return;
+      case Iop_Min64Ux2: vex_printf("Min64Ux2"); return;
 
       case Iop_CmpEQ8x16:  vex_printf("CmpEQ8x16"); return;
       case Iop_CmpEQ16x8:  vex_printf("CmpEQ16x8"); return;
@@ -805,11 +827,13 @@ void ppIROp ( IROp op )
       case Iop_CmpGT8Ux16: vex_printf("CmpGT8Ux16"); return;
       case Iop_CmpGT16Ux8: vex_printf("CmpGT16Ux8"); return;
       case Iop_CmpGT32Ux4: vex_printf("CmpGT32Ux4"); return;
+      case Iop_CmpGT64Ux2: vex_printf("CmpGT64Ux2"); return;
 
       case Iop_Cnt8x16: vex_printf("Cnt8x16"); return;
       case Iop_Clz8Sx16: vex_printf("Clz8Sx16"); return;
       case Iop_Clz16Sx8: vex_printf("Clz16Sx8"); return;
       case Iop_Clz32Sx4: vex_printf("Clz32Sx4"); return;
+      case Iop_Clz64x2: vex_printf("Clz64x2"); return;
       case Iop_Cls8Sx16: vex_printf("Cls8Sx16"); return;
       case Iop_Cls16Sx8: vex_printf("Cls16Sx8"); return;
       case Iop_Cls32Sx4: vex_printf("Cls32Sx4"); return;
@@ -869,6 +893,7 @@ void ppIROp ( IROp op )
       case Iop_Rol8x16: vex_printf("Rol8x16"); return;
       case Iop_Rol16x8: vex_printf("Rol16x8"); return;
       case Iop_Rol32x4: vex_printf("Rol32x4"); return;
+      case Iop_Rol64x2: vex_printf("Rol64x2"); return;
 
       case Iop_NarrowBin16to8x16:    vex_printf("NarrowBin16to8x16"); return;
       case Iop_NarrowBin32to16x8:    vex_printf("NarrowBin32to16x8"); return;
@@ -961,12 +986,42 @@ void ppIROp ( IROp op )
       case Iop_DivD64:  vex_printf("DivD64");   return;
       case Iop_ShlD64:  vex_printf("ShlD64"); return;
       case Iop_ShrD64:  vex_printf("ShrD64"); return;
+      case Iop_D64toI32S:  vex_printf("D64toI32S");  return;
+      case Iop_D64toI32U:  vex_printf("D64toI32U");  return;
       case Iop_D64toI64S:  vex_printf("D64toI64S");  return;
+      case Iop_D64toI64U:  vex_printf("D64toI64U");  return;
+      case Iop_I32StoD64:  vex_printf("I32StoD64");  return;
+      case Iop_I32UtoD64:  vex_printf("I32UtoD64");  return;
       case Iop_I64StoD64:  vex_printf("I64StoD64");  return;
+      case Iop_I64UtoD64:  vex_printf("I64UtoD64");  return;
+      case Iop_I32StoD128: vex_printf("I32StoD128"); return;
+      case Iop_I32UtoD128: vex_printf("I32UtoD128"); return;
       case Iop_I64StoD128: vex_printf("I64StoD128"); return;
+      case Iop_I64UtoD128: vex_printf("I64UtoD128"); return;
       case Iop_D64toD128:  vex_printf("D64toD128");  return;
       case Iop_D128toD64:  vex_printf("D128toD64");  return;
+      case Iop_D128toI32S: vex_printf("D128toI32S"); return;
+      case Iop_D128toI32U: vex_printf("D128toI32U"); return;
       case Iop_D128toI64S: vex_printf("D128toI64S"); return;
+      case Iop_D128toI64U: vex_printf("D128toI64U"); return;
+      case Iop_F32toD32:   vex_printf("F32toD32");   return;
+      case Iop_F32toD64:   vex_printf("F32toD64");   return;
+      case Iop_F32toD128:  vex_printf("F32toD128");  return;
+      case Iop_F64toD32:   vex_printf("F64toD32");   return;
+      case Iop_F64toD64:   vex_printf("F64toD64");   return;
+      case Iop_F64toD128:  vex_printf("F64toD128");  return;
+      case Iop_F128toD32:  vex_printf("F128toD32");  return;
+      case Iop_F128toD64:  vex_printf("F128toD64");  return;
+      case Iop_F128toD128: vex_printf("F128toD128"); return;
+      case Iop_D32toF32:   vex_printf("D32toF32");   return;
+      case Iop_D32toF64:   vex_printf("D32toF64");   return;
+      case Iop_D32toF128:  vex_printf("D32toF128");  return;
+      case Iop_D64toF32:   vex_printf("D64toF32");   return;
+      case Iop_D64toF64:   vex_printf("D64toF64");   return;
+      case Iop_D64toF128:  vex_printf("D64toF128");  return;
+      case Iop_D128toF32:  vex_printf("D128toF32");  return;
+      case Iop_D128toF64:  vex_printf("D128toF64");  return;
+      case Iop_D128toF128: vex_printf("D128toF128"); return;
       case Iop_AddD128: vex_printf("AddD128");  return;
       case Iop_SubD128: vex_printf("SubD128");  return;
       case Iop_MulD128: vex_printf("MulD128");  return;
@@ -979,10 +1034,14 @@ void ppIROp ( IROp op )
       case Iop_QuantizeD128:   vex_printf("Iop_QuantizeD128");   return;
       case Iop_ExtractExpD64:  vex_printf("Iop_ExtractExpD64");  return;
       case Iop_ExtractExpD128: vex_printf("Iop_ExtractExpD128"); return;
+      case Iop_ExtractSigD64:  vex_printf("Iop_ExtractSigD64");  return;
+      case Iop_ExtractSigD128: vex_printf("Iop_ExtractSigD128"); return;
       case Iop_InsertExpD64:   vex_printf("Iop_InsertExpD64");   return;
       case Iop_InsertExpD128:  vex_printf("Iop_InsertExpD128");  return;
       case Iop_CmpD64:         vex_printf("CmpD64");    return;
       case Iop_CmpD128:        vex_printf("CmpD128");   return;
+      case Iop_CmpExpD64:      vex_printf("CmpExpD64");  return;
+      case Iop_CmpExpD128:     vex_printf("CmpExpD128"); return;
       case Iop_D64HLtoD128: vex_printf("D64HLtoD128");  return;
       case Iop_D128HItoD64: vex_printf("D128HItoD64");  return;
       case Iop_D128LOtoD64: vex_printf("D128LOtoD64");  return;
@@ -1016,6 +1075,81 @@ void ppIROp ( IROp op )
       case Iop_NotV256: vex_printf("NotV256"); return;
       case Iop_CmpNEZ64x4: vex_printf("CmpNEZ64x4"); return;
       case Iop_CmpNEZ32x8: vex_printf("CmpNEZ32x8"); return;
+      case Iop_CmpNEZ16x16: vex_printf("CmpNEZ16x16"); return;
+      case Iop_CmpNEZ8x32: vex_printf("CmpNEZ8x32"); return;
+
+      case Iop_Add8x32:   vex_printf("Add8x32"); return;
+      case Iop_Add16x16:  vex_printf("Add16x16"); return;
+      case Iop_Add32x8:   vex_printf("Add32x8"); return;
+      case Iop_Add64x4:   vex_printf("Add64x4"); return;
+      case Iop_Sub8x32:   vex_printf("Sub8x32"); return;
+      case Iop_Sub16x16:  vex_printf("Sub16x16"); return;
+      case Iop_Sub32x8:   vex_printf("Sub32x8"); return;
+      case Iop_Sub64x4:   vex_printf("Sub64x4"); return;
+      case Iop_QAdd8Ux32: vex_printf("QAdd8Ux32"); return;
+      case Iop_QAdd16Ux16: vex_printf("QAdd16Ux16"); return;
+      case Iop_QAdd8Sx32: vex_printf("QAdd8Sx32"); return;
+      case Iop_QAdd16Sx16: vex_printf("QAdd16Sx16"); return;
+      case Iop_QSub8Ux32: vex_printf("QSub8Ux32"); return;
+      case Iop_QSub16Ux16: vex_printf("QSub16Ux16"); return;
+      case Iop_QSub8Sx32: vex_printf("QSub8Sx32"); return;
+      case Iop_QSub16Sx16: vex_printf("QSub16Sx16"); return;
+
+      case Iop_Mul16x16:    vex_printf("Mul16x16"); return;
+      case Iop_Mul32x8:     vex_printf("Mul32x8"); return;
+      case Iop_MulHi16Ux16: vex_printf("MulHi16Ux16"); return;
+      case Iop_MulHi16Sx16: vex_printf("MulHi16Sx16"); return;
+
+      case Iop_Avg8Ux32:  vex_printf("Avg8Ux32"); return;
+      case Iop_Avg16Ux16: vex_printf("Avg16Ux16"); return;
+
+      case Iop_Max8Sx32:  vex_printf("Max8Sx32"); return;
+      case Iop_Max16Sx16: vex_printf("Max16Sx16"); return;
+      case Iop_Max32Sx8:  vex_printf("Max32Sx8"); return;
+      case Iop_Max8Ux32:  vex_printf("Max8Ux32"); return;
+      case Iop_Max16Ux16: vex_printf("Max16Ux16"); return;
+      case Iop_Max32Ux8:  vex_printf("Max32Ux8"); return;
+
+      case Iop_Min8Sx32:  vex_printf("Min8Sx32"); return;
+      case Iop_Min16Sx16: vex_printf("Min16Sx16"); return;
+      case Iop_Min32Sx8:  vex_printf("Min32Sx8"); return;
+      case Iop_Min8Ux32:  vex_printf("Min8Ux32"); return;
+      case Iop_Min16Ux16: vex_printf("Min16Ux16"); return;
+      case Iop_Min32Ux8:  vex_printf("Min32Ux8"); return;
+
+      case Iop_CmpEQ8x32:   vex_printf("CmpEQ8x32"); return;
+      case Iop_CmpEQ16x16:  vex_printf("CmpEQ16x16"); return;
+      case Iop_CmpEQ32x8:   vex_printf("CmpEQ32x8"); return;
+      case Iop_CmpEQ64x4:   vex_printf("CmpEQ64x4"); return;
+      case Iop_CmpGT8Sx32:  vex_printf("CmpGT8Sx32"); return;
+      case Iop_CmpGT16Sx16: vex_printf("CmpGT16Sx16"); return;
+      case Iop_CmpGT32Sx8:  vex_printf("CmpGT32Sx8"); return;
+      case Iop_CmpGT64Sx4:  vex_printf("CmpGT64Sx4"); return;
+
+      case Iop_ShlN16x16:  vex_printf("ShlN16x16"); return;
+      case Iop_ShlN32x8:   vex_printf("ShlN32x8"); return;
+      case Iop_ShlN64x4:   vex_printf("ShlN64x4"); return;
+      case Iop_ShrN16x16:  vex_printf("ShrN16x16"); return;
+      case Iop_ShrN32x8:   vex_printf("ShrN32x8"); return;
+      case Iop_ShrN64x4:   vex_printf("ShrN64x4"); return;
+      case Iop_SarN16x16:  vex_printf("SarN16x16"); return;
+      case Iop_SarN32x8:   vex_printf("SarN32x8"); return;
+
+      case Iop_Perm32x8:   vex_printf("Perm32x8"); return;
+
+      case Iop_CipherV128:   vex_printf("CipherV128"); return;
+      case Iop_CipherLV128:  vex_printf("CipherLV128"); return;
+      case Iop_NCipherV128:  vex_printf("NCipherV128"); return;
+      case Iop_NCipherLV128: vex_printf("NCipherLV128"); return;
+      case Iop_CipherSV128:  vex_printf("CipherSV128"); return;
+
+      case Iop_SHA256:  vex_printf("SHA256"); return;
+      case Iop_SHA512:  vex_printf("SHA512"); return;
+      case Iop_BCDAdd:  vex_printf("BCDAdd"); return;
+      case Iop_BCDSub:  vex_printf("BCDSub"); return;
+
+      case Iop_PwBitMtxXpose64x2: vex_printf("BitMatrixTranspose64x2"); return;
+
       default: vpanic("ppIROp(1)");
    }
 
@@ -1105,21 +1239,30 @@ void ppIRExpr ( IRExpr* e )
       ppIRCallee(e->Iex.CCall.cee);
       vex_printf("(");
       for (i = 0; e->Iex.CCall.args[i] != NULL; i++) {
-        ppIRExpr(e->Iex.CCall.args[i]);
-        if (e->Iex.CCall.args[i+1] != NULL)
+        IRExpr* arg = e->Iex.CCall.args[i];
+        ppIRExpr(arg);
+
+        if (e->Iex.CCall.args[i+1] != NULL) {
           vex_printf(",");
+      }
       }
       vex_printf("):");
       ppIRType(e->Iex.CCall.retty);
       break;
-    case Iex_Mux0X:
-      vex_printf("Mux0X(");
-      ppIRExpr(e->Iex.Mux0X.cond);
+    case Iex_ITE:
+      vex_printf("ITE(");
+      ppIRExpr(e->Iex.ITE.cond);
       vex_printf(",");
-      ppIRExpr(e->Iex.Mux0X.expr0);
+      ppIRExpr(e->Iex.ITE.iftrue);
       vex_printf(",");
-      ppIRExpr(e->Iex.Mux0X.exprX);
+      ppIRExpr(e->Iex.ITE.iffalse);
       vex_printf(")");
+      break;
+    case Iex_VECRET:
+      vex_printf("VECRET");
+      break;
+    case Iex_BBPTR:
+      vex_printf("BBPTR");
       break;
     default:
       vpanic("ppIRExpr");
@@ -1146,8 +1289,6 @@ void ppIRDirty ( IRDirty* d )
    }
    vex_printf("DIRTY ");
    ppIRExpr(d->guard);
-   if (d->needsBBP)
-      vex_printf(" NeedsBBP");
    if (d->mFx != Ifx_None) {
       vex_printf(" ");
       ppIREffect(d->mFx);
@@ -1170,7 +1311,9 @@ void ppIRDirty ( IRDirty* d )
    ppIRCallee(d->cee);
    vex_printf("(");
    for (i = 0; d->args[i] != NULL; i++) {
-      ppIRExpr(d->args[i]);
+      IRExpr* arg = d->args[i];
+      ppIRExpr(arg);
+
       if (d->args[i+1] != NULL) {
          vex_printf(",");
       }
@@ -1214,6 +1357,42 @@ void ppIRPutI ( IRPutI* puti )
    ppIRExpr(puti->data);
 }
 
+void ppIRStoreG ( IRStoreG* sg )
+{
+   vex_printf("if (");
+   ppIRExpr(sg->guard);
+   vex_printf(") ST%s(", sg->end==Iend_LE ? "le" : "be");
+   ppIRExpr(sg->addr);
+   vex_printf(") = ");
+   ppIRExpr(sg->data);
+}
+
+void ppIRLoadGOp ( IRLoadGOp cvt )
+{
+   switch (cvt) {
+      case ILGop_INVALID: vex_printf("ILGop_INVALID"); break;      
+      case ILGop_Ident32: vex_printf("Ident32"); break;      
+      case ILGop_16Uto32: vex_printf("16Uto32"); break;      
+      case ILGop_16Sto32: vex_printf("16Sto32"); break;      
+      case ILGop_8Uto32:  vex_printf("8Uto32"); break;      
+      case ILGop_8Sto32:  vex_printf("8Sto32"); break;      
+      default: vpanic("ppIRLoadGOp");
+   }
+}
+
+void ppIRLoadG ( IRLoadG* lg )
+{
+   ppIRTemp(lg->dst);
+   vex_printf(" = if-strict (");
+   ppIRExpr(lg->guard);
+   vex_printf(") ");
+   ppIRLoadGOp(lg->cvt);
+   vex_printf("(LD%s(", lg->end==Iend_LE ? "le" : "be");
+   ppIRExpr(lg->addr);
+   vex_printf(")) else ");
+   ppIRExpr(lg->alt);
+}
+
 void ppIRJumpKind ( IRJumpKind kind )
 {
    switch (kind) {
@@ -1231,6 +1410,8 @@ void ppIRJumpKind ( IRJumpKind kind )
       case Ijk_SigTRAP:      vex_printf("SigTRAP"); break;
       case Ijk_SigSEGV:      vex_printf("SigSEGV"); break;
       case Ijk_SigBUS:       vex_printf("SigBUS"); break;
+      case Ijk_SigFPE_IntDiv: vex_printf("SigFPE_IntDiv"); break;
+      case Ijk_SigFPE_IntOvf: vex_printf("SigFPE_IntOvf"); break;
       case Ijk_Sys_syscall:  vex_printf("Sys_syscall"); break;
       case Ijk_Sys_int32:    vex_printf("Sys_int32"); break;
       case Ijk_Sys_int128:   vex_printf("Sys_int128"); break;
@@ -1292,6 +1473,12 @@ void ppIRStmt ( IRStmt* s )
          ppIRExpr(s->Ist.Store.addr);
          vex_printf( ") = ");
          ppIRExpr(s->Ist.Store.data);
+         break;
+      case Ist_StoreG:
+         ppIRStoreG(s->Ist.StoreG.details);
+         break;
+      case Ist_LoadG:
+         ppIRLoadG(s->Ist.LoadG.details);
          break;
       case Ist_CAS:
          ppIRCAS(s->Ist.CAS.details);
@@ -1459,7 +1646,7 @@ IRConst* IRConst_V256 ( UInt con )
 
 /* Constructors -- IRCallee */
 
-IRCallee* mkIRCallee ( Int regparms, HChar* name, void* addr )
+IRCallee* mkIRCallee ( Int regparms, const HChar* name, void* addr )
 {
    IRCallee* ce = LibVEX_Alloc(sizeof(IRCallee));
    ce->regparms = regparms;
@@ -1580,12 +1767,22 @@ IRExpr* IRExpr_CCall ( IRCallee* cee, IRType retty, IRExpr** args ) {
    e->Iex.CCall.args  = args;
    return e;
 }
-IRExpr* IRExpr_Mux0X ( IRExpr* cond, IRExpr* expr0, IRExpr* exprX ) {
+IRExpr* IRExpr_ITE ( IRExpr* cond, IRExpr* iftrue, IRExpr* iffalse ) {
    IRExpr* e          = LibVEX_Alloc(sizeof(IRExpr));
-   e->tag             = Iex_Mux0X;
-   e->Iex.Mux0X.cond  = cond;
-   e->Iex.Mux0X.expr0 = expr0;
-   e->Iex.Mux0X.exprX = exprX;
+   e->tag             = Iex_ITE;
+   e->Iex.ITE.cond    = cond;
+   e->Iex.ITE.iftrue  = iftrue;
+   e->Iex.ITE.iffalse = iffalse;
+   return e;
+}
+IRExpr* IRExpr_VECRET ( void ) {
+   IRExpr* e = LibVEX_Alloc(sizeof(IRExpr));
+   e->tag    = Iex_VECRET;
+   return e;
+}
+IRExpr* IRExpr_BBPTR ( void ) {
+   IRExpr* e = LibVEX_Alloc(sizeof(IRExpr));
+   e->tag    = Iex_BBPTR;
    return e;
 }
 
@@ -1694,7 +1891,6 @@ IRDirty* emptyIRDirty ( void ) {
    d->mFx      = Ifx_None;
    d->mAddr    = NULL;
    d->mSize    = 0;
-   d->needsBBP = False;
    d->nFxState = 0;
    return d;
 }
@@ -1730,6 +1926,33 @@ IRPutI* mkIRPutI ( IRRegArray* descr, IRExpr* ix,
    puti->bias   = bias;
    puti->data   = data;
    return puti;
+}
+
+
+/* Constructors -- IRStoreG and IRLoadG */
+
+IRStoreG* mkIRStoreG ( IREndness end,
+                       IRExpr* addr, IRExpr* data, IRExpr* guard )
+{
+   IRStoreG* sg = LibVEX_Alloc(sizeof(IRStoreG));
+   sg->end      = end;
+   sg->addr     = addr;
+   sg->data     = data;
+   sg->guard    = guard;
+   return sg;
+}
+
+IRLoadG* mkIRLoadG ( IREndness end, IRLoadGOp cvt,
+                     IRTemp dst, IRExpr* addr, IRExpr* alt, IRExpr* guard )
+{
+   IRLoadG* lg = LibVEX_Alloc(sizeof(IRLoadG));
+   lg->end     = end;
+   lg->cvt     = cvt;
+   lg->dst     = dst;
+   lg->addr    = addr;
+   lg->alt     = alt;
+   lg->guard   = guard;
+   return lg;
 }
 
 
@@ -1785,6 +2008,21 @@ IRStmt* IRStmt_Store ( IREndness end, IRExpr* addr, IRExpr* data ) {
    s->Ist.Store.addr = addr;
    s->Ist.Store.data = data;
    vassert(end == Iend_LE || end == Iend_BE);
+   return s;
+}
+IRStmt* IRStmt_StoreG ( IREndness end, IRExpr* addr, IRExpr* data,
+                        IRExpr* guard ) {
+   IRStmt* s             = LibVEX_Alloc(sizeof(IRStmt));
+   s->tag                = Ist_StoreG;
+   s->Ist.StoreG.details = mkIRStoreG(end, addr, data, guard);
+   vassert(end == Iend_LE || end == Iend_BE);
+   return s;
+}
+IRStmt* IRStmt_LoadG ( IREndness end, IRLoadGOp cvt, IRTemp dst,
+                       IRExpr* addr, IRExpr* alt, IRExpr* guard ) {
+   IRStmt* s            = LibVEX_Alloc(sizeof(IRStmt));
+   s->tag               = Ist_LoadG;
+   s->Ist.LoadG.details = mkIRLoadG(end, cvt, dst, addr, alt, guard);
    return s;
 }
 IRStmt* IRStmt_CAS ( IRCAS* cas ) {
@@ -1968,10 +2206,16 @@ IRExpr* deepCopyIRExpr ( IRExpr* e )
                              e->Iex.CCall.retty,
                              deepCopyIRExprVec(e->Iex.CCall.args));
 
-      case Iex_Mux0X: 
-         return IRExpr_Mux0X(deepCopyIRExpr(e->Iex.Mux0X.cond),
-                             deepCopyIRExpr(e->Iex.Mux0X.expr0),
-                             deepCopyIRExpr(e->Iex.Mux0X.exprX));
+      case Iex_ITE: 
+         return IRExpr_ITE(deepCopyIRExpr(e->Iex.ITE.cond),
+                           deepCopyIRExpr(e->Iex.ITE.iftrue),
+                           deepCopyIRExpr(e->Iex.ITE.iffalse));
+      case Iex_VECRET:
+         return IRExpr_VECRET();
+
+      case Iex_BBPTR:
+         return IRExpr_BBPTR();
+
       default:
          vpanic("deepCopyIRExpr");
    }
@@ -1988,7 +2232,6 @@ IRDirty* deepCopyIRDirty ( IRDirty* d )
    d2->mFx   = d->mFx;
    d2->mAddr = d->mAddr==NULL ? NULL : deepCopyIRExpr(d->mAddr);
    d2->mSize = d->mSize;
-   d2->needsBBP = d->needsBBP;
    d2->nFxState = d->nFxState;
    for (i = 0; i < d2->nFxState; i++)
       d2->fxState[i] = d->fxState[i];
@@ -2038,6 +2281,20 @@ IRStmt* deepCopyIRStmt ( IRStmt* s )
          return IRStmt_Store(s->Ist.Store.end,
                              deepCopyIRExpr(s->Ist.Store.addr),
                              deepCopyIRExpr(s->Ist.Store.data));
+      case Ist_StoreG: {
+         IRStoreG* sg = s->Ist.StoreG.details;
+         return IRStmt_StoreG(sg->end,
+                              deepCopyIRExpr(sg->addr),
+                              deepCopyIRExpr(sg->data),
+                              deepCopyIRExpr(sg->guard));
+      }
+      case Ist_LoadG: {
+         IRLoadG* lg = s->Ist.LoadG.details;
+         return IRStmt_LoadG(lg->end, lg->cvt, lg->dst,
+                             deepCopyIRExpr(lg->addr),
+                             deepCopyIRExpr(lg->alt),
+                             deepCopyIRExpr(lg->guard));
+      }
       case Ist_CAS:
          return IRStmt_CAS(deepCopyIRCAS(s->Ist.CAS.details));
       case Ist_LLSC:
@@ -2269,18 +2526,18 @@ void typeOfPrimop ( IROp op,
          UNARY(Ity_I64, Ity_I64);
 
       case Iop_CmpEQ8: case Iop_CmpNE8:
-      case Iop_CasCmpEQ8: case Iop_CasCmpNE8:
+      case Iop_CasCmpEQ8: case Iop_CasCmpNE8: case Iop_ExpCmpNE8:
          COMPARISON(Ity_I8);
       case Iop_CmpEQ16: case Iop_CmpNE16:
-      case Iop_CasCmpEQ16: case Iop_CasCmpNE16:
+      case Iop_CasCmpEQ16: case Iop_CasCmpNE16: case Iop_ExpCmpNE16:
          COMPARISON(Ity_I16);
       case Iop_CmpEQ32: case Iop_CmpNE32:
-      case Iop_CasCmpEQ32: case Iop_CasCmpNE32:
+      case Iop_CasCmpEQ32: case Iop_CasCmpNE32: case Iop_ExpCmpNE32:
       case Iop_CmpLT32S: case Iop_CmpLE32S:
       case Iop_CmpLT32U: case Iop_CmpLE32U:
          COMPARISON(Ity_I32);
       case Iop_CmpEQ64: case Iop_CmpNE64:
-      case Iop_CasCmpEQ64: case Iop_CasCmpNE64:
+      case Iop_CasCmpEQ64: case Iop_CasCmpNE64: case Iop_ExpCmpNE64:
       case Iop_CmpLT64S: case Iop_CmpLE64S:
       case Iop_CmpLT64U: case Iop_CmpLE64U:
          COMPARISON(Ity_I64);
@@ -2294,6 +2551,9 @@ void typeOfPrimop ( IROp op,
       case Iop_Left16: UNARY(Ity_I16,Ity_I16);
       case Iop_CmpwNEZ32: case Iop_Left32: UNARY(Ity_I32,Ity_I32);
       case Iop_CmpwNEZ64: case Iop_Left64: UNARY(Ity_I64,Ity_I64);
+
+      case Iop_GetMSBs8x8:  UNARY(Ity_I64, Ity_I8);
+      case Iop_GetMSBs8x16: UNARY(Ity_V128, Ity_I16);
 
       case Iop_MullU8: case Iop_MullS8:
          BINARY(Ity_I8,Ity_I8, Ity_I16);
@@ -2558,23 +2818,30 @@ void typeOfPrimop ( IROp op,
       case Iop_QSub32Sx4: case Iop_QSub64Sx2:
       case Iop_Mul8x16: case Iop_Mul16x8: case Iop_Mul32x4:
       case Iop_PolynomialMul8x16:
+      case Iop_PolynomialMulAdd8x16: case Iop_PolynomialMulAdd16x8:
+      case Iop_PolynomialMulAdd32x4: case Iop_PolynomialMulAdd64x2:
       case Iop_MulHi16Ux8: case Iop_MulHi32Ux4: 
       case Iop_MulHi16Sx8: case Iop_MulHi32Sx4: 
       case Iop_QDMulHi16Sx8: case Iop_QDMulHi32Sx4:
       case Iop_QRDMulHi16Sx8: case Iop_QRDMulHi32Sx4:
-      case Iop_MullEven8Ux16: case Iop_MullEven16Ux8:
-      case Iop_MullEven8Sx16: case Iop_MullEven16Sx8:
+      case Iop_MullEven8Ux16: case Iop_MullEven16Ux8: case Iop_MullEven32Ux4:
+      case Iop_MullEven8Sx16: case Iop_MullEven16Sx8: case Iop_MullEven32Sx4:
       case Iop_Avg8Ux16: case Iop_Avg16Ux8: case Iop_Avg32Ux4:
       case Iop_Avg8Sx16: case Iop_Avg16Sx8: case Iop_Avg32Sx4:
       case Iop_Max8Sx16: case Iop_Max16Sx8: case Iop_Max32Sx4:
+      case Iop_Max64Sx2:
       case Iop_Max8Ux16: case Iop_Max16Ux8: case Iop_Max32Ux4:
+      case Iop_Max64Ux2:
       case Iop_Min8Sx16: case Iop_Min16Sx8: case Iop_Min32Sx4:
+      case Iop_Min64Sx2:
       case Iop_Min8Ux16: case Iop_Min16Ux8: case Iop_Min32Ux4:
+      case Iop_Min64Ux2:
       case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
       case Iop_CmpEQ64x2:
       case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
       case Iop_CmpGT64Sx2:
       case Iop_CmpGT8Ux16: case Iop_CmpGT16Ux8: case Iop_CmpGT32Ux4:
+      case Iop_CmpGT64Ux2:
       case Iop_Shl8x16: case Iop_Shl16x8: case Iop_Shl32x4: case Iop_Shl64x2:
       case Iop_QShl8x16: case Iop_QShl16x8:
       case Iop_QShl32x4: case Iop_QShl64x2:
@@ -2583,11 +2850,13 @@ void typeOfPrimop ( IROp op,
       case Iop_Shr8x16: case Iop_Shr16x8: case Iop_Shr32x4: case Iop_Shr64x2:
       case Iop_Sar8x16: case Iop_Sar16x8: case Iop_Sar32x4: case Iop_Sar64x2:
       case Iop_Sal8x16: case Iop_Sal16x8: case Iop_Sal32x4: case Iop_Sal64x2:
-      case Iop_Rol8x16: case Iop_Rol16x8: case Iop_Rol32x4:
+      case Iop_Rol8x16: case Iop_Rol16x8: case Iop_Rol32x4:case Iop_Rol64x2:
       case Iop_QNarrowBin16Sto8Ux16: case Iop_QNarrowBin32Sto16Ux8:
       case Iop_QNarrowBin16Sto8Sx16: case Iop_QNarrowBin32Sto16Sx8:
       case Iop_QNarrowBin16Uto8Ux16: case Iop_QNarrowBin32Uto16Ux8:
+      case Iop_QNarrowBin64Sto32Sx4: case Iop_QNarrowBin64Uto32Ux4:
       case Iop_NarrowBin16to8x16:   case Iop_NarrowBin32to16x8:
+      case Iop_NarrowBin64to32x4:
       case Iop_InterleaveHI8x16: case Iop_InterleaveHI16x8:
       case Iop_InterleaveHI32x4: case Iop_InterleaveHI64x2:
       case Iop_InterleaveLO8x16: case Iop_InterleaveLO16x8: 
@@ -2601,6 +2870,10 @@ void typeOfPrimop ( IROp op,
       case Iop_Perm8x16: case Iop_Perm32x4:
       case Iop_Recps32Fx4:
       case Iop_Rsqrts32Fx4:
+      case Iop_CipherV128:
+      case Iop_CipherLV128:
+      case Iop_NCipherV128:
+      case Iop_NCipherLV128:
          BINARY(Ity_V128,Ity_V128, Ity_V128);
 
       case Iop_PolynomialMull8x8:
@@ -2620,7 +2893,7 @@ void typeOfPrimop ( IROp op,
       case Iop_CmpNEZ8x16: case Iop_CmpNEZ16x8:
       case Iop_CmpNEZ32x4: case Iop_CmpNEZ64x2:
       case Iop_Cnt8x16:
-      case Iop_Clz8Sx16: case Iop_Clz16Sx8: case Iop_Clz32Sx4:
+      case Iop_Clz8Sx16: case Iop_Clz16Sx8: case Iop_Clz32Sx4: case Iop_Clz64x2:
       case Iop_Cls8Sx16: case Iop_Cls16Sx8: case Iop_Cls32Sx4:
       case Iop_PwAddL8Ux16: case Iop_PwAddL16Ux8: case Iop_PwAddL32Ux4:
       case Iop_PwAddL8Sx16: case Iop_PwAddL16Sx8: case Iop_PwAddL32Sx4:
@@ -2629,6 +2902,8 @@ void typeOfPrimop ( IROp op,
       case Iop_Reverse16_8x16:
       case Iop_Neg32Fx4:
       case Iop_Abs8x16: case Iop_Abs16x8: case Iop_Abs32x4:
+      case Iop_CipherSV128:
+      case Iop_PwBitMtxXpose64x2:
          UNARY(Ity_V128, Ity_V128);
 
       case Iop_ShlV128: case Iop_ShrV128:
@@ -2644,6 +2919,7 @@ void typeOfPrimop ( IROp op,
       case Iop_QShlN32Sx4: case Iop_QShlN64Sx2:
       case Iop_QSalN8x16: case Iop_QSalN16x8:
       case Iop_QSalN32x4: case Iop_QSalN64x2:
+      case Iop_SHA256:    case Iop_SHA512:
          BINARY(Ity_V128,Ity_I8, Ity_V128);
 
       case Iop_F32ToFixed32Ux4_RZ:
@@ -2684,6 +2960,9 @@ void typeOfPrimop ( IROp op,
       case Iop_ExtractV128:
          TERNARY(Ity_V128, Ity_V128, Ity_I8, Ity_V128);
 
+      case Iop_BCDAdd:
+      case Iop_BCDSub:
+         TERNARY(Ity_V128,Ity_V128, Ity_I8, Ity_V128);
       case Iop_QDMulLong16Sx4: case Iop_QDMulLong32Sx2:
          BINARY(Ity_I64, Ity_I64, Ity_V128);
 
@@ -2731,17 +3010,25 @@ void typeOfPrimop ( IROp op,
       case Iop_F128toF64: BINARY(ity_RMode,Ity_F128, Ity_F64);
 
       case Iop_D32toD64:
+         UNARY(Ity_D32, Ity_D64);
+
       case Iop_ExtractExpD64:
-         UNARY(Ity_D64, Ity_D64);
+         UNARY(Ity_D64, Ity_I64);
+
+      case Iop_ExtractSigD64:
+         UNARY(Ity_D64, Ity_I64);
 
       case Iop_InsertExpD64:
-         BINARY(Ity_D64,Ity_D64, Ity_D64);
+         BINARY(Ity_I64,Ity_D64, Ity_D64);
 
       case Iop_ExtractExpD128:
-         UNARY(Ity_D128, Ity_D64);
+         UNARY(Ity_D128, Ity_I64);
+
+      case Iop_ExtractSigD128:
+        UNARY(Ity_D128, Ity_I64);
 
       case Iop_InsertExpD128:
-         BINARY(Ity_D64,Ity_D128, Ity_D128);
+         BINARY(Ity_I64,Ity_D128, Ity_D128);
 
       case Iop_D64toD128:
          UNARY(Ity_D64, Ity_D128);
@@ -2758,8 +3045,15 @@ void typeOfPrimop ( IROp op,
       case Iop_RoundD128toInt:
          BINARY(ity_RMode,Ity_D128, Ity_D128);
 
-      case Iop_I64StoD128:    /* I64 bit pattern stored in Float register */
-         UNARY(Ity_D64, Ity_D128);
+      case Iop_I32StoD128:
+      case Iop_I32UtoD128:
+         UNARY(Ity_I32, Ity_D128);
+
+      case Iop_I64StoD128:
+         UNARY(Ity_I64, Ity_D128);
+
+      case Iop_I64UtoD128:
+         UNARY(Ity_I64, Ity_D128);
 
       case Iop_DPBtoBCD:
       case Iop_BCDtoDPB:
@@ -2770,7 +3064,14 @@ void typeOfPrimop ( IROp op,
          UNARY(Ity_D128, Ity_D64);
 
       case Iop_D128toI64S:
-         BINARY(ity_RMode, Ity_D128, Ity_D64);
+         BINARY(ity_RMode, Ity_D128, Ity_I64);
+
+      case Iop_D128toI64U:
+         BINARY(ity_RMode, Ity_D128, Ity_I64);
+
+      case Iop_D128toI32S:
+      case Iop_D128toI32U:
+         BINARY(ity_RMode, Ity_D128, Ity_I32);
 
       case Iop_D64HLtoD128:
          BINARY(Ity_D64, Ity_D64, Ity_D128);
@@ -2780,25 +3081,101 @@ void typeOfPrimop ( IROp op,
          BINARY(Ity_D64, Ity_I8, Ity_D64 );
 
       case Iop_D64toD32:  
-      case Iop_D64toI64S:
-         BINARY(ity_RMode, Ity_D64, Ity_D64);
+         BINARY(ity_RMode, Ity_D64, Ity_D32);
 
-      case Iop_I64StoD64:  /* I64 bit pattern stored in Float register */
-         BINARY(ity_RMode, Ity_D64, Ity_D64);
+      case Iop_D64toI32S:
+      case Iop_D64toI32U:
+         BINARY(ity_RMode, Ity_D64, Ity_I32);
+
+      case Iop_D64toI64S:
+         BINARY(ity_RMode, Ity_D64, Ity_I64);
+
+      case Iop_D64toI64U:
+         BINARY(ity_RMode, Ity_D64, Ity_I64);
+
+      case Iop_I32StoD64:
+      case Iop_I32UtoD64:
+         UNARY(Ity_I32, Ity_D64);
+
+      case Iop_I64StoD64:
+         BINARY(ity_RMode, Ity_I64, Ity_D64);
+
+      case Iop_I64UtoD64:
+         BINARY(ity_RMode, Ity_I64, Ity_D64);
+
+      case Iop_F32toD32:
+         BINARY(ity_RMode, Ity_F32, Ity_D32);
+
+      case Iop_F32toD64:
+         BINARY(ity_RMode, Ity_F32, Ity_D64);
+
+      case Iop_F32toD128:
+         BINARY(ity_RMode, Ity_F32, Ity_D128);
+
+      case Iop_F64toD32:
+         BINARY(ity_RMode, Ity_F64, Ity_D32);
+
+      case Iop_F64toD64:
+         BINARY(ity_RMode, Ity_F64, Ity_D64);
+
+      case Iop_F64toD128:
+         BINARY(ity_RMode, Ity_F64, Ity_D128);
+
+      case Iop_F128toD32:
+         BINARY(ity_RMode, Ity_F128, Ity_D32);
+
+      case Iop_F128toD64:
+         BINARY(ity_RMode, Ity_F128, Ity_D64);
+
+      case Iop_F128toD128:
+         BINARY(ity_RMode, Ity_F128, Ity_D128);
+
+      case Iop_D32toF32:
+         BINARY(ity_RMode, Ity_D32, Ity_F32);
+
+      case Iop_D32toF64:
+         BINARY(ity_RMode, Ity_D32, Ity_F64);
+
+      case Iop_D32toF128:
+         BINARY(ity_RMode, Ity_D32, Ity_F128);
+
+      case Iop_D64toF32:
+         BINARY(ity_RMode, Ity_D64, Ity_F32);
+
+      case Iop_D64toF64:
+         BINARY(ity_RMode, Ity_D64, Ity_F64);
+
+      case Iop_D64toF128:
+         BINARY(ity_RMode, Ity_D64, Ity_F128);
+
+      case Iop_D128toF32:
+         BINARY(ity_RMode, Ity_D128, Ity_F32);
+
+      case Iop_D128toF64:
+         BINARY(ity_RMode, Ity_D128, Ity_F64);
+
+      case Iop_D128toF128:
+         BINARY(ity_RMode, Ity_D128, Ity_F128);
 
       case Iop_CmpD64:
+      case Iop_CmpExpD64:
          BINARY(Ity_D64,Ity_D64, Ity_I32);
 
       case Iop_CmpD128:
+      case Iop_CmpExpD128:
          BINARY(Ity_D128,Ity_D128, Ity_I32);
 
       case Iop_QuantizeD64:
-      case Iop_SignificanceRoundD64:
          TERNARY(ity_RMode,Ity_D64,Ity_D64, Ity_D64);
 
+      case Iop_SignificanceRoundD64:
+         TERNARY(ity_RMode, Ity_I8,Ity_D64, Ity_D64);
+
       case Iop_QuantizeD128:
-      case Iop_SignificanceRoundD128:
          TERNARY(ity_RMode,Ity_D128,Ity_D128, Ity_D128);
+
+      case Iop_SignificanceRoundD128:
+         TERNARY(ity_RMode, Ity_I8,Ity_D128, Ity_D128);
 
       case Iop_ShlD128:
       case Iop_ShrD128:
@@ -2834,6 +3211,26 @@ void typeOfPrimop ( IROp op,
       case Iop_XorV256:
       case Iop_Max32Fx8: case Iop_Min32Fx8:
       case Iop_Max64Fx4: case Iop_Min64Fx4:
+      case Iop_Add8x32:  case Iop_Add16x16:
+      case Iop_Add32x8:  case Iop_Add64x4:
+      case Iop_Sub8x32:  case Iop_Sub16x16:
+      case Iop_Sub32x8:  case Iop_Sub64x4:
+      case Iop_Mul16x16: case Iop_Mul32x8:
+      case Iop_MulHi16Ux16: case Iop_MulHi16Sx16:
+      case Iop_Avg8Ux32: case Iop_Avg16Ux16:
+      case Iop_Max8Sx32: case Iop_Max16Sx16: case Iop_Max32Sx8:
+      case Iop_Max8Ux32: case Iop_Max16Ux16: case Iop_Max32Ux8:
+      case Iop_Min8Sx32: case Iop_Min16Sx16: case Iop_Min32Sx8:
+      case Iop_Min8Ux32: case Iop_Min16Ux16: case Iop_Min32Ux8:
+      case Iop_CmpEQ8x32:  case Iop_CmpEQ16x16:
+      case Iop_CmpEQ32x8:  case Iop_CmpEQ64x4:
+      case Iop_CmpGT8Sx32: case Iop_CmpGT16Sx16:
+      case Iop_CmpGT32Sx8: case Iop_CmpGT64Sx4:
+      case Iop_QAdd8Ux32: case Iop_QAdd16Ux16:
+      case Iop_QAdd8Sx32: case Iop_QAdd16Sx16:
+      case Iop_QSub8Ux32: case Iop_QSub16Ux16:
+      case Iop_QSub8Sx32: case Iop_QSub16Sx16:
+      case Iop_Perm32x8:
          BINARY(Ity_V256,Ity_V256, Ity_V256);
 
       case Iop_V256toV128_1: case Iop_V256toV128_0:
@@ -2847,8 +3244,16 @@ void typeOfPrimop ( IROp op,
       case Iop_Sqrt32Fx8:
       case Iop_Sqrt64Fx4:
       case Iop_Recip32Fx8:
+      case Iop_CmpNEZ8x32: case Iop_CmpNEZ16x16:
       case Iop_CmpNEZ64x4: case Iop_CmpNEZ32x8:
          UNARY(Ity_V256, Ity_V256);
+
+      case Iop_ShlN16x16: case Iop_ShlN32x8:
+      case Iop_ShlN64x4:
+      case Iop_ShrN16x16: case Iop_ShrN32x8:
+      case Iop_ShrN64x4:
+      case Iop_SarN16x16: case Iop_SarN32x8:
+         BINARY(Ity_V256,Ity_I8, Ity_V256);
 
       default:
          ppIROp(op);
@@ -2923,7 +3328,6 @@ IRType typeOfIRTemp ( IRTypeEnv* env, IRTemp tmp )
    return env->types[tmp];
 }
 
-
 IRType typeOfIRConst ( IRConst* con )
 {
    switch (con->tag) {
@@ -2939,6 +3343,21 @@ IRType typeOfIRConst ( IRConst* con )
       case Ico_V128:  return Ity_V128;
       case Ico_V256:  return Ity_V256;
       default: vpanic("typeOfIRConst");
+   }
+}
+
+void typeOfIRLoadGOp ( IRLoadGOp cvt,
+                       /*OUT*/IRType* t_res, /*OUT*/IRType* t_arg )
+{
+   switch (cvt) {
+      case ILGop_Ident32:
+         *t_res = Ity_I32; *t_arg = Ity_I32; break;
+      case ILGop_16Uto32: case ILGop_16Sto32:
+         *t_res = Ity_I32; *t_arg = Ity_I16; break;
+      case ILGop_8Uto32: case ILGop_8Sto32:
+         *t_res = Ity_I32; *t_arg = Ity_I8; break;
+      default:
+         vpanic("typeOfIRLoadGOp");
    }
 }
 
@@ -2975,12 +3394,16 @@ IRType typeOfIRExpr ( IRTypeEnv* tyenv, IRExpr* e )
          return t_dst;
       case Iex_CCall:
          return e->Iex.CCall.retty;
-      case Iex_Mux0X:
-         e = e->Iex.Mux0X.expr0;
+      case Iex_ITE:
+         e = e->Iex.ITE.iffalse;
          goto start;
-         /* return typeOfIRExpr(tyenv, e->Iex.Mux0X.expr0); */
+         /* return typeOfIRExpr(tyenv, e->Iex.ITE.iffalse); */
       case Iex_Binder:
          vpanic("typeOfIRExpr: Binder is not a valid expression");
+      case Iex_VECRET:
+         vpanic("typeOfIRExpr: VECRET is not a valid expression");
+      case Iex_BBPTR:
+         vpanic("typeOfIRExpr: BBPTR is not a valid expression");
       default:
          ppIRExpr(e);
          vpanic("typeOfIRExpr");
@@ -3017,6 +3440,14 @@ Bool isPlausibleIRType ( IRType ty )
       return e->tag == Iex_RdTmp || e->tag == Iex_Const;
    }
 */
+
+static inline Bool isIRAtom_or_VECRET_or_BBPTR ( IRExpr* e ) {
+  if (isIRAtom(e)) {
+    return True;
+  }
+
+  return UNLIKELY(is_IRExpr_VECRET_or_BBPTR(e));
+}
 
 Bool isFlatIRStmt ( IRStmt* st )
 {
@@ -3069,10 +3500,10 @@ Bool isFlatIRStmt ( IRStmt* st )
                                 if (!isIRAtom(e->Iex.CCall.args[i])) 
                                    return False;
                              return True;
-            case Iex_Mux0X:  return toBool (
-                                    isIRAtom(e->Iex.Mux0X.cond) 
-                                    && isIRAtom(e->Iex.Mux0X.expr0) 
-                                    && isIRAtom(e->Iex.Mux0X.exprX));
+            case Iex_ITE:    return toBool (
+                                    isIRAtom(e->Iex.ITE.cond) 
+                                    && isIRAtom(e->Iex.ITE.iftrue) 
+                                    && isIRAtom(e->Iex.ITE.iffalse));
             default:         vpanic("isFlatIRStmt(e)");
          }
          /*notreached*/
@@ -3080,6 +3511,16 @@ Bool isFlatIRStmt ( IRStmt* st )
       case Ist_Store:
          return toBool( isIRAtom(st->Ist.Store.addr) 
                         && isIRAtom(st->Ist.Store.data) );
+      case Ist_StoreG: {
+         IRStoreG* sg = st->Ist.StoreG.details;
+         return toBool( isIRAtom(sg->addr)
+                        && isIRAtom(sg->data) && isIRAtom(sg->guard) );
+      }
+      case Ist_LoadG: {
+         IRLoadG* lg = st->Ist.LoadG.details;
+         return toBool( isIRAtom(lg->addr)
+                        && isIRAtom(lg->alt) && isIRAtom(lg->guard) );
+      }
       case Ist_CAS:
          cas = st->Ist.CAS.details;
          return toBool( isIRAtom(cas->addr)
@@ -3096,7 +3537,7 @@ Bool isFlatIRStmt ( IRStmt* st )
          if (!isIRAtom(di->guard)) 
             return False;
          for (i = 0; di->args[i]; i++)
-            if (!isIRAtom(di->args[i])) 
+            if (!isIRAtom_or_VECRET_or_BBPTR(di->args[i])) 
                return False;
          if (di->mAddr && !isIRAtom(di->mAddr)) 
             return False;
@@ -3136,7 +3577,7 @@ static inline Int countArgs ( IRExpr** args )
 
 static
 __attribute((noreturn))
-void sanityCheckFail ( IRSB* bb, IRStmt* stmt, HChar* what )
+void sanityCheckFail ( IRSB* bb, IRStmt* stmt, const HChar* what )
 {
    vex_printf("\nIR SANITY CHECK FAILURE\n\n");
    ppIRSB(bb);
@@ -3236,13 +3677,22 @@ void useBeforeDef_Expr ( IRSB* bb, IRStmt* stmt, IRExpr* expr, Int* def_counts )
       case Iex_Const:
          break;
       case Iex_CCall:
-         for (i = 0; expr->Iex.CCall.args[i]; i++)
-            useBeforeDef_Expr(bb,stmt,expr->Iex.CCall.args[i],def_counts);
+         for (i = 0; expr->Iex.CCall.args[i]; i++) {
+            IRExpr* arg = expr->Iex.CCall.args[i];
+            if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg))) {
+               /* These aren't allowed in CCall lists.  Let's detect
+                  and throw them out here, though, rather than
+                  segfaulting a bit later on. */
+               sanityCheckFail(bb,stmt, "IRExprP__* value in CCall arg list");
+            } else {
+               useBeforeDef_Expr(bb,stmt,arg,def_counts);
+            }
+         }
          break;
-      case Iex_Mux0X:
-         useBeforeDef_Expr(bb,stmt,expr->Iex.Mux0X.cond,def_counts);
-         useBeforeDef_Expr(bb,stmt,expr->Iex.Mux0X.expr0,def_counts);
-         useBeforeDef_Expr(bb,stmt,expr->Iex.Mux0X.exprX,def_counts);
+      case Iex_ITE:
+         useBeforeDef_Expr(bb,stmt,expr->Iex.ITE.cond,def_counts);
+         useBeforeDef_Expr(bb,stmt,expr->Iex.ITE.iftrue,def_counts);
+         useBeforeDef_Expr(bb,stmt,expr->Iex.ITE.iffalse,def_counts);
          break;
       default:
          vpanic("useBeforeDef_Expr");
@@ -3256,6 +3706,8 @@ void useBeforeDef_Stmt ( IRSB* bb, IRStmt* stmt, Int* def_counts )
    IRDirty* d;
    IRCAS*   cas;
    IRPutI*  puti;
+   IRLoadG*  lg;
+   IRStoreG* sg;
    switch (stmt->tag) {
       case Ist_IMark:
          break;
@@ -3278,6 +3730,18 @@ void useBeforeDef_Stmt ( IRSB* bb, IRStmt* stmt, Int* def_counts )
          useBeforeDef_Expr(bb,stmt,stmt->Ist.Store.addr,def_counts);
          useBeforeDef_Expr(bb,stmt,stmt->Ist.Store.data,def_counts);
          break;
+      case Ist_StoreG:
+         sg = stmt->Ist.StoreG.details;
+         useBeforeDef_Expr(bb,stmt,sg->addr,def_counts);
+         useBeforeDef_Expr(bb,stmt,sg->data,def_counts);
+         useBeforeDef_Expr(bb,stmt,sg->guard,def_counts);
+         break;
+      case Ist_LoadG:
+         lg = stmt->Ist.LoadG.details;
+         useBeforeDef_Expr(bb,stmt,lg->addr,def_counts);
+         useBeforeDef_Expr(bb,stmt,lg->alt,def_counts);
+         useBeforeDef_Expr(bb,stmt,lg->guard,def_counts);
+         break;
       case Ist_CAS:
          cas = stmt->Ist.CAS.details;
          useBeforeDef_Expr(bb,stmt,cas->addr,def_counts);
@@ -3295,8 +3759,15 @@ void useBeforeDef_Stmt ( IRSB* bb, IRStmt* stmt, Int* def_counts )
          break;
       case Ist_Dirty:
          d = stmt->Ist.Dirty.details;
-         for (i = 0; d->args[i] != NULL; i++)
-            useBeforeDef_Expr(bb,stmt,d->args[i],def_counts);
+         for (i = 0; d->args[i] != NULL; i++) {
+            IRExpr* arg = d->args[i];
+            if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg))) {
+               /* This is ensured by isFlatIRStmt */
+              ;
+            } else {
+               useBeforeDef_Expr(bb,stmt,arg,def_counts);
+            }
+         }
          if (d->mFx != Ifx_None)
             useBeforeDef_Expr(bb,stmt,d->mAddr,def_counts);
          break;
@@ -3488,7 +3959,10 @@ void tcExpr ( IRSB* bb, IRStmt* stmt, IRExpr* expr, IRType gWordTy )
          for (i = 0; expr->Iex.CCall.args[i]; i++) {
             if (i >= 32)
                sanityCheckFail(bb,stmt,"Iex.CCall: > 32 args");
-            tcExpr(bb,stmt, expr->Iex.CCall.args[i], gWordTy);
+            IRExpr* arg = expr->Iex.CCall.args[i];
+            if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(arg)))
+               sanityCheckFail(bb,stmt,"Iex.CCall.args: is VECRET/BBPTR");
+            tcExpr(bb,stmt, arg, gWordTy);
          }
          if (expr->Iex.CCall.retty == Ity_I1)
             sanityCheckFail(bb,stmt,"Iex.CCall.retty: cannot return :: Ity_I1");
@@ -3500,15 +3974,15 @@ void tcExpr ( IRSB* bb, IRStmt* stmt, IRExpr* expr, IRType gWordTy )
          if (!saneIRConst(expr->Iex.Const.con))
             sanityCheckFail(bb,stmt,"Iex.Const.con: invalid const");
          break;
-      case Iex_Mux0X:
-         tcExpr(bb,stmt, expr->Iex.Mux0X.cond, gWordTy);
-         tcExpr(bb,stmt, expr->Iex.Mux0X.expr0, gWordTy);
-         tcExpr(bb,stmt, expr->Iex.Mux0X.exprX, gWordTy);
-         if (typeOfIRExpr(tyenv, expr->Iex.Mux0X.cond) != Ity_I8)
-            sanityCheckFail(bb,stmt,"Iex.Mux0X.cond: cond :: Ity_I8");
-         if (typeOfIRExpr(tyenv, expr->Iex.Mux0X.expr0)
-             != typeOfIRExpr(tyenv, expr->Iex.Mux0X.exprX))
-            sanityCheckFail(bb,stmt,"Iex.Mux0X: expr0/exprX mismatch");
+      case Iex_ITE:
+         tcExpr(bb,stmt, expr->Iex.ITE.cond, gWordTy);
+         tcExpr(bb,stmt, expr->Iex.ITE.iftrue, gWordTy);
+         tcExpr(bb,stmt, expr->Iex.ITE.iffalse, gWordTy);
+         if (typeOfIRExpr(tyenv, expr->Iex.ITE.cond) != Ity_I1)
+            sanityCheckFail(bb,stmt,"Iex.ITE.cond: cond :: Ity_I1");
+         if (typeOfIRExpr(tyenv, expr->Iex.ITE.iftrue)
+             != typeOfIRExpr(tyenv, expr->Iex.ITE.iffalse))
+            sanityCheckFail(bb,stmt,"Iex.ITE: iftrue/iffalse mismatch");
          break;
        default: 
          vpanic("tcExpr");
@@ -3565,18 +4039,54 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
          tcExpr( bb, stmt, stmt->Ist.WrTmp.data, gWordTy );
          if (typeOfIRTemp(tyenv, stmt->Ist.WrTmp.tmp)
              != typeOfIRExpr(tyenv, stmt->Ist.WrTmp.data))
-            sanityCheckFail(bb,stmt,"IRStmt.Put.Tmp: tmp and expr do not match");
+            sanityCheckFail(bb,stmt,
+                            "IRStmt.Put.Tmp: tmp and expr do not match");
          break;
       case Ist_Store:
          tcExpr( bb, stmt, stmt->Ist.Store.addr, gWordTy );
          tcExpr( bb, stmt, stmt->Ist.Store.data, gWordTy );
          if (typeOfIRExpr(tyenv, stmt->Ist.Store.addr) != gWordTy)
-            sanityCheckFail(bb,stmt,"IRStmt.Store.addr: not :: guest word type");
+            sanityCheckFail(bb,stmt,
+                            "IRStmt.Store.addr: not :: guest word type");
          if (typeOfIRExpr(tyenv, stmt->Ist.Store.data) == Ity_I1)
-            sanityCheckFail(bb,stmt,"IRStmt.Store.data: cannot Store :: Ity_I1");
+            sanityCheckFail(bb,stmt,
+                            "IRStmt.Store.data: cannot Store :: Ity_I1");
          if (stmt->Ist.Store.end != Iend_LE && stmt->Ist.Store.end != Iend_BE)
             sanityCheckFail(bb,stmt,"Ist.Store.end: bogus endianness");
          break;
+      case Ist_StoreG: {
+         IRStoreG* sg = stmt->Ist.StoreG.details;
+         tcExpr( bb, stmt, sg->addr, gWordTy );
+         tcExpr( bb, stmt, sg->data, gWordTy );
+         tcExpr( bb, stmt, sg->guard, gWordTy );
+         if (typeOfIRExpr(tyenv, sg->addr) != gWordTy)
+            sanityCheckFail(bb,stmt,"IRStmtG...addr: not :: guest word type");
+         if (typeOfIRExpr(tyenv, sg->data) == Ity_I1)
+            sanityCheckFail(bb,stmt,"IRStmtG...data: cannot Store :: Ity_I1");
+         if (typeOfIRExpr(tyenv, sg->guard) != Ity_I1)
+            sanityCheckFail(bb,stmt,"IRStmtG...guard: not :: Ity_I1");
+         if (sg->end != Iend_LE && sg->end != Iend_BE)
+            sanityCheckFail(bb,stmt,"IRStmtG...end: bogus endianness");
+         break;
+      }
+      case Ist_LoadG: {
+         IRLoadG* lg = stmt->Ist.LoadG.details;
+         tcExpr( bb, stmt, lg->addr, gWordTy );
+         tcExpr( bb, stmt, lg->alt, gWordTy );
+         tcExpr( bb, stmt, lg->guard, gWordTy );
+         if (typeOfIRExpr(tyenv, lg->guard) != Ity_I1)
+            sanityCheckFail(bb,stmt,"IRStmt.LoadG.guard: not :: Ity_I1");
+         if (typeOfIRExpr(tyenv, lg->addr) != gWordTy)
+              sanityCheckFail(bb,stmt,"IRStmt.LoadG.addr: not "
+                                      ":: guest word type");
+         if (typeOfIRExpr(tyenv, lg->alt) != typeOfIRTemp(tyenv, lg->dst))
+             sanityCheckFail(bb,stmt,"IRStmt.LoadG: dst/alt type mismatch");
+         IRTemp cvtRes = Ity_INVALID, cvtArg = Ity_INVALID;
+         typeOfIRLoadGOp(lg->cvt, &cvtRes, &cvtArg);
+         if (cvtRes != typeOfIRTemp(tyenv, lg->dst))
+            sanityCheckFail(bb,stmt,"IRStmt.LoadG: dst/loaded type mismatch");
+         break;
+      }
       case Ist_CAS:
          cas = stmt->Ist.CAS.details;
          /* make sure it's definitely either a CAS or a DCAS */
@@ -3651,7 +4161,7 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
          }
          break;
       }
-      case Ist_Dirty:
+      case Ist_Dirty: {
          /* Mostly check for various kinds of ill-formed dirty calls. */
          d = stmt->Ist.Dirty.details;
          if (d->cee == NULL) goto bad_dirty;
@@ -3665,8 +4175,6 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
                goto bad_dirty;
          }
          if (d->nFxState < 0 || d->nFxState > VEX_N_FXSTATE)
-            goto bad_dirty;
-         if (d->nFxState == 0 && d->needsBBP)
             goto bad_dirty;
          for (i = 0; i < d->nFxState; i++) {
             if (d->fxState[i].fx == Ifx_None) goto bad_dirty;
@@ -3686,29 +4194,62 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
          tcExpr( bb, stmt, d->guard, gWordTy );
          if (typeOfIRExpr(tyenv, d->guard) != Ity_I1)
             sanityCheckFail(bb,stmt,"IRStmt.Dirty.guard not :: Ity_I1");
-         /* A dirty helper that is executed conditionally (or not at
-            all) may not return a value.  Hence if .tmp is not
-            IRTemp_INVALID, .guard must be manifestly True at JIT
-            time. */
-         if (d->tmp != IRTemp_INVALID
-             && (d->guard->tag != Iex_Const 
-                 || d->guard->Iex.Const.con->Ico.U1 == 0))
-            sanityCheckFail(bb,stmt,"IRStmt.Dirty with a return value"
-                            " is executed under a condition");
          /* check types, minimally */
-         if (d->tmp != IRTemp_INVALID
-             && typeOfIRTemp(tyenv, d->tmp) == Ity_I1)
+         IRType retTy = Ity_INVALID;
+         if (d->tmp != IRTemp_INVALID) {
+            retTy = typeOfIRTemp(tyenv, d->tmp);
+            if (retTy == Ity_I1)
             sanityCheckFail(bb,stmt,"IRStmt.Dirty.dst :: Ity_I1");
+         }
+         UInt nVECRETs = 0, nBBPTRs = 0;
          for (i = 0; d->args[i] != NULL; i++) {
             if (i >= 32)
                sanityCheckFail(bb,stmt,"IRStmt.Dirty: > 32 args");
-            if (typeOfIRExpr(tyenv, d->args[i]) == Ity_I1)
+            IRExpr* arg = d->args[i];
+            if (UNLIKELY(arg->tag == Iex_VECRET)) {
+               nVECRETs++;
+            } else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
+               nBBPTRs++;
+            } else {
+               if (typeOfIRExpr(tyenv, arg) == Ity_I1)
                sanityCheckFail(bb,stmt,"IRStmt.Dirty.arg[i] :: Ity_I1");
+         }
+            if (nBBPTRs > 1) {
+               sanityCheckFail(bb,stmt,"IRStmt.Dirty.args: > 1 BBPTR arg");
+            }
+            if (nVECRETs == 1) {
+               /* Fn must return V128 or V256. */
+               if (retTy != Ity_V128 && retTy != Ity_V256)
+                  sanityCheckFail(bb,stmt,
+                                  "IRStmt.Dirty.args: VECRET present, "
+                                  "but fn does not return V128 or V256");
+            } else if (nVECRETs == 0) {
+               /* Fn must not return V128 or V256 */
+               if (retTy == Ity_V128 || retTy == Ity_V256)
+                  sanityCheckFail(bb,stmt,
+                                  "IRStmt.Dirty.args: VECRET not present, "
+                                  "but fn returns V128 or V256");
+            } else {
+               sanityCheckFail(bb,stmt,
+                               "IRStmt.Dirty.args: > 1 VECRET present");
+            }
+         }
+         if (nBBPTRs > 1) {
+            sanityCheckFail(bb,stmt,
+                            "IRStmt.Dirty.args: > 1 BBPTR present");
+         }
+         /* If you ask for the baseblock pointer, you have to make
+            some declaration about access to the guest state too. */
+         if (d->nFxState == 0 && nBBPTRs != 0) {
+            sanityCheckFail(bb,stmt,
+                            "IRStmt.Dirty.args: BBPTR requested, "
+                            "but no fxState declared");
          }
          break;
          bad_dirty:
          sanityCheckFail(bb,stmt,"IRStmt.Dirty: ill-formed");
          break;
+      }
       case Ist_NoOp:
          break;
       case Ist_MBE:
@@ -3736,7 +4277,7 @@ void tcStmt ( IRSB* bb, IRStmt* stmt, IRType gWordTy )
    }
 }
 
-void sanityCheckIRSB ( IRSB* bb,          HChar* caller,
+void sanityCheckIRSB ( IRSB* bb,          const HChar* caller,
                        Bool require_flat, IRType guest_word_size )
 {
    Int     i;
@@ -3787,6 +4328,7 @@ void sanityCheckIRSB ( IRSB* bb,          HChar* caller,
    for (i = 0; i < bb->stmts_used; i++) {
       IRDirty* d;
       IRCAS*   cas;
+      IRLoadG* lg;
       stmt = bb->stmts[i];
       /* Check any temps used by this statement. */
       useBeforeDef_Stmt(bb,stmt,def_counts);
@@ -3802,11 +4344,19 @@ void sanityCheckIRSB ( IRSB* bb,          HChar* caller,
             sanityCheckFail(bb, stmt, 
                "IRStmt.Tmp: destination tmp is assigned more than once");
          break;
-      case Ist_Store:
+      case Ist_LoadG:
+         lg = stmt->Ist.LoadG.details;
+         if (lg->dst < 0 || lg->dst >= n_temps)
+             sanityCheckFail(bb, stmt, 
+                "IRStmt.LoadG: destination tmp is out of range");
+         def_counts[lg->dst]++;
+         if (def_counts[lg->dst] > 1)
+             sanityCheckFail(bb, stmt, 
+                "IRStmt.LoadG: destination tmp is assigned more than once");
          break;
       case Ist_Dirty:
-         if (stmt->Ist.Dirty.details->tmp != IRTemp_INVALID) {
             d = stmt->Ist.Dirty.details;
+         if (d->tmp != IRTemp_INVALID) {
             if (d->tmp < 0 || d->tmp >= n_temps)
                sanityCheckFail(bb, stmt, 
                   "IRStmt.Dirty: destination tmp is out of range");
@@ -3925,7 +4475,7 @@ IRExpr* mkIRExpr_HWord ( HWord hw )
    vpanic("mkIRExpr_HWord");
 }
 
-IRDirty* unsafeIRDirty_0_N ( Int regparms, HChar* name, void* addr, 
+IRDirty* unsafeIRDirty_0_N ( Int regparms, const HChar* name, void* addr, 
                              IRExpr** args ) 
 {
    IRDirty* d = emptyIRDirty();
@@ -3936,7 +4486,7 @@ IRDirty* unsafeIRDirty_0_N ( Int regparms, HChar* name, void* addr,
 }
 
 IRDirty* unsafeIRDirty_1_N ( IRTemp dst, 
-                             Int regparms, HChar* name, void* addr, 
+                             Int regparms, const HChar* name, void* addr, 
                              IRExpr** args ) 
 {
    IRDirty* d = emptyIRDirty();
@@ -3948,7 +4498,7 @@ IRDirty* unsafeIRDirty_1_N ( IRTemp dst,
 }
 
 IRExpr* mkIRExprCCall ( IRType retty,
-                        Int regparms, HChar* name, void* addr, 
+                        Int regparms, const HChar* name, void* addr, 
                         IRExpr** args )
 {
    return IRExpr_CCall ( mkIRCallee ( regparms, name, addr ), 

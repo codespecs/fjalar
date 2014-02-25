@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 RT-RK
+   Copyright (C) 2010-2013 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -36,12 +36,24 @@
 #include "host_generic_regs.h"
 #include "host_mips_defs.h"
 
+/* guest_COND offset. */
+#define COND_OFFSET(__mode64) (__mode64 ? 612 : 316)
+
+/* Register number for guest state pointer in host code. */
+#define GuestSP 23
+
+#define MkHRegGPR(_n, _mode64) \
+   mkHReg(_n, _mode64 ? HRcInt64 : HRcInt32, False)
+
+#define MkHRegFPR(_n, _mode64) \
+   mkHReg(_n, _mode64 ? HRcFlt64 : HRcFlt32, False)
+
 /*---------------- Registers ----------------*/
 
 void ppHRegMIPS(HReg reg, Bool mode64)
 {
    Int r;
-   static HChar *ireg32_names[35]
+   static const HChar *ireg32_names[35]
        = { "$0", "$1", "$2", "$3", "$4", "$5", "$6", "$7",
       "$8", "$9", "$10", "$11", "$12", "$13", "$14", "$15",
       "$16", "$17", "$18", "$19", "$20", "$21", "$22", "$23",
@@ -49,14 +61,14 @@ void ppHRegMIPS(HReg reg, Bool mode64)
       "%32", "%33", "%34",
    };
 
-   static HChar *freg32_names[32]
+   static const HChar *freg32_names[32]
        = { "$f0", "$f1", "$f2", "$f3", "$f4", "$f5", "$f6", "$f7",
       "$f8", "$f9", "$f10", "$f11", "$f12", "$f13", "$f14", "$f15",
       "$f16", "$f17", "$f18", "$f19", "$f20", "$f21", "$f22", "$f23",
       "$f24", "$f25", "$f26", "$f27", "$f28", "$f29", "f30", "$f31"
    };
 
-   static HChar *freg64_names[32]
+   static const HChar *freg64_names[32]
        = { "$d0", "$d1", "$d2", "$d3", "$d4", "$d5", "$d6", "$d7",
       "$d8", "$d9", "$d10", "$d11", "$d12", "$d13", "$d14", "$d15",
    };
@@ -72,13 +84,18 @@ void ppHRegMIPS(HReg reg, Bool mode64)
       hregClass(reg) == HRcFlt32 || hregClass(reg) == HRcFlt64);
 
    /* But specific for real regs. */
-   {
       switch (hregClass(reg)) {
          case HRcInt32:
             r = hregNumber(reg);
             vassert(r >= 0 && r < 32);
             vex_printf("%s", ireg32_names[r]);
             return;
+      case HRcInt64:
+         vassert(mode64);
+         r = hregNumber (reg);
+         vassert (r >= 0 && r < 32);
+         vex_printf ("%s", ireg32_names[r]);
+         return;
          case HRcFlt32:
             r = hregNumber(reg);
             vassert(r >= 0 && r < 32);
@@ -93,13 +110,9 @@ void ppHRegMIPS(HReg reg, Bool mode64)
             vpanic("ppHRegMIPS");
             break;
       }
-   }
 
    return;
 }
-
-#define MkHRegGPR(_n, _mode64) \
-   mkHReg(_n, _mode64 ? HRcInt64 : HRcInt32, False)
 
 HReg hregMIPS_GPR0(Bool mode64)
 {
@@ -260,9 +273,6 @@ HReg hregMIPS_GPR31(Bool mode64)
 {
    return MkHRegGPR(31, mode64);
 }
-
-#define MkHRegFPR(_n, _mode64) \
-   mkHReg(_n, _mode64 ? HRcFlt64 : HRcFlt32, False)
 
 HReg hregMIPS_F0(Bool mode64)
 {
@@ -551,17 +561,20 @@ HReg hregMIPS_COND(void)
 
 void getAllocableRegs_MIPS(Int * nregs, HReg ** arr, Bool mode64)
 {
+  /* The list of allocable registers is shorten to fit MIPS32 mode on Loongson.
+     More precisely, we workaround Loongson MIPS32 issues by avoiding usage of
+     odd single precision FP registers. */
    if (mode64)
-      *nregs = 27;
+      *nregs = 20;
    else
-      *nregs = 34;
+      *nregs = 28;
    UInt i = 0;
    *arr = LibVEX_Alloc(*nregs * sizeof(HReg));
 
-   //ZERO = constant 0
-   //AT = assembler temporary
-   // callee saves ones are listed first, since we prefer them
-   // if they're available
+   /* ZERO = constant 0
+      AT = assembler temporary
+      callee saves ones are listed first, since we prefer them
+      if they're available */
    (*arr)[i++] = hregMIPS_GPR16(mode64);
    (*arr)[i++] = hregMIPS_GPR17(mode64);
    (*arr)[i++] = hregMIPS_GPR18(mode64);
@@ -569,42 +582,20 @@ void getAllocableRegs_MIPS(Int * nregs, HReg ** arr, Bool mode64)
    (*arr)[i++] = hregMIPS_GPR20(mode64);
    (*arr)[i++] = hregMIPS_GPR21(mode64);
    (*arr)[i++] = hregMIPS_GPR22(mode64);
-   if (!mode64)
-      (*arr)[i++] = hregMIPS_GPR23(mode64);
 
-   // otherwise we'll have to slum it out with caller-saves ones
-   if (mode64) {
-      (*arr)[i++] = hregMIPS_GPR8(mode64);
-      (*arr)[i++] = hregMIPS_GPR9(mode64);
-      (*arr)[i++] = hregMIPS_GPR10(mode64);
-      (*arr)[i++] = hregMIPS_GPR11(mode64);
-   }
    (*arr)[i++] = hregMIPS_GPR12(mode64);
    (*arr)[i++] = hregMIPS_GPR13(mode64);
    (*arr)[i++] = hregMIPS_GPR14(mode64);
    (*arr)[i++] = hregMIPS_GPR15(mode64);
    (*arr)[i++] = hregMIPS_GPR24(mode64);
-    /***********mips32********************/
-   // t0  (=dispatch_ctr)
-   // t1  spill reg temp
-   // t2  (=guest_state)
-   // t3  (=PC = next guest address)
-   // K0 and K1 are reserved for OS kernel
-   // GP = global pointer
-   // SP = stack pointer
-   // FP = frame pointer
-   // RA = link register
-   // + PC, HI and LO
+   /* s7  (=guest_state) */
+   (*arr)[i++] = hregMIPS_F16(mode64);
+   (*arr)[i++] = hregMIPS_F18(mode64);
    (*arr)[i++] = hregMIPS_F20(mode64);
-   (*arr)[i++] = hregMIPS_F21(mode64);
    (*arr)[i++] = hregMIPS_F22(mode64);
-   (*arr)[i++] = hregMIPS_F23(mode64);
    (*arr)[i++] = hregMIPS_F24(mode64);
-   (*arr)[i++] = hregMIPS_F25(mode64);
    (*arr)[i++] = hregMIPS_F26(mode64);
-   (*arr)[i++] = hregMIPS_F27(mode64);
    (*arr)[i++] = hregMIPS_F28(mode64);
-   (*arr)[i++] = hregMIPS_F29(mode64);
    (*arr)[i++] = hregMIPS_F30(mode64);
    if (!mode64) {
       /* Fake double floating point */
@@ -616,8 +607,6 @@ void getAllocableRegs_MIPS(Int * nregs, HReg ** arr, Bool mode64)
       (*arr)[i++] = hregMIPS_D5();
       (*arr)[i++] = hregMIPS_D6();
       (*arr)[i++] = hregMIPS_D7();
-      (*arr)[i++] = hregMIPS_D8();
-      (*arr)[i++] = hregMIPS_D9();
    }
    vassert(i == *nregs);
 
@@ -625,9 +614,9 @@ void getAllocableRegs_MIPS(Int * nregs, HReg ** arr, Bool mode64)
 
 /*----------------- Condition Codes ----------------------*/
 
-HChar *showMIPSCondCode(MIPSCondCode cond)
+const HChar *showMIPSCondCode(MIPSCondCode cond)
 {
-   HChar* ret;
+   const HChar* ret;
    switch (cond) {
       case MIPScc_EQ:
          ret = "EQ"; /* equal */
@@ -642,40 +631,40 @@ HChar *showMIPSCondCode(MIPSCondCode cond)
          ret = "LT";   /* <u  (lower) */
          break;
       case MIPScc_MI:
-         ret = "mi";   /* minus (negative) */
+         ret = "MI";  /* minus (negative) */
          break;
       case MIPScc_PL:
-         ret = "pl";   /* plus (zero or +ve) */
+         ret = "PL";  /* plus (zero or +ve) */
          break;
       case MIPScc_VS:
-         ret = "vs";   /* overflow */
+         ret = "VS";  /* overflow */
          break;
       case MIPScc_VC:
-         ret = "vc";   /* no overflow */
+         ret = "VC";  /* no overflow */
          break;
       case MIPScc_HI:
-         ret = "hi";   /* >u   (higher) */
+         ret = "HI";  /* >u   (higher) */
          break;
       case MIPScc_LS:
-         ret = "ls";   /* <=u  (lower or same) */
+         ret = "LS";  /* <=u  (lower or same) */
          break;
       case MIPScc_GE:
-         ret = "ge";   /* >=s (signed greater or equal) */
+         ret = "GE";  /* >=s (signed greater or equal) */
          break;
       case MIPScc_LT:
-         ret = "lt";   /* <s  (signed less than) */
+         ret = "LT";  /* <s  (signed less than) */
          break;
       case MIPScc_GT:
-         ret = "gt";   /* >s  (signed greater) */
+         ret = "GT";  /* >s  (signed greater) */
          break;
       case MIPScc_LE:
-         ret = "le";   /* <=s (signed less or equal) */
+         ret = "LE";  /* <=s (signed less or equal) */
          break;
       case MIPScc_AL:
-         ret = "al";   /* always (unconditional) */
+         ret = "AL";  /* always (unconditional) */
          break;
       case MIPScc_NV:
-         ret = "nv";   /* never (unconditional): */
+         ret = "NV";  /* never (unconditional): */
          break;
       default:
          vpanic("showMIPSCondCode");
@@ -684,133 +673,180 @@ HChar *showMIPSCondCode(MIPSCondCode cond)
    return ret;
 }
 
-HChar *showMIPSFpOp(MIPSFpOp op)
+const HChar *showMIPSFpOp(MIPSFpOp op)
 {
-   HChar *ret;
+   const HChar *ret;
    switch (op) {
       case Mfp_ADDD:
-         ret = "ADD.D";
+         ret = "add.d";
          break;
       case Mfp_SUBD:
-         ret = "SUB.D";
+         ret = "sub.d";
          break;
       case Mfp_MULD:
-         ret = "MUL.D";
+         ret = "mul.d";
          break;
       case Mfp_DIVD:
-         ret = "DIV.D";
+         ret = "div.d";
          break;
       case Mfp_MADDD:
-         ret = "MADD.D";
+         ret = "madd.d";
          break;
       case Mfp_MSUBD:
-         ret = "MSUB.D";
+         ret = "msub.d";
          break;
       case Mfp_MADDS:
-         ret = "MADD.S";
+         ret = "madd.s";
          break;
       case Mfp_MSUBS:
-         ret = "MSUB.S";
+         ret = "msub.s";
          break;
       case Mfp_ADDS:
-         ret = "ADD.S";
+         ret = "add.s";
          break;
       case Mfp_SUBS:
-         ret = "SUB.S";
+         ret = "sub.s";
          break;
       case Mfp_MULS:
-         ret = "MUL.S";
+         ret = "mul.s";
          break;
       case Mfp_DIVS:
-         ret = "DIV.S";
+         ret = "div.s";
          break;
       case Mfp_SQRTS:
-         ret = "SQRT.S";
+         ret = "sqrt.s";
          break;
       case Mfp_SQRTD:
-         ret = "SQRT.D";
-         break;
-      case Mfp_RSQRTS:
-         ret = "RSQRT.S";
-         break;
-      case Mfp_RSQRTD:
-         ret = "RSQRT.D";
-         break;
-      case Mfp_RECIPS:
-         ret = "RECIP.S";
-         break;
-      case Mfp_RECIPD:
-         ret = "RECIP.D";
+         ret = "sqrt.d";
          break;
       case Mfp_ABSS:
-         ret = "ABS.S";
+         ret = "abs.s";
          break;
       case Mfp_ABSD:
-         ret = "ABS.D";
+         ret = "abs.d";
          break;
       case Mfp_NEGS:
-         ret = "NEG.S";
+         ret = "neg.s";
          break;
       case Mfp_NEGD:
-         ret = "NEG.D";
+         ret = "neg.d";
          break;
       case Mfp_MOVS:
-         ret = "MOV.S";
+         ret = "mov.s";
          break;
       case Mfp_MOVD:
-         ret = "MOV.D";
-         break;
-      case Mfp_RES:
-         ret = "RES";
+         ret = "mov.d";
          break;
       case Mfp_ROUNDWS:
-         ret = "ROUND.W.S";
+         ret = "round.w.s";
          break;
       case Mfp_ROUNDWD:
-         ret = "ROUND.W.D";
+         ret = "round.w.d";
+         break;
+      case Mfp_ROUNDLD:
+         ret = "round.l.d";
          break;
       case Mfp_FLOORWS:
-         ret = "FLOOR.W.S";
+         ret = "floor.w.s";
          break;
       case Mfp_FLOORWD:
-         ret = "FLOOR.W.D";
-         break;
-      case Mfp_RSQRTE:
-         ret = "frsqrte";
+         ret = "floor.w.d";
          break;
       case Mfp_CVTDW:
-      case Mfp_CVTD:
-         ret = "CVT.D";
+         ret = "cvt.d.w";
+         break;
+      case Mfp_CVTDL:
+         ret = "cvt.d.l";
+         break;
+      case Mfp_CVTDS:
+         ret = "cvt.d.s";
          break;
       case Mfp_CVTSD:
+         ret = "cvt.s.d";
+         break;
       case Mfp_CVTSW:
-         ret = "CVT.S";
+         ret = "cvt.s.w";
          break;
       case Mfp_CVTWS:
+         ret = "cvt.w.s";
+         break;
       case Mfp_CVTWD:
-         ret = "CVT.W";
+         ret = "cvt.w.d";
          break;
       case Mfp_TRUWD:
+         ret = "trunc.w.d";
+         break;
       case Mfp_TRUWS:
-         ret = "TRUNC.W";
+         ret = "trunc.w.s";
          break;
       case Mfp_TRULD:
+         ret = "trunc.l.d";
+         break;
       case Mfp_TRULS:
-         ret = "TRUNC.L";
+         ret = "trunc.l.s";
          break;
       case Mfp_CEILWS:
+         ret = "ceil.w.s";
+         break;
       case Mfp_CEILWD:
-         ret = "CEIL.W";
+         ret = "ceil.w.d";
          break;
       case Mfp_CEILLS:
+         ret = "ceil.l.s";
+         break;
       case Mfp_CEILLD:
-         ret = "CEIL.L";
+         ret = "ceil.l.d";
          break;
       case Mfp_CMP:
          ret = "C.cond.d";
          break;
       default:
          vpanic("showMIPSFpOp");
+         break;
+   }
+   return ret;
+}
+
+/* Show move from/to fpr to/from gpr */
+const HChar* showMIPSFpGpMoveOp ( MIPSFpGpMoveOp op )
+{
+   const HChar *ret;
+   switch (op) {
+      case MFpGpMove_mfc1:
+         ret = "mfc1";
+         break;
+      case MFpGpMove_dmfc1:
+         ret = "dmfc1";
+         break;
+      case MFpGpMove_mtc1:
+         ret = "mtc1";
+         break;
+      case MFpGpMove_dmtc1:
+         ret = "dmtc1";
+         break;
+      default:
+         vpanic("showMIPSFpGpMoveOp");
+         break;
+   }
+   return ret;
+}
+
+/* Show floating point move conditional */
+const HChar* showMIPSMoveCondOp ( MIPSMoveCondOp op )
+{
+   const HChar *ret;
+   switch (op) {
+      case MFpMoveCond_movns:
+         ret = "movn.s";
+         break;
+      case MFpMoveCond_movnd:
+         ret = "movn.d";
+         break;
+      case MMoveCond_movn:
+         ret = "movn";
+         break;
+      default:
+         vpanic("showMIPSFpMoveCondOp");
          break;
    }
    return ret;
@@ -863,7 +899,10 @@ MIPSAMode *nextMIPSAModeFloat(MIPSAMode * am)
          ret = MIPSAMode_IR(am->Mam.IR.index + 4, am->Mam.IR.base);
          break;
       case Mam_RR:
-         ret = MIPSAMode_RR(am->Mam.RR.index + 1, am->Mam.RR.base);
+         ret = MIPSAMode_RR(mkHReg(hregNumber(am->Mam.RR.index) + 1,
+                                   hregClass(am->Mam.RR.index),
+                                   hregIsVirtual(am->Mam.RR.index)),
+                                   am->Mam.RR.base);
          break;
       default:
          vpanic("dopyMIPSAMode");
@@ -880,7 +919,10 @@ MIPSAMode *nextMIPSAModeInt(MIPSAMode * am)
          ret = MIPSAMode_IR(am->Mam.IR.index + 4, am->Mam.IR.base);
          break;
       case Mam_RR:
-         ret = MIPSAMode_RR(am->Mam.RR.index + 1, am->Mam.RR.base);
+         ret = MIPSAMode_RR(mkHReg(hregNumber(am->Mam.RR.index) + 1,
+                                   hregClass(am->Mam.RR.index),
+                                   hregIsVirtual(am->Mam.RR.index)),
+                                   am->Mam.RR.base);
          break;
       default:
          vpanic("dopyMIPSAMode");
@@ -1019,9 +1061,9 @@ static void mapRegs_MIPSRH(HRegRemap * m, MIPSRH * op)
 
 /* --------- Instructions. --------- */
 
-HChar *showMIPSUnaryOp(MIPSUnaryOp op)
+const HChar *showMIPSUnaryOp(MIPSUnaryOp op)
 {
-   HChar* ret;
+   const HChar* ret;
    switch (op) {
       case Mun_CLO:
          ret = "clo";
@@ -1032,6 +1074,12 @@ HChar *showMIPSUnaryOp(MIPSUnaryOp op)
       case Mun_NOP:
          ret = "nop";
          break;
+      case Mun_DCLO:
+         ret = "dclo";
+         break;
+      case Mun_DCLZ:
+         ret = "dclz";
+         break;
       default:
          vpanic("showMIPSUnaryOp");
          break;
@@ -1039,9 +1087,9 @@ HChar *showMIPSUnaryOp(MIPSUnaryOp op)
    return ret;
 }
 
-HChar *showMIPSAluOp(MIPSAluOp op, Bool immR)
+const HChar *showMIPSAluOp(MIPSAluOp op, Bool immR)
 {
-   HChar* ret;
+   const HChar* ret;
    switch (op) {
       case Malu_ADD:
          ret = immR ? "addiu" : "addu";
@@ -1062,6 +1110,15 @@ HChar *showMIPSAluOp(MIPSAluOp op, Bool immR)
       case Malu_XOR:
          ret = immR ? "xori" : "xor";
          break;
+      case Malu_DADD:
+         ret = immR ? "daddi" : "dadd";
+         break;
+      case Malu_DSUB:
+         ret = immR ? "dsubi" : "dsub";
+         break;
+      case Malu_SLT:
+         ret = immR ? "slti" : "slt";
+         break;
       default:
          vpanic("showMIPSAluOp");
          break;
@@ -1069,12 +1126,12 @@ HChar *showMIPSAluOp(MIPSAluOp op, Bool immR)
    return ret;
 }
 
-HChar *showMIPSShftOp(MIPSShftOp op, Bool immR, Bool sz32)
+const HChar *showMIPSShftOp(MIPSShftOp op, Bool immR, Bool sz32)
 {
-   HChar *ret;
+   const HChar *ret;
    switch (op) {
       case Mshft_SRA:
-         ret = immR ? (sz32 ? "sar" : "dsar") : (sz32 ? "sarv" : "dsrav");
+         ret = immR ? (sz32 ? "sra" : "dsra") : (sz32 ? "srav" : "dsrav");
          break;
       case Mshft_SLL:
          ret = immR ? (sz32 ? "sll" : "dsll") : (sz32 ? "sllv" : "dsllv");
@@ -1089,9 +1146,9 @@ HChar *showMIPSShftOp(MIPSShftOp op, Bool immR, Bool sz32)
    return ret;
 }
 
-HChar *showMIPSMaccOp(MIPSMaccOp op, Bool variable)
+const HChar *showMIPSMaccOp(MIPSMaccOp op, Bool variable)
 {
-   HChar *ret;
+   const HChar *ret;
    switch (op) {
       case Macc_ADD:
          ret = variable ? "madd" : "maddu";
@@ -1216,8 +1273,8 @@ MIPSInstr *MIPSInstr_Div(Bool syned, Bool sz32, HReg srcL, HReg srcR)
    return i;
 }
 
-MIPSInstr *MIPSInstr_Call(MIPSCondCode cond, Addr32 target, UInt argiregs,
-                          HReg src)
+MIPSInstr *MIPSInstr_Call ( MIPSCondCode cond, Addr64 target, UInt argiregs,
+                            HReg src, RetLoc rloc )
 {
    UInt mask;
    MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
@@ -1226,13 +1283,17 @@ MIPSInstr *MIPSInstr_Call(MIPSCondCode cond, Addr32 target, UInt argiregs,
    i->Min.Call.target = target;
    i->Min.Call.argiregs = argiregs;
    i->Min.Call.src = src;
-   /* Only r4 .. r7 inclusive may be used as arg regs. Hence: */
-   mask = (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7);
+   i->Min.Call.rloc = rloc;
+   /* Only $4 .. $7/$11 inclusive may be used as arg regs. */
+   mask = (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)
+          | (1 << 10) | (1 << 11);
    vassert(0 == (argiregs & ~mask));
+   vassert(is_sane_RetLoc(rloc));
    return i;
 }
 
-MIPSInstr *MIPSInstr_CallAlways(MIPSCondCode cond, Addr32 target, UInt argiregs)
+MIPSInstr *MIPSInstr_CallAlways ( MIPSCondCode cond, Addr64 target,
+                                  UInt argiregs, RetLoc rloc )
 {
    UInt mask;
    MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
@@ -1240,13 +1301,16 @@ MIPSInstr *MIPSInstr_CallAlways(MIPSCondCode cond, Addr32 target, UInt argiregs)
    i->Min.Call.cond = cond;
    i->Min.Call.target = target;
    i->Min.Call.argiregs = argiregs;
-   /* Only r4 .. r7 inclusive may be used as arg regs. Hence: */
-   mask = (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7);
+   i->Min.Call.rloc = rloc;
+   /* Only $4 .. $7/$11 inclusive may be used as arg regs. */
+   mask = (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)
+          | (1 << 10) | (1 << 11);
    vassert(0 == (argiregs & ~mask));
+   vassert(is_sane_RetLoc(rloc));
    return i;
 }
 
-MIPSInstr *MIPSInstr_XDirect ( Addr32 dstGA, MIPSAMode* amPC,
+MIPSInstr *MIPSInstr_XDirect ( Addr64 dstGA, MIPSAMode* amPC,
                                MIPSCondCode cond, Bool toFastEP ) {
    MIPSInstr* i               = LibVEX_Alloc(sizeof(MIPSInstr));
    i->tag                     = Min_XDirect;
@@ -1409,6 +1473,19 @@ MIPSInstr *MIPSInstr_FpBinary(MIPSFpOp op, HReg dst, HReg srcL, HReg srcR)
    return i;
 }
 
+MIPSInstr *MIPSInstr_FpTernary ( MIPSFpOp op, HReg dst, HReg src1, HReg src2,
+                                 HReg src3 )
+{
+   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
+   i->tag = Min_FpTernary;
+   i->Min.FpTernary.op = op;
+   i->Min.FpTernary.dst = dst;
+   i->Min.FpTernary.src1 = src1;
+   i->Min.FpTernary.src2 = src2;
+   i->Min.FpTernary.src3 = src3;
+   return i;
+}
+
 MIPSInstr *MIPSInstr_FpConvert(MIPSFpOp op, HReg dst, HReg src)
 {
    MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
@@ -1433,19 +1510,6 @@ MIPSInstr *MIPSInstr_FpCompare(MIPSFpOp op, HReg dst, HReg srcL, HReg srcR,
    return i;
 }
 
-MIPSInstr *MIPSInstr_MovCond(HReg dst, HReg argL, MIPSRH * argR, HReg condR,
-                              MIPSCondCode cond)
-{
-   MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
-   i->tag = Min_MovCond;
-   i->Min.MovCond.dst = dst;
-   i->Min.MovCond.srcL = argL;
-   i->Min.MovCond.srcR = argR;
-   i->Min.MovCond.condR = condR;
-   i->Min.MovCond.cond = cond;
-   return i;
-}
-
 MIPSInstr *MIPSInstr_MtFCSR(HReg src)
 {
    MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
@@ -1459,6 +1523,28 @@ MIPSInstr *MIPSInstr_MfFCSR(HReg dst)
    MIPSInstr *i = LibVEX_Alloc(sizeof(MIPSInstr));
    i->tag = Min_MfFCSR;
    i->Min.MfFCSR.dst = dst;
+   return i;
+}
+
+MIPSInstr *MIPSInstr_FpGpMove ( MIPSFpGpMoveOp op, HReg dst, HReg src )
+{
+   MIPSInstr *i        = LibVEX_Alloc(sizeof(MIPSInstr));
+   i->tag              = Min_FpGpMove;
+   i->Min.FpGpMove.op  = op;
+   i->Min.FpGpMove.dst = dst;
+   i->Min.FpGpMove.src = src;
+   return i;
+}
+
+MIPSInstr *MIPSInstr_MoveCond ( MIPSMoveCondOp op, HReg dst, HReg src,
+                                HReg cond )
+{
+   MIPSInstr *i        = LibVEX_Alloc(sizeof(MIPSInstr));
+   i->tag              = Min_MoveCond;
+   i->Min.MoveCond.op  = op;
+   i->Min.MoveCond.dst = dst;
+   i->Min.MoveCond.src = src;
+   i->Min.MoveCond.cond = cond;
    return i;
 }
 
@@ -1600,25 +1686,31 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
          if (i->Min.Call.cond != MIPScc_AL) {
             vex_printf("if (%s) ", showMIPSCondCode(i->Min.Call.cond));
          }
-         vex_printf("{ ");
-         ppLoadImm(hregMIPS_GPR11(mode64), i->Min.Call.target, mode64);
+         vex_printf(" {");
+         if (!mode64)
+            vex_printf(" addiu $29, $29, -16");
 
-         vex_printf(" ; mtctr r10 ; bctrl [");
+         ppLoadImm(hregMIPS_GPR25(mode64), i->Min.Call.target, mode64);
+
+         vex_printf(" ; jarl $31, $25; # args [");
          for (n = 0; n < 32; n++) {
             if (i->Min.Call.argiregs & (1 << n)) {
-               vex_printf("r%d", n);
+               vex_printf("$%d", n);
                if ((i->Min.Call.argiregs >> n) > 1)
                   vex_printf(",");
             }
          }
-         vex_printf("] }");
+         vex_printf("] nop; ");
+         if (!mode64)
+            vex_printf("addiu $29, $29, 16; ]");
+
          break;
       }
       case Min_XDirect:
          vex_printf("(xDirect) ");
          vex_printf("if (guest_COND.%s) { ",
                     showMIPSCondCode(i->Min.XDirect.cond));
-         vex_printf("move $9, 0x%x,", i->Min.XDirect.dstGA);
+         vex_printf("move $9, 0x%x,", (UInt)i->Min.XDirect.dstGA);
          vex_printf("; sw $9, ");
          ppMIPSAMode(i->Min.XDirect.amPC, mode64);
          vex_printf("; move $9, $disp_cp_chain_me_to_%sEP; jalr $9; nop}",
@@ -1648,7 +1740,7 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
       case Min_Load: {
          Bool idxd = toBool(i->Min.Load.src->tag == Mam_RR);
          UChar sz = i->Min.Load.sz;
-         UChar c_sz = sz == 1 ? 'b' : sz == 2 ? 'h' : sz == 4 ? 'w' : 'd';
+         HChar c_sz = sz == 1 ? 'b' : sz == 2 ? 'h' : sz == 4 ? 'w' : 'd';
          vex_printf("l%c%s ", c_sz, idxd ? "x" : "");
          ppHRegMIPS(i->Min.Load.dst, mode64);
          vex_printf(",");
@@ -1658,7 +1750,7 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
       case Min_Store: {
          UChar sz = i->Min.Store.sz;
          Bool idxd = toBool(i->Min.Store.dst->tag == Mam_RR);
-         UChar c_sz = sz == 1 ? 'b' : sz == 2 ? 'h' : sz == 4 ? 'w' : 'd';
+         HChar c_sz = sz == 1 ? 'b' : sz == 2 ? 'h' : sz == 4 ? 'w' : 'd';
          vex_printf("s%c%s ", c_sz, idxd ? "x" : "");
          ppHRegMIPS(i->Min.Store.src, mode64);
          vex_printf(",");
@@ -1697,6 +1789,16 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
          ppHRegMIPS(i->Min.FpBinary.srcL, mode64);
          vex_printf(",");
          ppHRegMIPS(i->Min.FpBinary.srcR, mode64);
+         return;
+      case Min_FpTernary:
+         vex_printf("%s", showMIPSFpOp(i->Min.FpTernary.op));
+         ppHRegMIPS(i->Min.FpTernary.dst, mode64);
+         vex_printf(",");
+         ppHRegMIPS(i->Min.FpTernary.src1, mode64);
+         vex_printf(",");
+         ppHRegMIPS(i->Min.FpTernary.src2, mode64);
+         vex_printf(",");
+         ppHRegMIPS(i->Min.FpTernary.src3, mode64);
          return;
       case Min_FpConvert:
          vex_printf("%s", showMIPSFpOp(i->Min.FpConvert.op));
@@ -1749,25 +1851,32 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
          }
          return;
       }
-      case Min_MovCond: {
-         if (i->Min.MovCond.cond == MIPScc_MI) {
-            vex_printf("\ncond move\n");
-            return;
-
-         }
-         break;
-      }
       case Min_MtFCSR: {
          vex_printf("ctc1  ");
          ppHRegMIPS(i->Min.MtFCSR.src, mode64);
          vex_printf(", $31");
          return;
       }
-   
       case Min_MfFCSR: {
          vex_printf("ctc1  ");
          ppHRegMIPS(i->Min.MfFCSR.dst, mode64);
          vex_printf(", $31");
+         return;
+      }
+      case Min_FpGpMove: {
+         vex_printf("%s", showMIPSFpGpMoveOp(i->Min.FpGpMove.op));
+         ppHRegMIPS(i->Min.FpGpMove.dst, mode64);
+         vex_printf(", ");
+         ppHRegMIPS(i->Min.FpGpMove.src, mode64);
+         return;
+      }
+      case Min_MoveCond: {
+         vex_printf("%s", showMIPSMoveCondOp(i->Min.MoveCond.op));
+         ppHRegMIPS(i->Min.MoveCond.dst, mode64);
+         vex_printf(", ");
+         ppHRegMIPS(i->Min.MoveCond.src, mode64);
+         vex_printf(", ");
+         ppHRegMIPS(i->Min.MoveCond.cond, mode64);
          return;
       }
       case Min_EvCheck:
@@ -1781,6 +1890,12 @@ void ppMIPSInstr(MIPSInstr * i, Bool mode64)
          vex_printf("; nofail:");
          return;
       case Min_ProfInc:
+         if (mode64)
+            vex_printf("(profInc) move $9, ($NotKnownYet); "
+                       "ld $8, 0($9); "
+                       "daddiu $8, $8, 1; "
+                       "sd $8, 0($9); " );
+         else
          vex_printf("(profInc) move $9, ($NotKnownYet); "
                     "lw $8, 0($9); "
                     "addiu $8, $8, 1; "
@@ -1860,6 +1975,9 @@ void getRegUsage_MIPSInstr(HRegUsage * u, MIPSInstr * i, Bool mode64)
          addHRegUse(u, HRmRead, i->Min.Div.srcR);
          return;
       case Min_Call: {
+         /* Logic and comments copied/modified from x86, ppc and arm back end.
+            First off, claim it trashes all the caller-saved regs
+            which fall within the register allocator's jurisdiction. */
          if (i->Min.Call.cond != MIPScc_AL)
             addHRegUse(u, HRmRead, i->Min.Call.src);
          UInt argir;
@@ -1884,22 +2002,24 @@ void getRegUsage_MIPSInstr(HRegUsage * u, MIPSInstr * i, Bool mode64)
 
          addHRegUse(u, HRmWrite, hregMIPS_GPR24(mode64));
          addHRegUse(u, HRmWrite, hregMIPS_GPR25(mode64));
-         addHRegUse(u, HRmWrite, hregMIPS_GPR26(mode64));
-         addHRegUse(u, HRmWrite, hregMIPS_GPR27(mode64));
+         addHRegUse(u, HRmWrite, hregMIPS_GPR31(mode64));
 
          /* Now we have to state any parameter-carrying registers
             which might be read.  This depends on the argiregs field. */
          argir = i->Min.Call.argiregs;
-         if (argir & (1 << 7))
-            addHRegUse(u, HRmRead, hregMIPS_GPR7(mode64));
-         if (argir & (1 << 6))
-            addHRegUse(u, HRmRead, hregMIPS_GPR6(mode64));
-         if (argir & (1 << 5))
-            addHRegUse(u, HRmRead, hregMIPS_GPR5(mode64));
-         if (argir & (1 << 4))
-            addHRegUse(u, HRmRead, hregMIPS_GPR4(mode64));
+         if (argir & (1<<11)) addHRegUse(u, HRmRead, hregMIPS_GPR11(mode64));
+         if (argir & (1<<10)) addHRegUse(u, HRmRead, hregMIPS_GPR10(mode64));
+         if (argir & (1<<9)) addHRegUse(u, HRmRead, hregMIPS_GPR9(mode64));
+         if (argir & (1<<8)) addHRegUse(u, HRmRead, hregMIPS_GPR8(mode64));
+         if (argir & (1<<7)) addHRegUse(u, HRmRead, hregMIPS_GPR7(mode64));
+         if (argir & (1<<6)) addHRegUse(u, HRmRead, hregMIPS_GPR6(mode64));
+         if (argir & (1<<5)) addHRegUse(u, HRmRead, hregMIPS_GPR5(mode64));
+         if (argir & (1<<4)) addHRegUse(u, HRmRead, hregMIPS_GPR4(mode64));
 
-         vassert(0 == (argir & ~((1 << 4) | (1 << 5) | (1 << 6) | (1 << 7))));
+         vassert(0 == (argir & ~((1 << 4) | (1 << 5) | (1 << 6)
+                                 | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10)
+                                 | (1 << 11))));
+
          return;
       }
       /* XDirect/XIndir/XAssisted are also a bit subtle.  They
@@ -1953,19 +2073,19 @@ void getRegUsage_MIPSInstr(HRegUsage * u, MIPSInstr * i, Bool mode64)
          }
          break;
       case Min_FpUnary:
-         if (i->Min.FpUnary.op == Mfp_CVTD) {
             addHRegUse(u, HRmWrite, i->Min.FpUnary.dst);
             addHRegUse(u, HRmRead, i->Min.FpUnary.src);
             return;
-         } else {
-            addHRegUse(u, HRmWrite, i->Min.FpUnary.dst);
-            addHRegUse(u, HRmRead, i->Min.FpUnary.src);
-            return;
-         }
       case Min_FpBinary:
          addHRegUse(u, HRmWrite, i->Min.FpBinary.dst);
          addHRegUse(u, HRmRead, i->Min.FpBinary.srcL);
          addHRegUse(u, HRmRead, i->Min.FpBinary.srcR);
+         return;
+      case Min_FpTernary:
+         addHRegUse(u, HRmWrite, i->Min.FpTernary.dst);
+         addHRegUse(u, HRmRead, i->Min.FpTernary.src1);
+         addHRegUse(u, HRmRead, i->Min.FpTernary.src2);
+         addHRegUse(u, HRmRead, i->Min.FpTernary.src3);
          return;
       case Min_FpConvert:
          addHRegUse(u, HRmWrite, i->Min.FpConvert.dst);
@@ -1976,13 +2096,14 @@ void getRegUsage_MIPSInstr(HRegUsage * u, MIPSInstr * i, Bool mode64)
          addHRegUse(u, HRmRead, i->Min.FpCompare.srcL);
          addHRegUse(u, HRmRead, i->Min.FpCompare.srcR);
          return;
-      case Min_MovCond:
-         if (i->Min.MovCond.srcR->tag == Mrh_Reg) {
-            addHRegUse(u, HRmRead, i->Min.MovCond.srcR->Mrh.Reg.reg);
-         }
-         addHRegUse(u, HRmRead, i->Min.MovCond.srcL);
-         addHRegUse(u, HRmRead, i->Min.MovCond.condR);
-         addHRegUse(u, HRmWrite, i->Min.MovCond.dst);
+      case Min_FpGpMove:
+         addHRegUse(u, HRmWrite, i->Min.FpGpMove.dst);
+         addHRegUse(u, HRmRead, i->Min.FpGpMove.src);
+         return;
+      case Min_MoveCond:
+         addHRegUse(u, HRmModify, i->Min.MoveCond.dst);
+         addHRegUse(u, HRmRead, i->Min.MoveCond.src);
+         addHRegUse(u, HRmRead, i->Min.MoveCond.cond);
          return;
       case Min_EvCheck:
          /* We expect both amodes only to mention %ebp, so this is in
@@ -2100,19 +2221,19 @@ void mapRegs_MIPSInstr(HRegRemap * m, MIPSInstr * i, Bool mode64)
          }
          break;
       case Min_FpUnary:
-         if (i->Min.FpUnary.op == Mfp_CVTD) {
             mapReg(m, &i->Min.FpUnary.dst);
             mapReg(m, &i->Min.FpUnary.src);
             return;
-         } else {
-            mapReg(m, &i->Min.FpUnary.dst);
-            mapReg(m, &i->Min.FpUnary.src);
-            return;
-         }
       case Min_FpBinary:
          mapReg(m, &i->Min.FpBinary.dst);
          mapReg(m, &i->Min.FpBinary.srcL);
          mapReg(m, &i->Min.FpBinary.srcR);
+         return;
+      case Min_FpTernary:
+         mapReg(m, &i->Min.FpTernary.dst);
+         mapReg(m, &i->Min.FpTernary.src1);
+         mapReg(m, &i->Min.FpTernary.src2);
+         mapReg(m, &i->Min.FpTernary.src3);
          return;
       case Min_FpConvert:
          mapReg(m, &i->Min.FpConvert.dst);
@@ -2129,14 +2250,14 @@ void mapRegs_MIPSInstr(HRegRemap * m, MIPSInstr * i, Bool mode64)
       case Min_MfFCSR:
          mapReg(m, &i->Min.MfFCSR.dst);
          return;
-      case Min_MovCond:
-         if (i->Min.MovCond.srcR->tag == Mrh_Reg) {
-            mapReg(m, &(i->Min.MovCond.srcR->Mrh.Reg.reg));
-         }
-         mapReg(m, &i->Min.MovCond.srcL);
-         mapReg(m, &i->Min.MovCond.condR);
-         mapReg(m, &i->Min.MovCond.dst);
-
+      case Min_FpGpMove:
+         mapReg(m, &i->Min.FpGpMove.dst);
+         mapReg(m, &i->Min.FpGpMove.src);
+         return;
+      case Min_MoveCond:
+         mapReg(m, &i->Min.MoveCond.dst);
+         mapReg(m, &i->Min.MoveCond.src);
+         mapReg(m, &i->Min.MoveCond.cond);
          return;
       case Min_EvCheck:
          /* We expect both amodes only to mention %ebp, so this is in
@@ -2163,12 +2284,13 @@ Bool isMove_MIPSInstr(MIPSInstr * i, HReg * src, HReg * dst)
 {
    /* Moves between integer regs */
    if (i->tag == Min_Alu) {
-      // or Rd,Rs,Rs == mr Rd,Rs
+      /* or Rd,Rs,Rs == mr Rd,Rs */
       if (i->Min.Alu.op != Malu_OR)
          return False;
       if (i->Min.Alu.srcR->tag != Mrh_Reg)
          return False;
-      if (i->Min.Alu.srcR->Mrh.Reg.reg != i->Min.Alu.srcL)
+      if (hregNumber(i->Min.Alu.srcR->Mrh.Reg.reg)
+          != hregNumber(i->Min.Alu.srcL))
          return False;
       *src = i->Min.Alu.srcL;
       *dst = i->Min.Alu.dst;
@@ -2178,8 +2300,7 @@ Bool isMove_MIPSInstr(MIPSInstr * i, HReg * src, HReg * dst)
 }
 
 /* Generate mips spill/reload instructions under the direction of the
-   register allocator.
-*/
+   register allocator. */
 void genSpill_MIPS( /*OUT*/ HInstr ** i1, /*OUT*/ HInstr ** i2, HReg rreg,
                     Int offsetB, Bool mode64)
 {
@@ -2249,7 +2370,7 @@ void genReload_MIPS( /*OUT*/ HInstr ** i1, /*OUT*/ HInstr ** i2, HReg rreg,
 static UInt iregNo(HReg r, Bool mode64)
 {
    UInt n;
-   vassert(hregClass(r) == mode64 ? HRcInt64 : HRcInt32);
+   vassert(hregClass(r) == (mode64 ? HRcInt64 : HRcInt32));
    vassert(!hregIsVirtual(r));
    n = hregNumber(r);
    vassert(n <= 32);
@@ -2259,7 +2380,7 @@ static UInt iregNo(HReg r, Bool mode64)
 static UChar fregNo(HReg r, Bool mode64)
 {
    UInt n;
-   vassert(hregClass(r) == mode64 ? HRcFlt64 : HRcFlt32);
+   vassert(hregClass(r) == (mode64 ? HRcFlt64 : HRcFlt32));
    vassert(!hregIsVirtual(r));
    n = hregNumber(r);
    vassert(n <= 31);
@@ -2385,7 +2506,7 @@ static UChar *doAMode_IR(UChar * p, UInt opc1, UInt rSD, MIPSAMode * am,
       r_dst = rSD;
 
    if (opc1 < 40) {
-      //load
+      /* load */
       if (rSD == 33)
          /* mfhi */
          p = mkFormR(p, 0, 0, 0, r_dst, 0, 16);
@@ -2397,7 +2518,7 @@ static UChar *doAMode_IR(UChar * p, UInt opc1, UInt rSD, MIPSAMode * am,
    p = mkFormI(p, opc1, rA, r_dst, idx);
 
    if (opc1 >= 40) {
-      //store
+      /* store */
       if (rSD == 33)
          /* mthi */
          p = mkFormR(p, 0, r_dst, 0, 0, 0, 17);
@@ -2424,7 +2545,7 @@ static UChar *doAMode_RR(UChar * p, UInt opc1, UInt rSD, MIPSAMode * am,
       r_dst = rSD;
 
    if (opc1 < 40) {
-      //load
+      /* load */
       if (rSD == 33)
          /* mfhi */
          p = mkFormR(p, 0, 0, 0, r_dst, 0, 16);
@@ -2432,29 +2553,24 @@ static UChar *doAMode_RR(UChar * p, UInt opc1, UInt rSD, MIPSAMode * am,
          /* mflo */
          p = mkFormR(p, 0, 0, 0, r_dst, 0, 18);
    }
-   /* addiu sp, sp, -4
-    * sw rA, 0(sp)
-    * addu rA, rA, rB 
-    * sw/lw r_dst, 0(rA)
-    * lw rA, 0(sp) 
-    * addiu sp, sp, 4 */
+
    if (mode64) {
-      p = mkFormI(p, 25, 29, 29, 0xFFFC);
-      p = mkFormI(p, 63, 29, rA, 0);
+      /* daddu rA, rA, rB$
+         sd/ld r_dst, 0(rA)$
+         dsubu rA, rA, rB */
       p = mkFormR(p, 0, rA, rB, rA, 0, 45);
       p = mkFormI(p, opc1, rA, r_dst, 0);
-      p = mkFormI(p, 55, 29, rA, 0);
-      p = mkFormI(p, 25, 29, 29, 4);
+      p = mkFormR(p, 0, rA, rB, rA, 0, 47);
    } else {
-      p = mkFormI(p, 9, 29, 29, 0xFFFC);
-      p = mkFormI(p, 43, 29, rA, 0);
+      /* addu rA, rA, rB
+         sw/lw r_dst, 0(rA)
+         subu rA, rA, rB */
       p = mkFormR(p, 0, rA, rB, rA, 0, 33);
       p = mkFormI(p, opc1, rA, r_dst, 0);
-      p = mkFormI(p, 35, 29, rA, 0);
-      p = mkFormI(p, 9, 29, 29, 4);
+      p = mkFormR(p, 0, rA, rB, rA, 0, 35);
    }
    if (opc1 >= 40) {
-      //store
+      /* store */
       if (rSD == 33)
          /* mthi */
          p = mkFormR(p, 0, r_dst, 0, 0, 0, 17);
@@ -2478,42 +2594,42 @@ static UChar *mkLoadImm(UChar * p, UInt r_dst, ULong imm, Bool mode64)
    }
 
    if (imm >= 0xFFFFFFFFFFFF8000ULL || imm < 0x8000) {
-      // sign-extendable from 16 bits
-      // addiu r_dst,0,imm  => li r_dst,imm
+      /* sign-extendable from 16 bits
+         addiu r_dst, 0, imm  => li r_dst, imm */
       p = mkFormI(p, 9, 0, r_dst, imm & 0xFFFF);
    } else {
       if (imm >= 0xFFFFFFFF80000000ULL || imm < 0x80000000ULL) {
-         // sign-extendable from 32 bits
-         // addiu r_dst,r0,(imm>>16) => lis r_dst, (imm>>16)
-         // lui r_dst, (imm>>16)
+         /* sign-extendable from 32 bits
+            addiu r_dst, r0, (imm >> 16) => lis r_dst, (imm >> 16)
+            lui r_dst, (imm >> 16) */
          p = mkFormI(p, 15, 0, r_dst, (imm >> 16) & 0xFFFF);
-         // ori r_dst, r_dst, (imm & 0xFFFF)
+         /* ori r_dst, r_dst, (imm & 0xFFFF) */
          p = mkFormI(p, 13, r_dst, r_dst, imm & 0xFFFF);
       } else {
          vassert(mode64);
-         // lui load in upper half of low word
+         /* lui load in upper half of low word */
          p = mkFormI(p, 15, 0, r_dst, (imm >> 48) & 0xFFFF);
-         // ori
+         /* ori */
          p = mkFormI(p, 13, r_dst, r_dst, (imm >> 32) & 0xFFFF);
-         //shift
+         /* shift */
          p = mkFormS(p, 0, r_dst, 0, r_dst, 16, 56);
-         // ori
+         /* ori */
          p = mkFormI(p, 13, r_dst, r_dst, (imm >> 16) & 0xFFFF);
-         //shift
+         /* shift */
          p = mkFormS(p, 0, r_dst, 0, r_dst, 16, 56);
-         // ori
+         /* ori */
          p = mkFormI(p, 13, r_dst, r_dst, imm & 0xFFFF);
       }
    }
    return p;
 }
 
-/* A simplified version of mkLoadImm that always generates 2 or 5
+/* A simplified version of mkLoadImm that always generates 2 or 6
    instructions (32 or 64 bits respectively) even if it could generate
    fewer.  This is needed for generating fixed sized patchable
    sequences. */
-static UChar* mkLoadImm_EXACTLY2or5 ( UChar* p,
-                                      UInt r_dst, ULong imm, Bool mode64 )
+static UChar* mkLoadImm_EXACTLY2or6 ( UChar* p,
+                                      UInt r_dst, ULong imm, Bool mode64)
 {
    vassert(r_dst < 0x20);
 
@@ -2527,21 +2643,34 @@ static UChar* mkLoadImm_EXACTLY2or5 ( UChar* p,
    }
 
    if (!mode64) {
-      // sign-extendable from 32 bits
-      // addiu r_dst,r0,(imm>>16) => lis r_dst, (imm>>16)
-      // lui r_dst, (imm>>16)
+      /* sign-extendable from 32 bits
+         addiu r_dst, r0, (imm >> 16) => lis r_dst, (imm >> 16)
+         lui r_dst, (imm >> 16) */
       p = mkFormI(p, 15, 0, r_dst, (imm >> 16) & 0xFFFF);
-      // ori r_dst, r_dst, (imm & 0xFFFF)
+      /* ori r_dst, r_dst, (imm & 0xFFFF) */
       p = mkFormI(p, 13, r_dst, r_dst, imm & 0xFFFF);
    } else {
-      vassert(0);
+      /* full 64bit immediate load: 6 (six!) insns. */
+      vassert(mode64);
+      /* lui load in upper half of low word */
+      p = mkFormI(p, 15, 0, r_dst, (imm >> 48) & 0xFFFF);
+      /* ori */
+      p = mkFormI(p, 13, r_dst, r_dst, (imm >> 32) & 0xFFFF);
+      /* shift */
+      p = mkFormS(p, 0, r_dst, 0, r_dst, 16, 56);
+      /* ori */
+      p = mkFormI(p, 13, r_dst, r_dst, (imm >> 16) & 0xFFFF);
+      /* shift */
+      p = mkFormS(p, 0, r_dst, 0, r_dst, 16, 56);
+      /* ori */
+      p = mkFormI(p, 13, r_dst, r_dst, imm & 0xFFFF);
    }
    return p;
 }
 
 /* Checks whether the sequence of bytes at p was indeed created
-   by mkLoadImm_EXACTLY2or5 with the given parameters. */
-static Bool isLoadImm_EXACTLY2or5 ( UChar* p_to_check,
+   by mkLoadImm_EXACTLY2or6 with the given parameters. */
+static Bool isLoadImm_EXACTLY2or6 ( UChar* p_to_check,
                                     UInt r_dst, ULong imm, Bool mode64 )
 {
    vassert(r_dst < 0x20);
@@ -2558,53 +2687,73 @@ static Bool isLoadImm_EXACTLY2or5 ( UChar* p_to_check,
    if (!mode64) {
       UInt   expect[2] = { 0, 0 };
       UChar* p         = (UChar*)&expect[0];
-      // lui r_dst, (imm>>16)
+      /* lui r_dst, (immi >> 16) */
       p = mkFormI(p, 15, 0, r_dst, (imm >> 16) & 0xFFFF);
-      // ori r_dst, r_dst, (imm & 0xFFFF)
+      /* ori r_dst, r_dst, (imm & 0xFFFF) */
       p = mkFormI(p, 13, r_dst, r_dst, imm & 0xFFFF);
       vassert(p == (UChar*)&expect[2]);
 
       ret = fetch32(p_to_check + 0) == expect[0]
              && fetch32(p_to_check + 4) == expect[1];
-
    } else {
-      vassert(0);
+      UInt   expect[6] = { 0, 0, 0, 0, 0, 0};
+      UChar* p         = (UChar*)&expect[0];
+      /* lui load in upper half of low word */
+      p = mkFormI(p, 15, 0, r_dst, (imm >> 48) & 0xFFFF);
+      /* ori */
+      p = mkFormI(p, 13, r_dst, r_dst, (imm >> 32) & 0xFFFF);
+      /* shift */
+      p = mkFormS(p, 0, r_dst, 0, r_dst, 16, 56);
+      /* ori */
+      p = mkFormI(p, 13, r_dst, r_dst, (imm >> 16) & 0xFFFF);
+      /* shift */
+      p = mkFormS(p, 0, r_dst, 0, r_dst, 16, 56);
+      /* ori */
+      p = mkFormI(p, 13, r_dst, r_dst, imm & 0xFFFF);
+      vassert(p == (UChar*)&expect[6]);
+
+      ret = fetch32(p_to_check + 0) == expect[0]
+            && fetch32(p_to_check + 4) == expect[1]
+            && fetch32(p_to_check + 8) == expect[2]
+            && fetch32(p_to_check + 12) == expect[3]
+            && fetch32(p_to_check + 16) == expect[4]
+            && fetch32(p_to_check + 20) == expect[5];
    }
    return ret;
 }
 
 /* Generate a machine-word sized load or store.  Simplified version of
-   the Min_Load and Min_Store cases below. */
-static UChar* do_load_or_store_machine_word ( 
-                 UChar* p, Bool isLoad,
-                 UInt reg, MIPSAMode* am, Bool mode64 )
+   the Min_Load and Min_Store cases below.
+   This will generate 32-bit load/store on MIPS32, and 64-bit load/store on
+   MIPS64 platforms.
+*/
+static UChar* do_load_or_store_machine_word ( UChar* p, Bool isLoad, UInt reg,
+                                              MIPSAMode* am, Bool mode64 )
 {
    if (isLoad) { /* load */
-      UInt opc1, sz = mode64 ? 8 : 4;
       switch (am->tag) {
          case Mam_IR:
             if (mode64) {
                vassert(0 == (am->Mam.IR.index & 3));
             }
-            switch (sz) {
-               case 1:
-                  opc1 = 32;
+            p = doAMode_IR(p, mode64 ? 55 : 35, reg, am, mode64);
                   break;
-               case 2:
-                  opc1 = 33;
-                  break;
-               case 4:
-                  opc1 = 35;
-                  break;
-               case 8:
-                  opc1 = 55;
-                  vassert(mode64);
+         case Mam_RR:
+            /* we could handle this case, but we don't expect to ever
+               need to. */
+            vassert(0);
                   break;
                default:
                   vassert(0);
                   break;
             }
-            p = doAMode_IR(p, opc1, reg, am, mode64);
+   } else /* store */ {
+      switch (am->tag) {
+         case Mam_IR:
+            if (mode64) {
+               vassert(0 == (am->Mam.IR.index & 3));
+            }
+            p = doAMode_IR(p, mode64 ? 63 : 43, reg, am, mode64);
             break;
          case Mam_RR:
             /* we could handle this case, but we don't expect to ever
@@ -2615,32 +2764,39 @@ static UChar* do_load_or_store_machine_word (
             vassert(0);
             break;
       }
-   } else /* store */ {
-      UInt opc1, sz = mode64 ? 8 : 4;
+   }
+   return p;
+}
+
+/* Generate a 32-bit sized load or store. Simplified version of
+   do_load_or_store_machine_word above. */
+static UChar* do_load_or_store_word32 ( UChar* p, Bool isLoad, UInt reg,
+                                        MIPSAMode* am, Bool mode64 )
+{
+   if (isLoad) { /* load */
       switch (am->tag) {
          case Mam_IR:
             if (mode64) {
                vassert(0 == (am->Mam.IR.index & 3));
             }
-            switch (sz) {
-               case 1:
-                  opc1 = 40;
+            p = doAMode_IR(p, 35, reg, am, mode64);
                   break;
-               case 2:
-                  opc1 = 41;
-                  break;
-               case 4:
-                  opc1 = 43;
-                  break;
-               case 8:
-                  vassert(mode64);
-                  opc1 = 63;
+         case Mam_RR:
+            /* we could handle this case, but we don't expect to ever
+               need to. */
+            vassert(0);
                   break;
                default:
                   vassert(0);
                   break;
             }
-            p = doAMode_IR(p, opc1, reg, am, mode64);
+   } else /* store */ {
+      switch (am->tag) {
+         case Mam_IR:
+            if (mode64) {
+               vassert(0 == (am->Mam.IR.index & 3));
+            }
+            p = doAMode_IR(p, 43, reg, am, mode64);
             break;
          case Mam_RR:
             /* we could handle this case, but we don't expect to ever
@@ -2686,31 +2842,6 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
    vassert(nbuf >= 32);
 
    switch (i->tag) {
-      case Min_MovCond: {
-         MIPSRH *srcR = i->Min.MovCond.srcR;
-         UInt condR = iregNo(i->Min.MovCond.condR, mode64);
-         UInt dst = iregNo(i->Min.MovCond.dst, mode64);
-
-         UInt srcL = iregNo(i->Min.MovCond.srcL, mode64);
-
-         p = mkMoveReg(p, dst, srcL);
-         if (i->Min.MovCond.cond == MIPScc_MI) {
-            p = mkFormI(p, 7, condR, 0, 2);  //bgtz cond,2
-         }
-
-         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   //nop
-   
-         if (srcR->tag == Mrh_Reg) {
-            //or dst,src,src
-            p = mkMoveReg(p, dst, iregNo(srcR->Mrh.Reg.reg, mode64));
-            /*p = mkFormR(p, 0, dst, iregNo(src->Mrh.Reg.reg, mode64),
-                        iregNo(src->Mrh.Reg.reg, mode64), 0, 37);*/
-         } else {
-            p = mkLoadImm(p, dst, srcR->Mrh.Imm.imm16, mode64);
-         }
-      }
-         goto done;
-   
       case Min_LI:
          p = mkLoadImm(p, iregNo(i->Min.LI.dst, mode64), i->Min.LI.imm, mode64);
          goto done;
@@ -2720,10 +2851,10 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          Bool immR = toBool(srcR->tag == Mrh_Imm);
          UInt r_dst = iregNo(i->Min.Alu.dst, mode64);
          UInt r_srcL = iregNo(i->Min.Alu.srcL, mode64);
-         UInt r_srcR = immR ? (-1) /*bogus */ : iregNo(srcR->Mrh.Reg.reg, mode64);
-   
+         UInt r_srcR = immR ? (-1) /*bogus */ : iregNo(srcR->Mrh.Reg.reg,
+                                                       mode64);
          switch (i->Min.Alu.op) {
-            /*Malu_ADD, Malu_SUB, Malu_AND, Malu_OR, Malu_NOR, Malu_XOR */
+            /* Malu_ADD, Malu_SUB, Malu_AND, Malu_OR, Malu_NOR, Malu_XOR, Malu_SLT */
             case Malu_ADD:
                if (immR) {
                   vassert(srcR->Mrh.Imm.imm16 != 0x8000);
@@ -2767,16 +2898,16 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                } else {
                   /* or */
                   if (r_srcL == 33)
-                     //MFHI
+                     /* MFHI */
                      p = mkFormR(p, 0, 0, 0, r_dst, 0, 16);
                   else if (r_srcL == 34)
-                     //MFLO
+                     /* MFLO */
                      p = mkFormR(p, 0, 0, 0, r_dst, 0, 18);
                   else if (r_dst == 33)
-                     //MTHI
+                     /* MTHI */
                      p = mkFormR(p, 0, r_srcL, 0, 0, 0, 17);
                   else if (r_dst == 34)
-                     //MTLO
+                     /* MTLO */
                      p = mkFormR(p, 0, r_srcL, 0, 0, 0, 19);
                   else
                      p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 37);
@@ -2795,6 +2926,29 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                } else {
                   /* xor */
                   p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 38);
+               }
+               break;
+            case Malu_DADD:
+               if (immR) {
+                  vassert(srcR->Mrh.Imm.syned);
+                  vassert(srcR->Mrh.Imm.imm16 != 0x8000);
+                  p = mkFormI(p, 25, r_srcL, r_dst, srcR->Mrh.Imm.imm16);
+               } else {
+                  p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 45);
+               }
+               break;
+            case Malu_DSUB:
+               if (immR) {
+                  p = mkFormI(p, 25, r_srcL, r_dst, (-srcR->Mrh.Imm.imm16));
+               } else {
+                  p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 47);
+               }
+               break;
+            case Malu_SLT:
+               if (immR) {
+                  goto bad;
+               } else {
+                  p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 42);
                }
                break;
       
@@ -2819,7 +2973,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                if (sz32) {
                   if (immR) {
                      UInt n = srcR->Mrh.Imm.imm16;
-                     vassert(n >= 0 && n < 32);
+                     vassert(n >= 0 && n <= 32);
                      p = mkFormS(p, 0, r_dst, 0, r_srcL, n, 0);
                   } else {
                      /* shift variable */
@@ -2842,7 +2996,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
    
             case Mshft_SRL:
                if (sz32) {
-                  // SRL, SRLV
+                  /* SRL, SRLV */
                   if (immR) {
                      UInt n = srcR->Mrh.Imm.imm16;
                      vassert(n >= 0 && n < 32);
@@ -2852,7 +3006,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                      p = mkFormS(p, 0, r_dst, r_srcR, r_srcL, 0, 6);
                   }
                } else {
-                  // DSRL, DSRL32, DSRLV
+                  /* DSRL, DSRL32, DSRLV */
                   if (immR) {
                      UInt n = srcR->Mrh.Imm.imm16;
                      vassert((n >= 0 && n < 32) || (n > 31 && n < 64));
@@ -2869,7 +3023,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
    
             case Mshft_SRA:
                if (sz32) {
-                  // SRA, SRAV
+                  /* SRA, SRAV */
                   if (immR) {
                      UInt n = srcR->Mrh.Imm.imm16;
                      vassert(n >= 0 && n < 32);
@@ -2879,7 +3033,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                      p = mkFormS(p, 0, r_dst, r_srcR, r_srcL, 0, 7);
                   }
                } else {
-                  // DSRA, DSRA32, DSRAV
+                  /* DSRA, DSRA32, DSRAV */
                   if (immR) {
                      UInt n = srcR->Mrh.Imm.imm16;
                      vassert((n >= 0 && n < 32) || (n > 31 && n < 64));
@@ -2906,15 +3060,21 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt r_src = iregNo(i->Min.Unary.src, mode64);
 
          switch (i->Min.Unary.op) {
-            /*Mun_CLO, Mun_CLZ, Mun_NOP */
-            case Mun_CLO:  //clo
-               p = mkFormR(p, 28, r_src, 0 /*whatever */ , r_dst, 0, 33);
+            /* Mun_CLO, Mun_CLZ, Mun_NOP, Mun_DCLO, Mun_DCLZ */
+            case Mun_CLO:  /* clo */
+               p = mkFormR(p, 28, r_src, r_dst , r_dst, 0, 33);
                break;
-            case Mun_CLZ:  //clz
-               p = mkFormR(p, 28, r_src, 0 /*whatever */ , r_dst, 0, 32);
+            case Mun_CLZ:  /* clz */
+               p = mkFormR(p, 28, r_src, r_dst , r_dst, 0, 32);
                break;
-            case Mun_NOP:  //nop (sll r0,r0,0)
+            case Mun_NOP:  /* nop (sll r0,r0,0) */
                p = mkFormR(p, 0, 0, 0, 0, 0, 0);
+               break;
+            case Mun_DCLO:  /* clo */
+               p = mkFormR(p, 28, r_src, r_dst , r_dst, 0, 37);
+               break;
+            case Mun_DCLZ:  /* clz */
+               p = mkFormR(p, 28, r_src, r_dst , r_dst, 0, 36);
                break;
          }
          goto done;
@@ -2927,26 +3087,16 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
 
          switch (i->Min.Cmp.cond) {
             case MIPScc_EQ:
-               /*  addiu r_dst, r0, 1
-                  beq r_srcL, r_srcR, 2
-                  nop
-                  addiu r_dst, r0, 0
-                */
-               p = mkFormI(p, 9, 0, r_dst, 1);
-               p = mkFormI(p, 4, r_srcL, r_srcR, 2);
-               p = mkFormR(p, 0, 0, 0, 0, 0, 0);
-               p = mkFormI(p, 9, 0, r_dst, 0);
+               /* xor r_dst, r_srcL, r_srcR
+                  sltiu r_dst, r_dst, 1 */
+               p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 38);
+               p = mkFormI(p, 11, r_dst, r_dst, 1);
                break;
             case MIPScc_NE:
-               /*  addiu r_dst, r0, 1
-                  bne r_srcL, r_srcR, 2
-                  nop
-                  addiu r_dst, r0, 0
-                */
-               p = mkFormI(p, 9, 0, r_dst, 1);
-               p = mkFormI(p, 5, r_srcL, r_srcR, 2);
-               p = mkFormR(p, 0, 0, 0, 0, 0, 0);
-               p = mkFormI(p, 9, 0, r_dst, 0);
+               /* xor r_dst, r_srcL, r_srcR
+                  sltu r_dst, zero, r_dst */
+               p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 38);
+               p = mkFormR(p, 0, 0, r_dst, r_dst, 0, 43);
                break;
             case MIPScc_LT:
                /*  slt r_dst, r_srcL, r_srcR */
@@ -2957,24 +3107,16 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 43);
                break;
             case MIPScc_LE:
-               /*  addiu r_dst, r0, 1
-                  beq r_srcL, r_srcR, 2
-                  nop
-                  slt r_dst, r_srcL, r_srcR */
-               p = mkFormI(p, 9, 0, r_dst, 1);
-               p = mkFormI(p, 4, r_srcL, r_srcR, 2);
-               p = mkFormR(p, 0, 0, 0, 0, 0, 0);
-               p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 42);
+               /* slt r_dst, r_srcR, r_srcL
+                  xori r_dst, r_dst, 1 */
+               p = mkFormR(p, 0, r_srcR, r_srcL, r_dst, 0, 42);
+               p = mkFormI(p, 14, r_dst, r_dst, 1);
                break;
             case MIPScc_LS:
-               /*  addiu r_dst, r0, 1
-                  beq r_srcL, r_srcR, 2
-                  nop
-                  sltu r_dst, r_srcL, r_srcR */
-               p = mkFormI(p, 9, 0, r_dst, 1);
-               p = mkFormI(p, 4, r_srcL, r_srcR, 2);
-               p = mkFormR(p, 0, 0, 0, 0, 0, 0);
-               p = mkFormR(p, 0, r_srcL, r_srcR, r_dst, 0, 43);
+               /* sltu r_dst, rsrcR, r_srcL
+                  xori r_dsr, r_dst, 1 */
+               p = mkFormR(p, 0, r_srcR, r_srcL, r_dst, 0, 43);
+               p = mkFormI(p, 14, r_dst, r_dst, 1);
                break;
             default:
                goto bad;
@@ -2989,7 +3131,6 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt r_srcL = iregNo(i->Min.Mul.srcL, mode64);
          UInt r_srcR = iregNo(i->Min.Mul.srcR, mode64);
          UInt r_dst = iregNo(i->Min.Mul.dst, mode64);
-
          if (widening) {
             if (sz32) {
                if (syned)
@@ -3024,11 +3165,11 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          if (syned) {
             switch (i->Min.Macc.op) {
                case Macc_ADD:
-                  //madd
+                  /* madd */
                   p = mkFormR(p, 28, r_srcL, r_srcR, 0, 0, 0);
                   break;
                case Macc_SUB:
-                  //msub
+                  /* msub */
                   p = mkFormR(p, 28, r_srcL, r_srcR, 0, 0,
                          4);
                   break;
@@ -3038,12 +3179,12 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          } else {
             switch (i->Min.Macc.op) {
                case Macc_ADD:
-                  //maddu
+                  /* maddu */
                   p = mkFormR(p, 28, r_srcL, r_srcR, 0, 0,
                          1);
                   break;
                case Macc_SUB:
-                  //msubu
+                  /* msubu */
                   p = mkFormR(p, 28, r_srcL, r_srcR, 0, 0,
                          5);
                   break;
@@ -3118,6 +3259,17 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
       }
    
       case Min_Call: {
+         if (i->Min.Call.cond != MIPScc_AL
+             && i->Min.Call.rloc.pri != RLPri_None) {
+            /* The call might not happen (it isn't unconditional) and
+               it returns a result.  In this case we will need to
+               generate a control flow diamond to put 0x555..555 in
+               the return register(s) in the case where the call
+               doesn't happen.  If this ever becomes necessary, maybe
+               copy code from the ARM equivalent.  Until that day,
+               just give up. */
+            goto bad;
+         }
          MIPSCondCode cond = i->Min.Call.cond;
          UInt r_dst = 25;  /* using %r25 as address temporary - 
                      see getRegUsage_MIPSInstr */
@@ -3128,15 +3280,25 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
             /* don't know how many bytes to jump over yet...
                make space for a jump instruction + nop!!! and fill in later. */
             ptmp = p;   /* fill in this bit later */
-            p += 8;  // p += 8
+            p += 8;    /* p += 8 */
          }
 
-         /* load target to r_dst */// p += 4|8
+         if (!mode64) {
+            /* addiu $29, $29, -16 */
+            p = mkFormI(p, 9, 29, 29, 0xFFF0);
+         }
+
+         /* load target to r_dst; p += 4|8 */
          p = mkLoadImm(p, r_dst, i->Min.Call.target, mode64);
 
-         /* jalr %r_dst */
-         p = mkFormR(p, 0, r_dst, 0, 31, 0, 9); // p += 4
-         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   // p += 4
+         /* jalr r_dst */
+         p = mkFormR(p, 0, r_dst, 0, 31, 0, 9);  /* p += 4 */
+         p = mkFormR(p, 0, 0, 0, 0, 0, 0);       /* p += 4 */
+
+         if (!mode64) {
+            /* addiu $29, $29, 16 */
+            p = mkFormI(p, 9, 29, 29, 0x0010);
+         }
 
          /* Fix up the conditional jump, if there was one. */
          if (cond != MIPScc_AL) {
@@ -3144,11 +3306,10 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
             Int delta = p - ptmp;
 
             vassert(delta >= 20 && delta <= 32);
-            /* bc !ct,cf,delta/4 */
-            /* blez r_src, delta/4-1 */
-            vassert(cond == MIPScc_EQ);
+            /* blez r_src, delta/4-1
+               nop */
             ptmp = mkFormI(ptmp, 6, r_src, 0, delta / 4 - 1);
-            ptmp = mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
+            mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
          }
          goto done;
       }
@@ -3176,11 +3337,11 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
 
          /* Update the guest PC. */
          /* move r9, dstGA */
-         /* sw r9, amPC */
-         p = mkLoadImm_EXACTLY2or5(p, /*r*/9,
-                                  (ULong)i->Min.XDirect.dstGA, mode64);
-         p = do_load_or_store_machine_word(p, False/*!isLoad*/,
-                                /*r*/9, i->Min.XDirect.amPC, mode64);
+         /* sw/sd r9, amPC */
+         p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9, (ULong)i->Min.XDirect.dstGA,
+                                   mode64);
+         p = do_load_or_store_machine_word(p, False /*!isLoad*/ , /*r*/ 9,
+                                           i->Min.XDirect.amPC, mode64);
 
          /* --- FIRST PATCHABLE BYTE follows --- */
          /* VG_(disp_cp_chain_me_to_{slowEP,fastEP}) (where we're
@@ -3192,12 +3353,12 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          void* disp_cp_chain_me
                   = i->Min.XDirect.toFastEP ? disp_cp_chain_me_to_fastEP 
                                               : disp_cp_chain_me_to_slowEP;
-         p = mkLoadImm_EXACTLY2or5(p, /*r*/9,
+         p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
                                      Ptr_to_ULong(disp_cp_chain_me), mode64);
          /* jalr $9 */
          /* nop */
-         p = mkFormR(p, 0, 9, 0, 31, 0, 9); // p += 4
-         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   // p += 4
+         p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
+         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   /* p += 4 */
          /* --- END of PATCHABLE BYTES --- */
 
          /* Fix up the conditional jump, if there was one. */
@@ -3205,12 +3366,13 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
             Int delta = p - ptmp;
             delta = delta / 4 - 3;
             vassert(delta > 0 && delta < 40);
-            /* lw $9, 316($10)  // guest_COND
+
+            /* lw $9, COND_OFFSET(GuestSP)
                beq $9, $0, 2
-               nop*/
-            ptmp = mkFormI(ptmp, 35, 10, 9, 316);
+               nop */
+            ptmp = mkFormI(ptmp, 35, GuestSP, 9, COND_OFFSET(mode64));
             ptmp = mkFormI(ptmp, 4, 0, 9, (delta));
-            ptmp = mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
+            mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
          }
          goto done;
       }
@@ -3236,30 +3398,31 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          }
 
          /* Update the guest PC. */
-         /* sw r-dstGA, amPC */
-         p = do_load_or_store_machine_word(p, False/*!isLoad*/,
+         /* sw/sd r-dstGA, amPC */
+         p = do_load_or_store_machine_word(p, False /*!isLoad*/ ,
                                            iregNo(i->Min.XIndir.dstGA, mode64),
                                            i->Min.XIndir.amPC, mode64);
 
          /* move r9, VG_(disp_cp_xindir) */
          /* jalr   r9 */
          /* nop */
-         p = mkLoadImm_EXACTLY2or5 ( p, /*r*/9,
+         p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
                                      Ptr_to_ULong(disp_cp_xindir), mode64);
-         p = mkFormR(p, 0, 9, 0, 31, 0, 9); // p += 4
-         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   // p += 4
+         p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
+         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   /* p += 4 */
 
          /* Fix up the conditional jump, if there was one. */
          if (i->Min.XIndir.cond != MIPScc_AL) {
             Int delta = p - ptmp;
             delta = delta / 4 - 3;
             vassert(delta > 0 && delta < 40);
-            /* lw $9, 316($10)  // guest_COND
+
+            /* lw $9, COND_OFFSET($GuestSP)
                beq $9, $0, 2
-               nop*/
-            ptmp = mkFormI(ptmp, 35, 10, 9, 316);
+               nop */
+            ptmp = mkFormI(ptmp, 35, GuestSP, 9, COND_OFFSET(mode64));
             ptmp = mkFormI(ptmp, 4, 0, 9, (delta));
-            ptmp = mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
+            mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
          }
          goto done;
       }
@@ -3276,8 +3439,8 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          }
 
          /* Update the guest PC. */
-         /* sw r-dstGA, amPC */
-         p = do_load_or_store_machine_word(p, False/*!isLoad*/,
+         /* sw/sd r-dstGA, amPC */
+         p = do_load_or_store_machine_word(p, False /*!isLoad*/ ,
                                            iregNo(i->Min.XIndir.dstGA, mode64),
                                            i->Min.XIndir.amPC, mode64);
 
@@ -3286,48 +3449,51 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          switch (i->Min.XAssisted.jk) {
             case Ijk_ClientReq:   trcval = VEX_TRC_JMP_CLIENTREQ;   break;
             case Ijk_Sys_syscall: trcval = VEX_TRC_JMP_SYS_SYSCALL; break;
-            //case Ijk_Sys_int128:  trcval = VEX_TRC_JMP_SYS_INT128;  break;
-            //case Ijk_Yield:       trcval = VEX_TRC_JMP_YIELD;       break;
+            /* case Ijk_Sys_int128: trcval = VEX_TRC_JMP_SYS_INT128;    break;
+               case Ijk_Yield:     trcval = VEX_TRC_JMP_YIELD;         break; */
             case Ijk_EmWarn:      trcval = VEX_TRC_JMP_EMWARN;      break;
             case Ijk_EmFail:      trcval = VEX_TRC_JMP_EMFAIL;      break;
-            //case Ijk_MapFail:     trcval = VEX_TRC_JMP_MAPFAIL;     break;
+            /* case Ijk_MapFail:   trcval = VEX_TRC_JMP_MAPFAIL;       break; */
             case Ijk_NoDecode:    trcval = VEX_TRC_JMP_NODECODE;    break;
             case Ijk_TInval:      trcval = VEX_TRC_JMP_TINVAL;      break;
             case Ijk_NoRedir:     trcval = VEX_TRC_JMP_NOREDIR;     break;
             case Ijk_SigTRAP:     trcval = VEX_TRC_JMP_SIGTRAP;     break;
-            //case Ijk_SigSEGV:     trcval = VEX_TRC_JMP_SIGSEGV;     break;
+            /* case Ijk_SigSEGV:   trcval = VEX_TRC_JMP_SIGSEGV;       break; */
             case Ijk_SigBUS:        trcval = VEX_TRC_JMP_SIGBUS;    break;
+            case Ijk_SigFPE_IntDiv: trcval = VEX_TRC_JMP_SIGFPE_INTDIV; break;
+            case Ijk_SigFPE_IntOvf: trcval = VEX_TRC_JMP_SIGFPE_INTOVF; break;
             case Ijk_Boring:      trcval = VEX_TRC_JMP_BORING;      break;
-            /* We don't expect to see the following being assisted. */
-            //case Ijk_Ret:
-            //case Ijk_Call:
-            /* fallthrough */
+            /* We don't expect to see the following being assisted.
+               case Ijk_Ret:
+               case Ijk_Call:
+               fallthrough */
             default: 
                ppIRJumpKind(i->Min.XAssisted.jk);
                vpanic("emit_MIPSInstr.Min_XAssisted: unexpected jump kind");
          }
          vassert(trcval != 0);
-         p = mkLoadImm_EXACTLY2or5(p, /*r*/10, trcval, mode64);
+         p = mkLoadImm_EXACTLY2or6(p, /*r*/ GuestSP, trcval, mode64);
 
          /* move r9, VG_(disp_cp_xassisted) */
-         p = mkLoadImm_EXACTLY2or5(p, /*r*/9,
+         p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
                           (ULong)Ptr_to_ULong(disp_cp_xassisted), mode64);
          /* jalr $9
              nop */
-         p = mkFormR(p, 0, 9, 0, 31, 0, 9); // p += 4
-         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   // p += 4
+         p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
+         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   /* p += 4 */
 
          /* Fix up the conditional jump, if there was one. */
          if (i->Min.XAssisted.cond != MIPScc_AL) {
             Int delta = p - ptmp;
             delta = delta / 4 - 3;
             vassert(delta > 0 && delta < 40);
-            /* lw $9, 316($10)  // guest_COND
+
+            /* lw $9, COND_OFFSET($GuestSP)
                beq $9, $0, 2
-               nop*/
-            ptmp = mkFormI(ptmp, 35, 10, 9, 316);
+               nop */
+            ptmp = mkFormI(ptmp, 35, GuestSP, 9, COND_OFFSET(mode64));
             ptmp = mkFormI(ptmp, 4, 0, 9, (delta));
-            ptmp = mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
+            mkFormR(ptmp, 0, 0, 0, 0, 0, 0);
          }
          goto done;
       }
@@ -3451,7 +3617,10 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt idx = am_addr->Mam.IR.index;
          UInt r_dst = iregNo(i->Min.LoadL.dst, mode64);
 
+         if (i->Min.LoadL.sz == 4)
          p = mkFormI(p, 0x30, r_src, r_dst, idx);
+         else
+            p = mkFormI(p, 0x34, r_src, r_dst, idx);
          goto done;
       }
       case Min_StoreC: {
@@ -3460,7 +3629,10 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          UInt idx = am_addr->Mam.IR.index;
          UInt r_dst = iregNo(am_addr->Mam.IR.base, mode64);
 
+         if (i->Min.StoreC.sz == 4)
          p = mkFormI(p, 0x38, r_dst, r_src, idx);
+         else
+            p = mkFormI(p, 0x3C, r_dst, r_src, idx);
          goto done;
       }
       case Min_RdWrLR: {
@@ -3473,8 +3645,7 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          goto done;
       }
    
-         // Floating point
-   
+      /* Floating point */
       case Min_FpLdSt: {
          MIPSAMode *am_addr = i->Min.FpLdSt.addr;
          UChar sz = i->Min.FpLdSt.sz;
@@ -3513,82 +3684,52 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
 
       case Min_FpUnary: {
          switch (i->Min.FpUnary.op) {
-            case Mfp_MOVS: { // FP move
+            case Mfp_MOVS: {  /* FP move */
                UInt fr_dst = fregNo(i->Min.FpUnary.dst, mode64);
                UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
                p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x6);
                break;
             }
-            case Mfp_MOVD: { // FP move
+            case Mfp_MOVD: {  /* FP move */
                 UInt fr_dst = dregNo(i->Min.FpUnary.dst);
                 UInt fr_src = dregNo(i->Min.FpUnary.src);
                 p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x6);
                 break;
              }
-            case Mfp_ABSS: { // ABSS
+            case Mfp_ABSS: {  /* ABS.S */
                UInt fr_dst = fregNo(i->Min.FpUnary.dst, mode64);
                UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
                p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x5);
                break;
             }
-            case Mfp_ABSD: { // ABSD
+            case Mfp_ABSD: {  /* ABS.D */
                UInt fr_dst = dregNo(i->Min.FpUnary.dst);
                UInt fr_src = dregNo(i->Min.FpUnary.src);
                p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x5);
                break;
             }
-            case Mfp_NEGS: { // ABSS
+            case Mfp_NEGS: {  /* NEG.S */
                UInt fr_dst = fregNo(i->Min.FpUnary.dst, mode64);
                UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
                p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x7);
                break;
             }
-            case Mfp_NEGD: { // ABSD
+            case Mfp_NEGD: {  /* NEG.D */
                UInt fr_dst = dregNo(i->Min.FpUnary.dst);
                UInt fr_src = dregNo(i->Min.FpUnary.src);
                p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x7);
                break;
             }
-            case Mfp_CVTD: { //CVT.D
-               UInt fr_dst = dregNo(i->Min.FpUnary.dst);
-               UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
-               p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x21);
-               break;
-            }
-            case Mfp_SQRTS: { //SQRT.S
+            case Mfp_SQRTS: {  /* SQRT.S */
                UInt fr_dst = fregNo(i->Min.FpUnary.dst, mode64);
                UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
                p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x04);
                break;
             }
-            case Mfp_SQRTD: { //SQRT.D
+            case Mfp_SQRTD: {  /* SQRT.D */
                UInt fr_dst = dregNo(i->Min.FpUnary.dst);
                UInt fr_src = dregNo(i->Min.FpUnary.src);
                p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x04);
-               break;
-            }
-            case Mfp_RSQRTS: { //RSQRT.S
-                UInt fr_dst = fregNo(i->Min.FpUnary.dst, mode64);
-                UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
-                p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x16);
-                break;
-             }
-            case Mfp_RSQRTD: { //RSQRT.D
-               UInt fr_dst = dregNo(i->Min.FpUnary.dst);
-               UInt fr_src = dregNo(i->Min.FpUnary.src);
-               p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x16);
-               break;
-            }
-            case Mfp_RECIPS: { //RECIP.S
-               UInt fr_dst = fregNo(i->Min.FpUnary.dst, mode64);
-               UInt fr_src = fregNo(i->Min.FpUnary.src, mode64);
-               p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x15);
-               break;
-            }
-            case Mfp_RECIPD: { //RECIP.D
-               UInt fr_dst = dregNo(i->Min.FpUnary.dst);
-               UInt fr_src = dregNo(i->Min.FpUnary.src);
-               p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x15);
                break;
             }
             default:
@@ -3661,6 +3802,46 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          goto done;
       }
 
+      case Min_FpTernary: {
+         switch (i->Min.FpTernary.op) {
+            case Mfp_MADDS: {
+               UInt fr_dst = fregNo(i->Min.FpTernary.dst, mode64);
+               UInt fr_src1 = fregNo(i->Min.FpTernary.src1, mode64);
+               UInt fr_src2 = fregNo(i->Min.FpTernary.src2, mode64);
+               UInt fr_src3 = fregNo(i->Min.FpTernary.src3, mode64);
+               p = mkFormR(p, 0x13, fr_src1, fr_src2, fr_src3, fr_dst, 0x20);
+               break;
+            }
+            case Mfp_MADDD: {
+               UInt fr_dst = dregNo(i->Min.FpTernary.dst);
+               UInt fr_src1 = dregNo(i->Min.FpTernary.src1);
+               UInt fr_src2 = dregNo(i->Min.FpTernary.src2);
+               UInt fr_src3 = dregNo(i->Min.FpTernary.src3);
+               p = mkFormR(p, 0x13, fr_src1, fr_src2, fr_src3, fr_dst, 0x21);
+               break;
+            }
+            case Mfp_MSUBS: {
+               UInt fr_dst = fregNo(i->Min.FpTernary.dst, mode64);
+               UInt fr_src1 = fregNo(i->Min.FpTernary.src1, mode64);
+               UInt fr_src2 = fregNo(i->Min.FpTernary.src2, mode64);
+               UInt fr_src3 = fregNo(i->Min.FpTernary.src3, mode64);
+               p = mkFormR(p, 0x13, fr_src1, fr_src2, fr_src3, fr_dst, 0x28);
+               break;
+            }
+            case Mfp_MSUBD: {
+               UInt fr_dst = dregNo(i->Min.FpTernary.dst);
+               UInt fr_src1 = dregNo(i->Min.FpTernary.src1);
+               UInt fr_src2 = dregNo(i->Min.FpTernary.src2);
+               UInt fr_src3 = dregNo(i->Min.FpTernary.src3);
+               p = mkFormR(p, 0x13, fr_src1, fr_src2, fr_src3, fr_dst, 0x29);
+               break;
+            }
+            default:
+               goto bad;
+         }
+         goto done;
+      }
+
       case Min_FpConvert: {
          switch (i->Min.FpConvert.op) {
             UInt fr_dst, fr_src;
@@ -3688,6 +3869,31 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                fr_dst = dregNo(i->Min.FpConvert.dst);
                fr_src = fregNo(i->Min.FpConvert.src, mode64);
                p = mkFormR(p, 0x11, 0x14, 0, fr_src, fr_dst, 0x21);
+               break;
+            case Mfp_CVTDL:
+               fr_dst = dregNo(i->Min.FpConvert.dst);
+               fr_src = dregNo(i->Min.FpConvert.src);
+               p = mkFormR(p, 0x11, 0x15, 0, fr_src, fr_dst, 0x21);
+               break;
+            case Mfp_CVTDS:
+               fr_dst = dregNo(i->Min.FpConvert.dst);
+               fr_src = fregNo(i->Min.FpConvert.src, mode64);
+               p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x21);
+               break;
+            case Mfp_CVTSL:
+               fr_dst = dregNo(i->Min.FpConvert.dst);
+               fr_src = fregNo(i->Min.FpConvert.src, mode64);
+               p = mkFormR(p, 0x11, 0x15, 0, fr_src, fr_dst, 0x20);
+               break;
+            case Mfp_CVTLS:
+               fr_dst = fregNo(i->Min.FpConvert.dst, mode64);
+               fr_src = dregNo(i->Min.FpConvert.src);
+               p = mkFormR(p, 0x11, 0x10, 0, fr_src, fr_dst, 0x25);
+               break;
+            case Mfp_CVTLD:
+               fr_dst = dregNo(i->Min.FpConvert.dst);
+               fr_src = dregNo(i->Min.FpConvert.src);
+               p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x25);
                break;
             case Mfp_TRUWS:
                fr_dst = fregNo(i->Min.FpConvert.dst, mode64);
@@ -3739,6 +3945,11 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                fr_src = dregNo(i->Min.FpConvert.src);
                p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x0C);
                break;
+            case Mfp_ROUNDLD:
+               fr_dst = dregNo(i->Min.FpConvert.dst);
+               fr_src = dregNo(i->Min.FpConvert.src);
+               p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x08);
+               break;
             case Mfp_FLOORWS:
                fr_dst = fregNo(i->Min.FpConvert.dst, mode64);
                fr_src = fregNo(i->Min.FpConvert.src, mode64);
@@ -3748,6 +3959,11 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                fr_dst = fregNo(i->Min.FpConvert.dst, mode64);
                fr_src = dregNo(i->Min.FpConvert.src);
                p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x0F);
+               break;
+            case Mfp_FLOORLD:
+               fr_dst = dregNo(i->Min.FpConvert.dst);
+               fr_src = dregNo(i->Min.FpConvert.src);
+               p = mkFormR(p, 0x11, 0x11, 0, fr_src, fr_dst, 0x0B);
                break;
 
             default:
@@ -3772,6 +3988,72 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          }
          goto done;
       }
+
+      case Min_FpGpMove: {
+         switch (i->Min.FpGpMove.op) {
+            UInt rt, fs;
+            case MFpGpMove_mfc1: {
+               rt = iregNo(i->Min.FpGpMove.dst, mode64);
+               fs = fregNo(i->Min.FpGpMove.src, mode64);
+               p = mkFormR(p, 0x11, 0x0, rt, fs, 0x0, 0x0);
+               break;
+            }
+            case MFpGpMove_dmfc1: {
+               vassert(mode64);
+               rt = iregNo(i->Min.FpGpMove.dst, mode64);
+               fs = fregNo(i->Min.FpGpMove.src, mode64);
+               p = mkFormR(p, 0x11, 0x1, rt, fs, 0x0, 0x0);
+               break;
+            }
+            case MFpGpMove_mtc1: {
+               rt = iregNo(i->Min.FpGpMove.src, mode64);
+               fs = fregNo(i->Min.FpGpMove.dst, mode64);
+               p = mkFormR(p, 0x11, 0x4, rt, fs, 0x0, 0x0);
+               break;
+            }
+            case MFpGpMove_dmtc1: {
+               vassert(mode64);
+               rt = iregNo(i->Min.FpGpMove.src, mode64);
+               fs = fregNo(i->Min.FpGpMove.dst, mode64);
+               p = mkFormR(p, 0x11, 0x5, rt, fs, 0x0, 0x0);
+               break;
+            }
+            default:
+               goto bad;
+         }
+         goto done;
+      }
+
+      case Min_MoveCond: {
+         switch (i->Min.MoveCond.op) {
+            UInt d, s, t;
+            case MFpMoveCond_movns: {
+               d = fregNo(i->Min.MoveCond.dst, mode64);
+               s = fregNo(i->Min.MoveCond.src, mode64);
+               t = iregNo(i->Min.MoveCond.cond, mode64);
+               p = mkFormR(p, 0x11, 0x10, t, s, d, 0x13);
+               break;
+            }
+            case MFpMoveCond_movnd: {
+               d = dregNo(i->Min.MoveCond.dst);
+               s = dregNo(i->Min.MoveCond.src);
+               t = iregNo(i->Min.MoveCond.cond, mode64);
+               p = mkFormR(p, 0x11, 0x11, t, s, d, 0x13);
+               break;
+            }
+            case MMoveCond_movn: {
+               d = iregNo(i->Min.MoveCond.dst, mode64);
+               s = iregNo(i->Min.MoveCond.src, mode64);
+               t = iregNo(i->Min.MoveCond.cond, mode64);
+               p = mkFormR(p, 0, s, t, d, 0, 0xb);
+               break;
+            }
+            default:
+               goto bad;
+         }
+         goto done;
+      }
+
       case Min_EvCheck: {
          /* This requires a 32-bit dec/test in 32 mode. */
          /* We generate:
@@ -3786,21 +4068,21 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          */
          UChar* p0 = p;
          /* lw  r9, amCounter */
-         p = do_load_or_store_machine_word(p, True/*isLoad*/, /*r*/9,
+         p = do_load_or_store_word32(p, True /*isLoad*/ , /*r*/ 9,
                                      i->Min.EvCheck.amCounter, mode64);
          /* addiu r9,r9,-1 */
          p = mkFormI(p, 9, 9, 9, 0xFFFF);
          /* sw r30, amCounter */
-         p = do_load_or_store_machine_word(p, False/*!isLoad*/, /*r*/9,
+         p = do_load_or_store_word32(p, False /*!isLoad*/ , /*r*/ 9,
                                      i->Min.EvCheck.amCounter, mode64);
          /* bgez t9, nofail */
          p = mkFormI(p, 1, 9, 1, 3);
-         /* lw r9, amFailAddr */
-         p = do_load_or_store_machine_word(p, True/*isLoad*/, /*r*/9,
+         /* lw/ld r9, amFailAddr */
+         p = do_load_or_store_machine_word(p, True /*isLoad*/ , /*r*/ 9,
                                            i->Min.EvCheck.amFailAddr, mode64);
          /* jalr $9 */
-         p = mkFormR(p, 0, 9, 0, 31, 0, 9); // p += 4
-         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   // p += 4
+         p = mkFormR(p, 0, 9, 0, 31, 0, 9);  /* p += 4 */
+         p = mkFormR(p, 0, 0, 0, 0, 0, 0);   /* p += 4 */
          /* nofail: */
    
          /* Crosscheck */
@@ -3812,9 +4094,27 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
          /* Generate a code template to increment a memory location whose
             address will be known later as an immediate value. This code
             template will be patched once the memory location is known.
-            For now we do this with address == 0x65556555. 
-               32-bit:
+            For now we do this with address == 0x65556555. */
+         if (mode64) {
+            /* 64-bit:
+               move r9, 0x6555655565556555ULL
+               ld r8, 0(r9)
+               daddiu r8, r8, 1
+               sd r8, 0(r9) */
 
+            /* move r9, 0x6555655565556555ULL */
+            p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9, 0x6555655565556555ULL,
+                                      True /*mode64*/);
+            /* ld r8, 0(r9) */
+            p = mkFormI(p, 55, 9, 8, 0);
+
+            /* daddiu r8, r8, 1 */
+            p = mkFormI(p, 25, 8, 8, 1);
+
+            /* sd r8, 0(r9) */
+            p = mkFormI(p, 63, 9, 8, 0);
+         } else {
+            /* 32-bit:
                  move r9, 0x65556555
                  lw r8, 0(r9)
                  addiu r8, r8, 1         # add least significant word
@@ -3824,31 +4124,28 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                  addu r8, r8, r1
                  sw r8, 4(r9) */
 
-         if (mode64) {
-            vassert(0);
-         } else {
-            // move r9, 0x65556555
-            p = mkLoadImm_EXACTLY2or5(p, /*r*/9, 0x65556555ULL,
-                                      False/*!mode64*/);
-            // lw r8, 0(r9)
+            /* move r9, 0x65556555 */
+            p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9, 0x65556555ULL,
+                                      False /*!mode64*/);
+            /* lw r8, 0(r9) */
             p = mkFormI(p, 35, 9, 8, 0);
 
-            // addiu r8, r8, 1         # add least significant word
+            /* addiu r8, r8, 1         # add least significant word */
             p = mkFormI(p, 9, 8, 8, 1);
 
-            // sw r8, 0(r9)
+            /* sw r8, 0(r9) */
             p = mkFormI(p, 43, 9, 8, 0);
 
-            // sltiu r1, r8, 1         # set carry-in bit
+            /* sltiu r1, r8, 1         # set carry-in bit */
             p = mkFormI(p, 11, 8, 1, 1);
 
-            // lw r8, 4(r9)
+            /* lw r8, 4(r9) */
             p = mkFormI(p, 35, 9, 8, 4);
 
-            // addu r8, r8, r1
+            /* addu r8, r8, r1 */
             p = mkFormR(p, 0, 8, 1, 8, 0, 33);
 
-            // sw r8, 4(r9)
+            /*  sw r8, 4(r9) */
             p = mkFormI(p, 43, 9, 8, 4);
 
          }
@@ -3867,8 +4164,8 @@ Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
       vex_printf("\n=> ");
       ppMIPSInstr(i, mode64);
       vpanic("emit_MIPSInstr");
-      /*NOTREACHED*/ done:
-      //vassert(p - &buf[0] <= 32);
+      /* NOTREACHED */ done:
+      vassert(p - &buf[0] <= 128);
       return p - &buf[0];
 }
 
@@ -3893,36 +4190,36 @@ VexInvalRange chainXDirect_MIPS ( void* place_to_chain,
         jalr r9
         nop
       viz
-        <8 or 20 bytes generated by mkLoadImm_EXACTLY2or5>
-        0x120F809  // jalr r9
-        0x00000000 // nop
+        <8 or 24 bytes generated by mkLoadImm_EXACTLY2or6>
+        0x120F809   # jalr r9
+        0x00000000  # nop
    */
    UChar* p = (UChar*)place_to_chain;
    vassert(0 == (3 & (HWord)p));
-   vassert(isLoadImm_EXACTLY2or5(p, /*r*/9,
+   vassert(isLoadImm_EXACTLY2or6(p, /*r*/9,
                                  (UInt)Ptr_to_ULong(disp_cp_chain_me_EXPECTED),
                                  mode64));
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 0) == 0x120F809);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 4) == 0x00000000);
+   vassert(fetch32(p + (mode64 ? 24 : 8) + 0) == 0x120F809);
+   vassert(fetch32(p + (mode64 ? 24 : 8) + 4) == 0x00000000);
    /* And what we want to change it to is either:
           move r9, place_to_jump_to
           jalr r9
           nop
         viz
-          <8 bytes generated by mkLoadImm_EXACTLY2or5>
-          0x120F809  // jalr r9
-          0x00000000 // nop
+          <8 bytes generated by mkLoadImm_EXACTLY2or6>
+          0x120F809   # jalr r9
+          0x00000000  # nop
 
       The replacement has the same length as the original.
    */
 
-   p = mkLoadImm_EXACTLY2or5(p, /*r*/9,
+   p = mkLoadImm_EXACTLY2or6(p, /*r*/9,
                              Ptr_to_ULong(place_to_jump_to), mode64);
    p = emit32(p, 0x120F809);
    p = emit32(p, 0x00000000);
 
    Int len = p - (UChar*)place_to_chain;
-   vassert(len == (mode64 ? 28 : 16)); /* stay sane */
+   vassert(len == (mode64 ? 32 : 16)); /* stay sane */
    VexInvalRange vir = {(HWord)place_to_chain, len};
    return vir;
 }
@@ -3939,34 +4236,34 @@ VexInvalRange unchainXDirect_MIPS ( void* place_to_unchain,
         jalr r9
         nop
       viz
-        <8 or 20 bytes generated by mkLoadImm_EXACTLY2or5>
-        0x120F809  // jalr r9
-        0x00000000 // nop
+        <8 or 24 bytes generated by mkLoadImm_EXACTLY2or6>
+        0x120F809   # jalr r9
+        0x00000000  # nop
    */
    UChar* p = (UChar*)place_to_unchain;
    vassert(0 == (3 & (HWord)p));
-   vassert(isLoadImm_EXACTLY2or5(p, /*r*/9,
+   vassert(isLoadImm_EXACTLY2or6(p, /*r*/ 9,
                                  Ptr_to_ULong(place_to_jump_to_EXPECTED),
                                  mode64));
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 0) == 0x120F809);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 4) == 0x00000000);
+   vassert(fetch32(p + (mode64 ? 24 : 8) + 0) == 0x120F809);
+   vassert(fetch32(p + (mode64 ? 24 : 8) + 4) == 0x00000000);
    /* And what we want to change it to is:
         move r9, disp_cp_chain_me
         jalr r9
         nop
       viz
-        <8 or 20 bytes generated by mkLoadImm_EXACTLY2or5>
-        0x120F809  // jalr r9
-        0x00000000 // nop
+        <8 or 24 bytes generated by mkLoadImm_EXACTLY2or6>
+        0x120F809   # jalr r9
+        0x00000000  # nop
       The replacement has the same length as the original.
    */
-   p = mkLoadImm_EXACTLY2or5(p, /*r*/9,
+   p = mkLoadImm_EXACTLY2or6(p, /*r*/ 9,
                              Ptr_to_ULong(disp_cp_chain_me), mode64);
    p = emit32(p, 0x120F809);
    p = emit32(p, 0x00000000);
 
    Int len = p - (UChar*)place_to_unchain;
-   vassert(len == (mode64 ? 28 : 16)); /* stay sane */
+   vassert(len == (mode64 ? 32 : 16)); /* stay sane */
    VexInvalRange vir = {(HWord)place_to_unchain, len};
    return vir;
 }
@@ -3976,20 +4273,31 @@ VexInvalRange unchainXDirect_MIPS ( void* place_to_unchain,
 VexInvalRange patchProfInc_MIPS ( void*  place_to_patch,
                                   ULong* location_of_counter, Bool mode64 )
 {
+   if (mode64)
+      vassert(sizeof(ULong*) == 8);
+   else
    vassert(sizeof(ULong*) == 4);
    UChar* p = (UChar*)place_to_patch;
    vassert(0 == (3 & (HWord)p));
-   vassert(isLoadImm_EXACTLY2or5((UChar *)p, /*r*/9, 0x65556555, mode64));
+   vassert(isLoadImm_EXACTLY2or6((UChar *)p, /*r*/9,
+                                 mode64 ? 0x6555655565556555ULL : 0x65556555,
+                                 mode64));
 
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 0) == 0x8D280000);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 4) == 0x25080001);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 8) == 0xAD280000);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 12) == 0x2d010001);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 16) == 0x8d280004);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 20) == 0x01014021);
-   vassert(fetch32(p + (mode64 ? 20 : 8) + 24) == 0xad280004);
+   if (mode64) {
+      vassert(fetch32(p + 24 + 0) == 0xDD280000);
+      vassert(fetch32(p + 24 + 4) == 0x65080001);
+      vassert(fetch32(p + 24 + 8) == 0xFD280000);
+   } else {
+      vassert(fetch32(p + 8 + 0) == 0x8D280000);
+      vassert(fetch32(p + 8 + 4) == 0x25080001);
+      vassert(fetch32(p + 8 + 8) == 0xAD280000);
+      vassert(fetch32(p + 8 + 12) == 0x2d010001);
+      vassert(fetch32(p + 8 + 16) == 0x8d280004);
+      vassert(fetch32(p + 8 + 20) == 0x01014021);
+      vassert(fetch32(p + 8 + 24) == 0xad280004);
+   }
 
-   p = mkLoadImm_EXACTLY2or5(p, /*r*/9,
+   p = mkLoadImm_EXACTLY2or6(p, /*r*/9,
                              Ptr_to_ULong(location_of_counter), mode64);
 
    VexInvalRange vir = {(HWord)p, 8};

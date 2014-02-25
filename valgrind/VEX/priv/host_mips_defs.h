@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 RT-RK
+   Copyright (C) 2010-2013 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -31,9 +31,18 @@
 #ifndef __VEX_HOST_MIPS_DEFS_H
 #define __VEX_HOST_MIPS_DEFS_H
 
-/* Num registers used for function calls */
-#define MIPS_N_REGPARMS 4
+#include "libvex_basictypes.h"
+#include "libvex.h"             /* VexArch */
+#include "host_generic_regs.h"  /* HReg */
 
+/* Num registers used for function calls */
+#if defined(VGP_mips32_linux)
+/* a0, a1, a2, a3 */
+#define MIPS_N_REGPARMS 4
+#else
+/* a0, a1, a2, a3, a4, a5, a6, a7 */
+#define MIPS_N_REGPARMS 8
+#endif
 /* --------- Registers. --------- */
 
 /* The usual HReg abstraction.
@@ -42,9 +51,9 @@
 
 extern void ppHRegMIPS(HReg, Bool);
 
-extern HReg hregMIPS_GPR0(Bool mode64);   // scratch reg / zero reg
-extern HReg hregMIPS_GPR1(Bool mode64);   // reserved for trap handling 
-extern HReg hregMIPS_GPR2(Bool mode64);   // reserved for trap handling
+extern HReg hregMIPS_GPR0(Bool mode64);  /* scratch reg / zero reg */
+extern HReg hregMIPS_GPR1(Bool mode64);
+extern HReg hregMIPS_GPR2(Bool mode64);
 extern HReg hregMIPS_GPR3(Bool mode64);
 extern HReg hregMIPS_GPR4(Bool mode64);
 extern HReg hregMIPS_GPR5(Bool mode64);
@@ -65,8 +74,8 @@ extern HReg hregMIPS_GPR19(Bool mode64);
 extern HReg hregMIPS_GPR20(Bool mode64);
 extern HReg hregMIPS_GPR21(Bool mode64);
 extern HReg hregMIPS_GPR22(Bool mode64);
-extern HReg hregMIPS_GPR23(Bool mode64);  // GuestStatePtr
-extern HReg hregMIPS_GPR24(Bool mode64);  // reserved for dispatcher
+extern HReg hregMIPS_GPR23(Bool mode64);  /* GuestStatePtr */
+extern HReg hregMIPS_GPR24(Bool mode64);
 extern HReg hregMIPS_GPR25(Bool mode64);
 extern HReg hregMIPS_GPR26(Bool mode64);
 extern HReg hregMIPS_GPR27(Bool mode64);
@@ -135,7 +144,7 @@ extern HReg hregMIPS_D13(void);
 extern HReg hregMIPS_D14(void);
 extern HReg hregMIPS_D15(void);
 
-#define GuestStatePointer(_mode64)     hregMIPS_GPR10(_mode64)
+#define GuestStatePointer(_mode64)     hregMIPS_GPR23(_mode64)
 
 #define StackFramePointer(_mode64)     hregMIPS_GPR30(_mode64)
 #define LinkRegister(_mode64)          hregMIPS_GPR31(_mode64)
@@ -146,8 +155,13 @@ extern HReg hregMIPS_D15(void);
 #define HIRegister(_mode64)        hregMIPS_HI(_mode64)
 #define LORegister(_mode64)        hregMIPS_LO(_mode64)
 
+#if defined(VGP_mips64_linux)
+/* a0, a1, a2, a3, a4, a5, a6, a7 */
+#define MIPS_N_ARGREGS 8
+#elif defined(VGP_mips32_linux)
 /* a0, a1, a2, a3 */
 #define MIPS_N_ARGREGS 4
+#endif
 
 /* --------- Condition codes, Intel encoding. --------- */
 typedef enum {
@@ -176,7 +190,7 @@ typedef enum {
    MIPScc_NV = 15    /* never (unconditional): */
 } MIPSCondCode;
 
-extern HChar *showMIPSCondCode(MIPSCondCode);
+extern const HChar *showMIPSCondCode(MIPSCondCode);
 
 /* --------- Memory address expressions (amodes). --------- */
 typedef enum {
@@ -232,66 +246,6 @@ extern void ppMIPSRH(MIPSRH *, Bool);
 extern MIPSRH *MIPSRH_Imm(Bool, UShort);
 extern MIPSRH *MIPSRH_Reg(HReg);
 
-/* --- Addressing Mode suitable for VFP --- */
-typedef struct {
-   HReg reg;
-   Int simm11;
-} MIPSAModeV;
-
-extern MIPSAModeV *mkMIPSAModeV(HReg reg, Int simm11);
-
-extern void ppMIPSAModeV(MIPSAModeV *);
-
-/* --------- Reg or imm-8x4 operands --------- */
-/* a.k.a (a very restricted form of) Shifter Operand,
-   in the MIPS parlance. */
-
-typedef enum {
-   MIPSri84_I84 = 5, /* imm8 `ror` (2 * imm4) */
-   MIPSri84_R     /* reg */
-} MIPSRI84Tag;
-
-typedef struct {
-   MIPSRI84Tag tag;
-   union {
-      struct {
-         UShort imm8;
-         UShort imm4;
-      } I84;
-      struct {
-         HReg reg;
-      } R;
-   } MIPSri84;
-} MIPSRI84;
-
-extern MIPSRI84 *MIPSRI84_I84(UShort imm8, UShort imm4);
-extern MIPSRI84 *MIPSRI84_R(HReg);
-
-extern void ppMIPSRI84(MIPSRI84 *);
-
-/* --------- Reg or imm5 operands --------- */
-typedef enum {
-   MIPSri5_I5 = 7,      /* imm5, 1 .. 31 only (no zero!) */
-   MIPSri5_R      /* reg */
-} MIPSRI5Tag;
-
-typedef struct {
-   MIPSRI5Tag tag;
-   union {
-      struct {
-         UInt imm5;
-      } I5;
-      struct {
-         HReg reg;
-      } R;
-   } MIPSri5;
-} MIPSRI5;
-
-extern MIPSRI5 *MIPSRI5_I5(UInt imm5);
-extern MIPSRI5 *MIPSRI5_R(HReg);
-
-extern void ppMIPSRI5(MIPSRI5 *);
-
 /* --------- Instructions. --------- */
 
 /*Tags for operations*/
@@ -300,10 +254,12 @@ extern void ppMIPSRI5(MIPSRI5 *);
 typedef enum {
    Mun_CLO,
    Mun_CLZ,
+   Mun_DCLO,
+   Mun_DCLZ,
    Mun_NOP,
 } MIPSUnaryOp;
 
-extern HChar *showMIPSUnaryOp(MIPSUnaryOp);
+extern const HChar *showMIPSUnaryOp(MIPSUnaryOp);
 /* --------- */
 
 /* --------- */
@@ -312,9 +268,11 @@ typedef enum {
    Malu_INVALID,
    Malu_ADD, Malu_SUB,
    Malu_AND, Malu_OR, Malu_NOR, Malu_XOR,
+   Malu_DADD, Malu_DSUB,
+   Malu_SLT
 } MIPSAluOp;
 
-extern HChar *showMIPSAluOp(MIPSAluOp,
+extern const HChar *showMIPSAluOp(MIPSAluOp,
                             Bool /* is the 2nd operand an immediate? */ );
 
 /* --------- */
@@ -324,7 +282,7 @@ typedef enum {
    Mshft_SRA
 } MIPSShftOp;
 
-extern HChar *showMIPSShftOp(MIPSShftOp,
+extern const HChar *showMIPSShftOp(MIPSShftOp,
                              Bool /* is the 2nd operand an immediate? */ ,
                              Bool /* is this a 32bit or 64bit op? */ );
 
@@ -334,7 +292,7 @@ typedef enum {
    Macc_SUB
 } MIPSMaccOp;
 
-extern HChar *showMIPSMaccOp(MIPSMaccOp, Bool);
+extern const HChar *showMIPSMaccOp(MIPSMaccOp, Bool);
 /* --------- */
 
 /* ----- Instruction tags ----- */
@@ -367,11 +325,12 @@ typedef enum {
 
    Min_Load,      /* zero-extending load a 8|16|32 bit value from mem */
    Min_Store,     /* store a 8|16|32 bit value to mem */
-   Min_LoadL,     /* mips Load Linked Word */
-   Min_StoreC,    /* mips Store Conditional Word */
+   Min_LoadL,      /* mips Load Linked Word - LL */
+   Min_StoreC,     /* mips Store Conditional Word - SC */
 
    Min_FpUnary,      /* FP unary op */
    Min_FpBinary,     /* FP binary op */
+   Min_FpTernary,  /* FP ternary op */
    Min_FpConvert,    /* FP conversion op */
    Min_FpMulAcc,     /* FP multipy-accumulate style op */
    Min_FpLdSt,    /* FP load/store */
@@ -382,7 +341,9 @@ typedef enum {
    Min_MtFCSR,    /* set FCSR register */
    Min_MfFCSR,    /* get FCSR register */
    Min_FpCompare,    /* FP compare, generating value into int reg */
-   Min_MovCond
+
+   Min_FpGpMove,   /* Move from/to fpr to/from gpr */
+   Min_MoveCond    /* Move Conditional */
 } MIPSInstrTag;
 
 /* --------- */
@@ -395,18 +356,41 @@ typedef enum {
 
    /* Binary */
    Mfp_ADDD, Mfp_SUBD, Mfp_MULD, Mfp_DIVD,
-   Mfp_ADDS, Mfp_SUBS, Mfp_MULS, Mfp_DIVS, Mfp_CVTSD, Mfp_CVTSW, Mfp_CVTWD,
-   Mfp_CVTWS, Mfp_TRULS, Mfp_TRULD, Mfp_TRUWS, Mfp_TRUWD, Mfp_FLOORWS,
-   Mfp_FLOORWD, Mfp_ROUNDWS, Mfp_ROUNDWD, Mfp_CVTDW, Mfp_CMP,
-   Mfp_CEILWS, Mfp_CEILWD, Mfp_CEILLS, Mfp_CEILLD,
+   Mfp_ADDS, Mfp_SUBS, Mfp_MULS, Mfp_DIVS,
 
    /* Unary */
-   Mfp_SQRTS, Mfp_SQRTD, Mfp_RSQRTS, Mfp_RSQRTD, Mfp_RECIPS, Mfp_RECIPD,
+   Mfp_SQRTS, Mfp_SQRTD,
    Mfp_ABSS, Mfp_ABSD, Mfp_NEGS, Mfp_NEGD, Mfp_MOVS, Mfp_MOVD,
-   Mfp_RES, Mfp_RSQRTE, Mfp_FRIN, Mfp_FRIM, Mfp_FRIP, Mfp_FRIZ, Mfp_CVTD
+
+   /* FP convert */
+   Mfp_CVTSD, Mfp_CVTSW, Mfp_CVTWD,
+   Mfp_CVTWS, Mfp_CVTDL, Mfp_CVTSL, Mfp_CVTLS, Mfp_CVTLD, Mfp_TRULS, Mfp_TRULD,
+   Mfp_TRUWS, Mfp_TRUWD, Mfp_FLOORWS, Mfp_FLOORWD, Mfp_ROUNDWS, Mfp_ROUNDWD,
+   Mfp_CVTDW, Mfp_CMP, Mfp_CEILWS, Mfp_CEILWD, Mfp_CEILLS, Mfp_CEILLD,
+   Mfp_CVTDS, Mfp_ROUNDLD, Mfp_FLOORLD
+
 } MIPSFpOp;
 
-extern HChar *showMIPSFpOp(MIPSFpOp);
+extern const HChar *showMIPSFpOp(MIPSFpOp);
+
+/* Move from/to fpr to/from gpr */
+typedef enum {
+   MFpGpMove_mfc1,   /* Move Word From Floating Point - MIPS32 */
+   MFpGpMove_dmfc1,  /* Doubleword Move from Floating Point - MIPS64 */
+   MFpGpMove_mtc1,   /* Move Word to Floating Point - MIPS32 */
+   MFpGpMove_dmtc1   /* Doubleword Move to Floating Point - MIPS64 */
+} MIPSFpGpMoveOp;
+
+extern const HChar *showMIPSFpGpMoveOp ( MIPSFpGpMoveOp );
+
+/* Move Conditional */
+typedef enum {
+   MFpMoveCond_movns,  /* FP Move Conditional on Not Zero - MIPS32 */
+   MFpMoveCond_movnd,
+   MMoveCond_movn      /* Move Conditional on Not Zero */
+} MIPSMoveCondOp;
+
+extern const HChar *showMIPSMoveCondOp ( MIPSMoveCondOp );
 
 /*--------- Structure for instructions ----------*/
 /* Destinations are on the LEFT (first operand) */
@@ -463,38 +447,39 @@ typedef struct {
          MIPSCondCode cond;
       } Cmp;
       struct {
-         Bool widening; //True => widening, False => non-widening
-         Bool syned; //signed/unsigned - meaningless if widenind = False
+         Bool widening;  /* True => widening, False => non-widening */
+         Bool syned;     /* signed/unsigned - meaningless if widenind = False */
          Bool sz32;
          HReg dst;
          HReg srcL;
          HReg srcR;
       } Mul;
       struct {
-         Bool syned; //signed/unsigned - meaningless if widenind = False
+         Bool syned;  /* signed/unsigned - meaningless if widenind = False */
          Bool sz32;
          HReg srcL;
          HReg srcR;
       } Div;
       /* Pseudo-insn.  Call target (an absolute address), on given
          condition (which could be Mcc_ALWAYS).  argiregs indicates
-         which of r3 .. r10 
+         which of $4 .. $7 (mips32) or $4 .. $11 (mips64)
          carries argument values for this call,
-         using a bit mask (1<<N is set if rN holds an arg, for N in
-         3 .. 10 inclusive). 
+         using a bit mask (1<<N is set if $N holds an arg, for N in
+         $4 .. $7 or $4 .. $11 inclusive). 
          If cond is != Mcc_ALWAYS, src is checked.
          Otherwise, unconditional call */
       struct {
          MIPSCondCode cond;
-         Addr32 target;
+         Addr64 target;
          UInt argiregs;
          HReg src;
+         RetLoc rloc;     /* where the return value will be */
       } Call;
       /* Update the guest EIP value, then exit requesting to chain
          to it.  May be conditional.  Urr, use of Addr32 implicitly
          assumes that wordsize(guest) == wordsize(host). */
       struct {
-         Addr32      dstGA;    /* next guest address */
+         Addr64       dstGA;     /* next guest address */
          MIPSAMode*   amPC;    /* amode in guest state for PC */
          MIPSCondCode cond;     /* can be MIPScc_AL */
          Bool        toFastEP; /* chain to the slow or fast point? */
@@ -576,6 +561,13 @@ typedef struct {
       struct {
          MIPSFpOp op;
          HReg dst;
+         HReg src1;
+         HReg src2;
+         HReg src3;
+      } FpTernary;
+      struct {
+         MIPSFpOp op;
+         HReg dst;
          HReg srcML;
          HReg srcMR;
          HReg srcAcc;
@@ -599,14 +591,6 @@ typedef struct {
          HReg srcR;
          UChar cond1;
       } FpCompare;
-      struct {
-         MIPSFpOp op;
-         HReg dst;
-         HReg srcL;
-         MIPSRH *srcR;
-         HReg condR;
-         MIPSCondCode cond;
-      } MovCond;
       /* Move from GP register to FCSR register. */
       struct {
          HReg src;
@@ -624,6 +608,19 @@ typedef struct {
             installed later, post-translation, by patching it in,
             as it is not known at translation time. */
       } ProfInc;
+
+      /* Move from/to fpr to/from gpr */
+      struct {
+         MIPSFpGpMoveOp op;
+         HReg dst;
+         HReg src;
+      } FpGpMove;
+      struct {
+         MIPSMoveCondOp op;
+         HReg dst;
+         HReg src;
+         HReg cond;
+      } MoveCond;
 
    } Min;
 } MIPSInstr;
@@ -650,11 +647,11 @@ extern MIPSInstr *MIPSInstr_LoadL(UChar sz, HReg dst, MIPSAMode * src,
 extern MIPSInstr *MIPSInstr_StoreC(UChar sz, MIPSAMode * dst, HReg src,
                                    Bool mode64);
 
-extern MIPSInstr *MIPSInstr_Call(MIPSCondCode, Addr32, UInt, HReg);
-extern MIPSInstr *MIPSInstr_CallAlways(MIPSCondCode, Addr32, UInt);
+extern MIPSInstr *MIPSInstr_Call ( MIPSCondCode, Addr64, UInt, HReg, RetLoc );
+extern MIPSInstr *MIPSInstr_CallAlways ( MIPSCondCode, Addr64, UInt, RetLoc );
 
-extern MIPSInstr *MIPSInstr_XDirect(Addr32 dstGA, MIPSAMode* amPC,
-                                     MIPSCondCode cond, Bool toFastEP);
+extern MIPSInstr *MIPSInstr_XDirect ( Addr64 dstGA, MIPSAMode* amPC,
+                                      MIPSCondCode cond, Bool toFastEP );
 extern MIPSInstr *MIPSInstr_XIndir(HReg dstGA, MIPSAMode* amPC,
                                      MIPSCondCode cond);
 extern MIPSInstr *MIPSInstr_XAssisted(HReg dstGA, MIPSAMode* amPC,
@@ -663,6 +660,8 @@ extern MIPSInstr *MIPSInstr_XAssisted(HReg dstGA, MIPSAMode* amPC,
 extern MIPSInstr *MIPSInstr_FpUnary(MIPSFpOp op, HReg dst, HReg src);
 extern MIPSInstr *MIPSInstr_FpBinary(MIPSFpOp op, HReg dst, HReg srcL,
                                      HReg srcR);
+extern MIPSInstr *MIPSInstr_FpTernary ( MIPSFpOp op, HReg dst, HReg src1,
+                                        HReg src2, HReg src3 );
 extern MIPSInstr *MIPSInstr_FpConvert(MIPSFpOp op, HReg dst, HReg src);
 extern MIPSInstr *MIPSInstr_FpCompare(MIPSFpOp op, HReg dst, HReg srcL,
                   HReg srcR, UChar cond1);
@@ -684,9 +683,10 @@ extern MIPSInstr *MIPSInstr_Mtlo(HReg src);
 
 extern MIPSInstr *MIPSInstr_RdWrLR(Bool wrLR, HReg gpr);
 
-// srcL will be copied if !condR
-extern MIPSInstr *MIPSInstr_MovCond(HReg dst, HReg srcL, MIPSRH * src,
-                                    HReg condR, MIPSCondCode cond);
+extern MIPSInstr *MIPSInstr_MoveCond ( MIPSMoveCondOp op, HReg dst,
+                                       HReg src, HReg cond );
+
+extern MIPSInstr *MIPSInstr_FpGpMove ( MIPSFpGpMoveOp op, HReg dst, HReg src );
 
 extern MIPSInstr *MIPSInstr_EvCheck(MIPSAMode* amCounter,
                                     MIPSAMode* amFailAddr );

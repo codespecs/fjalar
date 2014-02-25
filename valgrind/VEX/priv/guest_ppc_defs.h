@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -39,6 +39,10 @@
 #ifndef __VEX_GUEST_PPC_DEFS_H
 #define __VEX_GUEST_PPC_DEFS_H
 
+#include "libvex_basictypes.h"
+#include "libvex_guest_ppc32.h"         // VexGuestPPC32State
+#include "libvex_guest_ppc64.h"         // VexGuestPPC64State
+#include "guest_generic_bb_to_IR.h"     // DisResult
 
 /*---------------------------------------------------------*/
 /*--- ppc to IR conversion                              ---*/
@@ -57,17 +61,18 @@ DisResult disInstr_PPC ( IRSB*        irbb,
                          VexArch      guest_arch,
                          VexArchInfo* archinfo,
                          VexAbiInfo*  abiinfo,
-                         Bool         host_bigendian );
+                         Bool         host_bigendian,
+                         Bool         sigill_diag );
 
 /* Used by the optimiser to specialise calls to helpers. */
 extern
-IRExpr* guest_ppc32_spechelper ( HChar* function_name,
+IRExpr* guest_ppc32_spechelper ( const HChar* function_name,
                                  IRExpr** args,
                                  IRStmt** precedingStmts,
                                  Int      n_precedingStmts );
 
 extern
-IRExpr* guest_ppc64_spechelper ( HChar* function_name,
+IRExpr* guest_ppc64_spechelper ( const HChar* function_name,
                                  IRExpr** args,
                                  IRStmt** precedingStmts,
                                  Int      n_precedingStmts );
@@ -129,6 +134,7 @@ enum {
    /* 15 */ PPCG_FLAG_OP_DIVWEU,  // divweuo
    /* 16 */ PPCG_FLAG_OP_DIVWE,   // divweo
    /* 17 */ PPCG_FLAG_OP_DIVDEU,  // divdeuo
+   /* 18 */ PPCG_FLAG_OP_MULLD,   // mulldo
    PPCG_FLAG_OP_NUMBER
 };
 
