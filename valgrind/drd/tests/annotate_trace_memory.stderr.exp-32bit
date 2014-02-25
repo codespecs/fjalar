@@ -45,6 +45,8 @@ load  0x........ size 4 (thread x / vc ...)
    at 0x........: main (annotate_trace_memory.c:?)
 store 0x........ size 4 val 305419905/0x........ (thread x / vc ...)
    at 0x........: main (annotate_trace_memory.c:?)
+store 0x........ size 4 val 0/0x........ (thread x / vc ...)
+   at 0x........: main (annotate_trace_memory.c:?)
 Done.
 
 ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

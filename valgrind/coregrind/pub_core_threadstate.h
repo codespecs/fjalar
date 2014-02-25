@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,6 +40,8 @@
 //--------------------------------------------------------------------
 
 #include "pub_tool_threadstate.h"
+#include "pub_core_libcsetjmp.h"   // VG_MINIMAL_JMP_BUF
+#include "pub_core_vki.h"          // vki_sigset_t
 
 /*------------------------------------------------------------*/
 /*--- Types                                                ---*/
@@ -68,7 +70,8 @@ typedef
    enum { 
       VgSrc_None,	 /* not exiting yet */
       VgSrc_ExitThread,  /* just this thread is exiting */
-      VgSrc_ExitProcess, /* entire process is exiting */
+      VgSrc_ExitProcess, /* this thread is exiting due to another thread
+                            calling exit() */
       VgSrc_FatalSig	 /* Killed by the default action of a fatal
 			    signal */
    }
@@ -89,6 +92,8 @@ typedef
    typedef VexGuestS390XState VexGuestArchState;
 #elif defined(VGA_mips32)
    typedef VexGuestMIPS32State VexGuestArchState;
+#elif defined(VGA_mips64)
+   typedef VexGuestMIPS64State VexGuestArchState;
 #else
 #  error Unknown architecture
 #endif
@@ -356,6 +361,9 @@ typedef struct {
    /* Per-thread jmp_buf to resume scheduler after a signal */
    Bool    sched_jmpbuf_valid;
    VG_MINIMAL_JMP_BUF(sched_jmpbuf);
+
+   /* This thread's name. NULL, if no name. */
+   HChar *thread_name;
 }
 ThreadState;
 
@@ -383,6 +391,9 @@ void VG_(init_Threads)(void);
 
 // Convert a ThreadStatus to a string.
 const HChar* VG_(name_of_ThreadStatus) ( ThreadStatus status );
+
+// Convert a VgSchedReturnCode to a string.
+const HChar* VG_(name_of_VgSchedReturnCode) ( VgSchedReturnCode retcode );
 
 /* Get the ThreadState for a particular thread */
 extern ThreadState *VG_(get_ThreadState) ( ThreadId tid );

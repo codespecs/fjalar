@@ -56,7 +56,7 @@ typedef struct _CommandLineOptions CommandLineOptions;
 struct _CommandLineOptions {
 
   /* Dump format options */
-  Char* out_format;      /* Format string for callgrind output file name */
+  const HChar* out_format;  /* Format string for callgrind output file name */
   Bool combine_dumps;    /* Dump trace parts into same file? */
   Bool compress_strings;
   Bool compress_events;
@@ -212,7 +212,6 @@ struct _Statistics {
 typedef struct _Context     Context;
 typedef struct _CC          CC;
 typedef struct _BB          BB;
-typedef struct _Skipped     Skipped;
 typedef struct _BBCC        BBCC;
 typedef struct _jCC         jCC;
 typedef struct _fCC         fCC;
@@ -422,7 +421,7 @@ struct _BBCC {
  */
 
 struct _fn_node {
-  Char*      name;
+  HChar*     name;
   UInt       number;
   Context*   last_cxt; /* LRU info */
   Context*   pure_cxt; /* the context with only the function itself */
@@ -456,7 +455,7 @@ struct _fn_node {
 #define N_BBCC2_ENTRIES         37
 
 struct _file_node {
-   Char*      name;
+   HChar*     name;
    fn_node*   fns[N_FN_ENTRIES];
    UInt       number;
    obj_node*  obj;
@@ -468,7 +467,7 @@ struct _file_node {
  * zero when object is unmapped (possible at dump time).
  */
 struct _obj_node {
-   Char*      name;
+   const HChar* name;
    UInt       last_slash_pos;
 
    Addr       start;  /* Start address of text segment mapping */
@@ -657,10 +656,10 @@ struct _FnPos {
 struct cachesim_if
 {
     void (*print_opts)(void);
-    Bool (*parse_opt)(Char* arg);
+    Bool (*parse_opt)(const HChar* arg);
     void (*post_clo_init)(void);
     void (*clear)(void);
-    void (*getdesc)(Char* buf);
+    void (*getdesc)(HChar* buf);
     void (*printstat)(Int,Int,Int);
     void (*add_icost)(SimCost, BBCC*, InstrInfo*, ULong);
     void (*finish)(void);
@@ -676,9 +675,9 @@ struct cachesim_if
     void (*log_0I1Dw)(InstrInfo*, Addr, Word) VG_REGPARM(3);
 
     // function names of helpers (for debugging generated code)
-    Char *log_1I0D_name, *log_2I0D_name, *log_3I0D_name;
-    Char *log_1I1Dr_name, *log_1I1Dw_name;
-    Char *log_0I1Dr_name, *log_0I1Dw_name;
+    const HChar *log_1I0D_name, *log_2I0D_name, *log_3I0D_name;
+    const HChar *log_1I1Dr_name, *log_1I1Dw_name;
+    const HChar *log_0I1Dr_name, *log_0I1Dw_name;
 };
 
 // set by setup_bbcc at start of every BB, and needed by log_* helpers
@@ -712,7 +711,7 @@ extern struct event_sets CLG_(sets);
 
 void CLG_(set_clo_defaults)(void);
 void CLG_(update_fn_config)(fn_node*);
-Bool CLG_(process_cmd_line_option)(Char*);
+Bool CLG_(process_cmd_line_option)(const HChar*);
 void CLG_(print_usage)(void);
 void CLG_(print_debug_usage)(void);
 
@@ -721,11 +720,11 @@ extern struct cachesim_if CLG_(cachesim);
 void CLG_(init_eventsets)(void);
 
 /* from main.c */
-Bool CLG_(get_debug_info)(Addr, Char filename[FILENAME_LEN],
-			 Char fn_name[FN_NAME_LEN], UInt*, DebugInfo**);
+Bool CLG_(get_debug_info)(Addr, HChar filename[FILENAME_LEN],
+			 HChar fn_name[FN_NAME_LEN], UInt*, DebugInfo**);
 void CLG_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*);
-void CLG_(set_instrument_state)(Char*,Bool);
-void CLG_(dump_profile)(Char* trigger,Bool only_current_thread);
+void CLG_(set_instrument_state)(const HChar*,Bool);
+void CLG_(dump_profile)(const HChar* trigger,Bool only_current_thread);
 void CLG_(zero_all_cost)(Bool only_current_thread);
 Int CLG_(get_dump_counter)(void);
 void CLG_(fini)(Int exitcode);
@@ -751,7 +750,7 @@ UInt* CLG_(get_fn_entry)(Int n);
 
 void      CLG_(init_obj_table)(void);
 obj_node* CLG_(get_obj_node)(DebugInfo* si);
-file_node* CLG_(get_file_node)(obj_node*, Char* filename);
+file_node* CLG_(get_file_node)(obj_node*, HChar* filename);
 fn_node*  CLG_(get_fn_node)(BB* bb);
 
 /* from bbcc.c */
@@ -813,8 +812,8 @@ void CLG_(run_post_signal_on_call_stack_bottom)(void);
 /* from dump.c */
 extern FullCost CLG_(total_cost);
 void CLG_(init_dumps)(void);
-Char* CLG_(get_out_file)(void);
-Char* CLG_(get_out_directory)(void);
+HChar* CLG_(get_out_file)(void);
+HChar* CLG_(get_out_directory)(void);
 
 /*------------------------------------------------------------*/
 /*--- Exported global variables                            ---*/
@@ -882,8 +881,8 @@ void CLG_(print_stackentry)(int s, int sp);
 void CLG_(print_addr)(Addr addr);
 void CLG_(print_addr_ln)(Addr addr);
 
-void* CLG_(malloc)(HChar* cc, UWord s, char* f);
-void* CLG_(free)(void* p, char* f);
+void* CLG_(malloc)(const HChar* cc, UWord s, const HChar* f);
+void* CLG_(free)(void* p, const HChar* f);
 #if 0
 #define CLG_MALLOC(_cc,x) CLG_(malloc)((_cc),x,__FUNCTION__)
 #define CLG_FREE(p)       CLG_(free)(p,__FUNCTION__)

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 #ifndef __PUB_CORE_UME_H
 #define __PUB_CORE_UME_H
 
+#include "pub_core_basics.h"   // VG_ macro
+
 //--------------------------------------------------------------------
 // PURPOSE: This module implements user-mode execve, ie. program loading
 // and exec'ing.
@@ -44,7 +46,7 @@
 // inputs/outputs of do_exec().
 typedef
    struct {
-      HChar** argv;       // IN: the original argv
+      const HChar** argv;   // IN: the original argv
 
       Addr exe_base;     // INOUT: lowest (allowed) address of exe
       Addr exe_end;      // INOUT: highest (allowed) address
@@ -52,6 +54,7 @@ typedef
 #if !defined(VGO_darwin)
       Addr phdr;         // OUT: address phdr was mapped at
       Int  phnum;        // OUT: number of phdrs
+      UInt stack_prot;   // OUT: stack permissions
       Addr interp_base;  // OUT: where interpreter (ld.so) was mapped
 #else
       Addr  stack_start;      // OUT: address of start of stack segment (hot)

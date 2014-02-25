@@ -27,7 +27,7 @@
 #include "regcache.h"
 
 #include "pub_core_aspacemgr.h"
-#include "pub_tool_machine.h"
+#include "pub_core_machine.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_transtab.h"
 #include "pub_core_gdbserver.h" 
@@ -144,7 +144,7 @@ Addr thumb_pc (Addr pc)
 
    // pc aligned on 4 bytes. We need to use debug info.
    {
-      Char fnname[200]; // ??? max size
+      HChar fnname[200]; // ??? max size
       Addr entrypoint;
       Addr ptoc; // unused but needed.
       // If this is a thumb instruction, we need to ask
@@ -278,7 +278,7 @@ void transfer_register (ThreadId tid, int abs_regno, void * buf,
 }
 
 static
-char* target_xml (Bool shadow_mode)
+const char* target_xml (Bool shadow_mode)
 {
    if (shadow_mode) {
       return "arm-with-vfpv3-valgrind.xml";

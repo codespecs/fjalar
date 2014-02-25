@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -79,8 +79,8 @@ typedef
    SWAStackElem;
 
 struct _SparseWA {
-   void*        (*alloc_nofail)(HChar*,SizeT);
-   HChar*       cc;
+   void*        (*alloc_nofail)(const HChar*,SizeT);
+   const HChar* cc;
    void         (*dealloc)(void*);
    LevelN*      root;
    SWAStackElem iterStack[8];
@@ -231,8 +231,8 @@ Bool VG_(nextIterSWA)( SparseWA* swa,
 }
 
 
-SparseWA* VG_(newSWA) ( void*(*alloc_nofail)(HChar* cc, SizeT), 
-                        HChar* cc,
+SparseWA* VG_(newSWA) ( void*(*alloc_nofail)(const HChar* cc, SizeT), 
+                        const HChar* cc,
                         void(*dealloc)(void*) )
 {
    SparseWA* swa;

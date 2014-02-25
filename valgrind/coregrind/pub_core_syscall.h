@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,8 @@
 
 #ifndef __PUB_CORE_SYSCALL_H
 #define __PUB_CORE_SYSCALL_H
+
+#include "pub_core_basics.h"   // VG_ macro
 
 //--------------------------------------------------------------------
 // PURPOSE: This module contains the code for actually executing syscalls.
@@ -81,6 +83,8 @@ extern SysRes VG_(mk_SysRes_amd64_darwin)( UChar scclass, Bool isErr,
 extern SysRes VG_(mk_SysRes_s390x_linux) ( Long val );
 extern SysRes VG_(mk_SysRes_mips32_linux)( UWord v0, UWord v1,
                                            UWord a3 );
+extern SysRes VG_(mk_SysRes_mips64_linux)( ULong v0, ULong v1,
+                                           ULong a3 );
 extern SysRes VG_(mk_SysRes_Error)       ( UWord val );
 extern SysRes VG_(mk_SysRes_Success)     ( UWord val );
 

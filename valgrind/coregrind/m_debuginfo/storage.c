@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -47,6 +47,7 @@
 #include "pub_core_oset.h"
 
 #include "priv_misc.h"         /* dinfo_zalloc/free/strdup */
+#include "priv_image.h"
 #include "priv_d3basics.h"     /* ML_(pp_GX) */
 #include "priv_tytypes.h"
 #include "priv_storage.h"      /* self */
@@ -59,7 +60,7 @@
 /* Show a non-fatal debug info reading error.  Use vg_panic if
    terminal.  'serious' errors are shown regardless of the
    verbosity setting. */
-void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
+void ML_(symerr) ( struct _DebugInfo* di, Bool serious, const HChar* msg )
 {
    /* XML mode hides everything :-( */
    if (VG_(clo_xml))
@@ -75,7 +76,7 @@ void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
          VG_(message)(Vg_DebugMsg, 
                       "When reading debug info from %s:\n",
                       (di && di->fsm.filename) ? di->fsm.filename
-                                               : (UChar*)"???");
+                                               : "???");
       }
       VG_(message)(Vg_DebugMsg, "%s\n", msg);
 
@@ -91,7 +92,7 @@ void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg )
 /* Print a symbol. */
 void ML_(ppSym) ( Int idx, DiSym* sym )
 {
-   UChar** sec_names = sym->sec_names;
+   HChar** sec_names = sym->sec_names;
    vg_assert(sym->pri_name);
    if (sec_names)
       vg_assert(sec_names);
@@ -189,7 +190,7 @@ void ML_(ppDiCfSI) ( XArray* /* of CfiExpr */ exprs, DiCfSI* si )
    VG_(printf)(" R7=");
    SHOW_HOW(si->r7_how, si->r7_off);
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64)
-#  elif defined(VGA_s390x) || defined(VGA_mips32)
+#  elif defined(VGA_s390x) || defined(VGA_mips32) || defined(VGA_mips64)
    VG_(printf)(" SP=");
    SHOW_HOW(si->sp_how, si->sp_off);
    VG_(printf)(" FP=");
@@ -215,11 +216,11 @@ void ML_(ppDiCfSI) ( XArray* /* of CfiExpr */ exprs, DiCfSI* si )
    a chunking memory allocator rather than reallocating, so the
    pointers are stable.
 */
-UChar* ML_(addStr) ( struct _DebugInfo* di, UChar* str, Int len )
+HChar* ML_(addStr) ( struct _DebugInfo* di, const HChar* str, Int len )
 {
    struct strchunk *chunk;
    Int    space_needed;
-   UChar* p;
+   HChar* p;
 
    if (len == -1) {
       len = VG_(strlen)(str);
@@ -246,6 +247,21 @@ UChar* ML_(addStr) ( struct _DebugInfo* di, UChar* str, Int len )
    chunk->strtab_used += space_needed;
 
    return p;
+}
+
+
+/* Add a string to the string table of a DebugInfo, by copying the
+   string from the given DiCursor.  Measures the length of the string
+   itself. */
+HChar* ML_(addStrFromCursor)( struct _DebugInfo* di, DiCursor c )
+{
+   /* This is a less-than-stellar implementation, but it should
+      work. */
+   vg_assert(ML_(cur_is_valid)(c));
+   HChar* str = ML_(cur_read_strdup)(c, "di.addStrFromCursor.1");
+   HChar* res = ML_(addStr)(di, str, -1);
+   ML_(dinfo_free)(str);
+   return res;
 }
 
 
@@ -337,8 +353,8 @@ static void shrinkLocTab ( struct _DebugInfo* di )
 /* Top-level place to call to add a source-location mapping entry.
 */
 void ML_(addLineInfo) ( struct _DebugInfo* di,
-                        UChar*   filename,
-                        UChar*   dirname, /* NULL == directory is unknown */
+                        const HChar* filename,
+                        const HChar* dirname, /* NULL == directory is unknown */
                         Addr     this,
                         Addr     next,
                         Int      lineno,
@@ -354,7 +370,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
 
    if (debug)
       VG_(printf)( "  src %s %s line %d %#lx-%#lx\n",
-                   dirname ? dirname : (UChar*)"(unknown)",
+                   dirname ? dirname : "(unknown)",
                    filename, lineno, this, next );
 
    /* Maximum sanity checking.  Some versions of GNU as do a shabby
@@ -585,7 +601,16 @@ Int ML_(CfiExpr_Const)( XArray* dst, UWord con )
    e.Cex.Const.con = con;
    return (Int)VG_(addToXA)( dst, &e );
 }
-Int ML_(CfiExpr_Binop)( XArray* dst, CfiOp op, Int ixL, Int ixR )
+Int ML_(CfiExpr_Unop)( XArray* dst, CfiUnop op, Int ix )
+{
+   CfiExpr e;
+   VG_(memset)( &e, 0, sizeof(e) );
+   e.tag = Cex_Unop;
+   e.Cex.Unop.op  = op;
+   e.Cex.Unop.ix = ix;
+   return (Int)VG_(addToXA)( dst, &e );
+}
+Int ML_(CfiExpr_Binop)( XArray* dst, CfiBinop op, Int ixL, Int ixR )
 {
    CfiExpr e;
    VG_(memset)( &e, 0, sizeof(e) );
@@ -612,21 +637,31 @@ Int ML_(CfiExpr_DwReg)( XArray* dst, Int reg )
    return (Int)VG_(addToXA)( dst, &e );
 }
 
-static void ppCfiOp ( CfiOp op ) 
+static void ppCfiUnop ( CfiUnop op ) 
 {
    switch (op) {
-      case Cop_Add: VG_(printf)("+"); break;
-      case Cop_Sub: VG_(printf)("-"); break;
-      case Cop_And: VG_(printf)("&"); break;
-      case Cop_Mul: VG_(printf)("*"); break;
-      case Cop_Shl: VG_(printf)("<<"); break;
-      case Cop_Shr: VG_(printf)(">>"); break;
-      case Cop_Eq: VG_(printf)("=="); break;
-      case Cop_Ge: VG_(printf)(">="); break;
-      case Cop_Gt: VG_(printf)(">"); break;
-      case Cop_Le: VG_(printf)("<="); break;
-      case Cop_Lt: VG_(printf)("<"); break;
-      case Cop_Ne: VG_(printf)("!="); break;
+      case Cunop_Abs: VG_(printf)("abs"); break;
+      case Cunop_Neg: VG_(printf)("-"); break;
+      case Cunop_Not: VG_(printf)("~"); break;
+      default:        vg_assert(0);
+   }
+}
+
+static void ppCfiBinop ( CfiBinop op ) 
+{
+   switch (op) {
+      case Cbinop_Add: VG_(printf)("+"); break;
+      case Cbinop_Sub: VG_(printf)("-"); break;
+      case Cbinop_And: VG_(printf)("&"); break;
+      case Cbinop_Mul: VG_(printf)("*"); break;
+      case Cbinop_Shl: VG_(printf)("<<"); break;
+      case Cbinop_Shr: VG_(printf)(">>"); break;
+      case Cbinop_Eq:  VG_(printf)("=="); break;
+      case Cbinop_Ge:  VG_(printf)(">="); break;
+      case Cbinop_Gt:  VG_(printf)(">"); break;
+      case Cbinop_Le:  VG_(printf)("<="); break;
+      case Cbinop_Lt:  VG_(printf)("<"); break;
+      case Cbinop_Ne:  VG_(printf)("!="); break;
       default:      vg_assert(0);
    }
 }
@@ -664,11 +699,17 @@ void ML_(ppCfiExpr)( XArray* src, Int ix )
       case Cex_Const: 
          VG_(printf)("0x%lx", e->Cex.Const.con); 
          break;
+      case Cex_Unop: 
+         ppCfiUnop(e->Cex.Unop.op);
+         VG_(printf)("(");
+         ML_(ppCfiExpr)(src, e->Cex.Unop.ix);
+         VG_(printf)(")");
+         break;
       case Cex_Binop: 
          VG_(printf)("(");
          ML_(ppCfiExpr)(src, e->Cex.Binop.ixL);
          VG_(printf)(")");
-         ppCfiOp(e->Cex.Binop.op);
+         ppCfiBinop(e->Cex.Binop.op);
          VG_(printf)("(");
          ML_(ppCfiExpr)(src, e->Cex.Binop.ixR);
          VG_(printf)(")");
@@ -700,7 +741,7 @@ Word ML_(cmp_for_DiAddrRange_range) ( const void* keyV,
 }
 
 static
-void show_scope ( OSet* /* of DiAddrRange */ scope, HChar* who )
+void show_scope ( OSet* /* of DiAddrRange */ scope, const HChar* who )
 {
    DiAddrRange* range;
    VG_(printf)("Scope \"%s\" = {\n", who);
@@ -871,11 +912,11 @@ void ML_(addVar)( struct _DebugInfo* di,
                   Int    level,
                   Addr   aMin,
                   Addr   aMax,
-                  UChar* name, /* in di's .strchunks */
+                  HChar* name, /* in di's .strchunks */
                   UWord  typeR, /* a cuOff */
                   GExpr* gexpr,
                   GExpr* fbGX,
-                  UChar* fileName, /* where decl'd - may be NULL.
+                  HChar* fileName, /* where decl'd - may be NULL.
                                       in di's .strchunks */
                   Int    lineNo, /* where decl'd - may be zero */
                   Bool   show )
@@ -885,7 +926,7 @@ void ML_(addVar)( struct _DebugInfo* di,
    Bool       all;
    TyEnt*     ent;
    MaybeULong mul;
-   HChar*     badness;
+   const HChar* badness;
 
    tl_assert(di && di->admin_tyents);
 
@@ -1106,10 +1147,10 @@ static void canonicaliseVarInfo ( struct _DebugInfo* di )
    facilitates using binary search to map addresses to symbols when we
    come to query the table.
 */
-static Int compare_DiSym ( void* va, void* vb ) 
+static Int compare_DiSym ( const void* va, const void* vb ) 
 {
-   DiSym* a = (DiSym*)va;
-   DiSym* b = (DiSym*)vb;
+   const DiSym* a = va;
+   const DiSym* b = vb;
    if (a->addr < b->addr) return -1;
    if (a->addr > b->addr) return  1;
    return 0;
@@ -1149,12 +1190,12 @@ static Int compare_DiSym ( void* va, void* vb )
  */
 static
 Bool preferName ( struct _DebugInfo* di,
-                  UChar* a_name, UChar* b_name,
+                  HChar* a_name, HChar* b_name,
                   Addr sym_avma/*exposition only*/ )
 {
    Word cmp;
    Word vlena, vlenb;		/* length without version */
-   const UChar *vpa, *vpb;
+   const HChar *vpa, *vpb;
 
    Bool preferA = False;
    Bool preferB = False;
@@ -1208,7 +1249,7 @@ Bool preferName ( struct _DebugInfo* di,
    {
       Bool blankA = True;
       Bool blankB = True;
-      Char *s;
+      HChar *s;
       s = a_name;
       while (*s) {
          if (!VG_(isspace)(*s++)) {
@@ -1292,8 +1333,8 @@ void add_DiSym_names_to_from ( DebugInfo* di, DiSym* to, DiSym* from )
    vg_assert(from->pri_name);
    /* Figure out how many names there will be in the new combined
       secondary vector. */
-   UChar** to_sec   = to->sec_names;
-   UChar** from_sec = from->sec_names;
+   HChar** to_sec   = to->sec_names;
+   HChar** from_sec = from->sec_names;
    Word n_new_sec = 1;
    if (from_sec) {
       while (*from_sec) {
@@ -1311,8 +1352,8 @@ void add_DiSym_names_to_from ( DebugInfo* di, DiSym* to, DiSym* from )
       TRACE_SYMTAB("merge: -> %ld\n", n_new_sec);
    /* Create the new sec and copy stuff into it, putting the new
       entries at the end. */
-   UChar** new_sec = ML_(dinfo_zalloc)( "di.storage.aDntf.1",
-                                        (n_new_sec+1) * sizeof(UChar*) );
+   HChar** new_sec = ML_(dinfo_zalloc)( "di.storage.aDntf.1",
+                                        (n_new_sec+1) * sizeof(HChar*) );
    from_sec = from->sec_names;
    to_sec   = to->sec_names;
    Word i = 0;
@@ -1343,7 +1384,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
 {
    Word  i, j, n_truncated;
    Addr  sta1, sta2, end1, end2, toc1, toc2;
-   UChar *pri1, *pri2, **sec1, **sec2;
+   HChar *pri1, *pri2, **sec1, **sec2;
    Bool  ist1, ist2, isf1, isf2;
 
 #  define SWAP(ty,aa,bb) \
@@ -1467,7 +1508,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
          if (end1 > end2) { 
             sta1 = end2 + 1;
             SWAP(Addr,sta1,sta2); SWAP(Addr,end1,end2); SWAP(Addr,toc1,toc2);
-            SWAP(UChar*,pri1,pri2); SWAP(UChar**,sec1,sec2);
+            SWAP(HChar*,pri1,pri2); SWAP(HChar**,sec1,sec2);
             SWAP(Bool,ist1,ist2); SWAP(Bool,isf1,isf2);
          } else 
          if (end1 < end2) {
@@ -1536,7 +1577,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       show the user. */
    for (i = 0; i < ((Word)di->symtab_used)-1; i++) {
       DiSym*  sym = &di->symtab[i];
-      UChar** sec = sym->sec_names;
+      HChar** sec = sym->sec_names;
       if (!sec)
          continue;
       /* Slow but simple.  Copy all the cands into a temp array,
@@ -1544,8 +1585,8 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       Word n_tmp = 1;
       while (*sec) { n_tmp++; sec++; }
       j = 0;
-      UChar** tmp = ML_(dinfo_zalloc)( "di.storage.cS.1",
-                                       (n_tmp+1) * sizeof(UChar*) );
+      HChar** tmp = ML_(dinfo_zalloc)( "di.storage.cS.1",
+                                       (n_tmp+1) * sizeof(HChar*) );
       tmp[j++] = sym->pri_name;
       sec = sym->sec_names;
       while (*sec) { tmp[j++] = *sec; sec++; }
@@ -1563,7 +1604,7 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
       vg_assert(best >= 0 && best < n_tmp);
       /* Copy back */
       sym->pri_name = tmp[best];
-      UChar** cursor = sym->sec_names;
+      HChar** cursor = sym->sec_names;
       for (j = 0; j < n_tmp; j++) {
          if (j == best)
             continue;
@@ -1583,10 +1624,10 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
    ranges do not overlap.  This facilitates using binary search to map
    addresses to locations when we come to query the table.
 */
-static Int compare_DiLoc ( void* va, void* vb ) 
+static Int compare_DiLoc ( const void* va, const void* vb ) 
 {
-   DiLoc* a = (DiLoc*)va;
-   DiLoc* b = (DiLoc*)vb;
+   const DiLoc* a = va;
+   const DiLoc* b = vb;
    if (a->addr < b->addr) return -1;
    if (a->addr > b->addr) return  1;
    return 0;
@@ -1669,10 +1710,10 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
    as to facilitate rapidly skipping this SegInfo when looking for an
    address which falls outside that range.
 */
-static Int compare_DiCfSI ( void* va, void* vb )
+static Int compare_DiCfSI ( const void* va, const void* vb )
 {
-   DiCfSI* a = (DiCfSI*)va;
-   DiCfSI* b = (DiCfSI*)vb;
+   const DiCfSI* a = va;
+   const DiCfSI* b = vb;
    if (a->base < b->base) return -1;
    if (a->base > b->base) return  1;
    return 0;

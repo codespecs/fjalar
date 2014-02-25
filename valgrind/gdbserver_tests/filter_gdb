@@ -12,6 +12,8 @@ $dir/../tests/filter_addresses                                      |
 # memcheck stuff
 $dir/filter_memcheck_monitor "$@"                                   |
 
+# memcheck filter might leave some "..." lines, we are not interested
+sed -e '/^\ \ \ \ \.\.\.$/d'                                        |
 
 # Anonymise or remove :
 #       delete the initial lines between the launch of vgdb and the
@@ -49,6 +51,8 @@ $dir/filter_memcheck_monitor "$@"                                   |
 #         a.o. produced by gdb 7.2 on arm (same with standard gdbserver)
 #       delete empty lines (the last line (only made of prompts) sometimes
 #           finishes with a new line, sometimes not ???).
+#       'exited with code' and 'exited normally' are printed slightly
+#       differently between gdb versions, normalize to "Program exited...".
 sed -e '/Remote debugging using/,/vgdb launched process attached/d'                                   \
     -e 's/^\[?1034hReading symbols/Reading symbols/'                                                \
     -e '/^Missing separate debuginfo/d'                                                               \
@@ -64,6 +68,8 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e '/^Loaded symbols for .*$/d'                                                                   \
     -e '/^Current language.*/d'                                                                       \
     -e '/^The current source language is.*/d'                                                         \
+    -e 's/^.*\( exited with code [0-9]\+\).$/Program\1\./g'                              \
+    -e 's/^.*\( exited normally\).$/Program\1\./g'                              \
     -e 's/(gdb) //g'                                                                                  \
     -e 's/^>[> ]*//'                                                                                  \
     -e '/^done\.$/d'                                                                                  \
@@ -85,6 +91,7 @@ sed -e '/Remote debugging using/,/vgdb launched process attached/d'             
     -e '/^[ 	]*in \.\.\/sysdeps\/unix\/syscall-template\.S/d'                                      \
     -e '/^[1-9][0-9]*[ 	]*\.\.\/sysdeps\/unix\/syscall-template\.S/d'                                 \
     -e '/^[1-9][0-9]*[ 	]in *\.\.\/sysdeps\/unix\/syscall-template\.S/d'                              \
+    -e '/^[1-9][0-9]*[ 	]T_PSEUDO (SYSCALL_SYMBOL, SYSCALL_NAME, SYSCALL_NARGS)/d'                    \
     -e 's/\(Could not write register \)".*"/\1 "xxx"/'                                                \
     -e 's/\(ERROR changing register \).*$/\1 xxx regno y/'                                            \
     -e 's/0x........ in \(main (argc=1, argv=0x........) at watchpoints.c:[24][3689]\)/\1/'           \

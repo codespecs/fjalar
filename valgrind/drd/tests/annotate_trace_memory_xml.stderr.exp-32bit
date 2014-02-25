@@ -274,6 +274,18 @@ uint64_t
     </frame>
   </stack>
   </trace>
+  <trace><text>store 0x........ size 4 val 0/0x........ (thread x / vc ...)</text>
+  <stack>
+    <frame>
+      <ip>0x........</ip>
+      <obj>...</obj>
+      <fn>main</fn>
+      <dir>...</dir>
+      <file>annotate_trace_memory.c</file>
+      <line>...</line>
+    </frame>
+  </stack>
+  </trace>
 Done.
 
 <status>

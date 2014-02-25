@@ -2,7 +2,9 @@
 include $(top_srcdir)/Makefile.tool-tests.am
 
 dist_noinst_SCRIPTS = \
+	check_headers_and_includes \
 	check_isa-2_06_cap \
+	check_isa-2_07_cap \
 	check_makefile_consistency \
 	check_dfp_cap \
 	check_vmx_cap \
@@ -12,7 +14,9 @@ dist_noinst_SCRIPTS = \
 	filter_numbers \
 	filter_stderr_basic \
 	filter_sink \
+	filter_xml_frames \
 	platform_test \
+	post_regtest_checks \
 	vg_regtest
 
 noinst_HEADERS = \
@@ -25,7 +29,8 @@ check_PROGRAMS = \
 	os_test \
 	true \
 	x86_amd64_features \
-	s390x_features
+	s390x_features \
+	mips_features
 
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)

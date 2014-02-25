@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 RT-RK
+   Copyright (C) 2010-2013 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -116,7 +116,8 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 }
 
 static 
-void setup_sigcontext2 ( ThreadState* tst, struct vki_sigcontext **sc1, const vki_siginfo_t *si)
+void setup_sigcontext2 ( ThreadState* tst, struct vki_sigcontext **sc1,
+                         const vki_siginfo_t *si)
 {
 
   struct vki_sigcontext *sc = *sc1;
@@ -171,7 +172,6 @@ void VG_(sigframe_create)( ThreadId tid,
 {
   Addr sp;
   ThreadState* tst = VG_(get_ThreadState)(tid);
-  Addr faultaddr;
   Int sigNo = siginfo->si_signo;
   struct vg_sig_private *priv;
 
@@ -193,12 +193,6 @@ void VG_(sigframe_create)( ThreadId tid,
 
   vg_assert(VG_IS_8_ALIGNED(sp));
 
-  /* SIGILL defines addr to be the faulting address */
-
-  faultaddr = (Addr)siginfo->_sifields._sigfault._addr;
-  if (sigNo == VKI_SIGILL && siginfo->si_code > 0)
-    faultaddr = tst->arch.vex.guest_PC;
-      
   if (flags & VKI_SA_SIGINFO)
     {
       struct rt_sigframe *frame = (struct rt_sigframe *) sp;

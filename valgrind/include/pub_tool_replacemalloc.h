@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,8 @@
 
 #ifndef __PUB_TOOL_REPLACEMALLOC_H
 #define __PUB_TOOL_REPLACEMALLOC_H
+
+#include "pub_tool_basics.h"   // Addr
 
 /* If a tool replaces malloc() et al, the easiest way to do so is to
    link libreplacemalloc_toolpreload.o into its vgpreload_*.so file, and
@@ -63,7 +65,15 @@ extern Bool VG_(clo_trace_malloc);
    default: VG_MIN_MALLOC_SZB */
 extern UInt VG_(clo_alignment);
 
-extern Bool VG_(replacement_malloc_process_cmd_line_option) ( Char* arg );
+extern Bool VG_(replacement_malloc_process_cmd_line_option) ( const HChar* arg );
+
+// If tool is replacing malloc for the client, the below returns
+// the effective client redzone as derived from the default
+// provided by the tool, VG_(clo_redzone_size) and the minimum
+// redzone required by m_mallocfree.c.
+// It is an error to call this before VG_(needs_malloc_replacement) has
+// been called.
+extern SizeT VG_(malloc_effective_client_redzone_size)(void);
 
 #endif   // __PUB_TOOL_REPLACEMALLOC_H
 

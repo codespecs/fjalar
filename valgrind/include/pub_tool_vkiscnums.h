@@ -7,9 +7,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2012 Nicholas Nethercote
+   Copyright (C) 2005-2013 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2006-2012 OpenWorks LLP
+   Copyright (C) 2006-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -34,23 +34,24 @@
 #define __PUB_TOOL_VKISCNUMS_H
 
 #include "pub_tool_vkiscnums_asm.h"
+#include "pub_tool_basics.h"    // Word
 
 
 // This converts a syscall number into a string, suitable for printing.  It is
 // needed because some platforms (Darwin) munge sysnums in various ways.
 // It is used in places where the sycall name will be printed alongside.
-extern Char* VG_(sysnum_string)      (Word sysnum, SizeT n_buf, Char* buf);
+extern HChar* VG_(sysnum_string)      (Word sysnum, SizeT n_buf, HChar* buf);
 
 // This is like VG_(sysnum_string), but prints extra info if needed.  It is
 // called in places where the syscall name will *not* be printed alongside.
-extern Char* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, Char* buf);
+extern HChar* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, HChar* buf);
 
 // Macros that make the above functions easier to use by declaring a local
 // buffer.
 #define VG_SYSNUM_STRING(sysnum) \
-   ({ Char qq_zz_buf[32]; VG_(sysnum_string)(sysnum, 32, qq_zz_buf); })
+   ({ HChar qq_zz_buf[32]; VG_(sysnum_string)(sysnum, 32, qq_zz_buf); })
 #define VG_SYSNUM_STRING_EXTRA(sysnum) \
-   ({ Char qq_zz_buf[64]; VG_(sysnum_string_extra)(sysnum, 64, qq_zz_buf); })
+   ({ HChar qq_zz_buf[64]; VG_(sysnum_string_extra)(sysnum, 64, qq_zz_buf); })
 
 
 #endif   // __PUB_TOOL_VKISCNUMS_H

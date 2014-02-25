@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -220,6 +220,7 @@ extern void VG_(basic_tool_funcs)(
                       IRSB*              sb_in, 
                       VexGuestLayout*    layout, 
                       VexGuestExtents*   vge, 
+                      VexArchInfo*       archinfo_host,
                       IRType             gWordTy, 
                       IRType             hWordTy),
 
@@ -242,10 +243,10 @@ extern void VG_(basic_tool_funcs)(
    tools distributed with Valgrind that share a version number with
    Valgrind.  Other tools not distributed as part of Valgrind should
    probably have their own version number.  */
-extern void VG_(details_name)                  ( Char* name );
-extern void VG_(details_version)               ( Char* version );
-extern void VG_(details_description)           ( Char* description );
-extern void VG_(details_copyright_author)      ( Char* copyright_author );
+extern void VG_(details_name)                  ( const HChar* name );
+extern void VG_(details_version)               ( const HChar* version );
+extern void VG_(details_description)           ( const HChar* description );
+extern void VG_(details_copyright_author)      ( const HChar* copyright_author );
 
 /* Average size of a translation, in bytes, so that the translation
    storage machinery can allocate memory appropriately.  Not critical,
@@ -254,7 +255,7 @@ extern void VG_(details_avg_translation_sizeB) ( UInt size );
 
 /* String printed if an `tl_assert' assertion fails or VG_(tool_panic)
    is called.  Should probably be an email address. */
-extern void VG_(details_bug_reports_to)   ( Char* bug_reports_to );
+extern void VG_(details_bug_reports_to)   ( const HChar* bug_reports_to );
 
 /* ------------------------------------------------------------------ */
 /* Needs */
@@ -312,15 +313,15 @@ extern void VG_(needs_tool_errors) (
 
    // Return value indicates recognition.  If recognised, must set skind using
    // VG_(set_supp_kind)().
-   Bool (*recognised_suppression)(Char* name, Supp* su),
+   Bool (*recognised_suppression)(const HChar* name, Supp* su),
 
    // Read any extra info for this suppression kind.  Most likely for filling
    // in the `extra' and `string' parts (with VG_(set_supp_{extra, string})())
    // of a suppression if necessary.  Should return False if a syntax error
-   // occurred, True otherwise.  bufpp and nBufp are the same as for
-   // VG_(get_line).
-   Bool (*read_extra_suppression_info)(Int fd, Char** bufpp, SizeT* nBufp,
-                                       Supp* su),
+   // occurred, True otherwise.
+   // fd, bufpp, nBufp and lineno are the same as for VG_(get_line).
+   Bool (*read_extra_suppression_info)(Int fd, HChar** bufpp, SizeT* nBufp,
+                                       Int* lineno, Supp* su),
 
    // This should just check the kinds match and maybe some stuff in the
    // `string' and `extra' field if appropriate (using VG_(get_supp_*)() to
@@ -330,7 +331,7 @@ extern void VG_(needs_tool_errors) (
    // This should return the suppression name, for --gen-suppressions, or NULL
    // if that error type cannot be suppressed.  This is the inverse of
    // VG_(tdict).tool_recognised_suppression().
-   Char* (*get_error_name)(Error* err),
+   const HChar* (*get_error_name)(Error* err),
 
    // This should print into buf[0..nBuf-1] any extra info for the
    // error, for --gen-suppressions, but not including any leading
@@ -342,7 +343,20 @@ extern void VG_(needs_tool_errors) (
    // do nothing, and return False.  This function is the inverse of
    // VG_(tdict).tool_read_extra_suppression_info().
    Bool (*print_extra_suppression_info)(Error* err,
-                                        /*OUT*/Char* buf, Int nBuf)
+                                        /*OUT*/HChar* buf, Int nBuf),
+
+   // This is similar to print_extra_suppression_info, but is used
+   // to print information such as additional statistical counters
+   // as part of the used suppression list produced by -v.
+   Bool (*print_extra_suppression_use)(Supp* su,
+                                       /*OUT*/HChar* buf, Int nBuf),
+
+   // Called by error mgr once it has been established that err
+   // is suppressed by su. update_extra_suppression_use typically
+   // can be used to update suppression extra information such as
+   // some statistical counters that will be printed by
+   // print_extra_suppression_use.
+   void (*update_extra_suppression_use)(Error* err, Supp* su)
 );
 
 /* Is information kept by the tool about specific instructions or
@@ -385,7 +399,7 @@ extern void VG_(needs_command_line_options) (
    // if possible rather than in post_clo_init(), and if they are bad then
    // VG_(fmsg_bad_option)() should be called.  This ensures that the
    // messaging is consistent with command line option errors from the core.
-   Bool (*process_cmd_line_option)(Char* argv),
+   Bool (*process_cmd_line_option)(const HChar* argv),
 
    // Print out command line usage for options for normal tool operation.
    void (*print_usage)(void),
@@ -584,18 +598,18 @@ void VG_(track_ban_mem_stack)      (void(*f)(Addr a, SizeT len));
 
 /* These ones occur around syscalls, signal handling, etc */
 void VG_(track_pre_mem_read)       (void(*f)(CorePart part, ThreadId tid,
-                                             Char* s, Addr a, SizeT size));
+                                             const HChar* s, Addr a, SizeT size));
 void VG_(track_pre_mem_read_asciiz)(void(*f)(CorePart part, ThreadId tid,
-                                             Char* s, Addr a));
+                                             const HChar* s, Addr a));
 void VG_(track_pre_mem_write)      (void(*f)(CorePart part, ThreadId tid,
-                                             Char* s, Addr a, SizeT size));
+                                             const HChar* s, Addr a, SizeT size));
 void VG_(track_post_mem_write)     (void(*f)(CorePart part, ThreadId tid,
                                              Addr a, SizeT size));
 
 /* Register events.  Use VG_(set_shadow_state_area)() to set the shadow regs
    for these events.  */
 void VG_(track_pre_reg_read)  (void(*f)(CorePart part, ThreadId tid,
-                                        Char* s, PtrdiffT guest_state_offset,
+                                        const HChar* s, PtrdiffT guest_state_offset,
                                         SizeT size));
 void VG_(track_post_reg_write)(void(*f)(CorePart part, ThreadId tid,
                                         PtrdiffT guest_state_offset,

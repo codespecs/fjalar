@@ -3,8 +3,8 @@
   "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd"
 [ <!ENTITY % vg-entities SYSTEM "../../docs/xml/vg-entities.xml"> %vg-entities; ]>
 
-
-<chapter id="cg-manual" xreflabel="Cachegrind: a cache and branch-prediction profiler">
+<!-- Referenced from both the manual and manpage -->
+<chapter id="&vg-cg-manual-id;" xreflabel="&vg-cg-manual-label;">
 <title>Cachegrind: a cache and branch-prediction profiler</title>
 
 <para>To use this tool, you must specify
@@ -20,10 +20,10 @@ independent first-level instruction and data caches (I1 and D1), backed by a
 unified second-level cache (L2).  This exactly matches the configuration of
 many modern machines.</para>
 
-<para>However, some modern machines have three levels of cache.  For these
+<para>However, some modern machines have three or four levels of cache.  For these
 machines (in the cases where Cachegrind can auto-detect the cache
-configuration) Cachegrind simulates the first-level and third-level caches.
-The reason for this choice is that the L3 cache has the most influence on
+configuration) Cachegrind simulates the first-level and last-level caches.
+The reason for this choice is that the last-level cache has the most influence on
 runtime, as it masks accesses to main memory.  Furthermore, the L1 caches
 often have low associativity, so simulating them can detect cases where the
 code interacts badly with this cache (eg. traversing a matrix column-wise
@@ -112,7 +112,7 @@ information, and then run cg_annotate to get a detailed presentation of that
 information.  As an optional intermediate step, you can use cg_merge to sum
 together the outputs of multiple Cachegrind runs into a single file which
 you then use as the input for cg_annotate.  Alternatively, you can use
-cg_diff to difference the outputs of two Cachegrind runs into a signel file
+cg_diff to difference the outputs of two Cachegrind runs into a single file
 which you then use as the input for cg_annotate.</para>
 
 
@@ -352,7 +352,7 @@ a column contains only a dot it means the function never performs
 that event (e.g. the third row shows that
 <computeroutput>strcmp()</computeroutput> contains no
 instructions that write to memory). The name
-<computeroutput>???</computeroutput> is used if the the file name
+<computeroutput>???</computeroutput> is used if the file name
 and/or function name could not be determined from debugging
 information. If most of the entries have the form
 <computeroutput>???:???</computeroutput> the program probably
@@ -1001,6 +1001,29 @@ small differences like these;  it works in the same way as
 </sect1>
 
 
+<sect1 id="cg-manual.mergeopts" xreflabel="cg_merge Command-line Options">
+<title>cg_merge Command-line Options</title>
+
+<!-- start of xi:include in the manpage -->
+<variablelist id="cg_merge.opts.list">
+
+  <varlistentry>
+    <term>
+      <option><![CDATA[-o outfile]]></option>
+    </term>
+    <listitem>
+      <para>Write the profile data to <computeroutput>outfile</computeroutput>
+            rather than to standard output.
+      </para>
+    </listitem>
+  </varlistentry>
+
+</variablelist>
+<!-- end of xi:include in the manpage -->
+
+</sect1>
+
+
 <sect1 id="cg-manual.diffopts" xreflabel="cg_diff Command-line Options">
 <title>cg_diff Command-line Options</title>
 
@@ -1367,7 +1390,7 @@ shortcomings:</para>
 </itemizedlist>
 
 <para>Another thing worth noting is that results are very sensitive.
-Changing the size of the the executable being profiled, or the sizes
+Changing the size of the executable being profiled, or the sizes
 of any of the shared libraries it uses, or even the length of their
 file names, can perturb the results.  Variations will be small, but
 don't expect perfectly repeatable results if your program changes at

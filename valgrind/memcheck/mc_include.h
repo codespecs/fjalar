@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -67,9 +67,24 @@ typedef
       Addr         data;            // Address of the actual block.
       SizeT        szB : (sizeof(SizeT)*8)-2; // Size requested; 30 or 62 bits.
       MC_AllocKind allockind : 2;   // Which operation did the allocation.
-      ExeContext*  where;           // Where it was allocated.
+      ExeContext*  where[0];
+      /* Variable-length array. The size depends on MC_(clo_keep_stacktraces).
+         This array optionally stores the alloc and/or free stack trace. */
    }
    MC_Chunk;
+
+/* Returns the execontext where the MC_Chunk was allocated/freed.
+   Returns VG_(null_ExeContext)() if the execontext has not been recorded (due
+   to MC_(clo_keep_stacktraces) and/or because block not yet freed). */
+ExeContext* MC_(allocated_at) (MC_Chunk*);
+ExeContext* MC_(freed_at) (MC_Chunk*);
+
+/* Records and sets execontext according to MC_(clo_keep_stacktraces) */
+void  MC_(set_allocated_at) (ThreadId, MC_Chunk*);
+void  MC_(set_freed_at) (ThreadId, MC_Chunk*);
+
+/* number of pointers needed according to MC_(clo_keep_stacktraces). */
+UInt MC_(n_where_pointers) (void);
 
 /* Memory pool.  Nb: first two fields must match core's VgHashNode. */
 typedef
@@ -260,6 +275,13 @@ typedef
   }
   Reachedness;
 
+// Build mask to check or set Reachedness r membership
+#define R2S(r) (1 << (r))
+// Reachedness r is member of the Set s ?
+#define RiS(r,s) ((s) & R2S(r))
+// A set with all Reachedness:
+#define RallS \
+   (R2S(Reachable) | R2S(Possible) | R2S(IndirectLeak) | R2S(Unreached))
 
 /* For VALGRIND_COUNT_LEAKS client request */
 extern SizeT MC_(bytes_leaked);
@@ -318,8 +340,9 @@ typedef
 typedef
    struct _LeakCheckParams {
       LeakCheckMode mode;
-      Bool show_reachable;
-      Bool show_possibly_lost;
+      UInt show_leak_kinds;
+      UInt errors_for_leak_kinds;
+      UInt heuristics;
       LeakCheckDeltaMode deltamode;
       UInt max_loss_records_output;       // limit on the nr of loss records output.
       Bool requested_by_monitor_command; // True when requested by gdb/vgdb.
@@ -328,12 +351,16 @@ typedef
 
 void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams * lcp);
 
+// Each time a leak search is done, the leak search generation
+// MC_(leak_search_gen) is incremented.
+extern UInt MC_(leak_search_gen);
+
 // maintains the lcp.deltamode given in the last call to detect_memory_leaks
 extern LeakCheckDeltaMode MC_(detect_memory_leaks_last_delta_mode);
 
 // prints the list of blocks corresponding to the given loss_record_nr.
-// Returns True if loss_record_nr identifies a correct loss record from last leak search.
-// Returns False otherwise.
+// Returns True if loss_record_nr identifies a correct loss record from last
+// leak search, returns False otherwise.
 Bool MC_(print_block_list) ( UInt loss_record_nr);
 
 // Prints the addresses/registers/... at which a pointer to
@@ -342,7 +369,7 @@ void MC_(who_points_at) ( Addr address, SizeT szB);
 
 // if delta_mode == LCD_Any, prints in buf an empty string
 // otherwise prints a delta in the layout  " (+%'lu)" or " (-%'lu)" 
-extern char * MC_(snprintf_delta) (char * buf, Int size, 
+extern HChar * MC_(snprintf_delta) (HChar * buf, Int size, 
                                    SizeT current_val, SizeT old_val, 
                                    LeakCheckDeltaMode delta_mode);
 
@@ -372,17 +399,20 @@ void MC_(before_pp_Error)    ( Error* err );
 void MC_(pp_Error)           ( Error* err );
 UInt MC_(update_Error_extra) ( Error* err );
 
-Bool MC_(is_recognised_suppression) ( Char* name, Supp* su );
+Bool MC_(is_recognised_suppression) ( const HChar* name, Supp* su );
 
-Bool MC_(read_extra_suppression_info) ( Int fd, Char** buf,
-                                        SizeT* nBuf, Supp *su );
+Bool MC_(read_extra_suppression_info) ( Int fd, HChar** buf,
+                                        SizeT* nBuf, Int* lineno, Supp *su );
 
 Bool MC_(error_matches_suppression) ( Error* err, Supp* su );
 
 Bool MC_(get_extra_suppression_info) ( Error* err,
-                                       /*OUT*/Char* buf, Int nBuf );
+                                       /*OUT*/HChar* buf, Int nBuf );
+Bool MC_(print_extra_suppression_use) ( Supp* su,
+                                        /*OUT*/HChar* buf, Int nBuf );
+void MC_(update_extra_suppression_use) ( Error* err, Supp* su );
 
-Char* MC_(get_error_name) ( Error* err );
+const HChar* MC_(get_error_name) ( Error* err );
 
 /* Recording of errors */
 void MC_(record_address_error) ( ThreadId tid, Addr a, Int szB,
@@ -395,12 +425,12 @@ void MC_(record_free_error)            ( ThreadId tid, Addr a );
 void MC_(record_illegal_mempool_error) ( ThreadId tid, Addr a );
 void MC_(record_freemismatch_error)    ( ThreadId tid, MC_Chunk* mc );
 
-void MC_(record_overlap_error)  ( ThreadId tid, Char* function,
+void MC_(record_overlap_error)  ( ThreadId tid, const HChar* function,
                                   Addr src, Addr dst, SizeT szB );
-void MC_(record_core_mem_error) ( ThreadId tid, Char* msg );
-void MC_(record_regparam_error) ( ThreadId tid, Char* msg, UInt otag );
+void MC_(record_core_mem_error) ( ThreadId tid, const HChar* msg );
+void MC_(record_regparam_error) ( ThreadId tid, const HChar* msg, UInt otag );
 void MC_(record_memparam_error) ( ThreadId tid, Addr a, 
-                                  Bool isAddrErr, Char* msg, UInt otag );
+                                  Bool isAddrErr, const HChar* msg, UInt otag );
 void MC_(record_user_error)     ( ThreadId tid, Addr a,
                                   Bool isAddrErr, UInt otag );
 
@@ -410,6 +440,12 @@ Bool MC_(record_leak_error)     ( ThreadId tid,
                                   LossRecord* lossRecord,
                                   Bool print_record,
                                   Bool count_error );
+
+/* Parses a set of leak kinds (separated by ,).
+   and give the resulting set in *lks.
+   If parsing is succesful, returns True and *lks contains the resulting set.
+   else return False. */
+extern Bool MC_(parse_leak_kinds) ( const HChar* str0, UInt* lks );
 
 /* prints a description of address a */
 void MC_(pp_describe_addr) (Addr a);
@@ -429,7 +465,7 @@ typedef
       Addr        start;
       SizeT       size;
       ExeContext* where;
-      Char*       desc;
+      HChar*      desc;
    } 
    CGenBlock;
 
@@ -458,11 +494,46 @@ extern LeakCheckMode MC_(clo_leak_check);
 /* How closely should we compare ExeContexts in leak records? default: 2 */
 extern VgRes MC_(clo_leak_resolution);
 
-/* In leak check, show reachable-but-not-freed blocks?  default: NO */
-extern Bool MC_(clo_show_reachable);
+/* In leak check, show loss records if their R2S(reachedness) is set.
+   Default : R2S(Possible) | R2S(Unreached). */
+extern UInt MC_(clo_show_leak_kinds);
 
-/* In leak check, show possibly-lost blocks?  default: YES */
-extern Bool MC_(clo_show_possibly_lost);
+/* In leak check, a loss record is an error if its R2S(reachedness) is set.
+   Default : R2S(Possible) | R2S(Unreached). */
+extern UInt MC_(clo_errors_for_leak_kinds);
+
+/* Various leak check heuristics which can be activated/deactivated. */
+typedef 
+   enum {
+      LchNone                =0,
+      // no heuristic.
+      LchStdString           =1,
+      // Consider interior pointer pointing at the array of char in a
+      // std::string as reachable.
+      LchNewArray            =2,
+      // Consider interior pointer pointing at second word of a new[] array as
+      // reachable. Such interior pointers are used for arrays whose elements
+      // have a destructor.
+      LchMultipleInheritance =3,
+      // Conside interior pointer pointing just after what looks a vtable
+      // as reachable.
+  }
+  LeakCheckHeuristic;
+
+// Nr of heuristics, including the LchNone heuristic.
+#define N_LEAK_CHECK_HEURISTICS 4
+
+// Build mask to check or set Heuristic h membership
+#define H2S(h) (1 << (h))
+// CppHeuristic h is member of the Set s ?
+#define HiS(h,s) ((s) & R2S(h))
+// A set with all Heuristics:
+#define HallS \
+   (H2S(LchStdString) | H2S(LchNewArray) | H2S(LchMultipleInheritance))
+
+/* Heuristics set to use for the leak search.
+   Default : no heuristic. */
+extern UInt MC_(clo_leak_check_heuristics);
 
 /* Assume accesses immediately below %esp are due to gcc-2.96 bugs.
  * default: NO */
@@ -476,6 +547,20 @@ extern Bool MC_(clo_workaround_gcc296_bugs);
    causes them to contain the specified values. */
 extern Int MC_(clo_malloc_fill);
 extern Int MC_(clo_free_fill);
+
+/* Which stack trace(s) to keep for malloc'd/free'd client blocks?
+   For each client block, the stack traces where it was allocated
+   and/or freed are optionally kept depending on MC_(clo_keep_stacktraces). */
+typedef
+   enum {                 // keep alloc stack trace ?  keep free stack trace ?
+      KS_none,            // never                     never
+      KS_alloc,           // always                    never
+      KS_free,            // never                     always
+      KS_alloc_then_free, // when still malloc'd       when free'd
+      KS_alloc_and_free,  // always                    always
+   }
+   KeepStacktraces;
+extern KeepStacktraces MC_(clo_keep_stacktraces);
 
 /* Indicates the level of instrumentation/checking done by Memcheck.
 
@@ -536,6 +621,10 @@ VG_REGPARM(2) void MC_(helperc_STOREV16be) ( Addr, UWord );
 VG_REGPARM(2) void MC_(helperc_STOREV16le) ( Addr, UWord );
 VG_REGPARM(2) void MC_(helperc_STOREV8)   ( Addr, UWord );
 
+VG_REGPARM(2) void  MC_(helperc_LOADV256be) ( /*OUT*/V256*, Addr );
+VG_REGPARM(2) void  MC_(helperc_LOADV256le) ( /*OUT*/V256*, Addr );
+VG_REGPARM(2) void  MC_(helperc_LOADV128be) ( /*OUT*/V128*, Addr );
+VG_REGPARM(2) void  MC_(helperc_LOADV128le) ( /*OUT*/V128*, Addr );
 VG_REGPARM(1) ULong MC_(helperc_LOADV64be) ( Addr );
 VG_REGPARM(1) ULong MC_(helperc_LOADV64le) ( Addr );
 VG_REGPARM(1) UWord MC_(helperc_LOADV32be) ( Addr );
@@ -566,6 +655,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                         IRSB* bb_in, 
                         VexGuestLayout* layout, 
                         VexGuestExtents* vge,
+                        VexArchInfo* archinfo_host,
                         IRType gWordTy, IRType hWordTy );
 
 IRSB* MC_(final_tidy) ( IRSB* );

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Nicholas Nethercote
+   Copyright (C) 2000-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -54,39 +54,44 @@ VgVgdb VG_(clo_vgdb)           = Vg_VgdbYes;
 #endif
 Int    VG_(clo_vgdb_poll)      = 5000; 
 Int    VG_(clo_vgdb_error)     = 999999999;
-HChar* VG_(clo_vgdb_prefix)    = NULL;
+const HChar* VG_(clo_vgdb_prefix)    = NULL;
 Bool   VG_(clo_vgdb_shadow_registers) = False;
 
 Bool   VG_(clo_db_attach)      = False;
-Char*  VG_(clo_db_command)     = GDB_PATH " -nw %f %p";
+const HChar*  VG_(clo_db_command)     = GDB_PATH " -nw %f %p";
 Int    VG_(clo_gen_suppressions) = 0;
 Int    VG_(clo_sanity_level)   = 1;
 Int    VG_(clo_verbosity)      = 1;
 Bool   VG_(clo_stats)          = False;
 Bool   VG_(clo_xml)            = False;
-HChar* VG_(clo_xml_user_comment) = NULL;
+const HChar* VG_(clo_xml_user_comment) = NULL;
 Bool   VG_(clo_demangle)       = True;
-HChar* VG_(clo_soname_synonyms)    = NULL;
+const HChar* VG_(clo_soname_synonyms)    = NULL;
 Bool   VG_(clo_trace_children) = False;
-HChar* VG_(clo_trace_children_skip) = NULL;
-HChar* VG_(clo_trace_children_skip_by_arg) = NULL;
+const HChar* VG_(clo_trace_children_skip) = NULL;
+const HChar* VG_(clo_trace_children_skip_by_arg) = NULL;
 Bool   VG_(clo_child_silent_after_fork) = False;
-Char*  VG_(clo_log_fname_expanded) = NULL;
-Char*  VG_(clo_xml_fname_expanded) = NULL;
+HChar* VG_(clo_log_fname_expanded) = NULL;
+HChar* VG_(clo_xml_fname_expanded) = NULL;
 Bool   VG_(clo_time_stamp)     = False;
 Int    VG_(clo_input_fd)       = 0; /* stdin */
 Int    VG_(clo_n_suppressions) = 0;
-Char*  VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
+const HChar* VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
 Int    VG_(clo_n_fullpath_after) = 0;
-Char*  VG_(clo_fullpath_after)[VG_CLO_MAX_FULLPATH_AFTER];
+const HChar* VG_(clo_fullpath_after)[VG_CLO_MAX_FULLPATH_AFTER];
+const HChar* VG_(clo_extra_debuginfo_path) = NULL;
+const HChar* VG_(clo_debuginfo_server) = NULL;
+Bool   VG_(clo_allow_mismatched_debuginfo) = False;
 UChar  VG_(clo_trace_flags)    = 0; // 00000000b
-UChar  VG_(clo_profile_flags)  = 0; // 00000000b
+Bool   VG_(clo_profyle_sbs)    = False;
+UChar  VG_(clo_profyle_flags)  = 0; // 00000000b
+ULong  VG_(clo_profyle_interval) = 0;
 Int    VG_(clo_trace_notbelow) = -1;  // unspecified
 Int    VG_(clo_trace_notabove) = -1;  // unspecified
 Bool   VG_(clo_trace_syscalls) = False;
 Bool   VG_(clo_trace_signals)  = False;
 Bool   VG_(clo_trace_symtab)   = False;
-HChar* VG_(clo_trace_symtab_patt) = "*";
+const HChar* VG_(clo_trace_symtab_patt) = "*";
 Bool   VG_(clo_trace_cfi)      = False;
 Bool   VG_(clo_debug_dump_syms) = False;
 Bool   VG_(clo_debug_dump_line) = False;
@@ -102,11 +107,12 @@ Int    VG_(clo_core_redzone_size) = CORE_REDZONE_DEFAULT_SZB;
 Int    VG_(clo_redzone_size)   = -1;
 Int    VG_(clo_dump_error)     = 0;
 Int    VG_(clo_backtrace_size) = 12;
-Char*  VG_(clo_sim_hints)      = NULL;
+Int    VG_(clo_merge_recursive_frames) = 0; // default value: no merge
+const HChar* VG_(clo_sim_hints)      = NULL;
 Bool   VG_(clo_sym_offsets)    = False;
 Bool   VG_(clo_read_var_info)  = False;
 Int    VG_(clo_n_req_tsyms)    = 0;
-HChar* VG_(clo_req_tsyms)[VG_CLO_MAX_REQ_TSYMS];
+const HChar* VG_(clo_req_tsyms)[VG_CLO_MAX_REQ_TSYMS];
 HChar* VG_(clo_require_text_symbol) = NULL;
 Bool   VG_(clo_run_libc_freeres) = True;
 Bool   VG_(clo_track_fds)      = False;
@@ -116,8 +122,11 @@ Word   VG_(clo_max_stackframe) = 2000000;
 Word   VG_(clo_main_stacksize) = 0; /* use client's rlimit.stack */
 Bool   VG_(clo_wait_for_gdb)   = False;
 VgSmc  VG_(clo_smc_check)      = Vg_SmcStack;
-HChar* VG_(clo_kernel_variant) = NULL;
+const HChar* VG_(clo_kernel_variant) = NULL;
 Bool   VG_(clo_dsymutil)       = False;
+Bool   VG_(clo_sigill_diag)    = True;
+UInt   VG_(clo_unw_stack_scan_thresh) = 0; /* disabled by default */
+UInt   VG_(clo_unw_stack_scan_frames) = 5;
 
 
 /*====================================================================*/
@@ -126,11 +135,11 @@ Bool   VG_(clo_dsymutil)       = False;
 
 // Copies the string, prepending it with the startup working directory, and
 // expanding %p and %q entries.  Returns a new, malloc'd string.
-Char* VG_(expand_file_name)(Char* option_name, Char* format)
+HChar* VG_(expand_file_name)(const HChar* option_name, const HChar* format)
 {
-   static Char base_dir[VKI_PATH_MAX];
+   static HChar base_dir[VKI_PATH_MAX];
    Int len, i = 0, j = 0;
-   Char* out;
+   HChar* out;
 
    Bool ok = VG_(get_startup_wd)(base_dir, VKI_PATH_MAX);
    tl_assert(ok);
@@ -200,8 +209,8 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
             i++;
             if ('{' == format[i]) {
                // Get the env var name, print its contents.
-               Char* qualname;
-               Char* qual;
+               const HChar* qualname;
+               HChar* qual;
                i++;
                qualname = &format[i];
                while (True) {
@@ -211,15 +220,21 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
                   } else if ('}' == format[i]) {
                      // Temporarily replace the '}' with NUL to extract var
                      // name.
-                     format[i] = 0;
+                     // FIXME: this is not safe as FORMAT is sometimes a
+                     // string literal which may reside in read-only memory
+                    ((HChar *)format)[i] = 0;
                      qual = VG_(getenv)(qualname);
                      if (NULL == qual) {
                         VG_(fmsg)("%s: environment variable %s is not set\n",
                            option_name, qualname);
-                        format[i] = '}';  // Put the '}' back.
+                     // FIXME: this is not safe as FORMAT is sometimes a
+                     // string literal which may reside in read-only memory
+                        ((HChar *)format)[i] = '}';  // Put the '}' back.
                         goto bad;
                      }
-                     format[i] = '}';     // Put the '}' back.
+                     // FIXME: this is not safe as FORMAT is sometimes a
+                     // string literal which may reside in read-only memory
+                     ((HChar *)format)[i] = '}';     // Put the '}' back.
                      i++;
                      break;
                   }
@@ -246,7 +261,7 @@ Char* VG_(expand_file_name)(Char* option_name, Char* format)
    return out;
 
   bad: {
-   Char* opt =    // 2:  1 for the '=', 1 for the NUL.
+   HChar* opt =    // 2:  1 for the '=', 1 for the NUL.
       VG_(malloc)( "options.efn.3",
                    VG_(strlen)(option_name) + VG_(strlen)(format) + 2 );
    VG_(strcpy)(opt, option_name);
@@ -298,7 +313,7 @@ Bool VG_(should_we_trace_this_child) ( HChar* child_exe_name,
    // by --trace-children-skip=.
    if (VG_(clo_trace_children_skip)) {
       HChar const* last = VG_(clo_trace_children_skip);
-      HChar const* name = (HChar const*)child_exe_name;
+      HChar const* name = child_exe_name;
       while (*last) {
          Bool   matches;
          HChar* patt;

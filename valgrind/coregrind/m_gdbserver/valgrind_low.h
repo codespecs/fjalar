@@ -2,7 +2,7 @@
    needed for interfacing the Valgrind gdbserver with the Valgrind
    guest.
 
-   Copyright (C) 2011
+   Copyright (C) 2011, 2012
    Free Software Foundation, Inc.
 
    This file has been inspired from a file that is part of GDB.
@@ -25,6 +25,9 @@
 
 #ifndef VALGRIND_LOW_H
 #define VALGRIND_LOW_H
+
+#include "pub_core_basics.h"    // ThreadId
+#include "server.h"             // CORE_ADDR
 
 /* defines the characteristics of the "low" valgrind target architecture.
    In other words, struct valgrind_target_ops defines the functions and 
@@ -63,7 +66,7 @@ struct valgrind_target_ops
       including the two shadow registers sets.
       This is mandatory to use the option --vgdb-shadow-registers=yes. 
       Returns NULL if there is no target xml file*/
-   char* (*target_xml) (Bool shadow_mode);
+   const char* (*target_xml) (Bool shadow_mode);
 
 };
 
@@ -74,5 +77,6 @@ extern void ppc32_init_architecture (struct valgrind_target_ops *target);
 extern void ppc64_init_architecture (struct valgrind_target_ops *target);
 extern void s390x_init_architecture (struct valgrind_target_ops *target);
 extern void mips32_init_architecture (struct valgrind_target_ops *target);
+extern void mips64_init_architecture (struct valgrind_target_ops *target);
 
 #endif

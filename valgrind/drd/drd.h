@@ -12,7 +12,7 @@
   This file is part of DRD, a Valgrind tool for verification of
   multithreaded programs.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -440,7 +440,7 @@ enum {
 
    /* Tell DRD that a DRD annotation has not yet been implemented. */
    VG_USERREQ__DRD_ANNOTATION_UNIMP,
-   /* args: Char*. */
+   /* args: char*. */
 
    /* Tell DRD that a user-defined reader-writer synchronization object
     * has been created. */
@@ -466,7 +466,7 @@ enum {
    /* Tell DRD that a Helgrind annotation has not yet been implemented. */
    VG_USERREQ__HELGRIND_ANNOTATION_UNIMP
       = VG_USERREQ_TOOL_BASE('H','G') + 256 + 32,
-   /* args: Char*. */
+   /* args: char*. */
 
    /* Tell DRD to insert a happens-before annotation. */
    VG_USERREQ__DRD_ANNOTATE_HAPPENS_BEFORE

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -278,6 +278,7 @@ struct vki_sigcontext {
 // From linux-2.6.8.1/include/asm-i386/fcntl.h
 //----------------------------------------------------------------------
 
+#define VKI_O_ACCMODE	     03
 #define VKI_O_RDONLY	     00
 #define VKI_O_WRONLY	     01
 #define VKI_O_RDWR	     02
@@ -341,6 +342,8 @@ struct vki_f_owner_ex {
 #define VKI_SOL_SOCKET	1
 
 #define VKI_SO_TYPE	3
+
+#define VKI_SO_ATTACH_FILTER	26
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-i386/sockios.h
@@ -541,6 +544,8 @@ struct vki_termios {
 #define VKI_TIOCGPTN	_VKI_IOR('T',0x30, unsigned int) /* Get Pty Number (of pty-mux device) */
 #define VKI_TIOCSPTLCK	_VKI_IOW('T',0x31, int)  /* Lock/unlock Pty */
 
+#define VKI_FIONCLEX    0x5450
+#define VKI_FIOCLEX     0x5451
 #define VKI_FIOASYNC	0x5452
 #define VKI_TIOCSERGETLSR   0x5459 /* Get line status register */
 
@@ -811,6 +816,8 @@ struct vki_shminfo64 {
 #define VKI_PTRACE_SETFPREGS          15
 #define VKI_PTRACE_GETFPXREGS         18
 #define VKI_PTRACE_SETFPXREGS         19
+#define VKI_PTRACE_GET_THREAD_AREA    25
+#define VKI_PTRACE_SET_THREAD_AREA    26
 
 //----------------------------------------------------------------------
 // From linux-2.6.15.4/include/asm-i386/vm86.h

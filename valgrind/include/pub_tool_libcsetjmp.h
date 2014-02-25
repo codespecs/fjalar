@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 Mozilla Inc
+   Copyright (C) 2010-2013 Mozilla Inc
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -31,6 +31,8 @@
 
 #ifndef __PUB_TOOL_LIBCSETJMP_H
 #define __PUB_TOOL_LIBCSETJMP_H
+
+#include "pub_tool_basics.h"   // UWord
 
 //--------------------------------------------------------------------
 // PURPOSE: Provides a minimal setjmp/longjmp facility, that saves/
@@ -108,6 +110,13 @@ __attribute__((noreturn))
 __attribute__((regparm(1))) // ditto
 void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
 
+#elif defined(VGP_mips32_linux)
+
+#define VG_MINIMAL_JMP_BUF(_name)        UInt _name [8+1+1+1+1]
+__attribute__((returns_twice))
+UWord VG_MINIMAL_SETJMP(VG_MINIMAL_JMP_BUF(_env));
+__attribute__((noreturn))
+void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
 
 #else
 

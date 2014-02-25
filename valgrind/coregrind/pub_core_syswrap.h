@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,9 @@
 
 #ifndef __PUB_CORE_SYSWRAP_H
 #define __PUB_CORE_SYSWRAP_H
+
+#include "pub_core_basics.h"        // VG_ macro
+#include "pub_core_threadstate.h"   // ThreadArchState
 
 //--------------------------------------------------------------------
 // PURPOSE: This module contains all the syscall junk:  mostly PRE/POST
@@ -63,7 +66,7 @@ extern void VG_(cleanup_thread) ( ThreadArchState* );
 
 /* fd leakage calls. */
 extern void VG_(init_preopened_fds) ( void );
-extern void VG_(show_open_fds) ( void );
+extern void VG_(show_open_fds) ( const HChar* when );
 
 // When the final thread is done, where shall I call to shutdown the
 // system cleanly?  Is set once at startup (in m_main) and never

@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -338,9 +338,9 @@ void insert_bbcc_into_hash(BBCC* bbcc)
 	     current_bbccs.entries);
 }
 
-static Char* mangled_cxt(Context* cxt, int rec_index)
+static const HChar* mangled_cxt(Context* cxt, int rec_index)
 {
-    static Char mangled[FN_NAME_LEN];
+    static HChar mangled[FN_NAME_LEN];
     int i, p;
 
     if (!cxt) return "(no context)";
@@ -413,6 +413,8 @@ static BBCC* clone_bbcc(BBCC* orig, Context* cxt, Int rec_index)
     CLG_DEBUGIF(3)
       CLG_(print_bbcc)(-2, bbcc);
 
+    // FIXME: mangled_cxt returns a pointer to a static buffer that
+    // gets overwritten with each invocation. 
     CLG_DEBUG(2,"- clone_BBCC(%p, %d) for BB %#lx\n"
 		"   orig %s\n"
 		"   new  %s\n",
@@ -482,7 +484,8 @@ static void handleUnderflow(BB* bb)
   BB* source_bb;
   Bool seen_before;
   fn_node* caller;
-  int fn_number, *pactive;
+  int fn_number;
+  unsigned *pactive;
   call_entry* call_entry_up;
 
   CLG_DEBUG(1,"  Callstack underflow !\n");
@@ -591,11 +594,8 @@ void CLG_(setup_bbcc)(BB* bb)
       jmpkind = last_bb->jmp[passed].jmpkind;
       isConditionalJump = (passed < last_bb->cjmp_count);
 
-      /* if we are in a function which is skipped in the call graph, we
-       * do not increment the exe counter to produce cost (if simulation off),
-       * which would lead to dumping this BB to be skipped
-       */
-      if (CLG_(current_state).collect && !CLG_(current_state).nonskipped) {
+      if (CLG_(current_state).collect) {
+	if (!CLG_(current_state).nonskipped) {
 	  last_bbcc->ecounter_sum++;
 	  last_bbcc->jmp[passed].ecounter++;
 	  if (!CLG_(clo).simulate_cache) {
@@ -603,6 +603,18 @@ void CLG_(setup_bbcc)(BB* bb)
               UInt instr_count = last_bb->jmp[passed].instr+1;
               CLG_(current_state).cost[ fullOffset(EG_IR) ] += instr_count;
 	  }
+      }
+	else {
+	  /* do not increment exe counter of BBs in skipped functions, as it
+	   * would fool dumping code */
+	  if (!CLG_(clo).simulate_cache) {
+	      /* update Ir cost */
+              UInt instr_count = last_bb->jmp[passed].instr+1;
+              CLG_(current_state).cost[ fullOffset(EG_IR) ] += instr_count;
+              CLG_(current_state).nonskipped->skipped[ fullOffset(EG_IR) ]
+		+= instr_count;
+	  }
+	}
       }
 
       CLG_DEBUGIF(4) {

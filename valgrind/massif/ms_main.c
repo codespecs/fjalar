@@ -6,7 +6,7 @@
    This file is part of Massif, a Valgrind tool for profiling memory
    usage of programs.
 
-   Copyright (C) 2003-2012 Nicholas Nethercote
+   Copyright (C) 2003-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -182,7 +182,7 @@ Number of snapshots: 50
 #include "pub_tool_clientstate.h"
 #include "pub_tool_gdbserver.h"
 
-#include "valgrind.h"           // For {MALLOC,FREE}LIKE_BLOCK
+#include "pub_tool_clreq.h"           // For {MALLOC,FREE}LIKE_BLOCK
 
 //------------------------------------------------------------*/
 //--- Overview of operation                                ---*/
@@ -310,8 +310,8 @@ static void init_alloc_fns(void)
 {
    // Create the list, and add the default elements.
    alloc_fns = VG_(newXA)(VG_(malloc), "ms.main.iaf.1",
-                                       VG_(free), sizeof(Char*));
-   #define DO(x)  { Char* s = x; VG_(addToXA)(alloc_fns, &s); }
+                                       VG_(free), sizeof(HChar*));
+   #define DO(x)  { const HChar* s = x; VG_(addToXA)(alloc_fns, &s); }
 
    // Ordered roughly according to (presumed) frequency.
    // Nb: The C++ "operator new*" ones are overloadable.  We include them
@@ -357,13 +357,13 @@ static void init_ignore_fns(void)
 {
    // Create the (empty) list.
    ignore_fns = VG_(newXA)(VG_(malloc), "ms.main.iif.1",
-                                        VG_(free), sizeof(Char*));
+                                        VG_(free), sizeof(HChar*));
 }
 
 // Determines if the named function is a member of the XArray.
-static Bool is_member_fn(XArray* fns, Char* fnname)
+static Bool is_member_fn(XArray* fns, const HChar* fnname)
 {
-   Char** fn_ptr;
+   HChar** fn_ptr;
    Int i;
  
    // Nb: It's a linear search through the list, because we're comparing
@@ -387,7 +387,7 @@ static Bool is_member_fn(XArray* fns, Char* fnname)
 
 typedef enum { TimeI, TimeMS, TimeB } TimeUnit;
 
-static Char* TimeUnit_to_string(TimeUnit time_unit)
+static const HChar* TimeUnit_to_string(TimeUnit time_unit)
 {
    switch (time_unit) {
    case TimeI:  return "i";
@@ -411,13 +411,13 @@ static double clo_peak_inaccuracy = 1.0;  // percentage
 static Int    clo_time_unit       = TimeI;
 static Int    clo_detailed_freq   = 10;
 static Int    clo_max_snapshots   = 100;
-static Char*  clo_massif_out_file = "massif.out.%p";
+static const HChar* clo_massif_out_file = "massif.out.%p";
 
 static XArray* args_for_massif;
 
-static Bool ms_process_cmd_line_option(Char* arg)
+static Bool ms_process_cmd_line_option(const HChar* arg)
 {
-   Char* tmp_str;
+   const HChar* tmp_str;
 
    // Remember the arg for later use.
    VG_(addToXA)(args_for_massif, &arg);
@@ -591,34 +591,12 @@ struct _SXPt {
 // parent node to all top-XPts.
 static XPt* alloc_xpt;
 
-// Cheap allocation for blocks that never need to be freed.  Saves about 10%
-// for Konqueror startup with --depth=40.
-static void* perm_malloc(SizeT n_bytes)
-{
-   static Addr hp     = 0;    // current heap pointer
-   static Addr hp_lim = 0;    // maximum usable byte in current block
-
-   #define SUPERBLOCK_SIZE  (1 << 20)         // 1 MB
-
-   if (hp + n_bytes > hp_lim) {
-      hp = (Addr)VG_(am_shadow_alloc)(SUPERBLOCK_SIZE);
-      if (0 == hp)
-         VG_(out_of_memory_NORETURN)( "massif:perm_malloc",
-                                      SUPERBLOCK_SIZE);
-      hp_lim = hp + SUPERBLOCK_SIZE - 1;
-   }
-
-   hp += n_bytes;
-
-   return (void*)(hp - n_bytes);
-}
-
 static XPt* new_XPt(Addr ip, XPt* parent)
 {
-   // XPts are never freed, so we can use perm_malloc to allocate them.
-   // Note that we cannot use perm_malloc for the 'children' array, because
+   // XPts are never freed, so we can use VG_(perm_malloc) to allocate them.
+   // Note that we cannot use VG_(perm_malloc) for the 'children' array, because
    // that needs to be resizable.
-   XPt* xpt    = perm_malloc(sizeof(XPt));
+   XPt* xpt    = VG_(perm_malloc)(sizeof(XPt), vg_alignof(XPt));
    xpt->ip     = ip;
    xpt->szB    = 0;
    xpt->parent = parent;
@@ -660,10 +638,10 @@ static void add_child_xpt(XPt* parent, XPt* child)
 }
 
 // Reverse comparison for a reverse sort -- biggest to smallest.
-static Int SXPt_revcmp_szB(void* n1, void* n2)
+static Int SXPt_revcmp_szB(const void* n1, const void* n2)
 {
-   SXPt* sxpt1 = *(SXPt**)n1;
-   SXPt* sxpt2 = *(SXPt**)n2;
+   const SXPt* sxpt1 = *(const SXPt *const *)n1;
+   const SXPt* sxpt2 = *(const SXPt *const *)n2;
    return ( sxpt1->szB < sxpt2->szB ?  1
           : sxpt1->szB > sxpt2->szB ? -1
           :                            0);
@@ -845,7 +823,7 @@ static void sanity_check_SXTree(SXPt* sxpt)
 // Determine if the given IP belongs to a function that should be ignored.
 static Bool fn_should_be_ignored(Addr ip)
 {
-   static Char buf[BUF_LEN];
+   static HChar buf[BUF_LEN];
    return
       ( VG_(get_fnname)(ip, buf, BUF_LEN) && is_member_fn(ignore_fns, buf)
       ? True : False );
@@ -860,7 +838,7 @@ static Bool fn_should_be_ignored(Addr ip)
 static
 Int get_IPs( ThreadId tid, Bool exclude_first_entry, Addr ips[])
 {
-   static Char buf[BUF_LEN];
+   static HChar buf[BUF_LEN];
    Int n_ips, i, n_alloc_fns_removed;
    Int overestimate;
    Bool redo;
@@ -1143,10 +1121,10 @@ static void delete_snapshot(Snapshot* snapshot)
    }
 }
 
-static void VERB_snapshot(Int verbosity, Char* prefix, Int i)
+static void VERB_snapshot(Int verbosity, const HChar* prefix, Int i)
 {
    Snapshot* snapshot = &snapshots[i];
-   Char* suffix;
+   const HChar* suffix;
    switch (snapshot->kind) {
    case Peak:   suffix = "p";                                            break;
    case Normal: suffix = ( is_detailed_snapshot(snapshot) ? "d" : "." ); break;
@@ -1227,7 +1205,7 @@ static UInt cull_snapshots(void)
       tl_assert(-1 != min_j);    // Check we found a minimum.
       min_snapshot = & snapshots[ min_j ];
       if (VG_(clo_verbosity) > 1) {
-         Char buf[64];
+         HChar buf[64];
          VG_(snprintf)(buf, 64, " %3d (t-span = %lld)", i, min_timespan);
          VERB_snapshot(2, buf, min_j);
       }
@@ -1374,7 +1352,7 @@ take_snapshot(Snapshot* snapshot, SnapshotKind kind, Time my_time,
 
 // Take a snapshot, if it's time, or if we've hit a peak.
 static void
-maybe_take_snapshot(SnapshotKind kind, Char* what)
+maybe_take_snapshot(SnapshotKind kind, const HChar* what)
 {
    // 'min_time_interval' is the minimum time interval between snapshots.
    // If we try to take a snapshot and less than this much time has passed,
@@ -1938,7 +1916,7 @@ static void update_stack_stats(SSizeT stack_szB_delta)
    update_alloc_stats(stack_szB_delta);
 }
 
-static INLINE void new_mem_stack_2(SizeT len, Char* what)
+static INLINE void new_mem_stack_2(SizeT len, const HChar* what)
 {
    if (have_started_executing_code) {
       VERB(3, "<<< new_mem_stack (%ld)\n", len);
@@ -1949,7 +1927,7 @@ static INLINE void new_mem_stack_2(SizeT len, Char* what)
    }
 }
 
-static INLINE void die_mem_stack_2(SizeT len, Char* what)
+static INLINE void die_mem_stack_2(SizeT len, const HChar* what)
 {
    if (have_started_executing_code) {
       VERB(3, "<<< die_mem_stack (%ld)\n", -len);
@@ -2001,7 +1979,7 @@ static void print_monitor_help ( void )
 
 /* Forward declaration.
    return True if request recognised, False otherwise */
-static Bool handle_gdb_monitor_command (ThreadId tid, Char *req);
+static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req);
 static Bool ms_handle_client_request ( ThreadId tid, UWord* argv, UWord* ret )
 {
    switch (argv[0]) {
@@ -2029,7 +2007,7 @@ static Bool ms_handle_client_request ( ThreadId tid, UWord* argv, UWord* ret )
       return True;
    }
    case VG_USERREQ__GDB_MONITOR_COMMAND: {
-     Bool handled = handle_gdb_monitor_command (tid, (Char*)argv[1]);
+     Bool handled = handle_gdb_monitor_command (tid, (HChar*)argv[1]);
      if (handled)
        *ret = 1;
      else
@@ -2117,6 +2095,7 @@ IRSB* ms_instrument ( VgCallbackClosure* closure,
                       IRSB* sbIn,
                       VexGuestLayout* layout,
                       VexGuestExtents* vge,
+                      VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    if (! have_started_executing_code) {
@@ -2138,7 +2117,7 @@ IRSB* ms_instrument ( VgCallbackClosure* closure,
 //--- Writing snapshots                                    ---//
 //------------------------------------------------------------//
 
-Char FP_buf[BUF_LEN];
+HChar FP_buf[BUF_LEN];
 
 // XXX: implement f{,n}printf in m_libcprint.c eventually, and use it here.
 // Then change Cachegrind to use it too.
@@ -2149,9 +2128,9 @@ Char FP_buf[BUF_LEN];
 })
 
 // Nb: uses a static buffer, each call trashes the last string returned.
-static Char* make_perc(double x)
+static const HChar* make_perc(double x)
 {
-   static Char mbuf[32];
+   static HChar mbuf[32];
 
    VG_(percentify)((ULong)(x * 100), 10000, 2, 6, mbuf);
    // XXX: this is bogus if the denominator was zero -- resulting string is
@@ -2160,7 +2139,7 @@ static Char* make_perc(double x)
    return mbuf;
 }
 
-static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
+static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, HChar* depth_str,
                             Int depth_str_len,
                             SizeT snapshot_heap_szB, SizeT snapshot_total_szB)
 {
@@ -2170,8 +2149,8 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
    // Used for printing function names.  Is made static to keep it out
    // of the stack frame -- this function is recursive.  Obviously this
    // now means its contents are trashed across the recursive call.
-   static Char ip_desc_array[BUF_LEN];
-   Char* ip_desc = ip_desc_array;
+   static HChar ip_desc_array[BUF_LEN];
+   const HChar* ip_desc = ip_desc_array;
 
    switch (sxpt->tag) {
     case SigSXPt:
@@ -2185,6 +2164,10 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
                );
          } else {
             // XXX: --alloc-fns?
+
+            // Nick thinks this case cannot happen. ip_desc_array would be
+            // conceptually uninitialised here. Therefore:
+            tl_assert2(0, "pp_snapshot_SXPt: unexpected");
          }
       } else {
          // If it's main-or-below-main, we (if appropriate) ignore everything
@@ -2197,7 +2180,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
          }
 
          // We need the -1 to get the line number right, But I'm not sure why.
-         ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, ip_desc, BUF_LEN);
+         ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, ip_desc_array, BUF_LEN);
       }
       
       // Do the non-ip_desc part first...
@@ -2276,7 +2259,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
       break;
 
     case InsigSXPt: {
-      Char* s = ( 1 == sxpt->Insig.n_xpts ? "," : "s, all" );
+      const HChar* s = ( 1 == sxpt->Insig.n_xpts ? "," : "s, all" );
       FP("%sn0: %lu in %d place%s below massif's threshold (%s)\n",
          depth_str, sxpt->szB, sxpt->Insig.n_xpts, s,
          make_perc(clo_threshold));
@@ -2303,8 +2286,8 @@ static void pp_snapshot(Int fd, Snapshot* snapshot, Int snapshot_n)
    if (is_detailed_snapshot(snapshot)) {
       // Detailed snapshot -- print heap tree.
       Int   depth_str_len = clo_depth + 3;
-      Char* depth_str = VG_(malloc)("ms.main.pps.1", 
-                                    sizeof(Char) * depth_str_len);
+      HChar* depth_str = VG_(malloc)("ms.main.pps.1", 
+                                     sizeof(HChar) * depth_str_len);
       SizeT snapshot_total_szB =
          snapshot->heap_szB + snapshot->heap_extra_szB + snapshot->stacks_szB;
       depth_str[0] = '\0';   // Initialise depth_str to "".
@@ -2321,7 +2304,7 @@ static void pp_snapshot(Int fd, Snapshot* snapshot, Int snapshot_n)
    }
 }
 
-static void write_snapshots_to_file(Char* massif_out_file, 
+static void write_snapshots_to_file(const HChar* massif_out_file, 
                                     Snapshot snapshots_array[], 
                                     Int nr_elements)
 {
@@ -2346,7 +2329,7 @@ static void write_snapshots_to_file(Char* massif_out_file,
    // implied genericity of "desc:" is bogus.
    FP("desc:");
    for (i = 0; i < VG_(sizeXA)(args_for_massif); i++) {
-      Char* arg = *(Char**)VG_(indexXA)(args_for_massif, i);
+      HChar* arg = *(HChar**)VG_(indexXA)(args_for_massif, i);
       FP(" %s", arg);
    }
    if (0 == i) FP(" (none)");
@@ -2382,29 +2365,38 @@ static void write_snapshots_array_to_file(void)
    // output file format string contains a %p (pid) specifier, both the
    // parent and child will incorrectly write to the same file;  this
    // happened in 3.3.0.
-   Char* massif_out_file =
+   HChar* massif_out_file =
       VG_(expand_file_name)("--massif-out-file", clo_massif_out_file);
    write_snapshots_to_file (massif_out_file, snapshots, next_snapshot_i);
    VG_(free)(massif_out_file);
 }
 
-static void handle_snapshot_monitor_command (Char *filename, Bool detailed)
+static void handle_snapshot_monitor_command (const HChar *filename,
+                                             Bool detailed)
 {
    Snapshot snapshot;
 
+   if (!clo_pages_as_heap && !have_started_executing_code) {
+      // See comments of variable have_started_executing_code.
+      VG_(gdb_printf) 
+         ("error: cannot take snapshot before execution has started\n");
+      return;
+   }
+
    clear_snapshot(&snapshot, /* do_sanity_check */ False);
    take_snapshot(&snapshot, Normal, get_time(), detailed);
-   write_snapshots_to_file ((filename == NULL) ? (Char*) "massif.vgdb.out" : filename,
+   write_snapshots_to_file ((filename == NULL) ? 
+                            "massif.vgdb.out" : filename,
                             &snapshot,
                             1);
    delete_snapshot(&snapshot);
 }
 
-static Bool handle_gdb_monitor_command (ThreadId tid, Char *req)
+static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
 {
-   Char* wcmd;
-   Char s[VG_(strlen(req))]; /* copy for strtok_r */
-   Char *ssaveptr;
+   HChar* wcmd;
+   HChar s[VG_(strlen(req))]; /* copy for strtok_r */
+   HChar *ssaveptr;
 
    VG_(strcpy) (s, req);
 
@@ -2419,13 +2411,13 @@ static Bool handle_gdb_monitor_command (ThreadId tid, Char *req)
       print_monitor_help();
       return True;
    case  1: { /* snapshot */
-      Char* filename;
+      HChar* filename;
       filename = VG_(strtok_r) (NULL, " ", &ssaveptr);
       handle_snapshot_monitor_command (filename, False /* detailed */);
       return True;
    }
    case  2: { /* detailed_snapshot */
-      Char* filename;
+      HChar* filename;
       filename = VG_(strtok_r) (NULL, " ", &ssaveptr);
       handle_snapshot_monitor_command (filename, True /* detailed */);
       return True;
@@ -2479,9 +2471,9 @@ static void ms_fini(Int exit_status)
 static void ms_post_clo_init(void)
 {
    Int i;
-   Char* LD_PRELOAD_val;
-   Char* s;
-   Char* s2;
+   HChar* LD_PRELOAD_val;
+   HChar* s;
+   HChar* s2;
 
    // Check options.
    if (clo_pages_as_heap) {
@@ -2503,7 +2495,7 @@ static void ms_post_clo_init(void)
    if (clo_pages_as_heap) {
       clo_heap_admin = 0;     // No heap admin on pages.
 
-      LD_PRELOAD_val = VG_(getenv)( (Char*)VG_(LD_PRELOAD_var_name) );
+      LD_PRELOAD_val = VG_(getenv)( VG_(LD_PRELOAD_var_name) );
       tl_assert(LD_PRELOAD_val);
 
       // Make sure the vgpreload_core-$PLATFORM entry is there, for sanity.
@@ -2531,7 +2523,7 @@ static void ms_post_clo_init(void)
    if (VG_(clo_verbosity) > 1) {
       VERB(1, "alloc-fns:\n");
       for (i = 0; i < VG_(sizeXA)(alloc_fns); i++) {
-         Char** fn_ptr = VG_(indexXA)(alloc_fns, i);
+         HChar** fn_ptr = VG_(indexXA)(alloc_fns, i);
          VERB(1, "  %s\n", *fn_ptr);
       }
 
@@ -2540,7 +2532,7 @@ static void ms_post_clo_init(void)
          VERB(1, "  <empty>\n");
       }
       for (i = 0; i < VG_(sizeXA)(ignore_fns); i++) {
-         Char** fn_ptr = VG_(indexXA)(ignore_fns, i);
+         HChar** fn_ptr = VG_(indexXA)(ignore_fns, i);
          VERB(1, "  %d: %s\n", i, *fn_ptr);
       }
    }
@@ -2581,7 +2573,7 @@ static void ms_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a heap profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2012, and GNU GPL'd, by Nicholas Nethercote");
+      "Copyright (C) 2003-2013, and GNU GPL'd, by Nicholas Nethercote");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    VG_(details_avg_translation_sizeB) ( 330 );

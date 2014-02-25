@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,19 +31,21 @@
 #ifndef __PUB_TOOL_LIBCBASSERT_H
 #define __PUB_TOOL_LIBCBASSERT_H
 
+#include "pub_tool_basics.h"   // VG_ macro
+
 #define tl_assert(expr)                                                 \
   ((void) (LIKELY(expr) ? 0 :                                           \
-           (VG_(assert_fail) (/*isCore?*/False, (const Char*)#expr,     \
-                              (const Char*)__FILE__, __LINE__,          \
-                              (const Char*)__PRETTY_FUNCTION__,         \
-                              (const HChar*)""),                        \
+           (VG_(assert_fail) (/*isCore?*/False, #expr,                  \
+                              __FILE__, __LINE__,                       \
+                              __PRETTY_FUNCTION__,                      \
+                              ""),                                      \
                               0)))
 
 #define tl_assert2(expr, format, args...)                               \
   ((void) (LIKELY(expr) ? 0 :                                           \
-           (VG_(assert_fail) (/*isCore?*/False, (const Char*)#expr,     \
-                              (const Char*)__FILE__, __LINE__,          \
-                              (const Char*)__PRETTY_FUNCTION__,         \
+           (VG_(assert_fail) (/*isCore?*/False, #expr,                  \
+                              __FILE__, __LINE__,                       \
+                              __PRETTY_FUNCTION__,                      \
                               format, ##args),                          \
                               0)))
 
@@ -52,11 +54,11 @@ extern void VG_(exit)( Int status );
 
 /* Prints a panic message, appends newline and bug reporting info, aborts. */
 __attribute__ ((__noreturn__))
-extern void  VG_(tool_panic) ( Char* str );
+extern void  VG_(tool_panic) ( const HChar* str );
 
 __attribute__ ((__noreturn__))
-extern void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file, 
-                               Int line, const Char* fn, 
+extern void VG_(assert_fail) ( Bool isCore, const HChar* expr, const HChar* file, 
+                               Int line, const HChar* fn, 
                                const HChar* format, ... );
 
 #endif   // __PUB_TOOL_LIBCBASSERT_H

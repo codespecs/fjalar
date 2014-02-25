@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -43,6 +43,7 @@ IRSB* DRD_(instrument)(VgCallbackClosure* const closure,
                        IRSB* const bb_in,
                        VexGuestLayout* const layout,
                        VexGuestExtents* const vge, 
+                       VexArchInfo* const archinfo_host,
                        IRType const gWordTy,
                        IRType const hWordTy);
 void DRD_(trace_mem_access)(const Addr addr, const SizeT size,

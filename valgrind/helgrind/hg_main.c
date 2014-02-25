@@ -8,10 +8,10 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2012 OpenWorks LLP
+   Copyright (C) 2007-2013 OpenWorks LLP
       info@open-works.co.uk
 
-   Copyright (C) 2007-2012 Apple, Inc.
+   Copyright (C) 2007-2013 Apple, Inc.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -100,7 +100,7 @@
 #define SHOW_EVENTS 0
 
 
-static void all__sanity_check ( Char* who ); /* fwds */
+static void all__sanity_check ( const HChar* who ); /* fwds */
 
 #define HG_CLI__DEFAULT_MALLOC_REDZONE_SZB 16 /* let's say */
 
@@ -260,7 +260,7 @@ static void lockN_acquire_writer ( Lock* lk, Thread* thr )
          tl_assert(!lk->heldW);
          lk->heldW  = True;
          lk->heldBy = VG_(newBag)( HG_(zalloc), "hg.lNaw.1", HG_(free) );
-         VG_(addToBag)( lk->heldBy, (Word)thr );
+         VG_(addToBag)( lk->heldBy, (UWord)thr );
          break;
       case LK_mbRec:
          if (lk->heldBy == NULL)
@@ -270,9 +270,9 @@ static void lockN_acquire_writer ( Lock* lk, Thread* thr )
          /* assert: lk is only held by one thread .. */
          tl_assert(VG_(sizeUniqueBag(lk->heldBy)) == 1);
          /* assert: .. and that thread is 'thr'. */
-         tl_assert(VG_(elemBag)(lk->heldBy, (Word)thr)
+         tl_assert(VG_(elemBag)(lk->heldBy, (UWord)thr)
                    == VG_(sizeTotalBag)(lk->heldBy));
-         VG_(addToBag)(lk->heldBy, (Word)thr);
+         VG_(addToBag)(lk->heldBy, (UWord)thr);
          break;
       case LK_rdwr:
          tl_assert(lk->heldBy == NULL && !lk->heldW); /* must be unheld */
@@ -310,11 +310,11 @@ static void lockN_acquire_reader ( Lock* lk, Thread* thr )
    /* end EXPOSITION only */
 
    if (lk->heldBy) {
-      VG_(addToBag)(lk->heldBy, (Word)thr);
+      VG_(addToBag)(lk->heldBy, (UWord)thr);
    } else {
       lk->heldW  = False;
       lk->heldBy = VG_(newBag)( HG_(zalloc), "hg.lNar.1", HG_(free) );
-      VG_(addToBag)( lk->heldBy, (Word)thr );
+      VG_(addToBag)( lk->heldBy, (UWord)thr );
    }
    tl_assert(!lk->heldW);
    tl_assert(HG_(is_sane_LockN)(lk));
@@ -333,7 +333,7 @@ static void lockN_release ( Lock* lk, Thread* thr )
    tl_assert(lk->heldBy);
    stats__lockN_releases++;
    /* Remove it from the holder set */
-   b = VG_(delFromBag)(lk->heldBy, (Word)thr);
+   b = VG_(delFromBag)(lk->heldBy, (UWord)thr);
    /* thr must actually have been a holder of lk */
    tl_assert(b);
    /* normalise */
@@ -356,18 +356,18 @@ static void remove_Lock_from_locksets_of_all_owning_Threads( Lock* lk )
    }
    /* for each thread that holds this lock do ... */
    VG_(initIterBag)( lk->heldBy );
-   while (VG_(nextIterBag)( lk->heldBy, (Word*)&thr, NULL )) {
+   while (VG_(nextIterBag)( lk->heldBy, (UWord*)&thr, NULL )) {
       tl_assert(HG_(is_sane_Thread)(thr));
       tl_assert(HG_(elemWS)( univ_lsets,
-                             thr->locksetA, (Word)lk ));
+                             thr->locksetA, (UWord)lk ));
       thr->locksetA
-         = HG_(delFromWS)( univ_lsets, thr->locksetA, (Word)lk );
+         = HG_(delFromWS)( univ_lsets, thr->locksetA, (UWord)lk );
 
       if (lk->heldW) {
          tl_assert(HG_(elemWS)( univ_lsets,
-                                thr->locksetW, (Word)lk ));
+                                thr->locksetW, (UWord)lk ));
          thr->locksetW
-            = HG_(delFromWS)( univ_lsets, thr->locksetW, (Word)lk );
+            = HG_(delFromWS)( univ_lsets, thr->locksetW, (UWord)lk );
       }
    }
    VG_(doneIterBag)( lk->heldBy );
@@ -388,7 +388,7 @@ static const Int sHOW_ADMIN = 0;
 static void space ( Int n )
 {
    Int  i;
-   Char spaces[128+1];
+   HChar spaces[128+1];
    tl_assert(n >= 0 && n < 128);
    if (n == 0)
       return;
@@ -470,10 +470,10 @@ static void pp_Lock ( Int d, Lock* lk )
    space(d+3); VG_(printf)("heldBy %p", lk->heldBy);
    if (lk->heldBy) {
       Thread* thr;
-      Word    count;
+      UWord   count;
       VG_(printf)(" { ");
       VG_(initIterBag)( lk->heldBy );
-      while (VG_(nextIterBag)( lk->heldBy, (Word*)&thr, &count ))
+      while (VG_(nextIterBag)( lk->heldBy, (UWord*)&thr, &count ))
          VG_(printf)("%lu:%p ", count, thr);
       VG_(doneIterBag)( lk->heldBy );
       VG_(printf)("}");
@@ -507,8 +507,8 @@ static void pp_map_locks ( Int d )
    space(d); VG_(printf)("map_locks (%d entries) {\n",
                          (Int)VG_(sizeFM)( map_locks ));
    VG_(initIterFM)( map_locks );
-   while (VG_(nextIterFM)( map_locks, (Word*)&gla,
-                                      (Word*)&lk )) {
+   while (VG_(nextIterFM)( map_locks, (UWord*)&gla,
+                                      (UWord*)&lk )) {
       space(d+3);
       VG_(printf)("guest %p -> Lock %p\n", gla, lk);
    }
@@ -516,7 +516,7 @@ static void pp_map_locks ( Int d )
    space(d); VG_(printf)("}\n");
 }
 
-static void pp_everything ( Int flags, Char* caller )
+static void pp_everything ( Int flags, const HChar* caller )
 {
    Int d = 0;
    VG_(printf)("\n");
@@ -555,13 +555,11 @@ static void initialise_data_structures ( Thr* hbthr_root )
    tl_assert(admin_threads == NULL);
    tl_assert(admin_locks == NULL);
 
-   tl_assert(sizeof(Addr) == sizeof(Word));
-
    tl_assert(map_threads == NULL);
    map_threads = HG_(zalloc)( "hg.ids.1", VG_N_THREADS * sizeof(Thread*) );
    tl_assert(map_threads != NULL);
 
-   tl_assert(sizeof(Addr) == sizeof(Word));
+   tl_assert(sizeof(Addr) == sizeof(UWord));
    tl_assert(map_locks == NULL);
    map_locks = VG_(newFM)( HG_(zalloc), "hg.ids.2", HG_(free), 
                            NULL/*unboxed Word cmp*/);
@@ -679,12 +677,12 @@ Lock* map_locks_lookup_or_create ( LockKind lkk, Addr ga, ThreadId tid )
    Lock* oldlock = NULL;
    tl_assert(HG_(is_sane_ThreadId)(tid));
    found = VG_(lookupFM)( map_locks, 
-                          NULL, (Word*)&oldlock, (Word)ga );
+                          NULL, (UWord*)&oldlock, (UWord)ga );
    if (!found) {
       Lock* lock = mk_LockN(lkk, ga);
       lock->appeared_at = VG_(record_ExeContext)( tid, 0 );
       tl_assert(HG_(is_sane_LockN)(lock));
-      VG_(addToFM)( map_locks, (Word)ga, (Word)lock );
+      VG_(addToFM)( map_locks, (UWord)ga, (UWord)lock );
       tl_assert(oldlock == NULL);
       return lock;
    } else {
@@ -699,7 +697,7 @@ static Lock* map_locks_maybe_lookup ( Addr ga )
 {
    Bool  found;
    Lock* lk = NULL;
-   found = VG_(lookupFM)( map_locks, NULL, (Word*)&lk, (Word)ga );
+   found = VG_(lookupFM)( map_locks, NULL, (UWord*)&lk, (UWord)ga );
    tl_assert(found  ?  lk != NULL  :  lk == NULL);
    return lk;
 }
@@ -709,7 +707,7 @@ static void map_locks_delete ( Addr ga )
    Addr  ga2 = 0;
    Lock* lk  = NULL;
    VG_(delFromFM)( map_locks,
-                   (Word*)&ga2, (Word*)&lk, (Word)ga );
+                   (UWord*)&ga2, (UWord*)&lk, (UWord)ga );
    /* delFromFM produces the val which is being deleted, if it is
       found.  So assert it is non-null; that in effect asserts that we
       are deleting a (ga, Lock) pair which actually exists. */
@@ -725,7 +723,7 @@ static void map_locks_delete ( Addr ga )
 
 static UWord stats__sanity_checks = 0;
 
-static void laog__sanity_check ( Char* who ); /* fwds */
+static void laog__sanity_check ( const HChar* who ); /* fwds */
 
 /* REQUIRED INVARIANTS:
 
@@ -801,21 +799,21 @@ static void laog__sanity_check ( Char* who ); /* fwds */
 static Bool thread_is_a_holder_of_Lock ( Thread* thr, Lock* lk )
 {
    if (lk->heldBy)
-      return VG_(elemBag)( lk->heldBy, (Word)thr ) > 0;
+      return VG_(elemBag)( lk->heldBy, (UWord)thr ) > 0;
    else
       return False;
 }
 
 /* Sanity check Threads, as far as possible */
 __attribute__((noinline))
-static void threads__sanity_check ( Char* who )
+static void threads__sanity_check ( const HChar* who )
 {
 #define BAD(_str) do { how = (_str); goto bad; } while (0)
-   Char*     how = "no error";
+   const HChar* how = "no error";
    Thread*   thr;
    WordSetID wsA, wsW;
    UWord*    ls_words;
-   Word      ls_size, i;
+   UWord     ls_size, i;
    Lock*     lk;
    for (thr = admin_threads; thr; thr = thr->admin) {
       if (!HG_(is_sane_Thread)(thr)) BAD("1");
@@ -843,10 +841,10 @@ static void threads__sanity_check ( Char* who )
 
 /* Sanity check Locks, as far as possible */
 __attribute__((noinline))
-static void locks__sanity_check ( Char* who )
+static void locks__sanity_check ( const HChar* who )
 {
 #define BAD(_str) do { how = (_str); goto bad; } while (0)
-   Char*     how = "no error";
+   const HChar* how = "no error";
    Addr      gla;
    Lock*     lk;
    Int       i;
@@ -858,7 +856,7 @@ static void locks__sanity_check ( Char* who )
    //      gla == lk->guest_addr
    VG_(initIterFM)( map_locks );
    while (VG_(nextIterFM)( map_locks,
-                           (Word*)&gla, (Word*)&lk )) {
+                           (UWord*)&gla, (UWord*)&lk )) {
       if (lk->guestaddr != gla) BAD("2");
    }
    VG_(doneIterFM)( map_locks );
@@ -873,21 +871,21 @@ static void locks__sanity_check ( Char* who )
       // this lock is mentioned in their locksets.
       if (lk->heldBy) {
          Thread* thr;
-         Word    count;
+         UWord   count;
          VG_(initIterBag)( lk->heldBy );
          while (VG_(nextIterBag)( lk->heldBy, 
-                                  (Word*)&thr, &count )) {
+                                  (UWord*)&thr, &count )) {
             // HG_(is_sane_LockN) above ensures these
             tl_assert(count >= 1);
             tl_assert(HG_(is_sane_Thread)(thr));
-            if (!HG_(elemWS)(univ_lsets, thr->locksetA, (Word)lk)) 
+            if (!HG_(elemWS)(univ_lsets, thr->locksetA, (UWord)lk)) 
                BAD("6");
             // also check the w-only lockset
             if (lk->heldW 
-                && !HG_(elemWS)(univ_lsets, thr->locksetW, (Word)lk)) 
+                && !HG_(elemWS)(univ_lsets, thr->locksetW, (UWord)lk)) 
                BAD("7");
             if ((!lk->heldW)
-                && HG_(elemWS)(univ_lsets, thr->locksetW, (Word)lk)) 
+                && HG_(elemWS)(univ_lsets, thr->locksetW, (UWord)lk)) 
                BAD("8");
          }
          VG_(doneIterBag)( lk->heldBy );
@@ -907,14 +905,14 @@ static void locks__sanity_check ( Char* who )
 }
 
 
-static void all_except_Locks__sanity_check ( Char* who ) {
+static void all_except_Locks__sanity_check ( const HChar* who ) {
    stats__sanity_checks++;
    if (0) VG_(printf)("all_except_Locks__sanity_check(%s)\n", who);
    threads__sanity_check(who);
    if (HG_(clo_track_lockorders))
    laog__sanity_check(who);
 }
-static void all__sanity_check ( Char* who ) {
+static void all__sanity_check ( const HChar* who ) {
    all_except_Locks__sanity_check(who);
    locks__sanity_check(who);
 }
@@ -1103,8 +1101,8 @@ void evhH__post_thread_w_acquires_lock ( Thread* thr,
    laog__pre_thread_acquires_lock( thr, lk );
    }
    /* update the thread's held-locks set */
-   thr->locksetA = HG_(addToWS)( univ_lsets, thr->locksetA, (Word)lk );
-   thr->locksetW = HG_(addToWS)( univ_lsets, thr->locksetW, (Word)lk );
+   thr->locksetA = HG_(addToWS)( univ_lsets, thr->locksetA, (UWord)lk );
+   thr->locksetW = HG_(addToWS)( univ_lsets, thr->locksetW, (UWord)lk );
    /* fall through */
 
   error:
@@ -1178,7 +1176,7 @@ void evhH__post_thread_r_acquires_lock ( Thread* thr,
    laog__pre_thread_acquires_lock( thr, lk );
    }
    /* update the thread's held-locks set */
-   thr->locksetA = HG_(addToWS)( univ_lsets, thr->locksetA, (Word)lk );
+   thr->locksetA = HG_(addToWS)( univ_lsets, thr->locksetA, (UWord)lk );
    /* but don't update thr->locksetW, since lk is only rd-held */
    /* fall through */
 
@@ -1234,8 +1232,8 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
          client. */
       tl_assert(!lock->heldW);
       HG_(record_error_UnlockUnlocked)( thr, lock );
-      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetA, (Word)lock ));
-      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetW, (Word)lock ));
+      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetA, (UWord)lock ));
+      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetW, (UWord)lock ));
       goto error;
    }
 
@@ -1245,7 +1243,7 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
 
    /* The lock is held.  Is this thread one of the holders?  If not,
       report a bug in the client. */
-   n = VG_(elemBag)( lock->heldBy, (Word)thr );
+   n = VG_(elemBag)( lock->heldBy, (UWord)thr );
    tl_assert(n >= 0);
    if (n == 0) {
       /* We are not a current holder of the lock.  This is a bug in
@@ -1255,8 +1253,8 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
       Thread* realOwner = (Thread*)VG_(anyElementOfBag)( lock->heldBy );
       tl_assert(HG_(is_sane_Thread)(realOwner));
       tl_assert(realOwner != thr);
-      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetA, (Word)lock ));
-      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetW, (Word)lock ));
+      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetA, (UWord)lock ));
+      tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetW, (UWord)lock ));
       HG_(record_error_UnlockForeign)( thr, realOwner, lock );
       goto error;
    }
@@ -1271,16 +1269,16 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
 
    if (n > 0) {
       tl_assert(lock->heldBy);
-      tl_assert(n == VG_(elemBag)( lock->heldBy, (Word)thr )); 
+      tl_assert(n == VG_(elemBag)( lock->heldBy, (UWord)thr )); 
       /* We still hold the lock.  So either it's a recursive lock 
          or a rwlock which is currently r-held. */
       tl_assert(lock->kind == LK_mbRec
                 || (lock->kind == LK_rdwr && !lock->heldW));
-      tl_assert(HG_(elemWS)( univ_lsets, thr->locksetA, (Word)lock ));
+      tl_assert(HG_(elemWS)( univ_lsets, thr->locksetA, (UWord)lock ));
       if (lock->heldW)
-         tl_assert(HG_(elemWS)( univ_lsets, thr->locksetW, (Word)lock ));
+         tl_assert(HG_(elemWS)( univ_lsets, thr->locksetW, (UWord)lock ));
       else
-         tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetW, (Word)lock ));
+         tl_assert(!HG_(elemWS)( univ_lsets, thr->locksetW, (UWord)lock ));
    } else {
       /* n is zero.  This means we don't hold the lock any more.  But
          if it's a rwlock held in r-mode, someone else could still
@@ -1306,13 +1304,13 @@ void evhH__pre_thread_releases_lock ( Thread* thr,
          tl_assert(lock->heldW == False);
       }
       //if (lock->heldBy) {
-      //   tl_assert(0 == VG_(elemBag)( lock->heldBy, (Word)thr ));
+      //   tl_assert(0 == VG_(elemBag)( lock->heldBy, (UWord)thr ));
       //}
       /* update this thread's lockset accordingly. */
       thr->locksetA
-         = HG_(delFromWS)( univ_lsets, thr->locksetA, (Word)lock );
+         = HG_(delFromWS)( univ_lsets, thr->locksetA, (UWord)lock );
       thr->locksetW
-         = HG_(delFromWS)( univ_lsets, thr->locksetW, (Word)lock );
+         = HG_(delFromWS)( univ_lsets, thr->locksetW, (UWord)lock );
       /* push our VC into the lock */
       tl_assert(thr->hbthr);
       tl_assert(lock->hbso);
@@ -1703,7 +1701,7 @@ void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
 }
 
 static
-void evh__pre_mem_read ( CorePart part, ThreadId tid, Char* s, 
+void evh__pre_mem_read ( CorePart part, ThreadId tid, const HChar* s, 
                          Addr a, SizeT size) {
    if (SHOW_EVENTS >= 2
        || (SHOW_EVENTS >= 1 && size != 1))
@@ -1716,7 +1714,7 @@ void evh__pre_mem_read ( CorePart part, ThreadId tid, Char* s,
 
 static
 void evh__pre_mem_read_asciiz ( CorePart part, ThreadId tid,
-                                Char* s, Addr a ) {
+                                const HChar* s, Addr a ) {
    Int len;
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__pre_mem_asciiz(ctid=%d, \"%s\", %p)\n", 
@@ -1727,14 +1725,14 @@ void evh__pre_mem_read_asciiz ( CorePart part, ThreadId tid,
    // checking the first byte is better than nothing.  See #255009.
    if (!VG_(am_is_valid_for_client) (a, 1, VKI_PROT_READ))
       return;
-   len = VG_(strlen)( (Char*) a );
+   len = VG_(strlen)( (HChar*) a );
    shadow_mem_cread_range( map_threads_lookup(tid), a, len+1 );
    if (len >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__pre_mem_read_asciiz-post");
 }
 
 static
-void evh__pre_mem_write ( CorePart part, ThreadId tid, Char* s,
+void evh__pre_mem_write ( CorePart part, ThreadId tid, const HChar* s,
                           Addr a, SizeT size ) {
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__pre_mem_write(ctid=%d, \"%s\", %p, %lu)\n", 
@@ -1875,19 +1873,29 @@ void evh__HG_PTHREAD_MUTEX_INIT_POST( ThreadId tid,
 }
 
 static
-void evh__HG_PTHREAD_MUTEX_DESTROY_PRE( ThreadId tid, void* mutex )
+void evh__HG_PTHREAD_MUTEX_DESTROY_PRE( ThreadId tid, void* mutex,
+                                        Bool mutex_is_init )
 {
    Thread* thr;
    Lock*   lk;
    if (SHOW_EVENTS >= 1)
-      VG_(printf)("evh__hg_PTHREAD_MUTEX_DESTROY_PRE(ctid=%d, %p)\n", 
-                  (Int)tid, (void*)mutex );
+      VG_(printf)("evh__hg_PTHREAD_MUTEX_DESTROY_PRE"
+                  "(ctid=%d, %p, isInit=%d)\n", 
+                  (Int)tid, (void*)mutex, (Int)mutex_is_init );
 
    thr = map_threads_maybe_lookup( tid );
    /* cannot fail - Thread* must already exist */
    tl_assert( HG_(is_sane_Thread)(thr) );
 
    lk = map_locks_maybe_lookup( (Addr)mutex );
+
+   if (lk == NULL && mutex_is_init) {
+      /* We're destroying a mutex which we don't have any record of,
+         and which appears to have the value PTHREAD_MUTEX_INITIALIZER.
+         Assume it never got used, and so we don't need to do anything
+         more. */
+      goto out;
+   }
 
    if (lk == NULL || (lk->kind != LK_nonRec && lk->kind != LK_mbRec)) {
       HG_(record_error_Misc)(
@@ -1917,6 +1925,7 @@ void evh__HG_PTHREAD_MUTEX_DESTROY_PRE( ThreadId tid, void* mutex )
       del_LockN( lk );
    }
 
+  out:
    if (HG_(clo_sanity_flags) & SCE_LOCKS)
       all__sanity_check("evh__hg_PTHREAD_MUTEX_DESTROY_PRE");
 }
@@ -1948,14 +1957,14 @@ static void evh__HG_PTHREAD_MUTEX_LOCK_PRE ( ThreadId tid,
         && (lk->kind == LK_nonRec || lk->kind == LK_rdwr)
         && lk->heldBy
         && lk->heldW
-        && VG_(elemBag)( lk->heldBy, (Word)thr ) > 0 ) {
+        && VG_(elemBag)( lk->heldBy, (UWord)thr ) > 0 ) {
       /* uh, it's a non-recursive lock and we already w-hold it, and
          this is a real lock operation (not a speculative "tryLock"
          kind of thing).  Duh.  Deadlock coming up; but at least
          produce an error message. */
-      HChar* errstr = "Attempt to re-lock a "
+      const HChar* errstr = "Attempt to re-lock a "
                       "non-recursive lock I already hold";
-      HChar* auxstr = "Lock was previously acquired";
+      const HChar* auxstr = "Lock was previously acquired";
       if (lk->acquired_at) {
          HG_(record_error_Misc_w_aux)( thr, errstr, auxstr, lk->acquired_at );
       } else {
@@ -2079,7 +2088,7 @@ static void evh__HG_PTHREAD_SPIN_LOCK_POST( ThreadId tid,
 static void evh__HG_PTHREAD_SPIN_DESTROY_PRE( ThreadId tid, 
                                               void* slock )
 {
-   evh__HG_PTHREAD_MUTEX_DESTROY_PRE( tid, slock );
+   evh__HG_PTHREAD_MUTEX_DESTROY_PRE( tid, slock, 0/*!isInit*/ );
 }
 
 
@@ -2150,7 +2159,8 @@ static CVInfo* map_cond_to_CVInfo_lookup_NO_alloc ( void* cond ) {
    }
 }
 
-static void map_cond_to_CVInfo_delete ( ThreadId tid, void* cond ) {
+static void map_cond_to_CVInfo_delete ( ThreadId tid,
+                                        void* cond, Bool cond_is_init ) {
    Thread*   thr;
    UWord keyW, valW;
 
@@ -2158,22 +2168,33 @@ static void map_cond_to_CVInfo_delete ( ThreadId tid, void* cond ) {
    tl_assert(thr); /* cannot fail - Thread* must already exist */
 
    map_cond_to_CVInfo_INIT();
-   if (VG_(delFromFM)( map_cond_to_CVInfo, &keyW, &valW, (UWord)cond )) {
+   if (VG_(lookupFM)( map_cond_to_CVInfo, &keyW, &valW, (UWord)cond )) {
       CVInfo* cvi = (CVInfo*)valW;
       tl_assert(keyW == (UWord)cond);
       tl_assert(cvi);
       tl_assert(cvi->so);
       if (cvi->nWaiters > 0) {
-         HG_(record_error_Misc)(thr,
-                                "pthread_cond_destroy:"
+         HG_(record_error_Misc)(
+            thr, "pthread_cond_destroy:"
                                 " destruction of condition variable being waited upon");
+         /* Destroying a cond var being waited upon outcome is EBUSY and
+            variable is not destroyed. */
+         return;
       }
+      if (!VG_(delFromFM)( map_cond_to_CVInfo, &keyW, &valW, (UWord)cond ))
+         tl_assert(0); // cond var found above, and not here ???
       libhb_so_dealloc(cvi->so);
       cvi->mx_ga = 0;
       HG_(free)(cvi);
    } else {
-      HG_(record_error_Misc)(thr,
-                             "pthread_cond_destroy: destruction of unknown cond var");
+      /* We have no record of this CV.  So complain about it
+         .. except, don't bother to complain if it has exactly the
+         value PTHREAD_COND_INITIALIZER, since it might be that the CV
+         was initialised like that but never used. */
+      if (!cond_is_init) {
+         HG_(record_error_Misc)(
+            thr, "pthread_cond_destroy: destruction of unknown cond var");
+      }
    }
 }
 
@@ -2236,7 +2257,7 @@ static void evh__HG_PTHREAD_COND_SIGNAL_PRE ( ThreadId tid, void* cond )
                "pthread_cond_{signal,broadcast}: dubious: "
                "associated lock is not held by any thread");
          }
-         if (lk->heldBy != NULL && 0 == VG_(elemBag)(lk->heldBy, (Word)thr)) {
+         if (lk->heldBy != NULL && 0 == VG_(elemBag)(lk->heldBy, (UWord)thr)) {
             HG_(record_error_Misc)(thr,
                "pthread_cond_{signal,broadcast}: "
                "associated lock is not held by calling thread");
@@ -2298,7 +2319,7 @@ static Bool evh__HG_PTHREAD_COND_WAIT_PRE ( ThreadId tid,
             thr, "pthread_cond_{timed}wait called with un-held mutex");
       } else
       if (lk->heldBy != NULL
-          && VG_(elemBag)( lk->heldBy, (Word)thr ) == 0) {
+          && VG_(elemBag)( lk->heldBy, (UWord)thr ) == 0) {
          lk_valid = False;
          HG_(record_error_Misc)(
             thr, "pthread_cond_{timed}wait called with mutex "
@@ -2326,7 +2347,8 @@ static Bool evh__HG_PTHREAD_COND_WAIT_PRE ( ThreadId tid,
 }
 
 static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
-                                             void* cond, void* mutex )
+                                             void* cond, void* mutex,
+                                             Bool timeout)
 {
    /* A pthread_cond_wait(cond, mutex) completed successfully.  Find
       the SO for this cond, and 'recv' from it so as to acquire a
@@ -2336,8 +2358,8 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
 
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__HG_PTHREAD_COND_WAIT_POST"
-                  "(ctid=%d, cond=%p, mutex=%p)\n", 
-                  (Int)tid, (void*)cond, (void*)mutex );
+                  "(ctid=%d, cond=%p, mutex=%p)\n, timeout=%d",
+                  (Int)tid, (void*)cond, (void*)mutex, (Int)timeout );
 
    thr = map_threads_maybe_lookup( tid );
    tl_assert(thr); /* cannot fail - Thread* must already exist */
@@ -2359,7 +2381,7 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
    tl_assert(cvi->so);
    tl_assert(cvi->nWaiters > 0);
 
-   if (!libhb_so_everSent(cvi->so)) {
+   if (!timeout && !libhb_so_everSent(cvi->so)) {
       /* Hmm.  How can a wait on 'cond' succeed if nobody signalled
          it?  If this happened it would surely be a bug in the threads
          library.  Or one of those fabled "spurious wakeups". */
@@ -2374,18 +2396,34 @@ static void evh__HG_PTHREAD_COND_WAIT_POST ( ThreadId tid,
    cvi->nWaiters--;
 }
 
+static void evh__HG_PTHREAD_COND_INIT_POST ( ThreadId tid,
+                                             void* cond, void* cond_attr )
+{
+   CVInfo* cvi;
+
+   if (SHOW_EVENTS >= 1)
+      VG_(printf)("evh__HG_PTHREAD_COND_INIT_POST"
+                  "(ctid=%d, cond=%p, cond_attr=%p)\n", 
+                  (Int)tid, (void*)cond, (void*) cond_attr );
+
+   cvi = map_cond_to_CVInfo_lookup_or_alloc( cond );
+   tl_assert (cvi);
+   tl_assert (cvi->so);
+}
+
+
 static void evh__HG_PTHREAD_COND_DESTROY_PRE ( ThreadId tid,
-                                               void* cond )
+                                               void* cond, Bool cond_is_init )
 {
    /* Deal with destroy events.  The only purpose is to free storage
       associated with the CV, so as to avoid any possible resource
       leaks. */
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__HG_PTHREAD_COND_DESTROY_PRE"
-                  "(ctid=%d, cond=%p)\n", 
-                  (Int)tid, (void*)cond );
+                  "(ctid=%d, cond=%p, cond_is_init=%d)\n", 
+                  (Int)tid, (void*)cond, (Int)cond_is_init );
 
-   map_cond_to_CVInfo_delete( tid, cond );
+   map_cond_to_CVInfo_delete( tid, cond, cond_is_init );
 }
 
 
@@ -2590,7 +2628,7 @@ static void push_SO_for_sem ( void* sem, SO* so ) {
    } else {
      xa = VG_(newXA)( HG_(zalloc), "hg.pSfs.1", HG_(free), sizeof(SO*) );
       VG_(addToXA)( xa, &so );
-      VG_(addToFM)( map_sem_to_SO_stack, (Word)sem, (Word)xa );
+      VG_(addToFM)( map_sem_to_SO_stack, (UWord)sem, (UWord)xa );
    }
 }
 
@@ -3310,8 +3348,8 @@ static void laog__init ( void )
    tl_assert(laog_exposition);
 }
 
-static void laog__show ( Char* who ) {
-   Word i, ws_size;
+static void laog__show ( const HChar* who ) {
+   UWord i, ws_size;
    UWord* ws_words;
    Lock* me;
    LAOGLinks* links;
@@ -3319,8 +3357,8 @@ static void laog__show ( Char* who ) {
    VG_(initIterFM)( laog );
    me = NULL;
    links = NULL;
-   while (VG_(nextIterFM)( laog, (Word*)&me,
-                                 (Word*)&links )) {
+   while (VG_(nextIterFM)( laog, (UWord*)&me,
+                                 (UWord*)&links )) {
       tl_assert(me);
       tl_assert(links);
       VG_(printf)("   node %p:\n", me);
@@ -3418,7 +3456,7 @@ static void univ_laog_do_GC ( void ) {
 
 __attribute__((noinline))
 static void laog__add_edge ( Lock* src, Lock* dst ) {
-   Word       keyW;
+   UWord      keyW;
    LAOGLinks* links;
    Bool       presentF, presentR;
    if (0) VG_(printf)("laog__add_edge %p %p\n", src, dst);
@@ -3436,34 +3474,34 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
    /* Update the out edges for src */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)src )) {
+   if (VG_(lookupFM)( laog, &keyW, (UWord*)&links, (UWord)src )) {
       WordSetID outs_new;
       tl_assert(links);
-      tl_assert(keyW == (Word)src);
-      outs_new = HG_(addToWS)( univ_laog, links->outs, (Word)dst );
+      tl_assert(keyW == (UWord)src);
+      outs_new = HG_(addToWS)( univ_laog, links->outs, (UWord)dst );
       presentF = outs_new == links->outs;
       links->outs = outs_new;
    } else {
       links = HG_(zalloc)("hg.lae.1", sizeof(LAOGLinks));
       links->inns = HG_(emptyWS)( univ_laog );
-      links->outs = HG_(singletonWS)( univ_laog, (Word)dst );
-      VG_(addToFM)( laog, (Word)src, (Word)links );
+      links->outs = HG_(singletonWS)( univ_laog, (UWord)dst );
+      VG_(addToFM)( laog, (UWord)src, (UWord)links );
    }
    /* Update the in edges for dst */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)dst )) {
+   if (VG_(lookupFM)( laog, &keyW, (UWord*)&links, (UWord)dst )) {
       WordSetID inns_new;
       tl_assert(links);
-      tl_assert(keyW == (Word)dst);
-      inns_new = HG_(addToWS)( univ_laog, links->inns, (Word)src );
+      tl_assert(keyW == (UWord)dst);
+      inns_new = HG_(addToWS)( univ_laog, links->inns, (UWord)src );
       presentR = inns_new == links->inns;
       links->inns = inns_new;
    } else {
       links = HG_(zalloc)("hg.lae.2", sizeof(LAOGLinks));
-      links->inns = HG_(singletonWS)( univ_laog, (Word)src );
+      links->inns = HG_(singletonWS)( univ_laog, (UWord)src );
       links->outs = HG_(emptyWS)( univ_laog );
-      VG_(addToFM)( laog, (Word)dst, (Word)links );
+      VG_(addToFM)( laog, (UWord)dst, (UWord)links );
    }
 
    tl_assert( (presentF && presentR) || (!presentF && !presentR) );
@@ -3482,7 +3520,7 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
       expo.src_ec = NULL;
       expo.dst_ec = NULL;
       tl_assert(laog_exposition);
-      if (VG_(lookupFM)( laog_exposition, NULL, NULL, (Word)&expo )) {
+      if (VG_(lookupFM)( laog_exposition, NULL, NULL, (UWord)&expo )) {
          /* we already have it; do nothing */
       } else {
          LAOGLinkExposition* expo2 = HG_(zalloc)("hg.lae.3", 
@@ -3491,7 +3529,7 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
          expo2->dst_ga = dst->guestaddr;
          expo2->src_ec = src->acquired_at;
          expo2->dst_ec = dst->acquired_at;
-         VG_(addToFM)( laog_exposition, (Word)expo2, (Word)NULL );
+         VG_(addToFM)( laog_exposition, (UWord)expo2, (UWord)NULL );
       }
    }
 
@@ -3501,24 +3539,24 @@ static void laog__add_edge ( Lock* src, Lock* dst ) {
 
 __attribute__((noinline))
 static void laog__del_edge ( Lock* src, Lock* dst ) {
-   Word       keyW;
+   UWord      keyW;
    LAOGLinks* links;
    if (0) VG_(printf)("laog__del_edge enter %p %p\n", src, dst);
    /* Update the out edges for src */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)src )) {
+   if (VG_(lookupFM)( laog, &keyW, (UWord*)&links, (UWord)src )) {
       tl_assert(links);
-      tl_assert(keyW == (Word)src);
-      links->outs = HG_(delFromWS)( univ_laog, links->outs, (Word)dst );
+      tl_assert(keyW == (UWord)src);
+      links->outs = HG_(delFromWS)( univ_laog, links->outs, (UWord)dst );
    }
    /* Update the in edges for dst */
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)dst )) {
+   if (VG_(lookupFM)( laog, &keyW, (UWord*)&links, (UWord)dst )) {
       tl_assert(links);
-      tl_assert(keyW == (Word)dst);
-      links->inns = HG_(delFromWS)( univ_laog, links->inns, (Word)src );
+      tl_assert(keyW == (UWord)dst);
+      links->inns = HG_(delFromWS)( univ_laog, links->inns, (UWord)src );
    }
 
    /* Remove the exposition of src,dst (if present) */
@@ -3545,13 +3583,13 @@ static void laog__del_edge ( Lock* src, Lock* dst ) {
 
 __attribute__((noinline))
 static WordSetID /* in univ_laog */ laog__succs ( Lock* lk ) {
-   Word       keyW;
+   UWord      keyW;
    LAOGLinks* links;
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)lk )) {
+   if (VG_(lookupFM)( laog, &keyW, (UWord*)&links, (UWord)lk )) {
       tl_assert(links);
-      tl_assert(keyW == (Word)lk);
+      tl_assert(keyW == (UWord)lk);
       return links->outs;
    } else {
       return HG_(emptyWS)( univ_laog );
@@ -3560,13 +3598,13 @@ static WordSetID /* in univ_laog */ laog__succs ( Lock* lk ) {
 
 __attribute__((noinline))
 static WordSetID /* in univ_laog */ laog__preds ( Lock* lk ) {
-   Word       keyW;
+   UWord      keyW;
    LAOGLinks* links;
    keyW  = 0;
    links = NULL;
-   if (VG_(lookupFM)( laog, &keyW, (Word*)&links, (Word)lk )) {
+   if (VG_(lookupFM)( laog, &keyW, (UWord*)&links, (UWord)lk )) {
       tl_assert(links);
-      tl_assert(keyW == (Word)lk);
+      tl_assert(keyW == (UWord)lk);
       return links->inns;
    } else {
       return HG_(emptyWS)( univ_laog );
@@ -3574,8 +3612,8 @@ static WordSetID /* in univ_laog */ laog__preds ( Lock* lk ) {
 }
 
 __attribute__((noinline))
-static void laog__sanity_check ( Char* who ) {
-   Word i, ws_size;
+static void laog__sanity_check ( const HChar* who ) {
+   UWord i, ws_size;
    UWord* ws_words;
    Lock* me;
    LAOGLinks* links;
@@ -3583,22 +3621,22 @@ static void laog__sanity_check ( Char* who ) {
    me = NULL;
    links = NULL;
    if (0) VG_(printf)("laog sanity check\n");
-   while (VG_(nextIterFM)( laog, (Word*)&me,
-                                 (Word*)&links )) {
+   while (VG_(nextIterFM)( laog, (UWord*)&me,
+                                 (UWord*)&links )) {
       tl_assert(me);
       tl_assert(links);
       HG_(getPayloadWS)( &ws_words, &ws_size, univ_laog, links->inns );
       for (i = 0; i < ws_size; i++) {
          if ( ! HG_(elemWS)( univ_laog, 
                              laog__succs( (Lock*)ws_words[i] ), 
-                             (Word)me ))
+                             (UWord)me ))
             goto bad;
       }
       HG_(getPayloadWS)( &ws_words, &ws_size, univ_laog, links->outs );
       for (i = 0; i < ws_size; i++) {
          if ( ! HG_(elemWS)( univ_laog, 
                              laog__preds( (Lock*)ws_words[i] ), 
-                             (Word)me ))
+                             (UWord)me ))
             goto bad;
       }
       me = NULL;
@@ -3622,12 +3660,12 @@ static
 Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
 {
    Lock*     ret;
-   Word      i, ssz;
+   Word      ssz;
    XArray*   stack;   /* of Lock* */
    WordFM*   visited; /* Lock* -> void, iow, Set(Lock*) */
    Lock*     here;
    WordSetID succs;
-   Word      succs_size;
+   UWord     succs_size, i;
    UWord*    succs_words;
    //laog__sanity_check();
 
@@ -3651,12 +3689,12 @@ Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
       here = *(Lock**) VG_(indexXA)( stack, ssz-1 );
       VG_(dropTailXA)( stack, 1 );
 
-      if (HG_(elemWS)( univ_lsets, dsts, (Word)here )) { ret = here; break; }
+      if (HG_(elemWS)( univ_lsets, dsts, (UWord)here )) { ret = here; break; }
 
-      if (VG_(lookupFM)( visited, NULL, NULL, (Word)here ))
+      if (VG_(lookupFM)( visited, NULL, NULL, (UWord)here ))
          continue;
 
-      VG_(addToFM)( visited, (Word)here, 0 );
+      VG_(addToFM)( visited, (UWord)here, 0 );
 
       succs = laog__succs( here );
       HG_(getPayloadWS)( &succs_words, &succs_size, univ_laog, succs );
@@ -3681,13 +3719,13 @@ static void laog__pre_thread_acquires_lock (
             )
 {
    UWord*   ls_words;
-   Word     ls_size, i;
+   UWord    ls_size, i;
    Lock*    other;
 
    /* It may be that 'thr' already holds 'lk' and is recursively
       relocking in.  In this case we just ignore the call. */
    /* NB: univ_lsets really is correct here */
-   if (HG_(elemWS)( univ_lsets, thr->locksetA, (Word)lk ))
+   if (HG_(elemWS)( univ_lsets, thr->locksetA, (UWord)lk ))
       return;
 
    /* First, the check.  Complain if there is any path in laog from lk
@@ -3712,7 +3750,7 @@ static void laog__pre_thread_acquires_lock (
       key.dst_ec = NULL;
       found = NULL;
       if (VG_(lookupFM)( laog_exposition,
-                         (Word*)&found, NULL, (Word)&key )) {
+                         (UWord*)&found, NULL, (UWord)&key )) {
          tl_assert(found != &key);
          tl_assert(found->src_ga == key.src_ga);
          tl_assert(found->dst_ga == key.dst_ga);
@@ -3723,9 +3761,54 @@ static void laog__pre_thread_acquires_lock (
                  found->src_ec, found->dst_ec, other->acquired_at );
       } else {
          /* Hmm.  This can't happen (can it?) */
+         /* Yes, it can happen: see tests/tc14_laog_dinphils.
+            Imagine we have 3 philosophers A B C, and the forks
+            between them:
+
+                           C
+
+                       fCA   fBC
+
+                      A   fAB   B
+
+            Let's have the following actions:
+                   A takes    fCA,fAB
+                   A releases fCA,fAB
+                   B takes    fAB,fBC
+                   B releases fAB,fBC
+                   C takes    fBC,fCA
+                   C releases fBC,fCA
+
+            Helgrind will report a lock order error when C takes fCA.
+            Effectively, we have a deadlock if the following
+            sequence is done:
+                A takes fCA
+                B takes fAB
+                C takes fBC
+
+            The error reported is:
+              Observed (incorrect) order fBC followed by fCA
+            but the stack traces that have established the required order
+            are not given.
+
+            This is because there is no pair (fCA, fBC) in laog exposition :
+            the laog_exposition records all pairs of locks between a new lock
+            taken by a thread and all the already taken locks.
+            So, there is no laog_exposition (fCA, fBC) as no thread ever
+            first locked fCA followed by fBC.
+
+            In other words, when the deadlock cycle involves more than
+            two locks, then helgrind does not report the sequence of
+            operations that created the cycle.
+
+            However, we can report the current stack trace (where
+            lk is being taken), and the stack trace where other was acquired:
+            Effectively, the variable 'other' contains a lock currently
+            held by this thread, with its 'acquired_at'. */
+                    
          HG_(record_error_LockOrder)(
             thr, lk->guestaddr, other->guestaddr,
-                 NULL, NULL, NULL );
+                 NULL, NULL, other->acquired_at );
       }
    }
 
@@ -3773,7 +3856,7 @@ __attribute__((noinline))
 static void laog__handle_one_lock_deletion ( Lock* lk )
 {
    WordSetID preds, succs;
-   Word preds_size, succs_size, i, j;
+   UWord preds_size, succs_size, i, j;
    UWord *preds_words, *succs_words;
 
    preds = laog__preds( lk );
@@ -4128,21 +4211,43 @@ Bool HG_(mm_find_containing_block)( /*OUT*/ExeContext** where,
 /*--- Instrumentation                                        ---*/
 /*--------------------------------------------------------------*/
 
+#define unop(_op, _arg1)         IRExpr_Unop((_op),(_arg1))
 #define binop(_op, _arg1, _arg2) IRExpr_Binop((_op),(_arg1),(_arg2))
 #define mkexpr(_tmp)             IRExpr_RdTmp((_tmp))
 #define mkU32(_n)                IRExpr_Const(IRConst_U32(_n))
 #define mkU64(_n)                IRExpr_Const(IRConst_U64(_n))
 #define assign(_t, _e)           IRStmt_WrTmp((_t), (_e))
 
+/* This takes and returns atoms, of course.  Not full IRExprs. */
+static IRExpr* mk_And1 ( IRSB* sbOut, IRExpr* arg1, IRExpr* arg2 )
+{
+   tl_assert(arg1 && arg2);
+   tl_assert(isIRAtom(arg1));
+   tl_assert(isIRAtom(arg2));
+   /* Generate 32to1(And32(1Uto32(arg1), 1Uto32(arg2))).  Appalling
+      code, I know. */
+   IRTemp wide1 = newIRTemp(sbOut->tyenv, Ity_I32);
+   IRTemp wide2 = newIRTemp(sbOut->tyenv, Ity_I32);
+   IRTemp anded = newIRTemp(sbOut->tyenv, Ity_I32);
+   IRTemp res   = newIRTemp(sbOut->tyenv, Ity_I1);
+   addStmtToIRSB(sbOut, assign(wide1, unop(Iop_1Uto32, arg1)));
+   addStmtToIRSB(sbOut, assign(wide2, unop(Iop_1Uto32, arg2)));
+   addStmtToIRSB(sbOut, assign(anded, binop(Iop_And32, mkexpr(wide1),
+                                                       mkexpr(wide2))));
+   addStmtToIRSB(sbOut, assign(res, unop(Iop_32to1, mkexpr(anded))));
+   return mkexpr(res);
+}
+
 static void instrument_mem_access ( IRSB*   sbOut, 
                                     IRExpr* addr,
                                     Int     szB,
                                     Bool    isStore,
                                     Int     hWordTy_szB,
-                                    Int     goff_sp )
+                                    Int     goff_sp,
+                                    IRExpr* guard ) /* NULL => True */
 {
    IRType   tyAddr   = Ity_INVALID;
-   HChar*   hName    = NULL;
+   const HChar* hName    = NULL;
    void*    hAddr    = NULL;
    Int      regparms = 0;
    IRExpr** argv     = NULL;
@@ -4275,15 +4380,23 @@ static void instrument_mem_access ( IRSB*   sbOut,
                    : binop(Iop_Add64, mkexpr(addr_minus_sp), mkU64(rz_szB)))
       );
 
-      IRTemp guard = newIRTemp(sbOut->tyenv, Ity_I1);
+      /* guardA == "guard on the address" */
+      IRTemp guardA = newIRTemp(sbOut->tyenv, Ity_I1);
       addStmtToIRSB(
          sbOut,
-         assign(guard,
+         assign(guardA,
                 tyAddr == Ity_I32 
                    ? binop(Iop_CmpLT32U, mkU32(THRESH), mkexpr(diff))
                    : binop(Iop_CmpLT64U, mkU64(THRESH), mkexpr(diff)))
       );
-      di->guard = mkexpr(guard);
+      di->guard = mkexpr(guardA);
+   }
+
+   /* If there's a guard on the access itself (as supplied by the
+      caller of this routine), we need to AND that in to any guard we
+      might already have. */
+   if (guard) {
+      di->guard = mk_And1(sbOut, di->guard, guard);
    }
 
    /* Add the helper. */
@@ -4297,7 +4410,7 @@ static void instrument_mem_access ( IRSB*   sbOut,
 static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
 {
    DebugInfo* dinfo;
-   const UChar* soname;
+   const HChar* soname;
    if (0) return False;
 
    dinfo = VG_(find_DebugInfo)( (Addr)ga );
@@ -4326,6 +4439,7 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                       IRSB* bbIn,
                       VexGuestLayout* layout,
                       VexGuestExtents* vge,
+                      VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    Int     i;
@@ -4429,7 +4543,8 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                   (isDCAS ? 2 : 1)
                      * sizeofIRType(typeOfIRExpr(bbIn->tyenv, cas->dataLo)),
                   False/*!isStore*/,
-                  sizeofIRType(hWordTy), goff_sp
+                  sizeofIRType(hWordTy), goff_sp,
+                  NULL/*no-guard*/
                );
             }
             break;
@@ -4449,7 +4564,8 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                      st->Ist.LLSC.addr,
                      sizeofIRType(dataTy),
                      False/*!isStore*/,
-                     sizeofIRType(hWordTy), goff_sp
+                     sizeofIRType(hWordTy), goff_sp,
+                     NULL/*no-guard*/
                   );
                }
             } else {
@@ -4460,22 +4576,46 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
          }
 
          case Ist_Store:
-            /* It seems we pretend that store-conditionals don't
-               exist, viz, just ignore them ... */
             if (!inLDSO) {
                instrument_mem_access( 
                   bbOut, 
                   st->Ist.Store.addr, 
                   sizeofIRType(typeOfIRExpr(bbIn->tyenv, st->Ist.Store.data)),
                   True/*isStore*/,
-                  sizeofIRType(hWordTy), goff_sp
+                  sizeofIRType(hWordTy), goff_sp,
+                  NULL/*no-guard*/
                );
             }
             break;
 
+         case Ist_StoreG: {
+            IRStoreG* sg   = st->Ist.StoreG.details;
+            IRExpr*   data = sg->data;
+            IRExpr*   addr = sg->addr;
+            IRType    type = typeOfIRExpr(bbIn->tyenv, data);
+            tl_assert(type != Ity_INVALID);
+            instrument_mem_access( bbOut, addr, sizeofIRType(type),
+                                   True/*isStore*/,
+                                   sizeofIRType(hWordTy),
+                                   goff_sp, sg->guard );
+            break;
+         }
+
+         case Ist_LoadG: {
+            IRLoadG* lg       = st->Ist.LoadG.details;
+            IRType   type     = Ity_INVALID; /* loaded type */
+            IRType   typeWide = Ity_INVALID; /* after implicit widening */
+            IRExpr*  addr     = lg->addr;
+            typeOfIRLoadGOp(lg->cvt, &typeWide, &type);
+            tl_assert(type != Ity_INVALID);
+            instrument_mem_access( bbOut, addr, sizeofIRType(type),
+                                   False/*!isStore*/,
+                                   sizeofIRType(hWordTy),
+                                   goff_sp, lg->guard );
+            break;
+         }
+
          case Ist_WrTmp: {
-            /* ... whereas here we don't care whether a load is a
-               vanilla one or a load-linked. */
             IRExpr* data = st->Ist.WrTmp.data;
             if (data->tag == Iex_Load) {
                if (!inLDSO) {
@@ -4484,7 +4624,8 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                      data->Iex.Load.addr,
                      sizeofIRType(data->Iex.Load.ty),
                      False/*!isStore*/,
-                     sizeofIRType(hWordTy), goff_sp
+                     sizeofIRType(hWordTy), goff_sp,
+                     NULL/*no-guard*/
                   );
                }
             }
@@ -4504,7 +4645,7 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                   if (!inLDSO) {
                      instrument_mem_access( 
                         bbOut, d->mAddr, dataSize, False/*!isStore*/,
-                        sizeofIRType(hWordTy), goff_sp
+                        sizeofIRType(hWordTy), goff_sp, NULL/*no-guard*/
                      );
                   }
                }
@@ -4512,7 +4653,7 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
                   if (!inLDSO) {
                      instrument_mem_access( 
                         bbOut, d->mAddr, dataSize, True/*isStore*/,
-                        sizeofIRType(hWordTy), goff_sp
+                        sizeofIRType(hWordTy), goff_sp, NULL/*no-guard*/
                      );
                   }
                }
@@ -4648,7 +4789,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          if (0)
          VG_(printf)("XXXX: bind pthread_t %p to Thread* %p\n",
                      (void*)args[1], (void*)my_thr );
-         VG_(addToFM)( map_pthread_t_to_Thread, (Word)args[1], (Word)my_thr );
+         VG_(addToFM)( map_pthread_t_to_Thread, (UWord)args[1], (UWord)my_thr );
          break;
       }
 
@@ -4658,7 +4799,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          my_thr = map_threads_maybe_lookup( tid );
          tl_assert(my_thr); /* See justification above in SET_MY_PTHREAD_T */
          HG_(record_error_PthAPIerror)(
-            my_thr, (HChar*)args[1], (Word)args[2], (HChar*)args[3] );
+            my_thr, (HChar*)args[1], (UWord)args[2], (HChar*)args[3] );
          break;
       }
 
@@ -4672,7 +4813,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
                      (void*)args[1]);
          map_pthread_t_to_Thread_INIT();
          found = VG_(lookupFM)( map_pthread_t_to_Thread, 
-                                NULL, (Word*)&thr_q, (Word)args[1] );
+                                NULL, (UWord*)&thr_q, (UWord)args[1] );
           /* Can this fail?  It would mean that our pthread_join
              wrapper observed a successful join on args[1] yet that
              thread never existed (or at least, it never lodged an
@@ -4698,8 +4839,9 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          evh__HG_PTHREAD_MUTEX_INIT_POST( tid, (void*)args[1], args[2] );
          break;
 
+      /* mutex=arg[1], mutex_is_init=arg[2] */
       case _VG_USERREQ__HG_PTHREAD_MUTEX_DESTROY_PRE:
-         evh__HG_PTHREAD_MUTEX_DESTROY_PRE( tid, (void*)args[1] );
+         evh__HG_PTHREAD_MUTEX_DESTROY_PRE( tid, (void*)args[1], args[2] != 0 );
          break;
 
       case _VG_USERREQ__HG_PTHREAD_MUTEX_UNLOCK_PRE:   // pth_mx_t*
@@ -4736,16 +4878,24 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          break;
       }
 
-      /* cond=arg[1] */
+      /* Thread successfully completed pthread_cond_init:
+         cond=arg[1], cond_attr=arg[2] */
+      case _VG_USERREQ__HG_PTHREAD_COND_INIT_POST:
+         evh__HG_PTHREAD_COND_INIT_POST( tid,
+                                         (void*)args[1], (void*)args[2] );
+	 break;
+
+      /* cond=arg[1], cond_is_init=arg[2] */
       case _VG_USERREQ__HG_PTHREAD_COND_DESTROY_PRE:
-         evh__HG_PTHREAD_COND_DESTROY_PRE( tid, (void*)args[1] );
+         evh__HG_PTHREAD_COND_DESTROY_PRE( tid, (void*)args[1], args[2] != 0 );
          break;
 
       /* Thread successfully completed pthread_cond_wait, cond=arg[1],
          mutex=arg[2] */
       case _VG_USERREQ__HG_PTHREAD_COND_WAIT_POST:
          evh__HG_PTHREAD_COND_WAIT_POST( tid,
-                                         (void*)args[1], (void*)args[2] );
+                                         (void*)args[1], (void*)args[2],
+                                         (Bool)args[3] );
          break;
 
       case _VG_USERREQ__HG_PTHREAD_RWLOCK_INIT_POST:
@@ -4839,7 +4989,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          break;
 
       case _VG_USERREQ__HG_CLIENTREQ_UNIMP: {
-         /* char* who */
+         /* HChar* who */
          HChar*  who = (HChar*)args[1];
          HChar   buf[50 + 50];
          Thread* thr = map_threads_maybe_lookup( tid );
@@ -4881,9 +5031,9 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
 /*--- Setup                                                    ---*/
 /*----------------------------------------------------------------*/
 
-static Bool hg_process_cmd_line_option ( Char* arg )
+static Bool hg_process_cmd_line_option ( const HChar* arg )
 {
-   Char* tmp_str;
+   const HChar* tmp_str;
 
    if      VG_BOOL_CLO(arg, "--track-lockorders",
                             HG_(clo_track_lockorders)) {}
@@ -5118,7 +5268,7 @@ static void hg_pre_clo_init ( void )
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a thread error detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2012, and GNU GPL'd, by OpenWorks LLP et al.");
+      "Copyright (C) 2007-2013, and GNU GPL'd, by OpenWorks LLP et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 320 );
 
@@ -5136,7 +5286,9 @@ static void hg_pre_clo_init ( void )
                                    HG_(read_extra_suppression_info),
                                    HG_(error_matches_suppression),
                                    HG_(get_error_name),
-                                   HG_(get_extra_suppression_info));
+                                   HG_(get_extra_suppression_info),
+                                   HG_(print_extra_suppression_use),
+                                   HG_(update_extra_suppression_use));
 
    VG_(needs_xml_output)          ();
 

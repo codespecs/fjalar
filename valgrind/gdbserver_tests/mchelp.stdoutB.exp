@@ -3,11 +3,13 @@ general valgrind monitor commands:
   v.wait [<ms>]           : sleep <ms> (default 0) then continue
   v.info all_errors       : show all errors found so far
   v.info last_error       : show last error found
-  v.info n_errs_found     : show the nr of errors found so far
+  v.info n_errs_found [msg] : show the nr of errors found so far and the given msg
+  v.info open_fds         : show open file descriptors (only if --track-fds=yes)
   v.kill                  : kill the Valgrind process
   v.set gdb_output        : set valgrind output to gdb
   v.set log_output        : set valgrind output to log
   v.set mixed_output      : set valgrind output to log, interactive output to gdb
+  v.set merge-recursive-frames <num> : merge recursive calls in max <num> frames
   v.set vgdb-error <errornr> : debug me at error >= <errornr> 
 
 memcheck monitor commands:
@@ -21,12 +23,17 @@ memcheck monitor commands:
   check_memory [addressable|defined] <addr> [<len>]
         check that <len> (or 1) bytes at <addr> have the given accessibility
             and outputs a description of <addr>
-  leak_check [full*|summary] [reachable|possibleleak*|definiteleak]
+  leak_check [full*|summary]
+                [kinds kind1,kind2,...|reachable|possibleleak*|definiteleak]
+                [heuristics heur1,heur2,...]
                 [increased*|changed|any]
                 [unlimited*|limited <max_loss_records_output>]
             * = defaults
+       where kind is one of definite indirect possible reachable all none
+       where heur is one of stdstring newarray multipleinheritance all none*
         Examples: leak_check
                   leak_check summary any
+                  leak_check full kinds indirect,possible
                   leak_check full reachable any limited 100
   block_list <loss_record_nr>
         after a leak search, shows the list of blocks of <loss_record_nr>
@@ -40,16 +47,20 @@ general valgrind monitor commands:
   v.wait [<ms>]           : sleep <ms> (default 0) then continue
   v.info all_errors       : show all errors found so far
   v.info last_error       : show last error found
-  v.info n_errs_found     : show the nr of errors found so far
+  v.info n_errs_found [msg] : show the nr of errors found so far and the given msg
+  v.info open_fds         : show open file descriptors (only if --track-fds=yes)
   v.kill                  : kill the Valgrind process
   v.set gdb_output        : set valgrind output to gdb
   v.set log_output        : set valgrind output to log
   v.set mixed_output      : set valgrind output to log, interactive output to gdb
+  v.set merge-recursive-frames <num> : merge recursive calls in max <num> frames
   v.set vgdb-error <errornr> : debug me at error >= <errornr> 
 debugging valgrind internals monitor commands:
+  v.do   expensive_sanity_check_general : do an expensive sanity check now
   v.info gdbserver_status : show gdbserver status
   v.info memory [aspacemgr] : show valgrind heap memory stats
      (with aspacemgr arg, also shows valgrind segments on log ouput)
+  v.info exectxt          : show stacktraces and stats of all execontexts
   v.info scheduler        : show valgrind thread state and stacktrace
   v.set debuglog <level>  : set valgrind debug log level to <level>
   v.translate <addr> [<traceflags>]  : debug translation of <addr> with <traceflags>
@@ -67,12 +78,17 @@ memcheck monitor commands:
   check_memory [addressable|defined] <addr> [<len>]
         check that <len> (or 1) bytes at <addr> have the given accessibility
             and outputs a description of <addr>
-  leak_check [full*|summary] [reachable|possibleleak*|definiteleak]
+  leak_check [full*|summary]
+                [kinds kind1,kind2,...|reachable|possibleleak*|definiteleak]
+                [heuristics heur1,heur2,...]
                 [increased*|changed|any]
                 [unlimited*|limited <max_loss_records_output>]
             * = defaults
+       where kind is one of definite indirect possible reachable all none
+       where heur is one of stdstring newarray multipleinheritance all none*
         Examples: leak_check
                   leak_check summary any
+                  leak_check full kinds indirect,possible
                   leak_check full reachable any limited 100
   block_list <loss_record_nr>
         after a leak search, shows the list of blocks of <loss_record_nr>

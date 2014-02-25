@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Nicholas Nethercote
+   Copyright (C) 2000-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -452,7 +452,7 @@ static Addr build_rt_sigframe(ThreadState *tst,
    UWord err;
 
    rsp -= sizeof(*frame);
-   rsp = VG_ROUNDDN(rsp, 16);
+   rsp = VG_ROUNDDN(rsp, 16) - 8;
    frame = (struct rt_sigframe *)rsp;
 
    if (!extend(tst, rsp, sizeof(*frame)))

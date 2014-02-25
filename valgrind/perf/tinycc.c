@@ -9848,7 +9848,7 @@ static /*inline*/ int *macro_twosharps(const int *macro_str)
     CValue cval;
     TokenString macro_str1;
     CString cstr;
-
+    memset(&cval, 0, sizeof(cval));
     start_macro_ptr = macro_str;
     /* we search the first '##' */
     for(;;) {
@@ -21285,7 +21285,7 @@ static int64_t getclock_us(void)
 
 void help(void)
 {
-    printf("tcc version " TCC_VERSION " - Tiny C Compiler - Copyright (C) 2001-2012 Fabrice Bellard\n"
+    printf("tcc version " TCC_VERSION " - Tiny C Compiler - Copyright (C) 2001-2013 Fabrice Bellard\n"
            "usage: tcc [-v] [-c] [-o outfile] [-Bdir] [-bench] [-Idir] [-Dsym[=val]] [-Usym]\n"
            "           [-Wwarn] [-g] [-b] [-bt N] [-Ldir] [-llib] [-shared] [-static]\n"
            "           [infile1 infile2...] [-run infile args...]\n"

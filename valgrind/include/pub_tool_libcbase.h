@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,13 +31,15 @@
 #ifndef __PUB_TOOL_LIBCBASE_H
 #define __PUB_TOOL_LIBCBASE_H
 
+#include "pub_tool_basics.h"   // VG_ macro
+
 /* ---------------------------------------------------------------------
    Char functions.
    ------------------------------------------------------------------ */
 
-extern Bool VG_(isspace) ( Char c );
-extern Bool VG_(isdigit) ( Char c );
-extern Char VG_(tolower) ( Char c );
+extern Bool  VG_(isspace) ( HChar c );
+extern Bool  VG_(isdigit) ( HChar c );
+extern HChar VG_(tolower) ( HChar c );
 
 /* ---------------------------------------------------------------------
    Converting strings to numbers
@@ -61,16 +63,16 @@ extern Char VG_(tolower) ( Char c );
 // useless because they don't do any error checking and so accept malformed
 // numbers and non-numbers -- eg. "123xyz" gives 123, and "foo" gives 0!
 // If you really want that behaviour, you can use "VG_(strtoll10)(str, NULL)".
-extern Long  VG_(strtoll10) ( Char* str, Char** endptr );
-extern Long  VG_(strtoll16) ( Char* str, Char** endptr );
-extern ULong  VG_(strtoull10) ( Char* str, Char** endptr );
-extern ULong  VG_(strtoull16) ( Char* str, Char** endptr );
+extern Long  VG_(strtoll10) ( const HChar* str, HChar** endptr );
+extern Long  VG_(strtoll16) ( const HChar* str, HChar** endptr );
+extern ULong  VG_(strtoull10) ( const HChar* str, HChar** endptr );
+extern ULong  VG_(strtoull16) ( const HChar* str, HChar** endptr );
 
 // Convert a string to a double.  After leading whitespace is ignored, a
 // '+' or '-' is allowed, and then it accepts a non-empty sequence of
 // decimal digits possibly containing a '.'.  Hexadecimal floats are not
 // accepted, nor are "fancy" floats (eg. "3.4e-5", "NAN").
-extern double VG_(strtod)  ( Char* str, Char** endptr );
+extern double VG_(strtod)  ( const HChar* str, HChar** endptr );
 
 /* ---------------------------------------------------------------------
    String functions and macros
@@ -82,36 +84,36 @@ extern double VG_(strtod)  ( Char* str, Char** endptr );
 #define VG_STREQN(n,s1,s2) ( (s1 != NULL && s2 != NULL \
                              && VG_(strncmp)((s1),(s2),(n))==0) ? True : False )
 
-extern SizeT VG_(strlen)         ( const Char* str );
-extern Char* VG_(strcat)         ( Char* dest, const Char* src );
-extern Char* VG_(strncat)        ( Char* dest, const Char* src, SizeT n );
-extern Char* VG_(strpbrk)        ( const Char* s, const Char* accpt );
-extern Char* VG_(strcpy)         ( Char* dest, const Char* src );
-extern Char* VG_(strncpy)        ( Char* dest, const Char* src, SizeT ndest );
-extern Int   VG_(strcmp)         ( const Char* s1, const Char* s2 );
-extern Int   VG_(strcasecmp)     ( const Char* s1, const Char* s2 );
-extern Int   VG_(strncmp)        ( const Char* s1, const Char* s2, SizeT nmax );
-extern Int   VG_(strncasecmp)    ( const Char* s1, const Char* s2, SizeT nmax );
-extern Char* VG_(strstr)         ( const Char* haystack, const Char* needle );
-extern Char* VG_(strcasestr)     ( const Char* haystack, Char* needle );
-extern Char* VG_(strchr)         ( const Char* s, Char c );
-extern Char* VG_(strrchr)        ( const Char* s, Char c );
-extern SizeT VG_(strspn)         ( const Char* s, const Char* accpt );
-extern SizeT VG_(strcspn)        ( const Char* s, const char* reject );
+extern SizeT  VG_(strlen)         ( const HChar* str );
+extern HChar* VG_(strcat)         ( HChar* dest, const HChar* src );
+extern HChar* VG_(strncat)        ( HChar* dest, const HChar* src, SizeT n );
+extern HChar* VG_(strpbrk)        ( const HChar* s, const HChar* accpt );
+extern HChar* VG_(strcpy)         ( HChar* dest, const HChar* src );
+extern HChar* VG_(strncpy)        ( HChar* dest, const HChar* src, SizeT ndest );
+extern Int    VG_(strcmp)         ( const HChar* s1, const HChar* s2 );
+extern Int    VG_(strcasecmp)     ( const HChar* s1, const HChar* s2 );
+extern Int    VG_(strncmp)        ( const HChar* s1, const HChar* s2, SizeT nmax );
+extern Int    VG_(strncasecmp)    ( const HChar* s1, const HChar* s2, SizeT nmax );
+extern HChar* VG_(strstr)         ( const HChar* haystack, const HChar* needle );
+extern HChar* VG_(strcasestr)     ( const HChar* haystack, const HChar* needle );
+extern HChar* VG_(strchr)         ( const HChar* s, HChar c );
+extern HChar* VG_(strrchr)        ( const HChar* s, HChar c );
+extern SizeT  VG_(strspn)         ( const HChar* s, const HChar* accpt );
+extern SizeT  VG_(strcspn)        ( const HChar* s, const HChar* reject );
 
 /* strtok* functions and some parsing utilities. */
-extern Char* VG_(strtok_r)       (Char* s, const Char* delim, Char** saveptr);
-extern Char* VG_(strtok)         (Char* s, const Char* delim);
+extern HChar* VG_(strtok_r)       ( HChar* s, const HChar* delim, HChar** saveptr);
+extern HChar* VG_(strtok)         ( HChar* s, const HChar* delim);
 
 /* Parse a 32- or 64-bit hex number, including leading 0x, from string
    starting at *ppc, putting result in *result, and return True.  Or
    fail, in which case *ppc and *result are undefined, and return
    False. */
-extern Bool VG_(parse_Addr) ( UChar** ppc, Addr* result );
+extern Bool VG_(parse_Addr) ( const HChar** ppc, Addr* result );
 
 /* Like strncpy(), but if 'src' is longer than 'ndest' inserts a '\0' as the
    last character. */
-extern void  VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest );
+extern void  VG_(strncpy_safely) ( HChar* dest, const HChar* src, SizeT ndest );
 
 /* ---------------------------------------------------------------------
    mem* functions
@@ -179,7 +181,7 @@ static void VG_(bzero_inline) ( void* s, SizeT sz )
 /* Like qsort().  The name VG_(ssort) is for historical reasons -- it used
  * to be a shell sort, but is now a quicksort. */
 extern void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
-                        Int (*compar)(void*, void*) );
+                        Int (*compar)(const void*, const void*) );
 
 /* Returns the base-2 logarithm of a 32 bit unsigned number.  Returns
  -1 if it is not a power of two.  Nb: VG_(log2)(1) == 0. */
@@ -193,6 +195,12 @@ extern Int VG_(log2_64)( ULong x );
 // non-NULL, it uses and updates whatever pSeed points at.
 extern UInt VG_(random) ( /*MOD*/UInt* pSeed );
 #define VG_RAND_MAX (1ULL << 32)
+
+/* Update a running Adler-32 checksum with the bytes buf[0..len-1] and
+   return the updated checksum. If buf is NULL, this function returns
+   the required initial value for the checksum. An Adler-32 checksum is
+   almost as reliable as a CRC32 but can be computed much faster. */
+extern UInt VG_(adler32)( UInt adler, const UChar* buf, UInt len);
 
 #endif   // __PUB_TOOL_LIBCBASE_H
 

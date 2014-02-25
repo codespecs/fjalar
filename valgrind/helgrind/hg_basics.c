@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2012 OpenWorks Ltd
+   Copyright (C) 2007-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -42,7 +42,7 @@
 /*--- Very basic stuff                                         ---*/
 /*----------------------------------------------------------------*/
 
-void* HG_(zalloc) ( HChar* cc, SizeT n )
+void* HG_(zalloc) ( const HChar* cc, SizeT n )
 {
    void* p;
    tl_assert(n > 0);
@@ -58,7 +58,7 @@ void HG_(free) ( void* p )
    VG_(free)(p);
 }
 
-Char* HG_(strdup) ( HChar* cc, const Char* s )
+HChar* HG_(strdup) ( const HChar* cc, const HChar* s )
 {
    return VG_(strdup)( cc, s );
 }

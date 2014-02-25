@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 #ifndef __PUB_CORE_DEMANGLE_H
 #define __PUB_CORE_DEMANGLE_H
 
+#include "pub_core_basics.h"      // VG_ macro
+
 //--------------------------------------------------------------------
 // PURPOSE: This module exports functions for demangling C++ and 
 // Z-encoded names.
@@ -41,7 +43,7 @@
  * (2) undoes C++ demangling, if 'do_cxx_demangle' is True.  */
 extern 
 void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
-                     Char* orig, Char* result, Int result_size );
+                     HChar* orig, HChar* result, Int result_size );
 
 /* Demangle a Z-encoded name as described in pub_tool_redir.h. 
    Z-encoded names are used by Valgrind for doing function 

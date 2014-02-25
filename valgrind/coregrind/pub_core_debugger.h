@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -35,6 +35,8 @@
 // PURPOSE: This simple module just deals with attaching a debugger to the
 // running program.
 //--------------------------------------------------------------------
+
+#include "pub_core_basics.h"      // ThreadId
 
 extern void VG_(start_debugger) ( ThreadId tid );
 

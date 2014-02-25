@@ -5,7 +5,7 @@
 /*
   This file is part of DRD, a thread error detector.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -367,7 +367,7 @@ static int DRD_(detected_linuxthreads)(void)
 #if defined(linux)
 #if defined(_CS_GNU_LIBPTHREAD_VERSION)
    /* Linux with a recent glibc. */
-   char buffer[256];
+   HChar buffer[256];
    unsigned len;
    len = confstr(_CS_GNU_LIBPTHREAD_VERSION, buffer, sizeof(buffer));
    assert(len <= sizeof(buffer));
@@ -717,7 +717,7 @@ int pthread_cond_destroy_intercept(pthread_cond_t* cond)
                               cond, 0, 0, 0, 0);
    CALL_FN_W_W(ret, fn, cond);
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__POST_COND_DESTROY,
-                              cond, 0, 0, 0, 0);
+                                   cond, ret==0, 0, 0, 0);
    return ret;
 }
 
@@ -803,7 +803,8 @@ int pthread_cond_broadcast_intercept(pthread_cond_t* cond)
 PTH_FUNCS(int, pthreadZucondZubroadcast, pthread_cond_broadcast_intercept,
           (pthread_cond_t* cond), (cond));
 
-#if defined(HAVE_PTHREAD_SPIN_LOCK)
+#if defined(HAVE_PTHREAD_SPIN_LOCK) \
+    && !defined(DISABLE_PTHREAD_SPINLOCK_INTERCEPT)
 static __always_inline
 int pthread_spin_init_intercept(pthread_spinlock_t *spinlock, int pshared)
 {

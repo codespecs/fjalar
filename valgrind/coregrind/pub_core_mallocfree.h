@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,14 +40,11 @@
 
 /* Allocation arenas.  
 
-      CORE      for the core's general use.
-      TOOL      for the tool to use (and the only one it uses).
+      CORE      for the core's and tools' general use.
       DINFO     for debug info (symbols, line #s, CFI, etc) storage.
       CLIENT    for the client's mallocs/frees, if the tool replaces glibc's
                     malloc() et al -- redzone size is chosen by the tool.
       DEMANGLE  for the C++ demangler.
-      EXECTXT   for storing ExeContexts.
-      ERRORS    for storing CoreErrors.
       TTAUX     for storing TT/TC auxiliary structures (address range
                 equivalence classes).
 
@@ -55,16 +52,13 @@
 */
 typedef Int ArenaId;
 
-#define VG_N_ARENAS        8
+#define VG_N_ARENAS        5
 
 #define VG_AR_CORE         0
-#define VG_AR_TOOL         1
-#define VG_AR_DINFO        2
-#define VG_AR_CLIENT       3
-#define VG_AR_DEMANGLE     4
-#define VG_AR_EXECTXT      5
-#define VG_AR_ERRORS       6
-#define VG_AR_TTAUX        7
+#define VG_AR_DINFO        1
+#define VG_AR_CLIENT       2
+#define VG_AR_DEMANGLE     3
+#define VG_AR_TTAUX        4
 
 // This is both the minimum payload size of a malloc'd block, and its
 // minimum alignment.  Must be a power of 2 greater than 4, and should be
@@ -81,6 +75,7 @@ typedef Int ArenaId;
       defined(VGP_ppc32_linux) || \
       defined(VGP_ppc64_linux) || \
       defined(VGP_s390x_linux) || \
+      defined(VGP_mips64_linux) || \
       defined(VGP_x86_darwin)  || \
       defined(VGP_amd64_darwin)
 #  define VG_MIN_MALLOC_SZB       16
@@ -103,20 +98,27 @@ struct vg_mallinfo {
    int keepcost; /* top-most, releasable (via malloc_trim) space */
 };
 
-extern void* VG_(arena_malloc)  ( ArenaId arena, HChar* cc, SizeT nbytes );
+extern void* VG_(arena_malloc)  ( ArenaId arena, const HChar* cc, SizeT nbytes );
 extern void  VG_(arena_free)    ( ArenaId arena, void* ptr );
-extern void* VG_(arena_calloc)  ( ArenaId arena, HChar* cc,
+extern void* VG_(arena_calloc)  ( ArenaId arena, const HChar* cc,
                                   SizeT nmemb, SizeT bytes_per_memb );
-extern void* VG_(arena_realloc) ( ArenaId arena, HChar* cc,
+extern void* VG_(arena_realloc) ( ArenaId arena, const HChar* cc,
                                   void* ptr, SizeT size );
-extern void* VG_(arena_memalign)( ArenaId aid, HChar* cc,
+extern void* VG_(arena_memalign)( ArenaId aid, const HChar* cc,
                                   SizeT req_alignB, SizeT req_pszB );
-extern Char* VG_(arena_strdup)  ( ArenaId aid, HChar* cc, 
-                                  const Char* s);
+extern HChar* VG_(arena_strdup)  ( ArenaId aid, const HChar* cc, 
+                                   const HChar* s);
 
 extern SizeT VG_(arena_malloc_usable_size) ( ArenaId aid, void* payload );
 
+extern SizeT VG_(arena_redzone_size) ( ArenaId aid );
+
 extern void  VG_(mallinfo) ( ThreadId tid, struct vg_mallinfo* mi );
+
+// VG_(arena_perm_malloc) is for permanent allocation of small blocks.
+// See VG_(perm_malloc) in pub_tool_mallocfree.h for more details.
+// Do not call any VG_(arena_*) functions with these permanent blocks.
+extern void* VG_(arena_perm_malloc) ( ArenaId aid, SizeT nbytes, Int align );
 
 extern void  VG_(sanity_check_malloc_all) ( void );
 

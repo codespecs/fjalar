@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -43,7 +43,7 @@
 
 /* Local function declarations. */
 
-static Char* drd_get_error_name(Error* e);
+static const HChar* drd_get_error_name(Error* e);
 
 
 /* Local variables. */
@@ -56,7 +56,7 @@ void DRD_(set_show_conflicting_segments)(const Bool scs)
    s_show_conflicting_segments = scs;
 }
 
-void DRD_(trace_msg)(const char* format, ...)
+void DRD_(trace_msg)(const HChar* format, ...)
 {
    va_list vargs;
    va_start(vargs, format);
@@ -71,7 +71,7 @@ void DRD_(trace_msg)(const char* format, ...)
    va_end(vargs);
 }
 
-void DRD_(trace_msg_w_bt)(const char* format, ...)
+void DRD_(trace_msg_w_bt)(const HChar* format, ...)
 {
    va_list vargs;
    va_start(vargs, format);
@@ -92,8 +92,8 @@ void DRD_(trace_msg_w_bt)(const char* format, ...)
 /**
  * Emit error message detail in the format requested by the user.
  */
-static void print_err_detail(const char* format, ...) PRINTF_CHECK(1, 2);
-static void print_err_detail(const char* format, ...)
+static void print_err_detail(const HChar* format, ...) PRINTF_CHECK(1, 2);
+static void print_err_detail(const HChar* format, ...)
 {
    va_list vargs;
    va_start(vargs, format);
@@ -154,11 +154,11 @@ static
 void drd_report_data_race(Error* const err, const DataRaceErrInfo* const dri)
 {
    const Bool xml = VG_(clo_xml);
-   const char* const what_prefix = xml ? "  <what>" : "";
-   const char* const what_suffix = xml ? "</what>" : "";
-   const char* const auxwhat_prefix = xml ? "  <auxwhat>" : "";
-   const char* const auxwhat_suffix = xml ? "</auxwhat>" : "";
-   const char* const indent = xml ? "  " : "";
+   const HChar* const what_prefix = xml ? "  <what>" : "";
+   const HChar* const what_suffix = xml ? "</what>" : "";
+   const HChar* const auxwhat_prefix = xml ? "  <auxwhat>" : "";
+   const HChar* const auxwhat_suffix = xml ? "</auxwhat>" : "";
+   const HChar* const indent = xml ? "  " : "";
    AddrInfo ai;
 
    XArray* /* of HChar */ descr1
@@ -222,7 +222,7 @@ void drd_report_data_race(Error* const err, const DataRaceErrInfo* const dri)
       if (xml)
          print_err_detail("  </allocation_context>\n");
    } else {
-      char sect_name[64];
+      HChar sect_name[64];
       VgSectKind sect_kind;
 
       sect_kind = VG_(DebugInfo_sect_kind)(sect_name, sizeof(sect_name),
@@ -301,8 +301,8 @@ static void drd_tool_error_before_pp(Error* const e)
 static void drd_tool_error_pp(Error* const e)
 {
    const Bool xml = VG_(clo_xml);
-   const char* const what_prefix = xml ? "  <what>" : "";
-   const char* const what_suffix = xml ? "</what>" : "";
+   const HChar* const what_prefix = xml ? "  <what>" : "";
+   const HChar* const what_suffix = xml ? "</what>" : "";
 
    if (xml)
       VG_(printf_xml)( "  <kind>%pS</kind>\n", drd_get_error_name(e));
@@ -507,7 +507,8 @@ static UInt drd_tool_error_update_extra(Error* e)
  * types supported by DRD. So try to match the suppression name against the
  * names of DRD error types.
  */
-static Bool drd_is_recognized_suppression(Char* const name, Supp* const supp)
+static Bool drd_is_recognized_suppression(const HChar* const name,
+                                          Supp* const supp)
 {
    DrdErrorKind skind = 0;
 
@@ -554,8 +555,8 @@ static Bool drd_is_recognized_suppression(Char* const name, Supp* const supp)
  * that reading the 'extra' lines succeeded.
  */
 static
-Bool drd_read_extra_suppression_info(Int fd, Char** bufpp,
-                                     SizeT* nBufp, Supp* supp)
+Bool drd_read_extra_suppression_info(Int fd, HChar** bufpp,
+                                     SizeT* nBufp, Int* lineno, Supp* supp)
 {
    return True;
 }
@@ -569,7 +570,7 @@ static Bool drd_error_matches_suppression(Error* const e, Supp* const supp)
    return VG_(get_supp_kind)(supp) == VG_(get_error_kind)(e);
 }
 
-static Char* drd_get_error_name(Error* e)
+static const HChar* drd_get_error_name(Error* e)
 {
    switch (VG_(get_error_kind)(e))
    {
@@ -602,9 +603,22 @@ static Char* drd_get_error_name(Error* e)
  */
 static
 Bool drd_get_extra_suppression_info(Error* e,
-                                    /*OUT*/Char* buf, Int nBuf)
+                                    /*OUT*/HChar* buf, Int nBuf)
 {
    return False;
+}
+
+static
+Bool drd_print_extra_suppression_use(Supp* su,
+                                     /*OUT*/HChar* buf, Int nBuf)
+{
+   return False;
+}
+
+static
+void  drd_update_extra_suppresion_use(Error* e, Supp* supp)
+{
+   return;
 }
 
 /** Tell the Valgrind core about DRD's error handlers. */
@@ -619,5 +633,7 @@ void DRD_(register_error_handlers)(void)
                           drd_read_extra_suppression_info,
                           drd_error_matches_suppression,
                           drd_get_error_name,
-                          drd_get_extra_suppression_info);
+                          drd_get_extra_suppression_info,
+                          drd_print_extra_suppression_use,
+                          drd_update_extra_suppresion_use);
 }
