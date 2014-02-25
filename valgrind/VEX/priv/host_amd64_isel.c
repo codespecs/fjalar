@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -43,6 +43,8 @@
 #include "host_generic_regs.h"
 #include "host_generic_simd64.h"
 #include "host_generic_simd128.h"
+#include "host_generic_simd256.h"
+#include "host_generic_maddf.h"
 #include "host_amd64_defs.h"
 
 
@@ -87,6 +89,13 @@ static IRExpr* binop ( IROp op, IRExpr* a1, IRExpr* a2 )
 static IRExpr* bind ( Int binder )
 {
    return IRExpr_Binder(binder);
+}
+
+static Bool isZeroU8 ( IRExpr* e )
+{
+   return e->tag == Iex_Const
+          && e->Iex.Const.con->tag == Ico_U8
+          && e->Iex.Const.con->Ico.U8 == 0;
 }
 
 
@@ -168,7 +177,7 @@ static void lookupIRTempPair ( HReg* vrHI, HReg* vrLO,
 {
    vassert(tmp >= 0);
    vassert(tmp < env->n_vregmap);
-   vassert(env->vregmapHI[tmp] != INVALID_HREG);
+   vassert(! hregIsInvalid(env->vregmapHI[tmp]));
    *vrLO = env->vregmap[tmp];
    *vrHI = env->vregmapHI[tmp];
 }
@@ -256,7 +265,7 @@ static Bool sane_AMode ( AMD64AMode* am )
          return 
             toBool( hregClass(am->Aam.IR.reg) == HRcInt64
                     && (hregIsVirtual(am->Aam.IR.reg)
-                        || am->Aam.IR.reg == hregAMD64_RBP()) );
+                        || sameHReg(am->Aam.IR.reg, hregAMD64_RBP())) );
       case Aam_IRRS:
          return 
             toBool( hregClass(am->Aam.IRRS.base) == HRcInt64
@@ -357,6 +366,15 @@ static AMD64Instr* iselIntExpr_single_instruction ( ISelEnv* env,
                                                     HReg     dst,
                                                     IRExpr*  e )
 {
+   /* Per comments in doHelperCall below, appearance of
+      Iex_VECRET implies ill-formed IR. */
+   vassert(e->tag != Iex_VECRET);
+
+   /* In this case we give out a copy of the BaseBlock pointer. */
+   if (UNLIKELY(e->tag == Iex_BBPTR)) {
+      return mk_iMOVsd_RR( hregAMD64_RBP(), dst );
+   }
+
    vassert(typeOfIRExpr(env->type_env, e) == Ity_I64);
 
    if (e->tag == Iex_Const) {
@@ -400,31 +418,53 @@ static AMD64Instr* iselIntExpr_single_instruction ( ISelEnv* env,
 }
 
 
-/* Do a complete function call.  guard is a Ity_Bit expression
+/* Do a complete function call.  |guard| is a Ity_Bit expression
    indicating whether or not the call happens.  If guard==NULL, the
-   call is unconditional. */
+   call is unconditional.  |retloc| is set to indicate where the
+   return value is after the call.  The caller (of this fn) must
+   generate code to add |stackAdjustAfterCall| to the stack pointer
+   after the call is done. */
 
 static
-void doHelperCall ( ISelEnv* env, 
-                    Bool passBBP, 
-                    IRExpr* guard, IRCallee* cee, IRExpr** args )
+void doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
+                    /*OUT*/RetLoc* retloc,
+                    ISelEnv* env,
+                    IRExpr* guard,
+                    IRCallee* cee, IRType retTy, IRExpr** args )
 {
    AMD64CondCode cc;
    HReg          argregs[6];
    HReg          tmpregs[6];
    AMD64Instr*   fastinstrs[6];
-   Int           n_args, i, argreg;
+   UInt          n_args, i;
+
+   /* Set default returns.  We'll update them later if needed. */
+   *stackAdjustAfterCall = 0;
+   *retloc               = mk_RetLoc_INVALID();
+
+   /* These are used for cross-checking that IR-level constraints on
+      the use of IRExpr_VECRET() and IRExpr_BBPTR() are observed. */
+   UInt nVECRETs = 0;
+   UInt nBBPTRs  = 0;
 
    /* Marshal args for a call and do the call.
-
-      If passBBP is True, %rbp (the baseblock pointer) is to be passed
-      as the first arg.
 
       This function only deals with a tiny set of possibilities, which
       cover all helpers in practice.  The restrictions are that only
       arguments in registers are supported, hence only 6x64 integer
       bits in total can be passed.  In fact the only supported arg
       type is I64.
+
+      The return type can be I{64,32,16,8} or V{128,256}.  In the
+      latter two cases, it is expected that |args| will contain the
+      special node IRExpr_VECRET(), in which case this routine
+      generates code to allocate space on the stack for the vector
+      return value.  Since we are not passing any scalars on the
+      stack, it is enough to preallocate the return space before
+      marshalling any arguments, in this case.
+
+      |args| may also contain IRExpr_BBPTR(), in which case the
+      value in %rbp is passed as the corresponding argument.
 
       Generating code which is both efficient and correct when
       parameters are to be passed in registers is difficult, for the
@@ -451,7 +491,10 @@ void doHelperCall ( ISelEnv* env,
       fast scheme, else use the slow scheme.  Note also that only
       unconditional calls may use the fast scheme, since having to
       compute a condition expression could itself trash real
-      registers.
+      registers.  Note that for simplicity, in the case where
+      IRExpr_VECRET() is present, we use the slow scheme.  This is
+      motivated by the desire to avoid any possible complexity
+      w.r.t. nested calls.
 
       Note this requires being able to examine an expression and
       determine whether or not evaluation of it might use a fixed
@@ -464,12 +507,11 @@ void doHelperCall ( ISelEnv* env,
    /* Note that the cee->regparms field is meaningless on AMD64 host
       (since there is only one calling convention) and so we always
       ignore it. */
-
    n_args = 0;
    for (i = 0; args[i]; i++)
       n_args++;
 
-   if (6 < n_args + (passBBP ? 1 : 0))
+   if (n_args > 6)
       vpanic("doHelperCall(AMD64): cannot currently handle > 6 args");
 
    argregs[0] = hregAMD64_RDI();
@@ -489,6 +531,12 @@ void doHelperCall ( ISelEnv* env,
       assume the fast scheme, and select slow if any contraindications
       (wow) appear. */
 
+   /* We'll need space on the stack for the return value.  Avoid
+      possible complications with nested calls by using the slow
+      scheme. */
+   if (retTy == Ity_V128 || retTy == Ity_V256)
+      goto slowscheme;
+
    if (guard) {
       if (guard->tag == Iex_Const 
           && guard->Iex.Const.con->tag == Ico_U1
@@ -507,26 +555,28 @@ void doHelperCall ( ISelEnv* env,
       in a buffer and emit that if we're successful. */
 
    /* FAST SCHEME */
-   argreg = 0;
-   if (passBBP) {
-      fastinstrs[argreg] = mk_iMOVsd_RR( hregAMD64_RBP(), argregs[argreg]);
-      argreg++;
-   }
-
+   /* In this loop, we process args that can be computed into the
+      destination (real) register with a single instruction, without
+      using any fixed regs.  That also includes IRExpr_BBPTR(), but
+      not IRExpr_VECRET().  Indeed, if the IR is well-formed, we can
+      never see IRExpr_VECRET() at this point, since the return-type
+      check above should ensure all those cases use the slow scheme
+      instead. */
+   vassert(n_args >= 0 && n_args <= 6);
    for (i = 0; i < n_args; i++) {
-      vassert(argreg < 6);
+      IRExpr* arg = args[i];
+      if (LIKELY(!is_IRExpr_VECRET_or_BBPTR(arg))) {
       vassert(typeOfIRExpr(env->type_env, args[i]) == Ity_I64);
-      fastinstrs[argreg] 
-         = iselIntExpr_single_instruction( env, argregs[argreg], args[i] );
-      if (fastinstrs[argreg] == NULL)
+      }
+      fastinstrs[i] 
+         = iselIntExpr_single_instruction( env, argregs[i], args[i] );
+      if (fastinstrs[i] == NULL)
          goto slowscheme;
-      argreg++;
    }
 
    /* Looks like we're in luck.  Emit the accumulated instructions and
       move on to doing the call itself. */
-   vassert(argreg <= 6);
-   for (i = 0; i < argreg; i++)
+   for (i = 0; i < n_args; i++)
       addInstr(env, fastinstrs[i]);
 
    /* Fast scheme only applies for unconditional calls.  Hence: */
@@ -537,26 +587,46 @@ void doHelperCall ( ISelEnv* env,
 
    /* SLOW SCHEME; move via temporaries */
   slowscheme:
+   {}
 #  if 0 /* debug only */
    if (n_args > 0) {for (i = 0; args[i]; i++) {
    ppIRExpr(args[i]); vex_printf(" "); }
    vex_printf("\n");}
 #  endif
-   argreg = 0;
 
-   if (passBBP) {
-      /* This is pretty stupid; better to move directly to rdi
-         after the rest of the args are done. */
-      tmpregs[argreg] = newVRegI(env);
-      addInstr(env, mk_iMOVsd_RR( hregAMD64_RBP(), tmpregs[argreg]));
-      argreg++;
+   /* If we have a vector return type, allocate a place for it on the
+      stack and record its address. */
+   HReg r_vecRetAddr = INVALID_HREG;
+   if (retTy == Ity_V128) {
+      r_vecRetAddr = newVRegI(env);
+      sub_from_rsp(env, 16);
+      addInstr(env, mk_iMOVsd_RR( hregAMD64_RSP(), r_vecRetAddr ));
+   }
+   else if (retTy == Ity_V256) {
+      r_vecRetAddr = newVRegI(env);
+      sub_from_rsp(env, 32);
+      addInstr(env, mk_iMOVsd_RR( hregAMD64_RSP(), r_vecRetAddr ));
    }
 
+   vassert(n_args >= 0 && n_args <= 6);
    for (i = 0; i < n_args; i++) {
-      vassert(argreg < 6);
+      IRExpr* arg = args[i];
+      if (UNLIKELY(arg->tag == Iex_BBPTR)) {
+         tmpregs[i] = newVRegI(env);
+         addInstr(env, mk_iMOVsd_RR( hregAMD64_RBP(), tmpregs[i]));
+         nBBPTRs++;
+      }
+      else if (UNLIKELY(arg->tag == Iex_VECRET)) {
+         /* We stashed the address of the return slot earlier, so just
+            retrieve it now. */
+         vassert(!hregIsInvalid(r_vecRetAddr));
+         tmpregs[i] = r_vecRetAddr;
+         nVECRETs++;
+      }
+      else {
       vassert(typeOfIRExpr(env->type_env, args[i]) == Ity_I64);
-      tmpregs[argreg] = iselIntExpr_R(env, args[i]);
-      argreg++;
+         tmpregs[i] = iselIntExpr_R(env, args[i]);
+      }
    }
 
    /* Now we can compute the condition.  We can't do it earlier
@@ -575,21 +645,53 @@ void doHelperCall ( ISelEnv* env,
    }
 
    /* Move the args to their final destinations. */
-   for (i = 0; i < argreg; i++) {
+   for (i = 0; i < n_args; i++) {
       /* None of these insns, including any spill code that might
          be generated, may alter the condition codes. */
       addInstr( env, mk_iMOVsd_RR( tmpregs[i], argregs[i] ) );
    }
 
 
-   /* Finally, the call itself. */
+   /* Do final checks, set the return values, and generate the call
+      instruction proper. */
   handle_call:
-   addInstr(env, AMD64Instr_Call( 
-                    cc, 
-                    Ptr_to_ULong(cee->addr), 
-                    n_args + (passBBP ? 1 : 0) 
-                 )
-   );
+
+   if (retTy == Ity_V128 || retTy == Ity_V256) {
+      vassert(nVECRETs == 1);
+   } else {
+      vassert(nVECRETs == 0);
+   }
+
+   vassert(nBBPTRs == 0 || nBBPTRs == 1);
+
+   vassert(*stackAdjustAfterCall == 0);
+   vassert(is_RetLoc_INVALID(*retloc));
+   switch (retTy) {
+         case Ity_INVALID:
+            /* Function doesn't return a value. */
+            *retloc = mk_RetLoc_simple(RLPri_None);
+            break;
+         case Ity_I64: case Ity_I32: case Ity_I16: case Ity_I8:
+            *retloc = mk_RetLoc_simple(RLPri_Int);
+            break;
+         case Ity_V128:
+            *retloc = mk_RetLoc_spRel(RLPri_V128SpRel, 0);
+            *stackAdjustAfterCall = 16;
+            break;
+         case Ity_V256:
+            *retloc = mk_RetLoc_spRel(RLPri_V256SpRel, 0);
+            *stackAdjustAfterCall = 32;
+            break;
+         default:
+            /* IR can denote other possible return types, but we don't
+               handle those here. */
+           vassert(0);
+   }
+
+   /* Finally, generate the call itself.  This needs the *retloc value
+      set in the switch above, which is why it's at the end. */
+   addInstr(env,
+            AMD64Instr_Call(cc, Ptr_to_ULong(cee->addr), n_args, *retloc));
 }
 
 
@@ -791,7 +893,7 @@ static ULong bitmask8_to_bytemask64 ( UShort w8 )
 
    This should handle expressions of 64, 32, 16 and 8-bit type.  All
    results are returned in a 64-bit register.  For 32-, 16- and 8-bit
-   expressions, the upper 32/16/24 bits are arbitrary, so you should
+   expressions, the upper 32/48/56 bits are arbitrary, so you should
    mask or sign extend partial values if necessary.
 */
 
@@ -1126,7 +1228,8 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
             addInstr(env, AMD64Instr_MovxLQ(False, argR, argR));
          addInstr(env, mk_iMOVsd_RR(argL, hregAMD64_RDI()) );
          addInstr(env, mk_iMOVsd_RR(argR, hregAMD64_RSI()) );
-         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 2 ));
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 2,
+                                        mk_RetLoc_simple(RLPri_Int) ));
          addInstr(env, mk_iMOVsd_RR(hregAMD64_RAX(), dst));
          return dst;
       }
@@ -1586,6 +1689,57 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
             /* These are no-ops. */
             return iselIntExpr_R(env, e->Iex.Unop.arg);
 
+         case Iop_GetMSBs8x8: {
+            /* Note: the following assumes the helper is of
+               signature
+                  UInt fn ( ULong ), and is not a regparm fn.
+            */
+            HReg dst = newVRegI(env);
+            HReg arg = iselIntExpr_R(env, e->Iex.Unop.arg);
+            fn = (HWord)h_generic_calc_GetMSBs8x8;
+            addInstr(env, mk_iMOVsd_RR(arg, hregAMD64_RDI()) );
+            addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn,
+                                           1, mk_RetLoc_simple(RLPri_Int) ));
+            /* MovxLQ is not exactly the right thing here.  We just
+               need to get the bottom 8 bits of RAX into dst, and zero
+               out everything else.  Assuming that the helper returns
+               a UInt with the top 24 bits zeroed out, it'll do,
+               though. */
+            addInstr(env, AMD64Instr_MovxLQ(False, hregAMD64_RAX(), dst));
+            return dst;
+         }
+
+         case Iop_GetMSBs8x16: {
+            /* Note: the following assumes the helper is of signature
+                  UInt fn ( ULong w64hi, ULong w64Lo ),
+               and is not a regparm fn. */
+            HReg dst = newVRegI(env);
+            HReg vec = iselVecExpr(env, e->Iex.Unop.arg);
+            HReg rsp = hregAMD64_RSP();
+            fn = (HWord)h_generic_calc_GetMSBs8x16;
+            AMD64AMode* m8_rsp  = AMD64AMode_IR( -8, rsp);
+            AMD64AMode* m16_rsp = AMD64AMode_IR(-16, rsp);
+            addInstr(env, AMD64Instr_SseLdSt(False/*store*/,
+                                             16, vec, m16_rsp));
+            /* hi 64 bits into RDI -- the first arg */
+            addInstr(env, AMD64Instr_Alu64R( Aalu_MOV, 
+                                             AMD64RMI_Mem(m8_rsp),
+                                             hregAMD64_RDI() )); /* 1st arg */
+            /* lo 64 bits into RSI -- the 2nd arg */
+            addInstr(env, AMD64Instr_Alu64R( Aalu_MOV, 
+                                             AMD64RMI_Mem(m16_rsp),
+                                             hregAMD64_RSI() )); /* 2nd arg */
+            addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn,
+                                           2, mk_RetLoc_simple(RLPri_Int) ));
+            /* MovxLQ is not exactly the right thing here.  We just
+               need to get the bottom 16 bits of RAX into dst, and zero
+               out everything else.  Assuming that the helper returns
+               a UInt with the top 16 bits zeroed out, it'll do,
+               though. */
+            addInstr(env, AMD64Instr_MovxLQ(False, hregAMD64_RAX(), dst));
+            return dst;
+         }
+
          default: 
             break;
       }
@@ -1610,7 +1764,8 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
          HReg dst = newVRegI(env);
          HReg arg = iselIntExpr_R(env, e->Iex.Unop.arg);
          addInstr(env, mk_iMOVsd_RR(arg, hregAMD64_RDI()) );
-         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 1 ));
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 1,
+                                        mk_RetLoc_simple(RLPri_Int) ));
          addInstr(env, mk_iMOVsd_RR(hregAMD64_RAX(), dst));
          return dst;
       }
@@ -1664,13 +1819,19 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
       HReg    dst = newVRegI(env);
       vassert(ty == e->Iex.CCall.retty);
 
-      /* be very restrictive for now.  Only 64-bit ints allowed
-         for args, and 64 or 32 bits for return type. */
+      /* be very restrictive for now.  Only 64-bit ints allowed for
+         args, and 64 or 32 bits for return type. */
       if (e->Iex.CCall.retty != Ity_I64 && e->Iex.CCall.retty != Ity_I32)
          goto irreducible;
 
       /* Marshal args, do the call. */
-      doHelperCall( env, False, NULL, e->Iex.CCall.cee, e->Iex.CCall.args );
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, NULL/*guard*/,
+                    e->Iex.CCall.cee, e->Iex.CCall.retty, e->Iex.CCall.args );
+      vassert(is_sane_RetLoc(rloc));
+      vassert(rloc.pri == RLPri_Int);
+      vassert(addToSp == 0);
 
       /* Move to dst, and zero out the top 32 bits if the result type is
          Ity_I32.  Probably overkill, but still .. */
@@ -1697,17 +1858,15 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
       }
 
    /* --------- MULTIPLEX --------- */
-   case Iex_Mux0X: {
+   case Iex_ITE: { // VFD
      if ((ty == Ity_I64 || ty == Ity_I32 || ty == Ity_I16 || ty == Ity_I8)
-         && typeOfIRExpr(env->type_env,e->Iex.Mux0X.cond) == Ity_I8) {
-        HReg     r8;
-        HReg     rX  = iselIntExpr_R(env, e->Iex.Mux0X.exprX);
-        AMD64RM* r0  = iselIntExpr_RM(env, e->Iex.Mux0X.expr0);
+          && typeOfIRExpr(env->type_env,e->Iex.ITE.cond) == Ity_I1) {
+         HReg     r1  = iselIntExpr_R(env, e->Iex.ITE.iftrue);
+         AMD64RM* r0  = iselIntExpr_RM(env, e->Iex.ITE.iffalse);
         HReg dst = newVRegI(env);
-        addInstr(env, mk_iMOVsd_RR(rX,dst));
-        r8 = iselIntExpr_R(env, e->Iex.Mux0X.cond);
-        addInstr(env, AMD64Instr_Test64(0xFF, r8));
-        addInstr(env, AMD64Instr_CMov64(Acc_Z,r0,dst));
+         addInstr(env, mk_iMOVsd_RR(r1,dst));
+         AMD64CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+         addInstr(env, AMD64Instr_CMov64(cc ^ 1, r0, dst));
         return dst;
       }
       break;
@@ -2162,6 +2321,15 @@ static AMD64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpNE8
            || e->Iex.Binop.op == Iop_CasCmpEQ8
            || e->Iex.Binop.op == Iop_CasCmpNE8)) {
+      if (isZeroU8(e->Iex.Binop.arg2)) {
+         HReg      r1   = iselIntExpr_R(env, e->Iex.Binop.arg1);
+         addInstr(env, AMD64Instr_Test64(0xFF,r1));
+         switch (e->Iex.Binop.op) {
+            case Iop_CmpEQ8: case Iop_CasCmpEQ8: return Acc_Z;
+            case Iop_CmpNE8: case Iop_CasCmpNE8: return Acc_NZ;
+            default: vpanic("iselCondCode(amd64): CmpXX8(expr,0:I8)");
+         }
+      } else {
       HReg      r1   = iselIntExpr_R(env, e->Iex.Binop.arg1);
       AMD64RMI* rmi2 = iselIntExpr_RMI(env, e->Iex.Binop.arg2);
       HReg      r    = newVRegI(env);
@@ -2171,7 +2339,8 @@ static AMD64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       switch (e->Iex.Binop.op) {
          case Iop_CmpEQ8: case Iop_CasCmpEQ8: return Acc_Z;
          case Iop_CmpNE8: case Iop_CasCmpNE8: return Acc_NZ;
-         default: vpanic("iselCondCode(amd64): CmpXX8");
+            default: vpanic("iselCondCode(amd64): CmpXX8(expr,expr)");
+         }
       }
    }
 
@@ -2207,7 +2376,15 @@ static AMD64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       vassert(cal->Iex.CCall.retty == Ity_I64); /* else ill-typed IR */
       vassert(con->Iex.Const.con->tag == Ico_U64);
       /* Marshal args, do the call. */
-      doHelperCall( env, False, NULL, cal->Iex.CCall.cee, cal->Iex.CCall.args );
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, NULL/*guard*/,
+                    cal->Iex.CCall.cee,
+                    cal->Iex.CCall.retty, cal->Iex.CCall.args );
+      vassert(is_sane_RetLoc(rloc));
+      vassert(rloc.pri == RLPri_Int);
+      vassert(addToSp == 0);
+      /* */
       addInstr(env, AMD64Instr_Imm64(con->Iex.Const.con->Ico.U64, tmp));
       addInstr(env, AMD64Instr_Alu64R(Aalu_CMP,
                                       AMD64RMI_Reg(hregAMD64_RAX()), tmp));
@@ -2223,13 +2400,15 @@ static AMD64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLE64S
            || e->Iex.Binop.op == Iop_CmpLE64U
            || e->Iex.Binop.op == Iop_CasCmpEQ64
-           || e->Iex.Binop.op == Iop_CasCmpNE64)) {
+           || e->Iex.Binop.op == Iop_CasCmpNE64
+           || e->Iex.Binop.op == Iop_ExpCmpNE64)) {
       HReg      r1   = iselIntExpr_R(env, e->Iex.Binop.arg1);
       AMD64RMI* rmi2 = iselIntExpr_RMI(env, e->Iex.Binop.arg2);
       addInstr(env, AMD64Instr_Alu64R(Aalu_CMP,rmi2,r1));
       switch (e->Iex.Binop.op) {
          case Iop_CmpEQ64: case Iop_CasCmpEQ64: return Acc_Z;
-         case Iop_CmpNE64: case Iop_CasCmpNE64: return Acc_NZ;
+         case Iop_CmpNE64:
+         case Iop_CasCmpNE64: case Iop_ExpCmpNE64: return Acc_NZ;
 	 case Iop_CmpLT64S: return Acc_L;
 	 case Iop_CmpLT64U: return Acc_B;
 	 case Iop_CmpLE64S: return Acc_LE;
@@ -2247,13 +2426,15 @@ static AMD64CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLE32S
            || e->Iex.Binop.op == Iop_CmpLE32U
            || e->Iex.Binop.op == Iop_CasCmpEQ32
-           || e->Iex.Binop.op == Iop_CasCmpNE32)) {
+           || e->Iex.Binop.op == Iop_CasCmpNE32
+           || e->Iex.Binop.op == Iop_ExpCmpNE32)) {
       HReg      r1   = iselIntExpr_R(env, e->Iex.Binop.arg1);
       AMD64RMI* rmi2 = iselIntExpr_RMI(env, e->Iex.Binop.arg2);
       addInstr(env, AMD64Instr_Alu32R(Aalu_CMP,rmi2,r1));
       switch (e->Iex.Binop.op) {
          case Iop_CmpEQ32: case Iop_CasCmpEQ32: return Acc_Z;
-         case Iop_CmpNE32: case Iop_CasCmpNE32: return Acc_NZ;
+         case Iop_CmpNE32:
+         case Iop_CasCmpNE32: case Iop_ExpCmpNE32: return Acc_NZ;
 	 case Iop_CmpLT32S: return Acc_L;
 	 case Iop_CmpLT32U: return Acc_B;
 	 case Iop_CmpLE32S: return Acc_LE;
@@ -2457,6 +2638,73 @@ static HReg iselFltExpr_wrk ( ISelEnv* env, IRExpr* e )
       return dst;
    }
 
+   if (e->tag == Iex_Unop && e->Iex.Unop.op == Iop_NegF32) {
+      /* Sigh ... very rough code.  Could do much better. */
+      /* Get the 128-bit literal 00---0 10---0 into a register
+         and xor it with the value to be negated. */
+      HReg r1  = newVRegI(env);
+      HReg dst = newVRegV(env);
+      HReg tmp = newVRegV(env);
+      HReg src = iselFltExpr(env, e->Iex.Unop.arg);
+      AMD64AMode* rsp0 = AMD64AMode_IR(0, hregAMD64_RSP());
+      addInstr(env, mk_vMOVsd_RR(src,tmp));
+      addInstr(env, AMD64Instr_Push(AMD64RMI_Imm(0)));
+      addInstr(env, AMD64Instr_Imm64( 1ULL<<31, r1 ));
+      addInstr(env, AMD64Instr_Push(AMD64RMI_Reg(r1)));
+      addInstr(env, AMD64Instr_SseLdSt(True, 16, dst, rsp0));
+      addInstr(env, AMD64Instr_SseReRg(Asse_XOR, tmp, dst));
+      add_to_rsp(env, 16);
+      return dst;
+   }
+
+   if (e->tag == Iex_Qop && e->Iex.Qop.details->op == Iop_MAddF32) {
+      IRQop *qop = e->Iex.Qop.details;
+      HReg dst  = newVRegV(env);
+      HReg argX = iselFltExpr(env, qop->arg2);
+      HReg argY = iselFltExpr(env, qop->arg3);
+      HReg argZ = iselFltExpr(env, qop->arg4);
+      /* XXXROUNDINGFIXME */
+      /* set roundingmode here */
+      /* subq $16, %rsp         -- make a space*/
+      sub_from_rsp(env, 16);
+      /* Prepare 4 arg regs:
+         leaq 0(%rsp), %rdi
+         leaq 4(%rsp), %rsi
+         leaq 8(%rsp), %rdx
+         leaq 12(%rsp), %rcx
+      */
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(0, hregAMD64_RSP()),
+                                     hregAMD64_RDI()));
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(4, hregAMD64_RSP()),
+                                     hregAMD64_RSI()));
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(8, hregAMD64_RSP()),
+                                     hregAMD64_RDX()));
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(12, hregAMD64_RSP()),
+                                     hregAMD64_RCX()));
+      /* Store the three args, at (%rsi), (%rdx) and (%rcx):
+         movss  %argX, 0(%rsi)
+         movss  %argY, 0(%rdx)
+         movss  %argZ, 0(%rcx)
+         */
+      addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 4, argX,
+                                       AMD64AMode_IR(0, hregAMD64_RSI())));
+      addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 4, argY,
+                                       AMD64AMode_IR(0, hregAMD64_RDX())));
+      addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 4, argZ,
+                                       AMD64AMode_IR(0, hregAMD64_RCX())));
+      /* call the helper */
+      addInstr(env, AMD64Instr_Call( Acc_ALWAYS,
+                                     (ULong)(HWord)h_generic_calc_MAddF32,
+                                     4, mk_RetLoc_simple(RLPri_None) ));
+      /* fetch the result from memory, using %r_argp, which the
+         register allocator will keep alive across the call. */
+      addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 4, dst,
+                                       AMD64AMode_IR(0, hregAMD64_RSP())));
+      /* and finally, clear the space */
+      add_to_rsp(env, 16);
+      return dst;
+   }
+
    ppIRExpr(e);
    vpanic("iselFltExpr_wrk");
 }
@@ -2586,6 +2834,54 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
          addInstr(env, AMD64Instr_Sse64FLo(op, argR, dst));
          return dst;
       }
+   }
+
+   if (e->tag == Iex_Qop && e->Iex.Qop.details->op == Iop_MAddF64) {
+      IRQop *qop = e->Iex.Qop.details;
+      HReg dst  = newVRegV(env);
+      HReg argX = iselDblExpr(env, qop->arg2);
+      HReg argY = iselDblExpr(env, qop->arg3);
+      HReg argZ = iselDblExpr(env, qop->arg4);
+      /* XXXROUNDINGFIXME */
+      /* set roundingmode here */
+      /* subq $32, %rsp         -- make a space*/
+      sub_from_rsp(env, 32);
+      /* Prepare 4 arg regs:
+         leaq 0(%rsp), %rdi
+         leaq 8(%rsp), %rsi
+         leaq 16(%rsp), %rdx
+         leaq 24(%rsp), %rcx
+      */
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(0, hregAMD64_RSP()),
+                                     hregAMD64_RDI()));
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(8, hregAMD64_RSP()),
+                                     hregAMD64_RSI()));
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(16, hregAMD64_RSP()),
+                                     hregAMD64_RDX()));
+      addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(24, hregAMD64_RSP()),
+                                     hregAMD64_RCX()));
+      /* Store the three args, at (%rsi), (%rdx) and (%rcx):
+         movsd  %argX, 0(%rsi)
+         movsd  %argY, 0(%rdx)
+         movsd  %argZ, 0(%rcx)
+         */
+      addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 8, argX,
+                                       AMD64AMode_IR(0, hregAMD64_RSI())));
+      addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 8, argY,
+                                       AMD64AMode_IR(0, hregAMD64_RDX())));
+      addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 8, argZ,
+                                       AMD64AMode_IR(0, hregAMD64_RCX())));
+      /* call the helper */
+      addInstr(env, AMD64Instr_Call( Acc_ALWAYS,
+                                     (ULong)(HWord)h_generic_calc_MAddF64,
+                                     4, mk_RetLoc_simple(RLPri_None) ));
+      /* fetch the result from memory, using %r_argp, which the
+         register allocator will keep alive across the call. */
+      addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 8, dst,
+                                       AMD64AMode_IR(0, hregAMD64_RSP())));
+      /* and finally, clear the space */
+      add_to_rsp(env, 32);
+      return dst;
    }
 
    if (e->tag == Iex_Binop && e->Iex.Binop.op == Iop_RoundF64toInt) {
@@ -2786,17 +3082,16 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
    }
 
    /* --------- MULTIPLEX --------- */
-   if (e->tag == Iex_Mux0X) {
-      HReg r8, rX, r0, dst;
+   if (e->tag == Iex_ITE) { // VFD
+      HReg r1, r0, dst;
       vassert(ty == Ity_F64);
-      vassert(typeOfIRExpr(env->type_env,e->Iex.Mux0X.cond) == Ity_I8);
-      r8  = iselIntExpr_R(env, e->Iex.Mux0X.cond);
-      rX  = iselDblExpr(env, e->Iex.Mux0X.exprX);
-      r0  = iselDblExpr(env, e->Iex.Mux0X.expr0);
+      vassert(typeOfIRExpr(env->type_env,e->Iex.ITE.cond) == Ity_I1);
+      r1  = iselDblExpr(env, e->Iex.ITE.iftrue);
+      r0  = iselDblExpr(env, e->Iex.ITE.iffalse);
       dst = newVRegV(env);
-      addInstr(env, mk_vMOVsd_RR(rX,dst));
-      addInstr(env, AMD64Instr_Test64(0xFF, r8));
-      addInstr(env, AMD64Instr_SseCMov(Acc_Z,r0,dst));
+      addInstr(env, mk_vMOVsd_RR(r1,dst));
+      AMD64CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+      addInstr(env, AMD64Instr_SseCMov(cc ^ 1, r0, dst));
       return dst;
    }
 
@@ -3300,7 +3595,8 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
          addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argR,
                                           AMD64AMode_IR(0, hregAMD64_RDX())));
          /* call the helper */
-         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 3 ));
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn,
+                                        3, mk_RetLoc_simple(RLPri_None) ));
          /* fetch the result from memory, using %r_argp, which the
             register allocator will keep alive across the call. */
          addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 16, dst,
@@ -3348,7 +3644,8 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
          addInstr(env, mk_iMOVsd_RR(argR, hregAMD64_RDX()));
 
          /* call the helper */
-         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 3 ));
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn,
+                                        3, mk_RetLoc_simple(RLPri_None) ));
          /* fetch the result from memory, using %r_argp, which the
             register allocator will keep alive across the call. */
          addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 16, dst,
@@ -3363,14 +3660,13 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
    } /* switch (e->Iex.Binop.op) */
    } /* if (e->tag == Iex_Binop) */
 
-   if (e->tag == Iex_Mux0X) {
-      HReg r8  = iselIntExpr_R(env, e->Iex.Mux0X.cond);
-      HReg rX  = iselVecExpr(env, e->Iex.Mux0X.exprX);
-      HReg r0  = iselVecExpr(env, e->Iex.Mux0X.expr0);
+   if (e->tag == Iex_ITE) { // VFD
+      HReg r1  = iselVecExpr(env, e->Iex.ITE.iftrue);
+      HReg r0  = iselVecExpr(env, e->Iex.ITE.iffalse);
       HReg dst = newVRegV(env);
-      addInstr(env, mk_vMOVsd_RR(rX,dst));
-      addInstr(env, AMD64Instr_Test64(0xFF, r8));
-      addInstr(env, AMD64Instr_SseCMov(Acc_Z,r0,dst));
+      addInstr(env, mk_vMOVsd_RR(r1,dst));
+      AMD64CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+      addInstr(env, AMD64Instr_SseCMov(cc ^ 1, r0, dst));
       return dst;
    }
 
@@ -3404,6 +3700,7 @@ static void iselDVecExpr ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo,
 static void iselDVecExpr_wrk ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo, 
                                ISelEnv* env, IRExpr* e )
 {
+   HWord fn = 0; /* address of helper fn, if required */
    vassert(e);
    IRType ty = typeOfIRExpr(env->type_env,e);
    vassert(ty == Ity_V256);
@@ -3525,6 +3822,8 @@ static void iselDVecExpr_wrk ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo,
       }
 
       case Iop_CmpNEZ32x8: op = Asse_CMPEQ32; goto do_CmpNEZ_vector;
+      case Iop_CmpNEZ16x16: op = Asse_CMPEQ16; goto do_CmpNEZ_vector;
+      case Iop_CmpNEZ8x32: op = Asse_CMPEQ8;  goto do_CmpNEZ_vector;
       do_CmpNEZ_vector:
       {
          HReg argHi, argLo;
@@ -3599,6 +3898,37 @@ static void iselDVecExpr_wrk ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo,
       case Iop_AndV256:    op = Asse_AND;      goto do_SseReRg;
       case Iop_OrV256:     op = Asse_OR;       goto do_SseReRg;
       case Iop_XorV256:    op = Asse_XOR;      goto do_SseReRg;
+      case Iop_Add8x32:    op = Asse_ADD8;     goto do_SseReRg;
+      case Iop_Add16x16:   op = Asse_ADD16;    goto do_SseReRg;
+      case Iop_Add32x8:    op = Asse_ADD32;    goto do_SseReRg;
+      case Iop_Add64x4:    op = Asse_ADD64;    goto do_SseReRg;
+      case Iop_QAdd8Sx32:  op = Asse_QADD8S;   goto do_SseReRg;
+      case Iop_QAdd16Sx16: op = Asse_QADD16S;  goto do_SseReRg;
+      case Iop_QAdd8Ux32:  op = Asse_QADD8U;   goto do_SseReRg;
+      case Iop_QAdd16Ux16: op = Asse_QADD16U;  goto do_SseReRg;
+      case Iop_Avg8Ux32:   op = Asse_AVG8U;    goto do_SseReRg;
+      case Iop_Avg16Ux16:  op = Asse_AVG16U;   goto do_SseReRg;
+      case Iop_CmpEQ8x32:  op = Asse_CMPEQ8;   goto do_SseReRg;
+      case Iop_CmpEQ16x16: op = Asse_CMPEQ16;  goto do_SseReRg;
+      case Iop_CmpEQ32x8:  op = Asse_CMPEQ32;  goto do_SseReRg;
+      case Iop_CmpGT8Sx32: op = Asse_CMPGT8S;  goto do_SseReRg;
+      case Iop_CmpGT16Sx16: op = Asse_CMPGT16S; goto do_SseReRg;
+      case Iop_CmpGT32Sx8: op = Asse_CMPGT32S; goto do_SseReRg;
+      case Iop_Max16Sx16:  op = Asse_MAX16S;   goto do_SseReRg;
+      case Iop_Max8Ux32:   op = Asse_MAX8U;    goto do_SseReRg;
+      case Iop_Min16Sx16:  op = Asse_MIN16S;   goto do_SseReRg;
+      case Iop_Min8Ux32:   op = Asse_MIN8U;    goto do_SseReRg;
+      case Iop_MulHi16Ux16: op = Asse_MULHI16U; goto do_SseReRg;
+      case Iop_MulHi16Sx16: op = Asse_MULHI16S; goto do_SseReRg;
+      case Iop_Mul16x16:   op = Asse_MUL16;    goto do_SseReRg;
+      case Iop_Sub8x32:    op = Asse_SUB8;     goto do_SseReRg;
+      case Iop_Sub16x16:   op = Asse_SUB16;    goto do_SseReRg;
+      case Iop_Sub32x8:    op = Asse_SUB32;    goto do_SseReRg;
+      case Iop_Sub64x4:    op = Asse_SUB64;    goto do_SseReRg;
+      case Iop_QSub8Sx32:  op = Asse_QSUB8S;   goto do_SseReRg;
+      case Iop_QSub16Sx16: op = Asse_QSUB16S;  goto do_SseReRg;
+      case Iop_QSub8Ux32:  op = Asse_QSUB8U;   goto do_SseReRg;
+      case Iop_QSub16Ux16: op = Asse_QSUB16U;  goto do_SseReRg;
       do_SseReRg:
       {
          HReg argLhi, argLlo, argRhi, argRlo;
@@ -3615,9 +3945,198 @@ static void iselDVecExpr_wrk ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo,
          return;
       }
 
+      case Iop_ShlN16x16: op = Asse_SHL16; goto do_SseShift;
+      case Iop_ShlN32x8:  op = Asse_SHL32; goto do_SseShift;
+      case Iop_ShlN64x4:  op = Asse_SHL64; goto do_SseShift;
+      case Iop_SarN16x16: op = Asse_SAR16; goto do_SseShift;
+      case Iop_SarN32x8:  op = Asse_SAR32; goto do_SseShift;
+      case Iop_ShrN16x16: op = Asse_SHR16; goto do_SseShift;
+      case Iop_ShrN32x8:  op = Asse_SHR32; goto do_SseShift;
+      case Iop_ShrN64x4:  op = Asse_SHR64; goto do_SseShift;
+      do_SseShift: {
+         HReg gregHi, gregLo;
+         iselDVecExpr(&gregHi, &gregLo, env, e->Iex.Binop.arg1);
+         AMD64RMI*   rmi   = iselIntExpr_RMI(env, e->Iex.Binop.arg2);
+         AMD64AMode* rsp0  = AMD64AMode_IR(0, hregAMD64_RSP());
+         HReg        ereg  = newVRegV(env);
+         HReg        dstHi = newVRegV(env);
+         HReg        dstLo = newVRegV(env);
+         addInstr(env, AMD64Instr_Push(AMD64RMI_Imm(0)));
+         addInstr(env, AMD64Instr_Push(rmi));
+         addInstr(env, AMD64Instr_SseLdSt(True/*load*/, 16, ereg, rsp0));
+         addInstr(env, mk_vMOVsd_RR(gregHi, dstHi));
+         addInstr(env, AMD64Instr_SseReRg(op, ereg, dstHi));
+         addInstr(env, mk_vMOVsd_RR(gregLo, dstLo));
+         addInstr(env, AMD64Instr_SseReRg(op, ereg, dstLo));
+         add_to_rsp(env, 16);
+         *rHi = dstHi;
+         *rLo = dstLo;
+         return;
+      }
+
       case Iop_V128HLtoV256: {
          *rHi = iselVecExpr(env, e->Iex.Binop.arg1);
          *rLo = iselVecExpr(env, e->Iex.Binop.arg2);
+         return;
+      }
+
+      case Iop_Mul32x8:    fn = (HWord)h_generic_calc_Mul32x4;
+                           goto do_SseAssistedBinary;
+      case Iop_Max32Sx8:   fn = (HWord)h_generic_calc_Max32Sx4;
+                           goto do_SseAssistedBinary;
+      case Iop_Min32Sx8:   fn = (HWord)h_generic_calc_Min32Sx4;
+                           goto do_SseAssistedBinary;
+      case Iop_Max32Ux8:   fn = (HWord)h_generic_calc_Max32Ux4;
+                           goto do_SseAssistedBinary;
+      case Iop_Min32Ux8:   fn = (HWord)h_generic_calc_Min32Ux4;
+                           goto do_SseAssistedBinary;
+      case Iop_Max16Ux16:  fn = (HWord)h_generic_calc_Max16Ux8;
+                           goto do_SseAssistedBinary;
+      case Iop_Min16Ux16:  fn = (HWord)h_generic_calc_Min16Ux8;
+                           goto do_SseAssistedBinary;
+      case Iop_Max8Sx32:   fn = (HWord)h_generic_calc_Max8Sx16;
+                           goto do_SseAssistedBinary;
+      case Iop_Min8Sx32:   fn = (HWord)h_generic_calc_Min8Sx16;
+                           goto do_SseAssistedBinary;
+      case Iop_CmpEQ64x4:  fn = (HWord)h_generic_calc_CmpEQ64x2;
+                           goto do_SseAssistedBinary;
+      case Iop_CmpGT64Sx4: fn = (HWord)h_generic_calc_CmpGT64Sx2;
+                           goto do_SseAssistedBinary;
+      do_SseAssistedBinary: {
+         /* RRRufff!  RRRufff code is what we're generating here.  Oh
+            well. */
+         vassert(fn != 0);
+         HReg dstHi = newVRegV(env);
+         HReg dstLo = newVRegV(env);
+         HReg argLhi, argLlo, argRhi, argRlo;
+         iselDVecExpr(&argLhi, &argLlo, env, e->Iex.Binop.arg1);
+         iselDVecExpr(&argRhi, &argRlo, env, e->Iex.Binop.arg2);
+         HReg argp = newVRegI(env);
+         /* subq $160, %rsp         -- make a space*/
+         sub_from_rsp(env, 160);
+         /* leaq 48(%rsp), %r_argp  -- point into it */
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(48, hregAMD64_RSP()),
+                                        argp));
+         /* andq $-16, %r_argp      -- 16-align the pointer */
+         addInstr(env, AMD64Instr_Alu64R(Aalu_AND,
+                                         AMD64RMI_Imm( ~(UInt)15 ),
+                                         argp));
+         /* Prepare 3 arg regs:
+            leaq 0(%r_argp), %rdi
+            leaq 16(%r_argp), %rsi
+            leaq 32(%r_argp), %rdx
+         */
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(0, argp),
+                                        hregAMD64_RDI()));
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(16, argp),
+                                        hregAMD64_RSI()));
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(32, argp),
+                                        hregAMD64_RDX()));
+         /* Store the two high args, at (%rsi) and (%rdx):
+            movupd  %argLhi, 0(%rsi)
+            movupd  %argRhi, 0(%rdx)
+         */
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argLhi,
+                                          AMD64AMode_IR(0, hregAMD64_RSI())));
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argRhi,
+                                          AMD64AMode_IR(0, hregAMD64_RDX())));
+         /* Store the two low args, at 48(%rsi) and 48(%rdx):
+            movupd  %argLlo, 48(%rsi)
+            movupd  %argRlo, 48(%rdx)
+         */
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argLlo,
+                                          AMD64AMode_IR(48, hregAMD64_RSI())));
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argRlo,
+                                          AMD64AMode_IR(48, hregAMD64_RDX())));
+         /* call the helper */
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 3,
+                                        mk_RetLoc_simple(RLPri_None) ));
+         /* Prepare 3 arg regs:
+            leaq 48(%r_argp), %rdi
+            leaq 64(%r_argp), %rsi
+            leaq 80(%r_argp), %rdx
+         */
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(48, argp),
+                                        hregAMD64_RDI()));
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(64, argp),
+                                        hregAMD64_RSI()));
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(80, argp),
+                                        hregAMD64_RDX()));
+         /* call the helper */
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 3,
+                                        mk_RetLoc_simple(RLPri_None) ));
+         /* fetch the result from memory, using %r_argp, which the
+            register allocator will keep alive across the call. */
+         addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 16, dstHi,
+                                          AMD64AMode_IR(0, argp)));
+         addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 16, dstLo,
+                                          AMD64AMode_IR(48, argp)));
+         /* and finally, clear the space */
+         add_to_rsp(env, 160);
+         *rHi = dstHi;
+         *rLo = dstLo;
+         return;
+      }
+
+      case Iop_Perm32x8:   fn = (HWord)h_generic_calc_Perm32x8;
+                           goto do_SseAssistedBinary256;
+      do_SseAssistedBinary256: {
+         /* RRRufff!  RRRufff code is what we're generating here.  Oh
+            well. */
+         vassert(fn != 0);
+         HReg dstHi = newVRegV(env);
+         HReg dstLo = newVRegV(env);
+         HReg argLhi, argLlo, argRhi, argRlo;
+         iselDVecExpr(&argLhi, &argLlo, env, e->Iex.Binop.arg1);
+         iselDVecExpr(&argRhi, &argRlo, env, e->Iex.Binop.arg2);
+         HReg argp = newVRegI(env);
+         /* subq $160, %rsp         -- make a space*/
+         sub_from_rsp(env, 160);
+         /* leaq 48(%rsp), %r_argp  -- point into it */
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(48, hregAMD64_RSP()),
+                                        argp));
+         /* andq $-16, %r_argp      -- 16-align the pointer */
+         addInstr(env, AMD64Instr_Alu64R(Aalu_AND,
+                                         AMD64RMI_Imm( ~(UInt)15 ),
+                                         argp));
+         /* Prepare 3 arg regs:
+            leaq 0(%r_argp), %rdi
+            leaq 32(%r_argp), %rsi
+            leaq 64(%r_argp), %rdx
+         */
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(0, argp),
+                                        hregAMD64_RDI()));
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(32, argp),
+                                        hregAMD64_RSI()));
+         addInstr(env, AMD64Instr_Lea64(AMD64AMode_IR(64, argp),
+                                        hregAMD64_RDX()));
+         /* Store the two args, at (%rsi) and (%rdx):
+            movupd  %argLlo, 0(%rsi)
+            movupd  %argLhi, 16(%rsi)
+            movupd  %argRlo, 0(%rdx)
+            movupd  %argRhi, 16(%rdx)
+         */
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argLlo,
+                                          AMD64AMode_IR(0, hregAMD64_RSI())));
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argLhi,
+                                          AMD64AMode_IR(16, hregAMD64_RSI())));
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argRlo,
+                                          AMD64AMode_IR(0, hregAMD64_RDX())));
+         addInstr(env, AMD64Instr_SseLdSt(False/*!isLoad*/, 16, argRhi,
+                                          AMD64AMode_IR(16, hregAMD64_RDX())));
+         /* call the helper */
+         addInstr(env, AMD64Instr_Call( Acc_ALWAYS, (ULong)fn, 3,
+                                        mk_RetLoc_simple(RLPri_None) ));
+         /* fetch the result from memory, using %r_argp, which the
+            register allocator will keep alive across the call. */
+         addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 16, dstLo,
+                                          AMD64AMode_IR(0, argp)));
+         addInstr(env, AMD64Instr_SseLdSt(True/*isLoad*/, 16, dstHi,
+                                          AMD64AMode_IR(16, argp)));
+         /* and finally, clear the space */
+         add_to_rsp(env, 160);
+         *rHi = dstHi;
+         *rLo = dstLo;
          return;
       }
 
@@ -3648,6 +4167,22 @@ static void iselDVecExpr_wrk ( /*OUT*/HReg* rHi, /*OUT*/HReg* rLo,
       addInstr(env, AMD64Instr_SseLdSt(True/*load*/, 16, vLo, m16_rsp));
       *rHi = vHi;
       *rLo = vLo;
+      return;
+   }
+
+   if (e->tag == Iex_ITE) {
+      HReg r1Hi, r1Lo, r0Hi, r0Lo;
+      iselDVecExpr(&r1Hi, &r1Lo, env, e->Iex.ITE.iftrue);
+      iselDVecExpr(&r0Hi, &r0Lo, env, e->Iex.ITE.iffalse);
+      HReg dstHi = newVRegV(env);
+      HReg dstLo = newVRegV(env);
+      addInstr(env, mk_vMOVsd_RR(r1Hi,dstHi));
+      addInstr(env, mk_vMOVsd_RR(r1Lo,dstLo));
+      AMD64CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+      addInstr(env, AMD64Instr_SseCMov(cc ^ 1, r0Hi, dstHi));
+      addInstr(env, AMD64Instr_SseCMov(cc ^ 1, r0Lo, dstLo));
+      *rHi = dstHi;
+      *rLo = dstLo;
       return;
    }
 
@@ -3894,31 +4429,81 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
 
    /* --------- Call to DIRTY helper --------- */
    case Ist_Dirty: {
-      IRType   retty;
       IRDirty* d = stmt->Ist.Dirty.details;
-      Bool     passBBP = False;
 
-      if (d->nFxState == 0)
-         vassert(!d->needsBBP);
+      /* Figure out the return type, if any. */
+      IRType retty = Ity_INVALID;
+      if (d->tmp != IRTemp_INVALID)
+         retty = typeOfIRTemp(env->type_env, d->tmp);
 
-      passBBP = toBool(d->nFxState > 0 && d->needsBBP);
+      /* Throw out any return types we don't know about. */
+      Bool retty_ok = False;
+      switch (retty) {
+         case Ity_INVALID: /* function doesn't return anything */
+         case Ity_I64: case Ity_I32: case Ity_I16: case Ity_I8:
+         case Ity_V128: case Ity_V256:
+            retty_ok = True; break;
+         default:
+            break;
+      }
+      if (!retty_ok)
+         break; /* will go to stmt_fail: */
 
-      /* Marshal args, do the call, clear stack. */
-      doHelperCall( env, passBBP, d->guard, d->cee, d->args );
+      /* Marshal args, do the call, and set the return value to
+         0x555..555 if this is a conditional call that returns a value
+         and the call is skipped. */
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, d->guard, d->cee, retty, d->args );
+      vassert(is_sane_RetLoc(rloc));
 
       /* Now figure out what to do with the returned value, if any. */
-      if (d->tmp == IRTemp_INVALID)
+      switch (retty) {
+         case Ity_INVALID: {
          /* No return value.  Nothing to do. */
+            vassert(d->tmp == IRTemp_INVALID);
+            vassert(rloc.pri == RLPri_None);
+            vassert(addToSp == 0);
          return;
-
-      retty = typeOfIRTemp(env->type_env, d->tmp);
-      if (retty == Ity_I64 || retty == Ity_I32 
-          || retty == Ity_I16 || retty == Ity_I8) {
+         }
+         case Ity_I64: case Ity_I32: case Ity_I16: case Ity_I8: {
          /* The returned value is in %rax.  Park it in the register
             associated with tmp. */
+            vassert(rloc.pri == RLPri_Int);
+            vassert(addToSp == 0);
          HReg dst = lookupIRTemp(env, d->tmp);
          addInstr(env, mk_iMOVsd_RR(hregAMD64_RAX(),dst) );
          return;
+      }
+         case Ity_V128: {
+            /* The returned value is on the stack, and rloc.spOff
+               tells us where.  Fish it off the stack and then move
+               the stack pointer upwards to clear it, as directed by
+               doHelperCall. */
+            vassert(rloc.pri == RLPri_V128SpRel);
+            vassert(addToSp >= 16);
+            HReg        dst = lookupIRTemp(env, d->tmp);
+            AMD64AMode* am  = AMD64AMode_IR(rloc.spOff, hregAMD64_RSP());
+            addInstr(env, AMD64Instr_SseLdSt( True/*load*/, 16, dst, am ));
+            add_to_rsp(env, addToSp);
+            return;
+         }
+         case Ity_V256: {
+            /* See comments for Ity_V128. */
+            vassert(rloc.pri == RLPri_V256SpRel);
+            vassert(addToSp >= 32);
+            HReg        dstLo, dstHi;
+            lookupIRTempPair(&dstHi, &dstLo, env, d->tmp);
+            AMD64AMode* amLo  = AMD64AMode_IR(rloc.spOff, hregAMD64_RSP());
+            addInstr(env, AMD64Instr_SseLdSt( True/*load*/, 16, dstLo, amLo ));
+            AMD64AMode* amHi  = AMD64AMode_IR(rloc.spOff+16, hregAMD64_RSP());
+            addInstr(env, AMD64Instr_SseLdSt( True/*load*/, 16, dstHi, amHi ));
+            add_to_rsp(env, addToSp);
+            return;
+         }
+         default:
+            /*NOTREACHED*/
+            vassert(0);
       }
       break;
    }
@@ -4207,7 +4792,10 @@ HInstrArray* iselSB_AMD64 ( IRSB* bb,
                  & ~(VEX_HWCAPS_AMD64_SSE3
                      | VEX_HWCAPS_AMD64_CX16
                      | VEX_HWCAPS_AMD64_LZCNT
-                     | VEX_HWCAPS_AMD64_AVX)));
+                     | VEX_HWCAPS_AMD64_AVX
+                     | VEX_HWCAPS_AMD64_RDTSCP
+                     | VEX_HWCAPS_AMD64_BMI
+                     | VEX_HWCAPS_AMD64_AVX2)));
 
    /* Make up an initial environment to use. */
    env = LibVEX_Alloc(sizeof(ISelEnv));

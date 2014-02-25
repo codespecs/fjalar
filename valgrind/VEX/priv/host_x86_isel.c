@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -117,12 +117,12 @@ static Bool isZeroU32 ( IRExpr* e )
           && e->Iex.Const.con->Ico.U32 == 0;
 }
 
-static Bool isZeroU64 ( IRExpr* e )
-{
-   return e->tag == Iex_Const
-          && e->Iex.Const.con->tag == Ico_U64
-          && e->Iex.Const.con->Ico.U64 == 0ULL;
-}
+//static Bool isZeroU64 ( IRExpr* e )
+//{
+//   return e->tag == Iex_Const
+//          && e->Iex.Const.con->tag == Ico_U64
+//          && e->Iex.Const.con->Ico.U64 == 0ULL;
+//}
 
 
 /*---------------------------------------------------------*/
@@ -201,7 +201,7 @@ static void lookupIRTemp64 ( HReg* vrHI, HReg* vrLO, ISelEnv* env, IRTemp tmp )
 {
    vassert(tmp >= 0);
    vassert(tmp < env->n_vregmap);
-   vassert(env->vregmapHI[tmp] != INVALID_HREG);
+   vassert(! hregIsInvalid(env->vregmapHI[tmp]));
    *vrLO = env->vregmap[tmp];
    *vrHI = env->vregmapHI[tmp];
 }
@@ -340,10 +340,23 @@ static X86AMode* advance4 ( X86AMode* am )
 
 /* Push an arg onto the host stack, in preparation for a call to a
    helper function of some kind.  Returns the number of 32-bit words
-   pushed. */
-
-static Int pushArg ( ISelEnv* env, IRExpr* arg )
+   pushed.  If we encounter an IRExpr_VECRET() then we expect that
+   r_vecRetAddr will be a valid register, that holds the relevant
+   address. 
+*/
+static Int pushArg ( ISelEnv* env, IRExpr* arg, HReg r_vecRetAddr )
 {
+   if (UNLIKELY(arg->tag == Iex_VECRET)) {
+      vassert(0); //ATC
+      vassert(!hregIsInvalid(r_vecRetAddr));
+      addInstr(env, X86Instr_Push(X86RMI_Reg(r_vecRetAddr)));
+      return 1;
+   }
+   if (UNLIKELY(arg->tag == Iex_BBPTR)) {
+      addInstr(env, X86Instr_Push(X86RMI_Reg(hregX86_EBP())));
+      return 1;
+   }
+   /* Else it's a "normal" expression. */
    IRType arg_ty = typeOfIRExpr(env->type_env, arg);
    if (arg_ty == Ity_I32) {
       addInstr(env, X86Instr_Push(iselIntExpr_RMI(env, arg)));
@@ -366,7 +379,8 @@ static Int pushArg ( ISelEnv* env, IRExpr* arg )
 
 static 
 void callHelperAndClearArgs ( ISelEnv* env, X86CondCode cc, 
-                              IRCallee* cee, Int n_arg_ws )
+                              IRCallee* cee, Int n_arg_ws,
+                              RetLoc rloc )
 {
    /* Complication.  Need to decide which reg to use as the fn address
       pointer, in a way that doesn't trash regparm-passed
@@ -374,7 +388,7 @@ void callHelperAndClearArgs ( ISelEnv* env, X86CondCode cc,
    vassert(sizeof(void*) == 4);
 
    addInstr(env, X86Instr_Call( cc, toUInt(Ptr_to_ULong(cee->addr)),
-                                    cee->regparms));
+                                cee->regparms, rloc));
    if (n_arg_ws > 0)
       add_to_esp(env, 4*n_arg_ws);
 }
@@ -388,6 +402,12 @@ void callHelperAndClearArgs ( ISelEnv* env, X86CondCode cc,
 static
 Bool mightRequireFixedRegs ( IRExpr* e )
 {
+   if (UNLIKELY(is_IRExpr_VECRET_or_BBPTR(e))) {
+      // These are always "safe" -- either a copy of %esp in some
+      // arbitrary vreg, or a copy of %ebp, respectively.
+      return False;
+   }
+   /* Else it's a "normal" expression. */
    switch (e->tag) {
       case Iex_RdTmp: case Iex_Const: case Iex_Get: 
          return False;
@@ -397,14 +417,19 @@ Bool mightRequireFixedRegs ( IRExpr* e )
 }
 
 
-/* Do a complete function call.  guard is a Ity_Bit expression
+/* Do a complete function call.  |guard| is a Ity_Bit expression
    indicating whether or not the call happens.  If guard==NULL, the
-   call is unconditional. */
+   call is unconditional.  |retloc| is set to indicate where the
+   return value is after the call.  The caller (of this fn) must
+   generate code to add |stackAdjustAfterCall| to the stack pointer
+   after the call is done. */
 
 static
-void doHelperCall ( ISelEnv* env, 
-                    Bool passBBP, 
-                    IRExpr* guard, IRCallee* cee, IRExpr** args )
+void doHelperCall ( /*OUT*/UInt*   stackAdjustAfterCall,
+                    /*OUT*/RetLoc* retloc,
+                    ISelEnv* env,
+                    IRExpr* guard,
+                    IRCallee* cee, IRType retTy, IRExpr** args )
 {
    X86CondCode cc;
    HReg        argregs[3];
@@ -413,11 +438,28 @@ void doHelperCall ( ISelEnv* env,
    Int         not_done_yet, n_args, n_arg_ws, stack_limit, 
                i, argreg, argregX;
 
+   /* Set default returns.  We'll update them later if needed. */
+   *stackAdjustAfterCall = 0;
+   *retloc               = mk_RetLoc_INVALID();
+
+   /* These are used for cross-checking that IR-level constraints on
+      the use of Iex_VECRET and Iex_BBPTR are observed. */
+   UInt nVECRETs = 0;
+   UInt nBBPTRs  = 0;
+
    /* Marshal args for a call, do the call, and clear the stack.
       Complexities to consider:
 
-      * if passBBP is True, %ebp (the baseblock pointer) is to be
-        passed as the first arg.
+      * The return type can be I{64,32,16,8} or V128.  In the V128
+        case, it is expected that |args| will contain the special
+        node IRExpr_VECRET(), in which case this routine generates
+        code to allocate space on the stack for the vector return
+        value.  Since we are not passing any scalars on the stack, it
+        is enough to preallocate the return space before marshalling
+        any arguments, in this case.
+
+        |args| may also contain IRExpr_BBPTR(), in which case the
+        value in %ebp is passed as the corresponding argument.
 
       * If the callee claims regparmness of 1, 2 or 3, we must pass the
         first 1, 2 or 3 args in registers (EAX, EDX, and ECX
@@ -461,21 +503,45 @@ void doHelperCall ( ISelEnv* env,
    */
    vassert(cee->regparms >= 0 && cee->regparms <= 3);
 
+   /* Count the number of args and also the VECRETs */
    n_args = n_arg_ws = 0;
-   while (args[n_args]) n_args++;
+   while (args[n_args]) {
+      IRExpr* arg = args[n_args];
+      n_args++;
+      if (UNLIKELY(arg->tag == Iex_VECRET)) {
+         nVECRETs++;
+      } else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
+         nBBPTRs++;
+      }
+   }
+
+   /* If this fails, the IR is ill-formed */
+   vassert(nBBPTRs == 0 || nBBPTRs == 1);
+
+   /* If we have a VECRET, allocate space on the stack for the return
+      value, and record the stack pointer after that. */
+   HReg r_vecRetAddr = INVALID_HREG;
+   if (nVECRETs == 1) {
+      vassert(retTy == Ity_V128 || retTy == Ity_V256);
+      vassert(retTy != Ity_V256); // we don't handle that yet (if ever)
+      r_vecRetAddr = newVRegI(env);
+      sub_from_esp(env, 16);
+      addInstr(env, mk_iMOVsd_RR( hregX86_ESP(), r_vecRetAddr ));
+   } else {
+      // If either of these fail, the IR is ill-formed
+      vassert(retTy != Ity_V128 && retTy != Ity_V256);
+      vassert(nVECRETs == 0);
+   }
 
    not_done_yet = n_args;
-   if (passBBP)
-      not_done_yet++;
 
    stack_limit = cee->regparms;
-   if (cee->regparms > 0 && passBBP) stack_limit--;
 
    /* ------ BEGIN marshall all arguments ------ */
 
    /* Push (R to L) the stack-passed args, [n_args-1 .. stack_limit] */
    for (i = n_args-1; i >= stack_limit; i--) {
-      n_arg_ws += pushArg(env, args[i]);
+      n_arg_ws += pushArg(env, args[i], r_vecRetAddr);
       not_done_yet--;
    }
 
@@ -516,10 +582,18 @@ void doHelperCall ( ISelEnv* env,
                vex_printf("\n");
             }
 
+            IRExpr* arg = args[i];
             argreg--;
             vassert(argreg >= 0);
-            vassert(typeOfIRExpr(env->type_env, args[i]) == Ity_I32);
-            tmpregs[argreg] = iselIntExpr_R(env, args[i]);
+            if (UNLIKELY(arg->tag == Iex_VECRET)) {
+               vassert(0); //ATC
+            }
+            else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
+               vassert(0); //ATC
+            } else {
+               vassert(typeOfIRExpr(env->type_env, arg) == Ity_I32);
+               tmpregs[argreg] = iselIntExpr_R(env, arg);
+            }
             not_done_yet--;
          }
          for (i = stack_limit-1; i >= 0; i--) {
@@ -532,34 +606,29 @@ void doHelperCall ( ISelEnv* env,
          /* It's safe to compute all regparm args directly into their
             target registers. */
          for (i = stack_limit-1; i >= 0; i--) {
+            IRExpr* arg = args[i];
             argreg--;
             vassert(argreg >= 0);
-            vassert(typeOfIRExpr(env->type_env, args[i]) == Ity_I32);
+            if (UNLIKELY(arg->tag == Iex_VECRET)) {
+               vassert(!hregIsInvalid(r_vecRetAddr));
             addInstr(env, X86Instr_Alu32R(Xalu_MOV, 
-                                          iselIntExpr_RMI(env, args[i]),
+                                             X86RMI_Reg(r_vecRetAddr),
                                           argregs[argreg]));
-            not_done_yet--;
          }
-
+            else if (UNLIKELY(arg->tag == Iex_BBPTR)) {
+               vassert(0); //ATC
+            } else {
+               vassert(typeOfIRExpr(env->type_env, arg) == Ity_I32);
+               addInstr(env, X86Instr_Alu32R(Xalu_MOV, 
+                                             iselIntExpr_RMI(env, arg),
+                                             argregs[argreg]));
+      }
+         not_done_yet--;
       }
 
-      /* Not forgetting %ebp if needed. */
-      if (passBBP) {
-         vassert(argreg == 1);
-         addInstr(env, mk_iMOVsd_RR( hregX86_EBP(), argregs[0]));
-         not_done_yet--;
       }
 
       /* ------ END deal with regparms ------ */
-
-   } else {
-
-      /* No regparms.  Heave %ebp on the stack if needed. */
-      if (passBBP) {
-         addInstr(env, X86Instr_Push(X86RMI_Reg(hregX86_EBP())));
-         n_arg_ws++;
-         not_done_yet--;
-      }
 
    }
 
@@ -582,8 +651,39 @@ void doHelperCall ( ISelEnv* env,
       }
    }
 
-   /* call the helper, and get the args off the stack afterwards. */
-   callHelperAndClearArgs( env, cc, cee, n_arg_ws );
+   /* Do final checks, set the return values, and generate the call
+      instruction proper. */
+   vassert(*stackAdjustAfterCall == 0);
+   vassert(is_RetLoc_INVALID(*retloc));
+   switch (retTy) {
+         case Ity_INVALID:
+            /* Function doesn't return a value. */
+            *retloc = mk_RetLoc_simple(RLPri_None);
+            break;
+         case Ity_I64:
+            *retloc = mk_RetLoc_simple(RLPri_2Int);
+            break;
+         case Ity_I32: case Ity_I16: case Ity_I8:
+            *retloc = mk_RetLoc_simple(RLPri_Int);
+            break;
+         case Ity_V128:
+            *retloc = mk_RetLoc_spRel(RLPri_V128SpRel, 0);
+            *stackAdjustAfterCall = 16;
+            break;
+         case Ity_V256:
+            vassert(0); // ATC
+            *retloc = mk_RetLoc_spRel(RLPri_V256SpRel, 0);
+            *stackAdjustAfterCall = 32;
+            break;
+         default:
+            /* IR can denote other possible return types, but we don't
+               handle those here. */
+           vassert(0);
+   }
+
+   /* Finally, generate the call itself.  This needs the *retloc value
+      set in the switch above, which is why it's at the end. */
+   callHelperAndClearArgs( env, cc, cee, n_arg_ws, *retloc );
 }
 
 
@@ -1293,6 +1393,24 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
             /* These are no-ops. */
             return iselIntExpr_R(env, e->Iex.Unop.arg);
 
+         case Iop_GetMSBs8x8: {
+            /* Note: the following assumes the helper is of
+               signature
+                  UInt fn ( ULong ), and is not a regparm fn.
+            */
+            HReg  xLo, xHi;
+            HReg  dst = newVRegI(env);
+            HWord fn = (HWord)h_generic_calc_GetMSBs8x8;
+            iselInt64Expr(&xHi, &xLo, env, e->Iex.Unop.arg);
+            addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
+            addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+                                         0, mk_RetLoc_simple(RLPri_Int) ));
+            add_to_esp(env, 2*4);
+            addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), dst));
+            return dst;
+         }
+
          default: 
             break;
       }
@@ -1344,13 +1462,20 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
       HReg    dst = newVRegI(env);
       vassert(ty == e->Iex.CCall.retty);
 
-      /* be very restrictive for now.  Only 32/64-bit ints allowed
-         for args, and 32 bits for return type. */
+      /* be very restrictive for now.  Only 32/64-bit ints allowed for
+         args, and 32 bits for return type.  Don't forget to change
+         the RetLoc if more return types are allowed in future. */
       if (e->Iex.CCall.retty != Ity_I32)
          goto irreducible;
 
       /* Marshal args, do the call, clear stack. */
-      doHelperCall( env, False, NULL, e->Iex.CCall.cee, e->Iex.CCall.args );
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, NULL/*guard*/,
+                    e->Iex.CCall.cee, e->Iex.CCall.retty, e->Iex.CCall.args );
+      vassert(is_sane_RetLoc(rloc));
+      vassert(rloc.pri == RLPri_Int);
+      vassert(addToSp == 0);
 
       addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), dst));
       return dst;
@@ -1366,17 +1491,15 @@ static HReg iselIntExpr_R_wrk ( ISelEnv* env, IRExpr* e )
    }
 
    /* --------- MULTIPLEX --------- */
-   case Iex_Mux0X: {
+   case Iex_ITE: { // VFD
      if ((ty == Ity_I32 || ty == Ity_I16 || ty == Ity_I8)
-         && typeOfIRExpr(env->type_env,e->Iex.Mux0X.cond) == Ity_I8) {
-        X86RM* r8;
-        HReg   rX  = iselIntExpr_R(env, e->Iex.Mux0X.exprX);
-        X86RM* r0  = iselIntExpr_RM(env, e->Iex.Mux0X.expr0);
+         && typeOfIRExpr(env->type_env,e->Iex.ITE.cond) == Ity_I1) {
+        HReg   r1  = iselIntExpr_R(env, e->Iex.ITE.iftrue);
+        X86RM* r0  = iselIntExpr_RM(env, e->Iex.ITE.iffalse);
         HReg   dst = newVRegI(env);
-        addInstr(env, mk_iMOVsd_RR(rX,dst));
-        r8 = iselIntExpr_RM(env, e->Iex.Mux0X.cond);
-        addInstr(env, X86Instr_Test32(0xFF, r8));
-        addInstr(env, X86Instr_CMov32(Xcc_Z,r0,dst));
+        addInstr(env, mk_iMOVsd_RR(r1,dst));
+        X86CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+        addInstr(env, X86Instr_CMov32(cc ^ 1, r0, dst));
         return dst;
       }
       break;
@@ -1411,7 +1534,7 @@ static Bool sane_AMode ( X86AMode* am )
          return 
             toBool( hregClass(am->Xam.IR.reg) == HRcInt32
                     && (hregIsVirtual(am->Xam.IR.reg)
-                        || am->Xam.IR.reg == hregX86_EBP()) );
+                        || sameHReg(am->Xam.IR.reg, hregX86_EBP())) );
       case Xam_IRRS:
          return 
             toBool( hregClass(am->Xam.IRRS.base) == HRcInt32
@@ -1840,7 +1963,8 @@ static X86CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
        && (e->Iex.Binop.op == Iop_CmpEQ16
            || e->Iex.Binop.op == Iop_CmpNE16
            || e->Iex.Binop.op == Iop_CasCmpEQ16
-           || e->Iex.Binop.op == Iop_CasCmpNE16)) {
+           || e->Iex.Binop.op == Iop_CasCmpNE16
+           || e->Iex.Binop.op == Iop_ExpCmpNE16)) {
       HReg    r1   = iselIntExpr_R(env, e->Iex.Binop.arg1);
       X86RMI* rmi2 = iselIntExpr_RMI(env, e->Iex.Binop.arg2);
       HReg    r    = newVRegI(env);
@@ -1848,9 +1972,12 @@ static X86CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       addInstr(env, X86Instr_Alu32R(Xalu_XOR,rmi2,r));
       addInstr(env, X86Instr_Test32(0xFFFF,X86RM_Reg(r)));
       switch (e->Iex.Binop.op) {
-         case Iop_CmpEQ16: case Iop_CasCmpEQ16: return Xcc_Z;
-         case Iop_CmpNE16: case Iop_CasCmpNE16: return Xcc_NZ;
-         default: vpanic("iselCondCode(x86): CmpXX16");
+         case Iop_CmpEQ16: case Iop_CasCmpEQ16:
+            return Xcc_Z;
+         case Iop_CmpNE16: case Iop_CasCmpNE16: case Iop_ExpCmpNE16:
+            return Xcc_NZ;
+         default:
+            vpanic("iselCondCode(x86): CmpXX16");
       }
    }
 
@@ -1866,7 +1993,15 @@ static X86CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
       vassert(cal->Iex.CCall.retty == Ity_I32); /* else ill-typed IR */
       vassert(con->Iex.Const.con->tag == Ico_U32);
       /* Marshal args, do the call. */
-      doHelperCall( env, False, NULL, cal->Iex.CCall.cee, cal->Iex.CCall.args );
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, NULL/*guard*/,
+                    cal->Iex.CCall.cee,
+                    cal->Iex.CCall.retty, cal->Iex.CCall.args );
+      vassert(is_sane_RetLoc(rloc));
+      vassert(rloc.pri == RLPri_Int);
+      vassert(addToSp == 0);
+      /* */
       addInstr(env, X86Instr_Alu32R(Xalu_CMP,
                                     X86RMI_Imm(con->Iex.Const.con->Ico.U32),
                                     hregX86_EAX()));
@@ -1882,13 +2017,15 @@ static X86CondCode iselCondCode_wrk ( ISelEnv* env, IRExpr* e )
            || e->Iex.Binop.op == Iop_CmpLE32S
            || e->Iex.Binop.op == Iop_CmpLE32U
            || e->Iex.Binop.op == Iop_CasCmpEQ32
-           || e->Iex.Binop.op == Iop_CasCmpNE32)) {
+           || e->Iex.Binop.op == Iop_CasCmpNE32
+           || e->Iex.Binop.op == Iop_ExpCmpNE32)) {
       HReg    r1   = iselIntExpr_R(env, e->Iex.Binop.arg1);
       X86RMI* rmi2 = iselIntExpr_RMI(env, e->Iex.Binop.arg2);
       addInstr(env, X86Instr_Alu32R(Xalu_CMP,rmi2,r1));
       switch (e->Iex.Binop.op) {
          case Iop_CmpEQ32: case Iop_CasCmpEQ32: return Xcc_Z;
-         case Iop_CmpNE32: case Iop_CasCmpNE32: return Xcc_NZ;
+         case Iop_CmpNE32:
+         case Iop_CasCmpNE32: case Iop_ExpCmpNE32: return Xcc_NZ;
          case Iop_CmpLT32S: return Xcc_L;
          case Iop_CmpLT32U: return Xcc_B;
          case Iop_CmpLE32S: return Xcc_LE;
@@ -2024,63 +2161,20 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
       return;
    }
 
-   /* 64-bit Mux0X: Mux0X(g, expr, 0:I64) */
-   if (e->tag == Iex_Mux0X && isZeroU64(e->Iex.Mux0X.exprX)) {
-      X86RM* r8;
-      HReg e0Lo, e0Hi;
+   /* 64-bit ITE: ITE(g, expr, expr) */ // VFD
+   if (e->tag == Iex_ITE) {
+      HReg e0Lo, e0Hi, e1Lo, e1Hi;
       HReg tLo = newVRegI(env);
       HReg tHi = newVRegI(env);
-      X86AMode* zero_esp = X86AMode_IR(0, hregX86_ESP());
-      iselInt64Expr(&e0Hi, &e0Lo, env, e->Iex.Mux0X.expr0);
-      r8 = iselIntExpr_RM(env, e->Iex.Mux0X.cond);
-      addInstr(env, mk_iMOVsd_RR( e0Hi, tHi ) );
-      addInstr(env, mk_iMOVsd_RR( e0Lo, tLo ) );
-      addInstr(env, X86Instr_Push(X86RMI_Imm(0)));
-      addInstr(env, X86Instr_Test32(0xFF, r8));
-      addInstr(env, X86Instr_CMov32(Xcc_NZ,X86RM_Mem(zero_esp),tHi));
-      addInstr(env, X86Instr_CMov32(Xcc_NZ,X86RM_Mem(zero_esp),tLo));
-      add_to_esp(env, 4);
-      *rHi = tHi;
-      *rLo = tLo;
-      return;
-   }
-   /* 64-bit Mux0X: Mux0X(g, 0:I64, expr) */
-   if (e->tag == Iex_Mux0X && isZeroU64(e->Iex.Mux0X.expr0)) {
-      X86RM* r8;
-      HReg e0Lo, e0Hi;
-      HReg tLo = newVRegI(env);
-      HReg tHi = newVRegI(env);
-      X86AMode* zero_esp = X86AMode_IR(0, hregX86_ESP());
-      iselInt64Expr(&e0Hi, &e0Lo, env, e->Iex.Mux0X.exprX);
-      r8 = iselIntExpr_RM(env, e->Iex.Mux0X.cond);
-      addInstr(env, mk_iMOVsd_RR( e0Hi, tHi ) );
-      addInstr(env, mk_iMOVsd_RR( e0Lo, tLo ) );
-      addInstr(env, X86Instr_Push(X86RMI_Imm(0)));
-      addInstr(env, X86Instr_Test32(0xFF, r8));
-      addInstr(env, X86Instr_CMov32(Xcc_Z,X86RM_Mem(zero_esp),tHi));
-      addInstr(env, X86Instr_CMov32(Xcc_Z,X86RM_Mem(zero_esp),tLo));
-      add_to_esp(env, 4);
-      *rHi = tHi;
-      *rLo = tLo;
-      return;
-   }
-
-   /* 64-bit Mux0X: Mux0X(g, expr, expr) */
-   if (e->tag == Iex_Mux0X) {
-      X86RM* r8;
-      HReg e0Lo, e0Hi, eXLo, eXHi;
-      HReg tLo = newVRegI(env);
-      HReg tHi = newVRegI(env);
-      iselInt64Expr(&e0Hi, &e0Lo, env, e->Iex.Mux0X.expr0);
-      iselInt64Expr(&eXHi, &eXLo, env, e->Iex.Mux0X.exprX);
-      addInstr(env, mk_iMOVsd_RR(eXHi, tHi));
-      addInstr(env, mk_iMOVsd_RR(eXLo, tLo));
-      r8 = iselIntExpr_RM(env, e->Iex.Mux0X.cond);
-      addInstr(env, X86Instr_Test32(0xFF, r8));
+      iselInt64Expr(&e0Hi, &e0Lo, env, e->Iex.ITE.iffalse);
+      iselInt64Expr(&e1Hi, &e1Lo, env, e->Iex.ITE.iftrue);
+      addInstr(env, mk_iMOVsd_RR(e1Hi, tHi));
+      addInstr(env, mk_iMOVsd_RR(e1Lo, tLo));
+      X86CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
       /* This assumes the first cmov32 doesn't trash the condition
          codes, so they are still available for the second cmov32 */
-      addInstr(env, X86Instr_CMov32(Xcc_Z,X86RM_Reg(e0Hi),tHi));
-      addInstr(env, X86Instr_CMov32(Xcc_Z,X86RM_Reg(e0Lo),tLo));
+      addInstr(env, X86Instr_CMov32(cc ^ 1, X86RM_Reg(e0Hi), tHi));
+      addInstr(env, X86Instr_CMov32(cc ^ 1, X86RM_Reg(e0Lo), tLo));
       *rHi = tHi;
       *rLo = tLo;
       return;
@@ -2447,7 +2541,8 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Binop.arg1);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn, 0 ));
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+                                         0, mk_RetLoc_simple(RLPri_2Int) ));
             add_to_esp(env, 4*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
             addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), tLo));
@@ -2486,7 +2581,8 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Binop.arg1);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn, 0 ));
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+                                         0, mk_RetLoc_simple(RLPri_2Int) ));
             add_to_esp(env, 3*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
             addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), tLo));
@@ -2724,7 +2820,8 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
             iselInt64Expr(&xHi, &xLo, env, e->Iex.Unop.arg);
             addInstr(env, X86Instr_Push(X86RMI_Reg(xHi)));
             addInstr(env, X86Instr_Push(X86RMI_Reg(xLo)));
-            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn, 0 ));
+            addInstr(env, X86Instr_Call( Xcc_ALWAYS, (UInt)fn,
+                                         0, mk_RetLoc_simple(RLPri_2Int) ));
             add_to_esp(env, 2*4);
             addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
             addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), tLo));
@@ -2745,7 +2842,15 @@ static void iselInt64Expr_wrk ( HReg* rHi, HReg* rLo, ISelEnv* env, IRExpr* e )
       HReg tHi = newVRegI(env);
 
       /* Marshal args, do the call, clear stack. */
-      doHelperCall( env, False, NULL, e->Iex.CCall.cee, e->Iex.CCall.args );
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, NULL/*guard*/,
+                    e->Iex.CCall.cee,
+                    e->Iex.CCall.retty, e->Iex.CCall.args );
+      vassert(is_sane_RetLoc(rloc));
+      vassert(rloc.pri == RLPri_2Int);
+      vassert(addToSp == 0);
+      /* */
 
       addInstr(env, mk_iMOVsd_RR(hregX86_EDX(), tHi));
       addInstr(env, mk_iMOVsd_RR(hregX86_EAX(), tLo));
@@ -3061,8 +3166,8 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
          HReg res = newVRegF(env);
          HReg src = iselDblExpr(env, e->Iex.Unop.arg);
          addInstr(env, X86Instr_FpUnary(fpop,src,res));
-	 if (fpop != Xfp_NEG && fpop != Xfp_ABS)
-            roundToF64(env, res);
+         /* No need to do roundToF64(env,res) for Xfp_NEG or Xfp_ABS,
+            but might need to do that for other unary ops. */
          return res;
       }
    }
@@ -3107,16 +3212,15 @@ static HReg iselDblExpr_wrk ( ISelEnv* env, IRExpr* e )
    }
 
    /* --------- MULTIPLEX --------- */
-   if (e->tag == Iex_Mux0X) {
+   if (e->tag == Iex_ITE) { // VFD
      if (ty == Ity_F64
-         && typeOfIRExpr(env->type_env,e->Iex.Mux0X.cond) == Ity_I8) {
-        X86RM* r8 = iselIntExpr_RM(env, e->Iex.Mux0X.cond);
-        HReg rX  = iselDblExpr(env, e->Iex.Mux0X.exprX);
-        HReg r0  = iselDblExpr(env, e->Iex.Mux0X.expr0);
+         && typeOfIRExpr(env->type_env,e->Iex.ITE.cond) == Ity_I1) {
+        HReg r1  = iselDblExpr(env, e->Iex.ITE.iftrue);
+        HReg r0  = iselDblExpr(env, e->Iex.ITE.iffalse);
         HReg dst = newVRegF(env);
-        addInstr(env, X86Instr_FpUnary(Xfp_MOV,rX,dst));
-        addInstr(env, X86Instr_Test32(0xFF, r8));
-        addInstr(env, X86Instr_FpCMov(Xcc_Z,r0,dst));
+        addInstr(env, X86Instr_FpUnary(Xfp_MOV,r1,dst));
+        X86CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+        addInstr(env, X86Instr_FpCMov(cc ^ 1, r0, dst));
         return dst;
       }
    }
@@ -3147,7 +3251,8 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
 {
 
 #  define REQUIRE_SSE1                                    \
-      do { if (env->hwcaps == 0/*baseline, no sse*/)      \
+      do { if (env->hwcaps == 0/*baseline, no sse*/       \
+               ||  env->hwcaps == VEX_HWCAPS_X86_MMXEXT /*Integer SSE*/) \
               goto vec_fail;                              \
       } while (0)
 
@@ -3669,7 +3774,8 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
          addInstr(env, X86Instr_SseLdSt(False/*!isLoad*/, argR,
                                         X86AMode_IR(0, hregX86_ECX())));
          /* call the helper */
-         addInstr(env, X86Instr_Call( Xcc_ALWAYS, (Addr32)fn, 3 ));
+         addInstr(env, X86Instr_Call( Xcc_ALWAYS, (Addr32)fn,
+                                      3, mk_RetLoc_simple(RLPri_None) ));
          /* fetch the result from memory, using %r_argp, which the
             register allocator will keep alive across the call. */
          addInstr(env, X86Instr_SseLdSt(True/*isLoad*/, dst,
@@ -3684,14 +3790,13 @@ static HReg iselVecExpr_wrk ( ISelEnv* env, IRExpr* e )
    } /* switch (e->Iex.Binop.op) */
    } /* if (e->tag == Iex_Binop) */
 
-   if (e->tag == Iex_Mux0X) {
-      X86RM* r8 = iselIntExpr_RM(env, e->Iex.Mux0X.cond);
-      HReg rX  = iselVecExpr(env, e->Iex.Mux0X.exprX);
-      HReg r0  = iselVecExpr(env, e->Iex.Mux0X.expr0);
+   if (e->tag == Iex_ITE) { // VFD
+      HReg r1  = iselVecExpr(env, e->Iex.ITE.iftrue);
+      HReg r0  = iselVecExpr(env, e->Iex.ITE.iffalse);
       HReg dst = newVRegV(env);
-      addInstr(env, mk_vMOVsd_RR(rX,dst));
-      addInstr(env, X86Instr_Test32(0xFF, r8));
-      addInstr(env, X86Instr_SseCMov(Xcc_Z,r0,dst));
+      addInstr(env, mk_vMOVsd_RR(r1,dst));
+      X86CondCode cc = iselCondCode(env, e->Iex.ITE.cond);
+      addInstr(env, X86Instr_SseCMov(cc ^ 1, r0, dst));
       return dst;
    }
 
@@ -3937,39 +4042,78 @@ static void iselStmt ( ISelEnv* env, IRStmt* stmt )
 
    /* --------- Call to DIRTY helper --------- */
    case Ist_Dirty: {
-      IRType   retty;
       IRDirty* d = stmt->Ist.Dirty.details;
-      Bool     passBBP = False;
 
-      if (d->nFxState == 0)
-         vassert(!d->needsBBP);
+      /* Figure out the return type, if any. */
+      IRType retty = Ity_INVALID;
+      if (d->tmp != IRTemp_INVALID)
+         retty = typeOfIRTemp(env->type_env, d->tmp);
 
-      passBBP = toBool(d->nFxState > 0 && d->needsBBP);
+      Bool retty_ok = False;
+      switch (retty) {
+         case Ity_INVALID: /* function doesn't return anything */
+         case Ity_I64: case Ity_I32: case Ity_I16: case Ity_I8:
+         case Ity_V128:
+            retty_ok = True; break;
+         default:
+            break;
+      }
+      if (!retty_ok)
+         break; /* will go to stmt_fail: */
 
-      /* Marshal args, do the call, clear stack. */
-      doHelperCall( env, passBBP, d->guard, d->cee, d->args );
+      /* Marshal args, do the call, and set the return value to
+         0x555..555 if this is a conditional call that returns a value
+         and the call is skipped. */
+      UInt   addToSp = 0;
+      RetLoc rloc    = mk_RetLoc_INVALID();
+      doHelperCall( &addToSp, &rloc, env, d->guard, d->cee, retty, d->args );
+      vassert(is_sane_RetLoc(rloc));
 
       /* Now figure out what to do with the returned value, if any. */
-      if (d->tmp == IRTemp_INVALID)
+      switch (retty) {
+         case Ity_INVALID: {
          /* No return value.  Nothing to do. */
+            vassert(d->tmp == IRTemp_INVALID);
+            vassert(rloc.pri == RLPri_None);
+            vassert(addToSp == 0);
          return;
-
-      retty = typeOfIRTemp(env->type_env, d->tmp);
-      if (retty == Ity_I64) {
-         HReg dstHi, dstLo;
+         }
+         case Ity_I32: case Ity_I16: case Ity_I8: {
+            /* The returned value is in %eax.  Park it in the register
+               associated with tmp. */
+            vassert(rloc.pri == RLPri_Int);
+            vassert(addToSp == 0);
+            HReg dst = lookupIRTemp(env, d->tmp);
+            addInstr(env, mk_iMOVsd_RR(hregX86_EAX(),dst) );
+            return;
+         }
+         case Ity_I64: {
          /* The returned value is in %edx:%eax.  Park it in the
             register-pair associated with tmp. */
+            vassert(rloc.pri == RLPri_2Int);
+            vassert(addToSp == 0);
+            HReg dstHi, dstLo;
          lookupIRTemp64( &dstHi, &dstLo, env, d->tmp);
          addInstr(env, mk_iMOVsd_RR(hregX86_EDX(),dstHi) );
          addInstr(env, mk_iMOVsd_RR(hregX86_EAX(),dstLo) );
          return;
       }
-      if (retty == Ity_I32 || retty == Ity_I16 || retty == Ity_I8) {
-         /* The returned value is in %eax.  Park it in the register
-            associated with tmp. */
+         case Ity_V128: {
+            /* The returned value is on the stack, and *retloc tells
+               us where.  Fish it off the stack and then move the
+               stack pointer upwards to clear it, as directed by
+               doHelperCall. */
+            vassert(rloc.pri == RLPri_V128SpRel);
+            vassert(addToSp >= 16);
          HReg dst = lookupIRTemp(env, d->tmp);
-         addInstr(env, mk_iMOVsd_RR(hregX86_EAX(),dst) );
+            X86AMode* am  = X86AMode_IR(rloc.spOff, hregX86_ESP());
+            addInstr(env, X86Instr_SseLdSt( True/*load*/, dst, am ));
+            add_to_esp(env, addToSp);
          return;
+      }
+         default:
+            /*NOTREACHED*/
+            vassert(0);
       }
       break;
    }
@@ -4245,7 +4389,8 @@ HInstrArray* iselSB_X86 ( IRSB* bb,
    /* sanity ... */
    vassert(arch_host == VexArchX86);
    vassert(0 == (hwcaps_host
-                 & ~(VEX_HWCAPS_X86_SSE1
+                 & ~(VEX_HWCAPS_X86_MMXEXT
+                     | VEX_HWCAPS_X86_SSE1
                      | VEX_HWCAPS_X86_SSE2
                      | VEX_HWCAPS_X86_SSE3
                      | VEX_HWCAPS_X86_LZCNT)));

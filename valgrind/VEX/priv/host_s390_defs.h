@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2012
+   Copyright IBM Corp. 2010-2013
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -35,8 +35,8 @@
 
 #include "libvex_basictypes.h"            /* Bool */
 #include "libvex.h"                       /* VexArchInfo */
-#include "main_util.h"                    /* needed for host_generic_regs.h */
 #include "host_generic_regs.h"            /* HReg */
+#include "s390_defs.h"                    /* s390_cc_t */
 
 /* --------- Registers --------- */
 const HChar *s390_hreg_as_string(HReg);
@@ -48,8 +48,8 @@ HReg s390_hreg_guest_state_pointer(void);
 /* Given the index of a function argument, return the number of the
    general purpose register in which it is being passed. Arguments are
    counted 0, 1, 2, ... and they are being passed in r2, r3, r4, ... */
-static __inline__ unsigned
-s390_gprno_from_arg_index(unsigned ix)
+static __inline__ UInt
+s390_gprno_from_arg_index(UInt ix)
 {
    return ix + 2;
 }
@@ -119,11 +119,14 @@ typedef enum {
    S390_INSN_LOAD,   /* load register from memory */
    S390_INSN_STORE,  /* store register to memory */
    S390_INSN_MOVE,   /* from register to register */
+   S390_INSN_MEMCPY, /* from memory to memory */
    S390_INSN_COND_MOVE, /* conditonal "move" to register */
    S390_INSN_LOAD_IMMEDIATE,
    S390_INSN_ALU,
-   S390_INSN_MUL,    /* n-bit operands; 2n-bit result */
-   S390_INSN_DIV,    /* 2n-bit dividend; n-bit divisor; n-bit quot/rem */
+   S390_INSN_SMUL,   /*   signed multiply; n-bit operands; 2n-bit result */
+   S390_INSN_UMUL,   /* unsigned multiply; n-bit operands; 2n-bit result */
+   S390_INSN_SDIV,   /*   signed division; 2n-bit / n-bit -> n-bit quot/rem */
+   S390_INSN_UDIV,   /* unsigned division; 2n-bit / n-bit -> n-bit quot/rem */
    S390_INSN_DIVS,   /* n-bit dividend; n-bit divisor; n-bit quot/rem */
    S390_INSN_CLZ,    /* count left-most zeroes */
    S390_INSN_UNOP,
@@ -138,10 +141,18 @@ typedef enum {
    S390_INSN_BFP_TRIOP,
    S390_INSN_BFP_COMPARE,
    S390_INSN_BFP_CONVERT,
+   S390_INSN_DFP_BINOP, /* Decimal floating point */
+   S390_INSN_DFP_UNOP,
+   S390_INSN_DFP_INTOP,
+   S390_INSN_DFP_COMPARE,
+   S390_INSN_DFP_CONVERT,
+   S390_INSN_DFP_REROUND,
+   S390_INSN_FP_CONVERT,
    S390_INSN_MFENCE,
-   S390_INSN_GZERO,   /* Assign zero to a guest register */
-   S390_INSN_GADD,    /* Add a value to a guest register */
-   S390_INSN_SET_FPCRM, /* Set the rounding mode in the FPC */
+   S390_INSN_MIMM,    /* Assign an immediate constant to a memory location */
+   S390_INSN_MADD,    /* Add a value to a memory location */
+   S390_INSN_SET_FPC_BFPRM, /* Set the bfp rounding mode in the FPC */
+   S390_INSN_SET_FPC_DFPRM, /* Set the dfp rounding mode in the FPC */
    /* The following 5 insns are mandated by translation chaining */
    S390_INSN_XDIRECT,     /* direct transfer to guest address */
    S390_INSN_XINDIR,      /* indirect transfer to guest address */
@@ -198,7 +209,7 @@ typedef enum {
    S390_BFP_SQRT
 } s390_bfp_unop_t;
 
-/* Type conversion operations: to and/or from floating point */
+/* Type conversion operations: to and/or from binary floating point */
 typedef enum {
    S390_BFP_I32_TO_F32,
    S390_BFP_I32_TO_F64,
@@ -230,65 +241,132 @@ typedef enum {
    S390_BFP_F128_TO_U64,
    S390_BFP_F128_TO_F32,
    S390_BFP_F128_TO_F64
-} s390_conv_t;
+} s390_bfp_conv_t;
 
-
-/* Condition code. The encoding of the enumerators matches the value of
-   the mask field in the various branch opcodes. */
+/* Type conversion operations: to and/or from decimal floating point */
 typedef enum {
-   S390_CC_NEVER=  0,
-   S390_CC_OVFL =  1,   /* overflow */
-   S390_CC_H    =  2,   /* A > B ; high */
-   S390_CC_NLE  =  3,   /* not low or equal */
-   S390_CC_L    =  4,   /* A < B ; low */
-   S390_CC_NHE  =  5,   /* not high or equal */
-   S390_CC_LH   =  6,   /* low or high */
-   S390_CC_NE   =  7,   /* A != B ; not zero */
-   S390_CC_E    =  8,   /* A == B ; zero */
-   S390_CC_NLH  =  9,   /* not low or high */
-   S390_CC_HE   = 10,   /* A >= B ; high or equal*/
-   S390_CC_NL   = 11,   /* not low */
-   S390_CC_LE   = 12,   /* A <= B ; low or equal */
-   S390_CC_NH   = 13,   /* not high */
-   S390_CC_NO   = 14,   /* not overflow */
-   S390_CC_ALWAYS = 15
-} s390_cc_t;
+   S390_DFP_D32_TO_D64,
+   S390_DFP_D64_TO_D32,
+   S390_DFP_D64_TO_D128,
+   S390_DFP_D128_TO_D64,
+   S390_DFP_I32_TO_D64,
+   S390_DFP_I32_TO_D128,
+   S390_DFP_I64_TO_D64,
+   S390_DFP_I64_TO_D128,
+   S390_DFP_U32_TO_D64,
+   S390_DFP_U32_TO_D128,
+   S390_DFP_U64_TO_D64,
+   S390_DFP_U64_TO_D128,
+   S390_DFP_D64_TO_I32,
+   S390_DFP_D64_TO_I64,
+   S390_DFP_D64_TO_U32,
+   S390_DFP_D64_TO_U64,
+   S390_DFP_D128_TO_I32,
+   S390_DFP_D128_TO_I64,
+   S390_DFP_D128_TO_U32,
+   S390_DFP_D128_TO_U64
+} s390_dfp_conv_t;
 
-
-/* Rounding mode as it is encoded in the m3 field of certain
-   instructions (e.g. CFEBR) */
 typedef enum {
-   S390_ROUND_PER_FPC       = 0,
-   S390_ROUND_NEAREST_AWAY  = 1,
-   /* 2 is not allowed */
-   S390_ROUND_PREPARE_SHORT = 3,
-   S390_ROUND_NEAREST_EVEN  = 4,
-   S390_ROUND_ZERO          = 5,
-   S390_ROUND_POSINF        = 6,
-   S390_ROUND_NEGINF        = 7
-} s390_round_t;
+   S390_FP_F32_TO_D32,
+   S390_FP_F32_TO_D64,
+   S390_FP_F32_TO_D128,
+   S390_FP_F64_TO_D32,
+   S390_FP_F64_TO_D64,
+   S390_FP_F64_TO_D128,
+   S390_FP_F128_TO_D32,
+   S390_FP_F128_TO_D64,
+   S390_FP_F128_TO_D128,
+   S390_FP_D32_TO_F32,
+   S390_FP_D32_TO_F64,
+   S390_FP_D32_TO_F128,
+   S390_FP_D64_TO_F32,
+   S390_FP_D64_TO_F64,
+   S390_FP_D64_TO_F128,
+   S390_FP_D128_TO_F32,
+   S390_FP_D128_TO_F64,
+   S390_FP_D128_TO_F128
+} s390_fp_conv_t;
 
-
-/* Rounding mode as it is encoded in bits [29:31] of the FPC register.
-   Only rounding modes 0..3 are universally supported. Others require
-   additional hardware facilities. */
+/* The kind of binary DFP operations */
 typedef enum {
-   S390_FPC_ROUND_NEAREST_EVEN  = 0,
-   S390_FPC_ROUND_ZERO          = 1,
-   S390_FPC_ROUND_POSINF        = 2,
-   S390_FPC_ROUND_NEGINF        = 3,
-   /* 4,5,6 are not allowed */
-   S390_FPC_ROUND_PREPARE_SHORT = 7
-} s390_fpc_round_t;
+   S390_DFP_ADD,
+   S390_DFP_SUB,
+   S390_DFP_MUL,
+   S390_DFP_DIV,
+   S390_DFP_QUANTIZE
+} s390_dfp_binop_t;
 
+/* The kind of unary DFP operations */
+typedef enum {
+   S390_DFP_EXTRACT_EXP_D64,
+   S390_DFP_EXTRACT_EXP_D128,
+   S390_DFP_EXTRACT_SIG_D64,
+   S390_DFP_EXTRACT_SIG_D128,
+} s390_dfp_unop_t;
 
-/* Invert the condition code */
-static __inline__ s390_cc_t
-s390_cc_invert(s390_cc_t cond)
-{
-   return S390_CC_ALWAYS - cond;
-}
+/* The DFP operations with 2 operands one of them being integer */
+typedef enum {
+   S390_DFP_SHIFT_LEFT,
+   S390_DFP_SHIFT_RIGHT,
+   S390_DFP_INSERT_EXP
+} s390_dfp_intop_t;
 
+/* The kind of DFP compare operations */
+typedef enum {
+   S390_DFP_COMPARE,
+   S390_DFP_COMPARE_EXP,
+} s390_dfp_cmp_t;
+
+/* The details of a CDAS insn. Carved out to keep the size of
+   s390_insn low */
+typedef struct {
+   HReg        op1_high;
+   HReg        op1_low;
+   s390_amode *op2;
+   HReg        op3_high;
+   HReg        op3_low;
+   HReg        old_mem_high;
+   HReg        old_mem_low;
+   HReg        scratch;
+} s390_cdas;
+
+/* The details of a binary DFP insn. Carved out to keep the size of
+   s390_insn low */
+typedef struct {
+   s390_dfp_binop_t tag;
+   s390_dfp_round_t rounding_mode;
+   HReg         dst_hi; /* 128-bit result high part; 64-bit result */
+   HReg         dst_lo; /* 128-bit result low part */
+   HReg         op2_hi; /* 128-bit operand high part; 64-bit opnd 1 */
+   HReg         op2_lo; /* 128-bit operand low part */
+   HReg         op3_hi; /* 128-bit operand high part; 64-bit opnd 2 */
+   HReg         op3_lo; /* 128-bit operand low part */
+} s390_dfp_binop;
+
+typedef struct {
+   s390_fp_conv_t  tag;
+   s390_dfp_round_t rounding_mode;
+   HReg         dst_hi; /* 128-bit result high part; 32/64-bit result */
+   HReg         dst_lo; /* 128-bit result low part */
+   HReg         op_hi;  /* 128-bit operand high part; 32/64-bit opnd */
+   HReg         op_lo;  /* 128-bit operand low part */
+   HReg         r1;     /* clobbered register GPR #1 */
+} s390_fp_convert;
+
+/* Pseudo-insn for representing a helper call.
+   TARGET is the absolute address of the helper function
+   NUM_ARGS says how many arguments are being passed.
+   All arguments have integer type and are being passed according to ABI,
+   i.e. in registers r2, r3, r4, r5, and r6, with argument #0 being
+   passed in r2 and so forth. */
+typedef struct {
+   s390_cc_t    cond     : 16;
+   UInt         num_args : 16;
+   RetLoc       rloc;     /* where the return value will be */
+   Addr64       target;
+   const HChar *name;      /* callee's name (for debugging) */
+} s390_helper_call;
 
 typedef struct {
    s390_insn_tag tag;
@@ -311,6 +389,10 @@ typedef struct {
          HReg        src;
       } move;
       struct {
+         s390_amode *dst;
+         s390_amode *src;
+      } memcpy;
+      struct {
          s390_cc_t     cond;
          HReg          dst;
          s390_opnd_RMI src;
@@ -326,13 +408,11 @@ typedef struct {
          s390_opnd_RMI op2;
       } alu;
       struct {
-         Bool          signed_multiply;
          HReg          dst_hi;  /*           r10 */
          HReg          dst_lo;  /* also op1  r11 */
          s390_opnd_RMI op2;
       } mul;
       struct {
-         Bool          signed_divide;
          HReg          op1_hi;  /* also remainder   r10 */
          HReg          op1_lo;  /* also quotient    r11 */
          s390_opnd_RMI op2;
@@ -372,27 +452,10 @@ typedef struct {
          HReg        old_mem;
       } cas;
       struct {
-         HReg        op1_high;
-         HReg        op1_low;
-         s390_amode *op2;
-         HReg        op3_high;
-         HReg        op3_low;
-         HReg        old_mem_high;
-         HReg        old_mem_low;
-         HReg        scratch;
+         s390_cdas *details;
       } cdas;
-      /* Pseudo-insn for representing a helper call.
-         TARGET is the absolute address of the helper function
-         NUM_ARGS says how many arguments are being passed.
-         All arguments have integer type and are being passed according to ABI,
-         i.e. in registers r2, r3, r4, r5, and r6, with argument #0 being
-         passed in r2 and so forth. */
       struct {
-         s390_cc_t cond;
-         Addr64    target;
-         UInt      num_args;
-         HReg      dst;       /* if not INVALID_HREG, put return value here */
-         HChar    *name;      /* callee's name (for debugging) */
+         s390_helper_call *details;
       } helper_call;
 
       /* Floating point instructions (including conversion to/from floating
@@ -438,8 +501,8 @@ typedef struct {
          HReg         op_lo;  /* 128-bit operand low part */
       } bfp_unop;
       struct {
-         s390_conv_t  tag;
-         s390_round_t rounding_mode;
+         s390_bfp_conv_t  tag;
+         s390_bfp_round_t rounding_mode;
          HReg         dst_hi; /* 128-bit result high part; 32/64-bit result */
          HReg         dst_lo; /* 128-bit result low part */
          HReg         op_hi;  /* 128-bit operand high part; 32/64-bit opnd */
@@ -452,19 +515,68 @@ typedef struct {
          HReg         op2_hi;  /* 128-bit operand high part; 32/64-bit opnd */
          HReg         op2_lo;  /* 128-bit operand low part */
       } bfp_compare;
+      struct {
+         s390_dfp_binop *details;
+      } dfp_binop;
+      struct {
+         s390_dfp_unop_t tag;
+         HReg         dst_hi; /* 128-bit result high part; 64-bit result */
+         HReg         dst_lo; /* 128-bit result low part */
+         HReg         op_hi;  /* 128-bit operand high part; 64-bit opnd */
+         HReg         op_lo;  /* 128-bit operand low part */
+      } dfp_unop;
+      struct {
+         s390_dfp_intop_t tag;
+         HReg         dst_hi; /* 128-bit result high part; 64-bit result */
+         HReg         dst_lo; /* 128-bit result low part */
+         HReg         op2;    /* integer operand */
+         HReg         op3_hi; /* 128-bit operand high part; 64-bit opnd */
+         HReg         op3_lo; /* 128-bit operand low part */
+      } dfp_intop;
+      struct {
+         s390_dfp_conv_t  tag;
+         s390_dfp_round_t rounding_mode;
+         HReg         dst_hi; /* 128-bit result high part; 64-bit result */
+         HReg         dst_lo; /* 128-bit result low part */
+         HReg         op_hi;  /* 128-bit operand high part; 64-bit opnd */
+         HReg         op_lo;  /* 128-bit operand low part */
+      } dfp_convert;
+      struct {
+         s390_fp_convert *details;
+      } fp_convert;
+      struct {
+         s390_dfp_cmp_t tag;
+         HReg         dst;     /* condition code in s390 encoding */
+         HReg         op1_hi;  /* 128-bit operand high part; 64-bit opnd 1 */
+         HReg         op1_lo;  /* 128-bit operand low part */
+         HReg         op2_hi;  /* 128-bit operand high part; 64-bit opnd 2 */
+         HReg         op2_lo;  /* 128-bit operand low part */
+      } dfp_compare;
+      struct {
+         s390_dfp_round_t rounding_mode;
+         HReg         dst_hi; /* 128-bit result high part; 64-bit result */
+         HReg         dst_lo; /* 128-bit result low part */
+         HReg         op2;    /* integer operand */
+         HReg         op3_hi; /* 128-bit operand high part; 64-bit opnd */
+         HReg         op3_lo; /* 128-bit operand low part */
+      } dfp_reround;
 
       /* Miscellaneous */
       struct {
-         UInt             offset;
-      } gzero;
+         s390_amode      *dst;
+         ULong            value;  /* sign extended */
+      } mimm;
       struct {
-         UInt             offset;
+         s390_amode      *dst;
          UChar            delta;
          ULong            value;  /* for debugging only */
-      } gadd;
+      } madd;
       struct {
          HReg             mode;
-      } set_fpcrm;
+      } set_fpc_bfprm;
+      struct {
+         HReg             mode;
+      } set_fpc_dfprm;
 
       /* The next 5 entries are generic to support translation chaining */
 
@@ -509,6 +621,7 @@ typedef struct {
 s390_insn *s390_insn_load(UChar size, HReg dst, s390_amode *src);
 s390_insn *s390_insn_store(UChar size, s390_amode *dst, HReg src);
 s390_insn *s390_insn_move(UChar size, HReg dst, HReg src);
+s390_insn *s390_insn_memcpy(UChar size, s390_amode *dst, s390_amode *src);
 s390_insn *s390_insn_cond_move(UChar size, s390_cc_t cond, HReg dst,
                                s390_opnd_RMI src);
 s390_insn *s390_insn_load_immediate(UChar size, HReg dst, ULong val);
@@ -533,7 +646,7 @@ s390_insn *s390_insn_test(UChar size, s390_opnd_RMI src);
 s390_insn *s390_insn_compare(UChar size, HReg dst, s390_opnd_RMI opnd,
                              Bool signed_comparison);
 s390_insn *s390_insn_helper_call(s390_cc_t cond, Addr64 target, UInt num_args,
-                                 HChar *name, HReg dst);
+                                 const HChar *name, RetLoc rloc);
 s390_insn *s390_insn_bfp_triop(UChar size, s390_bfp_triop_t, HReg dst,
                                HReg op2, HReg op3);
 s390_insn *s390_insn_bfp_binop(UChar size, s390_bfp_binop_t, HReg dst,
@@ -541,23 +654,62 @@ s390_insn *s390_insn_bfp_binop(UChar size, s390_bfp_binop_t, HReg dst,
 s390_insn *s390_insn_bfp_unop(UChar size, s390_bfp_unop_t tag, HReg dst,
                               HReg op);
 s390_insn *s390_insn_bfp_compare(UChar size, HReg dst, HReg op1, HReg op2);
-s390_insn *s390_insn_bfp_convert(UChar size, s390_conv_t tag, HReg dst,
-                                 HReg op, s390_round_t);
+s390_insn *s390_insn_bfp_convert(UChar size, s390_bfp_conv_t tag, HReg dst,
+                                 HReg op, s390_bfp_round_t);
 s390_insn *s390_insn_bfp128_binop(UChar size, s390_bfp_binop_t, HReg dst_hi,
                                   HReg dst_lo, HReg op2_hi, HReg op2_lo);
 s390_insn *s390_insn_bfp128_unop(UChar size, s390_bfp_unop_t, HReg dst_hi,
                                  HReg dst_lo, HReg op_hi, HReg op_lo);
 s390_insn *s390_insn_bfp128_compare(UChar size, HReg dst, HReg op1_hi,
                                     HReg op1_lo, HReg op2_hi, HReg op2_lo);
-s390_insn *s390_insn_bfp128_convert_to(UChar size, s390_conv_t,
+s390_insn *s390_insn_bfp128_convert_to(UChar size, s390_bfp_conv_t,
                                        HReg dst_hi, HReg dst_lo, HReg op);
-s390_insn *s390_insn_bfp128_convert_from(UChar size, s390_conv_t,
+s390_insn *s390_insn_bfp128_convert_from(UChar size, s390_bfp_conv_t,
                                          HReg dst, HReg op_hi, HReg op_lo,
-                                         s390_round_t);
+                                         s390_bfp_round_t);
+s390_insn *s390_insn_dfp_binop(UChar size, s390_dfp_binop_t, HReg dst,
+                               HReg op2, HReg op3,
+                               s390_dfp_round_t rounding_mode);
+s390_insn *s390_insn_dfp_unop(UChar size, s390_dfp_unop_t, HReg dst, HReg op);
+s390_insn *s390_insn_dfp_intop(UChar size, s390_dfp_intop_t, HReg dst,
+                               HReg op2, HReg op3);
+s390_insn *s390_insn_dfp_compare(UChar size, s390_dfp_cmp_t, HReg dst,
+                                 HReg op1, HReg op2);
+s390_insn *s390_insn_dfp_convert(UChar size, s390_dfp_conv_t tag, HReg dst,
+                                 HReg op, s390_dfp_round_t);
+s390_insn *s390_insn_dfp_reround(UChar size, HReg dst, HReg op2, HReg op3,
+                                 s390_dfp_round_t);
+s390_insn *s390_insn_fp_convert(UChar size, s390_fp_conv_t tag,
+                                HReg dst, HReg op, HReg r1, s390_dfp_round_t);
+s390_insn *s390_insn_fp128_convert(UChar size, s390_fp_conv_t tag,
+                                   HReg dst_hi, HReg dst_lo, HReg op_hi,
+                                   HReg op_lo, HReg r1, s390_dfp_round_t);
+s390_insn *s390_insn_dfp128_binop(UChar size, s390_dfp_binop_t, HReg dst_hi,
+                                  HReg dst_lo, HReg op2_hi, HReg op2_lo,
+                                  HReg op3_hi, HReg op3_lo,
+                                  s390_dfp_round_t rounding_mode);
+s390_insn *s390_insn_dfp128_unop(UChar size, s390_dfp_unop_t, HReg dst,
+                                 HReg op_hi, HReg op_lo);
+s390_insn *s390_insn_dfp128_intop(UChar size, s390_dfp_intop_t, HReg dst_hi,
+                                  HReg dst_lo, HReg op2,
+                                  HReg op3_hi, HReg op3_lo);
+s390_insn *s390_insn_dfp128_compare(UChar size, s390_dfp_cmp_t, HReg dst,
+                                    HReg op1_hi, HReg op1_lo, HReg op2_hi,
+                                    HReg op2_lo);
+s390_insn *s390_insn_dfp128_convert_to(UChar size, s390_dfp_conv_t,
+                                       HReg dst_hi, HReg dst_lo, HReg op);
+s390_insn *s390_insn_dfp128_convert_from(UChar size, s390_dfp_conv_t,
+                                         HReg dst, HReg op_hi, HReg op_lo,
+                                         s390_dfp_round_t);
+s390_insn *s390_insn_dfp128_reround(UChar size, HReg dst_hi, HReg dst_lo,
+                                    HReg op2, HReg op3_hi, HReg op3_lo,
+                                    s390_dfp_round_t);
 s390_insn *s390_insn_mfence(void);
-s390_insn *s390_insn_gzero(UChar size, UInt offset);
-s390_insn *s390_insn_gadd(UChar size, UInt offset, UChar delta, ULong value);
-s390_insn *s390_insn_set_fpcrm(UChar size, HReg mode);
+s390_insn *s390_insn_mimm(UChar size, s390_amode *dst, ULong value);
+s390_insn *s390_insn_madd(UChar size, s390_amode *dst, UChar delta,
+                          ULong value);
+s390_insn *s390_insn_set_fpc_bfprm(UChar size, HReg mode);
+s390_insn *s390_insn_set_fpc_dfprm(UChar size, HReg mode);
 
 /* Five for translation chaining */
 s390_insn *s390_insn_xdirect(s390_cc_t cond, Addr64 dst, s390_amode *guest_IA,
@@ -632,6 +784,10 @@ extern UInt s390_host_hwcaps;
                       (s390_host_hwcaps & (VEX_HWCAPS_S390X_STCKF))
 #define s390_host_has_fpext \
                       (s390_host_hwcaps & (VEX_HWCAPS_S390X_FPEXT))
+#define s390_host_has_lsc \
+                      (s390_host_hwcaps & (VEX_HWCAPS_S390X_LSC))
+#define s390_host_has_pfpo \
+                      (s390_host_hwcaps & (VEX_HWCAPS_S390X_PFPO))
 
 #endif /* ndef __VEX_HOST_S390_DEFS_H */
 

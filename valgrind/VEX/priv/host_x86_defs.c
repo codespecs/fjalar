@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -47,7 +47,7 @@
 void ppHRegX86 ( HReg reg ) 
 {
    Int r;
-   static HChar* ireg32_names[8] 
+   static const HChar* ireg32_names[8] 
      = { "%eax", "%ecx", "%edx", "%ebx", "%esp", "%ebp", "%esi", "%edi" };
    /* Be generic for all virtual regs. */
    if (hregIsVirtual(reg)) {
@@ -131,7 +131,7 @@ void getAllocableRegs_X86 ( Int* nregs, HReg** arr )
 
 /* --------- Condition codes, Intel encoding. --------- */
 
-HChar* showX86CondCode ( X86CondCode cond )
+const HChar* showX86CondCode ( X86CondCode cond )
 {
    switch (cond) {
       case Xcc_O:      return "o";
@@ -430,7 +430,7 @@ static void mapRegs_X86RM ( HRegRemap* m, X86RM* op )
 
 /* --------- Instructions. --------- */
 
-HChar* showX86UnaryOp ( X86UnaryOp op ) {
+const HChar* showX86UnaryOp ( X86UnaryOp op ) {
    switch (op) {
       case Xun_NOT: return "not";
       case Xun_NEG: return "neg";
@@ -438,7 +438,7 @@ HChar* showX86UnaryOp ( X86UnaryOp op ) {
    }
 }
 
-HChar* showX86AluOp ( X86AluOp op ) {
+const HChar* showX86AluOp ( X86AluOp op ) {
    switch (op) {
       case Xalu_MOV:  return "mov";
       case Xalu_CMP:  return "cmp";
@@ -454,7 +454,7 @@ HChar* showX86AluOp ( X86AluOp op ) {
    }
 }
 
-HChar* showX86ShiftOp ( X86ShiftOp op ) {
+const HChar* showX86ShiftOp ( X86ShiftOp op ) {
    switch (op) {
       case Xsh_SHL: return "shl";
       case Xsh_SHR: return "shr";
@@ -463,7 +463,7 @@ HChar* showX86ShiftOp ( X86ShiftOp op ) {
    }
 }
 
-HChar* showX86FpOp ( X86FpOp op ) {
+const HChar* showX86FpOp ( X86FpOp op ) {
    switch (op) {
       case Xfp_ADD:    return "add";
       case Xfp_SUB:    return "sub";
@@ -488,7 +488,7 @@ HChar* showX86FpOp ( X86FpOp op ) {
    }
 }
 
-HChar* showX86SseOp ( X86SseOp op ) {
+const HChar* showX86SseOp ( X86SseOp op ) {
    switch (op) {
       case Xsse_MOV:      return "mov(?!)";
       case Xsse_ADDF:     return "add";
@@ -638,13 +638,16 @@ X86Instr* X86Instr_Push( X86RMI* src ) {
    i->Xin.Push.src = src;
    return i;
 }
-X86Instr* X86Instr_Call ( X86CondCode cond, Addr32 target, Int regparms ) {
+X86Instr* X86Instr_Call ( X86CondCode cond, Addr32 target, Int regparms,
+                          RetLoc rloc ) {
    X86Instr* i          = LibVEX_Alloc(sizeof(X86Instr));
    i->tag               = Xin_Call;
    i->Xin.Call.cond     = cond;
    i->Xin.Call.target   = target;
    i->Xin.Call.regparms = regparms;
+   i->Xin.Call.rloc     = rloc;
    vassert(regparms >= 0 && regparms <= 3);
+   vassert(is_sane_RetLoc(rloc));
    return i;
 }
 X86Instr* X86Instr_XDirect ( Addr32 dstGA, X86AMode* amEIP,
@@ -724,7 +727,8 @@ X86Instr* X86Instr_MFence ( UInt hwcaps ) {
    X86Instr* i          = LibVEX_Alloc(sizeof(X86Instr));
    i->tag               = Xin_MFence;
    i->Xin.MFence.hwcaps = hwcaps;
-   vassert(0 == (hwcaps & ~(VEX_HWCAPS_X86_SSE1
+   vassert(0 == (hwcaps & ~(VEX_HWCAPS_X86_MMXEXT
+                            |VEX_HWCAPS_X86_SSE1
                             |VEX_HWCAPS_X86_SSE2
                             |VEX_HWCAPS_X86_SSE3
                             |VEX_HWCAPS_X86_LZCNT)));
@@ -980,11 +984,12 @@ void ppX86Instr ( X86Instr* i, Bool mode64 ) {
          ppX86RMI(i->Xin.Push.src);
          return;
       case Xin_Call:
-         vex_printf("call%s[%d] ", 
+         vex_printf("call%s[%d,", 
                     i->Xin.Call.cond==Xcc_ALWAYS 
                        ? "" : showX86CondCode(i->Xin.Call.cond), 
                     i->Xin.Call.regparms);
-         vex_printf("0x%x", i->Xin.Call.target);
+         ppRetLoc(i->Xin.Call.rloc);
+         vex_printf("] 0x%x", i->Xin.Call.target);
          break;
       case Xin_XDirect:
          vex_printf("(xDirect) ");
@@ -1451,7 +1456,7 @@ void getRegUsage_X86Instr (HRegUsage* u, X86Instr* i, Bool mode64)
          return;
       case Xin_SseReRg:
          if (i->Xin.SseReRg.op == Xsse_XOR
-             && i->Xin.SseReRg.src == i->Xin.SseReRg.dst) {
+             && sameHReg(i->Xin.SseReRg.src, i->Xin.SseReRg.dst)) {
             /* reg-alloc needs to understand 'xor r,r' as a write of r */
             /* (as opposed to a rite of passage :-) */
             addHRegUse(u, HRmWrite, i->Xin.SseReRg.dst);
@@ -1764,8 +1769,8 @@ X86Instr* directReload_X86( X86Instr* i, HReg vreg, Short spill_off )
        && (i->Xin.Alu32R.op == Xalu_MOV || i->Xin.Alu32R.op == Xalu_OR
            || i->Xin.Alu32R.op == Xalu_XOR)
        && i->Xin.Alu32R.src->tag == Xrmi_Reg
-       && i->Xin.Alu32R.src->Xrmi.Reg.reg == vreg) {
-      vassert(i->Xin.Alu32R.dst != vreg);
+       && sameHReg(i->Xin.Alu32R.src->Xrmi.Reg.reg, vreg)) {
+      vassert(! sameHReg(i->Xin.Alu32R.dst, vreg));
       return X86Instr_Alu32R( 
                 i->Xin.Alu32R.op, 
                 X86RMI_Mem( X86AMode_IR( spill_off, hregX86_EBP())),
@@ -1779,7 +1784,7 @@ X86Instr* directReload_X86( X86Instr* i, HReg vreg, Short spill_off )
    if (i->tag == Xin_Alu32R
        && (i->Xin.Alu32R.op == Xalu_CMP)
        && i->Xin.Alu32R.src->tag == Xrmi_Imm
-       && i->Xin.Alu32R.dst == vreg) {
+       && sameHReg(i->Xin.Alu32R.dst, vreg)) {
       return X86Instr_Alu32M( 
                 i->Xin.Alu32R.op,
 		X86RI_Imm( i->Xin.Alu32R.src->Xrmi.Imm.imm32 ),
@@ -1792,7 +1797,7 @@ X86Instr* directReload_X86( X86Instr* i, HReg vreg, Short spill_off )
    */
    if (i->tag == Xin_Push
        && i->Xin.Push.src->tag == Xrmi_Reg
-       && i->Xin.Push.src->Xrmi.Reg.reg == vreg) {
+       && sameHReg(i->Xin.Push.src->Xrmi.Reg.reg, vreg)) {
       return X86Instr_Push(
                 X86RMI_Mem( X86AMode_IR( spill_off, hregX86_EBP()))
              );
@@ -1802,8 +1807,8 @@ X86Instr* directReload_X86( X86Instr* i, HReg vreg, Short spill_off )
       Convert to CMov32(RM_Mem, dst) */
    if (i->tag == Xin_CMov32
        && i->Xin.CMov32.src->tag == Xrm_Reg
-       && i->Xin.CMov32.src->Xrm.Reg.reg == vreg) {
-      vassert(i->Xin.CMov32.dst != vreg);
+       && sameHReg(i->Xin.CMov32.src->Xrm.Reg.reg, vreg)) {
+      vassert(! sameHReg(i->Xin.CMov32.dst, vreg));
       return X86Instr_CMov32( 
                 i->Xin.CMov32.cond,
                 X86RM_Mem( X86AMode_IR( spill_off, hregX86_EBP() )),
@@ -1814,7 +1819,7 @@ X86Instr* directReload_X86( X86Instr* i, HReg vreg, Short spill_off )
    /* Deal with form: Test32(imm,RM_Reg vreg) -> Test32(imm,amode) */
    if (i->tag == Xin_Test32
        && i->Xin.Test32.dst->tag == Xrm_Reg
-       && i->Xin.Test32.dst->Xrm.Reg.reg == vreg) {
+       && sameHReg(i->Xin.Test32.dst->Xrm.Reg.reg, vreg)) {
       return X86Instr_Test32(
                 i->Xin.Test32.imm32,
                 X86RM_Mem( X86AMode_IR( spill_off, hregX86_EBP() ) )
@@ -1857,15 +1862,19 @@ static UInt vregNo ( HReg r )
    return n;
 }
 
-static UChar mkModRegRM ( UChar mod, UChar reg, UChar regmem )
+static UChar mkModRegRM ( UInt mod, UInt reg, UInt regmem )
 {
+   vassert(mod < 4);
+   vassert((reg|regmem) < 8);
    return toUChar( ((mod & 3) << 6) 
                    | ((reg & 7) << 3) 
                    | (regmem & 7) );
 }
 
-static UChar mkSIB ( Int shift, Int regindex, Int regbase )
+static UChar mkSIB ( UInt shift, UInt regindex, UInt regbase )
 {
+   vassert(shift < 4);
+   vassert((regindex|regbase) < 8);
    return toUChar( ((shift & 3) << 6) 
                    | ((regindex & 7) << 3) 
                    | (regbase & 7) );
@@ -1916,23 +1925,23 @@ static UChar* doAMode_M ( UChar* p, HReg greg, X86AMode* am )
 {
    if (am->tag == Xam_IR) {
       if (am->Xam.IR.imm == 0 
-          && am->Xam.IR.reg != hregX86_ESP()
-          && am->Xam.IR.reg != hregX86_EBP() ) {
+          && ! sameHReg(am->Xam.IR.reg, hregX86_ESP())
+          && ! sameHReg(am->Xam.IR.reg, hregX86_EBP()) ) {
          *p++ = mkModRegRM(0, iregNo(greg), iregNo(am->Xam.IR.reg));
          return p;
       }
       if (fits8bits(am->Xam.IR.imm)
-          && am->Xam.IR.reg != hregX86_ESP()) {
+          && ! sameHReg(am->Xam.IR.reg, hregX86_ESP())) {
          *p++ = mkModRegRM(1, iregNo(greg), iregNo(am->Xam.IR.reg));
          *p++ = toUChar(am->Xam.IR.imm & 0xFF);
          return p;
       }
-      if (am->Xam.IR.reg != hregX86_ESP()) {
+      if (! sameHReg(am->Xam.IR.reg, hregX86_ESP())) {
          *p++ = mkModRegRM(2, iregNo(greg), iregNo(am->Xam.IR.reg));
          p = emit32(p, am->Xam.IR.imm);
          return p;
       }
-      if (am->Xam.IR.reg == hregX86_ESP()
+      if (sameHReg(am->Xam.IR.reg, hregX86_ESP())
           && fits8bits(am->Xam.IR.imm)) {
  	 *p++ = mkModRegRM(1, iregNo(greg), 4);
          *p++ = 0x24;
@@ -1945,17 +1954,17 @@ static UChar* doAMode_M ( UChar* p, HReg greg, X86AMode* am )
    }
    if (am->tag == Xam_IRRS) {
       if (fits8bits(am->Xam.IRRS.imm)
-          && am->Xam.IRRS.index != hregX86_ESP()) {
+          && ! sameHReg(am->Xam.IRRS.index, hregX86_ESP())) {
          *p++ = mkModRegRM(1, iregNo(greg), 4);
-         *p++ = mkSIB(am->Xam.IRRS.shift, am->Xam.IRRS.index, 
-                                          am->Xam.IRRS.base);
+         *p++ = mkSIB(am->Xam.IRRS.shift, iregNo(am->Xam.IRRS.index),
+                                          iregNo(am->Xam.IRRS.base));
          *p++ = toUChar(am->Xam.IRRS.imm & 0xFF);
          return p;
       }
-      if (am->Xam.IRRS.index != hregX86_ESP()) {
+      if (! sameHReg(am->Xam.IRRS.index, hregX86_ESP())) {
          *p++ = mkModRegRM(2, iregNo(greg), 4);
-         *p++ = mkSIB(am->Xam.IRRS.shift, am->Xam.IRRS.index,
-                                          am->Xam.IRRS.base);
+         *p++ = mkSIB(am->Xam.IRRS.shift, iregNo(am->Xam.IRRS.index),
+                                          iregNo(am->Xam.IRRS.base));
          p = emit32(p, am->Xam.IRRS.imm);
          return p;
       }
@@ -2177,7 +2186,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
       }
       switch (i->Xin.Alu32R.src->tag) {
          case Xrmi_Imm:
-            if (i->Xin.Alu32R.dst == hregX86_EAX()
+            if (sameHReg(i->Xin.Alu32R.dst, hregX86_EAX())
                 && !fits8bits(i->Xin.Alu32R.src->Xrmi.Imm.imm32)) {
                *p++ = toUChar(opc_imma);
                p = emit32(p, i->Xin.Alu32R.src->Xrmi.Imm.imm32);
@@ -2375,6 +2384,16 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
       }
 
    case Xin_Call:
+      if (i->Xin.Call.cond != Xcc_ALWAYS
+          && i->Xin.Call.rloc.pri != RLPri_None) {
+         /* The call might not happen (it isn't unconditional) and it
+            returns a result.  In this case we will need to generate a
+            control flow diamond to put 0x555..555 in the return
+            register(s) in the case where the call doesn't happen.  If
+            this ever becomes necessary, maybe copy code from the ARM
+            equivalent.  Until that day, just give up. */
+         goto bad;
+      }
       /* See detailed comment for Xin_Call in getRegUsage_X86Instr above
          for explanation of this. */
       switch (i->Xin.Call.regparms) {
@@ -2677,7 +2696,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
          *p++ = 0x0F; *p++ = 0xAE; *p++ = 0xF0;
          goto done;
       }
-      if (i->Xin.MFence.hwcaps & VEX_HWCAPS_X86_SSE1) {
+      if (i->Xin.MFence.hwcaps & VEX_HWCAPS_X86_MMXEXT) {
          /* sfence */
          *p++ = 0x0F; *p++ = 0xAE; *p++ = 0xF8;
          /* lock addl $0,0(%esp) */
@@ -2759,16 +2778,16 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
             addRegUsage_X86AMode(&u,  i->Xin.Store.dst);
             for (j = 0; j < u.n_used; j++) {
                HReg r = u.hreg[j];
-               if (r == eax) a_ok = False;
-               if (r == ebx) b_ok = False;
-               if (r == ecx) c_ok = False;
-               if (r == edx) d_ok = False;
+               if (sameHReg(r, eax)) a_ok = False;
+               if (sameHReg(r, ebx)) b_ok = False;
+               if (sameHReg(r, ecx)) c_ok = False;
+               if (sameHReg(r, edx)) d_ok = False;
             }
             if (a_ok) swap = eax;
             if (b_ok) swap = ebx;
             if (c_ok) swap = ecx;
             if (d_ok) swap = edx;
-            vassert(swap != INVALID_HREG);
+            vassert(! hregIsInvalid(swap));
             /* xchgl %source, %swap. Could do better if swap is %eax. */
             *p++ = 0x87;
             p = doAMode_R(p, i->Xin.Store.src, swap);
@@ -3349,7 +3368,7 @@ VexInvalRange chainXDirect_X86 ( void* place_to_chain,
    /* sanity check on the delta -- top 32 are all 0 or all 1 */
    delta >>= 32;
    vassert(delta == 0LL || delta == -1LL);
-   VexInvalRange vir = {0, 0};
+   VexInvalRange vir = { (HWord)place_to_chain, 7 };
    return vir;
 }
 
@@ -3392,7 +3411,7 @@ VexInvalRange unchainXDirect_X86 ( void* place_to_unchain,
    *(UInt*)(&p[1]) = (UInt)Ptr_to_ULong(disp_cp_chain_me);
    p[5] = 0xFF;
    p[6] = 0xD2;
-   VexInvalRange vir = {0, 0};
+   VexInvalRange vir = { (HWord)place_to_unchain, 7 };
    return vir;
 }
 
@@ -3428,7 +3447,7 @@ VexInvalRange patchProfInc_X86 ( void*  place_to_patch,
    p[10] = imm32 & 0xFF; imm32 >>= 8;
    p[11] = imm32 & 0xFF; imm32 >>= 8;
    p[12] = imm32 & 0xFF; imm32 >>= 8;
-   VexInvalRange vir = {0, 0};
+   VexInvalRange vir = { (HWord)place_to_patch, 14 };
    return vir;
 }
 

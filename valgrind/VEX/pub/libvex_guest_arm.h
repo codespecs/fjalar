@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@
 #define __LIBVEX_PUB_GUEST_ARM_H
 
 #include "libvex_basictypes.h"
-#include "libvex_emnote.h"
 
 
 /*---------------------------------------------------------------*/
@@ -218,7 +217,7 @@ void LibVEX_GuestARM_initialise ( /*OUT*/VexGuestARMState* vex_state );
 /* Calculate the ARM flag state from the saved data. */
 
 extern
-UInt LibVEX_GuestARM_get_cpsr ( /*IN*/VexGuestARMState* vex_state );
+UInt LibVEX_GuestARM_get_cpsr ( /*IN*/const VexGuestARMState* vex_state );
 
 
 #endif /* ndef __LIBVEX_PUB_GUEST_ARM_H */

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2012 OpenWorks LLP
+   Copyright (C) 2004-2013 OpenWorks LLP
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -37,7 +37,6 @@
 #define __LIBVEX_PUB_GUEST_PPC64_H
 
 #include "libvex_basictypes.h"
-#include "libvex_emnote.h"
 
 /*
     volatile ==  caller-saved (not preserved across function calls)
@@ -280,11 +279,10 @@ typedef
          threading on AIX. */
       /* 1648 */ ULong guest_SPRG3_RO;
 
-      /* offsets in comments are wrong ..*/
-      /* Padding to make it have an 16-aligned size */
-      /* 1656 */ ULong padding2;
-      /* 16XX */ ULong padding3;
-      /* 16XX */ ULong padding4;
+      /* 1656 */ ULong guest_TFHAR;     // Transaction Failure Handler Address Register 
+      /* 1664 */ ULong guest_TEXASR;    // Transaction EXception And Summary Register
+      /* 1672 */ ULong guest_TFIAR;     // Transaction Failure Instruction Address Register
+
    }
    VexGuestPPC64State;
 
@@ -310,7 +308,7 @@ void LibVEX_GuestPPC64_put_CR ( UInt cr_native,
    corresponding native %CR value.  Note, %CR is 32-bits even for
    ppc64. */
 extern
-UInt LibVEX_GuestPPC64_get_CR ( /*IN*/VexGuestPPC64State* vex_state );
+UInt LibVEX_GuestPPC64_get_CR ( /*IN*/const VexGuestPPC64State* vex_state );
 
 
 /* Write the given native %XER value to the supplied
@@ -324,7 +322,7 @@ void LibVEX_GuestPPC64_put_XER ( UInt xer_native,
    corresponding native %XER value.  Note, %CR is 32-bits even for
    ppc64. */
 extern
-UInt LibVEX_GuestPPC64_get_XER ( /*IN*/VexGuestPPC64State* vex_state );
+UInt LibVEX_GuestPPC64_get_XER ( /*IN*/const VexGuestPPC64State* vex_state );
 
 #endif /* ndef __LIBVEX_PUB_GUEST_PPC64_H */
 

@@ -1,13 +1,13 @@
 
 /*---------------------------------------------------------------*/
-/*--- begin                                    main_globals.c ---*/
+/*--- begin                             host_generic_simd256.h ---*/
 /*---------------------------------------------------------------*/
 
 /*
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2004-2013 OpenWorks LLP
+   Copyright (C) 2012-2013 OpenWorks GbR
       info@open-works.net
 
    This program is free software; you can redistribute it and/or
@@ -26,46 +26,30 @@
    02110-1301, USA.
 
    The GNU General Public License is contained in the file COPYING.
-
-   Neither the names of the U.S. Department of Energy nor the
-   University of California nor the names of its contributors may be
-   used to endorse or promote products derived from this software
-   without prior written permission.
 */
+
+/* Generic helper functions for doing 256-bit SIMD arithmetic in cases
+   where the instruction selectors cannot generate code in-line.
+   These are purely back-end entities and cannot be seen/referenced
+   as clean helper functions from IR.
+
+   These will get called from generated code and therefore should be
+   well behaved -- no floating point or mmx insns, just straight
+   integer code.
+
+   Each function implements the correspondingly-named IR primop.
+*/
+
+#ifndef __VEX_HOST_GENERIC_SIMD256_H
+#define __VEX_HOST_GENERIC_SIMD256_H
 
 #include "libvex_basictypes.h"
 
-#include "main_util.h"
-#include "main_globals.h"
+extern VEX_REGPARM(3)
+       void h_generic_calc_Perm32x8   ( /*OUT*/V256*, V256*, V256* );
 
-
-/* Global settings for the VEX library.  These are the
-   only library-wide globals. */
-
-/* Are we started yet? */
-Bool vex_initdone = False;
-
-/* failure exit function */
-__attribute__ ((noreturn))
-void (*vex_failure_exit) ( void ) = NULL;
-
-/* logging output function */
-void (*vex_log_bytes) ( HChar*, Int nbytes ) = NULL;
-
-/* debug paranoia level */
-Int vex_debuglevel = 0;
-
-/* trace flags */
-Int vex_traceflags = 0;
-
-/* Are we supporting valgrind checking? */
-Bool vex_valgrind_support = False;
-
-/* Max # guest insns per bb */
-VexControl vex_control = { 0,0,False,0,0,0 };
-
-
+#endif /* ndef __VEX_HOST_GENERIC_SIMD256_H */
 
 /*---------------------------------------------------------------*/
-/*--- end                                      main_globals.c ---*/
+/*--- end                              host_generic_simd256.h ---*/
 /*---------------------------------------------------------------*/
