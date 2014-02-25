@@ -826,7 +826,7 @@ inn_printf:
       /* print a string */
       case 's':
 	s=va_arg(arg_ptr,char *);
-	if (!s) s="(null)";
+	if (!s) s=(char*)("(null)");
 	sz = VG_(strlen)(s);
 	if (flag_dot && sz>preci) sz=preci;
 	preci=0;

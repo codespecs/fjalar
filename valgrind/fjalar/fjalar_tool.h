@@ -46,7 +46,7 @@ void fjalar_tool_print_usage(void);
 // The format for a command-line option is as follows, as shown by an
 // example implementation of this function:
 //
-// Bool fjalar_tool_process_cmd_line_option(Char* arg) {
+// Bool fjalar_tool_process_cmd_line_option(const HChar* arg) {
 //   // Options come in pairs of strings and variables:
 //
 //   // String option:
@@ -77,7 +77,7 @@ void fjalar_tool_print_usage(void);
 //
 // If any options are omitted, their respective variables take on
 // default values of whatever they are initialized to in the source.
-Bool fjalar_tool_process_cmd_line_option(Char* arg);
+Bool fjalar_tool_process_cmd_line_option(const HChar* arg);
 
 
 // Helper macro for command-line option processing

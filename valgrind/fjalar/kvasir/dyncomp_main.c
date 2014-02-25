@@ -159,7 +159,7 @@ static __inline__ UInt grab_fresh_tag(void) {
   totalNumTagsAssigned++;
   if (dyncomp_print_trace_all) {
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
-    Char eip_info[256];
+    HChar eip_info[256];
     dyncomp_print_trace_info = True;
     VG_(describe_IP)(tid, eip_info, sizeof(eip_info));
     DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %08x (%s)\n",
@@ -250,7 +250,7 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
   if (!IS_ZERO_TAG(tag1) && !IS_SECONDARY_UF_NULL(tag1) &&
       !IS_ZERO_TAG(tag2) && !IS_SECONDARY_UF_NULL(tag2)) {
     Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-    Char eip_info[256];
+    HChar eip_info[256];
     uf_object* tag1_obj, *tag2_obj;
     uf_object* leader;
     tag1_obj = GET_UF_OBJECT_PTR(tag1);
@@ -584,7 +584,7 @@ UInt tag2_is_new ( UInt tag1, UInt tag2 ) {
 VG_REGPARM(2)
 UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   Addr eip = VG_(get_IP)(VG_(get_running_tid)());
-  Char eip_info[256];
+  HChar eip_info[256];
   VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
 
   if (dyncomp_profile_tags) {

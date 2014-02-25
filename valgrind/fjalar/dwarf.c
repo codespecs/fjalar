@@ -715,7 +715,7 @@ decode_location_expression (unsigned char * data,
                             location_list* ll)
 {
   unsigned op;
-  int bytes_read;
+  unsigned int bytes_read;
   unsigned char *end = data + length;
   unsigned long addr;
   unsigned long uvalue;
@@ -1321,7 +1321,7 @@ read_and_display_attr_value (unsigned long attribute,
   dwarf_vma uvalue = 0;
   unsigned char *block_start = NULL;
   unsigned char * orig_data = data;
-  int bytes_read;
+  unsigned int bytes_read;
   int ok_to_print = pass2 && fjalar_debug_dump;
   int ok_to_harvest = pass2 && entry_is_listening_for_attribute(entry, attribute);  // false if entry is null
 
@@ -1484,7 +1484,7 @@ read_and_display_attr_value (unsigned long attribute,
     // DW_AT_name/DW_AT_comp_dir can be a string, or an indirect string ... (see below)
     case DW_FORM_string:
       if (ok_to_harvest)
-         harvest_string(entry, attribute, data);
+         harvest_string(entry, attribute, (const char*)data);
       if (ok_to_print)
               printf (" %s", data);
       data += VG_(strlen) ((char *) data) + 1;
@@ -2142,7 +2142,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
       level = 0;
       while (tags < section_ptr)
 	{
-	  int bytes_read;
+	  unsigned int bytes_read;
 	  unsigned long abbrev_number;
 	  abbrev_entry *entry;
 	  abbrev_attr *attr;
@@ -2403,7 +2403,7 @@ process_debug_info (Elf_Internal_Shdr *section, unsigned char *start, FILE *file
 
       level = 0;
       while (tags < start) {
-	      int bytes_read;
+	      unsigned int bytes_read;
 	      unsigned long abbrev_number;
           unsigned long temp_ID;
           unsigned long temp_tag_name;
@@ -2678,7 +2678,7 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 
 	  while (*data != 0)
 	    {
-	      int bytes_read;
+	      unsigned int bytes_read;
           unsigned long dir_index = 0;
           char* full_name = NULL;
 	      char* file_name = NULL;
@@ -2690,7 +2690,7 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 	      state_machine_regs.last_file_entry++;
 	      if (fjalar_debug_dump)
               printf ("  %d\t", state_machine_regs.last_file_entry);
-	      file_name = data;
+	      file_name = (char*)data;
 	      data += VG_(strlen) ((char *) data) + 1;
 
 	      dir_index = read_uleb128(data, &bytes_read);
@@ -3138,7 +3138,7 @@ display_debug_macinfo (Elf_Internal_Shdr *section, unsigned char *start, FILE *f
   while (curr < end)
     {
       unsigned int lineno;
-      const char *string;
+      char *string;
 
       op = *curr;
       curr++;
@@ -3165,7 +3165,7 @@ display_debug_macinfo (Elf_Internal_Shdr *section, unsigned char *start, FILE *f
 	case DW_MACINFO_define:
 	  lineno = read_uleb128 (curr, & bytes_read);
 	  curr += bytes_read;
-	  string = curr;
+	  string = (char*)curr;
 	  curr += VG_(strlen) (string) + 1;
 	  printf (_(" DW_MACINFO_define - lineno : %d macro : %s\n"), lineno, string);
 	  break;
@@ -3173,7 +3173,7 @@ display_debug_macinfo (Elf_Internal_Shdr *section, unsigned char *start, FILE *f
 	case DW_MACINFO_undef:
 	  lineno = read_uleb128 (curr, & bytes_read);
 	  curr += bytes_read;
-	  string = curr;
+	  string = (char*)curr;
 	  curr += VG_(strlen) (string) + 1;
 	  printf (_(" DW_MACINFO_undef - lineno : %d macro : %s\n"), lineno, string);
 	  break;
@@ -3184,7 +3184,7 @@ display_debug_macinfo (Elf_Internal_Shdr *section, unsigned char *start, FILE *f
 
 	    constant = read_uleb128 (curr, & bytes_read);
 	    curr += bytes_read;
-	    string = curr;
+	    string = (char*)curr;
 	    curr += VG_(strlen) (string) + 1;
 	    printf (_(" DW_MACINFO_vendor_ext - constant : %d string : %s\n"), constant, string);
 	  }
@@ -3858,7 +3858,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
   Frame_Chunk *remembered_state = 0;
   Frame_Chunk *rs;
   int is_eh = (VG_(strcmp) (SECTION_NAME (section), ".eh_frame") == 0);
-  int length_return;
+  unsigned int length_return;
   int max_regs = 0;
   const char *bad_reg = _("bad register: ");
   int saved_eh_addr_size = eh_addr_size;
@@ -3929,8 +3929,8 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 
 	  version = *start++;
 
-	  fc->augmentation = start;
-	  start = VG_(strchr) (start, '\0') + 1;
+	  fc->augmentation = (char*)start;
+	  start = (unsigned char *)(VG_(strchr) ((char*)start, '\0') + 1);
 
 	  if (VG_(strcmp) (fc->augmentation, "eh") == 0)
 	    start += eh_addr_size;
@@ -3999,7 +3999,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	  if (augmentation_data_len)
 	    {
 	      unsigned char *p, *q;
-	      p = fc->augmentation + 1;
+	      p = (unsigned char *)(fc->augmentation + 1);
 	      q = augmentation_data;
 
 	      while (1)
@@ -4049,7 +4049,7 @@ display_debug_frames (Elf_Internal_Shdr *section, unsigned char *start,
 	      fc->col_offset = (int *) xmalloc (sizeof (int));
 	      frame_need_space (fc, max_regs - 1);
 	      cie = fc;
-	      fc->augmentation = "";
+	      fc->augmentation = (char*)"";
 	      fc->fde_encoding = 0;
           fc->ptr_size = eh_addr_size;
           fc->segment_size = 0;

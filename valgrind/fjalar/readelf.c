@@ -921,7 +921,7 @@ get_dynamic_type (unsigned long type)
     }
 }
 
-static char *
+static const char *
 get_file_type (unsigned e_type)
 {
   static char buff[32];
@@ -945,7 +945,7 @@ get_file_type (unsigned e_type)
     }
 }
 
-static char *
+static const char *
 get_machine_name (unsigned e_machine)
 {
   static char buff[64]; /* XXX */
@@ -2120,7 +2120,7 @@ process_section_headers (FILE * file)
        i < elf_header.e_shnum;
        i++, section++)
     {
-      char *name = SECTION_NAME (section);
+      const char *name = SECTION_NAME (section);
 
       if (section->sh_type == SHT_DYNSYM)
 	{
@@ -2537,7 +2537,7 @@ slurp_ia64_unwind_table (FILE * file, struct ia64_unw_aux_info * aux, Elf_Intern
 
   /* Second, build the unwind table from the contents of the unwind section:  */
   size = sec->sh_size;
-  table = (char *) get_data (NULL, file, sec->sh_offset,
+  table = (unsigned char *) get_data (NULL, file, sec->sh_offset,
 			     size, _("unwind table"));
   if (!table)
     return 0;
@@ -2674,7 +2674,7 @@ process_unwind (FILE * file)
 
   while (unwcount-- > 0)
     {
-      char *suffix;
+      const char *suffix;
       size_t len, len2;
 
       for (i = unwstart, sec = section_headers + unwstart;
@@ -2732,7 +2732,7 @@ process_unwind (FILE * file)
 	{
 	  aux.info_size = sec->sh_size;
 	  aux.info_addr = sec->sh_addr;
-	  aux.info = (char *) get_data (NULL, file, sec->sh_offset,
+	  aux.info = (unsigned char *) get_data (NULL, file, sec->sh_offset,
 					aux.info_size, _("unwind info"));
 
 	  FJALAR_DPRINTF (_("\nUnwind section "));
@@ -3395,7 +3395,7 @@ process_dynamic_section (FILE * file)
   return 1;
 }
 
-static char *
+static const char *
 get_ver_flags (unsigned int flags)
 {
   static char buff[32];
@@ -3676,7 +3676,7 @@ process_version_sections (FILE * file)
 	      {
 		int j, nn = 0;
 		int check_def, check_need;
-		char *name;
+		const char *name;
 
                 FJALAR_DPRINTF ("  %03x:", cnt);
 
@@ -4522,7 +4522,7 @@ debug_displays[] =
 static int
 display_debug_section (Elf_Internal_Shdr * section, FILE * file)
 {
-  char *name = SECTION_NAME (section);
+  const char *name = SECTION_NAME (section);
   bfd_size_type length;
   unsigned char *start;
   int i;
@@ -4580,7 +4580,7 @@ process_section_contents (FILE * file)
        i < elf_header.e_shnum && i < num_dump_sects;
        i++, section++)
     {
-      char *name = SECTION_NAME (section);
+      const char *name = SECTION_NAME (section);
       int j;
 
       if (section->sh_size == 0)
@@ -5089,7 +5089,7 @@ get_file_header (FILE * file)
    positioned at the start of the ELF object.  */
 
 static int
-process_file (char * file_name)
+process_file (const char * file_name)
 {
   FILE *file;
   unsigned int i;
@@ -5230,7 +5230,7 @@ db_task_printsym (unsigned int addr)
 // with a filename argument
 
 int
-process_elf_binary_data (char* filename)
+process_elf_binary_data (const HChar* filename)
 {
 
   int err;

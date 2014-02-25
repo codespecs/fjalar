@@ -40,10 +40,10 @@
 extern void setNOBUF(FILE *stream);
 
 // Global variables that are set by command-line options
-char* kvasir_decls_filename = 0;
-char* kvasir_dtrace_filename = 0;
-char* kvasir_program_stdout_filename = 0;
-char* kvasir_program_stderr_filename = 0;
+const HChar* kvasir_decls_filename = 0;
+const HChar* kvasir_dtrace_filename = 0;
+const HChar* kvasir_program_stdout_filename = 0;
+const HChar* kvasir_program_stderr_filename = 0;
 Bool kvasir_dtrace_append = False;
 Bool kvasir_dtrace_no_decs = False;
 Bool kvasir_dtrace_gzip = False;
@@ -84,11 +84,11 @@ FILE* decls_fp = 0; // File pointer for .decls file (this will point
                     // unless otherwise noted by the user)
 
 FILE* dtrace_fp = 0; // File pointer for dtrace file (from dtrace-output.c)
-static char *dtrace_filename; /* File name to open dtrace_fp on */
+static const char *dtrace_filename; /* File name to open dtrace_fp on */
 
-char* decls_folder = "daikon-output/";
-static char* decls_ext = ".decls";
-static char* dtrace_ext = ".dtrace";
+const char* decls_folder = "daikon-output/";
+static const char* decls_ext = ".decls";
+static const char* dtrace_ext = ".dtrace";
 
 static int createFIFO(const char *filename);
 static int openDtraceFile(const char *fname);
@@ -98,7 +98,7 @@ static char splitDirectoryAndFilename(const char* input, char** dirnamePtr, char
 
 static void openTheDtraceFile(void) {
   openDtraceFile(dtrace_filename);
-  VG_(free)(dtrace_filename);
+  VG_(free)((void*)dtrace_filename);
   dtrace_filename = 0;
 }
 
@@ -110,7 +110,7 @@ static void openTheDtraceFile(void) {
 // else: --- (DEFAULT)
 //   Create a dtrace file and initialize both decls_fp and dtrace_fp
 //   to point to it
-static void createDeclsAndDtraceFiles(char* appname)
+static void createDeclsAndDtraceFiles(const HChar* appname)
 {
   char* dirname = 0;
   char* filename = 0;
@@ -371,8 +371,8 @@ static int gzip_pid = 0;
 
 static int openDtraceFile(const char *fname) {
   const char *mode_str;
-  char *stdout_redir = kvasir_program_stdout_filename;
-  char *stderr_redir = kvasir_program_stderr_filename;
+  const char *stdout_redir = kvasir_program_stdout_filename;
+  const char *stderr_redir = kvasir_program_stderr_filename;
 
   char *env_val = VG_(getenv)("DTRACEAPPEND");
   if (env_val || kvasir_dtrace_append) {
@@ -423,7 +423,7 @@ static int openDtraceFile(const char *fname) {
 
     if (!pid) {
       /* In child */
-      Char *const argv[] = {"gzip", "-c", 0};
+      const HChar *const argv[] = {"gzip", "-c", 0};
       VG_(close)(fds[1]);
 
       /* Redirect stdin from the pipe */
@@ -544,7 +544,7 @@ void fjalar_tool_post_clo_init(void)
     if VG_STREQ(kvasir_dtrace_filename + filename_len - 3, ".gz") {
       DPRINTF("\nFilename ends in .gz\n");
       // Chop off '.gz' from the end of the filename
-      kvasir_dtrace_filename[filename_len - 3] = '\0';
+      ((HChar *)kvasir_dtrace_filename)[filename_len - 3] = '\0';
       // Activate kvasir_dtrace_gzip
       kvasir_dtrace_gzip = True;
     }
@@ -683,7 +683,7 @@ void fjalar_tool_print_usage()
 }
 
 // Processes command-line options
-Bool fjalar_tool_process_cmd_line_option(Char* arg)
+Bool fjalar_tool_process_cmd_line_option(const HChar* arg)
 {
   if VG_STR_CLO(arg, "--decls-file", kvasir_decls_filename) {}
   else if VG_STR_CLO(arg, "--dtrace-file", kvasir_dtrace_filename) {}

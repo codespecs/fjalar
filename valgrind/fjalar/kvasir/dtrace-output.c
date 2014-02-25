@@ -45,13 +45,13 @@
 // currently used for debugging comparability values
 // as Dyncomp isn't passed much in the way of
 // the variable information.
-char* cur_var_name = NULL;
+const HChar* cur_var_name = NULL;
 
 // Daikon officially supports only "nonsensical", not "uninit".
 // Having two strings in this code makes the reason clearer, though.
-char* UNINIT = "nonsensical";
-char* NONSENSICAL = "nonsensical";
-char* func_name = 0;
+const HChar* UNINIT = "nonsensical";
+const HChar* NONSENSICAL = "nonsensical";
+const HChar* func_name = 0;
 int is_enter = 0;
 
 UWord nonce[300];
@@ -983,7 +983,7 @@ void printDtraceStringSequence(VariableEntry* var,
 // subsequent traversals should print out values of NONSENSICAL.
 static
 TraversalResult printDtraceEntryAction(VariableEntry* var,
-                                       char* varName,
+                                       const HChar* varName,
                                        VariableOrigin varOrigin,
                                        UInt numDereferences,
                                        UInt layersBeforeBase,

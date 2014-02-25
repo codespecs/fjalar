@@ -414,7 +414,7 @@ extern compile_unit** comp_unit_info;
 extern unsigned long dwarf_entry_array_size;
 extern location_list *debug_loc_list;
 
-unsigned int hashString(char* str);
+unsigned int hashString(const char* str);
 int equivalentStrings(char* str1, char* str2);
 
 
@@ -461,7 +461,7 @@ unsigned int relrodata_section_size;
 
 // From readelf.c
 const char *get_TAG_name(unsigned long tag);
-int process_elf_binary_data(char* filename);
+int process_elf_binary_data(const HChar* filename);
 
 // From typedata.c
 char tag_is_relevant_entry(unsigned long tag);

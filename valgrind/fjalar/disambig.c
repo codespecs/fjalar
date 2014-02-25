@@ -87,7 +87,7 @@ void handleDisambigFile() {
 // S          <-- disambig type
 static TraversalResult
 printDisambigAction(VariableEntry* var,
-		    char* varName,
+		    const HChar* varName,
 		    VariableOrigin varOrigin,
 		    UInt numDereferences,
 		    UInt layersBeforeBase,
@@ -419,7 +419,7 @@ static void processDisambigFile() {
 	}
 	// 3) A user-defined type
 	//    (USERTYPE_PREFIX must be the prefix of the string)
-	else if (VG_(strstr)(line, USERTYPE_PREFIX) == (Char *)line) {
+	else if (VG_(strstr)(line, USERTYPE_PREFIX) == (HChar *)line) {
 	  TypeIterator* typeIt;
           int i = 0;
 	  type = USERTYPE;

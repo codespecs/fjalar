@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -62,7 +62,6 @@ Bool MC_(any_value_errors) = False;
 typedef enum {
    Block_Mallocd = 111,
    Block_Freed,
-   Block_Mempool,
    Block_MempoolChunk,
    Block_UserG
 } BlockKind;
@@ -101,16 +100,17 @@ struct _AddrInfo {
       // blocks.
       struct {
          BlockKind   block_kind;
-         Char*       block_desc;    // "block", "mempool" or user-defined
+         const HChar* block_desc;    // "block", "mempool" or user-defined
          SizeT       block_szB;
          PtrdiffT    rwoffset;
-         ExeContext* lastchange;
+         ExeContext* allocated_at;  // might be null_ExeContext.
+         ExeContext* freed_at;      // might be null_ExeContext.
       } Block;
 
       // In a global .data symbol.  This holds the first 127 chars of
       // the variable's name (zero terminated), plus a (memory) offset.
       struct {
-         Char     name[128];
+         HChar    name[128];
          PtrdiffT offset;
       } DataSym;
 
@@ -123,7 +123,7 @@ struct _AddrInfo {
       // Could only narrow it down to be the PLT/GOT/etc of a given
       // object.  Better than nothing, perhaps.
       struct {
-         Char       objname[128];
+         HChar      objname[128];
          VgSectKind kind;
       } SectKind;
 
@@ -239,7 +239,7 @@ struct _MC_Error {
       struct {
          Addr src;   // Source block
          Addr dst;   // Destination block
-         Int  szB;   // Size in bytes;  0 if unused.
+         SizeT szB;   // Size in bytes;  0 if unused.
       } Overlap;
 
       // A memory leak.
@@ -272,7 +272,7 @@ void MC_(before_pp_Error) ( Error* err ) {
 /* Do a printf-style operation on either the XML or normal output
    channel, depending on the setting of VG_(clo_xml).
 */
-static void emit_WRK ( HChar* format, va_list vargs )
+static void emit_WRK ( const HChar* format, va_list vargs )
 {
    if (VG_(clo_xml)) {
       VG_(vprintf_xml)(format, vargs);
@@ -280,15 +280,15 @@ static void emit_WRK ( HChar* format, va_list vargs )
       VG_(vmessage)(Vg_UserMsg, format, vargs);
    }
 }
-static void emit ( HChar* format, ... ) PRINTF_CHECK(1, 2);
-static void emit ( HChar* format, ... )
+static void emit ( const HChar* format, ... ) PRINTF_CHECK(1, 2);
+static void emit ( const HChar* format, ... )
 {
    va_list vargs;
    va_start(vargs, format);
    emit_WRK(format, vargs);
    va_end(vargs);
 }
-static void emiN ( HChar* format, ... ) /* NO FORMAT CHECK */
+static void emiN ( const HChar* format, ... ) /* NO FORMAT CHECK */
 {
    va_list vargs;
    va_start(vargs, format);
@@ -299,8 +299,8 @@ static void emiN ( HChar* format, ... ) /* NO FORMAT CHECK */
 
 static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
 {
-   HChar* xpre  = VG_(clo_xml) ? "  <auxwhat>" : " ";
-   HChar* xpost = VG_(clo_xml) ? "</auxwhat>"  : "";
+   const HChar* xpre  = VG_(clo_xml) ? "  <auxwhat>" : " ";
+   const HChar* xpost = VG_(clo_xml) ? "</auxwhat>"  : "";
 
    switch (ai->tag) {
       case Addr_Unknown:
@@ -324,7 +324,7 @@ static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
          SizeT    block_szB = ai->Addr.Block.block_szB;
          PtrdiffT rwoffset  = ai->Addr.Block.rwoffset;
          SizeT    delta;
-         const    Char* relative;
+         const    HChar* relative;
 
          if (rwoffset < 0) {
             delta    = (SizeT)(-rwoffset);
@@ -346,7 +346,29 @@ static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
                                                      : "client-defined",
             xpost
          );
-         VG_(pp_ExeContext)(ai->Addr.Block.lastchange);
+         if (ai->Addr.Block.block_kind==Block_Mallocd) {
+            VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
+            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
+         }
+         else if (ai->Addr.Block.block_kind==Block_Freed) {
+            VG_(pp_ExeContext)(ai->Addr.Block.freed_at);
+            if (ai->Addr.Block.allocated_at != VG_(null_ExeContext)()) {
+               emit(
+                  "%s block was alloc'd at%s\n",
+                  xpre,
+                  xpost
+               );
+               VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
+            }
+         }
+         else {
+            // client-defined
+            VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
+            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
+            /* Nb: cannot have a freed_at, as a freed client-defined block
+               has a Block_Freed block_kind. */
+         }
+         
          break;
       }
 
@@ -412,9 +434,68 @@ static const HChar* xml_leak_kind ( Reachedness lossmode )
    return loss;
 }
 
+Bool MC_(parse_leak_kinds) ( const HChar* str0, UInt* lks )
+{
+   HChar  tok_str0[VG_(strlen)(str0)+1];
+   HChar* saveptr;
+   HChar* token;
+
+   Bool seen_all_kw = False;
+   Bool seen_none_kw = False;
+
+   VG_(strcpy) (tok_str0, str0);
+   *lks = 0;
+
+   for (token = VG_(strtok_r)(tok_str0, ",", &saveptr);
+        token;
+        token = VG_(strtok_r)(NULL, ",", &saveptr)) {
+      if      (0 == VG_(strcmp)(token, "reachable"))
+         *lks |= R2S(Reachable);
+      else if (0 == VG_(strcmp)(token, "possible"))
+         *lks |= R2S(Possible);
+      else if (0 == VG_(strcmp)(token, "indirect"))
+         *lks |= R2S(IndirectLeak);
+      else if (0 == VG_(strcmp)(token, "definite"))
+         *lks |= R2S(Unreached);
+      else if (0 == VG_(strcmp)(token, "all"))
+         seen_all_kw = True;
+      else if (0 == VG_(strcmp)(token, "none"))
+         seen_none_kw = True;
+      else
+         return False;
+   }
+
+   if (seen_all_kw) {
+      if (seen_none_kw || *lks)
+         return False; // mixing all with either none or a specific value.
+      *lks = RallS;
+   } else if (seen_none_kw) {
+      if (seen_all_kw || *lks)
+         return False; // mixing none with either all or a specific value.
+      *lks = 0;
+   } else {
+      // seen neither all or none, we must see at least one value
+      if (*lks == 0)
+         return False;
+   }
+
+   return True;
+}
+
+static const HChar* pp_Reachedness_for_leak_kinds(Reachedness r)
+{
+   switch(r) {
+   case Reachable:    return "reachable";
+   case Possible:     return "possible";
+   case IndirectLeak: return "indirect";
+   case Unreached:    return "definite";
+   default:           tl_assert(0);
+   }
+}
+
 static void mc_pp_origin ( ExeContext* ec, UInt okind )
 {
-   HChar* src = NULL;
+   const HChar* src = NULL;
    tl_assert(ec);
 
    switch (okind) {
@@ -435,7 +516,7 @@ static void mc_pp_origin ( ExeContext* ec, UInt okind )
    }
 }
 
-char * MC_(snprintf_delta) (char * buf, Int size, 
+HChar * MC_(snprintf_delta) (HChar * buf, Int size, 
                             SizeT current_val, SizeT old_val, 
                             LeakCheckDeltaMode delta_mode)
 {
@@ -454,10 +535,10 @@ static void pp_LossRecord(UInt n_this_record, UInt n_total_records,
 {
    // char arrays to produce the indication of increase/decrease in case
    // of delta_mode != LCD_Any
-   char        d_bytes[20];
-   char        d_direct_bytes[20];
-   char        d_indirect_bytes[20];
-   char        d_num_blocks[20];
+   HChar d_bytes[20];
+   HChar d_direct_bytes[20];
+   HChar d_indirect_bytes[20];
+   HChar d_num_blocks[20];
 
    MC_(snprintf_delta) (d_bytes, 20, 
                         lr->szB + lr->indirect_szB, 
@@ -766,7 +847,7 @@ void MC_(pp_Error) ( Error* err )
                      extra->Err.Overlap.dst, extra->Err.Overlap.src );
             } else {
                emit( "  <what>Source and destination overlap "
-                     "in %s(%#lx, %#lx, %d)</what>\n",
+                     "in %s(%#lx, %#lx, %lu)</what>\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src,
                      extra->Err.Overlap.szB );
@@ -778,7 +859,7 @@ void MC_(pp_Error) ( Error* err )
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src );
             } else {
-               emit( "Source and destination overlap in %s(%#lx, %#lx, %d)\n",
+               emit( "Source and destination overlap in %s(%#lx, %#lx, %lu)\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src,
                      extra->Err.Overlap.szB );
@@ -892,12 +973,12 @@ void MC_(record_cond_error) ( ThreadId tid, UInt otag )
 /* --- Called from non-generated code --- */
 
 /* This is for memory errors in signal-related memory. */
-void MC_(record_core_mem_error) ( ThreadId tid, Char* msg )
+void MC_(record_core_mem_error) ( ThreadId tid, const HChar* msg )
 {
    VG_(maybe_record_error)( tid, Err_CoreMem, /*addr*/0, msg, /*extra*/NULL );
 }
 
-void MC_(record_regparam_error) ( ThreadId tid, Char* msg, UInt otag )
+void MC_(record_regparam_error) ( ThreadId tid, const HChar* msg, UInt otag )
 {
    MC_Error extra;
    tl_assert(VG_INVALID_THREADID != tid);
@@ -909,7 +990,7 @@ void MC_(record_regparam_error) ( ThreadId tid, Char* msg, UInt otag )
 }
 
 void MC_(record_memparam_error) ( ThreadId tid, Addr a, 
-                                  Bool isAddrErr, Char* msg, UInt otag )
+                                  Bool isAddrErr, const HChar* msg, UInt otag )
 {
    MC_Error extra;
    tl_assert(VG_INVALID_THREADID != tid);
@@ -952,7 +1033,8 @@ void MC_(record_freemismatch_error) ( ThreadId tid, MC_Chunk* mc )
    ai->Addr.Block.block_desc = "block";
    ai->Addr.Block.block_szB  = mc->szB;
    ai->Addr.Block.rwoffset   = 0;
-   ai->Addr.Block.lastchange = mc->where;
+   ai->Addr.Block.allocated_at = MC_(allocated_at) (mc);
+   ai->Addr.Block.freed_at = MC_(freed_at) (mc);
    VG_(maybe_record_error)( tid, Err_FreeMismatch, mc->data, /*s*/NULL,
                             &extra );
 }
@@ -965,7 +1047,7 @@ void MC_(record_illegal_mempool_error) ( ThreadId tid, Addr a )
    VG_(maybe_record_error)( tid, Err_IllegalMempool, a, /*s*/NULL, &extra );
 }
 
-void MC_(record_overlap_error) ( ThreadId tid, Char* function,
+void MC_(record_overlap_error) ( ThreadId tid, const HChar* function,
                                  Addr src, Addr dst, SizeT szB )
 {
    MC_Error extra;
@@ -1027,7 +1109,7 @@ Bool MC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
    
    switch (VG_(get_error_kind)(e1)) {
       case Err_CoreMem: {
-         Char *e1s, *e2s;
+         const HChar *e1s, *e2s;
          e1s = VG_(get_error_string)(e1);
          e2s = VG_(get_error_string)(e2);
          if (e1s == e2s)                   return True;
@@ -1137,7 +1219,8 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
          ai->Addr.Block.block_desc = "block";
          ai->Addr.Block.block_szB  = mc->szB;
          ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
-         ai->Addr.Block.lastchange = mc->where;
+         ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
+         ai->Addr.Block.freed_at = MC_(freed_at)(mc);
          return;
       }
    }
@@ -1149,7 +1232,8 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
          ai->Addr.Block.block_desc = "block";
          ai->Addr.Block.block_szB  = mc->szB;
          ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
-         ai->Addr.Block.lastchange = mc->where;
+      ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
+      ai->Addr.Block.freed_at = MC_(freed_at)(mc);
          return;
       }
    /* -- Perhaps the variable type/location data describes it? -- */
@@ -1350,7 +1434,8 @@ static Bool client_block_maybe_describe( Addr a,
          ai->Addr.Block.block_desc = cgbs[i].desc;
          ai->Addr.Block.block_szB  = cgbs[i].size;
          ai->Addr.Block.rwoffset   = (Word)(a) - (Word)(cgbs[i].start);
-         ai->Addr.Block.lastchange = cgbs[i].where;
+         ai->Addr.Block.allocated_at = cgbs[i].where;
+         ai->Addr.Block.freed_at = VG_(null_ExeContext)();;
          return True;
       }
    }
@@ -1376,7 +1461,8 @@ static Bool mempool_block_maybe_describe( Addr a,
                      ai->Addr.Block.block_desc = "block";
                      ai->Addr.Block.block_szB  = mc->szB;
                      ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
-                     ai->Addr.Block.lastchange = mc->where;
+               ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
+               ai->Addr.Block.freed_at = MC_(freed_at)(mc);
                      return True;
                   }
                }
@@ -1413,7 +1499,7 @@ typedef
    } 
    MC_SuppKind;
 
-Bool MC_(is_recognised_suppression) ( Char* name, Supp* su )
+Bool MC_(is_recognised_suppression) ( const HChar* name, Supp* su )
 {
    SuppKind skind;
 
@@ -1444,15 +1530,51 @@ Bool MC_(is_recognised_suppression) ( Char* name, Supp* su )
    return True;
 }
 
-Bool MC_(read_extra_suppression_info) ( Int fd, Char** bufpp,
-                                        SizeT* nBufp, Supp *su )
+typedef struct _MC_LeakSuppExtra MC_LeakSuppExtra;
+
+struct _MC_LeakSuppExtra {
+   UInt match_leak_kinds;
+
+   /* Maintains nr of blocks and bytes suppressed with this suppression
+      during the leak search identified by leak_search_gen.
+      blocks_suppressed and bytes_suppressed are reset to 0 when
+      used the first time during a leak search. */
+   SizeT blocks_suppressed;
+   SizeT bytes_suppressed;
+   UInt  leak_search_gen;
+};
+
+Bool MC_(read_extra_suppression_info) ( Int fd, HChar** bufpp,
+                                        SizeT* nBufp, Int* lineno, Supp *su )
 {
    Bool eof;
+   Int i;
 
    if (VG_(get_supp_kind)(su) == ParamSupp) {
-      eof = VG_(get_line) ( fd, bufpp, nBufp, NULL );
+      eof = VG_(get_line) ( fd, bufpp, nBufp, lineno );
       if (eof) return False;
       VG_(set_supp_string)(su, VG_(strdup)("mc.resi.1", *bufpp));
+   } else if (VG_(get_supp_kind)(su) == LeakSupp) {
+      // We might have the optional match-leak-kinds line
+      MC_LeakSuppExtra* lse;
+      lse = VG_(malloc)("mc.resi.2", sizeof(MC_LeakSuppExtra));
+      lse->match_leak_kinds = RallS;
+      lse->blocks_suppressed = 0;
+      lse->bytes_suppressed = 0;
+      lse->leak_search_gen = 0;
+      VG_(set_supp_extra)(su, lse); // By default, all kinds will match.
+      eof = VG_(get_line) ( fd, bufpp, nBufp, lineno );
+      if (eof) return True; // old LeakSupp style, no match-leak-kinds line.
+      if (0 == VG_(strncmp)(*bufpp, "match-leak-kinds:", 17)) {
+         i = 17;
+         while ((*bufpp)[i] && VG_(isspace((*bufpp)[i])))
+            i++;
+         if (!MC_(parse_leak_kinds)((*bufpp)+i, &lse->match_leak_kinds)) {
+            return False;
+         }
+      } else {
+         return False; // unknown extra line.
+      }
    }
    return True;
 }
@@ -1506,7 +1628,18 @@ Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
          return (ekind == Err_Overlap);
 
       case LeakSupp:
-         return (ekind == Err_Leak);
+         if (ekind == Err_Leak) {
+            MC_LeakSuppExtra* lse = (MC_LeakSuppExtra*) VG_(get_supp_extra)(su);
+            if (lse->leak_search_gen != MC_(leak_search_gen)) {
+               // First time we see this suppression during this leak search.
+               // => reset the counters to 0.
+               lse->blocks_suppressed = 0;
+               lse->bytes_suppressed = 0;
+               lse->leak_search_gen = MC_(leak_search_gen);
+            }
+            return RiS(extra->Err.Leak.lr->key.state, lse->match_leak_kinds);
+         } else
+            return False;
 
       case MempoolSupp:
          return (ekind == Err_IllegalMempool);
@@ -1520,7 +1653,7 @@ Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
    }
 }
 
-Char* MC_(get_error_name) ( Error* err )
+const HChar* MC_(get_error_name) ( Error* err )
 {
    switch (VG_(get_error_kind)(err)) {
    case Err_RegParam:       return "Param";
@@ -1561,21 +1694,58 @@ Char* MC_(get_error_name) ( Error* err )
 }
 
 Bool MC_(get_extra_suppression_info) ( Error* err,
-                                       /*OUT*/Char* buf, Int nBuf )
+                                       /*OUT*/HChar* buf, Int nBuf )
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
    tl_assert(buf);
    tl_assert(nBuf >= 16); // stay sane
    if (Err_RegParam == ekind || Err_MemParam == ekind) {
-      Char* errstr = VG_(get_error_string)(err);
+      const HChar* errstr = VG_(get_error_string)(err);
       tl_assert(errstr);
       VG_(snprintf)(buf, nBuf-1, "%s", errstr);
+      return True;
+   } else if (Err_Leak == ekind) {
+      MC_Error* extra = VG_(get_error_extra)(err);
+      VG_(snprintf)
+         (buf, nBuf-1, "match-leak-kinds: %s",
+          pp_Reachedness_for_leak_kinds(extra->Err.Leak.lr->key.state));
       return True;
    } else {
       return False;
    }
 }
 
+Bool MC_(print_extra_suppression_use) ( Supp *su,
+                                        /*OUT*/HChar *buf, Int nBuf )
+{
+   if (VG_(get_supp_kind)(su) == LeakSupp) {
+      MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
+
+      if (lse->leak_search_gen == MC_(leak_search_gen)
+          && lse->blocks_suppressed > 0) {
+         VG_(snprintf) (buf, nBuf-1, 
+                        "suppressed: %'lu bytes in %'lu blocks",
+                        lse->bytes_suppressed,
+                        lse->blocks_suppressed);
+         return True;
+      } else
+         return False;
+   } else
+      return False;
+}
+
+void MC_(update_extra_suppression_use) ( Error* err, Supp* su)
+{
+   if (VG_(get_supp_kind)(su) == LeakSupp) {
+      MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
+      MC_Error* extra = VG_(get_error_extra)(err);
+
+      tl_assert (lse->leak_search_gen = MC_(leak_search_gen));
+      lse->blocks_suppressed += extra->Err.Leak.lr->num_blocks;
+      lse->bytes_suppressed 
+         += extra->Err.Leak.lr->szB + extra->Err.Leak.lr->indirect_szB;
+   }
+}
 
 /*--------------------------------------------------------------------*/
 /*--- end                                              mc_errors.c ---*/
