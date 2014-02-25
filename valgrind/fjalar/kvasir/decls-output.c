@@ -34,8 +34,8 @@ const char* SIMPLE_EXIT_PPT = ":::EXIT";
 const char* OBJECT_PPT = ":::OBJECT";
 
 extern const char* DeclaredTypeString[];
-extern char* cur_var_name;
-extern char* func_name;
+extern const char* cur_var_name;
+extern const char* func_name;
 
 // Hack alert: Necessary for printing out object program points
 // properly ...
@@ -171,11 +171,11 @@ void printDaikonFunctionName(FunctionEntry* f, FILE* fp) {
 //       a static variable declared within the returnIntSum() function of
 //       the file 'custom-dir/ArrayTest.c'.)
 // For new .decls format (designed in April 2006)
-void printDaikonExternalVarName(VariableEntry* var, char* fjalarName, FILE* fp) {
+void printDaikonExternalVarName(VariableEntry* var, const HChar* fjalarName, FILE* fp) {
   int indexOfLastSlash = -1;
   int len = VG_(strlen)(fjalarName);
   int i;
-  char* working_name;
+  const HChar* working_name;
   Bool alreadyPrintedBrackets = False; // Only print out one set of "[..]" max.
   (void) var;
 
@@ -389,7 +389,7 @@ DaikonRepType decTypeToDaikonRepType(DeclaredType decType,
 // (g_variableIndex increments during each variable visit).
 static TraversalResult
 nullAction(VariableEntry* var,
-	   char* varName,
+	   const HChar* varName,
 	   VariableOrigin varOrigin,
 	   UInt numDereferences,
 	   UInt layersBeforeBase,
@@ -428,7 +428,7 @@ nullAction(VariableEntry* var,
 // 22                   <-- comparability number
 static TraversalResult
 printDeclsEntryAction(VariableEntry* var,
-		      char* varName,
+		      const HChar* varName,
 		      VariableOrigin varOrigin,
 		      UInt numDereferences,
 		      UInt layersBeforeBase,
@@ -475,7 +475,7 @@ printDeclsEntryAction(VariableEntry* var,
 
   if (!kvasir_old_decls_format) {
     int len = VG_(strlen)(varName);
-    char *shortName;
+    const HChar *shortName;
     Bool special_zeroth_elt_var = False;
 
     // Boolean flags for variables:
@@ -486,9 +486,9 @@ printDeclsEntryAction(VariableEntry* var,
 
     tl_assert(nameToType);
 
-    if(!gencontains(nameToType, varName))
+    if(!gencontains(nameToType, (void*)varName))
     {
-      genputtable(nameToType, varName, var->varType->typeName);
+      genputtable(nameToType, (void*)varName, var->varType->typeName);
     }
 
 
@@ -528,9 +528,9 @@ printDeclsEntryAction(VariableEntry* var,
     //if(var->isSuperMember && !kvasir_unambiguous_fields)
     if(0) {
 //    shortSuper = 1; //Flag to denote this is a shortened name
-      shortName = removeSuperElements(fullNameStack.stack, var);
+      shortName = removeSuperElements((char**)fullNameStack.stack, var);
       printDaikonExternalVarName(var, shortName, decls_fp);
-      VG_(free)(shortName);
+      VG_(free)((void*)shortName);
       printDaikonExternalVarName(var, fullNameStack.stack[fullNameStack.size-1], decls_fp);
     }
     else {
@@ -587,7 +587,7 @@ printDeclsEntryAction(VariableEntry* var,
        // would be represented as a 5 elements array {"outer",".", "middle", "." "inner"}
        if(0) {
          /*  if(shortSuper) {
-                  char* enclosingVar =  stringArrayFlatten(fullNameStackPtr, 0, fullNameStackSize-2*var->isSuperMember-2);
+                  const HChar* enclosingVar =  stringArrayFlatten(fullNameStackPtr, 0, fullNameStackSize-2*var->isSuperMember-2);
           if(enclosingVar && gencontains(varsDeclaredTable, enclosingVar)) {
             fputs("    enclosing-var ", decls_fp);
             printDaikonExternalVarName(var, enclosingVar, decls_fp);
@@ -596,7 +596,7 @@ printDeclsEntryAction(VariableEntry* var,
           }
          */
         }
-        else if (gencontains(varsDeclaredTable, enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1])) {
+        else if (gencontains(varsDeclaredTable, (void*)enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1])) {
           fputs("    enclosing-var ", decls_fp);
           enclosing_len = VG_(strlen)(enclosingVarNamesStack.stack[enclosingVarNamesStack.size - 1]);
 
@@ -889,7 +889,7 @@ printDeclsEntryAction(VariableEntry* var,
 	}
 
 
-	if(!format && !isSequence && gengettable(nameToType,enclosingVarNamesStack.stack[0])) {
+	if(!format && !isSequence && gengettable(nameToType,(void*)enclosingVarNamesStack.stack[0])) {
 	  fputs("    parent ", decls_fp);
 	  tl_assert(var->memberVar->structParentType);
 	  printDaikonExternalVarName(NULL, var->memberVar->structParentType->typeName, decls_fp);
@@ -1080,7 +1080,7 @@ printDeclsEntryAction(VariableEntry* var,
     }
 
     //Insert this variable into the declared vars table
-    genputtable(varsDeclaredTable, varName, (void *)1);
+    genputtable(varsDeclaredTable, (void*)varName, (void *)1);
 
     // We are done!
     return DISREGARD_PTR_DEREFS;
@@ -1501,7 +1501,7 @@ printDeclsEntryAction(VariableEntry* var,
     unsigned int cur_par_id = 1;
 
 
-    extern void stringStackPush(StringStack *stack, char* str);
+    extern void stringStackPush(StringStack *stack, const char* str);
     extern char* stringStackPop(StringStack *stack);
 
     extern StringStack fullNameStack;
@@ -1840,7 +1840,7 @@ int stringArrayLen(char** stringArr,int start, int end)
  // I.E. if we have A.B.c where B is a superclass
  // of A, this will return A.c
  // CALLER IS RESPONSIBLE FOR FREEING RETURNED STRING
- char* removeSuperElements(char** stringArr, VariableEntry* var)
+ const HChar* removeSuperElements(char** stringArr, VariableEntry* var)
  {
    int len = fullNameStack.size;
    char*  name = stringArrayFlatten(stringArr, 0, len);
@@ -1855,7 +1855,7 @@ static unsigned int cur_par_id = 0;
 
 static TraversalResult
 harvestObject(VariableEntry* var,
-              char* varName,
+              const HChar* varName,
               VariableOrigin varOrigin,
               UInt numDereferences,
               UInt layersBeforeBase,

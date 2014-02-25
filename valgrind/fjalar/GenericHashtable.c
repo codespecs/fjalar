@@ -18,14 +18,7 @@
 
 #include "GenericHashtable.h"
 
-#define VGAPPEND(str1,str2) str1##str2
-#define VG_(str)    VGAPPEND(vgPlain_,str)
-
-//#include "tool_asm.h" //#include "vg_constants_skin.h"
-//#include "dmalloc.h"
-
-extern void  VG_(free)           ( void* p );
-extern void* VG_(calloc)         (char *c, unsigned int n, unsigned int bytes_per_elem );
+#include "pub_tool_mallocfree.h"
 
 #define MAXINT 2147483647
 

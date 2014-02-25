@@ -27,12 +27,12 @@
 
 #define MAXIMUM_ARRAY_SIZE_TO_EXPAND 10
 
-void stringStackPush(StringStack *stack, char* str);
-char* stringStackPop(StringStack *stack);
-char* stringStackTop(StringStack *stack);
+void stringStackPush(StringStack *stack, const HChar* str);
+const HChar* stringStackPop(StringStack *stack);
+const HChar* stringStackTop(StringStack *stack);
 void stringStackClear(StringStack *stack);
 int stringStackStrLen(StringStack *stack);
 void stringStackPrint(StringStack *stack);
-char* stringStackStrdup(StringStack *stack);
+const HChar* stringStackStrdup(StringStack *stack);
 
 #endif

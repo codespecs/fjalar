@@ -58,7 +58,7 @@ static char* getDeclaredFile(compile_unit* comp_unit, unsigned long offset);
 static VariableEntry*
 extractOneVariable(VarList* varListPtr,
 		   dwarf_entry* typePtr,
-		   char* variableName,
+		   const char* variableName,
 		   char* fileName,
 		   char isGlobal,
 		   char isExternal,
@@ -226,11 +226,11 @@ VarList varsToUpdateTypes = {0, 0, 0};
 
 // Global strings
 
-static char* RETURN_VALUE_NAME = "return";
+static const char* RETURN_VALUE_NAME = "return";
 
 // For printing:
 // Corresponds to DeclaredType enum:
-char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
+const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
                              "D_UNSIGNED_CHAR",
                              "D_CHAR",
                              "D_UNSIGNED_SHORT",
@@ -293,7 +293,7 @@ static char ignore_function_with_name(char* name) {
 // so we will ignore these.
 // (This was all done by empirical observation)
 // Note: DON'T IGNORE VARIABLES WITH NO NAMES
-static char ignore_variable_with_name(char* name) {
+static char ignore_variable_with_name(const char* name) {
 
   FJALAR_DPRINTF("\t*name: %s\n", name);
 
@@ -1185,7 +1185,7 @@ static int equivalentGlobalConstants(VariableEntry* varPtr1, VariableEntry* varP
 // (Also demangles C++ names if necessary.)
 static void updateAllGlobalVariableNames(void) {
   char* globalName = 0;
-  char *loc_part; /* Part of the name to specify where the variable came from
+  const char *loc_part; /* Part of the name to specify where the variable came from
 		     (doesn't exist in the real language) */
   char *p;
 
@@ -1319,7 +1319,7 @@ static void updateAllGlobalVariableNames(void) {
 
 
 // Utility function for prepending class/file name
-static char* PrependClass(char* class, char* func, int func_name_len) {
+static char* PrependClass(const char* class, const char* func, int func_name_len) {
   char *buf = NULL, *p = NULL;
 
   /* We want to print static_fn in subdir/filename.c
@@ -1347,7 +1347,7 @@ static void initFunctionFjalarNames(void) {
   while (hasNextFunc(funcIt)) {
     FunctionEntry* cur_entry = nextFunc(funcIt);
 
-    char *the_class;
+    const char *the_class;
     char *buf;
 
     char* name_to_use;
@@ -2617,7 +2617,7 @@ void updateAllVarTypes(void) {
 static VariableEntry*
 extractOneVariable(VarList* varListPtr,
 		   dwarf_entry* typePtr,
-		   char* variableName,
+		   const char* variableName,
 		   char* fileName,
 		   char isGlobal,
 		   char isExternal,
@@ -3167,7 +3167,7 @@ __inline__ FunctionEntry* getFunctionEntryFromStartAddr(Addr startPC) {
 
 // Iterate thru all chars, sum up each (ASCII value * (index + 1))
 // Don't worry about modding because GenericHashtable.c will do it for us :)
-unsigned int hashString(char* str) {
+unsigned int hashString(const char* str) {
   int i;
   int sum = 0;
   int len = VG_(strlen)(str);
