@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -43,7 +43,7 @@
 #include "pub_core_clientstate.h"   // VG_(brk_base), VG_(brk_limit)
 #include "pub_core_debuglog.h"
 #include "pub_core_errormgr.h"
-#include "pub_tool_gdbserver.h"     // VG_(gdbserver)
+#include "pub_core_gdbserver.h"     // VG_(gdbserver)
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcfile.h"
@@ -72,7 +72,7 @@
    client or is free or a reservation. */
 
 Bool ML_(valid_client_addr)(Addr start, SizeT size, ThreadId tid,
-                                   const Char *syscallname)
+                                   const HChar *syscallname)
 {
    Bool ret;
 
@@ -407,7 +407,7 @@ SysRes do_mremap( Addr old_addr, SizeT old_len,
       ok = VG_(am_covered_by_single_free_segment) ( needA, needL );
    }
    if (ok && advised == needA) {
-      ok = VG_(am_extend_map_client)( &d, (NSegment*)old_seg, needL );
+      ok = VG_(am_extend_map_client)( &d, old_seg, needL );
       if (ok) {
          VG_TRACK( new_mem_mmap, needA, needL, 
                                  old_seg->hasR, 
@@ -463,7 +463,7 @@ SysRes do_mremap( Addr old_addr, SizeT old_len,
    }
    if (!ok || advised != needA)
       goto eNOMEM;
-   ok = VG_(am_extend_map_client)( &d, (NSegment*)old_seg, needL );
+   ok = VG_(am_extend_map_client)( &d, old_seg, needL );
    if (!ok)
       goto eNOMEM;
    VG_TRACK( new_mem_mmap, needA, needL, 
@@ -510,7 +510,7 @@ SysRes do_mremap( Addr old_addr, SizeT old_len,
 typedef struct OpenFd
 {
    Int fd;                        /* The file descriptor */
-   Char *pathname;                /* NULL if not a regular file or unknown */
+   HChar *pathname;               /* NULL if not a regular file or unknown */
    ExeContext *where;             /* NULL if inherited from parent */
    struct OpenFd *next, *prev;
 } OpenFd;
@@ -592,7 +592,7 @@ void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd, char *pathname)
 void ML_(record_fd_open_named)(ThreadId tid, Int fd)
 {
    static HChar buf[VKI_PATH_MAX];
-   Char* name;
+   HChar* name;
    if (VG_(resolve_filename)(fd, buf, VKI_PATH_MAX))
       name = buf;
    else
@@ -608,7 +608,7 @@ void ML_(record_fd_open_nameless)(ThreadId tid, Int fd)
 }
 
 static
-Char *unix2name(struct vki_sockaddr_un *sa, UInt len, Char *name)
+HChar *unix2name(struct vki_sockaddr_un *sa, UInt len, HChar *name)
 {
    if (sa == NULL || len == 0 || sa->sun_path[0] == '\0') {
       VG_(sprintf)(name, "<unknown>");
@@ -620,7 +620,7 @@ Char *unix2name(struct vki_sockaddr_un *sa, UInt len, Char *name)
 }
 
 static
-Char *inet2name(struct vki_sockaddr_in *sa, UInt len, Char *name)
+HChar *inet2name(struct vki_sockaddr_in *sa, UInt len, HChar *name)
 {
    if (sa == NULL || len == 0) {
       VG_(sprintf)(name, "<unknown>");
@@ -650,7 +650,7 @@ getsockdetails(Int fd)
       struct vki_sockaddr_in in;
       struct vki_sockaddr_un un;
    } laddr;
-   UInt llen;
+   Int llen;
 
    llen = sizeof(laddr);
    VG_(memset)(&laddr, 0, llen);
@@ -661,7 +661,7 @@ getsockdetails(Int fd)
          static char lname[32];
          static char pname[32];
          struct vki_sockaddr_in paddr;
-         UInt plen = sizeof(struct vki_sockaddr_in);
+         Int plen = sizeof(struct vki_sockaddr_in);
 
          if (VG_(getpeername)(fd, (struct vki_sockaddr *)&paddr, &plen) != -1) {
             VG_(message)(Vg_UserMsg, "Open AF_INET socket %d: %s <-> %s\n", fd,
@@ -691,11 +691,11 @@ getsockdetails(Int fd)
 
 
 /* Dump out a summary, and a more detailed list, of open file descriptors. */
-void VG_(show_open_fds) (void)
+void VG_(show_open_fds) (const HChar* when)
 {
    OpenFd *i = allocated_fds;
 
-   VG_(message)(Vg_UserMsg, "FILE DESCRIPTORS: %d open at exit.\n", fd_count);
+   VG_(message)(Vg_UserMsg, "FILE DESCRIPTORS: %d open %s.\n", fd_count, when);
 
    while (i) {
       if (i->pathname) {
@@ -703,7 +703,7 @@ void VG_(show_open_fds) (void)
                       i->pathname);
       } else {
          Int val;
-         UInt len = sizeof(val);
+         Int len = sizeof(val);
 
          if (VG_(getsockopt)(i->fd, VKI_SOL_SOCKET, VKI_SO_TYPE, &val, &len)
              == -1) {
@@ -774,7 +774,7 @@ void VG_(init_preopened_fds)(void)
          goto out;
 
       if (VG_(strcmp)(d.d_name, ".") && VG_(strcmp)(d.d_name, "..")) {
-         Char* s;
+         HChar* s;
          Int fno = VG_(strtoll10)(d.d_name, &s);
          if (*s == '\0') {
             if (fno != sr_Res(f))
@@ -802,10 +802,11 @@ void VG_(init_preopened_fds)(void)
 }
 
 static
-Char *strdupcat ( HChar* cc, const Char *s1, const Char *s2, ArenaId aid )
+HChar *strdupcat ( const HChar* cc, const HChar *s1, const HChar *s2,
+                   ArenaId aid )
 {
    UInt len = VG_(strlen) ( s1 ) + VG_(strlen) ( s2 ) + 1;
-   Char *result = VG_(arena_malloc) ( aid, cc, len );
+   HChar *result = VG_(arena_malloc) ( aid, cc, len );
    VG_(strcpy) ( result, s1 );
    VG_(strcat) ( result, s2 );
    return result;
@@ -813,9 +814,9 @@ Char *strdupcat ( HChar* cc, const Char *s1, const Char *s2, ArenaId aid )
 
 static 
 void pre_mem_read_sendmsg ( ThreadId tid, Bool read,
-                            Char *msg, Addr base, SizeT size )
+                            const HChar *msg, Addr base, SizeT size )
 {
-   Char *outmsg = strdupcat ( "di.syswrap.pmrs.1",
+   HChar *outmsg = strdupcat ( "di.syswrap.pmrs.1",
                               "sendmsg", msg, VG_AR_CORE );
    PRE_MEM_READ( outmsg, base, size );
    VG_(arena_free) ( VG_AR_CORE, outmsg );
@@ -823,9 +824,9 @@ void pre_mem_read_sendmsg ( ThreadId tid, Bool read,
 
 static 
 void pre_mem_write_recvmsg ( ThreadId tid, Bool read,
-                             Char *msg, Addr base, SizeT size )
+                             const HChar *msg, Addr base, SizeT size )
 {
-   Char *outmsg = strdupcat ( "di.syswrap.pmwr.1",
+   HChar *outmsg = strdupcat ( "di.syswrap.pmwr.1",
                               "recvmsg", msg, VG_AR_CORE );
    if ( read )
       PRE_MEM_READ( outmsg, base, size );
@@ -836,7 +837,7 @@ void pre_mem_write_recvmsg ( ThreadId tid, Bool read,
 
 static
 void post_mem_write_recvmsg ( ThreadId tid, Bool read,
-                              Char *fieldName, Addr base, SizeT size )
+                              const HChar *fieldName, Addr base, SizeT size )
 {
    if ( !read )
       POST_MEM_WRITE( base, size );
@@ -845,13 +846,14 @@ void post_mem_write_recvmsg ( ThreadId tid, Bool read,
 static
 void msghdr_foreachfield ( 
         ThreadId tid, 
-        Char *name,
+        const HChar *name,
         struct vki_msghdr *msg, 
         UInt length,
-        void (*foreach_func)( ThreadId, Bool, Char *, Addr, SizeT ) 
+        void (*foreach_func)( ThreadId, Bool, const HChar *, Addr, SizeT ),
+        Bool recv
      )
 {
-   Char *fieldName;
+   HChar *fieldName;
 
    if ( !msg )
       return;
@@ -866,6 +868,10 @@ void msghdr_foreachfield (
    foreach_func ( tid, True, fieldName, (Addr)&msg->msg_iovlen, sizeof( msg->msg_iovlen ) );
    foreach_func ( tid, True, fieldName, (Addr)&msg->msg_control, sizeof( msg->msg_control ) );
    foreach_func ( tid, True, fieldName, (Addr)&msg->msg_controllen, sizeof( msg->msg_controllen ) );
+
+   /* msg_flags is completely ignored for send_mesg, recv_mesg doesn't read
+      the field, but does write to it. */
+   if ( recv )
    foreach_func ( tid, False, fieldName, (Addr)&msg->msg_flags, sizeof( msg->msg_flags ) );
 
    if ( msg->msg_name ) {
@@ -928,13 +934,16 @@ static void check_cmsg_for_fds(ThreadId tid, struct vki_msghdr *msg)
 /* GrP kernel ignores sa_len (at least on Darwin); this checks the rest */
 static
 void pre_mem_read_sockaddr ( ThreadId tid,
-                             Char *description,
+                             const HChar *description,
                              struct vki_sockaddr *sa, UInt salen )
 {
-   Char *outmsg;
+   HChar *outmsg;
    struct vki_sockaddr_un*  sun  = (struct vki_sockaddr_un *)sa;
    struct vki_sockaddr_in*  sin  = (struct vki_sockaddr_in *)sa;
    struct vki_sockaddr_in6* sin6 = (struct vki_sockaddr_in6 *)sa;
+#ifdef VKI_AF_BLUETOOTH
+   struct vki_sockaddr_rc*  rc   = (struct vki_sockaddr_rc *)sa;
+#endif
 
    /* NULL/zero-length sockaddrs are legal */
    if ( sa == NULL || salen == 0 ) return;
@@ -975,6 +984,15 @@ void pre_mem_read_sockaddr ( ThreadId tid,
             (Addr) &sin6->sin6_scope_id, sizeof (sin6->sin6_scope_id) );
          break;
                
+#ifdef VKI_AF_BLUETOOTH
+      case VKI_AF_BLUETOOTH:
+         VG_(sprintf) ( outmsg, description, "rc_bdaddr" );
+         PRE_MEM_READ( outmsg, (Addr) &rc->rc_bdaddr, sizeof (rc->rc_bdaddr) );
+         VG_(sprintf) ( outmsg, description, "rc_channel" );
+         PRE_MEM_READ( outmsg, (Addr) &rc->rc_channel, sizeof (rc->rc_channel) );
+         break;
+#endif
+
       default:
          VG_(sprintf) ( outmsg, description, "" );
          PRE_MEM_READ( outmsg, (Addr) sa, salen );
@@ -985,7 +1003,7 @@ void pre_mem_read_sockaddr ( ThreadId tid,
 }
 
 /* Dereference a pointer to a UInt. */
-static UInt deref_UInt ( ThreadId tid, Addr a, Char* s )
+static UInt deref_UInt ( ThreadId tid, Addr a, const HChar* s )
 {
    UInt* a_p = (UInt*)a;
    PRE_MEM_READ( s, (Addr)a_p, sizeof(UInt) );
@@ -996,7 +1014,7 @@ static UInt deref_UInt ( ThreadId tid, Addr a, Char* s )
 }
 
 void ML_(buf_and_len_pre_check) ( ThreadId tid, Addr buf_p, Addr buflen_p,
-                                  Char* buf_s, Char* buflen_s )
+                                  const HChar* buf_s, const HChar* buflen_s )
 {
    if (VG_(tdict).track_pre_mem_write) {
       UInt buflen_in = deref_UInt( tid, buflen_p, buflen_s);
@@ -1008,7 +1026,7 @@ void ML_(buf_and_len_pre_check) ( ThreadId tid, Addr buf_p, Addr buflen_p,
 }
 
 void ML_(buf_and_len_post_check) ( ThreadId tid, SysRes res,
-                                   Addr buf_p, Addr buflen_p, Char* s )
+                                   Addr buf_p, Addr buflen_p, const HChar* s )
 {
    if (!sr_isError(res) && VG_(tdict).track_post_mem_write) {
       UInt buflen_out = deref_UInt( tid, buflen_p, s);
@@ -1092,7 +1110,7 @@ static Addr do_brk ( Addr newbrk )
       aseg = VG_(am_find_nsegment)( VG_(brk_limit)-1 );
    else
       aseg = VG_(am_find_nsegment)( VG_(brk_limit) );
-   rseg = VG_(am_next_nsegment)( (NSegment*)aseg, True/*forwards*/ );
+   rseg = VG_(am_next_nsegment)( aseg, True/*forwards*/ );
 
    /* These should be assured by setup_client_dataseg in m_main. */
    vg_assert(aseg);
@@ -1120,7 +1138,7 @@ static Addr do_brk ( Addr newbrk )
    vg_assert(delta > 0);
    vg_assert(VG_IS_PAGE_ALIGNED(delta));
    
-   ok = VG_(am_extend_into_adjacent_reservation_client)( (NSegment*)aseg, delta );
+   ok = VG_(am_extend_into_adjacent_reservation_client)( aseg, delta );
    if (!ok) goto bad;
 
    VG_(brk_limit) = newbrk;
@@ -1156,7 +1174,8 @@ descriptors can be created above the new soft limit.
 */
 
 /* Return true if we're allowed to use or create this fd */
-Bool ML_(fd_allowed)(Int fd, const Char *syscallname, ThreadId tid, Bool isNewFd)
+Bool ML_(fd_allowed)(Int fd, const HChar *syscallname, ThreadId tid,
+                     Bool isNewFd)
 {
    Bool allowed = True;
 
@@ -1507,23 +1526,26 @@ ML_(generic_POST_sys_getpeername) ( ThreadId tid,
 /* ------ */
 
 void 
-ML_(generic_PRE_sys_sendmsg) ( ThreadId tid, Char *name, struct vki_msghdr *msg )
+ML_(generic_PRE_sys_sendmsg) ( ThreadId tid, const HChar *name,
+                               struct vki_msghdr *msg )
 {
-   msghdr_foreachfield ( tid, name, msg, ~0, pre_mem_read_sendmsg );
+   msghdr_foreachfield ( tid, name, msg, ~0, pre_mem_read_sendmsg, False );
 }
 
 /* ------ */
 
 void
-ML_(generic_PRE_sys_recvmsg) ( ThreadId tid, Char *name, struct vki_msghdr *msg )
+ML_(generic_PRE_sys_recvmsg) ( ThreadId tid, const HChar *name,
+                               struct vki_msghdr *msg )
 {
-   msghdr_foreachfield ( tid, name, msg, ~0, pre_mem_write_recvmsg );
+   msghdr_foreachfield ( tid, name, msg, ~0, pre_mem_write_recvmsg, True );
 }
 
 void 
-ML_(generic_POST_sys_recvmsg) ( ThreadId tid, Char *name, struct vki_msghdr *msg, UInt length )
+ML_(generic_POST_sys_recvmsg) ( ThreadId tid, const HChar *name,
+                                struct vki_msghdr *msg, UInt length )
 {
-   msghdr_foreachfield( tid, name, msg, length, post_mem_write_recvmsg );
+   msghdr_foreachfield( tid, name, msg, length, post_mem_write_recvmsg, True );
    check_cmsg_for_fds( tid, msg );
 }
 
@@ -1930,7 +1952,6 @@ ML_(generic_POST_sys_shmctl) ( ThreadId tid,
    }
 }
 
-
 /* ---------------------------------------------------------------------
    Generic handler for mmap
    ------------------------------------------------------------------ */
@@ -1975,7 +1996,7 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
    MapRequest mreq;
    Bool       mreq_ok;
 
-#if defined(VGO_darwin)
+#  if defined(VGO_darwin)
    // Nb: we can't use this on Darwin, it has races:
    // * needs to RETRY if advisory succeeds but map fails  
    //   (could have been some other thread in a nonblocking call)
@@ -1983,7 +2004,7 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
    //   (mmap will cheerfully smash whatever's already there, which might 
    //   be a new mapping from some other thread in a nonblocking call)
    VG_(core_panic)("can't use ML_(generic_PRE_sys_mmap) on Darwin");
-#endif
+#  endif
 
    if (arg2 == 0) {
       /* SuSV3 says: If len is zero, mmap() shall fail and no mapping
@@ -2005,6 +2026,15 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
          passed _SC_PAGESIZE or _SC_PAGE_SIZE. */
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
+
+#  if defined(VKI_MAP_32BIT)
+   /* We can't support MAP_32BIT (at least, not without significant
+      complication), and it's royally unportable, so if the client
+      asks for it, just fail it. */
+   if (arg4 & VKI_MAP_32BIT) {
+      return VG_(mk_SysRes_Error)( VKI_ENOMEM );
+   }
+#  endif
 
    /* Figure out what kind of allocation constraints there are
       (fixed/hint/any), and ask aspacem what we should do. */
@@ -2482,7 +2512,7 @@ PRE(sys_flock)
 }
 
 // Pre_read a char** argument.
-static void pre_argv_envp(Addr a, ThreadId tid, Char* s1, Char* s2)
+static void pre_argv_envp(Addr a, ThreadId tid, const HChar* s1, const HChar* s2)
 {
    while (True) {
       Addr a_deref;
@@ -2518,11 +2548,11 @@ void VG_(reap_threads)(ThreadId self)
 // but it seems to work nonetheless...
 PRE(sys_execve)
 {
-   Char*        path = NULL;       /* path to executable */
-   Char**       envp = NULL;
-   Char**       argv = NULL;
-   Char**       arg2copy;
-   Char*        launcher_basename = NULL;
+   HChar*       path = NULL;       /* path to executable */
+   HChar**      envp = NULL;
+   HChar**      argv = NULL;
+   HChar**      arg2copy;
+   HChar*       launcher_basename = NULL;
    ThreadState* tst;
    Int          i, j, tot_args;
    SysRes       res;
@@ -2582,7 +2612,7 @@ PRE(sys_execve)
    // ok, etc.  We allow setuid executables to run only in the case when
    // we are not simulating them, that is, they to be run natively.
    setuid_allowed = trace_this_child  ? False  : True;
-   res = VG_(pre_exec_check)((const Char*)ARG1, NULL, setuid_allowed);
+   res = VG_(pre_exec_check)((const HChar *)ARG1, NULL, setuid_allowed);
    if (sr_isError(res)) {
       SET_STATUS_Failure( sr_Err(res) );
       return;
@@ -2599,7 +2629,7 @@ PRE(sys_execve)
    }
 
    /* After this point, we can't recover if the execve fails. */
-   VG_(debugLog)(1, "syswrap", "Exec of %s\n", (Char*)ARG1);
+   VG_(debugLog)(1, "syswrap", "Exec of %s\n", (HChar*)ARG1);
 
    
    // Terminate gdbserver if it is active.
@@ -2635,7 +2665,7 @@ PRE(sys_execve)
       }
 
    } else {
-      path = (Char*)ARG1;
+      path = (HChar*)ARG1;
    }
 
    // Set up the child's environment.
@@ -2652,7 +2682,7 @@ PRE(sys_execve)
    if (ARG3 == 0) {
       envp = NULL;
    } else {
-      envp = VG_(env_clone)( (Char**)ARG3 );
+      envp = VG_(env_clone)( (HChar**)ARG3 );
       if (envp == NULL) goto hosed;
       VG_(env_remove_valgrind_env_stuff)( envp );
    }
@@ -2671,7 +2701,7 @@ PRE(sys_execve)
    // are omitted.
    //
    if (!trace_this_child) {
-      argv = (Char**)ARG2;
+      argv = (HChar**)ARG2;
    } else {
       vg_assert( VG_(args_for_valgrind) );
       vg_assert( VG_(args_for_valgrind_noexecpass) >= 0 );
@@ -2686,7 +2716,7 @@ PRE(sys_execve)
       // name of client exe
       tot_args++;
       // args for client exe, skipping [0]
-      arg2copy = (Char**)ARG2;
+      arg2copy = (HChar**)ARG2;
       if (arg2copy && arg2copy[0]) {
          for (i = 1; arg2copy[i]; i++)
             tot_args++;
@@ -2703,7 +2733,7 @@ PRE(sys_execve)
             continue;
          argv[j++] = * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i );
       }
-      argv[j++] = (Char*)ARG1;
+      argv[j++] = (HChar*)ARG1;
       if (arg2copy && arg2copy[0])
          for (i = 1; arg2copy[i]; i++)
             argv[j++] = arg2copy[i];
@@ -2761,7 +2791,7 @@ PRE(sys_execve)
    }
 
    if (0) {
-      Char **cpp;
+      HChar **cpp;
       VG_(printf)("exec: %s\n", path);
       for (cpp = argv; cpp && *cpp; cpp++)
          VG_(printf)("argv: %s\n", *cpp);
@@ -3504,7 +3534,7 @@ PRE(sys_mprotect)
       vg_assert(aseg);
 
       if (grows == VKI_PROT_GROWSDOWN) {
-         rseg = VG_(am_next_nsegment)( (NSegment*)aseg, False/*backwards*/ );
+         rseg = VG_(am_next_nsegment)( aseg, False/*backwards*/ );
          if (rseg &&
              rseg->kind == SkResvn &&
              rseg->smode == SmUpper &&
@@ -3517,7 +3547,7 @@ PRE(sys_mprotect)
             SET_STATUS_Failure( VKI_EINVAL );
          }
       } else if (grows == VKI_PROT_GROWSUP) {
-         rseg = VG_(am_next_nsegment)( (NSegment*)aseg, True/*forwards*/ );
+         rseg = VG_(am_next_nsegment)( aseg, True/*forwards*/ );
          if (rseg &&
              rseg->kind == SkResvn &&
              rseg->smode == SmLower &&
@@ -3615,7 +3645,7 @@ PRE(sys_open)
       cloned fd back to the start. */
    {
       HChar  name[30];
-      Char*  arg1s = (Char*) ARG1;
+      HChar* arg1s = (HChar*) ARG1;
       SysRes sres;
 
       VG_(sprintf)(name, "/proc/%d/cmdline", VG_(getpid)());
@@ -3624,6 +3654,31 @@ PRE(sys_open)
          )
       {
          sres = VG_(dup)( VG_(cl_cmdline_fd) );
+         SET_STATUS_from_SysRes( sres );
+         if (!sr_isError(sres)) {
+            OffT off = VG_(lseek)( sr_Res(sres), 0, VKI_SEEK_SET );
+            if (off < 0)
+               SET_STATUS_Failure( VKI_EMFILE );
+         }
+         return;
+      }
+   }
+
+   /* Handle the case where the open is of /proc/self/auxv or
+      /proc/<pid>/auxv, and just give it a copy of the fd for the
+      fake file we cooked up at startup (in m_main).  Also, seek the
+      cloned fd back to the start. */
+   {
+      HChar  name[30];
+      HChar* arg1s = (HChar*) ARG1;
+      SysRes sres;
+
+      VG_(sprintf)(name, "/proc/%d/auxv", VG_(getpid)());
+      if (ML_(safe_to_deref)( arg1s, 1 ) &&
+          (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, "/proc/self/auxv"))
+         )
+      {
+         sres = VG_(dup)( VG_(cl_auxv_fd) );
          SET_STATUS_from_SysRes( sres );
          if (!sr_isError(sres)) {
             OffT off = VG_(lseek)( sr_Res(sres), 0, VKI_SEEK_SET );
@@ -3647,7 +3702,7 @@ POST(sys_open)
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
       if (VG_(clo_track_fds))
-         ML_(record_fd_open_with_given_name)(tid, RES, (Char*)ARG1);
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG1);
    }
 }
 
@@ -3705,7 +3760,7 @@ POST(sys_creat)
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
       if (VG_(clo_track_fds))
-         ML_(record_fd_open_with_given_name)(tid, RES, (Char*)ARG1);
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG1);
    }
 }
 
@@ -3763,7 +3818,7 @@ PRE(sys_readlink)
        * /proc/<pid>/exe.
        */
       HChar name[25];
-      Char* arg1s = (Char*) ARG1;
+      HChar* arg1s = (HChar*) ARG1;
       VG_(sprintf)(name, "/proc/%d/exe", VG_(getpid)());
       if (ML_(safe_to_deref)(arg1s, 1) &&
           (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, "/proc/self/exe"))
@@ -4184,6 +4239,13 @@ POST(sys_sigaltstack)
       POST_MEM_WRITE( ARG2, sizeof(vki_stack_t));
 }
 
+PRE(sys_sethostname)
+{
+   PRINT("sys_sethostname ( %#lx, %ld )", ARG1,ARG2);
+   PRE_REG_READ2(long, "sethostname", char *, name, int, len);
+   PRE_MEM_READ( "sethostname(name)", ARG1, ARG2 );
+}
+
 #undef PRE
 #undef POST
 
@@ -4192,4 +4254,3 @@ POST(sys_sigaltstack)
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/
-

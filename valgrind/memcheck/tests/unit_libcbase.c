@@ -302,9 +302,9 @@ void test_strtoll_and_strtod(void)
 {
    // For VG_(strtoll*)()
    typedef struct {
-      Char* str;        // The string to convert.
+      HChar* str;        // The string to convert.
       Long  res;        // The result.
-      Char  endptr_val; // The char one past the end of the converted text.
+      HChar  endptr_val; // The char one past the end of the converted text.
    } StrtollInputs;
 
    // VG_(strtoll10)()
@@ -342,8 +342,8 @@ void test_strtoll_and_strtod(void)
       // Nb: We test the results against strtoll() as well.
       int i;
       for (i = 0; i < (sizeof(a) / sizeof(StrtollInputs)); i++) {
-         Char* endptr1;
-         char* endptr2;
+         HChar* endptr1;
+         HChar* endptr2;
          Long      res1 = VG_(strtoll10)(a[i].str, &endptr1);
          long long res2 =     strtoll   (a[i].str, &endptr2, 10);
          //printf("res1 = %lld, *endptr1 = '%c'\n", res1, *endptr1);
@@ -397,8 +397,8 @@ void test_strtoll_and_strtod(void)
       // Nb: We test the results against strtoll() as well.
       int i;
       for (i = 0; i < (sizeof(a) / sizeof(StrtollInputs)); i++) {
-         Char* endptr1;
-         char* endptr2;
+         HChar* endptr1;
+         HChar* endptr2;
          Long      res1 = VG_(strtoll16)(a[i].str, &endptr1);
          long long res2 =     strtoll   (a[i].str, &endptr2, 16);
          //printf("  res1 = %lld, *endptr1 = '%c'\n", res1, *endptr1);

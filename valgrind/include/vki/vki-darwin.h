@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2012 Apple Inc.
+   Copyright (C) 2007-2013 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -1039,6 +1039,16 @@ struct ByteRangeLockPB2
 #include <sys/aio.h>
 
 #define vki_aiocb aiocb
+
+
+#include <netinet/tcp.h>
+
+#define VKI_TCP_NODELAY  TCP_NODELAY
+
+
+#include <netinet/in.h>
+
+#define VKI_IPPROTO_TCP  IPPROTO_TCP
 
 
 // XXX: for some reason when I #include <sys/kernel_types.h> I get a syntax

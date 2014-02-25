@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -69,7 +69,7 @@ static inline Bool is_sane_TId ( ThreadId tid )
           && tid != VG_INVALID_THREADID;
 }
 
-static void* sg_malloc ( HChar* cc, SizeT n ) {
+static void* sg_malloc ( const HChar* cc, SizeT n ) {
    void* p;
    tl_assert(n > 0);
    p = VG_(malloc)( cc, n );
@@ -146,7 +146,7 @@ static Addr Addr__max ( Addr a1, Addr a2 ) {
    vectors describe the same set of variables but are not structurally
    identical. */
 
-static inline Bool StackBlock__sane ( StackBlock* fb )
+static inline Bool StackBlock__sane ( const StackBlock* fb )
 {
    if (fb->name[ sizeof(fb->name)-1 ] != 0)
       return False;
@@ -158,7 +158,7 @@ static inline Bool StackBlock__sane ( StackBlock* fb )
 }
 
 /* Generate an arbitrary total ordering on StackBlocks. */
-static Word StackBlock__cmp ( StackBlock* fb1, StackBlock* fb2 )
+static Word StackBlock__cmp ( const StackBlock* fb1, const StackBlock* fb2 )
 {
    Word r;
    tl_assert(StackBlock__sane(fb1));
@@ -261,7 +261,7 @@ static XArray* /* of StackBlock */
    UWord key, val;
 
    /* First, normalise, as per comments above. */
-   VG_(setCmpFnXA)( orig, (Int(*)(void*,void*))StackBlock__cmp );
+   VG_(setCmpFnXA)( orig, (XACmpFn_t)StackBlock__cmp );
    VG_(sortXA)( orig );
 
    /* Now get rid of any exact duplicates. */
@@ -477,7 +477,7 @@ typedef
    }
    StackTreeNode;
 
-static void pp_StackTree ( WordFM* sitree, HChar* who )
+static void pp_StackTree ( WordFM* sitree, const HChar* who )
 {
    UWord keyW, valW;
    VG_(printf)("<<< BEGIN pp_StackTree %s\n", who );
@@ -637,7 +637,7 @@ static void GlobalTreeNode__pp ( GlobalTreeNode* nd ) {
 }
 
 static void GlobalTree__pp ( WordFM* /* of (GlobalTreeNode,void) */ gitree,
-                             HChar* who )
+                             const HChar* who )
 {
    UWord keyW, valW;
    GlobalTreeNode* nd;
@@ -944,7 +944,7 @@ static void gen_delta_str ( /*OUT*/HChar* buf,
    messages. */
 static void show_Invar( HChar* buf, Word nBuf, Invar* inv, Word depth )
 {
-   HChar* str;
+   const HChar* str;
    tl_assert(nBuf >= 128);
    buf[0] = 0;
    switch (inv->tag) {
@@ -1016,7 +1016,7 @@ static void QCache__invalidate ( QCache* qc ) {
    qc->nInUse = 0;
 }
 
-static void QCache__pp ( QCache* qc, HChar* who )
+static void QCache__pp ( QCache* qc, const HChar* who )
 {
    Word i;
    VG_(printf)("<<< QCache with %ld elements (%s)\n", qc->nInUse, who);

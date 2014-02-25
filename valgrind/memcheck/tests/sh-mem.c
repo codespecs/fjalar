@@ -41,7 +41,7 @@ U8 build(int size, U1 byte)
    U8 mask = 0;
    U8 shres;
    U8 res = 0xffffffffffffffffULL, res2;
-   VALGRIND_MAKE_MEM_UNDEFINED(&res, 8);
+   (void)VALGRIND_MAKE_MEM_UNDEFINED(&res, 8);
    assert(1 == size || 2 == size || 4 == size || 8 == size);
 
    for (i = 0; i < size; i++) {
@@ -89,7 +89,8 @@ int main(void)
    U1 *undefA, expected_byte, expected_byte_alt;
 
    if (0 == RUNNING_ON_VALGRIND) {
-      fprintf(stderr, "error: this program only works when run under Valgrind\n");
+      fprintf(stderr,
+              "error: this program only works when run under Valgrind\n");
       exit(1);
    }
 
@@ -115,7 +116,7 @@ int main(void)
    //
    // which is useful for testing below.
    undefA = calloc(1, 256);         // one for each possible undefinedness value
-   VALGRIND_MAKE_MEM_UNDEFINED(undefA, 256);
+   (void)VALGRIND_MAKE_MEM_UNDEFINED(undefA, 256);
    for (i = 0; i < 256; i++) {
       undefA[i] &= i; 
    }
@@ -131,7 +132,8 @@ int main(void)
    // when doing shifting/masking and stuff like that.
 
 #define DO(NNN, Ty, ITy, isF4) \
-   fprintf(stderr, "-- NNN: %d %s %s ------------------------\n", NNN, #Ty, #ITy); \
+   fprintf(stderr, "-- NNN: %d %s %s ------------------------\n", \
+           NNN, #Ty, #ITy); \
    /* For all of the alignments from (0..NNN-1), eg. if NNN==4, we do */ \
    /* alignments of 0, 1, 2, 3. */ \
    for (h = 0; h < NNN; h++) { \
@@ -155,8 +157,8 @@ int main(void)
            /* the output of build() into a variable of type 'Ty'. */ \
             U8  tmpDef     = tmp; \
             ITy undefN_ITyDef = undefN_ITy; \
-            VALGRIND_MAKE_MEM_DEFINED(&tmpDef,        8  ); \
-            VALGRIND_MAKE_MEM_DEFINED(&undefN_ITyDef, NNN); \
+            (void)VALGRIND_MAKE_MEM_DEFINED(&tmpDef,        8  );       \
+            (void)VALGRIND_MAKE_MEM_DEFINED(&undefN_ITyDef, NNN);       \
             assert(tmpDef == (U8)undefN_ITyDef); \
          } \
  \
@@ -168,7 +170,6 @@ int main(void)
           * undoubtedly nonsense, but that's not a problem here). */ \
          undefN_Ty = (Ty*)&undefN_ITy; \
          if (0 == j % 32) fprintf(stderr, "%d...", j); /* progress meter */ \
- \
  \
          /* A nasty exception: most machines so far (x86/PPC32/PPC64)
           * don't have 32-bit floats.  So 32-bit floats get cast to 64-bit
@@ -190,7 +191,8 @@ int main(void)
          /* STOREVn.  Note that we use the first element of the undefN_Ty
           * array, as explained above. */ \
          for (i = 0; i < nN-1; i++) { aNb[i] = undefN_Ty[0]; } \
-         check_all(h, n-NNN+h, expected_byte, expected_byte_alt, "STOREVn", h); \
+         check_all(h, n-NNN+h, expected_byte, expected_byte_alt, \
+                   "STOREVn", h); \
  \
          /* LOADVn -- by copying the values to one place and then back, 
           * we ensure that LOADVn gets exercised. */ \

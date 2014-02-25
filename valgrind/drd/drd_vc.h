@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -87,7 +87,7 @@ void DRD_(vc_min)(VectorClock* const result,
 void DRD_(vc_combine)(VectorClock* const result,
                       const VectorClock* const rhs);
 void DRD_(vc_print)(const VectorClock* const vc);
-char* DRD_(vc_aprint)(const VectorClock* const vc);
+HChar* DRD_(vc_aprint)(const VectorClock* const vc);
 void DRD_(vc_check)(const VectorClock* const vc);
 void DRD_(vc_test)(void);
 

@@ -7,7 +7,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2012 Nicholas Nethercote
+   Copyright (C) 2002-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -44,15 +44,10 @@ typedef struct {
 // initialized to UNDEFINED_CACHE.
 #define UNDEFINED_CACHE     { -1, -1, -1 }
 
-// Gives the auto-detected configuration of I1, D1 and LL caches.  They get
-// overridden by any cache configurations specified on the command line.
-void VG_(configure_caches)(cache_t* I1c, cache_t* D1c, cache_t* LLc,
-                           Bool all_caches_clo_defined);
-
 // If arg is a command line option configuring I1 or D1 or LL cache,
 // then parses arg to set the relevant cache_t elements.
 // Returns True if arg is a cache command line option, False otherwise.
-Bool VG_(str_clo_cache_opt)(Char *arg,
+Bool VG_(str_clo_cache_opt)(const HChar *arg,
                             cache_t* clo_I1c,
                             cache_t* clo_D1c,
                             cache_t* clo_LLc);

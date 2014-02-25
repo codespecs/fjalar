@@ -27,7 +27,7 @@
 #include "regcache.h"
 
 #include "pub_core_aspacemgr.h"
-#include "pub_tool_machine.h"
+#include "pub_core_machine.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_transtab.h"
 #include "pub_core_gdbserver.h" 
@@ -320,7 +320,7 @@ void transfer_register (ThreadId tid, int abs_regno, void * buf,
 }
 
 static
-char* target_xml (Bool shadow_mode)
+const char* target_xml (Bool shadow_mode)
 {
    if (shadow_mode) {
       return "powerpc-altivec64l-valgrind.xml";

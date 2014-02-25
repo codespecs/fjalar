@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011 Bart Van Assche <bvanassche@acm.org>.
+   Copyright (C) 2011-2013 Bart Van Assche <bvanassche@acm.org>.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -32,12 +32,14 @@
 #ifndef __PRIV_SCHED_LOCK_H
 #define __PRIV_SCHED_LOCK_H
 
+#include "pub_core_basics.h"   // Bool
+
 struct sched_lock;
 
 enum SchedLockType { sched_lock_generic, sched_lock_ticket };
 
 Bool ML_(set_sched_lock_impl)(const enum SchedLockType t);
-const Char *ML_(get_sched_lock_name)(void);
+const HChar *ML_(get_sched_lock_name)(void);
 struct sched_lock *ML_(create_sched_lock)(void);
 void ML_(destroy_sched_lock)(struct sched_lock *p);
 int ML_(get_sched_lock_owner)(struct sched_lock *p);

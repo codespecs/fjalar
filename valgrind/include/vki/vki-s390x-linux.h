@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright IBM Corp. 2010-2012
+   Copyright IBM Corp. 2010-2013
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -369,6 +369,7 @@ struct vki_f_owner_ex {
 
 #define VKI_SO_TYPE         3
 
+#define VKI_SO_ATTACH_FILTER        26
 
 //----------------------------------------------------------------------
 // From linux-2.6.16.60/include/asm-s390/sockios.h
@@ -602,6 +603,8 @@ struct vki_termios {
 #define VKI_TIOCGPTN	_VKI_IOR('T',0x30, unsigned int) /* Get Pty Number (of pty-mux device) */
 #define VKI_TIOCSPTLCK	_VKI_IOW('T',0x31, int)  /* Lock/unlock Pty */
 
+#define VKI_FIONCLEX	0x5450
+#define VKI_FIOCLEX	0x5451
 #define VKI_FIOASYNC	        0x5452
 
 #define VKI_TIOCSERGETLSR       0x5459 /* Get line status register */

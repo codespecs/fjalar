@@ -15,6 +15,14 @@
 <xi:include href="../../cachegrind/docs/cg_annotate-manpage.xml" parse="xml"  
     xmlns:xi="http://www.w3.org/2001/XInclude" />
 
+<!-- cg_diff -->
+<xi:include href="../../cachegrind/docs/cg_diff-manpage.xml" parse="xml"
+    xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+<!-- cg_merge -->
+<xi:include href="../../cachegrind/docs/cg_merge-manpage.xml" parse="xml"
+    xmlns:xi="http://www.w3.org/2001/XInclude" />
+
 <!-- callgrind_annotate -->
 <xi:include href="../../callgrind/docs/callgrind_annotate-manpage.xml" parse="xml"  
     xmlns:xi="http://www.w3.org/2001/XInclude" />
@@ -26,6 +34,14 @@
 <!-- ms_print -->
 <xi:include href="../../massif/docs/ms_print-manpage.xml" parse="xml"  
     xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+<!-- valgrind-listener -->
+<xi:include href="../../auxprogs/docs/valgrind-listener-manpage.xml"
+    parse="xml" xmlns:xi="http://www.w3.org/2001/XInclude" />
+
+<!-- vgdb -->
+<xi:include href="../../coregrind/docs/vgdb-manpage.xml"
+    parse="xml" xmlns:xi="http://www.w3.org/2001/XInclude" />
 
 </set>
 

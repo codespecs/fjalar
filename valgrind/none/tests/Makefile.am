@@ -25,6 +25,9 @@ endif
 if VGCONF_ARCHS_INCLUDE_MIPS32
 SUBDIRS += mips32
 endif
+if VGCONF_ARCHS_INCLUDE_MIPS64
+SUBDIRS += mips64
+endif
 
 # OS-specific tests
 if VGCONF_OS_IS_LINUX
@@ -39,7 +42,8 @@ if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
 SUBDIRS += x86-linux
 endif
 
-DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm s390x mips32 linux darwin x86-linux .
+DIST_SUBDIRS = x86 amd64 ppc32 ppc64 arm s390x mips32 mips64 linux darwin \
+               x86-linux .
 
 dist_noinst_SCRIPTS = \
 	filter_cmdline0 \
@@ -182,7 +186,6 @@ check_PROGRAMS = \
 	floored fork fucomip \
 	mmap_fcntl_bug \
 	munmap_exe map_unaligned map_unmap mq \
-	nestedfns \
 	pending \
 	procfs-cmdline-exe \
 	pth_atfork1 pth_blockedsig pth_cancel1 pth_cancel2 pth_cvsimple \
@@ -207,6 +210,10 @@ check_PROGRAMS = \
 	coolo_sigaction \
 	gxx304 \
 	process_vm_readv_writev
+
+if HAVE_NESTED_FUNCTIONS
+   check_PROGRAMS += nestedfns
+endif
 
 # DDD:
 # - manythreads and thread-exits have lots of this:

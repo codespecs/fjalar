@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2012 Philippe Waroquiers
+   Copyright (C) 2011-2013 Philippe Waroquiers
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -31,6 +31,7 @@
 #define __PUB_CORE_GDBSERVER_H
 
 #include "pub_tool_gdbserver.h"
+#include "pub_core_threadstate.h"   // VgSchedReturnCode
 
 /* Return the path prefix for the named pipes (FIFOs) used by vgdb/gdb
    to communicate with valgrind */
@@ -48,6 +49,17 @@ void VG_(gdbserver_prerun_action) (ThreadId tid);
 // to handle this incoming vgdb request.                                
 extern Bool VG_(gdbserver_activity) (ThreadId tid);
 
+// If connected to GDB, VG_(gdbserver_exit) reports to GDB that the process
+// is about to exit.
+// gdbserver is then stopped (using VG_(gdbserver) (0))
+void VG_(gdbserver_exit) (ThreadId tid, VgSchedReturnCode tids_schedretcode);
+
+/* On systems that defines PR_SET_PTRACER, verify if ptrace_scope is
+   is permissive enough for vgdb or --db-attach=yes.
+   Otherwise, call set_ptracer.
+   This is especially aimed at Ubuntu >= 10.10 which has added
+   the ptrace_scope context. */
+void VG_(set_ptracer)(void);
 
 /* Called by low level to insert or remove a break or watch point.
    Break or watch point implementation is done using help from the tool.
@@ -71,17 +83,25 @@ extern Bool VG_(gdbserver_activity) (ThreadId tid);
 Bool VG_(gdbserver_point) (PointKind kind, Bool insert, 
                            Addr addr, int len);
 
+/* True if there is a breakpoint at addr. */
+Bool VG_(has_gdbserver_breakpoint) (Addr addr);
+
 /* Entry point invoked by vgdb when it uses ptrace to cause a gdbserver
    invocation. A magic value is passed by vgdb in check as a verification
    that the call has been properly pushed by vgdb. */
 extern void VG_(invoke_gdbserver) ( int check );
 
-// To be called before delivering a signal.
-// Returns True if gdb user asks to pass the signal to the client.
+// To be called by core (m_signals.c) before delivering a signal.
+// Returns True unless gdb user asks to not pass the signal to the client.
 // Note that if the below returns True, the signal might
 // still be ignored if this is the action desired by the
 // guest program.
 extern Bool VG_(gdbserver_report_signal) (Int signo, ThreadId tid);
+
+/* Entry point invoked by scheduler.c to execute the request 
+   VALGRIND_CLIENT_MONITOR_COMMAND.
+   Returns True if command was not recognised. */
+extern Bool VG_(client_monitor_command) (HChar* cmd);
 
 /* software_breakpoint, single step and jump support ------------------------*/
 /* VG_(instrument_for_gdbserver_if_needed) allows to do "standard and easy"

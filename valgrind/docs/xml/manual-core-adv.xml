@@ -224,17 +224,35 @@ tool-specific macros).</para>
   </varlistentry>
 
   <varlistentry>
+   <term><command><computeroutput>VALGRIND_MONITOR_COMMAND(command)</computeroutput>:</command></term>
+   <listitem>
+    <para>Execute the given monitor command (a string).
+    Returns 0 if command is recognised. Returns 1 if command is not recognised.
+    Note that some monitor commands provide access to a functionality
+    also accessible via a specific client request. For example,
+    memcheck leak search can be requested from the client program
+    using VALGRIND_DO_LEAK_CHECK or via the monitor command "leak_search".
+    Note that the syntax of the command string is only verified at
+    run-time. So, if it exists, it is preferrable to use a specific
+    client request to have better compile time verifications of the
+    arguments.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
    <term><command><computeroutput>VALGRIND_STACK_REGISTER(start, end)</computeroutput>:</command></term>
    <listitem>
     <para>Registers a new stack.  Informs Valgrind that the memory range
     between start and end is a unique stack.  Returns a stack identifier
     that can be used with other
     <computeroutput>VALGRIND_STACK_*</computeroutput> calls.</para>
-    <para>Valgrind will use this information to determine if a change to
-    the stack pointer is an item pushed onto the stack or a change over
-    to a new stack.  Use this if you're using a user-level thread package
-    and are noticing spurious errors from Valgrind about uninitialized
-    memory reads.</para>
+    <para>Valgrind will use this information to determine if a change
+    to the stack pointer is an item pushed onto the stack or a change
+    over to a new stack.  Use this if you're using a user-level thread
+    package and are noticing crashes in stack trace recording or
+    spurious errors from Valgrind about uninitialized memory
+    reads.</para>
 
     <para><command>Warning:</command> Unfortunately, this client request is
     unreliable and best avoided.</para>
@@ -276,9 +294,9 @@ tool-specific macros).</para>
 
 
 
-
-<sect1 id="manual-core-adv.gdbserver" 
-       xreflabel="Debugging your program using Valgrind's gdbserver and GDB">
+<!-- Referenced from both the manual and manpage -->
+<sect1 id="&vg-gdbserver-id;"
+       xreflabel="&vg-gdbserver-label;">
 <title>Debugging your program using Valgrind gdbserver and GDB</title>
 
 <para>A program running under Valgrind is not executed directly by the
@@ -364,7 +382,7 @@ and gives the results back to GDB.
 <para>GDB can use various kinds of channels (TCP/IP, serial line, etc)
 to communicate with the gdbserver.  In the case of Valgrind's
 gdbserver, communication is done via a pipe and a small helper program
-called <xref linkend="manual-core-adv.vgdb"/>, which acts as an
+called <xref linkend="&vg-vgdb-id;"/>, which acts as an
 intermediary.  If no GDB is in use, vgdb can also be
 used to send monitor commands to the Valgrind gdbserver from a shell
 command line.
@@ -566,10 +584,12 @@ works across all devices and scenarios.
 
 <para> The Valgrind gdbserver provides additional Valgrind-specific
 functionality via "monitor commands".  Such monitor commands can be
-sent from the GDB command line or from the shell command line.  See
-<xref linkend="manual-core-adv.valgrind-monitor-commands"/> for the
-list of the Valgrind core monitor commands available regardless of
-the Valgrind tool selected.
+sent from the GDB command line or from the shell command line or
+requested by the client program using the VALGRIND_MONITOR_COMMAND
+client request.  See
+<xref linkend="&vg-monitor-id;"/> for the
+list of the Valgrind core monitor commands available regardless of the
+Valgrind tool selected.
 </para>
 
 <para>The following tools provide tool-specific monitor commands:
@@ -637,7 +657,7 @@ ambiguous, the Valgrind gdbserver will report the list of commands (or
 argument values) that can match:
 <programlisting><![CDATA[
 (gdb) mo v. n
-v. can match v.set v.info v.wait v.kill v.translate
+v. can match v.set v.info v.wait v.kill v.translate v.do
 (gdb) mo v.i n
 n_errs_found 0 n_errs_shown 0 (vgdb-error 0)
 (gdb) 
@@ -975,7 +995,8 @@ $5 = 36
 
      <para>Connecting to or interrupting a Valgrind process blocked in
      a system call requires the "ptrace" system call to be usable.
-     This may be disabled in your kernel for security reasons.</para>
+     This may be disabled in your kernel for security reasons.
+     </para>
 
      <para>When running your program, Valgrind's scheduler
      periodically checks whether there is any work to be handled by
@@ -1023,24 +1044,9 @@ $5 = 36
      <para>Ubuntu versions 10.10 and later may restrict the scope of
      ptrace to the children of the process calling ptrace.  As the
      Valgrind process is not a child of vgdb, such restricted scoping
-     causes the ptrace calls to fail.  To avoid that, when Valgrind
-     gdbserver receives the first packet from a vgdb, it calls
-     <computeroutput>prctl(PR_SET_PTRACER, vgdb_pid, 0, 0,
-     0)</computeroutput> to ensure vgdb can reliably use ptrace.
-     Once <computeroutput>vgdb_pid</computeroutput> has been marked as
-     a ptracer, vgdb can then properly force the invocation of
-     Valgrind gdbserver when needed.  To ensure the vgdb is set as a
-     ptracer before the Valgrind process gets blocked in a system
-     call, connect your GDB to the Valgrind gdbserver at startup by
-     passing <option>--vgdb-error=0</option> to Valgrind.</para>
-
-     <para>Note that
-     this "set ptracer" technique does not solve the problem in the
-     case where a standalone vgdb process wants to connect to the
-     gdbserver, since the first command to be sent by a standalone
-     vgdb must wake up the Valgrind process before Valgrind gdbserver
-     will mark vgdb as a ptracer.
-     </para>
+     causes the ptrace calls to fail.  To avoid that, Valgrind will
+     automatically allow all processes belonging to the same userid to
+     "ptrace" a Valgrind process, by using PR_SET_PTRACER.</para>
 
      <para>Unblocking processes blocked in system calls is not
      currently implemented on Mac OS X and Android.  So you cannot
@@ -1086,8 +1092,9 @@ $5 = 36
 
 </sect2>
 
-<sect2 id="manual-core-adv.vgdb"
-       xreflabel="vgdb">
+<!-- Referenced from both the manual and manpage -->
+<sect2 id="&vg-vgdb-id;"
+       xreflabel="&vg-vgdb-label;">
 <title>vgdb command line options</title>
 <para> Usage: <computeroutput>vgdb [OPTION]... [[-c] COMMAND]...</computeroutput></para>
 
@@ -1095,7 +1102,8 @@ $5 = 36
 intermediary between Valgrind and GDB or a shell.
 Therefore, it has two usage modes:
 </para>
-<orderedlist>
+<!-- start of xi:include in the manpage -->
+<orderedlist id="vgdb.desc.modes">
   <listitem id="manual-core-adv.vgdb-standalone" xreflabel="vgdb standalone">
     <para>As a standalone utility, it is used from a shell command
     line to send monitor commands to a process running under
@@ -1114,28 +1122,33 @@ Therefore, it has two usage modes:
   </listitem>
 
 </orderedlist>
+<!-- end of xi:include in the manpage -->
 
 <para><computeroutput>vgdb</computeroutput> accepts the following
 options:</para>
-<itemizedlist>
-  <listitem>
-    <para><option>--pid=&lt;number&gt;</option>: specifies the PID of
+<!-- start of xi:include in the manpage -->
+<variablelist id="vgdb.opts.list">
+  <varlistentry>
+    <term><option>--pid=&lt;number&gt;</option></term>
+    <listitem><para>Specifies the PID of
     the process to which vgdb must connect to.  This option is useful
     in case more than one Valgrind gdbserver can be connected to.  If
     the <option>--pid</option> argument is not given and multiple
     Valgrind gdbserver processes are running, vgdb will report the
-    list of such processes and then exit.</para>
-  </listitem>
+    list of such processes and then exit.</para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>--vgdb-prefix</option> must be given to both
+  <varlistentry>
+    <term><option>--vgdb-prefix</option></term>
+    <listitem><para>Must be given to both
     Valgrind and vgdb if you want to change the default prefix for the
     FIFOs (named pipes) used for communication between the Valgrind
-    gdbserver and vgdb. </para>
-  </listitem>
+    gdbserver and vgdb.</para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>--wait=&lt;number&gt;</option> instructs vgdb to
+  <varlistentry>
+    <term><option>--wait=&lt;number&gt;</option></term>
+    <listitem><para>Instructs vgdb to
     search for available Valgrind gdbservers for the specified number
     of seconds.  This makes it possible start a vgdb process 
     before starting the Valgrind gdbserver with which you intend the
@@ -1146,11 +1159,12 @@ options:</para>
     "target remote" command, you must set the GDB remotetimeout to a
     value bigger than the --wait argument value.  See option
     <option>--max-invoke-ms</option> (just below)
-    for an example of setting the remotetimeout value.</para>
-  </listitem>
+    for an example of setting the remotetimeout value.</para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>--max-invoke-ms=&lt;number&gt;</option> gives the
+  <varlistentry>
+    <term><option>--max-invoke-ms=&lt;number&gt;</option></term>
+    <listitem><para>Gives the
     number of milliseconds after which vgdb will force the invocation
     of gdbserver embedded in Valgrind.  The default value is 100
     milliseconds. A value of 0 disables forced invocation. The forced
@@ -1168,18 +1182,20 @@ options:</para>
     <screen><![CDATA[
     (gdb) set remotetimeout 6
     ]]></screen>
-    </para>
-  </listitem>
+    </para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>--cmd-time-out=&lt;number&gt;</option> instructs a
+  <varlistentry>
+    <term><option>--cmd-time-out=&lt;number&gt;</option></term>
+    <listitem><para>Instructs a
     standalone vgdb to exit if the Valgrind gdbserver it is connected
     to does not process a command in the specified number of seconds.
-    The default value is to never time out.</para>
-  </listitem>
+    The default value is to never time out.</para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>--port=&lt;portnr&gt;</option> instructs vgdb to
+  <varlistentry>
+    <term><option>--port=&lt;portnr&gt;</option></term>
+    <listitem><para>Instructs vgdb to
     use tcp/ip and listen for GDB on the specified port nr rather than
     to use a pipe to communicate with GDB. Using tcp/ip allows to have
     GDB running on one computer and debugging a Valgrind process
@@ -1197,46 +1213,52 @@ gdb prog
 (gdb) target remote targetip:1234
 ]]></screen>
     where targetip is the ip address or hostname of the target computer.
-    </para>
-  </listitem>
+    </para></listitem>
+  </varlistentry>
    
-  <listitem>
-    <para><option>-c</option> To give more than one command to a
+  <varlistentry>
+    <term><option>-c</option></term>
+    <listitem><para>To give more than one command to a
     standalone vgdb, separate the commands by an
     option <option>-c</option>. Example:
     <screen><![CDATA[
 vgdb v.set log_output -c leak_check any
-]]></screen></para>
-  </listitem>  
+]]></screen></para></listitem>
+  </varlistentry>  
 
-  <listitem>
-    <para><option>-l</option> instructs a standalone vgdb to report
+  <varlistentry>
+    <term><option>-l</option></term>
+    <listitem><para>Instructs a standalone vgdb to report
     the list of the Valgrind gdbserver processes running and then
-    exit.</para>
-  </listitem>
+    exit.</para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>-D</option> instructs a standalone vgdb to show the
+  <varlistentry>
+    <term><option>-D</option></term>
+    <listitem><para>Instructs a standalone vgdb to show the
     state of the shared memory used by the Valgrind gdbserver.  vgdb
     will exit after having shown the Valgrind gdbserver shared memory
-    state.</para>
-  </listitem>
+    state.</para></listitem>
+  </varlistentry>
 
-  <listitem>
-    <para><option>-d</option> instructs vgdb to produce debugging
+  <varlistentry>
+    <term><option>-d</option></term>
+    <listitem><para>Instructs vgdb to produce debugging
     output.  Give multiple <option>-d</option> args to increase the
     verbosity. When giving <option>-d</option> to a relay vgdb, you better
     redirect the standard error (stderr) of vgdb to a file to avoid
-    interaction between GDB and vgdb debugging output.</para>
-  </listitem>
+    interaction between GDB and vgdb debugging output.</para></listitem>
+  </varlistentry>
   
-</itemizedlist>
+</variablelist>
+<!-- end of xi:include in the manpage -->
  
 </sect2>
 
 
-<sect2 id="manual-core-adv.valgrind-monitor-commands" 
-       xreflabel="Valgrind monitor commands">
+<!-- Referenced from both the manual and manpage -->
+<sect2 id="&vg-monitor-id;"
+       xreflabel="&vg-monitor-label;">
 <title>Valgrind monitor commands</title>
 
 <para>This section describes the Valgrind monitor commands, available
@@ -1247,7 +1269,10 @@ commands, refer to <xref linkend="mc-manual.monitor-commands"/>,
 
 <para> The monitor commands can be sent either from a shell command line, by using a
 standalone vgdb, or from GDB, by using GDB's "monitor"
-command (see <xref linkend="manual-core-adv.gdbserver-commandhandling"/>). </para>
+command (see <xref linkend="manual-core-adv.gdbserver-commandhandling"/>).
+They can also be launched by the client program, using the VALGRIND_MONITOR_COMMAND
+client request.
+</para>
 
 <itemizedlist>
   <listitem>
@@ -1268,9 +1293,22 @@ command (see <xref linkend="manual-core-adv.gdbserver-commandhandling"/>). </par
   </listitem>
 
   <listitem>
-    <para><varname>v.info n_errs_found</varname> shows the number of
+    <para><varname>v.info n_errs_found [msg]</varname> shows the number of
     errors found so far, the nr of errors shown so far and the current
-    value of the <option>--vgdb-error</option> argument.</para>
+    value of the <option>--vgdb-error</option> argument. The optional
+    <computeroutput>msg</computeroutput> (one or more words) is appended.
+    Typically, this can be used to insert markers in a process output
+    file between several tests executed in sequence by a process
+    started only once. This allows to associate the errors reported
+    by Valgrind with the specific test that produced these errors.
+    </para>
+  </listitem>
+
+  <listitem>
+    <para><varname>v.info open_fds</varname> shows the list of open file
+    descriptors and details related to the file descriptor.
+    This only works if <option>--track-fds=yes</option>
+    was given at Valgrind startup.</para>
   </listitem>
 
   <listitem>
@@ -1331,6 +1369,17 @@ problems or bugs.</para>
 <itemizedlist>
 
   <listitem>
+    <para><varname>v.do expensive_sanity_check_general</varname>
+    executes various sanity checks. In particular, the sanity of the
+    Valgrind heap is verified. This can be useful if you suspect that
+    your program and/or Valgrind has a bug corrupting Valgrind data
+    structure.  It can also be used when a Valgrind tool
+    reports a client error to the connected GDB, in order to verify
+    the sanity of Valgrind before continuing the execution.
+    </para>
+  </listitem>
+
+  <listitem>
     <para><varname>v.info gdbserver_status</varname> shows the
     gdbserver status. In case of problems (e.g. of communications),
     this shows the values of some relevant Valgrind gdbserver internal
@@ -1352,6 +1401,19 @@ problems or bugs.</para>
     <computeroutput>aspacemgr</computeroutput>. the segment list maintained
     by valgrind address space manager will be output. Note that
     this list of segments is always output on the Valgrind log.
+    </para>
+  </listitem>
+
+  <listitem>
+    <para><varname>v.info exectxt</varname> shows informations about
+    the "executable contexts" (i.e. the stack traces) recorded by
+    Valgrind.  For some programs, Valgrind can record a very high
+    number of such stack traces, causing a high memory usage.  This
+    monitor command shows all the recorded stack traces, followed by
+    some statistics. This can be used to analyse the reason for having
+    a big number of stack traces. Typically, you will use this command
+    if <varname>v.info memory</varname> has shown significant memory
+    usage by the "exectxt" arena.
     </para>
   </listitem>
 
@@ -1486,7 +1548,7 @@ that wildcards are allowed for both sonames and function names.
 The details are discussed below.</para>
 
 <para><computeroutput>VALGRIND_GET_ORIG_FN</computeroutput>: 
-once in the the wrapper, the first priority is
+once in the wrapper, the first priority is
 to get hold of the address of the original (and any other supporting
 information needed).  This is stored in a value of opaque 
 type <computeroutput>OrigFn</computeroutput>.

@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -36,12 +36,12 @@
 /* Dump Part Counter */
 static Int out_counter = 0;
 
-static Char* out_file = 0;
-static Char* out_directory = 0;
+static HChar* out_file = 0;
+static HChar* out_directory = 0;
 static Bool dumps_initialized = False;
 
 /* Command */
-static Char cmdbuf[BUF_LEN];
+static HChar cmdbuf[BUF_LEN];
 
 /* Total reads/writes/misses sum over all dumps and threads.
  * Updated during CC traversal at dump time.
@@ -55,20 +55,20 @@ EventMapping* CLG_(dumpmap) = 0;
  *  print_fn_pos, fprint_apos, fprint_fcost, fprint_jcc,
  *  fprint_fcc_ln, dump_run_info, dump_state_info
  */
-static Char outbuf[FILENAME_LEN + FN_NAME_LEN + OBJ_NAME_LEN + COSTS_LEN];
+static HChar outbuf[FILENAME_LEN + FN_NAME_LEN + OBJ_NAME_LEN + COSTS_LEN];
 
 Int CLG_(get_dump_counter)(void)
 {
   return out_counter;
 }
 
-Char* CLG_(get_out_file)()
+HChar* CLG_(get_out_file)()
 {
     CLG_(init_dumps)();
     return out_file;
 }
 
-Char* CLG_(get_out_directory)()
+HChar* CLG_(get_out_directory)()
 {
     CLG_(init_dumps)();
     return out_directory;
@@ -145,15 +145,15 @@ void init_fpos(FnPos* p)
 
 #if 0
 static __inline__
-static void my_fwrite(Int fd, Char* buf, Int len)
+static void my_fwrite(Int fd, const HChar* buf, Int len)
 {
-	VG_(write)(fd, (void*)buf, len);
+	VG_(write)(fd, buf, len);
 }
 #else
 
 #define FWRITE_BUFSIZE 32000
 #define FWRITE_THROUGH 10000
-static Char fwrite_buf[FWRITE_BUFSIZE];
+static HChar fwrite_buf[FWRITE_BUFSIZE];
 static Int fwrite_pos;
 static Int fwrite_fd = -1;
 
@@ -161,11 +161,11 @@ static __inline__
 void fwrite_flush(void)
 {
     if ((fwrite_fd>=0) && (fwrite_pos>0))
-	VG_(write)(fwrite_fd, (void*)fwrite_buf, fwrite_pos);
+	VG_(write)(fwrite_fd, fwrite_buf, fwrite_pos);
     fwrite_pos = 0;
 }
 
-static void my_fwrite(Int fd, Char* buf, Int len)
+static void my_fwrite(Int fd, const HChar* buf, Int len)
 {
     if (fwrite_fd != fd) {
 	fwrite_flush();
@@ -173,7 +173,7 @@ static void my_fwrite(Int fd, Char* buf, Int len)
     }
     if (len > FWRITE_THROUGH) {
 	fwrite_flush();
-	VG_(write)(fd, (void*)buf, len);
+	VG_(write)(fd, buf, len);
 	return;
     }
     if (FWRITE_BUFSIZE - fwrite_pos <= len) fwrite_flush();
@@ -183,7 +183,7 @@ static void my_fwrite(Int fd, Char* buf, Int len)
 #endif
 
 
-static void print_obj(Char* buf, obj_node* obj)
+static void print_obj(HChar* buf, obj_node* obj)
 {
     //int n;
 
@@ -212,7 +212,7 @@ static void print_obj(Char* buf, obj_node* obj)
 #endif
 }
 
-static void print_file(Char* buf, file_node* file)
+static void print_file(HChar* buf, file_node* file)
 {
     if (CLG_(clo).compress_strings) {
 	CLG_ASSERT(file_dumped != 0);
@@ -231,7 +231,7 @@ static void print_file(Char* buf, file_node* file)
 /*
  * tag can be "fn", "cfn", "jfn"
  */
-static void print_fn(Int fd, Char* buf, Char* tag, fn_node* fn)
+static void print_fn(Int fd, HChar* buf, const HChar* tag, fn_node* fn)
 {
     int p;
     p = VG_(sprintf)(buf, "%s=",tag);
@@ -251,7 +251,7 @@ static void print_fn(Int fd, Char* buf, Char* tag, fn_node* fn)
     my_fwrite(fd, buf, p);
 }
 
-static void print_mangled_fn(Int fd, Char* buf, Char* tag, 
+static void print_mangled_fn(Int fd, HChar* buf, const HChar* tag, 
 			     Context* cxt, int rec_index)
 {
     int p, i;
@@ -346,7 +346,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
     if (!CLG_(clo).mangle_names) {
 	if (last->rec_index != bbcc->rec_index) {
 	    VG_(sprintf)(outbuf, "rec=%d\n\n", bbcc->rec_index);
-	    my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 	    last->rec_index = bbcc->rec_index;
 	    last->cxt = 0; /* reprint context */
 	    res = True;
@@ -361,7 +361,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
 		if (last_from != 0) {
 		    /* switch back to no context */
 		    VG_(sprintf)(outbuf, "frfn=(spontaneous)\n");
-		    my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+		    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 		    res = True;
 		}
 	    }
@@ -376,7 +376,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
     if (last->obj != bbcc->cxt->fn[0]->file->obj) {
 	VG_(sprintf)(outbuf, "ob=");
 	print_obj(outbuf+3, bbcc->cxt->fn[0]->file->obj);
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 	last->obj = bbcc->cxt->fn[0]->file->obj;
 	res = True;
     }
@@ -384,7 +384,7 @@ static Bool print_fn_pos(int fd, FnPos* last, BBCC* bbcc)
     if (last->file != bbcc->cxt->fn[0]->file) {
 	VG_(sprintf)(outbuf, "fl=");
 	print_file(outbuf+3, bbcc->cxt->fn[0]->file);
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 	last->file = bbcc->cxt->fn[0]->file;
 	res = True;
     }
@@ -440,8 +440,8 @@ void init_debug_cache(void)
 static /* __inline__ */
 Bool get_debug_pos(BBCC* bbcc, Addr addr, AddrPos* p)
 {
-    Char file[FILENAME_LEN];
-    Char dir[FILENAME_LEN];
+    HChar file[FILENAME_LEN];
+    HChar dir[FILENAME_LEN];
     Bool found_file_line, found_dirname;
 
     int cachepos = addr % DEBUG_CACHE_SIZE;
@@ -534,13 +534,13 @@ static void fprint_apos(Int fd, AddrPos* curr, AddrPos* last, file_node* func_fi
 	else
 	    VG_(sprintf)(outbuf, "fi=");
 	print_file(outbuf+3, curr->file);
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
     }
 
     if (CLG_(clo).dump_bbs) {
 	if (curr->line != last->line) {
 	    VG_(sprintf)(outbuf, "ln=%d\n", curr->line);
-	    my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 	}
     }
 }
@@ -606,7 +606,7 @@ void fprint_pos(Int fd, AddrPos* curr, AddrPos* last)
 		VG_(sprintf)(outbuf+p, "%u ", curr->line);
 	}
     }
-    my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 }
 
 
@@ -619,7 +619,7 @@ void fprint_cost(int fd, EventMapping* es, ULong* cost)
 {
   int p = CLG_(sprint_mappingcost)(outbuf, es, cost);
   VG_(sprintf)(outbuf+p, "\n");
-  my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+  my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
   return;
 }
 
@@ -692,7 +692,7 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 	if (last->file != target.file) {
 	    VG_(sprintf)(outbuf, "jfi=");
 	    print_file(outbuf+4, target.file);
-	    my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 	}
 	
 	if (jcc->from->cxt != jcc->to->cxt) {
@@ -713,7 +713,7 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
 	    VG_(sprintf)(outbuf, "jump=%llu ",
 			 jcc->call_counter);
 	}
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 		
 	fprint_pos(fd, &target, last);
 	my_fwrite(fd, "\n", 1);
@@ -731,14 +731,14 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
     if (jcc->from->cxt->fn[0]->file->obj != obj) {
 	VG_(sprintf)(outbuf, "cob=");
 	print_obj(outbuf+4, obj);
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
     }
 
     /* file of called position different to current file? */
     if (last->file != file) {
 	VG_(sprintf)(outbuf, "cfi=");
 	print_file(outbuf+4, file);
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
     }
 
     if (CLG_(clo).mangle_names)
@@ -749,7 +749,7 @@ static void fprint_jcc(Int fd, jCC* jcc, AddrPos* curr, AddrPos* last, ULong eco
     if (!CLG_(is_zero_cost)( CLG_(sets).full, jcc->cost)) {
       VG_(sprintf)(outbuf, "calls=%llu ", 
 		   jcc->call_counter);
-	my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+	my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 
 	fprint_pos(fd, &target, last);
 	my_fwrite(fd, "\n", 1);	
@@ -893,7 +893,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
 			      currCost->cost, bbcc->skipped );
 #if 0
       VG_(sprintf)(outbuf, "# Skipped\n");
-      my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+      my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 #endif
       fprint_fcost(fd, currCost, last);
     }
@@ -915,7 +915,7 @@ static Bool fprint_bbcc(Int fd, BBCC* bbcc, AddrPos* last)
       fprint_apos(fd, &(currCost->p), last, bbcc->cxt->fn[0]->file);
       fprint_fcost(fd, currCost, last);
     }
-    if (CLG_(clo).dump_bbs) my_fwrite(fd, (void*)"\n", 1);
+    if (CLG_(clo).dump_bbs) my_fwrite(fd, "\n", 1);
     
     /* when every cost was immediatly written, we must have done so,
      * as this function is only called when there's cost in a BBCC
@@ -1251,7 +1251,7 @@ BBCC** prepare_dump(void)
 
 
 
-static void fprint_cost_ln(int fd, Char* prefix,
+static void fprint_cost_ln(int fd, const HChar* prefix,
 			   EventMapping* em, ULong* cost)
 {
     int p;
@@ -1259,11 +1259,11 @@ static void fprint_cost_ln(int fd, Char* prefix,
     p = VG_(sprintf)(outbuf, "%s", prefix);
     p += CLG_(sprint_mappingcost)(outbuf + p, em, cost);
     VG_(sprintf)(outbuf + p, "\n");
-    my_fwrite(fd, (void*)outbuf, VG_(strlen)(outbuf));
+    my_fwrite(fd, outbuf, VG_(strlen)(outbuf));
 }
 
 static ULong bbs_done = 0;
-static Char* filename = 0;
+static HChar* filename = 0;
 
 static
 void file_err(void)
@@ -1283,7 +1283,7 @@ void file_err(void)
  *
  * Returns the file descriptor, and -1 on error (no write permission)
  */
-static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
+static int new_dumpfile(HChar buf[BUF_LEN], int tid, const HChar* trigger)
 {
     Bool appending = False;
     int i, fd;
@@ -1331,27 +1331,27 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
     if (!appending) {
 	/* version */
 	VG_(sprintf)(buf, "version: 1\n");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 
 	/* creator */
 	VG_(sprintf)(buf, "creator: callgrind-" VERSION "\n");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 
 	/* "pid:" line */
 	VG_(sprintf)(buf, "pid: %d\n", VG_(getpid)());
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 
 	/* "cmd:" line */
 	VG_(strcpy)(buf, "cmd: ");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
-	my_fwrite(fd, (void*)cmdbuf, VG_(strlen)(cmdbuf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
+	my_fwrite(fd, cmdbuf, VG_(strlen)(cmdbuf));
     }
 
     VG_(sprintf)(buf, "\npart: %d\n", out_counter);
-    my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+    my_fwrite(fd, buf, VG_(strlen)(buf));
     if (CLG_(clo).separate_threads) {
 	VG_(sprintf)(buf, "thread: %d\n", tid);
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
     }
 
     /* "desc:" lines */
@@ -1362,36 +1362,36 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
 	/* Global options changing the tracing behaviour */
 	VG_(sprintf)(buf, "\ndesc: Option: --skip-plt=%s\n",
 		     CLG_(clo).skip_plt ? "yes" : "no");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 	VG_(sprintf)(buf, "desc: Option: --collect-jumps=%s\n",
 		     CLG_(clo).collect_jumps ? "yes" : "no");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 	VG_(sprintf)(buf, "desc: Option: --separate-recs=%d\n",
 		     CLG_(clo).separate_recursions);
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 	VG_(sprintf)(buf, "desc: Option: --separate-callers=%d\n",
 		     CLG_(clo).separate_callers);
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 
 	VG_(sprintf)(buf, "desc: Option: --dump-bbs=%s\n",
 		     CLG_(clo).dump_bbs ? "yes" : "no");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 	VG_(sprintf)(buf, "desc: Option: --separate-threads=%s\n",
 		     CLG_(clo).separate_threads ? "yes" : "no");
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
 #endif
 
 	(*CLG_(cachesim).getdesc)(buf);
-	my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	my_fwrite(fd, buf, VG_(strlen)(buf));
     }
 
     VG_(sprintf)(buf, "\ndesc: Timerange: Basic block %llu - %llu\n",
 		 bbs_done, CLG_(stat).bb_executions);
 
-    my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+    my_fwrite(fd, buf, VG_(strlen)(buf));
     VG_(sprintf)(buf, "desc: Trigger: %s\n",
-		 trigger ? trigger : (Char*)"Program termination");
-    my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+		 trigger ? trigger : "Program termination");
+    my_fwrite(fd, buf, VG_(strlen)(buf));
 
 #if 0
    /* Output function specific config
@@ -1401,27 +1401,27 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
        while (fnc) {
 	   if (fnc->skip) {
 	       VG_(sprintf)(buf, "desc: Option: --fn-skip=%s\n", fnc->name);
-	       my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	       my_fwrite(fd, buf, VG_(strlen)(buf));
 	   }
 	   if (fnc->dump_at_enter) {
 	       VG_(sprintf)(buf, "desc: Option: --fn-dump-at-enter=%s\n",
 			    fnc->name);
-	       my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	       my_fwrite(fd, buf, VG_(strlen)(buf));
 	   }   
 	   if (fnc->dump_at_leave) {
 	       VG_(sprintf)(buf, "desc: Option: --fn-dump-at-leave=%s\n",
 			    fnc->name);
-	       my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	       my_fwrite(fd, buf, VG_(strlen)(buf));
 	   }
 	   if (fnc->separate_callers != CLG_(clo).separate_callers) {
 	       VG_(sprintf)(buf, "desc: Option: --separate-callers%d=%s\n",
 			    fnc->separate_callers, fnc->name);
-	       my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	       my_fwrite(fd, buf, VG_(strlen)(buf));
 	   }   
 	   if (fnc->separate_recursions != CLG_(clo).separate_recursions) {
 	       VG_(sprintf)(buf, "desc: Option: --separate-recs%d=%s\n",
 			    fnc->separate_recursions, fnc->name);
-	       my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+	       my_fwrite(fd, buf, VG_(strlen)(buf));
 	   }   
 	   fnc = fnc->next;
        }
@@ -1433,12 +1433,12 @@ static int new_dumpfile(Char buf[BUF_LEN], int tid, Char* trigger)
 		CLG_(clo).dump_instr ? " instr" : "",
 		CLG_(clo).dump_bb    ? " bb" : "",
 		CLG_(clo).dump_line  ? " line" : "");
-   my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+   my_fwrite(fd, buf, VG_(strlen)(buf));
 
    /* "events:" line */
    i = VG_(sprintf)(buf, "events: ");
    CLG_(sprint_eventmapping)(buf+i, CLG_(dumpmap));
-   my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
+   my_fwrite(fd, buf, VG_(strlen)(buf));
    my_fwrite(fd, "\n", 1);
 
    /* summary lines */
@@ -1503,8 +1503,8 @@ static void close_dumpfile(int fd)
 /* Helper for print_bbccs */
 
 static Int   print_fd;
-static Char* print_trigger;
-static Char  print_buf[BUF_LEN];
+static const HChar* print_trigger;
+static HChar print_buf[BUF_LEN];
 
 static void print_bbccs_of_thread(thread_info* ti)
 {
@@ -1541,7 +1541,7 @@ static void print_bbccs_of_thread(thread_info* ti)
 	/* switch back to file of function */
 	VG_(sprintf)(print_buf, "fe=");
 	print_file(print_buf+3, lastFnPos.cxt->fn[0]->file);
-	my_fwrite(print_fd, (void*)print_buf, VG_(strlen)(print_buf));
+	my_fwrite(print_fd, print_buf, VG_(strlen)(print_buf));
       }
       my_fwrite(print_fd, "\n", 1);
     }
@@ -1571,7 +1571,7 @@ static void print_bbccs_of_thread(thread_info* ti)
 	VG_(sprintf)(print_buf+pos, "%d %llu\n", 
 		     (*p)->bb->instr_count,
 		     ecounter);
-	my_fwrite(print_fd, (void*)print_buf, VG_(strlen)(print_buf));
+	my_fwrite(print_fd, print_buf, VG_(strlen)(print_buf));
     }
     
     fprint_bbcc(print_fd, *p, &lastAPos);
@@ -1590,7 +1590,7 @@ static void print_bbccs_of_thread(thread_info* ti)
 }
 
 
-static void print_bbccs(Char* trigger, Bool only_current_thread)
+static void print_bbccs(const HChar* trigger, Bool only_current_thread)
 {
   init_dump_array();
   init_debug_cache();
@@ -1615,17 +1615,17 @@ static void print_bbccs(Char* trigger, Bool only_current_thread)
 }
 
 
-void CLG_(dump_profile)(Char* trigger, Bool only_current_thread)
+void CLG_(dump_profile)(const HChar* trigger, Bool only_current_thread)
 {
    CLG_DEBUG(2, "+ dump_profile(Trigger '%s')\n",
-	    trigger ? trigger : (Char*)"Prg.Term.");
+	    trigger ? trigger : "Prg.Term.");
 
    CLG_(init_dumps)();
 
    if (VG_(clo_verbosity) > 1)
        VG_(message)(Vg_DebugMsg, "Start dumping at BB %llu (%s)...\n",
 		    CLG_(stat).bb_executions,
-		    trigger ? trigger : (Char*)"Prg.Term.");
+		    trigger ? trigger : "Prg.Term.");
 
    out_counter++;
 
@@ -1715,12 +1715,12 @@ void CLG_(init_dumps)()
        i++;
    }
    i = lastSlash;
-   out_directory = (Char*) CLG_MALLOC("cl.dump.init_dumps.1", i+1);
+   out_directory = (HChar*) CLG_MALLOC("cl.dump.init_dumps.1", i+1);
    VG_(strncpy)(out_directory, out_file, i);
    out_directory[i] = 0;
 
    /* allocate space big enough for final filenames */
-   filename = (Char*) CLG_MALLOC("cl.dump.init_dumps.2",
+   filename = (HChar*) CLG_MALLOC("cl.dump.init_dumps.2",
                                  VG_(strlen)(out_file)+32);
    CLG_ASSERT(filename != 0);
        

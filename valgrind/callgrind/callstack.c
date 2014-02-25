@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -130,7 +130,7 @@ static void function_entered(fn_node* fn)
 #endif		
 	    
   if (fn->dump_before) {
-    Char trigger[FN_NAME_LEN];
+    HChar trigger[FN_NAME_LEN];
     VG_(sprintf)(trigger, "--dump-before=%s", fn->name);
     CLG_(dump_profile)(trigger, True);
   }
@@ -152,7 +152,7 @@ static void function_left(fn_node* fn)
   CLG_ASSERT(fn != 0);
 
   if (fn->dump_after) {
-    Char trigger[FN_NAME_LEN];
+    HChar trigger[FN_NAME_LEN];
     VG_(sprintf)(trigger, "--dump-after=%s", fn->name);
     CLG_(dump_profile)(trigger, True);
   }
@@ -273,7 +273,8 @@ void CLG_(push_call_stack)(BBCC* from, UInt jmp, BBCC* to, Addr sp, Bool skip)
     CLG_DEBUGIF(0) {
 	if (CLG_(clo).verbose<2) {
 	  if (jcc && jcc->to && jcc->to->bb) {
-	    char spaces[][41] = { "   .   .   .   .   .   .   .   .   .   .",
+	    const HChar spaces[][41] = {
+                                  "   .   .   .   .   .   .   .   .   .   .",
 				  "  .   .   .   .   .   .   .   .   .   . ",
 				  " .   .   .   .   .   .   .   .   .   .  ",
 				  ".   .   .   .   .   .   .   .   .   .   " };

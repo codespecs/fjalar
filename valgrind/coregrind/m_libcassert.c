@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -177,6 +177,31 @@
         (srP)->misc.MIPS32.r31 = (ULong)ra;               \
         (srP)->misc.MIPS32.r28 = (ULong)gp;               \
       }
+#elif defined(VGP_mips64_linux)
+#  define GET_STARTREGS(srP)                              \
+      { ULong pc, sp, fp, ra, gp;                          \
+      asm("move $8, $31;"             /* t0 = ra */       \
+          "bal m_libcassert_get_ip;"  /* ra = pc */       \
+          "m_libcassert_get_ip:\n"                        \
+          "move %0, $31;"                                 \
+          "move $31, $8;"             /* restore lr */    \
+          "move %1, $29;"                                 \
+          "move %2, $30;"                                 \
+          "move %3, $31;"                                 \
+          "move %4, $28;"                                 \
+          : "=r" (pc),                                    \
+            "=r" (sp),                                    \
+            "=r" (fp),                                    \
+            "=r" (ra),                                    \
+            "=r" (gp)                                     \
+          : /* reads none */                              \
+          : "$8" /* trashed */ );                         \
+        (srP)->r_pc = (ULong)pc - 8;                      \
+        (srP)->r_sp = (ULong)sp;                          \
+        (srP)->misc.MIPS64.r30 = (ULong)fp;               \
+        (srP)->misc.MIPS64.r31 = (ULong)ra;               \
+        (srP)->misc.MIPS64.r28 = (ULong)gp;               \
+      }
 #else
 #  error Unknown platform
 #endif
@@ -216,7 +241,7 @@ void VG_(show_sched_status) ( void )
 }
 
 __attribute__ ((noreturn))
-static void report_and_quit ( const Char* report,
+static void report_and_quit ( const HChar* report,
                               UnwindStartRegs* startRegsIN )
 {
    Addr stacktop;
@@ -267,13 +292,14 @@ static void report_and_quit ( const Char* report,
    VG_(exit)(1);
 }
 
-void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file, 
-                        Int line, const Char* fn, const HChar* format, ... )
+void VG_(assert_fail) ( Bool isCore, const HChar* expr, const HChar* file, 
+                        Int line, const HChar* fn, const HChar* format, ... )
 {
    va_list vargs;
-   Char buf[256];
-   Char* component;
-   Char* bugs_to;
+   HChar buf[512];
+   const HChar* component;
+   const HChar* bugs_to;
+   UInt written;
 
    static Bool entered = False;
    if (entered) 
@@ -281,8 +307,13 @@ void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
    entered = True;
 
    va_start(vargs, format);
-   VG_(vsprintf) ( buf, format, vargs );
+   written = VG_(vsnprintf) ( buf, sizeof(buf), format, vargs );
    va_end(vargs);
+
+   if (written >= sizeof(buf)) {
+      VG_(printf)("\nvalgrind: %s: buf is too small, sizeof(buf) = %u, "
+                  "written = %d\n", __func__, (unsigned)sizeof(buf), written);
+   }
 
    if (isCore) {
       component = "valgrind";
@@ -310,7 +341,7 @@ void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
 }
 
 __attribute__ ((noreturn))
-static void panic ( Char* name, Char* report, Char* str,
+static void panic ( const HChar* name, const HChar* report, const HChar* str,
                     UnwindStartRegs* startRegs )
 {
    if (VG_(clo_xml))
@@ -319,23 +350,23 @@ static void panic ( Char* name, Char* report, Char* str,
    report_and_quit(report, startRegs);
 }
 
-void VG_(core_panic_at) ( Char* str, UnwindStartRegs* startRegs )
+void VG_(core_panic_at) ( const HChar* str, UnwindStartRegs* startRegs )
 {
    panic("valgrind", VG_BUGS_TO, str, startRegs);
 }
 
-void VG_(core_panic) ( Char* str )
+void VG_(core_panic) ( const HChar* str )
 {
    VG_(core_panic_at)(str, NULL);
 }
 
-void VG_(tool_panic) ( Char* str )
+void VG_(tool_panic) ( const HChar* str )
 {
    panic(VG_(details).name, VG_(details).bug_reports_to, str, NULL);
 }
 
 /* Print some helpful-ish text about unimplemented things, and give up. */
-void VG_(unimplemented) ( Char* msg )
+void VG_(unimplemented) ( const HChar* msg )
 {
    if (VG_(clo_xml))
       VG_(printf_xml)("</valgrindoutput>\n");
@@ -359,4 +390,3 @@ void VG_(unimplemented) ( Char* msg )
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
 /*--------------------------------------------------------------------*/
-

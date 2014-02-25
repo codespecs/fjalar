@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -125,7 +125,7 @@ enum {
    /* args: Addr */
    /* to notify the drd tool of a pthread_cond_destroy call. */
    VG_USERREQ__POST_COND_DESTROY,
-   /* args: Addr */
+   /* args: Addr cond, Bool destroy_succeeded */
    VG_USERREQ__PRE_COND_WAIT,
    /* args: Addr cond, Addr mutex, MutexT mt */
    VG_USERREQ__POST_COND_WAIT,

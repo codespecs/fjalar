@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -55,7 +55,8 @@
 //--------------------------------------------------------------------
 
 #include "pub_tool_redir.h"
-
+#include "pub_core_basics.h"      // Addr
+#include "pub_core_debuginfo.h"   // DebugInfo
 
 //--------------------------------------------------------------------
 // Notifications - by which we are told of state changes
@@ -128,7 +129,7 @@ extern Addr VG_(redir_do_lookup) ( Addr orig, Bool* isWrap );
 //extern Bool VG_(is_wrapper_return)(Addr eip);
 
 /* Primary interface for adding wrappers for client-side functions. */
-//extern CodeRedirect *VG_(add_wrapper)(const Char *from_lib, const Char *from_sym,
+//extern CodeRedirect *VG_(add_wrapper)(const HChar *from_lib, const HChar *from_sym,
 //				      const FuncWrapper *wrapper);
 //
 //extern Bool VG_(is_resolved)(const CodeRedirect *redir);

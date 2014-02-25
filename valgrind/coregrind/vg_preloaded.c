@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -100,7 +100,7 @@ void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
 
 /* This string will be inserted into crash logs, so crashes while 
    running under Valgrind can be distinguished from other crashes. */
-__private_extern__ char *__crashreporter_info__ = "Instrumented by Valgrind " VERSION;
+__private_extern__ const char *__crashreporter_info__ = "Instrumented by Valgrind " VERSION;
 
 /* ---------------------------------------------------------------------
    Darwin environment cleanup
@@ -116,10 +116,10 @@ __private_extern__ char *__crashreporter_info__ = "Instrumented by Valgrind " VE
 #include <crt_externs.h>
 
 // GrP fixme copied from m_libcproc
-static void env_unsetenv ( Char **env, const Char *varname )
+static void env_unsetenv ( HChar **env, const HChar *varname )
 {
-   Char **from;
-   Char **to = NULL;
+   HChar **from;
+   HChar **to = NULL;
    Int len = strlen(varname);
 
    for (from = to = env; from && *from; from++) {
@@ -137,7 +137,7 @@ static void env_unsetenv ( Char **env, const Char *varname )
 static void vg_cleanup_env(void)  __attribute__((constructor));
 static void vg_cleanup_env(void)
 {
-    Char **envp = (Char**)*_NSGetEnviron();
+    HChar **envp = (HChar**)*_NSGetEnviron();
     env_unsetenv(envp, "VALGRIND_LAUNCHER");
     env_unsetenv(envp, "DYLD_SHARED_REGION");
     // GrP fixme should be more like mash_colon_env()

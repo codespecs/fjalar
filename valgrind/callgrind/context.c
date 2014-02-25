@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -284,7 +284,7 @@ void CLG_(push_cxt)(fn_node* fn)
   Int fn_entries;
 
   CLG_DEBUG(5, "+ push_cxt(fn '%s'): old ctx %d\n", 
-	    fn ? fn->name : (Char*)"0x0",
+	    fn ? fn->name : "0x0",
 	    CLG_(current_state).cxt ?
 	    CLG_(current_state).cxt->base_number : -1);
 
@@ -313,7 +313,7 @@ void CLG_(push_cxt)(fn_node* fn)
 
     CLG_DEBUG(0, "Resize Context Stack: %d => %d (pushing '%s')\n", 
 	     CLG_(current_fn_stack).size, new_size,
-	     fn ? fn->name : (Char*)"0x0");
+	     fn ? fn->name : "0x0");
 
     CLG_(current_fn_stack).size = new_size;
   }
@@ -331,7 +331,7 @@ void CLG_(push_cxt)(fn_node* fn)
   CLG_(current_state).cxt = CLG_(get_cxt)(CLG_(current_fn_stack).top);
 
   CLG_DEBUG(5, "- push_cxt(fn '%s'): new cxt %d, fn_sp %ld\n",
-	    fn ? fn->name : (Char*)"0x0",
+	    fn ? fn->name : "0x0",
 	    CLG_(current_state).cxt ?
 	      CLG_(current_state).cxt->base_number : -1,
 	    CLG_(current_fn_stack).top - CLG_(current_fn_stack).bottom + 0L);

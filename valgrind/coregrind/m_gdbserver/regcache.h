@@ -1,5 +1,5 @@
 /* Register support routines for the remote server for GDB.
-   Copyright (C) 2001, 2002 Free Software Foundation, Inc.
+   Copyright (C) 2001, 2002, 2012 Free Software Foundation, Inc.
 
    This file is part of GDB.
    It has been modified to integrate it in valgrind
@@ -21,6 +21,8 @@
 
 #ifndef REGCACHE_H
 #define REGCACHE_H
+
+#include "pub_core_basics.h"    // Bool
 
 struct inferior_list_entry;
 
@@ -44,7 +46,7 @@ void registers_to_string (char *buf);
 
 /* Convert a string to register values and fill our register cache.  */
 
-void registers_from_string (char *buf);
+void registers_from_string (const char *buf);
 
 /* Return the size in bytes of a string-encoded register packet.  */
 

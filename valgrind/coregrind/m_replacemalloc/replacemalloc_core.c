@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 #include "pub_core_basics.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_libcassert.h"
+#include "pub_core_tooliface.h"       // VG_(needs)
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
 #include "pub_core_replacemalloc.h"
@@ -51,7 +53,7 @@ Bool VG_(clo_trace_malloc)  = False;
 UInt VG_(clo_alignment)     = VG_MIN_MALLOC_SZB;
 
 
-Bool VG_(replacement_malloc_process_cmd_line_option)(Char* arg)
+Bool VG_(replacement_malloc_process_cmd_line_option)(const HChar* arg)
 {
    if VG_INT_CLO(arg, "--alignment", VG_(clo_alignment)) {
       if (VG_(clo_alignment) < VG_MIN_MALLOC_SZB ||
@@ -69,6 +71,13 @@ Bool VG_(replacement_malloc_process_cmd_line_option)(Char* arg)
       return False;
 
    return True;
+}
+
+SizeT VG_(malloc_effective_client_redzone_size)(void)
+{
+   vg_assert(VG_(needs).malloc_replacement);
+
+   return VG_(arena_redzone_size)(VG_AR_CLIENT);
 }
 
 /*------------------------------------------------------------*/

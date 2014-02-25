@@ -27,6 +27,17 @@ if VGCONF_OS_IS_DARWIN
 noinst_DSYMS = $(check_PROGRAMS)
 endif
 
+if HAS_WRITE_STRINGS_WARNING
+CFLAGS += -Wno-write-strings
+endif
+
+if COMPILER_IS_CLANG
+CFLAGS   += -Wno-format-extra-args       # perf/tinycc.c
+CFLAGS   += -Wno-literal-range           # none/tests/amd64/fxtract.c
+CFLAGS   += -Wno-string-plus-int         # drd/tests/annotate_ignore_rw.c
+CXXFLAGS += -Wno-unused-private-field    # drd/tests/tsan_unittest.cpp
+endif
+
 check-local: build-noinst_DSYMS
 
 clean-local: clean-noinst_DSYMS

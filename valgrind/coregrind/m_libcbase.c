@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,16 +32,16 @@
 #include "pub_core_libcbase.h"
 
 /* ---------------------------------------------------------------------
-   Char functions.
+   HChar functions.
    ------------------------------------------------------------------ */
 
-Bool VG_(isspace) ( Char c )
+Bool VG_(isspace) ( HChar c )
 {
    return (c == ' '  || c == '\n' || c == '\t' || 
            c == '\f' || c == '\v' || c == '\r');
 }
 
-Bool VG_(isdigit) ( Char c )
+Bool VG_(isdigit) ( HChar c )
 {
    return (c >= '0' && c <= '9');
 }
@@ -50,13 +50,13 @@ Bool VG_(isdigit) ( Char c )
    Converting strings to numbers
    ------------------------------------------------------------------ */
 
-static Bool is_dec_digit(Char c, Long* digit)
+static Bool is_dec_digit(HChar c, Long* digit)
 {
    if (c >= '0' && c <= '9') { *digit = (Long)(c - '0'); return True; }
    return False;
 }
 
-static Bool is_hex_digit(Char c, Long* digit)
+static Bool is_hex_digit(HChar c, Long* digit)
 {
    if (c >= '0' && c <= '9') { *digit = (Long)(c - '0');        return True; }
    if (c >= 'A' && c <= 'F') { *digit = (Long)((c - 'A') + 10); return True; }
@@ -64,11 +64,11 @@ static Bool is_hex_digit(Char c, Long* digit)
    return False;
 }
 
-Long VG_(strtoll10) ( Char* str, Char** endptr )
+Long VG_(strtoll10) ( const HChar* str, HChar** endptr )
 {
    Bool neg = False, converted = False;
    Long n = 0, digit = 0;
-   Char* str0 = str;
+   const HChar* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -85,16 +85,16 @@ Long VG_(strtoll10) ( Char* str, Char** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    if (neg) n = -n;              //   the start of the string.
-   if (endptr) *endptr = str;    // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
-ULong VG_(strtoull10) ( Char* str, Char** endptr )
+ULong VG_(strtoull10) ( const HChar* str, HChar** endptr )
 {
    Bool converted = False;
    ULong n = 0;
    Long digit = 0;
-   Char* str0 = str;
+   const HChar* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -110,15 +110,15 @@ ULong VG_(strtoull10) ( Char* str, Char** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    //   the start of the string.
-   if (endptr) *endptr = str;    // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
-Long VG_(strtoll16) ( Char* str, Char** endptr )
+Long VG_(strtoll16) ( const HChar* str, HChar** endptr )
 {
    Bool neg = False, converted = False;
    Long n = 0, digit = 0;
-   Char* str0 = str;
+   const HChar* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -143,16 +143,16 @@ Long VG_(strtoll16) ( Char* str, Char** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    if (neg) n = -n;              //   the start of the string.
-   if (endptr) *endptr = str;    // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
-ULong VG_(strtoull16) ( Char* str, Char** endptr )
+ULong VG_(strtoull16) ( const HChar* str, HChar** endptr )
 {
    Bool converted = False;
    ULong n = 0;
    Long digit = 0;
-   Char* str0 = str;
+   const HChar* str0 = str;
 
    // Skip leading whitespace.
    while (VG_(isspace)(*str)) str++;
@@ -176,11 +176,11 @@ ULong VG_(strtoull16) ( Char* str, Char** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    //   the start of the string.
-   if (endptr) *endptr = str;    // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
-double VG_(strtod) ( Char* str, Char** endptr )
+double VG_(strtod) ( const HChar* str, HChar** endptr )
 {
    Bool neg = False;
    Long digit;
@@ -209,11 +209,11 @@ double VG_(strtod) ( Char* str, Char** endptr )
 
    n += frac;
    if (neg) n = -n;
-   if (endptr) *endptr = str;    // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
-Char VG_(tolower) ( Char c )
+HChar VG_(tolower) ( HChar c )
 {
    if ( c >= 'A'  &&  c <= 'Z' ) {
       return c - 'A' + 'a';
@@ -226,47 +226,47 @@ Char VG_(tolower) ( Char c )
    String functions
    ------------------------------------------------------------------ */
 
-SizeT VG_(strlen) ( const Char* str )
+SizeT VG_(strlen) ( const HChar* str )
 {
    SizeT i = 0;
    while (str[i] != 0) i++;
    return i;
 }
 
-Char* VG_(strcat) ( Char* dest, const Char* src )
+HChar* VG_(strcat) ( HChar* dest, const HChar* src )
 {
-   Char* dest_orig = dest;
+   HChar* dest_orig = dest;
    while (*dest) dest++;
    while (*src) *dest++ = *src++;
    *dest = 0;
    return dest_orig;
 }
 
-Char* VG_(strncat) ( Char* dest, const Char* src, SizeT n )
+HChar* VG_(strncat) ( HChar* dest, const HChar* src, SizeT n )
 {
-   Char* dest_orig = dest;
+   HChar* dest_orig = dest;
    while (*dest) dest++;
    while (*src && n > 0) { *dest++ = *src++; n--; }
    *dest = 0;
    return dest_orig;
 }
 
-Char* VG_(strpbrk) ( const Char* s, const Char* accpt )
+HChar* VG_(strpbrk) ( const HChar* s, const HChar* accpt )
 {
-   const Char* a;
+   const HChar* a;
    while (*s) {
       a = accpt;
       while (*a)
          if (*a++ == *s)
-            return (Char *) s;
+           return (HChar *)s;
       s++;
    }
    return NULL;
 }
 
-Char* VG_(strcpy) ( Char* dest, const Char* src )
+HChar* VG_(strcpy) ( HChar* dest, const HChar* src )
 {
-   Char* dest_orig = dest;
+   HChar* dest_orig = dest;
    while (*src) *dest++ = *src++;
    *dest = 0;
    return dest_orig;
@@ -274,7 +274,7 @@ Char* VG_(strcpy) ( Char* dest, const Char* src )
 
 /* Copy bytes, not overrunning the end of dest and always ensuring
    zero termination. */
-void VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest )
+void VG_(strncpy_safely) ( HChar* dest, const HChar* src, SizeT ndest )
 {
    SizeT i = 0;
    while (True) {
@@ -286,7 +286,7 @@ void VG_(strncpy_safely) ( Char* dest, const Char* src, SizeT ndest )
    }
 }
 
-Char* VG_(strncpy) ( Char* dest, const Char* src, SizeT ndest )
+HChar* VG_(strncpy) ( HChar* dest, const HChar* src, SizeT ndest )
 {
    SizeT i = 0;
    while (True) {
@@ -300,11 +300,11 @@ Char* VG_(strncpy) ( Char* dest, const Char* src, SizeT ndest )
    }
 }
 
-Int VG_(strcmp) ( const Char* s1, const Char* s2 )
+Int VG_(strcmp) ( const HChar* s1, const HChar* s2 )
 {
    while (True) {
-      if (*(UChar*)s1 < *(UChar*)s2) return -1;
-      if (*(UChar*)s1 > *(UChar*)s2) return 1;
+      if (*(const UChar*)s1 < *(const UChar*)s2) return -1;
+      if (*(const UChar*)s1 > *(const UChar*)s2) return 1;
 
       /* *s1 == *s2 */
       if (*s1 == 0) return 0;
@@ -313,7 +313,7 @@ Int VG_(strcmp) ( const Char* s1, const Char* s2 )
    }
 }
 
-Int VG_(strcasecmp) ( const Char* s1, const Char* s2 )
+Int VG_(strcasecmp) ( const HChar* s1, const HChar* s2 )
 {
    while (True) {
       UChar c1 = (UChar)VG_(tolower)(*s1);
@@ -328,13 +328,13 @@ Int VG_(strcasecmp) ( const Char* s1, const Char* s2 )
    }
 }
 
-Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
+Int VG_(strncmp) ( const HChar* s1, const HChar* s2, SizeT nmax )
 {
    SizeT n = 0;
    while (True) {
       if (n >= nmax) return 0;
-      if (*(UChar*)s1 < *(UChar*)s2) return -1;
-      if (*(UChar*)s1 > *(UChar*)s2) return 1;
+      if (*(const UChar*)s1 < *(const UChar*)s2) return -1;
+      if (*(const UChar*)s1 > *(const UChar*)s2) return 1;
 
       /* *s1 == *s2 */
       if (*s1 == 0) return 0;
@@ -343,7 +343,7 @@ Int VG_(strncmp) ( const Char* s1, const Char* s2, SizeT nmax )
    }
 }
 
-Int VG_(strncasecmp) ( const Char* s1, const Char* s2, SizeT nmax )
+Int VG_(strncasecmp) ( const HChar* s1, const HChar* s2, SizeT nmax )
 {
    Int n = 0;
    while (True) {
@@ -362,7 +362,7 @@ Int VG_(strncasecmp) ( const Char* s1, const Char* s2, SizeT nmax )
    }
 }
 
-Char* VG_(strstr) ( const Char* haystack, const Char* needle )
+HChar* VG_(strstr) ( const HChar* haystack, const HChar* needle )
 {
    SizeT n; 
    if (haystack == NULL)
@@ -372,12 +372,12 @@ Char* VG_(strstr) ( const Char* haystack, const Char* needle )
       if (haystack[0] == 0) 
          return NULL;
       if (VG_(strncmp)(haystack, needle, n) == 0) 
-         return (Char*)haystack;
+         return (HChar*)haystack;
       haystack++;
    }
 }
 
-Char* VG_(strcasestr) ( const Char* haystack, Char* needle )
+HChar* VG_(strcasestr) ( const HChar* haystack, const HChar* needle )
 {
    Int n; 
    if (haystack == NULL)
@@ -387,41 +387,41 @@ Char* VG_(strcasestr) ( const Char* haystack, Char* needle )
       if (haystack[0] == 0) 
          return NULL;
       if (VG_(strncasecmp)(haystack, needle, n) == 0) 
-         return (Char*)haystack;
+         return (HChar*)haystack;
       haystack++;
    }
 }
 
-Char* VG_(strchr) ( const Char* s, Char c )
+HChar* VG_(strchr) ( const HChar* s, HChar c )
 {
    while (True) {
-      if (*s == c) return (Char*)s;
+     if (*s == c) return (HChar *)s;
       if (*s == 0) return NULL;
       s++;
    }
 }
 
-Char* VG_(strrchr) ( const Char* s, Char c )
+HChar* VG_(strrchr) ( const HChar* s, HChar c )
 {
    Int n = VG_(strlen)(s);
    while (--n > 0) {
-      if (s[n] == c) return (Char*)s + n;
+     if (s[n] == c) return (HChar *)s + n;
    }
    return NULL;
 }
 
 /* (code copied from glib then updated to valgrind types) */
-static Char *olds;
-Char *
-VG_(strtok) (Char *s, const Char *delim)
+static HChar *olds;
+HChar *
+VG_(strtok) (HChar *s, const HChar *delim)
 {
    return VG_(strtok_r) (s, delim, &olds);
 }
 
-Char *
-VG_(strtok_r) (Char* s, const Char* delim, Char** saveptr)
+HChar *
+VG_(strtok_r) (HChar* s, const HChar* delim, HChar** saveptr)
 {
-   Char *token;
+   HChar *token;
 
    if (s == NULL)
       s = *saveptr;
@@ -449,14 +449,14 @@ VG_(strtok_r) (Char* s, const Char* delim, Char** saveptr)
    return token;
 }
 
-static Bool isHex ( UChar c )
+static Bool isHex ( HChar c )
 {
   return ((c >= '0' && c <= '9') ||
 	  (c >= 'a' && c <= 'f') ||
 	  (c >= 'A' && c <= 'F'));
 }
 
-static UInt fromHex ( UChar c )
+static UInt fromHex ( HChar c )
 {
    if (c >= '0' && c <= '9')
       return (UInt)c - (UInt)'0';
@@ -469,7 +469,7 @@ static UInt fromHex ( UChar c )
    return 0;
 }
 
-Bool VG_(parse_Addr) ( UChar** ppc, Addr* result )
+Bool VG_(parse_Addr) ( const HChar** ppc, Addr* result )
 {
    Int used, limit = 2 * sizeof(Addr);
    if (**ppc != '0')
@@ -492,9 +492,9 @@ Bool VG_(parse_Addr) ( UChar** ppc, Addr* result )
    return True;
 }
 
-SizeT VG_(strspn) ( const Char* s, const Char* accpt )
+SizeT VG_(strspn) ( const HChar* s, const HChar* accpt )
 {
-   const Char *p, *a;
+   const HChar *p, *a;
    SizeT count = 0;
    for (p = s; *p != '\0'; ++p) {
       for (a = accpt; *a != '\0'; ++a)
@@ -508,7 +508,7 @@ SizeT VG_(strspn) ( const Char* s, const Char* accpt )
    return count;
 }
 
-SizeT VG_(strcspn) ( const Char* s, const char* reject )
+SizeT VG_(strcspn) ( const HChar* s, const HChar* reject )
 {
    SizeT count = 0;
    while (*s != '\0') {
@@ -556,8 +556,24 @@ void* VG_(memcpy) ( void *dest, const void *src, SizeT sz )
       d = (UChar*)dI;
    }
 
-   while (sz--)
-      *d++ = *s++;
+   /* If we're unlucky, the alignment constraints for the fast case
+      above won't apply, and we'll have to to it all here.  Hence the
+      unrolling. */
+   while (sz >= 4) {
+      d[0] = s[0];
+      d[1] = s[1];
+      d[2] = s[2];
+      d[3] = s[3];
+      d += 4;
+      s += 4;
+      sz -= 4;
+   }
+   while (sz >= 1) {
+      d[0] = s[0];
+      d += 1;
+      s += 1;
+      sz -= 1;
+   }
 
    return dest;
 }
@@ -569,12 +585,12 @@ void* VG_(memmove)(void *dest, const void *src, SizeT sz)
       return dest;
    if (dest < src) {
       for (i = 0; i < sz; i++) {
-         ((UChar*)dest)[i] = ((UChar*)src)[i];
+         ((UChar*)dest)[i] = ((const UChar*)src)[i];
       }
    }
    else if (dest > src) {
       for (i = 0; i < sz; i++) {
-         ((UChar*)dest)[sz-i-1] = ((UChar*)src)[sz-i-1];
+         ((UChar*)dest)[sz-i-1] = ((const UChar*)src)[sz-i-1];
       }
    }
    return dest;
@@ -583,7 +599,7 @@ void* VG_(memmove)(void *dest, const void *src, SizeT sz)
 void* VG_(memset) ( void *destV, Int c, SizeT sz )
 {
    Int   c4;
-   Char* d = (Char*)destV;
+   HChar* d = (HChar*)destV;
    while ((!VG_IS_4_ALIGNED(d)) && sz >= 1) {
       d[0] = c;
       d++;
@@ -672,7 +688,7 @@ Int VG_(memcmp) ( const void* s1, const void* s2, SizeT n )
       pv = (Char*)&v, v = *(Word*)pm
 
 static Char* bm_med3 ( Char* a, Char* b, Char* c, 
-                       Int (*cmp)(void*,void*) ) {
+                       Int (*cmp)(const void*, const void*) ) {
    return cmp(a, b) < 0
           ? (cmp(b, c) < 0 ? b : cmp(a, c) < 0 ? c : a)
           : (cmp(b, c) > 0 ? b : cmp(a, c) > 0 ? c : a);
@@ -693,7 +709,7 @@ static void bm_swapfunc ( Char* a, Char* b, SizeT n, Int swaptype )
 }
 
 static void bm_qsort ( Char* a, SizeT n, SizeT es,
-                       Int (*cmp)(void*,void*) )
+                       Int (*cmp)(const void*, const void*) )
 {
    Char  *pa, *pb, *pc, *pd, *pl, *pm, *pn, *pv;
    Int   r, swaptype;
@@ -802,7 +818,7 @@ Int VG_(log2_64) ( ULong x )
 
 // Generic quick sort.
 void VG_(ssort)( void* base, SizeT nmemb, SizeT size,
-                 Int (*compar)(void*, void*) )
+                 Int (*compar)(const void*, const void*) )
 {
    bm_qsort(base,nmemb,size,compar);
 }
@@ -824,6 +840,168 @@ UInt VG_(random)( /*MOD*/UInt* pSeed )
 
    *pSeed = (1103515245 * *pSeed + 12345);
    return *pSeed;
+}
+
+
+/* The following Adler-32 checksum code is taken from zlib-1.2.3, which
+   has the following copyright notice. */
+/*
+Copyright notice:
+
+ (C) 1995-2004 Jean-loup Gailly and Mark Adler
+
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
+
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+  Jean-loup Gailly        Mark Adler
+  jloup@gzip.org          madler@alumni.caltech.edu
+
+If you use the zlib library in a product, we would appreciate *not*
+receiving lengthy legal documents to sign. The sources are provided
+for free but without warranty of any kind.  The library has been
+entirely written by Jean-loup Gailly and Mark Adler; it does not
+include third-party code.
+
+If you redistribute modified sources, we would appreciate that you include
+in the file ChangeLog history information documenting your changes. Please
+read the FAQ for more information on the distribution of modified source
+versions.
+*/
+
+/* Update a running Adler-32 checksum with the bytes buf[0..len-1] and
+   return the updated checksum. If buf is NULL, this function returns
+   the required initial value for the checksum. An Adler-32 checksum is
+   almost as reliable as a CRC32 but can be computed much faster. */
+UInt VG_(adler32)( UInt adler, const UChar* buf, UInt len )
+{
+#  define BASE 65521UL    /* largest prime smaller than 65536 */
+#  define NMAX 5552
+   /* NMAX is the largest n such that 
+      255n(n+1)/2 + (n+1)(BASE-1) <= 2^32-1 */
+
+#  define DO1(buf,i)  {adler += (buf)[i]; sum2 += adler;}
+#  define DO2(buf,i)  DO1(buf,i); DO1(buf,i+1);
+#  define DO4(buf,i)  DO2(buf,i); DO2(buf,i+2);
+#  define DO8(buf,i)  DO4(buf,i); DO4(buf,i+4);
+#  define DO16(buf)   DO8(buf,0); DO8(buf,8);
+
+   /* The zlib sources recommend this definition of MOD if the
+      processor cannot do integer division in hardware. */
+#  define MOD(a) \
+      do { \
+          if (a >= (BASE << 16)) a -= (BASE << 16); \
+          if (a >= (BASE << 15)) a -= (BASE << 15); \
+          if (a >= (BASE << 14)) a -= (BASE << 14); \
+          if (a >= (BASE << 13)) a -= (BASE << 13); \
+          if (a >= (BASE << 12)) a -= (BASE << 12); \
+          if (a >= (BASE << 11)) a -= (BASE << 11); \
+          if (a >= (BASE << 10)) a -= (BASE << 10); \
+          if (a >= (BASE << 9)) a -= (BASE << 9); \
+          if (a >= (BASE << 8)) a -= (BASE << 8); \
+          if (a >= (BASE << 7)) a -= (BASE << 7); \
+          if (a >= (BASE << 6)) a -= (BASE << 6); \
+          if (a >= (BASE << 5)) a -= (BASE << 5); \
+          if (a >= (BASE << 4)) a -= (BASE << 4); \
+          if (a >= (BASE << 3)) a -= (BASE << 3); \
+          if (a >= (BASE << 2)) a -= (BASE << 2); \
+          if (a >= (BASE << 1)) a -= (BASE << 1); \
+          if (a >= BASE) a -= BASE; \
+      } while (0)
+#  define MOD4(a) \
+      do { \
+          if (a >= (BASE << 4)) a -= (BASE << 4); \
+          if (a >= (BASE << 3)) a -= (BASE << 3); \
+          if (a >= (BASE << 2)) a -= (BASE << 2); \
+          if (a >= (BASE << 1)) a -= (BASE << 1); \
+          if (a >= BASE) a -= BASE; \
+      } while (0)
+
+    UInt sum2;
+    UInt n;
+
+    /* split Adler-32 into component sums */
+    sum2 = (adler >> 16) & 0xffff;
+    adler &= 0xffff;
+
+    /* in case user likes doing a byte at a time, keep it fast */
+    if (len == 1) {
+        adler += buf[0];
+        if (adler >= BASE)
+            adler -= BASE;
+        sum2 += adler;
+        if (sum2 >= BASE)
+            sum2 -= BASE;
+        return adler | (sum2 << 16);
+    }
+
+    /* initial Adler-32 value (deferred check for len == 1 speed) */
+    if (buf == NULL)
+        return 1L;
+
+    /* in case short lengths are provided, keep it somewhat fast */
+    if (len < 16) {
+        while (len--) {
+            adler += *buf++;
+            sum2 += adler;
+        }
+        if (adler >= BASE)
+            adler -= BASE;
+        MOD4(sum2);             /* only added so many BASE's */
+        return adler | (sum2 << 16);
+    }
+
+    /* do length NMAX blocks -- requires just one modulo operation */
+    while (len >= NMAX) {
+        len -= NMAX;
+        n = NMAX / 16;          /* NMAX is divisible by 16 */
+        do {
+            DO16(buf);          /* 16 sums unrolled */
+            buf += 16;
+        } while (--n);
+        MOD(adler);
+        MOD(sum2);
+    }
+
+    /* do remaining bytes (less than NMAX, still just one modulo) */
+    if (len) {                  /* avoid modulos if none remaining */
+        while (len >= 16) {
+            len -= 16;
+            DO16(buf);
+            buf += 16;
+        }
+        while (len--) {
+            adler += *buf++;
+            sum2 += adler;
+        }
+        MOD(adler);
+        MOD(sum2);
+    }
+
+    /* return recombined sums */
+    return adler | (sum2 << 16);
+
+#  undef MOD4
+#  undef MOD
+#  undef DO16
+#  undef DO8
+#  undef DO4
+#  undef DO2
+#  undef DO1
+#  undef NMAX
+#  undef BASE
 }
 
 /*--------------------------------------------------------------------*/

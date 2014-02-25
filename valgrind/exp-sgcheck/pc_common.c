@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -63,7 +63,7 @@ Bool h_clo_partial_loads_ok  = True;   /* user visible */
 /* Bool h_clo_lossage_check     = False; */ /* dev flag only */
 Bool sg_clo_enable_sg_checks = True;   /* user visible */
 
-Bool pc_process_cmd_line_options(Char* arg)
+Bool pc_process_cmd_line_options(const HChar* arg)
 {
         if VG_BOOL_CLO(arg, "--partial-loads-ok", h_clo_partial_loads_ok) {}
    /* else if VG_BOOL_CLO(arg, "--lossage-check",    h_clo_lossage_check) {} */
@@ -134,7 +134,7 @@ typedef
             Seg*     vseg;
             XArray*  descr1; /* XArray* of HChar */
             XArray*  descr2; /* XArray* of HChar */
-            Char     datasym[96];
+            HChar    datasym[96];
             PtrdiffT datasymoff;
          } Heap;
          struct {
@@ -200,7 +200,7 @@ void h_record_arith_error( Seg* seg1, Seg* seg2, HChar* opname )
                             /*a*/0, /*str*/NULL, /*extra*/(void*)&xe);
 }
 
-void h_record_sysparam_error( ThreadId tid, CorePart part, Char* s,
+void h_record_sysparam_error( ThreadId tid, CorePart part, const HChar* s,
                               Addr lo, Addr hi, Seg* seglo, Seg* seghi )
 {
    XError xe;
@@ -268,7 +268,7 @@ void pc_before_pp_Error ( Error* err ) {
 /* Do a printf-style operation on either the XML or normal output
    channel, depending on the setting of VG_(clo_xml).
 */
-static void emit_WRK ( HChar* format, va_list vargs )
+static void emit_WRK ( const HChar* format, va_list vargs )
 {
    if (VG_(clo_xml)) {
       VG_(vprintf_xml)(format, vargs);
@@ -276,15 +276,15 @@ static void emit_WRK ( HChar* format, va_list vargs )
       VG_(vmessage)(Vg_UserMsg, format, vargs);
    }
 }
-static void emit ( HChar* format, ... ) PRINTF_CHECK(1, 2);
-static void emit ( HChar* format, ... )
+static void emit ( const HChar* format, ... ) PRINTF_CHECK(1, 2);
+static void emit ( const HChar* format, ... )
 {
    va_list vargs;
    va_start(vargs, format);
    emit_WRK(format, vargs);
    va_end(vargs);
 }
-static void emiN ( HChar* format, ... ) /* With NO FORMAT CHECK */
+static void emiN ( const HChar* format, ... ) /* With NO FORMAT CHECK */
 {
    va_list vargs;
    va_start(vargs, format);
@@ -293,7 +293,7 @@ static void emiN ( HChar* format, ... ) /* With NO FORMAT CHECK */
 }
 
 
-static Char* readwrite(SSizeT sszB)
+static const HChar* readwrite(SSizeT sszB)
 {
    return ( sszB < 0 ? "write" : "read" );
 }
@@ -348,7 +348,7 @@ void pc_pp_Error ( Error* err )
 
    //----------------------------------------------------------
    case XE_Heap: {
-      Char *place, *legit, *how_invalid;
+      const HChar *place, *legit, *how_invalid;
       Addr a    = xe->XE.Heap.addr;
       Seg* vseg = xe->XE.Heap.vseg;
 
@@ -468,7 +468,7 @@ void pc_pp_Error ( Error* err )
    case XE_Arith: {
       Seg*   seg1   = xe->XE.Arith.seg1;
       Seg*   seg2   = xe->XE.Arith.seg2;
-      Char*  which;
+      const HChar*  which;
 
       tl_assert(BOTTOM != seg1);
       tl_assert(BOTTOM != seg2 && UNKNOWN != seg2);
@@ -544,8 +544,8 @@ void pc_pp_Error ( Error* err )
       Addr  hi    = xe->XE.SysParam.hi;
       Seg*  seglo = xe->XE.SysParam.seglo;
       Seg*  seghi = xe->XE.SysParam.seghi;
-      Char* s     = VG_(get_error_string) (err);
-      Char* what;
+      const HChar* s = VG_(get_error_string) (err);
+      const HChar* what;
 
       tl_assert(BOTTOM != seglo && BOTTOM != seghi);
 
@@ -720,7 +720,7 @@ UInt pc_update_Error_extra ( Error* err )
    return sizeof(XError);
 }
 
-Bool pc_is_recognised_suppression ( Char* name, Supp *su )
+Bool pc_is_recognised_suppression ( const HChar* name, Supp *su )
 {
    SuppKind skind;
 
@@ -735,12 +735,12 @@ Bool pc_is_recognised_suppression ( Char* name, Supp *su )
    return True;
 }
 
-Bool pc_read_extra_suppression_info ( Int fd, Char** bufpp, 
-                                      SizeT* nBufp, Supp* su )
+Bool pc_read_extra_suppression_info ( Int fd, HChar** bufpp, 
+                                      SizeT* nBufp, Int* lineno, Supp* su )
 {
    Bool eof;
    if (VG_(get_supp_kind)(su) == XS_SysParam) {
-      eof = VG_(get_line) ( fd, bufpp, nBufp, NULL );
+      eof = VG_(get_line) ( fd, bufpp, nBufp, lineno );
       if (eof) return False;
       VG_(set_supp_string)(su, VG_(strdup)("pc.common.presi.1", *bufpp));
    }
@@ -764,7 +764,7 @@ Bool pc_error_matches_suppression (Error* err, Supp* su)
    }
 }
 
-Char* pc_get_error_name ( Error* err )
+const HChar* pc_get_error_name ( Error* err )
 {
    XError *xe = (XError*)VG_(get_error_extra)(err);
    tl_assert(xe);
@@ -778,13 +778,13 @@ Char* pc_get_error_name ( Error* err )
 }
 
 Bool pc_get_extra_suppression_info ( Error* err,
-                                     /*OUT*/Char* buf, Int nBuf )
+                                     /*OUT*/HChar* buf, Int nBuf )
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
    tl_assert(buf);
    tl_assert(nBuf >= 16); // stay sane
    if (XE_SysParam == ekind) {
-      Char* errstr = VG_(get_error_string)(err);
+      const HChar* errstr = VG_(get_error_string)(err);
       tl_assert(errstr);
       VG_(snprintf)(buf, nBuf-1, "%s", errstr);
       return True;
@@ -793,6 +793,16 @@ Bool pc_get_extra_suppression_info ( Error* err,
    }
 }
 
+Bool pc_print_extra_suppression_use ( Supp* su,
+                                      /*OUT*/HChar* buf, Int nBuf )
+{
+   return False;
+}
+
+void pc_update_extra_suppression_use (Error* err, Supp* su)
+{
+   return;
+}
 
 /*--------------------------------------------------------------------*/
 /*--- end                                              pc_common.c ---*/

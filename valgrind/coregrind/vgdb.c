@@ -6,7 +6,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2012 Philippe Waroquiers
+   Copyright (C) 2011-2013 Philippe Waroquiers
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -81,7 +81,7 @@
    specific code and/or some OS specific code. */
 #if defined(VGA_arm) || defined(VGA_x86) || defined(VGA_amd64) \
     || defined(VGA_ppc32) || defined(VGA_ppc64) || defined(VGA_s390x) \
-    || defined(VGP_mips32_linux)
+    || defined(VGA_mips32) || defined(VGA_mips64)
 #define PTRACEINVOKER
 #else
 I_die_here : (PTRACEINVOKER) architecture missing in vgdb.c
@@ -100,15 +100,10 @@ I_die_here : (PTRACEINVOKER) architecture missing in vgdb.c
 
 #if defined(PTRACEINVOKER)
 #include <sys/user.h>
-#if defined(VGO_linux)
-#  include <sys/prctl.h>
-#  include <linux/ptrace.h>
-#endif
 #endif
 
 
-// Outputs information for the user about ptrace_scope protection
-// or ptrace not working.
+// Outputs information for the user about ptrace not working.
 static void ptrace_restrictions_msg(void);
 
 static int debuglevel;
@@ -305,12 +300,12 @@ void valgrind_dying(void)
 #ifdef PTRACEINVOKER
 /* ptrace_(read|write)_memory are modified extracts of linux-low.c
    from gdb 6.6. Copyrighted FSF */
-/* Copy LEN bytes from inferior's memory starting at MEMADDR
-   to debugger memory starting at MYADDR.  */
+/* Copy LEN bytes from valgrind memory starting at MEMADDR
+   to vgdb memory starting at MYADDR.  */
 
 static
 int ptrace_read_memory (pid_t inferior_pid, CORE_ADDR memaddr,
-                        unsigned char *myaddr, int len)
+                        void *myaddr, int len)
 {
    register int i;
    /* Round starting address down to longword boundary.  */
@@ -339,14 +334,14 @@ int ptrace_read_memory (pid_t inferior_pid, CORE_ADDR memaddr,
    return 0;
 }
 
-/* Copy LEN bytes of data from debugger memory at MYADDR
-   to inferior's memory at MEMADDR.
-   On failure (cannot write the inferior)
+/* Copy LEN bytes of data from vgdb memory at MYADDR
+   to valgrind memory at MEMADDR.
+   On failure (cannot write the valgrind memory)
    returns the value of errno.  */
 __attribute__((unused)) /* not used on all platforms */
 static
 int ptrace_write_memory (pid_t inferior_pid, CORE_ADDR memaddr, 
-                         const unsigned char *myaddr, int len)
+                         const void *myaddr, int len)
 {
    register int i;
    /* Round starting address down to longword boundary.  */
@@ -362,7 +357,7 @@ int ptrace_write_memory (pid_t inferior_pid, CORE_ADDR memaddr,
    if (debuglevel >= 1) {
       DEBUG (1, "Writing ");
       for (i = 0; i < len; i++)
-         PDEBUG (1, "%02x", (unsigned)myaddr[i]);
+         PDEBUG (1, "%02x", ((const unsigned char*)myaddr)[i]);
       PDEBUG(1, " to %p\n", (void *) memaddr);
    }
    
@@ -459,7 +454,7 @@ char *status_image (int status)
    If pid is reported as being dead/exited, waitstopped will return False.
 */
 static
-Bool waitstopped (int pid, int signal_expected, char *msg)
+Bool waitstopped (int pid, int signal_expected, const char *msg)
 {
    pid_t p;
    int status = 0;
@@ -505,7 +500,7 @@ Bool waitstopped (int pid, int signal_expected, char *msg)
    Returns True if succesful, False otherwise.
    msg is used in tracing and error reporting. */
 static
-Bool stop (int pid, char *msg)
+Bool stop (int pid, const char *msg)
 {
    long res;
 
@@ -524,7 +519,7 @@ Bool stop (int pid, char *msg)
    Returns True if succesful, False otherwise.
    msg is used in tracing and error reporting. */
 static
-Bool attach (int pid, char *msg)
+Bool attach (int pid, const char *msg)
 {
    long res;
    static Bool output_error = True;
@@ -584,7 +579,7 @@ Bool acquire_and_suspend_threads(int pid)
    for (i = 1; i < VG_N_THREADS; i++) {
       vgt += sz_tst;
       rw = ptrace_read_memory(pid, vgt+off_status,
-                              (unsigned char *)&(vgdb_threads[i].status),
+                              &(vgdb_threads[i].status),
                               sizeof(ThreadStatus));
       if (rw != 0) {
          ERROR(rw, "status ptrace_read_memory\n");
@@ -592,7 +587,7 @@ Bool acquire_and_suspend_threads(int pid)
       }
       
       rw = ptrace_read_memory(pid, vgt+off_lwpid,
-                              (unsigned char *)&(vgdb_threads[i].lwpid),
+                              &(vgdb_threads[i].lwpid),
                               sizeof(Int));
       if (rw != 0) {
          ERROR(rw, "lwpid ptrace_read_memory\n");
@@ -696,7 +691,7 @@ static struct user user_save;
 //       runtime check not yet done.
 //   0 : PTRACE_GETREGS runtime check has failed.
 //   1 : PTRACE_GETREGS defined and runtime check ok.
-#ifdef PTRACE_GETREGS
+#ifdef HAVE_PTRACE_GETREGS
 static int has_working_ptrace_getregs = -1;
 #endif
 
@@ -707,7 +702,7 @@ static
 Bool getregs (int pid, void *regs, long regs_bsz)
 {
    DEBUG(1, "getregs regs_bsz %ld\n", regs_bsz);
-#  ifdef PTRACE_GETREGS
+#  ifdef HAVE_PTRACE_GETREGS
    if (has_working_ptrace_getregs) {
       // Platforms having GETREGS
       long res;
@@ -778,7 +773,7 @@ Bool setregs (int pid, void *regs, long regs_bsz)
    DEBUG(1, "setregs regs_bsz %ld\n", regs_bsz);
 // Note : the below is checking for GETREGS, not SETREGS
 // as if one is defined and working, the other one should also work.
-#  ifdef PTRACE_GETREGS
+#  ifdef HAVE_PTRACE_GETREGS
    if (has_working_ptrace_getregs) {
       // Platforms having SETREGS
       long res;
@@ -869,11 +864,7 @@ Bool invoke_gdbserver (int pid)
    // address pushed on the stack should ensure this is detected.
 
    /* Not yet attached. If problem, vgdb can abort,
-      no cleanup needed.
-
-      On Ubuntu>= 10.10, a /proc setting can disable ptrace.
-      So, Valgrind has to SET_PTRACER this vgdb. Once this
-      is done, this vgdb can ptrace the valgrind process. */
+      no cleanup needed. */
 
    DEBUG(1, "attach to 'main' pid %d\n", pid);
    if (!attach(pid, "attach main pid")) {
@@ -925,7 +916,10 @@ Bool invoke_gdbserver (int pid)
 #elif defined(VGA_s390x)
    sp = user_mod.regs.gprs[15];
 #elif defined(VGA_mips32)
-   sp = user_mod.regs[29*2];
+   long long *p = (long long *)user_mod.regs;
+   sp = p[29];
+#elif defined(VGA_mips64)
+   sp = user_mod.regs[29];
 #else
    I_die_here : (sp) architecture missing in vgdb.c
 #endif
@@ -943,7 +937,7 @@ Bool invoke_gdbserver (int pid)
       DEBUG(1, "push check arg ptrace_write_memory\n");
       assert(regsize == sizeof(check));
       rw = ptrace_write_memory(pid, sp, 
-                               (unsigned char *) &check, 
+                               &check, 
                                regsize);
       if (rw != 0) {
          ERROR(rw, "push check arg ptrace_write_memory");
@@ -956,7 +950,7 @@ Bool invoke_gdbserver (int pid)
       // Note that for a 64 bits vgdb, only 4 bytes of NULL bad_return
       // are written.
       rw = ptrace_write_memory(pid, sp, 
-                               (unsigned char *) &bad_return,
+                               &bad_return,
                                regsize);
       if (rw != 0) {
          ERROR(rw, "push bad_return return address ptrace_write_memory");
@@ -1000,17 +994,16 @@ Bool invoke_gdbserver (int pid)
       XERROR(0, "(fn32) s390x has no 32bits implementation");
 #elif defined(VGA_mips32)
       /* put check arg in register 4 */
-      user_mod.regs[4*2] = check;
-      user_mod.regs[4*2+1] = 0xffffffff; // sign extend $a0
-      /* This sign extension is needed when vgdb 32 bits runs
-         on a 64 bits OS. */
+      p[4] = check;
       /* put NULL return address in ra */
-      user_mod.regs[31*2] = bad_return;
-      user_mod.regs[31*2+1] = 0;
-      user_mod.regs[34*2] = shared32->invoke_gdbserver;
-      user_mod.regs[34*2+1] = 0;
-      user_mod.regs[25*2] = shared32->invoke_gdbserver;
-      user_mod.regs[25*2+1] = 0;
+      p[31] = bad_return;
+      p[34] = shared32->invoke_gdbserver;
+      p[25] = shared32->invoke_gdbserver;
+      /* make stack space for args */
+      p[29] = sp - 32;
+
+#elif defined(VGA_mips64)
+      assert(0); // cannot vgdb a 32 bits executable with a 64 bits exe
 #else
       I_die_here : architecture missing in vgdb.c
 #endif
@@ -1031,7 +1024,7 @@ Bool invoke_gdbserver (int pid)
       sp = sp - regsize;
       DEBUG(1, "push bad_return return address ptrace_write_memory\n");
       rw = ptrace_write_memory(pid, sp, 
-                               (unsigned char *) &bad_return,
+                               &bad_return,
                                sizeof(bad_return));
       if (rw != 0) {
          ERROR(rw, "push bad_return return address ptrace_write_memory");
@@ -1054,7 +1047,7 @@ Bool invoke_gdbserver (int pid)
       Addr64 toc_addr;
       int rw;
       rw = ptrace_read_memory(pid, shared64->invoke_gdbserver,
-                              (unsigned char *)&func_addr,
+                              &func_addr,
                               sizeof(Addr64));
       if (rw != 0) {
          ERROR(rw, "ppc64 read func_addr\n");
@@ -1062,7 +1055,7 @@ Bool invoke_gdbserver (int pid)
          return False;
       }
       rw = ptrace_read_memory(pid, shared64->invoke_gdbserver+8,
-                              (unsigned char *)&toc_addr,
+                              &toc_addr,
                               sizeof(Addr64));
       if (rw != 0) {
          ERROR(rw, "ppc64 read toc_addr\n");
@@ -1092,6 +1085,13 @@ Bool invoke_gdbserver (int pid)
       user_mod.regs.psw.addr = shared64->invoke_gdbserver;
 #elif defined(VGA_mips32)
       assert(0); // cannot vgdb a 64 bits executable with a 32 bits exe
+#elif defined(VGA_mips64)
+      /* put check arg in register 4 */
+      user_mod.regs[4] = check;
+      /* put NULL return address in ra */
+      user_mod.regs[31] = bad_return;
+      user_mod.regs[34] = shared64->invoke_gdbserver;
+      user_mod.regs[25] = shared64->invoke_gdbserver;
 #else
       I_die_here: architecture missing in vgdb.c
 #endif
@@ -1267,7 +1267,7 @@ void *invoke_gdbserver_in_valgrind(void *v_pid)
 }
 
 static
-int open_fifo (char* name, int flags, char* desc)
+int open_fifo (const char* name, int flags, const char* desc)
 {
    int fd;
    DEBUG(1, "opening %s %s\n", name, desc);
@@ -1319,7 +1319,7 @@ void acquire_lock (int fd, int valgrind_pid)
    Returns the nr of characters read, -1 if error.
    desc is a string used in tracing */
 static
-int read_buf (int fd, char* buf, char* desc)
+int read_buf (int fd, char* buf, const char* desc)
 {
    int nrread;
    DEBUG(2, "reading %s\n", desc);
@@ -1339,11 +1339,12 @@ int read_buf (int fd, char* buf, char* desc)
    valgrind process that there is new data.
    Returns True if write is ok, False if there was a problem. */
 static
-Bool write_buf(int fd, char* buf, int size, char* desc, Bool notify)
+Bool write_buf(int fd, char* buf, int size, const char* desc, Bool notify)
 {
    int nrwritten;
    int nrw;
-   DEBUG(2, "writing %s len %d %s notify: %d\n", desc, size, buf, notify);
+   DEBUG(2, "writing %s len %d %.*s notify: %d\n", desc, size,
+         size, buf, notify);
    nrwritten = 0;
    while (nrwritten < size) {
       nrw = write (fd, buf+nrwritten, size - nrwritten);
@@ -1365,7 +1366,7 @@ typedef enum {
    TO_PID } ConnectionKind;
 static const int NumConnectionKind = TO_PID+1;
 static 
-char *ppConnectionKind (ConnectionKind con)
+const char *ppConnectionKind (ConnectionKind con)
 {
    switch (con) {
    case FROM_GDB: return "FROM_GDB";
@@ -1515,9 +1516,10 @@ fromhex (int a)
 static int
 readchar (int fd)
 {
-  static unsigned char buf[PBUFSIZ+1]; // +1 for trailing \0
+  static char buf[PBUFSIZ+1]; // +1 for trailing \0
   static int bufcnt = 0;
   static unsigned char *bufp;
+  // unsigned bufp to e.g. avoid having 255 converted to int -1
 
   if (bufcnt-- > 0)
      return *bufp++;
@@ -1534,7 +1536,7 @@ readchar (int fd)
      }
   }
 
-  bufp = buf;
+  bufp = (unsigned char *)buf;
   bufcnt--;
   return *bufp++;
 }
@@ -1893,10 +1895,10 @@ void standalone_send_commands(int pid,
 
    int i;
    int hi;
-   unsigned char hex[3];
+   char hex[3];
    unsigned char cksum;
-   unsigned char *hexcommand;
-   unsigned char buf[PBUFSIZ+1]; // +1 for trailing \0
+   char *hexcommand;
+   char buf[PBUFSIZ+1]; // +1 for trailing \0
    int buflen;
    int nc;
 
@@ -1926,7 +1928,8 @@ void standalone_send_commands(int pid,
       hexcommand[0] = 0;
       strcat (hexcommand, "$qRcmd,");
       for (i = 0; i < strlen(commands[nc]); i++) {
-         sprintf(hex, "%02x", commands[nc][i]);
+         sprintf(hex, "%02x", (unsigned char) commands[nc][i]);
+         // Need to use unsigned char, to avoid sign extension.
          strcat (hexcommand, hex);
       }
       /* checksum (but without the $) */
@@ -2011,13 +2014,19 @@ void report_pid (int pid, Bool on_stdout)
    if (fd == -1) {
       DEBUG(1, "error opening cmdline file %s %s\n", 
             cmdline_file, strerror(errno));
-      sprintf(cmdline, "(could not obtain process command line)");
+      sprintf(cmdline, "(could not open process command line)");
    } else {
       sz = read(fd, cmdline, 1000);
       for (i = 0; i < sz; i++)
          if (cmdline[i] == 0)
             cmdline[i] = ' ';
+      if (sz >= 0)
       cmdline[sz] = 0;
+      else {
+         DEBUG(1, "error reading cmdline file %s %s\n", 
+               cmdline_file, strerror(errno));
+         sprintf(cmdline, "(could not read process command line)");
+      }
       close (fd);
    }  
    fprintf((on_stdout ? stdout : stderr), "use --pid=%d for %s\n", pid, cmdline);
@@ -2029,27 +2038,6 @@ void report_pid (int pid, Bool on_stdout)
 static
 void ptrace_restrictions_msg(void)
 {
-#  ifdef PR_SET_PTRACER
-   char *ptrace_scope_setting_file = "/proc/sys/kernel/yama/ptrace_scope";
-   int fd = -1;
-   char ptrace_scope = 'X';
-   fd = open (ptrace_scope_setting_file, O_RDONLY, 0);
-   if (fd >= 0 && (read (fd, &ptrace_scope, 1) == 1) && (ptrace_scope != '0')) {
-      fprintf (stderr,
-               "Note: your kernel restricts ptrace invoker using %s\n"
-               "vgdb will only be able to attach to a Valgrind process\n"
-               "blocked in a system call *after* an initial successful attach\n",
-               ptrace_scope_setting_file);
-   } else if (ptrace_scope == 'X') {
-      DEBUG (1, 
-             "PR_SET_PTRACER defined"
-             " but could not determine ptrace scope from %s\n",
-             ptrace_scope_setting_file);
-   }
-   if (fd >= 0)
-      close (fd);
-#  endif
-
 #  ifndef PTRACEINVOKER
    fprintf(stderr, 
            "Note: ptrace invoker not implemented\n"
@@ -2077,7 +2065,7 @@ void usage(void)
 "             \n"
 "  --pid arg must be given if multiple Valgrind gdbservers are found.\n"
 "  --vgdb-prefix arg must be given to both Valgrind and vgdb utility\n"
-"      if you want to change the default prefix for the FIFOs communication\n"
+"      if you want to change the prefix (default %s) for the FIFOs communication\n"
 "      between the Valgrind gdbserver and vgdb.\n"
 "  --wait (default 0) tells vgdb to check during the specified number\n"
 "      of seconds if a Valgrind gdbserver can be found.\n"
@@ -2093,7 +2081,7 @@ void usage(void)
 "\n"
 "  -h --help shows this message\n"
 "  To get help from the Valgrind gdbserver, use vgdb help\n"
-"\n"
+"\n", vgdb_prefix_default()
            );
    ptrace_restrictions_msg();  
 }
@@ -2138,15 +2126,16 @@ int search_arg_pid(int arg_pid, int check_trials, Bool show_list)
       strcpy (vgdb_format, vgdb_prefix);
       strcat (vgdb_format, suffix);
       
+      if (strchr(vgdb_prefix, '/') != NULL) {
       strcpy (vgdb_dir_name, vgdb_prefix);
-      
       for (is = strlen(vgdb_prefix) - 1; is >= 0; is--)
          if (vgdb_dir_name[is] == '/') {
             vgdb_dir_name[is+1] = '\0';
             break;
          }
-      if (strlen(vgdb_dir_name) == 0)
-         strcpy (vgdb_dir_name, "./");
+      } else {
+         strcpy (vgdb_dir_name, "");
+      }
 
       DEBUG(1, "searching pid in directory %s format %s\n", 
             vgdb_dir_name, vgdb_format);
@@ -2164,7 +2153,7 @@ int search_arg_pid(int arg_pid, int check_trials, Bool show_list)
            /* wait one second before checking again */
            sleep(1);
 
-         vgdb_dir = opendir (vgdb_dir_name);
+         vgdb_dir = opendir (strlen (vgdb_dir_name) ? vgdb_dir_name : "./");
          if (vgdb_dir == NULL)
             XERROR (errno, 
                     "vgdb error: opening directory %s searching vgdb fifo\n", 
@@ -2276,7 +2265,7 @@ Bool numeric_val(char* arg, int *value)
 
 /* true if arg matches the provided option */
 static
-Bool is_opt(char* arg, char *option)
+Bool is_opt(char* arg, const char *option)
 {
    int option_len = strlen(option);
    if (option[option_len-1] == '=')

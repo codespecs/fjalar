@@ -7,7 +7,7 @@
    This file is part of DHAT, a Valgrind tool for profiling the
    heap usage of programs.
 
-   Copyright (C) 2010-2012 Mozilla Inc
+   Copyright (C) 2010-2013 Mozilla Inc
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -727,7 +727,7 @@ void dh_handle_read ( Addr addr, UWord szB )
 // boundary and so we can treat it just as one giant
 // read or write.
 static
-void dh_handle_noninsn_read ( CorePart part, ThreadId tid, Char* s,
+void dh_handle_noninsn_read ( CorePart part, ThreadId tid, const HChar* s,
                               Addr base, SizeT size )
 {
    switch (part) {
@@ -801,7 +801,7 @@ void addMemEvent(IRSB* sbOut, Bool isWrite, Int szB, IRExpr* addr,
                  Int goff_sp)
 {
    IRType   tyAddr   = Ity_INVALID;
-   HChar*   hName    = NULL;
+   const HChar* hName= NULL;
    void*    hAddr    = NULL;
    IRExpr** argv     = NULL;
    IRDirty* di       = NULL;
@@ -874,6 +874,7 @@ IRSB* dh_instrument ( VgCallbackClosure* closure,
                       IRSB* sbIn,
                       VexGuestLayout* layout,
                       VexGuestExtents* vge,
+                      VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    Int   i, n = 0;
@@ -1030,12 +1031,12 @@ IRSB* dh_instrument ( VgCallbackClosure* closure,
 // FORWARDS
 static Bool identify_metric ( /*OUT*/ULong(**get_metricP)(APInfo*),
                               /*OUT*/Bool* increasingP,
-                              Char* metric_name );
+                              const HChar* metric_name );
 
 static Int    clo_show_top_n = 10;
-static HChar* clo_sort_by    = "max-bytes-live";
+static const HChar *clo_sort_by = "max-bytes-live";
 
-static Bool dh_process_cmd_line_option(Char* arg)
+static Bool dh_process_cmd_line_option(const HChar* arg)
 {
    if VG_BINT_CLO(arg, "--show-top-n", clo_show_top_n, 1, 100000) {}
 
@@ -1183,7 +1184,7 @@ static ULong get_metric__max_blocks_live ( APInfo* api ) {
    string could not be identified.*/
 static Bool identify_metric ( /*OUT*/ULong(**get_metricP)(APInfo*),
                               /*OUT*/Bool* increasingP,
-                              Char* metric_name )
+                              const HChar* metric_name )
 {
    if (0 == VG_(strcmp)(metric_name, "max-bytes-live")) {
       *get_metricP = get_metric__max_bytes_live;
@@ -1211,7 +1212,7 @@ static void show_top_n_apinfos ( void )
    ULong (*get_metric)(APInfo*);
    Bool  increasing;
 
-   HChar* metric_name = clo_sort_by;
+   const HChar* metric_name = clo_sort_by;
    tl_assert(metric_name); // ensured by clo processing
 
    Bool ok = identify_metric( &get_metric, &increasing, metric_name );
@@ -1348,7 +1349,7 @@ static void dh_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a dynamic heap analysis tool");
    VG_(details_copyright_author)(
-      "Copyright (C) 2010-2012, and GNU GPL'd, by Mozilla Inc");
+      "Copyright (C) 2010-2013, and GNU GPL'd, by Mozilla Inc");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    // Basic functions.

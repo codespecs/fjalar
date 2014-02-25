@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks LLP
+   Copyright (C) 2008-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -42,7 +42,7 @@
 #include "priv_misc.h"            /* self */
 
 
-void* ML_(dinfo_zalloc) ( HChar* cc, SizeT szB ) {
+void* ML_(dinfo_zalloc) ( const HChar* cc, SizeT szB ) {
    void* v;
    vg_assert(szB > 0);
    v = VG_(arena_malloc)( VG_AR_DINFO, cc, szB );
@@ -55,12 +55,12 @@ void ML_(dinfo_free) ( void* v ) {
    VG_(arena_free)( VG_AR_DINFO, v );
 }
 
-UChar* ML_(dinfo_strdup) ( HChar* cc, const UChar* str ) {
+HChar* ML_(dinfo_strdup) ( const HChar* cc, const HChar* str ) {
    return VG_(arena_strdup)( VG_AR_DINFO, cc, str );
 }
 
-UChar* ML_(dinfo_memdup) ( HChar* cc, UChar* str, SizeT nStr ) {
-   UChar* dst = VG_(arena_malloc)( VG_AR_DINFO, cc, nStr );
+void* ML_(dinfo_memdup) ( const HChar* cc, void* str, SizeT nStr ) {
+   void* dst = VG_(arena_malloc)( VG_AR_DINFO, cc, nStr );
    tl_assert(dst);
    VG_(memcpy)(dst, str, nStr);
    return dst;

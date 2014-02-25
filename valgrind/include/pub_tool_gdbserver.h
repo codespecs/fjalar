@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2012 Philippe Waroquiers
+   Copyright (C) 2011-2013 Philippe Waroquiers
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -30,6 +30,7 @@
 #ifndef __PUB_TOOL_GDBSERVER_H
 #define __PUB_TOOL_GDBSERVER_H
 
+#include "pub_tool_basics.h"   // VG_ macro
 #include "libvex.h"
 #include "libvex_ir.h"
 
@@ -51,8 +52,8 @@
 // Calling VG_(gdbserver) with tid > 0 means to let a debugger attach
 // to the valgrind process. gdbserver will report to gdb that the
 // process stopped in thread tid.
-// tid == 0 indicates to stop gdbserver and report to gdb
-// that the valgrind-ified process has exited.
+// Calling VG_(gdbserver) with tid == 0 indicates to close
+// the connection with GDB (if still open) and stop gdbserver.
 //--------------------------------------------------------------------
 extern void VG_(gdbserver) ( ThreadId tid );
 
@@ -94,7 +95,7 @@ typedef
       write_watchpoint,
       read_watchpoint,
       access_watchpoint } PointKind;
-extern char* VG_(ppPointKind) (PointKind kind);
+extern const HChar* VG_(ppPointKind) (PointKind kind);
 
 
 /* watchpoint support --------------------------------------*/
@@ -130,6 +131,19 @@ extern void VG_(needs_watchpoint) (
 
 // can be used during the processing of the VG_USERREQ__GDB_MONITOR_COMMAND 
 // tool client request to output information to gdb or vgdb.
+// The output of VG_(gdb_printf) is not subject to 'output control'
+// by the user: e.g. the monitor command 'v.set log_output' has no effect.
+// The output of VG_(gdb_printf) is given to gdb/vgdb. The only case
+// in which this output is not given to gdb/vgdb is when the connection
+// with gdb/vgdb has been lost : in such a case, output is written
+// to the valgrind log output.
+// To produce some output which is subject to user output control via
+// monitor command v.set gdb_output or mixed output, use VG_(printf)
+// or VG_(umsg) or similar.
+// Typically, VG_(gdb_printf) has to be used when there is no point
+// having this output in the output log of Valgrind. Examples
+// is the monitor help output, or if vgdb is used to implement
+// 'tool control scripts' such as callgrind_control.
 extern UInt VG_(gdb_printf) ( const HChar *format, ... ) PRINTF_CHECK(1, 2);
 
 /* Utility functions to (e.g.) parse gdb monitor commands.
@@ -160,7 +174,7 @@ typedef
       kwd_report_none,
       kwd_report_all,
       kwd_report_duplicated_matches } kwd_report_error;
-extern Int VG_(keyword_id) (Char* keywords, Char* input_word, 
+extern Int VG_(keyword_id) (const HChar* keywords, const HChar* input_word, 
                             kwd_report_error report);
 
 /* Extract an address and (optionally) a size from the string
@@ -170,7 +184,7 @@ extern Int VG_(keyword_id) (Char* keywords, Char* input_word,
    user problems via VG_(gdb_printf).  */
 extern void VG_(strtok_get_address_and_size) (Addr* address, 
                                               SizeT* szB, 
-                                              Char **ssaveptr);
+                                              HChar **ssaveptr);
 
 #endif   // __PUB_TOOL_GDBSERVER_H
 

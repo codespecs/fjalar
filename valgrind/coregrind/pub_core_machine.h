@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,7 @@
 //--------------------------------------------------------------------
 
 #include "pub_tool_machine.h"
+#include "pub_core_basics.h"      // UnwindStartRegs
 
 // XXX: this is *really* the wrong spot for these things
 #if defined(VGP_x86_linux)
@@ -86,6 +87,17 @@
 #  define VG_ELF_MACHINE      EM_MIPS
 #  define VG_ELF_CLASS        ELFCLASS32
 #  undef  VG_PLAT_USES_PPCTOC
+#elif defined(VGP_mips64_linux)
+#  if defined (VG_LITTLEENDIAN)
+#    define VG_ELF_DATA2XXX     ELFDATA2LSB
+#  elif defined (VG_BIGENDIAN)
+#    define VG_ELF_DATA2XXX     ELFDATA2MSB
+#  else
+#    error "Unknown endianness"
+#  endif
+#  define VG_ELF_MACHINE      EM_MIPS
+#  define VG_ELF_CLASS        ELFCLASS64
+#  undef  VG_PLAT_USES_PPCTOC
 #else
 #  error Unknown platform
 #endif
@@ -132,6 +144,10 @@
 #  define VG_FRAME_PTR        guest_FP
 #  define VG_FPC_REG          guest_fpc
 #elif defined(VGA_mips32)
+#  define VG_INSTR_PTR        guest_PC
+#  define VG_STACK_PTR        guest_r29
+#  define VG_FRAME_PTR        guest_r30
+#elif defined(VGA_mips64)
 #  define VG_INSTR_PTR        guest_PC
 #  define VG_STACK_PTR        guest_r29
 #  define VG_FRAME_PTR        guest_r30
@@ -215,9 +231,9 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
    this a CPU incapable of running Valgrind. */
 extern Bool VG_(machine_get_hwcaps)( void );
 
-/* Fetch host cpu info, as per above comment. */
-extern void VG_(machine_get_VexArchInfo)( /*OUT*/VexArch*,
-                                          /*OUT*/VexArchInfo* );
+/* Determine information about the cache system this host has and
+   record it. Returns False, if cache information cannot be auto-detected. */
+extern Bool VG_(machine_get_cache_info)( VexArchInfo * );
 
 /* Notify host cpu cache line size, as per above comment. */
 #if defined(VGA_ppc32)

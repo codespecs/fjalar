@@ -2,10 +2,10 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
-   Copyright (C) 2002-2012 Nicholas Nethercote (njn@valgrind.org)
+   Copyright (C) 2002-2013 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -39,7 +39,7 @@
 static void print_indent(int s)
 {
     /* max of 40 spaces */
-    char sp[] = "                                        ";
+    const HChar sp[] = "                                        ";
     if (s>40) s=40;
     VG_(printf)("%s", sp+40-s);
 }
@@ -72,7 +72,7 @@ void print_mangled_cxt(Context* cxt, int rec_index)
 
 
 
-void CLG_(print_cxt)(int s, Context* cxt, int rec_index)
+void CLG_(print_cxt)(Int s, Context* cxt, int rec_index)
 {
   if (s<0) {
     s = -s;
@@ -373,11 +373,11 @@ void CLG_(print_bbcc_cost)(int s, BBCC* bbcc)
 /* dump out an address with source info if available */
 void CLG_(print_addr)(Addr addr)
 {
-    Char fl_buf[FILENAME_LEN];
-    Char fn_buf[FN_NAME_LEN];
-    const UChar* obj_name;
+    HChar fl_buf[FILENAME_LEN];
+    HChar fn_buf[FN_NAME_LEN];
+    const HChar* obj_name;
     DebugInfo* di;
-    int ln, i=0, opos=0;
+    UInt ln, i=0, opos=0;
 	
     if (addr == 0) {
 	VG_(printf)("%08lx", addr);
@@ -435,7 +435,7 @@ void CLG_(print_context)(void)
   VG_(printf)("\n");
 }
 
-void* CLG_(malloc)(HChar* cc, UWord s, char* f)
+void* CLG_(malloc)(const HChar* cc, UWord s, const HChar* f)
 {
     CLG_DEBUG(3, "Malloc(%lu) in %s.\n", s, f);
     return VG_(malloc)(cc,s);

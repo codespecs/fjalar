@@ -11,7 +11,7 @@
       derived from readelf.c and valgrind-20031012-wine/vg_symtab2.c
       derived from wine-1.0/tools/winedump/pdb.c and msc.c
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,6 +37,9 @@
 #ifndef __PRIV_READPDB_H
 #define __PRIV_READPDB_H
 
+#include "pub_core_basics.h"     // Addr
+#include "pub_core_debuginfo.h"  // DebugInfo
+
 /* Returns True if OK, False for any kind of failure. */
 extern Bool ML_(read_pdb_debug_info)(
                DebugInfo* di,
@@ -44,7 +47,7 @@ extern Bool ML_(read_pdb_debug_info)(
                PtrdiffT   obj_bias,
                void*      pdbimage,
                SizeT      n_pdbimage,
-               Char*      pdbname,
+               HChar*     pdbname,
                ULong      pdbmtime
             );
 

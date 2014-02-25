@@ -10,14 +10,14 @@
 
 /* Replacements for Valgrind core functionality. */
 
-void* VG_(malloc)(HChar* cc, SizeT nbytes)
+void* VG_(malloc)(const HChar* cc, SizeT nbytes)
 { return malloc(nbytes); }
-void* VG_(realloc)(HChar* cc, void* p, SizeT size)
+void* VG_(realloc)(const HChar* cc, void* p, SizeT size)
 { return realloc(p, size); }
 void  VG_(free)(void* p)
 { return free(p); }
-void  VG_(assert_fail)(Bool isCore, const Char* assertion, const Char* file,
-                       Int line, const Char* function, const HChar* format,
+void  VG_(assert_fail)(Bool isCore, const HChar* assertion, const HChar* file,
+                       Int line, const HChar* function, const HChar* format,
                        ...)
 {
   fprintf(stderr,
@@ -40,9 +40,9 @@ Int VG_(memcmp)(const void* s1, const void* s2, SizeT n)
 { return memcmp(s1, s2, n); }
 UInt VG_(printf)(const HChar *format, ...)
 { UInt ret; va_list vargs; va_start(vargs, format); ret = vprintf(format, vargs); va_end(vargs); return ret; }
-UInt VG_(snprintf)(Char* buf, Int size, const HChar *format, ...)
+UInt VG_(snprintf)(HChar* buf, Int size, const HChar *format, ...)
 { UInt ret; va_list vargs; va_start(vargs, format); ret = vsnprintf(buf, size, format, vargs); va_end(vargs); return ret; }
-SizeT VG_(strlen)(const Char* str) { return strlen(str); }
+SizeT VG_(strlen)(const HChar* str) { return strlen(str); }
 UInt VG_(message)(VgMsgKind kind, const HChar* format, ...)
 { UInt ret; va_list vargs; va_start(vargs, format); ret = vprintf(format, vargs); va_end(vargs); printf("\n"); return ret; }
 Bool DRD_(is_suppressed)(const Addr a1, const Addr a2)

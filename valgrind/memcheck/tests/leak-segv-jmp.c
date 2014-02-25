@@ -8,13 +8,14 @@
 #include <sys/syscall.h>
 
 typedef unsigned long          UWord;
+typedef unsigned long long int   ULong;
+// Below code is copied from m_syscall.c
+// Refer to this file for syscall convention.
+#if defined(VGP_x86_linux)
 extern UWord do_syscall_WRK (UWord syscall_no, 
                              UWord a1, UWord a2, UWord a3,
                              UWord a4, UWord a5, UWord a6
                              );
-// Below code is copied from m_syscall.c
-// Refer to this file for syscall convention.
-#if defined(VGP_x86_linux)
 asm(
 ".text\n"
 ".globl do_syscall_WRK\n"
@@ -104,7 +105,6 @@ asm(
 ".previous\n"
 );
 #elif defined(VGP_s390x_linux)
-typedef  unsigned long long int   ULong;
 UWord do_syscall_WRK (
    UWord syscall_no,
    UWord arg1, UWord arg2, UWord arg3,
@@ -135,7 +135,36 @@ UWord do_syscall_WRK (
    return (UWord) (__svcres);
 }
 
+#elif defined(VGP_mips64_linux)
+extern UWord do_syscall_WRK (
+          UWord syscall_no,
+          UWord a1, UWord a2, UWord a3,
+          UWord a4, UWord a5, UWord a6
+       )
+{
+   UWord out;
+   __asm__ __volatile__ (
+                 "move $v0, %1\n\t"
+                 "move $a0, %2\n\t"
+                 "move $a1, %3\n\t"
+                 "move $a2, %4\n\t"
+                 "move $a3, %5\n\t"
+                 "move $8,  %6\n\t"  /* We use numbers because some compilers */
+                 "move $9,  %7\n\t"  /* don't recognize $a4 and $a5 */
+                 "syscall\n"
+                 "move %0, $v0\n\t"
+                 : /*out*/ "=r" (out)
+                 : "r"(syscall_no), "r"(a1), "r"(a2), "r"(a3),
+                   "r"(a4), "r"(a5), "r"(a6)
+                 : "v0", "v1", "a0", "a1", "a2", "a3", "$8", "$9");
+   return out;
+}
+
 #else
+// Ensure the file compiles even if the syscall nr is not defined.
+#ifndef __NR_mprotect
+#define __NR_mprotect 0
+#endif
 UWord do_syscall_WRK (UWord syscall_no, 
                       UWord a1, UWord a2, UWord a3,
                       UWord a4, UWord a5, UWord a6
@@ -161,9 +190,12 @@ void f(void)
 {
    long pagesize;
 #define RNDPAGEDOWN(a) ((long)a & ~(pagesize-1))
+   int i;
+   const int nr_ptr = (10000 * 4)/sizeof(char*);
 
-   b10 = malloc ((10000 * 4)/sizeof(char*) * sizeof(char*));
-
+   b10 = calloc (nr_ptr * sizeof(char*), 1);
+   for (i = 0; i < nr_ptr; i++)
+      b10[i] = (char*)b10;
    b10[4000] = malloc (1000);
    
    fprintf(stderr, "expecting no leaks\n");
@@ -171,13 +203,13 @@ void f(void)
    VALGRIND_DO_LEAK_CHECK;
 
    // make b10[4000] undefined. This should create a leak.
-   VALGRIND_MAKE_MEM_UNDEFINED (&b10[4000], sizeof(char*));
+   (void) VALGRIND_MAKE_MEM_UNDEFINED (&b10[4000], sizeof(char*));
    fprintf(stderr, "expecting a leak\n");
    fflush(stderr);
    VALGRIND_DO_LEAK_CHECK;
 
    // make  b10[4000] defined again.
-   VALGRIND_MAKE_MEM_DEFINED (&b10[4000], sizeof(char*));
+   (void) VALGRIND_MAKE_MEM_DEFINED (&b10[4000], sizeof(char*));
 
    // now make some bricolage to have some pages around b10[4000]
    // unreadable. The leak check should recover from that
@@ -193,12 +225,28 @@ void f(void)
       perror ("sysconf failed");
    
    if (RUNNING_ON_VALGRIND)
-      VALGRIND_NON_SIMD_CALL2(non_simd_mprotect, RNDPAGEDOWN(&b10[4000]), 2 * pagesize);
+     (void) VALGRIND_NON_SIMD_CALL2(non_simd_mprotect, RNDPAGEDOWN(&b10[4000]), 2 * pagesize);
    else
       mprotect_result = mprotect((void*) RNDPAGEDOWN(&b10[4000]), 2 * pagesize, PROT_NONE);
    fprintf(stderr, "mprotect result %d\n", mprotect_result);
 
    fprintf(stderr, "expecting a leak again\n");
+   fflush(stderr);
+   VALGRIND_DO_LEAK_CHECK;
+
+   if (RUNNING_ON_VALGRIND)
+     (void) VALGRIND_NON_SIMD_CALL2(non_simd_mprotect,
+                                    RNDPAGEDOWN(&b10[0]),
+                                    RNDPAGEDOWN(&(b10[nr_ptr-1]))
+                                    - RNDPAGEDOWN(&(b10[0])));
+   else
+      mprotect_result = mprotect((void*) RNDPAGEDOWN(&b10[0]),
+                                 RNDPAGEDOWN(&(b10[nr_ptr-1]))
+                                 - RNDPAGEDOWN(&(b10[0])),
+                                 PROT_NONE);
+   fprintf(stderr, "full mprotect result %d\n", mprotect_result);
+
+   fprintf(stderr, "expecting a leak again after full mprotect\n");
    fflush(stderr);
    VALGRIND_DO_LEAK_CHECK;
 

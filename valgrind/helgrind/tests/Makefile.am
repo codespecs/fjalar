@@ -12,6 +12,7 @@ EXTRA_DIST = \
 		annotate_rwlock.stderr.exp \
 	annotate_smart_pointer.vgtest annotate_smart_pointer.stdout.exp \
 		annotate_smart_pointer.stderr.exp \
+	cond_init_destroy.vgtest cond_init_destroy.stderr.exp \
 	cond_timedwait_invalid.vgtest cond_timedwait_invalid.stdout.exp \
 		cond_timedwait_invalid.stderr.exp \
 	bar_bad.vgtest bar_bad.stdout.exp bar_bad.stderr.exp \
@@ -42,6 +43,7 @@ EXTRA_DIST = \
 	pth_barrier3.vgtest pth_barrier3.stdout.exp pth_barrier3.stderr.exp \
 	pth_destroy_cond.vgtest \
 		pth_destroy_cond.stdout.exp pth_destroy_cond.stderr.exp \
+	pth_cond_destroy_busy.vgtest pth_cond_destroy_busy.stderr.exp \
 	pth_spinlock.vgtest pth_spinlock.stdout.exp pth_spinlock.stderr.exp \
 	rwlock_race.vgtest rwlock_race.stdout.exp rwlock_race.stderr.exp \
 	rwlock_test.vgtest rwlock_test.stdout.exp rwlock_test.stderr.exp \
@@ -82,15 +84,17 @@ EXTRA_DIST = \
 		tc18_semabuse.stderr.exp \
 		tc18_semabuse.stderr.exp-linux-mips32 \
 	tc19_shadowmem.vgtest tc19_shadowmem.stdout.exp \
-		tc19_shadowmem.stderr.exp \
+		tc19_shadowmem.stderr.exp tc19_shadowmem.stderr.exp-mips32 \
 	tc20_verifywrap.vgtest tc20_verifywrap.stdout.exp \
-		tc20_verifywrap.stderr.exp \
+		tc20_verifywrap.stderr.exp tc20_verifywrap.stderr.exp-mips32 \
+		tc20_verifywrap.stderr.exp-s390x \
 	tc21_pthonce.vgtest tc21_pthonce.stdout.exp tc21_pthonce.stderr.exp \
 	tc22_exit_w_lock.vgtest tc22_exit_w_lock.stdout.exp \
 		tc22_exit_w_lock.stderr.exp \
 		tc22_exit_w_lock.stderr.exp-kfail-x86 \
 	tc23_bogus_condwait.vgtest tc23_bogus_condwait.stdout.exp \
 		tc23_bogus_condwait.stderr.exp \
+		tc23_bogus_condwait.stderr.exp-mips32 \
 	tc24_nonzero_sem.vgtest tc24_nonzero_sem.stdout.exp \
 		tc24_nonzero_sem.stderr.exp
 
@@ -98,6 +102,7 @@ EXTRA_DIST = \
 # should be conditionally compiled like tc20_verifywrap is.
 check_PROGRAMS = \
 	annotate_hbefore \
+	cond_init_destroy \
 	cond_timedwait_invalid \
 	free_is_write \
 	hg01_all_ok \

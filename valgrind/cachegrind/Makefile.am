@@ -2,7 +2,9 @@ include $(top_srcdir)/Makefile.tool.am
 
 EXTRA_DIST = \
 	docs/cg-manual.xml \
-	docs/cg_annotate-manpage.xml
+	docs/cg_annotate-manpage.xml \
+	docs/cg_diff-manpage.xml \
+	docs/cg_merge-manpage.xml
 
 #----------------------------------------------------------------------------
 # Headers, etc
@@ -41,13 +43,7 @@ endif
 
 CACHEGRIND_SOURCES_COMMON = \
 	cg_main.c \
-	cg-arch.c \
-	cg-x86-amd64.c \
-	cg-ppc32.c \
-	cg-ppc64.c \
-	cg-arm.c   \
-	cg-s390x.c \
-	cg-mips32.c
+	cg_arch.c
 
 cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
 	$(CACHEGRIND_SOURCES_COMMON)
@@ -88,5 +84,3 @@ cachegrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
 	$(cachegrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
 	$(cachegrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
 endif
-
-

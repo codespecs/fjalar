@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2009-2012 Julian Seward
+   Copyright (C) 2009-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,6 +30,8 @@
 
 #ifndef __PUB_TOOL_ASPACEHL_H
 #define __PUB_TOOL_ASPACEHL_H
+
+#include "pub_tool_basics.h"   // VG_ macro
 
 // Extract from aspacem a vector of the current segment start
 // addresses.  The vector is dynamically allocated and should be freed

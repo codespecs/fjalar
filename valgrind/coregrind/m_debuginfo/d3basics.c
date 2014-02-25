@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks LLP
+   Copyright (C) 2008-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,7 @@
 #include "pub_core_debuginfo.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
+#include "pub_core_libcbase.h"
 #include "pub_core_options.h"
 #include "pub_core_xarray.h"
 
@@ -45,10 +46,11 @@
 #include "pub_core_aspacemgr.h" /* VG_(is_valid_for_client) */
 
 #include "priv_misc.h"
+#include "priv_image.h"
 #include "priv_d3basics.h"      /* self */
 #include "priv_storage.h"
 
-HChar* ML_(pp_DW_children) ( DW_children hashch )
+const HChar* ML_(pp_DW_children) ( DW_children hashch )
 {
    switch (hashch) {
       case DW_children_no:  return "no children";
@@ -57,7 +59,7 @@ HChar* ML_(pp_DW_children) ( DW_children hashch )
    return "DW_children_???";
 }
 
-HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
+const HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
 {
    switch (tag) {
       case DW_TAG_padding:            return "DW_TAG_padding";
@@ -152,7 +154,7 @@ HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
    return "DW_TAG_???";
 }
 
-HChar* ML_(pp_DW_FORM) ( DW_FORM form )
+const HChar* ML_(pp_DW_FORM) ( DW_FORM form )
 {
    switch (form) {
       case DW_FORM_addr:      return "DW_FORM_addr";
@@ -186,7 +188,7 @@ HChar* ML_(pp_DW_FORM) ( DW_FORM form )
    return "DW_FORM_???";
 }
 
-HChar* ML_(pp_DW_AT) ( DW_AT attr )
+const HChar* ML_(pp_DW_AT) ( DW_AT attr )
 {
    switch (attr) {
       case DW_AT_sibling:             return "DW_AT_sibling";
@@ -413,6 +415,9 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
    if (regno == 15) { *a = regs->sp; return True; }
    if (regno == 11) { *a = regs->fp; return True; }
 #  elif defined(VGP_mips32_linux)
+   if (regno == 29) { *a = regs->sp; return True; }
+   if (regno == 30) { *a = regs->fp; return True; }
+#  elif defined(VGP_mips64_linux)
    if (regno == 29) { *a = regs->sp; return True; }
    if (regno == 30) { *a = regs->fp; return True; }
 #  else
@@ -1013,7 +1018,7 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
    Word       i, nGuards;
    MaybeULong *mul, *mul2;
 
-   HChar*  badness = NULL;
+   const HChar*  badness = NULL;
    UChar*  p       = &gx->payload[0]; /* must remain unsigned */
    XArray* results = VG_(newXA)( ML_(dinfo_zalloc), "di.d3basics.etG.1",
                                  ML_(dinfo_free),

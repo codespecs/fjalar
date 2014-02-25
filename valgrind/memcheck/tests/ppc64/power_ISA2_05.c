@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <config.h>
 
 double foo = -1.0;
 double FRT1;
@@ -63,9 +64,16 @@ void test_lfiwax()
 ** FPp	= leftmost 64 bits stored at DS(RA)
 ** FPp+1= rightmost 64 bits stored at DS(RA)
 ** FPp must be an even float register
+**
+** The [st|l]fdp[x] instructions were put into the "Floating-Point.Phased-Out"
+** category in ISA 2.06 (i.e., POWER7 timeframe).  If valgrind and its
+** testsuite are built with -mcpu=power7 (or later), then the assembler will
+** not recognize those phased out instructions.
+**
 */
 void test_double_pair_instrs()
 {
+#ifdef HAVE_AS_PPC_FPPO
    typedef struct {
       double hi;
       double lo;
@@ -101,8 +109,8 @@ void test_double_pair_instrs()
    FRT2 = -1.0;
    base = (unsigned long) &dbl_pair;
    offset = (unsigned long) &dbl_pair[1] - base;
-   __asm__ volatile ("or 20, 0, %0"::"r" (base));
-   __asm__ volatile ("or 21, 0, %0"::"r" (offset));
+   __asm__ volatile ("ori 20, %0, 0"::"r" (base));
+   __asm__ volatile ("ori 21, %0, 0"::"r" (offset));
    __asm__ volatile ("lfdpx 10, 20, 21");
    __asm__ volatile ("fmr %0, 10":"=f" (FRT1));
    __asm__ volatile ("fmr %0, 11":"=f" (FRT2));
@@ -113,13 +121,14 @@ void test_double_pair_instrs()
    FRT2 = -16.1024;
    base = (unsigned long) &dbl_pair;
    offset = (unsigned long) &dbl_pair[2] - base;
-   __asm__ volatile ("or 20, 0, %0"::"r" (base));
-   __asm__ volatile ("or 21, 0, %0"::"r" (offset));
+   __asm__ volatile ("ori 20, %0, 0"::"r" (base));
+   __asm__ volatile ("ori 21, %0, 0"::"r" (offset));
    __asm__ volatile ("fmr %0, 10":"=f" (FRT1));
    __asm__ volatile ("fmr %0, 11":"=f" (FRT2));
    __asm__ volatile ("stfdpx 10, 20, 21");
    printf("stfdpx (%f, %f) => F_hi=%f, F_lo=%f\n",
           FRT1, FRT2, dbl_pair[2].hi, dbl_pair[2].lo);
+#endif
 }
 
 
@@ -166,14 +175,14 @@ void test_reservation()
 
    base = (unsigned long) &arr;
    offset = (unsigned long) &arr[1] - base;
-   __asm__ volatile ("or 20, 0, %0"::"r" (base));
-   __asm__ volatile ("or 21, 0, %0"::"r" (offset));
+   __asm__ volatile ("ori 20, %0, 0"::"r" (base));
+   __asm__ volatile ("ori 21, %0, 0"::"r" (offset));
    __asm__ volatile ("lwarx %0, 20, 21, 1":"=r" (RT));
    printf("lwarx => %x\n", RT);
 
 #ifdef __powerpc64__
    offset = (unsigned long) &arr[1] - base;
-   __asm__ volatile ("or 21, 0, %0"::"r" (offset));
+   __asm__ volatile ("ori 21, %0, 0"::"r" (offset));
    __asm__ volatile ("ldarx %0, 20, 21, 1":"=r" (RT));
    printf("ldarx => %x\n", RT);
 #endif

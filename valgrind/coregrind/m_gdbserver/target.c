@@ -29,11 +29,11 @@
 #include "valgrind_low.h"
 #include "gdb/signals.h"
 #include "pub_core_aspacemgr.h"
-#include "pub_tool_machine.h"
+#include "pub_core_machine.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_transtab.h"
 #include "pub_core_gdbserver.h" 
-#include "pub_tool_debuginfo.h"
+#include "pub_core_debuginfo.h"
 
 
 /* the_low_target defines the architecture specific aspects depending
@@ -102,16 +102,17 @@ void valgrind_update_threads (int pid)
 static
 struct reg* build_shadow_arch (struct reg *reg_defs, int n) {
    int i, r;
-   static char *postfix[3] = { "", "s1", "s2" };
+   static const char *postfix[3] = { "", "s1", "s2" };
    struct reg *new_regs = malloc(3 * n * sizeof(reg_defs[0]));
    int reg_set_len = reg_defs[n-1].offset + reg_defs[n-1].size;
 
    for (i = 0; i < 3; i++) {
       for (r = 0; r < n; r++) {
-         new_regs[i*n + r].name = malloc(strlen(reg_defs[r].name) 
+         char *regname = malloc(strlen(reg_defs[r].name) 
                                          + strlen (postfix[i]) + 1);
-         strcpy (new_regs[i*n + r].name, reg_defs[r].name);
-         strcat (new_regs[i*n + r].name, postfix[i]);
+         strcpy (regname, reg_defs[r].name);
+         strcat (regname, postfix[i]);
+         new_regs[i*n + r].name = regname;
          new_regs[i*n + r].offset = i*reg_set_len + reg_defs[r].offset;
          new_regs[i*n + r].size = reg_defs[r].size;
          dlog(1,
@@ -163,6 +164,15 @@ static int vki_signal_to_deliver;
 Bool gdbserver_deliver_signal (Int vki_sigNo)
 {
    return vki_sigNo == vki_signal_to_deliver;
+}
+
+static unsigned char exit_status_to_report;
+static int exit_code_to_report;
+void gdbserver_process_exit_encountered (unsigned char status, Int code)
+{
+   vg_assert (status == 'W' || status == 'X');
+   exit_status_to_report = status;
+   exit_code_to_report = code;
 }
 
 static
@@ -248,12 +258,33 @@ unsigned char valgrind_wait (char *ourstatus)
    unsigned long wptid;
    ThreadState *tst;
    enum target_signal sig;
+   int code;
 
    pid = VG_(getpid) ();
    dlog(1, "enter valgrind_wait pid %d\n", pid);
 
    regcache_invalidate();
    valgrind_update_threads(pid);
+
+   /* First see if we are done with this process. */
+   if (exit_status_to_report != 0) {
+      *ourstatus = exit_status_to_report;
+      exit_status_to_report = 0;
+
+      if (*ourstatus == 'W') {
+         code = exit_code_to_report;
+         exit_code_to_report = 0;
+         dlog(1, "exit valgrind_wait status W exit code %d\n", code);
+         return code;
+      }
+
+      if (*ourstatus == 'X') {
+         sig = target_signal_from_host(exit_code_to_report);
+         exit_code_to_report = 0;
+         dlog(1, "exit valgrind_wait status X signal %d\n", sig);
+         return sig;
+      }
+   }
 
    /* in valgrind, we consider that a wait always succeeds with STOPPED 'T' 
       and with a signal TRAP (i.e. a breakpoint), unless there is
@@ -279,7 +310,7 @@ unsigned char valgrind_wait (char *ourstatus)
    stop_pc = (*the_low_target.get_pc) ();
    
    dlog(1,
-        "exit valgrind_wait returns ptid %s stop_pc %s signal %d\n", 
+        "exit valgrind_wait status T ptid %s stop_pc %s signal %d\n", 
         image_ptid (wptid), sym (stop_pc), sig);
    return sig;
 }
@@ -489,7 +520,7 @@ int valgrind_point (Bool insert, char type, CORE_ADDR addr, int len)
       return 1; /* error or unsupported */
 }
 
-char* valgrind_target_xml (Bool shadow_mode)
+const char* valgrind_target_xml (Bool shadow_mode)
 {
    return (*the_low_target.target_xml) (shadow_mode);
 }
@@ -618,6 +649,8 @@ void valgrind_initialize_target(void)
    s390x_init_architecture(&the_low_target);
 #elif defined(VGA_mips32)
    mips32_init_architecture(&the_low_target);
+#elif defined(VGA_mips64)
+   mips64_init_architecture(&the_low_target);
 #else
    architecture missing in target.c valgrind_initialize_target
 #endif

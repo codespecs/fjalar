@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Nicholas Nethercote
+   Copyright (C) 2000-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -31,7 +31,8 @@
 #ifndef __PRIV_SYSWRAP_LINUX_H
 #define __PRIV_SYSWRAP_LINUX_H
 
-/* requires #include "priv_types_n_macros.h" */
+#include "pub_core_basics.h"     // ThreadId
+#include "priv_types_n_macros.h" // DECL_TEMPLATE
 
 // Clone-related functions
 extern Word ML_(start_thread_NORETURN) ( void* arg );
@@ -175,6 +176,8 @@ DECL_TEMPLATE(linux, sys_readlinkat);
 DECL_TEMPLATE(linux, sys_fchmodat);
 DECL_TEMPLATE(linux, sys_faccessat);
 DECL_TEMPLATE(linux, sys_utimensat);
+DECL_TEMPLATE(linux, sys_name_to_handle_at);
+DECL_TEMPLATE(linux, sys_open_by_handle_at);
 
 DECL_TEMPLATE(linux, sys_add_key);
 DECL_TEMPLATE(linux, sys_request_key);
@@ -272,6 +275,10 @@ DECL_TEMPLATE(linux, sys_lookup_dcookie);        // (*/32/64) L
 DECL_TEMPLATE(linux, sys_process_vm_readv);
 DECL_TEMPLATE(linux, sys_process_vm_writev);
 
+// Linux-specific (new in Linux 2.6.36)
+DECL_TEMPLATE(linux, sys_fanotify_init);
+DECL_TEMPLATE(linux, sys_fanotify_mark);
+
 /* ---------------------------------------------------------------------
    Wrappers for sockets and ipc-ery.  These are split into standalone
    procedures because x86-linux hides them inside multiplexors
@@ -289,10 +296,62 @@ extern void ML_(linux_PRE_sys_msgctl)      ( TId, UW, UW, UW );
 extern void ML_(linux_POST_sys_msgctl)     ( TId, UW, UW, UW, UW );
 extern void ML_(linux_PRE_sys_getsockopt)  ( TId, UW, UW, UW, UW, UW );
 extern void ML_(linux_POST_sys_getsockopt) ( TId, SR, UW, UW, UW, UW, UW );
+extern void ML_(linux_PRE_sys_setsockopt)  ( TId, UW, UW, UW, UW, UW );
+
+// Linux-specific (but non-arch-specific) ptrace wrapper helpers
+extern void ML_(linux_PRE_getregset) ( ThreadId, long, long );
+extern void ML_(linux_PRE_setregset) ( ThreadId, long, long );
+extern void ML_(linux_POST_getregset)( ThreadId, long, long );
 
 #undef TId
 #undef UW
 #undef SR
+
+/* sys_ipc and sys_socketcall are multiplexors which implements several syscalls.
+   Used e.g. by x86, ppc32, ppc64, ... */
+DECL_TEMPLATE(linux, sys_ipc);
+DECL_TEMPLATE(linux, sys_socketcall);
+
+/* Depending on the platform, the below are implemented as
+   direct syscalls or via the above sys_socketcall multiplexor. */
+
+/* Direct ipc related syscalls. */
+/* Semaphore */
+DECL_TEMPLATE(linux, sys_semget);
+DECL_TEMPLATE(linux, sys_semop);
+DECL_TEMPLATE(linux, sys_semctl);
+DECL_TEMPLATE(linux, sys_semtimedop);
+/* Shared memory */
+DECL_TEMPLATE(linux, wrap_sys_shmat);
+DECL_TEMPLATE(linux, sys_shmget);
+DECL_TEMPLATE(linux, sys_shmdt);
+DECL_TEMPLATE(linux, sys_shmctl);
+/* Message queue */
+DECL_TEMPLATE(linux, sys_msgget);
+DECL_TEMPLATE(linux, sys_msgrcv);
+DECL_TEMPLATE(linux, sys_msgsnd);
+DECL_TEMPLATE(linux, sys_msgctl);
+
+/* Direct socket related syscalls. */
+DECL_TEMPLATE(linux, sys_socket);
+DECL_TEMPLATE(linux, sys_setsockopt);
+DECL_TEMPLATE(linux, sys_getsockopt);
+DECL_TEMPLATE(linux, sys_connect);
+DECL_TEMPLATE(linux, sys_accept);
+DECL_TEMPLATE(linux, sys_accept4);
+DECL_TEMPLATE(linux, sys_send);
+DECL_TEMPLATE(linux, sys_sendto);
+DECL_TEMPLATE(linux, sys_recv);
+DECL_TEMPLATE(linux, sys_recvfrom);
+DECL_TEMPLATE(linux, sys_sendmsg);
+DECL_TEMPLATE(linux, sys_recvmsg);
+DECL_TEMPLATE(linux, sys_shutdown);
+DECL_TEMPLATE(linux, sys_bind);
+DECL_TEMPLATE(linux, sys_listen);
+DECL_TEMPLATE(linux, sys_getsockname);
+DECL_TEMPLATE(linux, sys_getpeername);
+DECL_TEMPLATE(linux, sys_socketpair);
+
 
 #endif   // __PRIV_SYSWRAP_LINUX_H
 

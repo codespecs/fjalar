@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2012 RT-RK
+   Copyright (C) 2010-2013 RT-RK
       mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
@@ -79,10 +79,10 @@ typedef unsigned long long __vki_u64;
 #define VKI_MAX_PAGE_SIZE       VKI_PAGE_SIZE
 
 //----------------------------------------------------------------------
-// From linux-2.6.35.5/arch/mips/include/asm-generic/shmparam.h
+// From linux-2.6.35.9/arch/mips/include/bits/shm.h
 //----------------------------------------------------------------------
 
-#define VKI_SHMLBA  SHM_ALIGNMENT
+#define VKI_SHMLBA  0x40000
 
 //----------------------------------------------------------------------
 // From linux-2.6.35.5/include/asm/signal.h
@@ -309,6 +309,7 @@ struct vki_sigcontext {
 // From linux-2.6.35.5/include/asm-mips/fcntl.h
 //----------------------------------------------------------------------
 
+#define VKI_O_ACCMODE		   03
 #define VKI_O_RDONLY		   00
 #define VKI_O_WRONLY		   01
 #define VKI_O_RDWR		   02
@@ -370,7 +371,10 @@ struct vki_f_owner_ex {
 //----------------------------------------------------------------------
 
 #define VKI_SOL_SOCKET	0xffff
+
 #define VKI_SO_TYPE	0x1008
+
+#define VKI_SO_ATTACH_FILTER	26
 
 //----------------------------------------------------------------------
 // From linux-2.6.35.5/include/asm-i386/sockios.h
@@ -963,8 +967,16 @@ typedef struct vki_siginfo {
 #define VKI_BRK_OVERFLOW         6    /* Overflow check */
 #define VKI_BRK_DIVZERO          7    /* Divide by zero check */
 
-#endif // __VKI_MIPS32_LINUX_H
+//----------------------------------------------------------------------
+// From linux-3.6.35.5/arch/mips/include/socket.h
+//----------------------------------------------------------------------
+enum vki_sock_type {
+        VKI_SOCK_STREAM = 2,
+        // [[others omitted]]
+};
+#define ARCH_HAS_SOCKET_TYPES 1
 
+#endif // __VKI_MIPS32_LINUX_H
 
 /*--------------------------------------------------------------------*/
 /*--- end                                       vki-mips32-linux.h ---*/

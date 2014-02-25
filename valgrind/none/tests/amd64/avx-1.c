@@ -212,6 +212,9 @@ GEN_test_RandM(VCMPSD_128_0x6,
 GEN_test_RandM(VCMPSD_128_0x7,
                "vcmpsd $7, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $7, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSD_128_0x8,
+               "vcmpsd $8, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpsd $8, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSD_128_0xA,
                "vcmpsd $0xA, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpsd $0xA, (%%rax), %%xmm8, %%xmm7")
@@ -623,6 +626,9 @@ GEN_test_RandM(VCMPSS_128_0x6,
 GEN_test_RandM(VCMPSS_128_0x7,
                "vcmpss $7, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $7, (%%rax), %%xmm8, %%xmm7")
+GEN_test_RandM(VCMPSS_128_0x8,
+               "vcmpss $8, %%xmm6,  %%xmm8, %%xmm7",
+               "vcmpss $8, (%%rax), %%xmm8, %%xmm7")
 GEN_test_RandM(VCMPSS_128_0xA,
                "vcmpss $0xA, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0xA, (%%rax), %%xmm8, %%xmm7")
@@ -2129,6 +2135,26 @@ GEN_test_RandM(VCMPSS_128_0x9,
                "vcmpss $0x9, %%xmm6,  %%xmm8, %%xmm7",
                "vcmpss $0x9, (%%rax), %%xmm8, %%xmm7")
 
+GEN_test_Monly(VMASKMOVPS_128_LoadForm,
+               "vmaskmovps (%%rax), %%xmm8, %%xmm7;"
+               "vxorps %%xmm6, %%xmm6, %%xmm6;"
+               "vmaskmovps (%%rax,%%rax,4), %%xmm6, %%xmm9")
+
+GEN_test_Monly(VMASKMOVPS_256_LoadForm,
+               "vmaskmovps (%%rax), %%ymm8, %%ymm7;"
+               "vxorps %%ymm6, %%ymm6, %%ymm6;"
+               "vmaskmovps (%%rax,%%rax,4), %%ymm6, %%ymm9")
+
+GEN_test_Monly(VMASKMOVPD_128_LoadForm,
+               "vmaskmovpd (%%rax), %%xmm8, %%xmm7;"
+               "vxorpd %%xmm6, %%xmm6, %%xmm6;"
+               "vmaskmovpd (%%rax,%%rax,4), %%xmm6, %%xmm9")
+
+GEN_test_Monly(VMASKMOVPD_256_LoadForm,
+               "vmaskmovpd (%%rax), %%ymm8, %%ymm7;"
+               "vxorpd %%ymm6, %%ymm6, %%ymm6;"
+               "vmaskmovpd (%%rax,%%rax,4), %%ymm6, %%ymm9")
+
 /* Comment duplicated above, for convenient reference:
    Allowed operands in test insns:
      Reg form:  %ymm6,  %ymm7, %ymm8, %ymm9 and %r14.
@@ -2185,6 +2211,7 @@ int main ( void )
    DO_D( VCMPSS_128_0x5 );
    DO_D( VCMPSS_128_0x6 );
    DO_D( VCMPSS_128_0x7 );
+   DO_D( VCMPSS_128_0x8 );
    DO_D( VCMPSS_128_0xA );
    DO_D( VCMPSS_128_0xC );
    DO_D( VCMPSS_128_0xC );
@@ -2289,6 +2316,7 @@ int main ( void )
    DO_D( VCMPSD_128_0x5 );
    DO_D( VCMPSD_128_0x6 );
    DO_D( VCMPSD_128_0x7 );
+   DO_D( VCMPSD_128_0x8 );
    DO_D( VCMPSD_128_0xA );
    DO_D( VCMPSD_128_0xC );
    DO_D( VCMPSD_128_0xD );
@@ -2669,6 +2697,10 @@ int main ( void )
    DO_D( VPCLMULQDQ_0x11 );
    DO_D( VPCLMULQDQ_0xFF );
    DO_D( VCMPSS_128_0x9 );
+   DO_D( VMASKMOVPS_128_LoadForm );
+   DO_D( VMASKMOVPS_256_LoadForm );
+   DO_D( VMASKMOVPD_128_LoadForm );
+   DO_D( VMASKMOVPD_256_LoadForm );
    return 0;
 }
 

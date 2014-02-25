@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -63,11 +63,11 @@
 
 typedef
    struct {
-      Char* name;
-      Char* version;
-      Char* description;
-      Char* copyright_author;
-      Char* bug_reports_to;
+      const HChar* name;
+      const HChar* version;
+      const HChar* description;
+      const HChar* copyright_author;
+      const HChar* bug_reports_to;
       UInt  avg_translation_sizeB;
    }
    VgDetails;
@@ -109,7 +109,7 @@ typedef struct {
    IRSB* (*tool_instrument)   (VgCallbackClosure*,
                                IRSB*, 
                                VexGuestLayout*, VexGuestExtents*, 
-                               IRType, IRType);
+                               VexArchInfo*, IRType, IRType);
    void  (*tool_fini)         (Int);
 
    // VG_(needs).core_errors
@@ -121,17 +121,20 @@ typedef struct {
    void  (*tool_pp_Error)                    (Error*);
    Bool  tool_show_ThreadIDs_for_errors;
    UInt  (*tool_update_extra)                (Error*);
-   Bool  (*tool_recognised_suppression)      (Char*, Supp*);
-   Bool  (*tool_read_extra_suppression_info) (Int, Char**, SizeT*, Supp*);
+   Bool  (*tool_recognised_suppression)      (const HChar*, Supp*);
+   Bool  (*tool_read_extra_suppression_info) (Int, HChar**, SizeT*, Int*,
+                                              Supp*);
    Bool  (*tool_error_matches_suppression)   (Error*, Supp*);
-   Char* (*tool_get_error_name)              (Error*);
-   Bool  (*tool_get_extra_suppression_info)  (Error*,/*OUT*/Char*,Int);
+   const HChar* (*tool_get_error_name)       (Error*);
+   Bool  (*tool_get_extra_suppression_info)  (Error*,/*OUT*/HChar*,Int);
+   Bool  (*tool_print_extra_suppression_use) (Supp*,/*OUT*/HChar*,Int);
+   void  (*tool_update_extra_suppression_use) (Error*, Supp*);
 
    // VG_(needs).superblock_discards
    void (*tool_discard_superblock_info)(Addr64, VexGuestExtents);
 
    // VG_(needs).command_line_options
-   Bool (*tool_process_cmd_line_option)(Char*);
+   Bool (*tool_process_cmd_line_option)(const HChar*);
    void (*tool_print_usage)            (void);
    void (*tool_print_debug_usage)      (void);
 
@@ -212,12 +215,12 @@ typedef struct {
 
    void (*track_ban_mem_stack)(Addr, SizeT);
 
-   void (*track_pre_mem_read)       (CorePart, ThreadId, Char*, Addr, SizeT);
-   void (*track_pre_mem_read_asciiz)(CorePart, ThreadId, Char*, Addr);
-   void (*track_pre_mem_write)      (CorePart, ThreadId, Char*, Addr, SizeT);
+   void (*track_pre_mem_read)       (CorePart, ThreadId, const HChar*, Addr, SizeT);
+   void (*track_pre_mem_read_asciiz)(CorePart, ThreadId, const HChar*, Addr);
+   void (*track_pre_mem_write)      (CorePart, ThreadId, const HChar*, Addr, SizeT);
    void (*track_post_mem_write)     (CorePart, ThreadId, Addr, SizeT);
 
-   void (*track_pre_reg_read)  (CorePart, ThreadId, Char*, PtrdiffT, SizeT);
+   void (*track_pre_reg_read)  (CorePart, ThreadId, const HChar*, PtrdiffT, SizeT);
    void (*track_post_reg_write)(CorePart, ThreadId,        PtrdiffT, SizeT);
    void (*track_post_reg_write_clientcall_return)(ThreadId, PtrdiffT, SizeT,
                                                   Addr);
@@ -240,7 +243,7 @@ extern VgToolInterface VG_(tdict);
    Miscellaneous functions
    ------------------------------------------------------------------ */
 
-Bool VG_(sanity_check_needs) ( Char** failmsg );
+Bool VG_(sanity_check_needs) ( const HChar** failmsg );
 
 #endif   // __PUB_CORE_TOOLIFACE_H
 
