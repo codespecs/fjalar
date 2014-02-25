@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 
 #ifndef __PRIV_TYPES_N_MACROS_H
 #define __PRIV_TYPES_N_MACROS_H
+
+#include "pub_core_basics.h"    // Addr
 
 /* requires #include "pub_core_options.h" */
 /* requires #include "pub_core_signals.h" */
@@ -89,7 +91,8 @@ typedef
       Int o_sysno;
 #     if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
          || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-         || defined(VGP_arm_linux) || defined(VGP_s390x_linux)
+         || defined(VGP_arm_linux) || defined(VGP_s390x_linux) \
+         || defined(VGP_mips64_linux)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;

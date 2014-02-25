@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -31,6 +31,8 @@
 
 #ifndef __PUB_TOOL_SEQMATCH_H
 #define __PUB_TOOL_SEQMATCH_H
+
+#include "pub_tool_basics.h"   // UWord
 
 /* Perform totally abstractified sequence matching, of an input
    sequence against a pattern sequence.  The pattern sequence may
@@ -78,18 +80,18 @@
 */
 Bool VG_(generic_match) ( 
         Bool matchAll,
-        void* patt,  SizeT szbPatt,  UWord nPatt,  UWord ixPatt,
-        void* input, SizeT szbInput, UWord nInput, UWord ixInput,
-        Bool (*pIsStar)(void*),
-        Bool (*pIsQuery)(void*),
-        Bool (*pattEQinp)(void*,void*,void*,UWord),
+        const void* patt,  SizeT szbPatt,  UWord nPatt,  UWord ixPatt,
+        const void* input, SizeT szbInput, UWord nInput, UWord ixInput,
+        Bool (*pIsStar)(const void*),
+        Bool (*pIsQuery)(const void*),
+        Bool (*pattEQinp)(const void*,const void*,void*,UWord),
         void* inputCompleter
      );
 
 /* Mini-regexp function.  Searches for 'pat' in 'str'.  Supports
    meta-symbols '*' and '?'.  There is no way to escape meta-symbols
    in the pattern. */
-Bool VG_(string_match) ( const Char* pat, const Char* str );
+Bool VG_(string_match) ( const HChar* pat, const HChar* str );
 
 #endif   // __PUB_TOOL_SEQMATCH_H
 

@@ -9,7 +9,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2008-2012 OpenWorks Ltd
+   Copyright (C) 2008-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -44,26 +44,29 @@ void h_record_heap_error( Addr a, SizeT size, Seg* vseg, Bool is_write );
 
 void h_record_arith_error( Seg* seg1, Seg* seg2, HChar* opname );
 
-void h_record_sysparam_error( ThreadId tid, CorePart part, Char* s,
+void h_record_sysparam_error( ThreadId tid, CorePart part, const HChar* s,
                               Addr lo, Addr hi, Seg* seglo, Seg* seghi );
 
 Bool pc_eq_Error           ( VgRes res, Error* e1, Error* e2 );
 void pc_before_pp_Error    ( Error* err );
 void pc_pp_Error           ( Error* err );
 UInt pc_update_Error_extra ( Error* err );
-Bool pc_is_recognised_suppression ( Char* name, Supp *su );
-Bool pc_read_extra_suppression_info ( Int fd, Char** bufpp, 
-                                      SizeT* nBufp, Supp* su );
+Bool pc_is_recognised_suppression ( const HChar* name, Supp *su );
+Bool pc_read_extra_suppression_info ( Int fd, HChar** bufpp, 
+                                      SizeT* nBufp, Int* lineno, Supp* su );
 Bool pc_error_matches_suppression (Error* err, Supp* su);
-Char* pc_get_error_name ( Error* err );
+const HChar* pc_get_error_name ( Error* err );
 Bool pc_get_extra_suppression_info ( Error* err,
-                                     /*OUT*/Char* buf, Int nBuf );
+                                     /*OUT*/HChar* buf, Int nBuf );
+Bool pc_print_extra_suppression_use ( Supp* su,
+                                      /*OUT*/HChar* buf, Int nBuf );
+void pc_update_extra_suppression_use (Error* err, Supp* su);
 
 extern Bool h_clo_partial_loads_ok;
 /* extern Bool h_clo_lossage_check; */
 extern Bool sg_clo_enable_sg_checks;
 
-Bool pc_process_cmd_line_options(Char* arg);
+Bool pc_process_cmd_line_options(const HChar* arg);
 void pc_print_usage(void);
 void pc_print_debug_usage(void);
 

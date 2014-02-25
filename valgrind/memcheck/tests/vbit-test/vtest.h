@@ -53,6 +53,8 @@ typedef enum {
    UNDEF_OR,      // bitwise OR operation
    UNDEF_AND,     // bitwise AND operation
 
+   UNDEF_ORD,     // Iop_CmpORD compare 
+
    // For IROps I don't know anything about
    UNDEF_UNKNOWN
 } undef_t;
@@ -72,6 +74,7 @@ typedef struct {
    unsigned    arm    : 1;
    unsigned    x86    : 1;
    unsigned    mips32 : 1;
+   unsigned    mips64 : 1;
 } irop_t;
 
 
@@ -102,10 +105,10 @@ int  get_num_operands(IROp);
 
 void print_opnd(FILE *, const opnd_t *);
 
-void test_unary_op(const irop_t *, test_data_t *);
-void test_binary_op(const irop_t *, test_data_t *);
-void test_ternary_op(const irop_t *, test_data_t *);
-void test_qernary_op(const irop_t *, test_data_t *);
+int test_unary_op(const irop_t *, test_data_t *);
+int test_binary_op(const irop_t *, test_data_t *);
+int test_ternary_op(const irop_t *, test_data_t *);
+int test_qernary_op(const irop_t *, test_data_t *);
 
 void valgrind_vex_init_for_iri(IRICB *);
 void valgrind_execute_test(const irop_t *, test_data_t *);

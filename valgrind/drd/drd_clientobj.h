@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -165,7 +165,7 @@ DrdClientobj* DRD_(clientobj_add)(const Addr a1, const ObjType t);
 Bool DRD_(clientobj_remove)(const Addr addr, const ObjType t);
 void DRD_(clientobj_stop_using_mem)(const Addr a1, const Addr a2);
 void DRD_(clientobj_delete_thread)(const DrdThreadId tid);
-const char* DRD_(clientobj_type_name)(const ObjType t);
+const HChar* DRD_(clientobj_type_name)(const ObjType t);
 
 
 #endif /* __DRD_CLIENTOBJ_H */

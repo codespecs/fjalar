@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -44,10 +44,11 @@
 /* Client address space, lowest to highest (see top of ume.c) */
 // TODO: get rid of as many of these as possible.
 
-Addr  VG_(client_base) = 0;       /* client address space limits */
-Addr  VG_(client_end)  = 0;
-
+/* ***Initial*** lowest address of the stack segment of the main thread.
+   The main stack will grow if needed but VG_(clstk_base) will
+   not be changed according to the growth. */
 Addr  VG_(clstk_base)  = 0;
+/* Initial highest address of the stack segment of the main thread. */
 Addr  VG_(clstk_end)   = 0;
 UWord VG_(clstk_id)    = 0;
 
@@ -64,8 +65,11 @@ Int VG_(cl_exec_fd) = -1;
 /* A fd which refers to the fake /proc/<pid>/cmdline in /tmp. */
 Int VG_(cl_cmdline_fd) = -1;
 
+/* A fd which refers to the fake /proc/<pid>/auxv in /tmp. */
+Int VG_(cl_auxv_fd) = -1;
+
 // Command line pieces, after they have been extracted from argv in
-// m_main.main().  The payload vectors are allocated in VG_AR_TOOL
+// m_main.main().  The payload vectors are allocated in VG_AR_CORE
 // (the default arena).  They are never freed.
 
 /* Args for the client. */

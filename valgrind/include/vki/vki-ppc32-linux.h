@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2012 Julian Seward
+   Copyright (C) 2005-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -307,6 +307,7 @@ struct vki_sigcontext {
 // From linux-2.6.9/include/asm-ppc/fcntl.h
 //----------------------------------------------------------------------
 
+#define VKI_O_ACCMODE		   03
 #define VKI_O_RDONLY		   00
 #define VKI_O_WRONLY		   01
 #define VKI_O_RDWR		   02
@@ -368,7 +369,14 @@ struct vki_f_owner_ex {
 //----------------------------------------------------------------------
 
 #define VKI_SOL_SOCKET	1
+
 #define VKI_SO_TYPE	3
+
+#define VKI_SO_ATTACH_FILTER	26
+
+//----------------------------------------------------------------------
+// From linux-2.6.8.1/include/asm-ppc/sockios.h
+//----------------------------------------------------------------------
 
 #define VKI_SIOCSPGRP		0x8902
 #define VKI_SIOCGPGRP		0x8904
@@ -549,8 +557,8 @@ struct vki_termios {
 // From linux-2.6.9/include/asm-ppc/ioctls.h
 //----------------------------------------------------------------------
 
-//#define VKI_FIOCLEX		_VKI_IO('f', 1)
-//#define VKI_FIONCLEX		_VKI_IO('f', 2)
+#define VKI_FIOCLEX		_VKI_IO('f', 1)
+#define VKI_FIONCLEX		_VKI_IO('f', 2)
 #define VKI_FIOASYNC		_VKI_IOW('f', 125, int)
 #define VKI_FIONBIO		_VKI_IOW('f', 126, int)
 #define VKI_FIONREAD		_VKI_IOR('f', 127, int)

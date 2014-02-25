@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,27 +31,29 @@
 #ifndef __PUB_TOOL_LIBCPRINT_H
 #define __PUB_TOOL_LIBCPRINT_H
 
+#include "pub_tool_basics.h"      // VG_ macro
+
 /* ---------------------------------------------------------------------
    Formatting functions
    ------------------------------------------------------------------ */
 
-extern UInt VG_(sprintf)  ( Char* buf, const HChar* format, ... )
+extern UInt VG_(sprintf)  ( HChar* buf, const HChar* format, ... )
                           PRINTF_CHECK(2, 3);
 
-extern UInt VG_(vsprintf) ( Char* buf, const HChar* format, va_list vargs )
+extern UInt VG_(vsprintf) ( HChar* buf, const HChar* format, va_list vargs )
                           PRINTF_CHECK(2, 0);
 
-extern UInt VG_(snprintf) ( Char* buf, Int size, 
+extern UInt VG_(snprintf) ( HChar* buf, Int size, 
                                        const HChar *format, ... )
                           PRINTF_CHECK(3, 4);
 
-extern UInt VG_(vsnprintf)( Char* buf, Int size, 
+extern UInt VG_(vsnprintf)( HChar* buf, Int size, 
                                        const HChar *format, va_list vargs )
                           PRINTF_CHECK(3, 0);
 
 // Percentify n/m with d decimal places.  Includes the '%' symbol at the end.
 // Right justifies in 'buf'.
-extern void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, char buf[]);
+extern void VG_(percentify)(ULong n, ULong m, UInt d, Int n_buf, HChar buf[]);
 
 
 /* ---------------------------------------------------------------------
@@ -116,7 +118,7 @@ extern UInt VG_(fmsg)( const HChar* format, ... ) PRINTF_CHECK(1, 2);
 // an option was given an inappropriate argument.  This function prints an
 // error message, then shuts down the entire system.
 __attribute__((noreturn))
-extern void VG_(fmsg_bad_option) ( HChar* opt, const HChar* format, ... )
+extern void VG_(fmsg_bad_option) ( const HChar* opt, const HChar* format, ... )
    PRINTF_CHECK(2, 3);
 
 // This is used for messages that are interesting to the user:  info about

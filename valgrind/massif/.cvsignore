@@ -1,6 +1,0 @@
-Makefile
-.deps
-ms_print
-massif-x86-linux
-massif-amd64-linux
-*.so

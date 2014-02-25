@@ -47,7 +47,7 @@ usage: valgrind [options] prog-and-args
     --max-stackframe=<number> assume stack switch for SP changes larger
                               than <number> bytes [2000000]
     --main-stacksize=<number> set size of main thread's stack (in bytes)
-                              [use current 'ulimit' value]
+                              [min(max(current 'ulimit' value,1MB),16MB)]
 
   user options for Valgrind tools that replace malloc:
     --alignment=<number>      set minimum alignment of heap allocations [not used by this tool]
@@ -61,6 +61,14 @@ usage: valgrind [options] prog-and-args
                               part of the path after 'string'.  Allows removal
                               of path prefixes.  Use this flag multiple times
                               to specify a set of prefixes to remove.
+    --extra-debuginfo-path=path    absolute path to search for additional
+                              debug symbols, in addition to existing default
+                              well known search paths.
+    --debuginfo-server=ipaddr:port    also query this server
+                              (valgrind-di-server) for debug symbols
+    --allow-mismatched-debuginfo=no|yes  [no]
+                              for the above two flags only, accept debuginfo
+                              objects that don't "match" the main object
     --smc-check=none|stack|all|all-non-file [stack]
                               checks for self-modifying code: none, only for
                               code found in stacks, for all code, or for all
@@ -78,6 +86,10 @@ usage: valgrind [options] prog-and-args
     --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]
     --kernel-variant=variant1,variant2,...  known variants: bproc [none]
                               handle non-standard kernel variants
+    --merge-recursive-frames=<number>  merge frames between identical
+           program counters in max <number> frames) [0]
+    --num-transtab-sectors=<number> size of translated code cache [16]
+           more sectors may increase performance, but use more memory.
     --show-emwarns=no|yes     show warnings about emulation limits? [no]
     --require-text-symbol=:sonamepattern:symbolpattern    abort run if the
                               stated shared object doesn't have the stated
@@ -87,15 +99,21 @@ usage: valgrind [options] prog-and-args
               To use a non-libc malloc library that is
                   in the main exe:  --soname-synonyms=somalloc=NONE
                   in libxyzzy.so:   --soname-synonyms=somalloc=libxyzzy.so
+    --sigill-diagnostics=yes|no  warn about illegal instructions? [yes]
+    --unw-stack-scan-thresh=<number>   Enable stack-scan unwind if fewer
+                  than <number> good frames found  [0, meaning "disabled"]
+                  NOTE: stack scanning is only available on arm-linux.
+    --unw-stack-scan-frames=<number>   Max number of frames that can be
+                  recovered by stack scanning [5]
 
   user options for Nulgrind:
     (none)
 
   Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc
 
-  Nulgrind is Copyright (C) 2002-2012, and GNU GPL'd, by Nicholas Nethercote.
-  Valgrind is Copyright (C) 2000-2012, and GNU GPL'd, by Julian Seward et al.
-  LibVEX is Copyright (C) 2004-2012, and GNU GPL'd, by OpenWorks LLP et al.
+  Nulgrind is Copyright (C) 2002-2013, and GNU GPL'd, by Nicholas Nethercote.
+  Valgrind is Copyright (C) 2000-2013, and GNU GPL'd, by Julian Seward et al.
+  LibVEX is Copyright (C) 2004-2013, and GNU GPL'd, by OpenWorks LLP et al.
 
   Bug reports, feedback, admiration, abuse, etc, to: www.valgrind.org.
 

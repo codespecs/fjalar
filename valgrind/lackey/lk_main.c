@@ -7,7 +7,7 @@
    This file is part of Lackey, an example Valgrind tool that does
    some simple program measurement and tracing.
 
-   Copyright (C) 2002-2012 Nicholas Nethercote
+   Copyright (C) 2002-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -192,9 +192,9 @@ static Bool clo_trace_sbs       = False;
 /* The name of the function of which the number of calls (under
  * --basic-counts=yes) is to be counted, with default. Override with command
  * line option --fnname. */
-static Char* clo_fnname = "main";
+static const HChar* clo_fnname = "main";
 
-static Bool lk_process_cmd_line_option(Char* arg)
+static Bool lk_process_cmd_line_option(const HChar* arg)
 {
    if VG_STR_CLO(arg, "--fnname", clo_fnname) {}
    else if VG_BOOL_CLO(arg, "--basic-counts",      clo_basic_counts) {}
@@ -292,6 +292,10 @@ static void add_one_inverted_Jcc_untaken(void)
 /*--- Stuff for --detailed-counts                          ---*/
 /*------------------------------------------------------------*/
 
+typedef
+   IRExpr 
+   IRAtom;
+
 /* --- Operations --- */
 
 typedef enum { OpLoad=0, OpStore=1, OpAlu=2 } Op;
@@ -321,7 +325,7 @@ static Int type2index ( IRType ty )
    }
 }
 
-static HChar* nameOfTypeIndex ( Int i )
+static const HChar* nameOfTypeIndex ( Int i )
 {
    switch (i) {
       case 0: return "I1";   break;
@@ -351,8 +355,10 @@ void increment_detail(ULong* detail)
    (*detail)++;
 }
 
-/* A helper that adds the instrumentation for a detail. */
-static void instrument_detail(IRSB* sb, Op op, IRType type)
+/* A helper that adds the instrumentation for a detail.  guard ::
+   Ity_I1 is the guarding condition for the event.  If NULL it is
+   assumed to mean "always True". */
+static void instrument_detail(IRSB* sb, Op op, IRType type, IRAtom* guard)
 {
    IRDirty* di;
    IRExpr** argv;
@@ -365,6 +371,7 @@ static void instrument_detail(IRSB* sb, Op op, IRType type)
    di = unsafeIRDirty_0_N( 1, "increment_detail",
                               VG_(fnptr_to_fnentry)( &increment_detail ), 
                               argv);
+   if (guard) di->guard = guard;
    addStmtToIRSB( sb, IRStmt_Dirty(di) );
 }
 
@@ -392,10 +399,6 @@ static void print_details ( void )
 #define MAX_DSIZE    512
 
 typedef
-   IRExpr 
-   IRAtom;
-
-typedef 
    enum { Event_Ir, Event_Dr, Event_Dw, Event_Dm }
    EventKind;
 
@@ -404,6 +407,7 @@ typedef
       EventKind  ekind;
       IRAtom*    addr;
       Int        size;
+      IRAtom*    guard; /* :: Ity_I1, or NULL=="always True" */
    }
    Event;
 
@@ -428,7 +432,8 @@ typedef
    At various points the list will need to be flushed, that is, IR
    generated from it.  That must happen before any possible exit from
    the block (the end, or an IRStmt_Exit).  Flushing also takes place
-   when there is no space to add a new event.
+   when there is no space to add a new event, and before entering a
+   RMW (read-modify-write) section on processors supporting LL/SC.
 
    If we require the simulation statistics to be up to date with
    respect to possible memory exceptions, then the list would have to
@@ -467,7 +472,7 @@ static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
 static void flushEvents(IRSB* sb)
 {
    Int        i;
-   Char*      helperName;
+   const HChar* helperName;
    void*      helperAddr;
    IRExpr**   argv;
    IRDirty*   di;
@@ -499,6 +504,9 @@ static void flushEvents(IRSB* sb)
       di   = unsafeIRDirty_0_N( /*regparms*/2, 
                                 helperName, VG_(fnptr_to_fnentry)( helperAddr ),
                                 argv );
+      if (ev->guard) {
+         di->guard = ev->guard;
+      }
       addStmtToIRSB( sb, IRStmt_Dirty(di) );
    }
 
@@ -523,11 +531,13 @@ static void addEvent_Ir ( IRSB* sb, IRAtom* iaddr, UInt isize )
    evt->ekind = Event_Ir;
    evt->addr  = iaddr;
    evt->size  = isize;
+   evt->guard = NULL;
    events_used++;
 }
 
+/* Add a guarded read event. */
 static
-void addEvent_Dr ( IRSB* sb, IRAtom* daddr, Int dsize )
+void addEvent_Dr_guarded ( IRSB* sb, IRAtom* daddr, Int dsize, IRAtom* guard )
 {
    Event* evt;
    tl_assert(clo_trace_mem);
@@ -540,9 +550,40 @@ void addEvent_Dr ( IRSB* sb, IRAtom* daddr, Int dsize )
    evt->ekind = Event_Dr;
    evt->addr  = daddr;
    evt->size  = dsize;
+   evt->guard = guard;
    events_used++;
 }
 
+/* Add an ordinary read event, by adding a guarded read event with an
+   always-true guard. */
+static
+void addEvent_Dr ( IRSB* sb, IRAtom* daddr, Int dsize )
+{
+   addEvent_Dr_guarded(sb, daddr, dsize, NULL);
+}
+
+/* Add a guarded write event. */
+static
+void addEvent_Dw_guarded ( IRSB* sb, IRAtom* daddr, Int dsize, IRAtom* guard )
+{
+   Event* evt;
+   tl_assert(clo_trace_mem);
+   tl_assert(isIRAtom(daddr));
+   tl_assert(dsize >= 1 && dsize <= MAX_DSIZE);
+   if (events_used == N_EVENTS)
+      flushEvents(sb);
+   tl_assert(events_used >= 0 && events_used < N_EVENTS);
+   evt = &events[events_used];
+   evt->ekind = Event_Dw;
+   evt->addr  = daddr;
+   evt->size  = dsize;
+   evt->guard = guard;
+   events_used++;
+}
+
+/* Add an ordinary write event.  Try to merge it with an immediately
+   preceding ordinary read event of the same size to the same
+   address. */
 static
 void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
 {
@@ -557,6 +598,7 @@ void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
    if (events_used > 0
     && lastEvt->ekind == Event_Dr
     && lastEvt->size  == dsize
+       && lastEvt->guard == NULL
     && eqIRAtom(lastEvt->addr, daddr))
    {
       lastEvt->ekind = Event_Dm;
@@ -571,6 +613,7 @@ void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
    evt->ekind = Event_Dw;
    evt->size  = dsize;
    evt->addr  = daddr;
+   evt->guard = NULL;
    events_used++;
 }
 
@@ -605,13 +648,13 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
                       IRSB* sbIn, 
                       VexGuestLayout* layout, 
                       VexGuestExtents* vge,
+                      VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    IRDirty*   di;
    Int        i;
    IRSB*      sbOut;
-   Char       fnname[100];
-   IRType     type;
+   HChar      fnname[100];
    IRTypeEnv* tyenv = sbIn->tyenv;
    Addr       iaddr = 0, dst;
    UInt       ilen = 0;
@@ -732,18 +775,18 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
             }
             if (clo_detailed_counts) {
                IRExpr* expr = st->Ist.WrTmp.data;
-               type = typeOfIRExpr(sbOut->tyenv, expr);
+               IRType  type = typeOfIRExpr(sbOut->tyenv, expr);
                tl_assert(type != Ity_INVALID);
                switch (expr->tag) {
                   case Iex_Load:
-                     instrument_detail( sbOut, OpLoad, type );
+                    instrument_detail( sbOut, OpLoad, type, NULL/*guard*/ );
                      break;
                   case Iex_Unop:
                   case Iex_Binop:
                   case Iex_Triop:
                   case Iex_Qop:
-                  case Iex_Mux0X:
-                     instrument_detail( sbOut, OpAlu, type );
+                  case Iex_ITE:
+                     instrument_detail( sbOut, OpAlu, type, NULL/*guard*/ );
                      break;
                   default:
                      break;
@@ -752,19 +795,53 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
             addStmtToIRSB( sbOut, st );
             break;
 
-         case Ist_Store:
-            if (clo_trace_mem) {
+         case Ist_Store: {
                IRExpr* data  = st->Ist.Store.data;
+            IRType  type = typeOfIRExpr(tyenv, data);
+            tl_assert(type != Ity_INVALID);
+            if (clo_trace_mem) {
                addEvent_Dw( sbOut, st->Ist.Store.addr,
-                            sizeofIRType(typeOfIRExpr(tyenv, data)) );
+                            sizeofIRType(type) );
             }
             if (clo_detailed_counts) {
-               type = typeOfIRExpr(sbOut->tyenv, st->Ist.Store.data);
-               tl_assert(type != Ity_INVALID);
-               instrument_detail( sbOut, OpStore, type );
+               instrument_detail( sbOut, OpStore, type, NULL/*guard*/ );
             }
             addStmtToIRSB( sbOut, st );
             break;
+         }
+
+         case Ist_StoreG: {
+            IRStoreG* sg   = st->Ist.StoreG.details;
+            IRExpr*   data = sg->data;
+            IRType    type = typeOfIRExpr(tyenv, data);
+            tl_assert(type != Ity_INVALID);
+            if (clo_trace_mem) {
+               addEvent_Dw_guarded( sbOut, sg->addr,
+                                    sizeofIRType(type), sg->guard );
+            }
+            if (clo_detailed_counts) {
+               instrument_detail( sbOut, OpStore, type, sg->guard );
+            }
+            addStmtToIRSB( sbOut, st );
+            break;
+         }
+
+         case Ist_LoadG: {
+            IRLoadG* lg       = st->Ist.LoadG.details;
+            IRType   type     = Ity_INVALID; /* loaded type */
+            IRType   typeWide = Ity_INVALID; /* after implicit widening */
+            typeOfIRLoadGOp(lg->cvt, &typeWide, &type);
+               tl_assert(type != Ity_INVALID);
+            if (clo_trace_mem) {
+               addEvent_Dr_guarded( sbOut, lg->addr,
+                                    sizeofIRType(type), lg->guard );
+            }
+            if (clo_detailed_counts) {
+               instrument_detail( sbOut, OpLoad, type, lg->guard );
+            }
+            addStmtToIRSB( sbOut, st );
+            break;
+         }
 
          case Ist_Dirty: {
             if (clo_trace_mem) {
@@ -808,12 +885,12 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
                addEvent_Dw( sbOut, cas->addr, dataSize );
             }
             if (clo_detailed_counts) {
-               instrument_detail( sbOut, OpLoad, dataTy );
+               instrument_detail( sbOut, OpLoad, dataTy, NULL/*guard*/ );
                if (cas->dataHi != NULL) /* dcas */
-                  instrument_detail( sbOut, OpLoad, dataTy );
-               instrument_detail( sbOut, OpStore, dataTy );
+                  instrument_detail( sbOut, OpLoad, dataTy, NULL/*guard*/ );
+               instrument_detail( sbOut, OpStore, dataTy, NULL/*guard*/ );
                if (cas->dataHi != NULL) /* dcas */
-                  instrument_detail( sbOut, OpStore, dataTy );
+                  instrument_detail( sbOut, OpStore, dataTy, NULL/*guard*/ );
             }
             addStmtToIRSB( sbOut, st );
             break;
@@ -824,11 +901,14 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
             if (st->Ist.LLSC.storedata == NULL) {
                /* LL */
                dataTy = typeOfIRTemp(tyenv, st->Ist.LLSC.result);
-               if (clo_trace_mem)
+               if (clo_trace_mem) {
                   addEvent_Dr( sbOut, st->Ist.LLSC.addr,
                                       sizeofIRType(dataTy) );
+                  /* flush events before LL, helps SC to succeed */
+                  flushEvents(sbOut);
+	       }
                if (clo_detailed_counts)
-                  instrument_detail( sbOut, OpLoad, dataTy );
+                  instrument_detail( sbOut, OpLoad, dataTy, NULL/*guard*/ );
             } else {
                /* SC */
                dataTy = typeOfIRExpr(tyenv, st->Ist.LLSC.storedata);
@@ -836,7 +916,7 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
                   addEvent_Dw( sbOut, st->Ist.LLSC.addr,
                                       sizeofIRType(dataTy) );
                if (clo_detailed_counts)
-                  instrument_detail( sbOut, OpStore, dataTy );
+                  instrument_detail( sbOut, OpStore, dataTy, NULL/*guard*/ );
             }
             addStmtToIRSB( sbOut, st );
             break;
@@ -888,6 +968,7 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
             break;
 
          default:
+            ppIRStmt(st);
             tl_assert(0);
       }
    }
@@ -910,7 +991,7 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
 
 static void lk_fini(Int exitcode)
 {
-   char percentify_buf[5]; /* Two digits, '%' and 0. */
+   HChar percentify_buf[5]; /* Two digits, '%' and 0. */
    const int percentify_size = sizeof(percentify_buf) - 1;
    const int percentify_decs = 0;
    
@@ -969,7 +1050,7 @@ static void lk_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("an example Valgrind tool");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2012, and GNU GPL'd, by Nicholas Nethercote.");
+      "Copyright (C) 2002-2013, and GNU GPL'd, by Nicholas Nethercote.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 200 );
 

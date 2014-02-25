@@ -93,20 +93,24 @@ valgrind_execute_test(const irop_t *op, test_data_t *data)
 {
    unsigned i, num_operands;
 
-   if (verbose > 1) printf("---------- Running a test\n");
+   if (verbose > 2) printf("---------- Running a test\n");
    num_operands = get_num_operands(op->op);
 
    for (i = 0; i < num_operands; ++i) {
       valgrind_set_vbits(&data->opnds[i]);
-      if (verbose > 1) {
+      if (verbose > 2) {
          printf("opnd #%u:  ", i);
          print_opnd(stdout, &data->opnds[i]);
          printf("\n");
       }
    }
+   if (verbose > 2)
+      if (data->rounding_mode != NO_ROUNDING_MODE)
+         printf("rounding mode %u\n", data->rounding_mode);
+
    valgrind_vex_inject_ir();
    valgrind_get_vbits(&data->result);
-   if (verbose > 1) {
+   if (verbose > 2) {
       printf("result:   ");
       print_opnd(stdout, &data->result);
       printf("\n");

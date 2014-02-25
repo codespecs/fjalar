@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -33,7 +33,7 @@
 #include "pub_core_libcsetjmp.h"    // to keep _threadstate.h happy
 #include "pub_core_threadstate.h"
 #include "pub_core_libcassert.h"
-#include "pub_tool_inner.h"
+#include "pub_core_inner.h"
 #if defined(ENABLE_INNER_CLIENT_REQUEST)
 #include "helgrind/helgrind.h"
 #endif
@@ -75,6 +75,17 @@ const HChar* VG_(name_of_ThreadStatus) ( ThreadStatus status )
    case VgTs_Yielding:  return "VgTs_Yielding";
    case VgTs_Zombie:    return "VgTs_Zombie";
    default:             return "VgTs_???";
+  }
+}
+
+const HChar* VG_(name_of_VgSchedReturnCode) ( VgSchedReturnCode retcode )
+{
+   switch (retcode) {
+   case VgSrc_None:        return "VgSrc_None";
+   case VgSrc_ExitThread:  return "VgSrc_ExitThread";
+   case VgSrc_ExitProcess: return "VgSrc_ExitProcess";
+   case VgSrc_FatalSig:    return "VgSrc_FatalSig";
+   default:                return "VgSrc_???";
   }
 }
 

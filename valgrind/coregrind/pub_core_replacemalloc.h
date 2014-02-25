@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -37,6 +37,7 @@
 //--------------------------------------------------------------------
 
 #include "pub_tool_replacemalloc.h"
+#include "pub_core_mallocfree.h"      // vg_mallinfo
 
 // things vg_replace_malloc.o needs to know about
 struct vg_mallocfunc_info {

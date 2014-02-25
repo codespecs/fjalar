@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -56,7 +56,7 @@ extern Bool VG_(is_dir) ( const HChar* f );
    none specified. */
 #define VG_CLO_DEFAULT_LOGPORT 1500
 
-extern Int VG_(connect_via_socket)( UChar* str );
+extern Int VG_(connect_via_socket)( const HChar* str );
 
 extern UInt   VG_(htonl) ( UInt x );
 extern UInt   VG_(ntohl) ( UInt x );
@@ -65,11 +65,13 @@ extern UShort VG_(ntohs) ( UShort x );
 
 extern Int VG_(socket) ( Int domain, Int type, Int protocol );
 
-extern Int VG_(write_socket)( Int sd, void *msg, Int count );
+extern Int VG_(write_socket)( Int sd, const void *msg, Int count );
 extern Int VG_(getsockname) ( Int sd, struct vki_sockaddr *name, Int *namelen );
 extern Int VG_(getpeername) ( Int sd, struct vki_sockaddr *name, Int *namelen );
 extern Int VG_(getsockopt)  ( Int sd, Int level, Int optname, 
                               void *optval, Int *optlen );
+extern Int VG_(setsockopt)  ( Int sd, Int level, Int optname,
+                              void *optval, Int optlen );
 
 extern Int VG_(access) ( const HChar* path, Bool irusr, Bool iwusr,
                                             Bool ixusr );
@@ -84,10 +86,14 @@ extern Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
    in terms of pread()?) */
 extern SysRes VG_(pread) ( Int fd, void* buf, Int count, OffT offset );
 
+/* Size of fullname buffer needed for a call to VG_(mkstemp) with
+   part_of_name having the given part_of_name_len. */
+extern SizeT VG_(mkstemp_fullname_bufsz) ( SizeT part_of_name_len );
+
 /* Create and open (-rw------) a tmp file name incorporating said arg.
    Returns -1 on failure, else the fd of the file.  If fullname is
    non-NULL, the file's name is written into it.  The number of bytes
-   written is guaranteed not to exceed 64+strlen(part_of_name). */
+   written is equal to VG_(mkstemp_fullname_bufsz)(part_of_name). */
 extern Int VG_(mkstemp) ( HChar* part_of_name, /*OUT*/HChar* fullname );
 
 /* Record the process' working directory at startup.  Is intended to

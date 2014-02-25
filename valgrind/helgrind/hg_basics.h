@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2012 OpenWorks Ltd
+   Copyright (C) 2007-2013 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -39,9 +39,9 @@
 
 #define HG_(str) VGAPPEND(vgHelgrind_,str)
 
-void* HG_(zalloc) ( HChar* cc, SizeT n );
+void*  HG_(zalloc) ( const HChar* cc, SizeT n );
 void  HG_(free)   ( void* p );
-Char* HG_(strdup) ( HChar* cc, const Char* s );
+HChar* HG_(strdup) ( const HChar* cc, const HChar* s );
 
 static inline Bool HG_(is_sane_ThreadId) ( ThreadId coretid ) {
    return coretid >= 0 && coretid < VG_N_THREADS;

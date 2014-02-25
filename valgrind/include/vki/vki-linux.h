@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -93,6 +93,8 @@
 #  include "vki-posixtypes-s390x-linux.h"
 #elif defined(VGA_mips32)
 #  include "vki-posixtypes-mips32-linux.h"
+#elif defined(VGA_mips64)
+#  include "vki-posixtypes-mips64-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -215,6 +217,8 @@ typedef unsigned int	        vki_uint;
 #  include "vki-s390x-linux.h"
 #elif defined(VGA_mips32)
 #  include "vki-mips32-linux.h"
+#elif defined(VGA_mips64)
+#  include "vki-mips64-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -224,11 +228,13 @@ typedef unsigned int	        vki_uint;
 //----------------------------------------------------------------------
 
 typedef		__vki_s32	vki_int32_t;
+typedef		__vki_s16	vki_int16_t;
 typedef		__vki_s64	vki_int64_t;
 
 typedef		__vki_u8	vki_uint8_t;
 typedef		__vki_u16	vki_uint16_t;
 typedef		__vki_u32	vki_uint32_t;
+typedef		__vki_u64	vki_uint64_t;
 
 typedef		__vki_u16	__vki_le16;
 
@@ -582,10 +588,12 @@ typedef struct vki_sigevent {
 #define VKI_SYS_RECVMSG		17	/* sys_recvmsg(2)		*/
 #define VKI_SYS_ACCEPT4		18	/* sys_accept4(2)		*/
 
+#ifndef ARCH_HAS_SOCKET_TYPES
 enum vki_sock_type {
 	VKI_SOCK_STREAM	= 1,
 	// [[others omitted]]
 };
+#endif /* ARCH_HAS_SOCKET_TYPES */
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/uio.h
@@ -668,6 +676,7 @@ __KINLINE struct vki_cmsghdr * vki_cmsg_nxthdr (struct vki_msghdr *__msg, struct
 #define VKI_AF_UNIX	1	/* Unix domain sockets 		*/
 #define VKI_AF_INET	2	/* Internet IP Protocol		*/
 #define VKI_AF_INET6	10	/* IP version 6			*/
+#define VKI_AF_BLUETOOTH 31	/* Bluetooth sockets		*/
 
 #define VKI_MSG_NOSIGNAL	0x4000	/* Do not generate SIGPIPE */
 
@@ -693,6 +702,8 @@ struct vki_sockaddr_in {
 			sizeof(unsigned short int) - sizeof(struct vki_in_addr)];
 };
 
+#define VKI_IPPROTO_TCP 6       /* Transmission Control Protocol        */
+
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/in6.h
 //----------------------------------------------------------------------
@@ -717,6 +728,13 @@ struct vki_sockaddr_in6 {
 	struct vki_in6_addr	sin6_addr;      /* IPv6 address */
 	__vki_u32		sin6_scope_id;  /* scope id (new in RFC2553) */
 };
+
+//----------------------------------------------------------------------
+// From linux-2.6.8.1/include/linux/tcp.h
+//----------------------------------------------------------------------
+
+#define VKI_TCP_NODELAY    1       /* Turn off Nagle's algorithm. */
+
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/un.h
@@ -1709,6 +1727,7 @@ struct vki_ppdev_frob_struct {
 #define VKI_BLKBSZGET  _VKI_IOR(0x12,112,vki_size_t)
 #define VKI_BLKBSZSET  _VKI_IOW(0x12,113,vki_size_t)
 #define VKI_BLKGETSIZE64 _VKI_IOR(0x12,114,vki_size_t) /* return device size in bytes (u64 *arg) */
+#define VKI_BLKPBSZGET _VKI_IO(0x12,123)
 
 #define VKI_FIBMAP	_VKI_IO(0x00,1)	/* bmap access */
 #define VKI_FIGETBSZ    _VKI_IO(0x00,2)	/* get the block size used for bmap */
@@ -2249,6 +2268,8 @@ typedef __vki_kernel_uid32_t vki_qid_t; /* Type in which we store ids in memory 
 #define VKI_PTRACE_GETEVENTMSG	0x4201
 #define VKI_PTRACE_GETSIGINFO	0x4202
 #define VKI_PTRACE_SETSIGINFO	0x4203
+#define VKI_PTRACE_GETREGSET	0x4204
+#define VKI_PTRACE_SETREGSET	0x4205
 
 //----------------------------------------------------------------------
 // From linux-2.6.14/include/sound/asound.h
@@ -2957,6 +2978,16 @@ struct vki_hci_inquiry_req {
 };
 
 //----------------------------------------------------------------------
+// From linux-3.9.2/include/net/bluetooth/rfcomm.h
+//----------------------------------------------------------------------
+
+struct vki_sockaddr_rc {
+        vki_sa_family_t     rc_family;
+        vki_bdaddr_t        rc_bdaddr;
+        __vki_u8            rc_channel;
+};
+
+//----------------------------------------------------------------------
 // From linux-3.4/include/linux/kvm.h
 //----------------------------------------------------------------------
 #define KVMIO 0xAE
@@ -3010,6 +3041,50 @@ struct vki_hwtstamp_config {
 #define VKI_UI_SET_PROPBIT		_VKI_IOW(VKI_UINPUT_IOCTL_BASE, 110, int)
 
 //----------------------------------------------------------------------
+// From linux-2.6/include/uapi/rdma/ib_user_mad.h
+//----------------------------------------------------------------------
+
+#define VKI_IB_IOCTL_MAGIC          0x1b
+
+#define VKI_IB_USER_MAD_REGISTER_AGENT    _VKI_IOWR(VKI_IB_IOCTL_MAGIC, 1, \
+                                              struct ib_user_mad_reg_req)
+
+#define VKI_IB_USER_MAD_UNREGISTER_AGENT  _VKI_IOW(VKI_IB_IOCTL_MAGIC, 2, __u32)
+
+#define VKI_IB_USER_MAD_ENABLE_PKEY       _VKI_IO(VKI_IB_IOCTL_MAGIC, 3)
+
+//----------------------------------------------------------------------
+// From linux-3.8/include/uapi/linux/if_tun.h
+//----------------------------------------------------------------------
+
+#define VKI_TUNSETNOCSUM  _VKI_IOW('T', 200, int) 
+#define VKI_TUNSETDEBUG   _VKI_IOW('T', 201, int) 
+#define VKI_TUNSETIFF     _VKI_IOW('T', 202, int) 
+#define VKI_TUNSETPERSIST _VKI_IOW('T', 203, int) 
+#define VKI_TUNSETOWNER   _VKI_IOW('T', 204, int)
+#define VKI_TUNSETLINK    _VKI_IOW('T', 205, int)
+#define VKI_TUNSETGROUP   _VKI_IOW('T', 206, int)
+#define VKI_TUNGETFEATURES _VKI_IOR('T', 207, unsigned int)
+#define VKI_TUNSETOFFLOAD  _VKI_IOW('T', 208, unsigned int)
+#define VKI_TUNSETTXFILTER _VKI_IOW('T', 209, unsigned int)
+#define VKI_TUNGETIFF      _VKI_IOR('T', 210, unsigned int)
+#define VKI_TUNGETSNDBUF   _VKI_IOR('T', 211, int)
+#define VKI_TUNSETSNDBUF   _VKI_IOW('T', 212, int)
+//#define VKI_TUNATTACHFILTER _VKI_IOW('T', 213, struct sock_fprog)
+//#define VKI_TUNDETACHFILTER _VKI_IOW('T', 214, struct sock_fprog)
+#define VKI_TUNGETVNETHDRSZ _VKI_IOR('T', 215, int)
+#define VKI_TUNSETVNETHDRSZ _VKI_IOW('T', 216, int)
+#define VKI_TUNSETQUEUE  _VKI_IOW('T', 217, int)
+
+//----------------------------------------------------------------------
+// From linux-3.8/include/uapi/linux/vhost.h
+//----------------------------------------------------------------------
+
+#define VKI_VHOST_VIRTIO 0xAF
+#define VKI_VHOST_SET_OWNER _VKI_IO(VKI_VHOST_VIRTIO, 0x01)
+#define VKI_VHOST_RESET_OWNER _VKI_IO(VKI_VHOST_VIRTIO, 0x02)
+
+//----------------------------------------------------------------------
 // Xen privcmd IOCTL
 //----------------------------------------------------------------------
 
@@ -3053,6 +3128,33 @@ struct vki_xen_privcmd_mmapbatch_v2 {
 #define VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH    _VKI_IOC(_VKI_IOC_NONE, 'P', 3, sizeof(struct vki_xen_privcmd_mmapbatch))
 #define VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2 _VKI_IOC(_VKI_IOC_NONE, 'P', 4, sizeof(struct vki_xen_privcmd_mmapbatch_v2))
 
+//----------------------------------------------------------------------
+// From linux-3.4.0/include/linux/fs.h
+//----------------------------------------------------------------------
+
+struct vki_file_handle {
+   __vki_u32 handle_bytes;
+   int handle_type;
+   /* file identifier */
+   unsigned char f_handle[0];
+};
+
+//----------------------------------------------------------------------
+// From linux-3.2.0/include/linux/filter.h
+//----------------------------------------------------------------------
+
+struct vki_sock_filter {
+	__vki_u16 code; /* Actual filter code */
+	__vki_u8 jt;    /* Jump true */
+	__vki_u8 jf;    /* Jump false */
+	__vki_u32 k;    /* Generic multiuse field */
+};
+
+struct vki_sock_fprog {
+	__vki_u16 len;  /* actually unsigned short */
+	struct vki_sock_filter *filter;
+};
+   
 #endif // __VKI_LINUX_H
 
 /*--------------------------------------------------------------------*/

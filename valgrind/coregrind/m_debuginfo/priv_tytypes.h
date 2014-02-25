@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks LLP
+   Copyright (C) 2008-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -35,6 +35,10 @@
 
 #ifndef __PRIV_TYTYPES_H
 #define __PRIV_TYTYPES_H
+
+#include "pub_core_basics.h"   // UWord
+#include "pub_core_xarray.h"   // XArray
+#include "priv_misc.h"         // MaybeULong
 
 typedef
    enum {
@@ -74,12 +78,12 @@ typedef
          struct {
          } UNKNOWN;
          struct {
-            UChar* name; /* in mallocville */
+            HChar* name; /* in mallocville */
             Bool   valueKnown; /* atoms w/ unknown value are possible */
             Long   value;
          } Atom;
          struct {
-            UChar* name;  /* in mallocville */
+            HChar* name;  /* in mallocville */
             UWord  typeR; /* should be Te_TyXXXX */
             union {
                UChar* loc;   /* location expr, in mallocville */
@@ -97,7 +101,7 @@ typedef
             Long boundU;
          } Bound;
          struct {
-            UChar* name; /* in mallocville */
+            HChar* name; /* in mallocville */
             Int    szB;
             UChar  enc; /* S:signed U:unsigned F:floating C:complex float */
          } TyBase;
@@ -106,18 +110,18 @@ typedef
             UWord typeR;
          } TyPorR;
          struct {
-            UChar* name;  /* in mallocville */
+            HChar* name;  /* in mallocville */
             UWord  typeR; /* MAY BE D3_INVALID_CUOFF, denoting unknown */
          } TyTyDef;
          struct {
-            UChar*  name; /* in mallocville */
+            HChar*  name; /* in mallocville */
             UWord   szB;
             XArray* /* of UWord */ fieldRs;
             Bool    complete;
             Bool    isStruct;
          } TyStOrUn;
          struct {
-            UChar*  name; /* in mallocville */
+            HChar*  name; /* in mallocville */
             Int     szB;
             XArray* /* of UWord */ atomRs;
          } TyEnum;
@@ -146,7 +150,7 @@ Bool ML_(TyEnt__is_type)( TyEnt* );
 void ML_(pp_TyEnt)( TyEnt* );
 
 /* Print a whole XArray of TyEnts, debug-style */
-void ML_(pp_TyEnts)( XArray* tyents, HChar* who );
+void ML_(pp_TyEnts)( XArray* tyents, const HChar* who );
 
 /* Print a TyEnt, C style, chasing stuff as necessary. */
 void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
@@ -154,11 +158,11 @@ void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
 
 /* Generates a total ordering on TyEnts based only on their .cuOff
    fields. */
-Word ML_(TyEnt__cmp_by_cuOff_only) ( TyEnt* te1, TyEnt* te2 );
+Word ML_(TyEnt__cmp_by_cuOff_only) ( const TyEnt* te1, const TyEnt* te2 );
 
 /* Generates a total ordering on TyEnts based on everything except
    their .cuOff fields. */
-Word ML_(TyEnt__cmp_by_all_except_cuOff) ( TyEnt* te1, TyEnt* te2 );
+Word ML_(TyEnt__cmp_by_all_except_cuOff) ( const TyEnt* te1, const TyEnt* te2 );
 
 /* Free up all directly or indirectly heap-allocated stuff attached to
    this TyEnt, and set its tag to Te_EMPTY.  The .cuOff field is

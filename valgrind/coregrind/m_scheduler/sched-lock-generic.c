@@ -11,7 +11,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011 Bart Van Assche <bvanassche@acm.org>.
+   Copyright (C) 2011-2013 Bart Van Assche <bvanassche@acm.org>.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -32,7 +32,7 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_tool_mallocfree.h"
+#include "pub_core_mallocfree.h"
 #include "priv_sema.h"
 #include "priv_sched-lock.h"
 #include "priv_sched-lock-impl.h"
@@ -41,7 +41,7 @@ struct sched_lock {
    vg_sema_t sema;
 };
 
-static const Char *get_sched_lock_name(void)
+static const HChar *get_sched_lock_name(void)
 {
    return "generic";
 }

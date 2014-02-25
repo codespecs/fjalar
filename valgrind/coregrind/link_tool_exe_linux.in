@@ -30,21 +30,24 @@
 # Linux specific complications:
 #
 # - need to support both old GNU ld and gold: use -Ttext= to
-#   set the text segment address.
+#   set the text segment address if that is all we have. We really
+#   need -Ttext-segment. Otherwise with GNU ld sections or notes
+#   (like the build-id) don't get at the desired address. But older
+#   linkers only know about -Ttext, not -Ttext-segment. So configure
+#   checks for us and sets FLAG_T_TEXT.
 #
-# - need to pass --build-id=none (that is, -Wl,--build-id=none to
-#   gcc) if it accepts it, to ensure the linker doesn't add a
-#   notes section which ends up at the default load address and
-#   so defeats our attempts to keep that address clear for the
-#   client.  However, older linkers don't support this flag, so it
-#   is tested for by configure.in and is shipped to us as part of
+# - If all we have is -Ttext, then we need to pass --build-id=none
+#   (that is, -Wl,--build-id=none to gcc) if it accepts it, to ensure
+#   the linker doesn't add a notes section which ends up at the default
+#   load address and so defeats our attempts to keep that address clear
+#   for the client.  However, older linkers don't support this flag,
+#   so it is tested for by configure.in and is shipped to us as part of
 #   argv[2 ..].
-#
 #
 # So: what we actually do:
 # 
 #   pass the specified command to the linker as-is, except, add
-#   "-static" and "-Ttext=<argv[1]>" to it.
+#   "-static" and "-Ttext[-segment]=<argv[1]>" to it.
 #   Previously we did this by adding these options after the first
 #   word of the rest of the arguments, which works in the common case
 #   when it's something like "gcc". But the linker invocation itself
@@ -66,18 +69,21 @@ shift; # Remove $ala from @ARGV
 die "Bogus alt-load address"
     if (length($ala) < 3 || index($ala, "0x") != 0);
 
-# For mips we need to use "--section-start=.reginfo=$ala" because
-# "--section-start=.reginfo=$ala" will put all the sections to the 
-# specificed address ($ala)
-my $orig_cmd = join(" ", @ARGV);
-my $x=`$orig_cmd -v 2>&1 | grep Target | sed 's/Target: //g'`;
-my $arch=substr($x, 0, index($x, '-'));
+# For mips32 or mips64 we need to use "--section-start=.reginfo=$ala" or
+# "--section-start=.MIPS.options=$ala" respectively, because "-Ttext=$ala" will
+# not put all the sections to the specificed address ($ala).
+my $x = `cat ../config.log 2>&1 | grep host_cpu= | sed "s/host_cpu='//g"`;
+my $arch = substr($x, 0, index($x, "'"));
 
 my $extra_args;
-if (($arch eq 'mips') || ($arch eq 'mipsel')) {
+if (($arch eq 'mips') || ($arch eq 'mipsel')
+    || ($arch eq 'mipsisa32r2el')) {
    $extra_args = "-static -Wl,--section-start=.reginfo=$ala";
+} elsif (($arch eq 'mips64') || ($arch eq 'mips64el') ||
+         ($arch eq 'mipsisa64el')) {
+   $extra_args = "-static -Wl,--section-start=.MIPS.options=$ala";
 } else {
-   $extra_args = "-static -Wl,-Ttext=$ala";
+   $extra_args = "-static -Wl,@FLAG_T_TEXT@=$ala";
 }
 
 my $cmd = join(" ", @ARGV, $extra_args);

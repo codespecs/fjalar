@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2012 OpenWorks LLP
+   Copyright (C) 2006-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -64,14 +64,14 @@ void ML_(am_exit)( Int status )
    aspacem_assert(2+2 == 5);
 }
 
-void ML_(am_barf) ( HChar* what )
+void ML_(am_barf) ( const HChar* what )
 {
    VG_(debugLog)(0, "aspacem", "Valgrind: FATAL: %s\n", what);
    VG_(debugLog)(0, "aspacem", "Exiting now.\n");
    ML_(am_exit)(1);
 }
 
-void ML_(am_barf_toolow) ( HChar* what )
+void ML_(am_barf_toolow) ( const HChar* what )
 {
    VG_(debugLog)(0, "aspacem", 
                     "Valgrind: FATAL: %s is too low.\n", what);
@@ -81,9 +81,9 @@ void ML_(am_barf_toolow) ( HChar* what )
 }
 
 void ML_(am_assert_fail)( const HChar* expr,
-                          const Char* file,
+                          const HChar* file,
                           Int line, 
-                          const Char* fn )
+                          const HChar* fn )
 {
    VG_(debugLog)(0, "aspacem", 
                     "Valgrind: FATAL: aspacem assertion failed:\n");
@@ -115,7 +115,7 @@ static
 UInt local_vsprintf ( HChar* buf, const HChar *format, va_list vargs )
 {
    Int ret;
-   Char *aspacem_sprintf_ptr = buf;
+   HChar *aspacem_sprintf_ptr = buf;
 
    ret = VG_(debugLog_vprintf)
             ( local_add_to_aspacem_sprintf_buf, 
@@ -159,7 +159,8 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
                           prot, flags, fd, offset / 4096);
 #  elif defined(VGP_amd64_linux) || defined(VGP_ppc64_linux) \
-        || defined(VGP_s390x_linux) || defined(VGP_mips32_linux)
+        || defined(VGP_s390x_linux) || defined(VGP_mips32_linux) \
+        || defined(VGP_mips64_linux)
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
 #  elif defined(VGP_x86_darwin)
@@ -240,7 +241,7 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 
 /* --- Pertaining to files --- */
 
-SysRes ML_(am_open) ( const Char* pathname, Int flags, Int mode )
+SysRes ML_(am_open) ( const HChar* pathname, Int flags, Int mode )
 {  
    SysRes res = VG_(do_syscall3)(__NR_open, (UWord)pathname, flags, mode);
    return res;

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2012 OpenWorks LLP
+   Copyright (C) 2007-2013 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -38,10 +38,10 @@
 /* See pub_tool_xarray.h for details of what this is all about. */
 
 struct _XArray {
-   void* (*alloc) ( HChar*, SizeT ); /* alloc fn (nofail) */
-   HChar* cc;                       /* cost centre for alloc */
+   void* (*alloc) ( const HChar*, SizeT ); /* alloc fn (nofail) */
+   const HChar* cc;                 /* cost centre for alloc */
    void  (*free) ( void* );         /* free fn */
-   Int   (*cmpFn) ( void*, void* ); /* cmp fn (may be NULL) */
+   Int   (*cmpFn) ( const void*, const void* ); /* cmp fn (may be NULL) */
    Word  elemSzB;   /* element size in bytes */
    void* arr;       /* pointer to elements */
    Word  usedsizeE; /* # used elements in arr */
@@ -50,8 +50,8 @@ struct _XArray {
 };
 
 
-XArray* VG_(newXA) ( void*(*alloc_fn)(HChar*,SizeT), 
-                     HChar* cc,
+XArray* VG_(newXA) ( void*(*alloc_fn)(const HChar*,SizeT), 
+                     const HChar* cc,
                      void(*free_fn)(void*),
                      Word elemSzB )
 {
@@ -79,11 +79,11 @@ XArray* VG_(newXA) ( void*(*alloc_fn)(HChar*,SizeT),
    return xa;
 }
 
-XArray* VG_(cloneXA)( HChar* cc, XArray* xao )
+XArray* VG_(cloneXA)( const HChar* cc, XArray* xao )
 {
    struct _XArray* xa = (struct _XArray*)xao;
    struct _XArray* nyu;
-   HChar* nyu_cc;
+   const HChar* nyu_cc;
    vg_assert(xa);
    vg_assert(xa->alloc);
    vg_assert(xa->free);
@@ -125,7 +125,7 @@ void VG_(deleteXA) ( XArray* xao )
    xa->free(xa);
 }
 
-void VG_(setCmpFnXA) ( XArray* xao, Int (*compar)(void*,void*) )
+void VG_(setCmpFnXA) ( XArray* xao, XACmpFn_t compar )
 {
    struct _XArray* xa = (struct _XArray*)xao;
    vg_assert(xa);
@@ -178,7 +178,7 @@ static inline void ensureSpaceXA ( struct _XArray* xa )
    }
 }
 
-Word VG_(addToXA) ( XArray* xao, void* elem )
+Word VG_(addToXA) ( XArray* xao, const void* elem )
 {
    struct _XArray* xa = (struct _XArray*)xao;
    vg_assert(xa);
@@ -195,7 +195,7 @@ Word VG_(addToXA) ( XArray* xao, void* elem )
    return xa->usedsizeE-1;
 }
 
-Word VG_(addBytesToXA) ( XArray* xao, void* bytesV, Word nbytes )
+Word VG_(addBytesToXA) ( XArray* xao, const void* bytesV, Word nbytes )
 {
    Word r, i;
    struct _XArray* xa = (struct _XArray*)xao;
@@ -209,7 +209,7 @@ Word VG_(addBytesToXA) ( XArray* xao, void* bytesV, Word nbytes )
       ensureSpaceXA( xa );
       vg_assert(xa->usedsizeE < xa->totsizeE);
       vg_assert(xa->arr);
-      * (((UChar*)xa->arr) + xa->usedsizeE) = ((UChar*)bytesV)[i];
+      * (((UChar*)xa->arr) + xa->usedsizeE) = ((const UChar*)bytesV)[i];
       xa->usedsizeE++;
    }
    xa->sorted = False;
@@ -225,9 +225,9 @@ void VG_(sortXA) ( XArray* xao )
    xa->sorted = True;
 }
 
-Bool VG_(lookupXA_UNSAFE) ( XArray* xao, void* key,
+Bool VG_(lookupXA_UNSAFE) ( XArray* xao, const void* key,
                             /*OUT*/Word* first, /*OUT*/Word* last,
-                            Int(*cmpFn)(void*,void*) )
+                            Int(*cmpFn)(const void*, const void*) )
 {
    Word  lo, mid, hi, cres;
    void* midv;
@@ -264,7 +264,7 @@ Bool VG_(lookupXA_UNSAFE) ( XArray* xao, void* key,
    }
 }
 
-Bool VG_(lookupXA) ( XArray* xao, void* key,
+Bool VG_(lookupXA) ( XArray* xao, const void* key,
                      /*OUT*/Word* first, /*OUT*/Word* last )
 {
    struct _XArray* xa = (struct _XArray*)xao;

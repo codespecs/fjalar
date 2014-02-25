@@ -14,7 +14,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011 Bart Van Assche <bvanassche@acm.org>.
+   Copyright (C) 2011-2013 Bart Van Assche <bvanassche@acm.org>.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -41,10 +41,10 @@
 #include "pub_core_syscall.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"    // __NR_futex
-#include "pub_tool_libcproc.h"
-#include "pub_tool_mallocfree.h"
-#include "pub_tool_threadstate.h"
-#include "pub_tool_inner.h"
+#include "pub_core_libcproc.h"
+#include "pub_core_mallocfree.h"
+#include "pub_core_threadstate.h"
+#include "pub_core_inner.h"
 #if defined(ENABLE_INNER_CLIENT_REQUEST)
 #include "helgrind/helgrind.h"
 #endif
@@ -68,7 +68,7 @@ static Bool s_debug;
 static Bool s_debug = True;
 #endif
 
-static const Char *get_sched_lock_name(void)
+static const HChar *get_sched_lock_name(void)
 {
    return "ticket lock";
 }

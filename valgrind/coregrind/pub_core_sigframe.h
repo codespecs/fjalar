@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -32,15 +32,14 @@
 #ifndef __PUB_CORE_SIGFRAME_H
 #define __PUB_CORE_SIGFRAME_H
 
+#include "pub_core_basics.h"     // VG_ macro
+#include "pub_core_vki.h"        // vki_sigset_t et al.
+
 //--------------------------------------------------------------------
 // PURPOSE: This module creates and destroys signal delivery frames
 // for client threads, saving/restoring the thread CPU state in the
 // frame appropriately.
 //--------------------------------------------------------------------
-
-/* There are no tool-visible exports from m_sigframe, hence no header
-   file for it. */
-/* #include "pub_tool_sigframe.h" */
 
 /* Create a signal frame for thread 'tid'. */
 extern 

@@ -9,13 +9,13 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2012 Julian Seward
+   Copyright (C) 2007-2013 Julian Seward
       jseward@acm.org
 
    This code is based on previous work by Nicholas Nethercote
    (coregrind/m_oset.c) which is
 
-   Copyright (C) 2005-2012 Nicholas Nethercote
+   Copyright (C) 2005-2013 Nicholas Nethercote
        njn@valgrind.org
 
    which in turn was derived partially from:
@@ -81,8 +81,8 @@ typedef
 
 struct _WordFM {
    AvlNode* root;
-   void*    (*alloc_nofail)( HChar*, SizeT );
-   HChar*   cc;
+   void*    (*alloc_nofail)( const HChar*, SizeT );
+   const HChar* cc;
    void     (*dealloc)(void*);
    Word     (*kCmp)(UWord,UWord);
    AvlNode* nodeStack[WFM_STKMAX]; // Iterator node stack
@@ -502,8 +502,8 @@ static
 AvlNode* avl_dopy ( AvlNode* nd, 
                     UWord(*dopyK)(UWord), 
                     UWord(*dopyV)(UWord),
-                    void*(alloc_nofail)(HChar*,SizeT),
-                    HChar* cc )
+                    void*(alloc_nofail)(const HChar*,SizeT),
+                    const HChar* cc )
 {
    AvlNode* nyu;
    if (! nd)
@@ -554,8 +554,8 @@ AvlNode* avl_dopy ( AvlNode* nd,
 
 /* Initialise a WordFM. */
 static void initFM ( WordFM* fm,
-                     void*   (*alloc_nofail)( HChar*, SizeT ),
-                     HChar*  cc,
+                     void*   (*alloc_nofail)( const HChar*, SizeT ),
+                     const HChar* cc,
                      void    (*dealloc)(void*),
                      Word    (*kCmp)(UWord,UWord) )
 {
@@ -576,8 +576,8 @@ static void initFM ( WordFM* fm,
    sections of the map, or the whole thing.  If kCmp is NULL then the
    ordering used is unsigned word ordering (UWord) on the key
    values. */
-WordFM* VG_(newFM) ( void* (*alloc_nofail)( HChar*, SizeT ),
-                     HChar* cc,
+WordFM* VG_(newFM) ( void* (*alloc_nofail)( const HChar*, SizeT ),
+                     const HChar* cc,
                      void  (*dealloc)(void*),
                      Word  (*kCmp)(UWord,UWord) )
 {
@@ -849,8 +849,8 @@ struct _WordBag {
    WordFM* fm; 
 };
 
-WordBag* VG_(newBag) ( void* (*alloc_nofail)( HChar*, SizeT ),
-                       HChar* cc,
+WordBag* VG_(newBag) ( void* (*alloc_nofail)( const HChar*, SizeT ),
+                       const HChar* cc,
                        void  (*dealloc)(void*) )
 {
    WordBag* bag = alloc_nofail(cc, sizeof(WordBag));

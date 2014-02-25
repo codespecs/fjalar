@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward
+   Copyright (C) 2000-2013 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -69,7 +69,7 @@ extern VgVgdb VG_(clo_vgdb);
 /* if > 0, checks every VG_(clo_vgdb_poll) BBS if vgdb wants to be served. */
 extern Int VG_(clo_vgdb_poll);
 /* prefix for the named pipes (FIFOs) used by vgdb/gdb to communicate with valgrind */
-extern HChar* VG_(clo_vgdb_prefix);
+extern const HChar* VG_(clo_vgdb_prefix);
 /* if True, gdbserver in valgrind will expose a target description containing
    shadow registers */
 extern Bool  VG_(clo_vgdb_shadow_registers);
@@ -77,7 +77,7 @@ extern Bool  VG_(clo_vgdb_shadow_registers);
 /* Enquire about whether to attach to a debugger at errors?   default: NO */
 extern Bool  VG_(clo_db_attach);
 /* The debugger command?  default: whatever gdb ./configure found */
-extern Char* VG_(clo_db_command);
+extern const HChar* VG_(clo_db_command);
 /* Generating a suppression for each error?   default: 0 (NO)
    Other values: 1 (yes, but ask user), 2 (yes, don't ask user) */
 extern Int   VG_(clo_gen_suppressions);
@@ -89,15 +89,15 @@ extern Bool  VG_(clo_demangle);
 /* Soname synonyms : a string containing a list of pairs
    xxxxx=yyyyy separated by commas.
    E.g. --soname-synonyms=somalloc=libtcmalloc*.so*,solibtruc=NONE */
-extern HChar* VG_(clo_soname_synonyms);
+extern const HChar* VG_(clo_soname_synonyms);
 extern Bool  VG_(clo_trace_children);
 /* String containing comma-separated patterns for executable names
    that should not be traced into even when --trace-children=yes */
-extern HChar* VG_(clo_trace_children_skip);
+extern const HChar* VG_(clo_trace_children_skip);
 /* The same as VG_(clo_trace_children), except that these patterns are
    tested against the arguments for child processes, rather than the
    executable name. */
-extern HChar* VG_(clo_trace_children_skip_by_arg);
+extern const HChar* VG_(clo_trace_children_skip_by_arg);
 /* After a fork, the child's output can become confusingly
    intermingled with the parent's output.  This is especially
    problematic when VG_(clo_xml) is True.  Setting
@@ -108,8 +108,8 @@ extern Bool  VG_(clo_child_silent_after_fork);
 
 /* If the user specified --log-file=STR and/or --xml-file=STR, these
    hold STR after expansion of the %p and %q templates. */
-extern Char* VG_(clo_log_fname_expanded);
-extern Char* VG_(clo_xml_fname_expanded);
+extern HChar* VG_(clo_log_fname_expanded);
+extern HChar* VG_(clo_xml_fname_expanded);
 
 /* Add timestamps to log messages?  default: NO */
 extern Bool  VG_(clo_time_stamp);
@@ -120,16 +120,43 @@ extern Int   VG_(clo_input_fd);
 /* The number of suppression files specified. */
 extern Int   VG_(clo_n_suppressions);
 /* The names of the suppression files. */
-extern Char* VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
+extern const HChar* VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
 
 /* An array of strings harvested from --fullpath-after= flags. */
 extern Int   VG_(clo_n_fullpath_after);
-extern Char* VG_(clo_fullpath_after)[VG_CLO_MAX_FULLPATH_AFTER];
+extern const HChar* VG_(clo_fullpath_after)[VG_CLO_MAX_FULLPATH_AFTER];
+
+/* Full path to additional path to search for debug symbols */
+extern const HChar* VG_(clo_extra_debuginfo_path);
+
+/* Address of a debuginfo server to use.  Either an IPv4 address of
+   the form "d.d.d.d" or that plus a port spec, hence of the form
+   "d.d.d.d:d", where d is one or more digits. */
+extern const HChar* VG_(clo_debuginfo_server);
+
+/* Do we allow reading debuginfo from debuginfo objects that don't
+   match (in some sense) the main object?  This is dangerous, so the
+   default is NO (False).  In any case it applies only to objects
+   found either in _extra_debuginfo_path or via the
+   _debuginfo_server. */
+extern Bool VG_(clo_allow_mismatched_debuginfo);
 
 /* DEBUG: print generated code?  default: 00000000 ( == NO ) */
 extern UChar VG_(clo_trace_flags);
-/* DEBUG: do bb profiling?  default: 00000000 ( == NO ) */
-extern UChar VG_(clo_profile_flags);
+
+/* DEBUG: do SB profiling? default: False (== NO).  NOTE: does not
+   have an associated command line flag.  Is set to True whenever
+   --profile-flags= is specified. */
+extern Bool  VG_(clo_profyle_sbs);
+/* DEBUG: if doing SB profiling, provides bits for which JIT stages
+   are shown.  Same meaning as for clo_trace_flags.  default: zero (==
+   show block counts only) */
+extern UChar VG_(clo_profyle_flags);
+/* DEBUG: if doing SB profiling, dump blocks and zero counters after
+   this-many back edges (event checks).  default: zero (== show
+   profiling results only at the end of the run. */
+extern ULong VG_(clo_profyle_interval);
+
 /* DEBUG: if tracing codegen, be quiet until after this bb */
 extern Int   VG_(clo_trace_notbelow);
 /* DEBUG: if tracing codegen, be quiet after this bb  */
@@ -141,7 +168,7 @@ extern Bool  VG_(clo_trace_signals);
 /* DEBUG: print symtab details?  default: NO */
 extern Bool  VG_(clo_trace_symtab);
 /* DEBUG: restrict symtab etc details to object name pattern.  Default: "*" */
-extern HChar* VG_(clo_trace_symtab_patt);
+extern const HChar* VG_(clo_trace_symtab_patt);
 /* DEBUG: print call-frame-info details?  default: NO */
 extern Bool  VG_(clo_trace_cfi);
 /* DEBUG:  mimic /usr/bin/readelf --syms?  default: NO */
@@ -175,13 +202,13 @@ extern Int VG_(clo_redzone_size);
    default: Infinity. */
 extern Int   VG_(clo_dump_error);
 /* Engage miscellaneous weird hacks needed for some progs. */
-extern Char* VG_(clo_sim_hints);
+extern const HChar* VG_(clo_sim_hints);
 /* Show symbols in the form 'name+offset' ?  Default: NO */
 extern Bool VG_(clo_sym_offsets);
 /* Read DWARF3 variable info even if tool doesn't ask for it? */
 extern Bool VG_(clo_read_var_info);
 /* Which prefix to strip from full source file paths, if any. */
-extern Char* VG_(clo_prefix_to_strip);
+extern const HChar* VG_(clo_prefix_to_strip);
 
 /* An array of strings harvested from --require-text-symbol= 
    flags.
@@ -214,7 +241,7 @@ extern Char* VG_(clo_prefix_to_strip);
    the entire flag in quotes to stop shells messing up the * and ?
    wildcards. */
 extern Int    VG_(clo_n_req_tsyms);
-extern HChar* VG_(clo_req_tsyms)[VG_CLO_MAX_REQ_TSYMS];
+extern const HChar* VG_(clo_req_tsyms)[VG_CLO_MAX_REQ_TSYMS];
 
 /* Track open file descriptors? */
 extern Bool  VG_(clo_track_fds);
@@ -236,6 +263,17 @@ extern Word VG_(clo_max_stackframe);
 /* How large should Valgrind allow the primary thread's guest stack to
    be? */
 extern Word VG_(clo_main_stacksize);
+
+/* If the same IP is found twice in a backtrace in a sequence of max
+   VG_(clo_merge_recursive_frames) frames, then the recursive call
+   is merged in the backtrace.
+   Note also that the merge is done during unwinding, to obtain
+   an much as possible significant backtrace.
+   Note that the value is changeable by a gdbsrv command. */
+extern Int VG_(clo_merge_recursive_frames);
+
+/* Max number of sectors that will be used by the translation code cache. */
+extern UInt VG_(clo_num_transtab_sectors);
 
 /* Delay startup to allow GDB to be attached?  Default: NO */
 extern Bool VG_(clo_wait_for_gdb);
@@ -260,7 +298,7 @@ extern VgSmc VG_(clo_smc_check);
 
 /* String containing comma-separated names of minor kernel variants,
    so they can be properly handled by m_syswrap. */
-extern HChar* VG_(clo_kernel_variant);
+extern const HChar* VG_(clo_kernel_variant);
 
 /* Darwin-specific: automatically run /usr/bin/dsymutil to update
    .dSYM directories as necessary? */
@@ -274,6 +312,24 @@ extern Bool VG_(clo_dsymutil);
    for the child. */
 extern Bool VG_(should_we_trace_this_child) ( HChar* child_exe_name,
                                               HChar** child_argv );
+
+/* Whether illegal instructions should be reported/diagnosed.
+   Can be explicitly set through --sigill-diagnostics otherwise
+   depends on verbosity (False if -q). */
+extern Bool VG_(clo_sigill_diag);
+
+/* Unwind using stack scanning (a nasty hack at the best of times)
+   when the normal CFI/FP-chain scan fails.  If the number of
+   "normally" recovered frames is below this number, stack scanning
+   will be used (on platforms on which it is supported, currently only
+   arm-linux).  The default value of zero has the effect of disabling
+   stack scanning.  Default: zero*/
+extern UInt VG_(clo_unw_stack_scan_thresh);
+
+/* If stack scanning is used, this is how many frames it may recover.
+   Since it tends to pick up a lot of junk, this value is set pretty
+   low by default.  Default: 5 */
+extern UInt VG_(clo_unw_stack_scan_frames);
 
 #endif   // __PUB_CORE_OPTIONS_H
 

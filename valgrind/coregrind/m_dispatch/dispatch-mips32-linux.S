@@ -8,7 +8,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2012 RT-RK
+  Copyright (C) 2000-2013 RT-RK
      mips-valgrind@rt-rk.com 
 
   This program is free software; you can redistribute it and/or
@@ -64,34 +64,31 @@ VG_(disp_run_translations):
     /* a2 ($6) holds host_addr   */
 
     /* New stack frame.  Stack must remain 8 aligned (at least) */
-    addiu $29, -56
+    addiu $29, -64
 
     /* Save ra */
-    sw  $31, 0($29)
-
-    /* ... and orig guest state*/
-    sw $5, 4($29)
+    sw  $31, 16($29)
 
     /* ... and s0 - s7 */
-    sw $16, 8($29)
-    sw $17, 12($29)
-    sw $18, 16($29)
-    sw $19, 20($29)
-    sw $20, 24($29)
-    sw $21, 28($29)
-    sw $22, 32($29)
-    sw $23, 36($29)
+    sw $16, 20($29)
+    sw $17, 24($29)
+    sw $18, 28($29)
+    sw $19, 32($29)
+    sw $20, 36($29)
+    sw $21, 40($29)
+    sw $22, 44($29)
+    sw $23, 48($29)
 
     /* ... and gp, fp/s8 */
-    sw $28, 40($29)
-    sw $30, 44($29)
+    sw $28, 52($29)
+    sw $30, 56($29)
 
     /* Save a0 ($4) on stack. In postamble it will be restored such that the
        return values can be written */
-    sw $4, 48($29)
+    sw $4, 60($29)
 
-    /* Load address of guest state into guest state register (r10) */
-    move $10, $5
+    /* Load address of guest state into guest state register ($23) */
+    move $23, $5
 
     /* and jump into the code cache.  Chained translations in
            the code cache run, until for whatever reason, they can't
@@ -106,38 +103,37 @@ VG_(disp_run_translations):
 /*----------------------------------------------------*/
 
 postamble:
-        /* At this point, r2 and r3 contain two
-           words to be returned to the caller.  r2
-           holds a TRC value, and r3 optionally may
+        /* At this point, $2 and $3 contain two
+           words to be returned to the caller.  $2
+           holds a TRC value, and $3 optionally may
            hold another word (for CHAIN_ME exits, the
            address of the place to patch.) */
 
     /* Restore $4 from stack; holds address of two_words */
-    lw $4, 48($29)
+    lw $4, 60($29)
     sw  $2, 0($4)         /* Store $2 to two_words[0] */
     sw  $3, 4($4)         /* Store $3 to two_words[1] */
 
     /* Restore callee-saved registers... */
 
     /* Restore ra */
-    lw $31, 0($29)
+    lw $31, 16($29)
 
     /* ... and s0 - s7 */
-    lw $16, 8($29)
-    lw $17, 12($29)
-    lw $18, 16($29)
-    lw $19, 20($29)
-    lw $20, 24($29)
-    lw $21, 28($29)
-    lw $22, 32($29)
-    lw $23, 36($29)
+    lw $16, 20($29)
+    lw $17, 24($29)
+    lw $18, 28($29)
+    lw $19, 32($29)
+    lw $20, 36($29)
+    lw $21, 40($29)
+    lw $22, 44($29)
+    lw $23, 48($29)
 
     /* ... and gp, fp/s8 */
-    lw $28, 40($29)
-    lw $30, 44($29)
+    lw $28, 52($29)
+    lw $30, 56($29)
 
-
-    addiu $29, 56   /* stack_size */
+    addiu $29, 64   /* stack_size */
     jr $31
     nop
 
@@ -179,7 +175,7 @@ VG_(disp_cp_chain_me_to_fastEP):
 .global VG_(disp_cp_xindir)
 VG_(disp_cp_xindir):
         /* Where are we going? */
-        lw  $11, OFFSET_mips32_PC($10)
+        lw  $11, OFFSET_mips32_PC($23)
 
         lw $13, vgPlain_stats__n_xindirs_32
         addiu $13, $13, 0x1
@@ -226,7 +222,7 @@ fast_lookup_failed:
 VG_(disp_cp_xassisted):
         /* guest-state-pointer contains the TRC. Put the value into the
            return register */
-        move    $2, $10
+        move    $2, $23
         move    $3, $0
         b       postamble
 

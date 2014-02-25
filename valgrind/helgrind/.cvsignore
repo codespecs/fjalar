@@ -1,4 +1,0 @@
-Makefile
-helgrind-x86-linux
-helgrind-amd64-linux
-*.so

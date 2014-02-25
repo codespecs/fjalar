@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -87,7 +87,7 @@
 /* This is the main, standard demangler entry point. */
 
 void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
-                     Char* orig, Char* result, Int result_size )
+                     HChar* orig, HChar* result, Int result_size )
 {
 #  define N_ZBUF 4096
    HChar* demangled = NULL;

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2012 OpenWorks LLP info@open-works.co.uk,
+   Copyright (C) 2011-2013 OpenWorks LLP info@open-works.co.uk,
                            Philippe Waroquiers philippe.waroquiers@skynet.be
 
    This program is free software; you can redistribute it and/or
@@ -28,8 +28,10 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#ifndef __PUB_TOOL_GROUPALLOC_H
-#define __PUB_TOOL_GROUPALLOC_H
+#ifndef __PUB_TOOL_POOLALLOC_H
+#define __PUB_TOOL_POOLALLOC_H
+
+#include "pub_tool_basics.h"   // UWord
 
 //--------------------------------------------------------------------
 // PURPOSE: Provides efficient allocation and free of elements of
@@ -53,8 +55,8 @@ typedef  struct _PoolAlloc  PoolAlloc;
    is, if it returns it must have succeeded.) */
 PoolAlloc* VG_(newPA) ( UWord  elemSzB,
                         UWord  nPerPool,
-                        void*  (*alloc)(HChar*, SizeT),
-                        HChar* cc,
+                        void*  (*alloc)(const HChar*, SizeT),
+                        const  HChar* cc,
                         void   (*free_fn)(void*) );
 
 
@@ -72,10 +74,11 @@ extern void VG_(freeEltPA) ( PoolAlloc* pa, void* p);
    pool allocator.
    The Pool Allocator provides support to use a ref counter
    to detect a pool allocator is not needed anymore.
-   It is the caller responsibility to delete the PA if the ref counter
-   drops to 0. In other words, this just helps the caller to manage
-   the PA memory destruction but it does not fully manage it.
-   Note that the usage of pool reference counting is optional. */
+   It is the caller responsibility to call VG_(addRefPA) for
+   each new reference to a pool and VG_(releasePA) when such a reference
+   disappears.
+   VG_(releasePA) will automatically call VG_(deletePA)
+   to delete the PA when the ref counter drops to 0. */
 
 // VG_(addRefPA) indicates there is a new reference to pa.
 extern void VG_(addRefPA) ( PoolAlloc* pa);

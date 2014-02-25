@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Nicholas Nethercote
+   Copyright (C) 2000-2013 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -55,9 +55,9 @@
 #include "pub_core_signals.h"
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
-#include "pub_tool_inner.h"
+#include "pub_core_inner.h"
 #if defined(ENABLE_INNER_CLIENT_REQUEST)
-#include "valgrind.h"
+#include "pub_core_clreq.h"
 #endif
 
 #include "priv_types_n_macros.h"
@@ -108,8 +108,8 @@ static VgSchedReturnCode thread_wrapper(Word /*ThreadId*/ tidW)
    vg_assert(VG_(is_running_thread)(tid));
 
    VG_(debugLog)(1, "syswrap-linux", 
-                    "thread_wrapper(tid=%lld): exit\n", 
-                    (ULong)tidW);
+                    "thread_wrapper(tid=%lld): exit, schedreturncode %s\n", 
+                    (ULong)tidW, VG_(name_of_VgSchedReturnCode)(ret));
 
    /* Return to caller, still holding the lock. */
    return ret;
@@ -197,7 +197,6 @@ static void run_a_thread_NORETURN ( Word tidW )
          carry on to show final tool results, then exit the entire system. 
          Use the continuation pointer set at startup in m_main. */
       ( * VG_(address_of_m_main_shutdown_actions_NORETURN) ) (tid, src);
-
    } else {
 
       VG_(debugLog)(1, "syswrap-linux", 
@@ -274,7 +273,7 @@ static void run_a_thread_NORETURN ( Word tidW )
          : "d" (VgTs_Empty), "n" (__NR_exit), "m" (tst->os_state.exitcode)
          : "2"
       );
-#elif defined(VGP_mips32_linux)
+#elif defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
       asm volatile (
          "sw   %1, %0\n\t"     /* set tst->status = VgTs_Empty */
          "li  	$2, %2\n\t"     /* set v0 = __NR_exit */
@@ -428,7 +427,8 @@ SysRes ML_(do_fork_clone) ( ThreadId tid, UInt flags,
       VG_(clone) stuff */
 #if defined(VGP_x86_linux) \
     || defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-    || defined(VGP_arm_linux) || defined(VGP_mips32_linux)
+    || defined(VGP_arm_linux) || defined(VGP_mips32_linux) \
+    || defined(VGP_mips64_linux)
    res = VG_(do_syscall5)( __NR_clone, flags, 
                            (UWord)NULL, (UWord)parent_tidptr, 
                            (UWord)NULL, (UWord)child_tidptr );
@@ -516,7 +516,7 @@ PRE(sys_mount)
    // by 'data'.
    *flags |= SfMayBlock;
    PRINT("sys_mount( %#lx(%s), %#lx(%s), %#lx(%s), %#lx, %#lx )",
-         ARG1,(Char*)ARG1, ARG2,(Char*)ARG2, ARG3,(Char*)ARG3, ARG4, ARG5);
+         ARG1,(HChar*)ARG1, ARG2,(HChar*)ARG2, ARG3,(HChar*)ARG3, ARG4, ARG5);
    PRE_REG_READ5(long, "mount",
                  char *, source, char *, target, char *, type,
                  unsigned long, flags, void *, data);
@@ -688,9 +688,20 @@ PRE(sys_exit_group)
    PRE_REG_READ1(void, "exit_group", int, status);
 
    tst = VG_(get_ThreadState)(tid);
-
    /* A little complex; find all the threads with the same threadgroup
       as this one (including this one), and mark them to exit */
+   /* It is unclear how one can get a threadgroup in this process which
+      is not the threadgroup of the calling thread:
+      The assignments to threadgroups are:
+        = 0; /// scheduler.c os_state_clear
+        = getpid(); /// scheduler.c in child after fork
+        = getpid(); /// this file, in thread_wrapper
+        = ptst->os_state.threadgroup; /// syswrap-*-linux.c,
+                           copying the thread group of the thread doing clone
+      So, the only case where the threadgroup might be different to the getpid
+      value is in the child, just after fork. But then the fork syscall is
+      still going on, the forked thread has had no chance yet to make this
+      syscall. */
    for (t = 1; t < VG_N_THREADS; t++) {
       if ( /* not alive */
            VG_(threads)[t].status == VgTs_Empty 
@@ -699,13 +710,40 @@ PRE(sys_exit_group)
            VG_(threads)[t].os_state.threadgroup != tst->os_state.threadgroup
          )
          continue;
-
-      VG_(threads)[t].exitreason = VgSrc_ExitThread;
+      /* Assign the exit code, VG_(nuke_all_threads_except) will assign
+         the exitreason. */
       VG_(threads)[t].os_state.exitcode = ARG1;
-
-      if (t != tid)
-	 VG_(get_thread_out_of_syscall)(t); /* unblock it, if blocked */
    }
+
+   /* Indicate in all other threads that the process is exiting.
+      Then wait using VG_(reap_threads) for these threads to disappear.
+      
+      Can this give a deadlock if another thread is calling exit in parallel
+      and would then wait for this thread to disappear ?
+      The answer is no:
+      Other threads are either blocked in a syscall or have yielded the CPU.
+      
+      A thread that has yielded the CPU is trying to get the big lock in
+      VG_(scheduler). This thread will get the CPU thanks to the call
+      to VG_(reap_threads). The scheduler will then check for signals,
+      kill the process if this is a fatal signal, and otherwise prepare
+      the thread for handling this signal. After this preparation, if
+      the thread status is VG_(is_exiting), the scheduler exits the thread.
+      So, a thread that has yielded the CPU does not have a chance to
+      call exit => no deadlock for this thread.
+      
+      VG_(nuke_all_threads_except) will send the VG_SIGVGKILL signal
+      to all threads blocked in a syscall.
+      The syscall will be interrupted, and the control will go to the
+      scheduler. The scheduler will then return, as the thread is in
+      exiting state. */
+
+   VG_(nuke_all_threads_except)( tid, VgSrc_ExitProcess );
+   VG_(reap_threads)(tid);
+   VG_(threads)[tid].exitreason = VgSrc_ExitThread;
+   /* we do assign VgSrc_ExitThread and not VgSrc_ExitProcess, as this thread
+      is the thread calling exit_group and so its registers must be considered
+      as not reachable. See pub_tool_machine.h VG_(apply_to_GP_regs). */
 
    /* We have to claim the syscall already succeeded. */
    SET_STATUS_Success(0);
@@ -944,6 +982,21 @@ POST(sys_prctl)
       break;
    case VKI_PR_GET_ENDIAN:
       POST_MEM_WRITE(ARG2, sizeof(Int));
+      break;
+   case VKI_PR_SET_NAME:
+      {
+         const HChar* new_name = (const HChar*) ARG2;
+         if (new_name) {    // Paranoia
+            ThreadState* tst = VG_(get_ThreadState)(tid);
+            SizeT new_len = VG_(strlen)(new_name);
+
+            /* Don't bother reusing the memory. This is a rare event. */
+            tst->thread_name =
+              VG_(arena_realloc)(VG_AR_CORE, "syswrap.prctl",
+                                 tst->thread_name, new_len + 1);
+            VG_(strcpy)(tst->thread_name, new_name);
+         }
+      }
       break;
    }
 }
@@ -1788,6 +1841,54 @@ POST(sys_get_mempolicy)
 }
 
 /* ---------------------------------------------------------------------
+   fanotify_* wrappers
+   ------------------------------------------------------------------ */
+
+PRE(sys_fanotify_init)
+{
+   PRINT("sys_fanotify_init ( %lu, %lu )", ARG1,ARG2);
+   PRE_REG_READ2(long, "fanotify_init",
+                 unsigned int, flags, unsigned int, event_f_flags);
+}
+
+POST(sys_fanotify_init)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "fanotify_init", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_nameless) (tid, RES);
+   }
+}
+
+PRE(sys_fanotify_mark)
+{
+#if VG_WORDSIZE == 4
+   PRINT( "sys_fanotify_mark ( %ld, %lu, %llu, %ld, %#lx(%s))", 
+          ARG1,ARG2,MERGE64(ARG3,ARG4),ARG5,ARG6,(char *)ARG6);
+   PRE_REG_READ6(long, "sys_fanotify_mark", 
+                 int, fanotify_fd, unsigned int, flags,
+                 __vki_u32, mask0, __vki_u32, mask1,
+                 int, dfd, const char *, pathname);
+   if (ARG6)
+      PRE_MEM_RASCIIZ( "fanotify_mark(path)", ARG6);
+#elif VG_WORDSIZE == 8
+   PRINT( "sys_fanotify_mark ( %ld, %lu, %llu, %ld, %#lx(%s))", 
+           ARG1,ARG2,(ULong)ARG3,ARG4,ARG5,(char *)ARG5);
+   PRE_REG_READ5(long, "sys_fanotify_mark", 
+                 int, fanotify_fd, unsigned int, flags,
+                 __vki_u64, mask,
+                 int, dfd, const char *, pathname);
+   if (ARG5)
+      PRE_MEM_RASCIIZ( "fanotify_mark(path)", ARG5);
+#else
+#  error Unexpected word size
+#endif
+}
+
+/* ---------------------------------------------------------------------
    inotify_* wrappers
    ------------------------------------------------------------------ */
 
@@ -1867,7 +1968,7 @@ POST(sys_mq_open)
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
       if (VG_(clo_track_fds))
-         ML_(record_fd_open_with_given_name)(tid, RES, (Char*)ARG1);
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG1);
    }
 }
 
@@ -2212,6 +2313,7 @@ PRE(sys_capget)
                  vki_cap_user_header_t, header, vki_cap_user_data_t, data);
    PRE_MEM_READ( "capget(header)", ARG1, 
                   sizeof(struct __vki_user_cap_header_struct) );
+   if (ARG2 != (Addr)NULL)
    PRE_MEM_WRITE( "capget(data)", ARG2, 
                   sizeof(struct __vki_user_cap_data_struct) );
 }
@@ -3288,6 +3390,888 @@ ML_(linux_POST_sys_msgctl) ( ThreadId tid,
 }
 
 /* ---------------------------------------------------------------------
+   Generic handler for sys_ipc
+   Depending on the platform, some syscalls (e.g. semctl, semop, ...)
+   are either direct system calls, or are all implemented via sys_ipc.
+   ------------------------------------------------------------------ */
+#ifdef __NR_ipc
+static Addr deref_Addr ( ThreadId tid, Addr a, const HChar* s )
+{
+   Addr* a_p = (Addr*)a;
+   PRE_MEM_READ( s, (Addr)a_p, sizeof(Addr) );
+   return *a_p;
+}
+
+static Bool semctl_cmd_has_4args (UWord cmd)
+{
+   switch (cmd & ~VKI_IPC_64)
+   {
+   case VKI_IPC_INFO:
+   case VKI_SEM_INFO:
+   case VKI_IPC_STAT:
+   case VKI_SEM_STAT:
+   case VKI_IPC_SET:
+   case VKI_GETALL:
+   case VKI_SETALL:
+      return True;
+   default:
+      return False;
+   }
+}
+
+PRE(sys_ipc)
+{
+   PRINT("sys_ipc ( %ld, %ld, %ld, %ld, %#lx, %ld )",
+         ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+
+   switch (ARG1 /* call */) {
+   case VKI_SEMOP:
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      ML_(generic_PRE_sys_semop)( tid, ARG2, ARG5, ARG3 );
+      *flags |= SfMayBlock;
+      break;
+   case VKI_SEMGET:
+      PRE_REG_READ4(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third);
+      break;
+   case VKI_SEMCTL:
+   {
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      UWord arg;
+      if (semctl_cmd_has_4args(ARG4))
+         arg = deref_Addr( tid, ARG5, "semctl(arg)" );
+      else
+         arg = 0;
+      ML_(generic_PRE_sys_semctl)( tid, ARG2, ARG3, ARG4, arg );
+      break;
+   }
+   case VKI_SEMTIMEDOP:
+      PRE_REG_READ6(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr, long, fifth);
+      ML_(generic_PRE_sys_semtimedop)( tid, ARG2, ARG5, ARG3, ARG6 );
+      *flags |= SfMayBlock;
+      break;
+   case VKI_MSGSND:
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      ML_(linux_PRE_sys_msgsnd)( tid, ARG2, ARG5, ARG3, ARG4 );
+      if ((ARG4 & VKI_IPC_NOWAIT) == 0)
+         *flags |= SfMayBlock;
+      break;
+   case VKI_MSGRCV:
+   {
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      Addr msgp;
+      Word msgtyp;
+ 
+      msgp = deref_Addr( tid, (Addr) (&((struct vki_ipc_kludge *)ARG5)->msgp),
+                         "msgrcv(msgp)" );
+      msgtyp = deref_Addr( tid, 
+                           (Addr) (&((struct vki_ipc_kludge *)ARG5)->msgtyp),
+                           "msgrcv(msgp)" );
+
+      ML_(linux_PRE_sys_msgrcv)( tid, ARG2, msgp, ARG3, msgtyp, ARG4 );
+
+      if ((ARG4 & VKI_IPC_NOWAIT) == 0)
+         *flags |= SfMayBlock;
+      break;
+   }
+   case VKI_MSGGET:
+      PRE_REG_READ3(int, "ipc", vki_uint, call, int, first, int, second);
+      break;
+   case VKI_MSGCTL:
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      ML_(linux_PRE_sys_msgctl)( tid, ARG2, ARG3, ARG5 );
+      break;
+   case VKI_SHMAT:
+   {
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      UWord w;
+      PRE_MEM_WRITE( "shmat(raddr)", ARG4, sizeof(Addr) );
+      w = ML_(generic_PRE_sys_shmat)( tid, ARG2, ARG5, ARG3 );
+      if (w == 0)
+         SET_STATUS_Failure( VKI_EINVAL );
+      else
+         ARG5 = w;
+      break;
+   }
+   case VKI_SHMDT:
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      if (!ML_(generic_PRE_sys_shmdt)(tid, ARG5))
+	 SET_STATUS_Failure( VKI_EINVAL );
+      break;
+   case VKI_SHMGET:
+      PRE_REG_READ4(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third);
+      break;
+   case VKI_SHMCTL: /* IPCOP_shmctl */
+      PRE_REG_READ5(int, "ipc",
+                    vki_uint, call, int, first, int, second, int, third,
+                    void *, ptr);
+      ML_(generic_PRE_sys_shmctl)( tid, ARG2, ARG3, ARG5 );
+      break;
+   default:
+      VG_(message)(Vg_DebugMsg, "FATAL: unhandled syscall(ipc) %ld\n", ARG1 );
+      VG_(core_panic)("... bye!\n");
+      break; /*NOTREACHED*/
+   }
+}
+
+POST(sys_ipc)
+{
+   vg_assert(SUCCESS);
+   switch (ARG1 /* call */) {
+   case VKI_SEMOP:
+   case VKI_SEMGET:
+      break;
+   case VKI_SEMCTL:
+   {
+      UWord arg;
+      if (semctl_cmd_has_4args(ARG4))
+         arg = deref_Addr( tid, ARG5, "semctl(arg)" );
+      else
+         arg = 0;
+      ML_(generic_POST_sys_semctl)( tid, RES, ARG2, ARG3, ARG4, arg );
+      break;
+   }
+   case VKI_SEMTIMEDOP:
+   case VKI_MSGSND:
+      break;
+   case VKI_MSGRCV:
+   {
+      Addr msgp;
+      Word msgtyp;
+
+      msgp = deref_Addr( tid,
+			 (Addr) (&((struct vki_ipc_kludge *)ARG5)->msgp),
+			 "msgrcv(msgp)" );
+      msgtyp = deref_Addr( tid,
+			   (Addr) (&((struct vki_ipc_kludge *)ARG5)->msgtyp),
+			   "msgrcv(msgp)" );
+
+      ML_(linux_POST_sys_msgrcv)( tid, RES, ARG2, msgp, ARG3, msgtyp, ARG4 );
+      break;
+   }
+   case VKI_MSGGET:
+      break;
+   case VKI_MSGCTL:
+      ML_(linux_POST_sys_msgctl)( tid, RES, ARG2, ARG3, ARG5 );
+      break;
+   case VKI_SHMAT:
+   {
+      Addr addr;
+
+      /* force readability. before the syscall it is
+       * indeed uninitialized, as can be seen in
+       * glibc/sysdeps/unix/sysv/linux/shmat.c */
+      POST_MEM_WRITE( ARG4, sizeof( Addr ) );
+
+      addr = deref_Addr ( tid, ARG4, "shmat(addr)" );
+      ML_(generic_POST_sys_shmat)( tid, addr, ARG2, ARG5, ARG3 );
+      break;
+   }
+   case VKI_SHMDT:
+      ML_(generic_POST_sys_shmdt)( tid, RES, ARG5 );
+      break;
+   case VKI_SHMGET:
+      break;
+   case VKI_SHMCTL:
+      ML_(generic_POST_sys_shmctl)( tid, RES, ARG2, ARG3, ARG5 );
+      break;
+   default:
+      VG_(message)(Vg_DebugMsg,
+		   "FATAL: unhandled syscall(ipc) %ld\n",
+		   ARG1 );
+      VG_(core_panic)("... bye!\n");
+      break; /*NOTREACHED*/
+   }
+}
+#endif
+
+PRE(sys_semget)
+{
+   PRINT("sys_semget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "semget", vki_key_t, key, int, nsems, int, semflg);
+}
+
+PRE(sys_semop)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_semop ( %ld, %#lx, %lu )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "semop",
+                 int, semid, struct sembuf *, sops, unsigned, nsoops);
+   ML_(generic_PRE_sys_semop)(tid, ARG1,ARG2,ARG3);
+}
+
+PRE(sys_semctl)
+{
+   switch (ARG3 & ~VKI_IPC_64) {
+   case VKI_IPC_INFO:
+   case VKI_SEM_INFO:
+      PRINT("sys_semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+      PRE_REG_READ4(long, "semctl",
+                    int, semid, int, semnum, int, cmd, struct seminfo *, arg);
+      break;
+   case VKI_IPC_STAT:
+   case VKI_SEM_STAT:
+   case VKI_IPC_SET:
+      PRINT("sys_semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+      PRE_REG_READ4(long, "semctl",
+                    int, semid, int, semnum, int, cmd, struct semid_ds *, arg);
+      break;
+   case VKI_GETALL:
+   case VKI_SETALL:
+      PRINT("sys_semctl ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+      PRE_REG_READ4(long, "semctl",
+                    int, semid, int, semnum, int, cmd, unsigned short *, arg);
+      break;
+   default:
+      PRINT("sys_semctl ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+      PRE_REG_READ3(long, "semctl",
+                    int, semid, int, semnum, int, cmd);
+      break;
+   }
+#ifdef VGP_amd64_linux
+   ML_(generic_PRE_sys_semctl)(tid, ARG1,ARG2,ARG3|VKI_IPC_64,ARG4);
+#else
+   ML_(generic_PRE_sys_semctl)(tid, ARG1,ARG2,ARG3,ARG4);
+#endif
+}
+
+POST(sys_semctl)
+{
+#ifdef VGP_amd64_linux
+   ML_(generic_POST_sys_semctl)(tid, RES,ARG1,ARG2,ARG3|VKI_IPC_64,ARG4);
+#else
+   ML_(generic_POST_sys_semctl)(tid, RES,ARG1,ARG2,ARG3,ARG4);
+#endif
+}
+
+PRE(sys_semtimedop)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_semtimedop ( %ld, %#lx, %lu, %#lx )",ARG1,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "semtimedop",
+                 int, semid, struct sembuf *, sops, unsigned, nsoops,
+                 struct timespec *, timeout);
+   ML_(generic_PRE_sys_semtimedop)(tid, ARG1,ARG2,ARG3,ARG4);
+}
+
+PRE(sys_msgget)
+{
+   PRINT("sys_msgget ( %ld, %ld )",ARG1,ARG2);
+   PRE_REG_READ2(long, "msgget", vki_key_t, key, int, msgflg);
+}
+
+PRE(sys_msgsnd)
+{
+   PRINT("sys_msgsnd ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "msgsnd",
+                 int, msqid, struct msgbuf *, msgp, vki_size_t, msgsz, int, msgflg);
+   ML_(linux_PRE_sys_msgsnd)(tid, ARG1,ARG2,ARG3,ARG4);
+   if ((ARG4 & VKI_IPC_NOWAIT) == 0)
+      *flags |= SfMayBlock;
+}
+
+PRE(sys_msgrcv)
+{
+   PRINT("sys_msgrcv ( %ld, %#lx, %ld, %ld, %ld )",ARG1,ARG2,ARG3,ARG4,ARG5);
+   PRE_REG_READ5(long, "msgrcv",
+                 int, msqid, struct msgbuf *, msgp, vki_size_t, msgsz,
+                 long, msgytp, int, msgflg);
+   ML_(linux_PRE_sys_msgrcv)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
+   if ((ARG5 & VKI_IPC_NOWAIT) == 0)
+      *flags |= SfMayBlock;
+}
+POST(sys_msgrcv)
+{
+   ML_(linux_POST_sys_msgrcv)(tid, RES,ARG1,ARG2,ARG3,ARG4,ARG5);
+}
+
+PRE(sys_msgctl)
+{
+   PRINT("sys_msgctl ( %ld, %ld, %#lx )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "msgctl",
+                 int, msqid, int, cmd, struct msqid_ds *, buf);
+   ML_(linux_PRE_sys_msgctl)(tid, ARG1,ARG2,ARG3);
+}
+
+POST(sys_msgctl)
+{
+   ML_(linux_POST_sys_msgctl)(tid, RES,ARG1,ARG2,ARG3);
+}
+
+PRE(sys_shmget)
+{
+   PRINT("sys_shmget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "shmget", vki_key_t, key, vki_size_t, size, int, shmflg);
+}
+
+PRE(wrap_sys_shmat)
+{
+   UWord arg2tmp;
+   PRINT("wrap_sys_shmat ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "shmat",
+                 int, shmid, const void *, shmaddr, int, shmflg);
+#if defined(VGP_arm_linux)
+   /* Round the attach address down to an VKI_SHMLBA boundary if the
+      client requested rounding.  See #222545.  This is necessary only
+      on arm-linux because VKI_SHMLBA is 4 * VKI_PAGE size; on all
+      other linux targets it is the same as the page size. */
+   if (ARG3 & VKI_SHM_RND)
+      ARG2 = VG_ROUNDDN(ARG2, VKI_SHMLBA);
+#endif
+   arg2tmp = ML_(generic_PRE_sys_shmat)(tid, ARG1,ARG2,ARG3);
+   if (arg2tmp == 0)
+      SET_STATUS_Failure( VKI_EINVAL );
+   else
+      ARG2 = arg2tmp;  // used in POST
+}
+
+POST(wrap_sys_shmat)
+{
+   ML_(generic_POST_sys_shmat)(tid, RES,ARG1,ARG2,ARG3);
+}
+
+PRE(sys_shmdt)
+{
+   PRINT("sys_shmdt ( %#lx )",ARG1);
+   PRE_REG_READ1(long, "shmdt", const void *, shmaddr);
+   if (!ML_(generic_PRE_sys_shmdt)(tid, ARG1))
+      SET_STATUS_Failure( VKI_EINVAL );
+}
+
+POST(sys_shmdt)
+{
+   ML_(generic_POST_sys_shmdt)(tid, RES,ARG1);
+}
+
+PRE(sys_shmctl)
+{
+   PRINT("sys_shmctl ( %ld, %ld, %#lx )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "shmctl",
+                 int, shmid, int, cmd, struct shmid_ds *, buf);
+#ifdef VGP_amd64_linux
+   ML_(generic_PRE_sys_shmctl)(tid, ARG1,ARG2|VKI_IPC_64,ARG3);
+#else
+   ML_(generic_PRE_sys_shmctl)(tid, ARG1,ARG2,ARG3);
+#endif
+}
+
+POST(sys_shmctl)
+{
+#ifdef VGP_amd64_linux
+   ML_(generic_POST_sys_shmctl)(tid, RES,ARG1,ARG2|VKI_IPC_64,ARG3);
+#else
+   ML_(generic_POST_sys_shmctl)(tid, RES,ARG1,ARG2,ARG3);
+#endif
+}
+
+
+/* ---------------------------------------------------------------------
+   Generic handler for sys_socketcall
+   Depending on the platform, some socket related syscalls (e.g. socketpair,
+   socket, bind, ...)
+   are either direct system calls, or are all implemented via sys_socketcall.
+   ------------------------------------------------------------------ */
+#ifdef __NR_socketcall
+PRE(sys_socketcall)
+{
+#  define ARG2_0  (((UWord*)ARG2)[0])
+#  define ARG2_1  (((UWord*)ARG2)[1])
+#  define ARG2_2  (((UWord*)ARG2)[2])
+#  define ARG2_3  (((UWord*)ARG2)[3])
+#  define ARG2_4  (((UWord*)ARG2)[4])
+#  define ARG2_5  (((UWord*)ARG2)[5])
+
+// call PRE_MEM_READ and check for EFAULT result.
+#define PRE_MEM_READ_ef(msg, arg, size)                         \
+   {                                                            \
+      PRE_MEM_READ( msg, arg, size);                            \
+      if (!ML_(valid_client_addr)(arg, size, tid, NULL)) {      \
+         SET_STATUS_Failure( VKI_EFAULT );                      \
+         break;                                                 \
+      }                                                         \
+   }
+
+   *flags |= SfMayBlock;
+   PRINT("sys_socketcall ( %ld, %#lx )",ARG1,ARG2);
+   PRE_REG_READ2(long, "socketcall", int, call, unsigned long *, args);
+
+   switch (ARG1 /* request */) {
+
+   case VKI_SYS_SOCKETPAIR:
+      /* int socketpair(int d, int type, int protocol, int sv[2]); */
+      PRE_MEM_READ_ef( "socketcall.socketpair(args)", ARG2, 4*sizeof(Addr) );
+      ML_(generic_PRE_sys_socketpair)( tid, ARG2_0, ARG2_1, ARG2_2, ARG2_3 );
+      break;
+
+   case VKI_SYS_SOCKET:
+      /* int socket(int domain, int type, int protocol); */
+      PRE_MEM_READ_ef( "socketcall.socket(args)", ARG2, 3*sizeof(Addr) );
+      break;
+
+   case VKI_SYS_BIND:
+      /* int bind(int sockfd, struct sockaddr *my_addr, 
+                  int addrlen); */
+      PRE_MEM_READ_ef( "socketcall.bind(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_bind)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+               
+   case VKI_SYS_LISTEN:
+      /* int listen(int s, int backlog); */
+      PRE_MEM_READ_ef( "socketcall.listen(args)", ARG2, 2*sizeof(Addr) );
+      break;
+
+   case VKI_SYS_ACCEPT:
+      /* int accept(int s, struct sockaddr *addr, int *addrlen); */
+      PRE_MEM_READ_ef( "socketcall.accept(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_accept)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_ACCEPT4:
+      /* int accept4(int s, struct sockaddr *addr, int *addrlen, int flags); */
+      PRE_MEM_READ_ef( "socketcall.accept4(args)", ARG2, 4*sizeof(Addr) );
+      ML_(generic_PRE_sys_accept)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_SENDTO:
+      /* int sendto(int s, const void *msg, int len, 
+                    unsigned int flags, 
+                    const struct sockaddr *to, int tolen); */
+      PRE_MEM_READ_ef( "socketcall.sendto(args)", ARG2, 6*sizeof(Addr) );
+      ML_(generic_PRE_sys_sendto)( tid, ARG2_0, ARG2_1, ARG2_2, 
+                                   ARG2_3, ARG2_4, ARG2_5 );
+      break;
+
+   case VKI_SYS_SEND:
+      /* int send(int s, const void *msg, size_t len, int flags); */
+      PRE_MEM_READ_ef( "socketcall.send(args)", ARG2, 4*sizeof(Addr) );
+      ML_(generic_PRE_sys_send)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_RECVFROM:
+      /* int recvfrom(int s, void *buf, int len, unsigned int flags,
+         struct sockaddr *from, int *fromlen); */
+      PRE_MEM_READ_ef( "socketcall.recvfrom(args)", ARG2, 6*sizeof(Addr) );
+      ML_(generic_PRE_sys_recvfrom)( tid, ARG2_0, ARG2_1, ARG2_2, 
+                                     ARG2_3, ARG2_4, ARG2_5 );
+      break;
+   
+   case VKI_SYS_RECV:
+      /* int recv(int s, void *buf, int len, unsigned int flags); */
+      /* man 2 recv says:
+         The  recv call is normally used only on a connected socket
+         (see connect(2)) and is identical to recvfrom with a  NULL
+         from parameter.
+      */
+      PRE_MEM_READ_ef( "socketcall.recv(args)", ARG2, 4*sizeof(Addr) );
+      ML_(generic_PRE_sys_recv)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_CONNECT:
+      /* int connect(int sockfd, 
+                     struct sockaddr *serv_addr, int addrlen ); */
+      PRE_MEM_READ_ef( "socketcall.connect(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_connect)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_SETSOCKOPT:
+      /* int setsockopt(int s, int level, int optname, 
+                        const void *optval, int optlen); */
+      PRE_MEM_READ_ef( "socketcall.setsockopt(args)", ARG2, 5*sizeof(Addr) );
+      ML_(linux_PRE_sys_setsockopt)( tid, ARG2_0, ARG2_1, ARG2_2, 
+                                     ARG2_3, ARG2_4 );
+      break;
+
+   case VKI_SYS_GETSOCKOPT:
+      /* int getsockopt(int s, int level, int optname, 
+                        void *optval, socklen_t *optlen); */
+      PRE_MEM_READ_ef( "socketcall.getsockopt(args)", ARG2, 5*sizeof(Addr) );
+      ML_(linux_PRE_sys_getsockopt)( tid, ARG2_0, ARG2_1, ARG2_2, 
+                                     ARG2_3, ARG2_4 );
+      break;
+
+   case VKI_SYS_GETSOCKNAME:
+      /* int getsockname(int s, struct sockaddr* name, int* namelen) */
+      PRE_MEM_READ_ef( "socketcall.getsockname(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_getsockname)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_GETPEERNAME:
+      /* int getpeername(int s, struct sockaddr* name, int* namelen) */
+      PRE_MEM_READ_ef( "socketcall.getpeername(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_getpeername)( tid, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_SHUTDOWN:
+      /* int shutdown(int s, int how); */
+      PRE_MEM_READ_ef( "socketcall.shutdown(args)", ARG2, 2*sizeof(Addr) );
+      break;
+
+   case VKI_SYS_SENDMSG:
+      /* int sendmsg(int s, const struct msghdr *msg, int flags); */
+      PRE_MEM_READ_ef( "socketcall.sendmsg(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_sendmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1 );
+      break;
+      
+   case VKI_SYS_RECVMSG:
+      /* int recvmsg(int s, struct msghdr *msg, int flags); */
+      PRE_MEM_READ_ef("socketcall.recvmsg(args)", ARG2, 3*sizeof(Addr) );
+      ML_(generic_PRE_sys_recvmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1 );
+      break;
+
+   default:
+      VG_(message)(Vg_DebugMsg,"Warning: unhandled socketcall 0x%lx\n",ARG1);
+      SET_STATUS_Failure( VKI_EINVAL );
+      break;
+   }
+#  undef ARG2_0
+#  undef ARG2_1
+#  undef ARG2_2
+#  undef ARG2_3
+#  undef ARG2_4
+#  undef ARG2_5
+}
+
+POST(sys_socketcall)
+{
+#  define ARG2_0  (((UWord*)ARG2)[0])
+#  define ARG2_1  (((UWord*)ARG2)[1])
+#  define ARG2_2  (((UWord*)ARG2)[2])
+#  define ARG2_3  (((UWord*)ARG2)[3])
+#  define ARG2_4  (((UWord*)ARG2)[4])
+#  define ARG2_5  (((UWord*)ARG2)[5])
+
+   SysRes r;
+   vg_assert(SUCCESS);
+   switch (ARG1 /* request */) {
+
+   case VKI_SYS_SOCKETPAIR:
+      r = ML_(generic_POST_sys_socketpair)( 
+             tid, VG_(mk_SysRes_Success)(RES), 
+             ARG2_0, ARG2_1, ARG2_2, ARG2_3 
+          );
+      SET_STATUS_from_SysRes(r);
+      break;
+
+   case VKI_SYS_SOCKET:
+      r = ML_(generic_POST_sys_socket)( tid, VG_(mk_SysRes_Success)(RES) );
+      SET_STATUS_from_SysRes(r);
+      break;
+
+   case VKI_SYS_BIND:
+      /* int bind(int sockfd, struct sockaddr *my_addr, 
+			int addrlen); */
+      break;
+               
+   case VKI_SYS_LISTEN:
+      /* int listen(int s, int backlog); */
+      break;
+
+   case VKI_SYS_ACCEPT:
+   case VKI_SYS_ACCEPT4:
+      /* int accept(int s, struct sockaddr *addr, int *addrlen); */
+      /* int accept4(int s, struct sockaddr *addr, int *addrlen, int flags); */
+     r = ML_(generic_POST_sys_accept)( tid, VG_(mk_SysRes_Success)(RES), 
+                                            ARG2_0, ARG2_1, ARG2_2 );
+     SET_STATUS_from_SysRes(r);
+     break;
+
+   case VKI_SYS_SENDTO:
+      break;
+
+   case VKI_SYS_SEND:
+      break;
+
+   case VKI_SYS_RECVFROM:
+      ML_(generic_POST_sys_recvfrom)( tid, VG_(mk_SysRes_Success)(RES),
+                                           ARG2_0, ARG2_1, ARG2_2,
+                                           ARG2_3, ARG2_4, ARG2_5 );
+      break;
+
+   case VKI_SYS_RECV:
+      ML_(generic_POST_sys_recv)( tid, RES, ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_CONNECT:
+      break;
+
+   case VKI_SYS_SETSOCKOPT:
+      break;
+
+   case VKI_SYS_GETSOCKOPT:
+      ML_(linux_POST_sys_getsockopt)( tid, VG_(mk_SysRes_Success)(RES),
+                                      ARG2_0, ARG2_1, 
+                                      ARG2_2, ARG2_3, ARG2_4 );
+      break;
+
+   case VKI_SYS_GETSOCKNAME:
+      ML_(generic_POST_sys_getsockname)( tid, VG_(mk_SysRes_Success)(RES),
+                                              ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_GETPEERNAME:
+      ML_(generic_POST_sys_getpeername)( tid, VG_(mk_SysRes_Success)(RES), 
+                                              ARG2_0, ARG2_1, ARG2_2 );
+      break;
+
+   case VKI_SYS_SHUTDOWN:
+      break;
+
+   case VKI_SYS_SENDMSG:
+      break;
+
+   case VKI_SYS_RECVMSG:
+      ML_(generic_POST_sys_recvmsg)( tid, "msg", (struct vki_msghdr *)ARG2_1, RES );
+      break;
+
+   default:
+      VG_(message)(Vg_DebugMsg,"FATAL: unhandled socketcall 0x%lx\n",ARG1);
+      VG_(core_panic)("... bye!\n");
+      break; /*NOTREACHED*/
+   }
+#  undef ARG2_0
+#  undef ARG2_1
+#  undef ARG2_2
+#  undef ARG2_3
+#  undef ARG2_4
+#  undef ARG2_5
+}
+#endif
+
+PRE(sys_socket)
+{
+   PRINT("sys_socket ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "socket", int, domain, int, type, int, protocol);
+}
+POST(sys_socket)
+{
+   SysRes r;
+   vg_assert(SUCCESS);
+   r = ML_(generic_POST_sys_socket)(tid, VG_(mk_SysRes_Success)(RES));
+   SET_STATUS_from_SysRes(r);
+}
+
+PRE(sys_setsockopt)
+{
+   PRINT("sys_setsockopt ( %ld, %ld, %ld, %#lx, %ld )",ARG1,ARG2,ARG3,ARG4,ARG5);
+   PRE_REG_READ5(long, "setsockopt",
+                 int, s, int, level, int, optname,
+                 const void *, optval, int, optlen);
+   ML_(linux_PRE_sys_setsockopt)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
+}
+
+PRE(sys_getsockopt)
+{
+   PRINT("sys_getsockopt ( %ld, %ld, %ld, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
+   PRE_REG_READ5(long, "getsockopt",
+                 int, s, int, level, int, optname,
+                 void *, optval, int, *optlen);
+   ML_(linux_PRE_sys_getsockopt)(tid, ARG1,ARG2,ARG3,ARG4,ARG5);
+}
+POST(sys_getsockopt)
+{
+   vg_assert(SUCCESS);
+   ML_(linux_POST_sys_getsockopt)(tid, VG_(mk_SysRes_Success)(RES),
+                                       ARG1,ARG2,ARG3,ARG4,ARG5);
+}
+
+PRE(sys_connect)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_connect ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "connect",
+                 int, sockfd, struct sockaddr *, serv_addr, int, addrlen);
+   ML_(generic_PRE_sys_connect)(tid, ARG1,ARG2,ARG3);
+}
+
+PRE(sys_accept)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_accept ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "accept",
+                 int, s, struct sockaddr *, addr, int, *addrlen);
+   ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
+}
+POST(sys_accept)
+{
+   SysRes r;
+   vg_assert(SUCCESS);
+   r = ML_(generic_POST_sys_accept)(tid, VG_(mk_SysRes_Success)(RES),
+                                         ARG1,ARG2,ARG3);
+   SET_STATUS_from_SysRes(r);
+}
+
+PRE(sys_accept4)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_accept4 ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "accept4",
+                 int, s, struct sockaddr *, addr, int, *addrlen, int, flags);
+   ML_(generic_PRE_sys_accept)(tid, ARG1,ARG2,ARG3);
+}
+POST(sys_accept4)
+{
+   SysRes r;
+   vg_assert(SUCCESS);
+   r = ML_(generic_POST_sys_accept)(tid, VG_(mk_SysRes_Success)(RES),
+                                         ARG1,ARG2,ARG3);
+   SET_STATUS_from_SysRes(r);
+}
+
+PRE(sys_send)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_send ( %ld, %#lx, %ld, %lu )",ARG1,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "send",
+                 int, s, const void *, msg, int, len, 
+                 unsigned int, flags);
+
+   ML_(generic_PRE_sys_send)( tid, ARG1, ARG2, ARG3 );
+}
+
+PRE(sys_sendto)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_sendto ( %ld, %#lx, %ld, %lu, %#lx, %ld )",ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+   PRE_REG_READ6(long, "sendto",
+                 int, s, const void *, msg, int, len, 
+                 unsigned int, flags, 
+                 const struct sockaddr *, to, int, tolen);
+   ML_(generic_PRE_sys_sendto)(tid, ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+}
+
+PRE (sys_recv) 
+{
+  *flags |= SfMayBlock;
+  PRINT ("sys_recv ( %ld, %#lx, %ld, %lu )", ARG1, ARG2, ARG3, ARG4);
+  PRE_REG_READ4 (long, "recv", int, s, void *, buf, int, len,
+                 unsigned int, flags);
+  ML_ (generic_PRE_sys_recv) (tid, ARG1, ARG2, ARG3);
+} 
+
+POST (sys_recv) 
+{
+  ML_ (generic_POST_sys_recv) (tid, RES, ARG1, ARG2, ARG3);
+} 
+
+PRE(sys_recvfrom)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_recvfrom ( %ld, %#lx, %ld, %lu, %#lx, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+   PRE_REG_READ6(long, "recvfrom",
+                 int, s, void *, buf, int, len, unsigned int, flags,
+                 struct sockaddr *, from, int *, fromlen);
+   ML_(generic_PRE_sys_recvfrom)(tid, ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+}
+POST(sys_recvfrom)
+{
+   vg_assert(SUCCESS);
+   ML_(generic_POST_sys_recvfrom)(tid, VG_(mk_SysRes_Success)(RES),
+                                       ARG1,ARG2,ARG3,ARG4,ARG5,ARG6);
+}
+
+PRE(sys_sendmsg)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_sendmsg ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "sendmsg",
+                 int, s, const struct msghdr *, msg, int, flags);
+   ML_(generic_PRE_sys_sendmsg)(tid, "msg", (struct vki_msghdr *)ARG2);
+}
+
+PRE(sys_recvmsg)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_recvmsg ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "recvmsg", int, s, struct msghdr *, msg, int, flags);
+   ML_(generic_PRE_sys_recvmsg)(tid, "msg", (struct vki_msghdr *)ARG2);
+}
+POST(sys_recvmsg)
+{
+   ML_(generic_POST_sys_recvmsg)(tid, "msg", (struct vki_msghdr *)ARG2, RES);
+}
+
+PRE(sys_shutdown)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_shutdown ( %ld, %ld )",ARG1,ARG2);
+   PRE_REG_READ2(int, "shutdown", int, s, int, how);
+}
+
+PRE(sys_bind)
+{
+   PRINT("sys_bind ( %ld, %#lx, %ld )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "bind",
+                 int, sockfd, struct sockaddr *, my_addr, int, addrlen);
+   ML_(generic_PRE_sys_bind)(tid, ARG1,ARG2,ARG3);
+}
+
+PRE(sys_listen)
+{
+   PRINT("sys_listen ( %ld, %ld )",ARG1,ARG2);
+   PRE_REG_READ2(long, "listen", int, s, int, backlog);
+}
+
+PRE(sys_getsockname)
+{
+   PRINT("sys_getsockname ( %ld, %#lx, %#lx )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "getsockname",
+                 int, s, struct sockaddr *, name, int *, namelen);
+   ML_(generic_PRE_sys_getsockname)(tid, ARG1,ARG2,ARG3);
+}
+POST(sys_getsockname)
+{
+   vg_assert(SUCCESS);
+   ML_(generic_POST_sys_getsockname)(tid, VG_(mk_SysRes_Success)(RES),
+                                          ARG1,ARG2,ARG3);
+}
+
+PRE(sys_getpeername)
+{
+   PRINT("sys_getpeername ( %ld, %#lx, %#lx )",ARG1,ARG2,ARG3);
+   PRE_REG_READ3(long, "getpeername",
+                 int, s, struct sockaddr *, name, int *, namelen);
+   ML_(generic_PRE_sys_getpeername)(tid, ARG1,ARG2,ARG3);
+}
+POST(sys_getpeername)
+{
+   vg_assert(SUCCESS);
+   ML_(generic_POST_sys_getpeername)(tid, VG_(mk_SysRes_Success)(RES),
+                                          ARG1,ARG2,ARG3);
+}
+
+PRE(sys_socketpair)
+{
+   PRINT("sys_socketpair ( %ld, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4);
+   PRE_REG_READ4(long, "socketpair",
+                 int, d, int, type, int, protocol, int*, sv);
+   ML_(generic_PRE_sys_socketpair)(tid, ARG1,ARG2,ARG3,ARG4);
+}
+POST(sys_socketpair)
+{
+   vg_assert(SUCCESS);
+   ML_(generic_POST_sys_socketpair)(tid, VG_(mk_SysRes_Success)(RES),
+                                         ARG1,ARG2,ARG3,ARG4);
+}
+
+
+/* ---------------------------------------------------------------------
    *at wrappers
    ------------------------------------------------------------------ */
 
@@ -3308,10 +4292,15 @@ PRE(sys_openat)
                     int, dfd, const char *, filename, int, flags);
    }
 
-   if (ARG1 != VKI_AT_FDCWD && !ML_(fd_allowed)(ARG1, "openat", tid, False))
-      SET_STATUS_Failure( VKI_EBADF );
-   else
       PRE_MEM_RASCIIZ( "openat(filename)", ARG2 );
+
+   /* For absolute filenames, dfd is ignored.  If dfd is AT_FDCWD,
+      filename is relative to cwd.  */
+   if (ML_(safe_to_deref)( (void*)ARG2, 1 )
+       && *(Char *)ARG2 != '/'
+       && ARG1 != VKI_AT_FDCWD
+       && !ML_(fd_allowed)(ARG1, "openat", tid, False))
+      SET_STATUS_Failure( VKI_EBADF );
 
    /* Handle the case where the open is of /proc/self/cmdline or
       /proc/<pid>/cmdline, and just give it a copy of the fd for the
@@ -3320,9 +4309,25 @@ PRE(sys_openat)
 
    VG_(sprintf)(name, "/proc/%d/cmdline", VG_(getpid)());
    if (ML_(safe_to_deref)( (void*)ARG2, 1 )
-       && (VG_(strcmp)((Char *)ARG2, name) == 0 
-           || VG_(strcmp)((Char *)ARG2, "/proc/self/cmdline") == 0)) {
+       && (VG_(strcmp)((HChar *)ARG2, name) == 0 
+           || VG_(strcmp)((HChar *)ARG2, "/proc/self/cmdline") == 0)) {
       sres = VG_(dup)( VG_(cl_cmdline_fd) );
+      SET_STATUS_from_SysRes( sres );
+      if (!sr_isError(sres)) {
+         OffT off = VG_(lseek)( sr_Res(sres), 0, VKI_SEEK_SET );
+         if (off < 0)
+            SET_STATUS_Failure( VKI_EMFILE );
+      }
+      return;
+   }
+
+   /* Do the same for /proc/self/auxv or /proc/<pid>/auxv case. */
+
+   VG_(sprintf)(name, "/proc/%d/auxv", VG_(getpid)());
+   if (ML_(safe_to_deref)( (void*)ARG2, 1 )
+       && (VG_(strcmp)((HChar *)ARG2, name) == 0 
+           || VG_(strcmp)((HChar *)ARG2, "/proc/self/auxv") == 0)) {
+      sres = VG_(dup)( VG_(cl_auxv_fd) );
       SET_STATUS_from_SysRes( sres );
       if (!sr_isError(sres)) {
          OffT off = VG_(lseek)( sr_Res(sres), 0, VKI_SEEK_SET );
@@ -3344,7 +4349,7 @@ POST(sys_openat)
       SET_STATUS_Failure( VKI_EMFILE );
    } else {
       if (VG_(clo_track_fds))
-         ML_(record_fd_open_with_given_name)(tid, RES, (Char*)ARG2);
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG2);
    }
 }
 
@@ -3468,8 +4473,8 @@ PRE(sys_readlinkat)
     */
    VG_(sprintf)(name, "/proc/%d/exe", VG_(getpid)());
    if (ML_(safe_to_deref)((void*)ARG2, 1)
-       && (VG_(strcmp)((Char *)ARG2, name) == 0 
-           || VG_(strcmp)((Char *)ARG2, "/proc/self/exe") == 0)) {
+       && (VG_(strcmp)((HChar *)ARG2, name) == 0 
+           || VG_(strcmp)((HChar *)ARG2, "/proc/self/exe") == 0)) {
       VG_(sprintf)(name, "/proc/self/fd/%d", VG_(cl_exec_fd));
       SET_STATUS_from_SysRes( VG_(do_syscall4)(saved, ARG1, (UWord)name, 
                                                       ARG3, ARG4));
@@ -3496,6 +4501,52 @@ PRE(sys_faccessat)
    PRE_REG_READ3(long, "faccessat",
                  int, dfd, const char *, pathname, int, mode);
    PRE_MEM_RASCIIZ( "faccessat(pathname)", ARG2 );
+}
+
+PRE(sys_name_to_handle_at)
+{
+   PRINT("sys_name_to_handle_at ( %ld, %#lx(%s), %#lx, %#lx, %ld )", ARG1, ARG2, (char*)ARG2, ARG3, ARG4, ARG5);
+   PRE_REG_READ5(int, "name_to_handle_at",
+                 int, dfd, const char *, name,
+                 struct vki_file_handle *, handle,
+                 int *, mnt_id, int, flag);
+   PRE_MEM_RASCIIZ( "name_to_handle_at(name)", ARG2 );
+   if (ML_(safe_to_deref)( (void*)ARG3, sizeof(struct vki_file_handle))) {
+      struct vki_file_handle *fh = (struct vki_file_handle *)ARG3;
+      PRE_MEM_READ( "name_to_handle_at(handle)", (Addr)&fh->handle_bytes, sizeof(fh->handle_bytes) );
+      PRE_MEM_WRITE( "name_to_handle_at(handle)", (Addr)fh, sizeof(struct vki_file_handle) + fh->handle_bytes );
+   }
+   PRE_MEM_WRITE( "name_to_handle_at(mnt_id)", ARG4, sizeof(int) );
+}
+
+POST(sys_name_to_handle_at)
+{
+   struct vki_file_handle *fh = (struct vki_file_handle *)ARG3;
+   POST_MEM_WRITE( ARG3, sizeof(struct vki_file_handle) + fh->handle_bytes );
+   POST_MEM_WRITE( ARG4, sizeof(int) );
+}
+
+PRE(sys_open_by_handle_at)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_open_by_handle_at ( %ld, %#lx, %ld )", ARG1, ARG2, ARG3);
+   PRE_REG_READ3(int, "open_by_handle_at",
+                 int, mountdirfd,
+                 struct vki_file_handle *, handle,
+                 int, flags);
+   PRE_MEM_READ( "open_by_handle_at(handle)", ARG2, sizeof(struct vki_file_handle) + ((struct vki_file_handle*)ARG2)->handle_bytes );
+}
+
+POST(sys_open_by_handle_at)
+{
+   vg_assert(SUCCESS);
+   if (!ML_(fd_allowed)(RES, "open_by_handle_at", tid, True)) {
+      VG_(close)(RES);
+      SET_STATUS_Failure( VKI_EMFILE );
+   } else {
+      if (VG_(clo_track_fds))
+         ML_(record_fd_open_with_given_name)(tid, RES, (HChar*)ARG2);
+   }
 }
 
 /* ---------------------------------------------------------------------
@@ -3667,7 +4718,7 @@ PRE(sys_process_vm_writev)
 PRE(sys_sendmmsg)
 {
    struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-   Char name[32];
+   HChar name[32];
    UInt i;
    *flags |= SfMayBlock;
    PRINT("sys_sendmmsg ( %ld, %#lx, %ld, %ld )",ARG1,ARG2,ARG3,ARG4);
@@ -3695,7 +4746,7 @@ POST(sys_sendmmsg)
 PRE(sys_recvmmsg)
 {
    struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-   Char name[32];
+   HChar name[32];
    UInt i;
    *flags |= SfMayBlock;
    PRINT("sys_recvmmsg ( %ld, %#lx, %ld, %ld, %#lx )",ARG1,ARG2,ARG3,ARG4,ARG5);
@@ -3716,7 +4767,7 @@ POST(sys_recvmmsg)
 {
    if (RES > 0) {
       struct vki_mmsghdr *mmsg = (struct vki_mmsghdr *)ARG2;
-      Char name[32];
+      HChar name[32];
       UInt i;
       for (i = 0; i < RES; i++) {
          VG_(sprintf)(name, "mmsg[%u].msg_hdr", i);
@@ -3987,10 +5038,10 @@ PRE(sys_vmsplice)
       for (iov = (struct vki_iovec *)ARG2;
            iov < (struct vki_iovec *)ARG2 + ARG3; iov++) 
       {
-         if ((fdfl & (VKI_O_WRONLY|VKI_O_RDWR)) != 0)
-            PRE_MEM_READ( "vmsplice(iov[...])", (Addr)iov->iov_base, iov->iov_len );
-         else if ((fdfl & VKI_O_RDONLY) != 0)
+         if ((fdfl & VKI_O_ACCMODE) == VKI_O_RDONLY)
             PRE_MEM_WRITE( "vmsplice(iov[...])", (Addr)iov->iov_base, iov->iov_len );
+         else
+            PRE_MEM_READ( "vmsplice(iov[...])", (Addr)iov->iov_base, iov->iov_len );
       }
    }
 }
@@ -4001,7 +5052,7 @@ POST(sys_vmsplice)
    if (RES > 0) {
       Int fdfl = VG_(fcntl)(ARG1, VKI_F_GETFL, 0);
       vg_assert(fdfl >= 0);
-      if ((fdfl & VKI_O_RDONLY) != 0)
+      if ((fdfl & VKI_O_ACCMODE) == VKI_O_RDONLY)
       {
          const struct vki_iovec *iov;
          for (iov = (struct vki_iovec *)ARG2;
@@ -4092,7 +5143,7 @@ PRE(sys_fcntl)
    case VKI_F_GETLK:
    case VKI_F_SETLK:
    case VKI_F_SETLKW:
-#  if defined(VGP_x86_linux)
+#  if defined(VGP_x86_linux) || defined(VGP_mips64_linux)
    case VKI_F_GETLK64:
    case VKI_F_SETLK64:
    case VKI_F_SETLKW64:
@@ -4117,6 +5168,151 @@ PRE(sys_fcntl)
                     unsigned int, fd, unsigned int, cmd,
                     struct vki_f_owner_ex *, arg);
       PRE_MEM_WRITE("fcntl(F_GETOWN_EX)", ARG3, sizeof(struct vki_f_owner_ex));
+      break;
+
+   case VKI_DRM_IOCTL_VERSION:
+      if (ARG3) {
+         struct vki_drm_version *data = (struct vki_drm_version *)ARG3;
+	 PRE_MEM_WRITE("ioctl(DRM_VERSION).version_major", (Addr)&data->version_major, sizeof(data->version_major));
+         PRE_MEM_WRITE("ioctl(DRM_VERSION).version_minor", (Addr)&data->version_minor, sizeof(data->version_minor));
+         PRE_MEM_WRITE("ioctl(DRM_VERSION).version_patchlevel", (Addr)&data->version_patchlevel, sizeof(data->version_patchlevel));
+         PRE_MEM_READ("ioctl(DRM_VERSION).name_len", (Addr)&data->name_len, sizeof(data->name_len));
+         PRE_MEM_READ("ioctl(DRM_VERSION).name", (Addr)&data->name, sizeof(data->name));
+         PRE_MEM_WRITE("ioctl(DRM_VERSION).name", (Addr)data->name, data->name_len);
+         PRE_MEM_READ("ioctl(DRM_VERSION).date_len", (Addr)&data->date_len, sizeof(data->date_len));
+         PRE_MEM_READ("ioctl(DRM_VERSION).date", (Addr)&data->date, sizeof(data->date));
+         PRE_MEM_WRITE("ioctl(DRM_VERSION).date", (Addr)data->date, data->date_len);
+         PRE_MEM_READ("ioctl(DRM_VERSION).desc_len", (Addr)&data->desc_len, sizeof(data->desc_len));
+         PRE_MEM_READ("ioctl(DRM_VERSION).desc", (Addr)&data->desc, sizeof(data->desc));
+         PRE_MEM_WRITE("ioctl(DRM_VERSION).desc", (Addr)data->desc, data->desc_len);
+      }
+      break;
+   case VKI_DRM_IOCTL_GET_UNIQUE:
+      if (ARG3) {
+         struct vki_drm_unique *data = (struct vki_drm_unique *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_GET_UNIQUE).unique_len", (Addr)&data->unique_len, sizeof(data->unique_len));
+	 PRE_MEM_READ("ioctl(DRM_GET_UNIQUE).unique", (Addr)&data->unique, sizeof(data->unique));
+	 PRE_MEM_WRITE("ioctl(DRM_GET_UNIQUE).unique", (Addr)data->unique, data->unique_len);
+      }
+      break;
+   case VKI_DRM_IOCTL_GET_MAGIC:
+      if (ARG3) {
+         struct vki_drm_auth *data = (struct vki_drm_auth *)ARG3;
+         PRE_MEM_WRITE("ioctl(DRM_GET_MAGIC).magic", (Addr)&data->magic, sizeof(data->magic));
+      }
+      break;
+   case VKI_DRM_IOCTL_WAIT_VBLANK:
+      if (ARG3) {
+         union vki_drm_wait_vblank *data = (union vki_drm_wait_vblank *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_WAIT_VBLANK).request.type", (Addr)&data->request.type, sizeof(data->request.type));
+	 PRE_MEM_READ("ioctl(DRM_WAIT_VBLANK).request.sequence", (Addr)&data->request.sequence, sizeof(data->request.sequence));
+	 /* XXX: It seems request.signal isn't used */
+         PRE_MEM_WRITE("ioctl(DRM_WAIT_VBLANK).reply", (Addr)&data->reply, sizeof(data->reply));
+      }
+      break;
+   case VKI_DRM_IOCTL_GEM_CLOSE:
+      if (ARG3) {
+         struct vki_drm_gem_close *data = (struct vki_drm_gem_close *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_GEM_CLOSE).handle", (Addr)&data->handle, sizeof(data->handle));
+      }
+      break;
+   case VKI_DRM_IOCTL_GEM_FLINK:
+      if (ARG3) {
+         struct vki_drm_gem_flink *data = (struct vki_drm_gem_flink *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_GEM_FLINK).handle", (Addr)&data->handle, sizeof(data->handle));
+         PRE_MEM_WRITE("ioctl(DRM_GEM_FLINK).name", (Addr)&data->name, sizeof(data->name));
+      }
+      break;
+   case VKI_DRM_IOCTL_GEM_OPEN:
+      if (ARG3) {
+         struct vki_drm_gem_open *data = (struct vki_drm_gem_open *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_GEM_OPEN).name", (Addr)&data->name, sizeof(data->name));
+	 PRE_MEM_WRITE("ioctl(DRM_GEM_OPEN).handle", (Addr)&data->handle, sizeof(data->handle));
+	 PRE_MEM_WRITE("ioctl(DRM_GEM_OPEN).size", (Addr)&data->size, sizeof(data->size));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GETPARAM:
+      if (ARG3) {
+         vki_drm_i915_getparam_t *data = (vki_drm_i915_getparam_t *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GETPARAM).param", (Addr)&data->param, sizeof(data->param));
+	 PRE_MEM_WRITE("ioctl(DRM_I915_GETPARAM).value", (Addr)data->value, sizeof(int));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_BUSY:
+      if (ARG3) {
+         struct vki_drm_i915_gem_busy *data = (struct vki_drm_i915_gem_busy *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_BUSY).handle", (Addr)&data->handle, sizeof(data->handle));
+         PRE_MEM_WRITE("ioctl(DRM_I915_GEM_BUSY).busy", (Addr)&data->busy, sizeof(data->busy));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_CREATE:
+      if (ARG3) {
+         struct vki_drm_i915_gem_create *data = (struct vki_drm_i915_gem_create *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_CREATE).size", (Addr)&data->size, sizeof(data->size));
+	 PRE_MEM_WRITE("ioctl(DRM_I915_GEM_CREATE).handle", (Addr)&data->handle, sizeof(data->handle));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_PREAD:
+      if (ARG3) {
+         struct vki_drm_i915_gem_pread *data = (struct vki_drm_i915_gem_pread *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PREAD).handle", (Addr)&data->handle, sizeof(data->handle));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PREAD).offset", (Addr)&data->offset, sizeof(data->offset));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PREAD).size", (Addr)&data->size, sizeof(data->size));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PREAD).data_ptr", (Addr)&data->data_ptr, sizeof(data->data_ptr));
+	 PRE_MEM_WRITE("ioctl(DRM_I915_GEM_PREAD).data_ptr", (Addr)data->data_ptr, data->size);
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_PWRITE:
+      if (ARG3) {
+         struct vki_drm_i915_gem_pwrite *data = (struct vki_drm_i915_gem_pwrite *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PWRITE).handle", (Addr)&data->handle, sizeof(data->handle));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PWRITE).offset", (Addr)&data->offset, sizeof(data->offset));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PWRITE).size", (Addr)&data->size, sizeof(data->size));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_PWRITE).data_ptr", (Addr)&data->data_ptr, sizeof(data->data_ptr));
+	 /* PRE_MEM_READ("ioctl(DRM_I915_GEM_PWRITE).data_ptr", (Addr)data->data_ptr, data->size);
+	  * NB: the buffer is allowed to contain any amount of uninitialized data (e.g.
+	  * interleaved vertex attributes may have a wide stride with uninitialized data between
+	  * consecutive vertices) */
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_MMAP_GTT:
+      if (ARG3) {
+         struct vki_drm_i915_gem_mmap_gtt *data = (struct vki_drm_i915_gem_mmap_gtt *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_MMAP_GTT).handle", (Addr)&data->handle, sizeof(data->handle));
+         PRE_MEM_WRITE("ioctl(DRM_I915_GEM_MMAP_GTT).offset", (Addr)&data->offset, sizeof(data->offset));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_SET_DOMAIN:
+      if (ARG3) {
+         struct vki_drm_i915_gem_set_domain *data = (struct vki_drm_i915_gem_set_domain *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_SET_DOMAIN).handle", (Addr)&data->handle, sizeof(data->handle));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_SET_DOMAIN).read_domains", (Addr)&data->read_domains, sizeof(data->read_domains));
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_SET_DOMAIN).write_domain", (Addr)&data->write_domain, sizeof(data->write_domain));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_SET_TILING:
+      if (ARG3) {
+         struct vki_drm_i915_gem_set_tiling *data = (struct vki_drm_i915_gem_set_tiling *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_SET_TILING).handle", (Addr)&data->handle, sizeof(data->handle));
+         PRE_MEM_READ("ioctl(DRM_I915_GEM_SET_TILING).tiling_mode", (Addr)&data->tiling_mode, sizeof(data->tiling_mode));
+         PRE_MEM_READ("ioctl(DRM_I915_GEM_SET_TILING).stride", (Addr)&data->stride, sizeof(data->stride));
+         PRE_MEM_WRITE("ioctl(DRM_I915_GEM_SET_TILING).swizzle_mode", (Addr)&data->swizzle_mode, sizeof(data->swizzle_mode));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_GET_TILING:
+      if (ARG3) {
+         struct vki_drm_i915_gem_get_tiling *data = (struct vki_drm_i915_gem_get_tiling *)ARG3;
+	 PRE_MEM_READ("ioctl(DRM_I915_GEM_GET_TILING).handle", (Addr)&data->handle, sizeof(data->handle));
+	 PRE_MEM_WRITE("ioctl(DRM_I915_GEM_GET_TILING).tiling_mode", (Addr)&data->tiling_mode, sizeof(data->tiling_mode));
+         PRE_MEM_WRITE("ioctl(DRM_I915_GEM_GET_TILING).swizzle_mode", (Addr)&data->swizzle_mode, sizeof(data->swizzle_mode));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_GET_APERTURE:
+      if (ARG3) {
+         struct vki_drm_i915_gem_get_aperture *data = (struct vki_drm_i915_gem_get_aperture *)ARG3;
+         PRE_MEM_WRITE("ioctl(DRM_I915_GEM_GET_APERTURE).aper_size", (Addr)&data->aper_size, sizeof(data->aper_size));
+         PRE_MEM_WRITE("ioctl(DRM_I915_GEM_GET_APERTURE).aper_available_size", (Addr)&data->aper_available_size, sizeof(data->aper_available_size));
+      }
       break;
 
    default:
@@ -4263,6 +5459,10 @@ PRE(sys_ioctl)
    // scalar/non-pointer argument).
    switch (ARG2 /* request */) {
 
+      /* asm-generic/ioctls.h */
+   case VKI_FIOCLEX:
+   case VKI_FIONCLEX:
+
       /* linux/soundcard interface (ALSA) */
    case VKI_SNDRV_PCM_IOCTL_HW_FREE:
    case VKI_SNDRV_PCM_IOCTL_HWSYNC:
@@ -4287,13 +5487,118 @@ PRE(sys_ioctl)
    case VKI_KVM_S390_ENABLE_SIE:
    case VKI_KVM_S390_INITIAL_RESET:
 
+   /* vhost without parameter */
+   case VKI_VHOST_SET_OWNER:
+   case VKI_VHOST_RESET_OWNER:
+
    /* User input device creation */
    case VKI_UI_DEV_CREATE:
    case VKI_UI_DEV_DESTROY:
+
+   /* InfiniBand */
+   case VKI_IB_USER_MAD_ENABLE_PKEY:
       PRINT("sys_ioctl ( %ld, 0x%lx )",ARG1,ARG2);
       PRE_REG_READ2(long, "ioctl",
                     unsigned int, fd, unsigned int, request);
       return;
+
+   case VKI_DRM_IOCTL_VERSION:
+      if (ARG3) {
+         struct vki_drm_version *data = (struct vki_drm_version *)ARG3;
+	 POST_MEM_WRITE((Addr)&data->version_major, sizeof(data->version_major));
+         POST_MEM_WRITE((Addr)&data->version_minor, sizeof(data->version_minor));
+         POST_MEM_WRITE((Addr)&data->version_patchlevel, sizeof(data->version_patchlevel));
+         POST_MEM_WRITE((Addr)&data->name_len, sizeof(data->name_len));
+         POST_MEM_WRITE((Addr)data->name, data->name_len);
+         POST_MEM_WRITE((Addr)&data->date_len, sizeof(data->date_len));
+         POST_MEM_WRITE((Addr)data->date, data->date_len);
+         POST_MEM_WRITE((Addr)&data->desc_len, sizeof(data->desc_len));
+         POST_MEM_WRITE((Addr)data->desc, data->desc_len);
+      }
+      break;
+   case VKI_DRM_IOCTL_GET_UNIQUE:
+      if (ARG3) {
+         struct vki_drm_unique *data = (struct vki_drm_unique *)ARG3;
+	 POST_MEM_WRITE((Addr)data->unique, sizeof(data->unique_len));
+      }
+      break;
+   case VKI_DRM_IOCTL_GET_MAGIC:
+      if (ARG3) {
+         struct vki_drm_auth *data = (struct vki_drm_auth *)ARG3;
+         POST_MEM_WRITE((Addr)&data->magic, sizeof(data->magic));
+      }
+      break;
+   case VKI_DRM_IOCTL_WAIT_VBLANK:
+      if (ARG3) {
+         union vki_drm_wait_vblank *data = (union vki_drm_wait_vblank *)ARG3;
+         POST_MEM_WRITE((Addr)&data->reply, sizeof(data->reply));
+      }
+      break;
+   case VKI_DRM_IOCTL_GEM_FLINK:
+      if (ARG3) {
+         struct vki_drm_gem_flink *data = (struct vki_drm_gem_flink *)ARG3;
+         POST_MEM_WRITE((Addr)&data->name, sizeof(data->name));
+      }
+      break;
+   case VKI_DRM_IOCTL_GEM_OPEN:
+      if (ARG3) {
+         struct vki_drm_gem_open *data = (struct vki_drm_gem_open *)ARG3;
+	 POST_MEM_WRITE((Addr)&data->handle, sizeof(data->handle));
+	 POST_MEM_WRITE((Addr)&data->size, sizeof(data->size));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GETPARAM:
+      if (ARG3) {
+         vki_drm_i915_getparam_t *data = (vki_drm_i915_getparam_t *)ARG3;
+	 POST_MEM_WRITE((Addr)data->value, sizeof(int));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_BUSY:
+      if (ARG3) {
+         struct vki_drm_i915_gem_busy *data = (struct vki_drm_i915_gem_busy *)ARG3;
+         POST_MEM_WRITE((Addr)&data->busy, sizeof(data->busy));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_CREATE:
+      if (ARG3) {
+         struct vki_drm_i915_gem_create *data = (struct vki_drm_i915_gem_create *)ARG3;
+	 POST_MEM_WRITE((Addr)&data->handle, sizeof(data->handle));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_PREAD:
+      if (ARG3) {
+         struct vki_drm_i915_gem_pread *data = (struct vki_drm_i915_gem_pread *)ARG3;
+	 POST_MEM_WRITE((Addr)data->data_ptr, data->size);
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_MMAP_GTT:
+      if (ARG3) {
+         struct vki_drm_i915_gem_mmap_gtt *data = (struct vki_drm_i915_gem_mmap_gtt *)ARG3;
+         POST_MEM_WRITE((Addr)&data->offset, sizeof(data->offset));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_SET_TILING:
+      if (ARG3) {
+         struct vki_drm_i915_gem_set_tiling *data = (struct vki_drm_i915_gem_set_tiling *)ARG3;
+         POST_MEM_WRITE((Addr)&data->tiling_mode, sizeof(data->tiling_mode));
+         POST_MEM_WRITE((Addr)&data->stride, sizeof(data->stride));
+         POST_MEM_WRITE((Addr)&data->swizzle_mode, sizeof(data->swizzle_mode));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_GET_TILING:
+      if (ARG3) {
+         struct vki_drm_i915_gem_get_tiling *data = (struct vki_drm_i915_gem_get_tiling *)ARG3;
+	 POST_MEM_WRITE((Addr)&data->tiling_mode, sizeof(data->tiling_mode));
+         POST_MEM_WRITE((Addr)&data->swizzle_mode, sizeof(data->swizzle_mode));
+      }
+      break;
+   case VKI_DRM_IOCTL_I915_GEM_GET_APERTURE:
+      if (ARG3) {
+         struct vki_drm_i915_gem_get_aperture *data = (struct vki_drm_i915_gem_get_aperture *)ARG3;
+         POST_MEM_WRITE((Addr)&data->aper_size, sizeof(data->aper_size));
+         POST_MEM_WRITE((Addr)&data->aper_available_size, sizeof(data->aper_available_size));
+      }
+      break;
 
    default:
       PRINT("sys_ioctl ( %ld, 0x%lx, 0x%lx )",ARG1,ARG2,ARG3);
@@ -4629,6 +5934,23 @@ PRE(sys_ioctl)
 		    sizeof(struct vki_rtentry));
       break;
 
+      /* tun/tap related ioctls */
+   case VKI_TUNSETIFF:
+      PRE_MEM_RASCIIZ( "ioctl(TUNSETIFF)",
+                     (Addr)((struct vki_ifreq *)ARG3)->vki_ifr_name );
+      PRE_MEM_READ( "ioctl(TUNSETIFF)",
+                     (Addr)&((struct vki_ifreq *)ARG3)->vki_ifr_flags,
+                     sizeof(((struct vki_ifreq *)ARG3)->vki_ifr_flags) );
+      PRE_MEM_WRITE( "ioctl(TUNSETIFF)", ARG3, 
+		     sizeof(struct vki_ifreq));
+      break;
+   case VKI_TUNSETOFFLOAD:
+      break; 
+   case VKI_TUNGETIFF:
+      PRE_MEM_WRITE( "ioctl(TUNGETIFF)", ARG3, 
+		     sizeof(struct vki_ifreq));
+      break;
+
       /* RARP cache control calls. */
    case VKI_SIOCDRARP:           /* delete RARP table entry      */
    case VKI_SIOCSRARP:           /* set RARP table entry         */
@@ -4768,6 +6090,9 @@ PRE(sys_ioctl)
       break;
    case VKI_BLKGETSIZE64:
       PRE_MEM_WRITE( "ioctl(BLKGETSIZE64)", ARG3, sizeof(unsigned long long));
+      break;
+   case VKI_BLKPBSZGET:
+      PRE_MEM_WRITE( "ioctl(BLKPBSZGET)", ARG3, sizeof(int));
       break;
 
       /* Hard disks */
@@ -5558,37 +6883,37 @@ PRE(sys_ioctl)
    case VKI_XEN_IOCTL_PRIVCMD_MMAP: {
        struct vki_xen_privcmd_mmap *args =
            (struct vki_xen_privcmd_mmap *)(ARG3);
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAP",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAP(num)",
                     (Addr)&args->num, sizeof(args->num));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAP",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAP(dom)",
                     (Addr)&args->dom, sizeof(args->dom));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAP",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAP(entry)",
                     (Addr)args->entry, sizeof(*(args->entry)) * args->num);
       break;
    }
    case VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH: {
        struct vki_xen_privcmd_mmapbatch *args =
            (struct vki_xen_privcmd_mmapbatch *)(ARG3);
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH(num)",
                     (Addr)&args->num, sizeof(args->num));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH(dom)",
                     (Addr)&args->dom, sizeof(args->dom));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH(addr)",
                     (Addr)&args->addr, sizeof(args->addr));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH(arr)",
                     (Addr)args->arr, sizeof(*(args->arr)) * args->num);
       break;
    }
    case VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2: {
        struct vki_xen_privcmd_mmapbatch_v2 *args =
            (struct vki_xen_privcmd_mmapbatch_v2 *)(ARG3);
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2(num)",
                     (Addr)&args->num, sizeof(args->num));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2(dom)",
                     (Addr)&args->dom, sizeof(args->dom));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2(addr)",
                     (Addr)&args->addr, sizeof(args->addr));
-       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2",
+       PRE_MEM_READ("VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2(arr)",
                     (Addr)args->arr, sizeof(*(args->arr)) * args->num);
       break;
    }
@@ -5727,6 +7052,7 @@ POST(sys_ioctl)
    case VKI_TCSETS:
    case VKI_TCSETSW:
    case VKI_TCSETSF:
+   case VKI_IB_USER_MAD_ENABLE_PKEY:
       break; 
    case VKI_TCGETS:
       POST_MEM_WRITE( ARG3, sizeof(struct vki_termios) );
@@ -5773,6 +7099,10 @@ POST(sys_ioctl)
    case VKI_TIOCSPTLCK: /* Lock/unlock Pty */
       break;
    case VKI_FIONBIO:
+      break;
+   case VKI_FIONCLEX:
+      break;
+   case VKI_FIOCLEX:
       break;
    case VKI_FIOASYNC:
       break;
@@ -5880,6 +7210,19 @@ POST(sys_ioctl)
                 (Addr)&((struct vki_mii_ioctl_data *)&((struct vki_ifreq *)ARG3)->vki_ifr_data)->val_out,
                 sizeof(((struct vki_mii_ioctl_data *)&((struct vki_ifreq *)ARG3)->vki_ifr_data)->val_out) );
       break;
+
+      /* tun/tap related ioctls */
+   case VKI_TUNSETIFF:
+      POST_MEM_WRITE( (Addr)&((struct vki_ifreq *)ARG3)->vki_ifr_name,
+                      sizeof(((struct vki_ifreq *)ARG3)->vki_ifr_name) );
+      break;
+   case VKI_TUNGETIFF:
+      POST_MEM_WRITE( (Addr)&((struct vki_ifreq *)ARG3)->vki_ifr_name,
+                      sizeof(((struct vki_ifreq *)ARG3)->vki_ifr_name) );
+      POST_MEM_WRITE( (Addr)&((struct vki_ifreq *)ARG3)->vki_ifr_flags,
+                      sizeof(((struct vki_ifreq *)ARG3)->vki_ifr_flags) );
+      break;
+
    case VKI_SIOCGIFCONF:         /* get iface list               */
       /* WAS:
 	 PRE_MEM_WRITE("ioctl(SIOCGIFCONF)", ARG3, sizeof(struct ifconf));
@@ -6068,6 +7411,9 @@ POST(sys_ioctl)
       break;
    case VKI_BLKGETSIZE64:
       POST_MEM_WRITE(ARG3, sizeof(unsigned long long));
+      break;
+   case VKI_BLKPBSZGET:
+      POST_MEM_WRITE(ARG3, sizeof(int));
       break;
 
       /* Hard disks */
@@ -6726,6 +8072,97 @@ ML_(linux_POST_sys_getsockopt) ( ThreadId tid,
          POST_MEM_WRITE( (Addr)ga->addrs, (char*)a - (char*)ga->addrs );    
       }
    }
+}
+
+void 
+ML_(linux_PRE_sys_setsockopt) ( ThreadId tid, 
+                                UWord arg0, UWord arg1, UWord arg2,
+                                UWord arg3, UWord arg4 )
+{
+   /* int setsockopt(int s, int level, int optname, 
+                     const void *optval, socklen_t optlen); */
+   Addr optval_p = arg3;
+   if (optval_p != (Addr)NULL) {
+      /*
+       * OK, let's handle at least some setsockopt levels and options
+       * ourselves, so we don't get false claims of references to
+       * uninitialized memory (such as padding in structures) and *do*
+       * check what pointers in the argument point to.
+       */
+      if (arg1 == VKI_SOL_SOCKET && arg2 == VKI_SO_ATTACH_FILTER)
+      {
+         struct vki_sock_fprog *fp = (struct vki_sock_fprog *)optval_p;
+
+         /*
+          * struct sock_fprog has a 16-bit count of instructions,
+          * followed by a pointer to an array of those instructions.
+          * There's padding between those two elements.
+          *
+          * So that we don't bogusly complain about the padding bytes,
+          * we just report that we read len and and filter.
+          *
+          * We then make sure that what filter points to is valid.
+          */
+         PRE_MEM_READ( "setsockopt(SOL_SOCKET, SO_ATTACH_FILTER, &optval.len)",
+                       (Addr)&fp->len, sizeof(fp->len) );
+         PRE_MEM_READ( "setsockopt(SOL_SOCKET, SO_ATTACH_FILTER, &optval.filter)",
+                       (Addr)&fp->filter, sizeof(fp->filter) );
+
+         /* len * sizeof (*filter) */
+         if (fp->filter != NULL)
+         {
+            PRE_MEM_READ( "setsockopt(SOL_SOCKET, SO_ATTACH_FILTER, optval.filter)",
+                          (Addr)(fp->filter),
+                          fp->len * sizeof(*fp->filter) );
+         }
+      }
+      else
+      {
+         PRE_MEM_READ( "socketcall.setsockopt(optval)",
+                       arg3, /* optval */
+                       arg4  /* optlen */ );
+      }
+   }
+}
+
+/* ---------------------------------------------------------------------
+   ptrace wrapper helpers
+   ------------------------------------------------------------------ */
+
+void
+ML_(linux_PRE_getregset) ( ThreadId tid, long arg3, long arg4 )
+{
+   struct vki_iovec *iov = (struct vki_iovec *) arg4;
+
+   PRE_MEM_READ("ptrace(getregset iovec->iov_base)",
+		(unsigned long) &iov->iov_base, sizeof(iov->iov_base));
+   PRE_MEM_READ("ptrace(getregset iovec->iov_len)",
+		(unsigned long) &iov->iov_len, sizeof(iov->iov_len));
+   PRE_MEM_WRITE("ptrace(getregset *(iovec->iov_base))",
+		 (unsigned long) iov->iov_base, iov->iov_len);
+}
+
+void
+ML_(linux_PRE_setregset) ( ThreadId tid, long arg3, long arg4 )
+{
+   struct vki_iovec *iov = (struct vki_iovec *) arg4;
+
+   PRE_MEM_READ("ptrace(setregset iovec->iov_base)",
+		(unsigned long) &iov->iov_base, sizeof(iov->iov_base));
+   PRE_MEM_READ("ptrace(setregset iovec->iov_len)",
+		(unsigned long) &iov->iov_len, sizeof(iov->iov_len));
+   PRE_MEM_READ("ptrace(setregset *(iovec->iov_base))",
+		(unsigned long) iov->iov_base, iov->iov_len);
+}
+
+void
+ML_(linux_POST_getregset) ( ThreadId tid, long arg3, long arg4 )
+{
+   struct vki_iovec *iov = (struct vki_iovec *) arg4;
+
+   /* XXX: The actual amount of data written by the kernel might be
+      less than iov_len, depending on the regset (arg3). */
+   POST_MEM_WRITE((unsigned long) iov->iov_base, iov->iov_len);
 }
 
 #undef PRE

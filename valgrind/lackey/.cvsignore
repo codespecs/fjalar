@@ -1,5 +1,0 @@
-Makefile
-.deps
-lackey-x86-linux
-lackey-amd64-linux
-*.so

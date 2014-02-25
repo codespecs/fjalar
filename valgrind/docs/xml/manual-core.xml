@@ -152,7 +152,8 @@ likely.</para>
 </sect1>
 
 
-<sect1 id="manual-core.comment" xreflabel="The Commentary">
+<!-- Referenced from both the manual and manpage -->
+<sect1 id="&vg-comment-id;" xreflabel="&vg-comment-label;">
 <title>The Commentary</title>
 
 <para>Valgrind tools write a commentary, a stream of text, detailing
@@ -236,21 +237,27 @@ re-run, passing the <option>-v</option> option to Valgrind.  A second
 
     <para><computeroutput>valgrind-listener</computeroutput> accepts two
     command-line options:</para>
-    <itemizedlist>
+    <!-- start of xi:include in the manpage -->
+    <variablelist id="listener.opts.list">
+       <varlistentry>
+         <term><option>-e --exit-at-zero</option></term>
        <listitem>
-         <para><option>-e</option> or <option>--exit-at-zero</option>: 
-         when the number of connected processes falls back to zero,
+           <para>When the number of connected processes falls back to zero,
          exit.  Without this, it will run forever, that is, until you
          send it Control-C.</para>
        </listitem>
+       </varlistentry>
+       <varlistentry>
+        <term><option>portnumber</option></term>
        <listitem>
-        <para><option>portnumber</option>: changes the port it listens
-        on from the default (1500).  The specified port must be in the
-        range 1024 to 65535.  The same restriction applies to port
-        numbers specified by a <option>--log-socket</option> to
-        Valgrind itself.</para>
+          <para>Changes the port it listens on from the default (1500).
+          The specified port must be in the range 1024 to 65535.
+          The same restriction applies to port numbers specified by a
+          <option>--log-socket</option> to Valgrind itself.</para>
       </listitem>
-    </itemizedlist>
+      </varlistentry>
+    </variablelist>
+    <!-- end of xi:include in the manpage -->
 
     <para>If a Valgrinded process fails to connect to a listener, for
     whatever reason (the listener isn't running, invalid or unreachable
@@ -377,14 +384,17 @@ suppression mechanism is designed to allow precise yet flexible
 specification of errors to suppress.</para>
 
 <para>If you use the <option>-v</option> option, at the end of execution,
-Valgrind prints out one line for each used suppression, giving its name
-and the number of times it got used.  Here's the suppressions used by a
-run of <computeroutput>valgrind --tool=memcheck ls -l</computeroutput>:</para>
+Valgrind prints out one line for each used suppression, giving the number of times
+it got used, its name and the filename and line number where the suppression is
+defined. Depending on the suppression kind, the filename and line number are optionally
+followed by additional information (such as the number of blocks and bytes suppressed
+by a memcheck leak suppression). Here's the suppressions used by a
+run of <computeroutput>valgrind -v --tool=memcheck ls -l</computeroutput>:</para>
 
 <programlisting><![CDATA[
---27579-- supp: 1 socketcall.connect(serv_addr)/__libc_connect/__nscd_getgrgid_r
---27579-- supp: 1 socketcall.connect(serv_addr)/__libc_connect/__nscd_getpwuid_r
---27579-- supp: 6 strrchr/_dl_map_object_from_fd/_dl_map_object]]></programlisting>
+--1610-- used_suppression:      2 dl-hack3-cond-1 /usr/lib/valgrind/default.supp:1234
+--1610-- used_suppression:      2 glibc-2.5.x-on-SUSE-10.2-(PPC)-2a /usr/lib/valgrind/default.supp:1234
+]]></programlisting>
 
 <para>Multiple suppressions files are allowed.  By default, Valgrind
 uses <filename>$PREFIX/lib/valgrind/default.supp</filename>.  You can
@@ -773,10 +783,11 @@ in most cases.  We group the available options by rough categories.</para>
     </term>
     <listitem>
       <para>When enabled, Valgrind will print out a list of open file
-      descriptors on exit.  Along with each file descriptor is printed a
-      stack backtrace of where the file was opened and any details
-      relating to the file descriptor such as the file name or socket
-      details.</para>
+      descriptors on exit or on request, via the gdbserver monitor
+      command <varname>v.info open_fds</varname>.  Along with each
+      file descriptor is printed a stack backtrace of where the file
+      was opened and any details relating to the file descriptor such
+      as the file name or socket details.</para>
     </listitem>
   </varlistentry>
 
@@ -856,7 +867,7 @@ in most cases.  We group the available options by rough categories.</para>
       be used in conjunction with the
       <computeroutput>valgrind-listener</computeroutput> program.  For
       further details, see 
-      <link linkend="manual-core.comment">the commentary</link>
+      <link linkend="&vg-comment-id;">the commentary</link>
       in the manual.</para>
     </listitem>
   </varlistentry>
@@ -1036,6 +1047,26 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.sigill-diagnostics" xreflabel="--sigill-diagnostics">
+    <term>
+      <option><![CDATA[--sigill-diagnostics=<yes|no> [default: yes] ]]></option>
+    </term>
+    <listitem>
+      <para>Enable/disable printing of illegal instruction diagnostics.
+      Enabled by default, but defaults to disabled when
+      <option>--quiet</option> is given. The default can always be explicitly
+      overridden by giving this option.</para>
+
+      <para>When enabled a warning message will be printed with some
+      diagnostics whenever some instruction is encountered that valgrind
+      cannot decode or translate before the program is given a SIGILL signal.
+      Often an illegal instruction indicates a bug in the program or missing
+      support for the particular instruction in Valgrind. But some programs
+      do deliberately try to execute an instruction that might be missing
+      and trap the SIGILL signal to detect processor features.</para>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.stack-traces" xreflabel="--show-below-main">
     <term>
       <option><![CDATA[--show-below-main=<yes|no> [default: no] ]]></option>
@@ -1106,6 +1137,39 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       is shown.  This facilitates chopping off prefixes when the
       sources are drawn from a number of unrelated directories.
       </para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.extra-debuginfo-path" xreflabel="--extra-debuginfo-path">
+    <term>
+      <option><![CDATA[--extra-debuginfo-path=<path> [default: undefined and unused] ]]></option>
+    </term>
+    <listitem>
+      <para>By default Valgrind searches in several well-known paths
+      for debug objects, such
+      as <computeroutput>/usr/lib/debug/</computeroutput>.</para>
+
+      <para>However, there may be scenarios where you may wish to put
+      debug objects at an arbitrary location, such as external storage
+      when running Valgrind on a mobile device with limited local
+      storage.  Another example might be a situation where you do not
+      have permission to install debug object packages on the system
+      where you are running Valgrind.</para>
+
+      <para>In these scenarios, you may provide an absolute path as an extra,
+      final place for Valgrind to search for debug objects by specifying
+      <option>--extra-debuginfo-path=/path/to/debug/objects</option>.
+      The given path will be prepended to the absolute path name of
+      the searched-for object.  For example, if Valgrind is looking
+      for the debuginfo
+      for <computeroutput>/w/x/y/zz.so</computeroutput>
+      and <option>--extra-debuginfo-path=/a/b/c</option> is specified,
+      it will look for a debug object at
+      <computeroutput>/a/b/c/w/x/y/zz.so</computeroutput>.</para>
+
+      <para>This flag should only be specified once.  If it is
+      specified multiple times, only the last instance is
+      honoured.</para>
     </listitem>
   </varlistentry>
 
@@ -1701,7 +1765,7 @@ need to use them.</para>
       between fairness and performance. For more details about the
       Valgrind thread serialisation scheme and its impact on
       performance and thread scheduling, see
-      <xref linkend="manual-core.pthreads_perf_sched"/>.
+      <xref linkend="&vg-pthreads-perf-sched-id;"/>.
 
       <itemizedlist>
         <listitem> <para>The value <option>--fair-sched=yes</option>
@@ -1753,6 +1817,63 @@ need to use them.</para>
         </listitem>
       </itemizedlist>
     </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.merge-recursive-frames" xreflabel="--merge-recursive-frames">
+    <term>
+      <option><![CDATA[--merge-recursive-frames=<number> [default: 0] ]]></option>
+    </term>
+    <listitem>
+      <para>Some recursive algorithms (such as balanced binary tree
+      implementations) have the property to create many different
+      stack traces, containing cycles of calls.  A cycle is defined by
+      two identical program counters separated by 0 or more other
+      program counters.  Valgrind might then use a lot of memory to
+      record these stack traces, containing repeated uninteresting
+      recursive calls instead of more interesting information such as
+      the function that has initiated the recursive call.
+      </para>
+      <para>The option <option>--merge-recursive-frames=&lt;number&gt;</option>
+      instructs Valgrind to detect and merge recursive call cycles
+      having a size of up to <option>&lt;number&gt;</option>
+      frames. When such a cycle is detected, Valgrind records the
+      cycle in the stack trace as a unique program counter.
+      </para>
+      <para>
+      The value 0 (the default) causes no recursive call merging.
+      A value of 1 will cause stack traces of simple recursive algorithms
+      (for example, a factorial implementation) to be collapsed.
+      A value of 2 will usually be needed to collapsed stack traces produced
+      by recursive algorithms such as binary trees, quick sort, ...
+      Higher values might be needed for more complex recursive algorithms.
+      </para>
+      <para>Note: recursive calls are detected based on program counters.
+      The cycles are not detected based on function names. </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.num-transtab-sectors" xreflabel="--num-transtab-sectors">
+    <term>
+      <option><![CDATA[--num-transtab-sectors=<number> [default: 6 or 16] ]]></option>
+    </term>
+    <listitem>
+      <para>Valgrind translates and instruments your program's machine
+      code in small fragments. The translations are stored in a
+      translation cache that is divided into a number of sections
+      (sectors). If the cache is full, the sector containing the
+      oldest translations is emptied and recycled. If these old
+      translations are needed again, Valgrind must re-translate and
+      re-instrument the corresponding program code, which is
+      expensive.  If the "executed instructions" working set of a
+      program is big, increasing the number of sectors may improve
+      performance by reducing the number of re-translations needed.
+      Sectors are allocated on demand.  Once allocated, a sector can
+      never be freed, and occupies considerable space, depending on the tool
+      (about 40 MB per sector for Memcheck).  Use the
+      option <option>--stats=yes</option> to obtain precise
+      information about the memory used by a sector and the allocation
+      and recycling of sectors.</para>
+   </listitem>
   </varlistentry>
 
   <varlistentry id="opt.show-emwarns" xreflabel="--show-emwarns">
@@ -1997,7 +2118,8 @@ everything is shared (a thread) or nothing is shared (fork-like); partial
 sharing will fail.
 </para>
 
-<sect2 id="manual-core.pthreads_perf_sched" xreflabel="Scheduling and Multi-Thread Performance">
+<!-- Referenced from both the manual and manpage -->
+<sect2 id="&vg-pthreads-perf-sched-id;" xreflabel="&vg-pthreads-perf-sched-label;">
 <title>Scheduling and Multi-Thread Performance</title>
 
 <para>A thread executes code only when it holds the abovementioned
@@ -2520,13 +2642,16 @@ shipped.</para>
     <para><computeroutput>Warning: client switching stacks?</computeroutput></para>
 
     <para>Valgrind spotted such a large change in the stack pointer
-    that it guesses the client is switching to
-    a different stack.  At this point it makes a kludgey guess where the
-    base of the new stack is, and sets memory permissions accordingly.
-    You may get many bogus error messages following this, if Valgrind
-    guesses wrong.  At the moment "large change" is defined as a change
-    of more that 2000000 in the value of the
-    stack pointer register.</para>
+    that it guesses the client is switching to a different stack.  At
+    this point it makes a kludgey guess where the base of the new
+    stack is, and sets memory permissions accordingly.  At the moment
+    "large change" is defined as a change of more that 2000000 in the
+    value of the stack pointer register.  If Valgrind guesses wrong,
+    you may get many bogus error messages following this and/or have
+    crashes in the stack trace recording code.  You might avoid these
+    problems by informing Valgrind about the stack bounds using
+    VALGRIND_STACK_REGISTER client request. </para>
+
   </listitem>
 
   <listitem>

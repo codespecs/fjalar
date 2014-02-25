@@ -31,3 +31,6 @@ fbench_CFLAGS   = $(AM_CFLAGS) -O2
 ffbench_LDADD	= -lm
 
 tinycc_CFLAGS	= $(AM_CFLAGS) -Wno-shadow -Wno-inline
+if HAS_POINTER_SIGN_WARNING
+tinycc_CFLAGS  += -Wno-pointer-sign
+endif

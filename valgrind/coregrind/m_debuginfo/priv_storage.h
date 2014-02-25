@@ -9,7 +9,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -43,6 +43,11 @@
 #ifndef __PRIV_STORAGE_H
 #define __PRIV_STORAGE_H
 
+#include "pub_core_basics.h"   // Addr
+#include "pub_core_xarray.h"   // XArray
+#include "priv_d3basics.h"     // GExpr et al.
+#include "priv_image.h"        // DiCursor
+
 /* --------------------- SYMBOLS --------------------- */
 
 /* A structure to hold an ELF/MachO symbol (very crudely).  Usually
@@ -66,8 +71,8 @@ typedef
    struct { 
       Addr  addr;    /* lowest address of entity */
       Addr  tocptr;  /* ppc64-linux only: value that R2 should have */
-      UChar*  pri_name;  /* primary name, never NULL */
-      UChar** sec_names; /* NULL, or a NULL term'd array of other names */
+      HChar*  pri_name;  /* primary name, never NULL */
+      HChar** sec_names; /* NULL, or a NULL term'd array of other names */
       // XXX: this could be shrunk (on 32-bit platforms) by using 30
       // bits for the size and 1 bit each for isText and isIFunc.  If you
       // do this, make sure that all assignments to the latter two use
@@ -107,9 +112,9 @@ typedef
       UShort size:LOC_SIZE_BITS; /* # bytes; we catch overflows of this */
       UInt   lineno:LINENO_BITS; /* source line number, or zero */
       /* Word 3 */
-      UChar*  filename;          /* source filename */
+      const HChar* filename;     /* source filename */
       /* Word 4 */
-      UChar*  dirname;           /* source directory name */
+      const HChar* dirname;      /* source directory name */
    }
    DiLoc;
 
@@ -257,7 +262,7 @@ typedef
       Int   fp_off;
    }
    DiCfSI;
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined(VGA_mips64)
 typedef
    struct {
       Addr  base;
@@ -279,20 +284,28 @@ typedef
 
 typedef
    enum {
-      Cop_Add=0x321,
-      Cop_Sub,
-      Cop_And,
-      Cop_Mul,
-      Cop_Shl,
-      Cop_Shr,
-      Cop_Eq,
-      Cop_Ge,
-      Cop_Gt,
-      Cop_Le,
-      Cop_Lt,
-      Cop_Ne
+      Cunop_Abs=0x231,
+      Cunop_Neg,
+      Cunop_Not
    }
-   CfiOp;
+   CfiUnop;
+
+typedef
+   enum {
+      Cbinop_Add=0x321,
+      Cbinop_Sub,
+      Cbinop_And,
+      Cbinop_Mul,
+      Cbinop_Shl,
+      Cbinop_Shr,
+      Cbinop_Eq,
+      Cbinop_Ge,
+      Cbinop_Gt,
+      Cbinop_Le,
+      Cbinop_Lt,
+      Cbinop_Ne
+   }
+   CfiBinop;
 
 typedef
    enum {
@@ -313,6 +326,7 @@ typedef
       Cex_Undef=0x123,
       Cex_Deref,
       Cex_Const,
+      Cex_Unop,
       Cex_Binop,
       Cex_CfiReg,
       Cex_DwReg
@@ -332,7 +346,11 @@ typedef
             UWord con;
          } Const;
          struct {
-            CfiOp op;
+            CfiUnop op;
+            Int ix;
+         } Unop;
+         struct {
+            CfiBinop op;
             Int ixL;
             Int ixR;
          } Binop;
@@ -350,7 +368,8 @@ typedef
 extern Int ML_(CfiExpr_Undef) ( XArray* dst );
 extern Int ML_(CfiExpr_Deref) ( XArray* dst, Int ixAddr );
 extern Int ML_(CfiExpr_Const) ( XArray* dst, UWord con );
-extern Int ML_(CfiExpr_Binop) ( XArray* dst, CfiOp op, Int ixL, Int ixR );
+extern Int ML_(CfiExpr_Unop)  ( XArray* dst, CfiUnop op, Int ix );
+extern Int ML_(CfiExpr_Binop) ( XArray* dst, CfiBinop op, Int ixL, Int ixR );
 extern Int ML_(CfiExpr_CfiReg)( XArray* dst, CfiReg reg );
 extern Int ML_(CfiExpr_DwReg) ( XArray* dst, Int reg );
 
@@ -391,11 +410,11 @@ typedef
 
 typedef
    struct {
-      UChar* name;  /* in DebugInfo.strchunks */
+      HChar* name;  /* in DebugInfo.strchunks */
       UWord  typeR; /* a cuOff */
       GExpr* gexpr; /* on DebugInfo.gexprs list */
       GExpr* fbGX;  /* SHARED. */
-      UChar* fileName; /* where declared; may be NULL. in
+      HChar* fileName; /* where declared; may be NULL. in
                           DebugInfo.strchunks */
       Int    lineNo;   /* where declared; may be zero. */
    }
@@ -451,7 +470,7 @@ struct _DebugInfoMapping
 
 struct _DebugInfoFSM
 {
-   UChar*  filename;  /* in mallocville (VG_AR_DINFO)               */
+   HChar*  filename;  /* in mallocville (VG_AR_DINFO)               */
    XArray* maps;      /* XArray of _DebugInfoMapping structs        */
    Bool  have_rx_map; /* did we see a r?x mapping yet for the file? */
    Bool  have_rw_map; /* did we see a rw? mapping yet for the file? */
@@ -522,7 +541,7 @@ struct _DebugInfo {
       is, at the point where .have_dinfo is set to True). */
 
    /* The file's soname. */
-   UChar* soname;
+   HChar* soname;
 
    /* Description of some important mapped segments.  The presence or
       absence of the mapping is denoted by the _present field, since
@@ -761,7 +780,7 @@ struct _DebugInfo {
    struct strchunk {
       UInt   strtab_used;
       struct strchunk* next;
-      UChar  strtab[SEGINFO_STRCHUNKSIZE];
+      HChar  strtab[SEGINFO_STRCHUNKSIZE];
    } *strchunks;
 
    /* Variable scope information, as harvested from Dwarf3 files.
@@ -820,8 +839,8 @@ extern void ML_(addSym) ( struct _DebugInfo* di, DiSym* sym );
 /* Add a line-number record to a DebugInfo. */
 extern
 void ML_(addLineInfo) ( struct _DebugInfo* di, 
-                        UChar*   filename, 
-                        UChar*   dirname,  /* NULL is allowable */
+                        const HChar* filename, 
+                        const HChar* dirname,  /* NULL is allowable */
                         Addr this, Addr next, Int lineno, Int entry);
 
 /* Add a CFI summary record.  The supplied DiCfSI is copied. */
@@ -829,17 +848,22 @@ extern void ML_(addDiCfSI) ( struct _DebugInfo* di, DiCfSI* cfsi );
 
 /* Add a string to the string table of a DebugInfo.  If len==-1,
    ML_(addStr) will itself measure the length of the string. */
-extern UChar* ML_(addStr) ( struct _DebugInfo* di, UChar* str, Int len );
+extern HChar* ML_(addStr) ( struct _DebugInfo* di, const HChar* str, Int len );
+
+/* Add a string to the string table of a DebugInfo, by copying the
+   string from the given DiCursor.  Measures the length of the string
+   itself. */
+extern HChar* ML_(addStrFromCursor)( struct _DebugInfo* di, DiCursor c );
 
 extern void ML_(addVar)( struct _DebugInfo* di,
                          Int    level,
                          Addr   aMin,
                          Addr   aMax,
-                         UChar* name,
+                         HChar* name,
                          UWord  typeR, /* a cuOff */
                          GExpr* gexpr,
                          GExpr* fbGX, /* SHARED. */
-                         UChar* fileName, /* where decl'd - may be NULL */
+                         HChar* fileName, /* where decl'd - may be NULL */
                          Int    lineNo, /* where decl'd - may be zero */
                          Bool   show );
 
@@ -885,7 +909,7 @@ extern struct _DebugInfoMapping* ML_(find_rx_mapping) ( struct _DebugInfo* di,
    terminal.  'serious' errors are always shown, not 'serious' ones
    are shown only at verbosity level 2 and above. */
 extern 
-void ML_(symerr) ( struct _DebugInfo* di, Bool serious, HChar* msg );
+void ML_(symerr) ( struct _DebugInfo* di, Bool serious, const HChar* msg );
 
 /* Print a symbol. */
 extern void ML_(ppSym) ( Int idx, DiSym* sym );
@@ -894,8 +918,9 @@ extern void ML_(ppSym) ( Int idx, DiSym* sym );
 extern void ML_(ppDiCfSI) ( XArray* /* of CfiExpr */ exprs, DiCfSI* si );
 
 
+#define TRACE_SYMTAB_ENABLED (di->trace_symtab)
 #define TRACE_SYMTAB(format, args...) \
-   if (di->trace_symtab) { VG_(printf)(format, ## args); }
+   if (TRACE_SYMTAB_ENABLED) { VG_(printf)(format, ## args); }
 
 
 #endif /* ndef __PRIV_STORAGE_H */

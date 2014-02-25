@@ -1,7 +1,6 @@
 
 Invalid read of size 1
-   at 0x........: vex_strlen (hackedbz2.c:1006)
-   by 0x........: add_to_myprintf_buf (hackedbz2.c:1284)
+   at 0x........: add_to_myprintf_buf (hackedbz2.c:1006)
    by 0x........: vex_printf (hackedbz2.c:1155)
    by 0x........: BZ2_compressBlock (hackedbz2.c:4039)
    by 0x........: handle_compress (hackedbz2.c:4761)

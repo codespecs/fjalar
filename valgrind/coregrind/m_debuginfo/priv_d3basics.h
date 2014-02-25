@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2012 OpenWorks LLP and others; see below
+   Copyright (C) 2008-2013 OpenWorks LLP and others; see below
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -38,6 +38,8 @@
 #ifndef __PRIV_D3BASICS_H
 #define __PRIV_D3BASICS_H
 
+#include "pub_core_basics.h"       // Addr
+#include "pub_core_debuginfo.h"    // DebugInfo
 
 /* This stuff is taken from gdb-6.6/include/elf/dwarf2.h, which is
    GPL2+.
@@ -562,10 +564,10 @@ typedef enum
   }
   DW_OP;
 
-HChar* ML_(pp_DW_children) ( DW_children hashch );
-HChar* ML_(pp_DW_TAG)      ( DW_TAG tag );
-HChar* ML_(pp_DW_FORM)     ( DW_FORM form );
-HChar* ML_(pp_DW_AT)       ( DW_AT attr );
+const HChar* ML_(pp_DW_children) ( DW_children hashch );
+const HChar* ML_(pp_DW_TAG)      ( DW_TAG tag );
+const HChar* ML_(pp_DW_FORM)     ( DW_FORM form );
+const HChar* ML_(pp_DW_AT)       ( DW_AT attr );
 
 
 /* --- To do with evaluation of Dwarf expressions --- */

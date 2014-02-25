@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -45,9 +45,10 @@
 /*--- Low-level ExeContext storage.                        ---*/
 /*------------------------------------------------------------*/
 
-/* The first 4 IP values are used in comparisons to remove duplicate
-   errors, and for comparing against suppression specifications.  The
-   rest are purely informational (but often important).
+/* Depending on VgRes, the first 2, 4 or all IP values are used in
+   comparisons to remove duplicate errors, and for comparing against
+   suppression specifications.  If not used in comparison, the rest
+   are purely informational (but often important).
 
    The contexts are stored in a traditional chained hash table, so as
    to allow quick determination of whether a new context already
@@ -98,6 +99,7 @@ static SizeT        ec_htab_size_idx; /* 0 .. N_EC_PRIMES-1 */
 /* ECU serial number */
 static UInt ec_next_ecu = 4; /* We must never issue zero */
 
+static ExeContext* null_ExeContext;
 
 /* Stats only: the number of times the system was searched to locate a
    context. */
@@ -119,6 +121,7 @@ static ULong ec_cmpAlls;
 /*--- Exported functions.                                  ---*/
 /*------------------------------------------------------------*/
 
+static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips ); /*fwds*/
 
 /* Initialise this subsystem. */
 static void init_ExeContext_storage ( void )
@@ -136,19 +139,44 @@ static void init_ExeContext_storage ( void )
 
    ec_htab_size_idx = 0;
    ec_htab_size = ec_primes[ec_htab_size_idx];
-   ec_htab = VG_(arena_malloc)(VG_AR_EXECTXT, "execontext.iEs1",
+   ec_htab = VG_(malloc)("execontext.iEs1",
                                sizeof(ExeContext*) * ec_htab_size);
    for (i = 0; i < ec_htab_size; i++)
       ec_htab[i] = NULL;
+
+   {
+      Addr ips[1];
+      ips[0] = 0;
+      null_ExeContext = record_ExeContext_wrk2(ips, 1);
+      // null execontext must be the first one created and get ecu 4.
+      vg_assert(null_ExeContext->ecu == 4);
+   }
 
    init_done = True;
 }
 
 
 /* Print stats. */
-void VG_(print_ExeContext_stats) ( void )
+void VG_(print_ExeContext_stats) ( Bool with_stacktraces )
 {
    init_ExeContext_storage();
+
+   if (with_stacktraces) {
+      Int i;
+      ExeContext* ec;
+      VG_(message)(Vg_DebugMsg, "   exectx: Printing contexts stacktraces\n");
+      for (i = 0; i < ec_htab_size; i++) {
+         for (ec = ec_htab[i]; ec; ec = ec->chain) {
+            VG_(message)(Vg_DebugMsg, "   exectx: stacktrace ecu %u n_ips %u\n",
+                         ec->ecu, ec->n_ips);
+            VG_(pp_StackTrace)( ec->ips, ec->n_ips );
+         }
+      }
+      VG_(message)(Vg_DebugMsg, 
+                   "   exectx: Printed %'llu contexts stacktraces\n",
+                   ec_totstored);
+   }
+
    VG_(message)(Vg_DebugMsg, 
       "   exectx: %'lu lists, %'llu contexts (avg %'llu per list)\n",
       ec_htab_size, ec_totstored, ec_totstored / (ULong)ec_htab_size
@@ -261,7 +289,7 @@ static void resize_ec_htab ( void )
       return; /* out of primes - can't resize further */
 
    new_size = ec_primes[ec_htab_size_idx + 1];
-   new_ec_htab = VG_(arena_malloc)(VG_AR_EXECTXT, "execontext.reh1",
+   new_ec_htab = VG_(malloc)("execontext.reh1",
                                    sizeof(ExeContext*) * new_size);
 
    VG_(debugLog)(
@@ -284,7 +312,7 @@ static void resize_ec_htab ( void )
       }
    }
 
-   VG_(arena_free)(VG_AR_EXECTXT, ec_htab);
+   VG_(free)(ec_htab);
    ec_htab      = new_ec_htab;
    ec_htab_size = new_size;
    ec_htab_size_idx++;
@@ -293,7 +321,6 @@ static void resize_ec_htab ( void )
 /* Do the first part of getting a stack trace: actually unwind the
    stack, and hand the results off to the duplicate-trace-finder
    (_wrk2). */
-static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips ); /*fwds*/
 static ExeContext* record_ExeContext_wrk ( ThreadId tid, Word first_ip_delta,
                                            Bool first_ip_only )
 {
@@ -393,9 +420,9 @@ static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips )
    /* Bummer.  We have to allocate a new context record. */
    ec_totstored++;
 
-   new_ec = VG_(arena_malloc)( VG_AR_EXECTXT, "execontext.rEw2.2",
-                               sizeof(struct _ExeContext) 
-                               + n_ips * sizeof(Addr) );
+   new_ec = VG_(perm_malloc)( sizeof(struct _ExeContext) 
+                              + n_ips * sizeof(Addr),
+                              vg_alignof(struct _ExeContext));
 
    for (i = 0; i < n_ips; i++)
       new_ec->ips[i] = ips[i];
@@ -470,7 +497,14 @@ ExeContext* VG_(get_ExeContext_from_ECU)( UInt ecu )
 
 ExeContext* VG_(make_ExeContext_from_StackTrace)( Addr* ips, UInt n_ips )
 {
+   init_ExeContext_storage();
    return record_ExeContext_wrk2(ips, n_ips);
+}
+
+ExeContext* VG_(null_ExeContext) (void)
+{
+   init_ExeContext_storage();
+   return null_ExeContext;
 }
 
 /*--------------------------------------------------------------------*/
