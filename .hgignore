@@ -19,6 +19,7 @@ coregrind/link_tool_exe_darwin
 coregrind/link_tool_exe_linux
 valgrind/aclocal.m4
 valgrind/autom4te.cache
+valgrind/compile
 valgrind/configure
 valgrind/config.guess
 valgrind/config.h
@@ -27,7 +28,10 @@ valgrind/config.log
 valgrind/config.status
 valgrind/config.sub
 valgrind/default.supp
+valgrind/depcomp
 valgrind/glibc-2.X.supp
+valgrind/install-sh
+valgrind/missing
 valgrind/stamp-h1
 valgrind/valgrind.pc
 valgrind/valgrind.spec
@@ -66,6 +70,7 @@ callgrind/tests/threads
 coregrind/no_op_client_for_valgrind
 coregrind/valgrind
 coregrind/vgdb
+drd/scripts/download-and-build-splash2
 drd/tests/annotate_barrier
 drd/tests/annotate_hb_err
 drd/tests/annotate_hb_race
