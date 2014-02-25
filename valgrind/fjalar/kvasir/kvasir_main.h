@@ -133,10 +133,10 @@ typedef struct {
 
 // Kvasir/DynComp-specific global variables that are set by
 // command-line options
-char* kvasir_decls_filename;
-char* kvasir_dtrace_filename;
-char* kvasir_program_stdout_filename;
-char* kvasir_program_stderr_filename;
+const HChar* kvasir_decls_filename;
+const HChar* kvasir_dtrace_filename;
+const HChar* kvasir_program_stdout_filename;
+const HChar* kvasir_program_stderr_filename;
 Bool kvasir_dtrace_append;
 Bool kvasir_dtrace_no_decs;
 Bool kvasir_dtrace_gzip;

@@ -51,8 +51,8 @@ void printOneFunctionDecl(FunctionEntry* funcPtr,
 
 // For new .decls format (designed in April 2006)
 void printDaikonFunctionName(FunctionEntry* f, FILE* fp);
-void printDaikonExternalVarName(VariableEntry* var, char* fjalarName, FILE* fp);
-char* removeSuperElements(char** stringArr, VariableEntry* var);
+void printDaikonExternalVarName(VariableEntry* var, const HChar* fjalarName, FILE* fp);
+const HChar* removeSuperElements(char** stringArr, VariableEntry* var);
 void getUsedObjects(VariableEntry* ent, struct genhashtable* ht);
 char* getParentId(char* typeName);
 void traverseNestedClasses(AggregateType* agg, struct genhashtable *ht);

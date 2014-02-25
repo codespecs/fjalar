@@ -308,7 +308,7 @@ typedef struct _VariableEntry {
   // a '/' (for true globals), a filename (for file-static), and a
   // function name (for file-statics declared within a function) to
   // the front of the variable's original name.
-  char* name;
+  const char* name;
 
   LocationType locationType;
 
@@ -832,7 +832,7 @@ pointer to indicate a callback function that should be called for each
 variable visited.  Here is the prototype of such a function:
 
 TraversalResult performAction(VariableEntry* var,
-                              char* varName,
+                              const HCchar* varName,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
                               UInt layersBeforeBase,
@@ -881,7 +881,7 @@ Bool isEnter - 1 if this is a function entrance, 0 if exit
 */
 
 typedef TraversalResult (TraversalAction)(VariableEntry* var,
-					  char* varName,
+					  const HChar* varName,
 					  VariableOrigin varOrigin,
 					  UInt numDereferences,
 					  UInt layersBeforeBase,
@@ -973,11 +973,11 @@ void visitClassMembersNoValues(TypeEntry* class,
 
 // Misc. symbols that are useful for printing variable names during
 // the traversal process:
-char* DEREFERENCE; // "[]"
-char* ZEROTH_ELT;  // "[0]"
-char* DOT;         // "."
-char* ARROW;       // "->"
-char* STAR;        // "*"
+const HChar* DEREFERENCE; // "[]"
+const HChar* ZEROTH_ELT;  // "[0]"
+const HChar* DOT;         // "."
+const HChar* ARROW;       // "->"
+const HChar* STAR;        // "*"
 
 
 /*********************************************************************
@@ -1068,12 +1068,12 @@ UInt fjalar_max_visit_nesting_depth;       // --nesting-depth
 // The following are used both as strings and as boolean flags - They
 // are initialized to 0 so if they are never filled with values by the
 // respective command-line options, then they can be treated as False
-char* fjalar_dump_prog_pt_names_filename;  // --dump-ppt-file
-char* fjalar_dump_var_names_filename;      // --dump-var-file
-char* fjalar_trace_prog_pts_filename;      // --ppt-list-file
-char* fjalar_trace_vars_filename;          // --var-list-file
-char* fjalar_disambig_filename;            // --disambig-file
-char* fjalar_xml_output_filename;          // --xml-output-file
+const HChar* fjalar_dump_prog_pt_names_filename;  // --dump-ppt-file
+const HChar* fjalar_dump_var_names_filename;      // --dump-var-file
+const HChar* fjalar_trace_prog_pts_filename;      // --ppt-list-file
+const HChar* fjalar_trace_vars_filename;          // --var-list-file
+const HChar* fjalar_disambig_filename;            // --disambig-file
+const HChar* fjalar_xml_output_filename;          // --xml-output-file
 
 
 /*********************************************************************
@@ -1081,7 +1081,7 @@ Misc.
 **********************************************************************/
 
 // The filename of the target executable:
-char* executable_filename;
+const HChar* executable_filename;
 
 // returns ID1 == ID2 - needed for GenericHashtable
 int equivalentIDs(int ID1, int ID2);
@@ -1089,7 +1089,7 @@ int equivalentIDs(int ID1, int ID2);
 // returns whether 2 strings are equal - needed for GenericHashtable
 int equivalentStrings(char* str1, char* str2);
 // hashes a string (in very primitive way ... could improve if needed)
-unsigned int hashString(char* str);
+unsigned int hashString(const char* str);
 
 // Returns True if the FunctionEntry denoted by cur_entry has been
 // specified by the user in a ppt-list-file
@@ -1100,7 +1100,7 @@ Bool prog_pts_tree_entry_found(FunctionEntry* cur_entry);
 #define MAX_STRING_STACK_SIZE 100
 
 typedef struct StringStack_ {
-  char* stack[MAX_STRING_STACK_SIZE];
+  const HChar* stack[MAX_STRING_STACK_SIZE];
   int size;
 } StringStack;
 

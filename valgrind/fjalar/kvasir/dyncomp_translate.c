@@ -105,360 +105,7 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
-
-static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
-   IRAtom *vdataLo = NULL, *bdataLo = NULL;
-   IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
-   IRAtom *voldLo  = NULL, *boldLo  = NULL;
-   IRAtom *expd_eq_old = NULL;
-   IRAtom *orig;
-   IROp   opCasCmpEQ;
-   Int    elemSzB;
-   IRType elemTy;
-   IRType ty;
-   /* Variables for the instrumented dirty call */
-   IRDirty  *di;
-   void*    helper = NULL;
-   Char*    hname = NULL;
-
-   /* Silence unused variables. (These are kept around as opposed to
-      being removed to keep dyncomp_translate.c analogues of
-      mc_translate.c functions as similar as possible */
-   (void)expd_eq_old; (void)boldLo; (void)bdataLo; (void)bexpdLo;
-   (void)opCasCmpEQ; (void)elemSzB;
-
-   /* single CAS */
-   tl_assert(cas->oldHi == IRTemp_INVALID);
-   tl_assert(cas->expdHi == NULL);
-   tl_assert(cas->dataHi == NULL);
-
-   elemTy = typeOfIRExpr(dce->bb->tyenv, cas->expdLo);
-
-   switch (elemTy) {
-      case Ity_I8:  elemSzB = 1; opCasCmpEQ = Iop_CasCmpEQ8;  break;
-      case Ity_I16: elemSzB = 2; opCasCmpEQ = Iop_CasCmpEQ16; break;
-      case Ity_I32: elemSzB = 4; opCasCmpEQ = Iop_CasCmpEQ32; break;
-      case Ity_I64: elemSzB = 8; opCasCmpEQ = Iop_CasCmpEQ64; break;
-   default: tl_assert(0); /* IR defn disallows any other types */
-   }
-
-   /* 1. fetch data# (the proposed new value) */
-   tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
-
-   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
-
-   vdataLo
-      = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->dataLo));
-
-   tl_assert(isShadowAtom_DC(dce, vdataLo));
-
-   /* 2. fetch expected# (what we expect to see at the address) */
-   tl_assert(isOriginalAtom_DC(dce, cas->expdLo));
-
-   vexpdLo
-      = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->expdLo));
-
-   tl_assert(isShadowAtom_DC(dce, vexpdLo));
-
-
-   /* 3. check definedness of address */
-   /* 4. fetch old# from shadow memory; this also checks
-         addressibility of the address */
-
-   voldLo
-     = assignNew_DC(dce, elemTy,
-                    expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/));
-
-   orig = mkexpr(cas->oldLo);
-
-   tl_assert(isOriginalAtom_DC(dce, orig));
-   tl_assert(isShadowAtom_DC(dce, voldLo));
-
-   switch(orig->tag) {
-      case Iex_Const:
-         tl_assert(voldLo->tag == Iex_Const);
-         break;
-      case Iex_RdTmp:
-         tl_assert(voldLo->tag == Iex_RdTmp);
-         assign_DC('V', dce, findShadowTmp_DC(dce, orig->Iex.RdTmp.tmp),
-                   voldLo);
-
-         break;
-      default:
-         tl_assert(0);
-   }
-
-
-   //tl_assert(orig < dce->n_originalTmps);
-   // if (dce->tmpMap[orig] == IRTemp_INVALID) 
-
-   // bind_shadow_tmp_to_orig('V', mce, mkexpr(cas->oldLo), voldLo);
-
-
-   /* 5. the CAS itself */
-   //   stmt( 'C', mce, IRStmt_CAS(cas) );
-   // Memcheck does the above for us
-
-   /* 6. compute "expected == old" */
-   /* See COMMENT_ON_CasCmpEQ in this file background/rationale. */
-   /* Note that 'C' is kinda faking it; it is indeed a non-shadow
-      tree, but it's not copied from the input block. */
-/*    assignNew('C', mce, Ity_I1, */
-/*              binop(opCasCmpEQ, cas->expdLo, mkexpr(cas->oldLo))); */
-
-   /* 7. if "expected == old"
-            store data# to shadow memory */
-   //   do_shadow_STle_DC( dce, cas->addr,  vdataLo/*vdata*/);
-
-   switch (ty) {
-      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
-                    hname = "MC_(helperc_STORE_TAG_8)";
-                    break;
-      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
-                    hname = "MC_(helperc_STORE_TAG_4)";
-                    break;
-      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
-                    hname = "MC_(helperc_STORE_TAG_2)";
-                    break;
-      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
-                    hname = "MC_(helperc_STORE_TAG_1)";
-                    break;
-      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
-   }
-
-   if (ty == Ity_I64) {
-     /* We can't do this with regparm 2 on 32-bit platforms, since
-        the back ends aren't clever enough to handle 64-bit
-        regparm args.  Therefore be different. */
-     di = unsafeIRDirty_0_N(
-                            1/*regparms*/, hname, helper,
-                            mkIRExprVec_2( cas->addr, vdataLo ));
-   } else {
-     di = unsafeIRDirty_0_N(
-                            2/*regparms*/, hname, helper,
-                            mkIRExprVec_2( cas->addr, vdataLo ));
-   }
-
-   setHelperAnns_DC( dce, di );
-   stmt_DC('V',  dce, IRStmt_Dirty(di) );
-
-}
-
-static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
-{
-   IRAtom *vdataHi = NULL, *bdataHi = NULL;
-   IRAtom *vdataLo = NULL, *bdataLo = NULL;
-   IRAtom *vexpdHi = NULL, *bexpdHi = NULL;
-   IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
-   IRAtom *voldHi  = NULL, *boldHi  = NULL;
-   IRAtom *voldLo  = NULL, *boldLo  = NULL;
-   IRAtom *xHi = NULL, *xLo = NULL, *xHL = NULL;
-   IRAtom *expd_eq_old = NULL, *zero = NULL;
-   IRAtom *origLo;
-   IRAtom *origHi;
-   IROp   opCasCmpEQ, opOr, opXor;
-   Int    elemSzB, memOffsLo, memOffsHi;
-   IRType elemTy;
-   IRType ty;
-   IRDirty  *di;
-   /* Variables for the instrumented dirty call */
-   void*    helper = NULL;
-   Char*    hname = NULL;
-
-   /* Silence unused variables. (These are kept around as opposed to
-      being removed to keep dyncomp_translate.c analogues of
-      mc_translate.c functions as similar as possible */
-   (void)expd_eq_old;(void)boldLo;(void)boldHi;
-   (void)bexpdLo;(void)bexpdHi;(void)bdataLo;(void)bdataHi;
-   (void)xHL;(void)xHi;(void)xLo;
-   (void)zero;(void)opCasCmpEQ;(void)opOr;(void)opXor;
-
-
-   /* double CAS */
-   tl_assert(cas->oldHi != IRTemp_INVALID);
-   tl_assert(cas->expdHi != NULL);
-   tl_assert(cas->dataHi != NULL);
-
-   elemTy = typeOfIRExpr(dce->bb->tyenv, cas->expdLo);
-   switch (elemTy) {
-      case Ity_I8:
-         opCasCmpEQ = Iop_CasCmpEQ8; opOr = Iop_Or8; opXor = Iop_Xor8;
-         elemSzB = 1; zero = mkU8(0);
-         break;
-      case Ity_I16:
-         opCasCmpEQ = Iop_CasCmpEQ16; opOr = Iop_Or16; opXor = Iop_Xor16;
-         elemSzB = 2; zero = mkU16(0);
-         break;
-      case Ity_I32:
-         opCasCmpEQ = Iop_CasCmpEQ32; opOr = Iop_Or32; opXor = Iop_Xor32;
-         elemSzB = 4; zero = mkU32(0);
-         break;
-      case Ity_I64:
-         opCasCmpEQ = Iop_CasCmpEQ64; opOr = Iop_Or64; opXor = Iop_Xor64;
-         elemSzB = 8; zero = mkU64(0);
-         break;
-      default:
-         tl_assert(0); /* IR defn disallows any other types */
-   }
-
-   /* 1. fetch data# (the proposed new value) */
-   tl_assert(isOriginalAtom_DC(dce, cas->dataHi));
-   tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
-
-   vdataHi
-      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataHi));
-   vdataLo
-      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataLo));
-
-   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
-
-
-   tl_assert(isShadowAtom_DC(dce, vdataHi));
-   tl_assert(isShadowAtom_DC(dce, vdataLo));
-
-   /* 2. fetch expected# (what we expect to see at the address) */
-   tl_assert(isOriginalAtom_DC(dce, cas->expdHi));
-   tl_assert(isOriginalAtom_DC(dce, cas->expdLo));
-
-   vexpdHi
-      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdHi));
-   vexpdLo
-      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdLo));
-   tl_assert(isShadowAtom_DC(dce, vexpdHi));
-   tl_assert(isShadowAtom_DC(dce, vexpdLo));
-
-   /* 3. check definedness of address */
-   /* 4. fetch old# from shadow memory; this also checks
-         addressibility of the address */
-   if (cas->end == Iend_LE) {
-      memOffsLo = 0;
-      memOffsHi = elemSzB;
-   } else {
-      tl_assert(cas->end == Iend_BE);
-      memOffsLo = elemSzB;
-      memOffsHi = 0;
-   }
-   voldHi
-      = assignNew_DC(
-           dce, elemTy,
-           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/ ));
-   voldLo
-      = assignNew_DC(
-           dce, elemTy,
-           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/));
-
-   origLo = mkexpr(cas->oldLo);
-   origHi = mkexpr(cas->oldHi);
-
-
-   switch(origLo->tag) {
-      case Iex_Const:
-         tl_assert(voldLo->tag == Iex_Const);
-         break;
-      case Iex_RdTmp:
-         tl_assert(voldLo->tag == Iex_RdTmp);
-         assign_DC('V', dce, findShadowTmp_DC(dce, origLo->Iex.RdTmp.tmp),
-                   voldLo);
-         assign_DC('V', dce, findShadowTmp_DC(dce, origHi->Iex.RdTmp.tmp),
-                   voldHi);
-
-         break;
-      default:
-         tl_assert(0);
-   }
-
-
-   /* 5. the CAS itself */
-   /* 6. compute "expected == old" */
-   /* See COMMENT_ON_CasCmpEQ in this file background/rationale. */
-   /* Note that 'C' is kinda faking it; it is indeed a non-shadow
-      tree, but it's not copied from the input block. */
-   /*
-      xHi = oldHi ^ expdHi;
-      xLo = oldLo ^ expdLo;
-      xHL = xHi | xLo;
-      expd_eq_old = xHL == 0;
-   */
-/*    xHi = assignNew('C', mce, elemTy, */
-/*                    binop(opXor, cas->expdHi, mkexpr(cas->oldHi))); */
-/*    xLo = assignNew('C', mce, elemTy, */
-/*                    binop(opXor, cas->expdLo, mkexpr(cas->oldLo))); */
-/*    xHL = assignNew('C', mce, elemTy, */
-/*                    binop(opOr, xHi, xLo)); */
-/*    expd_eq_old */
-/*       = assignNew('C', mce, Ity_I1, */
-/*                   binop(opCasCmpEQ, xHL, zero)); */
-
-   /* 7. if "expected == old"
-            store data# to shadow memory */
-
-
-   switch (ty) {
-      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
-                    hname = "MC_(helperc_STORE_TAG_8)";
-                    break;
-      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
-                    hname = "MC_(helperc_STORE_TAG_4)";
-                    break;
-      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
-                    hname = "MC_(helperc_STORE_TAG_2)";
-                    break;
-      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
-                    hname = "MC_(helperc_STORE_TAG_1)";
-                    break;
-      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
-   }
-
-   if (ty == Ity_I64) {
-     /* We can't do this with regparm 2 on 32-bit platforms, since
-        the back ends aren't clever enough to handle 64-bit
-        regparm args.  Therefore be different. */
-     di = unsafeIRDirty_0_N(
-                            1/*regparms*/, hname, helper,
-                            mkIRExprVec_2( cas->addr + memOffsLo, vdataLo ));
-     setHelperAnns_DC( dce, di );
-     stmt_DC('V',  dce, IRStmt_Dirty(di) );
-
-     di = unsafeIRDirty_0_N(
-                            1/*regparms*/, hname, helper,
-                            mkIRExprVec_2( cas->addr + memOffsHi, vdataHi ));
-
-     setHelperAnns_DC( dce, di );
-     stmt_DC('V',  dce, IRStmt_Dirty(di) );
-   } else {
-     di = unsafeIRDirty_0_N(
-                            2/*regparms*/, hname, helper,
-                            mkIRExprVec_2( cas->addr + memOffsLo, vdataLo ));
-     setHelperAnns_DC( dce, di );
-     stmt_DC('V',  dce, IRStmt_Dirty(di) );
-
-     di = unsafeIRDirty_0_N(
-                            2/*regparms*/, hname, helper,
-                            mkIRExprVec_2( cas->addr + memOffsHi, vdataHi ));
-
-     setHelperAnns_DC( dce, di );
-     stmt_DC('V',  dce, IRStmt_Dirty(di) );
-   }
-
-
-}
-
-
-// Handling for CAS instructions. Nick'd from memcheck.
-// NOTE: This is copied and modified from mc_translate.c:
-// do_shadow_CAS()
-void do_shadow_CAS_DC( DCEnv* dce, IRCAS* cas) {
-
-  if (cas->oldHi == IRTemp_INVALID) {
-    do_shadow_CAS_single_DC( dce, cas );
-  } else {
-    do_shadow_CAS_double_DC( dce, cas );
-  }
-
-}
-
-
-
+// Do we need to add the <guard> formal? (markro)
 
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
@@ -571,7 +218,6 @@ IRExpr* shadow_GETI_DC ( DCEnv* dce, IRRegArray* descr, IRAtom* ix, Int bias )
 
    return IRExpr_GetI( new_descr, ix, bias );
 }
-
 
 // Handling of clean helper function calls in the target program's
 // translated IR: Treat all arguments (exprvec) as 'interacting' with
@@ -734,7 +380,6 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
    VG_(tool_panic)("memcheck:expr2tags_Qop");
 }
 
-
 static
 IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
                              IROp op,
@@ -839,14 +484,20 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
       case Iop_PRem1F64:
       case Iop_PRemC3210F64:
       case Iop_PRem1C3210F64:
+         break;
+
+// Unimplemented - PPC only
       case Iop_QuantizeD64:
       case Iop_QuantizeD128:
+      case Iop_SignificanceRoundD64:
+      case Iop_SignificanceRoundD128:
+
+// Unimplemented - ARM only
+      case Iop_Extract64:
+      case Iop_ExtractV128:
       case Iop_SetElem8x8:
       case Iop_SetElem16x4:
       case Iop_SetElem32x2:
-      case Iop_SignificanceRoundD64:
-      case Iop_SignificanceRoundD128:
-         break;
 
       default:
          ppIROp(op);
@@ -855,7 +506,6 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
 
    return IRExpr_Const(IRConst_UWord(0));
 }
-
 
 // TODO: Look at expr2vbits_Binop() from ../mc_translate.c
 // and make sure we've covered all possible cases.
@@ -867,8 +517,8 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    IRAtom* vatom1 = expr2tags_DC( dce, atom1 );
    IRAtom* vatom2 = expr2tags_DC( dce, atom2 );
 
-   void*    helper = 0;
-   Char*    hname = 0;
+   void*        helper = 0;
+   const HChar* hname = 0;
 
    if (dyncomp_profile_tags) {
       if ((atom1->tag == Iex_Const) ||
@@ -1230,24 +880,42 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // comparison is a 0 or 1 which really can't be compared with other stuff.
 
       /* Integer comparisons. */
-   case Iop_CmpEQ8:    case Iop_CmpEQ16: 
-   case Iop_CmpEQ32:   case Iop_CmpEQ64:
-   case Iop_CmpLE32S:  case Iop_CmpLE64S:
-   case Iop_CmpLE32U:  case Iop_CmpLE64U:
-   case Iop_CmpLT32S:  case Iop_CmpLT64S:
-   case Iop_CmpLT32U:  case Iop_CmpLT64U:
-   case Iop_CmpNE8:    case Iop_CmpNE16: 
-   case Iop_CmpNE32:   case Iop_CmpNE64:
-   case Iop_CmpORD32S: case Iop_CmpORD64S:
-   case Iop_CmpORD32U: case Iop_CmpORD64U:
+   case Iop_CmpEQ8:   
+   case Iop_CmpEQ16: 
+   case Iop_CmpEQ32:  
+   case Iop_CmpEQ64:
+   case Iop_CmpLE32S: 
+   case Iop_CmpLE32U: 
+   case Iop_CmpLE64S:
+   case Iop_CmpLE64U:
+   case Iop_CmpLT32S: 
+   case Iop_CmpLT32U: 
+   case Iop_CmpLT64S:
+   case Iop_CmpLT64U:
+   case Iop_CmpNE8:   
+   case Iop_CmpNE16: 
+   case Iop_CmpNE32:  
+   case Iop_CmpNE64:
+   case Iop_CmpORD32S:
+   case Iop_CmpORD32U:
+   case Iop_CmpORD64S:
+   case Iop_CmpORD64U:
+   case Iop_ExpCmpNE8: 
+   case Iop_ExpCmpNE16: 
+   case Iop_ExpCmpNE32:  
+   case Iop_ExpCmpNE64:
 
      // New CAS operations. They're semantically identical to normal comparisons
      // They're used by memcheck to differentiate the compares done by a CAS and
      // a normal compare.
-   case Iop_CasCmpEQ8:  case Iop_CasCmpNE8:
-   case Iop_CasCmpEQ16: case Iop_CasCmpNE16:
-   case Iop_CasCmpEQ32: case Iop_CasCmpNE32:
-   case Iop_CasCmpEQ64: case Iop_CasCmpNE64:
+   case Iop_CasCmpEQ8: 
+   case Iop_CasCmpEQ16:
+   case Iop_CasCmpEQ32:
+   case Iop_CasCmpEQ64:
+   case Iop_CasCmpNE8:
+   case Iop_CasCmpNE16:
+   case Iop_CasCmpNE32:
+   case Iop_CasCmpNE64:
 
       // Floating-point comparison
    case Iop_CmpD64:
@@ -1255,34 +923,47 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CmpF32:
    case Iop_CmpF64:
    case Iop_CmpF128:
+   case Iop_CmpExpD64:
+   case Iop_CmpExpD128:
 
       // 64-bit SIMD integer comparisons
       /* MISC (vector integer cmp != 0) */
 
       /* COMPARISON */
-   case Iop_CmpEQ8x8:   case Iop_CmpEQ16x4: 
-   case Iop_CmpEQ32x2:  case Iop_CmpEQ32Fx2:
-   case Iop_CmpGT8Sx8:  case Iop_CmpGT16Sx4:
-   case Iop_CmpGT32Sx2: case Iop_CmpGT32Fx2:
-   case Iop_CmpGT8Ux8:  case Iop_CmpGT16Ux4:
-   case Iop_CmpGT32Ux2: case Iop_CmpGE32Fx2:
+   case Iop_CmpEQ8x8:  
+   case Iop_CmpEQ16x4: 
+   case Iop_CmpEQ32Fx2:
+   case Iop_CmpEQ32x2: 
+   case Iop_CmpGE32Fx2:
+   case Iop_CmpGT8Sx8: 
+   case Iop_CmpGT8Ux8: 
+   case Iop_CmpGT16Sx4:
+   case Iop_CmpGT16Ux4:
+   case Iop_CmpGT32Fx2:
+   case Iop_CmpGT32Sx2:
+   case Iop_CmpGT32Ux2:
 
       // 128-bit SIMD FP
+   case Iop_CmpEQ32F0x4:
    case Iop_CmpEQ32Fx4:
+   case Iop_CmpEQ64F0x2:
+   case Iop_CmpEQ64Fx2: 
+   case Iop_CmpEQ64x2:
    case Iop_CmpGE32Fx4:
    case Iop_CmpGT32Fx4:
-   case Iop_CmpLE32Fx4:
-   case Iop_CmpLT32Fx4:
-   case Iop_CmpUN32Fx4:
-   case Iop_CmpEQ64x2:
    case Iop_CmpGT64Sx2:
-
-   case Iop_CmpEQ32F0x4: case Iop_CmpLT32F0x4:
-   case Iop_CmpLE32F0x4: case Iop_CmpUN32F0x4:
-   case Iop_CmpEQ64Fx2:  case Iop_CmpLT64Fx2:
-   case Iop_CmpLE64Fx2:  case Iop_CmpUN64Fx2:
-   case Iop_CmpEQ64F0x2: case Iop_CmpLT64F0x2:
-   case Iop_CmpLE64F0x2: case Iop_CmpUN64F0x2:
+   case Iop_CmpLE32F0x4:
+   case Iop_CmpLE32Fx4:
+   case Iop_CmpLE64F0x2:
+   case Iop_CmpLE64Fx2: 
+   case Iop_CmpLT32F0x4:
+   case Iop_CmpLT32Fx4:
+   case Iop_CmpLT64F0x2:
+   case Iop_CmpLT64Fx2:
+   case Iop_CmpUN32F0x4:
+   case Iop_CmpUN32Fx4:
+   case Iop_CmpUN64F0x2:
+   case Iop_CmpUN64Fx2:
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
 
@@ -1439,7 +1120,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
 
       /* F64 -> F64, also takes an I32 first argument encoding the
          rounding mode. */
-      //   case Iop_RoundF64: // pgbovine - not in Valgrind 3.1.0
 
       if (!dyncomp_dataflow_comparisons_mode) {
          return vatom2;
@@ -1540,7 +1220,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    }
 }
 
-
 static
 IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
 {
@@ -1559,13 +1238,12 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
    return vatom;
 }
 
-
 /* Worker function; do not call directly. */
 static
 IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 {
    void*    helper;
-   Char*    hname;
+   const HChar* hname;
    IRDirty* di;
    IRTemp   datatag;
    IRAtom*  addrAct;
@@ -1617,7 +1295,6 @@ IRAtom* expr2tags_LDle_WRK_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 
    return mkexpr(datatag);
 }
-
 
 static
 IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
@@ -1689,16 +1366,16 @@ IRAtom* expr2tags_LDle_DC ( DCEnv* dce, IRType ty, IRAtom* addr, UInt bias )
 }
 
 static
-IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
-                           IRAtom* cond, IRAtom* expr0, IRAtom* exprX )
+IRAtom* expr2tags_ITE_DC ( DCEnv* dce,
+                           IRAtom* cond, IRAtom* iftrue, IRAtom* iffalse )
 {
-   IRAtom *vbitsC, *vbits0, *vbitsX;
+   IRAtom *vbitsC, *vbits0, *vbits1;
    IRDirty* di;
    IRTemp   datatag;
 
    tl_assert(isOriginalAtom_DC(dce, cond));
-   tl_assert(isOriginalAtom_DC(dce, expr0));
-   tl_assert(isOriginalAtom_DC(dce, exprX));
+   tl_assert(isOriginalAtom_DC(dce, iftrue));
+   tl_assert(isOriginalAtom_DC(dce, iffalse));
 
    // Generate a temp. 'datatag', which is the result of a NOP dirty
    // call on vbitsC, in order to 'anchor' any possible tag merge
@@ -1719,15 +1396,14 @@ IRAtom* expr2tags_Mux0X_DC ( DCEnv* dce,
    // Do the real work of generating tag IR trees for expr0 and exprX
    // and then making a parallel Mux which contains these two trees
    // with the ORIGINAL condition 'cond'
-   vbits0 = expr2tags_DC(dce, expr0);
-   vbitsX = expr2tags_DC(dce, exprX);
-   tl_assert(sameKindedAtoms(vbits0, vbitsX));// Both should be word-sized tags
+   vbits1 = expr2tags_DC(dce, iftrue);
+   vbits0 = expr2tags_DC(dce, iffalse);
+   tl_assert(sameKindedAtoms(vbits0, vbits1));// Both should be word-sized tags
 
-   return assignNew_DC(dce, Ity_Word, IRExpr_Mux0X(cond, vbits0, vbitsX));
+   return assignNew_DC(dce, Ity_Word, IRExpr_ITE(cond, vbits1, vbits0));
 }
 
-
-// (Very similar to expr2tags_Mux0X_DC)
+// (Very similar to expr2tags_ITE_DC)
 // Generate and return temp 'datatag', which is the result of a NOP
 // dirty call on the tag of 'guard', in order to 'anchor' any possible
 // tag merge clean helper calls in the expression which produced
@@ -1752,7 +1428,6 @@ IRAtom* do_shadow_cond_exit_DC (DCEnv* dce, IRExpr* guard)
 
    return mkexpr(datatag);
 }
-
 
 /* --------- This is the main expression-handling function. --------- */
 
@@ -1861,9 +1536,9 @@ IRExpr* expr2tags_DC ( DCEnv* dce, IRExpr* e )
                                 e->Iex.CCall.args,
                                 e->Iex.CCall.cee );
 
-      case Iex_Mux0X:
-         return expr2tags_Mux0X_DC( dce, e->Iex.Mux0X.cond, e->Iex.Mux0X.expr0,
-                                    e->Iex.Mux0X.exprX);
+      case Iex_ITE:
+         return expr2tags_ITE_DC( dce, e->Iex.ITE.cond, e->Iex.ITE.iftrue,
+                                    e->Iex.ITE.iffalse);
 
       default:
          printf("\n");
@@ -1888,7 +1563,7 @@ void do_shadow_STle_DC ( DCEnv* dce,
    IRAtom   *vaddr;
    IRTemp   addrTag;
    void*    helper = NULL;
-   Char*    hname = NULL;
+   const HChar* hname = NULL;
    Int      pcOffset = -1;
 
    tyAddr = dce->hWordTy;
@@ -2005,7 +1680,6 @@ void do_shadow_STle_DC ( DCEnv* dce,
 
 }
 
-
 // Handle dirty calls really stupidly by simply creating a fresh tag
 // as the result of the dirty call.  This ignores all the stuff that
 // goes on inside of the dirty call, but that should be okay.
@@ -2019,4 +1693,348 @@ void do_shadow_Dirty_DC ( DCEnv* dce, IRDirty* d ) {
       setHelperAnns_DC( dce, di );
       stmt_DC('V',  dce, IRStmt_Dirty(di) );
    }
+}
+
+static void do_shadow_CAS_single_DC ( DCEnv* dce, IRCAS* cas ) {
+   IRAtom *vdataLo = NULL, *bdataLo = NULL;
+   IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
+   IRAtom *voldLo  = NULL, *boldLo  = NULL;
+   IRAtom *expd_eq_old = NULL;
+   IRAtom *orig;
+   IROp   opCasCmpEQ;
+   Int    elemSzB;
+   IRType elemTy;
+   IRType ty;
+   /* Variables for the instrumented dirty call */
+   IRDirty  *di;
+   void*        helper = NULL;
+   const HChar* hname = NULL;
+
+   /* Silence unused variables. (These are kept around as opposed to
+      being removed to keep dyncomp_translate.c analogues of
+      mc_translate.c functions as similar as possible */
+   (void)expd_eq_old; (void)boldLo; (void)bdataLo; (void)bexpdLo;
+   (void)opCasCmpEQ; (void)elemSzB;
+
+   /* single CAS */
+   tl_assert(cas->oldHi == IRTemp_INVALID);
+   tl_assert(cas->expdHi == NULL);
+   tl_assert(cas->dataHi == NULL);
+
+   elemTy = typeOfIRExpr(dce->bb->tyenv, cas->expdLo);
+
+   switch (elemTy) {
+      case Ity_I8:  elemSzB = 1; opCasCmpEQ = Iop_CasCmpEQ8;  break;
+      case Ity_I16: elemSzB = 2; opCasCmpEQ = Iop_CasCmpEQ16; break;
+      case Ity_I32: elemSzB = 4; opCasCmpEQ = Iop_CasCmpEQ32; break;
+      case Ity_I64: elemSzB = 8; opCasCmpEQ = Iop_CasCmpEQ64; break;
+   default: tl_assert(0); /* IR defn disallows any other types */
+   }
+
+   /* 1. fetch data# (the proposed new value) */
+   tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
+
+   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
+
+   vdataLo
+      = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->dataLo));
+
+   tl_assert(isShadowAtom_DC(dce, vdataLo));
+
+   /* 2. fetch expected# (what we expect to see at the address) */
+   tl_assert(isOriginalAtom_DC(dce, cas->expdLo));
+
+   vexpdLo
+      = assignNew_DC(dce, ty, expr2tags_DC(dce, cas->expdLo));
+
+   tl_assert(isShadowAtom_DC(dce, vexpdLo));
+
+   /* 3. check definedness of address */
+   /* 4. fetch old# from shadow memory; this also checks
+         addressibility of the address */
+
+   voldLo
+     = assignNew_DC(dce, elemTy,
+                    expr2tags_LDle_DC(dce,elemTy, cas->addr, 0/*Addr bias*/));
+
+   orig = mkexpr(cas->oldLo);
+
+   tl_assert(isOriginalAtom_DC(dce, orig));
+   tl_assert(isShadowAtom_DC(dce, voldLo));
+
+   switch(orig->tag) {
+      case Iex_Const:
+         tl_assert(voldLo->tag == Iex_Const);
+         break;
+      case Iex_RdTmp:
+         tl_assert(voldLo->tag == Iex_RdTmp);
+         assign_DC('V', dce, findShadowTmp_DC(dce, orig->Iex.RdTmp.tmp),
+                   voldLo);
+
+         break;
+      default:
+         tl_assert(0);
+   }
+
+   //tl_assert(orig < dce->n_originalTmps);
+   // if (dce->tmpMap[orig] == IRTemp_INVALID) 
+
+   // bind_shadow_tmp_to_orig('V', mce, mkexpr(cas->oldLo), voldLo);
+
+   /* 5. the CAS itself */
+   //   stmt( 'C', mce, IRStmt_CAS(cas) );
+   // Memcheck does the above for us
+
+   /* 6. compute "expected == old" */
+   /* See COMMENT_ON_CasCmpEQ in this file background/rationale. */
+   /* Note that 'C' is kinda faking it; it is indeed a non-shadow
+      tree, but it's not copied from the input block. */
+/*    assignNew('C', mce, Ity_I1, */
+/*              binop(opCasCmpEQ, cas->expdLo, mkexpr(cas->oldLo))); */
+
+   /* 7. if "expected == old"
+            store data# to shadow memory */
+   //   do_shadow_STle_DC( dce, cas->addr,  vdataLo/*vdata*/);
+
+   switch (ty) {
+      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
+                    hname = "MC_(helperc_STORE_TAG_8)";
+                    break;
+      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
+                    hname = "MC_(helperc_STORE_TAG_4)";
+                    break;
+      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
+                    hname = "MC_(helperc_STORE_TAG_2)";
+                    break;
+      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
+                    hname = "MC_(helperc_STORE_TAG_1)";
+                    break;
+      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
+   }
+
+   if (ty == Ity_I64) {
+     /* We can't do this with regparm 2 on 32-bit platforms, since
+        the back ends aren't clever enough to handle 64-bit
+        regparm args.  Therefore be different. */
+     di = unsafeIRDirty_0_N(
+                            1/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr, vdataLo ));
+   } else {
+     di = unsafeIRDirty_0_N(
+                            2/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr, vdataLo ));
+   }
+
+   setHelperAnns_DC( dce, di );
+   stmt_DC('V',  dce, IRStmt_Dirty(di) );
+
+}
+
+static void do_shadow_CAS_double_DC ( DCEnv* dce, IRCAS* cas )
+{
+   IRAtom *vdataHi = NULL, *bdataHi = NULL;
+   IRAtom *vdataLo = NULL, *bdataLo = NULL;
+   IRAtom *vexpdHi = NULL, *bexpdHi = NULL;
+   IRAtom *vexpdLo = NULL, *bexpdLo = NULL;
+   IRAtom *voldHi  = NULL, *boldHi  = NULL;
+   IRAtom *voldLo  = NULL, *boldLo  = NULL;
+   IRAtom *xHi = NULL, *xLo = NULL, *xHL = NULL;
+   IRAtom *expd_eq_old = NULL, *zero = NULL;
+   IRAtom *origLo;
+   IRAtom *origHi;
+   IROp   opCasCmpEQ, opOr, opXor;
+   Int    elemSzB, memOffsLo, memOffsHi;
+   IRType elemTy;
+   IRType ty;
+   IRDirty  *di;
+   /* Variables for the instrumented dirty call */
+   void*        helper = NULL;
+   const HChar* hname = NULL;
+
+   /* Silence unused variables. (These are kept around as opposed to
+      being removed to keep dyncomp_translate.c analogues of
+      mc_translate.c functions as similar as possible */
+   (void)expd_eq_old;(void)boldLo;(void)boldHi;
+   (void)bexpdLo;(void)bexpdHi;(void)bdataLo;(void)bdataHi;
+   (void)xHL;(void)xHi;(void)xLo;
+   (void)zero;(void)opCasCmpEQ;(void)opOr;(void)opXor;
+
+
+   /* double CAS */
+   tl_assert(cas->oldHi != IRTemp_INVALID);
+   tl_assert(cas->expdHi != NULL);
+   tl_assert(cas->dataHi != NULL);
+
+   elemTy = typeOfIRExpr(dce->bb->tyenv, cas->expdLo);
+   switch (elemTy) {
+      case Ity_I8:
+         opCasCmpEQ = Iop_CasCmpEQ8; opOr = Iop_Or8; opXor = Iop_Xor8;
+         elemSzB = 1; zero = mkU8(0);
+         break;
+      case Ity_I16:
+         opCasCmpEQ = Iop_CasCmpEQ16; opOr = Iop_Or16; opXor = Iop_Xor16;
+         elemSzB = 2; zero = mkU16(0);
+         break;
+      case Ity_I32:
+         opCasCmpEQ = Iop_CasCmpEQ32; opOr = Iop_Or32; opXor = Iop_Xor32;
+         elemSzB = 4; zero = mkU32(0);
+         break;
+      case Ity_I64:
+         opCasCmpEQ = Iop_CasCmpEQ64; opOr = Iop_Or64; opXor = Iop_Xor64;
+         elemSzB = 8; zero = mkU64(0);
+         break;
+      default:
+         tl_assert(0); /* IR defn disallows any other types */
+   }
+
+   /* 1. fetch data# (the proposed new value) */
+   tl_assert(isOriginalAtom_DC(dce, cas->dataHi));
+   tl_assert(isOriginalAtom_DC(dce, cas->dataLo));
+
+   vdataHi
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataHi));
+   vdataLo
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->dataLo));
+
+   ty = shadowTypeV(typeOfIRExpr(dce->bb->tyenv, cas->dataLo));
+
+
+   tl_assert(isShadowAtom_DC(dce, vdataHi));
+   tl_assert(isShadowAtom_DC(dce, vdataLo));
+
+   /* 2. fetch expected# (what we expect to see at the address) */
+   tl_assert(isOriginalAtom_DC(dce, cas->expdHi));
+   tl_assert(isOriginalAtom_DC(dce, cas->expdLo));
+
+   vexpdHi
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdHi));
+   vexpdLo
+      = assignNew_DC(dce, elemTy, expr2tags_DC(dce, cas->expdLo));
+   tl_assert(isShadowAtom_DC(dce, vexpdHi));
+   tl_assert(isShadowAtom_DC(dce, vexpdLo));
+
+   /* 3. check definedness of address */
+   /* 4. fetch old# from shadow memory; this also checks
+         addressibility of the address */
+   if (cas->end == Iend_LE) {
+      memOffsLo = 0;
+      memOffsHi = elemSzB;
+   } else {
+      tl_assert(cas->end == Iend_BE);
+      memOffsLo = elemSzB;
+      memOffsHi = 0;
+   }
+   voldHi
+      = assignNew_DC(
+           dce, elemTy,
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsHi/*Addr bias*/ ));
+   voldLo
+      = assignNew_DC(
+           dce, elemTy,
+           expr2tags_LDle_DC(dce, elemTy, cas->addr, memOffsLo/*Addr bias*/));
+
+   origLo = mkexpr(cas->oldLo);
+   origHi = mkexpr(cas->oldHi);
+
+
+   switch(origLo->tag) {
+      case Iex_Const:
+         tl_assert(voldLo->tag == Iex_Const);
+         break;
+      case Iex_RdTmp:
+         tl_assert(voldLo->tag == Iex_RdTmp);
+         assign_DC('V', dce, findShadowTmp_DC(dce, origLo->Iex.RdTmp.tmp),
+                   voldLo);
+         assign_DC('V', dce, findShadowTmp_DC(dce, origHi->Iex.RdTmp.tmp),
+                   voldHi);
+
+         break;
+      default:
+         tl_assert(0);
+   }
+
+   /* 5. the CAS itself */
+   /* 6. compute "expected == old" */
+   /* See COMMENT_ON_CasCmpEQ in this file background/rationale. */
+   /* Note that 'C' is kinda faking it; it is indeed a non-shadow
+      tree, but it's not copied from the input block. */
+   /*
+      xHi = oldHi ^ expdHi;
+      xLo = oldLo ^ expdLo;
+      xHL = xHi | xLo;
+      expd_eq_old = xHL == 0;
+   */
+/*    xHi = assignNew('C', mce, elemTy, */
+/*                    binop(opXor, cas->expdHi, mkexpr(cas->oldHi))); */
+/*    xLo = assignNew('C', mce, elemTy, */
+/*                    binop(opXor, cas->expdLo, mkexpr(cas->oldLo))); */
+/*    xHL = assignNew('C', mce, elemTy, */
+/*                    binop(opOr, xHi, xLo)); */
+/*    expd_eq_old */
+/*       = assignNew('C', mce, Ity_I1, */
+/*                   binop(opCasCmpEQ, xHL, zero)); */
+
+   /* 7. if "expected == old"
+            store data# to shadow memory */
+
+
+   switch (ty) {
+      case Ity_I64: helper = &MC_(helperc_STORE_TAG_8);
+                    hname = "MC_(helperc_STORE_TAG_8)";
+                    break;
+      case Ity_I32: helper = &MC_(helperc_STORE_TAG_4);
+                    hname = "MC_(helperc_STORE_TAG_4)";
+                    break;
+      case Ity_I16: helper = &MC_(helperc_STORE_TAG_2);
+                    hname = "MC_(helperc_STORE_TAG_2)";
+                    break;
+      case Ity_I8:  helper = &MC_(helperc_STORE_TAG_1);
+                    hname = "MC_(helperc_STORE_TAG_1)";
+                    break;
+      default:      VG_(tool_panic)("dyncomp:do_shadow_STle_DC");
+   }
+
+   if (ty == Ity_I64) {
+     /* We can't do this with regparm 2 on 32-bit platforms, since
+        the back ends aren't clever enough to handle 64-bit
+        regparm args.  Therefore be different. */
+     di = unsafeIRDirty_0_N(
+                            1/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsLo, vdataLo ));
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+
+     di = unsafeIRDirty_0_N(
+                            1/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsHi, vdataHi ));
+
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+   } else {
+     di = unsafeIRDirty_0_N(
+                            2/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsLo, vdataLo ));
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+
+     di = unsafeIRDirty_0_N(
+                            2/*regparms*/, hname, helper,
+                            mkIRExprVec_2( cas->addr + memOffsHi, vdataHi ));
+
+     setHelperAnns_DC( dce, di );
+     stmt_DC('V',  dce, IRStmt_Dirty(di) );
+   }
+}
+
+// Handling for CAS instructions. Nick'd from memcheck.
+// NOTE: This is copied and modified from mc_translate.c:
+// do_shadow_CAS()
+void do_shadow_CAS_DC ( DCEnv* dce, IRCAS* cas) {
+
+  if (cas->oldHi == IRTemp_INVALID) {
+    do_shadow_CAS_single_DC( dce, cas );
+  } else {
+    do_shadow_CAS_double_DC( dce, cas );
+  }
+
 }

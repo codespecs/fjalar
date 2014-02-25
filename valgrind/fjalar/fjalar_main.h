@@ -86,7 +86,7 @@ void fjalar_pre_clo_init(void);
 void fjalar_post_clo_init(void);
 void fjalar_finish(void);
 void fjalar_print_usage(void);
-Bool fjalar_process_cmd_line_option(Char* arg);
+Bool fjalar_process_cmd_line_option(const HChar* arg);
 
 void printFunctionEntryStack(void);
 
@@ -172,7 +172,7 @@ extern Addr (*get_reg[11])( ThreadId tid );
 // DWARF location atoms and their string
 // representation
 
-extern char* dwarf_reg_string[9];
+extern const HChar* dwarf_reg_string[9];
 
 
 /*

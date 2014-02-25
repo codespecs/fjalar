@@ -258,7 +258,7 @@ FILE* g_open_fp = 0;
 // g_open_fp:
 static TraversalResult
 printVarNameAction(VariableEntry* var,
-		   char* varName,
+		   const HChar* varName,
 		   VariableOrigin varOrigin,
 		   UInt numDereferences,
 		   UInt layersBeforeBase,

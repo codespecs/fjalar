@@ -74,15 +74,15 @@ UInt fjalar_max_visit_nesting_depth = 2;
 // They are initialized to 0 upon initiation so if they are
 // never filled with values by the respective command-line
 // options, then they can be treated as False
-char* fjalar_dump_prog_pt_names_filename = 0;
-char* fjalar_dump_var_names_filename = 0;
-char* fjalar_trace_prog_pts_filename = 0;
-char* fjalar_trace_vars_filename = 0;
-char* fjalar_disambig_filename = 0;
-char* fjalar_xml_output_filename = 0;
+const HChar* fjalar_dump_prog_pt_names_filename = 0;
+const HChar* fjalar_dump_var_names_filename = 0;
+const HChar* fjalar_trace_prog_pts_filename = 0;
+const HChar* fjalar_trace_vars_filename = 0;
+const HChar* fjalar_disambig_filename = 0;
+const HChar* fjalar_xml_output_filename = 0;
 
 // The filename of the target executable:
-char* executable_filename = 0;
+const HChar* executable_filename = 0;
 
 // Mapping between Dwarf Register numbers and
 // valgrind function to return the value
@@ -148,7 +148,7 @@ Addr (*get_reg[11])( ThreadId tid ) = {
 // For debugging purposes, a mapping between
 // DWARF location atoms and their string
 // representation
-char* dwarf_reg_string[9] = {
+const HChar* dwarf_reg_string[9] = {
   "xAX",
   "xCX",
   "xDX",
@@ -219,7 +219,7 @@ typedef VG_REGPARM(1) void entry_func(FunctionEntry *);
 // provided table.
 static void handle_possible_entry_func(MCEnv *mce, Addr64 addr,
 				       struct genhashtable *table,
-				       char *func_name,
+				       const char *func_name,
 				       entry_func func) {
   IRDirty  *di;
   FunctionEntry *entry = gengettable(table, (void *)(Addr)addr);
@@ -994,7 +994,7 @@ void fjalar_pre_clo_init()
 // Initialize Fjalar after command-line options are processed
 void fjalar_post_clo_init()
 {
-  char* DISAMBIG = ".disambig";
+  const char* DISAMBIG = ".disambig";
   int DISAMBIG_LEN = VG_(strlen)(DISAMBIG);
 
   // We need to turn off some VEX IR optimizations (primarily the one which
@@ -1115,7 +1115,7 @@ void fjalar_print_usage()
 // Processes command-line options and sets the values of the
 // appropriate global variables (Called from
 // MAC_(process_common_cmd_line_option)() in mac_shared.c)
-Bool fjalar_process_cmd_line_option(Char* arg)
+Bool fjalar_process_cmd_line_option(const HChar* arg)
 {
 
   if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}

@@ -7,7 +7,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2012 Julian Seward 
+   Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -122,6 +122,7 @@
 // Also, --show-reachable is a bad name because it also turns on the showing
 // of indirectly leaked blocks(!)  It would be better named --show-all or
 // --show-all-heap-blocks, because that's the end result.
+// We now have the option --show-leak-kinds=... which allows to specify =all.
 //
 // ----
 //
@@ -169,7 +170,8 @@
 // 
 // ==20397== 16 bytes in 1 blocks are definitely lost in loss record 14
 // of 15 (and 16 bytes in 1 block are indirectly lost as a result;  they
-// are mentioned elsewhere (if --show-reachable=yes is given!))
+// are mentioned elsewhere (if --show-reachable=yes or indirect is given
+// in --show-leak-kinds=... !))
 // ==20397==    at 0x4C2694E: malloc (vg_replace_malloc.c:177)
 // ==20397==    by 0x400521: mk (leak-cases.c:49)
 // ==20397==    by 0x400580: main (leak-cases.c:72)
@@ -246,10 +248,10 @@
 /*------------------------------------------------------------*/
 
 // Compare the MC_Chunks by 'data' (i.e. the address of the block).
-static Int compare_MC_Chunks(void* n1, void* n2)
+static Int compare_MC_Chunks(const void* n1, const void* n2)
 {
-   MC_Chunk* mc1 = *(MC_Chunk**)n1;
-   MC_Chunk* mc2 = *(MC_Chunk**)n2;
+   const MC_Chunk* mc1 = *(const MC_Chunk *const *)n1;
+   const MC_Chunk* mc2 = *(const MC_Chunk *const *)n2;
    if (mc1->data < mc2->data) return -1;
    if (mc1->data > mc2->data) return  1;
    return 0;
@@ -329,7 +331,7 @@ Int find_chunk_for ( Addr       ptr,
 
 
 static MC_Chunk**
-find_active_chunks(UInt* pn_chunks)
+find_active_chunks(Int* pn_chunks)
 {
    // Our goal is to construct a set of chunks that includes every
    // mempool chunk, and every malloc region that *doesn't* contain a
@@ -428,11 +430,16 @@ typedef
    struct {
       UInt  state:2;    // Reachedness.
       UInt  pending:1;  // Scan pending.  
+      UInt  heuristic: (sizeof(UInt)*8)-3;
+      // Heuristic with which this block was considered reachable.
+      // LchNone if state != Reachable or no heuristic needed to
+      // consider it reachable.
+   
       union {
-         SizeT indirect_szB : (sizeof(SizeT)*8)-3; // If Unreached, how many bytes
-                                                //   are unreachable from here.
-         SizeT  clique :  (sizeof(SizeT)*8)-3;      // if IndirectLeak, clique leader
-                                                   // to which it belongs.
+         SizeT indirect_szB;
+         // If Unreached, how many bytes are unreachable from here.
+         SizeT  clique;
+         // if IndirectLeak, clique leader to which it belongs.
       } IorC;
    } 
    LC_Extra;
@@ -461,12 +468,18 @@ static OSet*        lr_table;
 // Array of sorted loss record (produced during last leak search).
 static LossRecord** lr_array;
 
+// Value of the heuristics parameter used in the current (or last) leak check.
+static UInt detect_memory_leaks_last_heuristics;
 
 // DeltaMode used the last time we called detect_memory_leaks.
-// The recorded leak errors must be output using a logic based on this delta_mode.
+// The recorded leak errors are output using a logic based on this delta_mode.
 // The below avoids replicating the delta_mode in each LossRecord.
 LeakCheckDeltaMode MC_(detect_memory_leaks_last_delta_mode);
 
+// Each leak search run increments the below generation counter.
+// A used suppression during a leak search will contain this
+// generation number.
+UInt MC_(leak_search_gen);
 
 // Records chunks that are currently being processed.  Each element in the
 // stack is an index into lc_chunks and lc_extras.  Its size is
@@ -481,6 +494,9 @@ static Int  lc_markstack_top;
 // Keeps track of how many bytes of memory we've scanned, for printing.
 // (Nb: We don't keep track of how many register bytes we've scanned.)
 static SizeT lc_scanned_szB;
+// Keeps track of how many bytes we have not scanned due to read errors that
+// caused a signal such as SIGSEGV.
+static SizeT lc_sig_skipped_szB;
 
 
 SizeT MC_(bytes_leaked)     = 0;
@@ -494,6 +510,13 @@ SizeT MC_(blocks_indirect)   = 0;
 SizeT MC_(blocks_dubious)    = 0;
 SizeT MC_(blocks_reachable)  = 0;
 SizeT MC_(blocks_suppressed) = 0;
+
+// Subset of MC_(bytes_reachable) and MC_(blocks_reachable) which
+// are considered reachable due to the corresponding heuristic.
+static SizeT MC_(bytes_heuristically_reachable)[N_LEAK_CHECK_HEURISTICS]
+                                               = {0,0,0,0};
+static SizeT MC_(blocks_heuristically_reachable)[N_LEAK_CHECK_HEURISTICS]
+                                                = {0,0,0,0};
 
 // Determines if a pointer is to a chunk.  Returns the chunk number et al
 // via call-by-reference.
@@ -568,6 +591,190 @@ static Bool lc_pop(Int* ret)
    }
 }
 
+static const HChar* pp_heuristic(LeakCheckHeuristic h)
+{
+   switch(h) {
+   case LchNone:                return "none";
+   case LchStdString:           return "stdstring";
+   case LchNewArray:            return "newarray";
+   case LchMultipleInheritance: return "multipleinheritance";
+   default:                     return "???invalid heuristic???";
+   }
+}
+
+// True if ptr looks like the address of a vtable, i.e. if ptr
+// points to an array of pointers to functions.
+// It is assumed the only caller of this function is heuristic_reachedness
+// which must check that ptr is aligned and above page 0.
+// Checking that ptr is above page 0 is an optimisation : it is assumed
+// that no vtable is located in the page 0. So, all small integer values
+// encountered during the scan will not incur the cost of calling this
+// function.
+static Bool aligned_ptr_above_page0_is_vtable_addr(Addr ptr)
+{
+   // ??? If performance problem:
+   // ??? maybe implement a cache (array indexed by ptr % primenr)
+   // ??? of "I am a vtable ptr" ???
+
+   // ??? Maybe the debug info could (efficiently?) be used to detect vtables ?
+   
+   // We consider ptr as a vtable ptr if it points to a table
+   // where we find only NULL pointers or pointers pointing at an
+   // executable region. We must find at least 2 non NULL pointers
+   // before considering ptr as a vtable pointer.
+   // We scan a maximum of VTABLE_MAX_CHECK words for these 2 non NULL
+   // pointers.
+#define VTABLE_MAX_CHECK 20 
+
+   NSegment const *seg;
+   UInt nr_fn_ptrs = 0;
+   Addr scan;
+   Addr scan_max;
+
+   // First verify ptr points inside a client mapped file section.
+   // ??? is a vtable always in a file mapped readable section ?
+   seg = VG_(am_find_nsegment) (ptr);
+   if (seg == NULL
+       || seg->kind != SkFileC
+       || !seg->hasR)
+      return False;
+
+   // Check potential function pointers, up to a maximum of VTABLE_MAX_CHECK.
+   scan_max = ptr + VTABLE_MAX_CHECK*sizeof(Addr);
+   // If ptr is near the end of seg, avoid scan_max exceeding the end of seg:
+   if (scan_max > seg->end - sizeof(Addr))
+      scan_max = seg->end - sizeof(Addr);
+   for (scan = ptr; scan <= scan_max; scan+=sizeof(Addr)) {
+      Addr pot_fn = *((Addr *)scan);
+      if (pot_fn == 0)
+         continue; // NULL fn pointer. Seems it can happen in vtable.
+      seg = VG_(am_find_nsegment) (pot_fn);
+#if defined(VGA_ppc64)
+      // ppc64 use a thunk table. So, we have one more level of indirection
+      // to follow.
+      if (seg == NULL
+          || seg->kind != SkFileC
+          || !seg->hasR
+          || !seg->hasW)
+         return False; // ptr to nowhere, or not a ptr to thunks.
+      pot_fn = *((Addr *)pot_fn);
+      if (pot_fn == 0)
+         continue; // NULL fn pointer. Seems it can happen in vtable.
+      seg = VG_(am_find_nsegment) (pot_fn);
+#endif
+      if (seg == NULL
+          || seg->kind != SkFileC
+          || !seg->hasT)
+         return False; // ptr to nowhere, or not a fn ptr.
+      nr_fn_ptrs++;
+      if (nr_fn_ptrs == 2)
+         return True;
+   }
+
+   return False;
+}
+
+// If ch is heuristically reachable via an heuristic member of heur_set,
+// returns this heuristic.
+// If ch cannot be considered reachable using one of these heuristics,
+// return LchNone.
+// This should only be called when ptr is an interior ptr to ch.
+// The StdString/NewArray/MultipleInheritance heuristics are directly
+// inspired from DrMemory:
+//  see http://www.burningcutlery.com/derek/docs/drmem-CGO11.pdf [section VI,C]
+//  and bug 280271.
+static LeakCheckHeuristic heuristic_reachedness (Addr ptr,
+                                                 MC_Chunk *ch, LC_Extra *ex,
+                                                 UInt heur_set)
+{
+   if (HiS(LchStdString, heur_set)) {
+      // Detects inner pointers to Std::String for layout being
+      //     length capacity refcount char_array[] \0
+      // where ptr points to the beginning of the char_array.
+      // Note: we check definedness for length and capacity but
+      // not for refcount, as refcount size might be smaller than
+      // a SizeT, giving a uninitialised hole in the first 3 SizeT.
+      if ( ptr == ch->data + 3 * sizeof(SizeT)
+           && MC_(is_valid_aligned_word)(ch->data + sizeof(SizeT))) {
+         const SizeT capacity = *((SizeT*)(ch->data + sizeof(SizeT)));
+         if (3 * sizeof(SizeT) + capacity + 1 == ch->szB
+            && MC_(is_valid_aligned_word)(ch->data)) {
+            const SizeT length = *((SizeT*)ch->data);
+            if (length <= capacity) {
+               // ??? could check there is no null byte from ptr to ptr+length-1
+               // ???    and that there is a null byte at ptr+length.
+               // ???
+               // ??? could check that ch->allockind is MC_AllocNew ???
+               // ??? probably not a good idea, as I guess stdstring
+               // ??? allocator can be done via custom allocator
+               // ??? or even a call to malloc ????
+               return LchStdString;
+            }
+         }
+      }
+   }
+
+   if (HiS(LchNewArray, heur_set)) {
+      // Detects inner pointers at second word of new[] array, following
+      // a plausible nr of elements.
+      // Such inner pointers are used for arrays of elements
+      // having a destructor, as the delete[] of the array must know
+      // how many elements to destroy.
+      //
+      // We have a strange/wrong case for 'ptr = new MyClass[0];' :
+      // For such a case, the returned ptr points just outside the
+      // allocated chunk. This chunk is then seen as a definite
+      // leak by Valgrind, as it is not considered an interior pointer.
+      // It is the c++ equivalent of bug 99923 (malloc(0) wrongly considered
+      // as definitely leaked). See the trick in find_chunk_for handling
+      // 0-sized block. This trick does not work for 'new MyClass[0]'
+      // because a chunk "word-sized" is allocated to store the (0) nr
+      // of elements.
+      if ( ptr == ch->data + sizeof(SizeT)
+           && MC_(is_valid_aligned_word)(ch->data)) {
+         const SizeT nr_elts = *((SizeT*)ch->data);
+         if (nr_elts > 0 && (ch->szB - sizeof(SizeT)) % nr_elts == 0) {
+            // ??? could check that ch->allockind is MC_AllocNewVec ???
+            return LchNewArray;
+         }
+      }
+   }
+
+   if (HiS(LchMultipleInheritance, heur_set)) {
+      // Detect inner pointer used for multiple inheritance.
+      // Assumption is that the vtable pointers are before the object.
+      if (VG_IS_WORD_ALIGNED(ptr)
+          && MC_(is_valid_aligned_word)(ptr)) {
+         Addr first_addr;
+         Addr inner_addr;
+
+         // Avoid the call to is_vtable_addr when the addr is not
+         // aligned or points in the page0, as it is unlikely
+         // a vtable is located in this page. This last optimisation
+         // avoids to call aligned_ptr_above_page0_is_vtable_addr
+         // for all small integers.
+         // Note: we could possibly also avoid calling this function
+         // for small negative integers, as no vtable should be located
+         // in the last page.
+         inner_addr = *((Addr*)ptr);
+         if (VG_IS_WORD_ALIGNED(inner_addr) 
+             && inner_addr >= (Addr)VKI_PAGE_SIZE
+             && MC_(is_valid_aligned_word)(ch->data)) {
+            first_addr = *((Addr*)ch->data);
+            if (VG_IS_WORD_ALIGNED(first_addr)
+                && first_addr >= (Addr)VKI_PAGE_SIZE
+                && aligned_ptr_above_page0_is_vtable_addr(inner_addr)
+                && aligned_ptr_above_page0_is_vtable_addr(first_addr)) {
+               // ??? could check that ch->allockind is MC_AllocNew ???
+               return LchMultipleInheritance;
+            }
+         }
+      }
+   }
+
+   return LchNone;
+}
+
 
 // If 'ptr' is pointing to a heap-allocated block which hasn't been seen
 // before, push it onto the mark stack.
@@ -577,16 +784,40 @@ lc_push_without_clique_if_a_chunk_ptr(Addr ptr, Bool is_prior_definite)
    Int ch_no;
    MC_Chunk* ch;
    LC_Extra* ex;
+   Reachedness ch_via_ptr; // Is ch reachable via ptr, and how ?
 
    if ( ! lc_is_a_chunk_ptr(ptr, &ch_no, &ch, &ex) )
       return;
 
+   if (ex->state == Reachable) {
+      if (ex->heuristic && ptr == ch->data)
+         // If block was considered reachable via an heuristic, and it is now
+         // directly reachable via ptr, clear the heuristic field.
+         ex->heuristic = LchNone;
+      return;
+   }
+   
    // Possibly upgrade the state, ie. one of:
    // - Unreached --> Possible
    // - Unreached --> Reachable 
    // - Possible  --> Reachable
-   if (ptr == ch->data && is_prior_definite && ex->state != Reachable) {
-      // 'ptr' points to the start of the block, and the prior node is
+
+   if (ptr == ch->data)
+      ch_via_ptr = Reachable;
+   else if (detect_memory_leaks_last_heuristics) {
+      ex->heuristic 
+         = heuristic_reachedness (ptr, ch, ex,
+                                  detect_memory_leaks_last_heuristics);
+      if (ex->heuristic)
+         ch_via_ptr = Reachable;
+      else
+         ch_via_ptr = Possible;
+   } else
+      ch_via_ptr = Possible;
+         
+   if (ch_via_ptr == Reachable && is_prior_definite) {
+      // 'ptr' points to the start of the block or is to be considered as
+      // pointing to the start of the block, and the prior node is
       // definite, which means that this block is definitely reachable.
       ex->state = Reachable;
 
@@ -606,7 +837,7 @@ lc_push_without_clique_if_a_chunk_ptr(Addr ptr, Bool is_prior_definite)
 }
 
 static void
-lc_push_if_a_chunk_ptr_register(ThreadId tid, HChar* regname, Addr ptr)
+lc_push_if_a_chunk_ptr_register(ThreadId tid, const HChar* regname, Addr ptr)
 {
    lc_push_without_clique_if_a_chunk_ptr(ptr, /*is_prior_definite*/True);
 }
@@ -657,7 +888,8 @@ lc_push_with_clique_if_a_chunk_ptr(Addr ptr, Int clique, Int cur_clique)
 }
 
 static void
-lc_push_if_a_chunk_ptr(Addr ptr, Int clique, Int cur_clique, Bool is_prior_definite)
+lc_push_if_a_chunk_ptr(Addr ptr,
+                       Int clique, Int cur_clique, Bool is_prior_definite)
 {
    if (-1 == clique) 
       lc_push_without_clique_if_a_chunk_ptr(ptr, is_prior_definite);
@@ -667,14 +899,17 @@ lc_push_if_a_chunk_ptr(Addr ptr, Int clique, Int cur_clique, Bool is_prior_defin
 
 
 static VG_MINIMAL_JMP_BUF(memscan_jmpbuf);
+static volatile Addr bad_scanned_addr;
 
 static
 void scan_all_valid_memory_catcher ( Int sigNo, Addr addr )
 {
    if (0)
       printf("OUCH! sig=%d addr=%#lx\n", sigNo, addr);
-   if (sigNo == VKI_SIGSEGV || sigNo == VKI_SIGBUS)
+   if (sigNo == VKI_SIGSEGV || sigNo == VKI_SIGBUS) {
+      bad_scanned_addr = addr; 
       VG_MINIMAL_LONGJMP(memscan_jmpbuf);
+   }
 }
 
 // lc_scan_memory has 2 modes:
@@ -703,11 +938,12 @@ void scan_all_valid_memory_catcher ( Int sigNo, Addr addr )
 // 2. Search ptr mode (searched != 0).
 // -----------------------------------
 // In this mode, searches for pointers to a specific address range 
-// In such a case, lc_scan_memory just scans [start..start+len[ for pointers to searched
-// and outputs the places where searched is found. It does not recursively scans the
-// found memory.
+// In such a case, lc_scan_memory just scans [start..start+len[ for pointers
+// to searched and outputs the places where searched is found.
+// It does not recursively scans the found memory.
 static void
-lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite, Int clique, Int cur_clique,
+lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
+               Int clique, Int cur_clique,
                Addr searched, SizeT szB)
 {
    /* memory scan is based on the assumption that valid pointers are aligned
@@ -715,8 +951,13 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite, Int clique, Int cu
       end portions of the block if they are not aligned on sizeof(Addr):
       These cannot be a valid pointer, and calls to MC_(is_valid_aligned_word)
       will assert for a non aligned address. */
+#if defined(VGA_s390x)
+   // Define ptr as volatile, as on this platform, the value of ptr
+   // is read in code executed via a longjmp.
+   volatile
+#endif
    Addr ptr = VG_ROUNDUP(start,     sizeof(Addr));
-   Addr end = VG_ROUNDDN(start+len, sizeof(Addr));
+   const Addr end = VG_ROUNDDN(start+len, sizeof(Addr));
    vki_sigset_t sigmask;
 
    if (VG_DEBUG_LEAKCHECK)
@@ -746,10 +987,40 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite, Int clique, Int cu
       // if not, skip onto the next page.
       ptr = VG_PGROUNDUP(ptr+1);        // First page is bad - skip it.
    }
-   /* This optimisation and below loop is based on some relationships between
-      VKI_PAGE_SIZE, SM_SIZE and sizeof(Addr) which are asserted in
+   /* The above optimisation and below loop is based on some relationships
+      between VKI_PAGE_SIZE, SM_SIZE and sizeof(Addr) which are asserted in
       MC_(detect_memory_leaks). */
 
+   // During scan, we check with aspacemgr that each page is readable and
+   // belongs to client.
+   // We still protect against SIGSEGV and SIGBUS e.g. in case aspacemgr is
+   // desynchronised with the real page mappings.
+   // Such a desynchronisation could happen due to an aspacemgr bug.
+   // Note that if the application is using mprotect(NONE), then
+   // a page can be unreadable but have addressable and defined
+   // VA bits (see mc_main.c function mc_new_mem_mprotect).
+   if (VG_MINIMAL_SETJMP(memscan_jmpbuf) != 0) {
+      // Catch read error ...
+      // We need to restore the signal mask, because we were
+      // longjmped out of a signal handler.
+      VG_(sigprocmask)(VKI_SIG_SETMASK, &sigmask, NULL);
+#     if defined(VGA_s390x)
+      // For a SIGSEGV, s390 delivers the page address of the bad address.
+      // For a SIGBUS, old s390 kernels deliver a NULL address.
+      // bad_scanned_addr can thus not be used.
+      // So, on this platform, we always skip a full page from ptr.
+      // The below implies to mark ptr as volatile, as we read the value
+      // after a longjmp to here.
+      lc_sig_skipped_szB += VKI_PAGE_SIZE;
+      ptr = ptr + VKI_PAGE_SIZE; // Unaddressable, - skip it.
+#     else
+      // On other platforms, just skip one Addr.
+      lc_sig_skipped_szB += sizeof(Addr);
+      tl_assert(bad_scanned_addr >= VG_ROUNDUP(start, sizeof(Addr)));
+      tl_assert(bad_scanned_addr < VG_ROUNDDN(start+len, sizeof(Addr)));
+      ptr = bad_scanned_addr + sizeof(Addr); // Unaddressable, - skip it.
+#endif
+   }
    while (ptr < end) {
       Addr addr;
 
@@ -767,40 +1038,42 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite, Int clique, Int cu
             ptr += VKI_PAGE_SIZE;      // Bad page - skip it.
             continue;
          }
-         // aspacemgr indicates the page is readable and belongs to client.
-         // We still probe the page explicitely in case aspacemgr is
-         // desynchronised with the real page mappings.
-         // Such a desynchronisation can happen due to an aspacemgr bug.
-         // Note that if the application is using mprotect(NONE), then
-         // a page can be unreadable but have addressable and defined
-         // VA bits (see mc_main.c function mc_new_mem_mprotect).
-         if (VG_MINIMAL_SETJMP(memscan_jmpbuf) == 0) {
-            // Try a read in the beginning of the page ...
-            Addr test = *(volatile Addr *)ptr;
-            __asm__ __volatile__("": :"r"(test) : "cc","memory");
-         } else {
-            // Catch read error ...
-            // We need to restore the signal mask, because we were
-            // longjmped out of a signal handler.
-            VG_(sigprocmask)(VKI_SIG_SETMASK, &sigmask, NULL);
-            ptr += VKI_PAGE_SIZE;      // Bad page - skip it.
-            continue;
-         }
       }
 
          if ( MC_(is_valid_aligned_word)(ptr) ) {
             lc_scanned_szB += sizeof(Addr);
+         // If the below read fails, we will longjmp to the loop begin.
             addr = *(Addr *)ptr;
             // If we get here, the scanned word is in valid memory.  Now
             // let's see if its contents point to a chunk.
          if (UNLIKELY(searched)) {
             if (addr >= searched && addr < searched + szB) {
-               if (addr == searched)
+               if (addr == searched) {
                   VG_(umsg)("*%#lx points at %#lx\n", ptr, searched);
-               else
+                  MC_(pp_describe_addr) (ptr);
+               } else {
+                  Int ch_no;
+                  MC_Chunk *ch;
+                  LC_Extra *ex;
                   VG_(umsg)("*%#lx interior points at %lu bytes inside %#lx\n",
                             ptr, (long unsigned) addr - searched, searched);
                MC_(pp_describe_addr) (ptr);
+                  if (lc_is_a_chunk_ptr(addr, &ch_no, &ch, &ex) ) {
+                     Int h;
+                     for (h = LchStdString; h <= LchMultipleInheritance; h++) {
+                        if (heuristic_reachedness(addr, ch, ex, H2S(h)) == h) {
+                           VG_(umsg)("block at %#lx considered reachable "
+                                     "by ptr %#lx using %s heuristic\n",
+                                     ch->data, addr, pp_heuristic(h));
+                        }
+                     }
+                     // Verify the loop above has properly scanned all
+                     // heuristics. If the below fails, it probably means the
+                     // LeakCheckHeuristic enum is not in sync anymore with the
+                     // above loop and/or with N_LEAK_CHECK_HEURISTICS.
+                     tl_assert (h == N_LEAK_CHECK_HEURISTICS);
+                  }
+               }
             }
          } else {
             lc_push_if_a_chunk_ptr(addr, clique, cur_clique, is_prior_definite);
@@ -836,8 +1109,8 @@ static void lc_process_markstack(Int clique)
 
 static Word cmp_LossRecordKey_LossRecord(const void* key, const void* elem)
 {
-   LossRecordKey* a = (LossRecordKey*)key;
-   LossRecordKey* b = &(((LossRecord*)elem)->key);
+   const LossRecordKey* a = key;
+   const LossRecordKey* b = &(((const LossRecord*)elem)->key);
 
    // Compare on states first because that's fast.
    if (a->state < b->state) return -1;
@@ -852,10 +1125,10 @@ static Word cmp_LossRecordKey_LossRecord(const void* key, const void* elem)
    VG_(tool_panic)("bad LossRecord comparison");
 }
 
-static Int cmp_LossRecords(void* va, void* vb)
+static Int cmp_LossRecords(const void* va, const void* vb)
 {
-   LossRecord* lr_a = *(LossRecord**)va;
-   LossRecord* lr_b = *(LossRecord**)vb;
+   const LossRecord* lr_a = *(const LossRecord *const *)va;
+   const LossRecord* lr_b = *(const LossRecord *const *)vb;
    SizeT total_szB_a = lr_a->szB + lr_a->indirect_szB;
    SizeT total_szB_b = lr_b->szB + lr_b->indirect_szB;
 
@@ -908,14 +1181,8 @@ static void get_printing_rules(LeakCheckParams* lcp,
    // Rules for printing:
    // - We don't show suppressed loss records ever (and that's controlled
    //   within the error manager).
-   // - We show non-suppressed loss records that are not "reachable" if 
-   //   --leak-check=yes.
-   // - We show all non-suppressed loss records if --leak-check=yes and
-   //   --show-reachable=yes.
-   //
-   // Nb: here "reachable" means Reachable *or* IndirectLeak;  note that
-   // this is different to "still reachable" used elsewhere because it
-   // includes indirectly lost blocks!
+   // - We show non-suppressed loss records that are specified in
+   //   --show-leak-kinds=... if --leak-check=yes.
 
    Bool delta_considered;
 
@@ -938,20 +1205,14 @@ static void get_printing_rules(LeakCheckParams* lcp,
       tl_assert(0);
    }
 
-   *print_record = lcp->mode == LC_Full && delta_considered &&
-      ( lcp->show_reachable ||
-        Unreached == lr->key.state || 
-        ( lcp->show_possibly_lost && 
-          Possible  == lr->key.state ) );
+   *print_record = lcp->mode == LC_Full && delta_considered 
+      && RiS(lr->key.state,lcp->show_leak_kinds);
    // We don't count a leaks as errors with lcp->mode==LC_Summary.
    // Otherwise you can get high error counts with few or no error
-   // messages, which can be confusing.  Also, you could argue that
-   // indirect leaks should be counted as errors, but it seems better to
-   // make the counting criteria similar to the printing criteria.  So we
-   // don't count them.
-   *count_as_error = lcp->mode == LC_Full && delta_considered &&
-      ( Unreached == lr->key.state || 
-        Possible  == lr->key.state );
+   // messages, which can be confusing.  Otherwise, we count as errors
+   // the leak kinds requested by --errors-for-leak-kinds=...
+   *count_as_error = lcp->mode == LC_Full && delta_considered 
+      && RiS(lr->key.state,lcp->errors_for_leak_kinds);
 }
 
 static void print_results(ThreadId tid, LeakCheckParams* lcp)
@@ -959,7 +1220,8 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    Int          i, n_lossrecords, start_lr_output_scan;
    LossRecord*  lr;
    Bool         is_suppressed;
-   SizeT        old_bytes_leaked      = MC_(bytes_leaked); /* to report delta in summary */
+   /* old_* variables are used to report delta in summary.  */
+   SizeT        old_bytes_leaked      = MC_(bytes_leaked);
    SizeT        old_bytes_indirect    = MC_(bytes_indirect); 
    SizeT        old_bytes_dubious     = MC_(bytes_dubious); 
    SizeT        old_bytes_reachable   = MC_(bytes_reachable); 
@@ -969,6 +1231,18 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    SizeT        old_blocks_dubious    = MC_(blocks_dubious);
    SizeT        old_blocks_reachable  = MC_(blocks_reachable);
    SizeT        old_blocks_suppressed = MC_(blocks_suppressed);
+
+   SizeT old_bytes_heuristically_reachable[N_LEAK_CHECK_HEURISTICS];
+   SizeT old_blocks_heuristically_reachable[N_LEAK_CHECK_HEURISTICS];
+
+   for (i = 0; i < N_LEAK_CHECK_HEURISTICS; i++) {
+      old_bytes_heuristically_reachable[i]   
+         =  MC_(bytes_heuristically_reachable)[i];
+      MC_(bytes_heuristically_reachable)[i] = 0;
+      old_blocks_heuristically_reachable[i]  
+         =  MC_(blocks_heuristically_reachable)[i];
+      MC_(blocks_heuristically_reachable)[i] = 0;
+   }
 
    if (lr_table == NULL)
    // Create the lr_table, which holds the loss records.
@@ -1013,7 +1287,16 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
       LossRecord*   old_lr;
       LossRecordKey lrkey;
       lrkey.state        = ex->state;
-      lrkey.allocated_at = ch->where;
+      lrkey.allocated_at = MC_(allocated_at)(ch);
+
+     if (ex->heuristic) {
+        MC_(bytes_heuristically_reachable)[ex->heuristic] += ch->szB;
+        MC_(blocks_heuristically_reachable)[ex->heuristic]++;
+        if (VG_DEBUG_LEAKCHECK)
+           printf("heuristic %s %#lx len %lu\n",
+                       pp_heuristic(ex->heuristic),
+                       ch->data, (unsigned long)ch->szB);
+     }
 
       old_lr = VG_(OSetGen_Lookup)(lr_table, &lrkey);
       if (old_lr) {
@@ -1118,56 +1401,81 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    }
 
    if (VG_(clo_verbosity) > 0 && !VG_(clo_xml)) {
-      char d_bytes[20];
-      char d_blocks[20];
+      HChar d_bytes[20];
+      HChar d_blocks[20];
+#     define DBY(new,old) \
+      MC_(snprintf_delta) (d_bytes, 20, (new), (old), lcp->deltamode)
+#     define DBL(new,old) \
+      MC_(snprintf_delta) (d_blocks, 20, (new), (old), lcp->deltamode)
 
       VG_(umsg)("LEAK SUMMARY:\n");
       VG_(umsg)("   definitely lost: %'lu%s bytes in %'lu%s blocks\n",
                 MC_(bytes_leaked), 
-                MC_(snprintf_delta) (d_bytes, 20, MC_(bytes_leaked), old_bytes_leaked, lcp->deltamode),
+                DBY (MC_(bytes_leaked), old_bytes_leaked),
                 MC_(blocks_leaked),
-                MC_(snprintf_delta) (d_blocks, 20, MC_(blocks_leaked), old_blocks_leaked, lcp->deltamode));
+                DBL (MC_(blocks_leaked), old_blocks_leaked));
       VG_(umsg)("   indirectly lost: %'lu%s bytes in %'lu%s blocks\n",
                 MC_(bytes_indirect), 
-                MC_(snprintf_delta) (d_bytes, 20, MC_(bytes_indirect), old_bytes_indirect, lcp->deltamode),
+                DBY (MC_(bytes_indirect), old_bytes_indirect),
                 MC_(blocks_indirect),
-                MC_(snprintf_delta) (d_blocks, 20, MC_(blocks_indirect), old_blocks_indirect, lcp->deltamode) );
+                DBL (MC_(blocks_indirect), old_blocks_indirect));
       VG_(umsg)("     possibly lost: %'lu%s bytes in %'lu%s blocks\n",
                 MC_(bytes_dubious), 
-                MC_(snprintf_delta) (d_bytes, 20, MC_(bytes_dubious), old_bytes_dubious, lcp->deltamode), 
+                DBY (MC_(bytes_dubious), old_bytes_dubious), 
                 MC_(blocks_dubious),
-                MC_(snprintf_delta) (d_blocks, 20, MC_(blocks_dubious), old_blocks_dubious, lcp->deltamode) );
+                DBL (MC_(blocks_dubious), old_blocks_dubious));
       VG_(umsg)("   still reachable: %'lu%s bytes in %'lu%s blocks\n",
                 MC_(bytes_reachable), 
-                MC_(snprintf_delta) (d_bytes, 20, MC_(bytes_reachable), old_bytes_reachable, lcp->deltamode), 
+                DBY (MC_(bytes_reachable), old_bytes_reachable), 
                 MC_(blocks_reachable),
-                MC_(snprintf_delta) (d_blocks, 20, MC_(blocks_reachable), old_blocks_reachable, lcp->deltamode) );
+                DBL (MC_(blocks_reachable), old_blocks_reachable));
+      for (i = 0; i < N_LEAK_CHECK_HEURISTICS; i++)
+         if (old_blocks_heuristically_reachable[i] > 0 
+             || MC_(blocks_heuristically_reachable)[i] > 0) {
+            VG_(umsg)("                      of which "
+                      "reachable via heuristic:\n");
+            break;
+         }
+      for (i = 0; i < N_LEAK_CHECK_HEURISTICS; i++)
+         if (old_blocks_heuristically_reachable[i] > 0 
+             || MC_(blocks_heuristically_reachable)[i] > 0)
+            VG_(umsg)("                        %19s: "
+                      "%'lu%s bytes in %'lu%s blocks\n",
+                      pp_heuristic(i),
+                      MC_(bytes_heuristically_reachable)[i], 
+                      DBY (MC_(bytes_heuristically_reachable)[i],
+                           old_bytes_heuristically_reachable[i]), 
+                      MC_(blocks_heuristically_reachable)[i],
+                      DBL (MC_(blocks_heuristically_reachable)[i],
+                           old_blocks_heuristically_reachable[i]));
       VG_(umsg)("        suppressed: %'lu%s bytes in %'lu%s blocks\n",
                 MC_(bytes_suppressed), 
-                MC_(snprintf_delta) (d_bytes, 20, MC_(bytes_suppressed), old_bytes_suppressed, lcp->deltamode), 
+                DBY (MC_(bytes_suppressed), old_bytes_suppressed), 
                 MC_(blocks_suppressed),
-                MC_(snprintf_delta) (d_blocks, 20, MC_(blocks_suppressed), old_blocks_suppressed, lcp->deltamode) );
+                DBL (MC_(blocks_suppressed), old_blocks_suppressed));
       if (lcp->mode != LC_Full &&
           (MC_(blocks_leaked) + MC_(blocks_indirect) +
            MC_(blocks_dubious) + MC_(blocks_reachable)) > 0) {
          if (lcp->requested_by_monitor_command)
-            VG_(umsg)("To see details of leaked memory, give 'full' arg to leak_check\n");
+            VG_(umsg)("To see details of leaked memory, "
+                      "give 'full' arg to leak_check\n");
          else
          VG_(umsg)("Rerun with --leak-check=full to see details "
                    "of leaked memory\n");
       }
       if (lcp->mode == LC_Full &&
-          MC_(blocks_reachable) > 0 && !lcp->show_reachable)
-      {
+          MC_(blocks_reachable) > 0 && !RiS(Reachable,lcp->show_leak_kinds)) {
          VG_(umsg)("Reachable blocks (those to which a pointer "
                    "was found) are not shown.\n");
          if (lcp->requested_by_monitor_command)
             VG_(umsg)("To see them, add 'reachable any' args to leak_check\n");
          else
          VG_(umsg)("To see them, rerun with: --leak-check=full "
-                   "--show-reachable=yes\n");
+                      "--show-leak-kinds=all\n");
       }
       VG_(umsg)("\n");
+      #undef DBL
+      #undef DBY
    }
 }
 
@@ -1181,13 +1489,14 @@ static void print_clique (Int clique, UInt level)
 
    for (ind = 0; ind < lc_n_chunks; ind++) {
       LC_Extra*     ind_ex = &(lc_extras)[ind];
-      if (ind_ex->state == IndirectLeak && ind_ex->IorC.clique == (SizeT) clique) {
+      if (ind_ex->state == IndirectLeak 
+          && ind_ex->IorC.clique == (SizeT) clique) {
          MC_Chunk*    ind_ch = lc_chunks[ind];
          LossRecord*  ind_lr;
          LossRecordKey ind_lrkey;
          Int lr_i;
          ind_lrkey.state = ind_ex->state;
-         ind_lrkey.allocated_at = ind_ch->where;
+         ind_lrkey.allocated_at = MC_(allocated_at)(ind_ch);
          ind_lr = VG_(OSetGen_Lookup)(lr_table, &ind_lrkey);
          for (lr_i = 0; lr_i < n_lossrecords; lr_i++)
             if (ind_lr == lr_array[lr_i])
@@ -1239,12 +1548,12 @@ Bool MC_(print_block_list) ( UInt loss_record_nr)
       LossRecord*   old_lr;
       LossRecordKey lrkey;
       lrkey.state        = ex->state;
-      lrkey.allocated_at = ch->where;
+      lrkey.allocated_at = MC_(allocated_at)(ch);
 
       old_lr = VG_(OSetGen_Lookup)(lr_table, &lrkey);
       if (old_lr) {
          // We found an existing loss record matching this chunk.
-         // If this is the loss record we are looking for, then output the pointer.
+         // If this is the loss record we are looking for, output the pointer.
          if (old_lr == lr_array[loss_record_nr]) {
             VG_(umsg)("%p[%lu]\n",
                       (void *)ch->data, (unsigned long) ch->szB);
@@ -1269,8 +1578,8 @@ Bool MC_(print_block_list) ( UInt loss_record_nr)
 
 // If searched = 0, scan memory root set, pushing onto the mark stack the blocks
 // encountered.
-// Otherwise (searched != 0), scan the memory root set searching for ptr pointing
-// inside [searched, searched+szB[.
+// Otherwise (searched != 0), scan the memory root set searching for ptr
+// pointing inside [searched, searched+szB[.
 static void scan_memory_root_set(Addr searched, SizeT szB)
 {
    Int   i;
@@ -1280,6 +1589,7 @@ static void scan_memory_root_set(Addr searched, SizeT szB)
    tl_assert(seg_starts && n_seg_starts > 0);
 
    lc_scanned_szB = 0;
+   lc_sig_skipped_szB = 0;
 
    // VG_(am_show_nsegments)( 0, "leakcheck");
    for (i = 0; i < n_seg_starts; i++) {
@@ -1296,7 +1606,7 @@ static void scan_memory_root_set(Addr searched, SizeT szB)
       // memory by explicitly mapping /dev/zero.
       if (seg->kind == SkFileC 
           && (VKI_S_ISCHR(seg->mode) || VKI_S_ISBLK(seg->mode))) {
-         HChar* dev_name = VG_(am_get_filename)( (NSegment*)seg );
+         HChar* dev_name = VG_(am_get_filename)( seg );
          if (dev_name && 0 == VG_(strcmp)(dev_name, "/dev/zero")) {
             // Don't skip /dev/zero.
          } else {
@@ -1342,8 +1652,9 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
    // before checking for (smaller) page skipping.
    tl_assert((SM_SIZE % VKI_PAGE_SIZE) == 0);
 
-
+   MC_(leak_search_gen)++;
    MC_(detect_memory_leaks_last_delta_mode) = lcp->deltamode;
+   detect_memory_leaks_last_heuristics = lcp->heuristics;
 
    // Get the chunks, stop if there were none.
    if (lc_chunks) {
@@ -1432,9 +1743,9 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
          VG_(umsg)("Block 0x%lx..0x%lx overlaps with block 0x%lx..0x%lx\n",
                    start1, end1, start2, end2);
          VG_(umsg)("Blocks allocation contexts:\n"),
-         VG_(pp_ExeContext)( ch1->where);
+         VG_(pp_ExeContext)( MC_(allocated_at)(ch1));
          VG_(umsg)("\n"),
-         VG_(pp_ExeContext)( ch2->where);
+         VG_(pp_ExeContext)(  MC_(allocated_at)(ch2));
          VG_(umsg)("This is usually caused by using VALGRIND_MALLOCLIKE_BLOCK");
          VG_(umsg)("in an inappropriate way.\n");
          tl_assert (0);
@@ -1450,6 +1761,7 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
    for (i = 0; i < lc_n_chunks; i++) {
       lc_extras[i].state        = Unreached;
       lc_extras[i].pending      = False;
+      lc_extras[i].heuristic = LchNone;
       lc_extras[i].IorC.indirect_szB = 0;
    }
 
@@ -1479,6 +1791,9 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
 
    if (VG_(clo_verbosity) > 1 && !VG_(clo_xml)) {
       VG_(umsg)("Checked %'lu bytes\n", lc_scanned_szB);
+      if (lc_sig_skipped_szB > 0)
+         VG_(umsg)("Skipped %'lu bytes due to read errors\n",
+                   lc_sig_skipped_szB);
       VG_(umsg)( "\n" );
    }
 
@@ -1524,7 +1839,7 @@ void MC_(detect_memory_leaks) ( ThreadId tid, LeakCheckParams* lcp)
 static Addr searched_wpa;
 static SizeT searched_szB;
 static void
-search_address_in_GP_reg(ThreadId tid, HChar* regname, Addr addr_in_reg)
+search_address_in_GP_reg(ThreadId tid, const HChar* regname, Addr addr_in_reg)
 {
    if (addr_in_reg >= searched_wpa 
        && addr_in_reg < searched_wpa + searched_szB) {
@@ -1552,11 +1867,12 @@ void MC_(who_points_at) ( Addr address, SizeT szB)
       VG_(umsg) ("Searching for pointers pointing in %lu bytes from %#lx\n",
                  szB, address);
 
+   chunks = find_active_chunks(&n_chunks);
+
    // Scan memory root-set, searching for ptr pointing in address[szB]
    scan_memory_root_set(address, szB);
 
    // Scan active malloc-ed chunks
-   chunks = find_active_chunks(&n_chunks);
    for (i = 0; i < n_chunks; i++) {
       lc_scan_memory(chunks[i]->data, chunks[i]->szB,
                      /*is_prior_definite*/True,

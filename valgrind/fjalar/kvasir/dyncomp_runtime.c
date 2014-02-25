@@ -538,7 +538,7 @@ int DC_get_comp_number_for_var(DaikonFunctionEntry* funcPtr,
 }
 
 static TraversalResult dyncompExtraPropAction(VariableEntry* var,
-                                              char* varName,
+                                              const HChar* varName,
                                               VariableOrigin varOrigin,
                                               UInt numDereferences,
                                               UInt layersBeforeBase,

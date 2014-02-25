@@ -115,7 +115,7 @@ void visitClassMemberVariables(VisitArgs* args);
 // the performAction parameter to visitVariable:
 /*
 TraversalResult performAction(VariableEntry* var,
-                              char* varName,
+                              const HChar* varName,
                               VariableOrigin varOrigin,
                               UInt numDereferences,
                               UInt layersBeforeBase,
@@ -137,11 +137,11 @@ TraversalResult performAction(VariableEntry* var,
 
 // Symbols for Fjalar variable names that are created by concatenating
 // together struct, array, and field names:
-char* DEREFERENCE = "[]";
-char* ZEROTH_ELT = "[0]";
-char* DOT = ".";
-char* ARROW = "->";
-char* STAR = "*";
+const HChar* DEREFERENCE = "[]";
+const HChar* ZEROTH_ELT = "[0]";
+const HChar* DOT = ".";
+const HChar* ARROW = "->";
+const HChar* STAR = "*";
 
 // This stack represents the full name of the variable that we
 // currently want to output (Only puts REFERENCES to strings in
@@ -163,7 +163,7 @@ StringStack fullNameStack = { {0,}, 0};
 // may contain something like: {"foo", "foo->bar"}.
 StringStack enclosingVarNamesStack = { {0,}, 0};
 
-void stringStackPush(StringStack *stack, char* str)
+void stringStackPush(StringStack *stack, const HChar* str)
 {
   tl_assert(str && stack->size < MAX_STRING_STACK_SIZE);
 
@@ -178,9 +178,9 @@ void stringStackPush(StringStack *stack, char* str)
   stack->size++;
 }
 
-char* stringStackPop(StringStack *stack)
+const HChar* stringStackPop(StringStack *stack)
 {
-  char* temp;
+  const HChar* temp;
   tl_assert(stack->size > 0);
 
   temp = stack->stack[stack->size - 1];
@@ -189,7 +189,7 @@ char* stringStackPop(StringStack *stack)
   return temp;
 }
 
-char* stringStackTop(StringStack *stack)
+const HChar* stringStackTop(StringStack *stack)
 {
   return stack->stack[stack->size - 1];
 }
@@ -223,7 +223,7 @@ void stringStackPrint(StringStack *stack)
 // Takes all of the strings on stringStack, copies them into a newly
 // calloc'ed string (in a queue-like FIFO order), and returns a
 // pointer to that string.
-char* stringStackStrdup(StringStack *stack)
+const HChar* stringStackStrdup(StringStack *stack)
 {
   // Extra 1 for trailing '\0'
   int totalStrLen = stringStackStrLen(stack) + 1;
@@ -245,7 +245,7 @@ void visitClassMembersNoValues(TypeEntry* class,
 			       TraversalAction *performAction) {
 
   VisitArgs new_args;
-  char *fullFjalarName = NULL, *top = NULL;
+  const HChar *fullFjalarName = NULL, *top = NULL;
 
   if (VisitedStructsTable) {
     genfreehashtable(VisitedStructsTable);
@@ -302,7 +302,7 @@ void visitClassMembersNoValues(TypeEntry* class,
 
   if (fullFjalarName) {
     stringStackPop(&enclosingVarNamesStack);
-    VG_(free)(fullFjalarName);
+    VG_(free)((void*)fullFjalarName);
   }
 }
 
@@ -330,7 +330,7 @@ void visitClassMemberVariables(VisitArgs* args) {
 
   VisitArgs new_args;
 
-  char* fullFjalarName = NULL;
+  const HChar* fullFjalarName = NULL;
 
   tl_assert(((class->decType == D_STRUCT_CLASS) || (class->decType == D_UNION)) &&
             IS_AGGREGATE_TYPE(class));
@@ -372,7 +372,7 @@ void visitClassMemberVariables(VisitArgs* args) {
          i = i->next) {
       VariableEntry* curVar = i->var;
 
-      char* top = NULL;
+      const HChar* top = NULL;
       char numEltsPushedOnStack = 0;
 
       // Address of the value of the current member variable (only
@@ -735,7 +735,7 @@ void visitClassMemberVariables(VisitArgs* args) {
       Addr* superclassOffsetPtrValues = NULL;
       Addr* superclassOffsetPtrValuesGuest = NULL;
 
-      char* top = NULL;
+      const HChar* top = NULL;
       char numEltsPushedOnStack = 0;
 
       Superclass* curSuper = (Superclass*)(n->elt);
@@ -835,7 +835,7 @@ void visitClassMemberVariables(VisitArgs* args) {
   }
 
   if (fullFjalarName) {
-    VG_(free)(fullFjalarName);
+    VG_(free)((void*)fullFjalarName);
   }
 
   // TODO: Visit static member variables (remember that they have
@@ -1337,7 +1337,7 @@ void visitReturnValue(FunctionExecutionState* e,
 // an array, then if the hashcode value of 'foo' is not visited, then
 // the actual array value of 'foo[]' won't be visited either.
 // This performs string matching in trace_vars_tree based on fullFjalarName
-static char interestedInVar(char* fullFjalarName, char* trace_vars_tree) {
+static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) {
   if (fjalar_trace_vars_filename) {
     if (trace_vars_tree) {
       //      printf("Checking if %s is in var list\n", fullFjalarName);
@@ -1480,7 +1480,7 @@ void visitSingleVar(VisitArgs* args) {
 
   VisitArgs new_args;
 
-  char* fullFjalarName = NULL;
+  const HChar* fullFjalarName = NULL;
   int layersBeforeBase;
 
   // Initialize these in a group later
@@ -1607,7 +1607,7 @@ void visitSingleVar(VisitArgs* args) {
 
       // Punt!
       if (tResult == STOP_TRAVERSAL) {
-	VG_(free)(fullFjalarName);
+	VG_(free)((void*)fullFjalarName);
 	return;
       }
     }
@@ -1838,7 +1838,7 @@ void visitSingleVar(VisitArgs* args) {
   // dereferences have been done (layersBeforeBase == 0), thenSvisit
   // all derived member variables:
   else if (IS_AGGREGATE_TYPE(var->varType)) {
-    char* top = NULL;
+    const HChar* top = NULL;
 
     tl_assert(0 == layersBeforeBase);
 
@@ -1891,7 +1891,7 @@ void visitSingleVar(VisitArgs* args) {
 
   }
   if (fullFjalarName)
-    VG_(free)(fullFjalarName);
+    VG_(free)((void*)fullFjalarName);
 }
 
 
@@ -1919,7 +1919,7 @@ void visitSequence(VisitArgs* args) {
 
   VisitArgs new_args;
 
-  char* fullFjalarName = NULL;
+  const HChar* fullFjalarName = NULL;
   int layersBeforeBase;
 
   TraversalResult tResult = INVALID_RESULT;
@@ -2038,7 +2038,7 @@ void visitSequence(VisitArgs* args) {
 
       // Punt!
       if (tResult == STOP_TRAVERSAL) {
-	VG_(free)(fullFjalarName);
+	VG_(free)((void*)fullFjalarName);
 	return;
       }
     }
@@ -2177,5 +2177,5 @@ void visitSequence(VisitArgs* args) {
 
   }
   if (fullFjalarName)
-    VG_(free)(fullFjalarName);
+    VG_(free)((void*)fullFjalarName);
 }

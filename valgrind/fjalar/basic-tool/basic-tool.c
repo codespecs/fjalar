@@ -22,7 +22,7 @@ void fjalar_tool_print_usage() {
 }
 
 // Processes command-line options:
-Bool fjalar_tool_process_cmd_line_option(Char* arg) {
+Bool fjalar_tool_process_cmd_line_option(const HChar* arg) {
   // Return false because we have no options to process
   return False;
 }
