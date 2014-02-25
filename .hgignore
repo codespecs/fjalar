@@ -47,7 +47,9 @@ valgrind/docs/print
 *.so
 
 # Ignore generated test drivers
+.dirstamp
 .in_place
+auxprogs/valgrind-di-server
 auxprogs/valgrind-listener
 cachegrind/cachegrind_annotate
 cachegrind/cg_annotate
@@ -79,6 +81,7 @@ drd/tests/atomic_var
 drd/tests/boost_thread
 drd/tests/bug-235681
 drd/tests/circular_buffer
+drd/tests/concurrent_close
 drd/tests/custom_alloc
 drd/tests/fp_race
 drd/tests/free_is_write
@@ -98,6 +101,7 @@ drd/tests/pth_barrier_thr_cr
 drd/tests/pth_broadcast
 drd/tests/pth_cancel_locked
 drd/tests/pth_cleanup_handler
+drd/tests/pth_cond_destroy_busy
 drd/tests/pth_cond_race
 drd/tests/pth_create_chain
 drd/tests/pth_detached
@@ -116,6 +120,8 @@ drd/tests/sem_as_mutex
 drd/tests/sem_open
 drd/tests/sem_wait
 drd/tests/sigalrm
+drd/tests/std_list
+drd/tests/std_string
 drd/tests/std_thread
 drd/tests/threaded-fork
 drd/tests/thread_name
@@ -140,12 +146,17 @@ exp-sgcheck/tests/stackerr
 gdbserver_tests/clean_after_fork
 gdbserver_tests/fork_chain
 gdbserver_tests/garbage
+gdbserver_tests/garbage.filtered.out
 gdbserver_tests/gdb*
+gdbserver_tests/gone
 gdbserver_tests/main_pic
+gdbserver_tests/massif.vgdb.out
 gdbserver_tests/mcinfcall
 gdbserver_tests/mcmain
 gdbserver_tests/passsigalrm
 gdbserver_tests/progB
+gdbserver_tests/progB.done
+gdbserver_tests/self_invalidate
 gdbserver_tests/sleepers
 gdbserver_tests/t
 gdbserver_tests/vgdb*
@@ -154,6 +165,7 @@ helgrind/tests/annotate_hbefore
 helgrind/tests/annotate_rwlock
 helgrind/tests/bar_bad
 helgrind/tests/bar_trivial
+helgrind/tests/cond_init_destroy
 helgrind/tests/cond_timedwait_invalid
 helgrind/tests/free_is_write
 helgrind/tests/hg01_all_ok
@@ -220,9 +232,14 @@ memcheck/tests/amd64/bt_everything
 memcheck/tests/amd64/bug132146
 memcheck/tests/amd64/bug279698
 memcheck/tests/amd64/fxsave-amd64
+memcheck/tests/amd64/insn-bsfl
+memcheck/tests/amd64/insn-pcmpistri
+memcheck/tests/amd64/insn-pmovmskb
 memcheck/tests/amd64-linux/defcfaexpr
 memcheck/tests/amd64-linux/int3-amd64
 memcheck/tests/amd64/more_x87_fp
+memcheck/tests/amd64/sh-mem-vec128
+memcheck/tests/amd64/sh-mem-vec256
 memcheck/tests/amd64/sse_memory
 memcheck/tests/amd64/xor-undef-amd64
 memcheck/tests/atomic_incs
@@ -238,9 +255,11 @@ memcheck/tests/brk2
 memcheck/tests/buflen_check
 memcheck/tests/bug287260
 memcheck/tests/calloc-overflow
+memcheck/tests/client-msg
 memcheck/tests/clientperm
 memcheck/tests/clireq_nofill
 memcheck/tests/clo_redzone
+memcheck/tests/cond_ld_st
 memcheck/tests/custom_alloc
 memcheck/tests/custom-overlap
 memcheck/tests/deep-backtrace
@@ -248,6 +267,8 @@ memcheck/tests/deep_templates
 memcheck/tests/describe-block
 memcheck/tests/doublefree
 memcheck/tests/dw4
+memcheck/tests/dw4.stderr.diff
+memcheck/tests/dw4.stderr.out
 memcheck/tests/err_disable1
 memcheck/tests/err_disable2
 memcheck/tests/err_disable3
@@ -266,6 +287,7 @@ memcheck/tests/inits
 memcheck/tests/inline
 memcheck/tests/leak-0
 memcheck/tests/leak-cases
+memcheck/tests/leak_cpp_interior
 memcheck/tests/leak-cycle
 memcheck/tests/leak-delta
 memcheck/tests/leak-pool
@@ -273,13 +295,18 @@ memcheck/tests/leak-segv-jmp
 memcheck/tests/leak-tree
 memcheck/tests/linux/brk
 memcheck/tests/linux/capget
+memcheck/tests/linux/getregset
+memcheck/tests/linux/getregset.stderr.exp
 memcheck/tests/linux/lsframe1
 memcheck/tests/linux/lsframe2
+memcheck/tests/linux/proc-auxv
+memcheck/tests/linux/rfcomm
 memcheck/tests/linux/sigqueue
 memcheck/tests/linux/stack_changes
 memcheck/tests/linux/stack_switch
 memcheck/tests/linux/syscalls-2007
 memcheck/tests/linux/syslog-syscall
+memcheck/tests/linux/sys-openat
 memcheck/tests/linux/timerfd-syscall
 memcheck/tests/long_namespace_xml
 memcheck/tests/long-supps
@@ -321,10 +348,13 @@ memcheck/tests/pdb-realloc2
 memcheck/tests/pipe
 memcheck/tests/pointer-trace
 memcheck/tests/post-syscall
+memcheck/tests/reach_thread_register
 memcheck/tests/realloc1
 memcheck/tests/realloc2
 memcheck/tests/realloc3
+memcheck/tests/recursive-merge
 memcheck/tests/sbfragment
+memcheck/tests/sendmsg
 memcheck/tests/sh-mem
 memcheck/tests/sh-mem-random
 memcheck/tests/sigaltstack
@@ -332,6 +362,7 @@ memcheck/tests/sigkill
 memcheck/tests/signal2
 memcheck/tests/sigprocmask
 memcheck/tests/static_malloc
+memcheck/tests/stpncpy
 memcheck/tests/strchr
 memcheck/tests/str_tester
 memcheck/tests/supp1
@@ -339,7 +370,10 @@ memcheck/tests/supp2
 memcheck/tests/suppfree
 memcheck/tests/supp_unknown
 memcheck/tests/test-plo
+memcheck/tests/thread_alloca
+memcheck/tests/threadname
 memcheck/tests/trivialleak
+memcheck/tests/undef_malloc_args
 memcheck/tests/unit_libcbase
 memcheck/tests/unit_oset
 memcheck/tests/varinfo1
@@ -351,6 +385,7 @@ memcheck/tests/varinfo6
 memcheck/tests/vbit-test/vbit-test
 memcheck/tests/vcpu_fbench
 memcheck/tests/vcpu_fnfns
+memcheck/tests/wcs
 memcheck/tests/wrap1
 memcheck/tests/wrap2
 memcheck/tests/wrap3
@@ -368,6 +403,8 @@ none/tests/amd64/allexec
 none/tests/amd64/amd64locked
 none/tests/amd64/asorep
 none/tests/amd64/avx-1
+none/tests/amd64/avx2-1
+none/tests/amd64/bmi
 none/tests/amd64/bug127521-64
 none/tests/amd64/bug132813-amd64
 none/tests/amd64/bug132918
@@ -378,6 +415,7 @@ none/tests/amd64/cmpxchg
 none/tests/amd64/crc32
 none/tests/amd64/faultstatus
 none/tests/amd64/fcmovnu
+none/tests/amd64/fma
 none/tests/amd64/fxtract
 none/tests/amd64/insn_basic
 none/tests/amd64/insn_basic.c
@@ -414,6 +452,8 @@ none/tests/amd64/slahf-amd64
 none/tests/amd64/smc1
 none/tests/amd64/sse4-64
 none/tests/amd64/ssse3_misaligned
+none/tests/amd64/tm1
+none/tests/amd64/xacq_xrel
 none/tests/amd64/xadd
 none/tests/ansi
 none/tests/args
@@ -506,12 +546,14 @@ perf/sarp
 perf/tinycc
 perf/vg_perf
 tests/arch_test
+tests/mips_features
 tests/os_test
 tests/s390x_features
 tests/true
 tests/vg_regtest
 tests/x86_amd64_features
-*-*-linux
+*-x86-linux
+*-amd64-linux
 
 # Commented out as you should really look at these
 # Ignore files generated during test runs
