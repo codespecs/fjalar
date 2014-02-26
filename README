@@ -2,10 +2,16 @@ This is the distribution of Fjalar, a dynamic analysis framework for C/C++ progr
 Fjalar version 5.0.3, released February 5, 2014.
 
 The majority of this source tree is a slightly modified version
-of Valgrind, release 3.8.1.  Valgrind is a framework for building
+of Valgrind, release 3.9.0.  Valgrind is a framework for building
 dynamic analysis tools.  You can learn more about Valgrind by 
 visiting its home page at:
   http://www.valgrind.org
+
+valgrind-merge.texinfo describes how to obtain the latest version of
+Valgrind and merge it into our Fjalar system.  You can format it with
+either of the following commands:
+  makeinfo --html --no-split
+  makeinfo --pdf
 
 The valgrind directory contains a sub-directory named fjalar. This directory
 contains two related projects, Fjalar and Kvasir.
