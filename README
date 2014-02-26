@@ -10,8 +10,8 @@ visiting its home page at:
 valgrind-merge.texinfo describes how to obtain the latest version of
 Valgrind and merge it into our Fjalar system.  You can format it with
 either of the following commands:
-  makeinfo --html --no-split
-  makeinfo --pdf
+  makeinfo --html --no-split valgrind-merge.texinfo
+  makeinfo --pdf valgrind-merge.texinfo
 
 The valgrind directory contains a sub-directory named fjalar. This directory
 contains two related projects, Fjalar and Kvasir.
