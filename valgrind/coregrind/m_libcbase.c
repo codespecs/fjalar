@@ -233,6 +233,13 @@ SizeT VG_(strlen) ( const HChar* str )
    return i;
 }
 
+SizeT VG_(strnlen) ( const HChar* str, SizeT maxlen )
+{
+   SizeT i = 0;
+   while (str[i] != 0 && i < maxlen) i++;
+   return i;
+}
+
 HChar* VG_(strcat) ( HChar* dest, const HChar* src )
 {
    HChar* dest_orig = dest;
