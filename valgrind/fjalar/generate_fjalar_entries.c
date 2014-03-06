@@ -259,6 +259,10 @@ const char* DeclaredTypeNames[] = {"D_NO_TYPE", // Create padding
 // mostly as a result of weirdo C++ compiler stuff:
 // (This was all done by empirical observation)
 // Note: DON'T IGNORE FUNCTIONS WITH NO NAMES
+// Addenda Mar 3, 2014 (markro):
+// Not allowing template class member names (?)
+// was causing failures.  I removed the check
+// for "_M_" and all seems to be okay.
 static char ignore_function_with_name(char* name) {
 
   FJALAR_DPRINTF("  *ppt_name: %s\n", name);
@@ -273,7 +277,7 @@ static char ignore_function_with_name(char* name) {
       VG_STREQ(name, "_Rep") ||
       (0 == VG_(strncmp)(name, "._", 2)) ||
       (0 == VG_(strncmp)(name, "_S_", 3)) ||
-      (0 == VG_(strncmp)(name, "_M_", 3)) ||
+//    (0 == VG_(strncmp)(name, "_M_", 3)) ||
       (0 == VG_(strncmp)(name, "_GLOBAL", 7)) ||
       (0 == VG_(strncmp)(name, "__tcf", 5)) ||
       // Hopefully the target program doesn't have this function that you want to track
@@ -3104,12 +3108,11 @@ static void initMemberFuncs(void) {
 
           FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n",
                          VoidPtr(start_PC), t->typeName);
-// UNDONE: This print seg faults (markro)
-//	      FJALAR_DPRINTF(" n->elt - name: %s = %p\n", ((FunctionEntry*)(n->elt))->name, (void *)n->elt);;
           // Hopefully this will always be non-null
           n->elt = getFunctionEntryFromStartAddr(start_PC);
           tl_assert(n->elt);
-	  // Very important!  Signify that it's a member function
+          FJALAR_DPRINTF(" n->elt - name: %s = %p\n", ((FunctionEntry*)(n->elt))->name, (void *)n->elt);;
+          // Very important!  Signify that it's a member function
           ((FunctionEntry*)(n->elt))->parentClass = t;
 
         }
