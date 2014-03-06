@@ -14,8 +14,8 @@ SUBDIRS = .
 
 # AM_CFLAGS_AMD64_LINUX += -g -O0 -fno-omit-frame-pointer -Iinclude -W -Wall
 
-# get all binutil .h files from bu-include; get config.h from .. (markro)
-EXTRA_CFLAGS =  -Ibu-include -I../VEX/pub -I../include -I..
+# get all binutil .h files from include; get config.h from .. (markro)
+EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -I..
 
 # for debugging versions
 #EXTRA_CFLAGS +=  -O0 -finstrument-functions
@@ -56,7 +56,7 @@ FJALAR_SOURCES_COMMON = \
 	fjalar_traversal.c \
 	readelf.c \
 	dwarf.c \
-	dwarfnames.c \
+	libiberty/dwarfnames.c \
 	elfcomm.c \
 	typedata.c \
 	disambig.c \
