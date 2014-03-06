@@ -1,7 +1,5 @@
 /* readelf.c -- display contents of an ELF format file
-   Copyright 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
-   2008, 2009, 2010, 2011, 2012
-   Free Software Foundation, Inc.
+   Copyright 1998-2013 Free Software Foundation, Inc.
 
    Originally developed by Eric Youngdale <eric@andante.jic.com>
    Modifications by Nick Clifton <nickc@redhat.com>
@@ -367,6 +365,7 @@ guess_is_rela (unsigned int e_machine)
     case EM_M32R:
     case EM_MCORE:
     case EM_CYGNUS_MEP:
+    case EM_METAG:
     case EM_MMIX:
     case EM_MN10200:
     case EM_CYGNUS_MN10200:
@@ -391,6 +390,7 @@ guess_is_rela (unsigned int e_machine)
     case EM_TI_C6000:
     case EM_TILEGX:
     case EM_TILEPRO:
+    case EM_V800:
     case EM_V850:
     case EM_CYGNUS_V850:
     case EM_VAX:
@@ -972,7 +972,6 @@ get_machine_name (unsigned e_machine)
     case EM_960:		return "Intel 90860";
     case EM_PPC:		return "PowerPC";
     case EM_PPC64:		return "PowerPC64";
-    case EM_V800:		return "NEC V800";
     case EM_FR20:		return "Fujitsu FR20";
     case EM_RH32:		return "TRW RH32";
     case EM_MCORE:		return "MCORE";
@@ -997,6 +996,7 @@ get_machine_name (unsigned e_machine)
     case EM_CYGNUS_M32R:
     case EM_M32R:		return "Renesas M32R (formerly Mitsubishi M32r)";
     case EM_CYGNUS_V850:
+    case EM_V800:		return "Renesas V850 (using RH850 ABI)";
     case EM_V850:		return "Renesas V850";
     case EM_CYGNUS_MN10300:
     case EM_MN10300:		return "mn10300";
@@ -1112,7 +1112,7 @@ get_machine_name (unsigned e_machine)
     case EM_MICROBLAZE_OLD:	return "Xilinx MicroBlaze";
     case EM_RL78:		return "Renesas RL78";
     case EM_RX:			return "Renesas RX";
-    case EM_METAG:		return "Imagination Technologies META processor architecture";
+    case EM_METAG:		return "Imagination Technologies Meta processor architecture";
     case EM_MCST_ELBRUS:	return "MCST Elbrus general purpose hardware architecture";
     case EM_ECOG16:		return "Cyan Technology eCOG16 family";
     case EM_ETPU:		return "Freescale Extended Time Processing Unit";
@@ -3234,10 +3234,70 @@ process_dynamic_section (FILE * file)
 		      FJALAR_DPRINTF (" NODUMP");
 		      val ^= DF_1_NODUMP;
 		    }
-		  if (val & DF_1_CONLFAT)
+		  if (val & DF_1_CONFALT)
 		    {
-		      FJALAR_DPRINTF (" CONLFAT");
-		      val ^= DF_1_CONLFAT;
+		      FJALAR_DPRINTF (" CONFALT");
+		      val ^= DF_1_CONFALT;
+		    }
+		  if (val & DF_1_ENDFILTEE)
+		    {
+		      FJALAR_DPRINTF (" ENDFILTEE");
+		      val ^= DF_1_ENDFILTEE;
+		    }
+		  if (val & DF_1_DISPRELDNE)
+		    {
+		      FJALAR_DPRINTF (" DISPRELDNE");
+		      val ^= DF_1_DISPRELDNE;
+		    }
+		  if (val & DF_1_DISPRELPND)
+		    {
+		      FJALAR_DPRINTF (" DISPRELPND");
+		      val ^= DF_1_DISPRELPND;
+		    }
+		  if (val & DF_1_NODIRECT)
+		    {
+		      FJALAR_DPRINTF (" NODIRECT");
+		      val ^= DF_1_NODIRECT;
+		    }
+		  if (val & DF_1_IGNMULDEF)
+		    {
+		      FJALAR_DPRINTF (" IGNMULDEF");
+		      val ^= DF_1_IGNMULDEF;
+		    }
+		  if (val & DF_1_NOKSYMS)
+		    {
+		      FJALAR_DPRINTF (" NOKSYMS");
+		      val ^= DF_1_NOKSYMS;
+		    }
+		  if (val & DF_1_NOHDR)
+		    {
+		      FJALAR_DPRINTF (" NOHDR");
+		      val ^= DF_1_NOHDR;
+		    }
+		  if (val & DF_1_EDITED)
+		    {
+		      FJALAR_DPRINTF (" EDITED");
+		      val ^= DF_1_EDITED;
+		    }
+		  if (val & DF_1_NORELOC)
+		    {
+		      FJALAR_DPRINTF (" NORELOC");
+		      val ^= DF_1_NORELOC;
+		    }
+		  if (val & DF_1_SYMINTPOSE)
+		    {
+		      FJALAR_DPRINTF (" SYMINTPOSE");
+		      val ^= DF_1_SYMINTPOSE;
+		    }
+		  if (val & DF_1_GLOBAUDIT)
+		    {
+		      FJALAR_DPRINTF (" GLOBAUDIT");
+		      val ^= DF_1_GLOBAUDIT;
+		    }
+		  if (val & DF_1_SINGLETON)
+		    {
+		      FJALAR_DPRINTF (" SINGLETON");
+		      val ^= DF_1_SINGLETON;
 		    }
 		  if (val != 0)
 		    FJALAR_DPRINTF (" %lx", val);
@@ -3678,7 +3738,7 @@ process_version_sections (FILE * file)
 		int check_def, check_need;
 		const char *name;
 
-                FJALAR_DPRINTF ("  %03x:", cnt);
+        FJALAR_DPRINTF ("  %03x:", cnt);
 
 		for (j = 0; (j < 4) && (cnt + j) < total; ++j)
 		  switch (data[cnt + j])
@@ -3693,7 +3753,7 @@ process_version_sections (FILE * file)
 
 		    default:
 		      if(fjalar_debug) {
-			nn = printf ("4%x%c", data[cnt + j] & 0x7fff,
+			    nn = printf ("4%x%c", data[cnt + j] & 0x7fff,
 				     data[cnt + j] & 0x8000 ? 'h' : ' ');
 		      }
 
@@ -3808,8 +3868,8 @@ process_version_sections (FILE * file)
 				name = _("*invalid*");
 			      else
 			      name = strtab + ivda.vda_name;
-			      if(fjalar_debug) {
-				nn += printf ("(%s%-*s",
+			      if (fjalar_debug) {
+				    nn += printf ("(%s%-*s",
 					      name,
 					      12 - (int) VG_(strlen) (name),
 					      ")");
@@ -4520,7 +4580,7 @@ debug_displays[] =
 };
 
 static int
-display_debug_section (Elf_Internal_Shdr * section, FILE * file)
+display_debug_section (int shndx, Elf_Internal_Shdr * section, FILE * file)
 {
   const char *name = SECTION_NAME (section);
   bfd_size_type length;
@@ -4621,14 +4681,10 @@ process_section_contents (FILE * file)
 	disassemble_section (section, file);
 #endif
       if (dump_sects[i] & HEX_DUMP)
-        {
           dump_section_as_bytes (section, file);
-        }
 
       if (dump_sects[i] & DEBUG_DUMP)
-        {
-          display_debug_section (section, file);
-        }
+          display_debug_section (i, section, file);
     }
 
   //  FJALAR_DPRINTF("process_section_contents() - after 2nd for loop\n");
@@ -4672,6 +4728,10 @@ get_note_type (unsigned e_type)
 	return _("NT_PPC_VMX (ppc Altivec registers)");
       case NT_PPC_VSX:
 	return _("NT_PPC_VSX (ppc VSX registers)");
+      case NT_386_TLS:
+	return _("NT_386_TLS (x86 TLS information)");
+      case NT_386_IOPERM:
+	return _("NT_386_IOPERM (x86 I/O permissions)");
       case NT_X86_XSTATE:
 	return _("NT_X86_XSTATE (x86 XSAVE extended state)");
       case NT_S390_HIGH_GPRS:
@@ -4686,8 +4746,20 @@ get_note_type (unsigned e_type)
 	return _("NT_S390_CTRS (s390 control registers)");
       case NT_S390_PREFIX:
 	return _("NT_S390_PREFIX (s390 prefix register)");
+      case NT_S390_LAST_BREAK:
+	return _("NT_S390_LAST_BREAK (s390 last breaking event address)");
+      case NT_S390_SYSTEM_CALL:
+	return _("NT_S390_SYSTEM_CALL (s390 system call restart data)");
+      case NT_S390_TDB:
+	return _("NT_S390_TDB (s390 transaction diagnostic block)");
       case NT_ARM_VFP:
 	return _("NT_ARM_VFP (arm VFP registers)");
+      case NT_ARM_TLS:
+	return _("NT_ARM_TLS (AArch TLS registers)");
+      case NT_ARM_HW_BREAK:
+	return _("NT_ARM_HW_BREAK (AArch hardware breakpoint registers)");
+      case NT_ARM_HW_WATCH:
+	return _("NT_ARM_HW_WATCH (AArch hardware watchpoint registers)");
       case NT_PSTATUS:
 	return _("NT_PSTATUS (pstatus structure)");
       case NT_FPREGS:
@@ -4700,6 +4772,10 @@ get_note_type (unsigned e_type)
 	return _("NT_LWPSINFO (lwpsinfo_t structure)");
       case NT_WIN32PSTATUS:
 	return _("NT_WIN32PSTATUS (win32_pstatus structure)");
+      case NT_SIGINFO:
+	return _("NT_SIGINFO (siginfo_t data)");
+      case NT_FILE:
+	return _("NT_FILE (mapped files)");
     default:
 	break;
       }
@@ -4832,7 +4908,7 @@ process_corefile_note_segment (FILE * file, bfd_vma offset, bfd_vma length)
 
   external = pnotes;
 
-  FJALAR_DPRINTF (_("\nNotes at offset 0x%08lx with length 0x%08lx:\n"),
+  FJALAR_DPRINTF (_("\nDisplaying notes found at file offset 0x%08lx with length 0x%08lx:\n"),
 	  (unsigned long) offset, (unsigned long) length);
   FJALAR_DPRINTF (_("  Owner\t\tData size\tDescription\n"));
 
