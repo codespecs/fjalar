@@ -85,6 +85,7 @@ extern double VG_(strtod)  ( const HChar* str, HChar** endptr );
                              && VG_(strncmp)((s1),(s2),(n))==0) ? True : False )
 
 extern SizeT  VG_(strlen)         ( const HChar* str );
+extern SizeT  VG_(strnlen)        ( const HChar* str, SizeT maxlen );
 extern HChar* VG_(strcat)         ( HChar* dest, const HChar* src );
 extern HChar* VG_(strncat)        ( HChar* dest, const HChar* src, SizeT n );
 extern HChar* VG_(strpbrk)        ( const HChar* s, const HChar* accpt );
