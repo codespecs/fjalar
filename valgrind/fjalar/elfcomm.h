@@ -25,6 +25,15 @@
 #ifndef _ELFCOMM_H
 #define _ELFCOMM_H
 
+#if 0  // ARCHIVE we don't need any of the archive stuff (markro)
+
+#include "aout/ar.h"
+
+void error (const char *, ...) ATTRIBUTE_PRINTF_1;
+void warn (const char *, ...) ATTRIBUTE_PRINTF_1;
+
+#endif // ARCHIVE
+
 #if __STDC_VERSION__ >= 199901L || (defined(__GNUC__) && __GNUC__ >= 2)
 /* We can't use any bfd types here since readelf may define BFD64 and
    objdump may not.  */
@@ -42,7 +51,7 @@ extern elf_vma (*byte_get) (unsigned char *, int);
 extern elf_vma byte_get_signed (unsigned char *, int);
 extern elf_vma byte_get_little_endian (unsigned char *, int);
 extern elf_vma byte_get_big_endian (unsigned char *, int);
-extern void byte_get_64(unsigned char *, elf_vma *, elf_vma *);
+extern void byte_get_64 (unsigned char *, elf_vma *, elf_vma *);
 
 #define BYTE_PUT(field, val)	byte_put (field, val, sizeof (field))
 #define BYTE_GET(field)		byte_get (field, sizeof (field))

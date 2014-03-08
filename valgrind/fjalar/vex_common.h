@@ -2,6 +2,9 @@
    This file is part of Fjalar, a dynamic analysis framework for C/C++
    programs.
 
+   Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
    Copyright (C) 2007 Stephen McCamant,
    MIT CSAIL Program Analysis Group
 

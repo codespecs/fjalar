@@ -10,11 +10,12 @@
   for C/C++ based upon the Valgrind binary instrumentation framework
   and the Valgrind MemCheck tool.
 
+  Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+  Programming Languages and Software Engineering Group
+
   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
   Copyright (C) 2000-2009 Julian Seward (jseward@acm.org),
-  Copyright (C) 2010-2013 PLSE group at University of Washington
-  (Programming Languages and Software Engineering)
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as

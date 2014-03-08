@@ -23,6 +23,12 @@
 
 /* readelf.c
 
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
    MIT CSAIL Program Analysis Group
 
@@ -30,14 +36,10 @@
    to perform recording of function return types and parameter types
    for Fjalar, a Valgrind tool that is a C/C++ dynamic analysis framework
 
-   2005-04-28:
-   Ported over to Valgrind 3 and integrated with the DynComp dynamic
-   comparability analysis tool for C/C++.
-
-   This file interprets the DWARF2 debugging information within
+   This file interprets the DWARF debugging information within
    the ELF binary and then calls functions in typedata.c
 
-   Fjalar changes are denoted by // PG or RUDD marks
+   A few Fjalar changes are denoted by // PG or RUDD marks
 */
 
 #include "my_libc.h"
