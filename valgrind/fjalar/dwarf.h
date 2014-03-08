@@ -108,7 +108,6 @@ typedef struct
 }
 DWARF2_Internal_ARange;
 
-
 #if 0  // DWARF_SECT we don't need any of the dwarf_section stuff (markro)
 
 enum dwarf_section_display_enum
@@ -179,7 +178,6 @@ extern struct dwarf_section_display debug_displays [];
 
 #endif  // DWARF_SECT
 
-
 /* This structure records the information that
    we extract from the.debug_info section.  */
 typedef struct
@@ -238,7 +236,6 @@ extern void init_dwarf_regnames (unsigned int);
 extern void init_dwarf_regnames_i386 (void);
 extern void init_dwarf_regnames_x86_64 (void);
 
-
 #if 0  // DWARF_SECT we don't need any of the dwarf_section stuff (markro)
 
 extern int load_debug_section (enum dwarf_section_display_enum, void *);
@@ -259,4 +256,3 @@ void * xcrealloc (void *, size_t, size_t);
 #endif  // DWARF_SECT
 
 extern dwarf_vma read_leb128 (unsigned char *, unsigned int *, int, const unsigned char * const);
-

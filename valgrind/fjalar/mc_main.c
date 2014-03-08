@@ -12,20 +12,6 @@
    Copyright (C) 2000-2013 Julian Seward 
       jseward@acm.org
 
-      Modified by Philip Guo to serve as part of Fjalar, a dynamic
-      analysis framework for C/C++ programs.
-
-      Added in support for processing Fjalar command-line options.
-      grep for "pgbovine" for details.
-
-      Added several CHECK_SP() calls and extern
-      var. declarations.
-
-      TODO: In the future, hopefully we can find a faster and more
-      elegant solution because these calls possibly incur a severe
-      performance hit.
-
-
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
    published by the Free Software Foundation; either version 2 of the
@@ -42,6 +28,20 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+*/
+
+/* mc_main.c
+
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
+
+   Most of the Fjalar changes are denoted by // PG or RUDD marks
 */
 
 #include "my_libc.h"
@@ -6970,7 +6970,8 @@ static void mc_pre_clo_init(void)
    VG_(details_version)         ("5.0.5");
    VG_(details_description)     ("C/C++ Language Front-End for Daikon with DynComp comparability analysis tool.");
    VG_(details_copyright_author)(
-      "Copyright (C) 2004-2013, Philip Guo, MIT CSAIL Program Analysis Group");
+   "Copyright (C) 2007-2013, University of Washington CSE PLSE Group");
+
    VG_(details_bug_reports_to)  ("daikon-developers@lists.csail.mit.edu");
 
    // PG - pgbovine - customize the fields above for each Fjalar tool
