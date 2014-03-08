@@ -2,6 +2,9 @@
    This file is part of Kvasir, a C/C++ front end for the Daikon
    dynamic invariant detector built upon the Fjalar framework
 
+   Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
    Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
    Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
    MIT CSAIL Program Analysis Group

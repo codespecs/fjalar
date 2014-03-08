@@ -1,3 +1,20 @@
+/*
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
+   MIT CSAIL Program Analysis Group
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+*/
+
 /**
    Implementation for float/double to decimal string
    conversion. This has been borrowed from uClibc 0.9.27, by Manuel

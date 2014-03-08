@@ -5,7 +5,7 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of MemCheck, a heavyweight Valgrind tool for
+   This file is derived from MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
    Copyright (C) 2000-2013 Julian Seward
@@ -27,6 +27,20 @@
    02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
+*/
+
+/* mc_translate.c
+
+   This file is part of Fjalar, a dynamic analysis framework for C/C++
+   programs.
+
+   Copyright (C) 2007-2013 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
+
+   Most of the Fjalar changes are denoted by // PG or RUDD marks
 */
 
 #include "my_libc.h"
