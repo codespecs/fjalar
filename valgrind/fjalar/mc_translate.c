@@ -4166,7 +4166,6 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
          return mkPCast16x8(mce,
                assignNew('V', mce, Ity_V128, unop(op, mkPCast8x16(mce, vatom))));
 
-      case Iop_I64UtoF32:
       default:
          ppIROp(op);
          VG_(tool_panic)("memcheck:expr2vbits_Unop");
