@@ -488,6 +488,8 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
          break;
 
 // Unimplemented - PPC only
+      case Iop_BCDAdd:
+      case Iop_BCDSub:
       case Iop_QuantizeD64:
       case Iop_QuantizeD128:
       case Iop_SignificanceRoundD64:
@@ -508,8 +510,6 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
    return IRExpr_Const(IRConst_UWord(0));
 }
 
-// TODO: Look at expr2vbits_Binop() from ../mc_translate.c
-// and make sure we've covered all possible cases.
 static
 IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
                               IROp op,
@@ -664,7 +664,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Add32Fx4: case Iop_Sub32Fx4:
    case Iop_Max32Fx4: case Iop_Min32Fx4:
 
-   case Iop_Add32Fx8: case Iop_Sub32Fx8:
    case Iop_Max32Fx8: case Iop_Min32Fx8:
 
       /* --- 32x4 lowest-lane-only scalar FP --- */
@@ -677,13 +676,19 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Add64Fx2: case Iop_Sub64Fx2:
    case Iop_Max64Fx2: case Iop_Min64Fx2:
 
-   case Iop_Add64Fx4: case Iop_Sub64Fx4:
    case Iop_Max64Fx4: case Iop_Min64Fx4:
 
       /* --- 64x2 lowest-lane-only scalar FP --- */
 
    case Iop_Add64F0x2: case Iop_Sub64F0x2:
    case Iop_Max64F0x2: case Iop_Min64F0x2:
+
+      /* ------------------ 256-bit SIMD FP. ------------------ */
+
+   case Iop_Add64Fx4:
+   case Iop_Sub64Fx4:
+   case Iop_Add32Fx8:
+   case Iop_Sub32Fx8:
 
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -704,7 +709,11 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Mul64F0x2:
    case Iop_Div64F0x2:
 
+      /* ------------------ 256-bit SIMD FP. ------------------ */
+
    case Iop_Mul64Fx4:
+   case Iop_Div64Fx4:
+   case Iop_Mul32Fx8:
    case Iop_Div32Fx8:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
@@ -713,9 +722,7 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       }
       break;
 
-
       /* ------------------ 128-bit SIMD Integer. ------------------ */
-
       /* ADDITION (normal / unsigned sat / signed sat) */
    case Iop_Add8x16:   case Iop_Add16x8:  
    case Iop_Add32x4:   case Iop_Add64x2:
@@ -754,19 +761,63 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Avg32Sx4:
    case Iop_Avg32Ux4:
 
+      /* ------------------ 256-bit SIMD Integer. ------------------ */
+
+   case Iop_V128HLtoV256:  
+
+      /* ADDITION (normal / unsigned sat / signed sat) */
+   case Iop_Add8x32:  
+   case Iop_Add16x16:  
+   case Iop_Add32x8:  
+   case Iop_Add64x4:
+   case Iop_QAdd8Ux32:
+   case Iop_QAdd16Ux16:
+   case Iop_QAdd8Sx32:
+   case Iop_QAdd16Sx16:
+
+      /* SUBTRACTION (normal / unsigned sat / signed sat) */
+   case Iop_Sub8x32:  
+   case Iop_Sub16x16:  
+   case Iop_Sub32x8:  
+   case Iop_Sub64x4:
+   case Iop_QSub8Ux32:
+   case Iop_QSub16Ux16:
+   case Iop_QSub8Sx32:
+   case Iop_QSub16Sx16:
+
+      /* MIN/MAX */
+   case Iop_Max8Sx32:
+   case Iop_Max16Sx16:
+   case Iop_Max32Sx8:
+   case Iop_Max8Ux32:
+   case Iop_Max16Ux16:
+   case Iop_Max32Ux8:
+   case Iop_Min8Sx32:
+   case Iop_Min16Sx16:
+   case Iop_Min32Sx8:
+   case Iop_Min8Ux32:
+   case Iop_Min16Ux16:
+   case Iop_Min32Ux8:
+
+      /* AVERAGING: note: (arg1 + arg2 + 1) >>u 1 */
+   case Iop_Avg8Ux32:
+   case Iop_Avg16Ux16:
+
       if (!dyncomp_dataflow_comparisons_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
          hname = "MC_(helperc_MERGE_TAGS)";
       }
       break;
 
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
       /* BITWISE OPS */
    case Iop_AndV128: case Iop_OrV128: case Iop_XorV128:
    case Iop_AndV256: case Iop_OrV256: case Iop_XorV256:
 
       /* MULTIPLICATION (normal / high half of signed/unsigned) */
-   case Iop_Mul16x8:
    case Iop_Mul8x16:
+   case Iop_Mul16x8:
+   case Iop_Mul32x4:
    case Iop_MulHi16Sx8:
    case Iop_MulHi16Ux8:
    case Iop_PolynomialMul8x16:
@@ -774,6 +825,12 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QDMulHi32Sx4:
    case Iop_QRDMulHi16Sx8:
    case Iop_QRDMulHi32Sx4:
+
+      /* ------------------ 256-bit SIMD Integer. ------------------ */
+   case Iop_Mul16x16:
+   case Iop_Mul32x8:
+   case Iop_MulHi16Sx16:
+   case Iop_MulHi16Ux16:
 
       if (!dyncomp_dataflow_comparisons_mode && !dyncomp_units_mode) {
          helper = &MC_(helperc_MERGE_TAGS);
@@ -808,6 +865,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_QNarrowBin32Sto16Sx8:
    case Iop_QNarrowBin32Sto16Ux8:   
    case Iop_QNarrowBin32Uto16Ux8:
+
+   case Iop_NarrowBin16to8x8:
+   case Iop_NarrowBin32to16x4:
 
       /* INTERLEAVING -- interleave lanes from low or high halves of
          operands.  Most-significant result lane is from the left
@@ -967,17 +1027,34 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_CmpUN64Fx2:
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
-
       /* MISC (vector integer cmp != 0) */
-
       /* COMPARISON */
-   case Iop_CmpEQ8x16:  case Iop_CmpEQ16x8:  case Iop_CmpEQ32x4:
-   case Iop_CmpGT8Sx16: case Iop_CmpGT16Sx8: case Iop_CmpGT32Sx4:
-   case Iop_CmpGT8Ux16: case Iop_CmpGT16Ux8: case Iop_CmpGT32Ux4:
+   case Iop_CmpEQ8x16: 
+   case Iop_CmpEQ16x8: 
+   case Iop_CmpEQ32x4:
+   case Iop_CmpGT8Sx16:
+   case Iop_CmpGT16Sx8:
+   case Iop_CmpGT32Sx4:
+   case Iop_CmpGT8Ux16:
+   case Iop_CmpGT16Ux8:
+   case Iop_CmpGT32Ux4:
+
+      /* ------------------ 256-bit SIMD Integer. ------------------ */
+      /* COMPARISON */
+   case Iop_CmpEQ8x32: 
+   case Iop_CmpEQ16x16: 
+   case Iop_CmpEQ32x8:
+   case Iop_CmpEQ64x4:
+   case Iop_CmpGT8Sx32:
+   case Iop_CmpGT16Sx16:
+   case Iop_CmpGT32Sx8:
+   case Iop_CmpGT64Sx4:
 
       helper = &MC_(helperc_MERGE_TAGS_RETURN_0);
       hname = "MC_(helperc_MERGE_TAGS_RETURN_0)";
       break;
+
+      /* ------------------ 128-bit SIMD Integer. ------------------ */
 
       // -----------------------------------
       // Return the tag of the 1st argument:
@@ -997,7 +1074,6 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_Sar8:  case Iop_Sar16:  case Iop_Sar32:  case Iop_Sar64:
 
       // 64-bit SIMD integer shifts:
-
       /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
    case Iop_Sal8x8:   case Iop_Sal16x4:  case Iop_Sal32x2:  case Iop_Sal64x1:
    case Iop_Sar8x8:   case Iop_Sar16x4:  case Iop_Sar32x2:
@@ -1007,13 +1083,28 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
    case Iop_ShlN8x8:  case Iop_ShlN16x4: case Iop_ShlN32x2:
    case Iop_ShrN8x8:  case Iop_ShrN16x4: case Iop_ShrN32x2:
 
-   case Iop_QShlN8x8:   case Iop_QShlN16x4:
-   case Iop_QShlN32x2:  case Iop_QShlN64x1:
-   case Iop_QShlN8Sx8:  case Iop_QShlN16Sx4:
-   case Iop_QShlN32Sx2: case Iop_QShlN64Sx1:
+   case Iop_QShlN16Sx4:
+   case Iop_QShlN16x4:
+   case Iop_QShlN32Sx2:
+   case Iop_QShlN32x2: 
+   case Iop_QShlN64Sx1:
+   case Iop_QShlN64x1:
+   case Iop_QShlN8Sx8: 
+   case Iop_QShlN8x8:  
+
+   case Iop_Perm8x8:  
+
+      /* ------------------ 256-bit SIMD Integer. ------------------ */
+   case Iop_SarN16x16:
+   case Iop_SarN32x8:
+   case Iop_ShlN16x16:
+   case Iop_ShlN32x8:
+   case Iop_ShlN64x4:
+   case Iop_ShrN16x16:
+   case Iop_ShrN32x8:
+   case Iop_ShrN64x4:
 
       /* ------------------ 128-bit SIMD Integer. ------------------ */
-
       /* VECTOR x SCALAR SHIFT (shift amt :: Ity_I8) */
    case Iop_Rol8x16:  case Iop_Rol16x8:  case Iop_Rol32x4:
    case Iop_Sal8x16:  case Iop_Sal16x8:  case Iop_Sal32x4:  case Iop_Sal64x2:
@@ -1045,6 +1136,9 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       // of the first argument
    case Iop_SetV128lo32:  // :: (V128,I32) -> V128
    case Iop_SetV128lo64:
+
+   case Iop_Perm32x4:
+   case Iop_Perm32x8:
 
       if (!dyncomp_dataflow_comparisons_mode) {
          return vatom1;
@@ -1127,10 +1221,133 @@ IRAtom* expr2tags_Binop_DC ( DCEnv* dce,
       }
       break;
 
+   case Iop_CipherLV128:                 // only used by ppc
+   case Iop_CipherV128:                  // only used by ppc
+   case Iop_CmpGT64Ux2:                  // only used by ppc
+   case Iop_D128toD64:                   // only used by ppc s390
+   case Iop_D128toF128:                  // only used by s390
+   case Iop_D128toF32:                   // only used by s390
+   case Iop_D128toF64:                   // only used by s390
+   case Iop_D128toI32S:                  // only used by s390
+   case Iop_D128toI32U:                  // only used by s390
+   case Iop_D128toI64S:                  // only used by ppc s390
+   case Iop_D128toI64U:                  // only used by s390
+   case Iop_D32toF128:                   // only used by s390
+   case Iop_D32toF32:                    // only used by s390
+   case Iop_D32toF64:                    // only used by s390
+   case Iop_D64HLtoD128:                 // only used by ppc s390
+   case Iop_D64toD32:                    // only used by ppc s390
+   case Iop_D64toF128:                   // only used by s390
+   case Iop_D64toF32:                    // only used by s390
+   case Iop_D64toF64:                    // only used by s390
+   case Iop_D64toI32S:                   // only used by s390
+   case Iop_D64toI32U:                   // only used by s390
+   case Iop_D64toI64S:                   // only used by ppc s390
+   case Iop_D64toI64U:                   // only used by s390
+   case Iop_F128toD128:                  // only used by s390
+   case Iop_F128toD32:                   // only used by s390
+   case Iop_F128toD64:                   // only used by s390
+   case Iop_F128toF32:                   // only used by s390
+   case Iop_F128toF64:                   // only used by s390
+   case Iop_F128toI32S:                  // only used by s390
+   case Iop_F128toI32U:                  // only used by s390
+   case Iop_F128toI64S:                  // only used by s390
+   case Iop_F128toI64U:                  // only used by s390
+   case Iop_F32toD128:                   // only used by s390
+   case Iop_F32toD32:                    // only used by s390
+   case Iop_F32toD64:                    // only used by s390
+   case Iop_F32ToFixed32Sx2_RZ:          // only used by arm
+   case Iop_F32ToFixed32Sx4_RZ:          // only used by arm
+   case Iop_F32ToFixed32Ux2_RZ:          // only used by arm
+   case Iop_F32ToFixed32Ux4_RZ:          // only used by arm
+   case Iop_F64HLtoF128:                 // only used by s390
+   case Iop_F64toD128:                   // only used by s390
+   case Iop_F64toD32:                    // only used by s390
+   case Iop_F64toD64:                    // only used by s390
+   case Iop_Fixed32SToF32x2_RN:          // only used by arm
+   case Iop_Fixed32SToF32x4_RN:          // only used by arm
+   case Iop_Fixed32UToF32x2_RN:          // only used by arm
+   case Iop_Fixed32UToF32x4_RN:          // only used by arm
+   case Iop_GetElem16x4:                 // only used by arm
+   case Iop_GetElem16x8:                 // only used by arm
+   case Iop_GetElem32x2:                 // only used by arm
+   case Iop_GetElem32x4:                 // only used by arm
+   case Iop_GetElem64x2:                 // unused
+   case Iop_GetElem8x16:                 // only used by arm
+   case Iop_GetElem8x8:                  // only used by arm
+   case Iop_I64StoD64:                   // only used by ppc s390
+   case Iop_I64UtoD64:                   // only used by s390
+   case Iop_InsertExpD128:               // only used by ppc s390
+   case Iop_InsertExpD64:                // only used by ppc s390
+   case Iop_Max32U:                      // only used by memcheck
+   case Iop_Max64Sx2:                    // only used by ppc
+   case Iop_Max64Ux2:                    // only used by ppc
+   case Iop_Min64Sx2:                    // only used by ppc
+   case Iop_Min64Ux2:                    // only used by ppc
+   case Iop_MulHi32Sx4:                  // unused
+   case Iop_MulHi32Ux4:                  // unused
+   case Iop_MullEven32Sx4:               // only used by ppc
+   case Iop_MullEven32Ux4:               // only used by ppc
+   case Iop_NarrowBin64to32x4:           // only used by ppc
+   case Iop_NCipherLV128:                // only used by ppc
+   case Iop_NCipherV128:                 // only used by ppc
+   case Iop_Perm8x16:                    // only used by ppc
+   case Iop_PolynomialMulAdd16x8:        // only used by ppc
+   case Iop_PolynomialMulAdd32x4:        // only used by ppc
+   case Iop_PolynomialMulAdd64x2:        // only used by ppc
+   case Iop_PolynomialMulAdd8x16:        // only used by ppc
+   case Iop_PwAdd16x4:                   // only used by arm
+   case Iop_PwAdd16x8:                   // only used by arm
+   case Iop_PwAdd32Fx2:                  // only used by arm
+   case Iop_PwAdd32x2:                   // only used by arm
+   case Iop_PwAdd32x4:                   // only used by arm
+   case Iop_PwAdd8x16:                   // only used by arm
+   case Iop_PwAdd8x8:                    // only used by arm
+   case Iop_PwMax16Sx4:                  // only used by arm
+   case Iop_PwMax16Ux4:                  // only used by arm
+   case Iop_PwMax32Fx2:                  // only used by arm
+   case Iop_PwMax32Sx2:                  // only used by arm
+   case Iop_PwMax32Ux2:                  // only used by arm
+   case Iop_PwMax8Sx8:                   // only used by arm
+   case Iop_PwMax8Ux8:                   // only used by arm
+   case Iop_PwMin16Sx4:                  // only used by arm
+   case Iop_PwMin16Ux4:                  // only used by arm
+   case Iop_PwMin32Fx2:                  // only used by arm
+   case Iop_PwMin32Sx2:                  // only used by arm
+   case Iop_PwMin32Ux2:                  // only used by arm
+   case Iop_PwMin8Sx8:                   // only used by arm
+   case Iop_PwMin8Ux8:                   // only used by arm
+   case Iop_QAdd32S:                     // only used by arm
+   case Iop_QNarrowBin64Sto32Sx4:        // only used by ppc
+   case Iop_QNarrowBin64Uto32Ux4:        // only used by ppc
+   case Iop_QSal16x4:                    // only used by arm
+   case Iop_QSal32x2:                    // only used by arm
+   case Iop_QSal64x1:                    // only used by arm
+   case Iop_QSal8x8:                     // only used by arm
+   case Iop_QSalN16x4:                   // only used by arm
+   case Iop_QSalN16x8:                   // only used by arm
+   case Iop_QSalN32x2:                   // only used by arm
+   case Iop_QSalN32x4:                   // only used by arm
+   case Iop_QSalN64x1:                   // only used by arm
+   case Iop_QSalN64x2:                   // only used by arm
+   case Iop_QSalN8x16:                   // only used by arm
+   case Iop_QSalN8x8:                    // only used by arm
+   case Iop_QShl16x4:                    // only used by arm
+   case Iop_QShl32x2:                    // only used by arm
+   case Iop_QShl64x1:                    // only used by arm
+   case Iop_QShl8x8:                     // only used by arm
+   case Iop_QSub32S:                     // only used by arm
+   case Iop_Recps32Fx2:                  // only used by arm
+   case Iop_Recps32Fx4:                  // only used by arm
+   case Iop_Rol64x2:                     // only used by ppc
+   case Iop_Rsqrts32Fx2:                 // only used by arm
+   case Iop_Rsqrts32Fx4:                 // only used by arm
+   case Iop_Sad8Ux4:                     // only used by arm
+   case Iop_SHA256:                      // only used by ppc
+   case Iop_SHA512:                      // only used by ppc
+
       // Hopefully we will never get here if we've had had cases which
       // handle every possible IR binary op. type (right?)
-      // TODO: Look at expr2vbits_Binop() from ../mc_translate.c
-      // and make sure we've covered all possible cases.
    default:
       ppIROp(op);
       VG_(tool_panic)("dyncomp:expr2tags_Binop_DC");
@@ -1229,13 +1446,256 @@ IRExpr* expr2tags_Unop_DC ( DCEnv* dce, IRAtom* atom )
 
    // Do nothing with unary ops.  Just evaluate the
    // sub-expression and return it:
-   // pgbovine TODO: Actually, when you widen stuff, don't you want to
+   // pgbovine: Actually, when you widen stuff, don't you want to
    //       create new tags for the new bytes and merge them?
    //       But you can't do that because you only have the word-sized
    //       tag and NOT the memory locations it came from
    //       ... I guess we don't care since during binary ops.,
    //       we only consider the tag of the first bytes of each
    //       operand anyways.
+   //
+   // For documentation purposes, here is a list of all the unary ops.
+   // Iop_128HIto64
+   // Iop_128to64
+   // Iop_16HIto8
+   // Iop_16Sto32
+   // Iop_16Sto64
+   // Iop_16to8
+   // Iop_16Uto32
+   // Iop_16Uto64
+   // Iop_1Sto16
+   // Iop_1Sto32
+   // Iop_1Sto64
+   // Iop_1Sto8
+   // Iop_1Uto32
+   // Iop_1Uto64
+   // Iop_1Uto8
+   // Iop_32HIto16
+   // Iop_32Sto64
+   // Iop_32to1
+   // Iop_32to16
+   // Iop_32to8
+   // Iop_32Uto64
+   // Iop_32UtoV128
+   // Iop_64HIto32
+   // Iop_64to1
+   // Iop_64to16
+   // Iop_64to32
+   // Iop_64to8
+   // Iop_64UtoV128
+   // Iop_8Sto16
+   // Iop_8Sto32
+   // Iop_8Sto64
+   // Iop_8Uto16
+   // Iop_8Uto32
+   // Iop_8Uto64
+   // Iop_Abs16x4
+   // Iop_Abs16x8
+   // Iop_Abs32Fx2
+   // Iop_Abs32Fx4
+   // Iop_Abs32x2
+   // Iop_Abs32x4
+   // Iop_Abs8x16
+   // Iop_Abs8x8
+   // Iop_AbsF128
+   // Iop_AbsF32
+   // Iop_AbsF64
+   // Iop_BCDtoDPB
+   // Iop_CipherSV128
+   // Iop_Cls16Sx4
+   // Iop_Cls16Sx8
+   // Iop_Cls32Sx2
+   // Iop_Cls32Sx4
+   // Iop_Cls8Sx16
+   // Iop_Cls8Sx8
+   // Iop_Clz16Sx4
+   // Iop_Clz16Sx8
+   // Iop_Clz32
+   // Iop_Clz32Sx2
+   // Iop_Clz32Sx4
+   // Iop_Clz64
+   // Iop_Clz64x2
+   // Iop_Clz8Sx16
+   // Iop_Clz8Sx8
+   // Iop_CmpNEZ16
+   // Iop_CmpNEZ16x16
+   // Iop_CmpNEZ16x2
+   // Iop_CmpNEZ16x4
+   // Iop_CmpNEZ16x8
+   // Iop_CmpNEZ32
+   // Iop_CmpNEZ32x2
+   // Iop_CmpNEZ32x4
+   // Iop_CmpNEZ32x8
+   // Iop_CmpNEZ64
+   // Iop_CmpNEZ64x2
+   // Iop_CmpNEZ64x4
+   // Iop_CmpNEZ8
+   // Iop_CmpNEZ8x16
+   // Iop_CmpNEZ8x32
+   // Iop_CmpNEZ8x4
+   // Iop_CmpNEZ8x8
+   // Iop_CmpwNEZ32
+   // Iop_CmpwNEZ64
+   // Iop_Cnt8x16
+   // Iop_Cnt8x8
+   // Iop_Ctz32
+   // Iop_Ctz64
+   // Iop_D128HItoD64
+   // Iop_D128LOtoD64
+   // Iop_D32toD64
+   // Iop_D64toD128
+   // Iop_DPBtoBCD
+   // Iop_Dup16x4
+   // Iop_Dup16x8
+   // Iop_Dup32x2
+   // Iop_Dup32x4
+   // Iop_Dup8x16
+   // Iop_Dup8x8
+   // Iop_Est5FRSqrt
+   // Iop_ExtractExpD128
+   // Iop_ExtractExpD64
+   // Iop_ExtractSigD128
+   // Iop_ExtractSigD64
+   // Iop_F128HItoF64
+   // Iop_F128LOtoF64
+   // Iop_F16toF32x4
+   // Iop_F32toF128
+   // Iop_F32toF16x4
+   // Iop_F32toF64
+   // Iop_F64toF128
+   // Iop_FtoI32Sx2_RZ
+   // Iop_FtoI32Sx4_RZ
+   // Iop_FtoI32Ux2_RZ
+   // Iop_FtoI32Ux4_RZ
+   // Iop_GetMSBs8x16
+   // Iop_GetMSBs8x8
+   // Iop_I32StoD128
+   // Iop_I32StoD64
+   // Iop_I32StoF128
+   // Iop_I32StoF64
+   // Iop_I32StoFx2
+   // Iop_I32StoFx4
+   // Iop_I32UtoD128
+   // Iop_I32UtoD64
+   // Iop_I32UtoF128
+   // Iop_I32UtoF64
+   // Iop_I32UtoFx2
+   // Iop_I32UtoFx4
+   // Iop_I64StoD128
+   // Iop_I64StoF128
+   // Iop_I64UtoD128
+   // Iop_I64UtoF128
+   // Iop_Left16
+   // Iop_Left32
+   // Iop_Left64
+   // Iop_Left8
+   // Iop_NarrowUn16to8x8
+   // Iop_NarrowUn32to16x4
+   // Iop_NarrowUn64to32x2
+   // Iop_Neg32Fx2
+   // Iop_Neg32Fx4
+   // Iop_NegF128
+   // Iop_NegF32
+   // Iop_NegF64
+   // Iop_Not1
+   // Iop_Not16
+   // Iop_Not32
+   // Iop_Not64
+   // Iop_Not8
+   // Iop_NotV128
+   // Iop_NotV256
+   // Iop_PwAddL16Sx4
+   // Iop_PwAddL16Sx8
+   // Iop_PwAddL16Ux4
+   // Iop_PwAddL16Ux8
+   // Iop_PwAddL32Sx2
+   // Iop_PwAddL32Sx4
+   // Iop_PwAddL32Ux2
+   // Iop_PwAddL32Ux4
+   // Iop_PwAddL8Sx16
+   // Iop_PwAddL8Sx8
+   // Iop_PwAddL8Ux16
+   // Iop_PwAddL8Ux8
+   // Iop_PwBitMtxXpose64x2
+   // Iop_PwMax32Fx4
+   // Iop_PwMin32Fx4
+   // Iop_QFtoI32Sx4_RZ
+   // Iop_QFtoI32Ux4_RZ
+   // Iop_QNarrowUn16Sto8Sx8
+   // Iop_QNarrowUn16Sto8Ux8
+   // Iop_QNarrowUn16Uto8Ux8
+   // Iop_QNarrowUn32Sto16Sx4
+   // Iop_QNarrowUn32Sto16Ux4
+   // Iop_QNarrowUn32Uto16Ux4
+   // Iop_QNarrowUn64Sto32Sx2
+   // Iop_QNarrowUn64Sto32Ux2
+   // Iop_QNarrowUn64Uto32Ux2
+   // Iop_Recip32F0x4
+   // Iop_Recip32Fx2
+   // Iop_Recip32Fx4
+   // Iop_Recip32Fx8
+   // Iop_Recip32x2
+   // Iop_Recip32x4
+   // Iop_Recip64F0x2
+   // Iop_Recip64Fx2
+   // Iop_ReinterpD64asI64
+   // Iop_ReinterpF32asI32
+   // Iop_ReinterpF64asI64
+   // Iop_ReinterpI32asF32
+   // Iop_ReinterpI64asD64
+   // Iop_ReinterpI64asF64
+   // Iop_Reverse16_8x16
+   // Iop_Reverse16_8x8
+   // Iop_Reverse32_16x4
+   // Iop_Reverse32_16x8
+   // Iop_Reverse32_8x16
+   // Iop_Reverse32_8x8
+   // Iop_Reverse64_16x4
+   // Iop_Reverse64_16x8
+   // Iop_Reverse64_32x2
+   // Iop_Reverse64_32x4
+   // Iop_Reverse64_8x16
+   // Iop_Reverse64_8x8
+   // Iop_RoundF32x4_RM
+   // Iop_RoundF32x4_RN
+   // Iop_RoundF32x4_RP
+   // Iop_RoundF32x4_RZ
+   // Iop_RoundF64toF64_NEAREST
+   // Iop_RoundF64toF64_NegINF
+   // Iop_RoundF64toF64_PosINF
+   // Iop_RoundF64toF64_ZERO
+   // Iop_RSqrt32F0x4
+   // Iop_RSqrt32Fx4
+   // Iop_RSqrt32Fx8
+   // Iop_RSqrt64F0x2
+   // Iop_RSqrt64Fx2
+   // Iop_Rsqrte32Fx2
+   // Iop_Rsqrte32Fx4
+   // Iop_Rsqrte32x2
+   // Iop_Rsqrte32x4
+   // Iop_Sqrt32F0x4
+   // Iop_Sqrt32Fx4
+   // Iop_Sqrt32Fx8
+   // Iop_Sqrt64F0x2
+   // Iop_Sqrt64Fx2
+   // Iop_Sqrt64Fx4
+   // Iop_TruncF64asF32
+   // Iop_V128HIto64
+   // Iop_V128to32
+   // Iop_V128to64
+   // Iop_V256to64_0
+   // Iop_V256to64_1
+   // Iop_V256to64_2
+   // Iop_V256to64_3
+   // Iop_V256toV128_0
+   // Iop_V256toV128_1
+   // Iop_Widen16Sto32x4
+   // Iop_Widen16Uto32x4
+   // Iop_Widen32Sto64x2
+   // Iop_Widen32Uto64x2
+   // Iop_Widen8Sto16x8
+   // Iop_Widen8Uto16x8
+
    return vatom;
 }
 
