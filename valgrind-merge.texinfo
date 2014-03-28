@@ -454,6 +454,14 @@ to be explicitly supported by Dyncomp. Please see Appendix C for
 guidelines on supporting new VEX instructions.
 
 @emph{need section on readdwarf and Binutils.}
+diff -ub binutils-2.23.2/include/elf binutils-2.24/include/elf > ~/include.patch
+diff -ub binutils-2.23.2/include binutils-2.24/include >> ~/include.patch
+diff -ub binutils-2.23.2/libiberty/dwarfnames.c binutils-2.24/libiberty/dwarfnames.c >> ~/include.patch
+diff -ub binutils-2.23.2/binutils binutils-2.24/binutils > ~/binutils.patch
+cd $INV/fjalar/valgrind/fjalar
+patch -p1 -lu -f <~/include.patch --dry-run
+patch -p2 -lu -f -F3 <~/binutils.patch --dry-run
+
 
 @emph{need section on special changes to Valgrind source. I can't remember what this refers to}
 
