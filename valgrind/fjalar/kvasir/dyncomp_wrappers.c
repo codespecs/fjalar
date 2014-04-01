@@ -26,7 +26,7 @@
    requests if they want to modify Dyncomp's behavior beyond what
    regular code can do. */
 
-#include "valgrind.h"
+#include "pub_tool_clreq.h"
 
 /* Return a word-sized value with the same value as the argument, but
    a different tag, via loopholes in DynComp's checking. Perhaps this
