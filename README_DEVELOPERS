@@ -1,0 +1,32 @@
+Fjalar developer documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Developer documentation is located in ./valgrind/fjalar/README_DEVELOPERS.
+Additional developer's notes can be found in the ./valgrind/fjalar/notes
+directory.
+
+Repository structure
+--------------------- 
+./valgrind/              
+    Contains the source code for Valgrind.
+
+./valgrind/fjalar	
+    Contains the source for the Fjalar framework.
+
+./valgrind/fjalar/basic-tool 
+    Contains the source for a simple tool built upon Fjalar. It is included
+    with the distribution on the Fjalar webpage.
+
+./valgrind/fjalar/docs 
+    Contains a local copy of the Fjalar webpage.
+
+./valgrind/fjalar/kvasir
+    Contains the source for Kvasir and Dyncomp.
+
+./valgrind/fjalar/notes 
+    Contains various developmental notes on Fjalar including notes kept
+    by Philip Guo, the Fjalar design document, and the webpage containing
+    instructions for merging new versions of Valgrind into Fjalar.
+
+./valgrind/fjalar/tools	
+    Contains a tool for debugging Dyncomp comparability errors.
+

@@ -1,0 +1,31 @@
+This is the distribution of Fjalar, a dynamic analysis framework for C/C++ programs
+Fjalar version 5.0.9, released May 2, 2014.
+
+The majority of this source tree is a slightly modified version
+of Valgrind, release 3.9.0.  Valgrind is a framework for building
+dynamic analysis tools.  You can learn more about Valgrind by 
+visiting its home page at:
+  http://www.valgrind.org
+
+valgrind-merge.texinfo describes how to obtain the latest version of
+Valgrind and merge it into our Fjalar system.  You can format it with
+either of the following commands:
+  makeinfo --html --no-split valgrind-merge.texinfo
+  makeinfo --pdf valgrind-merge.texinfo
+
+The valgrind directory contains a sub-directory named fjalar. This directory
+contains two related projects, Fjalar and Kvasir.
+
+Fjalar, a Valgrind tool that provides additional abstractions and APIs for
+building dynamic anaylsis tools, appears in the ./valgrind/fjalar directory.
+Please consult the Fjalar webpage for information about the Fjalar
+framework and tools.  A local copy of the Fjalar webpage appears here:
+  ./valgrind/fjalar/docs/fjalar-www/index.html
+For developer documentation, start here:
+  ./valgrind/fjalar/README_DEVELOPERS
+
+Kvasir, a Daikon front end that is built upon Fjalar, appears in
+the ./valgrind/fjalar/kvasir directory.
+Kvasir's user documentation appears in the Daikon user manual:
+  http://plse.cs.washington.edu/daikon/download/doc/daikon.html#Kvasir
+

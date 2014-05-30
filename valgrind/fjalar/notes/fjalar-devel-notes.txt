@@ -1,0 +1,11 @@
+Fjalar development notes
+by Philip Guo
+------------------------
+
+Fjalar currently doesn't do the right thing in MultipleStructsTest, a
+perverse example where I have two completely different structs names
+'alpha' and two completely different structs named 'beta', each hidden
+from one another.  Fjalar has only one entry for each struct with a
+given name, so it cannot disambiguate between the two different
+'alphas' and 'betas'.
+

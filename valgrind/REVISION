@@ -1,0 +1,12 @@
+# Valgrind version (approx) 3.6 01/04/2010
+#export VALGRIND_REVISION=11017
+#export VEX_REVISION=1953
+
+# Valgrind version 3.8.1 09/18/2012
+#export VALGRIND_REVISION=12995
+#export VEX_REVISION=2533
+
+# Valgrind version 3.9.0 11/01/2013
+export VALGRIND_REVISION=13710
+export VEX_REVISION=2797
+
