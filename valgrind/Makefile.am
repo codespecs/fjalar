@@ -124,6 +124,7 @@ clean-local:
 	rm -rf $(inplacedir)
 	rm -f config.guess
 	rm -f config.sub
+	rm -f Makefile.in
 
 # Need config.h in the installed tree, since some files depend on it
 pkginclude_HEADERS = config.h
