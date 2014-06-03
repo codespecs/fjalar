@@ -40,6 +40,8 @@
 // for name demangling
 #include "../coregrind/m_demangle/demangle.h"
 extern char * cplus_demangle_v3 (const char *, int);
+// check_headers_and_includes script says this include is bad
+// but I don't see any other way to do it.  (markro)
 #include "../coregrind/pub_core_mallocfree.h"
 
 
