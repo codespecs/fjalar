@@ -1,0 +1,6 @@
+This directory lay dormant for quite some time.  When I (markro) tried
+to run pdflatex on fjalar.tex there were two missing .sty files.  I
+grabbed them off of tug.org and got it working.
+
+Command line is:
+  pdflatex fjalar

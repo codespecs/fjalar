@@ -48,11 +48,11 @@ than it could otherwise.
 DWARF is a standardized format for debugging information
 \cite{silverstein1993dwarf}. There are currently 3 versions of the
 DWARF format. DWARF version 1 was developed and released in the mid
-1980s, but never achieved widespread use due to various inefficiencies. DWARF
-version 2 was released in 1990 and is currently the standard debugging
-format used by Linux binaries. Fjalar is only designed to work with
-DWARF version 2. DWARF version 3 was released in 2006 and has yet to
-gain wide usage, though it is backwards compatible with DWARF version 2.
+1980s, but never achieved widespread use due to various inefficiencies.
+DWARF version 2 was released in 1993.  The standard was updated again
+in 2005 to version 3.  Finally, version 4 was released in 2011.
+Version 3 and version 4 are both in use at this time.  Fjalar is
+designed to work with DWARF versions 2 through 4.
 
 Fjalar leverages the information available in the DWARF format to
 provide an interface for tools to read and modify data in a target
@@ -68,7 +68,7 @@ display information on ELF object files. Fjalar contains a modified
 version of readelf in which all the functions for displaying DWARF
 information contain callbacks into Fjalar. \texttt{typedata.c} is
 responsible for constructing a very low-level, but organized version
-of the DWARF information from these callback. This low-level 
+of the DWARF information from these callbacks. This low-level 
 representation closely mimics the internal structure of the DWARF
 information, but is not an appropriate representation for the work
 Fjalar does.
@@ -93,15 +93,15 @@ member function, a pointer to the TypeEntry of its enclosing class.
 The VariableEntry structure contains information about a particular
 variable in the program. It contains the name of the variable, whether
 it is a global, local, formal parameter, or return variable, the
-location of the variable and itss declared type. Additionally,
+location of the variable and its declared type. Additionally,
 if it is a member variable it contains a pointer to its enclosing
 class, struct, or union.
 
 \subsubsection{TypeEntry}
 The TypeEntry structure contains information about a particular type used
 by the program. There are premade type entries for all the primitive
-types defined in C and C++, such as char, int, long, etc.A TypeEntry
-contains  the
+types defined in C and C++, such as char, int, long, etc.
+A TypeEntry contains  the
 declared type of the variable, the name of the type, and the size of
 the type in bytes.
 
@@ -113,7 +113,8 @@ classes, a list of constructors, destructors, and superclasses.
 
 \subsubsection{Translation}
 \texttt{generate\_fjalar\_entries.c} is responsible for translating
-the low-level representation provided by \texttt{typedata.c} into the
+the low-level representation that is 
+provided by \texttt{typedata.c} into the
 data structures defined in section 1.3. It
 accomplishes this by taking the representation of the DWARF data and
 making 2 passes across it. First it makes a pass for functions. During
@@ -303,11 +304,13 @@ value at that address.
 
 ptr2, however, is much more problematic. ptr2 and *ptr2 are easy for
 the same reasons mentioned above. Providing the address of **ptr2,
-however, requires Fjalar to examine the  value of *ptr2. It's worthwhile to examine the
+however, requires Fjalar to examine the  value of *ptr2.
+It's worthwhile to examine the
 difference in complexity of determining the address of *ptr2 and
-**ptr2. It's safe to look up the value of ptr2,as it's an automatic variable and has been properly
+**ptr2. It's safe to look up the value of ptr2, as it's an automatic
+variable and has been properly
 allocated by the compiler, thus finding the address of *ptr2 is easy,
-it just requires reading the ptr2. the value
+it just requires reading ptr2. The value
 in ptr2 may be garbage, however we do not need to actually
 dereference this value to provide the address of *ptr2.
 
@@ -337,7 +340,7 @@ determine the number of elements a pointer actually points to.
 
 \begin{enumerate}
 
-\item Determine If the address points to the global address space, if so
+\item Determine if the address points to the global address space, if so
    try and find a global variable in the DWARF information that could
    correspond to this address. This involves both an equality comparison
    between the address of all variables in the global space, and checking
@@ -356,9 +359,9 @@ determine the number of elements a pointer actually points to.
    local variables for a corresponding vaariable with a search
    identical to the 1 proposed in step 1.
 
-\item This step is broken into 2 cases: If the address in the stack or
+\item This step is broken into 2 cases: If the address is in the stack or
   global region, but no corresponding variable is found in previous
-  searches, return a size of 1.otherwise continously query memcheck
+  searches, return a size of 1; otherwise continously query memcheck
   for every address from the initial address onwards and return a size
   of(LAST\_INITIALIZED\_ADDRESS - PTR\_ADDR).
 
