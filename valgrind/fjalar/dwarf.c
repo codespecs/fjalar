@@ -305,7 +305,7 @@ read_leb128 (unsigned char *data,
   if (length_return != NULL)
     *length_return = num_read;
 
-  if (sign && (shift < 8 * sizeof (result)) && (byte & 0x40))
+  if (sign && (shift < 8 * sizeof (long)) && (byte & 0x40))
     result |= -1L << shift;
 
   return result;
@@ -1231,7 +1231,7 @@ decode_location_expression (unsigned char * data,
 
 	         if(entry) {
 		       if (tag_is_variable(entry->tag_name)) {
-		         harvest_local_var_offset(entry, const_data);
+		         harvest_local_var_offset(entry, const_data, (op - DW_OP_breg0));
 		       }
 		       else if (tag_is_formal_parameter(entry->tag_name)) {
 		         harvest_formal_param_location_atom(entry, op, const_data);
@@ -1267,7 +1267,7 @@ decode_location_expression (unsigned char * data,
 
 	          if(entry) {
 		          if (tag_is_variable(entry->tag_name)) {
-		            harvest_local_var_offset(entry, const_data);
+		            harvest_local_var_offset(entry, const_data, -1);
 		          }
 		          else if (tag_is_formal_parameter(entry->tag_name)) {
 		            harvest_formal_param_location_atom(entry, op, const_data);
