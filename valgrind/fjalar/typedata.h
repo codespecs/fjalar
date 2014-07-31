@@ -396,7 +396,9 @@ typedef struct
   // provided because g++ 4.0 doesn't provide global variable
   // addresses in the debug. info.
   unsigned long globalVarAddr; // only valid for global variables
-  int offset; // only valid for local variables
+
+  int offset;  // only valid for local variables
+  int regBase; // not all locals are addressed from EBP
 
   // accessibility of this variable (public, protected, or private)
   // (only relevant if isStaticMemberVar)
@@ -497,7 +499,7 @@ char harvest_external_flag_value(dwarf_entry *e, unsigned long value);
 char harvest_address_value(dwarf_entry* e, unsigned long attr, unsigned long value);
 char harvest_variable_addr_value(dwarf_entry* e, unsigned long value);
 char harvest_ordinary_unsigned_value(dwarf_entry* e, unsigned long attr, unsigned long value);
-char harvest_local_var_offset(dwarf_entry* e, unsigned long value);
+char harvest_local_var_offset(dwarf_entry* e, unsigned long value, int regNum);
 char harvest_sibling(dwarf_entry* e, unsigned long value);
 char harvest_declaration_value(dwarf_entry* e, unsigned long value);
 char harvest_artificial_value(dwarf_entry* e, unsigned long value);

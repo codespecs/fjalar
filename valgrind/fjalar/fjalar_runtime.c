@@ -169,18 +169,21 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
 // location(r) <= "a" < location(r) + (getBytesBetweenElts(r))
 //   [if struct]
 // where location(.) is the global location if isGlobal and stack location
-// based on frame_ptr if !isGlobal
+// based on FP or SP if !isGlobal
 // *baseAddr = the base address of the variable returned
 static VariableEntry*
 returnArrayVariableWithAddr(VarList* varList,
                             Addr a,
                             char isGlobal,
-                            Addr frame_ptr,
+                            FunctionExecutionState* e,
                             Addr* baseAddr) {
   VarNode* cur_node = 0;
   ThreadId tid = VG_(get_running_tid)();
   Addr var_loc = 0;
+
   FJALAR_DPRINTF("[returnArrayVariableWithAddr] varList: %p, Addr: %p, %s\n", varList, (void *)a, (isGlobal)?"Global":"NonGlobal");
+  FJALAR_DPRINTF("frame_ptr: %p, stack_ptr: %p\n", (void *)e->FP, (void *)e->lowSP);
+
   for (cur_node = varList->first;
        cur_node != 0;
        cur_node = cur_node->next) {
@@ -190,18 +193,24 @@ returnArrayVariableWithAddr(VarList* varList,
     if (!potentialVar)
       continue;
 
-    FJALAR_DPRINTF("Examining potential var: %s\n", potentialVar->name);
+    FJALAR_DPRINTF("Examining potential var: %s, offset: 0x%x\n",
+                    potentialVar->name, potentialVar->byteOffset);
 
     if (isGlobal) {
       tl_assert(IS_GLOBAL_VAR(potentialVar));
       //RUDD EXCEPTION
       FJALAR_DPRINTF("Examining potential var address: %p\n",(void *) potentialVarBaseAddr);
       potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
+    } else {
+      if (potentialVar->locationType == FP_OFFSET_LOCATION) {
+        potentialVarBaseAddr = e->FP + potentialVar->byteOffset;
+      } else {  
+        // Potential bug!  We are ignoring other locationTypes
+        // and just assuming it is ESP.  This is the only case
+        // we've seen (i386 only) so far.  (markro)
+        potentialVarBaseAddr = e->lowSP + potentialVar->byteOffset;
+      }
     }
-    else {
-      potentialVarBaseAddr = frame_ptr + potentialVar->byteOffset;
-    }
-    FJALAR_DPRINTF("returnArrayVar: frame_ptr: %p, byteOffset %d:\n", (void *)frame_ptr, potentialVar->byteOffset);
     if(potentialVar->location_expression_size) {
       unsigned int i = 0;
       for(i = 0; i < potentialVar->location_expression_size; i++ ) {
@@ -243,7 +252,7 @@ returnArrayVariableWithAddr(VarList* varList,
         } else if(op == DW_OP_fbreg) {
           // Get value located at an offset from the FRAME_BASE.
           FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", loc->atom_offset, potentialVar->byteOffset);
-          var_loc = frame_ptr + loc->atom_offset;
+          var_loc = e->FP + loc->atom_offset;
 
         } else {
           // There's a fair number of DWARF operations still unsupported. There is a full list
@@ -254,7 +263,11 @@ returnArrayVariableWithAddr(VarList* varList,
         FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
       }
     }
-    FJALAR_DPRINTF("var_loc %p\n", (void *)potentialVarBaseAddr);
+    FJALAR_DPRINTF("potential var_loc %p\n", (void *)potentialVarBaseAddr);
+
+    FJALAR_DPRINTF("array test - static?: %d, base: %p, limit: %p\n",
+        (IS_STATIC_ARRAY_VAR(potentialVar)), (void *)a,
+        (void *)(potentialVarBaseAddr + (potentialVar->staticArr->upperBounds[0] * getBytesBetweenElts(potentialVar))));
 
     // array
     if (IS_STATIC_ARRAY_VAR(potentialVar) &&
@@ -262,8 +275,7 @@ returnArrayVariableWithAddr(VarList* varList,
         (a < (potentialVarBaseAddr + (potentialVar->staticArr->upperBounds[0] *
                                       getBytesBetweenElts(potentialVar))))) {
 
-      FJALAR_DPRINTF("returnArrayVar: frame_ptr: %p, byteOffset %d:\n", (void *)frame_ptr, potentialVar->byteOffset);
-      FJALAR_DPRINTF("returnArrayVar: potentialVar->staticArr->upperBounds[0]: %d\n", potentialVar->staticArr->upperBounds[0]);
+      FJALAR_DPRINTF("returnArrayVar: found matching array with upperBounds[0]: %d\n", potentialVar->staticArr->upperBounds[0]);
       *baseAddr = potentialVarBaseAddr;
       return potentialVar;
     }
@@ -470,7 +482,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
           (localArrayAndStructVars->numVars > 0)) {
         targetVar = returnArrayVariableWithAddr(localArrayAndStructVars,
                                                 varLocation,
-                                                0, e->FP, &baseAddr);
+                                                0, e, &baseAddr);
       }
     }
   }
