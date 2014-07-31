@@ -74,6 +74,7 @@ typedef enum _VisibilityType {
 typedef enum _LocationType {
   NO_LOCATION = 0,
   FP_OFFSET_LOCATION,
+  SP_OFFSET_LOCATION,
   REGISTER_LOCATION
 } LocationType;
 
@@ -322,9 +323,12 @@ typedef struct _VariableEntry {
   dwarf_location location_expression[MAX_DWARF_OPS];
   unsigned int location_expression_size;
 
-  // Byte offset of this variable from head of stack frame (%ebp) for
-  // function parameters and local variables
-  // when locationType == FP_OFFSET_LOCATION
+  // If locationType == FP_OFFSET_LOCATION then this field contains
+  // the byte offset of the variable from the DWARF notion of frame base.
+  // This is usually NOT the same as ESP.
+  // If locationType == SP_OFFSET_LOCATION then this field contains
+  // the byte offset of the variable from the ESP register.
+  // (Can only happen for i386?)   (markro)
   int byteOffset;
 
   // Global variable information:

@@ -2512,7 +2512,14 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
                               getDeclaredFile(dwarfVariableEntry->comp_unit, variablePtr->decl_file));
 
   FJALAR_DPRINTF("  set locationType FP_OFFSET\n");
-  varPtr->locationType = FP_OFFSET_LOCATION;
+  if (variablePtr->regBase == -1) {
+      varPtr->locationType = FP_OFFSET_LOCATION;
+  } else {  
+      // Potential bug!  We are ignoring the regBase value
+      // and just assuming it is ESP.  This is the only case
+      // we've seen (i386 only) so far.  (markro)
+      varPtr->locationType = SP_OFFSET_LOCATION;
+  }
   varPtr->byteOffset = variablePtr->offset;
 }
 

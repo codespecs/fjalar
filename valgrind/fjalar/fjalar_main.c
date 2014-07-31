@@ -544,7 +544,8 @@ void enter_function(FunctionEntry* f)
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
 
-  FJALAR_DPRINTF("[enter_function] startPC is: %x\n, entryPC is: %x\ncu_base: %p\n",  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
+  FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x\ncu_base: %p\n",
+                 (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
 
   // Determine the frame pointer for this function using DWARF
   // location lists. This is a "virtual frame pointer" in that it is
@@ -553,6 +554,10 @@ void enter_function(FunctionEntry* f)
   // correspond to an actual frame pointer in the architecture. For
   // example: This will not always return %xbp on x86{-64} platforms
   // and *SHOULD*(untested) work with the -fomit-frame-pointer flag in GCC
+  //
+  // It usually points just above the function return address.  The
+  // .debug_loc info tells how to find (calculate) the frame base
+  // at any point in the program.   (markro)
   if(f->locList) {
     Addr eip = f->entryPC;
     location_list *ll;

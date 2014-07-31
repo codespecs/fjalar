@@ -921,7 +921,7 @@ char harvest_stmt_list(dwarf_entry* e, unsigned long value)
 
 // The strange thing is that variable offsets should be NEGATIVE
 // but DW_OP_fbreg and DW_OP_breg5 return unsigned values
-char harvest_local_var_offset(dwarf_entry* e, unsigned long value)
+char harvest_local_var_offset(dwarf_entry* e, unsigned long value, int regNum)
 {
   unsigned long tag;
   if ((e == 0) || (e->entry_ptr == 0))
@@ -929,13 +929,12 @@ char harvest_local_var_offset(dwarf_entry* e, unsigned long value)
 
   tag = e->tag_name;
 
-  if (tag_is_variable(tag))
-    {
+  if (tag_is_variable(tag)) {
       ((variable*)e->entry_ptr)->offset = (int)value;
+      ((variable*)e->entry_ptr)->regBase = regNum;
       return 1;
-    }
-  else
-    return 0;
+  } else
+      return 0;
 }
 
 char harvest_formal_param_location_atom(dwarf_entry* e, enum dwarf_location_atom atom, long value)
