@@ -425,9 +425,16 @@ static char printDtraceSingleVar(VariableEntry* var,
 		  IS_STATIC_ARRAY_VAR(var) ? (void *)pValueGuest : (void *)(*(Addr *)pValue),
 		  mapInitToModbit(1));
 
+    // The note above about static arrays does not go quite far
+    // enough.  See the comments in "printDtraceEntryAction" for
+    // more details.  Also note that isHashcode==true is the same
+    // as layersBeforeBase > 0.  Hence, we want to skip the tag
+    // union below if we are dealing with a static array.
+    // (markro 08/12/2014)
+
     // Since we observed all of these bytes as one value, we will
     // merge all of their tags in memory
-    if (kvasir_with_dyncomp) {
+    if (kvasir_with_dyncomp && !IS_STATIC_ARRAY_VAR(var)) {
       DYNCOMP_TPRINTF("dtrace call val_uf_union_tags_in_range(%p, %zd) (pointer)\n",
 		      (void *)pValue, sizeof(void*));
       val_uf_union_tags_in_range((Addr)pValue, sizeof(void*));
