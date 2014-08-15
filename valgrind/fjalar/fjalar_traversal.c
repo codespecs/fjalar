@@ -1246,9 +1246,10 @@ void visitReturnValue(FunctionExecutionState* e,
 	   ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
             (cur_node->var->varType->decType == D_LONG_DOUBLE))) {
-    FJALAR_DPRINTF("floating point type\n");
     // SPECIAL CASE: The value in FPU must be interpreted as a double
     // even if its true type may be a float
+    FJALAR_DPRINTF("RETURN - floating point: cur_node=%p, basePtr=%p, value=%.16g\n",
+                   cur_node, &(e->FPU), (double)e->FPU);
     visitVariable(cur_node->var,
                   (Addr)&(e->FPU),
 		  0, /* register, no guest location */
