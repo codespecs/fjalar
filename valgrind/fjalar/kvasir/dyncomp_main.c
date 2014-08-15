@@ -148,6 +148,9 @@ __inline__ void set_tag ( Addr a, UInt tag )
     primary_tag_map[PM_IDX(a)] = new_tag_array;
     n_primary_tag_map_init_entries++;
   }
+  if (dyncomp_print_trace_all) {
+    DYNCOMP_TPRINTF("[Dyncomp] set_tag: %u for loc: %p\n", tag, (void *)a);
+  }
   primary_tag_map[PM_IDX(a)][SM_OFF(a)] = tag;
 }
 
@@ -183,10 +186,8 @@ static __inline__ UInt grab_fresh_tag(void) {
   if (dyncomp_print_trace_all) {
     Addr tid = VG_(get_IP)(VG_(get_running_tid)());
     HChar eip_info[256];
-    dyncomp_print_trace_info = True;
     VG_(describe_IP)(tid, eip_info, sizeof(eip_info));
-    DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %08x (%s)\n",
-		    tag, 0, eip_info);
+    DYNCOMP_TPRINTF("[Dyncomp] Creating fresh tag %d at %s\n", tag, eip_info);
   }
   return tag;
 
@@ -281,8 +282,8 @@ UInt val_uf_tag_union(UInt tag1, UInt tag2) {
     leader = uf_union(tag1_obj, tag2_obj);
     VG_(describe_IP)(eip, eip_info, sizeof(eip_info));
 
-    DYNCOMP_TPRINTF("[Dyncomp-v1] Merging %u with %u to get %u at %p (%s)\n",
-		    tag1, tag2, leader->tag, (void *)eip, eip_info);
+    DYNCOMP_TPRINTF("[Dyncomp-v1] Merging %u with %u to get %u at %s\n",
+                    tag1, tag2, leader->tag, eip_info);
 
     if(dyncomp_no_val_leader){
       return tag1;
@@ -497,6 +498,7 @@ UInt val_uf_union_tags_in_range(Addr a, SizeT len) {
   for (curAddr = a; curAddr < (a + len); curAddr++) {
     curTag = get_tag(curAddr);
     if (curTag) {
+DYNCOMP_TPRINTF("MLR debug val_uf_union_tags_in_range addr=%p, tag=%u\n", (void *)curAddr, curTag);
       tagToMerge = curTag;
       break;
     }
@@ -626,13 +628,13 @@ UInt MC_(helperc_MERGE_TAGS) ( UInt tag1, UInt tag2 ) {
   // (If both are WEAK_FRESH_TAG's, then return WEAK_FRESH_TAG,
   //  but that's correctly handled)
   else if (WEAK_FRESH_TAG == tag1) {
-    DYNCOMP_TPRINTF("[Dyncomp-m1] Merging %u with %u to get %u at %p (%s)\n",
-		    tag1, tag2, tag2 , (void *)eip, eip_info);
+    DYNCOMP_TPRINTF("[Dyncomp-m1] Merging %u with %u to get %u at %s\n",
+                    tag1, tag2, tag2, eip_info);
     return tag2;
   }
   else if (WEAK_FRESH_TAG == tag2) {
-    DYNCOMP_TPRINTF("[Dyncomp-m2] Merging %u with %u to get %u at %p (%s)\n",
-		    tag1, tag2, tag1 , (void *)eip, eip_info);
+    DYNCOMP_TPRINTF("[Dyncomp-m2] Merging %u with %u to get %u at %s\n",
+                    tag1, tag2, tag1, eip_info);
     return tag1;
   }
   else {

@@ -49,11 +49,13 @@
 #include "mc_include.h"
 #include "typedata.h"
 #include "vex_common.h"
+#include "kvasir/kvasir_main.h"
 
 // Global variables that are set by command-line options
 Bool fjalar_debug = False;
 Bool fjalar_debug_dump = False;
 Bool fjalar_print_dwarf = False;
+Bool fjalar_print_IR = False;
 Bool fjalar_with_gdb = False;
 Bool fjalar_ignore_constants = False;
 Bool fjalar_merge_constants = False;
@@ -406,6 +408,16 @@ static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f) {
 
   if(gencontains(funcs_handled, f))
     return;
+
+  if (dyncomp_delayed_trace) {
+    dyncomp_print_trace_info = True;
+    dyncomp_delayed_trace = False;
+  }
+
+  if (dyncomp_delayed_print_IR) {
+    fjalar_print_IR = True;
+    dyncomp_delayed_print_IR = False;
+  }
 
   FJALAR_DPRINTF("[find_entry_pt] Searching for main entry instruction for %s\n", f->fjalar_name);
   for(i=0 ; i <  bb_orig->stmts_used; i++) {
@@ -800,7 +812,7 @@ void exit_function(FunctionEntry* f)
     // Stack corresponding to our function.
     printf("MISMATCHED on exit_function! f: %s !=  %s\nDetectedEntryIP: %p - AssumedEntryIP: %p\nDetctedExitIP: %p - AssumedExitIp: %p\n",
                 f->fjalar_name,
-		top->func->fjalar_name,
+                top->func->fjalar_name,
                 (void *)top->func->entryPC,
                 (void *)f->entryPC,
                 (void *)top->func->endPC,
@@ -1113,7 +1125,8 @@ void fjalar_print_usage()
 "    --with-gdb               Hang during init. so that GDB can attach to it\n"
 "    --fjalar-debug           Print internal Fjalar debug messages\n"
 "    --fjalar-debug-dump      Mimic /usr/bin/readelf --debug_dump\n"
-"    --fjalar-print-dwarf     Print internal dwarf entry table (reguires --fjalar-debug)\n"
+"    --fjalar-print-dwarf     Print internal dwarf entry table (reguires --fjalar-debug\n"
+"    --fjalar-print-ir        Print Intermediate Representation trees (reguires --fjalar-debug)\n"
    );
    // Make sure to execute this last!
    fjalar_tool_print_usage();
@@ -1129,6 +1142,7 @@ Bool fjalar_process_cmd_line_option(const HChar* arg)
   if VG_YESNO_CLO(arg, "fjalar-debug", fjalar_debug) {}
   else if VG_YESNO_CLO(arg, "fjalar-debug-dump", fjalar_debug_dump) {}
   else if VG_YESNO_CLO(arg, "fjalar-print-dwarf", fjalar_print_dwarf) {}
+  else if VG_YESNO_CLO(arg, "fjalar-print-ir", fjalar_print_IR) {}
   else if VG_YESNO_CLO(arg, "with-gdb", fjalar_with_gdb) {}
   else if VG_YESNO_CLO(arg, "ignore-globals", fjalar_ignore_globals) {}
   else if VG_YESNO_CLO(arg, "ignore-constants", fjalar_ignore_constants) {}
