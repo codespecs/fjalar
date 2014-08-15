@@ -5817,8 +5817,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                         VexArchInfo* archinfo_host,
                         IRType gWordTy, IRType hWordTy )
 {
-   Bool    verboze = 0||False;
-   //Bool    verboze = True;
+   Bool    verboze = fjalar_debug && fjalar_print_IR;
    Bool    bogus;
    Int     i, j, first_stmt;
    IRStmt* st;

@@ -71,13 +71,17 @@ int  dyncomp_gc_after_n_tags = 10000000;
 Bool dyncomp_without_dtrace = False;
 Bool dyncomp_print_debug_info = False;
 Bool dyncomp_print_trace_info = False;
+Bool dyncomp_print_trace_all = False;
 Bool dyncomp_print_incremental = False;
 Bool dyncomp_separate_entry_exit_comp = False;
+Bool dyncomp_trace_startup = False;
+Bool dyncomp_delayed_print_IR = True;
+Bool dyncomp_delayed_trace = True;
 
 // Special modes for DynComp
 // Changes the definition of what constitutes an interaction
 Bool dyncomp_units_mode = False;                // Tries to be consistent with units
-Bool dyncomp_dataflow_only_mode = False;             // Nothing is an interaction
+Bool dyncomp_dataflow_only_mode = False;        // Nothing is an interaction
 Bool dyncomp_dataflow_comparisons_mode = False; // Only comparisons are interactions
 
 
@@ -535,10 +539,32 @@ void fjalar_tool_post_clo_init(void)
   if(kvasir_transitioning)
     fjalar_output_struct_vars = True;
 
-  // If we're printing trace info, we want
+  // If we're printing all trace info, we want
   // all debugging info also.
-  if(dyncomp_print_trace_all) {
-    dyncomp_print_debug_info = True;
+  if (dyncomp_print_trace_all) {
+      dyncomp_print_debug_info = True;
+      dyncomp_print_trace_info = True;
+  }
+
+  if (dyncomp_trace_startup) {
+      dyncomp_delayed_trace = False;
+      dyncomp_delayed_print_IR = False;
+  }
+
+  if (dyncomp_delayed_trace) {
+      if (dyncomp_print_trace_info) {
+          dyncomp_print_trace_info = False;
+      } else {
+          dyncomp_delayed_trace = False;
+      }    
+  }
+
+  if (dyncomp_delayed_print_IR) {
+      if (fjalar_print_IR) {
+          fjalar_print_IR = False;
+      } else {
+          dyncomp_delayed_print_IR = False;
+      }    
   }
 
   // Special-case .dtrace handling if kvasir_dtrace_filename ends in ".gz"
@@ -676,6 +702,8 @@ void fjalar_tool_print_usage()
 "                             [--no-dyncomp-trace-merge]\n"
 "    --dyncomp-trace          Similar, but very detailed\n"
 "                             [--no-dyncomp-trace]\n"
+"    --dyncomp-trace-startup  Trace all executed code\n"
+"                             [default is don't start trace until 'main']\n"
 "    --dyncomp-print-inc      Print DynComp comp. numbers at the execution of every program\n"
 "                             point - requires separate dtrace file (for debug only)\n"
 "    --old-decls-format       Use the old(1.0) decls format\n\n"
@@ -719,6 +747,7 @@ Bool fjalar_tool_process_cmd_line_option(const HChar* arg)
   else if VG_YESNO_CLO(arg, "dyncomp-print-inc",  dyncomp_print_incremental) {}
   else if VG_YESNO_CLO(arg, "separate-entry-exit-comp",
 		       dyncomp_separate_entry_exit_comp) {}
+  else if VG_YESNO_CLO(arg, "dyncomp-trace-startup", dyncomp_trace_startup) {}
   else if VG_YESNO_CLO(arg, "no-path-compression", dyncomp_no_path_compression) {}
   else if VG_YESNO_CLO(arg, "no-var-leader", dyncomp_no_var_leader) {}
   else if VG_YESNO_CLO(arg, "no-val-leader", dyncomp_no_val_leader) {}
