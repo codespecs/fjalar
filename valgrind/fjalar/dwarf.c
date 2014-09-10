@@ -1585,6 +1585,8 @@ read_and_display_attr_value (unsigned long attribute,
       char buf[64];
 
       byte_get_64 (data, &high_bits, &uvalue);
+      if (ok_to_harvest)
+         harvest_ordinary_unsigned_value(entry, attribute, (high_bits << 32) | uvalue);
       if (ok_to_print)
          printf (" 0x%s", dwarf_vmatoa64 (high_bits, uvalue, buf, sizeof (buf)));
       }
