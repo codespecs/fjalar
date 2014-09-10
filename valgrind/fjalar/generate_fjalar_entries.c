@@ -15,7 +15,7 @@
    License, or (at your option) any later version.
 */
 
-/* generate_fjalar_entries.h:
+/* generate_fjalar_entries.c:
 
    After typedata.c parses the DWARF debug. info. passed in by
    readelf, this simplifies the info. and packages it into data
@@ -476,7 +476,7 @@ void deleteTailNode(VarList* varListPtr)
         {
           tl_assert(varListPtr->first == varListPtr->last);
           VG_(free)(varListPtr->last);
-          //	  VG_(free)(varListPtr->first);
+          //  VG_(free)(varListPtr->first);
           varListPtr->first = varListPtr->last = 0;
           varListPtr->numVars = 0;
         }
@@ -517,6 +517,8 @@ void clearVarList(VarList* varListPtr, Bool destroyVariableEntries) {
 void initializeAllFjalarData(void)
 {
   tl_assert(globalVars.numVars == 0);
+
+  FJALAR_DPRINTF("ENTER initializeAllFjalarData\n");
 
   // TODO: We need to free up the entries in TypesTable if we are
   // really trying to be robust
@@ -561,10 +563,10 @@ void initializeAllFjalarData(void)
   initFunctionFjalarNames();
 
   FJALAR_DPRINTF(".data:   0x%x bytes starting at %p\n.bss:    0x%x bytes starting at %p\n.rodata: 0x%x bytes starting at %p\n.data.rel.ro: 0x%x bytes starting at %p\n",
-		 data_section_size, VoidPtr(data_section_addr),
-		 bss_section_size, VoidPtr(bss_section_addr),
-		 rodata_section_size, VoidPtr(rodata_section_addr),
-		 relrodata_section_size, VoidPtr(relrodata_section_addr));
+                 data_section_size, VoidPtr(data_section_addr),
+                 bss_section_size, VoidPtr(bss_section_addr),
+                 rodata_section_size, VoidPtr(rodata_section_addr),
+                 relrodata_section_size, VoidPtr(relrodata_section_addr));
 
   // Should only be called here:
   FJALAR_DPRINTF("\nChecking the representation of internal data structures ...\n");
@@ -572,6 +574,7 @@ void initializeAllFjalarData(void)
   repCheckAllEntries();
 
   FJALAR_DPRINTF("All representation checks PASSED.\n");
+  FJALAR_DPRINTF("EXIT  initializeAllFjalarData\n");
 }
 
 // Returns true iff the address is within a global area as specified
@@ -581,7 +584,7 @@ Bool addressIsGlobal(Addr addr) {
   return (((addr >= data_section_addr) && (addr < data_section_addr + data_section_size)) ||
           ((addr >= bss_section_addr) && (addr < bss_section_addr + bss_section_size)) ||
           ((addr >= rodata_section_addr) && (addr < rodata_section_addr + rodata_section_size)) ||
-	  ((addr >= relrodata_section_addr) && (addr < relrodata_section_addr + relrodata_section_size)));
+          ((addr >= relrodata_section_addr) && (addr < relrodata_section_addr + relrodata_section_size)));
 }
 
 // Performs a scan over all VariableEntry, TypeEntry, and
@@ -644,8 +647,8 @@ void repCheckAllEntries(void) {
 
     // Formal parameters:
     for (n = f->formalParameters.first;
-	 n != 0;
-	 n = n->next) {
+         n != 0;
+         n = n->next) {
       VariableEntry* v = n->var;
 
       tl_assert(!IS_GLOBAL_VAR(v));
@@ -664,8 +667,8 @@ void repCheckAllEntries(void) {
 
     // Local static array variables:
     for (n = f->localArrayAndStructVars.first;
-	 n != 0;
-	 n = n->next) {
+         n != 0;
+         n = n->next) {
       VariableEntry* v = n->var;
 
       tl_assert(!IS_GLOBAL_VAR(v));
@@ -681,8 +684,8 @@ void repCheckAllEntries(void) {
     tl_assert(f->returnValue.numVars <= 1);
 
     for (n = f->returnValue.first;
-	 n != 0;
-	 n = n->next) {
+         n != 0;
+         n = n->next) {
       VariableEntry* v = n->var;
 
       tl_assert(!IS_GLOBAL_VAR(v));
@@ -737,7 +740,7 @@ void repCheckAllEntries(void) {
       FJALAR_DPRINTF("  typeName: %s (%p)\n", t->typeName, t);
 
       tl_assert((D_STRUCT_CLASS == t->decType) ||
-		(D_UNION == t->decType));
+                (D_UNION == t->decType));
 
       // Rep. check member variables (if there are any):
       if (t->aggType->memberVarList) {
@@ -780,29 +783,29 @@ void repCheckAllEntries(void) {
 
       // Rep. check static member variables (if there are any):
       if (t->aggType->staticMemberVarList) {
-	unsigned int numStaticMemberVars = 0;
-	VarNode* node;
+        unsigned int numStaticMemberVars = 0;
+        VarNode* node;
 
-	for (node = t->aggType->staticMemberVarList->first;
-	     node != 0;
-	     node = node->next) {
-	  VariableEntry* curMember = node->var;
+        for (node = t->aggType->staticMemberVarList->first;
+             node != 0;
+             node = node->next) {
+          VariableEntry* curMember = node->var;
 
-	  FJALAR_DPRINTF(" checking STATIC member %s for %s\n",
-		      curMember->name, t->typeName);
+          FJALAR_DPRINTF(" checking STATIC member %s for %s\n",
+                      curMember->name, t->typeName);
 
-	  // Specific checks for static member variables:
-	  tl_assert(IS_MEMBER_VAR(curMember));
-	  tl_assert(0 == curMember->byteOffset);
-	  tl_assert(0 == curMember->memberVar->data_member_location);
-	  tl_assert(IS_GLOBAL_VAR(curMember));
-	  tl_assert(curMember->memberVar->structParentType == t);
+          // Specific checks for static member variables:
+          tl_assert(IS_MEMBER_VAR(curMember));
+          tl_assert(0 == curMember->byteOffset);
+          tl_assert(0 == curMember->memberVar->data_member_location);
+          tl_assert(IS_GLOBAL_VAR(curMember));
+          tl_assert(curMember->memberVar->structParentType == t);
 
-	  repCheckOneVariable(curMember);
+          repCheckOneVariable(curMember);
 
-	  numStaticMemberVars++;
-	}
-	tl_assert(numStaticMemberVars == t->aggType->staticMemberVarList->numVars);
+          numStaticMemberVars++;
+        }
+        tl_assert(numStaticMemberVars == t->aggType->staticMemberVarList->numVars);
       }
 
       // Rep. check member functions:
@@ -812,22 +815,22 @@ void repCheckAllEntries(void) {
              memberFunctionNode = memberFunctionNode->next) {
 
 
-/* 	  if(((FunctionEntry*)(memberFunctionNode->elt))->name) { */
-/* 	    FJALAR_DPRINTF("\n checking member Function %s\n", */
-/* 			   ((FunctionEntry*)(memberFunctionNode->elt))->name); */
-/* 	  } */
+/*           if(((FunctionEntry*)(memberFunctionNode->elt))->name) { */
+/*             FJALAR_DPRINTF("\n checking member Function %s\n", */
+/*                            ((FunctionEntry*)(memberFunctionNode->elt))->name); */
+/*           } */
 
-	  FJALAR_DPRINTF(" parent class is %p\n",
+          FJALAR_DPRINTF(" parent class is %p\n",
                          ((FunctionEntry*)(memberFunctionNode->elt))->parentClass);
 
           if(((FunctionEntry*)(memberFunctionNode->elt))->parentClass) {
             FJALAR_DPRINTF(" type is %s\n", ((FunctionEntry*)(memberFunctionNode->elt))->parentClass->typeName);
           }
 
-	  // Make sure that all of their parentClass fields point to t:
+          // Make sure that all of their parentClass fields point to t:
 
           //RUDD TEMP
-	  //          tl_assert(((FunctionEntry*)(memberFunctionNode->elt))->parentClass == t);
+          //          tl_assert(((FunctionEntry*)(memberFunctionNode->elt))->parentClass == t);
           numMemberFunctions++;
         }
         tl_assert(numMemberFunctions == t->aggType->memberFunctionList->numElts);
@@ -883,24 +886,24 @@ static void repCheckOneVariable(VariableEntry* var) {
 
     if (global_loc) {
       if (!addressIsGlobal(global_loc) &&
-	  (global_loc < 0x08048000 || global_loc > 0x8100000)) {
-	/* addressIsGlobal() works fine for the normal case of
-	   dynamically linked programs, but if you statically link
-	   with a debugging libc, it will contain some weird variables
-	   whose location is in other sections. The extra numeric
-	   comparison is a fallback hack for that case. */
-	printf("Address 0x%08x doesn't look like a global\n",
-		    (unsigned int)var->globalVar->globalLocation);
-	printf("Data section is 0x%08x to 0x%08x\n",
-		    data_section_addr, data_section_addr + data_section_size);
-	printf("BSS section is 0x%08x to 0x%08x\n",
-		    bss_section_addr, bss_section_addr + bss_section_size);
-	printf("ROData section is 0x%08x to 0x%08x\n",
-		    rodata_section_addr,
-		    rodata_section_addr + rodata_section_size);
-	printf("Relocated ROData section is 0x%08x to 0x%08x\n",
-		    relrodata_section_addr,
-		    relrodata_section_addr + relrodata_section_size);
+          (global_loc < 0x08048000 || global_loc > 0x8100000)) {
+        /* addressIsGlobal() works fine for the normal case of
+           dynamically linked programs, but if you statically link
+           with a debugging libc, it will contain some weird variables
+           whose location is in other sections. The extra numeric
+           comparison is a fallback hack for that case. */
+        printf("Address 0x%08x doesn't look like a global\n",
+                (unsigned int)var->globalVar->globalLocation);
+        printf("Data section is 0x%08x to 0x%08x\n",
+                data_section_addr, data_section_addr + data_section_size);
+        printf("BSS section is 0x%08x to 0x%08x\n",
+                bss_section_addr, bss_section_addr + bss_section_size);
+        printf("ROData section is 0x%08x to 0x%08x\n",
+                rodata_section_addr,
+                rodata_section_addr + rodata_section_size);
+        printf("Relocated ROData section is 0x%08x to 0x%08x\n",
+                relrodata_section_addr,
+                relrodata_section_addr + relrodata_section_size);
         tl_assert(0);
       }
     }
@@ -922,8 +925,10 @@ static void repCheckOneVariable(VariableEntry* var) {
   }
 
   if(IS_MEMBER_VAR(var)) {
-// UNDONE markro
-//    tl_assert(var->memberVar->structParentType);
+      // a static member var won't have a parent  (markro)
+      if (!IS_GLOBAL_VAR(var)) {
+          tl_assert(var->memberVar->structParentType);
+      }
   }
 
   // C++ reference vars should never have more than 1 level of
@@ -998,7 +1003,7 @@ static void extractOneGlobalVariable(dwarf_entry* e, unsigned long functionStart
                      0,0,0,0,0,0,0,
                      getDeclaredFile(e->comp_unit, variablePtr->decl_file));
 
-  FJALAR_DPRINTF("EXIT extractOneGlobalVariable(%p)\n", e);
+  FJALAR_DPRINTF("EXIT  extractOneGlobalVariable(%p)\n", e);
 }
 
 // Initializes the global variables list (globalVars) and fills it up
@@ -1020,24 +1025,24 @@ static void initializeGlobalVarsList(void)
   // Create a hashtable with keys = {unsigned long (globalVarAddr), non-zero}
   //                   and values = {string which is the global variable name}
   struct genhashtable* GlobalVarsTable =
-    genallocatehashtable(0,
-			 (int (*)(void *,void *)) &equivalentIDs);
+    genallocatehashtable(0, (int (*)(void *,void *)) &equivalentIDs);
 
-  FJALAR_DPRINTF("[initializeGlobalVarsList] - %d dwarf entries\n",
-		 (int)dwarf_entry_array_size);
+  FJALAR_DPRINTF("ENTER initializeGlobalVarsList - %d dwarf entries\n",
+                 (int)dwarf_entry_array_size);
 
   for (i = 0; i < dwarf_entry_array_size; i++) {
     cur_entry = &dwarf_entry_array[i];
     if (tag_is_variable(cur_entry->tag_name)) {
       variable* variable_ptr = (variable*)(cur_entry->entry_ptr);
 
-      FJALAR_DPRINTF("\t[initializeGlobalVarsList] Var (%d - ID: %lx): %s 0x%x static: %d, dec: %d, const: %d global: %d\n",
-		     cur_entry->level,
+      FJALAR_DPRINTF("\t[initializeGlobalVarsList] lvl %d, ID %lx, %s 0x%x, spec_ID: 0x%lx, static: %d, dec: %d, const: %d global: %d\n",
+                     cur_entry->level,
                      cur_entry->ID,
-		     variable_ptr->name,
-		     (unsigned int)variable_ptr->globalVarAddr,
-		     (unsigned int)variable_ptr->isStaticMemberVar,
-		     variable_ptr->is_declaration_or_artificial,
+                     variable_ptr->name,
+                     (unsigned int)variable_ptr->globalVarAddr,
+                     variable_ptr->specification_ID,
+                     (unsigned int)variable_ptr->isStaticMemberVar,
+                     variable_ptr->is_declaration_or_artificial,
                      variable_ptr->is_const,
                      variable_ptr->couldBeGlobalVar);
 
@@ -1045,54 +1050,58 @@ static void initializeGlobalVarsList(void)
 
       // IGNORE variables with is_declaration_or_artificial or
       // specification_ID active because these are empty shells!
+
+      // ABOVE is no longer true.  GCC 4.7.x (perhaps earlier?) now
+      // represents a static member variable with a DW_TAG_member at the
+      // declation and a DW_TAG_variable at the definition.  This entry
+      // has a DW_AT_specification that points back to the DW_TAG_member. 
+      // We want to treat static members kind of like globals so we will
+      // process them here.          (markro)
       if ((variable_ptr->couldBeGlobalVar &&
-	  variable_ptr->globalVarAddr &&
-// UNDONE markro
-          //(!variable_ptr->isStaticMemberVar) && // DON'T DEAL WITH C++ static member vars here;
-                                                // We deal with them in extractStructUnionType()
-          //(!variable_ptr->specification_ID) &&
+          variable_ptr->globalVarAddr &&
            (!variable_ptr->is_declaration_or_artificial)) ||
           (variable_ptr->is_const && !variable_ptr->is_declaration_or_artificial)) {
-	char* existingName;
+        char* existingName;
 
-        if(variable_ptr->is_const) {
+        if (variable_ptr->is_const) {
           variable_ptr->couldBeGlobalVar = True;
         }
 
-	if (!variable_ptr->name) {
-	  FJALAR_DPRINTF("\t[initializeGlobalVarsList] Skipping weird unnamed global variable ID#%x - addr: %x\n",
-		       (unsigned int)cur_entry->ID, (unsigned int)variable_ptr->globalVarAddr);
-	  continue;
-	}
-	else if (VG_STREQ(variable_ptr->name, "_IO_stdin_used")) {
-	  /* Hide from our users this silly glibc feature:
+        if (!variable_ptr->name) {
+          FJALAR_DPRINTF("\t[initializeGlobalVarsList] Skipping weird unnamed global variable ID#%x - addr: %x\n",
+                       (unsigned int)cur_entry->ID, (unsigned int)variable_ptr->globalVarAddr);
+          continue;
+        }
+        else if (VG_STREQ(variable_ptr->name, "_IO_stdin_used")) {
 
-	  [http://www.mail-archive.com/bug-glibc@gnu.org/msg02830.html]
-	  There is a symbol, _IO_stdin_used, placed into the
-	  executable program, *only* when a program compiles against
-	  glibc that has support for pre-2.1 libio.  Inside a
-	  fully-backward-compatible glibc, there is a routine that
-	  "looks into an executable" and determines if that symbol is
-	  present.  If not, that routine switches std{in,out,err} to
-	  point to old, pre-2.1 libio structures, assuming that this
-	  is a very old program compiled against old glibc, so that
-	  all stdio routines will work correctly. */
-	  FJALAR_DPRINTF("\t[initializeGlobalVarsList] Skipping silly glibc feature - %s\n",
-			 variable_ptr->name);
-	  continue;
-	}
+          /* Hide from our users this silly glibc feature:
+          [http://www.mail-archive.com/bug-glibc@gnu.org/msg02830.html]
+          There is a symbol, _IO_stdin_used, placed into the
+          executable program, *only* when a program compiles against
+          glibc that has support for pre-2.1 libio.  Inside a
+          fully-backward-compatible glibc, there is a routine that
+          "looks into an executable" and determines if that symbol is
+          present.  If not, that routine switches std{in,out,err} to
+          point to old, pre-2.1 libio structures, assuming that this
+          is a very old program compiled against old glibc, so that
+          all stdio routines will work correctly. */
 
-	// This is the part where we do not add duplicates. We first
-	// look up to see whether variable_ptr->globalVarAddr is
-	// non-null and in GlobalVarsTable. If it is already in the
-	// table, we get the value for that entry and compare it with
-	// the name of variable_ptr. If both globalVarAddr and name
-	// match, then we have a duplicate entry so we don't add the
-	// new entry to the globalVars list. However, if the variable
-	// is not yet in GlobalVarsTable, then we add it to the table
-	// and proceed with adding it to the globalVars list.
-	existingName = 0;
-        if(!variable_ptr->is_const) {
+          FJALAR_DPRINTF("\t[initializeGlobalVarsList] Skipping silly glibc feature - %s\n",
+                         variable_ptr->name);
+          continue;
+        }
+
+        // This is the part where we do not add duplicates. We first
+        // look up to see whether variable_ptr->globalVarAddr is
+        // non-null and in GlobalVarsTable. If it is already in the
+        // table, we get the value for that entry and compare it with
+        // the name of variable_ptr. If both globalVarAddr and name
+        // match, then we have a duplicate entry so we don't add the
+        // new entry to the globalVars list. However, if the variable
+        // is not yet in GlobalVarsTable, then we add it to the table
+        // and proceed with adding it to the globalVars list.
+        existingName = 0;
+        if (!variable_ptr->is_const) {
           if ((0 != variable_ptr->globalVarAddr) &&
               ((existingName =
                 gengettable(GlobalVarsTable, (void*)variable_ptr->globalVarAddr)))) {
@@ -1108,21 +1117,21 @@ static void initializeGlobalVarsList(void)
           }
         }
 
-	// If a variable is a global variable in C or in C++ without
-	// an enclosing namespace (older g++ versions do not put
-	// DW_TAG_namespace tags in the debug. info.), then its
-	// dwarf_entry.level is 1 because it is not nested within
-	// anything.  If dwarf_entry.level > 1, that means that this
-	// is either a static global variable declared within a
-	// function or a C++ global variable enclosed inside of a
-	// namespace (generated by g++ 4.0) so we should include
-	// either the namespace or function name along with the
-	// filename in front of the variable name:
-	if (cur_entry->level > 1) {
+        // If a variable is a global variable in C or in C++ without
+        // an enclosing namespace (older g++ versions do not put
+        // DW_TAG_namespace tags in the debug. info.), then its
+        // dwarf_entry.level is 1 because it is not nested within
+        // anything.  If dwarf_entry.level > 1, that means that this
+        // is either a static global variable declared within a
+        // function or a C++ global variable enclosed inside of a
+        // namespace (generated by g++ 4.0) so we should include
+        // either the namespace or function name along with the
+        // filename in front of the variable name:
+        if (cur_entry->level > 1) {
           // TODO: Support for different namespaces in the future.
-	  namespace_type* enclosing_namespace = findNamespaceForVariableEntry(cur_entry);
-	  unsigned long startPC =
-	    enclosing_namespace ? 0 : findFunctionStartPCForVariableEntry(cur_entry);
+          namespace_type* enclosing_namespace = findNamespaceForVariableEntry(cur_entry);
+          unsigned long startPC =
+            enclosing_namespace ? 0 : findFunctionStartPCForVariableEntry(cur_entry);
 
           // Constant local variables would satisfy the above conditions, let's ignore
           // them.
@@ -1130,18 +1139,16 @@ static void initializeGlobalVarsList(void)
             FJALAR_DPRINTF("\t[initializeGlobalVarsList] Constant variable with an enclosing function - NOT a global\n");
             continue;
           }
-          
-	  extractOneGlobalVariable(cur_entry,
-				   startPC);
-	}
-	else {
-	  extractOneGlobalVariable(cur_entry, 0);
-	}
+          extractOneGlobalVariable(cur_entry, startPC);
+        } else {
+          extractOneGlobalVariable(cur_entry, 0);
+        }
       }
     }
   }
 
   genfreehashtable(GlobalVarsTable);
+  FJALAR_DPRINTF("EXIT  initializeGlobalVarsList\n");
 }
 
 // Initialize the names of unnamed structs so that we can have
@@ -1193,7 +1200,7 @@ static int equivalentGlobalConstants(VariableEntry* varPtr1, VariableEntry* varP
 static void updateAllGlobalVariableNames(void) {
   char* globalName = 0;
   const char *loc_part; /* Part of the name to specify where the variable came from
-		     (doesn't exist in the real language) */
+                     (doesn't exist in the real language) */
   char *p;
 
   VarNode* curNode;
@@ -1438,10 +1445,10 @@ static void initFunctionFjalarNames(void) {
         genfreekey(FunctionTable_by_entryPC, (void *)cur_entry->entryPC);
         genfreekey(FunctionTable, (void *)cur_entry->startPC);
 
-	VG_(free)(bufOld);
-	bufOld=NULL;
-	VG_(free)(bufNew);
-	bufNew = NULL;
+        VG_(free)(bufOld);
+        bufOld=NULL;
+        VG_(free)(bufNew);
+        bufNew = NULL;
 
         continue;
       }
@@ -1512,49 +1519,49 @@ static void initFunctionFjalarNames(void) {
     cur_entry->trace_global_vars_tree = 0;
 
     if (fjalar_trace_vars_filename &&
-	(!cur_entry->trace_global_vars_tree_already_initialized)){
+        (!cur_entry->trace_global_vars_tree_already_initialized)){
       extern FunctionTree * globalFunctionTree;
 
       if (cur_entry->trace_vars_tree != 0){
-	struct tree_iter_t *it = titer((void *) cur_entry->trace_vars_tree);
-	while (titer_hasnext(it)){
-	  char *var = (char *) titer_next(it);
-	  
-	  if (var[0] == '/'){ //it's a global variable
-	    char *newString = VG_(strdup)("generate_fjalar_entries.c", var);
-	    tsearch((void *) newString,
-		    (void **) &(cur_entry->trace_global_vars_tree),
-		    compareStrings);
-	  }	
-	}
-	titer_destroy(it);
+        struct tree_iter_t *it = titer((void *) cur_entry->trace_vars_tree);
+        while (titer_hasnext(it)){
+          char *var = (char *) titer_next(it);
+          
+          if (var[0] == '/'){ //it's a global variable
+            char *newString = VG_(strdup)("generate_fjalar_entries.c", var);
+            tsearch((void *) newString,
+                    (void **) &(cur_entry->trace_global_vars_tree),
+                    compareStrings);
+          }        
+        }
+        titer_destroy(it);
       }
      
       // Only copy the globalFunctionTree if there were additions from trace_vars_tree
       // If there weren't additions, we'll just use globalFunctionTree during traversal
       if (globalFunctionTree != 0 && cur_entry->trace_global_vars_tree){
-	struct tree_iter_t *it = titer((void *) globalFunctionTree->function_variables_tree);
-	while (titer_hasnext(it)){
-	  char *var = (char *) titer_next(it);
-	  char *newString = VG_(strdup)("generate_fjalar_entries.c", var);
-	  tsearch((void *) newString,
-		  (void **) &(cur_entry->trace_global_vars_tree),
-		  compareStrings);
-	}
-	titer_destroy(it);
+        struct tree_iter_t *it = titer((void *) globalFunctionTree->function_variables_tree);
+        while (titer_hasnext(it)){
+          char *var = (char *) titer_next(it);
+          char *newString = VG_(strdup)("generate_fjalar_entries.c", var);
+          tsearch((void *) newString,
+                  (void **) &(cur_entry->trace_global_vars_tree),
+                  compareStrings);
+        }
+        titer_destroy(it);
       }
-      	 
+               
       //We also remove all globals from the normal trace_vars_tree to save time
       //when checking formal parameters against it later
       if (cur_entry->trace_global_vars_tree && cur_entry->trace_vars_tree){
-	struct tree_iter_t *it = titer((void *) cur_entry->trace_global_vars_tree);
-	while (titer_hasnext(it)){
-	  char *var = (char *) titer_next(it);
-	  tdelete(var,
-		  (void **) &(cur_entry->trace_vars_tree),
-		  compareStrings);
-	}
-	titer_destroy(it);
+        struct tree_iter_t *it = titer((void *) cur_entry->trace_global_vars_tree);
+        while (titer_hasnext(it)){
+          char *var = (char *) titer_next(it);
+          tdelete(var,
+                  (void **) &(cur_entry->trace_vars_tree),
+                  compareStrings);
+        }
+        titer_destroy(it);
       }
     }
     
@@ -1577,6 +1584,8 @@ void initializeFunctionTable(void)
   dwarf_entry* cur_entry = 0;
   FunctionEntry* cur_func_entry = 0;
   unsigned long num_functions_added = 0;
+
+  FJALAR_DPRINTF("ENTER initializeFuntionTable\n");
 
   FunctionTable =
     genallocatehashtable(0,
@@ -1614,9 +1623,9 @@ void initializeFunctionTable(void)
           // constructFunctionEntry(), in order to properly support
           // sub-classing:
           cur_func_entry = constructFunctionEntry();
-	  FJALAR_DPRINTF("Function at %p\n", cur_func_entry);
+          FJALAR_DPRINTF("Function at %p\n", cur_func_entry);
 
-	  FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
+          FJALAR_DPRINTF("Adding function %s\n", dwarfFunctionPtr->name);
 
 
           cur_func_entry->name = dwarfFunctionPtr->name;
@@ -1676,12 +1685,12 @@ void initializeFunctionTable(void)
           if (cur_func_entry->mangled_name) {
             //extern char* cplus_demangle_v3 (const char* mangled, int options);
             demangled_name = cplus_demangle_v3(cur_func_entry->mangled_name, DMGL_PARAMS | DMGL_ANSI);
-	    if (demangled_name) {
-	      FJALAR_DPRINTF("demangling: %s\n", demangled_name);
-	      // Set the demangled_name of the function to be the
-	      // demangled name:
-	      cur_func_entry->demangled_name = demangled_name;
-	    }
+            if (demangled_name) {
+              FJALAR_DPRINTF("demangling: %s\n", demangled_name);
+              // Set the demangled_name of the function to be the
+              // demangled name:
+              cur_func_entry->demangled_name = demangled_name;
+            }
           }
 
           // Extract all formal parameter variables
@@ -1696,37 +1705,37 @@ void initializeFunctionTable(void)
           // Add to FunctionTable
           genputtable(FunctionTable,
                       (void*)cur_func_entry->startPC, // key    (unsigned long)
-		      (void*)cur_func_entry);         // value  (FunctionEntry*)
+                      (void*)cur_func_entry);         // value  (FunctionEntry*)
 
-	  // FJALAR_DPRINTF("  call gencontains %p %p\n", next_line_addr, (void*)cur_func_entry->startPC);
+          // FJALAR_DPRINTF("  call gencontains %p %p\n", next_line_addr, (void*)cur_func_entry->startPC);
 
-	  if (gencontains(next_line_addr, (void*)cur_func_entry->startPC)) {
-	    cur_func_entry->entryPC = (Addr)
-	      gengettable(next_line_addr, (void*)cur_func_entry->startPC);
-	    FJALAR_DPRINTF("Entering %s at 0x%08x instead of 0x%08x\n",
-			   cur_func_entry->name, (unsigned int)cur_func_entry->entryPC,
-			   (unsigned int)cur_func_entry->startPC);
-	    /* Leave DWARF offsets alone if the exist, since we should
-	       be properly placed to use them. */
-	    verifyStackParamWordAlignment(cur_func_entry, 0);
-	  } else {
-	    // Make one more pass-through to make sure that byteOffsets
-	    // are correct for the word-aligned stack!
-	    // We must do this AFTER extracting the return variable.
-	    // Should only be needed when we weren't able to skip the
-	    // prolog, and so can't rely on the DWARF information to
-	    // have the correct parameter locations.
-	    cur_func_entry->entryPC = cur_func_entry->startPC;
-	    FJALAR_DPRINTF("Entering %s at 0x%08x \n",
-			   cur_func_entry->name, (unsigned int)cur_func_entry->entryPC);
-	    verifyStackParamWordAlignment(cur_func_entry, 1);
-	  }
+          if (gencontains(next_line_addr, (void*)cur_func_entry->startPC)) {
+            cur_func_entry->entryPC = (Addr)
+              gengettable(next_line_addr, (void*)cur_func_entry->startPC);
+            FJALAR_DPRINTF("Entering %s at 0x%08x instead of 0x%08x\n",
+                           cur_func_entry->name, (unsigned int)cur_func_entry->entryPC,
+                           (unsigned int)cur_func_entry->startPC);
+            /* Leave DWARF offsets alone if the exist, since we should
+               be properly placed to use them. */
+            verifyStackParamWordAlignment(cur_func_entry, 0);
+          } else {
+            // Make one more pass-through to make sure that byteOffsets
+            // are correct for the word-aligned stack!
+            // We must do this AFTER extracting the return variable.
+            // Should only be needed when we weren't able to skip the
+            // prolog, and so can't rely on the DWARF information to
+            // have the correct parameter locations.
+            cur_func_entry->entryPC = cur_func_entry->startPC;
+            FJALAR_DPRINTF("Entering %s at 0x%08x \n",
+                           cur_func_entry->name, (unsigned int)cur_func_entry->entryPC);
+            verifyStackParamWordAlignment(cur_func_entry, 1);
+          }
           genputtable(FunctionTable_by_entryPC,
                       (void*)cur_func_entry->entryPC,
-		      (void*)cur_func_entry);
+                      (void*)cur_func_entry);
 
-	  cur_func_entry->formalParamStackByteSize
-	    = determineFormalParametersStackByteSize(cur_func_entry);
+          cur_func_entry->formalParamStackByteSize
+            = determineFormalParametersStackByteSize(cur_func_entry);
 
           num_functions_added++;
         }
@@ -1737,6 +1746,8 @@ void initializeFunctionTable(void)
     printf( "Did you compile your program with DWARF2 debugging info?  The option is -gdwarf-2 on gcc.\n");
     my_abort();
   }
+
+  FJALAR_DPRINTF("EXIT  initializeFuntionTable\n");
 }
 
 
@@ -1757,7 +1768,6 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
 {
   int arrayDims = 0;
   int i = 0;
-
   arrayDims = arrayPtr->num_subrange_entries;
 
   varPtr->staticArr = VG_(calloc)("generate_fjalar_entries.c: extractArrayType.1", 1, sizeof(*varPtr->staticArr));
@@ -1779,6 +1789,8 @@ static dwarf_entry* extractArrayType(VariableEntry* varPtr, array_type* arrayPtr
 // Modifies: var->varType
 static void extractBaseType(VariableEntry* var, base_type* basePtr)
 {
+  FJALAR_DPRINTF("ENTER extractBaseType\n");
+
   // Figure out what basic type it is
   switch(basePtr->encoding) {
   case DW_ATE_float:
@@ -1845,29 +1857,37 @@ static void extractBaseType(VariableEntry* var, base_type* basePtr)
 
   // Post-condition:
   tl_assert(IS_BASIC_TYPE(var->varType->decType));
+
+  FJALAR_DPRINTF("EXIT  extractBaseType\n");
 }
 
 // Extracts enumeration type info
 // Modifies: t
 static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 {
+  FJALAR_DPRINTF("ENTER extractEnumerationType\n");
+
   t->decType = D_ENUMERATION;
   t->typeName = collectionPtr->name;
 
   t->byteSize = sizeof(int); // An enumeration is an int
+  
+  FJALAR_DPRINTF("EXIT  extractEnumerationType\n");
 }
 
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList
 static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 {
+  FJALAR_DPRINTF("ENTER extractStructUnionType(%p)\n", e);
+
   collection_type* collectionPtr = 0;
   UInt i = 0, member_func_index = 0, superclass_index = 0;
   VarNode* memberNodePtr = 0;
 
   tl_assert((e->tag_name == DW_TAG_structure_type) ||
             (e->tag_name == DW_TAG_union_type) ||
-	    (e->tag_name == DW_TAG_class_type));
+            (e->tag_name == DW_TAG_class_type));
 
   collectionPtr = (collection_type*)(e->entry_ptr);
 
@@ -2018,7 +2038,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
           tl_assert((super_type_entry->tag_name == DW_TAG_structure_type) ||
                     (super_type_entry->tag_name == DW_TAG_union_type) ||
-		    (super_type_entry->tag_name == DW_TAG_class_type));
+                    (super_type_entry->tag_name == DW_TAG_class_type));
 
           FJALAR_DPRINTF("  Doesn't exist ... trying to add class %s\n", curSuper->className);
           extractStructUnionType(curSuper->class, super_type_entry);
@@ -2060,8 +2080,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   }
 
   FJALAR_DPRINTF("t: %s, num_static_member_vars: %u\n",
-	      t->typeName,
-	      collectionPtr->num_static_member_vars);
+                  t->typeName,
+                  collectionPtr->num_static_member_vars);
 
   // Extract static member variables into staticMemberVarList only if
   // there is at least 1 static member variable:
@@ -2087,11 +2107,10 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       // for now, let's use Macros
 
       tl_assert(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name) ||
-		tag_is_member(collectionPtr->static_member_vars[ind]->tag_name));
-
+                tag_is_member(collectionPtr->static_member_vars[ind]->tag_name));
 
 #define EXTRACT_STATIC_INFO(dwarf_type, dwarf_ptr) \
-      dwarf_type *staticMemberPtr = (dwarf_type*)dwarf_ptr;	\
+      dwarf_type *staticMemberPtr = (dwarf_type*)dwarf_ptr; \
       is_external = staticMemberPtr->is_external; \
       accessibility = staticMemberPtr->accessibility; \
       type_ptr = staticMemberPtr->type_ptr;           \
@@ -2099,25 +2118,25 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       const_value = staticMemberPtr->const_value
 
       if(tag_is_variable(collectionPtr->static_member_vars[ind]->tag_name)) {
-	EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
-	mangled_name = staticMemberPtr->mangled_name;
-	globalVarAddr = staticMemberPtr->globalVarAddr;
-  if (staticMemberPtr->name)
-      FJALAR_DPRINTF("??? Static member var - var name: %s\n", staticMemberPtr->name);
-  if (staticMemberPtr->mangled_name)
-      FJALAR_DPRINTF("??? Static member var - var mangled: %s\n", staticMemberPtr->mangled_name);
+        EXTRACT_STATIC_INFO(variable, collectionPtr->static_member_vars[ind]->entry_ptr);
+        mangled_name = staticMemberPtr->mangled_name;
+        globalVarAddr = staticMemberPtr->globalVarAddr;
+        if (staticMemberPtr->name)
+            FJALAR_DPRINTF("??? Static member var - var name: %s\n", staticMemberPtr->name);
+        if (staticMemberPtr->mangled_name)
+            FJALAR_DPRINTF("??? Static member var - var mangled: %s\n", staticMemberPtr->mangled_name);
         decl_file = getDeclaredFile(collectionPtr->static_member_vars[ind]->comp_unit, staticMemberPtr->decl_file);
         
       } else if(tag_is_member(collectionPtr->static_member_vars[ind]->tag_name)) {
-	EXTRACT_STATIC_INFO(member, collectionPtr->static_member_vars[ind]->entry_ptr);
-
-	//UNDONE markro
-    // we want to ignore this case?
-  FJALAR_DPRINTF("??? Static member var - member: %s\n", staticMemberPtr->name);
-    //name = staticMemberPtr->name;
+        EXTRACT_STATIC_INFO(member, collectionPtr->static_member_vars[ind]->entry_ptr);
+        if (staticMemberPtr->name)
+            FJALAR_DPRINTF("??? Static member var - member: %s\n", staticMemberPtr->name);
+        // We intentionally leave 'name' as null.  This will cause the
+        // call to extractOneVariable below to do nothing.  This is 
+        // okay because we will process static members later with the
+        // globals.   (markro)
         decl_file = getDeclaredFile(collectionPtr->static_member_vars[ind]->comp_unit, staticMemberPtr->decl_file);
       }
-
 
       // Try to find a global address in VariableSymbolTable if it
       // doesn't exist yet:
@@ -2129,23 +2148,21 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
       }
 
       extractOneVariable(t->aggType->staticMemberVarList,
-			 type_ptr,
+                         type_ptr,
                          // If a mangled name exists, pass it in so
                          // that it can be de-mangled:
-			 (mangled_name ?
-			  mangled_name :
-			  name),
-			 0,
-			 1,
-			 is_external,
+                         (mangled_name ? mangled_name : name),
+                         0,
+                         1,
+                         is_external,
                          is_const,
                          const_value,
-			 globalVarAddr,
-			 0,
-			 1, 0, 0, 0, 0,
-			 t,
+                         globalVarAddr,
+                         0,
+                         1, 0, 0, 0, 0,
+                         t,
                          accessibility,
-			 0,
+                         0,
                          decl_file);
       
     }
@@ -2207,6 +2224,8 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
   else {
     t->byteSize = 0;
   }
+
+  FJALAR_DPRINTF("EXIT  extractStructUnionType(%p)\n", e);
 }
 
 
@@ -2217,12 +2236,12 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 // function (we need struct types because they may contain static arrays
 // or structs which themselves contain static arrays)
 static void extractLocalArrayAndStructVariables(FunctionEntry* f,
-						function* dwarfFunctionEntry)
+                                                function* dwarfFunctionEntry)
 {
   UInt i;
 
-  FJALAR_DPRINTF("extractLocalArrayAndStructVariables - %s (#: %u)\n",
-	 dwarfFunctionEntry->name, dwarfFunctionEntry->num_local_vars);
+  FJALAR_DPRINTF("ENTER extractLocalArrayAndStructVariables - %s (#: %u)\n",
+         dwarfFunctionEntry->name, dwarfFunctionEntry->num_local_vars);
 
   // No local variables - don't do anything
   if (!dwarfFunctionEntry->num_local_vars)
@@ -2235,8 +2254,8 @@ static void extractLocalArrayAndStructVariables(FunctionEntry* f,
                                            dwarfFunctionEntry->local_vars[i]);
     }
 
-  FJALAR_DPRINTF("DONE extractLocalArrayAndVariables - %s\n",
-	  dwarfFunctionEntry->name);
+  FJALAR_DPRINTF("EXIT  extractLocalArrayAndStructVariables - %s\n",
+          dwarfFunctionEntry->name);
 }
 
 // MUST BE RUN AFTER the return value for a function has been initialized!!!
@@ -2258,7 +2277,7 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
   VarNode* firstNode = f->returnValue.first;
 
   FJALAR_DPRINTF("ENTER verifyStackParamWordAlignment(%s): %p\n",
-		 f->fjalar_name, firstNode);
+                 f->fjalar_name, firstNode);
 
   // Start with default offset of 8 from EBP (*EBP = old EBP, *(EBP+4) = return addr)
   // unless the function returns a struct by value - then we start
@@ -2268,10 +2287,10 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
     VariableEntry* firstReturnVar = firstNode->var;
     // See if the function seturn a struct by value:
     if (firstReturnVar &&
-	(D_STRUCT_CLASS == firstReturnVar->varType->decType) &&
-	(0 == firstReturnVar->ptrLevels) &&
-	// Don't forget C++ reference variables!
-	(0 == firstReturnVar->referenceLevels)) {
+        (D_STRUCT_CLASS == firstReturnVar->varType->decType) &&
+        (0 == firstReturnVar->ptrLevels) &&
+        // Don't forget C++ reference variables!
+        (0 == firstReturnVar->referenceLevels)) {
       offset = 12;
     }
   }
@@ -2282,20 +2301,20 @@ static void verifyStackParamWordAlignment(FunctionEntry* f, int replace)
     {
       int cur_byteSize = 0;
       if (cur_node->var->locationType == NO_LOCATION || replace) {
-	cur_node->var->locationType = FP_OFFSET_LOCATION;
-	cur_node->var->byteOffset = offset;
+        cur_node->var->locationType = FP_OFFSET_LOCATION;
+        cur_node->var->byteOffset = offset;
       }
       cur_byteSize = determineVariableByteSize(cur_node->var);
       // WORD ALIGNED!!!
       if (cur_byteSize > 0)
-	{
-	  // Round offset up to the nearest word (4 bytes)
-	  offset += (((cur_byteSize + 3) >> 2) << 2);
-	}
+        {
+          // Round offset up to the nearest word (4 bytes)
+          offset += (((cur_byteSize + 3) >> 2) << 2);
+        }
     }
 
   FJALAR_DPRINTF("EXIT verifyStackParamWordAlignment(%s)\n",
-		 f->fjalar_name);
+                 f->fjalar_name);
 }
 
 // Returns the byte size of the given VariableEntry
@@ -2356,7 +2375,7 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
        cur_node = cur_node->next)
     {
       int this_end = cur_node->var->byteOffset +
-	determineVariableByteSize(cur_node->var);
+        determineVariableByteSize(cur_node->var);
       totalByteSize = MAX(totalByteSize, this_end);
     }
   // PG comment said "Just to be safe, round UP to the next multiple
@@ -2370,6 +2389,8 @@ int determineFormalParametersStackByteSize(FunctionEntry* f)
 static void extractOneFormalParameterVar(FunctionEntry* f,
                                          dwarf_entry* dwarfParamEntry)
 {
+  FJALAR_DPRINTF("ENTER extractOneFormalParameterVar(%p)\n", dwarfParamEntry);
+
   formal_parameter* paramPtr = 0;
   dwarf_entry* typePtr = 0;
   VariableEntry *varPtr;
@@ -2390,21 +2411,21 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
   }
 
   FJALAR_DPRINTF("  %s parameter name %s\n",
-	  f->name,
-	  paramPtr->name);
+          f->name,
+          paramPtr->name);
 
 
   varPtr = extractOneVariable(&(f->formalParameters),
-			      typePtr,
-			      paramPtr->name,
-			      0,
+                              typePtr,
+                              paramPtr->name,
                               0,
-			      0,
-			      0,
                               0,
-			      0,
-			      0,
-			      0,0,0,0,0,0,0,1,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,0,0,0,0,0,0,1,
                               0);
 
   if (paramPtr->dwarf_stack_size > 0) {
@@ -2429,15 +2450,17 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
 
     FJALAR_DPRINTF(" location_type: %d, byteOffset: %x\n", varPtr->locationType, varPtr->byteOffset);
   }
+
+  FJALAR_DPRINTF("EXIT  extractOneFormalParameterVar\n");
 }
 
 static void extractFormalParameterVars(FunctionEntry* f,
-				       function* dwarfFunctionEntry)
+                                       function* dwarfFunctionEntry)
 {
   UInt i;
 
-  FJALAR_DPRINTF("extractFormalParameterVars - %s (#: %u)\n",
-	 dwarfFunctionEntry->name, dwarfFunctionEntry->num_formal_params);
+  FJALAR_DPRINTF("ENTER extractFormalParameterVars - %s (#: %u)\n",
+         dwarfFunctionEntry->name, dwarfFunctionEntry->num_formal_params);
 
   // No formal parameters - don't do anything
   if (!dwarfFunctionEntry->num_formal_params)
@@ -2447,14 +2470,18 @@ static void extractFormalParameterVars(FunctionEntry* f,
     {
       extractOneFormalParameterVar(f, dwarfFunctionEntry->params[i]);
     }
+
+  FJALAR_DPRINTF("EXIT  extractFormalParameterVars\n");
 }
 
 
 // Only adds a new entry if dwarfVariableEntry's type ==
 // DW_TAG_array_type or struct or union type:
 static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
-						 dwarf_entry* dwarfVariableEntry)
+                                                 dwarf_entry* dwarfVariableEntry)
 {
+  FJALAR_DPRINTF("ENTER extractOneLocalArrayOrStructVariable(%p)\n", dwarfVariableEntry);
+
   variable* variablePtr = 0;
   dwarf_entry* typePtr = 0;
   VariableEntry *varPtr;
@@ -2469,7 +2496,7 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
 
   if (!typePtr) {
     printf( "Unexpected typed local variable %s in %s\n",
-		 variablePtr->name, f->name);
+                 variablePtr->name, f->name);
     return;
   }
 
@@ -2479,9 +2506,9 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   // static variables have global scope so they can be picked up
   // by the sweep of the global variables
   if (!(tag_is_array_type(typePtr->tag_name) ||
-	(DW_TAG_structure_type == typePtr->tag_name) ||
-	(DW_TAG_union_type == typePtr->tag_name) ||
-	(DW_TAG_class_type == typePtr->tag_name)) ||
+        (DW_TAG_structure_type == typePtr->tag_name) ||
+        (DW_TAG_union_type == typePtr->tag_name) ||
+        (DW_TAG_class_type == typePtr->tag_name)) ||
       variablePtr->couldBeGlobalVar) {
     return;
   }
@@ -2493,22 +2520,22 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
   }
 
   FJALAR_DPRINTF("  %s local variable name %s - localArrayAndStructVars %p size = %d\n",
-		 f->name,
-		 variablePtr->name,
-		 &(f->localArrayAndStructVars),
-		 f->localArrayAndStructVars.numVars);
+                 f->name,
+                 variablePtr->name,
+                 &(f->localArrayAndStructVars),
+                 f->localArrayAndStructVars.numVars);
 
   varPtr = extractOneVariable(&(f->localArrayAndStructVars),
-			      typePtr,
-			      variablePtr->name,
-			      0,
-			      0,
+                              typePtr,
+                              variablePtr->name,
                               0,
-			      0,
                               0,
-			      0,
-			      0,
-			      0,0,0,0,0,0,0,0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,
+                              0,0,0,0,0,0,0,0,
                               getDeclaredFile(dwarfVariableEntry->comp_unit, variablePtr->decl_file));
 
   FJALAR_DPRINTF("  set locationType FP_OFFSET\n");
@@ -2521,21 +2548,22 @@ static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
       varPtr->locationType = SP_OFFSET_LOCATION;
   }
   varPtr->byteOffset = variablePtr->offset;
+
+  FJALAR_DPRINTF("EXIT  extractOneLocalArrayOrStructVariable(%p)\n", dwarfVariableEntry);
 }
 
 static void extractReturnVar(FunctionEntry* f,
-			     function* dwarfFunctionEntry)
+                             function* dwarfFunctionEntry)
 {
   // Get the return value type
   dwarf_entry* typePtr = dwarfFunctionEntry->return_type;
 
-  FJALAR_DPRINTF("extractReturnVar - %s\n",
-	  dwarfFunctionEntry->name);
+  FJALAR_DPRINTF("ENTER extractReturnVar - %s\n", dwarfFunctionEntry->name);
 
   // void function - no return type
   if(!typePtr) {
     FJALAR_DPRINTF("DONE (empty) - extractReturnVar - %s\n",
-		   dwarfFunctionEntry->name);
+                   dwarfFunctionEntry->name);
 
     return;
   }
@@ -2545,14 +2573,16 @@ static void extractReturnVar(FunctionEntry* f,
   extractOneVariable(&(f->returnValue),
                      typePtr,
                      RETURN_VALUE_NAME,
-		     0,
-                     0,
-		     0,
                      0,
                      0,
-		     0,
-		     0,
-		     0,0,0,0,0,0,0,0,0);
+                     0,
+                     0,
+                     0,
+                     0,
+                     0,
+                     0,0,0,0,0,0,0,0,0);
+
+  FJALAR_DPRINTF("EXIT  extractReturnVar - %s\n", dwarfFunctionEntry->name);
 }
 
 
@@ -2567,7 +2597,7 @@ void updateAllVarTypes(void) {
     return;
   }
 
-  FJALAR_DPRINTF("varsToUpdateTypes.numVars: %d\n", varsToUpdateTypes.numVars);
+  FJALAR_DPRINTF("ENTER updateAllVarTypes: %d\n", varsToUpdateTypes.numVars);
 
   for (n = varsToUpdateTypes.first;
        n != NULL;
@@ -2624,29 +2654,31 @@ void updateAllVarTypes(void) {
   // Remember to NOT destroy the VariableEntry entries inside the list
   // because they are aliased elsewhere:
   clearVarList(&varsToUpdateTypes, 0);
+
+  FJALAR_DPRINTF("EXIT  updateAllVarTypes\n");
 }
 
 
 // Extracts one variable and inserts it at the end of varListPtr
 static VariableEntry*
 extractOneVariable(VarList* varListPtr,
-		   dwarf_entry* typePtr,
-		   const char* variableName,
-		   char* fileName,
-		   char isGlobal,
-		   char isExternal,
+                   dwarf_entry* typePtr,
+                   const char* variableName,
+                   char* fileName,
+                   char isGlobal,
+                   char isExternal,
                    char isConstant,
                    long constantValue,
-		   unsigned long globalLocation,
-		   unsigned long functionStartPC,
-		   char isStructUnionMember,
-		   unsigned long data_member_location,
-		   int internalByteSize,
-		   int internalBitOffset,
-		   int internalBitSize,
-		   TypeEntry* structParentType,
-		   unsigned long dwarf_accessibility,
-		   char isFormalParam,
+                   unsigned long globalLocation,
+                   unsigned long functionStartPC,
+                   char isStructUnionMember,
+                   unsigned long data_member_location,
+                   int internalByteSize,
+                   int internalBitOffset,
+                   int internalBitSize,
+                   TypeEntry* structParentType,
+                   unsigned long dwarf_accessibility,
+                   char isFormalParam,
                    char* declared_in) // All static arrays which are
 // formal parameters are treated like NORMAL pointers which are not statically-sized
 // just because that's how the C language works
@@ -2659,8 +2691,7 @@ extractOneVariable(VarList* varListPtr,
 
   char* demangled_name = 0;
 
-  //RUDD EXCEPTION
-  FJALAR_DPRINTF("Entering extractOneVariable for %s(varListPtr: %p)\n", variableName, varListPtr);
+  FJALAR_DPRINTF("ENTER extractOneVariable for %s(varListPtr: %p)\n", variableName, varListPtr);
 
   // Don't extract the variable if it has a bogus name:
   if (!variableName || ignore_variable_with_name(variableName))
@@ -2740,39 +2771,39 @@ extractOneVariable(VarList* varListPtr,
   // Strip off modifier, typedef, and array tags until we eventually
   // hit a base or collection type (or a null pointer meaning "void")
   while (typePtr && (tag_is_modifier_type(typePtr->tag_name)
-		     || tag_is_typedef(typePtr->tag_name)
-		     || tag_is_array_type(typePtr->tag_name)))
+                     || tag_is_typedef(typePtr->tag_name)
+                     || tag_is_array_type(typePtr->tag_name)))
     {
       if (tag_is_modifier_type(typePtr->tag_name))
-	{
-	  // Strip off modifier tags and put each new stripped entry into typePtr
-	  modifier_type* modifierPtr = (modifier_type*)(typePtr->entry_ptr);
+        {
+          // Strip off modifier tags and put each new stripped entry into typePtr
+          modifier_type* modifierPtr = (modifier_type*)(typePtr->entry_ptr);
 
-	  // If the parameter is a "pointer" type, create one pointer
-	  // variable then one derived variable for every layer of indirection
-	  if (typePtr->tag_name == DW_TAG_pointer_type) {
+          // If the parameter is a "pointer" type, create one pointer
+          // variable then one derived variable for every layer of indirection
+          if (typePtr->tag_name == DW_TAG_pointer_type) {
             ptrLevels++;
           }
           // If the parameter is a C++ reference:
           // (this should really be incremented only once)
-	  else if (typePtr->tag_name == DW_TAG_reference_type) {
+          else if (typePtr->tag_name == DW_TAG_reference_type) {
               referenceLevels++;
           }
 
           // If the parameter is a "const" or "volatile" type, just strip
           // off the "const" or "volatile" and process it again
-	  typePtr = extractModifierType(modifierPtr);
-	}
+          typePtr = extractModifierType(modifierPtr);
+        }
       else if (tag_is_array_type(typePtr->tag_name))
-	{
-	  array_type* arrayPtr = (array_type*)(typePtr->entry_ptr);
-	  typePtr = extractArrayType(varPtr, arrayPtr);
-	  ptrLevels++;
-	}
+        {
+          array_type* arrayPtr = (array_type*)(typePtr->entry_ptr);
+          typePtr = extractArrayType(varPtr, arrayPtr);
+          ptrLevels++;
+        }
       else if (tag_is_typedef(typePtr->tag_name))
-	{
-	  typePtr = ((typedef_type*)typePtr->entry_ptr)->target_type_ptr;
-	}
+        {
+          typePtr = ((typedef_type*)typePtr->entry_ptr)->target_type_ptr;
+        }
     }
 
   FJALAR_DPRINTF("\tFinished stripping modifiers for %s\n", variableName);
@@ -2792,7 +2823,7 @@ extractOneVariable(VarList* varListPtr,
   FJALAR_DPRINTF("\tptrLevels is %d\n", varPtr->ptrLevels);
 
   if (typePtr && ((typePtr->tag_name == DW_TAG_structure_type) ||
-		  (typePtr->tag_name == DW_TAG_class_type))) {
+                  (typePtr->tag_name == DW_TAG_class_type))) {
     char* type_name = ((collection_type*)(typePtr->entry_ptr))->name;
     // We want to ignore POINTERS to certain types (don't ignore
     // the actual values of that type because it may screw up alignments).
@@ -2906,7 +2937,7 @@ extractOneVariable(VarList* varListPtr,
         // Struct or union type (where most of the action takes place)
         else if  ((typePtr->tag_name == DW_TAG_structure_type) ||
                   (typePtr->tag_name == DW_TAG_union_type) ||
-		  (typePtr->tag_name == DW_TAG_class_type)) {
+                  (typePtr->tag_name == DW_TAG_class_type)) {
           extractStructUnionType(varPtr->varType, typePtr);
         }
       }
@@ -2932,6 +2963,7 @@ extractOneVariable(VarList* varListPtr,
   }
 
   FJALAR_DPRINTF("\tdecType is: %s\n", DeclaredTypeString[varPtr->varType->decType]);
+  FJALAR_DPRINTF("EXIT  extractOneVariable for %s\n", variableName);
 
   return varPtr;
 }
@@ -2948,7 +2980,8 @@ int equivalentIDs(int ID1, int ID2) {
 
 static void processFunctions() {
   FuncIterator* funcIt = newFuncIterator();
-  FJALAR_DPRINTF("processFunctions()\n");
+
+  FJALAR_DPRINTF("ENTER processFunctions\n");
 
   while(hasNextFunc(funcIt)) {
     FunctionEntry* f = nextFunc(funcIt);
@@ -2973,28 +3006,30 @@ static void processFunctions() {
 
     if(VG_STREQ("main", f->name)) {
       if ((f->formalParameters.numVars > 0) &&
-	  (f->formalParameters.first->var) &&
-	  !(f->formalParameters.first->var->validLoc) &&
-	  (f->formalParameters.first->var->varType->decType == D_INT)){
-	VariableEntry* var = f->formalParameters.first->var;
-	printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
-	var->byteOffset = 16;
-	var->validLoc = 1;
+          (f->formalParameters.first->var) &&
+          !(f->formalParameters.first->var->validLoc) &&
+          (f->formalParameters.first->var->varType->decType == D_INT)){
+        VariableEntry* var = f->formalParameters.first->var;
+        printf("Found invalid argc, varByteOffset is: %d\n", var->byteOffset);
+        var->byteOffset = 16;
+        var->validLoc = 1;
       }
 
       if ((f->formalParameters.numVars > 1) &&
-	  (f->formalParameters.first->next->var) &&
-	  !(f->formalParameters.first->next->var->validLoc) &&
-	  (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
-	VariableEntry* var = f->formalParameters.first->next->var;
-	printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
-	var->byteOffset = 20;
-	var->validLoc = 1;
+          (f->formalParameters.first->next->var) &&
+          !(f->formalParameters.first->next->var->validLoc) &&
+          (f->formalParameters.first->next->var->varType->decType == D_CHAR)) {
+        VariableEntry* var = f->formalParameters.first->next->var;
+        printf("Found invalid argv, varByteOffset is: %d\n", var->byteOffset);
+        var->byteOffset = 20;
+        var->validLoc = 1;
       }
     }
   }
+
+  FJALAR_DPRINTF("EXIT  processFunctions\n");
   deleteFuncIterator(funcIt);
-  }
+}
 
 
 
@@ -3088,6 +3123,8 @@ static void initConstructorsAndDestructors(void) {
 static void initMemberFuncs(void) {
   TypeIterator* typeIt = newTypeIterator();
 
+  FJALAR_DPRINTF("ENTER initMemberFuncs\n");
+
   // Iterate through all entries in TypesTable:
   while (hasNextType(typeIt)) {
     TypeEntry* t = nextType(typeIt);
@@ -3110,10 +3147,9 @@ static void initMemberFuncs(void) {
 
       if (t->aggType->memberFunctionList) {
         for (n = t->aggType->memberFunctionList->first;
-            n != NULL;
+             n != NULL;
              n = n->next) {
-          // UNDONE: Is this right on 64bit address machine (markro)
-          unsigned int start_PC = (unsigned int)(ptrdiff_t)(n->elt);
+          unsigned long start_PC = (unsigned long)(ptrdiff_t)(n->elt);
           tl_assert(start_PC);
 
           FJALAR_DPRINTF("  hacked start_pc: %p - parentClass = %s\n",
@@ -3130,6 +3166,7 @@ static void initMemberFuncs(void) {
     }
   }
 
+  FJALAR_DPRINTF("EXIT  initMemberFuncs\n");
   deleteTypeIterator(typeIt);
 }
 
@@ -3301,7 +3338,7 @@ void outputAllXMLDeclarations() {
   XML_PRINTF("<program>\n");
 
   XML_PRINTF("<executable-name>%s</executable-name>\n",
-	     executable_filename);
+             executable_filename);
 
   XMLprintGlobalVars();
   XMLprintFunctionTable();
@@ -3431,20 +3468,20 @@ static void XMLprintTypesTable() {
 
     if (cur_entry->typeName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
-		 cur_entry->typeName);
+                 cur_entry->typeName);
     }
 
     XML_PRINTF("<byte-size>%d</byte-size>\n",
-	       cur_entry->byteSize);
+               cur_entry->byteSize);
 
     XML_PRINTF("<declared-type>%s</declared-type>\n",
-	       DeclaredTypeNames[cur_entry->decType]);
+               DeclaredTypeNames[cur_entry->decType]);
 
     if (IS_AGGREGATE_TYPE(cur_entry)) {
 
       if (cur_entry->aggType->memberVarList &&
           (cur_entry->aggType->memberVarList->numVars > 0)) {
-	XML_PRINTF("<member-variables>\n");
+        XML_PRINTF("<member-variables>\n");
         XMLprintVariablesInList(cur_entry->aggType->memberVarList);
         XML_PRINTF("</member-variables>\n");
       }
@@ -3574,7 +3611,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("<global-var>\n");
 
     XML_PRINTF("<location>%p</location>\n",
-	       (void*)var->globalVar->globalLocation);
+               (void*)var->globalVar->globalLocation);
 
     if (var->globalVar->fileName) {
       XML_PRINTF("<filename>%s</filename>\n",
@@ -3585,8 +3622,8 @@ static void XMLprintOneVariable(VariableEntry* var) {
       XML_PRINTF("<file-static-var>\n");
 
       if (var->globalVar->functionStartPC) {
-	XML_PRINTF("<function-start-PC>%p</function-start-PC>\n",
-		   (void*)var->globalVar->functionStartPC);
+        XML_PRINTF("<function-start-PC>%p</function-start-PC>\n",
+                   (void*)var->globalVar->functionStartPC);
       }
 
       XML_PRINTF("</file-static-var>\n");
@@ -3597,7 +3634,7 @@ static void XMLprintOneVariable(VariableEntry* var) {
 
   if (var->byteOffset) {
     XML_PRINTF("<stack-byte-offset>%d</stack-byte-offset>\n",
-	       var->byteOffset);
+               var->byteOffset);
   }
 
   if (IS_STATIC_ARRAY_VAR(var)) {
@@ -3606,11 +3643,11 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("<static-array>\n");
 
     XML_PRINTF("<num-dimensions>%d</num-dimensions>\n",
-	       var->staticArr->numDimensions);
+               var->staticArr->numDimensions);
 
     for (i = 0; i < var->staticArr->numDimensions; i++) {
       XML_PRINTF("<upper-bound>%u</upper-bound>\n",
-		 var->staticArr->upperBounds[i]);
+                 var->staticArr->upperBounds[i]);
     }
 
     XML_PRINTF("</static-array>\n");
@@ -3632,10 +3669,10 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF("\">\n");
 
     XML_PRINTF("<member-location>%lu</member-location>\n",
-	       var->memberVar->data_member_location);
+               var->memberVar->data_member_location);
 
     XML_PRINTF("<parent-type>%s</parent-type>\n",
-	       var->memberVar->structParentType->typeName);
+               var->memberVar->structParentType->typeName);
 
     XML_PRINTF("</member-var>\n");
   }
@@ -3656,13 +3693,13 @@ static void XMLprintOneVariable(VariableEntry* var) {
     XML_PRINTF(">\n");
 
     XML_PRINTF("<declared-type>%s</declared-type>\n",
-	       DeclaredTypeNames[t->decType]);
+               DeclaredTypeNames[t->decType]);
     XML_PRINTF("<byte-size>%d</byte-size>\n",
-	       t->byteSize);
+               t->byteSize);
 
     if (t->typeName) {
       XML_PRINTF("<type-name>%s</type-name>\n",
-		 t->typeName);
+                 t->typeName);
     }
 
     XML_PRINTF("</var-type>\n");

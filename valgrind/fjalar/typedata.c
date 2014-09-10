@@ -309,10 +309,10 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     {
     case DW_AT_sibling:
       return (tag_is_collection_type(tag) ||
-	      tag_is_function_type(tag) ||
-	      tag_is_enumerator(tag) ||
-	      tag_is_function(tag) ||
-	      tag_is_array_type(tag));
+              tag_is_function_type(tag) ||
+              tag_is_enumerator(tag) ||
+              tag_is_function(tag) ||
+              tag_is_array_type(tag));
     case DW_AT_location:
       return (tag_is_formal_parameter(tag) ||
               tag_is_variable(tag));
@@ -359,8 +359,8 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
       return tag_is_compile_unit(tag);
     case DW_AT_external:
       return (tag_is_function(tag) ||
-	      tag_is_variable(tag) ||
-	      tag_is_member(tag));
+              tag_is_variable(tag) ||
+              tag_is_member(tag));
     case DW_AT_frame_base:
     case DW_AT_low_pc:
       return (tag_is_compile_unit(tag) ||
@@ -375,7 +375,7 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
     case DW_AT_specification:
       return (tag_is_function(tag) ||
               tag_is_variable(tag) ||
-	      tag_is_collection_type(tag));
+              tag_is_collection_type(tag));
     case DW_AT_declaration:
       return (tag_is_function(tag) ||
               tag_is_variable(tag) ||
@@ -389,7 +389,7 @@ char entry_is_listening_for_attribute(dwarf_entry* e, unsigned long attr)
               tag_is_variable(tag));
     case DW_AT_abstract_origin:
       return (tag_is_function(tag) ||
-	      tag_is_formal_parameter(tag));;
+              tag_is_formal_parameter(tag));;
     case DW_AT_stmt_list:
       return tag_is_compile_unit(tag);
     case DW_AT_decl_file:
@@ -585,7 +585,7 @@ static char harvest_upper_bound_value(dwarf_entry* e, unsigned long value)
         DW_AT_type        : <f1b>
         <2><12da>: Abbrev Number: 23 (DW_TAG_subrange_type)
         DW_AT_type        : <367>
-        DW_AT_upper_bound : -1	(location list)
+        DW_AT_upper_bound : -1       (location list)
       */
 
       // If we have a value of -1, turn it to zero
@@ -824,7 +824,7 @@ char harvest_name(dwarf_entry* e, const char* str)
       ((function*)e->entry_ptr)->name = VG_(strdup)("typedata.c: harv_name.4",str);
 
       if(e->ID == 0x4ce) {
-	test = e;
+        test = e;
       }
 
       return 1;
@@ -1052,11 +1052,10 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
 
   tag = e->tag_name;
 
-  if (attr == DW_AT_low_pc)
-    {
+  if (attr == DW_AT_low_pc) {
       if(tag_is_function(tag)) {
-        ((function*)e->entry_ptr)->start_pc = value;
-        ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
+          ((function*)e->entry_ptr)->start_pc = value;
+          ((function*)e->entry_ptr)->comp_pc = comp_unit_base;
 #if 0
           FJALAR_DPRINTF("Harvest: start_pc: %lx  comp_pc: %lx  name: %s %s\n",
                          ((function*)e->entry_ptr)->start_pc,
@@ -1064,19 +1063,17 @@ char harvest_address_value(dwarf_entry* e, unsigned long attr,
                          ((function*)e->entry_ptr)->name,
                          ((function*)e->entry_ptr)->mangled_name);
 #endif
-        return 1;
-      } else if(tag_is_compile_unit(tag)) {
-        comp_unit_base = value;
-        return 1;
+          return 1;
+      } else if (tag_is_compile_unit(tag)) {
+          comp_unit_base = value;
+          return 1;
       }
+    } else if (tag_is_function(tag) && attr == DW_AT_high_pc) {
+        ((function*)e->entry_ptr)->end_pc = value;
+        return 1;
+    } else if (attr == DW_AT_const_value) {
+        return harvest_const_value(e, value);
     }
-  else if (tag_is_function(tag) && attr == DW_AT_high_pc)
-    {
-      ((function*)e->entry_ptr)->end_pc = value;
-      return 1;
-    }
-  else
-    return 0;
 
   return 0;
 }
@@ -1269,31 +1266,31 @@ static void link_entries_to_type_entries(void)
           char success = 0;
           unsigned long target_index = 0;
           modifier_type* modifier_ptr = (modifier_type*)(cur_entry->entry_ptr);
-	  dwarf_entry* cur_target = NULL;
+          dwarf_entry* cur_target = NULL;
           unsigned long target_ID = modifier_ptr->target_ID;
 
           // Use a binary search to try to find the index of the entry in the
           // array with the corresponding target_ID
           success = binary_search_dwarf_entry_array(target_ID, &target_index);
-	  FJALAR_DPRINTF("Searching for all modifiers of %lud\n", cur_entry->ID);
+          FJALAR_DPRINTF("Searching for all modifiers of %lud\n", cur_entry->ID);
           if (success)
             {
-	      cur_target = &dwarf_entry_array[target_index];
+              cur_target = &dwarf_entry_array[target_index];
               modifier_ptr->target_ptr= cur_target;
             }
 
 
-	  /* while (tag_is_modifier_type(cur_target->tag_name)) { */
-	  /*   modifier_type* cur_modifier = (modifier_type*)(cur_target->entry_ptr);	     */
-	  /*   if(cur_modifier->target_ID) { */
-	  /*     success = binary_search_dwarf_entry_array(cur_modifier->target_ID, &target_index); */
-	  /*     if(success) { */
-	  /* 	cur_target = &dwarf_entry_array[target_index]; */
-	  /* 	modifier_ptr->target_ptr= cur_target;		 */
-	  /* 	print_dwarf_entry(cur_target, 0); */
-	  /*     } */
-	  /*   } */
-	  /* } */
+          /* while (tag_is_modifier_type(cur_target->tag_name)) { */
+          /*   modifier_type* cur_modifier = (modifier_type*)(cur_target->entry_ptr);             */
+          /*   if(cur_modifier->target_ID) { */
+          /*     success = binary_search_dwarf_entry_array(cur_modifier->target_ID, &target_index); */
+          /*     if(success) { */
+          /*         cur_target = &dwarf_entry_array[target_index]; */
+          /*         modifier_ptr->target_ptr= cur_target;                 */
+          /*         print_dwarf_entry(cur_target, 0); */
+          /*     } */
+          /*   } */
+          /* } */
         }
       else if (tag_is_function(tag))
         {
@@ -1381,7 +1378,7 @@ This one is fake except we really need the start_pc and end_pc from it
      DW_AT_abstract_origin: <18069>
      DW_AT_low_pc      : 0x8048c16
      DW_AT_high_pc     : 0x8048c5d
-     DW_AT_frame_base  : 1 byte block: 55 	(DW_OP_reg5)
+     DW_AT_frame_base  : 1 byte block: 55         (DW_OP_reg5)
 
 This is the one we want to keep because it contains the actual
 parameters:
@@ -1389,7 +1386,7 @@ parameters:
  <1><18069>: Abbrev Number: 132 (DW_TAG_subprogram)
      DW_AT_sibling     : <1809c>
      DW_AT_specification: <17e25>
-     DW_AT_inline      : 2	(declared as inline but ignored)
+     DW_AT_inline      : 2        (declared as inline but ignored)
 
 Notice that this has is_declaration == 1 so it is a 'fake'
 entry, but we really want to steal its name fields
@@ -1418,7 +1415,7 @@ end_pc ... how convenient!
      DW_AT_decl_line   : 47
      DW_AT_low_pc      : 0x8048d2e
      DW_AT_high_pc     : 0x8048d75
-     DW_AT_frame_base  : 1 byte block: 55 	(DW_OP_reg5)
+     DW_AT_frame_base  : 1 byte block: 55         (DW_OP_reg5)
 
 Notice that this has is_declaration == 1 so it is a 'fake'
 entry, but we really want to steal its name fields
@@ -1442,15 +1439,15 @@ the debugging information entry representing the declaration of the variable.
 We need to copy the name property from the declaration to the definition.
 
  <2><5e6>: Abbrev Number: 35 (DW_TAG_variable)
-    <5e7>   DW_AT_name        : (indirect string, offset: 0x575): __ioinit	
-    <5eb>   DW_AT_decl_file   : 2	
-    <5ec>   DW_AT_decl_line   : 75	
-    <5ed>   DW_AT_type        : <0x51f>	
-    <5f1>   DW_AT_declaration : 1	
+    <5e7>   DW_AT_name        : (indirect string, offset: 0x575): __ioinit        
+    <5eb>   DW_AT_decl_file   : 2
+    <5ec>   DW_AT_decl_line   : 75
+    <5ed>   DW_AT_type        : <0x51f>
+    <5f1>   DW_AT_declaration : 1
 
  <1><1308>: Abbrev Number: 58 (DW_TAG_variable)
-    <1309>   DW_AT_specification: <0x5e6>	
-    <130d>   DW_AT_location    : 9 byte block: 3 f4 e 60 0 0 0 0 0 	(DW_OP_addr: 600ef4)
+    <1309>   DW_AT_specification: <0x5e6>
+    <130d>   DW_AT_location    : 9 byte block: 3 f4 e 60 0 0 0 0 0 (DW_OP_addr: 600ef4)
 
 If the variable entry represents the defining declaration for a C++ static data
 member of a struction, class or union (can also occur with template classes), the entry
@@ -1461,17 +1458,17 @@ some class, structure or union.  We need to copy both the name property and
 the type property from the declaration to the definition.
 
  <3><dfd>: Abbrev Number: 43 (DW_TAG_member)
-    <dfe>   DW_AT_name        : (indirect string, offset: 0x28): __min	
-    <e02>   DW_AT_decl_file   : 16	
-    <e03>   DW_AT_decl_line   : 58	
-    <e04>   DW_AT_type        : <0x134>	
-    <e08>   DW_AT_external    : 1	
-    <e09>   DW_AT_declaration : 1	
+    <dfe>   DW_AT_name        : (indirect string, offset: 0x28): __min
+    <e02>   DW_AT_decl_file   : 16
+    <e03>   DW_AT_decl_line   : 58
+    <e04>   DW_AT_type        : <0x134>
+    <e08>   DW_AT_external    : 1
+    <e09>   DW_AT_declaration : 1
 
  <1><1317>: Abbrev Number: 59 (DW_TAG_variable)
-    <1318>   DW_AT_specification: <0xdfd>	
-    <131c>   DW_AT_MIPS_linkage_name: _ZN9__gnu_cxx24__numeric_traits_integerIiE5__minE	
-    <1320>   DW_AT_const_value : -2147483648	
+    <1318>   DW_AT_specification: <0xdfd>
+    <131c>   DW_AT_MIPS_linkage_name: _ZN9__gnu_cxx24__numeric_traits_integerIiE5__minE
+    <1320>   DW_AT_const_value : -2147483648
 */
 
 //  For every function entry e with a non-null specification_ID, attempt to
@@ -1503,65 +1500,66 @@ static void init_specification_and_abstract_stuff(void) {
           aliased_func_ptr = (function*)(aliased_entry->entry_ptr);
 
           // We better have start_pc and end_pc fields!
-	  if (cur_func->start_pc && cur_func->end_pc) {
-	    /* The code used to assert that cur_func->{start,end}_pc
-	       were non-null here, but in some unusual situations
-	       (e.g., statically linked libc) the assertion failed, so
-	       let's just keep going. -SMcC */
+          if (cur_func->start_pc && cur_func->end_pc) {
+            /* The code used to assert that cur_func->{start,end}_pc
+               were non-null here, but in some unusual situations
+               (e.g., statically linked libc) the assertion failed, so
+               let's just keep going. -SMcC */
 
         // C++ constructors and destructors appear to be a bit different.
         // We need to copy the compilation unit code base (comp_pc)
         // over to the aliased function as well. (markro)
-	    aliased_func_ptr->comp_pc = cur_func->comp_pc;
-	    aliased_func_ptr->start_pc = cur_func->start_pc;
-	    aliased_func_ptr->end_pc = cur_func->end_pc;
+            aliased_func_ptr->comp_pc = cur_func->comp_pc;
+            aliased_func_ptr->start_pc = cur_func->start_pc;
+            aliased_func_ptr->end_pc = cur_func->end_pc;
 
-	    aliased_func_ptr->frame_base_offset = cur_func->frame_base_offset;
-	    aliased_func_ptr->frame_base_expression = cur_func->frame_base_expression;
+            aliased_func_ptr->frame_base_offset = cur_func->frame_base_offset;
+            aliased_func_ptr->frame_base_expression = cur_func->frame_base_expression;
 
-	    aliased_func_ptr->num_formal_params = cur_func->num_formal_params;
-	    aliased_func_ptr->params = cur_func->params;
+            aliased_func_ptr->num_formal_params = cur_func->num_formal_params;
+            aliased_func_ptr->params = cur_func->params;
 
-	    aliased_func_ptr->num_local_vars = cur_func->num_local_vars;
-	    aliased_func_ptr->local_vars = cur_func->local_vars;
+            aliased_func_ptr->num_local_vars = cur_func->num_local_vars;
+            aliased_func_ptr->local_vars = cur_func->local_vars;
 
 
-	  }
+          }
 
-	  // Mark cur_func's entry with is_declaration = 1 just to
-	  // make sure it gets ignored later:
-	  cur_func->is_declaration = 1;
+          // Mark cur_func's entry with is_declaration = 1 just to
+          // make sure it gets ignored later:
+          cur_func->is_declaration = 1;
         }
       }
     } else if(tag_is_formal_parameter(cur_entry->tag_name)) {
       formal_parameter* cur_param = (formal_parameter*) (cur_entry->entry_ptr);
 
       if (cur_param->abstract_origin_ID) {
-	unsigned long aliased_index = 0;
+        unsigned long aliased_index = 0;
 
-	if (binary_search_dwarf_entry_array(cur_param->abstract_origin_ID,
-					    &aliased_index)) {
-	  dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
-	  formal_parameter* aliased_formal_param = NULL;
+        if (binary_search_dwarf_entry_array(cur_param->abstract_origin_ID,
+                                            &aliased_index)) {
+          dwarf_entry* aliased_entry = &dwarf_entry_array[aliased_index];
+          formal_parameter* aliased_formal_param = NULL;
 
-	  tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
+          tl_assert(tag_is_formal_parameter(aliased_entry->tag_name));
 
-	  aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
-
-
-	  aliased_formal_param->location_type = cur_param->location_type;
-	  aliased_formal_param->loc_atom = cur_param->loc_atom;
-	  aliased_formal_param->valid_loc = cur_param->valid_loc;
-	  aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
-
-	  VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack, sizeof(dwarf_location)*cur_param->dwarf_stack_size);
-
-	  cur_param->name = aliased_formal_param->name;
-	  cur_param->type_ID = aliased_formal_param->type_ID;
-	  //cur_param->type_ptr = aliased_formal_param->type_ptr;
+          aliased_formal_param = (formal_parameter*) (aliased_entry->entry_ptr);
 
 
-	  }
+          aliased_formal_param->location_type = cur_param->location_type;
+          aliased_formal_param->loc_atom = cur_param->loc_atom;
+          aliased_formal_param->valid_loc = cur_param->valid_loc;
+          aliased_formal_param->dwarf_stack_size = cur_param->dwarf_stack_size;
+
+          VG_(memcpy)(aliased_formal_param->dwarf_stack, cur_param->dwarf_stack,
+                      sizeof(dwarf_location)*cur_param->dwarf_stack_size);
+
+          cur_param->name = aliased_formal_param->name;
+          cur_param->type_ID = aliased_formal_param->type_ID;
+          //cur_param->type_ptr = aliased_formal_param->type_ptr;
+
+
+          }
       }
     }
 
@@ -1698,6 +1696,9 @@ static void init_specification_and_abstract_stuff(void) {
 
             if (demangled_name) {
                 cur_var->name = demangled_name;
+                // Since we process both the variable and the aliased member,
+                // better copy revised name back to member var.  (markro)
+                ((member*)(aliased_entry->entry_ptr))->name = demangled_name; 
             } else {
                 cur_var->name = ((member*)(aliased_entry->entry_ptr))->name;
             }
@@ -1752,11 +1753,11 @@ void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end)
   //     have siblings - ie. they are at the end of a compile unit - so this
   //     led to some bugs)
   while ((local_dist_to_end > 0) &&
-	 (cur_entry->level > array_entry_level)) {
+         (cur_entry->level > array_entry_level)) {
 
     if ((cur_entry->level == (array_entry_level + 1)) &&
-	(DW_TAG_subrange_type == cur_entry->tag_name)) {
-	member_count++;
+        (DW_TAG_subrange_type == cur_entry->tag_name)) {
+        member_count++;
     }
 
     cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -1775,12 +1776,12 @@ void link_array_type_to_members(dwarf_entry* e, unsigned long dist_to_end)
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > array_entry_level)) {
+           (cur_entry->level > array_entry_level)) {
 
       if ((cur_entry->level == (array_entry_level + 1)) &&
-	  (DW_TAG_subrange_type == cur_entry->tag_name)) {
-	array_ptr->subrange_entries[member_index] = cur_entry;
-	member_index++;
+          (DW_TAG_subrange_type == cur_entry->tag_name)) {
+        array_ptr->subrange_entries[member_index] = cur_entry;
+        member_index++;
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -1822,12 +1823,13 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
 
   // First pick off the member variables, static variables, and functions
 
-  cur_entry++; // Move to the next entry - safe since dist_to_end > 0 by this point
+  cur_entry++; // Move to next entry - safe since dist_to_end > 0 
 
   // structs/classes/unions expect DW_TAG_member as member variables
   // enumerations expect DW_TAG_enumerator as member "variables"
   // structs/classes expect DW_TAG_variable as static member variables,
-  // GCC 4.4.x+ denote static member variables via DW_TAG_member + DW_AT_external (rudd)
+  // GCC 4.4.x+ denote static member variables via
+  // DW_TAG_member + DW_AT_external (rudd)
   // This has changed again. GCC 4.7.x (perhaps earlier?) now represents a 
   // static member variable with a DW_TAG_member at the declation and a 
   // DW_TAG_variable at the definition.  This entry has a DW_AT_specification
@@ -1842,7 +1844,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // 2. Make sure that all the entries are at least 1 level above the function entry's level
   //    so that we are not traversing its siblings
   while ((local_dist_to_end > 0) &&
-	 (cur_entry->level > collection_entry_level)) {
+         (cur_entry->level > collection_entry_level)) {
 
     if (tag_is_formal_parameter(cur_entry->tag_name)) {
       ((formal_parameter*)(cur_entry->entry_ptr))->valid_loc = 1;
@@ -1855,12 +1857,12 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
         }
       }
       else {
-	if (tag_is_member(cur_entry->tag_name)) {
-	  if(((member*)cur_entry->entry_ptr)->is_external) {
-	    static_member_var_count++;
-	  } else {
-	    member_var_count++;
-	  }
+        if (tag_is_member(cur_entry->tag_name)) {
+          if(((member*)cur_entry->entry_ptr)->is_external) {
+            static_member_var_count++;
+          } else {
+            member_var_count++;
+          }
         }
         else if (tag_is_variable(cur_entry->tag_name)) {
           static_member_var_count++;
@@ -1877,8 +1879,6 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
       }
     }
 
-
-
     cur_entry++; // Move to the next entry in dwarf_entry_array
     local_dist_to_end--;
   }
@@ -1893,13 +1893,14 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
   // to actually populate the newly-created arrays with entries
   if (member_var_count > 0) {
     int member_var_index = 0;
-    collection_ptr->member_vars = (dwarf_entry**)VG_(calloc)("typedata.c: link_collection_to_members", member_var_count, sizeof(dwarf_entry*));
+    collection_ptr->member_vars = (dwarf_entry**)VG_(calloc)("typedata.c: link_collection_to_members",
+                                                              member_var_count, sizeof(dwarf_entry*));
 
     cur_entry = (e + 1);
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > collection_entry_level)) {
+           (cur_entry->level > collection_entry_level)) {
       if (cur_entry->level == (collection_entry_level + 1)) {
         if (isEnumType) {
           if (tag_is_enumerator(cur_entry->tag_name)) {
@@ -1929,7 +1930,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > collection_entry_level)) {
+           (cur_entry->level > collection_entry_level)) {
       if (cur_entry->level == (collection_entry_level + 1)) {
         if (tag_is_variable(cur_entry->tag_name)) {
           collection_ptr->static_member_vars[static_member_var_index] = cur_entry;
@@ -1937,7 +1938,7 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
         } else if (tag_is_member(cur_entry->tag_name) && ((member*)cur_entry->entry_ptr)->is_external) {
             collection_ptr->static_member_vars[static_member_var_index] = cur_entry;
             static_member_var_index++;
-	}
+        }
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -1953,12 +1954,12 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > collection_entry_level)) {
+           (cur_entry->level > collection_entry_level)) {
       if (cur_entry->level == (collection_entry_level + 1)) {
         if (tag_is_function(cur_entry->tag_name)) {
           collection_ptr->member_funcs[member_func_index] = cur_entry;
           member_func_index++;
-	}
+        }
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -1974,12 +1975,12 @@ void link_collection_to_members(dwarf_entry* e, unsigned long dist_to_end)
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > collection_entry_level)) {
+           (cur_entry->level > collection_entry_level)) {
       if (cur_entry->level == (collection_entry_level + 1)) {
         if (tag_is_inheritance(cur_entry->tag_name)) {
           collection_ptr->superclasses[superclass_index] = cur_entry;
           superclass_index++;
-	}
+        }
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -2030,14 +2031,14 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
   //     have siblings - ie. they are at the end of a compile unit - so this
   //     led to some bugs)
   while ((local_dist_to_end > 0) &&
-	 (cur_entry->level > function_entry_level)) {
+         (cur_entry->level > function_entry_level)) {
 
     if (cur_entry->level == (function_entry_level + 1)) {
       if (tag_is_formal_parameter(cur_entry->tag_name)) {
-	param_count++;
+        param_count++;
       }
       else if (tag_is_variable(cur_entry->tag_name)) {
-	var_count++;
+        var_count++;
       }
     }
 
@@ -2058,12 +2059,12 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > function_entry_level)) {
+           (cur_entry->level > function_entry_level)) {
       if (cur_entry->level == (function_entry_level + 1)) {
-	if (tag_is_formal_parameter(cur_entry->tag_name)) {
-	  function_ptr->params[param_index] = cur_entry;
-	  param_index++;
-	}
+        if (tag_is_formal_parameter(cur_entry->tag_name)) {
+          function_ptr->params[param_index] = cur_entry;
+          param_index++;
+        }
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -2079,12 +2080,12 @@ void link_function_to_params_and_local_vars(dwarf_entry* e, unsigned long dist_t
     local_dist_to_end = dist_to_end;
 
     while ((local_dist_to_end > 0) &&
-	   (cur_entry->level > function_entry_level)) {
+           (cur_entry->level > function_entry_level)) {
       if (cur_entry->level == (function_entry_level + 1)) {
-	if (tag_is_variable(cur_entry->tag_name)) {
-	  function_ptr->local_vars[var_index] = cur_entry;
-	  var_index++;
-	}
+        if (tag_is_variable(cur_entry->tag_name)) {
+          function_ptr->local_vars[var_index] = cur_entry;
+          var_index++;
+        }
       }
 
       cur_entry++; // Move to the next entry in dwarf_entry_array
@@ -2203,9 +2204,10 @@ static void link_array_entries_to_members(void)
             else
             // In newer versions of gcc (at least 4.7.x, maybe sooner), static member
             // variables are indicated by the definition TAG_variable pointing back to
-            // the declaration which is a TAG_member.  We will ignore the member and
-            // only process the variable.  (need to set member field? markro)
+            // the declaration which is a TAG_member.
+            // Our primary source of information is the variable entry.  (markro)
             if (tag_is_member(aliased_entry->tag_name)) {
+                variablePtr->couldBeGlobalVar = 1;
                 variablePtr->isStaticMemberVar = 1;
             }
           }
@@ -2273,42 +2275,37 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_subprogram:
       {
         function* function_ptr = (function*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Filename: %s, Return Type ID (addr): 0x%lx (0x%lx), is_ext: %d, low_pc: 0x%lx\n",
+        FJALAR_DPRINTF("  Name: %s, Filename: %s, Ret. ID: 0x%lx, is_ext: %d, spec_ID: 0x%lx, low_pc: 0x%lx\n",
                function_ptr->name,
                function_ptr->filename,
                function_ptr->return_type_ID,
-               ((simplified && function_ptr->return_type) ?
-                (UInt)(ptrdiff_t)function_ptr->return_type - (UInt)(ptrdiff_t)dwarf_entry_array :
-                (unsigned long)(function_ptr->return_type)),
-	       function_ptr->is_external,
-	       function_ptr->start_pc);
+               function_ptr->is_external,
+               function_ptr->specification_ID,
+               function_ptr->start_pc);
         break;
       }
     case DW_TAG_formal_parameter:
       {
         formal_parameter* formal_param_ptr = (formal_parameter*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID (addr): 0x%lx (0x%lx), Location: %ld\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, Location: %ld\n",
                formal_param_ptr->name,
                formal_param_ptr->type_ID,
-               ((simplified && formal_param_ptr->type_ptr) ?
-                (UInt)(ptrdiff_t)formal_param_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array :
-                (unsigned long)(formal_param_ptr->type_ptr)),
                formal_param_ptr->location);
         break;
       }
     case DW_TAG_member:
       {
         member* member_ptr = (member*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Type ID (addr): 0x%x (0x%x), Data member location: %d, Byte size: %d, Bit offset: %d, Bit size: %d\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%x, Data member location: %d,\n"
+                       "  Byte size: %d, access: %d, external: %d, is_const: %d, value: 0x%lx\n",
                member_ptr->name,
                (UInt)member_ptr->type_ID,
-               ((simplified && member_ptr->type_ptr) ?
-                (UInt)(ptrdiff_t)member_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array :
-                (UInt)(ptrdiff_t)(member_ptr->type_ptr)),
                (UInt)member_ptr->data_member_location,
                (UInt)member_ptr->internal_byte_size,
-               (UInt)member_ptr->internal_bit_offset,
-               (UInt)member_ptr->internal_bit_size);
+               (UInt)member_ptr->accessibility,
+               (UInt)member_ptr->is_external,
+               (UInt)member_ptr->is_const,
+               member_ptr->const_value);
         break;
       }
     case DW_TAG_enumerator:
@@ -2325,18 +2322,19 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_union_type:
     case DW_TAG_enumeration_type:
       {
-	collection_type* collection_ptr = (collection_type*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Byte size: %ld\n",
-               collection_ptr->name,
-               collection_ptr->byte_size);
-
-/*         FJALAR_DPRINTF("  Name: %s, Byte size: %ld, Num. members: %ld, 1st member addr: 0x%lx\n", */
-/*                collection_ptr->name, */
-/*                collection_ptr->byte_size, */
-/* 	       collection_ptr->num_members, */
-/* 	       ((simplified && collection_ptr->members) ? */
-/* 		collection_ptr->members - dwarf_entry_array : */
-/* 		(unsigned long)(collection_ptr->members))); */
+        collection_type* collection_ptr = (collection_type*)(e->entry_ptr);
+        FJALAR_DPRINTF("  Name: %s, is_decl: %d, byte size: %ld, Num. members: %d %d %d %d\n",
+                       collection_ptr->name,
+                       (UInt)collection_ptr->is_declaration,
+                       collection_ptr->byte_size,
+                       collection_ptr->num_member_vars,
+                       collection_ptr->num_member_funcs,
+                       collection_ptr->num_static_member_vars,
+                       collection_ptr->num_superclasses);
+        unsigned short i;
+        for (i = 0; i < collection_ptr->num_static_member_vars; i++) {
+            FJALAR_DPRINTF("    0x%lx\n", (collection_ptr->static_member_vars[i])->ID);
+        }
 
         break;
       }
@@ -2351,14 +2349,14 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
         // More detailed encoding information
         switch (base_ptr->encoding)
           {
-          case DW_ATE_void:             FJALAR_DPRINTF ("(void)"); break;
-          case DW_ATE_address:	 FJALAR_DPRINTF ("(machine address)"); break;
-          case DW_ATE_boolean:	 FJALAR_DPRINTF ("(boolean)"); break;
+          case DW_ATE_void:          FJALAR_DPRINTF ("(void)"); break;
+          case DW_ATE_address:       FJALAR_DPRINTF ("(machine address)"); break;
+          case DW_ATE_boolean:       FJALAR_DPRINTF ("(boolean)"); break;
           case DW_ATE_complex_float: FJALAR_DPRINTF ("(complex float)"); break;
-          case DW_ATE_float:	 FJALAR_DPRINTF ("(float)"); break;
-          case DW_ATE_signed:	 FJALAR_DPRINTF ("(signed)"); break;
-          case DW_ATE_signed_char: FJALAR_DPRINTF ("(signed char)"); break;
-          case DW_ATE_unsigned:	 FJALAR_DPRINTF ("(unsigned)"); break;
+          case DW_ATE_float:         FJALAR_DPRINTF ("(float)"); break;
+          case DW_ATE_signed:        FJALAR_DPRINTF ("(signed)"); break;
+          case DW_ATE_signed_char:   FJALAR_DPRINTF ("(signed char)"); break;
+          case DW_ATE_unsigned:      FJALAR_DPRINTF ("(unsigned)"); break;
           case DW_ATE_unsigned_char: FJALAR_DPRINTF ("(unsigned char)"); break;
             /* DWARF 2.1 value.  */
           case DW_ATE_imaginary_float: FJALAR_DPRINTF ("(imaginary float)"); break;
@@ -2426,17 +2424,20 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_variable:
       {
         variable* variable_ptr = (variable*)(e->entry_ptr);
-        FJALAR_DPRINTF("  Name: %s, Target type ID (addr): 0x%lx (0x%lx), is_ext: %d, couldBeGlobalVar: %d, globalVarAddr: 0x%lx, localOffset: %d isConst: %d\n",
+        FJALAR_DPRINTF("  Name: %s, Type ID: 0x%lx, is_ext: %d,\n"
+                       "  cbGlobal: %d, is_static: %d, spec_ID: 0x%lx, globalVarAddr: 0x%lx,\n"
+                       "  offset: %d, access: %ld, is_const: %d, const_value: 0x%lx\n",
                variable_ptr->name,
                variable_ptr->type_ID,
-               ((simplified && variable_ptr->type_ptr) ?
-                ((UInt)(ptrdiff_t)variable_ptr->type_ptr - (UInt)(ptrdiff_t)dwarf_entry_array) :
-                (unsigned long)(variable_ptr->type_ptr)),
-	       variable_ptr->is_external,
+               variable_ptr->is_external,
                variable_ptr->couldBeGlobalVar,
+               variable_ptr->isStaticMemberVar,
+               variable_ptr->specification_ID,
                variable_ptr->globalVarAddr,
                variable_ptr->offset,
-               variable_ptr->is_const);
+               variable_ptr->accessibility,
+               variable_ptr->is_const,
+               variable_ptr->const_value);
         break;
       }
     case DW_TAG_compile_unit:
@@ -2526,6 +2527,7 @@ void destroy_dwarf_entry_array()
 
 // Print without machine/runtime-specific address information
 // in order to provide consistent results for diffs
+// (Doesn't appear to be used - markro)
 void simple_print_dwarf_entry_array()
 {
   print_dwarf_entry_array_helper(1);
@@ -2749,7 +2751,7 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
       cur_entry = &dwarf_entry_array[idx];
 
       if ((tag_is_function(cur_entry->tag_name)) &&
-	  (cur_entry->level < e->level)) {
+          (cur_entry->level < e->level)) {
         return ((function*)cur_entry->entry_ptr)->start_pc;
       }
     }
