@@ -482,7 +482,6 @@ printDeclsEntryAction(VariableEntry* var,
     Bool special_zeroth_elt_var = False;
 
     // Boolean flags for variables:
-    // TODO: Add more flags later as necessary
     Bool is_param_flag = False;
     Bool non_null_flag = False;
 
@@ -748,7 +747,6 @@ printDeclsEntryAction(VariableEntry* var,
         if (non_null_flag) {
           fputs("non_null ", decls_fp);
         }
-        // TODO: Add output for other supported flags
 
         fputs("\n", decls_fp);
       }

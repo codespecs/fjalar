@@ -471,10 +471,7 @@ int returnArrayUpperBoundFromPtr(VariableEntry* var, Addr varLocation)
       FJALAR_DPRINTF(" e->FP is %p\n", (void *)e->FP);
       FJALAR_DPRINTF(" localArrayAndSTructVars: %p, numVars: %d\n", localArrayAndStructVars, localArrayAndStructVars->numVars);
 
-      // TODO: Try to get to the bottom of this problem of bogus
-      // localArrayAndStructVars pointers, but for now, let's just mask it
-      // so that Fjalar runs without crashing:
-      // assert(!localArrayAndStructVars || (unsigned int)localArrayAndStructVars > 0x100);
+      tl_assert(!localArrayAndStructVars || (Addr)localArrayAndStructVars > 0x100);
 
       if (localArrayAndStructVars &&
           // hopefully ensures that it's not totally bogus
