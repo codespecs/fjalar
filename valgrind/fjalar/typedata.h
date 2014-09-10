@@ -135,6 +135,8 @@ typedef struct
                        // an empty declaration with no real members,
                        // so we should ignore it
 
+  // While the DWARF definition indicates that DW_AT_specification may
+  // be used with collections, it appears that gcc does not do so. (markro)
   unsigned long specification_ID; // Relevant for C++: See comment on Specification ID 
                                   // in the function str
 
@@ -146,10 +148,10 @@ typedef struct
   unsigned short num_static_member_vars; // C++ only - for static member variables
   unsigned short num_superclasses; // C++ only - for superclasses
 
-  dwarf_entry** member_vars; // Array of size num_members; Each element is a
+  dwarf_entry** member_vars; // Array of size num_member_vars; Each element is a
                             // POINTER to a dwarf_entry of type = {member, enumerator}
 
-  dwarf_entry** member_funcs; // Array of size num_members; Each element is a
+  dwarf_entry** member_funcs; // Array of size num_member_funcs; Each element is a
                               // POINTER to a dwarf_entry of type = {function}
                               // but these functions are only "declarations" and we need
                               // to look elsewhere in DWARF to find their true definitions
