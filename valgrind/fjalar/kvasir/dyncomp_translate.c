@@ -106,8 +106,6 @@ static void setHelperAnns_DC ( DCEnv* dce, IRDirty* di ) {
    di->fxState[1].repeatLen = 0;
 }
 
-// Do we need to add the <guard> formal? (markro)
-
 // A PUT stores a value into the guest state
 void do_shadow_PUT_DC ( DCEnv* dce,  Int offset,
                      IRAtom* atom, IRAtom* vatom )
@@ -350,7 +348,6 @@ IRAtom* expr2tags_Qop_DC ( DCEnv* dce,
 
          // If we are running in units mode, then we should merge the
          // tags of the 3rd and 4th operands:
-// QUESTION: Should we just return tags of 4th operand? (markro)
          if (dyncomp_units_mode) {
             return mkIRExprCCall (Ity_Word,
                                   2 /*Int regparms*/,
@@ -473,8 +470,6 @@ IRAtom* expr2tags_Triop_DC ( DCEnv* dce,
          }
          // Else fall through ...
          break;
-
-      // UNDONE: need to add ExtractV64 and V128
 
       // pgbovine - Hmmm, these don't look like interactions:
       case Iop_ScaleF64:
