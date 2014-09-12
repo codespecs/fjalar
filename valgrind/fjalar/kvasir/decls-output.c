@@ -1890,8 +1890,8 @@ harvestObject(VariableEntry* var,
       DPRINTF("Harvest object %s (%s)\n", varName, var->varType->typeName);
 
       if(!gencontains(cur_object_table, var->varType)) {
-	genputtable(cur_object_table, var->varType, (void *)(ptrdiff_t)cur_par_id);
-	cur_par_id++;
+        genputtable(cur_object_table, var->varType, (void *)(ptrdiff_t)cur_par_id);
+        cur_par_id++;
       }
     }
 
@@ -1900,38 +1900,38 @@ harvestObject(VariableEntry* var,
       SimpleList* superList = NULL;
       SimpleNode* curNode = NULL;
 
-      // UNDONE markro
+      // If its a static member it won't have a parent.  (markro)
       if (!var->memberVar->structParentType) 
-	      return DISREGARD_PTR_DEREFS;
+          return DISREGARD_PTR_DEREFS;
 
       tl_assert(var->memberVar && var->memberVar->structParentType);
       DPRINTF("Harvest object %s\n", var->memberVar->structParentType->typeName);
 
       if(!gencontains(cur_object_table, var->memberVar->structParentType)) {
-	genputtable(cur_object_table, var->memberVar->structParentType, (void *)(ptrdiff_t)cur_par_id);
-	cur_par_id++;
+        genputtable(cur_object_table, var->memberVar->structParentType, (void *)(ptrdiff_t)cur_par_id);
+        cur_par_id++;
       }
 
       // We can't be the member of a type that isn't an aggregate.
       tl_assert(var->memberVar->structParentType->aggType);
       superList = var->memberVar->structParentType->aggType->superclassList;
       if(!superList) {
-	return DISREGARD_PTR_DEREFS;
+        return DISREGARD_PTR_DEREFS;
       }
 
       curNode = superList->first;
 
       while(curNode && (i < superList->numElts)) {
-	Superclass* curClass = curNode->elt;
+        Superclass* curClass = curNode->elt;
 
-	if(!gencontains(cur_object_table, curClass->class)) {
-	  genputtable(cur_object_table, curClass->class, (void *)(ptrdiff_t)cur_par_id);
-	  cur_par_id++;
-	}
-	DPRINTF("Harvest object %s - %d\n", curClass->class->typeName, cur_par_id);
+        if(!gencontains(cur_object_table, curClass->class)) {
+          genputtable(cur_object_table, curClass->class, (void *)(ptrdiff_t)cur_par_id);
+          cur_par_id++;
+        }
+        DPRINTF("Harvest object %s - %d\n", curClass->class->typeName, cur_par_id);
 
-	curNode = curNode->next;
-	i++;
+        curNode = curNode->next;
+        i++;
       }
 
     }
