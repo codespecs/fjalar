@@ -45,14 +45,10 @@ static void createNamesForUnnamedDwarfEntries(void);
 static void updateAllVarTypes(void);
 static void processFunctions(void);
 
-static void extractFormalParameterVars(FunctionEntry* f,
-				       function* dwarfFunctionEntry);
-static void extractLocalArrayAndStructVariables(FunctionEntry* f,
-						function* dwarfFunctionEntry);
-static void extractOneLocalArrayOrStructVariable(FunctionEntry* f,
-						 dwarf_entry* dwarfVariableEntry);
-static void extractReturnVar(FunctionEntry* f,
-			     function* dwarfFunctionEntry);
+static void extractFormalParameterVars(FunctionEntry* f, function* dwarfFunctionEntry);
+static void extractLocalArrayAndStructVariables(FunctionEntry* f, function* dwarfFunctionEntry);
+static void extractOneLocalArrayOrStructVariable(FunctionEntry* f, dwarf_entry* dwarfVariableEntry);
+static void extractReturnVar(FunctionEntry* f, function* dwarfFunctionEntry);
 
 static int determineVariableByteSize(VariableEntry* var);
 static void verifyStackParamWordAlignment(FunctionEntry* f, int replace);
@@ -60,23 +56,23 @@ static char* getDeclaredFile(compile_unit* comp_unit, unsigned long offset);
 
 static VariableEntry*
 extractOneVariable(VarList* varListPtr,
-		   dwarf_entry* typePtr,
-		   const char* variableName,
-		   char* fileName,
-		   char isGlobal,
-		   char isExternal,
+                   dwarf_entry* typePtr,
+                   const char* variableName,
+                   char* fileName,
+                   char isGlobal,
+                   char isExternal,
                    char isConstant,
                    long constantValue,
-		   unsigned long globalLocation,
-		   unsigned long functionStartPC,
-		   char isStructUnionMember,
-		   unsigned long data_member_location,
-		   int internalByteSize,
-		   int internalBitOffset,
-		   int internalBitSize,
-		   TypeEntry* structParentType,
-		   unsigned long dwarf_accessibility,
-		   char isFormalParam,
+                   unsigned long globalLocation,
+                   unsigned long functionStartPC,
+                   char isStructUnionMember,
+                   unsigned long data_member_location,
+                   int internalByteSize,
+                   int internalBitOffset,
+                   int internalBitSize,
+                   TypeEntry* structParentType,
+                   unsigned long dwarf_accessibility,
+                   char isFormalParam,
                    char* declared_in);
 
 static void repCheckOneVariable(VariableEntry* var);
@@ -279,7 +275,7 @@ static char ignore_function_with_name(char* name) {
       VG_STREQ(name, "~_Alloc_hider") ||
       VG_STREQ(name, "_Rep") ||
       (0 == VG_(strncmp)(name, "._", 2)) ||
-      (0 == VG_(strncmp)(name, "_S_", 3)) ||
+//    (0 == VG_(strncmp)(name, "_S_", 3)) ||
 //    (0 == VG_(strncmp)(name, "_M_", 3)) ||
       (0 == VG_(strncmp)(name, "_GLOBAL", 7)) ||
       (0 == VG_(strncmp)(name, "__tcf", 5)) ||
@@ -1877,6 +1873,7 @@ static void extractEnumerationType(TypeEntry* t, collection_type* collectionPtr)
 
 // Extracts struct/union type info from collectionPtr and creates
 // entries for member variables in t->memberVarList
+// (which can be null if there are no non-static member vars)
 static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 {
   FJALAR_DPRINTF("ENTER extractStructUnionType(%p)\n", e);
@@ -2400,20 +2397,19 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     my_abort();
   }
 
-
   paramPtr = (formal_parameter*)(dwarfParamEntry->entry_ptr);
   typePtr = paramPtr->type_ptr;
 
   if (!paramPtr->name) {
-    printf( "Unexpected unnamed parameter in %s\n",
-            f->name);
-    return;
+    // Previously this generated an error, but unnamed parameters are legal. (markro)
+    FJALAR_DPRINTF("  %s has an unnamed parameter\n", f->name);
+    // The maximum size is 19 + 8 + 1 = 28; 19 for "unnamed_parameter0x",
+    // 8 for maximum size for ID, and 1 for null-terminator
+    char* fake_name = VG_(calloc)("generate_fjalar_entries.c: extraceOneFormalParameterVar", 28, sizeof(*fake_name));
+    sprintf(fake_name, "unnamed_parameter0x%lx", dwarfParamEntry->ID);
+    paramPtr->name = fake_name;
   }
-
-  FJALAR_DPRINTF("  %s parameter name %s\n",
-          f->name,
-          paramPtr->name);
-
+  FJALAR_DPRINTF("  %s parameter name %s\n", f->name, paramPtr->name);
 
   varPtr = extractOneVariable(&(f->formalParameters),
                               typePtr,
@@ -2438,9 +2434,6 @@ static void extractOneFormalParameterVar(FunctionEntry* f,
     }
     varPtr->location_expression_size = paramPtr->dwarf_stack_size;
   }
-
-
-
 
   if (paramPtr->location_type == LT_FP_OFFSET) {
     varPtr->validLoc = paramPtr->valid_loc;
