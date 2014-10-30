@@ -817,11 +817,11 @@ void printDtraceBaseValueSequence(DeclaredType decType,
         printOneCharAsDtraceString(*((char*)pCurValue));
       }
       else {
-	if(i == 0) { // RUDD DEBUGGING: Print the first elmenet for debugging
-	  DPRINTF("First element is: ");
-	  TYPES_SWITCH(DEBUG_ONE_VAR_SEQUENCE)
-	  DPRINTF("\n");
-	}
+        if(i == 0) { // RUDD DEBUGGING: Print the first elmenet for debugging
+          DPRINTF("First element is: ");
+          TYPES_SWITCH(DEBUG_ONE_VAR_SEQUENCE)
+          DPRINTF("\n");
+        }
 
 
         TYPES_SWITCH(DTRACE_PRINT_ONE_VAR_WITHIN_SEQUENCE)
@@ -1026,7 +1026,7 @@ TraversalResult printDtraceEntryAction(VariableEntry* var,
 
   if(pValue)
     DPRINTF("Value is %p\n",
-	    (void*)(*(Addr *)pValue));
+            (void*)(*(Addr *)pValue));
 
 
   // Line 1: Variable name
@@ -1162,7 +1162,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   DPRINTF("* %s %s at FP=%p, lowestSP=%p, startPC=%p\n",
           (isEnter ? "ENTER" : "EXIT "),
           f_state->func->fjalar_name,
-	  (void*)f_state->FP,
+          (void*)f_state->FP,
           (void*)f_state->lowestSP,
           (void*)f_state->func->startPC);
 
@@ -1189,7 +1189,7 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      funcPtr,
                      isEnter,
                      0,
-		     0,
+                     0,
                      &printDtraceEntryAction);
   is_enter = 0;
   //  print_info = 0;
@@ -1200,8 +1200,8 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
                      isEnter,
                      // Remember to use the virtual stack!
                      (Addr)f_state->virtualStack
-		       + f_state->virtualStackFPOffset,
-		     f_state->FP,
+                       + f_state->virtualStackFPOffset,
+                     f_state->FP,
                      &printDtraceEntryAction);
 
   // If isEnter == 0, print out return value:
@@ -1240,6 +1240,6 @@ void printDtraceForFunction(FunctionExecutionState* f_state, char isEnter) {
   // all in an O(n^2) manner to mutate bitmatrix.
   if (kvasir_with_dyncomp && dyncomp_detailed_mode) {
     DC_detailed_mode_process_ppt_execution((DaikonFunctionEntry *)funcPtr,
-					   isEnter);
+                                           isEnter);
   }
 }
