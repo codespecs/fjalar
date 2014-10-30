@@ -69,10 +69,10 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
       next_fn = &FunctionExecutionStateStack[tid][i + 1];
 
       if (!cur_fn || !next_fn)
-	{
-	  printf( "Error in returnFunctionExecutionStateWithAddress()");
-	  my_abort();
-	}
+        {
+          printf( "Error in returnFunctionExecutionStateWithAddress()");
+          my_abort();
+        }
 
       FJALAR_DPRINTF("cur_fn->FP: %p\n", (void *)cur_fn->FP);
       FJALAR_DPRINTF("next_fn->FP: %p\n", (void *)next_fn->FP);
@@ -83,7 +83,7 @@ FunctionExecutionState* returnFunctionExecutionStateWithAddress(Addr a)
       // following it on the stack
       if ((cur_fn->FP >= a) && (next_fn->FP <= a)) {
         FJALAR_DPRINTF("Returning functionEntry: %p\n", cur_fn);
-	return cur_fn;
+        return cur_fn;
       }
     }
 
@@ -121,38 +121,51 @@ static VariableEntry* searchForArrayWithinStruct(VariableEntry* structVar,
 
   tl_assert(structVar->varType->aggType);
 
-  for (v = structVar->varType->aggType->memberVarList->first;
-       v != 0;
-       v = v->next) {
-    VariableEntry* potentialVar;
-    Addr potentialVarBaseAddr;
+  FJALAR_DPRINTF("searchForArrayWithinStruct: %s, structVarBaseAddr: %p, targetAddr: %p, baseAddr: %p\n",
+                 structVar->name, (void*)structVarBaseAddr, (void*)targetAddr, (void*)baseAddr);
 
+//  FJALAR_DPRINTF("aggType: %p, memberVarList: %p\n",
+//                 structVar->varType->aggType,
+//                (structVar->varType->aggType ? structVar->varType->aggType->memberVarList : 0));
 
-    potentialVar = v->var;
-    tl_assert(IS_MEMBER_VAR(potentialVar));
-    FJALAR_DPRINTF("examining: %s\n", potentialVar->name);
+  if (structVar->varType->aggType->memberVarList) {
+    for (v = structVar->varType->aggType->memberVarList->first;
+         v != 0;
+         v = v->next) {
+      VariableEntry* potentialVar;
+      Addr potentialVarBaseAddr;
 
-    potentialVarBaseAddr = structVarBaseAddr + potentialVar->memberVar->data_member_location;
+      potentialVar = v->var;
+      tl_assert(IS_MEMBER_VAR(potentialVar));
+      FJALAR_DPRINTF("examining: %s, offset: %ld\n", potentialVar->name,
+                      potentialVar->memberVar->data_member_location);
 
-    if (IS_STATIC_ARRAY_VAR(potentialVar) &&
-        (potentialVarBaseAddr <= targetAddr) &&
-        (targetAddr < (potentialVarBaseAddr +
-                       (potentialVar->staticArr->upperBounds[0] *
-                        getBytesBetweenElts(potentialVar))))) {
-      *baseAddr = potentialVarBaseAddr;
-      FJALAR_DPRINTF("Wins: %s\n", potentialVar->name);
-      return potentialVar;
-    }
-    // Recursive step (be careful to avoid infinite recursion)
-    else if VAR_IS_BASE_STRUCT(potentialVar) {
-      VariableEntry* targetVar =
-        searchForArrayWithinStruct(potentialVar,
-                                   potentialVarBaseAddr,
-                                   targetAddr, baseAddr);
+//      FJALAR_DPRINTF("staticArr: %p, ptrLevels: %d, varType: %d\n",
+//                      potentialVar->staticArr, potentialVar->ptrLevels,
+//                     (potentialVar->varType ? potentialVar->varType->decType : 0));
 
-      if (targetVar) {
-	FJALAR_DPRINTF("wins: %s\n", potentialVar->name);
-        return targetVar;
+      potentialVarBaseAddr = structVarBaseAddr + potentialVar->memberVar->data_member_location;
+
+      if (IS_STATIC_ARRAY_VAR(potentialVar) &&
+          (potentialVarBaseAddr <= targetAddr) &&
+          (targetAddr < (potentialVarBaseAddr +
+                         (potentialVar->staticArr->upperBounds[0] *
+                          getBytesBetweenElts(potentialVar))))) {
+        *baseAddr = potentialVarBaseAddr;
+        FJALAR_DPRINTF("Wins: %s\n", potentialVar->name);
+        return potentialVar;
+      }
+      // Recursive step (be careful to avoid infinite recursion)
+      else if VAR_IS_BASE_STRUCT(potentialVar) {
+        VariableEntry* targetVar =
+          searchForArrayWithinStruct(potentialVar,
+                                     potentialVarBaseAddr,
+                                     targetAddr, baseAddr);
+
+        if (targetVar) {
+          FJALAR_DPRINTF("wins: %s\n", potentialVar->name);
+          return targetVar;
+        }
       }
     }
   }
@@ -182,7 +195,9 @@ returnArrayVariableWithAddr(VarList* varList,
   Addr var_loc = 0;
 
   FJALAR_DPRINTF("[returnArrayVariableWithAddr] varList: %p, Addr: %p, %s\n", varList, (void *)a, (isGlobal)?"Global":"NonGlobal");
-  FJALAR_DPRINTF("frame_ptr: %p, stack_ptr: %p\n", (void *)e->FP, (void *)e->lowSP);
+  if (!isGlobal) {
+    FJALAR_DPRINTF("frame_ptr: %p, stack_ptr: %p\n", (void *)e->FP, (void *)e->lowSP);
+  }
 
   for (cur_node = varList->first;
        cur_node != 0;
@@ -193,14 +208,13 @@ returnArrayVariableWithAddr(VarList* varList,
     if (!potentialVar)
       continue;
 
-    FJALAR_DPRINTF("Examining potential var: %s, offset: 0x%x\n",
-                    potentialVar->name, potentialVar->byteOffset);
+    FJALAR_DPRINTF("Examining potential var: %s, offset: 0x%x, locType: 0x%x\n",
+                    potentialVar->name, potentialVar->byteOffset, potentialVar->locationType);
 
     if (isGlobal) {
       tl_assert(IS_GLOBAL_VAR(potentialVar));
-      //RUDD EXCEPTION
-      FJALAR_DPRINTF("Examining potential var address: %p\n",(void *) potentialVarBaseAddr);
       potentialVarBaseAddr = potentialVar->globalVar->globalLocation;
+      FJALAR_DPRINTF("Examining potential var address: %p\n",(void *) potentialVarBaseAddr);
     } else {
       if (potentialVar->locationType == FP_OFFSET_LOCATION) {
         potentialVarBaseAddr = e->FP + potentialVar->byteOffset;
@@ -211,7 +225,7 @@ returnArrayVariableWithAddr(VarList* varList,
         potentialVarBaseAddr = e->lowSP + potentialVar->byteOffset;
       }
     }
-    if(potentialVar->location_expression_size) {
+    if (potentialVar->location_expression_size) {
       unsigned int i = 0;
       for(i = 0; i < potentialVar->location_expression_size; i++ ) {
         dwarf_location *loc  = &(potentialVar->location_expression[i]);
@@ -263,11 +277,9 @@ returnArrayVariableWithAddr(VarList* varList,
         FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
       }
     }
-    FJALAR_DPRINTF("potential var_loc %p\n", (void *)potentialVarBaseAddr);
-
-    FJALAR_DPRINTF("array test - static?: %d, base: %p, limit: %p\n",
-        (IS_STATIC_ARRAY_VAR(potentialVar)), (void *)a,
-        (void *)(potentialVarBaseAddr + (potentialVar->staticArr->upperBounds[0] * getBytesBetweenElts(potentialVar))));
+    FJALAR_DPRINTF("addr: %p, potential var_loc: %p, staticArr: %p, ptrLevels: %d, varType: %d\n",
+                   (void*)a, (void*)potentialVarBaseAddr, potentialVar->staticArr, potentialVar->ptrLevels,
+                   (potentialVar->varType ? potentialVar->varType->decType : 0));
 
     // array
     if (IS_STATIC_ARRAY_VAR(potentialVar) &&
@@ -307,11 +319,11 @@ VariableEntry* returnGlobalSingletonWithAddress(Addr a) {
       r = cur_node->var;
 
       if (!r)
-	continue;
+        continue;
 
       if (IS_GLOBAL_VAR(r) && (!IS_STATIC_ARRAY_VAR(r)) && r->globalVar->globalLocation == a)
         {
-	  FJALAR_DPRINTF(" EXIT SUCCESS returnGlobalSingletonWithAddress - %s\n", r->name);
+          FJALAR_DPRINTF(" EXIT SUCCESS returnGlobalSingletonWithAddress - %s\n", r->name);
           return r;
         }
     }
@@ -352,9 +364,9 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
     return 0;
   while (mc_check_writable( startAddr, typeSize, 0))
     {
-	  if (arraySize % 1000 == 0)
-	    FJALAR_DPRINTF ( "Made it to %d elements at 0x%x\n", arraySize,
-			 (unsigned int)startAddr);
+      if (arraySize % 1000 == 0)
+        FJALAR_DPRINTF ( "Made it to %d elements at 0x%x\n", arraySize,
+                         (unsigned int)startAddr);
       /* Cut off the search if we can already see it's really big:
          no need to look further than we're going to print. */
       // RUDD TEMP
@@ -613,15 +625,15 @@ Bool addressIsAllocatedOrInitialized(Addr addressInQuestion,
   else
   {
       if (allocatedOrInitialized)
-	{
-	  return mc_check_writable(addressInQuestion, numBytes, 0);
-	}
+        {
+          return mc_check_writable(addressInQuestion, numBytes, 0);
+        }
       else
-	{
+        {
           // Notice that the return type of mc_check_readable has
           // changed from the Valgrind 2.X Memcheck:
-	  return (MC_Ok == mc_check_readable(addressInQuestion, numBytes, 0));
-	}
+          return (MC_Ok == mc_check_readable(addressInQuestion, numBytes, 0));
+        }
   }
 }
 
