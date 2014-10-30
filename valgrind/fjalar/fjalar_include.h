@@ -316,7 +316,6 @@ typedef struct _VariableEntry {
 
   LocationType locationType;
 
-  // see fjalar_dwarf.h for definition of dwarf_location
   // Locations in the DWARF debugging information are represented
   // by "location expressions" which are a sequence of DWARF
   // operations to be performed in order.

@@ -245,7 +245,7 @@ const HChar* stringStackStrdup(StringStack *stack)
 // printing out names and performing other non-value-dependent
 // operations.
 void visitClassMembersNoValues(TypeEntry* class,
-			       TraversalAction *performAction) {
+                               TraversalAction *performAction) {
 
   VisitArgs new_args;
   const HChar *fullFjalarName = NULL, *top = NULL;
@@ -387,8 +387,8 @@ void visitClassMemberVariables(VisitArgs* args) {
       Addr* pCurVarValueArrayGuest = NULL;
 
       if (!curVar->name) {
-	printf( "  Warning! Weird null member variable name!\n");
-	continue;
+        printf( "  Warning! Weird null member variable name!\n");
+        continue;
       }
 
       tl_assert(IS_MEMBER_VAR(curVar));
@@ -430,7 +430,7 @@ void visitClassMemberVariables(VisitArgs* args) {
               // Create pCurVarValueArray to be the same size as pValueArray:
               pCurVarValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.1", numElts * sizeof(Addr));
               pCurVarValueArrayGuest =
-		(Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.2", numElts * sizeof(Addr));
+                (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.2", numElts * sizeof(Addr));
 
               // Iterate though pValueArray and fill up
               // pCurVarValueArray with pointer values offset by the
@@ -443,9 +443,9 @@ void visitClassMemberVariables(VisitArgs* args) {
                 // variable within the struct
                 if (pValueArray[ind]) {
                   Addr curVal =
-		    pValueArray[ind] + curVar->memberVar->data_member_location;
-		  Addr curValGuest = pValueArrayGuest[ind] +
-		    curVar->memberVar->data_member_location;
+                    pValueArray[ind] + curVar->memberVar->data_member_location;
+                  Addr curValGuest = pValueArrayGuest[ind] +
+                    curVar->memberVar->data_member_location;
 
                   // Override for D_DOUBLE types: For some reason, the
                   // DWARF2 info.  botches the locations of double
@@ -495,7 +495,7 @@ void visitClassMemberVariables(VisitArgs* args) {
               // variable within the struct
               pCurVarValue = pValue + curVar->memberVar->data_member_location;
               pCurVarValueGuest  =
-		pValueGuest + curVar->memberVar->data_member_location;
+                pValueGuest + curVar->memberVar->data_member_location;
 
               // Very important! Add offset within the flattened array:
               pCurVarValue += (arrayIndex * getBytesBetweenElts(curVar));
@@ -592,7 +592,7 @@ void visitClassMemberVariables(VisitArgs* args) {
             // pValueArray:
             pCurVarValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.3",numElts * sizeof(Addr));
             pCurVarValueArrayGuest =
-	      (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.4", numElts * sizeof(Addr));
+              (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.4", numElts * sizeof(Addr));
 
             // Iterate though pValueArray and fill up
             // pCurVarValueArray with pointer values offset by the
@@ -603,9 +603,9 @@ void visitClassMemberVariables(VisitArgs* args) {
               // variable within the struct
               if (pValueArray[ind]) {
                 Addr curVal =
-		  pValueArray[ind] + curVar->memberVar->data_member_location;
+                  pValueArray[ind] + curVar->memberVar->data_member_location;
                 Addr curValGuest = pValueArrayGuest[ind] +
-		  curVar->memberVar->data_member_location;
+                  curVar->memberVar->data_member_location;
 
                 // See "Override for D_DOUBLE types" comment above.
                 if ((D_DOUBLE == curVar->varType->decType) &&
@@ -640,7 +640,7 @@ void visitClassMemberVariables(VisitArgs* args) {
             // variable within the struct
             pCurVarValue = pValue + curVar->memberVar->data_member_location;
             pCurVarValueGuest =
-	      pValueGuest + curVar->memberVar->data_member_location;
+              pValueGuest + curVar->memberVar->data_member_location;
 
             // See "Override for D_DOUBLE types" comment above.
             if ((D_DOUBLE == curVar->varType->decType) &&
@@ -755,16 +755,16 @@ void visitClassMemberVariables(VisitArgs* args) {
         UInt ind;
         superclassOffsetPtrValues = (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.5",numElts * sizeof(Addr));
         superclassOffsetPtrValuesGuest =
-	  (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.6", numElts * sizeof(Addr));
+          (Addr*)VG_(malloc)("fjalar_traversal.c: vCMV.6", numElts * sizeof(Addr));
 
         // Iterate though pValueArray and fill up superclassOffsetPtrValues
         // with pointer values offset by curSuper->member_var_offset:
         for (ind = 0; ind < numElts; ind++) {
           if (pValueArray[ind]) {
             superclassOffsetPtrValues[ind] =
-	      pValueArray[ind] + curSuper->member_var_offset;
+              pValueArray[ind] + curSuper->member_var_offset;
             superclassOffsetPtrValuesGuest[ind] =
-	      pValueArrayGuest[ind] + curSuper->member_var_offset;
+              pValueArrayGuest[ind] + curSuper->member_var_offset;
           }
         }
       }
@@ -843,6 +843,8 @@ void visitClassMemberVariables(VisitArgs* args) {
 
   // TODO: Visit static member variables (remember that they have
   // global addresses):
+
+  FJALAR_DPRINTF("Exit  visitClassMemberVariables\n");
 }
 
 // Visits an entire group of variables, depending on the value of varOrigin:
@@ -859,7 +861,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
                         Addr stackBaseAddrGuest,// should only be used for FUNCTION_FORMAL_PARAM
                         // This function performs an action for each
                         // variable visited:
-			TraversalAction *performAction) {
+                        TraversalAction *performAction) {
   VarList* varListPtr = NULL;
   VarIterator* varIt = NULL;
   Bool overrideIsInit = 0;
@@ -929,8 +931,8 @@ void visitVariableGroup(VariableOrigin varOrigin,
       // the DWARF tables, while still providing tools with the variables
       // if they care. return is an exception as we figure it out ourself.
       if(!var->validLoc && !VG_STREQ("return", var->name)) {
-	FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
-	continue;
+        FJALAR_DPRINTF("\t[visitVariableGroup] invalid loc, punting\n");
+        continue;
       }
 
       FJALAR_DPRINTF("\t[visitVariableGroup] baseAddr: %p, baseAddrGuest: %p var->byteOffset: %x(%d)\n", (void *)stackBaseAddr, (void *)stackBaseAddrGuest, var->byteOffset, var->byteOffset);
@@ -941,11 +943,11 @@ void visitVariableGroup(VariableOrigin varOrigin,
 
       if(var->location_expression_size) {
         Addr var_loc = (Addr) NULL;
-	unsigned int i = 0;
+        unsigned int i = 0;
 
         // MAIN STACK LAYOUT
-	// HACK - Main has a very strange stack layout. The stack
-	// layout for a standard function is as follows:
+        // HACK - Main has a very strange stack layout. The stack
+        // layout for a standard function is as follows:
 
         // |                   |
         // |    arguments      |
@@ -987,68 +989,68 @@ void visitVariableGroup(VariableOrigin varOrigin,
         // is to just use the same location as your caculated at entry. This would fail if GCC
         // ever starts using location lists for more than just the frame base.
 
-	if(!isEnter && VG_STREQ("main", funcPtr->name) &&
-	   (VG_STREQ("argc", var->name) ||
-	    VG_STREQ("argv", var->name))) {
-	  FJALAR_DPRINTF("\t[visitVariableGroup] int main(argc/argv) DETECTED, using entry locations isntead of recalculating\n");
-	  basePtrValue = var->entryLoc;
-	  basePtrValueGuest = var->entryLocGuest;
-	}
-	else {
+        if(!isEnter && VG_STREQ("main", funcPtr->name) &&
+           (VG_STREQ("argc", var->name) ||
+            VG_STREQ("argv", var->name))) {
+          FJALAR_DPRINTF("\t[visitVariableGroup] int main(argc/argv) DETECTED, using entry locations isntead of recalculating\n");
+          basePtrValue = var->entryLoc;
+          basePtrValueGuest = var->entryLocGuest;
+        }
+        else {
 
           // Dwarf Locations are implemented as a sequence of operations to be performed.
-	  for(i = 0; i < var->location_expression_size; i++ ) {
-	    dwarf_location *loc  = &(var->location_expression[i]);
-	    unsigned int  op = loc->atom;
+          for(i = 0; i < var->location_expression_size; i++ ) {
+            dwarf_location *loc  = &(var->location_expression[i]);
+            unsigned int  op = loc->atom;
             int reg_val;
 
-	    if(op == DW_OP_addr) {
-	      // DWARF supplied address
-	      var_loc = loc->atom_offset;
+            if(op == DW_OP_addr) {
+              // DWARF supplied address
+              var_loc = loc->atom_offset;
 
-	    } else if(op == DW_OP_deref) {
-	      // Dereference result of last DWARF operation
-	      tl_assert(var_loc);
-	      var_loc = *(Addr *)var_loc;
+            } else if(op == DW_OP_deref) {
+              // Dereference result of last DWARF operation
+              tl_assert(var_loc);
+              var_loc = *(Addr *)var_loc;
 
-	    } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
-	      // DWARF supplied constant
-	      var_loc = loc->atom_offset;
+            } else if((op >= DW_OP_const1u) && (op <= DW_OP_consts)) {
+              // DWARF supplied constant
+              var_loc = loc->atom_offset;
 
-	    } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
-	      // Add DWARF supplied constant to value to result of last DWARF operation
-	      var_loc += loc->atom_offset;
+            } else if((op >= DW_OP_plus) && (op <= DW_OP_plus_uconst)) {
+              // Add DWARF supplied constant to value to result of last DWARF operation
+              var_loc += loc->atom_offset;
 
-	    } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
-	      // Get value located in architectural register
-	      reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
-	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_reg0], reg_val);
-	      var_loc = (Addr)&reg_val;
+            } else if((op >= DW_OP_reg0) && (op <= DW_OP_reg31)) {
+              // Get value located in architectural register
+              reg_val = (*get_reg[loc->atom - DW_OP_reg0])(tid);
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_reg0], reg_val);
+              var_loc = (Addr)&reg_val;
 
-	    } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
-	      // Get value pointed to by architectural register
-	      reg_val = (*get_reg[loc->atom - DW_OP_breg0])(tid);
-	      FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_breg0], reg_val);
-	      var_loc = reg_val + loc->atom_offset;
-	      FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", loc->atom_offset, (void *)var_loc);
-	      tl_assert(var_loc);
+            } else if((op >= DW_OP_breg0) && (op <= DW_OP_breg31)) {
+              // Get value pointed to by architectural register
+              reg_val = (*get_reg[loc->atom - DW_OP_breg0])(tid);
+              FJALAR_DPRINTF("\tObtaining register value: [%%%s]: %x\n", dwarf_reg_string[loc->atom - DW_OP_breg0], reg_val);
+              var_loc = reg_val + loc->atom_offset;
+              FJALAR_DPRINTF("\tAdding %lld to the register value for %p\n", loc->atom_offset, (void *)var_loc);
+              tl_assert(var_loc);
 
-	    } else if(op == DW_OP_fbreg) {
-	      // Get value located at an offset from the FRAME_BASE.
-	      FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", loc->atom_offset, var->byteOffset);
-	      var_loc = stackBaseAddrGuest + loc->atom_offset;
+            } else if(op == DW_OP_fbreg) {
+              // Get value located at an offset from the FRAME_BASE.
+              FJALAR_DPRINTF("atom offset: %lld vs. byteOffset: %d\n", loc->atom_offset, var->byteOffset);
+              var_loc = stackBaseAddrGuest + loc->atom_offset;
 
-	    } else {
+            } else {
               // There's a fair number of DWARF operations still unsupported. There is a full list
               // in fjalar_debug.h
-	      FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
-	      tl_assert(0);
-	    }
-	    FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
-	  }
+              FJALAR_DPRINTF("\tUnsupported DWARF stack OP: %s\n", location_expression_to_string(op));
+              tl_assert(0);
+            }
+            FJALAR_DPRINTF("\tApplying DWARF Stack Operation %s - %p\n",location_expression_to_string(op), (void *)var_loc);
+          }
 
-	  if((var_loc >= funcPtr->guestStackStart) &&
-	      (var_loc <= funcPtr->guestStackEnd)) {
+          if((var_loc >= funcPtr->guestStackStart) &&
+              (var_loc <= funcPtr->guestStackEnd)) {
 
 #if defined(VGA_amd64)
           if(!isEnter) {
@@ -1057,29 +1059,29 @@ void visitVariableGroup(VariableOrigin varOrigin,
 #endif
 
 
-	  //int virt_offset = var_loc - funcPtr->lowestSP;
-	  int virt_offset = var_loc - funcPtr->guestStackStart;
+          //int virt_offset = var_loc - funcPtr->lowestSP;
+          int virt_offset = var_loc - funcPtr->guestStackStart;
 
             FJALAR_DPRINTF("\t[visitVariableGroup] stackBaseAddr: %p\n\tREDZONE: %d,\n\tFP: %p\n\tvar_loc %p\n\tOffset(virt): %d\n",
                            (void *)funcPtr->guestStackStart, VG_STACK_REDZONE_SZB, (void *)funcPtr->FP, (void *)var_loc, virt_offset);
 
-	    var->byteOffset = var_loc - funcPtr->FP;
-	    // + VG_STACK_REDZONE_SZB;
-	    basePtrValue = funcPtr->lowestVirtSP + virt_offset;
-	    var->entryLoc = basePtrValue;
-	    var->entryLocGuest = var_loc;
-	    basePtrValueGuest = var_loc; }
-	  else {
+            var->byteOffset = var_loc - funcPtr->FP;
+            // + VG_STACK_REDZONE_SZB;
+            basePtrValue = funcPtr->lowestVirtSP + virt_offset;
+            var->entryLoc = basePtrValue;
+            var->entryLocGuest = var_loc;
+            basePtrValueGuest = var_loc; }
+          else {
             basePtrValue = var_loc;
             var->entryLoc = var_loc;
           }
-	}
+        }
       }
 
       else {
-	// Standard offset of the framebase.
+        // Standard offset of the framebase.
         basePtrValue = stackBaseAddr + var->byteOffset;
-	basePtrValueGuest = stackBaseAddrGuest + var->byteOffset;
+        basePtrValueGuest = stackBaseAddrGuest + var->byteOffset;
       }
     }
     else if (varOrigin == GLOBAL_VAR) {
@@ -1096,7 +1098,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
       // if "--ignore-static-vars" option was selected, do not visit
       // file-static global variables:
       if (!var->globalVar->isExternal && fjalar_ignore_static_vars) {
-	continue;
+        continue;
       }
 
       // If "--all-static-vars" option was NOT selected (default), then:
@@ -1105,35 +1107,37 @@ void visitVariableGroup(VariableOrigin varOrigin,
       // * Only visit static variables declared within functions
       //   at program points of that particular function
       if (!var->globalVar->isExternal && (!fjalar_all_static_vars) && funcPtr) {
-	// Declared within a function
-	if (var->globalVar->functionStartPC) {
-	  if (funcPtr->startPC != var->globalVar->functionStartPC) {
-	    continue;
-	  }
-	}
-	// Declared globally
-	else if (!VG_STREQ(funcPtr->filename, var->globalVar->fileName)) {
-	  continue;
-	}
+        // Declared within a function
+        if (var->globalVar->functionStartPC) {
+          if (funcPtr->startPC != var->globalVar->functionStartPC) {
+            continue;
+          }
+        }
+        // Declared globally
+        else if (!VG_STREQ(funcPtr->filename, var->globalVar->fileName)) {
+          continue;
+        }
       }
     }
 
     stringStackPush(&fullNameStack, var->name);
 
     visitVariable(var,
-		  basePtrValue,
-		  basePtrValueGuest,
-		  overrideIsInit,
-		  0,
-		  performAction,
-		  varOrigin,
-		  funcPtr,
-		  isEnter);
+                  basePtrValue,
+                  basePtrValueGuest,
+                  overrideIsInit,
+                  0,
+                  performAction,
+                  varOrigin,
+                  funcPtr,
+                  isEnter);
 
     stringStackPop(&fullNameStack);
   }
 
   deleteVarIterator(varIt);
+
+  FJALAR_DPRINTF("Exit  visitVariableGroup\n");
 }
 
 
@@ -1145,7 +1149,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
 // registers.
 void visitReturnValue(FunctionExecutionState* e,
                       // This function performs an action for each variable visited:
-		      TraversalAction *performAction) {
+                      TraversalAction *performAction) {
   VarNode* cur_node;
   FunctionEntry* funcPtr;
   tl_assert(e);
@@ -1156,7 +1160,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
   // This happens when there is a void function with no return value:
   if (!cur_node) {
-    FJALAR_DPRINTF("Enter visitReturnValue - void return\n");
+    FJALAR_DPRINTF("Enter/Exit visitReturnValue - void return\n");
     return;
   }
 
@@ -1199,12 +1203,12 @@ void visitReturnValue(FunctionExecutionState* e,
 
       // Copy A and V bits over:
       mc_copy_address_range_state((Addr)(&(e->xAX)),
-				  (Addr)(&returnBuffer),
-				  sizeof(e->xAX));
+                                  (Addr)(&returnBuffer),
+                                  sizeof(e->xAX));
 
       mc_copy_address_range_state((Addr)(&(e->xDX)),
-				  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
-				  sizeof(e->xDX));
+                                  (Addr)(&returnBuffer) + (Addr)sizeof(e->xAX),
+                                  sizeof(e->xDX));
 
       // Remember to copy A and V-bits over:
       mc_copy_address_range_state((Addr)(&(e->xAX)),
@@ -1228,7 +1232,7 @@ void visitReturnValue(FunctionExecutionState* e,
     // level of indirection needed
     visitVariable(cur_node->var,
                   (Addr)e->xAX,
-		  0, /* register, no guest location*/
+                  0, /* register, no guest location*/
                   // No longer need to overrideIsInitialized
                   // because we now keep shadow V-bits for e->xAX
                   // and friends
@@ -1243,7 +1247,7 @@ void visitReturnValue(FunctionExecutionState* e,
   }
   // Floating-point type - use FPU
   else if ((cur_node->var->ptrLevels == 0) &&
-	   ((cur_node->var->varType->decType == D_FLOAT) ||
+           ((cur_node->var->varType->decType == D_FLOAT) ||
             (cur_node->var->varType->decType == D_DOUBLE) ||
             (cur_node->var->varType->decType == D_LONG_DOUBLE))) {
     // SPECIAL CASE: The value in FPU must be interpreted as a double
@@ -1252,7 +1256,7 @@ void visitReturnValue(FunctionExecutionState* e,
                    cur_node, &(e->FPU), (double)e->FPU);
     visitVariable(cur_node->var,
                   (Addr)&(e->FPU),
-		  0, /* register, no guest location */
+                  0, /* register, no guest location */
                   0,
                   0,
                   performAction,
@@ -1280,7 +1284,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   (Addr)&uLong,
-		  0, /* registers, no guest location */
+                  0, /* registers, no guest location */
                   0,
                   0,
                   performAction,
@@ -1303,7 +1307,7 @@ void visitReturnValue(FunctionExecutionState* e,
 
     visitVariable(cur_node->var,
                   (Addr)&signedLong,
-		  0, /* registers, no guest location */
+                  0, /* registers, no guest location */
                   0,
                   0,
                   performAction,
@@ -1313,14 +1317,14 @@ void visitReturnValue(FunctionExecutionState* e,
   }
   // All other types (integer and pointer) - use xAX
   else {
-    FJALAR_DPRINTF("int or pointer  type\n");
+    FJALAR_DPRINTF("int or pointer type\n");
     // Need an additional indirection level
     FJALAR_DPRINTF(" RETURN - int/ptr.: cur_node=%p, basePtr=%p, value in xAX: %d\n",
                    cur_node, &(e->xAX), (int)e->xAX);
 
     visitVariable(cur_node->var,
                   (Addr)&(e->xAX),
-		  0, /* register, no guest location */
+                  0, /* register, no guest location */
                   0,
                   0,
                   performAction,
@@ -1330,6 +1334,8 @@ void visitReturnValue(FunctionExecutionState* e,
   }
 
   stringStackPop(&fullNameStack);
+
+  FJALAR_DPRINTF("Exit  visitReturnValue - var: %s\n", cur_node->var->name);
 }
 
 
@@ -1345,7 +1351,7 @@ static char interestedInVar(const HChar* fullFjalarName, char* trace_vars_tree) 
   if (fjalar_trace_vars_filename) {
     if (trace_vars_tree) {
       //      printf("Checking if %s is in var list\n", fullFjalarName);
-      if (!tfind((void*)fullFjalarName, (void**)&trace_vars_tree, compareStrings)) {	
+      if (!tfind((void*)fullFjalarName, (void**)&trace_vars_tree, compareStrings)) {        
         return 0;
       }
       //      printf("Found it\n", fullFjalarName);
@@ -1388,7 +1394,7 @@ void visitVariable(VariableEntry* var,
                    UInt numStructsDereferenced,
                    // This function performs an action for each
                    // variable visited:
-		   TraversalAction *performAction,
+                   TraversalAction *performAction,
                    VariableOrigin varOrigin,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter) {
@@ -1430,7 +1436,7 @@ void visitVariable(VariableEntry* var,
     
     if (varFuncInfo == 0 || varFuncInfo->trace_global_vars_tree == 0){
       trace_vars_tree = (globalFunctionTree ?
-			 globalFunctionTree->function_variables_tree : 0);
+                         globalFunctionTree->function_variables_tree : 0);
     }else{
       //Use the user-specified globals list if possible
       //trace_global_vars_tree holds all the global variables specified in the globals
@@ -1459,6 +1465,8 @@ void visitVariable(VariableEntry* var,
   new_args.isEnter                = isEnter;
 
   visitSingleVar(&new_args);
+
+  FJALAR_DPRINTF("Exit  visitVariable - var: %s\n", var->name);
 }
 
 
@@ -1577,7 +1585,7 @@ void visitSingleVar(VisitArgs* args) {
     }
 
     FJALAR_DPRINTF("Callback for single variable %s\n",
-		   fullFjalarName);
+                   fullFjalarName);
     FJALAR_DPRINTF("overideisInit? %d\n", overrideIsInit);
     FJALAR_DPRINTF("pValue: %p\n", (void *)pValue);
 
@@ -1592,27 +1600,27 @@ void visitSingleVar(VisitArgs* args) {
 
       // Perform the action action for this particular variable:
       tResult = (*performAction)(var,
-				 fullFjalarName,
-				 varOrigin,
-				 numDereferences,
-				 layersBeforeBase,
-				 overrideIsInit,
-				 disambigOverride,
-				 0,
-				 pValue,
-				 pValueGuest,
-				 0,
-				 0,
-				 0,
-				 varFuncInfo,
-				 isEnter);
+                                 fullFjalarName,
+                                 varOrigin,
+                                 numDereferences,
+                                 layersBeforeBase,
+                                 overrideIsInit,
+                                 disambigOverride,
+                                 0,
+                                 pValue,
+                                 pValueGuest,
+                                 0,
+                                 0,
+                                 0,
+                                 varFuncInfo,
+                                 isEnter);
 
       tl_assert(tResult != INVALID_RESULT);
 
       // Punt!
       if (tResult == STOP_TRAVERSAL) {
-	VG_(free)((void*)fullFjalarName);
-	return;
+        VG_(free)((void*)fullFjalarName);
+        return;
       }
     }
   }
@@ -1736,7 +1744,7 @@ void visitSingleVar(VisitArgs* args) {
           numElts = 1 + var->staticArr->upperBounds[0];
 
           // Additional dimensions:
-	  FJALAR_DPRINTF("Static Array\n");
+          FJALAR_DPRINTF("Static Array\n");
           for (dim = 1; dim < var->staticArr->numDimensions; dim++) {
             numElts *= (1 + var->staticArr->upperBounds[dim]);
           }
@@ -1758,16 +1766,16 @@ void visitSingleVar(VisitArgs* args) {
           char derivedIsAllocated = 0;
           Addr pNewStartValue = (Addr) NULL;
 
-	  FJALAR_DPRINTF("Dynamic Array\n");
+          FJALAR_DPRINTF("Dynamic Array\n");
 
-	  if (overrideIsInit)
-	    derivedIsAllocated = 1;
-	  else if (!pValueGuest)
-	    /* This has no address, because it was somewhere like a
-	       register. No need to check A bits. */
-	    derivedIsAllocated = 1;
-	  else
-	    derivedIsAllocated = addressIsAllocated(pValue, sizeof(void*));
+          if (overrideIsInit)
+            derivedIsAllocated = 1;
+          else if (!pValueGuest)
+            /* This has no address, because it was somewhere like a
+               register. No need to check A bits. */
+            derivedIsAllocated = 1;
+          else
+            derivedIsAllocated = addressIsAllocated(pValue, sizeof(void*));
 
           if (derivedIsAllocated) {
             // Make a single dereference to get to the start of the array
@@ -1783,7 +1791,7 @@ void visitSingleVar(VisitArgs* args) {
             pValueArray = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.3", numElts * sizeof(Addr));
             pValueArrayGuest = (Addr*)VG_(malloc)("fjalar_traversal.c: vSV.4" ,numElts * sizeof(Addr));
 
-	        FJALAR_DPRINTF("numElts is %d\n", numElts);
+                FJALAR_DPRINTF("numElts is %d\n", numElts);
 
             // Build up pValueArray with pointers starting at pNewStartValue
             for (i = 0; i < numElts; i++) {
@@ -1803,7 +1811,7 @@ void visitSingleVar(VisitArgs* args) {
       }
 
       FJALAR_DPRINTF("Callback for Sequence variable %s\n",
-		     fullFjalarName);
+                     fullFjalarName);
 
       new_args.var                    = var;
       new_args.numDereferences        = numDereferences + 1;
@@ -1896,6 +1904,8 @@ void visitSingleVar(VisitArgs* args) {
   }
   if (fullFjalarName)
     VG_(free)((void*)fullFjalarName);
+  
+  FJALAR_DPRINTF("Exit  visitSingleVar - var: %s\n", var->name);
 }
 
 
@@ -2016,34 +2026,34 @@ void visitSequence(VisitArgs* args) {
     }
 
     FJALAR_DPRINTF("Callback for sequence variable %s\n",
-		   fullFjalarName);
+                   fullFjalarName);
 
     // See: PARTIAL_STRUCT_TRAVERSAL
     if (interestedInVar(fullFjalarName, trace_vars_tree)) {
 
       // Perform the action action for this particular variable:
       tResult = (*performAction)(var,
-				 fullFjalarName,
-				 varOrigin,
-				 numDereferences,
-				 layersBeforeBase,
-				 0, // Do not overrideIsInit
-				 disambigOverride,
-				 1, // YES isSequence
-				 0,
-				 0,
-				 pValueArray,
-				 pValueArrayGuest,
-				 numElts,
-				 varFuncInfo,
-				 isEnter);
+                                 fullFjalarName,
+                                 varOrigin,
+                                 numDereferences,
+                                 layersBeforeBase,
+                                 0, // Do not overrideIsInit
+                                 disambigOverride,
+                                 1, // YES isSequence
+                                 0,
+                                 0,
+                                 pValueArray,
+                                 pValueArrayGuest,
+                                 numElts,
+                                 varFuncInfo,
+                                 isEnter);
 
       tl_assert(tResult != INVALID_RESULT);
 
       // Punt!
       if (tResult == STOP_TRAVERSAL) {
-	VG_(free)((void*)fullFjalarName);
-	return;
+        VG_(free)((void*)fullFjalarName);
+        return;
       }
     }
   }
@@ -2085,7 +2095,7 @@ void visitSequence(VisitArgs* args) {
         char derivedIsAllocated = 0;
         char derivedIsInitialized = 0;
         Addr* pValueArrayEntry = &pValueArray[i];
-	Addr* pValueArrayEntryGuest = &pValueArrayGuest[i];
+        Addr* pValueArrayEntryGuest = &pValueArrayGuest[i];
 
         // If this entry is already 0, then skip it
         if (0 == *pValueArrayEntry) {
@@ -2099,7 +2109,7 @@ void visitSequence(VisitArgs* args) {
             // Make a single dereference and override pValueArray
             // entry with the dereferenced value:
             *pValueArrayEntryGuest = *pValueArrayEntry =
-	      *((Addr*)(*pValueArrayEntry));
+              *((Addr*)(*pValueArrayEntry));
           }
           else {
             // TODO: We need to somehow mark this entry as 'uninit'
@@ -2182,4 +2192,6 @@ void visitSequence(VisitArgs* args) {
   }
   if (fullFjalarName)
     VG_(free)((void*)fullFjalarName);
+
+  FJALAR_DPRINTF("Exit  visitSequence - var: %s\n", var->name);
 }
