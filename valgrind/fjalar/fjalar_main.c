@@ -419,7 +419,7 @@ static void find_entry_pt(IRSB* bb_orig, FunctionEntry *f) {
     dyncomp_delayed_print_IR = False;
   }
 
-  FJALAR_DPRINTF("[find_entry_pt] Searching for main entry instruction for %s\n", f->fjalar_name);
+  FJALAR_DPRINTF("[find_entry_pt] Searching %s for entry address %x\n", f->fjalar_name, (UInt)f->entryPC);
   for(i=0 ; i <  bb_orig->stmts_used; i++) {
     IRStmt *st = bb_orig->stmts[i];
     if(st->tag == Ist_IMark) {
@@ -556,8 +556,10 @@ void enter_function(FunctionEntry* f)
   Addr frame_ptr = 0; /* E.g., %ebp */
   int local_stack, size;
 
-  FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x\ncu_base: %p\n",
+  FJALAR_DPRINTF("[enter_function] startPC is: %x, entryPC is: %x, cu_base: %p\n",
                  (UInt)f->startPC, (UInt)f->entryPC,(void *)f->cuBase);
+  FJALAR_DPRINTF("Value of edi: %x, esi: %x, edx: %x, ecx: %x\n",
+      (int)VG_(get_xDI)(tid), (int)VG_(get_xSI)(tid), (int)VG_(get_xDX)(tid), (int)VG_(get_xCX)(tid));
 
   // Determine the frame pointer for this function using DWARF
   // location lists. This is a "virtual frame pointer" in that it is
