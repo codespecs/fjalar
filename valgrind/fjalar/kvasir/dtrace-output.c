@@ -595,11 +595,12 @@ static char printDtraceSequence(VariableEntry* var,
         Addr pCurValue = pValueArray[ind];
         Addr pCurValueGuest = pValueArrayGuest[ind];
         char eltInit = addressIsInitialized(pCurValue, sizeof(void*));
-	if(ind == 0) { // Lets print out the first element for debugging
-	  DPRINTF("First element is: %x(GUEST) ", (UInt)pCurValueGuest);
-	  DPRINTF("First element is: %x(ACTUAL) ", (UInt)(*((Addr*)pCurValue)));
-	}
 
+        // bogus debug code; pCurValue might be null (markro)
+        //if(ind == 0) { // Lets print out the first element for debugging
+          //DPRINTF("First element is: %x(GUEST) ", (UInt)pCurValueGuest);
+          //DPRINTF("First element is: %x(ACTUAL) ", (UInt)(*((Addr*)pCurValue)));
+        //}
 
         if (eltInit) {
           if (!firstInitEltFound) {

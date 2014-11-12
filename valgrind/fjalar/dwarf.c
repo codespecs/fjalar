@@ -220,11 +220,11 @@ dwarf_vmatoa_1 (const char *fmtch, dwarf_vma value, unsigned num_bytes)
   if (num_bytes)
     {
       /* Printf does not have a way of specifiying a maximum field width for an
-	 integer value, so we print the full value into a buffer and then select
-	 the precision we need.  */
+         integer value, so we print the full value into a buffer and then select
+         the precision we need.  */
       snprintf (ret, sizeof (buf[0].place), DWARF_VMA_FMT_LONG, value);
       if (num_bytes > 8)
-	num_bytes = 8;
+        num_bytes = 8;
       return ret + (16 - 2 * num_bytes);
     }
   else
@@ -281,9 +281,9 @@ dwarf_vmatoa64 (dwarf_vma hvalue, dwarf_vma lvalue, char *buf,
 
 dwarf_vma
 read_leb128 (unsigned char *data,
-	     unsigned int *length_return,
-	     bfd_boolean sign,
-	     const unsigned char * const end)
+             unsigned int *length_return,
+             bfd_boolean sign,
+             const unsigned char * const end)
 {
   dwarf_vma result = 0;
   unsigned int num_read = 0;
@@ -299,7 +299,7 @@ read_leb128 (unsigned char *data,
 
       shift += 7;
       if ((byte & 0x80) == 0)
-	break;
+        break;
     }
 
   if (length_return != NULL)
@@ -322,8 +322,8 @@ read_sleb128 (unsigned char *data,
 
 static inline dwarf_vma
 read_uleb128 (unsigned char * data,
-	      unsigned int *  length_return,
-	      const unsigned char * const end)
+              unsigned int *  length_return,
+              const unsigned char * const end)
 {
   return read_leb128 (data, length_return, FALSE, end);
 }
@@ -708,39 +708,39 @@ process_abbrev_section (unsigned char *start, unsigned char *end)
       start += bytes_read;
 
       /* A single zero is supposed to end the section according
-	 to the standard.  If there's more, then signal that to
-	 the caller.  */
+         to the standard.  If there's more, then signal that to
+         the caller.  */
       if (start == end)
-	return NULL;
+        return NULL;
       if (entry == 0)
-	return start;
+        return start;
 
       tag = read_uleb128 (start, & bytes_read, end);
       start += bytes_read;
       if (start == end)
-	return NULL;
+        return NULL;
 
       children = *start++;
 
       add_abbrev (entry, tag, children);
 
       do
-	{
-	  unsigned long form;
+        {
+          unsigned long form;
 
-	  attribute = read_uleb128 (start, & bytes_read, end);
-	  start += bytes_read;
-	  if (start == end)
-	    break;
+          attribute = read_uleb128 (start, & bytes_read, end);
+          start += bytes_read;
+          if (start == end)
+            break;
 
-	  form = read_uleb128 (start, & bytes_read, end);
-	  start += bytes_read;
-	  if (start == end)
-	    break;
+          form = read_uleb128 (start, & bytes_read, end);
+          start += bytes_read;
+          if (start == end)
+            break;
 
-	  if (attribute != 0)
-	    add_abbrev_attr (attribute, form);
-	}
+          if (attribute != 0)
+            add_abbrev_attr (attribute, form);
+        }
       while (attribute != 0);
     }
 
@@ -756,13 +756,12 @@ get_TAG_name (unsigned long tag)
 {
   const char *name = get_DW_TAG_name ((unsigned int)tag);
 
-  if (name == NULL)
-      {
-	static char buffer[100];
+  if (name == NULL) {
+      static char buffer[100];
 
       snprintf (buffer, sizeof (buffer), _("Unknown TAG value: %lx"), tag);
-	return buffer;
-      }
+      return buffer;
+  }
 
   return name;
 }
@@ -778,10 +777,10 @@ get_FORM_name (unsigned long form)
   name = get_DW_FORM_name (form);
   if (name == NULL)
       {
-	static char buffer[100];
+        static char buffer[100];
 
       snprintf (buffer, sizeof (buffer), _("Unknown FORM value: %lx"), form);
-	return buffer;
+        return buffer;
       }
 
   return name;
@@ -2656,7 +2655,7 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
   XArray* file_table = NULL;
   
   if (fjalar_debug_dump)
-      printf (_("Raw dump of debug contents of section %s:\n\n"), SECTION_NAME (section));
+      printf (_("Contents of the %s section:\n\n"), SECTION_NAME (section));
 
   while (data < end)
     {
@@ -2931,14 +2930,26 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
               printf (_("  Copy\n"));
 
           // Copy means to add another row to the state table.
-          // This means we need to add another entry to the next_line_addr collection.  (markro)
+          // This means we need to add another entry to the next_line_addrr
+          // collection.  (markro)
+          // However, there seems to be a bug in gcc that emits a 'copy'
+          // even if the address has not advanced.  According to the 
+          // DWARF spec, the addresses may only increase.  Hence, we
+          // need to check for this case and skip the copy if so. 
+          // (markro 11/04/2014)
+          // It turns out that some uses of template classes can cause
+          // gcc to make the 'next' address actually be prior to the
+          // current address.  We need to skip this copy too.
+          // (markro 11/12/2014)
 
-	      genputtable(next_line_addr,
-              (void *)(ptrdiff_t)state_machine_regs.last_address,
-			  (void *)(ptrdiff_t)state_machine_regs.address);
-		   // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
-			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
-			   // dwarf_vmatoa ("x", state_machine_regs.address));
+          if (state_machine_regs.last_address < state_machine_regs.address) {
+	          genputtable(next_line_addr,
+                  (void *)(ptrdiff_t)state_machine_regs.last_address,
+			      (void *)(ptrdiff_t)state_machine_regs.address);
+		       // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+			       // dwarf_vmatoa ("x", state_machine_regs.last_address),
+			       // dwarf_vmatoa ("x", state_machine_regs.address));
+          }
 	      state_machine_regs.last_address = state_machine_regs.address;
 	      break;
 
@@ -3076,7 +3087,7 @@ display_debug_lines_raw (Elf_Internal_Shdr *section, unsigned char *start, unsig
 	      genputtable(next_line_addr,
 			  (void *)(ptrdiff_t)state_machine_regs.last_address,
 			  (void *)(ptrdiff_t)state_machine_regs.address);
-		   // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
+		  // if (fjalar_debug_dump) printf (_("  call genputtable %p %s %s\n"), next_line_addr,
 			   // dwarf_vmatoa ("x", state_machine_regs.last_address),
 			   // dwarf_vmatoa ("x", state_machine_regs.address));
 	      state_machine_regs.last_address = state_machine_regs.address;

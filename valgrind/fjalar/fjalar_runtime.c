@@ -362,6 +362,7 @@ int probeAheadDiscoverHeapArraySize(Addr startAddr, UInt typeSize)
   /*tl_assert(typeSize > 0);*/
   if (typeSize == 0)
     return 0;
+  FJALAR_DPRINTF ( "typeSize: 0x%x\n", typeSize);
   while (mc_check_writable( startAddr, typeSize, 0))
     {
       if (arraySize % 1000 == 0)
