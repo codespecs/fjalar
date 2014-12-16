@@ -32,6 +32,14 @@
 
 #define _(String) (String)
 
+#define PARAMS(args)		args
+#define VPARAMS(args)		args
+#define VA_START(VA_LIST, VAR)	va_start(VA_LIST, VAR)
+
+#define VA_OPEN(AP, VAR)		{ va_list AP; va_start(AP, VAR); { struct Qdmy
+#define VA_CLOSE(AP)			} va_end(AP); }
+#define VA_FIXEDARG(AP, TYPE, NAME)	struct Qdmy
+
 /* alloca.h */
 extern void *alloca (size_t __size);
 #define alloca(size)   __builtin_alloca (size)
