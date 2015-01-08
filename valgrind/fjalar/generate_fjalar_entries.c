@@ -1354,6 +1354,8 @@ static char* PrependClass(const char* class, const char* func, int func_name_len
 static void initFunctionFjalarNames(void) {
   FuncIterator* funcIt = newFuncIterator();
 
+  // FJALAR_DPRINTF("ENTER initFunctionFjalarNames\n");
+
   while (hasNextFunc(funcIt)) {
     FunctionEntry* cur_entry = nextFunc(funcIt);
 
@@ -1373,6 +1375,8 @@ static void initFunctionFjalarNames(void) {
 
     name_len = VG_(strlen)(name_to_use);
     tl_assert(name_len);
+
+    // FJALAR_DPRINTF("original name: %s\n", name_to_use);
 
     // What should we use as a prefix for function names?
     // Global functions should print as: ..main()
@@ -1407,7 +1411,7 @@ static void initFunctionFjalarNames(void) {
       VG_(strcat)(buf, "()");
     }
 
-    //    printf("Adding function %s\n", buf);
+    // FJALAR_DPRINTF("modified name: %s\n", buf);
 
     // Rudd 2.0 - There seems to be an issue in regards to C++ files
     // having duplicate function names in the debugging info. I haven't
@@ -1421,7 +1425,8 @@ static void initFunctionFjalarNames(void) {
     // with different semantics, but let's just be safe)
 
     if(gencontains(FuncNameTable, buf)) {
-      char* bufOld = NULL, *bufNew=NULL;
+      char* bufOld;
+      char* bufNew;
       FunctionEntry* collided_func = gengettable(FuncNameTable, buf);
       tl_assert(collided_func);
 
@@ -1431,40 +1436,30 @@ static void initFunctionFjalarNames(void) {
 
       // Prepend filename to old entry
       the_class = collided_func->filename;
-      VG_(free)(collided_func->fjalar_name);
       bufOld = PrependClass(the_class, buf, fjalar_name_len);
 
       // Check if entries are the same. If they are, clean up and continue
       if(!VG_(strcmp)(bufOld, bufNew)) {
-        VG_(free)(buf);
-
         genfreekey(FunctionTable_by_entryPC, (void *)cur_entry->entryPC);
         genfreekey(FunctionTable, (void *)cur_entry->startPC);
 
+        VG_(free)(buf);
         VG_(free)(bufOld);
-        bufOld=NULL;
         VG_(free)(bufNew);
-        bufNew = NULL;
 
         continue;
       }
 
+      VG_(free)(collided_func->fjalar_name);
       collided_func->fjalar_name = bufOld;
-
       VG_(free)(buf);
       buf = bufNew;
-      VG_(free)(bufOld);
-      bufOld=NULL;
-
     }
-    else {
       genputtable(FuncNameTable, buf, cur_entry);
-    }
 
 
     // Woohoo, we have constructed a Fjalar name!
     cur_entry->fjalar_name = buf;
-
 
     // See if we are interested in tracing variables for this file,
     // and if so, we must initialize cur_entry->trace_vars_tree
@@ -1564,6 +1559,8 @@ static void initFunctionFjalarNames(void) {
     cur_entry->trace_global_vars_tree_already_initialized = 1;
   }      
   deleteFuncIterator(funcIt);
+
+  // FJALAR_DPRINTF("EXIT  initFunctionFjalarNames\n");
 }
 
 // TODO: This will leak memory if called more than once per program
