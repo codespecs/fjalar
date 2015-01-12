@@ -1665,6 +1665,10 @@ static void init_specification_and_abstract_stuff(void) {
             if(!cur_var->name) {
                 cur_var->name = ((variable*)(aliased_entry->entry_ptr))->name;
             }
+            // see if it needs a type
+            if(!cur_var->type_ID) {
+                cur_var->type_ID = ((variable*)(aliased_entry->entry_ptr))->type_ID;
+            }
             continue;
         }
 
