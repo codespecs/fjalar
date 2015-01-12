@@ -1097,20 +1097,17 @@ static void initializeGlobalVarsList(void)
         // is not yet in GlobalVarsTable, then we add it to the table
         // and proceed with adding it to the globalVars list.
         existingName = 0;
-        if (!variable_ptr->is_const) {
-          if ((0 != variable_ptr->globalVarAddr) &&
+        if ((0 != variable_ptr->globalVarAddr) &&
               ((existingName =
                 gengettable(GlobalVarsTable, (void*)variable_ptr->globalVarAddr)))) {
             if VG_STREQ(variable_ptr->name, existingName) {
                 FJALAR_DPRINTF("\t[initializeGlobalVarsList] DUPLICATE! - %s\n", variable_ptr->name);
                 continue;
-              }
-          }
-          else {
+            }
+        } else {
             genputtable(GlobalVarsTable,
                         (void*)variable_ptr->globalVarAddr, // key    (unsigned long)
                         (void*)variable_ptr->name);         // value  (char*)
-          }
         }
 
         // If a variable is a global variable in C or in C++ without
@@ -1578,7 +1575,7 @@ void initializeFunctionTable(void)
   FunctionEntry* cur_func_entry = 0;
   unsigned long num_functions_added = 0;
 
-  FJALAR_DPRINTF("ENTER initializeFuntionTable\n");
+  FJALAR_DPRINTF("ENTER initializeFunctionTable\n");
 
   FunctionTable =
     genallocatehashtable(0,
@@ -1740,7 +1737,7 @@ void initializeFunctionTable(void)
     my_abort();
   }
 
-  FJALAR_DPRINTF("EXIT  initializeFuntionTable\n");
+  FJALAR_DPRINTF("EXIT  initializeFunctionTable\n");
 }
 
 
