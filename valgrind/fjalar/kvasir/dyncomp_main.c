@@ -1,3 +1,23 @@
+/*
+   This file is part of DynComp, a dynamic comparability analysis tool
+   for C/C++ based upon the Valgrind binary instrumentation framework
+   and the Valgrind MemCheck tool.
+
+   Copyright (C) 2007-2015 University of Washington Computer Science & Engineering Department,
+   Programming Languages and Software Engineering Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   MIT CSAIL Program Analysis Group
+
+   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
+   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
+   MIT CSAIL Program Analysis Group
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+*/
 
 /*--------------------------------------------------------------------*/
 /*--- MemCheck: Maintain bitmaps of memory, tracking the           ---*/
@@ -27,24 +47,6 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
-*/
-
-/*
-   This file is part of DynComp, a dynamic comparability analysis tool
-   for C/C++ based upon the Valgrind binary instrumentation framework
-   and the Valgrind MemCheck tool.
-
-   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
-   MIT CSAIL Program Analysis Group
-
-   Copyright (C) 2004-2006 Philip Guo (pgbovine@alum.mit.edu),
-   Copyright (C) 2008-2009 Robert Rudd (rudd@csail.mit.edu),
-   MIT CSAIL Program Analysis Group
-
-   This program is free software; you can redistribute it and/or
-   modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
-   License, or (at your option) any later version.
 */
 
 #include "../my_libc.h"
