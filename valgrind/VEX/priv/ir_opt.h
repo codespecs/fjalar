@@ -46,7 +46,7 @@ extern
 IRSB* do_iropt_BB(
          IRSB* bb,
          IRExpr* (*specHelper) (const HChar*, IRExpr**, IRStmt**, Int),
-                    Bool (*preciseMemExnsFn)(Int,Int),
+         Bool (*preciseMemExnsFn)(Int,Int),
          Addr64 guest_addr,
          VexArch guest_arch
       );

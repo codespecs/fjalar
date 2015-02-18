@@ -147,7 +147,7 @@ int main(void)
    // failure.  Test for this (and likewise for FREELIKE_BLOCK).
    VALGRIND_MALLOCLIKE_BLOCK(0,0,0,0);
    VALGRIND_FREELIKE_BLOCK(0,0);
-   
+
    checkredzone();
 
    return x;

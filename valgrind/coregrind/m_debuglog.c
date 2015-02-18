@@ -103,6 +103,7 @@ static UInt local_sys_getpid ( void )
 }
 
 #elif defined(VGP_amd64_linux)
+
 __attribute__((noinline))
 static UInt local_sys_write_stderr ( const HChar* buf, Int n )
 {
@@ -188,7 +189,7 @@ static UInt local_sys_getpid ( void )
    return __res;
 }
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
 
 static UInt local_sys_write_stderr ( const HChar* buf, Int n )
 {
@@ -265,6 +266,42 @@ static UInt local_sys_getpid ( void )
       :
       : "r0", "r7" );
    return __res;
+}
+
+#elif defined(VGP_arm64_linux)
+
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   volatile ULong block[2];
+   block[0] = (ULong)buf;
+   block[1] = (ULong)n;
+   __asm__ volatile (
+      "mov  x0, #2\n\t"        /* stderr */
+      "ldr  x1, [%0]\n\t"      /* buf */
+      "ldr  x2, [%0, #8]\n\t"  /* n */
+      "mov  x8, #"VG_STRINGIFY(__NR_write)"\n\t"
+      "svc  0x0\n"          /* write() */
+      "str  x0, [%0]\n\t"
+      :
+      : "r" (block)
+      : "x0","x1","x2","x7"
+   );
+   if (block[0] < 0)
+      block[0] = -1;
+   return (UInt)block[0];
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt __res;
+   __asm__ volatile (
+      "mov  x8, #"VG_STRINGIFY(__NR_getpid)"\n"
+      "svc  0x0\n"      /* getpid() */
+      "mov  %0, x0\n"
+      : "=r" (__res)
+      :
+      : "x0", "x8" );
+   return (UInt)__res;
 }
 
 #elif defined(VGP_x86_darwin)
@@ -350,12 +387,13 @@ static UInt local_sys_getpid ( void )
 }
 
 #elif defined(VGP_s390x_linux)
+
 static UInt local_sys_write_stderr ( const HChar* buf, Int n )
 {
-   register Int    r2     asm("2") = 2;      /* file descriptor STDERR */
+   register Int          r2     asm("2") = 2;      /* file descriptor STDERR */
    register const HChar* r3     asm("3") = buf;
-   register ULong  r4     asm("4") = n;
-   register ULong  r2_res asm("2");
+   register ULong        r4     asm("4") = n;
+   register ULong        r2_res asm("2");
    ULong __res;
 
    __asm__ __volatile__ (
@@ -391,6 +429,7 @@ static UInt local_sys_getpid ( void )
 }
 
 #elif defined(VGP_mips32_linux)
+
 static UInt local_sys_write_stderr ( const HChar* buf, Int n )
 {
    volatile Int block[2];
@@ -428,6 +467,7 @@ static UInt local_sys_getpid ( void )
 }
 
 #elif defined(VGP_mips64_linux)
+
 static UInt local_sys_write_stderr ( const HChar* buf, Int n )
 {
    volatile Long block[2];
@@ -815,11 +855,11 @@ VG_(debugLog_vprintf) (
                                        False);
             } else {
                /* %p */
-            ret += 2;
-            send('0',send_arg2);
-            send('x',send_arg2);
-            ret += myvprintf_int64(send, send_arg2, flags, 16, width, True,
-                                   (ULong)((UWord)va_arg (vargs, void *)));
+               ret += 2;
+               send('0',send_arg2);
+               send('x',send_arg2);
+               ret += myvprintf_int64(send, send_arg2, flags, 16, width, True,
+                                      (ULong)((UWord)va_arg (vargs, void *)));
             }
             break;
          case 'x': /* %x */
@@ -850,20 +890,18 @@ VG_(debugLog_vprintf) (
          }
 
 //         case 'y': { /* %y - print symbol */
-//            HChar buf[100];
-//            HChar *cp = buf;
 //            Addr a = va_arg(vargs, Addr);
 //
-//            if (flags & VG_MSG_PAREN)
-//               *cp++ = '(';
-//            if (VG_(get_fnname_w_offset)(a, cp, sizeof(buf)-4)) {
-//               if (flags & VG_MSG_PAREN) {
-//                  cp += VG_(strlen)(cp);
-//                  *cp++ = ')';
-//                  *cp = '\0';
+//            HChar *name;
+// 	      if (VG_(get_fnname_w_offset)(a, &name)) {
+//               HChar buf[1 + VG_strlen(name) + 1 + 1];
+// 	         if (flags & VG_MSG_PAREN) {
+//                  VG_(sprintf)(str, "(%s)", name):
+// 	         } else {
+//                  VG_(sprintf)(str, "%s", name):
 //               }
-//               ret += myvprintf_str(send, send_arg2, flags, width, buf, 0);
-//            }
+// 	         ret += myvprintf_str(send, flags, width, buf, 0);
+// 	      }
 //            break;
 //         }
          default:

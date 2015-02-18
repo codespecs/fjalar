@@ -116,8 +116,10 @@ typedef
       _VG_USERREQ__HG_ARANGE_MAKE_TRACKED,   /* Addr a, ulong len */
       _VG_USERREQ__HG_PTHREAD_BARRIER_RESIZE_PRE, /* pth_bar_t*, ulong */
       _VG_USERREQ__HG_CLEAN_MEMORY_HEAPBLOCK, /* Addr start_of_block */
-      _VG_USERREQ__HG_PTHREAD_COND_INIT_POST  /* pth_cond_t*, pth_cond_attr_t*/
-
+      _VG_USERREQ__HG_PTHREAD_COND_INIT_POST,  /* pth_cond_t*, pth_cond_attr_t*/
+      _VG_USERREQ__HG_GNAT_MASTER_HOOK,       /* void*d,void*m,Word ml */
+      _VG_USERREQ__HG_GNAT_MASTER_COMPLETED_HOOK /* void*s,Word ml */
+      
    } Vg_TCheckClientRequest;
 
 
@@ -144,7 +146,7 @@ typedef
 */
 
 #define DO_CREQ_v_W(_creqF, _ty1F,_arg1F)                \
-   do {                                                          \
+   do {                                                  \
       long int _arg1;                                    \
       /* assert(sizeof(_ty1F) == sizeof(long int)); */   \
       _arg1 = (long int)(_arg1F);                        \
@@ -316,7 +318,7 @@ typedef
    synchronisation, and (2) all other threads must sync with this one
    to access it safely.  This is particularly useful for memory
    allocators that wish to recycle memory. */
-#define VALGRIND_HG_CLEAN_MEMORY(_qzz_start, _qzz_len) \
+#define VALGRIND_HG_CLEAN_MEMORY(_qzz_start, _qzz_len)       \
    DO_CREQ_v_WW(VG_USERREQ__HG_CLEAN_MEMORY,                 \
                 void*,(_qzz_start),                          \
                 unsigned long,(_qzz_len))
@@ -600,7 +602,7 @@ typedef
 */
 #define ANNOTATE_BENIGN_RACE(pointer, description) \
    _HG_CLIENTREQ_UNIMP("ANNOTATE_BENIGN_RACE")
-   
+
 /* Same as ANNOTATE_BENIGN_RACE(address, description), but applies to
    the memory range [address, address+size). */
 #define ANNOTATE_BENIGN_RACE_SIZED(address, size, description) \
@@ -670,18 +672,18 @@ typedef
    ----------------------------------------------------------------
 */
 /* Report that a lock has just been created at address LOCK. */
-#define ANNOTATE_RWLOCK_CREATE(lock) \
+#define ANNOTATE_RWLOCK_CREATE(lock)                         \
    DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_RWLOCK_INIT_POST,     \
                void*,(lock))
     
 /* Report that the lock at address LOCK is about to be destroyed. */
-#define ANNOTATE_RWLOCK_DESTROY(lock) \
+#define ANNOTATE_RWLOCK_DESTROY(lock)                        \
    DO_CREQ_v_W(_VG_USERREQ__HG_PTHREAD_RWLOCK_DESTROY_PRE,   \
                void*,(lock))
 
 /* Report that the lock at address LOCK has just been acquired.
    is_w=1 for writer lock, is_w=0 for reader lock. */
-#define ANNOTATE_RWLOCK_ACQUIRED(lock, is_w) \
+#define ANNOTATE_RWLOCK_ACQUIRED(lock, is_w)                 \
   DO_CREQ_v_WW(_VG_USERREQ__HG_PTHREAD_RWLOCK_LOCK_POST,     \
                void*,(lock), unsigned long,(is_w))
 

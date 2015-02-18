@@ -61,7 +61,7 @@ static SizeT s_cmalloc_n_mallocs  = 0;
 static SizeT s_cmalloc_n_frees    = 0;
 static SizeT s_cmalloc_bs_mallocd = 0;
 /* Record malloc'd blocks. */
-static VgHashTable s_malloc_list = NULL;
+static VgHashTable *s_malloc_list = NULL;
 
 
 /* Function definitions. */
@@ -226,7 +226,7 @@ static void* drd_realloc(ThreadId tid, void* p_old, SizeT new_size)
       {
          /* Copy from old to new. */
          VG_(memcpy)(p_new, p_old, mc->size);
-         
+
          /* Free old memory. */
          if (mc->size > 0)
             s_stop_using_mem_callback(mc->data, mc->size);
@@ -244,7 +244,7 @@ static void* drd_realloc(ThreadId tid, void* p_old, SizeT new_size)
       {
          /* Allocation failed -- leave original block untouched. */
       }
-   }  
+   }
 
    return p_new;
 }
@@ -293,7 +293,6 @@ void DRD_(register_malloc_wrappers)(const StartUsingMem start_callback,
 {
    tl_assert(s_malloc_list == 0);
    s_malloc_list = VG_(HT_construct)("drd_malloc_list");
-   tl_assert(s_malloc_list);
    tl_assert(start_callback);
    tl_assert(stop_callback);
 
@@ -347,7 +346,7 @@ void DRD_(print_malloc_stats)(void)
    DRD_Chunk* mc;
    SizeT     nblocks = 0;
    SizeT     nbytes  = 0;
-   
+
    if (VG_(clo_verbosity) == 0)
       return;
    if (VG_(clo_xml))
@@ -361,10 +360,10 @@ void DRD_(print_malloc_stats)(void)
       nbytes += mc->size;
    }
 
-   VG_(message)(Vg_DebugMsg, 
+   VG_(message)(Vg_DebugMsg,
                 "malloc/free: in use at exit: %lu bytes in %lu blocks.\n",
                 nbytes, nblocks);
-   VG_(message)(Vg_DebugMsg, 
+   VG_(message)(Vg_DebugMsg,
                 "malloc/free: %lu allocs, %lu frees, %lu bytes allocated.\n",
                 s_cmalloc_n_mallocs,
                 s_cmalloc_n_frees, s_cmalloc_bs_mallocd);

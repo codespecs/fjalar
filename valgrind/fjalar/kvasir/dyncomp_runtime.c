@@ -79,6 +79,7 @@ static TraversalAction dyncompExtraPropAction;
 
 // Initialize hash tables for DynComp
 // Pre: kvasir_with_dyncomp is active
+// (comment added 2005)  
 // TODO: WARNING!  This hashtable-within-hashtable structure may
 // blow up in my face and cause a huge memory overload!!!
 // The use of calloc ensures that all tags within var_tags & new_tags are 0
@@ -763,8 +764,8 @@ int x86_guest_state_offsets[NUM_TOTAL_X86_OFFSETS] = {
 
   offsetof(VexGuestX86State, guest_EMNOTE),
 
-  offsetof(VexGuestX86State, guest_TISTART),
-  offsetof(VexGuestX86State, guest_TILEN)
+  offsetof(VexGuestX86State, guest_CMSTART),
+  offsetof(VexGuestX86State, guest_CMLEN)
 };
 
 
@@ -1016,6 +1017,7 @@ void garbage_collect_tags() {
 
   // Just go through all of the registers in the x86 guest state
   // as depicted in vex/pub/libvex_guest_x86.h
+  // (comment added 2007)  
   /* XXX AMD64 support */
   currentTID = VG_(get_running_tid)();
 
@@ -1326,6 +1328,7 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
     uf_make_set(new_obj, var_index);
     // Overload var_tags to hold uf_object* instead of UInt* for now ...
     // shady!
+    // (comment added 2013)  
     // HACK ALERT: This isn't right for a 64bit address machine, but
     // apparently 4 bytes produces enough uniqueness for this to work. (markro)
     var_tags[var_index] = (UInt)(ptrdiff_t)(new_obj);
@@ -1336,6 +1339,7 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
   for (i = 0; i < num_daikon_vars; i++) {
     for (j = i + 1; j < num_daikon_vars; j++) {
       if (isMarked(bitmatrix, num_daikon_vars, i, j)) {
+    // (comment added 2013)  
     // HACK ALERT: see above (markro)
         uf_union((uf_object*)(Addr)var_tags[i], (uf_object*)(Addr)var_tags[j]);
       }
@@ -1346,6 +1350,7 @@ void DC_convert_bitmatrix_to_sets(DaikonFunctionEntry* funcPtr,
   // leaders' tag in var_tags[], thereby completing the conversion
   // process:
   for (var_index = 0; var_index < num_daikon_vars; var_index++) {
+    // (comment added 2013)  
     // HACK ALERT: see above (markro)
     uf_object* cur_obj = (uf_object*)(Addr)(var_tags[var_index]);
     uf_object* leader = uf_find(cur_obj);

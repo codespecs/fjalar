@@ -2,7 +2,6 @@
 
 Thread #x was created
    ...
-   by 0x........: pthread_create_WRK (hg_intercepts.c:...)
    by 0x........: pthread_create@* (hg_intercepts.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:92)
    by 0x........: main (pth_barrier.c:122)
@@ -11,29 +10,13 @@ Thread #x was created
 
 Thread #x was created
    ...
-   by 0x........: pthread_create_WRK (hg_intercepts.c:...)
    by 0x........: pthread_create@* (hg_intercepts.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:92)
    by 0x........: main (pth_barrier.c:122)
 
-----------------------------------------------------------------
+---Thread-Announcement------------------------------------------
 
-Possible data race during write of size 1 at 0x........ by thread #x
-Locks held: none
-   at 0x........: threadfunc (pth_barrier.c:60)
-   by 0x........: mythread_wrapper (hg_intercepts.c:...)
-   ...
-
-This conflicts with a previous write of size 1 by thread #x
-Locks held: none
-   at 0x........: threadfunc (pth_barrier.c:60)
-   by 0x........: mythread_wrapper (hg_intercepts.c:...)
-   ...
-
-Address 0x........ is 0 bytes inside a block of size 32 alloc'd
-   at 0x........: malloc (vg_replace_malloc.c:...)
-   by 0x........: barriers_and_races (pth_barrier.c:76)
-   by 0x........: main (pth_barrier.c:122)
+Thread #x is the program's root thread
 
 ----------------------------------------------------------------
 
@@ -48,11 +31,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 1 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 0 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -67,11 +50,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 2 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 1 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -86,11 +69,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 3 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 2 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -105,11 +88,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 4 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 3 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -124,11 +107,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 5 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 4 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -143,11 +126,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 6 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 5 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -162,11 +145,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 7 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 6 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -181,11 +164,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 8 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 7 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -200,11 +183,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 9 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 8 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -219,11 +202,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 10 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 9 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -238,11 +221,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 11 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 10 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -257,11 +240,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 12 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 11 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -276,11 +259,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 13 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 12 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -295,11 +278,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 14 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 13 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -314,11 +297,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 15 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 14 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -333,11 +316,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 16 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 15 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -352,11 +335,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 17 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 16 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -371,11 +354,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 18 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 17 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -390,11 +373,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 19 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 18 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -409,11 +392,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 20 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 19 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -428,11 +411,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 21 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 20 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -447,11 +430,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 22 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 21 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -466,11 +449,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 23 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 22 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -485,11 +468,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 24 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 23 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -504,11 +487,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 25 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 24 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -523,11 +506,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 26 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 25 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -542,11 +525,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 27 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 26 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -561,11 +544,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 28 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 27 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -580,11 +563,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 29 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 28 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -599,11 +582,11 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 30 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 29 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 
 ----------------------------------------------------------------
 
@@ -618,9 +601,28 @@ Locks held: none
    at 0x........: threadfunc (pth_barrier.c:60)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
-
-Address 0x........ is 31 bytes inside a block of size 32 alloc'd
+ Address 0x........ is 30 bytes inside a block of size 32 alloc'd
    at 0x........: malloc (vg_replace_malloc.c:...)
    by 0x........: barriers_and_races (pth_barrier.c:76)
    by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
+
+----------------------------------------------------------------
+
+Possible data race during write of size 1 at 0x........ by thread #x
+Locks held: none
+   at 0x........: threadfunc (pth_barrier.c:60)
+   by 0x........: mythread_wrapper (hg_intercepts.c:...)
+   ...
+
+This conflicts with a previous write of size 1 by thread #x
+Locks held: none
+   at 0x........: threadfunc (pth_barrier.c:60)
+   by 0x........: mythread_wrapper (hg_intercepts.c:...)
+   ...
+ Address 0x........ is 31 bytes inside a block of size 32 alloc'd
+   at 0x........: malloc (vg_replace_malloc.c:...)
+   by 0x........: barriers_and_races (pth_barrier.c:76)
+   by 0x........: main (pth_barrier.c:122)
+ Block was alloc'd by thread #x
 

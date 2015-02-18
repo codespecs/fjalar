@@ -416,7 +416,7 @@ VG_(trampoline_stuff_end):
 
 /*---------------- ppc64-linux ----------------*/
 #else
-#if defined(VGP_ppc64_linux)
+#if defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
 
 #	define UD2_16     trap ; trap ; trap; trap
 #	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
@@ -444,6 +444,12 @@ VG_(ppctoc_magic_redirect_return_stub):
 	/* this function is written using the "dotless" ABI convention */
 	.align 2
 	.globl VG_(ppc64_linux_REDIR_FOR_strlen)
+#if !defined VGP_ppc64be_linux || _CALL_ELF == 2
+        /* Little Endian uses ELF version 2 */
+        .type VG_(ppc64_linux_REDIR_FOR_strlen),@function
+VG_(ppc64_linux_REDIR_FOR_strlen):
+#else
+        /* Big Endian uses ELF version 1 */
 	.section        ".opd","aw"
 	.align 3
 VG_(ppc64_linux_REDIR_FOR_strlen):
@@ -454,6 +460,12 @@ VG_(ppc64_linux_REDIR_FOR_strlen):
 	.type	VG_(ppc64_linux_REDIR_FOR_strlen), @function
 
 .L.VG_(ppc64_linux_REDIR_FOR_strlen):
+#endif
+#if _CALL_ELF == 2
+0:      addis        2,12,.TOC.-0b@ha
+        addi         2,2,.TOC.-0b@l
+        .localentry  VG_(ppc64_linux_REDIR_FOR_strlen), .-VG_(ppc64_linux_REDIR_FOR_strlen)
+#endif
         mr 9,3
         lbz 0,0(3)
         li 3,0
@@ -467,6 +479,12 @@ VG_(ppc64_linux_REDIR_FOR_strlen):
         cmpwi 7,0,0
         bne 7,.L01
         blr
+
+#if !defined VGP_ppc64be_linux || _CALL_ELF == 2
+        .size VG_(ppc64_linux_REDIR_FOR_strlen),.-VG_(ppc64_linux_REDIR_FOR_strlen)
+#else
+        .size VG_(ppc64_linux_REDIR_FOR_strlen),.-.L.VG_(ppc64_linux_REDIR_FOR_strlen)
+#endif
         .long 0
         .byte 0,0,0,0,0,0,0,0
 .L0end:
@@ -474,6 +492,10 @@ VG_(ppc64_linux_REDIR_FOR_strlen):
         /* this function is written using the "dotless" ABI convention */
         .align 2
         .globl VG_(ppc64_linux_REDIR_FOR_strchr)
+#if !defined VGP_ppc64be_linux || _CALL_ELF == 2
+        .type   VG_(ppc64_linux_REDIR_FOR_strchr),@function
+VG_(ppc64_linux_REDIR_FOR_strchr):
+#else
 	.section        ".opd","aw"
 	.align 3
 VG_(ppc64_linux_REDIR_FOR_strchr):
@@ -482,8 +504,14 @@ VG_(ppc64_linux_REDIR_FOR_strchr):
         .size   VG_(ppc64_linux_REDIR_FOR_strchr), \
                         .L1end-.L.VG_(ppc64_linux_REDIR_FOR_strchr)
         .type   VG_(ppc64_linux_REDIR_FOR_strchr),@function
-	
+
 .L.VG_(ppc64_linux_REDIR_FOR_strchr):
+#endif
+#if  _CALL_ELF == 2
+0:      addis         2,12,.TOC.-0b@ha
+        addi         2,2,.TOC.-0b@l
+        .localentry VG_(ppc64_linux_REDIR_FOR_strchr), .-VG_(ppc64_linux_REDIR_FOR_strchr)
+#endif
         lbz 0,0(3)
         rldicl 4,4,0,56
         cmpw 7,4,0
@@ -491,6 +519,11 @@ VG_(ppc64_linux_REDIR_FOR_strchr):
         cmpdi 7,0,0
         bne 7,.L18
         b .L14
+#if !defined VGP_ppc64be_linux || _CALL_ELF == 2
+        .size VG_(ppc64_linux_REDIR_FOR_strchr),.-VG_(ppc64_linux_REDIR_FOR_strchr)
+#else
+        .size VG_(ppc64_linux_REDIR_FOR_strchr),.-.L.VG_(ppc64_linux_REDIR_FOR_strchr)
+#endif
 .L19:	
         beq 6,.L14
 .L18:	
@@ -519,9 +552,9 @@ VG_(trampoline_stuff_end):
 #	undef UD2_1024
 #	undef UD2_PAGE
 
-/*---------------- ppc32-linux ----------------*/
-
-#elif defined(VGP_arm_linux)
+/*---------------- arm-linux ----------------*/
+#else
+#if defined(VGP_arm_linux)
 
 #       define UD2_4      .word 0xFFFFFFFF
 #	define UD2_16     UD2_4    ; UD2_4    ; UD2_4    ; UD2_4
@@ -666,6 +699,122 @@ VG_(arm_linux_REDIR_FOR_memcpy):
 	mov	r0, r5
 	ldmfd	sp!, {r4, r5, pc}
 	UD2_4
+
+.global VG_(arm_linux_REDIR_FOR_strcmp)
+VG_(arm_linux_REDIR_FOR_strcmp):
+.L64:
+	ldrb	r3, [r0], #1	@ zero_extendqisi2
+	ldrb	r2, [r1], #1	@ zero_extendqisi2
+	cmp	r3, #0
+	beq	.L67
+	cmp	r3, r2
+	beq	.L64
+	rsb	r0, r2, r3
+	bx	lr
+.L67:
+	rsb	r0, r2, #0
+	bx	lr
+	UD2_4
+
+.global VG_(trampoline_stuff_end)
+VG_(trampoline_stuff_end):
+
+	/* and a trailing page of unexecutable code */
+	UD2_PAGE
+
+#	undef UD2_4
+#	undef UD2_16
+#	undef UD2_64
+#	undef UD2_256
+#	undef UD2_1024
+#	undef UD2_PAGE
+        
+/*---------------- arm64-linux ----------------*/
+#else
+#if defined(VGP_arm64_linux)
+
+#       define UD2_4      .word 0xFFFFFFFF
+#	define UD2_16     UD2_4    ; UD2_4    ; UD2_4    ; UD2_4
+#	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
+#	define UD2_256    UD2_64   ; UD2_64   ; UD2_64   ; UD2_64
+#	define UD2_1024   UD2_256  ; UD2_256  ; UD2_256  ; UD2_256
+#	define UD2_PAGE   UD2_1024 ; UD2_1024 ; UD2_1024 ; UD2_1024  
+
+	/* a leading page of unexecutable code */
+	UD2_PAGE
+
+.global VG_(trampoline_stuff_start)
+VG_(trampoline_stuff_start):
+
+.global VG_(arm64_linux_SUBST_FOR_rt_sigreturn)
+.type   VG_(arm64_linux_SUBST_FOR_rt_sigreturn),#function
+VG_(arm64_linux_SUBST_FOR_rt_sigreturn):
+	mov x8, # __NR_rt_sigreturn
+        svc #0
+        .long 0xFFFFFFFF /*illegal insn*/
+.size VG_(arm64_linux_SUBST_FOR_rt_sigreturn), \
+        .-VG_(arm64_linux_SUBST_FOR_rt_sigreturn)
+
+.global VG_(arm64_linux_REDIR_FOR_strlen)
+.type   VG_(arm64_linux_REDIR_FOR_strlen),#function
+VG_(arm64_linux_REDIR_FOR_strlen):
+	mov	x2, x0
+	ldrb	w0, [x0]
+	cbz	w0, .L5
+	mov	x0, 0
+.L4:
+	add	x0, x0, 1
+	ldrb	w1, [x2,x0]
+	cbnz	w1, .L4
+	ret
+.L5:
+	mov	x0, 0
+	ret
+.size VG_(arm64_linux_REDIR_FOR_strlen), .-VG_(arm64_linux_REDIR_FOR_strlen)
+
+.global VG_(arm64_linux_REDIR_FOR_index)
+.type   VG_(arm64_linux_REDIR_FOR_index),#function
+VG_(arm64_linux_REDIR_FOR_index):
+        ldrb    w2, [x0]
+        uxtb    w1, w1
+        cmp     w2, w1
+        beq     .L11
+.L13:
+        cbz     w2, .L16
+        ldrb    w2, [x0,1]!
+        cmp     w2, w1
+        bne     .L13
+.L11:
+        ret
+.L16:
+        mov     x0, 0
+        ret
+.size VG_(arm64_linux_REDIR_FOR_index), .-VG_(arm64_linux_REDIR_FOR_index)
+
+.global VG_(arm64_linux_REDIR_FOR_strcmp)
+.type   VG_(arm64_linux_REDIR_FOR_strcmp),#function
+VG_(arm64_linux_REDIR_FOR_strcmp):
+        ldrb    w2, [x0]
+        ldrb    w3, [x1]
+        cmp     w2, w3
+        bcc     .L22
+.L21:
+        bhi     .L25
+        cbz     w2, .L26
+        ldrb    w2, [x0,1]!
+        ldrb    w3, [x1,1]!
+        cmp     w2, w3
+        bcs     .L21
+.L22:
+        mov     x0, -1
+        ret
+.L25:
+        mov     x0, 1
+        ret
+.L26:
+        mov     x0, 0
+        ret
+.size VG_(arm64_linux_REDIR_FOR_strcmp), .-VG_(arm64_linux_REDIR_FOR_strcmp)
 
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
@@ -981,6 +1130,29 @@ VG_(amd64_darwin_REDIR_FOR_arc4random):
 	movq	$0x76616c6772696e64, %rax
 	ret
 
+.globl VG_(amd64_darwin_REDIR_FOR_strchr)
+VG_(amd64_darwin_REDIR_FOR_strchr):
+        pushq   %rbp
+        movq    %rsp, %rbp
+        movb    (%rdi), %cl
+        cmpb    %sil, %cl
+        jne     1f
+        movq    %rdi, %rax
+        popq    %rbp
+        ret
+1:
+        testb   %cl, %cl
+        movl    $0, %eax
+        je      2f
+        movb    1(%rdi), %cl
+        incq    %rdi
+        cmpb    %sil, %cl
+        movq    %rdi, %rax
+        jne     1b
+2:
+        popq    %rbp
+        ret
+        
 .globl VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
 
@@ -1016,6 +1188,28 @@ VG_(s390x_linux_SUBST_FOR_rt_sigreturn):
         lr 1,1
         svc __NR_rt_sigreturn
 	.short 0
+
+.global VG_(s390x_linux_REDIR_FOR_index)
+.type   VG_(s390x_linux_REDIR_FOR_index),@function
+VG_(s390x_linux_REDIR_FOR_index):
+#
+#   %r2 = addess of string
+#   %r3 = character to find
+#
+        lghi    %r0,255
+        ngr     %r0,%r3        # r0 = (unsigned char)r3
+        lghi    %r4,0
+.L1:
+        llgc    %r1,0(%r2)     # r1 = byte from string
+        cr      %r1,%r0        # compare
+        ber     %r14           # return if found
+        cr      %r1,%r4        # end of string ?
+        je      .L2
+        aghi    %r2,1          # increment r2
+        j       .L1
+.L2:    lghi    %r2,0          # return value 0
+        br      %r14
+.size VG_(s390x_linux_REDIR_FOR_index), .-VG_(s390x_linux_REDIR_FOR_index)
 
 .globl VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
@@ -1139,6 +1333,8 @@ VG_(trampoline_stuff_end):
 #else
 #  error Unknown platform
 
+#endif
+#endif
 #endif
 #endif
 #endif

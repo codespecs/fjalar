@@ -50,7 +50,7 @@
    to see more clearly the change of ownership of the lock.  Need to
    be careful to reinitialise it at fork() time. */
 static HChar sema_char = '!'; /* will cause assertion failures if used
-                                before sema_init */
+                                 before sema_init */
 
 void ML_(sema_init)(vg_sema_t *sema)
 {

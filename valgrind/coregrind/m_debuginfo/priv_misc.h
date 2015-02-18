@@ -38,22 +38,25 @@
 
 #include "pub_core_basics.h"    // SizeT
 
-/* Allocate(zeroed), free, strdup, memdup, all in VG_AR_DINFO. */
+/* Allocate(zeroed), free, strdup, memdup, shrink, all in VG_AR_DINFO.
+   The allocation functions never return NULL. */
 void*  ML_(dinfo_zalloc)( const HChar* cc, SizeT szB );
 void   ML_(dinfo_free)( void* v );
 HChar* ML_(dinfo_strdup)( const HChar* cc, const HChar* str );
-void*  ML_(dinfo_memdup)( const HChar* cc, void* str, SizeT nStr );
+void*  ML_(dinfo_memdup)( const HChar* cc, const void* str, SizeT nStr );
+void*  ML_(dinfo_realloc) ( const HChar* cc, void* ptr, SizeT new_size );
+void   ML_(dinfo_shrink_block)( void* ptr, SizeT szB );
 
 /* Extract (possibly unaligned) data of various sizes from a buffer. */
-Short ML_(read_Short)( UChar* data );
-Int ML_(read_Int)( UChar* data );
-Long ML_(read_Long)( UChar* data );
-UShort ML_(read_UShort)( UChar* data );
-UWord ML_(read_UWord)( UChar* data );
-UInt ML_(read_UInt)( UChar* data );
-ULong ML_(read_ULong)( UChar* data );
-UChar ML_(read_UChar)( UChar* data );
-Addr ML_(read_Addr)( UChar* data );
+Short ML_(read_Short)( const UChar* data );
+Int ML_(read_Int)( const UChar* data );
+Long ML_(read_Long)( const UChar* data );
+UShort ML_(read_UShort)( const UChar* data );
+UWord ML_(read_UWord)( const UChar* data );
+UInt ML_(read_UInt)( const UChar* data );
+ULong ML_(read_ULong)( const UChar* data );
+UChar ML_(read_UChar)( const UChar* data );
+Addr ML_(read_Addr)( const UChar* data );
 
 UChar* ML_(write_UShort)( UChar* ptr, UShort val );
 UChar* ML_(write_UInt)( UChar* ptr, UInt val );

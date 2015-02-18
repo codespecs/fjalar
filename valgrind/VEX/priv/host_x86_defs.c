@@ -662,7 +662,7 @@ X86Instr* X86Instr_XDirect ( Addr32 dstGA, X86AMode* amEIP,
 }
 X86Instr* X86Instr_XIndir ( HReg dstGA, X86AMode* amEIP,
                             X86CondCode cond ) {
-   X86Instr* i      = LibVEX_Alloc(sizeof(X86Instr));
+   X86Instr* i         = LibVEX_Alloc(sizeof(X86Instr));
    i->tag              = Xin_XIndir;
    i->Xin.XIndir.dstGA = dstGA;
    i->Xin.XIndir.amEIP = amEIP;
@@ -924,7 +924,7 @@ X86Instr* X86Instr_ProfInc ( void ) {
    return i;
 }
 
-void ppX86Instr ( X86Instr* i, Bool mode64 ) {
+void ppX86Instr ( const X86Instr* i, Bool mode64 ) {
    vassert(mode64 == False);
    switch (i->tag) {
       case Xin_Alu32R:
@@ -993,7 +993,7 @@ void ppX86Instr ( X86Instr* i, Bool mode64 ) {
          break;
       case Xin_XDirect:
          vex_printf("(xDirect) ");
-            vex_printf("if (%%eflags.%s) { ", 
+         vex_printf("if (%%eflags.%s) { ",
                     showX86CondCode(i->Xin.XDirect.cond));
          vex_printf("movl $0x%x,", i->Xin.XDirect.dstGA);
          ppX86AMode(i->Xin.XDirect.amEIP);
@@ -1220,7 +1220,7 @@ void ppX86Instr ( X86Instr* i, Bool mode64 ) {
 
 /* --------- Helpers for register allocation. --------- */
 
-void getRegUsage_X86Instr (HRegUsage* u, X86Instr* i, Bool mode64)
+void getRegUsage_X86Instr (HRegUsage* u, const X86Instr* i, Bool mode64)
 {
    Bool unary;
    vassert(mode64 == False);
@@ -1668,7 +1668,7 @@ void mapRegs_X86Instr ( HRegRemap* m, X86Instr* i, Bool mode64 )
    source and destination to *src and *dst.  If in doubt say No.  Used
    by the register allocator to do move coalescing. 
 */
-Bool isMove_X86Instr ( X86Instr* i, HReg* src, HReg* dst )
+Bool isMove_X86Instr ( const X86Instr* i, HReg* src, HReg* dst )
 {
    /* Moves between integer regs */
    if (i->tag == Xin_Alu32R) {
@@ -2023,11 +2023,25 @@ static UChar* do_fop1_st ( UChar* p, X86FpOp op )
       case Xfp_COS:    *p++ = 0xD9; *p++ = 0xFF; break;
       case Xfp_2XM1:   *p++ = 0xD9; *p++ = 0xF0; break;
       case Xfp_MOV:    break;
-      case Xfp_TAN:    p = do_ffree_st7(p); /* since fptan pushes 1.0 */
-                       *p++ = 0xD9; *p++ = 0xF2; /* fptan */
-                       *p++ = 0xD9; *p++ = 0xF7; /* fincstp */
-                       break;
-      default: vpanic("do_fop1_st: unknown op");
+      case Xfp_TAN:
+         /* fptan pushes 1.0 on the FP stack, except when the argument
+            is out of range.  Hence we have to do the instruction,
+            then inspect C2 to see if there is an out of range
+            condition.  If there is, we skip the fincstp that is used
+            by the in-range case to get rid of this extra 1.0
+            value. */
+         p = do_ffree_st7(p); /* since fptan sometimes pushes 1.0 */
+         *p++ = 0xD9; *p++ = 0xF2; // fptan
+         *p++ = 0x50;              // pushl %eax
+         *p++ = 0xDF; *p++ = 0xE0; // fnstsw %ax
+         *p++ = 0x66; *p++ = 0xA9; 
+         *p++ = 0x00; *p++ = 0x04; // testw $0x400,%ax
+         *p++ = 0x75; *p++ = 0x02; // jnz after_fincstp
+         *p++ = 0xD9; *p++ = 0xF7; // fincstp
+         *p++ = 0x58;              // after_fincstp: popl %eax
+         break;
+      default:
+         vpanic("do_fop1_st: unknown op");
    }
    return p;
 }
@@ -2087,12 +2101,12 @@ static UChar* push_word_from_tags ( UChar* p, UShort tags )
    leave it unchanged. */
 
 Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
-                    UChar* buf, Int nbuf, X86Instr* i, 
-                    Bool mode64,
-                    void* disp_cp_chain_me_to_slowEP,
-                    void* disp_cp_chain_me_to_fastEP,
-                    void* disp_cp_xindir,
-                    void* disp_cp_xassisted )
+                    UChar* buf, Int nbuf, const X86Instr* i, 
+                    Bool mode64, VexEndness endness_host,
+                    const void* disp_cp_chain_me_to_slowEP,
+                    const void* disp_cp_chain_me_to_fastEP,
+                    const void* disp_cp_xindir,
+                    const void* disp_cp_xassisted )
 {
    UInt irno, opc, opc_rr, subopc_imm, opc_imma, opc_cl, opc_imm, subopc;
 
@@ -2430,7 +2444,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
       ptmp = NULL;
 
       /* First off, if this is conditional, create a conditional
-	 jump over the rest of it. */
+         jump over the rest of it. */
       if (i->Xin.XDirect.cond != Xcc_ALWAYS) {
          /* jmp fwds if !condition */
          *p++ = toUChar(0x70 + (0xF & (i->Xin.XDirect.cond ^ 1)));
@@ -2451,7 +2465,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
          two instructions below. */
       /* movl $disp_cp_chain_me_to_{slow,fast}EP,%edx; */
       *p++ = 0xBA;
-      void* disp_cp_chain_me
+      const void* disp_cp_chain_me
                = i->Xin.XDirect.toFastEP ? disp_cp_chain_me_to_fastEP 
                                          : disp_cp_chain_me_to_slowEP;
       p = emit32(p, (UInt)Ptr_to_ULong(disp_cp_chain_me));
@@ -2467,7 +2481,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
          *ptmp = toUChar(delta-1);
       }
       goto done;
-      }
+   }
 
    case Xin_XIndir: {
       /* We're generating transfers that could lead indirectly to a
@@ -2491,7 +2505,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
       }
 
       /* movl dstGA(a reg), amEIP -- copied from Alu32M MOV case */
-            *p++ = 0x89;
+      *p++ = 0x89;
       p = doAMode_M(p, i->Xin.XIndir.dstGA, i->Xin.XIndir.amEIP);
 
       /* movl $disp_indir, %edx */
@@ -2506,9 +2520,9 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
          Int delta = p - ptmp;
          vassert(delta > 0 && delta < 40);
          *ptmp = toUChar(delta-1);
-         }
-      goto done;
       }
+      goto done;
+   }
 
    case Xin_XAssisted: {
       /* Use ptmp for backpatching conditional jumps. */
@@ -2539,7 +2553,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
          case Ijk_EmWarn:       trcval = VEX_TRC_JMP_EMWARN;       break;
          case Ijk_MapFail:      trcval = VEX_TRC_JMP_MAPFAIL;      break;
          case Ijk_NoDecode:     trcval = VEX_TRC_JMP_NODECODE;     break;
-         case Ijk_TInval:       trcval = VEX_TRC_JMP_TINVAL;       break;
+         case Ijk_InvalICache:  trcval = VEX_TRC_JMP_INVALICACHE;  break;
          case Ijk_NoRedir:      trcval = VEX_TRC_JMP_NOREDIR;      break;
          case Ijk_SigTRAP:      trcval = VEX_TRC_JMP_SIGTRAP;      break;
          case Ijk_SigSEGV:      trcval = VEX_TRC_JMP_SIGSEGV;      break;
@@ -3277,7 +3291,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
       p = doAMode_M(p, fake(4), i->Xin.EvCheck.amFailAddr);
       vassert(p - p0 == 8); /* also ensures that 0x03 offset above is ok */
       /* And crosscheck .. */
-      vassert(evCheckSzB_X86() == 8);
+      vassert(evCheckSzB_X86(endness_host) == 8);
       goto done;
    }
 
@@ -3322,7 +3336,7 @@ Int emit_X86Instr ( /*MB_MOD*/Bool* is_profInc,
 /* How big is an event check?  See case for Xin_EvCheck in
    emit_X86Instr just above.  That crosschecks what this returns, so
    we can tell if we're inconsistent. */
-Int evCheckSzB_X86 ( void )
+Int evCheckSzB_X86 ( VexEndness endness_host )
 {
    return 8;
 }
@@ -3330,10 +3344,13 @@ Int evCheckSzB_X86 ( void )
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange chainXDirect_X86 ( void* place_to_chain,
-                                 void* disp_cp_chain_me_EXPECTED,
-                                 void* place_to_jump_to )
+VexInvalRange chainXDirect_X86 ( VexEndness endness_host,
+                                 void* place_to_chain,
+                                 const void* disp_cp_chain_me_EXPECTED,
+                                 const void* place_to_jump_to )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
         movl $disp_cp_chain_me_EXPECTED, %edx
         call *%edx
@@ -3356,7 +3373,7 @@ VexInvalRange chainXDirect_X86 ( void* place_to_chain,
    */
    /* This is the delta we need to put into a JMP d32 insn.  It's
       relative to the start of the next insn, hence the -5.  */
-   Long delta = (Long)((UChar*)place_to_jump_to - (UChar*)p) - (Long)5;
+   Long delta = (Long)((const UChar *)place_to_jump_to - p) - 5;
 
    /* And make the modifications. */
    p[0] = 0xE9;
@@ -3375,10 +3392,13 @@ VexInvalRange chainXDirect_X86 ( void* place_to_chain,
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange unchainXDirect_X86 ( void* place_to_unchain,
-                                   void* place_to_jump_to_EXPECTED,
-                                   void* disp_cp_chain_me )
+VexInvalRange unchainXDirect_X86 ( VexEndness endness_host,
+                                   void* place_to_unchain,
+                                   const void* place_to_jump_to_EXPECTED,
+                                   const void* disp_cp_chain_me )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
           jmp d32
           ud2;
@@ -3392,7 +3412,7 @@ VexInvalRange unchainXDirect_X86 ( void* place_to_unchain,
        && p[5]  == 0x0F && p[6]  == 0x0B) {
       /* Check the offset is right. */
       Int s32 = *(Int*)(&p[1]);
-      if ((UChar*)p + 5 + s32 == (UChar*)place_to_jump_to_EXPECTED) {
+      if ((UChar*)p + 5 + s32 == place_to_jump_to_EXPECTED) {
          valid = True;
          if (0)
             vex_printf("QQQ unchainXDirect_X86: found valid\n");
@@ -3418,9 +3438,11 @@ VexInvalRange unchainXDirect_X86 ( void* place_to_unchain,
 
 /* Patch the counter address into a profile inc point, as previously
    created by the Xin_ProfInc case for emit_X86Instr. */
-VexInvalRange patchProfInc_X86 ( void*  place_to_patch,
-                                 ULong* location_of_counter )
+VexInvalRange patchProfInc_X86 ( VexEndness endness_host,
+                                 void*  place_to_patch,
+                                 const ULong* location_of_counter )
 {
+   vassert(endness_host == VexEndnessLE);
    vassert(sizeof(ULong*) == 4);
    UChar* p = (UChar*)place_to_patch;
    vassert(p[0] == 0x83);

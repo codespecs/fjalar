@@ -62,7 +62,7 @@ VG_(disp_run_translations):
 	/* 4(%esp) holds two_words */
 	/* 8(%esp) holds guest_state */
 	/* 12(%esp) holds host_addr */
-	
+
         /* The preamble */
 
         /* Save integer registers, since this is a pseudo-function. */
@@ -77,7 +77,7 @@ VG_(disp_run_translations):
 	/* 28+4(%esp) holds two_words */
 	/* 28+8(%esp) holds guest_state */
 	/* 28+12(%esp) holds host_addr */
-	
+
         /* Get the host CPU in the state expected by generated code. */
 
 	/* set host FPU control word to the default mode expected 
@@ -98,7 +98,7 @@ VG_(disp_run_translations):
 L1:
 	/* set dir flag to known value */
 	cld
-	
+
 	/* Set up the guest state pointer */
 	movl	28+8(%esp), %ebp
 
@@ -160,7 +160,7 @@ remove_frame:
 	popl	%ebx
 	popl	%eax
 	ret	
-
+        
 /*----------------------------------------------------*/
 /*--- Continuation points                          ---*/
 /*----------------------------------------------------*/
@@ -201,7 +201,7 @@ VG_(disp_cp_xindir):
 
         /* stats only */
         addl    $1, VG_(stats__n_xindirs_32)
-
+        
         /* try a fast lookup in the translation cache */
         movl    %eax, %ebx                      /* next guest addr */
         andl    $VG_TT_FAST_MASK, %ebx          /* entry# */
@@ -239,7 +239,7 @@ VG_(disp_cp_evcheck_fail):
 
 
 .size VG_(disp_run_translations), .-VG_(disp_run_translations)
-			
+
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
 

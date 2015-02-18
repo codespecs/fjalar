@@ -36,17 +36,8 @@
 // plus some functions and macros for manipulating them.  Almost every
 // other module imports this one, if only for VG_(clo_verbosity).
 //--------------------------------------------------------------------
-
 #include "pub_tool_options.h"
-
-/* The max number of suppression files. */
-#define VG_CLO_MAX_SFILES 100
-
-/* The max number of --require-text-symbol= specification strings. */
-#define VG_CLO_MAX_REQ_TSYMS 100
-
-/* The max number of --fullpath-after= parameters. */
-#define VG_CLO_MAX_FULLPATH_AFTER 100
+#include "pub_core_xarray.h"
 
 /* Should we stop collecting errors if too many appear?  default: YES */
 extern Bool  VG_(clo_error_limit);
@@ -54,6 +45,12 @@ extern Bool  VG_(clo_error_limit);
    default: 0 (no, return the application's exit code in the normal
    way. */
 extern Int   VG_(clo_error_exitcode);
+
+/* Markers used to mark the begin/end of an error, when errors are
+   printed in textual (non xml) format.
+   [0] is the error begin marker, [1] is the error end marker.
+   default: no markers. */
+extern HChar *VG_(clo_error_markers)[2];
 
 typedef 
    enum { 
@@ -68,8 +65,25 @@ typedef
 extern VgVgdb VG_(clo_vgdb);
 /* if > 0, checks every VG_(clo_vgdb_poll) BBS if vgdb wants to be served. */
 extern Int VG_(clo_vgdb_poll);
+
+/* Specify when Valgrind gdbserver stops the execution and wait
+   for a GDB to connect. */
+typedef
+   enum {                       // Stop :
+      VgdbStopAt_Startup,       // just before the client starts to execute.
+      VgdbStopAt_Exit,          // just before the client exits.
+      VgdbStopAt_ValgrindAbExit // on abnormal valgrind exit.
+   }
+   VgdbStopAt;
+// Build mask to check or set VgdbStop_At a membership
+#define VgdbStopAt2S(a) (1 << (a))
+// VgdbStopAt a is member of the Set s ?
+#define VgdbStopAtiS(a,s) ((s) & VgdbStopAt2S(a))
+extern UInt VG_(clo_vgdb_stop_at); // A set of VgdbStopAt reasons.
+
 /* prefix for the named pipes (FIFOs) used by vgdb/gdb to communicate with valgrind */
-extern const HChar* VG_(clo_vgdb_prefix);
+extern const HChar *VG_(clo_vgdb_prefix);
+
 /* if True, gdbserver in valgrind will expose a target description containing
    shadow registers */
 extern Bool  VG_(clo_vgdb_shadow_registers);
@@ -85,11 +99,11 @@ extern Int   VG_(clo_gen_suppressions);
 extern Int   VG_(clo_sanity_level);
 /* Automatically attempt to demangle C++ names?  default: YES */
 extern Bool  VG_(clo_demangle);
-/* Simulate child processes? default: NO */
 /* Soname synonyms : a string containing a list of pairs
    xxxxx=yyyyy separated by commas.
    E.g. --soname-synonyms=somalloc=libtcmalloc*.so*,solibtruc=NONE */
 extern const HChar* VG_(clo_soname_synonyms);
+/* Valgrind-ise child processes (follow execve)? default : NO */
 extern Bool  VG_(clo_trace_children);
 /* String containing comma-separated patterns for executable names
    that should not be traced into even when --trace-children=yes */
@@ -108,8 +122,8 @@ extern Bool  VG_(clo_child_silent_after_fork);
 
 /* If the user specified --log-file=STR and/or --xml-file=STR, these
    hold STR after expansion of the %p and %q templates. */
-extern HChar* VG_(clo_log_fname_expanded);
-extern HChar* VG_(clo_xml_fname_expanded);
+extern const HChar* VG_(clo_log_fname_expanded);
+extern const HChar* VG_(clo_xml_fname_expanded);
 
 /* Add timestamps to log messages?  default: NO */
 extern Bool  VG_(clo_time_stamp);
@@ -117,14 +131,14 @@ extern Bool  VG_(clo_time_stamp);
 /* The file descriptor to read for input.  default: 0 == stdin */
 extern Int   VG_(clo_input_fd);
 
-/* The number of suppression files specified. */
-extern Int   VG_(clo_n_suppressions);
+/* Whether or not to load the default suppressions. */
+extern Bool  VG_(clo_default_supp);
+
 /* The names of the suppression files. */
-extern const HChar* VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
+extern XArray *VG_(clo_suppressions);
 
 /* An array of strings harvested from --fullpath-after= flags. */
-extern Int   VG_(clo_n_fullpath_after);
-extern const HChar* VG_(clo_fullpath_after)[VG_CLO_MAX_FULLPATH_AFTER];
+extern XArray *VG_(clo_fullpath_after);
 
 /* Full path to additional path to search for debug symbols */
 extern const HChar* VG_(clo_extra_debuginfo_path);
@@ -201,10 +215,28 @@ extern Int VG_(clo_redzone_size);
 /* DEBUG: display gory details for the k'th most popular error.
    default: Infinity. */
 extern Int   VG_(clo_dump_error);
+
 /* Engage miscellaneous weird hacks needed for some progs. */
-extern const HChar* VG_(clo_sim_hints);
+typedef
+   enum {
+      SimHint_lax_ioctls,
+      SimHint_fuse_compatible,
+      SimHint_enable_outer,
+      SimHint_no_inner_prefix,
+      SimHint_no_nptl_pthread_stackcache
+   }
+   SimHint;
+
+// Build mask to check or set SimHint a membership
+#define SimHint2S(a) (1 << (a))
+// SimHint h is member of the Set s ?
+#define SimHintiS(h,s) ((s) & SimHint2S(h))
+extern UInt VG_(clo_sim_hints);
+
 /* Show symbols in the form 'name+offset' ?  Default: NO */
 extern Bool VG_(clo_sym_offsets);
+/* Read DWARF3 inline info ? */
+extern Bool VG_(clo_read_inline_info);
 /* Read DWARF3 variable info even if tool doesn't ask for it? */
 extern Bool VG_(clo_read_var_info);
 /* Which prefix to strip from full source file paths, if any. */
@@ -240,8 +272,7 @@ extern const HChar* VG_(clo_prefix_to_strip);
    silently with the un-marked-up library.  Note that you should put
    the entire flag in quotes to stop shells messing up the * and ?
    wildcards. */
-extern Int    VG_(clo_n_req_tsyms);
-extern const HChar* VG_(clo_req_tsyms)[VG_CLO_MAX_REQ_TSYMS];
+extern XArray *VG_(clo_req_tsyms);
 
 /* Track open file descriptors? */
 extern Bool  VG_(clo_track_fds);
@@ -275,6 +306,10 @@ extern Int VG_(clo_merge_recursive_frames);
 /* Max number of sectors that will be used by the translation code cache. */
 extern UInt VG_(clo_num_transtab_sectors);
 
+/* Only client requested fixed mapping can be done below 
+   VG_(clo_aspacem_minAddr). */
+extern Addr VG_(clo_aspacem_minAddr);
+
 /* Delay startup to allow GDB to be attached?  Default: NO */
 extern Bool VG_(clo_wait_for_gdb);
 
@@ -296,9 +331,21 @@ typedef
    auto-detected. */
 extern VgSmc VG_(clo_smc_check);
 
-/* String containing comma-separated names of minor kernel variants,
+/* A set of minor kernel variants,
    so they can be properly handled by m_syswrap. */
-extern const HChar* VG_(clo_kernel_variant);
+typedef
+   enum {
+      KernelVariant_bproc,
+      KernelVariant_android_no_hw_tls,
+      KernelVariant_android_gpu_sgx5xx,
+      KernelVariant_android_gpu_adreno3xx
+   }
+   KernelVariant;
+// Build mask to check or set KernelVariant a membership
+#define KernelVariant2S(v) (1 << (v))
+// KernelVariant v is member of the Set s ?
+#define KernelVariantiS(v,s) ((s) & KernelVariant2S(v))
+extern UInt VG_(clo_kernel_variant);
 
 /* Darwin-specific: automatically run /usr/bin/dsymutil to update
    .dSYM directories as necessary? */
@@ -310,8 +357,8 @@ extern Bool VG_(clo_dsymutil);
    of the executable.  'child_argv' must not include the name of the
    executable itself; iow child_argv[0] must be the first arg, if any,
    for the child. */
-extern Bool VG_(should_we_trace_this_child) ( HChar* child_exe_name,
-                                              HChar** child_argv );
+extern Bool VG_(should_we_trace_this_child) ( const HChar* child_exe_name,
+                                              const HChar** child_argv );
 
 /* Whether illegal instructions should be reported/diagnosed.
    Can be explicitly set through --sigill-diagnostics otherwise
@@ -330,6 +377,12 @@ extern UInt VG_(clo_unw_stack_scan_thresh);
    Since it tends to pick up a lot of junk, this value is set pretty
    low by default.  Default: 5 */
 extern UInt VG_(clo_unw_stack_scan_frames);
+
+/* Controls the resync-filter on MacOS.  Has no effect on Linux.
+   0=disabled [default on Linux]   "no"
+   1=enabled  [default on MacOS]   "yes"
+   2=enabled and verbose.          "verbose" */
+extern UInt VG_(clo_resync_filter);
 
 #endif   // __PUB_CORE_OPTIONS_H
 

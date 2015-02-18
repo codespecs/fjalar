@@ -217,7 +217,6 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UWord*       stack;
-   NSegment const* seg;
    SysRes       res;
    Int          eax;
    vki_sigset_t blockall, savedmask;
@@ -275,28 +274,8 @@ static SysRes do_clone ( ThreadId ptid,
       See #226116. */
    ctst->os_state.threadgroup = ptst->os_state.threadgroup;
 
-   /* We don't really know where the client stack is, because its
-      allocated by the client.  The best we can do is look at the
-      memory mappings and try to derive some useful information.  We
-      assume that esp starts near its highest possible value, and can
-      only go down to the start of the mmaped segment. */
-   seg = VG_(am_find_nsegment)((Addr)esp);
-   if (seg && seg->kind != SkResvn) {
-      ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(esp);
-      ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-
-      if (debug)
-	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-		     ctid, seg->start, VG_PGROUNDUP(esp));
-   } else {
-      VG_(message)(Vg_UserMsg,
-                   "!? New thread %d starts with ESP(%#lx) unmapped\n",
-		   ctid, esp);
-      ctst->client_stack_szB  = 0;
-   }
-
+   ML_(guess_and_register_stack) (esp, ctst);
+   
    /* Assume the clone will succeed, and tell any tool that wants to
       know that this thread has come into existence.  We cannot defer
       it beyond this point because sys_set_thread_area, just below,
@@ -461,21 +440,21 @@ void translate_to_hw_format ( /* IN  */ vki_modify_ldt_t* inn,
 static VexGuestX86SegDescr* alloc_zeroed_x86_GDT ( void )
 {
    Int nbytes = VEX_GUEST_X86_GDT_NENT * sizeof(VexGuestX86SegDescr);
-   return VG_(arena_calloc)(VG_AR_CORE, "di.syswrap-x86.azxG.1", nbytes, 1);
+   return VG_(calloc)("di.syswrap-x86.azxG.1", nbytes, 1);
 }
 
 /* Create a zeroed-out LDT. */
 static VexGuestX86SegDescr* alloc_zeroed_x86_LDT ( void )
 {
    Int nbytes = VEX_GUEST_X86_LDT_NENT * sizeof(VexGuestX86SegDescr);
-   return VG_(arena_calloc)(VG_AR_CORE, "di.syswrap-x86.azxL.1", nbytes, 1);
+   return VG_(calloc)("di.syswrap-x86.azxL.1", nbytes, 1);
 }
 
 /* Free up an LDT or GDT allocated by the above fns. */
 static void free_LDT_or_GDT ( VexGuestX86SegDescr* dt )
 {
    vg_assert(dt);
-   VG_(arena_free)(VG_AR_CORE, (void*)dt);
+   VG_(free)(dt);
 }
 
 /* Copy contents between two existing LDTs. */
@@ -1368,7 +1347,7 @@ PRE(sys_syscall223)
    /* 223 is used by sys_bproc.  If we're not on a declared bproc
       variant, fail in the usual way. */
 
-   if (!VG_(strstr)(VG_(clo_kernel_variant), "bproc")) {
+   if (!KernelVariantiS(KernelVariant_bproc, VG_(clo_kernel_variant))) {
       PRINT("non-existent syscall! (syscall 223)");
       PRE_REG_READ0(long, "ni_syscall(223)");
       SET_STATUS_Failure( VKI_ENOSYS );
@@ -1676,7 +1655,7 @@ static SyscallTableEntry syscall_table[] = {
 
    LINX_(__NR_setfsuid32,        sys_setfsuid),       // 215
    LINX_(__NR_setfsgid32,        sys_setfsgid),       // 216
-//zz    //   (__NR_pivot_root,        sys_pivot_root),     // 217 */Linux
+   LINX_(__NR_pivot_root,        sys_pivot_root),     // 217
    GENXY(__NR_mincore,           sys_mincore),        // 218
    GENX_(__NR_madvise,           sys_madvise),        // 219
 
@@ -1788,7 +1767,7 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_pselect6,		 sys_pselect6),         // 308
    LINXY(__NR_ppoll,		 sys_ppoll),            // 309
 
-//   LINX_(__NR_unshare,		 sys_unshare),          // 310
+   LINX_(__NR_unshare,		 sys_unshare),          // 310
    LINX_(__NR_set_robust_list,	 sys_set_robust_list),  // 311
    LINXY(__NR_get_robust_list,	 sys_get_robust_list),  // 312
    LINX_(__NR_splice,            sys_splice),           // 313
@@ -1803,13 +1782,13 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_utimensat,         sys_utimensat),        // 320
    LINXY(__NR_signalfd,          sys_signalfd),         // 321
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 322
-   LINX_(__NR_eventfd,           sys_eventfd),          // 323
+   LINXY(__NR_eventfd,           sys_eventfd),          // 323
    LINX_(__NR_fallocate,         sys_fallocate),        // 324
 
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 325
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),  // 326
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 327
-   LINX_(__NR_eventfd2,          sys_eventfd2),         // 328
+   LINXY(__NR_eventfd2,          sys_eventfd2),         // 328
    LINXY(__NR_epoll_create1,     sys_epoll_create1),     // 329
 
    LINXY(__NR_dup3,              sys_dup3),             // 330
@@ -1827,13 +1806,24 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_prlimit64,         sys_prlimit64),        // 340
    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 341
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 342
-//   LINX_(__NR_clock_adjtime,     sys_ni_syscall),       // 343
+   LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 343
 //   LINX_(__NR_syncfs,            sys_ni_syscall),       // 344
 
    LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 345
 //   LINX_(__NR_setns,             sys_ni_syscall),       // 346
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 347
-   LINX_(__NR_process_vm_writev, sys_process_vm_writev) // 348
+   LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 348
+   LINX_(__NR_kcmp,              sys_kcmp),             // 349
+
+//   LIN__(__NR_finit_module,      sys_ni_syscall),       // 350
+//   LIN__(__NR_sched_setattr,     sys_ni_syscall),       // 351
+//   LIN__(__NR_sched_getattr,     sys_ni_syscall),       // 352
+//   LIN__(__NR_renameat2,         sys_ni_syscall),       // 353
+//   LIN__(__NR_seccomp,           sys_ni_syscall),       // 354
+
+   LINXY(__NR_getrandom,         sys_getrandom)         // 355
+//   LIN__(__NR_memfd_create,      sys_ni_syscall),       // 356
+//   LIN__(__NR_bpf,               sys_ni_syscall)        // 357
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

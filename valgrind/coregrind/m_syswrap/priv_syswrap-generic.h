@@ -36,6 +36,12 @@
 #include "priv_types_n_macros.h"  // DECL_TEMPLATE
 
 
+/* Guess the client stack from the segment in which sp is mapped.
+   Register the guessed stack using VG_(register_stack).
+   Setup tst client_stack_highest_byte and client_stack_szB.
+   If sp is not in a mapped segment, does nothing. */
+extern void ML_(guess_and_register_stack) (Addr sp, ThreadState* tst);
+
 // Return true if address range entirely contained within client
 // address space.
 extern
@@ -58,7 +64,7 @@ Bool ML_(fd_allowed)(Int fd, const HChar *syscallname, ThreadId tid,
 extern void ML_(record_fd_open_named)          (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_nameless)       (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
-                                                char *pathname);
+                                                const HChar *pathname);
 
 // Used when killing threads -- we must not kill a thread if it's the thread
 // that would do Valgrind's final cleanup and output.
@@ -258,23 +264,23 @@ extern void   ML_(generic_POST_sys_shmctl)      ( TId, UW, UW, UW, UW );
 
 extern SysRes ML_(generic_PRE_sys_mmap)         ( TId, UW, UW, UW, UW, UW, Off64T );
 
-#define PRE_timeval_READ(zzname, zzarg)                        \
-   do {                                                        \
+#define PRE_timeval_READ(zzname, zzarg)                         \
+   do {                                                         \
       struct vki_timeval *zztv = (struct vki_timeval *)(zzarg); \
-      PRE_FIELD_READ(zzname, zztv->tv_sec);                    \
-      PRE_FIELD_READ(zzname, zztv->tv_usec);                   \
+      PRE_FIELD_READ(zzname, zztv->tv_sec);                     \
+      PRE_FIELD_READ(zzname, zztv->tv_usec);                    \
    } while (0)
-#define PRE_timeval_WRITE(zzname, zzarg)                       \
-   do {                                                        \
+#define PRE_timeval_WRITE(zzname, zzarg)                        \
+   do {                                                         \
       struct vki_timeval *zztv = (struct vki_timeval *)(zzarg); \
-      PRE_FIELD_WRITE(zzname, zztv->tv_sec);                   \
-      PRE_FIELD_WRITE(zzname, zztv->tv_usec);                  \
+      PRE_FIELD_WRITE(zzname, zztv->tv_sec);                    \
+      PRE_FIELD_WRITE(zzname, zztv->tv_usec);                   \
    } while (0)
-#define POST_timeval_WRITE(zzarg)                              \
-   do {                                                        \
+#define POST_timeval_WRITE(zzarg)                               \
+   do {                                                         \
       struct vki_timeval *zztv = (struct vki_timeval *)(zzarg); \
-      POST_FIELD_WRITE(zztv->tv_sec);                          \
-      POST_FIELD_WRITE(zztv->tv_usec);                         \
+      POST_FIELD_WRITE(zztv->tv_sec);                           \
+      POST_FIELD_WRITE(zztv->tv_usec);                          \
    } while (0)
 
 

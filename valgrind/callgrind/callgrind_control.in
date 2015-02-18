@@ -7,7 +7,7 @@
 #  This file is part of Callgrind, a cache-simulator and call graph
 #  tracer built on Valgrind.
 #
-#  Copyright (C) 2003-2011 Josef Weidendorfer <Josef.Weidendorfer@gmx.de>
+#  Copyright (C) 2003-2013 Josef Weidendorfer <Josef.Weidendorfer@gmx.de>
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 sub getCallgrindPids {
 
   @pids = ();
-  open LIST, "vgdb -l|";
+  open LIST, "vgdb $vgdbPrefixOption -l|";
   while(<LIST>) {
       if (/^use --pid=(\d+) for \S*?valgrind\s+(.*?)\s*$/) {
 	  $pid = $1;
@@ -38,8 +38,8 @@ sub getCallgrindPids {
 	  $cmd =~ s/^(\S*).*/$1/;
 	  $cmd{$pid} = $cmd;
 	  #print "Found PID $pid, cmd '$cmd{$pid}', cmdline '$cmdline{$pid}'.\n";
-    push(@pids, $pid);
-  }
+	  push(@pids, $pid);
+      }
   }
   close LIST;
 }
@@ -69,15 +69,17 @@ sub printHelp {
   print "If no pids/names are given, an action is applied to all currently\n";
   print "active Callgrind runs. Default action is printing short information.\n\n";
   print "Options:\n";
-  print "  -h --help        Show this help text\n";
-  print "  --version        Show version\n";
-  print "  -s --stat        Show statistics\n";
-  print "  -b --back        Show stack/back trace\n";
-  print "  -e [<A>,...]     Show event counters for <A>,... (default: all)\n";
-  print "  --dump[=<s>]     Request a dump optionally using <s> as description\n";
-  print "  -z --zero        Zero all event counters\n";
-  print "  -k --kill        Kill\n";
+  print "  -h --help         Show this help text\n";
+  print "  --version         Show version\n";
+  print "  -s --stat         Show statistics\n";
+  print "  -b --back         Show stack/back trace\n";
+  print "  -e [<A>,...]      Show event counters for <A>,... (default: all)\n";
+  print "  --dump[=<s>]      Request a dump optionally using <s> as description\n";
+  print "  -z --zero         Zero all event counters\n";
+  print "  -k --kill         Kill\n";
   print "  -i --instr=on|off Switch instrumentation state on/off\n";
+  print "Uncommon options:\n";
+  print "  --vgdb-prefix=<prefix> Only provide this if the same was given to Valgrind\n";
   print "\n";
   exit;
 }
@@ -185,6 +187,16 @@ sub print_events ($)
 # Main
 #
 
+# To find the list of active pids, we need to have
+# the --vgdb-prefix option if given.
+$vgdbPrefixOption = "";
+foreach $arg (@ARGV) {
+    if ($arg =~ /^--vgdb-prefix=.*$/) {
+        $vgdbPrefixOption=$arg;
+    }
+    next;
+}
+
 getCallgrindPids;
 
 $requestEvents = 0;
@@ -192,6 +204,7 @@ $requestDump = 0;
 $switchInstr = 0;
 $headerPrinted = 0;
 $dumpHint = "";
+
 $verbose = 0;
 
 %spids = ();
@@ -205,6 +218,10 @@ foreach $arg (@ARGV) {
     }
     elsif ($arg =~ /^--version$/) {
 	printVersion;
+    }
+    elsif ($arg =~ /^--vgdb-prefix=.*$/) {
+        # handled during the initial parsing.
+        next;
     }
     elsif ($arg =~ /^-v$/) {
 	$verbose++;
@@ -339,14 +356,14 @@ foreach $pid (@pids) {
 
   if ($vgdbCommand eq "") {
       print "\n";
-    next;
+      next;
   }
   if ($verbose>0) {
       print " [requesting '$vgdbCommand']\n";
   } else {
       print "\n";
   }
-  open RESULT, "vgdb --pid=$pid $vgdbCommand|";
+  open RESULT, "vgdb $vgdbPrefixOption --pid=$pid $vgdbCommand|";
 
   @tids = ();
   $ctid = 0;

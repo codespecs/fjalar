@@ -58,7 +58,6 @@ extern const HChar* VG_(LD_PRELOAD_var_name);
 extern Int  VG_(waitpid)( Int pid, Int *status, Int options );
 extern Int  VG_(system) ( const HChar* cmd );
 extern Int  VG_(fork)   ( void);
-//extern void VG_(exit)   ( Int status ); /* Equivalent to libc's _exit() */
 extern void VG_(execv)  ( const HChar* filename, HChar** argv );
 
 /* ---------------------------------------------------------------------

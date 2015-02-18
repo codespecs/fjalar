@@ -216,7 +216,6 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UWord*       stack;
-   NSegment const* seg;
    SysRes       res;
    ULong        r2;
    vki_sigset_t blockall, savedmask;
@@ -262,27 +261,7 @@ static SysRes do_clone ( ThreadId ptid,
    /* have the parents thread group */
    ctst->os_state.threadgroup = ptst->os_state.threadgroup;
 
-   /* We don't really know where the client stack is, because its
-      allocated by the client.  The best we can do is look at the
-      memory mappings and try to derive some useful information.  We
-      assume that esp starts near its highest possible value, and can
-      only go down to the start of the mmaped segment. */
-   seg = VG_(am_find_nsegment)((Addr)sp);
-   if (seg && seg->kind != SkResvn) {
-      ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(sp);
-      ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-
-      if (debug)
-	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-		     ctid, seg->start, VG_PGROUNDUP(sp));
-   } else {
-      VG_(message)(Vg_UserMsg,
-                   "!? New thread %d starts with SP(%#lx) unmapped\n",
-		   ctid, sp);
-      ctst->client_stack_szB  = 0;
-   }
+   ML_(guess_and_register_stack) (sp, ctst);
 
    /* Assume the clone will succeed, and tell any tool that wants to
       know that this thread has come into existence.  If the clone
@@ -441,14 +420,14 @@ POST(sys_ptrace)
 
 	 pa = (vki_ptrace_area *) ARG3;
          POST_MEM_WRITE(pa->vki_process_addr, pa->vki_len);
-         break;
+	 break;
       }
    case VKI_PTRACE_GETREGSET:
       ML_(linux_POST_getregset)(tid, ARG3, ARG4);
-         break;
+      break;
    default:
-    break;
-  }
+      break;
+   }
 }
 
 PRE(sys_mmap)
@@ -846,7 +825,7 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_sched_get_priority_max,  sys_sched_get_priority_max),   // 159
 
    LINX_(__NR_sched_get_priority_min,  sys_sched_get_priority_min),   // 160
-// ?????(__NR_sched_rr_get_interval, ),                               // 161
+   LINXY(__NR_sched_rr_get_interval, sys_sched_rr_get_interval),      // 162
    GENXY(__NR_nanosleep,  sys_nanosleep),                             // 162
    GENX_(__NR_mremap,  sys_mremap),                                   // 163
    GENX_(164, sys_ni_syscall), /* unimplemented (by the kernel) */    // 164
@@ -913,7 +892,7 @@ static SyscallTableEntry syscall_table[] = {
 
    LINX_(__NR_setfsuid, sys_setfsuid),                                // 215
    LINX_(__NR_setfsgid, sys_setfsgid),                                // 216
-// ?????(__NR_pivot_root, ),
+   LINX_(__NR_pivot_root, sys_pivot_root),                            // 217
    GENXY(__NR_mincore, sys_mincore),                                  // 218
    GENX_(__NR_madvise,  sys_madvise),                                 // 219
 
@@ -1016,17 +995,17 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_faccessat,  sys_faccessat),                             // 300
    LINX_(__NR_pselect6, sys_pselect6),                                // 301
    LINXY(__NR_ppoll, sys_ppoll),                                      // 302
-// ?????(__NR_unshare, ),
+   LINX_(__NR_unshare, sys_unshare),                                  // 303
    LINX_(__NR_set_robust_list,  sys_set_robust_list),                 // 304
 
    LINXY(__NR_get_robust_list,  sys_get_robust_list),                 // 305
-// ?????(__NR_splice, ),
+   LINX_(__NR_splice, sys_splice),                                    // 306
    LINX_(__NR_sync_file_range, sys_sync_file_range),                  // 307
-// ?????(__NR_tee, ),
-// ?????(__NR_vmsplice, ),
+   LINX_(__NR_tee, sys_tee),                                          // 308
+   LINXY(__NR_vmsplice, sys_vmsplice),                                // 309
 
    GENX_(310, sys_ni_syscall), /* unimplemented (by the kernel) */    // 310
-// ?????(__NR_getcpu, ),
+   LINXY(__NR_getcpu, sys_getcpu),                                    // 311
    LINXY(__NR_epoll_pwait,  sys_epoll_pwait),                         // 312
    GENX_(__NR_utimes, sys_utimes),                                    // 313
    LINX_(__NR_fallocate, sys_fallocate),                              // 314
@@ -1034,33 +1013,46 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_utimensat,  sys_utimensat),                             // 315
    LINXY(__NR_signalfd,  sys_signalfd),                               // 316
    GENX_(317, sys_ni_syscall), /* unimplemented (by the kernel) */    // 317
-   LINX_(__NR_eventfd,  sys_eventfd),                                 // 318
+   LINXY(__NR_eventfd,  sys_eventfd),                                 // 318
    LINXY(__NR_timerfd_create,  sys_timerfd_create),                   // 319
 
    LINXY(__NR_timerfd_settime,  sys_timerfd_settime),                 // 320
    LINXY(__NR_timerfd_gettime,  sys_timerfd_gettime),                 // 321
    LINXY(__NR_signalfd4,  sys_signalfd4),                             // 322
-   LINX_(__NR_eventfd2,  sys_eventfd2),                               // 323
+   LINXY(__NR_eventfd2,  sys_eventfd2),                               // 323
    LINXY(__NR_inotify_init1,  sys_inotify_init1),                     // 324
 
    LINXY(__NR_pipe2,  sys_pipe2),                                     // 325
-   // (__NR_dup3,  ),
+   LINXY(__NR_dup3,  sys_dup3),                                       // 326
    LINXY(__NR_epoll_create1,  sys_epoll_create1),                     // 327
    LINXY(__NR_preadv, sys_preadv),                                    // 328
    LINX_(__NR_pwritev, sys_pwritev),                                  // 329
 
-// ?????(__NR_rt_tgsigqueueinfo, ),
+   LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),              // 330
    LINXY(__NR_perf_event_open, sys_perf_event_open),                  // 331
-// ?????(__NR_fanotify_init, ),                                       // 332
-// ?????(__NR_fanotify_mark, ),                                       // 333
+   LINXY(__NR_fanotify_init, sys_fanotify_init),                      // 332
+   LINX_(__NR_fanotify_mark, sys_fanotify_mark),                      // 333
    LINXY(__NR_prlimit64, sys_prlimit64),                              // 334
-// ?????(__NR_name_to_handle_at, ),                                   // 335
-// ?????(__NR_open_by_handle_at, ),                                   // 336
-// ?????(__NR_clock_adjtime, ),                                       // 337
+
+   LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),              // 335
+   LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),              // 336
+   LINXY(__NR_clock_adjtime, sys_clock_adjtime),                      // 337
 // ?????(__NR_syncfs, ),                                              // 338
 // ?????(__NR_setns, ),                                               // 339
+
    LINXY(__NR_process_vm_readv, sys_process_vm_readv),                // 340
    LINX_(__NR_process_vm_writev, sys_process_vm_writev),              // 341
+// ?????(__NR_s390_runtime_instr, ),                                  // 342
+   LINX_(__NR_kcmp, sys_kcmp),                                        // 343
+// ?????(__NR_finit_module, ),                                        // 344
+
+// ?????(__NR_sched_setattr, ),                                       // 345
+// ?????(__NR_sched_getattr, ),                                       // 346
+// ?????(__NR_renameat2, ),                                           // 347
+// ?????(__NR_seccomp, ),                                             // 348
+   LINXY(__NR_getrandom, sys_getrandom)                               // 349
+
+// ?????(__NR_memfd_create, ),                                        // 350
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

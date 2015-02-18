@@ -58,6 +58,8 @@
 #include "pub_tool_threadstate.h"
 #include "pub_tool_debuginfo.h"     // VG_(get_dataname_and_offset)
 #include "pub_tool_xarray.h"
+#include "pub_tool_aspacemgr.h"
+#include "pub_tool_addrinfo.h"
 
 #include "mc_include.h"
 
@@ -69,81 +71,6 @@
 /* See comment in mc_include.h */
 Bool MC_(any_value_errors) = False;
 
-
-// Different kinds of blocks.
-typedef enum {
-   Block_Mallocd = 111,
-   Block_Freed,
-   Block_MempoolChunk,
-   Block_UserG
-} BlockKind;
-
-/* ------------------ Addresses -------------------- */
-
-/* The classification of a faulting address. */
-typedef 
-   enum { 
-      Addr_Undescribed, // as-yet unclassified
-      Addr_Unknown,     // classification yielded nothing useful
-      Addr_Block,       // in malloc'd/free'd block
-      Addr_Stack,       // on a thread's stack       
-      Addr_DataSym,     // in a global data sym
-      Addr_Variable,    // variable described by the debug info
-      Addr_SectKind     // last-ditch classification attempt
-   }
-   AddrTag;
-
-typedef
-   struct _AddrInfo
-   AddrInfo;
-
-struct _AddrInfo {
-   AddrTag tag;
-   union {
-      // As-yet unclassified.
-      struct { } Undescribed;
-
-      // On a stack.
-      struct {
-         ThreadId tid;        // Which thread's stack?
-      } Stack;
-
-      // This covers heap blocks (normal and from mempools) and user-defined
-      // blocks.
-      struct {
-         BlockKind   block_kind;
-         const HChar* block_desc;    // "block", "mempool" or user-defined
-         SizeT       block_szB;
-         PtrdiffT    rwoffset;
-         ExeContext* allocated_at;  // might be null_ExeContext.
-         ExeContext* freed_at;      // might be null_ExeContext.
-      } Block;
-
-      // In a global .data symbol.  This holds the first 127 chars of
-      // the variable's name (zero terminated), plus a (memory) offset.
-      struct {
-         HChar    name[128];
-         PtrdiffT offset;
-      } DataSym;
-
-      // Is described by Dwarf debug info.  XArray*s of HChar.
-      struct {
-         XArray* /* of HChar */ descr1;
-         XArray* /* of HChar */ descr2;
-      } Variable;
-
-      // Could only narrow it down to be the PLT/GOT/etc of a given
-      // object.  Better than nothing, perhaps.
-      struct {
-         HChar      objname[128];
-         VgSectKind kind;
-      } SectKind;
-
-      // Classification yielded nothing useful.
-      struct { } Unknown;
-
-   } Addr;
-};
 
 /* ------------------ Errors ----------------------- */
 
@@ -163,6 +90,7 @@ typedef
       Err_Overlap,
       Err_Leak,
       Err_IllegalMempool,
+      Err_FishyValue,
    }
    MC_ErrorTag;
 
@@ -266,6 +194,15 @@ struct _MC_Error {
          AddrInfo ai;
       } IllegalMempool;
 
+      // A fishy function argument value
+      // An argument value is considered fishy if the corresponding
+      // parameter has SizeT type and the value when interpreted as a
+      // signed number is negative.
+     struct {
+         const HChar *function_name;
+         const HChar *argument_name;
+         SizeT value;
+      } FishyValue;
    } Err;
 };
 
@@ -278,7 +215,7 @@ struct _MC_Error {
    look at it any print any preamble you want" function.  Which, in
    Memcheck, we don't use.  Hence a no-op.
 */
-void MC_(before_pp_Error) ( Error* err ) {
+void MC_(before_pp_Error) ( const Error* err ) {
 }
 
 /* Do a printf-style operation on either the XML or normal output
@@ -300,127 +237,7 @@ static void emit ( const HChar* format, ... )
    emit_WRK(format, vargs);
    va_end(vargs);
 }
-static void emiN ( const HChar* format, ... ) /* NO FORMAT CHECK */
-{
-   va_list vargs;
-   va_start(vargs, format);
-   emit_WRK(format, vargs);
-   va_end(vargs);
-}
 
-
-static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
-{
-   const HChar* xpre  = VG_(clo_xml) ? "  <auxwhat>" : " ";
-   const HChar* xpost = VG_(clo_xml) ? "</auxwhat>"  : "";
-
-   switch (ai->tag) {
-      case Addr_Unknown:
-         if (maybe_gcc) {
-            emit( "%sAddress 0x%llx is just below the stack ptr.  "
-                  "To suppress, use: --workaround-gcc296-bugs=yes%s\n",
-                  xpre, (ULong)a, xpost );
-	 } else {
-            emit( "%sAddress 0x%llx "
-                  "is not stack'd, malloc'd or (recently) free'd%s\n",
-                  xpre, (ULong)a, xpost );
-         }
-         break;
-
-      case Addr_Stack: 
-         emit( "%sAddress 0x%llx is on thread %d's stack%s\n", 
-               xpre, (ULong)a, ai->Addr.Stack.tid, xpost );
-         break;
-
-      case Addr_Block: {
-         SizeT    block_szB = ai->Addr.Block.block_szB;
-         PtrdiffT rwoffset  = ai->Addr.Block.rwoffset;
-         SizeT    delta;
-         const    HChar* relative;
-
-         if (rwoffset < 0) {
-            delta    = (SizeT)(-rwoffset);
-            relative = "before";
-         } else if (rwoffset >= block_szB) {
-            delta    = rwoffset - block_szB;
-            relative = "after";
-         } else {
-            delta    = rwoffset;
-            relative = "inside";
-         }
-         emit(
-            "%sAddress 0x%lx is %'lu bytes %s a %s of size %'lu %s%s\n",
-            xpre,
-            a, delta, relative, ai->Addr.Block.block_desc,
-            block_szB,
-            ai->Addr.Block.block_kind==Block_Mallocd ? "alloc'd" 
-            : ai->Addr.Block.block_kind==Block_Freed ? "free'd" 
-                                                     : "client-defined",
-            xpost
-         );
-         if (ai->Addr.Block.block_kind==Block_Mallocd) {
-            VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
-            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
-         }
-         else if (ai->Addr.Block.block_kind==Block_Freed) {
-            VG_(pp_ExeContext)(ai->Addr.Block.freed_at);
-            if (ai->Addr.Block.allocated_at != VG_(null_ExeContext)()) {
-               emit(
-                  "%s block was alloc'd at%s\n",
-                  xpre,
-                  xpost
-               );
-               VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
-            }
-         }
-         else {
-            // client-defined
-            VG_(pp_ExeContext)(ai->Addr.Block.allocated_at);
-            tl_assert (ai->Addr.Block.freed_at == VG_(null_ExeContext)());
-            /* Nb: cannot have a freed_at, as a freed client-defined block
-               has a Block_Freed block_kind. */
-         }
-         
-         break;
-      }
-
-      case Addr_DataSym:
-         emiN( "%sAddress 0x%llx is %llu bytes "
-               "inside data symbol \"%pS\"%s\n",
-               xpre,
-               (ULong)a,
-               (ULong)ai->Addr.DataSym.offset,
-               ai->Addr.DataSym.name,
-               xpost );
-         break;
-
-      case Addr_Variable:
-         /* Note, no need for XML tags here, because descr1/2 will
-            already have <auxwhat> or <xauxwhat>s on them, in XML
-            mode. */
-         if (ai->Addr.Variable.descr1)
-            emit( "%s%s\n",
-                  VG_(clo_xml) ? "  " : " ",
-                  (HChar*)VG_(indexXA)(ai->Addr.Variable.descr1, 0) );
-         if (ai->Addr.Variable.descr2)
-            emit( "%s%s\n",
-                  VG_(clo_xml) ? "  " : " ",
-                  (HChar*)VG_(indexXA)(ai->Addr.Variable.descr2, 0) );
-         break;
-
-      case Addr_SectKind:
-         emiN( "%sAddress 0x%llx is in the %pS segment of %pS%s\n",
-               xpre,
-               (ULong)a,
-               VG_(pp_SectKind)(ai->Addr.SectKind.kind),
-               ai->Addr.SectKind.objname,
-               xpost );
-         break;
-
-      default:
-         VG_(tool_panic)("mc_pp_AddrInfo");
-   }
-}
 
 static const HChar* str_leak_lossmode ( Reachedness lossmode )
 {
@@ -446,52 +263,23 @@ static const HChar* xml_leak_kind ( Reachedness lossmode )
    return loss;
 }
 
-Bool MC_(parse_leak_kinds) ( const HChar* str0, UInt* lks )
+const HChar* MC_(parse_leak_kinds_tokens) = 
+   "reachable,possible,indirect,definite";
+
+UInt MC_(all_Reachedness)(void)
 {
-   HChar  tok_str0[VG_(strlen)(str0)+1];
-   HChar* saveptr;
-   HChar* token;
+   static UInt all;
 
-   Bool seen_all_kw = False;
-   Bool seen_none_kw = False;
-
-   VG_(strcpy) (tok_str0, str0);
-   *lks = 0;
-
-   for (token = VG_(strtok_r)(tok_str0, ",", &saveptr);
-        token;
-        token = VG_(strtok_r)(NULL, ",", &saveptr)) {
-      if      (0 == VG_(strcmp)(token, "reachable"))
-         *lks |= R2S(Reachable);
-      else if (0 == VG_(strcmp)(token, "possible"))
-         *lks |= R2S(Possible);
-      else if (0 == VG_(strcmp)(token, "indirect"))
-         *lks |= R2S(IndirectLeak);
-      else if (0 == VG_(strcmp)(token, "definite"))
-         *lks |= R2S(Unreached);
-      else if (0 == VG_(strcmp)(token, "all"))
-         seen_all_kw = True;
-      else if (0 == VG_(strcmp)(token, "none"))
-         seen_none_kw = True;
-      else
-         return False;
+   if (all == 0) {
+      // Compute a set with all values by doing a parsing of the "all" keyword.
+      Bool parseok = VG_(parse_enum_set)(MC_(parse_leak_kinds_tokens),
+                                         True,/*allow_all*/
+                                         "all",
+                                         &all);
+      tl_assert (parseok && all);
    }
 
-   if (seen_all_kw) {
-      if (seen_none_kw || *lks)
-         return False; // mixing all with either none or a specific value.
-      *lks = RallS;
-   } else if (seen_none_kw) {
-      if (seen_all_kw || *lks)
-         return False; // mixing none with either all or a specific value.
-      *lks = 0;
-   } else {
-      // seen neither all or none, we must see at least one value
-      if (*lks == 0)
-         return False;
-   }
-
-   return True;
+   return all;
 }
 
 static const HChar* pp_Reachedness_for_leak_kinds(Reachedness r)
@@ -532,6 +320,12 @@ HChar * MC_(snprintf_delta) (HChar * buf, Int size,
                             SizeT current_val, SizeT old_val, 
                             LeakCheckDeltaMode delta_mode)
 {
+   // Make sure the buffer size is large enough. With old_val == 0 and
+   // current_val == ULLONG_MAX the delta including inserted commas is:
+   // 18,446,744,073,709,551,615
+   // whose length is 26. Therefore:
+   tl_assert(size >= 26 + 4 + 1);
+
    if (delta_mode == LCD_Any)
       buf[0] = '\0';
    else if (current_val >= old_val)
@@ -547,24 +341,24 @@ static void pp_LossRecord(UInt n_this_record, UInt n_total_records,
 {
    // char arrays to produce the indication of increase/decrease in case
    // of delta_mode != LCD_Any
-   HChar d_bytes[20];
-   HChar d_direct_bytes[20];
-   HChar d_indirect_bytes[20];
-   HChar d_num_blocks[20];
+   HChar d_bytes[31];
+   HChar d_direct_bytes[31];
+   HChar d_indirect_bytes[31];
+   HChar d_num_blocks[31];
 
-   MC_(snprintf_delta) (d_bytes, 20, 
+   MC_(snprintf_delta) (d_bytes, sizeof(d_bytes),
                         lr->szB + lr->indirect_szB, 
                         lr->old_szB + lr->old_indirect_szB,
                         MC_(detect_memory_leaks_last_delta_mode));
-   MC_(snprintf_delta) (d_direct_bytes, 20,
+   MC_(snprintf_delta) (d_direct_bytes, sizeof(d_direct_bytes),
                         lr->szB,
                         lr->old_szB,
                         MC_(detect_memory_leaks_last_delta_mode));
-   MC_(snprintf_delta) (d_indirect_bytes, 20,
+   MC_(snprintf_delta) (d_indirect_bytes, sizeof(d_indirect_bytes),
                         lr->indirect_szB,
                         lr->old_indirect_szB,
                         MC_(detect_memory_leaks_last_delta_mode));
-   MC_(snprintf_delta) (d_num_blocks, 20,
+   MC_(snprintf_delta) (d_num_blocks, sizeof(d_num_blocks),
                         (SizeT) lr->num_blocks,
                         (SizeT) lr->old_num_blocks,
                         MC_(detect_memory_leaks_last_delta_mode));
@@ -631,7 +425,7 @@ void MC_(pp_LossRecord)(UInt n_this_record, UInt n_total_records,
    pp_LossRecord (n_this_record, n_total_records, l, /* xml */ False);
 }
 
-void MC_(pp_Error) ( Error* err )
+void MC_(pp_Error) ( const Error* err )
 {
    const Bool xml  = VG_(clo_xml); /* a shorthand */
    MC_Error* extra = VG_(get_error_extra)(err);
@@ -645,7 +439,7 @@ void MC_(pp_Error) ( Error* err )
          // the following code is untested.  Bad.
          if (xml) {
             emit( "  <kind>CoreMemError</kind>\n" );
-            emiN( "  <what>%pS contains unaddressable byte(s)</what>\n",
+            emit( "  <what>%pS contains unaddressable byte(s)</what>\n",
                   VG_(get_error_string)(err));
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          } else {
@@ -703,7 +497,7 @@ void MC_(pp_Error) ( Error* err )
          MC_(any_value_errors) = True;
          if (xml) {
             emit( "  <kind>SyscallParam</kind>\n" );
-            emiN( "  <what>Syscall param %pS contains "
+            emit( "  <what>Syscall param %pS contains "
                   "uninitialised byte(s)</what>\n",
                   VG_(get_error_string)(err) );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
@@ -725,12 +519,12 @@ void MC_(pp_Error) ( Error* err )
             MC_(any_value_errors) = True;
          if (xml) {
             emit( "  <kind>SyscallParam</kind>\n" );
-            emiN( "  <what>Syscall param %pS points to %s byte(s)</what>\n",
+            emit( "  <what>Syscall param %pS points to %s byte(s)</what>\n",
                   VG_(get_error_string)(err),
                   extra->Err.MemParam.isAddrErr 
                      ? "unaddressable" : "uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo(VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
                            &extra->Err.MemParam.ai, False);
             if (extra->Err.MemParam.origin_ec 
                 && !extra->Err.MemParam.isAddrErr)
@@ -742,7 +536,7 @@ void MC_(pp_Error) ( Error* err )
                   extra->Err.MemParam.isAddrErr 
                      ? "unaddressable" : "uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo(VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
                            &extra->Err.MemParam.ai, False);
             if (extra->Err.MemParam.origin_ec 
                 && !extra->Err.MemParam.isAddrErr)
@@ -761,7 +555,7 @@ void MC_(pp_Error) ( Error* err )
                    extra->Err.User.isAddrErr
                       ? "Unaddressable" : "Uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo(VG_(get_error_address)(err), &extra->Err.User.ai,
+            VG_(pp_addrinfo_mc)(VG_(get_error_address)(err), &extra->Err.User.ai,
                            False);
             if (extra->Err.User.origin_ec && !extra->Err.User.isAddrErr)
                mc_pp_origin( extra->Err.User.origin_ec,
@@ -771,7 +565,7 @@ void MC_(pp_Error) ( Error* err )
                    extra->Err.User.isAddrErr
                       ? "Unaddressable" : "Uninitialised" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo(VG_(get_error_address)(err), &extra->Err.User.ai,
+            VG_(pp_addrinfo_mc)(VG_(get_error_address)(err), &extra->Err.User.ai,
                            False);
             if (extra->Err.User.origin_ec && !extra->Err.User.isAddrErr)
                mc_pp_origin( extra->Err.User.origin_ec,
@@ -785,12 +579,12 @@ void MC_(pp_Error) ( Error* err )
             emit( "  <what>Invalid free() / delete / delete[]"
                   " / realloc()</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
                             &extra->Err.Free.ai, False );
          } else {
             emit( "Invalid free() / delete / delete[] / realloc()\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
                             &extra->Err.Free.ai, False );
          }
          break;
@@ -800,12 +594,12 @@ void MC_(pp_Error) ( Error* err )
             emit( "  <kind>MismatchedFree</kind>\n" );
             emit( "  <what>Mismatched free() / delete / delete []</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo(VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
                            &extra->Err.FreeMismatch.ai, False);
          } else {
             emit( "Mismatched free() / delete / delete []\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo(VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)(VG_(get_error_address)(err),
                            &extra->Err.FreeMismatch.ai, False);
          }
          break;
@@ -818,7 +612,7 @@ void MC_(pp_Error) ( Error* err )
                   extra->Err.Addr.isWrite ? "write" : "read",
                   extra->Err.Addr.szB );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
                             &extra->Err.Addr.ai,
                             extra->Err.Addr.maybe_gcc );
          } else {
@@ -827,7 +621,7 @@ void MC_(pp_Error) ( Error* err )
                   extra->Err.Addr.szB );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
 
-            mc_pp_AddrInfo( VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
                             &extra->Err.Addr.ai,
                             extra->Err.Addr.maybe_gcc );
          }
@@ -839,12 +633,12 @@ void MC_(pp_Error) ( Error* err )
             emit( "  <what>Jump to the invalid address stated "
                   "on the next line</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err), &extra->Err.Jump.ai,
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err), &extra->Err.Jump.ai,
                             False );
          } else {
             emit( "Jump to the invalid address stated on the next line\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err), &extra->Err.Jump.ai,
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err), &extra->Err.Jump.ai,
                             False );
          }
          break;
@@ -853,13 +647,13 @@ void MC_(pp_Error) ( Error* err )
          if (xml) {
             emit( "  <kind>Overlap</kind>\n" );
             if (extra->Err.Overlap.szB == 0) {
-               emiN( "  <what>Source and destination overlap "
+               emit( "  <what>Source and destination overlap "
                      "in %pS(%#lx, %#lx)\n</what>\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src );
             } else {
                emit( "  <what>Source and destination overlap "
-                     "in %s(%#lx, %#lx, %lu)</what>\n",
+                     "in %pS(%#lx, %#lx, %lu)</what>\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src,
                      extra->Err.Overlap.szB );
@@ -867,7 +661,7 @@ void MC_(pp_Error) ( Error* err )
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
          } else {
             if (extra->Err.Overlap.szB == 0) {
-               emiN( "Source and destination overlap in %pS(%#lx, %#lx)\n",
+               emit( "Source and destination overlap in %s(%#lx, %#lx)\n",
                      VG_(get_error_string)(err),
                      extra->Err.Overlap.dst, extra->Err.Overlap.src );
             } else {
@@ -887,12 +681,12 @@ void MC_(pp_Error) ( Error* err )
             emit( "  <kind>InvalidMemPool</kind>\n" );
             emit( "  <what>Illegal memory pool address</what>\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
                             &extra->Err.IllegalMempool.ai, False );
          } else {
             emit( "Illegal memory pool address\n" );
             VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-            mc_pp_AddrInfo( VG_(get_error_address)(err),
+            VG_(pp_addrinfo_mc)( VG_(get_error_address)(err),
                             &extra->Err.IllegalMempool.ai, False );
          }
          break;
@@ -904,6 +698,27 @@ void MC_(pp_Error) ( Error* err )
          pp_LossRecord (n_this_record, n_total_records, lr, xml);
          break;
       }
+
+      case Err_FishyValue:
+         if (xml) {
+            emit( "  <kind>FishyValue</kind>\n" );
+            emit( "  <what>");
+            emit( "Argument '%s' of function %s has a fishy "
+                  "(possibly negative) value: %ld\n",
+                  extra->Err.FishyValue.argument_name,
+                  extra->Err.FishyValue.function_name,
+                  (SSizeT)extra->Err.FishyValue.value);
+            emit( "</what>");
+            VG_(pp_ExeContext)( VG_(get_error_where)(err) );
+         } else {
+            emit( "Argument '%s' of function %s has a fishy "
+                  "(possibly negative) value: %ld\n",
+                  extra->Err.FishyValue.argument_name,
+                  extra->Err.FishyValue.function_name,
+                  (SSizeT)extra->Err.FishyValue.value);
+            VG_(pp_ExeContext)( VG_(get_error_where)(err) );
+         }
+         break;
 
       default: 
          printf("Error:\n  unknown Memcheck error code %d\n",
@@ -1046,6 +861,7 @@ void MC_(record_freemismatch_error) ( ThreadId tid, MC_Chunk* mc )
    ai->Addr.Block.block_szB  = mc->szB;
    ai->Addr.Block.rwoffset   = 0;
    ai->Addr.Block.allocated_at = MC_(allocated_at) (mc);
+   VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
    ai->Addr.Block.freed_at = MC_(freed_at) (mc);
    VG_(maybe_record_error)( tid, Err_FreeMismatch, mc->data, /*s*/NULL,
                             &extra );
@@ -1085,6 +901,25 @@ Bool MC_(record_leak_error) ( ThreadId tid, UInt n_this_record,
                        /*allow_GDB_attach*/False, count_error );
 }
 
+Bool MC_(record_fishy_value_error) ( ThreadId tid, const HChar *function_name,
+                                     const HChar *argument_name, SizeT value)
+{
+   MC_Error extra;
+
+   tl_assert(VG_INVALID_THREADID != tid);
+
+   if ((SSizeT)value >= 0) return False;  // not a fishy value
+
+   extra.Err.FishyValue.function_name = function_name;
+   extra.Err.FishyValue.argument_name = argument_name;
+   extra.Err.FishyValue.value = value;
+
+   VG_(maybe_record_error)( 
+      tid, Err_FishyValue, /*addr*/0, /*s*/NULL, &extra );
+
+   return True;
+}
+
 void MC_(record_user_error) ( ThreadId tid, Addr a,
                               Bool isAddrErr, UInt otag )
 {
@@ -1111,7 +946,7 @@ void MC_(record_user_error) ( ThreadId tid, Addr a,
 /* Compare error contexts, to detect duplicates.  Note that if they
    are otherwise the same, the faulting addrs and associated rwoffsets
    are allowed to be different.  */
-Bool MC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
+Bool MC_(eq_Error) ( VgRes res, const Error* e1, const Error* e2 )
 {
    MC_Error* extra1 = VG_(get_error_extra)(e1);
    MC_Error* extra2 = VG_(get_error_extra)(e2);
@@ -1153,6 +988,12 @@ Bool MC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
       case Err_Overlap:
       case Err_Cond:
          return True;
+
+      case Err_FishyValue:
+         return VG_STREQ(extra1->Err.FishyValue.function_name,
+                         extra2->Err.FishyValue.function_name) &&
+                VG_STREQ(extra1->Err.FishyValue.argument_name,
+                         extra2->Err.FishyValue.argument_name);
 
       case Err_Addr:
          return ( extra1->Err.Addr.szB == extra2->Err.Addr.szB
@@ -1197,9 +1038,6 @@ static Bool mempool_block_maybe_describe( Addr a, AddrInfo* ai );
 static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
 {
    MC_Chunk*  mc;
-   ThreadId   tid;
-   Addr       stack_min, stack_max;
-   VgSectKind sect;
 
    tl_assert(Addr_Undescribed == ai->tag);
 
@@ -1232,6 +1070,7 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
          ai->Addr.Block.block_szB  = mc->szB;
          ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
          ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
+         VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
          ai->Addr.Block.freed_at = MC_(freed_at)(mc);
          return;
       }
@@ -1245,81 +1084,13 @@ static void describe_addr ( Addr a, /*OUT*/AddrInfo* ai )
          ai->Addr.Block.block_szB  = mc->szB;
          ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
       ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
+      VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
       ai->Addr.Block.freed_at = MC_(freed_at)(mc);
          return;
       }
-   /* -- Perhaps the variable type/location data describes it? -- */
-   ai->Addr.Variable.descr1
-      = VG_(newXA)( VG_(malloc), "mc.da.descr1",
-                    VG_(free), sizeof(HChar) );
-   ai->Addr.Variable.descr2
-      = VG_(newXA)( VG_(malloc), "mc.da.descr2",
-                    VG_(free), sizeof(HChar) );
 
-   (void) VG_(get_data_description)( ai->Addr.Variable.descr1,
-                                     ai->Addr.Variable.descr2, a );
-   /* If there's nothing in descr1/2, free them.  Why is it safe to to
-      VG_(indexXA) at zero here?  Because VG_(get_data_description)
-      guarantees to zero terminate descr1/2 regardless of the outcome
-      of the call.  So there's always at least one element in each XA
-      after the call.
-   */
-   if (0 == VG_(strlen)( VG_(indexXA)( ai->Addr.Variable.descr1, 0 ))) {
-      VG_(deleteXA)( ai->Addr.Variable.descr1 );
-      ai->Addr.Variable.descr1 = NULL;
-   }
-   if (0 == VG_(strlen)( VG_(indexXA)( ai->Addr.Variable.descr2, 0 ))) {
-      VG_(deleteXA)( ai->Addr.Variable.descr2 );
-      ai->Addr.Variable.descr2 = NULL;
-   }
-   /* Assume (assert) that VG_(get_data_description) fills in descr1
-      before it fills in descr2 */
-   if (ai->Addr.Variable.descr1 == NULL)
-      tl_assert(ai->Addr.Variable.descr2 == NULL);
-   /* So did we get lucky? */
-   if (ai->Addr.Variable.descr1 != NULL) {
-      ai->tag = Addr_Variable;
-      return;
-   }
-   /* -- Have a look at the low level data symbols - perhaps it's in
-      there. -- */
-   VG_(memset)( &ai->Addr.DataSym.name,
-                0, sizeof(ai->Addr.DataSym.name));
-   if (VG_(get_datasym_and_offset)(
-             a, &ai->Addr.DataSym.name[0],
-             sizeof(ai->Addr.DataSym.name)-1,
-             &ai->Addr.DataSym.offset )) {
-      ai->tag = Addr_DataSym;
-      tl_assert( ai->Addr.DataSym.name
-                    [ sizeof(ai->Addr.DataSym.name)-1 ] == 0);
-      return;
-   }
-   /* -- Perhaps it's on a thread's stack? -- */
-   VG_(thread_stack_reset_iter)(&tid);
-   while ( VG_(thread_stack_next)(&tid, &stack_min, &stack_max) ) {
-      if (stack_min - VG_STACK_REDZONE_SZB <= a && a <= stack_max) {
-         ai->tag            = Addr_Stack;
-         ai->Addr.Stack.tid = tid;
-         return;
-      }
-   }
-   /* -- last ditch attempt at classification -- */
-   tl_assert( sizeof(ai->Addr.SectKind.objname) > 4 );
-   VG_(memset)( &ai->Addr.SectKind.objname, 
-                0, sizeof(ai->Addr.SectKind.objname));
-   VG_(strcpy)( ai->Addr.SectKind.objname, "???" );
-   sect = VG_(DebugInfo_sect_kind)( &ai->Addr.SectKind.objname[0],
-                                    sizeof(ai->Addr.SectKind.objname)-1, a);
-   if (sect != Vg_SectUnknown) {
-      ai->tag = Addr_SectKind;
-      ai->Addr.SectKind.kind = sect;
-      tl_assert( ai->Addr.SectKind.objname
-                    [ sizeof(ai->Addr.SectKind.objname)-1 ] == 0);
-      return;
-   }
-   /* -- Clueless ... -- */
-   ai->tag = Addr_Unknown;
-   return;
+   /* No block found. Search a non-heap block description. */
+   VG_(describe_addr) (a, ai);
 }
 
 void MC_(pp_describe_addr) ( Addr a )
@@ -1328,7 +1099,8 @@ void MC_(pp_describe_addr) ( Addr a )
 
    ai.tag = Addr_Undescribed;
    describe_addr (a, &ai);
-   mc_pp_AddrInfo (a, &ai, /* maybe_gcc */ False);
+   VG_(pp_addrinfo_mc) (a, &ai, /* maybe_gcc */ False);
+   VG_(clear_addrinfo) (&ai);
 }
 
 /* Fill in *origin_ec as specified by otag, or NULL it out if otag
@@ -1344,7 +1116,7 @@ static void update_origin ( /*OUT*/ExeContext** origin_ec,
 }
 
 /* Updates the copy with address info if necessary (but not for all errors). */
-UInt MC_(update_Error_extra)( Error* err )
+UInt MC_(update_Error_extra)( const Error* err )
 {
    MC_Error* extra = VG_(get_error_extra)(err);
 
@@ -1355,6 +1127,7 @@ UInt MC_(update_Error_extra)( Error* err )
    //case Err_Value:
    //case Err_Cond:
    case Err_Overlap:
+   case Err_FishyValue:
    // For Err_Leaks the returned size does not matter -- they are always
    // shown with VG_(unique_error)() so they 'extra' not copied.  But
    // we make it consistent with the others.
@@ -1447,6 +1220,7 @@ static Bool client_block_maybe_describe( Addr a,
          ai->Addr.Block.block_szB  = cgbs[i].size;
          ai->Addr.Block.rwoffset   = (Word)(a) - (Word)(cgbs[i].start);
          ai->Addr.Block.allocated_at = cgbs[i].where;
+         VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
          ai->Addr.Block.freed_at = VG_(null_ExeContext)();;
          return True;
       }
@@ -1474,6 +1248,7 @@ static Bool mempool_block_maybe_describe( Addr a,
                      ai->Addr.Block.block_szB  = mc->szB;
                      ai->Addr.Block.rwoffset   = (Word)a - (Word)mc->data;
                ai->Addr.Block.allocated_at = MC_(allocated_at)(mc);
+               VG_(initThreadInfo) (&ai->Addr.Block.alloc_tinfo);
                ai->Addr.Block.freed_at = MC_(freed_at)(mc);
                      return True;
                   }
@@ -1508,6 +1283,7 @@ typedef
       OverlapSupp,   // Overlapping blocks in memcpy(), strcpy(), etc
       LeakSupp,      // Something to be suppressed in a leak check.
       MempoolSupp,   // Memory pool suppression.
+      FishyValueSupp,// Fishy value suppression.
    } 
    MC_SuppKind;
 
@@ -1535,6 +1311,7 @@ Bool MC_(is_recognised_suppression) ( const HChar* name, Supp* su )
    else if (VG_STREQ(name, "Value4"))  skind = Value4Supp;
    else if (VG_STREQ(name, "Value8"))  skind = Value8Supp;
    else if (VG_STREQ(name, "Value16")) skind = Value16Supp;
+   else if (VG_STREQ(name, "FishyValue")) skind = FishyValueSupp;
    else 
       return False;
 
@@ -1556,6 +1333,11 @@ struct _MC_LeakSuppExtra {
    UInt  leak_search_gen;
 };
 
+typedef struct {
+   const HChar *function_name;
+   const HChar *argument_name;
+} MC_FishyValueExtra;
+
 Bool MC_(read_extra_suppression_info) ( Int fd, HChar** bufpp,
                                         SizeT* nBufp, Int* lineno, Supp *su )
 {
@@ -1570,7 +1352,7 @@ Bool MC_(read_extra_suppression_info) ( Int fd, HChar** bufpp,
       // We might have the optional match-leak-kinds line
       MC_LeakSuppExtra* lse;
       lse = VG_(malloc)("mc.resi.2", sizeof(MC_LeakSuppExtra));
-      lse->match_leak_kinds = RallS;
+      lse->match_leak_kinds = MC_(all_Reachedness)();
       lse->blocks_suppressed = 0;
       lse->bytes_suppressed = 0;
       lse->leak_search_gen = 0;
@@ -1581,17 +1363,46 @@ Bool MC_(read_extra_suppression_info) ( Int fd, HChar** bufpp,
          i = 17;
          while ((*bufpp)[i] && VG_(isspace((*bufpp)[i])))
             i++;
-         if (!MC_(parse_leak_kinds)((*bufpp)+i, &lse->match_leak_kinds)) {
+         if (!VG_(parse_enum_set)(MC_(parse_leak_kinds_tokens),
+                                  True/*allow_all*/,
+                                  (*bufpp)+i, &lse->match_leak_kinds)) {
             return False;
          }
       } else {
          return False; // unknown extra line.
       }
+   } else if (VG_(get_supp_kind)(su) == FishyValueSupp) {
+      MC_FishyValueExtra *extra;
+      HChar *p, *function_name, *argument_name = NULL;
+
+      eof = VG_(get_line) ( fd, bufpp, nBufp, lineno );
+      if (eof) return True;
+
+      // The suppression string is: function_name(argument_name)
+      function_name = VG_(strdup)("mv.resi.4", *bufpp);
+      p = VG_(strchr)(function_name, '(');
+      if (p != NULL) {
+         *p++ = '\0';
+         argument_name = p;
+         p = VG_(strchr)(p, ')');
+         if (p != NULL)
+            *p = '\0';
+      }
+      if (p == NULL) {    // malformed suppression string
+         VG_(free)(function_name);
+         return False;
+      }
+
+      extra = VG_(malloc)("mc.resi.3", sizeof *extra);
+      extra->function_name = function_name;
+      extra->argument_name = argument_name;
+
+      VG_(set_supp_extra)(su, extra);
    }
    return True;
 }
 
-Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
+Bool MC_(error_matches_suppression) ( const Error* err, const Supp* su )
 {
    Int       su_szB;
    MC_Error* extra = VG_(get_error_extra)(err);
@@ -1656,6 +1467,16 @@ Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
       case MempoolSupp:
          return (ekind == Err_IllegalMempool);
 
+      case FishyValueSupp: {
+         MC_FishyValueExtra *supp_extra = VG_(get_supp_extra)(su);
+
+         return (ekind == Err_FishyValue) &&
+                VG_STREQ(extra->Err.FishyValue.function_name,
+                         supp_extra->function_name) &&
+                VG_STREQ(extra->Err.FishyValue.argument_name,
+                         supp_extra->argument_name);
+      }
+
       default:
          printf("Error:\n"
                      "  unknown suppression type %d\n",
@@ -1665,7 +1486,7 @@ Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
    }
 }
 
-const HChar* MC_(get_error_name) ( Error* err )
+const HChar* MC_(get_error_name) ( const Error* err )
 {
    switch (VG_(get_error_kind)(err)) {
    case Err_RegParam:       return "Param";
@@ -1679,6 +1500,7 @@ const HChar* MC_(get_error_name) ( Error* err )
    case Err_Overlap:        return "Overlap";
    case Err_Leak:           return "Leak";
    case Err_Cond:           return "Cond";
+   case Err_FishyValue:     return "FishyValue";
    case Err_Addr: {
       MC_Error* extra = VG_(get_error_extra)(err);
       switch ( extra->Err.Addr.szB ) {
@@ -1705,54 +1527,60 @@ const HChar* MC_(get_error_name) ( Error* err )
    }
 }
 
-Bool MC_(get_extra_suppression_info) ( Error* err,
+SizeT MC_(get_extra_suppression_info) ( const Error* err,
                                        /*OUT*/HChar* buf, Int nBuf )
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
    tl_assert(buf);
-   tl_assert(nBuf >= 16); // stay sane
+   tl_assert(nBuf >= 1);
+
    if (Err_RegParam == ekind || Err_MemParam == ekind) {
       const HChar* errstr = VG_(get_error_string)(err);
       tl_assert(errstr);
-      VG_(snprintf)(buf, nBuf-1, "%s", errstr);
-      return True;
+      return VG_(snprintf)(buf, nBuf, "%s", errstr);
    } else if (Err_Leak == ekind) {
       MC_Error* extra = VG_(get_error_extra)(err);
-      VG_(snprintf)
-         (buf, nBuf-1, "match-leak-kinds: %s",
+      return VG_(snprintf) (buf, nBuf, "match-leak-kinds: %s",
           pp_Reachedness_for_leak_kinds(extra->Err.Leak.lr->key.state));
-      return True;
+   } else if (Err_FishyValue == ekind) {
+      MC_Error* extra = VG_(get_error_extra)(err);
+      return VG_(snprintf) (buf, nBuf, "%s(%s)",
+                            extra->Err.FishyValue.function_name,
+                            extra->Err.FishyValue.argument_name);
    } else {
-      return False;
+      buf[0] = '\0';
+      return 0;
    }
 }
 
-Bool MC_(print_extra_suppression_use) ( Supp *su,
+SizeT MC_(print_extra_suppression_use) ( const Supp *su,
                                         /*OUT*/HChar *buf, Int nBuf )
 {
+   tl_assert(nBuf >= 1);
+
    if (VG_(get_supp_kind)(su) == LeakSupp) {
       MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
 
       if (lse->leak_search_gen == MC_(leak_search_gen)
           && lse->blocks_suppressed > 0) {
-         VG_(snprintf) (buf, nBuf-1, 
+         return VG_(snprintf) (buf, nBuf,
                         "suppressed: %'lu bytes in %'lu blocks",
                         lse->bytes_suppressed,
                         lse->blocks_suppressed);
-         return True;
-      } else
-         return False;
-   } else
-      return False;
+      }
+   }
+
+   buf[0] = '\0';
+   return 0;
 }
 
-void MC_(update_extra_suppression_use) ( Error* err, Supp* su)
+void MC_(update_extra_suppression_use) ( const Error* err, const Supp* su)
 {
    if (VG_(get_supp_kind)(su) == LeakSupp) {
       MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
       MC_Error* extra = VG_(get_error_extra)(err);
 
-      tl_assert (lse->leak_search_gen = MC_(leak_search_gen));
+      tl_assert (lse->leak_search_gen == MC_(leak_search_gen));
       lse->blocks_suppressed += extra->Err.Leak.lr->num_blocks;
       lse->bytes_suppressed 
          += extra->Err.Leak.lr->szB + extra->Err.Leak.lr->indirect_szB;

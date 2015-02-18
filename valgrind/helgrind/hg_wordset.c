@@ -301,7 +301,7 @@ static WordVec* do_ix2vec_with_dead ( WordSetU* wsu, WordSet ws )
    if (is_dead(wsu,wv))
       wv = NULL;
    else
-   tl_assert(wv->owner == wsu); /* YYY */
+      tl_assert(wv->owner == wsu); /* YYY */
    return wv;
 }
 

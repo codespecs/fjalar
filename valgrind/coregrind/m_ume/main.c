@@ -56,7 +56,7 @@ static ExeHandler exe_handlers[] = {
 #  elif defined(VGO_darwin)
    { VG_(match_macho),  VG_(load_macho) },
 #  else
-#  error "unknown OS"
+#    error "unknown OS"
 #  endif
    { VG_(match_script), VG_(load_script) },
 };
@@ -87,7 +87,7 @@ VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd, Bool allow_setuid)
       if (is_setuid && !VG_(clo_xml)) {
          VG_(message)(Vg_UserMsg, "\n");
          VG_(message)(Vg_UserMsg,
-                      "Warning: Can't execute setuid/setgid executable: %s\n",
+                      "Warning: Can't execute setuid/setgid/setcap executable: %s\n",
                       exe_name);
          VG_(message)(Vg_UserMsg, "Possible workaround: remove "
                       "--trace-children=yes, if in effect\n");
@@ -199,7 +199,10 @@ static Bool is_binary_file(const HChar* f)
 // will refuse to (eg. scripts lacking a "#!" prefix).
 static Int do_exec_shell_followup(Int ret, const HChar* exe_name, ExeInfo* info)
 {
-#  if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
+#  if defined(VGPV_arm_linux_android) \
+      || defined(VGPV_x86_linux_android) \
+      || defined(VGPV_mips32_linux_android) \
+      || defined(VGPV_arm64_linux_android)
    const HChar*  default_interp_name = "/system/bin/sh";
 #  else
    const HChar*  default_interp_name = "/bin/sh";

@@ -46,7 +46,7 @@ void initialize_event_sets(void)
 	eventGroup[i] = 0;
 
     for(i=0; i< MAX_EVENTSET_COUNT; i++)
-	eventSetTable[i] = 0;
+	eventSetTable[i] = 0; 
 
     eventSets_initialized = 1;
  }
@@ -109,7 +109,7 @@ EventGroup* CLG_(register_event_group4)(int id, const HChar* n1,
 
     return eg;
 }
-  
+
 EventGroup* CLG_(get_event_group)(int id)
 {
     CLG_ASSERT(id>=0 && id<MAX_EVENTGROUP_COUNT);
@@ -128,7 +128,7 @@ EventSet* eventset_from_mask(UInt mask)
 
     initialize_event_sets();
     if (eventSetTable[mask]) return eventSetTable[mask];
-  
+
     es = (EventSet*) CLG_MALLOC("cl.events.eventset.1", sizeof(EventSet));
     es->mask = mask;
 
@@ -154,20 +154,12 @@ EventSet* CLG_(get_event_set)(Int id)
     CLG_ASSERT(id>=0 && id<MAX_EVENTGROUP_COUNT);
     return eventset_from_mask(1u << id);
 }
-  
+
 EventSet* CLG_(get_event_set2)(Int id1, Int id2)
 {
     CLG_ASSERT(id1>=0 && id1<MAX_EVENTGROUP_COUNT);
     CLG_ASSERT(id2>=0 && id2<MAX_EVENTGROUP_COUNT);
     return eventset_from_mask((1u << id1) | (1u << id2));
-}
-
-EventSet* CLG_(get_event_set3)(Int id1, Int id2, Int id3)
-{
-    CLG_ASSERT(id1>=0 && id1<MAX_EVENTGROUP_COUNT);
-    CLG_ASSERT(id2>=0 && id2<MAX_EVENTGROUP_COUNT);
-    CLG_ASSERT(id3>=0 && id3<MAX_EVENTGROUP_COUNT);
-    return eventset_from_mask((1u << id1) | (1u << id2) | (1u << id3));
 }
 
 EventSet* CLG_(add_event_group)(EventSet* es, Int id)
@@ -184,36 +176,12 @@ EventSet* CLG_(add_event_group2)(EventSet* es, Int id1, Int id2)
     if (!es) es = eventset_from_mask(0);
     return eventset_from_mask(es->mask | (1u << id1) | (1u << id2));
 }
-  
+
 EventSet* CLG_(add_event_set)(EventSet* es1, EventSet* es2)
 {
     if (!es1) es1 = eventset_from_mask(0);
     if (!es2) es2 = eventset_from_mask(0);
     return eventset_from_mask(es1->mask | es2->mask);
-}
-
-Int CLG_(sprint_eventset)(HChar* buf, EventSet* es)
-{
-    Int i, j, pos;
-    UInt mask;
-    EventGroup* eg;
-
-
-    CLG_ASSERT(es->size >0);
-    pos = 0;
-    for(i=0, mask=1; i<MAX_EVENTGROUP_COUNT; i++, mask=mask<<1) {
-	if ((es->mask & mask)==0) continue;
-	if (eventGroup[i] ==0) continue;
-
-	eg = eventGroup[i];
-	for(j=0; j<eg->size; j++) {
-    if (pos>0) buf[pos++] = ' ';
-	    pos += VG_(sprintf)(buf + pos, "%s", eg->name[j]);
-	}
-  }
-  buf[pos] = 0;
-
-  return pos;
 }
 
 
@@ -226,123 +194,110 @@ ULong* CLG_(get_eventset_cost)(EventSet* es)
 /* Set all costs of an event set to zero */
 void CLG_(init_cost)(EventSet* es, ULong* cost)
 {
-  Int i;
+    Int i;
 
-  if (!cost) return;
+    if (!cost) return;
 
     for(i=0; i<es->size; i++)
-    cost[i] = 0;
+	cost[i] = 0;
 }
 
 /* Set all costs of an event set to zero */
 void CLG_(init_cost_lz)(EventSet* es, ULong** cost)
 {
-  Int i;
+    Int i;
 
-  CLG_ASSERT(cost != 0);
-  if (!(*cost))
-    *cost = CLG_(get_eventset_cost)(es);
+    CLG_ASSERT(cost != 0);
+    if (!(*cost))
+	*cost = CLG_(get_eventset_cost)(es);
 
     for(i=0; i<es->size; i++)
-    (*cost)[i] = 0;
+	(*cost)[i] = 0;
 }
 
 void CLG_(zero_cost)(EventSet* es, ULong* cost)
 {
-  Int i;
+    Int i;
 
-  if (!cost) return;
+    if (!cost) return;
 
-  for(i=0;i<es->size;i++)
-    cost[i] = 0;
+    for(i=0;i<es->size;i++)
+	cost[i] = 0;
 }
   
 Bool CLG_(is_zero_cost)(EventSet* es, ULong* cost)
 {
     Int i;
 
-  if (!cost) return True;
+    if (!cost) return True;
 
     for(i=0; i<es->size; i++)
-    if (cost[i] != 0) return False;
+	if (cost[i] != 0) return False;
 
-  return True;
-}
-
-Bool CLG_(is_equal_cost)(EventSet* es, ULong* c1, ULong* c2)
-{
-    Int i;
-
-    if (!c1) return CLG_(is_zero_cost)(es, c2);
-    if (!c2) return CLG_(is_zero_cost)(es, c1);
-
-    for(i=0; i<es->size; i++)
-    if (c1[i] != c2[i]) return False;
-
-  return True;
+    return True;
 }
 
 void CLG_(copy_cost)(EventSet* es, ULong* dst, ULong* src)
 {
-  Int i;
+    Int i;
 
-  if (!src) {
-    CLG_(zero_cost)(es, dst);
-    return;
-  }
-  CLG_ASSERT(dst != 0);
+    if (!src) {
+	CLG_(zero_cost)(es, dst);
+	return;
+    }
+    CLG_ASSERT(dst != 0);
   
-  for(i=0;i<es->size;i++)
-    dst[i] = src[i];
+    for(i=0;i<es->size;i++)
+	dst[i] = src[i];
 }
 
 void CLG_(copy_cost_lz)(EventSet* es, ULong** pdst, ULong* src)
 {
-  Int i;
-  ULong* dst;
+    Int i;
+    ULong* dst;
 
-  CLG_ASSERT(pdst != 0);
+    CLG_ASSERT(pdst != 0);
 
-  if (!src) {
-    CLG_(zero_cost)(es, *pdst);
-    return;
-  }
-  dst = *pdst;
-  if (!dst)
-    dst = *pdst = CLG_(get_eventset_cost)(es);
+    if (!src) {
+	CLG_(zero_cost)(es, *pdst);
+	return;
+    }
+    dst = *pdst;
+    if (!dst)
+	dst = *pdst = CLG_(get_eventset_cost)(es);
   
-  for(i=0;i<es->size;i++)
-    dst[i] = src[i];
+    for(i=0;i<es->size;i++)
+	dst[i] = src[i];
 }
 
 void CLG_(add_cost)(EventSet* es, ULong* dst, ULong* src)
 {
     Int i;
 
-  if (!src) return;
-  CLG_ASSERT(dst != 0);
+    if (!src) return;
+    CLG_ASSERT(dst != 0);
 
     for(i=0; i<es->size; i++)
-      dst[i] += src[i];
+	dst[i] += src[i];
 }
 
 void CLG_(add_cost_lz)(EventSet* es, ULong** pdst, ULong* src)
 {
-  Int i;
-  ULong* dst;
+    Int i;
+    ULong* dst;
 
-  if (!src) return;
-  CLG_ASSERT(pdst != 0);
+    if (!src) return;
+    CLG_ASSERT(pdst != 0);
 
-  dst = *pdst;
-  if (!dst) {
-    dst = *pdst = CLG_(get_eventset_cost)(es);
+    dst = *pdst;
+    if (!dst) {
+	dst = *pdst = CLG_(get_eventset_cost)(es);
 	CLG_(copy_cost)(es, dst, src);
-    return;
-  }
+	return;
+    }
 
     for(i=0; i<es->size; i++)
-      dst[i] += src[i];
+	dst[i] += src[i];
 }
 
 /* Adds src to dst and zeros src. Returns false if nothing changed */
@@ -356,10 +311,10 @@ Bool CLG_(add_and_zero_cost)(EventSet* es, ULong* dst, ULong* src)
 
     for(i=0; i<es->size; i++) {
 	if (src[i]==0) continue;
-      dst[i] += src[i];
-      src[i] = 0;
+	dst[i] += src[i];
+	src[i] = 0;
 	is_nonzero = True;
-  }
+    }
 
     return is_nonzero;
 }
@@ -375,7 +330,7 @@ Bool CLG_(add_and_zero_cost2)(EventSet* esDst, ULong* dst,
     ULong *egDst, *egSrc;
 
     CLG_ASSERT((esDst != 0) && (dst != 0) && (esSrc != 0));
-  if (!src) return False;
+    if (!src) return False;
 
     for(i=0, mask=1; i<MAX_EVENTGROUP_COUNT; i++, mask=mask<<1) {
 	if ((esSrc->mask & mask)==0) continue;
@@ -391,8 +346,8 @@ Bool CLG_(add_and_zero_cost2)(EventSet* esDst, ULong* dst,
 	    egDst[j] += egSrc[j];
 	    egSrc[j] = 0;
 	    is_nonzero = True;
-  }
-  }
+	}
+    }
 
     return is_nonzero;
 }
@@ -411,83 +366,56 @@ Bool CLG_(add_diff_cost)(EventSet* es, ULong* dst, ULong* old, ULong* new_cost)
 
     for(i=0; i<es->size; i++) {
 	if (new_cost[i] == old[i]) continue;
-      dst[i] += new_cost[i] - old[i];
-      old[i] = new_cost[i];
+	dst[i] += new_cost[i] - old[i];
+	old[i] = new_cost[i];
 	is_nonzero = True;
-  }
+    }
 
     return is_nonzero;
 }
 
 Bool CLG_(add_diff_cost_lz)(EventSet* es, ULong** pdst, ULong* old, ULong* new_cost)
 {
-  Int i;
-  ULong* dst;
+    Int i;
+    ULong* dst;
     Bool is_nonzero = False;
 
     CLG_ASSERT((es != 0) && (pdst != 0));
-  CLG_ASSERT(old && new_cost);
+    CLG_ASSERT(old && new_cost);
 
-  dst = *pdst;
-  if (!dst) {
-    dst = *pdst = CLG_(get_eventset_cost)(es);
+    dst = *pdst;
+    if (!dst) {
+	dst = *pdst = CLG_(get_eventset_cost)(es);
 	CLG_(zero_cost)(es, dst);
-  }
+    }
 
     for(i=0; i<es->size; i++) {
 	if (new_cost[i] == old[i]) continue;
-  dst[i] += new_cost[i] - old[i];
-  old[i] = new_cost[i];
+	dst[i] += new_cost[i] - old[i];
+	old[i] = new_cost[i];
 	is_nonzero = True;
-  }
+    }
 
     return is_nonzero;
-}
-
-
-/* Returns number of characters written */
-Int CLG_(sprint_cost)(HChar* buf, EventSet* es, ULong* c)
-{
-  Int i, pos, skipped = 0;
-
-  if (!c || es->size==0) return 0;
-
-  /* At least one entry */
-  pos = VG_(sprintf)(buf, "%llu", c[0]);
-    for(i=1; i<es->size; i++) {
-    if (c[i] == 0) {
-	    skipped++;
-	    continue;
-    }
-      while(skipped>0) {
-	buf[pos++] = ' ';
-	buf[pos++] = '0';
-	skipped--;
-      }
-      buf[pos++] = ' ';
-      pos += VG_(sprintf)(buf+pos, "%llu", c[i]);
-  }
-
-  return pos;
 }
 
 
 /* Allocate space for an event mapping */
 EventMapping* CLG_(get_eventmapping)(EventSet* es)
 {
-  EventMapping* em;
+    EventMapping* em;
 
-  CLG_ASSERT(es != 0);
+    CLG_ASSERT(es != 0);
 
-  em = (EventMapping*) CLG_MALLOC("cl.events.geMapping.1",
-                                   sizeof(EventMapping) +
+    em = (EventMapping*) CLG_MALLOC("cl.events.geMapping.1",
+				    sizeof(EventMapping) +
 				    sizeof(struct EventMappingEntry) *
 				    es->size);
     em->capacity = es->size;
-  em->size = 0;
+    em->size = 0;
     em->es = es;
 
-  return em;
+    return em;
 }
 
 void CLG_(append_event)(EventMapping* em, const HChar* n)
@@ -496,7 +424,7 @@ void CLG_(append_event)(EventMapping* em, const HChar* n)
     UInt mask;
     EventGroup* eg;
 
-  CLG_ASSERT(em != 0);
+    CLG_ASSERT(em != 0);
     for(i=0, mask=1; i<MAX_EVENTGROUP_COUNT; i++, mask=mask<<1) {
 	if ((em->es->mask & mask)==0) continue;
 	if (eventGroup[i] ==0) continue;
@@ -506,59 +434,74 @@ void CLG_(append_event)(EventMapping* em, const HChar* n)
 	    if (VG_(strcmp)(n, eg->name[j])!=0)
 		    continue;
 
-  CLG_ASSERT(em->capacity > em->size);
+	    CLG_ASSERT(em->capacity > em->size);
 	    em->entry[em->size].group = i;
 	    em->entry[em->size].index = j;
 	    em->entry[em->size].offset = offset;
-  em->size++;
+	    em->size++;
 	    return;
 	}
     }
 }
 
 
-/* Returns number of characters written */
-Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping* em)
+/* Returns pointer to dynamically string. The string will be overwritten
+   with each invocation. */
+HChar *CLG_(eventmapping_as_string)(const EventMapping* em)
 {
-  Int i, pos = 0;
+    Int i;
     EventGroup* eg;
 
-  CLG_ASSERT(em != 0);
+    CLG_ASSERT(em != 0);
 
-  for(i=0; i< em->size; i++) {
-    if (pos>0) buf[pos++] = ' ';
+    XArray *xa = VG_(newXA)(VG_(malloc), "cl.events.emas", VG_(free),
+                            sizeof(HChar));
+
+    for(i=0; i< em->size; i++) {
+	if (i > 0) {
+           VG_(xaprintf)(xa, "%c", ' ');
+        }
 	eg = eventGroup[em->entry[i].group];
 	CLG_ASSERT(eg != 0);
-	pos += VG_(sprintf)(buf + pos, "%s", eg->name[em->entry[i].index]);
-  }
-  buf[pos] = 0;
+        VG_(xaprintf)(xa, "%s", eg->name[em->entry[i].index]);
+    }
+    VG_(xaprintf)(xa, "%c", '\0');   // zero terminate the string
 
-  return pos;
+    HChar *buf = VG_(strdup)("cl.events.emas", VG_(indexXA)(xa, 0));
+    VG_(deleteXA)(xa);
+
+    return buf;
 }
 
-/* Returns number of characters written */
-Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping* em, ULong* c)
+/* Returns pointer to dynamically allocated string. Caller needs to
+   VG_(free) it. */
+HChar *CLG_(mappingcost_as_string)(const EventMapping* em, const ULong* c)
 {
-  Int i, pos, skipped = 0;
+    Int i, skipped = 0;
 
-  if (!c || em->size==0) return 0;
+    if (!c || em->size==0) return VG_(strdup)("cl.events.mcas", "");
+
+    XArray *xa = VG_(newXA)(VG_(malloc), "cl.events.mcas", VG_(free),
+                            sizeof(HChar));
 
     /* At least one entry */
-    pos = VG_(sprintf)(buf, "%llu", c[em->entry[0].offset]);
+    VG_(xaprintf)(xa, "%llu", c[em->entry[0].offset]);
 
     for(i=1; i<em->size; i++) {
 	if (c[em->entry[i].offset] == 0) {
-      skipped++;
+	    skipped++;
 	    continue;
+	}
+	while(skipped>0) {
+            VG_(xaprintf)(xa, " 0");
+	    skipped--;
+	}
+	VG_(xaprintf)(xa, " %llu", c[em->entry[i].offset]);
     }
-      while(skipped>0) {
-	buf[pos++] = ' ';
-	buf[pos++] = '0';
-	skipped--;
-      }
-      buf[pos++] = ' ';
-	pos += VG_(sprintf)(buf+pos, "%llu", c[em->entry[i].offset]);
-  }
+    VG_(xaprintf)(xa, "%c", '\0');   // zero terminate the string
 
-  return pos;
+    HChar *buf = VG_(strdup)("cl.events.mas", VG_(indexXA)(xa, 0));
+    VG_(deleteXA)(xa);
+
+    return buf;
 }

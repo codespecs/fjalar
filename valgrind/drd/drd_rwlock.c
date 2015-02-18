@@ -181,8 +181,8 @@ static void DRD_(rwlock_combine_other_vc)(struct rwlock_info* const p,
          if (readers_too && q->latest_rdlocked_segment)
             DRD_(vc_combine)(DRD_(thread_get_vc)(tid),
                              &q->latest_rdlocked_segment->vc);
-         }
       }
+   }
    DRD_(thread_update_conflict_set)(tid, &old_vc);
    DRD_(vc_cleanup)(&old_vc);
 }

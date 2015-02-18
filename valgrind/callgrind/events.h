@@ -47,7 +47,7 @@
 
 typedef struct _EventGroup EventGroup;
 struct _EventGroup {
-  Int size;
+    Int size;
     const HChar* name[0];
 };
 
@@ -59,7 +59,7 @@ EventGroup* CLG_(register_event_group3)(int id, const HChar*, const HChar*,
 EventGroup* CLG_(register_event_group4)(int id, const HChar*, const HChar*,
                                         const HChar*, const HChar*);
 EventGroup* CLG_(get_event_group)(int id);
-  
+
 /* Event sets are defined by event groups they consist of. */
 
 typedef struct _EventSet EventSet;
@@ -74,12 +74,9 @@ struct _EventSet {
 /* Same event set is returned when requesting same event groups */
 EventSet* CLG_(get_event_set)(Int id);
 EventSet* CLG_(get_event_set2)(Int id1, Int id2);
-EventSet* CLG_(get_event_set3)(Int id1, Int id2, Int id3);
 EventSet* CLG_(add_event_group)(EventSet*, Int id);
 EventSet* CLG_(add_event_group2)(EventSet*, Int id1, Int id2);
 EventSet* CLG_(add_event_set)(EventSet*, EventSet*);
-/* Writes event names into buf. Returns number of characters written */
-Int CLG_(sprint_eventset)(HChar* buf, EventSet*);
 
 
 /* Operations on costs. A cost pointer of 0 means zero cost.
@@ -93,7 +90,6 @@ void CLG_(init_cost_lz)(EventSet*,ULong**);
 /* Set costs of an event set to zero */
 void CLG_(zero_cost)(EventSet*,ULong*);
 Bool CLG_(is_zero_cost)(EventSet*,ULong*);
-Bool CLG_(is_equal_cost)(EventSet*,ULong*,ULong*);
 void CLG_(copy_cost)(EventSet*,ULong* dst, ULong* src);
 void CLG_(copy_cost_lz)(EventSet*,ULong** pdst, ULong* src);
 void CLG_(add_cost)(EventSet*,ULong* dst, ULong* src);
@@ -105,8 +101,6 @@ Bool CLG_(add_and_zero_cost2)(EventSet*,ULong* dst,EventSet*,ULong* src);
  * Returns false if nothing changed */
 Bool CLG_(add_diff_cost)(EventSet*,ULong* dst, ULong* old, ULong* new_cost);
 Bool CLG_(add_diff_cost_lz)(EventSet*,ULong** pdst, ULong* old, ULong* new_cost);
-/* Returns number of characters written */
-Int CLG_(sprint_cost)(HChar* buf, EventSet*, ULong*);
 
 /* EventMapping: An ordered subset of events from an event set.
  * This is used to print out part of an EventSet, or in another order.
@@ -127,9 +121,13 @@ struct _EventMapping {
 /* Allocate space for an event mapping */
 EventMapping* CLG_(get_eventmapping)(EventSet*);
 void CLG_(append_event)(EventMapping*, const HChar*);
-/* Returns number of characters written */
-Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping*);
-/* Returns number of characters written */
-Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping*, ULong*);
+/* Returns event mapping as a character string. That string is dynamically
+   allocated and it is the caller's responsibility to free it.
+   The function never returns NULL. */
+HChar *CLG_(eventmapping_as_string)(const EventMapping*);
+/* Returns mapping cost as a character string. That string is dynamically
+   allocated and it is the caller's responsibility to free it.
+   The function never returns NULL. */
+HChar *CLG_(mappingcost_as_string)(const EventMapping*, const ULong*);
 
 #endif /* CLG_EVENTS */

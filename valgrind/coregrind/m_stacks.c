@@ -87,8 +87,8 @@
  */
 typedef struct _Stack {
    UWord id;
-   Addr start;
-   Addr end;
+   Addr start; // Lowest stack byte, included.
+   Addr end;   // Highest stack byte, included.
    struct _Stack *next;
 } Stack;
 
@@ -183,12 +183,15 @@ UWord VG_(register_stack)(Addr start, Addr end)
    Stack *i;
 
    if (start > end) {
+      /* If caller provides addresses in reverse order, swap them.
+         Ugly but not doing that breaks backward compatibility with
+         (user) code registering stacks with start/end inverted . */
       Addr t = end;
       end = start;
       start = t;
    }
 
-   i = (Stack *)VG_(arena_malloc)(VG_AR_CORE, "stacks.rs.1", sizeof(Stack));
+   i = VG_(malloc)("stacks.rs.1", sizeof(Stack));
    i->start = start;
    i->end = end;
    i->id = next_id++;
@@ -199,7 +202,7 @@ UWord VG_(register_stack)(Addr start, Addr end)
       current_stack = i;
    }
 
-   VG_(debugLog)(2, "stacks", "register %p-%p as stack %lu\n",
+   VG_(debugLog)(2, "stacks", "register [%p-%p] as stack %lu\n",
                     (void*)start, (void*)end, i->id);
 
    return i->id;
@@ -227,7 +230,7 @@ void VG_(deregister_stack)(UWord id)
          } else {
             prev->next = i->next;
          }
-         VG_(arena_free)(VG_AR_CORE, i);
+         VG_(free)(i);
          return;
       }
       prev = i;
@@ -246,9 +249,11 @@ void VG_(change_stack)(UWord id, Addr start, Addr end)
 
    while (i) {
       if (i->id == id) {
-         VG_(debugLog)(2, "stacks", "change stack %lu from %p-%p to %p-%p\n",
+         VG_(debugLog)(2, "stacks", 
+                       "change stack %lu from [%p-%p] to [%p-%p]\n",
                        id, (void*)i->start, (void*)i->end,
                            (void*)start,    (void*)end);
+         /* FIXME : swap start/end like VG_(register_stack) ??? */
          i->start = start;
          i->end = end;
          return;
@@ -271,16 +276,15 @@ void VG_(stack_limits)(Addr SP, Addr *start, Addr *end )
    }
 }
 
-
 /* complaints_stack_switch reports that SP has changed by more than some
    threshold amount (by default, 2MB).  We take this to mean that the
    application is switching to a new stack, for whatever reason.
-       
-         JRS 20021001: following discussions with John Regehr, if a stack
-         switch happens, it seems best not to mess at all with memory
-         permissions.  Seems to work well with Netscape 4.X.  Really the
-         only remaining difficulty is knowing exactly when a stack switch is
-         happening. */
+   
+   JRS 20021001: following discussions with John Regehr, if a stack
+   switch happens, it seems best not to mess at all with memory
+   permissions.  Seems to work well with Netscape 4.X.  Really the
+   only remaining difficulty is knowing exactly when a stack switch is
+   happening. */
 __attribute__((noinline))
 static void complaints_stack_switch (Addr old_SP, Addr new_SP)
 {
@@ -288,18 +292,18 @@ static void complaints_stack_switch (Addr old_SP, Addr new_SP)
    if (VG_(clo_verbosity) > 0 && complaints > 0 && !VG_(clo_xml)) {
       Word delta  = (Word)new_SP - (Word)old_SP;
       complaints--;
-         VG_(message)(Vg_UserMsg,
-            "Warning: client switching stacks?  "
-            "SP change: 0x%lx --> 0x%lx\n", old_SP, new_SP);
-         VG_(message)(Vg_UserMsg,
+      VG_(message)(Vg_UserMsg,
+                   "Warning: client switching stacks?  "
+                   "SP change: 0x%lx --> 0x%lx\n", old_SP, new_SP);
+      VG_(message)(Vg_UserMsg,
                    "         to suppress, use: --max-stackframe=%ld "
                    "or greater\n",
-            (delta < 0 ? -delta : delta));
+                   (delta < 0 ? -delta : delta));
       if (complaints == 0)
-            VG_(message)(Vg_UserMsg,
-                "         further instances of this message "
-                "will not be shown.\n");
-      }
+         VG_(message)(Vg_UserMsg,
+                      "         further instances of this message "
+                      "will not be shown.\n");
+   }
 }
 
 /* The functions VG_(unknown_SP_update) and VG_(unknown_SP_update_w_ECU)

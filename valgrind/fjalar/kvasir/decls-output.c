@@ -44,6 +44,7 @@ extern const char* func_name;
 // properly ...
 TypeEntry* cur_type_for_printing_object_ppt = NULL;
 
+// (comment added 2006)  
 // Another hack alert ... this is a string that represents the name of
 // the top-level type (that appears in typeNameStrTable) which we are
 // currently traversing through.  We need to print this instead of the
@@ -89,6 +90,7 @@ struct genhashtable* objectIdTable = NULL;
 struct genhashtable* funcObjectTable = NULL;
 
 // Contains a mapping between a string and it's typename
+// (comment added 2008)  
 // RUDD TODO: When I get a chance I need to allow Fjalar to pass
 // more non-string information, so I don't have to resort to so many
 // hashes of strings.
@@ -324,6 +326,7 @@ void outputDeclsFile(char faux_decls)
 // Print .decls at the end of program execution and then close it
 // (Only used when DynComp is on)
 void DC_outputDeclsAtEnd() {
+  // (comment added 2009)  
   // TODO: Function is almost identical to outputDeclsFile, may as well refactor them
   // into one function.
   //  printf("DC_outputDeclsAtEnd()\n");
@@ -666,6 +669,7 @@ printDeclsEntryAction(VariableEntry* var,
         }
         else if ((IS_STRING(var)) ||
                  (OVERRIDE_CHAR_AS_STRING == disambigOverride)) {
+          // (comment added 2008)  
           // TODO: Change this permanently from "java.lang.String" to
           // "string" in DaikonRepTypeString[] when we're done with the
           // switch-over to the new .decls format
@@ -782,6 +786,7 @@ printDeclsEntryAction(VariableEntry* var,
       //     dec-type int[]
       //     parent _buffers:::OBJECT this->age  <--- WRONG - CUT IT OUT!
 
+      // (comment added 2006)  
       // (TODO: Add support for static member variables at :::OBJECT
       //  program points.  This is just implementation effort ...)
       // Static member variables return True for IS_GLOBAL_VAR(), so
@@ -805,6 +810,7 @@ printDeclsEntryAction(VariableEntry* var,
       //     flags non_null
       //     parent A:::OBJECT this->B          <--- This is WRONG
 
+      // (comment added 2006)  
       // The hack is that we want to prevent those entries from being
       // printed.  One simple check is to see whether the parent type
       // matches cur_type_for_printing_object_ppt, and if so, ignore it.
@@ -816,6 +822,7 @@ printDeclsEntryAction(VariableEntry* var,
           && VG_(strcmp)("return", enclosingVarNamesStack.stack[0])
           && varFuncInfo && varFuncInfo->parentClass) {
 
+        // (comment added 2006)  
         // Make sure that the type matches up with the type of
         // this->field ...  A hack is to check whether printAsSequence
         // is True and numDereferences == 0 ... if so, then don't
@@ -1094,6 +1101,7 @@ printDeclsEntryAction(VariableEntry* var,
     if (!kvasir_old_decls_format) {
       // These are the global records that go at the top of the .decls file
 
+      // (comment added 2008)  
       // TODO: Make separate flags for C and C++; right now this simply
       // prints C/C++.  This information can be grabbed from the DWARF2
       // debug. info. using the DW_AT_language tags (try "readelf -w" on
@@ -1513,7 +1521,7 @@ printDeclsEntryAction(VariableEntry* var,
     if (!kvasir_object_ppts && !kvasir_old_decls_format)
       return;
 
-
+    // (comment added 2005)  
     // HACK ALERT: We need to temporarily pretend that we are not using
     // kvasir_with_dyncomp in order to print out the OBJECT program
     // points normally.  We need to set this back at the end of the
@@ -1522,8 +1530,6 @@ printDeclsEntryAction(VariableEntry* var,
       kvasir_with_dyncomp = False;
       hacked_dyncomp_switch = True;
     }
-
-
 
     while (hasNextType(typeIt)) {
       TypeEntry* cur_type = nextType(typeIt);
@@ -1662,9 +1668,11 @@ printDeclsEntryAction(VariableEntry* var,
             typeNameStrTable = 0;
           }
 
+          // (comment added 2005)  
           // TODO: What do we do about static member vars?
           // Right now we just print them out like globals
 
+          // (comment added 2006)  
           // (TODO: Add support for static member variables at :::OBJECT
           //  program points.  This is just implementation effort ...)
         }
@@ -1675,6 +1683,7 @@ printDeclsEntryAction(VariableEntry* var,
 
     cur_type_for_printing_object_ppt = 0;
 
+    // (comment added 2008)  
     // HACK ALERT! Remember to restore original state
     if (hacked_dyncomp_switch) {
       kvasir_with_dyncomp = True;
@@ -1688,6 +1697,7 @@ printDeclsEntryAction(VariableEntry* var,
  // (through nesting or otherwise). Caller needs to Allocate
  // nestedTraversalTable before call, and remove it after call
  // to prevent infinite recursion.
+ // (comment added 2008)  
  // TODO: Base this on typeEntries instead of strings? Would be
  // interesting, however the fact that classes have no typeEntries
  // may be problematic

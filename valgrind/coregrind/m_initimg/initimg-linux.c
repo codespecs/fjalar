@@ -126,6 +126,9 @@ static void load_client ( /*OUT*/ExeInfo* info,
 */
 static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 {
+   vg_assert(origenv);
+   vg_assert(toolname);
+
    const HChar* preload_core    = "vgpreload_core";
    const HChar* ld_preload      = "LD_PRELOAD=";
    const HChar* v_launcher      = VALGRIND_LAUNCHER "=";
@@ -151,14 +154,9 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    Int preload_string_len    = preload_core_path_len + preload_tool_path_len;
    HChar* preload_string     = VG_(malloc)("initimg-linux.sce.1",
                                            preload_string_len);
-   vg_assert(origenv);
-   vg_assert(toolname);
-   vg_assert(preload_string);
-
    /* Determine if there's a vgpreload_<tool>_<platform>.so file, and setup
       preload_string. */
    preload_tool_path = VG_(malloc)("initimg-linux.sce.2", preload_tool_path_len);
-   vg_assert(preload_tool_path);
    VG_(snprintf)(preload_tool_path, preload_tool_path_len,
                  "%s/vgpreload_%s-%s.so", VG_(libdir), toolname, VG_PLATFORM);
    if (VG_(access)(preload_tool_path, True/*r*/, False/*w*/, False/*x*/) == 0) {
@@ -184,7 +182,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    /* Allocate a new space */
    ret = VG_(malloc) ("initimg-linux.sce.3",
                       sizeof(HChar *) * (envc+1+1)); /* 1 new entry + NULL */
-   vg_assert(ret);
 
    /* copy it over */
    for (cpp = ret; *origenv; ) {
@@ -200,7 +197,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       if (VG_(memcmp)(*cpp, ld_preload, ld_preload_len) == 0) {
          Int len = VG_(strlen)(*cpp) + preload_string_len;
          HChar *cp = VG_(malloc)("initimg-linux.sce.4", len);
-         vg_assert(cp);
 
          VG_(snprintf)(cp, len, "%s%s:%s",
                        ld_preload, preload_string, (*cpp)+ld_preload_len);
@@ -216,7 +212,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    if (!ld_preload_done) {
       Int len = ld_preload_len + preload_string_len;
       HChar *cp = VG_(malloc) ("initimg-linux.sce.5", len);
-      vg_assert(cp);
 
       VG_(snprintf)(cp, len, "%s%s", ld_preload, preload_string);
 
@@ -366,7 +361,7 @@ struct auxv *find_auxv(UWord* sp)
       sp++;
    sp++;
    
-#if defined(VGA_ppc32) || defined(VGA_ppc64)
+#if defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
 # if defined AT_IGNOREPPC
    while (*sp == AT_IGNOREPPC)        // skip AT_IGNOREPPC entries
       sp += 2;
@@ -400,7 +395,6 @@ Addr setup_client_stack( void*  init_sp,
    Addr client_SP;	        /* client stack base (initial SP) */
    Addr clstack_start;
    Int i;
-   Bool have_exename;
 
    vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
    vg_assert( VG_(args_for_client) );
@@ -412,7 +406,6 @@ Addr setup_client_stack( void*  init_sp,
 
    /* first of all, work out how big the client stack will be */
    stringsize   = 0;
-   have_exename = VG_(args_the_exename) != NULL;
 
    /* paste on the extra args if the loader needs them (ie, the #! 
       interpreter and its argument) */
@@ -427,8 +420,7 @@ Addr setup_client_stack( void*  init_sp,
    }
 
    /* now scan the args we're given... */
-   if (have_exename)
-      stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
+   stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       argc++;
@@ -452,19 +444,20 @@ Addr setup_client_stack( void*  init_sp,
 	 stringsize += VG_(strlen)(cauxv->u.a_ptr) + 1;
       else if (cauxv->a_type == AT_RANDOM)
 	 stringsize += 16;
-      else if (cauxv->a_type == AT_EXECFN && have_exename)
+      else if (cauxv->a_type == AT_EXECFN)
 	 stringsize += VG_(strlen)(VG_(args_the_exename)) + 1;
       auxsize += sizeof(*cauxv);
    }
 
-#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
+      || defined(VGP_ppc64le_linux)
    auxsize += 2 * sizeof(*cauxv);
 #  endif
 
    /* OK, now we know how big the client stack is */
    stacksize =
       sizeof(Word) +                          /* argc */
-      (have_exename ? sizeof(HChar **) : 0) + /* argc[0] == exename */
+      sizeof(HChar **) +                      /* argc[0] == exename */
       sizeof(HChar **)*argc +                 /* argv */
       sizeof(HChar **) +                      /* terminal NULL */
       sizeof(HChar **)*envc +                 /* envp */
@@ -566,8 +559,8 @@ Addr setup_client_stack( void*  init_sp,
      vg_assert(!sr_isError(res)); 
 
      /* Record stack extent -- needed for stack-change code. */
-     VG_(clstk_base) = anon_start -inner_HACK;
-     VG_(clstk_end)  = VG_(clstk_base) + anon_size +inner_HACK -1;
+     VG_(clstk_start_base) = anon_start -inner_HACK;
+     VG_(clstk_end)  = VG_(clstk_start_base) + anon_size +inner_HACK -1;
 
    }
 
@@ -576,7 +569,7 @@ Addr setup_client_stack( void*  init_sp,
    ptr = (Addr*)client_SP;
 
    /* --- client argc --- */
-   *ptr++ = argc + (have_exename ? 1 : 0);
+   *ptr++ = argc + 1;
 
    /* --- client argv --- */
    if (info->interp_name) {
@@ -588,8 +581,7 @@ Addr setup_client_stack( void*  init_sp,
       VG_(free)(info->interp_args);
    }
 
-   if (have_exename)
-      *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
+   *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       *ptr++ = (Addr)copy_str(
@@ -614,7 +606,8 @@ Addr setup_client_stack( void*  init_sp,
    // We do not take ULong* (as ULong 8 bytes on a 32 bits),
    // => we take UWord*
 
-#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#  if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
+      || defined(VGP_ppc64le_linux)
    auxv[0].a_type  = AT_IGNOREPPC;
    auxv[0].u.a_val = AT_IGNOREPPC;
    auxv[1].a_type  = AT_IGNOREPPC;
@@ -640,7 +633,10 @@ Addr setup_client_stack( void*  init_sp,
          case AT_GID:
          case AT_EGID:
          case AT_CLKTCK:
-#        if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
+#        if !defined(VGPV_arm_linux_android) \
+            && !defined(VGPV_x86_linux_android) \
+            && !defined(VGPV_mips32_linux_android) \
+            && !defined(VGPV_arm64_linux_android)
          case AT_FPUCW: /* missing on android */
 #        endif
             /* All these are pointerless, so we don't need to do
@@ -662,18 +658,7 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
          case AT_BASE:
-            /* When gdbserver sends the auxv to gdb, the AT_BASE has
-               to be ignored, as otherwise gdb adds this offset
-               to loaded shared libs, causing wrong address
-               relocation e.g. when inserting breaks.
-               However, ignoring AT_BASE makes V crash on Android 4.1.
-               So, keep the AT_BASE on android for now.
-               ??? Need to dig in depth about AT_BASE/GDB interaction */
-#           if !defined(VGPV_arm_linux_android) \
-               && !defined(VGPV_x86_linux_android)
-            auxv->a_type = AT_IGNORE;
-#           endif
-            auxv->u.a_val = info->interp_base;
+            auxv->u.a_val = info->interp_offset;
             break;
 
          case AT_PLATFORM:
@@ -716,7 +701,7 @@ Addr setup_client_stack( void*  init_sp,
                                 "PPC32 icache line size %u (type %u)\n", 
                                 (UInt)auxv->u.a_val, (UInt)auxv->a_type );
             }
-#           elif defined(VGP_ppc64_linux)
+#           elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
             /* acquire cache info */
             if (auxv->u.a_val > 0) {
                VG_(machine_ppc64_set_clszB)( auxv->u.a_val );
@@ -727,7 +712,8 @@ Addr setup_client_stack( void*  init_sp,
 #           endif
             break;
 
-#        if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#        if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
+            || defined(VGP_ppc64le_linux)
          case AT_IGNOREPPC:
             break;
 #        endif
@@ -747,7 +733,8 @@ Addr setup_client_stack( void*  init_sp,
             auxv->a_type = AT_IGNORE;
             break;
 
-#        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64_linux)
+#        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64be_linux) \
+            && !defined(VGP_ppc64le_linux)
          case AT_SYSINFO_EHDR: {
             /* Trash this, because we don't reproduce it */
             const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
@@ -926,7 +913,7 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
       iifii.initial_client_SP
          = setup_client_stack( init_sp, env, 
                                &info, &iifii.client_auxv, 
-                               iicii.clstack_top, iifii.clstack_max_size );
+                               iicii.clstack_end, iifii.clstack_max_size );
 
       VG_(free)(env);
 
@@ -1033,7 +1020,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_GPR1 = iifii.initial_client_SP;
    arch->vex.guest_CIA  = iifii.initial_client_IP;
 
-#  elif defined(VGP_ppc64_linux)
+#  elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
    vg_assert(0 == sizeof(VexGuestPPC64State) % 16);
 
    /* Zero out the initial state, and set up the simulated FPU in a
@@ -1048,8 +1035,11 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_GPR1 = iifii.initial_client_SP;
    arch->vex.guest_GPR2 = iifii.initial_client_TOC;
    arch->vex.guest_CIA  = iifii.initial_client_IP;
+#if defined(VGP_ppc64le_linux)
+   arch->vex.guest_GPR12 = iifii.initial_client_IP;
+#endif
 
-#   elif defined(VGP_arm_linux)
+#  elif defined(VGP_arm_linux)
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
    LibVEX_GuestARM_initialise(&arch->vex);
@@ -1058,12 +1048,23 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestARMState));
    VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestARMState));
 
-   arch->vex.guest_R13 = iifii.initial_client_SP;
+   arch->vex.guest_R13  = iifii.initial_client_SP;
    arch->vex.guest_R15T = iifii.initial_client_IP;
 
    /* This is just EABI stuff. */
    // FIXME jrs: what's this for?
    arch->vex.guest_R1 =  iifii.initial_client_SP;
+
+#  elif defined(VGP_arm64_linux)
+   /* Zero out the initial state. */
+   LibVEX_GuestARM64_initialise(&arch->vex);
+
+   /* Zero out the shadow areas. */
+   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestARM64State));
+   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestARM64State));
+
+   arch->vex.guest_XSP = iifii.initial_client_SP;
+   arch->vex.guest_PC  = iifii.initial_client_IP;
 
 #  elif defined(VGP_s390x_linux)
    vg_assert(0 == sizeof(VexGuestS390XState) % 16);
@@ -1076,9 +1077,9 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    VG_(memset)(&arch->vex_shadow1, 0xFF, sizeof(VexGuestS390XState));
    VG_(memset)(&arch->vex_shadow2, 0x00, sizeof(VexGuestS390XState));
    /* ... except SP, FPC, and IA */
-   VG_(memset)(&arch->vex_shadow1 + VG_O_STACK_PTR, 0x00, 8);
-   VG_(memset)(&arch->vex_shadow1 + VG_O_FPC_REG,   0x00, 4);
-   VG_(memset)(&arch->vex_shadow1 + VG_O_INSTR_PTR, 0x00, 8);
+   arch->vex_shadow1.guest_SP = 0;
+   arch->vex_shadow1.guest_fpc = 0;
+   arch->vex_shadow1.guest_IA = 0;
 
    /* Put essential stuff into the new state. */
    arch->vex.guest_SP = iifii.initial_client_SP;

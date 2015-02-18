@@ -64,15 +64,33 @@
 __attribute__ ((__noreturn__))
 extern void  VG_(core_panic)      ( const HChar* str );
 __attribute__ ((__noreturn__))
-extern void  VG_(core_panic_at)   ( const HChar* str, UnwindStartRegs* );
+extern void  VG_(core_panic_at)   ( const HChar* str, const UnwindStartRegs* );
+
+/* Exits with status as client exit code. */
+extern void VG_(client_exit)( Int status );
+
+/* Lightweight exit without any dependencies. */
+__attribute__ ((__noreturn__))
+extern void VG_(exit_now)( Int status );
 
 /* Called when some unhandleable client behaviour is detected.
    Prints a msg and aborts. */
 extern void VG_(unimplemented) ( const HChar* msg )
             __attribute__((__noreturn__));
 
-/* Show the state of all threads.  Mostly for debugging V. */
-extern void VG_(show_sched_status) ( void );
+/* Show the state of various threads related information, such
+   as the guest stacktrace for each thread.
+   Mostly for debugging V.
+   The following activates optional output:
+     host_stacktrace : shows the host stacktrace.
+     stack_usage True means:
+                   shows how much of the valgrind stack was used.
+                   shows the client stack range
+     exited_thread_slots : show information for thread slots that were used
+        but the thread has now exited. */
+extern void VG_(show_sched_status) ( Bool host_stacktrace,
+                                     Bool stack_usage,
+                                     Bool exited_threads);
 
 #endif   // __PUB_CORE_LIBCASSERT_H
 

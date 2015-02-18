@@ -4,10 +4,21 @@ include $(top_srcdir)/Makefile.tool-tests.am
 dist_noinst_SCRIPTS = \
 	invoker simulate_control_c make_local_links \
 	filter_gdb filter_make_empty \
-	filter_memcheck_monitor filter_stderr filter_vgdb
+	filter_memcheck_monitor filter_stderr filter_vgdb \
+	filter_helgrind_monitor send_signal
 
 EXTRA_DIST = \
 	README_DEVELOPERS \
+	hginfo.stderrB.exp \
+	hginfo.stderr.exp \
+	hginfo.stdinB.gdb \
+	hginfo.stdoutB.exp \
+	hginfo.vgtest \
+	hgtls.stderrB.exp \
+	hgtls.stderr.exp \
+	hgtls.stdinB.gdb \
+	hgtls.stdoutB.exp \
+	hgtls.vgtest \
 	mcblocklistsearch.stderr.exp \
 	mcblocklistsearch.stdinB.gdb \
 	mcblocklistsearch.vgtest \
@@ -119,7 +130,12 @@ EXTRA_DIST = \
 	nlsigvgdb.vgtest \
 	nlsigvgdb.stderr.exp \
 	nlsigvgdb.stderrB.exp \
-	nlsigvgdb.stdinB.gdb
+	nlsigvgdb.stdinB.gdb \
+	nlvgdbsigqueue.vgtest \
+	nlvgdbsigqueue.stderrB.exp \
+	nlvgdbsigqueue.stderr.exp \
+	nlvgdbsigqueue.stdinB.gdb \
+	nlvgdbsigqueue.stdoutB.exp
 
 check_PROGRAMS = \
 	clean_after_fork \

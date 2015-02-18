@@ -36,12 +36,12 @@ very-clean:
 hg-update:
 	@grep -q '^\-\-\-.*1969\-12\-31' ../coregrind.patch; \
 	if [ $$? -eq 0 ]; then \
-	  echo add `grep '^\-\-\-.*1969\-12\-31' ../coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
+	  echo hg add `grep '^\-\-\-.*1969\-12\-31' ../coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
 	
-	@grep -q '^\+\+\+.*1969\-12\-31' ../coregrind.patch; \
+	@grep -q '^Only in valgrind-old' ../coregrind.patch; \
 	if [ $$? -eq 0 ]; then \
-	  echo remove `grep '^\+\+\+.*1969\-12\-31' ../coregrind.patch | cut --fields=1 | cut -d ' ' --fields=2 | perl -p -e 's/^valgrind-new/valgrind/g'`; \
+	  echo hg remove `grep '^Only in valgrind-old' ../coregrind.patch | perl -p -e 's/: /\//g' | cut -d ' ' --fields=3 | perl -p -e 's/^valgrind-old/valgrind/g'`; \
 	fi
 	
 	@grep -q '^\-\-\-.*1969\-12\-31' ../memcheck.patch; \

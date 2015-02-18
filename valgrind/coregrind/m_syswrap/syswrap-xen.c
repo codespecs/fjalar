@@ -93,6 +93,26 @@ PRE(memory_op)
    PRINT("__HYPERVISOR_memory_op ( %ld, %lx )", ARG1, ARG2);
 
    switch (ARG1) {
+
+   case VKI_XENMEM_maximum_ram_page:
+       /* No inputs */
+       break;
+
+   case VKI_XENMEM_maximum_gpfn:
+       PRE_MEM_READ("XENMEM_maximum_gpfn domid",
+                    (Addr)ARG2, sizeof(vki_xen_domid_t));
+       break;
+
+   case VKI_XENMEM_machphys_mfn_list: {
+       struct vki_xen_machphys_mfn_list *arg =
+           (struct vki_xen_machphys_mfn_list *)ARG2;
+       PRE_MEM_READ("XENMEM_machphys_mfn_list max_extents",
+                    (Addr)&arg->max_extents, sizeof(arg->max_extents));
+       PRE_MEM_READ("XENMEM_machphys_mfn_list extent_start",
+                    (Addr)&arg->extent_start, sizeof(arg->extent_start));
+       break;
+   }
+
    case VKI_XENMEM_set_memory_map: {
       struct vki_xen_foreign_memory_map *arg =
 	      (struct vki_xen_foreign_memory_map *)ARG2;
@@ -152,10 +172,47 @@ PRE(memory_op)
       break;
    }
 
+   case VKI_XENMEM_add_to_physmap: {
+       struct vki_xen_add_to_physmap *arg =
+           (struct vki_xen_add_to_physmap *)ARG2;
+       PRE_MEM_READ("XENMEM_add_to_physmap domid",
+                    (Addr)&arg->domid, sizeof(arg->domid));
+       PRE_MEM_READ("XENMEM_add_to_physmap size",
+                    (Addr)&arg->size, sizeof(arg->size));
+       PRE_MEM_READ("XENMEM_add_to_physmap space",
+                    (Addr)&arg->space, sizeof(arg->space));
+       PRE_MEM_READ("XENMEM_add_to_physmap idx",
+                    (Addr)&arg->idx, sizeof(arg->idx));
+       PRE_MEM_READ("XENMEM_add_to_physmap gpfn",
+                    (Addr)&arg->gpfn, sizeof(arg->gpfn));
+       break;
+   }
+
+   case VKI_XENMEM_remove_from_physmap: {
+       struct vki_xen_remove_from_physmap *arg =
+           (struct vki_xen_remove_from_physmap *)ARG2;
+       PRE_MEM_READ("XENMEM_remove_from_physmap domid",
+                    (Addr)&arg->domid, sizeof(arg->domid));
+       PRE_MEM_READ("XENMEM_remove_from_physmap gpfn",
+                    (Addr)&arg->gpfn, sizeof(arg->gpfn));
+       break;
+   }
+
    case VKI_XENMEM_get_sharing_freed_pages:
    case VKI_XENMEM_get_sharing_shared_pages:
       break;
 
+   case VKI_XENMEM_access_op: {
+       struct vki_xen_mem_event_op *arg =
+            (struct vki_xen_mem_event_op *)ARG2;
+       PRE_MEM_READ("XENMEM_access_op domid",
+                    (Addr)&arg->domain, sizeof(arg->domain));
+       PRE_MEM_READ("XENMEM_access_op op",
+                    (Addr)&arg->op, sizeof(arg->op));
+       PRE_MEM_READ("XENMEM_access_op gfn",
+                    (Addr)&arg->gfn, sizeof(arg->gfn));
+       break;
+   }
    default:
       bad_subop(tid, layout, arrghs, status, flags,
                 "__HYPERVISOR_memory_op", ARG1);
@@ -380,14 +437,26 @@ PRE(sysctl) {
       return;
    }
 
-#define __PRE_XEN_SYSCTL_READ(_sysctl, _union, _field)  \
+#define __PRE_XEN_SYSCTL_READ(_sysctl, _union, _field)			\
       PRE_MEM_READ("XEN_SYSCTL_" #_sysctl " u." #_union "." #_field,	\
-                   (Addr)&sysctl->u._union._field,      \
+                   (Addr)&sysctl->u._union._field,			\
                    sizeof(sysctl->u._union._field))
 #define PRE_XEN_SYSCTL_READ(_sysctl, _field) \
       __PRE_XEN_SYSCTL_READ(_sysctl, _sysctl, _field)
 
    switch (sysctl->cmd) {
+   case VKI_XEN_SYSCTL_readconsole:
+       /* These are all unconditionally read */
+       PRE_XEN_SYSCTL_READ(readconsole, clear);
+       PRE_XEN_SYSCTL_READ(readconsole, incremental);
+       PRE_XEN_SYSCTL_READ(readconsole, buffer);
+       PRE_XEN_SYSCTL_READ(readconsole, count);
+
+       /* 'index' only read if 'incremental' is nonzero */
+       if (sysctl->u.readconsole.incremental)
+           PRE_XEN_SYSCTL_READ(readconsole, index);
+       break;
+
    case VKI_XEN_SYSCTL_getdomaininfolist:
       switch (sysctl->interface_version)
       {
@@ -401,8 +470,27 @@ PRE(sysctl) {
 	 PRE_XEN_SYSCTL_READ(getdomaininfolist_00000009, max_domains);
 	 PRE_XEN_SYSCTL_READ(getdomaininfolist_00000009, buffer);
 	 break;
+      case 0x0000000a:
+	 PRE_XEN_SYSCTL_READ(getdomaininfolist_0000000a, first_domain);
+	 PRE_XEN_SYSCTL_READ(getdomaininfolist_0000000a, max_domains);
+	 PRE_XEN_SYSCTL_READ(getdomaininfolist_0000000a, buffer);
+	 break;
+      default:
+          VG_(dmsg)("WARNING: XEN_SYSCTL_getdomaininfolist for sysctl version "
+                    "%"PRIx32" not implemented yet\n",
+                    sysctl->interface_version);
+          SET_STATUS_Failure(VKI_EINVAL);
+          return;
       }
       break;
+
+   case VKI_XEN_SYSCTL_debug_keys:
+       PRE_XEN_SYSCTL_READ(debug_keys, keys);
+       PRE_XEN_SYSCTL_READ(debug_keys, nr_keys);
+       PRE_MEM_READ("XEN_SYSCTL_debug_keys *keys",
+                    (Addr)sysctl->u.debug_keys.keys.p,
+                    sysctl->u.debug_keys.nr_keys * sizeof(char));
+       break;
 
    case VKI_XEN_SYSCTL_sched_id:
        /* No inputs */
@@ -501,9 +589,9 @@ PRE(domctl)
       return;
    }
 
-#define __PRE_XEN_DOMCTL_READ(_domctl, _union, _field)  \
+#define __PRE_XEN_DOMCTL_READ(_domctl, _union, _field)			\
       PRE_MEM_READ("XEN_DOMCTL_" #_domctl " u." #_union "." #_field,	\
-                   (Addr)&domctl->u._union._field,      \
+                   (Addr)&domctl->u._union._field,			\
                    sizeof(domctl->u._union._field))
 #define PRE_XEN_DOMCTL_READ(_domctl, _field) \
       __PRE_XEN_DOMCTL_READ(_domctl, _domctl, _field)
@@ -516,6 +604,7 @@ PRE(domctl)
    case VKI_XEN_DOMCTL_gettscinfo:
    case VKI_XEN_DOMCTL_getdomaininfo:
    case VKI_XEN_DOMCTL_unpausedomain:
+   case VKI_XEN_DOMCTL_resumedomain:
       /* No input fields. */
       break;
 
@@ -524,6 +613,43 @@ PRE(domctl)
       PRE_XEN_DOMCTL_READ(createdomain, handle);
       PRE_XEN_DOMCTL_READ(createdomain, flags);
       break;
+
+   case VKI_XEN_DOMCTL_gethvmcontext:
+       /* Xen unconditionally reads the 'buffer' pointer */
+       __PRE_XEN_DOMCTL_READ(gethvmcontext, hvmcontext, buffer);
+       /* Xen only consumes 'size' if 'buffer' is non NULL. A NULL
+        * buffer is a request for the required size. */
+       if ( domctl->u.hvmcontext.buffer.p )
+           __PRE_XEN_DOMCTL_READ(gethvmcontext, hvmcontext, size);
+       break;
+
+   case VKI_XEN_DOMCTL_sethvmcontext:
+       __PRE_XEN_DOMCTL_READ(sethvmcontext, hvmcontext, size);
+       __PRE_XEN_DOMCTL_READ(sethvmcontext, hvmcontext, buffer);
+       PRE_MEM_READ("XEN_DOMCTL_sethvmcontext *buffer",
+                    (Addr)domctl->u.hvmcontext.buffer.p,
+                    domctl->u.hvmcontext.size);
+       break;
+
+   case VKI_XEN_DOMCTL_gethvmcontext_partial:
+       __PRE_XEN_DOMCTL_READ(gethvmcontext_partial, hvmcontext_partial, type);
+       __PRE_XEN_DOMCTL_READ(gethvmcontext_partial, hvmcontext_partial, instance);
+       __PRE_XEN_DOMCTL_READ(gethvmcontext_partial, hvmcontext_partial, buffer);
+
+       switch (domctl->u.hvmcontext_partial.type) {
+       case VKI_HVM_SAVE_CODE(CPU):
+           if ( domctl->u.hvmcontext_partial.buffer.p )
+                PRE_MEM_WRITE("XEN_DOMCTL_gethvmcontext_partial *buffer",
+                   (Addr)domctl->u.hvmcontext_partial.buffer.p,
+                   VKI_HVM_SAVE_LENGTH(CPU));
+           break;
+       default:
+           bad_subop(tid, layout, arrghs, status, flags,
+                         "__HYPERVISOR_domctl_gethvmcontext_partial type",
+                         domctl->u.hvmcontext_partial.type);
+           break;
+       }
+       break;
 
    case VKI_XEN_DOMCTL_max_mem:
       PRE_XEN_DOMCTL_READ(max_mem, max_memkb);
@@ -540,9 +666,19 @@ PRE(domctl)
       __PRE_XEN_DOMCTL_READ(settscinfo, tsc_info, info.elapsed_nsec);
       break;
 
+   case VKI_XEN_DOMCTL_ioport_permission:
+      PRE_XEN_DOMCTL_READ(ioport_permission, first_port);
+      PRE_XEN_DOMCTL_READ(ioport_permission, nr_ports);
+      PRE_XEN_DOMCTL_READ(ioport_permission, allow_access);
+      break;
+
    case VKI_XEN_DOMCTL_hypercall_init:
       PRE_XEN_DOMCTL_READ(hypercall_init, gmfn);
       break;
+
+   case VKI_XEN_DOMCTL_settimeoffset:
+       PRE_XEN_DOMCTL_READ(settimeoffset, time_offset_seconds);
+       break;
 
    case VKI_XEN_DOMCTL_getvcpuinfo:
       PRE_XEN_DOMCTL_READ(getvcpuinfo, vcpu);
@@ -608,11 +744,85 @@ PRE(domctl)
                    (Addr)&domctl->u.cpuid, sizeof(domctl->u.cpuid));
       break;
 
+   case VKI_XEN_DOMCTL_getpageframeinfo3:
+       PRE_XEN_DOMCTL_READ(getpageframeinfo3, num);
+       PRE_XEN_DOMCTL_READ(getpageframeinfo3, array.p);
+       PRE_MEM_READ("XEN_DOMCTL_getpageframeinfo3 *u.getpageframeinfo3.array.p",
+                    (Addr)domctl->u.getpageframeinfo3.array.p,
+                    domctl->u.getpageframeinfo3.num * sizeof(vki_xen_pfn_t));
+       break;
+
    case VKI_XEN_DOMCTL_getvcpuextstate:
       __PRE_XEN_DOMCTL_READ(getvcpuextstate, vcpuextstate, vcpu);
       __PRE_XEN_DOMCTL_READ(getvcpuextstate, vcpuextstate, xfeature_mask);
       __PRE_XEN_DOMCTL_READ(getvcpuextstate, vcpuextstate, size);
       __PRE_XEN_DOMCTL_READ(getvcpuextstate, vcpuextstate, buffer);
+      break;
+
+   case VKI_XEN_DOMCTL_shadow_op:
+       PRE_XEN_DOMCTL_READ(shadow_op, op);
+
+       switch(domctl->u.shadow_op.op)
+       {
+       case VKI_XEN_DOMCTL_SHADOW_OP_OFF:
+           /* No further inputs */
+           break;
+
+       case VKI_XEN_DOMCTL_SHADOW_OP_ENABLE:
+           PRE_XEN_DOMCTL_READ(shadow_op, mode);
+           switch(domctl->u.shadow_op.mode)
+           {
+           case XEN_DOMCTL_SHADOW_ENABLE_LOG_DIRTY:
+               goto domctl_shadow_op_enable_logdirty;
+
+
+           default:
+               bad_subop(tid, layout, arrghs, status, flags,
+                         "__HYPERVISOR_domctl shadowop mode",
+                         domctl->u.shadow_op.mode);
+               break;
+           }
+
+       case VKI_XEN_DOMCTL_SHADOW_OP_ENABLE_LOGDIRTY:
+       domctl_shadow_op_enable_logdirty:
+           /* No further inputs */
+           break;
+
+       case VKI_XEN_DOMCTL_SHADOW_OP_CLEAN:
+       case VKI_XEN_DOMCTL_SHADOW_OP_PEEK:
+           PRE_XEN_DOMCTL_READ(shadow_op, dirty_bitmap);
+           PRE_XEN_DOMCTL_READ(shadow_op, pages);
+           break;
+
+       default:
+           bad_subop(tid, layout, arrghs, status, flags,
+                     "__HYPERVISOR_domctl shadow(10)",
+                     domctl->u.shadow_op.op);
+           break;
+       }
+       break;
+
+   case VKI_XEN_DOMCTL_set_max_evtchn:
+      PRE_XEN_DOMCTL_READ(set_max_evtchn, max_port);
+      break;
+
+   case VKI_XEN_DOMCTL_cacheflush:
+      PRE_XEN_DOMCTL_READ(cacheflush, start_pfn);
+      PRE_XEN_DOMCTL_READ(cacheflush, nr_pfns);
+      break;
+
+   case VKI_XEN_DOMCTL_set_access_required:
+      PRE_XEN_DOMCTL_READ(access_required, access_required);
+      break;
+
+   case VKI_XEN_DOMCTL_mem_event_op:
+      PRE_XEN_DOMCTL_READ(mem_event_op, op);
+      PRE_XEN_DOMCTL_READ(mem_event_op, mode);
+      break;
+
+   case VKI_XEN_DOMCTL_debug_op:
+      PRE_XEN_DOMCTL_READ(debug_op, op);
+      PRE_XEN_DOMCTL_READ(debug_op, vcpu);
       break;
 
    default:
@@ -636,7 +846,7 @@ PRE(hvm_op)
                 (Addr)&((_type*)arg)->_field,           \
                 sizeof(((_type*)arg)->_field))
 #define PRE_XEN_HVMOP_READ(_hvm_op, _field)                             \
-   __PRE_XEN_HVMOP_READ(_hvm_op, "xen_hvm_" # _hvm_op "_t", _field)
+   __PRE_XEN_HVMOP_READ(_hvm_op, vki_xen_hvm_ ## _hvm_op ## _t, _field)
 
    switch (op) {
    case VKI_XEN_HVMOP_set_param:
@@ -650,6 +860,53 @@ PRE(hvm_op)
       __PRE_XEN_HVMOP_READ(get_param, struct vki_xen_hvm_param, index);
       break;
 
+   case VKI_XEN_HVMOP_set_isa_irq_level:
+       PRE_XEN_HVMOP_READ(set_isa_irq_level, domid);
+       PRE_XEN_HVMOP_READ(set_isa_irq_level, isa_irq);
+       PRE_XEN_HVMOP_READ(set_isa_irq_level, level);
+       break;
+
+   case VKI_XEN_HVMOP_set_pci_link_route:
+       PRE_XEN_HVMOP_READ(set_pci_link_route, domid);
+       PRE_XEN_HVMOP_READ(set_pci_link_route, link);
+       PRE_XEN_HVMOP_READ(set_pci_link_route, isa_irq);
+       break;
+
+   case VKI_XEN_HVMOP_set_mem_type:
+       PRE_XEN_HVMOP_READ(set_mem_type, domid);
+       PRE_XEN_HVMOP_READ(set_mem_type, hvmmem_type);
+       PRE_XEN_HVMOP_READ(set_mem_type, nr);
+       PRE_XEN_HVMOP_READ(set_mem_type, first_pfn);
+       break;
+
+   case VKI_XEN_HVMOP_set_mem_access:
+       PRE_XEN_HVMOP_READ(set_mem_access, domid);
+       PRE_XEN_HVMOP_READ(set_mem_access, hvmmem_access);
+       PRE_XEN_HVMOP_READ(set_mem_access, first_pfn);
+       /* if default access */
+       if ( ((vki_xen_hvm_set_mem_access_t*)arg)->first_pfn != ~0ULL)
+           PRE_XEN_HVMOP_READ(set_mem_access, nr);
+       break;
+
+   case VKI_XEN_HVMOP_get_mem_access:
+       PRE_XEN_HVMOP_READ(get_mem_access, domid);
+       PRE_XEN_HVMOP_READ(get_mem_access, pfn);
+
+       PRE_MEM_WRITE("XEN_HVMOP_get_mem_access *hvmmem_access",
+                   (Addr)&(((vki_xen_hvm_get_mem_access_t*)arg)->hvmmem_access),
+                   sizeof(vki_uint16_t));
+       break;
+
+   case VKI_XEN_HVMOP_inject_trap:
+       PRE_XEN_HVMOP_READ(inject_trap, domid);
+       PRE_XEN_HVMOP_READ(inject_trap, vcpuid);
+       PRE_XEN_HVMOP_READ(inject_trap, vector);
+       PRE_XEN_HVMOP_READ(inject_trap, type);
+       PRE_XEN_HVMOP_READ(inject_trap, error_code);
+       PRE_XEN_HVMOP_READ(inject_trap, insn_len);
+       PRE_XEN_HVMOP_READ(inject_trap, cr2);
+       break;
+
    default:
       bad_subop(tid, layout, arrghs, status, flags,
                 "__HYPERVISOR_hvm_op", op);
@@ -659,12 +916,71 @@ PRE(hvm_op)
 #undef PRE_XEN_HVMOP_READ
 }
 
+PRE(tmem_op)
+{
+    struct vki_xen_tmem_op *tmem = (struct vki_xen_tmem_op *)ARG1;
+
+    PRINT("__HYPERVISOR_tmem_op ( %d )", tmem->cmd);
+
+    /* Common part for xen_tmem_op:
+     *    vki_uint32_t cmd;
+     */
+    PRE_MEM_READ("__HYPERVISOR_tmem_op cmd", ARG1, sizeof(vki_uint32_t));
+
+
+#define __PRE_XEN_TMEMOP_READ(_tmem, _union, _field)                    \
+    PRE_MEM_READ("XEN_tmem_op_" #_tmem " u." #_union "." #_field,       \
+                 (Addr)&tmem->u._union._field,                          \
+                 sizeof(tmem->u._union._field))
+#define PRE_XEN_TMEMOP_READ(_tmem, _field)                              \
+    __PRE_XEN_TMEMOP_READ(_tmem, _tmem, _field)
+
+    switch(tmem->cmd) {
+
+    case VKI_XEN_TMEM_control:
+
+        /* Common part for control hypercall:
+         *    vki_int32_t pool_id;
+         *    vki_uint32_t subop;
+         */
+        PRE_MEM_READ("__HYPERVISOR_tmem_op pool_id",
+                     (Addr)&tmem->pool_id, sizeof(&tmem->pool_id));
+        PRE_XEN_TMEMOP_READ(ctrl, subop);
+
+        switch (tmem->u.ctrl.subop) {
+
+        case VKI_XEN_TMEMC_save_begin:
+            PRE_XEN_TMEMOP_READ(ctrl, cli_id);
+            PRE_XEN_TMEMOP_READ(ctrl, arg1);
+            PRE_XEN_TMEMOP_READ(ctrl, buf);
+            break;
+
+        default:
+            bad_subop(tid, layout, arrghs, status, flags,
+                      "__HYPERVISOR_tmem_op_control", tmem->u.ctrl.subop);
+        }
+
+        break;
+
+    default:
+        bad_subop(tid, layout, arrghs, status, flags,
+                  "__HYPERVISOR_tmem_op", ARG1);
+    }
+
+#undef PRE_XEN_TMEMOP_READ
+#undef __PRE_XEN_TMEMOP_READ
+}
+
 POST(memory_op)
 {
    switch (ARG1) {
+   case VKI_XENMEM_maximum_ram_page:
    case VKI_XENMEM_set_memory_map:
    case VKI_XENMEM_decrease_reservation:
    case VKI_XENMEM_claim_pages:
+   case VKI_XENMEM_maximum_gpfn:
+   case VKI_XENMEM_remove_from_physmap:
+   case VKI_XENMEM_access_op:
       /* No outputs */
       break;
    case VKI_XENMEM_increase_reservation:
@@ -675,6 +991,22 @@ POST(memory_op)
       POST_MEM_WRITE((Addr)memory_reservation->extent_start.p,
                      sizeof(vki_xen_pfn_t) * memory_reservation->nr_extents);
       break;
+   }
+
+   case VKI_XENMEM_machphys_mfn_list: {
+       struct vki_xen_machphys_mfn_list *arg =
+           (struct vki_xen_machphys_mfn_list *)ARG2;
+       POST_MEM_WRITE((Addr)&arg->nr_extents, sizeof(arg->nr_extents));
+       POST_MEM_WRITE((Addr)arg->extent_start.p,
+                      sizeof(vki_xen_pfn_t) * arg->nr_extents);
+       break;
+   }
+
+   case VKI_XENMEM_add_to_physmap: {
+       struct vki_xen_add_to_physmap *arg =
+           (struct vki_xen_add_to_physmap *)ARG2;
+       if (arg->space == VKI_XENMAPSPACE_gmfn_range)
+           POST_MEM_WRITE(ARG2, sizeof(*arg));
    }
 
    case VKI_XENMEM_get_sharing_freed_pages:
@@ -786,6 +1118,11 @@ POST(sysctl)
       __POST_XEN_SYSCTL_WRITE(_sysctl, _sysctl, _field)
 
    switch (sysctl->cmd) {
+   case VKI_XEN_SYSCTL_readconsole:
+       POST_MEM_WRITE((Addr)sysctl->u.readconsole.buffer.p,
+                      sysctl->u.readconsole.count * sizeof(char));
+       break;
+
    case VKI_XEN_SYSCTL_getdomaininfolist:
       switch (sysctl->interface_version)
       {
@@ -800,6 +1137,12 @@ POST(sysctl)
 	 POST_MEM_WRITE((Addr)sysctl->u.getdomaininfolist_00000009.buffer.p,
 			sizeof(*sysctl->u.getdomaininfolist_00000009.buffer.p)
 			* sysctl->u.getdomaininfolist_00000009.num_domains);
+	 break;
+      case 0x0000000a:
+	 POST_XEN_SYSCTL_WRITE(getdomaininfolist_0000000a, num_domains);
+	 POST_MEM_WRITE((Addr)sysctl->u.getdomaininfolist_0000000a.buffer.p,
+			sizeof(*sysctl->u.getdomaininfolist_0000000a.buffer.p)
+			* sysctl->u.getdomaininfolist_0000000a.num_domains);
 	 break;
       }
       break;
@@ -860,13 +1203,13 @@ POST(sysctl)
    case VKI_XEN_SYSCTL_topologyinfo:
       POST_XEN_SYSCTL_WRITE(topologyinfo, max_cpu_index);
       if (sysctl->u.topologyinfo.cpu_to_core.p)
-      POST_MEM_WRITE((Addr)sysctl->u.topologyinfo.cpu_to_core.p,
+         POST_MEM_WRITE((Addr)sysctl->u.topologyinfo.cpu_to_core.p,
                      sizeof(uint32_t) * sysctl->u.topologyinfo.max_cpu_index);
       if (sysctl->u.topologyinfo.cpu_to_socket.p)
-      POST_MEM_WRITE((Addr)sysctl->u.topologyinfo.cpu_to_socket.p,
+         POST_MEM_WRITE((Addr)sysctl->u.topologyinfo.cpu_to_socket.p,
                      sizeof(uint32_t) * sysctl->u.topologyinfo.max_cpu_index);
       if (sysctl->u.topologyinfo.cpu_to_node.p)
-      POST_MEM_WRITE((Addr)sysctl->u.topologyinfo.cpu_to_node.p,
+         POST_MEM_WRITE((Addr)sysctl->u.topologyinfo.cpu_to_node.p,
                      sizeof(uint32_t) * sysctl->u.topologyinfo.max_cpu_index);
       break;
 
@@ -879,6 +1222,10 @@ POST(sysctl)
       POST_MEM_WRITE((Addr)sysctl->u.numainfo.node_to_node_distance.p,
                      sizeof(uint32_t) * sysctl->u.numainfo.max_node_index);
       break;
+
+   /* No outputs */
+   case VKI_XEN_SYSCTL_debug_keys:
+       break;
    }
 #undef POST_XEN_SYSCTL_WRITE
 #undef __POST_XEN_SYSCTL_WRITE
@@ -893,7 +1240,7 @@ POST(domctl){
    case 0x00000009:
 	   break;
    default:
-      return;
+	   return;
    }
 
 #define __POST_XEN_DOMCTL_WRITE(_domctl, _union, _field)        \
@@ -909,12 +1256,19 @@ POST(domctl){
    case VKI_XEN_DOMCTL_max_mem:
    case VKI_XEN_DOMCTL_set_address_size:
    case VKI_XEN_DOMCTL_settscinfo:
+   case VKI_XEN_DOMCTL_ioport_permission:
    case VKI_XEN_DOMCTL_hypercall_init:
    case VKI_XEN_DOMCTL_setvcpuaffinity:
    case VKI_XEN_DOMCTL_setvcpucontext:
    case VKI_XEN_DOMCTL_setnodeaffinity:
    case VKI_XEN_DOMCTL_set_cpuid:
    case VKI_XEN_DOMCTL_unpausedomain:
+   case VKI_XEN_DOMCTL_sethvmcontext:
+   case VKI_XEN_DOMCTL_debug_op:
+   case VKI_XEN_DOMCTL_set_max_evtchn:
+   case VKI_XEN_DOMCTL_cacheflush:
+   case VKI_XEN_DOMCTL_resumedomain:
+   case VKI_XEN_DOMCTL_set_access_required:
       /* No output fields */
       break;
 
@@ -940,6 +1294,26 @@ POST(domctl){
       POST_XEN_DOMCTL_WRITE(getvcpuinfo, cpu_time);
       POST_XEN_DOMCTL_WRITE(getvcpuinfo, cpu);
       break;
+
+   case VKI_XEN_DOMCTL_gethvmcontext:
+       /* Xen unconditionally writes size... */
+       __POST_XEN_DOMCTL_WRITE(gethvmcontext, hvmcontext, size);
+       /* ...but only writes to the buffer if it was non NULL */
+       if ( domctl->u.hvmcontext.buffer.p )
+           POST_MEM_WRITE((Addr)domctl->u.hvmcontext.buffer.p,
+                          sizeof(*domctl->u.hvmcontext.buffer.p)
+                          * domctl->u.hvmcontext.size);
+       break;
+
+   case VKI_XEN_DOMCTL_gethvmcontext_partial:
+       switch (domctl->u.hvmcontext_partial.type) {
+       case VKI_HVM_SAVE_CODE(CPU):
+           if ( domctl->u.hvmcontext_partial.buffer.p )
+                POST_MEM_WRITE((Addr)domctl->u.hvmcontext_partial.buffer.p,
+                   VKI_HVM_SAVE_LENGTH(CPU));
+           break;
+       }
+       break;
 
    case VKI_XEN_DOMCTL_scheduler_op:
       if ( domctl->u.scheduler_op.cmd == VKI_XEN_DOMCTL_SCHEDOP_getinfo ) {
@@ -1027,6 +1401,12 @@ POST(domctl){
       __POST_XEN_DOMCTL_WRITE(getvcpucontext, vcpucontext, ctxt.p);
       break;
 
+   case VKI_XEN_DOMCTL_getpageframeinfo3:
+       POST_MEM_WRITE((Addr)domctl->u.getpageframeinfo3.array.p,
+                      domctl->u.getpageframeinfo3.num * sizeof(vki_xen_pfn_t));
+       break;
+
+
    case VKI_XEN_DOMCTL_getvcpuextstate:
       __POST_XEN_DOMCTL_WRITE(getvcpuextstate, vcpuextstate, xfeature_mask);
       __POST_XEN_DOMCTL_WRITE(getvcpuextstate, vcpuextstate, size);
@@ -1034,6 +1414,31 @@ POST(domctl){
                      domctl->u.vcpuextstate.size);
       break;
 
+   case VKI_XEN_DOMCTL_shadow_op:
+       switch(domctl->u.shadow_op.op)
+       {
+       case VKI_XEN_DOMCTL_SHADOW_OP_OFF:
+           /* No outputs */
+           break;
+
+       case VKI_XEN_DOMCTL_SHADOW_OP_CLEAN:
+       case VKI_XEN_DOMCTL_SHADOW_OP_PEEK:
+           POST_XEN_DOMCTL_WRITE(shadow_op, pages);
+           POST_XEN_DOMCTL_WRITE(shadow_op, stats.fault_count);
+           POST_XEN_DOMCTL_WRITE(shadow_op, stats.dirty_count);
+           if(domctl->u.shadow_op.dirty_bitmap.p)
+               POST_MEM_WRITE((Addr)domctl->u.shadow_op.dirty_bitmap.p,
+                              domctl->u.shadow_op.pages * sizeof(vki_uint8_t));
+           break;
+
+       default:
+           break;
+       }
+       break;
+   case VKI_XEN_DOMCTL_mem_event_op:
+       POST_XEN_DOMCTL_WRITE(mem_event_op, port);
+
+       break;
    }
 #undef POST_XEN_DOMCTL_WRITE
 #undef __POST_XEN_DOMCTL_WRITE
@@ -1048,19 +1453,46 @@ POST(hvm_op)
       POST_MEM_WRITE((Addr)&((_type*)arg)->_field,      \
                      sizeof(((_type*)arg)->_field))
 #define POST_XEN_HVMOP_WRITE(_hvm_op, _field) \
-      __PRE_XEN_HVMOP_READ(_hvm_op, "xen_hvm_" # _hvm_op "_t", _field)
+      __POST_XEN_HVMOP_WRITE(_hvm_op, vki_xen_hvm_ ## _hvm_op ## _t, _field)
 
    switch (op) {
    case VKI_XEN_HVMOP_set_param:
+   case VKI_XEN_HVMOP_set_isa_irq_level:
+   case VKI_XEN_HVMOP_set_pci_link_route:
+   case VKI_XEN_HVMOP_set_mem_type:
+   case VKI_XEN_HVMOP_set_mem_access:
+   case VKI_XEN_HVMOP_inject_trap:
       /* No output paramters */
       break;
 
    case VKI_XEN_HVMOP_get_param:
       __POST_XEN_HVMOP_WRITE(get_param, struct vki_xen_hvm_param, value);
       break;
+
+   case VKI_XEN_HVMOP_get_mem_access:
+      POST_XEN_HVMOP_WRITE(get_mem_access, hvmmem_access);
+      break;
    }
 #undef __POST_XEN_HVMOP_WRITE
 #undef POST_XEN_HVMOP_WRITE
+}
+
+POST(tmem_op)
+{
+    struct vki_xen_tmem_op *tmem = (struct vki_xen_tmem_op *)ARG1;
+
+    switch(tmem->cmd) {
+
+    case VKI_XEN_TMEM_control:
+
+        switch(tmem->u.ctrl.subop) {
+            /* No outputs */
+            case VKI_XEN_TMEMC_save_begin:
+                break;
+        }
+
+        break;
+    }
 }
 
 typedef
@@ -1123,7 +1555,7 @@ static XenHypercallTableEntry hypercall_table[] = {
    HYPXY(__VKI_XEN_sysctl,                  sysctl,            1), // 35
    HYPXY(__VKI_XEN_domctl,                  domctl,            1), // 36
    //    __VKI_XEN_kexec_op                                        // 37
-   //    __VKI_XEN_tmem_op                                         // 38
+   HYPXY(__VKI_XEN_tmem_op,                 tmem_op,           1), // 38
 };
 
 static void bad_before ( ThreadId              tid,
@@ -1133,7 +1565,7 @@ static void bad_before ( ThreadId              tid,
                          /*OUT*/UWord*         flags )
 {
    VG_(dmsg)("WARNING: unhandled hypercall: %s\n",
-      VG_SYSNUM_STRING_EXTRA(args->sysno));
+      VG_SYSNUM_STRING(args->sysno));
    if (VG_(clo_verbosity) > 1) {
       VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
    }

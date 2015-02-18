@@ -340,7 +340,7 @@ typedef
 
 extern 
 const HChar* showPPCAluOp ( PPCAluOp, 
-                      Bool /* is the 2nd operand an immediate? */);
+                            Bool /* is the 2nd operand an immediate? */);
 
 
 /* --------- */
@@ -353,8 +353,8 @@ typedef
 
 extern 
 const HChar* showPPCShftOp ( PPCShftOp, 
-                       Bool /* is the 2nd operand an immediate? */,
-                       Bool /* is this a 32bit or 64bit op? */ );
+                             Bool /* is the 2nd operand an immediate? */,
+                             Bool /* is this a 32bit or 64bit op? */ );
 
 
 /* --------- */
@@ -363,8 +363,8 @@ typedef
       Pfp_INVALID,
 
       /* Ternary */
-      Pfp_MADDD, Pfp_MSUBD, 
-      Pfp_MADDS, Pfp_MSUBS,
+      Pfp_MADDD,  Pfp_MSUBD,
+      Pfp_MADDS,  Pfp_MSUBS,
       Pfp_DFPADD, Pfp_DFPADDQ,
       Pfp_DFPSUB, Pfp_DFPSUBQ,
       Pfp_DFPMUL, Pfp_DFPMULQ,
@@ -372,8 +372,8 @@ typedef
       Pfp_DQUAQ,  Pfp_DRRNDQ,
 
       /* Binary */
-      Pfp_ADDD, Pfp_SUBD, Pfp_MULD, Pfp_DIVD, 
-      Pfp_ADDS, Pfp_SUBS, Pfp_MULS, Pfp_DIVS, 
+      Pfp_ADDD, Pfp_SUBD, Pfp_MULD, Pfp_DIVD,
+      Pfp_ADDS, Pfp_SUBS, Pfp_MULS, Pfp_DIVS,
       Pfp_DRSP, Pfp_DRDPQ, Pfp_DCTFIX, Pfp_DCTFIXQ, Pfp_DCFFIX, 
       Pfp_DQUA, Pfp_RRDTR, Pfp_DIEX, Pfp_DIEXQ, Pfp_DRINTN,
 
@@ -522,6 +522,7 @@ typedef
 
       Pin_AvPerm,     /* AV permute (shuffle) */
       Pin_AvSel,      /* AV select */
+      Pin_AvSh,       /* AV shift left or right */
       Pin_AvShlDbl,   /* AV shift-left double by imm */
       Pin_AvSplat,    /* One elem repeated throughout dst */
       Pin_AvLdVSCR,   /* mtvscr */
@@ -855,6 +856,11 @@ typedef
             HReg ctl;
          } AvSel;
          struct {
+            Bool  shLeft;
+            HReg  dst;
+            PPCAMode* addr;
+         } AvSh;
+         struct {
             UChar shift;
             HReg  dst;
             HReg  srcL;
@@ -1018,7 +1024,7 @@ typedef
                installed later, post-translation, by patching it in,
                as it is not known at translation time. */
          } ProfInc;
-       } Pin;
+      } Pin;
    }
    PPCInstr;
 
@@ -1077,6 +1083,7 @@ extern PPCInstr* PPCInstr_AvBin32Fx4 ( PPCAvFpOp op, HReg dst, HReg srcL, HReg s
 extern PPCInstr* PPCInstr_AvUn32Fx4  ( PPCAvFpOp op, HReg dst, HReg src );
 extern PPCInstr* PPCInstr_AvPerm     ( HReg dst, HReg srcL, HReg srcR, HReg ctl );
 extern PPCInstr* PPCInstr_AvSel      ( HReg ctl, HReg dst, HReg srcL, HReg srcR );
+extern PPCInstr* PPCInstr_AvSh       ( Bool shLeft, HReg dst, PPCAMode* am_addr );
 extern PPCInstr* PPCInstr_AvShlDbl   ( UChar shift, HReg dst, HReg srcL, HReg srcR );
 extern PPCInstr* PPCInstr_AvSplat    ( UChar sz, HReg dst, PPCVI5s* src );
 extern PPCInstr* PPCInstr_AvCMov     ( PPCCondCode, HReg dst, HReg src );
@@ -1127,21 +1134,22 @@ extern PPCInstr* PPCInstr_EvCheck     ( PPCAMode* amCounter,
                                         PPCAMode* amFailAddr );
 extern PPCInstr* PPCInstr_ProfInc     ( void );
 
-extern void ppPPCInstr(PPCInstr*, Bool mode64);
+extern void ppPPCInstr(const PPCInstr*, Bool mode64);
 
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-extern void         getRegUsage_PPCInstr ( HRegUsage*, PPCInstr*, Bool mode64 );
-extern void         mapRegs_PPCInstr     ( HRegRemap*, PPCInstr* , Bool mode64);
-extern Bool         isMove_PPCInstr      ( PPCInstr*, HReg*, HReg* );
-extern Int          emit_PPCInstr        ( /*MB_MOD*/Bool* is_profInc,
-                                           UChar* buf, Int nbuf, PPCInstr* i, 
-                                           Bool mode64,
-                                           void* disp_cp_chain_me_to_slowEP,
-                                           void* disp_cp_chain_me_to_fastEP,
-                                           void* disp_cp_xindir,
-                                           void* disp_cp_xassisted );
+extern void getRegUsage_PPCInstr ( HRegUsage*, const PPCInstr*, Bool mode64 );
+extern void mapRegs_PPCInstr     ( HRegRemap*, PPCInstr* , Bool mode64);
+extern Bool isMove_PPCInstr      ( const PPCInstr*, HReg*, HReg* );
+extern Int          emit_PPCInstr   ( /*MB_MOD*/Bool* is_profInc,
+                                      UChar* buf, Int nbuf, const PPCInstr* i, 
+                                      Bool mode64,
+                                      VexEndness endness_host,
+                                      const void* disp_cp_chain_me_to_slowEP,
+                                      const void* disp_cp_chain_me_to_fastEP,
+                                      const void* disp_cp_xindir,
+                                      const void* disp_cp_xassisted );
 
 extern void genSpill_PPC  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offsetB, Bool mode64 );
@@ -1151,8 +1159,8 @@ extern void genReload_PPC ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
 extern void         getAllocableRegs_PPC ( Int*, HReg**, Bool mode64 );
 extern HInstrArray* iselSB_PPC           ( IRSB*, 
                                            VexArch,
-                                                  VexArchInfo*,
-                                           VexAbiInfo*,
+                                           const VexArchInfo*,
+                                           const VexAbiInfo*,
                                            Int offs_Host_EvC_Counter,
                                            Int offs_Host_EvC_FailAddr,
                                            Bool chainingAllowed,
@@ -1162,22 +1170,25 @@ extern HInstrArray* iselSB_PPC           ( IRSB*,
 /* How big is an event check?  This is kind of a kludge because it
    depends on the offsets of host_EvC_FAILADDR and
    host_EvC_COUNTER. */
-extern Int evCheckSzB_PPC ( void );
+extern Int evCheckSzB_PPC ( VexEndness endness_host );
 
 /* Perform a chaining and unchaining of an XDirect jump. */
-extern VexInvalRange chainXDirect_PPC ( void* place_to_chain,
-                                        void* disp_cp_chain_me_EXPECTED,
-                                        void* place_to_jump_to,
+extern VexInvalRange chainXDirect_PPC ( VexEndness endness_host,
+                                        void* place_to_chain,
+                                        const void* disp_cp_chain_me_EXPECTED,
+                                        const void* place_to_jump_to,
                                         Bool  mode64 );
 
-extern VexInvalRange unchainXDirect_PPC ( void* place_to_unchain,
-                                          void* place_to_jump_to_EXPECTED,
-                                          void* disp_cp_chain_me,
+extern VexInvalRange unchainXDirect_PPC ( VexEndness endness_host,
+                                          void* place_to_unchain,
+                                          const void* place_to_jump_to_EXPECTED,
+                                          const void* disp_cp_chain_me,
                                           Bool  mode64 );
 
 /* Patch the counter location into an existing ProfInc point. */
-extern VexInvalRange patchProfInc_PPC ( void*  place_to_patch,
-                                        ULong* location_of_counter,
+extern VexInvalRange patchProfInc_PPC ( VexEndness endness_host,
+                                        void*  place_to_patch,
+                                        const ULong* location_of_counter,
                                         Bool   mode64 );
 
 

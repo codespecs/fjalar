@@ -192,15 +192,11 @@ typedef  unsigned long HWord;
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) /* */
 
-#elif defined(__arm__)
+#elif defined(__arm__) && !defined(__aarch64__)
 #   define VEX_HOST_WORDSIZE 4
 #   define VEX_REGPARM(_n) /* */
 
-#elif defined(_AIX) && !defined(__64BIT__)
-#   define VEX_HOST_WORDSIZE 4
-#   define VEX_REGPARM(_n) /* */
-
-#elif defined(_AIX) && defined(__64BIT__)
+#elif defined(__aarch64__) && !defined(__arm__)
 #   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
 
@@ -208,12 +204,12 @@ typedef  unsigned long HWord;
 #   define VEX_HOST_WORDSIZE 8
 #   define VEX_REGPARM(_n) /* */
 
-#elif defined(__mips__)
-#if (__mips==64)
+#elif defined(__mips__) && (__mips == 64)
 #   define VEX_HOST_WORDSIZE 8
-#else
+#   define VEX_REGPARM(_n) /* */
+
+#elif defined(__mips__) && (__mips != 64)
 #   define VEX_HOST_WORDSIZE 4
-#endif
 #   define VEX_REGPARM(_n) /* */
 
 #else
@@ -222,14 +218,14 @@ typedef  unsigned long HWord;
 
 
 #if VEX_HOST_WORDSIZE == 8
-   static inline ULong Ptr_to_ULong ( void* p ) {
+   static inline ULong Ptr_to_ULong ( const void* p ) {
       return (ULong)p;
    }
    static inline void* ULong_to_Ptr ( ULong n ) {
       return (void*)n;
    }
 #elif VEX_HOST_WORDSIZE == 4
-   static inline ULong Ptr_to_ULong ( void* p ) {
+   static inline ULong Ptr_to_ULong ( const void* p ) {
       UInt w = (UInt)p;
       return (ULong)w;
    }

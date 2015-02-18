@@ -517,6 +517,7 @@ typedef
 
 #define SecMap_MAGIC   0x571e58cbU
 
+__attribute__((unused))
 static inline Bool is_sane_SecMap ( SecMap* sm ) {
    return sm != NULL && sm->magic == SecMap_MAGIC;
 }
@@ -881,7 +882,6 @@ void alloc_F_for_writing ( /*MOD*/SecMap* sm, /*OUT*/Word* fixp ) {
    new_size = sm->linesF_size==0 ? 1 : 2 * sm->linesF_size;
    nyu      = HG_(zalloc)( "libhb.aFfw.1 (LineF storage)",
                            new_size * sizeof(LineF) );
-   tl_assert(nyu);
 
    stats__secmap_linesF_allocd += (new_size - sm->linesF_size);
    stats__secmap_linesF_bytes  += (new_size - sm->linesF_size)
@@ -1758,7 +1758,6 @@ static void zsm_init ( void(*p_rcinc)(SVal), void(*p_rcdec)(SVal) )
    map_shmem = VG_(newFM)( HG_(zalloc), "libhb.zsm_init.1 (map_shmem)",
                            HG_(free), 
                            NULL/*unboxed UWord cmp*/);
-   tl_assert(map_shmem != NULL);
    shmem__invalidate_scache();
 
    /* a SecMap must contain an integral number of CacheLines */
@@ -1847,7 +1846,6 @@ static void verydead_thread_table_init ( void )
      = VG_(newXA)( HG_(zalloc),
                    "libhb.verydead_thread_table_init.1",
                    HG_(free), sizeof(ThrID) );
-   tl_assert(verydead_thread_table);
    VG_(setCmpFnXA)(verydead_thread_table, cmp__ThrID);
 }
 
@@ -1858,7 +1856,7 @@ static void verydead_thread_table_init ( void )
    VtsID_INVALID. */
 typedef
    struct {
-      VtsID   id;
+      VtsID    id;
       UInt     usedTS;
       UInt     sizeTS;
       ScalarTS ts[0];
@@ -1915,8 +1913,8 @@ static UInt VTS__cmpLEQ ( VTS* a, VTS* b );
    Returns -1, 0 or 1. */
 static Word VTS__cmp_structural ( VTS* a, VTS* b );
 
-/* Debugging only.  Display the given VTS in the buffer. */
-static void VTS__show ( HChar* buf, Int nBuf, VTS* vts );
+/* Debugging only.  Display the given VTS. */
+static void VTS__show ( const VTS* vts );
 
 /* Debugging only.  Return vts[index], so to speak. */
 static ULong VTS__indexAt_SLOW ( VTS* vts, Thr* idx );
@@ -2079,7 +2077,7 @@ static void VTS__tick ( /*OUT*/VTS* out, Thr* me, VTS* vts )
          break;
       UInt hi = out->usedTS++;
       out->ts[hi] = *here;
-      } 
+   }
 
    /* 'i' now indicates the next entry to copy, if any.
        There are 3 possibilities:
@@ -2172,16 +2170,16 @@ static void VTS__join ( /*OUT*/VTS* out, VTS* a, VTS* b )
          /* a empty, use up b */
          ScalarTS* tmpb = &b->ts[ib];
          thrid = tmpb->thrid;
-         tyma = 0;
-         tymb = tmpb->tym;
+         tyma  = 0;
+         tymb  = tmpb->tym;
          ib++;
 
       } else if (ia != useda && ib == usedb) {
          /* b empty, use up a */
          ScalarTS* tmpa = &a->ts[ia];
          thrid = tmpa->thrid;
-         tyma = tmpa->tym;
-         tymb = 0;
+         tyma  = tmpa->tym;
+         tymb  = 0;
          ia++;
 
       } else {
@@ -2191,21 +2189,21 @@ static void VTS__join ( /*OUT*/VTS* out, VTS* a, VTS* b )
          if (tmpa->thrid < tmpb->thrid) {
             /* a has the lowest unconsidered ThrID */
             thrid = tmpa->thrid;
-            tyma = tmpa->tym;
-            tymb = 0;
+            tyma  = tmpa->tym;
+            tymb  = 0;
             ia++;
          } else if (tmpa->thrid > tmpb->thrid) {
             /* b has the lowest unconsidered ThrID */
             thrid = tmpb->thrid;
-            tyma = 0;
-            tymb = tmpb->tym;
+            tyma  = 0;
+            tymb  = tmpb->tym;
             ib++;
          } else {
             /* they both next mention the same ThrID */
             tl_assert(tmpa->thrid == tmpb->thrid);
             thrid = tmpa->thrid; /* == tmpb->thrid */
-            tyma = tmpa->tym;
-            tymb = tmpb->tym;
+            tyma  = tmpa->tym;
+            tymb  = tmpb->tym;
             ia++;
             ib++;
             ncommon++;
@@ -2265,17 +2263,17 @@ static UInt/*ThrID*/ VTS__cmpLEQ ( VTS* a, VTS* b )
       } else if (ia == useda && ib != usedb) {
          /* a empty, use up b */
          ScalarTS* tmpb = &b->ts[ib];
-         tyma = 0;
-         tymb = tmpb->tym;
+         tyma  = 0;
+         tymb  = tmpb->tym;
          thrid = tmpb->thrid;
          ib++;
 
       } else if (ia != useda && ib == usedb) {
          /* b empty, use up a */
          ScalarTS* tmpa = &a->ts[ia];
-         tyma = tmpa->tym;
+         tyma  = tmpa->tym;
          thrid = tmpa->thrid;
-         tymb = 0;
+         tymb  = 0;
          ia++;
 
       } else {
@@ -2284,24 +2282,24 @@ static UInt/*ThrID*/ VTS__cmpLEQ ( VTS* a, VTS* b )
          ScalarTS* tmpb = &b->ts[ib];
          if (tmpa->thrid < tmpb->thrid) {
             /* a has the lowest unconsidered ThrID */
-            tyma = tmpa->tym;
+            tyma  = tmpa->tym;
             thrid = tmpa->thrid;
-            tymb = 0;
+            tymb  = 0;
             ia++;
          }
          else
          if (tmpa->thrid > tmpb->thrid) {
             /* b has the lowest unconsidered ThrID */
-            tyma = 0;
-            tymb = tmpb->tym;
+            tyma  = 0;
+            tymb  = tmpb->tym;
             thrid = tmpb->thrid;
             ib++;
          } else {
             /* they both next mention the same ThrID */
             tl_assert(tmpa->thrid == tmpb->thrid);
-            tyma = tmpa->tym;
+            tyma  = tmpa->tym;
             thrid = tmpa->thrid;
-            tymb = tmpb->tym;
+            tymb  = tmpb->tym;
             ia++;
             ib++;
          }
@@ -2349,7 +2347,7 @@ Word VTS__cmp_structural ( VTS* a, VTS* b )
       stats__vts__cmp_structural_slow++;
       /* Same length vectors.  Find the first difference, if any, as
          fast as possible. */
-   for (i = 0; i < useda; i++) {
+      for (i = 0; i < useda; i++) {
          tmpa = &ctsa[i];
          tmpb = &ctsb[i];
          if (LIKELY(tmpa->tym == tmpb->tym
@@ -2363,8 +2361,8 @@ Word VTS__cmp_structural ( VTS* a, VTS* b )
          return 0;
       } else {
          tl_assert(i >= 0 && i < useda);
-      if (tmpa->tym < tmpb->tym) return -1;
-      if (tmpa->tym > tmpb->tym) return 1;
+         if (tmpa->tym < tmpb->tym) return -1;
+         if (tmpa->tym > tmpb->tym) return 1;
          if (tmpa->thrid < tmpb->thrid) return -1;
          if (tmpa->thrid > tmpb->thrid) return 1;
          /* we just established them as non-identical, hence: */
@@ -2380,35 +2378,20 @@ Word VTS__cmp_structural ( VTS* a, VTS* b )
 }
 
 
-/* Debugging only.  Display the given VTS in the buffer.
+/* Debugging only.  Display the given VTS.
 */
-void VTS__show ( HChar* buf, Int nBuf, VTS* vts )
+static void VTS__show ( const VTS* vts )
 {
-   ScalarTS* st;
-   HChar     unit[64];
    Word      i, n;
-   Int       avail = nBuf;
    tl_assert(vts && vts->ts);
-   tl_assert(nBuf > 16);
-   buf[0] = '[';
-   buf[1] = 0;
+
+   VG_(printf)("[");
    n =  vts->usedTS;
    for (i = 0; i < n; i++) {
-      tl_assert(avail >= 40);
-      st = &vts->ts[i];
-      VG_(memset)(unit, 0, sizeof(unit));
-      VG_(sprintf)(unit, i < n-1 ? "%u:%llu " : "%u:%llu",
-                         st->thrid, (ULong)st->tym);
-      if (avail < VG_(strlen)(unit) + 40/*let's say*/) {
-         VG_(strcat)(buf, " ...]");
-         buf[nBuf-1] = 0;
-         return;
-      }
-      VG_(strcat)(buf, unit);
-      avail -= VG_(strlen)(unit);
+      const ScalarTS *st = &vts->ts[i];
+      VG_(printf)(i < n-1 ? "%u:%llu " : "%u:%llu", st->thrid, (ULong)st->tym);
    }
-   VG_(strcat)(buf, "]");
-   buf[nBuf-1] = 0;
+   VG_(printf)("]");
 }
 
 
@@ -2489,7 +2472,6 @@ static void vts_set_init ( void )
    vts_set = VG_(newFM)( HG_(zalloc), "libhb.vts_set_init.1",
                          HG_(free),
                          (Word(*)(UWord,UWord))VTS__cmp_structural );
-   tl_assert(vts_set);
 }
 
 /* Given a VTS, look in vts_set to see if we already have a
@@ -2564,12 +2546,9 @@ static Word vts_next_GC_at = 1000;
 
 static void vts_tab_init ( void )
 {
-   vts_tab
-      = VG_(newXA)( HG_(zalloc), "libhb.vts_tab_init.1",
-                    HG_(free), sizeof(VtsTE) );
-   vts_tab_freelist
-      = VtsID_INVALID;
-   tl_assert(vts_tab);
+   vts_tab = VG_(newXA)( HG_(zalloc), "libhb.vts_tab_init.1",
+                         HG_(free), sizeof(VtsTE) );
+   vts_tab_freelist = VtsID_INVALID;
 }
 
 /* Add ii to the free list, checking that it looks out-of-use. */
@@ -3208,11 +3187,8 @@ static VTS* VtsID__to_VTS ( VtsID vi ) {
 }
 
 static void VtsID__pp ( VtsID vi ) {
-   HChar buf[100];
    VTS* vts = VtsID__to_VTS(vi);
-   VTS__show( buf, sizeof(buf)-1, vts );
-   buf[sizeof(buf)-1] = 0;
-   VG_(printf)("%s", buf);
+   VTS__show( vts );
 }
 
 /* compute partial ordering relation of vi1 and vi2. */
@@ -3306,7 +3282,7 @@ static ULong VtsID__indexAt ( VtsID vi, Thr* idx ) {
 static Thr* VtsID__findFirst_notLEQ ( VtsID vi1, VtsID vi2 )
 {
    VTS  *vts1, *vts2;
-   Thr* diffthr;
+   Thr*  diffthr;
    ThrID diffthrid;
    tl_assert(vi1 != vi2);
    vts1 = VtsID__to_VTS(vi1);
@@ -3668,21 +3644,17 @@ static Thr* Thr__new ( void )
    thr->llexit_done = False;
    thr->joinedwith_done = False;
    thr->filter = HG_(zalloc)( "libhb.Thr__new.2", sizeof(Filter) );
-   /* We only really need this at history level 1, but unfortunately
-      this routine is called before the command line processing is
-      done (sigh), so we can't rely on HG_(clo_history_level) at this
-      point.  Hence always allocate it.  Bah. */
-   thr->local_Kws_n_stacks
-      = VG_(newXA)( HG_(zalloc),
-                    "libhb.Thr__new.3 (local_Kws_and_stacks)",
-                    HG_(free), sizeof(ULong_n_EC) );
+   if (HG_(clo_history_level) == 1)
+      thr->local_Kws_n_stacks
+         = VG_(newXA)( HG_(zalloc),
+                       "libhb.Thr__new.3 (local_Kws_and_stacks)",
+                       HG_(free), sizeof(ULong_n_EC) );
 
    /* Add this Thr* <-> ThrID binding to the mapping, and
       cross-check */
    if (!thrid_to_thr_map) {
       thrid_to_thr_map = VG_(newXA)( HG_(zalloc), "libhb.Thr__new.4",
                                      HG_(free), sizeof(Thr*) );
-      tl_assert(thrid_to_thr_map);
    }
 
    if (thrid_counter >= ThrID_MAX_VALID) {
@@ -3792,6 +3764,7 @@ static inline VtsID SVal__unC_Wmin ( SVal s ) {
 static inline Bool SVal__isA ( SVal s ) {
    return (2ULL << 62) == (s & SVAL_TAGMASK);
 }
+__attribute__((unused))
 static inline SVal SVal__mkA ( void ) {
    return 2ULL << 62;
 }
@@ -4209,7 +4182,7 @@ static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
          ctxt__rcdec( ref->accs[i].rcec );
          tl_assert(ref->accs[i].thrid == thrid);
          /* Update the RCEC and the W-held lockset. */
-         ref->accs[i].rcec = rcec;
+         ref->accs[i].rcec       = rcec;
          ref->accs[i].locksHeldW = locksHeldW;
       } else {
          /* No entry for this (thread, R/W, size, nWHeld) quad.
@@ -4232,7 +4205,7 @@ static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
          ref->accs[0].szLg2B     = szLg2B;
          ref->accs[0].isW        = (UInt)(isW & 1);
          ref->accs[0].locksHeldW = locksHeldW;
-         ref->accs[0].rcec = rcec;
+         ref->accs[0].rcec       = rcec;
          /* thrid==0 is used to signify an empty slot, so we can't
             add zero thrid (such a ThrID is invalid anyway). */
          /* tl_assert(thrid != 0); */ /* There's a dominating assert above. */
@@ -4252,12 +4225,12 @@ static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
 
       ref = alloc_OldRef();
       ref->magic = OldRef_MAGIC;
-      ref->gen = oldrefGen;
+      ref->gen   = oldrefGen;
       ref->accs[0].thrid      = thrid;
       ref->accs[0].szLg2B     = szLg2B;
       ref->accs[0].isW        = (UInt)(isW & 1);
       ref->accs[0].locksHeldW = locksHeldW;
-      ref->accs[0].rcec = rcec;
+      ref->accs[0].rcec       = rcec;
 
       /* thrid==0 is used to signify an empty slot, so we can't
          add zero thrid (such a ThrID is invalid anyway). */
@@ -4265,7 +4238,7 @@ static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
 
       /* Clear out the rest of the entries */
       for (j = 1; j < N_OLDREF_ACCS; j++) {
-         ref->accs[j].rcec = NULL;
+         ref->accs[j].rcec       = NULL;
          ref->accs[j].thrid      = 0;
          ref->accs[j].szLg2B     = 0;
          ref->accs[j].isW        = 0;
@@ -4280,9 +4253,9 @@ static void event_map_bind ( Addr a, SizeT szB, Bool isW, Thr* thr )
 
 /* Extract info from the conflicting-access machinery. */
 Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
-                              /*OUT*/Thr**  resThr,
-                              /*OUT*/SizeT* resSzB,
-                              /*OUT*/Bool*  resIsW,
+                              /*OUT*/Thr**        resThr,
+                              /*OUT*/SizeT*       resSzB,
+                              /*OUT*/Bool*        resIsW,
                               /*OUT*/WordSetID*   locksHeldW,
                               Thr* thr, Addr a, SizeT szB, Bool isW )
 {
@@ -4292,11 +4265,11 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
    Bool    b;
 
    ThrID     cand_thrid;
-   RCEC*   cand_rcec;
-   Bool    cand_isW;
-   SizeT   cand_szB;
+   RCEC*     cand_rcec;
+   Bool      cand_isW;
+   SizeT     cand_szB;
    WordSetID cand_locksHeldW;
-   Addr    cand_a;
+   Addr      cand_a;
 
    Addr toCheck[15];
    Int  nToCheck = 0;
@@ -4330,9 +4303,9 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
       tl_assert(ref->accs[0].thrid != 0); /* first slot must always be used */
 
       cand_thrid      = 0; /* invalid; see comments in event_map_bind */
-      cand_rcec = NULL;
-      cand_isW  = False;
-      cand_szB  = 0;
+      cand_rcec       = NULL;
+      cand_isW        = False;
+      cand_szB        = 0;
       cand_locksHeldW = 0; /* always valid; see initialise_data_structures() */
 
       for (i = 0; i < N_OLDREF_ACCS; i++) {
@@ -4382,8 +4355,8 @@ Bool libhb_event_map_lookup ( /*OUT*/ExeContext** resEC,
          *resEC      = VG_(make_ExeContext_from_StackTrace)
                           (cand_rcec->frames, n);
          *resThr     = Thr__from_ThrID(cand_thrid);
-         *resSzB = cand_szB;
-         *resIsW = cand_isW;
+         *resSzB     = cand_szB;
+         *resIsW     = cand_isW;
          *locksHeldW = cand_locksHeldW;
          return True;
       }
@@ -4401,9 +4374,9 @@ static void event_map_init ( void )
 
    /* Context (RCEC) pool allocator */
    rcec_pool_allocator = VG_(newPA) (
-                     sizeof(RCEC),
+                             sizeof(RCEC),
                              1000 /* RCECs per pool */,
-                     HG_(zalloc),
+                             HG_(zalloc),
                              "libhb.event_map_init.1 (RCEC pools)",
                              HG_(free)
                           );
@@ -4412,15 +4385,14 @@ static void event_map_init ( void )
    tl_assert(!contextTab);
    contextTab = HG_(zalloc)( "libhb.event_map_init.2 (context table)",
                              N_RCEC_TAB * sizeof(RCEC*) );
-   tl_assert(contextTab);
    for (i = 0; i < N_RCEC_TAB; i++)
       contextTab[i] = NULL;
 
    /* Oldref pool allocator */
    oldref_pool_allocator = VG_(newPA)(
-                     sizeof(OldRef),
+                               sizeof(OldRef),
                                1000 /* OldRefs per pool */,
-                     HG_(zalloc),
+                               HG_(zalloc),
                                "libhb.event_map_init.3 (OldRef pools)",
                                HG_(free)
                             );
@@ -4432,7 +4404,6 @@ static void event_map_init ( void )
                    "libhb.event_map_init.4 (oldref tree)", 
                    HG_(free)
                 );
-   tl_assert(oldrefTree);
 
    oldrefGen = 0;
    oldrefGenIncAt = 0;
@@ -6457,7 +6428,7 @@ void libhb_so_recv ( Thr* thr, SO* so, Bool strong_recv )
       }
 
       if (thr->filter)
-      Filter__clear(thr->filter, "libhb_so_recv");
+         Filter__clear(thr->filter, "libhb_so_recv");
       note_local_Kw_n_stack_for(thr);
 
       if (strong_recv) 

@@ -22,7 +22,7 @@ EXTRA_DIST = \
 	primes.c
 
 #----------------------------------------------------------------------------
-# valgrind_listener (built for the primary target only)
+# valgrind_listener  (built for the primary target only)
 # valgrind-di-server (ditto)
 #----------------------------------------------------------------------------
 
@@ -51,3 +51,66 @@ endif
 if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
 valgrind_di_server_LDFLAGS   += -Wl,-read_only_relocs -Wl,suppress
 endif
+
+#----------------------------------------------------------------------------
+# getoff-<platform>
+# Used to retrieve user space various offsets, using user space libraries.
+#----------------------------------------------------------------------------
+
+noinst_PROGRAMS  = getoff-@VGCONF_ARCH_PRI@-@VGCONF_OS@
+if VGCONF_HAVE_PLATFORM_SEC
+noinst_PROGRAMS += getoff-@VGCONF_ARCH_SEC@-@VGCONF_OS@
+endif
+
+# The link flags for this are tricky, because we want to build it for
+# both the primary and secondary platforms, and add 
+# "-Wl,-read_only_relocs -Wl,suppress" to whichever of those is x86-darwin,
+# if any.  Hence there's a double-nested conditional that adds to the
+# LDFLAGS in both cases.
+
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES   = getoff.c
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS  = $(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS    = $(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CCASFLAGS = $(AM_CCASFLAGS_PRI)
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS   = $(AM_CFLAGS_PRI)
+if HAVE_DLINFO_RTLD_DI_TLS_MODID
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD = $(LDADD) -ldl
+endif
+# If there is no secondary platform, and the platforms include x86-darwin,
+# then the primary platform must be x86-darwin.  Hence:
+if ! VGCONF_HAVE_PLATFORM_SEC
+if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
+getoff_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS   += -Wl,-read_only_relocs -Wl,suppress
+endif
+endif
+
+if VGCONF_HAVE_PLATFORM_SEC
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES   = getoff.c
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS  = $(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS    = $(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CCASFLAGS = $(AM_CCASFLAGS_SEC)
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS   = $(AM_CFLAGS_SEC)
+if HAVE_DLINFO_RTLD_DI_TLS_MODID
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD = $(LDADD) -ldl
+endif
+endif
+# If there is a secondary platform, and the platforms include x86-darwin,
+# then the primary platform must be amd64-darwin and the secondary platform
+# must be x86-darwin.  Hence:
+if VGCONF_HAVE_PLATFORM_SEC
+if VGCONF_PLATFORMS_INCLUDE_X86_DARWIN
+getoff_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS   += -Wl,-read_only_relocs -Wl,suppress
+endif
+endif
+
+#----------------------------------------------------------------------------
+# General stuff
+#----------------------------------------------------------------------------
+
+all-local: inplace-noinst_PROGRAMS inplace-noinst_DSYMS
+
+clean-local: clean-noinst_DSYMS
+
+install-exec-local: install-noinst_PROGRAMS install-noinst_DSYMS
+
+uninstall-local: uninstall-noinst_PROGRAMS uninstall-noinst_DSYMS

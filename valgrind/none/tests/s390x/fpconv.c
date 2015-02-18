@@ -60,7 +60,7 @@ do {                                    \
 
 #define F2I(insn, initial, source_type, target_type)               \
 do {                                                               \
-   int cc;                                                               \
+   int cc;                                                         \
    source_type source = initial;                                   \
    target_type target = 0;                                         \
    asm volatile(insn " %0,0,%2\n\t"                                \

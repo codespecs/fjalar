@@ -28,11 +28,9 @@
 #include "drd_suppression.h"
 #include "pub_drd_bitmap.h"
 #include "pub_tool_basics.h"      /* Addr, SizeT */
-#include "pub_tool_debuginfo.h"   /* VG_(get_objname)() */
 #include "pub_tool_libcassert.h"  /* tl_assert() */
 #include "pub_tool_libcbase.h"    /* VG_(memset) */
 #include "pub_tool_libcprint.h"   /* VG_(printf) */
-#include "pub_tool_machine.h"     /* VG_(get_IP)() */
 #include "pub_tool_mallocfree.h"  /* VG_(malloc), VG_(free) */
 
 
@@ -405,7 +403,7 @@ DRD_(bm_has_any_load)(struct bitmap* const bm, const Addr a1, const Addr a2)
          tl_assert(a1 <= b_end && b_end <= a2);
          tl_assert(b_start < b_end);
          tl_assert(address_lsb(b_start) <= address_lsb(b_end - 1));
-      
+
          for (b0 = address_lsb(b_start); b0 <= address_lsb(b_end - 1); b0++)
          {
             if (bm0_is_set(p1->bm0_r, b0))
@@ -458,7 +456,7 @@ Bool DRD_(bm_has_any_store)(struct bitmap* const bm,
          tl_assert(a1 <= b_end && b_end <= a2);
          tl_assert(b_start < b_end);
          tl_assert(address_lsb(b_start) <= address_lsb(b_end - 1));
-      
+
          for (b0 = address_lsb(b_start); b0 <= address_lsb(b_end - 1); b0++)
          {
             if (bm0_is_set(p1->bm0_w, b0))
@@ -513,7 +511,7 @@ Bool DRD_(bm_has_any_access)(struct bitmap* const bm,
          tl_assert(a1 <= b_end && b_end <= a2);
          tl_assert(b_start < b_end);
          tl_assert(address_lsb(b_start) <= address_lsb(b_end - 1));
-      
+
          for (b0 = address_lsb(b_start); b0 <= address_lsb(b_end - 1); b0++)
          {
             /*
@@ -846,7 +844,7 @@ Bool DRD_(bm_has_conflict_with)(struct bitmap* const bm,
          tl_assert(a1 <= b_end && b_end <= a2);
          tl_assert(b_start < b_end);
          tl_assert(address_lsb(b_start) <= address_lsb(b_end - 1));
-      
+
          for (b0 = address_lsb(b_start); b0 <= address_lsb(b_end - 1); b0++)
          {
             if (access_type == eLoad)
@@ -1088,9 +1086,9 @@ void DRD_(bm_mark)(struct bitmap* bml, struct bitmap* bmr)
         (bm2r = VG_(OSetGen_Next)(bmr->oset)) != 0;
         )
    {
-         bm2l = bm2_lookup_or_insert(bml, bm2r->addr);
-         bm2l->recalc = True;
-      }
+      bm2l = bm2_lookup_or_insert(bml, bm2r->addr);
+      bm2l->recalc = True;
+   }
 }
 
 /** Clear all second-level bitmaps for which bitmap2::recalc == True. */

@@ -188,7 +188,7 @@ extern AMD64RMI* AMD64RMI_Imm ( UInt );
 extern AMD64RMI* AMD64RMI_Reg ( HReg );
 extern AMD64RMI* AMD64RMI_Mem ( AMD64AMode* );
 
-extern void ppAMD64RMI ( AMD64RMI* );
+extern void ppAMD64RMI      ( AMD64RMI* );
 extern void ppAMD64RMI_lo32 ( AMD64RMI* );
 
 
@@ -746,20 +746,22 @@ extern AMD64Instr* AMD64Instr_EvCheck    ( AMD64AMode* amCounter,
 extern AMD64Instr* AMD64Instr_ProfInc    ( void );
 
 
-extern void ppAMD64Instr ( AMD64Instr*, Bool );
+extern void ppAMD64Instr ( const AMD64Instr*, Bool );
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-extern void         getRegUsage_AMD64Instr ( HRegUsage*, AMD64Instr*, Bool );
-extern void         mapRegs_AMD64Instr     ( HRegRemap*, AMD64Instr*, Bool );
-extern Bool         isMove_AMD64Instr      ( AMD64Instr*, HReg*, HReg* );
-extern Int          emit_AMD64Instr        ( /*MB_MOD*/Bool* is_profInc,
-                                             UChar* buf, Int nbuf, AMD64Instr* i, 
-                                             Bool mode64,
-                                             void* disp_cp_chain_me_to_slowEP,
-                                             void* disp_cp_chain_me_to_fastEP,
-                                             void* disp_cp_xindir,
-                                             void* disp_cp_xassisted );
+extern void getRegUsage_AMD64Instr ( HRegUsage*, const AMD64Instr*, Bool );
+extern void mapRegs_AMD64Instr     ( HRegRemap*, AMD64Instr*, Bool );
+extern Bool isMove_AMD64Instr      ( const AMD64Instr*, HReg*, HReg* );
+extern Int          emit_AMD64Instr   ( /*MB_MOD*/Bool* is_profInc,
+                                        UChar* buf, Int nbuf,
+                                        const AMD64Instr* i, 
+                                        Bool mode64,
+                                        VexEndness endness_host,
+                                        const void* disp_cp_chain_me_to_slowEP,
+                                        const void* disp_cp_chain_me_to_fastEP,
+                                        const void* disp_cp_xindir,
+                                        const void* disp_cp_xassisted );
 
 extern void genSpill_AMD64  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                               HReg rreg, Int offset, Bool );
@@ -769,8 +771,8 @@ extern void genReload_AMD64 ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
 extern void         getAllocableRegs_AMD64 ( Int*, HReg** );
 extern HInstrArray* iselSB_AMD64           ( IRSB*, 
                                              VexArch,
-                                                    VexArchInfo*,
-                                             VexAbiInfo*,
+                                             const VexArchInfo*,
+                                             const VexAbiInfo*,
                                              Int offs_Host_EvC_Counter,
                                              Int offs_Host_EvC_FailAddr,
                                              Bool chainingAllowed,
@@ -782,20 +784,23 @@ extern HInstrArray* iselSB_AMD64           ( IRSB*,
    and so assumes that they are both <= 128, and so can use the short
    offset encoding.  This is all checked with assertions, so in the
    worst case we will merely assert at startup. */
-extern Int evCheckSzB_AMD64 ( void );
+extern Int evCheckSzB_AMD64 ( VexEndness endness_host );
 
 /* Perform a chaining and unchaining of an XDirect jump. */
-extern VexInvalRange chainXDirect_AMD64 ( void* place_to_chain,
-                                          void* disp_cp_chain_me_EXPECTED,
-                                          void* place_to_jump_to );
+extern VexInvalRange chainXDirect_AMD64 ( VexEndness endness_host,
+                                          void* place_to_chain,
+                                          const void* disp_cp_chain_me_EXPECTED,
+                                          const void* place_to_jump_to );
 
-extern VexInvalRange unchainXDirect_AMD64 ( void* place_to_unchain,
-                                            void* place_to_jump_to_EXPECTED,
-                                            void* disp_cp_chain_me );
+extern VexInvalRange unchainXDirect_AMD64 ( VexEndness endness_host,
+                                            void* place_to_unchain,
+                                            const void* place_to_jump_to_EXPECTED,
+                                            const void* disp_cp_chain_me );
 
 /* Patch the counter location into an existing ProfInc point. */
-extern VexInvalRange patchProfInc_AMD64 ( void*  place_to_patch,
-                                          ULong* location_of_counter );
+extern VexInvalRange patchProfInc_AMD64 ( VexEndness endness_host,
+                                          void*  place_to_patch,
+                                          const ULong* location_of_counter );
 
 
 #endif /* ndef __VEX_HOST_AMD64_DEFS_H */

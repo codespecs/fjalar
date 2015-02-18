@@ -340,6 +340,7 @@ DisambigOverride returnDisambigOverride(VariableEntry* var) {
 //      * Run AFTER updateAllFunctionEntries() so that
 //        VariableEntry names are properly initialized
 static void processDisambigFile() {
+  // (comment added 2005)  
   // TODO: This is crude and unsafe but works for now
   char line[200];
   char nextLineIsEntry = 0;

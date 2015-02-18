@@ -60,7 +60,6 @@ void DRD_(clientobj_init)(void)
    tl_assert(s_clientobj_set == 0);
    s_clientobj_set = VG_(OSetGen_Create)(0, 0, VG_(malloc),
                                          "drd.clientobj.ci.1", VG_(free));
-   tl_assert(s_clientobj_set);
 }
 
 /**
@@ -113,7 +112,7 @@ Bool DRD_(clientobj_present)(const Addr a1, const Addr a2)
    {
       if (a1 <= p->any.a1 && p->any.a1 < a2)
       {
-         return True;  
+         return True;
       }
    }
    return False;
@@ -145,7 +144,7 @@ DrdClientobj* DRD_(clientobj_add)(const Addr a1, const ObjType t)
    if (t == ClientHbvar)
       DRD_(mark_hbvar)(a1);
    else
-   DRD_(start_suppression)(a1, a1 + 1, "clientobj");
+      DRD_(start_suppression)(a1, a1 + 1, "clientobj");
    return p;
 }
 

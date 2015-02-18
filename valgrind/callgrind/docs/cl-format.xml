@@ -101,7 +101,7 @@ ability to specify call relationship among functions. More generally, you
 specify associations among positions. For this, the second part of the
 file also can contain association specifications. These look similar to
 position specifications, but consist of two lines. For calls, the format
-looks like 
+looks like
 <screen>
  calls=(Call Count) (Destination position)
  (Source position) (Inclusive cost of call)

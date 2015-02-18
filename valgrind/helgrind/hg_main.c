@@ -37,6 +37,7 @@
 */
 
 #include "pub_tool_basics.h"
+#include "pub_tool_gdbserver.h"
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcprint.h"
@@ -54,9 +55,12 @@
 #include "pub_tool_vki.h"       // VKI_PAGE_SIZE
 #include "pub_tool_libcproc.h"  // VG_(atfork)
 #include "pub_tool_aspacemgr.h" // VG_(am_is_valid_for_client)
+#include "pub_tool_poolalloc.h"
+#include "pub_tool_addrinfo.h"
 
 #include "hg_basics.h"
 #include "hg_wordset.h"
+#include "hg_addrdescr.h"
 #include "hg_lock_n_thread.h"
 #include "hg_errors.h"
 
@@ -456,29 +460,61 @@ static const HChar* show_LockKind ( LockKind lkk ) {
    }
 }
 
-static void pp_Lock ( Int d, Lock* lk )
+/* Pretty Print lock lk.
+   if show_lock_addrdescr, describes the (guest) lock address.
+     (this description will be more complete with --read-var-info=yes).
+   if show_internal_data, shows also helgrind internal information. 
+   d is the level at which output is indented. */
+static void pp_Lock ( Int d, Lock* lk,
+                      Bool show_lock_addrdescr,
+                      Bool show_internal_data)
 {
-   space(d+0); VG_(printf)("Lock %p (ga %#lx) {\n", lk, lk->guestaddr);
+   space(d+0); 
+   if (show_internal_data)
+      VG_(printf)("Lock %p (ga %#lx) {\n", lk, lk->guestaddr);
+   else
+      VG_(printf)("Lock ga %#lx {\n", lk->guestaddr);
+   if (!show_lock_addrdescr 
+       || !HG_(get_and_pp_addrdescr) ((Addr) lk->guestaddr))
+      VG_(printf)("\n");
+      
    if (sHOW_ADMIN) {
       space(d+3); VG_(printf)("admin_n  %p\n",   lk->admin_next);
       space(d+3); VG_(printf)("admin_p  %p\n",   lk->admin_prev);
-      space(d+3); VG_(printf)("magic  0x%x\n", (UInt)lk->magic);
+      space(d+3); VG_(printf)("magic    0x%x\n", (UInt)lk->magic);
    }
-   space(d+3); VG_(printf)("unique %llu\n", lk->unique);
+   if (show_internal_data) {
+      space(d+3); VG_(printf)("unique %llu\n", lk->unique);
+   }
    space(d+3); VG_(printf)("kind   %s\n", show_LockKind(lk->kind));
-   space(d+3); VG_(printf)("heldW  %s\n", lk->heldW ? "yes" : "no");
-   space(d+3); VG_(printf)("heldBy %p", lk->heldBy);
+   if (show_internal_data) {
+      space(d+3); VG_(printf)("heldW  %s\n", lk->heldW ? "yes" : "no");
+   }
+   if (show_internal_data) {
+      space(d+3); VG_(printf)("heldBy %p", lk->heldBy);
+   }
    if (lk->heldBy) {
       Thread* thr;
       UWord   count;
       VG_(printf)(" { ");
       VG_(initIterBag)( lk->heldBy );
-      while (VG_(nextIterBag)( lk->heldBy, (UWord*)&thr, &count ))
-         VG_(printf)("%lu:%p ", count, thr);
+      while (VG_(nextIterBag)( lk->heldBy, (UWord*)&thr, &count )) {
+         if (show_internal_data)
+            VG_(printf)("%lu:%p ", count, thr);
+         else {
+            VG_(printf)("%c%lu:thread #%d ",
+                        lk->heldW ? 'W' : 'R',
+                        count, thr->errmsg_index);
+            if (thr->coretid == VG_INVALID_THREADID) 
+               VG_(printf)("tid (exited) ");
+            else
+               VG_(printf)("tid %d ", thr->coretid);
+
+         }
+      }
       VG_(doneIterBag)( lk->heldBy );
-      VG_(printf)("}");
+      VG_(printf)("}\n");
    }
-   VG_(printf)("\n");
    space(d+0); VG_(printf)("}\n");
 }
 
@@ -495,12 +531,14 @@ static void pp_admin_locks ( Int d )
          space(n); 
          VG_(printf)("admin_locks record %d of %d:\n", i, n);
       }
-      pp_Lock(d+3, lk);
+      pp_Lock(d+3, lk,
+              False /* show_lock_addrdescr */,
+              True /* show_internal_data */);
    }
    space(d); VG_(printf)("}\n");
 }
 
-static void pp_map_locks ( Int d )
+static void pp_map_locks ( Int d)
 {
    void* gla;
    Lock* lk;
@@ -557,13 +595,11 @@ static void initialise_data_structures ( Thr* hbthr_root )
 
    tl_assert(map_threads == NULL);
    map_threads = HG_(zalloc)( "hg.ids.1", VG_N_THREADS * sizeof(Thread*) );
-   tl_assert(map_threads != NULL);
 
    tl_assert(sizeof(Addr) == sizeof(UWord));
    tl_assert(map_locks == NULL);
    map_locks = VG_(newFM)( HG_(zalloc), "hg.ids.2", HG_(free), 
                            NULL/*unboxed Word cmp*/);
-   tl_assert(map_locks != NULL);
 
    tl_assert(univ_lsets == NULL);
    univ_lsets = HG_(newWordSetU)( HG_(zalloc), "hg.ids.4", HG_(free),
@@ -577,9 +613,9 @@ static void initialise_data_structures ( Thr* hbthr_root )
 
    tl_assert(univ_laog == NULL);
    if (HG_(clo_track_lockorders)) {
-   univ_laog = HG_(newWordSetU)( HG_(zalloc), "hg.ids.5 (univ_laog)",
-                                 HG_(free), 24/*cacheSize*/ );
-   tl_assert(univ_laog != NULL);
+      univ_laog = HG_(newWordSetU)( HG_(zalloc), "hg.ids.5 (univ_laog)",
+                                    HG_(free), 24/*cacheSize*/ );
+      tl_assert(univ_laog != NULL);
    }
 
    /* Set up entries for the root thread */
@@ -910,7 +946,7 @@ static void all_except_Locks__sanity_check ( const HChar* who ) {
    if (0) VG_(printf)("all_except_Locks__sanity_check(%s)\n", who);
    threads__sanity_check(who);
    if (HG_(clo_track_lockorders))
-   laog__sanity_check(who);
+      laog__sanity_check(who);
 }
 static void all__sanity_check ( const HChar* who ) {
    all_except_Locks__sanity_check(who);
@@ -1096,9 +1132,9 @@ void evhH__post_thread_w_acquires_lock ( Thread* thr,
 
   noerror:
    if (HG_(clo_track_lockorders)) {
-   /* check lock order acquisition graph, and update.  This has to
-      happen before the lock is added to the thread's locksetA/W. */
-   laog__pre_thread_acquires_lock( thr, lk );
+      /* check lock order acquisition graph, and update.  This has to
+         happen before the lock is added to the thread's locksetA/W. */
+      laog__pre_thread_acquires_lock( thr, lk );
    }
    /* update the thread's held-locks set */
    thr->locksetA = HG_(addToWS)( univ_lsets, thr->locksetA, (UWord)lk );
@@ -1171,9 +1207,9 @@ void evhH__post_thread_r_acquires_lock ( Thread* thr,
 
   noerror:
    if (HG_(clo_track_lockorders)) {
-   /* check lock order acquisition graph, and update.  This has to
-      happen before the lock is added to the thread's locksetA/W. */
-   laog__pre_thread_acquires_lock( thr, lk );
+      /* check lock order acquisition graph, and update.  This has to
+         happen before the lock is added to the thread's locksetA/W. */
+      laog__pre_thread_acquires_lock( thr, lk );
    }
    /* update the thread's held-locks set */
    thr->locksetA = HG_(addToWS)( univ_lsets, thr->locksetA, (UWord)lk );
@@ -1530,7 +1566,7 @@ void evh__pre_thread_ll_create ( ThreadId parent, ThreadId child )
       /* Record where the parent is so we can later refer to this in
          error messages.
 
-         On amd64-linux, this entails a nasty glibc-2.5 specific hack.
+         On x86/amd64-linux, this entails a nasty glibc specific hack.
          The stack snapshot is taken immediately after the parent has
          returned from its sys_clone call.  Unfortunately there is no
          unwind info for the insn following "syscall" - reading the
@@ -1539,8 +1575,10 @@ void evh__pre_thread_ll_create ( ThreadId parent, ThreadId child )
          is unwind info.  Sigh.
       */
       { Word first_ip_delta = 0;
-#       if defined(VGP_amd64_linux)
+#       if defined(VGP_amd64_linux) || defined(VGP_x86_linux)
         first_ip_delta = -3;
+#       elif defined(VGP_arm64_linux) || defined(VGP_arm_linux)
+        first_ip_delta = -1;
 #       endif
         thr_c->created_at = VG_(record_ExeContext)(parent, first_ip_delta);
       }
@@ -1632,34 +1670,11 @@ void evh__atfork_child ( ThreadId tid )
    }
 }
 
-
+/* generate a dependence from the hbthr_q quitter to the hbthr_s stayer. */
 static
-void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
+void generate_quitter_stayer_dependence (Thr* hbthr_q, Thr* hbthr_s)
 {
-   Thread*  thr_s;
-   Thread*  thr_q;
-   Thr*     hbthr_s;
-   Thr*     hbthr_q;
    SO*      so;
-
-   if (SHOW_EVENTS >= 1)
-      VG_(printf)("evh__post_thread_join(stayer=%d, quitter=%p)\n",
-                  (Int)stay_tid, quit_thr );
-
-   tl_assert(HG_(is_sane_ThreadId)(stay_tid));
-
-   thr_s = map_threads_maybe_lookup( stay_tid );
-   thr_q = quit_thr;
-   tl_assert(thr_s != NULL);
-   tl_assert(thr_q != NULL);
-   tl_assert(thr_s != thr_q);
-
-   hbthr_s = thr_s->hbthr;
-   hbthr_q = thr_q->hbthr;
-   tl_assert(hbthr_s != hbthr_q);
-   tl_assert( libhb_get_Thr_hgthread(hbthr_s) == thr_s );
-   tl_assert( libhb_get_Thr_hgthread(hbthr_q) == thr_q );
-
    /* Allocate a temporary synchronisation object and use it to send
       an imaginary message from the quitter to the stayer, the purpose
       being to generate a dependence from the quitter to the
@@ -1683,6 +1698,36 @@ void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
       notified here multiple times for the same joinee.)  See also
       comments in helgrind/tests/jointwice.c. */
    libhb_joinedwith_done(hbthr_q);
+}
+
+
+static
+void evh__HG_PTHREAD_JOIN_POST ( ThreadId stay_tid, Thread* quit_thr )
+{
+   Thread*  thr_s;
+   Thread*  thr_q;
+   Thr*     hbthr_s;
+   Thr*     hbthr_q;
+
+   if (SHOW_EVENTS >= 1)
+      VG_(printf)("evh__post_thread_join(stayer=%d, quitter=%p)\n",
+                  (Int)stay_tid, quit_thr );
+
+   tl_assert(HG_(is_sane_ThreadId)(stay_tid));
+
+   thr_s = map_threads_maybe_lookup( stay_tid );
+   thr_q = quit_thr;
+   tl_assert(thr_s != NULL);
+   tl_assert(thr_q != NULL);
+   tl_assert(thr_s != thr_q);
+
+   hbthr_s = thr_s->hbthr;
+   hbthr_q = thr_q->hbthr;
+   tl_assert(hbthr_s != hbthr_q);
+   tl_assert( libhb_get_Thr_hgthread(hbthr_s) == thr_s );
+   tl_assert( libhb_get_Thr_hgthread(hbthr_q) == thr_q );
+
+   generate_quitter_stayer_dependence (hbthr_q, hbthr_s);
 
    /* evh__pre_thread_ll_exit issues an error message if the exiting
       thread holds any locks.  No need to check here. */
@@ -1747,12 +1792,8 @@ void evh__new_mem_heap ( Addr a, SizeT len, Bool is_inited ) {
    if (SHOW_EVENTS >= 1)
       VG_(printf)("evh__new_mem_heap(%p, %lu, inited=%d)\n", 
                   (void*)a, len, (Int)is_inited );
-   // FIXME: this is kinda stupid
-   if (is_inited) {
-      shadow_mem_make_New(get_current_Thread(), a, len);
-   } else {
-      shadow_mem_make_New(get_current_Thread(), a, len);
-   }
+   // We ignore the initialisation state (is_inited); that's ok.
+   shadow_mem_make_New(get_current_Thread(), a, len);
    if (len >= SCE_BIGRANGE_T && (HG_(clo_sanity_flags) & SCE_BIGRANGE))
       all__sanity_check("evh__pre_mem_read-post");
 }
@@ -1918,9 +1959,9 @@ void evh__HG_PTHREAD_MUTEX_DESTROY_PRE( ThreadId tid, void* mutex,
       }
       tl_assert( !lk->heldBy );
       tl_assert( HG_(is_sane_LockN)(lk) );
-
+      
       if (HG_(clo_track_lockorders))
-      laog__handle_one_lock_deletion(lk);
+         laog__handle_one_lock_deletion(lk);
       map_locks_delete( lk->guestaddr );
       del_LockN( lk );
    }
@@ -1963,7 +2004,7 @@ static void evh__HG_PTHREAD_MUTEX_LOCK_PRE ( ThreadId tid,
          kind of thing).  Duh.  Deadlock coming up; but at least
          produce an error message. */
       const HChar* errstr = "Attempt to re-lock a "
-                      "non-recursive lock I already hold";
+                            "non-recursive lock I already hold";
       const HChar* auxstr = "Lock was previously acquired";
       if (lk->acquired_at) {
          HG_(record_error_Misc_w_aux)( thr, errstr, auxstr, lk->acquired_at );
@@ -2128,7 +2169,6 @@ static void map_cond_to_CVInfo_INIT ( void ) {
    if (UNLIKELY(map_cond_to_CVInfo == NULL)) {
       map_cond_to_CVInfo = VG_(newFM)( HG_(zalloc),
                                        "hg.mctCI.1", HG_(free), NULL );
-      tl_assert(map_cond_to_CVInfo != NULL);
    }
 }
 
@@ -2176,7 +2216,7 @@ static void map_cond_to_CVInfo_delete ( ThreadId tid,
       if (cvi->nWaiters > 0) {
          HG_(record_error_Misc)(
             thr, "pthread_cond_destroy:"
-                                " destruction of condition variable being waited upon");
+                 " destruction of condition variable being waited upon");
          /* Destroying a cond var being waited upon outcome is EBUSY and
             variable is not destroyed. */
          return;
@@ -2269,8 +2309,8 @@ static void evh__HG_PTHREAD_COND_SIGNAL_PRE ( ThreadId tid, void* cond )
          // shows us what it is, and if that may not have happened yet.
          // So just keep quiet in this circumstance.
          //HG_(record_error_Misc)( thr, 
-   //      "pthread_cond_{signal,broadcast}: "
-   //      "no or invalid mutex associated with cond");
+         //   "pthread_cond_{signal,broadcast}: "
+         //   "no or invalid mutex associated with cond");
       }
    }
 
@@ -2479,9 +2519,9 @@ void evh__HG_PTHREAD_RWLOCK_DESTROY_PRE( ThreadId tid, void* rwl )
       }
       tl_assert( !lk->heldBy );
       tl_assert( HG_(is_sane_LockN)(lk) );
-
+      
       if (HG_(clo_track_lockorders))
-      laog__handle_one_lock_deletion(lk);
+         laog__handle_one_lock_deletion(lk);
       map_locks_delete( lk->guestaddr );
       del_LockN( lk );
    }
@@ -2611,7 +2651,6 @@ static void map_sem_to_SO_stack_INIT ( void ) {
    if (map_sem_to_SO_stack == NULL) {
       map_sem_to_SO_stack = VG_(newFM)( HG_(zalloc), "hg.mstSs.1",
                                         HG_(free), NULL );
-      tl_assert(map_sem_to_SO_stack != NULL);
    }
 }
 
@@ -2810,7 +2849,6 @@ typedef
 
 static Bar* new_Bar ( void ) {
    Bar* bar = HG_(zalloc)( "hg.nB.1 (new_Bar)", sizeof(Bar) );
-   tl_assert(bar);
    /* all fields are zero */
    tl_assert(bar->initted == False);
    return bar;
@@ -2832,7 +2870,6 @@ static void map_barrier_to_Bar_INIT ( void ) {
    if (UNLIKELY(map_barrier_to_Bar == NULL)) {
       map_barrier_to_Bar = VG_(newFM)( HG_(zalloc),
                                        "hg.mbtBI.1", HG_(free), NULL );
-      tl_assert(map_barrier_to_Bar != NULL);
    }
 }
 
@@ -2909,11 +2946,10 @@ static void evh__HG_PTHREAD_BARRIER_INIT_PRE ( ThreadId tid,
                                  sizeof(Thread*) );
    }
 
-   tl_assert(bar->waiting);
    tl_assert(VG_(sizeXA)(bar->waiting) == 0);
-   bar->initted = True;
+   bar->initted   = True;
    bar->resizable = resizable == 1 ? True : False;
-   bar->size    = count;
+   bar->size      = count;
 }
 
 
@@ -3164,7 +3200,6 @@ static void map_usertag_to_SO_INIT ( void ) {
    if (UNLIKELY(map_usertag_to_SO == NULL)) {
       map_usertag_to_SO = VG_(newFM)( HG_(zalloc),
                                       "hg.mutS.1", HG_(free), NULL );
-      tl_assert(map_usertag_to_SO != NULL);
    }
 }
 
@@ -3344,8 +3379,6 @@ static void laog__init ( void )
 
    laog_exposition = VG_(newFM)( HG_(zalloc), "hg.laog__init.2", HG_(free), 
                                  cmp_LAOGLinkExposition );
-   tl_assert(laog);
-   tl_assert(laog_exposition);
 }
 
 static void laog__show ( const HChar* who ) {
@@ -3757,7 +3790,7 @@ static void laog__pre_thread_acquires_lock (
          tl_assert(found->src_ec);
          tl_assert(found->dst_ec);
          HG_(record_error_LockOrder)( 
-            thr, lk->guestaddr, other->guestaddr,
+            thr, lk, other,
                  found->src_ec, found->dst_ec, other->acquired_at );
       } else {
          /* Hmm.  This can't happen (can it?) */
@@ -3807,7 +3840,7 @@ static void laog__pre_thread_acquires_lock (
             held by this thread, with its 'acquired_at'. */
                     
          HG_(record_error_LockOrder)(
-            thr, lk->guestaddr, other->guestaddr,
+            thr, lk, other,
                  NULL, NULL, other->acquired_at );
       }
    }
@@ -3941,16 +3974,19 @@ typedef
 
 /* A hash table of MallocMetas, used to track malloc'd blocks
    (obviously). */
-static VgHashTable hg_mallocmeta_table = NULL;
+static VgHashTable *hg_mallocmeta_table = NULL;
 
+/* MallocMeta are small elements. We use a pool to avoid
+   the overhead of malloc for each MallocMeta. */
+static PoolAlloc *MallocMeta_poolalloc = NULL;
 
 static MallocMeta* new_MallocMeta ( void ) {
-   MallocMeta* md = HG_(zalloc)( "hg.new_MallocMeta.1", sizeof(MallocMeta) );
-   tl_assert(md);
+   MallocMeta* md = VG_(allocEltPA) (MallocMeta_poolalloc);
+   VG_(memset)(md, 0, sizeof(MallocMeta));
    return md;
 }
 static void delete_MallocMeta ( MallocMeta* md ) {
-   HG_(free)(md);
+   VG_(freeEltPA)(MallocMeta_poolalloc, md);
 }
 
 
@@ -4165,6 +4201,7 @@ static inline Bool addr_is_in_MM_Chunk( MallocMeta* mm, Addr a )
 }
 
 Bool HG_(mm_find_containing_block)( /*OUT*/ExeContext** where,
+                                    /*OUT*/UInt*        tnr,
                                     /*OUT*/Addr*        payload,
                                     /*OUT*/SizeT*       szB,
                                     Addr                data_addr )
@@ -4201,6 +4238,7 @@ Bool HG_(mm_find_containing_block)( /*OUT*/ExeContext** where,
    tl_assert(mm);
    tl_assert(addr_is_in_MM_Chunk(mm, data_addr));
    if (where)   *where   = mm->where;
+   if (tnr)     *tnr     = mm->thr->errmsg_index;
    if (payload) *payload = mm->payload;
    if (szB)     *szB     = mm->szB;
    return True;
@@ -4425,7 +4463,10 @@ static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
    if (VG_STREQ(soname, VG_U_LD_LINUX_SO_2))        return True;
    if (VG_STREQ(soname, VG_U_LD_LINUX_X86_64_SO_2)) return True;
    if (VG_STREQ(soname, VG_U_LD64_SO_1))            return True;
+   if (VG_STREQ(soname, VG_U_LD64_SO_2))            return True;
    if (VG_STREQ(soname, VG_U_LD_SO_1))              return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_AARCH64_SO_1)) return True;
+   if (VG_STREQ(soname, VG_U_LD_LINUX_ARMHF_SO_3))  return True;
 #  elif defined(VGO_darwin)
    if (VG_STREQ(soname, VG_U_DYLD)) return True;
 #  else
@@ -4437,9 +4478,9 @@ static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
 static
 IRSB* hg_instrument ( VgCallbackClosure* closure,
                       IRSB* bbIn,
-                      VexGuestLayout* layout,
-                      VexGuestExtents* vge,
-                      VexArchInfo* archinfo_host,
+                      const VexGuestLayout* layout,
+                      const VexGuestExtents* vge,
+                      const VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    Int     i;
@@ -4517,6 +4558,7 @@ IRSB* hg_instrument ( VgCallbackClosure* closure,
          case Ist_MBE:
             switch (st->Ist.MBE.event) {
                case Imbe_Fence:
+               case Imbe_CancelReservation:
                   break; /* not interesting */
                default:
                   goto unhandled;
@@ -4695,15 +4737,99 @@ static void map_pthread_t_to_Thread_INIT ( void ) {
    if (UNLIKELY(map_pthread_t_to_Thread == NULL)) {
       map_pthread_t_to_Thread = VG_(newFM)( HG_(zalloc), "hg.mpttT.1", 
                                             HG_(free), NULL );
-      tl_assert(map_pthread_t_to_Thread != NULL);
    }
 }
 
+/* A list of Ada dependent tasks and their masters. Used for implementing
+   the Ada task termination semantic as implemented by the
+   gcc gnat Ada runtime. */
+typedef
+   struct { 
+      void* dependent; // Ada Task Control Block of the Dependent
+      void* master;    // ATCB of the master
+      Word  master_level; // level of dependency between master and dependent
+      Thread* hg_dependent; // helgrind Thread* for dependent task.
+   }
+   GNAT_dmml;
+static XArray* gnat_dmmls;   /* of GNAT_dmml */
+static void gnat_dmmls_INIT (void)
+{
+   if (UNLIKELY(gnat_dmmls == NULL)) {
+      gnat_dmmls = VG_(newXA) (HG_(zalloc), "hg.gnat_md.1",
+                               HG_(free),
+                               sizeof(GNAT_dmml) );
+   }
+}
+static void print_monitor_help ( void )
+{
+   VG_(gdb_printf) 
+      (
+"\n"
+"helgrind monitor commands:\n"
+"  info locks              : show list of locks and their status\n"
+"\n");
+}
+
+/* return True if request recognised, False otherwise */
+static Bool handle_gdb_monitor_command (ThreadId tid, HChar *req)
+{
+   HChar* wcmd;
+   HChar s[VG_(strlen(req))]; /* copy for strtok_r */
+   HChar *ssaveptr;
+   Int   kwdid;
+
+   VG_(strcpy) (s, req);
+
+   wcmd = VG_(strtok_r) (s, " ", &ssaveptr);
+   /* NB: if possible, avoid introducing a new command below which
+      starts with the same first letter(s) as an already existing
+      command. This ensures a shorter abbreviation for the user. */
+   switch (VG_(keyword_id) 
+           ("help info", 
+            wcmd, kwd_report_duplicated_matches)) {
+   case -2: /* multiple matches */
+      return True;
+   case -1: /* not found */
+      return False;
+   case  0: /* help */
+      print_monitor_help();
+      return True;
+   case  1: /* info */
+      wcmd = VG_(strtok_r) (NULL, " ", &ssaveptr);
+      switch (kwdid = VG_(keyword_id) 
+              ("locks",
+               wcmd, kwd_report_all)) {
+      case -2:
+      case -1: 
+         break;
+      case 0: // locks
+         {
+            Int i;
+            Lock* lk;
+            for (i = 0, lk = admin_locks;  lk;  i++, lk = lk->admin_next) {
+               pp_Lock(0, lk,
+                       True /* show_lock_addrdescr */,
+                       False /* show_internal_data */);
+            }
+            if (i == 0)
+               VG_(gdb_printf) ("no locks\n");
+         }
+         break;
+      default:
+         tl_assert(0);
+      }
+      return True;
+   default: 
+      tl_assert(0);
+      return False;
+   }
+}
 
 static 
 Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
 {
-   if (!VG_IS_TOOL_USERREQ('H','G',args[0]))
+   if (!VG_IS_TOOL_USERREQ('H','G',args[0])
+       && VG_USERREQ__GDB_MONITOR_COMMAND   != args[0])
       return False;
 
    /* Anything that gets past the above check is one of ours, so we
@@ -4735,7 +4861,8 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          SizeT pszB = 0;
          if (0) VG_(printf)("VG_USERREQ__HG_CLEAN_MEMORY_HEAPBLOCK(%#lx)\n",
                             args[1]);
-         if (HG_(mm_find_containing_block)(NULL, &payload, &pszB, args[1])) {
+         if (HG_(mm_find_containing_block)(NULL, NULL, 
+                                           &payload, &pszB, args[1])) {
             if (pszB > 0) {
                evh__die_mem(payload, pszB);
                evh__new_mem(payload, pszB);
@@ -4826,6 +4953,60 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
             VG_(printf)(".................... quitter Thread* = %p\n", 
                         thr_q);
             evh__HG_PTHREAD_JOIN_POST( tid, thr_q );
+         }
+         break;
+      }
+
+      /* This thread (tid) is informing us of its master. */
+      case _VG_USERREQ__HG_GNAT_MASTER_HOOK: {
+         GNAT_dmml dmml;
+         dmml.dependent = (void*)args[1];
+         dmml.master = (void*)args[2];
+         dmml.master_level = (Word)args[3];
+         dmml.hg_dependent = map_threads_maybe_lookup( tid );
+         tl_assert(dmml.hg_dependent);
+
+         if (0)
+         VG_(printf)("HG_GNAT_MASTER_HOOK (tid %d): "
+                     "dependent = %p master = %p master_level = %ld"
+                     " dependent Thread* = %p\n",
+                     (Int)tid, dmml.dependent, dmml.master, dmml.master_level,
+                     dmml.hg_dependent);
+         gnat_dmmls_INIT();
+         VG_(addToXA) (gnat_dmmls, &dmml);
+         break;
+      }
+
+      /* This thread (tid) is informing us that it has completed a
+         master. */
+      case _VG_USERREQ__HG_GNAT_MASTER_COMPLETED_HOOK: {
+         Word n;
+         const Thread *stayer = map_threads_maybe_lookup( tid );
+         const void *master = (void*)args[1];
+         const Word master_level = (Word) args[2];
+         tl_assert(stayer);
+
+         if (0)
+         VG_(printf)("HG_GNAT_MASTER_COMPLETED_HOOK (tid %d): "
+                     "self_id = %p master_level = %ld Thread* = %p\n",
+                     (Int)tid, master, master_level, stayer);
+
+         gnat_dmmls_INIT();
+         /* Reverse loop on the array, simulating a pthread_join for
+            the Dependent tasks of the completed master, and removing
+            them from the array. */
+         for (n = VG_(sizeXA) (gnat_dmmls) - 1; n >= 0; n--) {
+            GNAT_dmml *dmml = (GNAT_dmml*) VG_(indexXA)(gnat_dmmls, n);
+            if (dmml->master == master
+                && dmml->master_level == master_level) {
+               if (0)
+               VG_(printf)("quitter %p dependency to stayer %p\n",
+                           dmml->hg_dependent->hbthr,  stayer->hbthr);
+               tl_assert(dmml->hg_dependent->hbthr != stayer->hbthr);
+               generate_quitter_stayer_dependence (dmml->hg_dependent->hbthr,
+                                                   stayer->hbthr);
+               VG_(removeIndexXA) (gnat_dmmls, n);
+            }
          }
          break;
       }
@@ -5017,6 +5198,15 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
          evh__HG_USERSO_FORGET_ALL( tid, args[1] );
          break;
 
+      case VG_USERREQ__GDB_MONITOR_COMMAND: {
+         Bool handled = handle_gdb_monitor_command (tid, (HChar*)args[1]);
+         if (handled)
+            *ret = 1;
+         else
+            *ret = 0;
+         return handled;
+      }
+
       default:
          /* Unhandled Helgrind client request! */
          tl_assert2(0, "unhandled Helgrind client request 0x%lx",
@@ -5129,6 +5319,67 @@ static void hg_print_debug_usage ( void )
     );
 }
 
+static void hg_print_stats (void)
+{
+
+   if (1) {
+      VG_(printf)("\n");
+      HG_(ppWSUstats)( univ_lsets, "univ_lsets" );
+      if (HG_(clo_track_lockorders)) {
+         VG_(printf)("\n");
+         HG_(ppWSUstats)( univ_laog,  "univ_laog" );
+      }
+   }
+
+   //zz       VG_(printf)("\n");
+   //zz       VG_(printf)(" hbefore: %'10lu queries\n",        stats__hbefore_queries);
+   //zz       VG_(printf)(" hbefore: %'10lu cache 0 hits\n",   stats__hbefore_cache0s);
+   //zz       VG_(printf)(" hbefore: %'10lu cache > 0 hits\n", stats__hbefore_cacheNs);
+   //zz       VG_(printf)(" hbefore: %'10lu graph searches\n", stats__hbefore_gsearches);
+   //zz       VG_(printf)(" hbefore: %'10lu   of which slow\n",
+   //zz                   stats__hbefore_gsearches - stats__hbefore_gsearchFs);
+   //zz       VG_(printf)(" hbefore: %'10lu stack high water mark\n",
+   //zz                   stats__hbefore_stk_hwm);
+   //zz       VG_(printf)(" hbefore: %'10lu cache invals\n",   stats__hbefore_invals);
+   //zz       VG_(printf)(" hbefore: %'10lu probes\n",         stats__hbefore_probes);
+
+   VG_(printf)("\n");
+   VG_(printf)("        locksets: %'8d unique lock sets\n",
+               (Int)HG_(cardinalityWSU)( univ_lsets ));
+   if (HG_(clo_track_lockorders)) {
+      VG_(printf)("       univ_laog: %'8d unique lock sets\n",
+                  (Int)HG_(cardinalityWSU)( univ_laog ));
+   }
+
+   //VG_(printf)("L(ast)L(ock) map: %'8lu inserts (%d map size)\n",
+   //            stats__ga_LL_adds,
+   //            (Int)(ga_to_lastlock ? VG_(sizeFM)( ga_to_lastlock ) : 0) );
+
+   VG_(printf)("  LockN-to-P map: %'8llu queries (%llu map size)\n",
+               HG_(stats__LockN_to_P_queries),
+               HG_(stats__LockN_to_P_get_map_size)() );
+
+   VG_(printf)("string table map: %'8llu queries (%llu map size)\n",
+               HG_(stats__string_table_queries),
+               HG_(stats__string_table_get_map_size)() );
+   if (HG_(clo_track_lockorders)) {
+      VG_(printf)("            LAOG: %'8d map size\n",
+                  (Int)(laog ? VG_(sizeFM)( laog ) : 0));
+      VG_(printf)(" LAOG exposition: %'8d map size\n",
+                  (Int)(laog_exposition ? VG_(sizeFM)( laog_exposition ) : 0));
+   }
+
+   VG_(printf)("           locks: %'8lu acquires, "
+               "%'lu releases\n",
+               stats__lockN_acquires,
+               stats__lockN_releases
+              );
+   VG_(printf)("   sanity checks: %'8lu\n", stats__sanity_checks);
+
+   VG_(printf)("\n");
+   libhb_shutdown(True); // This in fact only print stats.
+}
+
 static void hg_fini ( Int exitcode )
 {
    if (VG_(clo_verbosity) == 1 && !VG_(clo_xml)) {
@@ -5150,65 +5401,8 @@ static void hg_fini ( Int exitcode )
    if (HG_(clo_sanity_flags))
       all__sanity_check("SK_(fini)");
 
-   if (VG_(clo_stats)) {
-
-      if (1) {
-         VG_(printf)("\n");
-         HG_(ppWSUstats)( univ_lsets, "univ_lsets" );
-         if (HG_(clo_track_lockorders)) {
-         VG_(printf)("\n");
-         HG_(ppWSUstats)( univ_laog,  "univ_laog" );
-      }
-      }
-
-      //zz       VG_(printf)("\n");
-      //zz       VG_(printf)(" hbefore: %'10lu queries\n",        stats__hbefore_queries);
-      //zz       VG_(printf)(" hbefore: %'10lu cache 0 hits\n",   stats__hbefore_cache0s);
-      //zz       VG_(printf)(" hbefore: %'10lu cache > 0 hits\n", stats__hbefore_cacheNs);
-      //zz       VG_(printf)(" hbefore: %'10lu graph searches\n", stats__hbefore_gsearches);
-      //zz       VG_(printf)(" hbefore: %'10lu   of which slow\n",
-      //zz                   stats__hbefore_gsearches - stats__hbefore_gsearchFs);
-      //zz       VG_(printf)(" hbefore: %'10lu stack high water mark\n",
-      //zz                   stats__hbefore_stk_hwm);
-      //zz       VG_(printf)(" hbefore: %'10lu cache invals\n",   stats__hbefore_invals);
-      //zz       VG_(printf)(" hbefore: %'10lu probes\n",         stats__hbefore_probes);
-
-      VG_(printf)("\n");
-      VG_(printf)("        locksets: %'8d unique lock sets\n",
-                  (Int)HG_(cardinalityWSU)( univ_lsets ));
-      if (HG_(clo_track_lockorders)) {
-      VG_(printf)("       univ_laog: %'8d unique lock sets\n",
-                  (Int)HG_(cardinalityWSU)( univ_laog ));
-      }
-
-      //VG_(printf)("L(ast)L(ock) map: %'8lu inserts (%d map size)\n",
-      //            stats__ga_LL_adds,
-      //            (Int)(ga_to_lastlock ? VG_(sizeFM)( ga_to_lastlock ) : 0) );
-
-      VG_(printf)("  LockN-to-P map: %'8llu queries (%llu map size)\n",
-                  HG_(stats__LockN_to_P_queries),
-                  HG_(stats__LockN_to_P_get_map_size)() );
-
-      VG_(printf)("string table map: %'8llu queries (%llu map size)\n",
-                  HG_(stats__string_table_queries),
-                  HG_(stats__string_table_get_map_size)() );
-      if (HG_(clo_track_lockorders)) {
-      VG_(printf)("            LAOG: %'8d map size\n",
-                  (Int)(laog ? VG_(sizeFM)( laog ) : 0));
-      VG_(printf)(" LAOG exposition: %'8d map size\n",
-                  (Int)(laog_exposition ? VG_(sizeFM)( laog_exposition ) : 0));
-      }
-         
-      VG_(printf)("           locks: %'8lu acquires, "
-                  "%'lu releases\n",
-                  stats__lockN_acquires,
-                  stats__lockN_releases
-                 );
-      VG_(printf)("   sanity checks: %'8lu\n", stats__sanity_checks);
-
-      VG_(printf)("\n");
-      libhb_shutdown(True);
-   }
+   if (VG_(clo_stats))
+      hg_print_stats();
 }
 
 /* FIXME: move these somewhere sane */
@@ -5262,6 +5456,11 @@ static void hg_post_clo_init ( void )
    initialise_data_structures(hbthr_root);
 }
 
+static void hg_info_location (Addr a)
+{
+   (void) HG_(get_and_pp_addrdescr) (a);
+}
+
 static void hg_pre_clo_init ( void )
 {
    VG_(details_name)            ("Helgrind");
@@ -5300,6 +5499,9 @@ static void hg_pre_clo_init ( void )
    // FIXME?
    //VG_(needs_sanity_checks)       (hg_cheap_sanity_check,
    //                                hg_expensive_sanity_check);
+
+   VG_(needs_print_stats) (hg_print_stats);
+   VG_(needs_info_location) (hg_info_location);
 
    VG_(needs_malloc_replacement)  (hg_cli__malloc,
                                    hg_cli____builtin_new,
@@ -5358,6 +5560,12 @@ static void hg_pre_clo_init ( void )
    tl_assert( sizeof(UWord) == sizeof(Addr) );
    hg_mallocmeta_table
       = VG_(HT_construct)( "hg_malloc_metadata_table" );
+
+   MallocMeta_poolalloc = VG_(newPA) ( sizeof(MallocMeta),
+                                       1000,
+                                       HG_(zalloc),
+                                       "hg_malloc_metadata_pool",
+                                       HG_(free));
 
    // add a callback to clean up on (threaded) fork.
    VG_(atfork)(NULL/*pre*/, NULL/*parent*/, evh__atfork_child/*child*/);

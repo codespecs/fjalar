@@ -216,12 +216,12 @@
 #ifndef __HELGRIND_H
 
 /** Tell DRD that a reader-writer lock object has been initialized. */
-#define ANNOTATE_RWLOCK_CREATE(rwlock) \
+#define ANNOTATE_RWLOCK_CREATE(rwlock)                                     \
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_CREATE, \
                                    rwlock, 0, 0, 0, 0);
 
 /** Tell DRD that a reader-writer lock object has been destroyed. */
-#define ANNOTATE_RWLOCK_DESTROY(rwlock) \
+#define ANNOTATE_RWLOCK_DESTROY(rwlock)                                     \
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_DESTROY, \
                                    rwlock, 0, 0, 0, 0);
 
@@ -230,7 +230,7 @@
  * a write lock has been obtained, is_w == 0 means that a read lock has been
  * obtained.
  */
-#define ANNOTATE_RWLOCK_ACQUIRED(rwlock, is_w) \
+#define ANNOTATE_RWLOCK_ACQUIRED(rwlock, is_w)                               \
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_ACQUIRED, \
                                    rwlock, is_w, 0, 0, 0)
 
@@ -255,7 +255,7 @@
  * that a write lock is about to be released, is_w == 0 means that a read lock
  * is about to be released.
  */
-#define ANNOTATE_RWLOCK_RELEASED(rwlock, is_w) \
+#define ANNOTATE_RWLOCK_RELEASED(rwlock, is_w)                               \
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_RWLOCK_RELEASED, \
                                    rwlock, is_w, 0, 0, 0);
 
@@ -270,6 +270,31 @@
  * Tell DRD that a writer lock is about to be released.
  */
 #define ANNOTATE_WRITERLOCK_RELEASED(rwlock) ANNOTATE_RWLOCK_RELEASED(rwlock, 1)
+
+/** Tell DRD that a semaphore object is going to be initialized. */
+#define ANNOTATE_SEM_INIT_PRE(sem, value)                                 \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_SEM_INIT_PRE, \
+                                   sem, value, 0, 0, 0);
+
+/** Tell DRD that a semaphore object has been destroyed. */
+#define ANNOTATE_SEM_DESTROY_POST(sem)                                        \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_SEM_DESTROY_POST, \
+                                   sem, 0, 0, 0, 0);
+
+/** Tell DRD that a semaphore is going to be acquired. */
+#define ANNOTATE_SEM_WAIT_PRE(sem)                                        \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_SEM_WAIT_PRE, \
+                                   sem, 0, 0, 0, 0)
+
+/** Tell DRD that a semaphore has been acquired. */
+#define ANNOTATE_SEM_WAIT_POST(sem)                                        \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_SEM_WAIT_POST, \
+                                   sem, 0, 0, 0, 0)
+
+/** Tell DRD that a semaphore is going to be released. */
+#define ANNOTATE_SEM_POST_PRE(sem)                                        \
+   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_ANNOTATE_SEM_POST_PRE, \
+                                   sem, 0, 0, 0, 0)
 
 /*
  * Report that a barrier has been initialized with a given barrier count.  The
@@ -441,6 +466,31 @@ enum {
    /* Tell DRD that a DRD annotation has not yet been implemented. */
    VG_USERREQ__DRD_ANNOTATION_UNIMP,
    /* args: char*. */
+
+   /* Tell DRD that a user-defined semaphore synchronization object
+    * is about to be created. */
+   VG_USERREQ__DRD_ANNOTATE_SEM_INIT_PRE,
+   /* args: Addr, UInt value. */
+   /* Tell DRD that a user-defined semaphore synchronization object
+    * has been destroyed. */
+   VG_USERREQ__DRD_ANNOTATE_SEM_DESTROY_POST,
+   /* args: Addr. */
+   /* Tell DRD that a user-defined semaphore synchronization
+    * object is going to be acquired (semaphore wait). */
+   VG_USERREQ__DRD_ANNOTATE_SEM_WAIT_PRE,
+   /* args: Addr. */
+   /* Tell DRD that a user-defined semaphore synchronization
+    * object has been acquired (semaphore wait). */
+   VG_USERREQ__DRD_ANNOTATE_SEM_WAIT_POST,
+   /* args: Addr. */
+   /* Tell DRD that a user-defined semaphore synchronization
+    * object is about to be released (semaphore post). */
+   VG_USERREQ__DRD_ANNOTATE_SEM_POST_PRE,
+   /* args: Addr. */
+
+   /* Tell DRD to ignore the inter-thread ordering introduced by a mutex. */
+   VG_USERREQ__DRD_IGNORE_MUTEX_ORDERING,
+   /* args: Addr. */
 
    /* Tell DRD that a user-defined reader-writer synchronization object
     * has been created. */

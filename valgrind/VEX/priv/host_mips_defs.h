@@ -165,29 +165,29 @@ extern HReg hregMIPS_D15(void);
 
 /* --------- Condition codes, Intel encoding. --------- */
 typedef enum {
-   MIPScc_EQ = 0,    /* equal */
-   MIPScc_NE = 1,    /* not equal */
+   MIPScc_EQ = 0,   /* equal */
+   MIPScc_NE = 1,   /* not equal */
 
-   MIPScc_HS = 2,    /* >=u (higher or same) */
-   MIPScc_LO = 3,    /* <u  (lower) */
+   MIPScc_HS = 2,   /* >=u (higher or same) */
+   MIPScc_LO = 3,   /* <u  (lower) */
 
-   MIPScc_MI = 4,    /* minus (negative) */
-   MIPScc_PL = 5,    /* plus (zero or +ve) */
+   MIPScc_MI = 4,   /* minus (negative) */
+   MIPScc_PL = 5,   /* plus (zero or +ve) */
 
-   MIPScc_VS = 6,    /* overflow */
-   MIPScc_VC = 7,    /* no overflow */
+   MIPScc_VS = 6,   /* overflow */
+   MIPScc_VC = 7,   /* no overflow */
 
-   MIPScc_HI = 8,    /* >u   (higher) */
-   MIPScc_LS = 9,    /* <=u  (lower or same) */
+   MIPScc_HI = 8,   /* >u   (higher) */
+   MIPScc_LS = 9,   /* <=u  (lower or same) */
 
-   MIPScc_GE = 10,      /* >=s (signed greater or equal) */
-   MIPScc_LT = 11,      /* <s  (signed less than) */
+   MIPScc_GE = 10,  /* >=s (signed greater or equal) */
+   MIPScc_LT = 11,  /* <s  (signed less than) */
 
-   MIPScc_GT = 12,      /* >s  (signed greater) */
-   MIPScc_LE = 13,      /* <=s (signed less or equal) */
+   MIPScc_GT = 12,  /* >s  (signed greater) */
+   MIPScc_LE = 13,  /* <=s (signed less or equal) */
 
-   MIPScc_AL = 14,      /* always (unconditional) */
-   MIPScc_NV = 15    /* never (unconditional): */
+   MIPScc_AL = 14,  /* always (unconditional) */
+   MIPScc_NV = 15   /* never (unconditional): */
 } MIPSCondCode;
 
 extern const HChar *showMIPSCondCode(MIPSCondCode);
@@ -297,50 +297,51 @@ extern const HChar *showMIPSMaccOp(MIPSMaccOp, Bool);
 
 /* ----- Instruction tags ----- */
 typedef enum {
-   Min_LI,        /* load word (32/64-bit) immediate (fake insn) */
-   Min_Alu,    /* word add/sub/and/or/xor/nor/others? */
-   Min_Shft,      /* word sll/srl/sra */
-   Min_Unary,     /* clo, clz, nop, neg */
+   Min_LI,         /* load word (32/64-bit) immediate (fake insn) */
+   Min_Alu,        /* word add/sub/and/or/xor/nor/others? */
+   Min_Shft,       /* word sll/srl/sra */
+   Min_Unary,      /* clo, clz, nop, neg */
 
-   Min_Cmp,    /* word compare (fake insn) */
+   Min_Cmp,        /* word compare (fake insn) */
 
-   Min_Mul,    /* widening/non-widening multiply */
-   Min_Div,    /* div */
+   Min_Mul,        /* widening/non-widening multiply */
+   Min_Div,        /* div */
 
-   Min_Call,      /* call to address in register */
+   Min_Call,       /* call to address in register */
 
    /* The following 5 insns are mandated by translation chaining */
-   Min_XDirect,     /* direct transfer to GA */
-   Min_XIndir,      /* indirect transfer to GA */
-   Min_XAssisted,   /* assisted transfer to GA */
-   Min_EvCheck,     /* Event check */
-   Min_ProfInc,     /* 64-bit profile counter increment */
+   Min_XDirect,    /* direct transfer to GA */
+   Min_XIndir,     /* indirect transfer to GA */
+   Min_XAssisted,  /* assisted transfer to GA */
+   Min_EvCheck,    /* Event check */
+   Min_ProfInc,    /* 64-bit profile counter increment */
 
-   Min_RdWrLR,    /* Read/Write Link Register */
-   Min_Mthi,      /* Move to HI from GP register */
-   Min_Mtlo,      /* Move to LO from GP register */
-   Min_Mfhi,      /* Move from HI to GP register */
-   Min_Mflo,      /* Move from LO to GP register */
-   Min_Macc,      /* Multiply and accumulate */
+   Min_RdWrLR,     /* Read/Write Link Register */
+   Min_Mthi,       /* Move to HI from GP register */
+   Min_Mtlo,       /* Move to LO from GP register */
+   Min_Mfhi,       /* Move from HI to GP register */
+   Min_Mflo,       /* Move from LO to GP register */
+   Min_Macc,       /* Multiply and accumulate */
 
-   Min_Load,      /* zero-extending load a 8|16|32 bit value from mem */
-   Min_Store,     /* store a 8|16|32 bit value to mem */
+   Min_Load,       /* zero-extending load a 8|16|32 bit value from mem */
+   Min_Store,      /* store a 8|16|32 bit value to mem */
+   Min_Cas,        /* compare and swap */
    Min_LoadL,      /* mips Load Linked Word - LL */
    Min_StoreC,     /* mips Store Conditional Word - SC */
 
-   Min_FpUnary,      /* FP unary op */
-   Min_FpBinary,     /* FP binary op */
+   Min_FpUnary,    /* FP unary op */
+   Min_FpBinary,   /* FP binary op */
    Min_FpTernary,  /* FP ternary op */
-   Min_FpConvert,    /* FP conversion op */
-   Min_FpMulAcc,     /* FP multipy-accumulate style op */
-   Min_FpLdSt,    /* FP load/store */
-   Min_FpSTFIW,      /* stfiwx */
-   Min_FpRSP,     /* FP round IEEE754 double to IEEE754 single */
-   Min_FpCftI,    /* fcfid/fctid/fctiw */
-   Min_FpCMov,    /* FP floating point conditional move */
-   Min_MtFCSR,    /* set FCSR register */
-   Min_MfFCSR,    /* get FCSR register */
-   Min_FpCompare,    /* FP compare, generating value into int reg */
+   Min_FpConvert,  /* FP conversion op */
+   Min_FpMulAcc,   /* FP multipy-accumulate style op */
+   Min_FpLdSt,     /* FP load/store */
+   Min_FpSTFIW,    /* stfiwx */
+   Min_FpRSP,      /* FP round IEEE754 double to IEEE754 single */
+   Min_FpCftI,     /* fcfid/fctid/fctiw */
+   Min_FpCMov,     /* FP floating point conditional move */
+   Min_MtFCSR,     /* set FCSR register */
+   Min_MfFCSR,     /* get FCSR register */
+   Min_FpCompare,  /* FP compare, generating value into int reg */
 
    Min_FpGpMove,   /* Move from/to fpr to/from gpr */
    Min_MoveCond    /* Move Conditional */
@@ -366,8 +367,11 @@ typedef enum {
    Mfp_CVTSD, Mfp_CVTSW, Mfp_CVTWD,
    Mfp_CVTWS, Mfp_CVTDL, Mfp_CVTSL, Mfp_CVTLS, Mfp_CVTLD, Mfp_TRULS, Mfp_TRULD,
    Mfp_TRUWS, Mfp_TRUWD, Mfp_FLOORWS, Mfp_FLOORWD, Mfp_ROUNDWS, Mfp_ROUNDWD,
-   Mfp_CVTDW, Mfp_CMP, Mfp_CEILWS, Mfp_CEILWD, Mfp_CEILLS, Mfp_CEILLD,
-   Mfp_CVTDS, Mfp_ROUNDLD, Mfp_FLOORLD
+   Mfp_CVTDW, Mfp_CEILWS, Mfp_CEILWD, Mfp_CEILLS, Mfp_CEILLD, Mfp_CVTDS,
+   Mfp_ROUNDLD, Mfp_FLOORLD,
+
+   /* FP compare */
+   Mfp_CMP_UN, Mfp_CMP_EQ, Mfp_CMP_LT, Mfp_CMP_NGT
 
 } MIPSFpOp;
 
@@ -480,9 +484,9 @@ typedef struct {
          assumes that wordsize(guest) == wordsize(host). */
       struct {
          Addr64       dstGA;     /* next guest address */
-         MIPSAMode*   amPC;    /* amode in guest state for PC */
-         MIPSCondCode cond;     /* can be MIPScc_AL */
-         Bool        toFastEP; /* chain to the slow or fast point? */
+         MIPSAMode*   amPC;      /* amode in guest state for PC */
+         MIPSCondCode cond;      /* can be MIPScc_AL */
+         Bool         toFastEP;  /* chain to the slow or fast point? */
       } XDirect;
       /* Boring transfer to a guest address not known at JIT time.
          Not chainable.  May be conditional. */
@@ -516,6 +520,13 @@ typedef struct {
          HReg dst;
          MIPSAMode *src;
       } LoadL;
+      struct {
+         UChar sz;   /* 4|8 */
+         HReg  old;
+         HReg  addr;
+         HReg  expd;
+         HReg  data;
+      } Cas;
       struct {
          UChar sz;   /* 4|8 */
          MIPSAMode *dst;
@@ -646,6 +657,8 @@ extern MIPSInstr *MIPSInstr_LoadL(UChar sz, HReg dst, MIPSAMode * src,
                                   Bool mode64);
 extern MIPSInstr *MIPSInstr_StoreC(UChar sz, MIPSAMode * dst, HReg src,
                                    Bool mode64);
+extern MIPSInstr *MIPSInstr_Cas(UChar sz, HReg old, HReg addr,
+                                HReg expd, HReg data, Bool mode64);
 
 extern MIPSInstr *MIPSInstr_Call ( MIPSCondCode, Addr64, UInt, HReg, RetLoc );
 extern MIPSInstr *MIPSInstr_CallAlways ( MIPSCondCode, Addr64, UInt, RetLoc );
@@ -664,7 +677,7 @@ extern MIPSInstr *MIPSInstr_FpTernary ( MIPSFpOp op, HReg dst, HReg src1,
                                         HReg src2, HReg src3 );
 extern MIPSInstr *MIPSInstr_FpConvert(MIPSFpOp op, HReg dst, HReg src);
 extern MIPSInstr *MIPSInstr_FpCompare(MIPSFpOp op, HReg dst, HReg srcL,
-                  HReg srcR, UChar cond1);
+                                      HReg srcR);
 extern MIPSInstr *MIPSInstr_FpMulAcc(MIPSFpOp op, HReg dst, HReg srcML,
                                      HReg srcMR, HReg srcAcc);
 extern MIPSInstr *MIPSInstr_FpLdSt(Bool isLoad, UChar sz, HReg, MIPSAMode *);
@@ -692,20 +705,21 @@ extern MIPSInstr *MIPSInstr_EvCheck(MIPSAMode* amCounter,
                                     MIPSAMode* amFailAddr );
 extern MIPSInstr *MIPSInstr_ProfInc( void );
 
-extern void ppMIPSInstr(MIPSInstr *, Bool mode64);
+extern void ppMIPSInstr(const MIPSInstr *, Bool mode64);
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-extern void       getRegUsage_MIPSInstr (HRegUsage *, MIPSInstr *, Bool);
-extern void       mapRegs_MIPSInstr     (HRegRemap *, MIPSInstr *, Bool mode64);
-extern Bool       isMove_MIPSInstr      (MIPSInstr *, HReg *, HReg *);
-extern Int        emit_MIPSInstr        (/*MB_MOD*/Bool* is_profInc,
-                                         UChar* buf, Int nbuf, MIPSInstr* i,
-                                         Bool mode64,
-                                         void* disp_cp_chain_me_to_slowEP,
-                                         void* disp_cp_chain_me_to_fastEP,
-                                         void* disp_cp_xindir,
-                                         void* disp_cp_xassisted );
+extern void getRegUsage_MIPSInstr (HRegUsage *, const MIPSInstr *, Bool);
+extern void mapRegs_MIPSInstr     (HRegRemap *, MIPSInstr *, Bool mode64);
+extern Bool isMove_MIPSInstr      (const MIPSInstr *, HReg *, HReg *);
+extern Int        emit_MIPSInstr (/*MB_MOD*/Bool* is_profInc,
+                                  UChar* buf, Int nbuf, const MIPSInstr* i,
+                                  Bool mode64,
+                                  VexEndness endness_host,
+                                  const void* disp_cp_chain_me_to_slowEP,
+                                  const void* disp_cp_chain_me_to_fastEP,
+                                  const void* disp_cp_xindir,
+                                  const void* disp_cp_xassisted );
 
 extern void genSpill_MIPS ( /*OUT*/ HInstr ** i1, /*OUT*/ HInstr ** i2,
                             HReg rreg, Int offset, Bool);
@@ -715,8 +729,8 @@ extern void genReload_MIPS( /*OUT*/ HInstr ** i1, /*OUT*/ HInstr ** i2,
 extern void        getAllocableRegs_MIPS (Int *, HReg **, Bool mode64);
 extern HInstrArray *iselSB_MIPS          ( IRSB*,
                                            VexArch,
-                                           VexArchInfo*,
-                                           VexAbiInfo*,
+                                           const VexArchInfo*,
+                                           const VexAbiInfo*,
                                            Int offs_Host_EvC_Counter,
                                            Int offs_Host_EvC_FailAddr,
                                            Bool chainingAllowed,
@@ -728,25 +742,28 @@ extern HInstrArray *iselSB_MIPS          ( IRSB*,
    and so assumes that they are both <= 128, and so can use the short
    offset encoding.  This is all checked with assertions, so in the
    worst case we will merely assert at startup. */
-extern Int evCheckSzB_MIPS ( void );
+extern Int evCheckSzB_MIPS ( VexEndness endness_host );
 
 /* Perform a chaining and unchaining of an XDirect jump. */
-extern VexInvalRange chainXDirect_MIPS ( void* place_to_chain,
-                                         void* disp_cp_chain_me_EXPECTED,
-                                         void* place_to_jump_to,
+extern VexInvalRange chainXDirect_MIPS ( VexEndness endness_host,
+                                         void* place_to_chain,
+                                         const void* disp_cp_chain_me_EXPECTED,
+                                         const void* place_to_jump_to,
                                          Bool  mode64 );
 
-extern VexInvalRange unchainXDirect_MIPS ( void* place_to_unchain,
-                                           void* place_to_jump_to_EXPECTED,
-                                           void* disp_cp_chain_me,
+extern VexInvalRange unchainXDirect_MIPS ( VexEndness endness_host,
+                                           void* place_to_unchain,
+                                           const void* place_to_jump_to_EXPECTED,
+                                           const void* disp_cp_chain_me,
                                            Bool  mode64 );
 
 /* Patch the counter location into an existing ProfInc point. */
-extern VexInvalRange patchProfInc_MIPS ( void*  place_to_patch,
-                                         ULong* location_of_counter,
+extern VexInvalRange patchProfInc_MIPS ( VexEndness endness_host,
+                                         void*  place_to_patch,
+                                         const ULong* location_of_counter,
                                          Bool  mode64 );
 
-#endif            /* ndef __LIBVEX_HOST_MIPS_HDEFS_H */
+#endif /* ndef __VEX_HOST_MIPS_DEFS_H */
 
 /*---------------------------------------------------------------*/
 /*--- end                                    host-mips_defs.h ---*/

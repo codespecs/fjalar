@@ -112,7 +112,7 @@ ML_(do_syscall_for_client_WRK):
    ldr r3, [sp, #32] /* nsigwords */
    svc 0x00000000
 
-  cmp r0, #0
+   cmp r0, #0
    blt 7f
    add sp, sp, #4 /* r0 contains return value */
 

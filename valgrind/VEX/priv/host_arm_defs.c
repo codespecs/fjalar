@@ -790,6 +790,7 @@ const HChar* showARMNeonBinOp ( ARMNeonBinOp op ) {
       case ARMneon_VTBL: return "vtbl";
       case ARMneon_VRECPS: return "vrecps";
       case ARMneon_VRSQRTS: return "vrecps";
+      case ARMneon_INVALID: return "??invalid??";
       /* ... */
       default: vpanic("showARMNeonBinOp");
    }
@@ -1033,7 +1034,7 @@ static const HChar* showARMNeonDataSize_wrk ( UInt size )
    }
 }
 
-static const HChar* showARMNeonDataSize ( ARMInstr* i )
+static const HChar* showARMNeonDataSize ( const ARMInstr* i )
 {
    switch (i->tag) {
       case ARMin_NBinary:
@@ -1202,7 +1203,7 @@ ARMInstr* ARMInstr_XDirect ( Addr32 dstGA, ARMAMode1* amR15T,
 }
 ARMInstr* ARMInstr_XIndir ( HReg dstGA, ARMAMode1* amR15T,
                             ARMCondCode cond ) {
-   ARMInstr* i = LibVEX_Alloc(sizeof(ARMInstr));
+   ARMInstr* i            = LibVEX_Alloc(sizeof(ARMInstr));
    i->tag                 = ARMin_XIndir;
    i->ARMin.XIndir.dstGA  = dstGA;
    i->ARMin.XIndir.amR15T = amR15T;
@@ -1550,7 +1551,7 @@ ARMInstr* ARMInstr_ProfInc ( void ) {
 
 /* ... */
 
-void ppARMInstr ( ARMInstr* i ) {
+void ppARMInstr ( const ARMInstr* i ) {
    switch (i->tag) {
       case ARMin_Alu:
          vex_printf("%-4s  ", showARMAluOp(i->ARMin.Alu.op));
@@ -1649,7 +1650,7 @@ void ppARMInstr ( ARMInstr* i ) {
          return;
       case ARMin_XDirect:
          vex_printf("(xDirect) ");
-            vex_printf("if (%%cpsr.%s) { ",
+         vex_printf("if (%%cpsr.%s) { ",
                     showARMCondCode(i->ARMin.XDirect.cond));
          vex_printf("movw r12,0x%x; ",
                     (UInt)(i->ARMin.XDirect.dstGA & 0xFFFF));
@@ -2017,7 +2018,7 @@ void ppARMInstr ( ARMInstr* i ) {
 
 /* --------- Helpers for register allocation. --------- */
 
-void getRegUsage_ARMInstr ( HRegUsage* u, ARMInstr* i, Bool mode64 )
+void getRegUsage_ARMInstr ( HRegUsage* u, const ARMInstr* i, Bool mode64 )
 {
    vassert(mode64 == False);
    initHRegUsage(u);
@@ -2522,7 +2523,7 @@ void mapRegs_ARMInstr ( HRegRemap* m, ARMInstr* i, Bool mode64 )
    source and destination to *src and *dst.  If in doubt say No.  Used
    by the register allocator to do move coalescing. 
 */
-Bool isMove_ARMInstr ( ARMInstr* i, HReg* src, HReg* dst )
+Bool isMove_ARMInstr ( const ARMInstr* i, HReg* src, HReg* dst )
 {
    /* Moves between integer regs */
    switch (i->tag) {
@@ -2615,7 +2616,7 @@ void genSpill_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
          *i2 = ARMInstr_NLdStQ(False, rreg, mkARMAModeN_R(r12));
          return;
       }
-      default: 
+      default:
          ppHRegClass(rclass);
          vpanic("genSpill_ARM: unimplemented regclass");
    }
@@ -2670,7 +2671,7 @@ void genReload_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
          *i2 = ARMInstr_NLdStQ(True, rreg, mkARMAModeN_R(r12));
          return;
       }
-      default: 
+      default:
          ppHRegClass(rclass);
          vpanic("genReload_ARM: unimplemented regclass");
    }
@@ -2834,20 +2835,20 @@ static UInt* imm32_to_iregNo ( UInt* p, Int rD, UInt imm32 )
    }
 #else
    if (VEX_ARM_ARCHLEVEL(arm_hwcaps) > 6) {
-   /* Generate movw rD, #low16.  Then, if the high 16 are
-      nonzero, generate movt rD, #high16. */
-   UInt lo16 = imm32 & 0xFFFF;
-   UInt hi16 = (imm32 >> 16) & 0xFFFF;
-   instr = XXXXXXXX(0xE, 0x3, 0x0, (lo16 >> 12) & 0xF, rD,
-                    (lo16 >> 8) & 0xF, (lo16 >> 4) & 0xF,
-                    lo16 & 0xF);
-   *p++ = instr;
-   if (hi16 != 0) {
-      instr = XXXXXXXX(0xE, 0x3, 0x4, (hi16 >> 12) & 0xF, rD,
-                       (hi16 >> 8) & 0xF, (hi16 >> 4) & 0xF,
-                       hi16 & 0xF);
+      /* Generate movw rD, #low16.  Then, if the high 16 are
+         nonzero, generate movt rD, #high16. */
+      UInt lo16 = imm32 & 0xFFFF;
+      UInt hi16 = (imm32 >> 16) & 0xFFFF;
+      instr = XXXXXXXX(0xE, 0x3, 0x0, (lo16 >> 12) & 0xF, rD,
+                       (lo16 >> 8) & 0xF, (lo16 >> 4) & 0xF,
+                       lo16 & 0xF);
       *p++ = instr;
-   }
+      if (hi16 != 0) {
+         instr = XXXXXXXX(0xE, 0x3, 0x4, (hi16 >> 12) & 0xF, rD,
+                          (hi16 >> 8) & 0xF, (hi16 >> 4) & 0xF,
+                          hi16 & 0xF);
+         *p++ = instr;
+      }
    } else {
       UInt imm, rot;
       UInt op = X1010;
@@ -2969,12 +2970,12 @@ static UInt* do_load_or_store32 ( UInt* p,
    leave it unchanged. */
 
 Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
-                    UChar* buf, Int nbuf, ARMInstr* i, 
-                    Bool mode64,
-                    void* disp_cp_chain_me_to_slowEP,
-                    void* disp_cp_chain_me_to_fastEP,
-                    void* disp_cp_xindir,
-                    void* disp_cp_xassisted )
+                    UChar* buf, Int nbuf, const ARMInstr* i, 
+                    Bool mode64, VexEndness endness_host,
+                    const void* disp_cp_chain_me_to_slowEP,
+                    const void* disp_cp_chain_me_to_fastEP,
+                    const void* disp_cp_xindir,
+                    const void* disp_cp_xassisted )
 {
    UInt* p = (UInt*)buf;
    vassert(nbuf >= 32);
@@ -3081,9 +3082,9 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
       }
       case ARMin_LdSt32:
       case ARMin_LdSt8U: {
-         UInt       bL, bB;
-         HReg       rD;
-         ARMAMode1* am;
+         UInt        bL, bB;
+         HReg        rD;
+         ARMAMode1*  am;
          ARMCondCode cc;
          if (i->tag == ARMin_LdSt32) {
             bB = 0;
@@ -3122,10 +3123,10 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          }
       }
       case ARMin_LdSt16: {
-         HReg       rD = i->ARMin.LdSt16.rD;
-         UInt       bS = i->ARMin.LdSt16.signedLoad ? 1 : 0;
-         UInt       bL = i->ARMin.LdSt16.isLoad ? 1 : 0;
-         ARMAMode2* am = i->ARMin.LdSt16.amode;
+         HReg        rD = i->ARMin.LdSt16.rD;
+         UInt        bS = i->ARMin.LdSt16.signedLoad ? 1 : 0;
+         UInt        bL = i->ARMin.LdSt16.isLoad ? 1 : 0;
+         ARMAMode2*  am = i->ARMin.LdSt16.amode;
          ARMCondCode cc = i->ARMin.LdSt16.cc;
          vassert(cc != ARMcc_NV);
          if (am->tag == ARMam2_RI) {
@@ -3196,7 +3197,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             goto done;
          } else {
             // RR case
-         goto bad;
+            goto bad;
          }
       }
 
@@ -3237,7 +3238,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          /* movw r12, lo16(VG_(disp_cp_chain_me_to_{slowEP,fastEP})) */
          /* movt r12, hi16(VG_(disp_cp_chain_me_to_{slowEP,fastEP})) */
          /* blx  r12  (A1) */
-         void* disp_cp_chain_me
+         const void* disp_cp_chain_me
                   = i->ARMin.XDirect.toFastEP ? disp_cp_chain_me_to_fastEP 
                                               : disp_cp_chain_me_to_slowEP;
          p = imm32_to_iregNo_EXACTLY2(p, /*r*/12,
@@ -3334,7 +3335,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             //case Ijk_EmWarn:      trcval = VEX_TRC_JMP_EMWARN;      break;
             //case Ijk_MapFail:     trcval = VEX_TRC_JMP_MAPFAIL;     break;
             case Ijk_NoDecode:    trcval = VEX_TRC_JMP_NODECODE;    break;
-            case Ijk_TInval:      trcval = VEX_TRC_JMP_TINVAL;      break;
+            case Ijk_InvalICache: trcval = VEX_TRC_JMP_INVALICACHE; break;
             case Ijk_NoRedir:     trcval = VEX_TRC_JMP_NOREDIR;     break;
             //case Ijk_SigTRAP:     trcval = VEX_TRC_JMP_SIGTRAP;     break;
             //case Ijk_SigSEGV:     trcval = VEX_TRC_JMP_SIGSEGV;     break;
@@ -3343,7 +3344,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             //case Ijk_Ret:
             //case Ijk_Call:
             /* fallthrough */
-            default:
+            default: 
                ppIRJumpKind(i->ARMin.XAssisted.jk);
                vpanic("emit_ARMInstr.ARMin_XAssisted: unexpected jump kind");
          }
@@ -3399,14 +3400,14 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
             straight-line code.  We hope this is the common case. */
          if (i->ARMin.Call.cond == ARMcc_AL/*call always happens*/
              || i->ARMin.Call.rloc.pri == RLPri_None/*no fixup action*/) {
-         // r"scratchNo" = &target
-         p = imm32_to_iregNo( (UInt*)p,
-                              scratchNo, (UInt)i->ARMin.Call.target );
-         // blx{cond} r"scratchNo"
-         instr = XXX___XX(i->ARMin.Call.cond, X0001, X0010, /*___*/
-                          X0011, scratchNo);
-         instr |= 0xFFF << 8; // stick in the SBOnes
-         *p++ = instr;
+            // r"scratchNo" = &target
+            p = imm32_to_iregNo( (UInt*)p,
+                                 scratchNo, (UInt)i->ARMin.Call.target );
+            // blx{cond} r"scratchNo"
+            instr = XXX___XX(i->ARMin.Call.cond, X0001, X0010, /*___*/
+                             X0011, scratchNo);
+            instr |= 0xFFF << 8; // stick in the SBOnes
+            *p++ = instr;
          } else {
             Int delta;
             /* Complex case.  We have to generate an if-then-else
@@ -4643,7 +4644,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
          /* nofail: */
 
          /* Crosscheck */
-         vassert(evCheckSzB_ARM() == (UChar*)p - (UChar*)p0);
+         vassert(evCheckSzB_ARM(endness_host) == (UChar*)p - (UChar*)p0);
          goto done;
       }
 
@@ -4684,7 +4685,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
    ppARMInstr(i);
    vpanic("emit_ARMInstr");
    /*NOTREACHED*/
-    
+
   done:
    vassert(((UChar*)p) - &buf[0] <= 32);
    return ((UChar*)p) - &buf[0];
@@ -4694,7 +4695,7 @@ Int emit_ARMInstr ( /*MB_MOD*/Bool* is_profInc,
 /* How big is an event check?  See case for ARMin_EvCheck in
    emit_ARMInstr just above.  That crosschecks what this returns, so
    we can tell if we're inconsistent. */
-Int evCheckSzB_ARM ( void )
+Int evCheckSzB_ARM ( VexEndness endness_host )
 {
    return 24;
 }
@@ -4702,10 +4703,13 @@ Int evCheckSzB_ARM ( void )
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange chainXDirect_ARM ( void* place_to_chain,
-                                 void* disp_cp_chain_me_EXPECTED,
-                                 void* place_to_jump_to )
+VexInvalRange chainXDirect_ARM ( VexEndness endness_host,
+                                 void* place_to_chain,
+                                 const void* disp_cp_chain_me_EXPECTED,
+                                 const void* place_to_jump_to )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
         movw r12, lo16(disp_cp_chain_me_to_EXPECTED)
         movt r12, hi16(disp_cp_chain_me_to_EXPECTED)
@@ -4747,7 +4751,7 @@ VexInvalRange chainXDirect_ARM ( void* place_to_chain,
 
    /* This is the delta we need to put into a B insn.  It's relative
       to the start of the next-but-one insn, hence the -8.  */
-   Long delta   = (Long)((UChar*)place_to_jump_to - (UChar*)p) - (Long)8;
+   Long delta   = (Long)((const UChar *)place_to_jump_to - (const UChar*)p) - 8;
    Bool shortOK = delta >= -30*1000*1000 && delta < 30*1000*1000;
    vassert(0 == (delta & (Long)3));
 
@@ -4782,10 +4786,13 @@ VexInvalRange chainXDirect_ARM ( void* place_to_chain,
 
 /* NB: what goes on here has to be very closely coordinated with the
    emitInstr case for XDirect, above. */
-VexInvalRange unchainXDirect_ARM ( void* place_to_unchain,
-                                   void* place_to_jump_to_EXPECTED,
-                                   void* disp_cp_chain_me )
+VexInvalRange unchainXDirect_ARM ( VexEndness endness_host,
+                                   void* place_to_unchain,
+                                   const void* place_to_jump_to_EXPECTED,
+                                   const void* disp_cp_chain_me )
 {
+   vassert(endness_host == VexEndnessLE);
+
    /* What we're expecting to see is:
         (general case)
           movw r12, lo16(place_to_jump_to_EXPECTED)
@@ -4817,7 +4824,7 @@ VexInvalRange unchainXDirect_ARM ( void* place_to_unchain,
       /* It's the short form.  Check the displacement is right. */
       Int simm24 = p[0] & 0x00FFFFFF;
       simm24 <<= 8; simm24 >>= 8;
-      if ((UChar*)p + (simm24 << 2) + 8 == (UChar*)place_to_jump_to_EXPECTED) {
+      if ((UChar*)p + (simm24 << 2) + 8 == place_to_jump_to_EXPECTED) {
          valid = True;
          if (0)
             vex_printf("QQQ unchainXDirect_ARM: found short form\n");
@@ -4843,9 +4850,11 @@ VexInvalRange unchainXDirect_ARM ( void* place_to_unchain,
 
 /* Patch the counter address into a profile inc point, as previously
    created by the ARMin_ProfInc case for emit_ARMInstr. */
-VexInvalRange patchProfInc_ARM ( void*  place_to_patch,
-                                 ULong* location_of_counter )
+VexInvalRange patchProfInc_ARM ( VexEndness endness_host,
+                                 void*  place_to_patch,
+                                 const ULong* location_of_counter )
 {
+   vassert(endness_host == VexEndnessLE);
    vassert(sizeof(ULong*) == 4);
    UInt* p = (UInt*)place_to_patch;
    vassert(0 == (3 & (HWord)p));

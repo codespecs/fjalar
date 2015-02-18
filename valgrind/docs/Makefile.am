@@ -27,6 +27,8 @@ EXTRA_DIST = \
 	internals/3_5_BUGSTATUS.txt \
 	internals/3_7_BUGSTATUS.txt \
 	internals/3_8_BUGSTATUS.txt \
+	internals/3_9_BUGSTATUS.txt \
+	internals/3_10_BUGSTATUS.txt \
 	internals/arm_thumb_notes_gdbserver.txt \
 	internals/avx-notes.txt \
 	internals/BIG_APP_NOTES.txt \
@@ -229,6 +231,7 @@ dist-hook: FAQ.txt html-docs man-pages
 
 distclean-local:
 	rm -rf html print
+	rm -f FAQ.txt
 	rm -f $(top_builddir)/FAQ.txt $(top_builddir)/docs/*.1
 
 

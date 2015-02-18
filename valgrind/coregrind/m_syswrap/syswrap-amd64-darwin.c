@@ -134,8 +134,25 @@ void thread_state_from_vex(thread_state_t mach_generic,
       vg_assert(count == x86_FLOAT_STATE64_COUNT);
       x86_float_state64_from_vex((x86_float_state64_t *)mach_generic, vex);
       break;
+
+   case x86_THREAD_STATE:
+      ((x86_float_state_t *)mach_generic)->fsh.flavor = flavor;
+      ((x86_float_state_t *)mach_generic)->fsh.count = count;
+      x86_thread_state64_from_vex(&((x86_thread_state_t *)mach_generic)->uts.ts64, vex);
+      break;
+
+   case x86_FLOAT_STATE:
+      ((x86_float_state_t *)mach_generic)->fsh.flavor = flavor;
+      ((x86_float_state_t *)mach_generic)->fsh.count = count;
+      x86_float_state64_from_vex(&((x86_float_state_t *)mach_generic)->ufs.fs64, vex);
+      break;
        
+   case x86_EXCEPTION_STATE:
+      VG_(printf)("thread_state_from_vex: TODO, want exception state\n");
+      vg_assert(0);
+
    default:
+      VG_(printf)("thread_state_from_vex: flavor:%#x\n",  flavor);
       vg_assert(0);
    }
 }
@@ -356,7 +373,7 @@ void pthread_hijack(Addr self, Addr kport, Addr func, Addr func_arg,
    if ((flags & 0x01000000) == 0) {
       // kernel allocated stack - needs mapping
       Addr stack = VG_PGROUNDUP(sp) - stacksize;
-      tst->client_stack_highest_word = stack+stacksize;
+      tst->client_stack_highest_byte = stack+stacksize-1;
       tst->client_stack_szB = stacksize;
 
       // pthread structure
@@ -435,7 +452,7 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
    if (0) VG_(printf)(
              "wqthread_hijack: self %#lx, kport %#lx, "
 	     "stackaddr %#lx, workitem %#lx, reuse/flags %x, sp %#lx\n", 
-                      self, kport, stackaddr, workitem, reuse, sp);
+	     self, kport, stackaddr, workitem, reuse, sp);
 
    /* Start the thread with all signals blocked.  VG_(scheduler) will
       set the mask correctly when we finally get there. */
@@ -448,8 +465,13 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
       out just the relevant parts.  Hence: */
 #  if DARWIN_VERS <= DARWIN_10_7
    Bool is_reuse = reuse != 0;
-#  elif DARWIN_VERS == DARWIN_10_8
+#  elif DARWIN_VERS == DARWIN_10_8 || DARWIN_VERS == DARWIN_10_9
    Bool is_reuse = (reuse & 0x20000 /* == WQ_FLAG_THREAD_REUSE */) != 0;
+#  elif DARWIN_VERS == DARWIN_10_10
+   // XXX FIXME is this correct?
+   Bool is_reuse = (reuse & 0x20000 /* == WQ_FLAG_THREAD_REUSE */) != 0;
+#  else
+#    error "Unsupported Darwin version"
 #  endif
 
    if (is_reuse) {
@@ -459,8 +481,13 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
         idea why. */
 #      if DARWIN_VERS <= DARWIN_10_6
        UWord magic_delta = 0;
-#      elif DARWIN_VERS >= DARWIN_10_7
+#      elif DARWIN_VERS == DARWIN_10_7 || DARWIN_VERS == DARWIN_10_8
        UWord magic_delta = 0x60;
+#      elif DARWIN_VERS == DARWIN_10_9 || DARWIN_VERS == DARWIN_10_10
+       UWord magic_delta = 0xE0;
+#      else
+#        error "magic_delta: to be computed on new OS version"
+         // magic_delta = tst->os_state.pthread - self
 #      endif
 
        // This thread already exists; we're merely re-entering 
@@ -525,7 +552,7 @@ void wqthread_hijack(Addr self, Addr kport, Addr stackaddr, Addr workitem,
       record_named_port(tst->tid, kport, MACH_PORT_RIGHT_SEND, "wqthread-%p");
       
       // kernel allocated stack - needs mapping
-      tst->client_stack_highest_word = stack+stacksize;
+      tst->client_stack_highest_byte = stack+stacksize-1;
       tst->client_stack_szB = stacksize;
 
       // GrP fixme scheduler lock?!

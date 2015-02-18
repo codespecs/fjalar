@@ -51,10 +51,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <limits.h>             // PATH_MAX
 
 #ifndef EM_X86_64
 #define EM_X86_64 62    // elf.h doesn't define this on some older systems
+#endif
+
+#ifndef EM_AARCH64
+#define EM_AARCH64 183  // ditto
+#endif
+
+#ifndef EM_PPC64
+#define EM_PPC64 21  // ditto
 #endif
 
 /* Report fatal errors */
@@ -220,14 +227,25 @@ static const char *select_platform(const char *clientname)
                 (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
                  ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "mips64-linux";
+            } else if (ehdr->e_machine == EM_AARCH64 &&
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "arm64-linux";
+            } else if (ehdr->e_machine == EM_PPC64 &&
+                (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "ppc64le-linux";
             }
          } else if (header[EI_DATA] == ELFDATA2MSB) {
-#           if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
+#           if !defined(VGPV_arm_linux_android) \
+               && !defined(VGPV_x86_linux_android) \
+               && !defined(VGPV_mips32_linux_android) \
+               && !defined(VGPV_arm64_linux_android)
             if (ehdr->e_machine == EM_PPC64 &&
                 (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
                  ehdr->e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
-               platform = "ppc64-linux";
-            }
+               platform = "ppc64be-linux";
+            } 
             else 
             if (ehdr->e_machine == EM_S390 &&
                 (ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV ||
@@ -261,7 +279,7 @@ int main(int argc, char** argv, char** envp)
    const char *default_platform;
    const char *cp;
    char *toolfile;
-   char launcher_name[PATH_MAX+1];
+   const char *launcher_name;
    char* new_line;
    char** new_env;
 
@@ -307,12 +325,14 @@ int main(int argc, char** argv, char** envp)
       target, because on most ppc64-linux setups, the basic /bin,
       /usr/bin, etc, stuff is built in 32-bit mode, not 64-bit
       mode. */
-   if ((0==strcmp(VG_PLATFORM,"x86-linux"))   ||
-       (0==strcmp(VG_PLATFORM,"amd64-linux")) ||
-       (0==strcmp(VG_PLATFORM,"ppc32-linux")) ||
-       (0==strcmp(VG_PLATFORM,"ppc64-linux")) ||
-       (0==strcmp(VG_PLATFORM,"arm-linux"))   ||
-       (0==strcmp(VG_PLATFORM,"s390x-linux")) ||
+   if ((0==strcmp(VG_PLATFORM,"x86-linux"))    ||
+       (0==strcmp(VG_PLATFORM,"amd64-linux"))  ||
+       (0==strcmp(VG_PLATFORM,"ppc32-linux"))  ||
+       (0==strcmp(VG_PLATFORM,"ppc64be-linux"))  ||
+       (0==strcmp(VG_PLATFORM,"ppc64le-linux"))  ||
+       (0==strcmp(VG_PLATFORM,"arm-linux"))    ||
+       (0==strcmp(VG_PLATFORM,"arm64-linux"))  ||
+       (0==strcmp(VG_PLATFORM,"s390x-linux"))  ||
        (0==strcmp(VG_PLATFORM,"mips32-linux")) ||
        (0==strcmp(VG_PLATFORM,"mips64-linux")))
       default_platform = VG_PLATFORM;
@@ -338,17 +358,34 @@ int main(int argc, char** argv, char** envp)
    /* Figure out the name of this executable (viz, the launcher), so
       we can tell stage2.  stage2 will use the name for recursive
       invocations of valgrind on child processes. */
-   memset(launcher_name, 0, PATH_MAX+1);
-   r = readlink("/proc/self/exe", launcher_name, PATH_MAX);
-   if (r == -1) {
-      /* If /proc/self/exe can't be followed, don't give up.  Instead
-         continue with an empty string for VALGRIND_LAUNCHER.  In the
-         sys_execve wrapper, this is tested, and if found to be empty,
-         fail the execve. */
-      fprintf(stderr, "valgrind: warning (non-fatal): "
-                      "readlink(\"/proc/self/exe\") failed.\n");
-      fprintf(stderr, "valgrind: continuing, however --trace-children=yes "
-                      "will not work.\n");
+   unsigned bufsiz = 0;
+   char *buf = NULL;
+
+   while (42) {
+      bufsiz += 500;
+      buf = realloc(buf, bufsiz);
+      if (buf == NULL)
+         barf("realloc of buf failed.");
+      r = readlink("/proc/self/exe", buf, bufsiz);
+      if (r == -1) {
+        /* If /proc/self/exe can't be followed, don't give up.  Instead
+           continue with an empty string for VALGRIND_LAUNCHER.  In the
+           sys_execve wrapper, this is tested, and if found to be empty,
+           fail the execve. */
+        fprintf(stderr, "valgrind: warning (non-fatal): "
+                "readlink(\"/proc/self/exe\") failed.\n");
+        fprintf(stderr, "valgrind: continuing, however --trace-children=yes "
+                "will not work.\n");
+        launcher_name = "";
+        break;
+      }
+      if (r == bufsiz) continue;   // buffer to small; retry
+
+      assert(r < bufsiz);   // paranoia
+
+      buf[r] = '\0';
+      launcher_name = buf;
+      break;
    }
 
    /* tediously augment the env: VALGRIND_LAUNCHER=launcher_name */

@@ -56,19 +56,25 @@ typedef
 
 /* Useful in VG_(tdict).tool_error_matches_suppression(),
  * VG_(tdict).tool_pp_Error(), etc */
-ExeContext* VG_(get_error_where)   ( Error* err );
-ErrorKind   VG_(get_error_kind)    ( Error* err );
-Addr        VG_(get_error_address) ( Error* err );
-const HChar* VG_(get_error_string)  ( Error* err );
-void*       VG_(get_error_extra)   ( Error* err );
+ExeContext*  VG_(get_error_where)   ( const Error* err );
+ErrorKind    VG_(get_error_kind)    ( const Error* err );
+Addr         VG_(get_error_address) ( const Error* err );
+const HChar* VG_(get_error_string)  ( const Error* err );
+void*        VG_(get_error_extra)   ( const Error* err );
 
 /* Call this when an error occurs.  It will be recorded if it hasn't been
    seen before.  If it has, the existing error record will have its count
    incremented.
 
-   'tid' can be found as for VG_(record_ExeContext)().  The `extra' field can
-   be stack-allocated;  it will be copied by the core if needed (but it
-   won't be copied if it's NULL).
+   'tid' can be found as for VG_(record_ExeContext)().  The `s' string
+   and `extra' field can be stack-allocated;  they will be copied by the core
+   if needed (but it won't be copied if it's NULL).
+   Note that `ekind' and `s' are also used to generate a suppression.
+   `s' should therefore not contain data depending on the specific
+   execution (such as addresses, values) but should rather contain
+   e.g. a system call parameter symbolic name.
+   `extra' is also (optionally) used for generating a suppression
+   (see pub_tool_tooliface.h print_extra_suppression_info).
 
    If no 'a', 's' or 'extra' of interest needs to be recorded, just use
    NULL for them.  */
@@ -90,13 +96,13 @@ extern Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind,
 /* Gets from fd (an opened suppression file) a non-blank, non-comment
    line containing suppression extra information (e.g. the syscall
    line for the Param memcheck suppression kind.  bufpp is a pointer
-   to a pointer to a buffer that must be allocated with VG_(malloc);
+   to a buffer that must be allocated with VG_(malloc);
    nBufp is a pointer to size_t holding its size; if the buffer is too
    small for the line, it will be realloc'd until big enough (updating
    *bufpp and *nBufp in the process).  (It will bomb out if the size
    gets ridiculous).  Skips leading spaces on the line.  Increments
-   lineno with the number of lines read if lineno is non-NULL. Returns
-   True if no extra information line could be read. */
+   *lineno with the number of lines read. Returns True if no extra
+   information line could be read. */
 extern Bool VG_(get_line) ( Int fd, HChar** bufpp, SizeT* nBufp, Int* lineno );
 
 
@@ -121,9 +127,9 @@ typedef
    Supp;
 
 /* Useful in VG_(tdict).tool_error_matches_suppression() */
-SuppKind VG_(get_supp_kind)   ( Supp* su );
-HChar*   VG_(get_supp_string) ( Supp* su );
-void*    VG_(get_supp_extra)  ( Supp* su );
+SuppKind VG_(get_supp_kind)   ( const Supp* su );
+HChar*   VG_(get_supp_string) ( const Supp* su );
+void*    VG_(get_supp_extra)  ( const Supp* su );
 
 /* Must be used in VG_(recognised_suppression)() */
 void VG_(set_supp_kind)   ( Supp* su, SuppKind suppkind );

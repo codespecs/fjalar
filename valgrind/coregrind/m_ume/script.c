@@ -80,8 +80,8 @@ Bool VG_(match_script)(const void *hdr, Int len)
 Int VG_(load_script)(Int fd, const HChar* name, ExeInfo* info)
 {
    HChar  hdr[4096];
-   Int   len = 4096;
-   Int   eol;
+   Int    len = 4096;
+   Int    eol;
    HChar* interp;
    HChar* end;
    HChar* cp;

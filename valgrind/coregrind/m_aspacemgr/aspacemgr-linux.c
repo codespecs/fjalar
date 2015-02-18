@@ -105,6 +105,9 @@
      to some low-ish value at startup (64M) and aspacem_maxAddr is
      derived from the stack pointer at system startup.  This seems a
      reliable way to establish the initial boundaries.
+     A command line option allows to change the value of aspacem_minAddr,
+     so as to allow memory hungry applications to use the lowest
+     part of the memory.
 
      64-bit Linux is similar except for the important detail that the
      upper boundary is set to 64G.  The reason is so that all
@@ -267,7 +270,10 @@
 /* Max number of segments we can track.  On Android, virtual address
    space is limited, so keep a low limit -- 5000 x sizef(NSegment) is
    360KB. */
-#if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
+#if defined(VGPV_arm_linux_android) \
+    || defined(VGPV_x86_linux_android) \
+    || defined(VGPV_mips32_linux_android) \
+    || defined(VGPV_arm64_linux_android)
 # define VG_N_SEGMENTS 5000
 #else
 # define VG_N_SEGMENTS 30000
@@ -275,7 +281,10 @@
 
 /* Max number of segment file names we can track.  These are big (1002
    bytes) so on Android limit the space usage to ~1MB. */
-#if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
+#if defined(VGPV_arm_linux_android) \
+    || defined(VGPV_x86_linux_android) \
+    || defined(VGPV_mips32_linux_android) \
+    || defined(VGPV_arm64_linux_android)
 # define VG_N_SEGNAMES 1000
 #else
 # define VG_N_SEGNAMES 6000
@@ -315,6 +324,19 @@ static Int      nsegments_used = 0;
 #define Addr_MAX ((Addr)(-1ULL))
 
 /* Limits etc */
+
+
+Addr VG_(clo_aspacem_minAddr)
+#if defined(VGO_darwin)
+# if VG_WORDSIZE == 4
+   = (Addr) 0x00001000;
+# else
+   = (Addr) 0x100000000;  // 4GB page zero
+# endif
+#else
+   = (Addr) 0x04000000; // 64M
+#endif
+
 
 // The smallest address that aspacem will try to allocate
 static Addr aspacem_minAddr = 0;
@@ -485,7 +507,7 @@ static void show_len_concisely ( /*OUT*/HChar* buf, Addr start, Addr end )
 /* Show full details of an NSegment */
 
 static void __attribute__ ((unused))
-            show_nsegment_full ( Int logLevel, Int segNo, NSegment* seg )
+            show_nsegment_full ( Int logLevel, Int segNo, const NSegment* seg )
 {
    HChar len_buf[20];
    const HChar* name = "(none)";
@@ -515,7 +537,7 @@ static void __attribute__ ((unused))
 
 /* Show an NSegment in a user-friendly-ish way. */
 
-static void show_nsegment ( Int logLevel, Int segNo, NSegment* seg )
+static void show_nsegment ( Int logLevel, Int segNo, const NSegment* seg )
 {
    HChar len_buf[20];
    show_len_concisely(len_buf, seg->start, seg->end);
@@ -673,7 +695,7 @@ Int VG_(am_get_segment_starts)( Addr* starts, Int nStarts )
 
 /* Check representational invariants for NSegments. */
 
-static Bool sane_NSegment ( NSegment* s )
+static Bool sane_NSegment ( const NSegment* s )
 {
    if (s == NULL) return False;
 
@@ -726,7 +748,7 @@ static Bool sane_NSegment ( NSegment* s )
    modified, and True is returned.  Otherwise s1 is unchanged and
    False is returned. */
 
-static Bool maybe_merge_nsegments ( NSegment* s1, NSegment* s2 )
+static Bool maybe_merge_nsegments ( NSegment* s1, const NSegment* s2 )
 {
    if (s1->kind != s2->kind) 
       return False;
@@ -1278,12 +1300,12 @@ ULong VG_(am_get_anonsize_total)( void )
 }
 
 
-/* Test if a piece of memory is addressable by the client with at
+/* Test if a piece of memory is addressable by client or by valgrind with at
    least the "prot" protection permissions by examining the underlying
-   segments.  If freeOk is True then SkFree areas are also allowed.
+   segments.  If client && freeOk is True then SkFree areas are also allowed.
 */
 static
-Bool is_valid_for_client( Addr start, SizeT len, UInt prot, Bool freeOk )
+Bool is_valid_for( Bool client, Addr start, SizeT len, UInt prot, Bool freeOk )
 {
    Int  i, iLo, iHi;
    Bool needR, needW, needX;
@@ -1311,18 +1333,32 @@ Bool is_valid_for_client( Addr start, SizeT len, UInt prot, Bool freeOk )
       iHi = find_nsegment_idx(start + len - 1);
    }
 
-   for (i = iLo; i <= iHi; i++) {
-      if ( (nsegments[i].kind == SkFileC 
-            || nsegments[i].kind == SkAnonC
-            || nsegments[i].kind == SkShmC
-            || (nsegments[i].kind == SkFree  && freeOk)
-            || (nsegments[i].kind == SkResvn && freeOk))
-           && (needR ? nsegments[i].hasR : True)
-           && (needW ? nsegments[i].hasW : True)
-           && (needX ? nsegments[i].hasX : True) ) {
-         /* ok */
-      } else {
-         return False;
+   if (client) {
+      for (i = iLo; i <= iHi; i++) {
+         if ( (nsegments[i].kind == SkFileC 
+               || nsegments[i].kind == SkAnonC
+               || nsegments[i].kind == SkShmC
+               || (nsegments[i].kind == SkFree  && freeOk)
+               || (nsegments[i].kind == SkResvn && freeOk))
+              && (needR ? nsegments[i].hasR : True)
+              && (needW ? nsegments[i].hasW : True)
+              && (needX ? nsegments[i].hasX : True) ) {
+            /* ok */
+         } else {
+            return False;
+         }
+      }
+   } else {
+      for (i = iLo; i <= iHi; i++) {
+         if ( (nsegments[i].kind == SkFileV 
+               || nsegments[i].kind == SkAnonV)
+              && (needR ? nsegments[i].hasR : True)
+              && (needW ? nsegments[i].hasW : True)
+              && (needX ? nsegments[i].hasX : True) ) {
+            /* ok */
+         } else {
+            return False;
+         }
       }
    }
    return True;
@@ -1334,7 +1370,8 @@ Bool is_valid_for_client( Addr start, SizeT len, UInt prot, Bool freeOk )
 Bool VG_(am_is_valid_for_client)( Addr start, SizeT len, 
                                   UInt prot )
 {
-   return is_valid_for_client( start, len, prot, False/*free not OK*/ );
+   return is_valid_for(/* client */ True,
+                       start, len, prot, False/*free not OK*/ );
 }
 
 /* Variant of VG_(am_is_valid_for_client) which allows free areas to
@@ -1344,32 +1381,15 @@ Bool VG_(am_is_valid_for_client)( Addr start, SizeT len,
 Bool VG_(am_is_valid_for_client_or_free_or_resvn)
    ( Addr start, SizeT len, UInt prot )
 {
-   return is_valid_for_client( start, len, prot, True/*free is OK*/ );
+   return is_valid_for(/* client */ True,
+                        start, len, prot, True/*free is OK*/ );
 }
 
 
-/* Test if a piece of memory is addressable by valgrind with at least
-   PROT_NONE protection permissions by examining the underlying
-   segments. */
-static Bool is_valid_for_valgrind( Addr start, SizeT len )
+Bool VG_(am_is_valid_for_valgrind) ( Addr start, SizeT len, UInt prot )
 {
-   Int  i, iLo, iHi;
-
-   if (len == 0)
-      return True; /* somewhat dubious case */
-   if (start + len < start)
-      return False; /* reject wraparounds */
-
-   iLo = find_nsegment_idx(start);
-   iHi = find_nsegment_idx(start + len - 1);
-   for (i = iLo; i <= iHi; i++) {
-      if (nsegments[i].kind == SkFileV || nsegments[i].kind == SkAnonV) {
-         /* ok */
-      } else {
-         return False;
-      }
-   }
-   return True;
+   return is_valid_for(/* client */ False,
+                        start, len, prot, False/*irrelevant*/ );
 }
 
 
@@ -1471,7 +1491,7 @@ void split_nsegments_lo_and_hi ( Addr sLo, Addr sHi,
    This deals with all the tricky cases of splitting up segments as
    needed. */
 
-static void add_segment ( NSegment* seg )
+static void add_segment ( const NSegment* seg )
 {
    Int  i, iLo, iHi, delta;
    Bool segment_is_sane;
@@ -1595,19 +1615,11 @@ static void read_maps_callback ( Addr addr, SizeT len, UInt prot,
    add_segment( &seg );
 }
 
-/* Initialise the address space manager, setting up the initial
-   segment list, and reading /proc/self/maps into it.  This must
-   be called before any other function.
-
-   Takes a pointer to the SP at the time V gained control.  This is
-   taken to be the highest usable address (more or less).  Based on
-   that (and general consultation of tea leaves, etc) return a
-   suggested end address for the client's stack. */
-
+/* See description in pub_core_aspacemgr.h */
 Addr VG_(am_startup) ( Addr sp_at_startup )
 {
    NSegment seg;
-   Addr     suggested_clstack_top;
+   Addr     suggested_clstack_end;
 
    aspacem_assert(sizeof(Word)   == sizeof(void*));
    aspacem_assert(sizeof(Addr)   == sizeof(void*));
@@ -1629,16 +1641,16 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    nsegments[0]    = seg;
    nsegments_used  = 1;
 
+   aspacem_minAddr = VG_(clo_aspacem_minAddr);
+
 #if defined(VGO_darwin)
 
 # if VG_WORDSIZE == 4
-   aspacem_minAddr = (Addr) 0x00001000;
    aspacem_maxAddr = (Addr) 0xffffffff;
 
    aspacem_cStart = aspacem_minAddr;
    aspacem_vStart = 0xf0000000;  // 0xc0000000..0xf0000000 available
 # else
-   aspacem_minAddr = (Addr) 0x100000000;  // 4GB page zero
    aspacem_maxAddr = (Addr) 0x7fffffffffff;
 
    aspacem_cStart = aspacem_minAddr;
@@ -1646,7 +1658,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    // 0x7fff:5c000000..0x7fff:ffe00000? is stack, dyld, shared cache
 # endif
 
-   suggested_clstack_top = -1; // ignored; Mach-O specifies its stack
+   suggested_clstack_end = -1; // ignored; Mach-O specifies its stack
 
 #else /* !defined(VGO_darwin) */
 
@@ -1656,8 +1668,6 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    VG_(debugLog)(2, "aspacem", 
                     "        sp_at_startup = 0x%010llx (supplied)\n", 
                     (ULong)sp_at_startup );
-
-   aspacem_minAddr = (Addr) 0x04000000; // 64M
 
 #  if VG_WORDSIZE == 8
      aspacem_maxAddr = (Addr)0x1000000000ULL - 1; // 64G
@@ -1671,14 +1681,14 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
      aspacem_maxAddr = VG_PGROUNDDN( sp_at_startup ) - 1;
 #  endif
 
-   aspacem_cStart = aspacem_minAddr; // 64M
+   aspacem_cStart = aspacem_minAddr;
    aspacem_vStart = VG_PGROUNDUP(aspacem_minAddr 
                                  + (aspacem_maxAddr - aspacem_minAddr + 1) / 2);
 #  ifdef ENABLE_INNER
    aspacem_vStart -= 0x10000000; // 256M
 #  endif
 
-   suggested_clstack_top = aspacem_maxAddr - 16*1024*1024ULL
+   suggested_clstack_end = aspacem_maxAddr - 16*1024*1024ULL
                                            + VKI_PAGE_SIZE;
 
 #endif /* #else of 'defined(VGO_darwin)' */
@@ -1687,7 +1697,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_maxAddr + 1));
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_cStart));
    aspacem_assert(VG_IS_PAGE_ALIGNED(aspacem_vStart));
-   aspacem_assert(VG_IS_PAGE_ALIGNED(suggested_clstack_top + 1));
+   aspacem_assert(VG_IS_PAGE_ALIGNED(suggested_clstack_end + 1));
 
    VG_(debugLog)(2, "aspacem", 
                     "              minAddr = 0x%010llx (computed)\n", 
@@ -1702,8 +1712,8 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
                     "               vStart = 0x%010llx (computed)\n", 
                     (ULong)aspacem_vStart);
    VG_(debugLog)(2, "aspacem", 
-                    "suggested_clstack_top = 0x%010llx (computed)\n", 
-                    (ULong)suggested_clstack_top);
+                    "suggested_clstack_end = 0x%010llx (computed)\n", 
+                    (ULong)suggested_clstack_end);
 
    if (aspacem_cStart > Addr_MIN) {
       init_resvn(&seg, Addr_MIN, aspacem_cStart-1);
@@ -1739,7 +1749,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
    VG_(am_show_nsegments)(2, "With contents of /proc/self/maps");
 
    AM_SANITY_CHECK;
-   return suggested_clstack_top;
+   return suggested_clstack_end;
 }
 
 
@@ -1751,8 +1761,8 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
 
 /* Query aspacem to ask where a mapping should go. */
 
-Addr VG_(am_get_advisory) ( MapRequest*  req, 
-                            Bool         forClient, 
+Addr VG_(am_get_advisory) ( const MapRequest*  req, 
+                            Bool  forClient, 
                             /*OUT*/Bool* ok )
 {
    /* This function implements allocation policy.
@@ -2407,21 +2417,6 @@ SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot )
 }
 
 
-/* Similarly, acquire new address space for the client but with
-   considerable restrictions on what can be done with it: (1) the
-   actual protections may exceed those stated in 'prot', (2) the
-   area's protections cannot be later changed using any form of
-   mprotect, and (3) the area cannot be freed using any form of
-   munmap.  On Linux this behaves the same as
-   VG_(am_mmap_anon_float_client).  On AIX5 this *may* allocate memory
-   by using sbrk, so as to make use of large pages on AIX. */
-
-SysRes VG_(am_sbrk_anon_float_client) ( SizeT length, Int prot )
-{
-   return VG_(am_mmap_anon_float_client) ( length, prot );
-}
-
-
 /* Map anonymously at an unconstrained address for V, and update the
    segment array accordingly.  This is fundamentally how V allocates
    itself more address space when needed. */
@@ -2527,21 +2522,12 @@ void* VG_(am_shadow_alloc)(SizeT size)
    return sr_isError(sres) ? NULL : (void*)sr_Res(sres);
 }
 
-/* Same comments apply as per VG_(am_sbrk_anon_float_client).  On
-   Linux this behaves the same as VG_(am_mmap_anon_float_valgrind). */
-
-SysRes VG_(am_sbrk_anon_float_valgrind)( SizeT cszB )
-{
-   return VG_(am_mmap_anon_float_valgrind)( cszB );
-}
-
-
 /* Map a file at an unconstrained address for V, and update the
    segment array accordingly. Use the provided flags */
 
 static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
                                                        UInt flags,
-                                          Int fd, Off64T offset )
+                                                       Int fd, Off64T offset )
 {
    SysRes     sres;
    NSegment   seg;
@@ -2559,7 +2545,8 @@ static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
    /* Ask for an advisory.  If it's negative, fail immediately. */
    req.rkind = MAny;
    req.start = 0;
-   #if defined(VGA_arm) || defined(VGA_mips32) || defined(VGA_mips64)
+   #if defined(VGA_arm) || defined(VGA_arm64) \
+      || defined(VGA_mips32) || defined(VGA_mips64)
    aspacem_assert(VKI_SHMLBA >= VKI_PAGE_SIZE);
    #else
    aspacem_assert(VKI_SHMLBA == VKI_PAGE_SIZE);
@@ -2568,7 +2555,7 @@ static SysRes VG_(am_mmap_file_float_valgrind_flags) ( SizeT length, UInt prot,
       /* arm-linux only. See ML_(generic_PRE_sys_shmat) and bug 290974 */
       req.len = length + VKI_SHMLBA - VKI_PAGE_SIZE;
    } else {
-   req.len   = length;
+      req.len = length;
    }
    advised = VG_(am_get_advisory)( &req, False/*forClient*/, &ok );
    if (!ok)
@@ -2666,7 +2653,8 @@ SysRes am_munmap_both_wrk ( /*OUT*/Bool* need_discard,
             ( start, len, VKI_PROT_NONE ))
          goto eINVAL;
    } else {
-      if (!is_valid_for_valgrind( start, len ))
+      if (!VG_(am_is_valid_for_valgrind)
+            ( start, len, VKI_PROT_NONE ))
          goto eINVAL;
    }
 
@@ -3545,7 +3533,7 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
          continue;
       } 
       else if (nsegments[i].kind == SkFree || nsegments[i].kind == SkResvn) {
-          /* Add mapping for SkResvn regions */
+         /* Add mapping for SkResvn regions */
          ChangedSeg* cs = &css_local[css_used_local];
          if (css_used_local < css_size_local) {
             cs->is_added = True;
@@ -3561,8 +3549,8 @@ static void add_mapping_callback(Addr addr, SizeT len, UInt prot,
 
       }
       else if (nsegments[i].kind == SkAnonC ||
-                 nsegments[i].kind == SkFileC ||
-                 nsegments[i].kind == SkShmC)
+               nsegments[i].kind == SkFileC ||
+               nsegments[i].kind == SkShmC)
       {
          /* Check permissions on client regions */
          // GrP fixme
@@ -3621,7 +3609,7 @@ static void remove_mapping_callback(Addr addr, SizeT len)
 
    /* NSegments iLo .. iHi inclusive should agree with the presented data. */
    for (i = iLo; i <= iHi; i++) {
-      if (nsegments[i].kind != SkFree  &&  nsegments[i].kind != SkResvn) {
+      if (nsegments[i].kind != SkFree && nsegments[i].kind != SkResvn) {
          /* V has a mapping, kernel doesn't.  Add to css_local[],
             directives to chop off the part of the V mapping that
             falls within the gap that the kernel tells us is

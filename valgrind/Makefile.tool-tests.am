@@ -5,6 +5,7 @@ include $(top_srcdir)/Makefile.all.am
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
 		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
 		-I$(top_srcdir)/VEX/pub \
+		-I$(top_builddir)/VEX/pub \
 		-DVGA_@VGCONF_ARCH_PRI@=1 \
 		-DVGO_@VGCONF_OS@=1 \
 		-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1 \
@@ -37,6 +38,10 @@ CFLAGS   += -Wno-literal-range           # none/tests/amd64/fxtract.c
 CFLAGS   += -Wno-string-plus-int         # drd/tests/annotate_ignore_rw.c
 CXXFLAGS += -Wno-unused-private-field    # drd/tests/tsan_unittest.cpp
 endif
+
+# Compile testcases without -Wcast-qual
+CFLAGS   += -Wno-cast-qual
+CXXFLAGS += -Wno-cast-qual
 
 check-local: build-noinst_DSYMS
 

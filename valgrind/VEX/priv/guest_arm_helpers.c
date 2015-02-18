@@ -109,7 +109,7 @@ static void showCounts ( void )
    least significant bit of the word.  Returned bits 31:1 are zero. */
 static
 UInt armg_calculate_flag_n ( UInt cc_op, UInt cc_dep1,
-                                 UInt cc_dep2, UInt cc_dep3 )
+                             UInt cc_dep2, UInt cc_dep3 )
 {
 #  if PROFILE_NZCV_FLAGS
    NOTE_N_EVAL(cc_op);
@@ -915,11 +915,11 @@ UInt LibVEX_GuestARM_get_cpsr ( /*IN*/const VexGuestARMState* vex_state )
    UInt cpsr = 0;
    // NZCV
    cpsr |= armg_calculate_flags_nzcv(
-              vex_state->guest_CC_OP,
-              vex_state->guest_CC_DEP1,
-              vex_state->guest_CC_DEP2,
-              vex_state->guest_CC_NDEP
-           );
+               vex_state->guest_CC_OP,
+               vex_state->guest_CC_DEP1,
+               vex_state->guest_CC_DEP2,
+               vex_state->guest_CC_NDEP
+            );
    vassert(0 == (cpsr & 0x0FFFFFFF));
    // Q
    if (vex_state->guest_QFLAG32 > 0)
@@ -981,8 +981,8 @@ void LibVEX_GuestARM_initialise ( /*OUT*/VexGuestARMState* vex_state )
    vex_state->guest_GEFLAG3 = 0;
 
    vex_state->guest_EMNOTE  = EmNote_NONE;
-   vex_state->guest_TISTART = 0;
-   vex_state->guest_TILEN   = 0;
+   vex_state->guest_CMSTART = 0;
+   vex_state->guest_CMLEN   = 0;
    vex_state->guest_NRADDR  = 0;
    vex_state->guest_IP_AT_SYSCALL = 0;
 
@@ -1030,10 +1030,6 @@ void LibVEX_GuestARM_initialise ( /*OUT*/VexGuestARMState* vex_state )
    vex_state->guest_ITSTATE = 0;
 
    vex_state->padding1 = 0;
-   vex_state->padding2 = 0;
-   vex_state->padding3 = 0;
-   vex_state->padding4 = 0;
-   vex_state->padding5 = 0;
 }
 
 
@@ -1130,8 +1126,8 @@ VexGuestLayout
                  /* 1 */ ALWAYSDEFD(guest_CC_OP),
                  /* 2 */ ALWAYSDEFD(guest_CC_NDEP),
                  /* 3 */ ALWAYSDEFD(guest_EMNOTE),
-                 /* 4 */ ALWAYSDEFD(guest_TISTART),
-                 /* 5 */ ALWAYSDEFD(guest_TILEN),
+                 /* 4 */ ALWAYSDEFD(guest_CMSTART),
+                 /* 5 */ ALWAYSDEFD(guest_CMLEN),
                  /* 6 */ ALWAYSDEFD(guest_NRADDR),
                  /* 7 */ ALWAYSDEFD(guest_IP_AT_SYSCALL),
                  /* 8 */ ALWAYSDEFD(guest_TPIDRURO),

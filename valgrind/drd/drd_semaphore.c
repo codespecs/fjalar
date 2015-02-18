@@ -224,7 +224,7 @@ void DRD_(semaphore_destroy)(const Addr semaphore)
    if (s_trace_semaphore)
       DRD_(trace_msg)("[%d] sem_destroy   0x%lx value %u",
                       DRD_(thread_get_running_tid)(), semaphore,
-                   p ? p->value : 0);
+                      p ? p->value : 0);
 
    if (p == 0)
    {
@@ -254,8 +254,8 @@ struct semaphore_info* DRD_(semaphore_open)(const Addr semaphore,
    if (s_trace_semaphore)
       DRD_(trace_msg)("[%d] sem_open      0x%lx name %s"
                       " oflag %#lx mode %#lo value %u",
-                   DRD_(thread_get_running_tid)(),
-                   semaphore, name, oflag, mode, value);
+                      DRD_(thread_get_running_tid)(),
+                      semaphore, name, oflag, mode, value);
 
    /* Return if the sem_open() call failed. */
    if (! semaphore)
@@ -297,7 +297,7 @@ void DRD_(semaphore_close)(const Addr semaphore)
    if (s_trace_semaphore)
       DRD_(trace_msg)("[%d] sem_close     0x%lx value %u",
                       DRD_(thread_get_running_tid)(), semaphore,
-                   p ? p->value : 0);
+                      p ? p->value : 0);
 
    if (p == 0)
    {
@@ -387,16 +387,16 @@ void DRD_(semaphore_post_wait)(const DrdThreadId tid, const Addr semaphore,
    {
       sg = drd_segment_pop(p);
       tl_assert(sg);
-         if (p->last_sem_post_tid != tid
-             && p->last_sem_post_tid != DRD_INVALID_THREADID)
-         {
-            DRD_(thread_new_segment_and_combine_vc)(tid, sg);
-         }
-         else
-            DRD_(thread_new_segment)(tid);
-         s_semaphore_segment_creation_count++;
-         DRD_(sg_put)(sg);
+      if (p->last_sem_post_tid != tid
+          && p->last_sem_post_tid != DRD_INVALID_THREADID)
+      {
+         DRD_(thread_new_segment_and_combine_vc)(tid, sg);
       }
+      else
+         DRD_(thread_new_segment)(tid);
+      s_semaphore_segment_creation_count++;
+      DRD_(sg_put)(sg);
+   }
 }
 
 /** Called before sem_post(). */
@@ -410,7 +410,7 @@ void DRD_(semaphore_pre_post)(const DrdThreadId tid, const Addr semaphore)
 
    if (s_trace_semaphore)
       DRD_(trace_msg)("[%d] sem_post      0x%lx value %u -> %u",
-                   DRD_(thread_get_running_tid)(),
+                      DRD_(thread_get_running_tid)(),
                       semaphore, p->value - 1, p->value);
 
    p->last_sem_post_tid = tid;
@@ -427,12 +427,12 @@ void DRD_(semaphore_post_post)(const DrdThreadId tid, const Addr semaphore,
                                const Bool succeeded)
 {
    /*
-    * Note: it is hard to implement the sem_post() wrapper correctly in    
-    * case sem_post() returns an error code. This is because handling this 
-    * case correctly requires restoring the vector clock associated with   
+    * Note: it is hard to implement the sem_post() wrapper correctly in
+    * case sem_post() returns an error code. This is because handling this
+    * case correctly requires restoring the vector clock associated with
     * the semaphore to its original value here. In order to do that without
-    * introducing a race condition, extra locking has to be added around   
-    * each semaphore call. Such extra locking would have to be added in    
+    * introducing a race condition, extra locking has to be added around
+    * each semaphore call. Such extra locking would have to be added in
     * drd_pthread_intercepts.c. However, it is hard to implement
     * synchronization in drd_pthread_intercepts.c in a portable way without
     * calling already redirected functions.

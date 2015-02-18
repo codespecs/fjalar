@@ -538,8 +538,9 @@ get_cache_info(VexArchInfo *vai)
    return ret == 0 ? True : False;
 }
 
-#elif defined(VGA_arm) || defined(VGA_ppc32) || defined(VGA_ppc64) || \
-      defined(VGA_mips32) || defined(VGA_mips64)
+#elif defined(VGA_arm) || defined(VGA_ppc32)    || \
+   defined(VGA_ppc64be) || defined(VGA_ppc64le) || \
+   defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_arm64)
 
 static Bool
 get_cache_info(VexArchInfo *vai)

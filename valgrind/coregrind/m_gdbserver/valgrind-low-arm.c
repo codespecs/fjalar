@@ -144,19 +144,18 @@ Addr thumb_pc (Addr pc)
 
    // pc aligned on 4 bytes. We need to use debug info.
    {
-      HChar fnname[200]; // ??? max size
-      Addr entrypoint;
-      Addr ptoc; // unused but needed.
+      const HChar *fnname;
+      SymAVMAs avmas;
       // If this is a thumb instruction, we need to ask
       // the debug info with the bit0 set
       // (why can't debug info do that for us ???)
       // (why if this is a 4 bytes thumb instruction ???)
-      if (VG_(get_fnname_raw) (pc | 1, fnname, 200)) {
-         if (VG_(lookup_symbol_SLOW)( "*", fnname, &entrypoint, &ptoc )) {
+      if (VG_(get_fnname_raw) (pc | 1, &fnname)) {
+         if (VG_(lookup_symbol_SLOW)( "*", fnname, &avmas )) {
             dlog (1, "fnname %s lookupsym %p => %p %s.\n",
-                  fnname, C2v(entrypoint), C2v(pc),
-                  (entrypoint & 1 ? "thumb" : "arm"));
-            if (entrypoint & 1)
+                  fnname, C2v(avmas.main), C2v(pc),
+                  (avmas.main & 1 ? "thumb" : "arm"));
+            if (avmas.main & 1)
                return pc | 1;
             else
                return pc;
@@ -287,6 +286,13 @@ const char* target_xml (Bool shadow_mode)
    }  
 }
 
+static CORE_ADDR** target_get_dtv (ThreadState *tst)
+{
+   VexGuestARMState* arm = (VexGuestARMState*)&tst->arch.vex;
+   // arm dtv is pointed to by TPIDRURO
+   return (CORE_ADDR**)((CORE_ADDR)arm->guest_TPIDRURO);
+}
+
 static struct valgrind_target_ops low_target = {
    num_regs,
    regs,
@@ -295,7 +301,8 @@ static struct valgrind_target_ops low_target = {
    get_pc,
    set_pc,
    "arm",
-   target_xml
+   target_xml,
+   target_get_dtv
 };
 
 void arm_init_architecture (struct valgrind_target_ops *target)

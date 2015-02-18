@@ -96,6 +96,9 @@ typedef
       /* Not next to VG_USERREQ__COUNT_LEAKS because it was added later. */
       VG_USERREQ__COUNT_LEAK_BLOCKS,
 
+      VG_USERREQ__ENABLE_ADDR_ERROR_REPORTING_IN_RANGE,
+      VG_USERREQ__DISABLE_ADDR_ERROR_REPORTING_IN_RANGE,
+
       /* This is just for memcheck's internal use - don't use it */
       _VG_USERREQ__MEMCHECK_RECORD_OVERLAP_ERROR 
          = VG_USERREQ_TOOL_BASE('M','C') + 256
@@ -128,7 +131,7 @@ typedef
 /* Similar to VALGRIND_MAKE_MEM_DEFINED except that addressability is
    not altered: bytes which are addressable are marked as defined,
    but those which are not addressable are left unchanged. */
-#define VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE(_qzz_addr,_qzz_len) \
+#define VALGRIND_MAKE_MEM_DEFINED_IF_ADDRESSABLE(_qzz_addr,_qzz_len)     \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,              \
                             VG_USERREQ__MAKE_MEM_DEFINED_IF_ADDRESSABLE, \
                             (_qzz_addr), (_qzz_len), 0, 0, 0)
@@ -137,9 +140,9 @@ typedef
    string which is included in any messages pertaining to addresses
    within the specified memory range.  Has no other effect on the
    properties of the memory range. */
-#define VALGRIND_CREATE_BLOCK(_qzz_addr,_qzz_len, _qzz_desc)	 \
+#define VALGRIND_CREATE_BLOCK(_qzz_addr,_qzz_len, _qzz_desc)	   \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,        \
-                            VG_USERREQ__CREATE_BLOCK,            \
+                            VG_USERREQ__CREATE_BLOCK,              \
                             (_qzz_addr), (_qzz_len), (_qzz_desc),  \
                             0, 0)
 
@@ -157,7 +160,7 @@ typedef
    If suitable addressibility is not established, Valgrind prints an
    error message and returns the address of the first offending byte.
    Otherwise it returns zero. */
-#define VALGRIND_CHECK_MEM_IS_ADDRESSABLE(_qzz_addr,_qzz_len)    \
+#define VALGRIND_CHECK_MEM_IS_ADDRESSABLE(_qzz_addr,_qzz_len)      \
     VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                             \
                             VG_USERREQ__CHECK_MEM_IS_ADDRESSABLE,  \
                             (_qzz_addr), (_qzz_len), 0, 0, 0)
@@ -202,7 +205,7 @@ typedef
                                     0, 2, 0, 0, 0)
 
 /* Do a summary memory leak check (like --leak-check=summary) mid-execution. */
-#define VALGRIND_DO_QUICK_LEAK_CHECK				 \
+#define VALGRIND_DO_QUICK_LEAK_CHECK                             \
     VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DO_LEAK_CHECK,   \
                                     1, 0, 0, 0, 0)
 
@@ -260,9 +263,9 @@ typedef
    The metadata is not copied in cases 0, 2 or 3 so it should be
    impossible to segfault your system by using this call.
 */
-#define VALGRIND_GET_VBITS(zza,zzvbits,zznbytes)                 \
+#define VALGRIND_GET_VBITS(zza,zzvbits,zznbytes)                \
     (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                \
-                            VG_USERREQ__GET_VBITS,               \
+                                    VG_USERREQ__GET_VBITS,      \
                                     (const char*)(zza),         \
                                     (char*)(zzvbits),           \
                                     (zznbytes), 0, 0)
@@ -276,12 +279,24 @@ typedef
    The metadata is not copied in cases 0, 2 or 3 so it should be
    impossible to segfault your system by using this call.
 */
-#define VALGRIND_SET_VBITS(zza,zzvbits,zznbytes)                 \
+#define VALGRIND_SET_VBITS(zza,zzvbits,zznbytes)                \
     (unsigned)VALGRIND_DO_CLIENT_REQUEST_EXPR(0,                \
-                            VG_USERREQ__SET_VBITS,               \
+                                    VG_USERREQ__SET_VBITS,      \
                                     (const char*)(zza),         \
                                     (const char*)(zzvbits),     \
                                     (zznbytes), 0, 0 )
+
+/* Disable and re-enable reporting of addressing errors in the
+   specified address range. */
+#define VALGRIND_DISABLE_ADDR_ERROR_REPORTING_IN_RANGE(_qzz_addr,_qzz_len) \
+    VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,    \
+       VG_USERREQ__DISABLE_ADDR_ERROR_REPORTING_IN_RANGE,      \
+       (_qzz_addr), (_qzz_len), 0, 0, 0)
+
+#define VALGRIND_ENABLE_ADDR_ERROR_REPORTING_IN_RANGE(_qzz_addr,_qzz_len) \
+    VALGRIND_DO_CLIENT_REQUEST_EXPR(0 /* default return */,    \
+       VG_USERREQ__ENABLE_ADDR_ERROR_REPORTING_IN_RANGE,       \
+       (_qzz_addr), (_qzz_len), 0, 0, 0)
 
 #endif
 

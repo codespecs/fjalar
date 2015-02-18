@@ -43,10 +43,12 @@
 #define STACK_POINTER_OFFSET OFFSET_amd64_RSP
 #elif defined(VGA_ppc32)
 #define STACK_POINTER_OFFSET OFFSET_ppc32_GPR1
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #define STACK_POINTER_OFFSET OFFSET_ppc64_GPR1
 #elif defined(VGA_arm)
 #define STACK_POINTER_OFFSET OFFSET_arm_R13
+#elif defined(VGA_arm64)
+#define STACK_POINTER_OFFSET OFFSET_arm64_XSP
 #elif defined(VGA_s390x)
 #define STACK_POINTER_OFFSET OFFSET_s390x_r15
 #elif defined(VGA_mips32)
@@ -102,7 +104,7 @@ void DRD_(trace_mem_access)(const Addr addr, const SizeT size,
          DRD_(trace_msg_w_bt)("store 0x%lx size %ld val %ld/0x%lx (thread %d /"
                               " vc %s)", addr, size, stored_value_lo,
                               stored_value_lo, DRD_(thread_get_running_tid)(),
-                   vc);
+                              vc);
       } else if (access_type == eStore && size > sizeof(HWord)) {
          ULong sv;
 
@@ -166,8 +168,8 @@ static void drd_report_race(const Addr addr, const SizeT size,
       VG_(maybe_record_error)(vg_tid, DataRaceErr, VG_(get_IP)(vg_tid),
                               "Conflicting access", &drei);
 
-   if (s_first_race_only)
-      DRD_(start_suppression)(addr, addr + size, "first race only");
+      if (s_first_race_only)
+         DRD_(start_suppression)(addr, addr + size, "first race only");
    }
 }
 
@@ -356,9 +358,9 @@ static IRExpr* instr_trace_mem_load(IRSB* const bb, IRExpr* addr_expr,
    addr_expr = IRExpr_RdTmp(tmp);
    IRDirty* di
      = unsafeIRDirty_0_N(/*regparms*/2,
-                           "drd_trace_mem_load",
-                              VG_(fnptr_to_fnentry)
-                              (drd_trace_mem_load),
+                         "drd_trace_mem_load",
+                         VG_(fnptr_to_fnentry)
+                         (drd_trace_mem_load),
                          mkIRExprVec_2(addr_expr, mkIRExpr_HWord(size)));
    if (guard) di->guard = guard;
    addStmtToIRSB(bb, IRStmt_Dirty(di));
@@ -459,10 +461,10 @@ static void instr_trace_mem_store(IRSB* const bb, IRExpr* const addr_expr,
    }
    IRDirty* di
      = unsafeIRDirty_0_N(/*regparms*/3,
-                           "drd_trace_mem_store",
-                           VG_(fnptr_to_fnentry)(drd_trace_mem_store),
-                           mkIRExprVec_4(addr_expr, mkIRExpr_HWord(size),
-                                         data_expr_hi ? data_expr_hi
+                         "drd_trace_mem_store",
+                         VG_(fnptr_to_fnentry)(drd_trace_mem_store),
+                         mkIRExprVec_4(addr_expr, mkIRExpr_HWord(size),
+                                       data_expr_hi ? data_expr_hi
                                        : mkIRExpr_HWord(0), data_expr_lo));
    if (guard) di->guard = guard;
    addStmtToIRSB(bb, IRStmt_Dirty(di) );
@@ -588,9 +590,9 @@ static void instrument_store(IRSB* const bb, IRExpr* addr_expr,
 
 IRSB* DRD_(instrument)(VgCallbackClosure* const closure,
                        IRSB* const bb_in,
-                       VexGuestLayout* const layout,
-                       VexGuestExtents* const vge, 
-                       VexArchInfo* archinfo_host,
+                       const VexGuestLayout* const layout,
+                       const VexGuestExtents* const vge,
+                       const VexArchInfo* archinfo_host,
                        IRType const gWordTy,
                        IRType const hWordTy)
 {
@@ -622,7 +624,7 @@ IRSB* DRD_(instrument)(VgCallbackClosure* const closure,
          /* relocated in another way than by later binutils versions. The  */
          /* linker e.g. does not generate .got.plt sections on CentOS 3.0. */
       case Ist_IMark:
-         instrument = VG_(DebugInfo_sect_kind)(NULL, 0, st->Ist.IMark.addr)
+         instrument = VG_(DebugInfo_sect_kind)(NULL, st->Ist.IMark.addr)
             != Vg_SectPLT;
          addStmtToIRSB(bb, st);
          break;
@@ -631,7 +633,9 @@ IRSB* DRD_(instrument)(VgCallbackClosure* const closure,
          switch (st->Ist.MBE.event)
          {
          case Imbe_Fence:
-            break; /* not interesting */
+            break; /* not interesting to DRD */
+         case Imbe_CancelReservation:
+            break; /* not interesting to DRD */
          default:
             tl_assert(0);
          }

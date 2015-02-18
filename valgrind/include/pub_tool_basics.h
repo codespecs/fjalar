@@ -217,9 +217,14 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 
 static inline Bool sr_isError ( SysRes sr ) {
    switch (sr._mode) {
-      case SysRes_UNIX_ERR: return True;
-      default:              return False;
+      case SysRes_UNIX_ERR:
+         return True;
       /* should check tags properly and assert here, but we can't here */
+      case SysRes_MACH:
+      case SysRes_MDEP:
+      case SysRes_UNIX_OK:
+      default:
+         return False;
    }
 }
 
@@ -227,22 +232,38 @@ static inline UWord sr_Res ( SysRes sr ) {
    switch (sr._mode) {
       case SysRes_MACH:
       case SysRes_MDEP:
-      case SysRes_UNIX_OK: return sr._wLO;
-      default: return 0; /* should assert, but we can't here */
+      case SysRes_UNIX_OK:
+         return sr._wLO;
+      /* should assert, but we can't here */
+      case SysRes_UNIX_ERR:
+      default:
+         return 0;
    }
 }
 
 static inline UWord sr_ResHI ( SysRes sr ) {
    switch (sr._mode) {
-      case SysRes_UNIX_OK: return sr._wHI;
-      default: return 0; /* should assert, but we can't here */
+      case SysRes_UNIX_OK:
+         return sr._wHI;
+      /* should assert, but we can't here */
+      case SysRes_MACH:
+      case SysRes_MDEP:
+      case SysRes_UNIX_ERR:
+      default:
+         return 0;
    }
 }
 
 static inline UWord sr_Err ( SysRes sr ) {
    switch (sr._mode) {
-      case SysRes_UNIX_ERR: return sr._wLO;
-      default: return 0; /* should assert, but we can't here */
+      case SysRes_UNIX_ERR:
+         return sr._wLO;
+      /* should assert, but we can't here */
+      case SysRes_MACH:
+      case SysRes_MDEP:
+      case SysRes_UNIX_OK:
+      default:
+         return 0;
    }
 }
 
@@ -269,9 +290,10 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #undef VG_LITTLEENDIAN
 
 #if defined(VGA_x86) || defined(VGA_amd64) || defined (VGA_arm) \
-    || ((defined(VGA_mips32) || defined(VGA_mips64)) && defined (_MIPSEL))
+    || ((defined(VGA_mips32) || defined(VGA_mips64)) && defined (_MIPSEL)) \
+    || defined(VGA_arm64)  || defined(VGA_ppc64le)
 #  define VG_LITTLEENDIAN 1
-#elif defined(VGA_ppc32) || defined(VGA_ppc64) || defined(VGA_s390x) \
+#elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_s390x) \
       || ((defined(VGA_mips32) || defined(VGA_mips64)) && defined (_MIPSEB))
 #  define VG_BIGENDIAN 1
 #else
@@ -282,8 +304,10 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #if defined(VGA_x86)
 #  define VG_REGPARM(n)            __attribute__((regparm(n)))
 #elif defined(VGA_amd64) || defined(VGA_ppc32) \
-      || defined(VGA_ppc64) || defined(VGA_arm) || defined(VGA_s390x) \
-      || defined(VGA_mips32) || defined(VGA_mips64)
+      || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
+      || defined(VGA_arm) || defined(VGA_s390x) \
+      || defined(VGA_mips32) || defined(VGA_mips64) \
+      || defined(VGA_arm64)
 #  define VG_REGPARM(n)            /* */
 #else
 #  error Unknown arch
@@ -315,6 +339,16 @@ static inline Bool sr_EQ ( SysRes sr1, SysRes sr2 ) {
 #define PRINTF_CHECK(x, y)
 #endif
 
+// Macro to "cast" away constness (from type const T to type T) without
+// GCC complaining about it. This macro should be used RARELY. 
+// x is expected to have type const T
+#define CONST_CAST(T,x)    \
+   ({                      \
+      union {              \
+         const T in;      \
+         T out;           \
+      } var = { .in = x }; var.out;  \
+   })
 
 #endif /* __PUB_TOOL_BASICS_H */
 

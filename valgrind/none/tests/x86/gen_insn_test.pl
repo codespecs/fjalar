@@ -621,12 +621,12 @@ while (<>)
         if (defined($arg->{name}))
         {
             if ($arg->{type} eq "xmm")
-    {
+            {
                 $arg->{argnuml} = $argnum++;
                 $arg->{argnumh} = $argnum++;
             }
             else
-        {
+            {
                 $arg->{argnum} = $argnum++;
             }
         }
@@ -845,12 +845,12 @@ while (<>)
             if ($arg->{type} eq "xmm")
             {
                 print qq|$prefix\"m\" \($arg->{name}.uq[0]\), \"m\" \($arg->{name}.uq[1]\)|;
-        }
+            }
             else
             {
                 print qq|$prefix\"m\" \($arg->{name}\)|;
-    }
-    
+            }
+
             $prefix = ", ";
         }
     }

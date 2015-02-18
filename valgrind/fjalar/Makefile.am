@@ -21,6 +21,10 @@ EXTRA_CFLAGS =  -Iinclude -I../VEX/pub -I../include -I..
 #EXTRA_CFLAGS +=  -O0 -finstrument-functions
 EXTRA_CFLAGS +=  -O0
 
+# Compile fjalar without -Wcast-qual
+CFLAGS   += -Wno-cast-qual
+CXXFLAGS += -Wno-cast-qual
+
 #----------------------------------------------------------------------------
 # Headers
 #----------------------------------------------------------------------------
@@ -138,7 +142,7 @@ vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(AM_CFLAGS_PIC: -O2=-O0) $(EXTRA_CFLAGS)
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_PRI_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_fjalar_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
@@ -151,7 +155,7 @@ vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(AM_CFLAGS_PIC: -O2=-O0) $(EXTRA_CFLAGS)
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_SEC_CAPS@: -O2=-O0) $(EXTRA_CFLAGS)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_fjalar_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \

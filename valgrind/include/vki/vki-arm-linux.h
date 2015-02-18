@@ -274,6 +274,10 @@ struct vki_sigcontext {
 #define VKI_F_SETOWN_EX		15
 #define VKI_F_GETOWN_EX		16
 
+#define VKI_F_OFD_GETLK		36
+#define VKI_F_OFD_SETLK		37
+#define VKI_F_OFD_SETLKW	38
+
 #define VKI_F_OWNER_TID		0
 #define VKI_F_OWNER_PID		1
 #define VKI_F_OWNER_PGRP	2
@@ -313,6 +317,7 @@ struct vki_f_owner_ex {
 
 #define VKI_SIOCSPGRP           0x8902
 #define VKI_SIOCGPGRP           0x8904
+#define VKI_SIOCATMARK          0x8905
 #define VKI_SIOCGSTAMP          0x8906      /* Get stamp (timeval) */
 #define VKI_SIOCGSTAMPNS        0x8907      /* Get stamp (timespec) */
 
@@ -502,6 +507,7 @@ struct vki_termios {
 #define VKI_FIONREAD	0x541B
 #define VKI_TIOCLINUX	0x541C
 #define VKI_FIONBIO	0x5421
+#define VKI_TIOCNOTTY	0x5422
 #define VKI_TCSBRKP	0x5425	/* Needed for POSIX tcsendbreak() */
 #define VKI_TIOCGPTN	_VKI_IOR('T',0x30, unsigned int) /* Get Pty Number (of pty-mux device) */
 #define VKI_TIOCSPTLCK	_VKI_IOW('T',0x31, int)  /* Lock/unlock Pty */
@@ -615,7 +621,7 @@ struct vki_ucontext {
 	vki_stack_t		uc_stack;
 	struct vki_sigcontext	uc_mcontext;
 	vki_sigset_t		uc_sigmask;	/* mask last for extensibility */
-	int               __unused[32 - (sizeof (vki_sigset_t) / sizeof (int))];
+	int              __unused0[32 - (sizeof (vki_sigset_t) / sizeof (int))];
 	unsigned long     uc_regspace[128] __attribute__((__aligned__(8)));
 
 };
@@ -886,6 +892,13 @@ struct vki_vm86plus_struct {
 //----------------------------------------------------------------------
 
 #define VKI_HWCAP_NEON      4096
+
+//----------------------------------------------------------------------
+// From linux-2.6.8.1/include/asm-generic/errno.h
+//----------------------------------------------------------------------
+
+#define	VKI_ENOSYS       38  /* Function not implemented */
+#define	VKI_EOVERFLOW    75  /* Value too large for defined data type */
 
 //----------------------------------------------------------------------
 // And that's it!

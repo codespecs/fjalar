@@ -35,7 +35,6 @@
 #include "drd_suppression.h"      // drd_start_suppression()
 #include "drd_thread.h"
 #include "pub_tool_basics.h"      // Bool
-#include "pub_tool_debuginfo.h"   // VG_(describe_IP)()
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcassert.h"  // tl_assert()
 #include "pub_tool_libcprint.h"   // VG_(message)()
@@ -81,7 +80,16 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
    const DrdThreadId drd_tid = DRD_(thread_get_running_tid)();
 
    tl_assert(vg_tid == VG_(get_running_tid()));
-   tl_assert(DRD_(VgThreadIdToDrdThreadId)(vg_tid) == drd_tid);
+   tl_assert(DRD_(VgThreadIdToDrdThreadId)(vg_tid) == drd_tid
+             || (VG_USERREQ__GDB_MONITOR_COMMAND == arg[0]
+                 && vg_tid == VG_INVALID_THREADID));
+   /* Check the consistency of vg_tid and drd_tid, unless
+      vgdb has forced the invokation of a gdb monitor cmd
+      when no threads was running (i.e. all threads blocked
+      in a syscall. In such a case, vg_tid is invalid,
+      its conversion to a drd thread id gives also an invalid
+      drd thread id, but drd_tid is not invalid (probably
+      equal to the last running drd thread. */
 
    switch (arg[0])
    {
@@ -216,6 +224,26 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       DRD_(rwlock_pre_unlock)(arg[1], user_rwlock);
       break;
 
+   case VG_USERREQ__DRD_ANNOTATE_SEM_INIT_PRE:
+      DRD_(semaphore_init)(arg[1], 0, arg[2]);
+      break;
+
+   case VG_USERREQ__DRD_ANNOTATE_SEM_DESTROY_POST:
+      DRD_(semaphore_destroy)(arg[1]);
+      break;
+
+   case VG_USERREQ__DRD_ANNOTATE_SEM_WAIT_PRE:
+      DRD_(semaphore_pre_wait)(arg[1]);
+      break;
+
+   case VG_USERREQ__DRD_ANNOTATE_SEM_WAIT_POST:
+      DRD_(semaphore_post_wait)(drd_tid, arg[1], True /* waited */);
+      break;
+
+   case VG_USERREQ__DRD_ANNOTATE_SEM_POST_PRE:
+      DRD_(semaphore_pre_post)(drd_tid, arg[1]);
+      break;
+
    case VG_USERREQ__SET_PTHREAD_COND_INITIALIZER:
       DRD_(pthread_cond_initializer) = (Addr)arg[1];
       DRD_(pthread_cond_initializer_size) = arg[2];
@@ -347,6 +375,10 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
 
    case VG_USERREQ__POST_MUTEX_UNLOCK:
       DRD_(thread_leave_synchr)(drd_tid);
+      break;
+
+   case VG_USERREQ__DRD_IGNORE_MUTEX_ORDERING:
+      DRD_(mutex_ignore_ordering)(arg[1]);
       break;
 
    case VG_USERREQ__PRE_SPIN_INIT_OR_UNLOCK:
@@ -501,11 +533,21 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       break;
 
    case VG_USERREQ__PRE_RWLOCK_INIT:
-      DRD_(rwlock_pre_init)(arg[1], pthread_rwlock);
+      if (DRD_(thread_enter_synchr)(drd_tid) == 0)
+         DRD_(rwlock_pre_init)(arg[1], pthread_rwlock);
+      break;
+
+   case VG_USERREQ__POST_RWLOCK_INIT:
+      DRD_(thread_leave_synchr)(drd_tid);
+      break;
+
+   case VG_USERREQ__PRE_RWLOCK_DESTROY:
+      DRD_(thread_enter_synchr)(drd_tid);
       break;
 
    case VG_USERREQ__POST_RWLOCK_DESTROY:
-      DRD_(rwlock_post_destroy)(arg[1], pthread_rwlock);
+      if (DRD_(thread_leave_synchr)(drd_tid) == 0)
+         DRD_(rwlock_post_destroy)(arg[1], pthread_rwlock);
       break;
 
    case VG_USERREQ__PRE_RWLOCK_RDLOCK:
@@ -532,7 +574,7 @@ static Bool handle_client_request(ThreadId vg_tid, UWord* arg, UWord* ret)
       if (DRD_(thread_enter_synchr)(drd_tid) == 0)
          DRD_(rwlock_pre_unlock)(arg[1], pthread_rwlock);
       break;
-      
+
    case VG_USERREQ__POST_RWLOCK_UNLOCK:
       DRD_(thread_leave_synchr)(drd_tid);
       break;

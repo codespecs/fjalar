@@ -12,6 +12,7 @@ EXTRA_DIST = \
 pkginclude_HEADERS = helgrind.h
 
 noinst_HEADERS = \
+	hg_addrdescr.h \
 	hg_basics.h \
 	hg_errors.h \
 	hg_lock_n_thread.h \
@@ -28,6 +29,7 @@ noinst_PROGRAMS += helgrind-@VGCONF_ARCH_SEC@-@VGCONF_OS@
 endif
 
 HELGRIND_SOURCES_COMMON = \
+	hg_addrdescr.c \
 	hg_basics.c \
 	hg_errors.c \
 	hg_lock_n_thread.c \
@@ -95,7 +97,7 @@ vgpreload_helgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_helgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_helgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) $(AM_CFLAGS_PIC)
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_helgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_helgrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
@@ -108,7 +110,7 @@ vgpreload_helgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
 vgpreload_helgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \
 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_helgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS       = \
-	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) $(AM_CFLAGS_PIC)
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_helgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_DEPENDENCIES = \
 	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_helgrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \

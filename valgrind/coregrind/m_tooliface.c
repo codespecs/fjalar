@@ -41,8 +41,8 @@ VgToolInterface VG_(tdict);
 void VG_(basic_tool_funcs)(
    void(*post_clo_init)(void),
    IRSB*(*instrument)(VgCallbackClosure*, IRSB*, 
-                      VexGuestLayout*, VexGuestExtents*, VexArchInfo*,
-                      IRType, IRType),
+                      const VexGuestLayout*, const VexGuestExtents*,
+                      const VexArchInfo*, IRType, IRType),
    void(*fini)(Int)
 )
 {
@@ -92,6 +92,8 @@ VgNeeds VG_(needs) = {
    .client_requests      = False,
    .syscall_wrapper      = False,
    .sanity_checks        = False,
+   .print_stats          = False,
+   .info_location        = False,
    .var_info	         = False,
    .malloc_replacement   = False,
    .xml_output           = False,
@@ -225,18 +227,18 @@ void VG_(needs_superblock_discards)(
 }
 
 void VG_(needs_tool_errors)(
-   Bool (*eq)         (VgRes, Error*, Error*),
-   void (*before_pp)  (Error*),
-   void (*pp)         (Error*),
+   Bool (*eq)         (VgRes, const Error*, const Error*),
+   void (*before_pp)  (const Error*),
+   void (*pp)         (const Error*),
    Bool show_TIDs,
-   UInt (*update)     (Error*),
+   UInt (*update)     (const Error*),
    Bool (*recog)      (const HChar*, Supp*),
    Bool (*read_extra) (Int, HChar**, SizeT*, Int*, Supp*),
-   Bool (*matches)    (Error*, Supp*),
-   const HChar* (*name) (Error*),
-   Bool (*get_xtra_si)(Error*,/*OUT*/HChar*,Int),
-   Bool (*print_xtra_su)(Supp*,/*OUT*/HChar*,Int),
-   void (*update_xtra_su)(Error*, Supp*)
+   Bool (*matches)    (const Error*, const Supp*),
+   const HChar* (*name) (const Error*),
+   SizeT (*get_xtra_si)(const Error*,/*OUT*/HChar*,Int),
+   SizeT (*print_xtra_su)(const Supp*,/*OUT*/HChar*,Int),
+   void (*update_xtra_su)(const Error*, const Supp*)
 )
 {
    VG_(needs).tool_errors = True;
@@ -292,6 +294,22 @@ void VG_(needs_sanity_checks)(
    VG_(needs).sanity_checks = True;
    VG_(tdict).tool_cheap_sanity_check     = cheap;
    VG_(tdict).tool_expensive_sanity_check = expen;
+}
+
+void VG_(needs_print_stats) (
+   void (*print_stats)(void)
+)
+{
+   VG_(needs).print_stats = True;
+   VG_(tdict).tool_print_stats = print_stats;
+}
+
+void VG_(needs_info_location) (
+   void (*info_location)(Addr)
+)
+{
+   VG_(needs).info_location = True;
+   VG_(tdict).tool_info_location = info_location;
 }
 
 void VG_(needs_malloc_replacement)(
@@ -405,7 +423,7 @@ DEF0(track_pre_mem_write,         CorePart, ThreadId, const HChar*, Addr, SizeT)
 DEF0(track_post_mem_write,        CorePart, ThreadId, Addr, SizeT)
 
 DEF0(track_pre_reg_read,          CorePart, ThreadId, const HChar*, PtrdiffT, SizeT)
-DEF0(track_post_reg_write,        CorePart, ThreadId,        PtrdiffT, SizeT)
+DEF0(track_post_reg_write,        CorePart, ThreadId,               PtrdiffT, SizeT)
 
 DEF0(track_post_reg_write_clientcall_return, ThreadId, PtrdiffT, SizeT, Addr)
 

@@ -901,11 +901,11 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
   const char* p;
   char *d;
   char *demangled;
-
+  
   /* Discard leading _ada_, which is used for library level subprograms.  */
   if (strncmp (mangled, "_ada_", 5) == 0)
-      mangled += 5;
-  
+    mangled += 5;
+
   /* All ada unit names are lower-case.  */
   if (!ISLOWER (mangled[0]))
     goto unknown;
@@ -962,8 +962,8 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
           if (operators[k][0] == NULL)
             goto unknown;
         }
-  else
-    {
+      else
+        {
           /* Not a GNAT encoding.  */
           goto unknown;
         }
@@ -973,7 +973,7 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
         {
           /* Task stuff.  */
           if (p[2] == 'B' && p[3] == 0)
-	{
+            {
               /* Subprogram for task body.  */
               break;
             }
@@ -983,10 +983,10 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
               p += 4;
               *d++ = '.';
               continue;
-	}
-      else
+            }
+          else
             goto unknown;
-    }
+        }
       if (p[0] == 'E' && p[1] == 0)
         {
           /* Exception name.  */
@@ -1010,7 +1010,7 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
             p++;
         }
       if (p[0] == 'S' && p[1] != 0 && (p[2] == '_' || p[2] == 0))
-      {
+        {
           /* Stream operations.  */
           const char *name;
           switch (p[1])
@@ -1033,13 +1033,13 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
           p += 2;
           strcpy (d, name);
           d += strlen (name);
-      }
+        }
       else if (p[0] == 'D')
         {
           /* Controlled type operation.  */
           const char *name;
           switch (p[1])
-      {
+            {
             case 'F':
               name = ".Finalize";
               break;
@@ -1048,12 +1048,12 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
               break;
             default:
               goto unknown;
-      }
+            }
           strcpy (d, name);
           d += strlen (name);
           break;
-  }
-  
+        }
+
       if (p[0] == '_')
         {
           /* Separator.  */
@@ -1061,15 +1061,15 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
             {
               /* Standard separator.  Handled first.  */
               p += 2;
-  
+
               if (ISDIGIT (*p))
-    {
+                {
                   /* Overloading number.  */
                   do
                     p++;
                   while (ISDIGIT (*p) || (p[0] == '_' && ISDIGIT (p[1])));
                   if (*p == 'X')
-	{
+                    {
                       p++;
                       while (p[0] == 'n' || p[0] == 'b')
                         p++;
@@ -1104,13 +1104,13 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
                     break;
                   else
                     goto unknown;
-	}
-      else
-	{
+                }
+              else
+                {
                   *d++ = '.';
                   continue;
-	}
-    }
+                }
+            }
           else if (p[1] == 'B' || p[1] == 'E')
             {
               /* Entry Body or barrier Evaluation.  */
@@ -1138,12 +1138,12 @@ ada_demangle (const char *mangled, int option ATTRIBUTE_UNUSED)
           /* End of mangled name.  */
           break;
         }
-  else
+      else
         goto unknown;
     }
   *d = 0;
-    return demangled;
-  
+  return demangled;
+
  unknown:
   len0 = strlen (mangled);
   demangled = XNEWVEC (char, len0 + 3);
@@ -1192,6 +1192,11 @@ internal_cplus_demangle (struct work_stuff *work, const char *mangled)
       if ((AUTO_DEMANGLING || GNU_DEMANGLING))
 	{
 	  success = gnu_special (work, &mangled, &decl);
+	  if (!success)
+	    {
+	      delete_work_stuff (work);
+	      string_delete (&decl);
+	    }
 	}
       if (!success)
 	{
@@ -1235,10 +1240,12 @@ squangle_mop_up (struct work_stuff *work)
   if (work -> btypevec != NULL)
     {
       free ((char *) work -> btypevec);
+      work->btypevec = NULL;
     }
   if (work -> ktypevec != NULL)
     {
       free ((char *) work -> ktypevec);
+      work->ktypevec = NULL;
     }
 }
 
@@ -1328,7 +1335,7 @@ delete_non_B_K_work_stuff (struct work_stuff *work)
       int i;
 
       for (i = 0; i < work->ntmpl_args; i++)
-	  free ((char*) work->tmpl_argvec[i]);
+	free ((char*) work->tmpl_argvec[i]);
 
       free ((char*) work->tmpl_argvec);
       work->tmpl_argvec = NULL;
@@ -3673,7 +3680,10 @@ do_type (struct work_stuff *work, const char **mangled, string *result)
 		    string_delete (&temp);
 		  }
 		else
-		  break;
+		  {
+		    string_delete (&temp);
+		    break;
+		  }
 	      }
 	    else if (**mangled == 'Q')
 	      {
