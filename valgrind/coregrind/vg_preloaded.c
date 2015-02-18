@@ -57,12 +57,15 @@ void VG_NOTIFY_ON_LOAD(freeres)( void );
 void VG_NOTIFY_ON_LOAD(freeres)( void )
 {
 #  if !defined(__UCLIBC__) \
-   && !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
+      && !defined(VGPV_arm_linux_android) \
+      && !defined(VGPV_x86_linux_android) \
+      && !defined(VGPV_mips32_linux_android) \
+      && !defined(VGPV_arm64_linux_android)
    extern void __libc_freeres(void);
    __libc_freeres();
 #  endif
    VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__LIBC_FREERES_DONE, 
-                              0, 0, 0, 0, 0);
+                                   0, 0, 0, 0, 0);
    /*NOTREACHED*/
    *(volatile int *)0 = 'x';
 }
@@ -76,17 +79,29 @@ void * VG_NOTIFY_ON_LOAD(ifunc_wrapper) (void)
 {
     OrigFn fn;
     Addr result = 0;
+    Addr fnentry;
 
     /* Call the original indirect function and get it's result */
     VALGRIND_GET_ORIG_FN(fn);
     CALL_FN_W_v(result, fn);
+
+#if defined(VGP_ppc64be_linux)
+   /* ppc64be uses function descriptors, so get the actual function entry
+      address for the client request, but return the function descriptor
+      from this function. 
+      result points to the function descriptor, which starts with the
+      function entry. */
+    fnentry = *(Addr*)result;
+#else
+    fnentry = result;
+#endif
 
     /* Ask the valgrind core running on the real CPU (as opposed to this
        code which runs on the emulated CPU) to update the redirection that
        led to this function. This client request eventually gives control to
        the function VG_(redir_add_ifunc_target) in m_redir.c  */
     VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__ADD_IFUNC_TARGET,
-                               fn.nraddr, result, 0, 0, 0);
+                                    fn.nraddr, fnentry, 0, 0, 0);
     return (void*)result;
 }
 
@@ -158,7 +173,7 @@ int VG_REPLACE_FUNCTION_ZU(libSystemZdZaZddylib, arc4random)(void)
     int result;
 
     if (rnd < 0) rnd = open("/dev/random", O_RDONLY);
-    
+
     read(rnd, &result, sizeof(result));
     return result;
 }

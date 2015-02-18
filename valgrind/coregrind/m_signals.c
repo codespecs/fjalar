@@ -348,7 +348,7 @@ typedef struct SigQueue {
         (srP)->misc.PPC32.r_lr = (uc)->uc_regs->mc_gregs[VKI_PT_LNK]; \
       }
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
 #  define VG_UCONTEXT_INSTR_PTR(uc)  ((uc)->uc_mcontext.gp_regs[VKI_PT_NIP])
 #  define VG_UCONTEXT_STACK_PTR(uc)  ((uc)->uc_mcontext.gp_regs[VKI_PT_R1])
    /* Dubious hack: if there is an error, only consider the lowest 8
@@ -384,7 +384,20 @@ typedef struct SigQueue {
         (srP)->misc.ARM.r12 = (uc)->uc_mcontext.arm_ip; \
         (srP)->misc.ARM.r11 = (uc)->uc_mcontext.arm_fp; \
         (srP)->misc.ARM.r7  = (uc)->uc_mcontext.arm_r7; \
-   }
+      }
+
+#elif defined(VGP_arm64_linux)
+#  define VG_UCONTEXT_INSTR_PTR(uc)       ((UWord)((uc)->uc_mcontext.pc))
+#  define VG_UCONTEXT_STACK_PTR(uc)       ((UWord)((uc)->uc_mcontext.sp))
+#  define VG_UCONTEXT_SYSCALL_SYSRES(uc)                        \
+      /* Convert the value in uc_mcontext.regs[0] into a SysRes. */ \
+      VG_(mk_SysRes_arm64_linux)( (uc)->uc_mcontext.regs[0] )
+#  define VG_UCONTEXT_TO_UnwindStartRegs(srP, uc)           \
+      { (srP)->r_pc = (uc)->uc_mcontext.pc;                 \
+        (srP)->r_sp = (uc)->uc_mcontext.sp;                 \
+        (srP)->misc.ARM64.x29 = (uc)->uc_mcontext.regs[29]; \
+        (srP)->misc.ARM64.x30 = (uc)->uc_mcontext.regs[30]; \
+      }
 
 #elif defined(VGP_x86_darwin)
 
@@ -485,7 +498,7 @@ typedef struct SigQueue {
          default: 
             vg_assert(0);
             break;
-   }
+      }
       return VG_(mk_SysRes_amd64_darwin)( scclass, err ? True : False, 
 					  wHI, wLO );
    }
@@ -838,7 +851,7 @@ extern void my_sigreturn(void);
    "	sc\n" \
    ".previous\n"
 
-#elif defined(VGP_ppc64_linux)
+#elif defined(VGP_ppc64be_linux)
 #  define _MY_SIGRETURN(name) \
    ".align   2\n" \
    ".globl   my_sigreturn\n" \
@@ -853,6 +866,23 @@ extern void my_sigreturn(void);
    "	li	0, " #name "\n" \
    "	sc\n"
 
+#elif defined(VGP_ppc64le_linux)
+/* Little Endian supports ELF version 2.  In the future, it may
+ * support other versions.
+ */
+#  define _MY_SIGRETURN(name) \
+   ".align   2\n" \
+   ".globl   my_sigreturn\n" \
+   ".type    .my_sigreturn,@function\n" \
+   "my_sigreturn:\n" \
+   "#if _CALL_ELF == 2 \n" \
+   "0: addis        2,12,.TOC.-0b@ha\n" \
+   "   addi         2,2,.TOC.-0b@l\n" \
+   "   .localentry my_sigreturn,.-my_sigreturn\n" \
+   "#endif \n" \
+   "   sc\n" \
+   "   .size my_sigreturn,.-my_sigreturn\n"
+
 #elif defined(VGP_arm_linux)
 #  define _MY_SIGRETURN(name) \
    ".text\n" \
@@ -860,6 +890,15 @@ extern void my_sigreturn(void);
    "my_sigreturn:\n\t" \
    "    mov  r7, #" #name "\n\t" \
    "    svc  0x00000000\n" \
+   ".previous\n"
+
+#elif defined(VGP_arm64_linux)
+#  define _MY_SIGRETURN(name) \
+   ".text\n" \
+   ".globl my_sigreturn\n" \
+   "my_sigreturn:\n\t" \
+   "    mov  x8, #" #name "\n\t" \
+   "    svc  0x0\n" \
    ".previous\n"
 
 #elif defined(VGP_x86_darwin)
@@ -980,8 +1019,7 @@ static void handle_SCSS_change ( Bool force_update )
 #        if !defined(VGP_ppc32_linux) && \
             !defined(VGP_x86_darwin) && !defined(VGP_amd64_darwin) && \
             !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux)
-         vg_assert(ksa_old.sa_restorer 
-                   == my_sigreturn);
+         vg_assert(ksa_old.sa_restorer == my_sigreturn);
 #        endif
          VG_(sigaddset)( &ksa_old.sa_mask, VKI_SIGKILL );
          VG_(sigaddset)( &ksa_old.sa_mask, VKI_SIGSTOP );
@@ -1290,7 +1328,7 @@ void VG_(clear_out_queued_signals)( ThreadId tid, vki_sigset_t* saved_mask )
 {
    block_all_host_signals(saved_mask);
    if (VG_(threads)[tid].sig_queue != NULL) {
-      VG_(arena_free)(VG_AR_CORE, VG_(threads)[tid].sig_queue);
+      VG_(free)(VG_(threads)[tid].sig_queue);
       VG_(threads)[tid].sig_queue = NULL;
    }
    restore_all_host_signals(saved_mask);
@@ -1492,7 +1530,7 @@ static Bool is_signal_from_kernel(ThreadId tid, int signum, int si_code)
       return True;
    }
 #  else
-#  error Unknown OS
+#    error Unknown OS
 #  endif
 }
 
@@ -1722,6 +1760,13 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
       }
    }
 
+   if (VG_(clo_vgdb) != Vg_VgdbNo
+       && VG_(dyn_vgdb_error) <= VG_(get_n_errs_shown)() + 1) {
+      /* Note: we add + 1 to n_errs_shown as the fatal signal was not
+         reported through error msg, and so was not counted. */
+      VG_(gdbserver_report_fatal_signal) (sigNo, tid);
+   }
+
    if (VG_(is_action_requested)( "Attach to debugger", & VG_(clo_db_attach) )) {
       VG_(start_debugger)( tid );
    }
@@ -1896,8 +1941,8 @@ void VG_(synth_sigill)(ThreadId tid, Addr addr)
    info.VKI_SIGINFO_si_addr = (void*)addr;
 
    if (VG_(gdbserver_report_signal) (VKI_SIGILL, tid)) {
-   resume_scheduler(tid);
-   deliver_signal(tid, &info, NULL);
+      resume_scheduler(tid);
+      deliver_signal(tid, &info, NULL);
    }
    else
       resume_scheduler(tid);
@@ -1921,8 +1966,8 @@ void VG_(synth_sigbus)(ThreadId tid)
    /* info.VKI_SIGINFO_si_addr = (void*)addr; */
 
    if (VG_(gdbserver_report_signal) (VKI_SIGBUS, tid)) {
-   resume_scheduler(tid);
-   deliver_signal(tid, &info, NULL);
+      resume_scheduler(tid);
+      deliver_signal(tid, &info, NULL);
    }
    else
       resume_scheduler(tid);
@@ -1961,8 +2006,8 @@ void VG_(synth_sigtrap)(ThreadId tid)
 
    /* fixs390: do we need to do anything here for s390 ? */
    if (VG_(gdbserver_report_signal) (VKI_SIGTRAP, tid)) {
-   resume_scheduler(tid);
-   deliver_signal(tid, &info, &uc);
+      resume_scheduler(tid);
+      deliver_signal(tid, &info, &uc);
    }
    else
       resume_scheduler(tid);
@@ -2014,8 +2059,7 @@ void queue_signal(ThreadId tid, const vki_siginfo_t *si)
    block_all_host_signals(&savedmask);
 
    if (tst->sig_queue == NULL) {
-      tst->sig_queue = VG_(arena_malloc)(VG_AR_CORE, "signals.qs.1",
-                                         sizeof(*tst->sig_queue));
+      tst->sig_queue = VG_(malloc)("signals.qs.1", sizeof(*tst->sig_queue));
       VG_(memset)(tst->sig_queue, 0, sizeof(*tst->sig_queue));
    }
    sq = tst->sig_queue;
@@ -2444,11 +2488,11 @@ void sync_signalhandler_from_kernel ( ThreadId tid,
       if (VG_(in_generated_code)) {
          if (VG_(gdbserver_report_signal) (sigNo, tid)
              || VG_(sigismember)(&tst->sig_mask, sigNo)) {
-         /* Can't continue; must longjmp back to the scheduler and thus
-            enter the sighandler immediately. */
-         deliver_signal(tid, info, uc);
-         resume_scheduler(tid);
-      }
+            /* Can't continue; must longjmp back to the scheduler and thus
+               enter the sighandler immediately. */
+            deliver_signal(tid, info, uc);
+            resume_scheduler(tid);
+         }
          else
             resume_scheduler(tid);
       }

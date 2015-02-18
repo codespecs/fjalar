@@ -324,6 +324,8 @@ const HChar* ML_(pp_DW_AT) ( DW_AT attr )
       case DW_AT_body_begin: return "DW_AT_body_begin";
       case DW_AT_body_end: return "DW_AT_body_end";
       case DW_AT_GNU_vector: return "DW_AT_GNU_vector";
+      case DW_AT_GNU_all_tail_call_sites: return "DW_AT_GNU_all_tail_call_sites";
+      case DW_AT_GNU_all_call_sites: return "DW_AT_GNU_all_call_sites";
       /* VMS extensions.  */
       case DW_AT_VMS_rtnbeg_pd_address: return "DW_AT_VMS_rtnbeg_pd_address";
       /* UPC extension.  */
@@ -341,7 +343,7 @@ const HChar* ML_(pp_DW_AT) ( DW_AT attr )
 
 /* FIXME: duplicated in readdwarf.c */
 static 
-ULong read_leb128 ( UChar* data, Int* length_return, Int sign )
+ULong read_leb128 ( const UChar* data, Int* length_return, Int sign )
 {
   ULong  result = 0;
   UInt   num_read = 0;
@@ -375,7 +377,7 @@ ULong read_leb128 ( UChar* data, Int* length_return, Int sign )
  * value is returned and the given pointer is
  * moved past end of leb128 data */
 /* FIXME: duplicated in readdwarf.c */
-static ULong read_leb128U( UChar **data )
+static ULong read_leb128U( const UChar **data )
 {
   Int len;
   ULong val = read_leb128( *data, &len, 0 );
@@ -385,7 +387,7 @@ static ULong read_leb128U( UChar **data )
 
 /* Same for signed data */
 /* FIXME: duplicated in readdwarf.c */
-static Long read_leb128S( UChar **data )
+static Long read_leb128S( const UChar **data )
 {
    Int len;
    ULong val = read_leb128( *data, &len, 1 );
@@ -395,7 +397,7 @@ static Long read_leb128S( UChar **data )
 
 /* FIXME: duplicates logic in readdwarf.c: copy_convert_CfiExpr_tree
    and {FP,SP}_REG decls */
-static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
+static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, const RegSummary* regs )
 {
    vg_assert(regs);
 #  if defined(VGP_x86_linux) || defined(VGP_x86_darwin)
@@ -406,7 +408,7 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
    if (regno == 7/*RSP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_ppc32_linux)
    if (regno == 1/*SP*/) { *a = regs->sp; return True; }
-#  elif defined(VGP_ppc64_linux)
+#  elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
    if (regno == 1/*SP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_arm_linux)
    if (regno == 13) { *a = regs->sp; return True; }
@@ -420,6 +422,8 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, RegSummary* regs )
 #  elif defined(VGP_mips64_linux)
    if (regno == 29) { *a = regs->sp; return True; }
    if (regno == 30) { *a = regs->fp; return True; }
+#  elif defined(VGP_arm64_linux)
+   if (regno == 31) { *a = regs->sp; return True; }
 #  else
 #    error "Unknown platform"
 #  endif
@@ -469,8 +473,8 @@ static Bool bias_address( Addr* a, const DebugInfo* di )
 
 /* Evaluate a standard DWARF3 expression.  See detailed description in
    priv_d3basics.h.  Doesn't handle DW_OP_piece/DW_OP_bit_piece yet.  */
-GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB, 
-                                     GExpr* fbGX, RegSummary* regs,
+GXResult ML_(evaluate_Dwarf3_Expr) ( const UChar* expr, UWord exprszB, 
+                                     const GExpr* fbGX, const RegSummary* regs,
                                      const DebugInfo* di,
                                      Bool push_initial_zero )
 {
@@ -502,7 +506,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
       } while (0)
 
    UChar    opcode;
-   UChar*   limit;
+   const UChar* limit;
    Int      sp; /* # of top element: valid is -1 .. N_EXPR_STACK-1 */
    Addr     stack[N_EXPR_STACK]; /* stack of addresses, as per D3 spec */
    GXResult fbval, res;
@@ -724,7 +728,7 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             PUSH(uw1);
             break;
          case DW_OP_const1s:
-	    uw1 = *(Char *)expr;
+	    uw1 = *(const Char *)expr;
 	    expr++;
 	    PUSH(uw1);
             break;
@@ -861,7 +865,8 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
             if (!regs)
                FAIL("evaluate_Dwarf3_Expr: "
                     "DW_OP_call_frame_cfa but no reg info");
-#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
+    || defined(VGP_ppc64le_linux)
             /* Valgrind on ppc32/ppc64 currently doesn't use unwind info. */
             uw1 = ML_(read_Addr)((UChar*)regs->sp);
 #else
@@ -937,15 +942,15 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( UChar* expr, UWord exprszB,
 
 /* Evaluate a so-called Guarded (DWARF3) expression.  See detailed
    description in priv_d3basics.h. */
-GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
-                           RegSummary* regs, const DebugInfo* di )
+GXResult ML_(evaluate_GX)( const GExpr* gx, const GExpr* fbGX,
+                           const RegSummary* regs, const DebugInfo* di )
 {
    GXResult res;
    Addr     aMin, aMax;
    UChar    uc;
    UShort   nbytes;
    UWord    nGuards = 0;
-   UChar* p = &gx->payload[0];
+   const UChar* p = &gx->payload[0];
    uc = *p++; /*biasMe*/
    vg_assert(uc == 0 || uc == 1);
    /* in fact it's senseless to evaluate if the guards need biasing.
@@ -1009,7 +1014,7 @@ GXResult ML_(evaluate_GX)( GExpr* gx, GExpr* fbGX,
    Really it ought to be pulled out and turned into a general
    constant- expression evaluator.
 */
-GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
+GXResult ML_(evaluate_trivial_GX)( const GExpr* gx, const DebugInfo* di )
 {
    GXResult   res;
    Addr       aMin, aMax;
@@ -1019,7 +1024,7 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
    MaybeULong *mul, *mul2;
 
    const HChar*  badness = NULL;
-   UChar*  p       = &gx->payload[0]; /* must remain unsigned */
+   const UChar*  p       = &gx->payload[0]; /* must remain unsigned */
    XArray* results = VG_(newXA)( ML_(dinfo_zalloc), "di.d3basics.etG.1",
                                  ML_(dinfo_free),
                                  sizeof(MaybeULong) );
@@ -1108,7 +1113,7 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
          VG_(printf)(" ML_(evaluate_trivial_GX): unhandled:\n   ");
          ML_(pp_GX)( gx );
          VG_(printf)("\n");
-         tl_assert(0);
+         vg_assert(0);
       }
       else
          if (!badness)
@@ -1121,10 +1126,10 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
 
    res.kind = GXR_Failure;
 
-   tl_assert(nGuards == VG_(sizeXA)( results ));
-   tl_assert(nGuards >= 0);
+   vg_assert(nGuards == VG_(sizeXA)( results ));
+   vg_assert(nGuards >= 0);
    if (nGuards == 0) {
-      tl_assert(!badness);
+      vg_assert(!badness);
       res.word = (UWord)"trivial GExpr has no guards (!)";
       VG_(deleteXA)( results );
       return res;
@@ -1148,11 +1153,11 @@ GXResult ML_(evaluate_trivial_GX)( GExpr* gx, const DebugInfo* di )
    /* All the subexpressions produced a constant, but did they all produce
       the same one? */
    mul = VG_(indexXA)( results, 0 );
-   tl_assert(mul->b == True); /* we just established that all exprs are ok */
+   vg_assert(mul->b == True); /* we just established that all exprs are ok */
 
    for (i = 1; i < nGuards; i++) {
       mul2 = VG_(indexXA)( results, i );
-      tl_assert(mul2->b == True);
+      vg_assert(mul2->b == True);
       if (mul2->ul != mul->ul) {
          res.word = (UWord)"trivial GExpr: subexpressions disagree";
          VG_(deleteXA)( results );
@@ -1186,11 +1191,12 @@ void ML_(pp_GXResult) ( GXResult res )
 }
 
 
-void ML_(pp_GX) ( GExpr* gx ) {
+void ML_(pp_GX) ( const GExpr* gx )
+{
    Addr   aMin, aMax;
    UChar  uc;
    UShort nbytes;
-   UChar* p = &gx->payload[0];
+   const UChar* p = &gx->payload[0];
    uc = *p++;
    VG_(printf)("GX(%s){", uc == 0 ? "final" : "Breqd" );
    vg_assert(uc == 0 || uc == 1);

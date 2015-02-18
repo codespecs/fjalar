@@ -44,6 +44,7 @@ const char* ENTRY_DELIMETER = "----SECTION----";
 const char* GLOBAL_STRING = "globals";
 
 // Temporary scratch buffer for reading lines in from files
+// (comment added 2005)  
 //  TODO: This is crude and unsafe but works for now
 char input_line[200];
 
@@ -59,6 +60,7 @@ FunctionTree* vars_tree = NULL;
 // Special entry for global variables
 FunctionTree* globalFunctionTree = 0;
 
+// (comment added 2005)  
 // TODO: Warning! We never free the memory used by prog_pts_tree and vars_tree
 // but don't worry about it for now
 

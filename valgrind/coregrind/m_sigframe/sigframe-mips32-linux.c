@@ -192,7 +192,7 @@ void VG_(sigframe_create)( ThreadId tid,
     return;
 
   vg_assert(VG_IS_8_ALIGNED(sp));
-
+      
   if (flags & VKI_SA_SIGINFO)
     {
       struct rt_sigframe *frame = (struct rt_sigframe *) sp;

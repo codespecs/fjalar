@@ -91,6 +91,7 @@ typedef struct
   unsigned long byte_size; // DW_AT_byte_size
   unsigned long encoding;
 
+  // (comment added 2005)
   // TODO: support for bit fields not yet implemented
   //  char is_bit_field; // 1 = bit field
   // Only relevant for bit fields
@@ -182,6 +183,7 @@ typedef struct
   unsigned long accessibility;  // accessibility of this member variable (public, protected, or private)
   char is_external;         // is_external when applied to a member variable implies it's static
 
+  // (comment added 2005)
   // TODO: support for bit fields not yet implemented
   //  char is_bit_field; // 1 = bit field
   // Only relevant for bit fields
@@ -294,6 +296,7 @@ typedef struct
 
 } function;
 
+// (comment added 2005)
 // TODO: support for function pointer parameters not yet implemented
 /* This is for abstract function types, as might be used in declaring
    a parameter as taking a function pointer. At least for the moment, we
@@ -326,6 +329,7 @@ typedef struct
 
                  // This is stored as: (DW_OP_fbreg: x),
                  // where x is location offset
+                 // (comment added 2005)
                  // TODO: DW_OP_fbreg: seems unreliable - gives flaky
                  //       values sometimes - look into finding a better
                  //       way to get the parameter location

@@ -104,7 +104,7 @@ static void write_UInt_le ( /*OUT*/UChar* dst, UInt n )
    }
 }
 
-static UInt read_UInt_le ( UChar* src )
+static UInt read_UInt_le ( const UChar* src )
 {
    UInt r = 0;
    Int i;
@@ -124,7 +124,7 @@ static void write_ULong_le ( /*OUT*/UChar* dst, ULong n )
    }
 }
 
-static ULong read_ULong_le ( UChar* src )
+static ULong read_ULong_le ( const UChar* src )
 {
    ULong r = 0;
    Int i;
@@ -168,7 +168,7 @@ static Int my_read ( Int fd, UChar* buf, Int len )
    fd has been set in blocking mode.  If it returns with the number of
    bytes written < len, it means that either fd was closed, or there was
    an error on it. */
-static Int my_write ( Int fd, UChar* buf, Int len )
+static Int my_write ( Int fd, const UChar* buf, Int len )
 {
    Int nWritten = 0;
    while (1) {
@@ -212,7 +212,7 @@ static void give_up__image_overrun(void)
    return the frame it sends back.  Caller owns the resulting frame
    and must free it.  A NULL return means the transaction failed for
    some reason. */
-static Frame* do_transaction ( Int sd, Frame* req )
+static Frame* do_transaction ( Int sd, const Frame* req )
 {
    if (0) VG_(printf)("CLIENT: send %c%c%c%c\n",
                       req->data[0], req->data[1], req->data[2], req->data[3]);
@@ -311,7 +311,8 @@ static Frame* mk_Frame_asciiz ( const HChar* tag, const HChar* str )
    return f;
 }
 
-static Bool parse_Frame_le64 ( Frame* fr, const HChar* tag, /*OUT*/ULong* n1 )
+static Bool parse_Frame_le64 ( const Frame* fr, const HChar* tag,
+                               /*OUT*/ULong* n1 )
 {
    vg_assert(VG_(strlen)(tag) == 4);
    if (!fr || !fr->data) return False;
@@ -322,7 +323,7 @@ static Bool parse_Frame_le64 ( Frame* fr, const HChar* tag, /*OUT*/ULong* n1 )
    return True;
 }
 
-static Bool parse_Frame_le64_le64 ( Frame* fr, const HChar* tag,
+static Bool parse_Frame_le64_le64 ( const Frame* fr, const HChar* tag,
                                     /*OUT*/ULong* n1, /*OUT*/ULong* n2 )
 {
    vg_assert(VG_(strlen)(tag) == 4);
@@ -335,7 +336,7 @@ static Bool parse_Frame_le64_le64 ( Frame* fr, const HChar* tag,
    return True;
 }
 
-static Bool parse_Frame_asciiz ( Frame* fr, const HChar* tag,
+static Bool parse_Frame_asciiz ( const Frame* fr, const HChar* tag,
                                  /*OUT*/UChar** str )
 {
    vg_assert(VG_(strlen)(tag) == 4);
@@ -362,7 +363,7 @@ static Bool parse_Frame_asciiz ( Frame* fr, const HChar* tag,
 }
 
 static Bool parse_Frame_le64_le64_le64_bytes (
-               Frame* fr, const HChar* tag,
+               const Frame* fr, const HChar* tag,
                /*OUT*/ULong* n1, /*OUT*/ULong* n2, /*OUT*/ULong* n3,
                /*OUT*/UChar** data, /*OUT*/ULong* n_data 
             )
@@ -387,7 +388,7 @@ static DiOffT block_round_down ( DiOffT i )
 }
 
 /* Is this offset inside this CEnt? */
-static inline Bool is_in_CEnt ( CEnt* cent, DiOffT off )
+static inline Bool is_in_CEnt ( const CEnt* cent, DiOffT off )
 {
    /* This assertion is checked by set_CEnt, so checking it here has
       no benefit, whereas skipping it does remove it from the hottest
@@ -426,7 +427,7 @@ static void move_CEnt_to_top ( DiImage* img, UInt entNo )
    the given offset.  It is this function that brings data into the
    cache, either by reading the local file or pulling it from the
    remote server. */
-static void set_CEnt ( DiImage* img, UInt entNo, DiOffT off )
+static void set_CEnt ( const DiImage* img, UInt entNo, DiOffT off )
 {
    SizeT len;
    DiOffT off_orig = off;
@@ -493,9 +494,9 @@ static void set_CEnt ( DiImage* img, UInt entNo, DiOffT off )
       // Tell the lib the max number of output bytes it can write.
       // After the call, this holds the number of bytes actually written,
       // and it's an error if it is different.
-      UInt out_len = len;
+      lzo_uint out_len = len;
       Int lzo_rc = lzo1x_decompress_safe(rx_data, rx_zdata_len,
-                                         &ce->data[0], (lzo_uint*)&out_len,
+                                         &ce->data[0], &out_len,
                                          NULL);
       Bool ok = lzo_rc == LZO_E_OK && out_len == len;
       if (!ok) goto server_fail;
@@ -571,7 +572,7 @@ static UChar get_slowcase ( DiImage* img, DiOffT off )
 }
 
 // This is called a lot, so do the usual fast/slow split stuff on it. */
-static UChar get ( DiImage* img, DiOffT off )
+static inline UChar get ( DiImage* img, DiOffT off )
 {
    /* Most likely case is, it's in the ces[0] position. */
    /* ML_(img_from_local_file) requests a read for ces[0] when
@@ -718,7 +719,7 @@ DiImage* ML_(img_from_di_server)(const HChar* filename,
    return img;
 
   fail:
-   if (req) free_Frame(req);
+   free_Frame(req);
    if (res) {
       UChar* reason = NULL;
       if (parse_Frame_asciiz(res, "FAIL", &reason)) {
@@ -766,13 +767,13 @@ void ML_(img_done)(DiImage* img)
    ML_(dinfo_free)(img);
 }
 
-DiOffT ML_(img_size)(DiImage* img)
+DiOffT ML_(img_size)(const DiImage* img)
 {
    vg_assert(img);
    return img->size;
 }
 
-inline Bool ML_(img_valid)(DiImage* img, DiOffT offset, SizeT size)
+inline Bool ML_(img_valid)(const DiImage* img, DiOffT offset, SizeT size)
 {
    vg_assert(img);
    vg_assert(offset != DiOffT_INVALID);
@@ -784,7 +785,7 @@ inline Bool ML_(img_valid)(DiImage* img, DiOffT offset, SizeT size)
    image, which normally means the image is corrupted somehow, or the
    caller is buggy.  Recovering is too complex, and we have
    probably-corrupt debuginfo, so just give up. */
-static void ensure_valid(DiImage* img, DiOffT offset, SizeT size,
+static void ensure_valid(const DiImage* img, DiOffT offset, SizeT size,
                          const HChar* caller)
 {
    if (LIKELY(ML_(img_valid)(img, offset, size)))
@@ -825,7 +826,7 @@ SizeT ML_(img_get_some)(/*OUT*/void* dst,
    dstU[0] = get(img, offset);
    /* Now just read as many bytes as we can (or need) directly out of
       entry zero, without bothering to call |get| each time. */
-   CEnt* ce = img->ces[0];
+   const CEnt* ce = img->ces[0];
    vg_assert(ce && ce->used >= 1);
    vg_assert(is_in_CEnt(ce, offset));
    SizeT nToCopy = size - 1;
@@ -877,7 +878,7 @@ Int ML_(img_strcmp_c)(DiImage* img, DiOffT off1, const HChar* str2)
    ensure_valid(img, off1, 1, "ML_(img_strcmp_c)");
    while (True) {
       UChar c1 = get(img, off1);
-      UChar c2 = *(UChar*)str2;
+      UChar c2 = *(const UChar*)str2;
       if (c1 < c2) return -1;
       if (c1 > c2) return 1;
       if (c1 == 0) return 0;
@@ -1006,8 +1007,8 @@ UInt ML_(img_calc_gnu_debuglink_crc32)(DiImage* img)
       ULong crc32 = 0;
       if (!parse_Frame_le64(res, "CROK", &crc32)) goto remote_crc_fail;
       if ((crc32 & ~0xFFFFFFFFULL) != 0) goto remote_crc_fail;
-      if (req) free_Frame(req);
-      if (res) free_Frame(res);
+      free_Frame(req);
+      free_Frame(res);
       return (UInt)crc32;
      remote_crc_fail:
 

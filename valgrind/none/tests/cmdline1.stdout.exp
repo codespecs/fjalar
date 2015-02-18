@@ -21,6 +21,9 @@ usage: valgrind [options] prog-and-args
     --vgdb-error=<number>     invoke gdbserver after <number> errors [999999999]
                               to get started quickly, use --vgdb-error=0
                               and follow the on-screen directions
+    --vgdb-stop-at=event1,event2,... invoke gdbserver for given events [none]
+         where event is one of:
+           startup exit valgrindabexit all none
     --track-fds=no|yes        track open file descriptors? [no]
     --time-stamp=no|yes       add timestamps to log messages? [no]
     --log-fd=<number>         log messages to file descriptor [2=stderr]
@@ -37,10 +40,15 @@ usage: valgrind [options] prog-and-args
     --num-callers=<number>    show <number> callers in stack traces [12]
     --error-limit=no|yes      stop showing new errors if too many? [yes]
     --error-exitcode=<number> exit code to return if errors found [0=disable]
+    --error-markers=<begin>,<end> add lines with begin/end markers before/after
+                              each error output in plain text mode [none]
     --show-below-main=no|yes  continue stack traces below main() [no]
+    --default-suppressions=yes|no
+                              load default suppressions [yes]
     --suppressions=<filename> suppress errors described in <filename>
     --gen-suppressions=no|yes|all    print suppressions for errors? [no]
     --db-attach=no|yes        start debugger when errors detected? [no]
+                              Note: deprecated feature
     --db-command=<command>    command to start debugger [... -nw %f %p]
     --input-fd=<number>       file descriptor for input [0=stdin]
     --dsymutil=no|yes         run dsymutil on Mac OS X when helpful? [no]
@@ -73,23 +81,33 @@ usage: valgrind [options] prog-and-args
                               checks for self-modifying code: none, only for
                               code found in stacks, for all code, or for all
                               code except that from file-backed mappings
+    --read-inline-info=yes|no read debug info about inlined function calls
+                              and use it to do better stack traces.  [yes]
+                              on Linux/Android for Memcheck/Helgrind/DRD
+                              only.  [no] for all other tools and platforms.
     --read-var-info=yes|no    read debug info on stack and global variables
                               and use it to print better error messages in
                               tools that make use of it (Memcheck, Helgrind,
                               DRD) [no]
     --vgdb-poll=<number>      gdbserver poll max every <number> basic blocks [5000] 
     --vgdb-shadow-registers=no|yes   let gdb see the shadow registers [no]
-    --vgdb-prefix=<prefix>    prefix for vgdb FIFOs [/tmp/vgdb-pipe]
+    --vgdb-prefix=<prefix>    prefix for vgdb FIFOs [.../vgdb-pipe]
     --run-libc-freeres=no|yes free up glibc memory at exit on Linux? [yes]
-    --sim-hints=hint1,hint2,...  known hints:
-                                 lax-ioctls, enable-outer, fuse-compatible [none]
+    --sim-hints=hint1,hint2,...  activate unusual sim behaviours [none] 
+         where hint is one of:
+           lax-ioctls fuse-compatible enable-outer
+           no-inner-prefix no-nptl-pthread-stackcache none
     --fair-sched=no|yes|try   schedule threads fairly on multicore systems [no]
-    --kernel-variant=variant1,variant2,...  known variants: bproc [none]
-                              handle non-standard kernel variants
+    --kernel-variant=variant1,variant2,...
+         handle non-standard kernel variants [none]
+         where variant is one of:
+           bproc android-no-hw-tls
+           android-gpu-sgx5xx android-gpu-adreno3xx none
     --merge-recursive-frames=<number>  merge frames between identical
            program counters in max <number> frames) [0]
     --num-transtab-sectors=<number> size of translated code cache [16]
            more sectors may increase performance, but use more memory.
+    --aspace-minaddr=0xPP     avoid mapping memory below 0xPP [guessed]
     --show-emwarns=no|yes     show warnings about emulation limits? [no]
     --require-text-symbol=:sonamepattern:symbolpattern    abort run if the
                               stated shared object doesn't have the stated
@@ -105,6 +123,8 @@ usage: valgrind [options] prog-and-args
                   NOTE: stack scanning is only available on arm-linux.
     --unw-stack-scan-frames=<number>   Max number of frames that can be
                   recovered by stack scanning [5]
+    --resync-filter=no|yes|verbose [yes on MacOS, no on other OSes]
+              attempt to avoid expensive address-space-resync operations
 
   user options for Nulgrind:
     (none)

@@ -48,7 +48,7 @@
 /* Does this TyEnt denote a type, as opposed to some other kind of
    thing? */
 
-Bool ML_(TyEnt__is_type)( TyEnt* te )
+Bool ML_(TyEnt__is_type)( const TyEnt* te )
 {
    switch (te->tag) {
       case Te_EMPTY: case Te_INDIR: case Te_UNKNOWN: 
@@ -56,8 +56,8 @@ Bool ML_(TyEnt__is_type)( TyEnt* te )
          return False;
       case Te_TyBase:   case Te_TyPtr:     case Te_TyRef:
       case Te_TyPtrMbr: case Te_TyRvalRef: case Te_TyTyDef:
-      case Te_TyStOrUn: case Te_TyEnum: case Te_TyArray:
-      case Te_TyFn:     case Te_TyQual: case Te_TyVoid:
+      case Te_TyStOrUn: case Te_TyEnum:    case Te_TyArray:
+      case Te_TyFn:     case Te_TyQual:    case Te_TyVoid:
          return True;
       default:
          vg_assert(0);
@@ -67,7 +67,7 @@ Bool ML_(TyEnt__is_type)( TyEnt* te )
 
 /* Print a TyEnt, debug-style. */
 
-static void pp_XArray_of_cuOffs ( XArray* xa )
+static void pp_XArray_of_cuOffs ( const XArray* xa )
 {
    Word i;
    VG_(printf)("{");
@@ -80,7 +80,7 @@ static void pp_XArray_of_cuOffs ( XArray* xa )
    VG_(printf)("}");
 }
 
-void ML_(pp_TyEnt)( TyEnt* te )
+void ML_(pp_TyEnt)( const TyEnt* te )
 {
    VG_(printf)("0x%05lx  ", te->cuOff);
    switch (te->tag) {
@@ -198,13 +198,13 @@ void ML_(pp_TyEnt)( TyEnt* te )
 
 /* Print a whole XArray of TyEnts, debug-style */
 
-void ML_(pp_TyEnts)( XArray* tyents, const HChar* who )
+void ML_(pp_TyEnts)( const XArray* tyents, const HChar* who )
 {
    Word i, n;
    VG_(printf)("------ %s ------\n", who);
    n = VG_(sizeXA)( tyents );
    for (i = 0; i < n; i++) {
-      TyEnt* tyent = (TyEnt*)VG_(indexXA)( tyents, i );
+      const TyEnt* tyent = VG_(indexXA)( tyents, i );
       VG_(printf)("   [%5ld]  ", i);
       ML_(pp_TyEnt)( tyent );
       VG_(printf)("\n");
@@ -214,7 +214,7 @@ void ML_(pp_TyEnts)( XArray* tyents, const HChar* who )
 
 /* Print a TyEnt, C style, chasing stuff as necessary. */
 
-static void pp_TyBound_C_ishly ( XArray* tyents, UWord cuOff )
+static void pp_TyBound_C_ishly ( const XArray* tyents, UWord cuOff )
 {
    TyEnt* ent = ML_(TyEnts__index_by_cuOff)( tyents, NULL, cuOff );
    if (!ent) {
@@ -235,7 +235,7 @@ static void pp_TyBound_C_ishly ( XArray* tyents, UWord cuOff )
       ML_(pp_TyEnt)( ent );
 }
 
-void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
+void ML_(pp_TyEnt_C_ishly)( const XArray* /* of TyEnt */ tyents,
                             UWord cuOff )
 {
    TyEnt* ent = ML_(TyEnts__index_by_cuOff)( tyents, NULL, cuOff );
@@ -265,8 +265,8 @@ void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
          VG_(printf)("&&");
          break;
       case Te_TyEnum:
-         if (!ent->Te.TyEnum.name) goto unhandled;
-         VG_(printf)("enum %s", ent->Te.TyEnum.name);
+         VG_(printf)("enum %s", ent->Te.TyEnum.name ? ent->Te.TyEnum.name
+                                                    : "<anonymous>" );
          break;
       case Te_TyStOrUn:
          VG_(printf)("%s %s",
@@ -287,8 +287,8 @@ void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
          }
          break;
       case Te_TyTyDef:
-         if (!ent->Te.TyTyDef.name) goto unhandled;
-         VG_(printf)("%s", ent->Te.TyTyDef.name);
+         VG_(printf)("%s", ent->Te.TyTyDef.name ? ent->Te.TyTyDef.name
+                                                : "<anonymous>" );
          break;
       case Te_TyFn:
          VG_(printf)("%s", "<function_type>");
@@ -297,6 +297,7 @@ void ML_(pp_TyEnt_C_ishly)( XArray* /* of TyEnt */ tyents,
          switch (ent->Te.TyQual.qual) {
             case 'C': VG_(printf)("const "); break;
             case 'V': VG_(printf)("volatile "); break;
+            case 'R': VG_(printf)("restrict "); break;
             default: goto unhandled;
          }
          ML_(pp_TyEnt_C_ishly)(tyents, ent->Te.TyQual.typeR);
@@ -336,7 +337,7 @@ void ML_(TyEntIndexCache__invalidate) ( TyEntIndexCache* cache )
    }
 }
 
-TyEnt* ML_(TyEnts__index_by_cuOff) ( XArray* /* of TyEnt */ ents,
+TyEnt* ML_(TyEnts__index_by_cuOff) ( const XArray* /* of TyEnt */ ents,
                                      TyEntIndexCache* cache,
                                      UWord cuOff_to_find )
 {
@@ -447,7 +448,7 @@ static inline Word Int__cmp ( Int a, Int b ) {
    if (a > b) return 1;
    return 0;
 }
-static Word XArray_of_UWord__cmp ( XArray* a, XArray* b ) {
+static Word XArray_of_UWord__cmp ( const XArray* a, const XArray* b ) {
    Word i, r;
    Word aN = VG_(sizeXA)( a );
    Word bN = VG_(sizeXA)( b );
@@ -460,7 +461,7 @@ static Word XArray_of_UWord__cmp ( XArray* a, XArray* b ) {
    }
    return 0;
 }
-static Word Bytevector__cmp ( UChar* a, UChar* b, Word n ) {
+static Word Bytevector__cmp ( const UChar* a, const UChar* b, Word n ) {
    Word i, r;
    vg_assert(n >= 0);
    for (i = 0; i < n; i++) {
@@ -666,7 +667,7 @@ static MaybeULong mul_MaybeULong ( MaybeULong mul1, MaybeULong mul2 ) {
    return mul1;
 }
 
-MaybeULong ML_(sizeOfType)( XArray* /* of TyEnt */ tyents,
+MaybeULong ML_(sizeOfType)( const XArray* /* of TyEnt */ tyents,
                             UWord cuOff )
 {
    Word       i;
@@ -745,7 +746,7 @@ static void copy_UWord_into_XA ( XArray* /* of HChar */ xa,
 }
 
 XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
-                                      XArray* /* of TyEnt */ tyents,
+                                      const XArray* /* of TyEnt */ tyents,
                                       UWord ty_cuOff, 
                                       PtrdiffT offset )
 {
@@ -753,7 +754,6 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
    XArray* xa = VG_(newXA)( ML_(dinfo_zalloc), "di.tytypes.dt.1",
                             ML_(dinfo_free),
                             sizeof(HChar) );
-   vg_assert(xa);
 
    ty = ML_(TyEnts__index_by_cuOff)(tyents, NULL, ty_cuOff);
 
@@ -785,7 +785,8 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
             PtrdiffT   offMin = 0, offMax1 = 0;
             if (!ty->Te.TyStOrUn.isStruct) goto done;
             fieldRs = ty->Te.TyStOrUn.fieldRs;
-            if ((!fieldRs) || VG_(sizeXA)(fieldRs) == 0) goto done;
+            if (((!fieldRs) || VG_(sizeXA)(fieldRs) == 0)
+                && (ty->Te.TyStOrUn.typeR == 0)) goto done;
             for (i = 0; i < VG_(sizeXA)( fieldRs ); i++ ) {
                fieldR = *(UWord*)VG_(indexXA)( fieldRs, i );
                field = ML_(TyEnts__index_by_cuOff)(tyents, NULL, fieldR);
@@ -831,8 +832,14 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
             }
             /* Did we find a suitable field? */
             vg_assert(i >= 0 && i <= VG_(sizeXA)( fieldRs ));
-            if (i == VG_(sizeXA)( fieldRs ))
-               goto done; /* No.  Give up. */
+            if (i == VG_(sizeXA)( fieldRs )) {
+               ty = ML_(TyEnts__index_by_cuOff)(tyents, NULL,
+                                                   ty->Te.TyStOrUn.typeR);
+               vg_assert(ty);
+               if (ty->tag == Te_UNKNOWN) goto done;
+               vg_assert(ML_(TyEnt__is_type)(ty));
+               continue;
+            }
             /* Yes.  'field' is it. */
             vg_assert(field);
             if (!field->Te.Field.name) goto done;
@@ -842,7 +849,7 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
             offset -= offMin;
             ty = ML_(TyEnts__index_by_cuOff)(tyents, NULL,
                                              field->Te.Field.typeR );
-            tl_assert(ty);
+            vg_assert(ty);
             if (ty->tag == Te_UNKNOWN) goto done;
             /* keep going; look inside the field. */
             break;
@@ -892,7 +899,7 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
          case Te_TyQual: {
             ty = ML_(TyEnts__index_by_cuOff)(tyents, NULL,
                                              ty->Te.TyQual.typeR);
-            tl_assert(ty);
+            vg_assert(ty);
             if (ty->tag == Te_UNKNOWN) goto done;
             break;
          }
@@ -900,7 +907,7 @@ XArray* /*HChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
          case Te_TyTyDef: {
             ty = ML_(TyEnts__index_by_cuOff)(tyents, NULL,
                                              ty->Te.TyTyDef.typeR);
-            tl_assert(ty);
+            vg_assert(ty);
             if (ty->tag == Te_UNKNOWN) goto done;
             break;
          }

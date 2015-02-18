@@ -7,7 +7,7 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
-pthread_mutex_t mx[4];
+pthread_mutex_t mx[4]; 
 pthread_cond_t cv; pthread_rwlock_t rwl;
 sem_t* quit_now;
 static sem_t* my_sem_init(char*, int, unsigned);

@@ -6,7 +6,7 @@
 #  This file is part of Valgrind, a dynamic binary instrumentation
 #  framework.
 #
-#  Copyright (C) 2005 Nicholas Nethercote
+#  Copyright (C) 2005-2013 Nicholas Nethercote
 #     njn@valgrind.org
 #
 #  This program is free software; you can redistribute it and/or
@@ -356,12 +356,12 @@ sub do_one_test($$)
                          . $vgcmd;
             } else {
                 # Set both VALGRIND_LIB and VALGRIND_LIB_INNER
-            # in case this Valgrind was configured with --enable-inner.  And
-            # also VALGRINDLIB, which was the old name for the variable, to
-            # allow comparison against old Valgrind versions (eg. 2.4.X).
+                # in case this Valgrind was configured with --enable-inner.  And
+                # also VALGRINDLIB, which was the old name for the variable, to
+                # allow comparison against old Valgrind versions (eg. 2.4.X).
                 $vgsetup = "VALGRINDLIB=$vgdir/.in_place "
-                        . "VALGRIND_LIB=$vgdir/.in_place "
-                        . "VALGRIND_LIB_INNER=$vgdir/.in_place ";
+                         . "VALGRIND_LIB=$vgdir/.in_place "
+                         . "VALGRIND_LIB_INNER=$vgdir/.in_place ";
             }
             my $cmd     = "$vgsetup $timecmd $vgcmd $prog $args";
             my $tTool   = time_prog($cmd, $n_reps);

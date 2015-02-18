@@ -385,30 +385,29 @@ behavior of the DRD tool itself:</para>
       <para>
         Whether to report races between accessing memory and freeing
         memory. Enabling this option may cause DRD to run slightly
-        slower. Notes:
-	<itemizedlist>
-	  <listitem>
-	    <para>
-	      Don't enable this option when using custom memory allocators
-	      that use
-	      the <computeroutput>VG_USERREQ__MALLOCLIKE_BLOCK</computeroutput>
-	      and <computeroutput>VG_USERREQ__FREELIKE_BLOCK</computeroutput>
-	      because that would result in false positives.
-	    </para>
-	  </listitem>
-	  <listitem>
-	    <para>Don't enable this option when using reference-counted
-	      objects because that will result in false positives, even when
-	      that code has been annotated properly with
-	      <computeroutput>ANNOTATE_HAPPENS_BEFORE</computeroutput>
-	      and <computeroutput>ANNOTATE_HAPPENS_AFTER</computeroutput>. See
-	      e.g.  the output of the following command for an example:
-	      <computeroutput>valgrind --tool=drd --free-is-write=yes
-		drd/tests/annotate_smart_pointer</computeroutput>.
-	    </para>
-	  </listitem>
-	</itemizedlist>
-      </para>
+        slower. Notes:</para>
+      <itemizedlist>
+	<listitem>
+	  <para>
+	    Don't enable this option when using custom memory allocators
+	    that use
+	    the <computeroutput>VG_USERREQ__MALLOCLIKE_BLOCK</computeroutput>
+	    and <computeroutput>VG_USERREQ__FREELIKE_BLOCK</computeroutput>
+	    because that would result in false positives.
+	  </para>
+	</listitem>
+	<listitem>
+	  <para>Don't enable this option when using reference-counted
+	    objects because that will result in false positives, even when
+	    that code has been annotated properly with
+	    <computeroutput>ANNOTATE_HAPPENS_BEFORE</computeroutput>
+	    and <computeroutput>ANNOTATE_HAPPENS_AFTER</computeroutput>. See
+	    e.g.  the output of the following command for an example:
+	    <computeroutput>valgrind --tool=drd --free-is-write=yes
+	      drd/tests/annotate_smart_pointer</computeroutput>.
+	  </para>
+	</listitem>
+      </itemizedlist>
     </listitem>
   </varlistentry>
   <varlistentry>
@@ -1246,6 +1245,40 @@ installing it as a package however, you will probably have to install
 another package with a name like <literal>valgrind-devel</literal>
 before Valgrind's header files are available.
 </para>
+
+</sect2>
+
+
+<sect2 id="drd-manual.C++11" xreflabel="C++11">
+<title>Debugging C++11 Programs</title>
+
+<para>If you want to use the C++11 class std::thread you will need to do the
+  following to annotate the std::shared_ptr&lt;&gt; objects used in the
+  implementation of that class:
+<itemizedlist>
+  <listitem>
+    <para>Add the following code at the start of a common header or at the
+    start of each source file, before any C++ header files are included:</para>
+    <programlisting>
+#include &lt;valgrind/drd.h&gt;
+#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_BEFORE(addr) ANNOTATE_HAPPENS_BEFORE(addr)
+#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_AFTER(addr)  ANNOTATE_HAPPENS_AFTER(addr)
+</programlisting>
+  </listitem>
+  <listitem>
+    <para>Download the gcc source code and from source file
+    libstdc++-v3/src/c++11/thread.cc copy the implementation of the
+    <computeroutput>execute_native_thread_routine()</computeroutput>
+    and <computeroutput>std::thread::_M_start_thread()</computeroutput>
+    functions into a source file that is linked with your application. Make
+    sure that also in this source file the
+    _GLIBCXX_SYNCHRONIZATION_HAPPENS_*() macros are defined properly.</para>
+  </listitem>
+</itemizedlist>
+</para>
+<para>For more information, see also <emphasis>The
+GNU C++ Library Manual, Debugging Support</emphasis>
+(<ulink url="http://gcc.gnu.org/onlinedocs/libstdc++/manual/debug.html">http://gcc.gnu.org/onlinedocs/libstdc++/manual/debug.html</ulink>).</para>
 
 </sect2>
 

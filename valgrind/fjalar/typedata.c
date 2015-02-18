@@ -2456,6 +2456,7 @@ void print_dwarf_entry(dwarf_entry* e, char simplified)
     case DW_TAG_subroutine_type:
       {
         FJALAR_DPRINTF(  "DW_TAG_subroutine_type not yet supported\n");
+        // (comment added 2005)  
         // TODO: Don't print anything out for this yet - it's still
         //       uninitialized
         //        function_type * func_type = (function_type *)(e->entry_ptr);
@@ -2506,6 +2507,7 @@ Modifies: dwarf_entry_array (free and set to 0)
 Returns:
 Effects: Destroys dwarf_entry_array and all entry_ptr fields of all entries
 */
+// (comment added 2005)  
 // TODO: This doesn't free up all of the strings (char*) allocated
 //       by strdup within all of the individual entries.
 //       We need to implement "destructors" to free those strings.
@@ -2711,6 +2713,7 @@ namespace_type* findNamespaceForVariableEntry(dwarf_entry* e) {
   dwarf_entry* cur_entry = 0;
   unsigned long entry_index;
 
+  // (comment added 2005)  
   // TODO: We can avoid this and get entry_index directly if we assume
   // that 'e' is within dwarf_entry_array, which it should be:
   char success = binary_search_dwarf_entry_array(e->ID, &entry_index);
@@ -2742,6 +2745,7 @@ unsigned long findFunctionStartPCForVariableEntry(dwarf_entry* e)
   dwarf_entry* cur_entry = 0;
   unsigned long entry_index;
 
+  // (comment added 2005)  
   // TODO: We can avoid this and get entry_index directly if we assume
   // that 'e' is within dwarf_entry_array, which it should be:
   char success = binary_search_dwarf_entry_array(e->ID, &entry_index);

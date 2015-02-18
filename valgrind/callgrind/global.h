@@ -1,8 +1,31 @@
 /*--------------------------------------------------------------------*/
-/*--- Callgrind                                                    ---*/
-/*---                                                     global.h ---*/
-/*--- (C) 2004, 2005 Josef Weidendorfer                            ---*/
+/*--- Callgrind data structures, functions.               global.h ---*/
 /*--------------------------------------------------------------------*/
+
+/*
+   This file is part of Valgrind, a dynamic binary instrumentation
+   framework.
+
+   Copyright (C) 2004-2014 Josef Weidendorfer
+      josef.weidendorfer@gmx.de
+
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+
+   The GNU General Public License is contained in the file COPYING.
+*/
 
 #ifndef CLG_GLOBAL
 #define CLG_GLOBAL
@@ -28,7 +51,7 @@
 
 
 /*------------------------------------------------------------*/
-/*--- Calltree compile options                            --- */
+/*--- Callgrind compile options                           --- */
 /*------------------------------------------------------------*/
 
 /* Enable debug output */
@@ -40,9 +63,6 @@
 /* Syscall Timing in microseconds? 
  * (define to 0 if you get compile errors) */
 #define CLG_MICROSYSTIME 0
-
-/* Set to 1 if you want full sanity checks for JCC */
-#define JCC_CHECK 0
 
 
 
@@ -57,7 +77,7 @@ struct _CommandLineOptions {
 
   /* Dump format options */
   const HChar* out_format;  /* Format string for callgrind output file name */
-  Bool combine_dumps;    /* Dump trace parts into same file? */
+  Bool combine_dumps;       /* Dump trace parts into same file? */
   Bool compress_strings;
   Bool compress_events;
   Bool compress_pos;
@@ -104,60 +124,11 @@ struct _CommandLineOptions {
 /*--- Constants                                            ---*/
 /*------------------------------------------------------------*/
 
-
-/* According to IA-32 Intel Architecture Software Developer's Manual: Vol 2 */
-#define MAX_x86_INSTR_SIZE              16
-
 /* Minimum cache line size allowed */
 #define MIN_LINE_SIZE   16
 
 /* Size of various buffers used for storing strings */
-#define FILENAME_LEN                    VKI_PATH_MAX
-#define FN_NAME_LEN                    4096 /* for C++ code :-) */
-#define OBJ_NAME_LEN                    256
-#define COSTS_LEN                       512 /* at least 17x 64bit values */
-#define BUF_LEN                         512
-#define COMMIFY_BUF_LEN                 128
 #define RESULTS_BUF_LEN                 256
-#define LINE_BUF_LEN                     64
-
-
-/* Convenience macros */
-
-/* Use this only when size of sprintf args are known to fit into
- * given buffer; for strings of unknown length, use WRITE_STR below
- */
-#define WRITE_SPRINTF(fd, zz_buf, fmt, args...) \
-   do { Int len = VG_(sprintf)(zz_buf, fmt, ## args); \
-        VG_(write)(fd, (void*)zz_buf, len); \
-   } while (0)
-
-#define WRITE_STR(fd, str) \
-   do { if (str) { Int len = VG_(strlen)(str); \
-        VG_(write)(fd, (void*)str, len); } \
-        else VG_(write)(fd, "(null)", 6); \
-   } while (0)
-
-#define WRITE_STR2(fd, str1, str2) \
-   do { if (str1) { Int len = VG_(strlen)(str1); \
-        VG_(write)(fd, (void*)str1, len); } \
-        else VG_(write)(fd, "(null)", 6); \
-	if (str2) { Int len = VG_(strlen)(str2); \
-        VG_(write)(fd, (void*)str2, len); } \
-        else VG_(write)(fd, "(null)", 6); \
-   } while (0)
-
-#define WRITE_STR3(fd, str1, str2, str3) \
-   do { if (str1) { Int len = VG_(strlen)(str1); \
-        VG_(write)(fd, (void*)str1, len); } \
-        else VG_(write)(fd, "(null)", 6); \
-        if (str2) { Int len = VG_(strlen)(str2); \
-        VG_(write)(fd, (void*)str2, len); } \
-        else VG_(write)(fd, "(null)", 6); \
-        if (str3) { Int len = VG_(strlen)(str3); \
-        VG_(write)(fd, (void*)str3, len); } \
-        else VG_(write)(fd, "(null)", 6); \
-   } while (0)
 
 
 /*------------------------------------------------------------*/
@@ -452,7 +423,6 @@ struct _fn_node {
 #define   N_OBJ_ENTRIES         47
 #define  N_FILE_ENTRIES         53
 #define    N_FN_ENTRIES         87
-#define N_BBCC2_ENTRIES         37
 
 struct _file_node {
    HChar*     name;
@@ -523,7 +493,8 @@ struct _exec_state {
   Bool     collect;
   Context* cxt;
   
-  Int   jmps_passed; /* number of conditional jumps passed in last BB */
+  /* number of conditional jumps passed in last BB */
+  Int   jmps_passed;
   BBCC* bbcc;      /* last BB executed */
   BBCC* nonskipped;
 
@@ -659,7 +630,7 @@ struct cachesim_if
     Bool (*parse_opt)(const HChar* arg);
     void (*post_clo_init)(void);
     void (*clear)(void);
-    void (*getdesc)(HChar* buf);
+    void (*dump_desc)(VgFile *fp);
     void (*printstat)(Int,Int,Int);
     void (*add_icost)(SimCost, BBCC*, InstrInfo*, ULong);
     void (*finish)(void);
@@ -680,10 +651,6 @@ struct cachesim_if
     const HChar *log_0I1Dr_name, *log_0I1Dw_name;
 };
 
-// set by setup_bbcc at start of every BB, and needed by log_* helpers
-extern Addr   CLG_(bb_base);
-extern ULong* CLG_(cost_base);
-
 // Event groups
 #define EG_USE   0
 #define EG_IR    1
@@ -698,7 +665,6 @@ extern ULong* CLG_(cost_base);
 struct event_sets {
     EventSet *base, *full;
 };
-extern struct event_sets CLG_(sets);
 
 #define fullOffset(group) (CLG_(sets).full->offset[group])
 
@@ -716,12 +682,12 @@ void CLG_(print_usage)(void);
 void CLG_(print_debug_usage)(void);
 
 /* from sim.c */
-extern struct cachesim_if CLG_(cachesim);
 void CLG_(init_eventsets)(void);
 
 /* from main.c */
-Bool CLG_(get_debug_info)(Addr, HChar filename[FILENAME_LEN],
-			 HChar fn_name[FN_NAME_LEN], UInt*, DebugInfo**);
+Bool CLG_(get_debug_info)(Addr, const HChar **dirname,
+                          const HChar **filename,
+                          const HChar **fn_name, UInt*, DebugInfo**);
 void CLG_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*);
 void CLG_(set_instrument_state)(const HChar*,Bool);
 void CLG_(dump_profile)(const HChar* trigger,Bool only_current_thread);
@@ -750,7 +716,8 @@ UInt* CLG_(get_fn_entry)(Int n);
 
 void      CLG_(init_obj_table)(void);
 obj_node* CLG_(get_obj_node)(DebugInfo* si);
-file_node* CLG_(get_file_node)(obj_node*, HChar* filename);
+file_node* CLG_(get_file_node)(obj_node*, const HChar *dirname,
+                               const HChar* filename);
 fn_node*  CLG_(get_fn_node)(BB* bb);
 
 /* from bbcc.c */
@@ -768,7 +735,6 @@ void CLG_(setup_bbcc)(BB* bb) VG_REGPARM(1);
 /* from jumps.c */
 void CLG_(init_jcc_hash)(jcc_hash*);
 void CLG_(copy_current_jcc_hash)(jcc_hash* dst);
-jcc_hash* CLG_(get_current_jcc_hash)(void);
 void CLG_(set_current_jcc_hash)(jcc_hash*);
 jCC* CLG_(get_jcc)(BBCC* from, UInt, BBCC* to);
 
@@ -785,11 +751,9 @@ Int CLG_(unwind_call_stack)(Addr sp, Int);
 /* from context.c */
 void CLG_(init_fn_stack)(fn_stack*);
 void CLG_(copy_current_fn_stack)(fn_stack*);
-fn_stack* CLG_(get_current_fn_stack)(void);
 void CLG_(set_current_fn_stack)(fn_stack*);
 
 void CLG_(init_cxt_table)(void);
-cxt_hash* CLG_(get_cxt_hash)(void);
 Context* CLG_(get_cxt)(fn_node** fn);
 void CLG_(push_cxt)(fn_node* fn);
 
@@ -810,10 +774,7 @@ void CLG_(post_signal)(ThreadId tid, Int sigNum);
 void CLG_(run_post_signal_on_call_stack_bottom)(void);
 
 /* from dump.c */
-extern FullCost CLG_(total_cost);
 void CLG_(init_dumps)(void);
-HChar* CLG_(get_out_file)(void);
-HChar* CLG_(get_out_directory)(void);
 
 /*------------------------------------------------------------*/
 /*--- Exported global variables                            ---*/
@@ -828,11 +789,17 @@ extern UInt* CLG_(fn_active_array);
 extern Bool CLG_(instrument_state);
  /* min of L1 and LL cache line sizes */
 extern Int CLG_(min_line_size);
-
 extern call_stack CLG_(current_call_stack);
 extern fn_stack   CLG_(current_fn_stack);
 extern exec_state CLG_(current_state);
 extern ThreadId   CLG_(current_tid);
+extern FullCost   CLG_(total_cost);
+extern struct cachesim_if CLG_(cachesim);
+extern struct event_sets  CLG_(sets);
+
+// set by setup_bbcc at start of every BB, and needed by log_* helpers
+extern Addr   CLG_(bb_base);
+extern ULong* CLG_(cost_base);
 
 
 /*------------------------------------------------------------*/

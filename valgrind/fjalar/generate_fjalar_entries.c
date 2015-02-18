@@ -516,6 +516,7 @@ void initializeAllFjalarData(void)
 
   FJALAR_DPRINTF("ENTER initializeAllFjalarData\n");
 
+  // (comment added 2005)  
   // TODO: We need to free up the entries in TypesTable if we are
   // really trying to be robust
 
@@ -883,6 +884,7 @@ static void repCheckOneVariable(VariableEntry* var) {
     if (global_loc) {
       if (!addressIsGlobal(global_loc) &&
           (global_loc < 0x08048000 || global_loc > 0x8100000)) {
+        // (comment added 2005)  
         /* addressIsGlobal() works fine for the normal case of
            dynamically linked programs, but if you statically link
            with a debugging libc, it will contain some weird variables
@@ -1121,6 +1123,7 @@ static void initializeGlobalVarsList(void)
         // either the namespace or function name along with the
         // filename in front of the variable name:
         if (cur_entry->level > 1) {
+          // (comment added 2005)  
           // TODO: Support for different namespaces in the future.
           namespace_type* enclosing_namespace = findNamespaceForVariableEntry(cur_entry);
           unsigned long startPC =
@@ -1560,6 +1563,7 @@ static void initFunctionFjalarNames(void) {
   // FJALAR_DPRINTF("EXIT  initFunctionFjalarNames\n");
 }
 
+// (comment added 2005)  
 // TODO: This will leak memory if called more than once per program
 // execution since the entries in FunctionTable are not being properly
 // freed.  However, during normal execution, this should only be
@@ -1901,6 +1905,7 @@ static void extractStructUnionType(TypeEntry* t, dwarf_entry* e)
 
   t->typeName = collectionPtr->name;
 
+  // (comment added 2005)  
   // This is a bit of a hack, but since FunctionTable probably hasn't
   // finished being initialized yet, we will fill up each entry in
   // t->memberFunctionList with the start PC of the function, then
@@ -2703,6 +2708,7 @@ extractOneVariable(VarList* varListPtr,
   // Special case for C++ 'this' parameter variables:
   // Automatically put a 'P' disambig on it because
   // 'this' will always refer to one object and not an array
+  // (comment added 2005)  
   // TODO: This will simple-mindedly pick up any variable named 'this'
   // so it's possible that in a C program, you can have some variable
   // named 'this' and it'll get a 'P' disambig letter assigned to it
@@ -2931,6 +2937,7 @@ extractOneVariable(VarList* varListPtr,
     }
   }
 
+  // (comment added 2005)  
   // TODO: What about arrays of pointers?  int* [10] currently turns
   // into base type = int, ptrLevels = 2, isStaticArray = true
   // but it should be base type = hashcode, ptrLevels = 1, isStaticArray = true
@@ -3054,6 +3061,7 @@ static void initConstructorsAndDestructors(void) {
       TypeEntry* parentClass = 0;
 
 
+      // (comment added 2009)  
       // RUDD - Dirty dirty hack. Force the location of this to be valid
       f->formalParameters.first->var->validLoc = 1;
 
@@ -3121,6 +3129,7 @@ static void initMemberFuncs(void) {
     // Only do this for struct/union types:
     if ((t->decType == D_STRUCT_CLASS) ||
         (t->decType == D_UNION)) {
+      // (comment added 2005)  
       // This is a bit of a hack, but in extractStructUnionType(), we
       // initialized the entries of t->memberFunctionList with the
       // start PC of the member functions (we had to do this because

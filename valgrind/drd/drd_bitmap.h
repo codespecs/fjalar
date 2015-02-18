@@ -43,7 +43,7 @@
 
 /* Client addresses are split into bitfields as follows:
  * ------------------------------------------------------
- * | Address MSB |      Address LSB      | Ignored bits | 
+ * | Address MSB |      Address LSB      | Ignored bits |
  * ------------------------------------------------------
  * | Address MSB | UWord MSB | UWord LSB | Ignored bits |
  * ------------------------------------------------------
@@ -139,8 +139,8 @@ Addr make_address(const UWord a1, const UWord a0)
 #if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_arm) \
     || defined(VGA_mips32)
 #define BITS_PER_BITS_PER_UWORD 5
-#elif defined(VGA_amd64) || defined(VGA_ppc64) || defined(VGA_s390x) \
-      || defined(VGA_mips64)
+#elif defined(VGA_amd64) || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
+      || defined(VGA_s390x) || defined(VGA_mips64) || defined(VGA_arm64)
 #define BITS_PER_BITS_PER_UWORD 6
 #else
 #error Unknown platform.
@@ -285,7 +285,7 @@ static __inline__ void bm0_clear_range(UWord* bm0,
    tl_assert(size == 0 || uword_msb(a) == uword_msb(a + size - 1));
 #endif
    /*
-    * Note: although the expression below yields a correct result even if 
+    * Note: although the expression below yields a correct result even if
     * size == 0, do not touch bm0[] if size == 0 because this might otherwise
     * cause an access of memory just past the end of the bm0[] array.
     */

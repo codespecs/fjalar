@@ -40,7 +40,7 @@
 #define HG_(str) VGAPPEND(vgHelgrind_,str)
 
 void*  HG_(zalloc) ( const HChar* cc, SizeT n );
-void  HG_(free)   ( void* p );
+void   HG_(free)   ( void* p );
 HChar* HG_(strdup) ( const HChar* cc, const HChar* s );
 
 static inline Bool HG_(is_sane_ThreadId) ( ThreadId coretid ) {

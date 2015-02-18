@@ -258,7 +258,13 @@ struct vki_old_sigaction {
 struct vki_sigaction {
         // [[See comment about extra 'k' above]]
         __vki_sighandler_t ksa_handler;
-        unsigned long sa_flags;
+        // Yes, the reserved field is really glibc specific. The kernel
+        // doesn't have it and uses an unsigned long for sa_flags.
+        // The glibc and the kernel agreed this is fine and the
+        // __glibc_reserved0 field can be undefined.
+        // See https://sourceware.org/ml/libc-alpha/2014-09/msg00161.html
+        int __glibc_reserved0;
+        int sa_flags;
         void (*sa_restorer)(void);
         vki_sigset_t sa_mask;               /* mask last for extensibility */
 };
@@ -335,6 +341,10 @@ typedef struct vki_sigaltstack {
 #define VKI_F_SETOWN_EX		15
 #define VKI_F_GETOWN_EX		16
 
+#define VKI_F_OFD_GETLK		36
+#define VKI_F_OFD_SETLK		37
+#define VKI_F_OFD_SETLKW	38
+
 #define VKI_F_OWNER_TID		0
 #define VKI_F_OWNER_PID		1
 #define VKI_F_OWNER_PGRP	2
@@ -377,6 +387,7 @@ struct vki_f_owner_ex {
 
 #define VKI_SIOCSPGRP       0x8902
 #define VKI_SIOCGPGRP       0x8904
+#define VKI_SIOCATMARK      0x8905
 #define VKI_SIOCGSTAMP      0x8906          /* Get stamp (timeval) */
 /* since 2.6.22 */
 #define VKI_SIOCGSTAMPNS    0x8907          /* Get stamp (timespec) */
@@ -457,7 +468,7 @@ struct vki_stat {
 	unsigned long  st_ctime_nsec;
         unsigned long  st_blksize;
         long           st_blocks;
-        unsigned long  __unused[3];
+        unsigned long  __unused0[3];
 };
 
 #endif /* VGA_s390x */
@@ -597,6 +608,7 @@ struct vki_termios {
 #define VKI_TIOCLINUX	0x541C
 
 #define VKI_FIONBIO	0x5421
+#define VKI_TIOCNOTTY	0x5422
 
 #define VKI_TCSBRKP	0x5425	/* Needed for POSIX tcsendbreak() */
 
@@ -605,7 +617,7 @@ struct vki_termios {
 
 #define VKI_FIONCLEX	0x5450
 #define VKI_FIOCLEX	0x5451
-#define VKI_FIOASYNC	        0x5452
+#define VKI_FIOASYNC	0x5452
 
 #define VKI_TIOCSERGETLSR       0x5459 /* Get line status register */
 
@@ -956,6 +968,13 @@ struct vki_shminfo64 {
 /* If a system call returns a value >= VKI_MAX_ERRNO then that is considered
    an error condition. I.e. the system call failed. */
 #define VKI_MAX_ERRNO       -125
+
+//----------------------------------------------------------------------
+// From linux-2.6.8.1/include/asm-generic/errno.h
+//----------------------------------------------------------------------
+
+#define	VKI_ENOSYS       38  /* Function not implemented */
+#define	VKI_EOVERFLOW    75  /* Value too large for defined data type */
 
 #endif // __VKI_S390X_LINUX_H
 

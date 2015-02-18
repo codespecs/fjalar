@@ -82,11 +82,6 @@ void CLG_(init_cxt_table)()
      cxts.table[i] = 0;
 }
 
-cxt_hash* CLG_(get_cxt_hash)()
-{
-  return &cxts;
-}
-
 /* double size of cxt table  */
 static void resize_cxt_table(void)
 {
@@ -97,8 +92,6 @@ static void resize_cxt_table(void)
     new_size  = 2* cxts.size +3;
     new_table = (Context**) CLG_MALLOC("cl.context.rct.1",
                                        new_size * sizeof(Context*));
-
-    if (!new_table) return;
 
     for (i = 0; i < new_size; i++)
       new_table[i] = NULL;

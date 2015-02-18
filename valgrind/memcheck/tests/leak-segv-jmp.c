@@ -7,7 +7,7 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 
-typedef unsigned long          UWord;
+typedef unsigned long            UWord;
 typedef unsigned long long int   ULong;
 // Below code is copied from m_syscall.c
 // Refer to this file for syscall convention.

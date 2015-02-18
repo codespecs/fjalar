@@ -1,6 +1,6 @@
 
 /*--------------------------------------------------------------------*/
-/*--- A simple pool (memory) allocator.     pub_tool_poolalloc.h ---*/
+/*--- A simple pool (memory) allocator.       pub_tool_poolalloc.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
@@ -51,19 +51,20 @@
 typedef  struct _PoolAlloc  PoolAlloc;
 
 /* Create new PoolAlloc, using given allocation and free function, and
-   for elements of the specified size.  Alloc fn must not fail (that
-   is, if it returns it must have succeeded.) */
-PoolAlloc* VG_(newPA) ( UWord  elemSzB,
-                        UWord  nPerPool,
-                        void*  (*alloc)(const HChar*, SizeT),
-                        const  HChar* cc,
-                        void   (*free_fn)(void*) );
+   for elements of the specified size.  alloc_fn must not return NULL (that
+   is, if it returns it must have succeeded.)
+   This function never returns NULL. */
+extern PoolAlloc* VG_(newPA) ( UWord  elemSzB,
+                               UWord  nPerPool,
+                               void*  (*alloc)(const HChar*, SizeT),
+                               const  HChar* cc,
+                               void   (*free_fn)(void*) );
 
 
 /* Free all memory associated with a PoolAlloc. */
 extern void VG_(deletePA) ( PoolAlloc* pa);
 
-/* Allocates an element from pa. */
+/* Allocates an element from pa. The function never returns NULL. */
 extern void* VG_(allocEltPA) ( PoolAlloc* pa);
 
 /* Free element of pa. */

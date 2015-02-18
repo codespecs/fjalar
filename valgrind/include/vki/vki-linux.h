@@ -85,10 +85,12 @@
 #  include "vki-posixtypes-amd64-linux.h"
 #elif defined(VGA_ppc32)
 #  include "vki-posixtypes-ppc32-linux.h"
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  include "vki-posixtypes-ppc64-linux.h"
 #elif defined(VGA_arm)
 #  include "vki-posixtypes-arm-linux.h"
+#elif defined(VGA_arm64)
+#  include "vki-posixtypes-arm64-linux.h"
 #elif defined(VGA_s390x)
 #  include "vki-posixtypes-s390x-linux.h"
 #elif defined(VGA_mips32)
@@ -209,10 +211,12 @@ typedef unsigned int	        vki_uint;
 #  include "vki-amd64-linux.h"
 #elif defined(VGA_ppc32)
 #  include "vki-ppc32-linux.h"
-#elif defined(VGA_ppc64)
+#elif defined(VGA_ppc64be) || defined(VGA_ppc64le)
 #  include "vki-ppc64-linux.h"
 #elif defined(VGA_arm)
 #  include "vki-arm-linux.h"
+#elif defined(VGA_arm64)
+#  include "vki-arm64-linux.h"
 #elif defined(VGA_s390x)
 #  include "vki-s390x-linux.h"
 #elif defined(VGA_mips32)
@@ -540,6 +544,9 @@ typedef struct vki_siginfo {
 #define VKI_SIGEV_PAD_SIZE	((VKI_SIGEV_MAX_SIZE - VKI___ARCH_SIGEV_PREAMBLE_SIZE) \
 		/ sizeof(int))
 
+/* This is the flag the kernel handles, userspace/glibc handles SEGEV_THEAD. */
+#define VKI_SIGEV_THREAD_ID	4
+
 typedef struct vki_sigevent {
 	vki_sigval_t sigev_value;
 	int sigev_signo;
@@ -554,6 +561,8 @@ typedef struct vki_sigevent {
 		} _sigev_thread;
 	} _sigev_un;
 } vki_sigevent_t;
+
+#define vki_sigev_notify_thread_id	_sigev_un._tid
 
 //----------------------------------------------------------------------
 // From elsewhere...
@@ -673,9 +682,11 @@ __KINLINE struct vki_cmsghdr * vki_cmsg_nxthdr (struct vki_msghdr *__msg, struct
 
 #define	VKI_SCM_RIGHTS	0x01		/* rw: access rights (array of int) */
 
+#define VKI_AF_UNSPEC   0
 #define VKI_AF_UNIX	1	/* Unix domain sockets 		*/
 #define VKI_AF_INET	2	/* Internet IP Protocol		*/
 #define VKI_AF_INET6	10	/* IP version 6			*/
+#define VKI_AF_NETLINK  16
 #define VKI_AF_BLUETOOTH 31	/* Bluetooth sockets		*/
 
 #define VKI_MSG_NOSIGNAL	0x4000	/* Do not generate SIGPIPE */
@@ -745,6 +756,17 @@ struct vki_sockaddr_in6 {
 struct vki_sockaddr_un {
 	vki_sa_family_t sun_family;	/* AF_UNIX */
 	char sun_path[VKI_UNIX_PATH_MAX];	/* pathname */
+};
+
+//----------------------------------------------------------------------
+// From linux-3.15.8/include/uapi/linux/netlink.h
+//----------------------------------------------------------------------
+
+struct vki_sockaddr_nl {
+        vki_sa_family_t    nl_family;      /* AF_NETLINK   */
+        unsigned short     nl_pad;         /* zero         */
+        __vki_u32          nl_pid;         /* port ID      */
+        __vki_u32          nl_groups;      /* multicast groups mask */
 };
 
 //----------------------------------------------------------------------
@@ -1138,6 +1160,9 @@ struct vki_ipc_perm
 
 #define VKI_IPC_64  0x0100  /* New version (support 32-bit UIDs, bigger
 			       message sizes, etc. */
+// From /usr/include/bits/shm.h
+# define VKI_SHM_HUGETLB   04000
+
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/sem.h
@@ -1201,10 +1226,10 @@ struct  vki_seminfo {
 #define	VKI_EIO			 5	/* I/O error */
 #define	VKI_ENXIO		 6	/* No such device or address */
 #define	VKI_E2BIG		 7	/* Argument list too long */
-#define VKI_ENOEXEC              8      /* Exec format error */
+#define	VKI_ENOEXEC		 8	/* Exec format error */
 #define	VKI_EBADF		 9	/* Bad file number */
-#define VKI_ECHILD              10      /* No child processes */
-#define VKI_EAGAIN		11	/* Try again */
+#define	VKI_ECHILD		10	/* No child processes */
+#define	VKI_EAGAIN		11	/* Try again */
 #define	VKI_ENOMEM		12	/* Out of memory */
 #define	VKI_EACCES		13	/* Permission denied */
 #define	VKI_EFAULT		14	/* Bad address */
@@ -1234,9 +1259,6 @@ struct  vki_seminfo {
 //----------------------------------------------------------------------
 
 #define VKI_EWOULDBLOCK		VKI_EAGAIN
-
-#define	VKI_ENOSYS		38	/* Function not implemented */
-#define	VKI_EOVERFLOW		75	/* Value too large for defined data type */
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/wait.h
@@ -1354,11 +1376,21 @@ struct vki_robust_list_head {
 // From linux-2.6.8.1/include/linux/dirent.h
 //----------------------------------------------------------------------
 
+/* This is the old compat structure to use with the old dirent syscall. */
 struct vki_dirent {
 	long		d_ino;
 	__vki_kernel_off_t	d_off;
 	unsigned short	d_reclen;
 	char		d_name[256]; /* We must not include limits.h! */
+};
+
+/* This is the new structure to use with the dirent64 syscall. */
+struct vki_dirent64 {
+	__vki_u64 d_ino;
+	__vki_s64 d_off;
+	unsigned short d_reclen;
+	unsigned char d_type;
+	char d_name[256]; /* Note we hard code a max file length here. */
 };
 
 //----------------------------------------------------------------------
@@ -1388,7 +1420,7 @@ struct __vki_sysctl_args {
 	vki_size_t __user *oldlenp;
 	void __user *newval;
 	vki_size_t newlen;
-	unsigned long __unused[4];
+	unsigned long __unused0[4];
 };
 
 //----------------------------------------------------------------------
@@ -1625,6 +1657,8 @@ typedef struct {
 #define VKI_SIOCGIFTXQLEN	0x8942	/* Get the tx queue length	*/
 #define VKI_SIOCSIFTXQLEN	0x8943	/* Set the tx queue length 	*/
 
+#define VKI_SIOCETHTOOL		0x8946	/* Ethtool interface		*/
+
 #define VKI_SIOCGMIIPHY		0x8947	/* Get address of MII PHY in use. */
 #define VKI_SIOCGMIIREG		0x8948	/* Read MII PHY register.	*/
 #define VKI_SIOCSMIIREG		0x8949	/* Write MII PHY register.	*/
@@ -1712,7 +1746,7 @@ struct vki_ppdev_frob_struct {
 #define VKI_PPSETFLAGS	_VKI_IOW(VKI_PP_IOCTL, 0x9b, int)
 
 //----------------------------------------------------------------------
-// From linux-2.6.8.1/include/linux/fs.h
+// From linux-3.16/include/uapi/linux/fs.h
 //----------------------------------------------------------------------
 
 #define VKI_BLKROSET   _VKI_IO(0x12,93)	/* set device read-only (0 = read-write) */
@@ -1728,6 +1762,7 @@ struct vki_ppdev_frob_struct {
 #define VKI_BLKBSZSET  _VKI_IOW(0x12,113,vki_size_t)
 #define VKI_BLKGETSIZE64 _VKI_IOR(0x12,114,vki_size_t) /* return device size in bytes (u64 *arg) */
 #define VKI_BLKPBSZGET _VKI_IO(0x12,123)
+#define VKI_BLKDISCARDZEROES _VKI_IO(0x12,124)
 
 #define VKI_FIBMAP	_VKI_IO(0x00,1)	/* bmap access */
 #define VKI_FIGETBSZ    _VKI_IO(0x00,2)	/* get the block size used for bmap */
@@ -1762,6 +1797,14 @@ typedef struct vki_sg_io_hdr
     unsigned int duration;      /* [o] time taken by cmd (unit: millisec) */
     unsigned int info;          /* [o] auxiliary information */
 } vki_sg_io_hdr_t;  /* 64 bytes long (on i386) */
+
+#define VKI_SG_DXFER_NONE -1        /* e.g. a SCSI Test Unit Ready command */
+#define VKI_SG_DXFER_TO_DEV -2      /* e.g. a SCSI WRITE command */
+#define VKI_SG_DXFER_FROM_DEV -3    /* e.g. a SCSI READ command */
+#define VKI_SG_DXFER_TO_FROM_DEV -4 /* treated like SG_DXFER_FROM_DEV with the
+				   additional property than during indirect
+				   IO the user buffer is copied into the
+				   kernel buffers before the transfer */
 
 typedef struct vki_sg_scsi_id { /* used by SG_GET_SCSI_ID ioctl() */
     int host_no;        /* as in "scsi<n>" where 'n' is one of 0, 1, 2 etc */
@@ -1811,30 +1854,31 @@ struct vki_scsi_idlun {
 // From linux-2.6.8.1/include/linux/cdrom.h
 //----------------------------------------------------------------------
 
-#define VKI_CDROMPLAYMSF	0x5303 /* Play Audio MSF (struct cdrom_msf) */
-#define VKI_CDROMREADTOCHDR	0x5305 /* Read TOC header 
-                                           (struct cdrom_tochdr) */
-#define VKI_CDROMREADTOCENTRY	0x5306 /* Read TOC entry 
-                                           (struct cdrom_tocentry) */
-#define VKI_CDROMSUBCHNL	0x530b /* Read subchannel data 
-                                           (struct cdrom_subchnl) */
-#define VKI_CDROMREADMODE2	0x530c /* Read CDROM mode 2 data (2336 Bytes) 
-                                           (struct cdrom_read) */
-#define VKI_CDROMREADAUDIO	0x530e /* (struct cdrom_read_audio) */
-#define VKI_CDROMMULTISESSION	0x5310 /* Obtain the start-of-last-session 
-                                           address of multi session disks 
-                                           (struct cdrom_multisession) */
-#define VKI_CDROM_GET_MCN	0x5311 /* Obtain the "Universal Product Code" 
-                                           if available (struct cdrom_mcn) */
-#define VKI_CDROMVOLREAD	0x5313 /* Get the drive's volume setting
-                                          (struct cdrom_volctrl) */
-#define VKI_CDROMREADRAW	0x5314	/* read data in raw mode (2352 Bytes)
-                                           (struct cdrom_read) */
-#define VKI_CDROM_CLEAR_OPTIONS	0x5321  /* Clear behavior options */
-#define VKI_CDROM_DRIVE_STATUS	0x5326  /* Get tray position, etc. */
+#define VKI_CDROMPLAYMSF		0x5303 /* Play Audio MSF (struct cdrom_msf) */
+#define VKI_CDROMREADTOCHDR		0x5305 /* Read TOC header 
+                                	           (struct cdrom_tochdr) */
+#define VKI_CDROMREADTOCENTRY		0x5306 /* Read TOC entry 
+                                	           (struct cdrom_tocentry) */
+#define VKI_CDROMSUBCHNL		0x530b /* Read subchannel data 
+                                	           (struct cdrom_subchnl) */
+#define VKI_CDROMREADMODE2		0x530c /* Read CDROM mode 2 data (2336 Bytes) 
+                                	           (struct cdrom_read) */
+#define VKI_CDROMREADAUDIO		0x530e /* (struct cdrom_read_audio) */
+#define VKI_CDROMMULTISESSION		0x5310 /* Obtain the start-of-last-session 
+                                	           address of multi session disks 
+                                	           (struct cdrom_multisession) */
+#define VKI_CDROM_GET_MCN		0x5311 /* Obtain the "Universal Product Code" 
+                                	           if available (struct cdrom_mcn) */
+#define VKI_CDROMVOLREAD		0x5313 /* Get the drive's volume setting
+                                	          (struct cdrom_volctrl) */
+#define VKI_CDROMREADRAW		0x5314	/* read data in raw mode (2352 Bytes)
+                                	           (struct cdrom_read) */
+#define VKI_CDROM_CLEAR_OPTIONS		0x5321  /* Clear behavior options */
+#define VKI_CDROM_DRIVE_STATUS		0x5326  /* Get tray position, etc. */
+#define VKI_CDROM_DISC_STATUS		0x5327	/* get CD type information */
 #define VKI_CDROM_GET_CAPABILITY	0x5331	/* get capabilities */
 
-#define VKI_CDROM_SEND_PACKET	0x5393	/* send a packet to the drive */
+#define VKI_CDROM_SEND_PACKET		0x5393	/* send a packet to the drive */
 
 struct vki_cdrom_msf0		
 {
@@ -2296,6 +2340,59 @@ enum {
 	VKI_SNDRV_TIMER_IOCTL_CONTINUE = _VKI_IO('T', 0xa2),
 	VKI_SNDRV_TIMER_IOCTL_PAUSE = _VKI_IO('T', 0xa3),
 };
+
+struct vki_snd_ctl_card_info {
+	int card;			/* card number */
+	int pad;			/* reserved for future (was type) */
+	unsigned char id[16];		/* ID of card (user selectable) */
+	unsigned char driver[16];	/* Driver name */
+	unsigned char name[32];		/* Short name of soundcard */
+	unsigned char longname[80];	/* name + info text about soundcard */
+	unsigned char reserved_[16];	/* reserved for future (was ID of mixer) */
+	unsigned char mixername[80];	/* visual mixer identification */
+	unsigned char components[128];	/* card components / fine identification, delimited with one space (AC97 etc..) */
+};
+
+typedef int vki_snd_ctl_elem_iface_t;
+#define	VKI_SNDRV_CTL_ELEM_IFACE_CARD		((vki_snd_ctl_elem_iface_t) 0) /* global control */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_HWDEP		((vki_snd_ctl_elem_iface_t) 1) /* hardware dependent device */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_MIXER		((vki_snd_ctl_elem_iface_t) 2) /* virtual mixer device */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_PCM		((vki_snd_ctl_elem_iface_t) 3) /* PCM device */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_RAWMIDI	((vki_snd_ctl_elem_iface_t) 4) /* RawMidi device */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_TIMER		((vki_snd_ctl_elem_iface_t) 5) /* timer device */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_SEQUENCER	((vki_snd_ctl_elem_iface_t) 6) /* sequencer client */
+#define	VKI_SNDRV_CTL_ELEM_IFACE_LAST		VKI_SNDRV_CTL_ELEM_IFACE_SEQUENCER
+
+struct vki_snd_ctl_elem_id {
+	unsigned int numid;		/* numeric identifier, zero = invalid */
+	vki_snd_ctl_elem_iface_t iface;	/* interface identifier */
+	unsigned int device;		/* device/client number */
+	unsigned int subdevice;		/* subdevice (substream) number */
+	unsigned char name[44];		/* ASCII name of item */
+	unsigned int index;		/* index of item */
+};
+
+struct vki_snd_ctl_elem_list {
+	unsigned int offset;		/* W: first element ID to get */
+	unsigned int space;		/* W: count of element IDs to get */
+	unsigned int used;		/* R: count of element IDs set */
+	unsigned int count;		/* R: count of all elements */
+	struct vki_snd_ctl_elem_id __user *pids; /* R: IDs */
+	unsigned char reserved[50];
+};
+
+struct vki_snd_ctl_tlv {
+    unsigned int numid;	/* control element numeric identification */
+    unsigned int length;	/* in bytes aligned to 4 */
+    unsigned int tlv[0];	/* first TLV */
+};
+
+#define VKI_SNDRV_CTL_IOCTL_PVERSION	_VKI_IOR('U', 0x00, int)
+#define VKI_SNDRV_CTL_IOCTL_CARD_INFO	_VKI_IOR('U', 0x01, struct vki_snd_ctl_card_info)
+#define VKI_SNDRV_CTL_IOCTL_ELEM_LIST	_VKI_IOWR('U', 0x10, struct vki_snd_ctl_elem_list)
+#define VKI_SNDRV_CTL_IOCTL_TLV_READ	_VKI_IOWR('U', 0x1a, struct vki_snd_ctl_tlv)
+#define VKI_SNDRV_CTL_IOCTL_TLV_WRITE	_VKI_IOWR('U', 0x1b, struct vki_snd_ctl_tlv)
+#define VKI_SNDRV_CTL_IOCTL_TLV_COMMAND	_VKI_IOWR('U', 0x1c, struct vki_snd_ctl_tlv)
 
 //----------------------------------------------------------------------
 // From linux-2.6.15.4/include/linux/serial.h
@@ -2792,7 +2889,7 @@ struct vki_perf_event_attr {
 					__reserved_1   : 45;
 
 	union {
-	__vki_u32			wakeup_events;	/* wakeup every n events */
+		__vki_u32		wakeup_events;	  /* wakeup every n events */
 		__vki_u32		wakeup_watermark; /* bytes before wakeup   */
 	};
 
@@ -2861,11 +2958,16 @@ struct vki_getcpu_cache {
 #define VKI_FIOQSIZE 0x5460     /* Value differs on some platforms */
 #endif
 
+#ifndef VKI_TIOCSIG
+#define VKI_TIOCSIG _VKI_IOW('T', 0x36, int) /* Value differs on some platforms */
+#endif
+
 //----------------------------------------------------------------------
 // From kernel/common/include/linux/ashmem.h
 //----------------------------------------------------------------------
 
-#if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
+#if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
+    || defined(VGPV_mips32_linux_android)
 
 #define VKI_ASHMEM_NAME_LEN 256
 
@@ -2940,6 +3042,17 @@ typedef struct {
 #define VKI_HCIDEVRESTAT    _VKI_IOW('H', 204, int)
 
 #define VKI_HCIGETDEVLIST   _VKI_IOR('H', 210, int)
+
+struct vki_hci_dev_req {
+	__vki_u16  dev_id;
+	__vki_u32  dev_opt;
+};
+
+struct vki_hci_dev_list_req {
+	__vki_u16  dev_num;
+	struct vki_hci_dev_req dev_req[0];	/* hci_dev_req structures */
+};
+
 #define VKI_HCIGETDEVINFO   _VKI_IOR('H', 211, int)
 #define VKI_HCIGETCONNLIST  _VKI_IOR('H', 212, int)
 #define VKI_HCIGETCONNINFO  _VKI_IOR('H', 213, int)
@@ -3010,6 +3123,7 @@ struct vki_sockaddr_rc {
 #define VKI_KVM_RUN                   _VKI_IO(KVMIO,   0x80)
 #define VKI_KVM_S390_INITIAL_RESET    _VKI_IO(KVMIO,   0x97)
 #define VKI_KVM_NMI                   _VKI_IO(KVMIO,   0x9a)
+#define VKI_KVM_KVMCLOCK_CTRL         _VKI_IO(KVMIO,   0xad)
 
 //----------------------------------------------------------------------
 // From linux-2.6/include/linux/net_stamp.h
@@ -3075,6 +3189,8 @@ struct vki_hwtstamp_config {
 #define VKI_TUNGETVNETHDRSZ _VKI_IOR('T', 215, int)
 #define VKI_TUNSETVNETHDRSZ _VKI_IOW('T', 216, int)
 #define VKI_TUNSETQUEUE  _VKI_IOW('T', 217, int)
+#define VKI_TUNSETIFINDEX	_VKI_IOW('T', 218, unsigned int)
+//#define VKI_TUNGETFILTER _VKI_IOR('T', 219, struct sock_fprog)
 
 //----------------------------------------------------------------------
 // From linux-3.8/include/uapi/linux/vhost.h
@@ -3129,6 +3245,46 @@ struct vki_xen_privcmd_mmapbatch_v2 {
 #define VKI_XEN_IOCTL_PRIVCMD_MMAPBATCH_V2 _VKI_IOC(_VKI_IOC_NONE, 'P', 4, sizeof(struct vki_xen_privcmd_mmapbatch_v2))
 
 //----------------------------------------------------------------------
+// Xen evtchn IOCTL
+//----------------------------------------------------------------------
+
+#define VKI_XEN_IOCTL_EVTCHN_BIND_VIRQ				\
+	_VKI_IOC(_VKI_IOC_NONE, 'E', 0, sizeof(struct vki_xen_ioctl_evtchn_bind_virq))
+struct vki_xen_ioctl_evtchn_bind_virq {
+	vki_uint32_t virq;
+	vki_uint32_t port;
+};
+
+#define VKI_XEN_IOCTL_EVTCHN_BIND_INTERDOMAIN			\
+	_VKI_IOC(_VKI_IOC_NONE, 'E', 1, sizeof(struct vki_xen_ioctl_evtchn_bind_interdomain))
+struct vki_xen_ioctl_evtchn_bind_interdomain {
+	vki_uint32_t remote_domain;
+	vki_uint32_t remote_port;
+};
+
+#define VKI_XEN_IOCTL_EVTCHN_BIND_UNBOUND_PORT			\
+	_VKI_IOC(_VKI_IOC_NONE, 'E', 2, sizeof(struct vki_xen_ioctl_evtchn_bind_unbound_port))
+struct vki_xen_ioctl_evtchn_bind_unbound_port {
+	vki_uint32_t remote_domain;
+};
+
+#define VKI_XEN_IOCTL_EVTCHN_UNBIND				\
+	_VKI_IOC(_VKI_IOC_NONE, 'E', 3, sizeof(struct vki_xen_ioctl_evtchn_unbind))
+struct vki_xen_ioctl_evtchn_unbind {
+	vki_uint32_t port;
+};
+
+#define VKI_XEN_IOCTL_EVTCHN_NOTIFY				\
+	_VKI_IOC(_VKI_IOC_NONE, 'E', 4, sizeof(struct vki_xen_ioctl_evtchn_notify))
+struct vki_xen_ioctl_evtchn_notify {
+	vki_uint32_t port;
+};
+
+#define VKI_XEN_IOCTL_EVTCHN_RESET				\
+	_VKI_IOC(_VKI_IOC_NONE, 'E', 5, 0)
+
+
+//----------------------------------------------------------------------
 // From linux-3.4.0/include/linux/fs.h
 //----------------------------------------------------------------------
 
@@ -3155,6 +3311,1218 @@ struct vki_sock_fprog {
 	struct vki_sock_filter *filter;
 };
    
+//----------------------------------------------------------------------
+// From linux/include/uapi/linux/ethtool.h
+//----------------------------------------------------------------------
+
+struct vki_ethtool_cmd {
+	__vki_u32	cmd;
+	__vki_u32	supported;
+	__vki_u32	advertising;
+	__vki_u16	speed;
+	__vki_u8	duplex;
+	__vki_u8	port;
+	__vki_u8	phy_address;
+	__vki_u8	transceiver;
+	__vki_u8	autoneg;
+	__vki_u8	mdio_support;
+	__vki_u32	maxtxpkt;
+	__vki_u32	maxrxpkt;
+	__vki_u16	speed_hi;
+	__vki_u8	eth_tp_mdix;
+	__vki_u8	eth_tp_mdix_ctrl;
+	__vki_u32	lp_advertising;
+	__vki_u32	reserved[2];
+};
+
+#define VKI_ETHTOOL_FWVERS_LEN	32
+#define VKI_ETHTOOL_BUSINFO_LEN	32
+
+struct vki_ethtool_drvinfo {
+	__vki_u32	cmd;
+	char	driver[32];
+	char	version[32];
+	char	fw_version[VKI_ETHTOOL_FWVERS_LEN];
+	char	bus_info[VKI_ETHTOOL_BUSINFO_LEN];
+	char	reserved1[32];
+	char	reserved2[12];
+	__vki_u32	n_priv_flags;
+	__vki_u32	n_stats;
+	__vki_u32	testinfo_len;
+	__vki_u32	eedump_len;
+	__vki_u32	regdump_len;
+};
+
+#define VKI_SOPASS_MAX	6
+
+struct vki_ethtool_wolinfo {
+	__vki_u32	cmd;
+	__vki_u32	supported;
+	__vki_u32	wolopts;
+	__vki_u8	sopass[VKI_SOPASS_MAX];
+};
+
+struct vki_ethtool_value {
+	__vki_u32	cmd;
+	__vki_u32	data;
+};
+
+struct vki_ethtool_regs {
+	__vki_u32	cmd;
+	__vki_u32	version;
+	__vki_u32	len;
+	__vki_u8	data[0];
+};
+
+struct vki_ethtool_ringparam {
+	__vki_u32	cmd;
+	__vki_u32	rx_max_pending;
+	__vki_u32	rx_mini_max_pending;
+	__vki_u32	rx_jumbo_max_pending;
+	__vki_u32	tx_max_pending;
+	__vki_u32	rx_pending;
+	__vki_u32	rx_mini_pending;
+	__vki_u32	rx_jumbo_pending;
+	__vki_u32	tx_pending;
+};
+
+struct vki_ethtool_channels {
+	__vki_u32	cmd;
+	__vki_u32	max_rx;
+	__vki_u32	max_tx;
+	__vki_u32	max_other;
+	__vki_u32	max_combined;
+	__vki_u32	rx_count;
+	__vki_u32	tx_count;
+	__vki_u32	other_count;
+	__vki_u32	combined_count;
+};
+
+struct vki_ethtool_sset_info {
+	__vki_u32	cmd;
+	__vki_u32	reserved;
+	__vki_u64	sset_mask;
+	__vki_u32	data[0];
+};
+
+struct vki_ethtool_test {
+	__vki_u32	cmd;
+	__vki_u32	flags;
+	__vki_u32	reserved;
+	__vki_u32	len;
+	__vki_u64	data[0];
+};
+
+struct vki_ethtool_perm_addr {
+	__vki_u32	cmd;
+	__vki_u32	size;
+	__vki_u8	data[0];
+};
+
+struct vki_ethtool_get_features_block {
+	__vki_u32	available;
+	__vki_u32	requested;
+	__vki_u32	active;
+	__vki_u32	never_changed;
+};
+
+struct vki_ethtool_gfeatures {
+	__vki_u32	cmd;
+	__vki_u32	size;
+	struct vki_ethtool_get_features_block features[0];
+};
+
+struct vki_ethtool_set_features_block {
+	__vki_u32	valid;
+	__vki_u32	requested;
+};
+
+struct vki_ethtool_sfeatures {
+	__vki_u32	cmd;
+	__vki_u32	size;
+	struct vki_ethtool_set_features_block features[0];
+};
+
+struct vki_ethtool_ts_info {
+	__vki_u32	cmd;
+	__vki_u32	so_timestamping;
+	__vki_s32	phc_index;
+	__vki_u32	tx_types;
+	__vki_u32	tx_reserved[3];
+	__vki_u32	rx_filters;
+	__vki_u32	rx_reserved[3];
+};
+
+#define VKI_ETHTOOL_GSET	0x00000001 /* Get settings. */
+#define VKI_ETHTOOL_SSET	0x00000002 /* Set settings. */
+#define VKI_ETHTOOL_GDRVINFO	0x00000003 /* Get driver info. */
+#define VKI_ETHTOOL_GREGS	0x00000004 /* Get NIC registers. */
+#define VKI_ETHTOOL_GWOL	0x00000005 /* Get wake-on-lan options. */
+#define VKI_ETHTOOL_SWOL	0x00000006 /* Set wake-on-lan options. */
+#define VKI_ETHTOOL_GMSGLVL	0x00000007 /* Get driver message level */
+#define VKI_ETHTOOL_SMSGLVL	0x00000008 /* Set driver msg level. */
+#define VKI_ETHTOOL_NWAY_RST	0x00000009 /* Restart autonegotiation. */
+#define VKI_ETHTOOL_GLINK	0x0000000a
+#define VKI_ETHTOOL_GRINGPARAM	0x00000010 /* Get ring parameters */
+#define VKI_ETHTOOL_SRINGPARAM	0x00000011 /* Set ring parameters. */
+#define VKI_ETHTOOL_GRXCSUM	0x00000014 /* Get RX hw csum enable (ethtool_value) */
+#define VKI_ETHTOOL_SRXCSUM	0x00000015 /* Set RX hw csum enable (ethtool_value) */
+#define VKI_ETHTOOL_GTXCSUM	0x00000016 /* Get TX hw csum enable (ethtool_value) */
+#define VKI_ETHTOOL_STXCSUM	0x00000017 /* Set TX hw csum enable (ethtool_value) */
+#define VKI_ETHTOOL_GSG		0x00000018 /* Get scatter-gather enable
+					    * (ethtool_value) */
+#define VKI_ETHTOOL_SSG		0x00000019 /* Set scatter-gather enable
+					    * (ethtool_value). */
+#define VKI_ETHTOOL_TEST	0x0000001a /* execute NIC self-test. */
+#define VKI_ETHTOOL_PHYS_ID	0x0000001c /* identify the NIC */
+#define VKI_ETHTOOL_GTSO	0x0000001e /* Get TSO enable (ethtool_value) */
+#define VKI_ETHTOOL_STSO	0x0000001f /* Set TSO enable (ethtool_value) */
+#define VKI_ETHTOOL_GPERMADDR	0x00000020 /* Get permanent hardware address */
+#define VKI_ETHTOOL_GUFO	0x00000021 /* Get UFO enable (ethtool_value) */
+#define VKI_ETHTOOL_SUFO	0x00000022 /* Set UFO enable (ethtool_value) */
+#define VKI_ETHTOOL_GGSO	0x00000023 /* Get GSO enable (ethtool_value) */
+#define VKI_ETHTOOL_SGSO	0x00000024 /* Set GSO enable (ethtool_value) */
+#define VKI_ETHTOOL_GFLAGS	0x00000025 /* Get flags bitmap(ethtool_value) */
+#define VKI_ETHTOOL_SFLAGS	0x00000026 /* Set flags bitmap(ethtool_value) */
+#define VKI_ETHTOOL_GGRO	0x0000002b /* Get GRO enable (ethtool_value) */
+#define VKI_ETHTOOL_SGRO	0x0000002c /* Set GRO enable (ethtool_value) */
+#define VKI_ETHTOOL_RESET	0x00000034 /* Reset hardware */
+#define VKI_ETHTOOL_GSSET_INFO	0x00000037 /* Get string set info */
+#define VKI_ETHTOOL_GFEATURES	0x0000003a /* Get device offload settings */
+#define VKI_ETHTOOL_SFEATURES	0x0000003b /* Change device offload settings */
+#define VKI_ETHTOOL_GCHANNELS	0x0000003c /* Get no of channels */
+#define VKI_ETHTOOL_SCHANNELS	0x0000003d /* Set no of channels */
+#define VKI_ETHTOOL_GET_TS_INFO	0x00000041 /* Get time stamping and PHC info */
+
+//----------------------------------------------------------------------
+// From linux-3.15.8/drivers/staging/android/uapi/ion.h
+//----------------------------------------------------------------------
+
+typedef int vki_ion_user_handle_t;
+
+struct vki_ion_allocation_data {
+        vki_size_t len;
+        vki_size_t align;
+        unsigned int heap_id_mask;
+        unsigned int flags;
+        vki_ion_user_handle_t handle;
+};
+
+struct vki_ion_fd_data {
+        vki_ion_user_handle_t handle;
+        int fd;
+};
+
+struct vki_ion_handle_data {
+        vki_ion_user_handle_t handle;
+};
+
+struct vki_ion_custom_data {
+        unsigned int cmd;
+        unsigned long arg;
+};
+
+#define VKI_ION_IOC_MAGIC   'I'
+
+#define VKI_ION_IOC_ALLOC \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 0, struct vki_ion_allocation_data)
+
+#define VKI_ION_IOC_FREE \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 1, struct vki_ion_handle_data)
+
+#define VKI_ION_IOC_MAP \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 2, struct vki_ion_fd_data)
+
+#define VKI_ION_IOC_SHARE \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 4, struct vki_ion_fd_data)
+
+#define VKI_ION_IOC_IMPORT \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 5, struct vki_ion_fd_data)
+
+#define VKI_ION_IOC_SYNC \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 7, struct vki_ion_fd_data)
+
+#define VKI_ION_IOC_CUSTOM \
+   _VKI_IOWR(VKI_ION_IOC_MAGIC, 6, struct vki_ion_custom_data)
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/lustre/lustre_user.h
+//----------------------------------------------------------------------
+
+struct vki_lu_fid {
+	__vki_u64	f_seq;
+	__vki_u32	f_oid;
+	__vki_u32	f_ver;
+};
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/lustre/lustre_idl.h
+//----------------------------------------------------------------------
+
+struct vki_getinfo_fid2path {
+	struct vki_lu_fid	gf_fid;
+	__vki_u64		gf_recno;
+	__vki_u32		gf_linkno;
+	__vki_u32		gf_pathlen;
+	char			gf_path[0];
+} __attribute__((packed));
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/linux/lustre_lib.h
+//----------------------------------------------------------------------
+
+#define VKI_OBD_IOC_DATA_TYPE               long
+
+//----------------------------------------------------------------------
+// From drivers/staging/lustre/lustre/include/lustre_lib.h
+//----------------------------------------------------------------------
+
+#define VKI_OBD_IOC_FID2PATH \
+           _VKI_IOWR ('f', 150, VKI_OBD_IOC_DATA_TYPE)
+
+struct vki_v4l2_rect {
+	__vki_s32   left;
+	__vki_s32   top;
+	__vki_u32   width;
+	__vki_u32   height;
+};
+
+struct vki_v4l2_fract {
+	__vki_u32   numerator;
+	__vki_u32   denominator;
+};
+
+struct vki_v4l2_capability {
+	__vki_u8	driver[16];
+	__vki_u8	card[32];
+	__vki_u8	bus_info[32];
+	__vki_u32   version;
+	__vki_u32	capabilities;
+	__vki_u32	device_caps;
+	__vki_u32	reserved[3];
+};
+
+struct vki_v4l2_pix_format {
+	__vki_u32         		width;
+	__vki_u32			height;
+	__vki_u32			pixelformat;
+	__vki_u32			field;		/* enum vki_v4l2_field */
+	__vki_u32            	bytesperline;	/* for padding, zero if unused */
+	__vki_u32          		sizeimage;
+	__vki_u32			colorspace;	/* enum vki_v4l2_colorspace */
+	__vki_u32			priv;		/* private data, depends on pixelformat */
+	__vki_u32			flags;		/* format flags (VKI_V4L2_PIX_FMT_FLAG_*) */
+};
+
+struct vki_v4l2_fmtdesc {
+	__vki_u32		    index;             /* Format number      */
+	__vki_u32		    type;              /* enum vki_v4l2_buf_type */
+	__vki_u32               flags;
+	__vki_u8		    description[32];   /* Description string */
+	__vki_u32		    pixelformat;       /* Format fourcc      */
+	__vki_u32		    reserved[4];
+};
+
+struct vki_v4l2_frmsize_discrete {
+	__vki_u32			width;		/* Frame width [pixel] */
+	__vki_u32			height;		/* Frame height [pixel] */
+};
+
+struct vki_v4l2_frmsize_stepwise {
+	__vki_u32			min_width;	/* Minimum frame width [pixel] */
+	__vki_u32			max_width;	/* Maximum frame width [pixel] */
+	__vki_u32			step_width;	/* Frame width step size [pixel] */
+	__vki_u32			min_height;	/* Minimum frame height [pixel] */
+	__vki_u32			max_height;	/* Maximum frame height [pixel] */
+	__vki_u32			step_height;	/* Frame height step size [pixel] */
+};
+
+struct vki_v4l2_frmsizeenum {
+	__vki_u32			index;		/* Frame size number */
+	__vki_u32			pixel_format;	/* Pixel format */
+	__vki_u32			type;		/* Frame size type the device supports. */
+
+	union {					/* Frame size */
+		struct vki_v4l2_frmsize_discrete	discrete;
+		struct vki_v4l2_frmsize_stepwise	stepwise;
+	};
+
+	__vki_u32   reserved[2];			/* Reserved space for future use */
+};
+
+struct vki_v4l2_frmival_stepwise {
+	struct vki_v4l2_fract	min;
+	struct vki_v4l2_fract	max;
+	struct vki_v4l2_fract	step;
+};
+
+struct vki_v4l2_frmivalenum {
+	__vki_u32			index;
+	__vki_u32			pixel_format;
+	__vki_u32			width;
+	__vki_u32			height;
+	__vki_u32			type;
+
+	union {
+		struct vki_v4l2_fract		discrete;
+		struct vki_v4l2_frmival_stepwise	stepwise;
+	};
+
+	__vki_u32	reserved[2];
+};
+
+struct vki_v4l2_timecode {
+	__vki_u32	type;
+	__vki_u32	flags;
+	__vki_u8	frames;
+	__vki_u8	seconds;
+	__vki_u8	minutes;
+	__vki_u8	hours;
+	__vki_u8	userbits[4];
+};
+
+struct vki_v4l2_jpegcompression {
+	int quality;
+	int  APPn;
+	int  APP_len;
+	char APP_data[60];
+	int  COM_len;
+	char COM_data[60];
+	__vki_u32 jpeg_markers;
+};
+
+struct vki_v4l2_requestbuffers {
+	__vki_u32			count;
+	__vki_u32			type;
+	__vki_u32			memory;
+	__vki_u32			reserved[2];
+};
+
+struct vki_v4l2_plane {
+	__vki_u32			bytesused;
+	__vki_u32			length;
+	union {
+		__vki_u32		mem_offset;
+		unsigned long	userptr;
+		__vki_s32		fd;
+	} m;
+	__vki_u32			data_offset;
+	__vki_u32			reserved[11];
+};
+
+#define VKI_V4L2_MEMORY_MMAP             1
+#define VKI_V4L2_MEMORY_DMABUF           4
+#define VKI_V4L2_BUF_FLAG_TIMESTAMP_MASK		0x0000e000
+#define VKI_V4L2_BUF_FLAG_TIMESTAMP_COPY		0x00004000
+struct vki_v4l2_buffer {
+	__vki_u32			index;
+	__vki_u32			type;
+	__vki_u32			bytesused;
+	__vki_u32			flags;
+	__vki_u32			field;
+	struct vki_timeval		timestamp;
+	struct vki_v4l2_timecode	timecode;
+	__vki_u32			sequence;
+
+	/* memory location */
+	__vki_u32			memory;
+	union {
+		__vki_u32           offset;
+		unsigned long   userptr;
+		struct vki_v4l2_plane *planes;
+		__vki_s32		fd;
+	} m;
+	__vki_u32			length;
+	__vki_u32			reserved2;
+	__vki_u32			reserved;
+};
+
+struct vki_v4l2_exportbuffer {
+	__vki_u32		type; /* enum vki_v4l2_buf_type */
+	__vki_u32		index;
+	__vki_u32		plane;
+	__vki_u32		flags;
+	__vki_s32		fd;
+	__vki_u32		reserved[11];
+};
+
+struct vki_v4l2_framebuffer {
+	__vki_u32			capability;
+	__vki_u32			flags;
+	void                    *base;
+	struct {
+		__vki_u32		width;
+		__vki_u32		height;
+		__vki_u32		pixelformat;
+		__vki_u32		field;		/* enum vki_v4l2_field */
+		__vki_u32		bytesperline;	/* for padding, zero if unused */
+		__vki_u32		sizeimage;
+		__vki_u32		colorspace;	/* enum vki_v4l2_colorspace */
+		__vki_u32		priv;		/* reserved field, set to 0 */
+	} fmt;
+};
+
+struct vki_v4l2_clip {
+	struct vki_v4l2_rect        c;
+	struct vki_v4l2_clip	__user *next;
+};
+
+struct vki_v4l2_window {
+	struct vki_v4l2_rect        w;
+	__vki_u32			field;	 /* enum vki_v4l2_field */
+	__vki_u32			chromakey;
+	struct vki_v4l2_clip	__user *clips;
+	__vki_u32			clipcount;
+	void			__user *bitmap;
+	__vki_u8                    global_alpha;
+};
+
+struct vki_v4l2_captureparm {
+	__vki_u32		   capability;	  /*  Supported modes */
+	__vki_u32		   capturemode;	  /*  Current mode */
+	struct vki_v4l2_fract  timeperframe;  /*  Time per frame in seconds */
+	__vki_u32		   extendedmode;  /*  Driver-specific extensions */
+	__vki_u32              readbuffers;   /*  # of buffers for read */
+	__vki_u32		   reserved[4];
+};
+
+struct vki_v4l2_outputparm {
+	__vki_u32		   capability;	 /*  Supported modes */
+	__vki_u32		   outputmode;	 /*  Current mode */
+	struct vki_v4l2_fract  timeperframe; /*  Time per frame in seconds */
+	__vki_u32		   extendedmode; /*  Driver-specific extensions */
+	__vki_u32              writebuffers; /*  # of buffers for write */
+	__vki_u32		   reserved[4];
+};
+
+struct vki_v4l2_cropcap {
+	__vki_u32			type;	/* enum vki_v4l2_buf_type */
+	struct vki_v4l2_rect        bounds;
+	struct vki_v4l2_rect        defrect;
+	struct vki_v4l2_fract       pixelaspect;
+};
+
+struct vki_v4l2_crop {
+	__vki_u32			type;	/* enum vki_v4l2_buf_type */
+	struct vki_v4l2_rect        c;
+};
+
+struct vki_v4l2_selection {
+	__vki_u32			type;
+	__vki_u32			target;
+	__vki_u32                   flags;
+	struct vki_v4l2_rect        r;
+	__vki_u32                   reserved[9];
+};
+
+typedef __vki_u64 vki_v4l2_std_id;
+
+struct vki_v4l2_standard {
+	__vki_u32		     index;
+	vki_v4l2_std_id          id;
+	__vki_u8		     name[24];
+	struct vki_v4l2_fract    frameperiod; /* Frames, not fields */
+	__vki_u32		     framelines;
+	__vki_u32		     reserved[4];
+};
+
+struct vki_v4l2_bt_timings {
+	__vki_u32	width;
+	__vki_u32	height;
+	__vki_u32	interlaced;
+	__vki_u32	polarities;
+	__vki_u64	pixelclock;
+	__vki_u32	hfrontporch;
+	__vki_u32	hsync;
+	__vki_u32	hbackporch;
+	__vki_u32	vfrontporch;
+	__vki_u32	vsync;
+	__vki_u32	vbackporch;
+	__vki_u32	il_vfrontporch;
+	__vki_u32	il_vsync;
+	__vki_u32	il_vbackporch;
+	__vki_u32	standards;
+	__vki_u32	flags;
+	__vki_u32	reserved[14];
+} __attribute__ ((packed));
+
+struct vki_v4l2_dv_timings {
+	__vki_u32 type;
+	union {
+		struct vki_v4l2_bt_timings	bt;
+		__vki_u32	reserved[32];
+	};
+} __attribute__ ((packed));
+
+struct vki_v4l2_enum_dv_timings {
+	__vki_u32 index;
+	__vki_u32 pad;
+	__vki_u32 reserved[2];
+	struct vki_v4l2_dv_timings timings;
+};
+
+struct vki_v4l2_bt_timings_cap {
+	__vki_u32	min_width;
+	__vki_u32	max_width;
+	__vki_u32	min_height;
+	__vki_u32	max_height;
+	__vki_u64	min_pixelclock;
+	__vki_u64	max_pixelclock;
+	__vki_u32	standards;
+	__vki_u32	capabilities;
+	__vki_u32	reserved[16];
+} __attribute__ ((packed));
+
+struct vki_v4l2_dv_timings_cap {
+	__vki_u32 type;
+	__vki_u32 pad;
+	__vki_u32 reserved[2];
+	union {
+		struct vki_v4l2_bt_timings_cap bt;
+		__vki_u32 raw_data[32];
+	};
+};
+
+struct vki_v4l2_input {
+	__vki_u32	     index;		/*  Which input */
+	__vki_u8	     name[32];		/*  Label */
+	__vki_u32	     type;		/*  Type of input */
+	__vki_u32	     audioset;		/*  Associated audios (bitfield) */
+	__vki_u32        tuner;             /*  enum vki_v4l2_tuner_type */
+	vki_v4l2_std_id  std;
+	__vki_u32	     status;
+	__vki_u32	     capabilities;
+	__vki_u32	     reserved[3];
+};
+
+struct vki_v4l2_output {
+	__vki_u32	     index;		/*  Which output */
+	__vki_u8	     name[32];		/*  Label */
+	__vki_u32	     type;		/*  Type of output */
+	__vki_u32	     audioset;		/*  Associated audios (bitfield) */
+	__vki_u32	     modulator;         /*  Associated modulator */
+	vki_v4l2_std_id  std;
+	__vki_u32	     capabilities;
+	__vki_u32	     reserved[3];
+};
+
+struct vki_v4l2_control {
+	__vki_u32		     id;
+	__vki_s32		     value;
+};
+
+struct vki_v4l2_ext_control {
+	__vki_u32 id;
+	__vki_u32 size;
+	__vki_u32 reserved2[1];
+	union {
+		__vki_s32 value;
+		__vki_s64 value64;
+		char *string;
+		__vki_u8 *p_u8;
+		__vki_u16 *p_u16;
+		__vki_u32 *p_u32;
+		void *ptr;
+	};
+} __attribute__ ((packed));
+
+struct vki_v4l2_ext_controls {
+	__vki_u32 ctrl_class;
+	__vki_u32 count;
+	__vki_u32 error_idx;
+	__vki_u32 reserved[2];
+	struct vki_v4l2_ext_control *controls;
+};
+
+struct vki_v4l2_queryctrl {
+	__vki_u32		     id;
+	__vki_u32		     type;	/* enum vki_v4l2_ctrl_type */
+	__vki_u8		     name[32];	/* Whatever */
+	__vki_s32		     minimum;	/* Note signedness */
+	__vki_s32		     maximum;
+	__vki_s32		     step;
+	__vki_s32		     default_value;
+	__vki_u32                flags;
+	__vki_u32		     reserved[2];
+};
+
+#define VKI_V4L2_CTRL_MAX_DIMS	  (4)
+struct vki_v4l2_query_ext_ctrl {
+	__vki_u32		     id;
+	__vki_u32		     type;
+	char		     name[32];
+	__vki_s64		     minimum;
+	__vki_s64		     maximum;
+	__vki_u64		     step;
+	__vki_s64		     default_value;
+	__vki_u32                flags;
+	__vki_u32                elem_size;
+	__vki_u32                elems;
+	__vki_u32                nr_of_dims;
+	__vki_u32                dims[VKI_V4L2_CTRL_MAX_DIMS];
+	__vki_u32		     reserved[32];
+};
+
+struct vki_v4l2_querymenu {
+	__vki_u32		id;
+	__vki_u32		index;
+	union {
+		__vki_u8	name[32];	/* Whatever */
+		__vki_s64	value;
+	};
+	__vki_u32		reserved;
+} __attribute__ ((packed));
+
+struct vki_v4l2_tuner {
+	__vki_u32                   index;
+	__vki_u8			name[32];
+	__vki_u32			type;	/* enum vki_v4l2_tuner_type */
+	__vki_u32			capability;
+	__vki_u32			rangelow;
+	__vki_u32			rangehigh;
+	__vki_u32			rxsubchans;
+	__vki_u32			audmode;
+	__vki_s32			signal;
+	__vki_s32			afc;
+	__vki_u32			reserved[4];
+};
+
+struct vki_v4l2_modulator {
+	__vki_u32			index;
+	__vki_u8			name[32];
+	__vki_u32			capability;
+	__vki_u32			rangelow;
+	__vki_u32			rangehigh;
+	__vki_u32			txsubchans;
+	__vki_u32			reserved[4];
+};
+
+struct vki_v4l2_frequency {
+	__vki_u32	tuner;
+	__vki_u32	type;	/* enum vki_v4l2_tuner_type */
+	__vki_u32	frequency;
+	__vki_u32	reserved[8];
+};
+
+struct vki_v4l2_frequency_band {
+	__vki_u32	tuner;
+	__vki_u32	type;	/* enum vki_v4l2_tuner_type */
+	__vki_u32	index;
+	__vki_u32	capability;
+	__vki_u32	rangelow;
+	__vki_u32	rangehigh;
+	__vki_u32	modulation;
+	__vki_u32	reserved[9];
+};
+
+struct vki_v4l2_hw_freq_seek {
+	__vki_u32	tuner;
+	__vki_u32	type;	/* enum vki_v4l2_tuner_type */
+	__vki_u32	seek_upward;
+	__vki_u32	wrap_around;
+	__vki_u32	spacing;
+	__vki_u32	rangelow;
+	__vki_u32	rangehigh;
+	__vki_u32	reserved[5];
+};
+
+struct vki_v4l2_audio {
+	__vki_u32	index;
+	__vki_u8	name[32];
+	__vki_u32	capability;
+	__vki_u32	mode;
+	__vki_u32	reserved[2];
+};
+
+struct vki_v4l2_audioout {
+	__vki_u32	index;
+	__vki_u8	name[32];
+	__vki_u32	capability;
+	__vki_u32	mode;
+	__vki_u32	reserved[2];
+};
+
+struct vki_v4l2_enc_idx_entry {
+	__vki_u64 offset;
+	__vki_u64 pts;
+	__vki_u32 length;
+	__vki_u32 flags;
+	__vki_u32 reserved[2];
+};
+
+#define VKI_V4L2_ENC_IDX_ENTRIES (64)
+struct vki_v4l2_enc_idx {
+	__vki_u32 entries;
+	__vki_u32 entries_cap;
+	__vki_u32 reserved[4];
+	struct vki_v4l2_enc_idx_entry entry[VKI_V4L2_ENC_IDX_ENTRIES];
+};
+
+struct vki_v4l2_encoder_cmd {
+	__vki_u32 cmd;
+	__vki_u32 flags;
+	union {
+		struct {
+			__vki_u32 data[8];
+		} raw;
+	};
+};
+
+struct vki_v4l2_decoder_cmd {
+	__vki_u32 cmd;
+	__vki_u32 flags;
+	union {
+		struct {
+			__vki_u64 pts;
+		} stop;
+
+		struct {
+			__vki_s32 speed;
+			__vki_u32 format;
+		} start;
+
+		struct {
+			__vki_u32 data[16];
+		} raw;
+	};
+};
+
+struct vki_v4l2_vbi_format {
+	__vki_u32	sampling_rate;		/* in 1 Hz */
+	__vki_u32	offset;
+	__vki_u32	samples_per_line;
+	__vki_u32	sample_format;		/* VKI_V4L2_PIX_FMT_* */
+	__vki_s32	start[2];
+	__vki_u32	count[2];
+	__vki_u32	flags;			/* VKI_V4L2_VBI_* */
+	__vki_u32	reserved[2];		/* must be zero */
+};
+
+struct vki_v4l2_sliced_vbi_format {
+	__vki_u16   service_set;
+	__vki_u16   service_lines[2][24];
+	__vki_u32   io_size;
+	__vki_u32   reserved[2];            /* must be zero */
+};
+
+struct vki_v4l2_sliced_vbi_cap {
+	__vki_u16   service_set;
+	__vki_u16   service_lines[2][24];
+	__vki_u32	type;		/* enum vki_v4l2_buf_type */
+	__vki_u32   reserved[3];    /* must be 0 */
+};
+
+struct vki_v4l2_sliced_vbi_data {
+	__vki_u32   id;
+	__vki_u32   field;          /* 0: first field, 1: second field */
+	__vki_u32   line;           /* 1-23 */
+	__vki_u32   reserved;       /* must be 0 */
+	__vki_u8    data[48];
+};
+
+struct vki_v4l2_plane_pix_format {
+	__vki_u32		sizeimage;
+	__vki_u16		bytesperline;
+	__vki_u16		reserved[7];
+} __attribute__ ((packed));
+
+#define VKI_VIDEO_MAX_PLANES               8
+
+struct vki_v4l2_pix_format_mplane {
+	__vki_u32				width;
+	__vki_u32				height;
+	__vki_u32				pixelformat;
+	__vki_u32				field;
+	__vki_u32				colorspace;
+
+	struct vki_v4l2_plane_pix_format	plane_fmt[VKI_VIDEO_MAX_PLANES];
+	__vki_u8				num_planes;
+	__vki_u8				flags;
+	__vki_u8				reserved[10];
+} __attribute__ ((packed));
+
+struct vki_v4l2_sdr_format {
+	__vki_u32				pixelformat;
+	__vki_u32				buffersize;
+	__vki_u8				reserved[24];
+} __attribute__ ((packed));
+
+enum vki_v4l2_buf_type {
+	VKI_V4L2_BUF_TYPE_VIDEO_CAPTURE        = 1,
+	VKI_V4L2_BUF_TYPE_VIDEO_OUTPUT         = 2,
+	VKI_V4L2_BUF_TYPE_VIDEO_OVERLAY        = 3,
+	VKI_V4L2_BUF_TYPE_VBI_CAPTURE          = 4,
+	VKI_V4L2_BUF_TYPE_VBI_OUTPUT           = 5,
+	VKI_V4L2_BUF_TYPE_SLICED_VBI_CAPTURE   = 6,
+	VKI_V4L2_BUF_TYPE_SLICED_VBI_OUTPUT    = 7,
+	VKI_V4L2_BUF_TYPE_VIDEO_OUTPUT_OVERLAY = 8,
+	VKI_V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE = 9,
+	VKI_V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE  = 10,
+	VKI_V4L2_BUF_TYPE_SDR_CAPTURE          = 11,
+};
+
+struct vki_v4l2_format {
+	__vki_u32	 type;
+	union {
+		struct vki_v4l2_pix_format		pix;
+		struct vki_v4l2_pix_format_mplane	pix_mp;
+		struct vki_v4l2_window		win;
+		struct vki_v4l2_vbi_format		vbi;
+		struct vki_v4l2_sliced_vbi_format	sliced;
+		struct vki_v4l2_sdr_format		sdr;
+		__vki_u8	raw_data[200];
+	} fmt;
+};
+
+struct vki_v4l2_streamparm {
+	__vki_u32	 type;
+	union {
+		struct vki_v4l2_captureparm	capture;
+		struct vki_v4l2_outputparm	output;
+		__vki_u8	raw_data[200];  /* user-defined */
+	} parm;
+};
+
+struct vki_v4l2_event_vsync {
+	__vki_u8 field;
+} __attribute__ ((packed));
+
+struct vki_v4l2_event_ctrl {
+	__vki_u32 changes;
+	__vki_u32 type;
+	union {
+		__vki_s32 value;
+		__vki_s64 value64;
+	};
+	__vki_u32 flags;
+	__vki_s32 minimum;
+	__vki_s32 maximum;
+	__vki_s32 step;
+	__vki_s32 default_value;
+};
+
+struct vki_v4l2_event_frame_sync {
+	__vki_u32 frame_sequence;
+};
+
+struct vki_v4l2_event_src_change {
+	__vki_u32 changes;
+};
+
+struct vki_v4l2_event_motion_det {
+	__vki_u32 flags;
+	__vki_u32 frame_sequence;
+	__vki_u32 region_mask;
+};
+
+struct vki_v4l2_event {
+	__vki_u32				type;
+	union {
+		struct vki_v4l2_event_vsync		vsync;
+		struct vki_v4l2_event_ctrl		ctrl;
+		struct vki_v4l2_event_frame_sync	frame_sync;
+		struct vki_v4l2_event_src_change	src_change;
+		struct vki_v4l2_event_motion_det	motion_det;
+		__vki_u8				data[64];
+	} u;
+	__vki_u32				pending;
+	__vki_u32				sequence;
+	struct vki_timespec			timestamp;
+	__vki_u32				id;
+	__vki_u32				reserved[8];
+};
+
+struct vki_v4l2_event_subscription {
+	__vki_u32				type;
+	__vki_u32				id;
+	__vki_u32				flags;
+	__vki_u32				reserved[5];
+};
+
+struct vki_v4l2_dbg_match {
+	__vki_u32 type; /* Match type */
+	union {     /* Match this chip, meaning determined by type */
+		__vki_u32 addr;
+		char name[32];
+	};
+} __attribute__ ((packed));
+
+struct vki_v4l2_dbg_register {
+	struct vki_v4l2_dbg_match match;
+	__vki_u32 size;	/* register size in bytes */
+	__vki_u64 reg;
+	__vki_u64 val;
+} __attribute__ ((packed));
+
+struct vki_v4l2_dbg_chip_info {
+	struct vki_v4l2_dbg_match match;
+	char name[32];
+	__vki_u32 flags;
+	__vki_u32 reserved[32];
+} __attribute__ ((packed));
+
+struct vki_v4l2_create_buffers {
+	__vki_u32			index;
+	__vki_u32			count;
+	__vki_u32			memory;
+	struct vki_v4l2_format	format;
+	__vki_u32			reserved[8];
+};
+
+struct vki_v4l2_edid {
+	__vki_u32 pad;
+	__vki_u32 start_block;
+	__vki_u32 blocks;
+	__vki_u32 reserved[5];
+	__vki_u8  *edid;
+};
+
+#define VKI_V4L2_QUERYCAP		_VKI_IOR('V',  0, struct vki_v4l2_capability)
+#define VKI_V4L2_ENUM_FMT		_VKI_IOWR('V',  2, struct vki_v4l2_fmtdesc)
+#define VKI_V4L2_G_FMT			_VKI_IOWR('V',  4, struct vki_v4l2_format)
+#define VKI_V4L2_S_FMT			_VKI_IOWR('V',  5, struct vki_v4l2_format)
+#define VKI_V4L2_REQBUFS		_VKI_IOWR('V',  8, struct vki_v4l2_requestbuffers)
+#define VKI_V4L2_QUERYBUF		_VKI_IOWR('V',  9, struct vki_v4l2_buffer)
+#define VKI_V4L2_G_FBUF		 	_VKI_IOR('V', 10, struct vki_v4l2_framebuffer)
+#define VKI_V4L2_S_FBUF		 	_VKI_IOW('V', 11, struct vki_v4l2_framebuffer)
+#define VKI_V4L2_OVERLAY	 	_VKI_IOW('V', 14, int)
+#define VKI_V4L2_QBUF			_VKI_IOWR('V', 15, struct vki_v4l2_buffer)
+#define VKI_V4L2_EXPBUF			_VKI_IOWR('V', 16, struct vki_v4l2_exportbuffer)
+#define VKI_V4L2_DQBUF			_VKI_IOWR('V', 17, struct vki_v4l2_buffer)
+#define VKI_V4L2_STREAMON	 	_VKI_IOW('V', 18, int)
+#define VKI_V4L2_STREAMOFF	 	_VKI_IOW('V', 19, int)
+#define VKI_V4L2_G_PARM			_VKI_IOWR('V', 21, struct vki_v4l2_streamparm)
+#define VKI_V4L2_S_PARM			_VKI_IOWR('V', 22, struct vki_v4l2_streamparm)
+#define VKI_V4L2_G_STD			_VKI_IOR('V', 23, vki_v4l2_std_id)
+#define VKI_V4L2_S_STD			_VKI_IOW('V', 24, vki_v4l2_std_id)
+#define VKI_V4L2_ENUMSTD		_VKI_IOWR('V', 25, struct vki_v4l2_standard)
+#define VKI_V4L2_ENUMINPUT		_VKI_IOWR('V', 26, struct vki_v4l2_input)
+#define VKI_V4L2_G_CTRL			_VKI_IOWR('V', 27, struct vki_v4l2_control)
+#define VKI_V4L2_S_CTRL			_VKI_IOWR('V', 28, struct vki_v4l2_control)
+#define VKI_V4L2_G_TUNER		_VKI_IOWR('V', 29, struct vki_v4l2_tuner)
+#define VKI_V4L2_S_TUNER		_VKI_IOW('V', 30, struct vki_v4l2_tuner)
+#define VKI_V4L2_G_AUDIO		_VKI_IOR('V', 33, struct vki_v4l2_audio)
+#define VKI_V4L2_S_AUDIO		_VKI_IOW('V', 34, struct vki_v4l2_audio)
+#define VKI_V4L2_QUERYCTRL		_VKI_IOWR('V', 36, struct vki_v4l2_queryctrl)
+#define VKI_V4L2_QUERYMENU		_VKI_IOWR('V', 37, struct vki_v4l2_querymenu)
+#define VKI_V4L2_G_INPUT		_VKI_IOR('V', 38, int)
+#define VKI_V4L2_S_INPUT		_VKI_IOWR('V', 39, int)
+#define VKI_V4L2_G_EDID			_VKI_IOWR('V', 40, struct vki_v4l2_edid)
+#define VKI_V4L2_S_EDID			_VKI_IOWR('V', 41, struct vki_v4l2_edid)
+#define VKI_V4L2_G_OUTPUT		_VKI_IOR('V', 46, int)
+#define VKI_V4L2_S_OUTPUT		_VKI_IOWR('V', 47, int)
+#define VKI_V4L2_ENUMOUTPUT		_VKI_IOWR('V', 48, struct vki_v4l2_output)
+#define VKI_V4L2_G_AUDOUT		_VKI_IOR('V', 49, struct vki_v4l2_audioout)
+#define VKI_V4L2_S_AUDOUT		_VKI_IOW('V', 50, struct vki_v4l2_audioout)
+#define VKI_V4L2_G_MODULATOR		_VKI_IOWR('V', 54, struct vki_v4l2_modulator)
+#define VKI_V4L2_S_MODULATOR		_VKI_IOW('V', 55, struct vki_v4l2_modulator)
+#define VKI_V4L2_G_FREQUENCY		_VKI_IOWR('V', 56, struct vki_v4l2_frequency)
+#define VKI_V4L2_S_FREQUENCY		_VKI_IOW('V', 57, struct vki_v4l2_frequency)
+#define VKI_V4L2_CROPCAP		_VKI_IOWR('V', 58, struct vki_v4l2_cropcap)
+#define VKI_V4L2_G_CROP			_VKI_IOWR('V', 59, struct vki_v4l2_crop)
+#define VKI_V4L2_S_CROP			_VKI_IOW('V', 60, struct vki_v4l2_crop)
+#define VKI_V4L2_G_JPEGCOMP		_VKI_IOR('V', 61, struct vki_v4l2_jpegcompression)
+#define VKI_V4L2_S_JPEGCOMP		_VKI_IOW('V', 62, struct vki_v4l2_jpegcompression)
+#define VKI_V4L2_QUERYSTD      		_VKI_IOR('V', 63, vki_v4l2_std_id)
+#define VKI_V4L2_TRY_FMT      		_VKI_IOWR('V', 64, struct vki_v4l2_format)
+#define VKI_V4L2_ENUMAUDIO		_VKI_IOWR('V', 65, struct vki_v4l2_audio)
+#define VKI_V4L2_ENUMAUDOUT		_VKI_IOWR('V', 66, struct vki_v4l2_audioout)
+#define VKI_V4L2_G_PRIORITY		_VKI_IOR('V', 67, __vki_u32)
+#define VKI_V4L2_S_PRIORITY		_VKI_IOW('V', 68, __vki_u32)
+#define VKI_V4L2_G_SLICED_VBI_CAP 	_VKI_IOWR('V', 69, struct vki_v4l2_sliced_vbi_cap)
+#define VKI_V4L2_LOG_STATUS     	_VKI_IO('V', 70)
+#define VKI_V4L2_G_EXT_CTRLS		_VKI_IOWR('V', 71, struct vki_v4l2_ext_controls)
+#define VKI_V4L2_S_EXT_CTRLS		_VKI_IOWR('V', 72, struct vki_v4l2_ext_controls)
+#define VKI_V4L2_TRY_EXT_CTRLS		_VKI_IOWR('V', 73, struct vki_v4l2_ext_controls)
+#define VKI_V4L2_ENUM_FRAMESIZES	_VKI_IOWR('V', 74, struct vki_v4l2_frmsizeenum)
+#define VKI_V4L2_ENUM_FRAMEINTERVALS 	_VKI_IOWR('V', 75, struct vki_v4l2_frmivalenum)
+#define VKI_V4L2_G_ENC_INDEX    	_VKI_IOR('V', 76, struct vki_v4l2_enc_idx)
+#define VKI_V4L2_ENCODER_CMD    	_VKI_IOWR('V', 77, struct vki_v4l2_encoder_cmd)
+#define VKI_V4L2_TRY_ENCODER_CMD 	_VKI_IOWR('V', 78, struct vki_v4l2_encoder_cmd)
+#define	VKI_V4L2_DBG_S_REGISTER 	_VKI_IOW('V', 79, struct vki_v4l2_dbg_register)
+#define	VKI_V4L2_DBG_G_REGISTER 	_VKI_IOWR('V', 80, struct vki_v4l2_dbg_register)
+#define VKI_V4L2_S_HW_FREQ_SEEK		_VKI_IOW('V', 82, struct vki_v4l2_hw_freq_seek)
+#define	VKI_V4L2_S_DV_TIMINGS		_VKI_IOWR('V', 87, struct vki_v4l2_dv_timings)
+#define	VKI_V4L2_G_DV_TIMINGS		_VKI_IOWR('V', 88, struct vki_v4l2_dv_timings)
+#define	VKI_V4L2_DQEVENT		_VKI_IOR('V', 89, struct vki_v4l2_event)
+#define	VKI_V4L2_SUBSCRIBE_EVENT	_VKI_IOW('V', 90, struct vki_v4l2_event_subscription)
+#define	VKI_V4L2_UNSUBSCRIBE_EVENT 	_VKI_IOW('V', 91, struct vki_v4l2_event_subscription)
+#define VKI_V4L2_CREATE_BUFS		_VKI_IOWR('V', 92, struct vki_v4l2_create_buffers)
+#define VKI_V4L2_PREPARE_BUF		_VKI_IOWR('V', 93, struct vki_v4l2_buffer)
+#define VKI_V4L2_G_SELECTION		_VKI_IOWR('V', 94, struct vki_v4l2_selection)
+#define VKI_V4L2_S_SELECTION		_VKI_IOWR('V', 95, struct vki_v4l2_selection)
+#define VKI_V4L2_DECODER_CMD		_VKI_IOWR('V', 96, struct vki_v4l2_decoder_cmd)
+#define VKI_V4L2_TRY_DECODER_CMD	_VKI_IOWR('V', 97, struct vki_v4l2_decoder_cmd)
+#define VKI_V4L2_ENUM_DV_TIMINGS 	_VKI_IOWR('V', 98, struct vki_v4l2_enum_dv_timings)
+#define VKI_V4L2_QUERY_DV_TIMINGS 	_VKI_IOR('V', 99, struct vki_v4l2_dv_timings)
+#define VKI_V4L2_DV_TIMINGS_CAP   	_VKI_IOWR('V', 100, struct vki_v4l2_dv_timings_cap)
+#define VKI_V4L2_ENUM_FREQ_BANDS	_VKI_IOWR('V', 101, struct vki_v4l2_frequency_band)
+#define VKI_V4L2_DBG_G_CHIP_INFO 	_VKI_IOWR('V', 102, struct vki_v4l2_dbg_chip_info)
+#define VKI_V4L2_QUERY_EXT_CTRL		_VKI_IOWR('V', 103, struct vki_v4l2_query_ext_ctrl)
+
+struct vki_v4l2_mbus_framefmt {
+	__vki_u32			width;
+	__vki_u32			height;
+	__vki_u32			code;
+	__vki_u32			field;
+	__vki_u32			colorspace;
+	__vki_u32			reserved[7];
+};
+
+struct vki_v4l2_subdev_format {
+	__vki_u32 which;
+	__vki_u32 pad;
+	struct vki_v4l2_mbus_framefmt format;
+	__vki_u32 reserved[8];
+};
+
+struct vki_v4l2_subdev_crop {
+	__vki_u32 which;
+	__vki_u32 pad;
+	struct vki_v4l2_rect rect;
+	__vki_u32 reserved[8];
+};
+
+struct vki_v4l2_subdev_mbus_code_enum {
+	__vki_u32 pad;
+	__vki_u32 index;
+	__vki_u32 code;
+	__vki_u32 reserved[9];
+};
+
+struct vki_v4l2_subdev_frame_size_enum {
+	__vki_u32 index;
+	__vki_u32 pad;
+	__vki_u32 code;
+	__vki_u32 min_width;
+	__vki_u32 max_width;
+	__vki_u32 min_height;
+	__vki_u32 max_height;
+	__vki_u32 reserved[9];
+};
+
+struct vki_v4l2_subdev_frame_interval {
+	__vki_u32 pad;
+	struct vki_v4l2_fract interval;
+	__vki_u32 reserved[9];
+};
+
+struct vki_v4l2_subdev_frame_interval_enum {
+	__vki_u32 index;
+	__vki_u32 pad;
+	__vki_u32 code;
+	__vki_u32 width;
+	__vki_u32 height;
+	struct vki_v4l2_fract interval;
+	__vki_u32 reserved[9];
+};
+
+struct vki_v4l2_subdev_selection {
+	__vki_u32 which;
+	__vki_u32 pad;
+	__vki_u32 target;
+	__vki_u32 flags;
+	struct vki_v4l2_rect r;
+	__vki_u32 reserved[8];
+};
+
+#define VKI_V4L2_SUBDEV_G_FMT			_VKI_IOWR('V',  4, struct vki_v4l2_subdev_format)
+#define VKI_V4L2_SUBDEV_S_FMT			_VKI_IOWR('V',  5, struct vki_v4l2_subdev_format)
+#define VKI_V4L2_SUBDEV_G_FRAME_INTERVAL	_VKI_IOWR('V', 21, struct vki_v4l2_subdev_frame_interval)
+#define VKI_V4L2_SUBDEV_S_FRAME_INTERVAL	_VKI_IOWR('V', 22, struct vki_v4l2_subdev_frame_interval)
+#define VKI_V4L2_SUBDEV_ENUM_MBUS_CODE		_VKI_IOWR('V',  2, struct vki_v4l2_subdev_mbus_code_enum)
+#define VKI_V4L2_SUBDEV_ENUM_FRAME_SIZE		_VKI_IOWR('V', 74, struct vki_v4l2_subdev_frame_size_enum)
+#define VKI_V4L2_SUBDEV_ENUM_FRAME_INTERVAL	_VKI_IOWR('V', 75, struct vki_v4l2_subdev_frame_interval_enum)
+#define VKI_V4L2_SUBDEV_G_CROP			_VKI_IOWR('V', 59, struct vki_v4l2_subdev_crop)
+#define VKI_V4L2_SUBDEV_S_CROP			_VKI_IOWR('V', 60, struct vki_v4l2_subdev_crop)
+#define VKI_V4L2_SUBDEV_G_SELECTION		_VKI_IOWR('V', 61, struct vki_v4l2_subdev_selection)
+#define VKI_V4L2_SUBDEV_S_SELECTION		_VKI_IOWR('V', 62, struct vki_v4l2_subdev_selection)
+
+struct vki_media_device_info {
+	char driver[16];
+	char model[32];
+	char serial[40];
+	char bus_info[32];
+	__vki_u32 media_version;
+	__vki_u32 hw_revision;
+	__vki_u32 driver_version;
+	__vki_u32 reserved[31];
+};
+
+struct vki_media_entity_desc {
+	__vki_u32 id;
+	char name[32];
+	__vki_u32 type;
+	__vki_u32 revision;
+	__vki_u32 flags;
+	__vki_u32 group_id;
+	__vki_u16 pads;
+	__vki_u16 links;
+
+	__vki_u32 reserved[4];
+
+	union {
+		/* Node specifications */
+		struct {
+			__vki_u32 major;
+			__vki_u32 minor;
+		} v4l;
+		struct {
+			__vki_u32 major;
+			__vki_u32 minor;
+		} fb;
+		struct {
+			__vki_u32 card;
+			__vki_u32 device;
+			__vki_u32 subdevice;
+		} alsa;
+		int dvb;
+
+		/* Sub-device specifications */
+		/* Nothing needed yet */
+		__vki_u8 raw[184];
+	};
+};
+
+struct vki_media_pad_desc {
+	__vki_u32 entity;		/* entity ID */
+	__vki_u16 index;		/* pad index */
+	__vki_u32 flags;		/* pad flags */
+	__vki_u32 reserved[2];
+};
+
+struct vki_media_link_desc {
+	struct vki_media_pad_desc source;
+	struct vki_media_pad_desc sink;
+	__vki_u32 flags;
+	__vki_u32 reserved[2];
+};
+
+struct vki_media_links_enum {
+	__vki_u32 entity;
+	struct vki_media_pad_desc __user *pads;
+	struct vki_media_link_desc __user *links;
+	__vki_u32 reserved[4];
+};
+
+#define VKI_MEDIA_IOC_DEVICE_INFO		_VKI_IOWR('|', 0x00, struct vki_media_device_info)
+#define VKI_MEDIA_IOC_ENUM_ENTITIES		_VKI_IOWR('|', 0x01, struct vki_media_entity_desc)
+#define VKI_MEDIA_IOC_ENUM_LINKS		_VKI_IOWR('|', 0x02, struct vki_media_links_enum)
+#define VKI_MEDIA_IOC_SETUP_LINK		_VKI_IOWR('|', 0x03, struct vki_media_link_desc)
+
+/* Comparison type */
+enum vki_kcmp_type {
+   VKI_KCMP_FILE,
+   VKI_KCMP_VM,
+   VKI_KCMP_FILES,
+   VKI_KCMP_FS,
+   VKI_KCMP_SIGHAND,
+   VKI_KCMP_IO,
+   VKI_KCMP_SYSVSEM,
+
+   VKI_KCMP_TYPES
+};
+
 #endif // __VKI_LINUX_H
 
 /*--------------------------------------------------------------------*/

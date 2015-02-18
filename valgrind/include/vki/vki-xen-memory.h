@@ -20,6 +20,7 @@
 #define VKI_XENMEM_get_pod_target       17
 #define VKI_XENMEM_get_sharing_freed_pages    18
 #define VKI_XENMEM_get_sharing_shared_pages   19
+#define VKI_XENMEM_access_op                  21
 #define VKI_XENMEM_claim_pages                24
 
 struct vki_xen_memory_map {
@@ -38,6 +39,39 @@ struct xen_memory_reservation {
     unsigned int   extent_order;
     unsigned int   mem_flags;
     vki_xen_domid_t domid;
+};
+
+struct vki_xen_machphys_mfn_list {
+    unsigned int max_extents; /* IN */
+    VKI_XEN_GUEST_HANDLE(vki_xen_pfn_t) extent_start; /* OUT */
+    unsigned int nr_extents; /* OUT */
+};
+
+struct vki_xen_add_to_physmap {
+    vki_xen_domid_t domid;
+    vki_uint16_t size;
+
+#define VKI_XENMAPSPACE_shared_info  0
+#define VKI_XENMAPSPACE_grant_table  1
+#define VKI_XENMAPSPACE_gmfn         2
+#define VKI_XENMAPSPACE_gmfn_range   3
+#define VKI_XENMAPSPACE_gmfn_foreign 4
+
+    unsigned int space;
+    vki_xen_ulong_t idx;
+    vki_xen_pfn_t gpfn;
+};
+
+struct vki_xen_remove_from_physmap {
+    vki_xen_domid_t domid;
+    vki_xen_pfn_t gpfn;
+};
+
+struct vki_xen_mem_event_op {
+    vki_uint8_t     op;
+    vki_xen_domid_t     domain;
+    vki_uint64_t    buffer;
+    vki_uint64_t    gfn;
 };
 
 #endif // __VKI_XEN_MEMORY_H

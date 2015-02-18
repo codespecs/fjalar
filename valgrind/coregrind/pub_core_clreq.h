@@ -64,7 +64,7 @@ static int VALGRIND_INTERNAL_PRINTF(const char *format, ...)
 static int VALGRIND_INTERNAL_PRINTF(const char *format, ...)
 {
    unsigned long _qzz_res = 0;
-      va_list vargs;
+   va_list vargs;
    va_start(vargs, format);
    VALGRIND_DO_CLIENT_REQUEST(
       _qzz_res, 0, VG_USERREQ__INTERNAL_PRINTF_VALIST_BY_REF,

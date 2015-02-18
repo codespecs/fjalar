@@ -34,6 +34,7 @@
 #include "pub_core_threadstate.h"      // For VG_N_THREADS
 #include "pub_core_debugger.h"
 #include "pub_core_debuginfo.h"
+#include "pub_core_debuglog.h"
 #include "pub_core_errormgr.h"
 #include "pub_core_execontext.h"
 #include "pub_core_gdbserver.h"
@@ -49,6 +50,8 @@
 #include "pub_core_tooliface.h"
 #include "pub_core_translate.h"        // for VG_(translate)()
 #include "pub_core_xarray.h"           // VG_(xaprintf) et al
+
+#define DEBUG_ERRORMGR 0 // set to 1 for heavyweight tracing
 
 /*------------------------------------------------------------*/
 /*--- Globals                                              ---*/
@@ -93,7 +96,7 @@ static UInt n_supp_contexts = 0;
 
 
 /* forwards ... */
-static Supp* is_suppressible_error ( Error* err );
+static Supp* is_suppressible_error ( const Error* err );
 
 static ThreadId last_tid_printed = 1;
 
@@ -144,27 +147,27 @@ struct _Error {
 };
 
 
-ExeContext* VG_(get_error_where) ( Error* err )
+ExeContext* VG_(get_error_where) ( const Error* err )
 {
    return err->where;
 }
 
-ErrorKind VG_(get_error_kind) ( Error* err )
+ErrorKind VG_(get_error_kind) ( const Error* err )
 {
    return err->ekind;
 }
 
-Addr VG_(get_error_address) ( Error* err )
+Addr VG_(get_error_address) ( const Error* err )
 {
    return err->addr;
 }
 
-const HChar* VG_(get_error_string) ( Error* err )
+const HChar* VG_(get_error_string) ( const Error* err )
 {
    return err->string;
 }
 
-void* VG_(get_error_extra)  ( Error* err )
+void* VG_(get_error_extra)  ( const Error* err )
 {
    return err->extra;
 }
@@ -243,17 +246,17 @@ struct _Supp {
    void* extra;      // Anything else -- use is optional.  NULL by default.
 };
 
-SuppKind VG_(get_supp_kind) ( Supp* su )
+SuppKind VG_(get_supp_kind) ( const Supp* su )
 {
    return su->skind;
 }
 
-HChar* VG_(get_supp_string) ( Supp* su )
+HChar* VG_(get_supp_string) ( const Supp* su )
 {
    return su->string;
 }
 
-void* VG_(get_supp_extra)  ( Supp* su )
+void* VG_(get_supp_extra)  ( const Supp* su )
 {
    return su->extra;
 }
@@ -288,7 +291,7 @@ Bool VG_(showing_core_errors)(void)
 
 /* Compare errors, to detect duplicates. 
 */
-static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
+static Bool eq_Error ( VgRes res, const Error* e1, const Error* e2 )
 {
    if (e1->ekind != e2->ekind) 
       return False;
@@ -307,7 +310,7 @@ static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
             VG_(printf)("\nUnhandled error type: %u. VG_(needs).tool_errors\n"
                         "probably needs to be set.\n",
                         e1->ekind);
-            VG_(tool_panic)("unhandled error type");
+            VG_(core_panic)("unhandled error type");
          }
    }
 }
@@ -322,37 +325,43 @@ static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
 
 static void printSuppForIp_XML(UInt n, Addr ip, void* uu_opaque)
 {
-   static HChar buf[ERRTXT_LEN];
-   if ( VG_(get_fnname_no_cxx_demangle) (ip, buf,  ERRTXT_LEN) ) {
-      VG_(printf_xml)("    <sframe> <fun>%pS</fun> </sframe>\n", buf);
-   } else
-   if ( VG_(get_objname)(ip, buf, ERRTXT_LEN) ) {
-      VG_(printf_xml)("    <sframe> <obj>%pS</obj> </sframe>\n", buf);
-   } else {
-      VG_(printf_xml)("    <sframe> <obj>*</obj> </sframe>\n");
-   }
+   const HChar *buf;
+   InlIPCursor* iipc = VG_(new_IIPC)(ip);
+   do {
+      if ( VG_(get_fnname_no_cxx_demangle) (ip, &buf, iipc) ) {
+         VG_(printf_xml)("    <sframe> <fun>%pS</fun> </sframe>\n", buf);
+      } else
+      if ( VG_(get_objname)(ip, &buf) ) {
+         VG_(printf_xml)("    <sframe> <obj>%pS</obj> </sframe>\n", buf);
+      } else {
+         VG_(printf_xml)("    <sframe> <obj>*</obj> </sframe>\n");
+      }
+   } while (VG_(next_IIPC)(iipc));
+   VG_(delete_IIPC)(iipc);
 }
 
 static void printSuppForIp_nonXML(UInt n, Addr ip, void* textV)
 {
-   static HChar buf[ERRTXT_LEN];
+   const HChar *buf;
    XArray* /* of HChar */ text = (XArray*)textV;
-   if ( VG_(get_fnname_no_cxx_demangle) (ip, buf,  ERRTXT_LEN) ) {
-      VG_(xaprintf)(text, "   fun:%s\n", buf);
-   } else
-   if ( VG_(get_objname)(ip, buf, ERRTXT_LEN) ) {
-      VG_(xaprintf)(text, "   obj:%s\n", buf);
-   } else {
-      VG_(xaprintf)(text, "   obj:*\n");
-   }
+   InlIPCursor* iipc = VG_(new_IIPC)(ip);
+   do {
+      if ( VG_(get_fnname_no_cxx_demangle) (ip, &buf, iipc) ) {
+         VG_(xaprintf)(text, "   fun:%s\n", buf);
+      } else
+      if ( VG_(get_objname)(ip, &buf) ) {
+         VG_(xaprintf)(text, "   obj:%s\n", buf);
+      } else {
+         VG_(xaprintf)(text, "   obj:*\n");
+      }
+   } while (VG_(next_IIPC)(iipc));
+   VG_(delete_IIPC)(iipc);
 }
 
 /* Generate a suppression for an error, either in text or XML mode.
 */
-static void gen_suppression(Error* err)
+static void gen_suppression(const Error* err)
 {
-   HChar       xtra[256]; /* assumed big enough (is overrun-safe) */
-   Bool        anyXtra;
    const HChar* name;
    ExeContext* ec;
    XArray* /* HChar */ text;
@@ -377,24 +386,32 @@ static void gen_suppression(Error* err)
       mode.  So generate it into TEXT. */
    text = VG_(newXA)( VG_(malloc), "errormgr.gen_suppression.1",
                       VG_(free), sizeof(HChar) );
-   vg_assert(text);
 
    /* Ok.  Generate the plain text version into TEXT. */
    VG_(xaprintf)(text, "{\n");
    VG_(xaprintf)(text, "   <%s>\n", dummy_name);
    VG_(xaprintf)(text, "   %s:%s\n", VG_(details).name, name);
 
-   VG_(memset)(xtra, 0, sizeof(xtra));
-   anyXtra = VG_TDICT_CALL(tool_get_extra_suppression_info,
-                           err, xtra, sizeof(xtra));
-   vg_assert(xtra[sizeof(xtra)-1] == 0);
+   HChar       *xtra = NULL;
+   SizeT       xtra_size = 0;
+   SizeT       num_written;
 
-   if (anyXtra)
+   do {
+      xtra_size += 256;
+      xtra = VG_(realloc)("errormgr.gen_suppression.2", xtra,xtra_size);
+      num_written = VG_TDICT_CALL(tool_get_extra_suppression_info,
+                                  err, xtra, xtra_size);
+   } while (num_written == xtra_size);  // resize buffer and retry
+
+   // Ensure buffer is properly terminated
+   vg_assert(xtra[num_written] == '\0');
+
+   if (num_written)
       VG_(xaprintf)(text, "   %s\n", xtra);
 
    // Print stack trace elements
    UInt n_ips = VG_(get_ExeContext_n_ips)(ec);
-   tl_assert(n_ips > 0);
+   vg_assert(n_ips > 0);
    if (n_ips > VG_MAX_SUPP_CALLERS)
       n_ips = VG_MAX_SUPP_CALLERS;
    VG_(apply_StackTrace)(printSuppForIp_nonXML,
@@ -422,7 +439,7 @@ static void gen_suppression(Error* err)
       VG_(printf_xml)("    <sname>%s</sname>\n", dummy_name);
       VG_(printf_xml)(
                       "    <skind>%pS:%pS</skind>\n", VG_(details).name, name);
-      if (anyXtra)
+      if (num_written)
          VG_(printf_xml)("    <skaux>%pS</skaux>\n", xtra);
 
       // Print stack trace elements
@@ -444,6 +461,7 @@ static void gen_suppression(Error* err)
    }
 
    VG_(deleteXA)(text);
+   VG_(free)(xtra);
 }
 
 
@@ -503,7 +521,7 @@ Bool VG_(is_action_requested) ( const HChar* action, Bool* clo )
    Note this should not be called in XML mode! 
 */
 static 
-void do_actions_on_error(Error* err, Bool allow_db_attach)
+void do_actions_on_error(const Error* err, Bool allow_db_attach)
 {
    Bool still_noisy = True;
 
@@ -567,7 +585,7 @@ void do_actions_on_error(Error* err, Bool allow_db_attach)
      attach (and detach), and optionally prints a suppression; both
      of these may require user input.
 */
-static void pp_Error ( Error* err, Bool allow_db_attach, Bool xml )
+static void pp_Error ( const Error* err, Bool allow_db_attach, Bool xml )
 {
    /* If this fails, you probably specified your tool's method
       dictionary incorrectly. */
@@ -608,6 +626,8 @@ static void pp_Error ( Error* err, Bool allow_db_attach, Bool xml )
 
    } else {
 
+      if (VG_(clo_error_markers)[0])
+         VG_(umsg)("%s\n", VG_(clo_error_markers)[0]);
       VG_TDICT_CALL( tool_before_pp_Error, err );
 
       if (VG_(tdict).tool_show_ThreadIDs_for_errors
@@ -616,13 +636,15 @@ static void pp_Error ( Error* err, Bool allow_db_attach, Bool xml )
          if (tst->thread_name) {
             VG_(umsg)("Thread %d %s:\n", err->tid, tst->thread_name );
          } else {
-         VG_(umsg)("Thread %d:\n", err->tid );
+            VG_(umsg)("Thread %d:\n", err->tid );
          }
          last_tid_printed = err->tid;
       }
    
       VG_TDICT_CALL( tool_pp_Error, err );
       VG_(umsg)("\n");
+      if (VG_(clo_error_markers)[1])
+         VG_(umsg)("%s\n", VG_(clo_error_markers)[1]);
 
       do_actions_on_error(err, allow_db_attach);
    }
@@ -637,7 +659,7 @@ void construct_error ( Error* err, ThreadId tid, ErrorKind ekind, Addr a,
    /* DO NOT MAKE unique_counter NON-STATIC */
    static UInt unique_counter = 0;
 
-   tl_assert(tid < VG_N_THREADS);
+   vg_assert(tid < VG_N_THREADS);
 
    /* Core-only parts */
    err->unique   = unique_counter++;
@@ -666,7 +688,8 @@ void construct_error ( Error* err, ThreadId tid, ErrorKind ekind, Addr a,
    All detected errors are notified here; this routine decides if/when the
    user should see the error. */
 void VG_(maybe_record_error) ( ThreadId tid, 
-                               ErrorKind ekind, Addr a, const HChar* s, void* extra )
+                               ErrorKind ekind, Addr a, 
+                               const HChar* s, void* extra )
 {
           Error  err;
           Error* p;
@@ -807,9 +830,17 @@ void VG_(maybe_record_error) ( ThreadId tid,
          break;
    }
 
+   /* copy the error string, if there is one.
+      note: if we would have many errors with big strings, using a
+      DedupPoolAlloc for these strings will avoid duplicating
+      such string in each error using it. */
+   if (NULL != p->string) {
+      p->string = VG_(strdup)("errormgr.mre.2", p->string);
+   }
+
    /* copy block pointed to by 'extra', if there is one */
    if (NULL != p->extra && 0 != extra_size) { 
-      void* new_extra = VG_(malloc)("errormgr.mre.2", extra_size);
+      void* new_extra = VG_(malloc)("errormgr.mre.3", extra_size);
       VG_(memcpy)(new_extra, p->extra, extra_size);
       p->extra = new_extra;
    }
@@ -859,7 +890,7 @@ Bool VG_(unique_error) ( ThreadId tid, ErrorKind ekind, Addr a, const HChar* s,
       Then update the 'extra' part with VG_(tdict).tool_update_extra),
       because that can have an affect on whether it's suppressed.  Ignore
       the size return value of VG_(tdict).tool_update_extra, because we're
-      not copying 'extra'. */
+      not copying 'extra'. Similarly, 's' is also not copied. */
    (void)VG_TDICT_CALL(tool_update_extra, &err);
 
    su = is_suppressible_error(&err);
@@ -913,19 +944,30 @@ static Bool show_used_suppressions ( void )
                                  "  </pair>\n",
                                  su->count, su->sname );
       } else {
-         HChar       xtra[256]; /* assumed big enough (is overrun-safe) */
-         Bool        anyXtra;
+         HChar      *xtra = NULL;
+         Int         xtra_size = 0;
+         SizeT       num_written;
          // blank line before the first shown suppression, if any
          if (!any_supp)
             VG_(dmsg)("\n");
-         VG_(memset)(xtra, 0, sizeof(xtra));
-         anyXtra = VG_TDICT_CALL(tool_print_extra_suppression_use,
-                                 su, xtra, sizeof(xtra));
-         vg_assert(xtra[sizeof(xtra)-1] == 0);
+
+         do {
+            xtra_size += 256;
+            xtra = VG_(realloc)("errormgr.sus.1", xtra, xtra_size);
+            num_written = VG_TDICT_CALL(tool_print_extra_suppression_use,
+                                        su, xtra, xtra_size);
+         } while (num_written == xtra_size); // resize buffer and retry
+
+         // Ensure buffer is properly terminated
+         vg_assert(xtra[num_written] == '\0');
+
+         HChar *filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                   su->clo_suppressions_i);
          VG_(dmsg)("used_suppression: %6d %s %s:%d%s%s\n", su->count, su->sname,
-                   VG_(clo_suppressions)[su->clo_suppressions_i],
+                   filename,
                    su->sname_lineno,
-                   anyXtra ? " " : "", xtra);
+                   num_written ? " " : "", xtra);
+         VG_(free)(xtra);
       }
       any_supp = True;
    }
@@ -980,7 +1022,7 @@ void VG_(show_all_errors) (  Int verbosity, Bool xml )
          }
       }
       // XXX: this isn't right.  See bug 203651.
-      if (p_min == NULL) continue; //VG_(tool_panic)("show_all_errors()");
+      if (p_min == NULL) continue; //VG_(core_panic)("show_all_errors()");
 
       VG_(umsg)("\n");
       VG_(umsg)("%d errors in context %d of %d:\n",
@@ -1005,7 +1047,7 @@ void VG_(show_all_errors) (  Int verbosity, Bool xml )
    for (p = errors; p != NULL; p = p->next) {
       if (p->count >= (1 << 30))
          p->count = p->count - (1 << 30);
-   } 
+   }
 
 
    any_supp = show_used_suppressions();
@@ -1064,18 +1106,18 @@ static Int get_char ( Int fd, HChar* out_buf )
    static HChar buf[256];
    static Int buf_size = 0;
    static Int buf_used = 0;
-   vg_assert(buf_size >= 0 && buf_size <= 256);
+   vg_assert(buf_size >= 0 && buf_size <= sizeof buf);
    vg_assert(buf_used >= 0 && buf_used <= buf_size);
    if (buf_used == buf_size) {
-      r = VG_(read)(fd, buf, 256);
+      r = VG_(read)(fd, buf, sizeof buf);
       if (r < 0) return r; /* read failed */
-      vg_assert(r >= 0 && r <= 256);
+      vg_assert(r >= 0 && r <= sizeof buf);
       buf_size = r;
       buf_used = 0;
    }
    if (buf_size == 0)
      return 0; /* eof */
-   vg_assert(buf_size >= 0 && buf_size <= 256);
+   vg_assert(buf_size >= 0 && buf_size <= sizeof buf);
    vg_assert(buf_used >= 0 && buf_used < buf_size);
    *out_buf = buf[buf_used];
    buf_used++;
@@ -1099,7 +1141,7 @@ static Bool get_nbnc_line ( Int fd, HChar** bufpp, SizeT* nBufp, Int* lineno )
       while (True) {
          n = get_char(fd, &ch);
          if (n == 1 && !VG_(isspace)(ch)) break;
-         if (n == 1 && ch == '\n' && lineno)
+         if (n == 1 && ch == '\n')
             (*lineno)++;
          if (n <= 0) return True;
       }
@@ -1110,7 +1152,7 @@ static Bool get_nbnc_line ( Int fd, HChar** bufpp, SizeT* nBufp, Int* lineno )
       while (True) {
          n = get_char(fd, &ch);
          if (n <= 0) return False; /* the next call will return True */
-         if (ch == '\n' && lineno)
+         if (ch == '\n')
             (*lineno)++;
          if (ch == '\n') break;
          if (i > 0 && i == nBuf-1) {
@@ -1135,7 +1177,7 @@ static Bool get_nbnc_line ( Int fd, HChar** bufpp, SizeT* nBufp, Int* lineno )
 }
 
 // True if buf starts with fun: or obj: or is ...
-static Bool is_location_line (HChar* buf)
+static Bool is_location_line (const HChar* buf)
 {
    return VG_(strncmp)(buf, "fun:", 4) == 0
       || VG_(strncmp)(buf, "obj:", 4) == 0
@@ -1175,18 +1217,16 @@ static Bool is_simple_str (const HChar *s)
    after the descriptor (fun: or obj:) part.
    Returns False if failed.
 */
-static Bool setLocationTy ( SuppLoc* p, HChar *buf )
+static Bool setLocationTy ( SuppLoc* p, const HChar *buf )
 {
    if (VG_(strncmp)(buf, "fun:", 4) == 0) {
-      p->name = VG_(arena_strdup)(VG_AR_CORE,
-                                  "errormgr.sLTy.1", buf+4);
+      p->name = VG_(strdup)("errormgr.sLTy.1", buf+4);
       p->name_is_simple_str = is_simple_str (p->name);
       p->ty = FunName;
       return True;
    }
    if (VG_(strncmp)(buf, "obj:", 4) == 0) {
-      p->name = VG_(arena_strdup)(VG_AR_CORE,
-                                  "errormgr.sLTy.2", buf+4);
+      p->name = VG_(strdup)("errormgr.sLTy.2", buf+4);
       p->name_is_simple_str = is_simple_str (p->name);
       p->ty = ObjName;
       return True;
@@ -1204,7 +1244,7 @@ static Bool setLocationTy ( SuppLoc* p, HChar *buf )
 
 
 /* Look for "tool" in a string like "tool1,tool2,tool3" */
-static Bool tool_name_present(const HChar *name, HChar *names)
+static Bool tool_name_present(const HChar *name, const HChar *names)
 {
    Bool  found;
    HChar *s = NULL;   /* Shut gcc up */
@@ -1225,7 +1265,8 @@ static Bool tool_name_present(const HChar *name, HChar *names)
 */
 static void load_one_suppressions_file ( Int clo_suppressions_i )
 {
-   const HChar* filename = VG_(clo_suppressions)[clo_suppressions_i];
+   const HChar* filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                   clo_suppressions_i);
    SysRes sres;
    Int    fd, i, j, lineno = 0;
    Bool   got_a_location_line_read_by_tool;
@@ -1260,8 +1301,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
    while (True) {
       /* Assign and initialise the two suppression halves (core and tool) */
       Supp* supp;
-      supp        = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.1",
-                                      sizeof(Supp));
+      supp        = VG_(malloc)("errormgr.losf.1", sizeof(Supp));
       supp->count = 0;
 
       // Initialise temporary reading-in buffer.
@@ -1275,7 +1315,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       eof = get_nbnc_line ( fd, &buf, &nBuf, &lineno );
       if (eof) {
-         VG_(arena_free)(VG_AR_CORE, supp);
+         VG_(free)(supp);
          break;
       }
 
@@ -1285,7 +1325,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       if (eof || VG_STREQ(buf, "}")) BOMB("unexpected '}'");
 
-      supp->sname = VG_(arena_strdup)(VG_AR_CORE, "errormgr.losf.2", buf);
+      supp->sname = VG_(strdup)("errormgr.losf.2", buf);
       supp->clo_suppressions_i = clo_suppressions_i;
       supp->sname_lineno = lineno;
 
@@ -1332,8 +1372,8 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
             if (VG_STREQ(buf, "}"))
                break;
          }
-         VG_(arena_free)(VG_AR_CORE, supp->sname);
-         VG_(arena_free)(VG_AR_CORE, supp);
+         VG_(free)(supp->sname);
+         VG_(free)(supp);
          continue;
       }
 
@@ -1402,8 +1442,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       // Copy tmp_callers[] into supp->callers[]
       supp->n_callers = i;
-      supp->callers = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.4",
-                                        i*sizeof(SuppLoc));
+      supp->callers = VG_(malloc)("errormgr.losf.4", i * sizeof(SuppLoc));
       for (i = 0; i < supp->n_callers; i++) {
          supp->callers[i] = tmp_callers[i];
       }
@@ -1434,10 +1473,10 @@ void VG_(load_suppressions) ( void )
 {
    Int i;
    suppressions = NULL;
-   for (i = 0; i < VG_(clo_n_suppressions); i++) {
+   for (i = 0; i < VG_(sizeXA)(VG_(clo_suppressions)); i++) {
       if (VG_(clo_verbosity) > 1) {
          VG_(dmsg)("Reading suppressions file: %s\n", 
-                   VG_(clo_suppressions)[i] );
+                   *(HChar**) VG_(indexXA)(VG_(clo_suppressions), i));
       }
       load_one_suppressions_file( i );
    }
@@ -1472,6 +1511,8 @@ static Bool supploc_IsQuery ( const void* supplocV )
    with the IP function name or with the IP object name.
    First time the fun or obj name is needed for an IP member
    of a stack trace, it will be computed and stored in names.
+   Also, if the IP corresponds to one or more inlined function calls,
+   the inlined function names are expanded.
    The IPtoFunOrObjCompleter type is designed to minimise the nr of
    allocations and the nr of debuginfo search. */
 typedef
@@ -1479,13 +1520,50 @@ typedef
       StackTrace ips; // stack trace we are lazily completing.
       UWord n_ips; // nr of elements in ips.
 
+      // VG_(generic_match) calls haveInputInpC to check
+      // for the presence of an input element identified by ixInput
+      // (i.e. a number that identifies the ixInput element of the
+      // input sequence). It calls supp_pattEQinp to match this input
+      // element with a pattern.
+      // When inlining info is used to provide inlined function calls
+      // in stacktraces, one IP in ips can be expanded in several
+      // function names. So, each time input (or presence of input)
+      // is requested by VG_(generic_match), we will expand
+      // more IP of ips till we have expanded enough to reach the
+      // input element requested (or we cannot expand anymore).
+
+      UWord n_ips_expanded;
+      // n_ips_expanded maintains the nr of elements in ips that we have
+      // already expanded.
+      UWord n_expanded;
+      // n_expanded maintains the nr of elements resulting from the expansion
+      // of the n_ips_expanded IPs. Without inlined function calls,
+      // n_expanded == n_ips_expanded. With inlining info,
+      // n_expanded >= n_ips_expanded.
+
+      Int* n_offsets_per_ip;
+      // n_offsets_per_ip[i] gives the nr of offsets in fun_offsets and
+      // obj_offsets resulting of the expansion of ips[i].
+      // The sum of all n_expanded_per_ip must be equal to n_expanded.
+      // This array allows to retrieve the position in ips corresponding to 
+      // an ixInput.
+
+      // size (in elements) of fun_offsets and obj_offsets.
+      // (fun|obj)_offsets are reallocated if more space is needed
+      // to expand an IP.
+      UWord sz_offsets;
+
       Int* fun_offsets;
-      // fun_offsets[i] is the offset in names where the
-      // function name for ips[i] is located.
-      // An offset -1 means the function name is not yet completed.
+      // fun_offsets[ixInput] is the offset in names where the
+      // function name for the ixInput element of the input sequence
+      // can be found. As one IP of ips can be expanded in several
+      // function calls due to inlined function calls, we can have more
+      // elements in fun_offsets than in ips.
+      // An offset -1 means the function name has not yet been computed.
       Int* obj_offsets;
-      // Similarly, obj_offsets[i] gives the offset for the
-      // object name for ips[i] (-1 meaning object name not yet completed).
+      // Similarly, obj_offsets[ixInput] gives the offset for the
+      // object name for ips[ixInput]
+      // (-1 meaning object name not yet been computed).
 
       // All function names and object names will be concatenated
       // in names. names is reallocated on demand.
@@ -1495,26 +1573,83 @@ typedef
    }
    IPtoFunOrObjCompleter;
 
-// free the memory in ip2fo.
-static void clearIPtoFunOrObjCompleter
-  (IPtoFunOrObjCompleter* ip2fo)
+static void pp_ip2fo (const IPtoFunOrObjCompleter* ip2fo)
 {
-   if (ip2fo->fun_offsets) VG_(free)(ip2fo->fun_offsets);
-   if (ip2fo->obj_offsets) VG_(free)(ip2fo->obj_offsets);
-   if (ip2fo->names)       VG_(free)(ip2fo->names);
+  Int i, j;
+  Int o;
+
+  VG_(printf)("n_ips %lu n_ips_expanded %lu resulting in n_expanded %lu\n",
+              ip2fo->n_ips, ip2fo->n_ips_expanded, ip2fo->n_expanded);
+  for (i = 0; i < ip2fo->n_ips_expanded; i++) {
+     o = 0;
+     for (j = 0; j < i; j++)
+        o += ip2fo->n_offsets_per_ip[j];
+     VG_(printf)("ips %d 0x08%lx offset [%d,%d] ", 
+                 i, ip2fo->ips[i], 
+                 o, o+ip2fo->n_offsets_per_ip[i]-1);
+     for (j = 0; j < ip2fo->n_offsets_per_ip[i]; j++) {
+        VG_(printf)("%sfun:%s obj:%s\n",
+                    j == 0 ? "" : "                              ",
+                    ip2fo->fun_offsets[o+j] == -1 ? 
+                    "<not expanded>" : &ip2fo->names[ip2fo->fun_offsets[o+j]],
+                    ip2fo->obj_offsets[o+j] == -1 ?
+                    "<not expanded>" : &ip2fo->names[ip2fo->obj_offsets[o+j]]);
+    }
+  }
 }
 
-/* foComplete returns the function name or object name for IP.
-   If needFun, returns the function name for IP
-   else returns the object name for IP.
-   The function name or object name will be computed and added in
-   names if not yet done.
-   IP must be equal to focompl->ipc[ixIP]. */
-static HChar* foComplete(IPtoFunOrObjCompleter* ip2fo,
-                        Addr IP, Int ixIP, Bool needFun)
+/* free the memory in ip2fo.
+   At debuglog 4, su (or NULL) will be used to show the matching
+   (or non matching) with ip2fo. */
+static void clearIPtoFunOrObjCompleter ( const Supp  *su, 
+                                         IPtoFunOrObjCompleter* ip2fo)
 {
-   vg_assert (ixIP < ip2fo->n_ips);
-   vg_assert (IP == ip2fo->ips[ixIP]);
+   if (DEBUG_ERRORMGR || VG_(debugLog_getLevel)() >= 4) {
+      if (su) {
+         HChar *filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                   su->clo_suppressions_i);
+         VG_(dmsg)("errormgr matching end suppression %s  %s:%d matched:\n",
+                   su->sname,
+                   filename,
+                   su->sname_lineno);
+      } else
+         VG_(dmsg)("errormgr matching end no suppression matched:\n");
+      VG_(pp_StackTrace) (ip2fo->ips, ip2fo->n_ips);
+      pp_ip2fo(ip2fo);
+   }
+   if (ip2fo->n_offsets_per_ip) VG_(free)(ip2fo->n_offsets_per_ip);
+   if (ip2fo->fun_offsets)      VG_(free)(ip2fo->fun_offsets);
+   if (ip2fo->obj_offsets)      VG_(free)(ip2fo->obj_offsets);
+   if (ip2fo->names)            VG_(free)(ip2fo->names);
+}
+
+/* Grow ip2fo->names to ensure we have NEEDED characters available
+   in ip2fo->names and returns a pointer to the first free char. */
+static HChar* grow_names(IPtoFunOrObjCompleter* ip2fo, SizeT needed)
+{
+   if (ip2fo->names_szB 
+       < ip2fo->names_free + needed) {
+     if (needed < ERRTXT_LEN) needed = ERRTXT_LEN;
+
+      ip2fo->names 
+         = VG_(realloc)("foc_names",
+                        ip2fo->names,
+                        ip2fo->names_szB + needed);
+      ip2fo->names_szB += needed;
+   }
+   return ip2fo->names + ip2fo->names_free;
+}
+
+/* foComplete returns the function name or object name for ixInput.
+   If needFun, returns the function name for this input
+   else returns the object name for this input.
+   The function name or object name will be computed and added in
+   names if not yet done. */
+static HChar* foComplete(IPtoFunOrObjCompleter* ip2fo,
+                         Int ixInput, Bool needFun)
+{
+   vg_assert (ixInput < ip2fo->n_expanded);
+   vg_assert (VG_(clo_read_inline_info) || ixInput < ip2fo->n_ips);
 
    // ptr to the offset array for function offsets (if needFun)
    // or object offsets (if !needFun).
@@ -1524,30 +1659,17 @@ static HChar* foComplete(IPtoFunOrObjCompleter* ip2fo,
    else
       offsets = &ip2fo->obj_offsets;
 
-   // Allocate offsets if not yet done.
-   if (!*offsets) {
-      Int i;
-      *offsets =
-         VG_(malloc)("foComplete",
-                     ip2fo->n_ips * sizeof(Int));
-      for (i = 0; i < ip2fo->n_ips; i++)
-         (*offsets)[i] = -1;
-   }
-
    // Complete Fun name or Obj name for IP if not yet done.
-   if ((*offsets)[ixIP] == -1) {
-      /* Ensure we have ERRTXT_LEN characters available in names */
-      if (ip2fo->names_szB 
-            < ip2fo->names_free + ERRTXT_LEN) {
-         ip2fo->names 
-            = VG_(realloc)("foc_names",
-                           ip2fo->names,
-                           ip2fo->names_szB + ERRTXT_LEN);
-         ip2fo->names_szB += ERRTXT_LEN;
-      }
-      HChar* caller_name = ip2fo->names + ip2fo->names_free;
-      (*offsets)[ixIP] = ip2fo->names_free;
+   if ((*offsets)[ixInput] == -1) {
+      const HChar* caller;
+
+      (*offsets)[ixInput] = ip2fo->names_free;
+      if (DEBUG_ERRORMGR) VG_(printf)("marking %s ixInput %d offset %d\n", 
+                                      needFun ? "fun" : "obj",
+                                      ixInput, ip2fo->names_free);
       if (needFun) {
+         // With inline info, fn names must have been completed already.
+         vg_assert (!VG_(clo_read_inline_info));
          /* Get the function name into 'caller_name', or "???"
             if unknown. */
          // Nb: C++-mangled names are used in suppressions.  Do, though,
@@ -1555,27 +1677,151 @@ static HChar* foComplete(IPtoFunOrObjCompleter* ip2fo,
          // up comparing "malloc" in the suppression against
          // "_vgrZU_libcZdsoZa_malloc" in the backtrace, and the
          // two of them need to be made to match.
-         if (!VG_(get_fnname_no_cxx_demangle)(IP, caller_name, ERRTXT_LEN))
-            VG_(strcpy)(caller_name, "???");
+         if (!VG_(get_fnname_no_cxx_demangle)(ip2fo->ips[ixInput],
+                                              &caller,
+                                              NULL))
+            caller = "???";
       } else {
          /* Get the object name into 'caller_name', or "???"
             if unknown. */
-         if (!VG_(get_objname)(IP, caller_name, ERRTXT_LEN))
-            VG_(strcpy)(caller_name, "???");
+         UWord i;
+         UWord last_expand_pos_ips = 0;
+         UWord pos_ips;
+
+         /* First get the pos in ips corresponding to ixInput */
+         for (pos_ips = 0; pos_ips < ip2fo->n_expanded; pos_ips++) {
+            last_expand_pos_ips += ip2fo->n_offsets_per_ip[pos_ips];
+            if (ixInput < last_expand_pos_ips)
+               break;
+         }
+         /* pos_ips is the position in ips corresponding to ixInput.
+            last_expand_pos_ips is the last offset in fun/obj where
+            ips[pos_ips] has been expanded. */
+
+         if (!VG_(get_objname)(ip2fo->ips[pos_ips], &caller))
+            caller = "???";
+
+         // Have all inlined calls pointing at this object name
+         for (i = last_expand_pos_ips - ip2fo->n_offsets_per_ip[pos_ips] + 1;
+              i < last_expand_pos_ips;
+              i++) {
+            ip2fo->obj_offsets[i] = ip2fo->names_free;
+            if (DEBUG_ERRORMGR) 
+               VG_(printf) ("   set obj_offset %lu to %d\n", 
+                            i, ip2fo->names_free);
+         }
       }
-      ip2fo->names_free += VG_(strlen)(caller_name) + 1;
+      SizeT  caller_len = VG_(strlen)(caller);
+      HChar* caller_name = grow_names(ip2fo, caller_len + 1);
+      VG_(strcpy)(caller_name, caller);
+      ip2fo->names_free += caller_len + 1;
+      if (DEBUG_ERRORMGR) pp_ip2fo(ip2fo);
    }
 
-   return ip2fo->names + (*offsets)[ixIP];
+   return ip2fo->names + (*offsets)[ixInput];
+}
+
+// Grow fun and obj _offsets arrays to have at least n_req elements.
+// Ensure n_offsets_per_ip is allocated.
+static void grow_offsets(IPtoFunOrObjCompleter* ip2fo, Int n_req)
+{
+   Int i;
+
+   // n_offsets_per_ip must always have the size of the ips array
+   if (ip2fo->n_offsets_per_ip == NULL) {
+      ip2fo->n_offsets_per_ip = VG_(malloc)("grow_offsets",
+                                            ip2fo->n_ips * sizeof(Int));
+      for (i = 0; i < ip2fo->n_ips; i++)
+         ip2fo->n_offsets_per_ip[i] = 0;
+   }
+
+   if (ip2fo->sz_offsets >= n_req)
+      return;
+
+   // Avoid too much re-allocation by allocating at least ip2fo->n_ips
+   // elements and at least a few more elements than the current size.
+   if (n_req < ip2fo->n_ips)
+      n_req = ip2fo->n_ips;
+   if (n_req < ip2fo->sz_offsets + 5)
+      n_req = ip2fo->sz_offsets + 5;
+
+   ip2fo->fun_offsets = VG_(realloc)("grow_offsets", ip2fo->fun_offsets,
+                                     n_req * sizeof(Int));
+   for (i = ip2fo->sz_offsets; i < n_req; i++)
+      ip2fo->fun_offsets[i] = -1;
+
+   ip2fo->obj_offsets = VG_(realloc)("grow_offsets", ip2fo->obj_offsets,
+                                     n_req * sizeof(Int));
+   for (i = ip2fo->sz_offsets; i < n_req; i++)
+      ip2fo->obj_offsets[i] = -1;
+
+   ip2fo->sz_offsets = n_req;   
+}
+
+// Expands more IPs from ip2fo->ips.
+static void expandInput (IPtoFunOrObjCompleter* ip2fo, UWord ixInput )
+{
+   while (ip2fo->n_ips_expanded < ip2fo->n_ips
+          && ip2fo->n_expanded <= ixInput) {
+      if (VG_(clo_read_inline_info)) {
+         // Expand one more IP in one or more calls.
+         const Addr IP = ip2fo->ips[ip2fo->n_ips_expanded];
+         InlIPCursor *iipc;
+
+         iipc = VG_(new_IIPC)(IP);
+         // The only thing we really need is the nr of inlined fn calls
+         // corresponding to the IP we will expand.
+         // However, computing this is mostly the same as finding
+         // the function name. So, let's directly complete the function name.
+         do {
+            const HChar *caller;
+            grow_offsets(ip2fo, ip2fo->n_expanded+1);
+            ip2fo->fun_offsets[ip2fo->n_expanded] = ip2fo->names_free;
+            if (!VG_(get_fnname_no_cxx_demangle)(IP, 
+                                                 &caller,
+                                                 iipc))
+               caller = "???";
+            SizeT  caller_len = VG_(strlen)(caller);
+            HChar* caller_name = grow_names(ip2fo, caller_len + 1);
+            VG_(strcpy)(caller_name, caller);
+            ip2fo->names_free += caller_len + 1;
+            ip2fo->n_expanded++;
+            ip2fo->n_offsets_per_ip[ip2fo->n_ips_expanded]++;
+         } while (VG_(next_IIPC)(iipc));
+         ip2fo->n_ips_expanded++;
+         VG_(delete_IIPC) (iipc);
+      } else {
+         // Without inlined fn call info, expansion simply
+         // consists in allocating enough elements in (fun|obj)_offsets.
+         // The function or object names themselves will be completed
+         // when requested.
+         Int i;
+         grow_offsets(ip2fo, ip2fo->n_ips);
+         ip2fo->n_ips_expanded = ip2fo->n_ips;
+         ip2fo->n_expanded = ip2fo->n_ips;
+         for (i = 0; i < ip2fo->n_ips; i++)
+            ip2fo->n_offsets_per_ip[i] = 1;
+      }
+   }
+}
+
+static Bool haveInputInpC (void* inputCompleter, UWord ixInput )
+{
+   IPtoFunOrObjCompleter* ip2fo = inputCompleter;
+   expandInput(ip2fo, ixInput);
+   return ixInput < ip2fo->n_expanded;
 }
 
 static Bool supp_pattEQinp ( const void* supplocV, const void* addrV,
-                             void* inputCompleter, UWord ixAddrV )
+                             void* inputCompleter, UWord ixInput )
 {
    const SuppLoc* supploc = supplocV; /* PATTERN */
-   Addr     ip      = *(const Addr*)addrV; /* INPUT */
    IPtoFunOrObjCompleter* ip2fo = inputCompleter;
    HChar* funobj_name; // Fun or Obj name.
+   Bool ret;
+
+   expandInput(ip2fo, ixInput);
+   vg_assert(ixInput < ip2fo->n_expanded);
 
    /* So, does this IP address match this suppression-line? */
    switch (supploc->ty) {
@@ -1587,10 +1833,10 @@ static Bool supp_pattEQinp ( const void* supplocV, const void* addrV,
             this can't happen. */
          vg_assert(0);
       case ObjName:
-         funobj_name = foComplete(ip2fo, ip, ixAddrV, False /*needFun*/);
+         funobj_name = foComplete(ip2fo, ixInput, False /*needFun*/);
          break; 
-      case FunName: 
-         funobj_name = foComplete(ip2fo, ip, ixAddrV, True /*needFun*/);
+      case FunName:
+         funobj_name = foComplete(ip2fo, ixInput, True /*needFun*/);
          break;
       default:
         vg_assert(0);
@@ -1601,14 +1847,21 @@ static Bool supp_pattEQinp ( const void* supplocV, const void* addrV,
       supploc->name.  Hence (and leading to a re-entrant call of
       VG_(generic_match) if there is a wildcard character): */
    if (supploc->name_is_simple_str)
-      return VG_(strcmp) (supploc->name, funobj_name) == 0;
+      ret = VG_(strcmp) (supploc->name, funobj_name) == 0;
    else
-      return VG_(string_match)(supploc->name, funobj_name);
+      ret = VG_(string_match)(supploc->name, funobj_name);
+   if (DEBUG_ERRORMGR)
+      VG_(printf) ("supp_pattEQinp %s patt %s ixUnput %lu value:%s match:%s\n",
+                   supploc->ty == FunName ? "fun" : "obj",
+                   supploc->name, ixInput, funobj_name,
+                   ret ? "yes" : "no");
+   return ret;
 }
 
 /////////////////////////////////////////////////////
 
-static Bool supp_matches_callers(IPtoFunOrObjCompleter* ip2fo, Supp* su)
+static Bool supp_matches_callers(IPtoFunOrObjCompleter* ip2fo,
+                                 const Supp* su)
 {
    /* Unwrap the args and set up the correct parameterisation of
       VG_(generic_match), using supploc_IsStar, supploc_IsQuery and
@@ -1617,22 +1870,31 @@ static Bool supp_matches_callers(IPtoFunOrObjCompleter* ip2fo, Supp* su)
    SuppLoc*   supps    = su->callers;
    UWord      n_supps  = su->n_callers;
    UWord      szbPatt  = sizeof(SuppLoc);
-   UWord      szbInput = sizeof(Addr);
    Bool       matchAll = False; /* we just want to match a prefix */
+   if (DEBUG_ERRORMGR) {
+      HChar *filename = *(HChar**) VG_(indexXA)(VG_(clo_suppressions),
+                                                su->clo_suppressions_i);
+      VG_(dmsg)("   errormgr Checking match with  %s  %s:%d\n",
+                su->sname,
+                filename,
+                su->sname_lineno);
+   }
    return
       VG_(generic_match)(
          matchAll,
-         /*PATT*/supps, szbPatt, n_supps, 0/*initial Ix*/,
-         /*INPUT*/ip2fo->ips, szbInput, ip2fo->n_ips,  0/*initial Ix*/,
+         /*PATT*/supps, szbPatt, n_supps, 0/*initial ixPatt*/,
+         /*INPUT*/
+         NULL, 0, 0, /* input/szbInput/nInput 0, as using an inputCompleter */  
+         0/*initial ixInput*/,
          supploc_IsStar, supploc_IsQuery, supp_pattEQinp,
-         ip2fo
+         ip2fo, haveInputInpC
       );
 }
 
 /////////////////////////////////////////////////////
 
 static
-Bool supp_matches_error(Supp* su, Error* err)
+Bool supp_matches_error(const Supp* su, const Error* err)
 {
    switch (su->skind) {
       //(example code, see comment on CoreSuppKind above)
@@ -1646,7 +1908,7 @@ Bool supp_matches_error(Supp* su, Error* err)
                "\nUnhandled suppression type: %u.  VG_(needs).tool_errors\n"
                "probably needs to be set.\n",
                err->ekind);
-            VG_(tool_panic)("unhandled suppression type");
+            VG_(core_panic)("unhandled suppression type");
          }
    }
 }
@@ -1657,7 +1919,7 @@ Bool supp_matches_error(Supp* su, Error* err)
    error?  If so, return a pointer to the Supp record, otherwise NULL.
    Tries to minimise the number of symbol searches since they are expensive.  
 */
-static Supp* is_suppressible_error ( Error* err )
+static Supp* is_suppressible_error ( const Error* err )
 {
    Supp* su;
    Supp* su_prev;
@@ -1683,6 +1945,10 @@ static Supp* is_suppressible_error ( Error* err )
    /* Prepare the lazy input completer. */
    ip2fo.ips = VG_(get_ExeContext_StackTrace)(err->where);
    ip2fo.n_ips = VG_(get_ExeContext_n_ips)(err->where);
+   ip2fo.n_ips_expanded = 0;
+   ip2fo.n_expanded = 0;
+   ip2fo.sz_offsets = 0;
+   ip2fo.n_offsets_per_ip = NULL;
    ip2fo.fun_offsets = NULL;
    ip2fo.obj_offsets = NULL;
    ip2fo.names = NULL;
@@ -1690,6 +1956,8 @@ static Supp* is_suppressible_error ( Error* err )
    ip2fo.names_free = 0;
 
    /* See if the error context matches any suppression. */
+   if (DEBUG_ERRORMGR || VG_(debugLog_getLevel)() >= 4)
+     VG_(dmsg)("errormgr matching begin\n");
    su_prev = NULL;
    for (su = suppressions; su != NULL; su = su->next) {
       em_supplist_cmps++;
@@ -1706,12 +1974,12 @@ static Supp* is_suppressible_error ( Error* err )
             su->next = suppressions;
             suppressions = su;
          }
-         clearIPtoFunOrObjCompleter(&ip2fo);
+         clearIPtoFunOrObjCompleter(su, &ip2fo);
          return su;
       }
       su_prev = su;
    }
-   clearIPtoFunOrObjCompleter(&ip2fo);
+   clearIPtoFunOrObjCompleter(NULL, &ip2fo);
    return NULL;      /* no matches */
 }
 

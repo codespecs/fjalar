@@ -707,20 +707,21 @@ extern X86Instr* X86Instr_EvCheck   ( X86AMode* amCounter,
 extern X86Instr* X86Instr_ProfInc   ( void );
 
 
-extern void ppX86Instr ( X86Instr*, Bool );
+extern void ppX86Instr ( const X86Instr*, Bool );
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-extern void         getRegUsage_X86Instr ( HRegUsage*, X86Instr*, Bool );
+extern void         getRegUsage_X86Instr ( HRegUsage*, const X86Instr*, Bool );
 extern void         mapRegs_X86Instr     ( HRegRemap*, X86Instr*, Bool );
-extern Bool         isMove_X86Instr      ( X86Instr*, HReg*, HReg* );
-extern Int          emit_X86Instr        ( /*MB_MOD*/Bool* is_profInc,
-                                           UChar* buf, Int nbuf, X86Instr* i, 
-                                           Bool mode64,
-                                           void* disp_cp_chain_me_to_slowEP,
-                                           void* disp_cp_chain_me_to_fastEP,
-                                           void* disp_cp_xindir,
-                                           void* disp_cp_xassisted );
+extern Bool         isMove_X86Instr      ( const X86Instr*, HReg*, HReg* );
+extern Int          emit_X86Instr   ( /*MB_MOD*/Bool* is_profInc,
+                                      UChar* buf, Int nbuf, const X86Instr* i, 
+                                      Bool mode64,
+                                      VexEndness endness_host,
+                                      const void* disp_cp_chain_me_to_slowEP,
+                                      const void* disp_cp_chain_me_to_fastEP,
+                                      const void* disp_cp_xindir,
+                                      const void* disp_cp_xassisted );
 
 extern void genSpill_X86  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offset, Bool );
@@ -732,8 +733,8 @@ extern X86Instr*    directReload_X86     ( X86Instr* i,
 extern void         getAllocableRegs_X86 ( Int*, HReg** );
 extern HInstrArray* iselSB_X86           ( IRSB*, 
                                            VexArch,
-                                                  VexArchInfo*,
-                                           VexAbiInfo*,
+                                           const VexArchInfo*,
+                                           const VexAbiInfo*,
                                            Int offs_Host_EvC_Counter,
                                            Int offs_Host_EvC_FailAddr,
                                            Bool chainingAllowed,
@@ -745,20 +746,23 @@ extern HInstrArray* iselSB_X86           ( IRSB*,
    and so assumes that they are both <= 128, and so can use the short
    offset encoding.  This is all checked with assertions, so in the
    worst case we will merely assert at startup. */
-extern Int evCheckSzB_X86 ( void );
+extern Int evCheckSzB_X86 ( VexEndness endness_host );
 
 /* Perform a chaining and unchaining of an XDirect jump. */
-extern VexInvalRange chainXDirect_X86 ( void* place_to_chain,
-                                        void* disp_cp_chain_me_EXPECTED,
-                                        void* place_to_jump_to );
+extern VexInvalRange chainXDirect_X86 ( VexEndness endness_host,
+                                        void* place_to_chain,
+                                        const void* disp_cp_chain_me_EXPECTED,
+                                        const void* place_to_jump_to );
 
-extern VexInvalRange unchainXDirect_X86 ( void* place_to_unchain,
-                                          void* place_to_jump_to_EXPECTED,
-                                          void* disp_cp_chain_me );
+extern VexInvalRange unchainXDirect_X86 ( VexEndness endness_host,
+                                          void* place_to_unchain,
+                                          const void* place_to_jump_to_EXPECTED,
+                                          const void* disp_cp_chain_me );
 
 /* Patch the counter location into an existing ProfInc point. */
-extern VexInvalRange patchProfInc_X86 ( void*  place_to_patch,
-                                        ULong* location_of_counter );
+extern VexInvalRange patchProfInc_X86 ( VexEndness endness_host,
+                                        void*  place_to_patch,
+                                        const ULong* location_of_counter );
 
 
 #endif /* ndef __VEX_HOST_X86_DEFS_H */

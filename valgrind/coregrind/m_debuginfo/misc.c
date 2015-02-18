@@ -46,9 +46,12 @@ void* ML_(dinfo_zalloc) ( const HChar* cc, SizeT szB ) {
    void* v;
    vg_assert(szB > 0);
    v = VG_(arena_malloc)( VG_AR_DINFO, cc, szB );
-   vg_assert(v);
    VG_(memset)(v, 0, szB);
    return v;
+}
+
+void  ML_(dinfo_shrink_block)( void* ptr, SizeT szB ) {
+   VG_(arena_realloc_shrink)( VG_AR_DINFO, ptr, szB );
 }
 
 void ML_(dinfo_free) ( void* v ) {
@@ -59,10 +62,15 @@ HChar* ML_(dinfo_strdup) ( const HChar* cc, const HChar* str ) {
    return VG_(arena_strdup)( VG_AR_DINFO, cc, str );
 }
 
-void* ML_(dinfo_memdup) ( const HChar* cc, void* str, SizeT nStr ) {
+void* ML_(dinfo_memdup) ( const HChar* cc, const void* str, SizeT nStr ) {
    void* dst = VG_(arena_malloc)( VG_AR_DINFO, cc, nStr );
-   tl_assert(dst);
    VG_(memcpy)(dst, str, nStr);
+   return dst;
+}
+
+void* ML_(dinfo_realloc) ( const HChar* cc, void* ptr, SizeT new_size ) {
+   void* dst = VG_(arena_realloc)( VG_AR_DINFO, cc, ptr, new_size );
+   vg_assert(dst);
    return dst;
 }
 
@@ -72,7 +80,7 @@ static inline Bool host_is_little_endian ( void ) {
    return toBool(*p == 0x10);
 }
 
-Short ML_(read_Short)( UChar* data ) {
+Short ML_(read_Short)( const UChar* data ) {
    Short r = 0;
    if (host_is_little_endian()) {
       r = data[0]
@@ -84,7 +92,7 @@ Short ML_(read_Short)( UChar* data ) {
    return r;
 }
 
-Int ML_(read_Int) ( UChar* data ) {
+Int ML_(read_Int) ( const UChar* data ) {
    Int r = 0;
    if (host_is_little_endian()) {
       r = data[0]
@@ -100,7 +108,7 @@ Int ML_(read_Int) ( UChar* data ) {
    return r;
 }
 
-Long ML_(read_Long) ( UChar* data ) {
+Long ML_(read_Long) ( const UChar* data ) {
    Long r = 0;
    if (host_is_little_endian()) {
       r = data[0]
@@ -124,7 +132,7 @@ Long ML_(read_Long) ( UChar* data ) {
    return r;
 }
 
-UShort ML_(read_UShort) ( UChar* data ) {
+UShort ML_(read_UShort) ( const UChar* data ) {
    UInt r = 0;
    if (host_is_little_endian()) {
       r = data[0]
@@ -147,7 +155,7 @@ UChar *ML_(write_UShort) ( UChar* ptr, UShort val ) {
    return ptr + sizeof(UShort);
 }
 
-UWord ML_(read_UWord) ( UChar* data ) {
+UWord ML_(read_UWord) ( const UChar* data ) {
    if (sizeof(UWord) == sizeof(UInt)) {
       return ML_(read_UInt)(data);
    } else if  (sizeof(UWord) == sizeof(ULong)) {
@@ -157,7 +165,7 @@ UWord ML_(read_UWord) ( UChar* data ) {
    }
 }
 
-UInt ML_(read_UInt) ( UChar* data ) {
+UInt ML_(read_UInt) ( const UChar* data ) {
    UInt r = 0;
    if (host_is_little_endian()) {
       r = data[0]
@@ -188,7 +196,7 @@ UChar* ML_(write_UInt) ( UChar* ptr, UInt val ) {
    return ptr + sizeof(UInt);
 }
 
-ULong ML_(read_ULong) ( UChar* data ) {
+ULong ML_(read_ULong) ( const UChar* data ) {
    ULong r = 0;
    if (host_is_little_endian()) {
       r = data[0]
@@ -235,7 +243,7 @@ UChar* ML_(write_ULong) ( UChar* ptr, ULong val ) {
    return ptr + sizeof(ULong);
 }
 
-UChar ML_(read_UChar) ( UChar* data ) {
+UChar ML_(read_UChar) ( const UChar* data ) {
    return data[0];
 }
 
@@ -244,7 +252,7 @@ UChar* ML_(write_UChar) ( UChar* ptr, UChar val ) {
    return ptr + sizeof(UChar);
 }
 
-Addr ML_(read_Addr) ( UChar* data ) {
+Addr ML_(read_Addr) ( const UChar* data ) {
    if (sizeof(Addr) == sizeof(UInt)) {
       return ML_(read_UInt)(data);
    } else if  (sizeof(Addr) == sizeof(ULong)) {

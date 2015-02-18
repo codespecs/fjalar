@@ -66,6 +66,7 @@ typedef struct {
   //  it contains all of the variables present at ENTRY plus the
   //  return value derived variables)
 
+  // (comment added 2005)  
   // TODO: WARNING!  This hashtable-within-hashtable structure may
   // blow up in my face and cause a huge memory overload!!!  Remember
   // that each hashtable is initialized to a constant number!  I'll

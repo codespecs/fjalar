@@ -170,14 +170,11 @@ static SysRes do_clone ( ThreadId ptid,
                          Int *child_tidptr, 
                          Addr child_tls)
 {
-   const Bool debug = False;
-
    ThreadId ctid = VG_(alloc_ThreadState)();
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UInt r0;
    UWord *stack;
-   NSegment const* seg;
    SysRes res;
    vki_sigset_t blockall, savedmask;
 
@@ -215,20 +212,7 @@ static SysRes do_clone ( ThreadId ptid,
       See #226116. */
    ctst->os_state.threadgroup = ptst->os_state.threadgroup;
 
-   seg = VG_(am_find_nsegment)((Addr)sp);
-   if (seg && seg->kind != SkResvn) {
-      ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(sp);
-      ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-   
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-   
-      if (debug)
-         VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-         ctid, seg->start, VG_PGROUNDUP(sp));
-   } else {
-      VG_(message)(Vg_UserMsg, "!? New thread %d starts with sp+%#lx) unmapped\n", ctid, sp);
-      ctst->client_stack_szB  = 0;
-   }
+   ML_(guess_and_register_stack) (sp, ctst);
 
    vg_assert(VG_(owns_BigLock_LL)(ptid));
    VG_TRACK ( pre_thread_ll_create, ptid, ctid );
@@ -294,41 +278,43 @@ static void assign_guest_tls(ThreadId tid, Addr tlsptr)
 static SysRes sys_set_tls ( ThreadId tid, Addr tlsptr )
 {
    assign_guest_tls(tid, tlsptr);
-#if defined(ANDROID_HARDWARE_emulator)
-   /* Android emulator does not provide an hw tls register.
-      So, the tls register is emulated by the kernel.
-      This emulated value is set by the __NR_ARM_set_tls syscall.
-      The emulated value must be read by the kernel helper function
-      located at 0xffff0fe0.
-      
-      The emulated tlsptr is located at 0xffff0ff0
-      (so slightly after the kernel helper function).
-      Note that applications are not supposed to read this directly.
-      
-      For compatibility : if there is a hw tls register, the kernel
-      will put at 0xffff0fe0 the instructions to read it, so
-      as to have old applications calling the kernel helper
-      working properly.
 
-      For having emulated guest TLS working correctly with
-      Valgrind, it is needed to execute the syscall to set
-      the emulated TLS value in addition to the assignment
-      of TPIDRURO.
+   if (KernelVariantiS(KernelVariant_android_no_hw_tls,
+                       VG_(clo_kernel_variant))) {
+      /* Android emulator does not provide an hw tls register.
+         So, the tls register is emulated by the kernel.
+         This emulated value is set by the __NR_ARM_set_tls syscall.
+         The emulated value must be read by the kernel helper function
+         located at 0xffff0fe0.
+      
+         The emulated tlsptr is located at 0xffff0ff0
+         (so slightly after the kernel helper function).
+         Note that applications are not supposed to read this directly.
+      
+         For compatibility : if there is a hw tls register, the kernel
+         will put at 0xffff0fe0 the instructions to read it, so
+         as to have old applications calling the kernel helper
+         working properly.
 
-      Note: the below means that if we need thread local storage
-      for Valgrind host, then there will be a conflict between
-      the need of the guest tls and of the host tls.
-      If all the guest code would cleanly call 0xffff0fe0,
-      then we might maybe intercept this. However, at least
-      __libc_preinit reads directly 0xffff0ff0.
-   */
-   /* ??? might call the below if auxv->u.a_val & VKI_HWCAP_TLS ???
-      Unclear if real hardware having tls hw register sets
-      VKI_HWCAP_TLS. */
-   return VG_(do_syscall1) (__NR_ARM_set_tls, tlsptr);
-#else
-   return VG_(mk_SysRes_Success)( 0 );
-#endif
+         For having emulated guest TLS working correctly with
+         Valgrind, it is needed to execute the syscall to set
+         the emulated TLS value in addition to the assignment
+         of TPIDRURO.
+
+         Note: the below means that if we need thread local storage
+         for Valgrind host, then there will be a conflict between
+         the need of the guest tls and of the host tls.
+         If all the guest code would cleanly call 0xffff0fe0,
+         then we might maybe intercept this. However, at least
+         __libc_preinit reads directly 0xffff0ff0.
+      */
+      /* ??? might call the below if auxv->u.a_val & VKI_HWCAP_TLS ???
+         Unclear if real hardware having tls hw register sets
+         VKI_HWCAP_TLS. */
+      return VG_(do_syscall1) (__NR_ARM_set_tls, tlsptr);
+   } else {
+      return VG_(mk_SysRes_Success)( 0 );
+   }
 }
 
 /* ---------------------------------------------------------------------
@@ -583,13 +569,13 @@ PRE(sys_rt_sigreturn)
 /* NB: clone of x86-linux version, and ppc32-linux has an almost
    identical one. */
 PRE(sys_sigsuspend)
-{   
+{
    /* The C library interface to sigsuspend just takes a pointer to
       a signal mask but this system call has three arguments - the first
       two don't appear to be used by the kernel and are always passed as
       zero by glibc and the third is the first word of the signal mask
       so only 32 signals are supported.
-
+     
       In fact glibc normally uses rt_sigsuspend if it is available as
       that takes a pointer to the signal mask so supports more signals.
     */
@@ -1036,7 +1022,7 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINX_(__NR_setfsuid32,        sys_setfsuid),       // 215
    LINX_(__NR_setfsgid32,        sys_setfsgid),       // 216
-//zz    //   (__NR_pivot_root,        sys_pivot_root),     // 217 */Linux
+   LINX_(__NR_pivot_root,        sys_pivot_root),     // 217
    GENXY(__NR_mincore,           sys_mincore),        // 218
    GENX_(__NR_madvise,           sys_madvise),        // 219
 
@@ -1102,7 +1088,6 @@ static SyscallTableEntry syscall_main_table[] = {
 
    LINX_(__NR_tgkill,            sys_tgkill),         // 270 */Linux
    GENX_(__NR_utimes,            sys_utimes),         // 271
-//   LINX_(__NR_fadvise64_64,      sys_fadvise64_64),   // 272 */(Linux?)
    GENX_(__NR_vserver,           sys_ni_syscall),     // 273
    LINX_(__NR_mbind,             sys_mbind),          // 274 ?/?
 
@@ -1175,7 +1160,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY(__NR_shmctl,            sys_shmctl),         // 308 
 //   LINX_(__NR_pselect6,       sys_pselect6),         //
 
-//   LINX_(__NR_unshare,       sys_unshare),          // 310
+   LINX_(__NR_unshare,       sys_unshare),          // 310
    LINX_(__NR_set_robust_list,    sys_set_robust_list),  // 311
    LINXY(__NR_get_robust_list,    sys_get_robust_list),  // 312
 //   LINX_(__NR_splice,            sys_ni_syscall),       // 313
@@ -1189,7 +1174,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_utimensat,         sys_utimensat),        // 320
    LINXY(__NR_signalfd,          sys_signalfd),         // 321
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 322
-   LINX_(__NR_eventfd,           sys_eventfd),          // 323
+   LINXY(__NR_eventfd,           sys_eventfd),          // 323
 
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 325
    LINXY(__NR_timerfd_gettime,   sys_timerfd_gettime),   // 326
@@ -1203,6 +1188,8 @@ static SyscallTableEntry syscall_main_table[] = {
    // correspond to what's in include/vki/vki-scnums-arm-linux.h.
    // From here onwards, please ensure the numbers are correct.
 
+   LINX_(__NR_arm_fadvise64_64,  sys_fadvise64_64),     // 270 */(Linux?)
+
    LINX_(__NR_pselect6,          sys_pselect6),         // 335
    LINXY(__NR_ppoll,             sys_ppoll),            // 336
 
@@ -1211,7 +1198,7 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_fallocate,         sys_fallocate),        // 352
 
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 355
-   LINX_(__NR_eventfd2,          sys_eventfd2),         // 356
+   LINXY(__NR_eventfd2,          sys_eventfd2),         // 356
    LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 357
    LINXY(__NR_dup3,              sys_dup3),             // 358
    LINXY(__NR_pipe2,             sys_pipe2),            // 359
@@ -1220,13 +1207,16 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_pwritev,           sys_pwritev),          // 362
    LINXY(__NR_rt_tgsigqueueinfo, sys_rt_tgsigqueueinfo),// 363
    LINXY(__NR_perf_event_open,   sys_perf_event_open),  // 364
-
+   LINXY(__NR_recvmmsg,          sys_recvmmsg),         // 365
    LINXY(__NR_accept4,           sys_accept4),          // 366
    LINXY(__NR_fanotify_init,     sys_fanotify_init),    // 367
    LINX_(__NR_fanotify_mark,     sys_fanotify_mark),    // 368
    LINXY(__NR_prlimit64,         sys_prlimit64),        // 369
    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 370
-   LINXY(__NR_open_by_handle_at, sys_open_by_handle_at) // 371
+   LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 371
+   LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 372
+   LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 374
+   LINXY(__NR_getrandom,         sys_getrandom)         // 384
 };
 
 

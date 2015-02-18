@@ -210,7 +210,6 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState* ptst = VG_(get_ThreadState)(ptid);
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    UWord*       stack;
-   NSegment const* seg;
    SysRes       res;
    Long         rax;
    vki_sigset_t blockall, savedmask;
@@ -264,27 +263,7 @@ static SysRes do_clone ( ThreadId ptid,
       See #226116. */
    ctst->os_state.threadgroup = ptst->os_state.threadgroup;
 
-   /* We don't really know where the client stack is, because its
-      allocated by the client.  The best we can do is look at the
-      memory mappings and try to derive some useful information.  We
-      assume that esp starts near its highest possible value, and can
-      only go down to the start of the mmaped segment. */
-   seg = VG_(am_find_nsegment)((Addr)rsp);
-   if (seg && seg->kind != SkResvn) {
-      ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(rsp);
-      ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-
-      if (debug)
-	 VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-		     ctid, seg->start, VG_PGROUNDUP(rsp));
-   } else {
-      VG_(message)(Vg_UserMsg,
-                   "!? New thread %d starts with RSP(%#lx) unmapped\n",
-		   ctid, rsp);
-      ctst->client_stack_szB  = 0;
-   }
+   ML_(guess_and_register_stack) (rsp, ctst);
 
    /* Assume the clone will succeed, and tell any tool that wants to
       know that this thread has come into existence.  If the clone
@@ -664,7 +643,7 @@ PRE(sys_syscall184)
    /* 184 is used by sys_bproc.  If we're not on a declared bproc
       variant, fail in the usual way, since it is otherwise unused. */
 
-   if (!VG_(strstr)(VG_(clo_kernel_variant), "bproc")) {
+   if (!KernelVariantiS(KernelVariant_bproc, VG_(clo_kernel_variant))) {
       PRINT("non-existent syscall! (syscall 184)");
       PRE_REG_READ0(long, "ni_syscall(184)");
       SET_STATUS_Failure( VKI_ENOSYS );
@@ -894,7 +873,7 @@ static SyscallTableEntry syscall_table[] = {
    LINX_(__NR_vhangup,           sys_vhangup),        // 153 
    //   (__NR_modify_ldt,        sys_modify_ldt),     // 154 
 
-   //   (__NR_pivot_root,        sys_pivot_root),     // 155 
+   LINX_(__NR_pivot_root,        sys_pivot_root),     // 155
    LINXY(__NR__sysctl,           sys_sysctl),         // 156 
    LINXY(__NR_prctl,             sys_prctl),          // 157 
    PLAX_(__NR_arch_prctl,	 sys_arch_prctl),     // 158 
@@ -1034,7 +1013,7 @@ static SyscallTableEntry syscall_table[] = {
 
    LINX_(__NR_pselect6,		 sys_pselect6),         // 270
    LINXY(__NR_ppoll,		 sys_ppoll),            // 271
-//   LINX_(__NR_unshare,		 sys_unshare),          // 272
+   LINX_(__NR_unshare,		 sys_unshare),          // 272
    LINX_(__NR_set_robust_list,	 sys_set_robust_list),  // 273
    LINXY(__NR_get_robust_list,	 sys_get_robust_list),  // 274
 
@@ -1048,7 +1027,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_epoll_pwait,       sys_epoll_pwait),      // 281
    LINXY(__NR_signalfd,          sys_signalfd),         // 282
    LINXY(__NR_timerfd_create,    sys_timerfd_create),   // 283
-   LINX_(__NR_eventfd,           sys_eventfd),          // 284
+   LINXY(__NR_eventfd,           sys_eventfd),          // 284
 
    LINX_(__NR_fallocate,         sys_fallocate),        // 285
    LINXY(__NR_timerfd_settime,   sys_timerfd_settime),  // 286
@@ -1056,7 +1035,7 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_accept4,           sys_accept4),          // 288
    LINXY(__NR_signalfd4,         sys_signalfd4),        // 289
 
-   LINX_(__NR_eventfd2,          sys_eventfd2),         // 290
+   LINXY(__NR_eventfd2,          sys_eventfd2),         // 290
    LINXY(__NR_epoll_create1,     sys_epoll_create1),    // 291
    LINXY(__NR_dup3,              sys_dup3),             // 292
    LINXY(__NR_pipe2,             sys_pipe2),            // 293
@@ -1074,14 +1053,26 @@ static SyscallTableEntry syscall_table[] = {
    LINXY(__NR_name_to_handle_at, sys_name_to_handle_at),// 303
    LINXY(__NR_open_by_handle_at, sys_open_by_handle_at),// 304
 
-//   LINX_(__NR_clock_adjtime,     sys_ni_syscall),       // 305
+   LINXY(__NR_clock_adjtime,     sys_clock_adjtime),    // 305
 //   LINX_(__NR_syncfs,            sys_ni_syscall),       // 306
    LINXY(__NR_sendmmsg,          sys_sendmmsg),         // 307
 //   LINX_(__NR_setns,             sys_ni_syscall),       // 308
    LINXY(__NR_getcpu,            sys_getcpu),           // 309
 
    LINXY(__NR_process_vm_readv,  sys_process_vm_readv), // 310
-   LINX_(__NR_process_vm_writev, sys_process_vm_writev) // 311
+   LINX_(__NR_process_vm_writev, sys_process_vm_writev),// 311
+   LINX_(__NR_kcmp,              sys_kcmp),             // 312
+//   LIN__(__NR_finit_module,      sys_ni_syscall),       // 313
+//   LIN__(__NR_sched_setattr,     sys_ni_syscall),       // 314
+
+//   LIN__(__NR_sched_getattr,     sys_ni_syscall),       // 315
+//   LIN__(__NR_renameat2,         sys_ni_syscall),       // 316
+//   LIN__(__NR_seccomp,           sys_ni_syscall),       // 317
+   LINXY(__NR_getrandom,         sys_getrandom)         // 318
+//   LIN__(__NR_memfd_create,      sys_ni_syscall),       // 319
+
+//   LIN__(__NR_kexec_file_load,   sys_ni_syscall),       // 320
+//   LIN__(__NR_bpf,               sys_ni_syscall)        // 321
 };
 
 SyscallTableEntry* ML_(get_linux_syscall_entry) ( UInt sysno )

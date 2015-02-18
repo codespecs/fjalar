@@ -58,7 +58,7 @@
    Takes a pointer to the SP at the time V gained control.  This is
    taken to be the highest usable address (more or less).  Based on
    that (and general consultation of tea leaves, etc) return a
-   suggested end address for the client's stack. */
+   suggested end address (highest addressable byte) for the client's stack. */
 extern Addr VG_(am_startup) ( Addr sp_at_startup );
 
 
@@ -85,6 +85,12 @@ extern NSegment const* VG_(am_next_nsegment) ( const NSegment* here,
 // Is in tool-visible header file.
 // extern Bool VG_(am_is_valid_for_client)
 //   ( Addr start, SizeT len, UInt prot );
+
+/* Same as VG_(am_is_valid_for_client) but for valgrind :
+   test if memory is addressable by valgrind with at least
+   the protection 'prot'. */
+extern Bool VG_(am_is_valid_for_valgrind)
+   ( Addr start, SizeT len, UInt prot );
 
 /* Variant of VG_(am_is_valid_for_client) which allows free areas to
    be consider part of the client's addressable space.  It also
@@ -143,7 +149,7 @@ typedef
    set to False, it means aspacem has vetoed the mapping, and so the
    caller should not proceed with it. */
 extern Addr VG_(am_get_advisory)
-   ( MapRequest* req, Bool forClient, /*OUT*/Bool* ok );
+   ( const MapRequest* req, Bool forClient, /*OUT*/Bool* ok );
 
 /* Convenience wrapper for VG_(am_get_advisory) for client floating or
    fixed requests.  If start is zero, a floating request is issued; if
@@ -229,26 +235,10 @@ extern SysRes VG_(am_mmap_anon_fixed_client)
    update the segment array accordingly.  */
 extern SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot );
 
-/* Similarly, acquire new address space for the client but with
-   considerable restrictions on what can be done with it: (1) the
-   actual protections may exceed those stated in 'prot', (2) the
-   area's protections cannot be later changed using any form of
-   mprotect, and (3) the area cannot be freed using any form of
-   munmap.  On Linux this behaves the same as
-   VG_(am_mmap_anon_float_client).  On AIX5 this *may* allocate memory
-   by using sbrk, so as to make use of large pages on AIX. */
-extern SysRes VG_(am_sbrk_anon_float_client) ( SizeT length, Int prot );
-
-
 /* Map anonymously at an unconstrained address for V, and update the
    segment array accordingly.  This is fundamentally how V allocates
    itself more address space when needed. */
 extern SysRes VG_(am_mmap_anon_float_valgrind)( SizeT cszB );
-
-/* Same comments apply as per VG_(am_sbrk_anon_float_client).  On
-   Linux this behaves the same as VG_(am_mmap_anon_float_valgrind). */
-extern SysRes VG_(am_sbrk_anon_float_valgrind)( SizeT cszB );
-
 
 /* Map privately a file at an unconstrained address for V, and update the
    segment array accordingly.  This is used by V for transiently
@@ -344,8 +334,10 @@ extern Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 // stacks.  The address space manager provides and suitably
 // protects such stacks.
 
-#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-    || defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+#if defined(VGP_ppc32_linux) \
+    || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
+    || defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
+    || defined(VGP_arm64_linux)
 # define VG_STACK_GUARD_SZB  65536  // 1 or 16 pages
 # define VG_STACK_ACTIVE_SZB (4096 * 256) // 1Mb
 #else
@@ -362,7 +354,7 @@ typedef
    VgStack;
 
 
-/* Allocate and initialise a VgStack (anonymous client space).
+/* Allocate and initialise a VgStack (anonymous valgrind space).
    Protect the stack active area and the guard areas appropriately.
    Returns NULL on failure, else the address of the bottom of the
    stack.  On success, also sets *initial_sp to what the stack pointer
@@ -373,7 +365,8 @@ extern VgStack* VG_(am_alloc_VgStack)( /*OUT*/Addr* initial_sp );
 /* Figure out how many bytes of the stack's active area have not been
    used.  Used for estimating if we are close to overflowing it.  If
    the free area is larger than 'limit', just return 'limit'. */
-extern SizeT VG_(am_get_VgStack_unused_szB)( VgStack* stack, SizeT limit ); 
+extern SizeT VG_(am_get_VgStack_unused_szB)( const VgStack* stack,
+                                             SizeT limit ); 
 
 // DDD: this is ugly
 #if defined(VGO_darwin)

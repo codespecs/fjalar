@@ -251,12 +251,12 @@ void VG_(sigframe_create)( ThreadId tid,
    else {
       build_sigframe(tst, (struct sigframe *)sp, siginfo, siguc,
                              handler, flags, mask, restorer);
-    }
+   }
 
    VG_(set_SP)(tid, sp);
    VG_TRACK( post_reg_write, Vg_CoreSignal, tid, VG_O_STACK_PTR,
          sizeof(Addr));
-    tst->arch.vex.guest_R0  = sigNo; 
+   tst->arch.vex.guest_R0  = sigNo; 
 
    if (flags & VKI_SA_RESTORER)
        tst->arch.vex.guest_R14 = (Addr)restorer; 

@@ -131,8 +131,8 @@ static Bool const_False ( void* callback_opaque, Addr64 a ) {
    not to disassemble any instructions into it; this is indicated
    by the callback returning True.
 
-   offB_TIADDR and offB_TILEN are the offsets of guest_TIADDR and
-   guest_TILEN.  Since this routine has to work for any guest state,
+   offB_CMADDR and offB_CMLEN are the offsets of guest_CMADDR and
+   guest_CMLEN.  Since this routine has to work for any guest state,
    without knowing what it is, those offsets have to passed in.
 
    callback_opaque is a caller-supplied pointer to data which the
@@ -181,21 +181,21 @@ IRSB* bb_to_IR (
          /*OUT*/VexGuestExtents* vge,
          /*OUT*/UInt*            n_sc_extents,
          /*OUT*/UInt*            n_guest_instrs, /* stats only */
-                 /*IN*/ void*            callback_opaque,
-                 /*IN*/ DisOneInstrFn    dis_instr_fn,
-                 /*IN*/ UChar*           guest_code,
-                 /*IN*/ Addr64           guest_IP_bbstart,
-                 /*IN*/ Bool             (*chase_into_ok)(void*,Addr64),
-                 /*IN*/ Bool             host_bigendian,
+         /*IN*/ void*            callback_opaque,
+         /*IN*/ DisOneInstrFn    dis_instr_fn,
+         /*IN*/ const UChar*     guest_code,
+         /*IN*/ Addr64           guest_IP_bbstart,
+         /*IN*/ Bool             (*chase_into_ok)(void*,Addr64),
+         /*IN*/ VexEndness       host_endness,
          /*IN*/ Bool             sigill_diag,
-                 /*IN*/ VexArch          arch_guest,
-                 /*IN*/ VexArchInfo*     archinfo_guest,
-                 /*IN*/ VexAbiInfo*      abiinfo_both,
-                 /*IN*/ IRType           guest_word_type,
-         /*IN*/ UInt             (*needs_self_check)(void*,VexGuestExtents*),
-                 /*IN*/ Bool             (*preamble_function)(void*,IRSB*),
-         /*IN*/ Int              offB_GUEST_TISTART,
-         /*IN*/ Int              offB_GUEST_TILEN,
+         /*IN*/ VexArch          arch_guest,
+         /*IN*/ VexArchInfo*     archinfo_guest,
+         /*IN*/ VexAbiInfo*      abiinfo_both,
+         /*IN*/ IRType           guest_word_type,
+         /*IN*/ UInt             (*needs_self_check)(void*,const VexGuestExtents*),
+         /*IN*/ Bool             (*preamble_function)(void*,IRSB*),
+         /*IN*/ Int              offB_GUEST_CMSTART,
+         /*IN*/ Int              offB_GUEST_CMLEN,
          /*IN*/ Int              offB_GUEST_IP,
          /*IN*/ Int              szB_GUEST_IP
       )
@@ -251,17 +251,17 @@ IRSB* bb_to_IR (
 
    /* Guest addresses as IRConsts.  Used in self-checks to specify the
       restart-after-discard point. */
-      guest_IP_bbstart_IRConst
-         = guest_word_type==Ity_I32 
-              ? IRConst_U32(toUInt(guest_IP_bbstart))
-              : IRConst_U64(guest_IP_bbstart);
+   guest_IP_bbstart_IRConst
+      = guest_word_type==Ity_I32 
+           ? IRConst_U32(toUInt(guest_IP_bbstart))
+           : IRConst_U64(guest_IP_bbstart);
 
    /* Leave 15 spaces in which to put the check statements for a self
       checking translation (up to 3 extents, and 5 stmts required for
       each).  We won't know until later the extents and checksums of
       the areas, if any, that need to be checked. */
    nop = IRStmt_NoOp();
-      selfcheck_idx = irsb->stmts_used;
+   selfcheck_idx = irsb->stmts_used;
    for (i = 0; i < 3 * 5; i++)
       addStmtToIRSB( irsb, nop );
 
@@ -362,7 +362,7 @@ IRSB* bb_to_IR (
                             arch_guest,
                             archinfo_guest,
                             abiinfo_both,
-                            host_bigendian,
+                            host_endness,
                             sigill_diag );
 
       /* stay sane ... */
@@ -554,8 +554,8 @@ IRSB* bb_to_IR (
          base2check = vge->base[i];
          len2check  = vge->len[i];
 
-      /* stay sane */
-      vassert(len2check >= 0 && len2check < 1000/*arbitrary*/);
+         /* stay sane */
+         vassert(len2check >= 0 && len2check < 1000/*arbitrary*/);
 
          /* Skip the check if the translation involved zero bytes */
          if (len2check == 0)
@@ -578,7 +578,7 @@ IRSB* bb_to_IR (
             fn_generic =  (VEX_REGPARM(2) HWord(*)(HWord, HWord))
                           genericg_compute_checksum_8al;
             nm_generic = "genericg_compute_checksum_8al";
-      } else {
+         } else {
             fn_generic =  (VEX_REGPARM(2) HWord(*)(HWord, HWord))
                           genericg_compute_checksum_4al;
             nm_generic = "genericg_compute_checksum_4al";
@@ -661,14 +661,14 @@ IRSB* bb_to_IR (
             vassert(expectedhW == fn_spec( first_hW ));
          } else {
             vassert(!nm_spec);
-      }
+         }
 
-      /* Set TISTART and TILEN.  These will describe to the despatcher
-         the area of guest code to invalidate should we exit with a
-         self-check failure. */
+         /* Set CMSTART and CMLEN.  These will describe to the despatcher
+            the area of guest code to invalidate should we exit with a
+            self-check failure. */
 
-      tistart_tmp = newIRTemp(irsb->tyenv, guest_word_type);
-      tilen_tmp   = newIRTemp(irsb->tyenv, guest_word_type);
+         tistart_tmp = newIRTemp(irsb->tyenv, guest_word_type);
+         tilen_tmp   = newIRTemp(irsb->tyenv, guest_word_type);
 
          IRConst* base2check_IRConst
             = guest_word_type==Ity_I32 ? IRConst_U32(toUInt(base2check))
@@ -684,13 +684,13 @@ IRSB* bb_to_IR (
             = IRStmt_WrTmp(tilen_tmp, IRExpr_Const(len2check_IRConst) );
 
          irsb->stmts[selfcheck_idx + i * 5 + 2]
-            = IRStmt_Put( offB_GUEST_TISTART, IRExpr_RdTmp(tistart_tmp) );
+            = IRStmt_Put( offB_GUEST_CMSTART, IRExpr_RdTmp(tistart_tmp) );
 
          irsb->stmts[selfcheck_idx + i * 5 + 3]
-            = IRStmt_Put( offB_GUEST_TILEN, IRExpr_RdTmp(tilen_tmp) );
+            = IRStmt_Put( offB_GUEST_CMLEN, IRExpr_RdTmp(tilen_tmp) );
 
          /* Generate the entry point descriptors */
-      if (abiinfo_both->host_ppc_calls_use_fndescrs) {
+         if (abiinfo_both->host_ppc_calls_use_fndescrs) {
             HWord* descr = (HWord*)fn_generic;
             fn_generic_entry = descr[0];
             if (fn_spec) {
@@ -703,10 +703,10 @@ IRSB* bb_to_IR (
             fn_generic_entry = (HWord)fn_generic;
             if (fn_spec) {
                fn_spec_entry = (HWord)fn_spec;
-      } else {
+            } else {
                fn_spec_entry = (HWord)NULL;
             }
-      }
+         }
 
          IRExpr* callexpr = NULL;
          if (fn_spec) {
@@ -721,10 +721,10 @@ IRSB* bb_to_IR (
             callexpr = mkIRExprCCall( 
                           host_word_type, 2/*regparms*/, 
                           nm_generic, (void*)fn_generic_entry,
-                    mkIRExprVec_2( 
+                          mkIRExprVec_2(
                              mkIRExpr_HWord( (HWord)first_hW ),
                              mkIRExpr_HWord( (HWord)hWs_to_check )
-                    )
+                          )
                        );
          }
 
@@ -736,14 +736,14 @@ IRSB* bb_to_IR (
                        host_word_type==Ity_I64
                           ? IRExpr_Const(IRConst_U64(expectedhW))
                           : IRExpr_Const(IRConst_U32(expectedhW))
-              ),
-              Ijk_TInval,
+                 ),
+                 Ijk_InvalICache,
                  /* Where we must restart if there's a failure: at the
                     first extent, regardless of which extent the
                     failure actually happened in. */
                  guest_IP_bbstart_IRConst,
                  offB_GUEST_IP
-           );
+              );
       } /* for (i = 0; i < vge->n_used; i++) */
    }
 
@@ -788,7 +788,7 @@ static inline UInt ROL32 ( UInt w, Int n ) {
 VEX_REGPARM(2)
 static UInt genericg_compute_checksum_4al ( HWord first_w32, HWord n_w32s )
 {
-   UInt sum1 = 0, sum2 = 0;
+   UInt  sum1 = 0, sum2 = 0;
    UInt* p = (UInt*)first_w32;
    /* unrolled */
    while (n_w32s >= 4) {
@@ -1011,13 +1011,13 @@ static UInt genericg_compute_checksum_4al_11 ( HWord first_w32 )
 VEX_REGPARM(1)
 static UInt genericg_compute_checksum_4al_12 ( HWord first_w32 )
 {
-   UInt sum1 = 0, sum2 = 0;
+   UInt  sum1 = 0, sum2 = 0;
    UInt* p = (UInt*)first_w32;
-      UInt  w;
-      w = p[0];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
-      w = p[1];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
-      w = p[2];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
-      w = p[3];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
+   UInt  w;
+   w = p[0];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
+   w = p[1];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
+   w = p[2];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
+   w = p[3];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
    sum1 ^= sum2;
    w = p[4];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;
    w = p[5];  sum1 = ROL32(sum1 ^ w, 31);  sum2 += w;

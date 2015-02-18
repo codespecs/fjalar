@@ -172,6 +172,7 @@ extern void vex_bzero ( void* s, UInt n );
 /*--- Entry and Exit Handling                              ---*/
 /*------------------------------------------------------------*/
 
+// (comment added 2005)  
 // TODO: We cannot sub-class FunctionExecutionState unless we make
 // this into an array of pointers. Have one stack for
 // each thread. We'll be wasteful and just have the maximum number
@@ -583,6 +584,7 @@ void enter_function(FunctionEntry* f)
     if (gencontains(loc_list_map, (void *)f->locListOffset)) {
       ll = gengettable(loc_list_map, (void *)f->locListOffset);
 
+      // (comment added 2009)  
       // HACK. g++ and GCC handle location lists differently. GCC puts lists offsets
       // relative to the compilation unit, g++ uses the actual address. I'm going to
       // compare the location list ranges both to the cu_base offset, as well as
@@ -598,6 +600,7 @@ void enter_function(FunctionEntry* f)
       if(ll) {
         FJALAR_DPRINTF("\tFound location list entry, finding location corresponding to dwarf #: %d with offset: %lld\n", ll->atom, ll->atom_offset);
 
+        // (comment added 2013)  
         // It turns out it might not be just the contents of a register.  Some
         // 32bit x86 code does some tricky stack alignment and has to save a
         // pointer to the orginal stack frame.  This means we get passed a 
@@ -1005,6 +1008,7 @@ void fjalar_pre_clo_init()
 /*   VG_(memset)(FunctionExecutionStateStack, 0, */
 /* 	      FN_STACK_SIZE * sizeof(*FunctionExecutionStateStack)); */
 
+  // (comment added 2005)  
   // TODO: Do we need to clear all global variables before processing
   // command-line options?  We don't need to as long as this function
   // is only run once at the beginning of program execution.
@@ -1025,7 +1029,7 @@ void fjalar_post_clo_init()
   VG_(clo_vex_control).iropt_unroll_thresh = 0;
   VG_(clo_vex_control).guest_chase_thresh = 0;
 
-  executable_filename = (char*)VG_(args_the_exename);
+  executable_filename = VG_(args_the_exename);
 
   if (fjalar_with_gdb) {
     int x = 0;
@@ -1038,7 +1042,7 @@ void fjalar_post_clo_init()
   // Handle variables set by command-line options:
   // Assumes that filename is first argument in client_argv
   FJALAR_DPRINTF("\nReading binary file \"%s\" [0x%p]\n\n",
-	  executable_filename, (void *)executable_filename);
+	  executable_filename, executable_filename);
 
   // --disambig results in the disambig filename being ${executable_filename}.disambig
   // (overrides --disambig-file option)

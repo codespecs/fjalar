@@ -71,6 +71,31 @@
     }) \
    )
 
+// UInt enum set arg, eg. --foo=fubar,bar,baz or --foo=none
+// or --foo=all  (if qq_all is True)
+#define VG_USETGEN_CLO(qq_arg, qq_option, qq_vals, qq_var, qq_all) \
+   (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
+    ({ \
+      const HChar* val = &(qq_arg)[ VG_(strlen)(qq_option)+1 ]; \
+      if (!VG_(parse_enum_set)(qq_vals, \
+                               qq_all,/*allow_all*/ \
+                               val, \
+                               &(qq_var))) \
+            VG_(fmsg_bad_option)(qq_arg, "%s is an invalid %s set\n", \
+                                 val, qq_option+2); \
+      True; \
+     }) \
+    )
+
+// UInt enum set arg, eg. --foo=fubar,bar,baz or --foo=none or --foo=all
+#define VG_USET_CLO(qq_arg, qq_option, qq_vals, qq_var) \
+   VG_USETGEN_CLO((qq_arg), qq_option, (qq_vals), (qq_var), True)
+
+/* Same as VG_USET_CLO but not allowing --foo=all.
+   To be used when some or all of the enum set are mutually eXclusive. */
+#define VG_USETX_CLO(qq_arg, qq_option, qq_vals, qq_var) \
+   VG_USETGEN_CLO((qq_arg), qq_option, (qq_vals), (qq_var), False)
+
 // Unbounded integer arg, eg. --foo=10
 #define VG_INT_CLO(qq_arg, qq_option, qq_var) \
    (VG_STREQN(VG_(strlen)(qq_option)+1, qq_arg, qq_option"=") && \
@@ -102,8 +127,8 @@
       /* Check bounds. */ \
       if ((qq_var) < (qq_lo) || (qq_var) > (qq_hi)) { \
          VG_(fmsg_bad_option)(qq_arg, \
-                      "'%s' argument must be between %lld and %lld\n", \
-                      (qq_option), (Long)(qq_lo), (Long)(qq_hi)); \
+            "'%s' argument must be between %lld and %lld\n", \
+            (qq_option), (Long)(qq_lo), (Long)(qq_hi)); \
       } \
       True; \
      }) \
@@ -155,6 +180,14 @@ extern Bool VG_(clo_stats);
    can be changed dynamically.*/
 extern Int VG_(clo_vgdb_error);
 
+/* If user has provided the --vgdb-prefix command line option,
+   VG_(arg_vgdb_prefix) points at the provided argument (including the
+   '--vgdb-prefix=' string).
+   Otherwise, it is NULL.
+   Typically, this is used by tools to produce user message with the
+   expected vgdb prefix argument, if the user has changed the default. */
+extern const HChar *VG_(arg_vgdb_prefix);
+
 /* Emit all messages as XML? default: NO */
 /* If clo_xml is set, various other options are set in a non-default
    way.  See vg_main.c and mc_main.c. */
@@ -168,7 +201,7 @@ extern const HChar* VG_(clo_xml_user_comment);
    less aggressively if that is needed (callgrind needs this). */
 extern VexControl VG_(clo_vex_control);
 
-/* Number of parents of a backtrace.  Default: 8.  */
+/* Number of parents of a backtrace.  Default: 12  */
 extern Int   VG_(clo_backtrace_size);
 
 /* Continue stack traces below main()?  Default: NO */

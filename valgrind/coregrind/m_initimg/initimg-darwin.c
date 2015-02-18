@@ -143,12 +143,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
                                          + sizeof(VG_PLATFORM) + 16;
    Int preload_string_len    = preload_core_path_len + preload_tool_path_len;
    HChar* preload_string     = VG_(malloc)("initimg-darwin.sce.1", preload_string_len);
-   vg_assert(preload_string);
 
    /* Determine if there's a vgpreload_<tool>_<platform>.so file, and setup
       preload_string. */
    preload_tool_path = VG_(malloc)("initimg-darwin.sce.2", preload_tool_path_len);
-   vg_assert(preload_tool_path);
    VG_(snprintf)(preload_tool_path, preload_tool_path_len,
                  "%s/vgpreload_%s-%s.so", VG_(libdir), toolname, VG_PLATFORM);
    if (VG_(access)(preload_tool_path, True/*r*/, False/*w*/, False/*x*/) == 0) {
@@ -171,7 +169,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    /* Allocate a new space */
    ret = VG_(malloc) ("initimg-darwin.sce.3", 
                       sizeof(HChar *) * (envc+2+1)); /* 2 new entries + NULL */
-   vg_assert(ret);
 
    /* copy it over */
    for (cpp = ret; *origenv; )
@@ -185,7 +182,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       if (VG_(memcmp)(*cpp, ld_preload, ld_preload_len) == 0) {
          Int len = VG_(strlen)(*cpp) + preload_string_len;
          HChar *cp = VG_(malloc)("initimg-darwin.sce.4", len);
-         vg_assert(cp);
 
          VG_(snprintf)(cp, len, "%s%s:%s",
                        ld_preload, preload_string, (*cpp)+ld_preload_len);
@@ -197,7 +193,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       if (VG_(memcmp)(*cpp, dyld_cache, dyld_cache_len) == 0) {
          Int len = dyld_cache_len + VG_(strlen)(dyld_cache_value) + 1;
          HChar *cp = VG_(malloc)("initimg-darwin.sce.4.2", len);
-         vg_assert(cp);
 
          VG_(snprintf)(cp, len, "%s%s", dyld_cache, dyld_cache_value);
 
@@ -211,7 +206,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    if (!ld_preload_done) {
       Int len = ld_preload_len + preload_string_len;
       HChar *cp = VG_(malloc) ("initimg-darwin.sce.5", len);
-      vg_assert(cp);
 
       VG_(snprintf)(cp, len, "%s%s", ld_preload, preload_string);
 
@@ -220,7 +214,6 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
    if (!dyld_cache_done) {
       Int len = dyld_cache_len + VG_(strlen)(dyld_cache_value) + 1;
       HChar *cp = VG_(malloc) ("initimg-darwin.sce.5.2", len);
-      vg_assert(cp);
 
       VG_(snprintf)(cp, len, "%s%s", dyld_cache, dyld_cache_value);
 
@@ -333,7 +326,6 @@ Addr setup_client_stack( void*  init_sp,
    Addr client_SP;	        /* client stack base (initial SP) */
    Addr clstack_start;
    Int i;
-   Bool have_exename;
 
    vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
    vg_assert( VG_(args_for_client) );
@@ -343,7 +335,6 @@ Addr setup_client_stack( void*  init_sp,
    /* first of all, work out how big the client stack will be */
    stringsize   = 0;
    auxsize = 0;
-   have_exename = VG_(args_the_exename) != NULL;
 
    /* paste on the extra args if the loader needs them (ie, the #! 
       interpreter and its argument) */
@@ -358,8 +349,7 @@ Addr setup_client_stack( void*  init_sp,
    }
 
    /* now scan the args we're given... */
-   if (have_exename)
-      stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
+   stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       argc++;
@@ -387,7 +377,7 @@ Addr setup_client_stack( void*  init_sp,
    /* OK, now we know how big the client stack is */
    stacksize =
       sizeof(Word) +                          /* argc */
-      (have_exename ? sizeof(HChar **) : 0) + /* argc[0] == exename */
+      sizeof(HChar **) +                      /* argc[0] == exename */
       sizeof(HChar **)*argc +                 /* argv */
       sizeof(HChar **) +                      /* terminal NULL */
       sizeof(HChar **)*envc +                 /* envp */
@@ -398,7 +388,7 @@ Addr setup_client_stack( void*  init_sp,
    if (0) VG_(printf)("stacksize = %d\n", stacksize);
 
    /* client_SP is the client's stack pointer */
-   client_SP = clstack_end - stacksize;
+   client_SP = clstack_end + 1 - stacksize;
    client_SP = VG_ROUNDDN(client_SP, 32); /* make stack 32 byte aligned */
 
    /* base of the string table (aligned) */
@@ -409,11 +399,11 @@ Addr setup_client_stack( void*  init_sp,
    clstack_max_size = VG_PGROUNDUP(clstack_max_size);
 
    /* Darwin stack is chosen by the ume loader */
-   clstack_start = clstack_end - clstack_max_size;
+   clstack_start = clstack_end + 1 - clstack_max_size;
 
    /* Record stack extent -- needed for stack-change code. */
    /* GrP fixme really? */
-   VG_(clstk_base) = clstack_start;
+   VG_(clstk_start_base) = clstack_start;
    VG_(clstk_end)  = clstack_end;
 
    if (0)
@@ -435,7 +425,7 @@ Addr setup_client_stack( void*  init_sp,
    if (info->dynamic) *ptr++ = info->text;
 
    /* --- client argc --- */
-   *ptr++ = (Addr)(argc + (have_exename ? 1 : 0));
+   *ptr++ = (Addr)(argc + 1);
 
    /* --- client argv --- */
    if (info->interp_name) {
@@ -447,8 +437,7 @@ Addr setup_client_stack( void*  init_sp,
       VG_(free)(info->interp_args);
    }
 
-   if (have_exename)
-      *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
+   *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
 
    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
       *ptr++ = (Addr)copy_str(
@@ -486,6 +475,15 @@ Addr setup_client_stack( void*  init_sp,
 
 static void record_system_memory(void)
 {
+  /* JRS 2014-Jul-08: this messes up the sync checker, because the
+     information that the kernel gives us doesn't include anything
+     about the commpage mapping.  This functionality has therefore
+     been moved to m_main.c, valgrind_main(), section "Tell the tool
+     about the initial client memory permissions".  See comments there
+     for rationale. */
+   return;
+   /*NOTREACHED*/
+
    /* Tell aspacem where the client's kernel commpage is */
 #if defined(VGA_amd64)
    /* commpage 0x7fff:ffe00000+ - not in vm_region */
@@ -513,6 +511,8 @@ static void record_system_memory(void)
 IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
 {
    ExeInfo info;
+   VG_(memset)( &info, 0, sizeof(info) );
+
    HChar** env = NULL;
 
    IIFinaliseImageInfo iifii;
@@ -543,18 +543,18 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii )
    //   p: load_client()     [for 'info']
    //   p: fix_environment() [for 'env']
    //--------------------------------------------------------------
-   iicii.clstack_top = info.stack_end - 1;
-   iifii.clstack_max_size = info.stack_end - info.stack_start;
+   iicii.clstack_end = info.stack_end;
+   iifii.clstack_max_size = info.stack_end - info.stack_start + 1;
    
    iifii.initial_client_SP = 
        setup_client_stack( iicii.argv - 1, env, &info, 
-                           iicii.clstack_top, iifii.clstack_max_size );
+                           iicii.clstack_end, iifii.clstack_max_size );
 
    VG_(free)(env);
 
    VG_(debugLog)(2, "initimg",
                  "Client info: "
-                 "initial_IP=%p initial_SP=%p stack=%p..%p\n", 
+                 "initial_IP=%p initial_SP=%p stack=[%p..%p]\n", 
                  (void*)(iifii.initial_client_IP),
                  (void*)(iifii.initial_client_SP),
                  (void*)(info.stack_start), 

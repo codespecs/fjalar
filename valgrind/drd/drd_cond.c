@@ -61,8 +61,8 @@ static
 void DRD_(cond_initialize)(struct cond_info* const p, const Addr cond)
 {
    tl_assert(cond != 0);
-   tl_assert(p->a1         == cond);
-   tl_assert(p->type       == ClientCondvar);
+   tl_assert(p->a1   == cond);
+   tl_assert(p->type == ClientCondvar);
 
    p->cleanup       = (void(*)(DrdClientobj*))(DRD_(cond_cleanup));
    p->delete_thread = 0;
@@ -130,8 +130,8 @@ static struct cond_info* cond_get_or_allocate(const Addr cond)
       return 0;
    }
 
-      p = &(DRD_(clientobj_add)(cond, ClientCondvar)->cond);
-      DRD_(cond_initialize)(p, cond);
+   p = &(DRD_(clientobj_add)(cond, ClientCondvar)->cond);
+   DRD_(cond_initialize)(p, cond);
    return p;
 }
 
@@ -197,12 +197,12 @@ void DRD_(cond_post_destroy)(const Addr cond, const Bool destroy_succeeded)
    }
 
    if (destroy_succeeded)
-   DRD_(clientobj_remove)(p->a1, ClientCondvar);
+      DRD_(clientobj_remove)(p->a1, ClientCondvar);
 }
 
 /**
  * Called before pthread_cond_wait(). Note: before this function is called,
- *  mutex_unlock() has already been called from drd_clientreq.c.
+ * mutex_unlock() has already been called from drd_clientreq.c.
  */
 void DRD_(cond_pre_wait)(const Addr cond, const Addr mutex)
 {
@@ -289,14 +289,14 @@ void DRD_(cond_post_wait)(const Addr cond)
       return;
    }
 
-      if (p->waiter_count > 0)
+   if (p->waiter_count > 0)
+   {
+      --p->waiter_count;
+      if (p->waiter_count == 0)
       {
-         --p->waiter_count;
-         if (p->waiter_count == 0)
-         {
-            p->mutex = 0;
-         }
+	 p->mutex = 0;
       }
+   }
 }
 
 static void cond_signal(const DrdThreadId tid, struct cond_info* const cond_p)
@@ -309,21 +309,21 @@ static void cond_signal(const DrdThreadId tid, struct cond_info* const cond_p)
    if (cond_p->waiter_count > 0)
    {
       if (DRD_(s_report_signal_unlocked)
-          && ! DRD_(mutex_is_locked_by)(cond_p->mutex, drd_tid))
+	  && ! DRD_(mutex_is_locked_by)(cond_p->mutex, drd_tid))
       {
 	 /*
 	  * A signal is sent while the associated mutex has not been locked.
 	  * This can indicate but is not necessarily a race condition.
 	  */
-         CondRaceErrInfo cei = { .tid = DRD_(thread_get_running_tid)(),
+	 CondRaceErrInfo cei = { .tid = DRD_(thread_get_running_tid)(),
 				 .cond  = cond_p->a1,
-                                 .mutex = cond_p->mutex,
-                               };
-         VG_(maybe_record_error)(vg_tid,
-                                 CondRaceErr,
-                                 VG_(get_IP)(vg_tid),
-                                 "CondErr",
-                                 &cei);
+				 .mutex = cond_p->mutex,
+	 };
+	 VG_(maybe_record_error)(vg_tid,
+				 CondRaceErr,
+				 VG_(get_IP)(vg_tid),
+				 "CondErr",
+				 &cei);
       }
    }
    else

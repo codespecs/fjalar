@@ -468,6 +468,7 @@ typedef
       ARMneon_VQDMULL,
       ARMneon_VRECPS,
       ARMneon_VRSQRTS,
+      ARMneon_INVALID
       /* ... */
    }
    ARMNeonBinOp;
@@ -663,30 +664,30 @@ typedef
          /* 32-bit load or store, may be conditional */
          struct {
             ARMCondCode cc; /* ARMcc_NV is not allowed */
-            Bool       isLoad;
-            HReg       rD;
-            ARMAMode1* amode;
+            Bool        isLoad;
+            HReg        rD;
+            ARMAMode1*  amode;
          } LdSt32;
          /* 16-bit load or store, may be conditional */
          struct {
             ARMCondCode cc; /* ARMcc_NV is not allowed */
-            Bool       isLoad;
-            Bool       signedLoad;
-            HReg       rD;
-            ARMAMode2* amode;
+            Bool        isLoad;
+            Bool        signedLoad;
+            HReg        rD;
+            ARMAMode2*  amode;
          } LdSt16;
          /* 8-bit (unsigned) load or store, may be conditional */
          struct {
             ARMCondCode cc; /* ARMcc_NV is not allowed */
-            Bool       isLoad;
-            HReg       rD;
-            ARMAMode1* amode;
+            Bool        isLoad;
+            HReg        rD;
+            ARMAMode1*  amode;
          } LdSt8U;
          /* 8-bit signed load, may be conditional */
          struct {
             ARMCondCode cc; /* ARMcc_NV is not allowed */
-            HReg       rD;
-            ARMAMode2* amode;
+            HReg        rD;
+            ARMAMode2*  amode;
          } Ld8S;
          /* Update the guest R15T value, then exit requesting to chain
             to it.  May be conditional.  Urr, use of Addr32 implicitly
@@ -1015,21 +1016,22 @@ extern ARMInstr* ARMInstr_EvCheck  ( ARMAMode1* amCounter,
                                      ARMAMode1* amFailAddr );
 extern ARMInstr* ARMInstr_ProfInc  ( void );
 
-extern void ppARMInstr ( ARMInstr* );
+extern void ppARMInstr ( const ARMInstr* );
 
 
 /* Some functions that insulate the register allocator from details
    of the underlying instruction set. */
-extern void getRegUsage_ARMInstr ( HRegUsage*, ARMInstr*, Bool );
+extern void getRegUsage_ARMInstr ( HRegUsage*, const ARMInstr*, Bool );
 extern void mapRegs_ARMInstr     ( HRegRemap*, ARMInstr*, Bool );
-extern Bool isMove_ARMInstr      ( ARMInstr*, HReg*, HReg* );
+extern Bool isMove_ARMInstr      ( const ARMInstr*, HReg*, HReg* );
 extern Int  emit_ARMInstr        ( /*MB_MOD*/Bool* is_profInc,
-                                   UChar* buf, Int nbuf, ARMInstr* i, 
+                                   UChar* buf, Int nbuf, const ARMInstr* i, 
                                    Bool mode64,
-                                   void* disp_cp_chain_me_to_slowEP,
-                                   void* disp_cp_chain_me_to_fastEP,
-                                   void* disp_cp_xindir,
-                                   void* disp_cp_xassisted );
+                                   VexEndness endness_host,
+                                   const void* disp_cp_chain_me_to_slowEP,
+                                   const void* disp_cp_chain_me_to_fastEP,
+                                   const void* disp_cp_xindir,
+                                   const void* disp_cp_xassisted );
 
 extern void genSpill_ARM  ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
                             HReg rreg, Int offset, Bool );
@@ -1039,8 +1041,8 @@ extern void genReload_ARM ( /*OUT*/HInstr** i1, /*OUT*/HInstr** i2,
 extern void getAllocableRegs_ARM ( Int*, HReg** );
 extern HInstrArray* iselSB_ARM   ( IRSB*, 
                                    VexArch,
-                                   VexArchInfo*,
-                                   VexAbiInfo*,
+                                   const VexArchInfo*,
+                                   const VexAbiInfo*,
                                    Int offs_Host_EvC_Counter,
                                    Int offs_Host_EvC_FailAddr,
                                    Bool chainingAllowed,
@@ -1050,20 +1052,23 @@ extern HInstrArray* iselSB_ARM   ( IRSB*,
 /* How big is an event check?  This is kind of a kludge because it
    depends on the offsets of host_EvC_FAILADDR and
    host_EvC_COUNTER. */
-extern Int evCheckSzB_ARM ( void );
+extern Int evCheckSzB_ARM ( VexEndness endness_host );
 
 /* Perform a chaining and unchaining of an XDirect jump. */
-extern VexInvalRange chainXDirect_ARM ( void* place_to_chain,
-                                        void* disp_cp_chain_me_EXPECTED,
-                                        void* place_to_jump_to );
+extern VexInvalRange chainXDirect_ARM ( VexEndness endness_host,
+                                        void* place_to_chain,
+                                        const void* disp_cp_chain_me_EXPECTED,
+                                        const void* place_to_jump_to );
 
-extern VexInvalRange unchainXDirect_ARM ( void* place_to_unchain,
-                                          void* place_to_jump_to_EXPECTED,
-                                          void* disp_cp_chain_me );
+extern VexInvalRange unchainXDirect_ARM ( VexEndness endness_host,
+                                          void* place_to_unchain,
+                                          const void* place_to_jump_to_EXPECTED,
+                                          const void* disp_cp_chain_me );
 
 /* Patch the counter location into an existing ProfInc point. */
-extern VexInvalRange patchProfInc_ARM ( void*  place_to_patch,
-                                        ULong* location_of_counter );
+extern VexInvalRange patchProfInc_ARM ( VexEndness endness_host,
+                                        void*  place_to_patch,
+                                        const ULong* location_of_counter );
 
 
 #endif /* ndef __VEX_HOST_ARM_DEFS_H */

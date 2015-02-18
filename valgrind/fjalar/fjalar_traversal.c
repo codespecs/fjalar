@@ -261,6 +261,7 @@ void visitClassMembersNoValues(TypeEntry* class,
 
   // RUDD 2.0 Making use of EnclosingVarStack to keep track of
   // struct/class members.
+  // (comment added 2008)  
   // TODO: Make this less string based
   top = stringStackTop(&fullNameStack);
 
@@ -412,6 +413,7 @@ void visitClassMemberVariables(VisitArgs* args) {
 
           sprintf(indexStr, "%d", arrayIndex);
 
+          // (comment added 2005)  
           // TODO: Subtract and add is a HACK!  Subtract one from the
           // type of curVar just because we are looping through and
           // expanding the array
@@ -565,6 +567,7 @@ void visitClassMemberVariables(VisitArgs* args) {
             stringStackPop(&fullNameStack);
           }
 
+          // (comment added 2005)  
           // HACK: Add the count back on at the end
           if (gencontains(VisitedStructsTable, (void*)(curVar->varType))) {
             UWord count = (UWord)(gengettable(VisitedStructsTable, (void*)(curVar->varType)));
@@ -841,6 +844,7 @@ void visitClassMemberVariables(VisitArgs* args) {
     VG_(free)((void*)fullFjalarName);
   }
 
+  // (comment added 2005)  
   // TODO: Visit static member variables (remember that they have
   // global addresses):
 
@@ -927,6 +931,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
     if ((varOrigin == FUNCTION_FORMAL_PARAM) && stackBaseAddr) {
       ThreadId tid = VG_(get_running_tid)();
 
+      // (comment added 2009)  
       // HACKISH. needed to work around bad location information in
       // the DWARF tables, while still providing tools with the variables
       // if they care. return is an exception as we figure it out ourself.
@@ -946,6 +951,7 @@ void visitVariableGroup(VariableOrigin varOrigin,
         unsigned int i = 0;
 
         // MAIN STACK LAYOUT
+        // (comment added 2009)  
         // HACK - Main has a very strange stack layout. The stack
         // layout for a standard function is as follows:
 
@@ -1399,6 +1405,7 @@ void visitVariable(VariableEntry* var,
                    FunctionEntry* varFuncInfo,
                    Bool isEnter) {
 
+  // (comment added 2009)  
   // TODO: This function should be changed to take in a VisitArgs*
   // instead of this list of arguments. This would require a change
   // in the Fjalar API however.
@@ -2081,6 +2088,7 @@ void visitSequence(VisitArgs* args) {
   // dereferencing each element of the array.  If a particular element
   // is un-allocated or un-initialized, then mark it with a 0.
   if (layersBeforeBase > 0) {
+    // (comment added 2005)  
     // TODO: Implement static array flattening
 
     // (If this variable is a static array, then there is no need to
@@ -2112,11 +2120,13 @@ void visitSequence(VisitArgs* args) {
               *((Addr*)(*pValueArrayEntry));
           }
           else {
+            // (comment added 2005)  
             // TODO: We need to somehow mark this entry as 'uninit'
             *pValueArrayEntryGuest = *pValueArrayEntry = 0;
           }
         }
         else {
+          // (comment added 2005)  
           // TODO: We need to somehow mark this entry as 'unallocated'
           *pValueArrayEntryGuest = *pValueArrayEntry = 0;
         }

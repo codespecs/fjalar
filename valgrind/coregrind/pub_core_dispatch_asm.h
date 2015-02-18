@@ -50,11 +50,11 @@
    a TRC value from the unchanged baseblock pointer -- which has 0 as
    its lowest bit.
 */
-#define VG_TRC_BORING             29 /* no event; just keep going */
-#define VG_TRC_INNER_FASTMISS     37 /* TRC only; means fast-cache miss. */
-#define VG_TRC_INNER_COUNTERZERO  41 /* TRC only; means bb ctr == 0 */
-#define VG_TRC_FAULT_SIGNAL       43 /* TRC only; got sigsegv/sigbus */
-#define VG_TRC_INVARIANT_FAILED   47 /* TRC only; invariant violation */
+#define VG_TRC_BORING              29 /* no event; just keep going */
+#define VG_TRC_INNER_FASTMISS      37 /* TRC only; means fast-cache miss. */
+#define VG_TRC_INNER_COUNTERZERO   41 /* TRC only; means bb ctr == 0 */
+#define VG_TRC_FAULT_SIGNAL        43 /* TRC only; got sigsegv/sigbus */
+#define VG_TRC_INVARIANT_FAILED    47 /* TRC only; invariant violation */
 #define VG_TRC_CHAIN_ME_TO_SLOW_EP 49 /* TRC only; chain to slow EP */
 #define VG_TRC_CHAIN_ME_TO_FAST_EP 51 /* TRC only; chain to fast EP */
 

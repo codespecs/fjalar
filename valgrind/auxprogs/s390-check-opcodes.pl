@@ -215,7 +215,7 @@ foreach my $opc (keys %csv_desc) {
 #----------------------------------------------------
 foreach my $opc (keys %opc_desc) {
     if (defined $csv_desc{$opc}) {
-    if ($opc_desc{$opc} ne $csv_desc{$opc}) {
+        if ($opc_desc{$opc} ne $csv_desc{$opc}) {
             print "*** opcode $opc differs:\n";
         print "    binutils:    $opc_desc{$opc}\n";
             print "    opcodes.csv: $csv_desc{$opc}\n";

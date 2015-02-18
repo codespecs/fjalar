@@ -427,7 +427,7 @@ find_active_chunks(Int* pn_chunks)
 typedef 
    struct {
       UInt  state:2;    // Reachedness.
-      UInt  pending:1;  // Scan pending.  
+      UInt  pending:1;  // Scan pending.
       UInt  heuristic: (sizeof(UInt)*8)-3;
       // Heuristic with which this block was considered reachable.
       // LchNone if state != Reachable or no heuristic needed to
@@ -562,12 +562,12 @@ lc_is_a_chunk_ptr(Addr ptr, Int* pch_no, MC_Chunk** pch, LC_Extra** pex)
 static void lc_push(Int ch_no, MC_Chunk* ch)
 {
    if (!lc_extras[ch_no].pending) {
-   if (0) {
-      VG_(printf)("pushing %#lx-%#lx\n", ch->data, ch->data + ch->szB);
-   }
-   lc_markstack_top++;
-   tl_assert(lc_markstack_top < lc_n_chunks);
-   lc_markstack[lc_markstack_top] = ch_no;
+      if (0) {
+         VG_(printf)("pushing %#lx-%#lx\n", ch->data, ch->data + ch->szB);
+      }
+      lc_markstack_top++;
+      tl_assert(lc_markstack_top < lc_n_chunks);
+      lc_markstack[lc_markstack_top] = ch_no;
       tl_assert(!lc_extras[ch_no].pending);
       lc_extras[ch_no].pending = True;
    }
@@ -594,6 +594,7 @@ static const HChar* pp_heuristic(LeakCheckHeuristic h)
    switch(h) {
    case LchNone:                return "none";
    case LchStdString:           return "stdstring";
+   case LchLength64:            return "length64";
    case LchNewArray:            return "newarray";
    case LchMultipleInheritance: return "multipleinheritance";
    default:                     return "???invalid heuristic???";
@@ -647,7 +648,7 @@ static Bool aligned_ptr_above_page0_is_vtable_addr(Addr ptr)
       if (pot_fn == 0)
          continue; // NULL fn pointer. Seems it can happen in vtable.
       seg = VG_(am_find_nsegment) (pot_fn);
-#if defined(VGA_ppc64)
+#if defined(VGA_ppc64be) || defined(VGA_ppc64le)
       // ppc64 use a thunk table. So, we have one more level of indirection
       // to follow.
       if (seg == NULL
@@ -670,6 +671,16 @@ static Bool aligned_ptr_above_page0_is_vtable_addr(Addr ptr)
    }
 
    return False;
+}
+
+// true if a is properly aligned and points to 64bits of valid memory
+static Bool is_valid_aligned_ULong ( Addr a )
+{
+   if (sizeof(Word) == 8)
+      return MC_(is_valid_aligned_word)(a);
+
+   return MC_(is_valid_aligned_word)(a)
+      && MC_(is_valid_aligned_word)(a + 4);
 }
 
 // If ch is heuristically reachable via an heuristic member of heur_set,
@@ -708,6 +719,23 @@ static LeakCheckHeuristic heuristic_reachedness (Addr ptr,
                // ??? or even a call to malloc ????
                return LchStdString;
             }
+         }
+      }
+   }
+
+   if (HiS(LchLength64, heur_set)) {
+      // Detects inner pointers that point at 64bit offset (8 bytes) into a
+      // block following the length of the remaining as 64bit number 
+      // (=total block size - 8).
+      // This is used e.g. by sqlite for tracking the total size of allocated
+      // memory.
+      // Note that on 64bit platforms, a block matching LchLength64 will
+      // also be matched by LchNewArray.
+      if ( ptr == ch->data + sizeof(ULong)
+          && is_valid_aligned_ULong(ch->data)) {
+         const ULong size = *((ULong*)ch->data);
+         if (size > 0 && (ch->szB - sizeof(ULong)) == size) {
+            return LchLength64;
          }
       }
    }
@@ -954,7 +982,7 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
    // is read in code executed via a longjmp.
    volatile
 #endif
-   Addr ptr = VG_ROUNDUP(start,     sizeof(Addr));
+   Addr ptr = VG_ROUNDUP(start, sizeof(Addr));
    const Addr end = VG_ROUNDDN(start+len, sizeof(Addr));
    vki_sigset_t sigmask;
 
@@ -1025,9 +1053,9 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
       // Skip invalid chunks.
       if (UNLIKELY((ptr % SM_SIZE) == 0)) {
          if (! MC_(is_within_valid_secondary)(ptr) ) {
-         ptr = VG_ROUNDUP(ptr+1, SM_SIZE);
-         continue;
-      }
+            ptr = VG_ROUNDUP(ptr+1, SM_SIZE);
+            continue;
+         }
       }
 
       // Look to see if this page seems reasonable.
@@ -1038,12 +1066,12 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
          }
       }
 
-         if ( MC_(is_valid_aligned_word)(ptr) ) {
-            lc_scanned_szB += sizeof(Addr);
+      if ( MC_(is_valid_aligned_word)(ptr) ) {
+         lc_scanned_szB += sizeof(Addr);
          // If the below read fails, we will longjmp to the loop begin.
-            addr = *(Addr *)ptr;
-            // If we get here, the scanned word is in valid memory.  Now
-            // let's see if its contents point to a chunk.
+         addr = *(Addr *)ptr;
+         // If we get here, the scanned word is in valid memory.  Now
+         // let's see if its contents point to a chunk.
          if (UNLIKELY(searched)) {
             if (addr >= searched && addr < searched + szB) {
                if (addr == searched) {
@@ -1055,10 +1083,10 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
                   LC_Extra *ex;
                   VG_(umsg)("*%#lx interior points at %lu bytes inside %#lx\n",
                             ptr, (long unsigned) addr - searched, searched);
-               MC_(pp_describe_addr) (ptr);
+                  MC_(pp_describe_addr) (ptr);
                   if (lc_is_a_chunk_ptr(addr, &ch_no, &ch, &ex) ) {
                      Int h;
-                     for (h = LchStdString; h <= LchMultipleInheritance; h++) {
+                     for (h = LchStdString; h < N_LEAK_CHECK_HEURISTICS; h++) {
                         if (heuristic_reachedness(addr, ch, ex, H2S(h)) == h) {
                            VG_(umsg)("block at %#lx considered reachable "
                                      "by ptr %#lx using %s heuristic\n",
@@ -1076,10 +1104,10 @@ lc_scan_memory(Addr start, SizeT len, Bool is_prior_definite,
          } else {
             lc_push_if_a_chunk_ptr(addr, clique, cur_clique, is_prior_definite);
          }
-         } else if (0 && VG_DEBUG_LEAKCHECK) {
-            VG_(printf)("%#lx not valid\n", ptr);
-         }
-         ptr += sizeof(Addr);
+      } else if (0 && VG_DEBUG_LEAKCHECK) {
+         VG_(printf)("%#lx not valid\n", ptr);
+      }
+      ptr += sizeof(Addr);
    }
 
    VG_(sigprocmask)(VKI_SIG_SETMASK, &sigmask, NULL);
@@ -1094,7 +1122,7 @@ static void lc_process_markstack(Int clique)
    Bool is_prior_definite;
 
    while (lc_pop(&top)) {
-      tl_assert(top >= 0 && top < lc_n_chunks);      
+      tl_assert(top >= 0 && top < lc_n_chunks);
 
       // See comment about 'is_prior_definite' at the top to understand this.
       is_prior_definite = ( Possible != lc_extras[top].state );
@@ -1243,16 +1271,16 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    }
 
    if (lr_table == NULL)
-   // Create the lr_table, which holds the loss records.
+      // Create the lr_table, which holds the loss records.
       // If the lr_table already exists, it means it contains
       // loss_records from the previous leak search. The old_*
       // values in these records are used to implement the
       // leak check delta mode
-   lr_table =
-      VG_(OSetGen_Create)(offsetof(LossRecord, key),
-                          cmp_LossRecordKey_LossRecord,
-                          VG_(malloc), "mc.pr.1",
-                          VG_(free)); 
+      lr_table =
+         VG_(OSetGen_Create)(offsetof(LossRecord, key),
+                             cmp_LossRecordKey_LossRecord,
+                             VG_(malloc), "mc.pr.1",
+                             VG_(free));
 
    // If we have loss records from a previous search, reset values to have
    // proper printing of the deltas between previous search and this search.
@@ -1399,12 +1427,14 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
    }
 
    if (VG_(clo_verbosity) > 0 && !VG_(clo_xml)) {
-      HChar d_bytes[20];
-      HChar d_blocks[20];
+      HChar d_bytes[31];
+      HChar d_blocks[31];
 #     define DBY(new,old) \
-      MC_(snprintf_delta) (d_bytes, 20, (new), (old), lcp->deltamode)
+      MC_(snprintf_delta) (d_bytes, sizeof(d_bytes), (new), (old), \
+                           lcp->deltamode)
 #     define DBL(new,old) \
-      MC_(snprintf_delta) (d_blocks, 20, (new), (old), lcp->deltamode)
+      MC_(snprintf_delta) (d_blocks, sizeof(d_blocks), (new), (old), \
+                           lcp->deltamode)
 
       VG_(umsg)("LEAK SUMMARY:\n");
       VG_(umsg)("   definitely lost: %'lu%s bytes in %'lu%s blocks\n",
@@ -1458,8 +1488,8 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
             VG_(umsg)("To see details of leaked memory, "
                       "give 'full' arg to leak_check\n");
          else
-         VG_(umsg)("Rerun with --leak-check=full to see details "
-                   "of leaked memory\n");
+            VG_(umsg)("Rerun with --leak-check=full to see details "
+                      "of leaked memory\n");
       }
       if (lcp->mode == LC_Full &&
           MC_(blocks_reachable) > 0 && !RiS(Reachable,lcp->show_leak_kinds)) {
@@ -1468,7 +1498,7 @@ static void print_results(ThreadId tid, LeakCheckParams* lcp)
          if (lcp->requested_by_monitor_command)
             VG_(umsg)("To see them, add 'reachable any' args to leak_check\n");
          else
-         VG_(umsg)("To see them, rerun with: --leak-check=full "
+            VG_(umsg)("To see them, rerun with: --leak-check=full "
                       "--show-leak-kinds=all\n");
       }
       VG_(umsg)("\n");

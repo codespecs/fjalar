@@ -27,6 +27,7 @@ SUBDIRS = \
 	. \
 	$(TOOLS) \
 	$(EXP_TOOLS) \
+	shared \
 	tests \
 	perf \
 	gdbserver_tests \
@@ -46,7 +47,7 @@ SUPP_FILES = \
 	exp-sgcheck.supp \
 	darwin9.supp darwin9-drd.supp \
 	darwin10.supp darwin10-drd.supp \
-	darwin11.supp darwin12.supp \
+	darwin11.supp darwin12.supp darwin13.supp darwin14.supp \
 	bionic.supp
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
@@ -66,12 +67,12 @@ CLEANFILES     = default.supp
 default.supp: $(DEFAULT_SUPP_FILES)
 	echo "# This is a generated file, composed of the following suppression rules:" > default.supp
 	echo "# " $(DEFAULT_SUPP_FILES) >> default.supp
-	cat $(DEFAULT_SUPP_FILES) >> default.supp
+	cat $^ >> default.supp
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
 ## Ensure make exits with error if PERL fails or post_regtest_checks fails.
 regtest: check
-	gdbserver_tests/make_local_links $(GDB)
+	$(top_srcdir)/gdbserver_tests/make_local_links $(GDB)
 	if @PERL@ tests/vg_regtest gdbserver_tests $(TOOLS) $(EXP_TOOLS) ; then \
 	   tests/post_regtest_checks $(abs_top_srcdir) gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
 	else \
@@ -106,6 +107,7 @@ EXTRA_DIST = \
 	README.android \
 	README.android_emulator \
 	README.mips \
+	README.aarch64 \
 	NEWS.old \
 	valgrind.pc.in \
 	valgrind.spec.in \

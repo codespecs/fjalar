@@ -82,7 +82,7 @@ static void check_mmap(SysRes res, Addr base, SizeT len, const HChar* who)
    }
 }
 
-#if DARWIN_VERS == DARWIN_10_8
+#if DARWIN_VERS >= DARWIN_10_8
 static void check_mmap_float(SysRes res, SizeT len, const HChar* who)
 {
    if (sr_isError(res)) {
@@ -301,7 +301,12 @@ load_genericthread(vki_uint8_t **stack_end,
       if (flavor == i386_THREAD_STATE && count == i386_THREAD_STATE_COUNT) {
          i386_thread_state_t *state = (i386_thread_state_t *)p;
          if (entry) *entry = (vki_uint8_t *)state->__eip;
-         if (stack_end) *stack_end = (vki_uint8_t *)(state->__esp ? state->__esp : VKI_USRSTACK);
+         if (stack_end) {
+            *stack_end = (vki_uint8_t *)(state->__esp ? state->__esp
+                                                      : VKI_USRSTACK);
+            vg_assert(VG_IS_PAGE_ALIGNED(*stack_end));
+            (*stack_end)--;
+         }
          if (customstack) *customstack = state->__esp;
          return 0;
       }
@@ -310,7 +315,12 @@ load_genericthread(vki_uint8_t **stack_end,
       if (flavor == x86_THREAD_STATE64 && count == x86_THREAD_STATE64_COUNT){
          x86_thread_state64_t *state = (x86_thread_state64_t *)p;
          if (entry) *entry = (vki_uint8_t *)state->__rip;
-         if (stack_end) *stack_end = (vki_uint8_t *)(state->__rsp ? state->__rsp : VKI_USRSTACK64);
+         if (stack_end) {
+            *stack_end = (vki_uint8_t *)(state->__rsp ? state->__rsp 
+                                                      : VKI_USRSTACK64);
+            vg_assert(VG_IS_PAGE_ALIGNED(*stack_end));
+            (*stack_end)--;
+         }
          if (customstack) *customstack = state->__rsp;
          return 0;
       }
@@ -364,7 +374,7 @@ load_unixthread(vki_uint8_t **out_stack_start, vki_uint8_t **out_stack_end,
    if (!customstack) {
       // Map the stack
       vki_size_t stacksize = VG_PGROUNDUP(default_stack_size());
-      vm_address_t stackbase = VG_PGROUNDDN(stack_end-stacksize);
+      vm_address_t stackbase = VG_PGROUNDDN(stack_end+1-stacksize);
       SysRes res;
         
       res = VG_(am_mmap_anon_fixed_client)(stackbase, stacksize, VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC);
@@ -386,7 +396,7 @@ load_unixthread(vki_uint8_t **out_stack_start, vki_uint8_t **out_stack_end,
    This is a really nasty hack -- allocates 64M+stack size, then
    deallocates the 64M, to guarantee that the stack is at least 64M
    above zero. */
-#if DARWIN_VERS == DARWIN_10_8
+#if DARWIN_VERS >= DARWIN_10_8
 static int
 handle_lcmain ( vki_uint8_t **out_stack_start,
                 vki_uint8_t **out_stack_end,
@@ -405,7 +415,7 @@ handle_lcmain ( vki_uint8_t **out_stack_start,
    check_mmap_float(res, requested_size, "handle_lcmain");
    vg_assert(!sr_isError(res));
    *out_stack_start = (vki_uint8_t*)sr_Res(res);
-   *out_stack_end   = *out_stack_start + requested_size;
+   *out_stack_end   = *out_stack_start + requested_size - 1;
 
    Bool need_discard = False;
    res = VG_(am_munmap_client)(&need_discard, (Addr)*out_stack_start, HACK);
@@ -416,7 +426,7 @@ handle_lcmain ( vki_uint8_t **out_stack_start,
 
    return 0;
 }
-#endif /* DARWIN_VERS == DARWIN_10_8 */
+#endif /* DARWIN_VERS >= DARWIN_10_8 */
 
 
 
@@ -558,7 +568,7 @@ load_thin_file(int fd, vki_off_t offset, vki_off_t size, unsigned long filetype,
 
       switch (lc->cmd) {
 
-#if   DARWIN_VERS == DARWIN_10_8
+#if   DARWIN_VERS >= DARWIN_10_8
       case LC_MAIN: { /* New in 10.8 */
          struct entry_point_command* epcmd
             = (struct entry_point_command*)lc;
@@ -699,8 +709,10 @@ load_fat_file(int fd, vki_off_t offset, vki_off_t size, unsigned long filetype,
 
 #if defined(VGA_ppc32)
    good_arch = CPU_TYPE_POWERPC;
-#elif defined(VGA_ppc64)
-   good_arch = CPU_TYPE_POWERPC64;
+#elif defined(VGA_ppc64be)
+   good_arch = CPU_TYPE_POWERPC64BE;
+#elif defined(VGA_ppc64le)
+   good_arch = CPU_TYPE_POWERPC64LE;
 #elif defined(VGA_x86)
    good_arch = CPU_TYPE_I386;
 #elif defined(VGA_amd64)

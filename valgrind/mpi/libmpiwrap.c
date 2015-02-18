@@ -123,7 +123,7 @@
    A suitable soname to match with is therefore "libmpi*.so*".
 */
 #define I_WRAP_FNNAME_U(_name) \
-         I_WRAP_SONAME_FNNAME_ZU(libmpiZaZdsoZa,_name)
+        I_WRAP_SONAME_FNNAME_ZU(libmpiZaZdsoZa,_name)
 
 
 /* Define HAVE_MPI_STATUS_IGNORE iff we have to deal with
@@ -152,7 +152,7 @@ typedef    signed long  Word;
 typedef  unsigned long  UWord;
 
 #if !defined(offsetof)
-#  define offsetof(type,memb) ((int)&((type*)0)->memb)
+#  define offsetof(type,memb) ((UWord)&((type*)0)->memb)
 #endif
 
 /* Find the size of long double image (not 'sizeof(long double)').

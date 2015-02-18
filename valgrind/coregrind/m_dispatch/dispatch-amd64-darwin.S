@@ -62,12 +62,12 @@ VG_(disp_run_translations):
 	/* %rdx holds host_addr    */
 
         /* The preamble */
-	
+
         /* Save integer registers, since this is a pseudo-function. */
         pushq   %rax
 	pushq	%rbx
 	pushq	%rcx
-	pushq	%rdx
+        pushq   %rdx
 	pushq	%rsi
 	pushq	%rbp
 	pushq	%r8
@@ -109,7 +109,7 @@ VG_(disp_run_translations):
            will jump (or call) to one of the continuation points
            VG_(cp_...) below. */
         jmpq    *%rdx
-	/*NOTREACHED*/
+       	/*NOTREACHED*/	
 
 /*----------------------------------------------------*/
 /*--- Postamble and exit.                          ---*/
@@ -166,11 +166,11 @@ remove_frame:
 	popq	%rbx
 	popq	%rax
 	ret	
-
+        
 /*----------------------------------------------------*/
 /*--- Continuation points                          ---*/
 /*----------------------------------------------------*/
-	
+
 /* ------ Chain me to slow entry point ------ */
 .globl VG_(disp_cp_chain_me_to_slowEP)
 VG_(disp_cp_chain_me_to_slowEP):
@@ -208,7 +208,7 @@ VG_(disp_cp_xindir):
         /* stats only */
         movabsq $VG_(stats__n_xindirs_32), %r10
         addl    $1, (%r10)
-
+        
 	/* try a fast lookup in the translation cache */
 	movabsq $VG_(tt_fast), %rcx
 	movq	%rax, %rbx		/* next guest addr */

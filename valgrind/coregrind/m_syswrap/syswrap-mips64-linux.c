@@ -205,7 +205,6 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState * ctst = VG_ (get_ThreadState) (ctid);
    UInt ret = 0;
    UWord * stack;
-   NSegment const *seg;
    SysRes res;
    vki_sigset_t blockall, savedmask;
 
@@ -230,21 +229,8 @@ static SysRes do_clone ( ThreadId ptid,
    ctst->tmp_sig_mask = ptst->sig_mask;
 
    ctst->os_state.threadgroup = ptst->os_state.threadgroup;
-   seg = VG_(am_find_nsegment)((Addr)sp);
 
-   if (seg && seg->kind != SkResvn) {
-      ctst->client_stack_highest_word = sp;
-      ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-      if (debug)
-        VG_(printf)("tid %d: guessed client stack range %#lx-%#lx\n",
-                    ctid, seg->start, sp /* VG_PGROUNDUP (sp) */ );
-   } else {
-      VG_(message)(Vg_UserMsg,
-                    "!? New thread %d starts with sp+%#lx) unmapped\n",
-                    ctid, sp);
-      ctst->client_stack_szB = 0;
-   }
+   ML_(guess_and_register_stack) (sp, ctst);
 
    VG_TRACK(pre_thread_ll_create, ptid, ctid);
    if (flags & VKI_CLONE_SETTLS) {
@@ -796,7 +782,7 @@ static SyscallTableEntry syscall_main_table[] = {
    GENX_ (__NR_mlockall, sys_mlockall),
    LINX_ (__NR_munlockall, sys_munlockall),
    LINX_ (__NR_vhangup, sys_vhangup),
-   /* GENX_(__NR_pivot_root,sys_pivot_root), */
+   LINX_ (__NR_pivot_root,sys_pivot_root),
    LINXY (__NR__sysctl, sys_sysctl),
    LINXY (__NR_prctl, sys_prctl),
    LINXY (__NR_adjtimex, sys_adjtimex),
@@ -921,8 +907,10 @@ static SyscallTableEntry syscall_main_table[] = {
    LINXY (__NR_timerfd_settime, sys_timerfd_settime),
    LINXY (__NR_newfstatat, sys_newfstatat),
    LINXY (__NR_prlimit64, sys_prlimit64),
+   LINXY (__NR_clock_adjtime, sys_clock_adjtime),
    LINXY (__NR_process_vm_readv, sys_process_vm_readv),
-   LINX_ (__NR_process_vm_writev, sys_process_vm_writev)
+   LINX_ (__NR_process_vm_writev, sys_process_vm_writev),
+   LINXY(__NR_getrandom, sys_getrandom)
 };
 
 SyscallTableEntry * ML_(get_linux_syscall_entry) ( UInt sysno )

@@ -51,7 +51,7 @@ extern const UInt ML_(mdep_trap_table_size);
 
 void VG_(show_open_ports)(void);
 
-void ML_(sync_mappings)(const HChar *when, const HChar *where, Int num);
+Bool ML_(sync_mappings)(const HChar *when, const HChar *where, UWord num);
 
 // Unix syscalls.  
 // GEN = it uses the generic wrapper
@@ -332,7 +332,13 @@ DECL_TEMPLATE(darwin, sem_unlink);              // 270
 DECL_TEMPLATE(darwin, sem_wait);                // 271
 DECL_TEMPLATE(darwin, sem_trywait);             // 272
 DECL_TEMPLATE(darwin, sem_post);                // 273
+
+#if DARWIN_VERS < DARWIN_10_10
 // NYI sem_getvalue 274
+#elif DARWIN_VERS == DARWIN_10_10
+DECL_TEMPLATE(darwin, sysctlbyname);            // 274
+#endif
+
 DECL_TEMPLATE(darwin, sem_init);                // 275
 DECL_TEMPLATE(darwin, sem_destroy);             // 276
 DECL_TEMPLATE(darwin, open_extended)            // 277
@@ -344,7 +350,9 @@ DECL_TEMPLATE(darwin, chmod_extended);          // 282
 DECL_TEMPLATE(darwin, fchmod_extended);         // 283
 DECL_TEMPLATE(darwin, access_extended);         // 284
 DECL_TEMPLATE(darwin, settid);                  // 285
-// NYI gettid 286
+#if DARWIN_VERS >= DARWIN_10_7
+DECL_TEMPLATE(darwin, gettid);                  // 286
+#endif
 // NYI setsgroups 287
 // NYI getsgroups 288
 // NYI setwgroups 289
@@ -381,7 +389,7 @@ DECL_TEMPLATE(darwin, aio_write);              // 319
 // NYI lio_listio 320
 // NYI __pthread_cond_wait 321
 // NYI iopolicysys 322
-// 323
+// NYI process_policy 323
 // NYI mlockall 324
 // NYI munlockall 325
 // 326
@@ -431,7 +439,7 @@ DECL_TEMPLATE(darwin, kevent);                  // 363
 DECL_TEMPLATE(darwin, bsdthread_register);      // 366
 DECL_TEMPLATE(darwin, workq_open);              // 367
 DECL_TEMPLATE(darwin, workq_ops);               // 368
-// 369
+DECL_TEMPLATE(darwin, kevent64);                // 369
 // 370
 // 371
 DECL_TEMPLATE(darwin, __thread_selfid);         // 372
@@ -492,6 +500,71 @@ DECL_TEMPLATE(darwin, __mac_syscall);           // 381
 DECL_TEMPLATE(darwin, fsgetpath);                // 427
 DECL_TEMPLATE(darwin, audit_session_self);       // 428
 // NYI audit_session_join 429
+DECL_TEMPLATE(darwin, fileport_makeport);        // 430
+
+// NYI fileport_makefd 431
+// NYI audit_session_port 432
+// NYI pid_suspend 433
+// NYI pid_resume 434
+#if DARWIN_VERS == DARWIN_10_10
+// NYI pid_hibernate 435
+// NYI pid_shutdown_sockets 436
+#endif /* DARWIN_VERS == DARWIN_10_10 */
+// old old shared_region_slide_np 437
+// NYI shared_region_map_and_slide_np            // 438
+// NYI kas_info                                  // 439
+// NYI memorystatus_control                      // 440
+DECL_TEMPLATE(darwin, guarded_open_np);          // 441
+DECL_TEMPLATE(darwin, guarded_close_np);         // 442
+DECL_TEMPLATE(darwin, guarded_kqueue_np);        // 443
+DECL_TEMPLATE(darwin, change_fdguard_np);        // 444
+// old __proc_suppress 445
+// NYI proc_rlimit_control                       // 446
+DECL_TEMPLATE(darwin, connectx);                 // 447
+DECL_TEMPLATE(darwin, disconnectx);              // 448
+// NYI peeloff // 449
+// NYI socket_delegate // 450
+// NYI telemetry // 451
+// NYI proc_uuid_policy // 452
+// NYI memorystatus_get_level // 453
+// NYI system_override // 454
+// NYI vfs_purge // 455
+#if DARWIN_VERS == DARWIN_10_10
+// NYI sfi_ctl         // 456
+// NYI sfi_pidctl      // 457
+// NYI coalition       // 458
+// NYI coalition_info  // 459
+DECL_TEMPLATE(darwin, necp_match_policy);        // 460
+DECL_TEMPLATE(darwin, getattrlistbulk);          // 461
+// 462
+// NYI openat          // 463
+// NYI openat_nocancel // 464
+// NYI renameat        // 465
+// NYI faccessat       // 466
+// NYI fchmodat        // 467
+// NYI fchownat        // 468
+// NYI fstatat         // 469
+// NYI fstatat64       // 470
+// NYI linkat          // 471
+// NYI unlinkat        // 472
+// NYI readlinkat      // 473
+// NYI symlinkat       // 474
+// NYI mkdirat         // 475
+// NYI getattrlistat   // 476
+// NYI proc_trace_log  // 477
+DECL_TEMPLATE(darwin, bsdthread_ctl);            // 478
+// NYI openbyid_np     // 479
+// NYI recvmsg_x       // 480
+// NYI sendmsg_x       // 481
+// NYI thread_selfusage  // 482
+// NYI csrctl          // 483
+// NYI guarded_open_dprotected_np  // 484
+// NYI guarded_write_np  // 485
+// NYI guarded_pwrite_np  // 486
+// NYI guarded_writev_np  // 487
+// NYI rename_ext      // 488
+// NYI mremap_encrypted  // 489
+#endif /* DARWIN_VERS == DARWIN_10_10 */
 
 // Mach message helpers
 DECL_TEMPLATE(darwin, mach_port_set_context);
@@ -519,6 +592,7 @@ DECL_TEMPLATE(darwin, task_get_special_port);
 DECL_TEMPLATE(darwin, task_get_exception_ports);
 DECL_TEMPLATE(darwin, semaphore_create);
 DECL_TEMPLATE(darwin, semaphore_destroy);
+DECL_TEMPLATE(darwin, task_policy_set);
 DECL_TEMPLATE(darwin, mach_ports_lookup);
 DECL_TEMPLATE(darwin, task_threads);
 DECL_TEMPLATE(darwin, task_suspend);
@@ -540,13 +614,16 @@ DECL_TEMPLATE(darwin, mach_vm_allocate);
 DECL_TEMPLATE(darwin, mach_vm_deallocate);
 DECL_TEMPLATE(darwin, mach_vm_protect);
 DECL_TEMPLATE(darwin, mach_vm_copy);
+DECL_TEMPLATE(darwin, mach_vm_read_overwrite);
 DECL_TEMPLATE(darwin, mach_vm_inherit);
 DECL_TEMPLATE(darwin, mach_vm_map);
+DECL_TEMPLATE(darwin, mach_vm_remap);
 DECL_TEMPLATE(darwin, mach_vm_region_recurse);
 DECL_TEMPLATE(darwin, thread_terminate);
 DECL_TEMPLATE(darwin, thread_create);
 DECL_TEMPLATE(darwin, thread_create_running);
 DECL_TEMPLATE(darwin, thread_suspend);
+DECL_TEMPLATE(darwin, thread_resume);
 DECL_TEMPLATE(darwin, thread_get_state);
 DECL_TEMPLATE(darwin, thread_policy);
 DECL_TEMPLATE(darwin, thread_policy_set);
@@ -560,17 +637,28 @@ DECL_TEMPLATE(darwin, mach_msg_task);
 DECL_TEMPLATE(darwin, mach_msg_thread);
 
 // Mach traps
-#if DARWIN_VERS == DARWIN_10_8
-DECL_TEMPLATE(darwin, mach__10);
-DECL_TEMPLATE(darwin, mach__12);
-DECL_TEMPLATE(darwin, mach__14);
-DECL_TEMPLATE(darwin, mach__16);
-DECL_TEMPLATE(darwin, mach__18);
-DECL_TEMPLATE(darwin, mach__19);
-DECL_TEMPLATE(darwin, mach__20);
-DECL_TEMPLATE(darwin, mach__21);
-#endif /* DARWIN_VERS == DARWIN_10_8 */
+#if DARWIN_VERS >= DARWIN_10_8
+DECL_TEMPLATE(darwin, kernelrpc_mach_vm_allocate_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_vm_deallocate_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_vm_protect_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_vm_map_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_allocate_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_destroy_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_deallocate_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_mod_refs_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_move_member_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_insert_right_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_insert_member_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_extract_member_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_construct_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_destruct_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_guard_trap);
+DECL_TEMPLATE(darwin, kernelrpc_mach_port_unguard_trap);
+DECL_TEMPLATE(darwin, iopolicysys);
+DECL_TEMPLATE(darwin, process_policy);
+#endif /* DARWIN_VERS >= DARWIN_10_8 */
 DECL_TEMPLATE(darwin, mach_msg_unhandled);
+DECL_TEMPLATE(darwin, mach_msg_unhandled_check);
 DECL_TEMPLATE(darwin, mach_msg);
 DECL_TEMPLATE(darwin, mach_reply_port);
 DECL_TEMPLATE(darwin, mach_thread_self);

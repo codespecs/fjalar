@@ -8,7 +8,7 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT([Valgrind],[3.9.0.PLSE],[valgrind-users@lists.sourceforge.net])
+AC_INIT([Valgrind],[3.10.1.PLSE],[valgrind-users@lists.sourceforge.net])
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -103,6 +103,7 @@ AC_MSG_CHECKING([for a supported version of gcc])
 # 
 # A few examples of how the ${CC} --version output looks like:
 #
+# ######## gcc variants ########
 # Arch Linux: i686-pc-linux-gnu-gcc (GCC) 4.6.2
 # Debian Linux: gcc (Debian 4.3.2-1.1) 4.3.2
 # openSUSE: gcc (SUSE Linux) 4.5.1 20101208 [gcc-4_5-branch revision 167585]
@@ -110,17 +111,29 @@ AC_MSG_CHECKING([for a supported version of gcc])
 # MontaVista Linux for ARM: arm-none-linux-gnueabi-gcc (Sourcery G++ Lite 2009q1-203) 4.3.3
 # OS/X 10.6: i686-apple-darwin10-gcc-4.2.1 (GCC) 4.2.1 (Apple Inc. build 5666) (dot 3)
 # OS/X 10.7: i686-apple-darwin11-llvm-gcc-4.2 (GCC) 4.2.1 (Based on Apple Inc. build 5658) (LLVM build 2335.15.00)
+#
+# ######## clang variants ########
 # Clang: clang version 2.9 (tags/RELEASE_29/final)
 # Apple clang: Apple clang version 3.1 (tags/Apple/clang-318.0.58) (based on LLVM 3.1svn)
 # FreeBSD clang: FreeBSD clang version 3.1 (branches/release_31 156863) 20120523
 #
+# ######## Apple LLVM variants ########
+# Apple LLVM version 5.1 (clang-503.0.40) (based on LLVM 3.4svn)
+# Apple LLVM version 6.0 (clang-600.0.51) (based on LLVM 3.5svn)
+#
 [
-if test "x`${CC} --version | $SED -n -e 's/.*\(clang\) version.*/\1/p'`" = "xclang" ; then
+if test "x`${CC} --version | $SED -n -e 's/.*\Apple \(LLVM\) version.*clang.*/\1/p'`" = "xLLVM" ;
+then
+    is_clang="applellvm"
+    gcc_version=`${CC} --version | $SED -n -e 's/.*LLVM version \([0-9.]*\).*$/\1/p'`
+elif test "x`${CC} --version | $SED -n -e 's/.*\(clang\) version.*/\1/p'`" = "xclang" ;
+then
     is_clang="clang"
     # Don't use -dumpversion with clang: it will always produce "4.2.1".
     gcc_version=`${CC} --version | $SED -n -e 's/.*clang version \([0-9.]*\).*$/\1/p'`
-    CFLAGS="$CFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
-    CXXFLAGS="$CXXFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
+elif test "x`${CC} --version | $SED -n -e 's/icc.+\(ICC\).*/\1/p'`" = "ICC" ; then
+    is_clang="icc"
+    gcc_version=`${CC} --version | $SED -n -e 's/icc.+\(ICC\).+([0-9.]+).*$/\1/p'`
 else
     is_clang="notclang"
     gcc_version=`${CC} -dumpversion 2>/dev/null`
@@ -129,21 +142,32 @@ else
     fi
 fi
 ]
-AM_CONDITIONAL(COMPILER_IS_CLANG, test $is_clang = clang)
+AM_CONDITIONAL(COMPILER_IS_CLANG, test $is_clang = clang -o $is_clang = applellvm)
+AM_CONDITIONAL(COMPILER_IS_ICC, test $is_clang = icc)
 
+if test $is_clang = clang -o $is_clang = applellvm ; then
+    CFLAGS="$CFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
+    CXXFLAGS="$CXXFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
+fi
+
+# Note: m4 arguments are quoted with [ and ] so square brackets in shell
+# statements have to be quoted.
 case "${is_clang}-${gcc_version}" in
-     notclang-3.*)
+     applellvm-5.1|applellvm-6.0*)
+	AC_MSG_RESULT([ok (Apple LLVM version ${gcc_version})])
+	;;
+     icc-1[3-9]*)
+	AC_MSG_RESULT([ok (ICC version ${gcc_version})])
+	;;
+     notclang-[[3-9]].*|notclang-[[1-9][0-9]]*)
 	AC_MSG_RESULT([ok (${gcc_version})])
 	;;
-     notclang-4.*)
-	AC_MSG_RESULT([ok (${gcc_version})])
-	;;
-     clang-2.9|clang-3.*|clang-4.*)
+     clang-2.9|clang-[[3-9]].*|clang-[[1-9][0-9]]*)
 	AC_MSG_RESULT([ok (clang-${gcc_version})])
 	;;
      *)
 	AC_MSG_RESULT([no (${gcc_version})])
-	AC_MSG_ERROR([please use gcc >= 3.0 or clang >= 2.9])
+	AC_MSG_ERROR([please use gcc >= 3.0 or clang >= 2.9 or icc >= 13.0])
 	;;
 esac
 
@@ -163,6 +187,18 @@ AC_MSG_CHECKING([for a supported CPU])
 # is a 64-bit capable PowerPC, then it must be set to ppc64 and not ppc32.
 # Ditto for amd64.  It is used for more configuration below, but is not used
 # outside this file.
+#
+# Power PC returns powerpc for Big Endian.  This was not changed when Little
+# Endian support was added to the 64-bit architecture.  The 64-bit Little
+# Endian systems explicitly state le in the host_cpu.  For clarity in the
+# Valgrind code, the ARCH_MAX name will state LE or BE for the endianess of
+# the 64-bit system.  Big Endian is the only mode supported on 32-bit Power PC.
+# The abreviation PPC or ppc refers to 32-bit and 64-bit systems with either
+# Endianess.  The name PPC64 or ppc64 to 64-bit systems of either Endianess.
+# The names ppc64be or PPC64BE refer to only 64-bit systems that are Big
+# Endian.  Similarly, ppc64le or PPC64LE refer to only 64-bit systems that are
+# Little Endian.
+
 case "${host_cpu}" in
      i?86) 
 	AC_MSG_RESULT([ok (${host_cpu})])
@@ -175,8 +211,15 @@ case "${host_cpu}" in
         ;;
 
      powerpc64)
+     # this only referrs to 64-bit Big Endian
         AC_MSG_RESULT([ok (${host_cpu})])
-        ARCH_MAX="ppc64"
+        ARCH_MAX="ppc64be"
+        ;;
+
+     powerpc64le)
+     # this only referrs to 64-bit Little Endian
+        AC_MSG_RESULT([ok (${host_cpu})])
+        ARCH_MAX="ppc64le"
         ;;
 
      powerpc)
@@ -194,6 +237,11 @@ case "${host_cpu}" in
 	AC_MSG_RESULT([ok (${host_cpu})])
 	ARCH_MAX="arm"
 	;;
+
+     aarch64*)
+       AC_MSG_RESULT([ok (${host_cpu})])
+       ARCH_MAX="arm64"
+       ;;
 
      mips)
 	AC_MSG_RESULT([ok (${host_cpu})])
@@ -301,6 +349,8 @@ case "${host_os}" in
         AC_DEFINE([DARWIN_10_6], 100600, [DARWIN_VERS value for Mac OS X 10.6])
         AC_DEFINE([DARWIN_10_7], 100700, [DARWIN_VERS value for Mac OS X 10.7])
         AC_DEFINE([DARWIN_10_8], 100800, [DARWIN_VERS value for Mac OS X 10.8])
+        AC_DEFINE([DARWIN_10_9], 100900, [DARWIN_VERS value for Mac OS X 10.9])
+        AC_DEFINE([DARWIN_10_10], 101000, [DARWIN_VERS value for Mac OS X 10.10])
 
 	AC_MSG_CHECKING([for the kernel version])
 	kernel=`uname -r`
@@ -346,9 +396,21 @@ case "${host_os}" in
 		  DEFAULT_SUPP="darwin12.supp ${DEFAULT_SUPP}"
 		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
+	     13.*)
+		  AC_MSG_RESULT([Darwin 13.x (${kernel}) / Mac OS X 10.9 Mavericks])
+		  AC_DEFINE([DARWIN_VERS], DARWIN_10_9, [Darwin / Mac OS X version])
+		  DEFAULT_SUPP="darwin13.supp ${DEFAULT_SUPP}"
+		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+		  ;;
+	     14.*)
+		  AC_MSG_RESULT([Darwin 14.x (${kernel}) / Mac OS X 10.10 Yosemite])
+		  AC_DEFINE([DARWIN_VERS], DARWIN_10_10, [Darwin / Mac OS X version])
+		  DEFAULT_SUPP="darwin14.supp ${DEFAULT_SUPP}"
+		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
+		  ;;
      *) 
 		  AC_MSG_RESULT([unsupported (${kernel})])
-		  AC_MSG_ERROR([Valgrind works on Darwin 10.x and 11.x (Mac OS X 10.6/7)])
+		  AC_MSG_ERROR([Valgrind works on Darwin 10.x, 11.x, 12.x, 13.x and 14.x (Mac OS X 10.6/7/8/9/10)])
 		  ;;
 	esac
         ;;
@@ -366,7 +428,7 @@ esac
 # does not support building 32 bit programs
 
 case "$ARCH_MAX-$VGCONF_OS" in
-     amd64-linux|ppc64-linux)
+     amd64-linux|ppc64be-linux|arm64-linux)
         AC_MSG_CHECKING([for 32 bit build support])
         safe_CFLAGS=$CFLAGS
         CFLAGS="-m32"
@@ -484,13 +546,13 @@ case "$ARCH_MAX-$VGCONF_OS" in
         valt_load_address_sec_inner="0xUNSET"
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
 	;;
-     ppc64-linux)
+     ppc64be-linux)
         valt_load_address_sec_norml="0xUNSET"
         valt_load_address_sec_inner="0xUNSET"
 	if test x$vg_cv_only64bit = xyes; then
-	   VGCONF_ARCH_PRI="ppc64"
+	   VGCONF_ARCH_PRI="ppc64be"
            VGCONF_ARCH_SEC=""
-	   VGCONF_PLATFORM_PRI_CAPS="PPC64_LINUX"
+	   VGCONF_PLATFORM_PRI_CAPS="PPC64BE_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS=""
            valt_load_address_pri_norml="0x38000000"
            valt_load_address_pri_inner="0x28000000"
@@ -502,9 +564,9 @@ case "$ARCH_MAX-$VGCONF_OS" in
            valt_load_address_pri_norml="0x38000000"
            valt_load_address_pri_inner="0x28000000"
 	else
-	   VGCONF_ARCH_PRI="ppc64"
+	   VGCONF_ARCH_PRI="ppc64be"
            VGCONF_ARCH_SEC="ppc32"
-	   VGCONF_PLATFORM_PRI_CAPS="PPC64_LINUX"
+	   VGCONF_PLATFORM_PRI_CAPS="PPC64BE_LINUX"
 	   VGCONF_PLATFORM_SEC_CAPS="PPC32_LINUX"
            valt_load_address_pri_norml="0x38000000"
            valt_load_address_pri_inner="0x28000000"
@@ -513,6 +575,18 @@ case "$ARCH_MAX-$VGCONF_OS" in
 	fi
         AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
 	;;
+     ppc64le-linux)
+        # Little Endian is only supported on PPC64
+        valt_load_address_sec_norml="0xUNSET"
+        valt_load_address_sec_inner="0xUNSET"
+        VGCONF_ARCH_PRI="ppc64le"
+        VGCONF_ARCH_SEC=""
+        VGCONF_PLATFORM_PRI_CAPS="PPC64LE_LINUX"
+        VGCONF_PLATFORM_SEC_CAPS=""
+        valt_load_address_pri_norml="0x38000000"
+        valt_load_address_pri_inner="0x28000000"
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+       ;;
      # Darwin gets identified as 32-bit even when it supports 64-bit.
      # (Not sure why, possibly because 'uname' returns "i386"?)  Just about
      # all Macs support both 32-bit and 64-bit, so we just build both.  If
@@ -559,6 +633,35 @@ case "$ARCH_MAX-$VGCONF_OS" in
         valt_load_address_sec_inner="0xUNSET"
 	AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
 	;;
+     arm64-linux)
+        valt_load_address_sec_norml="0xUNSET"
+        valt_load_address_sec_inner="0xUNSET"
+        if test x$vg_cv_only64bit = xyes; then
+           VGCONF_ARCH_PRI="arm64"
+           VGCONF_ARCH_SEC=""
+           VGCONF_PLATFORM_PRI_CAPS="ARM64_LINUX"
+           VGCONF_PLATFORM_SEC_CAPS=""
+           valt_load_address_pri_norml="0x38000000"
+           valt_load_address_pri_inner="0x28000000"
+        elif test x$vg_cv_only32bit = xyes; then
+           VGCONF_ARCH_PRI="arm"
+           VGCONF_ARCH_SEC=""
+           VGCONF_PLATFORM_PRI_CAPS="ARM_LINUX"
+           VGCONF_PLATFORM_SEC_CAPS=""
+           valt_load_address_pri_norml="0x38000000"
+           valt_load_address_pri_inner="0x28000000"
+        else
+           VGCONF_ARCH_PRI="arm64"
+           VGCONF_ARCH_SEC="arm"
+           VGCONF_PLATFORM_PRI_CAPS="ARM64_LINUX"
+           VGCONF_PLATFORM_SEC_CAPS="ARM_LINUX"
+           valt_load_address_pri_norml="0x38000000"
+           valt_load_address_pri_inner="0x28000000"
+           valt_load_address_sec_norml="0x38000000"
+           valt_load_address_sec_inner="0x28000000"
+        fi
+        AC_MSG_RESULT([ok (${ARCH_MAX}-${VGCONF_OS})])
+        ;;
      s390x-linux)
         VGCONF_ARCH_PRI="s390x"
         VGCONF_ARCH_SEC=""
@@ -622,9 +725,13 @@ AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_PPC32,
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_LINUX \ 
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_LINUX )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_PPC64, 
-               test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_LINUX )
+               test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64BE_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64LE_LINUX )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_ARM,   
-               test x$VGCONF_PLATFORM_PRI_CAPS = xARM_LINUX )
+               test x$VGCONF_PLATFORM_PRI_CAPS = xARM_LINUX \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xARM_LINUX )
+AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_ARM64, 
+               test x$VGCONF_PLATFORM_PRI_CAPS = xARM64_LINUX )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_S390X,
                test x$VGCONF_PLATFORM_PRI_CAPS = xS390X_LINUX )
 AM_CONDITIONAL(VGCONF_ARCHS_INCLUDE_MIPS32,
@@ -642,10 +749,15 @@ AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX,
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX, 
                test x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_LINUX \ 
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xPPC32_LINUX)
-AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX, 
-               test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_LINUX)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC64BE_LINUX,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64BE_LINUX)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_PPC64LE_LINUX,
+               test x$VGCONF_PLATFORM_PRI_CAPS = xPPC64LE_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_ARM_LINUX, 
-               test x$VGCONF_PLATFORM_PRI_CAPS = xARM_LINUX)
+               test x$VGCONF_PLATFORM_PRI_CAPS = xARM_LINUX \
+                 -o x$VGCONF_PLATFORM_SEC_CAPS = xARM_LINUX)
+AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_ARM64_LINUX, 
+               test x$VGCONF_PLATFORM_PRI_CAPS = xARM64_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_S390X_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xS390X_LINUX \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xS390X_LINUX)
@@ -653,7 +765,6 @@ AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_MIPS32_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX)
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_MIPS64_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX)
-
 AM_CONDITIONAL(VGCONF_PLATFORMS_INCLUDE_X86_DARWIN,   
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN \
                  -o x$VGCONF_PLATFORM_SEC_CAPS = xX86_DARWIN)
@@ -668,8 +779,10 @@ AM_CONDITIONAL(VGCONF_OS_IS_LINUX,
                test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC32_LINUX \
-                 -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64BE_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64LE_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xARM_LINUX \
+                 -o x$VGCONF_PLATFORM_PRI_CAPS = xARM64_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xS390X_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS32_LINUX \
                  -o x$VGCONF_PLATFORM_PRI_CAPS = xMIPS64_LINUX)
@@ -731,7 +844,7 @@ AC_ARG_WITH(pagesize,
 
 if test "$psize" = "0"; then
     psizer=`getconf PAGESIZE`
-    let "psize=${psizer}/1024"
+    psize=$((${psizer}/1024))
 fi
 
 if test "$psize" = "4"; then
@@ -754,6 +867,7 @@ AC_ARG_WITH(tmpdir,
    tmpdir="$withval",
    tmpdir="/tmp")
 AC_DEFINE_UNQUOTED(VG_TMPDIR, "$tmpdir", [Temporary files directory])
+AC_SUBST(VG_TMPDIR, [$tmpdir])
 
 
 #----------------------------------------------------------------------------
@@ -772,7 +886,7 @@ if test x$ac_cv_header_features_h = xyes; then
 glibc version is: __GLIBC__ __GLIBC_MINOR__
 #endif
 _ACEOF
-  GLIBC_VERSION="`$CPP conftest.$ac_ext | $SED -n 's/^glibc version is: //p' | $SED 's/ /./g'`"
+  GLIBC_VERSION="`$CPP -P conftest.$ac_ext | $SED -n 's/^glibc version is: //p' | $SED 's/ /./g'`"
 fi
 
 # not really a version check
@@ -793,134 +907,41 @@ AC_EGREP_CPP([BIONIC_LIBC], [
 GLIBC_VERSION="bionic")
 
 
-AC_MSG_CHECKING([the GLIBC_VERSION version])
+AC_MSG_CHECKING([the glibc version])
 
 case "${GLIBC_VERSION}" in
      2.2)
-	AC_MSG_RESULT(2.2 family)
-	AC_DEFINE([GLIBC_2_2], 1, [Define to 1 if you're using glibc 2.2.x])
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
 	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.2-LinuxThreads-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-
-     2.3)
-	AC_MSG_RESULT(2.3 family)
-	AC_DEFINE([GLIBC_2_3], 1, [Define to 1 if you're using glibc 2.3.x])
-	DEFAULT_SUPP="glibc-2.3.supp ${DEFAULT_SUPP}"
+     2.[[3-6]])
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	DEFAULT_SUPP="glibc-${GLIBC_VERSION}.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-
-     2.4)
-	AC_MSG_RESULT(2.4 family)
-	AC_DEFINE([GLIBC_2_4], 1, [Define to 1 if you're using glibc 2.4.x])
-	DEFAULT_SUPP="glibc-2.4.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-
-     2.5)
-	AC_MSG_RESULT(2.5 family)
-	AC_DEFINE([GLIBC_2_5], 1, [Define to 1 if you're using glibc 2.5.x])
-	DEFAULT_SUPP="glibc-2.5.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.6)
-	AC_MSG_RESULT(2.6 family)
-	AC_DEFINE([GLIBC_2_6], 1, [Define to 1 if you're using glibc 2.6.x])
-	DEFAULT_SUPP="glibc-2.6.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.7)
-	AC_MSG_RESULT(2.7 family)
-	AC_DEFINE([GLIBC_2_7], 1, [Define to 1 if you're using glibc 2.7.x])
+     2.[[7-9]])
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.8)
-	AC_MSG_RESULT(2.8 family)
-	AC_DEFINE([GLIBC_2_8], 1, [Define to 1 if you're using glibc 2.8.x])
+     2.10|2.11)
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
+		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.9)
-	AC_MSG_RESULT(2.9 family)
-	AC_DEFINE([GLIBC_2_9], 1, [Define to 1 if you're using glibc 2.9.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.10)
-	AC_MSG_RESULT(2.10 family)
-	AC_DEFINE([GLIBC_2_10], 1, [Define to 1 if you're using glibc 2.10.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.11)
-	AC_MSG_RESULT(2.11 family)
-	AC_DEFINE([GLIBC_2_11], 1, [Define to 1 if you're using glibc 2.11.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.12)
-	AC_MSG_RESULT(2.12 family)
-	AC_DEFINE([GLIBC_2_12], 1, [Define to 1 if you're using glibc 2.12.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.13)
-	AC_MSG_RESULT(2.13 family)
-	AC_DEFINE([GLIBC_2_13], 1, [Define to 1 if you're using glibc 2.13.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.14)
-	AC_MSG_RESULT(2.14 family)
-	AC_DEFINE([GLIBC_2_14], 1, [Define to 1 if you're using glibc 2.14.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.15)
-	AC_MSG_RESULT(2.15 family)
-	AC_DEFINE([GLIBC_2_15], 1, [Define to 1 if you're using glibc 2.15.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.16)
-	AC_MSG_RESULT(2.16 family)
-	AC_DEFINE([GLIBC_2_16], 1, [Define to 1 if you're using glibc 2.16.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-      2.17)
-  	AC_MSG_RESULT(2.17 family)
-  	AC_DEFINE([GLIBC_2_17], 1, [Define to 1 if you're using glibc 2.17.x])
-  	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-  	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-  	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-  	;;
-     2.18)
-	AC_MSG_RESULT(2.18 family)
-	AC_DEFINE([GLIBC_2_18], 1, [Define to 1 if you're using glibc 2.18.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
-	;;
-     2.19)
-	AC_MSG_RESULT(2.19 family)
-	AC_DEFINE([GLIBC_2_19], 1, [Define to 1 if you're using glibc 2.19.x])
+     2.*)
+	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
+		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
+	AC_DEFINE([GLIBC_MANDATORY_INDEX_AND_STRLEN_REDIRECT], 1,
+		  [Define to 1 if index() and strlen() have been optimized heavily (x86 glibc >= 2.12)])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
@@ -935,11 +956,10 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([BIONIC_LIBC], 1, [Define to 1 if you're using Bionic])
 	DEFAULT_SUPP="bionic.supp ${DEFAULT_SUPP}"
 	;;
-
-     *)
+     2.0|2.1|*)
 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
-  	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.17])
-	AC_MSG_ERROR([or Darwin libc])
+	AC_MSG_ERROR([Valgrind requires glibc version 2.2 or later])
+	AC_MSG_ERROR([or Darwin or Bionic libc])
 	;;
 esac
 
@@ -964,9 +984,9 @@ DEFAULT_SUPP="exp-sgcheck.supp ${DEFAULT_SUPP}"
 # Normally the PLAT = (ARCH, OS) characterisation of the platform is enough.
 # But there are times where we need a bit more control.  The motivating
 # and currently only case is Android: this is almost identical to
-# {x86,arm}-linux, but not quite.  So this introduces the concept of platform
-# variant tags, which get passed in the compile as -DVGPV_<arch>_<os>_<variant>
-# along with the main -DVGP_<arch>_<os> definition.
+# {x86,arm,mips}-linux, but not quite.  So this introduces the concept of
+# platform variant tags, which get passed in the compile as
+# -DVGPV_<arch>_<os>_<variant> along with the main -DVGP_<arch>_<os> definition.
 #
 # In almost all cases, the <variant> bit is "vanilla".  But for Android
 # it is "android" instead.
@@ -1366,6 +1386,37 @@ AM_CONDITIONAL(HAVE_PTHREAD_CREATE_GLIBC_2_0,
 	       test x$ac_have_pthread_create_glibc_2_0 = xyes)
 
 
+# Check for dlinfo RTLD_DI_TLS_MODID
+AC_MSG_CHECKING([for dlinfo RTLD_DI_TLS_MODID])
+
+safe_LIBS="$LIBS"
+LIBS="-ldl"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <link.h>
+#include <dlfcn.h>
+]], [[
+  size_t sizes[10000];
+  size_t modid_offset;
+  (void) dlinfo ((void*)sizes, RTLD_DI_TLS_MODID, &modid_offset);
+  return 0;
+]])], [
+ac_have_dlinfo_rtld_di_tls_modid=yes
+AC_MSG_RESULT([yes])
+AC_DEFINE([HAVE_DLINFO_RTLD_DI_TLS_MODID], 1,
+          [Define to 1 if you have a dlinfo that can do RTLD_DI_TLS_MODID.])
+], [
+ac_have_dlinfo_rtld_di_tls_modid=no
+AC_MSG_RESULT([no])
+])
+LIBS=$safe_LIBS
+
+AM_CONDITIONAL(HAVE_DLINFO_RTLD_DI_TLS_MODID,
+	       test x$ac_have_dlinfo_rtld_di_tls_modid = xyes)
+
+
 # Check for eventfd_t, eventfd() and eventfd_read()
 AC_MSG_CHECKING([for eventfd()])
 
@@ -1387,7 +1438,6 @@ AC_DEFINE([HAVE_EVENTFD_READ], 1,
 ], [
 AC_MSG_RESULT([no])
 ])
-
 
 # Check whether compiler can process #include <thread> without errors
 # clang 3.3 cannot process <thread> from e.g.
@@ -1412,6 +1462,22 @@ CXXFLAGS=$safe_CXXFLAGS
 AC_LANG(C)
 
 AM_CONDITIONAL(CXX_CAN_INCLUDE_THREAD_HEADER, test x$ac_cxx_can_include_thread_header = xyes)
+
+
+# On aarch64 before glibc 2.20 we would get the kernel user_pt_regs instead
+# of the user_regs_struct from sys/user.h. They are structurally the same
+# but we get either one or the other.
+
+AC_CHECK_TYPE([struct user_regs_struct],
+              [sys_user_has_user_regs=yes], [sys_user_has_user_regs=no],
+              [[#include <sys/ptrace.h>]
+               [#include <sys/time.h>]
+               [#include <sys/user.h>]])
+if test "$sys_user_has_user_regs" = "yes"; then
+  AC_DEFINE(HAVE_SYS_USER_REGS, 1,
+            [Define to 1 if <sys/user.h> defines struct user_regs_struct])
+fi
+
 
 #----------------------------------------------------------------------------
 # Checking for supported compiler flags.
@@ -1457,6 +1523,86 @@ CFLAGS=$safe_CFLAGS
 AC_SUBST(FLAG_M64)
 
 
+# does this compiler support -march=mips32 (mips32 default) ?
+AC_MSG_CHECKING([if gcc accepts -march=mips32])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="$CFLAGS -march=mips32"
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+FLAG_MIPS32="-march=mips32"
+AC_MSG_RESULT([yes])
+], [
+FLAG_MIPS32=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_MIPS32)
+
+
+# does this compiler support -march=mips64 (mips64 default) ?
+AC_MSG_CHECKING([if gcc accepts -march=mips64])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="$CFLAGS -march=mips64"
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+FLAG_MIPS64="-march=mips64"
+AC_MSG_RESULT([yes])
+], [
+FLAG_MIPS64=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_MIPS64)
+
+
+# does this compiler support -march=octeon (Cavium OCTEON I Specific) ?
+AC_MSG_CHECKING([if gcc accepts -march=octeon])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="$CFLAGS -march=octeon"
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+FLAG_OCTEON="-march=octeon"
+AC_MSG_RESULT([yes])
+], [
+FLAG_OCTEON=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_OCTEON)
+
+
+# does this compiler support -march=octeon2 (Cavium OCTEON II Specific) ?
+AC_MSG_CHECKING([if gcc accepts -march=octeon2])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="$CFLAGS -march=octeon2"
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+FLAG_OCTEON2="-march=octeon2"
+AC_MSG_RESULT([yes])
+], [
+FLAG_OCTEON2=""
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+
+AC_SUBST(FLAG_OCTEON2)
+
+
 # does this compiler support -mmmx ?
 AC_MSG_CHECKING([if gcc accepts -mmmx])
 
@@ -1497,163 +1643,83 @@ CFLAGS=$safe_CFLAGS
 AC_SUBST(FLAG_MSSE)
 
 
-# does this compiler support -mpreferred-stack-boundary=2 ?
-AC_MSG_CHECKING([if gcc accepts -mpreferred-stack-boundary])
+# does this compiler support -mpreferred-stack-boundary=2 when
+# generating code for a 32-bit target?  Note that we only care about
+# this when generating code for (32-bit) x86, so if the compiler
+# doesn't recognise -m32 it's no big deal.  We'll just get code for
+# the Memcheck and other helper functions, that is a bit slower than
+# it could be, on x86; and no difference at all on any other platform.
+AC_MSG_CHECKING([if gcc accepts -mpreferred-stack-boundary=2 -m32])
 
 safe_CFLAGS=$CFLAGS
-CFLAGS="-mpreferred-stack-boundary=2"
+CFLAGS="-mpreferred-stack-boundary=2 -m32"
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
   return 0;
 ]])], [
-PREFERRED_STACK_BOUNDARY="-mpreferred-stack-boundary=2"
+PREFERRED_STACK_BOUNDARY_2="-mpreferred-stack-boundary=2"
 AC_MSG_RESULT([yes])
 ], [
-PREFERRED_STACK_BOUNDARY=""
+PREFERRED_STACK_BOUNDARY_2=""
 AC_MSG_RESULT([no])
 ])
 CFLAGS=$safe_CFLAGS
 
-AC_SUBST(PREFERRED_STACK_BOUNDARY)
+AC_SUBST(PREFERRED_STACK_BOUNDARY_2)
 
 
-# does this compiler support -Wno-pointer-sign ?
-AC_MSG_CHECKING([if gcc accepts -Wno-pointer-sign])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wno-pointer-sign"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
-  return 0;
-]])], [
-no_pointer_sign=yes
-AC_MSG_RESULT([yes])
-], [
-no_pointer_sign=no
-AC_MSG_RESULT([no])
+# Convenience function to check whether GCC supports a particular
+# warning option. Takes two arguments, first the warning flag name
+# to check (without -W), then the conditional name to set if that
+# warning flag is supported.
+AC_DEFUN([AC_GCC_WARNING_COND],[
+  AC_MSG_CHECKING([if gcc accepts -W$1])
+  safe_CFLAGS=$CFLAGS
+  CFLAGS="-W$1"
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[;]])], [
+  has_warning_flag=yes
+  AC_MSG_RESULT([yes])], [
+  has_warning_flag=no
+  AC_MSG_RESULT([no])])
+  CFLAGS=$safe_CFLAGS
+  AM_CONDITIONAL([$2], test x$has_warning_flag = xyes)
 ])
-CFLAGS=$safe_CFLAGS
 
-AM_CONDITIONAL(HAS_POINTER_SIGN_WARNING, test x$no_pointer_sign = xyes)
-
-
-# does this compiler support -Wno-write-strings ?
-AC_MSG_CHECKING([if gcc accepts -Wwrite-strings])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wwrite-strings"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
-  return 0;
-]])], [
-no_write_strings=yes
-AC_MSG_RESULT([yes])
-], [
-no_write_strings=no
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-if test x$no_write_strings = xyes; then
+AC_GCC_WARNING_COND([pointer-sign], [HAS_POINTER_SIGN_WARNING])
+AC_GCC_WARNING_COND([write-strings], [HAS_WRITE_STRINGS_WARNING])
+if test $has_warning_flag = yes; then
   CFLAGS="$CFLAGS -Wwrite-strings"
   CXXFLAGS="$CXXFLAGS -Wwrite-strings"
 fi
 
-AM_CONDITIONAL(HAS_WRITE_STRINGS_WARNING, test x$no_write_strings = xyes)
-
-# does this compiler support -Wno-empty-body ?
-
-AC_MSG_CHECKING([if gcc accepts -Wno-empty-body])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wno-empty-body"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
-  return 0;
-]])], [
-AC_SUBST([FLAG_W_NO_EMPTY_BODY], [-Wno-empty-body])
-AC_MSG_RESULT([yes])
-], [
-AC_SUBST([FLAG_W_NO_EMPTY_BODY], [])
-AC_MSG_RESULT([no])
+# Convenience function to check whether GCC supports a particular
+# warning option. Similar to AC_GCC_WARNING_COND, but does a
+# substitution instead of setting an conditional. Takes two arguments,
+# first the warning flag name to check (without -W), then the
+# substitution name to set with -Wno-warning-flag if the flag exists,
+# or the empty string if the compiler doesn't accept the flag. Note
+# that checking is done against the warning flag itself, but the
+# substitution is then done to cancel the warning flag.
+AC_DEFUN([AC_GCC_WARNING_SUBST_NO],[
+  AC_MSG_CHECKING([if gcc accepts -W$1])
+  safe_CFLAGS=$CFLAGS
+  CFLAGS="-W$1"
+  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[;]])], [
+  AC_SUBST([$2], [-Wno-$1])
+  AC_MSG_RESULT([yes])], [
+  AC_SUBST([$2], [])
+  AC_MSG_RESULT([no])])
+  CFLAGS=$safe_CFLAGS
 ])
-CFLAGS=$safe_CFLAGS
 
-
-# does this compiler support -Wno-format-zero-length ?
-
-AC_MSG_CHECKING([if gcc accepts -Wno-format-zero-length])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wno-format-zero-length"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
-  return 0;
-]])], [
-AC_SUBST([FLAG_W_NO_FORMAT_ZERO_LENGTH], [-Wno-format-zero-length])
-AC_MSG_RESULT([yes])
-], [
-AC_SUBST([FLAG_W_NO_FORMAT_ZERO_LENGTH], [])
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-
-# does this compiler support -Wno-nonnull ?
-
-AC_MSG_CHECKING([if gcc accepts -Wno-nonnull])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wno-nonnull"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
-  return 0;
-]])], [
-AC_SUBST([FLAG_W_NO_NONNULL], [-Wno-nonnull])
-AC_MSG_RESULT([yes])
-], [
-AC_SUBST([FLAG_W_NO_NONNULL], [])
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-
-# does this compiler support -Wno-overflow ?
-
-AC_MSG_CHECKING([if gcc accepts -Wno-overflow])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wno-overflow"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
-  return 0;
-]])], [
-AC_SUBST([FLAG_W_NO_OVERFLOW], [-Wno-overflow])
-AC_MSG_RESULT([yes])
-], [
-AC_SUBST([FLAG_W_NO_OVERFLOW], [])
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-
-# does this compiler support -Wno-uninitialized ?
-
-AC_MSG_CHECKING([if gcc accepts -Wno-uninitialized])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wno-uninitialized"
-
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[ ]], [[
-  return 0;
-]])], [
-AC_SUBST([FLAG_W_NO_UNINITIALIZED], [-Wno-uninitialized])
-AC_MSG_RESULT([yes])
-], [
-AC_SUBST([FLAG_W_NO_UNINITIALIZED], [])
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
+AC_GCC_WARNING_SUBST_NO([empty-body], [FLAG_W_NO_EMPTY_BODY])
+AC_GCC_WARNING_SUBST_NO([format-zero-length], [FLAG_W_NO_FORMAT_ZERO_LENGTH])
+AC_GCC_WARNING_SUBST_NO([tautological-compare], [FLAG_W_NO_TAUTOLOGICAL_COMPARE])
+AC_GCC_WARNING_SUBST_NO([nonnull], [FLAG_W_NO_NONNULL])
+AC_GCC_WARNING_SUBST_NO([overflow], [FLAG_W_NO_OVERFLOW])
+AC_GCC_WARNING_SUBST_NO([uninitialized], [FLAG_W_NO_UNINITIALIZED])
+AC_GCC_WARNING_SUBST_NO([unused-function], [FLAG_W_NO_UNUSED_FUNCTION])
+AC_GCC_WARNING_SUBST_NO([static-local-in-inline], [FLAG_W_NO_STATIC_LOCAL_IN_INLINE])
 
 
 # does this compiler support -Wextra or the older -W ?
@@ -1681,6 +1747,13 @@ AC_MSG_RESULT([-Wextra])
   ])
 ])
 CFLAGS=$safe_CFLAGS
+
+# does this compiler support -Wcast-qual ?
+AC_GCC_WARNING_COND([cast-qual], [HAS_CAST_QUAL_WARNING])
+if test $has_warning_flag = yes; then
+  CFLAGS="$CFLAGS -Wcast-qual"
+  CXXFLAGS="$CXXFLAGS -Wcast-qual"
+fi
 
 
 # does this compiler support -fno-stack-protector ?
@@ -1748,25 +1821,6 @@ AC_MSG_RESULT([no])
 ])
 AM_CONDITIONAL(DWARF4, test x$ac_have_dwarf4 = xyes)
 CFLAGS=$safe_CFLAGS
-
-
-# does this compiler support -gstabs ?
-
-AC_MSG_CHECKING([if gcc accepts -gstabs])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-gstabs"
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
-  return 0;
-]])], [
-ac_have_gstabs=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_gstabs=no
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-AM_CONDITIONAL([HAVE_GSTABS], [test x$ac_have_gstabs = xyes])
 
 
 # does this compiler support nested functions ?
@@ -1841,7 +1895,7 @@ CFLAGS=$safe_CFLAGS
 # (Pedantically if the linker is gold then -Ttext is fine, but newer
 # gold versions also support -Ttext-segment. So just assume that unless
 # we can use -Ttext-segment we need to strip the build-id NOTEs.
-if test "x${linker_using_t_text}" == "xyes"; then
+if test "x${linker_using_t_text}" = "xyes"; then
 AC_MSG_NOTICE([ld -Ttext used, need to strip build-id NOTEs.])
 # does the linker support -Wl,--build-id=none ?  Note, it's
 # important that we test indirectly via whichever C compiler
@@ -1906,7 +1960,6 @@ if test x$ac_have_as_ppc_fpPO = xyes ; then
   AC_DEFINE(HAVE_AS_PPC_FPPO, 1, [Define to 1 if as supports floating point phased out category.])
 fi
 
-CFLAGS=$safe_CFLAGS
 
 # does the x86/amd64 assembler understand SSE3 instructions?
 # Note, this doesn't generate a C-level symbol.  It generates a
@@ -2161,6 +2214,7 @@ AC_MSG_CHECKING([if x86/amd64 assembler speaks BMI1 and BMI2])
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
   do { unsigned int h, l;
+   __asm__ __volatile__( "mulx %rax,%rcx,%r8" );
    __asm__ __volatile__(
       "andn %2, %1, %0" : "=r" (h) : "r" (0x1234567), "r" (0x7654321) );
    __asm__ __volatile__(
@@ -2202,6 +2256,27 @@ AC_MSG_RESULT([no])
 AM_CONDITIONAL(BUILD_FMA_TESTS, test x$ac_have_as_fma = xyes)
 
 
+# does the amd64 assembler understand MPX instructions?
+# Note, this doesn't generate a C-level symbol.  It generates a
+# automake-level symbol (BUILD_MPX_TESTS), used in test Makefile.am's
+AC_MSG_CHECKING([if amd64 assembler knows the MPX instructions])
+
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  asm ("bndmov %bnd0,(%rsp)")
+]])], [
+ac_have_as_mpx=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_as_mpx=no
+AC_MSG_RESULT([no])
+])
+
+AM_CONDITIONAL(BUILD_MPX_TESTS, test x$ac_have_as_mpx = xyes)
+
+
+# Does the C compiler support the "ifunc" attribute
+# Note, this doesn't generate a C-level symbol.  It generates a
+# automake-level symbol (BUILD_IFUNC_TESTS), used in test Makefile.am's
 # does the x86/amd64 assembler understand MOVBE?
 # Note, this doesn't generate a C-level symbol.  It generates a
 # automake-level symbol (BUILD_MOVBE_TESTS), used in test Makefile.am's
@@ -2402,7 +2477,8 @@ fi
 # Note: this is a kludge in that it assumes the specified mpicc 
 # understands -m32/-m64 regardless of what is specified using
 # --with-mpicc=.
-MPI_CC="mpicc"
+AC_PATH_PROG([MPI_CC], [mpicc], [mpicc],
+             [$PATH:/usr/lib/openmpi/bin:/usr/lib64/openmpi/bin])
 
 mflag_primary=
 if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
@@ -2413,6 +2489,7 @@ if test x$VGCONF_PLATFORM_PRI_CAPS = xX86_LINUX \
   mflag_primary=$FLAG_M32
 elif test x$VGCONF_PLATFORM_PRI_CAPS = xAMD64_LINUX \
        -o x$VGCONF_PLATFORM_PRI_CAPS = xPPC64_LINUX \
+       -o x$VGCONF_PLATFORM_PRI_CAPS = xARM64_LINUX \
        -o x$VGCONF_PLATFORM_PRI_CAPS = xS390X_LINUX ; then
   mflag_primary=$FLAG_M64
 elif test x$VGCONF_PLATFORM_PRI_CAPS = xX86_DARWIN ; then
@@ -2548,7 +2625,7 @@ AC_LANG(C++)
 safe_CXXFLAGS=$CXXFLAGS
 CXXFLAGS="$mflag_primary"
 safe_LIBS="$LIBS"
-LIBS="-lboost_thread-mt $LIBS"
+LIBS="-lboost_thread-mt -lboost_system-mt $LIBS"
 
 AC_LINK_IFELSE([AC_LANG_SOURCE([
 #include <boost/thread.hpp>
@@ -2563,7 +2640,7 @@ int main(int argc, char** argv)
 [
 ac_have_boost_1_35=yes
 AC_SUBST([BOOST_CFLAGS], [])
-AC_SUBST([BOOST_LIBS], [-lboost_thread-mt])
+AC_SUBST([BOOST_LIBS], ["-lboost_thread-mt -lboost_system-mt"])
 AC_MSG_RESULT([yes])
 ], [
 ac_have_boost_1_35=no
@@ -2604,6 +2681,48 @@ CFLAGS=$safe_CFLAGS
 
 AM_CONDITIONAL([HAVE_OPENMP], [test x$ac_have_openmp = xyes])
 
+
+# Check for __builtin_popcount
+AC_MSG_CHECKING([for __builtin_popcount()])
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+]], [[
+  __builtin_popcount(2);
+  return 0;
+]])], [
+AC_MSG_RESULT([yes])
+AC_DEFINE([HAVE_BUILTIN_POPCOUT], 1,
+          [Define to 1 if compiler provides __builtin_popcount().])
+], [
+AC_MSG_RESULT([no])
+])
+
+# Check for __builtin_clz
+AC_MSG_CHECKING([for __builtin_clz()])
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+]], [[
+  __builtin_clz(2);
+  return 0;
+]])], [
+AC_MSG_RESULT([yes])
+AC_DEFINE([HAVE_BUILTIN_CLZ], 1,
+          [Define to 1 if compiler provides __builtin_clz().])
+], [
+AC_MSG_RESULT([no])
+])
+
+# Check for __builtin_ctz
+AC_MSG_CHECKING([for __builtin_ctz()])
+AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+]], [[
+  __builtin_ctz(2);
+  return 0;
+]])], [
+AC_MSG_RESULT([yes])
+AC_DEFINE([HAVE_BUILTIN_CTZ], 1,
+          [Define to 1 if compiler provides __builtin_ctz().])
+], [
+AC_MSG_RESULT([no])
+])
 
 # does this compiler have built-in functions for atomic memory access for the
 # primary target ?
@@ -2856,6 +2975,7 @@ AC_CONFIG_FILES([
    none/tests/ppc64/Makefile
    none/tests/x86/Makefile
    none/tests/arm/Makefile
+   none/tests/arm64/Makefile
    none/tests/s390x/Makefile
    none/tests/mips32/Makefile
    none/tests/mips64/Makefile
@@ -2876,6 +2996,7 @@ AC_CONFIG_FILES([
    exp-bbv/tests/arm-linux/Makefile
    exp-dhat/Makefile
    exp-dhat/tests/Makefile
+   shared/Makefile
 ])
 AC_CONFIG_FILES([coregrind/link_tool_exe_linux],
                 [chmod +x coregrind/link_tool_exe_linux])

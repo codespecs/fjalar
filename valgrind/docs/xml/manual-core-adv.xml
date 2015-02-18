@@ -603,6 +603,9 @@ Valgrind tool selected.
     <listitem>
       <para><xref linkend="ms-manual.monitor-commands"/></para>
     </listitem>
+    <listitem>
+      <para><xref linkend="hg-manual.monitor-commands"/></para>
+    </listitem>
   </itemizedlist>
 </para>
 
@@ -1252,7 +1255,7 @@ vgdb v.set log_output -c leak_check any
   
 </variablelist>
 <!-- end of xi:include in the manpage -->
- 
+
 </sect2>
 
 
@@ -1264,6 +1267,7 @@ vgdb v.set log_output -c leak_check any
 <para>This section describes the Valgrind monitor commands, available
 regardless of the Valgrind tool selected. For the tool specific
 commands, refer to <xref linkend="mc-manual.monitor-commands"/>,
+<xref linkend="hg-manual.monitor-commands"/>,
 <xref linkend="cl-manual.monitor-commands"/> and
 <xref linkend="ms-manual.monitor-commands"/>. </para>
 
@@ -1290,6 +1294,32 @@ client request.
   <listitem>
     <para><varname>v.info last_error</varname> shows the last error
     found.</para>
+  </listitem>
+
+  <listitem>
+    <para><varname>v.info location &lt;addr&gt;</varname> outputs
+    information about the location &lt;addr&gt;. Possibly, the
+    following are described: global variables, local (stack)
+    variables, allocated or freed blocks, ...  The information
+    produced depends on the tool and on the options given to valgrind.
+    Some tools (e.g. memcheck and helgrind) produce more detailed
+    information for client heap blocks. For example, these tools show
+    the stacktrace where the heap block was allocated. If a tool does
+    not replace the malloc/free/... functions, then client heap blocks
+    will not be described.  Use the
+    option <varname>--read-var-info=yes</varname> to obtain more
+    detailed information about global or local (stack) variables.
+    </para>
+<programlisting><![CDATA[
+(gdb) monitor v.info location 0x8050b20
+ Location 0x8050b20 is 0 bytes inside global var "mx"
+ declared at tc19_shadowmem.c:19
+
+(gdb) mo v.in loc 0x582f33c
+ Location 0x582f33c is 0 bytes inside local var "info"
+ declared at tc19_shadowmem.c:282, in frame #1 of thread 3
+(gdb) 
+]]></programlisting>
   </listitem>
 
   <listitem>
@@ -1418,20 +1448,33 @@ problems or bugs.</para>
   </listitem>
 
   <listitem>
-    <para><varname>v.info scheduler</varname> shows the state and
-    stack trace for all threads, as known by Valgrind.  This allows to
-    compare the stack traces produced by the Valgrind unwinder with
-    the stack traces produced by GDB+Valgrind gdbserver. Pay attention
-    that GDB and Valgrind scheduler status have their own thread
-    numbering scheme. To make the link between the GDB thread
-    number and the corresponding Valgrind scheduler thread number,
-    use the GDB command <computeroutput>info
-    threads</computeroutput>.  The output of this command shows the
-    GDB thread number and the valgrind 'tid'. The 'tid' is the thread number
-    output by <computeroutput>v.info scheduler</computeroutput>.
-    When using the callgrind tool, the callgrind monitor command
+    <para><varname>v.info scheduler</varname> shows various
+    information about threads. First, it outputs the host stack trace,
+    i.e. the Valgrind code being executed. Then, for each thread, it
+    outputs the thread state. For non terminated threads, the state is
+    followed by the guest (client) stack trace. Finally, for each
+    active thread or for each terminated thread slot not yet re-used,
+    it shows the max usage of the valgrind stack.</para>
+    <para>Showing the client stack traces allows to compare the stack
+    traces produced by the Valgrind unwinder with the stack traces
+    produced by GDB+Valgrind gdbserver. Pay attention that GDB and
+    Valgrind scheduler status have their own thread numbering
+    scheme. To make the link between the GDB thread number and the
+    corresponding Valgrind scheduler thread number, use the GDB
+    command <computeroutput>info threads</computeroutput>.  The output
+    of this command shows the GDB thread number and the valgrind
+    'tid'. The 'tid' is the thread number output
+    by <computeroutput>v.info scheduler</computeroutput>.  When using
+    the callgrind tool, the callgrind monitor command
     <computeroutput>status</computeroutput> outputs internal callgrind
     information about the stack/call graph it maintains.
+    </para>
+  </listitem>
+
+  <listitem>
+    <para><varname>v.info stats</varname> shows various valgrind core and
+    tool statistics. With this, Valgrind and tool statistics can
+    be examined while running, even without option <option>--stats=yes</option>.
     </para>
   </listitem>
 
@@ -1440,6 +1483,40 @@ problems or bugs.</para>
     Valgrind debug log level to &lt;intvalue&gt;.  This allows to
     dynamically change the log level of Valgrind e.g. when a problem
     is detected.</para>
+  </listitem>
+
+  <listitem>
+    <para><varname>v.set hostvisibility [yes*|no]</varname> The value
+    "yes" indicates to gdbserver that GDB can look at the Valgrind
+    'host' (internal) status/memory. "no" disables this access.
+    When hostvisibility is activated, GDB can e.g. look at Valgrind
+    global variables. As an example, to examine a Valgrind global
+    variable of the memcheck tool on an x86, do the following setup:</para>
+
+<screen><![CDATA[
+(gdb) monitor v.set hostvisibility yes
+(gdb) add-symbol-file /path/to/tool/executable/file/memcheck-x86-linux 0x38000000
+add symbol table from file "/path/to/tool/executable/file/memcheck-x86-linux" at
+	.text_addr = 0x38000000
+(y or n) y
+Reading symbols from /path/to/tool/executable/file/memcheck-x86-linux...done.
+(gdb) 
+]]></screen>
+
+  <para>After that, variables defined in memcheck-x86-linux can be accessed, e.g.</para>
+
+<screen><![CDATA[
+(gdb) p /x vgPlain_threads[1].os_state
+$3 = {lwpid = 0x4688, threadgroup = 0x4688, parent = 0x0, 
+  valgrind_stack_base = 0x62e78000, valgrind_stack_init_SP = 0x62f79fe0, 
+  exitcode = 0x0, fatalsig = 0x0}
+(gdb) p vex_control
+$5 = {iropt_verbosity = 0, iropt_level = 2, 
+  iropt_register_updates = VexRegUpdUnwindregsAtMemAccess, 
+  iropt_unroll_thresh = 120, guest_max_insns = 60, guest_chase_thresh = 10, 
+  guest_chase_cond = 0 '\000'}
+(gdb) 
+]]></screen>
   </listitem>
 
   <listitem>

@@ -108,7 +108,11 @@ OpenOffice.org with Memcheck is a bit easier when using this option.  You
 don't have to do this, but doing so helps Valgrind produce more accurate
 and less confusing error reports.  Chances are you're set up like this
 already, if you intended to debug your program with GNU GDB, or some
-other debugger.</para>
+other debugger. Alternatively, the Valgrind option 
+<option>--read-inline-info=yes</option> instructs Valgrind to read
+the debug information describing inlining information. With this,
+function call chain will be properly shown, even when your application
+is compiled with inlining. </para>
 
 <para>If you are planning to use Memcheck: On rare
 occasions, compiler optimisations (at <option>-O2</option>
@@ -129,12 +133,9 @@ is also a good idea in general.)  All other tools (as far as we know) are
 unaffected by optimisation level, and for profiling tools like Cachegrind it
 is better to compile your program at its normal optimisation level.</para>
 
-<para>Valgrind understands both the older "stabs" debugging format, used
-by GCC versions prior to 3.1, and the newer DWARF2/3/4 formats
-used by GCC
-3.1 and later.  We continue to develop our debug-info readers,
-although the majority of effort will naturally enough go into the newer
-DWARF readers.</para>
+<para>Valgrind understands the DWARF2/3/4 formats used by GCC 3.1 and
+later.  The reader for "stabs" debugging format (used by GCC versions
+prior to 3.1) has been disabled in Valgrind 3.9.0.</para>
 
 <para>When you're ready to roll, run Valgrind as described above.
 Note that you should run the real
@@ -241,20 +242,20 @@ re-run, passing the <option>-v</option> option to Valgrind.  A second
     <variablelist id="listener.opts.list">
        <varlistentry>
          <term><option>-e --exit-at-zero</option></term>
-       <listitem>
+         <listitem>
            <para>When the number of connected processes falls back to zero,
-         exit.  Without this, it will run forever, that is, until you
-         send it Control-C.</para>
-       </listitem>
+           exit.  Without this, it will run forever, that is, until you
+           send it Control-C.</para>
+         </listitem>
        </varlistentry>
        <varlistentry>
         <term><option>portnumber</option></term>
-       <listitem>
+        <listitem>
           <para>Changes the port it listens on from the default (1500).
           The specified port must be in the range 1024 to 65535.
           The same restriction applies to port numbers specified by a
           <option>--log-socket</option> to Valgrind itself.</para>
-      </listitem>
+        </listitem>
       </varlistentry>
     </variablelist>
     <!-- end of xi:include in the manpage -->
@@ -396,10 +397,11 @@ run of <computeroutput>valgrind -v --tool=memcheck ls -l</computeroutput>:</para
 --1610-- used_suppression:      2 glibc-2.5.x-on-SUSE-10.2-(PPC)-2a /usr/lib/valgrind/default.supp:1234
 ]]></programlisting>
 
-<para>Multiple suppressions files are allowed.  By default, Valgrind
-uses <filename>$PREFIX/lib/valgrind/default.supp</filename>.  You can
-ask to add suppressions from another file, by specifying
-<option>--suppressions=/path/to/file.supp</option>.
+<para>Multiple suppressions files are allowed.  Valgrind loads suppression
+patterns from <filename>$PREFIX/lib/valgrind/default.supp</filename> unless
+<option>--default-suppressions=no</option> has been specified.  You can
+ask to add suppressions from additional files by specifying
+<option>--suppressions=/path/to/file.supp</option> one or more times.
 </para>
 
 <para>If you want to understand more about suppressions, look at an
@@ -584,7 +586,8 @@ in most cases.  We group the available options by rough categories.</para>
     </term>
     <listitem>
       <para>Run the Valgrind tool called <varname>toolname</varname>,
-      e.g. Memcheck, Cachegrind, etc.</para>
+      e.g. memcheck, cachegrind, callgrind, helgrind, drd, massif,
+      lackey, none, exp-sgcheck, exp-bbv, exp-dhat, etc.</para>
     </listitem>
   </varlistentry>
 
@@ -777,6 +780,46 @@ in most cases.  We group the available options by rough categories.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.vgdb-stop-at" xreflabel="--vgdb-stop-at">
+    <term>
+      <option><![CDATA[--vgdb-stop-at=<set> [default: none] ]]></option>
+    </term>
+    <listitem>
+      <para> Use this option when the Valgrind gdbserver is enabled with
+      <option>--vgdb=yes</option> or <option>--vgdb=full</option>.
+      The Valgrind gdbserver will be invoked for each error after
+      <option>--vgdb-error</option> have been reported.
+      You can additionally ask the Valgrind gdbserver to be invoked
+      for other events, specified in one of the following ways:  </para>
+      <itemizedlist>
+        <listitem><para>a comma separated list of one or more of
+            <option>startup exit valgrindabexit</option>.</para>
+
+          <para>The values <option>startup</option> <option>exit</option>
+          <option>valgrindabexit</option> respectively indicate to
+          invoke gdbserver before your program is executed, after the
+          last instruction of your program, on Valgrind abnormal exit
+          (e.g. internal error, out of memory, ...).</para>
+
+          <para>Note: <option>startup</option> and
+          <option>--vgdb-error=0</option> will both cause Valgrind
+          gdbserver to be invoked before your program is executed. The
+          <option>--vgdb-error=0</option> will in addition cause your 
+          program to stop on all subsequent errors.</para>
+
+        </listitem>
+        
+        <listitem><para><option>all</option> to specify the complete set.
+            It is equivalent to
+            <option>--vgdb-stop-at=startup,exit,valgrindabexit</option>.</para>
+        </listitem>
+        
+        <listitem><para><option>none</option> for the empty set.</para>
+        </listitem>
+      </itemizedlist>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.track-fds" xreflabel="--track-fds">
     <term>
       <option><![CDATA[--track-fds=<yes|no> [default: no] ]]></option>
@@ -851,6 +894,13 @@ in most cases.  We group the available options by rough categories.</para>
       
       <para>If an <option>%</option> is followed by any other character, it
       causes an abort.</para>
+
+      <para>If the file name specifies a relative file name, it is put
+      in the program's initial working directory : this is the current
+      directory when the program started its execution after the fork
+      or after the exec.  If it specifies an absolute file name (ie.
+      starts with '/') then it is put there.
+      </para>
     </listitem>
   </varlistentry>
 
@@ -1019,6 +1069,69 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.unw-stack-scan-thresh"
+                xreflabel="--unw-stack-scan-thresh">
+    <term>
+      <option><![CDATA[--unw-stack-scan-thresh=<number> [default: 0] ]]></option>
+    </term>
+    <term>
+      <option><![CDATA[--unw-stack-scan-frames=<number> [default: 5] ]]></option>
+    </term>
+    <listitem>
+      <para>Stack-scanning support is available only on ARM
+      targets.</para>
+
+      <para>These flags enable and control stack unwinding by stack
+      scanning.  When the normal stack unwinding mechanisms -- usage
+      of Dwarf CFI records, and frame-pointer following -- fail, stack
+      scanning may be able to recover a stack trace.</para>
+
+      <para>Note that stack scanning is an imprecise, heuristic
+      mechanism that may give very misleading results, or none at all.
+      It should be used only in emergencies, when normal unwinding
+      fails, and it is important to nevertheless have stack
+      traces.</para>
+
+      <para>Stack scanning is a simple technique: the unwinder reads
+      words from the stack, and tries to guess which of them might be
+      return addresses, by checking to see if they point just after
+      ARM or Thumb call instructions.  If so, the word is added to the
+      backtrace.</para>
+
+      <para>The main danger occurs when a function call returns,
+      leaving its return address exposed, and a new function is
+      called, but the new function does not overwrite the old address.
+      The result of this is that the backtrace may contain entries for
+      functions which have already returned, and so be very
+      confusing.</para>
+
+      <para>A second limitation of this implementation is that it will
+      scan only the page (4KB, normally) containing the starting stack
+      pointer.  If the stack frames are large, this may result in only
+      a few (or not even any) being present in the trace.  Also, if
+      you are unlucky and have an initial stack pointer near the end
+      of its containing page, the scan may miss all interesting
+      frames.</para>
+
+      <para>By default stack scanning is disabled.  The normal use
+      case is to ask for it when a stack trace would otherwise be very
+      short.  So, to enable it,
+      use <computeroutput>--unw-stack-scan-thresh=number</computeroutput>.
+      This requests Valgrind to try using stack scanning to "extend"
+      stack traces which contain fewer
+      than <computeroutput>number</computeroutput> frames.</para>
+
+      <para>If stack scanning does take place, it will only generate
+      at most the number of frames specified
+      by <computeroutput>--unw-stack-scan-frames</computeroutput>.
+      Typically, stack scanning generates so many garbage entries that
+      this value is set to a low value (5) by default.  In no case
+      will a stack trace larger than the value specified
+      by <computeroutput>--num-callers</computeroutput> be
+      created.</para>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.error-limit" xreflabel="--error-limit">
     <term>
       <option><![CDATA[--error-limit=<yes|no> [default: yes] ]]></option>
@@ -1047,6 +1160,23 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.error-markers" xreflabel="--error-markers">
+    <term>
+      <option><![CDATA[--error-markers=<begin>,<end> [default: none]]]></option>
+    </term>
+    <listitem>
+      <para>When errors are output as plain text (i.e. XML not used),
+      <option>--error-markers</option> instructs to output a line
+      containing the <option>begin</option> (<option>end</option>)
+      string before (after) each error. </para>
+      <para> Such marker lines facilitate searching for errors and/or
+      extracting errors in an output file that contain valgrind errors mixed
+      with the program output. </para>
+      <para> Note that empty markers are accepted. So, only using a begin
+      (or an end) marker is possible.</para>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.sigill-diagnostics" xreflabel="--sigill-diagnostics">
     <term>
       <option><![CDATA[--sigill-diagnostics=<yes|no> [default: yes] ]]></option>
@@ -1057,17 +1187,19 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       <option>--quiet</option> is given. The default can always be explicitly
       overridden by giving this option.</para>
 
-      <para>When enabled a warning message will be printed with some
-      diagnostics whenever some instruction is encountered that valgrind
-      cannot decode or translate before the program is given a SIGILL signal.
+      <para>When enabled, a warning message will be printed, along with some
+      diagnostics, whenever an instruction is encountered that Valgrind
+      cannot decode or translate, before the program is given a SIGILL signal.
       Often an illegal instruction indicates a bug in the program or missing
-      support for the particular instruction in Valgrind. But some programs
+      support for the particular instruction in Valgrind.  But some programs
       do deliberately try to execute an instruction that might be missing
-      and trap the SIGILL signal to detect processor features.</para>
+      and trap the SIGILL signal to detect processor features.  Using
+      this flag makes it possible to avoid the diagnostic output
+      that you would otherwise get in such cases.</para>
     </listitem>
   </varlistentry>
 
-  <varlistentry id="opt.stack-traces" xreflabel="--show-below-main">
+  <varlistentry id="opt.show-below-main" xreflabel="--show-below-main">
     <term>
       <option><![CDATA[--show-below-main=<yes|no> [default: no] ]]></option>
     </term>
@@ -1170,6 +1302,83 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       <para>This flag should only be specified once.  If it is
       specified multiple times, only the last instance is
       honoured.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.debuginfo-server" xreflabel="--debuginfo-server">
+    <term>
+      <option><![CDATA[--debuginfo-server=ipaddr:port [default: undefined and unused]]]></option>
+    </term>
+    <listitem>
+      <para>This is a new, experimental, feature introduced in version
+      3.9.0.</para>
+
+      <para>In some scenarios it may be convenient to read debuginfo
+      from objects stored on a different machine.  With this flag,
+      Valgrind will query a debuginfo server running
+      on <computeroutput>ipaddr</computeroutput> and listening on
+      port <computeroutput>port</computeroutput>, if it cannot find
+      the debuginfo object in the local filesystem.</para>
+
+      <para>The debuginfo server must accept TCP connections on
+      port <computeroutput>port</computeroutput>.  The debuginfo
+      server is contained in the source
+      file <computeroutput>auxprogs/valgrind-di-server.c</computeroutput>.
+      It will only serve from the directory it is started
+      in.  <computeroutput>port</computeroutput> defaults to 1500 in
+      both client and server if not specified.</para>
+
+      <para>If Valgrind looks for the debuginfo for
+      <computeroutput>/w/x/y/zz.so</computeroutput> by using the
+      debuginfo server, it will strip the pathname components and
+      merely request <computeroutput>zz.so</computeroutput> on the
+      server.  That in turn will look only in its current working
+      directory for a matching debuginfo object.</para>
+
+      <para>The debuginfo data is transmitted in small fragments (8
+      KB) as requested by Valgrind.  Each block is compressed using
+      LZO to reduce transmission time.  The implementation has been
+      tuned for best performance over a single-stage 802.11g (WiFi)
+      network link.</para>
+
+      <para>Note that checks for matching primary vs debug objects,
+      using GNU debuglink CRC scheme, are performed even when using
+      the debuginfo server.  To disable such checking, you need to
+      also specify
+      <computeroutput>--allow-mismatched-debuginfo=yes</computeroutput>.
+      </para>
+
+      <para>By default the Valgrind build system will
+      build <computeroutput>valgrind-di-server</computeroutput> for
+      the target platform, which is almost certainly not what you
+      want.  So far we have been unable to find out how to get
+      automake/autoconf to build it for the build platform.  If
+      you want to use it, you will have to recompile it by hand using
+      the command shown at the top
+      of <computeroutput>auxprogs/valgrind-di-server.c</computeroutput>.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.allow-mismatched-debuginfo"
+                xreflabel="--allow-mismatched-debuginfo">
+    <term>
+      <option><![CDATA[--allow-mismatched-debuginfo=no|yes [no] ]]></option>
+    </term>
+    <listitem>
+      <para>When reading debuginfo from separate debuginfo objects,
+      Valgrind will by default check that the main and debuginfo
+      objects match, using the GNU debuglink mechanism.  This
+      guarantees that it does not read debuginfo from out of date
+      debuginfo objects, and also ensures that Valgrind can't crash as
+      a result of mismatches.</para>
+
+      <para>This check can be overridden using 
+      <computeroutput>--allow-mismatched-debuginfo=yes</computeroutput>.
+      This may be useful when the debuginfo and main objects have not
+      been split in the proper way.  Be careful when using this,
+      though: it disables all consistency checking, and Valgrind has
+      been observed to crash when the main and debuginfo objects don't
+      match.</para>
     </listitem>
   </varlistentry>
 
@@ -1590,6 +1799,54 @@ need to use them.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.read-inline-info" xreflabel="--read-inline-info">
+    <term>
+      <option><![CDATA[--read-inline-info=<yes|no> [default: see below] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled, Valgrind will read information about inlined
+      function calls from DWARF3 debug info.  This slows Valgrind
+      startup and makes it use more memory (typically for each inlined
+      piece of code, 6 words and space for the function name), but it
+      results in more descriptive stacktraces.  For the 3.10.0
+      release, this functionality is enabled by default only for Linux
+      and Android targets and only for the tools Memcheck, Helgrind
+      and DRD.  Here is an example of some stacktraces with
+      <option>--read-inline-info=no</option>:
+</para>
+<programlisting><![CDATA[
+==15380== Conditional jump or move depends on uninitialised value(s)
+==15380==    at 0x80484EA: main (inlinfo.c:6)
+==15380== 
+==15380== Conditional jump or move depends on uninitialised value(s)
+==15380==    at 0x8048550: fun_noninline (inlinfo.c:6)
+==15380==    by 0x804850E: main (inlinfo.c:34)
+==15380== 
+==15380== Conditional jump or move depends on uninitialised value(s)
+==15380==    at 0x8048520: main (inlinfo.c:6)
+]]></programlisting>
+      <para>And here are the same errors with
+      <option>--read-inline-info=yes</option>:</para>
+<programlisting><![CDATA[
+==15377== Conditional jump or move depends on uninitialised value(s)
+==15377==    at 0x80484EA: fun_d (inlinfo.c:6)
+==15377==    by 0x80484EA: fun_c (inlinfo.c:14)
+==15377==    by 0x80484EA: fun_b (inlinfo.c:20)
+==15377==    by 0x80484EA: fun_a (inlinfo.c:26)
+==15377==    by 0x80484EA: main (inlinfo.c:33)
+==15377== 
+==15377== Conditional jump or move depends on uninitialised value(s)
+==15377==    at 0x8048550: fun_d (inlinfo.c:6)
+==15377==    by 0x8048550: fun_noninline (inlinfo.c:41)
+==15377==    by 0x804850E: main (inlinfo.c:34)
+==15377== 
+==15377== Conditional jump or move depends on uninitialised value(s)
+==15377==    at 0x8048520: fun_d (inlinfo.c:6)
+==15377==    by 0x8048520: main (inlinfo.c:35)
+]]></programlisting>
+    </listitem>
+  </varlistentry>
+
   <varlistentry id="opt.read-var-info" xreflabel="--read-var-info">
     <term>
       <option><![CDATA[--read-var-info=<yes|no> [default: no] ]]></option>
@@ -1597,36 +1854,39 @@ need to use them.</para>
     <listitem>
       <para>When enabled, Valgrind will read information about
       variable types and locations from DWARF3 debug info.
-      This slows Valgrind down and makes it use more memory, but for
-      the tools that can take advantage of it (Memcheck, Helgrind,
-      DRD) it can result in more precise error messages.  For example,
+      This slows Valgrind startup significantly and makes it use significantly
+      more memory, but for the tools that can take advantage of it (Memcheck,
+      Helgrind, DRD) it can result in more precise error messages.  For example,
       here are some standard errors issued by Memcheck:</para>
 <programlisting><![CDATA[
-==15516== Uninitialised byte(s) found during client check request
-==15516==    at 0x400633: croak (varinfo1.c:28)
-==15516==    by 0x4006B2: main (varinfo1.c:55)
-==15516==  Address 0x60103b is 7 bytes inside data symbol "global_i2"
-==15516== 
-==15516== Uninitialised byte(s) found during client check request
-==15516==    at 0x400633: croak (varinfo1.c:28)
-==15516==    by 0x4006BC: main (varinfo1.c:56)
-==15516==  Address 0x7fefffefc is on thread 1's stack]]></programlisting>
+==15363== Uninitialised byte(s) found during client check request
+==15363==    at 0x80484A9: croak (varinfo1.c:28)
+==15363==    by 0x8048544: main (varinfo1.c:55)
+==15363==  Address 0x80497f7 is 7 bytes inside data symbol "global_i2"
+==15363== 
+==15363== Uninitialised byte(s) found during client check request
+==15363==    at 0x80484A9: croak (varinfo1.c:28)
+==15363==    by 0x8048550: main (varinfo1.c:56)
+==15363==  Address 0xbea0d0cc is on thread 1's stack
+==15363==  in frame #1, created by main (varinfo1.c:45)
+]]></programlisting>
 
       <para>And here are the same errors with
       <option>--read-var-info=yes</option>:</para>
 
 <programlisting><![CDATA[
-==15522== Uninitialised byte(s) found during client check request
-==15522==    at 0x400633: croak (varinfo1.c:28)
-==15522==    by 0x4006B2: main (varinfo1.c:55)
-==15522==  Location 0x60103b is 0 bytes inside global_i2[7],
-==15522==  a global variable declared at varinfo1.c:41
-==15522== 
-==15522== Uninitialised byte(s) found during client check request
-==15522==    at 0x400633: croak (varinfo1.c:28)
-==15522==    by 0x4006BC: main (varinfo1.c:56)
-==15522==  Location 0x7fefffefc is 0 bytes inside local var "local"
-==15522==  declared at varinfo1.c:46, in frame #1 of thread 1]]></programlisting>
+==15370== Uninitialised byte(s) found during client check request
+==15370==    at 0x80484A9: croak (varinfo1.c:28)
+==15370==    by 0x8048544: main (varinfo1.c:55)
+==15370==  Location 0x80497f7 is 0 bytes inside global_i2[7],
+==15370==  a global variable declared at varinfo1.c:41
+==15370== 
+==15370== Uninitialised byte(s) found during client check request
+==15370==    at 0x80484A9: croak (varinfo1.c:28)
+==15370==    by 0x8048550: main (varinfo1.c:56)
+==15370==  Location 0xbeb4a0cc is 0 bytes inside local var "local"
+==15370==  declared at varinfo1.c:46, in frame #1 of thread 1
+]]></programlisting>
     </listitem>
   </varlistentry>
 
@@ -1717,6 +1977,7 @@ need to use them.</para>
       the simulated behaviour in nonstandard or dangerous ways, possibly
       to help the simulation of strange features.  By default no hints
       are enabled.  Use with caution!  Currently known hints are:</para>
+
       <itemizedlist>
         <listitem>
           <para><option>lax-ioctls: </option> Be very lax about ioctl
@@ -1726,11 +1987,23 @@ need to use them.</para>
           large number of strange ioctl commands becomes very
           tiresome.</para>
         </listitem>
+
+        <listitem>
+          <para><option>fuse-compatible: </option> Enable special
+            handling for certain system calls that may block in a FUSE
+            file-system.  This may be necessary when running Valgrind
+            on a multi-threaded program that uses one thread to manage
+            a FUSE file-system and another thread to access that
+            file-system.
+          </para>
+        </listitem>
+
         <listitem>
           <para><option>enable-outer: </option> Enable some special
           magic needed when the program being run is itself
           Valgrind.</para>
         </listitem>
+
         <listitem>
           <para><option>no-inner-prefix: </option> Disable printing
           a prefix <option>&gt;</option> in front of each stdout or
@@ -1741,13 +2014,39 @@ need to use them.</para>
           front of the inner debug logging lines.</para>
         </listitem>
         <listitem>
-          <para><option>fuse-compatible: </option> Enable special
-            handling for certain system calls that may block in a FUSE
-            file-system.  This may be necessary when running Valgrind
-            on a multi-threaded program that uses one thread to manage
-            a FUSE file-system and another thread to access that
-            file-system.
-          </para>
+          <para><option>no-nptl-pthread-stackcache: </option>
+            This hint is only relevant when running Valgrind on Linux.</para>
+
+          <para>The GNU glibc pthread library
+            (<function>libpthread.so</function>), which is used by
+            pthread programs, maintains a cache of pthread stacks.
+            When a pthread terminates, the memory used for the pthread
+            stack and some thread local storage related data structure
+            are not always directly released.  This memory is kept in
+            a cache (up to a certain size), and is re-used if a new
+            thread is started.</para>
+
+          <para>This cache causes the helgrind tool to report some
+            false positive race condition errors on this cached
+            memory, as helgrind does not understand the internal glibc
+            cache synchronisation primitives. So, when using helgrind,
+            disabling the cache helps to avoid false positive race
+            conditions, in particular when using thread local storage
+            variables (e.g. variables using the
+            <function>__thread</function> qualifier).</para>
+
+          <para>When using the memcheck tool, disabling the cache
+            ensures the memory used by glibc to handle __thread
+            variables is directly released when a thread
+            terminates.</para>
+
+          <para>Note: Valgrind disables the cache using some internal
+            knowledge of the glibc stack cache implementation and by
+            examining the debug information of the pthread
+            library. This technique is thus somewhat fragile and might
+            not work for all glibc versions. This has been succesfully
+            tested with various glibc versions (e.g. 2.11, 2.16, 2.18)
+            on various platforms.</para>
         </listitem>
       </itemizedlist>
     </listitem>
@@ -1765,7 +2064,7 @@ need to use them.</para>
       between fairness and performance. For more details about the
       Valgrind thread serialisation scheme and its impact on
       performance and thread scheduling, see
-      <xref linkend="&vg-pthreads-perf-sched-id;"/>.
+      <xref linkend="&vg-pthreads-perf-sched-id;"/>.</para>
 
       <itemizedlist>
         <listitem> <para>The value <option>--fair-sched=yes</option>
@@ -1793,7 +2092,7 @@ need to use them.</para>
          highest performance.</para>
         </listitem>
       </itemizedlist>
-    </para></listitem>
+    </listitem>
 
   </varlistentry>
 
@@ -1810,10 +2109,34 @@ need to use them.</para>
       need it.  Currently known variants are:</para>
       <itemizedlist>
         <listitem>
-          <para><option>bproc: </option> Support the
-          <function>sys_broc</function> system call on x86.  This is for
-          running on BProc, which is a minor variant of standard Linux which
-          is sometimes used for building clusters.</para>
+          <para><option>bproc</option>: support the
+            <function>sys_broc</function> system call on x86.  This is for
+            running on BProc, which is a minor variant of standard Linux which
+            is sometimes used for building clusters.
+          </para>
+        </listitem>
+        <listitem>
+          <para><option>android-no-hw-tls</option>: some
+          versions of the Android emulator for ARM do not provide a
+          hardware TLS (thread-local state) register, and Valgrind
+          crashes at startup.  Use this variant to select software
+          support for TLS.
+          </para>
+        </listitem>
+        <listitem>
+          <para><option>android-gpu-sgx5xx</option>: use this to
+          support handling of proprietary ioctls for the PowerVR SGX
+          5XX series of GPUs on Android devices.  Failure to select
+          this does not cause stability problems, but may cause
+          Memcheck to report false errors after the program performs
+          GPU-specific ioctls.
+          </para>
+        </listitem>
+        <listitem>
+          <para><option>android-gpu-adreno3xx</option>: similarly, use
+          this to support handling of proprietary ioctls for the
+          Qualcomm Adreno 3XX series of GPUs on Android devices.
+          </para>
         </listitem>
       </itemizedlist>
     </listitem>
@@ -1824,14 +2147,16 @@ need to use them.</para>
       <option><![CDATA[--merge-recursive-frames=<number> [default: 0] ]]></option>
     </term>
     <listitem>
-      <para>Some recursive algorithms (such as balanced binary tree
-      implementations) have the property to create many different
-      stack traces, containing cycles of calls.  A cycle is defined by
-      two identical program counters separated by 0 or more other
-      program counters.  Valgrind might then use a lot of memory to
-      record these stack traces, containing repeated uninteresting
-      recursive calls instead of more interesting information such as
-      the function that has initiated the recursive call.
+      <para>Some recursive algorithms, for example balanced binary
+      tree implementations, create many different stack traces, each
+      containing cycles of calls.  A cycle is defined as two identical
+      program counter values separated by zero or more other program
+      counter values.  Valgrind may then use a lot of memory to store
+      all these stack traces.  This is a poor use of memory
+      considering that such stack traces contain repeated
+      uninteresting recursive calls instead of more interesting
+      information such as the function that has initiated the
+      recursive call.
       </para>
       <para>The option <option>--merge-recursive-frames=&lt;number&gt;</option>
       instructs Valgrind to detect and merge recursive call cycles
@@ -1843,27 +2168,29 @@ need to use them.</para>
       The value 0 (the default) causes no recursive call merging.
       A value of 1 will cause stack traces of simple recursive algorithms
       (for example, a factorial implementation) to be collapsed.
-      A value of 2 will usually be needed to collapsed stack traces produced
-      by recursive algorithms such as binary trees, quick sort, ...
+      A value of 2 will usually be needed to collapse stack traces produced
+      by recursive algorithms such as binary trees, quick sort, etc.
       Higher values might be needed for more complex recursive algorithms.
       </para>
-      <para>Note: recursive calls are detected based on program counters.
-      The cycles are not detected based on function names. </para>
+      <para>Note: recursive calls are detected by analysis of program
+      counter values.  They are not detected by looking at function
+      names.</para>
    </listitem>
   </varlistentry>
 
   <varlistentry id="opt.num-transtab-sectors" xreflabel="--num-transtab-sectors">
     <term>
-      <option><![CDATA[--num-transtab-sectors=<number> [default: 6 or 16] ]]></option>
+      <option><![CDATA[--num-transtab-sectors=<number> [default: 6
+      for Android platforms, 16 for all others] ]]></option>
     </term>
     <listitem>
       <para>Valgrind translates and instruments your program's machine
       code in small fragments. The translations are stored in a
       translation cache that is divided into a number of sections
       (sectors). If the cache is full, the sector containing the
-      oldest translations is emptied and recycled. If these old
+      oldest translations is emptied and reused. If these old
       translations are needed again, Valgrind must re-translate and
-      re-instrument the corresponding program code, which is
+      re-instrument the corresponding machine code, which is
       expensive.  If the "executed instructions" working set of a
       program is big, increasing the number of sectors may improve
       performance by reducing the number of re-translations needed.
@@ -1873,6 +2200,35 @@ need to use them.</para>
       option <option>--stats=yes</option> to obtain precise
       information about the memory used by a sector and the allocation
       and recycling of sectors.</para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.aspace-minaddr" xreflabel="----aspace-minaddr">
+    <term>
+      <option><![CDATA[--aspace-minaddr=<address> [default: depends
+      on the platform] ]]></option>
+    </term>
+    <listitem>
+      <para>To avoid potential conflicts with some system libraries,
+      Valgrind does not use the address space
+      below <option>--aspace-minaddr</option> value, keeping it
+      reserved in case a library specifically requests memory in this
+      region.  So, some "pessimistic" value is guessed by Valgrind
+      depending on the platform. On linux, by default, Valgrind avoids
+      using the first 64MB even if typically there is no conflict in
+      this complete zone.  You can use the
+      option <option>--aspace-minaddr</option> to have your memory
+      hungry application benefitting from more of this lower memory.
+      On the other hand, if you encounter a conflict, increasing
+      aspace-minaddr value might solve it. Conflicts will typically
+      manifest themselves with mmap failures in the low range of the
+      address space. The
+      provided <computeroutput>address</computeroutput> must be page
+      aligned and must be equal or bigger to 0x1000 (4KB). To find the
+      default value on your platform, do something such as
+      <computeroutput>valgrind -d -d date 2&gt;&amp;1 | grep -i minaddr</computeroutput>. Values lower than 0x10000 (64KB) are known to create problems
+      on some distributions.
+      </para>
    </listitem>
   </varlistentry>
 
@@ -2351,7 +2707,7 @@ subject to the following constraints:</para>
    that, on x86 and amd64, essentially all instructions are supported,
    up to and including AVX and AES in 64-bit mode and SSSE3 in 32-bit
    mode.  32-bit mode does in fact support the bare minimum SSE4
-   instructions to needed to run programs on MacOSX 10.6 on 32-bit
+   instructions needed to run programs on MacOSX 10.6 on 32-bit
    targets.
    </para>
   </listitem>

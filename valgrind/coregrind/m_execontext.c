@@ -121,7 +121,7 @@ static ULong ec_cmpAlls;
 /*--- Exported functions.                                  ---*/
 /*------------------------------------------------------------*/
 
-static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips ); /*fwds*/
+static ExeContext* record_ExeContext_wrk2 ( const Addr* ips, UInt n_ips );
 
 /* Initialise this subsystem. */
 static void init_ExeContext_storage ( void )
@@ -140,7 +140,7 @@ static void init_ExeContext_storage ( void )
    ec_htab_size_idx = 0;
    ec_htab_size = ec_primes[ec_htab_size_idx];
    ec_htab = VG_(malloc)("execontext.iEs1",
-                               sizeof(ExeContext*) * ec_htab_size);
+                         sizeof(ExeContext*) * ec_htab_size);
    for (i = 0; i < ec_htab_size; i++)
       ec_htab[i] = NULL;
 
@@ -203,7 +203,8 @@ void VG_(pp_ExeContext) ( ExeContext* ec )
 
 
 /* Compare two ExeContexts.  Number of callers considered depends on res. */
-Bool VG_(eq_ExeContext) ( VgRes res, ExeContext* e1, ExeContext* e2 )
+Bool VG_(eq_ExeContext) ( VgRes res, const ExeContext* e1,
+                          const ExeContext* e2 )
 {
    Int i;
 
@@ -211,7 +212,7 @@ Bool VG_(eq_ExeContext) ( VgRes res, ExeContext* e1, ExeContext* e2 )
       return False;
 
    // Must be at least one address in each trace.
-   tl_assert(e1->n_ips >= 1 && e2->n_ips >= 1);
+   vg_assert(e1->n_ips >= 1 && e2->n_ips >= 1);
 
    switch (res) {
    case Vg_LowRes:
@@ -266,7 +267,7 @@ static inline UWord ROLW ( UWord w, Int n )
    return w;
 }
 
-static UWord calc_hash ( Addr* ips, UInt n_ips, UWord htab_sz )
+static UWord calc_hash ( const Addr* ips, UInt n_ips, UWord htab_sz )
 {
    UInt  i;
    UWord hash = 0;
@@ -290,7 +291,7 @@ static void resize_ec_htab ( void )
 
    new_size = ec_primes[ec_htab_size_idx + 1];
    new_ec_htab = VG_(malloc)("execontext.reh1",
-                                   sizeof(ExeContext*) * new_size);
+                             sizeof(ExeContext*) * new_size);
 
    VG_(debugLog)(
       1, "execontext",
@@ -351,7 +352,7 @@ static ExeContext* record_ExeContext_wrk ( ThreadId tid, Word first_ip_delta,
    holds a proposed trace.  Find or allocate a suitable ExeContext.
    Note that callers must have done init_ExeContext_storage() before
    getting to this point. */
-static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips )
+static ExeContext* record_ExeContext_wrk2 ( const Addr* ips, UInt n_ips )
 {
    Int         i;
    Bool        same;
@@ -362,7 +363,7 @@ static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips )
 
    static UInt ctr = 0;
 
-   tl_assert(n_ips >= 1 && n_ips <= VG_(clo_backtrace_size));
+   vg_assert(n_ips >= 1 && n_ips <= VG_(clo_backtrace_size));
 
    /* Now figure out if we've seen this one before.  First hash it so
       as to determine the list number. */
@@ -379,12 +380,9 @@ static ExeContext* record_ExeContext_wrk2 ( Addr* ips, UInt n_ips )
    while (True) {
       if (list == NULL) break;
       ec_searchcmps++;
-      same = True;
-      for (i = 0; i < n_ips; i++) {
-         if (list->ips[i] != ips[i]) {
-            same = False;
-            break; 
-         }
+      same = list->n_ips == n_ips;
+      for (i = 0; i < n_ips && same ; i++) {
+         same = list->ips[i] == ips[i];
       }
       if (same) break;
       prev2 = prev;
@@ -470,12 +468,12 @@ StackTrace VG_(get_ExeContext_StackTrace) ( ExeContext* e ) {
    return e->ips;
 }  
 
-UInt VG_(get_ECU_from_ExeContext)( ExeContext* e ) {
+UInt VG_(get_ECU_from_ExeContext)( const ExeContext* e ) {
    vg_assert(VG_(is_plausible_ECU)(e->ecu));
    return e->ecu;
 }
 
-Int VG_(get_ExeContext_n_ips)( ExeContext* e ) {
+Int VG_(get_ExeContext_n_ips)( const ExeContext* e ) {
    vg_assert(e->n_ips >= 1);
    return e->n_ips;
 }
@@ -495,7 +493,7 @@ ExeContext* VG_(get_ExeContext_from_ECU)( UInt ecu )
    return NULL;
 }
 
-ExeContext* VG_(make_ExeContext_from_StackTrace)( Addr* ips, UInt n_ips )
+ExeContext* VG_(make_ExeContext_from_StackTrace)( const Addr* ips, UInt n_ips )
 {
    init_ExeContext_storage();
    return record_ExeContext_wrk2(ips, n_ips);

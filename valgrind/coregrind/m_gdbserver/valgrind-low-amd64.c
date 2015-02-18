@@ -315,6 +315,7 @@ Bool have_avx(void)
    VG_(machine_get_VexArchInfo) (&va, &vai);
    return (vai.hwcaps & VEX_HWCAPS_AMD64_AVX ? True : False);
 }
+
 static
 const char* target_xml (Bool shadow_mode)
 {
@@ -345,6 +346,12 @@ const char* target_xml (Bool shadow_mode)
    }  
 }
 
+static CORE_ADDR** target_get_dtv (ThreadState *tst)
+{
+   VexGuestAMD64State* amd64 = (VexGuestAMD64State*)&tst->arch.vex;
+   return (CORE_ADDR**)((CORE_ADDR)amd64->guest_FS_ZERO + 0x8);
+}
+
 static struct valgrind_target_ops low_target = {
    -1, // Must be computed at init time.
    regs,
@@ -353,7 +360,8 @@ static struct valgrind_target_ops low_target = {
    get_pc,
    set_pc,
    "amd64",
-   target_xml
+   target_xml,
+   target_get_dtv
 };
 
 void amd64_init_architecture (struct valgrind_target_ops *target)

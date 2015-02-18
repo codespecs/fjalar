@@ -80,11 +80,11 @@ static ULong cmalloc_bs_mallocd = 0;
 SizeT MC_(Malloc_Redzone_SzB) = -10000000; // If used before set, should BOMB
 
 /* Record malloc'd blocks. */
-VgHashTable MC_(malloc_list) = NULL;
+VgHashTable *MC_(malloc_list) = NULL;
 
 /* Memory pools: a hash table of MC_Mempools.  Search key is
    MC_Mempool::pool. */
-VgHashTable MC_(mempool_list) = NULL;
+VgHashTable *MC_(mempool_list) = NULL;
    
 /* Pool allocator for MC_Chunk. */   
 PoolAlloc *MC_(chunk_poolalloc) = NULL;
@@ -238,7 +238,7 @@ void delete_MC_Chunk (MC_Chunk* mc)
 }
 
 // True if mc is in the given block list.
-static Bool in_block_list (VgHashTable block_list, MC_Chunk* mc)
+static Bool in_block_list (const VgHashTable *block_list, MC_Chunk* mc)
 {
    MC_Chunk* found_mc = VG_(HT_lookup) ( block_list, (UWord)mc->data );
    if (found_mc) {
@@ -349,37 +349,10 @@ UInt MC_(n_where_pointers) (void)
 /*--- client_malloc(), etc                                 ---*/
 /*------------------------------------------------------------*/
 
-// XXX: should make this a proper error (bug #79311).
-static Bool complain_about_silly_args(SizeT sizeB, const HChar* fn)
-{
-   // Cast to a signed type to catch any unexpectedly negative args.  We're
-   // assuming here that the size asked for is not greater than 2^31 bytes
-   // (for 32-bit platforms) or 2^63 bytes (for 64-bit platforms).
-   if ((SSizeT)sizeB < 0) {
-      if (!VG_(clo_xml)) 
-         VG_(message)(Vg_UserMsg, "Warning: silly arg (%ld) to %s()\n",
-                      (SSizeT)sizeB, fn );
-      return True;
-   }
-   return False;
-}
-
-static Bool complain_about_silly_args2(SizeT n, SizeT sizeB)
-{
-   if ((SSizeT)n < 0 || (SSizeT)sizeB < 0) {
-      if (!VG_(clo_xml))
-         VG_(message)(Vg_UserMsg,
-                      "Warning: silly args (%ld,%ld) to calloc()\n",
-                      (SSizeT)n, (SSizeT)sizeB);
-      return True;
-   }
-   return False;
-}
-
 /* Allocate memory and note change in memory available */
 void* MC_(new_block) ( ThreadId tid,
                        Addr p, SizeT szB, SizeT alignB,
-                       Bool is_zeroed, MC_AllocKind kind, VgHashTable table)
+                       Bool is_zeroed, MC_AllocKind kind, VgHashTable *table)
 {
    MC_Chunk* mc;
 
@@ -420,7 +393,7 @@ void* MC_(new_block) ( ThreadId tid,
 
 void* MC_(malloc) ( ThreadId tid, SizeT n )
 {
-   if (complain_about_silly_args(n, "malloc")) {
+   if (MC_(record_fishy_value_error)(tid, "malloc", "size", n)) {
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
@@ -430,7 +403,7 @@ void* MC_(malloc) ( ThreadId tid, SizeT n )
 
 void* MC_(__builtin_new) ( ThreadId tid, SizeT n )
 {
-   if (complain_about_silly_args(n, "__builtin_new")) {
+   if (MC_(record_fishy_value_error)(tid, "__builtin_new", "size", n)) {
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
@@ -440,7 +413,7 @@ void* MC_(__builtin_new) ( ThreadId tid, SizeT n )
 
 void* MC_(__builtin_vec_new) ( ThreadId tid, SizeT n )
 {
-   if (complain_about_silly_args(n, "__builtin_vec_new")) {
+   if (MC_(record_fishy_value_error)(tid, "__builtin_vec_new", "size", n)) {
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
@@ -450,7 +423,7 @@ void* MC_(__builtin_vec_new) ( ThreadId tid, SizeT n )
 
 void* MC_(memalign) ( ThreadId tid, SizeT alignB, SizeT n )
 {
-   if (complain_about_silly_args(n, "memalign")) {
+   if (MC_(record_fishy_value_error)(tid, "memalign", "size", n)) {
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, n, alignB, 
@@ -460,7 +433,8 @@ void* MC_(memalign) ( ThreadId tid, SizeT alignB, SizeT n )
 
 void* MC_(calloc) ( ThreadId tid, SizeT nmemb, SizeT size1 )
 {
-   if (complain_about_silly_args2(nmemb, size1)) {
+   if (MC_(record_fishy_value_error)(tid, "calloc", "nmemb", nmemb) ||
+       MC_(record_fishy_value_error)(tid, "calloc", "size", size1)) {
       return NULL;
    } else {
       return MC_(new_block) ( tid, 0, nmemb*size1, VG_(clo_alignment),
@@ -496,6 +470,10 @@ void die_and_free_mem ( ThreadId tid, MC_Chunk* mc, SizeT rzB )
 static
 void record_freemismatch_error (ThreadId tid, MC_Chunk* mc)
 {
+   /* Only show such an error if the user hasn't disabled doing so. */
+   if (!MC_(clo_show_mismatched_frees))
+      return;
+
    /* MC_(record_freemismatch_error) reports errors for still
       allocated blocks but we are in the middle of freeing it.  To
       report the error correctly, we re-insert the chunk (making it
@@ -552,7 +530,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
    Addr      a_new; 
    SizeT     old_szB;
 
-   if (complain_about_silly_args(new_szB, "realloc")) 
+   if (MC_(record_fishy_value_error)(tid, "realloc", "size", new_szB))
       return NULL;
 
    cmalloc_n_frees ++;

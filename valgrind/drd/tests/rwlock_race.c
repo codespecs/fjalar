@@ -40,7 +40,7 @@ int main(int argc, char** argv)
 #if 0
 
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__DRD_TRACE_ADDR,
-                             &s_racy, 0, 0, 0, 0);
+                                  &s_racy, 0, 0, 0, 0);
 #endif
 
   pthread_rwlock_init(&s_rwlock, 0);
